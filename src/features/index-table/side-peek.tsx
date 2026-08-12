@@ -101,6 +101,13 @@ import {
   setCitePickerCallback,
   type CitePickerKind,
 } from "@features/cite-picker";
+import { SharedCitePickerModal } from "@features/sharing/SharedCitePickerModal";
+import {
+  sharedCitationSlashItem,
+  setSharedCitePickerCallback,
+  insertSharedCitations,
+} from "../../blocks/shared-citation";
+import { isTauri } from "../../lib/platform";
 import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
@@ -285,6 +292,7 @@ function SidePeekInner({
   // URL ペースト検知 → ブックマーク/リンク選択メニュー（メインエディタと同じ挙動）
   const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
+  const [sharedCitePickerOpen, setSharedCitePickerOpen] = useState(false);
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
   const [loading, setLoading] = useState(true);
@@ -731,11 +739,13 @@ function SidePeekInner({
     setMemoPickerCallback(sidePeekEditor, () => setMemoPickerOpen(true));
     setBookmarkPickerCallback(sidePeekEditor, () => setUrlSlashPickerOpen(true));
     setCitePickerCallback(sidePeekEditor, setCitePickerKind);
+    setSharedCitePickerCallback(sidePeekEditor, () => setSharedCitePickerOpen(true));
     return () => {
       setMediaPickerCallback(sidePeekEditor, null);
       setMemoPickerCallback(sidePeekEditor, null);
       setBookmarkPickerCallback(sidePeekEditor, null);
       setCitePickerCallback(sidePeekEditor, null);
+      setSharedCitePickerCallback(sidePeekEditor, null);
     };
   }, [sidePeekEditor]);
 
@@ -1635,6 +1645,7 @@ function SidePeekInner({
                   inlineMathSlashItem,
                   getMemoSlashMenuItem(),
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
+                  ...(isTauri() ? [sharedCitationSlashItem] : []),
                 ]}
                 excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
                 onEditorReady={handleEditorReady}
@@ -1738,6 +1749,14 @@ function SidePeekInner({
             kind={citePickerKind}
             onConfirm={handleCiteConfirm}
             onClose={() => setCitePickerKind(null)}
+          />
+        )}
+        {sharedCitePickerOpen && (
+          <SharedCitePickerModal
+            onConfirm={(entries) => {
+              if (sidePeekEditor) insertSharedCitations(sidePeekEditor, entries);
+            }}
+            onClose={() => setSharedCitePickerOpen(false)}
           />
         )}
         {urlSlashPickerOpen && (

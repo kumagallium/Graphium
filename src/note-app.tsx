@@ -187,6 +187,14 @@ import {
   setCitePickerCallback,
   type CitePickerKind,
 } from "./features/cite-picker";
+import { SharedCitePickerModal } from "./features/sharing/SharedCitePickerModal";
+import {
+  sharedCitationSlashItem,
+  setSharedCitePickerCallback,
+  setSharedEntryOpenCallback,
+  insertSharedCitations,
+} from "./blocks/shared-citation";
+import { collectNewSharedCitationSources } from "./blocks/shared-citation/collect";
 import type { CaptureEntry } from "./features/mobile-capture";
 import {
   AssetGalleryView,
@@ -1239,6 +1247,7 @@ function NoteEditorInner({
 
   // ── 引用ピッカー (/claims, /Insights) ──
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
+  const [sharedCitePickerOpen, setSharedCitePickerOpen] = useState(false);
 
   // スラッシュメニューからピッカーを開くコールバック登録（main editor 用）。
   // SidePeek からは SidePeek 自身が同じ仕組みで登録する。
@@ -1260,11 +1269,16 @@ function NoteEditorInner({
       pickerEditorRef.current = mainEditor;
       setCitePickerKind(kind);
     });
+    setSharedCitePickerCallback(mainEditor, () => {
+      pickerEditorRef.current = mainEditor;
+      setSharedCitePickerOpen(true);
+    });
     return () => {
       setMediaPickerCallback(mainEditor, null);
       setMemoPickerCallback(mainEditor, null);
       setBookmarkPickerCallback(mainEditor, null);
       setCitePickerCallback(mainEditor, null);
+      setSharedCitePickerCallback(mainEditor, null);
     };
   }, [mainEditor]);
 
@@ -2021,7 +2035,17 @@ function NoteEditorInner({
     }
     const email = await getActiveProvider().getUserEmail() ?? undefined;
     const author = loadAuthorIdentity() ?? undefined;
-    doc = await recordRevision(doc, prevPageRef.current, actType, { agentLabel: actLabel, email, author });
+    // このリビジョンで新しく挿入された shared:// 引用 → EditActivity.used（prov:used）
+    const citedSharedSources = collectNewSharedCitationSources(
+      prevPageRef.current?.blocks,
+      doc.pages[0]?.blocks,
+    );
+    doc = await recordRevision(doc, prevPageRef.current, actType, {
+      agentLabel: actLabel,
+      email,
+      author,
+      sources: citedSharedSources.length > 0 ? citedSharedSources : undefined,
+    });
     // 前回保存状態を更新
     prevPageRef.current = structuredClone(doc.pages[0]);
 
@@ -3979,6 +4003,15 @@ function NoteEditorInner({
           onClose={() => setCitePickerKind(null)}
         />
       )}
+      {sharedCitePickerOpen && (
+        <SharedCitePickerModal
+          onConfirm={(entries) => {
+            const editor = pickerEditorRef.current ?? editorRef.current;
+            insertSharedCitations(editor, entries);
+          }}
+          onClose={() => setSharedCitePickerOpen(false)}
+        />
+      )}
       {/* ヘッダー */}
       <div className="px-3 md:px-4 py-2.5 md:py-2 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
         <div
@@ -4276,7 +4309,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -4939,6 +4972,9 @@ export function NoteApp() {
   }, [inboxSource]);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
+  // 引用カードの「開く」から Library の特定エントリへ飛ぶための一時 state。
+  // SharedLibraryView が consume したら onFocusConsumed で null に戻す。
+  const [sharedLibraryFocusId, setSharedLibraryFocusId] = useState<string | null>(null);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
   // データ構築は fm 宣言後に行う（globalGraphData）。
   const [showGlobalGraph, setShowGlobalGraph] = useState(false);
@@ -5573,6 +5609,20 @@ export function NoteApp() {
     clearViews: closeAllViews,
   }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
+
+  // 引用カードの「開く」→ Library の該当エントリを選択表示で開く。
+  // Library はアプリレベルのビューなのでコールバックもアプリ単位で 1 個登録する。
+  useEffect(() => {
+    setSharedEntryOpenCallback((sharedId) => {
+      if (!getSharedRoot()) return;
+      closeAllViews();
+      setSharedLibraryFocusId(sharedId);
+      setShowSharedLibrary(true);
+      setSidebarOpen(false);
+      router.navigate({ view: "shared-library" });
+    });
+    return () => setSharedEntryOpenCallback(null);
+  }, [closeAllViews, router]);
 
   // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）を
   // 「その場」の素材サイドピークでプレビューする（pdf:/url: ソースと同じ流儀）。
@@ -8047,6 +8097,8 @@ export function NoteApp() {
           <SharedLibraryView
             sharedRoot={getSharedRoot()!}
             currentIdentity={loadAuthorIdentity()}
+            focusEntryId={sharedLibraryFocusId}
+            onFocusConsumed={() => setSharedLibraryFocusId(null)}
             onForkNote={async (sharedId) => {
               const root = getSharedRoot();
               if (!root) return;
