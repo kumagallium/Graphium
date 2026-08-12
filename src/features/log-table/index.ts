@@ -8,10 +8,14 @@
 import { t } from "../../i18n";
 import { formatDateTime } from "../../lib/format-datetime";
 
-export { LogTableStoreProvider, useLogTableStore } from "./store";
+export { LogTableStoreProvider, useLogTableStore, useLogTableStoreOptional } from "./store";
 export type { LogTableConfig } from "./store";
-export { LogTableAddRecordLayer } from "./add-record-layer";
-export { addRecordRow } from "./add-record";
+export { LogTableCaptionLayer } from "./caption-layer";
+export {
+  applyLogTableTimestamps,
+  resetLogTableRowTracking,
+  primeLogTableRowTracking,
+} from "./auto-timestamp";
 
 // 記録テーブル登録用のグローバルコールバック
 // スラッシュメニューから呼ばれるため、React Context にアクセスできない

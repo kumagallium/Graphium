@@ -1806,8 +1806,8 @@ export const en: Record<string, string> = {
   "logTable.colDateTime": "Date/Time",
   "logTable.colValue": "Value",
   "logTable.colNote": "Note",
-  "logTable.addRecord": "Record",
-  "logTable.addRecordHint": "Add a row stamped with the current date and time",
+  "logTable.namePlaceholder": "Name this log table",
+  "logTable.nameHint": "A name makes this table easy to reference from charts",
 
   // チャートブロック
   "chart.selectSource": "Select a table in this note to visualize",

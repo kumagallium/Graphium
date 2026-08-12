@@ -1804,8 +1804,8 @@ export const ja: Record<string, string> = {
   "logTable.colDateTime": "日時",
   "logTable.colValue": "値",
   "logTable.colNote": "メモ",
-  "logTable.addRecord": "記録",
-  "logTable.addRecordHint": "現在日時が入った行を追加",
+  "logTable.namePlaceholder": "記録テーブルの名前",
+  "logTable.nameHint": "名前を付けるとチャートから参照しやすくなります",
 
   // チャートブロック
   "chart.selectSource": "グラフにするテーブルをこのノートから選択",

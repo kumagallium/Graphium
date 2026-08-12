@@ -56,9 +56,11 @@ import { SidePeek } from "./features/index-table/side-peek";
 import {
   LogTableStoreProvider,
   useLogTableStore,
-  LogTableAddRecordLayer,
+  LogTableCaptionLayer,
   logTableSlashItem,
   setRegisterLogTableCallback,
+  applyLogTableTimestamps,
+  primeLogTableRowTracking,
 } from "./features/log-table";
 import { chartSlashItem } from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
@@ -1021,6 +1023,9 @@ function NoteEditorInner({
   const { removeBlockMetadata } = useBlockLifecycle();
   const indexTableStore = useIndexTableStore();
   const logTableStore = useLogTableStore();
+  // handleContentChange（useCallback）から最新の登録テーブルを読むための ref
+  const logTableStoreRef = useRef(logTableStore);
+  logTableStoreRef.current = logTableStore;
   const mediaInlineLabelStore = useMediaInlineLabelStore();
   const mediaOcrStore = useMediaOcrStore();
   const blockAlignmentStore = useBlockAlignmentStore();
@@ -3330,8 +3335,10 @@ function NoteEditorInner({
       }
       mediaOcrStore.restoreSnapshot(page.mediaOcr);
       blockAlignmentStore.restoreSnapshot(page.blockAlignments);
-      // 記録テーブル（undefined ならクリア）
+      // 記録テーブル（undefined ならクリア）。行数の追跡もノート単位でやり直し、
+      // 保存済みブロックの行数で priming する（開いて最初の行追加から日時が入るように）
       logTableStore.restore(page.logTables);
+      primeLogTableRowTracking(page.blocks, Object.keys(page.logTables ?? {}));
       if (page.indexTables) {
         indexTableStore.restore(page.indexTables);
         const existingLinks = noteLinksRef.current;
@@ -3849,6 +3856,8 @@ function NoteEditorInner({
     triggerRegeneration();
     // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
     autoOcrRef.current?.();
+    // 記録テーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら 1 列目に日時を入れる
+    applyLogTableTimestamps(editorRef.current, logTableStoreRef.current.tables.keys());
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);
   }, [markDirty, triggerRegeneration]);
@@ -3906,7 +3915,7 @@ function NoteEditorInner({
         bottomInset={isDesktop ? 0 : 56}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <LogTableAddRecordLayer editorRef={editorRef} />
+      <LogTableCaptionLayer editorRef={editorRef} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}

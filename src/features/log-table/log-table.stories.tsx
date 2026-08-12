@@ -1,6 +1,7 @@
 // 記録テーブルのストーリー
-// 「+ 記録」ボタン（LogTableAddRecordLayer）が登録済みテーブルの左下に出て、
-// クリックで現在日時入りの行が追加されることを目視確認する。
+// - 標準の行追加（テーブル下端の + 帯・最終セルで Tab）で行を足すと、
+//   1 列目に現在日時が自動で入ることを目視確認する（専用ボタンは無い）
+// - テーブル上のキャプション（名前）表示・クリック編集を確認する
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Component, useEffect, useRef, type ReactNode } from "react";
@@ -13,7 +14,8 @@ import {
 import { LinkStoreProvider } from "../block-link/store";
 import { IndexTableStoreProvider } from "../index-table/store";
 import { LogTableStoreProvider, useLogTableStore } from "./store";
-import { LogTableAddRecordLayer } from "./add-record-layer";
+import { LogTableCaptionLayer } from "./caption-layer";
+import { applyLogTableTimestamps, resetLogTableRowTracking } from "./auto-timestamp";
 import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { BlockAlignmentProvider } from "../block-alignment/store";
 import { AiAssistantProvider } from "../ai-assistant/store";
@@ -63,7 +65,9 @@ function logTableContent() {
   return [
     {
       type: "paragraph",
-      content: cell("記録テーブル。左下の「+ 記録」で現在日時入りの行が増える。"),
+      content: cell(
+        "記録テーブル。テーブル下端の + や最終セルで Tab を押して行を足すと、日時が自動で入る。"
+      ),
     },
     {
       id: TABLE_ID,
@@ -80,22 +84,30 @@ function logTableContent() {
   ];
 }
 
-// LogTableStoreProvider の内側で register と Layer を配線するデモ本体
+// LogTableStoreProvider の内側で register・自動日時・キャプション層を配線するデモ本体
 function LogTableDemoInner() {
   const editorRef = useRef<any>(null);
   const store = useLogTableStore();
+  const storeRef = useRef(store);
+  storeRef.current = store;
   useEffect(() => {
+    resetLogTableRowTracking();
     store.register(TABLE_ID);
-  }, [store]);
+    store.setName(TABLE_ID, "頭痛ダイアリー");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
-    <div style={{ maxWidth: 680, border: "1px solid #e5e7eb", borderRadius: 12, padding: 8 }}>
+    <div style={{ maxWidth: 680, border: "1px solid #e5e7eb", borderRadius: 12, padding: "28px 8px 8px" }}>
       <SandboxEditor
         initialContent={logTableContent()}
         onEditorReady={(editor) => {
           editorRef.current = editor;
         }}
+        onChange={() => {
+          applyLogTableTimestamps(editorRef.current, storeRef.current.tables.keys());
+        }}
       />
-      <LogTableAddRecordLayer editorRef={editorRef} />
+      <LogTableCaptionLayer editorRef={editorRef} />
     </div>
   );
 }
@@ -106,8 +118,8 @@ const meta: Meta = {
 };
 export default meta;
 
-export const AddRecord: StoryObj = {
-  name: "記録テーブル（+ 記録ボタン）",
+export const AutoTimestamp: StoryObj = {
+  name: "記録テーブル（自動日時+キャプション）",
   render: () => (
     <ErrorBoundary>
       <EditorProviders>

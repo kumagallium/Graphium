@@ -166,9 +166,9 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 
 ## The log table and charts
 
-**Log Table** inserts a table for recurring, time-stamped observations — a headache diary, a growth log, repeated measurements on the same setup. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend, and shows a **Record** button under the table: clicking it appends a row with the current date and time already filled in the first column.
+**Log Table** inserts a table for recurring, time-stamped observations — a headache diary, a growth log, repeated measurements on the same setup. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
 
-The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged.
+The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged. A name field above the table ("**Name this log table**" — e.g. *Headache diary*) gives the table a caption, which charts use as its display name.
 
 **Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
 

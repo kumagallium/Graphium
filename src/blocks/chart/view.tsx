@@ -44,15 +44,28 @@ import {
   type ChartBlockConfig,
 } from "./chart-config";
 import { ChartSettingsPanel } from "./chart-settings";
+// 記録テーブルの名前（キャプション）を参照表示に使う。Provider が無い場所でも
+// 動くよう optional 版で読む
+import { useLogTableStoreOptional } from "../../features/log-table/store";
 
-/** ノート内の table ブロックを（文書順で）集める */
-function collectTables(editor: any): Array<{ id: string; label: string }> {
+/**
+ * ノート内の table ブロックを（文書順で）集める。
+ * 表示名は「記録テーブルの名前（キャプション）」を最優先し、無ければ
+ * ヘッダ行の連結で代用する（eureco の「データテーブル1: 地点Aの観測結果」に
+ * 相当する、参照に耐える名前を出すため）。
+ */
+function collectTables(
+  editor: any,
+  getTableName?: (blockId: string) => string
+): Array<{ id: string; label: string }> {
   const result: Array<{ id: string; label: string }> = [];
   const visit = (blocks: any[]) => {
     for (const b of blocks ?? []) {
       if (b?.type === "table") {
+        const name = getTableName?.(b.id) ?? "";
         const data = readTableData(b);
-        const label = (data?.headers ?? []).filter(Boolean).join(" | ");
+        const headerLabel = (data?.headers ?? []).filter(Boolean).join(" | ");
+        const label = name || headerLabel;
         result.push({
           id: b.id,
           label: label.length > 48 ? `${label.slice(0, 48)}…` : label || t("chart.table"),
@@ -120,8 +133,13 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     return () => document.removeEventListener("mousedown", onDown);
   }, [showSettings]);
 
+  const logTableStore = useLogTableStoreOptional();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const tables = useMemo(() => collectTables(editor), [editor, docVersion]);
+  const tables = useMemo(
+    () => collectTables(editor, logTableStore?.getName),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor, docVersion, logTableStore?.tables]
+  );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sourceBlock = useMemo(
     () => (sourceBlockId ? (editor as any).getBlock?.(sourceBlockId) : null),
@@ -305,11 +323,14 @@ function buildOption(
     textStyle: { fontFamily, fontSize: CHART_FONT_SIZE, color: CHART_INK },
     grid: {
       show: config.showFrame,
+      // プロット領域は「紙面」として白地に固定する。ノート背景（薄いアイボリー）の
+      // まま図を描くと印刷の図としての質感が出ない
+      backgroundColor: "#ffffff",
       borderColor: CHART_FRAME,
       borderWidth: CHART_FRAME_WIDTH,
       z: 10,
       left: yName ? 84 : 60,
-      right: 24,
+      right: 32,
       top: legendTop ? 48 : 20,
       bottom: (xName ? 64 : 40) + (legendBottom ? 32 : 0),
     },
@@ -320,7 +341,9 @@ function buildOption(
         lineStyle: { width: 0.8, type: "dashed" },
         z: 2,
       },
-      textStyle: { fontSize: 13 },
+      backgroundColor: "#ffffff",
+      borderColor: "#cccccc",
+      textStyle: { fontSize: 13, color: CHART_INK },
     },
     legend: config.showLegend
       ? {
@@ -463,9 +486,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   caption: {
     textAlign: "center",
-    fontSize: 13,
+    fontSize: 14,
     color: CHART_INK,
-    padding: "2px 24px 0",
+    padding: "6px 24px 0",
+    maxWidth: 720,
+    margin: "0 auto",
   },
   placeholderShell: {
     display: "flex",

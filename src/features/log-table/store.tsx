@@ -27,6 +27,9 @@ type LogTableStoreValue = {
   unregister: (blockId: string) => void;
   // ブロックが記録テーブルかどうか
   isLogTable: (blockId: string) => boolean;
+  // テーブル名（キャプション）。未設定は空文字
+  getName: (blockId: string) => string;
+  setName: (blockId: string, name: string) => void;
   // 全データのスナップショット（保存用）
   getSnapshot: () => Record<string, LogTableConfig>;
   // データの復元（読み込み用）。undefined ならクリアとして扱う
@@ -63,6 +66,20 @@ export function LogTableStoreProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const getName = useCallback((blockId: string) => {
+    const name = tablesRef.current.get(blockId)?.name;
+    return typeof name === "string" ? name : "";
+  }, []);
+
+  const setName = useCallback((blockId: string, name: string) => {
+    setTables((prev) => {
+      if (!prev.has(blockId)) return prev;
+      const next = new Map(prev);
+      next.set(blockId, { ...prev.get(blockId), name: name.trim() });
+      return next;
+    });
+  }, []);
+
   const getSnapshot = useCallback((): Record<string, LogTableConfig> => {
     const result: Record<string, LogTableConfig> = {};
     tablesRef.current.forEach((config, blockId) => {
@@ -84,7 +101,7 @@ export function LogTableStoreProvider({ children }: { children: ReactNode }) {
 
   return (
     <LogTableContext.Provider
-      value={{ tables, register, unregister, isLogTable, getSnapshot, restore }}
+      value={{ tables, register, unregister, isLogTable, getName, setName, getSnapshot, restore }}
     >
       {children}
     </LogTableContext.Provider>
@@ -97,4 +114,13 @@ export function useLogTableStore(): LogTableStoreValue {
     throw new Error("useLogTableStore must be used within LogTableStoreProvider");
   }
   return ctx;
+}
+
+/**
+ * Provider が無い場所（Storybook の単体ストーリーや将来の mount 形態）でも
+ * 落ちずに使うための optional 版。チャートブロックの「参照テーブル名の解決」の
+ * ように、無ければ無いで動ける読み取りに使う。
+ */
+export function useLogTableStoreOptional(): LogTableStoreValue | null {
+  return useContext(LogTableContext);
 }
