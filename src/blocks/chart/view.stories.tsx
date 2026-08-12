@@ -66,14 +66,14 @@ function diaryTable(id: string) {
     content: {
       type: "tableContent",
       rows: [
-        { cells: [cell("日時"), cell("痛み"), cell("気圧"), cell("メモ")] },
-        { cells: [cell("2026-08-05 08:00"), cell("2"), cell("1015"), cell("")] },
-        { cells: [cell("2026-08-06 07:30"), cell("6"), cell("1008"), cell("寝不足")] },
-        { cells: [cell("2026-08-07 21:00"), cell("3"), cell("1013"), cell("")] },
-        { cells: [cell("2026-08-08 09:10"), cell("4"), cell("1010"), cell("")] },
-        { cells: [cell("2026-08-09 08:15"), cell("7"), cell("998"), cell("台風接近")] },
-        { cells: [cell("2026-08-10 10:00"), cell("5"), cell("1002"), cell("")] },
-        { cells: [cell("2026-08-11 07:45"), cell("2"), cell("1012"), cell("")] },
+        { cells: [cell("日時"), cell("痛み"), cell("薬(錠)"), cell("気圧"), cell("メモ")] },
+        { cells: [cell("2026-08-05 08:00"), cell("2"), cell("0"), cell("1015"), cell("")] },
+        { cells: [cell("2026-08-06 07:30"), cell("6"), cell("1"), cell("1008"), cell("寝不足")] },
+        { cells: [cell("2026-08-07 21:00"), cell("3"), cell("0"), cell("1013"), cell("")] },
+        { cells: [cell("2026-08-08 09:10"), cell("4"), cell("1"), cell("1010"), cell("")] },
+        { cells: [cell("2026-08-09 08:15"), cell("7"), cell("2"), cell("998"), cell("台風接近")] },
+        { cells: [cell("2026-08-10 10:00"), cell("5"), cell("1"), cell("1002"), cell("")] },
+        { cells: [cell("2026-08-11 07:45"), cell("2"), cell("0"), cell("1012"), cell("")] },
       ],
     },
   };
@@ -106,24 +106,50 @@ const meta: Meta = {
 };
 export default meta;
 
-// 折れ線: 日時 × 痛み・気圧の 2 系列（時系列の基本形）
+const config = (patch: Record<string, unknown>) => JSON.stringify(patch);
+
+// 折れ線: 日時 × 痛みの時系列 + キャプション（学術スタイルの基本形）
 export const Line: StoryObj = {
-  name: "折れ線（日時 × 痛み・気圧）",
+  name: "折れ線（日時 × 痛み、キャプション付き）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
         props={{
           sourceBlockId: "diary-table-1",
-          chartType: "line",
-          xColumn: "日時",
-          yColumns: JSON.stringify(["痛み", "気圧"]),
+          config: config({
+            chartType: "line",
+            xColumn: "日時",
+            yColumns: ["痛み"],
+            caption: "8月上旬の頭痛強度の推移",
+          }),
         }}
       />
     </ErrorBoundary>
   ),
 };
 
-// 分布: 痛みのヒストグラム（「痛みの分布を後から見る」ユースケース）
+// 2 系列: 凡例（左上・横長マーカー）と系列色の確認。
+// 同スケールの列を重ねる（痛み 0-10 と気圧 ~1000 を同軸に載せると潰れるため、
+// 気圧との関係は散布図ストーリーが担う）
+export const TwoSeries: StoryObj = {
+  name: "2 系列（痛み・薬、凡例左上）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        props={{
+          sourceBlockId: "diary-table-1",
+          config: config({
+            chartType: "line",
+            xColumn: "日時",
+            yColumns: ["痛み", "薬(錠)"],
+          }),
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 分布: 痛みのヒストグラム（ビン連続・白区切り）
 export const Histogram: StoryObj = {
   name: "分布（痛みのヒストグラム）",
   render: () => (
@@ -131,26 +157,27 @@ export const Histogram: StoryObj = {
       <ChartDemo
         props={{
           sourceBlockId: "diary-table-1",
-          chartType: "histogram",
-          xColumn: "痛み",
-          yColumns: "",
+          config: config({ chartType: "histogram", xColumn: "痛み" }),
         }}
       />
     </ErrorBoundary>
   ),
 };
 
-// 散布図: 気圧 × 痛み（相関を見る）
+// 散布図: 気圧 × 痛み（相関を見る）+ グリッド線オン
 export const Scatter: StoryObj = {
-  name: "散布図（気圧 × 痛み）",
+  name: "散布図（気圧 × 痛み、グリッド線）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
         props={{
           sourceBlockId: "diary-table-1",
-          chartType: "scatter",
-          xColumn: "気圧",
-          yColumns: JSON.stringify(["痛み"]),
+          config: config({
+            chartType: "scatter",
+            xColumn: "気圧",
+            yColumns: ["痛み"],
+            showGrid: true,
+          }),
         }}
       />
     </ErrorBoundary>

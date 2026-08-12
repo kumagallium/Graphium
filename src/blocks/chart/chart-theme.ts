@@ -1,35 +1,52 @@
-// チャートの配色・テーマ
+// チャートの配色・学術スタイル定数
 //
-// 系列色は design.md「手順フロービュー」の 4 色（flow-palette.ts の KIND_PALETTE）
-// と同値。チャート系列は PROV の意味（activity/material/…）を持たないため、
-// モジュール依存は作らず値だけを共有する。5 系列以上は同じ 4 色の明るい変種で
-// ローテーションする。
-// UI ニュートラル色（文字・罫線）は CSS トークンから実行時に読む。
+// 見た目は eureco のチャート（作者のこだわり: 学術分野でも違和感が少ない形）に
+// 合わせる。eureco の実機 ECharts option から採った実測値:
+//   - プロット領域: 黒 2px の全周枠（grid.show, z:10 で系列より上に描く）
+//   - 軸線: 黒 1.5px / 目盛り: 内向き 8px（tick-inside は論文図の作法）
+//   - グリッド線: 既定オフ（オンにする場合は 0.8px の破線）
+//   - フォント: 16px #3F3F3F / 凡例: 左上・横並び・横長マーカー 50×14
+//   - アスペクト比: √2:1（A 判用紙の比率）+ 図の下にキャプション
+//
+// 系列色は Tailwind 600 系（eureco 実測: red-600 / blue-600）。
+// design.md の区分では「意味を持つ配色（グラフ系列色）」なので実値 hex が正しい
+// （UI ニュートラルは CSS トークンを使う）。
 
 export const CHART_SERIES_COLORS = [
-  "#5b8fb9", // 青（activity）
-  "#4B7A52", // 緑（material）
-  "#c08b3e", // 黄土（tool）
-  "#c26356", // 赤茶（output）
-  "#8fb3d1", // 以下、明るい変種
-  "#7da283",
-  "#d4af76",
-  "#d69287",
+  "#DC2626", // red-600（eureco 実測）
+  "#2563EB", // blue-600（eureco 実測）
+  "#16A34A", // green-600
+  "#9333EA", // purple-600
+  "#EA580C", // orange-600
+  "#0891B2", // cyan-600
+  "#CA8A04", // yellow-600
+  "#DB2777", // pink-600
 ];
 
-export type ChartUiColors = {
-  text: string;
-  line: string;
-};
+// 紙面（チャート内部）の色。ライトな「論文の図」として固定し、
+// アプリテーマの変動を持ち込まない
+export const CHART_INK = "#3F3F3F"; // 文字
+export const CHART_FRAME = "#000000"; // 枠・軸線
 
-/** CSS トークンから文字・罫線色を読む（SVG 内は CSS 変数を解決できないため実値化） */
-export function readChartUiColors(): ChartUiColors {
-  if (typeof window === "undefined") return { text: "#666", line: "#ddd" };
-  const css = getComputedStyle(document.documentElement);
-  const read = (name: string, fallback: string) =>
-    css.getPropertyValue(name).trim() || fallback;
-  return {
-    text: read("--color-text-secondary", "#666"),
-    line: read("--color-border-subtle", "#ddd"),
-  };
-}
+export const CHART_FONT_SIZE = 16;
+
+// プロット枠（eureco: borderWidth 2, z 10）
+export const CHART_FRAME_WIDTH = 2;
+// 軸線（eureco: 1.5px）
+export const CHART_AXIS_LINE_WIDTH = 1.5;
+// 目盛り（eureco: 内向き 8px）
+export const CHART_TICK_LENGTH = 8;
+// グリッド線（eureco: 0.8px dashed）
+export const CHART_GRID_LINE = { width: 0.8, type: "dashed" as const };
+
+// 凡例マーカー（eureco: 横長 50×14）
+export const CHART_LEGEND_ITEM = { width: 50, height: 14 };
+
+/** アスペクト比（幅 ÷ 高さ）。standard は A 判の √2:1 */
+export const CHART_ASPECT_RATIOS = {
+  standard: Math.SQRT2,
+  wide: 2,
+  square: 1,
+} as const;
+
+export type ChartAspect = keyof typeof CHART_ASPECT_RATIOS;

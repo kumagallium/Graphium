@@ -170,11 +170,11 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 
 The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged.
 
-**Chart** turns any table in the note into a graph. Insert it, pick a table, and choose:
+**Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
 
-- **Type** — **Line**, **Bar**, **Scatter**, or **Histogram** (the distribution of one numeric column).
-- **X axis** — the column for the horizontal axis. Date/time columns are detected automatically and plotted as a time axis.
-- **Series** — one or more numeric columns to plot.
+- **Type & Series** — the source table, the chart type (**Line**, **Bar**, **Scatter**, or **Histogram** — the distribution of one numeric column), and the series: numeric columns you can add, reorder, and remove.
+- **Axes** — the X-axis column (date/time columns are detected automatically and plotted as a time axis), axis labels, the Y-axis min/max, and grid lines.
+- **Appearance** — a figure caption shown under the chart, the aspect ratio, the legend (visibility and position), and the plot frame.
 
 The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one.
 

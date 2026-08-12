@@ -180,7 +180,9 @@ export function buildChartData(table: TableData, config: ChartConfig): ChartData
   if (yIdxs.length === 0) return { kind: "no-numeric-series" };
 
   const xValues = table.rows.map((r) => r[xIdx] ?? "");
-  const xKind = detectXAxisKind(xValues);
+  // 棒グラフはカテゴリ軸に固定する（学術図の作法として棒はカテゴリカル。
+  // time 軸に棒を置くと ECharts はバー幅を決められず 1px に潰れる）
+  const xKind = config.chartType === "bar" ? "category" : detectXAxisKind(xValues);
 
   if (xKind === "category") {
     // カテゴリ軸: 行順を保ち、欠測は null（線を切る）

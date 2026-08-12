@@ -132,6 +132,9 @@ export function LogTableAddRecordLayer({
   return createPortal(
     <>
       {buttons.map((btn) => (
+        // eureco のデータテーブル「行を追加」と同じ静かなゴーストボタン:
+        // 枠・影を持たず、hover で surface-hover が点く（design.md のボタン規約）。
+        // テーブル左端に揃えて「テーブルの続き」として読める位置に置く。
         <button
           key={btn.blockId}
           onClick={() => handleAddRecord(btn.blockId)}
@@ -142,30 +145,27 @@ export function LogTableAddRecordLayer({
             left: btn.left,
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            height: 22,
+            gap: 3,
+            height: 24,
             padding: "0 8px",
-            borderRadius: 4,
-            border: "1px solid var(--color-border-subtle)",
-            background: "var(--color-surface)",
+            borderRadius: 8,
+            border: "none",
+            background: "transparent",
             cursor: "pointer",
             fontSize: 12,
             zIndex: 50,
-            transition: "all 0.15s",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+            transition: "background 0.15s, color 0.15s",
             color: "var(--color-text-tertiary)",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor =
-              "var(--color-text-tertiary)";
-            (e.currentTarget as HTMLElement).style.boxShadow =
-              "0 1px 4px rgba(0,0,0,0.1)";
+            const el = e.currentTarget as HTMLElement;
+            el.style.background = "var(--color-surface-hover)";
+            el.style.color = "var(--color-text-secondary)";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor =
-              "var(--color-border-subtle)";
-            (e.currentTarget as HTMLElement).style.boxShadow =
-              "0 1px 2px rgba(0,0,0,0.05)";
+            const el = e.currentTarget as HTMLElement;
+            el.style.background = "transparent";
+            el.style.color = "var(--color-text-tertiary)";
           }}
         >
           <svg
