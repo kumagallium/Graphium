@@ -43,6 +43,32 @@ const INLINE_LABEL_COLOR_CLASS: Record<InlineLabelKey, string> = {
 const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
 
 /**
+ * 現在の選択がチャートブロックの NodeSelection かどうか。
+ * チャートは本文テキストを持たず、書式もインラインラベルも AI への引用も
+ * 適用できないので、ツールバー自体を出さない（操作は右上の「設定」に集約）。
+ */
+function isChartNodeSelection(editor: any): boolean {
+  const tiptap = editor?._tiptapEditor;
+  const sel = tiptap?.state?.selection;
+  const node = sel?.node;
+  if (!node) return false;
+  if (node.type?.name === "chart") return true;
+  if (node.type?.name === "blockContainer") {
+    let found = false;
+    node.descendants((d: any) => {
+      if (found) return false;
+      if (d?.type?.name === "chart") {
+        found = true;
+        return false;
+      }
+      return true;
+    });
+    return found;
+  }
+  return false;
+}
+
+/**
  * tiptap の現在の選択がメディアブロックの NodeSelection なら
  * 当該ブロック ID とメディア種別を返す。それ以外は null。
  */
@@ -107,6 +133,9 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
     mediaSel?.blockType === "image"
       ? (editor.getBlock?.(mediaSel.blockId)?.props?.url as string | undefined)
       : undefined;
+
+  // チャートブロックの選択ではツールバーを出さない（全 hooks の後で判定する）
+  if (isChartNodeSelection(editor)) return null;
 
   const handleAiClick = async () => {
     const selectedText = window.getSelection()?.toString()?.trim();

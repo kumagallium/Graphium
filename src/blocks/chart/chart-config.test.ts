@@ -23,7 +23,14 @@ describe("parseChartBlockConfig", () => {
     expect(parsed.aspect).toBe("standard");
     expect(parsed.showLegend).toBe(true);
     expect(parsed.showFrame).toBe(true);
-    expect(parsed.showGrid).toBe(false);
+    expect(parsed.showGridX).toBe(false);
+    expect(parsed.showGridY).toBe(false);
+  });
+
+  it("旧フィールド showGrid（一括トグル）は X/Y 両方に引き継がれる", () => {
+    const parsed = parseChartBlockConfig(JSON.stringify({ showGrid: true }));
+    expect(parsed.showGridX).toBe(true);
+    expect(parsed.showGridY).toBe(true);
   });
 
   it("不正な値は既定に矯正される", () => {
@@ -51,7 +58,11 @@ describe("parseChartBlockConfig", () => {
       yMin: "0",
       yMax: "10",
       aspect: "square" as const,
-      showGrid: true,
+      showGridX: true,
+      showGridY: true,
+      xAxisKind: "time" as const,
+      xMin: "2026-08-01",
+      xMax: "2026-08-31",
       seriesOptions: { 痛み: { label: "頭痛", color: "#2563EB", axis: "right" as const } },
       legendPosition: "inside-top-right" as const,
       legendOrient: "vertical" as const,

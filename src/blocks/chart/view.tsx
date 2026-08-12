@@ -19,6 +19,7 @@ import { ChartSpline, SlidersHorizontal } from "lucide-react";
 import { t } from "../../i18n";
 import {
   buildChartData,
+  parseDateTime,
   parseNumeric,
   readTableData,
   suggestConfig,
@@ -52,22 +53,30 @@ import { useLogTableStoreOptional } from "../../features/log-table/store";
 
 /**
  * ノート内の table ブロックを（文書順で）集める。
- * 表示名は「記録テーブルの名前（キャプション）」を最優先し、無ければ
- * ヘッダ行の連結で代用する（eureco の「データテーブル1: 地点Aの観測結果」に
- * 相当する、参照に耐える名前を出すため）。
+ * 記録テーブルは「名前（キャプション）、無ければ文書順の自動名（表 N）」、
+ * それ以外はヘッダ行の連結で表示する（eureco の「データテーブル1: 地点Aの
+ * 観測結果」に相当する、参照に耐える名前を出すため）。
  */
 function collectTables(
   editor: any,
-  getTableName?: (blockId: string) => string
+  logStore?: {
+    isLogTable: (blockId: string) => boolean;
+    getName: (blockId: string) => string;
+  } | null
 ): Array<{ id: string; label: string }> {
   const result: Array<{ id: string; label: string }> = [];
+  let logIndex = 0;
   const visit = (blocks: any[]) => {
     for (const b of blocks ?? []) {
       if (b?.type === "table") {
-        const name = getTableName?.(b.id) ?? "";
-        const data = readTableData(b);
-        const headerLabel = (data?.headers ?? []).filter(Boolean).join(" | ");
-        const label = name || headerLabel;
+        let label = "";
+        if (logStore?.isLogTable(b.id)) {
+          logIndex += 1;
+          label = logStore.getName(b.id) || t("logTable.autoName", { n: String(logIndex) });
+        } else {
+          const data = readTableData(b);
+          label = (data?.headers ?? []).filter(Boolean).join(" | ");
+        }
         result.push({
           id: b.id,
           label: label.length > 48 ? `${label.slice(0, 48)}…` : label || t("chart.table"),
@@ -138,7 +147,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   const logTableStore = useLogTableStoreOptional();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const tables = useMemo(
-    () => collectTables(editor, logTableStore?.getName),
+    () => collectTables(editor, logTableStore),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editor, docVersion, logTableStore?.tables]
   );
@@ -233,6 +242,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     chartType: config.chartType,
     xColumn: config.xColumn,
     yColumns: config.yColumns,
+    ...(config.xAxisKind !== "auto" ? { xAxisKind: config.xAxisKind } : {}),
   });
 
   return (
@@ -333,9 +343,12 @@ function buildOption(
     nameTextStyle: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
     z: 3,
   };
-  const splitLine = config.showGrid
-    ? { show: true, lineStyle: { ...CHART_GRID_LINE, color: "#cccccc" } }
-    : { show: false };
+  const gridLine = (on: boolean) =>
+    on
+      ? { show: true, lineStyle: { ...CHART_GRID_LINE, color: "#cccccc" } }
+      : { show: false };
+  const splitLineX = gridLine(config.showGridX);
+  const splitLineY = gridLine(config.showGridY);
 
   // 凡例の配置。top-* は枠の左右端に揃え、inside-* は枠内の四隅に置く
   const legendLayout = (() => {
@@ -361,6 +374,10 @@ function buildOption(
   const yMax = parseNumeric(config.yMax);
   const yRightMin = parseNumeric(config.yRightMin);
   const yRightMax = parseNumeric(config.yRightMax);
+  // X 軸の min/max。時間軸は日時文字列、数値軸は数値として読む（カテゴリ軸は対象外）
+  const parseX = result.xAxis === "time" ? parseDateTime : parseNumeric;
+  const xMin = result.xAxis !== "category" ? parseX(config.xMin) : null;
+  const xMax = result.xAxis !== "category" ? parseX(config.xMax) : null;
 
   // 折れ線・散布図の値軸はデータ範囲にフィットさせる（scale: true = 0 を含む強制を
   // 外す）。気圧 ~1000 hPa のような系列が 0 起点で上に張り付くのを防ぐ。
@@ -375,7 +392,7 @@ function buildOption(
     ...(yMin !== null ? { min: yMin } : {}),
     ...(yMax !== null ? { max: yMax } : {}),
     ...axisCommon,
-    splitLine,
+    splitLine: splitLineY,
   };
   // 右軸のグリッド線は描かない（2 軸で両方のグリッドを重ねると読めなくなる）
   const rightAxis = {
@@ -428,8 +445,16 @@ function buildOption(
       : { show: false },
     xAxis:
       result.xAxis === "category"
-        ? { type: "category", data: result.categories, name: xName, nameGap: 34, ...axisCommon, splitLine }
-        : { type: result.xAxis, name: xName, nameGap: 34, ...axisCommon, splitLine },
+        ? { type: "category", data: result.categories, name: xName, nameGap: 34, ...axisCommon, splitLine: splitLineX }
+        : {
+            type: result.xAxis,
+            name: xName,
+            nameGap: 34,
+            ...(xMin !== null ? { min: xMin } : {}),
+            ...(xMax !== null ? { max: xMax } : {}),
+            ...axisCommon,
+            splitLine: splitLineX,
+          },
     yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
     series: result.series.map((s, i) => {
       const options = config.seriesOptions[s.name] ?? {};

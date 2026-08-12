@@ -10,12 +10,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "../../i18n";
 import { useLogTableStore } from "./store";
+import { computeLogTableDisplayNames } from "./auto-name";
 
 type CaptionPos = {
   blockId: string;
   top: number;
   left: number;
   width: number;
+  /** 表示名（無名なら「表 N」の自動名） */
+  displayName: string;
 };
 
 export function LogTableCaptionLayer({
@@ -44,6 +47,11 @@ export function LogTableCaptionLayer({
     }
 
     let domMissing = false;
+    const displayNames = computeLogTableDisplayNames(
+      (editor as any).document ?? [],
+      store.isLogTable,
+      store.getName
+    );
     store.tables.forEach((_config, blockId) => {
       const block = editor.getBlock?.(blockId);
       if (!block || block.type !== "table") return;
@@ -58,7 +66,13 @@ export function LogTableCaptionLayer({
       const tableEl = blockEl.querySelector("table");
       const rect = (tableEl ?? blockEl).getBoundingClientRect();
       if (rect.bottom < 0 || rect.top > window.innerHeight) return;
-      next.push({ blockId, top: rect.top - 24, left: rect.left, width: rect.width });
+      next.push({
+        blockId,
+        top: rect.top - 24,
+        left: rect.left,
+        width: rect.width,
+        displayName: displayNames.get(blockId) ?? "",
+      });
     });
 
     setCaptions(next);
@@ -127,7 +141,7 @@ export function LogTableCaptionLayer({
 
   return createPortal(
     <>
-      {captions.map(({ blockId, top, left, width }) => {
+      {captions.map(({ blockId, top, left, width, displayName }) => {
         const name = store.getName(blockId);
         if (editing === blockId) {
           return (
@@ -136,7 +150,7 @@ export function LogTableCaptionLayer({
               autoFocus
               type="text"
               value={draft}
-              placeholder={t("logTable.namePlaceholder")}
+              placeholder={displayName || t("logTable.namePlaceholder")}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={() => commit(blockId)}
               onKeyDown={(e) => {
@@ -183,8 +197,8 @@ export function LogTableCaptionLayer({
               background: "transparent",
               cursor: "text",
               fontSize: 13,
+              // 手で付けた名前は少し立て、自動名（表 N）は控えめに出す
               fontWeight: name ? 500 : 400,
-              fontStyle: name ? "normal" : "italic",
               color: name ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
               whiteSpace: "nowrap",
               overflow: "hidden",
@@ -199,7 +213,7 @@ export function LogTableCaptionLayer({
               (e.currentTarget as HTMLElement).style.background = "transparent";
             }}
           >
-            {name || t("logTable.namePlaceholder")}
+            {displayName || t("logTable.namePlaceholder")}
           </button>
         );
       })}

@@ -5,8 +5,11 @@
 // 欠けたフィールドは常にデフォルトで埋める（後からフィールドを足しても
 // 旧ノートが壊れない）。
 
-import type { ChartType } from "./chart-data";
+import type { ChartType, XAxisKind } from "./chart-data";
 import { CHART_ASPECT_RATIOS, type ChartAspect } from "./chart-theme";
+
+/** X 軸の目盛りの種類。auto は列の値から推定する */
+export type XAxisKindSetting = "auto" | XAxisKind;
 
 /**
  * 凡例の位置。
@@ -49,6 +52,11 @@ export type ChartBlockConfig = {
   /** 軸名。空なら列名から自動 */
   xAxisName: string;
   yAxisName: string;
+  /** X 軸の目盛りの種類（auto = 値から推定）。棒・分布ではカテゴリ固定 */
+  xAxisKind: XAxisKindSetting;
+  /** X 軸の最小/最大。空文字 = 自動。時間軸は日時文字列、数値軸は数値で解釈 */
+  xMin: string;
+  xMax: string;
   /** 左 Y 軸の最小/最大。空文字 = 自動 */
   yMin: string;
   yMax: string;
@@ -62,8 +70,9 @@ export type ChartBlockConfig = {
   legendOrient: LegendOrient;
   /** プロット領域の全周枠（黒 box） */
   showFrame: boolean;
-  /** グリッド線（splitLine, 破線） */
-  showGrid: boolean;
+  /** グリッド線（splitLine, 破線）。X = 縦線、Y = 横線 */
+  showGridX: boolean;
+  showGridY: boolean;
 };
 
 export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
@@ -74,6 +83,9 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   caption: "",
   xAxisName: "",
   yAxisName: "",
+  xAxisKind: "auto",
+  xMin: "",
+  xMax: "",
   yMin: "",
   yMax: "",
   yRightAxisName: "",
@@ -84,7 +96,8 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   legendPosition: "top-left",
   legendOrient: "horizontal",
   showFrame: true,
-  showGrid: false,
+  showGridX: false,
+  showGridY: false,
 };
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
@@ -135,6 +148,11 @@ export function parseChartBlockConfig(raw: string): ChartBlockConfig {
     caption: str(parsed.caption, ""),
     xAxisName: str(parsed.xAxisName, ""),
     yAxisName: str(parsed.yAxisName, ""),
+    xAxisKind: ["auto", "category", "value", "time"].includes(parsed.xAxisKind)
+      ? parsed.xAxisKind
+      : "auto",
+    xMin: str(parsed.xMin, ""),
+    xMax: str(parsed.xMax, ""),
     yMin: str(parsed.yMin, ""),
     yMax: str(parsed.yMax, ""),
     yRightAxisName: str(parsed.yRightAxisName, ""),
@@ -147,7 +165,9 @@ export function parseChartBlockConfig(raw: string): ChartBlockConfig {
       : DEFAULT_CHART_CONFIG.legendPosition,
     legendOrient: parsed.legendOrient === "vertical" ? "vertical" : "horizontal",
     showFrame: bool(parsed.showFrame, DEFAULT_CHART_CONFIG.showFrame),
-    showGrid: bool(parsed.showGrid, DEFAULT_CHART_CONFIG.showGrid),
+    // 旧フィールド showGrid（一括トグル）は X/Y 両方に引き継ぐ
+    showGridX: bool(parsed.showGridX, bool(parsed.showGrid, DEFAULT_CHART_CONFIG.showGridX)),
+    showGridY: bool(parsed.showGridY, bool(parsed.showGrid, DEFAULT_CHART_CONFIG.showGridY)),
   };
 }
 

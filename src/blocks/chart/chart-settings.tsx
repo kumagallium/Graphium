@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import { X, ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { t } from "../../i18n";
-import { isNumericColumn, type TableData } from "./chart-data";
+import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
@@ -17,6 +17,7 @@ import {
   type ChartBlockConfig,
   type LegendPosition,
   type SeriesOptions,
+  type XAxisKindSetting,
 } from "./chart-config";
 import type { ChartAspect } from "./chart-theme";
 
@@ -79,6 +80,15 @@ export function ChartSettingsPanel({
     (h) => h !== config.xColumn && !config.yColumns.includes(h)
   );
   const rightAxisInUse = usesRightAxis(config) && config.chartType !== "histogram";
+  // X 軸の実効的な目盛り種類（min/max 入力の有効・無効の判定に使う）
+  const effectiveXKind = useMemo(() => {
+    if (config.chartType === "bar" || config.chartType === "histogram") return "category";
+    if (config.xAxisKind !== "auto") return config.xAxisKind;
+    if (!tableData) return "category";
+    const idx = tableData.headers.findIndex((h) => h.trim() === config.xColumn.trim());
+    if (idx < 0) return "category";
+    return detectXAxisKind(tableData.rows.map((r) => r[idx] ?? ""));
+  }, [config.chartType, config.xAxisKind, config.xColumn, tableData]);
 
   const moveSeries = (index: number, delta: number) => {
     const next = [...config.yColumns];
@@ -341,6 +351,39 @@ export function ChartSettingsPanel({
                   style={{ ...styles.input, flex: 1 }}
                 />
               </label>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.axisKind")}</span>
+                <select
+                  value={config.xAxisKind}
+                  onChange={(e) => onChange({ xAxisKind: e.target.value as XAxisKindSetting })}
+                  style={{ ...styles.select, flex: 1 }}
+                >
+                  <option value="auto">{t("chart.kindAuto")}</option>
+                  <option value="time">{t("chart.kindTime")}</option>
+                  <option value="value">{t("chart.kindValue")}</option>
+                  <option value="category">{t("chart.kindCategory")}</option>
+                </select>
+              </label>
+              <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
+                <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
+                <input
+                  type="text"
+                  value={config.xMin}
+                  placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
+                  disabled={effectiveXKind === "category"}
+                  onChange={(e) => onChange({ xMin: e.target.value })}
+                  style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+                />
+                <span style={styles.rangeDash}>–</span>
+                <input
+                  type="text"
+                  value={config.xMax}
+                  placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
+                  disabled={effectiveXKind === "category"}
+                  onChange={(e) => onChange({ xMax: e.target.value })}
+                  style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+                />
+              </label>
             </>
           )}
 
@@ -420,10 +463,18 @@ export function ChartSettingsPanel({
           <label style={styles.checkRow}>
             <input
               type="checkbox"
-              checked={config.showGrid}
-              onChange={(e) => onChange({ showGrid: e.target.checked })}
+              checked={config.showGridY}
+              onChange={(e) => onChange({ showGridY: e.target.checked })}
             />
-            {t("chart.gridLines")}
+            {t("chart.gridY")}
+          </label>
+          <label style={styles.checkRow}>
+            <input
+              type="checkbox"
+              checked={config.showGridX}
+              onChange={(e) => onChange({ showGridX: e.target.checked })}
+            />
+            {t("chart.gridX")}
           </label>
         </div>
       )}
@@ -528,7 +579,11 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     borderRadius: 8,
     border: "1px solid var(--color-border-subtle)",
-    background: "var(--color-surface)",
+    // すりガラス: パネルはチャートに重なるので、下の図がうっすら透けて
+    // 設定変更の結果を追える程度の透明度を持たせる
+    background: "rgba(255, 255, 255, 0.85)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
     boxShadow: "var(--shadow-2)",
     zIndex: 60,
     padding: 12,

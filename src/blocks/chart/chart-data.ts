@@ -25,6 +25,8 @@ export type ChartConfig = {
   xColumn: string;
   /** 系列にする列名（カンマ区切りで props に保存されるため配列で受ける） */
   yColumns: string[];
+  /** X 軸の種類を明示する（未指定 = 値から推定）。棒・分布はカテゴリ固定 */
+  xAxisKind?: XAxisKind;
 };
 
 export type XAxisKind = "time" | "value" | "category";
@@ -181,8 +183,12 @@ export function buildChartData(table: TableData, config: ChartConfig): ChartData
 
   const xValues = table.rows.map((r) => r[xIdx] ?? "");
   // 棒グラフはカテゴリ軸に固定する（学術図の作法として棒はカテゴリカル。
-  // time 軸に棒を置くと ECharts はバー幅を決められず 1px に潰れる）
-  const xKind = config.chartType === "bar" ? "category" : detectXAxisKind(xValues);
+  // time 軸に棒を置くと ECharts はバー幅を決められず 1px に潰れる）。
+  // それ以外は明示指定 > 値からの推定
+  const xKind =
+    config.chartType === "bar"
+      ? "category"
+      : (config.xAxisKind ?? detectXAxisKind(xValues));
 
   if (xKind === "category") {
     // カテゴリ軸: 行順を保ち、欠測は null（線を切る）
