@@ -172,9 +172,9 @@ The timestamp is ordinary cell text. You can edit it afterwards (recording last 
 
 **Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
 
-- **Type & Series** — the source table, the chart type (**Line**, **Bar**, **Scatter**, or **Histogram** — the distribution of one numeric column), and the series: numeric columns you can add, reorder, and remove.
-- **Axes** — the X-axis column (date/time columns are detected automatically and plotted as a time axis), axis labels, the Y-axis min/max, and grid lines.
-- **Appearance** — a figure caption shown under the chart, the aspect ratio, the legend (visibility and position), and the plot frame.
+- **Type & Series** — the source table, the chart type (**Line**, **Bar**, **Scatter**, or **Histogram** — the distribution of one numeric column), and the series: numeric columns you can add, reorder, and remove. Each series expands into its own settings — a display label, a color, and which Y axis it belongs to. Assign a series to the **right** axis to get a second scale: pain 0–10 on the left and pressure around 1000 hPa on the right, without either flattening the other.
+- **Axes** — the X-axis column (date/time columns are detected automatically and plotted as a time axis), axis labels, min/max for the left — and, when in use, the right — Y axis, and grid lines. Line and scatter axes fit the data range; bars always start at zero.
+- **Appearance** — a figure caption shown under the chart, the aspect ratio, the legend (above the plot aligned to its frame, inside any of the four corners, or below; horizontal or vertical), and the plot frame.
 
 The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one.
 

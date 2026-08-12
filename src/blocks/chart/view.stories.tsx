@@ -128,11 +128,33 @@ export const Line: StoryObj = {
   ),
 };
 
-// 2 系列: 凡例（左上・横長マーカー）と系列色の確認。
-// 同スケールの列を重ねる（痛み 0-10 と気圧 ~1000 を同軸に載せると潰れるため、
-// 気圧との関係は散布図ストーリーが担う）
-export const TwoSeries: StoryObj = {
-  name: "2 系列（痛み・薬、凡例左上）",
+// 2 系列 + 第 2 軸: 痛み（左軸 0-10）と気圧（右軸 ~1000 hPa）。
+// スケールの違う 2 系列を重ねる、頭痛ダイアリーの本命ユースケース
+export const TwoSeriesDualAxis: StoryObj = {
+  name: "2 系列・2 軸（痛み左・気圧右）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        props={{
+          sourceBlockId: "diary-table-1",
+          config: config({
+            chartType: "line",
+            xColumn: "日時",
+            yColumns: ["痛み", "気圧"],
+            seriesOptions: { 気圧: { axis: "right" } },
+            yMin: "0",
+            yMax: "10",
+            caption: "頭痛強度と気圧の推移",
+          }),
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 凡例をグラフ内（右上）に置き、縦に並べる
+export const InsideLegend: StoryObj = {
+  name: "凡例をグラフ内（右上・縦）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
@@ -142,6 +164,8 @@ export const TwoSeries: StoryObj = {
             chartType: "line",
             xColumn: "日時",
             yColumns: ["痛み", "薬(錠)"],
+            legendPosition: "inside-top-right",
+            legendOrient: "vertical",
           }),
         }}
       />

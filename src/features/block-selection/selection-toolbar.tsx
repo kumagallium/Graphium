@@ -172,8 +172,11 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
         )}
       </div>
 
-      {/* AI アシスタント（バックエンド不在時は非表示） */}
-      {aiAssistant.aiAvailable && (
+      {/* AI アシスタント（バックエンド不在時は非表示）。
+          チャートブロックだけの選択でも隠す — チャートは参照設定しか持たず、
+          AI に渡せる本文が無いため押しても意味のある結果にならない */}
+      {aiAssistant.aiAvailable &&
+        !selectedBlockIds.every((id) => editor.getBlock?.(id)?.type === "chart") && (
         <button
           onClick={handleAi}
           title={t("editor.askAi")}

@@ -2,17 +2,22 @@
 //
 // eureco の「チャートの設定」ポップオーバーに合わせたタブ式パネル。
 // タブ構成（種類・系列 / 軸設定 / 外観）は eureco 作者のこだわりで、
-// 系列の並べ替え・削除・追加、軸名と min/max、キャプション・アスペクト比・
-// 凡例・枠線という項目立てもそれに倣う。
+// 系列は行を展開して個別設定（表示名・色・左右の軸）を持つ点も倣う。
 // UI ニュートラル色は design.md のトークン、寸法は 8pt 格子から。
 
 import { useMemo, useState } from "react";
-import { X, ChevronUp, ChevronDown } from "lucide-react";
+import { X, ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { t } from "../../i18n";
 import { isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
-import type { ChartBlockConfig, LegendPosition } from "./chart-config";
+import {
+  seriesDisplayName,
+  usesRightAxis,
+  type ChartBlockConfig,
+  type LegendPosition,
+  type SeriesOptions,
+} from "./chart-config";
 import type { ChartAspect } from "./chart-theme";
 
 type Tab = "typeSeries" | "axes" | "appearance";
@@ -32,6 +37,16 @@ export function chartTypeLabel(type: ChartType): string {
   }
 }
 
+const LEGEND_POSITION_KEYS: Array<[LegendPosition, string]> = [
+  ["top-left", "chart.posTopLeft"],
+  ["top-right", "chart.posTopRight"],
+  ["inside-top-left", "chart.posInsideTopLeft"],
+  ["inside-top-right", "chart.posInsideTopRight"],
+  ["inside-bottom-left", "chart.posInsideBottomLeft"],
+  ["inside-bottom-right", "chart.posInsideBottomRight"],
+  ["bottom", "chart.posBottom"],
+];
+
 export function ChartSettingsPanel({
   config,
   onChange,
@@ -50,6 +65,7 @@ export function ChartSettingsPanel({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("typeSeries");
+  const [expandedSeries, setExpandedSeries] = useState<string | null>(null);
 
   const columns = useMemo(
     () => (tableData?.headers ?? []).filter((h) => h.trim() !== ""),
@@ -62,6 +78,7 @@ export function ChartSettingsPanel({
   const addableSeries = numericColumns.filter(
     (h) => h !== config.xColumn && !config.yColumns.includes(h)
   );
+  const rightAxisInUse = usesRightAxis(config) && config.chartType !== "histogram";
 
   const moveSeries = (index: number, delta: number) => {
     const next = [...config.yColumns];
@@ -69,6 +86,13 @@ export function ChartSettingsPanel({
     if (to < 0 || to >= next.length) return;
     [next[index], next[to]] = [next[to], next[index]];
     onChange({ yColumns: next });
+  };
+
+  const updateSeriesOption = (column: string, patch: Partial<SeriesOptions>) => {
+    const current = config.seriesOptions[column] ?? {};
+    onChange({
+      seriesOptions: { ...config.seriesOptions, [column]: { ...current, ...patch } },
+    });
   };
 
   return (
@@ -157,45 +181,113 @@ export function ChartSettingsPanel({
             <>
               <div style={styles.sectionLabel}>{t("chart.sectionSeries")}</div>
               <div style={styles.seriesList}>
-                {config.yColumns.map((name, i) => (
-                  <div key={name} style={styles.seriesRow}>
-                    <span
-                      style={{
-                        ...styles.swatch,
-                        background: CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length],
-                      }}
-                    />
-                    <span style={styles.seriesName}>{name}</span>
-                    <button
-                      type="button"
-                      style={styles.iconButton}
-                      onClick={() => moveSeries(i, -1)}
-                      disabled={i === 0}
-                      title={t("chart.moveUp")}
-                    >
-                      <ChevronUp size={13} strokeWidth={2} />
-                    </button>
-                    <button
-                      type="button"
-                      style={styles.iconButton}
-                      onClick={() => moveSeries(i, 1)}
-                      disabled={i === config.yColumns.length - 1}
-                      title={t("chart.moveDown")}
-                    >
-                      <ChevronDown size={13} strokeWidth={2} />
-                    </button>
-                    <button
-                      type="button"
-                      style={styles.iconButton}
-                      onClick={() =>
-                        onChange({ yColumns: config.yColumns.filter((c) => c !== name) })
-                      }
-                      title={t("chart.removeSeries")}
-                    >
-                      <X size={13} strokeWidth={2} />
-                    </button>
-                  </div>
-                ))}
+                {config.yColumns.map((name, i) => {
+                  const options = config.seriesOptions[name] ?? {};
+                  const color = options.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
+                  const expanded = expandedSeries === name;
+                  return (
+                    <div key={name} style={styles.seriesItem}>
+                      <div style={styles.seriesRow}>
+                        <button
+                          type="button"
+                          style={styles.iconButton}
+                          onClick={() => setExpandedSeries(expanded ? null : name)}
+                          title={t("chart.seriesSettings")}
+                        >
+                          {expanded ? (
+                            <ChevronDown size={13} strokeWidth={2} />
+                          ) : (
+                            <ChevronRight size={13} strokeWidth={2} />
+                          )}
+                        </button>
+                        <span style={{ ...styles.swatch, background: color }} />
+                        <span style={styles.seriesName}>{seriesDisplayName(config, name)}</span>
+                        <button
+                          type="button"
+                          style={styles.iconButton}
+                          onClick={() => moveSeries(i, -1)}
+                          disabled={i === 0}
+                          title={t("chart.moveUp")}
+                        >
+                          <ChevronUp size={13} strokeWidth={2} />
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.iconButton}
+                          onClick={() => moveSeries(i, 1)}
+                          disabled={i === config.yColumns.length - 1}
+                          title={t("chart.moveDown")}
+                        >
+                          <ChevronDown size={13} strokeWidth={2} />
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.iconButton}
+                          onClick={() =>
+                            onChange({ yColumns: config.yColumns.filter((c) => c !== name) })
+                          }
+                          title={t("chart.removeSeries")}
+                        >
+                          <X size={13} strokeWidth={2} />
+                        </button>
+                      </div>
+                      {expanded && (
+                        <div style={styles.seriesDetail}>
+                          <label style={styles.fieldRow}>
+                            <span style={styles.fieldLabel}>{t("chart.seriesLabel")}</span>
+                            <input
+                              type="text"
+                              value={options.label ?? ""}
+                              placeholder={name}
+                              onChange={(e) => updateSeriesOption(name, { label: e.target.value })}
+                              style={{ ...styles.input, flex: 1 }}
+                            />
+                          </label>
+                          <div style={styles.fieldRow}>
+                            <span style={styles.fieldLabel}>{t("chart.seriesColor")}</span>
+                            <span style={styles.colorRow}>
+                              {CHART_SERIES_COLORS.map((c) => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => updateSeriesOption(name, { color: c })}
+                                  style={{
+                                    ...styles.colorSwatchButton,
+                                    background: c,
+                                    outline: color === c ? `2px solid ${c}` : "none",
+                                    outlineOffset: 1,
+                                  }}
+                                  title={c}
+                                />
+                              ))}
+                            </span>
+                          </div>
+                          <div style={styles.fieldRow}>
+                            <span style={styles.fieldLabel}>{t("chart.seriesAxis")}</span>
+                            <span style={styles.segment}>
+                              {(["left", "right"] as const).map((axis) => {
+                                const active = (options.axis ?? "left") === axis;
+                                return (
+                                  <button
+                                    key={axis}
+                                    type="button"
+                                    onClick={() => updateSeriesOption(name, { axis })}
+                                    style={{
+                                      ...styles.segmentButton,
+                                      ...(active ? styles.segmentButtonActive : {}),
+                                    }}
+                                  >
+                                    {axis === "left" ? t("chart.axisLeft") : t("chart.axisRight")}
+                                  </button>
+                                );
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 {config.yColumns.length === 0 && (
                   <div style={styles.emptyHint}>{t("chart.noNumericSeries")}</div>
                 )}
@@ -252,18 +344,16 @@ export function ChartSettingsPanel({
             </>
           )}
 
-          <div style={styles.sectionLabel}>{t("chart.yAxis")}</div>
+          <div style={styles.sectionLabel}>
+            {rightAxisInUse ? t("chart.yAxisLeft") : t("chart.yAxis")}
+          </div>
           <label style={styles.fieldRow}>
             <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
             <input
               type="text"
               value={config.yAxisName}
               placeholder={
-                config.chartType === "histogram"
-                  ? t("chart.frequency")
-                  : config.yColumns.length === 1
-                    ? config.yColumns[0]
-                    : t("chart.autoPlaceholder")
+                config.chartType === "histogram" ? t("chart.frequency") : t("chart.autoPlaceholder")
               }
               onChange={(e) => onChange({ yAxisName: e.target.value })}
               style={{ ...styles.input, flex: 1 }}
@@ -289,6 +379,42 @@ export function ChartSettingsPanel({
               style={{ ...styles.input, width: 72 }}
             />
           </label>
+
+          {rightAxisInUse && (
+            <>
+              <div style={styles.sectionLabel}>{t("chart.yAxisRight")}</div>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
+                <input
+                  type="text"
+                  value={config.yRightAxisName}
+                  placeholder={t("chart.autoPlaceholder")}
+                  onChange={(e) => onChange({ yRightAxisName: e.target.value })}
+                  style={{ ...styles.input, flex: 1 }}
+                />
+              </label>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={config.yRightMin}
+                  placeholder={t("chart.autoPlaceholder")}
+                  onChange={(e) => onChange({ yRightMin: e.target.value })}
+                  style={{ ...styles.input, width: 72 }}
+                />
+                <span style={styles.rangeDash}>–</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={config.yRightMax}
+                  placeholder={t("chart.autoPlaceholder")}
+                  onChange={(e) => onChange({ yRightMax: e.target.value })}
+                  style={{ ...styles.input, width: 72 }}
+                />
+              </label>
+            </>
+          )}
 
           <div style={styles.sectionLabel}>{t("chart.displayElements")}</div>
           <label style={styles.checkRow}>
@@ -334,18 +460,45 @@ export function ChartSettingsPanel({
             {t("chart.show")}
           </label>
           {config.showLegend && (
-            <label style={styles.fieldRow}>
-              <span style={styles.fieldLabel}>{t("chart.legendPosition")}</span>
-              <select
-                value={config.legendPosition}
-                onChange={(e) => onChange({ legendPosition: e.target.value as LegendPosition })}
-                style={{ ...styles.select, flex: 1 }}
-              >
-                <option value="top-left">{t("chart.posTopLeft")}</option>
-                <option value="top-right">{t("chart.posTopRight")}</option>
-                <option value="bottom">{t("chart.posBottom")}</option>
-              </select>
-            </label>
+            <>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.legendPosition")}</span>
+                <select
+                  value={config.legendPosition}
+                  onChange={(e) => onChange({ legendPosition: e.target.value as LegendPosition })}
+                  style={{ ...styles.select, flex: 1 }}
+                >
+                  {LEGEND_POSITION_KEYS.map(([value, key]) => (
+                    <option key={value} value={value}>
+                      {t(key as any)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.legendOrient")}</span>
+                <span style={styles.segment}>
+                  {(["horizontal", "vertical"] as const).map((orient) => {
+                    const active = config.legendOrient === orient;
+                    return (
+                      <button
+                        key={orient}
+                        type="button"
+                        onClick={() => onChange({ legendOrient: orient })}
+                        style={{
+                          ...styles.segmentButton,
+                          ...(active ? styles.segmentButtonActive : {}),
+                        }}
+                      >
+                        {orient === "horizontal"
+                          ? t("chart.orientHorizontal")
+                          : t("chart.orientVertical")}
+                      </button>
+                    );
+                  })}
+                </span>
+              </label>
+            </>
           )}
 
           <div style={styles.sectionLabel}>{t("chart.frame")}</div>
@@ -368,8 +521,8 @@ const styles: Record<string, React.CSSProperties> = {
     position: "absolute",
     top: 28,
     right: 0,
-    width: 288,
-    maxHeight: 420,
+    width: 300,
+    maxHeight: 440,
     overflowY: "auto",
     display: "flex",
     flexDirection: "column",
@@ -457,7 +610,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   fieldLabel: {
     flexShrink: 0,
-    width: 44,
+    width: 48,
     fontSize: 12,
     color: "var(--color-text-secondary)",
   },
@@ -478,12 +631,25 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 2,
   },
+  seriesItem: {
+    display: "flex",
+    flexDirection: "column",
+  },
   seriesRow: {
     display: "flex",
     alignItems: "center",
     gap: 6,
     padding: "3px 4px",
     borderRadius: 6,
+  },
+  seriesDetail: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    margin: "2px 0 6px 24px",
+    padding: "8px 8px",
+    borderRadius: 6,
+    background: "var(--color-muted)",
   },
   swatch: {
     flexShrink: 0,
@@ -510,6 +676,37 @@ const styles: Record<string, React.CSSProperties> = {
     background: "transparent",
     color: "var(--color-text-tertiary)",
     cursor: "pointer",
+  },
+  colorRow: {
+    display: "inline-flex",
+    flexWrap: "wrap",
+    gap: 5,
+  },
+  colorSwatchButton: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    border: "1px solid rgba(0,0,0,0.12)",
+    cursor: "pointer",
+    padding: 0,
+  },
+  segment: {
+    display: "inline-flex",
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    overflow: "hidden",
+  },
+  segmentButton: {
+    padding: "2px 12px",
+    fontSize: 12,
+    border: "none",
+    background: "var(--color-card)",
+    color: "var(--color-text-tertiary)",
+    cursor: "pointer",
+  },
+  segmentButtonActive: {
+    background: "var(--color-foreground)",
+    color: "var(--color-surface)",
   },
   emptyHint: {
     fontSize: 12,

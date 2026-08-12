@@ -5,6 +5,8 @@ import {
   DEFAULT_CHART_CONFIG,
   parseChartBlockConfig,
   serializeChartBlockConfig,
+  seriesDisplayName,
+  usesRightAxis,
 } from "./chart-config";
 
 describe("parseChartBlockConfig", () => {
@@ -50,7 +52,37 @@ describe("parseChartBlockConfig", () => {
       yMax: "10",
       aspect: "square" as const,
       showGrid: true,
+      seriesOptions: { 痛み: { label: "頭痛", color: "#2563EB", axis: "right" as const } },
+      legendPosition: "inside-top-right" as const,
+      legendOrient: "vertical" as const,
+      yRightAxisName: "頭痛強度",
     };
     expect(parseChartBlockConfig(serializeChartBlockConfig(config))).toEqual(config);
+  });
+
+  it("seriesOptions は不正値を落とし、空エントリを残さない", () => {
+    const parsed = parseChartBlockConfig(
+      JSON.stringify({
+        seriesOptions: {
+          a: { label: "A 系列", axis: "right" },
+          b: { axis: "left" },
+          c: { label: "", color: "" },
+          d: "not-an-object",
+        },
+      })
+    );
+    expect(parsed.seriesOptions).toEqual({ a: { label: "A 系列", axis: "right" } });
+  });
+
+  it("seriesDisplayName / usesRightAxis", () => {
+    const config = {
+      ...DEFAULT_CHART_CONFIG,
+      yColumns: ["痛み", "気圧"],
+      seriesOptions: { 気圧: { axis: "right" as const }, 痛み: { label: "頭痛" } },
+    };
+    expect(seriesDisplayName(config, "痛み")).toBe("頭痛");
+    expect(seriesDisplayName(config, "気圧")).toBe("気圧");
+    expect(usesRightAxis(config)).toBe(true);
+    expect(usesRightAxis(DEFAULT_CHART_CONFIG)).toBe(false);
   });
 });

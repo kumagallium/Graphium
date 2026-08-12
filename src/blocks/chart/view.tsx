@@ -41,6 +41,8 @@ import {
 import {
   parseChartBlockConfig,
   serializeChartBlockConfig,
+  seriesDisplayName,
+  usesRightAxis,
   type ChartBlockConfig,
 } from "./chart-config";
 import { ChartSettingsPanel } from "./chart-settings";
@@ -274,24 +276,43 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
 /**
  * ECharts の option を組み立てる（eureco の学術スタイル、chart-theme.ts の実測値）。
  * 描画状態を持たない純粋な変換。
+ * プロット背景は敷かない（eureco 同様）。塗ると系列より前に描かれて点を隠すし、
+ * ノートの紙色から図だけ浮く。
  */
 function buildOption(
   result: Extract<ChartDataResult, { kind: "ok" }>,
   config: ChartBlockConfig
 ): any {
   const isHistogram = config.chartType === "histogram";
-  const xName = config.xAxisName.trim() || (isHistogram ? config.xColumn : config.xColumn);
+  const useRight = !isHistogram && usesRightAxis(config);
+
+  const xName = config.xAxisName.trim() || config.xColumn;
+  const leftSeries = result.series.filter(
+    (s) => config.seriesOptions[s.name]?.axis !== "right"
+  );
   const yName =
     config.yAxisName.trim() ||
     (isHistogram
       ? t("chart.frequency")
-      : result.series.length === 1
-        ? result.series[0].name
+      : leftSeries.length === 1
+        ? seriesDisplayName(config, leftSeries[0].name)
         : "");
-  const yMin = parseNumeric(config.yMin);
-  const yMax = parseNumeric(config.yMax);
-  const legendTop = config.showLegend && config.legendPosition !== "bottom";
+  const rightSeries = result.series.filter(
+    (s) => config.seriesOptions[s.name]?.axis === "right"
+  );
+  const yRightName =
+    config.yRightAxisName.trim() ||
+    (rightSeries.length === 1 ? seriesDisplayName(config, rightSeries[0].name) : "");
+
+  // プロット領域の余白。凡例の座標計算にも同じ値を使う
+  const gridLeft = yName ? 84 : 60;
+  const gridRight = useRight ? (yRightName ? 84 : 60) : 32;
+  const legendTop =
+    config.showLegend &&
+    (config.legendPosition === "top-left" || config.legendPosition === "top-right");
   const legendBottom = config.showLegend && config.legendPosition === "bottom";
+  const gridTop = legendTop ? 48 : 20;
+  const gridBottom = (xName ? 64 : 40) + (legendBottom ? 32 : 0);
 
   const fontFamily =
     typeof window !== "undefined" ? getComputedStyle(document.body).fontFamily : "sans-serif";
@@ -308,12 +329,64 @@ function buildOption(
       lineStyle: { color: CHART_FRAME },
     },
     axisLabel: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
-    splitLine: config.showGrid
-      ? { show: true, lineStyle: { ...CHART_GRID_LINE, color: "#cccccc" } }
-      : { show: false },
     nameLocation: "middle" as const,
     nameTextStyle: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
     z: 3,
+  };
+  const splitLine = config.showGrid
+    ? { show: true, lineStyle: { ...CHART_GRID_LINE, color: "#cccccc" } }
+    : { show: false };
+
+  // 凡例の配置。top-* は枠の左右端に揃え、inside-* は枠内の四隅に置く
+  const legendLayout = (() => {
+    switch (config.legendPosition) {
+      case "top-left":
+        return { left: gridLeft, top: 6 };
+      case "top-right":
+        return { right: gridRight, top: 6 };
+      case "bottom":
+        return { left: "center" as const, bottom: 0 };
+      case "inside-top-left":
+        return { left: gridLeft + 12, top: gridTop + 10, ...INSIDE_LEGEND_STYLE };
+      case "inside-top-right":
+        return { right: gridRight + 12, top: gridTop + 10, ...INSIDE_LEGEND_STYLE };
+      case "inside-bottom-left":
+        return { left: gridLeft + 12, bottom: gridBottom + 10, ...INSIDE_LEGEND_STYLE };
+      case "inside-bottom-right":
+        return { right: gridRight + 12, bottom: gridBottom + 10, ...INSIDE_LEGEND_STYLE };
+    }
+  })();
+
+  const yMin = parseNumeric(config.yMin);
+  const yMax = parseNumeric(config.yMax);
+  const yRightMin = parseNumeric(config.yRightMin);
+  const yRightMax = parseNumeric(config.yRightMax);
+
+  // 折れ線・散布図の値軸はデータ範囲にフィットさせる（scale: true = 0 を含む強制を
+  // 外す）。気圧 ~1000 hPa のような系列が 0 起点で上に張り付くのを防ぐ。
+  // 棒・ヒストグラムは長さが量を表すので 0 基準のまま
+  const fitAxis = config.chartType === "line" || config.chartType === "scatter";
+
+  const leftAxis = {
+    type: "value" as const,
+    name: yName,
+    nameGap: 52,
+    scale: fitAxis,
+    ...(yMin !== null ? { min: yMin } : {}),
+    ...(yMax !== null ? { max: yMax } : {}),
+    ...axisCommon,
+    splitLine,
+  };
+  // 右軸のグリッド線は描かない（2 軸で両方のグリッドを重ねると読めなくなる）
+  const rightAxis = {
+    type: "value" as const,
+    name: yRightName,
+    nameGap: 52,
+    scale: fitAxis,
+    ...(yRightMin !== null ? { min: yRightMin } : {}),
+    ...(yRightMax !== null ? { max: yRightMax } : {}),
+    ...axisCommon,
+    splitLine: { show: false },
   };
 
   const seriesType = isHistogram ? "bar" : config.chartType;
@@ -323,16 +396,13 @@ function buildOption(
     textStyle: { fontFamily, fontSize: CHART_FONT_SIZE, color: CHART_INK },
     grid: {
       show: config.showFrame,
-      // プロット領域は「紙面」として白地に固定する。ノート背景（薄いアイボリー）の
-      // まま図を描くと印刷の図としての質感が出ない
-      backgroundColor: "#ffffff",
       borderColor: CHART_FRAME,
       borderWidth: CHART_FRAME_WIDTH,
       z: 10,
-      left: yName ? 84 : 60,
-      right: 32,
-      top: legendTop ? 48 : 20,
-      bottom: (xName ? 64 : 40) + (legendBottom ? 32 : 0),
+      left: gridLeft,
+      right: gridRight,
+      top: gridTop,
+      bottom: gridBottom,
     },
     tooltip: {
       trigger: config.chartType === "scatter" ? "item" : "axis",
@@ -348,43 +418,44 @@ function buildOption(
     legend: config.showLegend
       ? {
           show: true,
-          orient: "horizontal",
-          ...(config.legendPosition === "top-left"
-            ? { left: 8, top: 0 }
-            : config.legendPosition === "top-right"
-              ? { right: 8, top: 0 }
-              : { left: "center", bottom: 0 }),
+          orient: config.legendOrient,
+          ...legendLayout,
           itemWidth: CHART_LEGEND_ITEM.width,
           itemHeight: CHART_LEGEND_ITEM.height,
           textStyle: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
+          z: 12,
         }
       : { show: false },
     xAxis:
       result.xAxis === "category"
-        ? { type: "category", data: result.categories, name: xName, nameGap: 34, ...axisCommon }
-        : { type: result.xAxis, name: xName, nameGap: 34, ...axisCommon },
-    yAxis: {
-      type: "value",
-      name: yName,
-      nameGap: 52,
-      ...(yMin !== null ? { min: yMin } : {}),
-      ...(yMax !== null ? { max: yMax } : {}),
-      ...axisCommon,
-    },
-    series: result.series.map((s, i) => ({
-      name: s.name,
-      type: seriesType,
-      data: s.points,
-      connectNulls: false,
-      ...(config.chartType === "line" ? { symbolSize: 7, lineStyle: { width: 2 } } : {}),
-      ...(config.chartType === "scatter" ? { symbolSize: 10 } : {}),
-      ...(isHistogram
-        ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
-        : {}),
-      color: CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length],
-    })),
+        ? { type: "category", data: result.categories, name: xName, nameGap: 34, ...axisCommon, splitLine }
+        : { type: result.xAxis, name: xName, nameGap: 34, ...axisCommon, splitLine },
+    yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
+    series: result.series.map((s, i) => {
+      const options = config.seriesOptions[s.name] ?? {};
+      return {
+        name: seriesDisplayName(config, s.name),
+        type: seriesType,
+        data: s.points,
+        connectNulls: false,
+        ...(useRight ? { yAxisIndex: options.axis === "right" ? 1 : 0 } : {}),
+        ...(config.chartType === "line" ? { symbolSize: 7, lineStyle: { width: 2 } } : {}),
+        ...(config.chartType === "scatter" ? { symbolSize: 10 } : {}),
+        ...(isHistogram
+          ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
+          : {}),
+        color: options.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length],
+      };
+    }),
   };
 }
+
+// 枠内に置く凡例は、データ点と重なっても読めるよう薄い白地を敷く
+const INSIDE_LEGEND_STYLE = {
+  backgroundColor: "rgba(255,255,255,0.75)",
+  padding: 6,
+  borderRadius: 3,
+};
 
 function ChartCanvas({
   result,
