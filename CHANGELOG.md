@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.31.1](https://github.com/kumagallium/Graphium/compare/v0.31.0...v0.31.1) - 2026-08-12
+
+- fix(pdf): resolve shared (g_-prefixed) images from commonObjs to fix extraction hang by @kumagallium in https://github.com/kumagallium/Graphium/pull/667
+- fix(settings): claude-subscription in existing-provider add flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/666
+
 ## [v0.31.0](https://github.com/kumagallium/Graphium/compare/v0.30.1...v0.31.0) - 2026-08-12
 
 - [fix] Prevent desktop freeze when auto-OCR races a drag session by @kumagallium in https://github.com/kumagallium/Graphium/pull/662
