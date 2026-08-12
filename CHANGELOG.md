@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.31.0](https://github.com/kumagallium/Graphium/compare/v0.30.1...v0.31.0) - 2026-08-12
+
+- [fix] Prevent desktop freeze when auto-OCR races a drag session by @kumagallium in https://github.com/kumagallium/Graphium/pull/662
+- feat(sharing): shared:// citation block (Phase 2c-2) by @kumagallium in https://github.com/kumagallium/Graphium/pull/664
+
 ## [v0.30.1](https://github.com/kumagallium/Graphium/compare/v0.30.0...v0.30.1) - 2026-08-10
 
 - [fix] Add a re-check button to the update banner by @kumagallium in https://github.com/kumagallium/Graphium/pull/660
