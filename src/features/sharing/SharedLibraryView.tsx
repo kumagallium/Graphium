@@ -31,6 +31,8 @@ import {
   type SharedEntryType,
 } from "../../lib/storage/shared";
 import { Breadcrumb } from "../../components/Breadcrumb";
+import { ResizeHandle } from "../../components/ResizeHandle";
+import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { loadAllSharedEntries } from "./shared-library-loader";
 import {
   collectSharedBlobHashes,
@@ -263,8 +265,9 @@ export function SharedLibraryView({
         </div>
       </div>
 
-      {/* リスト */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      {/* リスト + 詳細パネル（既存サイドピークと同じ並置レイアウト） */}
+      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-auto px-6 py-4">
         {activeError && (
           <div className="mb-3 p-3 rounded border border-destructive/30 bg-destructive/5 text-xs text-destructive flex items-center gap-2">
             <AlertTriangle size={14} />
@@ -278,7 +281,13 @@ export function SharedLibraryView({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div
+          className={`grid gap-3 ${
+            selected
+              ? "grid-cols-1 xl:grid-cols-2"
+              : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+          }`}
+        >
           {activeEntries.map((entry) => {
             const isMine =
               !!currentIdentity &&
@@ -351,7 +360,7 @@ export function SharedLibraryView({
         </div>
       </div>
 
-      {/* 詳細パネル */}
+      {/* 詳細パネル（一覧と並置。fixed オーバーレイにしない） */}
       {selected && (
         <SharedEntryDetail
           entry={selected}
@@ -371,6 +380,7 @@ export function SharedLibraryView({
           onClose={() => setSelected(null)}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -459,6 +469,17 @@ function SharedEntryDetail({
 }: DetailProps) {
   const [body, setBody] = useState<string | null>(null);
   const [bodyError, setBodyError] = useState<string | null>(null);
+  // 既存ノートのサイドピークと同じ幅設定を共有する（storage key 共通 = 幅の記憶も共通）
+  const peekResize = useSidePeekWidth();
+
+  // ESC で閉じる（オーバーレイの黒幕クリックを廃止した代替）
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   useEffect(() => {
     let cancelled = false;
@@ -486,8 +507,15 @@ function SharedEntryDetail({
       : `(untitled ${entry.type})`;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-stretch justify-end bg-black/30">
-      <div className="w-full max-w-2xl bg-background border-l border-border shadow-lg flex flex-col">
+    <div
+      className="relative shrink-0 bg-background border-l border-border flex flex-col overflow-hidden"
+      style={{ width: peekResize.widthStyle ?? "clamp(320px, 38vw, 480px)" }}
+    >
+      <ResizeHandle
+        handleProps={peekResize.handleProps}
+        isResizing={peekResize.isResizing}
+        label={t("sidePeek.resizeHandle")}
+      />
         {/* ヘッダー */}
         <div className="px-5 py-3 border-b border-border flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -587,7 +615,6 @@ function SharedEntryDetail({
             )}
           </div>
         </div>
-      </div>
     </div>
   );
 }
