@@ -360,9 +360,12 @@ export function SharedLibraryView({
         </div>
       </div>
 
-      {/* 詳細パネル（一覧と並置。fixed オーバーレイにしない） */}
+      {/* 詳細パネル（一覧と並置。fixed オーバーレイにしない）。
+          key remount でエントリ切替時の body / プレビュー残留を防ぐ
+          （SidePeek のノート切替と同じ作法） */}
       {selected && (
         <SharedEntryDetail
+          key={selected.id}
           entry={selected}
           isMine={
             !!currentIdentity &&
@@ -704,6 +707,51 @@ type NotePreviewState =
   | { phase: "ready"; blocks: unknown[] }
   | { phase: "error" };
 
+// 共有側では解決できないメディア参照。
+// - shared-blob: … blob root 未設定 / blob 欠落で解決できなかったもの
+// - file-media: / local-media: … auto-blob 導入前に共有されたノートに残る、
+//   共有した本人のマシン専用の参照（実体が共有フォルダに無い）
+// これらを壊れ画像アイコンのまま出すと「リンク切れ？」と不安にさせるので、
+// ファイル名入りの案内テキストに置き換える。
+const UNRESOLVABLE_MEDIA_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
+
+function isUnresolvableMediaUrl(url: string): boolean {
+  return (
+    url.startsWith("shared-blob:") ||
+    url.startsWith("file-media://") ||
+    url.startsWith("local-media://")
+  );
+}
+
+function replaceUnresolvableMedia(blocks: any[]): any[] {
+  return blocks.map((b) => {
+    if (
+      UNRESOLVABLE_MEDIA_TYPES.has(b?.type) &&
+      typeof b?.props?.url === "string" &&
+      isUnresolvableMediaUrl(b.props.url)
+    ) {
+      const name =
+        typeof b.props.name === "string" && b.props.name ? b.props.name : b.type;
+      return {
+        type: "paragraph",
+        props: {},
+        content: [
+          {
+            type: "text",
+            text: `📎 ${name} — ${t("share.preview.mediaNotIncluded")}`,
+            styles: { italic: true },
+          },
+        ],
+        children: b.children ?? [],
+      };
+    }
+    if (b?.children?.length) {
+      return { ...b, children: replaceUnresolvableMedia(b.children) };
+    }
+    return b;
+  });
+}
+
 export function SharedNotePreview({ body }: { body: string }) {
   const [state, setState] = useState<NotePreviewState>({ phase: "loading" });
 
@@ -749,7 +797,9 @@ export function SharedNotePreview({ body }: { body: string }) {
             children: [],
           });
         }
-        blocks.push(...sanitizeBlocksForLoad(page.blocks ?? []));
+        blocks.push(
+          ...replaceUnresolvableMedia(sanitizeBlocksForLoad(page.blocks ?? [])),
+        );
       });
       setState({ phase: "ready", blocks });
     })();

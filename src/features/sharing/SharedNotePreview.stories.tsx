@@ -53,6 +53,15 @@ const sampleDoc = {
           children: [],
         },
         {
+          id: "b4b",
+          type: "image",
+          props: {
+            url: "file-media://761c9aee-53c4-4e34-854c-95c3153dec05",
+            name: "20150423-965906d5.gif",
+          },
+          children: [],
+        },
+        {
           id: "b5",
           type: "sharedCitation",
           props: {

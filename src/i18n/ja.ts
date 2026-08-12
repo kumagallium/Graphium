@@ -1726,6 +1726,7 @@ export const ja: Record<string, string> = {
   "share.updateHint": "更新するにはローカルで編集して再 Share してください。",
   "share.readOnlyOthers": "他人の共有エントリは読み取り専用です。",
   "share.preview.loading": "プレビューを読み込み中...",
+  "share.preview.mediaNotIncluded": "このファイルは共有に含まれていません（作者が再共有すると表示されます）",
   "share.noBlobRootPreview": "Blob root が未設定のためプレビューできません。",
 
   // スラッシュメニュー: 新規ノート

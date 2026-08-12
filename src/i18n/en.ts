@@ -1728,6 +1728,7 @@ export const en: Record<string, string> = {
   "share.updateHint": "To update it, edit locally and share again.",
   "share.readOnlyOthers": "Shared entries from others are read-only.",
   "share.preview.loading": "Loading preview...",
+  "share.preview.mediaNotIncluded": "This file is not included in the share (it will appear once the author re-shares)",
   "share.noBlobRootPreview": "Preview unavailable because no blob root is configured.",
 
   // スラッシュメニュー: 新規ノート
