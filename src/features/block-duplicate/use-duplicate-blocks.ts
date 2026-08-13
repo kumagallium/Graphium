@@ -8,11 +8,11 @@
 //   - 本文・props（BlockNote のブロックツリーごとコピー）
 //   - ラベル / step 属性 / 複製範囲内で閉じたリンク（useBlockLifecycle 経由 = コピペと同じ）
 //   - 配置揃え（blockAlignmentStore。テーブル・音声など textAlignment を持たないブロック用）
-//   - 記録テーブルの登録と名前（テンプレートとして複製する使い方が主なため）
+//   - テーブルの名前と、日時が自動で入る列（テンプレートとして複製する使い方が主なため）
 //
 // 引き継がないもの:
-//   - インデックステーブルの登録。行がノートに紐づくため、複製すると同じノートを
-//     指す表が 2 つでき、どちらを編集したのか分からなくなる。複製先は素のテーブル。
+//   - 行からノートを作る列（note-link）と行の紐付け。行がノートに紐づくため、複製すると
+//     同じノートを指す表が 2 つでき、どちらを編集したのか分からなくなる。
 //   - OCR 結果。同じ画像なら複製先でも読み直せる（派生データを二重に持たない）。
 // ──────────────────────────────────────────────
 
@@ -21,7 +21,8 @@ import { useBlockNoteEditor } from "@blocknote/react";
 import { useBlockLifecycle } from "../block-lifecycle";
 import { computeIdMap, flattenBlockIds } from "../block-lifecycle/clipboard";
 import { useBlockAlignmentStoreOptional } from "../block-alignment";
-import { useLogTableStoreOptional } from "../log-table";
+import { useTableMetaStoreOptional } from "../table-meta/store";
+import { findColumnNameByType } from "../table-meta/types";
 import { stripBlockIds } from "./duplicate-blocks";
 
 export type DuplicateBlocks = (blockIds: readonly string[]) => string[];
@@ -30,7 +31,7 @@ export function useDuplicateBlocks(): DuplicateBlocks {
   const editor = useBlockNoteEditor<any, any, any>();
   const { copyBlocksMetadata } = useBlockLifecycle();
   const alignStore = useBlockAlignmentStoreOptional();
-  const logStore = useLogTableStoreOptional();
+  const tableMeta = useTableMetaStoreOptional();
 
   return useCallback(
     (blockIds: readonly string[]): string[] => {
@@ -59,10 +60,13 @@ export function useDuplicateBlocks(): DuplicateBlocks {
         const alignment = alignStore?.getAlignment(oldId);
         if (alignment) alignStore!.setAlignment(newId, alignment);
 
-        if (logStore?.isLogTable(oldId)) {
-          logStore.register(newId);
-          const name = logStore.getName(oldId);
-          if (name) logStore.setName(newId, name);
+        const meta = tableMeta?.metas.get(oldId);
+        if (meta) {
+          const datetimeColumn = findColumnNameByType(meta, "datetime-auto");
+          if (datetimeColumn !== undefined) {
+            tableMeta!.addColumnType(newId, datetimeColumn, "datetime-auto");
+          }
+          if (meta.caption) tableMeta!.setCaption(newId, meta.caption);
         }
       }
 
@@ -76,6 +80,6 @@ export function useDuplicateBlocks(): DuplicateBlocks {
 
       return inserted.map((b: any) => b.id);
     },
-    [editor, copyBlocksMetadata, alignStore, logStore],
+    [editor, copyBlocksMetadata, alignStore, tableMeta],
   );
 }

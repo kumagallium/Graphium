@@ -850,19 +850,29 @@ export type GraphiumPage = {
   knowledgeLinks: any[];
   /** @deprecated v1 互換: 旧 links フィールド。読み込み時に provLinks/knowledgeLinks に変換する */
   links?: any[];
-  /** インデックステーブル: テーブルブロック ID → { サンプル名 → ノートファイル ID } */
+  /**
+   * テーブル注釈（2026-08 で導入）: テーブルブロック ID → 注釈。
+   *
+   * テーブルの名前（キャプション）と、列に付いたはたらき（日時の自動記入・
+   * 行からのノート参照）を持つ。テーブル本体は標準 table ブロックのままで、
+   * セルは文字列なので Markdown 書き出しでそのまま残る。mediaInlineLabels と
+   * 同じ「独立アノテーション層」方式（blockId → 値）。
+   *
+   * 旧 indexTables / logTables はこのフィールドに統合され、読み込み時に変換される
+   * （features/table-meta/migration.ts）。保存は新形式のみ。
+   * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
+   */
+  tableMeta?: Record<string, TableMeta>;
+  /**
+   * @deprecated tableMeta に統合（列の note-link ふるまい + noteLinks）。
+   * 読み込み時に変換されるため、新規保存では書き出さない。旧ビルドとの読み分けの
+   * ために型としては残している。
+   */
   indexTables?: Record<string, Record<string, string>>;
   /**
-   * 記録テーブル（2026-08 で導入）: テーブルブロック ID → 設定。
-   *
-   * 「+ 記録」で行を足すと 1 列目に現在日時が自動で入る時系列の観察記録
-   * （頭痛ダイアリー・実験の経時観察など）。テーブル本体は標準 table ブロックで、
-   * 日時もセルの文字列として持つため Markdown 書き出しでそのまま残る。
-   * ここにはどのテーブルが記録テーブルかの登録だけを indexTables と同じ
-   * 「独立アノテーション層」方式（blockId → 値）で保存する。
-   * v1 の設定値は空オブジェクト。将来、列の自動入力（天気・センサー等）の
-   * 設定を持たせられるよう Record にしている。
-   * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
+   * @deprecated tableMeta に統合（列の datetime-auto ふるまい + caption）。
+   * 読み込み時に変換されるため、新規保存では書き出さない。旧ビルドとの読み分けの
+   * ために型としては残している。
    */
   logTables?: Record<string, Record<string, unknown>>;
   /**
@@ -955,4 +965,38 @@ export type InlineHighlight = {
   label: "material" | "tool" | "attribute" | "output";
   entityId: string;
   text: string;
+};
+
+/**
+ * 列に付くふるまい（2026-08 で導入）。値の型（バリデーション）ではなく
+ * 「その列で何が起きるか」を表す。
+ *
+ * - datetime-auto: 行が増えたら空セルに現在日時が入る（旧・記録テーブルの実体）
+ * - note-link: 行の値からノートを作成・参照できる（旧・インデックステーブルの実体）
+ *
+ * テーブルの種類を減らすために統合したのに列の種類が乱立すると同じ問題が列レベルで
+ * 再演されるため、最小セットから始める。number / text のような「値の型」は必要が
+ * 立証されてから足す（追加は additive なので後から安全にできる）。
+ */
+export type ColumnType = "datetime-auto" | "note-link";
+
+/**
+ * テーブル注釈（2026-08 で導入）。
+ *
+ * 「テーブルの種類」（記録テーブル / インデックステーブル）ではなく
+ * 「列の種類」で表現するための注釈層。2 つの種類の実体はどちらも 1 列目の
+ * ふるまいだったため、列へ注釈する形に一般化した。
+ *
+ * - caption: テーブルの名前。チャートの参照名・表示に使う。空なら非表示
+ * - columns: 列名 → その列に付いたはたらきの集合。指定の無い列は素のテキスト。
+ *   キーは列名（ヘッダ行のセル文字列）で、チャートの列参照（xColumn / yColumn）と
+ *   同じ判断に揃えている。ただし現時点でふるまいを適用する位置は先頭列に固定
+ *   しているため、列名を変えても既存テーブルのふるまいは止まらない。値が配列なのは
+ *   1 列に複数のはたらきが同居しうるため（日時が自動で入る列の行から詳細ノートを作る等）
+ * - noteLinks: note-link 列の行の値 → ノートファイル ID（旧 indexTables の実体）
+ */
+export type TableMeta = {
+  caption?: string;
+  columns?: Record<string, ColumnType[]>;
+  noteLinks?: Record<string, string>;
 };

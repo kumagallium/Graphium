@@ -13,8 +13,14 @@
 // ──────────────────────────────────────────────
 
 import type { BlockLink } from "../block-link/link-types";
-import type { GraphiumDocument, GraphiumPage, NoteLink } from "../../lib/document-types";
+import type {
+  GraphiumDocument,
+  GraphiumPage,
+  NoteLink,
+  TableMeta,
+} from "../../lib/document-types";
 import { newId } from "../../lib/id";
+import { migrateTableMeta } from "../table-meta/migration";
 
 /**
  * Deep-clone a BlockNote block tree, assigning a new ID to every block.
@@ -101,19 +107,19 @@ export function remapLinks(
 }
 
 /**
- * Remap an indexTables record: { tableBlockId → { sampleName → noteFileId } }.
- * Keys at the outer level are block IDs (need remapping); inner values are
- * note IDs from other notes (left intact).
+ * Remap a tableMeta record: { tableBlockId → TableMeta }.
+ * Keys are block IDs (need remapping); the annotations themselves — caption,
+ * column behaviors, and note IDs from other notes — are left intact.
  */
-function remapIndexTables(
-  src: Record<string, Record<string, string>> | undefined,
+function remapTableMeta(
+  src: Record<string, TableMeta> | undefined,
   idMap: ReadonlyMap<string, string>,
-): Record<string, Record<string, string>> | undefined {
+): Record<string, TableMeta> | undefined {
   if (!src) return undefined;
-  const out: Record<string, Record<string, string>> = {};
-  for (const [oldId, inner] of Object.entries(src)) {
+  const out: Record<string, TableMeta> = {};
+  for (const [oldId, meta] of Object.entries(src)) {
     const next = idMap.get(oldId);
-    if (next) out[next] = { ...inner };
+    if (next) out[next] = { ...meta };
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -140,6 +146,9 @@ export function buildDerivedDocument(input: BuildDerivedDocumentInput): Graphium
 
   const sourcePage: Partial<GraphiumPage> = sourceDoc.pages?.[0] ?? {};
   const { blocks, idMap } = cloneBlocksWithIdMap(sourcePage.blocks ?? []);
+  // Older notes still carry the legacy side stores; convert before remapping so a
+  // note derived from one keeps its table annotations.
+  const sourceTableMeta = migrateTableMeta(sourcePage);
 
   const newPage: GraphiumPage = {
     id: "main",
@@ -148,7 +157,7 @@ export function buildDerivedDocument(input: BuildDerivedDocumentInput): Graphium
     labels: remapLabels(sourcePage.labels, idMap),
     provLinks: remapLinks(sourcePage.provLinks as BlockLink[] | undefined, idMap),
     knowledgeLinks: remapLinks(sourcePage.knowledgeLinks as BlockLink[] | undefined, idMap),
-    indexTables: remapIndexTables(sourcePage.indexTables, idMap),
+    tableMeta: remapTableMeta(sourceTableMeta, idMap),
   };
 
   return {

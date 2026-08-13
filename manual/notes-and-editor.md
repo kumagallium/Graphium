@@ -58,6 +58,7 @@ The full menu, top to bottom:
 | **Color** | Text and background color. |
 | **Align** | **Align left** / **Align center** / **Align right** — works even for tables, audio, and file blocks. |
 | **Label** | Mark a table or media block as an Entity in the provenance graph — see [Labels & provenance](/labels-and-provenance). |
+| **Name this table** | Give a table a name, shown above it where a caption belongs and used as its reference name in charts. Tables only. |
 | **Read text from image** | On-device OCR for image blocks — see [Materials & citations](/materials-and-citations). |
 | **📝 Add memo** | Attach a memo to this block; it shows up in the Memos panel. |
 | **🔗 Derive new page** | Fork a new note that records where it came from. |
@@ -214,7 +215,9 @@ Like the time-series table, an index table is not a separate kind of table — i
 
 **Time-series Table** inserts a table for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
 
-The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged. A caption above the table names it; unnamed time-series tables show an automatic *Table 1*, *Table 2*, … in document order, and charts use that name as the reference label.
+The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged.
+
+Any table can be named from the drag-handle (⠿) menu — "**Name this table**" — and the name appears above it, where a caption belongs. Charts use it as the reference label. Time-series tables fall back to an automatic *Table 1*, *Table 2*, … in document order when they have no name of their own; other tables simply show nothing until you name them. Clear the name to remove it.
 
 ![A named time-series table with auto-filled date/time cells](/screenshots/time-series-table.png)
 

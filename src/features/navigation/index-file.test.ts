@@ -149,6 +149,33 @@ describe("buildIndexEntry", () => {
     expect(tableLinks.every((l) => l.layer === "knowledge")).toBe(true);
   });
 
+  it("tableMeta.noteLinks からの出力リンクを抽出する", () => {
+    const doc = mockDoc();
+    doc.pages[0].indexTables = undefined;
+    doc.pages[0].tableMeta = {
+      "table-1": {
+        columns: { 名前: ["note-link"] },
+        noteLinks: { "Sample-001": "note-C", "Sample-002": "note-D" },
+      },
+    };
+    const entry = buildIndexEntry("file-1", doc);
+    const tableLinks = entry.outgoingLinks.filter(
+      (l) => l.targetNoteId === "note-C" || l.targetNoteId === "note-D",
+    );
+    expect(tableLinks).toHaveLength(2);
+    expect(tableLinks.every((l) => l.layer === "knowledge")).toBe(true);
+  });
+
+  it("tableMeta があれば旧 indexTables は読まない（二重計上しない）", () => {
+    const doc = mockDoc();
+    doc.pages[0].tableMeta = {
+      "table-1": { noteLinks: { "Sample-001": "note-C" } },
+    };
+    const entry = buildIndexEntry("file-1", doc);
+    expect(entry.outgoingLinks.filter((l) => l.targetNoteId === "note-C")).toHaveLength(1);
+    expect(entry.outgoingLinks.filter((l) => l.targetNoteId === "note-D")).toHaveLength(0);
+  });
+
   it("derivedFromNoteId を prov リンクとして含める", () => {
     const doc = mockDoc({ derivedFromNoteId: "note-parent" });
     const entry = buildIndexEntry("file-1", doc);
