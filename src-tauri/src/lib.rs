@@ -1650,6 +1650,25 @@ fn shared_blob_delete(root: String, hash: String) -> Result<(), String> {
     Ok(())
 }
 
+/// WebView の内容をネイティブの印刷パネルに送る。
+///
+/// macOS の WKWebView は JS の `window.print()` を黙って捨てるため、印刷パネルは
+/// Rust から開くしかない（wry の print が `printOperationWithPrintInfo` を呼ぶ）。
+/// Windows の WebView2 は `window.print()` を解釈するので、そちらは JS に戻す。
+///
+/// パネルを閉じたことはフロントに伝わらない（wry が完了セレクタを渡していない）。
+/// 呼び出し側は「パネルを開いた」までで完了扱いにすること。
+#[tauri::command]
+fn print_webview(window: tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return window.print().map_err(|e| format!("印刷パネルを開けません: {e}"));
+
+    #[cfg(not(target_os = "macos"))]
+    return window
+        .eval("window.print()")
+        .map_err(|e| format!("印刷パネルを開けません: {e}"));
+}
+
 /// フロント側で生成したファイル（PDF / PROV-JSON-LD / Markdown / zip）を
 /// ネイティブの保存ダイアログ経由でディスクに保存する。
 ///
@@ -1762,6 +1781,7 @@ pub fn run() {
             shutdown_ack,
             kill_pid,
             save_bytes_with_dialog,
+            print_webview,
             start_native_sidecar,
             stop_native_sidecar,
         ])
@@ -1793,7 +1813,7 @@ pub fn run() {
                 .text("new-note", "New Note")
                 .item(&new_memo)
                 .separator()
-                .text("export-pdf", "Export as PDF")
+                .text("export-pdf", "Print / PDF")
                 .text("export-prov", "Export PROV-JSON-LD")
                 .separator()
                 .close_window()

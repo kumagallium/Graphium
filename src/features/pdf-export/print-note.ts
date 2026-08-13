@@ -17,8 +17,10 @@
 // 組み立てたツリーには画面と同じ CSS が当たるので、見え方は画面に近いまま保てる。
 
 import cytoscape from "cytoscape";
+import { invoke } from "@tauri-apps/api/core";
 import type { ProvJsonLd } from "../prov-generator";
 import { provToCytoscapeElements, cyStyles, applyElkLayout } from "../prov-generator";
+import { isTauri } from "../../lib/platform";
 
 /** 印刷用ルートの id（app.css の印刷セクションと対になる） */
 const PRINT_ROOT_ID = "graphium-print-root";
@@ -193,8 +195,10 @@ export async function printNote(options: {
   editorElement: HTMLElement;
   provDoc: ProvJsonLd | null;
   labels?: Map<string, string>;
+  /** 印刷パネルを開く直前に呼ぶ。準備中の表示を畳むためのフック。 */
+  onReady?: () => void;
 }): Promise<void> {
-  const { title, editorElement, provDoc, labels } = options;
+  const { title, editorElement, provDoc, labels, onReady } = options;
 
   // 前回の残骸が居たら消す（印刷が中断された場合など）
   document.getElementById(PRINT_ROOT_ID)?.remove();
@@ -229,9 +233,13 @@ export async function printNote(options: {
     fitContentToPage(root);
     // ブラウザに印刷レイアウトを組ませてからダイアログを出す
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    onReady?.();
     await printAndWait();
   } finally {
-    root.remove();
+    // デスクトップはパネルを閉じた合図が返ってこないので、ここで消すと印刷の
+    // 途中で中身を抜くことになりかねない。ツリーは画面外（app.css で
+    // left: -100000px）に置いてあり、次に印刷するとき冒頭で捨てられるので残す。
+    if (!isTauri()) root.remove();
   }
 }
 
@@ -257,6 +265,11 @@ async function waitForImages(root: HTMLElement): Promise<void> {
  * 変化も併せて見る。どちらも来ない環境のために最後の保険も置く。
  */
 export function printAndWait(): Promise<void> {
+  // デスクトップは Rust 側にパネルを開かせる（下の openDesktopPrintPanel 参照）。
+  // 閉じた合図は返ってこないので、開いた時点で完了とみなす。ここで待ち続けると
+  // 「準備中」の表示が保険のタイマーまで残ってしまう。
+  if (isTauri()) return openDesktopPrintPanel();
+
   return new Promise<void>((resolve) => {
     let settled = false;
     const mql = window.matchMedia?.("print");
@@ -280,4 +293,15 @@ export function printAndWait(): Promise<void> {
 
     window.print();
   });
+}
+
+/**
+ * デスクトップの印刷パネルを Rust 側から開く。
+ *
+ * macOS の WKWebView は JS の `window.print()` を握り潰すため、フロントからは
+ * パネルを開けない（Web と Windows では開ける）。Rust の `print_webview` が
+ * プラットフォームごとの経路に振り分ける。
+ */
+async function openDesktopPrintPanel(): Promise<void> {
+  await invoke("print_webview");
 }
