@@ -231,12 +231,15 @@ export function ChartSettingsPanel({
   onChange,
   tables,
   resolveTable,
+  placement = "overlay",
   onClose,
 }: {
   config: ChartBlockConfig;
   onChange: (patch: Partial<ChartBlockConfig>) => void;
   tables: Array<{ id: string; label: string }>;
   resolveTable: (blockId: string) => TableData | null;
+  /** outside = ボタンの右（チャートの外）に出す。overlay = 右上に重ねる */
+  placement?: "outside" | "overlay";
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("typeSeries");
@@ -290,7 +293,16 @@ export function ChartSettingsPanel({
   };
 
   return (
-    <div style={styles.panel} data-test="chart-settings">
+    <div
+      style={{
+        ...styles.panel,
+        ...(placement === "outside"
+          ? // ボタンの右、チャートの外側。図を隠さないのでガラス処理も不要
+            { top: 0, left: "calc(100% + 8px)", right: "auto", background: "var(--color-surface)" }
+          : {}),
+      }}
+      data-test="chart-settings"
+    >
       <div style={styles.header}>
         <span style={styles.title}>{t("chart.settingsTitle")}</span>
         <button type="button" onClick={onClose} style={styles.closeButton} title={t("chart.close")}>

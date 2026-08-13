@@ -119,9 +119,25 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   );
 
   const [showSettings, setShowSettings] = useState(false);
+  // パネルの置き場所: 画面に余白があればチャートの右外（図が隠れない）、
+  // 無ければ従来どおり右上に重ねる（すりガラスで下を透かす）
+  const [panelPlacement, setPanelPlacement] = useState<"outside" | "overlay">("overlay");
   // 設定ボタン + パネルのアンカー。外側クリック判定はこの要素基準で行う
   // （ブロック全体を基準にするとチャート上のクリックで閉じなくなる）
   const settingsAnchorRef = useRef<HTMLDivElement>(null);
+
+  const computePanelPlacement = () => {
+    const rect = settingsAnchorRef.current?.getBoundingClientRect();
+    const fits = rect ? rect.right + 308 <= window.innerWidth - 8 : false;
+    setPanelPlacement(fits ? "outside" : "overlay");
+  };
+
+  // 開いている間はリサイズで置き場所を選び直す
+  useEffect(() => {
+    if (!showSettings) return;
+    window.addEventListener("resize", computePanelPlacement);
+    return () => window.removeEventListener("resize", computePanelPlacement);
+  }, [showSettings]);
 
   // テーブル編集への追従: onChange をデバウンスして再読込カウンタを進める
   const [docVersion, setDocVersion] = useState(0);
@@ -244,10 +260,19 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   return (
     <div data-test="chart-block" contentEditable={false} style={styles.shell}>
       {editable && (
-        <div ref={settingsAnchorRef} style={styles.settingsAnchor}>
+        <div
+          ref={settingsAnchorRef}
+          // パネルを開いている間は z を引き上げる。後続のチャートブロックの
+          // 設定ボタン（同 z のスタッキングコンテキスト）が DOM 順でパネルの
+          // 上に描かれてしまうのを防ぐ
+          style={{ ...styles.settingsAnchor, zIndex: showSettings ? 120 : 20 }}
+        >
           <button
             type="button"
-            onClick={() => setShowSettings((v) => !v)}
+            onClick={() => {
+              computePanelPlacement();
+              setShowSettings((v) => !v);
+            }}
             style={styles.settingsButton}
             title={t("chart.settingsTitle")}
           >
@@ -260,6 +285,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
               onChange={updateConfig}
               tables={tables}
               resolveTable={resolveTable}
+              placement={panelPlacement}
               onClose={() => setShowSettings(false)}
             />
           )}
