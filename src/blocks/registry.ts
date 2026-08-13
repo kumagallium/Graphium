@@ -13,6 +13,7 @@ import { bookmarkBlock } from "./bookmark";
 import { calloutBlock } from "./callout";
 import { stepBlock } from "./step";
 import { mathBlock } from "./math";
+import { chartBlock } from "./chart";
 import { columnListBlock, columnBlock } from "./multi-column";
 import { sharedCitationBlock } from "./shared-citation";
 
@@ -22,6 +23,7 @@ export const customBlockEntries: CustomBlockEntry[] = [
   calloutBlock,
   stepBlock,
   mathBlock,
+  chartBlock,
   // マルチカラムは columnList と column の 2 型セット。
   // 片方でも欠けると sanitizeBlocks がカラムを children ごと消す。
   columnListBlock,

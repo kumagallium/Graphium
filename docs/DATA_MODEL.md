@@ -185,6 +185,16 @@ type GraphiumPage = {
   // ── reference table feature ─────────────────────────
   indexTables?: Record<string, Record<string, string>>;  // tableBlockId → (sampleName → noteId)
 
+  // ── log table feature ───────────────────────────────
+  logTables?: Record<string, Record<string, unknown>>;
+                                     // tableBlockId → config. Marks a *standard* table
+                                     // block as a "log table": its "+ Record" button
+                                     // appends a row stamped with the current date/time
+                                     // in the first column. Timestamps live in the cells
+                                     // as plain text (editable, survives Markdown export);
+                                     // this side-store only records *which* tables are
+                                     // log tables. v1 config is an empty object.
+
   // ── on-device image OCR ─────────────────────────────
   mediaOcr?: Record<string, MediaOcrEntry>;
                                      // blockId → text read out of an image with

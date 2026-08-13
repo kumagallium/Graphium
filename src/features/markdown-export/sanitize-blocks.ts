@@ -199,6 +199,25 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
       });
       continue;
     }
+    if (b.type === "chart") {
+      // チャートブロック → 参照メモの斜体 1 行に落とす。
+      // データ本体（参照先テーブル）は標準 table として書き出されるため、
+      // ここで失われる情報は「どう描いていたか」だけ。静かに消さず痕跡を残す。
+      const label = String(b.props?.xColumn ?? "").trim();
+      out.push({
+        type: "paragraph",
+        props: {},
+        content: [
+          {
+            type: "text",
+            text: label ? `(Chart: ${label})` : "(Chart)",
+            styles: { italic: true },
+          },
+        ],
+        children,
+      });
+      continue;
+    }
     if (b.type === "math") {
       // 数式ブロック → $$ ... $$ の段落（LaTeX ソースをそのまま残す）
       const md = mathBlockToMarkdown(String(b.props?.latex ?? ""));

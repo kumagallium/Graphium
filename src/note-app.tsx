@@ -53,6 +53,16 @@ import {
   setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek } from "./features/index-table/side-peek";
+import {
+  LogTableStoreProvider,
+  useLogTableStore,
+  LogTableCaptionLayer,
+  logTableSlashItem,
+  setRegisterLogTableCallback,
+  applyLogTableTimestamps,
+  primeLogTableRowTracking,
+} from "./features/log-table";
+import { chartSlashItem } from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
@@ -849,6 +859,7 @@ function NoteEditor(props: NoteEditorProps) {
     <LabelStoreProvider>
       <LinkStoreProvider>
         <IndexTableStoreProvider>
+        <LogTableStoreProvider>
         <MediaInlineLabelProvider>
         <MediaOcrProvider>
         <BlockAlignmentProvider>
@@ -860,6 +871,7 @@ function NoteEditor(props: NoteEditorProps) {
         </BlockAlignmentProvider>
         </MediaOcrProvider>
         </MediaInlineLabelProvider>
+        </LogTableStoreProvider>
         </IndexTableStoreProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
@@ -1038,6 +1050,10 @@ function NoteEditorInner({
   const linkStore = useLinkStore();
   const { removeBlockMetadata } = useBlockLifecycle();
   const indexTableStore = useIndexTableStore();
+  const logTableStore = useLogTableStore();
+  // handleContentChange（useCallback）から最新の登録テーブルを読むための ref
+  const logTableStoreRef = useRef(logTableStore);
+  logTableStoreRef.current = logTableStore;
   const mediaInlineLabelStore = useMediaInlineLabelStore();
   const mediaOcrStore = useMediaOcrStore();
   const blockAlignmentStore = useBlockAlignmentStore();
@@ -1990,6 +2006,9 @@ function NoteEditorInner({
     // インデックステーブルの状態を収集
     const indexTablesSnapshot = indexTableStore.getSnapshot();
     const hasIndexTables = Object.keys(indexTablesSnapshot).length > 0;
+    // 記録テーブルの状態を収集
+    const logTablesSnapshot = logTableStore.getSnapshot();
+    const hasLogTables = Object.keys(logTablesSnapshot).length > 0;
     // メディアインラインラベル（Phase D-3-β）
     const mediaInlineLabelsSnapshot = mediaInlineLabelStore.getSnapshot();
     const hasMediaInlineLabels =
@@ -2009,6 +2028,7 @@ function NoteEditorInner({
           provLinks,
           knowledgeLinks,
           indexTables: hasIndexTables ? indexTablesSnapshot : undefined,
+          logTables: hasLogTables ? logTablesSnapshot : undefined,
           mediaInlineLabels: hasMediaInlineLabels
             ? mediaInlineLabelsSnapshot
             : undefined,
@@ -2297,6 +2317,7 @@ function NoteEditorInner({
   const prevLabelsRef = useRef(labelStore.labels);
   const prevLinksRef = useRef(linkStore.links);
   const prevTablesRef = useRef(indexTableStore.tables);
+  const prevLogTablesRef = useRef(logTableStore.tables);
   const prevMediaLabelsRef = useRef(mediaInlineLabelStore.labels);
   const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
   const prevMediaOcrRef = useRef(mediaOcrStore.entries);
@@ -2305,6 +2326,7 @@ function NoteEditorInner({
       prevLabelsRef.current !== labelStore.labels ||
       prevLinksRef.current !== linkStore.links ||
       prevTablesRef.current !== indexTableStore.tables ||
+      prevLogTablesRef.current !== logTableStore.tables ||
       prevMediaLabelsRef.current !== mediaInlineLabelStore.labels ||
       prevAlignmentsRef.current !== blockAlignmentStore.alignments ||
       prevMediaOcrRef.current !== mediaOcrStore.entries
@@ -2312,12 +2334,13 @@ function NoteEditorInner({
       prevLabelsRef.current = labelStore.labels;
       prevLinksRef.current = linkStore.links;
       prevTablesRef.current = indexTableStore.tables;
+      prevLogTablesRef.current = logTableStore.tables;
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
       prevAlignmentsRef.current = blockAlignmentStore.alignments;
       prevMediaOcrRef.current = mediaOcrStore.entries;
       markDirty();
     }
-  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty]);
+  }, [labelStore.labels, linkStore.links, indexTableStore.tables, logTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
@@ -3362,6 +3385,10 @@ function NoteEditorInner({
       }
       mediaOcrStore.restoreSnapshot(page.mediaOcr);
       blockAlignmentStore.restoreSnapshot(page.blockAlignments);
+      // 記録テーブル（undefined ならクリア）。行数の追跡もノート単位でやり直し、
+      // 保存済みブロックの行数で priming する（開いて最初の行追加から日時が入るように）
+      logTableStore.restore(page.logTables);
+      primeLogTableRowTracking(page.blocks, Object.keys(page.logTables ?? {}));
       if (page.indexTables) {
         indexTableStore.restore(page.indexTables);
         const existingLinks = noteLinksRef.current;
@@ -3668,6 +3695,14 @@ function NoteEditorInner({
     return () => { setRegisterIndexTableCallback(null); };
   }, [indexTableStore]);
 
+  // スラッシュメニューからの記録テーブル登録コールバック
+  useEffect(() => {
+    setRegisterLogTableCallback((blockId: string) => {
+      logTableStore.register(blockId);
+    });
+    return () => { setRegisterLogTableCallback(null); };
+  }, [logTableStore]);
+
   // スコープ派生ボタン → 別ノートとして作成
   useEffect(() => {
     setOpenLinkDropdownFn((params) => {
@@ -3871,6 +3906,8 @@ function NoteEditorInner({
     triggerRegeneration();
     // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
     autoOcrRef.current?.();
+    // 記録テーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら 1 列目に日時を入れる
+    applyLogTableTimestamps(editorRef.current, logTableStoreRef.current.tables.keys());
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);
   }, [markDirty, triggerRegeneration]);
@@ -3928,6 +3965,7 @@ function NoteEditorInner({
         bottomInset={isDesktop ? 0 : 56}
       />
       <IndexTableIconLayer editorRef={editorRef} />
+      <LogTableCaptionLayer editorRef={editorRef} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
@@ -4353,7 +4391,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

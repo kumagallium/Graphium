@@ -27,6 +27,7 @@ import {
   Code,
 } from "lucide-react";
 import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features/block-alignment";
+import { useLogTableStoreOptional, applyLogTableTimestamps } from "../features/log-table";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
@@ -711,6 +712,43 @@ function ReadImageTextMenuItem() {
   );
 }
 
+/**
+ * テーブルブロックの「記録テーブル」トグル。
+ * 記録テーブルは独立したブロック型ではなく、標準テーブルに後から付け外し
+ * できる「ふるまい」（行を足すと日時が入る + 名前を持つ）— テーブルの種類を
+ * 増やさないための統合方針。スラッシュメニューの「記録テーブル」は、この
+ * ふるまいがオンになったテーブルを一発で作るテンプレートという位置づけになる。
+ */
+function LogTableToggleMenuItem() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const logStore = useLogTableStoreOptional();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+  if (!block || !logStore) return null;
+  if ((block.type as string) !== "table") return null;
+  const isLog = logStore.isLogTable(block.id);
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => {
+        if (isLog) {
+          logStore.unregister(block.id);
+        } else {
+          logStore.register(block.id);
+          // 登録直後の行追加から日時が付くよう、現在の行数を初見として記録する
+          applyLogTableTimestamps(editor, [block.id]);
+        }
+      }}
+    >
+      {isLog ? t("logTable.menuDisable") : t("logTable.menuEnable")}
+    </Components.Generic.Menu.Item>
+  );
+}
+
 export function NoteSideMenu() {
   const t = useT();
   useFixDropdownPosition();
@@ -723,6 +761,7 @@ export function NoteSideMenu() {
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
         <AlignmentMenuItems />
         <BlockLabelMenuItems />
+        <LogTableToggleMenuItem />
         <ReadImageTextMenuItem />
         <AddMemoMenuItem />
         <DeriveNoteMenuItem />

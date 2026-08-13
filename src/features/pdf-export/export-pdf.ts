@@ -129,6 +129,8 @@ export async function exportNoteToPdf(options: {
   contentClone.querySelectorAll(
     '[class*="DragHandle"], [class*="dragHandle"], [draggable="true"]:not([data-node-type])'
   ).forEach((el) => el.remove());
+  // チャートの設定ボタン（編集 UI）を除去
+  contentClone.querySelectorAll("[data-chart-ui]").forEach((el) => el.remove());
 
   // コンテンツのスタイルをクリーンアップ
   contentClone.style.padding = "0";
@@ -167,6 +169,62 @@ export async function exportNoteToPdf(options: {
   offscreen.style.pointerEvents = "none";
   offscreen.appendChild(wrapper);
   document.body.appendChild(offscreen);
+
+  // チャート（ECharts の SVG）を紙面での実効幅に収める。ECharts は viewBox
+  // 無しの width/height 属性固定で、html2canvas も CSS でなく属性を見て描く。
+  // クローンは 800px のオフスクリーンで再レイアウトされるため、画面幅で
+  // 描かれた SVG はそのままだと右で切れる（本文幅のチャート）か、カラムから
+  // はみ出して隣に重なる（マルチカラム内のチャート）。挿入後のレイアウトで
+  // 各チャートのコンテナ実効幅を測り、viewBox を後付けして属性を書き換える。
+  // 改ページの泣き別れ制御。html2pdf の css モードは inline style を見るので
+  // ここで実測して直接付ける。
+  // - 図の類（チャート・画像・数式・マルチカラム行）: ページに収まる高さなら常に回避
+  // - テーブル: ページ半分以下の小さいものだけ回避。大きいテーブルまで丸ごと
+  //   次ページへ送ると「1 ページ目がタイトルだけで白紙」になる（旧 avoid-all の
+  //   実害）ので、大きいものは行の途中で分割されるに任せる
+  const PAGE_CONTENT_PX = 1030; // A4 縦 297mm - 余白 24mm = 273mm の 96dpi 換算
+  const avoidBreak = (el: HTMLElement) => {
+    el.style.breakInside = "avoid";
+    el.style.pageBreakInside = "avoid";
+  };
+  wrapper
+    .querySelectorAll<HTMLElement>(
+      '.pdf-export-content [data-test="chart-block"], .pdf-export-content img, .pdf-export-content [data-test="math-block"], .pdf-export-content [data-node-type="columnList"]'
+    )
+    .forEach((el) => {
+      if (el.getBoundingClientRect().height <= PAGE_CONTENT_PX) avoidBreak(el);
+    });
+  wrapper.querySelectorAll<HTMLElement>(".pdf-export-content table").forEach((el) => {
+    if (el.getBoundingClientRect().height <= PAGE_CONTENT_PX / 2) avoidBreak(el);
+  });
+
+  wrapper
+    .querySelectorAll<SVGSVGElement>('[data-test="chart-block"] svg')
+    .forEach((svg) => {
+      const w = Number(svg.getAttribute("width"));
+      const h = Number(svg.getAttribute("height"));
+      // 100px 未満はアイコン類（設定ボタンは除去済みだが保険）
+      if (!w || !h || w < 100) return;
+      if (!svg.getAttribute("viewBox")) {
+        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      }
+      // svg の直親は ECharts が生成する内部 div で、画面描画時の幅が inline で
+      // 焼かれている（例 width: 624px）。クローンの再レイアウトでは縮まないので
+      // 実効幅はさらに親（チャートブロックの width:100% ホルダ）で測る
+      const inner = svg.parentElement as HTMLElement | null;
+      const holder = (inner?.parentElement as HTMLElement | null) ?? inner;
+      const avail = Math.floor(holder?.clientWidth || 700);
+      if (avail > 0 && w > avail) {
+        const scaledH = Math.round((h * avail) / w);
+        svg.setAttribute("width", String(avail));
+        svg.setAttribute("height", String(scaledH));
+        if (inner) {
+          inner.style.width = `${avail}px`;
+          inner.style.height = `${scaledH}px`;
+        }
+        if (holder) holder.style.height = `${scaledH}px`;
+      }
+    });
   // 要素単位の inline 上書き（CSS 変数を経由した色の解決を担う）
   try {
     flattenColorsToRgb(wrapper);
@@ -225,7 +283,10 @@ export async function exportNoteToPdf(options: {
       format: "a4",
       orientation: "portrait" as const,
     },
-    pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+    // avoid-all は使わない: ページ 1 の残りに収まらない大きな要素（長いテーブル等）
+    // を丸ごと次ページへ送り、「1 ページ目がタイトルだけで白紙」になる。
+    // 泣き別れ回避は上の選択的 break-inside（図は常時、テーブルは小さいものだけ）で行う
+    pagebreak: { mode: ["css", "legacy"] },
   };
 
   // html2pdf().save() は内部で <a download> を生成する。WKWebView (Tauri) は
