@@ -115,6 +115,8 @@ Selecting one opens the materials gallery on the image tab, with that image in t
 
 Images stay out of the empty-input view and out of `#label` / `@author` queries; both of those are about finding notes.
 
+![The Composer listing a photographed furnace panel under Images, found by the words inside it](/screenshots/composer-image-search.png)
+
 ### Asking the AI
 
 The last row of results is always **Ask AI: "your text"** — select it, or press `⌘Enter` to send your input straight to the AI regardless of what is highlighted. The answer opens in the chat panel as a fresh conversation, and anything the current note cites with `@` (knowledge pages, document notes) is handed to the AI as context automatically. The Composer has the same **Grounding** chip and web-search warning as the chat panel.

@@ -150,6 +150,8 @@ Variables live inside the block. A second Calculation block starts from nothing,
 
 The note stores both the expressions and the values they produced. That matters for a lab record: the numbers you worked with stay readable years later, even if the maths library underneath changes.
 
+![A calculation block: expressions on the left, live results on the right](/screenshots/calc-block.png)
+
 ## Duplicating a block <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />
 
 **Duplicate** in the drag-handle (⠿) menu, or `⌘D` (`Ctrl+D` on Windows/Linux) with the cursor in the block, copies a block directly below itself. It is the fastest way to repeat a filled-in table, a step, or a calculation you want to vary.
