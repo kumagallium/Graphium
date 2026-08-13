@@ -46,8 +46,6 @@ import {
   setOnPrevStepLinkSelected,
 } from "./features/context-label/prov-indicator";
 import {
-  IndexTableStoreProvider,
-  useIndexTableStore,
   IndexTableIconLayer,
   indexTableSlashItem,
   setIndexTableCallbacks,
@@ -55,14 +53,19 @@ import {
 } from "./features/index-table";
 import { SidePeek } from "./features/index-table/side-peek";
 import {
-  LogTableStoreProvider,
-  useLogTableStore,
-  LogTableCaptionLayer,
   logTableSlashItem,
   setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
 } from "./features/log-table";
+import {
+  TableMetaStoreProvider,
+  useTableMetaStore,
+  TableCaptionLayer,
+  migrateTableMeta,
+  hasColumnType,
+  readFirstColumnName,
+} from "./features/table-meta";
 import { chartSlashItem } from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
@@ -859,8 +862,7 @@ function NoteEditor(props: NoteEditorProps) {
     <ProvLabelsEnabledProvider enabled={props.provLabelsEnabled ?? true}>
     <LabelStoreProvider>
       <LinkStoreProvider>
-        <IndexTableStoreProvider>
-        <LogTableStoreProvider>
+        <TableMetaStoreProvider>
         <MediaInlineLabelProvider>
         <MediaOcrProvider>
         <BlockAlignmentProvider>
@@ -872,8 +874,7 @@ function NoteEditor(props: NoteEditorProps) {
         </BlockAlignmentProvider>
         </MediaOcrProvider>
         </MediaInlineLabelProvider>
-        </LogTableStoreProvider>
-        </IndexTableStoreProvider>
+        </TableMetaStoreProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
     </ProvLabelsEnabledProvider>
@@ -1050,11 +1051,10 @@ function NoteEditorInner({
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const { removeBlockMetadata } = useBlockLifecycle();
-  const indexTableStore = useIndexTableStore();
-  const logTableStore = useLogTableStore();
-  // handleContentChange（useCallback）から最新の登録テーブルを読むための ref
-  const logTableStoreRef = useRef(logTableStore);
-  logTableStoreRef.current = logTableStore;
+  const tableMetaStore = useTableMetaStore();
+  // handleContentChange（useCallback）から最新の注釈を読むための ref
+  const tableMetaStoreRef = useRef(tableMetaStore);
+  tableMetaStoreRef.current = tableMetaStore;
   const mediaInlineLabelStore = useMediaInlineLabelStore();
   const mediaOcrStore = useMediaOcrStore();
   const blockAlignmentStore = useBlockAlignmentStore();
@@ -2008,12 +2008,10 @@ function NoteEditorInner({
         savedChats.push(currentChat);
       }
     }
-    // インデックステーブルの状態を収集
-    const indexTablesSnapshot = indexTableStore.getSnapshot();
-    const hasIndexTables = Object.keys(indexTablesSnapshot).length > 0;
-    // 記録テーブルの状態を収集
-    const logTablesSnapshot = logTableStore.getSnapshot();
-    const hasLogTables = Object.keys(logTablesSnapshot).length > 0;
+    // テーブル注釈（名前・列のふるまい・行のノート紐付け）を収集。
+    // 旧 indexTables / logTables はここに統合済みで、保存は新形式のみ
+    const tableMetaSnapshot = tableMetaStore.getSnapshot();
+    const hasTableMeta = Object.keys(tableMetaSnapshot).length > 0;
     // メディアインラインラベル（Phase D-3-β）
     const mediaInlineLabelsSnapshot = mediaInlineLabelStore.getSnapshot();
     const hasMediaInlineLabels =
@@ -2032,8 +2030,7 @@ function NoteEditorInner({
           labels: labelsObj,
           provLinks,
           knowledgeLinks,
-          indexTables: hasIndexTables ? indexTablesSnapshot : undefined,
-          logTables: hasLogTables ? logTablesSnapshot : undefined,
+          tableMeta: hasTableMeta ? tableMetaSnapshot : undefined,
           mediaInlineLabels: hasMediaInlineLabels
             ? mediaInlineLabelsSnapshot
             : undefined,
@@ -2101,7 +2098,7 @@ function NoteEditorInner({
     prevPageRef.current = structuredClone(doc.pages[0]);
 
     return doc;
-  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
+  }, [title, labelStore, linkStore, tableMetaStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
 
   // sharedRef は initialDoc から初期化し、Share 成功時に即時更新する。
   // initialDoc は親が新しい doc に差し替えない限り変わらないため、ローカル state で持つ。
@@ -2333,11 +2330,10 @@ function NoteEditorInner({
     void exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities });
   }, [title, provDoc, provWikiEntities]);
 
-  // ラベル・リンク・インデックステーブル・配置変更時に自動保存トリガー
+  // ラベル・リンク・テーブル注釈・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
   const prevLinksRef = useRef(linkStore.links);
-  const prevTablesRef = useRef(indexTableStore.tables);
-  const prevLogTablesRef = useRef(logTableStore.tables);
+  const prevTableMetasRef = useRef(tableMetaStore.metas);
   const prevMediaLabelsRef = useRef(mediaInlineLabelStore.labels);
   const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
   const prevMediaOcrRef = useRef(mediaOcrStore.entries);
@@ -2345,22 +2341,20 @@ function NoteEditorInner({
     if (
       prevLabelsRef.current !== labelStore.labels ||
       prevLinksRef.current !== linkStore.links ||
-      prevTablesRef.current !== indexTableStore.tables ||
-      prevLogTablesRef.current !== logTableStore.tables ||
+      prevTableMetasRef.current !== tableMetaStore.metas ||
       prevMediaLabelsRef.current !== mediaInlineLabelStore.labels ||
       prevAlignmentsRef.current !== blockAlignmentStore.alignments ||
       prevMediaOcrRef.current !== mediaOcrStore.entries
     ) {
       prevLabelsRef.current = labelStore.labels;
       prevLinksRef.current = linkStore.links;
-      prevTablesRef.current = indexTableStore.tables;
-      prevLogTablesRef.current = logTableStore.tables;
+      prevTableMetasRef.current = tableMetaStore.metas;
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
       prevAlignmentsRef.current = blockAlignmentStore.alignments;
       prevMediaOcrRef.current = mediaOcrStore.entries;
       markDirty();
     }
-  }, [labelStore.labels, linkStore.links, indexTableStore.tables, logTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty]);
+  }, [labelStore.labels, linkStore.links, tableMetaStore.metas, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
@@ -3405,38 +3399,43 @@ function NoteEditorInner({
       }
       mediaOcrStore.restoreSnapshot(page.mediaOcr);
       blockAlignmentStore.restoreSnapshot(page.blockAlignments);
-      // 記録テーブル（undefined ならクリア）。行数の追跡もノート単位でやり直し、
-      // 保存済みブロックの行数で priming する（開いて最初の行追加から日時が入るように）
-      logTableStore.restore(page.logTables);
-      primeLogTableRowTracking(page.blocks, Object.keys(page.logTables ?? {}));
-      if (page.indexTables) {
-        indexTableStore.restore(page.indexTables);
-        const existingLinks = noteLinksRef.current;
-        let added = false;
-        for (const [blockId, linkedNotes] of Object.entries(page.indexTables)) {
-          for (const noteId of Object.values(linkedNotes)) {
-            const exists = existingLinks.some(
-              (l) => l.targetNoteId === noteId
-            );
-            if (!exists) {
-              existingLinks.push({
-                targetNoteId: noteId,
-                sourceBlockId: blockId,
-                type: "derived_from",
-              });
-              added = true;
-            }
+      // テーブル注釈（undefined ならクリア）。旧 logTables / indexTables はここで
+      // 変換され、以降は tableMeta だけがふるまいの真実になる
+      const tableMeta = migrateTableMeta(page);
+      tableMetaStore.restore(tableMeta);
+      const tableMetaEntries = Object.entries(tableMeta ?? {});
+      // 日時が入る列を持つテーブルの行数を先に記録しておく
+      // （開いて最初の行追加から日時が入るように）
+      primeLogTableRowTracking(
+        page.blocks,
+        tableMetaEntries
+          .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
+          .map(([blockId]) => blockId)
+      );
+      // 行に紐付いたノートは Graph 表示用の noteLinks にも反映する
+      const existingLinks = noteLinksRef.current;
+      let added = false;
+      for (const [blockId, meta] of tableMetaEntries) {
+        for (const noteId of Object.values(meta.noteLinks ?? {})) {
+          const exists = existingLinks.some((l) => l.targetNoteId === noteId);
+          if (!exists) {
+            existingLinks.push({
+              targetNoteId: noteId,
+              sourceBlockId: blockId,
+              type: "derived_from",
+            });
+            added = true;
           }
         }
-        if (added) {
-          noteLinksRef.current = [...existingLinks];
-        }
+      }
+      if (added) {
+        noteLinksRef.current = [...existingLinks];
       }
     }
     if (initialDoc.chats && initialDoc.chats.length > 0) {
       aiAssistant.restoreChats(initialDoc.chats);
     }
-  }, [initialDoc, labelStore, linkStore, indexTableStore, aiAssistant]);
+  }, [initialDoc, labelStore, linkStore, tableMetaStore, aiAssistant]);
 
   // ── 実行中チャット run のライブ反映ハンドル登録と復元 ──
 
@@ -3708,20 +3707,24 @@ function NoteEditorInner({
   }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
+  // （テンプレートとして挿入されたテーブルの先頭列に note-link を付ける）
   useEffect(() => {
     setRegisterIndexTableCallback((blockId: string) => {
-      indexTableStore.register(blockId);
+      const block = editorRef.current?.getBlock?.(blockId);
+      tableMetaStore.addColumnType(blockId, readFirstColumnName(block), "note-link");
     });
     return () => { setRegisterIndexTableCallback(null); };
-  }, [indexTableStore]);
+  }, [tableMetaStore]);
 
-  // スラッシュメニューからの記録テーブル登録コールバック
+  // スラッシュメニューからの時系列テーブル登録コールバック
+  // （テンプレートとして挿入されたテーブルの先頭列に datetime-auto を付ける）
   useEffect(() => {
     setRegisterLogTableCallback((blockId: string) => {
-      logTableStore.register(blockId);
+      const block = editorRef.current?.getBlock?.(blockId);
+      tableMetaStore.addColumnType(blockId, readFirstColumnName(block), "datetime-auto");
     });
     return () => { setRegisterLogTableCallback(null); };
-  }, [logTableStore]);
+  }, [tableMetaStore]);
 
   // スコープ派生ボタン → 別ノートとして作成
   useEffect(() => {
@@ -3926,8 +3929,12 @@ function NoteEditorInner({
     triggerRegeneration();
     // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
     autoOcrRef.current?.();
-    // 記録テーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら 1 列目に日時を入れる
-    applyLogTableTimestamps(editorRef.current, logTableStoreRef.current.tables.keys());
+    // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
+    // 1 列目に日時を入れる
+    applyLogTableTimestamps(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto")
+    );
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);
   }, [markDirty, triggerRegeneration]);
@@ -3985,7 +3992,7 @@ function NoteEditorInner({
         bottomInset={isDesktop ? 0 : 56}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <LogTableCaptionLayer editorRef={editorRef} />
+      <TableCaptionLayer editorRef={editorRef} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
@@ -4439,7 +4446,7 @@ function NoteEditorInner({
                     const rowIndex = Array.from(table.querySelectorAll("tr")).indexOf(row);
                     const blockOuter = table.closest("[data-node-type='blockOuter']");
                     const tableBlockId = blockOuter?.getAttribute("data-id") ?? null;
-                    if (tableBlockId && indexTableStore.isIndexTable(tableBlockId)) {
+                    if (tableBlockId && tableMetaStore.hasColumnType(tableBlockId, "note-link")) {
                       mentionContextRef.current = { tableBlockId, rowIndex };
                     }
                   }
@@ -4499,7 +4506,7 @@ function NoteEditorInner({
                     const noteName = suggestion.label;
                     const tableBlockId = ctx.tableBlockId;
                     const rowIndex = ctx.rowIndex;
-                    indexTableStore.setLinkedNote(tableBlockId, `@${noteName}`, suggestion.id);
+                    tableMetaStore.setNoteLink(tableBlockId, `@${noteName}`, suggestion.id);
                     setTimeout(() => {
                       const block = editorRef.current?.getBlock(tableBlockId);
                       if (block?.content?.rows?.[rowIndex]) {

@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
-import { useIndexTableStore } from "./store";
+import { useTableMetaStore } from "../table-meta/store";
+import { hasColumnType } from "../table-meta/types";
 import { getFirstCellText, createNoteFromRow } from "./create-note-from-row";
 import { getIndexTableCallbacks } from "./context";
 
@@ -21,7 +22,7 @@ type RowIcon = {
 export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<any> }) {
   // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
   useLocaleSubscription();
-  const store = useIndexTableStore();
+  const store = useTableMetaStore();
   const [icons, setIcons] = useState<RowIcon[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -33,7 +34,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
     const next: RowIcon[] = [];
     const editor = editorRef.current;
     if (!editor) {
-      if (store.tables.size > 0 && retryRef.current === null) {
+      if (store.metas.size > 0 && retryRef.current === null) {
         retryRef.current = window.setTimeout(() => {
           retryRef.current = null;
           compute();
@@ -43,7 +44,10 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
     }
 
     let domMissing = false;
-    store.tables.forEach((linkedNotes, blockId) => {
+    store.metas.forEach((meta, blockId) => {
+      // 行からノートを作れるのは note-link のふるまいが付いた列を持つテーブルだけ
+      if (!hasColumnType(meta, "note-link")) return;
+      const linkedNotes = meta.noteLinks ?? {};
       const block = editor.getBlock(blockId);
       if (!block || block.type !== "table") return;
 
@@ -86,7 +90,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
         compute();
       }, 200);
     }
-  }, [store.tables, editorRef]);
+  }, [store.metas, editorRef]);
 
   useEffect(() => {
     return () => {
@@ -97,7 +101,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
     };
   }, []);
 
-  // store.tables 変更時に再計算
+  // store.metas 変更時に再計算
   useEffect(() => {
     const timer = setTimeout(compute, 50);
     return () => {
@@ -193,8 +197,8 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
             editor.updateBlock(blockId, {
               content: { type: "tableContent", rows: newRows },
             });
-            // linkedNotes のキーを @付きに更新
-            store.setLinkedNote(blockId, `@${sampleName}`, fileId);
+            // noteLinks のキーを @付きに更新
+            store.setNoteLink(blockId, `@${sampleName}`, fileId);
           }
 
           callbacks.onRefreshFiles();

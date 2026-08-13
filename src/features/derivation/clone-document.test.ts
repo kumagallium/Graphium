@@ -198,6 +198,63 @@ describe("buildDerivedDocument", () => {
     buildDerivedDocument({ sourceDoc: src, sourceNoteId: "src-note", derivedTitle: "X" });
     expect(JSON.stringify(src)).toBe(before);
   });
+
+  it("tableMeta を新しい block ID で張り直す", () => {
+    const src = mockDoc();
+    src.pages[0].blocks.push({
+      id: "tbl",
+      type: "table",
+      content: { type: "tableContent", rows: [{ cells: [[{ type: "text", text: "名前", styles: {} }]] }] },
+    });
+    src.pages[0].tableMeta = {
+      tbl: { caption: "試料の一覧", columns: { 名前: ["note-link"] }, noteLinks: { "A-1": "note-x" } },
+    };
+
+    const page = buildDerivedDocument({
+      sourceDoc: src,
+      sourceNoteId: "src-note",
+      derivedTitle: "Derived",
+    }).pages[0];
+
+    const newTableId = page.blocks[2].id;
+    expect(newTableId).not.toBe("tbl");
+    expect(page.tableMeta).toEqual({
+      [newTableId]: {
+        caption: "試料の一覧",
+        columns: { 名前: ["note-link"] },
+        noteLinks: { "A-1": "note-x" },
+      },
+    });
+  });
+
+  it("旧 indexTables / logTables を持つノートからの派生でも注釈を引き継ぐ", () => {
+    const src = mockDoc();
+    src.pages[0].blocks.push({
+      id: "tbl",
+      type: "table",
+      content: { type: "tableContent", rows: [{ cells: [[{ type: "text", text: "日時", styles: {} }]] }] },
+    });
+    src.pages[0].logTables = { tbl: { name: "頭痛ダイアリー" } };
+    src.pages[0].indexTables = { tbl: { "2026-08-13 10:00": "note-y" } };
+
+    const page = buildDerivedDocument({
+      sourceDoc: src,
+      sourceNoteId: "src-note",
+      derivedTitle: "Derived",
+    }).pages[0];
+
+    const newTableId = page.blocks[2].id;
+    expect(page.tableMeta).toEqual({
+      [newTableId]: {
+        caption: "頭痛ダイアリー",
+        columns: { 日時: ["datetime-auto", "note-link"] },
+        noteLinks: { "2026-08-13 10:00": "note-y" },
+      },
+    });
+    // 派生ノートは新形式だけを持つ
+    expect(page.logTables).toBeUndefined();
+    expect(page.indexTables).toBeUndefined();
+  });
 });
 
 // ── appendDerivedNoteLink ──

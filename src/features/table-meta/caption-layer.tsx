@@ -1,37 +1,54 @@
-// 記録テーブルのキャプション（テーブル名）レイヤー
-// IndexTableIconLayer と同じパターンで body ポータルに描画する。
+// テーブルのキャプション（名前）レイヤー
 //
-// 学術文書の慣例どおりテーブルのキャプションは表の上に置く。名前は
-// logTables サイドストアの config.name に保存され、チャートブロックが
-// 参照テーブルの表示名として使う（eureco の「データテーブル1: 地点Aの
-// 観測結果」に相当する、参照に耐える名前）。
+// IndexTableIconLayer と同じパターンで body ポータルに描画する。
+// 学術文書の慣例どおりテーブルのキャプションは表の上に置く。名前は tableMeta.caption
+// に保存され、チャートブロックが参照テーブルの表示名として使う（eureco の
+// 「データテーブル1: 地点Aの観測結果」に相当する、参照に耐える名前）。
+//
+// 描画対象は「名前が付いているテーブル」と「日時が自動で入るテーブル（無名でも
+// 表 N を出す）」。名前の無いふつうのテーブルには何も出さない — 付ける入口は
+// ⠿ メニューの「テーブルに名前を付ける」で、そこから編集要求が来たときだけ
+// 入力欄を出す。
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
-import { useLogTableStore } from "./store";
-import { computeLogTableDisplayNames } from "./auto-name";
+import { computeTableDisplayNames } from "./auto-name";
+import { useTableMetaStore } from "./store";
 
 type CaptionPos = {
   blockId: string;
   top: number;
   left: number;
   width: number;
-  /** 表示名（無名なら「表 N」の自動名） */
+  /** 表示名（無名の記録テーブルなら「表 N」の自動名） */
   displayName: string;
 };
 
-export function LogTableCaptionLayer({
+export function TableCaptionLayer({
   editorRef,
 }: {
   editorRef: React.RefObject<any>;
 }) {
   // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
   useLocaleSubscription();
-  const store = useLogTableStore();
+  const store = useTableMetaStore();
   const [captions, setCaptions] = useState<CaptionPos[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+
+  // 編集中のテーブルは名前が空でも描画対象に含める必要があるため ref で compute に渡す
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+
+  // ⠿ メニューの「テーブルに名前を付ける」からの編集要求を拾う
+  const { captionEditRequest, clearCaptionEditRequest } = store;
+  useEffect(() => {
+    if (!captionEditRequest) return;
+    setDraft(store.getCaption(captionEditRequest));
+    setEditing(captionEditRequest);
+    clearCaptionEditRequest();
+  }, [captionEditRequest, clearCaptionEditRequest, store]);
 
   // テーブルの位置を計算（icon-layer と同じ再試行つき）
   const retryRef = useRef<number | null>(null);
@@ -39,7 +56,7 @@ export function LogTableCaptionLayer({
     const next: CaptionPos[] = [];
     const editor = editorRef.current;
     if (!editor) {
-      if (store.tables.size > 0 && retryRef.current === null) {
+      if ((store.metas.size > 0 || editingRef.current) && retryRef.current === null) {
         retryRef.current = window.setTimeout(() => {
           retryRef.current = null;
           compute();
@@ -49,12 +66,16 @@ export function LogTableCaptionLayer({
     }
 
     let domMissing = false;
-    const displayNames = computeLogTableDisplayNames(
+    const displayNames = computeTableDisplayNames(
       (editor as any).document ?? [],
-      store.isLogTable,
-      store.getName
+      (blockId) => store.hasColumnType(blockId, "datetime-auto"),
+      store.getCaption
     );
-    store.tables.forEach((_config, blockId) => {
+    const targets = new Set(displayNames.keys());
+    // 名前を付ける途中のテーブルは、まだ名前が無くても入力欄を出す
+    if (editingRef.current) targets.add(editingRef.current);
+
+    targets.forEach((blockId) => {
       const block = editor.getBlock?.(blockId);
       if (!block || block.type !== "table") return;
 
@@ -85,7 +106,7 @@ export function LogTableCaptionLayer({
         compute();
       }, 200);
     }
-  }, [store.tables, editorRef]);
+  }, [store, editorRef]);
 
   useEffect(() => {
     return () => {
@@ -105,7 +126,7 @@ export function LogTableCaptionLayer({
         retryRef.current = null;
       }
     };
-  }, [compute]);
+  }, [compute, editing]);
 
   useEffect(() => {
     window.addEventListener("scroll", compute, true);
@@ -130,12 +151,12 @@ export function LogTableCaptionLayer({
   }, [compute]);
 
   const startEditing = (blockId: string) => {
-    setDraft(store.getName(blockId));
+    setDraft(store.getCaption(blockId));
     setEditing(blockId);
   };
 
   const commit = (blockId: string) => {
-    store.setName(blockId, draft);
+    store.setCaption(blockId, draft);
     setEditing(null);
   };
 
@@ -144,7 +165,7 @@ export function LogTableCaptionLayer({
   return createPortal(
     <>
       {captions.map(({ blockId, top, left, width, displayName }) => {
-        const name = store.getName(blockId);
+        const name = store.getCaption(blockId);
         if (editing === blockId) {
           return (
             <input
@@ -152,7 +173,7 @@ export function LogTableCaptionLayer({
               autoFocus
               type="text"
               value={draft}
-              placeholder={displayName || t("logTable.namePlaceholder")}
+              placeholder={displayName || t("tableMeta.namePlaceholder")}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={() => commit(blockId)}
               onKeyDown={(e) => {
@@ -183,7 +204,7 @@ export function LogTableCaptionLayer({
             key={blockId}
             type="button"
             onClick={() => startEditing(blockId)}
-            title={t("logTable.nameHint")}
+            title={t("tableMeta.nameHint")}
             style={{
               position: "fixed",
               top,
@@ -215,7 +236,7 @@ export function LogTableCaptionLayer({
               (e.currentTarget as HTMLElement).style.background = "transparent";
             }}
           >
-            {displayName || t("logTable.namePlaceholder")}
+            {displayName || t("tableMeta.namePlaceholder")}
           </button>
         );
       })}

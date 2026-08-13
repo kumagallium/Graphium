@@ -480,8 +480,13 @@ export function buildIndexEntry(
       }
     }
 
-    // indexTables からの出力リンク
-    for (const linkedNotes of Object.values(page.indexTables || {})) {
+    // テーブルの行 → ノート紐付けからの出力リンク。
+    // tableMeta（新形式）を持つノートはそれだけを見る — 旧 indexTables は読み込み時に
+    // 変換されるので、両方が同時に有効になることはない
+    const rowNoteLinks = page.tableMeta
+      ? Object.values(page.tableMeta).map((meta) => meta.noteLinks ?? {})
+      : Object.values(page.indexTables || {});
+    for (const linkedNotes of rowNoteLinks) {
       for (const targetNoteId of Object.values(linkedNotes as Record<string, string>)) {
         outgoingLinks.push({ targetNoteId, layer: "knowledge" });
       }

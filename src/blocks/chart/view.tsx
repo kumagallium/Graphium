@@ -51,31 +51,33 @@ import {
 import { ChartSettingsPanel } from "./chart-settings";
 // 記録テーブルの名前（キャプション）を参照表示に使う。Provider が無い場所でも
 // 動くよう optional 版で読む
-import { useLogTableStoreOptional } from "../../features/log-table/store";
+import { useTableMetaStoreOptional } from "../../features/table-meta/store";
+import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 
 /**
  * ノート内の table ブロックを（文書順で）集める。
- * 記録テーブルは「名前（キャプション）、無ければ文書順の自動名（表 N）」、
- * それ以外はヘッダ行の連結で表示する（eureco の「データテーブル1: 地点Aの
- * 観測結果」に相当する、参照に耐える名前を出すため）。
+ * 名前（キャプション）が付いていればそれを、日時が入る列を持つテーブルは無名でも
+ * 文書順の自動名（表 N）を、どちらも無ければヘッダ行の連結を表示する（eureco の
+ * 「データテーブル1: 地点Aの観測結果」に相当する、参照に耐える名前を出すため）。
  */
 function collectTables(
   editor: any,
-  logStore?: {
-    isLogTable: (blockId: string) => boolean;
-    getName: (blockId: string) => string;
+  tableMeta?: {
+    hasColumnType: (blockId: string, type: "datetime-auto" | "note-link") => boolean;
+    getCaption: (blockId: string) => string;
   } | null
 ): Array<{ id: string; label: string }> {
   const result: Array<{ id: string; label: string }> = [];
-  let logIndex = 0;
+  const displayNames = computeTableDisplayNames(
+    editor?.document ?? [],
+    (blockId) => tableMeta?.hasColumnType(blockId, "datetime-auto") ?? false,
+    (blockId) => tableMeta?.getCaption(blockId) ?? ""
+  );
   const visit = (blocks: any[]) => {
     for (const b of blocks ?? []) {
       if (b?.type === "table") {
-        let label = "";
-        if (logStore?.isLogTable(b.id)) {
-          logIndex += 1;
-          label = logStore.getName(b.id) || t("logTable.autoName", { n: String(logIndex) });
-        } else {
+        let label = displayNames.get(b.id) ?? "";
+        if (!label) {
           const data = readTableData(b);
           label = (data?.headers ?? []).filter(Boolean).join(" | ");
         }
@@ -167,12 +169,12 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     return () => document.removeEventListener("mousedown", onDown);
   }, [showSettings]);
 
-  const logTableStore = useLogTableStoreOptional();
+  const tableMetaStore = useTableMetaStoreOptional();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const tables = useMemo(
-    () => collectTables(editor, logTableStore),
+    () => collectTables(editor, tableMetaStore),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor, docVersion, logTableStore?.tables]
+    [editor, docVersion, tableMetaStore?.metas]
   );
 
   // 系列が参照するテーブルを解決する（docVersion で追従）

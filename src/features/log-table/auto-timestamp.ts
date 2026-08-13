@@ -12,20 +12,7 @@
 //   行数が変わらないため何もせず収束する
 
 import { formatDateTime } from "../../lib/format-datetime";
-
-/** セルからテキストを取り出す */
-function cellText(cell: any): string {
-  const content = Array.isArray(cell)
-    ? cell
-    : cell?.type === "tableCell"
-      ? (cell.content ?? [])
-      : null;
-  if (!content) return "";
-  return content
-    .map((c: any) => (c?.type === "text" && typeof c.text === "string" ? c.text : ""))
-    .join("")
-    .trim();
-}
+import { readCellText } from "../table-meta/table-cells";
 
 /** セルの形式（tableCell / 旧 inline 配列）を保ったままテキストだけのセルを作る */
 function withCellText(cell: any, text: string): any {
@@ -90,7 +77,7 @@ export function applyLogTableTimestamps(
     const nextRows = rows.map((row, i) => {
       if (i === 0) return row; // ヘッダ
       const cells = row.cells ?? [];
-      if (cells.length === 0 || cellText(cells[0]) !== "") return row;
+      if (cells.length === 0 || readCellText(cells[0]) !== "") return row;
       changed = true;
       return {
         ...row,
