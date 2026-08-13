@@ -42,9 +42,9 @@ Other routes into knowledge:
 ::: tip
 Ingestion is always something you trigger — Graphium never turns notes into knowledge behind your back. Skills marked **Auto-apply on Ingest** let you inject your own standing instructions (terminology, style) into every run.
 
-Two built-in skills define the default writing voice (Japanese / English). When an app update ships an improved default, skills you never edited pick it up automatically. If you have edited one, an **Update available** badge appears in the skill list instead, and **Reset to default** replaces your version with the new content.
+Two built-in skills define the default writing voice (Japanese / English). When an app update ships an improved default, skills you never edited pick it up automatically. If you have edited one, an **Update available** badge appears in the skill list instead, and **Reset to default** replaces your version with the new content. <Badge type="tip" text="Added in v0.30.0 (2026-08-09)" />
 
-Prompts take trial and error, so skills support the same manual version snapshots as notes: while editing a skill, press `⌘⇧S` or click **Save version** in the **History** tab to pin the current prompt, and use **Restore this version** on any saved version to switch the skill back to it. The restore itself is recorded in the edit history.
+Prompts take trial and error, so skills support the same manual version snapshots as notes: while editing a skill, press `⌘⇧S` or click **Save version** in the **History** tab to pin the current prompt, and use **Restore this version** on any saved version to switch the skill back to it. The restore itself is recorded in the edit history. <Badge type="tip" text="Added in v0.30.0 (2026-08-09)" />
 :::
 
 ## Browsing knowledge
