@@ -117,6 +117,8 @@ export const CalcBlock = createReactBlockSpec(
             {editable ? (
               <textarea
                 ref={textareaRef}
+                // PDF 書き出しがソース列を識別して差し替えるための目印
+                data-calc-source
                 value={draft}
                 wrap="off"
                 spellCheck={false}
@@ -132,7 +134,7 @@ export const CalcBlock = createReactBlockSpec(
                 style={styles.textarea}
               />
             ) : (
-              <div style={styles.sourceReadonly}>
+              <div data-calc-source style={styles.sourceReadonly}>
                 {lines.map((line, i) => (
                   <div key={i} style={isCommentLine(line) ? styles.commentLine : styles.sourceLine}>
                     {line || " "}
@@ -143,7 +145,7 @@ export const CalcBlock = createReactBlockSpec(
 
             {/* 右: 行ごとの評価結果。クリックでコピーできる */}
             {!empty && (
-              <div style={styles.resultsCol} aria-hidden={false}>
+              <div data-calc-results style={styles.resultsCol} aria-hidden={false}>
                 {lines.map((_, i) => {
                   const r = results[i];
                   if (!r || r.kind === "empty" || r.kind === "comment") {
