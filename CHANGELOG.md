@@ -1,5 +1,27 @@
 # Changelog
 
+## [v0.33.0](https://github.com/kumagallium/Graphium/compare/v0.32.1...v0.33.0) - 2026-08-13
+
+- feat: GitHub Copilot subscription provider (copilot-subscription) by @kumagallium in https://github.com/kumagallium/Graphium/pull/673
+- Remove the claude-subscription provider (Anthropic ToS compliance) by @kumagallium in https://github.com/kumagallium/Graphium/pull/676
+
+## [v0.32.1](https://github.com/kumagallium/Graphium/compare/v0.32.0...v0.32.1) - 2026-08-13
+
+## [v0.32.0](https://github.com/kumagallium/Graphium/compare/v0.31.1...v0.32.0) - 2026-08-13
+
+- fix(link): open URL clicks in side peek only, not external browser by @kumagallium in https://github.com/kumagallium/Graphium/pull/669
+- feat(editor): readable line width with per-note full-width toggle by @kumagallium in https://github.com/kumagallium/Graphium/pull/671
+
+## [v0.31.1](https://github.com/kumagallium/Graphium/compare/v0.31.0...v0.31.1) - 2026-08-12
+
+- fix(pdf): resolve shared (g_-prefixed) images from commonObjs to fix extraction hang by @kumagallium in https://github.com/kumagallium/Graphium/pull/667
+- fix(settings): claude-subscription in existing-provider add flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/666
+
+## [v0.31.0](https://github.com/kumagallium/Graphium/compare/v0.30.1...v0.31.0) - 2026-08-12
+
+- [fix] Prevent desktop freeze when auto-OCR races a drag session by @kumagallium in https://github.com/kumagallium/Graphium/pull/662
+- feat(sharing): shared:// citation block (Phase 2c-2) by @kumagallium in https://github.com/kumagallium/Graphium/pull/664
+
 ## [v0.30.1](https://github.com/kumagallium/Graphium/compare/v0.30.0...v0.30.1) - 2026-08-10
 
 - [fix] Add a re-check button to the update banner by @kumagallium in https://github.com/kumagallium/Graphium/pull/660

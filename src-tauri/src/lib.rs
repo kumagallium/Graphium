@@ -1627,6 +1627,15 @@ fn shared_blob_exists(root: String, hash: String) -> Result<bool, String> {
     Ok(dir.join(hex_part).exists())
 }
 
+/// shared root ディレクトリが存在してアクセスできるか。
+/// 引用ブロックの表示時に「エントリが無い（missing）」と「共有ストレージに
+/// 到達できない（offline）」を区別するために使う。shared_list は未作成
+/// ディレクトリを空リスト扱いにするため、この判別には使えない。
+#[tauri::command]
+fn shared_root_exists(root: String) -> bool {
+    fs::metadata(&root).map(|m| m.is_dir()).unwrap_or(false)
+}
+
 /// Blob を hash 指定で削除する（GC 用）。
 /// 呼び出し側で「他の active manifest が参照していない」ことを確認した hash のみを渡すこと。
 /// 存在しない blob を渡しても No-op で成功する（idempotent）。
@@ -1745,6 +1754,7 @@ pub fn run() {
             shared_blob_write,
             shared_blob_exists,
             shared_blob_delete,
+            shared_root_exists,
             inbox_list,
             inbox_read,
             inbox_mark_imported,

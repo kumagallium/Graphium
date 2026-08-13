@@ -34,6 +34,12 @@ Selecting rows lets you act in bulk: move notes to trash, archive them, or add a
 
 The editor is block-based: every paragraph, heading, or table is a block you can drag, style, and convert. Press `/` on an empty line to insert a block, or select text for the formatting toolbar. The standard building blocks are paragraphs, headings (three levels), bulleted, numbered, check and toggle lists, quotes, code blocks, and tables.
 
+### Readable line width <Badge type="tip" text="Added in v0.32.0 (2026-08-13)" /> {#readable-line-width}
+
+On wide screens the note body is capped at a readable column width and centered, so long lines stay easy to follow. Narrow windows, side peeks, and mobile are unaffected — the cap only kicks in when the window is wider than the column.
+
+When a note needs the whole window — wide tables, charts, or images — open the **⋯** menu in the top-right corner and choose **Full width**. A check mark shows the current state, and the choice is saved per note.
+
 ### The turn-into menu <Badge type="tip" text="Added in v0.18.0 (2026-07-15)" />
 
 Hover a text block and open the drag-handle (⠿) menu; **Turn into** converts the block in place:

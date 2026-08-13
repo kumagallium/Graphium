@@ -28,22 +28,11 @@ Under **Registered Models**, click **Add model** (or **Add your first model**). 
 | **OpenAI** | An OpenAI API key |
 | **Google Gemini** | A Google AI API key |
 | **OpenAI Compatible (Groq, Ollama, etc.)** | An **API Base URL** (e.g. `http://localhost:11434` for Ollama) and a key if the endpoint wants one |
-| **Claude (Subscription · Claude Code)** | No API key — see below |
 
 For the API-key providers: enter your **API Key**, click **Fetch available models**, pick one from the list (or use **Or enter model ID manually**), optionally set a **Display name**, and click **Add**. The first model you register becomes the default, and the AI features appear throughout the app.
 
-### Using a Claude subscription — no API key <Badge type="tip" text="Added in v0.16.0 (2026-06-19)" />
-
-If you have a Claude Pro, Max, or Team plan, you can run Graphium's AI through your subscription instead of a metered API key. This route uses the Claude Code CLI (`claude`) installed on your machine — its login is separate from the Claude desktop app.
-
-1. Install the Claude Code CLI and sign in: run `claude` in a terminal (or `claude setup-token`).
-2. In the AI tab, click **Use your Claude subscription — no API key**. The button appears on the desktop app when the CLI is detected.
-3. Graphium registers a subscription model. The model IDs `sonnet`, `opus`, and `haiku` are aliases that always resolve to the latest version — no manual updates needed.
-
-Once registered, the tab shows which account is active: "Signed in as … (Claude Code CLI)". To switch accounts (say, personal to team), run `claude` in a terminal, type `/login`, pick the account, then restart Graphium.
-
-::: warning Subscription requests failing with an authentication error?
-When the subscription login expires, AI calls fail with a message like "Claude subscription authentication has expired." The fix is always the same: run `claude` in a terminal to log in again, then restart Graphium. Graphium itself has no login button — the CLI is the single source of truth for subscription auth.
+::: info The Claude subscription provider was removed
+Earlier versions offered a **Claude (Subscription · Claude Code)** provider that ran AI through a Claude Pro/Max plan. It was removed because Anthropic's terms do not permit third-party apps to use subscription authentication. Any model registered through it disappears from the list on first launch after updating — register another provider instead. Anthropic API keys are unaffected.
 :::
 
 ### Where your API keys live
