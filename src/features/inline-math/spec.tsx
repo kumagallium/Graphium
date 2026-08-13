@@ -13,7 +13,7 @@ import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { renderMath } from "../math/render-katex";
 import { MathField } from "../math/math-field";
 import { getMathEditorMode } from "../math/editor-mode";
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 
 export const InlineMath = createReactInlineContentSpec(
   {
@@ -26,6 +26,8 @@ export const InlineMath = createReactInlineContentSpec(
   },
   {
     render: (props) => {
+      // 言語切替でラベルを引き直す（BlockNote の render は Context を辿れないため購読する）
+      useLocaleSubscription();
       const latex = String((props.inlineContent as any).props?.latex ?? "");
       const editable = (props.editor as any).isEditable !== false;
       // 空で挿入された直後（スラッシュメニュー経由）はすぐ入力できる状態にする
@@ -179,9 +181,11 @@ export const inlineMathSpecs = {
 
 // スラッシュメニュー用アイテム（カーソル位置にインライン数式を挿入）
 export const inlineMathSlashItem = {
-  title: t("slash.inlineMath"),
-  subtext: t("slash.inlineMathSub"),
-  group: t("slash.advancedGroup"),
+  // ラベルは getter で遅延評価する。トップレベルで t() を呼ぶと最初の読み込み時の
+  // 言語で固定され、言語を切り替えても古いラベルが残る（項目は作り直されないため）。
+  get title() { return t("slash.inlineMath"); },
+  get subtext() { return t("slash.inlineMathSub"); },
+  get group() { return t("slash.advancedGroup"); },
   onItemClick: (editor: any) => {
     editor.insertInlineContent([{ type: "inlineMath", props: { latex: "" } }]);
   },

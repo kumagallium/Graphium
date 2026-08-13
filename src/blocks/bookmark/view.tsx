@@ -5,7 +5,7 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { useState, useEffect } from "react";
 import { fetchUrlMetadata, extractDomain, getFaviconUrl } from "../../features/asset-browser/media-index";
 // BlockNote のブロック render は React ツリー外でも呼ばれ得るため、Context 不要の t を使う
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 import { openBookmarkPeek } from "./callbacks";
 
 export const BookmarkBlock = createReactBlockSpec(
@@ -27,6 +27,8 @@ export const BookmarkBlock = createReactBlockSpec(
   },
   {
     render: (props) => {
+      // 言語切替でラベルを引き直す（BlockNote の render は Context を辿れないため購読する）
+      useLocaleSubscription();
       const { url, title, description, ogImage, domain } = props.block.props;
       const [meta, setMeta] = useState({
         title: title || "",
