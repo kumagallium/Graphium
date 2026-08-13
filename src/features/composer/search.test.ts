@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parseQuery, searchNotes } from "./search";
+import { parseQuery, searchNotes, searchMedia, buildOcrSnippet } from "./search";
 import type { NoteIndexEntry } from "../navigation/index-file";
+import type { MediaIndexEntry } from "../asset-browser/media-index";
 
 function entry(partial: Partial<NoteIndexEntry> & { noteId: string; title: string }): NoteIndexEntry {
   return {
@@ -105,5 +106,118 @@ describe("searchNotes()", () => {
     const a = hits.find((h) => h.entry.noteId === "a")!;
     expect(a.titleMatches.length).toBeGreaterThan(0);
     expect(a.titleMatches[0]).toEqual({ start: 0, end: 3 });
+  });
+});
+
+// ── 画像検索 ──
+
+function media(
+  partial: Partial<MediaIndexEntry> & { fileId: string; name: string },
+): MediaIndexEntry {
+  return {
+    fileId: partial.fileId,
+    name: partial.name,
+    type: partial.type ?? "image",
+    mimeType: partial.mimeType ?? "image/png",
+    url: partial.url ?? `local-media://${partial.fileId}`,
+    thumbnailUrl: partial.thumbnailUrl ?? `local-media://${partial.fileId}`,
+    uploadedAt: partial.uploadedAt ?? "2026-04-20T00:00:00.000Z",
+    usedIn: partial.usedIn ?? [],
+    ocrText: partial.ocrText,
+    archivedAt: partial.archivedAt,
+  };
+}
+
+describe("buildOcrSnippet()", () => {
+  it("returns undefined when the needle is absent", () => {
+    expect(buildOcrSnippet("焼結温度 800℃", "XRD")).toBeUndefined();
+  });
+
+  it("flattens newlines into a single line", () => {
+    const snip = buildOcrSnippet("焼結温度\n800℃\tで 2 時間", "800")!;
+    expect(snip.text).toBe("焼結温度 800℃ で 2 時間");
+    expect(snip.text.slice(snip.start, snip.end)).toBe("800");
+  });
+
+  it("adds ellipses on the trimmed sides and keeps the match range accurate", () => {
+    const long = `${"あ".repeat(80)}XRD${"い".repeat(80)}`;
+    const snip = buildOcrSnippet(long, "XRD")!;
+    expect(snip.text.startsWith("…")).toBe(true);
+    expect(snip.text.endsWith("…")).toBe(true);
+    expect(snip.text.slice(snip.start, snip.end)).toBe("XRD");
+  });
+
+  it("omits the leading ellipsis when the match is at the start", () => {
+    const snip = buildOcrSnippet("XRD の測定結果", "XRD")!;
+    expect(snip.text.startsWith("…")).toBe(false);
+    expect(snip.start).toBe(0);
+  });
+});
+
+describe("searchMedia()", () => {
+  const assets: MediaIndexEntry[] = [
+    media({ fileId: "img-1", name: "scan-01.png", ocrText: "焼結温度 800℃ で 2 時間 保持" }),
+    media({ fileId: "img-2", name: "XRD-pattern.png", ocrText: "2θ = 28.4°" }),
+    media({ fileId: "img-3", name: "photo.jpg" }),
+    media({ fileId: "pdf-1", name: "焼結の論文.pdf", type: "pdf", mimeType: "application/pdf" }),
+    media({
+      fileId: "img-old",
+      name: "焼結-old.png",
+      ocrText: "焼結温度 700℃",
+      archivedAt: "2026-04-01T00:00:00.000Z",
+    }),
+  ];
+
+  it("finds images by the text inside them", () => {
+    const hits = searchMedia("焼結温度", assets);
+    expect(hits.map((h) => h.entry.fileId)).toEqual(["img-1"]);
+    expect(hits[0].reasons).toContain("ocr");
+    expect(hits[0].ocrSnippet?.text).toContain("焼結温度");
+  });
+
+  it("finds images by file name", () => {
+    const hits = searchMedia("XRD", assets);
+    expect(hits.map((h) => h.entry.fileId)).toEqual(["img-2"]);
+    expect(hits[0].reasons).toContain("name-prefix");
+    expect(hits[0].nameMatches[0]).toEqual({ start: 0, end: 3 });
+  });
+
+  it("ranks a file-name hit above an OCR-only hit", () => {
+    const nameHit = media({ fileId: "n", name: "焼結.png" });
+    const ocrHit = media({ fileId: "o", name: "a.png", ocrText: "焼結温度" });
+    const hits = searchMedia("焼結", [ocrHit, nameHit]);
+    expect(hits.map((h) => h.entry.fileId)).toEqual(["n", "o"]);
+  });
+
+  it("returns only images — other media types are left to the gallery", () => {
+    const hits = searchMedia("焼結", assets);
+    expect(hits.map((h) => h.entry.fileId)).not.toContain("pdf-1");
+  });
+
+  it("hides archived images", () => {
+    const hits = searchMedia("焼結", assets);
+    expect(hits.map((h) => h.entry.fileId)).not.toContain("img-old");
+  });
+
+  it("returns nothing for an empty query", () => {
+    expect(searchMedia("", assets)).toEqual([]);
+    expect(searchMedia("   ", assets)).toEqual([]);
+  });
+
+  it("returns nothing when the query filters notes by #label or @author", () => {
+    expect(searchMedia("焼結 #手順", assets)).toEqual([]);
+    expect(searchMedia("焼結 @claude", assets)).toEqual([]);
+  });
+
+  it("respects the limit option", () => {
+    const many = Array.from({ length: 10 }, (_, i) =>
+      media({ fileId: `m${i}`, name: `scan-${i}.png`, ocrText: "焼結温度" }),
+    );
+    expect(searchMedia("焼結", many, { limit: 2 })).toHaveLength(2);
+    expect(searchMedia("焼結", many)).toHaveLength(4);
+  });
+
+  it("returns empty for a null index", () => {
+    expect(searchMedia("焼結", null)).toEqual([]);
   });
 });

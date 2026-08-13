@@ -8,6 +8,7 @@ import { LocaleProvider } from "@/i18n";
 import { Composer } from "./Composer";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
+import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 
 const meta: Meta<typeof Composer> = {
   title: "Molecules/Composer",
@@ -96,6 +97,56 @@ const sampleIndex: GraphiumIndex = {
   notes: sampleNotes,
 };
 
+/** サムネイルの見え方を確認するためのダミー画像（data URL なのでプロバイダ解決を通らない） */
+function swatch(label: string, bg: string): string {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='${bg}'/><text x='6' y='38' font-family='sans-serif' font-size='13' fill='%23384038'>${label}</text></svg>`;
+  return `data:image/svg+xml,${svg.replace(/#/g, "%23").replace(/</g, "%3C").replace(/>/g, "%3E")}`;
+}
+
+const sampleMedia: MediaIndexEntry[] = [
+  {
+    fileId: "img-xrd-pattern",
+    name: "XRD-pattern-2026-04.png",
+    type: "image",
+    mimeType: "image/png",
+    url: swatch("XRD", "#dfe7d6"),
+    thumbnailUrl: swatch("XRD", "#dfe7d6"),
+    uploadedAt: "2026-04-24T09:00:00.000Z",
+    usedIn: [{ noteId: "n-xrd-log", noteTitle: "XRD raw log 2026-04", blockId: "b1" }],
+    ocrText: "2θ = 28.4°  強度 1240 counts  スキャン速度 2°/min",
+  },
+  {
+    fileId: "img-furnace-panel",
+    name: "IMG_2041.jpg",
+    type: "image",
+    mimeType: "image/jpeg",
+    url: swatch("800", "#e8e0cf"),
+    thumbnailUrl: swatch("800", "#e8e0cf"),
+    uploadedAt: "2026-04-22T14:00:00.000Z",
+    usedIn: [],
+    // どのノートにも貼っていない画像 — 素材ギャラリーから読み取った文字だけで見つかる
+    ocrText: "焼結温度 800℃ で 2 時間 保持 昇温速度 5℃/min",
+  },
+  {
+    fileId: "img-whiteboard",
+    name: "whiteboard-2026-04-18.png",
+    type: "image",
+    mimeType: "image/png",
+    url: swatch("WB", "#dde3ea"),
+    thumbnailUrl: swatch("WB", "#dde3ea"),
+    uploadedAt: "2026-04-18T18:30:00.000Z",
+    usedIn: [{ noteId: "n-design-misc", noteTitle: "Design notes — UI スパイク", blockId: "b2" }],
+    ocrText:
+      "焼結条件の比較 A: 800℃/2h  B: 850℃/1h  C: 900℃/30min — B が最も緻密という所感",
+  },
+];
+
+const sampleMediaIndex: MediaIndex = {
+  version: 5,
+  updatedAt: "2026-04-25T10:00:00.000Z",
+  media: sampleMedia,
+};
+
 function Harness({ showDiscoveryCards = false, withSearch = false, initialPrompt = "" }: Args) {
   const [mode, setMode] = useState<ComposerMode>("ask");
   const [prompt, setPrompt] = useState(initialPrompt);
@@ -177,6 +228,12 @@ function Harness({ showDiscoveryCards = false, withSearch = false, initialPrompt
                   setLog((prev) => [...prev, `open note: ${noteId} (source=${source ?? "human"})`])
               : undefined
           }
+          mediaIndex={withSearch ? sampleMediaIndex : null}
+          onMediaSelect={
+            withSearch
+              ? (entry) => setLog((prev) => [...prev, `open material peek: ${entry.name}`])
+              : undefined
+          }
         />
       </div>
     </LocaleProvider>
@@ -223,4 +280,32 @@ export const SearchNoMatch: StoryObj<Args> = {
   name: "検索 — 一致なし（AI に倒れる）",
   render: (args) => <Harness {...args} />,
   args: { withSearch: true, initialPrompt: "ZZZ unknown query" },
+};
+
+export const SearchImageOcr: StoryObj<Args> = {
+  name: "検索 — 画像の中の文字で当たる",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "焼結" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "OCR で読み取った画像内の文字に一致した例。ノートのタイトルには「焼結」が無いので、結果は画像セクションだけになる。ノートに貼った画像も、どのノートにも貼っていない画像も同じように並ぶ。",
+      },
+    },
+  },
+};
+
+export const SearchNotesAndImages: StoryObj<Args> = {
+  name: "検索 — ノートと画像が両方当たる",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "XRD" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "ノート（タイトル・見出し一致）の下に画像セクションが並ぶ。画像はファイル名でも画像内の文字でも当たる。",
+      },
+    },
+  },
 };

@@ -5606,6 +5606,26 @@ export function NoteApp() {
     [composer, fm],
   );
 
+  // 検索結果から画像行を選んだときのハンドラ。
+  // ノートへ飛ばさず素材サイドピークを開く — 1 枚の画像は複数ノートで使われうるし、
+  // どのノートにも貼られていない画像もあるので、行き先は素材そのものが正しい。
+  // そこから「使われているノート」を辿れる。
+  const handleComposerMediaSelect = useCallback(
+    (entry: MediaIndexEntry) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      // Composer はノート編集中しか開かないので通常こちら（エディタ内ピーク）
+      if (openMaterialPeekRef.current) {
+        openMaterialPeekRef.current(entry);
+      } else {
+        // ノートピークと素材ピークを同時に開かない（handleOpenMemoSource と同じ扱い）
+        setListSidePeekNoteId(null);
+        setListMaterialPeekEntry(entry);
+      }
+    },
+    [composer],
+  );
+
   // Cmd+K: NoteEditor がマウント中のみ Composer を開く。
   // composerSubmitRef.current は NoteEditorInner の useEffect で登録/解除されるので、
   // 「ハンドラがある＝編集面が表示されている」を一発の真偽で判定できる。
@@ -8858,6 +8878,8 @@ export function NoteApp() {
         onDiscoveryCardSelect={handleComposerCardSelect}
         noteIndex={fm.noteIndex ?? null}
         onNoteSelect={handleComposerNoteSelect}
+        mediaIndex={fm.mediaIndex ?? null}
+        onMediaSelect={handleComposerMediaSelect}
         citationCount={composerCitationCount}
       />
       {showNewSkillDialog && (

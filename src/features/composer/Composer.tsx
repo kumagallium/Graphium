@@ -8,6 +8,11 @@
 //   - 一致 0 件のときは AI 質問アクションのみ提示
 //   - BM25 / embedding / graph 近傍は別タスク（G-BM25 / G-GRAPHRAG）で hybrid 化
 //
+// 画像:
+//   - fm.mediaIndex に対して、ファイル名 + OCR で読み取った画像内の文字で検索
+//   - ノートの下に「画像」セクションとして並べ、選ぶと素材サイドピークが開く
+//   - 空入力・`#ラベル` / `@作者` 付きのクエリでは出さない（ノートを探す文脈なので）
+//
 // AI 質問:
 //   - 候補リスト最下段の「AI に質問」アクション行を選んで Enter（または ⌘+Enter）
 //   - ノート行を選んで Enter ならジャンプ。ジャンプ用のハンドラがなければ AI に倒れる
@@ -17,7 +22,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { Bot } from "lucide-react";
+import { Bot, Image as ImageIcon } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
@@ -25,7 +30,9 @@ import { GroundingScopeChip } from "./GroundingScopeChip";
 import { WebSearchMissingHint } from "./WebSearchMissingHint";
 import { useWebSearchAvailability } from "./use-web-search-availability";
 import type { GraphiumIndex } from "../navigation/index-file";
-import { searchNotes, type SearchHit } from "./search";
+import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
+import { getActiveProvider } from "../../lib/storage/registry";
+import { searchNotes, searchMedia, type SearchHit, type MediaHit } from "./search";
 import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
@@ -46,6 +53,10 @@ type ComposerProps = {
   noteIndex?: GraphiumIndex | null;
   /** ノート行を選んだときのジャンプハンドラ。未指定時は検索 UI を出さない */
   onNoteSelect?: (noteId: string, source: "human" | "ai" | "skill" | undefined) => void;
+  /** 素材一覧（画像検索のソース）。ファイル名と OCR テキストで探す */
+  mediaIndex?: MediaIndex | null;
+  /** 画像行を選んだときのハンドラ。未指定時は画像セクションを出さない */
+  onMediaSelect?: (entry: MediaIndexEntry) => void;
   /** 現在開いているノートの引用（knowledge link）数。
    *  J1.5: 入力空のとき 0 → 発見カード（既存）/ 1+ → verb メニューを前面に出す。 */
   citationCount?: number;
@@ -53,10 +64,13 @@ type ComposerProps = {
 
 type ResultRow =
   | { kind: "note"; hit: SearchHit }
+  | { kind: "media"; hit: MediaHit }
   | { kind: "ask-ai" }
   | { kind: "card"; card: DiscoveryCard };
 
 const MAX_RESULTS = 8;
+/** 画像はノートの結果を押しのけない程度に抑える */
+const MAX_MEDIA_RESULTS = 4;
 
 export function Composer(props: ComposerProps) {
   const {
@@ -70,6 +84,8 @@ export function Composer(props: ComposerProps) {
     onDiscoveryCardSelect,
     noteIndex,
     onNoteSelect,
+    mediaIndex,
+    onMediaSelect,
     citationCount,
   } = props;
 
@@ -91,6 +107,12 @@ export function Composer(props: ComposerProps) {
     return searchNotes(prompt, noteIndex.notes, { limit: MAX_RESULTS });
   }, [prompt, noteIndex, onNoteSelect]);
 
+  // 画像（ファイル名 + OCR で読み取った画像内の文字）
+  const mediaHits = useMemo(() => {
+    if (!mediaIndex || !onMediaSelect) return [];
+    return searchMedia(prompt, mediaIndex.media, { limit: MAX_MEDIA_RESULTS });
+  }, [prompt, mediaIndex, onMediaSelect]);
+
   const trimmed = prompt.trim();
   const isEmptyQuery = trimmed.length === 0;
 
@@ -107,10 +129,13 @@ export function Composer(props: ComposerProps) {
   // verb に添える任意コメント（即発火だが補足を一言足せる）
   const [verbComment, setVerbComment] = useState("");
 
-  // 結果行を組み立てる: ノート一覧 + 末尾 AI アクション + 発見カード
+  // 結果行を組み立てる: ノート一覧 + 画像 + 末尾 AI アクション + 発見カード
   // 発見カードもキーボードで選べるように同じ rows 配列にまとめる
   const rows = useMemo<ResultRow[]>(() => {
     const list: ResultRow[] = hits.map((hit) => ({ kind: "note", hit }));
+    for (const hit of mediaHits) {
+      list.push({ kind: "media", hit });
+    }
     // 入力が非空のときだけ AI アクションを末尾に出す（空入力は履歴ビューとして純粋に保つ）
     if (!isEmptyQuery) {
       list.push({ kind: "ask-ai" });
@@ -121,7 +146,7 @@ export function Composer(props: ComposerProps) {
       }
     }
     return list;
-  }, [hits, isEmptyQuery, showCards, cards]);
+  }, [hits, mediaHits, isEmptyQuery, showCards, cards]);
 
   // 入力が変わるたびに先頭にハイライトを戻す（ノート行があればそれ、無ければ AI 行）
   useEffect(() => {
@@ -176,6 +201,10 @@ export function Composer(props: ComposerProps) {
     }
     if (row.kind === "card") {
       onDiscoveryCardSelect?.(row.card);
+      return;
+    }
+    if (row.kind === "media") {
+      onMediaSelect?.(row.hit.entry);
       return;
     }
     if (onNoteSelect) {
@@ -380,8 +409,25 @@ export function Composer(props: ComposerProps) {
               return null;
             })}
 
+            {/* 「画像」セクション — ファイル名と、OCR で読み取った画像内の文字で当たる */}
+            {mediaHits.length > 0 && (
+              <SectionHeading>{t("composer.search.imagesHeading")}</SectionHeading>
+            )}
+            {rows.map((row, i) => {
+              if (row.kind !== "media") return null;
+              return (
+                <MediaRow
+                  key={row.hit.entry.fileId}
+                  hit={row.hit}
+                  active={i === activeIndex}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onClick={() => activateRow(row)}
+                />
+              );
+            })}
+
             {/* 一致 0 件 */}
-            {!isEmptyQuery && hits.length === 0 && (
+            {!isEmptyQuery && hits.length === 0 && mediaHits.length === 0 && (
               <div
                 style={{
                   padding: "10px 16px",
@@ -571,6 +617,156 @@ function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
         </span>
       )}
     </button>
+  );
+}
+
+type MediaRowProps = {
+  hit: MediaHit;
+  active: boolean;
+  onMouseEnter: () => void;
+  onClick: () => void;
+};
+
+/**
+ * 画像 1 件の行。ファイル名の下に、OCR で当たった箇所の抜粋を添える。
+ * 選ぶと素材サイドピークが開く（呼び出し側の onMediaSelect）。
+ */
+function MediaRow({ hit, active, onMouseEnter, onClick }: MediaRowProps) {
+  const { entry, nameMatches, ocrSnippet } = hit;
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={onMouseEnter}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        textAlign: "left",
+        padding: "6px 16px",
+        background: active ? "var(--paper-2)" : "transparent",
+        border: "none",
+        borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
+        cursor: "pointer",
+        font: "inherit",
+        color: "var(--ink)",
+      }}
+    >
+      <MediaThumb entry={entry} />
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 13,
+            lineHeight: 1.4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <HighlightedTitle title={entry.name} ranges={nameMatches} />
+        </span>
+        {ocrSnippet && (
+          <span
+            style={{
+              fontSize: 11,
+              color: "var(--ink-3)",
+              lineHeight: 1.4,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <HighlightedTitle
+              title={ocrSnippet.text}
+              ranges={[{ start: ocrSnippet.start, end: ocrSnippet.end }]}
+            />
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * 行頭のサムネイル。素材の url はプロバイダ内部スキーム（local-media:// 等）のことが
+ * あるので、<img src> に入れる前に blob URL へ解決する。
+ * 解決の流儀は素材ギャラリーの ImageThumbnail と同じ（外部 URL はそのまま使う）。
+ */
+function MediaThumb({ entry }: { entry: MediaIndexEntry }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    const raw = entry.thumbnailUrl || entry.url;
+    if (!raw) return;
+    // すでに実体を指している URL はそのまま使う
+    if (/^(blob|data):/i.test(raw)) {
+      setSrc(raw);
+      return;
+    }
+    let provider: ReturnType<typeof getActiveProvider>;
+    try {
+      provider = getActiveProvider();
+    } catch {
+      // プロバイダ未初期化（Storybook 等）— URL をそのまま試す
+      setSrc(raw);
+      return;
+    }
+    const fileId = provider.extractFileId(raw);
+    if (!fileId) {
+      // Google Drive 等: CDN URL をそのまま使う
+      setSrc(raw);
+      return;
+    }
+    let cancelled = false;
+    provider
+      .getMediaBlobUrl(fileId)
+      .then((url) => {
+        if (!cancelled) setSrc(url);
+      })
+      .catch(() => {
+        /* 読めなければアイコンのまま */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.thumbnailUrl, entry.url]);
+
+  return (
+    <span
+      style={{
+        width: 32,
+        height: 32,
+        flexShrink: 0,
+        borderRadius: "var(--r-1)",
+        overflow: "hidden",
+        background: "var(--paper-2)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {src ? (
+        // 裸の <img> だと preflight の max-width が効いて潰れるので必ず wrapper 内に置く
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        <ImageIcon size={14} style={{ color: "var(--ink-3)" }} aria-hidden />
+      )}
+    </span>
   );
 }
 

@@ -372,6 +372,17 @@ hand-labelled steps, so the projection was withdrawn. The extracted text
 still powers full-text search (`ocrText` in the note index, §5) and the
 asset gallery's detail panel.
 
+The same text is also mirrored onto the *material* it was read from
+(`MediaIndexEntry.ocrText` in the media index), which is what makes an image
+findable on its own — in the asset gallery and in the `⌘K` Composer's
+**Images** section — rather than only through the note it happens to sit in.
+Two paths write it: reading from the gallery stores it directly, and reading
+an image inside a note mirrors it across (`page.mediaOcr[blockId]` stays the
+source of truth for the block). Text read before the media index reached
+schema version 5 is recovered on the next rebuild, which walks every note and
+copies `page.mediaOcr` onto the matching material; a value already written
+from the gallery is never overwritten.
+
 ### 2.4 Document provenance (edit log)
 
 `documentProvenance` is a separate concern from the PROV-DM graph above.
