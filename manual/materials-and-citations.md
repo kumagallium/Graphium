@@ -43,7 +43,7 @@ Word files get extra care: the built-in preview converts formats browsers cannot
 Clicking a material opens it in a side peek next to your note, so you can read without leaving what you are writing. Use **Open in full view** for a full-screen reading layout.
 
 - **PDFs** render with a selectable text layer, zoom controls, and page navigation.
-- **URLs** open in Reader Mode — a cleaned-up article view fetched from the page. Reader images can be saved into your library with **Save image**. If the URL is not in your library yet, the header shows **Add to materials**, so you can check a page before deciding to keep it.
+- **URLs** open in Reader Mode — a cleaned-up article view fetched from the page. Reader images can be saved into your library with **Save image**. If the URL is not in your library yet, the header shows **Add to materials**, so you can check a page before deciding to keep it. <Badge type="tip" text="Added in v0.29.0 (2026-08-05)" />
 - **Word files** (.docx) get an inline preview.
 
 Select text in a PDF, Word preview, or URL reader and a small pill appears: **Save as memo**. The selection becomes a quote memo with its source attached — collect quotes while reading, then insert them into notes later via the `/` menu's **Memo** item ("Insert from saved memos"). When inserting, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo**. Quote memos with a source are inserted as quote blocks with a "— source" attribution line.

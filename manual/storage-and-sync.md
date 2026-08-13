@@ -87,7 +87,7 @@ The shared copy is a snapshot. To update it, edit your local note and choose **U
 
 Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists shared notes, references, and data files from everyone on the team. Entries from others are read-only — press **Fork** to copy a note into your own storage, where you can edit it freely. Any media the note carries is materialized into your local library automatically, and the fork records where it came from.
 
-### Cite a shared entry in your notes
+### Cite a shared entry in your notes <Badge type="tip" text="Added in v0.31.0 (2026-08-12)" />
 
 Type `/` in any note and choose **Cite shared entry** to insert a citation card pointing at a shared note, reference, or data file. The card shows the entry's title, author, date, and a verification badge. It stays in your note as a *reference* — the content itself lives in the shared folder, and your note keeps only a lightweight snapshot for display, so the card still renders when the shared folder is unreachable.
 

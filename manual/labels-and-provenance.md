@@ -49,7 +49,7 @@ Images, videos, audio, files, and PDFs can carry a label as a whole block — "t
 
 The drag handle (⠿) menu offers a **Label** submenu for tables and media blocks — the same four labels, applied at block level:
 
-- On a **table**, the hint reads **Each row → one Entity**: every row becomes its own entity, which is why per-cell inline labels are unnecessary. The label shows as a small chip just above the table, aligned to its right edge — click it to change or remove it.
+- On a **table**, the hint reads **Each row → one Entity**: every row becomes its own entity, which is why per-cell inline labels are unnecessary. The label shows as a small chip just above the table, aligned to its right edge — click it to change or remove it. <Badge type="tip" text="Added in v0.28.0 (2026-08-04)" />
 - On a **media block**, the hint reads **Whole block = one Entity** — equivalent to labeling it from the toolbar.
 
 ![The Label submenu in the drag-handle menu](/screenshots/label-dropdown.png)
@@ -85,7 +85,7 @@ The expand button (**Expand view**) opens the graph full-screen, still editable.
 
 **Repeated referents collapse into one node.** If step B's **Input** text matches step A's **Output** text (and B is linked to A as its next step), Graphium unifies them: "the powder A produced" and "the powder B used" become a single entity, and the chain reads continuously across steps. This is also what keeps branches straight when a step has several outputs going to different steps.
 
-### Editing from the graph {#editing-from-the-graph}
+### Editing from the graph <Badge type="tip" text="Added in v0.30.0 (2026-08-09)" /> {#editing-from-the-graph}
 
 The panel is a place to write, not just a picture to read. Everything you do here is written into the note — the graph holds no data of its own.
 
