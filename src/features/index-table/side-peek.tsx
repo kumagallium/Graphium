@@ -687,6 +687,23 @@ function SidePeekInner({
     };
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      // ピーク本文内の通常リンク（http(s)）は URL リーダーのピークで開き直す。
+      // note-app の document ハンドラはピーク内をスキップするので、ここで拾わないと
+      // クリックが無反応（Web）／外部ブラウザ直行（旧 Tauri 挙動）になる。
+      const linkEl = target.closest("a[href]") as HTMLAnchorElement | null;
+      if (linkEl && linkEl.closest('[contenteditable="true"]')) {
+        const href = linkEl.getAttribute("href") || "";
+        if (/^https?:\/\//i.test(href)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (onOpenMaterialPeek) {
+            onOpenMaterialPeek(buildUrlPeekEntry(href, mediaIndex ?? null));
+          } else {
+            void openExternalUrl(href);
+          }
+          return;
+        }
+      }
       if (!isMentionSpan(target)) return;
       const noteName = target.textContent!.trim().slice(1);
       const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;

@@ -66,6 +66,10 @@ export function installExternalLinkHandler(): void {
       if (!anchor) return;
       const href = anchor.getAttribute("href");
       if (!href || !isExternalHttpUrl(href)) return;
+      // エディタ本文（contenteditable）内のリンクはサイドピークのリーダーで開く
+      // （note-app / side-peek のクリックハンドラが担当）。ここで openUrl すると
+      // 「外部ブラウザとピークが同時に開く」二重動作になるので素通しする。
+      if (anchor.closest('[contenteditable="true"]')) return;
       e.preventDefault();
       void openExternalUrl(anchor.href);
     },
