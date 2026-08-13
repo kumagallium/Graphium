@@ -9,6 +9,7 @@ import {
   getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
+import { blockNoteShadCNComponents } from "./blocknote-shadcn-overrides";
 import { BlockNoteSchema, createCodeBlockSpec, defaultBlockSpecs, defaultStyleSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { codeBlockOptions } from "@blocknote/code-block";
 
@@ -294,6 +295,10 @@ export function SandboxEditor({
       editor={editor as any}
       theme="light"
       editable={editable}
+      // 同梱の shadcn Button は React 19 前提で ref を受け取れず、
+      // テーブルハンドル / ドラッグハンドルのメニューが Radix の anchor を
+      // 掴めないまま「未配置」で描画される（blocknote-shadcn-overrides.tsx 参照）。
+      shadCNComponents={blockNoteShadCNComponents}
       sideMenu={sideMenu === false ? false : usesCustomSideMenu ? false : undefined}
       // 内蔵ツールバーは常に無効化し、下で strategy:"fixed" 付きの Controller を描画する。
       // これをしないと、選択時のフォーマットツールバーが overflow:auto/hidden の
