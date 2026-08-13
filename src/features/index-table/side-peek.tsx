@@ -37,6 +37,7 @@ import { customBlockEntries, KNOWN_BLOCK_TYPES, sanitizeBlocksForLoad } from "..
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
 import { mathSlashItem } from "../../blocks/math";
+import { calcSlashItem } from "../../blocks/calc";
 import { inlineMathSlashItem } from "../inline-math/spec";
 import { stepSlashItem } from "../../blocks/step";
 import { columnsSlashItem } from "../../blocks/multi-column";
@@ -1660,6 +1661,7 @@ function SidePeekInner({
                   columnsSlashItem,
                   mathSlashItem,
                   inlineMathSlashItem,
+                  calcSlashItem,
                   getMemoSlashMenuItem(),
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                   ...(isTauri() ? [sharedCitationSlashItem] : []),
