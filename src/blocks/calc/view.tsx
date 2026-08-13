@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from "react";
 import { Calculator } from "lucide-react";
 import { evaluateSource, isCommentLine, type CalcLineResult } from "./engine";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 
 /** props.results（JSON 文字列）を安全に読む。壊れていたら空扱い */
 function parseResults(raw: string): CalcLineResult[] {
@@ -48,6 +48,8 @@ export const CalcBlock = createReactBlockSpec(
   },
   {
     render: (props) => {
+      // 言語切替でラベルを引き直す（BlockNote の render は Context を辿れないため購読する）
+      useLocaleSubscription();
       const source = String(props.block.props.source ?? "");
       const savedResults = String(props.block.props.results ?? "");
       const editable = (props.editor as any).isEditable !== false;

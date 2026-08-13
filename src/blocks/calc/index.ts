@@ -10,9 +10,11 @@ export const calcBlock: CustomBlockEntry = {
 
 // スラッシュメニュー用アイテム（カーソル位置に空の計算ブロックを挿入）
 export const calcSlashItem = {
-  title: t("slash.calc"),
-  subtext: t("slash.calcSub"),
-  group: t("slash.advancedGroup"),
+  // ラベルは getter で遅延評価する。トップレベルで t() を呼ぶと最初の読み込み時の
+  // 言語で固定され、言語を切り替えても古いラベルが残る（項目は作り直されないため）。
+  get title() { return t("slash.calc"); },
+  get subtext() { return t("slash.calcSub"); },
+  get group() { return t("slash.advancedGroup"); },
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     editor.insertBlocks(
