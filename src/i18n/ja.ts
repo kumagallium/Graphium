@@ -360,9 +360,9 @@ export const ja: Record<string, string> = {
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "高度なブロック",
   "slash.indexTable": "インデックステーブル",
-  "slash.indexTableSub": "データ管理用のテーブルを挿入",
-  "slash.logTable": "記録テーブル",
-  "slash.logTableSub": "行を追加すると日時が自動で入る表",
+  "slash.indexTableSub": "各行からノートを作って紐付けられる表。サンプルや実験の一覧に",
+  "slash.logTable": "時系列テーブル",
+  "slash.logTableSub": "行を足すと日時が自動で入る表。日誌や実験の経時観察に",
   "slash.chart": "チャート",
   "slash.chartSub": "ノート内のテーブルをグラフ表示",
   "slash.bookmark": "ブックマーク",
@@ -1802,20 +1802,20 @@ export const ja: Record<string, string> = {
   "indexTable.menuEnable": "インデックステーブルにする",
   "indexTable.menuDisable": "インデックステーブルを解除",
 
-  // 記録テーブル
+  // 時系列テーブル
   "logTable.colDateTime": "日時",
   "logTable.colValue": "値",
   "logTable.colNote": "メモ",
-  "logTable.namePlaceholder": "記録テーブルの名前",
+  "logTable.namePlaceholder": "時系列テーブルの名前",
   "logTable.nameHint": "名前を付けるとチャートから参照しやすくなります",
   "logTable.autoName": "表 {n}",
-  "logTable.menuEnable": "記録テーブルにする",
-  "logTable.menuDisable": "記録テーブルを解除",
+  "logTable.menuEnable": "時系列テーブルにする",
+  "logTable.menuDisable": "時系列テーブルを解除",
 
   // チャートブロック
   "chart.selectSource": "グラフにするテーブルをこのノートから選択",
   "chart.sourceGone": "参照先のテーブルがこのノートに見つかりません",
-  "chart.noTables": "このノートにはまだテーブルがありません。先に記録テーブルを挿入してください",
+  "chart.noTables": "このノートにはまだテーブルがありません。先に時系列テーブルを挿入してください",
   "chart.noData": "描画できるデータ行がありません",
   "chart.noNumericSeries": "数値の列を系列として 1 つ以上選択してください",
   "chart.settings": "設定",
