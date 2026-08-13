@@ -1793,7 +1793,7 @@ pub fn run() {
                 .text("new-note", "New Note")
                 .item(&new_memo)
                 .separator()
-                .text("export-pdf", "Export as PDF")
+                .text("export-pdf", "Print / PDF")
                 .text("export-prov", "Export PROV-JSON-LD")
                 .separator()
                 .close_window()

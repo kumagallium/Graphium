@@ -73,7 +73,7 @@ The desktop app adds a native menu bar (menu labels are always in English, regar
 
 | Menu | Items |
 |---|---|
-| **File** | **New Note** · **New Memo** (`⌘⇧M`) · **Export as PDF** · **Export PROV-JSON-LD** · Close Window |
+| **File** | **New Note** · **New Memo** (`⌘⇧M`) · **Print / PDF** · **Export PROV-JSON-LD** · Close Window |
 | **Edit** | Standard Undo / Redo / Cut / Copy / Paste / Select All |
 | **View** | **Toggle Graph Panel** · **Toggle AI Chat** · **Zoom In** / **Zoom Out** / **Actual Size** |
 | **Backend** | **Restart Backend** — restarts the bundled AI backend without restarting the app |

@@ -2295,6 +2295,12 @@ function NoteEditorInner({
     }
   }, [title, provDoc, labelStore.labels]);
 
+  // デスクトップ（Tauri）のネイティブメニュー File → Print / PDF からも同じ処理を呼ぶ。
+  // 登録をエディタのマウント中に限るのは、handleExportPdf がエディタの DOM から本文を
+  // 取るため。ノート未表示のときは未登録＝何も起きないが、印刷対象が無いので妥当。
+  // Web では menu-action イベント自体が発火しないので無害。
+  useEffect(() => onMenuAction("export-pdf", () => void handleExportPdf()), [handleExportPdf]);
+
   // ── Markdown エクスポートハンドラー ──
   // ライブエディタ（フルスキーマ）の blocksToMarkdownLossy を使う。
   // PDF と同じくエディタの現在内容（未保存の編集含む）が対象。
