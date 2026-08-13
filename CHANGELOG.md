@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.35.0](https://github.com/kumagallium/Graphium/compare/v0.34.0...v0.35.0) - 2026-08-13
+
+- [fix] Hide the floating toolbar on text-less custom blocks by @kumagallium in https://github.com/kumagallium/Graphium/pull/682
+- fix(i18n): refresh custom block labels and slash menu on locale change by @kumagallium in https://github.com/kumagallium/Graphium/pull/683
+- feat(editor): duplicate a block from the block menu and with Cmd+D by @kumagallium in https://github.com/kumagallium/Graphium/pull/684
+- [feat] Numi-style calc block with unit-aware live evaluation by @kumagallium in https://github.com/kumagallium/Graphium/pull/681
+- [refactor] Print notes through the browser instead of rasterizing to PDF by @kumagallium in https://github.com/kumagallium/Graphium/pull/685
+- [feat] Find images by their OCR text with Cmd+K by @kumagallium in https://github.com/kumagallium/Graphium/pull/687
+
 ## [v0.34.0](https://github.com/kumagallium/Graphium/compare/v0.33.0...v0.34.0) - 2026-08-13
 
 - [feat] Add log table and chart block for time-series observations by @kumagallium in https://github.com/kumagallium/Graphium/pull/665
