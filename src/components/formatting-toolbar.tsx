@@ -43,29 +43,51 @@ const INLINE_LABEL_COLOR_CLASS: Record<InlineLabelKey, string> = {
 const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
 
 /**
- * 現在の選択がチャートブロックの NodeSelection かどうか。
- * チャートは本文テキストを持たず、書式もインラインラベルも AI への引用も
- * 適用できないので、ツールバー自体を出さない（操作は右上の「設定」に集約）。
+ * tiptap の現在の選択が NodeSelection なら、その BlockNote ブロック型を返す。
+ * TextSelection（通常の文字選択）や選択なしのときは null。
  */
-function isChartNodeSelection(editor: any): boolean {
+export function getNodeSelectionBlockType(editor: any): string | null {
   const tiptap = editor?._tiptapEditor;
   const sel = tiptap?.state?.selection;
   const node = sel?.node;
-  if (!node) return false;
-  if (node.type?.name === "chart") return true;
-  if (node.type?.name === "blockContainer") {
-    let found = false;
-    node.descendants((d: any) => {
-      if (found) return false;
-      if (d?.type?.name === "chart") {
-        found = true;
-        return false;
-      }
-      return true;
-    });
-    return found;
+  if (!node) return null;
+
+  // 実測では blockContainer ごと選ばれる（数式・チャート等）。
+  // ノード自身がブロック本体になるケースもあるので祖先も辿る。
+  if (node.type?.name === "blockContainer" && node.attrs?.id) {
+    return (editor.getBlock?.(node.attrs.id)?.type as string) ?? null;
   }
-  return false;
+  const $pos = sel.$from;
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    const ancestor = $pos.node(depth);
+    if (ancestor?.type?.name === "blockContainer" && ancestor.attrs?.id) {
+      return (editor.getBlock?.(ancestor.attrs.id)?.type as string) ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * 選択されているのが「ツールバーに出せる操作が何も無いブロック」かどうか。
+ *
+ * 数式・計算・チャート・区切り線のような content: "none" のブロックは本文テキストを
+ * 持たないため、書式もインラインラベルも適用対象が無く標準アイテムは全部消える。
+ * 残るのは AI ボタン 1 個だが、これも選択テキストが空なので押しても無反応になる
+ * （handleAiClick が即 return する）。結果として「押せないボタンがブロックに
+ * 被さるだけ」になるので、ツールバーごと出さない。ブロック固有の操作は各ブロックが
+ * 自前の UI に持っている（チャートは右上の「設定」、数式はクリックで編集モード）。
+ *
+ * ブロック型のハードコードではなくスキーマの content を見るのは、カスタムブロックが
+ * 増えるたびにここへ追記する必要を無くすため（チャート専用判定だったときに数式・
+ * 計算ブロックを取りこぼした）。
+ *
+ * メディア（image / video / audio / file / pdf）は content: "none" だが、
+ * インラインラベルと画像 OCR の導線をこのツールバーに載せているので対象外。
+ */
+export function isToolbarlessBlockSelection(editor: any): boolean {
+  const blockType = getNodeSelectionBlockType(editor);
+  if (!blockType || MEDIA_BLOCK_TYPES.has(blockType)) return false;
+  return editor?.schema?.blockSchema?.[blockType]?.content === "none";
 }
 
 /**
@@ -134,8 +156,9 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
       ? (editor.getBlock?.(mediaSel.blockId)?.props?.url as string | undefined)
       : undefined;
 
-  // チャートブロックの選択ではツールバーを出さない（全 hooks の後で判定する）
-  if (isChartNodeSelection(editor)) return null;
+  // 本文テキストを持たないブロック（数式・計算・チャート等）の選択では
+  // ツールバーを出さない（全 hooks の後で判定する）
+  if (isToolbarlessBlockSelection(editor)) return null;
 
   const handleAiClick = async () => {
     const selectedText = window.getSelection()?.toString()?.trim();

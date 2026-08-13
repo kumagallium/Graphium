@@ -7,7 +7,7 @@ import { Document, Page } from "react-pdf";
 import { getActiveProvider } from "../../lib/storage/registry";
 import "../../lib/pdfjs-config";
 // BlockNote のブロック render は React ツリー外でも呼ばれ得るため、Context 不要の t を使う
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 
 export const PdfViewerBlock = createReactBlockSpec(
   {
@@ -22,6 +22,8 @@ export const PdfViewerBlock = createReactBlockSpec(
   },
   {
     render: (props) => {
+      // 言語切替でラベルを引き直す（BlockNote の render は Context を辿れないため購読する）
+      useLocaleSubscription();
       const { url, name } = props.block.props;
       const [numPages, setNumPages] = useState<number>(0);
       const [currentPage, setCurrentPage] = useState<number>(1);

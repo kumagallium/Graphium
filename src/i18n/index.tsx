@@ -1,7 +1,13 @@
 // i18n 基盤
 // 軽量カスタム実装: React Context + JSON 辞書
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { en } from "./en";
 import { ja } from "./ja";
 
@@ -24,6 +30,72 @@ function detectLocale(): Locale {
   return "en";
 }
 
+/** 辞書引き + {param} 置換。Context 版と Context 外版で共有する。 */
+function translate(
+  locale: Locale,
+  key: string,
+  params?: Record<string, string>,
+): string {
+  let text = dictionaries[locale][key] ?? dictionaries.en[key] ?? key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      text = text.replace(`{${k}}`, v);
+    }
+  }
+  return text;
+}
+
+// ── ロケールの現在値ストア ──
+// React Context とは別に、モジュールスコープに現在のロケールを持つ。
+// BlockNote のカスタムブロック（createReactBlockSpec の render）や
+// スラッシュメニュー項目は Context を辿れない場所で描画され得るため、
+// そこから翻訳するには Context 非依存の入口が要る。
+//
+// ただし「値を読めるだけ」では言語切替時に古い文字列が残る。購読者に
+// 変更を通知して、Context の外にいるコンポーネントも再レンダーさせる。
+
+let currentLocale: Locale = detectLocale();
+const localeListeners = new Set<() => void>();
+
+/** Context 外用: 現在のロケールを更新し、購読者に通知する（LocaleProvider が呼ぶ） */
+export function syncLocale(locale: Locale) {
+  if (currentLocale === locale) return;
+  currentLocale = locale;
+  // 通知中に購読解除されてもイテレーションを壊さないようコピーしてから回す
+  for (const listener of [...localeListeners]) listener();
+}
+
+/** Context 外用: 現在のロケール取得 */
+export function getLocale(): Locale {
+  return currentLocale;
+}
+
+function subscribeLocale(listener: () => void): () => void {
+  localeListeners.add(listener);
+  return () => {
+    localeListeners.delete(listener);
+  };
+}
+
+/**
+ * ロケール変更時に再レンダーさせるフック。
+ *
+ * LocaleProvider の Context を必要としないので、BlockNote のカスタムブロックや
+ * インラインコンテンツの render のように React ツリー外でも呼ばれ得る場所で使える。
+ * 戻り値を使わなくてよい（モジュールスコープの t() が新しいロケールで再評価される）。
+ *
+ * 使い方: モジュールスコープの t() を呼ぶブロックコンポーネントの先頭で 1 回呼ぶ。
+ * 子コンポーネントは親の再レンダーに追従するので、最上位で 1 回で足りる。
+ */
+export function useLocaleSubscription(): Locale {
+  return useSyncExternalStore(subscribeLocale, getLocale, getLocale);
+}
+
+/** Context 外用: 翻訳関数 */
+export function t(key: string, params?: Record<string, string>) {
+  return translate(currentLocale, key, params);
+}
+
 // ── Context ──
 
 type LocaleContextValue = {
@@ -37,25 +109,17 @@ const LocaleContext = createContext<LocaleContextValue | null>(null);
 // ── Provider ──
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [locale, _setLocale] = useState<Locale>(detectLocale);
+  // Context 内の値も同じストアから引く。State を別に持つと Context 内外で
+  // ロケールがずれて、片方だけ古い言語のまま残る。
+  const locale = useLocaleSubscription();
 
   const setLocale = useCallback((newLocale: Locale) => {
-    _setLocale(newLocale);
     syncLocale(newLocale);
     localStorage.setItem(STORAGE_KEY, newLocale);
   }, []);
 
   const t = useCallback(
-    (key: string, params?: Record<string, string>) => {
-      let text = dictionaries[locale][key] ?? dictionaries.en[key] ?? key;
-      // {param} 形式のプレースホルダーを置換
-      if (params) {
-        for (const [k, v] of Object.entries(params)) {
-          text = text.replace(`{${k}}`, v);
-        }
-      }
-      return text;
-    },
+    (key: string, params?: Record<string, string>) => translate(locale, key, params),
     [locale],
   );
 
@@ -77,32 +141,6 @@ export function useLocale() {
 /** 翻訳関数のみ取得するショートカット */
 export function useT() {
   return useLocale().t;
-}
-
-// ── Context 外で使う翻訳ユーティリティ ──
-// BlockNote のスラッシュメニュー等、React ツリー外で翻訳が必要な場合に使用
-
-let currentLocale: Locale = detectLocale();
-
-/** Context 外用: 現在のロケールを更新（LocaleProvider が呼ぶ） */
-export function syncLocale(locale: Locale) {
-  currentLocale = locale;
-}
-
-/** Context 外用: 翻訳関数 */
-export function t(key: string, params?: Record<string, string>) {
-  let text = dictionaries[currentLocale][key] ?? dictionaries.en[key] ?? key;
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      text = text.replace(`{${k}}`, v);
-    }
-  }
-  return text;
-}
-
-/** Context 外用: 現在のロケール取得 */
-export function getLocale(): Locale {
-  return currentLocale;
 }
 
 // ── ラベル表示名変換 ──

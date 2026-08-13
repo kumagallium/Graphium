@@ -25,9 +25,11 @@ export const sharedCitationBlock: CustomBlockEntry = {
 // 共有ストレージはデスクトップ限定機能のため、組み込み側（note-app / side-peek）で
 // isTauri() のときだけメニューに加える。
 export const sharedCitationSlashItem = {
-  title: t("slash.sharedCitation"),
-  subtext: t("slash.sharedCitationSub"),
-  group: t("cite.slashGroup"),
+  // ラベルは getter で遅延評価する。トップレベルで t() を呼ぶと最初の読み込み時の
+  // 言語で固定され、言語を切り替えても古いラベルが残る（項目は作り直されないため）。
+  get title() { return t("slash.sharedCitation"); },
+  get subtext() { return t("slash.sharedCitationSub"); },
+  get group() { return t("cite.slashGroup"); },
   onItemClick: (editor: any) => {
     openSharedCitePicker(editor);
   },

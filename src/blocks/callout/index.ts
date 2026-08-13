@@ -10,9 +10,11 @@ export const calloutBlock: CustomBlockEntry = {
 
 // スラッシュメニュー用アイテム（カーソル位置に Callout を挿入）
 export const calloutSlashItem = {
-  title: t("slash.callout"),
-  subtext: t("slash.calloutSub"),
-  group: t("slash.advancedGroup"),
+  // ラベルは getter で遅延評価する。トップレベルで t() を呼ぶと最初の読み込み時の
+  // 言語で固定され、言語を切り替えても古いラベルが残る（項目は作り直されないため）。
+  get title() { return t("slash.callout"); },
+  get subtext() { return t("slash.calloutSub"); },
+  get group() { return t("slash.advancedGroup"); },
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     const inserted = editor.insertBlocks(

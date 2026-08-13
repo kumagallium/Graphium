@@ -24,7 +24,7 @@ import { useLinkStore } from "../../features/block-link/store";
 import { useLabelStore } from "../../features/context-label/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
 import { appendEntitySpanToStep, collectStepOutputs, stepHasInputText } from "./step-io";
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 
 /** inline content からプレーンテキストを取り出す */
 function inlineText(block: any): string {
@@ -229,6 +229,8 @@ export const StepBlock = createReactBlockSpec(
   },
   {
     render: (props) => {
+      // 言語切替でラベルを引き直す（BlockNote の render は Context を辿れないため購読する）
+      useLocaleSubscription();
       const linkStore = useLinkStore();
       const labelStore = useLabelStore();
       const [pickerOpen, setPickerOpen] = useState(false);

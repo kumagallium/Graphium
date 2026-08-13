@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 import { useLogTableStore } from "./store";
 import { computeLogTableDisplayNames } from "./auto-name";
 
@@ -26,6 +26,8 @@ export function LogTableCaptionLayer({
 }: {
   editorRef: React.RefObject<any>;
 }) {
+  // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
+  useLocaleSubscription();
   const store = useLogTableStore();
   const [captions, setCaptions] = useState<CaptionPos[]>([]);
   const [editing, setEditing] = useState<string | null>(null);

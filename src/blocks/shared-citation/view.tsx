@@ -19,9 +19,11 @@ import type { SharedEntryType } from "../../lib/storage/shared";
 import { resolveCitation, type CitationResolution } from "./resolve";
 import { entryToCachedProps } from "./props";
 import { hasSharedEntryOpenCallback, openSharedEntry } from "./callbacks";
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 
 function SharedCitationView({ block, editor }: { block: any; editor: any }) {
+  // 言語切替でラベルを引き直す（BlockNote の render は Context を辿れないため購読する）
+  useLocaleSubscription();
   const {
     sharedId,
     citedHash,

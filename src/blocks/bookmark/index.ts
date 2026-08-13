@@ -15,9 +15,11 @@ export const bookmarkBlock: CustomBlockEntry = {
 
 // スラッシュメニュー用アイテム（ピッカーモーダルを開く）
 export const bookmarkSlashItem = {
-  title: t("slash.bookmark"),
-  subtext: t("slash.bookmarkSub"),
-  group: t("asset.slashGroup"),
+  // ラベルは getter で遅延評価する。トップレベルで t() を呼ぶと最初の読み込み時の
+  // 言語で固定され、言語を切り替えても古いラベルが残る（項目は作り直されないため）。
+  get title() { return t("slash.bookmark"); },
+  get subtext() { return t("slash.bookmarkSub"); },
+  get group() { return t("asset.slashGroup"); },
   onItemClick: (editor: any) => {
     openBookmarkPicker(editor);
   },

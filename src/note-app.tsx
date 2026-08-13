@@ -11,6 +11,7 @@ import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
 import { mathSlashItem } from "./blocks/math";
+import { calcSlashItem } from "./blocks/calc";
 import { inlineMathSlashItem } from "./features/inline-math/spec";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { stepSlashItem } from "./blocks/step";
@@ -1596,9 +1597,11 @@ function NoteEditorInner({
   // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
   const newNoteSlashItem: SlashMenuItem = useMemo(
     () => ({
-      title: tStatic("slashMenu.newNote.title"),
-      subtext: tStatic("slashMenu.newNote.subtext"),
-      group: tStatic("slashMenu.newNote.group"),
+      // ラベルは getter で遅延評価する。この項目は useMemo で保持されるので、
+      // ここで t() を即時評価すると言語を切り替えても古いラベルが残る。
+      get title() { return tStatic("slashMenu.newNote.title"); },
+      get subtext() { return tStatic("slashMenu.newNote.subtext"); },
+      get group() { return tStatic("slashMenu.newNote.group"); },
       aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
       onItemClick: (editor: any) => {
         const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
@@ -4391,7 +4394,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
