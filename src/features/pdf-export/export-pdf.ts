@@ -176,6 +176,28 @@ export async function exportNoteToPdf(options: {
   // 描かれた SVG はそのままだと右で切れる（本文幅のチャート）か、カラムから
   // はみ出して隣に重なる（マルチカラム内のチャート）。挿入後のレイアウトで
   // 各チャートのコンテナ実効幅を測り、viewBox を後付けして属性を書き換える。
+  // 改ページの泣き別れ制御。html2pdf の css モードは inline style を見るので
+  // ここで実測して直接付ける。
+  // - 図の類（チャート・画像・数式・マルチカラム行）: ページに収まる高さなら常に回避
+  // - テーブル: ページ半分以下の小さいものだけ回避。大きいテーブルまで丸ごと
+  //   次ページへ送ると「1 ページ目がタイトルだけで白紙」になる（旧 avoid-all の
+  //   実害）ので、大きいものは行の途中で分割されるに任せる
+  const PAGE_CONTENT_PX = 1030; // A4 縦 297mm - 余白 24mm = 273mm の 96dpi 換算
+  const avoidBreak = (el: HTMLElement) => {
+    el.style.breakInside = "avoid";
+    el.style.pageBreakInside = "avoid";
+  };
+  wrapper
+    .querySelectorAll<HTMLElement>(
+      '.pdf-export-content [data-test="chart-block"], .pdf-export-content img, .pdf-export-content [data-test="math-block"], .pdf-export-content [data-node-type="columnList"]'
+    )
+    .forEach((el) => {
+      if (el.getBoundingClientRect().height <= PAGE_CONTENT_PX) avoidBreak(el);
+    });
+  wrapper.querySelectorAll<HTMLElement>(".pdf-export-content table").forEach((el) => {
+    if (el.getBoundingClientRect().height <= PAGE_CONTENT_PX / 2) avoidBreak(el);
+  });
+
   wrapper
     .querySelectorAll<SVGSVGElement>('[data-test="chart-block"] svg')
     .forEach((svg) => {
@@ -261,7 +283,10 @@ export async function exportNoteToPdf(options: {
       format: "a4",
       orientation: "portrait" as const,
     },
-    pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+    // avoid-all は使わない: ページ 1 の残りに収まらない大きな要素（長いテーブル等）
+    // を丸ごと次ページへ送り、「1 ページ目がタイトルだけで白紙」になる。
+    // 泣き別れ回避は上の選択的 break-inside（図は常時、テーブルは小さいものだけ）で行う
+    pagebreak: { mode: ["css", "legacy"] },
   };
 
   // html2pdf().save() は内部で <a download> を生成する。WKWebView (Tauri) は
