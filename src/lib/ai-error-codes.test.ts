@@ -27,8 +27,10 @@ describe("aiErrorCodeOf", () => {
   });
 
   it("素の Error に code プロパティが載っていても既知のものだけ通す", () => {
-    const known = Object.assign(new Error("x"), { code: "SUBSCRIPTION_AUTH_EXPIRED" });
-    expect(aiErrorCodeOf(known)).toBe("SUBSCRIPTION_AUTH_EXPIRED");
+    const known = Object.assign(new Error("x"), {
+      code: "COPILOT_SUBSCRIPTION_AUTH_EXPIRED",
+    });
+    expect(aiErrorCodeOf(known)).toBe("COPILOT_SUBSCRIPTION_AUTH_EXPIRED");
     // Node の fs エラー等の無関係な code（ENOENT）は拾わない
     const unknown = Object.assign(new Error("x"), { code: "ENOENT" });
     expect(aiErrorCodeOf(unknown)).toBeUndefined();

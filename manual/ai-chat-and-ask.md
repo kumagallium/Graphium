@@ -47,15 +47,12 @@ The **Grounding** chip next to the input controls what evidence the AI draws on.
 
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
-Choosing **External** forces a web search. There are two ways to give Graphium one:
-
-- a **Claude (Subscription · Claude Code)** model, which has web search built in, or
-- a search MCP server (such as Tavily) registered in Settings → **AI**.
+Choosing **External** forces a web search. To give Graphium one, register a search MCP server (such as Tavily) in Settings → **AI**.
 
 So you can tell where a statement comes from, sources at the end of an answer are labeled **📓 From your notes** for internal citations and **🌐 Web sources** for pages found on the web. Clicking an internal citation opens that knowledge page.
 
 ::: warning When no web search is configured
-If you select **External** without either search path, a dismissable banner appears above the input: "No web search is set up — External will answer without live web results. Add a search MCP server (e.g. Tavily) or a Claude subscription model," with an **Open settings** shortcut. The question still runs — the answer just cannot include live web results.
+If you select **External** without a search MCP server, a dismissable banner appears above the input: "No web search is set up — External will answer without live web results. Add a search MCP server (e.g. Tavily)," with an **Open settings** shortcut. The question still runs — the answer just cannot include live web results.
 :::
 
 ## Editing, regenerating, and forking <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" />

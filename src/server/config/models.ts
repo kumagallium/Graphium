@@ -59,6 +59,7 @@ type StoredModelConfig = Omit<ModelConfig, "apiKey"> & { apiKey?: string };
 let serverMode: ServerMode = "node";
 let dataDir = join(process.cwd(), "data");
 let migrated = false;
+let purgedRemovedProviders = false;
 
 /** サーバーモードを設定する（Vercel ではファイル I/O を無効化） */
 export function setServerMode(mode: ServerMode): void {
@@ -74,6 +75,7 @@ export function setDataDir(dir: string): void {
   dataDir = dir;
   // dataDir が変わったら次の読み込みで再度移行を試みる
   migrated = false;
+  purgedRemovedProviders = false;
 }
 
 function modelsPath(): string {
@@ -156,8 +158,38 @@ function hydrate(stored: StoredModelConfig[]): ModelConfig[] {
   return stored.map((m) => ({ ...m, apiKey: m.apiKey ?? "" }));
 }
 
+/**
+ * 撤去済みプロバイダ（claude-subscription）の登録エントリを一度だけ取り除く。
+ *
+ * claude-subscription は Anthropic の規約（サードパーティ製品からの Pro/Max サブスク
+ * 利用の明文禁止）を受けて撤去した。エントリを残すと推論のたびに createModel が
+ * 失敗し続けるだけなので、初回読み込みで models.json から静かに除去し、warn を残す。
+ * 該当ユーザーは Copilot サブスク or API キーのモデルを登録し直す（設定 UI に導線あり）。
+ */
+function purgeRemovedProvidersIfNeeded(): void {
+  if (purgedRemovedProviders) return;
+  purgedRemovedProviders = true;
+  const stored = readRawStored();
+  const removed = stored.filter((m) => m.provider === "claude-subscription");
+  if (removed.length === 0) return;
+  writeRawStored(stored.filter((m) => m.provider !== "claude-subscription"));
+  for (const m of removed) {
+    if (isKeychainEnabled()) {
+      try {
+        deleteApiKey(m.id);
+      } catch {
+        /* サブスクエントリはキー無しが正常なので、Keychain 掃除の失敗は無視してよい */
+      }
+    }
+    console.warn(
+      `[models] removed "${m.name}" — the claude-subscription provider was discontinued (Anthropic's terms do not allow third-party apps to use subscription auth). Register a GitHub Copilot subscription or an API-key model instead.`,
+    );
+  }
+}
+
 function readModels(): ModelConfig[] {
   migrateIfNeeded();
+  purgeRemovedProvidersIfNeeded();
   return hydrate(readRawStored());
 }
 
@@ -189,8 +221,8 @@ export function getDefaultModel(): ModelConfig | undefined {
  * UI 側はこれを見て「保存済みキーが読めない / 再入力してください」の
  * 警告を出す。Vercel モードはヘッダ経由でキーが渡る前提なので対象外。
  *
- * サブスク型プロバイダ（claude-subscription / copilot-subscription）は CLI の
- * サブスク認証を使い API キーを持たない（空キーが正常）。これを対象に含めると
+ * サブスク型プロバイダ（copilot-subscription）は CLI のサブスク認証を使い
+ * API キーを持たない（空キーが正常）。これを対象に含めると
  * 「キーを貼り直して」と誤案内するので除外する。
  */
 export function findModelsWithMissingApiKey(): Array<{

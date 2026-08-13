@@ -71,7 +71,7 @@ Label as much or as little as you like — **the graph only shows the parts you 
 
 ### Write with AI beside you *(needs AI)*
 
-Register a model once — your Claude subscription needs no API key, or bring keys for Anthropic, OpenAI, Google Gemini, or any OpenAI-compatible endpoint ([Setting up AI](/ai-setup)). Then the chat panel discusses the note you're in, and `⌘K` (`Ctrl+K`) opens the Composer: type to jump to a note, or press `⌘Enter` to ask the AI with your own notes as context. Answers cite the notes they drew on, so you can check them. See [Chat & Ask](/ai-chat-and-ask).
+Register a model once — bring keys for Anthropic, OpenAI, Google Gemini, or any OpenAI-compatible endpoint ([Setting up AI](/ai-setup)). Then the chat panel discusses the note you're in, and `⌘K` (`Ctrl+K`) opens the Composer: type to jump to a note, or press `⌘Enter` to ask the AI with your own notes as context. Answers cite the notes they drew on, so you can check them. See [Chat & Ask](/ai-chat-and-ask).
 
 ### Turn notes into knowledge *(needs AI)*
 

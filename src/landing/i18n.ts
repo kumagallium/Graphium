@@ -34,7 +34,7 @@ export const en = {
     "Jot ideas down as they come and connect them with @ references. Up to here, it feels as light as any note app.",
   "how.step2.title": "Expand with AI",
   "how.step2.body":
-    "Connect your own AI — a Claude subscription or an API key — and it lifts claims and insights out of your notes: connections you didn't notice yourself.",
+    "Connect your own AI — an API key or your GitHub Copilot subscription — and it lifts claims and insights out of your notes: connections you didn't notice yourself.",
   "how.step3.title": "Trace to the origin",
   "how.step3.body":
     "Any line — yours or the AI's — walks back to its source note in one click. Because you can trace it, you can trust it enough to explore.",
@@ -76,7 +76,7 @@ export const en = {
   "trust.sub": "Your AI, your storage, open source.",
   "trust.ai.title": "Runs on your own AI",
   "trust.ai.body":
-    "Graphium is built to think alongside AI — your AI. A Claude subscription or an API key connects it, and nothing is sent anywhere without your say.",
+    "Graphium is built to think alongside AI — your AI. An API key or your GitHub Copilot subscription connects it, and nothing is sent anywhere without your say.",
   "trust.storage.title": "Your storage",
   "trust.storage.body":
     "Notes are plain JSON files on your disk (desktop) or in your browser (web). Point the desktop app at a Drive / iCloud / Dropbox folder for sync with no extra accounts.",
@@ -92,14 +92,14 @@ export const en = {
   "start.online.cta": "Open the preview",
   "start.desktop.title": "Desktop app",
   "start.desktop.body":
-    "Where Graphium comes into its own. With a Claude subscription, AI is one click away — no API key. macOS (Apple Silicon) and Windows.",
+    "Where Graphium comes into its own. With a GitHub Copilot subscription, AI is one click away — no API key. macOS (Apple Silicon) and Windows.",
   "start.desktop.cta": "Download",
 
   // FAQ
   "faq.heading": "FAQ",
   "faq.ai.q": "Do I need AI to use it?",
   "faq.ai.a":
-    "Writing, linking, and tracing all work without AI. But Graphium comes into its own when you think with it — a Claude subscription or an API key connects in minutes.",
+    "Writing, linking, and tracing all work without AI. But Graphium comes into its own when you think with it — an API key or a GitHub Copilot subscription connects in minutes.",
   "faq.scope.q": "Can I control what the AI reads?",
   "faq.scope.a":
     "Yes. Every AI conversation has a three-way grounding scope: External adds a fresh web search and is told to cite only what it actually finds, Internal cross-searches the knowledge distilled from your notes, and This note narrows down to just what the note cites — originals first, so quotes come from the source text rather than a summary.",
@@ -111,7 +111,7 @@ export const en = {
     "With you. Desktop notes are plain JSON files on your disk, and the browser preview keeps them in your browser. Nothing is sent anywhere without your say.",
   "faq.free.q": "Is it free?",
   "faq.free.a":
-    "Yes — Graphium is open source under Apache 2.0 and free to use. If you use the AI features, the only cost is your own Claude subscription or API key.",
+    "Yes — Graphium is open source under Apache 2.0 and free to use. If you use the AI features, the only cost is your own API key or AI subscription.",
 
   // Footer
   "footer.builtBy": "Built by",
@@ -144,7 +144,7 @@ export const ja: Record<keyof typeof en, string> = {
     "思いつきをそのまま書き、@ 参照でノート同士を繋ぎます。ここまでは、ふつうのノートと同じ気軽さです。",
   "how.step2.title": "AI と広げる",
   "how.step2.body":
-    "あなたの AI(Claude のサブスクや API キー)を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。",
+    "あなたの AI(API キーや GitHub Copilot のサブスク)を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。",
   "how.step3.title": "起源まで辿る",
   "how.step3.body":
     "AI が手渡した一文も、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。辿れるからこそ、安心して広げられるのです。",
@@ -182,7 +182,7 @@ export const ja: Record<keyof typeof en, string> = {
   "trust.sub": "あなたの AI、あなたのストレージ、オープンソース。",
   "trust.ai.title": "あなたの AI で動く",
   "trust.ai.body":
-    "Graphium は AI と一緒に考えるためのノートです。動かすのは「あなたの AI」(Claude のサブスクや API キー)。何を渡すかはあなたが決め、断りなく外部へ送りません。",
+    "Graphium は AI と一緒に考えるためのノートです。動かすのは「あなたの AI」(API キーや GitHub Copilot のサブスク)。何を渡すかはあなたが決め、断りなく外部へ送りません。",
   "trust.storage.title": "あなたのストレージ",
   "trust.storage.body":
     "ノートはプレーンな JSON ファイルとして、デスクトップ版ならローカルに、Web 版ならブラウザ内に保存されます。保存先を Drive / iCloud / Dropbox の同期フォルダにすれば、追加のアカウント連携なしで同期できます。",
@@ -197,13 +197,13 @@ export const ja: Record<keyof typeof en, string> = {
   "start.online.cta": "プレビューを開く",
   "start.desktop.title": "デスクトップアプリ",
   "start.desktop.body":
-    "Graphium の本領はこちらです。Claude のサブスクがあれば API キーなしの 1 クリックで AI が動き出します。macOS (Apple Silicon) / Windows 対応。",
+    "Graphium の本領はこちらです。GitHub Copilot のサブスクがあれば API キーなしの 1 クリックで AI が動き出します。macOS (Apple Silicon) / Windows 対応。",
   "start.desktop.cta": "ダウンロード",
 
   "faq.heading": "よくある質問",
   "faq.ai.q": "AI は必須ですか?",
   "faq.ai.a":
-    "書く・繋ぐ・辿るだけなら、AI なしでも動きます。ただ、Graphium の本領は AI と一緒に考えるところにあります。Claude のサブスクか API キーがあれば、数分で繋がります。",
+    "書く・繋ぐ・辿るだけなら、AI なしでも動きます。ただ、Graphium の本領は AI と一緒に考えるところにあります。API キーか GitHub Copilot のサブスクがあれば、数分で繋がります。",
   "faq.scope.q": "AI が読む範囲は選べますか?",
   "faq.scope.a":
     "選べます。AI との会話には「渡す範囲」という切り替えが付いています。「外部参照」は Web を検索して実際に見つかった出典だけを引くよう指示され、「内部参照」はノートから蒸留された知識を横断検索し、「ノート内参照」は引用したものだけに絞る、という 3 段階です。範囲を絞るのは、引用や数値を要約ではなく原文から引くためなのです。",
@@ -215,7 +215,7 @@ export const ja: Record<keyof typeof en, string> = {
     "あなたの手元です。デスクトップ版はローカルのプレーンな JSON ファイル、ブラウザ版はブラウザ内に保存されます。断りなく外部へ送ることはありません。",
   "faq.free.q": "無料ですか?",
   "faq.free.a":
-    "はい。Apache 2.0 のオープンソースで、アプリは無料です。AI 機能を使うときにかかるのは、あなた自身の Claude サブスクや API キーの費用だけです。",
+    "はい。Apache 2.0 のオープンソースで、アプリは無料です。AI 機能を使うときにかかるのは、あなた自身の API キーや AI サブスクの費用だけです。",
 
   "footer.builtBy": "作: ",
   "footer.repo": "GitHub",

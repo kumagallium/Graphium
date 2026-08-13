@@ -21,9 +21,9 @@ const anthropic = {
 } as never;
 const subscription = {
   id: "2",
-  name: "Opus-latest",
-  provider: "claude-subscription",
-  modelId: "opus",
+  name: "Copilot-default",
+  provider: "copilot-subscription",
+  modelId: "default",
   apiKey: "",
   createdAt: "",
 } as never;
@@ -39,9 +39,9 @@ describe("resolveModelConfig — silent fallback の解消", () => {
   });
 
   it("指定モデルが存在すればそれを返す（サブスクを選んだらサブスクのまま）", () => {
-    const cfg = resolveModelConfig(fakeCtx(), { modelName: "Opus-latest" });
-    expect(cfg?.name).toBe("Opus-latest");
-    expect(cfg?.provider).toBe("claude-subscription");
+    const cfg = resolveModelConfig(fakeCtx(), { modelName: "Copilot-default" });
+    expect(cfg?.name).toBe("Copilot-default");
+    expect(cfg?.provider).toBe("copilot-subscription");
   });
 
   it("指定モデルが見つからない場合、先頭の課金モデルへ黙って落とさず undefined を返す", () => {

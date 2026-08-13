@@ -41,7 +41,7 @@ Jot ideas down as they come and connect them with `@` references. Up to here, it
 <p align="center"><img src="public/landing/screen-editor.png" alt="Graphium editor showing a note with @-references to other notes" width="760" /></p>
 
 ### 2. Expand with AI
-Connect your own AI — a Claude subscription or an API key — and it lifts claims and insights out of your notes: connections you didn't notice yourself.
+Connect your own AI — an API key or your GitHub Copilot subscription — and it lifts claims and insights out of your notes: connections you didn't notice yourself.
 
 <p align="center"><img src="public/landing/screen-knowledge.png" alt="Knowledge list with AI-extracted claims and insights" width="760" /></p>
 

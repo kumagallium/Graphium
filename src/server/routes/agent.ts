@@ -114,8 +114,8 @@ app.post("/run", async (c) => {
   }
 
   // 外部参照（external grounding）: ユーザーが明示的に「世界の known を取り込む」を選んだ。
-  // Web 検索を必ず実行して外部ソースで裏づけるよう強制する。検索経路は既存の 2 本
-  // （claude-subscription 内蔵 WebSearch = A / 検索 MCP = B）で、ここでは指示のみ足す。
+  // Web 検索を必ず実行して外部ソースで裏づけるよう強制する。検索経路は検索 MCP
+  // （Tavily 等）のツールで、ここでは指示のみ足す。
   // 記憶由来 URL の禁止は world-grounding と同じ原則（モデルは DOI/URL を捏造する）。
   if (body.grounding_scope && forcesWebSearch(body.grounding_scope)) {
     systemPrompt += `\n\n${EXTERNAL_GROUNDING_INSTRUCTION}`;
@@ -125,9 +125,7 @@ app.post("/run", async (c) => {
   // OpenAI 互換系（gpt-oss-120b 等）はネイティブ tool calling 非対応で system prompt に
   // tool 定義を埋め込む fallback ループを使うため、長大な PROV ラベル指示と競合してツール
   // 呼び出しが弱まる。Ask モードでは PROV ラベルを生成する必然性も薄いので抑制する。
-  const skipLabeledOutput =
-    modelConfig.provider === "openai-compatible" ||
-    modelConfig.provider === "claude-subscription";
+  const skipLabeledOutput = modelConfig.provider === "openai-compatible";
   if (!skipLabeledOutput) {
     systemPrompt += buildLabeledOutputInstruction(body.language || "en");
   }
@@ -178,9 +176,7 @@ app.post("/run", async (c) => {
   const { tools } = await getMCPTools([...byName.values()]);
 
   try {
-    // チャットだけは claude-subscription で内蔵 WebSearch / WebFetch を解禁する
-    // （翻訳・Wiki 等の非チャット経路には波及させない。詳細は createModel の allowWebSearch）。
-    const model = await createModel(modelConfig, { allowWebSearch: true });
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,

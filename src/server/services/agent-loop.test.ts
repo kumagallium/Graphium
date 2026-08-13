@@ -3,17 +3,16 @@ import { describeAuthError, runAgentLoop } from "./agent-loop.js";
 import { aiErrorCodeOf } from "../../lib/ai-error-codes.js";
 
 describe("describeAuthError", () => {
-  it("claude-subscription の 401 は再ログイン導線（英語）+ SUBSCRIPTION_AUTH_EXPIRED を返す", () => {
-    // 実際にユーザーが踏んだエラー文言（Claude Code CLI の OAuth 切れ）
+  it("copilot-subscription の 401 は再サインイン導線（英語）+ COPILOT_SUBSCRIPTION_AUTH_EXPIRED を返す", () => {
     const err = new Error(
       'Failed to authenticate. API Error: 401 {"type":"error","error":{"type":"authentication_error","message":"Invalid authentication credentials"}}',
     );
-    const result = describeAuthError(err, "claude-subscription");
+    const result = describeAuthError(err, "copilot-subscription");
     expect(result).not.toBeNull();
-    expect(result!.code).toBe("SUBSCRIPTION_AUTH_EXPIRED");
-    // ターミナルでの `claude` 再ログイン導線が含まれること
-    expect(result!.message).toContain("claude");
-    expect(result!.message.toLowerCase()).toContain("log in");
+    expect(result!.code).toBe("COPILOT_SUBSCRIPTION_AUTH_EXPIRED");
+    // ターミナルでの `copilot` 再サインイン導線が含まれること
+    expect(result!.message).toContain("copilot");
+    expect(result!.message.toLowerCase()).toContain("sign in");
   });
 
   it("anthropic 等の 401 は API キー確認の導線（英語）+ INVALID_API_KEY を返す", () => {
@@ -61,14 +60,14 @@ describe("runAgentLoop の認証エラー変換", () => {
         modelConfig: {
           id: "m1",
           name: "test",
-          provider: "claude-subscription",
+          provider: "copilot-subscription",
           modelId: "test-model",
           apiKey: "",
         } as never,
       }),
     ).rejects.toSatisfy((err: unknown) => {
       // 機械可読 code が載っていること（クライアントが i18n 変換の鍵にする）
-      return aiErrorCodeOf(err) === "SUBSCRIPTION_AUTH_EXPIRED";
+      return aiErrorCodeOf(err) === "COPILOT_SUBSCRIPTION_AUTH_EXPIRED";
     });
   });
 });

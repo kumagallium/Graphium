@@ -8,8 +8,6 @@
 export const AI_ERROR_CODES = {
   /** モデルが 1 件も登録されていない（400） */
   NO_MODEL_REGISTERED: "NO_MODEL_REGISTERED",
-  /** claude-subscription（Claude Code CLI 経由）の OAuth セッション切れ（401） */
-  SUBSCRIPTION_AUTH_EXPIRED: "SUBSCRIPTION_AUTH_EXPIRED",
   /** copilot-subscription（GitHub Copilot CLI 経由）の認証切れ・未ログイン（401） */
   COPILOT_SUBSCRIPTION_AUTH_EXPIRED: "COPILOT_SUBSCRIPTION_AUTH_EXPIRED",
   /** API キーが無効か期限切れ（401） */

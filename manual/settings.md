@@ -44,7 +44,7 @@ Everything AI-related, ordered as a setup flow: register models first, then assi
 
 | Group | What it does |
 |---|---|
-| **Registered Models** | Add and manage models — Anthropic, OpenAI, Google Gemini, OpenAI-compatible endpoints, or your Claude subscription (no API key) — with optional per-model pricing. |
+| **Registered Models** | Add and manage models — Anthropic, OpenAI, Google Gemini, or OpenAI-compatible endpoints — with optional per-model pricing. |
 | **Model assignment** | Choose which registered model plays each role: **Default model**, **Chat & Insight model**, and **Embedding model** (with a **Test embedding** check). |
 | **World grounding** | Turn on **Auto-ground new knowledge** and optionally set a dedicated grounding model; see [World grounding](/ai-grounding). |
 | **MCP Servers** <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" /> | Connect external tool servers directly — **Paste JSON** from a server's README, configure one by hand with **Manual**, or pull candidates **From registry**. |

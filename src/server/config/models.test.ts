@@ -6,11 +6,12 @@
 // non-keychain（ファイルベース）の経路だけを検証する。
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   findModelsWithMissingApiKey,
+  listModels,
   setDataDir,
   setServerMode,
 } from "./models.js";
@@ -120,20 +121,20 @@ describe("findModelsWithMissingApiKey", () => {
     ]);
   });
 
-  it("does not flag claude-subscription models (keyless by design)", () => {
-    // claude-subscription は Claude Code のサブスク認証を使い API キーを持たない。
+  it("does not flag copilot-subscription models (keyless by design)", () => {
+    // copilot-subscription は Copilot CLI のサブスク認証を使い API キーを持たない。
     // 空キーでも事故ではないので警告対象に含めてはいけない。
     writeFileSync(
       join(dir, "models.json"),
       JSON.stringify([
         {
           id: "m1",
-          name: "Opus-latest",
-          provider: "claude-subscription",
-          modelId: "opus",
+          name: "Copilot-default",
+          provider: "copilot-subscription",
+          modelId: "default",
           apiKey: "",
           apiBase: null,
-          createdAt: "2026-06-19T00:00:00Z",
+          createdAt: "2026-08-13T00:00:00Z",
         },
         {
           id: "m2",
@@ -150,6 +151,41 @@ describe("findModelsWithMissingApiKey", () => {
     expect(findModelsWithMissingApiKey()).toEqual([
       { id: "m2", name: "broken-anthropic", provider: "anthropic" },
     ]);
+  });
+
+  it("purges stored claude-subscription models on read (provider discontinued)", () => {
+    // 撤去済みプロバイダのエントリは初回読み込みで models.json から取り除かれ、
+    // 一覧にも出ない（残すと推論のたびに createModel が失敗し続けるだけのため）。
+    writeFileSync(
+      join(dir, "models.json"),
+      JSON.stringify([
+        {
+          id: "m1",
+          name: "Claude (subscription)",
+          provider: "claude-subscription",
+          modelId: "sonnet",
+          apiKey: "",
+          apiBase: null,
+          createdAt: "2026-06-19T00:00:00Z",
+        },
+        {
+          id: "m2",
+          name: "keyed-anthropic",
+          provider: "anthropic",
+          modelId: "claude-opus-4-8",
+          apiKey: "sk-...",
+          apiBase: null,
+          createdAt: "2026-06-19T00:00:00Z",
+        },
+      ]),
+    );
+    const models = listModels();
+    expect(models.map((m) => m.id)).toEqual(["m2"]);
+    // ファイル側からも除去され、次回以降の読み込みに現れない
+    const stored = JSON.parse(readFileSync(join(dir, "models.json"), "utf-8")) as {
+      id: string;
+    }[];
+    expect(stored.map((m) => m.id)).toEqual(["m2"]);
   });
 
   it("returns empty in vercel mode regardless of file contents", () => {
