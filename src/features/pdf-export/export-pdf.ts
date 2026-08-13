@@ -129,6 +129,33 @@ export async function exportNoteToPdf(options: {
   contentClone.querySelectorAll(
     '[class*="DragHandle"], [class*="dragHandle"], [draggable="true"]:not([data-node-type])'
   ).forEach((el) => el.remove());
+  // チャートの設定ボタン（編集 UI）を除去
+  contentClone.querySelectorAll("[data-chart-ui]").forEach((el) => el.remove());
+  // チャート（ECharts の SVG）を紙面幅に収める。ECharts は viewBox 無しの
+  // width/height 属性固定で、html2canvas も CSS でなく属性を見て描くため、
+  // 画面幅で描かれた 720px のチャートは A4 の実効幅からはみ出して右が切れる。
+  // viewBox を付けたうえで属性そのものを縮めた実値に書き換える。
+  const PDF_CHART_MAX_PX = 700; // A4 (210mm - 余白 24mm = 186mm) の 96dpi 換算の安全値
+  contentClone
+    .querySelectorAll<SVGSVGElement>('[data-test="chart-block"] svg')
+    .forEach((svg) => {
+      const w = Number(svg.getAttribute("width"));
+      const h = Number(svg.getAttribute("height"));
+      if (!w || !h) return;
+      if (!svg.getAttribute("viewBox")) {
+        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      }
+      if (w > PDF_CHART_MAX_PX) {
+        const scaledH = Math.round((h * PDF_CHART_MAX_PX) / w);
+        svg.setAttribute("width", String(PDF_CHART_MAX_PX));
+        svg.setAttribute("height", String(scaledH));
+        const holder = svg.parentElement as HTMLElement | null;
+        if (holder) {
+          holder.style.width = `${PDF_CHART_MAX_PX}px`;
+          holder.style.height = `${scaledH}px`;
+        }
+      }
+    });
 
   // コンテンツのスタイルをクリーンアップ
   contentClone.style.padding = "0";

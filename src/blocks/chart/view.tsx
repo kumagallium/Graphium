@@ -262,6 +262,8 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
       {editable && (
         <div
           ref={settingsAnchorRef}
+          // PDF 書き出しはこの属性で設定ボタンごと除去する（印刷物に UI を残さない）
+          data-chart-ui="true"
           // パネルを開いている間は z を引き上げる。後続のチャートブロックの
           // 設定ボタン（同 z のスタッキングコンテキスト）が DOM 順でパネルの
           // 上に描かれてしまうのを防ぐ
