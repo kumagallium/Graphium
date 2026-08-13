@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.35.1](https://github.com/kumagallium/Graphium/compare/v0.35.0...v0.35.1) - 2026-08-13
+
+- [fix] Make desktop printing work: wire the File menu and open the panel from Rust by @kumagallium in https://github.com/kumagallium/Graphium/pull/688
+- テーブルの列プロパティ PR-A: tableMeta サイドストアの導入 by @kumagallium in https://github.com/kumagallium/Graphium/pull/686
+- [fix] Position table handle menus instead of leaving them unplaced by @kumagallium in https://github.com/kumagallium/Graphium/pull/690
+
 ## [v0.35.0](https://github.com/kumagallium/Graphium/compare/v0.34.0...v0.35.0) - 2026-08-13
 
 - [fix] Hide the floating toolbar on text-less custom blocks by @kumagallium in https://github.com/kumagallium/Graphium/pull/682
