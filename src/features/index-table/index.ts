@@ -3,7 +3,7 @@
 
 import { t } from "../../i18n";
 
-export { IndexTableStoreProvider, useIndexTableStore } from "./store";
+export { IndexTableStoreProvider, useIndexTableStore, useIndexTableStoreOptional } from "./store";
 export { IndexTableIconLayer } from "./icon-layer";
 export { setIndexTableCallbacks } from "./context";
 

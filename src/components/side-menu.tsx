@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features/block-alignment";
 import { useLogTableStoreOptional, applyLogTableTimestamps } from "../features/log-table";
+import { useIndexTableStoreOptional } from "../features/index-table";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
@@ -749,6 +750,42 @@ function LogTableToggleMenuItem() {
   );
 }
 
+/**
+ * テーブルブロックの「インデックステーブル」トグル。
+ * 記録テーブルのトグルと同じ統合方針: インデックステーブルも独立したブロック型
+ * ではなく、標準テーブルに後から付け外しできる「ふるまい」（行ごとにノートを
+ * 持てる）。スラッシュメニューの「インデックステーブル」は、このふるまいが
+ * オンになったテーブルを一発で作るテンプレートという位置づけになる。
+ * 解除すると行とノートの紐付け設定は消える（ノート本体は残る）。
+ */
+function IndexTableToggleMenuItem() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const indexStore = useIndexTableStoreOptional();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+  if (!block || !indexStore) return null;
+  if ((block.type as string) !== "table") return null;
+  const isIndex = indexStore.isIndexTable(block.id);
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => {
+        if (isIndex) {
+          indexStore.unregister(block.id);
+        } else {
+          indexStore.register(block.id);
+        }
+      }}
+    >
+      {isIndex ? t("indexTable.menuDisable") : t("indexTable.menuEnable")}
+    </Components.Generic.Menu.Item>
+  );
+}
+
 export function NoteSideMenu() {
   const t = useT();
   useFixDropdownPosition();
@@ -762,6 +799,7 @@ export function NoteSideMenu() {
         <AlignmentMenuItems />
         <BlockLabelMenuItems />
         <LogTableToggleMenuItem />
+        <IndexTableToggleMenuItem />
         <ReadImageTextMenuItem />
         <AddMemoMenuItem />
         <DeriveNoteMenuItem />

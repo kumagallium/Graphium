@@ -74,9 +74,9 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 
 | Item | Description |
 |---|---|
-| **Index Table** | "Insert a table for data management" |
-| **Log Table** | "A table that timestamps each new record" — see [The log table and charts](#the-log-table-and-charts) |
-| **Chart** | "Visualize a table in this note" — see [The log table and charts](#the-log-table-and-charts) |
+| **Index Table** | "Create and open a note for each row" — see [The index table](#the-index-table) |
+| **Time-series Table** | "Rows get the date/time automatically — for diaries and daily logs" — see [The time-series table and charts](#the-time-series-table-and-charts) |
+| **Chart** | "Visualize a table in this note" — see [The time-series table and charts](#the-time-series-table-and-charts) |
 | **Template** | "Insert a plan or experiment template" |
 | **Callout** | "Insert a note box with an icon" |
 | **Step** | "A step that holds text, tables and images inside" — the container behind the provenance graph; see [Labels & provenance](/labels-and-provenance#step-blocks) |
@@ -168,15 +168,17 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 - Typing `@` inside a row's first column links the row to an existing note instead.
 - Linked rows offer **Open note** and **Side peek** — the side peek opens the row's note next to the current one, so you can update a run without leaving the plan.
 
+Like the time-series table, an index table is not a separate kind of table — it is an ordinary table with the row-to-note behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into index table**". Turning it off removes the row-to-note links (the notes themselves are untouched).
+
 ![An index table with Name and condition columns](/screenshots/index-table.png)
 
-## The log table and charts
+## The time-series table and charts
 
-**Log Table** inserts a table for recurring, time-stamped observations — a headache diary, a growth log, repeated measurements on the same setup. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
+**Time-series Table** inserts a table for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
 
-The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged. A caption above the table names it; unnamed log tables show an automatic *Table 1*, *Table 2*, … in document order, and charts use that name as the reference label.
+The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged. A caption above the table names it; unnamed time-series tables show an automatic *Table 1*, *Table 2*, … in document order, and charts use that name as the reference label.
 
-A log table is not a separate kind of table — it is an ordinary table with this behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into log table**".
+A time-series table is not a separate kind of table — it is an ordinary table with this behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into time-series table**".
 
 **Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
 
