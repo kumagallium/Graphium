@@ -15,6 +15,7 @@ import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
   seriesConfigDisplayName,
   usesRightAxis,
+  type AxisDetail,
   type ChartBlockConfig,
   type ChartSeriesConfig,
   type LegendPosition,
@@ -22,6 +23,165 @@ import {
   type XAxisKindSetting,
 } from "./chart-config";
 import type { ChartAspect } from "./chart-theme";
+
+/** 設定パネル内のトグルスイッチ（settings/modal.tsx の switch と同じ見た目） */
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        flexShrink: 0,
+        display: "inline-flex",
+        alignItems: "center",
+        width: 32,
+        height: 18,
+        borderRadius: 999,
+        border: "1px solid var(--color-border)",
+        background: checked ? "var(--color-primary)" : "var(--color-input)",
+        cursor: "pointer",
+        transition: "background 0.15s",
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          width: 14,
+          height: 14,
+          borderRadius: 999,
+          background: "#fff",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+          transition: "transform 0.2s",
+          transform: checked ? "translateX(15px)" : "translateX(1px)",
+        }}
+      />
+    </button>
+  );
+}
+
+const ROTATE_CHOICES = [0, 30, 45, 90];
+
+/**
+ * 軸ごとの「詳細設定」（eureco 準拠の折りたたみ）:
+ * 軸・軸線・目盛り・目盛りラベルの表示、ラベルの回転、目盛りの向き、グリッド。
+ */
+function AxisDetailEditor({
+  detail,
+  onChange,
+}: {
+  detail: AxisDetail;
+  onChange: (patch: Partial<AxisDetail>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={detailStyles.shell}>
+      <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
+        <span>{t("chart.advanced")}</span>
+        {open ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
+      </button>
+      {open && (
+        <div style={detailStyles.body}>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.axisShow")}</span>
+            <Toggle checked={detail.show} onChange={(v) => onChange({ show: v })} />
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.axisLineShow")}</span>
+            <Toggle checked={detail.showLine} onChange={(v) => onChange({ showLine: v })} />
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.ticksShow")}</span>
+            <Toggle checked={detail.showTicks} onChange={(v) => onChange({ showTicks: v })} />
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.tickLabelsShow")}</span>
+            <Toggle checked={detail.showLabels} onChange={(v) => onChange({ showLabels: v })} />
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.tickLabelRotate")}</span>
+            <select
+              value={detail.labelRotate === null ? "" : String(detail.labelRotate)}
+              onChange={(e) =>
+                onChange({ labelRotate: e.target.value === "" ? null : Number(e.target.value) })
+              }
+              style={detailStyles.smallSelect}
+            >
+              <option value="">{t("chart.rotateNone")}</option>
+              {ROTATE_CHOICES.map((deg) => (
+                <option key={deg} value={deg}>
+                  {deg}°
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.tickKind")}</span>
+            <select
+              value={detail.tickInside ? "inside" : "outside"}
+              onChange={(e) => onChange({ tickInside: e.target.value === "inside" })}
+              style={detailStyles.smallSelect}
+            >
+              <option value="inside">{t("chart.tickInside")}</option>
+              <option value="outside">{t("chart.tickOutside")}</option>
+            </select>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.gridShow")}</span>
+            <Toggle checked={detail.showGrid} onChange={(v) => onChange({ showGrid: v })} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const detailStyles: Record<string, React.CSSProperties> = {
+  shell: {
+    display: "flex",
+    flexDirection: "column",
+    borderRadius: 6,
+    background: "var(--color-muted)",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "5px 8px",
+    fontSize: 12,
+    border: "none",
+    background: "transparent",
+    color: "var(--color-text-secondary)",
+    cursor: "pointer",
+  },
+  body: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 7,
+    padding: "2px 8px 8px",
+  },
+  row: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  label: {
+    fontSize: 12,
+    color: "var(--color-foreground)",
+  },
+  smallSelect: {
+    width: 96,
+    padding: "2px 6px",
+    fontSize: 12,
+    borderRadius: 6,
+    border: "1px solid var(--color-input)",
+    background: "var(--color-card)",
+    color: "var(--color-foreground)",
+  },
+};
 
 type Tab = "typeSeries" | "axes" | "appearance";
 
@@ -429,6 +589,10 @@ export function ChartSettingsPanel({
                   style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
                 />
               </label>
+              <AxisDetailEditor
+                detail={config.xAxisDetail}
+                onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
+              />
             </>
           )}
 
@@ -465,6 +629,10 @@ export function ChartSettingsPanel({
               style={{ ...styles.input, width: 72 }}
             />
           </label>
+          <AxisDetailEditor
+            detail={config.yAxisDetail}
+            onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
+          />
 
           {rightAxisInUse && (
             <>
@@ -499,26 +667,14 @@ export function ChartSettingsPanel({
                   style={{ ...styles.input, width: 72 }}
                 />
               </label>
+              <AxisDetailEditor
+                detail={config.yRightAxisDetail}
+                onChange={(patch) =>
+                  onChange({ yRightAxisDetail: { ...config.yRightAxisDetail, ...patch } })
+                }
+              />
             </>
           )}
-
-          <div style={styles.sectionLabel}>{t("chart.displayElements")}</div>
-          <label style={styles.checkRow}>
-            <input
-              type="checkbox"
-              checked={config.showGridY}
-              onChange={(e) => onChange({ showGridY: e.target.checked })}
-            />
-            {t("chart.gridY")}
-          </label>
-          <label style={styles.checkRow}>
-            <input
-              type="checkbox"
-              checked={config.showGridX}
-              onChange={(e) => onChange({ showGridX: e.target.checked })}
-            />
-            {t("chart.gridX")}
-          </label>
         </div>
       )}
 
@@ -540,7 +696,11 @@ export function ChartSettingsPanel({
             style={styles.select}
           >
             <option value="standard">{t("chart.aspectStandard")}</option>
+            <option value="golden">{t("chart.aspectGolden")}</option>
             <option value="wide">{t("chart.aspectWide")}</option>
+            <option value="panorama">{t("chart.aspectPanorama")}</option>
+            <option value="ultrawide">{t("chart.aspectUltrawide")}</option>
+            <option value="spectrum">{t("chart.aspectSpectrum")}</option>
             <option value="square">{t("chart.aspectSquare")}</option>
           </select>
 

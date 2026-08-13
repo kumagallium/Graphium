@@ -320,28 +320,32 @@ function buildOption(
   const fontFamily =
     typeof window !== "undefined" ? getComputedStyle(document.body).fontFamily : "sans-serif";
 
-  const axisCommon = {
+  // 軸の詳細設定（表示トグル・ラベル回転・目盛りの向き・グリッド）を ECharts に写す
+  const axisFromDetail = (detail: typeof config.xAxisDetail) => ({
+    show: detail.show,
     axisLine: {
-      show: true,
+      show: detail.showLine,
       lineStyle: { width: CHART_AXIS_LINE_WIDTH, color: CHART_FRAME },
     },
     axisTick: {
-      show: true,
+      show: detail.showTicks,
       length: CHART_TICK_LENGTH,
-      inside: true,
+      inside: detail.tickInside,
       lineStyle: { color: CHART_FRAME },
     },
-    axisLabel: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
+    axisLabel: {
+      show: detail.showLabels,
+      fontSize: CHART_FONT_SIZE,
+      color: CHART_INK,
+      ...(detail.labelRotate !== null ? { rotate: detail.labelRotate } : {}),
+    },
+    splitLine: detail.showGrid
+      ? { show: true, lineStyle: { ...CHART_GRID_LINE, color: "#cccccc" } }
+      : { show: false },
     nameLocation: "middle" as const,
     nameTextStyle: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
     z: 3,
-  };
-  const gridLine = (on: boolean) =>
-    on
-      ? { show: true, lineStyle: { ...CHART_GRID_LINE, color: "#cccccc" } }
-      : { show: false };
-  const splitLineX = gridLine(config.showGridX);
-  const splitLineY = gridLine(config.showGridY);
+  });
 
   // 凡例の配置。top-* は枠の左右端に揃え、inside-* は枠内の四隅に置く
   const legendLayout = (() => {
@@ -384,10 +388,8 @@ function buildOption(
     scale: fitAxis,
     ...(yMin !== null ? { min: yMin } : {}),
     ...(yMax !== null ? { max: yMax } : {}),
-    ...axisCommon,
-    splitLine: splitLineY,
+    ...axisFromDetail(config.yAxisDetail),
   };
-  // 右軸のグリッド線は描かない（2 軸で両方のグリッドを重ねると読めなくなる）
   const rightAxis = {
     type: "value" as const,
     name: yRightName,
@@ -395,8 +397,7 @@ function buildOption(
     scale: fitAxis,
     ...(yRightMin !== null ? { min: yRightMin } : {}),
     ...(yRightMax !== null ? { max: yRightMax } : {}),
-    ...axisCommon,
-    splitLine: { show: false },
+    ...axisFromDetail(config.yRightAxisDetail),
   };
 
   return {
@@ -436,15 +437,14 @@ function buildOption(
       : { show: false },
     xAxis:
       result.xAxis === "category"
-        ? { type: "category", data: result.categories, name: xName, nameGap: 34, ...axisCommon, splitLine: splitLineX }
+        ? { type: "category", data: result.categories, name: xName, nameGap: 34, ...axisFromDetail(config.xAxisDetail) }
         : {
             type: result.xAxis,
             name: xName,
             nameGap: 34,
             ...(xMin !== null ? { min: xMin } : {}),
             ...(xMax !== null ? { max: xMax } : {}),
-            ...axisCommon,
-            splitLine: splitLineX,
+            ...axisFromDetail(config.xAxisDetail),
           },
     yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
     series: result.series.map((s, i) => {

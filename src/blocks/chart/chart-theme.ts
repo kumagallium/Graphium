@@ -42,10 +42,17 @@ export const CHART_GRID_LINE = { width: 0.8, type: "dashed" as const };
 // 凡例マーカー（eureco: 横長 50×14）
 export const CHART_LEGEND_ITEM = { width: 50, height: 14 };
 
-/** アスペクト比（幅 ÷ 高さ）。standard は A 判の √2:1 */
+/**
+ * アスペクト比（幅 ÷ 高さ）。standard は A 判の √2:1。
+ * 4:1 / 5:1 は XRD・各種スペクトルのような横長パターン向け。
+ */
 export const CHART_ASPECT_RATIOS = {
   standard: Math.SQRT2,
+  golden: (1 + Math.sqrt(5)) / 2,
   wide: 2,
+  panorama: 3,
+  ultrawide: 4,
+  spectrum: 5,
   square: 1,
 } as const;
 

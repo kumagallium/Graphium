@@ -25,14 +25,33 @@ describe("parseChartBlockConfig", () => {
     expect(parsed.aspect).toBe("standard");
     expect(parsed.showLegend).toBe(true);
     expect(parsed.showFrame).toBe(true);
-    expect(parsed.showGridX).toBe(false);
-    expect(parsed.showGridY).toBe(false);
+    expect(parsed.xAxisDetail.showGrid).toBe(false);
+    expect(parsed.yAxisDetail.showGrid).toBe(false);
+    expect(parsed.xAxisDetail.tickInside).toBe(true);
   });
 
-  it("旧フィールド showGrid（一括トグル）は X/Y 両方に引き継がれる", () => {
-    const parsed = parseChartBlockConfig(JSON.stringify({ showGrid: true }));
-    expect(parsed.showGridX).toBe(true);
-    expect(parsed.showGridY).toBe(true);
+  it("旧グリッドフラグ（showGrid / showGridX / showGridY）は軸詳細に引き継がれる", () => {
+    const both = parseChartBlockConfig(JSON.stringify({ showGrid: true }));
+    expect(both.xAxisDetail.showGrid).toBe(true);
+    expect(both.yAxisDetail.showGrid).toBe(true);
+    const onlyY = parseChartBlockConfig(JSON.stringify({ showGridY: true }));
+    expect(onlyY.xAxisDetail.showGrid).toBe(false);
+    expect(onlyY.yAxisDetail.showGrid).toBe(true);
+  });
+
+  it("軸詳細は部分マージで読める（欠けはデフォルト）", () => {
+    const parsed = parseChartBlockConfig(
+      JSON.stringify({ xAxisDetail: { showLabels: false, labelRotate: 45, tickInside: false } })
+    );
+    expect(parsed.xAxisDetail).toEqual({
+      show: true,
+      showLine: true,
+      showTicks: true,
+      showLabels: false,
+      labelRotate: 45,
+      tickInside: false,
+      showGrid: false,
+    });
   });
 
   it("旧形式（1 テーブル + yColumns + seriesOptions）は系列モデルに移行される", () => {
@@ -92,9 +111,14 @@ describe("parseChartBlockConfig", () => {
       xMax: "1020",
       yMin: "0",
       yMax: "10",
-      aspect: "square" as const,
-      showGridX: true,
-      showGridY: true,
+      aspect: "spectrum" as const,
+      xAxisDetail: {
+        ...DEFAULT_CHART_CONFIG.xAxisDetail,
+        showGrid: true,
+        labelRotate: 45,
+        tickInside: false,
+      },
+      yAxisDetail: { ...DEFAULT_CHART_CONFIG.yAxisDetail, showLabels: false },
       legendPosition: "inside-top-right" as const,
       legendOrient: "vertical" as const,
       yRightAxisName: "睡眠時間",

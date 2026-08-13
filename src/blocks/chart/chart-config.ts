@@ -39,6 +39,37 @@ export type SeriesAxis = "left" | "right";
 /** 系列ごとの種類（未指定はチャート全体の種類に従う）。histogram は全体専用 */
 export type SeriesType = "line" | "bar" | "scatter";
 
+/**
+ * 軸ごとの詳細設定（eureco の「詳細設定」に対応）。
+ * 学術スタイルの既定（全表示・内向き目盛り・グリッドなし）から個別に外せる。
+ */
+export type AxisDetail = {
+  /** 軸全体の表示（名前・線・目盛り・ラベルすべて） */
+  show: boolean;
+  /** 軸線の表示 */
+  showLine: boolean;
+  /** 目盛りの表示 */
+  showTicks: boolean;
+  /** 目盛りラベルの表示 */
+  showLabels: boolean;
+  /** 目盛りラベルの回転（null = 未設定） */
+  labelRotate: number | null;
+  /** 目盛りの向き（内向きが学術の既定） */
+  tickInside: boolean;
+  /** グリッド線の表示 */
+  showGrid: boolean;
+};
+
+export const DEFAULT_AXIS_DETAIL: AxisDetail = {
+  show: true,
+  showLine: true,
+  showTicks: true,
+  showLabels: true,
+  labelRotate: null,
+  tickInside: true,
+  showGrid: false,
+};
+
 /** 1 つの系列 = どのテーブルの・どの列を・どう描くか */
 export type ChartSeriesConfig = {
   /** 参照先テーブルの blockId（表示名は毎回解決するので並べ替えに強い） */
@@ -84,9 +115,10 @@ export type ChartBlockConfig = {
   legendOrient: LegendOrient;
   /** プロット領域の全周枠（黒 box） */
   showFrame: boolean;
-  /** グリッド線（splitLine, 破線）。X = 縦線、Y = 横線 */
-  showGridX: boolean;
-  showGridY: boolean;
+  /** 軸ごとの詳細設定 */
+  xAxisDetail: AxisDetail;
+  yAxisDetail: AxisDetail;
+  yRightAxisDetail: AxisDetail;
 };
 
 export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
@@ -108,8 +140,9 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   legendPosition: "top-left",
   legendOrient: "horizontal",
   showFrame: true,
-  showGridX: false,
-  showGridY: false,
+  xAxisDetail: DEFAULT_AXIS_DETAIL,
+  yAxisDetail: DEFAULT_AXIS_DETAIL,
+  yRightAxisDetail: DEFAULT_AXIS_DETAIL,
 };
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
@@ -143,6 +176,21 @@ function parseSeries(raw: unknown): ChartSeriesConfig[] {
     out.push(entry);
   }
   return out;
+}
+
+/** 軸の詳細設定を部分マージで読む（欠けはデフォルト、旧グリッドフラグを引き継げる） */
+function parseAxisDetail(raw: unknown, gridFallback: boolean): AxisDetail {
+  const v = (typeof raw === "object" && raw !== null ? raw : {}) as any;
+  const bool = (x: unknown, d: boolean) => (typeof x === "boolean" ? x : d);
+  return {
+    show: bool(v.show, DEFAULT_AXIS_DETAIL.show),
+    showLine: bool(v.showLine, DEFAULT_AXIS_DETAIL.showLine),
+    showTicks: bool(v.showTicks, DEFAULT_AXIS_DETAIL.showTicks),
+    showLabels: bool(v.showLabels, DEFAULT_AXIS_DETAIL.showLabels),
+    labelRotate: typeof v.labelRotate === "number" ? v.labelRotate : null,
+    tickInside: bool(v.tickInside, DEFAULT_AXIS_DETAIL.tickInside),
+    showGrid: bool(v.showGrid, gridFallback),
+  };
 }
 
 /**
@@ -211,9 +259,16 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
       : DEFAULT_CHART_CONFIG.legendPosition,
     legendOrient: parsed.legendOrient === "vertical" ? "vertical" : "horizontal",
     showFrame: bool(parsed.showFrame, DEFAULT_CHART_CONFIG.showFrame),
-    // 旧フィールド showGrid（一括トグル）は X/Y 両方に引き継ぐ
-    showGridX: bool(parsed.showGridX, bool(parsed.showGrid, DEFAULT_CHART_CONFIG.showGridX)),
-    showGridY: bool(parsed.showGridY, bool(parsed.showGrid, DEFAULT_CHART_CONFIG.showGridY)),
+    // 旧フィールド showGrid（一括）/ showGridX / showGridY は軸詳細のグリッドに引き継ぐ
+    xAxisDetail: parseAxisDetail(
+      parsed.xAxisDetail,
+      bool(parsed.showGridX, bool(parsed.showGrid, false))
+    ),
+    yAxisDetail: parseAxisDetail(
+      parsed.yAxisDetail,
+      bool(parsed.showGridY, bool(parsed.showGrid, false))
+    ),
+    yRightAxisDetail: parseAxisDetail(parsed.yRightAxisDetail, false),
   };
 }
 
