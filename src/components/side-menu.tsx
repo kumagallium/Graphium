@@ -1,7 +1,7 @@
 // サイドメニュー関連コンポーネント
 // NoteSideMenu, DeriveNoteMenuItem, AiAssistantMenuItem
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   AddBlockButton,
   DragHandleButton,
@@ -95,54 +95,15 @@ export function collectBlockScope(doc: any[], block: any): any[] {
   return scope;
 }
 
-// SideMenu の Floating UI 親は transform: translate(X,Y) で配置されるため、
-// その中の position:fixed なドロップダウンは containing block の影響で位置がずれる。
-// 親の transform を読み取り、ドロップダウン wrapper に逆オフセットを適用して打ち消す。
-function useFixDropdownPosition() {
-  useEffect(() => {
-    const fix = () => {
-      const wrapper = document.querySelector(
-        "[data-radix-popper-content-wrapper]"
-      ) as HTMLElement;
-      if (!wrapper) return;
-
-      // ドロップダウンのトリガー（⠿ ボタン）を探す
-      const trigger = document.querySelector(
-        ".bn-side-menu .bn-button[draggable]"
-      ) as HTMLElement;
-      if (!trigger) return;
-
-      // トリガーの viewport 位置
-      const triggerRect = trigger.getBoundingClientRect();
-      // ドロップダウンの viewport 位置・サイズ
-      const wrapperRect = wrapper.getBoundingClientRect();
-      const dropdownHeight = wrapperRect.height || 160;
-
-      // 下にスペースがあれば下、なければ上に配置
-      const spaceBelow = window.innerHeight - triggerRect.bottom;
-      const expectedTop =
-        spaceBelow >= dropdownHeight + 8
-          ? triggerRect.bottom // 下に表示
-          : triggerRect.top - dropdownHeight; // 上に表示
-
-      const actualTop = wrapperRect.top;
-      const diffY = actualTop - expectedTop;
-
-      // 大きくずれている場合のみ補正
-      if (Math.abs(diffY) > 20) {
-        const currentMarginTop = parseFloat(wrapper.style.marginTop) || 0;
-        wrapper.style.marginTop = `${currentMarginTop - diffY}px`;
-      }
-    };
-
-    const observer = new MutationObserver(fix);
-    const root = document.getElementById("root");
-    if (root) {
-      observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["style"] });
-    }
-    return () => observer.disconnect();
-  }, []);
-}
+// かつてここには useFixDropdownPosition という位置補正フックがあった。
+// ドラッグハンドルのメニューが明後日の位置に出るのを、DOM を直接動かして
+// 押し戻すものだったが、原因は「Floating UI 親の transform」ではなく、
+// 同梱の shadcn Button が ref を受け取れず Radix が anchor を掴めていないこと
+// だった（base/blocknote-shadcn-overrides.tsx 参照）。根本側を直したので撤去する。
+//
+// 復活させないこと: このフックは document 内で最初に見つかった
+// [data-radix-popper-content-wrapper] を掴むため、テーブルの列ハンドルの
+// メニューをサイドメニューのハンドル基準で動かしてしまう。
 
 // DragHandle メニュー内: 派生ノート作成
 function DeriveNoteMenuItem() {
@@ -820,7 +781,6 @@ function IndexTableToggleMenuItem() {
 
 export function NoteSideMenu() {
   const t = useT();
-  useFixDropdownPosition();
   return (
     <SideMenu>
       <AddBlockButton />
