@@ -129,6 +129,7 @@ export const ja: Record<string, string> = {
   "editor.newNote": "新しいノート",
   "editor.derive": "🔗 新ページを派生",
   "editor.deriveWholeNote": "ノート全体を派生",
+  "editor.fullWidth": "幅いっぱいに表示",
   "editor.deleteNote": "ゴミ箱へ移動",
   "editor.archiveNote": "アーカイブ",
   "editor.archiveNoteHint": "一覧から隠れますが、派生リンクや引用は解決し続けます。Trash & Archive からいつでも復元できます。",

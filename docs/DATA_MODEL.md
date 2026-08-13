@@ -109,6 +109,11 @@ type GraphiumDocument = {
   // ── skill metadata (only when source === "skill") ───
   skillMeta?: SkillMeta;
 
+  // ── layout ───────────────────────────────────────────
+  // true = the editor body spans the full window width (Notion's
+  // "Full width"). Unset/false = readable fixed-width column (default).
+  fullWidth?: boolean;
+
   // ── external source ─────────────────────────────────
   // Set when the note was generated from an external URL (URL-to-PROV)
   sourceUrl?: string;
