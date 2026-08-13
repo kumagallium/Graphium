@@ -1,9 +1,9 @@
-// インデックステーブル機能のエントリーポイント
-// カスタムブロック型は使わず、標準 table ブロック + 外部ストアで実装
+// 行からノートを作れるテーブル（旧・インデックステーブル）のエントリーポイント
+// カスタムブロック型は使わず、標準 table ブロック + 外部ストアで実装する。
+// どのテーブルがこのふるまいを持つかは tableMeta（列の note-link）が持つ。
 
 import { t } from "../../i18n";
 
-export { IndexTableStoreProvider, useIndexTableStore, useIndexTableStoreOptional } from "./store";
 export { IndexTableIconLayer } from "./icon-layer";
 export { setIndexTableCallbacks } from "./context";
 

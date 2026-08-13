@@ -42,7 +42,7 @@ export async function createNoteFromRow(
   tableBlockId: string,
   rowIndex: number,
   files: GraphiumFile[],
-  store: { setLinkedNote: (blockId: string, sampleName: string, noteId: string) => void },
+  store: { setNoteLink: (blockId: string, rowValue: string, noteId: string) => void },
   onAddNoteLink?: (targetNoteId: string, sourceBlockId: string) => void,
   parentNoteId?: string | null,
 ): Promise<string | null> {
@@ -91,8 +91,8 @@ export async function createNoteFromRow(
   // Google Drive に作成
   const fileId = await getActiveProvider().createFile(title, newDoc);
 
-  // ストアの linkedNotes を更新
-  store.setLinkedNote(tableBlockId, title, fileId);
+  // ストアの noteLinks を更新
+  store.setNoteLink(tableBlockId, title, fileId);
 
   // 親ドキュメントに noteLink を追加（Graph 表示用）
   onAddNoteLink?.(fileId, tableBlockId);

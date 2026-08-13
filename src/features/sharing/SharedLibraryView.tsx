@@ -47,7 +47,7 @@ import {
   ProvLabelsEnabledProvider,
 } from "../context-label/store";
 import { LinkStoreProvider } from "../block-link/store";
-import { IndexTableStoreProvider } from "../index-table/store";
+import { TableMetaStoreProvider } from "../table-meta/store";
 import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { BlockAlignmentProvider } from "../block-alignment/store";
 import { AiAssistantProvider } from "../ai-assistant/store";
@@ -836,7 +836,7 @@ export function SharedNotePreview({ body }: { body: string }) {
       <ProvLabelsEnabledProvider enabled={false}>
         <LabelStoreProvider>
           <LinkStoreProvider>
-            <IndexTableStoreProvider>
+            <TableMetaStoreProvider>
               <MediaInlineLabelProvider>
                 <BlockAlignmentProvider>
                   <AiAssistantProvider aiAvailable={false}>
@@ -848,7 +848,7 @@ export function SharedNotePreview({ body }: { body: string }) {
                   </AiAssistantProvider>
                 </BlockAlignmentProvider>
               </MediaInlineLabelProvider>
-            </IndexTableStoreProvider>
+            </TableMetaStoreProvider>
           </LinkStoreProvider>
         </LabelStoreProvider>
       </ProvLabelsEnabledProvider>

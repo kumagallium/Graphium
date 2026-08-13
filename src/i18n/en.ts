@@ -1835,13 +1835,16 @@ export const en: Record<string, string> = {
   "indexTable.menuEnable": "Turn into index table",
   "indexTable.menuDisable": "Turn off index table",
 
+  // テーブルの名前（キャプション）
+  "tableMeta.menuSetCaption": "Name this table",
+  "tableMeta.namePlaceholder": "Table name",
+  "tableMeta.nameHint": "A name makes this table easy to reference from charts",
+  "tableMeta.autoName": "Table {n}",
+
   // 記録テーブル
   "logTable.colDateTime": "Date/Time",
   "logTable.colValue": "Value",
   "logTable.colNote": "Note",
-  "logTable.namePlaceholder": "Name this time-series table",
-  "logTable.nameHint": "A name makes this table easy to reference from charts",
-  "logTable.autoName": "Table {n}",
   "logTable.menuEnable": "Turn into time-series table",
   "logTable.menuDisable": "Turn off time-series table",
 

@@ -16,7 +16,7 @@ import {
   ProvLabelsEnabledProvider,
 } from "../../features/context-label/store";
 import { LinkStoreProvider } from "../../features/block-link/store";
-import { IndexTableStoreProvider } from "../../features/index-table/store";
+import { TableMetaStoreProvider } from "../../features/table-meta/store";
 import { MediaInlineLabelProvider } from "../../features/inline-label/media-store";
 import { BlockAlignmentProvider } from "../../features/block-alignment/store";
 import { AiAssistantProvider } from "../../features/ai-assistant/store";
@@ -51,7 +51,7 @@ function EditorProviders({ children }: { children: ReactNode }) {
     <ProvLabelsEnabledProvider enabled={false}>
       <LabelStoreProvider>
         <LinkStoreProvider>
-          <IndexTableStoreProvider>
+          <TableMetaStoreProvider>
             <MediaInlineLabelProvider>
               <BlockAlignmentProvider>
                 <AiAssistantProvider aiAvailable={false}>
@@ -59,7 +59,7 @@ function EditorProviders({ children }: { children: ReactNode }) {
                 </AiAssistantProvider>
               </BlockAlignmentProvider>
             </MediaInlineLabelProvider>
-          </IndexTableStoreProvider>
+          </TableMetaStoreProvider>
         </LinkStoreProvider>
       </LabelStoreProvider>
     </ProvLabelsEnabledProvider>

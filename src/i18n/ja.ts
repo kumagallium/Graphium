@@ -1833,13 +1833,16 @@ export const ja: Record<string, string> = {
   "indexTable.menuEnable": "インデックステーブルにする",
   "indexTable.menuDisable": "インデックステーブルを解除",
 
+  // テーブルの名前（キャプション）
+  "tableMeta.menuSetCaption": "テーブルに名前を付ける",
+  "tableMeta.namePlaceholder": "テーブルの名前",
+  "tableMeta.nameHint": "名前を付けるとチャートから参照しやすくなります",
+  "tableMeta.autoName": "表 {n}",
+
   // 時系列テーブル
   "logTable.colDateTime": "日時",
   "logTable.colValue": "値",
   "logTable.colNote": "メモ",
-  "logTable.namePlaceholder": "時系列テーブルの名前",
-  "logTable.nameHint": "名前を付けるとチャートから参照しやすくなります",
-  "logTable.autoName": "表 {n}",
   "logTable.menuEnable": "時系列テーブルにする",
   "logTable.menuDisable": "時系列テーブルを解除",
 
