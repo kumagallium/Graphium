@@ -1,8 +1,13 @@
 // Composer（Cmd+K）の即時検索ユーティリティ
 // fm.noteIndex を入力に、タイトル / ラベル / 作者の単純フィルタを行う純関数。
 // BM25・embedding・graph 近傍は別タスク（G-BM25 / G-GRAPHRAG）で hybrid 化する想定。
+//
+// 画像は別立ての searchMedia() で fm.mediaIndex から探す。ノートの検索軸
+// （見出し・ラベル・作者）とは持っている情報が違うので、同じ関数に混ぜず
+// 「ノートの結果」「画像の結果」を別セクションとして並べる。
 
 import type { NoteIndexEntry } from "../navigation/index-file";
+import type { MediaIndexEntry } from "../asset-browser/media-index";
 import { getDisplayLabelName } from "../../i18n";
 
 export type SearchHit = {
@@ -204,4 +209,125 @@ function daysAgoBoost(modifiedAt: string): number {
   if (days < 0) return 5;
   if (days > 30) return 0;
   return 5 * (1 - days / 30);
+}
+
+// ── 画像検索 ──
+
+export type MediaSearchReason = "name-prefix" | "name-contains" | "ocr";
+
+/** OCR テキスト中のヒット箇所を、前後の文脈ごと切り出したもの */
+export type OcrSnippet = {
+  /** 表示用の 1 行テキスト（改行は潰し、切り詰めた側に … を付ける） */
+  text: string;
+  /** text 内のマッチ範囲（強調用） */
+  start: number;
+  end: number;
+};
+
+export type MediaHit = {
+  entry: MediaIndexEntry;
+  /** ファイル名中のヒット範囲（複数）。空配列ならハイライトなし */
+  nameMatches: { start: number; end: number }[];
+  /** OCR テキストでヒットしたときの抜粋。ファイル名だけのヒットなら undefined */
+  ocrSnippet?: OcrSnippet;
+  reasons: MediaSearchReason[];
+  score: number;
+};
+
+/** 抜粋でマッチの前後に残す文字数 */
+const SNIPPET_BEFORE = 16;
+const SNIPPET_AFTER = 48;
+
+/**
+ * OCR テキストからヒット箇所の抜粋を組み立てる。
+ * 見つからなければ undefined。
+ */
+export function buildOcrSnippet(ocrText: string, needle: string): OcrSnippet | undefined {
+  if (!needle) return undefined;
+  // 複数画像の連結や改行を 1 行に潰してから切り出す（そのまま出すと行が崩れる）
+  const flat = ocrText.replace(/\s+/g, " ").trim();
+  const idx = flat.toLowerCase().indexOf(needle.toLowerCase());
+  if (idx < 0) return undefined;
+
+  const from = Math.max(0, idx - SNIPPET_BEFORE);
+  const to = Math.min(flat.length, idx + needle.length + SNIPPET_AFTER);
+  const head = from > 0 ? "…" : "";
+  const tail = to < flat.length ? "…" : "";
+  const start = head.length + (idx - from);
+  return {
+    text: head + flat.slice(from, to) + tail,
+    start,
+    end: start + needle.length,
+  };
+}
+
+export type MediaSearchOptions = {
+  /** 最大ヒット数（既定値 4）。ノートの結果を押しのけない程度に抑える */
+  limit?: number;
+};
+
+/**
+ * クエリを mediaIndex に対して評価し、画像だけを返す。
+ *
+ * ノート検索と違い、空クエリでは何も返さない（Cmd+K を開いただけの
+ * 「最近のノート」ビューに画像を混ぜない）。`#ラベル` / `@作者` が
+ * 指定されているときも、ノートを絞り込む意図なので画像は返さない。
+ */
+export function searchMedia(
+  query: string,
+  entries: MediaIndexEntry[] | null | undefined,
+  options: MediaSearchOptions = {},
+): MediaHit[] {
+  const limit = options.limit ?? 4;
+  if (!entries || entries.length === 0) return [];
+  if (!query.trim()) return [];
+
+  const parsed = parseQuery(query);
+  // ノート専用の絞り込みが入っているクエリでは画像を出さない
+  if (parsed.labelTokens.length > 0 || parsed.authorTokens.length > 0) return [];
+  const textLower = parsed.text.trim().toLowerCase();
+  if (!textLower) return [];
+
+  const hits: MediaHit[] = [];
+
+  for (const entry of entries) {
+    // OCR を持つのは画像だけ。アーカイブ済みはギャラリー同様に隠す
+    if (entry.type !== "image") continue;
+    if (entry.archivedAt) continue;
+
+    let score = 0;
+    const reasons: MediaSearchReason[] = [];
+
+    const nameMatches = findAllOccurrences(entry.name, textLower);
+    if (nameMatches.length > 0) {
+      if (entry.name.toLowerCase().startsWith(textLower)) {
+        score += 100;
+        reasons.push("name-prefix");
+      } else {
+        score += 50;
+        reasons.push("name-contains");
+      }
+    }
+
+    // 画像の中の文字。ファイル名より弱いが、これが今回の主目的
+    const ocrSnippet = entry.ocrText
+      ? buildOcrSnippet(entry.ocrText, parsed.text.trim())
+      : undefined;
+    if (ocrSnippet) {
+      score += 40;
+      reasons.push("ocr");
+    }
+
+    if (reasons.length === 0) continue;
+
+    score += entry.uploadedAt ? daysAgoBoost(entry.uploadedAt) : 0;
+    hits.push({ entry, nameMatches, ocrSnippet, reasons, score });
+  }
+
+  hits.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.entry.uploadedAt > a.entry.uploadedAt ? 1 : -1;
+  });
+
+  return hits.slice(0, limit);
 }
