@@ -7,6 +7,7 @@ import { recordUsage, extractTokenFields } from "./llm-usage.js";
 import { runTextToolsLoop } from "./agent-loop-text-tools.js";
 import { toWellFormed, sanitizeMessages } from "./well-formed-text.js";
 import { CodedError, type AiErrorCode } from "../../lib/ai-error-codes.js";
+import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
 
 export type AgentRunParams = {
   model: LanguageModel;
@@ -83,6 +84,14 @@ export function describeAuthError(
       code: "SUBSCRIPTION_AUTH_EXPIRED",
     };
   }
+  if (provider === "copilot-subscription") {
+    // GitHub Copilot CLI のログイン切れ・未ログイン。API キー再設定では直らない。
+    return {
+      message:
+        "GitHub Copilot authentication is missing or expired. Run `copilot` in a terminal to sign in, then retry.",
+      code: "COPILOT_SUBSCRIPTION_AUTH_EXPIRED",
+    };
+  }
   return {
     message:
       "The model API key is invalid or expired. Check the key in Settings → AI.",
@@ -114,21 +123,21 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   };
   const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature, abortSignal } = safeParams;
 
-  // openai-compatible（sakura / gpt-oss-120b 等）に加え、claude-subscription
-  // （ai-sdk-provider-claude-code 経由）も AI SDK の tools パラメータをネイティブに
-  // 扱えない。両者ともツール利用時は text-tool-call フォールバックループに切り替える。
+  // openai-compatible（sakura / gpt-oss-120b 等）に加え、サブスク型プロバイダ
+  // （claude-subscription / copilot-subscription）も AI SDK の tools パラメータを
+  // ネイティブに扱えない。ツール利用時は text-tool-call フォールバックループに切り替える。
   const providerLacksNativeTools =
     modelConfig?.provider === "openai-compatible" ||
-    modelConfig?.provider === "claude-subscription";
+    isSubscriptionProvider(modelConfig?.provider);
   const useTextToolsLoop =
     providerLacksNativeTools && !!tools && Object.keys(tools).length > 0;
   if (useTextToolsLoop) {
     return runTextToolsLoop(safeParams);
   }
 
-  // claude-subscription は temperature 等のサンプリングパラメータ非対応（CLI が制御）。
-  // 渡すと unsupported 警告が出るだけなので、このプロバイダでは送らない。
-  const supportsTemperature = modelConfig?.provider !== "claude-subscription";
+  // サブスク型プロバイダは temperature 等のサンプリングパラメータ非対応（CLI が制御）。
+  // 渡すと unsupported 警告が出るだけなので、これらのプロバイダでは送らない。
+  const supportsTemperature = !isSubscriptionProvider(modelConfig?.provider);
 
   const startedAt = Date.now();
   const result = await generateText({

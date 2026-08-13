@@ -106,6 +106,27 @@ export async function createModel(
       });
       return provider(config.modelId || "sonnet");
     }
+    case "copilot-subscription": {
+      // ローカルの GitHub Copilot CLI（公式 @github/copilot-sdk 経由）を subprocess
+      // 起動し、ユーザーの Copilot サブスク認証（CLI のログイン）で推論する。
+      // API キーは不要。claude-subscription と同型の構成（詳細は copilot-subscription.ts）。
+      //
+      // - 動的 import: @github/copilot-sdk を Web ビルドに巻き込まない。
+      // - config.apiBase は「copilot CLI の絶対パス（任意）」として流用する。
+      // - claude と違い SDK に PATH フォールバックが無い（既定は npm 同梱ランタイム解決で、
+      //   バンドルには存在しない）ため、パスが解決できなければここで明確に失敗させる。
+      const { createCopilotModel } = await import("./copilot-subscription.js");
+      const binaryPath = resolveCopilotBinaryPath(config.apiBase);
+      if (!binaryPath) {
+        throw new Error(
+          "GitHub Copilot CLI not found. Install it (e.g. `npm install -g @github/copilot`), sign in with `copilot`, or set the CLI path in Settings → AI.",
+        );
+      }
+      return createCopilotModel({
+        cliPath: binaryPath,
+        modelId: config.modelId,
+      });
+    }
     default:
       throw new Error(`Unknown provider: ${config.provider}`);
   }
@@ -142,15 +163,67 @@ export function isClaudeCliAvailable(): boolean {
 let cachedAutoClaudePath: string | undefined | null = null;
 
 /**
+ * copilot-subscription プロバイダ用に GitHub Copilot CLI の実行パスを解決する。
+ * 優先順は claude と同じ: 明示パス（config.apiBase）→ 環境変数
+ * GRAPHIUM_COPILOT_CLI_PATH → 自動検出（プロセス内キャッシュ）。
+ * claude と違い undefined を返しても SDK 側の PATH フォールバックは無い
+ * （呼び出し側でエラーにする）。
+ */
+export function resolveCopilotBinaryPath(
+  explicit?: string | null,
+): string | undefined {
+  if (explicit && explicit.trim().length > 0) return explicit.trim();
+  const fromEnv = process.env.GRAPHIUM_COPILOT_CLI_PATH;
+  if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+  if (cachedAutoCopilotPath === null) {
+    cachedAutoCopilotPath = detectCliBinary("copilot", [
+      "/opt/homebrew/bin/copilot",
+      "/usr/local/bin/copilot",
+      join(homedir(), ".local/bin/copilot"),
+      join(homedir(), ".npm-global/bin/copilot"),
+    ]);
+  }
+  return cachedAutoCopilotPath ?? undefined;
+}
+
+/**
+ * copilot-subscription 用の GitHub Copilot CLI が検出できるか。
+ * 1-click サブスク登録ボタンの出し分けに使う（検出できないマシンでは提示しない）。
+ * ログイン状態までは見ない — 未ログインは初回推論時の認証エラーで導線を出す。
+ */
+export function isCopilotCliAvailable(): boolean {
+  return resolveCopilotBinaryPath() !== undefined;
+}
+
+let cachedAutoCopilotPath: string | undefined | null = null;
+
+/**
  * `claude` バイナリを自動検出する。Tauri パッケージ版のサイドカーは最小化された PATH で
  * 起動されるため、PATH 依存の `which` だけでは nvm/homebrew 配下を取りこぼす。
  * ログインシェルの PATH と主要インストール先・nvm 走査まで含めて「ほぼ無設定で見つかる」
  * ことを狙う。ユーザーが明示パス／env を指定した場合はそちらが優先される（本関数は呼ばれない）。
  */
 function detectClaudeBinary(): string | undefined {
+  return detectCliBinary("claude", [
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude",
+    join(homedir(), ".local/bin/claude"),
+    join(homedir(), ".claude/local/claude"), // Claude Code ネイティブインストーラ既定
+    join(homedir(), ".npm-global/bin/claude"),
+  ]);
+}
+
+/**
+ * CLI バイナリの汎用自動検出（claude / copilot 共通）。
+ * which → ログインシェルの PATH → 既知のインストール先 → nvm 配下走査の順で探す。
+ */
+function detectCliBinary(
+  binName: string,
+  candidates: string[],
+): string | undefined {
   // 1. 現在の PATH 上の which（dev 起動などで PATH が揃っている場合）
   try {
-    const out = execFileSync("which", ["claude"], { encoding: "utf-8", timeout: 3000 })
+    const out = execFileSync("which", [binName], { encoding: "utf-8", timeout: 3000 })
       .trim()
       .split("\n")[0];
     if (out && existsSync(out)) return out;
@@ -161,7 +234,7 @@ function detectClaudeBinary(): string | undefined {
   // 2. ログインシェルの PATH（GUI 起動だと PATH が最小化されるため、rc を読ませて解決する）
   try {
     const shell = process.env.SHELL || "/bin/zsh";
-    const out = execFileSync(shell, ["-lc", "command -v claude"], {
+    const out = execFileSync(shell, ["-lc", `command -v ${binName}`], {
       encoding: "utf-8",
       timeout: 3000,
     })
@@ -172,25 +245,16 @@ function detectClaudeBinary(): string | undefined {
     /* rc が無い等は次へ */
   }
 
-  const home = homedir();
-
   // 3. よくあるインストール先を直接確認
-  const candidates = [
-    "/opt/homebrew/bin/claude",
-    "/usr/local/bin/claude",
-    join(home, ".local/bin/claude"),
-    join(home, ".claude/local/claude"), // Claude Code ネイティブインストーラ既定
-    join(home, ".npm-global/bin/claude"),
-  ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
 
-  // 4. nvm 配下の全 node バージョンを走査（claude は特定バージョンの bin にだけ入る）
-  const nvmDir = join(home, ".nvm/versions/node");
+  // 4. nvm 配下の全 node バージョンを走査（npm global 系 CLI は特定バージョンの bin にだけ入る）
+  const nvmDir = join(homedir(), ".nvm/versions/node");
   try {
     for (const version of readdirSync(nvmDir)) {
-      const c = join(nvmDir, version, "bin/claude");
+      const c = join(nvmDir, version, `bin/${binName}`);
       if (existsSync(c)) return c;
     }
   } catch {
@@ -209,6 +273,19 @@ export async function fetchAvailableModels(
   apiKey: string,
   apiBase?: string,
 ): Promise<string[]> {
+  // copilot-subscription は API キーではなくローカル CLI（SDK の listModels）から取得する。
+  // apiBase はこのプロバイダでは「copilot CLI の絶対パス（任意）」。
+  if (provider === "copilot-subscription") {
+    const { listCopilotModels } = await import("./copilot-subscription.js");
+    const binaryPath = resolveCopilotBinaryPath(apiBase);
+    if (!binaryPath) {
+      throw new Error(
+        "GitHub Copilot CLI not found. Install it (e.g. `npm install -g @github/copilot`) or set the CLI path first.",
+      );
+    }
+    return listCopilotModels(binaryPath);
+  }
+
   const base = apiBase || DEFAULT_API_BASE[provider];
   if (!base) {
     throw new Error(`${provider} requires an API Base URL`);

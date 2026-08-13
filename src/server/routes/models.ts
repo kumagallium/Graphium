@@ -7,9 +7,10 @@
 
 import { Hono } from "hono";
 import { listModels, addModel, updateModel, removeModel, getDefaultModel, getModel } from "../config/models.js";
-import { fetchAvailableModels, isClaudeCliAvailable } from "../services/llm.js";
+import { fetchAvailableModels, isClaudeCliAvailable, isCopilotCliAvailable } from "../services/llm.js";
 import { readClaudeCliAccount, isClaudeTokenFromEnv } from "../services/claude-account.js";
 import { errorBody } from "../../lib/ai-error-codes.js";
+import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
 
 const app = new Hono();
 
@@ -59,6 +60,13 @@ app.get("/claude-cli-status", (c) => {
   });
 });
 
+// GitHub Copilot CLI が検出できるか（copilot-subscription の 1-click 登録を出すか判定）。
+// claude と違いアカウント情報は返さない — Copilot CLI のログイン情報は公開された
+// 設定ファイルに無く、確認には CLI の spawn が必要で設定画面を開くたびに払うには重い。
+app.get("/copilot-cli-status", (c) => {
+  return c.json({ available: isCopilotCliAvailable() });
+});
+
 // モデル追加
 // source_model_id を指定すると、既存モデルの認証情報（apiKey / apiBase）を再利用する
 app.post("/", async (c) => {
@@ -83,8 +91,8 @@ app.post("/", async (c) => {
     if (apiBase === undefined) apiBase = source.apiBase ?? undefined;
   }
 
-  // claude-subscription は API キー不要（Claude Code のサブスク認証を使う）。
-  const requiresApiKey = body.provider !== "claude-subscription";
+  // サブスク型プロバイダは API キー不要（各 CLI のサブスク認証を使う）。
+  const requiresApiKey = !isSubscriptionProvider(body.provider);
   if (
     !body.model_name ||
     !body.provider ||
@@ -187,7 +195,8 @@ app.post("/available", async (c) => {
     if (apiBaseUrl === undefined) apiBaseUrl = source.apiBase ?? undefined;
   }
 
-  if (!provider || !apiKey) {
+  // copilot-subscription は API キーを持たない（CLI の listModels で取得する）
+  if (!provider || (!apiKey && !isSubscriptionProvider(provider))) {
     return c.json({ error: "provider and api_key are required" }, 400);
   }
 
