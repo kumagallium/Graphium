@@ -15,7 +15,11 @@ import {
 import { LinkStoreProvider } from "../block-link/store";
 import { TableMetaStoreProvider, useTableMetaStore } from "./store";
 import { TableCaptionLayer } from "./caption-layer";
-import { applyLogTableTimestamps, resetLogTableRowTracking } from "../log-table/auto-timestamp";
+import {
+  applyLogTableTimestamps,
+  primeLogTableRowTracking,
+  resetLogTableRowTracking,
+} from "../log-table/auto-timestamp";
 import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { MediaOcrProvider } from "../media-ocr/store";
 import { BlockAlignmentProvider } from "../block-alignment/store";
@@ -97,6 +101,9 @@ function TableMetaDemoInner({
     resetLogTableRowTracking();
     if (datetimeColumn !== null) {
       store.addColumnType(TABLE_ID, datetimeColumn, "datetime-auto");
+      // 実アプリはノート読み込み時に行数を記録する。ここでも同じ状態にしないと
+      // 最初の行追加が「初見」扱いになり、日時が入らない
+      primeLogTableRowTracking(content, [TABLE_ID]);
     }
     if (caption) store.setCaption(TABLE_ID, caption);
     // eslint-disable-next-line react-hooks/exhaustive-deps
