@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
@@ -396,6 +396,8 @@ function NoteHeaderMenu({
   shareBusy,
   shareDisabledReason,
   onCopyLink,
+  fullWidth,
+  onToggleFullWidth,
   t,
 }: {
   onSave: () => void;
@@ -443,6 +445,10 @@ function NoteHeaderMenu({
   shareDisabledReason?: string;
   /** このノートへのリンク（URL）をクリップボードにコピーする。別ノートに貼るとメンション化される。 */
   onCopyLink?: () => void;
+  /** 本文をフル幅表示しているか（Notion の Full width 相当）。ON でチェックを表示 */
+  fullWidth?: boolean;
+  /** フル幅表示の切り替え。undefined なら項目ごと隠す（アーカイブ/ゴミ箱ノート） */
+  onToggleFullWidth?: () => void;
   t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
@@ -516,6 +522,20 @@ function NoteHeaderMenu({
             <Share2 size={14} />
             {t("prov.export")}
           </button>
+          {onToggleFullWidth && (
+            <>
+              <div className="my-1 border-t border-border" />
+              {/* 本文幅の切り替え（Notion の Full width 相当）。ON なら右端にチェック */}
+              <button
+                className={itemClass}
+                onClick={() => { onToggleFullWidth(); setOpen(false); }}
+              >
+                <MoveHorizontal size={14} />
+                <span className="flex-1 text-left">{t("editor.fullWidth")}</span>
+                {fullWidth && <Check size={14} className="text-primary" />}
+              </button>
+            </>
+          )}
           {onCopyLink && (
             <>
               <div className="my-1 border-t border-border" />
@@ -1183,6 +1203,10 @@ function NoteEditorInner({
   // 本文と同じ buildDocument → autosave 経路で保存するため ref も併置（stale closure 回避）。
   const [noteContexts, setNoteContexts] = useState<string[]>(initialDoc?.noteContexts ?? []);
   const noteContextsRef = useRef<string[]>(initialDoc?.noteContexts ?? []);
+  // 本文フル幅（Notion の Full width 相当）。ノート単位で doc に保存する。
+  // buildDocument はスクラッチで組むため ref も併置（noteContexts と同じ流儀）。
+  const [fullWidth, setFullWidth] = useState<boolean>(initialDoc?.fullWidth ?? false);
+  const fullWidthRef = useRef<boolean>(initialDoc?.fullWidth ?? false);
   const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
@@ -2006,6 +2030,8 @@ function NoteEditorInner({
       wikiMeta: initialDoc?.wikiMeta,
       skillMeta: initialDoc?.skillMeta,
       generatedBy: initialDoc?.generatedBy,
+      // 本文フル幅設定（トグル操作で変わるため ref から読む）
+      fullWidth: fullWidthRef.current || undefined,
       // url-to-prov / pdf-to-prov 由来の外部ソースメタデータを保持
       // （来歴ツリーの上流ソース表示・グラフのエッジ生成に必要）
       sourceUrl: initialDoc?.sourceUrl,
@@ -4088,6 +4114,18 @@ function NoteEditorInner({
                 }
               : undefined
           }
+          fullWidth={fullWidth}
+          onToggleFullWidth={
+            // read-only（アーカイブ/ゴミ箱）では保存できないため項目ごと隠す
+            !archived && !trashed
+              ? () => {
+                  const next = !fullWidthRef.current;
+                  fullWidthRef.current = next;
+                  setFullWidth(next);
+                  markDirty();
+                }
+              : undefined
+          }
           t={t}
         />
       </div>
@@ -4203,6 +4241,12 @@ function NoteEditorInner({
               条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。
               ドラッグハンドル分の余白は .bn-editor 自体の padding-inline 54px が持つ。 */}
           <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 24 : 16, paddingRight: isDesktop ? (labelStore.labels.size > 0 ? 80 : 24) : 16, paddingBottom: isDesktop ? 16 : 72 }}>
+          {/* 読みやすい行長のための中央カラム（Notion の本文幅と同じ考え方）。
+              828px = 本文テキスト 720px + .bn-editor の padding-inline 54px×2。
+              タイトル・文脈タグも px-[54px] で本文と左端が揃っているため一緒に包む。
+              doc.fullWidth（ヘッダー ⋯ メニューのトグル）で解除できる。
+              狭い画面では 828px に届かず従来どおり全幅になる。 */}
+          <div style={fullWidth ? undefined : { maxWidth: 828, marginInline: "auto" }}>
 
             <textarea
               value={title}
@@ -4478,6 +4522,7 @@ function NoteEditorInner({
             {contextDrawerSlot && (
               <div className="px-[54px]">{contextDrawerSlot}</div>
             )}
+          </div>
           </div>
         </div>
 

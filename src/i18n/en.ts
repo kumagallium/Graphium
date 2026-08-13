@@ -129,6 +129,7 @@ export const en: Record<string, string> = {
   "editor.newNote": "New note",
   "editor.derive": "🔗 Derive new page",
   "editor.deriveWholeNote": "Derive whole note",
+  "editor.fullWidth": "Full width",
   "editor.deleteNote": "Move to trash",
   "editor.archiveNote": "Archive",
   "editor.archiveNoteHint": "Hidden from the list, but links and citations keep resolving. Restore anytime from Trash & Archive.",
