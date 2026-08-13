@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.32.1](https://github.com/kumagallium/Graphium/compare/v0.32.0...v0.32.1) - 2026-08-13
+
 ## [v0.32.0](https://github.com/kumagallium/Graphium/compare/v0.31.1...v0.32.0) - 2026-08-13
 
 - fix(link): open URL clicks in side peek only, not external browser by @kumagallium in https://github.com/kumagallium/Graphium/pull/669
