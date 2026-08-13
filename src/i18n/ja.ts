@@ -295,6 +295,11 @@ export const ja: Record<string, string> = {
   "settings.fontLexend": "Lexend（読み速度最適化 / NASA 共同研究）",
   "settings.fontZenKaku": "Zen Kaku Gothic New（本文向き、字間ゆったり）",
   "settings.fontBizUDP": "BIZ UDPGothic（UD 配慮 / モリサワ × 政府）",
+  "settings.colorMode": "読みやすさ（色）",
+  "settings.colorModeHelp": "文字と紙の色をプリセットから選べます。高コントラストは文字を濃くします（本文のコントラスト比 約14:1 → 約18:1）。白い紙は背景の緑みをなくし、紙面を純白にします。",
+  "settings.colorModeDefault": "デフォルト（緑がかった紙）",
+  "settings.colorModeHighContrast": "高コントラスト（文字を濃く）",
+  "settings.colorModeWhitePaper": "白い紙（背景を純白に）",
   "settings.aiNotConfigured": "AI モデルが登録されていません。設定 → AI からモデルを追加してください。",
   "settings.aiSetupCta": "AI をセットアップ",
 

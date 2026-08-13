@@ -26,6 +26,15 @@ export type JpFont = "" | "zen-kaku" | "biz-udp";
 export const JP_FONTS: readonly JpFont[] = ["", "zen-kaku", "biz-udp"] as const;
 
 /**
+ * 読みやすさ（色）モード。フォントと同じ opt-in のプリセット方式。
+ * - ""              : デフォルト = 緑がかった紙色（design.md のオフホワイト）
+ * - "high-contrast" : 文字（ink 階層）を全段濃くする。紙色は変えない
+ * - "white-paper"   : 紙（paper / rule 階層）を無彩色にし、紙面を純白へ
+ */
+export type ColorMode = "" | "high-contrast" | "white-paper";
+export const COLOR_MODES: readonly ColorMode[] = ["", "high-contrast", "white-paper"] as const;
+
+/**
  * MCP サーバーのトランスポート種別。
  * - "sse"             : Server-Sent Events（旧来のエンドポイント、パスは /sse 等）
  * - "streamable-http" : Streamable HTTP（新方式、パスは /mcp 等）
@@ -288,6 +297,8 @@ export type Settings = {
   latinFont: LatinFont;
   /** 日本語用フォント。空文字 = デフォルト（OS システムフォント） */
   jpFont: JpFont;
+  /** 読みやすさ（色）モード。空文字 = デフォルト（緑がかった紙色） */
+  colorMode: ColorMode;
   /** 実験的機能のオン/オフ */
   experimental: ExperimentalSettings;
   /** 使用量ダッシュボードの表示通貨。"usd" | "jpy"。 */
@@ -319,6 +330,7 @@ const DEFAULT_SETTINGS: Settings = {
   customLabels: {},
   latinFont: "",
   jpFont: "",
+  colorMode: "",
   experimental: {
     atomLayer: false,
     synthesis: false,
@@ -468,6 +480,9 @@ export function loadSettings(): Settings {
     const migratedJp: JpFont = parsed.jpFont !== undefined
       ? (JP_FONTS.includes(parsed.jpFont) ? parsed.jpFont : "")
       : (legacyFont === "biz-udp" ? "biz-udp" : "");
+    // 読みやすさ（色）。未知の値は ""（デフォルト）にフォールバック
+    const migratedColorMode: ColorMode =
+      parsed.colorMode !== undefined && COLOR_MODES.includes(parsed.colorMode) ? parsed.colorMode : "";
     const exp = (parsed as { experimental?: Partial<ExperimentalSettings> }).experimental;
     // 旧来の専用 registryUrl 設定を、記憶レジストリ（savedRegistries）へマイグレーションする。
     // これは接続先ではなく「候補をブラウズする元」。同 URL が無ければ追加し registryUrl は空に倒す。
@@ -485,6 +500,7 @@ export function loadSettings(): Settings {
       savedRegistries,
       latinFont: migratedLatin,
       jpFont: migratedJp,
+      colorMode: migratedColorMode,
       chatSynthesisModel: migratedChatSynth,
       experimental: {
         atomLayer: typeof exp?.atomLayer === "boolean" ? exp.atomLayer : false,
@@ -685,6 +701,12 @@ export function getSelectedJpFont(): JpFont {
   return JP_FONTS.includes(v) ? v : "";
 }
 
+/** 選択中の読みやすさ（色）モードを取得する（空文字 = デフォルト） */
+export function getSelectedColorMode(): ColorMode {
+  const v = loadSettings().colorMode;
+  return COLOR_MODES.includes(v) ? v : "";
+}
+
 /**
  * 本文フォントを body に反映する。
  * 空文字（デフォルト）の場合は対応する data 属性を削除し、CSS の `--ui` フォールバックを使う。
@@ -695,6 +717,24 @@ export function applyFontMode(latinFont: LatinFont, jpFont: JpFont): void {
   else document.body.removeAttribute("data-latin-font");
   if (jpFont) document.body.setAttribute("data-jp-font", jpFont);
   else document.body.removeAttribute("data-jp-font");
+}
+
+/**
+ * 読みやすさ（色）モードを html（:root）に反映する。
+ * app.css の :root[data-color-mode="..."] が scene tokens を再宣言し、
+ * @theme エイリアス経由で UI 全体（BlockNote エディタ含む）に波及する。
+ *
+ * body ではなく :root に付ける理由: @theme の --color-* は :root で
+ * `var(--paper)` 等を参照しており、カスタムプロパティは宣言要素の
+ * computed value 計算時に解決される。body で --paper を再宣言しても
+ * :root で解決済みの --color-* には届かない（フォントの data 属性が
+ * body なのは、あちらは変数連鎖でなく body 自身の宣言で解決されるため）。
+ * 空文字（デフォルト）の場合は属性を削除し、:root の既定値に戻す。
+ */
+export function applyColorMode(colorMode: ColorMode): void {
+  if (typeof document === "undefined") return;
+  if (colorMode) document.documentElement.setAttribute("data-color-mode", colorMode);
+  else document.documentElement.removeAttribute("data-color-mode");
 }
 
 // --- Web モード用: クライアント側 LLM モデル管理 ---
