@@ -172,7 +172,7 @@ Like the time-series table, an index table is not a separate kind of table — i
 
 ![An index table with Name and condition columns](/screenshots/index-table.png)
 
-## The time-series table and charts
+## The time-series table and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" />
 
 **Time-series Table** inserts a table for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
 

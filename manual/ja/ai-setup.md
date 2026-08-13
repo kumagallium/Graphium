@@ -28,11 +28,14 @@ AI タブは、開くたびにバックエンドを確認します。コンポ�
 | **OpenAI** | OpenAI の API キー |
 | **Google Gemini** | Google AI の API キー |
 | **OpenAI Compatible (Groq, Ollama, etc.)** | **API Base URL**（Ollama なら `http://localhost:11434` など）と、エンドポイントが求める場合はキー |
+| **GitHub Copilot (Subscription · Copilot CLI)** <Badge type="tip" text="v0.33.0 (2026-08-13) で追加" /> | GitHub Copilot のプランと、このマシンでインストール・サインイン済みの `copilot` CLI — API キーは不要 |
 
 API キーを使うプロバイダーでは、**API キー** を入力し、**利用可能なモデルを取得** を押して一覧から 1 つ選びます（**または手動でモデル ID を入力** も使えます）。必要なら **表示名** を設定し、**追加** を押します。最初に登録したモデルがデフォルトになり、アプリ全体に AI 機能が現れます。
 
+**GitHub Copilot (Subscription · Copilot CLI)** はキー入力そのものがありません。このマシンの GitHub Copilot CLI のログインを使うので、先に `npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインしてください。プロンプトは Copilot プランの利用枠を消費します。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、ターミナルで `copilot` を実行して `/login` し、Graphium を再起動します。
+
 ::: info Claude サブスクリプションのプロバイダーは廃止されました
-以前のバージョンには、Claude Pro/Max プランで AI を動かす **Claude (Subscription · Claude Code)** プロバイダーがありました。Anthropic の規約がサードパーティアプリからのサブスクリプション認証の利用を認めていないため、廃止しています。この経路で登録したモデルは、更新後の初回起動時に一覧から取り除かれます。別のプロバイダーを登録し直してください。Anthropic の API キーはこれまで通り使えます。
+以前のバージョンには、Claude Pro/Max プランで AI を動かす **Claude (Subscription · Claude Code)** プロバイダーがありました。Anthropic の規約がサードパーティアプリからのサブスクリプション認証の利用を認めていないため、廃止しています。この経路で登録したモデルは、更新後の初回起動時に一覧から取り除かれます。別のプロバイダーを登録し直してください。Anthropic の API キーはこれまで通り使え、「API キーなしで使う」役割は上の GitHub Copilot プロバイダーが引き継いでいます。
 :::
 
 ### API キーの保存場所
