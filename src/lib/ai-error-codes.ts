@@ -10,6 +10,8 @@ export const AI_ERROR_CODES = {
   NO_MODEL_REGISTERED: "NO_MODEL_REGISTERED",
   /** claude-subscription（Claude Code CLI 経由）の OAuth セッション切れ（401） */
   SUBSCRIPTION_AUTH_EXPIRED: "SUBSCRIPTION_AUTH_EXPIRED",
+  /** copilot-subscription（GitHub Copilot CLI 経由）の認証切れ・未ログイン（401） */
+  COPILOT_SUBSCRIPTION_AUTH_EXPIRED: "COPILOT_SUBSCRIPTION_AUTH_EXPIRED",
   /** API キーが無効か期限切れ（401） */
   INVALID_API_KEY: "INVALID_API_KEY",
   /** API キーに権限が無い（403） */

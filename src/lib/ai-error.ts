@@ -45,6 +45,7 @@ export async function aiErrorFromResponse(
 const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   NO_MODEL_REGISTERED: "aiError.noModelRegistered",
   SUBSCRIPTION_AUTH_EXPIRED: "aiError.subscriptionAuthExpired",
+  COPILOT_SUBSCRIPTION_AUTH_EXPIRED: "aiError.copilotSubscriptionAuthExpired",
   INVALID_API_KEY: "aiError.invalidApiKey",
   API_KEY_FORBIDDEN: "aiError.apiKeyForbidden",
   EMBEDDING_MODEL_UNSUPPORTED: "aiError.embeddingModelUnsupported",

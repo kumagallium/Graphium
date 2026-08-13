@@ -1,5 +1,6 @@
 // Hono サーバーを単一ファイルにバンドルするスクリプト
 // Tauri sidecar として同梱するために使用
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 await build({
@@ -11,6 +12,11 @@ await build({
   outfile: "src-tauri/sidecar/server.mjs",
   // Node.js 組み込みモジュールは外部化
   external: ["node:*"],
+  // koffi（@github/copilot-sdk の FFI モード専用ネイティブ依存）はスタブへ差し替える。
+  // 理由と経緯は scripts/koffi-stub.mjs のコメントを参照。
+  alias: {
+    koffi: fileURLToPath(new URL("./koffi-stub.mjs", import.meta.url)),
+  },
   // バナーで import.meta.url 対応
   //
   // 追加で:
