@@ -88,9 +88,11 @@ Every AI reply has action buttons underneath:
 
 ## The Composer (⌘K)
 
-Press `⌘K` while editing a note to open the Composer — one input for both "find a note" and "ask the AI". It requires an open note and a registered AI model; `Esc` closes it.
+Press `⌘K` to open the Composer — one input for both "find a note" and "ask the AI". It requires a registered AI model; `Esc` closes it.
 
 The placeholder says it all: **Find a note or ask AI...**
+
+Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an image...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent.
 
 ![Composer palette with the verb menu on a note with citations](/screenshots/composer-verbs.png)
 
@@ -104,6 +106,14 @@ As you type, matching notes appear instantly, searched by title, headings, label
 | `@author` | Notes by that author |
 
 With an empty input you get **Recent notes**. Press `Enter` to open the highlighted note.
+
+### Finding images <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />
+
+Images you have [read with OCR](/materials-and-citations#reading-text-from-images-ocr) are searched alongside the notes and listed under **Images**, matched on their file name and on the words read out of them. Each row carries a thumbnail and an excerpt around the match, so two similar screenshots are told apart before you open either.
+
+Selecting one opens the materials gallery on the image tab, with that image in the side peek — rather than jumping to a note. One image can be used by several notes, or by none, and the peek lists the notes that use it.
+
+Images stay out of the empty-input view and out of `#label` / `@author` queries; both of those are about finding notes.
 
 ### Asking the AI
 

@@ -298,6 +298,14 @@ note holding only a screenshot can be found by the words inside it; the note
 list marks such a hit with an "image text" badge, and the asset gallery shows
 the text on the image's detail panel.
 
+It is mirrored a second time onto the material itself
+(`MediaIndexEntry.ocrText`), so the image is findable as an image and not only
+through the note it sits in — the `⌘K` Composer searches materials alongside
+notes and lists matching images under **Images**, opening the material side
+peek rather than jumping to a note (one image can be used by several notes, or
+by none). Media-index schema v5 introduced this mirror; the rebuild it forces
+walks every note and recovers text read before the bump.
+
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
 
 Export is a **per-note** action (it lives in the note's overflow menu),

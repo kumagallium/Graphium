@@ -10,6 +10,7 @@ import { Loader2, ScanText, FileText, Copy, Check, RefreshCw } from "lucide-reac
 import { useT } from "../../i18n";
 import { useMediaOcrStore } from "./store";
 import { runOcrForImage } from "./run-ocr";
+import { mirrorOcrToMediaIndex } from "./mirror-to-media-index";
 
 type Props = {
   blockId: string;
@@ -42,6 +43,8 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
       const result = await runOcrForImage(imageUrl);
       // 文字が取れなかった画像はエントリを残さない（検索ノイズを避ける）
       store.setEntry(blockId, result.text ? result : null);
+      // 素材側にも写して、素材ギャラリー・Cmd+K から同じ文字で引けるようにする
+      mirrorOcrToMediaIndex(imageUrl, result.text ?? "");
       if (result.text) {
         setAnchor(rectOf(btnRef.current));
         setOpen(true);

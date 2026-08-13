@@ -11,6 +11,7 @@ import { runOcrForImage } from "./run-ocr";
 import { OCR_CAPABLE_BLOCK_TYPES } from "./collect";
 import { takePendingOcrFile } from "./pending-files";
 import { waitForDragIdle } from "./drag-idle";
+import { mirrorOcrToMediaIndex } from "./mirror-to-media-index";
 import { resetOcrPipeline } from "../../lib/ocr";
 import type { OcrToastState } from "./OcrToast";
 
@@ -96,6 +97,8 @@ export function useAutoImageOcr({
           const result = await withJobTimeout(runOcrForImage(source));
           if (result.text) {
             store.setEntry(target.id, result);
+            // 素材側にも写して、素材ギャラリー・Cmd+K から同じ文字で引けるようにする
+            mirrorOcrToMediaIndex(target.url, result.text);
             chars += result.text.replace(/\s/g, "").length;
           } else {
             empty += 1;

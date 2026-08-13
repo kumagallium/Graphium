@@ -142,10 +142,15 @@ export type MediaIndexEntry = {
   /**
    * 画像から端末内 OCR で読み取ったテキスト（type === "image" のとき）。
    *
-   * ノートに貼った画像のテキストは、そのノートの `page.mediaOcr` に入る（ブロック単位の注釈）。
-   * こちらは素材そのものに紐づく写しで、**どのノートにも貼られていない画像**でも
-   * 素材ギャラリーから読み取って残せるようにするためのもの。
-   * optional なので既存インデックスはそのまま読める（バージョン据え置き）。
+   * 素材そのものに紐づく写し。読み取りの出どころは 2 つあり、どちらもここに集まる:
+   *   - 素材ギャラリーから直接読んだ結果（`persistOcrTextPatch`）
+   *   - ノートに貼った画像を読んだ結果（`page.mediaOcr` のブロック単位注釈からの写し。
+   *     OCR 実行時に `mirrorOcrToMediaIndex` が書き戻し、既存分は v5 の再構築で回収する）
+   *
+   * ブロック単位の正は `page.mediaOcr` のままで、こちらは素材横断で探すための索引。
+   * これにより「どのノートにも貼られていない画像」も「ノートに貼った画像」も、
+   * 素材ギャラリーと Cmd+K から同じように文字で引ける。
+   * optional なので既存インデックスはそのまま読める。
    */
   ocrText?: string;
   /**
@@ -198,13 +203,17 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       usedIn を温存したまま全ノート走査で再 push していたため、再構築のたびに同一
  *       noteId+blockId の usage が積み上がっていた）。bump により壊れた既存インデックスを
  *       強制再構築して重複を解消する
+ *  - 5: ノートに貼った画像の OCR テキスト（`page.mediaOcr`）を素材側の `ocrText` にも
+ *       集約する。v4 までは素材ギャラリーから読んだ分しか素材に紐づかず、ノートで
+ *       読んだ画像は素材横断の検索から漏れていた。bump により既存ユーザーの
+ *       読み取り済みテキストを一度の再構築で回収する
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 4 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 5 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -388,8 +397,10 @@ export async function persistUrlMetaPatch(
 /**
  * 画像の OCR テキストを media-index に書き戻す。
  *
- * 素材ギャラリーから読み取った結果の保存先。ノート経由の OCR は
- * `page.mediaOcr`（ブロック単位）に入るので、そちらとは独立している。
+ * 呼び出し元は 2 つ:
+ *   - 素材ギャラリー / 素材ピークからの読み取り（そこが唯一の保存先）
+ *   - ノートに貼った画像の読み取り（正は `page.mediaOcr`。ここへは
+ *     `mirrorOcrToMediaIndex` 経由で写しを置き、素材横断で探せるようにする）
  */
 export async function persistOcrTextPatch(
   fileId: string,
@@ -675,7 +686,8 @@ async function listUploadFiles(): Promise<{ id: string; name: string; mimeType: 
 /** ensureMediaIndex 内で扱う共通の doc shape（block 走査 + document-level 参照に必要なだけ） */
 type IndexableDoc = {
   title: string;
-  pages: { blocks: any[] }[];
+  /** mediaOcr は画像ブロックの OCR 結果（blockId → 抽出テキスト）。素材側の ocrText 集約に使う */
+  pages: { blocks: any[]; mediaOcr?: Record<string, { text?: string }> | undefined }[];
   wikiMeta?: { derivedFromNotes?: string[] } | null | undefined;
   sourcePdfFileId?: string | null | undefined;
   sourceDocumentFileId?: string | null | undefined;
@@ -822,6 +834,13 @@ export async function ensureMediaIndex(
             blockId,
           });
           addedIdxs.add(idx);
+          // ノートで読んだ OCR テキストを素材側にも写す（v5）。
+          // 素材ギャラリーから直接読んだ既存の ocrText は上書きしない
+          // — ユーザーが素材そのものに対して明示的に取った結果を正とする。
+          const noteOcr = page.mediaOcr?.[blockId]?.text?.trim();
+          if (noteOcr && !media[idx].ocrText) {
+            media[idx].ocrText = noteOcr;
+          }
         }
       }
     }
