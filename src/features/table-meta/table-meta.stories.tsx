@@ -109,7 +109,18 @@ function TableMetaDemoInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <div style={{ maxWidth: 680, border: "1px solid #e5e7eb", borderRadius: 12, padding: "28px 8px 8px" }}>
+    // ⠿ メニューもテーブルの列メニューも参照要素の「上」に開くため、テーブルが
+    // 画面上端近くにあるとメニューがビューポートの外に出て確認できない。
+    // ストーリーではテーブルを画面中ほどまで下げておく。
+    <div
+      style={{
+        maxWidth: 680,
+        marginTop: 280,
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        padding: "28px 8px 8px",
+      }}
+    >
       <SandboxEditor
         initialContent={content}
         // ⠿ メニューの「テーブルに名前を付ける」も同じ場所で確認できるようにする
