@@ -46,9 +46,11 @@ function buildInitialRows() {
 
 // スラッシュメニュー用の挿入アイテム
 export const logTableSlashItem = {
-  title: t("slash.logTable"),
-  subtext: t("slash.logTableSub"),
-  group: t("slash.advancedGroup"),
+  // ラベルは getter で遅延評価する。トップレベルで t() を呼ぶと最初の読み込み時の
+  // 言語で固定され、言語を切り替えても古いラベルが残る（項目は作り直されないため）。
+  get title() { return t("slash.logTable"); },
+  get subtext() { return t("slash.logTableSub"); },
+  get group() { return t("slash.advancedGroup"); },
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     const inserted = editor.insertBlocks(

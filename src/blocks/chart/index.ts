@@ -10,9 +10,11 @@ export const chartBlock: CustomBlockEntry = {
 
 // スラッシュメニュー用アイテム（テーブル未選択状態のチャートブロックを挿入）
 export const chartSlashItem = {
-  title: t("slash.chart"),
-  subtext: t("slash.chartSub"),
-  group: t("slash.advancedGroup"),
+  // ラベルは getter で遅延評価する。トップレベルで t() を呼ぶと最初の読み込み時の
+  // 言語で固定され、言語を切り替えても古いラベルが残る（項目は作り直されないため）。
+  get title() { return t("slash.chart"); },
+  get subtext() { return t("slash.chartSub"); },
+  get group() { return t("slash.advancedGroup"); },
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     editor.insertBlocks([{ type: "chart", props: {} }], currentBlock, "after");

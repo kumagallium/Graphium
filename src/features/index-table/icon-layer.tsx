@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 import { useIndexTableStore } from "./store";
 import { getFirstCellText, createNoteFromRow } from "./create-note-from-row";
 import { getIndexTableCallbacks } from "./context";
@@ -19,6 +19,8 @@ type RowIcon = {
 };
 
 export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<any> }) {
+  // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
+  useLocaleSubscription();
   const store = useIndexTableStore();
   const [icons, setIcons] = useState<RowIcon[]>([]);
   const [loading, setLoading] = useState<string | null>(null);

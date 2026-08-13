@@ -18,7 +18,7 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChartSpline, SlidersHorizontal } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 import {
   buildChartData,
   parseDateTime,
@@ -108,6 +108,8 @@ export const ChartBlock = createReactBlockSpec(
 );
 
 function ChartBlockView({ block, editor }: { block: any; editor: any }) {
+  // 言語切替でラベルを引き直す（BlockNote の render は Context を辿れないため購読する）
+  useLocaleSubscription();
   const editable = (editor as any).isEditable !== false;
   const config = useMemo(
     () =>

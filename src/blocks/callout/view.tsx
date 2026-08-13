@@ -22,7 +22,7 @@ import {
   AlertCircle,
   type LucideIcon,
 } from "lucide-react";
-import { getCalloutVariantLabel } from "../../i18n";
+import { getCalloutVariantLabel, useLocaleSubscription } from "../../i18n";
 
 export type CalloutVariant = "note" | "info" | "success" | "warning" | "danger";
 
@@ -86,6 +86,8 @@ export const CalloutBlock = createReactBlockSpec(
   },
   {
     render: (props) => {
+      // 言語切替でラベルを引き直す（BlockNote の render は Context を辿れないため購読する）
+      useLocaleSubscription();
       const variant = normalizeVariant(props.block.props.variant);
       const style = CALLOUT_VARIANTS[variant];
       const Icon = style.Icon;
