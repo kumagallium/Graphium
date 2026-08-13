@@ -73,6 +73,11 @@ afterEach(() => {
 
 describe("enqueuePushFiles", () => {
   it("normalizes names (timestamp + sequence, MIME-first extension) and persists blobs", async () => {
+    // 名前の日時は enqueue した瞬間の時計から作る。実時計のままだと enqueue と
+    // 期待値の生成が秒をまたいだときだけ落ちるので、この検証は時計を止める。
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-13T07:32:23Z"));
+
     const files = [
       new File(["hello"], "image.jpg", { type: "image/jpeg" }),
       // iOS が汎用名 + 正しい MIME を返すケース: 拡張子は MIME を信じて mov
