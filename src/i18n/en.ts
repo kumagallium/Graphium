@@ -295,6 +295,11 @@ export const en: Record<string, string> = {
   "settings.fontLexend": "Lexend (reading-speed optimized / NASA study)",
   "settings.fontZenKaku": "Zen Kaku Gothic New (relaxed body gothic)",
   "settings.fontBizUDP": "BIZ UDPGothic (Japanese UD gothic)",
+  "settings.colorMode": "Reading colors",
+  "settings.colorModeHelp": "Choose a preset for text and paper colors. High contrast darkens body text (contrast ratio about 14:1 to 18:1). White paper removes the green tint and makes the page pure white.",
+  "settings.colorModeDefault": "Default (soft green paper)",
+  "settings.colorModeHighContrast": "High contrast (darker text)",
+  "settings.colorModeWhitePaper": "White paper (pure white page)",
   "settings.aiNotConfigured": "No AI models registered. Go to Settings → AI to add a model.",
   "settings.aiSetupCta": "Set up AI",
 

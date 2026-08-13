@@ -160,20 +160,23 @@
    色を変えるときはここだけを触る。@theme に実値を書き戻さない。
    ============================================================ */
 :root {
-  /* Paper — グリーンティントの温かみのあるオフホワイト（design.md #fafdf7 系） */
-  --paper: oklch(0.985 0.012 150);
-  --paper-2: oklch(0.97 0.014 150);
-  --paper-3: oklch(0.95 0.014 150);
+  /* Paper — design.md の基準 hex と等価（#fafdf7 / surface #f5f8f5 / surface-hover #edf3ed）。
+     2026-08-13 回帰: 旧値（C 0.012–0.014 / hue 150）は基準より彩度が 1.4〜2.7 倍高く
+     「全体的に緑すぎる」ため、design.md 等価の oklch に戻した */
+  --paper: oklch(0.99 0.0085 128.6);
+  --paper-2: oklch(0.976 0.0051 145.5);
+  --paper-3: oklch(0.958 0.0102 145.5);
 
-  /* Ink — テキスト階層（design.md グリーンブラック系） */
-  --ink: oklch(0.27 0.04 150);
-  --ink-2: oklch(0.40 0.03 150);
-  --ink-3: oklch(0.55 0.02 150);
-  --ink-4: oklch(0.70 0.015 150);
+  /* Ink — design.md 等価（foreground #1a2e1d / muted-fg #4a6350 / text-tertiary #8fa394）。
+     ink-2 は対応 hex の無い中間段（系統補間）。対 --paper: 14.1 / 8.8 / 6.4 / 2.6 : 1 */
+  --ink: oklch(0.278 0.0406 148.1);
+  --ink-2: oklch(0.40 0.042 150);
+  --ink-3: oklch(0.474 0.0427 151.9);
+  --ink-4: oklch(0.695 0.0312 153.1);
 
-  /* Rule — 罫線・区切り（design.md #d5e0d7 系） */
-  --rule: oklch(0.88 0.013 150);
-  --rule-2: oklch(0.93 0.012 150);
+  /* Rule — design.md 等価（border #d5e0d7 / border-subtle #dce5dd） */
+  --rule: oklch(0.896 0.0169 151.1);
+  --rule-2: oklch(0.913 0.0144 148.8);
 
   /* Forest — ブランド（既存 #4B7A52 と等価） */
   --forest: oklch(0.48 0.09 150);
@@ -233,6 +236,38 @@
   --latin-ui: 'Inter';
   --ui:   var(--latin-ui), system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+/* ============================================================
+   読みやすさモード（色） — 設定 UI 経由 / フォントと同じ opt-in
+   ------------------------------------------------------------
+   scene tokens だけを再宣言し、@theme エイリアス（--color-*）経由で
+   UI 全体・BlockNote エディタに波及させる。実値は @theme に書き戻さない（R1）。
+   置き場所と対象の理由:
+   - :root[data-color-mode]（body ではない）: @theme の --color-* は :root で
+     var(--paper) 等を参照し、その解決は :root の computed value 計算時に行われる。
+     body で再宣言しても :root で解決済みの --color-* には届かない。
+   - @layer の外（上の scene tokens と同じ場所）: unlayered のスタイルは
+     すべての @layer より優先されるため、@layer base 内からでは上の :root を
+     上書きできない。
+   ============================================================ */
+/* 高コントラスト: ink 階層を全段濃くする（hue はデフォルトの系統を維持）。
+   紙色は変えない（眩しさを増やさない）。
+   対 --paper の実測コントラスト比: ink 18.2:1 / ink-2 12.2:1 / ink-3 8.1:1 / ink-4 5.3:1（全段 WCAG AA 以上） */
+:root[data-color-mode="high-contrast"] {
+  --ink: oklch(0.18 0.03 148.1);
+  --ink-2: oklch(0.32 0.03 150);
+  --ink-3: oklch(0.42 0.025 151.9);
+  --ink-4: oklch(0.52 0.02 153.1);
+}
+/* 白い紙: paper / rule 階層を無彩色にし、紙面を純白へ。文字（ink）とブランド（forest）は保つ。
+   明度はデフォルトの各段と揃える（切替時に明るさが跳ねないように） */
+:root[data-color-mode="white-paper"] {
+  --paper: oklch(1 0 0);
+  --paper-2: oklch(0.976 0 0);
+  --paper-3: oklch(0.958 0 0);
+  --rule: oklch(0.896 0 0);
+  --rule-2: oklch(0.913 0 0);
 }
 
 @layer base {
@@ -417,10 +452,17 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 }
 
 /* BlockNote エディタ背景は周囲（--color-background）と揃える
-   --paper はわずかに緑寄りで余白と差が出るため、note 領域は親の背景を継承させる */
+   --paper はわずかに緑寄りで余白と差が出るため、note 領域は親の背景を継承させる。
+   文字色も接続する: BlockNote 既定は #3f3f3f（無彩色グレー）のハードコードで、
+   UI 側の --ink（グリーンブラック、14.3:1）より薄く scene tokens から切れていた。
+   テーマ変数（--bn-colors-editor-text）と color の両方を --ink に従わせる。 */
 .bn-editor,
 .bn-container {
   background-color: var(--color-background) !important;
+  --bn-colors-editor-text: var(--ink);
+}
+.bn-editor {
+  color: var(--ink);
 }
 
 /* ブロック選択枠 — BlockNote 既定の高彩度ブルー（rgb(100,160,255) の 4px）を

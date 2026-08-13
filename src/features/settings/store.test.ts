@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { getLLMModels } from "./store";
+import { applyColorMode, getLLMModels, loadSettings } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -60,5 +60,37 @@ describe("getLLMModels — 撤去済みプロバイダの purge", () => {
     localStorage.setItem(LLM_MODELS_KEY, raw);
     expect(getLLMModels()).toHaveLength(1);
     expect(localStorage.getItem(LLM_MODELS_KEY)).toBe(raw);
+  });
+});
+
+describe("colorMode — 読みやすさ（色）設定", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute("data-color-mode");
+  });
+
+  it("未知の値は ''（デフォルト）に倒れる", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ colorMode: "neon" }));
+    expect(loadSettings().colorMode).toBe("");
+  });
+
+  it("有効な値は保持される", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ colorMode: "high-contrast" }));
+    expect(loadSettings().colorMode).toBe("high-contrast");
+  });
+
+  it("未設定（既存ユーザーの settings JSON）は '' になる", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ latinFont: "" }));
+    expect(loadSettings().colorMode).toBe("");
+  });
+
+  it("applyColorMode は html（:root）に data-color-mode を付け外しする", () => {
+    applyColorMode("white-paper");
+    expect(document.documentElement.getAttribute("data-color-mode")).toBe("white-paper");
+    // body ではなく :root に付ける（@theme の --color-* は :root で解決されるため、
+    // body への再宣言では届かない — 詳細は store.ts の applyColorMode の JSDoc）
+    expect(document.body.getAttribute("data-color-mode")).toBeNull();
+    applyColorMode("");
+    expect(document.documentElement.getAttribute("data-color-mode")).toBeNull();
   });
 });

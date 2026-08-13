@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { migrateFromProvnote } from "./lib/migration";
-import { applyFontMode, getSelectedLatinFont, getSelectedJpFont } from "./features/settings";
+import { applyFontMode, getSelectedLatinFont, getSelectedJpFont, applyColorMode, getSelectedColorMode } from "./features/settings";
 import { NoteApp } from "./note-app";
 import { LocaleProvider } from "./i18n";
 import { restartSidecar, startSidecar, stopSidecar } from "./lib/sidecar";
@@ -55,8 +55,9 @@ if (isTauri()) {
 // ── マイグレーション（provnote → graphium） ──
 migrateFromProvnote();
 
-// ── フォントモード適用（読みやすさ設定） ──
+// ── フォント・色モード適用（読みやすさ設定） ──
 applyFontMode(getSelectedLatinFont(), getSelectedJpFont());
+applyColorMode(getSelectedColorMode());
 
 // ── エントリーポイント ──
 createRoot(document.getElementById("root")!).render(

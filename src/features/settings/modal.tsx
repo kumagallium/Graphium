@@ -23,7 +23,7 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, LATIN_FONTS, JP_FONTS, applyFontMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson } from "./store";
 import {
   fetchModels,
   type ModelInfo,
@@ -261,6 +261,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [customLabels, setCustomLabels] = useState<CustomLabels>({});
   const [latinFont, setLatinFont] = useState<LatinFont>("");
   const [jpFont, setJpFont] = useState<JpFont>("");
+  const [colorMode, setColorMode] = useState<ColorMode>("");
   const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
 
@@ -510,6 +511,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setCustomLabels(settings.customLabels ?? {});
     setLatinFont(settings.latinFont ?? "");
     setJpFont(settings.jpFont ?? "");
+    setColorMode(settings.colorMode ?? "");
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false });
     setSaved(false);
     setShowAddForm(false);
@@ -1069,12 +1071,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       customLabels,
       latinFont,
       jpFont,
+      colorMode,
       experimental,
     });
     applyFontMode(latinFont, jpFont);
+    applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, experimental, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -1448,6 +1452,40 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">{t("settings.fontHelp")}</p>
+            </div>
+
+            {/* 読みやすさ（色） — 文字と紙色のプリセット。onChange で即時プレビュー（フォントと同じ） */}
+            <div>
+              <h3 className="text-xs font-semibold text-foreground mb-2 block">
+                {t("settings.colorMode")}
+              </h3>
+              <div className="relative">
+                <select
+                  value={colorMode}
+                  onChange={(e) => {
+                    const next = e.target.value as ColorMode;
+                    setColorMode(next);
+                    applyColorMode(next);
+                    setSaved(false);
+                  }}
+                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                >
+                  {COLOR_MODES.map((mode) => {
+                    const labelKey = mode === ""
+                      ? "settings.colorModeDefault"
+                      : mode === "high-contrast"
+                        ? "settings.colorModeHighContrast"
+                        : "settings.colorModeWhitePaper";
+                    return (
+                      <option key={mode || "default"} value={mode}>
+                        {t(labelKey)}
+                      </option>
+                    );
+                  })}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">{t("settings.colorModeHelp")}</p>
             </div>
 
             {/* 来歴ラベル機能のオン/オフトグルは撤去した。付与 UI が step の中に
