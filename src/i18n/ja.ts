@@ -360,9 +360,9 @@ export const ja: Record<string, string> = {
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "高度なブロック",
   "slash.indexTable": "インデックステーブル",
-  "slash.indexTableSub": "各行からノートを作って紐付けられる表。サンプルや実験の一覧に",
+  "slash.indexTableSub": "各行に対してノートを作成・参照できる表",
   "slash.logTable": "時系列テーブル",
-  "slash.logTableSub": "行を足すと日時が自動で入る表。日誌や実験の経時観察に",
+  "slash.logTableSub": "行を足すと日時が自動で入る表。日記や日々の記録に",
   "slash.chart": "チャート",
   "slash.chartSub": "ノート内のテーブルをグラフ表示",
   "slash.bookmark": "ブックマーク",

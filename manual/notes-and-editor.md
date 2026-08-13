@@ -68,8 +68,8 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 
 | Item | Description |
 |---|---|
-| **Index Table** | "Each row can own its note — for sample and experiment lists" — see [The index table](#the-index-table) |
-| **Time-series Table** | "Rows get the date/time automatically — for journals and observations" — see [The time-series table and charts](#the-time-series-table-and-charts) |
+| **Index Table** | "Create and open a note for each row" — see [The index table](#the-index-table) |
+| **Time-series Table** | "Rows get the date/time automatically — for diaries and daily logs" — see [The time-series table and charts](#the-time-series-table-and-charts) |
 | **Chart** | "Visualize a table in this note" — see [The time-series table and charts](#the-time-series-table-and-charts) |
 | **Template** | "Insert a plan or experiment template" |
 | **Callout** | "Insert a note box with an icon" |
@@ -168,7 +168,7 @@ Like the time-series table, an index table is not a separate kind of table — i
 
 ## The time-series table and charts
 
-**Time-series Table** inserts a table for recurring, time-stamped observations — a headache diary, a growth log, repeated measurements on the same setup. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
+**Time-series Table** inserts a table for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
 
 The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged. A caption above the table names it; unnamed time-series tables show an automatic *Table 1*, *Table 2*, … in document order, and charts use that name as the reference label.
 

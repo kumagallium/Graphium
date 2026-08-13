@@ -360,9 +360,9 @@ export const en: Record<string, string> = {
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "Advanced",
   "slash.indexTable": "Index Table",
-  "slash.indexTableSub": "Each row can own its note — for sample and experiment lists",
+  "slash.indexTableSub": "Create and open a note for each row",
   "slash.logTable": "Time-series Table",
-  "slash.logTableSub": "Rows get the date/time automatically — for journals and observations",
+  "slash.logTableSub": "Rows get the date/time automatically — for diaries and daily logs",
   "slash.chart": "Chart",
   "slash.chartSub": "Visualize a table in this note",
   "slash.bookmark": "Bookmark",
