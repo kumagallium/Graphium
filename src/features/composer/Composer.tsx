@@ -16,13 +16,16 @@
 // AI 質問:
 //   - 候補リスト最下段の「AI に質問」アクション行を選んで Enter（または ⌘+Enter）
 //   - ノート行を選んで Enter ならジャンプ。ジャンプ用のハンドラがなければ AI に倒れる
+//   - `canAskAi=false`（ノートの編集面が出ていないところから開いたとき）は
+//     AI 行・発見カード・verb メニュー・grounding チップを畳んで検索専用にする。
+//     送信先がその時開いているノートに紐づくため、質問だけは成立しない
 //
 // compose / insert-prov / insert-media の実装は呼び出し側（note-app.tsx）の
 // composerSubmitRef に残しており、将来スラッシュメニューや別ショートカットから再利用できる。
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Image as ImageIcon } from "lucide-react";
+import { Bot, Image as ImageIcon, Search } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
@@ -60,6 +63,13 @@ type ComposerProps = {
   /** 現在開いているノートの引用（knowledge link）数。
    *  J1.5: 入力空のとき 0 → 発見カード（既存）/ 1+ → verb メニューを前面に出す。 */
   citationCount?: number;
+  /**
+   * AI に質問できる状態か（既定 true）。
+   * ノートの編集面が出ていないところから開いたときは false で、
+   * AI 行・発見カード・verb メニュー・grounding チップを出さず検索専用にする。
+   * 送信先（composerSubmitRef）が開いているノートに紐づくため。
+   */
+  canAskAi?: boolean;
 };
 
 type ResultRow =
@@ -87,6 +97,7 @@ export function Composer(props: ComposerProps) {
     mediaIndex,
     onMediaSelect,
     citationCount,
+    canAskAi = true,
   } = props;
 
   const t = useT();
@@ -117,14 +128,15 @@ export function Composer(props: ComposerProps) {
   const isEmptyQuery = trimmed.length === 0;
 
   const cards = useMemo(() => discoveryCards ?? [], [discoveryCards]);
-  // 入力空のときだけ発見カードを出す（検索結果が出ているときは候補が二重になり邪魔）
-  const showCards = isEmptyQuery && cards.length > 0;
+  // 入力空のときだけ発見カードを出す（検索結果が出ているときは候補が二重になり邪魔）。
+  // 検索専用で開いたときはカード自体が AI への導線なので出さない。
+  const showCards = isEmptyQuery && cards.length > 0 && canAskAi;
 
   // J1.5: 引用ブロック（knowledge link）の有無で空入力時の中段を切り替える。
   //   引用 0 → 発見カード（既存維持・破壊性ゼロ）
   //   引用 1+ → verb メニューを前面に出し、発見カードは小さく下に添える
   const hasCitations = (citationCount ?? 0) > 0;
-  const showVerbMenu = isEmptyQuery && hasCitations;
+  const showVerbMenu = isEmptyQuery && hasCitations && canAskAi;
 
   // verb に添える任意コメント（即発火だが補足を一言足せる）
   const [verbComment, setVerbComment] = useState("");
@@ -137,7 +149,7 @@ export function Composer(props: ComposerProps) {
       list.push({ kind: "media", hit });
     }
     // 入力が非空のときだけ AI アクションを末尾に出す（空入力は履歴ビューとして純粋に保つ）
-    if (!isEmptyQuery) {
+    if (!isEmptyQuery && canAskAi) {
       list.push({ kind: "ask-ai" });
     }
     if (showCards) {
@@ -146,7 +158,7 @@ export function Composer(props: ComposerProps) {
       }
     }
     return list;
-  }, [hits, mediaHits, isEmptyQuery, showCards, cards]);
+  }, [hits, mediaHits, isEmptyQuery, showCards, cards, canAskAi]);
 
   // 入力が変わるたびに先頭にハイライトを戻す（ノート行があればそれ、無ければ AI 行）
   useEffect(() => {
@@ -178,6 +190,7 @@ export function Composer(props: ComposerProps) {
   }, [open, onClose]);
 
   const submitAi = () => {
+    if (!canAskAi) return;
     if (trimmed.length === 0) return;
     onSubmit({ mode, prompt: trimmed, scope });
   };
@@ -254,7 +267,7 @@ export function Composer(props: ComposerProps) {
   return createPortal(
     <div
       role="dialog"
-      aria-label={t("composer.aria.dialog")}
+      aria-label={canAskAi ? t("composer.aria.dialog") : t("composer.aria.dialogSearchOnly")}
       aria-modal="true"
       style={{
         position: "fixed",
@@ -311,7 +324,8 @@ export function Composer(props: ComposerProps) {
             }}
             aria-hidden
           >
-            <Bot size={14} />
+            {/* 検索専用で開いたときは AI のアイコンを出さない（できないことを示さない） */}
+            {canAskAi ? <Bot size={14} /> : <Search size={14} />}
             <span
               style={{
                 fontFamily: "ui-monospace, 'SF Mono', monospace",
@@ -327,7 +341,7 @@ export function Composer(props: ComposerProps) {
             onChange={(e) => onPromptChange(e.target.value)}
             {...compositionHandlers}
             onKeyDown={handleKeyDown}
-            placeholder={t("composer.placeholder")}
+            placeholder={canAskAi ? t("composer.placeholder") : t("composer.placeholderSearchOnly")}
             type="text"
             autoComplete="off"
             spellCheck={false}
@@ -364,16 +378,20 @@ export function Composer(props: ComposerProps) {
               fontFamily: "var(--mono)",
             }}
           >
-            ↑↓ {t("composer.search.hintFilters")} · ⌘+Enter {t("composer.kbd.submit")} · Esc {t("composer.kbd.close")}
+            ↑↓ {t("composer.search.hintFilters")}
+            {canAskAi && <> · ⌘+Enter {t("composer.kbd.submit")}</>} · Esc {t("composer.kbd.close")}
           </span>
-          {/* 折返しで 2 行目に落ちたときも右寄せを保つ */}
-          <span style={{ marginLeft: "auto" }}>
-            <GroundingScopeChip value={scope} onChange={setScope} />
-          </span>
+          {/* 折返しで 2 行目に落ちたときも右寄せを保つ。
+              grounding は AI 送信時に何を根拠にするかの設定なので検索専用では出さない */}
+          {canAskAi && (
+            <span style={{ marginLeft: "auto" }}>
+              <GroundingScopeChip value={scope} onChange={setScope} />
+            </span>
+          )}
         </div>
 
         {/* 外部参照選択時、Web 検索手段が無い構成への警告（設定への導線つき・× で閉じられる） */}
-        {scope === "external" && webSearch === "missing" && !webSearchHintDismissed && (
+        {canAskAi && scope === "external" && webSearch === "missing" && !webSearchHintDismissed && (
           <div style={{ padding: "0 16px 10px" }}>
             <WebSearchMissingHint onDismiss={() => setWebSearchHintDismissed(true)} />
           </div>
@@ -440,7 +458,7 @@ export function Composer(props: ComposerProps) {
             )}
 
             {/* 「アクション」セクション (AI に質問) */}
-            {!isEmptyQuery && (
+            {!isEmptyQuery && canAskAi && (
               <>
                 <SectionHeading>{t("composer.search.actionsHeading")}</SectionHeading>
                 {(() => {

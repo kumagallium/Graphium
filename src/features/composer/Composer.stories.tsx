@@ -31,6 +31,8 @@ type Args = {
   withSearch?: boolean;
   /** 初期入力。検索結果プレビューを楽に確認したいとき用 */
   initialPrompt?: string;
+  /** false にすると検索専用（ノート以外の画面から Cmd+K を押したときの姿） */
+  canAskAi?: boolean;
 };
 
 const sampleNotes: NoteIndexEntry[] = [
@@ -147,7 +149,12 @@ const sampleMediaIndex: MediaIndex = {
   media: sampleMedia,
 };
 
-function Harness({ showDiscoveryCards = false, withSearch = false, initialPrompt = "" }: Args) {
+function Harness({
+  showDiscoveryCards = false,
+  withSearch = false,
+  initialPrompt = "",
+  canAskAi = true,
+}: Args) {
   const [mode, setMode] = useState<ComposerMode>("ask");
   const [prompt, setPrompt] = useState(initialPrompt);
   const [log, setLog] = useState<string[]>([]);
@@ -231,9 +238,10 @@ function Harness({ showDiscoveryCards = false, withSearch = false, initialPrompt
           mediaIndex={withSearch ? sampleMediaIndex : null}
           onMediaSelect={
             withSearch
-              ? (entry) => setLog((prev) => [...prev, `open material peek: ${entry.name}`])
+              ? (entry) => setLog((prev) => [...prev, `open asset gallery + side peek: ${entry.name}`])
               : undefined
           }
+          canAskAi={canAskAi}
         />
       </div>
     </LocaleProvider>
@@ -291,6 +299,20 @@ export const SearchImageOcr: StoryObj<Args> = {
       description: {
         story:
           "OCR で読み取った画像内の文字に一致した例。ノートのタイトルには「焼結」が無いので、結果は画像セクションだけになる。ノートに貼った画像も、どのノートにも貼っていない画像も同じように並ぶ。",
+      },
+    },
+  },
+};
+
+export const SearchOnlyNoNote: StoryObj<Args> = {
+  name: "検索専用（ノート以外の画面から開いたとき）",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "XRD", canAskAi: false, showDiscoveryCards: true },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "一覧・素材ギャラリー・Wiki ハブなど、ノートの編集面が出ていないところから Cmd+K を押した姿。送信先が開いているノートに紐づくため AI 質問は成立しないので、AI 行・発見カード・grounding チップを畳んで検索だけを残す（発見カードを on にしていても出ない）。",
       },
     },
   },

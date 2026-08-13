@@ -1607,11 +1607,13 @@ export const en: Record<string, string> = {
 
   // ── Composer（Cmd+K）── UI は Ask 単機能。残りのモード ID は内部互換のため保持。
   "composer.placeholder": "Find a note or ask AI...",
+  "composer.placeholderSearchOnly": "Find a note or an image...",
   "composer.mode.ask": "Ask",
   "composer.mode.compose": "Compose",
   "composer.mode.insertProv": "Insert PROV",
   "composer.mode.insertMedia": "Insert Media",
   "composer.aria.dialog": "Ask AI",
+  "composer.aria.dialogSearchOnly": "Find a note or an image",
   "composer.discoveryHint": "Suggestions",
   "composer.search.notesHeading": "Notes",
   "composer.search.recentHeading": "Recent notes",
