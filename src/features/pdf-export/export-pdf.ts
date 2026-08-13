@@ -132,6 +132,30 @@ export async function exportNoteToPdf(options: {
   // チャートの設定ボタン（編集 UI）を除去
   contentClone.querySelectorAll("[data-chart-ui]").forEach((el) => el.remove());
 
+  // 計算ブロックのソース入力（textarea）を行ごとの div に置き換える。
+  // textarea は cloneNode で入力値（value プロパティ）が引き継がれず、
+  // html2canvas も複数行テキストを 1 行に潰して描くため、そのままだと
+  // ソース列が空または 1 行になり右の結果列とずれる。値は元 DOM から拾う。
+  const origCalcAreas = editorElement.querySelectorAll<HTMLTextAreaElement>(
+    '[data-test="calc-block"] textarea',
+  );
+  contentClone
+    .querySelectorAll<HTMLTextAreaElement>('[data-test="calc-block"] textarea')
+    .forEach((area, i) => {
+      const value = origCalcAreas[i]?.value ?? "";
+      const box = document.createElement("div");
+      box.style.cssText =
+        "flex:1;min-width:0;padding:6px 8px;border:1px solid #e0e0e0;border-radius:6px;" +
+        "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.7;";
+      for (const line of value.split("\n")) {
+        const row = document.createElement("div");
+        row.style.whiteSpace = "pre";
+        row.textContent = line || " ";
+        box.appendChild(row);
+      }
+      area.replaceWith(box);
+    });
+
   // コンテンツのスタイルをクリーンアップ
   contentClone.style.padding = "0";
   contentClone.style.margin = "0";
@@ -189,7 +213,7 @@ export async function exportNoteToPdf(options: {
   };
   wrapper
     .querySelectorAll<HTMLElement>(
-      '.pdf-export-content [data-test="chart-block"], .pdf-export-content img, .pdf-export-content [data-test="math-block"], .pdf-export-content [data-node-type="columnList"]'
+      '.pdf-export-content [data-test="chart-block"], .pdf-export-content img, .pdf-export-content [data-test="math-block"], .pdf-export-content [data-test="calc-block"], .pdf-export-content [data-node-type="columnList"]'
     )
     .forEach((el) => {
       if (el.getBoundingClientRect().height <= PAGE_CONTENT_PX) avoidBreak(el);
