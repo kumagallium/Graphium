@@ -1,22 +1,24 @@
 // チャート設定パネル
 //
 // eureco の「チャートの設定」ポップオーバーに合わせたタブ式パネル。
-// タブ構成（種類・系列 / 軸設定 / 外観）は eureco 作者のこだわりで、
-// 系列は行を展開して個別設定（表示名・色・左右の軸）を持つ点も倣う。
+// タブは思考順序（何を見るか → スケール → 体裁）で、データの割り当て
+//（どのテーブルの・どの列か）は「何を見るか」なので種類・系列タブが持つ。
+// 系列は行を開くと個別設定（名前・データの割り当て・種類・色・軸）になる。
 // UI ニュートラル色は design.md のトークン、寸法は 8pt 格子から。
 
 import { useMemo, useState } from "react";
-import { X, ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
+import { X, ChevronUp, ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { t } from "../../i18n";
 import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
-  seriesDisplayName,
+  seriesConfigDisplayName,
   usesRightAxis,
   type ChartBlockConfig,
+  type ChartSeriesConfig,
   type LegendPosition,
-  type SeriesOptions,
+  type SeriesType,
   type XAxisKindSetting,
 } from "./chart-config";
 import type { ChartAspect } from "./chart-theme";
@@ -48,61 +50,83 @@ const LEGEND_POSITION_KEYS: Array<[LegendPosition, string]> = [
   ["bottom", "chart.posBottom"],
 ];
 
+/** テーブルを替えたとき、同名列が無ければ新テーブルの妥当な列に付け替える */
+function retargetSeries(
+  series: ChartSeriesConfig,
+  newBlockId: string,
+  table: TableData | null
+): ChartSeriesConfig {
+  if (!table) return { ...series, sourceBlockId: newBlockId };
+  const headers = table.headers.filter((h) => h.trim() !== "");
+  const numeric = headers.filter((h) => isNumericColumn(table, h));
+  const xColumn = headers.includes(series.xColumn) ? series.xColumn : (table.headers[0] ?? "");
+  const yColumn = numeric.includes(series.yColumn)
+    ? series.yColumn
+    : (numeric.find((h) => h !== xColumn) ?? numeric[0] ?? "");
+  return { ...series, sourceBlockId: newBlockId, xColumn, yColumn };
+}
+
 export function ChartSettingsPanel({
   config,
   onChange,
   tables,
-  sourceBlockId,
-  onSelectSource,
-  tableData,
+  resolveTable,
   onClose,
 }: {
   config: ChartBlockConfig;
   onChange: (patch: Partial<ChartBlockConfig>) => void;
   tables: Array<{ id: string; label: string }>;
-  sourceBlockId: string;
-  onSelectSource: (id: string) => void;
-  tableData: TableData | null;
+  resolveTable: (blockId: string) => TableData | null;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("typeSeries");
-  const [expandedSeries, setExpandedSeries] = useState<string | null>(null);
+  const [expandedSeries, setExpandedSeries] = useState<number | null>(null);
+  const isHistogram = config.chartType === "histogram";
+  const rightAxisInUse = usesRightAxis(config) && !isHistogram;
 
-  const columns = useMemo(
-    () => (tableData?.headers ?? []).filter((h) => h.trim() !== ""),
-    [tableData]
-  );
-  const numericColumns = useMemo(
-    () => (tableData ? columns.filter((h) => isNumericColumn(tableData, h)) : []),
-    [tableData, columns]
-  );
-  const addableSeries = numericColumns.filter(
-    (h) => h !== config.xColumn && !config.yColumns.includes(h)
-  );
-  const rightAxisInUse = usesRightAxis(config) && config.chartType !== "histogram";
   // X 軸の実効的な目盛り種類（min/max 入力の有効・無効の判定に使う）
   const effectiveXKind = useMemo(() => {
     if (config.chartType === "bar" || config.chartType === "histogram") return "category";
     if (config.xAxisKind !== "auto") return config.xAxisKind;
-    if (!tableData) return "category";
-    const idx = tableData.headers.findIndex((h) => h.trim() === config.xColumn.trim());
-    if (idx < 0) return "category";
-    return detectXAxisKind(tableData.rows.map((r) => r[idx] ?? ""));
-  }, [config.chartType, config.xAxisKind, config.xColumn, tableData]);
+    const xValues = config.series.flatMap((s) => {
+      const table = resolveTable(s.sourceBlockId);
+      if (!table) return [];
+      const idx = table.headers.findIndex((h) => h.trim() === s.xColumn.trim());
+      if (idx < 0) return [];
+      return table.rows.map((r) => r[idx] ?? "");
+    });
+    return detectXAxisKind(xValues);
+  }, [config.chartType, config.xAxisKind, config.series, resolveTable]);
+
+  const updateSeries = (index: number, patch: Partial<ChartSeriesConfig>) => {
+    const next = config.series.map((s, i) => (i === index ? { ...s, ...patch } : s));
+    onChange({ series: next });
+  };
 
   const moveSeries = (index: number, delta: number) => {
-    const next = [...config.yColumns];
+    const next = [...config.series];
     const to = index + delta;
     if (to < 0 || to >= next.length) return;
     [next[index], next[to]] = [next[to], next[index]];
-    onChange({ yColumns: next });
+    onChange({ series: next });
   };
 
-  const updateSeriesOption = (column: string, patch: Partial<SeriesOptions>) => {
-    const current = config.seriesOptions[column] ?? {};
-    onChange({
-      seriesOptions: { ...config.seriesOptions, [column]: { ...current, ...patch } },
-    });
+  const addSeries = () => {
+    // 直前の系列のテーブル・X 列を引き継ぎ、Y は未使用の数値列から選ぶ
+    const last = config.series[config.series.length - 1];
+    const sourceBlockId = last?.sourceBlockId ?? tables[0]?.id ?? "";
+    if (!sourceBlockId) return;
+    const table = resolveTable(sourceBlockId);
+    const numeric = table
+      ? table.headers.filter((h) => h.trim() !== "" && isNumericColumn(table, h))
+      : [];
+    const used = new Set(
+      config.series.filter((s) => s.sourceBlockId === sourceBlockId).map((s) => s.yColumn)
+    );
+    const yColumn = numeric.find((h) => !used.has(h)) ?? numeric[0] ?? last?.yColumn ?? "";
+    const xColumn = last?.xColumn ?? table?.headers[0] ?? "";
+    onChange({ series: [...config.series, { sourceBlockId, xColumn, yColumn }] });
+    setExpandedSeries(config.series.length);
   };
 
   return (
@@ -137,32 +161,10 @@ export function ChartSettingsPanel({
 
       {tab === "typeSeries" && (
         <div style={styles.body}>
-          <div style={styles.sectionLabel}>{t("chart.sectionData")}</div>
-          <select
-            value={sourceBlockId}
-            onChange={(e) => onSelectSource(e.target.value)}
-            style={styles.select}
-            title={t("chart.table")}
-          >
-            {tables.map(({ id, label }) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-
           <div style={styles.sectionLabel}>{t("chart.sectionType")}</div>
           <select
             value={config.chartType}
-            onChange={(e) => {
-              const chartType = e.target.value as ChartType;
-              // histogram は対象列が数値列である必要がある。数値列でなければ先頭の数値列へ
-              if (chartType === "histogram" && !numericColumns.includes(config.xColumn)) {
-                onChange({ chartType, xColumn: numericColumns[0] ?? config.xColumn });
-              } else {
-                onChange({ chartType });
-              }
-            }}
+            onChange={(e) => onChange({ chartType: e.target.value as ChartType })}
             style={styles.select}
           >
             {CHART_TYPES.map((type) => (
@@ -172,181 +174,224 @@ export function ChartSettingsPanel({
             ))}
           </select>
 
-          {config.chartType === "histogram" ? (
-            <>
-              <div style={styles.sectionLabel}>{t("chart.histogramColumn")}</div>
-              <select
-                value={config.xColumn}
-                onChange={(e) => onChange({ xColumn: e.target.value })}
-                style={styles.select}
-              >
-                {numericColumns.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <>
-              <div style={styles.sectionLabel}>{t("chart.sectionSeries")}</div>
-              <div style={styles.seriesList}>
-                {config.yColumns.map((name, i) => {
-                  const options = config.seriesOptions[name] ?? {};
-                  const color = options.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
-                  const expanded = expandedSeries === name;
-                  return (
-                    <div key={name} style={styles.seriesItem}>
-                      <div style={styles.seriesRow}>
-                        <button
-                          type="button"
-                          style={styles.iconButton}
-                          onClick={() => setExpandedSeries(expanded ? null : name)}
-                          title={t("chart.seriesSettings")}
-                        >
-                          {expanded ? (
-                            <ChevronDown size={13} strokeWidth={2} />
-                          ) : (
-                            <ChevronRight size={13} strokeWidth={2} />
-                          )}
-                        </button>
-                        <span style={{ ...styles.swatch, background: color }} />
-                        <span style={styles.seriesName}>{seriesDisplayName(config, name)}</span>
-                        <button
-                          type="button"
-                          style={styles.iconButton}
-                          onClick={() => moveSeries(i, -1)}
-                          disabled={i === 0}
-                          title={t("chart.moveUp")}
-                        >
-                          <ChevronUp size={13} strokeWidth={2} />
-                        </button>
-                        <button
-                          type="button"
-                          style={styles.iconButton}
-                          onClick={() => moveSeries(i, 1)}
-                          disabled={i === config.yColumns.length - 1}
-                          title={t("chart.moveDown")}
-                        >
-                          <ChevronDown size={13} strokeWidth={2} />
-                        </button>
-                        <button
-                          type="button"
-                          style={styles.iconButton}
-                          onClick={() =>
-                            onChange({ yColumns: config.yColumns.filter((c) => c !== name) })
+          <div style={styles.sectionLabel}>{t("chart.sectionSeries")}</div>
+          <div style={styles.seriesList}>
+            {config.series.map((series, i) => {
+              const color = series.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
+              const expanded = expandedSeries === i;
+              const table = resolveTable(series.sourceBlockId);
+              const headers = (table?.headers ?? []).filter((h) => h.trim() !== "");
+              const numericHeaders = table ? headers.filter((h) => isNumericColumn(table, h)) : [];
+              return (
+                <div key={`${series.sourceBlockId}:${series.yColumn}:${i}`} style={styles.seriesItem}>
+                  <div style={styles.seriesRow}>
+                    <button
+                      type="button"
+                      style={styles.iconButton}
+                      onClick={() => setExpandedSeries(expanded ? null : i)}
+                      title={t("chart.seriesSettings")}
+                    >
+                      {expanded ? (
+                        <ChevronDown size={13} strokeWidth={2} />
+                      ) : (
+                        <ChevronRight size={13} strokeWidth={2} />
+                      )}
+                    </button>
+                    <span style={{ ...styles.swatch, background: color }} />
+                    <span style={styles.seriesName}>
+                      {seriesConfigDisplayName(series)}
+                      {!table && (
+                        <span style={styles.seriesGone}> {t("chart.seriesTableGone")}</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      style={styles.iconButton}
+                      onClick={() => moveSeries(i, -1)}
+                      disabled={i === 0}
+                      title={t("chart.moveUp")}
+                    >
+                      <ChevronUp size={13} strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.iconButton}
+                      onClick={() => moveSeries(i, 1)}
+                      disabled={i === config.series.length - 1}
+                      title={t("chart.moveDown")}
+                    >
+                      <ChevronDown size={13} strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.iconButton}
+                      onClick={() => {
+                        onChange({ series: config.series.filter((_, j) => j !== i) });
+                        setExpandedSeries(null);
+                      }}
+                      title={t("chart.removeSeries")}
+                    >
+                      <X size={13} strokeWidth={2} />
+                    </button>
+                  </div>
+                  {expanded && (
+                    <div style={styles.seriesDetail}>
+                      <label style={styles.fieldRow}>
+                        <span style={styles.fieldLabel}>{t("chart.seriesLabel")}</span>
+                        <input
+                          type="text"
+                          value={series.label ?? ""}
+                          placeholder={series.yColumn}
+                          onChange={(e) => updateSeries(i, { label: e.target.value })}
+                          style={{ ...styles.input, flex: 1 }}
+                        />
+                      </label>
+
+                      <div style={styles.assignLabel}>{t("chart.assignData")}</div>
+                      <label style={styles.fieldRow}>
+                        <span style={styles.fieldLabel}>{t("chart.table")}</span>
+                        <select
+                          value={series.sourceBlockId}
+                          onChange={(e) =>
+                            updateSeries(
+                              i,
+                              retargetSeries(series, e.target.value, resolveTable(e.target.value))
+                            )
                           }
-                          title={t("chart.removeSeries")}
+                          style={{ ...styles.select, flex: 1 }}
                         >
-                          <X size={13} strokeWidth={2} />
-                        </button>
-                      </div>
-                      {expanded && (
-                        <div style={styles.seriesDetail}>
-                          <label style={styles.fieldRow}>
-                            <span style={styles.fieldLabel}>{t("chart.seriesLabel")}</span>
-                            <input
-                              type="text"
-                              value={options.label ?? ""}
-                              placeholder={name}
-                              onChange={(e) => updateSeriesOption(name, { label: e.target.value })}
-                              style={{ ...styles.input, flex: 1 }}
+                          {!tables.some(({ id }) => id === series.sourceBlockId) && (
+                            <option value={series.sourceBlockId}>
+                              {t("chart.seriesTableGone")}
+                            </option>
+                          )}
+                          {tables.map(({ id, label }) => (
+                            <option key={id} value={id}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {!isHistogram && (
+                        <label style={styles.fieldRow}>
+                          <span style={styles.fieldLabel}>{t("chart.seriesX")}</span>
+                          <select
+                            value={series.xColumn}
+                            onChange={(e) => updateSeries(i, { xColumn: e.target.value })}
+                            style={{ ...styles.select, flex: 1 }}
+                          >
+                            {headers.map((h) => (
+                              <option key={h} value={h}>
+                                {h}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      <label style={styles.fieldRow}>
+                        <span style={styles.fieldLabel}>{t("chart.seriesY")}</span>
+                        <select
+                          value={series.yColumn}
+                          onChange={(e) => updateSeries(i, { yColumn: e.target.value })}
+                          style={{ ...styles.select, flex: 1 }}
+                        >
+                          {(isHistogram ? numericHeaders : headers).map((h) => (
+                            <option key={h} value={h}>
+                              {h}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      {!isHistogram && (
+                        <label style={styles.fieldRow}>
+                          <span style={styles.fieldLabel}>{t("chart.seriesType")}</span>
+                          <select
+                            value={series.type ?? ""}
+                            onChange={(e) =>
+                              updateSeries(i, {
+                                type: (e.target.value || undefined) as SeriesType | undefined,
+                              })
+                            }
+                            style={{ ...styles.select, flex: 1 }}
+                          >
+                            <option value="">{t("chart.typeFollowChart")}</option>
+                            <option value="line">{t("chart.typeLine")}</option>
+                            <option value="bar">{t("chart.typeBar")}</option>
+                            <option value="scatter">{t("chart.typeScatter")}</option>
+                          </select>
+                        </label>
+                      )}
+
+                      <div style={styles.fieldRow}>
+                        <span style={styles.fieldLabel}>{t("chart.seriesColor")}</span>
+                        <span style={styles.colorRow}>
+                          {CHART_SERIES_COLORS.map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => updateSeries(i, { color: c })}
+                              style={{
+                                ...styles.colorSwatchButton,
+                                background: c,
+                                outline: color === c ? `2px solid ${c}` : "none",
+                                outlineOffset: 1,
+                              }}
+                              title={c}
                             />
-                          </label>
-                          <div style={styles.fieldRow}>
-                            <span style={styles.fieldLabel}>{t("chart.seriesColor")}</span>
-                            <span style={styles.colorRow}>
-                              {CHART_SERIES_COLORS.map((c) => (
+                          ))}
+                        </span>
+                      </div>
+                      {!isHistogram && (
+                        <div style={styles.fieldRow}>
+                          <span style={styles.fieldLabel}>{t("chart.seriesAxis")}</span>
+                          <span style={styles.segment}>
+                            {(["left", "right"] as const).map((axis) => {
+                              const active = (series.axis ?? "left") === axis;
+                              return (
                                 <button
-                                  key={c}
+                                  key={axis}
                                   type="button"
-                                  onClick={() => updateSeriesOption(name, { color: c })}
+                                  onClick={() => updateSeries(i, { axis })}
                                   style={{
-                                    ...styles.colorSwatchButton,
-                                    background: c,
-                                    outline: color === c ? `2px solid ${c}` : "none",
-                                    outlineOffset: 1,
+                                    ...styles.segmentButton,
+                                    ...(active ? styles.segmentButtonActive : {}),
                                   }}
-                                  title={c}
-                                />
-                              ))}
-                            </span>
-                          </div>
-                          <div style={styles.fieldRow}>
-                            <span style={styles.fieldLabel}>{t("chart.seriesAxis")}</span>
-                            <span style={styles.segment}>
-                              {(["left", "right"] as const).map((axis) => {
-                                const active = (options.axis ?? "left") === axis;
-                                return (
-                                  <button
-                                    key={axis}
-                                    type="button"
-                                    onClick={() => updateSeriesOption(name, { axis })}
-                                    style={{
-                                      ...styles.segmentButton,
-                                      ...(active ? styles.segmentButtonActive : {}),
-                                    }}
-                                  >
-                                    {axis === "left" ? t("chart.axisLeft") : t("chart.axisRight")}
-                                  </button>
-                                );
-                              })}
-                            </span>
-                          </div>
+                                >
+                                  {axis === "left" ? t("chart.axisLeft") : t("chart.axisRight")}
+                                </button>
+                              );
+                            })}
+                          </span>
                         </div>
                       )}
                     </div>
-                  );
-                })}
-                {config.yColumns.length === 0 && (
-                  <div style={styles.emptyHint}>{t("chart.noNumericSeries")}</div>
-                )}
-              </div>
-              <select
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) onChange({ yColumns: [...config.yColumns, e.target.value] });
-                }}
-                style={{ ...styles.select, color: "var(--color-text-tertiary)" }}
-                disabled={addableSeries.length === 0}
-              >
-                <option value="">{t("chart.addSeries")}</option>
-                {addableSeries.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
+                  )}
+                </div>
+              );
+            })}
+            {config.series.length === 0 && (
+              <div style={styles.emptyHint}>{t("chart.noNumericSeries")}</div>
+            )}
+          </div>
+          <button type="button" onClick={addSeries} style={styles.addSeriesButton}>
+            <Plus size={13} strokeWidth={2} />
+            {t("chart.addSeries")}
+          </button>
         </div>
       )}
 
       {tab === "axes" && (
         <div style={styles.body}>
-          {config.chartType !== "histogram" && (
+          {!isHistogram && (
             <>
               <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.column")}</span>
-                <select
-                  value={config.xColumn}
-                  onChange={(e) => onChange({ xColumn: e.target.value })}
-                  style={{ ...styles.select, flex: 1 }}
-                >
-                  {columns.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <label style={styles.fieldRow}>
                 <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
                 <input
                   type="text"
                   value={config.xAxisName}
-                  placeholder={config.xColumn || t("chart.autoPlaceholder")}
+                  placeholder={t("chart.autoPlaceholder")}
                   onChange={(e) => onChange({ xAxisName: e.target.value })}
                   style={{ ...styles.input, flex: 1 }}
                 />
@@ -395,9 +440,7 @@ export function ChartSettingsPanel({
             <input
               type="text"
               value={config.yAxisName}
-              placeholder={
-                config.chartType === "histogram" ? t("chart.frequency") : t("chart.autoPlaceholder")
-              }
+              placeholder={isHistogram ? t("chart.frequency") : t("chart.autoPlaceholder")}
               onChange={(e) => onChange({ yAxisName: e.target.value })}
               style={{ ...styles.input, flex: 1 }}
             />
@@ -639,6 +682,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     color: "var(--color-text-tertiary)",
   },
+  assignLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
+  },
   select: {
     width: "100%",
     padding: "4px 8px",
@@ -720,6 +768,10 @@ const styles: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  seriesGone: {
+    fontSize: 11,
+    color: "var(--color-error, #c26356)",
+  },
   iconButton: {
     display: "flex",
     alignItems: "center",
@@ -730,6 +782,21 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     background: "transparent",
     color: "var(--color-text-tertiary)",
+    cursor: "pointer",
+  },
+  addSeriesButton: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    width: "100%",
+    padding: "5px 0",
+    marginTop: 2,
+    fontSize: 12,
+    borderRadius: 6,
+    border: "none",
+    background: "var(--color-foreground)",
+    color: "var(--color-surface)",
     cursor: "pointer",
   },
   colorRow: {

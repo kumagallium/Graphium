@@ -19,21 +19,30 @@ export type TableData = {
 
 export type ChartType = "line" | "bar" | "scatter" | "histogram";
 
-export type ChartConfig = {
-  chartType: ChartType;
-  /** X 軸に使う列名（histogram では対象の数値列） */
+export type XAxisKind = "time" | "value" | "category";
+
+/**
+ * 1 系列分のデータ仕様（テーブルは解決済みで渡す）。
+ * 系列ごとにテーブルが違ってよい = 複数テーブルを 1 チャートに重ねられる。
+ */
+export type SeriesSpec = {
+  /** 解決済みテーブル。参照切れは null（その系列は空になる） */
+  table: TableData | null;
+  /** X に使う列名（histogram では未使用） */
   xColumn: string;
-  /** 系列にする列名（カンマ区切りで props に保存されるため配列で受ける） */
-  yColumns: string[];
-  /** X 軸の種類を明示する（未指定 = 値から推定）。棒・分布はカテゴリ固定 */
+  /** Y（値）に使う列名 */
+  yColumn: string;
+};
+
+export type MultiChartConfig = {
+  chartType: ChartType;
+  series: SeriesSpec[];
+  /** X 軸の種類を明示する（未指定 = 全系列の値から推定）。棒・分布はカテゴリ固定 */
   xAxisKind?: XAxisKind;
 };
 
-export type XAxisKind = "time" | "value" | "category";
-
-export type ChartSeries = {
-  name: string;
-  /** time/value 軸: [x, y] のペア。category 軸: y のみ（x はカテゴリ順） */
+export type ChartSeriesData = {
+  /** time/value 軸: [x, y] のペア。category 軸: categories に整列した y（欠測 null） */
   points: Array<[number, number]> | Array<number | null>;
 };
 
@@ -43,10 +52,11 @@ export type ChartDataResult =
       xAxis: XAxisKind;
       /** category 軸のときの X ラベル列 */
       categories: string[];
-      series: ChartSeries[];
+      /** 入力 series と同順・同数（読めない系列は points 空） */
+      series: ChartSeriesData[];
     }
   | { kind: "empty" }
-  | { kind: "no-numeric-series" };
+  | { kind: "no-series" };
 
 /** 全角数字・桁区切り・単位の混じったセルから数値を取り出す。読めなければ null */
 export function parseNumeric(raw: string): number | null {
@@ -113,113 +123,144 @@ export function isNumericColumn(table: TableData, name: string): boolean {
   return values.filter((v) => parseNumeric(v) !== null).length >= values.length / 2;
 }
 
-/** 設定が未指定のときの初期推定: X = 最初の列、系列 = それ以外の数値列 */
-export function suggestConfig(table: TableData): Pick<ChartConfig, "xColumn" | "yColumns"> {
-  const xColumn = table.headers[0] ?? "";
-  const yColumns = table.headers
-    .slice(1)
-    .filter((h) => h.trim() !== "" && isNumericColumn(table, h));
-  return { xColumn, yColumns };
-}
-
 /** ヒストグラムのビン分割（Sturges の公式ベース、キリの良い幅に丸める） */
-export function buildHistogram(values: number[]): { labels: string[]; counts: number[] } {
-  if (values.length === 0) return { labels: [], counts: [] };
+function computeBins(values: number[], seriesCount: number): {
+  start: number;
+  width: number;
+  bins: number;
+  labels: string[];
+} | null {
+  if (values.length === 0) return null;
   const min = Math.min(...values);
   const max = Math.max(...values);
   if (min === max) {
-    return { labels: [String(min)], counts: [values.length] };
+    return { start: min, width: 1, bins: 1, labels: [String(min)] };
   }
-  const binCount = Math.max(1, Math.ceil(Math.log2(values.length) + 1));
+  const binCount = Math.max(1, Math.ceil(Math.log2(values.length / Math.max(1, seriesCount)) + 1));
   const rawWidth = (max - min) / binCount;
   // 1/2/5 × 10^n に丸めて境界を読みやすくする
   const pow = Math.pow(10, Math.floor(Math.log10(rawWidth)));
   const width = [1, 2, 5, 10].map((f) => f * pow).find((w) => w >= rawWidth) ?? rawWidth;
   const start = Math.floor(min / width) * width;
   const bins = Math.max(1, Math.ceil((max - start) / width + 1e-9));
-  const counts = new Array(bins).fill(0);
+  const fmt = (n: number) => String(Math.round(n * 1e6) / 1e6);
+  const labels = Array.from({ length: bins }, (_, i) => `${fmt(start + i * width)}–${fmt(start + (i + 1) * width)}`);
+  return { start, width, bins, labels };
+}
+
+/** ヒストグラム（単一系列）。テストと後方互換のため公開を維持 */
+export function buildHistogram(values: number[]): { labels: string[]; counts: number[] } {
+  const binSpec = computeBins(values, 1);
+  if (!binSpec) return { labels: [], counts: [] };
+  const counts = new Array(binSpec.bins).fill(0);
   for (const v of values) {
-    const i = Math.min(bins - 1, Math.floor((v - start) / width));
+    if (binSpec.bins === 1) {
+      counts[0]++;
+      continue;
+    }
+    const i = Math.min(binSpec.bins - 1, Math.floor((v - binSpec.start) / binSpec.width));
     counts[i]++;
   }
-  const fmt = (n: number) => {
-    const rounded = Math.round(n * 1e6) / 1e6;
-    return String(rounded);
-  };
-  const labels = counts.map((_, i) => `${fmt(start + i * width)}–${fmt(start + (i + 1) * width)}`);
-  return { labels, counts };
+  return { labels: binSpec.labels, counts };
+}
+
+/** 系列のテーブルから列の値を取り出す（テーブル無し・列無しは空配列） */
+function seriesColumnValues(spec: SeriesSpec, column: string): string[] {
+  if (!spec.table) return [];
+  const idx = columnIndex(spec.table.headers, column);
+  if (idx < 0) return [];
+  return spec.table.rows.map((r) => r[idx] ?? "");
 }
 
 /**
- * テーブル + 設定 → 描画可能な系列。
+ * 系列の束 → 描画可能なデータ。系列ごとにテーブルが違ってよい。
  * ここが「集計層」の境界: 将来 CSV や外部エンジンに差し替えるときは
  * この関数と同じ出力を返す実装を用意すればよい。
  */
-export function buildChartData(table: TableData, config: ChartConfig): ChartDataResult {
-  if (table.rows.length === 0) return { kind: "empty" };
+export function buildChartData(config: MultiChartConfig): ChartDataResult {
+  if (config.series.length === 0) return { kind: "no-series" };
 
   if (config.chartType === "histogram") {
-    const idx = columnIndex(table.headers, config.xColumn);
-    if (idx < 0) return { kind: "no-numeric-series" };
-    const values = table.rows
-      .map((r) => parseNumeric(r[idx] ?? ""))
-      .filter((v): v is number => v !== null);
-    if (values.length === 0) return { kind: "empty" };
-    const { labels, counts } = buildHistogram(values);
-    return {
-      kind: "ok",
-      xAxis: "category",
-      categories: labels,
-      series: [{ name: config.xColumn, points: counts }],
-    };
+    // 全系列で共通のビンを使う（分布の比較ができるように）
+    const perSeries = config.series.map((s) =>
+      seriesColumnValues(s, s.yColumn)
+        .map((v) => parseNumeric(v))
+        .filter((v): v is number => v !== null)
+    );
+    const all = perSeries.flat();
+    const binSpec = computeBins(all, config.series.length);
+    if (!binSpec) return { kind: "empty" };
+    const series = perSeries.map((values) => {
+      const counts = new Array(binSpec.bins).fill(0);
+      for (const v of values) {
+        const i =
+          binSpec.bins === 1
+            ? 0
+            : Math.min(binSpec.bins - 1, Math.floor((v - binSpec.start) / binSpec.width));
+        counts[i]++;
+      }
+      return { points: counts as number[] };
+    });
+    return { kind: "ok", xAxis: "category", categories: binSpec.labels, series };
   }
 
-  const xIdx = columnIndex(table.headers, config.xColumn);
-  if (xIdx < 0) return { kind: "empty" };
-  const yIdxs = config.yColumns
-    .map((name) => ({ name, idx: columnIndex(table.headers, name) }))
-    .filter((c) => c.idx >= 0);
-  if (yIdxs.length === 0) return { kind: "no-numeric-series" };
-
-  const xValues = table.rows.map((r) => r[xIdx] ?? "");
   // 棒グラフはカテゴリ軸に固定する（学術図の作法として棒はカテゴリカル。
   // time 軸に棒を置くと ECharts はバー幅を決められず 1px に潰れる）。
-  // それ以外は明示指定 > 値からの推定
+  // それ以外は明示指定 > 全系列の X 値からの推定
   const xKind =
     config.chartType === "bar"
       ? "category"
-      : (config.xAxisKind ?? detectXAxisKind(xValues));
+      : (config.xAxisKind ??
+        detectXAxisKind(config.series.flatMap((s) => seriesColumnValues(s, s.xColumn))));
 
   if (xKind === "category") {
-    // カテゴリ軸: 行順を保ち、欠測は null（線を切る）
+    // カテゴリ軸: 全系列のラベルを出現順にマージし、各系列をそこへ整列する
+    // （同名ラベルは 1 つに束ねる。複数テーブルを重ねるための键化）
     const categories: string[] = [];
-    const rowsUsed: number[] = [];
-    table.rows.forEach((r, i) => {
-      const label = (r[xIdx] ?? "").trim();
-      if (label === "") return;
-      categories.push(label);
-      rowsUsed.push(i);
+    const catIndex = new Map<string, number>();
+    const perSeries = config.series.map((s) => {
+      if (!s.table) return new Map<string, number>();
+      const xIdx = columnIndex(s.table.headers, s.xColumn);
+      const yIdx = columnIndex(s.table.headers, s.yColumn);
+      if (xIdx < 0 || yIdx < 0) return new Map<string, number>();
+      const valueByLabel = new Map<string, number>();
+      for (const r of s.table.rows) {
+        const label = (r[xIdx] ?? "").trim();
+        if (label === "") continue;
+        if (!catIndex.has(label)) {
+          catIndex.set(label, categories.length);
+          categories.push(label);
+        }
+        const y = parseNumeric(r[yIdx] ?? "");
+        if (y !== null && !valueByLabel.has(label)) valueByLabel.set(label, y);
+      }
+      return valueByLabel;
     });
     if (categories.length === 0) return { kind: "empty" };
-    const series = yIdxs.map(({ name, idx }) => ({
-      name,
-      points: rowsUsed.map((i) => parseNumeric(table.rows[i][idx] ?? "")),
+    const series = perSeries.map((valueByLabel) => ({
+      points: categories.map((label) => valueByLabel.get(label) ?? null),
     }));
     return { kind: "ok", xAxis: "category", categories, series };
   }
 
   // time / value 軸: [x, y] ペア。x か y が読めない行はスキップ。x でソート
   const parseX = xKind === "time" ? parseDateTime : parseNumeric;
-  const series = yIdxs.map(({ name, idx }) => {
+  const series = config.series.map((s) => {
     const points: Array<[number, number]> = [];
-    for (const r of table.rows) {
-      const x = parseX(r[xIdx] ?? "");
-      const y = parseNumeric(r[idx] ?? "");
-      if (x === null || y === null) continue;
-      points.push([x, y]);
+    if (s.table) {
+      const xIdx = columnIndex(s.table.headers, s.xColumn);
+      const yIdx = columnIndex(s.table.headers, s.yColumn);
+      if (xIdx >= 0 && yIdx >= 0) {
+        for (const r of s.table.rows) {
+          const x = parseX(r[xIdx] ?? "");
+          const y = parseNumeric(r[yIdx] ?? "");
+          if (x === null || y === null) continue;
+          points.push([x, y]);
+        }
+        points.sort((a, b) => a[0] - b[0]);
+      }
     }
-    points.sort((a, b) => a[0] - b[0]);
-    return { name, points };
+    return { points };
   });
   if (series.every((s) => s.points.length === 0)) return { kind: "empty" };
   return { kind: "ok", xAxis: xKind, categories: [], series };

@@ -1,6 +1,6 @@
 // チャートブロックのストーリー
 // 記録テーブル（頭痛ダイアリー想定のサンプルデータ）を参照して描画する様子と、
-// テーブル未選択のプレースホルダを目視確認する。
+// 複数テーブルの重ね描き・テーブル未選択のプレースホルダを目視確認する。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Component, type ReactNode } from "react";
@@ -18,6 +18,7 @@ import { LogTableStoreProvider } from "../../features/log-table/store";
 import { MediaInlineLabelProvider } from "../../features/inline-label/media-store";
 import { BlockAlignmentProvider } from "../../features/block-alignment/store";
 import { AiAssistantProvider } from "../../features/ai-assistant/store";
+import type { ChartSeriesConfig } from "./chart-config";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -79,26 +80,56 @@ function diaryTable(id: string) {
   };
 }
 
-function chartContent(props: Record<string, string>) {
+/** 別テーブル: 睡眠ログ（複数テーブル重ね描きのデモ用） */
+function sleepTable(id: string) {
+  return {
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: [cell("日時"), cell("睡眠(h)")] },
+        { cells: [cell("2026-08-05 08:00"), cell("7.5")] },
+        { cells: [cell("2026-08-06 07:30"), cell("4.5")] },
+        { cells: [cell("2026-08-07 21:00"), cell("7")] },
+        { cells: [cell("2026-08-08 09:10"), cell("6")] },
+        { cells: [cell("2026-08-09 08:15"), cell("5")] },
+        { cells: [cell("2026-08-10 10:00"), cell("6.5")] },
+        { cells: [cell("2026-08-11 07:45"), cell("8")] },
+      ],
+    },
+  };
+}
+
+function chartContent(config: Record<string, unknown>, extraTables: any[] = []) {
   return [
     {
       type: "paragraph",
       content: cell("頭痛ダイアリー（サンプル）。テーブルを編集するとチャートが追従する。"),
     },
     diaryTable("diary-table-1"),
-    { type: "chart", props },
+    ...extraTables,
+    { type: "chart", props: { config: JSON.stringify(config) } },
   ];
 }
 
-function ChartDemo({ props }: { props: Record<string, string> }) {
+function ChartDemo({
+  config,
+  extraTables,
+}: {
+  config: Record<string, unknown>;
+  extraTables?: any[];
+}) {
   return (
     <EditorProviders>
       <div style={{ maxWidth: 680, border: "1px solid #e5e7eb", borderRadius: 12, padding: 8 }}>
-        <SandboxEditor blocks={[chartBlock]} initialContent={chartContent(props)} />
+        <SandboxEditor blocks={[chartBlock]} initialContent={chartContent(config, extraTables)} />
       </div>
     </EditorProviders>
   );
 }
+
+const series = (list: ChartSeriesConfig[]) => list;
 
 const meta: Meta = {
   title: "Blocks/ChartBlock",
@@ -106,67 +137,67 @@ const meta: Meta = {
 };
 export default meta;
 
-const config = (patch: Record<string, unknown>) => JSON.stringify(patch);
-
 // 折れ線: 日時 × 痛みの時系列 + キャプション（学術スタイルの基本形）
 export const Line: StoryObj = {
   name: "折れ線（日時 × 痛み、キャプション付き）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
-        props={{
-          sourceBlockId: "diary-table-1",
-          config: config({
-            chartType: "line",
-            xColumn: "日時",
-            yColumns: ["痛み"],
-            caption: "8月上旬の頭痛強度の推移",
-          }),
+        config={{
+          chartType: "line",
+          series: series([
+            { sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "痛み" },
+          ]),
+          caption: "8月上旬の頭痛強度の推移",
         }}
       />
     </ErrorBoundary>
   ),
 };
 
-// 2 系列 + 第 2 軸: 痛み（左軸 0-10）と気圧（右軸 ~1000 hPa）。
-// スケールの違う 2 系列を重ねる、頭痛ダイアリーの本命ユースケース
+// 2 系列 + 第 2 軸: 痛み（左軸 0-10）と気圧（右軸 ~1000 hPa）
 export const TwoSeriesDualAxis: StoryObj = {
   name: "2 系列・2 軸（痛み左・気圧右）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
-        props={{
-          sourceBlockId: "diary-table-1",
-          config: config({
-            chartType: "line",
-            xColumn: "日時",
-            yColumns: ["痛み", "気圧"],
-            seriesOptions: { 気圧: { axis: "right" } },
-            yMin: "0",
-            yMax: "10",
-            caption: "頭痛強度と気圧の推移",
-          }),
+        config={{
+          chartType: "line",
+          series: series([
+            { sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "痛み" },
+            { sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "気圧", axis: "right" },
+          ]),
+          yMin: "0",
+          yMax: "10",
+          caption: "頭痛強度と気圧の推移",
         }}
       />
     </ErrorBoundary>
   ),
 };
 
-// 凡例をグラフ内（右上）に置き、縦に並べる
-export const InsideLegend: StoryObj = {
-  name: "凡例をグラフ内（右上・縦）",
+// 複数テーブルの重ね描き: 頭痛ダイアリー + 睡眠ログ（eureco の複数ソース統合）
+export const TwoTables: StoryObj = {
+  name: "2 テーブル重ね（痛み × 睡眠ログ）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
-        props={{
-          sourceBlockId: "diary-table-1",
-          config: config({
-            chartType: "line",
-            xColumn: "日時",
-            yColumns: ["痛み", "薬(錠)"],
-            legendPosition: "inside-top-right",
-            legendOrient: "vertical",
-          }),
+        extraTables={[sleepTable("sleep-table-1")]}
+        config={{
+          chartType: "line",
+          series: series([
+            { sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "痛み" },
+            {
+              sourceBlockId: "sleep-table-1",
+              xColumn: "日時",
+              yColumn: "睡眠(h)",
+              axis: "right",
+              type: "bar",
+            },
+          ]),
+          yMin: "0",
+          yMax: "10",
+          caption: "頭痛強度と睡眠時間 — 別テーブルからの重ね描き",
         }}
       />
     </ErrorBoundary>
@@ -179,9 +210,11 @@ export const Histogram: StoryObj = {
   render: () => (
     <ErrorBoundary>
       <ChartDemo
-        props={{
-          sourceBlockId: "diary-table-1",
-          config: config({ chartType: "histogram", xColumn: "痛み" }),
+        config={{
+          chartType: "histogram",
+          series: series([
+            { sourceBlockId: "diary-table-1", xColumn: "", yColumn: "痛み" },
+          ]),
         }}
       />
     </ErrorBoundary>
@@ -194,14 +227,33 @@ export const Scatter: StoryObj = {
   render: () => (
     <ErrorBoundary>
       <ChartDemo
-        props={{
-          sourceBlockId: "diary-table-1",
-          config: config({
-            chartType: "scatter",
-            xColumn: "気圧",
-            yColumns: ["痛み"],
-            showGrid: true,
-          }),
+        config={{
+          chartType: "scatter",
+          series: series([
+            { sourceBlockId: "diary-table-1", xColumn: "気圧", yColumn: "痛み" },
+          ]),
+          showGridX: true,
+          showGridY: true,
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 凡例をグラフ内（右上）に置き、縦に並べる
+export const InsideLegend: StoryObj = {
+  name: "凡例をグラフ内（右上・縦）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "line",
+          series: series([
+            { sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "痛み" },
+            { sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "薬(錠)" },
+          ]),
+          legendPosition: "inside-top-right",
+          legendOrient: "vertical",
         }}
       />
     </ErrorBoundary>
@@ -213,7 +265,7 @@ export const Placeholder: StoryObj = {
   name: "未設定（テーブル選択）",
   render: () => (
     <ErrorBoundary>
-      <ChartDemo props={{ sourceBlockId: "" }} />
+      <ChartDemo config={{}} />
     </ErrorBoundary>
   ),
 };

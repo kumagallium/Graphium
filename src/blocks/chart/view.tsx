@@ -1,16 +1,18 @@
 // チャートブロック
 //
 // ノート内のテーブル（記録テーブル含む）を参照して ECharts で描画する。
-// 見た目と設定 UI は eureco のチャートブロック（作者のこだわり: 学術分野でも
-// 違和感が少ない図・タブ式の設定）に合わせる。詳細は chart-theme.ts 冒頭を参照。
+// eureco に合わせて系列（series）が第一級: 各系列が「どのテーブルの・どの列を
+// X/Y にするか」を持ち、複数テーブルを 1 つのチャートに重ねられる。
+// 見た目は学術スタイル（詳細は chart-theme.ts 冒頭）、設定はタブ式パネル
+//（思考順序: 何を見るか → スケール → 体裁）。
 //
 // 設計メモ:
-// - データはあくまでテーブル側が真実。チャートは props（参照 blockId + 設定 JSON）
-//   だけを持ち、テーブル編集には editor.onChange 経由で追従する
-// - 列は index でなく「列名」で参照する（列の挿入・並べ替えに強い）
+// - データはあくまでテーブル側が真実。チャートは設定 JSON（参照 blockId +
+//   列名 + 描き方）だけを持ち、テーブル編集には editor.onChange 経由で追従する
+// - テーブルは blockId・列は列名で参照する（並べ替え・行の追加に強い。
+//   表示名「表 N」は毎回計算する自動名なので、番号が変わっても参照は壊れない）
 // - ECharts は初描画時に dynamic import（echarts-loader.ts）。SVG レンダラ
-// - 参照切れ（テーブル削除・列名変更）はエラーにせずプレースホルダに退避する
-// - アスペクト比は幅から高さを算出（標準 √2:1 = A 判、eureco と同じ）
+// - 参照切れ（テーブル削除・列名変更）はエラーにせず、その系列だけ空にする
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -22,7 +24,6 @@ import {
   parseDateTime,
   parseNumeric,
   readTableData,
-  suggestConfig,
   type ChartDataResult,
   type TableData,
 } from "./chart-data";
@@ -42,7 +43,8 @@ import {
 import {
   parseChartBlockConfig,
   serializeChartBlockConfig,
-  seriesDisplayName,
+  seriesConfigDisplayName,
+  suggestSeries,
   usesRightAxis,
   type ChartBlockConfig,
 } from "./chart-config";
@@ -93,7 +95,7 @@ export const ChartBlock = createReactBlockSpec(
   {
     type: "chart" as const,
     propSchema: {
-      /** 参照先テーブルの blockId */
+      /** 旧形式（チャート全体で 1 テーブル参照）の互換用。新規には使わない */
       sourceBlockId: { default: "" },
       /** 設定一式（ChartBlockConfig の JSON。chart-config.ts が正） */
       config: { default: "" },
@@ -107,10 +109,13 @@ export const ChartBlock = createReactBlockSpec(
 
 function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   const editable = (editor as any).isEditable !== false;
-  const sourceBlockId = String(block.props.sourceBlockId ?? "");
   const config = useMemo(
-    () => parseChartBlockConfig(String(block.props.config ?? "")),
-    [block.props.config]
+    () =>
+      parseChartBlockConfig(
+        String(block.props.config ?? ""),
+        String(block.props.sourceBlockId ?? "")
+      ),
+    [block.props.config, block.props.sourceBlockId]
   );
 
   const [showSettings, setShowSettings] = useState(false);
@@ -151,12 +156,19 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editor, docVersion, logTableStore?.tables]
   );
+
+  // 系列が参照するテーブルを解決する（docVersion で追従）
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const sourceBlock = useMemo(
-    () => (sourceBlockId ? (editor as any).getBlock?.(sourceBlockId) : null),
-    [editor, sourceBlockId, docVersion]
-  );
-  const tableData: TableData | null = useMemo(() => readTableData(sourceBlock), [sourceBlock]);
+  const resolveTable = useMemo(() => {
+    const cache = new Map<string, TableData | null>();
+    return (blockId: string): TableData | null => {
+      if (!cache.has(blockId)) {
+        cache.set(blockId, readTableData((editor as any).getBlock?.(blockId)));
+      }
+      return cache.get(blockId) ?? null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, docVersion]);
 
   const updateConfig = (patch: Partial<ChartBlockConfig>) => {
     (editor as any).updateBlock(block, {
@@ -167,35 +179,14 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     });
   };
 
-  // 参照テーブルはあるのに列が未設定（挿入直後や設定の欠け）なら一度だけ自動推定する。
-  // suggest の xColumn はヘッダ 1 列目なので、適用されれば必ず非空になり再発火しない
-  useEffect(() => {
-    if (!editable || !tableData || config.xColumn !== "") return;
-    const suggested = suggestConfig(tableData);
-    if (!suggested.xColumn) return;
-    updateConfig({ xColumn: suggested.xColumn, yColumns: suggested.yColumns });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editable, tableData, config.xColumn]);
-
-  const selectSource = (id: string) => {
-    const b = (editor as any).getBlock?.(id);
-    const data = readTableData(b);
+  const startWithTable = (id: string) => {
+    const data = resolveTable(id);
     if (!data) return;
-    const suggested = suggestConfig(data);
-    (editor as any).updateBlock(block, {
-      props: {
-        sourceBlockId: id,
-        config: serializeChartBlockConfig({
-          ...config,
-          xColumn: suggested.xColumn,
-          yColumns: suggested.yColumns,
-        }),
-      },
-    });
+    updateConfig({ series: suggestSeries(data, id) });
   };
 
   // ── 未設定: テーブル選択プレースホルダ ──
-  if (!sourceBlockId) {
+  if (config.series.length === 0) {
     return (
       <div data-test="chart-block" contentEditable={false} style={styles.placeholderShell}>
         <div style={styles.placeholderTitle}>
@@ -207,7 +198,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
         ) : (
           <div style={styles.tableList}>
             {tables.map(({ id, label }) => (
-              <button key={id} type="button" style={styles.tableButton} onClick={() => selectSource(id)} disabled={!editable}>
+              <button key={id} type="button" style={styles.tableButton} onClick={() => startWithTable(id)} disabled={!editable}>
                 {label}
               </button>
             ))}
@@ -217,8 +208,14 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     );
   }
 
-  // ── 参照切れ ──
-  if (!tableData) {
+  const specs = config.series.map((s) => ({
+    table: resolveTable(s.sourceBlockId),
+    xColumn: s.xColumn,
+    yColumn: s.yColumn,
+  }));
+
+  // ── 全系列が参照切れ ──
+  if (specs.every((s) => s.table === null)) {
     return (
       <div data-test="chart-block" contentEditable={false} style={styles.placeholderShell}>
         <div style={styles.placeholderTitle}>
@@ -228,7 +225,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
         {editable && (
           <div style={styles.tableList}>
             {tables.map(({ id, label }) => (
-              <button key={id} type="button" style={styles.tableButton} onClick={() => selectSource(id)}>
+              <button key={id} type="button" style={styles.tableButton} onClick={() => startWithTable(id)}>
                 {label}
               </button>
             ))}
@@ -238,10 +235,9 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     );
   }
 
-  const result = buildChartData(tableData, {
+  const result = buildChartData({
     chartType: config.chartType,
-    xColumn: config.xColumn,
-    yColumns: config.yColumns,
+    series: specs,
     ...(config.xAxisKind !== "auto" ? { xAxisKind: config.xAxisKind } : {}),
   });
 
@@ -263,9 +259,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
               config={config}
               onChange={updateConfig}
               tables={tables}
-              sourceBlockId={sourceBlockId}
-              onSelectSource={selectSource}
-              tableData={tableData}
+              resolveTable={resolveTable}
               onClose={() => setShowSettings(false)}
             />
           )}
@@ -296,23 +290,22 @@ function buildOption(
   const isHistogram = config.chartType === "histogram";
   const useRight = !isHistogram && usesRightAxis(config);
 
-  const xName = config.xAxisName.trim() || config.xColumn;
-  const leftSeries = result.series.filter(
-    (s) => config.seriesOptions[s.name]?.axis !== "right"
-  );
+  // X 軸名の自動値: histogram は対象列、それ以外は全系列で共通の X 列名
+  const xColumns = [...new Set(config.series.map((s) => (isHistogram ? s.yColumn : s.xColumn)))];
+  const xName = config.xAxisName.trim() || (xColumns.length === 1 ? xColumns[0] : "");
+
+  const leftSeries = config.series.filter((s) => s.axis !== "right");
+  const rightSeries = config.series.filter((s) => s.axis === "right");
   const yName =
     config.yAxisName.trim() ||
     (isHistogram
       ? t("chart.frequency")
       : leftSeries.length === 1
-        ? seriesDisplayName(config, leftSeries[0].name)
+        ? seriesConfigDisplayName(leftSeries[0])
         : "");
-  const rightSeries = result.series.filter(
-    (s) => config.seriesOptions[s.name]?.axis === "right"
-  );
   const yRightName =
     config.yRightAxisName.trim() ||
-    (rightSeries.length === 1 ? seriesDisplayName(config, rightSeries[0].name) : "");
+    (rightSeries.length === 1 ? seriesConfigDisplayName(rightSeries[0]) : "");
 
   // プロット領域の余白。凡例の座標計算にも同じ値を使う
   const gridLeft = yName ? 84 : 60;
@@ -406,8 +399,6 @@ function buildOption(
     splitLine: { show: false },
   };
 
-  const seriesType = isHistogram ? "bar" : config.chartType;
-
   return {
     animation: false,
     textStyle: { fontFamily, fontSize: CHART_FONT_SIZE, color: CHART_INK },
@@ -457,19 +448,20 @@ function buildOption(
           },
     yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
     series: result.series.map((s, i) => {
-      const options = config.seriesOptions[s.name] ?? {};
+      const sc = config.series[i];
+      const seriesType = isHistogram ? "bar" : (sc?.type ?? config.chartType);
       return {
-        name: seriesDisplayName(config, s.name),
+        name: sc ? seriesConfigDisplayName(sc) : "",
         type: seriesType,
         data: s.points,
         connectNulls: false,
-        ...(useRight ? { yAxisIndex: options.axis === "right" ? 1 : 0 } : {}),
-        ...(config.chartType === "line" ? { symbolSize: 7, lineStyle: { width: 2 } } : {}),
-        ...(config.chartType === "scatter" ? { symbolSize: 10 } : {}),
+        ...(useRight ? { yAxisIndex: sc?.axis === "right" ? 1 : 0 } : {}),
+        ...(seriesType === "line" ? { symbolSize: 7, lineStyle: { width: 2 } } : {}),
+        ...(seriesType === "scatter" ? { symbolSize: 10 } : {}),
         ...(isHistogram
           ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
           : {}),
-        color: options.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length],
+        color: sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length],
       };
     }),
   };

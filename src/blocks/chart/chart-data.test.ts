@@ -6,7 +6,6 @@ import {
   parseDateTime,
   detectXAxisKind,
   isNumericColumn,
-  suggestConfig,
   buildHistogram,
   buildChartData,
   readTableData,
@@ -73,15 +72,6 @@ describe("detectXAxisKind / isNumericColumn", () => {
   });
 });
 
-describe("suggestConfig", () => {
-  it("X = 最初の列、系列 = それ以外の数値列", () => {
-    expect(suggestConfig(diary)).toEqual({
-      xColumn: "日時",
-      yColumns: ["痛み", "気圧"],
-    });
-  });
-});
-
 describe("buildHistogram", () => {
   it("空・同値のエッジケース", () => {
     expect(buildHistogram([])).toEqual({ labels: [], counts: [] });
@@ -95,62 +85,127 @@ describe("buildHistogram", () => {
   });
 });
 
-describe("buildChartData", () => {
+describe("buildChartData（系列ごとにテーブルを持つ）", () => {
   it("time 軸: 欠測行をスキップし x でソートした [x, y] ペア", () => {
-    const result = buildChartData(diary, {
+    const result = buildChartData({
       chartType: "line",
-      xColumn: "日時",
-      yColumns: ["痛み"],
+      series: [{ table: diary, xColumn: "日時", yColumn: "痛み" }],
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") return;
     expect(result.xAxis).toBe("time");
     const points = result.series[0].points as Array<[number, number]>;
-    // 4 行中、痛みが空の 1 行はスキップされる
     expect(points.length).toBe(3);
     expect(points.map((p) => p[1])).toEqual([6, 3, 7]);
-    // x は昇順
     expect(points[0][0]).toBeLessThan(points[1][0]);
   });
 
-  it("category 軸: 行順を保ち欠測は null", () => {
-    const table: TableData = {
+  it("複数テーブルを 1 チャートに重ねられる（eureco の複数ソース統合）", () => {
+    const other: TableData = {
+      headers: ["日時", "睡眠(h)"],
+      rows: [
+        ["2026-08-09 07:30", "5"],
+        ["2026-08-10 21:00", "8"],
+      ],
+    };
+    const result = buildChartData({
+      chartType: "line",
+      series: [
+        { table: diary, xColumn: "日時", yColumn: "痛み" },
+        { table: other, xColumn: "日時", yColumn: "睡眠(h)" },
+      ],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.series.length).toBe(2);
+    expect((result.series[0].points as any[]).length).toBe(3);
+    expect((result.series[1].points as any[]).length).toBe(2);
+  });
+
+  it("category 軸: 全系列のラベルを出現順にマージし、欠測は null で整列", () => {
+    const a: TableData = {
       headers: ["条件", "収率"],
       rows: [
         ["A", "87"],
-        ["B", ""],
-        ["C", "92"],
+        ["B", "90"],
       ],
     };
-    const result = buildChartData(table, {
+    const b: TableData = {
+      headers: ["条件", "純度"],
+      rows: [
+        ["B", "95"],
+        ["C", "99"],
+      ],
+    };
+    const result = buildChartData({
       chartType: "bar",
-      xColumn: "条件",
-      yColumns: ["収率"],
+      series: [
+        { table: a, xColumn: "条件", yColumn: "収率" },
+        { table: b, xColumn: "条件", yColumn: "純度" },
+      ],
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") return;
     expect(result.xAxis).toBe("category");
     expect(result.categories).toEqual(["A", "B", "C"]);
-    expect(result.series[0].points).toEqual([87, null, 92]);
+    expect(result.series[0].points).toEqual([87, 90, null]);
+    expect(result.series[1].points).toEqual([null, 95, 99]);
   });
 
-  it("histogram: X 列の数値から度数分布を作る", () => {
-    const result = buildChartData(diary, {
+  it("histogram: 全系列で共通のビンを使い分布を比較できる", () => {
+    const result = buildChartData({
       chartType: "histogram",
-      xColumn: "痛み",
-      yColumns: [],
+      series: [
+        { table: diary, xColumn: "", yColumn: "痛み" },
+        { table: diary, xColumn: "", yColumn: "気圧" },
+      ],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    const total0 = (result.series[0].points as number[]).reduce((a, b) => a + b, 0);
+    const total1 = (result.series[1].points as number[]).reduce((a, b) => a + b, 0);
+    expect(total0).toBe(3); // 痛みが読めた行
+    expect(total1).toBe(4); // 気圧が読めた行
+    // 共通ビンなのでカテゴリ数は一致する
+    expect((result.series[0].points as number[]).length).toBe(result.categories.length);
+    expect((result.series[1].points as number[]).length).toBe(result.categories.length);
+  });
+
+  it("参照切れの系列は空のまま残る（index 対応を崩さない）", () => {
+    const result = buildChartData({
+      chartType: "line",
+      series: [
+        { table: null, xColumn: "日時", yColumn: "痛み" },
+        { table: diary, xColumn: "日時", yColumn: "痛み" },
+      ],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.series.length).toBe(2);
+    expect((result.series[0].points as any[]).length).toBe(0);
+    expect((result.series[1].points as any[]).length).toBe(3);
+  });
+
+  it("系列なし・全系列空はエラーでなく状態で返す", () => {
+    expect(buildChartData({ chartType: "line", series: [] }).kind).toBe("no-series");
+    expect(
+      buildChartData({
+        chartType: "line",
+        series: [{ table: null, xColumn: "a", yColumn: "b" }],
+      }).kind
+    ).toBe("empty");
+  });
+
+  it("X 軸種類の明示指定が推定より優先される", () => {
+    const result = buildChartData({
+      chartType: "line",
+      series: [{ table: diary, xColumn: "日時", yColumn: "痛み" }],
+      xAxisKind: "category",
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") return;
     expect(result.xAxis).toBe("category");
-    const counts = result.series[0].points as number[];
-    expect(counts.reduce((a, b) => a + b, 0)).toBe(3); // 数値として読めた 3 行分
-  });
-
-  it("空テーブル・系列未選択はエラーでなく状態で返す", () => {
-    expect(buildChartData({ headers: ["a"], rows: [] }, { chartType: "line", xColumn: "a", yColumns: [] }).kind).toBe("empty");
-    expect(buildChartData(diary, { chartType: "line", xColumn: "日時", yColumns: [] }).kind).toBe("no-numeric-series");
-    expect(buildChartData(diary, { chartType: "line", xColumn: "日時", yColumns: ["存在しない"] }).kind).toBe("no-numeric-series");
+    expect(result.categories.length).toBe(4);
   });
 });
 
