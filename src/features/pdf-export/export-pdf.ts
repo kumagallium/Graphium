@@ -131,31 +131,6 @@ export async function exportNoteToPdf(options: {
   ).forEach((el) => el.remove());
   // チャートの設定ボタン（編集 UI）を除去
   contentClone.querySelectorAll("[data-chart-ui]").forEach((el) => el.remove());
-  // チャート（ECharts の SVG）を紙面幅に収める。ECharts は viewBox 無しの
-  // width/height 属性固定で、html2canvas も CSS でなく属性を見て描くため、
-  // 画面幅で描かれた 720px のチャートは A4 の実効幅からはみ出して右が切れる。
-  // viewBox を付けたうえで属性そのものを縮めた実値に書き換える。
-  const PDF_CHART_MAX_PX = 700; // A4 (210mm - 余白 24mm = 186mm) の 96dpi 換算の安全値
-  contentClone
-    .querySelectorAll<SVGSVGElement>('[data-test="chart-block"] svg')
-    .forEach((svg) => {
-      const w = Number(svg.getAttribute("width"));
-      const h = Number(svg.getAttribute("height"));
-      if (!w || !h) return;
-      if (!svg.getAttribute("viewBox")) {
-        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-      }
-      if (w > PDF_CHART_MAX_PX) {
-        const scaledH = Math.round((h * PDF_CHART_MAX_PX) / w);
-        svg.setAttribute("width", String(PDF_CHART_MAX_PX));
-        svg.setAttribute("height", String(scaledH));
-        const holder = svg.parentElement as HTMLElement | null;
-        if (holder) {
-          holder.style.width = `${PDF_CHART_MAX_PX}px`;
-          holder.style.height = `${scaledH}px`;
-        }
-      }
-    });
 
   // コンテンツのスタイルをクリーンアップ
   contentClone.style.padding = "0";
@@ -194,6 +169,40 @@ export async function exportNoteToPdf(options: {
   offscreen.style.pointerEvents = "none";
   offscreen.appendChild(wrapper);
   document.body.appendChild(offscreen);
+
+  // チャート（ECharts の SVG）を紙面での実効幅に収める。ECharts は viewBox
+  // 無しの width/height 属性固定で、html2canvas も CSS でなく属性を見て描く。
+  // クローンは 800px のオフスクリーンで再レイアウトされるため、画面幅で
+  // 描かれた SVG はそのままだと右で切れる（本文幅のチャート）か、カラムから
+  // はみ出して隣に重なる（マルチカラム内のチャート）。挿入後のレイアウトで
+  // 各チャートのコンテナ実効幅を測り、viewBox を後付けして属性を書き換える。
+  wrapper
+    .querySelectorAll<SVGSVGElement>('[data-test="chart-block"] svg')
+    .forEach((svg) => {
+      const w = Number(svg.getAttribute("width"));
+      const h = Number(svg.getAttribute("height"));
+      // 100px 未満はアイコン類（設定ボタンは除去済みだが保険）
+      if (!w || !h || w < 100) return;
+      if (!svg.getAttribute("viewBox")) {
+        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      }
+      // svg の直親は ECharts が生成する内部 div で、画面描画時の幅が inline で
+      // 焼かれている（例 width: 624px）。クローンの再レイアウトでは縮まないので
+      // 実効幅はさらに親（チャートブロックの width:100% ホルダ）で測る
+      const inner = svg.parentElement as HTMLElement | null;
+      const holder = (inner?.parentElement as HTMLElement | null) ?? inner;
+      const avail = Math.floor(holder?.clientWidth || 700);
+      if (avail > 0 && w > avail) {
+        const scaledH = Math.round((h * avail) / w);
+        svg.setAttribute("width", String(avail));
+        svg.setAttribute("height", String(scaledH));
+        if (inner) {
+          inner.style.width = `${avail}px`;
+          inner.style.height = `${scaledH}px`;
+        }
+        if (holder) holder.style.height = `${scaledH}px`;
+      }
+    });
   // 要素単位の inline 上書き（CSS 変数を経由した色の解決を担う）
   try {
     flattenColorsToRgb(wrapper);
