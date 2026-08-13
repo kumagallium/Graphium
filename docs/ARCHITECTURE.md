@@ -91,10 +91,19 @@ talks to LLM and embedding backends.
 
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
-- Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `callout`, `example-hello`, `math`, `pdf-viewer`, `step`). Inline content (entity /
+- Custom blocks live under `src/blocks/` (today: `bookmark`, `calc`,
+  `callout`, `chart`, `columnList` / `column`, `math`, `pdf-viewer`,
+  `sharedCitation`, `step`). Inline content (entity /
   agent highlights) lives under `src/features/inline-label/`; inline math lives
   under `src/features/inline-math/`.
+- `calc` is a Numi-style live calculation block: each line of `props.source` is
+  an expression or a variable assignment, evaluated top-to-bottom with mathjs
+  (unit-aware, so `5 g / (233.19 g/mol)` works — the target use case is batch /
+  weighing calculations that would otherwise happen in a spreadsheet). Variables
+  are scoped to the block; the last evaluation is persisted as a snapshot in
+  `props.results` so the values a note recorded stay reproducible even if the
+  evaluator changes. mathjs is dynamically imported on first evaluation
+  (`src/blocks/calc/mathjs-loader.ts`).
 - `math` holds a LaTeX source string in `props.latex` and renders it with KaTeX.
   `inlineMath` is the same idea as a custom inline content spec, for formulas
   that sit inside a sentence. Clicking either one opens an editor: by default a
@@ -148,7 +157,8 @@ talks to LLM and embedding backends.
   which output was used. The read-only, exploration-oriented graphs (note
   graph, global graph, asset graph) stay on cytoscape (canvas), which
   scales better for large force-directed views;
-  `provToCytoscapeElements` also still feeds the PDF export.
+  `provToCytoscapeElements` also still feeds printing, where the graph is
+  rasterized to a PNG and appended to the printed note.
 - **Every graph edit is a document edit.** Steps can be added, renamed and
   deleted; entities renamed, removed and given attributes; dragging an
   entity onto a step makes it that step's input (and links `informed_by`,
@@ -291,6 +301,14 @@ The extracted text is instead mirrored into the note index (`ocrText`), so a
 note holding only a screenshot can be found by the words inside it; the note
 list marks such a hit with an "image text" badge, and the asset gallery shows
 the text on the image's detail panel.
+
+It is mirrored a second time onto the material itself
+(`MediaIndexEntry.ocrText`), so the image is findable as an image and not only
+through the note it sits in — the `⌘K` Composer searches materials alongside
+notes and lists matching images under **Images**, opening the material side
+peek rather than jumping to a note (one image can be used by several notes, or
+by none). Media-index schema v5 introduced this mirror; the rebuild it forces
+walks every note and recovers text read before the bump.
 
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
 
@@ -1114,6 +1132,7 @@ once team-shared storage stabilizes.
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Native shell | Tauri v2 (Rust) for desktop |
+| Printing / PDF | The browser's own print pipeline (`window.print()`), no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. |
 
 ## 8. Source map
 

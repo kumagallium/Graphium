@@ -11,6 +11,7 @@ import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
 import { mathSlashItem } from "./blocks/math";
+import { calcSlashItem } from "./blocks/calc";
 import { inlineMathSlashItem } from "./features/inline-math/spec";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { stepSlashItem } from "./blocks/step";
@@ -240,7 +241,7 @@ import { schedulePastedImageCapture } from "./features/asset-browser/paste-image
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
-import { exportNoteToPdf } from "./features/pdf-export";
+import { printNote } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
@@ -1596,9 +1597,11 @@ function NoteEditorInner({
   // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
   const newNoteSlashItem: SlashMenuItem = useMemo(
     () => ({
-      title: tStatic("slashMenu.newNote.title"),
-      subtext: tStatic("slashMenu.newNote.subtext"),
-      group: tStatic("slashMenu.newNote.group"),
+      // ラベルは getter で遅延評価する。この項目は useMemo で保持されるので、
+      // ここで t() を即時評価すると言語を切り替えても古いラベルが残る。
+      get title() { return tStatic("slashMenu.newNote.title"); },
+      get subtext() { return tStatic("slashMenu.newNote.subtext"); },
+      get group() { return tStatic("slashMenu.newNote.group"); },
       aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
       onItemClick: (editor: any) => {
         const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
@@ -2278,7 +2281,7 @@ function NoteEditorInner({
     if (!editorEl) return;
     setPdfExporting(true);
     try {
-      await exportNoteToPdf({
+      await printNote({
         title,
         editorElement: editorEl,
         provDoc,
@@ -4398,7 +4401,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -5079,10 +5082,12 @@ export function NoteApp() {
 
   // Cmd+K Composer（統一された AI 呼び出し口 / UX Audit #04）
   // Ask のみ UI 公開。他モードの実装は NoteEditorInner 内のハンドラに保持（将来用）。
-  // useComposer の組み込みショートカットは無効化して、ここで fm.activeFileId を見て
-  // 「ノート上でのみ開く」よう制御する。
+  // useComposer の組み込みショートカットは無効化して、開く条件はここで制御する。
   const composer = useComposer({ disableShortcut: true });
   const [composerPrompt, setComposerPrompt] = useState("");
+  // 開いた時点でノートの編集面が出ていたか（＝AI 質問まで使えるか）。
+  // ノート以外の画面では検索専用として開くので、AI 導線を出し分けるために持つ。
+  const [composerCanAskAi, setComposerCanAskAi] = useState(true);
   // 発見カード — Composer が開かれたときに直近 7 日の wikiLog を取得して計算
   const [recentWikiLogEntries, setRecentWikiLogEntries] = useState<WikiLogEntry[]>([]);
   // Composer を開いたときの引用（knowledge link）数。J1.5 の verb メニュー出し分けに使う。
@@ -5613,17 +5618,18 @@ export function NoteApp() {
     [composer, fm],
   );
 
-  // Cmd+K: NoteEditor がマウント中のみ Composer を開く。
-  // composerSubmitRef.current は NoteEditorInner の useEffect で登録/解除されるので、
-  // 「ハンドラがある＝編集面が表示されている」を一発の真偽で判定できる。
-  // 一覧・Wiki ハブ・アセットギャラリー等では NoteEditor がそもそも描画されないため null。
+  // Cmd+K: どこからでも Composer を開く。
+  // ノート編集中は AI 質問まで使えるが、一覧・Wiki ハブ・アセットギャラリー等では
+  // NoteEditor が描画されておらず composerSubmitRef が空なので、検索専用として開く
+  // （AI 行・発見カード・grounding チップは出さない）。
+  // 開いた瞬間の状態を state へ写す — ref の変化では再描画されないため。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
-        if (!composerSubmitRef.current) return;
-        // AI モデル未登録なら Composer 自体を開かない（AI 専用 UI のため）
+        // AI モデル未登録なら Composer 自体を開かない（AI 導線を含む UI のため）
         if (!aiUiEnabled) return;
         e.preventDefault();
+        setComposerCanAskAi(!!composerSubmitRef.current);
         composer.toggleComposer();
       }
     };
@@ -5713,6 +5719,24 @@ export function NoteApp() {
     });
     return () => setSharedEntryOpenCallback(null);
   }, [closeAllViews, router]);
+
+  // Cmd+K の検索結果から画像行を選んだときのハンドラ。
+  // ノートへ飛ばさず素材の一覧（画像タブ）へ移り、その画像をサイドピークで開いた状態にする。
+  // 1 枚の画像は複数ノートで使われうるし、どのノートにも貼られていないこともあるので、
+  // 行き先は素材そのものが正しい。使っているノートはサイドピークから辿れる。
+  // fullMode: false = 一覧を残したまま右に開く（グラフからの導線は Full view を使う）。
+  const handleComposerMediaSelect = useCallback(
+    (entry: MediaIndexEntry) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      closeAllViews();
+      fm.setActiveAssetType(entry.type);
+      setFocusedMaterial({ fileId: entry.fileId, fullMode: false });
+      setSidebarOpen(false);
+      router.navigate({ view: "assets", mediaType: entry.type });
+    },
+    [composer, fm, closeAllViews, router],
+  );
 
   // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）を
   // 「その場」の素材サイドピークでプレビューする（pdf:/url: ソースと同じ流儀）。
@@ -8865,7 +8889,10 @@ export function NoteApp() {
         onDiscoveryCardSelect={handleComposerCardSelect}
         noteIndex={fm.noteIndex ?? null}
         onNoteSelect={handleComposerNoteSelect}
+        mediaIndex={fm.mediaIndex ?? null}
+        onMediaSelect={handleComposerMediaSelect}
         citationCount={composerCitationCount}
+        canAskAi={composerCanAskAi}
       />
       {showNewSkillDialog && (
         <SkillDialog

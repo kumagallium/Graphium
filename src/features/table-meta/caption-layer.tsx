@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { t } from "../../i18n";
+import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
 import { useTableMetaStore } from "./store";
 
@@ -30,6 +30,8 @@ export function TableCaptionLayer({
 }: {
   editorRef: React.RefObject<any>;
 }) {
+  // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
+  useLocaleSubscription();
   const store = useTableMetaStore();
   const [captions, setCaptions] = useState<CaptionPos[]>([]);
   const [editing, setEditing] = useState<string | null>(null);

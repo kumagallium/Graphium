@@ -699,3 +699,139 @@ body.gph-col-resizing * {
 .bn-block-content[data-content-type="table"][data-block-label-space] {
   padding-top: 26px;
 }
+
+/* ==========================================================================
+   印刷 / PDF 書き出し（features/pdf-export/print-note.ts と対）
+
+   印刷は専用に組み立てたツリー（#graphium-print-root）だけを出し、画面の
+   UI は隠す。ルートは通常時も DOM に置いたままで、画面外に逃がしてある:
+   計算ブロックの幅調整などが実測に依存するため display:none にはできない。
+   幅を用紙のコンテンツ幅（A4 210mm - 余白 15mm × 2）に固定してあるので、
+   画面外で測った値がそのまま印刷結果に対応する。
+
+   @layer の外に置いている。Tailwind の layer 内に入れると layer 外の
+   スタイルに負けて、画面用のスタイルが印刷時に残る。
+   ========================================================================== */
+
+#graphium-print-root {
+  position: fixed;
+  top: 0;
+  left: -100000px;
+  width: 180mm;
+  background: #fff;
+  color: #1a1a1a;
+}
+
+.graphium-print-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #1a1a1a;
+}
+.graphium-print-date {
+  font-size: 11px;
+  margin: 0 0 16px;
+  color: #888;
+}
+.graphium-print-labels {
+  margin-bottom: 16px;
+}
+.graphium-print-labels span {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #4b7a52;
+}
+.graphium-print-rule {
+  border: none;
+  border-top: 1px solid #e0e0e0;
+  margin: 0 0 16px;
+}
+.graphium-print-prov {
+  margin-top: 32px;
+}
+.graphium-print-prov h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #4b7a52;
+}
+.graphium-print-prov img {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+/* 計算ブロックのソース列（印刷では textarea を div に置き換える）。
+   画面の textarea と同じ見え方に揃える。折り返すと右の結果列と行が
+   ずれるので、はみ出しは切る（収まるまでの縮小は JS 側で行う）。 */
+.graphium-print-calc-source {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 1px solid var(--color-input, #e0e0e0);
+  border-radius: 6px;
+  background: var(--color-card, #fff);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.graphium-print-calc-source > div {
+  white-space: pre;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  /* 画面の UI（アプリ本体・ポータルで出ているパネル類）は出さない */
+  body > *:not(#graphium-print-root) {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  #graphium-print-root {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: auto !important;
+  }
+
+  /* コールアウトやラベルの色は内容の一部なので、背景を落とさせない */
+  #graphium-print-root,
+  #graphium-print-root * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ただしエディタの「面」の色は紙には要らない。ここを塗ったままにすると
+     本文全体が薄い矩形で覆われる。中身の色（コールアウト等）は上の
+     print-color-adjust で残るので、面だけ透ける。 */
+  #graphium-print-root .bn-editor {
+    background: transparent !important;
+  }
+
+  /* チャートの SVG は width/height 属性を持つので、紙面幅に収まるよう CSS で抑える */
+  #graphium-print-root svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* 見出しの直後で改ページされると、見出しだけが前ページに残る */
+  #graphium-print-root h1,
+  #graphium-print-root h2,
+  #graphium-print-root h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+}

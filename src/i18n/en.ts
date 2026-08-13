@@ -153,6 +153,7 @@ export const en: Record<string, string> = {
   "editor.align.left": "Align left",
   "editor.align.center": "Align center",
   "editor.align.right": "Align right",
+  "editor.duplicate": "Duplicate",
   // ── 種類を変更（Turn into）──
   "editor.turnInto": "Turn into",
   "editor.turnIntoType.paragraph": "Text",
@@ -389,6 +390,13 @@ export const en: Record<string, string> = {
   "slash.inlineMathSub": "Put a formula inside a sentence (LaTeX)",
   "slash.columns": "Columns",
   "slash.columnsSub": "Place blocks side by side in two columns",
+  "slash.calc": "Calculation",
+  "slash.calcSub": "Live calculations with variables and units",
+  "calc.label": "Calculation",
+  "calc.placeholder": "e.g. target = 5 g",
+  "calc.clickToCopy": "Click to copy",
+  "calc.copied": "Copied",
+  "calc.errorMark": "?",
   "math.placeholder": "Enter a formula (LaTeX)",
   "math.inlinePlaceholder": "formula",
   "math.editorLabel": "Formula",
@@ -1527,8 +1535,8 @@ export const en: Record<string, string> = {
   "mobile.settings.changeStorage": "Change",
 
   // ── PDF エクスポート ──
-  "pdf.export": "PDF",
-  "pdf.exporting": "Exporting...",
+  "pdf.export": "Print / PDF",
+  "pdf.exporting": "Preparing...",
 
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",
@@ -1607,18 +1615,21 @@ export const en: Record<string, string> = {
 
   // ── Composer（Cmd+K）── UI は Ask 単機能。残りのモード ID は内部互換のため保持。
   "composer.placeholder": "Find a note or ask AI...",
+  "composer.placeholderSearchOnly": "Find a note or an image...",
   "composer.mode.ask": "Ask",
   "composer.mode.compose": "Compose",
   "composer.mode.insertProv": "Insert PROV",
   "composer.mode.insertMedia": "Insert Media",
   "composer.aria.dialog": "Ask AI",
+  "composer.aria.dialogSearchOnly": "Find a note or an image",
   "composer.discoveryHint": "Suggestions",
   "composer.search.notesHeading": "Notes",
   "composer.search.recentHeading": "Recent notes",
+  "composer.search.imagesHeading": "Images",
   "composer.search.actionsHeading": "Actions",
   "composer.search.askAi": "Ask AI: “{query}”",
   "composer.search.askAiEmpty": "Ask AI...",
-  "composer.search.empty": "No matching notes",
+  "composer.search.empty": "No matches",
   "composer.search.hintFilters": "#label / @author to filter",
   "composer.submit": "Send",
   "composer.kbd.submit": "to send",

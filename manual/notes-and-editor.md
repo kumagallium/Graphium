@@ -181,13 +181,21 @@ The timestamp is ordinary cell text. You can edit it afterwards (recording last 
 
 Any table can be named from the drag-handle (⠿) menu — "**Name this table**" — and the name appears above it, where a caption belongs. Charts use it as the reference label. Time-series tables fall back to an automatic *Table 1*, *Table 2*, … in document order when they have no name of their own; other tables simply show nothing until you name them. Clear the name to remove it.
 
+![A named time-series table with auto-filled date/time cells](/screenshots/time-series-table.png)
+
 A time-series table is not a separate kind of table — it is an ordinary table with this behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into time-series table**".
 
-**Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
+**Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing.
+
+![Two time-series tables overlaid in one chart: pain on the left axis, pressure on the right](/screenshots/chart-dual-axis.png)
+
+Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
 
 - **Type & Series** — the chart type (**Line**, **Bar**, **Scatter**, or **Histogram** — the distribution of a numeric column) and the series. A series is the unit that knows its data: expand one to set its display label, its **data assignment** (the source table — picked by caption, e.g. *Table 1* — and the X/Y columns), its own chart type (mix a bar series into a line chart), a color, and which Y axis it belongs to. Series can point at **different tables**, so two logs can be overlaid on one figure, and assigning a series to the **right** axis gives it its own scale: pain 0–10 on the left, pressure around 1000 hPa on the right.
 - **Axes** — the X-axis scale type (**Auto** / **Time** / **Numeric** / **Category** — auto-detection can be overridden), axis labels, and min/max ranges for the X axis and for the left — and, when in use, the right — Y axis. Each axis also has an **Advanced** section: visibility toggles for the axis, axis line, ticks and tick labels, tick-label rotation, tick direction (inward, the academic default, or outward), and grid lines. Line and scatter axes fit the data range; bars always start at zero.
 - **Appearance** — a figure caption shown under the chart, the aspect ratio (**√2:1** standard, **golden φ:1**, **2:1**, **3:1**, and spectrum-friendly **4:1** / **5:1** for wide patterns like XRD, plus **1:1**), the legend (above the plot aligned to its frame, inside any of the four corners, or below; horizontal or vertical), and the plot frame.
+
+![The chart settings panel on the Type & Series tab, assigning a series to another table and the right axis](/screenshots/chart-settings.png)
 
 The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one.
 

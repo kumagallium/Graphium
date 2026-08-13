@@ -30,9 +30,11 @@ function createMediaSlashItem(
   aliases: string[],
 ): SlashMenuItem {
   return {
-    title: t(titleKey),
-    subtext: t(subtextKey),
-    group: t("asset.slashGroup"),
+    // ラベルは getter で遅延評価する。呼び出し側は生成した項目を useMemo で保持するため、
+    // ここで t() を即時評価すると言語を切り替えても古いラベルが残る。
+    get title() { return t(titleKey); },
+    get subtext() { return t(subtextKey); },
+    get group() { return t("asset.slashGroup"); },
     aliases,
     onItemClick: (editor: any) => {
       _pickerCallbacks.get(editor)?.(mediaType);

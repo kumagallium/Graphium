@@ -153,6 +153,7 @@ export const ja: Record<string, string> = {
   "editor.align.left": "左揃え",
   "editor.align.center": "中央揃え",
   "editor.align.right": "右揃え",
+  "editor.duplicate": "複製",
   // ── 種類を変更（Turn into）──
   "editor.turnInto": "種類を変更",
   "editor.turnIntoType.paragraph": "テキスト",
@@ -389,6 +390,13 @@ export const ja: Record<string, string> = {
   "slash.inlineMathSub": "文中に数式を差し込む（LaTeX）",
   "slash.columns": "カラム",
   "slash.columnsSub": "ブロックを 2 列に横並びで配置",
+  "slash.calc": "計算",
+  "slash.calcSub": "変数と単位が使えるライブ計算",
+  "calc.label": "計算",
+  "calc.placeholder": "例: target = 5 g",
+  "calc.clickToCopy": "クリックでコピー",
+  "calc.copied": "コピーしました",
+  "calc.errorMark": "?",
   "math.placeholder": "数式を入力（LaTeX）",
   "math.inlinePlaceholder": "数式",
   "math.editorLabel": "数式",
@@ -1525,8 +1533,8 @@ export const ja: Record<string, string> = {
   "mobile.settings.changeStorage": "変更",
 
   // ── PDF エクスポート ──
-  "pdf.export": "PDF",
-  "pdf.exporting": "エクスポート中...",
+  "pdf.export": "印刷・PDF",
+  "pdf.exporting": "準備中...",
 
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",
@@ -1605,18 +1613,21 @@ export const ja: Record<string, string> = {
 
   // ── Composer（Cmd+K） ── UI は Ask 単機能。残りのモード ID は内部互換のため保持。
   "composer.placeholder": "ノートを検索 / AI に質問...",
+  "composer.placeholderSearchOnly": "ノートと画像を検索...",
   "composer.mode.ask": "質問",
   "composer.mode.compose": "執筆",
   "composer.mode.insertProv": "PROV を挿入",
   "composer.mode.insertMedia": "メディアを挿入",
   "composer.aria.dialog": "AI に質問",
+  "composer.aria.dialogSearchOnly": "ノートと画像を検索",
   "composer.discoveryHint": "候補",
   "composer.search.notesHeading": "ノート",
   "composer.search.recentHeading": "最近のノート",
+  "composer.search.imagesHeading": "画像",
   "composer.search.actionsHeading": "アクション",
   "composer.search.askAi": "「{query}」を AI に質問",
   "composer.search.askAiEmpty": "AI に質問...",
-  "composer.search.empty": "一致するノートはありません",
+  "composer.search.empty": "一致するものはありません",
   "composer.search.hintFilters": "#ラベル / @作者 で絞り込み",
   "composer.submit": "送信",
   "composer.kbd.submit": "で送信",
