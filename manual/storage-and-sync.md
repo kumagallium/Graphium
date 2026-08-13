@@ -108,7 +108,7 @@ Per note, the `⋯` menu offers:
 
 | Menu item | Output |
 |---|---|
-| **PDF** | The rendered note, including its provenance graph |
+| **Print / PDF** | The rendered note, including its provenance graph. Your system's print dialog opens, so you can preview the pages and then save them as a PDF — the text stays selectable and searchable |
 | **Markdown** | A portable `.md` file |
 | **PROV-JSON-LD** | The note's provenance graph in W3C PROV format |
 

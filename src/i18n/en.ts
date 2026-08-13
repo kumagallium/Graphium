@@ -1527,8 +1527,8 @@ export const en: Record<string, string> = {
   "mobile.settings.changeStorage": "Change",
 
   // ── PDF エクスポート ──
-  "pdf.export": "PDF",
-  "pdf.exporting": "Exporting...",
+  "pdf.export": "Print / PDF",
+  "pdf.exporting": "Preparing...",
 
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",

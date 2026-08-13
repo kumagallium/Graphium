@@ -144,7 +144,8 @@ talks to LLM and embedding backends.
   which output was used. The read-only, exploration-oriented graphs (note
   graph, global graph, asset graph) stay on cytoscape (canvas), which
   scales better for large force-directed views;
-  `provToCytoscapeElements` also still feeds the PDF export.
+  `provToCytoscapeElements` also still feeds printing, where the graph is
+  rasterized to a PNG and appended to the printed note.
 - **Every graph edit is a document edit.** Steps can be added, renamed and
   deleted; entities renamed, removed and given attributes; dragging an
   entity onto a step makes it that step's input (and links `informed_by`,
@@ -1110,6 +1111,7 @@ once team-shared storage stabilizes.
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Native shell | Tauri v2 (Rust) for desktop |
+| Printing / PDF | The browser's own print pipeline (`window.print()`), no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. |
 
 ## 8. Source map
 

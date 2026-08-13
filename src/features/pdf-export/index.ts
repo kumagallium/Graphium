@@ -1,1 +1,1 @@
-export { exportNoteToPdf } from "./export-pdf";
+export { printNote } from "./print-note";

@@ -237,7 +237,7 @@ import { schedulePastedImageCapture } from "./features/asset-browser/paste-image
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
-import { exportNoteToPdf } from "./features/pdf-export";
+import { printNote } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
@@ -2281,7 +2281,7 @@ function NoteEditorInner({
     if (!editorEl) return;
     setPdfExporting(true);
     try {
-      await exportNoteToPdf({
+      await printNote({
         title,
         editorElement: editorEl,
         provDoc,
