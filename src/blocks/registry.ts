@@ -15,6 +15,7 @@ import { stepBlock } from "./step";
 import { mathBlock } from "./math";
 import { chartBlock } from "./chart";
 import { columnListBlock, columnBlock } from "./multi-column";
+import { sharedCitationBlock } from "./shared-citation";
 
 export const customBlockEntries: CustomBlockEntry[] = [
   pdfViewerBlock,
@@ -27,6 +28,7 @@ export const customBlockEntries: CustomBlockEntry[] = [
   // 片方でも欠けると sanitizeBlocks がカラムを children ごと消す。
   columnListBlock,
   columnBlock,
+  sharedCitationBlock,
 ];
 
 export const CUSTOM_BLOCK_TYPES: ReadonlySet<string> = new Set(

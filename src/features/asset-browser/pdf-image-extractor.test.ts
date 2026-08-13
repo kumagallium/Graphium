@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   displayAreaFromMatrix,
   embeddedImageToFile,
+  getImageObject,
   imageOrientationFromMatrix,
   isEffectivelySolidColor,
   type ExtractedEmbeddedImage,
@@ -165,5 +166,56 @@ describe("isEffectivelySolidColor", () => {
 
   it("縮退サイズ（2×2 以下）は情報なしとして true", () => {
     expect(isEffectivelySolidColor(rgba(2, 2, [0, 0, 0]), 2, 2)).toBe(true);
+  });
+});
+
+// pdfjs は複数ページで共有される画像を `g_` プレフィックス名で document 全体の
+// commonObjs に置く。page.objs だけを見ると g_ 名のコールバックが永遠に呼ばれず
+// 抽出全体がハングする（TE_PlotBench.pdf で実測）。ストア振り分けの回帰テスト。
+describe("getImageObject", () => {
+  type Cb = (obj: unknown) => void;
+  function makeStore(obj: unknown) {
+    const calls: string[] = [];
+    return {
+      calls,
+      get(name: string, cb: Cb) {
+        calls.push(name);
+        cb(obj);
+      },
+    };
+  }
+
+  it("通常名は page.objs から取得する", async () => {
+    const objs = makeStore({ width: 10, height: 20 });
+    const commonObjs = makeStore(null);
+    const result = await getImageObject({ objs, commonObjs }, "img_p0_1");
+    expect(result).toEqual({ width: 10, height: 20 });
+    expect(objs.calls).toEqual(["img_p0_1"]);
+    expect(commonObjs.calls).toEqual([]);
+  });
+
+  it("g_ プレフィックス名は commonObjs から取得する", async () => {
+    const objs = makeStore(null);
+    const commonObjs = makeStore({ width: 30, height: 40 });
+    const result = await getImageObject({ objs, commonObjs }, "g_d0_img_p1_2");
+    expect(result).toEqual({ width: 30, height: 40 });
+    expect(commonObjs.calls).toEqual(["g_d0_img_p1_2"]);
+    expect(objs.calls).toEqual([]);
+  });
+
+  it("コールバックが呼ばれない場合はタイムアウトで null を返す（ハングしない）", async () => {
+    const never = { get: () => {} };
+    const result = await getImageObject({ objs: never, commonObjs: never }, "img_p0_1", 50);
+    expect(result).toBeNull();
+  });
+
+  it("store.get が throw しても null で継続する", async () => {
+    const throwing = {
+      get: () => {
+        throw new Error("boom");
+      },
+    };
+    const result = await getImageObject({ objs: throwing, commonObjs: throwing }, "img_p0_1", 50);
+    expect(result).toBeNull();
   });
 });

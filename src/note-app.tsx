@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
@@ -197,6 +197,14 @@ import {
   setCitePickerCallback,
   type CitePickerKind,
 } from "./features/cite-picker";
+import { SharedCitePickerModal } from "./features/sharing/SharedCitePickerModal";
+import {
+  sharedCitationSlashItem,
+  setSharedCitePickerCallback,
+  setSharedEntryOpenCallback,
+  insertSharedCitations,
+} from "./blocks/shared-citation";
+import { collectNewSharedCitationSources } from "./blocks/shared-citation/collect";
 import type { CaptureEntry } from "./features/mobile-capture";
 import {
   AssetGalleryView,
@@ -398,6 +406,8 @@ function NoteHeaderMenu({
   shareBusy,
   shareDisabledReason,
   onCopyLink,
+  fullWidth,
+  onToggleFullWidth,
   t,
 }: {
   onSave: () => void;
@@ -445,6 +455,10 @@ function NoteHeaderMenu({
   shareDisabledReason?: string;
   /** このノートへのリンク（URL）をクリップボードにコピーする。別ノートに貼るとメンション化される。 */
   onCopyLink?: () => void;
+  /** 本文をフル幅表示しているか（Notion の Full width 相当）。ON でチェックを表示 */
+  fullWidth?: boolean;
+  /** フル幅表示の切り替え。undefined なら項目ごと隠す（アーカイブ/ゴミ箱ノート） */
+  onToggleFullWidth?: () => void;
   t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
@@ -518,6 +532,20 @@ function NoteHeaderMenu({
             <Share2 size={14} />
             {t("prov.export")}
           </button>
+          {onToggleFullWidth && (
+            <>
+              <div className="my-1 border-t border-border" />
+              {/* 本文幅の切り替え（Notion の Full width 相当）。ON なら右端にチェック */}
+              <button
+                className={itemClass}
+                onClick={() => { onToggleFullWidth(); setOpen(false); }}
+              >
+                <MoveHorizontal size={14} />
+                <span className="flex-1 text-left">{t("editor.fullWidth")}</span>
+                {fullWidth && <Check size={14} className="text-primary" />}
+              </button>
+            </>
+          )}
           {onCopyLink && (
             <>
               <div className="my-1 border-t border-border" />
@@ -1191,6 +1219,10 @@ function NoteEditorInner({
   // 本文と同じ buildDocument → autosave 経路で保存するため ref も併置（stale closure 回避）。
   const [noteContexts, setNoteContexts] = useState<string[]>(initialDoc?.noteContexts ?? []);
   const noteContextsRef = useRef<string[]>(initialDoc?.noteContexts ?? []);
+  // 本文フル幅（Notion の Full width 相当）。ノート単位で doc に保存する。
+  // buildDocument はスクラッチで組むため ref も併置（noteContexts と同じ流儀）。
+  const [fullWidth, setFullWidth] = useState<boolean>(initialDoc?.fullWidth ?? false);
+  const fullWidthRef = useRef<boolean>(initialDoc?.fullWidth ?? false);
   const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
@@ -1255,6 +1287,7 @@ function NoteEditorInner({
 
   // ── 引用ピッカー (/claims, /Insights) ──
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
+  const [sharedCitePickerOpen, setSharedCitePickerOpen] = useState(false);
 
   // スラッシュメニューからピッカーを開くコールバック登録（main editor 用）。
   // SidePeek からは SidePeek 自身が同じ仕組みで登録する。
@@ -1276,11 +1309,16 @@ function NoteEditorInner({
       pickerEditorRef.current = mainEditor;
       setCitePickerKind(kind);
     });
+    setSharedCitePickerCallback(mainEditor, () => {
+      pickerEditorRef.current = mainEditor;
+      setSharedCitePickerOpen(true);
+    });
     return () => {
       setMediaPickerCallback(mainEditor, null);
       setMemoPickerCallback(mainEditor, null);
       setBookmarkPickerCallback(mainEditor, null);
       setCitePickerCallback(mainEditor, null);
+      setSharedCitePickerCallback(mainEditor, null);
     };
   }, [mainEditor]);
 
@@ -2012,6 +2050,8 @@ function NoteEditorInner({
       wikiMeta: initialDoc?.wikiMeta,
       skillMeta: initialDoc?.skillMeta,
       generatedBy: initialDoc?.generatedBy,
+      // 本文フル幅設定（トグル操作で変わるため ref から読む）
+      fullWidth: fullWidthRef.current || undefined,
       // url-to-prov / pdf-to-prov 由来の外部ソースメタデータを保持
       // （来歴ツリーの上流ソース表示・グラフのエッジ生成に必要）
       sourceUrl: initialDoc?.sourceUrl,
@@ -2041,7 +2081,17 @@ function NoteEditorInner({
     }
     const email = await getActiveProvider().getUserEmail() ?? undefined;
     const author = loadAuthorIdentity() ?? undefined;
-    doc = await recordRevision(doc, prevPageRef.current, actType, { agentLabel: actLabel, email, author });
+    // このリビジョンで新しく挿入された shared:// 引用 → EditActivity.used（prov:used）
+    const citedSharedSources = collectNewSharedCitationSources(
+      prevPageRef.current?.blocks,
+      doc.pages[0]?.blocks,
+    );
+    doc = await recordRevision(doc, prevPageRef.current, actType, {
+      agentLabel: actLabel,
+      email,
+      author,
+      sources: citedSharedSources.length > 0 ? citedSharedSources : undefined,
+    });
     // 前回保存状態を更新
     prevPageRef.current = structuredClone(doc.pages[0]);
 
@@ -2621,7 +2671,7 @@ function NoteEditorInner({
                   fromNotesHeading,
                 );
               }
-              // WebSearch（claude-subscription 内蔵 = A 経路）由来の "Sources:" 見出しはモデル出力
+              // モデルが散文中に自前で書いた "Sources:" 見出しはモデル出力
               // なので、ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
               assistantMessage = assistantMessage.replace(
                 /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
@@ -4017,6 +4067,15 @@ function NoteEditorInner({
           onClose={() => setCitePickerKind(null)}
         />
       )}
+      {sharedCitePickerOpen && (
+        <SharedCitePickerModal
+          onConfirm={(entries) => {
+            const editor = pickerEditorRef.current ?? editorRef.current;
+            insertSharedCitations(editor, entries);
+          }}
+          onClose={() => setSharedCitePickerOpen(false)}
+        />
+      )}
       {/* ヘッダー */}
       <div className="px-3 md:px-4 py-2.5 md:py-2 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
         <div
@@ -4090,6 +4149,18 @@ function NoteEditorInner({
                   // そのノートを開け、Graphium の別ノートに貼るとメンション化される。
                   const url = `${window.location.origin}${window.location.pathname}#note/${fileId}`;
                   void navigator.clipboard?.writeText(url);
+                }
+              : undefined
+          }
+          fullWidth={fullWidth}
+          onToggleFullWidth={
+            // read-only（アーカイブ/ゴミ箱）では保存できないため項目ごと隠す
+            !archived && !trashed
+              ? () => {
+                  const next = !fullWidthRef.current;
+                  fullWidthRef.current = next;
+                  setFullWidth(next);
+                  markDirty();
                 }
               : undefined
           }
@@ -4208,6 +4279,12 @@ function NoteEditorInner({
               条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。
               ドラッグハンドル分の余白は .bn-editor 自体の padding-inline 54px が持つ。 */}
           <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 24 : 16, paddingRight: isDesktop ? (labelStore.labels.size > 0 ? 80 : 24) : 16, paddingBottom: isDesktop ? 16 : 72 }}>
+          {/* 読みやすい行長のための中央カラム（Notion の本文幅と同じ考え方）。
+              828px = 本文テキスト 720px + .bn-editor の padding-inline 54px×2。
+              タイトル・文脈タグも px-[54px] で本文と左端が揃っているため一緒に包む。
+              doc.fullWidth（ヘッダー ⋯ メニューのトグル）で解除できる。
+              狭い画面では 828px に届かず従来どおり全幅になる。 */}
+          <div style={fullWidth ? undefined : { maxWidth: 828, marginInline: "auto" }}>
 
             <textarea
               value={title}
@@ -4314,7 +4391,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -4483,6 +4560,7 @@ function NoteEditorInner({
             {contextDrawerSlot && (
               <div className="px-[54px]">{contextDrawerSlot}</div>
             )}
+          </div>
           </div>
         </div>
 
@@ -4977,6 +5055,9 @@ export function NoteApp() {
   }, [inboxSource]);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
+  // 引用カードの「開く」から Library の特定エントリへ飛ぶための一時 state。
+  // SharedLibraryView が consume したら onFocusConsumed で null に戻す。
+  const [sharedLibraryFocusId, setSharedLibraryFocusId] = useState<string | null>(null);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
   // データ構築は fm 宣言後に行う（globalGraphData）。
   const [showGlobalGraph, setShowGlobalGraph] = useState(false);
@@ -5611,6 +5692,20 @@ export function NoteApp() {
     clearViews: closeAllViews,
   }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
+
+  // 引用カードの「開く」→ Library の該当エントリを選択表示で開く。
+  // Library はアプリレベルのビューなのでコールバックもアプリ単位で 1 個登録する。
+  useEffect(() => {
+    setSharedEntryOpenCallback((sharedId) => {
+      if (!getSharedRoot()) return;
+      closeAllViews();
+      setSharedLibraryFocusId(sharedId);
+      setShowSharedLibrary(true);
+      setSidebarOpen(false);
+      router.navigate({ view: "shared-library" });
+    });
+    return () => setSharedEntryOpenCallback(null);
+  }, [closeAllViews, router]);
 
   // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）を
   // 「その場」の素材サイドピークでプレビューする（pdf:/url: ソースと同じ流儀）。
@@ -8085,6 +8180,8 @@ export function NoteApp() {
           <SharedLibraryView
             sharedRoot={getSharedRoot()!}
             currentIdentity={loadAuthorIdentity()}
+            focusEntryId={sharedLibraryFocusId}
+            onFocusConsumed={() => setSharedLibraryFocusId(null)}
             onForkNote={async (sharedId) => {
               const root = getSharedRoot();
               if (!root) return;

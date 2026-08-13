@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
 import { apiBase } from "../../lib/platform";
+import { isSubscriptionProvider } from "../../lib/subscription-providers";
 import { useLocale } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { loadSettings, saveSettings, type LLMRateCurrency } from "./store";
@@ -246,7 +247,7 @@ function buildBuckets(
 
 type ModelLine = {
   modelId: string;
-  /** プロバイダ識別子。claude-subscription はコスト欄を「従量課金なし」と表示するために使う。 */
+  /** プロバイダ識別子。サブスク型はコスト欄を「従量課金なし」と表示するために使う。 */
   provider: string;
   tokens: number;
   cost: number;
@@ -765,7 +766,7 @@ export function UsageTab() {
                                 {formatTokens(m.tokens)}
                               </span>
                               <span className="tabular-nums w-14 text-right">
-                                {m.provider === "claude-subscription" ? (
+                                {isSubscriptionProvider(m.provider) ? (
                                   <span
                                     title={t("settings.usage.subscriptionNoCost")}
                                     className="text-foreground/45"

@@ -7,9 +7,9 @@
 
 import { Hono } from "hono";
 import { listModels, addModel, updateModel, removeModel, getDefaultModel, getModel } from "../config/models.js";
-import { fetchAvailableModels, isClaudeCliAvailable } from "../services/llm.js";
-import { readClaudeCliAccount, isClaudeTokenFromEnv } from "../services/claude-account.js";
+import { fetchAvailableModels, isCopilotCliAvailable } from "../services/llm.js";
 import { errorBody } from "../../lib/ai-error-codes.js";
+import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
 
 const app = new Hono();
 
@@ -39,24 +39,11 @@ app.get("/", (c) => {
   });
 });
 
-// Claude Code CLI が検出できるか（claude-subscription の 1-click 登録を出すか判定）
-// account: CLI にログイン中のアカウント（設定 UI で「どのアカウントで推論されるか」を
-// 見える化する）。token_source が "env" のときは CLAUDE_CODE_OAUTH_TOKEN が優先される
-// ため、account の表示は実際に使われるアカウントと食い違い得る。
-app.get("/claude-cli-status", (c) => {
-  const available = isClaudeCliAvailable();
-  const account = available ? readClaudeCliAccount() : null;
-  return c.json({
-    available,
-    account: account
-      ? {
-          email: account.email,
-          organization: account.organization,
-          organization_type: account.organizationType,
-        }
-      : null,
-    token_source: isClaudeTokenFromEnv() ? "env" : "login",
-  });
+// GitHub Copilot CLI が検出できるか（copilot-subscription の 1-click 登録を出すか判定）。
+// claude と違いアカウント情報は返さない — Copilot CLI のログイン情報は公開された
+// 設定ファイルに無く、確認には CLI の spawn が必要で設定画面を開くたびに払うには重い。
+app.get("/copilot-cli-status", (c) => {
+  return c.json({ available: isCopilotCliAvailable() });
 });
 
 // モデル追加
@@ -83,8 +70,8 @@ app.post("/", async (c) => {
     if (apiBase === undefined) apiBase = source.apiBase ?? undefined;
   }
 
-  // claude-subscription は API キー不要（Claude Code のサブスク認証を使う）。
-  const requiresApiKey = body.provider !== "claude-subscription";
+  // サブスク型プロバイダは API キー不要（各 CLI のサブスク認証を使う）。
+  const requiresApiKey = !isSubscriptionProvider(body.provider);
   if (
     !body.model_name ||
     !body.provider ||
@@ -187,7 +174,8 @@ app.post("/available", async (c) => {
     if (apiBaseUrl === undefined) apiBaseUrl = source.apiBase ?? undefined;
   }
 
-  if (!provider || !apiKey) {
+  // copilot-subscription は API キーを持たない（CLI の listModels で取得する）
+  if (!provider || (!apiKey && !isSubscriptionProvider(provider))) {
     return c.json({ error: "provider and api_key are required" }, 400);
   }
 

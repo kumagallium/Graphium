@@ -776,6 +776,11 @@ export type GraphiumDocument = {
   };
   /** Skill メタデータ（source === "skill" の場合のみ） */
   skillMeta?: SkillMeta;
+  /**
+   * 本文レイアウト: true でエディタの読みやすい幅制限（中央カラム）を解除し
+   * 画面幅いっぱいに表示する（Notion の Full width 相当）。未設定/false は固定幅。
+   */
+  fullWidth?: boolean;
   /** 外部 URL から生成した場合の元 URL */
   sourceUrl?: string;
   /** 外部 URL 取得日時（ISO 8601） */

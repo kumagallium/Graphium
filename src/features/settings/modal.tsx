@@ -96,15 +96,13 @@ const PROVIDERS = [
   { id: "openai", name: "OpenAI" },
   { id: "google", name: "Google Gemini" },
   { id: "openai-compatible", name: "OpenAI Compatible (Groq, Ollama, etc.)" },
-  { id: "claude-subscription", name: "Claude (Subscription · Claude Code)" },
+  { id: "copilot-subscription", name: "GitHub Copilot (Subscription · Copilot CLI)" },
 ] as const;
 
-// claude-subscription はモデル一覧 API を持たない（Claude Code に models コマンドが無く、
-// この経路は API キーも持たないため /v1/models も叩けない）。
-// エイリアス（sonnet/opus/haiku）だけを提示する。これらは Claude Code 側で「その時点の
-// 最新版」に解決されるため、固定版 ID をハードコードすると自動更新できず劣化するのを避ける。
-// どうしても版を固定したい上級者は「手動でモデル ID を入力」欄でフルネームを指定できる。
-const CLAUDE_SUBSCRIPTION_MODELS = ["sonnet", "opus", "haiku"] as const;
+// copilot-subscription は "default"（CLI の既定モデル）を即提示し、実 ID の一覧は
+// 「モデル一覧を取得」ボタン（CLI の listModels）で補完する。Copilot のモデル ID は
+// 入れ替わりが速く、固定ハードコードすると劣化するため静的リストは持たない。
+const COPILOT_SUBSCRIPTION_MODELS = ["default"] as const;
 
 const API_BASE_HINTS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
@@ -113,8 +111,8 @@ const API_BASE_HINTS: Record<string, string> = {
   groq: "https://api.groq.com/openai/v1",
   ollama: "http://localhost:11434",
   "openai-compatible": "https://api.example.com/v1",
-  // claude-subscription では apiBase を「claude CLI の絶対パス」として流用する（通常は自動検出）。
-  "claude-subscription": "auto-detected — leave blank unless not found",
+  // サブスク型では apiBase を「CLI の絶対パス」として流用する（通常は自動検出）。
+  "copilot-subscription": "auto-detected — leave blank unless not found",
 };
 
 // ── ヘルスチェック型 ──
@@ -350,15 +348,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
   // モデル追加フォーム
   const [showAddForm, setShowAddForm] = useState(false);
-  // claude-subscription 1-click（desktop で CLI 検出時のみ提示）
-  const [claudeCliAvailable, setClaudeCliAvailable] = useState(false);
-  // CLI にログイン中のアカウント（登録済みサブスクモデルに「どのアカウントで推論されるか」を表示）
-  const [claudeCliAccount, setClaudeCliAccount] = useState<{
-    email: string | null;
-    organization: string | null;
-  } | null>(null);
-  // CLAUDE_CODE_OAUTH_TOKEN 設定時は CLI がログインよりトークンを優先するため表示を切り替える
-  const [claudeTokenFromEnv, setClaudeTokenFromEnv] = useState(false);
+  // copilot-subscription 1-click（desktop で GitHub Copilot CLI 検出時のみ提示）
+  const [copilotCliAvailable, setCopilotCliAvailable] = useState(false);
   const [registeringSubscription, setRegisteringSubscription] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState("");
   const [addMode, setAddMode] = useState<"new" | "existing">("new");
@@ -808,7 +799,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         setAvailableModels(data.models ?? []);
         if (data.models?.length > 0) {
           setSelectedModelId(data.models[0]);
-          setModelDisplayName(data.models[0]);
+          // copilot は先頭が "default"。プリセット済みの表示名（"GitHub Copilot (subscription)"）を
+          // "default" で上書きしない。
+          const prov = providerGroups.find((g) => g.representativeId === sourceModelId)?.provider;
+          if (prov !== "copilot-subscription" || !modelDisplayName.trim()) {
+            setModelDisplayName(data.models[0]);
+          }
         }
       } catch (err) {
         setAddError(localizeAiError(err));
@@ -818,8 +814,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       return;
     }
 
-    // 新規プロバイダーモード
-    if (!addApiKey.trim()) {
+    // 新規プロバイダーモード（copilot-subscription は API キー不要 — CLI から一覧を取る）
+    if (!addApiKey.trim() && addProvider !== "copilot-subscription") {
       setAddError(t("settings.addModel.apiKeyRequired"));
       return;
     }
@@ -845,14 +841,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       setAvailableModels(data.models ?? []);
       if (data.models?.length > 0) {
         setSelectedModelId(data.models[0]);
-        setModelDisplayName(data.models[0]);
+        if (addProvider !== "copilot-subscription" || !modelDisplayName.trim()) {
+          setModelDisplayName(data.models[0]);
+        }
       }
     } catch (err) {
       setAddError(localizeAiError(err));
     } finally {
       setFetchingAvailable(false);
     }
-  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, t]);
+  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, modelDisplayName, providerGroups, t]);
 
   const handleAddModel = useCallback(async () => {
     const modelId = customModelId.trim() || selectedModelId;
@@ -925,28 +923,26 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     }
   }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, refreshModels, t]);
 
-  // desktop（サーバー経路）で Claude Code CLI が使えるかを確認し、使えるなら
-  // 「Claude サブスクを使う」1-click を出す。web（localStorage 経路）では出さない。
+  // desktop（サーバー経路）で GitHub Copilot CLI が使えるかを確認し、
+  // 使えるならサブスクの 1-click を出す。web（localStorage 経路）では出さない。
   useEffect(() => {
     if (isWebMode || !isOpen) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${apiBase()}/models/claude-cli-status`);
+        const res = await fetch(`${apiBase()}/models/copilot-cli-status`);
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled) {
-          setClaudeCliAvailable(!!data.available);
-          setClaudeCliAccount(data.account ?? null);
-          setClaudeTokenFromEnv(data.token_source === "env");
+          setCopilotCliAvailable(!!data.available);
         }
       } catch { /* 検出できなければ提示しないだけ */ }
     })();
     return () => { cancelled = true; };
   }, [isWebMode, isOpen]);
 
-  // claude-subscription（sonnet）を 1 件登録する。API キー不要（サーバー側の CLI 認証を使う）。
-  const handleUseClaudeSubscription = useCallback(async () => {
+  // copilot-subscription（default = CLI の既定モデル）を 1 件登録する。API キー不要。
+  const handleUseCopilotSubscription = useCallback(async () => {
     setRegisteringSubscription(true);
     setSubscriptionError("");
     try {
@@ -954,9 +950,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model_name: t("settings.models.claudeSubscriptionName"),
-          provider: "claude-subscription",
-          model_id: "sonnet",
+          model_name: t("settings.models.copilotSubscriptionName"),
+          provider: "copilot-subscription",
+          model_id: "default",
         }),
       });
       if (!res.ok) {
@@ -2023,19 +2019,21 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               ) : models.length === 0 && !showAddForm ? (
                 <div className="rounded-lg border border-dashed border-border p-4 text-center">
                   <p className="text-xs text-muted-foreground mb-2">{t("settings.models.empty")}</p>
-                  {!isWebMode && claudeCliAvailable && (
+                  {!isWebMode && copilotCliAvailable && (
                     <div className="mb-3">
                       <button
-                        onClick={handleUseClaudeSubscription}
+                        onClick={handleUseCopilotSubscription}
                         disabled={registeringSubscription}
                         className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
                       >
                         {registeringSubscription && <Loader2 size={12} className="animate-spin" />}
-                        {t("settings.models.useClaudeSubscription")}
+                        {t("settings.models.useCopilotSubscription")}
                       </button>
-                      <p className="text-xs text-muted-foreground mt-2">{t("settings.models.useClaudeSubscriptionHint")}</p>
-                      {subscriptionError && <p className="text-xs text-destructive mt-1">{subscriptionError}</p>}
+                      <p className="text-xs text-muted-foreground mt-2">{t("settings.models.useCopilotSubscriptionHint")}</p>
                     </div>
+                  )}
+                  {!isWebMode && copilotCliAvailable && subscriptionError && (
+                    <p className="text-xs text-destructive mb-3">{subscriptionError}</p>
                   )}
                   <button
                     onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}
@@ -2147,22 +2145,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         <span className="text-sm font-medium text-foreground">{m.name}</span>
                         <span className="text-xs text-muted-foreground ml-2">{m.provider} / {m.model_id}</span>
                         {/* サブスクは認証が CLI 側にあり Graphium から制御できないため、
-                            どのアカウントで推論されるか+切替手順をここで見える化する */}
-                        {m.provider === "claude-subscription" && (
-                          <div className="mt-1 space-y-1">
-                            <p className="text-xs text-foreground/80">
-                              {claudeTokenFromEnv
-                                ? t("settings.models.subscriptionAccountEnvToken")
-                                : claudeCliAccount
-                                  ? t("settings.models.subscriptionAccount", {
-                                      account: [claudeCliAccount.email, claudeCliAccount.organization]
-                                        .filter(Boolean)
-                                        .join(" · "),
-                                    })
-                                  : t("settings.models.subscriptionAccountUnknown")}
-                            </p>
+                            切替手順をここで見える化する */}
+                        {m.provider === "copilot-subscription" && (
+                          <div className="mt-1">
                             <p className="text-xs text-muted-foreground">
-                              {t("settings.models.subscriptionSwitchHint")}
+                              {t("settings.models.copilotSubscriptionSwitchHint")}
                             </p>
                           </div>
                         )}
@@ -2263,10 +2250,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                             const g = providerGroups.find((g) => g.representativeId === id);
                             setSourceModelId(id || null);
                             if (g) setAddProvider(g.provider);
-                            setAvailableModels([]);
-                            setSelectedModelId("");
                             setCustomModelId("");
                             setAddError("");
+                            if (g?.provider === "copilot-subscription") {
+                              // "default"（CLI 既定モデル）を即提示。実 ID 一覧は
+                              // 「モデル一覧を取得」（CLI の listModels）で補完できる。
+                              setAvailableModels([...COPILOT_SUBSCRIPTION_MODELS]);
+                              setSelectedModelId(COPILOT_SUBSCRIPTION_MODELS[0]);
+                              setModelDisplayName(t("settings.models.copilotSubscriptionName"));
+                            } else {
+                              setAvailableModels([]);
+                              setSelectedModelId("");
+                            }
                           }}
                           className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground focus:border-primary focus:outline-none"
                         >
@@ -2307,12 +2302,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                             setAddProvider(p);
                             setCustomModelId("");
                             setAddError("");
-                            if (p === "claude-subscription") {
-                              // API キー不要・モデル一覧 API なし。
-                              // 候補を静的に提示してそのままモデル選択ステップへ進める。
-                              setAvailableModels([...CLAUDE_SUBSCRIPTION_MODELS]);
-                              setSelectedModelId(CLAUDE_SUBSCRIPTION_MODELS[0]);
-                              setModelDisplayName("Claude Sonnet (subscription)");
+                            if (p === "copilot-subscription") {
+                              // API キー不要。"default"（CLI 既定モデル）を即提示し、
+                              // 実 ID 一覧は「モデル一覧を取得」で補完できる。
+                              setAvailableModels([...COPILOT_SUBSCRIPTION_MODELS]);
+                              setSelectedModelId(COPILOT_SUBSCRIPTION_MODELS[0]);
+                              setModelDisplayName(t("settings.models.copilotSubscriptionName"));
                             } else {
                               setAvailableModels([]);
                               setSelectedModelId("");
@@ -2328,17 +2323,17 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       </div>
                     </div>
 
-                    {addProvider === "claude-subscription" ? (
+                    {addProvider === "copilot-subscription" ? (
                       <>
                         {/* サブスク経由は API キー不要。セットアップ案内が主役で、
                             CLI パス（自動検出の脱出ハッチ）はその後ろに置く。 */}
                         <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
-                          {t("settings.addModel.claudeSubHint")}
+                          {t("settings.addModel.copilotSubHint")}
                         </div>
-                        {/* addApiBase を claude CLI の絶対パス（任意）として流用する */}
+                        {/* addApiBase を CLI の絶対パス（任意）として流用する */}
                         <div>
                           <label className="text-xs font-medium text-foreground mb-2 block">
-                            {t("settings.addModel.claudeCliPath")}
+                            {t("settings.addModel.copilotCliPath")}
                           </label>
                           <Input
                             type="text"
@@ -2377,20 +2372,19 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       </>
                     )}
 
-                    {addProvider !== "claude-subscription" && (
-                      <Button
-                        size="sm"
-                        onClick={handleFetchAvailable}
-                        disabled={fetchingAvailable || !addApiKey.trim()}
-                        className="w-full"
-                      >
-                        {fetchingAvailable ? (
-                          <><Loader2 size={14} className="animate-spin mr-1" /> {t("settings.addModel.fetching")}</>
-                        ) : (
-                          t("settings.addModel.fetchModels")
-                        )}
-                      </Button>
-                    )}
+                    {/* copilot-subscription はキー不要で CLI から一覧を取れるためボタンを出す */}
+                    <Button
+                      size="sm"
+                      onClick={handleFetchAvailable}
+                      disabled={fetchingAvailable || (!addApiKey.trim() && addProvider !== "copilot-subscription")}
+                      className="w-full"
+                    >
+                      {fetchingAvailable ? (
+                        <><Loader2 size={14} className="animate-spin mr-1" /> {t("settings.addModel.fetching")}</>
+                      ) : (
+                        t("settings.addModel.fetchModels")
+                      )}
+                    </Button>
                   </>
                 )}
 

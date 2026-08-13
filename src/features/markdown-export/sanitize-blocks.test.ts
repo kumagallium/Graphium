@@ -64,6 +64,28 @@ describe("sanitizeBlocksForMarkdown", () => {
     ]);
   });
 
+  it("sharedCitation ブロックを出所テキストの paragraph に変換する", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        type: "sharedCitation",
+        props: {
+          sharedId: "0198-abc",
+          entryType: "data-manifest",
+          cachedTitle: "NaCl 単結晶 XRD",
+          cachedAuthor: "田中",
+        },
+        children: [],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].type).toBe("paragraph");
+    const flat = JSON.stringify(result[0].content);
+    expect(flat).toContain("NaCl 単結晶 XRD");
+    expect(flat).toContain("data-manifest");
+    expect(flat).toContain("田中");
+    expect(flat).toContain("shared://0198-abc");
+  });
+
   it("pdfViewer ブロックをファイル名リンクの paragraph に変換する", () => {
     const result = sanitizeBlocksForMarkdown(
       [{ type: "pdfViewer", props: { url: "local-media://abc", name: "paper.pdf" }, children: [] }],

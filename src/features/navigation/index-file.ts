@@ -107,7 +107,8 @@ import { collectOcrText } from "../media-ocr/collect";
 //      既存ノートの収集結果は変わらない（後方互換）。
 //      bump を必ず実地確認する: Graphium 起動時に v23 インデックスが v24 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 24;
+// 25: sharedCitation ブロックのタイトル・ファイル名を検索テキストに含める
+export const INDEX_SCHEMA_VERSION = 25;
 
 export type GraphiumIndex = {
   version: number;
@@ -679,6 +680,12 @@ export function extractBlockText(block: any): string {
 
   // 2. props.text (一部のブロック型)
   if (block.props?.text) return block.props.text;
+
+  // 2b. shared:// 引用カード: 引用先タイトル・ファイル名で検索できるようにする
+  if (block.type === "sharedCitation") {
+    const parts = [block.props?.cachedTitle, block.props?.fileName].filter(Boolean);
+    if (parts.length > 0) return parts.join(" ");
+  }
 
   // 3. 子ブロックからテキストを再帰的に収集
   if (block.children?.length) {

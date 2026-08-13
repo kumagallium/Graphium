@@ -109,6 +109,11 @@ type GraphiumDocument = {
   // ── skill metadata (only when source === "skill") ───
   skillMeta?: SkillMeta;
 
+  // ── layout ───────────────────────────────────────────
+  // true = the editor body spans the full window width (Notion's
+  // "Full width"). Unset/false = readable fixed-width column (default).
+  fullWidth?: boolean;
+
   // ── external source ─────────────────────────────────
   // Set when the note was generated from an external URL (URL-to-PROV)
   sourceUrl?: string;
@@ -1189,7 +1194,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **24**.
+Defined in `src/features/navigation/index-file.ts`. Currently **25**.
 Bumping rules:
 
 | Version | Change |
@@ -1214,6 +1219,7 @@ Bumping rules:
 | **22** | Added `ocrText` mirror on `NoteIndexEntry` — the concatenated, newline-joined text read on-device out of the note's images, collected from `page.mediaOcr` in `buildIndexEntry` and included in `searchNotes`, so a note holding only a scanned image is findable by the words inside it. Legacy notes keep `ocrText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. |
 | **23** | Added `steps` on `NoteIndexEntry` — the titles of `step` container blocks, collected in document order (including steps nested inside another step). `headings` is typed `level: 2 \| 3` and cannot carry a step, so steps get their own field. Headings written *inside* a step are still collected into `headings` so the outline does not lose them. Notes that use no step keep `steps: undefined`, and `ensureIndex` rebuilds on the bump without touching note JSON. |
 | **24** | Outline collection treats multi-column blocks (`columnList` / `column`) as transparent layout wrappers — headings and steps placed inside a column are collected as if they were top-level, so they appear in the outline and in search. No `NoteIndexEntry` field changed; the bump exists because the collection logic changed and column-using notes need a rebuild to be indexed correctly. Notes without columns produce identical entries. |
+| **25** | `extractBlockText` now yields the `cachedTitle` / `fileName` snapshot of `sharedCitation` blocks (§7.5), so a note is findable by the title of the shared entry it cites. No `NoteIndexEntry` field changed; citation-using notes need a rebuild to pick up the searchable text. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the
@@ -1508,6 +1514,52 @@ forkedFrom?: {
 
 The fork is treated as a separate identity from the original; PROV
 records the lineage between them.
+
+### 7.5 Citation block (`sharedCitation`)
+
+A note can cite a shared entry inline through the `sharedCitation`
+custom block (`src/blocks/shared-citation/`). The block stores a
+*reference plus a display snapshot* — never the body:
+
+```ts
+props: {
+  sharedId: string;        // SharedEntry.id (uuidv7)
+  citedHash: string;       // SharedEntry.hash last seen (advances on minor follow)
+  entryType: string;       // SharedEntryType
+  citedAt: string;         // ISO 8601 — first citation time, never updated
+  // display snapshot: lets the card render without the shared root
+  cachedTitle: string;
+  cachedAuthor: string;
+  cachedUpdatedAt: string;
+  citedVersion: number;
+  fileName: string;        // data-manifest only
+  fileSizeLabel: string;
+}
+```
+
+Render-time resolution (`src/blocks/shared-citation/resolve.ts`)
+produces one of:
+
+| Status | Meaning |
+|---|---|
+| `verified` | Entry read OK and `verifyHash` passes — the shared side is intact. |
+| `mismatch` | Manifest hash no longer matches the stored body (corruption or an edit made outside Graphium). |
+| `offline` | Web build, no shared root configured, or root unreachable (`shared_root_exists` fails) — the card renders from the snapshot. |
+| `missing` | Root reachable but the entry is absent or an `unshared` tombstone. |
+
+Minor updates (same id, new hash) are followed silently: the snapshot
+props and `citedHash` advance in place. Major revisions
+(`superseded_by`) are **not** followed — the card keeps pointing at the
+cited version and shows a "newer version" banner linking to the
+successor.
+
+Provenance: when a save introduces a citation absent from the previous
+save, that revision's `EditActivity.used` gains a `shared:<sharedId>`
+source (the `shared:` prefix is registered in
+`src/features/network-graph/external-source.ts`), which the
+PROV-JSON-LD export resolves to a typed external entity. SidePeek saves
+bypass revision recording by design, so citations inserted there are
+not attributed to an edit activity.
 
 ## 8. Compatibility rules
 

@@ -25,11 +25,11 @@ describe("localizeAiError", () => {
     expect(localizeAiError(err)).toContain("AI モデルが登録されていません");
   });
 
-  it("SUBSCRIPTION_AUTH_EXPIRED / INVALID_API_KEY もそれぞれのキーに解決される", () => {
+  it("COPILOT_SUBSCRIPTION_AUTH_EXPIRED / INVALID_API_KEY もそれぞれのキーに解決される", () => {
     syncLocale("ja");
     expect(
-      localizeAiError(new CodedError("x", "SUBSCRIPTION_AUTH_EXPIRED")),
-    ).toContain("再ログイン");
+      localizeAiError(new CodedError("x", "COPILOT_SUBSCRIPTION_AUTH_EXPIRED")),
+    ).toContain("サインイン");
     expect(localizeAiError(new CodedError("x", "INVALID_API_KEY"))).toContain(
       "API キー",
     );
