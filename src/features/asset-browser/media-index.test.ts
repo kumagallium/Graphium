@@ -474,6 +474,80 @@ describe("ensureMediaIndex (フル再構築時の URL ブックマーク usedIn)
   });
 });
 
+describe("ensureMediaIndex（ノートに貼った画像の OCR テキスト集約）", () => {
+  const IMG_URL = "local-media://img-1";
+
+  const imageEntry = (ocrText?: string): MediaIndexEntry => ({
+    fileId: "img-1",
+    name: "scan.png",
+    type: "image",
+    mimeType: "image/png",
+    url: IMG_URL,
+    thumbnailUrl: IMG_URL,
+    uploadedAt: "2026-01-01T00:00:00.000Z",
+    usedIn: [],
+    ...(ocrText ? { ocrText } : {}),
+  });
+
+  /** 画像ブロック + mediaOcr サイドストアを持つノート doc */
+  const docWithOcr = (text?: string) => ({
+    title: "実験ノート",
+    pages: [
+      {
+        blocks: [{ id: "block-1", type: "image", props: { url: IMG_URL } }],
+        ...(text ? { mediaOcr: { "block-1": { text } } } : {}),
+      },
+    ],
+  });
+
+  const runRebuild = (existing: MediaIndex, doc: ReturnType<typeof docWithOcr>) => {
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn().mockResolvedValue(existing),
+      writeAppData: vi.fn().mockResolvedValue(undefined),
+      listMediaFiles: vi.fn().mockResolvedValue([
+        { id: "img-1", name: "scan.png", mimeType: "image/png", createdTime: "2026-01-01T00:00:00.000Z" },
+      ]),
+    } as any);
+    const docCache = new Map<string, any>([["note-1", doc]]);
+    return ensureMediaIndex([{ id: "note-1", name: "実験ノート" }], docCache, async () => doc);
+  };
+
+  /** v5 より前のインデックス（ノート由来 OCR が素材に写っていない状態） */
+  const staleIndex = (ocrText?: string): MediaIndex => ({
+    version: 4,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    media: [imageEntry(ocrText)],
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("ノートで読み取った OCR テキストを素材の ocrText に回収する", async () => {
+    const index = await runRebuild(staleIndex(), docWithOcr("焼結温度 800℃ で 2 時間 保持"));
+    expect(index.version).toBe(CURRENT_MEDIA_INDEX_VERSION);
+    expect(index.media[0].ocrText).toBe("焼結温度 800℃ で 2 時間 保持");
+  });
+
+  it("素材ギャラリーで読み取った既存の ocrText は上書きしない", async () => {
+    const index = await runRebuild(
+      staleIndex("ギャラリーで読んだ文字"),
+      docWithOcr("ノートで読んだ文字"),
+    );
+    expect(index.media[0].ocrText).toBe("ギャラリーで読んだ文字");
+  });
+
+  it("mediaOcr を持たないノートの画像には ocrText が付かない", async () => {
+    const index = await runRebuild(staleIndex(), docWithOcr());
+    expect(index.media[0].ocrText).toBeUndefined();
+  });
+
+  it("空白だけの OCR テキストは写さない", async () => {
+    const index = await runRebuild(staleIndex(), docWithOcr("   \n  "));
+    expect(index.media[0].ocrText).toBeUndefined();
+  });
+});
+
 describe("buildUrlPeekEntry", () => {
   const url = "https://en.wikipedia.org/wiki/Electronic_lab_notebook";
 
