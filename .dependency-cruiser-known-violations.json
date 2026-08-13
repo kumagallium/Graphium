@@ -2,6 +2,23 @@
   {
     "type": "dependency",
     "from": "src/base/editor.tsx",
+    "to": "src/features/block-duplicate/index.ts",
+    "unresolvedTo": "@features/block-duplicate",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "base-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/base/editor.tsx",
     "to": "src/features/block-selection/index.ts",
     "unresolvedTo": "@features/block-selection",
     "dependencyTypes": [

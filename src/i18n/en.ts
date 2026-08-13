@@ -153,6 +153,7 @@ export const en: Record<string, string> = {
   "editor.align.left": "Align left",
   "editor.align.center": "Align center",
   "editor.align.right": "Align right",
+  "editor.duplicate": "Duplicate",
   // ── 種類を変更（Turn into）──
   "editor.turnInto": "Turn into",
   "editor.turnIntoType.paragraph": "Text",
