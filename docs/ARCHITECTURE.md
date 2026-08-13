@@ -91,10 +91,19 @@ talks to LLM and embedding backends.
 
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
-- Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `callout`, `example-hello`, `math`, `pdf-viewer`, `step`). Inline content (entity /
+- Custom blocks live under `src/blocks/` (today: `bookmark`, `calc`,
+  `callout`, `chart`, `columnList` / `column`, `math`, `pdf-viewer`,
+  `sharedCitation`, `step`). Inline content (entity /
   agent highlights) lives under `src/features/inline-label/`; inline math lives
   under `src/features/inline-math/`.
+- `calc` is a Numi-style live calculation block: each line of `props.source` is
+  an expression or a variable assignment, evaluated top-to-bottom with mathjs
+  (unit-aware, so `5 g / (233.19 g/mol)` works — the target use case is batch /
+  weighing calculations that would otherwise happen in a spreadsheet). Variables
+  are scoped to the block; the last evaluation is persisted as a snapshot in
+  `props.results` so the values a note recorded stay reproducible even if the
+  evaluator changes. mathjs is dynamically imported on first evaluation
+  (`src/blocks/calc/mathjs-loader.ts`).
 - `math` holds a LaTeX source string in `props.latex` and renders it with KaTeX.
   `inlineMath` is the same idea as a custom inline content spec, for formulas
   that sit inside a sentence. Clicking either one opens an editor: by default a
