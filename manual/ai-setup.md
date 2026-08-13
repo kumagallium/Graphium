@@ -34,6 +34,8 @@ For the API-key providers: enter your **API Key**, click **Fetch available model
 
 **GitHub Copilot (Subscription · Copilot CLI)** skips the key entirely: it uses the GitHub Copilot CLI login on this machine, so install the CLI with `npm install -g @github/copilot` and run `copilot` once in a terminal to sign in first. Prompts count toward your Copilot plan's usage allowance. The preselected `default` model follows the CLI's current default — click **Fetch available models** to pick a specific one. To switch GitHub accounts later, run `copilot` in a terminal, type `/login`, then restart Graphium.
 
+![Add Model with the GitHub Copilot subscription provider selected — no API key field](/screenshots/settings-copilot-provider.png)
+
 ::: info The Claude subscription provider was removed
 Earlier versions offered a **Claude (Subscription · Claude Code)** provider that ran AI through a Claude Pro/Max plan. It was removed because Anthropic's terms do not permit third-party apps to use subscription authentication. Any model registered through it disappears from the list on first launch after updating — register another provider instead. Anthropic API keys are unaffected, and the GitHub Copilot provider above fills the same no-API-key role.
 :::
