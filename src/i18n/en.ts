@@ -1801,6 +1801,8 @@ export const en: Record<string, string> = {
   "indexTable.colCond1": "Condition 1",
   "indexTable.colCond2": "Condition 2",
   "indexTable.duplicateNoteConfirm": "A note named \"{title}\" already exists. Create another one?",
+  "indexTable.menuEnable": "Turn into index table",
+  "indexTable.menuDisable": "Turn off index table",
 
   // 記録テーブル
   "logTable.colDateTime": "Date/Time",

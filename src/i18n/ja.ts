@@ -1799,6 +1799,8 @@ export const ja: Record<string, string> = {
   "indexTable.colCond1": "条件1",
   "indexTable.colCond2": "条件2",
   "indexTable.duplicateNoteConfirm": "「{title}」という名前のノートが既に存在します。新しいノートを作成しますか？",
+  "indexTable.menuEnable": "インデックステーブルにする",
+  "indexTable.menuDisable": "インデックステーブルを解除",
 
   // 記録テーブル
   "logTable.colDateTime": "日時",

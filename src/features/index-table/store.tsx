@@ -125,3 +125,12 @@ export function useIndexTableStore(): IndexTableStoreValue {
   }
   return ctx;
 }
+
+/**
+ * Provider が無い場所（Storybook の単体ストーリー等）でも落ちずに使うための
+ * optional 版。ドラッグハンドルメニューのトグルのように、無ければ項目を
+ * 出さないだけでよい読み書きに使う。
+ */
+export function useIndexTableStoreOptional(): IndexTableStoreValue | null {
+  return useContext(IndexTableContext);
+}

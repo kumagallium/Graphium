@@ -162,6 +162,8 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 - Typing `@` inside a row's first column links the row to an existing note instead.
 - Linked rows offer **Open note** and **Side peek** — the side peek opens the row's note next to the current one, so you can update a run without leaving the plan.
 
+Like the log table, an index table is not a separate kind of table — it is an ordinary table with the row-to-note behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into index table**". Turning it off removes the row-to-note links (the notes themselves are untouched).
+
 ![An index table with Name and condition columns](/screenshots/index-table.png)
 
 ## The log table and charts
