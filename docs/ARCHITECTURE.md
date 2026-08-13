@@ -124,13 +124,17 @@ talks to LLM and embedding backends.
   paint so notes without charts pay nothing extra). The table stays the
   source of truth: the block stores only the referenced table's id, the
   column names and the chart type, and re-reads the table when the
-  document changes. **Time-series tables** (log tables in code) complement it on the input side: a
-  standard table registered in a side-store (`page.logTables`) gets a
-  "+ Record" button that appends a row stamped with the current
-  date/time. The timestamp is plain cell text — editable afterwards, and
-  it survives Markdown export — so recurring observations (a headache
-  diary, growth logs, time-series measurements) work without a
-  database-style schema object.
+  document changes. **Time-series tables** complement it on the input
+  side: any standard table can be given a `datetime-auto` column (from
+  the drag-handle menu, or ready-made from the slash menu), after which
+  adding a row with the ordinary table controls stamps its first column
+  with the current date/time. There is only one kind of table — behaviors
+  like this are annotations on *columns*, kept in a side store
+  (`page.tableMeta`) together with the table's optional caption. The
+  timestamp is plain cell text — editable afterwards, and it survives
+  Markdown export — so recurring observations (a headache diary, growth
+  logs, time-series measurements) work without a database-style schema
+  object.
 - **The flow view is a node editor over the same document.** It is built on
   React Flow (`@xyflow/react`); step cards and material / tool / output
   entities are all nodes. A node shows only its name — plus a media

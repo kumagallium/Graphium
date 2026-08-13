@@ -182,18 +182,14 @@ type GraphiumPage = {
   highlights?: InlineHighlight[];    // material / tool / attribute / output
   mediaInlineLabels?: Record<string, MediaInlineLabel>;  // for image/video/audio/pdf/file blocks
 
-  // ── reference table feature ─────────────────────────
-  indexTables?: Record<string, Record<string, string>>;  // tableBlockId → (sampleName → noteId)
-
-  // ── log table feature ───────────────────────────────
-  logTables?: Record<string, Record<string, unknown>>;
-                                     // tableBlockId → config. Marks a *standard* table
-                                     // block as a "log table": its "+ Record" button
-                                     // appends a row stamped with the current date/time
-                                     // in the first column. Timestamps live in the cells
-                                     // as plain text (editable, survives Markdown export);
-                                     // this side-store only records *which* tables are
-                                     // log tables. v1 config is an empty object.
+  // ── table annotations ───────────────────────────────
+  tableMeta?: Record<string, TableMeta>;
+                                     // tableBlockId → caption + per-column behaviors +
+                                     // row-to-note links (see below). Tables stay
+                                     // *standard* BlockNote tables whose cells are plain
+                                     // strings, so they survive Markdown export; only the
+                                     // annotations live here (same approach as
+                                     // mediaInlineLabels).
 
   // ── on-device image OCR ─────────────────────────────
   mediaOcr?: Record<string, MediaOcrEntry>;
@@ -217,8 +213,53 @@ type GraphiumPage = {
 
   // ── deprecated ──────────────────────────────────────
   links?: any[];                     // v1 only; loaders convert to provLinks/knowledgeLinks
+  indexTables?: Record<string, Record<string, string>>;
+                                     // superseded by tableMeta (note-link columns);
+                                     // loaders convert, writers no longer emit it
+  logTables?: Record<string, Record<string, unknown>>;
+                                     // superseded by tableMeta (datetime-auto columns
+                                     // plus caption); loaders convert, writers no
+                                     // longer emit it
 };
 ```
+
+#### Table annotations (`tableMeta`)
+
+There is only **one** kind of table. What used to be two kinds — the *log
+table* (rows get a timestamp) and the *index table* (rows link to notes) —
+were in truth two behaviors of the **first column**, so they are expressed as
+per-column annotations instead. Both are still one drag-handle (⠿) toggle away,
+and a table can carry both at once.
+
+```ts
+type ColumnType =
+  | "datetime-auto"   // adding a row stamps this column's empty cell with the current time
+  | "note-link";      // a row's value can create / open a note of its own
+
+type TableMeta = {
+  caption?: string;                        // any table can be named; empty means no caption
+  columns?: Record<string, ColumnType[]>;  // column name → behaviors on that column
+  noteLinks?: Record<string, string>;      // row value → note file ID (note-link data)
+};
+```
+
+- **Cells stay strings.** Timestamps and note names live in the table itself, so
+  a Markdown export is an ordinary table. This is the deliberate split from
+  app-only database blocks.
+- **`columns` is keyed by column name**, matching how the chart block references
+  columns (`xColumn` / `yColumn`). Renaming a column does *not* break anything
+  today: behaviors are applied to the first column, and the key records which
+  column they were attached to. Strict positional resolution by name arrives with
+  the column-header UI.
+- **The value is a list** because one column can carry more than one behavior —
+  a timestamped column whose rows also open per-entry notes is a real usage.
+- **Only the minimum set of behaviors exists.** Value types such as `number` or
+  `text` are deliberately absent until something needs them; adding a behavior
+  later is additive.
+- **Captions apply to every table.** Named tables show the name above the table
+  (academic caption position) and charts use it as the reference name. Tables with
+  a `datetime-auto` column additionally fall back to a document-order auto-name
+  ("Table 1"), which is display-only and never saved.
 
 ### 2.3 PROV-DM label model
 
@@ -1579,6 +1620,19 @@ Hard rules for changing any schema in this document.
 
 These rules are also captured in the project's `CLAUDE.md` "破壊的変更
 チェック" section.
+
+### Side stores and older builds
+
+The annotation side stores (`tableMeta`, `mediaInlineLabels`, `mediaOcr`,
+`blockAlignments`) are Graphium's own layer over *standard* BlockNote blocks. A
+build that predates a given side store does not know its field, so opening and
+saving a note in that build drops those annotations — the blocks themselves are
+untouched, because the data that matters lives in the cells.
+
+`tableMeta` superseded `indexTables` / `logTables` exactly this way: writers emit
+only the new field, so a note saved by a current build loses its timestamp and
+row-to-note behavior if an older build writes it back. Ship a change like this
+with a release note telling users to update every device they sync from.
 
 After any compatibility-affecting change, the verification ritual is:
 
