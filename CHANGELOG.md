@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.32.0](https://github.com/kumagallium/Graphium/compare/v0.31.1...v0.32.0) - 2026-08-13
+
+- fix(link): open URL clicks in side peek only, not external browser by @kumagallium in https://github.com/kumagallium/Graphium/pull/669
+- feat(editor): readable line width with per-note full-width toggle by @kumagallium in https://github.com/kumagallium/Graphium/pull/671
+
 ## [v0.31.1](https://github.com/kumagallium/Graphium/compare/v0.31.0...v0.31.1) - 2026-08-12
 
 - fix(pdf): resolve shared (g_-prefixed) images from commonObjs to fix extraction hang by @kumagallium in https://github.com/kumagallium/Graphium/pull/667
