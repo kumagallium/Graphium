@@ -1533,8 +1533,8 @@ export const ja: Record<string, string> = {
   "mobile.settings.changeStorage": "変更",
 
   // ── PDF エクスポート ──
-  "pdf.export": "PDF",
-  "pdf.exporting": "エクスポート中...",
+  "pdf.export": "印刷・PDF",
+  "pdf.exporting": "準備中...",
 
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",

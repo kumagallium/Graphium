@@ -5,7 +5,7 @@
 // 起動時間には影響させない。
 //
 // tree-shaking: echarts/core + 使うチャート・コンポーネントだけを登録する。
-// レンダラは SVG。canvas より PDF 書き出し（html2pdf.js）と相性が良く、
+// レンダラは SVG。印刷 / PDF 書き出しでも解像度が落ちず、
 // テーマ色も CSS と同じ見え方になる。
 
 let echartsPromise: Promise<typeof import("echarts/core")> | null = null;
