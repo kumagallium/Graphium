@@ -300,7 +300,6 @@ export const ja: Record<string, string> = {
 
   // ── AI エラー（サーバーの機械可読 code → 表示文言。src/lib/ai-error.ts が参照） ──
   "aiError.noModelRegistered": "AI モデルが登録されていません。設定 → AI からモデルを追加してください。",
-  "aiError.subscriptionAuthExpired": "Claude のサブスク認証が切れています。ターミナルで `claude` を実行して再ログインし、Graphium を再起動してください。別のアカウント/チームに切り替える場合も `claude` 内の `/login` で選び直せます。",
   "aiError.copilotSubscriptionAuthExpired": "GitHub Copilot の認証が未設定か期限切れです。ターミナルで `copilot` を実行してサインインし、もう一度お試しください。アカウントの切り替えは `copilot` 内の `/login` からできます。",
   "aiError.invalidApiKey": "モデルの API キーが無効か期限切れです。設定 → AI でキーを確認してください。",
   "aiError.apiKeyForbidden": "API キーにこの操作の権限がありません。",
@@ -630,13 +629,6 @@ export const ja: Record<string, string> = {
   "settings.models.loading": "読み込み中...",
   "settings.models.empty": "モデルが登録されていません。AI 機能を使うにはモデルを追加してください。",
   "settings.models.addFirst": "最初のモデルを追加",
-  "settings.models.useClaudeSubscription": "Claude サブスクリプションを使う（API キー不要）",
-  "settings.models.useClaudeSubscriptionHint": "ローカルの Claude Code（`claude` CLI）のログインで動きます（Claude デスクトップアプリとは別）。未ログインの場合は、初回にターミナルで `claude` の実行を促されます。",
-  "settings.models.claudeSubscriptionName": "Claude（サブスクリプション）",
-  "settings.models.subscriptionAccount": "{account} でログイン中（Claude Code CLI）",
-  "settings.models.subscriptionAccountUnknown": "Claude Code CLI のログインを検出できません。ターミナルで `claude` を実行してログインしてください。",
-  "settings.models.subscriptionAccountEnvToken": "環境変数 CLAUDE_CODE_OAUTH_TOKEN で認証しています。",
-  "settings.models.subscriptionSwitchHint": "認証はこのマシンの `claude` CLI のログインに従います（Claude デスクトップアプリとは連動しません）。アカウントを切り替える（個人→チームなど）にはターミナルで `claude` を実行して `/login` し、Graphium を再起動してください。",
   "settings.models.useCopilotSubscription": "GitHub Copilot サブスクリプションを使う（API キー不要）",
   "settings.models.useCopilotSubscriptionHint": "ローカルの GitHub Copilot CLI（`copilot`）のログインで動きます。未ログインの場合は、先にターミナルで `copilot` を実行してサインインしてください。プロンプトは Copilot プランの利用枠を消費します。",
   "settings.models.copilotSubscriptionName": "GitHub Copilot（サブスクリプション）",
@@ -659,8 +651,6 @@ export const ja: Record<string, string> = {
   "settings.addModel.provider": "プロバイダー",
   "settings.addModel.apiKey": "API キー",
   "settings.addModel.apiKeyRequired": "API キーを入力してください",
-  "settings.addModel.claudeSubHint": "API キー不要 — このマシンの Claude Code（`claude` CLI）のログインを使います（Claude デスクトップアプリとは別）。先に `claude setup-token`（または `claude` でログイン）を実行してください。Claude Pro/Max/Team プランと Claude Code CLI のインストールが必要です。opus/sonnet/haiku は常に最新版に自動解決されます（手動更新は不要）。",
-  "settings.addModel.claudeCliPath": "Claude CLI のパス（自動検出 — 見つからない場合のみ指定）",
   "settings.addModel.copilotSubHint": "API キー不要 — このマシンの GitHub Copilot CLI（`copilot`）のログインを使います。先に `npm install -g @github/copilot` でインストールし、`copilot` でサインインしてください。GitHub Copilot のサブスクリプションが必要で、プロンプトはプランの利用枠を消費します。「default」は CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は一覧を取得して選んでください。",
   "settings.addModel.copilotCliPath": "Copilot CLI のパス（自動検出 — 見つからない場合のみ指定）",
   "settings.addModel.fetchModels": "利用可能なモデルを取得",
@@ -1631,7 +1621,7 @@ export const ja: Record<string, string> = {
   "composer.scope.internalHint": "引用したもの＋蓄積した知識を横断検索してつなぐ（着想・構成向け）",
   "composer.scope.notesHint": "このノートで引用したものだけに絞る（横断検索しない・執筆や引用の正確さ向け）",
   // 外部参照を選んだのに Web 検索手段が無い構成への警告（WebSearchMissingHint）
-  "composer.scope.webSearchMissing": "Web 検索の手段が未設定です。外部参照は Web を見ずに回答します。検索 MCP サーバー（例: Tavily）か Claude サブスクモデルを追加すると有効になります。",
+  "composer.scope.webSearchMissing": "Web 検索の手段が未設定です。外部参照は Web を見ずに回答します。検索 MCP サーバー（例: Tavily）を追加すると有効になります。",
   "composer.scope.webSearchMissingCta": "設定を開く",
   // チャット回答のソース見出し（外部 web / 内部ノートを区別）
   "chat.sources.fromNotes": "📓 ノート内の知識",

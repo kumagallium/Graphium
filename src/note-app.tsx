@@ -2648,7 +2648,7 @@ function NoteEditorInner({
                   fromNotesHeading,
                 );
               }
-              // WebSearch（claude-subscription 内蔵 = A 経路）由来の "Sources:" 見出しはモデル出力
+              // モデルが散文中に自前で書いた "Sources:" 見出しはモデル出力
               // なので、ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
               assistantMessage = assistantMessage.replace(
                 /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,

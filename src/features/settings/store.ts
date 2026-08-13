@@ -731,7 +731,18 @@ export function getLLMModels(): LLMModelConfig[] {
   try {
     const raw = localStorage.getItem(LLM_MODELS_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as LLMModelConfig[];
+    const models = JSON.parse(raw) as LLMModelConfig[];
+    // 撤去済みプロバイダ（claude-subscription）のエントリは読み込み時に取り除き、
+    // localStorage にも書き戻す（サーバー側 models.json の purge と対をなす web 版）。
+    // 残すと一覧・既存プロバイダー選択に出続け、使うたびに失敗するだけのため。
+    const kept = models.filter((m) => m.provider !== "claude-subscription");
+    if (kept.length !== models.length) {
+      localStorage.setItem(LLM_MODELS_KEY, JSON.stringify(kept));
+      console.warn(
+        "[models] removed Claude subscription model(s) — the provider was discontinued (Anthropic's terms do not allow third-party apps to use subscription auth). Register a GitHub Copilot subscription or an API-key model instead.",
+      );
+    }
+    return kept;
   } catch {
     return [];
   }

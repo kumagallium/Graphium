@@ -44,7 +44,6 @@ export async function aiErrorFromResponse(
 // エラーコード → i18n キー。新しいコードを足したら en.ts / ja.ts に対応キーを追加する。
 const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   NO_MODEL_REGISTERED: "aiError.noModelRegistered",
-  SUBSCRIPTION_AUTH_EXPIRED: "aiError.subscriptionAuthExpired",
   COPILOT_SUBSCRIPTION_AUTH_EXPIRED: "aiError.copilotSubscriptionAuthExpired",
   INVALID_API_KEY: "aiError.invalidApiKey",
   API_KEY_FORBIDDEN: "aiError.apiKeyForbidden",

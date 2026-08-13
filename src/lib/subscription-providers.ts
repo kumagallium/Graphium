@@ -8,7 +8,6 @@
 //   - 従量課金が発生しない（使用量ダッシュボードでコスト計算対象外）
 
 export const SUBSCRIPTION_PROVIDERS = [
-  "claude-subscription",
   "copilot-subscription",
 ] as const;
 

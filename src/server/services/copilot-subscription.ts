@@ -1,6 +1,6 @@
 // GitHub Copilot サブスクリプションプロバイダ（公式 @github/copilot-sdk 経由）
 //
-// claude-subscription と同じ思想: ローカルの `copilot` CLI を subprocess 起動し、
+// ローカルの `copilot` CLI を subprocess 起動し、
 // ユーザーの Copilot サブスク認証（CLI のログイン）で推論する。API キーは不要。
 //
 // なぜ自前アダプタか: コミュニティ製 AI SDK アダプタはプレ GA の SDK（0.1.x）に
@@ -13,9 +13,9 @@
 //   呼び出しごとには短命セッションだけを作って捨てる。
 // - `availableTools: []` で Copilot 内蔵ツール（シェル実行・ファイル編集等）を全て
 //   無効化し、純粋なテキスト生成器として使う。Graphium 側のツール実行は
-//   claude-subscription と同じく text-tool-call フォールバック（agent-loop）が担う。
+//   text-tool-call フォールバック（agent-loop）が担う。
 // - AI SDK は stateless、Copilot セッションは stateful。メッセージ履歴は 1 本の
-//   テキストに平坦化して送る（ai-sdk-provider-claude-code と同じ手法）。
+//   テキストに平坦化して送る。
 // - system プロンプトは systemMessage: { mode: "replace" } で全置換し、Copilot 既定の
 //   コーディングエージェント人格が翻訳・Wiki 等の決定的機能に混ざらないようにする。
 

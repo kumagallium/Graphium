@@ -7,8 +7,7 @@
 
 import { Hono } from "hono";
 import { listModels, addModel, updateModel, removeModel, getDefaultModel, getModel } from "../config/models.js";
-import { fetchAvailableModels, isClaudeCliAvailable, isCopilotCliAvailable } from "../services/llm.js";
-import { readClaudeCliAccount, isClaudeTokenFromEnv } from "../services/claude-account.js";
+import { fetchAvailableModels, isCopilotCliAvailable } from "../services/llm.js";
 import { errorBody } from "../../lib/ai-error-codes.js";
 import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
 
@@ -37,26 +36,6 @@ app.get("/", (c) => {
         : undefined,
     })),
     default: defaultModel?.name ?? "",
-  });
-});
-
-// Claude Code CLI が検出できるか（claude-subscription の 1-click 登録を出すか判定）
-// account: CLI にログイン中のアカウント（設定 UI で「どのアカウントで推論されるか」を
-// 見える化する）。token_source が "env" のときは CLAUDE_CODE_OAUTH_TOKEN が優先される
-// ため、account の表示は実際に使われるアカウントと食い違い得る。
-app.get("/claude-cli-status", (c) => {
-  const available = isClaudeCliAvailable();
-  const account = available ? readClaudeCliAccount() : null;
-  return c.json({
-    available,
-    account: account
-      ? {
-          email: account.email,
-          organization: account.organization,
-          organization_type: account.organizationType,
-        }
-      : null,
-    token_source: isClaudeTokenFromEnv() ? "env" : "login",
   });
 });
 

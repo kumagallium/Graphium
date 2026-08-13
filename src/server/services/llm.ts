@@ -16,18 +16,11 @@ import { CodedError } from "../../lib/ai-error-codes.js";
 /**
  * ModelConfig からプロバイダーインスタンスを生成する
  *
- * claude-subscription だけは `ai-sdk-provider-claude-code`（＝ Claude Code バイナリの
- * subprocess 起動）を動的 import するため async。重い `@anthropic-ai/claude-agent-sdk` を
- * Web(Vercel) ビルドに静的同梱しないための意図的な遅延ロード。
- *
- * @param opts.allowWebSearch claude-subscription 経路で Claude Code 内蔵の
- *   WebSearch / WebFetch を解禁する。チャット（agent.chat）だけが渡す想定で、
- *   翻訳・Wiki・atomizer 等の決定的に動くべき機能には波及させない。
+ * copilot-subscription だけは `@github/copilot-sdk`（＝ Copilot CLI の subprocess 起動）を
+ * 動的 import するため async。重い SDK を Web(Vercel) ビルドに静的同梱しないための
+ * 意図的な遅延ロード。
  */
-export async function createModel(
-  config: ModelConfig,
-  opts?: { allowWebSearch?: boolean },
-): Promise<LanguageModel> {
+export async function createModel(config: ModelConfig): Promise<LanguageModel> {
   switch (config.provider) {
     case "anthropic": {
       // `createAnthropic` に baseURL を渡さないと SDK は環境変数 `ANTHROPIC_BASE_URL` を
@@ -79,41 +72,23 @@ export async function createModel(
       return provider(config.modelId);
     }
     case "claude-subscription": {
-      // ローカルの Claude Code CLI を subprocess 起動し、ユーザーの Claude Pro/Max
-      // サブスク認証（~/.claude セッション or CLAUDE_CODE_OAUTH_TOKEN）で推論する。
-      // API キーは不要。従量課金も発生しない（個人利用向けオプション）。
-      //
-      // - 動的 import: 重い @anthropic-ai/claude-agent-sdk を Web ビルドに巻き込まない。
-      // - pathToClaudeCodeExecutable: 既存 claude を参照し、ネイティブバイナリ同梱を回避。
-      //   config.apiBase をこのプロバイダでは「claude CLI の絶対パス（任意）」として流用する。
-      // - settingSources 省略 = isolation（~/.claude/CLAUDE.md 等を読み込まない）。
-      // - allowedTools は既定で [] とし、Claude Code 内蔵ツール（Read/Write/Bash 等）の
-      //   自律実行を止めて純粋なテキスト生成器として使う。Graphium 側のツール実行は
-      //   text-tool-call フォールバック（agent-loop-text-tools.ts）が担う。
-      // - 例外として allowWebSearch（チャット経路のみが渡す）が真のときだけ WebSearch /
-      //   WebFetch を解禁する。検索→読込→要約は CLI のネイティブループ内で完結し、
-      //   サブスク枠で web 検索できる。ただし Graphium の text-tool 経路や PROV 追跡の
-      //   外側で起きる点に注意（来歴は残らない）。
-      const { createClaudeCode } = await import("ai-sdk-provider-claude-code");
-      const binaryPath = resolveClaudeBinaryPath(config.apiBase);
-      const allowedTools = opts?.allowWebSearch ? ["WebSearch", "WebFetch"] : [];
-      const provider = createClaudeCode({
-        defaultSettings: {
-          ...(binaryPath ? { pathToClaudeCodeExecutable: binaryPath } : {}),
-          allowedTools,
-          logger: false,
-        },
-      });
-      return provider(config.modelId || "sonnet");
+      // 旧 claude-subscription（Claude Code CLI 経由でサブスク枠を使う）は撤去した。
+      // Anthropic の規約がサードパーティ製品からの Pro/Max サブスク利用を明文で
+      // 禁止しているため（Agent SDK 経由の「本物の CLI 起動」でも同じ）。
+      // 保存済み設定は config/models.ts の purge が起動時に取り除くので、通常ここには
+      // 来ない。来た場合（purge 前の並行リクエスト等）は移行先を案内して失敗させる。
+      throw new Error(
+        "Claude subscription support has been removed (Anthropic's terms do not allow third-party apps to use subscription auth). Use a GitHub Copilot subscription or an API-key provider in Settings → AI instead.",
+      );
     }
     case "copilot-subscription": {
       // ローカルの GitHub Copilot CLI（公式 @github/copilot-sdk 経由）を subprocess
       // 起動し、ユーザーの Copilot サブスク認証（CLI のログイン）で推論する。
-      // API キーは不要。claude-subscription と同型の構成（詳細は copilot-subscription.ts）。
+      // API キーは不要（詳細は copilot-subscription.ts）。
       //
       // - 動的 import: @github/copilot-sdk を Web ビルドに巻き込まない。
       // - config.apiBase は「copilot CLI の絶対パス（任意）」として流用する。
-      // - claude と違い SDK に PATH フォールバックが無い（既定は npm 同梱ランタイム解決で、
+      // - SDK に PATH フォールバックが無い（既定は npm 同梱ランタイム解決で、
       //   バンドルには存在しない）ため、パスが解決できなければここで明確に失敗させる。
       const { createCopilotModel } = await import("./copilot-subscription.js");
       const binaryPath = resolveCopilotBinaryPath(config.apiBase);
@@ -133,41 +108,10 @@ export async function createModel(
 }
 
 /**
- * claude-subscription プロバイダ用に Claude Code CLI の実行パスを解決する。
- * 優先順:
- *   1. モデル設定の明示パス（config.apiBase）
- *   2. 環境変数 GRAPHIUM_CLAUDE_CLI_PATH
- *   3. 自動検出（detectClaudeBinary）— 結果はプロセス内でキャッシュ
- * いずれも取れなければ undefined を返し、プロバイダ既定（PATH 上の `claude`）に委ねる。
- */
-function resolveClaudeBinaryPath(explicit?: string | null): string | undefined {
-  if (explicit && explicit.trim().length > 0) return explicit.trim();
-  const fromEnv = process.env.GRAPHIUM_CLAUDE_CLI_PATH;
-  if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
-  if (cachedAutoClaudePath === null) {
-    cachedAutoClaudePath = detectClaudeBinary();
-  }
-  return cachedAutoClaudePath ?? undefined;
-}
-
-/**
- * claude-subscription 用の Claude Code CLI が検出できるか。
- * 1-click サブスク登録ボタンの出し分けに使う（検出できないマシンでは提示しない）。
- * ログイン状態までは見ない — 未ログインは初回推論時の 401（describeAuthError）で導線を出す。
- */
-export function isClaudeCliAvailable(): boolean {
-  return resolveClaudeBinaryPath() !== undefined;
-}
-
-// 自動検出結果のキャッシュ。null = 未計算 / undefined = 検出失敗 / string = 検出済み。
-let cachedAutoClaudePath: string | undefined | null = null;
-
-/**
  * copilot-subscription プロバイダ用に GitHub Copilot CLI の実行パスを解決する。
- * 優先順は claude と同じ: 明示パス（config.apiBase）→ 環境変数
- * GRAPHIUM_COPILOT_CLI_PATH → 自動検出（プロセス内キャッシュ）。
- * claude と違い undefined を返しても SDK 側の PATH フォールバックは無い
- * （呼び出し側でエラーにする）。
+ * 優先順: 明示パス（config.apiBase）→ 環境変数 GRAPHIUM_COPILOT_CLI_PATH →
+ * 自動検出（プロセス内キャッシュ）。undefined を返しても SDK 側の PATH
+ * フォールバックは無い（呼び出し側でエラーにする）。
  */
 export function resolveCopilotBinaryPath(
   explicit?: string | null,
@@ -195,27 +139,14 @@ export function isCopilotCliAvailable(): boolean {
   return resolveCopilotBinaryPath() !== undefined;
 }
 
+// 自動検出結果のキャッシュ。null = 未計算 / undefined = 検出失敗 / string = 検出済み。
 let cachedAutoCopilotPath: string | undefined | null = null;
 
 /**
- * `claude` バイナリを自動検出する。Tauri パッケージ版のサイドカーは最小化された PATH で
+ * CLI バイナリの汎用自動検出。Tauri パッケージ版のサイドカーは最小化された PATH で
  * 起動されるため、PATH 依存の `which` だけでは nvm/homebrew 配下を取りこぼす。
- * ログインシェルの PATH と主要インストール先・nvm 走査まで含めて「ほぼ無設定で見つかる」
- * ことを狙う。ユーザーが明示パス／env を指定した場合はそちらが優先される（本関数は呼ばれない）。
- */
-function detectClaudeBinary(): string | undefined {
-  return detectCliBinary("claude", [
-    "/opt/homebrew/bin/claude",
-    "/usr/local/bin/claude",
-    join(homedir(), ".local/bin/claude"),
-    join(homedir(), ".claude/local/claude"), // Claude Code ネイティブインストーラ既定
-    join(homedir(), ".npm-global/bin/claude"),
-  ]);
-}
-
-/**
- * CLI バイナリの汎用自動検出（claude / copilot 共通）。
- * which → ログインシェルの PATH → 既知のインストール先 → nvm 配下走査の順で探す。
+ * which → ログインシェルの PATH → 既知のインストール先 → nvm 配下走査の順で探し、
+ * 「ほぼ無設定で見つかる」ことを狙う。明示パス／env 指定時は本関数は呼ばれない。
  */
 function detectCliBinary(
   binName: string,

@@ -76,14 +76,6 @@ export function describeAuthError(
     msg.includes("unauthorized") ||
     /\b401\b/.test(msg);
   if (!isAuth) return null;
-  if (provider === "claude-subscription") {
-    // サブスク（Claude Code CLI 経由）は OAuth セッション切れが原因。API キー再設定では直らない。
-    return {
-      message:
-        "Claude subscription authentication has expired. Run `claude` in a terminal to log in again, then restart Graphium and retry.",
-      code: "SUBSCRIPTION_AUTH_EXPIRED",
-    };
-  }
   if (provider === "copilot-subscription") {
     // GitHub Copilot CLI のログイン切れ・未ログイン。API キー再設定では直らない。
     return {
@@ -124,8 +116,8 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature, abortSignal } = safeParams;
 
   // openai-compatible（sakura / gpt-oss-120b 等）に加え、サブスク型プロバイダ
-  // （claude-subscription / copilot-subscription）も AI SDK の tools パラメータを
-  // ネイティブに扱えない。ツール利用時は text-tool-call フォールバックループに切り替える。
+  // （copilot-subscription）も AI SDK の tools パラメータをネイティブに扱えない。
+  // ツール利用時は text-tool-call フォールバックループに切り替える。
   const providerLacksNativeTools =
     modelConfig?.provider === "openai-compatible" ||
     isSubscriptionProvider(modelConfig?.provider);
