@@ -1852,6 +1852,18 @@ export const en: Record<string, string> = {
   "tableMeta.nameHint": "A name makes this table easy to reference from charts",
   "tableMeta.autoName": "Table {n}",
 
+  // 列のはたらき（列ヘッダのメニュー）
+  "columnBehavior.heading": "What this column does",
+  "columnBehavior.headingNamed": "What \"{column}\" does",
+  "columnBehavior.datetimeAuto": "Fills in the date and time",
+  "columnBehavior.datetimeAutoDesc": "Adding a row stamps this column's empty cell with the current time",
+  "columnBehavior.noteLink": "Rows can have their own note",
+  "columnBehavior.noteLinkDesc": "Create and open a note named after this column's value, row by row",
+  "columnBehavior.indicatorHint": "See what this column does",
+  "columnBehavior.orphanNotice": "No column named \"{column}\" — only the setting is left",
+  "columnBehavior.orphanReattach": "Attach to this column",
+  "columnBehavior.orphanDrop": "Remove",
+
   // 記録テーブル
   "logTable.colDateTime": "Date/Time",
   "logTable.colValue": "Value",

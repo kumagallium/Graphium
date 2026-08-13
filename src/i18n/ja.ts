@@ -1850,6 +1850,18 @@ export const ja: Record<string, string> = {
   "tableMeta.nameHint": "名前を付けるとチャートから参照しやすくなります",
   "tableMeta.autoName": "表 {n}",
 
+  // 列のはたらき（列ヘッダのメニュー）
+  "columnBehavior.heading": "この列のはたらき",
+  "columnBehavior.headingNamed": "「{column}」列のはたらき",
+  "columnBehavior.datetimeAuto": "日時が自動で入る",
+  "columnBehavior.datetimeAutoDesc": "行を足すと、この列の空いているセルに今の日時が入ります",
+  "columnBehavior.noteLink": "行からノートを作れる",
+  "columnBehavior.noteLinkDesc": "この列の値を名前にしたノートを、行ごとに作って開けます",
+  "columnBehavior.indicatorHint": "この列のはたらきを見る",
+  "columnBehavior.orphanNotice": "「{column}」という列が見つかりません。設定だけが残っています",
+  "columnBehavior.orphanReattach": "この列に付け直す",
+  "columnBehavior.orphanDrop": "設定を消す",
+
   // 時系列テーブル
   "logTable.colDateTime": "日時",
   "logTable.colValue": "値",
