@@ -60,6 +60,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.32.0** | 2026-08-13 | [A readable line width](/notes-and-editor#readable-line-width) by default — on wide screens the note body becomes a centered column, with a per-note **Full width** toggle for wide tables and charts. |
 | **v0.33.0** | 2026-08-13 | [Run AI on a GitHub Copilot plan](/ai-setup#adding-a-model) — no API key, through the `copilot` CLI you already signed into. This is also the release that removes the Claude subscription provider. |
 | **v0.34.0** | 2026-08-13 | [The time-series table and charts](/notes-and-editor#the-time-series-table-and-charts): rows stamp their own date and time, and a chart block draws any table in the note in a publication-ready style — several tables in one chart, two Y axes when units differ. Time-series and note-per-row become toggles on the one table type, and [reading-color presets](/settings) join the fonts. |
+| **v0.35.0** | 2026-08-13 | [Calculations run in the note](/notes-and-editor#calculations) — write `target = 5 g` and the weighing works itself out where the record lives, units carried through. `⌘K` now opens from any screen, and [finds images by the words inside them](/ai-chat-and-ask#finding-images). Any block can be [duplicated](/notes-and-editor#duplicating-a-block) with `⌘D`. |
 
 ## Requests welcome
 

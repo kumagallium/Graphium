@@ -5,7 +5,10 @@
 // fitContentToPage と、印刷ダイアログを開く printNote 全体は jsdom では意味を
 // 持たないので、実ブラウザでの確認に任せる）。
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 import { cloneEditorContent, buildHeader, printAndWait } from "./print-note";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 function makeEditor(html: string): HTMLElement {
   const el = document.createElement("div");
@@ -124,5 +127,23 @@ describe("printAndWait", () => {
     await vi.advanceTimersByTimeAsync(120_000);
     await expect(pending).resolves.toBeUndefined();
     vi.unstubAllGlobals();
+  });
+
+  // macOS の WKWebView は window.print() を握り潰すので、デスクトップでは
+  // Rust 側にパネルを開かせる。パネルを閉じた合図は返ってこないため、
+  // ここで待たずに解決すること（待つと「準備中」が保険のタイマーまで残る）。
+  it("デスクトップでは Rust 側の印刷パネルを開き、待たずに解決する", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    (window as unknown as Record<string, unknown>).__TAURI__ = {};
+    try {
+      await expect(printAndWait()).resolves.toBeUndefined();
+      expect(invoke).toHaveBeenCalledWith("print_webview");
+      expect(print).not.toHaveBeenCalled();
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__TAURI__;
+      vi.unstubAllGlobals();
+      vi.mocked(invoke).mockClear();
+    }
   });
 });

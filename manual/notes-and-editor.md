@@ -53,6 +53,7 @@ The full menu, top to bottom:
 | Item | What it does |
 |---|---|
 | **Turn into** | Convert a text block to another type (see above). |
+| **Duplicate** <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> | Copy the block directly below it — see [Duplicating a block](#duplicating-a-block). |
 | **Delete** | Remove the block. |
 | **Color** | Text and background color. |
 | **Align** | **Align left** / **Align center** / **Align right** — works even for tables, audio, and file blocks. |
@@ -74,6 +75,7 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 
 | Item | Description |
 |---|---|
+| **Calculation** <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> | "Live calculations with variables and units" — see [Calculations](#calculations) |
 | **Index Table** | "Create and open a note for each row" — see [The index table](#the-index-table) |
 | **Time-series Table** | "Rows get the date/time automatically — for diaries and daily logs" — see [The time-series table and charts](#the-time-series-table-and-charts) |
 | **Chart** | "Visualize a table in this note" — see [The time-series table and charts](#the-time-series-table-and-charts) |
@@ -121,6 +123,42 @@ These cite notes from your [Knowledge layer](/knowledge-layer).
 Your last-used mode is remembered on this device. Formulas are stored as LaTeX and rendered with KaTeX, so they survive export as plain LaTeX math delimiters.
 
 ![The formula editor in visual mode, with a toggle to LaTeX](/screenshots/math-editor.png)
+
+## Calculations <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />
+
+A formula shows the reader what you did. **Calculation** (`/calculation`) actually does the arithmetic — the weighing, the dilution, the yield you would otherwise work out on a phone calculator and type in as a bare number.
+
+Write one expression per line on the left. Results appear in the column on the right and update as you type — a weighing for 5 g of BaTiO₃ reads like this:
+
+| Line | Result |
+|---|---|
+| `target = 5 g` | `5 g` |
+| `BaCO3 = 197.34 g/mol` | `197.34 g / mol` |
+| `BaTiO3 = 233.19 g/mol` | `233.19 g / mol` |
+| `mol = target / BaTiO3` | `21.441743 mmol` |
+| `mol * BaCO3 to g` | `4.2313135 g` |
+
+What the block understands:
+
+- **Variables.** `target = 5 g` names a value that later lines can use. The names are yours; nothing is predefined.
+- **Units.** Values carry their units through the arithmetic, so `5 g / 233.19 g/mol` gives you an amount of substance rather than a naked number — shown with whichever prefix reads best (`21.441743 mmol`, not `0.021441743 mol`). Convert explicitly with `to`: `mol * BaCO3 to g`, `1 atm to kPa`.
+- **Comments.** Blank lines pass through, and a line starting with `#` or `//` is a note to yourself.
+- **Click a result to copy it.** The line says **Click to copy**, then **Copied**.
+
+Variables live inside the block. A second Calculation block starts from nothing, so two calculations in one note cannot quietly contaminate each other. A line that doesn't parse is marked **?**, and the lines around it keep evaluating.
+
+The note stores both the expressions and the values they produced. That matters for a lab record: the numbers you worked with stay readable years later, even if the maths library underneath changes.
+
+## Duplicating a block <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />
+
+**Duplicate** in the drag-handle (⠿) menu, or `⌘D` (`Ctrl+D` on Windows/Linux) with the cursor in the block, copies a block directly below itself. It is the fastest way to repeat a filled-in table, a step, or a calculation you want to vary.
+
+The copy is a real copy, not a link: editing one leaves the other alone. It carries over the block's content, its [labels and step attributes](/labels-and-provenance), its alignment, and — for a time-series table — the table's registration and name, since duplicating a set-up table as a template is the common reason to do this.
+
+Two things deliberately do not come along:
+
+- **An index table's registration.** Its rows belong to notes, and two tables pointing at the same notes would leave you unsure which one you edited. The copy is a plain table.
+- **OCR text on an image.** The same image can be read again in place; derived data is not kept in two places.
 
 ## Columns <Badge type="tip" text="Added in v0.27.0 (2026-08-03)" />
 

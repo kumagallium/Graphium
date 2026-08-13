@@ -238,7 +238,7 @@ import { schedulePastedImageCapture } from "./features/asset-browser/paste-image
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
-import { printNote } from "./features/pdf-export";
+import { printNote, PrintToast } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
@@ -1279,6 +1279,8 @@ function NoteEditorInner({
 
   // ── PDF エクスポート（状態のみ — ハンドラーは provDoc 宣言後） ──
   const [pdfExporting, setPdfExporting] = useState(false);
+  /** 準備が長引いたときだけ立てる。メニューの中の「準備中...」は開き直さないと見えないため。 */
+  const [printPreparing, setPrintPreparing] = useState(false);
 
   // ── メディアピッカー ──
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
@@ -2283,17 +2285,32 @@ function NoteEditorInner({
     const editorEl = document.querySelector("[data-label-wrapper] .bn-editor") as HTMLElement | null;
     if (!editorEl) return;
     setPdfExporting(true);
+    // 準備はたいてい一瞬で終わるので、すぐ出すとトーストが一瞬光って消える。
+    // 画像の多いノートなど、待たせるときだけ知らせる。
+    const slowTimer = window.setTimeout(() => setPrintPreparing(true), 300);
+    const dismissToast = () => {
+      window.clearTimeout(slowTimer);
+      setPrintPreparing(false);
+    };
     try {
       await printNote({
         title,
         editorElement: editorEl,
         provDoc,
         labels: labelStore.labels,
+        onReady: dismissToast,
       });
     } finally {
+      dismissToast();
       setPdfExporting(false);
     }
   }, [title, provDoc, labelStore.labels]);
+
+  // デスクトップ（Tauri）のネイティブメニュー File → Print / PDF からも同じ処理を呼ぶ。
+  // 登録をエディタのマウント中に限るのは、handleExportPdf がエディタの DOM から本文を
+  // 取るため。ノート未表示のときは未登録＝何も起きないが、印刷対象が無いので妥当。
+  // Web では menu-action イベント自体が発火しないので無害。
+  useEffect(() => onMenuAction("export-pdf", () => void handleExportPdf()), [handleExportPdf]);
 
   // ── Markdown エクスポートハンドラー ──
   // ライブエディタ（フルスキーマ）の blocksToMarkdownLossy を使う。
@@ -4388,6 +4405,8 @@ function NoteEditorInner({
             <AlignmentStyleLayer />
             {/* 自動 OCR の進行トースト（右下ピル） */}
             <OcrToast state={autoOcr.toast} />
+            {/* 印刷の準備が長引いたときだけ出るトースト（同じ右下ピル） */}
+            <PrintToast visible={printPreparing} />
             <SandboxEditor
               key={fileId || "new"}
               editable={!archived && !trashed}

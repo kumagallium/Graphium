@@ -819,6 +819,14 @@ The same `src/` tree is built three different ways.
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
   matched by TypeScript wrappers
+- Printing goes through the `print_webview` command rather than the
+  webview itself: macOS' WKWebView silently drops JavaScript's
+  `window.print()`, so the panel has to be opened from Rust (wry's print,
+  which wraps `printOperationWithPrintInfo`). Other platforms fall back to
+  evaluating `window.print()`, which WebView2 honours. Closing the panel
+  raises no event the frontend can see, so `printAndWait` resolves as soon
+  as the panel is open and the print tree is left in the DOM — it sits
+  off-screen and is discarded at the start of the next print
 - AI / Knowledge features run inside the app via a Node sidecar:
   `scripts/fetch-node.mjs` downloads Node 22 and renames it to
   `binaries/graphium-server-<triple>[.exe]` so Tauri can spawn it as a
@@ -1128,7 +1136,7 @@ once team-shared storage stabilizes.
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Native shell | Tauri v2 (Rust) for desktop |
-| Printing / PDF | The browser's own print pipeline (`window.print()`), no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. |
+| Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). |
 
 ## 8. Source map
 

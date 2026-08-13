@@ -73,7 +73,7 @@ Graphium は起動時と 24 時間ごとに更新を自動で確認します。�
 
 | メニュー | 項目 |
 |---|---|
-| **File** | **New Note** · **New Memo**（`⌘⇧M`）· **Export as PDF** · **Export PROV-JSON-LD** · Close Window |
+| **File** | **New Note** · **New Memo**（`⌘⇧M`）· **Print / PDF** · **Export PROV-JSON-LD** · Close Window |
 | **Edit** | 標準の Undo / Redo / Cut / Copy / Paste / Select All |
 | **View** | **Toggle Graph Panel** · **Toggle AI Chat** · **Zoom In** / **Zoom Out** / **Actual Size** |
 | **Backend** | **Restart Backend** — アプリを再起動せずに、同梱の AI バックエンドだけを再起動する |
