@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.34.0](https://github.com/kumagallium/Graphium/compare/v0.33.0...v0.34.0) - 2026-08-13
+
+- [feat] Add log table and chart block for time-series observations by @kumagallium in https://github.com/kumagallium/Graphium/pull/665
+- [feat] Table-kind consolidation: index table as a toggleable behavior by @kumagallium in https://github.com/kumagallium/Graphium/pull/674
+- docs(manual): backfill release badges for v0.26–v0.31, add v0.31.0 roadmap entry by @kumagallium in https://github.com/kumagallium/Graphium/pull/677
+- [feat] Improve note color readability: design.md regression + reading color presets by @kumagallium in https://github.com/kumagallium/Graphium/pull/678
+
 ## [v0.33.0](https://github.com/kumagallium/Graphium/compare/v0.32.1...v0.33.0) - 2026-08-13
 
 - feat: GitHub Copilot subscription provider (copilot-subscription) by @kumagallium in https://github.com/kumagallium/Graphium/pull/673
