@@ -1537,6 +1537,7 @@ export const en: Record<string, string> = {
   // ── PDF エクスポート ──
   "pdf.export": "Print / PDF",
   "pdf.exporting": "Preparing...",
+  "pdf.preparing": "Getting the note ready to print...",
 
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",

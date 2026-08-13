@@ -1535,6 +1535,7 @@ export const ja: Record<string, string> = {
   // ── PDF エクスポート ──
   "pdf.export": "印刷・PDF",
   "pdf.exporting": "準備中...",
+  "pdf.preparing": "印刷の準備をしています...",
 
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",
