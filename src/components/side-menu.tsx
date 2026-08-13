@@ -32,6 +32,7 @@ import { useIndexTableStoreOptional } from "../features/index-table";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
+import { useDuplicateBlocks } from "../features/block-duplicate";
 import { useT, getDisplayLabelName } from "../i18n";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
 import { isBlockInsideStep } from "../blocks/step/view";
@@ -382,6 +383,37 @@ function BlockLabelMenuItems() {
         </Components.Generic.Menu.Label>
       </Components.Generic.Menu.Dropdown>
     </Components.Generic.Menu.Root>
+  );
+}
+
+// ──────────────────────────────────────────────
+// DragHandle メニュー内: ブロック複製
+//
+// 直下に同じブロックを作る。ラベル・step 属性・内部リンク・配置・記録テーブルの
+// 登録は複製先に引き継ぐ（引き継ぎ範囲の根拠は use-duplicate-blocks.ts のコメント）。
+// ⌘D / Ctrl+D と同じ経路を通るので、導線が違っても結果は同じになる。
+// ──────────────────────────────────────────────
+export function DuplicateBlockMenuItem() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const duplicate = useDuplicateBlocks();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+
+  if (!block) return null;
+
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => {
+        duplicate([block.id]);
+      }}
+    >
+      {t("editor.duplicate")}
+    </Components.Generic.Menu.Item>
   );
 }
 
@@ -794,6 +826,7 @@ export function NoteSideMenu() {
       <AddBlockButton />
       <DragHandleButton>
         <TurnIntoMenuItems />
+        <DuplicateBlockMenuItem />
         <DeleteBlockMenuItem />
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
         <AlignmentMenuItems />

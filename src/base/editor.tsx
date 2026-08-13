@@ -47,6 +47,7 @@ import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { MentionSuggestionMenu } from "./mention-suggestion-menu";
 import { BlockSelectionManager } from "@features/block-selection";
+import { DuplicateShortcut } from "@features/block-duplicate";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
@@ -303,6 +304,8 @@ export function SandboxEditor({
     >
       {/* 複数ブロック選択: ハイライト + フローティングツールバー */}
       <BlockSelectionManager />
+      {/* ⌘D / Ctrl+D: カーソル位置のブロックを直下に複製 */}
+      <DuplicateShortcut />
       {/* インラインハイライトのクリック導線（merge / parameter binding） */}
       <InlineAnchorController />
       {usesCustomSideMenu && (

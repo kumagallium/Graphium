@@ -153,6 +153,7 @@ export const ja: Record<string, string> = {
   "editor.align.left": "左揃え",
   "editor.align.center": "中央揃え",
   "editor.align.right": "右揃え",
+  "editor.duplicate": "複製",
   // ── 種類を変更（Turn into）──
   "editor.turnInto": "種類を変更",
   "editor.turnIntoType.paragraph": "テキスト",
