@@ -9,6 +9,9 @@ import {
   buildHistogram,
   buildChartData,
   readTableData,
+  applyStack,
+  unstackValue,
+  type ChartDataResult,
   type TableData,
 } from "./chart-data";
 
@@ -243,5 +246,137 @@ describe("readTableData", () => {
     expect(readTableData(null)).toBeNull();
     expect(readTableData({ type: "paragraph" })).toBeNull();
     expect(readTableData({ type: "table", content: { rows: [] } })).toBeNull();
+  });
+});
+
+describe("applyStack", () => {
+  // 強度の桁が 10 倍違う 2 パターン（XRD で測定と文献を並べる典型）
+  const twoSpectra = (): Extract<ChartDataResult, { kind: "ok" }> => ({
+    kind: "ok",
+    xAxis: "value",
+    categories: [],
+    series: [
+      { points: [[10, 500], [20, 1000], [30, 250]] },
+      { points: [[10, 50], [20, 25], [30, 100]] },
+    ],
+  });
+
+  it("各段を最大 1 に規格化してから段間隔だけ持ち上げる", () => {
+    const out = applyStack(twoSpectra(), {
+      normalize: "max",
+      gap: 1.2,
+      order: "first-bottom",
+      perSeries: [undefined, undefined],
+    });
+    // 段 1 は offset 0 で、最大値 1000 が 1.0 になる
+    expect(out.series[0].points).toEqual([[10, 0.5], [20, 1], [30, 0.25]]);
+    // 段 2 は offset 1.2 に載る。桁が違っても同じ高さに揃う
+    expect(out.series[1].points).toEqual([[10, 1.7], [20, 1.45], [30, 2.2]]);
+  });
+
+  it("元の値に戻せるよう offset と scale を残す", () => {
+    const out = applyStack(twoSpectra(), {
+      normalize: "max",
+      gap: 1,
+      order: "first-bottom",
+      perSeries: [undefined, undefined],
+    });
+    const s = out.series[1];
+    const drawn = (s.points as Array<[number, number]>)[0][1];
+    expect((drawn - s.offset!) / s.scale!).toBeCloseTo(50);
+  });
+
+  it("first-top では系列 1 が最上段に来る", () => {
+    const out = applyStack(twoSpectra(), {
+      normalize: "max",
+      gap: 1,
+      order: "first-top",
+      perSeries: [undefined, undefined],
+    });
+    expect(out.series[0].offset).toBe(1);
+    expect(out.series[1].offset).toBe(0);
+  });
+
+  it("系列ごとの倍率と段位置の微調整が効く", () => {
+    const out = applyStack(twoSpectra(), {
+      normalize: "max",
+      gap: 1,
+      order: "first-bottom",
+      perSeries: [{ scale: 2 }, { offsetAdjust: 0.5 }],
+    });
+    // ×2 したので最大値は 2.0
+    expect(out.series[0].points).toEqual([[10, 1], [20, 2], [30, 0.5]]);
+    expect(out.series[1].offset).toBe(1.5);
+  });
+
+  it("normalize: none は生値のまま積む", () => {
+    const out = applyStack(twoSpectra(), {
+      normalize: "none",
+      gap: 1,
+      order: "first-bottom",
+      perSeries: [undefined, undefined],
+    });
+    expect(out.series[0].points).toEqual([[10, 500], [20, 1000], [30, 250]]);
+    expect(out.series[1].points).toEqual([[10, 51], [20, 26], [30, 101]]);
+  });
+
+  it("最大値が 0 以下・空の系列でも割り算で壊れない", () => {
+    const out = applyStack(
+      {
+        kind: "ok",
+        xAxis: "value",
+        categories: [],
+        series: [{ points: [] }, { points: [[1, 0], [2, -5]] }],
+      },
+      { normalize: "max", gap: 1, order: "first-bottom", perSeries: [undefined, undefined] }
+    );
+    expect(out.series[0].points).toEqual([]);
+    expect(out.series[0].scale).toBe(1);
+    // 規格化できないので生値のまま段だけ上がる
+    expect(out.series[1].points).toEqual([[1, 1], [2, -4]]);
+  });
+
+  it("カテゴリ軸には何もしない（段のオフセットが目盛りとかみ合わないため）", () => {
+    const input: Extract<ChartDataResult, { kind: "ok" }> = {
+      kind: "ok",
+      xAxis: "category",
+      categories: ["A", "B"],
+      series: [{ points: [1, 2] }],
+    };
+    expect(applyStack(input, {
+      normalize: "max",
+      gap: 1,
+      order: "first-bottom",
+      perSeries: [undefined],
+    })).toBe(input);
+  });
+});
+
+describe("unstackValue", () => {
+  it("規格化 + 段オフセットを打ち消して元の測定値に戻す", () => {
+    const stacked = applyStack(
+      {
+        kind: "ok",
+        xAxis: "value",
+        categories: [],
+        series: [{ points: [[10, 500], [20, 1000]] }, { points: [[10, 30], [20, 90]] }],
+      },
+      { normalize: "max", gap: 1.2, order: "first-bottom", perSeries: [undefined, { scale: 2 }] }
+    );
+    const back = (i: number) =>
+      (stacked.series[i].points as Array<[number, number]>).map(([, y]) =>
+        unstackValue(y, stacked.series[i])
+      );
+    expect(back(0)).toEqual([500, 1000]);
+    expect(back(1)).toEqual([30, 90]);
+  });
+
+  it("割り戻しの浮動小数点誤差を丸める", () => {
+    expect(unstackValue(1.3, { points: [], offset: 1, scale: 1 / 3 })).toBe(0.9);
+  });
+
+  it("未変換の系列・欠けた系列はそのまま返す", () => {
+    expect(unstackValue(42, { points: [] })).toBe(42);
+    expect(unstackValue(42, undefined)).toBe(42);
   });
 });

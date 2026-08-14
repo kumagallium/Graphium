@@ -44,6 +44,13 @@ export type MultiChartConfig = {
 export type ChartSeriesData = {
   /** time/value 軸: [x, y] のペア。category 軸: categories に整列した y（欠測 null） */
   points: Array<[number, number]> | Array<number | null>;
+  /**
+   * スタック表示で加えた段オフセット。ツールチップで元の値に戻すために持つ
+   *（描画上の y は生データではなくなるため）。未変換なら undefined
+   */
+  offset?: number;
+  /** スタック表示で掛けた倍率（規格化 × 系列ごとの倍率）。未変換なら undefined */
+  scale?: number;
 };
 
 export type ChartDataResult =
@@ -264,6 +271,64 @@ export function buildChartData(config: MultiChartConfig): ChartDataResult {
   });
   if (series.every((s) => s.points.length === 0)) return { kind: "empty" };
   return { kind: "ok", xAxis: xKind, categories: [], series };
+}
+
+/** スタック変換の指定。perSeries は系列と同順（欠けは既定値として扱う） */
+export type StackSpec = {
+  normalize: "max" | "none";
+  gap: number;
+  order: "first-bottom" | "first-top";
+  perSeries: Array<{ scale?: number; offsetAdjust?: number } | undefined>;
+};
+
+/**
+ * 系列を縦にずらして積む（XRD などのスペクトル比較図）。
+ *
+ * 規格化してから段オフセットを足すだけで、ECharts 側に特別な機能は要らない。
+ * 規格化が既定なのは、生値のままだと系列ごとに強度の桁が違って段間隔を
+ * 決められないため。段の縦位置に意味は無くなる（a.u.）ので、描画側は
+ * 縦軸の目盛りを隠す前提で使う。
+ *
+ * 元の値はここで失われるため、戻せるように offset / scale を各系列に残す。
+ * カテゴリ軸は段のオフセットが目盛りとかみ合わないので何もしない。
+ */
+export function applyStack(
+  result: Extract<ChartDataResult, { kind: "ok" }>,
+  spec: StackSpec
+): Extract<ChartDataResult, { kind: "ok" }> {
+  if (result.xAxis === "category") return result;
+  const count = result.series.length;
+  const series = result.series.map((s, i) => {
+    const points = s.points as Array<[number, number]>;
+    const per = spec.perSeries[i];
+    const userScale = per?.scale !== undefined && per.scale > 0 ? per.scale : 1;
+    // 規格化: その段の最大値を 1 に。最大値が 0 以下なら割れないので素通しする。
+    // XRD は 1 パターン数千点になるため Math.max(...spread) は使わない（引数上限で落ちる）
+    let yMax = 0;
+    for (const [, y] of points) if (y > yMax) yMax = y;
+    const normScale = spec.normalize === "max" && yMax > 0 ? 1 / yMax : 1;
+    const scale = normScale * userScale;
+    // 段の位置。first-bottom は系列 1 が最下段（測定データを下に置く慣習）
+    const step = spec.order === "first-bottom" ? i : count - 1 - i;
+    const offset = step * spec.gap + (per?.offsetAdjust ?? 0);
+    return {
+      points: points.map(([x, y]) => [x, y * scale + offset] as [number, number]),
+      offset,
+      scale,
+    };
+  });
+  return { ...result, series };
+}
+
+/**
+ * スタックで変換した描画値を元の測定値に戻す（ツールチップ用）。
+ * 未変換の系列はそのまま返す。
+ */
+export function unstackValue(drawn: number, series: ChartSeriesData | undefined): number {
+  if (!series?.scale) return drawn;
+  const raw = (drawn - (series.offset ?? 0)) / series.scale;
+  // 規格化の割り戻しで 0.30000000000000004 のような桁が出るので丸める
+  return Math.round(raw * 1e6) / 1e6;
 }
 
 /** BlockNote の table ブロックから headers / rows のテキストを取り出す */

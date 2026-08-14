@@ -15,11 +15,15 @@ import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
   seriesConfigDisplayName,
   usesRightAxis,
+  STACK_GAP_RANGE,
   type AxisDetail,
   type ChartBlockConfig,
   type ChartSeriesConfig,
   type LegendPosition,
   type SeriesType,
+  type StackConfig,
+  type StackLabelMode,
+  type StackOrder,
   type XAxisKindSetting,
 } from "./chart-config";
 import type { ChartAspect } from "./chart-theme";
@@ -63,6 +67,19 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 }
 
 const ROTATE_CHOICES = [0, 30, 45, 90];
+
+/**
+ * 任意入力の数値を読む。空欄・読めない値は未設定（undefined = 既定値に戻す）。
+ * positiveOnly は倍率用（0 以下だと系列が消えるため受け付けない）。
+ */
+function parseOptionalNumber(raw: string, positiveOnly: boolean): number | undefined {
+  const s = raw.trim();
+  if (s === "") return undefined;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return undefined;
+  if (positiveOnly && n <= 0) return undefined;
+  return n;
+}
 
 /**
  * 軸ごとの「詳細設定」（eureco 準拠の折りたたみ）:
@@ -265,6 +282,13 @@ export function ChartSettingsPanel({
     const next = config.series.map((s, i) => (i === index ? { ...s, ...patch } : s));
     onChange({ series: next });
   };
+
+  const updateStack = (patch: Partial<StackConfig>) => {
+    onChange({ stack: { ...config.stack, ...patch } });
+  };
+
+  // 積み重ねの設定は項目名が長いので、既定のラベル幅（48px）では折り返す
+  const stackLabel = { ...styles.fieldLabel, width: 76 };
 
   const moveSeries = (index: number, delta: number) => {
     const next = [...config.series];
@@ -537,6 +561,52 @@ export function ChartSettingsPanel({
                           </span>
                         </div>
                       )}
+
+                      {!isHistogram && config.stack.enabled && (
+                        <>
+                          <div style={styles.assignLabel}>{t("chart.stackSeriesSection")}</div>
+                          <label style={styles.fieldRow}>
+                            <span style={stackLabel}>{t("chart.seriesScale")}</span>
+                            {/*
+                              入力中の "0." を数値に変換すると 0 に丸められて打てなくなるため、
+                              確定は blur / Enter のとき。key は外から値が変わったときの同期用
+                            */}
+                            <input
+                              key={`scale-${i}-${series.scale ?? ""}`}
+                              type="text"
+                              inputMode="decimal"
+                              defaultValue={series.scale ?? ""}
+                              placeholder="1"
+                              onBlur={(e) =>
+                                updateSeries(i, { scale: parseOptionalNumber(e.target.value, true) })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              style={{ ...styles.input, width: 72 }}
+                            />
+                          </label>
+                          <label style={styles.fieldRow}>
+                            <span style={stackLabel}>{t("chart.seriesOffsetAdjust")}</span>
+                            <input
+                              key={`offset-${i}-${series.offsetAdjust ?? ""}`}
+                              type="text"
+                              inputMode="decimal"
+                              defaultValue={series.offsetAdjust ?? ""}
+                              placeholder="0"
+                              onBlur={(e) =>
+                                updateSeries(i, {
+                                  offsetAdjust: parseOptionalNumber(e.target.value, false),
+                                })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              style={{ ...styles.input, width: 72 }}
+                            />
+                          </label>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -605,6 +675,92 @@ export function ChartSettingsPanel({
                 detail={config.xAxisDetail}
                 onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
               />
+            </>
+          )}
+
+          {!isHistogram && (
+            <>
+              <div style={styles.sectionLabel}>{t("chart.sectionStack")}</div>
+              <div style={styles.fieldRow}>
+                <span style={stackLabel}>{t("chart.stackEnabled")}</span>
+                <Toggle
+                  checked={config.stack.enabled}
+                  onChange={(v) => updateStack({ enabled: v })}
+                />
+              </div>
+              {config.stack.enabled && (
+                <>
+                  <div style={styles.emptyHint}>{t("chart.stackHint")}</div>
+                  <label style={styles.fieldRow}>
+                    <span style={stackLabel}>{t("chart.stackNormalize")}</span>
+                    <select
+                      value={config.stack.normalize}
+                      onChange={(e) =>
+                        updateStack({ normalize: e.target.value as StackConfig["normalize"] })
+                      }
+                      style={{ ...styles.select, flex: 1 }}
+                    >
+                      <option value="max">{t("chart.stackNormalizeMax")}</option>
+                      <option value="none">{t("chart.stackNormalizeNone")}</option>
+                    </select>
+                  </label>
+                  <label style={styles.fieldRow}>
+                    <span style={stackLabel}>{t("chart.stackGap")}</span>
+                    <input
+                      type="range"
+                      min={STACK_GAP_RANGE.min}
+                      max={STACK_GAP_RANGE.max}
+                      step={0.05}
+                      value={config.stack.gap}
+                      onChange={(e) => updateStack({ gap: Number(e.target.value) })}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                    <span style={{ ...styles.rangeDash, width: 28, textAlign: "right" }}>
+                      {config.stack.gap.toFixed(2)}
+                    </span>
+                  </label>
+                  <div style={styles.fieldRow}>
+                    <span style={stackLabel}>{t("chart.stackOrder")}</span>
+                    <span style={styles.segment}>
+                      {(["first-bottom", "first-top"] as const).map((order: StackOrder) => (
+                        <button
+                          key={order}
+                          type="button"
+                          onClick={() => updateStack({ order })}
+                          style={{
+                            ...styles.segmentButton,
+                            ...(config.stack.order === order ? styles.segmentButtonActive : {}),
+                          }}
+                        >
+                          {order === "first-bottom"
+                            ? t("chart.stackOrderFirstBottom")
+                            : t("chart.stackOrderFirstTop")}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                  <div style={styles.fieldRow}>
+                    <span style={stackLabel}>{t("chart.stackLabels")}</span>
+                    <span style={styles.segment}>
+                      {(["inline", "legend"] as const).map((mode: StackLabelMode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => updateStack({ labels: mode })}
+                          style={{
+                            ...styles.segmentButton,
+                            ...(config.stack.labels === mode ? styles.segmentButtonActive : {}),
+                          }}
+                        >
+                          {mode === "inline"
+                            ? t("chart.stackLabelsInline")
+                            : t("chart.stackLabelsLegend")}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                </>
+              )}
             </>
           )}
 
