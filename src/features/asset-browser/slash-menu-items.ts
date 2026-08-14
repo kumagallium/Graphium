@@ -70,9 +70,9 @@ export function getMediaSlashMenuItems(): SlashMenuItem[] {
       "asset.slashData",
       "asset.slashDataSub",
       "data",
-      // 新規ファイルからの取り込みは /データを取り込む（data-import）。
-      // こちらは既に素材にあるデータを本文へ持ってくる入口
-      ["data", "csv", "dat", "既存データ", "そくてい", "測定データ"],
+      // 既存の素材からも、その場で選んだファイルからも、この 1 つの入口に集める
+      // （画像・動画と同じ形。取り込みダイアログはピッカーの先にある）
+      ["data", "csv", "tsv", "dat", "import", "データ", "でーた", "取り込み", "とりこみ", "測定", "実験データ"],
     ),
     createMediaSlashItem(
       "asset.slashDocument",

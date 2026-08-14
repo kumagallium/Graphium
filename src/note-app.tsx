@@ -69,14 +69,12 @@ import {
 } from "./features/table-meta";
 import {
   DataImportModal,
-  getDataImportSlashMenuItem,
-  setDataImportCallback,
   buildTableSource,
+  findSameDataAsset,
   toTableBlock,
   defaultCaption,
   isDelimitedDataFile,
   readDataFileText,
-  DELIMITED_FILE_ACCEPT,
   type DataImportResult,
   type DelimitedImportOptions,
 } from "./features/data-import";
@@ -147,7 +145,6 @@ import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-sc
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
-import { computeBlobHash } from "./lib/storage/shared/hash";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
@@ -238,7 +235,6 @@ import {
   generateUrlBookmarkId,
   getFaviconUrl,
   buildUrlPeekEntry,
-  findMediaByContentHash,
   buildMemoPeekEntry,
   isHttpUrl,
   computeUrlPasteMenuPosition,
@@ -756,7 +752,6 @@ type NoteEditorProps = {
    */
   uploadAsset?: (
     file: File,
-    options?: { contentHash?: string },
   ) => Promise<{ url: string; fileId: string; entry: MediaIndexEntry }>;
   /** メディアインデックス（メディアピッカー用） */
   mediaIndex?: import("./features/asset-browser").MediaIndex | null;
@@ -1350,16 +1345,11 @@ function NoteEditorInner({
       initialOptions?: DelimitedImportOptions;
     } | null
   >(null);
-  const dataImportInputRef = useRef<HTMLInputElement | null>(null);
 
   // スラッシュメニューからピッカーを開くコールバック登録（main editor 用）。
   // SidePeek からは SidePeek 自身が同じ仕組みで登録する。
   useEffect(() => {
     if (!mainEditor) return;
-    setDataImportCallback(mainEditor, () => {
-      pickerEditorRef.current = mainEditor;
-      dataImportInputRef.current?.click();
-    });
     setMediaPickerCallback(mainEditor, (type) => {
       pickerEditorRef.current = mainEditor;
       setPickerMediaType(type);
@@ -1381,7 +1371,6 @@ function NoteEditorInner({
       setSharedCitePickerOpen(true);
     });
     return () => {
-      setDataImportCallback(mainEditor, null);
       setMediaPickerCallback(mainEditor, null);
       setMemoPickerCallback(mainEditor, null);
       setBookmarkPickerCallback(mainEditor, null);
@@ -1703,13 +1692,17 @@ function NoteEditorInner({
         void (async () => {
           try {
             const bytes = new Uint8Array(await rawFile.arrayBuffer());
-            const contentHash = await computeBlobHash(bytes);
-            const existing = mediaIndexRef.current
-              ? findMediaByContentHash(mediaIndexRef.current, contentHash)
-              : undefined;
-            const fileId =
-              existing?.fileId ??
-              (await uploadAsset(rawFile, { contentHash })).fileId;
+            const existing = await findSameDataAsset(
+              mediaIndexRef.current,
+              { name: rawFile.name, bytes },
+              async (id) => {
+                const provider = getActiveProvider();
+                const blobUrl = await provider.getMediaBlobUrl(id);
+                const blob = await (await fetch(blobUrl)).blob();
+                return new Uint8Array(await blob.arrayBuffer());
+              },
+            );
+            const fileId = existing ?? (await uploadAsset(rawFile)).fileId;
             const current = tableMetaStore.getSource(targetBlockId);
             // ダイアログを閉じた後にユーザーがそのテーブルを消した／別のものに
             // 差し替えた場合は書き戻さない
@@ -1756,22 +1749,17 @@ function NoteEditorInner({
     []
   );
 
-  // ファイル選択（スラッシュメニュー）→ ダイアログを開く
-  const handleDataImportFilePicked = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      // 同じファイルを続けて選び直せるように値をクリアしておく
-      e.target.value = "";
-      if (!file) return;
-      try {
-        const text = await readDataFileText(file);
-        setDataImportFile({ fileName: file.name, text, file });
-      } catch {
-        alert(tStatic("dataImport.readError"));
-      }
-    },
-    []
-  );
+  // データ素材ピッカーで「ファイルからアップロード」を選んだとき。
+  // まだ素材にしないのは、ダイアログをキャンセルしたファイルまで溜めないため
+  // （取り込みを確定した時点で登録する）。
+  const handleDataImportFilePicked = useCallback(async (file: File) => {
+    try {
+      const text = await readDataFileText(file);
+      setDataImportFile({ fileName: file.name, text, file });
+    } catch {
+      alert(tStatic("dataImport.readError"));
+    }
+  }, []);
 
   // 引用ピッカーで選択された claim / Insight ノートをエディタに挿入
   // MVP: 各ノートのタイトルを青色テキストの paragraph として並べる
@@ -1832,7 +1820,6 @@ function NoteEditorInner({
   const memoSlashItem = useMemo(() => getMemoSlashMenuItem(), []);
   const templateSlashItem = useMemo(() => getTemplateSlashMenuItem(), []);
   const citeSlashItems = useMemo(() => getCiteSlashMenuItems(), []);
-  const dataImportSlashItem = useMemo(() => getDataImportSlashMenuItem(), []);
   // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
   // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
   // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
@@ -4290,14 +4277,7 @@ function NoteEditorInner({
           onDismiss={() => setPastedUrl(null)}
         />
       )}
-      {/* データ取り込み（スラッシュメニュー /データ・ドロップ・素材ギャラリーの共通入口） */}
-      <input
-        ref={dataImportInputRef}
-        type="file"
-        accept={DELIMITED_FILE_ACCEPT}
-        onChange={handleDataImportFilePicked}
-        className="hidden"
-      />
+      {/* データ取り込みダイアログ（データ素材ピッカー・ドロップの共通の行き先） */}
       {dataImportFile && (
         <DataImportModal
           fileName={dataImportFile.fileName}
@@ -4315,6 +4295,10 @@ function NoteEditorInner({
           onSelect={handlePickerSelect}
           onClose={() => setPickerMediaType(null)}
           onUpload={uploadFile}
+          // データは「まず中身を見せる」ので、ここではアップロードしない
+          onPickLocalFile={
+            pickerMediaType === "data" ? handleDataImportFilePicked : undefined
+          }
           allowDisplayMode
         />
       )}
@@ -4702,7 +4686,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, dataImportSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

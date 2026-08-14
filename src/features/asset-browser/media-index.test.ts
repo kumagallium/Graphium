@@ -6,7 +6,6 @@ import {
   updateBlockNameByUrl,
   collectPdfFileIdsFromDoc,
   collectSourceAssetFileIdsFromDoc,
-  findMediaByContentHash,
   extractMediaFromBlocks,
   syncUsedIn,
   ensureMediaIndex,
@@ -383,46 +382,6 @@ describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
   });
 });
 
-describe("findMediaByContentHash", () => {
-  const entry = (fileId: string, contentHash?: string, archivedAt?: string) => ({
-    fileId,
-    name: fileId,
-    type: "document" as const,
-    mimeType: "text/plain",
-    url: `u-${fileId}`,
-    thumbnailUrl: "",
-    uploadedAt: "2026-08-14T00:00:00.000Z",
-    usedIn: [],
-    ...(contentHash ? { contentHash } : {}),
-    ...(archivedAt ? { archivedAt } : {}),
-  });
-
-  const index = (media: ReturnType<typeof entry>[]) => ({
-    version: 5 as const,
-    updatedAt: "2026-08-14T00:00:00.000Z",
-    media,
-  });
-
-  it("中身が同じ素材を見つける（同じファイルの二度目の取り込みで使い回す）", () => {
-    const found = findMediaByContentHash(
-      index([entry("a"), entry("b", "sha256:xyz")]),
-      "sha256:xyz",
-    );
-    expect(found?.fileId).toBe("b");
-  });
-
-  it("アーカイブ済みは使い回さない（一覧に出ない素材を指すことになるため）", () => {
-    const found = findMediaByContentHash(
-      index([entry("b", "sha256:xyz", "2026-08-01T00:00:00.000Z")]),
-      "sha256:xyz",
-    );
-    expect(found).toBeUndefined();
-  });
-
-  it("contentHash を持たない既存素材とは一致しない", () => {
-    expect(findMediaByContentHash(index([entry("a")]), "sha256:xyz")).toBeUndefined();
-  });
-});
 
 describe("ensureMediaIndex (フル再構築時の URL ブックマーク usedIn)", () => {
   const RAW_URL = "https://example.com/article";

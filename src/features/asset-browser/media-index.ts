@@ -162,15 +162,6 @@ export type MediaIndexEntry = {
   /** team-shared storage への共有状態（Phase 2b-media、optional） */
   sharedRef?: MediaSharedRef;
   /**
-   * 実体バイト列の SHA-256（`"sha256:<hex>"`、optional）。
-   *
-   * 同じファイルを二度取り込んでも素材が増えないよう、登録前の突き合わせに使う。
-   * 名前やサイズではなく中身で見るのは、装置が同じ名前で上書き出力することが
-   * あるため（名前が同じでも中身が違えば別の素材でなければならない）。
-   * 現在これを付けるのはデータ取り込み経路だけなので、既存素材は持たない。
-   */
-  contentHash?: string;
-  /**
    * このメディアが派生してきた元アセットの fileId 配列（optional）。
    * 例: PDF から抽出した画像は元 PDF の fileId を保持する。
    * MaterialSidePeek の asset graph で「素材同士の派生」を辿るために使う。
@@ -570,20 +561,6 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
   return ids;
 }
 
-/**
- * 同じ中身の素材を探す（contentHash 一致）。
- *
- * アーカイブ済みは対象外にする。使い回すと一覧に出ない素材を指すことになり、
- * 「素材から辿れる」という取り込みの前提が崩れるため。
- */
-export function findMediaByContentHash(
-  index: MediaIndex,
-  contentHash: string,
-): MediaIndexEntry | undefined {
-  return index.media.find(
-    (entry) => entry.contentHash === contentHash && !entry.archivedAt,
-  );
-}
 
 /** 特定ノートの usedIn を更新（ノート保存時に呼ぶ） */
 export function syncUsedIn(

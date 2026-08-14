@@ -1651,8 +1651,6 @@ export function useFileManager(authenticated: boolean) {
       options?: {
         derivedFromAssets?: string[];
         capture?: import("../features/mobile-capture/inbox/types").CaptureMeta;
-        /** 実体バイト列の SHA-256。同じ中身の再登録を避けたい経路が渡す */
-        contentHash?: string;
       },
     ): Promise<{ url: string; fileId: string; entry: MediaIndexEntry }> => {
       const result = await uploadMediaFileWithMeta(file);
@@ -1669,13 +1667,19 @@ export function useFileManager(authenticated: boolean) {
           ? { derivedFromAssets: options.derivedFromAssets }
           : {}),
         ...(options?.capture ? { capture: options.capture } : {}),
-        ...(options?.contentHash ? { contentHash: options.contentHash } : {}),
       };
       const current = mediaIndexRef.current ?? createEmptyIndex();
       const updated = addMediaEntry(current, entry);
       mediaIndexRef.current = updated;
       setMediaIndex(updated);
-      saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      // 保存を待つ。ノート保存などをきっかけに走るインデックス再構築は
+      // ディスク上の index を正として読み直すため、保存前に再構築が走ると
+      // 今書いたエントリの付加情報（contentHash 等）が落ちる。
+      try {
+        await saveMediaIndex(updated);
+      } catch (err) {
+        console.warn("メディアインデックス保存失敗:", err);
+      }
       // 貼付直後の自動 OCR がプロバイダから読み戻さずに済むよう File 実体を預ける
       registerPendingOcrFile(result.url, file);
       return { url: result.url, fileId: result.fileId, entry };
