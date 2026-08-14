@@ -29,12 +29,22 @@ import {
 import type { ChartAspect } from "./chart-theme";
 
 /** 設定パネル内のトグルスイッチ（settings/modal.tsx の switch と同じ見た目） */
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  /** 他の設定に上書きされて効かない状態（積み重ね中の目盛り表示など） */
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       style={{
         flexShrink: 0,
@@ -45,7 +55,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
         borderRadius: 999,
         border: "1px solid var(--color-border)",
         background: checked ? "var(--color-primary)" : "var(--color-input)",
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.4 : 1,
         transition: "background 0.15s",
         padding: 0,
       }}
@@ -84,19 +95,34 @@ function parseOptionalNumber(raw: string, positiveOnly: boolean): number | undef
 /**
  * 軸ごとの「詳細設定」（eureco 準拠の折りたたみ）:
  * 軸・軸線・目盛り・目盛りラベルの表示、ラベルの回転、目盛りの向き、グリッド。
+ *
+ * 縦軸に限り、末尾に積み重ね（スペクトル比較）の設定を持つ。使う場面が
+ * 限られる特殊な描き方なので、常時見えるところには置かない。
  */
 function AxisDetailEditor({
   detail,
   onChange,
+  stack,
+  onStackChange,
 }: {
   detail: AxisDetail;
   onChange: (patch: Partial<AxisDetail>) => void;
+  /** 縦軸のときだけ渡す。積み重ねの設定をこの折りたたみに同居させる */
+  stack?: StackConfig;
+  onStackChange?: (patch: Partial<StackConfig>) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // 積み重ねが有効なら開いた状態で始める（畳んだまま忘れると、縦軸の目盛りが
+  // 消えている理由に辿り着けない）
+  const [open, setOpen] = useState(stack?.enabled ?? false);
+  // 積み重ね中は縦軸の目盛りを描画側で強制的に消すため、ここの指定は効かない
+  const ticksLocked = stack?.enabled ?? false;
   return (
     <div style={detailStyles.shell}>
       <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
-        <span>{t("chart.advanced")}</span>
+        <span>
+          {t("chart.advanced")}
+          {ticksLocked && <span style={detailStyles.onBadge}> · {t("chart.sectionStack")}</span>}
+        </span>
         {open ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
       </button>
       {open && (
@@ -110,12 +136,24 @@ function AxisDetailEditor({
             <Toggle checked={detail.showLine} onChange={(v) => onChange({ showLine: v })} />
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.ticksShow")}</span>
-            <Toggle checked={detail.showTicks} onChange={(v) => onChange({ showTicks: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.ticksShow")}
+            </span>
+            <Toggle
+              checked={detail.showTicks && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showTicks: v })}
+            />
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.tickLabelsShow")}</span>
-            <Toggle checked={detail.showLabels} onChange={(v) => onChange({ showLabels: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.tickLabelsShow")}
+            </span>
+            <Toggle
+              checked={detail.showLabels && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showLabels: v })}
+            />
           </div>
           <div style={detailStyles.row}>
             <span style={detailStyles.label}>{t("chart.tickLabelRotate")}</span>
@@ -146,12 +184,115 @@ function AxisDetailEditor({
             </select>
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.gridShow")}</span>
-            <Toggle checked={detail.showGrid} onChange={(v) => onChange({ showGrid: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.gridShow")}
+            </span>
+            <Toggle
+              checked={detail.showGrid && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showGrid: v })}
+            />
           </div>
+          {stack && onStackChange && <StackFields stack={stack} onChange={onStackChange} />}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 積み重ね（スペクトル比較）の設定。縦軸の「詳細設定」の末尾に置く。
+ *
+ * 縦軸の目盛りを消して系列を段に分ける描き方なので、目盛りの表示設定と同じ
+ * 場所にある方がどちらが効いているのか分かる。使う場面は限られるため、
+ * 折りたたみの外には出さない。
+ */
+function StackFields({
+  stack,
+  onChange,
+}: {
+  stack: StackConfig;
+  onChange: (patch: Partial<StackConfig>) => void;
+}) {
+  return (
+    <>
+      <div style={detailStyles.groupLabel}>{t("chart.sectionStack")}</div>
+      <div style={detailStyles.row}>
+        <span style={detailStyles.label}>{t("chart.stackEnabled")}</span>
+        <Toggle checked={stack.enabled} onChange={(v) => onChange({ enabled: v })} />
+      </div>
+      {stack.enabled && (
+        <>
+          <div style={detailStyles.hint}>{t("chart.stackHint")}</div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackNormalize")}</span>
+            <select
+              value={stack.normalize}
+              onChange={(e) => onChange({ normalize: e.target.value as StackConfig["normalize"] })}
+              style={detailStyles.smallSelect}
+            >
+              <option value="max">{t("chart.stackNormalizeMax")}</option>
+              <option value="none">{t("chart.stackNormalizeNone")}</option>
+            </select>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackGap")}</span>
+            <span style={detailStyles.rangeGroup}>
+              <input
+                type="range"
+                min={STACK_GAP_RANGE.min}
+                max={STACK_GAP_RANGE.max}
+                step={0.05}
+                value={stack.gap}
+                onChange={(e) => onChange({ gap: Number(e.target.value) })}
+                style={{ width: 64 }}
+              />
+              <span style={detailStyles.rangeValue}>{stack.gap.toFixed(2)}</span>
+            </span>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackOrder")}</span>
+            <span style={styles.segment}>
+              {(["first-bottom", "first-top"] as const).map((order: StackOrder) => (
+                <button
+                  key={order}
+                  type="button"
+                  onClick={() => onChange({ order })}
+                  style={{
+                    ...styles.segmentButton,
+                    ...(stack.order === order ? styles.segmentButtonActive : {}),
+                  }}
+                >
+                  {order === "first-bottom"
+                    ? t("chart.stackOrderFirstBottom")
+                    : t("chart.stackOrderFirstTop")}
+                </button>
+              ))}
+            </span>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackLabels")}</span>
+            <span style={styles.segment}>
+              {(["inline", "legend"] as const).map((mode: StackLabelMode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onChange({ labels: mode })}
+                  style={{
+                    ...styles.segmentButton,
+                    ...(stack.labels === mode ? styles.segmentButtonActive : {}),
+                  }}
+                >
+                  {mode === "inline"
+                    ? t("chart.stackLabelsInline")
+                    : t("chart.stackLabelsLegend")}
+                </button>
+              ))}
+            </span>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -197,6 +338,34 @@ const detailStyles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--color-input)",
     background: "var(--color-card)",
     color: "var(--color-foreground)",
+  },
+  // 折りたたんだままでも効いていることが分かるよう、見出しに出す状態表示
+  onBadge: {
+    color: "var(--color-primary)",
+  },
+  // 詳細設定の中で、軸の見た目とは別のまとまりであることを示す区切り
+  groupLabel: {
+    marginTop: 2,
+    paddingTop: 8,
+    borderTop: "1px solid var(--color-border-subtle)",
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
+  },
+  hint: {
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: "var(--color-text-tertiary)",
+  },
+  rangeGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  rangeValue: {
+    width: 28,
+    textAlign: "right",
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
   },
 };
 
@@ -286,9 +455,6 @@ export function ChartSettingsPanel({
   const updateStack = (patch: Partial<StackConfig>) => {
     onChange({ stack: { ...config.stack, ...patch } });
   };
-
-  // 積み重ねの設定は項目名が長いので、既定のラベル幅（48px）では折り返す
-  const stackLabel = { ...styles.fieldLabel, width: 76 };
 
   const moveSeries = (index: number, delta: number) => {
     const next = [...config.series];
@@ -566,7 +732,7 @@ export function ChartSettingsPanel({
                         <>
                           <div style={styles.assignLabel}>{t("chart.stackSeriesSection")}</div>
                           <label style={styles.fieldRow}>
-                            <span style={stackLabel}>{t("chart.seriesScale")}</span>
+                            <span style={{ ...styles.fieldLabel, width: 76 }}>{t("chart.seriesScale")}</span>
                             {/*
                               入力中の "0." を数値に変換すると 0 に丸められて打てなくなるため、
                               確定は blur / Enter のとき。key は外から値が変わったときの同期用
@@ -587,7 +753,7 @@ export function ChartSettingsPanel({
                             />
                           </label>
                           <label style={styles.fieldRow}>
-                            <span style={stackLabel}>{t("chart.seriesOffsetAdjust")}</span>
+                            <span style={{ ...styles.fieldLabel, width: 76 }}>{t("chart.seriesOffsetAdjust")}</span>
                             <input
                               key={`offset-${i}-${series.offsetAdjust ?? ""}`}
                               type="text"
@@ -678,92 +844,6 @@ export function ChartSettingsPanel({
             </>
           )}
 
-          {!isHistogram && (
-            <>
-              <div style={styles.sectionLabel}>{t("chart.sectionStack")}</div>
-              <div style={styles.fieldRow}>
-                <span style={stackLabel}>{t("chart.stackEnabled")}</span>
-                <Toggle
-                  checked={config.stack.enabled}
-                  onChange={(v) => updateStack({ enabled: v })}
-                />
-              </div>
-              {config.stack.enabled && (
-                <>
-                  <div style={styles.emptyHint}>{t("chart.stackHint")}</div>
-                  <label style={styles.fieldRow}>
-                    <span style={stackLabel}>{t("chart.stackNormalize")}</span>
-                    <select
-                      value={config.stack.normalize}
-                      onChange={(e) =>
-                        updateStack({ normalize: e.target.value as StackConfig["normalize"] })
-                      }
-                      style={{ ...styles.select, flex: 1 }}
-                    >
-                      <option value="max">{t("chart.stackNormalizeMax")}</option>
-                      <option value="none">{t("chart.stackNormalizeNone")}</option>
-                    </select>
-                  </label>
-                  <label style={styles.fieldRow}>
-                    <span style={stackLabel}>{t("chart.stackGap")}</span>
-                    <input
-                      type="range"
-                      min={STACK_GAP_RANGE.min}
-                      max={STACK_GAP_RANGE.max}
-                      step={0.05}
-                      value={config.stack.gap}
-                      onChange={(e) => updateStack({ gap: Number(e.target.value) })}
-                      style={{ flex: 1, minWidth: 0 }}
-                    />
-                    <span style={{ ...styles.rangeDash, width: 28, textAlign: "right" }}>
-                      {config.stack.gap.toFixed(2)}
-                    </span>
-                  </label>
-                  <div style={styles.fieldRow}>
-                    <span style={stackLabel}>{t("chart.stackOrder")}</span>
-                    <span style={styles.segment}>
-                      {(["first-bottom", "first-top"] as const).map((order: StackOrder) => (
-                        <button
-                          key={order}
-                          type="button"
-                          onClick={() => updateStack({ order })}
-                          style={{
-                            ...styles.segmentButton,
-                            ...(config.stack.order === order ? styles.segmentButtonActive : {}),
-                          }}
-                        >
-                          {order === "first-bottom"
-                            ? t("chart.stackOrderFirstBottom")
-                            : t("chart.stackOrderFirstTop")}
-                        </button>
-                      ))}
-                    </span>
-                  </div>
-                  <div style={styles.fieldRow}>
-                    <span style={stackLabel}>{t("chart.stackLabels")}</span>
-                    <span style={styles.segment}>
-                      {(["inline", "legend"] as const).map((mode: StackLabelMode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => updateStack({ labels: mode })}
-                          style={{
-                            ...styles.segmentButton,
-                            ...(config.stack.labels === mode ? styles.segmentButtonActive : {}),
-                          }}
-                        >
-                          {mode === "inline"
-                            ? t("chart.stackLabelsInline")
-                            : t("chart.stackLabelsLegend")}
-                        </button>
-                      ))}
-                    </span>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
           <div style={styles.sectionLabel}>
             {rightAxisInUse ? t("chart.yAxisLeft") : t("chart.yAxis")}
           </div>
@@ -800,6 +880,9 @@ export function ChartSettingsPanel({
           <AxisDetailEditor
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
+            // 積み重ねは縦軸の目盛りを消す描き方なので、縦軸の詳細設定に同居させる
+            stack={isHistogram ? undefined : config.stack}
+            onStackChange={isHistogram ? undefined : updateStack}
           />
 
           {rightAxisInUse && (
