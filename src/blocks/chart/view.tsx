@@ -18,7 +18,7 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChartSpline, SlidersHorizontal } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
-import { t, useLocaleSubscription } from "../../i18n";
+import { getLocale, t, useLocaleSubscription } from "../../i18n";
 import {
   buildChartData,
   parseDateTime,
@@ -49,6 +49,7 @@ import {
   type ChartBlockConfig,
 } from "./chart-config";
 import { ChartSettingsPanel } from "./chart-settings";
+import { formatFullDateTime, timeAxisLabelFormatter } from "./time-axis-format";
 // 記録テーブルの名前（キャプション）を参照表示に使う。Provider が無い場所でも
 // 動くよう optional 版で読む
 import { useTableMetaStoreOptional } from "../../features/table-meta/store";
@@ -399,6 +400,9 @@ function buildOption(
     }
   })();
 
+  const locale = getLocale();
+  const xAxisDetail = axisFromDetail(config.xAxisDetail);
+
   const yMin = parseNumeric(config.yMin);
   const yMax = parseNumeric(config.yMax);
   const yRightMin = parseNumeric(config.yRightMin);
@@ -455,6 +459,9 @@ function buildOption(
       backgroundColor: "#ffffff",
       borderColor: "#cccccc",
       textStyle: { fontSize: 13, color: CHART_INK },
+      // 時間軸の値は epoch ms なので、既定のままだと散布図で生の数値が出る。
+      // 見出しに完全な日時を出して 1 点を同定できるようにする
+      ...(result.xAxis === "time" ? { formatter: timeTooltipFormatter(locale) } : {}),
     },
     legend: config.showLegend
       ? {
@@ -476,7 +483,16 @@ function buildOption(
             nameGap: 34,
             ...(xMin !== null ? { min: xMin } : {}),
             ...(xMax !== null ? { max: xMax } : {}),
-            ...axisFromDetail(config.xAxisDetail),
+            ...xAxisDetail,
+            // 時間軸は既定だと日境界が日番号だけ（"14"）になる。月日を出す
+            ...(result.xAxis === "time"
+              ? {
+                  axisLabel: {
+                    ...xAxisDetail.axisLabel,
+                    formatter: timeAxisLabelFormatter(locale),
+                  },
+                }
+              : {}),
           },
     yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
     series: result.series.map((s, i) => {
@@ -496,6 +512,22 @@ function buildOption(
         color: sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length],
       };
     }),
+  };
+}
+
+/** 時間軸のツールチップ: 見出しに完全な日時、各行に系列名と値 */
+function timeTooltipFormatter(locale: ReturnType<typeof getLocale>) {
+  return (params: any) => {
+    const list = Array.isArray(params) ? params : [params];
+    if (list.length === 0) return "";
+    const first = list[0];
+    const x = Array.isArray(first.value) ? first.value[0] : first.axisValue;
+    const head = formatFullDateTime(Number(x), locale);
+    const rows = list.map((p: any) => {
+      const y = Array.isArray(p.value) ? p.value[1] : p.value;
+      return `${p.marker ?? ""}${p.seriesName ?? ""}: ${y ?? ""}`;
+    });
+    return [head, ...rows].join("<br/>");
   };
 }
 
