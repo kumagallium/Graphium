@@ -1947,7 +1947,7 @@ export const ja: Record<string, string> = {
   "chart.typeHistogram": "分布",
   "chart.loading": "チャートを読み込み中…",
   "chart.sectionStack": "積み重ね",
-  "chart.stackEnabled": "系列を縦にずらす",
+  "chart.stackEnabled": "縦にずらす",
   "chart.stackHint": "XRD などのスペクトルを 1 つの枠に積んで比べる形にします。縦軸の目盛りは消えます",
   "chart.stackNormalize": "高さの揃え方",
   "chart.stackNormalizeMax": "各段の最大を 1 に",

@@ -1949,7 +1949,7 @@ export const en: Record<string, string> = {
   "chart.typeHistogram": "Histogram",
   "chart.loading": "Loading chart…",
   "chart.sectionStack": "Stacking",
-  "chart.stackEnabled": "Offset series vertically",
+  "chart.stackEnabled": "Offset rows",
   "chart.stackHint": "Stacks spectra such as XRD patterns in one frame for comparison. The y-axis ticks are hidden",
   "chart.stackNormalize": "Height scaling",
   "chart.stackNormalizeMax": "Max of each = 1",
