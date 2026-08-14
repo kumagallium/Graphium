@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.37.0](https://github.com/kumagallium/Graphium/compare/v0.36.0...v0.37.0) - 2026-08-14
+
+- feat(assets): 同じファイルを二度素材にしない（中身のハッシュで判定） by @kumagallium in https://github.com/kumagallium/Graphium/pull/699
+- refactor(data-import): データ専用の重複回避を撤去し、共通の照合に寄せる by @kumagallium in https://github.com/kumagallium/Graphium/pull/700
+
 ## [v0.36.0](https://github.com/kumagallium/Graphium/compare/v0.35.2...v0.36.0) - 2026-08-14
 
 - feat(chart): add per-series style options by @kumagallium in https://github.com/kumagallium/Graphium/pull/694
