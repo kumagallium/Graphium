@@ -12,9 +12,9 @@
 // 型そのものは他のサイドストア（mediaInlineLabels / mediaOcr）と揃えて
 // lib/document-types.ts に置いている。
 
-import type { ColumnType, TableMeta } from "../../lib/document-types";
+import type { ColumnType, TableMeta, TableSource } from "../../lib/document-types";
 
-export type { ColumnType, TableMeta };
+export type { ColumnType, TableMeta, TableSource };
 
 /** その型のふるまいを持つ列があるか */
 export function hasColumnType(
@@ -67,5 +67,6 @@ export function isTableMetaEmpty(meta: TableMeta | undefined): boolean {
   if (meta.caption && meta.caption.length > 0) return false;
   if (meta.columns && Object.keys(meta.columns).length > 0) return false;
   if (meta.noteLinks && Object.keys(meta.noteLinks).length > 0) return false;
+  if (meta.source) return false;
   return true;
 }

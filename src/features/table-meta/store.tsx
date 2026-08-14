@@ -20,6 +20,7 @@ import {
   withoutColumnType,
   type ColumnType,
   type TableMeta,
+  type TableSource,
 } from "./types";
 
 type TableMetaState = Map<string, TableMeta>;
@@ -39,6 +40,9 @@ type TableMetaStoreValue = {
   // ── キャプション（テーブルの名前） ──
   getCaption: (blockId: string) => string;
   setCaption: (blockId: string, caption: string) => void;
+  // ── 取り込み元（外部データから作られた表の出所） ──
+  getSource: (blockId: string) => TableSource | undefined;
+  setSource: (blockId: string, source: TableSource | undefined) => void;
   // ── note-link 列の行 → ノート紐付け ──
   getNoteLinks: (blockId: string) => Record<string, string>;
   setNoteLink: (blockId: string, rowValue: string, noteId: string) => void;
@@ -134,6 +138,23 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     [updateMeta]
   );
 
+  const getSource = useCallback(
+    (blockId: string) => metasRef.current.get(blockId)?.source,
+    []
+  );
+
+  const setSource = useCallback(
+    (blockId: string, source: TableSource | undefined) => {
+      updateMeta(blockId, (current) => {
+        const next: TableMeta = { ...current };
+        if (source) next.source = source;
+        else delete next.source;
+        return next;
+      });
+    },
+    [updateMeta]
+  );
+
   const getNoteLinks = useCallback(
     (blockId: string) => metasRef.current.get(blockId)?.noteLinks ?? {},
     []
@@ -183,6 +204,8 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         blockIdsWithColumnType,
         getCaption,
         setCaption,
+        getSource,
+        setSource,
         getNoteLinks,
         setNoteLink,
         getSnapshot,

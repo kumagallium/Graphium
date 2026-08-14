@@ -15,6 +15,7 @@ import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
 import { useTableMetaStore } from "./store";
+import type { TableSource } from "./types";
 
 type CaptionPos = {
   blockId: string;
@@ -25,10 +26,28 @@ type CaptionPos = {
   displayName: string;
 };
 
+/** 取り込み元バッジのツールチップ。行範囲と、前置きから拾った測定条件を並べる */
+function sourceTooltip(source: TableSource): string {
+  const head = t("dataImport.sourceTooltip", {
+    fileName: source.fileName,
+    headerRow: String(source.options.headerRow),
+    endRow: String(source.options.endRow),
+  });
+  const meta = (source.meta ?? []).map((m) => `${m.key}: ${m.value}`);
+  return [head, ...meta].join("\n");
+}
+
 export function TableCaptionLayer({
   editorRef,
+  onReimport,
 }: {
   editorRef: React.RefObject<any>;
+  /**
+   * 取り込み由来のテーブルで「取り込み元」バッジを押したときのハンドラ。
+   * 素材として残っている元ファイルを読み直し、保存済みの設定でダイアログを開く。
+   * 渡されない場合はバッジは表示だけ（ツールチップで出所を示す）になる。
+   */
+  onReimport?: (blockId: string, source: TableSource) => void;
 }) {
   // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
   useLocaleSubscription();
@@ -199,17 +218,28 @@ export function TableCaptionLayer({
             />
           );
         }
+        const source = store.getSource(blockId);
         return (
-          <button
+          <div
             key={blockId}
-            type="button"
-            onClick={() => startEditing(blockId)}
-            title={t("tableMeta.nameHint")}
             style={{
               position: "fixed",
               top,
               left,
               maxWidth: Math.max(180, width),
+              height: 22,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              zIndex: 50,
+            }}
+          >
+          <button
+            type="button"
+            onClick={() => startEditing(blockId)}
+            title={t("tableMeta.nameHint")}
+            style={{
+              minWidth: 0,
               height: 22,
               display: "flex",
               alignItems: "center",
@@ -226,7 +256,6 @@ export function TableCaptionLayer({
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              zIndex: 50,
               transition: "background 0.15s",
             }}
             onMouseEnter={(e) => {
@@ -238,6 +267,37 @@ export function TableCaptionLayer({
           >
             {displayName || t("tableMeta.namePlaceholder")}
           </button>
+          {/* 取り込み由来のテーブルは出所を出す。名前の隣に置くのは、
+              この表が手打ちではなく生データ由来だと一目で分かるようにするため */}
+          {source && (
+            <button
+              type="button"
+              disabled={!onReimport || !source.fileId}
+              onClick={() => onReimport?.(blockId, source)}
+              title={sourceTooltip(source)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                height: 18,
+                padding: "0 6px",
+                margin: 0,
+                borderRadius: 9,
+                border: "1px solid var(--color-border)",
+                background: "transparent",
+                color: "var(--color-text-tertiary)",
+                fontSize: 10,
+                whiteSpace: "nowrap",
+                maxWidth: 200,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                cursor: onReimport && source.fileId ? "pointer" : "default",
+              }}
+            >
+              ⤓ {source.fileName}
+            </button>
+          )}
+          </div>
         );
       })}
     </>,

@@ -9,6 +9,7 @@ import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch } from "./media-index";
+import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage } from "../media-ocr";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
@@ -724,7 +725,9 @@ export function AssetGalleryView({
     pdf: "application/pdf",
     url: "",
     // Documents タブは PDF + Word/Excel/PowerPoint を受ける
-    document: ".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf",
+    // 装置の生データ（.csv / .txt / .dat 等）も Documents タブで受ける。
+    // ここに置いた素材は本文へ挿入するときに取り込みダイアログを通って表になる。
+    document: `.docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,${DELIMITED_FILE_ACCEPT}`,
     // memo は transient なピーク専用タイプ（アップロード経路には現れない）
     memo: "",
     other: "",

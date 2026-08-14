@@ -240,6 +240,22 @@ type TableMeta = {
   caption?: string;                        // any table can be named; empty means no caption
   columns?: Record<string, ColumnType[]>;  // column name → behaviors on that column
   noteLinks?: Record<string, string>;      // row value → note file ID (note-link data)
+  source?: TableSource;                    // where an imported table came from
+};
+
+type TableSource = {
+  kind: "delimited-file";
+  fileName: string;                        // name of the imported file
+  fileId?: string;                         // media index ID, when the file is kept as an asset
+  importedAt: string;                      // ISO 8601
+  options: {                               // the settings the table was read with
+    headerRow: number;                     // 1-based line number of the header row
+    endRow: number;                        // 1-based line number of the last data row
+    delimiter: "comma" | "tab" | "space" | "custom";
+    customDelimiter?: string;              // single character, when delimiter is "custom"
+    collapseConsecutive: boolean;          // treat runs of the delimiter as one
+  };
+  meta?: { key: string; value: string }[]; // `key: value` lines read from the preamble
 };
 ```
 
@@ -260,6 +276,15 @@ type TableMeta = {
   (academic caption position) and charts use it as the reference name. Tables with
   a `datetime-auto` column additionally fall back to a document-order auto-name
   ("Table 1"), which is display-only and never saved.
+- **`source` records where an imported table came from.** Instrument logs
+  (`.txt` / `.dat` / `.csv`) are turned into ordinary tables, and the conversion
+  parameters — which lines were read, with which delimiter — are kept here rather
+  than thrown away. Dropping them would make the numbers untraceable back to the
+  raw file, which is exactly the thing this app exists to prevent. The preamble a
+  converter normally discards (`# Device Model: ENV-MONITOR-X9`) is kept as
+  `meta`, because for a lab note those lines *are* the measurement conditions.
+  When the file was also registered as an asset, `fileId` links the table back to
+  it and the import can be re-run with the stored settings.
 
 ### 2.3 PROV-DM label model
 

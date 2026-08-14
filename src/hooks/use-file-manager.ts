@@ -1657,7 +1657,7 @@ export function useFileManager(authenticated: boolean) {
       const entry: MediaIndexEntry = {
         fileId: result.fileId,
         name: result.name,
-        type: mimeToMediaType(result.mimeType),
+        type: mimeToMediaType(result.mimeType, result.name),
         mimeType: result.mimeType,
         url: result.url,
         thumbnailUrl: result.url.replace("=s0", "=s200"),

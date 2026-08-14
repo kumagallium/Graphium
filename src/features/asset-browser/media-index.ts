@@ -2,6 +2,7 @@
 // 全メディアファイルのメタデータを1ファイルに集約し、ギャラリー表示を高速化する
 
 import { getActiveProvider } from "../../lib/storage/registry";
+import { isDelimitedDataFile } from "../data-import/file-kind";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -220,12 +221,20 @@ export type MediaIndex = {
 
 // ── MIME → MediaType 変換 ──
 
-export function mimeToMediaType(mimeType: string): MediaType {
+/**
+ * MIME（と分かればファイル名）から素材の種類を決める。
+ *
+ * 装置が吐く .dat / .txt は MIME が text/plain や空、application/octet-stream と
+ * まちまちで、MIME だけでは "other" に落ちて素材一覧から消える。名前が分かる場合は
+ * 拡張子で document 扱いに引き上げ、Documents タブから表に変換できるようにする。
+ */
+export function mimeToMediaType(mimeType: string, fileName?: string): MediaType {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
   if (mimeType === "application/pdf") return "pdf";
   if (isDocumentMime(mimeType)) return "document";
+  if (fileName && isDelimitedDataFile(fileName)) return "document";
   return "other";
 }
 
@@ -752,7 +761,7 @@ export async function ensureMediaIndex(
   // 新規エントリ（disk にあるが index にまだ無い）は Drive 互換 URL でフォールバック。
   for (const file of driveFiles) {
     const existingEntry = existingMap.get(file.id);
-    const type = existingEntry?.type ?? mimeToMediaType(file.mimeType);
+    const type = existingEntry?.type ?? mimeToMediaType(file.mimeType, file.name);
 
     if (existingEntry) {
       // 既存エントリの URL をそのまま保持（server-fs の media-server:// など）

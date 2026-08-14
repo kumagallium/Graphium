@@ -994,9 +994,43 @@ export type ColumnType = "datetime-auto" | "note-link";
  *   しているため、列名を変えても既存テーブルのふるまいは止まらない。値が配列なのは
  *   1 列に複数のはたらきが同居しうるため（日時が自動で入る列の行から詳細ノートを作る等）
  * - noteLinks: note-link 列の行の値 → ノートファイル ID（旧 indexTables の実体）
+ * - source: 外部データから取り込んで作られた表の出所（2026-08 追加、任意）
  */
 export type TableMeta = {
   caption?: string;
   columns?: Record<string, ColumnType[]>;
   noteLinks?: Record<string, string>;
+  source?: TableSource;
+};
+
+/**
+ * 取り込み元の記録（2026-08 で導入）。
+ *
+ * 装置が吐く .txt / .dat / .csv から作った表に付く。表の中身は素の Markdown 表の
+ * ままにして、「どのファイルの何行目を、どう区切って読んだか」だけをこの注釈層に持つ。
+ *
+ * ここを残すのは、来歴が主題のプロダクトで変換パラメータを捨てると
+ * 「この数字はどの生データから来たのか」が二度と辿れなくなるため。同じ設定で
+ * 読み直せること自体が再現性であり、前置きの測定条件（meta）は表の中身と同じくらい
+ * 実験ノートの本体でもある。
+ *
+ * - fileName: 取り込んだファイル名（素材として登録していなくても残る）
+ * - fileId: 素材として登録した場合の media index の fileId
+ * - importedAt: 取り込み時刻（ISO 8601）
+ * - options: 行範囲・区切り文字などの取り込み設定。再取り込みにそのまま使える
+ * - meta: 前置きから拾った測定条件（`# Device Model: X` などの key: value）
+ */
+export type TableSource = {
+  kind: "delimited-file";
+  fileName: string;
+  fileId?: string;
+  importedAt: string;
+  options: {
+    headerRow: number;
+    endRow: number;
+    delimiter: "comma" | "tab" | "space" | "custom";
+    customDelimiter?: string;
+    collapseConsecutive: boolean;
+  };
+  meta?: { key: string; value: string }[];
 };

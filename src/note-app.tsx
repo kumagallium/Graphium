@@ -65,7 +65,21 @@ import {
   migrateTableMeta,
   hasColumnType,
   readFirstColumnName,
+  type TableSource,
 } from "./features/table-meta";
+import {
+  DataImportModal,
+  getDataImportSlashMenuItem,
+  setDataImportCallback,
+  buildTableSource,
+  toTableBlock,
+  defaultCaption,
+  isDelimitedDataFile,
+  readDataFileText,
+  DELIMITED_FILE_ACCEPT,
+  type DataImportResult,
+  type DelimitedImportOptions,
+} from "./features/data-import";
 import { chartSlashItem } from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
@@ -1292,10 +1306,31 @@ function NoteEditorInner({
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
   const [sharedCitePickerOpen, setSharedCitePickerOpen] = useState(false);
 
+  // ── データ取り込み（区切りテキスト → テーブル） ──
+  // スラッシュメニュー・ドロップ・素材ギャラリーの 3 経路が同じダイアログに集まる。
+  // 開いている間はファイルの中身を持つ（ダイアログ内で範囲や区切りを変えるたびに
+  // 再パースするため、File ではなくデコード済みテキストで持つ）。
+  const [dataImportFile, setDataImportFile] = useState<
+    {
+      fileName: string;
+      text: string;
+      fileId?: string;
+      /** 再取り込み時に置き換える対象のテーブルブロック */
+      replaceBlockId?: string;
+      /** 再取り込み時に復元する前回の設定 */
+      initialOptions?: DelimitedImportOptions;
+    } | null
+  >(null);
+  const dataImportInputRef = useRef<HTMLInputElement | null>(null);
+
   // スラッシュメニューからピッカーを開くコールバック登録（main editor 用）。
   // SidePeek からは SidePeek 自身が同じ仕組みで登録する。
   useEffect(() => {
     if (!mainEditor) return;
+    setDataImportCallback(mainEditor, () => {
+      pickerEditorRef.current = mainEditor;
+      dataImportInputRef.current?.click();
+    });
     setMediaPickerCallback(mainEditor, (type) => {
       pickerEditorRef.current = mainEditor;
       setPickerMediaType(type);
@@ -1317,6 +1352,7 @@ function NoteEditorInner({
       setSharedCitePickerOpen(true);
     });
     return () => {
+      setDataImportCallback(mainEditor, null);
       setMediaPickerCallback(mainEditor, null);
       setMemoPickerCallback(mainEditor, null);
       setBookmarkPickerCallback(mainEditor, null);
@@ -1512,6 +1548,25 @@ function NoteEditorInner({
       return;
     }
 
+    // 区切りテキスト（.csv / .txt / .dat）は添付として貼らず、取り込みダイアログへ回す。
+    // 素材として登録済みのファイルなので fileId が取れる = 生まれた表から
+    // 元ファイルの素材へ辿れる（source.fileId）。
+    if (isDelimitedDataFile(entry.name)) {
+      void (async () => {
+        try {
+          const provider = getActiveProvider();
+          const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
+          const blob = await (await fetch(blobUrl)).blob();
+          const text = await readDataFileText(blob);
+          setPickerMediaType(null);
+          setDataImportFile({ fileName: entry.name, text, fileId: entry.fileId });
+        } catch {
+          alert(tStatic("dataImport.readError"));
+        }
+      })();
+      return;
+    }
+
     // 挿入ブロックの選択:
     //   PDF → カスタム pdf ブロック（インラインビューア付き）
     //   Document (.docx 等) → BlockNote 標準 file ブロック（汎用アタッチメント表示）
@@ -1533,6 +1588,114 @@ function NoteEditorInner({
     }
     // onChange が自動的にトリガーされるので markDirty() は不要
   }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
+
+  // データ取り込みダイアログの確定 → テーブルブロックを挿入し、出所を注釈に残す。
+  //
+  // 表そのものは素の Markdown テーブルのまま（tableMeta の方針どおり）。
+  // 「どのファイルの何行目を、どう区切って読んだか」と前置きの測定条件は
+  // tableMeta.source に置く。ここを通さずに表だけ作ると、あとから
+  // 「この数字はどの生データから来たのか」を辿る手段が無くなる。
+  const handleDataImportConfirm = useCallback(
+    (
+      file: { fileName: string; fileId?: string; replaceBlockId?: string },
+      result: DataImportResult
+    ) => {
+      setDataImportFile(null);
+      const editor = pickerEditorRef.current ?? editorRef.current;
+      if (!editor) return;
+      const block = toTableBlock(result.parsed);
+      if (!block) return;
+
+      // 再取り込みは中身だけ差し替える（ブロック ID を保つので、そのテーブルを
+      // 参照しているチャート（sourceBlockId）の参照が切れない）
+      let blockId: string | undefined;
+      let currentBlock: any = null;
+      if (file.replaceBlockId && editor.getBlock(file.replaceBlockId)) {
+        editor.updateBlock(file.replaceBlockId, { content: block.content });
+        blockId = file.replaceBlockId;
+      } else {
+        currentBlock = editor.getTextCursorPosition()?.block;
+        // カーソルが取れない（ドロップ直後など）ときは末尾に足す
+        const anchor = currentBlock ?? editor.document[editor.document.length - 1];
+        if (!anchor) return;
+        const inserted = editor.insertBlocks([block], anchor, "after");
+        blockId = (Array.isArray(inserted) ? inserted[0]?.id : undefined) as
+          | string
+          | undefined;
+      }
+      if (blockId) {
+        // 再取り込みでは人が付け直した名前を尊重する（既に名前があれば触らない）
+        if (!tableMetaStore.getCaption(blockId)) {
+          tableMetaStore.setCaption(blockId, defaultCaption(file.fileName));
+        }
+        tableMetaStore.setSource(
+          blockId,
+          buildTableSource({
+            fileName: file.fileName,
+            fileId: file.fileId,
+            options: result.options,
+            parsed: result.parsed,
+          })
+        );
+      }
+
+      if (currentBlock && isSlashOnlyBlock(currentBlock)) {
+        removeBlockMetadata([currentBlock.id]);
+        editor.removeBlocks([currentBlock]);
+      }
+      // ブロック挿入の onChange とは別に、tableMeta（キャプション・出所）の変更も
+      // 保存させる必要がある。useAutoSave はこの位置より後で宣言されるため ref 経由。
+      markDirtyRef.current();
+    },
+    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata]
+  );
+
+  // 取り込み元バッジ → 元ファイルを読み直し、保存済みの設定でダイアログを開く。
+  // 確定すると新しい表を足すのではなく、その場のテーブルを置き換える
+  // （範囲や区切りを間違えたときに作り直す動線。表の位置とキャプションは保つ）。
+  const handleTableReimport = useCallback(
+    (blockId: string, source: TableSource) => {
+      if (!source.fileId) return;
+      void (async () => {
+        try {
+          const provider = getActiveProvider();
+          const blobUrl = await provider.getMediaBlobUrl(source.fileId!);
+          const blob = await (await fetch(blobUrl)).blob();
+          const text = await readDataFileText(blob);
+          setDataImportFile({
+            fileName: source.fileName,
+            text,
+            fileId: source.fileId,
+            replaceBlockId: blockId,
+            initialOptions: {
+              ...source.options,
+              customDelimiter: source.options.customDelimiter,
+            },
+          });
+        } catch {
+          alert(tStatic("dataImport.readError"));
+        }
+      })();
+    },
+    []
+  );
+
+  // ファイル選択（スラッシュメニュー）→ ダイアログを開く
+  const handleDataImportFilePicked = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      // 同じファイルを続けて選び直せるように値をクリアしておく
+      e.target.value = "";
+      if (!file) return;
+      try {
+        const text = await readDataFileText(file);
+        setDataImportFile({ fileName: file.name, text });
+      } catch {
+        alert(tStatic("dataImport.readError"));
+      }
+    },
+    []
+  );
 
   // 引用ピッカーで選択された claim / Insight ノートをエディタに挿入
   // MVP: 各ノートのタイトルを青色テキストの paragraph として並べる
@@ -1593,6 +1756,7 @@ function NoteEditorInner({
   const memoSlashItem = useMemo(() => getMemoSlashMenuItem(), []);
   const templateSlashItem = useMemo(() => getTemplateSlashMenuItem(), []);
   const citeSlashItems = useMemo(() => getCiteSlashMenuItems(), []);
+  const dataImportSlashItem = useMemo(() => getDataImportSlashMenuItem(), []);
   // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
   // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
   // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
@@ -1961,6 +2125,25 @@ function NoteEditorInner({
     };
     pasteListenerRef.current = pasteListener;
 
+    // .csv / .txt / .dat のドロップは取り込みダイアログに回す。
+    // 何もしないと BlockNote が汎用の file ブロック（添付）として貼り付けてしまい、
+    // 中身が表にならないまま埋まる。それ以外のファイルは BlockNote に任せる。
+    const dropListener = (e: DragEvent) => {
+      const file = Array.from(e.dataTransfer?.files ?? []).find((f) =>
+        isDelimitedDataFile(f.name)
+      );
+      if (!file) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      // ドロップ位置のブロックにカーソルを移してから開く（挿入位置を合わせるため）
+      const pos = editor.getTextCursorPosition?.()?.block;
+      if (pos) editor.setTextCursorPosition(pos, "end");
+      pickerEditorRef.current = editor;
+      void readDataFileText(file)
+        .then((text) => setDataImportFile({ fileName: file.name, text }))
+        .catch(() => alert(tStatic("dataImport.readError")));
+    };
+
     // editor.domElement が ready になるまで rAF で待ってからリスナー登録する。
     // BlockNote の onEditorReady は editor インスタンスはあるが domElement が
     // まだ設定されていない段階でも複数回呼ばれるため、ここでガードする。
@@ -1979,6 +2162,7 @@ function NoteEditorInner({
       // BlockNote のネイティブシリアライズ／パースはそのまま走る。
       domEl.addEventListener("copy", copyListener, true);
       domEl.addEventListener("paste", pasteListener, true);
+      domEl.addEventListener("drop", dropListener, true);
       // bubble phase でも copy を補足する（capture phase で setData した内容を
       // ProseMirror が clearData している場合、bubble の最後でもう一度 setData する）
       domEl.addEventListener("copy", copyListener, false);
@@ -3992,7 +4176,7 @@ function NoteEditorInner({
         bottomInset={isDesktop ? 0 : 56}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <TableCaptionLayer editorRef={editorRef} />
+      <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
@@ -4023,6 +4207,23 @@ function NoteEditorInner({
           onSelectBookmark={() => handleInsertBookmarkDirect(pastedUrl.url, pastedUrl.blockId)}
           onSelectLink={() => handleInsertLinkDirect(pastedUrl.url, pastedUrl.blockId)}
           onDismiss={() => setPastedUrl(null)}
+        />
+      )}
+      {/* データ取り込み（スラッシュメニュー /データ・ドロップ・素材ギャラリーの共通入口） */}
+      <input
+        ref={dataImportInputRef}
+        type="file"
+        accept={DELIMITED_FILE_ACCEPT}
+        onChange={handleDataImportFilePicked}
+        className="hidden"
+      />
+      {dataImportFile && (
+        <DataImportModal
+          fileName={dataImportFile.fileName}
+          text={dataImportFile.text}
+          initialOptions={dataImportFile.initialOptions}
+          onCancel={() => setDataImportFile(null)}
+          onConfirm={(result) => handleDataImportConfirm(dataImportFile, result)}
         />
       )}
       {/* メディアピッカーモーダル */}
@@ -4420,7 +4621,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, dataImportSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

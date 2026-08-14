@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import {
   fetchUrlMetadata,
@@ -468,7 +469,7 @@ export function MediaPickerModal({
                     : mediaType === "video" ? "video/*"
                     : mediaType === "audio" ? "audio/*"
                     : mediaType === "pdf" ? "application/pdf"
-                    : mediaType === "document" ? ".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt"
+                    : mediaType === "document" ? `.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,${DELIMITED_FILE_ACCEPT}`
                     : "*/*"
                   }
                   className="hidden"
@@ -481,7 +482,7 @@ export function MediaPickerModal({
                       const url = await onUpload(file);
                       // Documents タブ経由のアップロードでは MIME に応じて pdf / document を分岐
                       const resolvedType =
-                        mediaType === "document" ? mimeToMediaType(file.type) : mediaType;
+                        mediaType === "document" ? mimeToMediaType(file.type, file.name) : mediaType;
                       onSelect({
                         fileId: "",
                         name: file.name,
