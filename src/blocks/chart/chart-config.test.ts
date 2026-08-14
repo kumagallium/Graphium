@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_CHART_CONFIG,
   parseChartBlockConfig,
+  resolveSeriesStyle,
   serializeChartBlockConfig,
   seriesConfigDisplayName,
   suggestSeries,
@@ -12,6 +13,7 @@ import {
   stackSeriesDisplayName,
   DEFAULT_STACK_CONFIG,
   STACK_GAP_RANGE,
+  type ChartSeriesConfig,
 } from "./chart-config";
 import type { TableData } from "./chart-data";
 
@@ -101,6 +103,52 @@ describe("parseChartBlockConfig", () => {
     ]);
   });
 
+  it("系列スタイルの不正値は落として既定に戻す", () => {
+    const parsed = parseChartBlockConfig(
+      JSON.stringify({
+        series: [
+          {
+            sourceBlockId: "t1",
+            xColumn: "日時",
+            yColumn: "痛み",
+            lineType: "dotted",
+            lineWidth: "thin",
+            showSymbol: false,
+            symbol: "emptyRect",
+            symbolSize: "small",
+            barWidth: "wide",
+            stacked: true,
+          },
+          {
+            sourceBlockId: "t1",
+            xColumn: "日時",
+            yColumn: "気圧",
+            lineType: "wavy",
+            lineWidth: "hairline",
+            showSymbol: "yes",
+            symbol: "star",
+            symbolSize: "huge",
+            barWidth: "fat",
+            stacked: 1,
+          },
+        ],
+      })
+    );
+    expect(parsed.series[0]).toEqual({
+      sourceBlockId: "t1",
+      xColumn: "日時",
+      yColumn: "痛み",
+      lineType: "dotted",
+      lineWidth: "thin",
+      showSymbol: false,
+      symbol: "emptyRect",
+      symbolSize: "small",
+      barWidth: "wide",
+      stacked: true,
+    });
+    expect(parsed.series[1]).toEqual({ sourceBlockId: "t1", xColumn: "日時", yColumn: "気圧" });
+  });
+
   it("serialize → parse で往復できる", () => {
     const config = {
       ...DEFAULT_CHART_CONFIG,
@@ -145,6 +193,46 @@ describe("suggestSeries / helpers", () => {
       { sourceBlockId: "t1", xColumn: "日時", yColumn: "痛み" },
       { sourceBlockId: "t1", xColumn: "日時", yColumn: "気圧" },
     ]);
+  });
+
+  it("スタイル未設定は従来の描画と同じ値に解決される", () => {
+    const series: ChartSeriesConfig = { sourceBlockId: "t1", xColumn: "日時", yColumn: "痛み" };
+    expect(resolveSeriesStyle(series, "line")).toEqual({
+      lineType: "solid",
+      lineWidth: "medium",
+      showSymbol: true,
+      // ECharts の既定に合わせる（折れ線は白抜き円・散布図は塗り円）
+      symbol: "emptyCircle",
+      symbolSize: "medium",
+      barWidth: "auto",
+      stacked: false,
+    });
+    expect(resolveSeriesStyle(series, "scatter").symbol).toBe("circle");
+    expect(resolveSeriesStyle(undefined, "bar").barWidth).toBe("auto");
+  });
+
+  it("設定したスタイルは種類の既定より優先される", () => {
+    const series: ChartSeriesConfig = {
+      sourceBlockId: "t1",
+      xColumn: "日時",
+      yColumn: "痛み",
+      lineType: "dashed",
+      lineWidth: "thick",
+      showSymbol: false,
+      symbol: "triangle",
+      symbolSize: "large",
+      barWidth: "narrow",
+      stacked: true,
+    };
+    expect(resolveSeriesStyle(series, "line")).toEqual({
+      lineType: "dashed",
+      lineWidth: "thick",
+      showSymbol: false,
+      symbol: "triangle",
+      symbolSize: "large",
+      barWidth: "narrow",
+      stacked: true,
+    });
   });
 
   it("seriesConfigDisplayName / usesRightAxis", () => {

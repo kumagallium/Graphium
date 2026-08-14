@@ -132,15 +132,16 @@ talks to LLM and embedding backends.
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the
   source of truth: the block stores only the referenced table's id, the
-  column names and the chart type, and re-reads the table when the
-  document changes. Series can also be **stacked** — each normalised to
-  its own maximum and lifted by a fixed gap — which is how spectra get
-  compared (an XRD measurement against reference patterns). Stacking
-  keeps one x-axis and one y-axis name for the whole comparison instead
-  of one per figure; the y ticks are hidden because the vertical position
-  is arbitrary units by then, each row is named on the plot itself, and
-  the tooltip converts the drawn value back to the measured one.
-  **Time-series tables** complement it on the input
+  column names, and how each series is drawn — its own type, color, line
+  style and width, marker shape and size, bar width and stacking — and
+  re-reads the table when the document changes. Series can also be
+  **offset into rows** — each normalised to its own maximum and lifted by
+  a fixed gap — which is how spectra get compared (an XRD measurement
+  against reference patterns). Stacked that way, the comparison keeps one
+  x-axis and one y-axis name instead of one per figure; the y ticks are
+  hidden because the vertical position is arbitrary units by then, each
+  row is named on the plot itself, and the tooltip converts the drawn
+  value back to the measured one. **Time-series tables** complement it on the input
   side: any standard table can be given a `datetime-auto` column (from
   the drag-handle menu, or ready-made from the slash menu), after which
   adding a row with the ordinary table controls stamps its first column

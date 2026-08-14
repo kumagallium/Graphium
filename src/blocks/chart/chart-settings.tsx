@@ -7,12 +7,13 @@
 // UI ニュートラル色は design.md のトークン、寸法は 8pt 格子から。
 
 import { useMemo, useState } from "react";
-import { X, ChevronUp, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { X, ChevronUp, ChevronDown, ChevronRight, Palette, Plus } from "lucide-react";
 import { t } from "../../i18n";
 import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
+  resolveSeriesStyle,
   seriesConfigDisplayName,
   usesRightAxis,
   STACK_GAP_RANGE,
@@ -20,6 +21,11 @@ import {
   type ChartBlockConfig,
   type ChartSeriesConfig,
   type LegendPosition,
+  type SeriesBarWidth,
+  type SeriesLineType,
+  type SeriesLineWidth,
+  type SeriesSymbolShape,
+  type SeriesSymbolSize,
   type SeriesType,
   type StackConfig,
   type StackLabelMode,
@@ -335,6 +341,8 @@ const detailStyles: Record<string, React.CSSProperties> = {
   label: {
     fontSize: 12,
     color: "var(--color-foreground)",
+    // 「マーカーの大きさ」のような長いラベルが 2 行に折れないようにする
+    whiteSpace: "nowrap",
   },
   smallSelect: {
     width: 96,
@@ -384,6 +392,203 @@ const detailStyles: Record<string, React.CSSProperties> = {
     textAlign: "right",
     fontSize: 11,
     color: "var(--color-text-tertiary)",
+  },
+};
+
+/** マーカーの形（塗り → 白抜きを形ごとに並べる。値は ECharts の symbol 名） */
+const SYMBOL_SHAPE_KEYS: Array<[SeriesSymbolShape, string]> = [
+  ["circle", "chart.symbolCircle"],
+  ["emptyCircle", "chart.symbolEmptyCircle"],
+  ["rect", "chart.symbolRect"],
+  ["emptyRect", "chart.symbolEmptyRect"],
+  ["triangle", "chart.symbolTriangle"],
+  ["emptyTriangle", "chart.symbolEmptyTriangle"],
+  ["diamond", "chart.symbolDiamond"],
+  ["emptyDiamond", "chart.symbolEmptyDiamond"],
+];
+
+/**
+ * 系列の見た目（eureco の「オプション > スタイル」）。
+ * 効く項目は系列の実効種類で変わる: 折れ線は線とマーカー、散布図はマーカー、
+ * 棒は幅と積み上げ。色だけは全種類に共通。分布（ヒストグラム）は図全体が
+ * 1 つの分布なので色だけ持つ。
+ */
+function SeriesStyleEditor({
+  series,
+  effectiveType,
+  fallbackColor,
+  onChange,
+}: {
+  series: ChartSeriesConfig;
+  effectiveType: SeriesType | "histogram";
+  fallbackColor: string;
+  onChange: (patch: Partial<ChartSeriesConfig>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const style = resolveSeriesStyle(series, effectiveType === "histogram" ? "bar" : effectiveType);
+  const color = series.color || fallbackColor;
+  const isLine = effectiveType === "line";
+  const isScatter = effectiveType === "scatter";
+  const isBar = effectiveType === "bar";
+  // 折れ線でマーカーを消しているときは、形・大きさを薄く出して効かないことを示す
+  const markerActive = isScatter || style.showSymbol;
+  const markerRow = markerActive ? {} : { opacity: 0.5 };
+  return (
+    <div style={styleStyles.shell}>
+      <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
+        <span style={styleStyles.headerLabel}>
+          <Palette size={13} strokeWidth={2} />
+          {t("chart.seriesStyle")}
+        </span>
+        {open ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
+      </button>
+      {open && (
+        <div style={detailStyles.body}>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.seriesColor")}</span>
+            <span style={styleStyles.colorRow}>
+              {CHART_SERIES_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => onChange({ color: c })}
+                  style={{
+                    ...styles.colorSwatchButton,
+                    background: c,
+                    outline: color === c ? `2px solid ${c}` : "none",
+                    outlineOffset: 1,
+                  }}
+                  title={c}
+                />
+              ))}
+            </span>
+          </div>
+
+          {isLine && (
+            <>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.lineType")}</span>
+                <select
+                  value={style.lineType}
+                  onChange={(e) => onChange({ lineType: e.target.value as SeriesLineType })}
+                  style={styleStyles.select}
+                >
+                  <option value="solid">{t("chart.lineSolid")}</option>
+                  <option value="dashed">{t("chart.lineDashed")}</option>
+                  <option value="dotted">{t("chart.lineDotted")}</option>
+                </select>
+              </div>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.lineWidth")}</span>
+                <select
+                  value={style.lineWidth}
+                  onChange={(e) => onChange({ lineWidth: e.target.value as SeriesLineWidth })}
+                  style={styleStyles.select}
+                >
+                  <option value="thin">{t("chart.widthThin")}</option>
+                  <option value="medium">{t("chart.sizeMedium")}</option>
+                  <option value="thick">{t("chart.widthThick")}</option>
+                </select>
+              </div>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.showSymbol")}</span>
+                <Toggle
+                  checked={style.showSymbol}
+                  onChange={(v) => onChange({ showSymbol: v })}
+                />
+              </div>
+            </>
+          )}
+
+          {(isLine || isScatter) && (
+            <>
+              <div style={{ ...detailStyles.row, ...markerRow }}>
+                <span style={detailStyles.label}>{t("chart.symbolShape")}</span>
+                <select
+                  value={style.symbol}
+                  disabled={!markerActive}
+                  onChange={(e) => onChange({ symbol: e.target.value as SeriesSymbolShape })}
+                  style={styleStyles.select}
+                >
+                  {SYMBOL_SHAPE_KEYS.map(([value, key]) => (
+                    <option key={value} value={value}>
+                      {t(key as any)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ ...detailStyles.row, ...markerRow }}>
+                <span style={detailStyles.label}>{t("chart.symbolSize")}</span>
+                <select
+                  value={style.symbolSize}
+                  disabled={!markerActive}
+                  onChange={(e) => onChange({ symbolSize: e.target.value as SeriesSymbolSize })}
+                  style={styleStyles.select}
+                >
+                  <option value="small">{t("chart.sizeSmall")}</option>
+                  <option value="medium">{t("chart.sizeMedium")}</option>
+                  <option value="large">{t("chart.sizeLarge")}</option>
+                </select>
+              </div>
+            </>
+          )}
+
+          {isBar && (
+            <>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.barWidth")}</span>
+                <select
+                  value={style.barWidth}
+                  onChange={(e) => onChange({ barWidth: e.target.value as SeriesBarWidth })}
+                  style={styleStyles.select}
+                >
+                  <option value="auto">{t("chart.barWidthAuto")}</option>
+                  <option value="narrow">{t("chart.barNarrow")}</option>
+                  <option value="medium">{t("chart.sizeMedium")}</option>
+                  <option value="wide">{t("chart.barWide")}</option>
+                </select>
+              </div>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.stacked")}</span>
+                <Toggle checked={style.stacked} onChange={(v) => onChange({ stacked: v })} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const styleStyles: Record<string, React.CSSProperties> = {
+  shell: {
+    display: "flex",
+    flexDirection: "column",
+    borderRadius: 6,
+    // 系列詳細（muted）の中に入るので、1 段明るくして沈ませない
+    background: "var(--color-card)",
+  },
+  headerLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+  },
+  select: {
+    width: 104,
+    padding: "2px 6px",
+    fontSize: 12,
+    borderRadius: 6,
+    border: "1px solid var(--color-input)",
+    background: "var(--color-card)",
+    color: "var(--color-foreground)",
+  },
+  colorRow: {
+    display: "inline-flex",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 4,
+    // 8 色が 1 行に収まる幅（16px × 8 + gap 4px × 7）
+    maxWidth: 164,
   },
 };
 
@@ -703,25 +908,6 @@ export function ChartSettingsPanel({
                         </label>
                       )}
 
-                      <div style={styles.fieldRow}>
-                        <span style={styles.fieldLabel}>{t("chart.seriesColor")}</span>
-                        <span style={styles.colorRow}>
-                          {CHART_SERIES_COLORS.map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => updateSeries(i, { color: c })}
-                              style={{
-                                ...styles.colorSwatchButton,
-                                background: c,
-                                outline: color === c ? `2px solid ${c}` : "none",
-                                outlineOffset: 1,
-                              }}
-                              title={c}
-                            />
-                          ))}
-                        </span>
-                      </div>
                       {!isHistogram && (
                         <div style={styles.fieldRow}>
                           <span style={styles.fieldLabel}>{t("chart.seriesAxis")}</span>
@@ -791,6 +977,16 @@ export function ChartSettingsPanel({
                           </label>
                         </>
                       )}
+                      <SeriesStyleEditor
+                        series={series}
+                        effectiveType={
+                          isHistogram
+                            ? "histogram"
+                            : ((series.type ?? config.chartType) as SeriesType)
+                        }
+                        fallbackColor={CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length]}
+                        onChange={(patch) => updateSeries(i, patch)}
+                      />
                     </div>
                   )}
                 </div>
@@ -1227,11 +1423,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--color-foreground)",
     color: "var(--color-surface)",
     cursor: "pointer",
-  },
-  colorRow: {
-    display: "inline-flex",
-    flexWrap: "wrap",
-    gap: 5,
   },
   colorSwatchButton: {
     width: 16,

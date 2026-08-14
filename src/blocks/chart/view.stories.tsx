@@ -335,6 +335,82 @@ export const InsideLegend: StoryObj = {
   ),
 };
 
+// 系列スタイル: 線の種類・太さ・マーカーを系列ごとに変える（白黒印刷でも
+// 系列を区別できる、論文図の描き分け）
+export const SeriesStyles: StoryObj = {
+  name: "系列スタイル（線種・太さ・マーカー）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "line",
+          series: series([
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "痛み",
+              lineWidth: "thick",
+              symbol: "emptyCircle",
+              symbolSize: "large",
+            },
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "薬(錠)",
+              lineType: "dashed",
+              lineWidth: "thin",
+              showSymbol: false,
+            },
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "気圧",
+              axis: "right",
+              lineType: "dotted",
+              symbol: "emptyTriangle",
+            },
+          ]),
+          yMin: "0",
+          yMax: "10",
+          caption: "系列ごとに線の種類・太さ・マーカーを変えた例",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 棒の見た目: 幅を広げて積み上げる（同じ軸の棒系列が 1 本に積まれる）
+export const StackedBars: StoryObj = {
+  name: "棒（幅・積み上げ）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "bar",
+          series: series([
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "痛み",
+              barWidth: "wide",
+              stacked: true,
+            },
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "薬(錠)",
+              barWidth: "wide",
+              stacked: true,
+            },
+          ]),
+          caption: "頭痛強度と服薬数を積み上げた例",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 未設定: テーブル選択プレースホルダ（スラッシュメニュー挿入直後の状態）
 // スタック: XRD の測定 + 文献 2 件。強度の桁が違っても規格化で段の高さが揃う
 export const XrdStack: StoryObj = {
   name: "積み重ね（XRD の測定 × 文献 2 件）",

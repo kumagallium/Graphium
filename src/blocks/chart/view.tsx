@@ -35,24 +35,29 @@ import { loadECharts } from "./echarts-loader";
 import {
   CHART_ASPECT_RATIOS,
   CHART_AXIS_LINE_WIDTH,
+  CHART_BAR_WIDTHS,
   CHART_FONT_SIZE,
   CHART_FRAME,
   CHART_FRAME_WIDTH,
   CHART_GRID_LINE,
   CHART_INK,
   CHART_LEGEND_ITEM,
+  CHART_LINE_WIDTHS,
   CHART_SERIES_COLORS,
+  CHART_SYMBOL_SIZES,
   CHART_TICK_LENGTH,
 } from "./chart-theme";
 import {
   isStackActive,
   parseChartBlockConfig,
+  resolveSeriesStyle,
   serializeChartBlockConfig,
   seriesConfigDisplayName,
   stackSeriesDisplayName,
   suggestSeries,
   usesRightAxis,
   type ChartBlockConfig,
+  type SeriesType,
 } from "./chart-config";
 import { ChartSettingsPanel } from "./chart-settings";
 import { formatFullDateTime, timeAxisLabelFormatter } from "./time-axis-format";
@@ -552,6 +557,11 @@ function buildOption(
             type: result.xAxis,
             name: xName,
             nameGap: 34,
+            // 数値 X 軸も Y 軸と同じくデータ範囲にフィットさせる。既定（0 を含む）だと
+            // 気圧 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。
+            // 時間軸は既定でデータ範囲に収まるので対象外（scale は value 軸のみ有効）
+            ...(result.xAxis === "value" ? { scale: fitAxis } : {}),
+            // min/max を明示していればそちらが優先される（ECharts の既定挙動）
             ...(xMin !== null ? { min: xMin } : {}),
             ...(xMax !== null ? { max: xMax } : {}),
             ...xAxisDetail,
@@ -568,11 +578,27 @@ function buildOption(
     yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
     series: view.series.map((s, i) => {
       const sc = config.series[i];
-      const seriesType = isHistogram ? "bar" : (sc?.type ?? config.chartType);
+      const seriesType: SeriesType = isHistogram
+        ? "bar"
+        : ((sc?.type ?? config.chartType) as SeriesType);
       const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
       const name = seriesName(i);
       const points = s.points as Array<[number, number]>;
       const inlineLabel = stackActive && config.stack.labels === "inline" && points.length > 0;
+      // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
+      // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
+      const baseStyle = resolveSeriesStyle(sc, seriesType);
+      // 積み重ね中だけ既定をマーカー無し・細線・小さめの点に寄せる。スペクトルは
+      // 連続曲線として読むもので、数千点にマーカーを打つと線が潰れるため。
+      // 明示的に設定されているものはそのまま尊重する
+      const style = stackActive
+        ? {
+            ...baseStyle,
+            showSymbol: sc?.showSymbol ?? false,
+            lineWidth: sc?.lineWidth ?? ("thin" as const),
+            symbolSize: sc?.symbolSize ?? ("small" as const),
+          }
+        : baseStyle;
       return {
         name,
         type: seriesType,
@@ -580,12 +606,24 @@ function buildOption(
         connectNulls: false,
         ...(useRight ? { yAxisIndex: sc?.axis === "right" ? 1 : 0 } : {}),
         ...(seriesType === "line"
-          ? stackActive
-            // スペクトルは連続曲線として読むもの。数千点にマーカーを打つと線が潰れる
-            ? { showSymbol: false, lineStyle: { width: 1.5 } }
-            : { symbolSize: 7, lineStyle: { width: 2 } }
+          ? {
+              showSymbol: style.showSymbol,
+              symbol: style.symbol,
+              symbolSize: CHART_SYMBOL_SIZES.line[style.symbolSize],
+              lineStyle: { width: CHART_LINE_WIDTHS[style.lineWidth], type: style.lineType },
+            }
           : {}),
-        ...(seriesType === "scatter" ? { symbolSize: stackActive ? 4 : 10 } : {}),
+        ...(seriesType === "scatter"
+          ? { symbol: style.symbol, symbolSize: CHART_SYMBOL_SIZES.scatter[style.symbolSize] }
+          : {}),
+        // 分布（ヒストグラム）は階級幅が棒の幅を決める図なので、幅・積み上げは持たせない
+        ...(seriesType === "bar" && !isHistogram
+          ? {
+              ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
+              // 積み上げは軸ごとにグループを分ける（左右をまたいで積むと目盛りと合わない）
+              ...(style.stacked ? { stack: sc?.axis === "right" ? "right" : "left" } : {}),
+            }
+          : {}),
         ...(isHistogram
           ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
           : {}),
