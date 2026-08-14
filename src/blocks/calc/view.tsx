@@ -20,19 +20,9 @@
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useRef, useState } from "react";
 import { Calculator } from "lucide-react";
-import { evaluateSource, isCommentLine, type CalcLineResult } from "./engine";
+import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { t, useLocaleSubscription } from "../../i18n";
-
-/** props.results（JSON 文字列）を安全に読む。壊れていたら空扱い */
-function parseResults(raw: string): CalcLineResult[] {
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 export const CalcBlock = createReactBlockSpec(
   {
@@ -55,7 +45,7 @@ export const CalcBlock = createReactBlockSpec(
       const editable = (props.editor as any).isEditable !== false;
 
       const [draft, setDraft] = useState(source);
-      const [results, setResults] = useState<CalcLineResult[]>(() => parseResults(savedResults));
+      const [results, setResults] = useState<CalcLineResult[]>(() => parseCalcResults(savedResults));
       const [copiedLine, setCopiedLine] = useState<number | null>(null);
       const textareaRef = useRef<HTMLTextAreaElement>(null);
       // 評価の順序が入れ替わっても古い結果で上書きしないための世代カウンタ

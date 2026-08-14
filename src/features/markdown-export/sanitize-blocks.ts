@@ -1,6 +1,6 @@
-// 一括 Markdown 変換用のブロックサニタイザ（純ロジック）
+// Markdown 変換用のブロックサニタイザ（純ロジック）
 //
-// 背景: 保存済みノートにはカスタムブロック（bookmark / pdfViewer / callout）や
+// 背景: 保存済みノートにはカスタムブロック（bookmark / chart / callout 等）や
 // カスタムインラインスタイル（inlineMaterial 等の来歴ハイライト）が含まれる。
 // これらを default スキーマのヘッドレスエディタに食わせると BlockNote が
 // 未知の type / style で throw するため、変換前に標準ブロックへ落とし込む。
@@ -9,8 +9,13 @@
 // callout の枠）は捨て、テキストとリンクだけを確実に残す。
 // ただし数式は「見た目」ではなく内容なので、$$ ... $$ / $ ... $ の LaTeX 表記に
 // 戻して残す（他の Markdown ツールでもそのまま数式として読める形）。
+//
+// ブロックごとの落とし込みはここには書かない。ブロック定義の隣（各ブロックの
+// to-markdown.ts）に置き、blocks/markdown.ts のレジストリから引く。ここに
+// 分岐を書き足す方式は、ブロックの props 変更に追従できず静かに陳腐化した。
 
-import { mathBlockToMarkdown, inlineMathToMarkdown } from "../math/markdown-math";
+import { inlineMathToMarkdown } from "../math/markdown-math";
+import { blockMarkdownConverters } from "../../blocks/markdown";
 
 /** BlockNote の inline content（text / link / その他）1 要素 */
 type InlineItem = Record<string, any>;
@@ -123,20 +128,9 @@ function sanitizeTableContent(content: any, knownStyles: ReadonlySet<string>): a
   };
 }
 
-/** テキスト + リンク 1 本のシンプルな paragraph ブロックを組み立てる */
-function paragraphWithLink(text: string, href: string | undefined): AnyBlock {
-  const label = text.trim() || href || "";
-  const content: InlineItem[] = href
-    ? [{ type: "link", href, content: [{ type: "text", text: label, styles: {} }] }]
-    : [{ type: "text", text: label, styles: {} }];
-  return { type: "paragraph", props: {}, content, children: [] };
-}
-
 /**
  * 保存済みブロック配列を default スキーマで安全に変換できる形にサニタイズする。
- * - bookmark → タイトル付きリンクの paragraph
- * - pdfViewer → ファイル名リンクの paragraph
- * - callout → 本文を維持した paragraph
+ * - カスタムブロック → blocks/markdown.ts のレジストリが標準ブロックへ落とす
  * - その他の未知ブロック → プレーンテキストの paragraph
  * - 既知ブロック → styles / inline をサニタイズしつつ維持（children も再帰処理）
  */
@@ -150,104 +144,13 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
     const b = block as AnyBlock;
     const children = sanitizeBlocksForMarkdown(b.children, schemaInfo);
 
-    if (b.type === "bookmark") {
-      // URL ブックマークカード → Markdown ではリンク 1 行に落とす
-      const props = b.props ?? {};
-      const label = String(props.title || props.domain || props.url || "");
-      out.push({ ...paragraphWithLink(label, props.url || undefined), children });
+    // カスタムブロック: ブロック定義の隣に置いた落とし込みを使う
+    const convert = typeof b.type === "string" ? blockMarkdownConverters[b.type] : undefined;
+    if (convert) {
+      out.push(...convert(b, { children, inlines: sanitizeInlines(b.content, knownStyles) }));
       continue;
     }
-    if (b.type === "pdfViewer") {
-      // PDF ビューア → ファイル名リンクに落とす（URL はアプリ内スキームのこともある）
-      const props = b.props ?? {};
-      const label = String(props.name || props.url || "PDF");
-      out.push({ ...paragraphWithLink(label, props.url || undefined), children });
-      continue;
-    }
-    if (b.type === "sharedCitation") {
-      // shared:// 引用カード → 出所が読めるテキスト 1 行に落とす。
-      // shared:// URI はローカルアプリ外では解決できないため、リンクにはせず
-      // タイトル・種別・作者と ID を書誌情報風に残す。
-      const props = b.props ?? {};
-      const title = String(props.cachedTitle || "(untitled)");
-      const meta = [props.entryType, props.cachedAuthor]
-        .map((v) => String(v ?? "").trim())
-        .filter(Boolean)
-        .join(", ");
-      const idPart = props.sharedId ? ` — shared://${String(props.sharedId)}` : "";
-      out.push({
-        type: "paragraph",
-        props: {},
-        content: [
-          {
-            type: "text",
-            text: `📎 ${title}${meta ? ` (${meta})` : ""}${idPart}`,
-            styles: {},
-          },
-        ],
-        children,
-      });
-      continue;
-    }
-    if (b.type === "callout") {
-      // callout → 本文テキストを維持した paragraph（枠・アイコンは捨てる）
-      out.push({
-        type: "paragraph",
-        props: {},
-        content: sanitizeInlines(b.content, knownStyles),
-        children,
-      });
-      continue;
-    }
-    if (b.type === "chart") {
-      // チャートブロック → 参照メモの斜体 1 行に落とす。
-      // データ本体（参照先テーブル）は標準 table として書き出されるため、
-      // ここで失われる情報は「どう描いていたか」だけ。静かに消さず痕跡を残す。
-      const label = String(b.props?.xColumn ?? "").trim();
-      out.push({
-        type: "paragraph",
-        props: {},
-        content: [
-          {
-            type: "text",
-            text: label ? `(Chart: ${label})` : "(Chart)",
-            styles: { italic: true },
-          },
-        ],
-        children,
-      });
-      continue;
-    }
-    if (b.type === "math") {
-      // 数式ブロック → $$ ... $$ の段落（LaTeX ソースをそのまま残す）
-      const md = mathBlockToMarkdown(String(b.props?.latex ?? ""));
-      out.push({
-        type: "paragraph",
-        props: {},
-        content: md ? [{ type: "text", text: md, styles: {} }] : [],
-        children,
-      });
-      continue;
-    }
-    if (b.type === "step") {
-      // step コンテナ → Markdown では H2 見出し + 中身（カードの枠は捨てる）。
-      // 移行前の「procedure ラベル付き H2 + スコープ」と同じ体裁で出力し、
-      // 工程の階層が外部でも読めるようにする。
-      out.push({
-        type: "heading",
-        props: { level: 2 },
-        content: sanitizeInlines(b.content, knownStyles),
-        children,
-      });
-      continue;
-    }
-    if (b.type === "columnList" || b.type === "column") {
-      // マルチカラム → Markdown はレイアウトを持たないので、カラムの中身を
-      // カラム 1 → カラム 2 の順にそのまま持ち上げる（ラッパーは捨てる）。
-      // 未知ブロック fallback に落とすと空 paragraph が挟まって出力が汚れる。
-      out.push(...children);
-      continue;
-    }
+
     if (typeof b.type !== "string" || !knownBlockTypes.has(b.type)) {
       // 未知ブロック（将来のカスタムブロック等）→ プレーンテキストで残す
       const text = extractInlineText(b.content);
@@ -272,65 +175,4 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
     out.push(next);
   }
   return out;
-}
-
-// ──────────────────────────────────────────────
-// 単一ノートエクスポート用のメンション変換
-// （一括エクスポートは sanitizeInlines 内の同じ変換を通る）
-// ──────────────────────────────────────────────
-
-/**
- * ライブエディタの document（フルスキーマ）のメンション text だけを
- * `[[タイトル]]` テキストに差し替えた新しいブロック配列を返す（元は変更しない）。
- * 単一ノートの Markdown エクスポートが blocksToMarkdownLossy に渡す前処理。
- */
-export function convertMentionsToWikiLinks(blocks: unknown): AnyBlock[] {
-  if (!Array.isArray(blocks)) return [];
-  return blocks.map(convertBlockMentions);
-}
-
-function convertBlockMentions(block: AnyBlock): AnyBlock {
-  if (!block || typeof block !== "object") return block;
-  const next: AnyBlock = { ...block };
-  if (block.type === "table") {
-    next.content = convertTableContentMentions(block.content);
-  } else if (Array.isArray(block.content)) {
-    next.content = convertInlineMentions(block.content);
-  }
-  if (Array.isArray(block.children) && block.children.length > 0) {
-    next.children = block.children.map(convertBlockMentions);
-  }
-  return next;
-}
-
-function convertInlineMentions(content: any[]): InlineItem[] {
-  return content.map((item) => {
-    if (!item || typeof item !== "object") return item;
-    const wikiLink = mentionToWikiLinkText(item);
-    if (wikiLink) return { type: "text", text: wikiLink, styles: {} };
-    if (item.type === "link" && Array.isArray(item.content)) {
-      return { ...item, content: convertInlineMentions(item.content) };
-    }
-    return item;
-  });
-}
-
-function convertTableContentMentions(content: any): any {
-  if (!content || typeof content !== "object" || !Array.isArray(content.rows)) return content;
-  return {
-    ...content,
-    rows: content.rows.map((row: any) => ({
-      ...row,
-      cells: Array.isArray(row?.cells)
-        ? row.cells.map((cell: any) => {
-            // セルは inline 配列 or { type: "tableCell", content: [...] } の 2 形式
-            if (Array.isArray(cell)) return convertInlineMentions(cell);
-            if (cell && typeof cell === "object" && Array.isArray(cell.content)) {
-              return { ...cell, content: convertInlineMentions(cell.content) };
-            }
-            return cell;
-          })
-        : row?.cells,
-    })),
-  };
 }

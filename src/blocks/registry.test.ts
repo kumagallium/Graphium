@@ -27,6 +27,7 @@ import {
   KNOWN_INLINE_TYPES,
   sanitizeBlocksForLoad,
 } from "./registry";
+import { blockMarkdownConverters } from "./markdown";
 
 describe("block registry", () => {
   it("すべてのカスタムブロックが CUSTOM_BLOCK_TYPES に入る", () => {
@@ -69,6 +70,27 @@ describe("block registry", () => {
   it("既存のカスタムブロックも維持されている", () => {
     for (const type of ["callout", "bookmark", "pdf"]) {
       expect(KNOWN_BLOCK_TYPES.has(type)).toBe(true);
+    }
+  });
+
+  it("すべてのカスタムブロックが Markdown 変換を持つ", () => {
+    // ここが落ちたら、そのブロックは Markdown 書き出しで未知ブロック扱いになる。
+    // content: "none" のブロック（チャート・計算・PDF 等）は本文テキストを
+    // 持たないので、書き出しから跡形もなく消える。
+    // 実際 calc は変換が無いまま、pdf は型名を "pdfViewer" と綴り違えたまま
+    // 出荷されていた（どちらもテストが無かったので気づけなかった）。
+    for (const entry of customBlockEntries) {
+      expect(
+        Object.keys(blockMarkdownConverters),
+        `${entry.type} の to-markdown.ts を blocks/markdown.ts に登録すること`,
+      ).toContain(entry.type);
+    }
+  });
+
+  it("Markdown 変換レジストリに未登録型が紛れていない", () => {
+    // 綴り違い（"pdfViewer"）がここで落ちる
+    for (const type of Object.keys(blockMarkdownConverters)) {
+      expect(CUSTOM_BLOCK_TYPES.has(type), `${type} は登録済みのブロック型ではない`).toBe(true);
     }
   });
 
