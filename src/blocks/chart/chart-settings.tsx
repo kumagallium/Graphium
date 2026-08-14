@@ -7,30 +7,50 @@
 // UI ニュートラル色は design.md のトークン、寸法は 8pt 格子から。
 
 import { useMemo, useState } from "react";
-import { X, ChevronUp, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { X, ChevronUp, ChevronDown, ChevronRight, Palette, Plus } from "lucide-react";
 import { t } from "../../i18n";
 import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
+  resolveSeriesStyle,
   seriesConfigDisplayName,
   usesRightAxis,
+  STACK_GAP_RANGE,
   type AxisDetail,
   type ChartBlockConfig,
   type ChartSeriesConfig,
   type LegendPosition,
+  type SeriesBarWidth,
+  type SeriesLineType,
+  type SeriesLineWidth,
+  type SeriesSymbolShape,
+  type SeriesSymbolSize,
   type SeriesType,
+  type StackConfig,
+  type StackLabelMode,
+  type StackOrder,
   type XAxisKindSetting,
 } from "./chart-config";
 import type { ChartAspect } from "./chart-theme";
 
 /** 設定パネル内のトグルスイッチ（settings/modal.tsx の switch と同じ見た目） */
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  /** 他の設定に上書きされて効かない状態（積み重ね中の目盛り表示など） */
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       style={{
         flexShrink: 0,
@@ -41,7 +61,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
         borderRadius: 999,
         border: "1px solid var(--color-border)",
         background: checked ? "var(--color-primary)" : "var(--color-input)",
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.4 : 1,
         transition: "background 0.15s",
         padding: 0,
       }}
@@ -65,17 +86,40 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 const ROTATE_CHOICES = [0, 30, 45, 90];
 
 /**
+ * 任意入力の数値を読む。空欄・読めない値は未設定（undefined = 既定値に戻す）。
+ * positiveOnly は倍率用（0 以下だと系列が消えるため受け付けない）。
+ */
+function parseOptionalNumber(raw: string, positiveOnly: boolean): number | undefined {
+  const s = raw.trim();
+  if (s === "") return undefined;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return undefined;
+  if (positiveOnly && n <= 0) return undefined;
+  return n;
+}
+
+/**
  * 軸ごとの「詳細設定」（eureco 準拠の折りたたみ）:
  * 軸・軸線・目盛り・目盛りラベルの表示、ラベルの回転、目盛りの向き、グリッド。
+ *
+ * 縦軸に限り、末尾に積み重ね（スペクトル比較）の設定を持つ。使う場面が
+ * 限られる特殊な描き方なので、常時見えるところには置かない。
  */
 function AxisDetailEditor({
   detail,
   onChange,
+  stack,
+  onStackChange,
 }: {
   detail: AxisDetail;
   onChange: (patch: Partial<AxisDetail>) => void;
+  /** 縦軸のときだけ渡す。積み重ねの設定をこの折りたたみに同居させる */
+  stack?: StackConfig;
+  onStackChange?: (patch: Partial<StackConfig>) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // 積み重ね中は縦軸の目盛りを描画側で強制的に消すため、ここの指定は効かない
+  const ticksLocked = stack?.enabled ?? false;
   return (
     <div style={detailStyles.shell}>
       <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
@@ -93,12 +137,24 @@ function AxisDetailEditor({
             <Toggle checked={detail.showLine} onChange={(v) => onChange({ showLine: v })} />
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.ticksShow")}</span>
-            <Toggle checked={detail.showTicks} onChange={(v) => onChange({ showTicks: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.ticksShow")}
+            </span>
+            <Toggle
+              checked={detail.showTicks && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showTicks: v })}
+            />
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.tickLabelsShow")}</span>
-            <Toggle checked={detail.showLabels} onChange={(v) => onChange({ showLabels: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.tickLabelsShow")}
+            </span>
+            <Toggle
+              checked={detail.showLabels && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showLabels: v })}
+            />
           </div>
           <div style={detailStyles.row}>
             <span style={detailStyles.label}>{t("chart.tickLabelRotate")}</span>
@@ -129,10 +185,124 @@ function AxisDetailEditor({
             </select>
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.gridShow")}</span>
-            <Toggle checked={detail.showGrid} onChange={(v) => onChange({ showGrid: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.gridShow")}
+            </span>
+            <Toggle
+              checked={detail.showGrid && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showGrid: v })}
+            />
           </div>
+          {stack && onStackChange && <StackFields stack={stack} onChange={onStackChange} />}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 積み重ね（スペクトル比較）の設定。縦軸の「詳細設定」の末尾に置く。
+ *
+ * 縦軸の目盛りを消して系列を段に分ける描き方なので、目盛りの表示設定と同じ
+ * 場所にある方がどちらが効いているのか分かる。使う場面は限られるため、
+ * 折りたたみの外には出さない。
+ */
+function StackFields({
+  stack,
+  onChange,
+}: {
+  stack: StackConfig;
+  onChange: (patch: Partial<StackConfig>) => void;
+}) {
+  const [open, setOpen] = useState(stack.enabled);
+  return (
+    <div style={detailStyles.subGroup}>
+      <div style={detailStyles.subHeader}>
+        <button type="button" onClick={() => setOpen(!open)} style={detailStyles.subHeaderButton}>
+          <span>{t("chart.sectionStack")}</span>
+          {open ? <ChevronUp size={12} strokeWidth={2} /> : <ChevronDown size={12} strokeWidth={2} />}
+        </button>
+        {/* 入り切りは畳んだままでも触れる。入れたら中身を出す（設定せずに閉じない） */}
+        <Toggle
+          checked={stack.enabled}
+          onChange={(v) => {
+            onChange({ enabled: v });
+            if (v) setOpen(true);
+          }}
+        />
+      </div>
+      {open && !stack.enabled && <div style={detailStyles.hint}>{t("chart.stackHint")}</div>}
+      {open && stack.enabled && (
+        <>
+          <div style={detailStyles.hint}>{t("chart.stackHint")}</div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackNormalize")}</span>
+            <select
+              value={stack.normalize}
+              onChange={(e) => onChange({ normalize: e.target.value as StackConfig["normalize"] })}
+              style={detailStyles.smallSelect}
+            >
+              <option value="max">{t("chart.stackNormalizeMax")}</option>
+              <option value="none">{t("chart.stackNormalizeNone")}</option>
+            </select>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackGap")}</span>
+            <span style={detailStyles.rangeGroup}>
+              <input
+                type="range"
+                min={STACK_GAP_RANGE.min}
+                max={STACK_GAP_RANGE.max}
+                step={0.05}
+                value={stack.gap}
+                onChange={(e) => onChange({ gap: Number(e.target.value) })}
+                style={{ width: 64 }}
+              />
+              <span style={detailStyles.rangeValue}>{stack.gap.toFixed(2)}</span>
+            </span>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackOrder")}</span>
+            <span style={styles.segment}>
+              {(["first-bottom", "first-top"] as const).map((order: StackOrder) => (
+                <button
+                  key={order}
+                  type="button"
+                  onClick={() => onChange({ order })}
+                  style={{
+                    ...styles.segmentButton,
+                    ...(stack.order === order ? styles.segmentButtonActive : {}),
+                  }}
+                >
+                  {order === "first-bottom"
+                    ? t("chart.stackOrderFirstBottom")
+                    : t("chart.stackOrderFirstTop")}
+                </button>
+              ))}
+            </span>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackLabels")}</span>
+            <span style={styles.segment}>
+              {(["inline", "legend"] as const).map((mode: StackLabelMode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onChange({ labels: mode })}
+                  style={{
+                    ...styles.segmentButton,
+                    ...(stack.labels === mode ? styles.segmentButtonActive : {}),
+                  }}
+                >
+                  {mode === "inline"
+                    ? t("chart.stackLabelsInline")
+                    : t("chart.stackLabelsLegend")}
+                </button>
+              ))}
+            </span>
+          </div>
+        </>
       )}
     </div>
   );
@@ -171,6 +341,8 @@ const detailStyles: Record<string, React.CSSProperties> = {
   label: {
     fontSize: 12,
     color: "var(--color-foreground)",
+    // 「マーカーの大きさ」のような長いラベルが 2 行に折れないようにする
+    whiteSpace: "nowrap",
   },
   smallSelect: {
     width: 96,
@@ -180,6 +352,243 @@ const detailStyles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--color-input)",
     background: "var(--color-card)",
     color: "var(--color-foreground)",
+  },
+  // 詳細設定の中の入れ子グループ。折りたたみのヘッダ（chevron 付き）で
+  // 他の行と区別が付くので、区切り線などは足さない
+  subGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 7,
+  },
+  subHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  subHeaderButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: 0,
+    fontSize: 12,
+    border: "none",
+    background: "transparent",
+    color: "var(--color-foreground)",
+    cursor: "pointer",
+  },
+  hint: {
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: "var(--color-text-tertiary)",
+  },
+  rangeGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  rangeValue: {
+    width: 28,
+    textAlign: "right",
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
+  },
+};
+
+/** マーカーの形（塗り → 白抜きを形ごとに並べる。値は ECharts の symbol 名） */
+const SYMBOL_SHAPE_KEYS: Array<[SeriesSymbolShape, string]> = [
+  ["circle", "chart.symbolCircle"],
+  ["emptyCircle", "chart.symbolEmptyCircle"],
+  ["rect", "chart.symbolRect"],
+  ["emptyRect", "chart.symbolEmptyRect"],
+  ["triangle", "chart.symbolTriangle"],
+  ["emptyTriangle", "chart.symbolEmptyTriangle"],
+  ["diamond", "chart.symbolDiamond"],
+  ["emptyDiamond", "chart.symbolEmptyDiamond"],
+];
+
+/**
+ * 系列の見た目（eureco の「オプション > スタイル」）。
+ * 効く項目は系列の実効種類で変わる: 折れ線は線とマーカー、散布図はマーカー、
+ * 棒は幅と積み上げ。色だけは全種類に共通。分布（ヒストグラム）は図全体が
+ * 1 つの分布なので色だけ持つ。
+ */
+function SeriesStyleEditor({
+  series,
+  effectiveType,
+  fallbackColor,
+  onChange,
+}: {
+  series: ChartSeriesConfig;
+  effectiveType: SeriesType | "histogram";
+  fallbackColor: string;
+  onChange: (patch: Partial<ChartSeriesConfig>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const style = resolveSeriesStyle(series, effectiveType === "histogram" ? "bar" : effectiveType);
+  const color = series.color || fallbackColor;
+  const isLine = effectiveType === "line";
+  const isScatter = effectiveType === "scatter";
+  const isBar = effectiveType === "bar";
+  // 折れ線でマーカーを消しているときは、形・大きさを薄く出して効かないことを示す
+  const markerActive = isScatter || style.showSymbol;
+  const markerRow = markerActive ? {} : { opacity: 0.5 };
+  return (
+    <div style={styleStyles.shell}>
+      <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
+        <span style={styleStyles.headerLabel}>
+          <Palette size={13} strokeWidth={2} />
+          {t("chart.seriesStyle")}
+        </span>
+        {open ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
+      </button>
+      {open && (
+        <div style={detailStyles.body}>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.seriesColor")}</span>
+            <span style={styleStyles.colorRow}>
+              {CHART_SERIES_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => onChange({ color: c })}
+                  style={{
+                    ...styles.colorSwatchButton,
+                    background: c,
+                    outline: color === c ? `2px solid ${c}` : "none",
+                    outlineOffset: 1,
+                  }}
+                  title={c}
+                />
+              ))}
+            </span>
+          </div>
+
+          {isLine && (
+            <>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.lineType")}</span>
+                <select
+                  value={style.lineType}
+                  onChange={(e) => onChange({ lineType: e.target.value as SeriesLineType })}
+                  style={styleStyles.select}
+                >
+                  <option value="solid">{t("chart.lineSolid")}</option>
+                  <option value="dashed">{t("chart.lineDashed")}</option>
+                  <option value="dotted">{t("chart.lineDotted")}</option>
+                </select>
+              </div>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.lineWidth")}</span>
+                <select
+                  value={style.lineWidth}
+                  onChange={(e) => onChange({ lineWidth: e.target.value as SeriesLineWidth })}
+                  style={styleStyles.select}
+                >
+                  <option value="thin">{t("chart.widthThin")}</option>
+                  <option value="medium">{t("chart.sizeMedium")}</option>
+                  <option value="thick">{t("chart.widthThick")}</option>
+                </select>
+              </div>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.showSymbol")}</span>
+                <Toggle
+                  checked={style.showSymbol}
+                  onChange={(v) => onChange({ showSymbol: v })}
+                />
+              </div>
+            </>
+          )}
+
+          {(isLine || isScatter) && (
+            <>
+              <div style={{ ...detailStyles.row, ...markerRow }}>
+                <span style={detailStyles.label}>{t("chart.symbolShape")}</span>
+                <select
+                  value={style.symbol}
+                  disabled={!markerActive}
+                  onChange={(e) => onChange({ symbol: e.target.value as SeriesSymbolShape })}
+                  style={styleStyles.select}
+                >
+                  {SYMBOL_SHAPE_KEYS.map(([value, key]) => (
+                    <option key={value} value={value}>
+                      {t(key as any)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ ...detailStyles.row, ...markerRow }}>
+                <span style={detailStyles.label}>{t("chart.symbolSize")}</span>
+                <select
+                  value={style.symbolSize}
+                  disabled={!markerActive}
+                  onChange={(e) => onChange({ symbolSize: e.target.value as SeriesSymbolSize })}
+                  style={styleStyles.select}
+                >
+                  <option value="small">{t("chart.sizeSmall")}</option>
+                  <option value="medium">{t("chart.sizeMedium")}</option>
+                  <option value="large">{t("chart.sizeLarge")}</option>
+                </select>
+              </div>
+            </>
+          )}
+
+          {isBar && (
+            <>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.barWidth")}</span>
+                <select
+                  value={style.barWidth}
+                  onChange={(e) => onChange({ barWidth: e.target.value as SeriesBarWidth })}
+                  style={styleStyles.select}
+                >
+                  <option value="auto">{t("chart.barWidthAuto")}</option>
+                  <option value="narrow">{t("chart.barNarrow")}</option>
+                  <option value="medium">{t("chart.sizeMedium")}</option>
+                  <option value="wide">{t("chart.barWide")}</option>
+                </select>
+              </div>
+              <div style={detailStyles.row}>
+                <span style={detailStyles.label}>{t("chart.stacked")}</span>
+                <Toggle checked={style.stacked} onChange={(v) => onChange({ stacked: v })} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const styleStyles: Record<string, React.CSSProperties> = {
+  shell: {
+    display: "flex",
+    flexDirection: "column",
+    borderRadius: 6,
+    // 系列詳細（muted）の中に入るので、1 段明るくして沈ませない
+    background: "var(--color-card)",
+  },
+  headerLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+  },
+  select: {
+    width: 104,
+    padding: "2px 6px",
+    fontSize: 12,
+    borderRadius: 6,
+    border: "1px solid var(--color-input)",
+    background: "var(--color-card)",
+    color: "var(--color-foreground)",
+  },
+  colorRow: {
+    display: "inline-flex",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 4,
+    // 8 色が 1 行に収まる幅（16px × 8 + gap 4px × 7）
+    maxWidth: 164,
   },
 };
 
@@ -264,6 +673,10 @@ export function ChartSettingsPanel({
   const updateSeries = (index: number, patch: Partial<ChartSeriesConfig>) => {
     const next = config.series.map((s, i) => (i === index ? { ...s, ...patch } : s));
     onChange({ series: next });
+  };
+
+  const updateStack = (patch: Partial<StackConfig>) => {
+    onChange({ stack: { ...config.stack, ...patch } });
   };
 
   const moveSeries = (index: number, delta: number) => {
@@ -495,25 +908,6 @@ export function ChartSettingsPanel({
                         </label>
                       )}
 
-                      <div style={styles.fieldRow}>
-                        <span style={styles.fieldLabel}>{t("chart.seriesColor")}</span>
-                        <span style={styles.colorRow}>
-                          {CHART_SERIES_COLORS.map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => updateSeries(i, { color: c })}
-                              style={{
-                                ...styles.colorSwatchButton,
-                                background: c,
-                                outline: color === c ? `2px solid ${c}` : "none",
-                                outlineOffset: 1,
-                              }}
-                              title={c}
-                            />
-                          ))}
-                        </span>
-                      </div>
                       {!isHistogram && (
                         <div style={styles.fieldRow}>
                           <span style={styles.fieldLabel}>{t("chart.seriesAxis")}</span>
@@ -537,6 +931,62 @@ export function ChartSettingsPanel({
                           </span>
                         </div>
                       )}
+
+                      {!isHistogram && config.stack.enabled && (
+                        <>
+                          <div style={styles.assignLabel}>{t("chart.stackSeriesSection")}</div>
+                          <label style={styles.fieldRow}>
+                            <span style={{ ...styles.fieldLabel, width: 76 }}>{t("chart.seriesScale")}</span>
+                            {/*
+                              入力中の "0." を数値に変換すると 0 に丸められて打てなくなるため、
+                              確定は blur / Enter のとき。key は外から値が変わったときの同期用
+                            */}
+                            <input
+                              key={`scale-${i}-${series.scale ?? ""}`}
+                              type="text"
+                              inputMode="decimal"
+                              defaultValue={series.scale ?? ""}
+                              placeholder="1"
+                              onBlur={(e) =>
+                                updateSeries(i, { scale: parseOptionalNumber(e.target.value, true) })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              style={{ ...styles.input, width: 72 }}
+                            />
+                          </label>
+                          <label style={styles.fieldRow}>
+                            <span style={{ ...styles.fieldLabel, width: 76 }}>{t("chart.seriesOffsetAdjust")}</span>
+                            <input
+                              key={`offset-${i}-${series.offsetAdjust ?? ""}`}
+                              type="text"
+                              inputMode="decimal"
+                              defaultValue={series.offsetAdjust ?? ""}
+                              placeholder="0"
+                              onBlur={(e) =>
+                                updateSeries(i, {
+                                  offsetAdjust: parseOptionalNumber(e.target.value, false),
+                                })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              style={{ ...styles.input, width: 72 }}
+                            />
+                          </label>
+                        </>
+                      )}
+                      <SeriesStyleEditor
+                        series={series}
+                        effectiveType={
+                          isHistogram
+                            ? "histogram"
+                            : ((series.type ?? config.chartType) as SeriesType)
+                        }
+                        fallbackColor={CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length]}
+                        onChange={(patch) => updateSeries(i, patch)}
+                      />
                     </div>
                   )}
                 </div>
@@ -644,6 +1094,9 @@ export function ChartSettingsPanel({
           <AxisDetailEditor
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
+            // 積み重ねは縦軸の目盛りを消す描き方なので、縦軸の詳細設定に同居させる
+            stack={isHistogram ? undefined : config.stack}
+            onStackChange={isHistogram ? undefined : updateStack}
           />
 
           {rightAxisInUse && (
@@ -970,11 +1423,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--color-foreground)",
     color: "var(--color-surface)",
     cursor: "pointer",
-  },
-  colorRow: {
-    display: "inline-flex",
-    flexWrap: "wrap",
-    gap: 5,
   },
   colorSwatchButton: {
     width: 16,

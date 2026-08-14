@@ -42,6 +42,27 @@ export const CHART_GRID_LINE = { width: 0.8, type: "dashed" as const };
 // 凡例マーカー（eureco: 横長 50×14）
 export const CHART_LEGEND_ITEM = { width: 50, height: 14 };
 
+// ── 系列スタイルの段階プリセット ──
+// 見た目は「細/中/太」「小/中/大」の 3 段階で選ばせ、実寸はここに集約する。
+// px を直接入力させないのは、学術図としての見え方（線とマーカーの比）を
+// 壊さないため。medium は既存ノートの見た目と一致させてあるので、
+// 値を動かすと過去のノートの図が変わる点に注意。
+
+/** 折れ線の線幅（medium = 従来の 2px） */
+export const CHART_LINE_WIDTHS = { thin: 1, medium: 2, thick: 3 } as const;
+
+/**
+ * マーカーの径。折れ線は線が主役なので小さめ、散布図は点が主役なので大きめ
+ *（medium = 従来の line 7px / scatter 10px）。
+ */
+export const CHART_SYMBOL_SIZES = {
+  line: { small: 5, medium: 7, large: 10 },
+  scatter: { small: 7, medium: 10, large: 14 },
+} as const;
+
+/** 棒の幅（カテゴリ幅に対する比）。auto は ECharts の自動配分に任せる */
+export const CHART_BAR_WIDTHS = { narrow: "30%", medium: "50%", wide: "80%" } as const;
+
 /**
  * アスペクト比（幅 ÷ 高さ）。standard は A 判の √2:1。
  * 4:1 / 5:1 は XRD・各種スペクトルのような横長パターン向け。

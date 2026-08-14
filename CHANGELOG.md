@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.35.2](https://github.com/kumagallium/Graphium/compare/v0.35.1...v0.35.2) - 2026-08-14
+
+- fix(chart): label time-axis day ticks with month/day by @kumagallium in https://github.com/kumagallium/Graphium/pull/691
+
 ## [v0.35.1](https://github.com/kumagallium/Graphium/compare/v0.35.0...v0.35.1) - 2026-08-13
 
 - [fix] Make desktop printing work: wire the File menu and open the panel from Rust by @kumagallium in https://github.com/kumagallium/Graphium/pull/688

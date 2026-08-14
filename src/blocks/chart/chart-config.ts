@@ -39,6 +39,32 @@ export type SeriesAxis = "left" | "right";
 /** 系列ごとの種類（未指定はチャート全体の種類に従う）。histogram は全体専用 */
 export type SeriesType = "line" | "bar" | "scatter";
 
+/** 線の種類（折れ線） */
+export type SeriesLineType = "solid" | "dashed" | "dotted";
+
+/** 線の太さ（実寸は chart-theme.ts の CHART_LINE_WIDTHS） */
+export type SeriesLineWidth = "thin" | "medium" | "thick";
+
+/**
+ * マーカーの形（ECharts の symbol 名をそのまま値にする）。
+ * 白抜き（empty*）は点が重なっても下が見えるので、学術図では実用的。
+ */
+export type SeriesSymbolShape =
+  | "circle"
+  | "emptyCircle"
+  | "rect"
+  | "emptyRect"
+  | "triangle"
+  | "emptyTriangle"
+  | "diamond"
+  | "emptyDiamond";
+
+/** マーカーの大きさ（実寸は chart-theme.ts の CHART_SYMBOL_SIZES） */
+export type SeriesSymbolSize = "small" | "medium" | "large";
+
+/** 棒の幅（実寸は chart-theme.ts の CHART_BAR_WIDTHS）。auto は ECharts 任せ */
+export type SeriesBarWidth = "auto" | "narrow" | "medium" | "wide";
+
 /**
  * 軸ごとの詳細設定（eureco の「詳細設定」に対応）。
  * 学術スタイルの既定（全表示・内向き目盛り・グリッドなし）から個別に外せる。
@@ -86,7 +112,101 @@ export type ChartSeriesConfig = {
   axis?: SeriesAxis;
   /** 系列ごとの種類（折れ線に棒を重ねる等）。未指定はチャートの種類に従う */
   type?: SeriesType;
+  /**
+   * スタック表示のときだけ効く倍率。弱いピークを拡大して見せる用
+   *（論文図で "×5" と添えるやつ）。未指定は 1
+   */
+  scale?: number;
+  /** スタック表示のときだけ効く段位置の微調整。段が重なるときに手で逃がす */
+  offsetAdjust?: number;
+  // ── 見た目（種類ごとに効くものが違う。未指定は種類なりの既定 = 従来の描画）──
+  /** 線の種類（折れ線）。未指定は実線 */
+  lineType?: SeriesLineType;
+  /** 線の太さ（折れ線）。未指定は中 */
+  lineWidth?: SeriesLineWidth;
+  /** マーカーの表示（折れ線）。未指定は表示する */
+  showSymbol?: boolean;
+  /** マーカーの形（折れ線・散布図）。未指定は種類なりの既定（折れ線は白抜き円） */
+  symbol?: SeriesSymbolShape;
+  /** マーカーの大きさ（折れ線・散布図）。未指定は中 */
+  symbolSize?: SeriesSymbolSize;
+  /** 棒の幅（棒）。未指定は自動 */
+  barWidth?: SeriesBarWidth;
+  /**
+   * 積み上げ（棒）。同じ Y 軸に割り当てた積み上げ系列同士が積み上がる。
+   * スペクトル比較の StackConfig とは別物（あちらは折れ線を縦にずらす）
+   */
+  stacked?: boolean;
 };
+
+/** 段の名前をどこに出すか。inline = 各段の右端に直接（論文図の作法） */
+export type StackLabelMode = "inline" | "legend";
+
+/** 段を積む向き。first-bottom = 系列 1 が最下段（測定データを下に置く慣習） */
+export type StackOrder = "first-bottom" | "first-top";
+
+/**
+ * スタック表示（XRD などのスペクトル比較）。
+ *
+ * 系列を縦にずらして 1 つの枠に積む。図を複数並べる方式では、各図が自分の
+ * 余白を持つうえに縦軸名・横軸目盛りが図の数だけ出てしまい、論文図の形にならない。
+ * 1 枠に積めば縦軸名も横軸も 1 つになり、範囲指定も自動的に共通になる。
+ *
+ * 縦方向は「規格化してからずらす」のが前提。生値のままだと系列ごとに桁が違って
+ * 段間隔を決められないため、既定で各段の最大値を 1 に揃える。
+ */
+export type StackConfig = {
+  enabled: boolean;
+  /** 段ごとの規格化。max = その段の最大値を 1 に。none は生値のまま積む */
+  normalize: "max" | "none";
+  /** 段間隔（規格化後の単位。1.0 で隣と接する、1.15 で少し空く） */
+  gap: number;
+  order: StackOrder;
+  labels: StackLabelMode;
+};
+
+export const DEFAULT_STACK_CONFIG: StackConfig = {
+  enabled: false,
+  normalize: "max",
+  gap: 1.15,
+  order: "first-bottom",
+  labels: "inline",
+};
+
+/** 段間隔の許容範囲（0 = 完全に重ねる。上限は段が潰れない現実的な値） */
+export const STACK_GAP_RANGE = { min: 0, max: 5 } as const;
+
+/** 未指定を種類なりの既定で埋めた、描画・UI が使う実効スタイル */
+export type ResolvedSeriesStyle = {
+  lineType: SeriesLineType;
+  lineWidth: SeriesLineWidth;
+  showSymbol: boolean;
+  symbol: SeriesSymbolShape;
+  symbolSize: SeriesSymbolSize;
+  barWidth: SeriesBarWidth;
+  stacked: boolean;
+};
+
+/**
+ * 系列の実効スタイル。既定値は「従来の描画」と一致させてあるので、
+ * スタイルを一度も触っていない既存ノートは見た目が変わらない。
+ * マーカーの形だけは種類で既定が違う（ECharts の既定: 折れ線は白抜き円、
+ * 散布図は塗り円）ため、実効種類を受け取って解決する。
+ */
+export function resolveSeriesStyle(
+  series: ChartSeriesConfig | undefined,
+  effectiveType: SeriesType
+): ResolvedSeriesStyle {
+  return {
+    lineType: series?.lineType ?? "solid",
+    lineWidth: series?.lineWidth ?? "medium",
+    showSymbol: series?.showSymbol ?? true,
+    symbol: series?.symbol ?? (effectiveType === "line" ? "emptyCircle" : "circle"),
+    symbolSize: series?.symbolSize ?? "medium",
+    barWidth: series?.barWidth ?? "auto",
+    stacked: series?.stacked ?? false,
+  };
+}
 
 export type ChartBlockConfig = {
   chartType: ChartType;
@@ -119,6 +239,8 @@ export type ChartBlockConfig = {
   xAxisDetail: AxisDetail;
   yAxisDetail: AxisDetail;
   yRightAxisDetail: AxisDetail;
+  /** スタック表示（スペクトル比較） */
+  stack: StackConfig;
 };
 
 export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
@@ -143,10 +265,25 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   xAxisDetail: DEFAULT_AXIS_DETAIL,
   yAxisDetail: DEFAULT_AXIS_DETAIL,
   yRightAxisDetail: DEFAULT_AXIS_DETAIL,
+  stack: DEFAULT_STACK_CONFIG,
 };
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
 const SERIES_TYPES: SeriesType[] = ["line", "bar", "scatter"];
+const LINE_TYPES: SeriesLineType[] = ["solid", "dashed", "dotted"];
+const LINE_WIDTHS: SeriesLineWidth[] = ["thin", "medium", "thick"];
+export const SYMBOL_SHAPES: SeriesSymbolShape[] = [
+  "circle",
+  "emptyCircle",
+  "rect",
+  "emptyRect",
+  "triangle",
+  "emptyTriangle",
+  "diamond",
+  "emptyDiamond",
+];
+const SYMBOL_SIZES: SeriesSymbolSize[] = ["small", "medium", "large"];
+const BAR_WIDTHS: SeriesBarWidth[] = ["auto", "narrow", "medium", "wide"];
 const LEGEND_POSITIONS: LegendPosition[] = [
   "top-left",
   "top-right",
@@ -173,9 +310,41 @@ function parseSeries(raw: unknown): ChartSeriesConfig[] {
     if (typeof v.color === "string" && v.color.trim() !== "") entry.color = v.color;
     if (v.axis === "right") entry.axis = "right";
     if (SERIES_TYPES.includes(v.type)) entry.type = v.type;
+    // 倍率 0 以下は系列を消してしまうので読み捨てる（1 として扱う）
+    if (typeof v.scale === "number" && Number.isFinite(v.scale) && v.scale > 0) {
+      entry.scale = v.scale;
+    }
+    if (typeof v.offsetAdjust === "number" && Number.isFinite(v.offsetAdjust)) {
+      entry.offsetAdjust = v.offsetAdjust;
+    }
+    // 見た目: 知らない値は落として既定に戻す（壊れた設定で描けなくなるより、
+    // 既定の学術スタイルで描けるほうがよい）
+    if (LINE_TYPES.includes(v.lineType)) entry.lineType = v.lineType;
+    if (LINE_WIDTHS.includes(v.lineWidth)) entry.lineWidth = v.lineWidth;
+    if (typeof v.showSymbol === "boolean") entry.showSymbol = v.showSymbol;
+    if (SYMBOL_SHAPES.includes(v.symbol)) entry.symbol = v.symbol;
+    if (SYMBOL_SIZES.includes(v.symbolSize)) entry.symbolSize = v.symbolSize;
+    if (BAR_WIDTHS.includes(v.barWidth)) entry.barWidth = v.barWidth;
+    if (typeof v.stacked === "boolean") entry.stacked = v.stacked;
     out.push(entry);
   }
   return out;
+}
+
+/** スタック設定を部分マージで読む（旧ノートには存在しないので全欠けが常態） */
+function parseStack(raw: unknown): StackConfig {
+  const v = (typeof raw === "object" && raw !== null ? raw : {}) as any;
+  const gap =
+    typeof v.gap === "number" && Number.isFinite(v.gap)
+      ? Math.min(STACK_GAP_RANGE.max, Math.max(STACK_GAP_RANGE.min, v.gap))
+      : DEFAULT_STACK_CONFIG.gap;
+  return {
+    enabled: typeof v.enabled === "boolean" ? v.enabled : DEFAULT_STACK_CONFIG.enabled,
+    normalize: v.normalize === "none" ? "none" : DEFAULT_STACK_CONFIG.normalize,
+    gap,
+    order: v.order === "first-top" ? "first-top" : DEFAULT_STACK_CONFIG.order,
+    labels: v.labels === "legend" ? "legend" : DEFAULT_STACK_CONFIG.labels,
+  };
 }
 
 /** 軸の詳細設定を部分マージで読む（欠けはデフォルト、旧グリッドフラグを引き継げる） */
@@ -269,6 +438,7 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
       bool(parsed.showGridY, bool(parsed.showGrid, false))
     ),
     yRightAxisDetail: parseAxisDetail(parsed.yRightAxisDetail, false),
+    stack: parseStack(parsed.stack),
   };
 }
 
@@ -279,6 +449,34 @@ export function serializeChartBlockConfig(config: ChartBlockConfig): string {
 /** 系列の表示名（label 優先、無ければ Y 列名） */
 export function seriesConfigDisplayName(series: ChartSeriesConfig): string {
   return series.label?.trim() || series.yColumn;
+}
+
+/**
+ * スタック時の段名。label > テーブル名 > Y 列名 の順で解決する。
+ *
+ * 通常の凡例と違って既定値がテーブル名なのは、スペクトル比較では各段が
+ * 「別の試料・別の文献」であって「別の列」ではないため。XRD なら全段の Y 列が
+ * Intensity なので、列名を出すと段の区別がつかない。
+ */
+export function stackSeriesDisplayName(
+  series: ChartSeriesConfig,
+  tableLabel: string | undefined
+): string {
+  return series.label?.trim() || tableLabel?.trim() || series.yColumn;
+}
+
+/**
+ * スタック表示が実際に効くか。
+ *
+ * ヒストグラムは縦軸が度数そのもので、段をずらすと数え上げの意味が壊れる。
+ * カテゴリ軸も段のオフセットが目盛りとかみ合わないため外す（軸種は
+ * データを読んで初めて決まるので、呼び出し側から渡してもらう）。
+ */
+export function isStackActive(config: ChartBlockConfig, xAxisKind?: XAxisKind): boolean {
+  if (!config.stack.enabled) return false;
+  if (config.chartType === "histogram") return false;
+  if (xAxisKind === "category") return false;
+  return config.series.length > 0;
 }
 
 /** right 軸に割り当てられた系列があるか */

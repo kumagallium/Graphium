@@ -98,33 +98,111 @@ function sleepTable(id: string) {
   };
 }
 
-function chartContent(config: Record<string, unknown>, extraTables: any[] = []) {
+/**
+ * XRD パターン想定のサンプル（2θ × 強度）。
+ * ピークをガウス形で足して 10〜60° を 0.5° 刻みで作る。試料ごとに強度の桁を
+ * 変えてあり、規格化しないと段の高さが揃わないことが見える。
+ */
+function xrdTable(id: string, peaks: Array<[number, number]>, background: number) {
+  // Math.random だとストーリーを開くたび形が変わるので、決定的な擬似ノイズにする
+  const noiseAt = (x: number) => {
+    const v = Math.sin(x * 12.9898) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const rows = [];
+  for (let x = 10; x <= 60; x += 0.5) {
+    let y = background * (0.8 + 0.4 * noiseAt(x));
+    for (const [center, height] of peaks) {
+      y += height * Math.exp(-((x - center) ** 2) / 0.6);
+    }
+    rows.push({ cells: [cell(x.toFixed(1)), cell(String(Math.round(y)))] });
+  }
+  return {
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [{ cells: [cell("2θ (deg)"), cell("Intensity")] }, ...rows],
+    },
+  };
+}
+
+type DemoOptions = {
+  extraTables?: any[];
+  /** 既定の頭痛ダイアリーの代わりに置くテーブル群 */
+  baseTables?: any[];
+  lead?: string;
+  /** チャートをテーブルより前に置く（XRD は行数が多く、後ろだと見るのに延々スクロールする） */
+  chartFirst?: boolean;
+};
+
+function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
+  const tables = [...(opts.baseTables ?? [diaryTable("diary-table-1")]), ...(opts.extraTables ?? [])];
+  const chart = { type: "chart", props: { config: JSON.stringify(config) } };
   return [
     {
       type: "paragraph",
-      content: cell("頭痛ダイアリー（サンプル）。テーブルを編集するとチャートが追従する。"),
+      content: cell(
+        opts.lead ?? "頭痛ダイアリー（サンプル）。テーブルを編集するとチャートが追従する。"
+      ),
     },
-    diaryTable("diary-table-1"),
-    ...extraTables,
-    { type: "chart", props: { config: JSON.stringify(config) } },
+    ...(opts.chartFirst ? [chart, ...tables] : [...tables, chart]),
   ];
 }
 
-function ChartDemo({
-  config,
-  extraTables,
-}: {
-  config: Record<string, unknown>;
-  extraTables?: any[];
-}) {
+function ChartDemo({ config, ...opts }: { config: Record<string, unknown> } & DemoOptions) {
   return (
     <EditorProviders>
       <div style={{ maxWidth: 680, border: "1px solid #e5e7eb", borderRadius: 12, padding: 8 }}>
-        <SandboxEditor blocks={[chartBlock]} initialContent={chartContent(config, extraTables)} />
+        <SandboxEditor blocks={[chartBlock]} initialContent={chartContent(config, opts)} />
       </div>
     </EditorProviders>
   );
 }
+
+/** XRD スタックのストーリー 3 本で共有する試料・文献パターン */
+const XRD_TABLES = [
+  // 測定試料: カウント数が数千
+  xrdTable(
+    "xrd-sample",
+    [
+      [22.5, 3000],
+      [28.3, 8000],
+      [31.7, 4500],
+      [40.2, 2200],
+      [47.8, 1800],
+      [55.1, 1200],
+    ],
+    120
+  ),
+  // 文献 A: 同じ相。桁が 2 つ小さい（規格化しないと潰れる）
+  xrdTable(
+    "xrd-ref-a",
+    [
+      [22.5, 40],
+      [28.3, 100],
+      [31.7, 62],
+      [40.2, 25],
+      [47.8, 20],
+      [55.1, 14],
+    ],
+    1
+  ),
+  // 文献 B: 別の相。ピーク位置が一部ずれ、22.5° の反射を持たない
+  xrdTable(
+    "xrd-ref-b",
+    [
+      [26.6, 90],
+      [31.7, 30],
+      [36.1, 55],
+      [47.8, 18],
+      [52.4, 40],
+    ],
+    2
+  ),
+];
+
+const XRD_LEAD = "XRD の測定パターンと参考文献 2 件を 1 つの図に積んで比べる。";
 
 const series = (list: ChartSeriesConfig[]) => list;
 
@@ -251,6 +329,180 @@ export const InsideLegend: StoryObj = {
           ]),
           legendPosition: "inside-top-right",
           legendOrient: "vertical",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 系列スタイル: 線の種類・太さ・マーカーを系列ごとに変える（白黒印刷でも
+// 系列を区別できる、論文図の描き分け）
+export const SeriesStyles: StoryObj = {
+  name: "系列スタイル（線種・太さ・マーカー）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "line",
+          series: series([
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "痛み",
+              lineWidth: "thick",
+              symbol: "emptyCircle",
+              symbolSize: "large",
+            },
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "薬(錠)",
+              lineType: "dashed",
+              lineWidth: "thin",
+              showSymbol: false,
+            },
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "気圧",
+              axis: "right",
+              lineType: "dotted",
+              symbol: "emptyTriangle",
+            },
+          ]),
+          yMin: "0",
+          yMax: "10",
+          caption: "系列ごとに線の種類・太さ・マーカーを変えた例",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 棒の見た目: 幅を広げて積み上げる（同じ軸の棒系列が 1 本に積まれる）
+export const StackedBars: StoryObj = {
+  name: "棒（幅・積み上げ）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "bar",
+          series: series([
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "痛み",
+              barWidth: "wide",
+              stacked: true,
+            },
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "薬(錠)",
+              barWidth: "wide",
+              stacked: true,
+            },
+          ]),
+          caption: "頭痛強度と服薬数を積み上げた例",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 未設定: テーブル選択プレースホルダ（スラッシュメニュー挿入直後の状態）
+// スタック: XRD の測定 + 文献 2 件。強度の桁が違っても規格化で段の高さが揃う
+export const XrdStack: StoryObj = {
+  name: "積み重ね（XRD の測定 × 文献 2 件）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={XRD_TABLES}
+        lead={XRD_LEAD}
+        chartFirst
+        config={{
+          chartType: "line",
+          series: series([
+            { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料" },
+            { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A" },
+            { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B" },
+          ]),
+          stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
+          xMin: "10",
+          xMax: "60",
+          aspect: "wide",
+          xAxisName: "2θ (deg)",
+          yAxisName: "Intensity (a.u.)",
+          caption: "測定パターンと参考文献の比較",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 系列ごとの倍率・段位置調整: 弱いパターンを ×3 して読めるようにする
+export const XrdStackAdjusted: StoryObj = {
+  name: "積み重ね（倍率 ×3 と段位置の調整）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={XRD_TABLES}
+        lead={XRD_LEAD}
+        chartFirst
+        config={{
+          chartType: "line",
+          series: series([
+            { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料" },
+            // 段の位置を少しだけ持ち上げて、下の段の高いピークから逃がす
+            {
+              sourceBlockId: "xrd-ref-a",
+              xColumn: "2θ (deg)",
+              yColumn: "Intensity",
+              label: "文献 A",
+              offsetAdjust: 0.15,
+            },
+            // 微弱なパターンを拡大する。拡大するなら上が空いている最上段に置く
+            {
+              sourceBlockId: "xrd-ref-b",
+              xColumn: "2θ (deg)",
+              yColumn: "Intensity",
+              label: "文献 B (×3)",
+              scale: 3,
+            },
+          ]),
+          stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
+          xMin: "10",
+          xMax: "60",
+          aspect: "wide",
+          xAxisName: "2θ (deg)",
+          yAxisName: "Intensity (a.u.)",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 段ラベルを凡例に出す版（既定の inline との比較用）
+export const XrdStackLegendLabels: StoryObj = {
+  name: "積み重ね（段の名前を凡例に）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={XRD_TABLES}
+        lead={XRD_LEAD}
+        chartFirst
+        config={{
+          chartType: "line",
+          series: series([
+            { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料" },
+            { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A" },
+            { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B" },
+          ]),
+          stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-top", labels: "legend" },
+          xMin: "10",
+          xMax: "60",
+          aspect: "wide",
+          yAxisName: "Intensity (a.u.)",
         }}
       />
     </ErrorBoundary>
