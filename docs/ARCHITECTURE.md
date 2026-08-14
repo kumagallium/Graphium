@@ -210,6 +210,18 @@ talks to LLM and embedding backends.
   a BlockNote upgrade adds new built-ins. Blocks outside that set are
   stripped on load and then auto-saved — an unregistered block is data loss,
   and a container takes its children with it.
+- Every custom block also needs a Markdown conversion, written beside the
+  block in its own `to-markdown.ts` and registered in `src/blocks/markdown.ts`.
+  Markdown export lowers custom blocks into standard ones before serializing,
+  and every path that produces Markdown — single-note export, the backup zip,
+  copying blocks, quoting a selection to the AI — goes through
+  `blocksToMarkdown` so those paths cannot drift apart. Serializing a custom
+  block directly would emit whatever its React view rendered, down to button
+  labels and loading placeholders; a formula would come out as KaTeX's
+  rendered glyphs instead of its LaTeX source. A block with no conversion
+  falls back to its plain text, which for `content: "none"` blocks (chart,
+  calc, PDF) is nothing at all, so it vanishes from the export.
+  `registry.test.ts` fails when the two registries disagree.
 - Features that annotate a *standard* block do not add a block type. They
   keep a side store keyed by block id (`mediaInlineLabels`, `blockAlignments`,
   `mediaOcr`), because extending BlockNote's own image / file blocks is
