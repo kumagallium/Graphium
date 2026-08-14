@@ -26,6 +26,8 @@ export function loadECharts(): Promise<typeof import("echarts/core")> {
         components.GridComponent,
         components.TooltipComponent,
         components.LegendComponent,
+        // スタック表示の段ラベル（各段の右端に置く名前）に使う
+        components.MarkPointComponent,
         renderers.SVGRenderer,
       ]);
       return core;

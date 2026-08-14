@@ -20,12 +20,16 @@ import { ChartSpline, SlidersHorizontal } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { getLocale, t, useLocaleSubscription } from "../../i18n";
 import {
+  applyStack,
   buildChartData,
   parseDateTime,
   parseNumeric,
   readTableData,
+  unstackValue,
   type ChartDataResult,
+  type ChartSeriesData,
   type TableData,
+  type XAxisKind,
 } from "./chart-data";
 import { loadECharts } from "./echarts-loader";
 import {
@@ -44,10 +48,12 @@ import {
   CHART_TICK_LENGTH,
 } from "./chart-theme";
 import {
+  isStackActive,
   parseChartBlockConfig,
   resolveSeriesStyle,
   serializeChartBlockConfig,
   seriesConfigDisplayName,
+  stackSeriesDisplayName,
   suggestSeries,
   usesRightAxis,
   type ChartBlockConfig,
@@ -304,7 +310,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
         </div>
       )}
       {result.kind === "ok" ? (
-        <ChartCanvas result={result} config={config} />
+        <ChartCanvas result={result} config={config} tables={tables} />
       ) : (
         <div style={styles.emptyState}>
           {result.kind === "empty" ? t("chart.noData") : t("chart.noNumericSeries")}
@@ -323,10 +329,34 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
  */
 function buildOption(
   result: Extract<ChartDataResult, { kind: "ok" }>,
-  config: ChartBlockConfig
+  config: ChartBlockConfig,
+  tables: Array<{ id: string; label: string }> = []
 ): any {
   const isHistogram = config.chartType === "histogram";
-  const useRight = !isHistogram && usesRightAxis(config);
+  // スタック中は段の縦位置がすべての意味を持つので、第 2 軸は併用させない
+  const stackActive = isStackActive(config, result.xAxis);
+  const useRight = !isHistogram && !stackActive && usesRightAxis(config);
+
+  // 描画に使う値は規格化 + 段オフセット後のもの。元の値は各系列に残る
+  // offset / scale から復元してツールチップに出す
+  const view = stackActive
+    ? applyStack(result, {
+        normalize: config.stack.normalize,
+        gap: config.stack.gap,
+        order: config.stack.order,
+        perSeries: config.series.map((s) => ({ scale: s.scale, offsetAdjust: s.offsetAdjust })),
+      })
+    : result;
+
+  // 段の名前は「別の列」ではなく「別の試料・別の文献」なので、既定はテーブル名
+  const tableLabelOf = (blockId: string) => tables.find((tb) => tb.id === blockId)?.label;
+  const seriesName = (i: number): string => {
+    const sc = config.series[i];
+    if (!sc) return "";
+    return stackActive
+      ? stackSeriesDisplayName(sc, tableLabelOf(sc.sourceBlockId))
+      : seriesConfigDisplayName(sc);
+  };
 
   // X 軸名の自動値: histogram は対象列、それ以外は全系列で共通の X 列名
   const xColumns = [...new Set(config.series.map((s) => (isHistogram ? s.yColumn : s.xColumn)))];
@@ -334,13 +364,17 @@ function buildOption(
 
   const leftSeries = config.series.filter((s) => s.axis !== "right");
   const rightSeries = config.series.filter((s) => s.axis === "right");
+  // スタック中は縦軸が a.u.（段の高さに絶対的な意味がない）ので、
+  // 系列名を軸名に流用しない。名前を出すならユーザーが明示する
   const yName =
     config.yAxisName.trim() ||
-    (isHistogram
-      ? t("chart.frequency")
-      : leftSeries.length === 1
-        ? seriesConfigDisplayName(leftSeries[0])
-        : "");
+    (stackActive
+      ? ""
+      : isHistogram
+        ? t("chart.frequency")
+        : leftSeries.length === 1
+          ? seriesConfigDisplayName(leftSeries[0])
+          : "");
   const yRightName =
     config.yRightAxisName.trim() ||
     (rightSeries.length === 1 ? seriesConfigDisplayName(rightSeries[0]) : "");
@@ -348,10 +382,12 @@ function buildOption(
   // プロット領域の余白。凡例の座標計算にも同じ値を使う
   const gridLeft = yName ? 84 : 60;
   const gridRight = useRight ? (yRightName ? 84 : 60) : 32;
+  // 段ラベルを図に直接置くときは、凡例は同じ情報の二重表示になるので出さない
+  const showLegend = config.showLegend && !(stackActive && config.stack.labels === "inline");
   const legendTop =
-    config.showLegend &&
+    showLegend &&
     (config.legendPosition === "top-left" || config.legendPosition === "top-right");
-  const legendBottom = config.showLegend && config.legendPosition === "bottom";
+  const legendBottom = showLegend && config.legendPosition === "bottom";
   const gridTop = legendTop ? 48 : 20;
   const gridBottom = (xName ? 64 : 40) + (legendBottom ? 32 : 0);
 
@@ -422,6 +458,25 @@ function buildOption(
   // 棒・ヒストグラムは長さが量を表すので 0 基準のまま
   const fitAxis = config.chartType === "line" || config.chartType === "scatter";
 
+  // スタック時の縦範囲。段の実データから決める（規格化後の値を ECharts の
+  // 自動計算に任せると、キリのいい目盛りに丸められて上下に余白が出る）。
+  // 上側は段ラベルが載るぶんを広く取る
+  const stackRange = (() => {
+    if (!stackActive) return null;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const s of view.series) {
+      for (const [, y] of s.points as Array<[number, number]>) {
+        if (y < lo) lo = y;
+        if (y > hi) hi = y;
+      }
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+    const span = hi - lo || 1;
+    // 下は最下段が枠線に貼り付かない程度、上は段ラベルが載るぶん
+    return { min: lo - span * 0.05, max: hi + span * 0.1 };
+  })();
+
   const leftAxis = {
     type: "value" as const,
     name: yName,
@@ -430,6 +485,17 @@ function buildOption(
     ...(yMin !== null ? { min: yMin } : {}),
     ...(yMax !== null ? { max: yMax } : {}),
     ...axisFromDetail(config.yAxisDetail),
+    // 段の高さは a.u.（規格化とオフセットで元の尺度を失う）なので目盛りを出さない。
+    // 範囲はユーザーが明示していればそちらを優先する
+    ...(stackActive
+      ? {
+          axisTick: { show: false },
+          axisLabel: { show: false },
+          splitLine: { show: false },
+          ...(stackRange && yMin === null ? { min: stackRange.min } : {}),
+          ...(stackRange && yMax === null ? { max: stackRange.max } : {}),
+        }
+      : {}),
   };
   const rightAxis = {
     type: "value" as const,
@@ -465,10 +531,15 @@ function buildOption(
       borderColor: "#cccccc",
       textStyle: { fontSize: 13, color: CHART_INK },
       // 時間軸の値は epoch ms なので、既定のままだと散布図で生の数値が出る。
-      // 見出しに完全な日時を出して 1 点を同定できるようにする
-      ...(result.xAxis === "time" ? { formatter: timeTooltipFormatter(locale) } : {}),
+      // 見出しに完全な日時を出して 1 点を同定できるようにする。
+      // スタック中は描画値が規格化済みなので、元の値に戻して出す
+      ...(stackActive
+        ? { formatter: stackTooltipFormatter(locale, result.xAxis, view.series) }
+        : result.xAxis === "time"
+          ? { formatter: timeTooltipFormatter(locale) }
+          : {}),
     },
-    legend: config.showLegend
+    legend: showLegend
       ? {
           show: true,
           orient: config.legendOrient,
@@ -505,16 +576,31 @@ function buildOption(
               : {}),
           },
     yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
-    series: result.series.map((s, i) => {
+    series: view.series.map((s, i) => {
       const sc = config.series[i];
       const seriesType: SeriesType = isHistogram
         ? "bar"
         : ((sc?.type ?? config.chartType) as SeriesType);
+      const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
+      const name = seriesName(i);
+      const points = s.points as Array<[number, number]>;
+      const inlineLabel = stackActive && config.stack.labels === "inline" && points.length > 0;
       // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
       // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
-      const style = resolveSeriesStyle(sc, seriesType);
+      const baseStyle = resolveSeriesStyle(sc, seriesType);
+      // 積み重ね中だけ既定をマーカー無し・細線・小さめの点に寄せる。スペクトルは
+      // 連続曲線として読むもので、数千点にマーカーを打つと線が潰れるため。
+      // 明示的に設定されているものはそのまま尊重する
+      const style = stackActive
+        ? {
+            ...baseStyle,
+            showSymbol: sc?.showSymbol ?? false,
+            lineWidth: sc?.lineWidth ?? ("thin" as const),
+            symbolSize: sc?.symbolSize ?? ("small" as const),
+          }
+        : baseStyle;
       return {
-        name: sc ? seriesConfigDisplayName(sc) : "",
+        name,
         type: seriesType,
         data: s.points,
         connectNulls: false,
@@ -541,9 +627,59 @@ function buildOption(
         ...(isHistogram
           ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
           : {}),
-        color: sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length],
+        // 段の名前は右端の点の左上に置く。凡例より段との対応が一目で分かる。
+        // symbol: "none" にするとラベルごと描かれないので、大きさ 0 の点に付ける
+        ...(inlineLabel
+          ? {
+              markPoint: {
+                silent: true,
+                animation: false,
+                symbol: "circle",
+                symbolSize: 0,
+                label: {
+                  show: true,
+                  // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
+                  formatter: () => name,
+                  // 右端の点から左上へ逃がす。パターンの線に被ると読めなくなる
+                  position: "left",
+                  offset: [-4, -18],
+                  fontSize: CHART_FONT_SIZE,
+                  color,
+                },
+                data: [{ coord: points[points.length - 1] }],
+              },
+            }
+          : {}),
+        color,
       };
     }),
+  };
+}
+
+/**
+ * スタック時のツールチップ。
+ *
+ * 描画上の y は規格化 + 段オフセット後の値なので、そのまま出すと
+ * 「2 段目の 1.45」のような読めない数字になる。各系列に残した
+ * offset / scale から元の測定値へ戻して出す。
+ */
+function stackTooltipFormatter(
+  locale: ReturnType<typeof getLocale>,
+  xKind: XAxisKind,
+  series: ChartSeriesData[]
+) {
+  return (params: any) => {
+    const list = Array.isArray(params) ? params : [params];
+    if (list.length === 0) return "";
+    const first = list[0];
+    const x = Array.isArray(first.value) ? first.value[0] : first.axisValue;
+    const head = xKind === "time" ? formatFullDateTime(Number(x), locale) : String(x);
+    const rows = list.map((p: any) => {
+      const drawn = Number(Array.isArray(p.value) ? p.value[1] : p.value);
+      const raw = unstackValue(drawn, series[p.seriesIndex]);
+      return `${p.marker ?? ""}${p.seriesName ?? ""}: ${Number.isFinite(raw) ? raw : ""}`;
+    });
+    return [head, ...rows].join("<br/>");
   };
 }
 
@@ -573,9 +709,12 @@ const INSIDE_LEGEND_STYLE = {
 function ChartCanvas({
   result,
   config,
+  tables,
 }: {
   result: Extract<ChartDataResult, { kind: "ok" }>;
   config: ChartBlockConfig;
+  /** スタック時の段名をテーブル名から解決するために渡す */
+  tables?: Array<{ id: string; label: string }>;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const chartElRef = useRef<HTMLDivElement>(null);
@@ -623,9 +762,9 @@ function ChartCanvas({
 
   useEffect(() => {
     if (!chart) return;
-    chart.setOption(buildOption(result, config), true);
+    chart.setOption(buildOption(result, config, tables), true);
     chart.resize();
-  }, [chart, result, config, width, height]);
+  }, [chart, result, config, tables, width, height]);
 
   if (failed) {
     return <div style={styles.emptyState}>{t("chart.noData")}</div>;

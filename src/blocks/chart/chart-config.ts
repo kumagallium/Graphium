@@ -112,6 +112,13 @@ export type ChartSeriesConfig = {
   axis?: SeriesAxis;
   /** 系列ごとの種類（折れ線に棒を重ねる等）。未指定はチャートの種類に従う */
   type?: SeriesType;
+  /**
+   * スタック表示のときだけ効く倍率。弱いピークを拡大して見せる用
+   *（論文図で "×5" と添えるやつ）。未指定は 1
+   */
+  scale?: number;
+  /** スタック表示のときだけ効く段位置の微調整。段が重なるときに手で逃がす */
+  offsetAdjust?: number;
   // ── 見た目（種類ごとに効くものが違う。未指定は種類なりの既定 = 従来の描画）──
   /** 線の種類（折れ線）。未指定は実線 */
   lineType?: SeriesLineType;
@@ -125,9 +132,49 @@ export type ChartSeriesConfig = {
   symbolSize?: SeriesSymbolSize;
   /** 棒の幅（棒）。未指定は自動 */
   barWidth?: SeriesBarWidth;
-  /** 積み上げ（棒）。同じ Y 軸に割り当てた積み上げ系列同士が積み上がる */
+  /**
+   * 積み上げ（棒）。同じ Y 軸に割り当てた積み上げ系列同士が積み上がる。
+   * スペクトル比較の StackConfig とは別物（あちらは折れ線を縦にずらす）
+   */
   stacked?: boolean;
 };
+
+/** 段の名前をどこに出すか。inline = 各段の右端に直接（論文図の作法） */
+export type StackLabelMode = "inline" | "legend";
+
+/** 段を積む向き。first-bottom = 系列 1 が最下段（測定データを下に置く慣習） */
+export type StackOrder = "first-bottom" | "first-top";
+
+/**
+ * スタック表示（XRD などのスペクトル比較）。
+ *
+ * 系列を縦にずらして 1 つの枠に積む。図を複数並べる方式では、各図が自分の
+ * 余白を持つうえに縦軸名・横軸目盛りが図の数だけ出てしまい、論文図の形にならない。
+ * 1 枠に積めば縦軸名も横軸も 1 つになり、範囲指定も自動的に共通になる。
+ *
+ * 縦方向は「規格化してからずらす」のが前提。生値のままだと系列ごとに桁が違って
+ * 段間隔を決められないため、既定で各段の最大値を 1 に揃える。
+ */
+export type StackConfig = {
+  enabled: boolean;
+  /** 段ごとの規格化。max = その段の最大値を 1 に。none は生値のまま積む */
+  normalize: "max" | "none";
+  /** 段間隔（規格化後の単位。1.0 で隣と接する、1.15 で少し空く） */
+  gap: number;
+  order: StackOrder;
+  labels: StackLabelMode;
+};
+
+export const DEFAULT_STACK_CONFIG: StackConfig = {
+  enabled: false,
+  normalize: "max",
+  gap: 1.15,
+  order: "first-bottom",
+  labels: "inline",
+};
+
+/** 段間隔の許容範囲（0 = 完全に重ねる。上限は段が潰れない現実的な値） */
+export const STACK_GAP_RANGE = { min: 0, max: 5 } as const;
 
 /** 未指定を種類なりの既定で埋めた、描画・UI が使う実効スタイル */
 export type ResolvedSeriesStyle = {
@@ -192,6 +239,8 @@ export type ChartBlockConfig = {
   xAxisDetail: AxisDetail;
   yAxisDetail: AxisDetail;
   yRightAxisDetail: AxisDetail;
+  /** スタック表示（スペクトル比較） */
+  stack: StackConfig;
 };
 
 export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
@@ -216,6 +265,7 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   xAxisDetail: DEFAULT_AXIS_DETAIL,
   yAxisDetail: DEFAULT_AXIS_DETAIL,
   yRightAxisDetail: DEFAULT_AXIS_DETAIL,
+  stack: DEFAULT_STACK_CONFIG,
 };
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
@@ -260,6 +310,13 @@ function parseSeries(raw: unknown): ChartSeriesConfig[] {
     if (typeof v.color === "string" && v.color.trim() !== "") entry.color = v.color;
     if (v.axis === "right") entry.axis = "right";
     if (SERIES_TYPES.includes(v.type)) entry.type = v.type;
+    // 倍率 0 以下は系列を消してしまうので読み捨てる（1 として扱う）
+    if (typeof v.scale === "number" && Number.isFinite(v.scale) && v.scale > 0) {
+      entry.scale = v.scale;
+    }
+    if (typeof v.offsetAdjust === "number" && Number.isFinite(v.offsetAdjust)) {
+      entry.offsetAdjust = v.offsetAdjust;
+    }
     // 見た目: 知らない値は落として既定に戻す（壊れた設定で描けなくなるより、
     // 既定の学術スタイルで描けるほうがよい）
     if (LINE_TYPES.includes(v.lineType)) entry.lineType = v.lineType;
@@ -272,6 +329,22 @@ function parseSeries(raw: unknown): ChartSeriesConfig[] {
     out.push(entry);
   }
   return out;
+}
+
+/** スタック設定を部分マージで読む（旧ノートには存在しないので全欠けが常態） */
+function parseStack(raw: unknown): StackConfig {
+  const v = (typeof raw === "object" && raw !== null ? raw : {}) as any;
+  const gap =
+    typeof v.gap === "number" && Number.isFinite(v.gap)
+      ? Math.min(STACK_GAP_RANGE.max, Math.max(STACK_GAP_RANGE.min, v.gap))
+      : DEFAULT_STACK_CONFIG.gap;
+  return {
+    enabled: typeof v.enabled === "boolean" ? v.enabled : DEFAULT_STACK_CONFIG.enabled,
+    normalize: v.normalize === "none" ? "none" : DEFAULT_STACK_CONFIG.normalize,
+    gap,
+    order: v.order === "first-top" ? "first-top" : DEFAULT_STACK_CONFIG.order,
+    labels: v.labels === "legend" ? "legend" : DEFAULT_STACK_CONFIG.labels,
+  };
 }
 
 /** 軸の詳細設定を部分マージで読む（欠けはデフォルト、旧グリッドフラグを引き継げる） */
@@ -365,6 +438,7 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
       bool(parsed.showGridY, bool(parsed.showGrid, false))
     ),
     yRightAxisDetail: parseAxisDetail(parsed.yRightAxisDetail, false),
+    stack: parseStack(parsed.stack),
   };
 }
 
@@ -375,6 +449,34 @@ export function serializeChartBlockConfig(config: ChartBlockConfig): string {
 /** 系列の表示名（label 優先、無ければ Y 列名） */
 export function seriesConfigDisplayName(series: ChartSeriesConfig): string {
   return series.label?.trim() || series.yColumn;
+}
+
+/**
+ * スタック時の段名。label > テーブル名 > Y 列名 の順で解決する。
+ *
+ * 通常の凡例と違って既定値がテーブル名なのは、スペクトル比較では各段が
+ * 「別の試料・別の文献」であって「別の列」ではないため。XRD なら全段の Y 列が
+ * Intensity なので、列名を出すと段の区別がつかない。
+ */
+export function stackSeriesDisplayName(
+  series: ChartSeriesConfig,
+  tableLabel: string | undefined
+): string {
+  return series.label?.trim() || tableLabel?.trim() || series.yColumn;
+}
+
+/**
+ * スタック表示が実際に効くか。
+ *
+ * ヒストグラムは縦軸が度数そのもので、段をずらすと数え上げの意味が壊れる。
+ * カテゴリ軸も段のオフセットが目盛りとかみ合わないため外す（軸種は
+ * データを読んで初めて決まるので、呼び出し側から渡してもらう）。
+ */
+export function isStackActive(config: ChartBlockConfig, xAxisKind?: XAxisKind): boolean {
+  if (!config.stack.enabled) return false;
+  if (config.chartType === "histogram") return false;
+  if (xAxisKind === "category") return false;
+  return config.series.length > 0;
 }
 
 /** right 軸に割り当てられた系列があるか */

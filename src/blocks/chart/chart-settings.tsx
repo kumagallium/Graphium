@@ -16,6 +16,7 @@ import {
   resolveSeriesStyle,
   seriesConfigDisplayName,
   usesRightAxis,
+  STACK_GAP_RANGE,
   type AxisDetail,
   type ChartBlockConfig,
   type ChartSeriesConfig,
@@ -26,17 +27,30 @@ import {
   type SeriesSymbolShape,
   type SeriesSymbolSize,
   type SeriesType,
+  type StackConfig,
+  type StackLabelMode,
+  type StackOrder,
   type XAxisKindSetting,
 } from "./chart-config";
 import type { ChartAspect } from "./chart-theme";
 
 /** 設定パネル内のトグルスイッチ（settings/modal.tsx の switch と同じ見た目） */
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  /** 他の設定に上書きされて効かない状態（積み重ね中の目盛り表示など） */
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       style={{
         flexShrink: 0,
@@ -47,7 +61,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
         borderRadius: 999,
         border: "1px solid var(--color-border)",
         background: checked ? "var(--color-primary)" : "var(--color-input)",
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.4 : 1,
         transition: "background 0.15s",
         padding: 0,
       }}
@@ -71,17 +86,40 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 const ROTATE_CHOICES = [0, 30, 45, 90];
 
 /**
+ * 任意入力の数値を読む。空欄・読めない値は未設定（undefined = 既定値に戻す）。
+ * positiveOnly は倍率用（0 以下だと系列が消えるため受け付けない）。
+ */
+function parseOptionalNumber(raw: string, positiveOnly: boolean): number | undefined {
+  const s = raw.trim();
+  if (s === "") return undefined;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return undefined;
+  if (positiveOnly && n <= 0) return undefined;
+  return n;
+}
+
+/**
  * 軸ごとの「詳細設定」（eureco 準拠の折りたたみ）:
  * 軸・軸線・目盛り・目盛りラベルの表示、ラベルの回転、目盛りの向き、グリッド。
+ *
+ * 縦軸に限り、末尾に積み重ね（スペクトル比較）の設定を持つ。使う場面が
+ * 限られる特殊な描き方なので、常時見えるところには置かない。
  */
 function AxisDetailEditor({
   detail,
   onChange,
+  stack,
+  onStackChange,
 }: {
   detail: AxisDetail;
   onChange: (patch: Partial<AxisDetail>) => void;
+  /** 縦軸のときだけ渡す。積み重ねの設定をこの折りたたみに同居させる */
+  stack?: StackConfig;
+  onStackChange?: (patch: Partial<StackConfig>) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // 積み重ね中は縦軸の目盛りを描画側で強制的に消すため、ここの指定は効かない
+  const ticksLocked = stack?.enabled ?? false;
   return (
     <div style={detailStyles.shell}>
       <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
@@ -99,12 +137,24 @@ function AxisDetailEditor({
             <Toggle checked={detail.showLine} onChange={(v) => onChange({ showLine: v })} />
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.ticksShow")}</span>
-            <Toggle checked={detail.showTicks} onChange={(v) => onChange({ showTicks: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.ticksShow")}
+            </span>
+            <Toggle
+              checked={detail.showTicks && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showTicks: v })}
+            />
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.tickLabelsShow")}</span>
-            <Toggle checked={detail.showLabels} onChange={(v) => onChange({ showLabels: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.tickLabelsShow")}
+            </span>
+            <Toggle
+              checked={detail.showLabels && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showLabels: v })}
+            />
           </div>
           <div style={detailStyles.row}>
             <span style={detailStyles.label}>{t("chart.tickLabelRotate")}</span>
@@ -135,10 +185,124 @@ function AxisDetailEditor({
             </select>
           </div>
           <div style={detailStyles.row}>
-            <span style={detailStyles.label}>{t("chart.gridShow")}</span>
-            <Toggle checked={detail.showGrid} onChange={(v) => onChange({ showGrid: v })} />
+            <span style={{ ...detailStyles.label, opacity: ticksLocked ? 0.4 : 1 }}>
+              {t("chart.gridShow")}
+            </span>
+            <Toggle
+              checked={detail.showGrid && !ticksLocked}
+              disabled={ticksLocked}
+              onChange={(v) => onChange({ showGrid: v })}
+            />
           </div>
+          {stack && onStackChange && <StackFields stack={stack} onChange={onStackChange} />}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 積み重ね（スペクトル比較）の設定。縦軸の「詳細設定」の末尾に置く。
+ *
+ * 縦軸の目盛りを消して系列を段に分ける描き方なので、目盛りの表示設定と同じ
+ * 場所にある方がどちらが効いているのか分かる。使う場面は限られるため、
+ * 折りたたみの外には出さない。
+ */
+function StackFields({
+  stack,
+  onChange,
+}: {
+  stack: StackConfig;
+  onChange: (patch: Partial<StackConfig>) => void;
+}) {
+  const [open, setOpen] = useState(stack.enabled);
+  return (
+    <div style={detailStyles.subGroup}>
+      <div style={detailStyles.subHeader}>
+        <button type="button" onClick={() => setOpen(!open)} style={detailStyles.subHeaderButton}>
+          <span>{t("chart.sectionStack")}</span>
+          {open ? <ChevronUp size={12} strokeWidth={2} /> : <ChevronDown size={12} strokeWidth={2} />}
+        </button>
+        {/* 入り切りは畳んだままでも触れる。入れたら中身を出す（設定せずに閉じない） */}
+        <Toggle
+          checked={stack.enabled}
+          onChange={(v) => {
+            onChange({ enabled: v });
+            if (v) setOpen(true);
+          }}
+        />
+      </div>
+      {open && !stack.enabled && <div style={detailStyles.hint}>{t("chart.stackHint")}</div>}
+      {open && stack.enabled && (
+        <>
+          <div style={detailStyles.hint}>{t("chart.stackHint")}</div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackNormalize")}</span>
+            <select
+              value={stack.normalize}
+              onChange={(e) => onChange({ normalize: e.target.value as StackConfig["normalize"] })}
+              style={detailStyles.smallSelect}
+            >
+              <option value="max">{t("chart.stackNormalizeMax")}</option>
+              <option value="none">{t("chart.stackNormalizeNone")}</option>
+            </select>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackGap")}</span>
+            <span style={detailStyles.rangeGroup}>
+              <input
+                type="range"
+                min={STACK_GAP_RANGE.min}
+                max={STACK_GAP_RANGE.max}
+                step={0.05}
+                value={stack.gap}
+                onChange={(e) => onChange({ gap: Number(e.target.value) })}
+                style={{ width: 64 }}
+              />
+              <span style={detailStyles.rangeValue}>{stack.gap.toFixed(2)}</span>
+            </span>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackOrder")}</span>
+            <span style={styles.segment}>
+              {(["first-bottom", "first-top"] as const).map((order: StackOrder) => (
+                <button
+                  key={order}
+                  type="button"
+                  onClick={() => onChange({ order })}
+                  style={{
+                    ...styles.segmentButton,
+                    ...(stack.order === order ? styles.segmentButtonActive : {}),
+                  }}
+                >
+                  {order === "first-bottom"
+                    ? t("chart.stackOrderFirstBottom")
+                    : t("chart.stackOrderFirstTop")}
+                </button>
+              ))}
+            </span>
+          </div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.stackLabels")}</span>
+            <span style={styles.segment}>
+              {(["inline", "legend"] as const).map((mode: StackLabelMode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onChange({ labels: mode })}
+                  style={{
+                    ...styles.segmentButton,
+                    ...(stack.labels === mode ? styles.segmentButtonActive : {}),
+                  }}
+                >
+                  {mode === "inline"
+                    ? t("chart.stackLabelsInline")
+                    : t("chart.stackLabelsLegend")}
+                </button>
+              ))}
+            </span>
+          </div>
+        </>
       )}
     </div>
   );
@@ -188,6 +352,46 @@ const detailStyles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--color-input)",
     background: "var(--color-card)",
     color: "var(--color-foreground)",
+  },
+  // 詳細設定の中の入れ子グループ。折りたたみのヘッダ（chevron 付き）で
+  // 他の行と区別が付くので、区切り線などは足さない
+  subGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 7,
+  },
+  subHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  subHeaderButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: 0,
+    fontSize: 12,
+    border: "none",
+    background: "transparent",
+    color: "var(--color-foreground)",
+    cursor: "pointer",
+  },
+  hint: {
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: "var(--color-text-tertiary)",
+  },
+  rangeGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  rangeValue: {
+    width: 28,
+    textAlign: "right",
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
   },
 };
 
@@ -471,6 +675,10 @@ export function ChartSettingsPanel({
     onChange({ series: next });
   };
 
+  const updateStack = (patch: Partial<StackConfig>) => {
+    onChange({ stack: { ...config.stack, ...patch } });
+  };
+
   const moveSeries = (index: number, delta: number) => {
     const next = [...config.series];
     const to = index + delta;
@@ -724,6 +932,51 @@ export function ChartSettingsPanel({
                         </div>
                       )}
 
+                      {!isHistogram && config.stack.enabled && (
+                        <>
+                          <div style={styles.assignLabel}>{t("chart.stackSeriesSection")}</div>
+                          <label style={styles.fieldRow}>
+                            <span style={{ ...styles.fieldLabel, width: 76 }}>{t("chart.seriesScale")}</span>
+                            {/*
+                              入力中の "0." を数値に変換すると 0 に丸められて打てなくなるため、
+                              確定は blur / Enter のとき。key は外から値が変わったときの同期用
+                            */}
+                            <input
+                              key={`scale-${i}-${series.scale ?? ""}`}
+                              type="text"
+                              inputMode="decimal"
+                              defaultValue={series.scale ?? ""}
+                              placeholder="1"
+                              onBlur={(e) =>
+                                updateSeries(i, { scale: parseOptionalNumber(e.target.value, true) })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              style={{ ...styles.input, width: 72 }}
+                            />
+                          </label>
+                          <label style={styles.fieldRow}>
+                            <span style={{ ...styles.fieldLabel, width: 76 }}>{t("chart.seriesOffsetAdjust")}</span>
+                            <input
+                              key={`offset-${i}-${series.offsetAdjust ?? ""}`}
+                              type="text"
+                              inputMode="decimal"
+                              defaultValue={series.offsetAdjust ?? ""}
+                              placeholder="0"
+                              onBlur={(e) =>
+                                updateSeries(i, {
+                                  offsetAdjust: parseOptionalNumber(e.target.value, false),
+                                })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              style={{ ...styles.input, width: 72 }}
+                            />
+                          </label>
+                        </>
+                      )}
                       <SeriesStyleEditor
                         series={series}
                         effectiveType={
@@ -841,6 +1094,9 @@ export function ChartSettingsPanel({
           <AxisDetailEditor
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
+            // 積み重ねは縦軸の目盛りを消す描き方なので、縦軸の詳細設定に同居させる
+            stack={isHistogram ? undefined : config.stack}
+            onStackChange={isHistogram ? undefined : updateStack}
           />
 
           {rightAxisInUse && (
