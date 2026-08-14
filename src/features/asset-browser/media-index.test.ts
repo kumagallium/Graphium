@@ -357,7 +357,31 @@ describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
     );
     expect(collectSourceAssetFileIdsFromDoc({})).toEqual(new Set());
   });
+
+  it("取り込みで作られたテーブルの元ファイル（tableMeta.source.fileId）を集める", () => {
+    // 表のセルにはファイルの痕跡が残らないため、ここで拾わないと元データだけ
+    // 利用ノートが空になり、アセットグラフにも出ない
+    const doc: { pages: { tableMeta: Record<string, { source?: { fileId?: string } }> }[] } = {
+      pages: [
+        {
+          tableMeta: {
+            "table-1": { source: { fileId: "dat-1" } },
+            // 手打ちの表（source を持たない）は混ざらない
+            "table-2": {},
+          },
+        },
+        { tableMeta: { "table-3": { source: { fileId: "dat-2" } } } },
+      ],
+    };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set(["dat-1", "dat-2"]));
+  });
+
+  it("素材として登録していない取り込み（fileId 無し）は何も足さない", () => {
+    const doc = { pages: [{ tableMeta: { "table-1": { source: {} } } }] };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set());
+  });
 });
+
 
 describe("ensureMediaIndex (フル再構築時の URL ブックマーク usedIn)", () => {
   const RAW_URL = "https://example.com/article";

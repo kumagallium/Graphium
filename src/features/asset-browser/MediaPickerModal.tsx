@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import {
   fetchUrlMetadata,
@@ -119,6 +120,12 @@ function PickerItem({
             <span className="text-xl">📝</span>
           </div>
         );
+      case "data":
+        return (
+          <div className="w-full h-20 flex items-center justify-center rounded bg-muted">
+            <span className="text-xl">🧾</span>
+          </div>
+        );
       case "url":
         return (
           <div className="w-full h-20 flex flex-col items-center justify-center gap-1 rounded bg-muted px-2">
@@ -169,6 +176,14 @@ export type MediaPickerModalProps = {
   onClose: () => void;
   /** 新規アップロード（File → URL を返す） */
   onUpload?: (file: File) => Promise<string>;
+  /**
+   * 選んだファイルを、素材にする前に呼び出し元へ渡す（指定時は onUpload を使わない）。
+   *
+   * データ取り込みのように「まず中身を見せてから、確定したときだけ素材にする」
+   * 流れのための逃げ道。ここでアップロードしてしまうと、ダイアログをキャンセル
+   * したファイルまで素材に溜まる。
+   */
+  onPickLocalFile?: (file: File) => void;
   /** URL ブックマーク登録コールバック（mediaType === "url" のとき使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** 初期 URL（ペースト時に自動入力する） */
@@ -187,6 +202,7 @@ export function MediaPickerModal({
   onSelect,
   onClose,
   onUpload,
+  onPickLocalFile,
   onAddUrlBookmark,
   initialUrl,
   allowDisplayMode = false,
@@ -450,7 +466,7 @@ export function MediaPickerModal({
             </div>
           )}
           {/* メディアタイプ: 新規アップロードボタン */}
-          {!isUrlType && onUpload && (
+          {!isUrlType && (onUpload || onPickLocalFile) && (
             <div className="mb-3">
               <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-border text-foreground transition-colors ${uploading ? "opacity-50 pointer-events-none" : "hover:bg-muted cursor-pointer"}`}>
                 {uploading ? (
@@ -469,19 +485,29 @@ export function MediaPickerModal({
                     : mediaType === "audio" ? "audio/*"
                     : mediaType === "pdf" ? "application/pdf"
                     : mediaType === "document" ? ".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt"
+                    : mediaType === "data" ? DELIMITED_FILE_ACCEPT
                     : "*/*"
                   }
                   className="hidden"
                   disabled={uploading}
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
+                    // 同じファイルを選び直せるように値を戻しておく
+                    e.target.value = "";
                     if (!file) return;
+                    // 呼び出し元が「素材にする前に受け取る」経路を持つならそちらへ渡す
+                    if (onPickLocalFile) {
+                      onPickLocalFile(file);
+                      onClose();
+                      return;
+                    }
+                    if (!onUpload) return;
                     setUploading(true);
                     try {
                       const url = await onUpload(file);
                       // Documents タブ経由のアップロードでは MIME に応じて pdf / document を分岐
                       const resolvedType =
-                        mediaType === "document" ? mimeToMediaType(file.type) : mediaType;
+                        mediaType === "document" ? mimeToMediaType(file.type, file.name) : mediaType;
                       onSelect({
                         fileId: "",
                         name: file.name,

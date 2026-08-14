@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
 import type { WikiKind } from "../lib/document-types";
@@ -119,6 +119,9 @@ const LABEL_HEX: Record<string, string> = {
 const MEDIA_NAV_ITEMS: { type: MediaType; icon: ReactNode }[] = [
   { type: "image", icon: <Image size={14} /> },
   { type: "document", icon: <FileText size={14} /> },
+  // 装置の生データ（.csv / .dat 等）。読む物ではなく表にする物なので
+  // Documents とは別の棚に置く
+  { type: "data", icon: <Table size={14} /> },
   { type: "video", icon: <Video size={14} /> },
   { type: "audio", icon: <Volume2 size={14} /> },
   { type: "url", icon: <Link size={14} /> },

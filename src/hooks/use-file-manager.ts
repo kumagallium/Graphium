@@ -1657,7 +1657,7 @@ export function useFileManager(authenticated: boolean) {
       const entry: MediaIndexEntry = {
         fileId: result.fileId,
         name: result.name,
-        type: mimeToMediaType(result.mimeType),
+        type: mimeToMediaType(result.mimeType, result.name),
         mimeType: result.mimeType,
         url: result.url,
         thumbnailUrl: result.url.replace("=s0", "=s200"),
@@ -1672,7 +1672,14 @@ export function useFileManager(authenticated: boolean) {
       const updated = addMediaEntry(current, entry);
       mediaIndexRef.current = updated;
       setMediaIndex(updated);
-      saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      // 保存を待つ。ノート保存などをきっかけに走るインデックス再構築は
+      // ディスク上の index を正として読み直すため、保存前に再構築が走ると
+      // 今書いたエントリの付加情報（contentHash 等）が落ちる。
+      try {
+        await saveMediaIndex(updated);
+      } catch (err) {
+        console.warn("メディアインデックス保存失敗:", err);
+      }
       // 貼付直後の自動 OCR がプロバイダから読み戻さずに済むよう File 実体を預ける
       registerPendingOcrFile(result.url, file);
       return { url: result.url, fileId: result.fileId, entry };

@@ -21,4 +21,4 @@ export {
   withColumnType,
   withoutColumnType,
 } from "./types";
-export type { ColumnType, TableMeta } from "./types";
+export type { ColumnType, TableMeta, TableSource } from "./types";

@@ -2,13 +2,14 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch } from "./media-index";
+import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage } from "../media-ocr";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
@@ -332,6 +333,12 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
     }
     case "url":
       return <UrlThumbnail entry={entry} compact={compact} />;
+    case "data": {
+      const cls = compact
+        ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
+        : "w-full h-40 flex items-center justify-center bg-muted";
+      return <div className={cls}><Table size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
+    }
     default: {
       const cls = compact
         ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
@@ -725,6 +732,9 @@ export function AssetGalleryView({
     url: "",
     // Documents タブは PDF + Word/Excel/PowerPoint を受ける
     document: ".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf",
+    // 装置の生データ。ここに置いた素材は本文へ挿入するときに
+    // 取り込みダイアログを通って表になる
+    data: DELIMITED_FILE_ACCEPT,
     // memo は transient なピーク専用タイプ（アップロード経路には現れない）
     memo: "",
     other: "",

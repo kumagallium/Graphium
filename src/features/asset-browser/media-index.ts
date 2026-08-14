@@ -2,6 +2,7 @@
 // 全メディアファイルのメタデータを1ファイルに集約し、ギャラリー表示を高速化する
 
 import { getActiveProvider } from "../../lib/storage/registry";
+import { isDelimitedDataFile } from "../data-import/file-kind";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -10,7 +11,7 @@ const INDEX_FILE_NAME = ".graphium-media-index.json";
 // ── 型定義 ──
 
 /** メディアの種類 */
-export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "memo" | "other";
+export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "data" | "memo" | "other";
 
 /**
  * 「素材ライブラリ」として扱うドキュメント MIME 一覧。
@@ -220,11 +221,20 @@ export type MediaIndex = {
 
 // ── MIME → MediaType 変換 ──
 
-export function mimeToMediaType(mimeType: string): MediaType {
+/**
+ * MIME（と分かればファイル名）から素材の種類を決める。
+ *
+ * 装置が吐く .dat / .txt は MIME が text/plain や空、application/octet-stream と
+ * まちまちで、MIME だけでは "other" に落ちて素材一覧から消える。名前が分かる場合は
+ * 拡張子で "data" に振り分ける。読む物（PDF / Word）とは用途が違い、表にして
+ * 使うものなので、素材一覧でも別の棚に置く。
+ */
+export function mimeToMediaType(mimeType: string, fileName?: string): MediaType {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
   if (mimeType === "application/pdf") return "pdf";
+  if (fileName && isDelimitedDataFile(fileName)) return "data";
   if (isDocumentMime(mimeType)) return "document";
   return "other";
 }
@@ -510,6 +520,10 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
   sourceUrl?: string | null | undefined;
   citedAssetFileIds?: string[] | null | undefined;
   sourceTextFileId?: string | null | undefined;
+  pages?:
+    | Array<{ tableMeta?: Record<string, { source?: { fileId?: string } }> | null }>
+    | null
+    | undefined;
 }): Set<string> {
   const ids = collectPdfFileIdsFromDoc(doc);
   if (doc.sourceDocumentFileId) ids.add(doc.sourceDocumentFileId);
@@ -534,8 +548,19 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
       ids.add(ref);
     }
   }
+  // 区切りテキストから取り込んだテーブルの元ファイル（tableMeta.source.fileId）。
+  // 表のセルにはファイルの痕跡が残らないため、ブロック走査では拾えない。これを
+  // 入れないと元データだけ「利用ノート」が空になり、アセットグラフにも出ないうえ、
+  // 削除前の参照チェックをすり抜けて表の出所が消える。
+  for (const page of doc.pages ?? []) {
+    for (const meta of Object.values(page?.tableMeta ?? {})) {
+      const fileId = meta?.source?.fileId;
+      if (fileId) ids.add(fileId);
+    }
+  }
   return ids;
 }
+
 
 /** 特定ノートの usedIn を更新（ノート保存時に呼ぶ） */
 export function syncUsedIn(
@@ -582,7 +607,7 @@ export function removeNoteFromUsedIn(
 
 /** メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない） */
 export function countByType(index: MediaIndex): Record<MediaType, number> {
-  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, memo: 0, other: 0 };
+  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, data: 0, memo: 0, other: 0 };
   for (const entry of index.media) {
     if (entry.archivedAt) continue;
     counts[entry.type]++;
@@ -687,7 +712,12 @@ async function listUploadFiles(): Promise<{ id: string; name: string; mimeType: 
 type IndexableDoc = {
   title: string;
   /** mediaOcr は画像ブロックの OCR 結果（blockId → 抽出テキスト）。素材側の ocrText 集約に使う */
-  pages: { blocks: any[]; mediaOcr?: Record<string, { text?: string }> | undefined }[];
+  pages: {
+    blocks: any[];
+    mediaOcr?: Record<string, { text?: string }> | undefined;
+    /** 取り込みで作られたテーブルの出所（元ファイルの fileId を持つ） */
+    tableMeta?: Record<string, { source?: { fileId?: string } }> | undefined;
+  }[];
   wikiMeta?: { derivedFromNotes?: string[] } | null | undefined;
   sourcePdfFileId?: string | null | undefined;
   sourceDocumentFileId?: string | null | undefined;
@@ -752,7 +782,7 @@ export async function ensureMediaIndex(
   // 新規エントリ（disk にあるが index にまだ無い）は Drive 互換 URL でフォールバック。
   for (const file of driveFiles) {
     const existingEntry = existingMap.get(file.id);
-    const type = existingEntry?.type ?? mimeToMediaType(file.mimeType);
+    const type = existingEntry?.type ?? mimeToMediaType(file.mimeType, file.name);
 
     if (existingEntry) {
       // 既存エントリの URL をそのまま保持（server-fs の media-server:// など）
