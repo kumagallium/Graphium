@@ -34,6 +34,7 @@ import { SideMenuExtension } from "@blocknote/core/extensions";
 import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useDuplicateBlocks } from "../features/block-duplicate";
+import { blocksToMarkdown } from "../features/markdown-export/blocks-to-markdown";
 import { useT, getDisplayLabelName } from "../i18n";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
 import { isBlockInsideStep } from "../blocks/step/view";
@@ -185,7 +186,7 @@ function AiAssistantMenuItem() {
           block.type === "heading" || block.type === "step"
             ? collectBlockScope(editor.document, block)
             : [block];
-        const markdown = await editor.blocksToMarkdownLossy(targetBlocks);
+        const markdown = await blocksToMarkdown(editor, targetBlocks);
         aiAssistant.openChat({
           sourceBlockIds: targetBlocks.map((b: any) => b.id),
           quotedMarkdown: markdown,

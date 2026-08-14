@@ -2,19 +2,12 @@
 //
 // ライブエディタを持たない一括変換では、markdown-import と同じパターンで
 // default スキーマのヘッドレス BlockNoteEditor を一時生成して
-// blocksToMarkdownLossy に通す。カスタムブロック / カスタム style は
-// sanitize-blocks.ts で標準ブロックに落としてから食わせる。
+// blocks-to-markdown.ts に渡す（カスタムブロックの落とし込みはそこで共通化）。
 
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import type { GraphiumDocument } from "../../lib/document-types";
-import { sanitizeBlocksForMarkdown, extractInlineText, type SanitizeSchemaInfo } from "./sanitize-blocks";
-
-// default スキーマが知っている type / style を実行時に導出する
-// （ハードコードすると BlockNote のバージョンアップで漏れるため）
-const SCHEMA_INFO: SanitizeSchemaInfo = {
-  knownBlockTypes: new Set(Object.keys(defaultBlockSpecs)),
-  knownStyles: new Set(Object.keys(defaultStyleSpecs)),
-};
+import { extractInlineText } from "./sanitize-blocks";
+import { blocksToMarkdown } from "./blocks-to-markdown";
 
 // ヘッドレスエディタは生成コストがあるため、一括変換中は 1 個を使い回す
 let headlessEditor: { blocksToMarkdownLossy: (blocks: any[]) => Promise<string> } | null = null;
@@ -67,8 +60,7 @@ export async function graphiumDocToMarkdown(doc: GraphiumDocument): Promise<stri
   for (const page of pages) {
     let body: string;
     try {
-      const sanitized = sanitizeBlocksForMarkdown(page.blocks, SCHEMA_INFO);
-      body = sanitized.length > 0 ? await getHeadlessEditor().blocksToMarkdownLossy(sanitized) : "";
+      body = await blocksToMarkdown(getHeadlessEditor(), page.blocks);
     } catch (e) {
       console.warn("[markdown-export] blocksToMarkdownLossy failed, falling back to plain text:", e);
       body = blocksToPlainText(page.blocks);

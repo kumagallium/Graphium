@@ -6,6 +6,7 @@ import { useBlockNoteEditor } from "@blocknote/react";
 import { Trash2, Palette, Bot } from "lucide-react";
 import { useAiAssistant } from "../ai-assistant";
 import { useBlockLifecycle } from "../block-lifecycle";
+import { blocksToMarkdown } from "../markdown-export/blocks-to-markdown";
 import { useT } from "../../i18n";
 
 // BlockNote の色定義
@@ -98,7 +99,7 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
     const blocks = selectedBlockIds
       .map((id: string) => editor.getBlock(id))
       .filter((b: any): b is NonNullable<typeof b> => b != null);
-    const markdown = await editor.blocksToMarkdownLossy(blocks as any);
+    const markdown = await blocksToMarkdown(editor, blocks);
     aiAssistant.openChat({
       sourceBlockIds: selectedBlockIds,
       quotedMarkdown: markdown,
