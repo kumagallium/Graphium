@@ -69,6 +69,9 @@ import {
   mimeToMediaType,
   readMediaIndex,
   ensureMediaIndex,
+  findSameAsset,
+  computeAssetContentHash,
+  backfillContentHashes,
   MEDIA_INDEX_CHANGED_EVENT,
   type MediaIndex,
   type MediaIndexEntry,
@@ -770,6 +773,34 @@ export function useFileManager(authenticated: boolean) {
     })();
     return () => { cancelled = true; };
   }, [authenticated, noteIndex, files, wikiFiles]);
+
+  // 既存素材への contentHash 後追い付与（重複判定の後方互換）
+  //
+  // この仕組みより前に登録された素材はハッシュを持たないため、放っておくと
+  // 「手元にある画像を入れ直したのに素材が増える」ままになる。サインイン後に
+  // 一度だけ背後で回して埋める。1 件ずつ読んで 1 件ずつ保存するので、途中で
+  // 閉じても次回は続きから進む。実体の読み込みは blob URL を作らない
+  // `readMediaBytes` を使う（作ると全素材の blob がセッション中メモリに残る）。
+  const backfilledRef = useRef(false);
+  useEffect(() => {
+    if (!authenticated || !mediaIndex || backfilledRef.current) return;
+    const readMediaBytes = storage().readMediaBytes;
+    if (!readMediaBytes) return; // 未対応プロバイダでは何もしない
+    backfilledRef.current = true;
+    const signal = { aborted: false };
+    void (async () => {
+      try {
+        const filled = await backfillContentHashes(
+          (fileId, maxBytes) => storage().readMediaBytes!(fileId, maxBytes),
+          signal,
+        );
+        if (filled > 0) console.info(`素材のハッシュを ${filled} 件付与しました（重複判定用）`);
+      } catch (err) {
+        console.warn("素材ハッシュの後追い付与に失敗:", err);
+      }
+    })();
+    return () => { signal.aborted = true; };
+  }, [authenticated, mediaIndex]);
 
   // activeFileId や files / wikiFiles が変わったらグラフを再構築。
   // Wiki ページ（Concept / Synthesis）を開いているときも、その wiki の派生関係を
@@ -1645,6 +1676,10 @@ export function useFileManager(authenticated: boolean) {
   //
   // 「素材ライブラリ」経由の取り込み（Word/Excel 等のドキュメント、PDF、画像）で
   // 後段に親 fileId を渡したいときに使う。handleUploadMedia は本関数のラッパー。
+  //
+  // 同じ中身の素材が既にあれば、アップロードせずにそれを使い回す。素材は
+  // 「一つの実体を複数のノートから使う」もの（利用ノートは usedIn が持つ）なので、
+  // 同じバイト列を二つ持っても OCR・注釈・利用ノートが分かれるだけで得が無い。
   const handleUploadAsset = useCallback(
     async (
       file: File,
@@ -1653,6 +1688,36 @@ export function useFileManager(authenticated: boolean) {
         capture?: import("../features/mobile-capture/inbox/types").CaptureMeta;
       },
     ): Promise<{ url: string; fileId: string; entry: MediaIndexEntry }> => {
+      // 判定はアップロードの前に済ませる。後でやると実体だけ増える。
+      const contentHash = await computeAssetContentHash(file);
+      const duplicate = findSameAsset(mediaIndexRef.current, contentHash);
+      if (duplicate) {
+        // 派生元だけは足す。同じ画像が 2 つの PDF から抽出された場合に、
+        // 後から来た方の出どころを捨てないため。
+        const addedParents = (options?.derivedFromAssets ?? []).filter(
+          (id) => id !== duplicate.fileId && !duplicate.derivedFromAssets?.includes(id),
+        );
+        let entry = duplicate;
+        if (addedParents.length > 0) {
+          entry = {
+            ...duplicate,
+            derivedFromAssets: [...(duplicate.derivedFromAssets ?? []), ...addedParents],
+          };
+          const current = mediaIndexRef.current ?? createEmptyIndex();
+          const updated: MediaIndex = {
+            ...current,
+            updatedAt: new Date().toISOString(),
+            media: current.media.map((m) => (m.fileId === entry.fileId ? entry : m)),
+          };
+          mediaIndexRef.current = updated;
+          setMediaIndex(updated);
+          saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+        }
+        // capture（受信箱から来た来歴）は上書きしない。最初に取り込んだ出どころを残す。
+        registerPendingOcrFile(entry.url, file);
+        return { url: entry.url, fileId: entry.fileId, entry };
+      }
+
       const result = await uploadMediaFileWithMeta(file);
       const entry: MediaIndexEntry = {
         fileId: result.fileId,
@@ -1663,6 +1728,7 @@ export function useFileManager(authenticated: boolean) {
         thumbnailUrl: result.url.replace("=s0", "=s200"),
         uploadedAt: new Date().toISOString(),
         usedIn: [],
+        ...(contentHash ? { contentHash } : {}),
         ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
           ? { derivedFromAssets: options.derivedFromAssets }
           : {}),
@@ -1672,14 +1738,7 @@ export function useFileManager(authenticated: boolean) {
       const updated = addMediaEntry(current, entry);
       mediaIndexRef.current = updated;
       setMediaIndex(updated);
-      // 保存を待つ。ノート保存などをきっかけに走るインデックス再構築は
-      // ディスク上の index を正として読み直すため、保存前に再構築が走ると
-      // 今書いたエントリの付加情報（contentHash 等）が落ちる。
-      try {
-        await saveMediaIndex(updated);
-      } catch (err) {
-        console.warn("メディアインデックス保存失敗:", err);
-      }
+      saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
       // 貼付直後の自動 OCR がプロバイダから読み戻さずに済むよう File 実体を預ける
       registerPendingOcrFile(result.url, file);
       return { url: result.url, fileId: result.fileId, entry };

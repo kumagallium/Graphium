@@ -12,6 +12,8 @@ import {
   buildUrlPeekEntry,
   isMobileCapture,
   persistOcrTextPatch,
+  clearMediaIndexCache,
+  saveMediaIndex,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   type MediaIndex,
@@ -22,6 +24,13 @@ import { getActiveProvider } from "../../lib/storage/registry";
 vi.mock("../../lib/storage/registry", () => ({
   getActiveProvider: vi.fn(),
 }));
+
+// media-index は「保存中を含む最新」をモジュールに持つ（保存が飛んでいる最中に
+// ディスクを読んで古い土台の上に上書きするのを防ぐため）。テストごとに別の
+// インデックスを組むので、持ち越さないよう毎回捨てる。
+beforeEach(() => {
+  clearMediaIndexCache();
+});
 
 describe("findBlockIdsByMediaUrl", () => {
   const targetUrl = "https://example.com/image.png";
@@ -569,6 +578,98 @@ describe("ensureMediaIndex（ノートに貼った画像の OCR テキスト集�
   it("空白だけの OCR テキストは写さない", async () => {
     const index = await runRebuild(staleIndex(), docWithOcr("   \n  "));
     expect(index.media[0].ocrText).toBeUndefined();
+  });
+});
+
+describe("ensureMediaIndex（走査中の変更を落とさない）", () => {
+  const existingEntry: MediaIndexEntry = {
+    fileId: "img-1",
+    name: "old.png",
+    type: "image",
+    mimeType: "image/png",
+    url: "local-media://img-1",
+    thumbnailUrl: "",
+    uploadedAt: "2026-01-01T00:00:00.000Z",
+    usedIn: [],
+    contentHash: "sha256:old",
+  };
+
+  /** 走査開始時点のディスク・listing と、ノート読み込み中に走らせる副作用を渡す */
+  const runRebuild = (existing: MediaIndex | null, duringWalk?: () => Promise<void>) => {
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn().mockResolvedValue(existing),
+      writeAppData: vi.fn().mockResolvedValue(undefined),
+      listMediaFiles: vi.fn().mockResolvedValue([
+        { id: "img-1", name: "old.png", mimeType: "image/png", createdTime: "2026-01-01T00:00:00.000Z" },
+      ]),
+    } as any);
+    const doc = { title: "ノート1", pages: [{ blocks: [] }] };
+    return ensureMediaIndex([{ id: "note-1", name: "ノート1" }], new Map(), async () => {
+      // ノート読み込みは秒単位かかる。その最中のアップロード等を再現する
+      if (duringWalk) await duringWalk();
+      return doc;
+    });
+  };
+
+  const stale = (media: MediaIndexEntry[]): MediaIndex => ({
+    version: 4, // 旧バージョン = 強制再構築の経路に入る
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    media,
+  });
+
+  it("走査中にアップロードされた素材とその contentHash を残す", async () => {
+    const uploaded: MediaIndexEntry = {
+      fileId: "img-2",
+      name: "new.png",
+      type: "image",
+      mimeType: "image/png",
+      url: "local-media://img-2",
+      thumbnailUrl: "",
+      uploadedAt: "2026-08-14T00:00:00.000Z",
+      usedIn: [],
+      contentHash: "sha256:new",
+    };
+    // 走査中に handleUploadAsset 相当が走る（listing には間に合わない）
+    const index = await runRebuild(stale([existingEntry]), async () => {
+      await saveMediaIndex({
+        version: CURRENT_MEDIA_INDEX_VERSION,
+        updatedAt: "2026-08-14T00:00:01.000Z",
+        media: [existingEntry, uploaded],
+      });
+    });
+
+    const added = index.media.find((m) => m.fileId === "img-2");
+    expect(added).toBeDefined();
+    expect(added!.contentHash).toBe("sha256:new");
+  });
+
+  it("走査中に既存素材へ書かれた情報（ocrText）を落とさない", async () => {
+    const index = await runRebuild(stale([existingEntry]), async () => {
+      await saveMediaIndex({
+        version: CURRENT_MEDIA_INDEX_VERSION,
+        updatedAt: "2026-08-14T00:00:01.000Z",
+        media: [{ ...existingEntry, ocrText: "走査中に読んだ文字" }],
+      });
+    });
+    expect(index.media.find((m) => m.fileId === "img-1")!.ocrText).toBe("走査中に読んだ文字");
+  });
+
+  it("走査中に削除された素材を復活させない", async () => {
+    const index = await runRebuild(stale([existingEntry]), async () => {
+      await saveMediaIndex({
+        version: CURRENT_MEDIA_INDEX_VERSION,
+        updatedAt: "2026-08-14T00:00:01.000Z",
+        media: [],
+      });
+    });
+    expect(index.media.map((m) => m.fileId)).toEqual([]);
+  });
+
+  it("実体が消えた既存素材は従来どおりインデックスから落とす", async () => {
+    // listing に載っている img-1 のほかに、実体が無い img-gone が index に居る
+    const gone: MediaIndexEntry = { ...existingEntry, fileId: "img-gone", url: "local-media://img-gone" };
+    const index = await runRebuild(stale([existingEntry, gone]));
+    expect(index.media.map((m) => m.fileId)).toEqual(["img-1"]);
   });
 });
 

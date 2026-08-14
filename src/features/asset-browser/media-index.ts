@@ -138,6 +138,22 @@ export type MediaIndexEntry = {
   uploadedAt: string;
   /** 使用されているノート一覧 */
   usedIn: MediaUsage[];
+  /**
+   * 実体バイト列の SHA-256（`"sha256:<hex>"`、optional）。
+   *
+   * 同じファイルを二度素材にしないための一次キー。アップロード時に計算して持たせ、
+   * 次のアップロードは index 内の突き合わせだけで既存素材を見つけられる（実体を
+   * 読み直さない）。画像は `IMG_0001.jpg` のように「同名で別物」「別名で同一」が
+   * 普通にあるので、名前ではなく中身で判定する。
+   *
+   * 持たない素材がある:
+   *   - この仕組みより前にアップロードした既存素材（起動後の後追い付与で埋まる）
+   *   - URL ブックマーク（実体が無い）
+   *   - 実体が大きすぎてハッシュ計算を見送ったもの（`dedupe.ts` の上限参照）
+   * いずれも「判定できない」であって「別物」ではないため、重複判定は
+   * ハッシュを持つ素材どうしでしか行わない。
+   */
+  contentHash?: string;
   /** URL ブックマーク用メタデータ（type === "url" のとき） */
   urlMeta?: UrlMeta;
   /**
@@ -265,10 +281,35 @@ async function getFolderId(): Promise<string> {
 // インデックスファイル ID のキャッシュ
 let cachedIndexFileId: string | null = null;
 
+/**
+ * アプリが知っている最新のインデックス。
+ *
+ * インデックスの更新はどこも「今の index を読む → 書き換える → 保存する」の形で、
+ * 保存はほぼ全ての呼び出し元で fire-and-forget（await しない）。そのため保存が
+ * 飛んでいる最中にディスクを読むと、**書いたばかりの内容を知らない土台**の上で
+ * 次の更新が組み立てられ、上書きで消える。ノート保存を契機に走る
+ * `ensureMediaIndex` が、アップロード直後のエントリを落としていたのがこれ。
+ *
+ * `saveMediaIndex` が保存を投げる前に同期的にここへ控え、読み手はまずこれを見る。
+ * 別ウィンドウなどディスク側が先に進んでいる場合もあるので、`readMediaIndex` は
+ * `updatedAt` で新しい方を選ぶ。
+ */
+let latestIndex: MediaIndex | null = null;
+
+/**
+ * 保存中のものも含めた「アプリが知っている最新のインデックス」を同期的に返す。
+ * ディスク読み込みを挟まずに土台を取り直したい場面（`ensureMediaIndex` の
+ * 走査後など）で使う。まだ一度も読み書きしていなければ null。
+ */
+export function getLatestMediaIndex(): MediaIndex | null {
+  return latestIndex;
+}
+
 /** モジュールキャッシュをクリア（サインアウト時に呼ぶ） */
 export function clearMediaIndexCache(): void {
   cachedFolderId = null;
   cachedIndexFileId = null;
+  latestIndex = null;
 }
 
 async function findIndexFileId(): Promise<string | null> {
@@ -286,8 +327,8 @@ async function findIndexFileId(): Promise<string | null> {
   return null;
 }
 
-/** メディアインデックスを読み込み */
-export async function readMediaIndex(): Promise<MediaIndex | null> {
+/** ディスク上のインデックスをそのまま読む（キャッシュを見ない） */
+async function readStoredMediaIndex(): Promise<MediaIndex | null> {
   const provider = getActiveProvider();
   if (provider.readAppData) {
     return (await provider.readAppData("media-index")) as MediaIndex | null;
@@ -298,8 +339,27 @@ export async function readMediaIndex(): Promise<MediaIndex | null> {
   return res.json();
 }
 
+/**
+ * メディアインデックスを読み込み。
+ *
+ * ディスクと `latestIndex`（保存中のものを含む最新）を突き合わせ、新しい方を返す。
+ * ディスクだけを見ると、保存が飛んでいる最中の更新をなかったことにしてしまう。
+ * `updatedAt` は全ての更新ヘルパが付け直す ISO-8601 なので、文字列比較で足りる。
+ */
+export async function readMediaIndex(): Promise<MediaIndex | null> {
+  const stored = await readStoredMediaIndex();
+  if (latestIndex && (!stored || stored.updatedAt <= latestIndex.updatedAt)) {
+    return latestIndex;
+  }
+  latestIndex = stored;
+  return stored;
+}
+
 /** メディアインデックスを保存（新規作成 or 上書き） */
 export async function saveMediaIndex(index: MediaIndex): Promise<void> {
+  // 書き込みを投げる前に同期的に控える。ここを await の後ろに置くと、
+  // 保存を待っている間に読んだ相手が古い土台の上で更新を組み立ててしまう。
+  latestIndex = index;
   const provider = getActiveProvider();
   if (provider.writeAppData) {
     await provider.writeAppData("media-index", index);
@@ -733,6 +793,13 @@ type IndexableDoc = {
  * 利用関係が拾えない。`MediaUsage.noteId` は Wiki ノートの場合 `wiki:{id}` の
  * prefix 付きで格納する（ナビゲーション側で分岐するため）。
  *
+ * **全ノート走査は秒単位かかり、その間にアップロード・削除が走りうる**。そのため
+ * ここが作るのは「エントリの完成品」ではなく、走査で分かること（素材ごとの
+ * usedIn と、ノートで読んだ OCR テキスト）だけを集めたパッチである。エントリ
+ * そのものの土台は走査を終えた時点の最新インデックス（`getLatestMediaIndex`）から
+ * 取り直し、そこへパッチを当てる。走査開始時のスナップショットに当ててしまうと、
+ * 走査中にアップロードされた素材とその付加情報（`contentHash` など）が消える。
+ *
  * @param noteFiles - 通常ノートのファイル一覧
  * @param docCache - ドキュメントキャッシュ（Wiki は `wiki:{id}` キー）
  * @param loadFileFn - 通常ノート読み込み関数
@@ -772,11 +839,13 @@ export async function ensureMediaIndex(
     (existing?.media ?? []).map((m) => [m.fileId, m])
   );
 
-  const media: MediaIndexEntry[] = [];
+  // 走査の土台。ここでの並びが最終的なエントリの並びになる。
+  const scanned: MediaIndexEntry[] = [];
   // URL ブックマークを先に追加（Drive ファイルとは別管理）。
-  // usedIn は Drive ファイルと同様に一旦リセットし、後段の全ノート走査で埋め直す。
-  // 温存すると走査の再 push で同じ usage が重複し、再構築のたびに積み上がる。
-  media.push(...existingUrlBookmarks.map((m) => ({ ...m, usedIn: [] })));
+  // usedIn は Drive ファイルと同様に一旦リセットし、後段の全ノート走査で埋め直す
+  //（リセットは後段の組み立てで行う）。温存すると走査の再 push で同じ usage が
+  // 重複し、再構築のたびに積み上がる。
+  scanned.push(...existingUrlBookmarks);
 
   // プロバイダー固有の URL 形式を尊重するため、既存エントリの url/thumbnailUrl はそのまま保持する。
   // 新規エントリ（disk にあるが index にまだ無い）は Drive 互換 URL でフォールバック。
@@ -786,14 +855,14 @@ export async function ensureMediaIndex(
 
     if (existingEntry) {
       // 既存エントリの URL をそのまま保持（server-fs の media-server:// など）
-      media.push({ ...existingEntry, usedIn: [] });
+      scanned.push(existingEntry);
     } else {
       // 新規エントリ: Drive 互換でフォールバック（server-fs/local では使われないはず）
       const thumbnailUrl = type === "image"
         ? `https://lh3.googleusercontent.com/d/${file.id}=s200`
         : `https://drive.google.com/thumbnail?id=${file.id}&sz=s200`;
       const url = `https://lh3.googleusercontent.com/d/${file.id}=s0`;
-      media.push({
+      scanned.push({
         fileId: file.id,
         name: file.name,
         type,
@@ -806,13 +875,17 @@ export async function ensureMediaIndex(
     }
   }
 
-  // URL → index / fileId → index のルックアップテーブル
-  const urlToIdx = new Map<string, number>();
-  const fileIdToIdx = new Map<string, number>();
-  media.forEach((m, i) => {
-    urlToIdx.set(m.url, i);
-    fileIdToIdx.set(m.fileId, i);
-  });
+  // URL → fileId のルックアップ。走査の成果は fileId で持つ（エントリの実体は
+  // 走査後に取り直すため、配列 index で参照すると付け替えられなくなる）。
+  const urlToFileId = new Map<string, string>();
+  const scannedFileIds = new Set<string>();
+  for (const m of scanned) {
+    urlToFileId.set(m.url, m.fileId);
+    scannedFileIds.add(m.fileId);
+  }
+  // 走査で集めるのはこの 2 つだけ
+  const usageByFileId = new Map<string, MediaUsage[]>();
+  const ocrByFileId = new Map<string, string>();
 
   // 走査対象: 通常ノート + Wiki ノート。
   // Wiki ノートは PDF を document-level (`wikiMeta.derivedFromNotes`) に持つので、
@@ -851,25 +924,29 @@ export async function ensureMediaIndex(
       }
     }
     const page = doc.pages[0];
-    // どの media に追加済みかを記録（ブロックと document-level の重複排除）
-    const addedIdxs = new Set<number>();
+    const noteTitle = doc.title;
+    // どの素材に追加済みかを記録（ブロックと document-level の重複排除）
+    const addedFileIds = new Set<string>();
+    const addUsage = (fileId: string, blockId: string) => {
+      const usage: MediaUsage = { noteId: target.usageNoteId, noteTitle, blockId };
+      const usages = usageByFileId.get(fileId);
+      if (usages) usages.push(usage);
+      else usageByFileId.set(fileId, [usage]);
+      addedFileIds.add(fileId);
+    };
     if (page?.blocks) {
       const mediaMap = extractMediaFromBlocks(page.blocks);
       for (const [url, blockId] of mediaMap) {
-        const idx = urlToIdx.get(url);
-        if (idx !== undefined) {
-          media[idx].usedIn.push({
-            noteId: target.usageNoteId,
-            noteTitle: doc.title,
-            blockId,
-          });
-          addedIdxs.add(idx);
+        const fileId = urlToFileId.get(url);
+        if (fileId !== undefined) {
+          addUsage(fileId, blockId);
           // ノートで読んだ OCR テキストを素材側にも写す（v5）。
           // 素材ギャラリーから直接読んだ既存の ocrText は上書きしない
-          // — ユーザーが素材そのものに対して明示的に取った結果を正とする。
+          // — ユーザーが素材そのものに対して明示的に取った結果を正とする
+          //（上書きしない判定は、実体を組み立てる後段で行う）。
           const noteOcr = page.mediaOcr?.[blockId]?.text?.trim();
-          if (noteOcr && !media[idx].ocrText) {
-            media[idx].ocrText = noteOcr;
+          if (noteOcr && !ocrByFileId.has(fileId)) {
+            ocrByFileId.set(fileId, noteOcr);
           }
         }
       }
@@ -879,15 +956,50 @@ export async function ensureMediaIndex(
     // 素材モーダルの「利用ノート」グラフに表示されない。
     const docAssetRefs = collectSourceAssetFileIdsFromDoc(doc);
     for (const fileId of docAssetRefs) {
-      const idx = fileIdToIdx.get(fileId);
-      if (idx !== undefined && !addedIdxs.has(idx)) {
-        media[idx].usedIn.push({
-          noteId: target.usageNoteId,
-          noteTitle: doc.title,
-          blockId: DOC_REF_BLOCK_ID,
-        });
-        addedIdxs.add(idx);
+      if (scannedFileIds.has(fileId) && !addedFileIds.has(fileId)) {
+        addUsage(fileId, DOC_REF_BLOCK_ID);
       }
+    }
+  }
+
+  // ── 走査の成果を、走査後の最新インデックスに当てる ──
+  //
+  // 走査中にアップロード・削除が走っていることがある。走査開始時のスナップショット
+  // （`existing`）にそのまま当てると、その間に増えた素材と付加情報が消える。
+  const latest = getLatestMediaIndex() ?? existing;
+  const latestMap = new Map((latest?.media ?? []).map((m) => [m.fileId, m]));
+  // 走査開始時点で index が知っていた素材。実体が無いのが「消えた」なのか
+  // 「まだ listing に載っていない新顔」なのかを分けるために使う。
+  const knownBefore = new Set(existingMap.keys());
+
+  const media: MediaIndexEntry[] = [];
+  const withScanResult = (entry: MediaIndexEntry): MediaIndexEntry => {
+    // 走査対象外だったエントリ（走査中に増えた素材）は usedIn を触らない。
+    // リセットすると、その素材を貼ったノートの保存が直前に書いた usedIn を消す。
+    if (!scannedFileIds.has(entry.fileId)) return entry;
+    const noteOcr = ocrByFileId.get(entry.fileId);
+    const next: MediaIndexEntry = { ...entry, usedIn: usageByFileId.get(entry.fileId) ?? [] };
+    if (noteOcr && !next.ocrText) next.ocrText = noteOcr;
+    return next;
+  };
+
+  for (const entry of scanned) {
+    const live = latestMap.get(entry.fileId);
+    if (live) {
+      // 最新側の版を採る（走査中に書かれた ocrText / archivedAt などを落とさない）
+      media.push(withScanResult(live));
+    } else if (!knownBefore.has(entry.fileId)) {
+      // index が一度も知らなかった = disk 走査で見つけた新顔。そのまま登録する
+      media.push(withScanResult(entry));
+    }
+    // else: 走査開始時は居たのに最新には居ない = 走査中に削除された → 復活させない
+  }
+  // 走査中にアップロードされて listing に載らなかった素材を拾う。
+  // 「以前から知っていたのに listing に無い」= 実体が消えた素材は対象外
+  //（従来どおりインデックスから落とす）。
+  for (const entry of latest?.media ?? []) {
+    if (!scannedFileIds.has(entry.fileId) && !knownBefore.has(entry.fileId)) {
+      media.push(entry);
     }
   }
 

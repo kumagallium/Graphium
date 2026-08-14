@@ -8,6 +8,8 @@
 //      直後のオートセーブが新規作成分岐へ落ちて複製事故になる）
 //   3. 空の保管庫でも mediaIndex は null のまま放置されない（null は素材
 //      ギャラリーでは「読み込み中」として描画されるので、DL 直後に固まる）
+//   4. 同じ中身のファイルを二度上げても素材は増えない（素材は一つの実体を
+//      複数ノートから使うもので、二つ持つと OCR・注釈・利用ノートが分かれる）
 //
 // テスト環境メモ: プロジェクト既定の vitest 環境は node なので、
 // 先頭の @vitest-environment ディレクティブで per-file に jsdom を指定する。
@@ -19,6 +21,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useFileManager } from "./use-file-manager";
 import { registerProvider, setActiveProvider } from "../lib/storage/registry";
+import { clearMediaIndexCache, type MediaIndexEntry } from "../features/asset-browser";
 import type { StorageProvider } from "../lib/storage/types";
 import type { GraphiumDocument, GraphiumFile } from "../lib/document-types";
 
@@ -84,9 +87,11 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
   const calls = {
     saveFile: [] as string[],
     createFile: [] as string[],
+    uploadMedia: [] as string[],
   };
   const flags = { failListFiles: false };
   const mediaFiles: { id: string; name: string; mimeType: string; createdTime: string }[] = [];
+  const mediaBytes = new Map<string, Uint8Array>();
   let idCounter = 0;
 
   const provider = {
@@ -133,11 +138,23 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
       files.delete(fileId);
     },
 
-    async uploadMedia(): Promise<never> {
-      throw new Error("uploadMedia is not expected in these tests");
+    async uploadMedia(file: File) {
+      const id = `media-${++idCounter}`;
+      calls.uploadMedia.push(id);
+      mediaBytes.set(id, new Uint8Array(await file.arrayBuffer()));
+      mediaFiles.push({
+        id,
+        name: file.name,
+        mimeType: file.type,
+        createdTime: new Date().toISOString(),
+      });
+      return { fileId: id, url: `local-media://${id}`, name: file.name, mimeType: file.type };
     },
     async getMediaBlobUrl(): Promise<never> {
       throw new Error("getMediaBlobUrl is not expected in these tests");
+    },
+    async readMediaBytes(fileId: string): Promise<Uint8Array | undefined> {
+      return mediaBytes.get(fileId);
     },
     extractFileId: () => null,
     getUserEmail: async () => "test@example.com",
@@ -162,7 +179,7 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
     clearCache() {},
   } as unknown as StorageProvider;
 
-  return { provider, files, appData, calls, flags, mediaFiles };
+  return { provider, files, appData, calls, flags, mediaFiles, mediaBytes };
 }
 
 function setupProvider(seed: Record<string, GraphiumDocument> = {}) {
@@ -185,6 +202,8 @@ beforeEach(() => {
   // graphium_last_file / recent notes / provider 選択などの持ち越しを防ぐ
   localStorage.clear();
   vi.restoreAllMocks();
+  // media-index は「保存中を含む最新」をモジュールに持つので、テスト間で捨てる
+  clearMediaIndexCache();
 });
 
 // ---------------------------------------------------------------------------
@@ -368,5 +387,117 @@ describe("useFileManager: 空状態でも mediaIndex が確定する（素材ギ
       type: "image",
       usedIn: [],
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 不変条件 4: 同じ中身のファイルは素材を増やさない
+// ---------------------------------------------------------------------------
+
+describe("useFileManager: 同じ中身の素材を二度登録しない", () => {
+  const imageFile = (name: string, bytes: number[]) =>
+    new File([new Uint8Array(bytes)], name, { type: "image/png" });
+
+  it("同じ画像を 2 回上げても素材は 1 件のまま、既存の url を返す", async () => {
+    const mock = setupProvider();
+    const { result } = await renderFileManager();
+    await waitFor(() => expect(result.current.mediaIndex).not.toBeNull());
+
+    let first!: { url: string; fileId: string };
+    let second!: { url: string; fileId: string };
+    await act(async () => {
+      first = await result.current.handleUploadAsset(imageFile("IMG_0001.jpg", [1, 2, 3]));
+    });
+    await act(async () => {
+      // 名前が違っても中身が同じなら同じ素材
+      second = await result.current.handleUploadAsset(imageFile("コピー.jpg", [1, 2, 3]));
+    });
+
+    expect(second.fileId).toBe(first.fileId);
+    expect(second.url).toBe(first.url);
+    expect(mock.calls.uploadMedia).toHaveLength(1);
+    expect(result.current.mediaIndex?.media).toHaveLength(1);
+  });
+
+  it("中身が違えば同名でも別の素材になる", async () => {
+    const mock = setupProvider();
+    const { result } = await renderFileManager();
+    await waitFor(() => expect(result.current.mediaIndex).not.toBeNull());
+
+    await act(async () => {
+      await result.current.handleUploadAsset(imageFile("IMG_0001.jpg", [1, 2, 3]));
+    });
+    await act(async () => {
+      await result.current.handleUploadAsset(imageFile("IMG_0001.jpg", [9, 9, 9]));
+    });
+
+    expect(mock.calls.uploadMedia).toHaveLength(2);
+    expect(result.current.mediaIndex?.media).toHaveLength(2);
+  });
+
+  it("使い回した素材には後から来た派生元を足す（出どころを捨てない）", async () => {
+    setupProvider();
+    const { result } = await renderFileManager();
+    await waitFor(() => expect(result.current.mediaIndex).not.toBeNull());
+
+    let reused!: { fileId: string };
+    await act(async () => {
+      await result.current.handleUploadAsset(imageFile("logo.png", [7]), {
+        derivedFromAssets: ["pdf-a"],
+      });
+    });
+    await act(async () => {
+      // 同じロゴが別の PDF からも抽出された
+      reused = await result.current.handleUploadAsset(imageFile("logo.png", [7]), {
+        derivedFromAssets: ["pdf-b"],
+      });
+    });
+
+    const entry = result.current.mediaIndex?.media.find((m) => m.fileId === reused.fileId);
+    expect(entry?.derivedFromAssets).toEqual(["pdf-a", "pdf-b"]);
+  });
+
+  it("アーカイブ済みの素材は使い回さない（一覧から外したものを戻さない）", async () => {
+    const mock = setupProvider();
+    const { result } = await renderFileManager();
+    await waitFor(() => expect(result.current.mediaIndex).not.toBeNull());
+
+    let uploaded!: { entry: MediaIndexEntry };
+    await act(async () => {
+      uploaded = await result.current.handleUploadAsset(imageFile("old.png", [4, 5]));
+    });
+    await act(async () => {
+      await result.current.handleArchiveMedia(uploaded.entry);
+    });
+    await act(async () => {
+      await result.current.handleUploadAsset(imageFile("old.png", [4, 5]));
+    });
+
+    expect(mock.calls.uploadMedia).toHaveLength(2);
+  });
+
+  it("既存素材（ハッシュ無し）にも起動後の後追いでハッシュが付き、以後は重複しない", async () => {
+    const mock = setupProvider();
+    // この仕組みより前に登録された素材を模す（contentHash を持たない）
+    mock.mediaFiles.push({
+      id: "legacy-1",
+      name: "legacy.png",
+      mimeType: "image/png",
+      createdTime: "2026-01-01T00:00:00Z",
+    });
+    mock.mediaBytes.set("legacy-1", new Uint8Array([1, 1, 2]));
+
+    const { result } = await renderFileManager();
+    await waitFor(() => {
+      expect(
+        result.current.mediaIndex?.media.find((m) => m.fileId === "legacy-1")?.contentHash,
+      ).toMatch(/^sha256:/);
+    });
+
+    await act(async () => {
+      await result.current.handleUploadAsset(imageFile("legacy.png", [1, 1, 2]));
+    });
+    expect(mock.calls.uploadMedia).toHaveLength(0);
+    expect(result.current.mediaIndex?.media).toHaveLength(1);
   });
 });

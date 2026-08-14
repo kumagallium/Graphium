@@ -142,6 +142,25 @@ export class LocalFilesystemProvider implements StorageProvider {
     return blobUrl;
   }
 
+  async readMediaBytes(fileId: string, maxBytes?: number): Promise<Uint8Array | undefined> {
+    let base64Data: string;
+    try {
+      base64Data = await invoke<string>("read_media_file", { fileId });
+    } catch {
+      return undefined;
+    }
+    // Base64 は元の約 4/3 の長さ。デコード前に概算で足切りする
+    //（Rust 側が既に全体を返しているので完全な予防にはならないが、
+    //  デコードで更に実体分を抱えるのは避けられる）。
+    if (maxBytes != null && (base64Data.length * 3) / 4 > maxBytes) return undefined;
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
   extractFileId(url: string): string | null {
     // file-media://{fileId} 形式から ID を抽出
     const match = url.match(/^file-media:\/\/(.+)$/);
