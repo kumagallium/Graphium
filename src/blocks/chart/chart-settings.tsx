@@ -111,18 +111,13 @@ function AxisDetailEditor({
   stack?: StackConfig;
   onStackChange?: (patch: Partial<StackConfig>) => void;
 }) {
-  // 積み重ねが有効なら開いた状態で始める（畳んだまま忘れると、縦軸の目盛りが
-  // 消えている理由に辿り着けない）
-  const [open, setOpen] = useState(stack?.enabled ?? false);
+  const [open, setOpen] = useState(false);
   // 積み重ね中は縦軸の目盛りを描画側で強制的に消すため、ここの指定は効かない
   const ticksLocked = stack?.enabled ?? false;
   return (
     <div style={detailStyles.shell}>
       <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
-        <span>
-          {t("chart.advanced")}
-          {ticksLocked && <span style={detailStyles.onBadge}> · {t("chart.sectionStack")}</span>}
-        </span>
+        <span>{t("chart.advanced")}</span>
         {open ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
       </button>
       {open && (
@@ -214,14 +209,25 @@ function StackFields({
   stack: StackConfig;
   onChange: (patch: Partial<StackConfig>) => void;
 }) {
+  const [open, setOpen] = useState(stack.enabled);
   return (
-    <>
-      <div style={detailStyles.groupLabel}>{t("chart.sectionStack")}</div>
-      <div style={detailStyles.row}>
-        <span style={detailStyles.label}>{t("chart.stackEnabled")}</span>
-        <Toggle checked={stack.enabled} onChange={(v) => onChange({ enabled: v })} />
+    <div style={detailStyles.subGroup}>
+      <div style={detailStyles.subHeader}>
+        <button type="button" onClick={() => setOpen(!open)} style={detailStyles.subHeaderButton}>
+          <span>{t("chart.sectionStack")}</span>
+          {open ? <ChevronUp size={12} strokeWidth={2} /> : <ChevronDown size={12} strokeWidth={2} />}
+        </button>
+        {/* 入り切りは畳んだままでも触れる。入れたら中身を出す（設定せずに閉じない） */}
+        <Toggle
+          checked={stack.enabled}
+          onChange={(v) => {
+            onChange({ enabled: v });
+            if (v) setOpen(true);
+          }}
+        />
       </div>
-      {stack.enabled && (
+      {open && !stack.enabled && <div style={detailStyles.hint}>{t("chart.stackHint")}</div>}
+      {open && stack.enabled && (
         <>
           <div style={detailStyles.hint}>{t("chart.stackHint")}</div>
           <div style={detailStyles.row}>
@@ -292,7 +298,7 @@ function StackFields({
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -339,17 +345,29 @@ const detailStyles: Record<string, React.CSSProperties> = {
     background: "var(--color-card)",
     color: "var(--color-foreground)",
   },
-  // 折りたたんだままでも効いていることが分かるよう、見出しに出す状態表示
-  onBadge: {
-    color: "var(--color-primary)",
+  // 詳細設定の中の入れ子グループ。折りたたみのヘッダ（chevron 付き）で
+  // 他の行と区別が付くので、区切り線などは足さない
+  subGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 7,
   },
-  // 詳細設定の中で、軸の見た目とは別のまとまりであることを示す区切り
-  groupLabel: {
-    marginTop: 2,
-    paddingTop: 8,
-    borderTop: "1px solid var(--color-border-subtle)",
-    fontSize: 11,
-    color: "var(--color-text-tertiary)",
+  subHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  subHeaderButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: 0,
+    fontSize: 12,
+    border: "none",
+    background: "transparent",
+    color: "var(--color-foreground)",
+    cursor: "pointer",
   },
   hint: {
     fontSize: 11,
