@@ -120,11 +120,38 @@ export function detectImportOptions(lines: string[]): DelimitedImportOptions {
     };
   }
 
+  // 見出し行が塊に入らないことがある。`2theta,d,I,(hkl)` のように、データ側だけ
+  // 値の中に区切り文字を含む（`(0,0,2)`）と列数が食い違い、列数が一定の塊は
+  // データ行だけになるため。塊の直前が空行でもコメント行でもなければ、それは
+  // 見出し行とみなして範囲を 1 行広げる。
+  const headerIdx =
+    bestRun.start > 0 && isHeaderCandidate(body[bestRun.start - 1], bestCandidate)
+      ? bestRun.start - 1
+      : bestRun.start;
+
   return {
-    headerRow: bestRun.start + 1,
+    headerRow: headerIdx + 1,
     endRow: bestRun.end + 1,
     delimiter: bestCandidate.delimiter,
     customDelimiter: bestCandidate.customDelimiter,
     collapseConsecutive: bestCandidate.collapseConsecutive,
   };
+}
+
+/**
+ * 見出し行になりうる行か。
+ *
+ * 同じ区切り文字で 2 つ以上に割れることを条件にする。これが無いと、データの
+ * 直前にあるだけのタイトル行（`title` のような 1 語の行）まで見出しとして
+ * 飲み込んでしまう。
+ */
+function isHeaderCandidate(
+  line: string | undefined,
+  candidate: Candidate
+): boolean {
+  if (!line || line.trim() === "") return false;
+  if (COMMENT_PREFIX.test(line)) return false;
+  return (
+    countFields(line, delimiterChar(candidate), candidate.collapseConsecutive) >= 2
+  );
 }

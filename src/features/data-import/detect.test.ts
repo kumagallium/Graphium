@@ -83,6 +83,31 @@ describe("detectImportOptions", () => {
     expect(detect(text)).toMatchObject({ headerRow: 3, endRow: 5 });
   });
 
+  it("値に区切り文字が混ざって列数がずれる見出し行も範囲に含める", () => {
+    // (hkl) 列の (0,0,2) がカンマで割れるため、列数一定の塊はデータ行だけになる。
+    // それでも直前の見出し行を拾えること
+    const text = [
+      "# XRD pattern",
+      "# Wavelength: 1.5406 A",
+      "2theta,d,I,(hkl)",
+      "21.34,4.161,5.0,(0,0,2)",
+      "25.87,3.441,11.5,(1,0,1)",
+      "33.51,2.672,2.7,(1,1,0)",
+    ].join("\n");
+    const options = detect(text);
+    expect(options.headerRow).toBe(3);
+    expect(options.endRow).toBe(6);
+    const parsed = parseDelimited(text, options);
+    expect(parsed.headers).toEqual(["2theta", "d", "I", "(hkl)", "", ""]);
+    // 値は 1 つも欠けない
+    expect(parsed.rows[0]).toEqual(["21.34", "4.161", "5.0", "(0", "0", "2)"]);
+  });
+
+  it("見出しの直前がコメント行なら範囲を広げない", () => {
+    const text = ["# [DATA START]", "a,b", "1,2", "3,4"].join("\n");
+    expect(detect(text).headerRow).toBe(2);
+  });
+
   it("セミコロン区切り（欧州系 CSV）を当てる", () => {
     const text = "a;b;c\n1;2;3\n4;5;6";
     expect(detect(text)).toMatchObject({

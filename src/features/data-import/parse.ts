@@ -94,11 +94,31 @@ export function countFields(
   return splitLine(line, delimiter, collapse).length;
 }
 
+/** 列数の最頻値（同数なら多い方）。表の列数をデータ行の実態に合わせるために使う */
+function modeWidth(widths: number[]): number {
+  const counts = new Map<number, number>();
+  for (const w of widths) counts.set(w, (counts.get(w) ?? 0) + 1);
+  let best = 0;
+  let bestCount = 0;
+  for (const [w, c] of counts) {
+    if (c > bestCount || (c === bestCount && w > best)) {
+      best = w;
+      bestCount = c;
+    }
+  }
+  return best;
+}
+
 /**
  * 設定に従って本文を表に変換する。
  *
- * 列数は見出し行に合わせて揃える（足りなければ空セルで埋め、多ければ切る）。
- * 揃えないと BlockNote のテーブルが行ごとに列数の違う壊れた表になるため。
+ * 列数は「見出しの列数」と「データ行の列数の最頻値」の大きい方に揃える
+ * （足りない側は空セルで埋める）。揃えないと BlockNote のテーブルが行ごとに
+ * 列数の違う壊れた表になる。
+ *
+ * 見出しに合わせて切らないのは、`(hkl)` 列に `(0,0,2)` が入っているような
+ * クォート無しの CSV でデータの後半が黙って消えるため。ずれたまま出せば
+ * プレビューで気づいて区切り文字を直せるが、消えた値は取り戻せない。
  */
 export function parseDelimited(
   text: string,
@@ -116,17 +136,26 @@ export function parseDelimited(
     return { headers: [], rows: [], headerLines, footerLines };
   }
 
-  const headers = splitLine(lines[headerIdx], delimiter, options.collapseConsecutive);
-  const width = headers.length;
-  const rows: string[][] = [];
+  const rawHeaders = splitLine(lines[headerIdx], delimiter, options.collapseConsecutive);
+  const rawRows: string[][] = [];
   for (let i = headerIdx + 1; i <= endIdx; i++) {
     const line = lines[i];
     // 範囲内の空行はデータではないので落とす（末尾の改行で空行が入りやすい）
     if (line.trim() === "") continue;
-    const cells = splitLine(line, delimiter, options.collapseConsecutive);
-    const normalized = Array.from({ length: width }, (_, c) => cells[c] ?? "");
-    rows.push(normalized);
+    rawRows.push(splitLine(line, delimiter, options.collapseConsecutive));
   }
 
-  return { headers, rows, headerLines, footerLines };
+  const width = Math.max(
+    rawHeaders.length,
+    modeWidth(rawRows.map((r) => r.length))
+  );
+  const fit = (cells: string[]) =>
+    Array.from({ length: width }, (_, c) => cells[c] ?? "");
+
+  return {
+    headers: fit(rawHeaders),
+    rows: rawRows.map(fit),
+    headerLines,
+    footerLines,
+  };
 }

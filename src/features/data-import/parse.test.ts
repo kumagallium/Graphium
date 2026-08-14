@@ -77,9 +77,18 @@ describe("parseDelimited", () => {
     expect(result.rows).toEqual([["1", "2", ""]]);
   });
 
-  it("見出しより列が多い行は切り落とす（表の列数を揃える）", () => {
-    const result = parseDelimited("a,b\n1,2,3", { ...base, endRow: 2 });
-    expect(result.rows).toEqual([["1", "2"]]);
+  it("見出しより列が多いときは切らず、見出し側を空セルで伸ばす", () => {
+    // クォート無しの CSV（(hkl) 列に (0,0,2) が入る等）でデータが消えないこと。
+    // 切り落とすと値が黙って失われ、取り込み元を見ない限り気づけない
+    const result = parseDelimited("a,b\n1,2,3\n4,5,6", { ...base, endRow: 3 });
+    expect(result.headers).toEqual(["a", "b", ""]);
+    expect(result.rows).toEqual([["1", "2", "3"], ["4", "5", "6"]]);
+  });
+
+  it("列数がばらつく場合は最頻値に合わせ、外れた行だけ揃える", () => {
+    const result = parseDelimited("a,b\n1,2\n3,4\n5,6,7", { ...base, endRow: 4 });
+    expect(result.headers).toEqual(["a", "b"]);
+    expect(result.rows).toEqual([["1", "2"], ["3", "4"], ["5", "6"]]);
   });
 
   it("範囲内の空行は行にしない", () => {
