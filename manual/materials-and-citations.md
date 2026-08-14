@@ -38,6 +38,14 @@ There are several routes, all ending in the same library:
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.
 
+## Bringing the same file in twice <Badge type="tip" text="Added in v0.37.0 (2026-08-14)" /> {#bringing-the-same-file-in-twice}
+
+A file that is already in your library is reused rather than registered a second time. The check reads the contents, not the name: a renamed copy counts as the same material, and two different photos that both arrived as `IMG_0001.jpg` stay apart. A material is one artefact used from many notes, so a second copy would only split its extracted text, its memos and its list of notes in two. This holds for every route in the table above, images and video and audio and PDF and Word and data files alike.
+
+Two cases are left as they were. An archived material is never reused: if you retired it from the gallery, a fresh upload registers a new material instead of quietly bringing the old one back. Files above roughly 128 MB are registered without the check, because reading one end to end to compare it costs more than the duplicate does.
+
+Materials registered before v0.37.0 are read once in the background after you sign in, to give them the mark the check relies on. Until that pass reaches a given material, bringing it in again still adds a copy. A large library takes a while, and closing the app is safe — the next launch picks up where it left off.
+
 ## Reading materials: side peek and reader view <Badge type="tip" text="Added in v0.9.2 (2026-05-26)" />
 
 Clicking a material opens it in a side peek next to your note, so you can read without leaving what you are writing. Use **Open in full view** for a full-screen reading layout.
