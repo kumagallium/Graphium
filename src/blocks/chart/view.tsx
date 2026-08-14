@@ -31,22 +31,27 @@ import { loadECharts } from "./echarts-loader";
 import {
   CHART_ASPECT_RATIOS,
   CHART_AXIS_LINE_WIDTH,
+  CHART_BAR_WIDTHS,
   CHART_FONT_SIZE,
   CHART_FRAME,
   CHART_FRAME_WIDTH,
   CHART_GRID_LINE,
   CHART_INK,
   CHART_LEGEND_ITEM,
+  CHART_LINE_WIDTHS,
   CHART_SERIES_COLORS,
+  CHART_SYMBOL_SIZES,
   CHART_TICK_LENGTH,
 } from "./chart-theme";
 import {
   parseChartBlockConfig,
+  resolveSeriesStyle,
   serializeChartBlockConfig,
   seriesConfigDisplayName,
   suggestSeries,
   usesRightAxis,
   type ChartBlockConfig,
+  type SeriesType,
 } from "./chart-config";
 import { ChartSettingsPanel } from "./chart-settings";
 import { formatFullDateTime, timeAxisLabelFormatter } from "./time-axis-format";
@@ -497,15 +502,37 @@ function buildOption(
     yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
     series: result.series.map((s, i) => {
       const sc = config.series[i];
-      const seriesType = isHistogram ? "bar" : (sc?.type ?? config.chartType);
+      const seriesType: SeriesType = isHistogram
+        ? "bar"
+        : ((sc?.type ?? config.chartType) as SeriesType);
+      // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
+      // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
+      const style = resolveSeriesStyle(sc, seriesType);
       return {
         name: sc ? seriesConfigDisplayName(sc) : "",
         type: seriesType,
         data: s.points,
         connectNulls: false,
         ...(useRight ? { yAxisIndex: sc?.axis === "right" ? 1 : 0 } : {}),
-        ...(seriesType === "line" ? { symbolSize: 7, lineStyle: { width: 2 } } : {}),
-        ...(seriesType === "scatter" ? { symbolSize: 10 } : {}),
+        ...(seriesType === "line"
+          ? {
+              showSymbol: style.showSymbol,
+              symbol: style.symbol,
+              symbolSize: CHART_SYMBOL_SIZES.line[style.symbolSize],
+              lineStyle: { width: CHART_LINE_WIDTHS[style.lineWidth], type: style.lineType },
+            }
+          : {}),
+        ...(seriesType === "scatter"
+          ? { symbol: style.symbol, symbolSize: CHART_SYMBOL_SIZES.scatter[style.symbolSize] }
+          : {}),
+        // 分布（ヒストグラム）は階級幅が棒の幅を決める図なので、幅・積み上げは持たせない
+        ...(seriesType === "bar" && !isHistogram
+          ? {
+              ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
+              // 積み上げは軸ごとにグループを分ける（左右をまたいで積むと目盛りと合わない）
+              ...(style.stacked ? { stack: sc?.axis === "right" ? "right" : "left" } : {}),
+            }
+          : {}),
         ...(isHistogram
           ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
           : {}),

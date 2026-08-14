@@ -39,6 +39,32 @@ export type SeriesAxis = "left" | "right";
 /** 系列ごとの種類（未指定はチャート全体の種類に従う）。histogram は全体専用 */
 export type SeriesType = "line" | "bar" | "scatter";
 
+/** 線の種類（折れ線） */
+export type SeriesLineType = "solid" | "dashed" | "dotted";
+
+/** 線の太さ（実寸は chart-theme.ts の CHART_LINE_WIDTHS） */
+export type SeriesLineWidth = "thin" | "medium" | "thick";
+
+/**
+ * マーカーの形（ECharts の symbol 名をそのまま値にする）。
+ * 白抜き（empty*）は点が重なっても下が見えるので、学術図では実用的。
+ */
+export type SeriesSymbolShape =
+  | "circle"
+  | "emptyCircle"
+  | "rect"
+  | "emptyRect"
+  | "triangle"
+  | "emptyTriangle"
+  | "diamond"
+  | "emptyDiamond";
+
+/** マーカーの大きさ（実寸は chart-theme.ts の CHART_SYMBOL_SIZES） */
+export type SeriesSymbolSize = "small" | "medium" | "large";
+
+/** 棒の幅（実寸は chart-theme.ts の CHART_BAR_WIDTHS）。auto は ECharts 任せ */
+export type SeriesBarWidth = "auto" | "narrow" | "medium" | "wide";
+
 /**
  * 軸ごとの詳細設定（eureco の「詳細設定」に対応）。
  * 学術スタイルの既定（全表示・内向き目盛り・グリッドなし）から個別に外せる。
@@ -86,7 +112,54 @@ export type ChartSeriesConfig = {
   axis?: SeriesAxis;
   /** 系列ごとの種類（折れ線に棒を重ねる等）。未指定はチャートの種類に従う */
   type?: SeriesType;
+  // ── 見た目（種類ごとに効くものが違う。未指定は種類なりの既定 = 従来の描画）──
+  /** 線の種類（折れ線）。未指定は実線 */
+  lineType?: SeriesLineType;
+  /** 線の太さ（折れ線）。未指定は中 */
+  lineWidth?: SeriesLineWidth;
+  /** マーカーの表示（折れ線）。未指定は表示する */
+  showSymbol?: boolean;
+  /** マーカーの形（折れ線・散布図）。未指定は種類なりの既定（折れ線は白抜き円） */
+  symbol?: SeriesSymbolShape;
+  /** マーカーの大きさ（折れ線・散布図）。未指定は中 */
+  symbolSize?: SeriesSymbolSize;
+  /** 棒の幅（棒）。未指定は自動 */
+  barWidth?: SeriesBarWidth;
+  /** 積み上げ（棒）。同じ Y 軸に割り当てた積み上げ系列同士が積み上がる */
+  stacked?: boolean;
 };
+
+/** 未指定を種類なりの既定で埋めた、描画・UI が使う実効スタイル */
+export type ResolvedSeriesStyle = {
+  lineType: SeriesLineType;
+  lineWidth: SeriesLineWidth;
+  showSymbol: boolean;
+  symbol: SeriesSymbolShape;
+  symbolSize: SeriesSymbolSize;
+  barWidth: SeriesBarWidth;
+  stacked: boolean;
+};
+
+/**
+ * 系列の実効スタイル。既定値は「従来の描画」と一致させてあるので、
+ * スタイルを一度も触っていない既存ノートは見た目が変わらない。
+ * マーカーの形だけは種類で既定が違う（ECharts の既定: 折れ線は白抜き円、
+ * 散布図は塗り円）ため、実効種類を受け取って解決する。
+ */
+export function resolveSeriesStyle(
+  series: ChartSeriesConfig | undefined,
+  effectiveType: SeriesType
+): ResolvedSeriesStyle {
+  return {
+    lineType: series?.lineType ?? "solid",
+    lineWidth: series?.lineWidth ?? "medium",
+    showSymbol: series?.showSymbol ?? true,
+    symbol: series?.symbol ?? (effectiveType === "line" ? "emptyCircle" : "circle"),
+    symbolSize: series?.symbolSize ?? "medium",
+    barWidth: series?.barWidth ?? "auto",
+    stacked: series?.stacked ?? false,
+  };
+}
 
 export type ChartBlockConfig = {
   chartType: ChartType;
@@ -147,6 +220,20 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
 const SERIES_TYPES: SeriesType[] = ["line", "bar", "scatter"];
+const LINE_TYPES: SeriesLineType[] = ["solid", "dashed", "dotted"];
+const LINE_WIDTHS: SeriesLineWidth[] = ["thin", "medium", "thick"];
+export const SYMBOL_SHAPES: SeriesSymbolShape[] = [
+  "circle",
+  "emptyCircle",
+  "rect",
+  "emptyRect",
+  "triangle",
+  "emptyTriangle",
+  "diamond",
+  "emptyDiamond",
+];
+const SYMBOL_SIZES: SeriesSymbolSize[] = ["small", "medium", "large"];
+const BAR_WIDTHS: SeriesBarWidth[] = ["auto", "narrow", "medium", "wide"];
 const LEGEND_POSITIONS: LegendPosition[] = [
   "top-left",
   "top-right",
@@ -173,6 +260,15 @@ function parseSeries(raw: unknown): ChartSeriesConfig[] {
     if (typeof v.color === "string" && v.color.trim() !== "") entry.color = v.color;
     if (v.axis === "right") entry.axis = "right";
     if (SERIES_TYPES.includes(v.type)) entry.type = v.type;
+    // 見た目: 知らない値は落として既定に戻す（壊れた設定で描けなくなるより、
+    // 既定の学術スタイルで描けるほうがよい）
+    if (LINE_TYPES.includes(v.lineType)) entry.lineType = v.lineType;
+    if (LINE_WIDTHS.includes(v.lineWidth)) entry.lineWidth = v.lineWidth;
+    if (typeof v.showSymbol === "boolean") entry.showSymbol = v.showSymbol;
+    if (SYMBOL_SHAPES.includes(v.symbol)) entry.symbol = v.symbol;
+    if (SYMBOL_SIZES.includes(v.symbolSize)) entry.symbolSize = v.symbolSize;
+    if (BAR_WIDTHS.includes(v.barWidth)) entry.barWidth = v.barWidth;
+    if (typeof v.stacked === "boolean") entry.stacked = v.stacked;
     out.push(entry);
   }
   return out;
