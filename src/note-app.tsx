@@ -2558,7 +2558,13 @@ function NoteEditorInner({
     const editor = editorRef.current;
     if (!editor) return;
     try {
-      await exportNoteToMarkdown({ title, editor });
+      // テーブルの名前はブロックの外（tableMeta）にあるので明示的に渡す。
+      // 渡さないとチャートが参照先を列名でしか書けない
+      await exportNoteToMarkdown({
+        title,
+        editor,
+        tableMeta: tableMetaStoreRef.current.getSnapshot(),
+      });
     } catch (e) {
       console.error("[markdown-export] export failed:", e);
     }
@@ -2677,7 +2683,9 @@ function NoteEditorInner({
           // タイトルはエディタ本文（BlockNote document）の外にあるメタデータなので、
           // 明示的に前置きへ含めないと AI からノートのタイトルが参照できない。
           const pageMarkdown = editorRef.current
-            ? await blocksToMarkdown(editorRef.current, editorRef.current.document)
+            ? await blocksToMarkdown(editorRef.current, editorRef.current.document, {
+                tableMeta: tableMetaStoreRef.current.getSnapshot(),
+              })
             : "";
           userMessage = buildQuotedChatMessage({
             title,
@@ -2692,7 +2700,9 @@ function NoteEditorInner({
           // AI が編集前の本文しか見えず「修正したノートを見せてください」と返してしまう。
           // それを防ぐため、送信のたびにエディタから最新本文を取り直す。
           const allBlocks = editorRef.current.document;
-          const pageMarkdown = await blocksToMarkdown(editorRef.current, allBlocks);
+          const pageMarkdown = await blocksToMarkdown(editorRef.current, allBlocks, {
+            tableMeta: tableMetaStoreRef.current.getSnapshot(),
+          });
           if (pageMarkdown.trim()) {
             userMessage = [
               isFirstMessage

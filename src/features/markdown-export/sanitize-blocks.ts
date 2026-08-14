@@ -134,7 +134,11 @@ function sanitizeTableContent(content: any, knownStyles: ReadonlySet<string>): a
  * - その他の未知ブロック → プレーンテキストの paragraph
  * - 既知ブロック → styles / inline をサニタイズしつつ維持（children も再帰処理）
  */
-export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeSchemaInfo): AnyBlock[] {
+export function sanitizeBlocksForMarkdown(
+  blocks: unknown,
+  schemaInfo: SanitizeSchemaInfo,
+  tableNames?: ReadonlyMap<string, string>,
+): AnyBlock[] {
   if (!Array.isArray(blocks)) return [];
   const { knownBlockTypes, knownStyles } = schemaInfo;
   const out: AnyBlock[] = [];
@@ -142,12 +146,14 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
   for (const block of blocks) {
     if (!block || typeof block !== "object") continue;
     const b = block as AnyBlock;
-    const children = sanitizeBlocksForMarkdown(b.children, schemaInfo);
+    const children = sanitizeBlocksForMarkdown(b.children, schemaInfo, tableNames);
 
     // カスタムブロック: ブロック定義の隣に置いた落とし込みを使う
     const convert = typeof b.type === "string" ? blockMarkdownConverters[b.type] : undefined;
     if (convert) {
-      out.push(...convert(b, { children, inlines: sanitizeInlines(b.content, knownStyles) }));
+      out.push(
+        ...convert(b, { children, inlines: sanitizeInlines(b.content, knownStyles), tableNames }),
+      );
       continue;
     }
 

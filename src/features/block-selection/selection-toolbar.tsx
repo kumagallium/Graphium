@@ -7,6 +7,7 @@ import { Trash2, Palette, Bot } from "lucide-react";
 import { useAiAssistant } from "../ai-assistant";
 import { useBlockLifecycle } from "../block-lifecycle";
 import { blocksToMarkdown } from "../markdown-export/blocks-to-markdown";
+import { useTableMetaStoreOptional } from "../table-meta/store";
 import { useT } from "../../i18n";
 
 // BlockNote の色定義
@@ -32,6 +33,7 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
   const editor = useBlockNoteEditor<any, any, any>();
   const aiAssistant = useAiAssistant();
   const { removeBlockMetadata } = useBlockLifecycle();
+  const tableMetaStore = useTableMetaStoreOptional();
   const t = useT();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [showColors, setShowColors] = useState(false);
@@ -99,7 +101,11 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
     const blocks = selectedBlockIds
       .map((id: string) => editor.getBlock(id))
       .filter((b: any): b is NonNullable<typeof b> => b != null);
-    const markdown = await blocksToMarkdown(editor, blocks);
+    // 「表 N」の自動名は文書順で決まるので、番号付けはページ全体で行う
+    const markdown = await blocksToMarkdown(editor, blocks, {
+      tableMeta: tableMetaStore?.getSnapshot(),
+      documentBlocks: editor.document,
+    });
     aiAssistant.openChat({
       sourceBlockIds: selectedBlockIds,
       quotedMarkdown: markdown,

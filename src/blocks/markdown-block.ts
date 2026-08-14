@@ -19,6 +19,12 @@ export type MarkdownBlockContext = {
    * （content: "inline" のブロック用。未知 style やメンションは処理済み）
    */
   inlines: MarkdownBlock[];
+  /**
+   * table ブロック id → 表示名（キャプション、または「表 N」の自動名）。
+   * 他のブロックを参照するブロック（チャート）が、参照先を名前で書くために使う。
+   * 呼び出し元が tableMeta を渡さなかった場合は undefined。
+   */
+  tableNames?: ReadonlyMap<string, string>;
 };
 
 /**

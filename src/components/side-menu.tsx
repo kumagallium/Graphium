@@ -174,6 +174,7 @@ function AiAssistantMenuItem() {
     selector: (state) => state?.block,
   });
   const aiAssistant = useAiAssistant();
+  const tableMetaStore = useTableMetaStoreOptional();
 
   if (!block || !aiAssistant.aiAvailable) return null;
 
@@ -186,7 +187,11 @@ function AiAssistantMenuItem() {
           block.type === "heading" || block.type === "step"
             ? collectBlockScope(editor.document, block)
             : [block];
-        const markdown = await blocksToMarkdown(editor, targetBlocks);
+        // 「表 N」の自動名は文書順で決まるので、番号付けはページ全体で行う
+        const markdown = await blocksToMarkdown(editor, targetBlocks, {
+          tableMeta: tableMetaStore?.getSnapshot(),
+          documentBlocks: editor.document,
+        });
         aiAssistant.openChat({
           sourceBlockIds: targetBlocks.map((b: any) => b.id),
           quotedMarkdown: markdown,

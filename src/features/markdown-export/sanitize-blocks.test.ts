@@ -236,9 +236,80 @@ describe("sanitizeBlocksForMarkdown", () => {
       SCHEMA,
     );
     expect(result[0].type).toBe("paragraph");
+    // X が全系列で共通なら 1 回だけ書く
     expect(result[0].content).toEqual([
-      text("Chart (line): 図1 温度依存性 — Resistivity vs Temperature, S vs Temperature", { italic: true }),
+      text("Chart (line): 図1 温度依存性 — Resistivity, S vs Temperature", { italic: true }),
     ]);
+  });
+
+  it("X が系列ごとに違うときは組で書く", () => {
+    const config = {
+      chartType: "scatter",
+      series: [
+        { sourceBlockId: "t1", xColumn: "Time", yColumn: "Weight" },
+        { sourceBlockId: "t2", xColumn: "Temperature", yColumn: "Resistivity" },
+      ],
+    };
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "chart", props: { config: JSON.stringify(config) }, children: [] }],
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([
+      text("Chart (scatter): Weight vs Time, Resistivity vs Temperature", { italic: true }),
+    ]);
+  });
+
+  // スペクトル比較（XRD 等）は段＝試料で、Y 列は全段 Intensity のことが多い。
+  // 列名で書くと段が 1 つに潰れるので、画面の凡例と同じくテーブル名で書き分ける
+  it("スタック表示は段をテーブル名で書き分ける", () => {
+    const config = {
+      chartType: "line",
+      stack: { enabled: true },
+      series: [
+        { sourceBlockId: "t1", xColumn: "2theta", yColumn: "Intensity" },
+        { sourceBlockId: "t2", xColumn: "2theta", yColumn: "Intensity" },
+      ],
+    };
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "chart", props: { config: JSON.stringify(config) }, children: [] }],
+      SCHEMA,
+      new Map([["t1", "試料 A"], ["t2", "試料 B"]]),
+    );
+    expect(result[0].content).toEqual([
+      text("Chart (line, stacked): 試料 A, 試料 B vs 2theta", { italic: true }),
+    ]);
+  });
+
+  it("段名が揃ってしまうときは系列数を添える（黙って 1 本に見せない）", () => {
+    const config = {
+      chartType: "line",
+      stack: { enabled: true },
+      series: [
+        { sourceBlockId: "t1", xColumn: "2theta", yColumn: "Intensity" },
+        { sourceBlockId: "t2", xColumn: "2theta", yColumn: "Intensity" },
+        { sourceBlockId: "t3", xColumn: "2theta", yColumn: "Intensity" },
+      ],
+    };
+    // テーブル名が無い（キャプションも日時列も無い）ので全段が Intensity に落ちる
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "chart", props: { config: JSON.stringify(config) }, children: [] }],
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([
+      text("Chart (line, stacked): Intensity vs 2theta (3 series)", { italic: true }),
+    ]);
+  });
+
+  it("ヒストグラムは X を持たないので Y だけ並べる", () => {
+    const config = {
+      chartType: "histogram",
+      series: [{ sourceBlockId: "t1", xColumn: "", yColumn: "Diameter" }],
+    };
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "chart", props: { config: JSON.stringify(config) }, children: [] }],
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([text("Chart (histogram): Diameter", { italic: true })]);
   });
 
   it("キャプションも系列も無い chart は種類だけ残す", () => {

@@ -60,7 +60,9 @@ export async function graphiumDocToMarkdown(doc: GraphiumDocument): Promise<stri
   for (const page of pages) {
     let body: string;
     try {
-      body = await blocksToMarkdown(getHeadlessEditor(), page.blocks);
+      body = await blocksToMarkdown(getHeadlessEditor(), page.blocks, {
+        tableMeta: page.tableMeta,
+      });
     } catch (e) {
       console.warn("[markdown-export] blocksToMarkdownLossy failed, falling back to plain text:", e);
       body = blocksToPlainText(page.blocks);
