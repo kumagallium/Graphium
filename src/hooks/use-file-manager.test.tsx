@@ -476,6 +476,29 @@ describe("useFileManager: 同じ中身の素材を二度登録しない", () => 
     expect(mock.calls.uploadMedia).toHaveLength(2);
   });
 
+  it("装置が吐くデータファイルも同じ入口で守られる（取り込みをやり直しても増えない）", async () => {
+    const mock = setupProvider();
+    const { result } = await renderFileManager();
+    await waitFor(() => expect(result.current.mediaIndex).not.toBeNull());
+
+    const csv = (name: string) => new File(["time,value\n1,2\n"], name, { type: "text/csv" });
+
+    let first!: { fileId: string; entry: MediaIndexEntry };
+    let second!: { fileId: string };
+    await act(async () => {
+      first = await result.current.handleUploadAsset(csv("run.csv"));
+    });
+    await act(async () => {
+      second = await result.current.handleUploadAsset(csv("run.csv"));
+    });
+
+    // data 型が重複判定から外れていないこと（外れるとデータ取り込みだけ素材が増える）
+    expect(first.entry.type).toBe("data");
+    expect(second.fileId).toBe(first.fileId);
+    expect(mock.calls.uploadMedia).toHaveLength(1);
+    expect(result.current.mediaIndex?.media).toHaveLength(1);
+  });
+
   it("既存素材（ハッシュ無し）にも起動後の後追いでハッシュが付き、以後は重複しない", async () => {
     const mock = setupProvider();
     // この仕組みより前に登録された素材を模す（contentHash を持たない）

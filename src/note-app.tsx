@@ -70,7 +70,6 @@ import {
 import {
   DataImportModal,
   buildTableSource,
-  findSameDataAsset,
   toTableBlock,
   defaultCaption,
   isDelimitedDataFile,
@@ -1248,10 +1247,6 @@ function NoteEditorInner({
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
-  // 素材インデックスの最新値を非同期処理から読むための ref
-  // （データ取り込みの重複チェックは、ダイアログを閉じた後に走る）
-  const mediaIndexRef = useRef(mediaIndex);
-  mediaIndexRef.current = mediaIndex;
   // ノートの文脈ラベル（ユーザーが手で付ける分類）。ヘッダのピルから編集する。
   // 本文と同じ buildDocument → autosave 経路で保存するため ref も併置（stale closure 回避）。
   const [noteContexts, setNoteContexts] = useState<string[]>(initialDoc?.noteContexts ?? []);
@@ -1687,27 +1682,17 @@ function NoteEditorInner({
       // 来歴がここで切れる。登録を確定時にするのは、ダイアログをキャンセルした
       // ファイルまで素材に溜めないため。
       //
-      // 中身が同じ素材が既にあれば使い回す（装置は同じデータを何度も出す）。
-      // 名前ではなく SHA-256 で見るのは、同名で中身が違う上書き出力を
-      // 取り違えないため。アップロードは数秒かかりうるので、表の挿入を待たせず
-      // 後から source に fileId を足す（URL 素材登録と同じ流儀）。
+      // 中身が同じ素材が既にあれば使い回されるが、その判定は素材登録の入口
+      // （`handleUploadAsset`）が全素材まとめて面倒を見る。装置は同じデータを
+      // 何度も出すので、取り込みをやり直しても素材は増えない。アップロードは
+      // 数秒かかりうるので、表の挿入を待たせず後から source に fileId を足す
+      // （URL 素材登録と同じ流儀）。
       const rawFile = file.file;
       if (blockId && !file.fileId && rawFile && uploadAsset) {
         const targetBlockId = blockId;
         void (async () => {
           try {
-            const bytes = new Uint8Array(await rawFile.arrayBuffer());
-            const existing = await findSameDataAsset(
-              mediaIndexRef.current,
-              { name: rawFile.name, bytes },
-              async (id) => {
-                const provider = getActiveProvider();
-                const blobUrl = await provider.getMediaBlobUrl(id);
-                const blob = await (await fetch(blobUrl)).blob();
-                return new Uint8Array(await blob.arrayBuffer());
-              },
-            );
-            const fileId = existing ?? (await uploadAsset(rawFile)).fileId;
+            const { fileId } = await uploadAsset(rawFile);
             const current = tableMetaStore.getSource(targetBlockId);
             // ダイアログを閉じた後にユーザーがそのテーブルを消した／別のものに
             // 差し替えた場合は書き戻さない
