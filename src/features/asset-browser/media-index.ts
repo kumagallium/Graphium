@@ -11,7 +11,7 @@ const INDEX_FILE_NAME = ".graphium-media-index.json";
 // ── 型定義 ──
 
 /** メディアの種類 */
-export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "memo" | "other";
+export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "data" | "memo" | "other";
 
 /**
  * 「素材ライブラリ」として扱うドキュメント MIME 一覧。
@@ -235,15 +235,16 @@ export type MediaIndex = {
  *
  * 装置が吐く .dat / .txt は MIME が text/plain や空、application/octet-stream と
  * まちまちで、MIME だけでは "other" に落ちて素材一覧から消える。名前が分かる場合は
- * 拡張子で document 扱いに引き上げ、Documents タブから表に変換できるようにする。
+ * 拡張子で "data" に振り分ける。読む物（PDF / Word）とは用途が違い、表にして
+ * 使うものなので、素材一覧でも別の棚に置く。
  */
 export function mimeToMediaType(mimeType: string, fileName?: string): MediaType {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
   if (mimeType === "application/pdf") return "pdf";
+  if (fileName && isDelimitedDataFile(fileName)) return "data";
   if (isDocumentMime(mimeType)) return "document";
-  if (fileName && isDelimitedDataFile(fileName)) return "document";
   return "other";
 }
 
@@ -629,7 +630,7 @@ export function removeNoteFromUsedIn(
 
 /** メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない） */
 export function countByType(index: MediaIndex): Record<MediaType, number> {
-  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, memo: 0, other: 0 };
+  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, data: 0, memo: 0, other: 0 };
   for (const entry of index.media) {
     if (entry.archivedAt) continue;
     counts[entry.type]++;

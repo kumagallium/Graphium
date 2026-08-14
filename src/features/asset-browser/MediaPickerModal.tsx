@@ -120,6 +120,12 @@ function PickerItem({
             <span className="text-xl">📝</span>
           </div>
         );
+      case "data":
+        return (
+          <div className="w-full h-20 flex items-center justify-center rounded bg-muted">
+            <span className="text-xl">🧾</span>
+          </div>
+        );
       case "url":
         return (
           <div className="w-full h-20 flex flex-col items-center justify-center gap-1 rounded bg-muted px-2">
@@ -469,7 +475,8 @@ export function MediaPickerModal({
                     : mediaType === "video" ? "video/*"
                     : mediaType === "audio" ? "audio/*"
                     : mediaType === "pdf" ? "application/pdf"
-                    : mediaType === "document" ? `.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,${DELIMITED_FILE_ACCEPT}`
+                    : mediaType === "document" ? ".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt"
+                    : mediaType === "data" ? DELIMITED_FILE_ACCEPT
                     : "*/*"
                   }
                   className="hidden"

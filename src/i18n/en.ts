@@ -1169,6 +1169,7 @@ export const en: Record<string, string> = {
   "asset.type.audio": "Audio",
   "asset.type.pdf": "PDFs",
   "asset.type.document": "Documents",
+  "asset.type.data": "Data",
   "asset.type.other": "Other Files",
   "asset.count": "{count} items",
   "asset.search": "Search media...",
@@ -1231,6 +1232,8 @@ export const en: Record<string, string> = {
   "asset.slashAudioSub": "Upload new or insert existing audio",
   "asset.slashDocument": "Document",
   "asset.slashDocumentSub": "Upload new or insert existing PDF / Word",
+  "asset.slashData": "Data asset",
+  "asset.slashDataSub": "Insert a data file from your assets as a table",
   // ── Cite picker (/claims, /Insights) ──
   "cite.slashGroup": "Existing knowledge",
   "cite.slashClaim": "Claims",

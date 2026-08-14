@@ -1169,6 +1169,7 @@ export const ja: Record<string, string> = {
   "asset.type.audio": "音声",
   "asset.type.pdf": "PDF",
   "asset.type.document": "ドキュメント",
+  "asset.type.data": "データ",
   "asset.type.other": "その他",
   "asset.count": "{count} 件",
   "asset.search": "メディアを検索...",
@@ -1231,6 +1232,8 @@ export const ja: Record<string, string> = {
   "asset.slashAudioSub": "新規アップロードまたは既存の音声から挿入",
   "asset.slashDocument": "ドキュメント",
   "asset.slashDocumentSub": "新規アップロードまたは既存の PDF / Word から挿入",
+  "asset.slashData": "データ素材",
+  "asset.slashDataSub": "素材にあるデータを表として挿入",
   // ── 引用ピッカー (/claims, /Insights) ──
   "cite.slashGroup": "既存の知見",
   "cite.slashClaim": "知見",

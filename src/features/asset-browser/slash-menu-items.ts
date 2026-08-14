@@ -67,6 +67,14 @@ export function getMediaSlashMenuItems(): SlashMenuItem[] {
       ["audio", "音声", "おんせい", "sound", "music"],
     ),
     createMediaSlashItem(
+      "asset.slashData",
+      "asset.slashDataSub",
+      "data",
+      // 新規ファイルからの取り込みは /データを取り込む（data-import）。
+      // こちらは既に素材にあるデータを本文へ持ってくる入口
+      ["data", "csv", "dat", "既存データ", "そくてい", "測定データ"],
+    ),
+    createMediaSlashItem(
       "asset.slashDocument",
       "asset.slashDocumentSub",
       "document",

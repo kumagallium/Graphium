@@ -31,6 +31,7 @@ import {
   StickyNote,
   Plus,
   Loader2,
+  Table,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
@@ -45,6 +46,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   pdf: "#c26356",
   url: "#4B7A52",
   document: "#6f5b8b",
+  data: "#3f7c85",
   memo: "#b08d3a",
   other: "#7a7a7a",
 };
@@ -63,6 +65,8 @@ function TypeIcon({ type, size = 14 }: { type: MediaType; size?: number }) {
       return <LinkIcon size={size} />;
     case "document":
       return <Files size={size} />;
+    case "data":
+      return <Table size={size} />;
     case "memo":
       return <StickyNote size={size} />;
     default:
