@@ -19,6 +19,15 @@ import type { DelimitedImportOptions, DelimiterKind, ParsedDelimited } from "./t
 const PREVIEW_LINE_LIMIT = 300;
 /** 変換プレビューで描くデータ行の最大数 */
 const PREVIEW_ROW_LIMIT = 50;
+/**
+ * 既定で取り込むデータ行数の上限。
+ *
+ * パース自体は数万行でも一瞬だが、その行数のテーブルをエディタに挿入すると
+ * 固まる。数十万行のログを取り違えて落としたときに黙って固まらないよう、
+ * 初期値だけ安全側に丸める。丸めたことは画面に出し、終了行を伸ばせば
+ * 全部取り込める — データを黙って捨てはしない。
+ */
+const DEFAULT_ROW_LIMIT = 2000;
 
 export type DataImportResult = {
   options: DelimitedImportOptions;
@@ -42,9 +51,24 @@ export function DataImportModal({
 }) {
   useLocaleSubscription();
   const lines = useMemo(() => splitLines(text), [text]);
-  const [options, setOptions] = useState<DelimitedImportOptions>(
-    () => initialOptions ?? detectImportOptions(lines)
+  // 推定 → 上限で丸める、を初期値だけに適用する。再取り込み（initialOptions あり）は
+  // 前回の設定が正なので触らない
+  const detected = useMemo(
+    () => (initialOptions ? null : detectImportOptions(lines)),
+    [lines, initialOptions]
   );
+  const [options, setOptions] = useState<DelimitedImportOptions>(() => {
+    if (initialOptions) return initialOptions;
+    const d = detected!;
+    const limited = Math.min(d.endRow, d.headerRow + DEFAULT_ROW_LIMIT);
+    return { ...d, endRow: limited };
+  });
+  // 丸めが起きたときだけ、元が何行あったかを覚えておいて画面に出す
+  const [truncatedTotal] = useState<number | null>(() => {
+    if (!detected) return null;
+    const total = detected.endRow - detected.headerRow;
+    return total > DEFAULT_ROW_LIMIT ? total : null;
+  });
   const [showSettings, setShowSettings] = useState(false);
 
   // Esc で閉じる（他のモーダルと同じ作法）
@@ -109,6 +133,28 @@ export function DataImportModal({
             {showSettings ? t("dataImport.hideSettings") : t("dataImport.showSettings")}
           </button>
         </div>
+
+        {/* 見出しより列の多い行がある = 値の中に区切り文字が入っている可能性。
+            データは切らずに出しているので、気づいて区切りを直せるようにする */}
+        {canImport && parsed.headers[parsed.headers.length - 1] === "" && (
+          <div className="px-4 py-2 border-b border-border bg-amber-500/10">
+            <p className="text-[11px] text-foreground">{t("dataImport.columnMismatch")}</p>
+          </div>
+        )}
+
+        {/* 行数が多いときの注意。丸めた場合はその旨、伸ばした場合は重さの警告 */}
+        {(truncatedTotal !== null || parsed.rows.length > DEFAULT_ROW_LIMIT) && (
+          <div className="px-4 py-2 border-b border-border bg-amber-500/10">
+            <p className="text-[11px] text-foreground">
+              {parsed.rows.length > DEFAULT_ROW_LIMIT
+                ? t("dataImport.rowLimitWarning", { count: String(parsed.rows.length) })
+                : t("dataImport.rowLimitNotice", {
+                    limit: String(DEFAULT_ROW_LIMIT),
+                    total: String(truncatedTotal),
+                  })}
+            </p>
+          </div>
+        )}
 
         {/* 調整（既定は畳んでいる） */}
         {showSettings && (

@@ -21,6 +21,7 @@ export {
   extractMediaFromBlocks,
   collectPdfFileIdsFromDoc,
   collectSourceAssetFileIdsFromDoc,
+  findMediaByContentHash,
   isDocumentMime,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,

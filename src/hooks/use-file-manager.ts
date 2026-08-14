@@ -1651,6 +1651,8 @@ export function useFileManager(authenticated: boolean) {
       options?: {
         derivedFromAssets?: string[];
         capture?: import("../features/mobile-capture/inbox/types").CaptureMeta;
+        /** 実体バイト列の SHA-256。同じ中身の再登録を避けたい経路が渡す */
+        contentHash?: string;
       },
     ): Promise<{ url: string; fileId: string; entry: MediaIndexEntry }> => {
       const result = await uploadMediaFileWithMeta(file);
@@ -1667,6 +1669,7 @@ export function useFileManager(authenticated: boolean) {
           ? { derivedFromAssets: options.derivedFromAssets }
           : {}),
         ...(options?.capture ? { capture: options.capture } : {}),
+        ...(options?.contentHash ? { contentHash: options.contentHash } : {}),
       };
       const current = mediaIndexRef.current ?? createEmptyIndex();
       const updated = addMediaEntry(current, entry);

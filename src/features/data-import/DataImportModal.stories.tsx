@@ -46,6 +46,14 @@ const FIXED_WIDTH_DAT = [
 
 const PLAIN_TEXT = ["測定メモ", "特に区切りのないただの文章。", "表にはならない。"].join("\n");
 
+/** 上限（2000 行）を超える長いログ。丸めた旨のバナーが出る */
+const HUGE_LOG = [
+  "# Long run log",
+  "# Device Model: LOGGER-9000",
+  "time,value",
+  ...Array.from({ length: 5000 }, (_, i) => `${i},${(i % 97) / 10}`),
+].join("\n");
+
 const noop = () => {};
 
 /** 典型的な装置 CSV。前置き 6 行・後書き 2 行が自動で外れる */
@@ -63,6 +71,16 @@ export const FixedWidthDat: Story = {
   args: {
     fileName: "spectrum.dat",
     text: FIXED_WIDTH_DAT,
+    onCancel: noop,
+    onConfirm: noop,
+  },
+};
+
+/** 上限を超える長いログ。既定で先頭 2000 行に絞られ、その旨が出る */
+export const HugeLog: Story = {
+  args: {
+    fileName: "run-2026-08-14.log",
+    text: HUGE_LOG,
     onCancel: noop,
     onConfirm: noop,
   },

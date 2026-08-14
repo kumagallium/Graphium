@@ -6,6 +6,7 @@ import {
   updateBlockNameByUrl,
   collectPdfFileIdsFromDoc,
   collectSourceAssetFileIdsFromDoc,
+  findMediaByContentHash,
   extractMediaFromBlocks,
   syncUsedIn,
   ensureMediaIndex,
@@ -356,6 +357,70 @@ describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
       new Set(["ok-1"]),
     );
     expect(collectSourceAssetFileIdsFromDoc({})).toEqual(new Set());
+  });
+
+  it("取り込みで作られたテーブルの元ファイル（tableMeta.source.fileId）を集める", () => {
+    // 表のセルにはファイルの痕跡が残らないため、ここで拾わないと元データだけ
+    // 利用ノートが空になり、アセットグラフにも出ない
+    const doc: { pages: { tableMeta: Record<string, { source?: { fileId?: string } }> }[] } = {
+      pages: [
+        {
+          tableMeta: {
+            "table-1": { source: { fileId: "dat-1" } },
+            // 手打ちの表（source を持たない）は混ざらない
+            "table-2": {},
+          },
+        },
+        { tableMeta: { "table-3": { source: { fileId: "dat-2" } } } },
+      ],
+    };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set(["dat-1", "dat-2"]));
+  });
+
+  it("素材として登録していない取り込み（fileId 無し）は何も足さない", () => {
+    const doc = { pages: [{ tableMeta: { "table-1": { source: {} } } }] };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set());
+  });
+});
+
+describe("findMediaByContentHash", () => {
+  const entry = (fileId: string, contentHash?: string, archivedAt?: string) => ({
+    fileId,
+    name: fileId,
+    type: "document" as const,
+    mimeType: "text/plain",
+    url: `u-${fileId}`,
+    thumbnailUrl: "",
+    uploadedAt: "2026-08-14T00:00:00.000Z",
+    usedIn: [],
+    ...(contentHash ? { contentHash } : {}),
+    ...(archivedAt ? { archivedAt } : {}),
+  });
+
+  const index = (media: ReturnType<typeof entry>[]) => ({
+    version: 5 as const,
+    updatedAt: "2026-08-14T00:00:00.000Z",
+    media,
+  });
+
+  it("中身が同じ素材を見つける（同じファイルの二度目の取り込みで使い回す）", () => {
+    const found = findMediaByContentHash(
+      index([entry("a"), entry("b", "sha256:xyz")]),
+      "sha256:xyz",
+    );
+    expect(found?.fileId).toBe("b");
+  });
+
+  it("アーカイブ済みは使い回さない（一覧に出ない素材を指すことになるため）", () => {
+    const found = findMediaByContentHash(
+      index([entry("b", "sha256:xyz", "2026-08-01T00:00:00.000Z")]),
+      "sha256:xyz",
+    );
+    expect(found).toBeUndefined();
+  });
+
+  it("contentHash を持たない既存素材とは一致しない", () => {
+    expect(findMediaByContentHash(index([entry("a")]), "sha256:xyz")).toBeUndefined();
   });
 });
 

@@ -147,6 +147,7 @@ import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-sc
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
+import { computeBlobHash } from "./lib/storage/shared/hash";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
@@ -237,6 +238,7 @@ import {
   generateUrlBookmarkId,
   getFaviconUrl,
   buildUrlPeekEntry,
+  findMediaByContentHash,
   buildMemoPeekEntry,
   isHttpUrl,
   computeUrlPasteMenuPosition,
@@ -747,6 +749,15 @@ type NoteEditorProps = {
   onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
   uploadFile?: (file: File) => Promise<string>;
+  /**
+   * 素材アップロード（fileId まで返す版）。
+   * uploadFile は URL しか返さないため、登録した素材の fileId を控えたい経路
+   * （データ取り込み → tableMeta.source.fileId）はこちらを使う。
+   */
+  uploadAsset?: (
+    file: File,
+    options?: { contentHash?: string },
+  ) => Promise<{ url: string; fileId: string; entry: MediaIndexEntry }>;
   /** メディアインデックス（メディアピッカー用） */
   mediaIndex?: import("./features/asset-browser").MediaIndex | null;
   /** URL ブックマーク登録コールバック */
@@ -904,6 +915,17 @@ function NoteEditor(props: NoteEditorProps) {
 // 既知の型は registry.ts の KNOWN_INLINE_TYPES に集約している
 // （ここに直接書き足すとブロック側と同じ「片方だけ取りこぼす」事故になる）。
 
+/**
+ * まだ画面に生きているエディタか（DOM が繋がっているか）。
+ *
+ * ノートを切り替えるとエディタは作り直されるが、ピッカーやダイアログが
+ * 掴んだ参照は古いインスタンスのまま残る。そこへ挿入しても画面には出ず、
+ * 「操作したのに何も起きない」状態になるので、使う直前に確かめる。
+ */
+function liveEditor(candidate: any): any | null {
+  return candidate?.domElement?.isConnected ? candidate : null;
+}
+
 function sanitizeInlineContent(content: any): any {
   if (!content) return content;
   if (typeof content === "string") return content;
@@ -1021,6 +1043,7 @@ function NoteEditorInner({
   rawNoteIndex,
   onDeleteContextEverywhere,
   uploadFile,
+  uploadAsset,
   mediaIndex,
   onAddUrlBookmark,
   pendingMemoInsert,
@@ -1230,6 +1253,10 @@ function NoteEditorInner({
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
+  // 素材インデックスの最新値を非同期処理から読むための ref
+  // （データ取り込みの重複チェックは、ダイアログを閉じた後に走る）
+  const mediaIndexRef = useRef(mediaIndex);
+  mediaIndexRef.current = mediaIndex;
   // ノートの文脈ラベル（ユーザーが手で付ける分類）。ヘッダのピルから編集する。
   // 本文と同じ buildDocument → autosave 経路で保存するため ref も併置（stale closure 回避）。
   const [noteContexts, setNoteContexts] = useState<string[]>(initialDoc?.noteContexts ?? []);
@@ -1315,6 +1342,8 @@ function NoteEditorInner({
       fileName: string;
       text: string;
       fileId?: string;
+      /** 素材未登録のファイル実体（確定時に素材として登録する） */
+      file?: File;
       /** 再取り込み時に置き換える対象のテーブルブロック */
       replaceBlockId?: string;
       /** 再取り込み時に復元する前回の設定 */
@@ -1597,11 +1626,21 @@ function NoteEditorInner({
   // 「この数字はどの生データから来たのか」を辿る手段が無くなる。
   const handleDataImportConfirm = useCallback(
     (
-      file: { fileName: string; fileId?: string; replaceBlockId?: string },
+      file: {
+        fileName: string;
+        fileId?: string;
+        replaceBlockId?: string;
+        /** 素材未登録のファイル実体（スラッシュメニュー・ドロップ経由） */
+        file?: File;
+      },
       result: DataImportResult
     ) => {
       setDataImportFile(null);
-      const editor = pickerEditorRef.current ?? editorRef.current;
+      // ダイアログを開いてから確定するまでの間にノートを切り替えると、
+      // pickerEditorRef はアンマウント済みのエディタを指したままになる。そこへ
+      // 挿入すると「取り込んだのに何も出ない」（ブロックは死んだエディタに入り、
+      // 注釈だけが共有ストアに残る）。DOM が繋がっている方を選ぶ。
+      const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
       if (!editor) return;
       const block = toTableBlock(result.parsed);
       if (!block) return;
@@ -1644,10 +1683,47 @@ function NoteEditorInner({
         editor.removeBlocks([currentBlock]);
       }
       // ブロック挿入の onChange とは別に、tableMeta（キャプション・出所）の変更も
-      // 保存させる必要がある。useAutoSave はこの位置より後で宣言されるため ref 経由。
+      // 保存させる必要がある。取り込みは失うと痛い量が一度に入るので、
+      // 自動保存の待ち時間を挟まずここで保存する。
       markDirtyRef.current();
+      saveNowRef.current?.();
+
+      // 素材未登録のファイル（スラッシュ・ドロップ経由）は、ここで素材として残す。
+      // 表だけ残して生データを捨てると、ファイル名は source に残っても実物へ辿れず、
+      // 来歴がここで切れる。登録を確定時にするのは、ダイアログをキャンセルした
+      // ファイルまで素材に溜めないため。
+      //
+      // 中身が同じ素材が既にあれば使い回す（装置は同じデータを何度も出す）。
+      // 名前ではなく SHA-256 で見るのは、同名で中身が違う上書き出力を
+      // 取り違えないため。アップロードは数秒かかりうるので、表の挿入を待たせず
+      // 後から source に fileId を足す（URL 素材登録と同じ流儀）。
+      const rawFile = file.file;
+      if (blockId && !file.fileId && rawFile && uploadAsset) {
+        const targetBlockId = blockId;
+        void (async () => {
+          try {
+            const bytes = new Uint8Array(await rawFile.arrayBuffer());
+            const contentHash = await computeBlobHash(bytes);
+            const existing = mediaIndexRef.current
+              ? findMediaByContentHash(mediaIndexRef.current, contentHash)
+              : undefined;
+            const fileId =
+              existing?.fileId ??
+              (await uploadAsset(rawFile, { contentHash })).fileId;
+            const current = tableMetaStore.getSource(targetBlockId);
+            // ダイアログを閉じた後にユーザーがそのテーブルを消した／別のものに
+            // 差し替えた場合は書き戻さない
+            if (!current || current.fileName !== file.fileName) return;
+            tableMetaStore.setSource(targetBlockId, { ...current, fileId });
+            markDirtyRef.current();
+          } catch (err) {
+            // 素材登録に失敗しても表は残っている（fileId が付かず再取り込みができないだけ）
+            console.warn("取り込んだデータファイルの素材登録に失敗:", err);
+          }
+        })();
+      }
     },
-    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata]
+    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, uploadAsset]
   );
 
   // 取り込み元バッジ → 元ファイルを読み直し、保存済みの設定でダイアログを開く。
@@ -1689,7 +1765,7 @@ function NoteEditorInner({
       if (!file) return;
       try {
         const text = await readDataFileText(file);
-        setDataImportFile({ fileName: file.name, text });
+        setDataImportFile({ fileName: file.name, text, file });
       } catch {
         alert(tStatic("dataImport.readError"));
       }
@@ -1824,6 +1900,10 @@ function NoteEditorInner({
   // 「切替先ノートに旧ノートの内容を保存」するデータ破壊になる。markDirty の
   // タイマーは useAutoSave がアンマウント時に必ずクリアするため安全。
   const markDirtyRef = useRef<() => void>(() => {});
+  // 取り込みのような「まとまった量が一度に入る」編集は、3 秒の自動保存待ちに
+  // 賭けずその場で保存する（待っている間に何かがエディタを作り直すと丸ごと消える）。
+  // markDirtyRef と同じく useAutoSave がこの位置より後で宣言されるため ref 経由。
+  const saveNowRef = useRef<(() => void) | null>(null);
 
   // ペースト → ブックマーク選択: モーダルなしで直接挿入 + 裏でアセット登録。
   // 登録後は保存を予約して syncUsedIn を走らせる（オートセーブが先に完了して
@@ -2140,7 +2220,7 @@ function NoteEditorInner({
       if (pos) editor.setTextCursorPosition(pos, "end");
       pickerEditorRef.current = editor;
       void readDataFileText(file)
-        .then((text) => setDataImportFile({ fileName: file.name, text }))
+        .then((text) => setDataImportFile({ fileName: file.name, text, file }))
         .catch(() => alert(tStatic("dataImport.readError")));
     };
 
@@ -2351,6 +2431,7 @@ function NoteEditorInner({
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
   markDirtyRef.current = markDirty;
+  saveNowRef.current = saveNow;
 
   // ── team-shared storage（Phase 2a / 2b-1） ──
   // sharedRefState は handleSave の上で宣言済み（buildDocument 結果への再注入用）
@@ -8784,6 +8865,7 @@ export function NoteApp() {
             noteIndex={fm.noteIndex}
             rawNoteIndex={fm.rawNoteIndex}
             uploadFile={fm.handleUploadMedia}
+            uploadAsset={fm.handleUploadAsset}
             mediaIndex={fm.mediaIndex}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             pendingMemoInsert={pendingMemoInsert}
