@@ -1674,8 +1674,13 @@ function NoteEditorInner({
       // ブロック挿入の onChange とは別に、tableMeta（キャプション・出所）の変更も
       // 保存させる必要がある。取り込みは失うと痛い量が一度に入るので、
       // 自動保存の待ち時間を挟まずここで保存する。
+      //
+      // ただし保存は 1 ティック遅らせる。すぐ上の setCaption / setSource は
+      // React の state 更新で、保存が読む metasRef はレンダー後にしか新しく
+      // ならない。同じティックで保存すると注釈が空のまま書き出され、直後に
+      // 再マウントが挟まると表だけ残って出所が消える。
       markDirtyRef.current();
-      saveNowRef.current?.();
+      setTimeout(() => saveNowRef.current?.(), 0);
 
       // 素材未登録のファイル（スラッシュ・ドロップ経由）は、ここで素材として残す。
       // 表だけ残して生データを捨てると、ファイル名は source に残っても実物へ辿れず、
