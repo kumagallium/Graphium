@@ -36,8 +36,11 @@ export {
   buildMemoPeekEntry,
   persistUrlMetaPatch,
   isMobileCapture,
+  getLatestMediaIndex,
+  clearMediaIndexCache,
   MEDIA_INDEX_CHANGED_EVENT,
 } from "./media-index";
+export { findSameAsset, computeAssetContentHash, backfillContentHashes } from "./dedupe";
 export type {
   MediaIndex,
   MediaIndexEntry,

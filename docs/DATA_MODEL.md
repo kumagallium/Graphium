@@ -1360,9 +1360,16 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **File CRUD** — `listFiles`, `loadFile`, `createFile`, `saveFile`,
   `deleteFile`. Files are `GraphiumDocument` blobs.
 - **Media** — `uploadMedia`, `getMediaBlobUrl`, `extractFileId`.
-  Optional `saveMediaText?` / `loadMediaText?` persist plain source text
-  (e.g. a URL's Reader-extracted original, before any LLM processing) as a
-  separate channel from binary media, keyed by a caller-issued fileId that
+  Optional `readMediaBytes?(fileId, maxBytes?)` returns the raw bytes
+  without minting a display URL. `getMediaBlobUrl` caches every blob URL it
+  creates for the session, so reading a whole library through it would pin
+  every asset in memory; callers that only want the bytes — content hashing
+  for upload de-duplication, for one — use this instead. Passing `maxBytes`
+  makes the provider skip anything larger and return `undefined`, since
+  SHA-256 needs the whole file resident. Optional `saveMediaText?` /
+  `loadMediaText?` persist plain source text (e.g. a URL's Reader-extracted
+  original, before any LLM processing) as a separate channel from binary
+  media, keyed by a caller-issued fileId that
   `GraphiumDocument.sourceTextFileId` points to.
 - **Metadata** — `getUserEmail`, `getRevisionId?`.
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the

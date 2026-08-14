@@ -799,6 +799,16 @@ live. Three providers ship today:
 The provider is selected at runtime by `src/lib/storage/registry.ts` and
 exposed via the `useStorage()` React hook.
 
+Uploading a material goes through one funnel (`handleUploadAsset` in
+`src/hooks/use-file-manager.ts`), which hashes the bytes before handing them
+to the provider and reuses an existing material when the hash already
+appears in the media index. Materials are meant to be one artefact used from
+many notes — the notes that use one are tracked on the entry itself — so a
+second copy of the same bytes only splits its OCR text, its annotations and
+its usage list in two. Materials registered before hashing existed get their
+hash filled in by a background pass after sign-in, one at a time, so an
+interrupted run simply resumes. Details in `src/features/asset-browser/dedupe.ts`.
+
 A separate **shared storage** subsystem (`src/lib/storage/shared/`)
 handles content addressed by hash for the Library / Fork features
 (see §5).

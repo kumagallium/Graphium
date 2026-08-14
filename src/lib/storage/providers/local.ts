@@ -181,6 +181,16 @@ export class LocalStorageProvider implements StorageProvider {
     return blobUrl;
   }
 
+  async readMediaBytes(fileId: string, maxBytes?: number): Promise<Uint8Array | undefined> {
+    const record = await withStore<any>(STORE_MEDIA, "readonly", (store) =>
+      store.get(fileId)
+    );
+    const blob: Blob | undefined = record?.blob;
+    if (!blob) return undefined;
+    if (maxBytes != null && blob.size > maxBytes) return undefined;
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+
   extractFileId(url: string): string | null {
     // local-media://{fileId} 形式から ID を抽出
     const match = url.match(/^local-media:\/\/(.+)$/);

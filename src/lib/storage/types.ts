@@ -42,6 +42,21 @@ export interface StorageProvider {
   uploadMedia(file: File): Promise<MediaUploadResult>;
   /** メディアファイルの表示用 URL を取得（動画・音声は Blob URL を返す場合あり） */
   getMediaBlobUrl(fileId: string): Promise<string>;
+  /**
+   * メディアの実体バイト列を読む（表示用の URL を作らない）。
+   *
+   * `getMediaBlobUrl` は blob URL をモジュールキャッシュに溜めるので、素材を
+   * 端から読むような用途（重複判定のハッシュ後追い付与など）に使うと、
+   * ライブラリ全体の blob がセッション中メモリに居座る。中身だけ要る場面は
+   * こちらを使う。
+   *
+   * `maxBytes` を渡すと、それより大きい素材は読まずに undefined を返す。
+   * SHA-256 は全体をメモリに載せないと計算できないため、巨大な動画で
+   * 数百 MB を抱えるくらいなら読まない方がよい、という判断のため。
+   *
+   * 未実装プロバイダでは undefined（呼び出し側は機能ごと諦める）。
+   */
+  readMediaBytes?(fileId: string, maxBytes?: number): Promise<Uint8Array | undefined>;
   /** URL からプロバイダー固有のファイル ID を抽出 */
   extractFileId(url: string): string | null;
 

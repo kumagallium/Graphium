@@ -198,6 +198,17 @@ export class ServerFilesystemProvider implements StorageProvider {
     return url;
   }
 
+  async readMediaBytes(fileId: string, maxBytes?: number): Promise<Uint8Array | undefined> {
+    const res = await authedFetchInternal(`/api/storage/media/${encodeURIComponent(fileId)}`);
+    if (!res.ok) return undefined;
+    // 本文を読む前に Content-Length で足切りする（大きい素材を掴まないため）
+    const declared = Number(res.headers.get("content-length"));
+    if (maxBytes != null && Number.isFinite(declared) && declared > maxBytes) return undefined;
+    const buf = await res.arrayBuffer();
+    if (maxBytes != null && buf.byteLength > maxBytes) return undefined;
+    return new Uint8Array(buf);
+  }
+
   extractFileId(url: string): string | null {
     const match = url.match(/^media-server:\/\/(.+)$/);
     if (match) return match[1];
