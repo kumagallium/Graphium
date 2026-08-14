@@ -231,13 +231,36 @@ A time-series table is not a separate kind of table — it is an ordinary table 
 
 Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
 
-- **Type & Series** — the chart type (**Line**, **Bar**, **Scatter**, or **Histogram** — the distribution of a numeric column) and the series. A series is the unit that knows its data: expand one to set its display label, its **data assignment** (the source table — picked by caption, e.g. *Table 1* — and the X/Y columns), its own chart type (mix a bar series into a line chart), a color, and which Y axis it belongs to. Series can point at **different tables**, so two logs can be overlaid on one figure, and assigning a series to the **right** axis gives it its own scale: pain 0–10 on the left, pressure around 1000 hPa on the right.
+- **Type & Series** — the chart type (**Line**, **Bar**, **Scatter**, or **Histogram** — the distribution of a numeric column) and the series. A series is the unit that knows its data: expand one to set its display label, its **data assignment** (the source table — picked by caption, e.g. *Table 1* — and the X/Y columns), its own chart type (mix a bar series into a line chart), which Y axis it belongs to, and its **Style**. Series can point at **different tables**, so two logs can be overlaid on one figure, and assigning a series to the **right** axis gives it its own scale: pain 0–10 on the left, pressure around 1000 hPa on the right.
+  - **Style** <Badge type="tip" text="Added in v0.36.0 (2026-08-14)" /> — besides the color: line type (solid, dashed, dotted), line width, marker visibility, shape (circle, square, triangle, diamond, each also hollow) and size, and bar width. For a figure that will be printed in black and white, this is how series stay distinguishable without relying on color.
 - **Axes** — the X-axis scale type (**Auto** / **Time** / **Numeric** / **Category** — auto-detection can be overridden), axis labels, and min/max ranges for the X axis and for the left — and, when in use, the right — Y axis. Each axis also has an **Advanced** section: visibility toggles for the axis, axis line, ticks and tick labels, tick-label rotation, tick direction (inward, the academic default, or outward), and grid lines. Line and scatter axes fit the data range; bars always start at zero.
+  - **Stack** <Badge type="tip" text="Added in v0.36.0 (2026-08-14)" /> — inside the left Y axis's Advanced section. This is the figure spectra are compared in: a measurement and its reference patterns offset vertically inside one frame, as XRD work is usually shown. Turning it on removes the Y-axis ticks — a row's height is a position for comparison, not an absolute intensity. Choose how heights are **normalized** (max to 1, or raw values), the **gap** between rows, the **order** (first at the bottom or the top), and where **row labels** go (in the figure or in the legend). Individual series can be nudged with **scale** and **row position**. Placing separate chart blocks side by side cannot produce this figure — each one repeats its own padding and axes.
 - **Appearance** — a figure caption shown under the chart, the aspect ratio (**√2:1** standard, **golden φ:1**, **2:1**, **3:1**, and spectrum-friendly **4:1** / **5:1** for wide patterns like XRD, plus **1:1**), the legend (above the plot aligned to its frame, inside any of the four corners, or below; horizontal or vertical), and the plot frame.
 
 ![The chart settings panel on the Type & Series tab, assigning a series to another table and the right axis](/screenshots/chart-settings.png)
 
 The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one.
+
+## Importing measurement data <Badge type="tip" text="Added in v0.36.0 (2026-08-14)" /> {#importing-measurement-data}
+
+The `.csv`, `.txt`, and `.dat` files instruments write can become tables in a note, preamble and trailing notes and all.
+
+Pick **Data** from the `/` menu — the picker offers both the files already in your assets and a new one from disk. Dropping a file straight onto the editor opens the same screen.
+
+The header row, the range to read, and the delimiter are already guessed when it opens. The original file is on the left, the resulting table on the right, so the usual interaction is to glance at both and press **Import**. The settings above are there for when the guess is wrong.
+
+- **Row range** — the header row and the last data row. The preamble and the trailing notes fall outside it
+- **Delimiter** — comma, tab, space, or any single character. For output padded with runs of spaces to line the columns up, use **Treat consecutive delimiters as one**
+
+![The data import screen: the original file on the left, the resulting table on the right](/screenshots/data-import.png)
+
+Lines like `Device Model: ENV-MONITOR-X9` from the preamble are **kept alongside the table as the conditions the data was measured under**. A converter usually discards them first; in a lab note they are part of the record.
+
+An imported table carries its **source** next to its name. Press it to reopen the same screen and rebuild the table with a corrected range or delimiter — the table keeps its place and its name. The file itself stays as a **Data** asset, so the numbers lead back to the raw output. Importing the same file twice does not add a second asset.
+
+A long table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. Very long files (more than 2000 data rows) open with the range limited to the beginning — raise the end row to bring in the rest.
+
+![An imported table with its source shown next to the name, trimmed at the foot](/screenshots/imported-table.png)
 
 ## Linking notes with @
 

@@ -4,7 +4,7 @@ Research rarely starts from a blank page — it starts from a paper, a web page,
 
 ## The material gallery
 
-The sidebar has a **Materials** section with one entry per type: **Images**, **Documents** (PDFs and Word files), **Videos**, **Audio**, and **URLs**. Click any of them to open the gallery. Memos have their own gallery — the **Memos** entry next to Notes.
+The sidebar has a **Materials** section with one entry per type: **Images**, **Documents** (PDFs and Word files), **Data** (the `.csv` / `.txt` / `.dat` files instruments write, [imported as tables](/notes-and-editor#importing-measurement-data)), **Videos**, **Audio**, and **URLs**. Click any of them to open the gallery. Memos have their own gallery — the **Memos** entry next to Notes.
 
 Inside the gallery you can:
 
@@ -28,7 +28,7 @@ There are several routes, all ending in the same library:
 | Route | How |
 |---|---|
 | Drag & drop or paste | Drop a file into a note (or paste an image from the clipboard). It is uploaded to your library and inserted as a block. Images that arrive as part of copied web-page content are also captured into the library, so they keep working even if the original page goes away |
-| Slash menu | Type `/` and pick **Image**, **Video**, **Audio**, or **Document** ("Upload new or insert existing PDF / Word"). The picker offers **Upload from file** and an **Insert as** choice: **Embed** (content expands inline) or **Link** (an @-link; content stays collapsed) |
+| Slash menu | Type `/` and pick **Image**, **Video**, **Audio**, **Document** ("Upload new or insert existing PDF / Word"), or **Data** (turns a `.csv` / `.txt` / `.dat` into a table). The picker offers **Upload from file** and an **Insert as** choice: **Embed** (content expands inline) or **Link** (an @-link; content stays collapsed) |
 | Paste a URL | Pasting a URL into a note opens a small menu: **Link** ("Paste as inline text") or **Bookmark** ("Display as a card with preview"). Either way the URL is registered in the **URLs** gallery |
 | Links already in a note | Clicking a link that is not registered yet — for example one written into the note by an AI chat answer — opens the side peek with an **Add to materials** button in the header. Review the page first, then register it: the URL joins the **URLs** gallery and appears in graphs. Nothing is registered automatically |
 | Slash menu **Bookmark** / **PDF** | Insert a URL card or an embedded PDF viewer directly as a block |
