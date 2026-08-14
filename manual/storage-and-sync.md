@@ -112,6 +112,8 @@ Per note, the `⋯` menu offers:
 | **Markdown** | A portable `.md` file |
 | **PROV-JSON-LD** | The note's provenance graph in W3C PROV format |
 
+Markdown is lossy by design: what a block *means* survives, how it *looks* does not. A formula exports as its LaTeX source, a calculation as its lines with the values they produced, and a chart as its caption and what it plots. The figure itself cannot travel, but the table behind it exports as an ordinary Markdown table.
+
 ### Export everything <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" />
 
 **Settings** → **Storage** → **Export & backup** has two bulk buttons:

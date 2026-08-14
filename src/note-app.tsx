@@ -254,6 +254,7 @@ import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
+import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
 // hooks
@@ -2552,13 +2553,18 @@ function NoteEditorInner({
   useEffect(() => onMenuAction("export-pdf", () => void handleExportPdf()), [handleExportPdf]);
 
   // ── Markdown エクスポートハンドラー ──
-  // ライブエディタ（フルスキーマ）の blocksToMarkdownLossy を使う。
   // PDF と同じくエディタの現在内容（未保存の編集含む）が対象。
   const handleExportMarkdown = useCallback(async () => {
     const editor = editorRef.current;
     if (!editor) return;
     try {
-      await exportNoteToMarkdown({ title, editor });
+      // テーブルの名前はブロックの外（tableMeta）にあるので明示的に渡す。
+      // 渡さないとチャートが参照先を列名でしか書けない
+      await exportNoteToMarkdown({
+        title,
+        editor,
+        tableMeta: tableMetaStoreRef.current.getSnapshot(),
+      });
     } catch (e) {
       console.error("[markdown-export] export failed:", e);
     }
@@ -2677,7 +2683,9 @@ function NoteEditorInner({
           // タイトルはエディタ本文（BlockNote document）の外にあるメタデータなので、
           // 明示的に前置きへ含めないと AI からノートのタイトルが参照できない。
           const pageMarkdown = editorRef.current
-            ? await editorRef.current.blocksToMarkdownLossy(editorRef.current.document)
+            ? await blocksToMarkdown(editorRef.current, editorRef.current.document, {
+                tableMeta: tableMetaStoreRef.current.getSnapshot(),
+              })
             : "";
           userMessage = buildQuotedChatMessage({
             title,
@@ -2692,7 +2700,9 @@ function NoteEditorInner({
           // AI が編集前の本文しか見えず「修正したノートを見せてください」と返してしまう。
           // それを防ぐため、送信のたびにエディタから最新本文を取り直す。
           const allBlocks = editorRef.current.document;
-          const pageMarkdown = await editorRef.current.blocksToMarkdownLossy(allBlocks);
+          const pageMarkdown = await blocksToMarkdown(editorRef.current, allBlocks, {
+            tableMeta: tableMetaStoreRef.current.getSnapshot(),
+          });
           if (pageMarkdown.trim()) {
             userMessage = [
               isFirstMessage

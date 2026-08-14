@@ -21,6 +21,19 @@ export function isCommentLine(line: string): boolean {
   return t.startsWith("#") || t.startsWith("//");
 }
 
+/**
+ * props.results（評価スナップショットの JSON）を安全に読む。壊れていたら空扱い。
+ * 表示（view）と Markdown 書き出し（to-markdown）の両方が使う。
+ */
+export function parseCalcResults(raw: string): CalcLineResult[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 /** 結果の表示整形。有効数字を抑えて秤量値として読める形にする */
 function formatValue(math: Awaited<ReturnType<typeof loadMathJs>>, value: unknown): string {
   // 関数定義（`f(x) = x^2`）などは値表示せずシグネチャだけ見せる
