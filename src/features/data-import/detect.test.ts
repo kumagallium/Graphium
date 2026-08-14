@@ -103,6 +103,24 @@ describe("detectImportOptions", () => {
     expect(parsed.rows[0]).toEqual(["21.34", "4.161", "5.0", "(0", "0", "2)"]);
   });
 
+  it("見出しが既にデータの塊に入っているなら、その前の行まで飲み込まない", () => {
+    // NIST の PDF カードのように、前置きの最終行（2theta range: ...）が
+    // 見出しと紛らわしい形をしている場合。塊の先頭が数値ばかりでなければ
+    // 既に見出しを含んでいるとみなす
+    const text = [
+      "Quality: I",
+      "--------------- d-I list",
+      "2theta range: 21.34 - 147.24",
+      "2theta d I (hkl)",
+      "21.34 4.161 5.0 (0,0,2)",
+      "25.87 3.441 11.5 (1,0,1)",
+      "33.51 2.672 2.7 (1,1,0)",
+    ].join("\n");
+    const options = detect(text);
+    expect(options.headerRow).toBe(4);
+    expect(parseDelimited(text, options).headers).toEqual(["2theta", "d", "I", "(hkl)"]);
+  });
+
   it("見出しの直前がコメント行なら範囲を広げない", () => {
     const text = ["# [DATA START]", "a,b", "1,2", "3,4"].join("\n");
     expect(detect(text).headerRow).toBe(2);

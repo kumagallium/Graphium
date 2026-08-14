@@ -2021,8 +2021,6 @@ export const ja: Record<string, string> = {
   "dataImport.title": "データの取り込み",
   "dataImport.summary": "{headerRow} 行目を見出しとして {rows} 行 × {columns} 列を読み取りました（{delimiter}）",
   "dataImport.summaryEmpty": "表として読み取れませんでした。区切り文字や行の範囲を調整してみてください",
-  "dataImport.showSettings": "調整",
-  "dataImport.hideSettings": "調整を閉じる",
   "dataImport.rowRange": "行の範囲",
   "dataImport.headerRow": "開始行（見出し行）",
   "dataImport.endRow": "終了行",

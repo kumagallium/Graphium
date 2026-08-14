@@ -5,7 +5,7 @@
 // 装置ファイルは前置きと後書きが付くだけで、本体は「列数が一定の行が連続する塊」
 // として素直に立ち上がる。その塊を探すだけで開始行・終了行・区切りがまとめて決まる。
 
-import { countFields } from "./parse";
+import { countFields, splitLine } from "./parse";
 import type { DelimitedImportOptions, DelimiterKind } from "./types";
 
 /** コメント行の目印。装置出力の前置きはたいてい行頭記号で始まる */
@@ -122,10 +122,16 @@ export function detectImportOptions(lines: string[]): DelimitedImportOptions {
 
   // 見出し行が塊に入らないことがある。`2theta,d,I,(hkl)` のように、データ側だけ
   // 値の中に区切り文字を含む（`(0,0,2)`）と列数が食い違い、列数が一定の塊は
-  // データ行だけになるため。塊の直前が空行でもコメント行でもなければ、それは
-  // 見出し行とみなして範囲を 1 行広げる。
+  // データ行だけになるため。その場合だけ範囲を 1 行広げる。
+  //
+  // 広げるのは「塊の先頭がデータ行に見える」ときに限る。塊の先頭が既に見出し
+  // （文字が並ぶ行）なら、その手前にある行は前置きの続きであって見出しではない
+  // （`2theta range: 21.34 - 147.24` のような行を飲み込まないため）。
+  const runStartsWithData = looksLikeDataRow(body[bestRun.start], bestCandidate);
   const headerIdx =
-    bestRun.start > 0 && isHeaderCandidate(body[bestRun.start - 1], bestCandidate)
+    runStartsWithData &&
+    bestRun.start > 0 &&
+    isHeaderCandidate(body[bestRun.start - 1], bestCandidate)
       ? bestRun.start - 1
       : bestRun.start;
 
@@ -136,6 +142,24 @@ export function detectImportOptions(lines: string[]): DelimitedImportOptions {
     customDelimiter: bestCandidate.customDelimiter,
     collapseConsecutive: bestCandidate.collapseConsecutive,
   };
+}
+
+/**
+ * その行がデータ行に見えるか（セルの過半数が数値）。
+ *
+ * 見出し行かデータ行かを、列数ではなく中身で見分けるための判定。装置ファイルの
+ * 見出しは単位や記号を含むこともあるので「全部が非数値」までは求めない。
+ */
+function looksLikeDataRow(line: string | undefined, candidate: Candidate): boolean {
+  if (!line) return false;
+  const cells = splitLine(
+    line,
+    delimiterChar(candidate),
+    candidate.collapseConsecutive
+  ).filter((c) => c !== "");
+  if (cells.length === 0) return false;
+  const numeric = cells.filter((c) => Number.isFinite(Number(c))).length;
+  return numeric * 2 > cells.length;
 }
 
 /**

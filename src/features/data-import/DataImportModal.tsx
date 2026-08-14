@@ -69,7 +69,6 @@ export function DataImportModal({
     const total = detected.endRow - detected.headerRow;
     return total > DEFAULT_ROW_LIMIT ? total : null;
   });
-  const [showSettings, setShowSettings] = useState(false);
 
   // Esc で閉じる（他のモーダルと同じ作法）
   useEffect(() => {
@@ -113,7 +112,7 @@ export function DataImportModal({
           </button>
         </div>
 
-        {/* 推定サマリ + 調整トグル */}
+        {/* 推定の結果。設定はこの下に出しっぱなしにする */}
         <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted/30">
           <span className="text-xs text-foreground">
             {canImport
@@ -125,13 +124,6 @@ export function DataImportModal({
                 })
               : t("dataImport.summaryEmpty")}
           </span>
-          <button
-            type="button"
-            onClick={() => setShowSettings((v) => !v)}
-            className="ml-auto text-[11px] px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-          >
-            {showSettings ? t("dataImport.hideSettings") : t("dataImport.showSettings")}
-          </button>
         </div>
 
         {/* 見出しより列の多い行がある = 値の中に区切り文字が入っている可能性。
@@ -156,9 +148,9 @@ export function DataImportModal({
           </div>
         )}
 
-        {/* 調整（既定は畳んでいる） */}
-        {showSettings && (
-          <div className="px-4 py-3 border-b border-border flex flex-wrap items-start gap-6">
+        {/* 設定。畳んでも高さが 1 行分しか変わらないうえ、開くボタンに気づかれない
+            ほうが痛いので、常に出しておく（推定が当たっていれば触らずに済む） */}
+        <div className="px-4 py-3 border-b border-border flex flex-wrap items-start gap-6">
             <div>
               <div className="text-[11px] font-medium text-foreground mb-1.5">
                 {t("dataImport.rowRange")}
@@ -216,8 +208,7 @@ export function DataImportModal({
                 {t("dataImport.collapseConsecutive")}
               </label>
             </div>
-          </div>
-        )}
+        </div>
 
         {/* プレビュー（左: 生テキスト / 右: 変換結果） */}
         <div className="flex-1 min-h-0 grid grid-cols-2 gap-0 divide-x divide-border">

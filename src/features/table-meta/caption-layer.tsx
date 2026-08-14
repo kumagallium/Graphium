@@ -284,7 +284,7 @@ export function TableCaptionLayer({
             justifyContent: "center",
             background:
               "linear-gradient(to bottom, transparent, var(--color-background) 85%)",
-            zIndex: 49,
+            zIndex: 29,
           }}
         >
           <button
@@ -338,7 +338,7 @@ export function TableCaptionLayer({
                 background: "var(--color-card)",
                 color: "var(--color-foreground)",
                 outline: "none",
-                zIndex: 50,
+                zIndex: 30,
               }}
             />
           );
@@ -356,7 +356,9 @@ export function TableCaptionLayer({
               display: "flex",
               alignItems: "center",
               gap: 4,
-              zIndex: 50,
+              // 本文の装飾なので、モーダル（z-50）より下に置く。
+              // 同じ高さだと body ポータルの描画順でモーダルの上に乗る
+              zIndex: 30,
             }}
           >
           <button

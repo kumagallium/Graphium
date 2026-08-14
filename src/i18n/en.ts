@@ -2023,8 +2023,6 @@ export const en: Record<string, string> = {
   "dataImport.title": "Import data",
   "dataImport.summary": "Read {rows} rows × {columns} columns, using line {headerRow} as the header ({delimiter})",
   "dataImport.summaryEmpty": "Could not read this as a table. Try adjusting the delimiter or the row range",
-  "dataImport.showSettings": "Adjust",
-  "dataImport.hideSettings": "Hide settings",
   "dataImport.rowRange": "Row range",
   "dataImport.headerRow": "Start (header row)",
   "dataImport.endRow": "End row",
