@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.36.0](https://github.com/kumagallium/Graphium/compare/v0.35.2...v0.36.0) - 2026-08-14
+
+- feat(chart): add per-series style options by @kumagallium in https://github.com/kumagallium/Graphium/pull/694
+- fix(chart): fit numeric x axis to the data range by @kumagallium in https://github.com/kumagallium/Graphium/pull/696
+- feat(chart): offset series into rows for spectrum comparison by @kumagallium in https://github.com/kumagallium/Graphium/pull/697
+- feat(data-import): 装置の区切りテキストを表に取り込む（設定を来歴として残す） by @kumagallium in https://github.com/kumagallium/Graphium/pull/693
+
 ## [v0.35.2](https://github.com/kumagallium/Graphium/compare/v0.35.1...v0.35.2) - 2026-08-14
 
 - fix(chart): label time-axis day ticks with month/day by @kumagallium in https://github.com/kumagallium/Graphium/pull/691
