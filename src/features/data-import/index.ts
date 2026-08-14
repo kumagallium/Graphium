@@ -8,7 +8,6 @@ export { parseDelimited, splitLines, splitLine, resolveDelimiter } from "./parse
 export { detectImportOptions } from "./detect";
 export { extractHeaderMeta } from "./header-meta";
 export { buildTableSource } from "./source";
-export { findSameDataAsset } from "./dedupe";
 export { toTableBlock, defaultCaption } from "./to-table-block";
 export { DataImportModal } from "./DataImportModal";
 export type { DataImportResult } from "./DataImportModal";
