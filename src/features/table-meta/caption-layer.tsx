@@ -26,20 +26,27 @@ type CaptionPos = {
   displayName: string;
   /** ヘッダを除いたデータ行数（折りたたみ判定に使う） */
   rowCount: number;
-  /** 表の下端（画面座標）。折りたたみ中の「続きがある」表示をここに重ねる */
+  /** 見えている表の下端（画面座標）。折りたたみ中の「続きがある」表示をここに重ねる */
   bottom: number;
-  /** 折りたたみ中に隠れている行数の目安（0 なら隠れていない） */
+  /** 折りたたむとしたら隠れる行数（0 なら隠す行がない） */
   hiddenRows: number;
 };
 
 /**
- * これを超える行数の取り込みテーブルは既定で高さを抑える。
+ * これを超える行数の取り込みテーブルは既定で行を隠す。
  * 装置ログは数百行が普通で、そのまま展開すると本文がデータで埋まり、
  * ノートとしての読み筋が消えてしまう。
  */
 const COLLAPSE_ROW_THRESHOLD = 20;
-/** 折りたたみ時の表示高さ（px）。ヘッダ + 数行が見える程度 */
-const COLLAPSED_MAX_HEIGHT = 320;
+/**
+ * 折りたたみ中に見せるデータ行数（ヘッダは別に 1 行見える）。
+ * 外側の高さ（max-height）ではなく行そのものを隠すのは、BlockNote の
+ * 列追加ボタンが tbody の実寸に合わせて伸びるため — 外枠だけ切り詰めると、
+ * 畳んだ表の脇にボタンだけが元の長さで残ってしまう。
+ */
+const COLLAPSED_VISIBLE_ROWS = 7;
+/** 隠し始める行の位置（1 始まり）。1 行目のヘッダ + 見せる行数、の次 */
+const FIRST_HIDDEN_ROW = COLLAPSED_VISIBLE_ROWS + 2;
 /** 裾のフェードの高さ（px）。この中に「あと N 行」ボタンを浮かせる */
 const FADE_HEIGHT = 64;
 
@@ -129,23 +136,12 @@ export function TableCaptionLayer({
         return;
       }
       const tableEl = blockEl.querySelector("table");
+      // 折りたたみ中は隠した行が高さを持たないので、表の下端がそのまま見えている下端になる
       const rect = (tableEl ?? blockEl).getBoundingClientRect();
       if (rect.top > window.innerHeight) return;
-      // 折りたたみ中は table 自体の高さは変わらず、外側の .tableWrapper が
-      // 切り詰められる。見えている下端はそちらで測る
-      const wrapEl = tableEl?.closest(".tableWrapper");
-      const wrapRect = wrapEl?.getBoundingClientRect();
-      const visibleBottom = wrapRect ? Math.min(rect.bottom, wrapRect.bottom) : rect.bottom;
-      if (visibleBottom < 0) return;
+      if (rect.bottom < 0) return;
       // 1 行目はヘッダなのでデータ行数から除く
       const rowCount = Math.max(0, (block.content?.rows?.length ?? 1) - 1);
-      // 折りたたみ中は表が途中で切れているので、見えている行数から残りを見積もる
-      // （行の高さは実測。1 行も測れないときは 0 = 表示しない）
-      const rowEl = tableEl?.querySelector("tbody tr");
-      const rowHeight = rowEl ? rowEl.getBoundingClientRect().height : 0;
-      const visibleHeight = visibleBottom - rect.top;
-      const visibleRows =
-        rowHeight > 0 ? Math.max(0, Math.floor(visibleHeight / rowHeight) - 1) : rowCount;
       next.push({
         blockId,
         top: rect.top - 24,
@@ -153,8 +149,8 @@ export function TableCaptionLayer({
         width: rect.width,
         displayName: displayNames.get(blockId) ?? "",
         rowCount,
-        bottom: visibleBottom,
-        hiddenRows: Math.max(0, rowCount - visibleRows),
+        bottom: rect.bottom,
+        hiddenRows: Math.max(0, rowCount - COLLAPSED_VISIBLE_ROWS),
       });
     });
 
@@ -259,9 +255,9 @@ export function TableCaptionLayer({
     .filter(isCollapsed)
     .map(
       (pos) =>
-        // overflow は hidden。スクロールできると「畳まれている」のか
-        // 「まだ読み込み中なのか」が曖昧になるので、切れていることを見せて開かせる
-        `[data-id="${pos.blockId}"] .tableWrapper{max-height:${COLLAPSED_MAX_HEIGHT}px;overflow:hidden;}`
+        // 外枠の高さを抑えるのではなく行そのものを隠す。表の実寸が縮むので、
+        // BlockNote が表の脇・下に出す列／行の追加ボタンも一緒に縮む
+        `[data-id="${pos.blockId}"] .tableWrapper tbody tr:nth-child(n+${FIRST_HIDDEN_ROW}){display:none;}`
     )
     .join("");
 
@@ -285,6 +281,8 @@ export function TableCaptionLayer({
             background:
               "linear-gradient(to bottom, transparent, var(--color-background) 85%)",
             zIndex: 29,
+            // 裾は表の最後の行に重なる。素通しにしないとそこだけ選択・編集できない
+            pointerEvents: "none",
           }}
         >
           <button
@@ -301,6 +299,8 @@ export function TableCaptionLayer({
               cursor: "pointer",
               boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
               whiteSpace: "nowrap",
+              // 素通しの裾の中で、このボタンだけはクリックを受け取る
+              pointerEvents: "auto",
             }}
           >
             {t("tableMeta.showHiddenRows", { count: String(pos.hiddenRows) })}
