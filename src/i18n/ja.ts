@@ -1886,6 +1886,8 @@ export const ja: Record<string, string> = {
   "chart.seriesY": "Y 軸",
   "chart.seriesType": "種類",
   "chart.comboHint": "系列の「種類」を変えると、棒に折れ線を重ねた複合の図にできます",
+  "chart.legendPositionStackHint":
+    "積み重ねの段名は図の中に出ているので、左右だけがこの設定に従います",
   "chart.typeFollowChart": "チャートに従う",
   "chart.seriesTableGone": "（テーブルなし）",
   "chart.xAxis": "X 軸",

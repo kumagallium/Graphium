@@ -13,6 +13,7 @@ import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
+  isStackActive,
   resolveSeriesStyle,
   seriesConfigDisplayName,
   usesRightAxis,
@@ -671,6 +672,10 @@ export function ChartSettingsPanel({
     return detectXAxisKind(xValues);
   }, [config.chartType, config.xAxisKind, config.series, resolveTable]);
 
+  // 段名が図の中に直接出ている状態（このとき通常の凡例は描かれない）
+  const inlineStackLabels =
+    config.stack.labels === "inline" && isStackActive(config, effectiveXKind);
+
   const updateSeries = (index: number, patch: Partial<ChartSeriesConfig>) => {
     const next = config.series.map((s, i) => (i === index ? { ...s, ...patch } : s));
     onChange({ series: next });
@@ -1195,7 +1200,9 @@ export function ChartSettingsPanel({
             />
             {t("chart.show")}
           </label>
-          {config.showLegend && (
+          {/* 積み重ねの段名は通常の凡例の代わりに出るものなので、置き場所は同じ設定で
+              決める。凡例を隠していても段名は出るため、位置は表示チェックと独立に出す */}
+          {(config.showLegend || inlineStackLabels) && (
             <>
               <label style={styles.fieldRow}>
                 <span style={styles.fieldLabel}>{t("chart.legendPosition")}</span>
@@ -1211,6 +1218,15 @@ export function ChartSettingsPanel({
                   ))}
                 </select>
               </label>
+              {inlineStackLabels && (
+                <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
+                  {t("chart.legendPositionStackHint")}
+                </div>
+              )}
+            </>
+          )}
+          {config.showLegend && (
+            <>
               <label style={styles.fieldRow}>
                 <span style={styles.fieldLabel}>{t("chart.legendOrient")}</span>
                 <span style={styles.segment}>

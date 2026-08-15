@@ -1888,6 +1888,8 @@ export const en: Record<string, string> = {
   "chart.seriesY": "Y",
   "chart.seriesType": "Type",
   "chart.comboHint": "Change a series' type to combine marks — a line over bars, for example",
+  "chart.legendPositionStackHint":
+    "Row names sit on the plot itself, so only the left/right half of this setting applies",
   "chart.typeFollowChart": "Follow chart",
   "chart.seriesTableGone": "(table not found)",
   "chart.xAxis": "X axis",

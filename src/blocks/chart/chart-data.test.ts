@@ -253,6 +253,11 @@ describe("pickInlineLabelAnchor", () => {
     expect(pickInlineLabelAnchor(points, null, null)).toEqual([72, 1]);
   });
 
+  it("左に寄せるときは範囲内の最初の点（寄せた側の端で高さを取る）", () => {
+    expect(pickInlineLabelAnchor(points, 30, 60, "start")).toEqual([40, 5]);
+    expect(pickInlineLabelAnchor(points, null, null, "start")).toEqual([20, 1]);
+  });
+
   it("範囲内に 1 点も無ければ null（名前を出さない）", () => {
     expect(pickInlineLabelAnchor(points, 80, 90)).toBeNull();
     expect(pickInlineLabelAnchor([], null, null)).toBeNull();

@@ -478,16 +478,24 @@ function buildOption(
     return { min: lo - span * 0.05, max: hi + span * 0.1 };
   })();
 
-  // 段名を出す横位置。プロット枠の右端にそろえる（論文図の作法）。段ごとの
+  // 段名をどちらの枠線に寄せるか。凡例の位置設定を左右だけ流用する（積み重ねでは
+  // 通常の凡例を出さないぶん、その設定が段名の置き場所として生きる。上下は段の
+  // 高さで決まっているので使いようがない）
+  const inlineLabelAtLeft = config.legendPosition.endsWith("left");
+
+  // 段名を出す横位置。プロット枠の内側にそろえる（論文図の作法）。段ごとの
   // データの終わりに置くと、段によって名前の位置がずれて図の中に散らばる
   const inlineLabelX = (() => {
     if (!stackActive || config.stack.labels !== "inline") return null;
-    if (xMax !== null) return xMax;
-    let rightmost = -Infinity;
+    const fixed = inlineLabelAtLeft ? xMin : xMax;
+    if (fixed !== null) return fixed;
+    let edge = inlineLabelAtLeft ? Infinity : -Infinity;
     for (const s of view.series) {
-      for (const [x] of s.points as Array<[number, number]>) if (x > rightmost) rightmost = x;
+      for (const [x] of s.points as Array<[number, number]>) {
+        if (inlineLabelAtLeft ? x < edge : x > edge) edge = x;
+      }
     }
-    return Number.isFinite(rightmost) ? rightmost : null;
+    return Number.isFinite(edge) ? edge : null;
   })();
 
   const leftAxis = {
@@ -599,10 +607,12 @@ function buildOption(
       const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
       const name = seriesName(i);
       const points = s.points as Array<[number, number]>;
-      // 段の名前は枠の右端にそろえ、縦だけその段に合わせる（見えている範囲の
-      // 最後の点の高さ）。範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
+      // 段の名前は枠の端にそろえ、縦だけその段に合わせる（寄せた側の端の点の高さ）。
+      // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
       const labelAnchor =
-        inlineLabelX !== null ? pickInlineLabelAnchor(points, xMin, xMax) : null;
+        inlineLabelX !== null
+          ? pickInlineLabelAnchor(points, xMin, xMax, inlineLabelAtLeft ? "start" : "end")
+          : null;
       const inlineLabel = labelAnchor !== null;
       // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
       // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
@@ -660,8 +670,8 @@ function buildOption(
                   // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
                   formatter: () => name,
                   // 枠の内側へ入れて、その段の高さより上に逃がす（線に被ると読めない）
-                  position: "left",
-                  offset: [-4, -18],
+                  position: inlineLabelAtLeft ? "right" : "left",
+                  offset: inlineLabelAtLeft ? [4, -18] : [-4, -18],
                   fontSize: CHART_FONT_SIZE,
                   color,
                 },
