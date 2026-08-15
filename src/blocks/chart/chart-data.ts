@@ -275,32 +275,30 @@ export function buildChartData(config: MultiChartConfig): ChartDataResult {
 }
 
 /**
- * 段名を載せる高さの基準点（スタック表示の段ラベル）。
+ * 段が縦に占める範囲（スタック表示で段名を四隅のどこに置くかの基準）。
  *
- * 段名は枠の左右どちらかの端に寄せるので、高さも寄せた側の端の値から取る
- *（`side` = 見えている範囲の "start" 側 / "end" 側）。段の最大値（ピークの頂点）を
- * 使うと、名前が段の高いところまで飛んで隣の段に食い込む — スペクトルの端は
- * ベースライン付近なので、端の値を基準にすれば段の余白に収まる。
+ * 段名はこの範囲の内側に収める — 上なら最大値の少し下、下なら最小値の少し上。
+ * 外側へ逃がすと、上は隣の段に食い込み、下は枠から落ちて目盛りに被る。
  *
- * 範囲外の点を使わないのも要点。X 範囲を絞ったときに段名ごと枠の外へ出て消える
- *（文献の回折線は表示範囲より先まで続くのがふつう）。範囲内に 1 点も無ければ
- * null＝その段は図に何も描かれないので名前も出さない。
+ * 見えている範囲だけで測るのが要点。範囲外の点まで含めると、X 範囲を絞ったときに
+ * 段名が枠の外へ出て消える — 文献の回折線や参照スペクトルは表示範囲より先まで
+ * 続くのがふつうで、原因の見えない不具合になる。
+ * 範囲内に 1 点も無ければ null（その段は図に何も描かれないので名前も出さない）。
  */
-export function pickRowLabelPoint(
+export function rowExtentInRange(
   points: Array<[number, number]>,
   xMin: number | null,
-  xMax: number | null,
-  side: "start" | "end"
-): [number, number] | null {
-  const visible = (x: number) => (xMin === null || x >= xMin) && (xMax === null || x <= xMax);
-  if (side === "start") {
-    for (const p of points) if (visible(p[0])) return p;
-    return null;
+  xMax: number | null
+): { min: number; max: number } | null {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const [x, y] of points) {
+    if (xMin !== null && x < xMin) continue;
+    if (xMax !== null && x > xMax) continue;
+    if (y < min) min = y;
+    if (y > max) max = y;
   }
-  for (let i = points.length - 1; i >= 0; i--) {
-    if (visible(points[i][0])) return points[i];
-  }
-  return null;
+  return Number.isFinite(min) ? { min, max } : null;
 }
 
 /** スタック変換の指定。perSeries は系列と同順（欠けは既定値として扱う） */

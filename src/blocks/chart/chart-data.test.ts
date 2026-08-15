@@ -8,8 +8,8 @@ import {
   isNumericColumn,
   buildHistogram,
   buildChartData,
-  pickRowLabelPoint,
   readTableData,
+  rowExtentInRange,
   applyStack,
   unstackValue,
   type ChartDataResult,
@@ -236,7 +236,7 @@ describe("buildChartData（系列ごとにテーブルを持つ）", () => {
   });
 });
 
-describe("pickRowLabelPoint", () => {
+describe("rowExtentInRange", () => {
   const points: Array<[number, number]> = [
     [20, 1],
     [40, 5],
@@ -245,19 +245,17 @@ describe("pickRowLabelPoint", () => {
     [72, 1],
   ];
 
-  it("右に寄せるときは範囲内の最後の点（段名が枠外へ出ない）", () => {
-    expect(pickRowLabelPoint(points, 20, 60, "end")).toEqual([55, 2]);
-    expect(pickRowLabelPoint(points, null, null, "end")).toEqual([72, 1]);
+  it("範囲を絞ると、その中だけで段の上下を測る（段名が枠外へ出ない）", () => {
+    expect(rowExtentInRange(points, 20, 60)).toEqual({ min: 1, max: 5 });
   });
 
-  it("左に寄せるときは範囲内の最初の点", () => {
-    expect(pickRowLabelPoint(points, 30, 60, "start")).toEqual([40, 5]);
-    expect(pickRowLabelPoint(points, null, null, "start")).toEqual([20, 1]);
+  it("範囲の指定が無ければ全点で測る", () => {
+    expect(rowExtentInRange(points, null, null)).toEqual({ min: 1, max: 9 });
   });
 
   it("範囲内に 1 点も無ければ null（名前を出さない）", () => {
-    expect(pickRowLabelPoint(points, 80, 90, "end")).toBeNull();
-    expect(pickRowLabelPoint([], null, null, "end")).toBeNull();
+    expect(rowExtentInRange(points, 80, 90)).toBeNull();
+    expect(rowExtentInRange([], null, null)).toBeNull();
   });
 });
 

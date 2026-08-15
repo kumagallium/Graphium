@@ -24,8 +24,8 @@ import {
   buildChartData,
   parseDateTime,
   parseNumeric,
-  pickRowLabelPoint,
   readTableData,
+  rowExtentInRange,
   unstackValue,
   type ChartDataResult,
   type ChartSeriesData,
@@ -462,13 +462,9 @@ function buildOption(
   // 段名を段のどの隅に置くか（凡例と同じ選び方で四隅から選ぶ）
   const inlineLabelAtLeft = config.stack.labelPosition.endsWith("left");
   const inlineLabelAtTop = config.stack.labelPosition.startsWith("top");
-  // 段名が段の下に付くか（縦の余白をどちら側に取るかが変わる）
-  const labelsBelowRows =
-    stackActive && config.stack.labels === "inline" && !inlineLabelAtTop;
-
   // スタック時の縦範囲。段の実データから決める（規格化後の値を ECharts の
   // 自動計算に任せると、キリのいい目盛りに丸められて上下に余白が出る）。
-  // 段ラベルが載る側を広く取る（最下段の名前が枠の下へ落ちて目盛りに被るのを防ぐ）
+  // 上側は最上段のピークが枠にくっつかないぶんを広く取る
   const stackRange = (() => {
     if (!stackActive) return null;
     let lo = Infinity;
@@ -481,11 +477,8 @@ function buildOption(
     }
     if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
     const span = hi - lo || 1;
-    // 名前が付かない側は、段が枠線に貼り付かない程度だけ空ける
-    return {
-      min: lo - span * (labelsBelowRows ? 0.12 : 0.05),
-      max: hi + span * (labelsBelowRows ? 0.05 : 0.1),
-    };
+    // 下は最下段が枠線に貼り付かない程度
+    return { min: lo - span * 0.05, max: hi + span * 0.1 };
   })();
 
   // 段名を出す横位置。プロット枠の内側にそろえる（論文図の作法）。段ごとの
@@ -612,13 +605,10 @@ function buildOption(
       const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
       const name = seriesName(i);
       const points = s.points as Array<[number, number]>;
-      // 段の名前は枠の左右どちらかの端に寄せ、縦はその端での段の高さを基準に上下へ
-      // 逃がす。範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
-      const labelPoint =
-        inlineLabelX !== null
-          ? pickRowLabelPoint(points, xMin, xMax, inlineLabelAtLeft ? "start" : "end")
-          : null;
-      const inlineLabel = labelPoint !== null;
+      // 段の名前は枠の左右どちらかの端に寄せ、縦はその段が占める範囲の内側に収める。
+      // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
+      const rowExtent = inlineLabelX !== null ? rowExtentInRange(points, xMin, xMax) : null;
+      const inlineLabel = rowExtent !== null;
       // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
       // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
       const baseStyle = resolveSeriesStyle(sc, seriesType);
@@ -674,14 +664,14 @@ function buildOption(
                   show: true,
                   // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
                   formatter: () => name,
-                  // 枠の内側へ入れ、段のベースラインからは上下へ逃がす（線に被ると読めない）
+                  // 枠の内側へ入れ、縦は段の内側へ落とし込む（上端の下・下端の上）
                   position: inlineLabelAtLeft ? "right" : "left",
-                  offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? -14 : 14],
+                  offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? 12 : -12],
                   fontSize: CHART_FONT_SIZE,
                   color,
                 },
-                // 横は全段で同じ（枠の左右どちらかの端）、縦はその端での段の高さ
-                data: [{ coord: [inlineLabelX, labelPoint[1]] }],
+                // 横は全段で同じ（枠の左右どちらかの端）、縦はその段の上端／下端
+                data: [{ coord: [inlineLabelX, inlineLabelAtTop ? rowExtent.max : rowExtent.min] }],
               },
             }
           : {}),
