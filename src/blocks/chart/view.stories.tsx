@@ -410,6 +410,52 @@ export const StackedBars: StoryObj = {
   ),
 };
 
+// 複合: 棒（服薬数）に折れ線（痛み）を重ねる。系列ごとの「種類」で切り替える
+export const BarLineCombo: StoryObj = {
+  name: "複合（棒 + 折れ線）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "bar",
+          series: series([
+            { sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "薬(錠)" },
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "痛み",
+              type: "line",
+              axis: "right",
+            },
+          ]),
+          yRightMin: "0",
+          yRightMax: "10",
+          caption: "服薬数（棒）に頭痛強度（折れ線・右軸）を重ねた例",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 棒 × 数値 X 軸: 種類で「数値」を選ぶとカテゴリ軸を離れ、範囲も指定できる
+export const BarValueAxis: StoryObj = {
+  name: "棒（数値 X 軸・範囲指定）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "bar",
+          series: series([{ sourceBlockId: "diary-table-1", xColumn: "気圧", yColumn: "痛み" }]),
+          xAxisKind: "value",
+          xMin: "995",
+          xMax: "1020",
+          caption: "気圧（数値軸・995〜1020 hPa に固定）ごとの頭痛強度",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
 // 未設定: テーブル選択プレースホルダ（スラッシュメニュー挿入直後の状態）
 // スタック: XRD の測定 + 文献 2 件。強度の桁が違っても規格化で段の高さが揃う
 export const XrdStack: StoryObj = {

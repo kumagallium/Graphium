@@ -557,10 +557,12 @@ function buildOption(
             type: result.xAxis,
             name: xName,
             nameGap: 34,
-            // 数値 X 軸も Y 軸と同じくデータ範囲にフィットさせる。既定（0 を含む）だと
-            // 気圧 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。
-            // 時間軸は既定でデータ範囲に収まるので対象外（scale は value 軸のみ有効）
-            ...(result.xAxis === "value" ? { scale: fitAxis } : {}),
+            // 数値 X 軸はデータ範囲にフィットさせる。既定（0 を含む）だと気圧
+            // 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。
+            // 縦軸と違って棒でも 0 基準にする理由はない（棒の長さは縦方向の量）ので
+            // 種類によらず常にフィットさせる。時間軸は既定でデータ範囲に収まるので
+            // 対象外（scale は value 軸のみ有効）
+            ...(result.xAxis === "value" ? { scale: true } : {}),
             // min/max を明示していればそちらが優先される（ECharts の既定挙動）
             ...(xMin !== null ? { min: xMin } : {}),
             ...(xMax !== null ? { max: xMax } : {}),

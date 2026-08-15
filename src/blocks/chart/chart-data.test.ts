@@ -210,6 +210,29 @@ describe("buildChartData（系列ごとにテーブルを持つ）", () => {
     expect(result.xAxis).toBe("category");
     expect(result.categories.length).toBe(4);
   });
+
+  it("棒グラフでも X 軸種類を明示すれば数値軸になる（範囲指定のため）", () => {
+    const result = buildChartData({
+      chartType: "bar",
+      series: [{ table: diary, xColumn: "気圧", yColumn: "痛み" }],
+      xAxisKind: "value",
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.xAxis).toBe("value");
+    // [x, y] のペアで返る（カテゴリ整列ではない）
+    expect(result.series[0].points[0]).toHaveLength(2);
+  });
+
+  it("棒グラフの既定は推定に頼らずカテゴリ軸（数値ラベルでも棒はカテゴリカル）", () => {
+    const result = buildChartData({
+      chartType: "bar",
+      series: [{ table: diary, xColumn: "気圧", yColumn: "痛み" }],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.xAxis).toBe("category");
+  });
 });
 
 describe("readTableData", () => {

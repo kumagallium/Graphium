@@ -211,14 +211,15 @@ export function buildChartData(config: MultiChartConfig): ChartDataResult {
     return { kind: "ok", xAxis: "category", categories: binSpec.labels, series };
   }
 
-  // 棒グラフはカテゴリ軸に固定する（学術図の作法として棒はカテゴリカル。
-  // time 軸に棒を置くと ECharts はバー幅を決められず 1px に潰れる）。
-  // それ以外は明示指定 > 全系列の X 値からの推定
+  // 明示指定 > 種類なりの既定。棒グラフだけ既定がカテゴリ軸（学術図の作法として
+  // 棒はカテゴリカル。推定に任せると数値ラベルの棒が勝手に数値軸に載る）。
+  // 明示的に数値・時間を選んだときは尊重する — 範囲を絞りたい・等間隔でない
+  // X に棒を立てたいケースがあるため（描画側が棒幅を面倒みる）
   const xKind =
-    config.chartType === "bar"
+    config.xAxisKind ??
+    (config.chartType === "bar"
       ? "category"
-      : (config.xAxisKind ??
-        detectXAxisKind(config.series.flatMap((s) => seriesColumnValues(s, s.xColumn))));
+      : detectXAxisKind(config.series.flatMap((s) => seriesColumnValues(s, s.xColumn))));
 
   if (xKind === "category") {
     // カテゴリ軸: 全系列のラベルを出現順にマージし、各系列をそこへ整列する
