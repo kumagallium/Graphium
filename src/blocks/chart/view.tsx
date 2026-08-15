@@ -490,6 +490,25 @@ function buildOption(
     return Number.isFinite(leftmost) ? leftmost : null;
   })();
 
+  // 段名を基準点のどちら側に出すか。右寄りなら左へ、左寄りなら右へ逃がす。
+  // 逃がした向きに合わせて ECharts が文字の揃えも変えるので、名前の端が
+  // そろって縦に並ぶ（右に出せば左端、左に出せば右端がそろう）
+  const inlineLabelSide = (() => {
+    if (inlineLabelX === null) return "left" as const;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const s of view.series) {
+      for (const [x] of s.points as Array<[number, number]>) {
+        if (x < lo) lo = x;
+        if (x > hi) hi = x;
+      }
+    }
+    const from = xMin ?? lo;
+    const to = xMax ?? hi;
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return "left" as const;
+    return inlineLabelX < (from + to) / 2 ? ("right" as const) : ("left" as const);
+  })();
+
   const leftAxis = {
     type: "value" as const,
     name: yName,
@@ -660,9 +679,9 @@ function buildOption(
                   show: true,
                   // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
                   formatter: () => name,
-                  // 右端の点から左上へ逃がす。パターンの線に被ると読めなくなる
-                  position: "left",
-                  offset: [-4, -18],
+                  // 基準点から左右どちらかの上へ逃がす。パターンの線に被ると読めなくなる
+                  position: inlineLabelSide,
+                  offset: inlineLabelSide === "right" ? [4, -18] : [-4, -18],
                   fontSize: CHART_FONT_SIZE,
                   color,
                 },
