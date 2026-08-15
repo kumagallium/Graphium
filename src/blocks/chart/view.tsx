@@ -25,6 +25,7 @@ import {
   parseDateTime,
   parseNumeric,
   readTableData,
+  rowExtentInRange,
   unstackValue,
   type ChartDataResult,
   type ChartSeriesData,
@@ -458,9 +459,12 @@ function buildOption(
   // 棒・ヒストグラムは長さが量を表すので 0 基準のまま
   const fitAxis = config.chartType === "line" || config.chartType === "scatter";
 
+  // 段名を段のどの隅に置くか（凡例と同じ選び方で四隅から選ぶ）
+  const inlineLabelAtLeft = config.stack.labelPosition.endsWith("left");
+  const inlineLabelAtTop = config.stack.labelPosition.startsWith("top");
   // スタック時の縦範囲。段の実データから決める（規格化後の値を ECharts の
   // 自動計算に任せると、キリのいい目盛りに丸められて上下に余白が出る）。
-  // 上側は段ラベルが載るぶんを広く取る
+  // 上側は最上段のピークが枠にくっつかないぶんを広く取る
   const stackRange = (() => {
     if (!stackActive) return null;
     let lo = Infinity;
@@ -473,8 +477,23 @@ function buildOption(
     }
     if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
     const span = hi - lo || 1;
-    // 下は最下段が枠線に貼り付かない程度、上は段ラベルが載るぶん
+    // 下は最下段が枠線に貼り付かない程度
     return { min: lo - span * 0.05, max: hi + span * 0.1 };
+  })();
+
+  // 段名を出す横位置。プロット枠の内側にそろえる（論文図の作法）。段ごとの
+  // データの終わりに置くと、段によって名前の位置がずれて図の中に散らばる
+  const inlineLabelX = (() => {
+    if (!stackActive || config.stack.labels !== "inline") return null;
+    const fixed = inlineLabelAtLeft ? xMin : xMax;
+    if (fixed !== null) return fixed;
+    let edge = inlineLabelAtLeft ? Infinity : -Infinity;
+    for (const s of view.series) {
+      for (const [x] of s.points as Array<[number, number]>) {
+        if (inlineLabelAtLeft ? x < edge : x > edge) edge = x;
+      }
+    }
+    return Number.isFinite(edge) ? edge : null;
   })();
 
   const leftAxis = {
@@ -557,10 +576,12 @@ function buildOption(
             type: result.xAxis,
             name: xName,
             nameGap: 34,
-            // 数値 X 軸も Y 軸と同じくデータ範囲にフィットさせる。既定（0 を含む）だと
-            // 気圧 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。
-            // 時間軸は既定でデータ範囲に収まるので対象外（scale は value 軸のみ有効）
-            ...(result.xAxis === "value" ? { scale: fitAxis } : {}),
+            // 数値 X 軸はデータ範囲にフィットさせる。既定（0 を含む）だと気圧
+            // 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。
+            // 縦軸と違って棒でも 0 基準にする理由はない（棒の長さは縦方向の量）ので
+            // 種類によらず常にフィットさせる。時間軸は既定でデータ範囲に収まるので
+            // 対象外（scale は value 軸のみ有効）
+            ...(result.xAxis === "value" ? { scale: true } : {}),
             // min/max を明示していればそちらが優先される（ECharts の既定挙動）
             ...(xMin !== null ? { min: xMin } : {}),
             ...(xMax !== null ? { max: xMax } : {}),
@@ -584,7 +605,10 @@ function buildOption(
       const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
       const name = seriesName(i);
       const points = s.points as Array<[number, number]>;
-      const inlineLabel = stackActive && config.stack.labels === "inline" && points.length > 0;
+      // 段の名前は枠の左右どちらかの端に寄せ、縦はその段が占める範囲の内側に収める。
+      // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
+      const rowExtent = inlineLabelX !== null ? rowExtentInRange(points, xMin, xMax) : null;
+      const inlineLabel = rowExtent !== null;
       // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
       // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
       const baseStyle = resolveSeriesStyle(sc, seriesType);
@@ -627,7 +651,7 @@ function buildOption(
         ...(isHistogram
           ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
           : {}),
-        // 段の名前は右端の点の左上に置く。凡例より段との対応が一目で分かる。
+        // 段の名前は段の四隅のどこかに置く。凡例より段との対応が一目で分かる。
         // symbol: "none" にするとラベルごと描かれないので、大きさ 0 の点に付ける
         ...(inlineLabel
           ? {
@@ -640,13 +664,14 @@ function buildOption(
                   show: true,
                   // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
                   formatter: () => name,
-                  // 右端の点から左上へ逃がす。パターンの線に被ると読めなくなる
-                  position: "left",
-                  offset: [-4, -18],
+                  // 枠の内側へ入れ、縦は段の内側へ落とし込む（上端の下・下端の上）
+                  position: inlineLabelAtLeft ? "right" : "left",
+                  offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? 12 : -12],
                   fontSize: CHART_FONT_SIZE,
                   color,
                 },
-                data: [{ coord: points[points.length - 1] }],
+                // 横は全段で同じ（枠の左右どちらかの端）、縦はその段の上端／下端
+                data: [{ coord: [inlineLabelX, inlineLabelAtTop ? rowExtent.max : rowExtent.min] }],
               },
             }
           : {}),

@@ -211,14 +211,15 @@ export function buildChartData(config: MultiChartConfig): ChartDataResult {
     return { kind: "ok", xAxis: "category", categories: binSpec.labels, series };
   }
 
-  // 棒グラフはカテゴリ軸に固定する（学術図の作法として棒はカテゴリカル。
-  // time 軸に棒を置くと ECharts はバー幅を決められず 1px に潰れる）。
-  // それ以外は明示指定 > 全系列の X 値からの推定
+  // 明示指定 > 種類なりの既定。棒グラフだけ既定がカテゴリ軸（学術図の作法として
+  // 棒はカテゴリカル。推定に任せると数値ラベルの棒が勝手に数値軸に載る）。
+  // 明示的に数値・時間を選んだときは尊重する — 範囲を絞りたい・等間隔でない
+  // X に棒を立てたいケースがあるため（描画側が棒幅を面倒みる）
   const xKind =
-    config.chartType === "bar"
+    config.xAxisKind ??
+    (config.chartType === "bar"
       ? "category"
-      : (config.xAxisKind ??
-        detectXAxisKind(config.series.flatMap((s) => seriesColumnValues(s, s.xColumn))));
+      : detectXAxisKind(config.series.flatMap((s) => seriesColumnValues(s, s.xColumn))));
 
   if (xKind === "category") {
     // カテゴリ軸: 全系列のラベルを出現順にマージし、各系列をそこへ整列する
@@ -271,6 +272,33 @@ export function buildChartData(config: MultiChartConfig): ChartDataResult {
   });
   if (series.every((s) => s.points.length === 0)) return { kind: "empty" };
   return { kind: "ok", xAxis: xKind, categories: [], series };
+}
+
+/**
+ * 段が縦に占める範囲（スタック表示で段名を四隅のどこに置くかの基準）。
+ *
+ * 段名はこの範囲の内側に収める — 上なら最大値の少し下、下なら最小値の少し上。
+ * 外側へ逃がすと、上は隣の段に食い込み、下は枠から落ちて目盛りに被る。
+ *
+ * 見えている範囲だけで測るのが要点。範囲外の点まで含めると、X 範囲を絞ったときに
+ * 段名が枠の外へ出て消える — 文献の回折線や参照スペクトルは表示範囲より先まで
+ * 続くのがふつうで、原因の見えない不具合になる。
+ * 範囲内に 1 点も無ければ null（その段は図に何も描かれないので名前も出さない）。
+ */
+export function rowExtentInRange(
+  points: Array<[number, number]>,
+  xMin: number | null,
+  xMax: number | null
+): { min: number; max: number } | null {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const [x, y] of points) {
+    if (xMin !== null && x < xMin) continue;
+    if (xMax !== null && x > xMax) continue;
+    if (y < min) min = y;
+    if (y > max) max = y;
+  }
+  return Number.isFinite(min) ? { min, max } : null;
 }
 
 /** スタック変換の指定。perSeries は系列と同順（欠けは既定値として扱う） */

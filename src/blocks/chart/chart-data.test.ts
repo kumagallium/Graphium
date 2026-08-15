@@ -9,6 +9,7 @@ import {
   buildHistogram,
   buildChartData,
   readTableData,
+  rowExtentInRange,
   applyStack,
   unstackValue,
   type ChartDataResult,
@@ -209,6 +210,52 @@ describe("buildChartData（系列ごとにテーブルを持つ）", () => {
     if (result.kind !== "ok") return;
     expect(result.xAxis).toBe("category");
     expect(result.categories.length).toBe(4);
+  });
+
+  it("棒グラフでも X 軸種類を明示すれば数値軸になる（範囲指定のため）", () => {
+    const result = buildChartData({
+      chartType: "bar",
+      series: [{ table: diary, xColumn: "気圧", yColumn: "痛み" }],
+      xAxisKind: "value",
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.xAxis).toBe("value");
+    // [x, y] のペアで返る（カテゴリ整列ではない）
+    expect(result.series[0].points[0]).toHaveLength(2);
+  });
+
+  it("棒グラフの既定は推定に頼らずカテゴリ軸（数値ラベルでも棒はカテゴリカル）", () => {
+    const result = buildChartData({
+      chartType: "bar",
+      series: [{ table: diary, xColumn: "気圧", yColumn: "痛み" }],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.xAxis).toBe("category");
+  });
+});
+
+describe("rowExtentInRange", () => {
+  const points: Array<[number, number]> = [
+    [20, 1],
+    [40, 5],
+    [55, 2],
+    [64, 9],
+    [72, 1],
+  ];
+
+  it("範囲を絞ると、その中だけで段の上下を測る（段名が枠外へ出ない）", () => {
+    expect(rowExtentInRange(points, 20, 60)).toEqual({ min: 1, max: 5 });
+  });
+
+  it("範囲の指定が無ければ全点で測る", () => {
+    expect(rowExtentInRange(points, null, null)).toEqual({ min: 1, max: 9 });
+  });
+
+  it("範囲内に 1 点も無ければ null（名前を出さない）", () => {
+    expect(rowExtentInRange(points, 80, 90)).toBeNull();
+    expect(rowExtentInRange([], null, null)).toBeNull();
   });
 });
 

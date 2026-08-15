@@ -13,6 +13,7 @@ import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
+  isStackActive,
   resolveSeriesStyle,
   seriesConfigDisplayName,
   usesRightAxis,
@@ -29,6 +30,7 @@ import {
   type SeriesType,
   type StackConfig,
   type StackLabelMode,
+  type StackLabelPosition,
   type StackOrder,
   type XAxisKindSetting,
 } from "./chart-config";
@@ -619,6 +621,14 @@ const LEGEND_POSITION_KEYS: Array<[LegendPosition, string]> = [
   ["bottom", "chart.posBottom"],
 ];
 
+/** 段名の位置。凡例と同じ並び（左上→右上→左下→右下）で、置き場所は段の中 */
+const STACK_LABEL_POSITION_KEYS: Array<[StackLabelPosition, string]> = [
+  ["top-left", "chart.stackPosTopLeft"],
+  ["top-right", "chart.stackPosTopRight"],
+  ["bottom-left", "chart.stackPosBottomLeft"],
+  ["bottom-right", "chart.stackPosBottomRight"],
+];
+
 /** テーブルを替えたとき、同名列が無ければ新テーブルの妥当な列に付け替える */
 function retargetSeries(
   series: ChartSeriesConfig,
@@ -658,8 +668,9 @@ export function ChartSettingsPanel({
 
   // X 軸の実効的な目盛り種類（min/max 入力の有効・無効の判定に使う）
   const effectiveXKind = useMemo(() => {
-    if (config.chartType === "bar" || config.chartType === "histogram") return "category";
+    if (config.chartType === "histogram") return "category";
     if (config.xAxisKind !== "auto") return config.xAxisKind;
+    if (config.chartType === "bar") return "category";
     const xValues = config.series.flatMap((s) => {
       const table = resolveTable(s.sourceBlockId);
       if (!table) return [];
@@ -669,6 +680,10 @@ export function ChartSettingsPanel({
     });
     return detectXAxisKind(xValues);
   }, [config.chartType, config.xAxisKind, config.series, resolveTable]);
+
+  // 段名が図の中に直接出ている状態（このとき通常の凡例は描かれない）
+  const inlineStackLabels =
+    config.stack.labels === "inline" && isStackActive(config, effectiveXKind);
 
   const updateSeries = (index: number, patch: Partial<ChartSeriesConfig>) => {
     const next = config.series.map((s, i) => (i === index ? { ...s, ...patch } : s));
@@ -758,6 +773,11 @@ export function ChartSettingsPanel({
               </option>
             ))}
           </select>
+          {/* 複合図（棒＋折れ線）は系列の「種類」で作る。系列を開かないと出会えない
+              設定なので、複数系列があるときだけここで存在を知らせる */}
+          {!isHistogram && config.series.length >= 2 && (
+            <div style={styles.fieldHint}>{t("chart.comboHint")}</div>
+          )}
 
           <div style={styles.sectionLabel}>{t("chart.sectionSeries")}</div>
           <div style={styles.seriesList}>
@@ -785,6 +805,11 @@ export function ChartSettingsPanel({
                     <span style={{ ...styles.swatch, background: color }} />
                     <span style={styles.seriesName}>
                       {seriesConfigDisplayName(series)}
+                      {/* チャート全体と違う種類なら畳んだままでも分かるようにする
+                          （複合図では系列ごとに違う印で描かれるため） */}
+                      {series.type && series.type !== config.chartType && (
+                        <span style={styles.seriesTypeTag}>{chartTypeLabel(series.type)}</span>
+                      )}
                       {!table && (
                         <span style={styles.seriesGone}> {t("chart.seriesTableGone")}</span>
                       )}
@@ -1051,6 +1076,12 @@ export function ChartSettingsPanel({
                   style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
                 />
               </label>
+              {/* なぜ入力できないのかを、その場で理由と抜け道つきで見せる */}
+              {effectiveXKind === "category" && (
+                <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
+                  {t("chart.minMaxCategoryHint")}
+                </div>
+              )}
               <AxisDetailEditor
                 detail={config.xAxisDetail}
                 onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
@@ -1170,15 +1201,40 @@ export function ChartSettingsPanel({
           </select>
 
           <div style={styles.sectionLabel}>{t("chart.legend")}</div>
-          <label style={styles.checkRow}>
-            <input
-              type="checkbox"
-              checked={config.showLegend}
-              onChange={(e) => onChange({ showLegend: e.target.checked })}
-            />
-            {t("chart.show")}
-          </label>
-          {config.showLegend && (
+          {/* 積み重ねの段名は通常の凡例の代わりに図の中へ出る。凡例の表示・位置は
+              効かなくなるので、代わりに段名の置き場所を同じ並びで選ばせる
+              （縦は段ごとに決まるぶん、選択肢は段の四隅） */}
+          {inlineStackLabels ? (
+            <>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.stackLabelPosition")}</span>
+                <select
+                  value={config.stack.labelPosition}
+                  onChange={(e) =>
+                    updateStack({ labelPosition: e.target.value as StackLabelPosition })
+                  }
+                  style={{ ...styles.select, flex: 1 }}
+                >
+                  {STACK_LABEL_POSITION_KEYS.map(([value, key]) => (
+                    <option key={value} value={value}>
+                      {t(key as any)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={styles.fieldHint}>{t("chart.stackLabelPositionHint")}</div>
+            </>
+          ) : (
+            <label style={styles.checkRow}>
+              <input
+                type="checkbox"
+                checked={config.showLegend}
+                onChange={(e) => onChange({ showLegend: e.target.checked })}
+              />
+              {t("chart.show")}
+            </label>
+          )}
+          {config.showLegend && !inlineStackLabels && (
             <>
               <label style={styles.fieldRow}>
                 <span style={styles.fieldLabel}>{t("chart.legendPosition")}</span>
@@ -1346,6 +1402,12 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text-tertiary)",
     fontSize: 12,
   },
+  // 設定の下に添える注記（無効な理由・別の設定への案内）
+  fieldHint: {
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: "var(--color-text-tertiary)",
+  },
   checkRow: {
     display: "flex",
     alignItems: "center",
@@ -1396,6 +1458,15 @@ const styles: Record<string, React.CSSProperties> = {
   seriesGone: {
     fontSize: 11,
     color: "var(--color-error, #c26356)",
+  },
+  // 系列名の後ろに添える種類タグ（チャート全体の種類を上書きしているときだけ）
+  seriesTypeTag: {
+    marginLeft: 6,
+    padding: "0 5px",
+    borderRadius: 4,
+    background: "var(--color-surface-hover)",
+    fontSize: 10,
+    color: "var(--color-text-tertiary)",
   },
   iconButton: {
     display: "flex",

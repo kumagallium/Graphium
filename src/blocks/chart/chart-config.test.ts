@@ -296,7 +296,14 @@ describe("スタック表示の設定", () => {
   it("往復（serialize → parse）で内容が変わらない", () => {
     const config = {
       ...DEFAULT_CHART_CONFIG,
-      stack: { enabled: true, normalize: "none" as const, gap: 0.8, order: "first-top" as const, labels: "legend" as const },
+      stack: {
+        enabled: true,
+        normalize: "none" as const,
+        gap: 0.8,
+        order: "first-top" as const,
+        labels: "legend" as const,
+        labelPosition: "bottom-left" as const,
+      },
     };
     expect(parseChartBlockConfig(serializeChartBlockConfig(config))).toEqual(config);
   });
