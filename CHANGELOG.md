@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.37.1](https://github.com/kumagallium/Graphium/compare/v0.37.0...v0.37.1) - 2026-08-14
+
+- fix(export): カスタムブロックの Markdown 書き出しをブロック定義の隣に集約する by @kumagallium in https://github.com/kumagallium/Graphium/pull/702
+
 ## [v0.37.0](https://github.com/kumagallium/Graphium/compare/v0.36.0...v0.37.0) - 2026-08-14
 
 - feat(assets): 同じファイルを二度素材にしない（中身のハッシュで判定） by @kumagallium in https://github.com/kumagallium/Graphium/pull/699
