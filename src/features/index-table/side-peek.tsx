@@ -1173,6 +1173,14 @@ function SidePeekInner({
       handleChange();
     }
   }, [labelStore.labels, handleChange]);
+  // テーブルの名前もエディタ本文を変えないので、同じく明示的に拾う
+  const prevTableMetasRef = useRef(tableMetaStore.metas);
+  useEffect(() => {
+    if (prevTableMetasRef.current !== tableMetaStore.metas) {
+      prevTableMetasRef.current = tableMetaStore.metas;
+      handleChange();
+    }
+  }, [tableMetaStore.metas, handleChange]);
 
   // Cmd+S / Ctrl+S
   useEffect(() => {
