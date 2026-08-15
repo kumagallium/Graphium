@@ -478,35 +478,16 @@ function buildOption(
     return { min: lo - span * 0.05, max: hi + span * 0.1 };
   })();
 
-  // 段名を出す横位置。段ごとにデータの終わりが違うと名前がバラけて読みにくいので、
-  // どの段にも点がある位置（各段の可視最終点のうち最も左）で全段を縦に揃える
+  // 段名を出す横位置。プロット枠の右端にそろえる（論文図の作法）。段ごとの
+  // データの終わりに置くと、段によって名前の位置がずれて図の中に散らばる
   const inlineLabelX = (() => {
     if (!stackActive || config.stack.labels !== "inline") return null;
-    let leftmost = Infinity;
+    if (xMax !== null) return xMax;
+    let rightmost = -Infinity;
     for (const s of view.series) {
-      const anchor = pickInlineLabelAnchor(s.points as Array<[number, number]>, xMin, xMax);
-      if (anchor && anchor[0] < leftmost) leftmost = anchor[0];
+      for (const [x] of s.points as Array<[number, number]>) if (x > rightmost) rightmost = x;
     }
-    return Number.isFinite(leftmost) ? leftmost : null;
-  })();
-
-  // 段名を基準点のどちら側に出すか。右寄りなら左へ、左寄りなら右へ逃がす。
-  // 逃がした向きに合わせて ECharts が文字の揃えも変えるので、名前の端が
-  // そろって縦に並ぶ（右に出せば左端、左に出せば右端がそろう）
-  const inlineLabelSide = (() => {
-    if (inlineLabelX === null) return "left" as const;
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const s of view.series) {
-      for (const [x] of s.points as Array<[number, number]>) {
-        if (x < lo) lo = x;
-        if (x > hi) hi = x;
-      }
-    }
-    const from = xMin ?? lo;
-    const to = xMax ?? hi;
-    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return "left" as const;
-    return inlineLabelX < (from + to) / 2 ? ("right" as const) : ("left" as const);
+    return Number.isFinite(rightmost) ? rightmost : null;
   })();
 
   const leftAxis = {
@@ -618,11 +599,10 @@ function buildOption(
       const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
       const name = seriesName(i);
       const points = s.points as Array<[number, number]>;
-      // 段の名前は「見えている範囲の」最後の点に添える（枠外に出て消えないように）。
-      // 横は全段共通の位置に、縦はその位置での段の値に載せる — 名前が縦に揃いつつ、
-      // パターンに被らない
+      // 段の名前は枠の右端にそろえ、縦だけその段に合わせる（見えている範囲の
+      // 最後の点の高さ）。範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
       const labelAnchor =
-        inlineLabelX !== null ? pickInlineLabelAnchor(points, xMin, inlineLabelX) : null;
+        inlineLabelX !== null ? pickInlineLabelAnchor(points, xMin, xMax) : null;
       const inlineLabel = labelAnchor !== null;
       // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
       // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
@@ -666,7 +646,7 @@ function buildOption(
         ...(isHistogram
           ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
           : {}),
-        // 段の名前は右端の点の左上に置く。凡例より段との対応が一目で分かる。
+        // 段の名前は枠の右端の内側に置く。凡例より段との対応が一目で分かる。
         // symbol: "none" にするとラベルごと描かれないので、大きさ 0 の点に付ける
         ...(inlineLabel
           ? {
@@ -679,13 +659,13 @@ function buildOption(
                   show: true,
                   // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
                   formatter: () => name,
-                  // 基準点から左右どちらかの上へ逃がす。パターンの線に被ると読めなくなる
-                  position: inlineLabelSide,
-                  offset: inlineLabelSide === "right" ? [4, -18] : [-4, -18],
+                  // 枠の内側へ入れて、その段の高さより上に逃がす（線に被ると読めない）
+                  position: "left",
+                  offset: [-4, -18],
                   fontSize: CHART_FONT_SIZE,
                   color,
                 },
-                // 横は共通位置ちょうどに置く（近傍の点で代用すると数えるほどズレる）
+                // 横は全段で同じ（枠の右端）、縦だけその段の高さ
                 data: [{ coord: [inlineLabelX, labelAnchor[1]] }],
               },
             }
