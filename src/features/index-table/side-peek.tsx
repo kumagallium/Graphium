@@ -81,6 +81,12 @@ import {
 import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
 import { LabelStoreProvider, ProvLabelsEnabledProvider, useProvLabelsEnabled, useLabelStore } from "@features/context-label/store";
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
+import {
+  TableMetaStoreProvider,
+  useTableMetaStore,
+  TableCaptionLayer,
+  migrateTableMeta,
+} from "@features/table-meta";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
@@ -219,7 +225,9 @@ export function SidePeek(props: SidePeekProps) {
     <LabelStoreProvider>
       <LinkStoreProvider>
         <BlockAlignmentProvider>
-          <SidePeekInner {...props} />
+          <TableMetaStoreProvider>
+            <SidePeekInner {...props} />
+          </TableMetaStoreProvider>
         </BlockAlignmentProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
@@ -279,6 +287,9 @@ function SidePeekInner({
   const blockAlignmentStore = useBlockAlignmentStore();
   const blockAlignmentStoreRef = useRef(blockAlignmentStore);
   blockAlignmentStoreRef.current = blockAlignmentStore;
+  const tableMetaStore = useTableMetaStore();
+  const tableMetaStoreRef = useRef(tableMetaStore);
+  tableMetaStoreRef.current = tableMetaStore;
   const editorRef = useRef<any>(null);
   // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
@@ -450,6 +461,10 @@ function SidePeekInner({
     }
     // ブロック配置揃え復元（table / audio / file 用サイドストア）
     blockAlignmentStoreRef.current.restoreSnapshot(page.blockAlignments);
+    // テーブル注釈（名前・取り込み元・列のふるまい）。メインと同じく旧 logTables /
+    // indexTables はここで変換する。これが無いとピークでは表の名前も
+    // 取り込み元バッジも出ず、長い表の折りたたみも効かない
+    tableMetaStoreRef.current.restore(migrateTableMeta(page));
   }, [doc, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
@@ -1002,6 +1017,12 @@ function SidePeekInner({
     // chats を更新した場合に docRef の旧 chats で巻き戻さないため）
     const latestChats = getCachedDocRef.current?.(noteId)?.chats;
 
+    // テーブル注釈（名前・取り込み元・列のふるまい）。ピークで表の名前を付け替えた
+    // ぶんを書き戻す。空のときは docRef 側を温存する — 復元 effect が走る前に
+    // 保存が先行しても、既存の注釈を消さないため
+    const tableMetaSnapshot = tableMetaStoreRef.current.getSnapshot();
+    const hasTableMeta = Object.keys(tableMetaSnapshot).length > 0;
+
     // SidePeek は歴史的に syncUsedIn / recordRevision を迂回する（=メタデータは
     // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
     // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
@@ -1016,6 +1037,7 @@ function SidePeekInner({
           provLinks,
           knowledgeLinks,
           blockAlignments,
+          tableMeta: hasTableMeta ? tableMetaSnapshot : docRef.current.pages[0]?.tableMeta,
         },
       ],
       modifiedAt: new Date().toISOString(),
@@ -1412,6 +1434,9 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
+            {/* 表の名前・取り込み元バッジ・長い表の折りたたみ。メインと同じ層を
+                ピークの外枠に閉じて使う（wrapperEl 無しだとメイン側の表を測る） */}
+            <TableCaptionLayer editorRef={editorRef} wrapperEl={wrapperEl} />
             {/* 右ガター（80px）はラベルバッジを置く場所。
                 何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
                 ラベルが無いときは左右対称（24px）にする。

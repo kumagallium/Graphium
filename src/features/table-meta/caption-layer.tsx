@@ -10,7 +10,7 @@
 // ⠿ メニューの「テーブルに名前を付ける」で、そこから編集要求が来たときだけ
 // 入力欄を出す。
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
@@ -49,6 +49,12 @@ const COLLAPSED_VISIBLE_ROWS = 7;
 const FIRST_HIDDEN_ROW = COLLAPSED_VISIBLE_ROWS + 2;
 /** 裾のフェードの高さ（px）。この中に「あと N 行」ボタンを浮かせる */
 const FADE_HEIGHT = 64;
+/**
+ * 折りたたみ CSS を、この層が見ているエディタだけに閉じ込めるための印。
+ * メインと SidePeek で同じノートを開くと同じ blockId のテーブルが 2 つ並ぶので、
+ * blockId だけで書くと片方を開いてももう片方の CSS が畳んだままにしてしまう。
+ */
+const SCOPE_ATTR = "data-table-fold-scope";
 
 /** 取り込み元バッジのツールチップ。行範囲・測定条件・クリック時の動作を並べる */
 function sourceTooltip(source: TableSource, clickable: boolean): string {
@@ -65,6 +71,7 @@ function sourceTooltip(source: TableSource, clickable: boolean): string {
 export function TableCaptionLayer({
   editorRef,
   onReimport,
+  wrapperEl,
 }: {
   editorRef: React.RefObject<any>;
   /**
@@ -73,10 +80,24 @@ export function TableCaptionLayer({
    * 渡されない場合はバッジは表示だけ（ツールチップで出所を示す）になる。
    */
   onReimport?: (blockId: string, source: TableSource) => void;
+  /**
+   * この層が見るエディタの外枠（ProvIndicatorLayer と同じ流儀）。
+   * SidePeek は自分の wrapper を渡す。省略時は最初の [data-label-wrapper]＝
+   * メインエディタを見る（DOM 順でメインが先に出る）。
+   */
+  wrapperEl?: HTMLElement | null;
 }) {
   // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
   useLocaleSubscription();
   const store = useTableMetaStore();
+  const scopeId = useId();
+  // 見ているエディタの外枠。SidePeek が開いていても互いのテーブルを拾わないよう、
+  // ブロック探索も折りたたみ CSS もこの中に閉じる
+  const resolveRoot = useCallback((): HTMLElement | null => {
+    const root = wrapperEl ?? document.querySelector<HTMLElement>("[data-label-wrapper]");
+    if (root && root.getAttribute(SCOPE_ATTR) !== scopeId) root.setAttribute(SCOPE_ATTR, scopeId);
+    return root;
+  }, [wrapperEl, scopeId]);
   const [captions, setCaptions] = useState<CaptionPos[]>([]);
   // 明示的に「全部見る」を選んだテーブル。既定に戻せば畳まれるので、
   // 保存はしない（見え方であって、ノートの中身ではない）
@@ -114,6 +135,19 @@ export function TableCaptionLayer({
       return;
     }
 
+    // 外枠がまだ付いていない（SidePeek のマウント直後など）。document 全体に
+    // 落とすと隣のエディタのテーブルを拾ってしまうので、付くまで待つ
+    const root = resolveRoot();
+    if (!root) {
+      if (retryRef.current === null) {
+        retryRef.current = window.setTimeout(() => {
+          retryRef.current = null;
+          compute();
+        }, 200);
+      }
+      return;
+    }
+
     let domMissing = false;
     const displayNames = computeTableDisplayNames(
       (editor as any).document ?? [],
@@ -128,7 +162,7 @@ export function TableCaptionLayer({
       const block = editor.getBlock?.(blockId);
       if (!block || block.type !== "table") return;
 
-      const blockEl = document.querySelector(
+      const blockEl = root.querySelector(
         `[data-id="${blockId}"][data-node-type="blockOuter"]`
       );
       if (!blockEl) {
@@ -162,7 +196,7 @@ export function TableCaptionLayer({
         compute();
       }, 200);
     }
-  }, [store, editorRef]);
+  }, [store, editorRef, resolveRoot]);
 
   // 折りたたみ CSS が当たると表の高さが変わる。裾のフェードを正しい位置に置くため、
   // 折りたたみ対象が変わったフレームの後で測り直す（測り直しても対象集合は変わらない
@@ -201,7 +235,7 @@ export function TableCaptionLayer({
     window.addEventListener("scroll", compute, true);
     window.addEventListener("resize", compute);
 
-    const editorEl = document.querySelector("[data-label-wrapper]");
+    const editorEl = resolveRoot();
     let observer: MutationObserver | null = null;
     if (editorEl) {
       observer = new MutationObserver(compute);
@@ -217,7 +251,7 @@ export function TableCaptionLayer({
       window.removeEventListener("resize", compute);
       observer?.disconnect();
     };
-  }, [compute]);
+  }, [compute, resolveRoot]);
 
   const startEditing = (blockId: string) => {
     setDraft(store.getCaption(blockId));
@@ -257,7 +291,7 @@ export function TableCaptionLayer({
       (pos) =>
         // 外枠の高さを抑えるのではなく行そのものを隠す。表の実寸が縮むので、
         // BlockNote が表の脇・下に出す列／行の追加ボタンも一緒に縮む
-        `[data-id="${pos.blockId}"] .tableWrapper tbody tr:nth-child(n+${FIRST_HIDDEN_ROW}){display:none;}`
+        `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"] .tableWrapper tbody tr:nth-child(n+${FIRST_HIDDEN_ROW}){display:none;}`
     )
     .join("");
 
