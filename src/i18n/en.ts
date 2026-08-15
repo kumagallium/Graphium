@@ -1888,8 +1888,13 @@ export const en: Record<string, string> = {
   "chart.seriesY": "Y",
   "chart.seriesType": "Type",
   "chart.comboHint": "Change a series' type to combine marks — a line over bars, for example",
-  "chart.legendPositionStackHint":
-    "Row names sit on the plot itself, so only the left/right half of this setting applies",
+  "chart.stackLabelPosition": "Name position",
+  "chart.stackLabelPositionHint":
+    "Stacked rows are named on the plot itself, so the legend is not used",
+  "chart.stackPosTopLeft": "Top left of row",
+  "chart.stackPosTopRight": "Top right of row",
+  "chart.stackPosBottomLeft": "Bottom left of row",
+  "chart.stackPosBottomRight": "Bottom right of row",
   "chart.typeFollowChart": "Follow chart",
   "chart.seriesTableGone": "(table not found)",
   "chart.xAxis": "X axis",

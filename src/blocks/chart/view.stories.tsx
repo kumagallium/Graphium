@@ -512,8 +512,6 @@ export const XrdStackWithSticks: StoryObj = {
             },
           ]),
           stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-top", labels: "inline" },
-          // 段名は右枠に寄せる（凡例の位置設定を段名も見る）
-          legendPosition: "top-right",
           xMin: "20",
           xMax: "60",
           aspect: "wide",
@@ -543,8 +541,6 @@ export const XrdStack: StoryObj = {
             { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B" },
           ]),
           stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
-          // XRD の段名は右枠に寄せる（凡例の位置設定を段名も見る）
-          legendPosition: "top-right",
           xMin: "10",
           xMax: "60",
           aspect: "wide",
@@ -588,8 +584,6 @@ export const XrdStackAdjusted: StoryObj = {
             },
           ]),
           stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
-          // XRD の段名は右枠に寄せる（凡例の位置設定を段名も見る）
-          legendPosition: "top-right",
           xMin: "10",
           xMax: "60",
           aspect: "wide",

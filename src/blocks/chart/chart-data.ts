@@ -275,22 +275,24 @@ export function buildChartData(config: MultiChartConfig): ChartDataResult {
 }
 
 /**
- * 段の名前を添える点（スタック表示の段ラベル）。
+ * 段名を載せる高さの基準点（スタック表示の段ラベル）。
  *
- * 段名は枠の左右どちらかに寄せるので、名前を載せる高さは寄せた側の端の点から取る
- * （`side` = 見えている範囲の "start" 側 / "end" 側）。範囲の外にある点を使うと、
- * X 範囲を絞ったときに段名ごと枠の外へ出て消える — 文献の回折線や参照スペクトルは
- * 表示範囲より先まで続くのがふつうで、原因の見えない不具合になる。
- * 範囲内に 1 点も無ければ null（その段は図に何も描かれないので名前も出さない）。
+ * 段名は枠の左右どちらかの端に寄せるので、高さも寄せた側の端の値から取る
+ *（`side` = 見えている範囲の "start" 側 / "end" 側）。段の最大値（ピークの頂点）を
+ * 使うと、名前が段の高いところまで飛んで隣の段に食い込む — スペクトルの端は
+ * ベースライン付近なので、端の値を基準にすれば段の余白に収まる。
+ *
+ * 範囲外の点を使わないのも要点。X 範囲を絞ったときに段名ごと枠の外へ出て消える
+ *（文献の回折線は表示範囲より先まで続くのがふつう）。範囲内に 1 点も無ければ
+ * null＝その段は図に何も描かれないので名前も出さない。
  */
-export function pickInlineLabelAnchor(
+export function pickRowLabelPoint(
   points: Array<[number, number]>,
   xMin: number | null,
   xMax: number | null,
-  side: "start" | "end" = "end"
+  side: "start" | "end"
 ): [number, number] | null {
-  const visible = (x: number) =>
-    (xMin === null || x >= xMin) && (xMax === null || x <= xMax);
+  const visible = (x: number) => (xMin === null || x >= xMin) && (xMax === null || x <= xMax);
   if (side === "start") {
     for (const p of points) if (visible(p[0])) return p;
     return null;

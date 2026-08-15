@@ -146,6 +146,13 @@ export type StackLabelMode = "inline" | "legend";
 export type StackOrder = "first-bottom" | "first-top";
 
 /**
+ * 段名を段のどの隅に置くか。凡例の位置と同じ選び方で、段の中の四隅から選ぶ
+ *（段名は凡例の代わりに図の中へ直接出るものなので、位置の決め方もそろえる）。
+ * 既定が右上なのは、積み重ねスペクトルの段名を右肩に置く紙面の作法に合わせたもの。
+ */
+export type StackLabelPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+/**
  * スタック表示（XRD などのスペクトル比較）。
  *
  * 系列を縦にずらして 1 つの枠に積む。図を複数並べる方式では、各図が自分の
@@ -163,6 +170,8 @@ export type StackConfig = {
   gap: number;
   order: StackOrder;
   labels: StackLabelMode;
+  /** 段名（labels = inline）を置く隅 */
+  labelPosition: StackLabelPosition;
 };
 
 export const DEFAULT_STACK_CONFIG: StackConfig = {
@@ -171,6 +180,7 @@ export const DEFAULT_STACK_CONFIG: StackConfig = {
   gap: 1.15,
   order: "first-bottom",
   labels: "inline",
+  labelPosition: "top-right",
 };
 
 /** 段間隔の許容範囲（0 = 完全に重ねる。上限は段が潰れない現実的な値） */
@@ -284,6 +294,12 @@ export const SYMBOL_SHAPES: SeriesSymbolShape[] = [
 ];
 const SYMBOL_SIZES: SeriesSymbolSize[] = ["small", "medium", "large"];
 const BAR_WIDTHS: SeriesBarWidth[] = ["auto", "narrow", "medium", "wide"];
+export const STACK_LABEL_POSITIONS: StackLabelPosition[] = [
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right",
+];
 const LEGEND_POSITIONS: LegendPosition[] = [
   "top-left",
   "top-right",
@@ -344,6 +360,9 @@ function parseStack(raw: unknown): StackConfig {
     gap,
     order: v.order === "first-top" ? "first-top" : DEFAULT_STACK_CONFIG.order,
     labels: v.labels === "legend" ? "legend" : DEFAULT_STACK_CONFIG.labels,
+    labelPosition: STACK_LABEL_POSITIONS.includes(v.labelPosition)
+      ? v.labelPosition
+      : DEFAULT_STACK_CONFIG.labelPosition,
   };
 }
 

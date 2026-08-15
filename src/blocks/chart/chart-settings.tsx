@@ -30,6 +30,7 @@ import {
   type SeriesType,
   type StackConfig,
   type StackLabelMode,
+  type StackLabelPosition,
   type StackOrder,
   type XAxisKindSetting,
 } from "./chart-config";
@@ -620,6 +621,14 @@ const LEGEND_POSITION_KEYS: Array<[LegendPosition, string]> = [
   ["bottom", "chart.posBottom"],
 ];
 
+/** 段名の位置。凡例と同じ並び（左上→右上→左下→右下）で、置き場所は段の中 */
+const STACK_LABEL_POSITION_KEYS: Array<[StackLabelPosition, string]> = [
+  ["top-left", "chart.stackPosTopLeft"],
+  ["top-right", "chart.stackPosTopRight"],
+  ["bottom-left", "chart.stackPosBottomLeft"],
+  ["bottom-right", "chart.stackPosBottomRight"],
+];
+
 /** テーブルを替えたとき、同名列が無ければ新テーブルの妥当な列に付け替える */
 function retargetSeries(
   series: ChartSeriesConfig,
@@ -1192,17 +1201,40 @@ export function ChartSettingsPanel({
           </select>
 
           <div style={styles.sectionLabel}>{t("chart.legend")}</div>
-          <label style={styles.checkRow}>
-            <input
-              type="checkbox"
-              checked={config.showLegend}
-              onChange={(e) => onChange({ showLegend: e.target.checked })}
-            />
-            {t("chart.show")}
-          </label>
-          {/* 積み重ねの段名は通常の凡例の代わりに出るものなので、置き場所は同じ設定で
-              決める。凡例を隠していても段名は出るため、位置は表示チェックと独立に出す */}
-          {(config.showLegend || inlineStackLabels) && (
+          {/* 積み重ねの段名は通常の凡例の代わりに図の中へ出る。凡例の表示・位置は
+              効かなくなるので、代わりに段名の置き場所を同じ並びで選ばせる
+              （縦は段ごとに決まるぶん、選択肢は段の四隅） */}
+          {inlineStackLabels ? (
+            <>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.stackLabelPosition")}</span>
+                <select
+                  value={config.stack.labelPosition}
+                  onChange={(e) =>
+                    updateStack({ labelPosition: e.target.value as StackLabelPosition })
+                  }
+                  style={{ ...styles.select, flex: 1 }}
+                >
+                  {STACK_LABEL_POSITION_KEYS.map(([value, key]) => (
+                    <option key={value} value={value}>
+                      {t(key as any)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={styles.fieldHint}>{t("chart.stackLabelPositionHint")}</div>
+            </>
+          ) : (
+            <label style={styles.checkRow}>
+              <input
+                type="checkbox"
+                checked={config.showLegend}
+                onChange={(e) => onChange({ showLegend: e.target.checked })}
+              />
+              {t("chart.show")}
+            </label>
+          )}
+          {config.showLegend && !inlineStackLabels && (
             <>
               <label style={styles.fieldRow}>
                 <span style={styles.fieldLabel}>{t("chart.legendPosition")}</span>
@@ -1218,15 +1250,6 @@ export function ChartSettingsPanel({
                   ))}
                 </select>
               </label>
-              {inlineStackLabels && (
-                <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
-                  {t("chart.legendPositionStackHint")}
-                </div>
-              )}
-            </>
-          )}
-          {config.showLegend && (
-            <>
               <label style={styles.fieldRow}>
                 <span style={styles.fieldLabel}>{t("chart.legendOrient")}</span>
                 <span style={styles.segment}>
