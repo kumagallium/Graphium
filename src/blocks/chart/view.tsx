@@ -24,6 +24,7 @@ import {
   buildChartData,
   parseDateTime,
   parseNumeric,
+  pickInlineLabelAnchor,
   readTableData,
   unstackValue,
   type ChartDataResult,
@@ -586,7 +587,12 @@ function buildOption(
       const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
       const name = seriesName(i);
       const points = s.points as Array<[number, number]>;
-      const inlineLabel = stackActive && config.stack.labels === "inline" && points.length > 0;
+      // 段の名前は「見えている範囲の」最後の点に添える（枠外に出て消えないように）
+      const labelAnchor =
+        stackActive && config.stack.labels === "inline"
+          ? pickInlineLabelAnchor(points, xMin, xMax)
+          : null;
+      const inlineLabel = labelAnchor !== null;
       // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
       // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
       const baseStyle = resolveSeriesStyle(sc, seriesType);
@@ -648,7 +654,7 @@ function buildOption(
                   fontSize: CHART_FONT_SIZE,
                   color,
                 },
-                data: [{ coord: points[points.length - 1] }],
+                data: [{ coord: labelAnchor }],
               },
             }
           : {}),

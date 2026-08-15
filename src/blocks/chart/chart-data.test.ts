@@ -8,6 +8,7 @@ import {
   isNumericColumn,
   buildHistogram,
   buildChartData,
+  pickInlineLabelAnchor,
   readTableData,
   applyStack,
   unstackValue,
@@ -232,6 +233,29 @@ describe("buildChartData（系列ごとにテーブルを持つ）", () => {
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") return;
     expect(result.xAxis).toBe("category");
+  });
+});
+
+describe("pickInlineLabelAnchor", () => {
+  const points: Array<[number, number]> = [
+    [20, 1],
+    [40, 5],
+    [55, 2],
+    [64, 3],
+    [72, 1],
+  ];
+
+  it("範囲を絞ると、その中の最後の点を返す（段名が枠外へ出ない）", () => {
+    expect(pickInlineLabelAnchor(points, 20, 60)).toEqual([55, 2]);
+  });
+
+  it("範囲の指定が無ければ最後の点", () => {
+    expect(pickInlineLabelAnchor(points, null, null)).toEqual([72, 1]);
+  });
+
+  it("範囲内に 1 点も無ければ null（名前を出さない）", () => {
+    expect(pickInlineLabelAnchor(points, 80, 90)).toBeNull();
+    expect(pickInlineLabelAnchor([], null, null)).toBeNull();
   });
 });
 

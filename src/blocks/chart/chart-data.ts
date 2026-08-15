@@ -274,6 +274,26 @@ export function buildChartData(config: MultiChartConfig): ChartDataResult {
   return { kind: "ok", xAxis: xKind, categories: [], series };
 }
 
+/**
+ * 段の名前を添える点（スタック表示の段ラベル）。
+ *
+ * 素直に最後の点を使うと、X 範囲を絞ったときに段名ごと枠の外へ出て消える。
+ * 文献の回折線や参照スペクトルは表示範囲より先まで続くのがふつうで、
+ * 「範囲を絞ったら段名が消えた」は原因が見えない不具合になる。
+ * 見えている範囲の最後の点を返し、範囲内に 1 点も無ければ null（名前を出さない）。
+ */
+export function pickInlineLabelAnchor(
+  points: Array<[number, number]>,
+  xMin: number | null,
+  xMax: number | null
+): [number, number] | null {
+  for (let i = points.length - 1; i >= 0; i--) {
+    const x = points[i][0];
+    if ((xMin === null || x >= xMin) && (xMax === null || x <= xMax)) return points[i];
+  }
+  return null;
+}
+
 /** スタック変換の指定。perSeries は系列と同順（欠けは既定値として扱う） */
 export type StackSpec = {
   normalize: "max" | "none";

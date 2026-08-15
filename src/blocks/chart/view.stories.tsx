@@ -204,6 +204,34 @@ const XRD_TABLES = [
 
 const XRD_LEAD = "XRD の測定パターンと参考文献 2 件を 1 つの図に積んで比べる。";
 
+/** 参考文献の回折線（スティック）: ピーク位置と相対強度だけのスパースな表 */
+function xrdStickTable(id: string) {
+  const peaks: Array<[number, number]> = [
+    [21.4, 12],
+    [25.8, 30],
+    [33.2, 4],
+    [40.1, 100],
+    [43.4, 42],
+    [48.0, 55],
+    [53.6, 3],
+    [55.7, 5],
+    // 表示範囲（20〜60°）の外にも回折線が続く — 文献データではふつうのこと
+    [64.2, 18],
+    [71.9, 9],
+  ];
+  return {
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: [cell("2theta"), cell("I")] },
+        ...peaks.map(([x, y]) => ({ cells: [cell(x.toFixed(1)), cell(String(y))] })),
+      ],
+    },
+  };
+}
+
 const series = (list: ChartSeriesConfig[]) => list;
 
 const meta: Meta = {
@@ -450,6 +478,45 @@ export const BarValueAxis: StoryObj = {
           xMin: "995",
           xMax: "1020",
           caption: "気圧（数値軸・995〜1020 hPa に固定）ごとの頭痛強度",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 複合 × 積み重ね: 測定パターン（折れ線）と参考文献の回折線（棒）を積む。
+// XRD で文献をスティックで描く定番の形
+export const XrdStackWithSticks: StoryObj = {
+  name: "積み重ね × 複合（測定は折れ線・文献は棒）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={[XRD_TABLES[0], xrdStickTable("xrd-stick")]}
+        lead={XRD_LEAD}
+        chartFirst
+        config={{
+          chartType: "line",
+          series: series([
+            {
+              sourceBlockId: "xrd-sample",
+              xColumn: "2θ (deg)",
+              yColumn: "Intensity",
+              label: "測定値",
+            },
+            {
+              sourceBlockId: "xrd-stick",
+              xColumn: "2theta",
+              yColumn: "I",
+              label: "ref",
+              type: "bar",
+            },
+          ]),
+          stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-top", labels: "inline" },
+          xMin: "20",
+          xMax: "60",
+          aspect: "wide",
+          xAxisName: "2θ (deg)",
+          yAxisName: "Intensity (a.u.)",
         }}
       />
     </ErrorBoundary>
