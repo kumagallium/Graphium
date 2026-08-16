@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.37.2](https://github.com/kumagallium/Graphium/compare/v0.37.1...v0.37.2) - 2026-08-16
+
+- fix(table): 畳んだテーブルからはみ出す列追加ボタンを表の中に収める by @kumagallium in https://github.com/kumagallium/Graphium/pull/703
+- fix(table): SidePeek でも表の名前・取り込み元・折りたたみを効かせる by @kumagallium in https://github.com/kumagallium/Graphium/pull/706
+- feat(chart): numeric x-axis for bar charts, and row names you can place by @kumagallium in https://github.com/kumagallium/Graphium/pull/707
+
 ## [v0.37.1](https://github.com/kumagallium/Graphium/compare/v0.37.0...v0.37.1) - 2026-08-14
 
 - fix(export): カスタムブロックの Markdown 書き出しをブロック定義の隣に集約する by @kumagallium in https://github.com/kumagallium/Graphium/pull/702
