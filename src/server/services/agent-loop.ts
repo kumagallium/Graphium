@@ -8,6 +8,12 @@ import { runTextToolsLoop } from "./agent-loop-text-tools.js";
 import { toWellFormed, sanitizeMessages } from "./well-formed-text.js";
 import { CodedError, type AiErrorCode } from "../../lib/ai-error-codes.js";
 import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
+import {
+  nativeToolsCacheKey,
+  getNativeToolsVerdict,
+  setNativeToolsVerdict,
+  isToolsUnsupportedError,
+} from "./native-tools-support.js";
 
 export type AgentRunParams = {
   model: LanguageModel;
@@ -50,10 +56,15 @@ export type ToolCallRecord = {
 /**
  * エージェントループを実行して最終テキストを返す
  *
- * provider が "openai-compatible" でかつツールが渡されている場合は、ネイティブの function calling
- * が endpoint 側で実装されていないモデル（sakura ai engine / gpt-oss-120b など）に対応するため、
+ * ツールが渡されているとき、ネイティブの function calling を扱えないモデルへは
  * tools 定義を system prompt に埋め込んで `<tool_call>...</tool_call>` ベースのテキスト応答を
- * パースする fallback ループに切り替える。
+ * パースする fallback ループへ切り替える。切り替えの判断は provider ごとに異なる:
+ *
+ * - サブスク型（copilot-subscription）: SDK が tools を通さないので常に fallback
+ * - openai-compatible: endpoint 次第（さくらの AI Engine のように tool_calls を返すものもある）。
+ *   まずネイティブで試し、tools 起因のエラーが出たときだけ fallback して結果を記憶する
+ *   → native-tools-support.ts
+ * - それ以外（anthropic / openai / google）: 常にネイティブ
  */
 /**
  * LLM 呼び出しで生じた認証エラー（401 / authentication_error）を、ユーザーが次に
@@ -115,33 +126,64 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   };
   const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature, abortSignal } = safeParams;
 
-  // openai-compatible（sakura / gpt-oss-120b 等）に加え、サブスク型プロバイダ
-  // （copilot-subscription）も AI SDK の tools パラメータをネイティブに扱えない。
-  // ツール利用時は text-tool-call フォールバックループに切り替える。
-  const providerLacksNativeTools =
-    modelConfig?.provider === "openai-compatible" ||
-    isSubscriptionProvider(modelConfig?.provider);
-  const useTextToolsLoop =
-    providerLacksNativeTools && !!tools && Object.keys(tools).length > 0;
-  if (useTextToolsLoop) {
+  const hasTools = !!tools && Object.keys(tools).length > 0;
+  const isOpenAiCompatible = modelConfig?.provider === "openai-compatible";
+
+  // サブスク型（copilot-subscription）は SDK が tools を通さないので、ツール利用時は無条件で
+  // text-tool-call フォールバックへ。
+  if (hasTools && isSubscriptionProvider(modelConfig?.provider)) {
     return runTextToolsLoop(safeParams);
   }
+
+  // openai-compatible は endpoint によってネイティブ tool calling の可否が分かれる。
+  // 学習済みなら記憶した経路へ直行し、未探索ならネイティブで試して結果を記憶する。
+  const toolsCacheKey = nativeToolsCacheKey({
+    provider: modelConfig?.provider,
+    apiBase: modelConfig?.apiBase,
+    modelId,
+  });
+  const nativeToolsVerdict = isOpenAiCompatible && hasTools
+    ? getNativeToolsVerdict(toolsCacheKey)
+    : "supported";
+  if (nativeToolsVerdict === "unsupported") {
+    return runTextToolsLoop(safeParams);
+  }
+  // 未探索の openai-compatible だけが「失敗したらフォールバックする」対象。
+  const probingNativeTools = isOpenAiCompatible && hasTools && nativeToolsVerdict === "unknown";
 
   // サブスク型プロバイダは temperature 等のサンプリングパラメータ非対応（CLI が制御）。
   // 渡すと unsupported 警告が出るだけなので、これらのプロバイダでは送らない。
   const supportsTemperature = !isSubscriptionProvider(modelConfig?.provider);
 
   const startedAt = Date.now();
-  const result = await generateText({
-    model,
-    system: systemPrompt,
-    messages,
-    ...(temperature !== undefined && supportsTemperature ? { temperature } : {}),
-    // tools が空の場合は undefined にする
-    ...(tools && Object.keys(tools).length > 0 ? { tools: tools as any } : {}),
-    stopWhen: stepCountIs(maxSteps),
-    ...(abortSignal ? { abortSignal } : {}),
-  });
+  let result: Awaited<ReturnType<typeof generateText>>;
+  try {
+    result = await generateText({
+      model,
+      system: systemPrompt,
+      messages,
+      ...(temperature !== undefined && supportsTemperature ? { temperature } : {}),
+      // tools が空の場合は undefined にする
+      ...(hasTools ? { tools: tools as any } : {}),
+      stopWhen: stepCountIs(maxSteps),
+      ...(abortSignal ? { abortSignal } : {}),
+    });
+  } catch (err) {
+    // tools を受け付けない endpoint だと分かったら、記憶したうえで text-tool-call 経路へ回す。
+    // それ以外のエラー（認証・レート制限・サーバー障害・中断）はそのまま呼び出し元へ。
+    if (probingNativeTools && isToolsUnsupportedError(err)) {
+      setNativeToolsVerdict(toolsCacheKey, "unsupported");
+      console.warn(
+        `[agent-loop] ${modelId}: endpoint がネイティブ tool calling を受け付けなかったため text-tool-call 経路へ切り替えた`,
+      );
+      return runTextToolsLoop(safeParams);
+    }
+    throw err;
+  }
+  if (probingNativeTools) {
+    // ネイティブで通った endpoint は以降フォールバックの検討をしない。
+    setNativeToolsVerdict(toolsCacheKey, "supported");
+  }
   const durationMs = Date.now() - startedAt;
 
   // ツール呼び出しの記録を収集。ツール結果（output）も toolCallId で突き合わせて焼き込む
