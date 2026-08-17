@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.39.1](https://github.com/kumagallium/Graphium/compare/v0.39.0...v0.39.1) - 2026-08-17
+
+- fix(ai): embed only the question in cross-search, and log why the sidecar dies by @kumagallium in https://github.com/kumagallium/Graphium/pull/720
+- feat(ai): keep the note's topic in the cross-search query, drop the data body by @kumagallium in https://github.com/kumagallium/Graphium/pull/721
+- feat(desktop): banner with a restart button when the AI backend stops on its own by @kumagallium in https://github.com/kumagallium/Graphium/pull/722
+
 ## [v0.39.0](https://github.com/kumagallium/Graphium/compare/v0.38.0...v0.39.0) - 2026-08-17
 
 - feat(search): lexical (BM25) index over notes, knowledge, and assets; hybrid cross-search by @kumagallium in https://github.com/kumagallium/Graphium/pull/717
