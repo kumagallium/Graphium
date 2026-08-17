@@ -12,38 +12,9 @@ import { OCR_CAPABLE_BLOCK_TYPES } from "./collect";
 import { takePendingOcrFile } from "./pending-files";
 import { waitForDragIdle } from "./drag-idle";
 import { mirrorOcrToMediaIndex } from "./mirror-to-media-index";
-import { resetOcrPipeline } from "../../lib/ocr";
 import type { OcrToastState } from "./OcrToast";
 
 type ImageTarget = { id: string; url: string };
-
-/**
- * 1 ジョブの待機上限。初回はワーカー起動（wasm + 言語データの読み込み）を含む
- * ため長めに取る。超えたら宙吊りとみなして先へ進む（トーストが永久に残らない）。
- */
-const OCR_JOB_TIMEOUT_MS = 120_000;
-
-class OcrTimeoutError extends Error {
-  constructor() {
-    super("OCR がタイムアウトしました");
-  }
-}
-
-function withJobTimeout<T>(promise: Promise<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new OcrTimeoutError()), OCR_JOB_TIMEOUT_MS);
-    promise.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(timer);
-        reject(e);
-      },
-    );
-  });
-}
 
 /** ブロックツリーから画像ブロック（URL 付き）を再帰的に集める */
 function collectImageBlocks(blocks: any[], out: ImageTarget[] = []): ImageTarget[] {
@@ -94,7 +65,9 @@ export function useAutoImageOcr({
           // 貼付直後なら File 実体が預けてあるので、URL の読み戻し（デスクトップ
           // では invoke の Base64 往復）を跳ばして直接渡す
           const source = takePendingOcrFile(target.url) ?? target.url;
-          const result = await withJobTimeout(runOcrForImage(source));
+          // タイムアウト（宙吊り検知）と worker の作り直しは recognizeImage 側が
+          // 持つ（lib/ocr.ts）。ここでは失敗として数えて先へ進むだけでよい
+          const result = await runOcrForImage(source);
           if (result.text) {
             store.setEntry(target.id, result);
             // 素材側にも写して、素材ギャラリー・Cmd+K から同じ文字で引けるようにする
@@ -106,9 +79,6 @@ export function useAutoImageOcr({
         } catch (e) {
           console.warn("自動 OCR に失敗:", e);
           empty += 1;
-          // 宙吊りは worker・直列化チェーンごと作り直す。詰まったまま引きずると
-          // 以後のジョブがすべて連鎖的に待たされ続ける
-          if (e instanceof OcrTimeoutError) resetOcrPipeline();
         } finally {
           runningRef.current = Math.max(0, runningRef.current - 1);
           setToast((prev) =>

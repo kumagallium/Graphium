@@ -18,6 +18,37 @@ export const DEFAULT_OCR_LANG = "jpn+eng";
 export const OCR_LANGS = ["jpn+eng", "jpn", "eng"] as const;
 export type OcrLang = (typeof OCR_LANGS)[number];
 
+/**
+ * 1 ジョブの待機上限。初回はワーカー起動（wasm + 言語データの読み込み）を含む
+ * ため長めに取る。超えたら宙吊りとみなしてジョブを失敗させ、パイプラインを
+ * 作り直す（デスクトップの WKWebView では worker 起動や画像の読み戻しが
+ * まれに永久 pending になり、直列化チェーンごと後続が全部止まる）。
+ */
+export const OCR_JOB_TIMEOUT_MS = 120_000;
+
+export class OcrTimeoutError extends Error {
+  constructor() {
+    super("OCR がタイムアウトしました");
+    this.name = "OcrTimeoutError";
+  }
+}
+
+function withJobTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new OcrTimeoutError()), OCR_JOB_TIMEOUT_MS);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 // 進捗コールバック（ジョブは直列実行のため単一で足りる）
 let activeProgress: ((p: OcrProgress) => void) | null = null;
 
@@ -94,6 +125,11 @@ async function getWorker(langs: string): Promise<Worker> {
  * 失敗する場合がある。
  *
  * 認識ジョブは内部で直列化されるため、複数ブロックから同時に呼んでも安全。
+ *
+ * 1 ジョブが OCR_JOB_TIMEOUT_MS を超えたら OcrTimeoutError で reject し、
+ * ワーカーと直列化チェーンを作り直す（resetOcrPipeline）。呼び出し側は
+ * 個別にタイムアウトを持たなくてよく、詰まっても次のジョブは新しい
+ * ワーカーで再開できる。
  */
 export function recognizeImage(
   image: File | Blob | string,
@@ -102,16 +138,28 @@ export function recognizeImage(
   const langs = opts.langs || DEFAULT_OCR_LANG;
 
   const run = async (): Promise<OcrResult> => {
-    const worker = await getWorker(langs);
-    activeProgress = opts.onProgress ?? null;
+    const job = (async () => {
+      const worker = await getWorker(langs);
+      activeProgress = opts.onProgress ?? null;
+      try {
+        const { data } = await worker.recognize(image);
+        return {
+          text: (data.text ?? "").trim(),
+          confidence: Math.round(data.confidence ?? 0),
+        };
+      } finally {
+        activeProgress = null;
+      }
+    })();
     try {
-      const { data } = await worker.recognize(image);
-      return {
-        text: (data.text ?? "").trim(),
-        confidence: Math.round(data.confidence ?? 0),
-      };
-    } finally {
-      activeProgress = null;
+      // タイムアウトは待ち行列の待機時間を含めない（run はチェーンの先頭で
+      // 呼ばれるので、ここから計るのが「1 ジョブの所要」になる）
+      return await withJobTimeout(job);
+    } catch (e) {
+      // 宙吊りは worker・直列化チェーンごと作り直す。詰まったまま引きずると
+      // 以後のジョブがすべて連鎖的に待たされ続ける
+      if (e instanceof OcrTimeoutError) resetOcrPipeline();
+      throw e;
     }
   };
 

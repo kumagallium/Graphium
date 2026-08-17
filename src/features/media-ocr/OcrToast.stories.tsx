@@ -65,3 +65,19 @@ export const Done: Story = {
 export const NoText: Story = {
   render: () => <ToastPlayground initial={{ running: 0, chars: 0, empty: 1 }} />,
 };
+
+/**
+ * 読み取り自体に失敗した場合（タイムアウト・画像を開けない等）。
+ * 「文字が無かった」とは違うので、amber の注意色で件数を出す。
+ * 一括 OCR で最初の 1 件から詰まったとき（デスクトップの宙吊り）はこの表示になる。
+ */
+export const Failed: Story = {
+  render: () => <ToastPlayground initial={{ running: 0, chars: 0, empty: 0, failed: 2 }} />,
+};
+
+/** 一括 OCR で一部だけ失敗 — 読めた文字数と失敗件数を並べて出す */
+export const DoneWithFailures: Story = {
+  render: () => (
+    <ToastPlayground initial={{ running: 0, chars: 1280, empty: 3, failed: 1 }} />
+  ),
+};

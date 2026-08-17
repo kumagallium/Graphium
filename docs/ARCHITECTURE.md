@@ -310,7 +310,12 @@ the app, and the image itself never leaves the device. For a just-pasted
 image the original `File` is handed straight to the recognizer instead of
 being read back from the storage provider, and recognition jobs wait for
 any in-progress drag gesture to finish before starting (on desktop, a large
-IPC transfer racing a WebView drag session can wedge the window). The
+IPC transfer racing a WebView drag session can wedge the window). Jobs are
+serialised through a single worker; a job that has not returned after
+120 s is treated as wedged — it fails, the worker and the queue are rebuilt,
+and the next job starts fresh — so one stuck read cannot silently block every
+later one (this guard lives in the shared recogniser, so paste-time,
+toolbar, detail-panel and bulk reads all get it). The
 result is stored in `page.mediaOcr[blockId]`. OCR results are deliberately **not** projected
 into the procedure graph: the graph describes the procedure the user
 wrote, and an automatic OCR pass is tooling provenance, not a step of that
