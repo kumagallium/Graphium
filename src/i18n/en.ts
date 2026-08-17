@@ -1372,6 +1372,10 @@ export const en: Record<string, string> = {
   "updater.install": "Restart to update",
   "updater.installing": "Downloading...",
 
+  // ── Backend-down banner (desktop: the sidecar exited unexpectedly) ──
+  "backendDown.message": "The AI backend has stopped. Restart it to use AI features.",
+  "backendDown.detail": "Exit info: {info}",
+
   // ── 設定: Usage タブ ──
   "settings.usage.title": "AI Usage",
   "settings.usage.description": "Token consumption per AI feature. Set per-model pricing on the AI tab to see costs.",

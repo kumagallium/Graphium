@@ -1372,6 +1372,10 @@ export const ja: Record<string, string> = {
   "updater.install": "再起動して更新",
   "updater.installing": "ダウンロード中...",
 
+  // ── バックエンド停止バナー（デスクトップ版で sidecar が予期せず終了したとき）──
+  "backendDown.message": "AI バックエンドが停止しました。AI 機能を使うには再起動が必要です。",
+  "backendDown.detail": "終了情報: {info}",
+
   // ── 設定: About タブ ──
   "settings.usage.title": "AI 使用量",
   "settings.usage.description": "AI 機能ごとのトークン消費量。AI タブでモデルの単価を設定するとコスト換算が出ます。",

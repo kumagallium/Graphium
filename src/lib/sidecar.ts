@@ -26,7 +26,39 @@ export type SidecarState = {
   status: SidecarStatus;
   lastError: string | null;
   lastErrorAt: number | null;
+  /**
+   * 「動いていたはずの sidecar が、こちらの操作なしに終了した」ことを示す。
+   * ready 中に Rust から sidecar-closed が届いたときだけ true になり、
+   * 次の start / restart で false に戻る。バナー表示の判定に使う。
+   *
+   * 起動時の入れ替え（Rust が前の子を kill してから spawn する）や、こちらから
+   * 呼んだ stop / restart で届く closed は「予期している終了」なので立てない。
+   */
+  unexpectedExit: boolean;
 };
+
+/**
+ * Rust から sidecar-closed が届いたときの状態遷移。
+ *
+ * ready 中の closed だけが「予期せぬ終了」。それ以外（starting 中 = 起動時の
+ * 入れ替えや自前 spawn の直後、idle = 自分で止めた後、failed = 既に失敗扱い）
+ * では状態を動かさない。純粋関数にしてあるのは、sidecar.ts 本体が isTauri() と
+ * Tauri API に依存していてユニットテストしにくいため。
+ */
+export function reduceSidecarClosed(
+  current: SidecarState,
+  detail: string,
+  now: number,
+): SidecarState {
+  if (current.status !== "ready") return current;
+  return {
+    ...current,
+    status: "failed",
+    lastError: detail,
+    lastErrorAt: now,
+    unexpectedExit: true,
+  };
+}
 
 let recentLogLines: string[] = [];
 const RECENT_LOG_LIMIT = 80;
@@ -41,6 +73,7 @@ const state: SidecarState = {
   status: "idle",
   lastError: null,
   lastErrorAt: null,
+  unexpectedExit: false,
 };
 
 type Listener = (s: SidecarState) => void;
@@ -74,6 +107,15 @@ export function subscribeSidecarState(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
+/**
+ * Storybook / テスト用: 状態と直近ログを外から差し込む。
+ * 本番コードから呼ばない（Tauri の実イベントで動く前提を壊さないため）。
+ */
+export function __setSidecarStateForStory(patch: Partial<SidecarState>, logLines?: string[]): void {
+  if (logLines) recentLogLines = [...logLines];
+  setState(patch);
+}
+
 /** sidecar サーバーのヘルスチェック */
 async function waitForHealth(): Promise<boolean> {
   for (let i = 0; i < MAX_RETRIES; i++) {
@@ -92,7 +134,7 @@ async function waitForHealth(): Promise<boolean> {
 export async function startSidecar(): Promise<boolean> {
   if (!isTauri()) return false;
 
-  setState({ status: "starting", lastError: null, lastErrorAt: null });
+  setState({ status: "starting", lastError: null, lastErrorAt: null, unexpectedExit: false });
   recentLogLines = [];
 
   const { appDataDir, join: pathJoin } = await import("@tauri-apps/api/path");
@@ -137,7 +179,7 @@ export async function startSidecar(): Promise<boolean> {
         // 再利用する sidecar の PID を控える。これがないと終了時に kill 対象が
         // 分からず孤児として残り、次回起動で再利用される（今回の 404 の一因）。
         currentPid = remotePid > 0 ? remotePid : null;
-        setState({ status: "ready" });
+        setState({ status: "ready", unexpectedExit: false });
         return true;
       }
       const reason = !sameDataDir
@@ -209,6 +251,15 @@ export async function startSidecar(): Promise<boolean> {
       const detail = typeof event.payload === "string" ? event.payload : String(event.payload);
       exitRef.info = detail;
       recordLog(`[lifecycle] process closed ${detail}`);
+      // ready 中に届いた closed = 動いていた sidecar がこちらの操作なしに消えた。
+      // 状態を failed に落として UI（バナー）に気づかせる。以前はここで記録するだけで
+      // 状態を動かさなかったため、sidecar が死んでも「AI 接続済み」表示のまま、
+      // 次のリクエストで初めて "Load failed" になっていた（2026-08-17 の実例）。
+      const next = reduceSidecarClosed(getSidecarState(), detail, Date.now());
+      if (next.status !== state.status || next.unexpectedExit !== state.unexpectedExit) {
+        console.warn(`[sidecar] Backend exited unexpectedly: ${detail}`);
+        setState(next);
+      }
     });
 
     recordLog(`[lifecycle] invoking start_native_sidecar ...`);
@@ -229,7 +280,7 @@ export async function startSidecar(): Promise<boolean> {
     const healthy = await waitForHealth();
     if (healthy) {
       console.log("[sidecar] Backend server is ready");
-      setState({ status: "ready" });
+      setState({ status: "ready", unexpectedExit: false });
     } else {
       console.warn("[sidecar] Backend server failed to start");
       // exit イベントを観測していれば、その内容を lastError に含める。
@@ -258,7 +309,7 @@ export async function ensureSidecar(): Promise<boolean> {
   try {
     const res = await fetch(HEALTH_URL);
     if (res.ok) {
-      setState({ status: "ready" });
+      setState({ status: "ready", unexpectedExit: false });
       return true;
     }
   } catch {
@@ -306,5 +357,5 @@ export async function stopSidecar(): Promise<void> {
     try { closedUnlisten(); } catch { /* noop */ }
     closedUnlisten = null;
   }
-  setState({ status: "idle" });
+  setState({ status: "idle", unexpectedExit: false });
 }
