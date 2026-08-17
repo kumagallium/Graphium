@@ -1864,7 +1864,7 @@ export const en: Record<string, string> = {
   "logTable.menuDisable": "Turn off time-series table",
 
   // チャートブロック
-  "chart.selectSource": "Select a table in this note to visualize",
+  "chart.selectSource": "Select the data to plot",
   "chart.sourceGone": "The referenced table was not found in this note",
   "chart.noTables": "No tables in this note yet — insert a Time-series Table first",
   "chart.noData": "No data rows to plot",
@@ -1899,7 +1899,6 @@ export const en: Record<string, string> = {
   "chart.seriesTableGone": "(table not found)",
   // Data assets as a series source (overlay past measurements / reference patterns from another note)
   "chart.source": "Source",
-  "chart.fromAsset": "From a data asset",
   "chart.pickAssetOption": "Pick a data asset…",
   "chart.assetOptionLabel": "Asset: {name}",
   "chart.assetGone": "The referenced data asset was not found",

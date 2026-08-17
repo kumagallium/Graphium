@@ -1862,7 +1862,7 @@ export const ja: Record<string, string> = {
   "logTable.menuDisable": "時系列テーブルを解除",
 
   // チャートブロック
-  "chart.selectSource": "グラフにするテーブルをこのノートから選択",
+  "chart.selectSource": "グラフにするデータを選択",
   "chart.sourceGone": "参照先のテーブルがこのノートに見つかりません",
   "chart.noTables": "このノートにはまだテーブルがありません。先に時系列テーブルを挿入してください",
   "chart.noData": "描画できるデータ行がありません",
@@ -1896,7 +1896,6 @@ export const ja: Record<string, string> = {
   "chart.seriesTableGone": "（テーブルなし）",
   // 素材のデータを参照先にする（過去の測定・文献パターンを別のノートの図に重ねる）
   "chart.source": "参照先",
-  "chart.fromAsset": "素材のデータから",
   "chart.pickAssetOption": "素材のデータから選ぶ…",
   "chart.assetOptionLabel": "素材: {name}",
   "chart.assetGone": "参照先の素材が見つかりません",

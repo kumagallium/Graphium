@@ -7,7 +7,7 @@
 // UI ニュートラル色は design.md のトークン、寸法は 8pt 格子から。
 
 import { useMemo, useState } from "react";
-import { X, ChevronUp, ChevronDown, ChevronRight, Database, Palette, Plus } from "lucide-react";
+import { X, ChevronUp, ChevronDown, ChevronRight, Palette, Plus } from "lucide-react";
 import { t } from "../../i18n";
 import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
@@ -650,11 +650,11 @@ export function ChartSettingsPanel({
   tables: ChartSourceOption[];
   resolveTable: (blockId: string) => TableData | null;
   /**
-   * 素材のデータを参照先にする（ピッカー → 取り込みダイアログをホストが開く）。
-   * null = 新しい系列を足す、番号 = その系列の参照先を付け替える。
-   * 未指定ならこのエディタでは素材を選べない（入口を出さない）
+   * 系列の参照先を素材のデータにする（ピッカー → 取り込みダイアログをホストが開き、
+   * 確定するとその系列の参照先が付け替わる）。「参照先」select の末尾の項目から呼ぶ。
+   * 未指定ならこのエディタでは素材を選べない（項目を出さない）
    */
-  onPickAsset?: (target: number | null) => void;
+  onPickAsset?: (target: number) => void;
   /** outside = ボタンの右（チャートの外）に出す。overlay = 右上に重ねる */
   placement?: "outside" | "overlay";
   onClose: () => void;
@@ -1038,25 +1038,13 @@ export function ChartSettingsPanel({
               <div style={styles.emptyHint}>{t("chart.noNumericSeries")}</div>
             )}
           </div>
-          <div style={styles.addSeriesRow}>
-            <button type="button" onClick={addSeries} style={styles.addSeriesButton}>
-              <Plus size={13} strokeWidth={2} />
-              {t("chart.addSeries")}
-            </button>
-            {/* 素材（過去の測定・文献パターン）を系列にする入口。ノートに表を
-                置かずに別のノートの生データを重ねる道なので、系列を足す操作の隣に置く */}
-            {onPickAsset && (
-              <button
-                type="button"
-                onClick={() => onPickAsset(null)}
-                style={styles.addFromAssetButton}
-                data-test="chart-add-series-from-asset"
-              >
-                <Database size={13} strokeWidth={2} />
-                {t("chart.fromAsset")}
-              </button>
-            )}
-          </div>
+          {/* 系列を足す入口は 1 つ。どこから描くか（ノートのテーブル / 素材）は、
+              追加で開く系列行の「参照先」で選ぶ — 参照先を選ぶ場所を select 1 か所に
+              揃えるため（素材だけ別のボタンにすると同じ操作が 2 経路になる） */}
+          <button type="button" onClick={addSeries} style={styles.addSeriesButton}>
+            <Plus size={13} strokeWidth={2} />
+            {t("chart.addSeries")}
+          </button>
         </div>
       )}
 
@@ -1512,40 +1500,19 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text-tertiary)",
     cursor: "pointer",
   },
-  addSeriesRow: {
-    display: "flex",
-    gap: 6,
-    marginTop: 2,
-  },
   addSeriesButton: {
-    flex: 1,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    minWidth: 0,
+    width: "100%",
     padding: "5px 0",
+    marginTop: 2,
     fontSize: 12,
     borderRadius: 6,
     border: "none",
     background: "var(--color-foreground)",
     color: "var(--color-surface)",
-    cursor: "pointer",
-  },
-  // 素材から足す方は二次ボタン（枠線だけ）。主役はノート内テーブルの追加のまま
-  addFromAssetButton: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    minWidth: 0,
-    padding: "5px 0",
-    fontSize: 12,
-    borderRadius: 6,
-    border: "1px solid var(--color-border-subtle)",
-    background: "var(--color-surface)",
-    color: "var(--color-text-secondary)",
     cursor: "pointer",
   },
   colorSwatchButton: {

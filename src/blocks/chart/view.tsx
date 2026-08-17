@@ -365,6 +365,8 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     });
   };
 
+  // 参照先の候補としてテーブル名の隣に並べる。文言は系列行の「参照先」select の
+  // 項目と同じ（参照先を選ぶ場所が違っても、同じ選択肢に同じ名前が出る）
   const assetButton = canPickAsset && (
     <button
       type="button"
@@ -373,7 +375,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
       data-test="chart-pick-asset"
     >
       <Database size={12} strokeWidth={2} />
-      {t("chart.fromAsset")}
+      {t("chart.pickAssetOption")}
     </button>
   );
 
