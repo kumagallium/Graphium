@@ -630,6 +630,15 @@ export const ja: Record<string, string> = {
   "settings.export.done": "{count} 件を書き出しました。",
   "settings.export.doneWithFailures": "{count} 件を書き出しました（{failed} 件失敗 — 詳細はコンソールを確認）。",
   "settings.export.failed": "書き出しに失敗しました",
+  // ── 検索インデックス ──
+  "settings.searchIndex.title": "検索インデックス",
+  "settings.searchIndex.help": "ノート本文・ナレッジ・素材のテキスト（画像の OCR、URL の抜粋、PDF）を全文検索するための索引です。この端末の中だけに作られ、ノートのデータには書き込みません。Cmd-K の検索と AI チャットの横断検索が使います。検索結果がおかしいときは作り直せます。",
+  "settings.searchIndex.summary": "{sources} 件のソース・{chunks} 個の断片を索引済み",
+  "settings.searchIndex.indexing": "索引を更新中（残り {pending} 件）",
+  "settings.searchIndex.loading": "索引を読み込み中…",
+  "settings.searchIndex.rebuild": "索引を作り直す",
+  "settings.searchIndex.rebuilding": "作り直し中…",
+  "settings.searchIndex.rebuildConfirm": "検索インデックスを消して作り直します。ノートのデータには影響しません。続けますか？",
   // ── 接続状態 ──
   "settings.health.title": "接続状態",
   "settings.health.checking": "確認中...",
@@ -1617,7 +1626,7 @@ export const ja: Record<string, string> = {
 
   // ── Composer（Cmd+K） ── UI は Ask 単機能。残りのモード ID は内部互換のため保持。
   "composer.placeholder": "ノートを検索 / AI に質問...",
-  "composer.placeholderSearchOnly": "ノートと画像を検索...",
+  "composer.placeholderSearchOnly": "ノートと素材を検索...",
   "composer.mode.ask": "質問",
   "composer.mode.compose": "執筆",
   "composer.mode.insertProv": "PROV を挿入",
@@ -1627,7 +1636,7 @@ export const ja: Record<string, string> = {
   "composer.discoveryHint": "候補",
   "composer.search.notesHeading": "ノート",
   "composer.search.recentHeading": "最近のノート",
-  "composer.search.imagesHeading": "画像",
+  "composer.search.assetsHeading": "素材",
   "composer.search.actionsHeading": "アクション",
   "composer.search.askAi": "「{query}」を AI に質問",
   "composer.search.askAiEmpty": "AI に質問...",

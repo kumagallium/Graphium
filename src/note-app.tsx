@@ -198,7 +198,8 @@ import {
   // 操作ログ
   wikiLog,
 } from "./features/wiki";
-import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retriever";
+import { setWikiIndexForRetriever, setWikiTitleMap, setNoteTitleMap } from "./features/wiki/retriever";
+import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument } from "./features/url-to-prov";
@@ -2867,6 +2868,9 @@ function NoteEditorInner({
               }
             }
             for (const id of citedAssetIds) excludeIds.add(id);
+            // 開いているノート自身の本文は毎ターン userMessage に同梱されるので、横断検索の
+            // ノート本文断片からは外す（同じ文章を二重に渡さない）
+            if (fileId) excludeIds.add(fileId);
             const { retrieveWikiContext } = await import("./features/wiki/retriever");
             // 引用チャットでは背景として同梱したノート全文をクエリから外し、主題
             // （引用＋質問）だけで検索する。全文を混ぜると embedding が希釈されて
@@ -5089,6 +5093,13 @@ function NoteEditorInner({
                   onAdoptKnowledgeCandidates={onCreateKnowledgeNote ? handleAdoptKnowledgeCandidates : undefined}
                   noteIndex={noteIndex}
                   onOpenWiki={(wikiId) => setSidePeekNoteId(`wiki:${wikiId}`)}
+                  onOpenNote={(noteId) => setSidePeekNoteId(noteId)}
+                  onOpenAsset={(assetFileId) => {
+                    // 横断検索で注入した素材の断片を引用したとき。ノートを離れず素材サイドピークで開く
+                    const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
+                    if (entry) setMaterialSidePeekEntry(entry);
+                    else onOpenMedia?.(assetFileId);
+                  }}
                 />
               )}
               {rightTab === "history" && (
@@ -5495,6 +5506,17 @@ export function NoteApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
+
+  // 語彙インデックス（BM25）をノート / Wiki / 素材に追従させる。
+  // Cmd-K の本文・素材検索と、AI チャットの横断検索（埋め込みと RRF で併用）の共通コア。
+  // 索引は端末ローカルの再構築可能なキャッシュで、ノートデータには何も書かない。
+  useLexicalIndexSync({
+    authenticated,
+    noteIndex: fm.noteIndex ?? null,
+    mediaIndex: fm.mediaIndex ?? null,
+    getCachedDoc: fm.getCachedDoc,
+    loadDoc: fm.loadDoc,
+  });
 
   // 一覧・全体グラフの素材ピーク（未登録 URL の transient エントリ）からの「素材に登録」。
   // エディタが開いていないため保存予約（syncUsedIn）は無し — usedIn は該当ノートの
@@ -6674,6 +6696,14 @@ export function NoteApp() {
     }
     setComposerPrompt(promptForDiscoveryCard(card));
   }, [enqueueIngest, fm.activeFileId, fm.activeDoc, composer]);
+
+  // ノートのタイトルを Retriever に渡す（横断検索で注入するノート本文の断片の引用表示用。
+  // 語彙索引の title が空のときの補完）
+  useEffect(() => {
+    const map = new Map<string, string>();
+    for (const n of fm.noteIndex?.notes ?? []) if (n.title) map.set(n.noteId, n.title);
+    setNoteTitleMap(map);
+  }, [fm.noteIndex]);
 
   // 構造化インデックスを Retriever に注入（Wiki メタ変更時に更新）
   useEffect(() => {

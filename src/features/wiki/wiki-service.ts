@@ -4,6 +4,7 @@
 import type { GraphiumDocument, WikiKind, WikiMeta, WikiMetaSummary } from "../../lib/document-types";
 import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { embeddingStore } from "../../lib/embedding-store";
+import { extractWikiSections, flattenColumns } from "./section-extract";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName } from "../settings/store";
@@ -489,19 +490,6 @@ function extractSectionsFromBlocks(
   return sections;
 }
 
-/**
- * マルチカラム（columnList / column）をレイアウト用ラッパーとして透過し、
- * 文書順の flat なブロック列にする。wiki 文書はパイプライン生成時はフラット
- * だがユーザーが手編集でカラム化できるため、本文走査系（セクション抽出・
- * preview・embedding・merge 再構成）は必ずこれを通してから走査する。
- */
-function flattenColumns(blocks: any[]): any[] {
-  return (blocks ?? []).flatMap((block) =>
-    block?.type === "columnList" || block?.type === "column"
-      ? flattenColumns(block.children)
-      : [block],
-  );
-}
 
 /**
  * ノート/Wiki のタイトル → ID を解決するための情報
@@ -901,7 +889,7 @@ export async function embedWikiSections(
   wikiDocId: string,
   doc: GraphiumDocument,
 ): Promise<void> {
-  const sections = extractSectionsForEmbedding(wikiDocId, doc);
+  const sections = extractWikiSections(wikiDocId, doc);
   if (sections.length === 0) return;
 
   // 既存データを削除
@@ -956,73 +944,6 @@ export async function embedWikiSections(
   }
 }
 
-/**
- * Wiki ドキュメントから embedding 対象のセクションを抽出する
- * 階層コンテキスト付き: "{WikiKind}: {タイトル} > {セクション見出し}: {本文}"
- */
-function extractSectionsForEmbedding(
-  documentId: string,
-  doc: GraphiumDocument,
-): { documentId: string; sectionId: string; text: string }[] {
-  const page = doc.pages[0];
-  if (!page) return [];
-
-  const kind = doc.wikiMeta?.kind ?? "claim";
-  const docTitle = doc.title;
-  const sections: { documentId: string; sectionId: string; text: string }[] = [];
-
-  let currentHeading: { id: string; text: string } | null = null;
-  let currentContent: string[] = [];
-  // 最初の H2 より前の本文（lead）。Atom は洞察の本文がここに来るため、
-  // H2 セクションだけを embed すると重複判定・Retriever が「Source Claims」
-  // （Claim タイトルの列挙）頼みになり、本文の主張で照合できない。
-  const leadContent: string[] = [];
-
-  const flushSection = () => {
-    if (currentHeading && currentContent.length > 0) {
-      const content = currentContent.join(" ").trim();
-      if (content) {
-        sections.push({
-          documentId,
-          sectionId: currentHeading.id,
-          text: `${kind}: ${docTitle} > ${currentHeading.text}: ${content}`,
-        });
-      }
-    }
-    currentContent = [];
-  };
-
-  // カラム透過（flattenColumns）: しないとカラム内の本文が embedding から
-  // 漏れ、Retriever・重複判定に不可視になる。
-  for (const block of flattenColumns(page.blocks)) {
-    if (block.type === "heading" && block.props?.level === 2) {
-      flushSection();
-      const headingText = extractInlineText(block.content);
-      currentHeading = { id: block.id, text: headingText };
-    } else if (currentHeading) {
-      const text = extractInlineText(block.content);
-      if (text) currentContent.push(text);
-    } else {
-      const text = extractInlineText(block.content);
-      if (text) leadContent.push(text);
-    }
-  }
-  flushSection();
-
-  // lead は先頭に置く（本文の主張が照合の主役になるように）。
-  // sectionId "lead" は擬似 ID — embedding store の複合キー要素と検索結果の
-  // スニペット表示にしか使われず、block ID として逆引きされることはない。
-  const lead = leadContent.join(" ").trim();
-  if (lead) {
-    sections.unshift({
-      documentId,
-      sectionId: "lead",
-      text: `${kind}: ${docTitle}: ${lead}`,
-    });
-  }
-
-  return sections;
-}
 
 /**
  * GraphiumDocument からプレーンテキストを抽出する

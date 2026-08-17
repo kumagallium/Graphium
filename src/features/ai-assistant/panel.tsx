@@ -10,7 +10,7 @@ import { Textarea } from "@ui/form-field";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useAiAssistant } from "./store";
 import { formatAttachmentTitle, stripAttachmentSuffix } from "./attachment-suffix";
-import { getWikiTitleToIdMap } from "../wiki/retriever";
+import { getSourceTitleToRefMap } from "../wiki/retriever";
 import { fetchModels } from "./api";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "../../lib/sidecar";
 import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
@@ -68,6 +68,10 @@ type AiAssistantPanelProps = {
   noteIndex?: GraphiumIndex | null;
   /** Wiki ノートを開く（[Source: "title"] 引用クリック時の遷移先） */
   onOpenWiki?: (wikiId: string) => void;
+  /** 通常ノートを開く（横断検索で注入したノート本文の断片を引用したとき）。未指定ならリンク化しない */
+  onOpenNote?: (noteId: string) => void;
+  /** 素材を開く（横断検索で注入した素材テキストの断片を引用したとき）。未指定ならリンク化しない */
+  onOpenAsset?: (fileId: string) => void;
   /**
    * 外部（素材の右パネル「AI に質問」）から添付を注入する。値が変わるたびに
    * attachedNotes へ取り込み、onPendingAttachmentConsumed で親に消費を通知する。
@@ -88,6 +92,8 @@ export function AiAssistantPanel({
   onAdoptKnowledgeCandidates,
   noteIndex,
   onOpenWiki,
+  onOpenNote,
+  onOpenAsset,
   pendingAttachment,
   onPendingAttachmentConsumed,
 }: AiAssistantPanelProps) {
@@ -112,11 +118,12 @@ export function AiAssistantPanel({
   // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
-  // [Source: "title"] 引用クリック用にタイトル→wikiId マップを構築。
+  // [Source: "title"] 引用クリック用にタイトル→参照先マップを構築。
   // Retriever が LLM に渡したのと同じタイトル空間を使う（noteIndex に wiki が無くても動く）。
-  // messages 更新で再計算（最新応答が含む新規 wiki のために）。
+  // 値は Wiki なら wikiId、横断検索で注入したノート本文 / 素材なら `note:<id>` / `asset:<fileId>`。
+  // messages 更新で再計算（最新応答が含む新規 wiki・新規断片のために）。
   const wikiTitleToId = useMemo(() => {
-    const map = getWikiTitleToIdMap();
+    const map = getSourceTitleToRefMap();
     // noteIndex に wiki エントリがある場合はそれもマージ（重複時は noteIndex 優先）
     if (noteIndex) {
       for (const n of noteIndex.notes) {
@@ -126,6 +133,12 @@ export function AiAssistantPanel({
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteIndex, messages.length]);
+
+  // 引用クリックの振り分け（Wiki / ノート / 素材）
+  const sourceLinks = useMemo<SourceLinkHandlers>(
+    () => ({ titleToRef: wikiTitleToId, onOpenWiki, onOpenNote, onOpenAsset }),
+    [wikiTitleToId, onOpenWiki, onOpenNote, onOpenAsset],
+  );
 
   // @ メンション機能
   const [attachedNotes, setAttachedNotes] = useState<AttachedNote[]>([]);
@@ -509,8 +522,7 @@ export function AiAssistantPanel({
                     : undefined
                 }
                 onAdoptKnowledgeCandidates={onAdoptKnowledgeCandidates}
-                wikiTitleToId={wikiTitleToId}
-                onOpenWiki={onOpenWiki}
+                sourceLinks={sourceLinks}
               />
             ))}
             {loading && (
@@ -710,8 +722,7 @@ function ChatBubble({
   onDerive,
   onGenerateKnowledgeCandidates,
   onAdoptKnowledgeCandidates,
-  wikiTitleToId,
-  onOpenWiki,
+  sourceLinks,
 }: {
   message: ChatMessage;
   /** AI 実行中（編集・再実行・分岐を無効化する） */
@@ -729,8 +740,7 @@ function ChatBubble({
     onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
   ) => Promise<KnowledgeCandidate[]>;
   onAdoptKnowledgeCandidates?: (candidates: KnowledgeCandidate[]) => Promise<void>;
-  wikiTitleToId?: Map<string, string>;
-  onOpenWiki?: (wikiId: string) => void;
+  sourceLinks?: SourceLinkHandlers;
 }) {
   const t = useT();
   const isUser = message.role === "user";
@@ -905,7 +915,7 @@ function ChatBubble({
           ) : (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              components={buildMarkdownComponents(wikiTitleToId, onOpenWiki)}
+              components={buildMarkdownComponents(sourceLinks)}
             >
               {displayContent}
             </ReactMarkdown>
@@ -1184,17 +1194,39 @@ function stripDisplayMarkers(content: string): string {
     .replace(/\[\[(m|t|a|o)\]\]([\s\S]*?)\[\[\/\1\]\]/g, "$2");
 }
 
+/** [Source: "title"] リンクの解決先と開き方 */
+type SourceLinkHandlers = {
+  /** タイトル → 参照先。Wiki は wikiId、ノートは `note:<id>`、素材は `asset:<fileId>` */
+  titleToRef: Map<string, string> | undefined;
+  onOpenWiki: ((wikiId: string) => void) | undefined;
+  onOpenNote?: (noteId: string) => void;
+  onOpenAsset?: (fileId: string) => void;
+};
+
+/** 参照先を開く。開けない種類（ハンドラ未指定）なら null を返し、呼び出し側はプレーンテキストにする */
+function openHandlerFor(ref: string, h: SourceLinkHandlers): (() => void) | null {
+  if (ref.startsWith("note:")) {
+    const id = ref.slice("note:".length);
+    return h.onOpenNote ? () => h.onOpenNote!(id) : null;
+  }
+  if (ref.startsWith("asset:")) {
+    const id = ref.slice("asset:".length);
+    return h.onOpenAsset ? () => h.onOpenAsset!(id) : null;
+  }
+  return h.onOpenWiki ? () => h.onOpenWiki!(ref) : null;
+}
+
 /**
- * テキストノード内の `[Source: "title"]` をクリック可能な Wiki リンクに置換する。
+ * テキストノード内の `[Source: "title"]` をクリック可能なリンク（Wiki / ノート / 素材）に置換する。
  * react-markdown のカスタムコンポーネントから children を再帰的に処理するために使う。
  */
 function replaceSourceLinks(
   text: string,
-  wikiTitleToId: Map<string, string> | undefined,
-  onOpenWiki: ((wikiId: string) => void) | undefined,
+  handlers: SourceLinkHandlers | undefined,
   keyPrefix: string,
 ): ReactNode[] {
-  if (!text.includes("[Source:") || !wikiTitleToId || !onOpenWiki || wikiTitleToId.size === 0) {
+  const titleToRef = handlers?.titleToRef;
+  if (!text.includes("[Source:") || !handlers || !titleToRef || titleToRef.size === 0) {
     return [text];
   }
   const pattern = /\[Source:\s*"([^"]+)"\]/g;
@@ -1205,17 +1237,19 @@ function replaceSourceLinks(
   while ((match = pattern.exec(text)) !== null) {
     if (match.index > lastIdx) parts.push(text.slice(lastIdx, match.index));
     const title = match[1];
-    const wikiId = wikiTitleToId.get(title);
-    if (wikiId) {
+    const ref = titleToRef.get(title);
+    const open = ref ? openHandlerFor(ref, handlers) : null;
+    if (open) {
+      const glyph = ref!.startsWith("asset:") ? "📄" : ref!.startsWith("note:") ? "📝" : "📎";
       parts.push(
         <button
           key={`${keyPrefix}-src-${n++}`}
           type="button"
-          onClick={(e) => { e.stopPropagation(); onOpenWiki(wikiId); }}
-          title={`Open Wiki: ${title}`}
+          onClick={(e) => { e.stopPropagation(); open(); }}
+          title={`Open: ${title}`}
           className="inline-flex items-center gap-0.5 px-1 mx-0.5 text-xs text-violet-700 hover:text-violet-900 underline decoration-dotted underline-offset-2 hover:bg-violet-50 rounded transition-colors align-baseline"
         >
-          📎{title}
+          {glyph}{title}
         </button>,
       );
     } else {
@@ -1230,12 +1264,11 @@ function replaceSourceLinks(
 /** react-markdown の children を走査し、文字列ノードに replaceSourceLinks を適用する */
 function processChildren(
   children: ReactNode,
-  wikiTitleToId: Map<string, string> | undefined,
-  onOpenWiki: ((wikiId: string) => void) | undefined,
+  handlers: SourceLinkHandlers | undefined,
 ): ReactNode {
   return Children.map(children, (child, i) => {
     if (typeof child === "string") {
-      return <>{replaceSourceLinks(child, wikiTitleToId, onOpenWiki, `c${i}`)}</>;
+      return <>{replaceSourceLinks(child, handlers, `c${i}`)}</>;
     }
     return child;
   });
@@ -1246,11 +1279,8 @@ function processChildren(
  * - 既存の bubble に収まるよう見出し・段落の余白を抑える
  * - テキストノード内の [Source: "..."] を Wiki リンクに変換
  */
-function buildMarkdownComponents(
-  wikiTitleToId: Map<string, string> | undefined,
-  onOpenWiki: ((wikiId: string) => void) | undefined,
-): Components {
-  const proc = (children: ReactNode) => processChildren(children, wikiTitleToId, onOpenWiki);
+function buildMarkdownComponents(handlers: SourceLinkHandlers | undefined): Components {
+  const proc = (children: ReactNode) => processChildren(children, handlers);
   return {
     h1: ({ children }) => <h1 className="text-base font-semibold mt-2 mb-1">{proc(children)}</h1>,
     h2: ({ children }) => <h2 className="text-sm font-semibold mt-2 mb-1">{proc(children)}</h2>,

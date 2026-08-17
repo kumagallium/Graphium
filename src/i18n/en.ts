@@ -630,6 +630,15 @@ export const en: Record<string, string> = {
   "settings.export.done": "Exported {count} files.",
   "settings.export.doneWithFailures": "Exported {count} files ({failed} failed — see console for details).",
   "settings.export.failed": "Export failed",
+  // ── 検索インデックス ──
+  "settings.searchIndex.title": "Search index",
+  "settings.searchIndex.help": "A full-text index over note bodies, knowledge pages, and asset text (image OCR, URL excerpts, PDFs). It lives only on this device and never writes to your notes. Used by ⌘K search and the AI chat's cross-search. Rebuild it if search results look wrong.",
+  "settings.searchIndex.summary": "{sources} sources · {chunks} passages indexed",
+  "settings.searchIndex.indexing": "Updating index ({pending} remaining)",
+  "settings.searchIndex.loading": "Loading index…",
+  "settings.searchIndex.rebuild": "Rebuild index",
+  "settings.searchIndex.rebuilding": "Rebuilding…",
+  "settings.searchIndex.rebuildConfirm": "This clears the search index and rebuilds it. Your notes are not affected. Continue?",
   // ── 接続状態 ──
   "settings.health.title": "Connection Status",
   "settings.health.checking": "Checking...",
@@ -1619,7 +1628,7 @@ export const en: Record<string, string> = {
 
   // ── Composer（Cmd+K）── UI は Ask 単機能。残りのモード ID は内部互換のため保持。
   "composer.placeholder": "Find a note or ask AI...",
-  "composer.placeholderSearchOnly": "Find a note or an image...",
+  "composer.placeholderSearchOnly": "Find a note or an asset...",
   "composer.mode.ask": "Ask",
   "composer.mode.compose": "Compose",
   "composer.mode.insertProv": "Insert PROV",
@@ -1629,7 +1638,7 @@ export const en: Record<string, string> = {
   "composer.discoveryHint": "Suggestions",
   "composer.search.notesHeading": "Notes",
   "composer.search.recentHeading": "Recent notes",
-  "composer.search.imagesHeading": "Images",
+  "composer.search.assetsHeading": "Assets",
   "composer.search.actionsHeading": "Actions",
   "composer.search.askAi": "Ask AI: “{query}”",
   "composer.search.askAiEmpty": "Ask AI...",
