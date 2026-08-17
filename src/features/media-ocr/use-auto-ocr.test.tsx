@@ -6,10 +6,10 @@
 // - 貼付直後に File が預けてあれば URL でなく File を runOcrForImage に渡す
 //   （デスクトップの invoke Base64 往復 = 大容量 IPC を跳ばす）
 // - ドラッグセッション中はジョブを開始せず、dragend 後に再開する
-// - ジョブがタイムアウトしたら empty 扱いで先へ進み、パイプラインを作り直す
-//   （「文字認識中…」トーストが永久に残らない）
+// - ジョブが失敗（タイムアウト含む）したら empty 扱いで先へ進む
+//   （「文字認識中…」トーストが永久に残らない。タイムアウト自体は lib/ocr 側）
 //
-// runOcrForImage / resetOcrPipeline はモック（実 Tesseract には触れない）。
+// runOcrForImage はモック（実 Tesseract には触れない）。
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
@@ -20,13 +20,11 @@ import { registerPendingOcrFile, takePendingOcrFile } from "./pending-files";
 
 const h = vi.hoisted(() => ({
   runOcrForImage: vi.fn(),
-  resetOcrPipeline: vi.fn(),
   setEntry: vi.fn(),
   entries: new Map<string, { text: string }>(),
 }));
 
 vi.mock("./run-ocr", () => ({ runOcrForImage: h.runOcrForImage }));
-vi.mock("../../lib/ocr", () => ({ resetOcrPipeline: h.resetOcrPipeline }));
 vi.mock("./store", () => ({
   useMediaOcrStore: () => ({
     setEntry: h.setEntry,
@@ -54,7 +52,6 @@ async function flush() {
 
 beforeEach(() => {
   h.runOcrForImage.mockReset();
-  h.resetOcrPipeline.mockReset();
   h.setEntry.mockReset();
   h.entries.clear();
   // 前のテストが預けた File を掃除（レジストリはモジュールシングルトン）
@@ -169,10 +166,11 @@ describe("useAutoImageOcr", () => {
     expect(h.runOcrForImage).toHaveBeenCalledTimes(1);
   });
 
-  it("タイムアウトしたジョブは empty 扱いで先へ進み、パイプラインを作り直す", async () => {
-    vi.useFakeTimers();
-    // 永久に解決しない = 宙吊りの再現
-    h.runOcrForImage.mockReturnValue(new Promise(() => {}));
+  it("失敗（タイムアウト含む）したジョブは empty 扱いで先へ進み、トーストが完了する", async () => {
+    // 宙吊りの検知（タイムアウト）と worker の作り直しは lib/ocr の recognizeImage が
+    // 持つ（ocr.test.ts）。hook から見えるのは「reject された」ことだけ
+    let rejectJob: (e: unknown) => void = () => {};
+    h.runOcrForImage.mockReturnValue(new Promise((_, rej) => { rejectJob = rej; }));
     const editorRef = makeEditorRef([]);
     const { result } = renderHook(() =>
       useAutoImageOcr({ editorRef, noteKey: "note-1" }),
@@ -189,13 +187,11 @@ describe("useAutoImageOcr", () => {
     expect(result.current.toast).toEqual(expect.objectContaining({ running: 1 }));
 
     await act(async () => {
-      vi.advanceTimersByTime(120_000);
+      rejectJob(new Error("OCR がタイムアウトしました"));
       await flush();
     });
 
     // トーストは完了状態（running: 0, empty: 1）になり、永久に残らない
     expect(result.current.toast).toEqual(expect.objectContaining({ running: 0, empty: 1 }));
-    // 詰まった worker / 直列化チェーンを引きずらないため作り直す
-    expect(h.resetOcrPipeline).toHaveBeenCalledTimes(1);
   });
 });
