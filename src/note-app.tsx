@@ -2888,12 +2888,15 @@ function NoteEditorInner({
             // ノート本文断片からは外す（同じ文章を二重に渡さない）
             if (fileId) excludeIds.add(fileId);
             const { retrieveWikiContext } = await import("./features/wiki/retriever");
-            // 引用チャットでは背景として同梱したノート全文をクエリから外し、主題
-            // （引用＋質問）だけで検索する。全文を混ぜると embedding が希釈されて
-            // 引用と無関係な Wiki を拾ってしまう。
+            // 横断検索のクエリは「ユーザーが打った質問」だけにする。userMessage には
+            // ノート本文・添付ノート・素材が丸ごと同梱されるが、それを検索クエリに
+            // 混ぜると (a) embedding が希釈されて質問と無関係な Wiki を拾い、
+            // (b) 埋め込みモデルの入力上限を超えて 400 になる（XRD テーブル入りノートで
+            // 28,836 トークン → multilingual-e5-large の上限 512 を大きく超過した実例）。
+            // 引用チャットは主題（引用＋質問）で検索する（従来どおり）。
             const retrievalQuery = effectiveQuotedMarkdown
               ? buildQuotedRetrievalQuery(effectiveQuotedMarkdown, question)
-              : userMessage;
+              : question;
             wikiContext = (await retrieveWikiContext(retrievalQuery, excludeIds)) ?? undefined;
           } catch {
             // Retriever 失敗は無視（embedding が無い場合など）

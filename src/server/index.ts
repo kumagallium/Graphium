@@ -11,6 +11,7 @@ import { setDataDir as setProfilesDataDir } from "./config/profiles.js";
 import { setUsageDataDir, retentionSweep } from "./services/llm-usage.js";
 import { setSidecarIdentity } from "./routes/health.js";
 import { createApp } from "./app.js";
+import { installProcessLifecycleHandlers } from "./process-lifecycle.js";
 
 // 起動段階を stderr に同期書きで残す（Tauri sidecar の Windows 経路で
 // stdout/stderr が無音のまま hang する症状を切り分けるため）。
@@ -34,6 +35,10 @@ function bootLog(msg: string): void {
 }
 
 bootLog("imports complete, resolving data dir");
+
+// 落ちるときは必ず理由を残す（未処理例外・シグナル）。データディレクトリの解決より
+// 前に取り付けて、起動途中の失敗も拾えるようにする。
+installProcessLifecycleHandlers(process, bootLog);
 
 // 親プロセス（Tauri アプリ本体）の生存を監視し、親が消えたら自決する watchdog。
 //

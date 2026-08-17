@@ -17,6 +17,8 @@ import {
   retrieveWikiContextFallback,
   setWikiIndexForRetriever,
   setWikiTitleMap,
+  clampEmbedQuery,
+  MAX_EMBED_QUERY_CHARS,
 } from "./retriever";
 
 /**
@@ -118,5 +120,45 @@ describe("retrieveWikiContext", () => {
     expect(ctx).not.toBeNull();
     expect(ctx).toContain('[#1 | "Seebeck coefficient"]');
     expect(ctx).toContain("Seebeck coefficient rises with light doping");
+  });
+
+  it("clamps the embedding query so a pasted note body cannot exceed the model's input limit", async () => {
+    // 2026-08-17 の実例: 質問文にノート全文（XRD テーブル数百行）が同梱されたまま
+    // 埋め込み API へ渡り、multilingual-e5-large の上限 512 トークンを大きく超えて
+    // 400 になった。呼び出し側は質問文だけ渡す約束になったが、ここでも上限で切る。
+    const sent: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { body?: string }) => {
+        const body = JSON.parse(init?.body ?? "{}") as { texts?: { text: string }[] };
+        sent.push(body.texts?.[0]?.text ?? "");
+        return { ok: true, json: async () => ({ embeddings: [] }) } as Response;
+      }),
+    );
+    await seedTextOnly("wiki-x", "sec-1", "unrelated");
+
+    const hugeQuery = "XRD peaks question " + "| 21.34 | 4.161 | 5.0 | (0,0,2) |\n".repeat(2000);
+    expect(hugeQuery.length).toBeGreaterThan(MAX_EMBED_QUERY_CHARS * 10);
+    await retrieveWikiContext(hugeQuery);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0].length).toBeLessThanOrEqual(MAX_EMBED_QUERY_CHARS);
+    // 先頭（質問の主題）は残る
+    expect(sent[0].startsWith("XRD peaks question")).toBe(true);
+  });
+});
+
+describe("clampEmbedQuery", () => {
+  it("上限以下はそのまま（前後空白だけ落とす）", () => {
+    expect(clampEmbedQuery("  short query  ")).toBe("short query");
+  });
+
+  it("上限を超えたら先頭 MAX_EMBED_QUERY_CHARS 文字に切る", () => {
+    const long = "あ".repeat(MAX_EMBED_QUERY_CHARS + 500);
+    expect(clampEmbedQuery(long)).toHaveLength(MAX_EMBED_QUERY_CHARS);
+  });
+
+  it("空白のみは空文字（呼び出し側が検索をスキップできる）", () => {
+    expect(clampEmbedQuery("   \n  ")).toBe("");
   });
 });
