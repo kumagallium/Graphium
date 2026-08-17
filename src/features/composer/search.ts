@@ -1,10 +1,13 @@
 // Composer（Cmd+K）の即時検索ユーティリティ
 // fm.noteIndex を入力に、タイトル / ラベル / 作者の単純フィルタを行う純関数。
-// BM25・embedding・graph 近傍は別タスク（G-BM25 / G-GRAPHRAG）で hybrid 化する想定。
+// 本文（BM25 語彙インデックス）のヒットは呼び出し側が `bodyHits` として注入する
+// （lexical-search の同期検索結果を noteId → ヒットに畳んだもの）。純関数のまま
+// 保つために、ここからインデックスを直接引くことはしない。graph 近傍は別タスク（G-GRAPHRAG）。
 //
-// 画像は別立ての searchMedia() で fm.mediaIndex から探す。ノートの検索軸
+// 素材は別立ての searchMedia() で fm.mediaIndex から探す。ノートの検索軸
 // （見出し・ラベル・作者）とは持っている情報が違うので、同じ関数に混ぜず
-// 「ノートの結果」「画像の結果」を別セクションとして並べる。
+// 「ノートの結果」「素材の結果」を別セクションとして並べる。素材のテキスト
+// （画像 OCR / URL 抜粋 / PDF）のヒットも同じく `assetHits` として注入する。
 
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
@@ -18,9 +21,37 @@ export type SearchHit = {
   reasons: SearchReason[];
   /** ソート用スコア（大きいほど上位） */
   score: number;
+  /** 本文（語彙インデックス）でヒットしたときの抜粋。無ければ undefined */
+  bodySnippet?: TextSnippet;
 };
 
-export type SearchReason = "title-prefix" | "title-contains" | "heading" | "label" | "author";
+export type SearchReason = "title-prefix" | "title-contains" | "heading" | "label" | "author" | "body";
+
+/** 抜粋（複数範囲を強調できる） */
+export type TextSnippet = {
+  /** 表示用の 1 行テキスト（改行は潰し、切り詰めた側に … を付ける） */
+  text: string;
+  /** text 内の強調範囲（複数） */
+  ranges: { start: number; end: number }[];
+};
+
+/** 語彙インデックス由来のヒット（呼び出し側が noteId / fileId ごとに 1 件へ畳んで渡す） */
+export type TextHit = {
+  /** BM25 スコア（相対値）。同じクエリ内で正規化して加点に使う */
+  score: number;
+  snippet: TextSnippet;
+};
+
+/** 本文ヒットの加点: 見出し一致（25）より下、ラベル/作者フィルタ（30/20）とは独立 */
+const BODY_BASE_SCORE = 12;
+/** 本文ヒットの相対スコアによる上乗せの最大値 */
+const BODY_RELATIVE_SCORE_MAX = 10;
+
+/** 相対スコア（0..max）— 同クエリ内の最大値で正規化 */
+function relativeBoost(score: number, maxScore: number, max: number): number {
+  if (!(maxScore > 0)) return 0;
+  return Math.max(0, Math.min(max, (score / maxScore) * max));
+}
 
 export type ParsedQuery = {
   /** タイトル / 見出し検索に使うフリーテキスト */
@@ -86,6 +117,8 @@ export type SearchOptions = {
   limit?: number;
   /** 結果に含める source の種類。既定では human + ai 両方を許可 */
   includeSources?: ("human" | "ai" | "skill")[];
+  /** 本文（語彙インデックス）のヒット。noteId → ヒット。無ければ本文では当てない */
+  bodyHits?: ReadonlyMap<string, TextHit>;
 };
 
 /**
@@ -121,11 +154,15 @@ export function searchNotes(
   const parsed = parseQuery(query);
   const textLower = parsed.text.toLowerCase();
   const hits: SearchHit[] = [];
+  const bodyHits = options.bodyHits;
+  let bodyMax = 0;
+  if (bodyHits) for (const h of bodyHits.values()) bodyMax = Math.max(bodyMax, h.score);
 
   for (const entry of filteredEntries) {
     let score = 0;
     const reasons: SearchReason[] = [];
     const titleLower = entry.title.toLowerCase();
+    const bodyHit = bodyHits?.get(entry.noteId);
 
     // ラベルフィルタ — 1 つでもマッチしないトークンがあれば除外。
     // step コンテナを持つノートは procedure ラベル相当として扱う
@@ -155,6 +192,7 @@ export function searchNotes(
     }
 
     let titleMatches: SearchHit["titleMatches"] = [];
+    let bodySnippet: TextSnippet | undefined;
 
     // フリーテキスト
     if (textLower) {
@@ -176,10 +214,16 @@ export function searchNotes(
         if (headingHit) {
           score += 25;
           reasons.push("heading");
-        } else if (parsed.labelTokens.length === 0 && parsed.authorTokens.length === 0) {
-          // フィルタもタイトル/見出しも当たっていない → 落とす
+        } else if (!bodyHit && parsed.labelTokens.length === 0 && parsed.authorTokens.length === 0) {
+          // フィルタもタイトル/見出し/本文も当たっていない → 落とす
           continue;
         }
+      }
+      // 本文（語彙インデックス）ヒット。タイトル・見出しに当たっていても抜粋は添える
+      if (bodyHit) {
+        score += BODY_BASE_SCORE + relativeBoost(bodyHit.score, bodyMax, BODY_RELATIVE_SCORE_MAX);
+        reasons.push("body");
+        bodySnippet = bodyHit.snippet;
       }
     } else if (parsed.labelTokens.length === 0 && parsed.authorTokens.length === 0) {
       // 全条件が空 — 既に上で空クエリ判定済みなので通常到達しない
@@ -190,7 +234,7 @@ export function searchNotes(
     const ageBoost = entry.modifiedAt ? Math.min(5, Math.max(0, daysAgoBoost(entry.modifiedAt))) : 0;
     score += ageBoost;
 
-    hits.push({ entry, titleMatches, reasons, score });
+    hits.push({ entry, titleMatches, reasons, score, ...(bodySnippet ? { bodySnippet } : {}) });
   }
 
   hits.sort((a, b) => {
@@ -213,7 +257,7 @@ function daysAgoBoost(modifiedAt: string): number {
 
 // ── 画像検索 ──
 
-export type MediaSearchReason = "name-prefix" | "name-contains" | "ocr";
+export type MediaSearchReason = "name-prefix" | "name-contains" | "ocr" | "text";
 
 /** OCR テキスト中のヒット箇所を、前後の文脈ごと切り出したもの */
 export type OcrSnippet = {
@@ -230,6 +274,8 @@ export type MediaHit = {
   nameMatches: { start: number; end: number }[];
   /** OCR テキストでヒットしたときの抜粋。ファイル名だけのヒットなら undefined */
   ocrSnippet?: OcrSnippet;
+  /** 語彙インデックス（OCR / URL 抜粋 / PDF）でヒットしたときの抜粋。ocrSnippet が無いときの表示に使う */
+  textSnippet?: TextSnippet;
   reasons: MediaSearchReason[];
   score: number;
 };
@@ -264,14 +310,25 @@ export function buildOcrSnippet(ocrText: string, needle: string): OcrSnippet | u
 export type MediaSearchOptions = {
   /** 最大ヒット数（既定値 4）。ノートの結果を押しのけない程度に抑える */
   limit?: number;
+  /** 素材テキスト（語彙インデックス）のヒット。fileId → ヒット。無ければテキストでは当てない */
+  assetHits?: ReadonlyMap<string, TextHit>;
 };
 
+/** 素材テキストヒットの加点。OCR の句そのままの部分一致（40）よりは弱く、名前一致（50/100）よりも弱い */
+const ASSET_TEXT_BASE_SCORE = 25;
+const ASSET_TEXT_RELATIVE_SCORE_MAX = 10;
+
+/** Cmd+K の素材検索で対象にする種類。memo は transient、video/audio は名前でしか当たらないので外す */
+const SEARCHABLE_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["image", "pdf", "url", "document"]);
+
 /**
- * クエリを mediaIndex に対して評価し、画像だけを返す。
+ * クエリを mediaIndex に対して評価し、素材を返す。
+ * 画像はファイル名と OCR テキスト、PDF / URL / 文書はファイル名と索引済みテキスト
+ * （`assetHits`）で当たる。
  *
  * ノート検索と違い、空クエリでは何も返さない（Cmd+K を開いただけの
- * 「最近のノート」ビューに画像を混ぜない）。`#ラベル` / `@作者` が
- * 指定されているときも、ノートを絞り込む意図なので画像は返さない。
+ * 「最近のノート」ビューに素材を混ぜない）。`#ラベル` / `@作者` が
+ * 指定されているときも、ノートを絞り込む意図なので素材は返さない。
  */
 export function searchMedia(
   query: string,
@@ -283,16 +340,20 @@ export function searchMedia(
   if (!query.trim()) return [];
 
   const parsed = parseQuery(query);
-  // ノート専用の絞り込みが入っているクエリでは画像を出さない
+  // ノート専用の絞り込みが入っているクエリでは素材を出さない
   if (parsed.labelTokens.length > 0 || parsed.authorTokens.length > 0) return [];
   const textLower = parsed.text.trim().toLowerCase();
   if (!textLower) return [];
 
+  const assetHits = options.assetHits;
+  let assetMax = 0;
+  if (assetHits) for (const h of assetHits.values()) assetMax = Math.max(assetMax, h.score);
+
   const hits: MediaHit[] = [];
 
   for (const entry of entries) {
-    // OCR を持つのは画像だけ。アーカイブ済みはギャラリー同様に隠す
-    if (entry.type !== "image") continue;
+    if (!SEARCHABLE_MEDIA_TYPES.has(entry.type)) continue;
+    // アーカイブ済みはギャラリー同様に隠す
     if (entry.archivedAt) continue;
 
     let score = 0;
@@ -309,8 +370,8 @@ export function searchMedia(
       }
     }
 
-    // 画像の中の文字。ファイル名より弱いが、これが今回の主目的
-    const ocrSnippet = entry.ocrText
+    // 画像の中の文字（部分一致）。ファイル名より弱いが、これが画像検索の主目的
+    const ocrSnippet = entry.type === "image" && entry.ocrText
       ? buildOcrSnippet(entry.ocrText, parsed.text.trim())
       : undefined;
     if (ocrSnippet) {
@@ -318,10 +379,19 @@ export function searchMedia(
       reasons.push("ocr");
     }
 
+    // 語彙インデックスのテキストヒット（OCR の語一致 / URL 抜粋 / PDF 本文）
+    const textHit = assetHits?.get(entry.fileId);
+    let textSnippet: TextSnippet | undefined;
+    if (textHit) {
+      score += ASSET_TEXT_BASE_SCORE + relativeBoost(textHit.score, assetMax, ASSET_TEXT_RELATIVE_SCORE_MAX);
+      reasons.push("text");
+      textSnippet = textHit.snippet;
+    }
+
     if (reasons.length === 0) continue;
 
     score += entry.uploadedAt ? daysAgoBoost(entry.uploadedAt) : 0;
-    hits.push({ entry, nameMatches, ocrSnippet, reasons, score });
+    hits.push({ entry, nameMatches, ocrSnippet, ...(textSnippet ? { textSnippet } : {}), reasons, score });
   }
 
   hits.sort((a, b) => {

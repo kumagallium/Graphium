@@ -36,6 +36,8 @@ import type { GraphiumIndex } from "../navigation/index-file";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { searchNotes, searchMedia, type SearchHit, type MediaHit } from "./search";
+import { collectLexicalHits } from "./lexical-hits";
+import { useLexicalStatus } from "../lexical-search";
 import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
@@ -56,9 +58,9 @@ type ComposerProps = {
   noteIndex?: GraphiumIndex | null;
   /** ノート行を選んだときのジャンプハンドラ。未指定時は検索 UI を出さない */
   onNoteSelect?: (noteId: string, source: "human" | "ai" | "skill" | undefined) => void;
-  /** 素材一覧（画像検索のソース）。ファイル名と OCR テキストで探す */
+  /** 素材一覧（素材検索のソース）。ファイル名・OCR テキスト・索引済みテキスト（URL 抜粋 / PDF）で探す */
   mediaIndex?: MediaIndex | null;
-  /** 画像行を選んだときのハンドラ。未指定時は画像セクションを出さない */
+  /** 素材行を選んだときのハンドラ。未指定時は素材セクションを出さない */
   onMediaSelect?: (entry: MediaIndexEntry) => void;
   /** 現在開いているノートの引用（knowledge link）数。
    *  J1.5: 入力空のとき 0 → 発見カード（既存）/ 1+ → verb メニューを前面に出す。 */
@@ -79,7 +81,7 @@ type ResultRow =
   | { kind: "card"; card: DiscoveryCard };
 
 const MAX_RESULTS = 8;
-/** 画像はノートの結果を押しのけない程度に抑える */
+/** 素材はノートの結果を押しのけない程度に抑える */
 const MAX_MEDIA_RESULTS = 4;
 
 export function Composer(props: ComposerProps) {
@@ -112,17 +114,37 @@ export function Composer(props: ComposerProps) {
   const webSearch = useWebSearchAvailability(scope === "external");
   const [webSearchHintDismissed, setWebSearchHintDismissed] = useState(false);
 
+  // 語彙インデックス（BM25）の状態。索引が育つ / 作り直されると documents・generation が
+  // 変わるので、それを依存に入れて本文ヒットを取り直す（打鍵していなくても結果が追いつく）
+  const lexicalStatus = useLexicalStatus();
+  const lexicalRevision = `${lexicalStatus.generation}:${lexicalStatus.documents}:${lexicalStatus.state}`;
+
+  // 本文（ノート / ナレッジ）のヒット — noteId → 最良チャンク
+  const bodyHits = useMemo(() => {
+    if (!noteIndex || !onNoteSelect) return new Map();
+    return collectLexicalHits(prompt, ["note", "wiki"]);
+    // lexicalRevision は索引の変化を拾うための依存
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt, noteIndex, onNoteSelect, lexicalRevision]);
+
+  // 素材テキスト（画像 OCR / URL 抜粋 / PDF）のヒット — fileId → 最良チャンク
+  const assetHits = useMemo(() => {
+    if (!mediaIndex || !onMediaSelect) return new Map();
+    return collectLexicalHits(prompt, ["asset"]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt, mediaIndex, onMediaSelect, lexicalRevision]);
+
   // 検索結果（純関数なので useMemo で十分）
   const hits = useMemo(() => {
     if (!noteIndex || !onNoteSelect) return [];
-    return searchNotes(prompt, noteIndex.notes, { limit: MAX_RESULTS });
-  }, [prompt, noteIndex, onNoteSelect]);
+    return searchNotes(prompt, noteIndex.notes, { limit: MAX_RESULTS, bodyHits });
+  }, [prompt, noteIndex, onNoteSelect, bodyHits]);
 
-  // 画像（ファイル名 + OCR で読み取った画像内の文字）
+  // 素材（ファイル名 + OCR で読み取った画像内の文字 + 索引済みテキスト）
   const mediaHits = useMemo(() => {
     if (!mediaIndex || !onMediaSelect) return [];
-    return searchMedia(prompt, mediaIndex.media, { limit: MAX_MEDIA_RESULTS });
-  }, [prompt, mediaIndex, onMediaSelect]);
+    return searchMedia(prompt, mediaIndex.media, { limit: MAX_MEDIA_RESULTS, assetHits });
+  }, [prompt, mediaIndex, onMediaSelect, assetHits]);
 
   const trimmed = prompt.trim();
   const isEmptyQuery = trimmed.length === 0;
@@ -427,9 +449,9 @@ export function Composer(props: ComposerProps) {
               return null;
             })}
 
-            {/* 「画像」セクション — ファイル名と、OCR で読み取った画像内の文字で当たる */}
+            {/* 「素材」セクション — ファイル名、OCR で読み取った画像内の文字、URL 抜粋 / PDF 本文で当たる */}
             {mediaHits.length > 0 && (
-              <SectionHeading>{t("composer.search.imagesHeading")}</SectionHeading>
+              <SectionHeading>{t("composer.search.assetsHeading")}</SectionHeading>
             )}
             {rows.map((row, i) => {
               if (row.kind !== "media") return null;
@@ -584,7 +606,7 @@ type NoteRowProps = {
 };
 
 function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
-  const { entry, titleMatches } = hit;
+  const { entry, titleMatches, bodySnippet } = hit;
   const isWiki = entry.source === "ai";
   const icon = isWiki ? "📘" : entry.model ? "🤖" : "📄";
 
@@ -599,7 +621,7 @@ function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
         gap: 10,
         width: "100%",
         textAlign: "left",
-        padding: "8px 16px",
+        padding: bodySnippet ? "6px 16px" : "8px 16px",
         background: active ? "var(--paper-2)" : "transparent",
         border: "none",
         borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
@@ -613,14 +635,37 @@ function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
         style={{
           flex: 1,
           minWidth: 0,
-          fontSize: 13,
-          lineHeight: 1.4,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
         }}
       >
-        <HighlightedTitle title={entry.title} ranges={titleMatches} />
+        <span
+          style={{
+            fontSize: 13,
+            lineHeight: 1.4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <HighlightedTitle title={entry.title} ranges={titleMatches} />
+        </span>
+        {/* 本文（語彙インデックス）で当たった箇所の抜粋 — 素材行の OCR 抜粋と同じ見た目 */}
+        {bodySnippet && (
+          <span
+            style={{
+              fontSize: 11,
+              color: "var(--ink-3)",
+              lineHeight: 1.4,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <HighlightedTitle title={bodySnippet.text} ranges={bodySnippet.ranges} />
+          </span>
+        )}
       </span>
       {entry.author && (
         <span
@@ -650,7 +695,11 @@ type MediaRowProps = {
  * 選ぶと素材サイドピークが開く（呼び出し側の onMediaSelect）。
  */
 function MediaRow({ hit, active, onMouseEnter, onClick }: MediaRowProps) {
-  const { entry, nameMatches, ocrSnippet } = hit;
+  const { entry, nameMatches, ocrSnippet, textSnippet } = hit;
+  // 表示する抜粋: 画像は OCR の部分一致を優先、無ければ語彙インデックスの抜粋
+  const snippet = ocrSnippet
+    ? { text: ocrSnippet.text, ranges: [{ start: ocrSnippet.start, end: ocrSnippet.end }] }
+    : textSnippet;
 
   return (
     <button
@@ -672,7 +721,7 @@ function MediaRow({ hit, active, onMouseEnter, onClick }: MediaRowProps) {
         color: "var(--ink)",
       }}
     >
-      <MediaThumb entry={entry} />
+      {entry.type === "image" ? <MediaThumb entry={entry} /> : <MediaTypeIcon type={entry.type} />}
       <span
         style={{
           flex: 1,
@@ -693,7 +742,7 @@ function MediaRow({ hit, active, onMouseEnter, onClick }: MediaRowProps) {
         >
           <HighlightedTitle title={entry.name} ranges={nameMatches} />
         </span>
-        {ocrSnippet && (
+        {snippet && (
           <span
             style={{
               fontSize: 11,
@@ -704,14 +753,34 @@ function MediaRow({ hit, active, onMouseEnter, onClick }: MediaRowProps) {
               whiteSpace: "nowrap",
             }}
           >
-            <HighlightedTitle
-              title={ocrSnippet.text}
-              ranges={[{ start: ocrSnippet.start, end: ocrSnippet.end }]}
-            />
+            <HighlightedTitle title={snippet.text} ranges={snippet.ranges} />
           </span>
         )}
       </span>
     </button>
+  );
+}
+
+/** 画像以外の素材の行頭アイコン（サムネイルの代わり・同じ枠サイズ） */
+function MediaTypeIcon({ type }: { type: MediaIndexEntry["type"] }) {
+  const glyph = type === "pdf" ? "📕" : type === "url" ? "🔗" : type === "document" ? "📝" : "📎";
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 32,
+        height: 32,
+        flexShrink: 0,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 16,
+        borderRadius: "var(--r-1)",
+        background: "var(--paper-2)",
+      }}
+    >
+      {glyph}
+    </span>
   );
 }
 

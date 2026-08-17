@@ -342,9 +342,12 @@ the text on the image's detail panel.
 It is mirrored a second time onto the material itself
 (`MediaIndexEntry.ocrText`), so the image is findable as an image and not only
 through the note it sits in — the `⌘K` Composer searches materials alongside
-notes and lists matching images under **Images**, opening the material side
+notes and lists matching assets under **Assets**, opening the material side
 peek rather than jumping to a note (one image can be used by several notes, or
-by none). Media-index schema v5 introduced this mirror; the rebuild it forces
+by none). The same palette also searches note bodies and the text of PDFs and
+URLs through the lexical index described in §3.3, showing a highlighted
+snippet under the title; the pure title / heading / label filter still runs
+first, so results are unchanged when the index is empty or still loading. Media-index schema v5 introduced this mirror; the rebuild it forces
 walks every note and recovers text read before the bump.
 
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
@@ -598,9 +601,34 @@ Notes:
   actions (ingest / procedure extraction / translation / "ask AI") all
   disappear until a model is added in Settings → AI (gated by
   `aiUiEnabled` in `src/note-app.tsx`).
-- **Embeddings** (per Wiki section) are stored via
-  `src/lib/embedding-store.ts` and used as the retrieval substrate for AI
-  chat. The retriever is `src/features/wiki/retriever.ts`.
+- **Retrieval for AI chat is hybrid.** Two substrates feed the
+  cross-search behind the Internal / External grounding scopes
+  (`src/features/wiki/retriever.ts`):
+  - **Embeddings** (per Wiki section) stored via
+    `src/lib/embedding-store.ts` — semantic similarity, needs an
+    embedding model (OpenAI-compatible; absent or failing, this side is
+    simply empty).
+  - **A lexical (BM25) index** over Wiki sections, note bodies, and asset
+    text (`src/features/lexical-search/`, MiniSearch) — keyword match,
+    model-independent, fully local. Tokenization is `Intl.Segmenter` for
+    Japanese with CJK bigrams as insurance against segmentation drift,
+    falling back to bigrams where the API is missing.
+
+  The two Wiki rankings are fused by Reciprocal Rank Fusion (RRF) into the
+  `<knowledge>` block; note bodies and asset text come from the lexical
+  side only and go into a separate `<notes>` block with a lower budget,
+  labeled as raw material. Both blocks share one running `[#N | "title"]`
+  numbering, so `citation-normalize.ts` resolves citations the same way
+  regardless of where a passage came from, and the chat panel jumps to a
+  Wiki page, a note side peek, or an asset peek by the resolved reference.
+  The lexical index is a rebuildable per-device cache in IndexedDB
+  (`graphium-lexical-index`, keyed by storage scope) — it never writes to
+  notes or to `note-index.json`. It follows `noteIndex` (notes and Wiki
+  pages, minus trash / archive) and `mediaIndex` (image OCR, URL excerpt
+  and description, PDF text extracted in the background) through one
+  reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
+  restores need no per-handler hooks. Settings → Storage shows the index
+  status and offers a rebuild.
 - **Auto-merge of redundant Claims.** When the linter / startup-merge
   flow detects two Claims that overlap, one is rewritten into the
   other and the absorbed Claim is **archived, not deleted**. Its file
@@ -1196,6 +1224,7 @@ once team-shared storage stabilizes.
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Native shell | Tauri v2 (Rust) for desktop |
+| Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). |
 
 ## 8. Source map
@@ -1214,6 +1243,7 @@ people most often need to find.
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |
 | ⌘K palette (note search + ask) | `src/features/composer/` |
+| Lexical (BM25) index over notes / Wiki / assets | `src/features/lexical-search/` |
 | ⌘F in-document find (highlight matches) | `src/features/document-search/` |
 | Knowledge UI and service | `src/features/wiki/` |
 | Knowledge pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |

@@ -138,6 +138,9 @@ importers:
       mathlive:
         specifier: ^0.110.0
         version: 0.110.0
+      minisearch:
+        specifier: 7.2.0
+        version: 7.2.0
       pdfjs-dist:
         specifier: 5.4.296
         version: 5.4.296

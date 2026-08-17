@@ -45,11 +45,13 @@ The **Grounding** chip next to the input controls what evidence the AI draws on.
 
 **This note** is the default: answers stay pinned to what you explicitly cited, which is what you want while writing.
 
+What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings)); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`.
+
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
 Choosing **External** forces a web search. To give Graphium one, register a search MCP server (such as Tavily) in Settings → **AI**.
 
-So you can tell where a statement comes from, sources at the end of an answer are labeled **📓 From your notes** for internal citations and **🌐 Web sources** for pages found on the web. Clicking an internal citation opens that knowledge page.
+So you can tell where a statement comes from, sources at the end of an answer are labeled **📓 From your notes** for internal citations and **🌐 Web sources** for pages found on the web. Clicking an internal citation opens what it points at — a knowledge page, a note in the side peek, or an asset in the material peek.
 
 ::: warning When no web search is configured
 If you select **External** without a search MCP server, a dismissable banner appears above the input: "No web search is set up — External will answer without live web results. Add a search MCP server (e.g. Tavily)," with an **Open settings** shortcut. The question still runs — the answer just cannot include live web results.
@@ -92,13 +94,13 @@ Press `⌘K` to open the Composer — one input for both "find a note" and "ask 
 
 The placeholder says it all: **Find a note or ask AI...**
 
-Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an image...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent.
+Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an asset...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent. The same search-only form is what you get when no AI model is registered at all — the search half needs no AI, so `⌘K` still opens.
 
 ![Composer palette with the verb menu on a note with citations](/screenshots/composer-verbs.png)
 
 ### Finding notes
 
-As you type, matching notes appear instantly, searched by title, headings, labels, and author. Two filter tokens narrow the list, as the footer hints ("#label / @author to filter"):
+As you type, matching notes appear instantly, searched by title, headings, labels, and author — and by the words in the note body, through the same on-device full-text index the AI chat uses. A body match shows an excerpt around the matched words under the title, so you can tell why a note is listed before opening it. Title and heading matches rank above body-only matches. Two filter tokens narrow the list, as the footer hints ("#label / @author to filter"):
 
 | Token | Filters by |
 |---|---|
@@ -107,15 +109,15 @@ As you type, matching notes appear instantly, searched by title, headings, label
 
 With an empty input you get **Recent notes**. Press `Enter` to open the highlighted note.
 
-### Finding images <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />
+### Finding assets <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> {#finding-images}
 
-Images you have [read with OCR](/materials-and-citations#reading-text-from-images-ocr) are searched alongside the notes and listed under **Images**, matched on their file name and on the words read out of them. Each row carries a thumbnail and an excerpt around the match, so two similar screenshots are told apart before you open either.
+Assets are searched alongside the notes and listed under **Assets**. Images you have [read with OCR](/materials-and-citations#reading-text-from-images-ocr) match on their file name and on the words read out of them; PDFs, URLs, and documents match on their name and on their text (the text of a PDF, the excerpt and description of a URL) through the same full-text index. Each row carries a thumbnail — or a type icon for non-images — and an excerpt around the match, so two similar screenshots, or two papers, are told apart before you open either.
 
-Selecting one opens the materials gallery on the image tab, with that image in the side peek — rather than jumping to a note. One image can be used by several notes, or by none, and the peek lists the notes that use it.
+Selecting one opens the materials gallery on that asset's tab, with the asset in the side peek — rather than jumping to a note. One asset can be used by several notes, or by none, and the peek lists the notes that use it.
 
-Images stay out of the empty-input view and out of `#label` / `@author` queries; both of those are about finding notes.
+Assets stay out of the empty-input view and out of `#label` / `@author` queries; both of those are about finding notes.
 
-![The Composer listing a photographed furnace panel under Images, found by the words inside it](/screenshots/composer-image-search.png)
+![The Composer listing a photographed furnace panel under Assets, found by the words inside it](/screenshots/composer-image-search.png)
 
 ### Asking the AI
 

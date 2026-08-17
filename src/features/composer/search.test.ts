@@ -107,6 +107,51 @@ describe("searchNotes()", () => {
     expect(a.titleMatches.length).toBeGreaterThan(0);
     expect(a.titleMatches[0]).toEqual({ start: 0, end: 3 });
   });
+
+  // ── 本文（語彙インデックス）ヒットの注入 ──
+  const snippet = (text: string) => ({ text, ranges: [{ start: 0, end: 2 }] });
+
+  it("finds a note by body hit alone and carries the snippet + reason", () => {
+    const bodyHits = new Map([["b", { score: 3, snippet: snippet("焼結温度は 800℃") }]]);
+    const hits = searchNotes("焼結", notes, { bodyHits });
+    expect(hits.map((h) => h.entry.noteId)).toEqual(["b"]);
+    expect(hits[0].reasons).toEqual(["body"]);
+    expect(hits[0].bodySnippet?.text).toBe("焼結温度は 800℃");
+  });
+
+  it("ranks title / heading hits above body-only hits, and adds the snippet to title hits too", () => {
+    const bodyHits = new Map([
+      ["b", { score: 5, snippet: snippet("body only") }],
+      ["a", { score: 1, snippet: snippet("also in body") }],
+    ]);
+    const hits = searchNotes("xrd", notes, { bodyHits });
+    const ids = hits.map((h) => h.entry.noteId);
+    // タイトル一致（a, c, e）と見出し一致（f）が本文のみ（b）より上
+    expect(ids.indexOf("b")).toBeGreaterThan(ids.indexOf("f"));
+    const a = hits.find((h) => h.entry.noteId === "a")!;
+    expect(a.reasons).toContain("title-prefix");
+    expect(a.reasons).toContain("body");
+    expect(a.bodySnippet?.text).toBe("also in body");
+  });
+
+  it("body hits still respect #label / @author filters and includeSources", () => {
+    const bodyHits = new Map([
+      ["b", { score: 3, snippet: snippet("x") }],
+      ["e", { score: 3, snippet: snippet("x") }],
+    ]);
+    // b はラベル無し → #procedure で落ちる。e は ai だが includeSources 既定で許可
+    expect(searchNotes("xrd #procedure", notes, { bodyHits }).map((h) => h.entry.noteId)).not.toContain("b");
+    expect(searchNotes("zzz", notes, { bodyHits, includeSources: ["human"] }).map((h) => h.entry.noteId)).toEqual(["b"]);
+  });
+
+  it("scores body hits relatively — a stronger BM25 score ranks higher", () => {
+    const bodyHits = new Map([
+      ["b", { score: 1, snippet: snippet("weak") }],
+      ["d", { score: 9, snippet: snippet("strong") }],
+    ]);
+    // 更新日は b(4/20) < d(4/23) だが、スコア差の方が大きい
+    expect(searchNotes("zzz", notes, { bodyHits }).map((h) => h.entry.noteId)).toEqual(["d", "b"]);
+  });
 });
 
 // ── 画像検索 ──
@@ -189,9 +234,35 @@ describe("searchMedia()", () => {
     expect(hits.map((h) => h.entry.fileId)).toEqual(["n", "o"]);
   });
 
-  it("returns only images — other media types are left to the gallery", () => {
+  it("finds non-image assets (PDF / URL / document) by name", () => {
     const hits = searchMedia("焼結", assets);
-    expect(hits.map((h) => h.entry.fileId)).not.toContain("pdf-1");
+    expect(hits.map((h) => h.entry.fileId)).toContain("pdf-1");
+    expect(hits.find((h) => h.entry.fileId === "pdf-1")?.reasons).toContain("name-prefix");
+  });
+
+  it("leaves video / audio / memo out (name-only types are not worth a row)", () => {
+    const hits = searchMedia("焼結", [
+      media({ fileId: "v", name: "焼結.mp4", type: "video", mimeType: "video/mp4" }),
+      media({ fileId: "m", name: "焼結メモ", type: "memo", mimeType: "text/plain" }),
+    ]);
+    expect(hits).toEqual([]);
+  });
+
+  it("finds assets by indexed text (assetHits) and carries the snippet", () => {
+    const assetHits = new Map([
+      ["pdf-1", { score: 4, snippet: { text: "…焼結温度 800℃ で…", ranges: [{ start: 1, end: 5 }] } }],
+    ]);
+    const hits = searchMedia("温度", assets, { assetHits });
+    const pdf = hits.find((h) => h.entry.fileId === "pdf-1")!;
+    expect(pdf.reasons).toContain("text");
+    expect(pdf.textSnippet?.text).toContain("焼結温度");
+    // 画像 img-1 は OCR 部分一致（40）、pdf はテキストヒット（25 + 相対 ≤ 10）→ 画像が上
+    expect(hits.map((h) => h.entry.fileId).indexOf("img-1")).toBeLessThan(hits.map((h) => h.entry.fileId).indexOf("pdf-1"));
+  });
+
+  it("does not surface archived assets even when the index has a hit", () => {
+    const assetHits = new Map([["img-old", { score: 4, snippet: { text: "x", ranges: [] } }]]);
+    expect(searchMedia("温度", assets, { assetHits }).map((h) => h.entry.fileId)).not.toContain("img-old");
   });
 
   it("hides archived images", () => {

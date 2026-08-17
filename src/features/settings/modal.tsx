@@ -39,6 +39,7 @@ import {
   type GraphiumRootInfo,
 } from "../../lib/graphium-root";
 import { useLocale, type Locale } from "../../i18n";
+import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
 import type { WikiKind } from "../../lib/document-types";
 import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/providers/server-fs";
@@ -2014,6 +2015,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </p>
               )}
             </div>
+
+            {/* 検索インデックス（BM25）— 端末ローカルの再構築可能なキャッシュ */}
+            <LexicalIndexCard />
           </div>
         )}
 
