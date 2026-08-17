@@ -2,7 +2,7 @@
 // 複数ノートの連続 Ingest をキューで管理し、詳細進捗を表示
 
 import { useEffect, useState } from "react";
-import { Bot, Check, X, Loader2, Minus, ChevronDown, ChevronUp } from "lucide-react";
+import { Bot, Check, X, Loader2, Minus, ChevronDown, ChevronUp, Square } from "lucide-react";
 import { useT } from "../../i18n";
 
 /** パイプライン各ステージの状態 */
@@ -20,7 +20,8 @@ export type IngestStage = {
 
 export type IngestToastItem = {
   id: string;
-  status: "queued" | "generating" | "saving" | "success" | "error";
+  /** aborted = ユーザーが「停止」で止めた（失敗ではない） */
+  status: "queued" | "generating" | "saving" | "success" | "error" | "aborted";
   noteTitle: string;
   /** 現在のステップの詳細 */
   detail?: string;
@@ -37,13 +38,20 @@ export type IngestToastState = {
 type Props = {
   state: IngestToastState;
   onDismiss: () => void;
+  /**
+   * 進行中の処理を止める。渡されていれば、処理中のヘッダーに「停止」ボタンを出す。
+   * 押した側は fetch を abort し、残りのキューを aborted に畳む。
+   */
+  onStop?: () => void;
 };
 
-export function IngestToast({ state, onDismiss }: Props) {
+export function IngestToast({ state, onDismiss, onStop }: Props) {
   const t = useT();
   const [visible, setVisible] = useState(false);
   // 最小化中はピル表示のみ（大量アイテム時にチャット欄等と重なるのを避ける）
   const [minimized, setMinimized] = useState(false);
+  // 停止を押した直後〜実際に止まるまでの間、二度押しを防ぐ
+  const [stopping, setStopping] = useState(false);
 
   const items = state?.items ?? [];
   // stages を持つアイテムは、いずれかのステージが pending/running の間 active 扱い。
@@ -73,13 +81,26 @@ export function IngestToast({ state, onDismiss }: Props) {
       setVisible(false);
       // 次のバッチは展開状態から始める
       setMinimized(false);
+      setStopping(false);
     }
   }, [items, allDone, onDismiss]);
+
+  // 処理が全部止まったら「停止中」表示も解除（次のバッチに持ち越さない）
+  useEffect(() => {
+    if (!hasActive) setStopping(false);
+  }, [hasActive]);
 
   if (!state || items.length === 0) return null;
 
   const completedCount = items.filter((i) => i.status === "success").length;
   const errorCount = items.filter((i) => i.status === "error").length;
+  const abortedCount = items.filter((i) => i.status === "aborted").length;
+  const canStop = hasActive && !!onStop;
+  const handleStop = () => {
+    if (!onStop || stopping) return;
+    setStopping(true);
+    onStop();
+  };
   const activeItem = items.find((i) => i.status === "generating" || i.status === "saving");
   const queuedCount = items.filter((i) => i.status === "queued").length;
 
@@ -138,10 +159,23 @@ export function IngestToast({ state, onDismiss }: Props) {
         <Bot size={14} className="text-muted-foreground shrink-0" />
         <span className="text-xs font-medium text-foreground flex-1">
           {hasActive
-            ? t("ingest.generatingHeader", { done: String(completedCount), total: String(items.length) })
-            : `${t("ingest.doneSummary", { count: String(completedCount) })}${errorCount > 0 ? t("ingest.doneErrorSuffix", { count: String(errorCount) }) : ""}`
+            ? stopping
+              ? t("ingest.stopping")
+              : t("ingest.generatingHeader", { done: String(completedCount), total: String(items.length) })
+            : `${t("ingest.doneSummary", { count: String(completedCount) })}${errorCount > 0 ? t("ingest.doneErrorSuffix", { count: String(errorCount) }) : ""}${abortedCount > 0 ? t("ingest.doneAbortedSuffix", { count: String(abortedCount) }) : ""}`
           }
         </span>
+        {canStop && (
+          <button
+            onClick={handleStop}
+            disabled={stopping}
+            title={t("ingest.stop")}
+            aria-label={t("ingest.stop")}
+            className="text-muted-foreground hover:text-destructive shrink-0 disabled:opacity-50"
+          >
+            <Square size={11} fill="currentColor" />
+          </button>
+        )}
         <button
           onClick={() => setMinimized(true)}
           title={t("ingest.minimize")}
@@ -177,11 +211,19 @@ export function IngestToast({ state, onDismiss }: Props) {
               {item.status === "error" && (
                 <X size={12} className="text-destructive shrink-0" />
               )}
-              <span className={`truncate min-w-0 flex-1 ${item.status === "queued" ? "text-muted-foreground" : "text-foreground"}`}>
+              {item.status === "aborted" && (
+                <Minus size={12} className="text-muted-foreground/60 shrink-0" />
+              )}
+              <span className={`truncate min-w-0 flex-1 ${item.status === "queued" || item.status === "aborted" ? "text-muted-foreground" : "text-foreground"}`}>
                 {item.noteTitle}
               </span>
               {item.detail && (item.status === "generating" || item.status === "saving") && (
                 <span className="text-muted-foreground/60 shrink-0">{item.detail}</span>
+              )}
+              {item.result && item.status === "aborted" && (
+                <span className="text-muted-foreground/60 truncate min-w-0 shrink-0 max-w-[40%]">
+                  — {item.result}
+                </span>
               )}
               {item.result && item.status === "success" && (
                 <span

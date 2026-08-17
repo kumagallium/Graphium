@@ -260,6 +260,7 @@ import { schedulePastedImageCapture } from "./features/asset-browser/paste-image
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
+import { isAbortError } from "./lib/abort-error";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
@@ -5497,6 +5498,11 @@ export function NoteApp() {
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
+  // 取り込みパイプライン（ingest → cross-update → atomize → lint）の中断ハンドル。
+  // キュー処理の開始時に 1 本作り、各 LLM 呼び出しの fetch に signal として渡す。
+  // トーストの「停止」で abort() + キューを空にする。fetch が切れるとサーバー側の
+  // c.req.raw.signal も発火して LLM 呼び出しごと止まる（wiki.ts が配線済み）。
+  const ingestAbortRef = useRef<AbortController | null>(null);
   // AI 未設定ガード（ensureAgentConfigured）発火時のトースト表示。
   // 設定モーダル自体は既存の `graphium-open-settings` リスナーが AI タブで開く。
   // 固定 id で置き換えるので、連続発火（複数ノート一括 Knowledge 化等）でも 1 件に収まる。
@@ -6139,8 +6145,13 @@ export function NoteApp() {
   const processIngestQueue = useCallback(async () => {
     if (ingestRunningRef.current) return;
     ingestRunningRef.current = true;
+    const abortController = new AbortController();
+    ingestAbortRef.current = abortController;
+    const signal = abortController.signal;
 
     while (ingestQueueRef.current.length > 0) {
+      // 停止済みなら残りのキューを「中断」で畳んで抜ける
+      if (signal.aborted) break;
       const job = ingestQueueRef.current[0];
       const jobId = job.noteId;
 
@@ -6178,7 +6189,7 @@ export function NoteApp() {
 
         // 設定で選んだ既定モデル名を渡す。Tauri モードではヘッダーに API キーを乗せないため、
         // body.model 経由でサーバーに伝えないと models.json 先頭のモデルにフォールバックしてしまう。
-        const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills);
+        const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills, signal);
 
         if (result.wikis.length === 0) {
           setIngestToast((prev) => ({
@@ -6326,16 +6337,37 @@ export function NoteApp() {
           ),
         }));
       } catch (err) {
+        // ユーザーの「停止」による中断は失敗ではない。aborted として畳む。
+        const aborted = isAbortError(err) || signal.aborted;
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
             i.id === jobId
-              ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) }
+              ? aborted
+                ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") }
+                : { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) }
               : i
           ),
         }));
       }
 
       ingestQueueRef.current.shift();
+    }
+
+    // 停止で抜けた場合: まだ queued のまま残っている項目を aborted に畳み、
+    // 後半のパイプライン（Atomize / Lint）も走らせない。
+    if (signal.aborted) {
+      const remaining = ingestQueueRef.current.map((j) => j.noteId);
+      ingestQueueRef.current = [];
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          remaining.includes(i.id) || i.status === "queued"
+            ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") }
+            : i
+        ),
+      }));
+      ingestAbortRef.current = null;
+      ingestRunningRef.current = false;
+      return;
     }
 
     // パイプライン後半（Atomize / Lint）の進捗を 1 つの
@@ -6444,7 +6476,7 @@ export function NoteApp() {
             const atomResult = await atomizeConcepts(
               slice,
               getLocale(),
-              { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
+              { existingAtomTitles, model: getChatSynthesisModelName() || undefined, signal },
             );
             // 既存 Atom との embedding 類似で「新規」と「重複」に分割し、
             // 重複候補は捨てずに一致先 Atom への支持追加（reinforcement）に回す。
@@ -6493,6 +6525,14 @@ export function NoteApp() {
           );
         }
       } catch (err) {
+        if (isAbortError(err) || signal.aborted) {
+          // ユーザーの「停止」。以降の Lint も走らせず、ここで畳む。
+          updateStage("atomize", "skipped", tStatic("ingest.aborted"));
+          updateStage("lint", "skipped", tStatic("ingest.aborted"));
+          ingestAbortRef.current = null;
+          ingestRunningRef.current = false;
+          return;
+        }
         console.error("Atomize failed:", err);
         updateStage("atomize", "error", localizeAiError(err));
       }
@@ -6513,7 +6553,7 @@ export function NoteApp() {
         updateStage("lint", "running", tStatic("ingest.analyzingWikis", { count: String(snapshots.length) }));
         // LLM Lint: 5ページ以上で矛盾・ギャップを LLM で分析
         const useLlm = snapshots.length >= 5;
-        const report = await lintWikis(snapshots, getLocale(), !useLlm);
+        const report = await lintWikis(snapshots, getLocale(), !useLlm, signal);
         const issues = report.issues;
 
         if (issues.length > 0) {
@@ -6708,11 +6748,16 @@ export function NoteApp() {
         );
       }
     } catch (err) {
-      // Lint 失敗は ingest 全体には影響させない
-      console.error("Lint failed:", err);
-      updateStage("lint", "error", localizeAiError(err));
+      if (isAbortError(err) || signal.aborted) {
+        updateStage("lint", "skipped", tStatic("ingest.aborted"));
+      } else {
+        // Lint 失敗は ingest 全体には影響させない
+        console.error("Lint failed:", err);
+        updateStage("lint", "error", localizeAiError(err));
+      }
     }
 
+    ingestAbortRef.current = null;
     ingestRunningRef.current = false;
   }, [fm, capture.handleRecordKnowledged]);
 
@@ -7128,8 +7173,8 @@ export function NoteApp() {
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
   const regenerateWikiById = useCallback(async (
     wikiId: string,
-    options?: { model?: string; openAfter?: boolean },
-  ): Promise<{ ok: boolean; error?: string }> => {
+    options?: { model?: string; openAfter?: boolean; signal?: AbortSignal },
+  ): Promise<{ ok: boolean; error?: string; aborted?: boolean }> => {
     // AI 未設定なら発火させない（WikiBanner / 一覧 / Maintenance すべてここを通る）
     if (!ensureAgentConfigured()) {
       return { ok: false, error: tStatic("settings.aiNotConfigured") };
@@ -7201,6 +7246,7 @@ export function NoteApp() {
           // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
           // re-lift では旧タイトルと別の抽象になってよい。
           model: selectedModel ?? getChatSynthesisModelName() ?? undefined,
+          ...(options?.signal ? { signal: options.signal } : {}),
         });
         // 旧タイトル一致で選ぶと元のドメイン語 Atom を再現してしまい re-lift にならない。
         // 同じ source Claim から作り直した新しい構造抽象の主候補をそのまま採用する。
@@ -7466,6 +7512,15 @@ export function NoteApp() {
         }
       }
     } catch (err) {
+      if (isAbortError(err) || options?.signal?.aborted) {
+        // ユーザーの中断。失敗ではないのでエラー表示にしない。
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : i
+          ),
+        }));
+        return { ok: false, aborted: true };
+      }
       console.error("Wiki の再生成に失敗:", err);
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
@@ -7492,7 +7547,8 @@ export function NoteApp() {
       clusterSize?: number;
       clusterMemberTitles?: string[];
     }) => void,
-  ): Promise<{ ok: boolean; created: number; iterations: number; error?: string }> => {
+    options?: { signal?: AbortSignal },
+  ): Promise<{ ok: boolean; created: number; iterations: number; error?: string; aborted?: boolean }> => {
     if (!isAtomLayerEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Atom layer is disabled" };
     }
@@ -7551,6 +7607,8 @@ export function NoteApp() {
     let lastIteration = 0;
     try {
       for (let iter = 1; iter <= seeds.length; iter++) {
+        // キャンセルされたら次のクラスタへ進まない（作成済み分は残す）
+        if (options?.signal?.aborted) break;
         lastIteration = iter;
         const seed = seeds[iter - 1];
         const cluster = buildClusterSlice(claimCandidates, seed, MAX_SNAPSHOTS_PER_RUN);
@@ -7573,7 +7631,7 @@ export function NoteApp() {
         const result = await atomizeConcepts(
           slice,
           getLocale(),
-          { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
+          { existingAtomTitles, model: getChatSynthesisModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
         );
         // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
         if (result.atoms.length === 0) continue;
@@ -7627,6 +7685,15 @@ export function NoteApp() {
       }));
       return { ok: true, created: totalCreated, iterations: lastIteration };
     } catch (err) {
+      if (isAbortError(err) || options?.signal?.aborted) {
+        // ユーザーの中断。ここまでに作成した Atom は残し、失敗扱いにしない。
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : i
+          ),
+        }));
+        return { ok: false, created: totalCreated, iterations: lastIteration, aborted: true };
+      }
       console.error("Atomize discovery failed:", err);
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
@@ -9075,7 +9142,15 @@ export function NoteApp() {
           </>
         )}
         {/* Ingest トースト通知 */}
-        <IngestToast state={ingestToast} onDismiss={() => setIngestToast(null)} />
+        <IngestToast
+          state={ingestToast}
+          onDismiss={() => setIngestToast(null)}
+          onStop={() => {
+            // 進行中の fetch を切る（→ サーバー側の LLM 呼び出しも止まる）。
+            // 残りのキューは processIngestQueue 側が signal.aborted を見て畳む。
+            ingestAbortRef.current?.abort();
+          }}
+        />
         {/* 派生ノート作成中のオーバーレイ */}
         {fm.deriving && (
           <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">

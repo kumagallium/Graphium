@@ -98,6 +98,8 @@ export async function ingestNote(
   model?: string,
   /** Ingest 時に適用する Skill（プロンプトテンプレート） */
   skills?: { title: string; prompt: string }[],
+  /** 中断シグナル。fetch を切るとサーバー側の LLM 呼び出しも止まる */
+  signal?: AbortSignal,
 ): Promise<IngestResult> {
   const noteContent = extractPlainTextFromDoc(doc);
 
@@ -120,6 +122,7 @@ export async function ingestNote(
       ...(model ? { model } : {}),
       ...(skills && skills.length > 0 ? { skills } : {}),
     }),
+    ...(signal ? { signal } : {}),
   });
 
   if (!res.ok) {
@@ -1276,11 +1279,13 @@ type CrossUpdateResult = {
  */
 export async function fetchCrossUpdateProposals(
   input: CrossUpdateInput,
+  signal?: AbortSignal,
 ): Promise<CrossUpdateResult> {
   const res = await fetch(`${API_BASE}/cross-update`, {
     method: "POST",
     headers: wikiHeaders(),
     body: JSON.stringify({ ...input, ...wikiBodyModel() }),
+    ...(signal ? { signal } : {}),
   });
 
   if (!res.ok) {
@@ -1529,11 +1534,13 @@ export async function lintWikis(
   wikis: WikiSnapshot[],
   language: string,
   localOnly: boolean = false,
+  signal?: AbortSignal,
 ): Promise<LintReport> {
   const res = await fetch(`${API_BASE}/lint`, {
     method: "POST",
     headers: wikiHeaders(),
     body: JSON.stringify({ wikis, language, localOnly, ...wikiBodyModel() }),
+    ...(signal ? { signal } : {}),
   });
 
   if (!res.ok) {
@@ -1830,7 +1837,7 @@ export type AtomizeResult = { atoms: AtomCandidate[]; model?: string };
 export async function atomizeConcepts(
   concepts: ClaimSnapshot[],
   language: string,
-  options?: { existingAtomTitles?: string[]; model?: string },
+  options?: { existingAtomTitles?: string[]; model?: string; signal?: AbortSignal },
 ): Promise<AtomizeResult> {
   // 単一ソース Atom は #459 で許可済み（route は concepts >= 1 を受ける）。
   // ここで < 2 を弾くと regenerate の単一ソース re-lift が無言で失敗するため、空のときだけ弾く。
@@ -1844,6 +1851,9 @@ export async function atomizeConcepts(
       language,
       ...(options?.model ? { model: options.model } : {}),
     }),
+    // 中断シグナル。fetch を切るとサーバー側の c.req.raw.signal も発火し、
+    // LLM 呼び出しごと止まる（wiki.ts の /atomize が abortSignal を配線済み）。
+    ...(options?.signal ? { signal: options.signal } : {}),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
