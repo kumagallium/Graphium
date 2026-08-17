@@ -26,6 +26,20 @@ const MAX_PASSAGES_CHARS = 1600;
 const MAX_PASSAGE_CHARS = 700;
 /** 語彙側から拾う候補数（融合・除外の前） */
 const LEXICAL_CANDIDATES = 20;
+/**
+ * 埋め込み検索に渡すクエリの上限文字数。
+ * 埋め込みモデルには入力上限がある（multilingual-e5-large は 512 トークン。日本語は
+ * おおむね 1 文字 ≒ 1 トークン強）。呼び出し側は質問文だけを渡す約束だが、長い引用や
+ * 貼り付けが混ざったときに 400 で検索ごと落ちないよう、ここでも切っておく。
+ * 検索クエリの意味は先頭に集まるので、先頭を残して切れば十分。
+ */
+export const MAX_EMBED_QUERY_CHARS = 1000;
+
+/** 埋め込みクエリを上限で切る（前後の空白も落とす） */
+export function clampEmbedQuery(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length > MAX_EMBED_QUERY_CHARS ? trimmed.slice(0, MAX_EMBED_QUERY_CHARS) : trimmed;
+}
 
 /** 注入する断片の共通形（Wiki セクション / ノート本文 / 素材） */
 export type RetrievedPassage = {
@@ -60,11 +74,13 @@ async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): P
         });
       }
     }
+    const query = clampEmbedQuery(userMessage);
+    if (!query) return [];
     const res = await fetch(`${apiBase()}/wiki/embed`, {
       method: "POST",
       headers: embedHeaders,
       body: JSON.stringify({
-        texts: [{ documentId: "_query", sectionId: "_query", text: userMessage }],
+        texts: [{ documentId: "_query", sectionId: "_query", text: query }],
         ...(embModel ? { embedding_model: embModel } : {}),
       }),
     });
