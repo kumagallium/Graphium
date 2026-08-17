@@ -65,6 +65,7 @@ import {
   migrateTableMeta,
   hasColumnType,
   readFirstColumnName,
+  type ColumnType,
   type TableSource,
 } from "./features/table-meta";
 import {
@@ -1398,6 +1399,17 @@ function NoteEditorInner({
     return () => { setTemplatePickerCallback(null); };
   }, []);
 
+  // テーブルブロックの先頭列にふるまいを付ける（先頭列の名前をキーに tableMeta へ記録）。
+  // スラッシュメニューのインデックス/時系列テーブル挿入と、テンプレート適用（columnTypes）
+  // が同じ経路を通る — どちらも「挿入した表の先頭列に note-link / datetime-auto を付ける」。
+  const addFirstColumnType = useCallback(
+    (blockId: string, type: ColumnType) => {
+      const block = editorRef.current?.getBlock?.(blockId);
+      tableMetaStore.addColumnType(blockId, readFirstColumnName(block), type);
+    },
+    [tableMetaStore],
+  );
+
   // テンプレートを選択してエディタに挿入
   const handleTemplateSelect = useCallback((templateId: string) => {
     setTemplatePickerOpen(false);
@@ -1411,7 +1423,7 @@ function NoteEditorInner({
     const triggerBlock = templateTriggerBlockRef.current ?? editor.getTextCursorPosition()?.block;
     if (!triggerBlock) return;
 
-    const { blocks: rawBlocks, labels: rawLabels, provLinks } = tmpl.build(tStatic);
+    const { blocks: rawBlocks, labels: rawLabels, provLinks, columnTypes } = tmpl.build(tStatic);
 
     // テンプレートは旧語彙（procedure/plan/result ラベル付き見出し）で定義されている。
     // 挿入前に step ブロックへ変換する（工程は step が正。ラベルのまま挿すと
@@ -1441,6 +1453,12 @@ function NoteEditorInner({
       sourceId: idAtPath(l.sourcePath),
       targetId: idAtPath(l.targetPath),
       type: l.type,
+    }));
+    // テーブルの列のふるまい（計画テンプレートの表を note-link = インデックステーブルにする等）。
+    // provLinks と同じく変換前に id へ解決しておく
+    const columnTypeIds = (columnTypes ?? []).map((c) => ({
+      blockId: idAtPath(c.path),
+      type: c.type,
     }));
     const focusId = idAtPath(tmpl.focusPath);
     const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
@@ -1474,10 +1492,12 @@ function NoteEditorInner({
       return node;
     };
 
-    // ラベル付与・前手順リンク追加（次フレームに延期して、エディタの状態反映後に実行）。
+    // ラベル付与・前手順リンク追加・列のふるまい付与（次フレームに延期して、エディタの
+    // 状態反映後に実行）。
     // procedure/plan/result は変換で消費済み。リンクは変換前に解決した id で張る
     // （テンプレの step1→step2 informed_by は、見出し id を引き継いだ step 間に張られる）。
-    if (labels.length > 0 || linkIds.length > 0) {
+    // 列のふるまいはスラッシュメニューのインデックス/時系列テーブル挿入と同じ関数で付ける。
+    if (labels.length > 0 || linkIds.length > 0 || columnTypeIds.length > 0) {
       setTimeout(() => {
         for (const { path, label } of labels) {
           const block = resolveByPath(path);
@@ -1495,6 +1515,9 @@ function NoteEditorInner({
             });
           }
         }
+        for (const { blockId, type } of columnTypeIds) {
+          if (blockId) addFirstColumnType(blockId, type);
+        }
       }, 0);
     }
 
@@ -1509,7 +1532,7 @@ function NoteEditorInner({
 
     templateTriggerBlockRef.current = null;
     // insertBlocks による onChange で自動的に markDirty される
-  }, [labelStore, linkStore]);
+  }, [labelStore, linkStore, addFirstColumnType]);
 
   // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
   const isSlashOnlyBlock = useCallback((block: any) => {
@@ -3959,24 +3982,22 @@ function NoteEditorInner({
   }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
-  // （テンプレートとして挿入されたテーブルの先頭列に note-link を付ける）
+  // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）
   useEffect(() => {
     setRegisterIndexTableCallback((blockId: string) => {
-      const block = editorRef.current?.getBlock?.(blockId);
-      tableMetaStore.addColumnType(blockId, readFirstColumnName(block), "note-link");
+      addFirstColumnType(blockId, "note-link");
     });
     return () => { setRegisterIndexTableCallback(null); };
-  }, [tableMetaStore]);
+  }, [addFirstColumnType]);
 
   // スラッシュメニューからの時系列テーブル登録コールバック
-  // （テンプレートとして挿入されたテーブルの先頭列に datetime-auto を付ける）
+  // （挿入されたテーブルの先頭列に datetime-auto を付ける）
   useEffect(() => {
     setRegisterLogTableCallback((blockId: string) => {
-      const block = editorRef.current?.getBlock?.(blockId);
-      tableMetaStore.addColumnType(blockId, readFirstColumnName(block), "datetime-auto");
+      addFirstColumnType(blockId, "datetime-auto");
     });
     return () => { setRegisterLogTableCallback(null); };
-  }, [tableMetaStore]);
+  }, [addFirstColumnType]);
 
   // スコープ派生ボタン → 別ノートとして作成
   useEffect(() => {

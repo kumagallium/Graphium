@@ -4,10 +4,12 @@
 //   blocks: BlockNote ブロックの配列
 //   labels: 挿入後にコンテキストラベルを付与する [path, label] のリスト
 //   provLinks: 挿入後に PROV リンクを張る [sourcePath → targetPath] のリスト
+//   columnTypes: 挿入後にテーブルの先頭列へふるまいを付ける [path, type] のリスト
 //
 // path: ルートからのインデックス配列（例: [3, 0, 1] = blocks[3].children[0].children[1]）
 
 import type { CoreLabel } from "../context-label/labels";
+import type { ColumnType } from "../../lib/document-types";
 
 export type TemplateSource = "official" | "user";
 
@@ -21,6 +23,13 @@ export type TemplateBuildResult = {
     targetPath: number[];
     type: "informed_by";
   }[];
+  /**
+   * 挿入後にテーブルの先頭列へ付けるふるまい（tableMeta の列注釈）。
+   * path はテーブルブロックを指すこと。"note-link" を付けた表はインデックステーブル
+   * （行からノートを作成・参照できる表）になる — スラッシュメニューの
+   * 「インデックステーブル」挿入と同じく、先頭列の名前をキーに記録される。
+   */
+  columnTypes?: { path: number[]; type: ColumnType }[];
 };
 
 export type TemplateDef = {
@@ -39,8 +48,11 @@ export type TemplateDef = {
 //
 // # （計画タイトル）
 // ## 背景・目的         (paragraph)
-// ## 試料と条件         (index table: サンプル名 / 組成 / 温度 / 時間 / 実験ノート)
-// ## 予想される結果      (paragraph)
+// ## 対象と条件         (index table: 対象 / 種類 / 条件1 / 条件2 — 先頭列に note-link)
+// ## 期待する成果        (paragraph)
+//
+// テンプレートの説明（template.plan.desc）とマニュアルは「インデックステーブル付き」と
+// 謳っているので、表は素の table ではなく columnTypes で note-link を付けて挿入する。
 //
 const planTemplate: TemplateDef = {
   id: "plan",
@@ -80,6 +92,7 @@ const planTemplate: TemplateDef = {
       },
       // [4] インデックステーブル: 対象（=ノート名） / 種類 / 条件1 / 条件2
       // ※ 1列目のテキストがノート名になり、行頭ボタンで @ リンクに変換される
+      //   （インデックステーブル化は下の columnTypes で行う）
       {
         type: "table",
         content: {
@@ -127,6 +140,8 @@ const planTemplate: TemplateDef = {
       },
     ],
     labels: [],
+    // [4] の表をインデックステーブルにする（先頭列「対象」に note-link）
+    columnTypes: [{ path: [4], type: "note-link" }],
   }),
 };
 
