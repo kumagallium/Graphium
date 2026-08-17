@@ -280,6 +280,28 @@ describe("sanitizeBlocksForMarkdown", () => {
     ]);
   });
 
+  // 素材から直接描いた段は、画面の段名と同じく素材名（拡張子抜き）で書く
+  it("スタック表示で素材ソースの段は素材名で書き分ける", () => {
+    const options = { headerRow: 1, endRow: 100, delimiter: "tab", collapseConsecutive: false };
+    const config = {
+      chartType: "line",
+      stack: { enabled: true },
+      series: [
+        { sourceBlockId: "t1", xColumn: "2theta", yColumn: "Intensity" },
+        { sourceBlockId: "asset:f1", xColumn: "2theta", yColumn: "Intensity" },
+      ],
+      assetSources: [{ fileId: "f1", fileName: "ref-pattern.dat", options }],
+    };
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "chart", props: { config: JSON.stringify(config) }, children: [] }],
+      SCHEMA,
+      new Map([["t1", "試料 A"]]),
+    );
+    expect(result[0].content).toEqual([
+      text("Chart (line, stacked): 試料 A, ref-pattern vs 2theta", { italic: true }),
+    ]);
+  });
+
   it("段名が揃ってしまうときは系列数を添える（黙って 1 本に見せない）", () => {
     const config = {
       chartType: "line",

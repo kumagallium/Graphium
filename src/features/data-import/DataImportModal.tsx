@@ -38,6 +38,9 @@ export function DataImportModal({
   fileName,
   text,
   initialOptions,
+  rowLimit = DEFAULT_ROW_LIMIT,
+  confirmLabel,
+  headerMetaLabel,
   onCancel,
   onConfirm,
 }: {
@@ -46,6 +49,21 @@ export function DataImportModal({
   text: string;
   /** 再取り込み時に前回の設定を渡す。未指定なら自動推定から始める */
   initialOptions?: DelimitedImportOptions;
+  /**
+   * 既定で取り込むデータ行数の上限。null で無制限。
+   * 上限はエディタに表を挿入する重さを守るためのものなので、表を作らない行き先
+   * （チャートが素材から直接読む）では外す — スペクトルを 2000 行で切ると
+   * パターンの後半が黙って消える
+   */
+  rowLimit?: number | null;
+  /** 確定ボタンの文言。未指定は「取り込む」 */
+  confirmLabel?: string;
+  /**
+   * 前置きから読み取った条件の見出し。未指定は「表と一緒に来歴へ残ります」。
+   * 表を作らない行き先では条件はどこにも写されない（素材の本文に残るだけ）ので、
+   * 約束しない文言に差し替える
+   */
+  headerMetaLabel?: string;
   onCancel: () => void;
   onConfirm: (result: DataImportResult) => void;
 }) {
@@ -60,14 +78,15 @@ export function DataImportModal({
   const [options, setOptions] = useState<DelimitedImportOptions>(() => {
     if (initialOptions) return initialOptions;
     const d = detected!;
-    const limited = Math.min(d.endRow, d.headerRow + DEFAULT_ROW_LIMIT);
+    if (rowLimit === null) return d;
+    const limited = Math.min(d.endRow, d.headerRow + rowLimit);
     return { ...d, endRow: limited };
   });
   // 丸めが起きたときだけ、元が何行あったかを覚えておいて画面に出す
   const [truncatedTotal] = useState<number | null>(() => {
-    if (!detected) return null;
+    if (!detected || rowLimit === null) return null;
     const total = detected.endRow - detected.headerRow;
-    return total > DEFAULT_ROW_LIMIT ? total : null;
+    return total > rowLimit ? total : null;
   });
 
   // Esc で閉じる（他のモーダルと同じ作法）
@@ -134,19 +153,21 @@ export function DataImportModal({
           </div>
         )}
 
-        {/* 行数が多いときの注意。丸めた場合はその旨、伸ばした場合は重さの警告 */}
-        {(truncatedTotal !== null || parsed.rows.length > DEFAULT_ROW_LIMIT) && (
-          <div className="px-4 py-2 border-b border-border bg-amber-500/10">
-            <p className="text-[11px] text-foreground">
-              {parsed.rows.length > DEFAULT_ROW_LIMIT
-                ? t("dataImport.rowLimitWarning", { count: String(parsed.rows.length) })
-                : t("dataImport.rowLimitNotice", {
-                    limit: String(DEFAULT_ROW_LIMIT),
-                    total: String(truncatedTotal),
-                  })}
-            </p>
-          </div>
-        )}
+        {/* 行数が多いときの注意。丸めた場合はその旨、伸ばした場合は重さの警告。
+            上限を外した行き先（チャート）ではどちらも出ない */}
+        {rowLimit !== null &&
+          (truncatedTotal !== null || parsed.rows.length > rowLimit) && (
+            <div className="px-4 py-2 border-b border-border bg-amber-500/10">
+              <p className="text-[11px] text-foreground">
+                {parsed.rows.length > rowLimit
+                  ? t("dataImport.rowLimitWarning", { count: String(parsed.rows.length) })
+                  : t("dataImport.rowLimitNotice", {
+                      limit: String(rowLimit),
+                      total: String(truncatedTotal),
+                    })}
+              </p>
+            </div>
+          )}
 
         {/* 設定。畳んでも高さが 1 行分しか変わらないうえ、開くボタンに気づかれない
             ほうが痛いので、常に出しておく（推定が当たっていれば触らずに済む） */}
@@ -299,7 +320,7 @@ export function DataImportModal({
         {meta.length > 0 && (
           <div className="px-4 py-2 border-t border-border">
             <div className="text-[11px] text-muted-foreground mb-1">
-              {t("dataImport.headerMeta")}
+              {headerMetaLabel ?? t("dataImport.headerMeta")}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {meta.map((entry, i) => (
@@ -329,7 +350,7 @@ export function DataImportModal({
             onClick={() => onConfirm({ options, parsed })}
             className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {t("dataImport.confirm")}
+            {confirmLabel ?? t("dataImport.confirm")}
           </button>
         </div>
       </div>

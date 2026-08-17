@@ -13,14 +13,17 @@ import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
+  isAssetSourceKey,
   isStackActive,
   resolveSeriesStyle,
+  retargetSeries,
   seriesConfigDisplayName,
   usesRightAxis,
   STACK_GAP_RANGE,
   type AxisDetail,
   type ChartBlockConfig,
   type ChartSeriesConfig,
+  type ChartSourceOption,
   type LegendPosition,
   type SeriesBarWidth,
   type SeriesLineType,
@@ -629,34 +632,29 @@ const STACK_LABEL_POSITION_KEYS: Array<[StackLabelPosition, string]> = [
   ["bottom-right", "chart.stackPosBottomRight"],
 ];
 
-/** テーブルを替えたとき、同名列が無ければ新テーブルの妥当な列に付け替える */
-function retargetSeries(
-  series: ChartSeriesConfig,
-  newBlockId: string,
-  table: TableData | null
-): ChartSeriesConfig {
-  if (!table) return { ...series, sourceBlockId: newBlockId };
-  const headers = table.headers.filter((h) => h.trim() !== "");
-  const numeric = headers.filter((h) => isNumericColumn(table, h));
-  const xColumn = headers.includes(series.xColumn) ? series.xColumn : (table.headers[0] ?? "");
-  const yColumn = numeric.includes(series.yColumn)
-    ? series.yColumn
-    : (numeric.find((h) => h !== xColumn) ?? numeric[0] ?? "");
-  return { ...series, sourceBlockId: newBlockId, xColumn, yColumn };
-}
+/** 参照先 select の「素材のデータから選ぶ…」に使う擬似値（実在のキーと衝突しない） */
+const PICK_ASSET_OPTION = "__pick-asset__";
 
 export function ChartSettingsPanel({
   config,
   onChange,
   tables,
   resolveTable,
+  onPickAsset,
   placement = "overlay",
   onClose,
 }: {
   config: ChartBlockConfig;
   onChange: (patch: Partial<ChartBlockConfig>) => void;
-  tables: Array<{ id: string; label: string }>;
+  /** 系列が選べる参照先（ノート内テーブル + このチャートが参照している素材） */
+  tables: ChartSourceOption[];
   resolveTable: (blockId: string) => TableData | null;
+  /**
+   * 系列の参照先を素材のデータにする（ピッカー → 取り込みダイアログをホストが開き、
+   * 確定するとその系列の参照先が付け替わる）。「参照先」select の末尾の項目から呼ぶ。
+   * 未指定ならこのエディタでは素材を選べない（項目を出さない）
+   */
+  onPickAsset?: (target: number) => void;
   /** outside = ボタンの右（チャートの外）に出す。overlay = 右上に重ねる */
   placement?: "outside" | "overlay";
   onClose: () => void;
@@ -787,6 +785,16 @@ export function ChartSettingsPanel({
               const table = resolveTable(series.sourceBlockId);
               const headers = (table?.headers ?? []).filter((h) => h.trim() !== "");
               const numericHeaders = table ? headers.filter((h) => isNumericColumn(table, h)) : [];
+              // 参照先の状態。テーブルは一覧に無ければ消えている。素材は一覧に残るが
+              // 読み込み中・見つからない、がある
+              const source = tables.find(({ id }) => id === series.sourceBlockId);
+              const sourceNote = !table
+                ? source?.status === "pending"
+                  ? t("chart.seriesLoading")
+                  : isAssetSourceKey(series.sourceBlockId)
+                    ? t("chart.seriesAssetGone")
+                    : t("chart.seriesTableGone")
+                : null;
               return (
                 <div key={`${series.sourceBlockId}:${series.yColumn}:${i}`} style={styles.seriesItem}>
                   <div style={styles.seriesRow}>
@@ -810,9 +818,7 @@ export function ChartSettingsPanel({
                       {series.type && series.type !== config.chartType && (
                         <span style={styles.seriesTypeTag}>{chartTypeLabel(series.type)}</span>
                       )}
-                      {!table && (
-                        <span style={styles.seriesGone}> {t("chart.seriesTableGone")}</span>
-                      )}
+                      {sourceNote && <span style={styles.seriesGone}> {sourceNote}</span>}
                     </span>
                     <button
                       type="button"
@@ -859,27 +865,38 @@ export function ChartSettingsPanel({
 
                       <div style={styles.assignLabel}>{t("chart.assignData")}</div>
                       <label style={styles.fieldRow}>
-                        <span style={styles.fieldLabel}>{t("chart.table")}</span>
+                        <span style={styles.fieldLabel}>{t("chart.source")}</span>
                         <select
                           value={series.sourceBlockId}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            // 「素材のデータから選ぶ…」はホストのピッカーを開く。値は
+                            // 確定時に付け替わるので、ここでは何も書き込まない
+                            if (e.target.value === PICK_ASSET_OPTION) {
+                              onPickAsset?.(i);
+                              return;
+                            }
                             updateSeries(
                               i,
                               retargetSeries(series, e.target.value, resolveTable(e.target.value))
-                            )
-                          }
+                            );
+                          }}
                           style={{ ...styles.select, flex: 1 }}
                         >
-                          {!tables.some(({ id }) => id === series.sourceBlockId) && (
+                          {!source && (
                             <option value={series.sourceBlockId}>
-                              {t("chart.seriesTableGone")}
+                              {isAssetSourceKey(series.sourceBlockId)
+                                ? t("chart.seriesAssetGone")
+                                : t("chart.seriesTableGone")}
                             </option>
                           )}
-                          {tables.map(({ id, label }) => (
+                          {tables.map(({ id, label, kind }) => (
                             <option key={id} value={id}>
-                              {label}
+                              {kind === "asset" ? t("chart.assetOptionLabel", { name: label }) : label}
                             </option>
                           ))}
+                          {onPickAsset && (
+                            <option value={PICK_ASSET_OPTION}>{t("chart.pickAssetOption")}</option>
+                          )}
                         </select>
                       </label>
                       {!isHistogram && (
@@ -1021,6 +1038,9 @@ export function ChartSettingsPanel({
               <div style={styles.emptyHint}>{t("chart.noNumericSeries")}</div>
             )}
           </div>
+          {/* 系列を足す入口は 1 つ。どこから描くか（ノートのテーブル / 素材）は、
+              追加で開く系列行の「参照先」で選ぶ — 参照先を選ぶ場所を select 1 か所に
+              揃えるため（素材だけ別のボタンにすると同じ操作が 2 経路になる） */}
           <button type="button" onClick={addSeries} style={styles.addSeriesButton}>
             <Plus size={13} strokeWidth={2} />
             {t("chart.addSeries")}

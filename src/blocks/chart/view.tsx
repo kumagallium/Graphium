@@ -1,6 +1,7 @@
 // チャートブロック
 //
-// ノート内のテーブル（記録テーブル含む）を参照して ECharts で描画する。
+// ノート内のテーブル（記録テーブル含む）や、素材にあるデータ（区切りテキスト）を
+// 参照して ECharts で描画する。
 // eureco に合わせて系列（series）が第一級: 各系列が「どのテーブルの・どの列を
 // X/Y にするか」を持ち、複数テーブルを 1 つのチャートに重ねられる。
 // 見た目は学術スタイル（詳細は chart-theme.ts 冒頭）、設定はタブ式パネル
@@ -11,12 +12,15 @@
 //   列名 + 描き方）だけを持ち、テーブル編集には editor.onChange 経由で追従する
 // - テーブルは blockId・列は列名で参照する（並べ替え・行の追加に強い。
 //   表示名「表 N」は毎回計算する自動名なので、番号が変わっても参照は壊れない）
+// - 素材のデータは `asset:<fileId>` で参照する（asset-source.ts）。ノートに表を
+//   置かずに、過去の測定や文献パターンを別のノートの図に重ねるための道。読み方
+//   （見出し行・区切り）は config.assetSources に持ち、表にしたときと同じ列が出る
 // - ECharts は初描画時に dynamic import（echarts-loader.ts）。SVG レンダラ
-// - 参照切れ（テーブル削除・列名変更）はエラーにせず、その系列だけ空にする
+// - 参照切れ（テーブル削除・列名変更・素材の削除）はエラーにせず、その系列だけ空にする
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChartSpline, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { ChartSpline, Database, SlidersHorizontal } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { getLocale, t, useLocaleSubscription } from "../../i18n";
 import {
@@ -49,17 +53,31 @@ import {
   CHART_TICK_LENGTH,
 } from "./chart-theme";
 import {
+  assetSourceKey,
+  assetSourceLabel,
+  isAssetSourceKey,
   isStackActive,
   parseChartBlockConfig,
+  pruneAssetSources,
   resolveSeriesStyle,
+  retargetSeries,
   serializeChartBlockConfig,
   seriesConfigDisplayName,
   stackSeriesDisplayName,
   suggestSeries,
   usesRightAxis,
+  type ChartAssetSource,
   type ChartBlockConfig,
+  type ChartSeriesConfig,
+  type ChartSourceOption,
   type SeriesType,
 } from "./chart-config";
+import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
+import {
+  canPickChartAssetSource,
+  requestChartAssetSource,
+  type ChartAssetSourceResult,
+} from "./callbacks";
 import { ChartSettingsPanel } from "./chart-settings";
 import { formatFullDateTime, timeAxisLabelFormatter } from "./time-axis-format";
 // 記録テーブルの名前（キャプション）を参照表示に使う。Provider が無い場所でも
@@ -79,8 +97,8 @@ function collectTables(
     hasColumnType: (blockId: string, type: "datetime-auto" | "note-link") => boolean;
     getCaption: (blockId: string) => string;
   } | null
-): Array<{ id: string; label: string }> {
-  const result: Array<{ id: string; label: string }> = [];
+): ChartSourceOption[] {
+  const result: ChartSourceOption[] = [];
   const displayNames = computeTableDisplayNames(
     editor?.document ?? [],
     (blockId) => tableMeta?.hasColumnType(blockId, "datetime-auto") ?? false,
@@ -97,6 +115,7 @@ function collectTables(
         result.push({
           id: b.id,
           label: label.length > 48 ? `${label.slice(0, 48)}…` : label || t("chart.table"),
+          kind: "table",
         });
       }
       if (Array.isArray(b?.children)) visit(b.children);
@@ -104,6 +123,87 @@ function collectTables(
   };
   visit(editor?.document ?? []);
   return result;
+}
+
+/**
+ * 素材ソースを表に解決する。
+ *
+ * ノート内テーブルと違って読み込みは非同期なので、「読み込み中」「読めなかった」を
+ * 区別して持つ。読み方（options）が同じ間は読み直さず、素材が増減したときだけ差分で
+ * 読む。本文自体は asset-source.ts のキャッシュにあるので、読み方だけ変わっても
+ * ネットワークには出ない。
+ */
+function useAssetTables(sources: ChartAssetSource[]) {
+  const loadedRef = useRef(new Map<string, { sig: string; table: TableData | null }>());
+  const pendingRef = useRef(new Set<string>());
+  const [version, bump] = useReducer((v: number) => v + 1, 0);
+  // 素材の集合と読み方が変わったときだけ effect を回す（配列の同一性には頼らない）
+  const signature = useMemo(
+    () => JSON.stringify(sources.map((s) => [s.fileId, s.options])),
+    [sources]
+  );
+
+  useEffect(() => {
+    let disposed = false;
+    const wanted = new Map(
+      sources.map((s) => [assetSourceKey(s.fileId), { sig: JSON.stringify(s.options), source: s }])
+    );
+    for (const key of [...loadedRef.current.keys()]) {
+      if (!wanted.has(key)) loadedRef.current.delete(key);
+    }
+    const pending = new Set<string>();
+    for (const [key, { sig, source }] of wanted) {
+      const have = loadedRef.current.get(key);
+      if (have && have.sig === sig) continue;
+      pending.add(key);
+      loadAssetTable(source).then(
+        (table) => {
+          if (disposed) return;
+          loadedRef.current.set(key, { sig, table });
+          pendingRef.current.delete(key);
+          bump();
+        },
+        () => {
+          if (disposed) return;
+          // 素材が消えた・実体を読めない: 参照切れとして描く（系列は空になる）
+          loadedRef.current.set(key, { sig, table: null });
+          pendingRef.current.delete(key);
+          bump();
+        }
+      );
+    }
+    pendingRef.current = pending;
+    bump();
+    return () => {
+      disposed = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+
+  const resolve = useCallback(
+    (key: string): TableData | null => loadedRef.current.get(key)?.table ?? null,
+    // 読み込みが進むたびに identity を変え、useMemo で抱えている呼び出し側を再計算させる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version]
+  );
+  const statusOf = useCallback(
+    (key: string): ChartSourceOption["status"] => {
+      if (pendingRef.current.has(key)) return "pending";
+      const have = loadedRef.current.get(key);
+      return have && have.table === null ? "missing" : undefined;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version]
+  );
+  /** 取り込みダイアログで読んだ結果をそのまま載せる（描画のために読み直さない） */
+  const prime = useCallback((source: ChartAssetSource, table: TableData) => {
+    loadedRef.current.set(assetSourceKey(source.fileId), {
+      sig: JSON.stringify(source.options),
+      table,
+    });
+    pendingRef.current.delete(assetSourceKey(source.fileId));
+  }, []);
+  return { resolve, statusOf, prime, version };
 }
 
 export const ChartBlock = createReactBlockSpec(
@@ -183,31 +283,40 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   }, [showSettings]);
 
   const tableMetaStore = useTableMetaStoreOptional();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const tables = useMemo(
-    () => collectTables(editor, tableMetaStore),
+  const assetTables = useAssetTables(config.assetSources);
+  // 系列が選べる参照先: ノート内テーブル（文書順）+ このチャートが参照している素材
+  const tables = useMemo<ChartSourceOption[]>(
+    () => [
+      ...collectTables(editor, tableMetaStore),
+      ...config.assetSources.map((a) => {
+        const id = assetSourceKey(a.fileId);
+        return { id, label: assetSourceLabel(a), kind: "asset" as const, status: assetTables.statusOf(id) };
+      }),
+    ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor, docVersion, tableMetaStore?.metas]
+    [editor, docVersion, tableMetaStore?.metas, config.assetSources, assetTables.statusOf]
   );
 
-  // 系列が参照するテーブルを解決する（docVersion で追従）
+  // 系列が参照するテーブルを解決する（docVersion で追従）。素材は読み込み済みの表を返す
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const resolveTable = useMemo(() => {
     const cache = new Map<string, TableData | null>();
-    return (blockId: string): TableData | null => {
-      if (!cache.has(blockId)) {
-        cache.set(blockId, readTableData((editor as any).getBlock?.(blockId)));
+    return (key: string): TableData | null => {
+      if (isAssetSourceKey(key)) return assetTables.resolve(key);
+      if (!cache.has(key)) {
+        cache.set(key, readTableData((editor as any).getBlock?.(key)));
       }
-      return cache.get(blockId) ?? null;
+      return cache.get(key) ?? null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, docVersion]);
+  }, [editor, docVersion, assetTables.resolve]);
 
   const updateConfig = (patch: Partial<ChartBlockConfig>) => {
     (editor as any).updateBlock(block, {
       props: {
         ...block.props,
-        config: serializeChartBlockConfig({ ...config, ...patch }),
+        // どの系列も指さなくなった素材は落とす（描いていない素材を来歴に残さない）
+        config: serializeChartBlockConfig(pruneAssetSources({ ...config, ...patch })),
       },
     });
   };
@@ -218,6 +327,58 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     updateConfig({ series: suggestSeries(data, id) });
   };
 
+  // 素材から系列を足せるか（ホストがピッカー経路を登録しているエディタだけ）
+  const canPickAsset = editable && canPickChartAssetSource(editor);
+
+  /**
+   * 素材のデータを参照先にする。
+   * target が null なら新しい系列を足し（列は表から提案）、番号なら
+   * その系列の参照先を素材へ付け替える（列名が合えばそのまま、無ければ提案）。
+   */
+  const pickAssetSource = (target: number | null) => {
+    // 設定パネルはブロックの上に z を持ち上げて描くので、ホストのモーダルより手前に
+    // 出てしまう。ピッカーの間は畳み、確定したら開き直す（足した系列が見える）
+    const reopenSettings = showSettings;
+    setShowSettings(false);
+    requestChartAssetSource(editor, (result: ChartAssetSourceResult) => {
+      if (reopenSettings) setShowSettings(true);
+      const source: ChartAssetSource = {
+        fileId: result.fileId,
+        fileName: result.fileName,
+        options: result.options,
+      };
+      const key = assetSourceKey(result.fileId);
+      const table = tableFromAssetText(result.text, result.options);
+      // 読んだ本文と表をそのまま載せる（描画のために素材を読み直さない）
+      primeAssetText(result.fileId, result.text);
+      assetTables.prime(source, table);
+      const assetSources = config.assetSources.some((a) => a.fileId === source.fileId)
+        ? config.assetSources.map((a) => (a.fileId === source.fileId ? source : a))
+        : [...config.assetSources, source];
+      let series: ChartSeriesConfig[];
+      if (target === null || !config.series[target]) {
+        series = [...config.series, ...suggestSeries(table, key)];
+      } else {
+        series = config.series.map((s, i) => (i === target ? retargetSeries(s, key, table) : s));
+      }
+      updateConfig({ assetSources, series });
+    });
+  };
+
+  // 参照先の候補としてテーブル名の隣に並べる。文言は系列行の「参照先」select の
+  // 項目と同じ（参照先を選ぶ場所が違っても、同じ選択肢に同じ名前が出る）
+  const assetButton = canPickAsset && (
+    <button
+      type="button"
+      style={styles.assetButton}
+      onClick={() => pickAssetSource(null)}
+      data-test="chart-pick-asset"
+    >
+      <Database size={12} strokeWidth={2} />
+      {t("chart.pickAssetOption")}
+    </button>
+  );
+
   // ── 未設定: テーブル選択プレースホルダ ──
   if (config.series.length === 0) {
     return (
@@ -226,15 +387,19 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
           <ChartSpline size={15} strokeWidth={2} />
           {t("chart.selectSource")}
         </div>
-        {tables.length === 0 ? (
-          <div style={styles.placeholderEmpty}>{t("chart.noTables")}</div>
-        ) : (
+        {tables.length === 0 && (
+          <div style={styles.placeholderEmpty}>
+            {canPickAsset ? t("chart.noTablesYet") : t("chart.noTables")}
+          </div>
+        )}
+        {(tables.length > 0 || canPickAsset) && (
           <div style={styles.tableList}>
             {tables.map(({ id, label }) => (
               <button key={id} type="button" style={styles.tableButton} onClick={() => startWithTable(id)} disabled={!editable}>
                 {label}
               </button>
             ))}
+            {assetButton}
           </div>
         )}
       </div>
@@ -247,21 +412,31 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     yColumn: s.yColumn,
   }));
 
+  // 素材を読んでいる最中は「参照切れ」と区別する（読めるまでは何も描けないだけ）
+  const assetsPending = config.series.some(
+    (s) => isAssetSourceKey(s.sourceBlockId) && assetTables.statusOf(s.sourceBlockId) === "pending"
+  );
+
   // ── 全系列が参照切れ ──
-  if (specs.every((s) => s.table === null)) {
+  if (specs.every((s) => s.table === null) && !assetsPending) {
+    // 消えたのが素材だけなら、テーブルの話をしない
+    const onlyAssets = config.series.every((s) => isAssetSourceKey(s.sourceBlockId));
     return (
       <div data-test="chart-block" contentEditable={false} style={styles.placeholderShell}>
         <div style={styles.placeholderTitle}>
           <ChartSpline size={15} strokeWidth={2} />
-          {t("chart.sourceGone")}
+          {onlyAssets ? t("chart.assetGone") : t("chart.sourceGone")}
         </div>
         {editable && (
           <div style={styles.tableList}>
-            {tables.map(({ id, label }) => (
-              <button key={id} type="button" style={styles.tableButton} onClick={() => startWithTable(id)}>
-                {label}
-              </button>
-            ))}
+            {tables
+              .filter((tb) => tb.status !== "missing")
+              .map(({ id, label }) => (
+                <button key={id} type="button" style={styles.tableButton} onClick={() => startWithTable(id)}>
+                  {label}
+                </button>
+              ))}
+            {assetButton}
           </div>
         )}
       </div>
@@ -304,6 +479,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
               onChange={updateConfig}
               tables={tables}
               resolveTable={resolveTable}
+              onPickAsset={canPickAsset ? pickAssetSource : undefined}
               placement={panelPlacement}
               onClose={() => setShowSettings(false)}
             />
@@ -314,7 +490,12 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
         <ChartCanvas result={result} config={config} tables={tables} />
       ) : (
         <div style={styles.emptyState}>
-          {result.kind === "empty" ? t("chart.noData") : t("chart.noNumericSeries")}
+          {/* 素材を読んでいる最中は「データが無い」ではなく読み込み中と出す */}
+          {assetsPending
+            ? t("chart.loading")
+            : result.kind === "empty"
+              ? t("chart.noData")
+              : t("chart.noNumericSeries")}
         </div>
       )}
       {config.caption.trim() !== "" && <div style={styles.caption}>{config.caption}</div>}
@@ -331,7 +512,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
 function buildOption(
   result: Extract<ChartDataResult, { kind: "ok" }>,
   config: ChartBlockConfig,
-  tables: Array<{ id: string; label: string }> = []
+  tables: ChartSourceOption[] = []
 ): any {
   const isHistogram = config.chartType === "histogram";
   // スタック中は段の縦位置がすべての意味を持つので、第 2 軸は併用させない
@@ -739,7 +920,7 @@ function ChartCanvas({
   result: Extract<ChartDataResult, { kind: "ok" }>;
   config: ChartBlockConfig;
   /** スタック時の段名をテーブル名から解決するために渡す */
-  tables?: Array<{ id: string; label: string }>;
+  tables?: ChartSourceOption[];
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const chartElRef = useRef<HTMLDivElement>(null);
@@ -867,6 +1048,20 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   tableButton: {
+    padding: "3px 10px",
+    fontSize: 12,
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    background: "var(--color-surface)",
+    color: "var(--color-text-secondary)",
+    cursor: "pointer",
+  },
+  // 素材から選ぶ入口。テーブルの候補ボタンと同じ見た目で、先頭にアイコンを添える
+  //（svg は block 扱いになる環境があるので inline-flex で横に並べる）
+  assetButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
     padding: "3px 10px",
     fontSize: 12,
     borderRadius: 6,
