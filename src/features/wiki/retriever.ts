@@ -109,28 +109,17 @@ export async function retrieveWikiContextFallback(
 
 /** embedding テキストを全件取得（フォールバック用） */
 async function getAllEmbeddingTexts(): Promise<SearchResult[]> {
-  // EmbeddingStore の searchByVector にダミーベクトルを渡すのではなく、
-  // 全件取得して文字列マッチするために直接 IndexedDB を読む
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const req = indexedDB.open("graphium-embeddings", 1);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("embeddings", "readonly");
-    const store = tx.objectStore("embeddings");
-    const req = store.getAll();
-    req.onsuccess = () => {
-      const records = req.result.map((r: any) => ({
-        documentId: r.documentId,
-        sectionId: r.sectionId,
-        score: 0,
-        text: r.text,
-      }));
-      resolve(records);
-    };
-    req.onerror = () => reject(req.error);
-  });
+  // searchByVector にダミーベクトルを渡すのではなく、全件をそのまま取って文字列マッチする。
+  // IndexedDB は embedding-store 経由でのみ開く。以前はここで DB 名とバージョンを
+  // ハードコードして直接 open していたため、embedding-store 側の DB_VERSION が上がった
+  // 途端に VersionError で常に reject し、フォールバックが事実上死んでいた。
+  const records = await embeddingStore.getAllRecords();
+  return records.map((r) => ({
+    documentId: r.documentId,
+    sectionId: r.sectionId,
+    score: 0,
+    text: r.text,
+  }));
 }
 
 /** テキスト関連度スコアを計算（単語一致ベース） */
