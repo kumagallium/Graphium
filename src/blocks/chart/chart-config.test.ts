@@ -13,6 +13,12 @@ import {
   stackSeriesDisplayName,
   DEFAULT_STACK_CONFIG,
   STACK_GAP_RANGE,
+  assetSourceKey,
+  isAssetSourceKey,
+  assetFileIdFromKey,
+  assetSourceLabel,
+  pruneAssetSources,
+  collectChartAssetFileIds,
   type ChartSeriesConfig,
 } from "./chart-config";
 import type { TableData } from "./chart-data";
@@ -344,5 +350,78 @@ describe("stackSeriesDisplayName", () => {
   it("テーブル名が無ければ列名に落ちる", () => {
     expect(stackSeriesDisplayName(series, undefined)).toBe("強度");
     expect(stackSeriesDisplayName(series, "  ")).toBe("強度");
+  });
+});
+
+describe("素材ソース（assetSources / asset: キー）", () => {
+  const options = { headerRow: 3, endRow: 120, delimiter: "tab" as const, collapseConsecutive: false };
+
+  it("キーの往復: fileId → asset:<fileId> → fileId", () => {
+    expect(assetSourceKey("f1")).toBe("asset:f1");
+    expect(isAssetSourceKey("asset:f1")).toBe(true);
+    expect(isAssetSourceKey("asset:")).toBe(false);
+    expect(isAssetSourceKey("block-1")).toBe(false);
+    expect(assetFileIdFromKey("asset:f1")).toBe("f1");
+    expect(assetFileIdFromKey("block-1")).toBeNull();
+  });
+
+  it("表示名は拡張子を落とした素材名（取り込んだ表の既定キャプションと同じ規則）", () => {
+    expect(assetSourceLabel({ fileName: "sample-A_XRD.txt" })).toBe("sample-A_XRD");
+    expect(assetSourceLabel({ fileName: "noext" })).toBe("noext");
+  });
+
+  it("assetSources は読み方ごと往復し、旧ノート（未指定）は空で読める", () => {
+    expect(parseChartBlockConfig("{}").assetSources).toEqual([]);
+    const config = {
+      ...DEFAULT_CHART_CONFIG,
+      series: [{ sourceBlockId: "asset:f1", xColumn: "2theta", yColumn: "I" }],
+      assetSources: [{ fileId: "f1", fileName: "ref.dat", options: { ...options, delimiter: "custom" as const, customDelimiter: ";" } }],
+    };
+    expect(parseChartBlockConfig(serializeChartBlockConfig(config)).assetSources).toEqual(config.assetSources);
+  });
+
+  it("読み方が欠けた・壊れた素材ソースは落とし、同じ fileId は先勝ち", () => {
+    const parsed = parseChartBlockConfig(
+      JSON.stringify({
+        assetSources: [
+          { fileId: "no-options", fileName: "a.csv" },
+          { fileId: "bad-rows", fileName: "b.csv", options: { ...options, headerRow: 0 } },
+          { fileId: "bad-delim", fileName: "c.csv", options: { ...options, delimiter: "pipe" } },
+          { fileId: "ok", fileName: "d.csv", options },
+          { fileId: "ok", fileName: "dup.csv", options },
+          { fileId: "", fileName: "e.csv", options },
+        ],
+      })
+    );
+    expect(parsed.assetSources).toEqual([{ fileId: "ok", fileName: "d.csv", options }]);
+  });
+
+  it("pruneAssetSources はどの系列も指さなくなった素材を落とす", () => {
+    const config = {
+      ...DEFAULT_CHART_CONFIG,
+      series: [
+        { sourceBlockId: "asset:keep", xColumn: "x", yColumn: "y" },
+        { sourceBlockId: "table-1", xColumn: "x", yColumn: "y" },
+      ],
+      assetSources: [
+        { fileId: "keep", fileName: "keep.csv", options },
+        { fileId: "drop", fileName: "drop.csv", options },
+      ],
+    };
+    const pruned = pruneAssetSources(config);
+    expect(pruned.assetSources.map((a) => a.fileId)).toEqual(["keep"]);
+    // 変化が無ければ同じオブジェクトを返す（無駄な再描画を起こさない）
+    expect(pruneAssetSources(pruned)).toBe(pruned);
+    expect(collectChartAssetFileIds(pruned)).toEqual(["keep"]);
+  });
+
+  it("suggestSeries は素材キーでもそのまま系列を組む", () => {
+    const table: TableData = {
+      headers: ["2theta", "I"],
+      rows: [["10", "5"], ["10.5", "7"]],
+    };
+    expect(suggestSeries(table, "asset:f1")).toEqual([
+      { sourceBlockId: "asset:f1", xColumn: "2theta", yColumn: "I" },
+    ]);
   });
 });

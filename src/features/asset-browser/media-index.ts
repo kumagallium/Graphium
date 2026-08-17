@@ -3,6 +3,9 @@
 
 import { getActiveProvider } from "../../lib/storage/registry";
 import { isDelimitedDataFile } from "../data-import/file-kind";
+// チャートが直接参照する素材（config.assetSources）を利用ノートに数えるため。
+// chart-config は純関数の葉モジュールで、こちらへ戻る import は無い
+import { collectChartAssetFileIds, parseChartBlockConfig } from "../../blocks/chart/chart-config";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -224,13 +227,17 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       集約する。v4 までは素材ギャラリーから読んだ分しか素材に紐づかず、ノートで
  *       読んだ画像は素材横断の検索から漏れていた。bump により既存ユーザーの
  *       読み取り済みテキストを一度の再構築で回収する
+ *  - 6: チャートが直接描いているデータ素材（chart ブロックの config.assetSources）と、
+ *       取り込んだ表の元ファイル（tableMeta.source.fileId）を usedIn に含める。
+ *       どちらも表のセルやブロックの url に痕跡が残らない参照なので、ブロック走査では
+ *       拾えない。bump により既存ノートの参照を一度の再構築で回収する
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 5 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 6 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -581,7 +588,10 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
   citedAssetFileIds?: string[] | null | undefined;
   sourceTextFileId?: string | null | undefined;
   pages?:
-    | Array<{ tableMeta?: Record<string, { source?: { fileId?: string } }> | null }>
+    | Array<{
+        tableMeta?: Record<string, { source?: { fileId?: string } }> | null;
+        blocks?: any[] | null;
+      }>
     | null
     | undefined;
 }): Set<string> {
@@ -617,7 +627,31 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
       const fileId = meta?.source?.fileId;
       if (fileId) ids.add(fileId);
     }
+    // チャートが素材のデータを直接描いている場合（config.assetSources）。表を経由しない
+    // ので tableMeta には出てこない。これを入れないと、別のノートの図に重ねただけの
+    // 素材は「利用ノート」が空のままになり、削除前の参照チェックもすり抜けて図が消える
+    for (const fileId of collectChartAssetFileIdsFromBlocks(page?.blocks ?? [])) ids.add(fileId);
   }
+  return ids;
+}
+
+/** ブロック木（子ブロック・カラム内も含む）から chart ブロックの素材参照を集める */
+export function collectChartAssetFileIdsFromBlocks(blocks: any[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (list: any[]) => {
+    for (const b of list ?? []) {
+      if (!b || typeof b !== "object") continue;
+      if (b.type === "chart") {
+        const config = parseChartBlockConfig(
+          String(b.props?.config ?? ""),
+          String(b.props?.sourceBlockId ?? ""),
+        );
+        for (const fileId of collectChartAssetFileIds(config)) ids.add(fileId);
+      }
+      if (Array.isArray(b.children)) visit(b.children);
+    }
+  };
+  visit(blocks);
   return ids;
 }
 

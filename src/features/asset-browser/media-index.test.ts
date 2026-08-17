@@ -389,6 +389,38 @@ describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
     const doc = { pages: [{ tableMeta: { "table-1": { source: {} } } }] };
     expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set());
   });
+
+  it("チャートが直接描いているデータ素材（config.assetSources）を集める。カラム内の chart も辿る", () => {
+    // 表を経由しないので tableMeta には出てこない。ここで拾わないと、別のノートの図に
+    // 重ねただけの素材は利用ノートが空のままになる
+    const options = { headerRow: 1, endRow: 50, delimiter: "comma", collapseConsecutive: false };
+    const chart = (fileIds: string[]) => ({
+      type: "chart",
+      props: {
+        config: JSON.stringify({
+          series: fileIds.map((id) => ({ sourceBlockId: `asset:${id}`, xColumn: "x", yColumn: "y" })),
+          assetSources: fileIds.map((id) => ({ fileId: id, fileName: `${id}.csv`, options })),
+        }),
+      },
+    });
+    const doc = {
+      pages: [
+        {
+          blocks: [
+            { type: "paragraph", content: [] },
+            chart(["dat-a"]),
+            {
+              type: "columnList",
+              children: [{ type: "column", children: [chart(["dat-b", "dat-a"])] }],
+            },
+            // 素材を参照しない従来のチャート（ノート内テーブルだけ）は何も足さない
+            { type: "chart", props: { config: JSON.stringify({ series: [{ sourceBlockId: "t1", xColumn: "x", yColumn: "y" }] }) } },
+          ],
+        },
+      ],
+    };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set(["dat-a", "dat-b"]));
+  });
 });
 
 

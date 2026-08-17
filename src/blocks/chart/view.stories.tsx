@@ -18,6 +18,7 @@ import { MediaInlineLabelProvider } from "../../features/inline-label/media-stor
 import { BlockAlignmentProvider } from "../../features/block-alignment/store";
 import { AiAssistantProvider } from "../../features/ai-assistant/store";
 import type { ChartSeriesConfig } from "./chart-config";
+import { primeAssetText } from "./asset-source";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -628,6 +629,76 @@ export const Placeholder: StoryObj = {
   render: () => (
     <ErrorBoundary>
       <ChartDemo config={{}} />
+    </ErrorBoundary>
+  ),
+};
+
+// ── 素材のデータを参照先にする ──
+// 素材の実体はプロバイダの向こうにあるので、ストーリーでは本文をキャッシュに先出し
+// しておく（primeAssetText）。読み方（options）はチャート設定側が持つ。
+const REF_ASSET_ID = "story-asset-ref-a";
+const REF_ASSET_TEXT = (() => {
+  // 装置出力風: 前置き 2 行 + タブ区切りの見出し + データ行（10〜60°）
+  const lines = ["# Device Model: XRD-STORY", "# Scan: 10-60 deg"];
+  lines.push("2theta\tI");
+  const peaks: Array<[number, number]> = [[22.5, 40], [28.3, 100], [31.7, 62], [40.2, 25], [47.8, 20], [55.1, 14]];
+  for (let x = 10; x <= 60; x += 0.5) {
+    let y = 1;
+    for (const [c, h] of peaks) y += h * Math.exp(-((x - c) ** 2) / 0.6);
+    lines.push(`${x.toFixed(1)}\t${Math.round(y)}`);
+  }
+  return lines.join("\n");
+})();
+const REF_ASSET_OPTIONS = { headerRow: 3, endRow: 104, delimiter: "tab" as const, collapseConsecutive: false };
+
+// 測定はノート内テーブル、文献パターンは素材（別のノートに表を置かずに重ねる形）
+export const AssetSourceStack: StoryObj = {
+  name: "素材のデータを重ねる（測定＝表・文献＝素材）",
+  render: () => {
+    primeAssetText(REF_ASSET_ID, REF_ASSET_TEXT);
+    return (
+      <ErrorBoundary>
+        <ChartDemo
+          baseTables={[XRD_TABLES[0]]}
+          lead="測定パターンはこのノートの表、参考文献のパターンは素材（データ）から直接読んで重ねる。"
+          chartFirst
+          config={{
+            chartType: "line",
+            series: series([
+              { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料" },
+              { sourceBlockId: `asset:${REF_ASSET_ID}`, xColumn: "2theta", yColumn: "I" },
+            ]),
+            assetSources: [{ fileId: REF_ASSET_ID, fileName: "ref-pattern-A.txt", options: REF_ASSET_OPTIONS }],
+            stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
+            xMin: "10",
+            xMax: "60",
+            aspect: "wide",
+            xAxisName: "2θ (deg)",
+            yAxisName: "Intensity (a.u.)",
+            caption: "測定パターンと素材の文献パターン（段名は素材名）",
+          }}
+        />
+      </ErrorBoundary>
+    );
+  },
+};
+
+// 素材が消えた（読めない）: 素材だけを参照する図は「参照先の素材が見つかりません」
+export const AssetSourceGone: StoryObj = {
+  name: "素材のデータが見つからない",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={[]}
+        lead="参照していた素材が削除された（実体を読めない）ときの表示。"
+        config={{
+          chartType: "line",
+          series: series([{ sourceBlockId: "asset:story-asset-missing", xColumn: "2theta", yColumn: "I" }]),
+          assetSources: [
+            { fileId: "story-asset-missing", fileName: "deleted.dat", options: REF_ASSET_OPTIONS },
+          ],
+        }}
+      />
     </ErrorBoundary>
   ),
 };

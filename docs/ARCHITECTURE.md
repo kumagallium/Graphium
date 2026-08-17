@@ -134,8 +134,19 @@ talks to LLM and embedding backends.
   source of truth: the block stores only the referenced table's id, the
   column names, and how each series is drawn — its own type, color, line
   style and width, marker shape and size, bar width and stacking — and
-  re-reads the table when the document changes. Series can also be
-  **offset into rows** — each normalised to its own maximum and lifted by
+  re-reads the table when the document changes. A series can also point
+  at a **data asset** instead of a table in the note: the same delimited
+  instrument file that data import turns into a table is read straight
+  from the asset library, so a past measurement or a reference pattern
+  can be overlaid on a figure in another note without pasting its table
+  there. The block then keeps the asset's `fileId` and the way it was
+  read (header row, end row, delimiter — the same import settings the
+  table path stores in `tableMeta.source`) under `config.assetSources`,
+  and the series refers to it as `asset:<fileId>`; the file body is
+  fetched through the storage provider and cached per asset. Those
+  references count as the asset being *used* by the note (media index
+  v6), the same way an imported table's source file does. Series can
+  also be **offset into rows** — each normalised to its own maximum and lifted by
   a fixed gap — which is how spectra get compared (an XRD measurement
   against reference patterns). Stacked that way, the comparison keeps one
   x-axis and one y-axis name instead of one per figure; the y ticks are

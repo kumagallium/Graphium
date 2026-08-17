@@ -114,6 +114,11 @@ import {
   setSharedCitePickerCallback,
   insertSharedCitations,
 } from "../../blocks/shared-citation";
+import {
+  ChartAssetSourceFlow,
+  setChartAssetSourceCallback,
+  type ChartAssetSourceResult,
+} from "../../blocks/chart";
 import { isTauri } from "../../lib/platform";
 import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
@@ -305,6 +310,11 @@ function SidePeekInner({
   const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
   const [sharedCitePickerOpen, setSharedCitePickerOpen] = useState(false);
+  // チャートの「素材のデータから」（main editor と同じ受け皿。SidePeek で開いた
+  // ノートのチャートからも素材を選べるようにする）
+  const [chartAssetRequest, setChartAssetRequest] = useState<{
+    onDone: (result: ChartAssetSourceResult) => void;
+  } | null>(null);
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
   const [loading, setLoading] = useState(true);
@@ -773,12 +783,14 @@ function SidePeekInner({
     setBookmarkPickerCallback(sidePeekEditor, () => setUrlSlashPickerOpen(true));
     setCitePickerCallback(sidePeekEditor, setCitePickerKind);
     setSharedCitePickerCallback(sidePeekEditor, () => setSharedCitePickerOpen(true));
+    setChartAssetSourceCallback(sidePeekEditor, (onDone) => setChartAssetRequest({ onDone }));
     return () => {
       setMediaPickerCallback(sidePeekEditor, null);
       setMemoPickerCallback(sidePeekEditor, null);
       setBookmarkPickerCallback(sidePeekEditor, null);
       setCitePickerCallback(sidePeekEditor, null);
       setSharedCitePickerCallback(sidePeekEditor, null);
+      setChartAssetSourceCallback(sidePeekEditor, null);
     };
   }, [sidePeekEditor]);
 
@@ -1784,7 +1796,7 @@ function SidePeekInner({
           SidePeek overlay (z-index:100) より前面に出すため、
           z-index:200 の wrapper で stacking context を切る。
           (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。) */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind ? "auto" : "none" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || chartAssetRequest ? "auto" : "none" }}>
         {pickerMediaType && (
           <MediaPickerModal
             mediaIndex={mediaIndex ?? null}
@@ -1793,6 +1805,18 @@ function SidePeekInner({
             onClose={() => setPickerMediaType(null)}
             onUpload={uploadFile}
             allowDisplayMode
+          />
+        )}
+        {/* チャートの「素材のデータから」。SidePeek は fileId まで返す登録経路を
+            持たないので、既存のデータ素材から選ぶだけ（新規ファイルは main editor で） */}
+        {chartAssetRequest && (
+          <ChartAssetSourceFlow
+            mediaIndex={mediaIndex ?? null}
+            onDone={(result) => {
+              setChartAssetRequest(null);
+              chartAssetRequest.onDone(result);
+            }}
+            onCancel={() => setChartAssetRequest(null)}
           />
         )}
         {citePickerKind && (

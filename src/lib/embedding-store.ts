@@ -96,6 +96,18 @@ export const embeddingStore = {
     await withStore("readwrite", (store) => store.put(record));
   },
 
+  /**
+   * 全 embedding レコードを取得する。
+   *
+   * ベクトルを持たない text-only レコード（embedding API 非対応時のフォールバック保存）も
+   * 含む。retriever のテキストマッチ用。DB を開くのは必ずこのモジュールの openDB() を
+   * 通す — 呼び出し側が DB 名・バージョンを別に持つと、DB_VERSION を上げたときに
+   * 旧バージョンで開こうとして VersionError になり、静かに何も返せなくなる。
+   */
+  async getAllRecords(): Promise<EmbeddingRecord[]> {
+    return getAll();
+  },
+
   /** ベクトル検索（brute-force コサイン類似度） */
   async searchByVector(queryVector: number[], topK: number): Promise<SearchResult[]> {
     const records = await getAll();

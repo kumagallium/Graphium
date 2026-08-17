@@ -10,6 +10,8 @@
 // 対応を取れない。
 
 import {
+  assetFileIdFromKey,
+  assetSourceLabel,
   isStackActive,
   parseChartBlockConfig,
   seriesConfigDisplayName,
@@ -23,9 +25,16 @@ function seriesNames(config: ChartBlockConfig, ctx: MarkdownBlockContext): strin
   // 軸の種類はデータを読まないと決まらないので渡さない。category 軸のときだけ
   // 画面はスタックを外すが、その差はここでは名前の出所が変わるだけで済む
   const stacked = isStackActive(config);
+  // 参照先の名前: ノート内テーブルはキャプション、素材は素材名（画面の段名と同じ規則）
+  const sourceLabel = (key: string): string | undefined => {
+    const fileId = assetFileIdFromKey(key);
+    if (fileId === null) return ctx.tableNames?.get(key);
+    const source = config.assetSources.find((a) => a.fileId === fileId);
+    return source ? assetSourceLabel(source) : undefined;
+  };
   return config.series.map((series) =>
     stacked
-      ? stackSeriesDisplayName(series, ctx.tableNames?.get(series.sourceBlockId))
+      ? stackSeriesDisplayName(series, sourceLabel(series.sourceBlockId))
       : seriesConfigDisplayName(series),
   );
 }
