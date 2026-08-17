@@ -37,6 +37,7 @@ Where your notes live and how they move between devices. Full details in [Storag
 | **Shared storage** | Desktop only — pick a shared folder (lab NAS, synced folder) plus a blob folder for large binaries, with a **Test connection** round-trip check. |
 | **Mobile upload** <Badge type="tip" text="Added in v0.23.1 (2026-07-29)" /> | The desktop half of phone capture: a QR code that opens Graphium on your phone (storage is connected there), the **Inbox folder** picker for the synced folder that receives captures, and the **Keep processed files in `_imported/`** option. See [Mobile capture](/mobile). |
 | **Export & backup** | Download all notes as Markdown files, or a raw-data JSON backup covering every note, knowledge, and skill document. |
+| **Search index** | The on-device full-text index over note bodies, knowledge pages, and asset text (image OCR, URL excerpts, PDF text) that `⌘K` search and the AI chat's cross-search use. It shows how many sources and passages are indexed, and **Rebuild index** clears and rebuilds it if results ever look wrong. It never writes to your notes. |
 
 ::: warning
 Changing the **Local save location** does not move existing notes automatically — copy the old folder's contents into the new one first, then restart Graphium.

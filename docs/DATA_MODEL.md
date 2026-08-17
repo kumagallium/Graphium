@@ -1411,6 +1411,32 @@ The DB version has stayed at 1 since launch. Adding a store or changing
 keys requires bumping the version and writing an `onupgradeneeded`
 migration; do not silently change the layout.
 
+Two further IndexedDB databases hold **derived, rebuildable caches** —
+never the source of truth, and independent of which storage provider is
+active (they are per browser origin / per desktop app):
+
+```
+DB:    graphium-embeddings   (src/lib/embedding-store.ts)
+Vers:  2
+Store: embeddings (keyPath: "id" = `${documentId}:${sectionId}`)
+       — { documentId, sectionId, vector, modelVersion, text, updatedAt }
+       — one row per Wiki section; vector may be [] ("text-only") when no embedding model is set
+
+DB:    graphium-lexical-index   (src/features/lexical-search/index-store.ts)
+Vers:  1
+Store: snapshots (keyPath: "scopeKey" = `${provider.id}:${userEmail}`)
+       — { scopeKey, snapshot: { formatVersion, index: MiniSearch JSON, sources }, updatedAt }
+       — one row per storage scope; `sources` maps sourceId → { kind, fingerprint, chunkIds }
+       — chunk ids: note = first block id of the chunk, wiki = H2 section id (same as embeddings), asset = c0, c1, …
+```
+
+Deleting either database loses nothing: embeddings are regenerated from
+Settings → Knowledge, and the lexical index is rebuilt from `noteIndex`
+and `mediaIndex` on the next start (or from Settings → Storage → Rebuild
+index). A `formatVersion` mismatch in the lexical snapshot (tokenizer or
+index options changed) is treated the same way — the stored snapshot is
+ignored and the index is rebuilt.
+
 ### 6.3 Filesystem layout (`filesystem` / `server-fs`)
 
 Roughly:

@@ -96,16 +96,20 @@ every time you talk to the AI. Every AI conversation in Graphium carries a
 | Scope | What the AI reads | When I reach for it |
 |---|---|---|
 | **External** | Everything Internal reads, plus the web searched fresh — with instructions to cite only sources that actually appeared in the results | Investigating something new |
-| **Internal** | Everything you cited, plus a cross-search of the crystallized brain — the Knowledge layer, not raw notes | Connecting and structuring what you have |
+| **Internal** | Everything you cited, plus a cross-search of what you have accumulated — the Knowledge layer first, and short passages from your own notes and assets that match your question by keyword | Connecting and structuring what you have |
 | **This note** (default) | Only what the note cites, with the original documents taking priority over anything AI-derived | Writing accurately, quoting faithfully |
 
 Two details carry the design. The cross-search in **Internal** reads the
-crystallized layer only; raw notes enter a conversation when you cite them
-with `@`, not by ambient similarity. And **This note** deliberately
-*excludes* the AI-derived layer, so quotes and numbers come from the
-original text rather than from a summary of it. Most AI tools treat context
-as a quantity — more is better. Here, narrowing the scope is the point: it
-is how you tell the AI **which brain to think with**.
+crystallized layer first, and it also pulls in a few short passages from raw
+notes and assets (image OCR, URL excerpts, PDF text) — but only passages that
+match your question by keyword, found by a lexical index that lives on your
+device and needs no embedding model, and handed to the AI labeled as raw
+material rather than as a Claim. Whole notes still enter a conversation the
+way they always have: when you cite them with `@`. And **This note**
+deliberately *excludes* the AI-derived layer, so quotes and numbers come
+from the original text rather than from a summary of it. Most AI tools treat
+context as a quantity — more is better. Here, narrowing the scope is the
+point: it is how you tell the AI **which brain to think with**.
 
 One asymmetry in that table is deliberate. A scope controls what the AI
 reads; none of them automates ideation. **Internal** is the scope I reach
