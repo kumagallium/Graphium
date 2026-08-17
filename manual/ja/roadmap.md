@@ -63,6 +63,7 @@ Graphium は 2026 年 3 月から小さなリリースを重ねてきました�
 | **v0.35.0** | 2026-08-13 | [ノートの中で計算する](/ja/notes-and-editor#calculations) — `target = 5 g` と書けば、記録のあるその場で、単位を保ったまま秤量の計算ができます。`⌘K` はどの画面からでも開くようになり、[画像を中の文字で探せる](/ja/ai-chat-and-ask#finding-images)ようになりました。ブロックは `⌘D` で[複製](/ja/notes-and-editor#duplicating-a-block)できます。 |
 | **v0.36.0** | 2026-08-14 | [測定データを表にする](/ja/notes-and-editor#importing-measurement-data) — 装置が吐く `.csv` / `.txt` / `.dat` を、前置きや後書きごと読み込んで表にします。どの行をどう区切って読んだか、前置きに書かれた測定条件も、表と一緒に来歴として残ります。チャートは[系列ごとのスタイル](/ja/notes-and-editor#the-log-table-and-charts)（線種・マーカー）と、スペクトルを縦にずらして比べる[積み重ね](/ja/notes-and-editor#the-log-table-and-charts)に対応しました。 |
 | **v0.37.0** | 2026-08-14 | [同じファイルが二度入らなくなりました](/ja/materials-and-citations#bringing-the-same-file-in-twice) — すでにライブラリにあるファイルを入れ直すと、二枚目を残さずに既存の素材を使い回します。見ているのは中身なので、名前を変えたコピーも同じものと分かりますし、`IMG_0001.jpg` という名前の別々の写真は別々のまま残ります。 |
+| **v0.38.0** | 2026-08-17 | [チャートが素材のデータを直接描けるように](/ja/notes-and-editor#the-log-table-and-charts) — 系列の参照先に、ノートの表だけでなく素材ライブラリの `.csv` / `.txt` / `.dat` を選べます。過去の測定や文献のパターンを、表を貼らずに別のノートの図に重ねられます。 |
 
 ## 要望をお寄せください
 
