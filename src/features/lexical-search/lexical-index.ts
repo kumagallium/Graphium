@@ -63,6 +63,22 @@ export type LexicalSourceSummary = {
   chunkCount: number;
 };
 
+/** 索引済みチャンク 1 件（設定画面の「中身を見る」用） */
+export type LexicalChunkView = {
+  chunkId: string;
+  text: string;
+  heading?: string;
+  /** このチャンクが索引された語（tokenizer の出力。重複除去・出現順） */
+  terms: string[];
+};
+
+/** 語彙 1 語（設定画面の「語彙」用） */
+export type LexicalTermStat = {
+  term: string;
+  /** その語を含む断片（チャンク）の数 */
+  df: number;
+};
+
 export type LexicalSearchOptions = {
   /** 対象の種類（省略で全部） */
   kinds?: LexicalSourceKind[];
@@ -148,6 +164,47 @@ export class LexicalIndex {
     const out: string[] = [];
     for (const [id, meta] of this.sources) if (!kind || meta.kind === kind) out.push(id);
     return out;
+  }
+
+  /** ソース 1 件の索引済みチャンク一覧（本文と、索引された語）。無ければ空 */
+  listChunks(sourceId: string): LexicalChunkView[] {
+    const meta = this.sources.get(sourceId);
+    if (!meta) return [];
+    const out: LexicalChunkView[] = [];
+    for (const chunkId of meta.chunkIds) {
+      const stored = this.ms.getStoredFields(docId(meta.kind, sourceId, chunkId));
+      if (!stored) continue;
+      const text = (stored.text as string) ?? "";
+      const title = (stored.title as string) ?? "";
+      // 索引に入っている語 = title と text の両フィールドのトークン（title は boost 付きで同じく検索対象）
+      const terms = Array.from(new Set([...tokenize(title), ...tokenize(text)]));
+      out.push({ chunkId, text, heading: (stored.heading as string | undefined) || undefined, terms });
+    }
+    return out;
+  }
+
+  /** 語彙（索引に入っている語と、それを含む断片数）。df の多い順 */
+  vocabulary(): LexicalTermStat[] {
+    // MiniSearch の直列化形（[term, { fieldId: { shortDocId: tf } }]）から数える。
+    // discard 済みの文書は documentIds から消えているので、それだけを数える
+    const json = this.ms.toJSON() as unknown as {
+      documentIds: Record<string, string>;
+      index: [string, Record<string, Record<string, number>>][];
+    };
+    const live = new Set(Object.keys(json.documentIds ?? {}));
+    const out: LexicalTermStat[] = [];
+    for (const [term, byField] of json.index ?? []) {
+      const ids = new Set<string>();
+      for (const postings of Object.values(byField)) for (const id of Object.keys(postings)) if (live.has(id)) ids.add(id);
+      if (ids.size > 0) out.push({ term, df: ids.size });
+    }
+    out.sort((a, b) => b.df - a.df || a.term.localeCompare(b.term));
+    return out;
+  }
+
+  /** 語彙数（索引に入っている異なり語の数。discard 済みの残骸を含むことがある） */
+  get termCount(): number {
+    return this.ms.termCount;
   }
 
   /** 索引済みソースの一覧（設定画面の「中身を見る」用）。タイトルは meta（無ければ先頭チャンクの stored field）から */

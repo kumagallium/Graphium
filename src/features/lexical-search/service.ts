@@ -16,6 +16,8 @@ import {
   type LexicalSourceInput,
   type LexicalSourceKind,
   type LexicalSourceSummary,
+  type LexicalChunkView,
+  type LexicalTermStat,
 } from "./lexical-index";
 import { lexicalIndexStore } from "./index-store";
 import { chunkNoteDocument, chunkPlainText } from "./chunk";
@@ -165,6 +167,16 @@ class LexicalSearchService {
   /** 索引済みソースの一覧（未ロードなら空） */
   listSources(): LexicalSourceSummary[] {
     return this.index?.listSources() ?? [];
+  }
+
+  /** ソース 1 件のチャンク一覧（本文と索引された語）。未ロードなら空 */
+  listChunks(sourceId: string): LexicalChunkView[] {
+    return this.index?.listChunks(sourceId) ?? [];
+  }
+
+  /** 語彙（語と断片数、df 順）。未ロードなら空 */
+  vocabulary(): LexicalTermStat[] {
+    return this.index?.vocabulary() ?? [];
   }
 
   /** ソースが同じ fingerprint で索引済みか（未ロードなら false） */

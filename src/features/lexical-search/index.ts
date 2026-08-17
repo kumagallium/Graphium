@@ -18,6 +18,8 @@ export {
   type LexicalSourceInput,
   type LexicalSourceKind,
   type LexicalSourceSummary,
+  type LexicalChunkView,
+  type LexicalTermStat,
   type LexicalIndexSnapshot,
 } from "./lexical-index";
 export { lexicalIndexStore } from "./index-store";

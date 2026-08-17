@@ -198,3 +198,28 @@ describe("LexicalIndex — listSources", () => {
     expect(restored!.listSources().find((s) => s.sourceId === "a1")?.title).toBe("ppms-manual.pdf");
   });
 });
+
+describe("LexicalIndex — listChunks / vocabulary", () => {
+  it("チャンクの本文と索引された語が見え、語彙は df 順で discard 済みを数えない", () => {
+    const idx = sampleIndex();
+    const chunks = idx.listChunks("n1");
+    expect(chunks.map((c) => c.chunkId)).toEqual(["b1", "b2"]);
+    expect(chunks[0].text).toContain("湿度");
+    expect(chunks[0].terms).toContain("湿度");
+    expect(chunks[0].terms).toContain("劣化");
+    // タイトルの語も索引されている（title フィールド）
+    expect(chunks[0].terms).toContain("試薬");
+    expect(idx.listChunks("nope")).toEqual([]);
+
+    const vocab = idx.vocabulary();
+    const df = new Map(vocab.map((v) => [v.term, v.df]));
+    // "デシケーター" は n1 の b1 と w1 の lead（title + text）の 2 断片
+    expect(df.get("デシケーター")).toBe(2);
+    expect(vocab[0].df).toBeGreaterThanOrEqual(vocab[vocab.length - 1].df);
+    expect(idx.termCount).toBeGreaterThan(0);
+
+    // ソースを外すと語彙からも消える（discard 済みは数えない）
+    idx.removeSource("a1");
+    expect(idx.vocabulary().find((v) => v.term === "ppms")).toBeUndefined();
+  });
+});
