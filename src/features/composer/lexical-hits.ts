@@ -4,11 +4,8 @@
 // 引いて noteId / fileId → { score, snippet } の Map にする。索引が未ロードなら
 // 空 Map（＝従来どおりタイトル・見出し・OCR 部分一致だけで動く）。
 
-import { lexicalSearch, buildSnippet, queryTerms, type LexicalSourceKind } from "../lexical-search";
+import { bestHitsBySource, type LexicalSourceKind } from "../lexical-search";
 import { parseQuery, type TextHit } from "./search";
-
-/** 走査するチャンク数の上限（ソースごと 1 件に畳む前） */
-const LEXICAL_SCAN_LIMIT = 40;
 
 /**
  * クエリのフリーテキスト部分で語彙インデックスを引き、ソース id ごとに最良の 1 件を返す。
@@ -21,22 +18,7 @@ export function collectLexicalHits(
 ): Map<string, TextHit> {
   const text = parseQuery(query).text.trim();
   const out = new Map<string, TextHit>();
-  if (!text || !lexicalSearch.isReady()) return out;
-  const words = text.split(/\s+/).filter(Boolean);
-  // 語数は空白ではなくトークン（日本語は空白で切れない）で数える
-  const termCount = queryTerms(text).length;
-  const hits = lexicalSearch.search(text, {
-    kinds,
-    limit: LEXICAL_SCAN_LIMIT,
-    perSourceLimit: 1,
-    excludeSourceIds: options.excludeSourceIds,
-    // 長めの入力（4 語以上）では 1 語だけで当たる弱い候補を落とす。短い入力は OR のまま
-    minTermMatches: termCount >= 4 ? 2 : 1,
-  });
-  for (const h of hits) {
-    if (out.has(h.sourceId)) continue;
-    // 生の入力語（句のまま）を先に、ヒットした語を後に渡す。長い語が優先して強調される
-    out.set(h.sourceId, { score: h.score, snippet: buildSnippet(h.text, [...words, ...h.terms]) });
-  }
+  if (!text) return out;
+  for (const [id, h] of bestHitsBySource(text, kinds, options)) out.set(id, { score: h.score, snippet: h.snippet });
   return out;
 }

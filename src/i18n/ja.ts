@@ -639,6 +639,18 @@ export const ja: Record<string, string> = {
   "settings.searchIndex.rebuild": "索引を作り直す",
   "settings.searchIndex.rebuilding": "作り直し中…",
   "settings.searchIndex.rebuildConfirm": "検索インデックスを消して作り直します。ノートのデータには影響しません。続けますか？",
+  "settings.searchIndex.browse": "中身を見る",
+  "settings.searchIndex.browseClose": "中身を閉じる",
+  "settings.searchIndex.browsePlaceholder": "索引の中を検索（空欄なら一覧）",
+  "settings.searchIndex.kinds": "ノート {notes} 件・ナレッジ {wiki} 件・素材 {assets} 件",
+  "settings.searchIndex.kind.note": "ノート",
+  "settings.searchIndex.kind.wiki": "ナレッジ",
+  "settings.searchIndex.kind.asset": "素材",
+  "settings.searchIndex.chunks": "{count} 断片",
+  "settings.searchIndex.more": "…他 {count} 件",
+  "settings.searchIndex.noHits": "一致する断片はありません",
+  "settings.searchIndex.empty": "まだ何も索引されていません",
+  "settings.searchIndex.untitled": "（無題）",
   // ── 接続状態 ──
   "settings.health.title": "接続状態",
   "settings.health.checking": "確認中...",
@@ -2076,6 +2088,7 @@ export const ja: Record<string, string> = {
   "ocr.runningCount": "文字を認識中… 残り {count} 件",
   "ocr.copy": "コピー",
   "ocr.matchBadge": "画像テキスト",
+  "search.bodyMatchBadge": "本文",
 
   // ── データ取り込み（装置の .txt / .dat / .csv を表にする） ──
   "dataImport.title": "データの取り込み",

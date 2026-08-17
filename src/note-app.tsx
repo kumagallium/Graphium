@@ -5950,14 +5950,14 @@ export function NoteApp() {
   // ノート編集中は AI 質問まで使えるが、一覧・Wiki ハブ・アセットギャラリー等では
   // NoteEditor が描画されておらず composerSubmitRef が空なので、検索専用として開く
   // （AI 行・発見カード・grounding チップは出さない）。
+  // AI モデル未登録のときも同じ検索専用の姿で開く — 本文・素材の検索（語彙インデックス）は
+  // AI と無関係に動くので、AI を使わない人の入口を塞がない（AI 導線だけを隠す）。
   // 開いた瞬間の状態を state へ写す — ref の変化では再描画されないため。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
-        // AI モデル未登録なら Composer 自体を開かない（AI 導線を含む UI のため）
-        if (!aiUiEnabled) return;
         e.preventDefault();
-        setComposerCanAskAi(!!composerSubmitRef.current);
+        setComposerCanAskAi(aiUiEnabled && !!composerSubmitRef.current);
         composer.toggleComposer();
       }
     };

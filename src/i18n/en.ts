@@ -639,6 +639,18 @@ export const en: Record<string, string> = {
   "settings.searchIndex.rebuild": "Rebuild index",
   "settings.searchIndex.rebuilding": "Rebuilding…",
   "settings.searchIndex.rebuildConfirm": "This clears the search index and rebuilds it. Your notes are not affected. Continue?",
+  "settings.searchIndex.browse": "Browse contents",
+  "settings.searchIndex.browseClose": "Hide contents",
+  "settings.searchIndex.browsePlaceholder": "Search inside the index (empty = list everything)",
+  "settings.searchIndex.kinds": "{notes} notes · {wiki} knowledge pages · {assets} assets",
+  "settings.searchIndex.kind.note": "note",
+  "settings.searchIndex.kind.wiki": "knowledge",
+  "settings.searchIndex.kind.asset": "asset",
+  "settings.searchIndex.chunks": "{count} passages",
+  "settings.searchIndex.more": "…and {count} more",
+  "settings.searchIndex.noHits": "No matching passages",
+  "settings.searchIndex.empty": "Nothing indexed yet",
+  "settings.searchIndex.untitled": "(untitled)",
   // ── 接続状態 ──
   "settings.health.title": "Connection Status",
   "settings.health.checking": "Checking...",
@@ -2079,6 +2091,7 @@ export const en: Record<string, string> = {
   "ocr.runningCount": "Reading text… {count} left",
   "ocr.copy": "Copy",
   "ocr.matchBadge": "image text",
+  "search.bodyMatchBadge": "in body",
 
   // ── Data import (turn instrument .txt / .dat / .csv into a table) ──
   "dataImport.title": "Import data",

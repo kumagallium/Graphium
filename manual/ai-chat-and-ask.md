@@ -94,7 +94,7 @@ Press `⌘K` to open the Composer — one input for both "find a note" and "ask 
 
 The placeholder says it all: **Find a note or ask AI...**
 
-Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an asset...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent.
+Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an asset...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent. The same search-only form is what you get when no AI model is registered at all — the search half needs no AI, so `⌘K` still opens.
 
 ![Composer palette with the verb menu on a note with citations](/screenshots/composer-verbs.png)
 

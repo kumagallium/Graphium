@@ -185,3 +185,16 @@ describe("LexicalIndex — minTermMatches", () => {
     expect(idx.search("PPMS", { prefixLastTerm: false, minTermMatches: 2 }).length).toBe(2);
   });
 });
+
+describe("LexicalIndex — listSources", () => {
+  it("種類・タイトル・断片数を返し、本文が空のソースもタイトル付きで載る。スナップショット往復でも保たれる", async () => {
+    const idx = sampleIndex();
+    idx.upsertSource({ kind: "note", sourceId: "empty", title: "空のノート", fingerprint: "1", chunks: [] });
+    const list = idx.listSources();
+    expect(list.find((s) => s.sourceId === "n1")).toMatchObject({ kind: "note", title: "試薬 X の保管", chunkCount: 2 });
+    expect(list.find((s) => s.sourceId === "empty")).toMatchObject({ kind: "note", title: "空のノート", chunkCount: 0 });
+    const restored = await LexicalIndex.fromSnapshot(JSON.parse(JSON.stringify(idx.toSnapshot())));
+    expect(restored!.listSources().find((s) => s.sourceId === "empty")?.title).toBe("空のノート");
+    expect(restored!.listSources().find((s) => s.sourceId === "a1")?.title).toBe("ppms-manual.pdf");
+  });
+});

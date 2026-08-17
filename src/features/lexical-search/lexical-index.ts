@@ -55,6 +55,14 @@ export type LexicalHit = {
   terms: string[];
 };
 
+/** 索引済みソース 1 件の要約（設定画面の一覧用） */
+export type LexicalSourceSummary = {
+  sourceId: string;
+  kind: LexicalSourceKind;
+  title: string;
+  chunkCount: number;
+};
+
 export type LexicalSearchOptions = {
   /** 対象の種類（省略で全部） */
   kinds?: LexicalSourceKind[];
@@ -99,8 +107,8 @@ export type LexicalIndexSnapshot = {
   formatVersion: number;
   /** MiniSearch.toJSON() の結果 */
   index: unknown;
-  /** sourceId → { fingerprint, chunkIds } */
-  sources: Record<string, { kind: LexicalSourceKind; fingerprint: string; chunkIds: string[] }>;
+  /** sourceId → { fingerprint, chunkIds, title } */
+  sources: Record<string, { kind: LexicalSourceKind; fingerprint: string; chunkIds: string[]; title?: string }>;
 };
 
 /** tokenizer / options を変えたら上げる */
@@ -108,7 +116,7 @@ export const LEXICAL_FORMAT_VERSION = 1;
 
 export class LexicalIndex {
   private ms: MiniSearch<LexicalDoc>;
-  private sources = new Map<string, { kind: LexicalSourceKind; fingerprint: string; chunkIds: string[] }>();
+  private sources = new Map<string, { kind: LexicalSourceKind; fingerprint: string; chunkIds: string[]; title?: string }>();
 
   constructor(ms?: MiniSearch<LexicalDoc>) {
     this.ms = ms ?? new MiniSearch<LexicalDoc>(miniSearchOptions());
@@ -142,6 +150,20 @@ export class LexicalIndex {
     return out;
   }
 
+  /** 索引済みソースの一覧（設定画面の「中身を見る」用）。タイトルは meta（無ければ先頭チャンクの stored field）から */
+  listSources(): LexicalSourceSummary[] {
+    const out: LexicalSourceSummary[] = [];
+    for (const [sourceId, meta] of this.sources) {
+      let title = meta.title ?? "";
+      if (!title && meta.chunkIds[0]) {
+        const stored = this.ms.getStoredFields(docId(meta.kind, sourceId, meta.chunkIds[0]));
+        title = (stored?.title as string | undefined) ?? "";
+      }
+      out.push({ sourceId, kind: meta.kind, title, chunkCount: meta.chunkIds.length });
+    }
+    return out;
+  }
+
   /** ソースを丸ごと差し替える（無ければ追加）。fingerprint が同じなら何もしない */
   upsertSource(input: LexicalSourceInput): boolean {
     if (this.isFresh(input.sourceId, input.fingerprint)) return false;
@@ -168,7 +190,8 @@ export class LexicalIndex {
       });
     }
     if (docs.length > 0) this.ms.addAll(docs);
-    this.sources.set(input.sourceId, { kind: input.kind, fingerprint: input.fingerprint, chunkIds });
+    // title は本文が空のソース（空ノート等）でも一覧に出せるよう meta 側にも持つ
+    this.sources.set(input.sourceId, { kind: input.kind, fingerprint: input.fingerprint, chunkIds, title: input.title ?? "" });
     return true;
   }
 
@@ -251,7 +274,7 @@ export class LexicalIndex {
       const ms = await MiniSearch.loadJSAsync<LexicalDoc>(snap.index as any, miniSearchOptions());
       const idx = new LexicalIndex(ms);
       for (const [id, meta] of Object.entries(snap.sources ?? {})) {
-        idx.sources.set(id, { kind: meta.kind, fingerprint: meta.fingerprint, chunkIds: [...(meta.chunkIds ?? [])] });
+        idx.sources.set(id, { kind: meta.kind, fingerprint: meta.fingerprint, chunkIds: [...(meta.chunkIds ?? [])], title: meta.title });
       }
       return idx;
     } catch {

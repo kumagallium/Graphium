@@ -2,7 +2,7 @@
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Download, Filter, Archive, Image as ImageIcon } from "lucide-react";
+import { BookOpen, Download, Filter, Archive, Image as ImageIcon, FileText } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
 import { MenuItem } from "@/ui/menu-item";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
@@ -14,6 +14,7 @@ import type { GraphiumIndex } from "./index-file";
 import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
 import { useT, getDisplayLabelName } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
+import { bestHitsBySource, useLexicalStatus } from "../lexical-search";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
@@ -212,17 +213,30 @@ export function NoteListView({
     });
   }, []);
 
+  // 本文（語彙インデックス）のヒット — noteId → 最良チャンク。索引が未ロードなら空。
+  // 索引が育つ / 作り直されると status が変わるので、それも依存に入れて取り直す
+  const lexicalStatus = useLexicalStatus();
+  const lexicalRevision = `${lexicalStatus.generation}:${lexicalStatus.documents}:${lexicalStatus.state}`;
+  const bodyHits = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return new Map<string, { snippet: { text: string } }>();
+    return bestHitsBySource(q, ["note", "wiki"], { limit: 200 });
+    // lexicalRevision は索引の変化を拾うための依存
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, lexicalRevision]);
+
   // フィルタ + ソート適用
   const filtered = useMemo(() => {
     let result = entries;
 
-    // テキスト検索（タイトル + OCR 画像テキスト）
+    // テキスト検索（タイトル + OCR 画像テキスト + 本文（語彙インデックス））
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
         (e) =>
           e.title.toLowerCase().includes(q) ||
-          (e.ocrText?.toLowerCase().includes(q) ?? false)
+          (e.ocrText?.toLowerCase().includes(q) ?? false) ||
+          bodyHits.has(e.noteId)
       );
     }
 
@@ -358,6 +372,21 @@ export function NoteListView({
     }
     return matched;
   }, [entries, searchQuery]);
+
+  // 同じ理由で、タイトルにも画像テキストにも無く本文だけで当たった行には「本文」の印を出す
+  // （title 属性に当たった箇所の抜粋）
+  const bodyOnlyMatched = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const matched = new Map<string, string>();
+    if (!q) return matched;
+    for (const e of entries) {
+      if (e.title.toLowerCase().includes(q)) continue;
+      if (e.ocrText?.toLowerCase().includes(q)) continue;
+      const hit = bodyHits.get(e.noteId);
+      if (hit) matched.set(e.noteId, hit.snippet.text);
+    }
+    return matched;
+  }, [entries, searchQuery, bodyHits]);
 
   const orderedIds = useMemo(() => filtered.map((e) => e.noteId), [filtered]);
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
@@ -855,6 +884,15 @@ export function NoteListView({
                       >
                         <ImageIcon size={10} />
                         {t("ocr.matchBadge")}
+                      </span>
+                    )}
+                    {bodyOnlyMatched.has(entry.noteId) && (
+                      <span
+                        className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle"
+                        title={bodyOnlyMatched.get(entry.noteId)}
+                      >
+                        <FileText size={10} />
+                        {t("search.bodyMatchBadge")}
                       </span>
                     )}
                   </td>

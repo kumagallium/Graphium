@@ -15,6 +15,7 @@ import {
   type LexicalSearchOptions,
   type LexicalSourceInput,
   type LexicalSourceKind,
+  type LexicalSourceSummary,
 } from "./lexical-index";
 import { lexicalIndexStore } from "./index-store";
 import { chunkNoteDocument, chunkPlainText } from "./chunk";
@@ -159,6 +160,11 @@ class LexicalSearchService {
     } catch {
       return [];
     }
+  }
+
+  /** 索引済みソースの一覧（未ロードなら空） */
+  listSources(): LexicalSourceSummary[] {
+    return this.index?.listSources() ?? [];
   }
 
   /** ソースが同じ fingerprint で索引済みか（未ロードなら false） */
