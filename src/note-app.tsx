@@ -135,6 +135,7 @@ import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage, AgentRunRequest } from "./features/ai-assistant";
 import { buildAttachmentSuffix } from "./features/ai-assistant/attachment-suffix";
 import { buildQuotedChatMessage, buildQuotedRetrievalQuery } from "./features/ai-assistant/quoted-context";
+import { buildPageRetrievalQuery } from "./features/ai-assistant/retrieval-topic";
 import {
   chatRunManager,
   buildRunScopeChat,
@@ -2714,6 +2715,9 @@ function NoteEditorInner({
       try {
         const isFirstMessage = baseMessages.length === 0;
         let userMessage = question;
+        // ページ全体チャットで同梱した本文。横断検索のクエリ（主題抽出）にも使うので
+        // 分岐の外に持ち出す。引用チャット・ブロック指定チャットでは空のまま。
+        let pageMarkdownForRetrieval = "";
         if (effectiveQuotedMarkdown) {
           // 引用チャット: 引用（初回のスナップショット）を議論の主題として渡し、
           // ノート本文は「背景」として毎ターン最新を添える。本文を渡さないと、
@@ -2744,6 +2748,7 @@ function NoteEditorInner({
             tableMeta: tableMetaStoreRef.current.getSnapshot(),
           });
           if (pageMarkdown.trim()) {
+            pageMarkdownForRetrieval = pageMarkdown;
             userMessage = [
               isFirstMessage
                 ? `以下のノート「${title}」の内容全体について質問があります。`
@@ -2888,15 +2893,22 @@ function NoteEditorInner({
             // ノート本文断片からは外す（同じ文章を二重に渡さない）
             if (fileId) excludeIds.add(fileId);
             const { retrieveWikiContext } = await import("./features/wiki/retriever");
-            // 横断検索のクエリは「ユーザーが打った質問」だけにする。userMessage には
+            // 横断検索のクエリは userMessage をそのまま使わない。userMessage には
             // ノート本文・添付ノート・素材が丸ごと同梱されるが、それを検索クエリに
             // 混ぜると (a) embedding が希釈されて質問と無関係な Wiki を拾い、
             // (b) 埋め込みモデルの入力上限を超えて 400 になる（XRD テーブル入りノートで
             // 28,836 トークン → multilingual-e5-large の上限 512 を大きく超過した実例）。
-            // 引用チャットは主題（引用＋質問）で検索する（従来どおり）。
+            // かといって質問文だけにすると「この内容全体について」のような質問で
+            // ノートの主題が検索キーから消える。
+            //   - 引用チャット: 引用 + 質問（従来どおり）
+            //   - ページ全体チャット: タイトル + 本文の主題（見出し・段落・表の列名。
+            //     数値行・コード・画像は落とす）+ 質問
+            //   - それ以外（ブロック指定など本文を同梱しない経路）: 質問のみ
             const retrievalQuery = effectiveQuotedMarkdown
               ? buildQuotedRetrievalQuery(effectiveQuotedMarkdown, question)
-              : question;
+              : pageMarkdownForRetrieval
+                ? buildPageRetrievalQuery({ title, pageMarkdown: pageMarkdownForRetrieval, question })
+                : question;
             wikiContext = (await retrieveWikiContext(retrievalQuery, excludeIds)) ?? undefined;
           } catch {
             // Retriever 失敗は無視（embedding が無い場合など）
