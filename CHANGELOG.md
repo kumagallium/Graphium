@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.38.0](https://github.com/kumagallium/Graphium/compare/v0.37.4...v0.38.0) - 2026-08-17
+
+- fix(template): 計画テンプレートの表をインデックステーブルとして挿入する by @kumagallium in https://github.com/kumagallium/Graphium/pull/712
+- fix(wiki): stop the text-match fallback from opening the embeddings DB at a stale version by @kumagallium in https://github.com/kumagallium/Graphium/pull/715
+- feat(chart): draw series straight from data assets by @kumagallium in https://github.com/kumagallium/Graphium/pull/714
+- fix(table): keep the fold on imported tables while they scroll off-screen by @kumagallium in https://github.com/kumagallium/Graphium/pull/716
+
 ## [v0.37.4](https://github.com/kumagallium/Graphium/compare/v0.37.3...v0.37.4) - 2026-08-17
 
 - fix(ocr): guard every OCR job against a wedged worker, and show bulk-read progress by @kumagallium in https://github.com/kumagallium/Graphium/pull/710
