@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.39.0](https://github.com/kumagallium/Graphium/compare/v0.38.0...v0.39.0) - 2026-08-17
+
+- feat(search): lexical (BM25) index over notes, knowledge, and assets; hybrid cross-search by @kumagallium in https://github.com/kumagallium/Graphium/pull/717
+
 ## [v0.38.0](https://github.com/kumagallium/Graphium/compare/v0.37.4...v0.38.0) - 2026-08-17
 
 - fix(template): 計画テンプレートの表をインデックステーブルとして挿入する by @kumagallium in https://github.com/kumagallium/Graphium/pull/712
