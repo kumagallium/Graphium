@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.37.4](https://github.com/kumagallium/Graphium/compare/v0.37.3...v0.37.4) - 2026-08-17
+
+- fix(ocr): guard every OCR job against a wedged worker, and show bulk-read progress by @kumagallium in https://github.com/kumagallium/Graphium/pull/710
+
 ## [v0.37.3](https://github.com/kumagallium/Graphium/compare/v0.37.2...v0.37.3) - 2026-08-16
 
 - feat(ai): probe native tool calling on openai-compatible endpoints by @kumagallium in https://github.com/kumagallium/Graphium/pull/709
