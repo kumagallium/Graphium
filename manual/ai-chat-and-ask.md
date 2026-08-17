@@ -45,7 +45,7 @@ The **Grounding** chip next to the input controls what evidence the AI draws on.
 
 **This note** is the default: answers stay pinned to what you explicitly cited, which is what you want while writing.
 
-What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings)); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`.
+What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings)); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" />
 
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
@@ -90,17 +90,17 @@ Every AI reply has action buttons underneath:
 
 ## The Composer (⌘K)
 
-Press `⌘K` to open the Composer — one input for both "find a note" and "ask the AI". It requires a registered AI model; `Esc` closes it.
+Press `⌘K` to open the Composer — one input for both "find a note" and "ask the AI". The AI half needs a registered AI model; the search half does not. `Esc` closes it.
 
 The placeholder says it all: **Find a note or ask AI...**
 
-Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an asset...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent. The same search-only form is what you get when no AI model is registered at all — the search half needs no AI, so `⌘K` still opens.
+Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an asset...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent. The same search-only form is what you get when no AI model is registered at all <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — the search half needs no AI, so `⌘K` still opens.
 
 ![Composer palette with the verb menu on a note with citations](/screenshots/composer-verbs.png)
 
 ### Finding notes
 
-As you type, matching notes appear instantly, searched by title, headings, labels, and author — and by the words in the note body, through the same on-device full-text index the AI chat uses. A body match shows an excerpt around the matched words under the title, so you can tell why a note is listed before opening it. Title and heading matches rank above body-only matches. Two filter tokens narrow the list, as the footer hints ("#label / @author to filter"):
+As you type, matching notes appear instantly, searched by title, headings, labels, and author — and by the words in the note body, through the same on-device full-text index the AI chat uses <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" />. A body match shows an excerpt around the matched words under the title, so you can tell why a note is listed before opening it. Title and heading matches rank above body-only matches. Two filter tokens narrow the list, as the footer hints ("#label / @author to filter"):
 
 | Token | Filters by |
 |---|---|
@@ -111,7 +111,7 @@ With an empty input you get **Recent notes**. Press `Enter` to open the highligh
 
 ### Finding assets <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> {#finding-images}
 
-Assets are searched alongside the notes and listed under **Assets**. Images you have [read with OCR](/materials-and-citations#reading-text-from-images-ocr) match on their file name and on the words read out of them; PDFs, URLs, and documents match on their name and on their text (the text of a PDF, the excerpt and description of a URL) through the same full-text index. Each row carries a thumbnail — or a type icon for non-images — and an excerpt around the match, so two similar screenshots, or two papers, are told apart before you open either.
+Assets are searched alongside the notes and listed under **Assets**. Images you have [read with OCR](/materials-and-citations#reading-text-from-images-ocr) match on their file name and on the words read out of them; PDFs, URLs, and documents match on their name and on their text (the text of a PDF, the excerpt and description of a URL) through the same full-text index <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" />. Each row carries a thumbnail — or a type icon for non-images — and an excerpt around the match, so two similar screenshots, or two papers, are told apart before you open either.
 
 Selecting one opens the materials gallery on that asset's tab, with the asset in the side peek — rather than jumping to a note. One asset can be used by several notes, or by none, and the peek lists the notes that use it.
 

@@ -8,7 +8,7 @@ A note on notation: `⌘` is the mac Command key, `⇧` is Shift, and `⌥` is O
 
 | mac | Windows / Linux | What it does |
 |---|---|---|
-| `⌘K` | `Ctrl+K` | Opens the Composer — a single box to find a note or ask AI. Works from any screen; where no note is being edited it opens in search-only form. Needs an AI model set up in [Settings](/settings). See [AI chat and Ask](/ai-chat-and-ask). |
+| `⌘K` | `Ctrl+K` | Opens the Composer — a single box to find a note or ask AI. Works from any screen; where no note is being edited — or no AI model is set up in [Settings](/settings) — it opens in search-only form. See [AI chat and Ask](/ai-chat-and-ask). |
 | `⌘⇧M` | `Ctrl+Shift+M` | Opens the quick memo dialog from anywhere in the app — note editor, note list, any screen. Memos are the raw material you capture now and use later. |
 | `⌘D` | `Ctrl+D` | Duplicates the block the cursor is in, directly below it. Works inside the editor only — see [Duplicating a block](/notes-and-editor#duplicating-a-block). |
 | `⌘F` | `Ctrl+F` | Opens **Find in note** — search within the current note with highlighted matches. When no note is open, the browser's own find works as usual. |

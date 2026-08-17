@@ -16,7 +16,7 @@ Graphium deliberately does not bind `⌘⇧N` (`Ctrl+Shift+N` on Windows/Linux) 
 
 ## The notes list
 
-**All Notes** shows every note as a table with a search box ("Search notes...") and a live count ("12 / 40 notes"). The box matches titles, text read from images, and the note body itself — a body-only match is marked with an **in body** badge, and hovering it shows the passage that matched. The sidebar also keeps a **Recent Notes** section for quick jumps back to what you last opened, with **Show all** leading to the full list.
+**All Notes** shows every note as a table with a search box ("Search notes...") and a live count ("12 / 40 notes"). The box matches titles, text read from images, and the note body itself <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — a body-only match is marked with an **in body** badge, and hovering it shows the passage that matched. The sidebar also keeps a **Recent Notes** section for quick jumps back to what you last opened, with **Show all** leading to the full list.
 
 | Control | What it does |
 |---|---|
