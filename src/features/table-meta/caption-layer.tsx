@@ -30,6 +30,16 @@ type CaptionPos = {
   bottom: number;
   /** 折りたたむとしたら隠れる行数（0 なら隠す行がない） */
   hiddenRows: number;
+  /**
+   * 表が画面に掛かっているか。キャプションと裾のフェードはこれが true の表にだけ描く。
+   *
+   * 折りたたみ CSS のほうは false でも当て続ける。画面外に出た表を一覧から落として
+   * CSS まで外すと、隠れていた行が戻って表が一気に伸び、ブラウザのスクロール
+   * アンカーが位置を保とうとして scrollTop が跳ぶ。跳んだ先で表の裾が画面に戻ると
+   * CSS が当たり直して縮み、また画面外へ…という往復がフレームごとに起きて、
+   * スクロール中に表が開いたり閉じたりチカチカして見える。
+   */
+  onScreen: boolean;
 };
 
 /**
@@ -172,8 +182,8 @@ export function TableCaptionLayer({
       const tableEl = blockEl.querySelector("table");
       // 折りたたみ中は隠した行が高さを持たないので、表の下端がそのまま見えている下端になる
       const rect = (tableEl ?? blockEl).getBoundingClientRect();
-      if (rect.top > window.innerHeight) return;
-      if (rect.bottom < 0) return;
+      // 画面外の表も一覧には残す（落とすと折りたたみ CSS まで外れる — CaptionPos.onScreen 参照）
+      const onScreen = rect.top <= window.innerHeight && rect.bottom >= 0;
       // 1 行目はヘッダなのでデータ行数から除く
       const rowCount = Math.max(0, (block.content?.rows?.length ?? 1) - 1);
       next.push({
@@ -185,6 +195,7 @@ export function TableCaptionLayer({
         rowCount,
         bottom: rect.bottom,
         hiddenRows: Math.max(0, rowCount - COLLAPSED_VISIBLE_ROWS),
+        onScreen,
       });
     });
 
@@ -199,8 +210,9 @@ export function TableCaptionLayer({
   }, [store, editorRef, resolveRoot]);
 
   // 折りたたみ CSS が当たると表の高さが変わる。裾のフェードを正しい位置に置くため、
-  // 折りたたみ対象が変わったフレームの後で測り直す（測り直しても対象集合は変わらない
-  // ので、ここでループにはならない）
+  // 折りたたみ対象が変わったフレームの後で測り直す。対象集合は「取り込み由来で長い表を
+  // 明示的に開いていないか」だけで決まり、画面のどこにあるかには依らないので、
+  // 測り直しで集合が変わることはなく、ここでループにはならない
   const collapsedKey = captions
     .filter((pos) => isCollapsedRef.current(pos))
     .map((pos) => pos.blockId)
@@ -283,8 +295,14 @@ export function TableCaptionLayer({
 
   if (captions.length === 0) return null;
 
+  // 画面に掛かっている表だけにキャプションと裾を描く（fixed 配置なので画面外の分は
+  // 描いても見えず、数が増えるだけ）。折りたたみ CSS は下で画面外の表にも当てる
+  const visibleCaptions = captions.filter((pos) => pos.onScreen);
+
   // 折りたたみは DOM を触らず CSS で当てる。ProseMirror がテーブルを描き直しても
-  // 消えず、書き出し（Markdown / 保存 JSON）にも一切影響しない
+  // 消えず、書き出し（Markdown / 保存 JSON）にも一切影響しない。
+  // 画面外の表も含めて当てる — スクロールで CSS が付いたり外れたりすると表の高さが
+  // 変わってスクロール位置が跳ぶ（CaptionPos.onScreen のコメント参照）
   const collapsedCss = captions
     .filter(isCollapsed)
     .map(
@@ -300,7 +318,7 @@ export function TableCaptionLayer({
       {collapsedCss.length > 0 && <style>{collapsedCss}</style>}
       {/* 折りたたみ中の表の裾。下に向かって背景へ溶かし、その上に残りの行数を出す。
           「表がここで終わっている」のではなく「まだ続く」と読めるようにするための表現 */}
-      {captions.filter(isCollapsed).map((pos) => (
+      {visibleCaptions.filter(isCollapsed).map((pos) => (
         <div
           key={`fade-${pos.blockId}`}
           style={{
@@ -341,7 +359,7 @@ export function TableCaptionLayer({
           </button>
         </div>
       ))}
-      {captions.map((pos) => {
+      {visibleCaptions.map((pos) => {
         const { blockId, top, left, width, displayName } = pos;
         const name = store.getCaption(blockId);
         if (editing === blockId) {
