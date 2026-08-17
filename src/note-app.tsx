@@ -280,6 +280,7 @@ import { NoteSideMenu, collectBlockScope, setOpenLinkDropdownFn, setOpenBlockMem
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
 import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { BackendDownBanner } from "./components/BackendDownBanner";
 import { MissingApiKeyBanner } from "./components/MissingApiKeyBanner";
 import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
@@ -7762,6 +7763,7 @@ export function NoteApp() {
   return (
     <div className="flex flex-col h-dvh font-sans antialiased bg-background text-foreground">
       <UpdateBanner />
+      <BackendDownBanner />
       <MissingApiKeyBanner />
       {/* モバイルヘッダー（メモ画面では非表示 — 記録特化体験） */}
       {(isDesktop || fm.activeFileId) && (
