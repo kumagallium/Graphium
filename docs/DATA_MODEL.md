@@ -128,11 +128,12 @@ type GraphiumDocument = {
   sourceDocumentFileId?: string;  // media-index fileId of the source document
   sourceDocumentName?: string;    // display filename
 
-  // ── plan note backref ──────────────────────────────
-  // Set on execution notes when one source describes multiple synthesis
-  // procedures and a separate plan note groups them. The plan note has
-  // no `partOfPlanNoteId` (it is the plan). Independent of
-  // `derivedFromNoteId`: membership in a plan is not derivation.
+  // ── plan note backref (reserved) ───────────────────
+  // Meant for execution notes when one source describes multiple
+  // synthesis procedures and a separate plan note groups them, kept
+  // apart from `derivedFromNoteId` (membership is not derivation).
+  // Nothing writes it today: ingestion produces one note per source
+  // (ARCHITECTURE.md §3.2 "URL / PDF → PROV ingestion").
   partOfPlanNoteId?: string;
 
   createdAt: string;   // ISO 8601
@@ -417,8 +418,9 @@ so a block is never bound to two Activities at once.
 
 `[Plan]` / `[Result]` phase labels were withdrawn: a marked plan pays off
 only when one protocol is compared across several runs, and that
-granularity is served by note-level plan/execution splitting
-(`partOfPlanNoteId`, §2). The v6 migration strips any remaining phase
+granularity is served by note-level plan/execution splitting (a plan
+note whose index table links to one execution note per run; see "Table
+annotations" in §2.2). The v6 migration strips any remaining phase
 labels on load (§2.1), so loaded documents never carry a phase and newly
 generated graphs never contain `graphium:phase` metadata or `_plan`
 entity nodes. Graphs exported before v6 may still contain them; their

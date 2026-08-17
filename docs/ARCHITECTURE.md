@@ -293,11 +293,12 @@ The two never overlap: headings inside a step are ordinary subheadings and
 create no Activity of their own, which keeps a block from being bound twice.
 
 `[Plan]` / `[Result]` phases were withdrawn (plan-vs-actual comparison
-pays off across runs of a protocol, which note-level splitting via
-`partOfPlanNoteId` covers), and the v6 migration strips any remaining
-phase labels on load — so loaded documents never carry a phase and new
-graphs contain no `graphium:phase` metadata. See DATA_MODEL §2.3 for the
-historical semantics that pre-v6 exports may still contain.
+pays off across runs of a protocol, which note-level splitting covers: a
+plan note whose index table links to one execution note per run), and
+the v6 migration strips any remaining phase labels on load — so loaded
+documents never carry a phase and new graphs contain no `graphium:phase`
+metadata. See DATA_MODEL §2.3 for the historical semantics that pre-v6
+exports may still contain.
 
 Beyond labelled blocks, images can have their text **read on-device**, with
 no label required. Newly pasted images are read automatically (progress is
@@ -442,15 +443,24 @@ names. The prompt only enforces a few lightweight conventions
 (`<key>: <value>` attribute spans, `snake_case` keys, "same concept →
 same key inside one document").
 
-When the LLM returns multiple procedures from one source (e.g., a paper
-with several composition variants), `plan-execution-builder.ts` splits
-the output into a **plan note** that groups them plus N **execution
-notes** that each carry the actual PROV graph. The execution notes
-back-reference the plan via `partOfPlanNoteId`
-([DATA_MODEL.md §2](./DATA_MODEL.md#2-the-note-graphiumdocument)). The
-current prompt returns one `ProvIngesterOutput` per call so the builder
-typically runs with N = 1; the infrastructure is ready for a future
-`procedureGroup` extension that returns multiple outputs at once.
+One source becomes **one note**. The prompt asks for a single connected
+DAG per document, so a paper that describes several synthesis routes
+(conventional sintering next to spark plasma sintering, say) comes out
+as one note following the dominant chain, not as one note per route.
+This is a deliberate trade: an imported paper is reference material, and
+splitting it automatically would multiply notes faster than it adds
+value. When a source does deserve one note per route, that structure is
+built by hand: a plan note whose index table (`note-link` column, see
+[DATA_MODEL.md §2.2 "Table annotations"](./DATA_MODEL.md#table-annotations-tablemeta))
+links to one execution note per route, the same way a user records their
+own runs.
+
+`plan-execution-builder.ts` (next to the note builder) and the
+`partOfPlanNoteId` field
+([DATA_MODEL.md §2](./DATA_MODEL.md#2-the-note-graphiumdocument)) were
+prepared for a multi-procedure prompt that I later shelved. Neither is
+wired into the ingestion path today: the builder has no caller and the
+field is never written.
 
 Quality is tracked by a benchmark harness at
 `tests/benchmark/material-science/`. It loads `(input.txt, gold.json)`

@@ -5,10 +5,14 @@
 //   - N >= 2 → 1 つの plan ノート + N 個の実施ノート
 //             実施ノートに partOfPlanNoteId（plan ノートのファイル ID）を付ける
 //
-// 現在の open-set prompt は 1 回の抽出につき 1 ProvIngesterOutput を返すため、
-// 呼び出し側は通常 `[output]` として N=1 で渡す（→ plan ノートは作られない）。
-// 将来、LLM 出力を procedureGroup 単位で複数 ProvIngesterOutput に分割するように
-// なれば、その配列をそのまま渡すだけで plan + 実施構造に展開される。
+// 【現状】本番の取り込み経路からは呼ばれていない（呼び出し元ゼロ・テストのみ）。
+// 現在の open-set prompt は 1 回の抽出につき 1 ProvIngesterOutput を返し、
+// クライアントは buildProvNoteDocument で 1 素材 = 1 ノートを作る。
+// 複数手順を自動で計画 + 実施ノートに分ける構想は 2026-08-17 に見送りとした
+// （論文取り込みは参考情報の 1 ノート、精密な PROV は手作業ノートという線引き。
+// docs/internal/external-source-extraction-prompt.md §6 を参照）。
+// 再検討する場合は、LLM 出力を procedure 単位の配列にして本ヘルパーに渡せば
+// plan + 実施構造に展開できる形は保っている。
 //
 // ノートファイル ID はストレージプロバイダーが保存時に発番するため、ここでは
 // ドキュメント自体は組み立てるが ID 解決は呼び出し側の責務とする。設計は
