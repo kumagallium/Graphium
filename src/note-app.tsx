@@ -77,7 +77,12 @@ import {
   type DataImportResult,
   type DelimitedImportOptions,
 } from "./features/data-import";
-import { chartSlashItem } from "./blocks/chart";
+import {
+  chartSlashItem,
+  ChartAssetSourceFlow,
+  setChartAssetSourceCallback,
+  type ChartAssetSourceResult,
+} from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
@@ -1342,6 +1347,13 @@ function NoteEditorInner({
     } | null
   >(null);
 
+  // ── チャートの「素材のデータから」 ──
+  // チャートブロックがピッカー（データ素材）→ 取り込みダイアログを求めてきたときの
+  // 受け皿。確定結果はブロック側の onDone に返し、こちらは系列を触らない。
+  const [chartAssetRequest, setChartAssetRequest] = useState<{
+    onDone: (result: ChartAssetSourceResult) => void;
+  } | null>(null);
+
   // スラッシュメニューからピッカーを開くコールバック登録（main editor 用）。
   // SidePeek からは SidePeek 自身が同じ仕組みで登録する。
   useEffect(() => {
@@ -1349,6 +1361,9 @@ function NoteEditorInner({
     setMediaPickerCallback(mainEditor, (type) => {
       pickerEditorRef.current = mainEditor;
       setPickerMediaType(type);
+    });
+    setChartAssetSourceCallback(mainEditor, (onDone) => {
+      setChartAssetRequest({ onDone });
     });
     setMemoPickerCallback(mainEditor, () => {
       pickerEditorRef.current = mainEditor;
@@ -1368,6 +1383,7 @@ function NoteEditorInner({
     });
     return () => {
       setMediaPickerCallback(mainEditor, null);
+      setChartAssetSourceCallback(mainEditor, null);
       setMemoPickerCallback(mainEditor, null);
       setBookmarkPickerCallback(mainEditor, null);
       setCitePickerCallback(mainEditor, null);
@@ -4300,6 +4316,18 @@ function NoteEditorInner({
             pickerMediaType === "data" ? handleDataImportFilePicked : undefined
           }
           allowDisplayMode
+        />
+      )}
+      {/* チャートの「素材のデータから」: データ素材ピッカー → 取り込みダイアログ → 系列 */}
+      {chartAssetRequest && (
+        <ChartAssetSourceFlow
+          mediaIndex={mediaIndex ?? null}
+          uploadAsset={uploadAsset}
+          onDone={(result) => {
+            setChartAssetRequest(null);
+            chartAssetRequest.onDone(result);
+          }}
+          onCancel={() => setChartAssetRequest(null)}
         />
       )}
       {/* メモピッカーモーダル（スラッシュメニュー /memo から） */}

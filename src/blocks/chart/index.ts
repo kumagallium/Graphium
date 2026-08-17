@@ -8,6 +8,10 @@ export const chartBlock: CustomBlockEntry = {
   spec: ChartBlock,
 };
 
+// 「素材のデータから系列を足す」の配線（ホストが登録するコールバックと、その流れの UI）
+export { setChartAssetSourceCallback, type ChartAssetSourceResult } from "./callbacks";
+export { ChartAssetSourceFlow } from "./asset-source-flow";
+
 // スラッシュメニュー用アイテム（テーブル未選択状態のチャートブロックを挿入）
 export const chartSlashItem = {
   // ラベルは getter で遅延評価する。トップレベルで t() を呼ぶと最初の読み込み時の

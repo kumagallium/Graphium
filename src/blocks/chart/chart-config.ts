@@ -14,6 +14,7 @@
 
 import { isNumericColumn, type ChartType, type TableData, type XAxisKind } from "./chart-data";
 import { CHART_ASPECT_RATIOS, type ChartAspect } from "./chart-theme";
+import type { DelimitedImportOptions } from "../../features/data-import/types";
 
 /** X 軸の目盛りの種類。auto は列の値から推定する */
 export type XAxisKindSetting = "auto" | XAxisKind;
@@ -96,9 +97,69 @@ export const DEFAULT_AXIS_DETAIL: AxisDetail = {
   showGrid: false,
 };
 
+/**
+ * 系列の参照先になる素材（区切りテキストのデータ素材）。
+ *
+ * ノート内のテーブルは blockId で指すが、素材は媒体ライブラリ（media index）の
+ * fileId で指す。系列側の sourceBlockId には `asset:<fileId>` を入れて、テーブル参照と
+ * 同じ道（テーブルの解決・付け替え・段名の解決）に乗せる — 参照の種類が増えても
+ * 系列の側は「ソースのキー + 列名」のままで済む。
+ *
+ * 読み方（options）は取り込みダイアログで決めた値をそのまま持つ。tableMeta.source と
+ * 同じ考え方で、同じ設定で読み直せることが「この線はどの生データのどこか」の
+ * 再現性になる。推定に任せると、推定ロジックの改良で既存の図の列が入れ替わりうる。
+ */
+export type ChartAssetSource = {
+  /** 素材の fileId（media index のキー） */
+  fileId: string;
+  /** 素材名。表示名（段名の既定・凡例）と、参照切れ時の手掛かりに使う */
+  fileName: string;
+  /** 区切りテキストの読み方（見出し行・終了行・区切り文字） */
+  options: DelimitedImportOptions;
+};
+
+/** 素材ソースのキーの接頭辞。fileId と blockId を同じ文字列空間で見分ける */
+export const ASSET_SOURCE_PREFIX = "asset:";
+
+/** 素材の fileId → 系列の sourceBlockId に入れるキー */
+export function assetSourceKey(fileId: string): string {
+  return `${ASSET_SOURCE_PREFIX}${fileId}`;
+}
+
+/** そのキーが素材ソースを指しているか */
+export function isAssetSourceKey(key: string): boolean {
+  return key.startsWith(ASSET_SOURCE_PREFIX) && key.length > ASSET_SOURCE_PREFIX.length;
+}
+
+/** キー → 素材の fileId。素材ソースでなければ null */
+export function assetFileIdFromKey(key: string): string | null {
+  return isAssetSourceKey(key) ? key.slice(ASSET_SOURCE_PREFIX.length) : null;
+}
+
+/** 素材ソースの表示名。取り込んだ表の既定キャプションと同じく拡張子を落とす */
+export function assetSourceLabel(source: Pick<ChartAssetSource, "fileName">): string {
+  return source.fileName.replace(/\.[^.]+$/, "").trim() || source.fileName;
+}
+
+/**
+ * 系列が選べる参照先の 1 件（設定 UI・段名の解決に渡す表示用の一覧）。
+ * ノート内テーブルは常に読めるが、素材は読み込み中・参照切れがある。
+ */
+export type ChartSourceOption = {
+  /** 系列の sourceBlockId に入る値（blockId か `asset:<fileId>`） */
+  id: string;
+  label: string;
+  kind: "table" | "asset";
+  /** 素材のみ: 読み込み中 / 素材が見つからない（未指定は読めている） */
+  status?: "pending" | "missing";
+};
+
 /** 1 つの系列 = どのテーブルの・どの列を・どう描くか */
 export type ChartSeriesConfig = {
-  /** 参照先テーブルの blockId（表示名は毎回解決するので並べ替えに強い） */
+  /**
+   * 参照先のキー。ノート内テーブルなら blockId（表示名は毎回解決するので
+   * 並べ替えに強い）、データ素材なら `asset:<fileId>`（config.assetSources に読み方を持つ）
+   */
   sourceBlockId: string;
   /** X に使う列名（histogram では未使用） */
   xColumn: string;
@@ -251,6 +312,12 @@ export type ChartBlockConfig = {
   yRightAxisDetail: AxisDetail;
   /** スタック表示（スペクトル比較） */
   stack: StackConfig;
+  /**
+   * 系列が参照するデータ素材（ノートの外にある生データ）。
+   * 系列の sourceBlockId が `asset:<fileId>` のとき、ここから読み方を引く。
+   * 旧ノートには無いので空配列で読まれる
+   */
+  assetSources: ChartAssetSource[];
 };
 
 export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
@@ -276,9 +343,11 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   yAxisDetail: DEFAULT_AXIS_DETAIL,
   yRightAxisDetail: DEFAULT_AXIS_DETAIL,
   stack: DEFAULT_STACK_CONFIG,
+  assetSources: [],
 };
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
+const DELIMITERS: DelimitedImportOptions["delimiter"][] = ["comma", "tab", "space", "custom"];
 const SERIES_TYPES: SeriesType[] = ["line", "bar", "scatter"];
 const LINE_TYPES: SeriesLineType[] = ["solid", "dashed", "dotted"];
 const LINE_WIDTHS: SeriesLineWidth[] = ["thin", "medium", "thick"];
@@ -345,6 +414,63 @@ function parseSeries(raw: unknown): ChartSeriesConfig[] {
     out.push(entry);
   }
   return out;
+}
+
+/**
+ * 素材ソースを読む。読み方（options）が欠けた・壊れたエントリは落とす — 推定で
+ * 補うと、系列が指していた列と別の列を描きかねない。同じ fileId は先勝ち。
+ */
+function parseAssetSources(raw: unknown): ChartAssetSource[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ChartAssetSource[] = [];
+  const seen = new Set<string>();
+  for (const value of raw) {
+    if (typeof value !== "object" || value === null) continue;
+    const v = value as any;
+    if (typeof v.fileId !== "string" || v.fileId === "" || seen.has(v.fileId)) continue;
+    const o = typeof v.options === "object" && v.options !== null ? v.options : null;
+    if (!o) continue;
+    const headerRow = Number(o.headerRow);
+    const endRow = Number(o.endRow);
+    if (!Number.isInteger(headerRow) || headerRow < 1) continue;
+    if (!Number.isInteger(endRow) || endRow < headerRow) continue;
+    if (!DELIMITERS.includes(o.delimiter)) continue;
+    const options: DelimitedImportOptions = {
+      headerRow,
+      endRow,
+      delimiter: o.delimiter,
+      collapseConsecutive: o.collapseConsecutive === true,
+    };
+    if (typeof o.customDelimiter === "string" && o.customDelimiter !== "") {
+      options.customDelimiter = o.customDelimiter;
+    }
+    seen.add(v.fileId);
+    out.push({
+      fileId: v.fileId,
+      fileName: typeof v.fileName === "string" ? v.fileName : "",
+      options,
+    });
+  }
+  return out;
+}
+
+/**
+ * どの系列からも参照されなくなった素材ソースを落とす。
+ * 素材ソースは「いま描いている生データ」の一覧であって、候補の棚ではない。
+ * 残すと、描いていない素材が「このノートで使われている」として来歴に載り続ける。
+ */
+export function pruneAssetSources(config: ChartBlockConfig): ChartBlockConfig {
+  if (config.assetSources.length === 0) return config;
+  const referenced = new Set(
+    config.series.map((s) => assetFileIdFromKey(s.sourceBlockId)).filter((id): id is string => !!id)
+  );
+  const kept = config.assetSources.filter((a) => referenced.has(a.fileId));
+  return kept.length === config.assetSources.length ? config : { ...config, assetSources: kept };
+}
+
+/** このチャートが参照している素材の fileId（来歴・利用ノートの集計用） */
+export function collectChartAssetFileIds(config: ChartBlockConfig): string[] {
+  return config.assetSources.map((a) => a.fileId);
 }
 
 /** スタック設定を部分マージで読む（旧ノートには存在しないので全欠けが常態） */
@@ -458,6 +584,7 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
     ),
     yRightAxisDetail: parseAxisDetail(parsed.yRightAxisDetail, false),
     stack: parseStack(parsed.stack),
+    assetSources: parseAssetSources(parsed.assetSources),
   };
 }
 
@@ -501,6 +628,25 @@ export function isStackActive(config: ChartBlockConfig, xAxisKind?: XAxisKind): 
 /** right 軸に割り当てられた系列があるか */
 export function usesRightAxis(config: ChartBlockConfig): boolean {
   return config.series.some((s) => s.axis === "right");
+}
+
+/**
+ * 参照先を替えたとき、同名列が無ければ新しい表の妥当な列に付け替える。
+ * 参照先はノート内テーブルでも素材でも同じ扱い（表として読めた後は区別しない）。
+ */
+export function retargetSeries(
+  series: ChartSeriesConfig,
+  newSourceKey: string,
+  table: TableData | null
+): ChartSeriesConfig {
+  if (!table) return { ...series, sourceBlockId: newSourceKey };
+  const headers = table.headers.filter((h) => h.trim() !== "");
+  const numeric = headers.filter((h) => isNumericColumn(table, h));
+  const xColumn = headers.includes(series.xColumn) ? series.xColumn : (table.headers[0] ?? "");
+  const yColumn = numeric.includes(series.yColumn)
+    ? series.yColumn
+    : (numeric.find((h) => h !== xColumn) ?? numeric[0] ?? "");
+  return { ...series, sourceBlockId: newSourceKey, xColumn, yColumn };
 }
 
 /** テーブル選択直後の初期系列: X = 最初の列、系列 = それ以外の数値列 */
