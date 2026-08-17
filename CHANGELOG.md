@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.37.3](https://github.com/kumagallium/Graphium/compare/v0.37.2...v0.37.3) - 2026-08-16
+
+- feat(ai): probe native tool calling on openai-compatible endpoints by @kumagallium in https://github.com/kumagallium/Graphium/pull/709
+
 ## [v0.37.2](https://github.com/kumagallium/Graphium/compare/v0.37.1...v0.37.2) - 2026-08-16
 
 - fix(table): 畳んだテーブルからはみ出す列追加ボタンを表の中に収める by @kumagallium in https://github.com/kumagallium/Graphium/pull/703
