@@ -22,6 +22,12 @@ If the backend stops on its own while the app is running, the desktop app shows 
 
 ## Adding a model
 
+::: tip Which provider?
+- **Already paying for GitHub Copilot?** Pick **GitHub Copilot (Subscription · Copilot CLI)** — no API key, prompts count against your existing plan, and MCP tools (web search, etc.) run natively. This is the simplest way to get full AI in Graphium.
+- **Want to try for free first?** Register an **OpenAI Compatible** endpoint with a free tier — for example Sakura AI Engine in Japan, or Groq elsewhere.
+- **Have an API key?** Any of the key-based providers works; the model assignment below lets you mix them.
+:::
+
 Under **Registered Models**, click **Add model** (or **Add your first model**). Pick a provider:
 
 | Provider | What you need |

@@ -2,6 +2,7 @@
 // Vercel AI SDK の generateText + stepCountIs でマルチステップ実行する
 
 import { generateText, stepCountIs, type ModelMessage, type LanguageModel } from "ai";
+import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
 import type { ModelConfig } from "../config/models.js";
 import { recordUsage, extractTokenFields } from "./llm-usage.js";
 import { runTextToolsLoop } from "./agent-loop-text-tools.js";
@@ -60,7 +61,9 @@ export type ToolCallRecord = {
  * tools 定義を system prompt に埋め込んで `<tool_call>...</tool_call>` ベースのテキスト応答を
  * パースする fallback ループへ切り替える。切り替えの判断は provider ごとに異なる:
  *
- * - サブスク型（copilot-subscription）: SDK が tools を通さないので常に fallback
+ * - copilot-subscription: generateText を経由せず、Copilot SDK にツール（handler 付き）を
+ *   渡してエージェントとして実行する（runCopilotAgentLoop）。ネイティブのツール実行
+ * - 他のサブスク型: SDK が tools を通さない前提で常に fallback
  * - openai-compatible: endpoint 次第（さくらの AI Engine のように tool_calls を返すものもある）。
  *   まずネイティブで試し、tools 起因のエラーが出たときだけ fallback して結果を記憶する
  *   → native-tools-support.ts
@@ -129,8 +132,14 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   const hasTools = !!tools && Object.keys(tools).length > 0;
   const isOpenAiCompatible = modelConfig?.provider === "openai-compatible";
 
-  // サブスク型（copilot-subscription）は SDK が tools を通さないので、ツール利用時は無条件で
-  // text-tool-call フォールバックへ。
+  // copilot-subscription のツール付き呼び出しは、generateText を経由せず Copilot SDK に
+  // ツール（handler 付き）を渡してエージェントとして実行する第 3 の経路へ。
+  // AI SDK の LanguageModel 経路では execute が剥がされて実行できないため
+  // （詳細は copilot-subscription.ts の runCopilotWithTools）。
+  if (hasTools && modelConfig?.provider === "copilot-subscription") {
+    return runCopilotAgentLoop(safeParams);
+  }
+  // 他のサブスク型が増えたときの既定: SDK が tools を通さない前提で text-tool-call へ。
   if (hasTools && isSubscriptionProvider(modelConfig?.provider)) {
     return runTextToolsLoop(safeParams);
   }
@@ -234,6 +243,101 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   return {
     message: result.text,
     toolCalls,
+    tokenUsage: {
+      input_tokens: tokens.inputTokens,
+      output_tokens: tokens.outputTokens,
+      total_tokens: tokens.totalTokens,
+      cache_read_tokens: tokens.cacheReadTokens,
+      cache_write_tokens: tokens.cacheWriteTokens,
+      reasoning_tokens: tokens.reasoningTokens,
+    },
+    model: modelId,
+  };
+}
+
+// ── Copilot をエージェントとして実行する経路 ──
+//
+// copilot-subscription でツールが渡されたときだけ通る。generateText を経由せず、
+// Copilot SDK にツール（handler 付き）を渡してエージェントループを CLI 側に回させる。
+// 戻り値は他の経路と同じ AgentRunResult に揃える（呼び出し側は経路を意識しない）。
+
+/** AI SDK の ModelMessage（content が string のこともある）を LanguageModelV3Prompt の形へ */
+function toV3Prompt(system: string, messages: ModelMessage[]): LanguageModelV3Prompt {
+  const out: LanguageModelV3Prompt = [];
+  if (system.trim()) out.push({ role: "system", content: system });
+  for (const m of messages) {
+    if (m.role === "system") {
+      out.push({ role: "system", content: typeof m.content === "string" ? m.content : "" });
+      continue;
+    }
+    if (typeof m.content === "string") {
+      if (m.role === "user") out.push({ role: "user", content: [{ type: "text", text: m.content }] });
+      else if (m.role === "assistant") out.push({ role: "assistant", content: [{ type: "text", text: m.content }] });
+      continue;
+    }
+    // パート配列はそのまま流す（flattenPromptForCopilot がテキスト以外を落として warning にする）
+    out.push({ role: m.role, content: m.content } as LanguageModelV3Prompt[number]);
+  }
+  return out;
+}
+
+async function runCopilotAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
+  const { modelId, systemPrompt, messages, tools, feature, modelConfig, abortSignal } = params;
+  const { runCopilotWithTools } = await import("./copilot-subscription.js");
+  const { resolveCopilotBinaryPath } = await import("./llm.js");
+
+  const cliPath = resolveCopilotBinaryPath(modelConfig?.apiBase);
+  if (!cliPath) {
+    throw new Error(
+      "GitHub Copilot CLI not found. Install it (e.g. `npm install -g @github/copilot`), sign in with `copilot`, or set the CLI path in Settings → AI.",
+    );
+  }
+
+  const startedAt = Date.now();
+  const result = await runCopilotWithTools({
+    settings: { cliPath, modelId: modelConfig?.modelId ?? modelId },
+    // system は runCopilotWithTools 側で結合する。ここでは prompt に system を含めない。
+    systemPrompt,
+    prompt: toV3Prompt("", messages),
+    tools: (tools ?? {}) as Record<string, { description?: string; inputSchema: unknown; execute?: (input: unknown, options: unknown) => unknown }>,
+    ...(abortSignal ? { abortSignal } : {}),
+  });
+  const durationMs = Date.now() - startedAt;
+
+  // runCopilotWithTools は provider レベルの LanguageModelV3Usage（inputTokens が
+  // { total, cacheRead, ... } のネスト）を返す。extractTokenFields は generateText の
+  // フラットな LanguageModelUsage を期待するので、ここで同じ形に写してから渡す。
+  const v3 = result.usage;
+  const tokens = extractTokenFields({
+    inputTokens: v3.inputTokens?.total,
+    outputTokens: v3.outputTokens?.total,
+    inputTokenDetails: {
+      cacheReadTokens: v3.inputTokens?.cacheRead,
+      cacheWriteTokens: v3.inputTokens?.cacheWrite,
+    },
+    outputTokenDetails: { reasoningTokens: v3.outputTokens?.reasoning },
+  });
+  if (feature) {
+    recordUsage({
+      ts: new Date().toISOString(),
+      feature,
+      provider: modelConfig?.provider ?? "copilot-subscription",
+      modelId,
+      modelConfigId: modelConfig?.id,
+      inputTokens: tokens.inputTokens,
+      outputTokens: tokens.outputTokens,
+      cacheReadTokens: tokens.cacheReadTokens,
+      cacheWriteTokens: tokens.cacheWriteTokens,
+      reasoningTokens: tokens.reasoningTokens,
+      totalTokens: tokens.totalTokens,
+      durationMs,
+      rateSnapshot: modelConfig?.rate,
+    });
+  }
+
+  return {
+    message: result.text,
+    toolCalls: result.toolCalls,
     tokenUsage: {
       input_tokens: tokens.inputTokens,
       output_tokens: tokens.outputTokens,

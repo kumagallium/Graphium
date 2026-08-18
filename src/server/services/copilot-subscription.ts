@@ -11,9 +11,11 @@
 // - CopilotClient は CLI を server モードで 1 プロセス spawn し JSON-RPC で会話する。
 //   spawn コスト（数百 ms〜）を呼び出しごとに払わないよう cliPath 単位でキャッシュし、
 //   呼び出しごとには短命セッションだけを作って捨てる。
-// - `availableTools: []` で Copilot 内蔵ツール（シェル実行・ファイル編集等）を全て
-//   無効化し、純粋なテキスト生成器として使う。Graphium 側のツール実行は
-//   text-tool-call フォールバック（agent-loop）が担う。
+// - LanguageModel 経路（doGenerate / doStream）では `availableTools: []` で Copilot 内蔵
+//   ツール（シェル実行・ファイル編集等）を全て無効化し、純粋なテキスト生成器として使う。
+// - Graphium のツール（MCP）を使う呼び出しは runCopilotWithTools（下）で、SDK に
+//   ツールを handler 付きで渡してネイティブに実行させる。agent-loop がツール有無で
+//   経路を振り分ける。
 // - AI SDK は stateless、Copilot セッションは stateful。メッセージ履歴は 1 本の
 //   テキストに平坦化して送る。
 // - system プロンプトは systemMessage: { mode: "replace" } で全置換し、Copilot 既定の
@@ -264,14 +266,22 @@ type TurnCallbacks = {
 };
 
 /**
- * 1 ターン分のプロンプトを送信し、完了（turn_end / idle）まで待つ。
+ * 1 ターン分のプロンプトを送信し、完了まで待つ。
  * イベント購読とタイムアウト・abort の後始末をここに集約する。
+ *
+ * 完了の判定は `waitForIdle` で変わる:
+ * - false（既定・ツールなし）: 最初の assistant.turn_end で完了。1 往復なのでこれで足りる。
+ * - true（ツールあり）: session.idle まで待つ。ツールを呼ぶターンは
+ *   「空の assistant.message → tool 実行 → turn_end」で一度区切られ、その後に
+ *   最終回答のターンが続く（実測: turn_end が 2 回来て最後に idle）。
+ *   最初の turn_end で止めると最終回答を取りこぼす。
  */
 async function runTurn(
   session: CopilotSession,
   promptText: string,
   abortSignal: AbortSignal | undefined,
   callbacks: TurnCallbacks,
+  waitForIdle = false,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -315,7 +325,8 @@ async function runTurn(
           callbacks.onDelta(event.data.deltaContent);
           break;
         case "assistant.message":
-          callbacks.onFinal(event.data.content);
+          // ツール実行を挟むと途中の空メッセージも来る。空は最終回答を上書きしない。
+          if (event.data.content || !waitForIdle) callbacks.onFinal(event.data.content);
           break;
         case "assistant.usage":
           callbacks.onUsage(mapCopilotUsage(event.data), event.data.finishReason);
@@ -324,6 +335,8 @@ async function runTurn(
           settle(errorFromSessionEvent(event.data));
           break;
         case "assistant.turn_end":
+          if (!waitForIdle) settle();
+          break;
         case "session.idle":
           settle();
           break;
@@ -375,11 +388,14 @@ async function prepareCall(
     }
   }
   if (options.tools && options.tools.length > 0) {
+    // LanguageModelV3 経路（generateText 経由）では AI SDK が execute を剥がして
+    // 渡してくるため、ここではツールを実行できない。ツール付きの呼び出しは
+    // agent-loop が runCopilotWithTools（下）へ振り分けるので、通常ここには来ない。
     warnings.push({
       type: "unsupported",
       feature: "tools",
       details:
-        "copilot-subscription does not expose native tool calling; Graphium uses the text-tool-call fallback instead",
+        "copilot-subscription runs tools through runCopilotWithTools, not through the LanguageModel interface",
     });
   }
 
@@ -409,6 +425,171 @@ async function disposeSession(
 ): Promise<void> {
   // セッションは ~/.copilot 配下に状態が残るため、使い捨てた分は削除しておく
   await client.deleteSession(session.sessionId).catch(() => {});
+}
+
+// ── ツール付き実行（Copilot をエージェントとして扱う経路） ──
+//
+// AI SDK の LanguageModelV3 経路（generateText → doGenerate）では、AI SDK がツールの
+// `execute` を剥がして {name, description, inputSchema} だけをプロバイダに渡す。
+// プロバイダの立場では実行関数が手に入らないので、Copilot SDK の handler に何も
+// 入れられない。一方 Copilot SDK は「handler 付きでツールを渡せば、モデルが呼んだ
+// ときに SDK が handler を実行して結果をモデルへ返す」までを CLI 側で一気に回す。
+//
+// そこで generateText を経由せず、agent-loop から直接この関数を呼ぶ。runAgentLoop は
+// execute 付きの tools を持っているので、それを Copilot SDK の Tool（handler 付き）に
+// 包んで渡し、handler の中で AI SDK の execute を呼ぶ。ツール呼び出しの記録は
+// handler 内で自分で取る（引数・結果・所要時間を確実に握れる）。
+//
+// 実測（2026-08-18、CLI 1.0.80 / SDK 1.0.9）: skipPermission: true が無いと
+// "Permission denied and could not request permission from user" で止まる。
+// Graphium のツールは MCP 経由でユーザーが有効化したものなので、追加の許可 UI は
+// 出さずに実行してよい。
+
+/** AI SDK の tool 定義（execute 付き）の最小形。agent-loop から渡ってくる形と揃える */
+export type ExecutableTool = {
+  description?: string;
+  inputSchema: unknown;
+  execute?: (input: unknown, options: unknown) => Promise<unknown> | unknown;
+};
+
+export type CopilotToolCallRecord = {
+  tool_name: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  duration_ms: number;
+};
+
+export type RunCopilotWithToolsParams = {
+  settings: CopilotModelSettings;
+  systemPrompt: string;
+  /** AI SDK の ModelMessage 配列（flattenPromptForCopilot でテキストに平坦化する） */
+  prompt: LanguageModelV3Prompt;
+  tools: Record<string, ExecutableTool>;
+  abortSignal?: AbortSignal;
+};
+
+export type RunCopilotWithToolsResult = {
+  text: string;
+  toolCalls: CopilotToolCallRecord[];
+  usage: LanguageModelV3Usage;
+  finishReason: LanguageModelV3FinishReason;
+  warnings: SharedV3Warning[];
+};
+
+/** AI SDK の inputSchema（Zod / jsonSchema() ラッパー / 生 JSON Schema）を JSON Schema オブジェクトへ */
+async function toJsonSchema(inputSchema: unknown): Promise<Record<string, unknown>> {
+  try {
+    const { asSchema } = await import("ai");
+    const schema = asSchema(inputSchema as never);
+    const resolved = await Promise.resolve(schema.jsonSchema);
+    if (resolved && typeof resolved === "object") return resolved as Record<string, unknown>;
+  } catch {
+    // 下のフォールバックへ
+  }
+  return { type: "object", properties: {} };
+}
+
+/** ツール実行結果を記録用のオブジェクトに正規化する（web-sources 等が output を読む） */
+function normalizeToolOutput(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (raw == null) return {};
+  return { result: raw };
+}
+
+/**
+ * Copilot にツールを渡して 1 ターン実行し、最終テキストとツール呼び出しの記録を返す。
+ * ツールの実行ループは Copilot CLI 側が回す（モデル → handler → モデル …）。
+ */
+export async function runCopilotWithTools(
+  params: RunCopilotWithToolsParams,
+): Promise<RunCopilotWithToolsResult> {
+  const { settings, systemPrompt, prompt, tools, abortSignal } = params;
+  const { system: systemFromPrompt, promptText, warnings } = flattenPromptForCopilot(prompt);
+  // agent-loop は system を別引数で持つ。prompt 側にも system が入っていれば結合する。
+  const system = [systemPrompt, systemFromPrompt].filter((s) => s && s.trim()).join("\n\n");
+
+  const { defineTool } = await import("@github/copilot-sdk");
+  const toolCalls: CopilotToolCallRecord[] = [];
+  const sdkTools = await Promise.all(
+    Object.entries(tools).map(async ([name, tool]) =>
+      defineTool(name, {
+        description: tool.description,
+        parameters: await toJsonSchema(tool.inputSchema),
+        // Graphium のツールはユーザーが設定で有効化した MCP。追加の許可プロンプトは出さない。
+        skipPermission: true,
+        handler: async (args: unknown) => {
+          const startedAt = Date.now();
+          const input = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+          if (!tool.execute) {
+            const output = { error: `tool "${name}" has no execute` };
+            toolCalls.push({ tool_name: name, input, output, duration_ms: 0 });
+            return output;
+          }
+          try {
+            const raw = await tool.execute(input, { toolCallId: `${name}:${toolCalls.length}`, messages: [] });
+            const output = normalizeToolOutput(raw);
+            toolCalls.push({ tool_name: name, input, output, duration_ms: Date.now() - startedAt });
+            return raw ?? output;
+          } catch (err) {
+            // ツール側の失敗はモデルに見せて続行させる（text-tools ループと同じ扱い）。
+            const message = err instanceof Error ? err.message : String(err);
+            const output = { error: message };
+            toolCalls.push({ tool_name: name, input, output, duration_ms: Date.now() - startedAt });
+            return output;
+          }
+        },
+      }),
+    ),
+  );
+
+  const client = await getClient(settings.cliPath);
+  let session: CopilotSession;
+  try {
+    session = await client.createSession({
+      model: resolveCopilotModelId(settings.modelId),
+      clientName: "graphium",
+      tools: sdkTools,
+      // 渡した Graphium ツールだけを見せる。Copilot 内蔵ツール（シェル・ファイル編集）は出さない。
+      availableTools: Object.keys(tools),
+      ...(system ? { systemMessage: { mode: "replace" as const, content: system } } : {}),
+    });
+  } catch (err) {
+    dropClient(settings.cliPath);
+    throw normalizeCopilotError(err);
+  }
+
+  let deltaText = "";
+  let finalText: string | undefined;
+  let usage = mapCopilotUsage(undefined);
+  let finishReason = mapCopilotFinishReason(undefined);
+  try {
+    await runTurn(session, promptText, abortSignal, {
+      onDelta: (t) => {
+        deltaText += t;
+      },
+      onFinal: (t) => {
+        // ツール呼び出しを挟むと assistant.message が複数回来る（途中の「〜を調べます」と
+        // 最終回答）。最後に来たものが最終回答。
+        finalText = t;
+      },
+      onUsage: (u, reason) => {
+        usage = u;
+        finishReason = mapCopilotFinishReason(reason);
+      },
+    }, /* waitForIdle */ true);
+  } catch (err) {
+    throw normalizeCopilotError(err);
+  } finally {
+    await disposeSession(client, session);
+  }
+
+  return {
+    text: finalText ?? deltaText,
+    toolCalls,
+    usage,
+    finishReason,
+    warnings,
+  };
 }
 
 class CopilotSubscriptionLanguageModel implements LanguageModelV3 {
