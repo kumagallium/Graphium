@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.39.2](https://github.com/kumagallium/Graphium/compare/v0.39.1...v0.39.2) - 2026-08-18
+
+- feat(ai): make knowledge generation, regeneration and discovery stoppable by @kumagallium in https://github.com/kumagallium/Graphium/pull/723
+- feat(ai): run MCP tools natively through GitHub Copilot by @kumagallium in https://github.com/kumagallium/Graphium/pull/725
+
 ## [v0.39.1](https://github.com/kumagallium/Graphium/compare/v0.39.0...v0.39.1) - 2026-08-17
 
 - fix(ai): embed only the question in cross-search, and log why the sidecar dies by @kumagallium in https://github.com/kumagallium/Graphium/pull/720
