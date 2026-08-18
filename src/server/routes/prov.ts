@@ -45,6 +45,8 @@ async function generateProvBlocksWithRetry(opts: {
   userMessage: string;
   language: string;
   feature: "prov.from-url" | "prov.from-pdf";
+  /** クライアントが接続を切ったら LLM 呼び出しも止める（再試行も含めて） */
+  abortSignal?: AbortSignal;
 }): Promise<{ parsed: ProvIngesterOutput; result: AgentRunResult }> {
   const model = await createModel(opts.modelConfig);
   const baseMessages = [{ role: "user" as const, content: opts.userMessage }];
@@ -59,6 +61,7 @@ async function generateProvBlocksWithRetry(opts: {
       maxSteps: 1,
       feature: opts.feature,
       modelConfig: opts.modelConfig,
+      ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
     });
 
   let result = await run(baseMessages);
@@ -139,6 +142,7 @@ app.post("/ingest-url", async (c) => {
       userMessage,
       language,
       feature: "prov.from-url",
+      abortSignal: c.req.raw.signal,
     });
 
     if (parsed.blocks.length === 0) {
@@ -207,6 +211,7 @@ app.post("/ingest-pdf", async (c) => {
       userMessage,
       language,
       feature: "prov.from-pdf",
+      abortSignal: c.req.raw.signal,
     });
 
     if (parsed.blocks.length === 0) {

@@ -118,6 +118,7 @@ app.post("/ingest", async (c) => {
       maxSteps: 1,
       feature: "wiki.ingest",
       modelConfig,
+      abortSignal: c.req.raw.signal,
     });
 
     const wikis = parseIngesterOutput(result.message);
@@ -226,6 +227,7 @@ app.post("/lint", async (c) => {
       maxSteps: 1,
       feature: "wiki.lint",
       modelConfig,
+      abortSignal: c.req.raw.signal,
     });
 
     const llmIssues = parseLinterOutput(result.message);
@@ -322,6 +324,7 @@ app.post("/rewrite", async (c) => {
       maxSteps: 1,
       feature: "wiki.rewrite",
       modelConfig,
+      abortSignal: c.req.raw.signal,
     });
 
     const rewritten = parseRewriterOutput(result.message);
@@ -377,6 +380,7 @@ app.post("/cross-update", async (c) => {
       maxSteps: 1,
       feature: "wiki.cross-update",
       modelConfig,
+      abortSignal: c.req.raw.signal,
     });
 
     const proposals = parseCrossUpdateOutput(result.message);
@@ -426,6 +430,7 @@ app.post("/atomize", async (c) => {
       maxSteps: 1,
       feature: "wiki.atomize",
       modelConfig,
+      abortSignal: c.req.raw.signal,
     });
     const idToTitle = new Map<string, string>(body.concepts.map((c) => [c.id, c.title]));
     // フォール検証ジャッジ用: id → ClaimSnapshot（title + bodyPreview を判定に渡す）。
@@ -472,6 +477,7 @@ app.post("/atomize", async (c) => {
           maxSteps: 1,
           feature: "wiki.transfer-judge",
           modelConfig,
+          abortSignal: c.req.raw.signal,
         });
         const verdicts = parseTransferJudgeOutput(judgeRes.message);
         atoms = atoms.map((a) => ({ ...a }));
@@ -528,6 +534,7 @@ app.post("/atomize", async (c) => {
           maxSteps: 1,
           feature: "wiki.fold-judge",
           modelConfig,
+          abortSignal: c.req.raw.signal,
         });
         const verdicts = parseFoldJudgeOutput(foldRes.message);
         atoms = atoms.map((a) => ({ ...a }));
@@ -583,6 +590,7 @@ app.post("/atomize", async (c) => {
         maxSteps: 1,
         feature: "wiki.relift",
         modelConfig,
+        abortSignal: c.req.raw.signal,
       });
       const rewrites = parseReliftOutput(reliftRes.message);
       atoms = atoms.map((a) => ({ ...a }));

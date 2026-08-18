@@ -109,3 +109,51 @@ export const WithErrors: Story = {
     />
   ),
 };
+
+/** 停止ボタン付き — 処理中に onStop を渡すとヘッダー右に ■ が出る。押すと「停止しています…」に変わり、
+ *  実装側が fetch を abort → 残りを aborted に畳む。ここでは 800ms 後にその結果を再現する */
+function StoppableToast() {
+  const running: IngestToastState = {
+    items: [
+      { id: "1", status: "success", noteTitle: "Cu粉末の焼結実験（第1回）", result: "3 claims" },
+      { id: "2", status: "generating", noteTitle: "XRD 分析結果（Kimi で数分かかる）", detail: "AI analyzing..." },
+      { id: "3", status: "queued", noteTitle: "第2回焼結実験の計画" },
+      { id: "4", status: "queued", noteTitle: "シリカ管の前処理手順" },
+    ],
+  };
+  const [state, setState] = useState<IngestToastState>(running);
+  return (
+    <div className="min-h-[420px] p-4 space-y-2">
+      <p className="text-xs text-muted-foreground max-w-md">
+        ヘッダー右端の ■ が「停止」。押すと処理中の 1 件と残りのキューが「中断しました」に畳まれ、
+        完了済み（✓）はそのまま残る。
+      </p>
+      {state === null && (
+        <button className="text-xs underline text-primary" onClick={() => setState(running)}>
+          トーストを再表示
+        </button>
+      )}
+      <IngestToast
+        state={state}
+        onDismiss={() => setState(null)}
+        onStop={() => {
+          setTimeout(() => {
+            setState({
+              items: [
+                { id: "1", status: "success", noteTitle: "Cu粉末の焼結実験（第1回）", result: "3 claims" },
+                { id: "2", status: "aborted", noteTitle: "XRD 分析結果（Kimi で数分かかる）", result: "中断しました" },
+                { id: "3", status: "aborted", noteTitle: "第2回焼結実験の計画", result: "中断しました" },
+                { id: "4", status: "aborted", noteTitle: "シリカ管の前処理手順", result: "中断しました" },
+              ],
+            });
+          }, 800);
+        }}
+      />
+    </div>
+  );
+}
+
+export const Stoppable: Story = {
+  name: "停止ボタン（処理中 → 中断）",
+  render: () => <StoppableToast />,
+};

@@ -19,6 +19,7 @@
 // React 外 singleton + listener 通知で実現する。
 
 import type { ChatMessage, GraphiumDocument, ScopeChat } from "../../lib/document-types";
+import { isAbortError } from "../../lib/abort-error";
 
 export type ChatRunStatus = "running" | "done" | "error" | "aborted";
 
@@ -82,14 +83,6 @@ export type ChatRunApplyHandle = {
 
 /** run が完了（done / error）したときに呼ばれるリスナー */
 type ChatRunListener = (run: ChatRunState) => void;
-
-/** fetch / AI SDK が中断時に投げる AbortError を判定する（DOMException / 非 DOM 環境の両対応） */
-function isAbortError(err: unknown): boolean {
-  if (typeof DOMException !== "undefined" && err instanceof DOMException) {
-    return err.name === "AbortError";
-  }
-  return typeof err === "object" && err !== null && (err as { name?: string }).name === "AbortError";
-}
 
 class ChatRunManager {
   private runs = new Map<string, ChatRunState>();

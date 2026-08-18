@@ -154,8 +154,9 @@ export type WikiSummaryForSettings = {
 
 export type RegenerateWikiHandler = (
   wikiId: string,
-  options?: { model?: string },
-) => Promise<{ ok: boolean; error?: string }>;
+  /** signal: 進行中の LLM 呼び出しごと中断する（一括再生成のキャンセル用） */
+  options?: { model?: string; signal?: AbortSignal },
+) => Promise<{ ok: boolean; error?: string; aborted?: boolean }>;
 
 export type DiscoveryProgressInfo = {
   iteration: number;
@@ -169,9 +170,12 @@ export type DiscoveryProgressInfo = {
 };
 export type DiscoveryHandler = (
   onProgress?: (info: DiscoveryProgressInfo) => void,
-  /** 任意オプション。テーマ駆動 Synthesizer など、handler によっては未使用。 */
-  options?: { theme?: string },
-) => Promise<{ ok: boolean; created: number; iterations: number; error?: string }>;
+  /**
+   * 任意オプション。テーマ駆動 Synthesizer など、handler によっては未使用。
+   * signal: 進行中の LLM 呼び出しごと中断する（発見のキャンセル用）。
+   */
+  options?: { theme?: string; signal?: AbortSignal },
+) => Promise<{ ok: boolean; created: number; iterations: number; error?: string; aborted?: boolean }>;
 
 type BulkFailedItem = { id: string; title: string; error?: string };
 type BulkProgress = {
@@ -3210,6 +3214,9 @@ function MaintenanceTab({
   // 既存 synthesis ファイルの物理データは保持するが、一括 Regenerate の対象には出さない。
   const KINDS: WikiKind[] = ["claim", "summary", "atom"];
   const [cancelling, setCancelling] = useState(false);
+  // 一括再生成 / 洞察発見の進行中 fetch を切るためのハンドル。キャンセルで abort() する。
+  const bulkAbortRef = useRef<AbortController | null>(null);
+  const atomizeAbortRef = useRef<AbortController | null>(null);
   const [reembedRunning, setReembedRunning] = useState(false);
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
   const [reembedError, setReembedError] = useState<string | null>(null);
@@ -3239,17 +3246,25 @@ function MaintenanceTab({
     setBulkRunning(true);
     setCancelling(false);
     cancelBulkRef.current = false;
+    // キャンセルで進行中の LLM 呼び出しも切る（以前は「次の 1 件に進む前」にしか止まれなかった）
+    const controller = new AbortController();
+    bulkAbortRef.current = controller;
     setBulkProgress({ done: 0, total: items.length, failed: 0, failedItems: [] });
 
     let done = 0;
     let failed = 0;
     const failedItems: BulkFailedItem[] = [];
     for (const w of items) {
-      if (cancelBulkRef.current) break;
+      if (cancelBulkRef.current || controller.signal.aborted) break;
       const kind = wikiSummaries.find((s) => s.id === w.id)?.kind;
       const modelForKind = kind === "synthesis" ? effectiveSynthesisModel : effectiveDefaultModel;
       setBulkProgress({ done, total: items.length, failed, current: w.title, currentModel: modelForKind, failedItems });
-      const result = await onRegenerateWiki(w.id, modelForKind ? { model: modelForKind } : undefined);
+      const result = await onRegenerateWiki(w.id, {
+        ...(modelForKind ? { model: modelForKind } : {}),
+        signal: controller.signal,
+      });
+      // ユーザーの中断は失敗に数えない（done にも数えず、そのまま抜ける）
+      if (result.aborted || controller.signal.aborted) break;
       if (!result.ok) {
         failed += 1;
         failedItems.push({ id: w.id, title: w.title, error: result.error });
@@ -3258,6 +3273,7 @@ function MaintenanceTab({
       setBulkProgress({ done, total: items.length, failed, failedItems });
     }
 
+    bulkAbortRef.current = null;
     setBulkRunning(false);
     setCancelling(false);
   };
@@ -3271,6 +3287,9 @@ function MaintenanceTab({
   const handleCancel = () => {
     cancelBulkRef.current = true;
     setCancelling(true);
+    // 進行中の 1 件の fetch を切る → サーバー側の LLM 呼び出しも止まる
+    bulkAbortRef.current?.abort();
+    atomizeAbortRef.current?.abort();
   };
 
   const kindLabel = (k: WikiKind) =>
@@ -3288,6 +3307,8 @@ function MaintenanceTab({
 
     setAtomizeRunning(true);
     setAtomizeProgress({ status: "running", inputCount: conceptCount, iteration: 1, created: 0 });
+    const atomizeController = new AbortController();
+    atomizeAbortRef.current = atomizeController;
 
     const result = await onRunAtomizeDiscovery((info) => {
       setAtomizeProgress({
@@ -3300,8 +3321,12 @@ function MaintenanceTab({
         clusterSize: info.clusterSize,
         clusterMemberTitles: info.clusterMemberTitles,
       });
-    });
+    }, { signal: atomizeController.signal });
+    atomizeAbortRef.current = null;
     if (result.ok) {
+      setAtomizeProgress({ status: "done", inputCount: conceptCount, created: result.created, iterations: result.iterations });
+    } else if (result.aborted) {
+      // ユーザーの中断。作成済み分の件数は見せる（失敗表示にはしない）
       setAtomizeProgress({ status: "done", inputCount: conceptCount, created: result.created, iterations: result.iterations });
     } else {
       setAtomizeProgress({ status: "error", inputCount: conceptCount, error: result.error });
@@ -3323,6 +3348,7 @@ function MaintenanceTab({
           progress={atomizeProgress}
           running={atomizeRunning}
           onRun={handleRunAtomizeDiscovery}
+          onCancel={() => atomizeAbortRef.current?.abort()}
           discoveringKey="settings.maintenance.atomize.discovering"
           doneKey="settings.maintenance.atomize.doneCount"
           runKey="settings.maintenance.atomize.run"
@@ -3615,6 +3641,8 @@ type DiscoveryCardProps = {
   progress: DiscoveryRunState | null;
   running: boolean;
   onRun: () => void;
+  /** 実行中に押せる中断。進行中の LLM 呼び出しごと止める */
+  onCancel?: () => void;
   discoveringKey: string;
   doneKey: string;
   runKey: string;
@@ -3630,6 +3658,7 @@ function DiscoveryCard({
   progress,
   running,
   onRun,
+  onCancel,
   discoveringKey,
   doneKey,
   runKey,
@@ -3652,7 +3681,7 @@ function DiscoveryCard({
             <div className="flex flex-col gap-1 text-muted-foreground">
               <div className="flex items-center gap-2">
                 <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
-                <span>
+                <span className="flex-1 min-w-0">
                   {t(discoveringKey).replace("{count}", String(progress.inputCount))}
                   {progress.iteration !== undefined && (
                     <span className="ml-2 opacity-70">
@@ -3660,6 +3689,11 @@ function DiscoveryCard({
                     </span>
                   )}
                 </span>
+                {onCancel && running && (
+                  <Button variant="ghost" size="sm" onClick={onCancel} className="shrink-0 h-6 px-2 text-xs">
+                    {t("common.cancel")}
+                  </Button>
+                )}
               </div>
               {progress.clusterLabel && (
                 <div className="ml-4 text-xs opacity-80 break-words">

@@ -65,6 +65,7 @@ app.post("/", async (c) => {
       maxSteps: 1,
       feature: "translate.pdf",
       modelConfig,
+      abortSignal: c.req.raw.signal,
       temperature: 0, // 翻訳は実行間のブレを抑えるため決定的に
 
     });
@@ -111,6 +112,7 @@ app.post("/glossary", async (c) => {
       maxSteps: 1,
       feature: "translate.glossary",
       modelConfig,
+      abortSignal: c.req.raw.signal,
       temperature: 0, // 用語集も毎回同じ結果になるよう決定的に
 
     });

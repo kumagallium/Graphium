@@ -28,7 +28,7 @@ Each kind carries a semantic type badge. Claims have a role (**Finding**, **Deci
 
 The main entry point is the **Add to Knowledge** chip in the note editor header (it also appears in the side peek and in the note's header menu). Click it and the AI reads the note, then writes a summary and extracts claims from it.
 
-Progress appears in a toast at the corner of the screen — **Generating Knowledge (1/3)** — which you can collapse with **Minimize** and reopen with **Show details**. When it finishes you'll see **Done: 2 generated**, and the chip flips to **In Knowledge**; clicking it now jumps to the generated entry. Running it again on an updated note regenerates the existing entries rather than duplicating them.
+Progress appears in a toast at the corner of the screen — **Generating Knowledge (1/3)** — which you can collapse with **Minimize** and reopen with **Show details**. While it runs, the toast header also has a **Stop** button (■): it interrupts the in-flight AI call, keeps whatever already finished, and marks the rest **Stopped** — useful when a slow model turns out to be slower than you expected. When it finishes you'll see **Done: 2 generated**, and the chip flips to **In Knowledge**; clicking it now jumps to the generated entry. Running it again on an updated note regenerates the existing entries rather than duplicating them.
 
 Other routes into knowledge:
 

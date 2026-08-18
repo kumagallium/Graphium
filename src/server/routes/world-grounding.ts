@@ -123,6 +123,7 @@ app.post("/check", async (c) => {
       maxSteps: 1,
       feature: "world-grounding",
       modelConfig,
+      abortSignal: c.req.raw.signal,
     });
     const parsed = parseWorldGroundingOutput(
       llmResult.message,
