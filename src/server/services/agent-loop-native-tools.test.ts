@@ -3,7 +3,7 @@
 // 「まずネイティブで投げ、tools 起因のエラーが出たら text-tool-call 経路へ落として記憶する」
 // という runAgentLoop の分岐が、実際に endpoint の挙動どおりに経路を選ぶかを見る。
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { jsonSchema } from "ai";
 import { runAgentLoop } from "./agent-loop.js";
 import {
@@ -167,17 +167,59 @@ describe("openai-compatible のネイティブ tool calling 探索", () => {
 describe("サブスク型プロバイダ", () => {
   beforeEach(() => resetNativeToolsVerdicts());
 
-  it("copilot-subscription はネイティブを試さず最初から text-tool-call 経路", async () => {
-    const { model, calls } = makeModel({
-      throwOnTools: new Error("ネイティブで呼ばれてはいけない"),
+  it("copilot-subscription + tools は generateText を通らず Copilot 専用経路（runCopilotWithTools）へ", async () => {
+    // 専用経路は Copilot SDK を動的 import して CLI を spawn するので、ここでは差し替える。
+    // 「generateText（= ダミーモデル）が一切呼ばれない」ことが振り分けの証拠。
+    const copilot = await import("./copilot-subscription.js");
+    const spy = vi.spyOn(copilot, "runCopilotWithTools").mockResolvedValue({
+      text: "from copilot",
+      toolCalls: [{ tool_name: "search", input: { q: "x" }, output: { hits: [] }, duration_ms: 1 }],
+      usage: { inputTokens: { total: 10 }, outputTokens: { total: 5 } } as never,
+      finishReason: { unified: "stop", raw: "stop" },
+      warnings: [],
     });
-    await run(model, {
-      id: "m2",
-      name: "copilot",
-      provider: "copilot-subscription",
+    const llm = await import("./llm.js");
+    vi.spyOn(llm, "resolveCopilotBinaryPath").mockReturnValue("/fake/copilot");
+    try {
+      const { model, calls } = makeModel({
+        throwOnTools: new Error("generateText 経由で呼ばれてはいけない"),
+      });
+      const result = await run(model, {
+        id: "m2",
+        name: "copilot",
+        provider: "copilot-subscription",
+        modelId: "test-model",
+        apiKey: "",
+        apiBase: null,
+      });
+      expect(calls).toHaveLength(0);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(result.message).toBe("from copilot");
+      expect(result.toolCalls.map((t) => t.tool_name)).toEqual(["search"]);
+      // provider レベルの v3 usage がフラットな tokenUsage に写っている
+      expect(result.tokenUsage.input_tokens).toBe(10);
+      expect(result.tokenUsage.output_tokens).toBe(5);
+      expect(result.tokenUsage.total_tokens).toBe(15);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("copilot-subscription で tools が無ければ従来どおり generateText 経路", async () => {
+    const { model, calls } = makeModel({});
+    await runAgentLoop({
+      model: model as never,
       modelId: "test-model",
-      apiKey: "",
-      apiBase: null,
+      systemPrompt: "s",
+      messages: [{ role: "user", content: "hi" }],
+      modelConfig: {
+        id: "m2",
+        name: "copilot",
+        provider: "copilot-subscription",
+        modelId: "test-model",
+        apiKey: "",
+        apiBase: null,
+      } as never,
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].hadTools).toBe(false);

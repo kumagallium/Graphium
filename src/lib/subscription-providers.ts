@@ -4,7 +4,10 @@
 // 共通する性質:
 //   - API キーを持たない（空キーが正常状態）
 //   - temperature 等のサンプリングパラメータは CLI 側が管理し指定不可
-//   - AI SDK ネイティブのツール呼び出し非対応（text-tool-call フォールバックを使う）
+//   - AI SDK の LanguageModel 経路（generateText）ではツールを実行できない。
+//     copilot-subscription は agent-loop の専用経路（runCopilotAgentLoop）で SDK に
+//     ツールを handler 付きで渡してネイティブに実行する。他のサブスク型を足すときは
+//     同じ経路を用意するか、text-tool-call フォールバックに任せる
 //   - 従量課金が発生しない（使用量ダッシュボードでコスト計算対象外）
 
 export const SUBSCRIPTION_PROVIDERS = [
