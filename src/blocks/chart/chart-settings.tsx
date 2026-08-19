@@ -597,7 +597,7 @@ const styleStyles: Record<string, React.CSSProperties> = {
   },
 };
 
-type Tab = "typeSeries" | "axes" | "appearance";
+type Tab = "typeSeries" | "xAxis" | "yAxis" | "appearance";
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
 
@@ -663,6 +663,8 @@ export function ChartSettingsPanel({
   const [expandedSeries, setExpandedSeries] = useState<number | null>(null);
   const isHistogram = config.chartType === "histogram";
   const rightAxisInUse = usesRightAxis(config) && !isHistogram;
+  // 分布に切り替えると横軸タブが消えるので、選択中だった場合は縦軸へ寄せる
+  const activeTab: Tab = isHistogram && tab === "xAxis" ? "yAxis" : tab;
 
   // X 軸の実効的な目盛り種類（min/max 入力の有効・無効の判定に使う）
   const effectiveXKind = useMemo(() => {
@@ -740,7 +742,9 @@ export function ChartSettingsPanel({
         {(
           [
             ["typeSeries", t("chart.tabTypeSeries")],
-            ["axes", t("chart.tabAxes")],
+            // 分布は階級で横軸が決まるので、横軸タブは持たない
+            ...(isHistogram ? [] : [["xAxis", t("chart.tabXAxis")] as [Tab, string]]),
+            ["yAxis", t("chart.tabYAxis")],
             ["appearance", t("chart.tabAppearance")],
           ] as Array<[Tab, string]>
         ).map(([key, label]) => (
@@ -748,16 +752,16 @@ export function ChartSettingsPanel({
             key={key}
             type="button"
             role="tab"
-            aria-selected={tab === key}
+            aria-selected={activeTab === key}
             onClick={() => setTab(key)}
-            style={{ ...styles.tab, ...(tab === key ? styles.tabActive : {}) }}
+            style={{ ...styles.tab, ...(activeTab === key ? styles.tabActive : {}) }}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {tab === "typeSeries" && (
+      {activeTab === "typeSeries" && (
         <div style={styles.body}>
           <div style={styles.sectionLabel}>{t("chart.sectionType")}</div>
           <select
@@ -1048,67 +1052,69 @@ export function ChartSettingsPanel({
         </div>
       )}
 
-      {tab === "axes" && (
+      {/* 横軸と縦軸を別タブにしてあるのは、詳細設定と積み重ねを開いた状態でも
+          パネルがスクロールせずに収まる高さに保つため */}
+      {activeTab === "xAxis" && !isHistogram && (
         <div style={styles.body}>
-          {!isHistogram && (
-            <>
-              <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
-                <input
-                  type="text"
-                  value={config.xAxisName}
-                  placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => onChange({ xAxisName: e.target.value })}
-                  style={{ ...styles.input, flex: 1 }}
-                />
-              </label>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.axisKind")}</span>
-                <select
-                  value={config.xAxisKind}
-                  onChange={(e) => onChange({ xAxisKind: e.target.value as XAxisKindSetting })}
-                  style={{ ...styles.select, flex: 1 }}
-                >
-                  <option value="auto">{t("chart.kindAuto")}</option>
-                  <option value="time">{t("chart.kindTime")}</option>
-                  <option value="value">{t("chart.kindValue")}</option>
-                  <option value="category">{t("chart.kindCategory")}</option>
-                </select>
-              </label>
-              <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
-                <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
-                <input
-                  type="text"
-                  value={config.xMin}
-                  placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
-                  disabled={effectiveXKind === "category"}
-                  onChange={(e) => onChange({ xMin: e.target.value })}
-                  style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
-                />
-                <span style={styles.rangeDash}>–</span>
-                <input
-                  type="text"
-                  value={config.xMax}
-                  placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
-                  disabled={effectiveXKind === "category"}
-                  onChange={(e) => onChange({ xMax: e.target.value })}
-                  style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
-                />
-              </label>
-              {/* なぜ入力できないのかを、その場で理由と抜け道つきで見せる */}
-              {effectiveXKind === "category" && (
-                <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
-                  {t("chart.minMaxCategoryHint")}
-                </div>
-              )}
-              <AxisDetailEditor
-                detail={config.xAxisDetail}
-                onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
+            <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
+            <label style={styles.fieldRow}>
+              <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
+              <input
+                type="text"
+                value={config.xAxisName}
+                placeholder={t("chart.autoPlaceholder")}
+                onChange={(e) => onChange({ xAxisName: e.target.value })}
+                style={{ ...styles.input, flex: 1 }}
               />
-            </>
-          )}
+            </label>
+            <label style={styles.fieldRow}>
+              <span style={styles.fieldLabel}>{t("chart.axisKind")}</span>
+              <select
+                value={config.xAxisKind}
+                onChange={(e) => onChange({ xAxisKind: e.target.value as XAxisKindSetting })}
+                style={{ ...styles.select, flex: 1 }}
+              >
+                <option value="auto">{t("chart.kindAuto")}</option>
+                <option value="time">{t("chart.kindTime")}</option>
+                <option value="value">{t("chart.kindValue")}</option>
+                <option value="category">{t("chart.kindCategory")}</option>
+              </select>
+            </label>
+            <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
+              <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
+              <input
+                type="text"
+                value={config.xMin}
+                placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
+                disabled={effectiveXKind === "category"}
+                onChange={(e) => onChange({ xMin: e.target.value })}
+                style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+              />
+              <span style={styles.rangeDash}>–</span>
+              <input
+                type="text"
+                value={config.xMax}
+                placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
+                disabled={effectiveXKind === "category"}
+                onChange={(e) => onChange({ xMax: e.target.value })}
+                style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+              />
+            </label>
+            {/* なぜ入力できないのかを、その場で理由と抜け道つきで見せる */}
+            {effectiveXKind === "category" && (
+              <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
+                {t("chart.minMaxCategoryHint")}
+              </div>
+            )}
+            <AxisDetailEditor
+              detail={config.xAxisDetail}
+              onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
+            />
+        </div>
+      )}
 
+      {activeTab === "yAxis" && (
+        <div style={styles.body}>
           <div style={styles.sectionLabel}>
             {rightAxisInUse ? t("chart.yAxisLeft") : t("chart.yAxis")}
           </div>
@@ -1194,7 +1200,7 @@ export function ChartSettingsPanel({
         </div>
       )}
 
-      {tab === "appearance" && (
+      {activeTab === "appearance" && (
         <div style={styles.body}>
           <div style={styles.sectionLabel}>{t("chart.caption")}</div>
           <input
@@ -1317,8 +1323,9 @@ const styles: Record<string, React.CSSProperties> = {
     top: 28,
     right: 0,
     width: 300,
-    maxHeight: 440,
-    overflowY: "auto",
+    // 画面に入るだけ高くする。440 固定だと詳細設定を開いた時点で必ずスクロールした
+    maxHeight: "min(620px, calc(100vh - 96px))",
+    overflow: "hidden",
     display: "flex",
     flexDirection: "column",
     borderRadius: 8,
@@ -1337,6 +1344,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    flexShrink: 0,
   },
   title: {
     fontSize: 13,
@@ -1358,6 +1366,7 @@ const styles: Record<string, React.CSSProperties> = {
   tabBar: {
     display: "flex",
     gap: 4,
+    flexShrink: 0,
   },
   tab: {
     padding: "3px 10px",
@@ -1377,6 +1386,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 6,
+    // 収まらないときだけ本文が送られる。見出しとタブは常に見えたままにする
+    overflowY: "auto",
+    minHeight: 0,
   },
   sectionLabel: {
     marginTop: 6,

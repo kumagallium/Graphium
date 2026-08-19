@@ -524,6 +524,47 @@ export const XrdStackWithSticks: StoryObj = {
   ),
 };
 
+// 並ぶ向きを逆にした形。棒は 0 起点でしか描けないので、段の土台を敷かないと
+// 上段に来た棒が枠の下端まで伸びてしまう（回帰の見張り）
+// 複合 × 積み重ね: 測定パターン（折れ線）と参考文献の回折線（棒）を積む。
+// XRD で文献をスティックで描く定番の形
+export const XrdStackWithSticksFirstBottom: StoryObj = {
+  name: "積み重ね × 複合（1 番目を下に）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={[XRD_TABLES[0], xrdStickTable("xrd-stick")]}
+        lead={XRD_LEAD}
+        chartFirst
+        config={{
+          chartType: "line",
+          series: series([
+            {
+              sourceBlockId: "xrd-sample",
+              xColumn: "2θ (deg)",
+              yColumn: "Intensity",
+              label: "測定値",
+            },
+            {
+              sourceBlockId: "xrd-stick",
+              xColumn: "2theta",
+              yColumn: "I",
+              label: "ref",
+              type: "bar",
+            },
+          ]),
+          stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
+          xMin: "20",
+          xMax: "60",
+          aspect: "wide",
+          xAxisName: "2θ (deg)",
+          yAxisName: "Intensity (a.u.)",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
 // 未設定: テーブル選択プレースホルダ（スラッシュメニュー挿入直後の状態）
 // スタック: XRD の測定 + 文献 2 件。強度の桁が違っても規格化で段の高さが揃う
 export const XrdStack: StoryObj = {
