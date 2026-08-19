@@ -668,7 +668,6 @@ export function ChartSettingsPanel({
   const effectiveXKind = useMemo(() => {
     if (config.chartType === "histogram") return "category";
     if (config.xAxisKind !== "auto") return config.xAxisKind;
-    if (config.chartType === "bar") return "category";
     const xValues = config.series.flatMap((s) => {
       const table = resolveTable(s.sourceBlockId);
       if (!table) return [];
@@ -676,7 +675,9 @@ export function ChartSettingsPanel({
       if (idx < 0) return [];
       return table.rows.map((r) => r[idx] ?? "");
     });
-    return detectXAxisKind(xValues);
+    const detected = detectXAxisKind(xValues);
+    // 棒の日時 X はカテゴリ軸のまま（buildChartData と同じ規則）
+    return config.chartType === "bar" && detected === "time" ? "category" : detected;
   }, [config.chartType, config.xAxisKind, config.series, resolveTable]);
 
   // 段名が図の中に直接出ている状態（このとき通常の凡例は描かれない）

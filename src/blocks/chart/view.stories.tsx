@@ -466,7 +466,23 @@ export const BarLineCombo: StoryObj = {
   ),
 };
 
-// 棒 × 数値 X 軸: 種類で「数値」を選ぶとカテゴリ軸を離れ、範囲も指定できる
+// 棒 × 数値 X 軸（自動）: X が数値の列なら、種類を選ばなくても数値軸に載る
+export const BarNumericAuto: StoryObj = {
+  name: "棒（自動で数値 X 軸）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "bar",
+          series: series([{ sourceBlockId: "diary-table-1", xColumn: "気圧", yColumn: "痛み" }]),
+          caption: "気圧（数値の X なので自動で数値軸）ごとの頭痛強度",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 棒 × 数値 X 軸: 数値軸なので範囲を指定できる（種類は自動のままでもよい）
 export const BarValueAxis: StoryObj = {
   name: "棒（数値 X 軸・範囲指定）",
   render: () => (
