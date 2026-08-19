@@ -107,27 +107,26 @@ function parseOptionalNumber(raw: string, positiveOnly: boolean): number | undef
  * 軸ごとの「詳細設定」（eureco 準拠の折りたたみ）:
  * 軸・軸線・目盛り・目盛りラベルの表示、ラベルの回転、目盛りの向き、グリッド。
  *
- * 縦軸に限り、末尾に積み重ね（スペクトル比較）の設定を持つ。使う場面が
- * 限られる特殊な描き方なので、常時見えるところには置かない。
+ * 開閉は親（軸タブ）が持つ。横軸と縦軸の詳細を同時に開くとパネルが 1 画面に
+ * 収まらなくなるため、開けるのは一度に 1 つだけにしてある。
  */
 function AxisDetailEditor({
   detail,
   onChange,
-  stack,
-  onStackChange,
+  open,
+  onToggle,
+  ticksLocked = false,
 }: {
   detail: AxisDetail;
   onChange: (patch: Partial<AxisDetail>) => void;
-  /** 縦軸のときだけ渡す。積み重ねの設定をこの折りたたみに同居させる */
-  stack?: StackConfig;
-  onStackChange?: (patch: Partial<StackConfig>) => void;
+  open: boolean;
+  onToggle: () => void;
+  /** 積み重ね中は縦軸の目盛りを描画側が強制的に消すため、ここの指定は効かない */
+  ticksLocked?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  // 積み重ね中は縦軸の目盛りを描画側で強制的に消すため、ここの指定は効かない
-  const ticksLocked = stack?.enabled ?? false;
   return (
     <div style={detailStyles.shell}>
-      <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
+      <button type="button" onClick={onToggle} style={detailStyles.header}>
         <span>{t("chart.advanced")}</span>
         {open ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
       </button>
@@ -199,7 +198,6 @@ function AxisDetailEditor({
               onChange={(v) => onChange({ showGrid: v })}
             />
           </div>
-          {stack && onStackChange && <StackFields stack={stack} onChange={onStackChange} />}
         </div>
       )}
     </div>
@@ -207,11 +205,11 @@ function AxisDetailEditor({
 }
 
 /**
- * 積み重ね（スペクトル比較）の設定。縦軸の「詳細設定」の末尾に置く。
+ * 積み重ね（スペクトル比較）の設定。「種類・系列」タブの種類の直下に置く。
  *
- * 縦軸の目盛りを消して系列を段に分ける描き方なので、目盛りの表示設定と同じ
- * 場所にある方がどちらが効いているのか分かる。使う場面は限られるため、
- * 折りたたみの外には出さない。
+ * 段に分けるのは軸の目盛りの設定ではなく描き方そのもので、段ごとの倍率・
+ * 段の位置も各系列が持つ。種類 → 積み重ね → 系列 と並べると、同じ図の
+ * 描き方を決めるものが一箇所にそろう。使う場面は限られるので折りたたむ。
  */
 function StackFields({
   stack,
@@ -661,6 +659,12 @@ export function ChartSettingsPanel({
 }) {
   const [tab, setTab] = useState<Tab>("typeSeries");
   const [expandedSeries, setExpandedSeries] = useState<number | null>(null);
+  // 開いている軸の詳細設定。同時に 1 つだけ開くことで、軸タブが 1 画面に収まる
+  const [openAxisDetail, setOpenAxisDetail] = useState<"x" | "y" | "yRight" | null>(null);
+  const axisDetailProps = (key: "x" | "y" | "yRight") => ({
+    open: openAxisDetail === key,
+    onToggle: () => setOpenAxisDetail((cur) => (cur === key ? null : key)),
+  });
   const isHistogram = config.chartType === "histogram";
   const rightAxisInUse = usesRightAxis(config) && !isHistogram;
 
@@ -776,6 +780,16 @@ export function ChartSettingsPanel({
               設定なので、複数系列があるときだけここで存在を知らせる */}
           {!isHistogram && config.series.length >= 2 && (
             <div style={styles.fieldHint}>{t("chart.comboHint")}</div>
+          )}
+
+          {/* 積み重ね（スペクトル比較）は軸の設定ではなく描き方。種類のすぐ下に置き、
+              段ごとの倍率・段の位置は各系列が持つ（分布は段に分けられないので出さない） */}
+          {!isHistogram && (
+            <div style={detailStyles.shell}>
+              <div style={detailStyles.body}>
+                <StackFields stack={config.stack} onChange={updateStack} />
+              </div>
+            </div>
           )}
 
           <div style={styles.sectionLabel}>{t("chart.sectionSeries")}</div>
@@ -1106,6 +1120,7 @@ export function ChartSettingsPanel({
               <AxisDetailEditor
                 detail={config.xAxisDetail}
                 onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
+                {...axisDetailProps("x")}
               />
             </>
           )}
@@ -1146,9 +1161,9 @@ export function ChartSettingsPanel({
           <AxisDetailEditor
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
-            // 積み重ねは縦軸の目盛りを消す描き方なので、縦軸の詳細設定に同居させる
-            stack={isHistogram ? undefined : config.stack}
-            onStackChange={isHistogram ? undefined : updateStack}
+            // 積み重ね中の縦軸は目盛りを描画側が消すので、ここの指定は効かない
+            ticksLocked={!isHistogram && config.stack.enabled}
+            {...axisDetailProps("y")}
           />
 
           {rightAxisInUse && (
@@ -1189,6 +1204,7 @@ export function ChartSettingsPanel({
                 onChange={(patch) =>
                   onChange({ yRightAxisDetail: { ...config.yRightAxisDetail, ...patch } })
                 }
+                {...axisDetailProps("yRight")}
               />
             </>
           )}
@@ -1318,8 +1334,9 @@ const styles: Record<string, React.CSSProperties> = {
     top: 28,
     right: 0,
     width: 300,
-    maxHeight: 440,
-    overflowY: "auto",
+    // 画面に入るだけ高くする。440 固定だと詳細設定を開いた時点で必ずスクロールした
+    maxHeight: "min(620px, calc(100vh - 96px))",
+    overflow: "hidden",
     display: "flex",
     flexDirection: "column",
     borderRadius: 8,
@@ -1338,6 +1355,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    flexShrink: 0,
   },
   title: {
     fontSize: 13,
@@ -1359,6 +1377,7 @@ const styles: Record<string, React.CSSProperties> = {
   tabBar: {
     display: "flex",
     gap: 4,
+    flexShrink: 0,
   },
   tab: {
     padding: "3px 10px",
@@ -1378,6 +1397,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 6,
+    // 収まらないときだけ本文が送られる。見出しとタブは常に見えたままにする
+    overflowY: "auto",
+    minHeight: 0,
   },
   sectionLabel: {
     marginTop: 6,

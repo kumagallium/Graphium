@@ -707,6 +707,123 @@ function buildOption(
     ...axisFromDetail(config.yRightAxisDetail),
   };
 
+  // 系列の option。積み重ね中の棒は土台の系列を挟むので、view.series と
+  // option の series は 1 対 1 にならない。ツールチップが元の値へ戻せるよう、
+  // option と同じ並びの元データ（土台は null）を tooltipSeries に持つ
+  const optionSeries: any[] = [];
+  const tooltipSeries: Array<ChartSeriesData | null> = [];
+  view.series.forEach((s, i) => {
+    const sc = config.series[i];
+    const seriesType: SeriesType = isHistogram
+      ? "bar"
+      : ((sc?.type ?? config.chartType) as SeriesType);
+    const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
+    const name = seriesName(i);
+    const points = s.points as Array<[number, number]>;
+    // 段の名前は枠の左右どちらかの端に寄せ、縦はその段が占める範囲の内側に収める。
+    // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
+    const rowExtent = inlineLabelX !== null ? rowExtentInRange(points, xMin, xMax) : null;
+    const inlineLabel = rowExtent !== null;
+    // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
+    // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
+    const baseStyle = resolveSeriesStyle(sc, seriesType);
+    // 積み重ね中だけ既定をマーカー無し・細線・小さめの点に寄せる。スペクトルは
+    // 連続曲線として読むもので、数千点にマーカーを打つと線が潰れるため。
+    // 明示的に設定されているものはそのまま尊重する
+    const style = stackActive
+      ? {
+          ...baseStyle,
+          showSymbol: sc?.showSymbol ?? false,
+          lineWidth: sc?.lineWidth ?? ("thin" as const),
+          symbolSize: sc?.symbolSize ?? ("small" as const),
+        }
+      : baseStyle;
+    // 棒は必ず 0 から立ち上がる（ECharts は系列ごとの起点を持てない）ため、
+    // 段オフセットを値に足しただけだと最下段以外の棒が枠の下端まで伸びてしまう。
+    // 段の高さぶんの透明な棒を土台として敷き、その上に実データを積んで起点をずらす
+    const stackBase = stackActive && seriesType === "bar" ? (s.offset ?? 0) : 0;
+    const stackedData =
+      stackBase !== 0
+        ? points.map(([x, y]) => [x, y - stackBase] as [number, number])
+        : s.points;
+    const baseGroup = `stack-base-${i}`;
+    if (stackBase !== 0) {
+      optionSeries.push({
+        name: `__${baseGroup}`,
+        type: "bar",
+        stack: baseGroup,
+        silent: true,
+        data: points.map(([x]) => [x, stackBase] as [number, number]),
+        itemStyle: { opacity: 0 },
+        ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
+      });
+      // ツールチップでは土台の行を出さない
+      tooltipSeries.push(null);
+    }
+    optionSeries.push({
+      name,
+      type: seriesType,
+      data: stackedData,
+      connectNulls: false,
+      ...(useRight ? { yAxisIndex: sc?.axis === "right" ? 1 : 0 } : {}),
+      ...(seriesType === "line"
+        ? {
+            showSymbol: style.showSymbol,
+            symbol: style.symbol,
+            symbolSize: CHART_SYMBOL_SIZES.line[style.symbolSize],
+            lineStyle: { width: CHART_LINE_WIDTHS[style.lineWidth], type: style.lineType },
+          }
+        : {}),
+      ...(seriesType === "scatter"
+        ? { symbol: style.symbol, symbolSize: CHART_SYMBOL_SIZES.scatter[style.symbolSize] }
+        : {}),
+      // 分布（ヒストグラム）は階級幅が棒の幅を決める図なので、幅・積み上げは持たせない
+      ...(seriesType === "bar" && !isHistogram
+        ? {
+            ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
+            // 段の土台を敷いた棒はそのグループに積む（スペクトル比較が優先。
+            // 系列どうしの積み上げは段の中で意味を持たない）。
+            // 通常の積み上げは軸ごとにグループを分ける（左右をまたぐと目盛りと合わない）
+            ...(stackBase !== 0
+              ? { stack: baseGroup }
+              : style.stacked
+                ? { stack: sc?.axis === "right" ? "right" : "left" }
+                : {}),
+          }
+        : {}),
+      ...(isHistogram
+        ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
+        : {}),
+      // 段の名前は段の四隅のどこかに置く。凡例より段との対応が一目で分かる。
+      // symbol: "none" にするとラベルごと描かれないので、大きさ 0 の点に付ける
+      ...(inlineLabel
+        ? {
+            markPoint: {
+              silent: true,
+              animation: false,
+              symbol: "circle",
+              symbolSize: 0,
+              label: {
+                show: true,
+                // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
+                formatter: () => name,
+                // 枠の内側へ入れ、縦は段の内側へ落とし込む（上端の下・下端の上）
+                position: inlineLabelAtLeft ? "right" : "left",
+                offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? 12 : -12],
+                fontSize: CHART_FONT_SIZE,
+                color,
+              },
+              // 横は全段で同じ（枠の左右どちらかの端）、縦はその段の上端／下端
+              data: [{ coord: [inlineLabelX, inlineLabelAtTop ? rowExtent.max : rowExtent.min] }],
+            },
+          }
+        : {}),
+      color,
+    });
+    // 土台を敷いた系列は描画値から段オフセットを抜いてあるので、戻す量も 0
+    tooltipSeries.push(stackBase !== 0 ? { ...s, offset: 0 } : s);
+  });
+
   return {
     animation: false,
     textStyle: { fontFamily, fontSize: CHART_FONT_SIZE, color: CHART_INK },
@@ -734,7 +851,7 @@ function buildOption(
       // 見出しに完全な日時を出して 1 点を同定できるようにする。
       // スタック中は描画値が規格化済みなので、元の値に戻して出す
       ...(stackActive
-        ? { formatter: stackTooltipFormatter(locale, result.xAxis, view.series) }
+        ? { formatter: stackTooltipFormatter(locale, result.xAxis, tooltipSeries) }
         : result.xAxis === "time"
           ? { formatter: timeTooltipFormatter(locale) }
           : {}),
@@ -742,6 +859,8 @@ function buildOption(
     legend: showLegend
       ? {
           show: true,
+          // 土台の系列（積み重ねの棒）は凡例に出さない
+          data: view.series.map((_, i) => seriesName(i)),
           orient: config.legendOrient,
           ...legendLayout,
           itemWidth: CHART_LEGEND_ITEM.width,
@@ -778,87 +897,7 @@ function buildOption(
               : {}),
           },
     yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
-    series: view.series.map((s, i) => {
-      const sc = config.series[i];
-      const seriesType: SeriesType = isHistogram
-        ? "bar"
-        : ((sc?.type ?? config.chartType) as SeriesType);
-      const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
-      const name = seriesName(i);
-      const points = s.points as Array<[number, number]>;
-      // 段の名前は枠の左右どちらかの端に寄せ、縦はその段が占める範囲の内側に収める。
-      // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
-      const rowExtent = inlineLabelX !== null ? rowExtentInRange(points, xMin, xMax) : null;
-      const inlineLabel = rowExtent !== null;
-      // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
-      // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
-      const baseStyle = resolveSeriesStyle(sc, seriesType);
-      // 積み重ね中だけ既定をマーカー無し・細線・小さめの点に寄せる。スペクトルは
-      // 連続曲線として読むもので、数千点にマーカーを打つと線が潰れるため。
-      // 明示的に設定されているものはそのまま尊重する
-      const style = stackActive
-        ? {
-            ...baseStyle,
-            showSymbol: sc?.showSymbol ?? false,
-            lineWidth: sc?.lineWidth ?? ("thin" as const),
-            symbolSize: sc?.symbolSize ?? ("small" as const),
-          }
-        : baseStyle;
-      return {
-        name,
-        type: seriesType,
-        data: s.points,
-        connectNulls: false,
-        ...(useRight ? { yAxisIndex: sc?.axis === "right" ? 1 : 0 } : {}),
-        ...(seriesType === "line"
-          ? {
-              showSymbol: style.showSymbol,
-              symbol: style.symbol,
-              symbolSize: CHART_SYMBOL_SIZES.line[style.symbolSize],
-              lineStyle: { width: CHART_LINE_WIDTHS[style.lineWidth], type: style.lineType },
-            }
-          : {}),
-        ...(seriesType === "scatter"
-          ? { symbol: style.symbol, symbolSize: CHART_SYMBOL_SIZES.scatter[style.symbolSize] }
-          : {}),
-        // 分布（ヒストグラム）は階級幅が棒の幅を決める図なので、幅・積み上げは持たせない
-        ...(seriesType === "bar" && !isHistogram
-          ? {
-              ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
-              // 積み上げは軸ごとにグループを分ける（左右をまたいで積むと目盛りと合わない）
-              ...(style.stacked ? { stack: sc?.axis === "right" ? "right" : "left" } : {}),
-            }
-          : {}),
-        ...(isHistogram
-          ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
-          : {}),
-        // 段の名前は段の四隅のどこかに置く。凡例より段との対応が一目で分かる。
-        // symbol: "none" にするとラベルごと描かれないので、大きさ 0 の点に付ける
-        ...(inlineLabel
-          ? {
-              markPoint: {
-                silent: true,
-                animation: false,
-                symbol: "circle",
-                symbolSize: 0,
-                label: {
-                  show: true,
-                  // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
-                  formatter: () => name,
-                  // 枠の内側へ入れ、縦は段の内側へ落とし込む（上端の下・下端の上）
-                  position: inlineLabelAtLeft ? "right" : "left",
-                  offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? 12 : -12],
-                  fontSize: CHART_FONT_SIZE,
-                  color,
-                },
-                // 横は全段で同じ（枠の左右どちらかの端）、縦はその段の上端／下端
-                data: [{ coord: [inlineLabelX, inlineLabelAtTop ? rowExtent.max : rowExtent.min] }],
-              },
-            }
-          : {}),
-        color,
-      };
-    }),
+    series: optionSeries,
   };
 }
 
@@ -872,7 +911,7 @@ function buildOption(
 function stackTooltipFormatter(
   locale: ReturnType<typeof getLocale>,
   xKind: XAxisKind,
-  series: ChartSeriesData[]
+  series: Array<ChartSeriesData | null>
 ) {
   return (params: any) => {
     const list = Array.isArray(params) ? params : [params];
@@ -880,9 +919,12 @@ function stackTooltipFormatter(
     const first = list[0];
     const x = Array.isArray(first.value) ? first.value[0] : first.axisValue;
     const head = xKind === "time" ? formatFullDateTime(Number(x), locale) : String(x);
-    const rows = list.map((p: any) => {
+    // 段の土台は値を持たない飾りなので行にしない
+    const rows = list
+      .filter((p: any) => series[p.seriesIndex])
+      .map((p: any) => {
       const drawn = Number(Array.isArray(p.value) ? p.value[1] : p.value);
-      const raw = unstackValue(drawn, series[p.seriesIndex]);
+      const raw = unstackValue(drawn, series[p.seriesIndex] ?? undefined);
       return `${p.marker ?? ""}${p.seriesName ?? ""}: ${Number.isFinite(raw) ? raw : ""}`;
     });
     return [head, ...rows].join("<br/>");
