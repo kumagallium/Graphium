@@ -211,15 +211,16 @@ export function buildChartData(config: MultiChartConfig): ChartDataResult {
     return { kind: "ok", xAxis: "category", categories: binSpec.labels, series };
   }
 
-  // 明示指定 > 種類なりの既定。棒グラフだけ既定がカテゴリ軸（学術図の作法として
-  // 棒はカテゴリカル。推定に任せると数値ラベルの棒が勝手に数値軸に載る）。
-  // 明示的に数値・時間を選んだときは尊重する — 範囲を絞りたい・等間隔でない
-  // X に棒を立てたいケースがあるため（描画側が棒幅を面倒みる）
+  // 明示指定 > 値からの推定。棒も数値の X なら数値軸に載せる（以前は棒だけ
+  // カテゴリ軸に固定していたので、2θ のような数値の X に棒を立てる図では毎回
+  // 「数値」に切り替えないと範囲すら指定できなかった）。
+  // ただし棒の日時 X はカテゴリ軸のまま — 1 本 1 レコードで数えるのが棒の読み方で、
+  // 時間軸に載せると記録の間隔で棒幅と隙間がばらつく。時間軸にしたいときは明示する。
+  // 文字ラベル（条件 A / B / C）は推定がカテゴリ軸を返すので変わらない
+  const detected = detectXAxisKind(config.series.flatMap((s) => seriesColumnValues(s, s.xColumn)));
   const xKind =
     config.xAxisKind ??
-    (config.chartType === "bar"
-      ? "category"
-      : detectXAxisKind(config.series.flatMap((s) => seriesColumnValues(s, s.xColumn))));
+    (config.chartType === "bar" && detected === "time" ? "category" : detected);
 
   if (xKind === "category") {
     // カテゴリ軸: 全系列のラベルを出現順にマージし、各系列をそこへ整列する
