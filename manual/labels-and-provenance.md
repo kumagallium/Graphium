@@ -126,6 +126,8 @@ If the procedure already exists — a synthesis section of a paper, a protocol o
 
 Graphium reads the source, splits it into step blocks, applies **Input** / **Tool** / **Parameter** / **Output** highlights, links the steps in order, and records the source material in the note's lineage. A toast tracks progress, and the result is a normal note — review the labels and edit anything the AI got wrong. This requires a [configured AI model](/ai-setup).
 
+Two habits keep the imported labels tidy. Step titles hold the **operation only** — a source that mills for 0 h, 1 h and 3 h produces three steps all named "Ball milling", told apart by their **Parameter** values and by what each one produces, rather than three titles with the duration baked in. And names already used elsewhere in your workspace are offered back to the AI, so the same mill comes back as the same tool instead of a near-duplicate.
+
 ## Graph views beyond one note
 
 Labels and links also feed graphs that span your whole workspace:

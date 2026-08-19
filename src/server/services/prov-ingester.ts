@@ -31,6 +31,12 @@ export type ProvSpan = {
   role?: ProvRole;
   /** material / tool span が前手順 X の成果物であれば stepId を指す */
   derivedFrom?: string;
+  /**
+   * attribute span 専用。"activity" を指定すると、同ブロック内の最寄り Entity ではなく
+   * その手順（Activity）そのものに属性が付く。rpm・温度・雰囲気のような
+   * 「操作の条件」を装置の性質として読ませないための明示指定。
+   */
+  attachTo?: "activity";
 };
 
 export type ProvIngesterBlock = {
@@ -71,6 +77,23 @@ export type ProvIngesterOutput = {
   blocks: ProvIngesterBlock[];
 };
 
+/**
+ * 既存ノートで使われている PROV ラベルの語彙。クライアントがノートインデックスから
+ * 集めて送る（collectLabelVocabulary）。同じモノに毎回別名を付けてラベルが
+ * 際限なく増えるのを防ぐため、prompt に「まずここから選べ」と載せる。
+ */
+export type ProvVocabulary = {
+  step?: string[];
+  material?: string[];
+  tool?: string[];
+  output?: string[];
+  /** パラメータは key: value の key だけ（値は語彙ではない） */
+  attributeKey?: string[];
+};
+
+/** 語彙ブロックの文字数上限。書庫が大きくなっても prompt は膨らませない */
+const VOCABULARY_CHAR_BUDGET = 4000;
+
 const VALID_ROLES: ProvRole[] = ["material", "procedure", "tool", "attribute", "output"];
 const VALID_BLOCK_TYPES: ProvBlockType[] = [
   "paragraph",
@@ -82,13 +105,62 @@ const MAX_DEPTH = 4;
 const STEP_ID_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
+ * 既存語彙を prompt の 1 セクションに畳む。空なら空文字（セクションごと出さない）。
+ * 文字数上限を超えたら、頻出順に並んだ先頭から入るところまでで打ち切る。
+ */
+function renderVocabularySection(vocabulary?: ProvVocabulary): string {
+  if (!vocabulary) return "";
+  const groups: { title: string; items: string[] }[] = [
+    { title: "Step (operation) names", items: vocabulary.step ?? [] },
+    { title: "Material names", items: vocabulary.material ?? [] },
+    { title: "Tool names", items: vocabulary.tool ?? [] },
+    { title: "Output names", items: vocabulary.output ?? [] },
+    { title: "Attribute keys", items: vocabulary.attributeKey ?? [] },
+  ].filter((g) => g.items.length > 0);
+  if (groups.length === 0) return "";
+
+  const lines: string[] = [];
+  let budget = VOCABULARY_CHAR_BUDGET;
+  for (const g of groups) {
+    const kept: string[] = [];
+    for (const item of g.items) {
+      const cost = item.length + 2;
+      if (budget - cost < 0) break;
+      budget -= cost;
+      kept.push(item);
+    }
+    if (kept.length > 0) lines.push(`- **${g.title}**: ${kept.join(", ")}`);
+  }
+  if (lines.length === 0) return "";
+
+  return `
+## Existing label vocabulary (reuse before inventing)
+
+These names are already in use elsewhere in this workspace. **When a concept in the source is the same concept as one of these, write the existing name verbatim** — same spelling, same casing, same language — instead of coining a variant. Reusing a name is what lets the graph connect notes to each other; a near-duplicate ("planetary ball mill" vs "Planetary ball-mill") creates a second, disconnected node.
+
+${lines.join("\n")}
+
+Rules for using this list:
+
+- Match on **concept**, not on string similarity. If the source's thing is genuinely different, invent a new name — never bend a different concept into an existing label to make it fit.
+- The list is not a whitelist. Anything the source needs that is not listed gets a new name, coined by the normal rules above.
+- For **attribute keys**, prefer a listed key when it names the same quantity (\`rpm\` over a fresh \`rotation_speed\`). The value is always taken from the source.
+- Do not reuse a **material / output** name for something the source distinguishes by condition (see the counter-rule under step headings).
+`;
+}
+
+/**
  * PROV Ingester 用システムプロンプト
  *
  * 階層構造（H2 procedure / 配下 material / ネスト attribute）に加え、
  * stepId / derivedFrom / dependsOn で手順間の実質的な依存関係を LLM に判定させる。
  */
-export function buildProvIngesterSystemPrompt(language: string): string {
+export function buildProvIngesterSystemPrompt(
+  language: string,
+  vocabulary?: ProvVocabulary,
+): string {
   const isJa = language === "ja";
+  const vocabularySection = renderVocabularySection(vocabulary);
 
   return `You are a PROV-DM structural analyzer for Graphium, a provenance-tracking note editor.
 
@@ -163,7 +235,8 @@ Span schema (entries inside \`content\`):
 {
   "text": "string — the literal phrase as it appears in prose",
   "role": "material" | "tool" | "attribute" | "output",   // optional; omit for plain narrative text
-  "derivedFrom": "<stepId>"                                // optional, only on material / tool spans
+  "derivedFrom": "<stepId>",                               // optional, only on material / tool spans
+  "attachTo": "activity"                                   // optional, only on attribute spans — see "Where an attribute attaches"
 }
 
 ## Role definitions (use these EXACT lowercase internal keys, regardless of domain)
@@ -202,6 +275,19 @@ Each role-bearing node — whether an H2 procedure or a role-tagged span — MUS
 - **No role on punctuation, whitespace, or symbol-only spans.** Commas, periods, parentheses, "、", "。", "(", ")", em-dashes, and bare spaces never carry a role — they would create ghost graph nodes that mean nothing. Punctuation lives in plain narrative spans between role-bearing spans. Example: write \`{"text":"olive oil","role":"material"}, {"text":", "}, {"text":"garlic","role":"material"}\`, NOT a comma-tagged material span between them.
 
 Span concatenation rule still applies: stitching all \`text\` fields back together must reproduce the original prose. Use plain narrative spans for connectors so the sentence stays readable.
+
+## Step headings carry no parameter values (CRITICAL)
+
+An H2 procedure heading names **the operation and nothing else**. Parameter values — durations, temperatures, rotation speeds, counts, sample identifiers — are \`attribute\` spans in that step's paragraph. They never appear in the heading.
+
+- ❌ \`"Ball milling 1h"\` → ✅ heading \`"Ball milling"\` + attribute span \`"time: 1 h"\`
+- ❌ \`"Hot pressing 823 K"\` → ✅ heading \`"Hot pressing"\` + attribute span \`"temperature: 823 K"\`
+- ❌ \`"Annealing (48 h)"\` → ✅ heading \`"Annealing"\` + attribute span \`"duration: 48 h"\`
+- ❌ \`"Sintering sample A"\` → ✅ heading \`"Sintering"\`
+
+**Repeated headings are expected and correct.** When the source runs the same operation under several conditions — milling for 0 h, 1 h and 3 h — emit one H2 per run, **all carrying the identical heading text**, with different \`stepId\` values (\`ball-milling-0h\`, \`ball-milling-1h\`, \`ball-milling-3h\`). The runs are told apart by their attribute spans and by the products they generate. Do **not** append the parameter to the heading to make it look unique — that is exactly the failure this rule exists to prevent.
+
+**Counter-rule — material / tool / output span text keeps its distinguishing parameter.** \`"0 h ball-milled powder"\` and \`"3 h ball-milled powder"\` are different substances: same-named Entities are merged into one graph node, so stripping the parameter there would collapse two parallel branches into one. Strip parameters from **headings only**.
 
 ## Material vs Attribute split (CRITICAL — what is a thing vs. what describes a thing)
 
@@ -283,6 +369,20 @@ Recommended \`<key>\` values for object descriptors when the source doesn't name
 - The post-transformation rule and the form-attribute rule **work together**: emit both the canonical \`"<past-participle> sample"\` material span AND a \`"form: <noun>"\` attribute when the source provides the physical state.
 
 What NOT to extract as attribute: supplier names ("Alfa Aesar", "Sigma-Aldrich"), catalog numbers, brand-only identifiers without parameter meaning — these are reader-reference, not provenance-relevant attributes.
+
+## Where an attribute attaches (CRITICAL — condition of the operation vs. property of the thing)
+
+By default an attribute span attaches to the nearest material / tool / output span in the same paragraph. That is right for descriptors **of a thing**: \`"purity: 99.999%"\` written next to \`Cu\` describes that copper.
+
+It is wrong for **conditions of the operation**. \`"rpm: 300"\` written next to a ball mill would be read as a property of the mill, not of this milling run. When a parameter describes *how this step was run* — rotation speed, temperature, duration, atmosphere, pressure, ramp rate, applied load — set \`"attachTo": "activity"\` on that attribute span so it binds to the step itself:
+
+- \`{"text":"rpm: 300","role":"attribute","attachTo":"activity"}\` — how this milling ran
+- \`{"text":"time: 1 h","role":"attribute","attachTo":"activity"}\` — how long this step ran
+- \`{"text":"atmosphere: Ar","role":"attribute","attachTo":"activity"}\` — under what atmosphere this step ran
+- \`{"text":"purity: 99.999%","role":"attribute"}\` — what this Cu **is** (no attachTo)
+- \`{"text":"diameter: 1.6 mm","role":"attribute"}\` — what these balls **are** (no attachTo)
+
+Test: "if I ran this step again with a different value, would a *different thing* be involved, or the *same thing under different conditions*?" Same thing, different conditions → \`attachTo: "activity"\`.
 
 ## Attribute key consistency (lightweight)
 
@@ -576,6 +676,7 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
   ]
 }
 
+${vocabularySection}
 ## Rules
 
 0. **OUTPUT CONTRACT (HIGHEST PRIORITY)**: every \`role: "procedure"\` H2 heading MUST be immediately followed by **at least one \`blockType: "paragraph"\` block whose \`content\` array contains one or more role-bearing spans** (\`material\` / \`tool\` / \`attribute\` / \`output\`). A sequence of consecutive H2 procedure headings with no paragraph between them is **invalid and will be rejected**. If you cannot find concrete material / tool / output content for a step, DROP the step entirely — never emit a bare procedure heading.
@@ -597,6 +698,9 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
 16. **Every \`role: "procedure"\` H2 MUST contain at least one role-bearing span (material / tool / output) in its paragraph(s).** A procedure with no inputs and no outputs produces no graph edges and is useless. If you cannot identify any concrete material / tool / output for a step, drop the step entirely or merge it into an adjacent step.
 17. **Atomic nodes**: Every H2 procedure heading and every role-bearing span represents exactly one concept. Split conjunctive phrases ("salt and pepper", "mix and heat") into separate adjacent spans / separate H2 steps. Use a plain narrative span for the connector word.
 18. **Material vs attribute split**: When the source pairs a substance noun with a descriptor word (form, shape, state, quantity, dimension, purity, temperature), emit them as two spans — material for the substance, attribute for the descriptor. Do not absorb descriptors into the material label. Compound names / formulas / well-known multi-word ingredients stay whole.
+19. **No parameter values in H2 procedure headings.** Duration, temperature, speed, count, sample id — all of these are attribute spans, never part of the heading. Repeated identical headings are correct when the same operation runs under several conditions; distinguish the runs by \`stepId\`, attributes and products. Material / tool / output span text keeps its distinguishing parameter.
+20. **Conditions of the operation bind to the step.** Attribute spans that describe how the step ran (rpm, temperature, duration, atmosphere, pressure, load) carry \`"attachTo": "activity"\`. Attribute spans that describe a thing (purity, form, size, grade) do not.
+21. **Reuse the existing label vocabulary** when the source names the same concept as a listed name (see "Existing label vocabulary" above, if present). Never bend a different concept into a listed name.
 
 ## Self-check before emitting JSON
 
@@ -610,6 +714,9 @@ Before you finalize the JSON, walk through your output and confirm:
 6. **Atomicity audit.** No H2 procedure heading text contains "and" / "&" / "、" joining two operations. No role-bearing span contains "and" / "or" / "、" / "や" joining two substances or two parameters. Re-emit as separate nodes if you find any.
 7. **Material vs attribute audit.** For each \`role: "material"\` span, verify the text names a substance or object — not a form/shape/state ("chip", "powder", "slice", "frozen"). If the original phrase was "<substance> <descriptor>", split into a material span for the substance and an attribute span for the descriptor.
 8. **Connectivity audit.** Walk through the H2 steps in order. The first step may have no \`derivedFrom\` / \`dependsOn\`. Every subsequent step MUST have at least one — through a material span's \`derivedFrom\`, through the H2's \`dependsOn\`, or both. If any later step has neither, fix it (add a derived-material span naming the prior product, add a \`dependsOn\`, or merge / drop the step). Verify the final \`role: "output"\` span is in a step that transitively connects back to step 1 — there must be no break in the chain.
+
+9. **Heading parameter audit.** Read every H2 procedure heading. If it contains a number with a unit (\`1h\`, \`823 K\`, \`300 rpm\`), a bracketed condition, or a sample identifier, strip it from the heading and make sure the value exists as an attribute span in that step's paragraph. Identical headings across steps are fine — leave them identical.
+10. **Attribute binding audit.** For each attribute span, ask whether it describes the operation or the thing next to it. Operation conditions (rpm, temperature, duration, atmosphere, pressure, load) must carry \`"attachTo": "activity"\`; properties of a substance or instrument must not.
 
 If any check fails, fix the JSON before emitting.
 `;
@@ -629,6 +736,58 @@ export function buildProvIngesterUserMessage(input: {
   if (description) lines.push(`Description: ${description}`);
   lines.push("", "--- page text ---", text);
   return lines.join("\n");
+}
+
+
+// ── 手順名からパラメータ値を落とす ────────────────────────────────
+//
+// プロンプトで「見出しは操作名だけ」と指示しても、並列条件のある論文
+// （0 h / 1 h / 3 h でボールミル）では LLM が区別のために時間を見出しへ
+// 入れてしまう。値は attribute span 側に居るので、見出しからは機械的に落とす。
+//
+// 落とすのは **末尾の数値＋単位** だけ。数値だけ（"Milling 2"）や単位の無い
+// 語は名前の一部でありうるので触らない。文字が残らない場合は元に戻す。
+
+const PARAMETER_UNITS = [
+  "hrs", "hr", "hours", "hour", "h",
+  "minutes", "minute", "mins", "min",
+  "secs", "sec", "s",
+  "時間", "分", "秒",
+  "°C", "℃", "°F", "K",
+  "rpm", "rev/min", "kHz", "MHz", "Hz",
+  "GPa", "MPa", "kPa", "Pa", "bar", "atm", "Torr",
+  "mL", "µL", "uL", "L",
+  "mg", "kg", "g",
+  "mol", "mM", "M",
+  "nm", "µm", "um", "mm", "cm", "Å",
+  "kV", "mV", "V", "mA", "A", "kW", "W",
+  "wt%", "at%", "%",
+].join("|");
+
+// 末尾の「区切り + 数値 + 単位 + 閉じ括弧」。括弧付き "(48 h)" も剥がす
+const TRAILING_PARAMETER = new RegExp(
+  String.raw`[\s\-–—_/×x,、]*[(（\[［]?\s*[0-9０-９]+(?:[.．][0-9０-９]+)?\s*(?:${PARAMETER_UNITS})\s*[)）\]］]?\s*$`,
+  "u",
+);
+
+// パラメータを剥がした後に浮く前置詞・助詞（"Heating to" → "Heating"）
+const DANGLING_CONNECTOR =
+  /(?:\s+(?:at|to|for|in|on|under|with|over|by)|[のでにをへとが]|[\s\-–—_/:：,、(（\[［]+)\s*$/u;
+
+/**
+ * 手順見出しから末尾のパラメータ値を落とす（純粋な文字列変換）。
+ * 例: "Ball milling 1h" → "Ball milling" / "Hot pressing (823 K)" → "Hot pressing"
+ */
+export function stripParameterFromStepName(text: string): string {
+  let out = text.trim();
+  for (let i = 0; i < 3; i++) {
+    const stripped = out.replace(TRAILING_PARAMETER, "").replace(DANGLING_CONNECTOR, "").trim();
+    if (stripped === out) break;
+    // 文字が残らなくなるなら剥がしすぎ — 直前の形で止める
+    if (!/[\p{L}]/u.test(stripped)) break;
+    out = stripped;
+  }
+  return out.length > 0 ? out : text.trim();
 }
 
 /**
@@ -748,7 +907,9 @@ function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
     const node: ProvIngesterBlock = { blockType, level };
     // heading は spans を使わない（procedure ラベルは block-level） → text を採用
     if (blockType === "heading") {
-      node.text = text;
+      // 手順見出しは操作名だけにする（"Ball milling 1h" → "Ball milling"）。
+      // 値は attribute span 側に残るので、ここで落としても情報は失われない
+      node.text = role === "procedure" ? stripParameterFromStepName(text) : text;
     } else if (content && content.length > 0) {
       node.content = content;
     } else {
@@ -806,6 +967,8 @@ function sanitizeSpans(input: any[]): ProvSpan[] {
 
     const span: ProvSpan = { text };
     if (role) span.role = role;
+    // 工程条件の Activity 直結指定は attribute にだけ意味がある
+    if (role === "attribute" && s.attachTo === "activity") span.attachTo = "activity";
     const derivedFrom = sanitizeStepId(s.derivedFrom);
     // derivedFrom も role を失った時点で意味を失うので落とす
     if (role && derivedFrom) span.derivedFrom = derivedFrom;

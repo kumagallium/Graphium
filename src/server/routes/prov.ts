@@ -14,6 +14,7 @@ import { resolveModelConfig } from "../services/header-model.js";
 import { runAgentLoop, type AgentRunResult } from "../services/agent-loop.js";
 import {
   buildProvIngesterSystemPrompt,
+  type ProvVocabulary,
   buildProvIngesterUserMessage,
   parseProvIngesterOutput,
   hasHeadingLanguageMismatch,
@@ -92,6 +93,7 @@ app.post("/ingest-url", async (c) => {
     url: string;
     language?: string;
     model?: string;
+    vocabulary?: ProvVocabulary;
   }>();
 
   if (!body.url) {
@@ -127,7 +129,7 @@ app.post("/ingest-url", async (c) => {
   const language = body.language || "en";
 
   // LLM 呼び出し（open-set 単一 prompt）
-  const systemPrompt = buildProvIngesterSystemPrompt(language);
+  const systemPrompt = buildProvIngesterSystemPrompt(language, body.vocabulary);
   const userMessage = buildProvIngesterUserMessage({
     url: page.url,
     title: page.title || body.url,
@@ -173,6 +175,7 @@ app.post("/ingest-pdf", async (c) => {
     title?: string;
     language?: string;
     model?: string;
+    vocabulary?: ProvVocabulary;
   }>();
 
   if (!body.text || body.text.trim().length < 50) {
@@ -202,7 +205,7 @@ app.post("/ingest-pdf", async (c) => {
     description: undefined,
     text: `${languageHint}\n\n${body.text}`,
   });
-  const systemPrompt = buildProvIngesterSystemPrompt(language);
+  const systemPrompt = buildProvIngesterSystemPrompt(language, body.vocabulary);
 
   try {
     const { parsed, result } = await generateProvBlocksWithRetry({

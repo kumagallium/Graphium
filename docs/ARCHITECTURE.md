@@ -209,7 +209,11 @@ talks to LLM and embedding backends.
   span text (keeping its `entityId`), removing deletes a dedicated row or
   strips the mark inside prose (DATA_MODEL §2.3) — and the panel lists
   them under "written in the prose", to be edited in place or moved into
-  the kind's table with one click. The panel lists what the step is
+  the kind's table with one click. Attributes that a prose entity carries
+  (`purity: 99.999%` written next to a material) are shown as faint extra
+  columns on that entity's row when the table has no column for them, so
+  a parameter that is labelled in the prose is never invisible in the
+  panel. The panel lists what the step is
   actually wired to, not only what its own blocks contain: an entity
   shared with another step (same-named tools merge into one Entity)
   appears in its section as a grayed row naming where it lives, whose
@@ -461,6 +465,35 @@ The vocabulary is open — there is no fixed list of allowed parameter
 names. The prompt only enforces a few lightweight conventions
 (`<key>: <value>` attribute spans, `snake_case` keys, "same concept →
 same key inside one document").
+
+Three rules keep the emitted labels usable as graph nodes:
+
+- **Step headings name the operation only.** Durations, temperatures and
+  speeds live in `attribute` spans, never in the heading, and the parser
+  strips a trailing parameter value from a procedure heading even when
+  the model writes one (`stripParameterFromStepName`). A source that runs
+  the same operation under three conditions therefore yields three steps
+  with the *same* heading and different `stepId`s — they are told apart
+  by their parameters and their products. Material / tool / output span
+  text keeps its distinguishing parameter, because same-named entities
+  merge (§ DATA_MODEL 2.3) and stripping it there would collapse parallel
+  branches into one.
+- **Conditions of the operation bind to the step.** An attribute span
+  attaches to the nearest entity in its paragraph by default, which is
+  right for `purity: 99.999%` next to `Cu` and wrong for `rpm: 300` next
+  to a ball mill. The prompt asks for `"attachTo": "activity"` on
+  process conditions, which the note builder writes as the
+  `entityId@activity` form of the inline-attribute binding
+  (`src/features/inline-label/attribute-binding.ts`).
+- **Existing labels are offered before new ones are coined.** The client
+  collects the label vocabulary already in use — step names, material /
+  tool / output names, and attribute *keys* — from the note index
+  (`src/features/url-to-prov/label-vocabulary.ts`) and sends it with the
+  ingest request; the prompt asks the model to reuse a listed name
+  verbatim when the concept matches. The excerpt is capped (most frequent
+  first, per-kind limits, a character budget) so the prompt does not grow
+  with the size of the library. Matching is on concept, not string
+  similarity: a genuinely different thing still gets a new name.
 
 One source becomes **one note**. The prompt asks for a single connected
 DAG per document, so a paper that describes several synthesis routes

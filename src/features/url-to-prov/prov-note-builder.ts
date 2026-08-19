@@ -13,6 +13,7 @@ import {
   convertProcedureHeadingsToSteps,
 } from "../../lib/document-migration";
 import { normalizeLabel, CORE_LABELS, type CoreLabel } from "../context-label/labels";
+import { PARENT_ACTIVITY_MARKER } from "../inline-label/attribute-binding";
 
 // Phase E (2026-04-30): material/tool/attribute/output は block-level ラベルから
 // インラインハイライト（BlockNote inline style）に移行。
@@ -35,6 +36,12 @@ export type ProvSpan = {
   text: string;
   role?: string;
   derivedFrom?: string;
+  /**
+   * attribute span 専用。"activity" なら最寄り Entity ではなく手順そのものに属性を付ける
+   * （rpm・時間・雰囲気のような「操作の条件」を装置の性質と読ませないため）。
+   * inlineAttribute の style 値に "@activity" を付けて表現する。
+   */
+  attachTo?: "activity";
 };
 
 export type ProvIngesterBlock = {
@@ -355,7 +362,12 @@ function buildSpanContent(spans: ProvSpan[], ctx: BuildContext): any[] {
       label = null;
     }
     if (label) {
-      styles[INLINE_LABEL_TO_STYLE_KEY[label]] = makeInlineEntityId(label);
+      const entityId = makeInlineEntityId(label);
+      // 工程条件は Activity 直結（attribute-binding の "@activity" 形式）
+      styles[INLINE_LABEL_TO_STYLE_KEY[label]] =
+        label === "attribute" && span.attachTo === "activity"
+          ? `${entityId}@${PARENT_ACTIVITY_MARKER}`
+          : entityId;
       if (
         span.derivedFrom &&
         (label === "material" || label === "tool") &&
