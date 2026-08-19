@@ -225,10 +225,61 @@ describe("buildChartData（系列ごとにテーブルを持つ）", () => {
     expect(result.series[0].points[0]).toHaveLength(2);
   });
 
-  it("棒グラフの既定は推定に頼らずカテゴリ軸（数値ラベルでも棒はカテゴリカル）", () => {
+  it("棒グラフの既定も値からの推定に従う（数値の X なら数値軸）", () => {
     const result = buildChartData({
       chartType: "bar",
       series: [{ table: diary, xColumn: "気圧", yColumn: "痛み" }],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.xAxis).toBe("value");
+    expect(result.series[0].points[0]).toHaveLength(2);
+  });
+
+  it("棒グラフでも文字ラベルの X はカテゴリ軸のまま", () => {
+    const table: TableData = {
+      headers: ["条件", "収率"],
+      rows: [
+        ["A", "87"],
+        ["B", "90"],
+      ],
+    };
+    const result = buildChartData({
+      chartType: "bar",
+      series: [{ table, xColumn: "条件", yColumn: "収率" }],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.xAxis).toBe("category");
+    expect(result.categories).toEqual(["A", "B"]);
+  });
+
+  it("棒グラフの日時 X は既定でカテゴリ軸のまま（1 本 1 レコードで読む）", () => {
+    const result = buildChartData({
+      chartType: "bar",
+      series: [{ table: diary, xColumn: "日時", yColumn: "痛み" }],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.xAxis).toBe("category");
+  });
+
+  it("棒グラフでも時間軸を明示すれば時間軸になる", () => {
+    const result = buildChartData({
+      chartType: "bar",
+      series: [{ table: diary, xColumn: "日時", yColumn: "痛み" }],
+      xAxisKind: "time",
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.xAxis).toBe("time");
+  });
+
+  it("棒グラフで数値ラベルを等間隔に並べたいときはカテゴリを明示できる", () => {
+    const result = buildChartData({
+      chartType: "bar",
+      series: [{ table: diary, xColumn: "気圧", yColumn: "痛み" }],
+      xAxisKind: "category",
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") return;
