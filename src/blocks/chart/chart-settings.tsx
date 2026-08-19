@@ -107,27 +107,26 @@ function parseOptionalNumber(raw: string, positiveOnly: boolean): number | undef
  * 軸ごとの「詳細設定」（eureco 準拠の折りたたみ）:
  * 軸・軸線・目盛り・目盛りラベルの表示、ラベルの回転、目盛りの向き、グリッド。
  *
- * 縦軸に限り、末尾に積み重ね（スペクトル比較）の設定を持つ。使う場面が
- * 限られる特殊な描き方なので、常時見えるところには置かない。
+ * 開閉は親（軸タブ）が持つ。横軸と縦軸の詳細を同時に開くとパネルが 1 画面に
+ * 収まらなくなるため、開けるのは一度に 1 つだけにしてある。
  */
 function AxisDetailEditor({
   detail,
   onChange,
-  stack,
-  onStackChange,
+  open,
+  onToggle,
+  ticksLocked = false,
 }: {
   detail: AxisDetail;
   onChange: (patch: Partial<AxisDetail>) => void;
-  /** 縦軸のときだけ渡す。積み重ねの設定をこの折りたたみに同居させる */
-  stack?: StackConfig;
-  onStackChange?: (patch: Partial<StackConfig>) => void;
+  open: boolean;
+  onToggle: () => void;
+  /** 積み重ね中は縦軸の目盛りを描画側が強制的に消すため、ここの指定は効かない */
+  ticksLocked?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  // 積み重ね中は縦軸の目盛りを描画側で強制的に消すため、ここの指定は効かない
-  const ticksLocked = stack?.enabled ?? false;
   return (
     <div style={detailStyles.shell}>
-      <button type="button" onClick={() => setOpen(!open)} style={detailStyles.header}>
+      <button type="button" onClick={onToggle} style={detailStyles.header}>
         <span>{t("chart.advanced")}</span>
         {open ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
       </button>
@@ -199,7 +198,6 @@ function AxisDetailEditor({
               onChange={(v) => onChange({ showGrid: v })}
             />
           </div>
-          {stack && onStackChange && <StackFields stack={stack} onChange={onStackChange} />}
         </div>
       )}
     </div>
@@ -207,11 +205,11 @@ function AxisDetailEditor({
 }
 
 /**
- * 積み重ね（スペクトル比較）の設定。縦軸の「詳細設定」の末尾に置く。
+ * 積み重ね（スペクトル比較）の設定。「種類・系列」タブの種類の直下に置く。
  *
- * 縦軸の目盛りを消して系列を段に分ける描き方なので、目盛りの表示設定と同じ
- * 場所にある方がどちらが効いているのか分かる。使う場面は限られるため、
- * 折りたたみの外には出さない。
+ * 段に分けるのは軸の目盛りの設定ではなく描き方そのもので、段ごとの倍率・
+ * 段の位置も各系列が持つ。種類 → 積み重ね → 系列 と並べると、同じ図の
+ * 描き方を決めるものが一箇所にそろう。使う場面は限られるので折りたたむ。
  */
 function StackFields({
   stack,
@@ -597,7 +595,7 @@ const styleStyles: Record<string, React.CSSProperties> = {
   },
 };
 
-type Tab = "typeSeries" | "xAxis" | "yAxis" | "appearance";
+type Tab = "typeSeries" | "axes" | "appearance";
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
 
@@ -661,10 +659,14 @@ export function ChartSettingsPanel({
 }) {
   const [tab, setTab] = useState<Tab>("typeSeries");
   const [expandedSeries, setExpandedSeries] = useState<number | null>(null);
+  // 開いている軸の詳細設定。同時に 1 つだけ開くことで、軸タブが 1 画面に収まる
+  const [openAxisDetail, setOpenAxisDetail] = useState<"x" | "y" | "yRight" | null>(null);
+  const axisDetailProps = (key: "x" | "y" | "yRight") => ({
+    open: openAxisDetail === key,
+    onToggle: () => setOpenAxisDetail((cur) => (cur === key ? null : key)),
+  });
   const isHistogram = config.chartType === "histogram";
   const rightAxisInUse = usesRightAxis(config) && !isHistogram;
-  // 分布に切り替えると横軸タブが消えるので、選択中だった場合は縦軸へ寄せる
-  const activeTab: Tab = isHistogram && tab === "xAxis" ? "yAxis" : tab;
 
   // X 軸の実効的な目盛り種類（min/max 入力の有効・無効の判定に使う）
   const effectiveXKind = useMemo(() => {
@@ -742,9 +744,7 @@ export function ChartSettingsPanel({
         {(
           [
             ["typeSeries", t("chart.tabTypeSeries")],
-            // 分布は階級で横軸が決まるので、横軸タブは持たない
-            ...(isHistogram ? [] : [["xAxis", t("chart.tabXAxis")] as [Tab, string]]),
-            ["yAxis", t("chart.tabYAxis")],
+            ["axes", t("chart.tabAxes")],
             ["appearance", t("chart.tabAppearance")],
           ] as Array<[Tab, string]>
         ).map(([key, label]) => (
@@ -752,16 +752,16 @@ export function ChartSettingsPanel({
             key={key}
             type="button"
             role="tab"
-            aria-selected={activeTab === key}
+            aria-selected={tab === key}
             onClick={() => setTab(key)}
-            style={{ ...styles.tab, ...(activeTab === key ? styles.tabActive : {}) }}
+            style={{ ...styles.tab, ...(tab === key ? styles.tabActive : {}) }}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {activeTab === "typeSeries" && (
+      {tab === "typeSeries" && (
         <div style={styles.body}>
           <div style={styles.sectionLabel}>{t("chart.sectionType")}</div>
           <select
@@ -779,6 +779,16 @@ export function ChartSettingsPanel({
               設定なので、複数系列があるときだけここで存在を知らせる */}
           {!isHistogram && config.series.length >= 2 && (
             <div style={styles.fieldHint}>{t("chart.comboHint")}</div>
+          )}
+
+          {/* 積み重ね（スペクトル比較）は軸の設定ではなく描き方。種類のすぐ下に置き、
+              段ごとの倍率・段の位置は各系列が持つ（分布は段に分けられないので出さない） */}
+          {!isHistogram && (
+            <div style={detailStyles.shell}>
+              <div style={detailStyles.body}>
+                <StackFields stack={config.stack} onChange={updateStack} />
+              </div>
+            </div>
           )}
 
           <div style={styles.sectionLabel}>{t("chart.sectionSeries")}</div>
@@ -1052,69 +1062,68 @@ export function ChartSettingsPanel({
         </div>
       )}
 
-      {/* 横軸と縦軸を別タブにしてあるのは、詳細設定と積み重ねを開いた状態でも
-          パネルがスクロールせずに収まる高さに保つため */}
-      {activeTab === "xAxis" && !isHistogram && (
+      {tab === "axes" && (
         <div style={styles.body}>
-            <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
-            <label style={styles.fieldRow}>
-              <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
-              <input
-                type="text"
-                value={config.xAxisName}
-                placeholder={t("chart.autoPlaceholder")}
-                onChange={(e) => onChange({ xAxisName: e.target.value })}
-                style={{ ...styles.input, flex: 1 }}
+          {!isHistogram && (
+            <>
+              <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
+                <input
+                  type="text"
+                  value={config.xAxisName}
+                  placeholder={t("chart.autoPlaceholder")}
+                  onChange={(e) => onChange({ xAxisName: e.target.value })}
+                  style={{ ...styles.input, flex: 1 }}
+                />
+              </label>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.axisKind")}</span>
+                <select
+                  value={config.xAxisKind}
+                  onChange={(e) => onChange({ xAxisKind: e.target.value as XAxisKindSetting })}
+                  style={{ ...styles.select, flex: 1 }}
+                >
+                  <option value="auto">{t("chart.kindAuto")}</option>
+                  <option value="time">{t("chart.kindTime")}</option>
+                  <option value="value">{t("chart.kindValue")}</option>
+                  <option value="category">{t("chart.kindCategory")}</option>
+                </select>
+              </label>
+              <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
+                <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
+                <input
+                  type="text"
+                  value={config.xMin}
+                  placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
+                  disabled={effectiveXKind === "category"}
+                  onChange={(e) => onChange({ xMin: e.target.value })}
+                  style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+                />
+                <span style={styles.rangeDash}>–</span>
+                <input
+                  type="text"
+                  value={config.xMax}
+                  placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
+                  disabled={effectiveXKind === "category"}
+                  onChange={(e) => onChange({ xMax: e.target.value })}
+                  style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+                />
+              </label>
+              {/* なぜ入力できないのかを、その場で理由と抜け道つきで見せる */}
+              {effectiveXKind === "category" && (
+                <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
+                  {t("chart.minMaxCategoryHint")}
+                </div>
+              )}
+              <AxisDetailEditor
+                detail={config.xAxisDetail}
+                onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
+                {...axisDetailProps("x")}
               />
-            </label>
-            <label style={styles.fieldRow}>
-              <span style={styles.fieldLabel}>{t("chart.axisKind")}</span>
-              <select
-                value={config.xAxisKind}
-                onChange={(e) => onChange({ xAxisKind: e.target.value as XAxisKindSetting })}
-                style={{ ...styles.select, flex: 1 }}
-              >
-                <option value="auto">{t("chart.kindAuto")}</option>
-                <option value="time">{t("chart.kindTime")}</option>
-                <option value="value">{t("chart.kindValue")}</option>
-                <option value="category">{t("chart.kindCategory")}</option>
-              </select>
-            </label>
-            <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
-              <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
-              <input
-                type="text"
-                value={config.xMin}
-                placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
-                disabled={effectiveXKind === "category"}
-                onChange={(e) => onChange({ xMin: e.target.value })}
-                style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
-              />
-              <span style={styles.rangeDash}>–</span>
-              <input
-                type="text"
-                value={config.xMax}
-                placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
-                disabled={effectiveXKind === "category"}
-                onChange={(e) => onChange({ xMax: e.target.value })}
-                style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
-              />
-            </label>
-            {/* なぜ入力できないのかを、その場で理由と抜け道つきで見せる */}
-            {effectiveXKind === "category" && (
-              <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
-                {t("chart.minMaxCategoryHint")}
-              </div>
-            )}
-            <AxisDetailEditor
-              detail={config.xAxisDetail}
-              onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
-            />
-        </div>
-      )}
+            </>
+          )}
 
-      {activeTab === "yAxis" && (
-        <div style={styles.body}>
           <div style={styles.sectionLabel}>
             {rightAxisInUse ? t("chart.yAxisLeft") : t("chart.yAxis")}
           </div>
@@ -1151,9 +1160,9 @@ export function ChartSettingsPanel({
           <AxisDetailEditor
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
-            // 積み重ねは縦軸の目盛りを消す描き方なので、縦軸の詳細設定に同居させる
-            stack={isHistogram ? undefined : config.stack}
-            onStackChange={isHistogram ? undefined : updateStack}
+            // 積み重ね中の縦軸は目盛りを描画側が消すので、ここの指定は効かない
+            ticksLocked={!isHistogram && config.stack.enabled}
+            {...axisDetailProps("y")}
           />
 
           {rightAxisInUse && (
@@ -1194,13 +1203,14 @@ export function ChartSettingsPanel({
                 onChange={(patch) =>
                   onChange({ yRightAxisDetail: { ...config.yRightAxisDetail, ...patch } })
                 }
+                {...axisDetailProps("yRight")}
               />
             </>
           )}
         </div>
       )}
 
-      {activeTab === "appearance" && (
+      {tab === "appearance" && (
         <div style={styles.body}>
           <div style={styles.sectionLabel}>{t("chart.caption")}</div>
           <input
