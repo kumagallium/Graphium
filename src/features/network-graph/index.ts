@@ -7,11 +7,12 @@ export { buildLineageTree, type LineageNode } from "./lineage-builder";
 export { LineagePanel } from "./lineage-panel";
 export { parseExternalSource, isExternalSourceId, type ExternalSourceKind } from "./external-source";
 export { ProcessGalleryView } from "./ProcessGalleryView";
-export { StepParamPicker } from "./StepParamPicker";
+export { StepHistoryPicker } from "./StepHistoryPicker";
 export {
   ensureProcessIndex,
   readProcessIndex,
   collectStepNames,
+  type StepNameStat,
   collectParamKeysForStep,
   setLatestProcessIndex,
   getLatestProcessIndex,

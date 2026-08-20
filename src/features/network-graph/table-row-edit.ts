@@ -359,6 +359,27 @@ export function addTableColumn(editor: any, tableBlockId: string, name: string):
   return writeRows(editor, block, next);
 }
 
+/**
+ * 複数の列をまとめて足す。
+ *
+ * addTableColumn を回し呼びしてはいけない: 1 回ごとに editor から読み直して
+ * 書き戻すので、更新が反映される前の内容を土台にした書き込みが後勝ちし、
+ * 3 列目以降が黙って落ちる（履歴からの一括引き継ぎで再現）。書き込みは 1 回にまとめる。
+ */
+export function addTableColumns(editor: any, tableBlockId: string, names: string[]): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  const fresh = names.map((n) => n.trim()).filter(Boolean);
+  if (!block || fresh.length === 0) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  if (rows.length === 0) return false;
+  const template = rows[0].cells?.[0];
+  const next = rows.map((row, i) => ({
+    ...row,
+    cells: [...row.cells, ...fresh.map((n) => withCellText(template, i === 0 ? n : ""))],
+  }));
+  return writeRows(editor, block, next);
+}
+
 /** 列を消す（ヘッダとすべてのデータ行から） */
 export function removeTableColumn(editor: any, tableBlockId: string, colIndex: number): boolean {
   const block = findTableBlock(editor, tableBlockId);

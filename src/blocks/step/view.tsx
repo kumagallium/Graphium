@@ -23,10 +23,21 @@ import { Check, ChevronRight, History, Link2, ListChecks, Plus } from "lucide-re
 import { useLinkStore } from "../../features/block-link/store";
 import { useLabelStore } from "../../features/context-label/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
-import { appendEntitySpanToStep, collectStepOutputs, stepHasInputText } from "./step-io";
-import { StepParamPicker } from "../../features/network-graph/StepParamPicker";
+import {
+  appendEntitySpanToStep,
+  collectStepOutputs,
+  findLabeledTableInStep,
+  stepHasInputText,
+} from "./step-io";
+import {
+  addTableColumns,
+  ensureParameterTable,
+  readTable,
+} from "../../features/network-graph/table-row-edit";
+import { StepHistoryPicker } from "../../features/network-graph/StepHistoryPicker";
 import {
   collectParamKeysForStep,
+  collectStepNames,
   getLatestProcessIndex,
 } from "../../features/network-graph/process-index";
 import { splitAttrLabel } from "../../features/network-graph/activity-graph-adapter";
@@ -244,8 +255,10 @@ export const StepBlock = createReactBlockSpec(
       const [openOutputsFor, setOpenOutputsFor] = useState<string | null>(null);
       // 後続（次ステップ）側のピッカー
       const [nextOpen, setNextOpen] = useState(false);
-      // 過去の同名手順からパラメータの key を引き継ぐピッカー
+      // 過去の手順からの引き継ぎピッカー（名前 → パラメータの 2 段）
       const [paramOpen, setParamOpen] = useState(false);
+      // ピッカー内で選んだ手順名。タイトル反映が本文に届くまでの間もこちらを正とする
+      const [pickedName, setPickedName] = useState<string | null>(null);
       // 循環でリンクを拒否されたとき、無反応に見えないよう理由を出す
       const [cycleWarn, setCycleWarn] = useState(false);
       const rootRef = useRef<HTMLDivElement>(null);
@@ -270,12 +283,66 @@ export const StepBlock = createReactBlockSpec(
       const stepTitle = deriveActivityName(inlineText(props.block)).trim();
       // paramOpen を依存に入れているのは、開くときに最新の投影を読み直すため
       // （投影は一覧を開いた時点で更新され、こちらは購読していない）。
+      const effectiveName = pickedName ?? stepTitle;
       const paramStats = useMemo(
-        () => collectParamKeysForStep(getLatestProcessIndex(), stepTitle, splitAttrLabel),
-        [stepTitle, paramOpen],
+        () => collectParamKeysForStep(getLatestProcessIndex(), effectiveName, splitAttrLabel),
+        [effectiveName, paramOpen],
       );
-      // 引き継げる記録があるときだけ入口を出す。押して空振りするより出さない
-      const hasParamHistory = paramStats.length > 0;
+      const stepNameStats = useMemo(
+        () => collectStepNames(getLatestProcessIndex(), splitAttrLabel),
+        [paramOpen],
+      );
+      // 過去に書いた手順が 1 つでもあれば入口を出す。名前だけでも選ぶ価値がある
+      // （記録の無い名前を打ったときに沈黙するのが、いちばん困る）
+      const hasHistory = stepNameStats.length > 0;
+      // まだ名前が無い step には、アイコンを押せることを言葉でも伝える
+      const showHistoryHint = hasHistory && stepTitle.length === 0;
+
+      /**
+       * 引き継いだ key を step のパラメータ表の列として足す。
+       *
+       * 本文に span を直書きするのではなく表に書くのは、ノート側に
+       * 「単語の羅列ではなく試料表が育つ」という F 案の決めごとに従うため
+       * （activity-graph-editor の onAddEntity / onCreateSectionTable と同じ経路）。
+       * key は列名になり、値の欄は空で残る。表を作れない状況だけ span に落とす。
+       */
+      const insertParamKeys = (keys: string[]) => {
+        const editor = props.editor;
+        if (!editor || keys.length === 0) return;
+        const find = (stepId: string) =>
+          findLabeledTableInStep(editor.document ?? [], labelStore.labels, stepId, "attribute");
+
+        let tableId = find(props.block.id);
+        let rest = keys;
+        if (!tableId) {
+          const created = ensureParameterTable(editor, props.block.id, keys[0], find);
+          if (!created) {
+            // step が見つからない等で表を作れないときの逃げ道（既存の作法）
+            for (const key of keys) {
+              appendEntitySpanToStep(editor, props.block.id, "attribute", `${key}:`);
+            }
+            return;
+          }
+          tableId = created.tableBlockId;
+          // 新規表は generator にパラメータとして読ませるためラベルが要る
+          if (created.created) labelStore.setLabel(tableId, "attribute");
+          rest = keys.slice(1);
+        }
+
+        // 既にある列は足さない（同じ欄が 2 つ並ぶと、どちらに書くか決められない）
+        const existing = new Set(
+          (readTable(editor, tableId)?.headers ?? []).map((h: string) => h.trim()),
+        );
+        const missing: string[] = [];
+        for (const key of rest) {
+          const trimmed = key.trim();
+          if (!trimmed || existing.has(trimmed)) continue;
+          existing.add(trimmed);
+          missing.push(trimmed);
+        }
+        // 1 回で書く。1 列ずつ足すと古い内容の上書きで後半が落ちる
+        if (missing.length > 0) addTableColumns(editor, tableId, missing);
+      };
 
       // この step の前手順（outgoing informed_by）と後続（incoming informed_by）。
       // どちらも複数可（合流・分岐する工程）。
@@ -417,24 +484,122 @@ export const StepBlock = createReactBlockSpec(
               minWidth: "12ch",
             }}
           >
-            {/* ステップアイコン（編集不可） */}
+            {/* ステップアイコン。過去の手順からの引き継ぎ入口を兼ねる。
+                名前を打ち終わるまで出ないチップだと、書く前に選べず、
+                記録の無い名前では沈黙するだけだった（実データで確認）。
+                アイコンなら位置が動かず、タイトルが空でも押せる。 */}
             <span
               contentEditable={false}
+              style={{ flex: "0 0 auto", position: "relative", marginTop: 2 }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (!hasHistory) return;
+                  setParamOpen((v) => !v);
+                  setPickerOpen(false);
+                  setNextOpen(false);
+                  setOpenOutputsFor(null);
+                }}
+                title={hasHistory ? t("stepHistory.namesTitle") : undefined}
+                aria-expanded={hasHistory ? paramOpen : undefined}
+                aria-label={hasHistory ? t("stepHistory.namesTitle") : undefined}
+                data-test="step-history-icon"
+                style={{
+                  display: "inline-flex",
+                  padding: 0,
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--color-primary)",
+                  cursor: hasHistory ? "pointer" : "default",
+                }}
+              >
+                <ListChecks size={18} strokeWidth={2} />
+              </button>
+              {paramOpen && (
+                <StepHistoryPicker
+                  stepName={effectiveName}
+                  stepNames={stepNameStats}
+                  stats={paramStats}
+                  onPickName={(name) => {
+                    setPickedName(name);
+                    try {
+                      props.editor.updateBlock(props.block.id, {
+                        content: [{ type: "text", text: name, styles: {} }],
+                      } as any);
+                    } catch {
+                      // タイトルを書けなくてもパラメータは選べる（致命ではない）
+                    }
+                  }}
+                  onInsert={(keys: string[]) => insertParamKeys(keys)}
+                  onClose={() => setParamOpen(false)}
+                />
+              )}
+            </span>
+            {/* ステップ名（インライン編集領域＝タイトルは content） */}
+            <div style={{ flex: "1 1 auto", minWidth: 0, position: "relative" }}>
+              <div ref={props.contentRef} style={{ lineHeight: "1.6" }} />
+              {showHistoryHint && (
+                <span
+                  contentEditable={false}
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    lineHeight: "1.6",
+                    fontWeight: 400,
+                    fontSize: 13,
+                    color: "var(--color-text-tertiary)",
+                    pointerEvents: "none",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "100%",
+                  }}
+                >
+                  {t("stepHistory.titlePlaceholder")}
+                </span>
+              )}
+            </div>
+          </div>
+          {/* 名前がまだ無いときだけ、言葉でも入口を出す。アイコンは場所が安定して
+              いる代わりに気づかれにくく、最初の一度をここで助ける。名前を書き始め
+              れば消えるので、チップが常に 3 つ並ぶことにはならない。 */}
+          {showHistoryHint && (
+            <button
+              type="button"
+              contentEditable={false}
+              onClick={() => {
+                setParamOpen(true);
+                setPickerOpen(false);
+                setNextOpen(false);
+                setOpenOutputsFor(null);
+              }}
+              data-test="step-history-chip"
               style={{
                 flex: "0 0 auto",
                 display: "inline-flex",
-                marginTop: 2,
-                color: "var(--color-primary)",
+                alignItems: "center",
+                gap: 3,
+                marginTop: 1,
+                padding: "0 8px",
+                height: 20,
+                borderRadius: 10,
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                lineHeight: "18px",
+                whiteSpace: "nowrap",
+                border: "1px dashed var(--color-border)",
+                background: "transparent",
+                color: "var(--color-text-tertiary)",
               }}
             >
-              <ListChecks size={18} strokeWidth={2} />
-            </span>
-            {/* ステップ名（インライン編集領域＝タイトルは content） */}
-            <div
-              ref={props.contentRef}
-              style={{ flex: "1 1 auto", minWidth: 0, lineHeight: "1.6" }}
-            />
-          </div>
+              <History size={11} strokeWidth={2.2} />
+              {t("stepHistory.button")}
+            </button>
+          )}
           {/* 前手順リンク（編集不可）。informed_by を張る・外す */}
           <div
             contentEditable={false}
@@ -712,57 +877,6 @@ export const StepBlock = createReactBlockSpec(
               </div>
             )}
           </div>
-          {/* 過去の同名手順から、パラメータの key だけを引き継ぐ。
-              値は入れない — 前回の数値が残ると、書き換え忘れが今回の条件として読まれる。 */}
-          {hasParamHistory && (
-            <div contentEditable={false} style={{ position: "relative", flex: "0 0 auto" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setParamOpen((v) => !v);
-                  setPickerOpen(false);
-                  setNextOpen(false);
-                  setOpenOutputsFor(null);
-                }}
-                title={t("stepParams.button")}
-                aria-expanded={paramOpen}
-                data-test="step-param-history"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                  marginTop: 1,
-                  padding: "0 8px",
-                  height: 20,
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  lineHeight: "18px",
-                  whiteSpace: "nowrap",
-                  border: "1px solid var(--color-border)",
-                  background: "transparent",
-                  color: "var(--color-text-tertiary)",
-                }}
-              >
-                <History size={11} strokeWidth={2.2} style={{ flex: "0 0 auto" }} />
-                <span>{t("stepParams.button")}</span>
-              </button>
-              {paramOpen && (
-                <StepParamPicker
-                  stepName={stepTitle}
-                  stats={paramStats}
-                  onInsert={(keys) => {
-                    // 空欄の行として本文末尾に足す。値はユーザーが書く
-                    for (const key of keys) {
-                      appendEntitySpanToStep(props.editor, props.block.id, "attribute", `${key}:`);
-                    }
-                  }}
-                  onClose={() => setParamOpen(false)}
-                />
-              )}
-            </div>
-          )}
         </div>
       );
     },

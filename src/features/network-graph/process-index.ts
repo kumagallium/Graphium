@@ -20,6 +20,7 @@ import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import { generateProvDocument } from "../prov-generator/generator";
 import { pageToGeneratorInput } from "../prov-generator/page-input";
 import { provDocToFlowGraph, type FlowGraphData } from "./activity-graph-adapter";
+import { t } from "../../i18n";
 import { readAppDataFile, writeAppDataFile } from "../../lib/storage/app-data-file";
 
 /**
@@ -426,19 +427,46 @@ export function collectParamKeysForStep(
     .sort((a, b) => b.noteCount - a.noteCount || a.key.localeCompare(b.key));
 }
 
-/** 一覧に出せる step 名を件数順に返す（再利用ピッカーの一次候補） */
-export function collectStepNames(index: ProcessIndex | null): { name: string; noteCount: number }[] {
+export type StepNameStat = {
+  name: string;
+  /** この名前の手順を書いたノート数 */
+  noteCount: number;
+  /** 引き継げるパラメータ key の数。0 なら名前だけ選べる */
+  paramCount: number;
+};
+
+/**
+ * 過去に書いた手順の名前を、引き継げるパラメータの数とともに返す。
+ *
+ * パラメータの無い手順も落とさない。名前だけでも選べることに意味がある —
+ * 「SPS」と打つ前に「放電プラズマ焼結」が目に入れば表記ゆれが起きない。
+ * 並びはパラメータを持つものが先、次に記録の多い順。
+ */
+export function collectStepNames(
+  index: ProcessIndex | null,
+  splitLabel?: (label: string) => { key: string | null; value: string },
+): StepNameStat[] {
   if (!index) return [];
   const byName = new Map<string, Set<string>>();
+  // 題を付けていない手順は投影の時点で「(無題)」という名前になる。
+  // 引き継ぎ先の名前としては意味を持たないので候補から外す
+  const untitled = t("nav.untitled").trim();
   for (const process of index.processes) {
     for (const step of process.graph.steps) {
       const name = step.name.trim();
-      if (!name) continue;
+      if (!name || name === untitled) continue;
       if (!byName.has(name)) byName.set(name, new Set());
       byName.get(name)!.add(process.noteId);
     }
   }
   return [...byName.entries()]
-    .map(([name, notes]) => ({ name, noteCount: notes.size }))
-    .sort((a, b) => b.noteCount - a.noteCount || a.name.localeCompare(b.name));
+    .map(([name, notes]) => ({
+      name,
+      noteCount: notes.size,
+      paramCount: splitLabel ? collectParamKeysForStep(index, name, splitLabel).length : 0,
+    }))
+    .sort(
+      (a, b) =>
+        b.paramCount - a.paramCount || b.noteCount - a.noteCount || a.name.localeCompare(b.name),
+    );
 }

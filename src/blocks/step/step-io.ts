@@ -163,14 +163,15 @@ export function stepHasInputText(doc: any[], stepBlockId: string, text: string):
 }
 
 /**
- * step 配下から、指定ラベル（material / tool / output）の付いたテーブルを探す。
- * グラフからの追加を「表に行を足す」形にするときの受け皿を見つけるのに使う。
+ * step 配下から、指定ラベルの付いたテーブルを探す。
+ * グラフや履歴からの追加を「表に書く」形にするときの受け皿を見つけるのに使う。
+ * material / tool / output は行が育つ表、attribute は列が育つパラメータ表。
  */
 export function findLabeledTableInStep(
   doc: any[],
   labels: Map<string, string> | undefined,
   stepBlockId: string,
-  label: "material" | "tool" | "output",
+  label: "material" | "tool" | "output" | "attribute",
 ): string | null {
   const step = findBlockById(doc, stepBlockId);
   if (!step || !labels) return null;
