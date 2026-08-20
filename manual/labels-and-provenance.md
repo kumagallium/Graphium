@@ -18,6 +18,19 @@ A step block is the editor's only container: it holds the text, tables, and imag
 
 Chaining steps gives you the run order for free — that order becomes the arrows in the graph. Because a label needs a step to attach to, the labeling UI below only appears while your cursor is inside one. Outside of steps, Graphium stays a plain, quiet editor.
 
+## Inheriting from past steps <Badge type="tip" text="Added in v0.40.0 (2026-08-20)" /> {#inheriting-from-past-steps}
+
+Write the same operation often enough and you end up recalling the same conditions from scratch — what you recorded for a sintering run three months ago, or what you even called that step. The icon on the left of a step is the way back to it.
+
+Pressing it lists **the step names you have written before**. Picking one fills in the step title, then offers what that step recorded.
+
+- Steps with **nothing to carry over stay in the list**. Seeing "放電プラズマ焼結" before you type "SPS" is what keeps one operation from splitting into two names — a name that differs by a character is a different step from then on.
+- The second stage separates **parameters written on the step itself** from **the materials, tools and outputs it used or produced**. The separation matters: if "pressure 100 MPa" was written on the powder going in, it comes back on the powder. Flattening it into the step's own conditions would leave two records of the same experiment no longer lining up.
+- What you pick **arrives empty**. Past values appear only as small greyed examples to jog memory; they are never written into the cells. A number left over from last time reads as this run's condition.
+- It is written into tables: parameters become **columns** of the step's parameter table, and a material or tool becomes a **row** in that kind's table, with its attributes as columns.
+
+The picker appears **only once you have written steps before**. While a step is still unnamed, an outlined **Past steps** chip sits next to the icon as well, and disappears once you start typing.
+
 ## Inline labels
 
 Select a span of text inside a step's body and a second row appears on the formatting toolbar with four label buttons. Each button carries its keyboard shortcut as a small keycap.
@@ -140,5 +153,6 @@ Labels and links also feed graphs that span your whole workspace:
 - **Lineage** — the second sub-tab of **Graph**: a tree of the current note's upstream sources — the notes, materials, and versions it was derived from.
 - **Global Graph** <Badge type="tip" text="Added in v0.16.5 (2026-06-29)" /> — in the sidebar: every note at once, layered as **Sources**, **Notes**, and **Claim · Insight** ([Knowledge layer](/knowledge-layer) entries), with edges for **Derived**, **Used**, and **Reference** relations. Toggle **Hide references** or **Show isolated**, color nodes by type or context, and **Group by context** to pull related notes into clusters.
 - **Activity graph editor** — the **Steps (only)** view described [above](#the-provenance-graph-panel), where the step order itself can be rewired by dragging.
+- **Process list** <Badge type="tip" text="Added in v0.40.0 (2026-08-20)" /> — in the sidebar under **Processes**: the flow each note describes, listed side by side. A row leads with the flow rather than the title (**Weigh → Mix → Press +3**), because what an experiment *is* comes across through its sequence long before its name does. Selecting a row draws that flow on the right — the same figure you see with the note open. Search matches step names too, so "which notes did a firing step" is findable without knowing what they were called. A process **cannot be edited here**: it is derived from the note's text, so the note is where you change it.
 
 Together these answer the question labels exist for: not just "what did I write," but "where did this come from, and what did it lead to."
