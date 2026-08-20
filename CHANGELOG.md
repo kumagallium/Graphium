@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.40.1](https://github.com/kumagallium/Graphium/compare/v0.40.0...v0.40.1) - 2026-08-20
+
+- fix(copilot): resolve gh CLI PATH for authentication by @kumagallium in https://github.com/kumagallium/Graphium/pull/742
+- fix(deps): break circular import between llm.ts and copilot-subscription.ts by @kumagallium in https://github.com/kumagallium/Graphium/pull/745
+
 ## [v0.40.0](https://github.com/kumagallium/Graphium/compare/v0.39.4...v0.40.0) - 2026-08-20
 
 - fix(labels): anchor PROV label badges inside the editor instead of the viewport by @kumagallium in https://github.com/kumagallium/Graphium/pull/740
