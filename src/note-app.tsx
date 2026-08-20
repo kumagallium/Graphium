@@ -4299,7 +4299,6 @@ function NoteEditorInner({
     <>
       <ProvIndicatorLayer
         hidden={!isDesktop && rightTab !== null}
-        bottomInset={isDesktop ? 0 : 56}
       />
       <IndexTableIconLayer editorRef={editorRef} />
       <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} />
