@@ -218,6 +218,12 @@ talks to LLM and embedding backends.
   shared with another step (same-named tools merge into one Entity)
   appears in its section as a grayed row naming where it lives, whose
   "add to the table" gives this step its own row for the same entity.
+- **Same-named steps are told apart by what differs.** A multi-sample
+  study yields several steps with the same operation name (§3.2), so the
+  step card carries the parameters whose values differ from its
+  same-named siblings — and only those, since a value they all share
+  distinguishes nothing (`computeStepDistinguishers`). A step with no
+  same-named sibling shows nothing extra.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, taking BlockNote's own block types from

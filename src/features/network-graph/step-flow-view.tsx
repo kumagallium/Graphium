@@ -38,7 +38,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { LayoutGrid, Plus, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
-import type { FlowGraphData } from "./activity-graph-adapter";
+import { computeStepDistinguishers, type FlowGraphData } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
@@ -219,6 +219,8 @@ function StepFlowCanvas({
     prevNodeIdsRef.current = currentIds;
     setNodes((prev: Node[]) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
+      // 同名ステップ（条件違いの並列ラン）を見分けるためのパラメータ
+      const distinguishers = computeStepDistinguishers(graph.steps);
       const stepNodes: Node[] = graph.steps.map((s) => ({
         id: s.id,
         type: "step" as const,
@@ -229,6 +231,7 @@ function StepFlowCanvas({
           onDelete: onDeleteActivity,
           onJump: onJumpToBlock,
           getContentCount: getStepContentCount,
+          distinguishers: distinguishers.get(s.id),
         },
         draggable: false,
         selected: s.id === selectedIdRef.current,
