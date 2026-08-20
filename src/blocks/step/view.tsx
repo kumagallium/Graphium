@@ -31,14 +31,16 @@ import {
 } from "./step-io";
 import {
   addTableColumns,
+  appendEntityRowToTable,
   ensureParameterTable,
   readTable,
 } from "../../features/network-graph/table-row-edit";
 import { StepHistoryPicker } from "../../features/network-graph/StepHistoryPicker";
 import {
-  collectParamKeysForStep,
+  collectStepInheritance,
   collectStepNames,
   getLatestProcessIndex,
+  type InheritableEntity,
 } from "../../features/network-graph/process-index";
 import { splitAttrLabel } from "../../features/network-graph/activity-graph-adapter";
 import { t, useLocaleSubscription } from "../../i18n";
@@ -284,9 +286,12 @@ export const StepBlock = createReactBlockSpec(
       // paramOpen を依存に入れているのは、開くときに最新の投影を読み直すため
       // （投影は一覧を開いた時点で更新され、こちらは購読していない）。
       const effectiveName = pickedName ?? stepTitle;
-      const paramStats = useMemo(
-        () => collectParamKeysForStep(getLatestProcessIndex(), effectiveName, splitAttrLabel),
-        [effectiveName, paramOpen],
+      const inheritance = useMemo(
+        () =>
+          collectStepInheritance(getLatestProcessIndex(), effectiveName, splitAttrLabel, {
+            excludeStepId: props.block.id,
+          }),
+        [effectiveName, paramOpen, props.block.id],
       );
       const stepNameStats = useMemo(
         () => collectStepNames(getLatestProcessIndex(), splitAttrLabel),
@@ -299,12 +304,15 @@ export const StepBlock = createReactBlockSpec(
       const showHistoryHint = hasHistory && stepTitle.length === 0;
 
       /**
-       * 引き継いだ key を step のパラメータ表の列として足す。
+       * 引き継いだものを、書かれていた場所に合わせて本文へ足す。
        *
-       * 本文に span を直書きするのではなく表に書くのは、ノート側に
-       * 「単語の羅列ではなく試料表が育つ」という F 案の決めごとに従うため
-       * （activity-graph-editor の onAddEntity / onCreateSectionTable と同じ経路）。
-       * key は列名になり、値の欄は空で残る。表を作れない状況だけ span に落とす。
+       * 本文に span を直書きせず表に書くのは、ノート側に「単語の羅列ではなく
+       * 試料表が育つ」という F 案の決めごとに従うため（activity-graph-editor の
+       * onAddEntity / onCreateSectionTable と同じ経路）。
+       *
+       * 書き先を由来で分けるのは、実データでは手順の条件が手順にではなく
+       * 投入する素材や使う装置に付いているため。まとめて手順のパラメータに
+       * すると、元のノートと構造が揃わなくなる。
        */
       const insertParamKeys = (keys: string[]) => {
         const editor = props.editor;
@@ -328,20 +336,56 @@ export const StepBlock = createReactBlockSpec(
           if (created.created) labelStore.setLabel(tableId, "attribute");
           rest = keys.slice(1);
         }
+        appendMissingColumns(tableId, rest);
+      };
 
-        // 既にある列は足さない（同じ欄が 2 つ並ぶと、どちらに書くか決められない）
+      /** 表にまだ無い列だけを 1 回で足す（1 列ずつ足すと後半が落ちる） */
+      const appendMissingColumns = (tableId: string, keys: string[]) => {
+        const editor = props.editor;
         const existing = new Set(
           (readTable(editor, tableId)?.headers ?? []).map((h: string) => h.trim()),
         );
         const missing: string[] = [];
-        for (const key of rest) {
+        for (const key of keys) {
           const trimmed = key.trim();
           if (!trimmed || existing.has(trimmed)) continue;
           existing.add(trimmed);
           missing.push(trimmed);
         }
-        // 1 回で書く。1 列ずつ足すと古い内容の上書きで後半が落ちる
         if (missing.length > 0) addTableColumns(editor, tableId, missing);
+      };
+
+      /** 素材・道具・生成物を、その種類の表に行として足し、属性は列にする */
+      const insertEntity = (entity: InheritableEntity) => {
+        const editor = props.editor;
+        if (!editor) return;
+        const find = (stepId: string) =>
+          findLabeledTableInStep(editor.document ?? [], labelStore.labels, stepId, entity.kind);
+        const result = appendEntityRowToTable(
+          editor,
+          props.block.id,
+          entity.label,
+          find,
+          t("graphTable.nameColumn"),
+        );
+        if (!result) {
+          // 表を作れないときは span で書く（グラフからの追加と同じ逃げ道）
+          appendEntitySpanToStep(editor, props.block.id, entity.kind, entity.label);
+          return;
+        }
+        if (result.created) labelStore.setLabel(result.tableBlockId, entity.kind);
+        appendMissingColumns(
+          result.tableBlockId,
+          entity.attrs.map((a) => a.key),
+        );
+      };
+
+      const insertInheritance = (picked: {
+        paramKeys: string[];
+        entities: InheritableEntity[];
+      }) => {
+        insertParamKeys(picked.paramKeys);
+        for (const entity of picked.entities) insertEntity(entity);
       };
 
       // この step の前手順（outgoing informed_by）と後続（incoming informed_by）。
@@ -520,7 +564,7 @@ export const StepBlock = createReactBlockSpec(
                 <StepHistoryPicker
                   stepName={effectiveName}
                   stepNames={stepNameStats}
-                  stats={paramStats}
+                  inheritance={inheritance}
                   onPickName={(name) => {
                     setPickedName(name);
                     try {
@@ -531,7 +575,7 @@ export const StepBlock = createReactBlockSpec(
                       // タイトルを書けなくてもパラメータは選べる（致命ではない）
                     }
                   }}
-                  onInsert={(keys: string[]) => insertParamKeys(keys)}
+                  onInsert={insertInheritance}
                   onClose={() => setParamOpen(false)}
                 />
               )}

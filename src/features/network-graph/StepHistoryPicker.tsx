@@ -24,19 +24,23 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Check, ChevronRight, Plus } from "lucide-react";
 import { useT } from "../../i18n";
-import type { ParamKeyStat, StepNameStat } from "./process-index";
+import type { InheritableEntity, StepInheritance, StepNameStat } from "./process-index";
 
 export type StepHistoryPickerProps = {
   /** 今の step のタイトル。空なら名前一覧から始める */
   stepName: string;
   /** 過去に書いた手順の名前（collectStepNames の結果） */
   stepNames: StepNameStat[];
-  /** 選ばれている手順名のパラメータ候補（親が計算して渡す） */
-  stats: ParamKeyStat[];
+  /** 選ばれている手順から引き継げるもの（親が計算して渡す） */
+  inheritance: StepInheritance;
   /** 手順名が選ばれた。呼び出し側が step のタイトルに反映する */
   onPickName: (name: string) => void;
-  /** 選んだ key を空欄のパラメータとして step に追加する */
-  onInsert: (keys: string[]) => void;
+  /**
+   * 選んだものを step に追加する。
+   * paramKeys は手順のパラメータ表の列に、entities は種類ごとの表の行
+   * （属性はその列）になる — 書かれていた場所を保つため、呼び出し側で分けて書く。
+   */
+  onInsert: (picked: { paramKeys: string[]; entities: InheritableEntity[] }) => void;
   onClose: () => void;
 };
 
@@ -108,6 +112,13 @@ const styles = {
     borderRadius: 6,
     pointerEvents: "none" as const,
   },
+  sectionLabel: {
+    padding: "6px 8px 2px",
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.03em",
+    color: "var(--color-text-tertiary)",
+  },
   empty: {
     padding: "16px 12px",
     fontSize: 11,
@@ -157,7 +168,7 @@ const styles = {
 export function StepHistoryPicker({
   stepName,
   stepNames,
-  stats,
+  inheritance,
   onPickName,
   onInsert,
   onClose,
@@ -167,13 +178,11 @@ export function StepHistoryPicker({
   // 名前が決まっていて引き継げるものがあるなら、そこから始める。
   // それ以外（新しい手順・記録の無い名前）は名前選びから
   const [view, setView] = useState<"names" | "params">(() =>
-    stepName.trim() && stats.length > 0 ? "params" : "names",
+    stepName.trim() && inheritance.stepParams.length + inheritance.entities.length > 0
+      ? "params"
+      : "names",
   );
 
-  const maxCount = useMemo(
-    () => stats.reduce((max, s) => Math.max(max, s.noteCount), 0),
-    [stats],
-  );
   const maxNameCount = useMemo(
     () => stepNames.reduce((max, s) => Math.max(max, s.noteCount), 0),
     [stepNames],
@@ -243,8 +252,69 @@ export function StepHistoryPicker({
     );
   }
 
-  // ── 2 段目: パラメータの key ──
+  // ── 2 段目: 引き継ぐものを選ぶ ──
   const named = stepName.trim().length > 0;
+  const { stepParams, entities } = inheritance;
+  const total = stepParams.length + entities.length;
+  const allSelected = selected.size === total && total > 0;
+
+  const entityKey = (e: InheritableEntity) => `${e.kind}:${e.label}`;
+  const maxNote = Math.max(
+    ...stepParams.map((p) => p.noteCount),
+    ...entities.map((e) => e.noteCount),
+    1,
+  );
+
+  const row = (
+    key: string,
+    label: React.ReactNode,
+    note: number,
+    trailing?: React.ReactNode,
+  ) => {
+    const on = selected.has(key);
+    const ratio = note / maxNote;
+    return (
+      <button
+        key={key}
+        type="button"
+        role="menuitemcheckbox"
+        aria-checked={on}
+        onClick={() => toggle(key)}
+        style={{
+          ...styles.item,
+          position: "relative",
+          color: on ? "var(--color-label-activity)" : "var(--color-foreground)",
+          fontWeight: on ? 600 : 400,
+        }}
+      >
+        <span style={{ ...styles.bar, width: `${Math.round(ratio * 100)}%`, opacity: on ? 1 : 0.5 }} />
+        <span
+          aria-hidden
+          style={{
+            position: "relative",
+            flex: "0 0 auto",
+            width: 14,
+            height: 14,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 3,
+            border: `1px solid ${on ? "var(--color-label-activity)" : "var(--color-border)"}`,
+            background: on ? "var(--color-label-activity)" : "transparent",
+            color: "var(--color-card)",
+          }}
+        >
+          {on && <Check size={10} strokeWidth={3} />}
+        </span>
+        <span style={{ ...styles.keyText, position: "relative" }}>{label}</span>
+        {trailing}
+        <span style={{ ...styles.count, position: "relative" }}>
+          {t("stepParams.noteCount", { n: String(note) })}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div role="menu" style={styles.menu} data-test="step-param-picker">
       <div style={styles.header}>
@@ -271,69 +341,51 @@ export function StepHistoryPicker({
         </div>
       </div>
 
-      {stats.length === 0 && <div style={styles.empty}>{t("stepParams.empty")}</div>}
+      {total === 0 && <div style={styles.empty}>{t("stepParams.empty")}</div>}
 
-      {stats.length > 0 && (
+      {total > 0 && (
         <>
           <div style={styles.list}>
-            {stats.map((stat) => {
-              const on = selected.has(stat.key);
-              const ratio = maxCount > 0 ? stat.noteCount / maxCount : 0;
-              return (
-                <button
-                  key={stat.key}
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={on}
-                  onClick={() => toggle(stat.key)}
-                  style={{
-                    ...styles.item,
-                    position: "relative",
-                    color: on ? "var(--color-label-activity)" : "var(--color-foreground)",
-                    fontWeight: on ? 600 : 400,
-                  }}
-                >
-                  <span
-                    style={{ ...styles.bar, width: `${Math.round(ratio * 100)}%`, opacity: on ? 1 : 0.5 }}
-                  />
-                  <span
-                    aria-hidden
-                    style={{
-                      position: "relative",
-                      flex: "0 0 auto",
-                      width: 14,
-                      height: 14,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: 3,
-                      border: `1px solid ${on ? "var(--color-label-activity)" : "var(--color-border)"}`,
-                      background: on ? "var(--color-label-activity)" : "transparent",
-                      color: "var(--color-card)",
-                    }}
-                  >
-                    {on && <Check size={10} strokeWidth={3} />}
+            {/* 手順に直接書かれていたパラメータ */}
+            {stepParams.length > 0 && (
+              <div style={styles.sectionLabel}>{t("stepHistory.sectionParams")}</div>
+            )}
+            {stepParams.map((stat) =>
+              row(
+                `param:${stat.key}`,
+                <>
+                  {stat.key}
+                  {stat.sampleValue && (
+                    <span style={{ ...styles.sample, marginLeft: 5 }}>
+                      {t("stepParams.sample", { value: stat.sampleValue })}
+                    </span>
+                  )}
+                </>,
+                stat.noteCount,
+              ),
+            )}
+
+            {/* 素材・道具・生成物。名前とその属性をひとまとまりで引き継ぐ */}
+            {entities.length > 0 && (
+              <div style={styles.sectionLabel}>{t("stepHistory.sectionEntities")}</div>
+            )}
+            {entities.map((entity) =>
+              row(
+                entityKey(entity),
+                <>
+                  {entity.label}
+                  <span style={{ ...styles.sample, marginLeft: 5 }}>
+                    {t(`stepParams.origin.${entity.kind}`)}
                   </span>
-                  <span style={{ ...styles.keyText, position: "relative" }}>
-                    {stat.key}
-                    {/* 同じ「温度」でも装置の設定か素材の条件かで意味が違うので由来を添える */}
-                    {stat.origin && (
-                      <span style={{ ...styles.sample, marginLeft: 5 }}>
-                        {t(`stepParams.origin.${stat.origin}`)}
-                      </span>
-                    )}
-                    {stat.sampleValue && (
-                      <span style={{ ...styles.sample, marginLeft: 5 }}>
-                        {t("stepParams.sample", { value: stat.sampleValue })}
-                      </span>
-                    )}
-                  </span>
-                  <span style={{ ...styles.count, position: "relative" }}>
-                    {t("stepParams.noteCount", { n: String(stat.noteCount) })}
-                  </span>
-                </button>
-              );
-            })}
+                  {entity.attrs.length > 0 && (
+                    <span style={{ ...styles.sample, marginLeft: 5 }}>
+                      {entity.attrs.map((a) => a.key).join(" · ")}
+                    </span>
+                  )}
+                </>,
+                entity.noteCount,
+              ),
+            )}
           </div>
           <div style={styles.hint}>{t("stepParams.hint")}</div>
           <div style={styles.footer}>
@@ -341,12 +393,17 @@ export function StepHistoryPicker({
               type="button"
               style={styles.textButton}
               onClick={() =>
-                setSelected((prev) =>
-                  prev.size === stats.length ? new Set() : new Set(stats.map((s) => s.key)),
+                setSelected(
+                  allSelected
+                    ? new Set()
+                    : new Set([
+                        ...stepParams.map((p) => `param:${p.key}`),
+                        ...entities.map(entityKey),
+                      ]),
                 )
               }
             >
-              {selected.size === stats.length ? t("stepParams.clearAll") : t("stepParams.selectAll")}
+              {allSelected ? t("stepParams.clearAll") : t("stepParams.selectAll")}
             </button>
             <button
               type="button"
@@ -357,8 +414,13 @@ export function StepHistoryPicker({
               }}
               disabled={selected.size === 0}
               onClick={() => {
-                // 表示順（件数の降順）のまま渡す。選んだ順に並べると再現しない
-                onInsert(stats.map((s) => s.key).filter((k) => selected.has(k)));
+                // 表示順のまま渡す。選んだ順に並べると同じ操作でも結果が変わる
+                onInsert({
+                  paramKeys: stepParams
+                    .map((p) => p.key)
+                    .filter((k) => selected.has(`param:${k}`)),
+                  entities: entities.filter((e) => selected.has(entityKey(e))),
+                });
                 onClose();
               }}
             >

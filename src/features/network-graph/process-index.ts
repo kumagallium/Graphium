@@ -427,6 +427,144 @@ export function collectParamKeysForStep(
     .sort((a, b) => b.noteCount - a.noteCount || a.key.localeCompare(b.key));
 }
 
+/** 過去の手順から引き継げるものを、書かれていた場所ごとにまとめたもの */
+export type StepInheritance = {
+  /** step 直結のパラメータ（`@activity` 束縛の attribute span / パラメータ表の列） */
+  stepParams: ParamKeyStat[];
+  /** その手順が使った・生んだ Entity と、そこに付いていた属性 */
+  entities: InheritableEntity[];
+};
+
+export type InheritableEntity = {
+  label: string;
+  kind: "material" | "tool" | "output";
+  /** この Entity を書いたノート数 */
+  noteCount: number;
+  /** この Entity に付いていた属性の key */
+  attrs: ParamKeyStat[];
+};
+
+/**
+ * 同名の手順から引き継げるものを、書かれていた場所ごとに分けて返す。
+ *
+ * 場所を混ぜてはいけない。実データでは「圧力: 100 MPa」は手順にではなく
+ * 投入する素材に付いている。まとめて手順のパラメータとして引き継ぐと、
+ * 元のノートと書き方が変わってしまい、同じ実験の記録なのに構造が揃わなくなる。
+ * 引き継ぎ先も、素材の属性は素材表の列、手順のパラメータは手順の表の列と分ける。
+ *
+ * 表記ゆれは正規化しない（[[collectParamKeysForStep]] と同じ理由）。
+ */
+export function collectStepInheritance(
+  index: ProcessIndex | null,
+  stepName: string,
+  splitLabel: (label: string) => { key: string | null; value: string },
+  options: {
+    /**
+     * 除外する step のブロック ID。いま書いている step 自身を指す。
+     * 自分の記録が自分の候補に出ても選ぶ意味が無いうえ、引き継ぎで入った内容が
+     * 次の投影で候補として戻り、同じものが増え続ける。
+     */
+    excludeStepId?: string;
+  } = {},
+): StepInheritance {
+  const target = stepName.trim();
+  const empty: StepInheritance = { stepParams: [], entities: [] };
+  if (!index || !target) return empty;
+
+  type Acc = { notes: Set<string>; sample?: string; origins: Map<ParamOrigin, number> };
+  const stepAcc = new Map<string, Acc>();
+  // Entity は「名前 + 種類」で同一視する。同じ名前でも素材と道具は別物
+  const entityAcc = new Map<
+    string,
+    { label: string; kind: "material" | "tool" | "output"; notes: Set<string>; attrs: Map<string, Acc> }
+  >();
+
+  const record = (acc: Map<string, Acc>, label: string, noteId: string, origin: ParamOrigin) => {
+    const { key, value } = splitLabel(label);
+    if (!key) return;
+    const stat = acc.get(key) ?? {
+      notes: new Set<string>(),
+      sample: undefined as string | undefined,
+      origins: new Map<ParamOrigin, number>(),
+    };
+    stat.notes.add(noteId);
+    if (!stat.sample && value) stat.sample = value;
+    stat.origins.set(origin, (stat.origins.get(origin) ?? 0) + 1);
+    acc.set(key, stat);
+  };
+
+  for (const process of index.processes) {
+    const matched = new Set(
+      process.graph.steps
+        .filter((s) => s.name.trim() === target && s.id !== options.excludeStepId)
+        .map((s) => s.id),
+    );
+    if (matched.size === 0) continue;
+
+    for (const step of process.graph.steps) {
+      if (!matched.has(step.id)) continue;
+      for (const param of step.params ?? []) record(stepAcc, param.label, process.noteId, "step");
+    }
+
+    const entityById = new Map(process.graph.entities.map((e) => [e.id, e]));
+    const related = new Set<string>();
+    for (const edge of process.graph.edges) {
+      if (edge.kind === "used" && matched.has(edge.target)) related.add(edge.source);
+      else if (edge.kind === "generates" && matched.has(edge.source)) related.add(edge.target);
+    }
+    for (const entityId of related) {
+      const entity = entityById.get(entityId);
+      if (!entity) continue;
+      const label = entity.label.trim();
+      if (!label) continue;
+      const kind: "material" | "tool" | "output" =
+        entity.kind === "tool" ? "tool" : entity.kind === "output" ? "output" : "material";
+      const acc =
+        entityAcc.get(`${kind}:${label}`) ??
+        { label, kind, notes: new Set<string>(), attrs: new Map<string, Acc>() };
+      acc.notes.add(process.noteId);
+      for (const attr of entity.attrs ?? []) record(acc.attrs, attr.label, process.noteId, kind);
+      entityAcc.set(`${kind}:${label}`, acc);
+    }
+  }
+
+  const toStats = (acc: Map<string, Acc>): ParamKeyStat[] =>
+    [...acc.entries()]
+      .map(([key, stat]) => {
+        let origin: ParamOrigin | undefined;
+        let best = 0;
+        for (const [o, n] of stat.origins) {
+          if (n > best) {
+            best = n;
+            origin = o;
+          }
+        }
+        return {
+          key,
+          noteCount: stat.notes.size,
+          ...(stat.sample ? { sampleValue: stat.sample } : {}),
+          ...(origin ? { origin } : {}),
+        };
+      })
+      .sort((a, b) => b.noteCount - a.noteCount || a.key.localeCompare(b.key));
+
+  return {
+    stepParams: toStats(stepAcc),
+    entities: [...entityAcc.values()]
+      .map((e) => ({
+        label: e.label,
+        kind: e.kind,
+        noteCount: e.notes.size,
+        attrs: toStats(e.attrs),
+      }))
+      // 引き継げるものが多い順。道具は設定が多く、素材は名前だけのことも多い
+      .sort(
+        (a, b) => b.attrs.length - a.attrs.length || b.noteCount - a.noteCount ||
+          a.label.localeCompare(b.label),
+      ),
+  };
+}
+
 export type StepNameStat = {
   name: string;
   /** この名前の手順を書いたノート数 */

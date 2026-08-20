@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildProcessEntry,
+  collectStepInheritance,
   findStaleProcessFiles,
   collectParamKeysForStep,
   collectStepNames,
@@ -320,6 +321,64 @@ describe("パラメータ辞書", () => {
   it("題の無い手順（投影で「(無題)」になる）は候補にしない", () => {
     const i = index([withParams("n1", t("nav.untitled"), []), withParams("n2", "焼成", [])]);
     expect(collectStepNames(i).map((s) => s.name)).toEqual(["焼成"]);
+  });
+
+  // 実データでは手順直結のパラメータが 1 件も無く、条件はすべて素材か装置に
+  // 付いていた。書かれていた場所ごとに分けないと、引き継ぎで書き方が変わる。
+  it("素材の属性と装置の設定を、別々の Entity として分けて返す", () => {
+    const entry = withEntityAttrs("n1", "焼結", {
+      kind: "material",
+      labels: ["圧力: 100 MPa", "温度: 1273 K"],
+    });
+    entry.graph.entities.push({
+      id: "n1-e2",
+      label: "SPS-515A",
+      kind: "tool",
+      attrs: [{ label: "出力: 5 kW" }],
+    } as any);
+    entry.graph.edges.push({ id: "e2", kind: "used", source: "n1-e2", target: "n1-s1" } as any);
+
+    const result = collectStepInheritance(index([entry]), "焼結", splitAttrLabel);
+    expect(result.stepParams).toEqual([]);
+    const byLabel = Object.fromEntries(result.entities.map((e) => [e.label, e]));
+    expect(byLabel["素材"].kind).toBe("material");
+    expect(byLabel["素材"].attrs.map((a) => a.key)).toEqual(["圧力", "温度"]);
+    expect(byLabel["SPS-515A"].kind).toBe("tool");
+    expect(byLabel["SPS-515A"].attrs.map((a) => a.key)).toEqual(["出力"]);
+  });
+
+  it("属性を持たない Entity も落とさない（名前だけ引き継ぐ価値がある）", () => {
+    const entry = withEntityAttrs("n1", "焼結", { kind: "tool", labels: [] });
+    const result = collectStepInheritance(index([entry]), "焼結", splitAttrLabel);
+    expect(result.entities.map((e) => [e.label, e.attrs.length])).toEqual([["素材", 0]]);
+  });
+
+  it("同じ名前でも素材と道具は別扱いにする", () => {
+    const entry = withEntityAttrs("n1", "焼結", { kind: "material", labels: [] });
+    entry.graph.entities.push({ id: "n1-e2", label: "素材", kind: "tool", attrs: [] } as any);
+    entry.graph.edges.push({ id: "e2", kind: "used", source: "n1-e2", target: "n1-s1" } as any);
+    const result = collectStepInheritance(index([entry]), "焼結", splitAttrLabel);
+    expect(result.entities.map((e) => e.kind).sort()).toEqual(["material", "tool"]);
+  });
+
+  it("step 直結のパラメータは Entity 側に混ぜない", () => {
+    const entry = withEntityAttrs("n1", "焼結", { kind: "material", labels: ["圧力: 100 MPa"] });
+    entry.graph.steps[0].params = [{ label: "保持時間: 5 min" }] as any;
+    const result = collectStepInheritance(index([entry]), "焼結", splitAttrLabel);
+    expect(result.stepParams.map((p) => p.key)).toEqual(["保持時間"]);
+    expect(result.entities[0].attrs.map((a) => a.key)).toEqual(["圧力"]);
+  });
+
+  it("いま書いている step 自身は候補にしない（引き継いだ内容が候補として戻らないように）", () => {
+    const own = withEntityAttrs("n1", "焼結", { kind: "material", labels: ["圧力: 100 MPa"] });
+    const other = withEntityAttrs("n2", "焼結", { kind: "material", labels: ["温度: 1273 K"] });
+    const all = collectStepInheritance(index([own, other]), "焼結", splitAttrLabel);
+    expect(all.entities.flatMap((e) => e.attrs.map((a) => a.key)).sort()).toEqual(["圧力", "温度"]);
+
+    const excluded = collectStepInheritance(index([own, other]), "焼結", splitAttrLabel, {
+      excludeStepId: "n1-s1",
+    });
+    expect(excluded.entities.flatMap((e) => e.attrs.map((a) => a.key))).toEqual(["温度"]);
   });
 
   it("step 名を使用ノート数の多い順に並べる", () => {
