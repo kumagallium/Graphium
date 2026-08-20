@@ -40,6 +40,12 @@ export type FileSidebarProps = {
   onShowLabelGallery: (label: string) => void;
   /** 現在アクティブなメディアタイプ（ハイライト用） */
   activeAssetType: MediaType | null;
+  /** プロセス一覧を開く。手順を持つノートが 1 件以上あるときだけ渡す */
+  onShowProcessGallery?: () => void;
+  /** プロセス一覧を表示中か（ハイライト用） */
+  processGalleryActive?: boolean;
+  /** 手順を持つノートの件数 */
+  processCount?: number;
   /** 現在アクティブなラベル（ハイライト用） */
   activeLabel: string | null;
   /** ファイル一覧の読み込み中フラグ */
@@ -165,6 +171,9 @@ export function FileSidebar({
   aiAvailable = true,
   onShowWikiLog,
   onShowWikiLint,
+  onShowProcessGallery,
+  processGalleryActive,
+  processCount = 0,
   activeWikiView,
   skillCount = 0,
   onShowSkillList,
@@ -340,6 +349,27 @@ export function FileSidebar({
             <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{noteCount}</span>
           )}
         </button>
+
+        {/* ①' プロセス（見出し風リンク） — ノートの別の見方なので隣に置く。
+            手順を書いたノートが 1 件も無いうちは出さない（progressive disclosure）。 */}
+        {onShowProcessGallery && processCount > 0 && (
+          <button
+            onClick={onShowProcessGallery}
+            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
+              processGalleryActive
+                ? "text-primary"
+                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+            }`}
+          >
+            <span className="shrink-0 -ml-0.5" aria-hidden>
+              <ArrowRight size={12} />
+            </span>
+            <span className="flex-1 text-left">{t("process.title")}</span>
+            <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">
+              {processCount}
+            </span>
+          </button>
+        )}
 
         {/* ②' メモ（見出し風リンク） — ノートと同列。
             この節の最後の見出しが mb-1.5 でナレッジ節との間隔を作る。モバイル（受信箱）は

@@ -119,6 +119,7 @@ import {
 import {
   GraphLinksPanel,
   GlobalGraphView,
+  ProcessGalleryView,
   buildGlobalGraph,
   parseExternalSource,
 } from "./features/network-graph";
@@ -5735,6 +5736,7 @@ export function NoteApp() {
     fm.setShowNoteList(false);
     fm.setActiveAssetType(null);
     fm.setActiveLabel(null);
+    fm.setShowProcessGallery(false);
     fm.setActiveWikiKind(null);
     setShowMemos(false);
     setShowMobile(false);
@@ -5747,6 +5749,19 @@ export function NoteApp() {
     // 「一覧に戻れない（押しても無反応）」になるのを防ぐ。
     setAssetViewResetSeq((n) => n + 1);
   }, [fm]);
+  // 手順を書いたノートの件数。プロセス一覧の入口を出すかの判定に使う。
+  // 投影キャッシュがあればそれが正（一覧の件数と一致する）。まだ一度も投影して
+  // いないときだけ note-index の steps から見積もる — 入口を出す判断には足りる。
+  // 見積もりは題のない step を数え落とすので、一覧を開くと数が少し動くことがある。
+  const processNoteCount = useMemo(
+    () =>
+      fm.processIndex
+        ? fm.processIndex.processes.length
+        : (fm.noteIndex?.notes ?? []).filter(
+            (n) => n.source !== "ai" && !n.deletedAt && !n.archivedAt && (n.steps?.length ?? 0) > 0,
+          ).length,
+    [fm.processIndex, fm.noteIndex],
+  );
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
   // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
@@ -7752,6 +7767,9 @@ export function NoteApp() {
     recentNotes: fm.recentNotes,
     onShowNoteList: () => { closeAllViews(); fm.setShowNoteList(true); setSidebarOpen(false); router.navigate({ view: "notes" }); },
     noteListActive: fm.showNoteList,
+    onShowProcessGallery: () => { closeAllViews(); fm.setShowProcessGallery(true); setSidebarOpen(false); },
+    processGalleryActive: fm.showProcessGallery,
+    processCount: processNoteCount,
     mediaIndex: fm.mediaIndex,
     onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { closeAllViews(); fm.setActiveAssetType(type); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
@@ -8357,6 +8375,16 @@ export function NoteApp() {
                 </ListSidePeekBoundary>
               </AiAssistantProvider>
             )}
+          />
+        ) : fm.showProcessGallery ? (
+          <ProcessGalleryView
+            processIndex={fm.processIndex}
+            onBack={() => fm.setShowProcessGallery(false)}
+            onNavigateNote={(noteId) => {
+              fm.setShowProcessGallery(false);
+              fm.handleOpenFile(noteId);
+              router.navigate({ view: "editor", fileId: noteId });
+            }}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView

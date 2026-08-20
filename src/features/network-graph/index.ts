@@ -6,3 +6,14 @@ export { GlobalGraphView } from "./global-graph-view";
 export { buildLineageTree, type LineageNode } from "./lineage-builder";
 export { LineagePanel } from "./lineage-panel";
 export { parseExternalSource, isExternalSourceId, type ExternalSourceKind } from "./external-source";
+export { ProcessGalleryView } from "./ProcessGalleryView";
+export { StepParamPicker } from "./StepParamPicker";
+export {
+  ensureProcessIndex,
+  readProcessIndex,
+  collectStepNames,
+  collectParamKeysForStep,
+  type ProcessIndex,
+  type ProcessIndexEntry,
+  type ParamKeyStat,
+} from "./process-index";
