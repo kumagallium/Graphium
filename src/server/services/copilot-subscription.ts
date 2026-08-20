@@ -38,6 +38,7 @@ import type {
   CopilotSession,
   SessionEvent,
 } from "@github/copilot-sdk";
+import { dirname } from "node:path";
 import { CodedError } from "../../lib/ai-error-codes.js";
 
 export type CopilotModelSettings = {
@@ -181,6 +182,30 @@ export function flattenPromptForCopilot(prompt: LanguageModelV3Prompt): {
 // 次回呼び出しで再 spawn させる（自動リトライはしない — エラーは利用者に見せる）。
 const clientCache = new Map<string, CopilotClient>();
 
+/**
+ * copilot CLI の子プロセスに渡す env を組み立てる。
+ *
+ * copilot CLI は `#!/usr/bin/env node` で起動するスクリプトのため、spawn 時の
+ * PATH 上に node が無いと `env: node: No such file or directory`（exit 127）で
+ * 落ちる。Tauri パッケージ版はサイドカーが最小化された PATH で起動されており
+ * （GUI 起動はログインシェルの rc を経由しないため nvm/homebrew が PATH に無い）、
+ * RuntimeConnection.forStdio に env を省略すると process.env がそのまま子プロセス
+ * に継承されて再現する。
+ *
+ * このサーバー自身は既に正しい node（process.execPath）で動いているので、その
+ * ディレクトリを PATH 先頭に足すだけで確実に解決できる（nvm バージョン走査より
+ * 「今動いているのと同じ node」を使う方が確実）。
+ */
+function buildCopilotEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value;
+  }
+  const nodeDir = dirname(process.execPath);
+  env.PATH = env.PATH ? `${nodeDir}:${env.PATH}` : nodeDir;
+  return env;
+}
+
 async function getClient(cliPath: string): Promise<CopilotClient> {
   const cached = clientCache.get(cliPath);
   if (cached) return cached;
@@ -188,7 +213,10 @@ async function getClient(cliPath: string): Promise<CopilotClient> {
     "@github/copilot-sdk"
   );
   const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: cliPath }),
+    connection: RuntimeConnection.forStdio({
+      path: cliPath,
+      env: buildCopilotEnv(),
+    }),
     // CLI にログイン済みのユーザー（サブスク認証）をそのまま使う
     useLoggedInUser: true,
     logLevel: "none",
