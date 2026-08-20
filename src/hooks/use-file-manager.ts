@@ -35,6 +35,7 @@ import {
   type NoteGraphData,
   ensureProcessIndex,
   readProcessIndex,
+  setLatestProcessIndex,
   type ProcessIndex,
 } from "../features/network-graph";
 import {
@@ -461,7 +462,9 @@ export function useFileManager(authenticated: boolean) {
           (f) => !trashedIdSet.has(f.id) && !archivedIdSet.has(f.id),
         );
         const idx = await ensureProcessIndex(targets, docCacheRef.current, loadFile);
-        if (!cancelled) setProcessIndex(idx);
+        if (cancelled) return;
+        setProcessIndex(idx);
+        setLatestProcessIndex(idx);
       } catch (err) {
         console.error("プロセスインデックスの構築に失敗:", err);
       } finally {
@@ -480,7 +483,9 @@ export function useFileManager(authenticated: boolean) {
     let cancelled = false;
     readProcessIndex()
       .then((idx) => {
-        if (!cancelled && idx) setProcessIndex((prev) => prev ?? idx);
+        if (cancelled || !idx) return;
+        setProcessIndex((prev) => prev ?? idx);
+        setLatestProcessIndex(idx);
       })
       .catch(() => {});
     return () => {

@@ -194,6 +194,30 @@ export function buildProcessEntry(
   };
 }
 
+// ── アプリが知っている最新の投影 ──
+//
+// step ブロックのパラメータピッカーは BlockNote の render の中から読む。
+// Provider を増やすと SidePeek / Storybook で張り忘れが起きるので、
+// media-index の latestIndex と同じくモジュール変数で配る（読む側は購読しない
+// — ボタンを押した瞬間の内容が読めれば足りる）。
+
+let latestProcessIndex: ProcessIndex | null = null;
+
+/** 一覧の投影結果をアプリ全体へ配る */
+export function setLatestProcessIndex(index: ProcessIndex | null): void {
+  latestProcessIndex = index;
+}
+
+/** 直近の投影結果。まだ一度も投影・読み込みをしていなければ null */
+export function getLatestProcessIndex(): ProcessIndex | null {
+  return latestProcessIndex;
+}
+
+/** サインアウト時に捨てる */
+export function clearLatestProcessIndex(): void {
+  latestProcessIndex = null;
+}
+
 // ── 読み書き ──
 
 export async function readProcessIndex(): Promise<ProcessIndex | null> {
@@ -301,16 +325,29 @@ export async function ensureProcessIndex(
 
 // ── パラメータ辞書（step 再利用の候補） ──
 
+/** パラメータ key がどこに書かれていたか。同じ「温度」でも装置の設定か素材の条件かで意味が違う */
+export type ParamOrigin = "step" | "material" | "tool" | "output";
+
 export type ParamKeyStat = {
   key: string;
   /** この key を使っているノート数 */
   noteCount: number;
   /** 直近に使われた値の例（そのまま入れるためではなく、何の欄か思い出すため） */
   sampleValue?: string;
+  /** 代表的な書かれ方（最も多い由来）。同じ key が複数の由来に跨ることもある */
+  origin?: ParamOrigin;
 };
 
 /**
  * step 名で横断検索し、その手順で使われたパラメータの key を件数順に返す。
+ *
+ * 集める先が 2 つあることに注意する。実データでは手順の条件が step 直結の
+ * パラメータではなく、**その手順に入る素材や使う装置の属性**として書かれている
+ * ことのほうが多い（「圧力: 100 MPa」が焼結装置ではなく投入する粉末に付く、など）。
+ * step.params だけを見ると、実際に使われているノートで候補が 1 つも出ない。
+ *
+ *   - step 直結のパラメータ（`@activity` 束縛の attribute span）
+ *   - その step が used / generates する Entity の属性
  *
  * 表記ゆれ（「温度」「焼成温度」「Temperature」）は正規化しない。意味の違うものを
  * まとめるほうが害が大きいので、全部出して件数順に並べ、選ぶのはユーザーに委ねる。
@@ -323,28 +360,69 @@ export function collectParamKeysForStep(
 ): ParamKeyStat[] {
   const target = stepName.trim();
   if (!index || !target) return [];
-  const stats = new Map<string, { notes: Set<string>; sample?: string }>();
+  const stats = new Map<
+    string,
+    { notes: Set<string>; sample?: string; origins: Map<ParamOrigin, number> }
+  >();
+
+  const record = (label: string, noteId: string, origin: ParamOrigin) => {
+    const { key, value } = splitLabel(label);
+    if (!key) return;
+    const stat = stats.get(key) ?? {
+      notes: new Set<string>(),
+      sample: undefined as string | undefined,
+      origins: new Map<ParamOrigin, number>(),
+    };
+    stat.notes.add(noteId);
+    if (!stat.sample && value) stat.sample = value;
+    stat.origins.set(origin, (stat.origins.get(origin) ?? 0) + 1);
+    stats.set(key, stat);
+  };
 
   for (const process of index.processes) {
+    const matchedStepIds = new Set(
+      process.graph.steps.filter((s) => s.name.trim() === target).map((s) => s.id),
+    );
+    if (matchedStepIds.size === 0) continue;
+
     for (const step of process.graph.steps) {
-      if (step.name.trim() !== target) continue;
-      for (const param of step.params ?? []) {
-        const { key, value } = splitLabel(param.label);
-        if (!key) continue;
-        const stat = stats.get(key) ?? { notes: new Set<string>() };
-        stat.notes.add(process.noteId);
-        if (!stat.sample && value) stat.sample = value;
-        stats.set(key, stat);
-      }
+      if (!matchedStepIds.has(step.id)) continue;
+      for (const param of step.params ?? []) record(param.label, process.noteId, "step");
+    }
+
+    // この手順に繋がる Entity の属性も、その手順で記録した項目として扱う
+    const entityById = new Map(process.graph.entities.map((e) => [e.id, e]));
+    const related = new Set<string>();
+    for (const edge of process.graph.edges) {
+      if (edge.kind === "used" && matchedStepIds.has(edge.target)) related.add(edge.source);
+      else if (edge.kind === "generates" && matchedStepIds.has(edge.source)) related.add(edge.target);
+    }
+    for (const entityId of related) {
+      const entity = entityById.get(entityId);
+      if (!entity) continue;
+      const origin: ParamOrigin =
+        entity.kind === "tool" ? "tool" : entity.kind === "output" ? "output" : "material";
+      for (const attr of entity.attrs ?? []) record(attr.label, process.noteId, origin);
     }
   }
 
   return [...stats.entries()]
-    .map(([key, stat]) => ({
-      key,
-      noteCount: stat.notes.size,
-      ...(stat.sample ? { sampleValue: stat.sample } : {}),
-    }))
+    .map(([key, stat]) => {
+      let origin: ParamOrigin | undefined;
+      let best = 0;
+      for (const [o, n] of stat.origins) {
+        if (n > best) {
+          best = n;
+          origin = o;
+        }
+      }
+      return {
+        key,
+        noteCount: stat.notes.size,
+        ...(stat.sample ? { sampleValue: stat.sample } : {}),
+        ...(origin ? { origin } : {}),
+      };
+    })
     .sort((a, b) => b.noteCount - a.noteCount || a.key.localeCompare(b.key));
 }
 

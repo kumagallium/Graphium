@@ -225,6 +225,85 @@ describe("パラメータ辞書", () => {
     expect(keys).toEqual(["温度"]);
   });
 
+  // 実データでは手順の条件が step 直結ではなく、その手順に入る素材や使う装置の
+  // 属性として書かれていることのほうが多い。step.params だけ見ると候補が出ない。
+  const withEntityAttrs = (
+    noteId: string,
+    stepName: string,
+    entity: { kind: string; labels: string[] },
+    edgeKind: "used" | "generates" = "used",
+  ): ProcessIndexEntry =>
+    ({
+      noteId,
+      title: noteId,
+      graph: {
+        steps: [{ id: `${noteId}-s1`, name: stepName, params: [] }],
+        entities: [
+          {
+            id: `${noteId}-e1`,
+            label: "素材",
+            kind: entity.kind,
+            attrs: entity.labels.map((label) => ({ label })),
+          },
+        ],
+        edges: [
+          edgeKind === "used"
+            ? { id: "e", kind: "used", source: `${noteId}-e1`, target: `${noteId}-s1` }
+            : { id: "e", kind: "generates", source: `${noteId}-s1`, target: `${noteId}-e1` },
+        ],
+      },
+    }) as any;
+
+  it("手順に入る素材の属性も、その手順のパラメータとして拾う", () => {
+    const i = index([
+      withEntityAttrs("n1", "焼結", { kind: "material", labels: ["圧力: 100 MPa", "温度: 1273 K"] }),
+    ]);
+    const stats = collectParamKeysForStep(i, "焼結", splitAttrLabel);
+    expect(stats.map((s) => s.key)).toEqual(["圧力", "温度"]);
+    expect(stats[0].origin).toBe("material");
+  });
+
+  it("手順が使う装置の設定も拾う", () => {
+    const i = index([
+      withEntityAttrs("n1", "急冷", { kind: "tool", labels: ["ロール回転数: 8000 rpm"] }),
+    ]);
+    const [stat] = collectParamKeysForStep(i, "急冷", splitAttrLabel);
+    expect(stat.key).toBe("ロール回転数");
+    expect(stat.origin).toBe("tool");
+  });
+
+  it("手順が生成した物の属性も拾う", () => {
+    const i = index([
+      withEntityAttrs("n1", "焼成", { kind: "output", labels: ["相: RuAl2"] }, "generates"),
+    ]);
+    const [stat] = collectParamKeysForStep(i, "焼成", splitAttrLabel);
+    expect(stat.origin).toBe("output");
+  });
+
+  it("別の手順に繋がる素材の属性は混ざらない", () => {
+    const entry = withEntityAttrs("n1", "焼結", {
+      kind: "material",
+      labels: ["圧力: 100 MPa"],
+    });
+    // 素材は別 step にだけ繋がっている状態にする
+    entry.graph.steps.push({ id: "n1-s2", name: "粉砕", params: [] } as any);
+    entry.graph.edges = [
+      { id: "e", kind: "used", source: "n1-e1", target: "n1-s2" } as any,
+    ];
+    expect(collectParamKeysForStep(index([entry]), "焼結", splitAttrLabel)).toEqual([]);
+  });
+
+  it("step 直結のパラメータと素材の属性は同じ一覧にまとまる", () => {
+    const entry = withEntityAttrs("n1", "焼結", {
+      kind: "material",
+      labels: ["圧力: 100 MPa"],
+    });
+    entry.graph.steps[0].params = [{ label: "保持時間: 5 min" }] as any;
+    const keys = collectParamKeysForStep(index([entry]), "焼結", splitAttrLabel).map((s) => s.key);
+    expect(keys).toContain("圧力");
+    expect(keys).toContain("保持時間");
+  });
+
   it("step 名を使用ノート数の多い順に並べる", () => {
     const i = index([
       withParams("n1", "焼成", []),
