@@ -139,8 +139,26 @@ export function isCopilotCliAvailable(): boolean {
   return resolveCopilotBinaryPath() !== undefined;
 }
 
+/**
+ * `gh` CLI の実行パスを解決する（copilot-subscription が子プロセスの PATH に
+ * 足すため）。Copilot CLI は `useLoggedInUser: true` の認証解決で内部的に `gh`
+ * をサブプロセスとして呼ぶため、PATH 上に `gh` が無いと「起動はできるが
+ * 認証情報が取れない」状態になる（copilot バイナリ自体の PATH 問題とは別）。
+ */
+export function resolveGhBinaryPath(): string | undefined {
+  if (cachedAutoGhPath === null) {
+    cachedAutoGhPath = detectCliBinary("gh", [
+      "/opt/homebrew/bin/gh",
+      "/usr/local/bin/gh",
+      join(homedir(), ".local/bin/gh"),
+    ]);
+  }
+  return cachedAutoGhPath ?? undefined;
+}
+
 // 自動検出結果のキャッシュ。null = 未計算 / undefined = 検出失敗 / string = 検出済み。
 let cachedAutoCopilotPath: string | undefined | null = null;
+let cachedAutoGhPath: string | undefined | null = null;
 
 /**
  * CLI バイナリの汎用自動検出。Tauri パッケージ版のサイドカーは最小化された PATH で
