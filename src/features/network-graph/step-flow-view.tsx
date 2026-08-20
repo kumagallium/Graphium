@@ -347,7 +347,14 @@ function StepFlowCanvas({
         nds.map((n: Node) => ({ ...n, position: positions.get(n.id) ?? n.position })),
       );
       requestAnimationFrame(() => {
-        void fitView({ padding: 0.15, duration: 200, maxZoom: 1, minZoom: fitMinZoom }).then(
+        // duration を残すと、アニメーションが後から viewport を動かして
+        // 下の先頭寄せを上書きする（実機で再現）。プレビューは即座に決める
+        void fitView({
+          padding: 0.15,
+          duration: variant === "preview" ? 0 : 200,
+          maxZoom: 1,
+          minZoom: fitMinZoom,
+        }).then(
           () => {
             // 手順は上から下へ読むもの。収まりきらないときに中央合わせだと
             // 最初の工程が画面外へ出てしまうので、プレビューでは先頭に寄せる
@@ -672,7 +679,7 @@ function StepFlowCanvas({
       )}
 
       {/* 使い方ヒント（エッジが 1 本でもあれば隠す） */}
-      {graph.steps.length > 0 && graph.edges.length === 0 && (
+      {variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0 && (
         <div
           style={{
             position: "absolute",

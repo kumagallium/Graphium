@@ -33,9 +33,11 @@ const styles = {
   menu: {
     position: "absolute" as const,
     top: "calc(100% + 6px)",
-    right: 0,
+    // 右揃えにすると、step ヘッダー左寄りのボタンから左へ開いてエディタ列の
+    // 外へはみ出す（実機で確認）。左揃えで右方向に開く
+    left: 0,
     zIndex: 30,
-    width: 300,
+    width: 288,
     maxHeight: 380,
     display: "flex",
     flexDirection: "column" as const,
@@ -223,8 +225,14 @@ export function StepParamPicker({
                   </span>
                   <span style={{ ...styles.keyText, position: "relative" }}>
                     {stat.key}
+                    {/* 同じ「温度」でも装置の設定か素材の条件かで意味が違うので由来を添える */}
+                    {stat.origin && (
+                      <span style={{ ...styles.sample, marginLeft: 5 }}>
+                        {t(`stepParams.origin.${stat.origin}`)}
+                      </span>
+                    )}
                     {stat.sampleValue && (
-                      <span style={{ ...styles.sample, marginLeft: 6 }}>
+                      <span style={{ ...styles.sample, marginLeft: 5 }}>
                         {t("stepParams.sample", { value: stat.sampleValue })}
                       </span>
                     )}

@@ -172,8 +172,13 @@ export function ProcessGalleryView({
             </div>
             <div className="flex-1 min-h-0">
               {/* コールバックを渡さない = 読み取り専用（P-3）。
-                  variant="preview" で属性テーブルを畳み、縮小の下限を上げる */}
-              <StepFlowView graph={selected.graph} variant="preview" />
+                  variant="preview" で属性テーブルを畳み、縮小の下限を上げる。
+
+                  key で作り直すのは必須。StepFlowView は「全ノードが measure され
+                  てから ELK を流す」作りなので、同じインスタンスに別プロセスの
+                  graph を渡すと新旧のノードが混ざって数が合わず、レイアウトが
+                  走らないまま全ノードが原点に重なる（実際に選択を切り替えて再現）。 */}
+              <StepFlowView key={selected.noteId} graph={selected.graph} variant="preview" />
             </div>
           </>
         ) : (

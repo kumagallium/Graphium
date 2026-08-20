@@ -12,11 +12,11 @@ import type { ParamKeyStat } from "./process-index";
 import "../../app.css";
 
 const FIRING: ParamKeyStat[] = [
-  { key: "温度", noteCount: 12, sampleValue: "500℃" },
-  { key: "保持時間", noteCount: 11, sampleValue: "2h" },
-  { key: "雰囲気", noteCount: 7, sampleValue: "Ar" },
-  { key: "昇温速度", noteCount: 4, sampleValue: "5℃/min" },
-  { key: "焼成温度", noteCount: 2, sampleValue: "600℃" },
+  { key: "温度", noteCount: 12, sampleValue: "500℃", origin: "material" },
+  { key: "保持時間", noteCount: 11, sampleValue: "2h", origin: "material" },
+  { key: "雰囲気", noteCount: 7, sampleValue: "Ar", origin: "tool" },
+  { key: "昇温速度", noteCount: 4, sampleValue: "5℃/min", origin: "tool" },
+  { key: "焼成温度", noteCount: 2, sampleValue: "600℃", origin: "step" },
 ];
 
 // ピッカーは step ヘッダーのボタンから開く想定なので、

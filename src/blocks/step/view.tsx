@@ -18,12 +18,18 @@
 import { createReactBlockSpec } from "@blocknote/react";
 import { defaultProps } from "@blocknote/core";
 import { TextSelection } from "prosemirror-state";
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, Link2, ListChecks, Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronRight, History, Link2, ListChecks, Plus } from "lucide-react";
 import { useLinkStore } from "../../features/block-link/store";
 import { useLabelStore } from "../../features/context-label/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
 import { appendEntitySpanToStep, collectStepOutputs, stepHasInputText } from "./step-io";
+import { StepParamPicker } from "../../features/network-graph/StepParamPicker";
+import {
+  collectParamKeysForStep,
+  getLatestProcessIndex,
+} from "../../features/network-graph/process-index";
+import { splitAttrLabel } from "../../features/network-graph/activity-graph-adapter";
 import { t, useLocaleSubscription } from "../../i18n";
 
 /** inline content からプレーンテキストを取り出す */
@@ -238,23 +244,38 @@ export const StepBlock = createReactBlockSpec(
       const [openOutputsFor, setOpenOutputsFor] = useState<string | null>(null);
       // 後続（次ステップ）側のピッカー
       const [nextOpen, setNextOpen] = useState(false);
+      // 過去の同名手順からパラメータの key を引き継ぐピッカー
+      const [paramOpen, setParamOpen] = useState(false);
       // 循環でリンクを拒否されたとき、無反応に見えないよう理由を出す
       const [cycleWarn, setCycleWarn] = useState(false);
       const rootRef = useRef<HTMLDivElement>(null);
 
       // 外側クリックでピッカーを閉じる（callout の variant ピッカーと同じ流儀）
       useEffect(() => {
-        if (!pickerOpen && !nextOpen) return;
+        if (!pickerOpen && !nextOpen && !paramOpen) return;
         const onDown = (e: MouseEvent) => {
           if (!rootRef.current?.contains(e.target as Node)) {
             setPickerOpen(false);
             setNextOpen(false);
+            setParamOpen(false);
             setOpenOutputsFor(null);
           }
         };
         document.addEventListener("mousedown", onDown);
         return () => document.removeEventListener("mousedown", onDown);
-      }, [pickerOpen, nextOpen]);
+      }, [pickerOpen, nextOpen, paramOpen]);
+
+      // 過去の同名手順で使われたパラメータの key。
+      // 開いた瞬間だけ読めばよいので購読しない（投影は一覧を開いたときに更新される）。
+      const stepTitle = deriveActivityName(inlineText(props.block)).trim();
+      // paramOpen を依存に入れているのは、開くときに最新の投影を読み直すため
+      // （投影は一覧を開いた時点で更新され、こちらは購読していない）。
+      const paramStats = useMemo(
+        () => collectParamKeysForStep(getLatestProcessIndex(), stepTitle, splitAttrLabel),
+        [stepTitle, paramOpen],
+      );
+      // 引き継げる記録があるときだけ入口を出す。押して空振りするより出さない
+      const hasParamHistory = paramStats.length > 0;
 
       // この step の前手順（outgoing informed_by）と後続（incoming informed_by）。
       // どちらも複数可（合流・分岐する工程）。
@@ -691,6 +712,57 @@ export const StepBlock = createReactBlockSpec(
               </div>
             )}
           </div>
+          {/* 過去の同名手順から、パラメータの key だけを引き継ぐ。
+              値は入れない — 前回の数値が残ると、書き換え忘れが今回の条件として読まれる。 */}
+          {hasParamHistory && (
+            <div contentEditable={false} style={{ position: "relative", flex: "0 0 auto" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setParamOpen((v) => !v);
+                  setPickerOpen(false);
+                  setNextOpen(false);
+                  setOpenOutputsFor(null);
+                }}
+                title={t("stepParams.button")}
+                aria-expanded={paramOpen}
+                data-test="step-param-history"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  marginTop: 1,
+                  padding: "0 8px",
+                  height: 20,
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  lineHeight: "18px",
+                  whiteSpace: "nowrap",
+                  border: "1px solid var(--color-border)",
+                  background: "transparent",
+                  color: "var(--color-text-tertiary)",
+                }}
+              >
+                <History size={11} strokeWidth={2.2} style={{ flex: "0 0 auto" }} />
+                <span>{t("stepParams.button")}</span>
+              </button>
+              {paramOpen && (
+                <StepParamPicker
+                  stepName={stepTitle}
+                  stats={paramStats}
+                  onInsert={(keys) => {
+                    // 空欄の行として本文末尾に足す。値はユーザーが書く
+                    for (const key of keys) {
+                      appendEntitySpanToStep(props.editor, props.block.id, "attribute", `${key}:`);
+                    }
+                  }}
+                  onClose={() => setParamOpen(false)}
+                />
+              )}
+            </div>
+          )}
         </div>
       );
     },
