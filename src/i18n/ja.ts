@@ -875,6 +875,8 @@ export const ja: Record<string, string> = {
   "stepHistory.noHistory": "まだ手順の記録がありません",
   "stepHistory.paramCount": "{n} 項目",
   "stepHistory.button": "過去の手順",
+  "stepHistory.sectionParams": "手順のパラメータ",
+  "stepHistory.sectionEntities": "素材・道具・生成物",
   "stepHistory.titlePlaceholder": "手順名",
   "stepParams.origin.step": "手順",
   "stepParams.origin.material": "素材",

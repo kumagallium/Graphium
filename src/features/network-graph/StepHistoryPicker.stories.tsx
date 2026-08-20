@@ -8,7 +8,7 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { StepHistoryPicker } from "./StepHistoryPicker";
-import type { ParamKeyStat, StepNameStat } from "./process-index";
+import type { StepInheritance, StepNameStat } from "./process-index";
 import "../../app.css";
 
 // 実データの並び（パラメータを持つ手順が先、次にノート数）に合わせている
@@ -22,13 +22,33 @@ const STEP_NAMES: StepNameStat[] = [
   { name: "整形", noteCount: 1, paramCount: 0 },
 ];
 
-const SPS_PARAMS: ParamKeyStat[] = [
-  { key: "圧力", noteCount: 4, sampleValue: "100 MPa", origin: "material" },
-  { key: "温度", noteCount: 4, sampleValue: "1273 K", origin: "material" },
-  { key: "雰囲気", noteCount: 3, sampleValue: "Ar 気流", origin: "material" },
-  { key: "保持時間", noteCount: 2, sampleValue: "5 min", origin: "material" },
-  { key: "ロール回転数", noteCount: 1, sampleValue: "8000 rpm", origin: "tool" },
-];
+// 実データの形（放電プラズマ焼結）に合わせている: 手順直結のパラメータは無く、
+// 条件は投入する素材に、装置は名前だけが記録されている
+const SPS: StepInheritance = {
+  stepParams: [],
+  entities: [
+    {
+      label: "粉砕粉末",
+      kind: "material",
+      noteCount: 1,
+      attrs: [
+        { key: "圧力", noteCount: 1, sampleValue: "100 MPa", origin: "material" },
+        { key: "温度", noteCount: 1, sampleValue: "1273 K", origin: "material" },
+        { key: "雰囲気", noteCount: 1, sampleValue: "Ar 気流", origin: "material" },
+        { key: "保持時間", noteCount: 1, sampleValue: "5 min", origin: "material" },
+      ],
+    },
+    { label: "SPS-515A", kind: "tool", noteCount: 1, attrs: [] },
+  ],
+};
+
+/** 手順にも条件が書かれているノートがある場合（両方のセクションが出る） */
+const MIXED: StepInheritance = {
+  stepParams: [{ key: "保持時間", noteCount: 2, sampleValue: "5 min", origin: "step" }],
+  entities: SPS.entities,
+};
+
+const EMPTY: StepInheritance = { stepParams: [], entities: [] };
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
@@ -72,7 +92,7 @@ export const PickName: Story = {
   args: {
     stepName: "",
     stepNames: STEP_NAMES,
-    stats: [],
+    inheritance: EMPTY,
     onPickName: noop,
     onInsert: noop,
     onClose: noop,
@@ -89,7 +109,7 @@ export const PickParams: Story = {
   args: {
     stepName: "放電プラズマ焼結",
     stepNames: STEP_NAMES,
-    stats: SPS_PARAMS,
+    inheritance: SPS,
     onPickName: noop,
     onInsert: noop,
     onClose: noop,
@@ -112,9 +132,11 @@ export const Interactive: Story = {
         <StepHistoryPicker
           {...args}
           stepName={name}
-          stats={name === "放電プラズマ焼結" ? SPS_PARAMS : []}
+          inheritance={name === "放電プラズマ焼結" ? SPS : EMPTY}
           onPickName={setName}
-          onInsert={setInserted}
+          onInsert={(picked) =>
+            setInserted([...picked.paramKeys, ...picked.entities.map((e) => e.label)])
+          }
         />
         {inserted && (
           <div
@@ -134,12 +156,29 @@ export const Interactive: Story = {
   },
 };
 
+/** 手順にも素材にも記録がある場合（2 つのセクションが並ぶ） */
+export const BothSections: Story = {
+  args: {
+    stepName: "放電プラズマ焼結",
+    stepNames: STEP_NAMES,
+    inheritance: MIXED,
+    onPickName: noop,
+    onInsert: noop,
+    onClose: noop,
+  },
+  render: (args: React.ComponentProps<typeof StepHistoryPicker>) => (
+    <Frame>
+      <StepHistoryPicker {...args} />
+    </Frame>
+  ),
+};
+
 /** 記録のある手順名だが、引き継げるパラメータが無い場合 */
 export const NamedButNoParams: Story = {
   args: {
     stepName: "前処理",
     stepNames: STEP_NAMES,
-    stats: [],
+    inheritance: EMPTY,
     onPickName: noop,
     onInsert: noop,
     onClose: noop,
@@ -156,7 +195,7 @@ export const NoHistory: Story = {
   args: {
     stepName: "",
     stepNames: [],
-    stats: [],
+    inheritance: EMPTY,
     onPickName: noop,
     onInsert: noop,
     onClose: noop,

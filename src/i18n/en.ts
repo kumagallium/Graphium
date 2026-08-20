@@ -874,6 +874,8 @@ export const en: Record<string, string> = {
   "stepHistory.noHistory": "No steps recorded yet",
   "stepHistory.paramCount": "{n} fields",
   "stepHistory.button": "Past steps",
+  "stepHistory.sectionParams": "Step parameters",
+  "stepHistory.sectionEntities": "Materials, tools, outputs",
   "stepHistory.titlePlaceholder": "Step name",
   "stepParams.origin.step": "step",
   "stepParams.origin.material": "material",
