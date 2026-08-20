@@ -40,7 +40,7 @@ import type {
 } from "@github/copilot-sdk";
 import { dirname } from "node:path";
 import { CodedError } from "../../lib/ai-error-codes.js";
-import { resolveGhBinaryPath } from "./llm.js";
+import { resolveGhBinaryPath } from "./cli-binary-resolver.js";
 
 export type CopilotModelSettings = {
   /** `copilot` CLI の絶対パス（必須 — SDK 同梱ランタイムはバンドルに含めないため） */
