@@ -162,31 +162,44 @@ describe("TableCaptionLayer の折りたたみ", () => {
     });
   });
 
-  it("表が画面の上に抜けても折りたたみ CSS は外れない（裾だけ消える）", async () => {
+  // #716 の回帰。折りたたみ CSS がスクロールで付いたり外れたりすると、表の高さが
+  // 変わるたびにスクロールアンカーが位置を保とうとして scrollTop が跳ね、表が
+  // 開いたり閉じたりチカチカする。画面のどこにあっても当たり続けることを守る。
+  it("表が画面の上に抜けても折りたたみ CSS は外れない", async () => {
     const { setRect } = setup({ top: 100, bottom: 400 });
     await waitFor(() => expect(hiddenRowsButton()).not.toBeNull());
 
     // 表の裾が画面上端より上へ（rect.bottom < 0）
     scrollTo(setRect, { top: -900, bottom: -600 });
 
-    await waitFor(() => expect(hiddenRowsButton()).toBeNull());
-    expect(foldStyleText()).toContain(FOLD_RULE);
+    await waitFor(() => expect(foldStyleText()).toContain(FOLD_RULE));
   });
 
   it("表が画面の下にあるうちも折りたたみ CSS が当たっている", async () => {
     setup({ top: 2000, bottom: 2300 });
     await waitFor(() => expect(foldStyleText()).toContain(FOLD_RULE));
-    expect(hiddenRowsButton()).toBeNull();
   });
 
-  it("画面外から戻ってきた表は畳んだまま裾が再表示される", async () => {
+  it("画面外から戻ってきた表は畳んだまま", async () => {
     const { setRect } = setup({ top: -900, bottom: -600 });
     await waitFor(() => expect(foldStyleText()).toContain(FOLD_RULE));
-    expect(hiddenRowsButton()).toBeNull();
 
     scrollTo(setRect, { top: 100, bottom: 400 });
 
     await waitFor(() => expect(hiddenRowsButton()).not.toBeNull());
     expect(foldStyleText()).toContain(FOLD_RULE);
+  });
+
+  // キャプションと裾はラッパーの中に絶対配置されるので、画面外のぶんは overflow が
+  // 隠す。描く側で「見えているものだけ」に間引くと、同じ一覧から引いている
+  // 折りたたみ CSS まで巻き込む恐れがあるので、間引きは入れない。
+  it("画面外の表でも裾は描かれ続ける（間引きを CSS に漏らさない）", async () => {
+    const { setRect } = setup({ top: 100, bottom: 400 });
+    await waitFor(() => expect(hiddenRowsButton()).not.toBeNull());
+
+    scrollTo(setRect, { top: -900, bottom: -600 });
+
+    await waitFor(() => expect(foldStyleText()).toContain(FOLD_RULE));
+    expect(hiddenRowsButton()).not.toBeNull();
   });
 });

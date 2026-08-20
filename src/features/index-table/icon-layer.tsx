@@ -1,5 +1,6 @@
 // インデックステーブルの行頭アイコンレイヤー
-// ProvIndicatorLayer と同じパターンで body ポータルに描画する
+// ProvIndicatorLayer と同じく、エディタのラッパーの中に絶対配置で描画する
+// （body に fixed で置くと、スクロールに追随できず、開いたメニューも覆う）
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -30,6 +31,8 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
   // ノート読み込み直後など editor / DOM がまだ準備できていない場合は
   // 検出失敗時に短い遅延で再試行する（restore 後に icon が出ない回帰の保険）。
   const retryRef = useRef<number | null>(null);
+  // アイコンのポータル先。エディタのラッパーそのもの
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   const compute = useCallback(() => {
     const next: RowIcon[] = [];
     const editor = editorRef.current;
@@ -43,6 +46,12 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
       return;
     }
 
+    const root = document.querySelector<HTMLElement>("[data-label-wrapper]");
+    if (!root) return;
+    setPortalHost(root);
+    // ラッパー内座標の基準（スクロール量込み）
+    const rootRect = root.getBoundingClientRect();
+
     let domMissing = false;
     store.metas.forEach((meta, blockId) => {
       // 行からノートを作れるのは note-link のふるまいが付いた列を持つテーブルだけ
@@ -51,7 +60,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
       const block = editor.getBlock(blockId);
       if (!block || block.type !== "table") return;
 
-      const blockEl = document.querySelector(
+      const blockEl = root.querySelector(
         `[data-id="${blockId}"][data-node-type="blockOuter"]`
       );
       if (!blockEl) {
@@ -74,8 +83,8 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
           rowIndex: i,
           sampleName,
           linkedNoteId,
-          top: trRect.top + trRect.height / 2,
-          left: trRect.left - 76,
+          top: trRect.top - rootRect.top + root.scrollTop + trRect.height / 2,
+          left: trRect.left - rootRect.left + root.scrollLeft - 76,
         });
       }
     });
@@ -151,9 +160,22 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
       const cell = row.cells[0];
       if (!cell) return null;
       const rect = cell.getBoundingClientRect();
-      return { key: `${icon.blockId}:${icon.rowIndex}`, rect, noteId: icon.linkedNoteId! };
+      const host = portalHost;
+      const box = host
+        ? {
+            top: rect.top - host.getBoundingClientRect().top + host.scrollTop,
+            left: rect.left - host.getBoundingClientRect().left + host.scrollLeft,
+            width: rect.width,
+            height: rect.height,
+          }
+        : { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+      return { key: `${icon.blockId}:${icon.rowIndex}`, rect: box, noteId: icon.linkedNoteId! };
     })
-    .filter(Boolean) as { key: string; rect: DOMRect; noteId: string }[];
+    .filter(Boolean) as {
+      key: string;
+      rect: { top: number; left: number; width: number; height: number };
+      noteId: string;
+    }[];
 
 
   // 未リンク行 → ノート作成
@@ -219,6 +241,8 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
   // リンク済み行はアイコンを出さない（セルテキストクリックでサイドピークが開く）
   const unlinkedIcons = icons.filter((icon) => !icon.linkedNoteId);
 
+  if (!portalHost) return null;
+
   return createPortal(
     <>
       {unlinkedIcons.map((icon) => {
@@ -238,7 +262,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
             }
             disabled={isLoading}
             style={{
-              position: "fixed",
+              position: "absolute",
               top: icon.top - 12,
               left: icon.left,
               width: 24,
@@ -252,7 +276,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
               cursor: icon.sampleName ? "pointer" : "default",
               opacity: icon.sampleName ? 1 : 0.5,
               fontSize: 14,
-              zIndex: 50,
+              zIndex: 6,
               transition: "all 0.15s",
               boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
               color: "var(--color-text-tertiary)",
@@ -291,18 +315,19 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
             callbacks?.onOpenSidePeek(noteId);
           }}
           style={{
-            position: "fixed",
+            position: "absolute",
             top: rect.top,
             left: rect.left,
             width: rect.width,
             height: rect.height,
             cursor: "pointer",
-            zIndex: 49,
+            zIndex: 5,
             background: "transparent",
           }}
         />
       ))}
     </>,
-    document.body
+    // ラッパーの中へ。overflow がはみ出しを隠し、スクロールにも遅れず追随する
+    portalHost,
   );
 }

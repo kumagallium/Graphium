@@ -30,16 +30,6 @@ type CaptionPos = {
   bottom: number;
   /** 折りたたむとしたら隠れる行数（0 なら隠す行がない） */
   hiddenRows: number;
-  /**
-   * 表が画面に掛かっているか。キャプションと裾のフェードはこれが true の表にだけ描く。
-   *
-   * 折りたたみ CSS のほうは false でも当て続ける。画面外に出た表を一覧から落として
-   * CSS まで外すと、隠れていた行が戻って表が一気に伸び、ブラウザのスクロール
-   * アンカーが位置を保とうとして scrollTop が跳ぶ。跳んだ先で表の裾が画面に戻ると
-   * CSS が当たり直して縮み、また画面外へ…という往復がフレームごとに起きて、
-   * スクロール中に表が開いたり閉じたりチカチカして見える。
-   */
-  onScreen: boolean;
 };
 
 /**
@@ -109,6 +99,8 @@ export function TableCaptionLayer({
     return root;
   }, [wrapperEl, scopeId]);
   const [captions, setCaptions] = useState<CaptionPos[]>([]);
+  // キャプションのポータル先。エディタのラッパーそのもの
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   // 明示的に「全部見る」を選んだテーブル。既定に戻せば畳まれるので、
   // 保存はしない（見え方であって、ノートの中身ではない）
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -159,6 +151,9 @@ export function TableCaptionLayer({
     }
 
     let domMissing = false;
+    // ラッパー内座標の基準。スクロール量を足すので、スクロールしても測り直さずに済む
+    const rootRect = root.getBoundingClientRect();
+    setPortalHost(root);
     const displayNames = computeTableDisplayNames(
       (editor as any).document ?? [],
       (blockId) => store.hasColumnType(blockId, "datetime-auto"),
@@ -182,20 +177,17 @@ export function TableCaptionLayer({
       const tableEl = blockEl.querySelector("table");
       // 折りたたみ中は隠した行が高さを持たないので、表の下端がそのまま見えている下端になる
       const rect = (tableEl ?? blockEl).getBoundingClientRect();
-      // 画面外の表も一覧には残す（落とすと折りたたみ CSS まで外れる — CaptionPos.onScreen 参照）
-      const onScreen = rect.top <= window.innerHeight && rect.bottom >= 0;
       // 1 行目はヘッダなのでデータ行数から除く
       const rowCount = Math.max(0, (block.content?.rows?.length ?? 1) - 1);
       next.push({
         blockId,
-        top: rect.top - 24,
-        left: rect.left,
+        top: rect.top - rootRect.top + root.scrollTop - 24,
+        left: rect.left - rootRect.left + root.scrollLeft,
         width: rect.width,
         displayName: displayNames.get(blockId) ?? "",
         rowCount,
-        bottom: rect.bottom,
+        bottom: rect.bottom - rootRect.top + root.scrollTop,
         hiddenRows: Math.max(0, rowCount - COLLAPSED_VISIBLE_ROWS),
-        onScreen,
       });
     });
 
@@ -293,16 +285,17 @@ export function TableCaptionLayer({
     requestAnimationFrame(() => compute());
   };
 
-  if (captions.length === 0) return null;
+  if (captions.length === 0 || !portalHost) return null;
 
-  // 画面に掛かっている表だけにキャプションと裾を描く（fixed 配置なので画面外の分は
-  // 描いても見えず、数が増えるだけ）。折りたたみ CSS は下で画面外の表にも当てる
-  const visibleCaptions = captions.filter((pos) => pos.onScreen);
+  // ラッパーの中に絶対配置するので、画面外の分は overflow が隠す。
+  // 「見えているものだけ描く」間引きは入れない — 折りたたみ CSS と同じ一覧から
+  // 引く以上、間引きが CSS 側に漏れると表が伸び縮みしてスクロールが跳ねる（#716）
+  const visibleCaptions = captions;
 
   // 折りたたみは DOM を触らず CSS で当てる。ProseMirror がテーブルを描き直しても
   // 消えず、書き出し（Markdown / 保存 JSON）にも一切影響しない。
   // 画面外の表も含めて当てる — スクロールで CSS が付いたり外れたりすると表の高さが
-  // 変わってスクロール位置が跳ぶ（CaptionPos.onScreen のコメント参照）
+  // 変わり、ブラウザのスクロールアンカーが位置を保とうとして scrollTop が跳ぶ（#716）
   const collapsedCss = captions
     .filter(isCollapsed)
     .map(
@@ -322,7 +315,7 @@ export function TableCaptionLayer({
         <div
           key={`fade-${pos.blockId}`}
           style={{
-            position: "fixed",
+            position: "absolute",
             left: pos.left,
             width: pos.width,
             top: pos.bottom - FADE_HEIGHT,
@@ -332,7 +325,7 @@ export function TableCaptionLayer({
             justifyContent: "center",
             background:
               "linear-gradient(to bottom, transparent, var(--color-background) 85%)",
-            zIndex: 29,
+            zIndex: 4,
             // 裾は表の最後の行に重なる。素通しにしないとそこだけ選択・編集できない
             pointerEvents: "none",
           }}
@@ -378,7 +371,7 @@ export function TableCaptionLayer({
                 if (e.key === "Escape") setEditing(null);
               }}
               style={{
-                position: "fixed",
+                position: "absolute",
                 top,
                 left,
                 width: Math.max(180, Math.min(width, 360)),
@@ -390,7 +383,7 @@ export function TableCaptionLayer({
                 background: "var(--color-card)",
                 color: "var(--color-foreground)",
                 outline: "none",
-                zIndex: 30,
+                zIndex: 5,
               }}
             />
           );
@@ -400,7 +393,7 @@ export function TableCaptionLayer({
           <div
             key={blockId}
             style={{
-              position: "fixed",
+              position: "absolute",
               top,
               left,
               maxWidth: Math.max(180, width),
@@ -410,7 +403,7 @@ export function TableCaptionLayer({
               gap: 4,
               // 本文の装飾なので、モーダル（z-50）より下に置く。
               // 同じ高さだと body ポータルの描画順でモーダルの上に乗る
-              zIndex: 30,
+              zIndex: 5,
             }}
           >
           <button
@@ -535,6 +528,8 @@ export function TableCaptionLayer({
         );
       })}
     </>,
-    document.body
+    // ラッパーの中に描く。overflow がはみ出しを隠し、z-index もこの中に閉じるので、
+    // 開いているメニューを覆わない。スクロールはコンテナごと動くので追随のずれも出ない
+    portalHost,
   );
 }
