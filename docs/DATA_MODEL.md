@@ -1350,6 +1350,94 @@ Transitions:
 and `deletedAt` on existing entries, so a save or a refresh will not
 silently strip the flag.
 
+### 5.3 The process index: `ProcessIndex`
+
+A second, separate JSON file (`.graphium-process-index.json`) holds the
+PROV graph each note describes — the same flow shown in the note's
+right-hand panel. It powers the process list and lets a step being
+written pull in what past runs of that step recorded.
+
+```ts
+const PROCESS_INDEX_VERSION = 1;
+
+type ProcessIndex = {
+  version: number;
+  updatedAt: string;
+  processes: ProcessIndexEntry[];
+};
+
+type ProcessIndexEntry = {
+  noteId: string;           // v1 is one process per note, so this is the key
+  title: string;            // copied from the note title
+  sourceModifiedAt: string; // the note's modifiedTime, for staleness checks
+  projectedAt: string;
+  graph: FlowGraphData;     // steps, entities, edges — as projected
+  summary: {
+    stepCount: number;
+    materialCount: number;
+    toolCount: number;
+    outputCount: number;
+    branching: boolean;     // one entity feeding several steps, or a split order edge
+  };
+  forkedFrom?: {            // set when a process was copied into another note
+    noteId: string;
+    title: string;          // snapshot; survives a rename or deletion of the origin
+    forkedAt: string;
+  };
+};
+```
+
+**This is a cache, not a source.** PROV is not stored in the note. It is
+projected on demand by `generateProvDocument` and `provDocToFlowGraph`,
+and this file holds the result of that same projection so it can be read
+across notes without opening each one. Three rules keep it honest:
+
+- `graph` is always the return value of
+  `provDocToFlowGraph(generateProvDocument(...))`. No second, simplified
+  extraction is written for the list — otherwise the list and the flow
+  panel would disagree about the same note.
+- No URLs are stored. Signed media URLs expire; they are looked up from
+  the media index at display time.
+- A process is edited only through note text. Nothing writes back through
+  the list.
+
+Note the direction of dependency, which is the reverse of media: a note
+*references* a material that exists outside it, whereas a process is
+*derived from* the note. That is why the list is read-only.
+
+**Separate file, separate version.** Keeping this out of
+`.graphium-index.json` means the projection logic can change — and it will
+— without forcing a full rebuild of the navigation index, which is at
+schema 25 and read on every launch.
+
+**Built on demand.** Projection reads note bodies and generates PROV, so
+it is heavier than building the navigation index. It runs when the
+process list is opened, not at startup; the saved file is read (not
+rebuilt) on launch so counts are available immediately. Trashed and
+archived notes are filtered out before projecting. Notes without steps
+get no entry, and Wiki documents are out of scope.
+
+Staleness follows the same rule as the navigation index: a version
+mismatch rebuilds everything, and otherwise an entry is re-projected when
+its note's `modifiedTime` is more than a second newer than
+`sourceModifiedAt`.
+
+**Forks are separate processes.** Copying a process into another note
+produces a distinct one — PROV-DM treats every Activity as its own
+instance, so two runs of the same recipe are two Activities. `forkedFrom`
+records where the copy came from and is preserved across re-projection,
+but it never follows later changes to the origin.
+
+#### `PROCESS_INDEX_VERSION`
+
+| Version | Change |
+| --- | --- |
+| 1 | Initial format |
+
+Bump it whenever the shape of `graph` or `summary` changes, or when the
+projection itself starts producing different output. A mismatch triggers
+a full re-projection, with `forkedFrom` carried over from the old entries.
+
 ## 6. Storage providers
 
 ### 6.1 The `StorageProvider` interface
