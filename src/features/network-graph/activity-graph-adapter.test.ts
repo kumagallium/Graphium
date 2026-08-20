@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { provDocToStepGraph, provDocToFlowGraph } from "./activity-graph-adapter";
+import {
+  provDocToStepGraph,
+  provDocToFlowGraph,
+  computeStepDistinguishers,
+} from "./activity-graph-adapter";
 import type { ProvJsonLd } from "../prov-generator/generator";
 
 // 関係は node に埋め込まれる（prov:used は消費 activity 側 / prov:wasGeneratedBy は output entity 側）
@@ -369,5 +373,63 @@ describe("テーブル行の tableRef", () => {
       ]),
     );
     expect(g.entities.find((e) => e.label.includes("の結果"))?.tableRef).toBeUndefined();
+  });
+});
+
+describe("computeStepDistinguishers — 同名ステップの見分け", () => {
+  const step = (id: string, name: string, params: string[]) => ({
+    id,
+    name,
+    params: params.map((label) => ({ label })),
+  });
+
+  it("値が割れているパラメータだけを返す（全員同じ値は返さない）", () => {
+    const d = computeStepDistinguishers([
+      step("a", "ボールミリング", ["rpm: 300", "time: 1 h"]),
+      step("b", "ボールミリング", ["rpm: 300", "time: 3 h"]),
+    ]);
+    expect(d.get("a")).toEqual(["time: 1 h"]);
+    expect(d.get("b")).toEqual(["time: 3 h"]);
+  });
+
+  it("同名の兄弟がいなければ何も返さない", () => {
+    const d = computeStepDistinguishers([
+      step("a", "粉砕", ["time: 1 h"]),
+      step("b", "焼結", ["time: 3 h"]),
+    ]);
+    expect(d.size).toBe(0);
+  });
+
+  it("片方にしか無いパラメータも区別に使う", () => {
+    const d = computeStepDistinguishers([
+      step("a", "焼成", ["atmosphere: Ar"]),
+      step("b", "焼成", []),
+    ]);
+    expect(d.get("a")).toEqual(["atmosphere: Ar"]);
+    expect(d.get("b")).toBeUndefined();
+  });
+
+  it("表記揺れ（823 K と 823K）は同じ値として扱う", () => {
+    const d = computeStepDistinguishers([
+      step("a", "熱圧成形", ["temperature: 823 K"]),
+      step("b", "熱圧成形", ["temperature: 823K"]),
+    ]);
+    expect(d.size).toBe(0);
+  });
+
+  it("割れているキーが多くても上限で切る", () => {
+    const d = computeStepDistinguishers([
+      step("a", "処理", ["k1: 1", "k2: 2", "k3: 3"]),
+      step("b", "処理", ["k1: 9", "k2: 8", "k3: 7"]),
+    ]);
+    expect(d.get("a")).toEqual(["k1: 1", "k2: 2"]);
+  });
+
+  it("キーを持たないパラメータは区別に使わない", () => {
+    const d = computeStepDistinguishers([
+      step("a", "粉砕", ["粗く"]),
+      step("b", "粉砕", ["細かく"]),
+    ]);
+    expect(d.size).toBe(0);
   });
 });

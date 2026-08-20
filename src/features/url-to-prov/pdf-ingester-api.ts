@@ -7,6 +7,7 @@ import { aiErrorFromResponse } from "../../lib/ai-error";
 import { extractPdfText } from "../wiki/pdf-text-extractor";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
+import type { ProvVocabulary } from "./label-vocabulary";
 import { t } from "../../i18n";
 
 export type IngestPdfResult = {
@@ -45,6 +46,7 @@ export async function ingestPdfToProv(
   blob: Blob,
   fileName: string,
   language: string = "en",
+  vocabulary?: ProvVocabulary,
 ): Promise<IngestPdfResult> {
   const extracted = await extractPdfText(blob);
 
@@ -71,6 +73,7 @@ export async function ingestPdfToProv(
       text: extracted.text,
       title,
       language,
+      ...(vocabulary ? { vocabulary } : {}),
       ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
     }),
   });

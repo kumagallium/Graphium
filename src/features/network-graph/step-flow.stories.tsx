@@ -99,6 +99,59 @@ export const BranchingGraph: Story = {
   render: () => <StepFlowView graph={RICH_GRAPH} />,
 };
 
+// ── 複数試料（同じ操作を条件違いで 3 回）──
+//
+// 手順の見出しは操作名だけを持つので、条件違いの並列ランは同じ名前のノードが
+// 並ぶ。見分けは「兄弟の間で値が割れているパラメータ」がカードに小さく付く
+// （全員同じ rpm: 300 は区別に効かないので出ない）。分岐は測定で合流する。
+
+const PARALLEL_RUNS_GRAPH: FlowGraphData = {
+  steps: [
+    { id: "s-crush", name: "粉砕", params: [] },
+    {
+      id: "s-mill-0h",
+      name: "ボールミリング",
+      params: [{ label: "rpm: 300" }, { label: "time: 0 h" }],
+    },
+    {
+      id: "s-mill-1h",
+      name: "ボールミリング",
+      params: [{ label: "rpm: 300" }, { label: "time: 1 h" }],
+    },
+    {
+      id: "s-mill-3h",
+      name: "ボールミリング",
+      params: [{ label: "rpm: 300" }, { label: "time: 3 h" }],
+    },
+    { id: "s-measure", name: "測定", params: [] },
+  ],
+  entities: [
+    { id: "e-powder", label: "粉末", kind: "output", entityId: "ent_powder", attrs: [] },
+    { id: "e-0h", label: "0h ボールミルド粉末", kind: "output", entityId: "ent_0h", attrs: [] },
+    { id: "e-1h", label: "1h ボールミルド粉末", kind: "output", entityId: "ent_1h", attrs: [] },
+    { id: "e-3h", label: "3h ボールミルド粉末", kind: "output", entityId: "ent_3h", attrs: [] },
+    { id: "e-data", label: "熱電特性データ", kind: "output", entityId: "ent_data", attrs: [] },
+  ],
+  edges: [
+    { id: "g0", kind: "generates", source: "s-crush", target: "e-powder" },
+    { id: "u0", kind: "used", source: "e-powder", target: "s-mill-0h" },
+    { id: "u1", kind: "used", source: "e-powder", target: "s-mill-1h" },
+    { id: "u3", kind: "used", source: "e-powder", target: "s-mill-3h" },
+    { id: "g1", kind: "generates", source: "s-mill-0h", target: "e-0h" },
+    { id: "g2", kind: "generates", source: "s-mill-1h", target: "e-1h" },
+    { id: "g3", kind: "generates", source: "s-mill-3h", target: "e-3h" },
+    { id: "m0", kind: "used", source: "e-0h", target: "s-measure" },
+    { id: "m1", kind: "used", source: "e-1h", target: "s-measure" },
+    { id: "m3", kind: "used", source: "e-3h", target: "s-measure" },
+    { id: "gd", kind: "generates", source: "s-measure", target: "e-data" },
+  ],
+};
+
+export const ParallelRuns: Story = {
+  name: "複数試料の分岐・合流（同名ステップ）",
+  render: () => <StepFlowView graph={PARALLEL_RUNS_GRAPH} />,
+};
+
 export const EmptyState: Story = {
   name: "空状態（手順ゼロの入口）",
   render: () => (

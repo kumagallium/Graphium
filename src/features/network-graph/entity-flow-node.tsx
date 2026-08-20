@@ -27,6 +27,8 @@ export type EntityFlowNodeData = {
   onRenameTableRow?: (blockId: string, rowName: string, newName: string) => void;
   /** テーブル行を削除する */
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
+  /** ツールバーの「パラメータを表示」。オンならカードに属性を全件並べる */
+  showParams?: boolean;
 };
 
 export type EntityFlowNodeType = Node<EntityFlowNodeData, "entity">;
@@ -262,20 +264,32 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
         <EntityThumbnail url={entity.mediaUrl} alt={entity.label} />
       )}
 
-      {/* 属性はテーブルパネル側で編集する。ここは「ある」ことだけ示す */}
+      {/* 属性の編集はテーブルパネル側。既定は「ある」ことだけ示し、
+          ツールバーで展開したときだけ中身を並べる（ステップと同じ規則） */}
       {entity.attrs.length > 0 && (
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 3,
+            alignItems: data.showParams ? "flex-start" : "center",
+            gap: 4,
             padding: "2px 10px 5px",
             fontSize: 10,
+            lineHeight: 1.4,
             color: "var(--color-text-tertiary)",
           }}
         >
-          <SlidersHorizontal size={10} />
-          {entity.attrs.length}
+          <SlidersHorizontal size={10} style={{ flexShrink: 0, marginTop: data.showParams ? 2 : 0 }} />
+          {data.showParams ? (
+            <span style={{ overflowWrap: "anywhere" }}>
+              {entity.attrs.map((a, i) => (
+                <span key={i} style={{ display: "block" }}>
+                  {a.label}
+                </span>
+              ))}
+            </span>
+          ) : (
+            entity.attrs.length
+          )}
         </div>
       )}
 

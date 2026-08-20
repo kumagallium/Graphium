@@ -364,3 +364,73 @@ export function splitAttrLabel(label: string): { key: string | null; value: stri
   if (m) return { key: m[1].trim(), value: m[2].trim() };
   return { key: null, value: label };
 }
+
+/**
+ * 同名ステップを見分けるための「兄弟の間で値が違うパラメータ」を求める。
+ *
+ * 手順の見出しは操作名だけを持つので、1 つの操作を条件を変えて 3 回まわした
+ * 論文では同じ名前のノードが 3 つ並ぶ（それが正しい記録）。ただし名前だけでは
+ * どれがどれか分からないので、**兄弟の間で値が食い違うパラメータ**をカードに
+ * 小さく添える。全員が同じ値を持つパラメータ（rpm: 300）は区別に効かないので
+ * 出さない。同名の兄弟がいないステップは何も返さない。
+ *
+ * 返り値: step.id → 表示するパラメータのラベル（元の `key: value` 形式）
+ */
+export function computeStepDistinguishers(
+  steps: Pick<FlowStep, "id" | "name" | "params">[],
+  limit = 2,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+
+  const groups = new Map<string, typeof steps>();
+  for (const s of steps) {
+    const key = s.name.trim().toLowerCase();
+    if (!key) continue;
+    const g = groups.get(key);
+    if (g) g.push(s);
+    else groups.set(key, [s]);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+
+    // step ごとの key → label（同じキーが複数あれば最初の 1 つ）
+    const byStep = new Map<string, Map<string, string>>();
+    const keyOrder: string[] = [];
+    for (const s of group) {
+      const map = new Map<string, string>();
+      for (const p of s.params) {
+        const { key } = splitAttrLabel(p.label);
+        if (!key) continue;
+        const k = key.toLowerCase();
+        if (!map.has(k)) map.set(k, p.label);
+        if (!keyOrder.includes(k)) keyOrder.push(k);
+      }
+      byStep.set(s.id, map);
+    }
+
+    // 兄弟の間で値が割れるキー（片方に無いキーも「割れている」に含める）
+    const distinguishing = keyOrder.filter((k) => {
+      const seen = new Set<string>();
+      for (const s of group) {
+        const label = byStep.get(s.id)?.get(k);
+        const value = label ? splitAttrLabel(label).value.toLowerCase().replace(/\s+/g, "") : "";
+        seen.add(value);
+        if (seen.size > 1) return true;
+      }
+      return false;
+    });
+    if (distinguishing.length === 0) continue;
+
+    for (const s of group) {
+      const map = byStep.get(s.id);
+      const labels = distinguishing
+        .map((k) => map?.get(k))
+        .filter((l): l is string => !!l)
+        .slice(0, limit);
+      if (labels.length > 0) out.set(s.id, labels);
+    }
+  }
+
+  return out;
+}

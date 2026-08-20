@@ -87,6 +87,9 @@ export type FlowStepPanelProps = {
 
 const SECTION_ORDER: SectionKind[] = ["attribute", "material", "tool", "output"];
 
+/** 本文由来の属性を薄い列として見せる上限。横に伸び続けるのを防ぐ */
+const GHOST_ATTR_COLUMN_LIMIT = 6;
+
 // パラメータのグレーグリーンはノート側の [パラメータ] チップと同じ
 const SECTION_COLOR: Record<SectionKind, string> = {
   attribute: "#8fa394",
@@ -354,6 +357,27 @@ export function FlowStepPanel({
   const entityGrid = (table: TableData | null, kind: ActivityIoKind, ghosts: ProseItem[]) => {
     const headers = table?.headers ?? [t("graphTable.nameColumn")];
     const blockId = table?.blockId ?? null;
+    // 本文でその Entity に付いた属性のうち、表にまだ列が無いもの。
+    // 列が無いと値の置き場所が無く、本文にラベルがあるのに表から消える
+    const ghostAttrCols: string[] = [];
+    for (const g of ghosts) {
+      for (const a of g.attrs ?? []) {
+        const { key, value } = splitAttrLabel(a.label);
+        const col = key ?? value;
+        if (!col || headers.includes(col) || ghostAttrCols.includes(col)) continue;
+        if (ghostAttrCols.length >= GHOST_ATTR_COLUMN_LIMIT) break;
+        ghostAttrCols.push(col);
+      }
+    }
+    /** ghost 行のその列の値。キー無し属性は値そのものが列名なので印だけ返す */
+    const ghostAttrValue = (item: ProseItem, col: string): string | null => {
+      for (const a of item.attrs ?? []) {
+        const { key, value } = splitAttrLabel(a.label);
+        if (key === col) return value;
+        if (!key && value === col) return "✓";
+      }
+      return null;
+    };
     const highlightRow =
       table && highlightBlockId === table.blockId && highlightRowName != null
         ? table.rows.findIndex((r) => r[0] === highlightRowName)
@@ -391,6 +415,11 @@ export function FlowStepPanel({
                 </th>
               );
             })}
+            {ghostAttrCols.map((col) => (
+              <th key={`ghostcol:${col}`} style={th}>
+                <span style={ghostText}>{col}</span>
+              </th>
+            ))}
             {trailing && (
               <th style={{ ...th, borderRight: "none" }}>
                 {adding?.what === "column" && adding.blockId === blockId ? (
@@ -423,6 +452,9 @@ export function FlowStepPanel({
                   </td>
                 );
               })}
+              {ghostAttrCols.map((col) => (
+                <td key={`ghostcell:${col}`} style={td} />
+              ))}
               {trailing && <td style={{ ...td, borderRight: "none" }} />}
             </tr>
           ))}
@@ -454,6 +486,16 @@ export function FlowStepPanel({
                     </td>
                   );
                 })}
+                {ghostAttrCols.map((col) => (
+                  <td
+                    key={`ghostcell:${col}`}
+                    style={{ ...td, ...ghostText, cursor: "pointer" }}
+                    title={t("flowTable.ghostHint")}
+                    onClick={migrate}
+                  >
+                    {ghostAttrValue(item, col) ?? "–"}
+                  </td>
+                ))}
                 <td style={{ ...td, borderRight: "none", whiteSpace: "nowrap", width: "1%" }}>
                   {item.external ? (
                     // 共有でも「このステップの表にも書く」は選べる。同名は
@@ -503,6 +545,9 @@ export function FlowStepPanel({
                   <span style={ghostText}>{getDisplayLabel(kind).replace(/^\[|\]$/g, "")}</span>
                 )}
               </td>
+              {ghostAttrCols.map((col) => (
+                <td key={`emptycell:${col}`} style={td} />
+              ))}
               <td style={{ ...td, borderRight: "none" }} />
             </tr>
           )}

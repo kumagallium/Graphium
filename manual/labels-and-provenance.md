@@ -74,12 +74,14 @@ What you're looking at:
 
 | Element | Meaning |
 |---|---|
-| Card with a blue band | A step (a PROV *Activity*). The card shows its name and how many parameters it has |
+| Card with a blue band | A step (a PROV *Activity*). The card shows its name and how many parameters it has. When several steps share a name (parallel runs of one operation), the card also carries the parameters whose values differ between them |
 | Colored node | An entity — **Input** (green), **Tool** (amber), **Output** (terracotta) |
 | Panel below the graph | The selected step's tables — parameters, inputs, tools, outputs — editable here |
 | Green edge (`used`) | The step consumed this entity |
 | Terracotta edge (`wasGeneratedBy`) | This entity was produced by the step |
 | Dashed blue edge (`wasInformedBy`) | Order only: B came after A, but the note doesn't say which output was handed over |
+
+**Parameters** in the top right expands every node to show its parameters and attributes in full. Keep it collapsed to follow the shape of the graph, expand it when you want to compare conditions. The choice is remembered.
 
 The expand button (**Expand view**) opens the graph full-screen, still editable.
 
@@ -125,6 +127,8 @@ When a new experiment builds on an old one, don't copy-paste — derive. The not
 If the procedure already exists — a synthesis section of a paper, a protocol on the web — AI can do the labeling pass for you. In the sidebar's **Materials** section (your [materials](/materials-and-citations) gallery), open the action menu on a URL, PDF, or Word material and choose **Extract steps into a note**. Select several materials and the same action appears as a bulk button.
 
 Graphium reads the source, splits it into step blocks, applies **Input** / **Tool** / **Parameter** / **Output** highlights, links the steps in order, and records the source material in the note's lineage. A toast tracks progress, and the result is a normal note — review the labels and edit anything the AI got wrong. This requires a [configured AI model](/ai-setup).
+
+Two habits keep the imported labels tidy. Step titles hold the **operation only**, and **one run is one step** — a source that mills for 0 h, 1 h and 3 h produces three steps all named "Ball milling", each with its own **Parameter** values and its own output. The graph fans out into one branch per sample and converges again at the measurement step, which is how a paper with several samples is recorded in a single note. The other habit: names already used elsewhere in your workspace are offered back to the AI, so the same mill comes back as the same tool instead of a near-duplicate.
 
 ## Graph views beyond one note
 

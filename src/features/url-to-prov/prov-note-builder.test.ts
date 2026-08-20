@@ -461,3 +461,43 @@ describe("buildProvNoteDocument", () => {
     expect(doc.generatedBy?.tokenUsage?.total_tokens).toBe(150);
   });
 });
+
+describe("attribute span の attachTo", () => {
+  it('attachTo: "activity" は inlineAttribute の値に @activity を付ける', () => {
+    const doc = buildProvNoteDocument({
+      title: "x",
+      sourceFetchedAt: "2026-08-20T00:00:00.000Z",
+      blocks: [
+        { text: "Ball milling", blockType: "heading", level: 2, role: "procedure", stepId: "bm" },
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "粉末", role: "material" },
+            { text: "を", },
+            { text: "ボールミル", role: "tool" },
+            { text: "で ", },
+            { text: "rpm: 300", role: "attribute", attachTo: "activity" },
+            { text: " ", },
+            { text: "purity: 99.999%", role: "attribute" },
+          ],
+        },
+      ],
+    });
+    const spans = JSON.stringify(doc.pages[0].blocks);
+    expect(spans).toContain("@activity");
+    const parsed = JSON.parse(spans);
+    const findSpan = (text: string): any => {
+      let hit: any = null;
+      const walk = (bs: any[]) => {
+        for (const b of bs) {
+          for (const c of b.content ?? []) if (c.text === text) hit = c;
+          if (b.children?.length) walk(b.children);
+        }
+      };
+      walk(parsed);
+      return hit;
+    };
+    expect(findSpan("rpm: 300").styles.inlineAttribute).toMatch(/@activity$/);
+    expect(findSpan("purity: 99.999%").styles.inlineAttribute).not.toMatch(/@activity$/);
+  });
+});
