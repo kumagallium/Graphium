@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.39.4](https://github.com/kumagallium/Graphium/compare/v0.39.3...v0.39.4) - 2026-08-20
+
+- fix(copilot): resolve node PATH for spawned CLI subprocess by @kumagallium in https://github.com/kumagallium/Graphium/pull/736
+
 ## [v0.39.3](https://github.com/kumagallium/Graphium/compare/v0.39.2...v0.39.3) - 2026-08-20
 
 - feat(chart): put bar charts on a numeric x axis by default by @kumagallium in https://github.com/kumagallium/Graphium/pull/726
