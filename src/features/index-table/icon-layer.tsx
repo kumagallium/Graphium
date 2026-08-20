@@ -48,7 +48,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
 
     const root = document.querySelector<HTMLElement>("[data-label-wrapper]");
     if (!root) return;
-    setPortalHost(root);
+    setPortalHost((prev) => (prev === root ? prev : root));
     // ラッパー内座標の基準（スクロール量込み）
     const rootRect = root.getBoundingClientRect();
 
@@ -147,6 +147,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
   }, [compute]);
 
   // リンク済みセルの位置情報（カーソル変更用オーバーレイ）
+  const hostRect = portalHost?.getBoundingClientRect() ?? null;
   const linkedCellRects = icons
     .filter((icon) => icon.linkedNoteId)
     .map((icon) => {
@@ -160,11 +161,11 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
       const cell = row.cells[0];
       if (!cell) return null;
       const rect = cell.getBoundingClientRect();
-      const host = portalHost;
-      const box = host
+      // ラッパー内座標へ。ホストの矩形は 1 回だけ測る（セルごとに測り直さない）
+      const box = hostRect
         ? {
-            top: rect.top - host.getBoundingClientRect().top + host.scrollTop,
-            left: rect.left - host.getBoundingClientRect().left + host.scrollLeft,
+            top: rect.top - hostRect.top + (portalHost?.scrollTop ?? 0),
+            left: rect.left - hostRect.left + (portalHost?.scrollLeft ?? 0),
             width: rect.width,
             height: rect.height,
           }

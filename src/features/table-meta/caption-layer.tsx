@@ -153,7 +153,7 @@ export function TableCaptionLayer({
     let domMissing = false;
     // ラッパー内座標の基準。スクロール量を足すので、スクロールしても測り直さずに済む
     const rootRect = root.getBoundingClientRect();
-    setPortalHost(root);
+    setPortalHost((prev) => (prev === root ? prev : root));
     const displayNames = computeTableDisplayNames(
       (editor as any).document ?? [],
       (blockId) => store.hasColumnType(blockId, "datetime-auto"),
