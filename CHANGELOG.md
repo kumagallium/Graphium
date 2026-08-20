@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.39.3](https://github.com/kumagallium/Graphium/compare/v0.39.2...v0.39.3) - 2026-08-20
+
+- feat(chart): put bar charts on a numeric x axis by default by @kumagallium in https://github.com/kumagallium/Graphium/pull/726
+- fix(chart): base stacked bar series on their row, and settle the settings panel height by @kumagallium in https://github.com/kumagallium/Graphium/pull/728
+- fix(prov-ingest): keep parameters out of step names, reuse existing labels, surface prose parameters by @kumagallium in https://github.com/kumagallium/Graphium/pull/729
+
 ## [v0.39.2](https://github.com/kumagallium/Graphium/compare/v0.39.1...v0.39.2) - 2026-08-18
 
 - feat(ai): make knowledge generation, regeneration and discovery stoppable by @kumagallium in https://github.com/kumagallium/Graphium/pull/723
