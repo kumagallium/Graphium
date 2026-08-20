@@ -36,9 +36,9 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { LayoutGrid, Plus, Trash2 } from "lucide-react";
+import { LayoutGrid, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
-import type { FlowGraphData } from "./activity-graph-adapter";
+import { computeStepDistinguishers, type FlowGraphData } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
@@ -117,6 +117,8 @@ const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
 
 /** プレビューで先頭に寄せるときの上余白 */
 const PREVIEW_TOP_PADDING = 24;
+/** パラメータ展開の記憶キー（端末ごと・ノート横断） */
+const SHOW_PARAMS_KEY = "graphium:stepFlowShowParams";
 
 const toolbarBtnStyle = (color: string): React.CSSProperties => ({
   display: "inline-flex",
@@ -196,6 +198,19 @@ function StepFlowCanvas({
   selectedIdRef.current = selectedId;
   // 前回のノード id 一覧。選択中のノードが消えたとき、入れ替わりで現れた
   // ノードへ選択を引き継ぐために使う（表に移す・行のリネームで id が変わる）
+  // パラメータの展開はビューの読み方（形を見る / 条件を読む）の切り替えなので、
+  // ノートではなく端末の設定として覚える。ref も持つのは、ノード再構築の
+  // useEffect が showParams を依存に取らずに最新値を読めるようにするため
+  const [showParams, setShowParams] = useState<boolean>(() => {
+    if (typeof localStorage === "undefined") return false;
+    return localStorage.getItem(SHOW_PARAMS_KEY) === "1";
+  });
+  const showParamsRef = useRef(showParams);
+  showParamsRef.current = showParams;
+  // カードの中身が変わったときは、React Flow が測り直した後にもう一度並べ直す。
+  // 直後の 1 回は古い実測値で走ってしまい、そのままだと配置がずれたまま残る
+  const relayoutAfterResizeRef = useRef(false);
+
   const prevNodeIdsRef = useRef<Set<string>>(new Set());
   const { fitView, getNodes, getViewport, setViewport } = useReactFlow();
   // プレビューは全体を収めるより読めることを優先する
@@ -231,6 +246,9 @@ function StepFlowCanvas({
     prevNodeIdsRef.current = currentIds;
     setNodes((prev: Node[]) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
+      // 同名ステップ（条件違いの並列ラン）を見分けるためのパラメータ
+      const distinguishers = computeStepDistinguishers(graph.steps);
+      const showParams = showParamsRef.current;
       const stepNodes: Node[] = graph.steps.map((s) => ({
         id: s.id,
         type: "step" as const,
@@ -241,6 +259,8 @@ function StepFlowCanvas({
           onDelete: onDeleteActivity,
           onJump: onJumpToBlock,
           getContentCount: getStepContentCount,
+          distinguishers: distinguishers.get(s.id),
+          showParams,
         },
         draggable: false,
         selected: s.id === selectedIdRef.current,
@@ -255,6 +275,7 @@ function StepFlowCanvas({
           onRemoveEntity,
           onRenameTableRow,
           onRemoveTableRow,
+          showParams,
         },
         draggable: false,
         selected: e.id === selectedIdRef.current,
@@ -292,6 +313,7 @@ function StepFlowCanvas({
     onRemoveEntity,
     onRenameTableRow,
     onRemoveTableRow,
+    showParams,
     setNodes,
     setEdges,
   ]);
@@ -344,7 +366,12 @@ function StepFlowCanvas({
   const handleNodesChange = useCallback(
     (changes: NodeChange<Node>[]) => {
       onNodesChange(changes);
-      if (needsLayoutRef.current && changes.some((c) => c.type === "dimensions")) {
+      if (!changes.some((c) => c.type === "dimensions")) return;
+      if (relayoutAfterResizeRef.current) {
+        relayoutAfterResizeRef.current = false;
+        needsLayoutRef.current = true;
+      }
+      if (needsLayoutRef.current) {
         requestAnimationFrame(() => tryLayout());
       }
     },
@@ -513,6 +540,35 @@ function StepFlowCanvas({
               onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-card)")}
             >
               <LayoutGrid size={13} /> {t("activityGraph.relayout")}
+            </button>
+            {/* パラメータの展開。カードの実寸が変わるので、切り替えたら並べ直す */}
+            <button
+              onClick={() => {
+                const next = !showParamsRef.current;
+                showParamsRef.current = next;
+                setShowParams(next);
+                try {
+                  localStorage.setItem(SHOW_PARAMS_KEY, next ? "1" : "0");
+                } catch {
+                  // プライベートモード等で書けなくても表示は切り替える
+                }
+                needsLayoutRef.current = true;
+                relayoutAfterResizeRef.current = true;
+              }}
+              title={t("activityGraph.toggleParams")}
+              aria-pressed={showParams}
+              style={{
+                ...toolbarBtnStyle(showParams ? ACTIVITY_BLUE : "var(--color-text-tertiary)"),
+                background: showParams ? "var(--color-surface-hover)" : "var(--color-card)",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = showParams
+                  ? "var(--color-surface-hover)"
+                  : "var(--color-card)")
+              }
+            >
+              <SlidersHorizontal size={13} /> {t("activityGraph.toggleParams")}
             </button>
             {onAddActivity && (
               <button

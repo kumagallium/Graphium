@@ -208,7 +208,7 @@ import { setWikiIndexForRetriever, setWikiTitleMap, setNoteTitleMap } from "./fe
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
-import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument } from "./features/url-to-prov";
+import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary } from "./features/url-to-prov";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
@@ -4299,7 +4299,6 @@ function NoteEditorInner({
     <>
       <ProvIndicatorLayer
         hidden={!isDesktop && rightTab !== null}
-        bottomInset={isDesktop ? 0 : 56}
       />
       <IndexTableIconLayer editorRef={editorRef} />
       <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} />
@@ -8027,6 +8026,9 @@ export function NoteApp() {
             onCreateProvNote={aiUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
+              // 既にこの書庫で使われているラベルを ingester に渡す。同じモノに
+              // 毎回別名が付いてラベルが増えるのを防ぐ（頻出順に上限付きで抜粋）
+              const vocabulary = collectLabelVocabulary(fm.noteIndex?.notes);
               // URL 経路
               if (entry.type === "url" && entry.url) {
                 const jobId = `prov-url:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
@@ -8035,7 +8037,7 @@ export function NoteApp() {
                 (async () => {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching & parsing URL..." } : i) }));
                   try {
-                    const result = await ingestUrlToProv(entry.url, getLocale());
+                    const result = await ingestUrlToProv(entry.url, getLocale(), vocabulary);
                     if (!result.blocks || result.blocks.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
@@ -8068,7 +8070,7 @@ export function NoteApp() {
                     const provider = getActiveProvider();
                     const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
                     const blob = await (await fetch(blobUrl)).blob();
-                    const result = await ingestPdfToProv(blob, entry.name || "document.pdf", getLocale());
+                    const result = await ingestPdfToProv(blob, entry.name || "document.pdf", getLocale(), vocabulary);
                     if (!result.blocks || result.blocks.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
@@ -8103,7 +8105,7 @@ export function NoteApp() {
                     const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
                     const blobUrl = await provider.getMediaBlobUrl(fileId);
                     const blob = await (await fetch(blobUrl)).blob();
-                    const result = await ingestDocxToProv(blob, entry.name || "document.docx", getLocale());
+                    const result = await ingestDocxToProv(blob, entry.name || "document.docx", getLocale(), vocabulary);
                     if (!result.blocks || result.blocks.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;

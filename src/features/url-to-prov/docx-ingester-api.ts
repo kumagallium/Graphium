@@ -9,6 +9,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
+import type { ProvVocabulary } from "./label-vocabulary";
 import { t } from "../../i18n";
 
 export type IngestDocxResult = {
@@ -45,6 +46,7 @@ export async function ingestDocxToProv(
   blob: Blob,
   fileName: string,
   language: string = "en",
+  vocabulary?: ProvVocabulary,
 ): Promise<IngestDocxResult> {
   const arrayBuffer = await blob.arrayBuffer();
   const mammoth = await import("mammoth");
@@ -64,6 +66,7 @@ export async function ingestDocxToProv(
       text,
       title,
       language,
+      ...(vocabulary ? { vocabulary } : {}),
       ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
     }),
   });

@@ -14,10 +14,13 @@ import { resolveModelConfig } from "../services/header-model.js";
 import { runAgentLoop, type AgentRunResult } from "../services/agent-loop.js";
 import {
   buildProvIngesterSystemPrompt,
+  type ProvVocabulary,
   buildProvIngesterUserMessage,
   parseProvIngesterOutput,
   hasHeadingLanguageMismatch,
+  findMergedParallelSteps,
   PROV_LANGUAGE_RETRY_NUDGE,
+  PROV_PARALLEL_SPLIT_RETRY_NUDGE,
   type ProvIngesterOutput,
 } from "../services/prov-ingester.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -39,6 +42,10 @@ const app = new Hono();
 //       だけ英語で書くケース（同実測で約 6 割）。同一プロンプトの引き直しでは
 //       また英語になりやすいため、前回出力を assistant として見せて書き直させる
 //       （実測 3/3 で日本語化）。書き直しが壊れたら 1 回目の結果を維持する。
+//   (c) 並列条件が 1 手順に畳まれている — 0h/1h/3h の 3 回のミリングを 1 ステップに
+//       まとめ、パラメータ表に time: 1 h と time: 3 h を並べるケース。どの生成物が
+//       どの条件から出たかがグラフから消えるので、(b) と同じ方式で分割させる。
+//       (b) と (c) が同時に立つときは (b) を優先する（追加呼び出しは常に最大 1 回）。
 async function generateProvBlocksWithRetry(opts: {
   modelConfig: ModelConfig;
   systemPrompt: string;
@@ -70,17 +77,25 @@ async function generateProvBlocksWithRetry(opts: {
     console.warn(`[${opts.feature}] PROV blocks が空 (JSON 破損 or 全 drop)、1 回だけ再生成する`);
     result = await run(baseMessages);
     parsed = parseProvIngesterOutput(result.message);
-  } else if (hasHeadingLanguageMismatch(opts.language, parsed.blocks)) {
-    console.warn(`[${opts.feature}] 見出しが出力言語と不一致、前回出力を見せて 1 回だけ書き直させる`);
-    const retryResult = await run([
-      ...baseMessages,
-      { role: "assistant" as const, content: result.message },
-      { role: "user" as const, content: PROV_LANGUAGE_RETRY_NUDGE },
-    ]);
-    const reparsed = parseProvIngesterOutput(retryResult.message);
-    if (reparsed.blocks.length > 0) {
-      result = retryResult;
-      parsed = reparsed;
+  } else {
+    // 書き直し系は 1 回だけ。言語不一致を優先する（読めない見出しの方が痛い）
+    const nudge = hasHeadingLanguageMismatch(opts.language, parsed.blocks)
+      ? { reason: "見出しが出力言語と不一致", message: PROV_LANGUAGE_RETRY_NUDGE }
+      : findMergedParallelSteps(parsed.blocks).length > 0
+        ? { reason: "並列条件が 1 手順に畳まれている", message: PROV_PARALLEL_SPLIT_RETRY_NUDGE }
+        : null;
+    if (nudge) {
+      console.warn(`[${opts.feature}] ${nudge.reason}、前回出力を見せて 1 回だけ書き直させる`);
+      const retryResult = await run([
+        ...baseMessages,
+        { role: "assistant" as const, content: result.message },
+        { role: "user" as const, content: nudge.message },
+      ]);
+      const reparsed = parseProvIngesterOutput(retryResult.message);
+      if (reparsed.blocks.length > 0) {
+        result = retryResult;
+        parsed = reparsed;
+      }
     }
   }
   return { parsed, result };
@@ -92,6 +107,7 @@ app.post("/ingest-url", async (c) => {
     url: string;
     language?: string;
     model?: string;
+    vocabulary?: ProvVocabulary;
   }>();
 
   if (!body.url) {
@@ -127,7 +143,7 @@ app.post("/ingest-url", async (c) => {
   const language = body.language || "en";
 
   // LLM 呼び出し（open-set 単一 prompt）
-  const systemPrompt = buildProvIngesterSystemPrompt(language);
+  const systemPrompt = buildProvIngesterSystemPrompt(language, body.vocabulary);
   const userMessage = buildProvIngesterUserMessage({
     url: page.url,
     title: page.title || body.url,
@@ -173,6 +189,7 @@ app.post("/ingest-pdf", async (c) => {
     title?: string;
     language?: string;
     model?: string;
+    vocabulary?: ProvVocabulary;
   }>();
 
   if (!body.text || body.text.trim().length < 50) {
@@ -202,7 +219,7 @@ app.post("/ingest-pdf", async (c) => {
     description: undefined,
     text: `${languageHint}\n\n${body.text}`,
   });
-  const systemPrompt = buildProvIngesterSystemPrompt(language);
+  const systemPrompt = buildProvIngesterSystemPrompt(language, body.vocabulary);
 
   try {
     const { parsed, result } = await generateProvBlocksWithRetry({

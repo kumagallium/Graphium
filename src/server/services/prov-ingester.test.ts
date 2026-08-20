@@ -4,6 +4,8 @@ import {
   buildProvIngesterSystemPrompt,
   buildProvIngesterUserMessage,
   hasHeadingLanguageMismatch,
+  stripParameterFromStepName,
+  findMergedParallelSteps,
 } from "./prov-ingester";
 
 describe("parseProvIngesterOutput", () => {
@@ -453,5 +455,213 @@ describe("hasHeadingLanguageMismatch", () => {
       p("本文"),
     ];
     expect(hasHeadingLanguageMismatch("ja", blocks)).toBe(true);
+  });
+});
+
+describe("stripParameterFromStepName", () => {
+  it("末尾のパラメータ値を落とす", () => {
+    expect(stripParameterFromStepName("Ball milling 1h")).toBe("Ball milling");
+    expect(stripParameterFromStepName("Ball milling 0 h")).toBe("Ball milling");
+    expect(stripParameterFromStepName("Hot pressing (823 K)")).toBe("Hot pressing");
+    expect(stripParameterFromStepName("Annealing （48 h）")).toBe("Annealing");
+    expect(stripParameterFromStepName("Milling at 300 rpm")).toBe("Milling");
+    expect(stripParameterFromStepName("ボールミリング 3h")).toBe("ボールミリング");
+    expect(stripParameterFromStepName("焼結 1273K")).toBe("焼結");
+  });
+
+  it("単位の無い数字・名前の一部は落とさない", () => {
+    expect(stripParameterFromStepName("Milling")).toBe("Milling");
+    expect(stripParameterFromStepName("Phase 2")).toBe("Phase 2");
+    expect(stripParameterFromStepName("Spark plasma sintering")).toBe("Spark plasma sintering");
+  });
+
+  it("剥がすと名前が消える場合は元のまま返す", () => {
+    expect(stripParameterFromStepName("1h")).toBe("1h");
+    expect(stripParameterFromStepName("300 rpm")).toBe("300 rpm");
+  });
+});
+
+describe("パラメータを含む手順見出しのサニタイズ", () => {
+  it("procedure 見出しからはパラメータを落とし、同名の重複はそのまま残す", () => {
+    const raw = JSON.stringify({
+      title: "CuGaTe2",
+      blocks: [
+        { text: "Ball milling 0h", blockType: "heading", level: 2, role: "procedure", stepId: "bm-0h" },
+        { text: "Ball milling 1h", blockType: "heading", level: 2, role: "procedure", stepId: "bm-1h" },
+        { text: "結果 3h", blockType: "heading", level: 1 },
+      ],
+    });
+    const out = parseProvIngesterOutput(raw);
+    expect(out.blocks[0].text).toBe("Ball milling");
+    expect(out.blocks[1].text).toBe("Ball milling");
+    // procedure でない見出しは触らない
+    expect(out.blocks[2].text).toBe("結果 3h");
+  });
+
+  it("material span の名前はパラメータを保つ（同名統合で分岐が潰れるため）", () => {
+    const raw = JSON.stringify({
+      title: "x",
+      blocks: [
+        {
+          blockType: "paragraph",
+          content: [{ text: "1h ボールミールド粉末", role: "material" }],
+        },
+      ],
+    });
+    const out = parseProvIngesterOutput(raw);
+    expect(out.blocks[0].content?.[0].text).toBe("1h ボールミールド粉末");
+  });
+});
+
+describe("attribute span の attachTo", () => {
+  it("attribute には activity 指定を通す", () => {
+    const raw = JSON.stringify({
+      title: "x",
+      blocks: [
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "rpm: 300", role: "attribute", attachTo: "activity" },
+            { text: "purity: 99.999%", role: "attribute" },
+          ],
+        },
+      ],
+    });
+    const out = parseProvIngesterOutput(raw);
+    expect(out.blocks[0].content?.[0].attachTo).toBe("activity");
+    expect(out.blocks[0].content?.[1].attachTo).toBeUndefined();
+  });
+
+  it("attribute 以外・不正値の attachTo は捨てる", () => {
+    const raw = JSON.stringify({
+      title: "x",
+      blocks: [
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "ボールミル", role: "tool", attachTo: "activity" },
+            { text: "time: 1 h", role: "attribute", attachTo: "step" },
+          ],
+        },
+      ],
+    });
+    const out = parseProvIngesterOutput(raw);
+    expect(out.blocks[0].content?.[0].attachTo).toBeUndefined();
+    expect(out.blocks[0].content?.[1].attachTo).toBeUndefined();
+  });
+});
+
+describe("buildProvIngesterSystemPrompt — 手順名と語彙", () => {
+  it("見出しにパラメータを入れない規則と、同名重複の許容を説明する", () => {
+    const prompt = buildProvIngesterSystemPrompt("en");
+    expect(prompt).toContain("Step headings carry no parameter values");
+    expect(prompt).toContain("Repeated headings are expected and correct");
+    expect(prompt).toContain('"Ball milling 1h"');
+  });
+
+  it("工程条件を Activity に束ねる指定を説明する", () => {
+    const prompt = buildProvIngesterSystemPrompt("en");
+    expect(prompt).toContain("Where an attribute attaches");
+    expect(prompt).toContain('"attachTo": "activity"');
+  });
+
+  it("語彙を渡すとセクションが載り、渡さなければ載らない", () => {
+    const without = buildProvIngesterSystemPrompt("en");
+    expect(without).not.toContain("(reuse before inventing)");
+
+    const withVocab = buildProvIngesterSystemPrompt("en", {
+      tool: ["プラネタリーボールミル", "グラファイトダイ"],
+      attributeKey: ["rpm", "temperature"],
+    });
+    expect(withVocab).toContain("(reuse before inventing)");
+    expect(withVocab).toContain("プラネタリーボールミル");
+    expect(withVocab).toContain("rpm");
+  });
+
+  it("語彙が空なら空セクションを出さない", () => {
+    const prompt = buildProvIngesterSystemPrompt("en", { tool: [], step: [] });
+    expect(prompt).not.toContain("(reuse before inventing)");
+  });
+
+  it("語彙が多くても文字数上限で打ち切る", () => {
+    const many = Array.from({ length: 400 }, (_, i) => `material-name-${i}`);
+    const prompt = buildProvIngesterSystemPrompt("en", { material: many });
+    const base = buildProvIngesterSystemPrompt("en").length;
+    expect(prompt.length - base).toBeLessThan(5500);
+  });
+});
+
+describe("findMergedParallelSteps", () => {
+  const step = (name: string, id: string) => ({
+    text: name,
+    blockType: "heading" as const,
+    level: 2 as const,
+    role: "procedure" as const,
+    stepId: id,
+  });
+  const para = (attrs: string[]) => ({
+    blockType: "paragraph" as const,
+    content: attrs.map((text) => ({ text, role: "attribute" as const })),
+  });
+
+  it("同じキーに複数の値がある手順を畳み込みとして検出する", () => {
+    const merged = findMergedParallelSteps([
+      step("ボールミリング", "bm"),
+      para(["rpm: 300", "time: 1 h", "rpm: 300", "time: 3 h"]),
+    ]);
+    expect(merged).toEqual(["ボールミリング"]);
+  });
+
+  it("同名の手順が分かれていれば検出しない", () => {
+    const merged = findMergedParallelSteps([
+      step("ボールミリング", "bm-1h"),
+      para(["rpm: 300", "time: 1 h"]),
+      step("ボールミリング", "bm-3h"),
+      para(["rpm: 300", "time: 3 h"]),
+    ]);
+    expect(merged).toEqual([]);
+  });
+
+  it("同じキーで同じ値の重複は畳み込みではない", () => {
+    const merged = findMergedParallelSteps([
+      step("焼結", "s"),
+      para(["temperature: 823 K", "temperature: 823K"]),
+    ]);
+    expect(merged).toEqual([]);
+  });
+
+  it("キーを持たない属性・手順の外の属性は数えない", () => {
+    const merged = findMergedParallelSteps([
+      { text: "材料", blockType: "heading", level: 1 },
+      para(["time: 1 h", "time: 3 h"]),
+      step("粉砕", "c"),
+      para(["粗く", "細かく"]),
+    ]);
+    expect(merged).toEqual([]);
+  });
+
+  it("畳まれた手順が複数あればすべて返す", () => {
+    const merged = findMergedParallelSteps([
+      step("ボールミリング", "bm"),
+      para(["time: 1 h", "time: 3 h"]),
+      step("熱圧成形", "hp"),
+      para(["temperature: 823 K", "temperature: 923 K"]),
+    ]);
+    expect(merged).toEqual(["ボールミリング", "熱圧成形"]);
+  });
+});
+
+describe("buildProvIngesterSystemPrompt — 並列試料", () => {
+  it("1 run = 1 step と分岐・合流の例が含まれる", () => {
+    const prompt = buildProvIngesterSystemPrompt("en");
+    expect(prompt).toContain("One run = one step");
+    expect(prompt).toContain("parallel branches");
+    expect(prompt).toContain("ball-milling-0h");
+    expect(prompt).toContain("converge");
+  });
+
+  it("手順数の上限が試料ぶんの増加を禁じないことを明示する", () => {
+    const prompt = buildProvIngesterSystemPrompt("en");
+    expect(prompt).toContain("3 operations × 3 samples = 9 steps");
   });
 });

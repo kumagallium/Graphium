@@ -84,9 +84,18 @@ export function setOnPrevStepLinkSelected(
 // ──────────────────────────────────
 type IndicatorInfo = {
   blockId: string;
+  /** ビューポート座標。詳細パネル（画面基準の fixed）が使う */
   top: number;
   /** バッジ右端の x 座標（margin: エディタ右端 / table: テーブル右端） */
   left: number;
+  /**
+   * エディタラッパー内の座標（スクロール量込み）。バッジはこれを使って
+   * ラッパーの中に absolute で置く。ラッパーと一緒に動くので、スクロールに
+   * 遅れない — fixed + JS 追随では、スクロールを処理するスレッドと座標を
+   * 計算するスレッドが違うため、必ずワンテンポずれる。
+   */
+  localTop: number;
+  localLeft: number;
   label: string | undefined;
   /** ブロック型（step コンテナはラベル無しでも工程として扱うため必要） */
   blockType: string | undefined;
@@ -106,7 +115,6 @@ type IndicatorInfo = {
 const TABLE_CHIP_GAP = 4;
 
 // エディタラッパーの表示範囲（ラベルをクリップするため）
-type ClipBounds = { top: number; bottom: number };
 
 // ──────────────────────────────────
 // ProvIndicatorLayer
@@ -114,19 +122,18 @@ type ClipBounds = { top: number; bottom: number };
 export function ProvIndicatorLayer({
   wrapperEl,
   hidden = false,
-  bottomInset = 0,
 }: {
   wrapperEl?: HTMLElement | null;
   /** モバイルで全画面オーバーレイ（右パネル）が開いている間はラベルを描画しない */
   hidden?: boolean;
-  /** 画面下端からの予約領域（モバイルのボトムバー高さ等）。この内側にラベルを置かない */
-  bottomInset?: number;
 } = {}) {
   const provLabelsEnabled = useProvLabelsEnabled();
   const { labels, getLabel, setLabel, openBlockId } = useLabelStore();
   const { links, getOutgoing, getIncoming, removeLink } = useLinkStore();
   const [indicators, setIndicators] = useState<IndicatorInfo[]>([]);
-  const [clipBounds, setClipBounds] = useState<ClipBounds>({ top: 0, bottom: 9999 });
+  // バッジのポータル先。ラッパーの中に置くことで overflow が自然にクリップし、
+  // z-index もラッパー内に閉じる（画面全面に出ないのでメニューを覆わない）
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   // メタデータ領域（padding-top）を予約したテーブルの blockId。
   // ラベルが外れたら compute が予約を解除する。
@@ -166,25 +173,16 @@ export function ProvIndicatorLayer({
     }
     if (!wrapper) return;
     const wrapperRect = wrapper.getBoundingClientRect();
-    // SidePeek が開いていて、この wrapper がその下に隠れている場合は
-    // ラベルを SidePeek の左端より内側に収める（z-index で重なるのを防ぐ）
-    let effectiveRight = wrapperRect.right;
-    const sidePeek = document.querySelector("[data-side-peek]");
-    if (sidePeek && !sidePeek.contains(wrapper)) {
-      const peekRect = sidePeek.getBoundingClientRect();
-      if (peekRect.left < effectiveRight) {
-        effectiveRight = peekRect.left;
-      }
-    }
-    // サイドバー境界の左にラベルを配置（8px の余白）
-    const indicatorLeft = effectiveRight - 8;
-    // ラベルの表示範囲をエディタラッパー内に制限。
-    // モバイルではボトムバー（bottomInset）の上端でクリップし、固定ツールバーと重ならないようにする。
-    const clipBottom =
-      bottomInset > 0
-        ? Math.min(wrapperRect.bottom, window.innerHeight - bottomInset)
-        : wrapperRect.bottom;
-    setClipBounds({ top: wrapperRect.top, bottom: clipBottom });
+    setPortalHost(wrapper as HTMLElement);
+    const scrollTop = (wrapper as HTMLElement).scrollTop ?? 0;
+    const scrollLeft = (wrapper as HTMLElement).scrollLeft ?? 0;
+    // ビューポート座標 → ラッパー内座標
+    const toLocalTop = (y: number) => y - wrapperRect.top + scrollTop;
+    const toLocalLeft = (x: number) => x - wrapperRect.left + scrollLeft;
+    // サイドバー境界の左にラベルを配置（8px の余白）。
+    // SidePeek との重なりを避ける計算はもう要らない — ラッパーの中に描くので、
+    // 外側にある要素とは stacking context が分かれる。
+    const indicatorLeft = wrapperRect.right - 8;
 
     const next: IndicatorInfo[] = [];
     const spacedTables = new Set<string>();
@@ -233,10 +231,14 @@ export function ProvIndicatorLayer({
         ? Math.min(anchorRect.right, content.getBoundingClientRect().right)
         : anchorRect.right;
 
+      const viewportTop = isTable ? anchorRect.top - TABLE_CHIP_GAP : rect.top + rect.height / 2;
+      const viewportLeft = isTable ? tableRight : indicatorLeft;
       next.push({
         blockId,
-        top: isTable ? anchorRect.top - TABLE_CHIP_GAP : rect.top + rect.height / 2,
-        left: isTable ? tableRight : indicatorLeft,
+        top: viewportTop,
+        left: viewportLeft,
+        localTop: toLocalTop(viewportTop),
+        localLeft: toLocalLeft(viewportLeft),
         label,
         blockType,
         placement: isTable ? "table" : "margin",
@@ -256,7 +258,7 @@ export function ProvIndicatorLayer({
     spacedTablesRef.current = spacedTables;
 
     setIndicators(next);
-  }, [labels, links, getLabel, getOutgoing, getIncoming, wrapperEl, bottomInset]);
+  }, [labels, links, getLabel, getOutgoing, getIncoming, wrapperEl]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(compute);
@@ -303,17 +305,14 @@ export function ProvIndicatorLayer({
   // 来歴ラベル機能がオフなら、ラベル / PROV リンクのインジケータ層を一切描画しない。
   if (!provLabelsEnabled || hidden || indicators.length === 0) return null;
 
-  return createPortal(
+  const badges = (
     <>
-      {indicators.map(({ blockId, top, left, label, blockType, placement, outgoing, incoming }) => {
+      {indicators.map(({ blockId, top, left, localTop, localLeft, label, blockType, placement, outgoing, incoming }) => {
         const isActive = activeBlockId === blockId;
         const color = label ? getLabelColor(label) : undefined;
 
         // ラベルがないブロックは右側に何も表示しない
         if (!label) return null;
-
-        // エディタラッパーの表示範囲外はスキップ（ヘッダーに重ならないよう）
-        if (top < clipBounds.top || top > clipBounds.bottom) return null;
 
         const isTableChip = placement === "table";
 
@@ -327,11 +326,13 @@ export function ProvIndicatorLayer({
               }
               data-prov-label-anchor={blockId}
               title={tStatic("provIndicator.clickForDetails", { label: getDisplayLabel(label) })}
-              className="fixed z-[9997] inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap pointer-events-auto"
+              className="absolute z-[5] inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap pointer-events-auto"
               style={{
-                top,
-                right: window.innerWidth - left,
-                transform: isTableChip ? "translateY(-100%)" : "translateY(-50%)",
+                top: localTop,
+                left: localLeft,
+                transform: isTableChip
+                  ? "translate(-100%, -100%)"
+                  : "translate(-100%, -50%)",
                 padding: "0px 6px",
                 backgroundColor: color + "18",
                 color: color,
@@ -363,9 +364,12 @@ export function ProvIndicatorLayer({
           </div>
         );
       })}
-    </>,
-    document.body
+    </>
   );
+
+  // ラッパーが見つかるまでは描かない（compute が走れば埋まる）。
+  // パネルは画面基準の fixed のままなので、ラッパー内に置いても位置は変わらない。
+  return portalHost ? createPortal(badges, portalHost) : null;
 }
 
 // ──────────────────────────────────

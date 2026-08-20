@@ -10,3 +10,5 @@ export type {
   PlanExecutionBuildResult,
   PlanExecutionSourceMeta,
 } from "./plan-execution-builder";
+export { collectLabelVocabulary, isVocabularyEmpty } from "./label-vocabulary";
+export type { ProvVocabulary } from "./label-vocabulary";

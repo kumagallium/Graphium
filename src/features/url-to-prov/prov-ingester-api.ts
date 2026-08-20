@@ -5,6 +5,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
+import type { ProvVocabulary } from "./label-vocabulary";
 
 export type IngestUrlResult = {
   title: string;
@@ -40,11 +41,17 @@ function provHeaders(): Record<string, string> {
 export async function ingestUrlToProv(
   url: string,
   language: string = "en",
+  vocabulary?: ProvVocabulary,
 ): Promise<IngestUrlResult> {
   const res = await fetch(`${apiBase()}/prov/ingest-url`, {
     method: "POST",
     headers: provHeaders(),
-    body: JSON.stringify({ url, language, ...(getSelectedModel() ? { model: getSelectedModel() } : {}) }),
+    body: JSON.stringify({
+      url,
+      language,
+      ...(vocabulary ? { vocabulary } : {}),
+      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
+    }),
   });
 
   if (!res.ok) {
