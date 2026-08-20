@@ -94,6 +94,12 @@ export type StepFlowViewProps = {
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
   /** 属性テーブルの置き場所。below = グラフの下（右パネル）、side = 右横（全画面） */
   tableLayout?: "below" | "side";
+  /**
+   * 使われ方。"preview" はプロセス一覧の右ペインのように、構造だけを見せて
+   * 編集させない場所で使う: 属性テーブルを畳み、初期表示で縮小しすぎない
+   * （収まりきらない長い手順は読める大きさのままスクロールで追う）。
+   */
+  variant?: "editor" | "preview";
   /** 選択の裏にある step の中身（全テーブル + 本文 span 由来）を読む */
   getPanelFor?: (selection: FlowSelection) => StepPanelData | null;
   onSetCell?: (blockId: string, rowIndex: number, colIndex: number, value: string) => void;
@@ -158,6 +164,7 @@ function StepFlowCanvas({
   onRenameTableRow,
   onRemoveTableRow,
   tableLayout = "below",
+  variant = "editor",
   getPanelFor,
   onSetCell,
   onRenameColumn,
@@ -188,6 +195,8 @@ function StepFlowCanvas({
   // ノードへ選択を引き継ぐために使う（表に移す・行のリネームで id が変わる）
   const prevNodeIdsRef = useRef<Set<string>>(new Set());
   const { fitView, getNodes } = useReactFlow();
+  // プレビューは全体を収めるより読めることを優先する
+  const fitMinZoom = variant === "preview" ? 0.55 : 0.2;
   // 接続判定用に最新の graph を ref でも持つ（cy 初期化不要の React Flow でも
   // コールバック安定化のため）
   const graphRef = useRef(graph);
@@ -313,7 +322,7 @@ function StepFlowCanvas({
         nds.map((n: Node) => ({ ...n, position: positions.get(n.id) ?? n.position })),
       );
       requestAnimationFrame(() => {
-        void fitView({ padding: 0.15, duration: 200, maxZoom: 1 });
+        void fitView({ padding: 0.15, duration: 200, maxZoom: 1, minZoom: fitMinZoom });
       });
     });
   }, [getNodes, setNodes, fitView]);
@@ -472,7 +481,7 @@ function StepFlowCanvas({
         minZoom={0.2}
         maxZoom={4}
         fitView
-        fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+        fitViewOptions={{ padding: 0.15, maxZoom: 1, minZoom: fitMinZoom }}
         style={{ background: "var(--color-background)", borderRadius: 8 }}
       >
         <Background color="var(--color-border)" gap={22} size={1.5} />
@@ -615,7 +624,7 @@ function StepFlowCanvas({
       {/* 属性テーブル（下 or 右）。ノードは名前だけに保ち、中身はここで編集する。
           仕切りはドラッグで動かせる（位置は記憶・ダブルクリックで既定）。
           下配置は未選択時にヒント 1 行へ畳み、グラフに全高を渡す */}
-      {tableLayout === "side" ? (
+      {variant === "preview" ? null : tableLayout === "side" ? (
         <div
           style={{
             position: "relative",

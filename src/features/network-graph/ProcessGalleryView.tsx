@@ -10,12 +10,17 @@
 //
 // 表示するデータは process-index（投影キャッシュ）から来る。ここで
 // グラフを組み直さない — 組み直すと右パネルと構造が食い違う（P-1）。
+//
+// 右のプレビューはノート編集時の手順フローと同じ StepFlowView を使う。
+// 別の描き方をすると「同じものを見ている」感覚が切れるため、コールバックを
+// 渡さないことで読み取り専用にするだけに留める。
 // ──────────────────────────────────────────────
 
 import { useMemo, useState } from "react";
-import { GitBranch, ArrowRight, CornerDownRight } from "lucide-react";
+import { GitBranch, ArrowRight, CornerDownRight, ExternalLink } from "lucide-react";
 import { useT } from "../../i18n";
 import type { ProcessIndex, ProcessIndexEntry } from "./process-index";
+import { StepFlowView } from "./step-flow-view";
 
 export type ProcessGalleryViewProps = {
   processIndex: ProcessIndex | null;
@@ -43,6 +48,7 @@ export function ProcessGalleryView({
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("modifiedAt");
   const [sortAsc, setSortAsc] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const processes = processIndex?.processes ?? [];
 
@@ -93,63 +99,102 @@ export function ProcessGalleryView({
     </button>
   );
 
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-background">
-      {/* ヘッダー */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
-        <button
-          onClick={onBack}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t("common.back")}
-        </button>
-        <span className="text-sm font-semibold text-foreground">{t("process.title")}</span>
-        <span className="text-xs text-muted-foreground">
-          {t("process.count", { n: String(filtered.length) })}
-        </span>
-      </div>
+  // 右が空のままだと何を見せるペインなのか伝わらないので、明示選択が無ければ先頭を見せる。
+  // effect で選択 state を書き戻さない — 絞り込みのたびに選択が動いて読めなくなる。
+  const selected =
+    filtered.find((entry) => entry.noteId === selectedId) ?? filtered[0] ?? null;
 
-      {/* 検索 + ソート */}
-      <div className="px-6 py-2 border-b border-border flex items-center gap-3">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={t("process.search")}
-          className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
-        />
-        <div className="flex items-center gap-1 ml-auto">
-          {sortButton("stepCount", t("process.sortSteps"))}
-          {sortButton("modifiedAt", t("asset.sortDate"))}
-          {sortButton("title", t("process.sortTitle"))}
+  return (
+    <div className="flex-1 flex overflow-hidden bg-background">
+      {/* 左: 一覧 */}
+      <div className="flex flex-col overflow-hidden shrink-0" style={{ width: "44%", minWidth: 340 }}>
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+          <button
+            onClick={onBack}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t("common.back")}
+          </button>
+          <span className="text-sm font-semibold text-foreground">{t("process.title")}</span>
+          <span className="text-xs text-muted-foreground">
+            {t("process.count", { n: String(filtered.length) })}
+          </span>
+        </div>
+
+        <div className="px-6 py-2 border-b border-border flex items-center gap-3">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t("process.search")}
+            className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+          />
+          <div className="flex items-center gap-1 ml-auto">
+            {sortButton("stepCount", t("process.sortSteps"))}
+            {sortButton("modifiedAt", t("asset.sortDate"))}
+            {sortButton("title", t("process.sortTitle"))}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {filtered.length === 0 && (
+            <div className="px-6 py-10 text-center text-xs text-muted-foreground">
+              {processes.length === 0 ? t("process.empty") : t("process.noMatch")}
+            </div>
+          )}
+          {filtered.map((process) => (
+            <ProcessRow
+              key={process.noteId}
+              process={process}
+              selected={process.noteId === selected?.noteId}
+              onSelect={() => setSelectedId(process.noteId)}
+            />
+          ))}
         </div>
       </div>
 
-      {/* 読み取り専用であることを最初に伝える（素材と並ぶので取り違えやすい） */}
-      <div className="px-6 py-1.5 text-[10px] text-text-tertiary border-b border-border-subtle">
-        {t("process.readOnlyNote")}
-      </div>
-
-      {/* 一覧 */}
-      <div className="flex-1 overflow-y-auto">
-        {filtered.length === 0 && (
-          <div className="px-6 py-10 text-center text-xs text-muted-foreground">
-            {processes.length === 0 ? t("process.empty") : t("process.noMatch")}
+      {/* 右: 手順フローのプレビュー（ノート編集時と同じ描画） */}
+      <div className="flex-1 flex flex-col min-w-0 border-l border-border">
+        {selected ? (
+          <>
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+              <span className="text-xs font-medium text-foreground truncate">{selected.title}</span>
+              <span className="text-[10px] text-text-tertiary shrink-0">
+                {t("process.previewReadOnly")}
+              </span>
+              <button
+                onClick={() => onNavigateNote(selected.noteId)}
+                className="ml-auto shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded text-primary hover:bg-primary/10 transition-colors"
+              >
+                <ExternalLink size={11} strokeWidth={2.2} />
+                {t("process.openNote")}
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">
+              {/* コールバックを渡さない = 読み取り専用（P-3）。
+                  variant="preview" で属性テーブルを畳み、縮小の下限を上げる */}
+              <StepFlowView graph={selected.graph} variant="preview" />
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center px-8 text-center text-xs text-muted-foreground">
+            {t("process.selectHint")}
           </div>
         )}
-        {filtered.map((process) => (
-          <ProcessRow
-            key={process.noteId}
-            process={process}
-            onOpen={() => onNavigateNote(process.noteId)}
-          />
-        ))}
       </div>
     </div>
   );
 }
 
-function ProcessRow({ process, onOpen }: { process: ProcessIndexEntry; onOpen: () => void }) {
+function ProcessRow({
+  process,
+  selected,
+  onSelect,
+}: {
+  process: ProcessIndexEntry;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const t = useT();
   const { summary, graph } = process;
   const head = graph.steps.slice(0, PREVIEW_STEPS);
@@ -157,8 +202,12 @@ function ProcessRow({ process, onOpen }: { process: ProcessIndexEntry; onOpen: (
 
   return (
     <button
-      onClick={onOpen}
-      className="w-full text-left px-6 py-3 border-b border-border-subtle hover:bg-surface-hover transition-colors"
+      onClick={onSelect}
+      aria-current={selected}
+      className={`w-full text-left px-6 py-3 border-b border-border-subtle transition-colors ${
+        selected ? "bg-primary/8" : "hover:bg-surface-hover"
+      }`}
+      style={selected ? { boxShadow: "inset 2px 0 0 var(--color-primary)" } : undefined}
     >
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-foreground truncate">{process.title}</span>

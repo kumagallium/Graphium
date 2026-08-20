@@ -884,6 +884,9 @@ export const en: Record<string, string> = {
   "process.noMatch": "No process matches",
   "process.sortSteps": "Steps",
   "process.sortTitle": "Name",
+  "process.openNote": "Open note",
+  "process.selectHint": "Pick a process on the left to see how its steps connect",
+  "process.previewReadOnly": "View only \u2014 edit in the note",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",

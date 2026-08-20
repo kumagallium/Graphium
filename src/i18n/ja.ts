@@ -885,6 +885,9 @@ export const ja: Record<string, string> = {
   "process.noMatch": "条件に合うプロセスがありません",
   "process.sortSteps": "工程数",
   "process.sortTitle": "名前",
+  "process.openNote": "ノートを開く",
+  "process.selectHint": "左の一覧から選ぶと、手順の流れがここに出ます",
+  "process.previewReadOnly": "表示のみ（編集はノート本文で）",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",
