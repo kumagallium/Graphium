@@ -860,6 +860,17 @@ export const ja: Record<string, string> = {
   "activityGraph.toggleParams": "パラメータ",
   "step.pickerStepsHeader": "ステップ一覧",
   "step.pickerOutputsHeader": "アウトプット一覧",
+  "stepParams.button": "過去の手順から",
+  "stepParams.title": "「{name}」で使ったパラメータ",
+  "stepParams.usedInNotes": "{n} 件のノートで使用",
+  "stepParams.noteCount": "{n} 件",
+  "stepParams.sample": "例: {value}",
+  "stepParams.hint": "選んだ項目が空欄で入ります。値は今回の実験のものを書いてください",
+  "stepParams.empty": "この手順名で使ったパラメータの記録はまだありません",
+  "stepParams.noStepName": "手順名を入れると、過去に使ったパラメータが出ます",
+  "stepParams.selectAll": "すべて選ぶ",
+  "stepParams.clearAll": "選択を外す",
+  "stepParams.insert": "空欄で追加",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",
