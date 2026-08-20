@@ -33,6 +33,9 @@ import {
   buildLineageTree,
   type LineageNode,
   type NoteGraphData,
+  ensureProcessIndex,
+  readProcessIndex,
+  type ProcessIndex,
 } from "../features/network-graph";
 import {
   getRecentNotes,
@@ -217,6 +220,10 @@ export function useFileManager(authenticated: boolean) {
   const [activeAssetType, setActiveAssetType] = useState<MediaType | null>(null);
   // ラベルギャラリーの表示状態
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
+  // プロセス一覧の表示状態と、その投影キャッシュ（.graphium-process-index.json）
+  const [showProcessGallery, setShowProcessGallery] = useState(false);
+  const [processIndex, setProcessIndex] = useState<ProcessIndex | null>(null);
+  const processProjectingRef = useRef(false);
   // Wiki 関連の状態
   const [wikiFiles, setWikiFiles] = useState<GraphiumFile[]>([]);
   const [activeWikiKind, setActiveWikiKind] = useState<WikiKind | null>(null);
@@ -438,6 +445,48 @@ export function useFileManager(authenticated: boolean) {
       setFilesLoading(false);
     }
   }, []);
+
+  // プロセス一覧を開いたときだけ投影を最新化する。
+  // 投影はノート本文の読み込み + PROV 生成を伴い、note-index の構築より重い。
+  // 起動経路に載せると一覧を見ない人にまで待ち時間が乗るので、開いた人だけが払う。
+  useEffect(() => {
+    if (!showProcessGallery) return;
+    if (processProjectingRef.current) return;
+    processProjectingRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        // ゴミ箱・アーカイブのノートは一覧に出さないので、投影もしない
+        const targets = files.filter(
+          (f) => !trashedIdSet.has(f.id) && !archivedIdSet.has(f.id),
+        );
+        const idx = await ensureProcessIndex(targets, docCacheRef.current, loadFile);
+        if (!cancelled) setProcessIndex(idx);
+      } catch (err) {
+        console.error("プロセスインデックスの構築に失敗:", err);
+      } finally {
+        processProjectingRef.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showProcessGallery, files, trashedIdSet, archivedIdSet]);
+
+  // 保存済みの投影を起動時に読むだけ読む（投影はしない）。
+  // サイドバーの件数を一覧の件数と揃えるためで、無ければ note-index から推定する。
+  useEffect(() => {
+    if (!authenticated) return;
+    let cancelled = false;
+    readProcessIndex()
+      .then((idx) => {
+        if (!cancelled && idx) setProcessIndex((prev) => prev ?? idx);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated]);
 
   // メディアインデックスを再読み込み（Pull-to-Refresh 用）
   const refreshMediaIndex = useCallback(async () => {
@@ -2589,6 +2638,9 @@ export function useFileManager(authenticated: boolean) {
     activeLabel,
     setActiveLabel,
     setActiveAssetType,
+    processIndex,
+    showProcessGallery,
+    setShowProcessGallery,
     // アクション
     refreshFiles,
     refreshMediaIndex,
