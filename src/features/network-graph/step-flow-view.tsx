@@ -115,6 +115,9 @@ export type StepFlowViewProps = {
 
 const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
 
+/** プレビューで先頭に寄せるときの上余白 */
+const PREVIEW_TOP_PADDING = 24;
+
 const toolbarBtnStyle = (color: string): React.CSSProperties => ({
   display: "inline-flex",
   alignItems: "center",
@@ -194,7 +197,7 @@ function StepFlowCanvas({
   // 前回のノード id 一覧。選択中のノードが消えたとき、入れ替わりで現れた
   // ノードへ選択を引き継ぐために使う（表に移す・行のリネームで id が変わる）
   const prevNodeIdsRef = useRef<Set<string>>(new Set());
-  const { fitView, getNodes } = useReactFlow();
+  const { fitView, getNodes, getViewport, setViewport } = useReactFlow();
   // プレビューは全体を収めるより読めることを優先する
   const fitMinZoom = variant === "preview" ? 0.55 : 0.2;
   // 接続判定用に最新の graph を ref でも持つ（cy 初期化不要の React Flow でも
@@ -322,10 +325,20 @@ function StepFlowCanvas({
         nds.map((n: Node) => ({ ...n, position: positions.get(n.id) ?? n.position })),
       );
       requestAnimationFrame(() => {
-        void fitView({ padding: 0.15, duration: 200, maxZoom: 1, minZoom: fitMinZoom });
+        void fitView({ padding: 0.15, duration: 200, maxZoom: 1, minZoom: fitMinZoom }).then(
+          () => {
+            // 手順は上から下へ読むもの。収まりきらないときに中央合わせだと
+            // 最初の工程が画面外へ出てしまうので、プレビューでは先頭に寄せる
+            if (variant !== "preview") return;
+            const top = Math.min(...getNodes().map((n) => n.position.y));
+            if (!Number.isFinite(top)) return;
+            const { x, zoom } = getViewport();
+            setViewport({ x, y: -top * zoom + PREVIEW_TOP_PADDING, zoom });
+          },
+        );
       });
     });
-  }, [getNodes, setNodes, fitView]);
+  }, [getNodes, setNodes, fitView, getViewport, setViewport, variant]);
 
   // ノードが measure された（dimensions change が流れた）タイミングでレイアウトを試す
   const handleNodesChange = useCallback(
