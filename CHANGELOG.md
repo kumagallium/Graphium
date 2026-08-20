@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.40.0](https://github.com/kumagallium/Graphium/compare/v0.39.4...v0.40.0) - 2026-08-20
+
+- fix(labels): anchor PROV label badges inside the editor instead of the viewport by @kumagallium in https://github.com/kumagallium/Graphium/pull/740
+- feat(process): add the process index that projects each note's PROV graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/730
+- feat(process): add the step parameter picker by @kumagallium in https://github.com/kumagallium/Graphium/pull/731
+- feat(process): add the process gallery view by @kumagallium in https://github.com/kumagallium/Graphium/pull/732
+- feat(process): wire the process gallery into the app by @kumagallium in https://github.com/kumagallium/Graphium/pull/733
+- feat(process): carry parameter keys over into a step by @kumagallium in https://github.com/kumagallium/Graphium/pull/734
+- feat(process): start from the list of past steps, not from the name by @kumagallium in https://github.com/kumagallium/Graphium/pull/735
+- feat(process): inherit materials and tools, each written where it belongs by @kumagallium in https://github.com/kumagallium/Graphium/pull/737
+- docs: describe the process index by @kumagallium in https://github.com/kumagallium/Graphium/pull/738
+
 ## [v0.39.4](https://github.com/kumagallium/Graphium/compare/v0.39.3...v0.39.4) - 2026-08-20
 
 - fix(copilot): resolve node PATH for spawned CLI subprocess by @kumagallium in https://github.com/kumagallium/Graphium/pull/736
