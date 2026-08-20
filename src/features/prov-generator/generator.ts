@@ -84,7 +84,7 @@ type InternalRelation = {
 
 // ── 入力データの型 ──
 
-type GeneratorInput = {
+export type GeneratorInput = {
   /** BlockNote のブロック配列 */
   blocks: any[];
   /** blockId → ラベル文字列 */
