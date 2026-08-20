@@ -23,7 +23,17 @@ import { Check, ChevronRight, History, Link2, ListChecks, Plus } from "lucide-re
 import { useLinkStore } from "../../features/block-link/store";
 import { useLabelStore } from "../../features/context-label/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
-import { appendEntitySpanToStep, collectStepOutputs, stepHasInputText } from "./step-io";
+import {
+  appendEntitySpanToStep,
+  collectStepOutputs,
+  findLabeledTableInStep,
+  stepHasInputText,
+} from "./step-io";
+import {
+  addTableColumns,
+  ensureParameterTable,
+  readTable,
+} from "../../features/network-graph/table-row-edit";
 import { StepHistoryPicker } from "../../features/network-graph/StepHistoryPicker";
 import {
   collectParamKeysForStep,
@@ -288,6 +298,52 @@ export const StepBlock = createReactBlockSpec(
       // まだ名前が無い step には、アイコンを押せることを言葉でも伝える
       const showHistoryHint = hasHistory && stepTitle.length === 0;
 
+      /**
+       * 引き継いだ key を step のパラメータ表の列として足す。
+       *
+       * 本文に span を直書きするのではなく表に書くのは、ノート側に
+       * 「単語の羅列ではなく試料表が育つ」という F 案の決めごとに従うため
+       * （activity-graph-editor の onAddEntity / onCreateSectionTable と同じ経路）。
+       * key は列名になり、値の欄は空で残る。表を作れない状況だけ span に落とす。
+       */
+      const insertParamKeys = (keys: string[]) => {
+        const editor = props.editor;
+        if (!editor || keys.length === 0) return;
+        const find = (stepId: string) =>
+          findLabeledTableInStep(editor.document ?? [], labelStore.labels, stepId, "attribute");
+
+        let tableId = find(props.block.id);
+        let rest = keys;
+        if (!tableId) {
+          const created = ensureParameterTable(editor, props.block.id, keys[0], find);
+          if (!created) {
+            // step が見つからない等で表を作れないときの逃げ道（既存の作法）
+            for (const key of keys) {
+              appendEntitySpanToStep(editor, props.block.id, "attribute", `${key}:`);
+            }
+            return;
+          }
+          tableId = created.tableBlockId;
+          // 新規表は generator にパラメータとして読ませるためラベルが要る
+          if (created.created) labelStore.setLabel(tableId, "attribute");
+          rest = keys.slice(1);
+        }
+
+        // 既にある列は足さない（同じ欄が 2 つ並ぶと、どちらに書くか決められない）
+        const existing = new Set(
+          (readTable(editor, tableId)?.headers ?? []).map((h: string) => h.trim()),
+        );
+        const missing: string[] = [];
+        for (const key of rest) {
+          const trimmed = key.trim();
+          if (!trimmed || existing.has(trimmed)) continue;
+          existing.add(trimmed);
+          missing.push(trimmed);
+        }
+        // 1 回で書く。1 列ずつ足すと古い内容の上書きで後半が落ちる
+        if (missing.length > 0) addTableColumns(editor, tableId, missing);
+      };
+
       // この step の前手順（outgoing informed_by）と後続（incoming informed_by）。
       // どちらも複数可（合流・分岐する工程）。
       const prevLinks = linkStore
@@ -475,12 +531,7 @@ export const StepBlock = createReactBlockSpec(
                       // タイトルを書けなくてもパラメータは選べる（致命ではない）
                     }
                   }}
-                  onInsert={(keys: string[]) => {
-                    // 空欄の行として本文末尾に足す。値はユーザーが書く
-                    for (const key of keys) {
-                      appendEntitySpanToStep(props.editor, props.block.id, "attribute", `${key}:`);
-                    }
-                  }}
+                  onInsert={(keys: string[]) => insertParamKeys(keys)}
                   onClose={() => setParamOpen(false)}
                 />
               )}
