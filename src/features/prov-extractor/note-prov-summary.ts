@@ -20,6 +20,7 @@ import {
   type ProvJsonLd,
   type ProvJsonLdNode,
 } from "../prov-generator/generator";
+import { pageToGeneratorInput } from "../prov-generator/page-input";
 
 /** 単一の手順（Activity）に対応するサマリ */
 export interface ActivitySummary {
@@ -101,12 +102,7 @@ export function summarizeNoteProv(
   for (const page of doc.pages ?? []) {
     let prov: ProvJsonLd;
     try {
-      prov = generateProvDocument({
-        blocks: page.blocks ?? [],
-        labels: toLabelsMap(page),
-        links: collectPageLinks(page),
-        mediaInlineLabels: toMediaInlineLabelsMap(page),
-      });
+      prov = generateProvDocument(pageToGeneratorInput(page));
     } catch {
       // ページ単位で失敗しても、他のページの抽出は続行する
       continue;
@@ -213,40 +209,6 @@ export function summarizeNoteProv(
 }
 
 // ── 内部ヘルパー ──
-
-function toLabelsMap(page: GraphiumPage): Map<string, string> {
-  const map = new Map<string, string>();
-  const raw = page.labels ?? {};
-  for (const [blockId, label] of Object.entries(raw)) {
-    if (typeof label === "string" && label.length > 0) {
-      map.set(blockId, label);
-    }
-  }
-  return map;
-}
-
-function collectPageLinks(page: GraphiumPage): any[] {
-  const links: any[] = [];
-  if (Array.isArray(page.provLinks)) links.push(...page.provLinks);
-  // legacy v1 互換: page.links が残っていれば追加（generateProvDocument 内で
-  // PROV 層のみフィルタされる）
-  if (Array.isArray(page.links)) links.push(...page.links);
-  return links;
-}
-
-function toMediaInlineLabelsMap(
-  page: GraphiumPage,
-): Map<string, { label: "material" | "tool" | "attribute" | "output"; entityId: string }> | undefined {
-  const raw = page.mediaInlineLabels;
-  if (!raw) return undefined;
-  const map = new Map<string, { label: "material" | "tool" | "attribute" | "output"; entityId: string }>();
-  for (const [blockId, entry] of Object.entries(raw)) {
-    if (entry && entry.label && entry.entityId) {
-      map.set(blockId, { label: entry.label, entityId: entry.entityId });
-    }
-  }
-  return map.size > 0 ? map : undefined;
-}
 
 function entityLabelText(node: ProvJsonLdNode): string {
   const label = node["rdfs:label"];
