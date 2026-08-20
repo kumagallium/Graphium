@@ -17,6 +17,7 @@ import {
 } from "./process-index";
 import { splitAttrLabel } from "./activity-graph-adapter";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
+import { t } from "../../i18n";
 
 const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
   type: "text",
@@ -304,6 +305,23 @@ describe("パラメータ辞書", () => {
     expect(keys).toContain("保持時間");
   });
 
+  it("引き継げるパラメータを持つ手順を先に並べる（名前だけの手順も落とさない）", () => {
+    const withP = withParams("n1", "焼成", ["温度: 500℃", "保持時間: 2h"]);
+    const noP = withParams("n2", "乾燥", []);
+    const noP2 = withParams("n3", "乾燥", []);
+    const stats = collectStepNames(index([withP, noP, noP2]), splitAttrLabel);
+    // 「乾燥」のほうがノート数は多いが、引き継げるものがある「焼成」が先
+    expect(stats.map((s) => [s.name, s.noteCount, s.paramCount])).toEqual([
+      ["焼成", 1, 2],
+      ["乾燥", 2, 0],
+    ]);
+  });
+
+  it("題の無い手順（投影で「(無題)」になる）は候補にしない", () => {
+    const i = index([withParams("n1", t("nav.untitled"), []), withParams("n2", "焼成", [])]);
+    expect(collectStepNames(i).map((s) => s.name)).toEqual(["焼成"]);
+  });
+
   it("step 名を使用ノート数の多い順に並べる", () => {
     const i = index([
       withParams("n1", "焼成", []),
@@ -311,8 +329,8 @@ describe("パラメータ辞書", () => {
       withParams("n3", "粉砕", []),
     ]);
     expect(collectStepNames(i)).toEqual([
-      { name: "焼成", noteCount: 2 },
-      { name: "粉砕", noteCount: 1 },
+      { name: "焼成", noteCount: 2, paramCount: 0 },
+      { name: "粉砕", noteCount: 1, paramCount: 0 },
     ]);
   });
 });

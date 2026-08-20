@@ -1,5 +1,14 @@
 // ──────────────────────────────────────────────
-// 手順パラメータの引き継ぎピッカー
+// 過去の手順からの引き継ぎピッカー（2 段）
+//
+//   1 段目: 過去に書いた手順の名前を選ぶ
+//   2 段目: その手順で使ったパラメータの key を選ぶ
+//
+// 名前から始めるのは、書く人が過去の手順名をいちいち覚えていないため。
+// 名前を打ち終わるまで候補が出ない作りだと、打つ前に選べず、記録の無い
+// 名前を打ったときは沈黙するだけで理由も伝わらなかった（実データで確認）。
+// 名前を先に見せると、表記ゆれも自然に防げる —「SPS」と打つ前に
+// 「放電プラズマ焼結」が目に入る。
 //
 // 同じ名前の手順を過去にどう記録したかを見て、パラメータの「key だけ」を
 // 今の step に写す。値は実験ごとに変わるが、何を測るか・何を制御するかは
@@ -13,17 +22,19 @@
 // ──────────────────────────────────────────────
 
 import { useMemo, useState } from "react";
-import { Check, Plus } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Plus } from "lucide-react";
 import { useT } from "../../i18n";
-import type { ParamKeyStat } from "./process-index";
+import type { ParamKeyStat, StepNameStat } from "./process-index";
 
-export type StepParamPickerProps = {
-  /** 今の step のタイトル。空なら候補を出しようがないので促しを出す */
+export type StepHistoryPickerProps = {
+  /** 今の step のタイトル。空なら名前一覧から始める */
   stepName: string;
-  /** collectParamKeysForStep の結果（件数の降順で渡ってくる前提） */
+  /** 過去に書いた手順の名前（collectStepNames の結果） */
+  stepNames: StepNameStat[];
+  /** 選ばれている手順名のパラメータ候補（親が計算して渡す） */
   stats: ParamKeyStat[];
-  /** この手順名を使ったノート数（collectStepNames 由来）。見出しの補足に出す */
-  noteCount?: number;
+  /** 手順名が選ばれた。呼び出し側が step のタイトルに反映する */
+  onPickName: (name: string) => void;
   /** 選んだ key を空欄のパラメータとして step に追加する */
   onInsert: (keys: string[]) => void;
   onClose: () => void;
@@ -143,20 +154,31 @@ const styles = {
   },
 };
 
-export function StepParamPicker({
+export function StepHistoryPicker({
   stepName,
+  stepNames,
   stats,
-  noteCount,
+  onPickName,
   onInsert,
   onClose,
-}: StepParamPickerProps) {
+}: StepHistoryPickerProps) {
   const t = useT();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // 名前が決まっていて引き継げるものがあるなら、そこから始める。
+  // それ以外（新しい手順・記録の無い名前）は名前選びから
+  const [view, setView] = useState<"names" | "params">(() =>
+    stepName.trim() && stats.length > 0 ? "params" : "names",
+  );
 
   const maxCount = useMemo(
     () => stats.reduce((max, s) => Math.max(max, s.noteCount), 0),
     [stats],
   );
+  const maxNameCount = useMemo(
+    () => stepNames.reduce((max, s) => Math.max(max, s.noteCount), 0),
+    [stepNames],
+  );
+
   const toggle = (key: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -166,25 +188,92 @@ export function StepParamPicker({
     });
   };
 
-  const named = stepName.trim().length > 0;
+  const pickName = (name: string) => {
+    onPickName(name);
+    setSelected(new Set());
+    setView("params");
+  };
 
+  // ── 1 段目: 過去の手順名 ──
+  if (view === "names") {
+    return (
+      <div role="menu" style={styles.menu} data-test="step-history-picker">
+        <div style={styles.header}>
+          <div style={styles.title}>{t("stepHistory.namesTitle")}</div>
+        </div>
+        {stepNames.length === 0 ? (
+          <div style={styles.empty}>{t("stepHistory.noHistory")}</div>
+        ) : (
+          <div style={styles.list}>
+            {stepNames.map((entry) => {
+              const ratio = maxNameCount > 0 ? entry.noteCount / maxNameCount : 0;
+              return (
+                <button
+                  key={entry.name}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => pickName(entry.name)}
+                  style={{ ...styles.item, position: "relative", color: "var(--color-foreground)" }}
+                >
+                  <span
+                    style={{ ...styles.bar, width: `${Math.round(ratio * 100)}%`, opacity: 0.4 }}
+                  />
+                  <span style={{ ...styles.keyText, position: "relative" }}>{entry.name}</span>
+                  {/* 引き継げるものがあるかを先に伝える。0 でも名前は選べる */}
+                  {entry.paramCount > 0 && (
+                    <span style={{ ...styles.count, position: "relative" }}>
+                      {t("stepHistory.paramCount", { n: String(entry.paramCount) })}
+                    </span>
+                  )}
+                  <span style={{ ...styles.count, position: "relative" }}>
+                    {t("stepParams.noteCount", { n: String(entry.noteCount) })}
+                  </span>
+                  <ChevronRight
+                    size={12}
+                    strokeWidth={2}
+                    style={{ flex: "0 0 auto", position: "relative", color: "var(--color-text-tertiary)" }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div style={styles.hint}>{t("stepHistory.namesHint")}</div>
+      </div>
+    );
+  }
+
+  // ── 2 段目: パラメータの key ──
+  const named = stepName.trim().length > 0;
   return (
     <div role="menu" style={styles.menu} data-test="step-param-picker">
       <div style={styles.header}>
-        <div style={styles.title}>
-          {named ? t("stepParams.title", { name: stepName.trim() }) : t("stepParams.button")}
-        </div>
-        {named && noteCount !== undefined && stats.length > 0 && (
-          <div style={{ ...styles.count, marginTop: 2 }}>
-            {t("stepParams.usedInNotes", { n: String(noteCount) })}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => setView("names")}
+            title={t("common.back")}
+            style={{
+              flex: "0 0 auto",
+              display: "inline-flex",
+              padding: 2,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
+            <ArrowLeft size={12} strokeWidth={2.2} />
+          </button>
+          <div style={styles.title}>
+            {named ? t("stepParams.title", { name: stepName.trim() }) : t("stepParams.button")}
           </div>
-        )}
+        </div>
       </div>
 
-      {!named && <div style={styles.empty}>{t("stepParams.noStepName")}</div>}
-      {named && stats.length === 0 && <div style={styles.empty}>{t("stepParams.empty")}</div>}
+      {stats.length === 0 && <div style={styles.empty}>{t("stepParams.empty")}</div>}
 
-      {named && stats.length > 0 && (
+      {stats.length > 0 && (
         <>
           <div style={styles.list}>
             {stats.map((stat) => {
@@ -204,7 +293,9 @@ export function StepParamPicker({
                     fontWeight: on ? 600 : 400,
                   }}
                 >
-                  <span style={{ ...styles.bar, width: `${Math.round(ratio * 100)}%`, opacity: on ? 1 : 0.5 }} />
+                  <span
+                    style={{ ...styles.bar, width: `${Math.round(ratio * 100)}%`, opacity: on ? 1 : 0.5 }}
+                  />
                   <span
                     aria-hidden
                     style={{
