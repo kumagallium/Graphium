@@ -74,12 +74,14 @@ What you're looking at:
 
 | Element | Meaning |
 |---|---|
-| Card with a blue band | A step (a PROV *Activity*). The card shows its name and how many parameters it has |
+| Card with a blue band | A step (a PROV *Activity*). The card shows its name and how many parameters it has. When several steps share a name (parallel runs of one operation), the card also carries the parameters whose values differ between them |
 | Colored node | An entity — **Input** (green), **Tool** (amber), **Output** (terracotta) |
 | Panel below the graph | The selected step's tables — parameters, inputs, tools, outputs — editable here |
 | Green edge (`used`) | The step consumed this entity |
 | Terracotta edge (`wasGeneratedBy`) | This entity was produced by the step |
 | Dashed blue edge (`wasInformedBy`) | Order only: B came after A, but the note doesn't say which output was handed over |
+
+**Parameters** in the top right expands every node to show its parameters and attributes in full. Keep it collapsed to follow the shape of the graph, expand it when you want to compare conditions. The choice is remembered.
 
 The expand button (**Expand view**) opens the graph full-screen, still editable.
 

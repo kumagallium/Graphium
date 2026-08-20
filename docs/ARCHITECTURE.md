@@ -223,7 +223,13 @@ talks to LLM and embedding backends.
   step card carries the parameters whose values differ from its
   same-named siblings — and only those, since a value they all share
   distinguishes nothing (`computeStepDistinguishers`). A step with no
-  same-named sibling shows nothing extra.
+  same-named sibling shows nothing extra. A **Parameters** toggle in the
+  flow toolbar expands every node — steps and entities alike — to list
+  its parameters in full, for reading conditions rather than following
+  the shape; the choice is remembered per device (`localStorage`) and is
+  display-only, since editing stays in the panel. Expanding changes the
+  cards' measured size, so the toggle re-runs the ELK layout once React
+  Flow has re-measured.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, taking BlockNote's own block types from

@@ -30,6 +30,8 @@ export type StepNodeData = {
    * 兄弟がいない、または全員同じ値のときは空 = 何も出さない。
    */
   distinguishers?: string[];
+  /** ツールバーの「パラメータを表示」。オンならカードに全件を並べる */
+  showParams?: boolean;
 };
 
 export type StepFlowNode = Node<StepNodeData, "step">;
@@ -114,7 +116,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   };
 
   const hasBody = activity.params.length > 0;
-  const distinguishers = data.distinguishers ?? [];
+  // 展開中は全件が並ぶので、見分け用の抜粋は重複になる
+  const showParams = !!data.showParams;
+  const distinguishers = showParams ? [] : (data.distinguishers ?? []);
 
   return (
     <div
@@ -286,20 +290,32 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         </div>
       )}
 
-      {/* パラメータの中身も追加もパネル側。ここは「ある」ことだけ示す */}
+      {/* 既定は「ある」ことだけ示し、編集はパネル側。展開中は中身を並べる
+          （条件を読みながらグラフの形を追えるようにするための表示専用） */}
       {hasBody && (
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 3,
+            alignItems: showParams ? "flex-start" : "center",
+            gap: 4,
             padding: "4px 10px 6px",
             fontSize: 10,
+            lineHeight: 1.4,
             color: PARAM_COLOR,
           }}
         >
-          <SlidersHorizontal size={10} />
-          {activity.params.length}
+          <SlidersHorizontal size={10} style={{ flexShrink: 0, marginTop: showParams ? 2 : 0 }} />
+          {showParams ? (
+            <span style={{ overflowWrap: "anywhere" }}>
+              {activity.params.map((p, i) => (
+                <span key={i} style={{ display: "block" }}>
+                  {p.label}
+                </span>
+              ))}
+            </span>
+          ) : (
+            activity.params.length
+          )}
         </div>
       )}
 
