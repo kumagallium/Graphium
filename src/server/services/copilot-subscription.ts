@@ -40,6 +40,7 @@ import type {
 } from "@github/copilot-sdk";
 import { dirname } from "node:path";
 import { CodedError } from "../../lib/ai-error-codes.js";
+import { resolveGhBinaryPath } from "./llm.js";
 
 export type CopilotModelSettings = {
   /** `copilot` CLI の絶対パス（必須 — SDK 同梱ランタイムはバンドルに含めないため） */
@@ -185,24 +186,30 @@ const clientCache = new Map<string, CopilotClient>();
 /**
  * copilot CLI の子プロセスに渡す env を組み立てる。
  *
- * copilot CLI は `#!/usr/bin/env node` で起動するスクリプトのため、spawn 時の
- * PATH 上に node が無いと `env: node: No such file or directory`（exit 127）で
- * 落ちる。Tauri パッケージ版はサイドカーが最小化された PATH で起動されており
- * （GUI 起動はログインシェルの rc を経由しないため nvm/homebrew が PATH に無い）、
- * RuntimeConnection.forStdio に env を省略すると process.env がそのまま子プロセス
- * に継承されて再現する。
+ * 1. copilot CLI は `#!/usr/bin/env node` で起動するスクリプトのため、spawn 時の
+ *    PATH 上に node が無いと `env: node: No such file or directory`（exit 127）で
+ *    落ちる。このサーバー自身は既に正しい node（process.execPath）で動いているので、
+ *    そのディレクトリを PATH に足すだけで確実に解決できる（nvm バージョン走査より
+ *    「今動いているのと同じ node」を使う方が確実）。
+ * 2. copilot CLI は `useLoggedInUser: true` の認証解決で内部的に `gh` をサブプロセス
+ *    として呼ぶ。`gh` が PATH に無いと CLI 自体は起動できても認証情報が取れず
+ *    "Not authenticated" になる（1 だけ直しても再現する別の不具合として発覚）。
  *
- * このサーバー自身は既に正しい node（process.execPath）で動いているので、その
- * ディレクトリを PATH 先頭に足すだけで確実に解決できる（nvm バージョン走査より
- * 「今動いているのと同じ node」を使う方が確実）。
+ * Tauri パッケージ版はサイドカーが最小化された PATH で起動されており（GUI 起動は
+ * ログインシェルの rc を経由しないため nvm/homebrew が PATH に無い）、
+ * RuntimeConnection.forStdio に env を省略すると process.env がそのまま子プロセス
+ * に継承されてどちらも再現する。
  */
 function buildCopilotEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value;
   }
-  const nodeDir = dirname(process.execPath);
-  env.PATH = env.PATH ? `${nodeDir}:${env.PATH}` : nodeDir;
+  const extraDirs = [dirname(process.execPath)];
+  const ghPath = resolveGhBinaryPath();
+  if (ghPath) extraDirs.push(dirname(ghPath));
+  const prefix = extraDirs.join(":");
+  env.PATH = env.PATH ? `${prefix}:${env.PATH}` : prefix;
   return env;
 }
 
