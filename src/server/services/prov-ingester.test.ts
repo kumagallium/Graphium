@@ -5,6 +5,7 @@ import {
   buildProvIngesterUserMessage,
   hasHeadingLanguageMismatch,
   stripParameterFromStepName,
+  findMergedParallelSteps,
 } from "./prov-ingester";
 
 describe("parseProvIngesterOutput", () => {
@@ -587,5 +588,80 @@ describe("buildProvIngesterSystemPrompt — 手順名と語彙", () => {
     const prompt = buildProvIngesterSystemPrompt("en", { material: many });
     const base = buildProvIngesterSystemPrompt("en").length;
     expect(prompt.length - base).toBeLessThan(5500);
+  });
+});
+
+describe("findMergedParallelSteps", () => {
+  const step = (name: string, id: string) => ({
+    text: name,
+    blockType: "heading" as const,
+    level: 2 as const,
+    role: "procedure" as const,
+    stepId: id,
+  });
+  const para = (attrs: string[]) => ({
+    blockType: "paragraph" as const,
+    content: attrs.map((text) => ({ text, role: "attribute" as const })),
+  });
+
+  it("同じキーに複数の値がある手順を畳み込みとして検出する", () => {
+    const merged = findMergedParallelSteps([
+      step("ボールミリング", "bm"),
+      para(["rpm: 300", "time: 1 h", "rpm: 300", "time: 3 h"]),
+    ]);
+    expect(merged).toEqual(["ボールミリング"]);
+  });
+
+  it("同名の手順が分かれていれば検出しない", () => {
+    const merged = findMergedParallelSteps([
+      step("ボールミリング", "bm-1h"),
+      para(["rpm: 300", "time: 1 h"]),
+      step("ボールミリング", "bm-3h"),
+      para(["rpm: 300", "time: 3 h"]),
+    ]);
+    expect(merged).toEqual([]);
+  });
+
+  it("同じキーで同じ値の重複は畳み込みではない", () => {
+    const merged = findMergedParallelSteps([
+      step("焼結", "s"),
+      para(["temperature: 823 K", "temperature: 823K"]),
+    ]);
+    expect(merged).toEqual([]);
+  });
+
+  it("キーを持たない属性・手順の外の属性は数えない", () => {
+    const merged = findMergedParallelSteps([
+      { text: "材料", blockType: "heading", level: 1 },
+      para(["time: 1 h", "time: 3 h"]),
+      step("粉砕", "c"),
+      para(["粗く", "細かく"]),
+    ]);
+    expect(merged).toEqual([]);
+  });
+
+  it("畳まれた手順が複数あればすべて返す", () => {
+    const merged = findMergedParallelSteps([
+      step("ボールミリング", "bm"),
+      para(["time: 1 h", "time: 3 h"]),
+      step("熱圧成形", "hp"),
+      para(["temperature: 823 K", "temperature: 923 K"]),
+    ]);
+    expect(merged).toEqual(["ボールミリング", "熱圧成形"]);
+  });
+});
+
+describe("buildProvIngesterSystemPrompt — 並列試料", () => {
+  it("1 run = 1 step と分岐・合流の例が含まれる", () => {
+    const prompt = buildProvIngesterSystemPrompt("en");
+    expect(prompt).toContain("One run = one step");
+    expect(prompt).toContain("parallel branches");
+    expect(prompt).toContain("ball-milling-0h");
+    expect(prompt).toContain("converge");
+  });
+
+  it("手順数の上限が試料ぶんの増加を禁じないことを明示する", () => {
+    const prompt = buildProvIngesterSystemPrompt("en");
+    expect(prompt).toContain("3 operations × 3 samples = 9 steps");
   });
 });

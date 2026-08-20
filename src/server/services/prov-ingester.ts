@@ -289,6 +289,34 @@ An H2 procedure heading names **the operation and nothing else**. Parameter valu
 
 **Counter-rule — material / tool / output span text keeps its distinguishing parameter.** \`"0 h ball-milled powder"\` and \`"3 h ball-milled powder"\` are different substances: same-named Entities are merged into one graph node, so stripping the parameter there would collapse two parallel branches into one. Strip parameters from **headings only**.
 
+## One run = one step (CRITICAL — parallel samples become parallel branches)
+
+A source that prepares **several samples** is still one note with **one connected graph**. The samples are *branches*: they split off a shared upstream step and converge again at a shared measurement / characterization step. They are never folded into a single step that carries several values of the same parameter.
+
+**The test: if one step would need two different values for the same attribute key (\`time: 1 h\` and \`time: 3 h\`), that is two steps.** Split it. Both keep the *same* heading text, take different \`stepId\` values, and generate differently-named products.
+
+Worked example — one ingot crushed once, milled for 0 h / 1 h / 3 h, hot-pressed per condition, then measured together:
+
+| Heading | stepId | attributes | consumes | generates |
+|---|---|---|---|---|
+| Crushing | \`crushing\` | — | ingot | powder |
+| Ball milling | \`ball-milling-0h\` | rpm: 300, time: 0 h | powder (\`derivedFrom: crushing\`) | 0 h ball-milled powder |
+| Ball milling | \`ball-milling-1h\` | rpm: 300, time: 1 h | powder (\`derivedFrom: crushing\`) | 1 h ball-milled powder |
+| Ball milling | \`ball-milling-3h\` | rpm: 300, time: 3 h | powder (\`derivedFrom: crushing\`) | 3 h ball-milled powder |
+| Hot pressing | \`hot-pressing-0h\` | temperature: 823 K | 0 h ball-milled powder | 0 h bulk sample |
+| Hot pressing | \`hot-pressing-1h\` | temperature: 823 K | 1 h ball-milled powder | 1 h bulk sample |
+| Hot pressing | \`hot-pressing-3h\` | temperature: 823 K | 3 h ball-milled powder | 3 h bulk sample |
+| Characterization | \`characterization\` | — | all three bulk samples | thermoelectric data |
+
+Three steps all named \`Ball milling\` is **the correct output, not a defect**. The graph reads: one node fans out into three branches, each branch carries its own conditions and its own product, and the branches converge at the final step. That fan-out *is* how a multi-sample study is recorded.
+
+Do NOT:
+
+- ❌ merge the runs into one \`Ball milling\` step listing \`time: 0 h\`, \`time: 1 h\` and \`time: 3 h\` together — the graph then cannot say which powder came from which condition
+- ❌ rename them \`Ball milling 1h\` to make them look distinct (see the heading rule above — the \`stepId\` and the products carry the distinction)
+- ❌ drop one of the conditions because it looks like a baseline (a 0 h run is a sample of the study)
+- ❌ emit one step per sample for operations the source performed **once** on the shared material (the single crushing stays one step)
+
 ## Material vs Attribute split (CRITICAL — what is a thing vs. what describes a thing)
 
 Source prose often glues a substance to its descriptor — "an aluminum chip", "powdered sugar", "frozen peas", "200 mg of KCl pellet", "1 cm sliced bamboo". Treat the substance itself as **material** and every descriptor (form / shape / state / quantity / dimension / purity / temperature) as a separate **attribute** span.
@@ -684,7 +712,7 @@ ${vocabularySection}
 2. Mirror the source's own structure and voice (H1 wording, count, ordering). Required structural elements — regardless of the source's shape: a brief intro paragraph at the top, H2 procedure steps with \`stepId\`, the terminal step (or a final summary) carrying the \`role: "output"\` span(s).
 3. Every H2 that represents a meaningful action carries \`role: "procedure"\` and a \`stepId\` matching /^[a-z0-9][a-z0-9-]*$/ (kebab-case, unique within the document). Non-action H2s (e.g. a sub-heading inside the intro) do not need procedure.
 4. Each H2 step is followed by **one or two prose paragraphs** (\`blockType: "paragraph"\` with \`content\` spans). Inside that prose, the materials / tools / attributes / outputs used by the step appear as **inline spans with role**. Do NOT use bulletListItem to list them. (See Rule 0 — this is the highest-priority output contract.)
-5. Prefer **3-10 H2 steps** total. Split at meaningful physical actions — not at every sentence.
+5. Prefer **3-10 distinct operations**. Split at meaningful physical actions — not at every sentence. When the source repeats an operation across several samples or conditions, the *step* count multiplies accordingly (3 operations × 3 samples = 9 steps) and that is correct — this limit counts distinct operations, not steps.
 6. For each role-bearing material span, decide whether it is pristine (first introduction, raw from stock) or the product of an earlier step. Set \`derivedFrom\` on the latter. If a step extends a prior step without a distinct material handoff, add \`dependsOn\` to the H2.
 7. \`dependsOn\` / span \`derivedFrom\` MUST reference a stepId defined earlier in the document.
 8. Up-front inventory sections (ingredient lists, equipment lists — whatever the source calls them) are READER REFERENCE ONLY. Their spans MUST NOT carry any role; they would otherwise become orphan Entities in the graph.
@@ -700,7 +728,8 @@ ${vocabularySection}
 18. **Material vs attribute split**: When the source pairs a substance noun with a descriptor word (form, shape, state, quantity, dimension, purity, temperature), emit them as two spans — material for the substance, attribute for the descriptor. Do not absorb descriptors into the material label. Compound names / formulas / well-known multi-word ingredients stay whole.
 19. **No parameter values in H2 procedure headings.** Duration, temperature, speed, count, sample id — all of these are attribute spans, never part of the heading. Repeated identical headings are correct when the same operation runs under several conditions; distinguish the runs by \`stepId\`, attributes and products. Material / tool / output span text keeps its distinguishing parameter.
 20. **Conditions of the operation bind to the step.** Attribute spans that describe how the step ran (rpm, temperature, duration, atmosphere, pressure, load) carry \`"attachTo": "activity"\`. Attribute spans that describe a thing (purity, form, size, grade) do not.
-21. **Reuse the existing label vocabulary** when the source names the same concept as a listed name (see "Existing label vocabulary" above, if present). Never bend a different concept into a listed name.
+21. **One run = one step.** Never let a single step carry two different values for the same attribute key. A source that applies one operation to N samples yields N steps with the same heading, different \`stepId\`s, and differently-named products, forming parallel branches that converge at the shared final step.
+22. **Reuse the existing label vocabulary** when the source names the same concept as a listed name (see "Existing label vocabulary" above, if present). Never bend a different concept into a listed name.
 
 ## Self-check before emitting JSON
 
@@ -716,7 +745,8 @@ Before you finalize the JSON, walk through your output and confirm:
 8. **Connectivity audit.** Walk through the H2 steps in order. The first step may have no \`derivedFrom\` / \`dependsOn\`. Every subsequent step MUST have at least one — through a material span's \`derivedFrom\`, through the H2's \`dependsOn\`, or both. If any later step has neither, fix it (add a derived-material span naming the prior product, add a \`dependsOn\`, or merge / drop the step). Verify the final \`role: "output"\` span is in a step that transitively connects back to step 1 — there must be no break in the chain.
 
 9. **Heading parameter audit.** Read every H2 procedure heading. If it contains a number with a unit (\`1h\`, \`823 K\`, \`300 rpm\`), a bracketed condition, or a sample identifier, strip it from the heading and make sure the value exists as an attribute span in that step's paragraph. Identical headings across steps are fine — leave them identical.
-10. **Attribute binding audit.** For each attribute span, ask whether it describes the operation or the thing next to it. Operation conditions (rpm, temperature, duration, atmosphere, pressure, load) must carry \`"attachTo": "activity"\`; properties of a substance or instrument must not.
+10. **Parallel-run audit.** For each step, list its attribute spans by key. If any key appears twice with different values, the step is really two (or more) steps that you merged — split it now, keeping the heading text identical, giving each its own \`stepId\`, its own inputs via \`derivedFrom\`, and its own distinctly-named product. Then re-check that every branch reaches the terminal step.
+11. **Attribute binding audit.** For each attribute span, ask whether it describes the operation or the thing next to it. Operation conditions (rpm, temperature, duration, atmosphere, pressure, load) must carry \`"attachTo": "activity"\`; properties of a substance or instrument must not.
 
 If any check fails, fix the JSON before emitting.
 `;
@@ -871,6 +901,78 @@ export const PROV_LANGUAGE_RETRY_NUDGE =
   "Your previous output ignored the language instruction: step headings were written in English. " +
   "Regenerate the SAME structure, but write ALL headings, titles, and body text in Japanese (日本語). " +
   "Keep stepId values in lowercase English kebab-case as required. Output only the JSON.";
+
+/**
+ * 並列条件を 1 手順に畳んだ出力を見つける。
+ *
+ * 複数試料の論文（0h / 1h / 3h でボールミル）で、LLM が 3 回分を 1 ステップに
+ * まとめ、パラメータ表に `time: 1 h` と `time: 3 h` を並べてしまうことがある。
+ * こうなると「どの粉末がどの条件から出たか」がグラフから読めなくなり、
+ * 分岐・合流という多試料研究の記録そのものが失われる。
+ *
+ * 判定は素朴だが誤検知しにくい: 同じ手順スコープの attribute span に、
+ * **同じキーで異なる値** が 2 つ以上あれば畳まれている。
+ * 返り値は畳まれた手順の見出しテキスト（空なら健全）。
+ */
+export function findMergedParallelSteps(blocks: ProvIngesterBlock[]): string[] {
+  const merged: string[] = [];
+  let currentStep: { name: string; keys: Map<string, Set<string>> } | null = null;
+
+  const flush = () => {
+    if (!currentStep) return;
+    for (const values of currentStep.keys.values()) {
+      if (values.size > 1) {
+        merged.push(currentStep.name);
+        break;
+      }
+    }
+    currentStep = null;
+  };
+
+  const collect = (list: ProvIngesterBlock[]) => {
+    for (const b of list) {
+      if (b.blockType === "heading") {
+        // 手順見出しでスコープが切り替わる。手順以外の見出しもスコープを閉じる
+        flush();
+        if (b.role === "procedure") {
+          currentStep = { name: b.text ?? "", keys: new Map() };
+        }
+        continue;
+      }
+      if (currentStep) {
+        for (const span of b.content ?? []) {
+          if (span.role !== "attribute") continue;
+          const m = span.text.match(/^([^:：]{1,24})[:：]\s*(.+)$/);
+          if (!m) continue;
+          const key = m[1].trim().toLowerCase();
+          // 空白は完全に落として比べる（"823 K" と "823K" は同じ値。
+          // 表記揺れを別値と読むと、畳まれていない手順を誤検出してしまう）
+          const value = m[2].toLowerCase().replace(/\s+/g, "");
+          const set = currentStep.keys.get(key) ?? new Set<string>();
+          set.add(value);
+          currentStep.keys.set(key, set);
+        }
+      }
+      if (b.children?.length) collect(b.children);
+    }
+  };
+
+  collect(blocks);
+  flush();
+  return merged;
+}
+
+/**
+ * 並列条件を畳んだときの追い打ちメッセージ。1 回目の出力を assistant として
+ * 見せた上でこれを user として送り、手順の分割だけをやり直させる。
+ */
+export const PROV_PARALLEL_SPLIT_RETRY_NUDGE =
+  "Your previous output merged parallel runs into a single step: at least one step carries two different values for the same attribute key " +
+  "(for example `time: 1 h` and `time: 3 h`). That makes it impossible to tell which product came from which condition. " +
+  "Regenerate the SAME document, but split every such step into one step per run: keep the heading text identical across the runs, " +
+  "give each run its own stepId, its own attribute values, its own input via derivedFrom, and its own distinctly-named output " +
+  "(\"0 h ball-milled powder\", \"1 h ball-milled powder\", …). Downstream steps that consume those products split the same way, " +
+  "and the branches converge again at the shared final step. Do NOT put the parameter back into the heading text. Output only the JSON.";
 
 function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
   if (depth >= MAX_DEPTH) return [];

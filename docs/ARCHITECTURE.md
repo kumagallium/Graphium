@@ -478,6 +478,16 @@ Three rules keep the emitted labels usable as graph nodes:
   text keeps its distinguishing parameter, because same-named entities
   merge (§ DATA_MODEL 2.3) and stripping it there would collapse parallel
   branches into one.
+- **One run is one step.** A source that applies the same operation to
+  several samples yields one step per run — same heading, different
+  `stepId`, differently-named product — so the graph fans out into one
+  branch per sample and converges again at the shared measurement step.
+  That fan-out is how a multi-sample study is recorded in a single note
+  (Graphium keeps one PROV graph per note, where MatPROV-style datasets
+  use one document per sample). A merged step is detected after parsing —
+  two different values for the same attribute key inside one step
+  (`findMergedParallelSteps`) — and triggers the same one-shot rewrite
+  the language mismatch uses.
 - **Conditions of the operation bind to the step.** An attribute span
   attaches to the nearest entity in its paragraph by default, which is
   right for `purity: 99.999%` next to `Cu` and wrong for `rpm: 300` next
