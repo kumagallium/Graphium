@@ -287,8 +287,11 @@ export const StepBlock = createReactBlockSpec(
       // （投影は一覧を開いた時点で更新され、こちらは購読していない）。
       const effectiveName = pickedName ?? stepTitle;
       const inheritance = useMemo(
-        () => collectStepInheritance(getLatestProcessIndex(), effectiveName, splitAttrLabel),
-        [effectiveName, paramOpen],
+        () =>
+          collectStepInheritance(getLatestProcessIndex(), effectiveName, splitAttrLabel, {
+            excludeStepId: props.block.id,
+          }),
+        [effectiveName, paramOpen, props.block.id],
       );
       const stepNameStats = useMemo(
         () => collectStepNames(getLatestProcessIndex(), splitAttrLabel),

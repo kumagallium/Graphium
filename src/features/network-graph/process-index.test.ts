@@ -369,6 +369,18 @@ describe("パラメータ辞書", () => {
     expect(result.entities[0].attrs.map((a) => a.key)).toEqual(["圧力"]);
   });
 
+  it("いま書いている step 自身は候補にしない（引き継いだ内容が候補として戻らないように）", () => {
+    const own = withEntityAttrs("n1", "焼結", { kind: "material", labels: ["圧力: 100 MPa"] });
+    const other = withEntityAttrs("n2", "焼結", { kind: "material", labels: ["温度: 1273 K"] });
+    const all = collectStepInheritance(index([own, other]), "焼結", splitAttrLabel);
+    expect(all.entities.flatMap((e) => e.attrs.map((a) => a.key)).sort()).toEqual(["圧力", "温度"]);
+
+    const excluded = collectStepInheritance(index([own, other]), "焼結", splitAttrLabel, {
+      excludeStepId: "n1-s1",
+    });
+    expect(excluded.entities.flatMap((e) => e.attrs.map((a) => a.key))).toEqual(["温度"]);
+  });
+
   it("step 名を使用ノート数の多い順に並べる", () => {
     const i = index([
       withParams("n1", "焼成", []),

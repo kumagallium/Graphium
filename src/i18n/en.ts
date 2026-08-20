@@ -859,7 +859,7 @@ export const en: Record<string, string> = {
   "step.pickerStepsHeader": "Steps",
   "step.pickerOutputsHeader": "Outputs",
   "stepParams.button": "From past runs",
-  "stepParams.title": "Parameters used in \u201c{name}\u201d",
+  "stepParams.title": "Inherit from \u201c{name}\u201d",
   "stepParams.usedInNotes": "used in {n} notes",
   "stepParams.noteCount": "{n}",
   "stepParams.sample": "e.g. {value}",

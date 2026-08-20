@@ -458,6 +458,14 @@ export function collectStepInheritance(
   index: ProcessIndex | null,
   stepName: string,
   splitLabel: (label: string) => { key: string | null; value: string },
+  options: {
+    /**
+     * 除外する step のブロック ID。いま書いている step 自身を指す。
+     * 自分の記録が自分の候補に出ても選ぶ意味が無いうえ、引き継ぎで入った内容が
+     * 次の投影で候補として戻り、同じものが増え続ける。
+     */
+    excludeStepId?: string;
+  } = {},
 ): StepInheritance {
   const target = stepName.trim();
   const empty: StepInheritance = { stepParams: [], entities: [] };
@@ -487,7 +495,9 @@ export function collectStepInheritance(
 
   for (const process of index.processes) {
     const matched = new Set(
-      process.graph.steps.filter((s) => s.name.trim() === target).map((s) => s.id),
+      process.graph.steps
+        .filter((s) => s.name.trim() === target && s.id !== options.excludeStepId)
+        .map((s) => s.id),
     );
     if (matched.size === 0) continue;
 

@@ -860,7 +860,7 @@ export const ja: Record<string, string> = {
   "step.pickerStepsHeader": "ステップ一覧",
   "step.pickerOutputsHeader": "アウトプット一覧",
   "stepParams.button": "過去の手順から",
-  "stepParams.title": "「{name}」で使ったパラメータ",
+  "stepParams.title": "「{name}」から引き継ぐ",
   "stepParams.usedInNotes": "{n} 件のノートで使用",
   "stepParams.noteCount": "{n} 件",
   "stepParams.sample": "例: {value}",
