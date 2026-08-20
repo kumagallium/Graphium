@@ -858,6 +858,17 @@ export const en: Record<string, string> = {
   "activityGraph.relayout": "Tidy up",
   "step.pickerStepsHeader": "Steps",
   "step.pickerOutputsHeader": "Outputs",
+  "stepParams.button": "From past runs",
+  "stepParams.title": "Parameters used in \u201c{name}\u201d",
+  "stepParams.usedInNotes": "used in {n} notes",
+  "stepParams.noteCount": "{n}",
+  "stepParams.sample": "e.g. {value}",
+  "stepParams.hint": "The selected keys are added with empty values \u2014 fill in this run's numbers",
+  "stepParams.empty": "No parameters recorded for a step with this name yet",
+  "stepParams.noStepName": "Name the step to see parameters you used before",
+  "stepParams.selectAll": "Select all",
+  "stepParams.clearAll": "Clear",
+  "stepParams.insert": "Add empty fields",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",
