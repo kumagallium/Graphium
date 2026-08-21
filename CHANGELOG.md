@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.41.0](https://github.com/kumagallium/Graphium/compare/v0.40.2...v0.41.0) - 2026-08-21
+
+- feat: プロセス一覧からノートをコピー可能にする by @kumagallium in https://github.com/kumagallium/Graphium/pull/748
+- docs(manual): プロセスコピーの説明と画像を更新 by @kumagallium in https://github.com/kumagallium/Graphium/pull/750
+
 ## [v0.40.2](https://github.com/kumagallium/Graphium/compare/v0.40.1...v0.40.2) - 2026-08-21
 
 - fix(overlays): anchor table captions and row icons inside the editor by @kumagallium in https://github.com/kumagallium/Graphium/pull/744
