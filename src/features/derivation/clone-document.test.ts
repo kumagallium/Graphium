@@ -199,6 +199,69 @@ describe("buildDerivedDocument", () => {
     expect(JSON.stringify(src)).toBe(before);
   });
 
+  it("複数ページのブロックとページ内メタデータをすべて複製する", () => {
+    const src = mockDoc();
+    src.pages[0].mediaInlineLabels = { p: { label: "material", entityId: "entity-p" } };
+    src.pages[0].blockAlignments = { p: "center" };
+    src.pages[0].mediaOcr = {
+      p: { text: "OCR", confidence: 99, lang: "jpn", extractedAt: "2026-01-01T00:00:00.000Z" },
+    };
+    src.pages[0].highlights = [{
+      id: "highlight-1",
+      blockId: "p",
+      from: 0,
+      to: 3,
+      label: "material",
+      entityId: "entity-p",
+      text: "Material A",
+    }];
+    src.pages[0].provLinks.push({
+      ...makeLink("cross-page", "h", "p2"),
+      targetPageId: "page-2",
+    });
+    src.pages.push({
+      id: "page-2",
+      title: "条件",
+      derivedFromPageId: "main",
+      derivedFromBlockId: "p",
+      blocks: [{ id: "p2", type: "paragraph", content: [{ type: "text", text: "Second page" }] }],
+      labels: { p2: "procedure" },
+      provLinks: [],
+      knowledgeLinks: [],
+    });
+
+    const derived = buildDerivedDocument({
+      sourceDoc: src,
+      sourceNoteId: "src-note",
+      derivedTitle: "Derived",
+    });
+
+    expect(derived.pages).toHaveLength(2);
+    expect(derived.pages[0].title).toBe("Derived");
+    expect(derived.pages[1].title).toBe("条件");
+    expect(derived.pages[1].id).not.toBe("page-2");
+    expect(derived.pages[1].derivedFromPageId).toBe(derived.pages[0].id);
+    expect(derived.pages[1].derivedFromBlockId).toBe(derived.pages[0].blocks[1].id);
+    expect(derived.pages[1].blocks[0].id).not.toBe("p2");
+    expect(derived.pages[1].labels).toEqual({
+      [derived.pages[1].blocks[0].id]: "procedure",
+    });
+    const newPId = derived.pages[0].blocks[1].id;
+    expect(derived.pages[0].mediaInlineLabels).toEqual({
+      [newPId]: { label: "material", entityId: "entity-p" },
+    });
+    expect(derived.pages[0].blockAlignments).toEqual({ [newPId]: "center" });
+    expect(derived.pages[0].mediaOcr).toEqual({
+      [newPId]: { text: "OCR", confidence: 99, lang: "jpn", extractedAt: "2026-01-01T00:00:00.000Z" },
+    });
+    expect(derived.pages[0].highlights?.[0]).toMatchObject({
+      blockId: newPId,
+      text: "Material A",
+    });
+    expect(derived.pages[0].provLinks.find((link) => link.targetPageId)?.targetPageId)
+      .toBe(derived.pages[1].id);
+  });
+
   it("tableMeta を新しい block ID で張り直す", () => {
     const src = mockDoc();
     src.pages[0].blocks.push({

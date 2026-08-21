@@ -195,6 +195,60 @@ export function buildProcessEntry(
   };
 }
 
+/** 既存エントリを最新ドキュメントで再投影し、フォーク元情報を引き継ぐ。 */
+export function updateProcessEntry(
+  index: ProcessIndex,
+  noteId: string,
+  doc: GraphiumDocument,
+  file: Pick<GraphiumFile, "modifiedTime">,
+): ProcessIndex {
+  const prior = index.processes.find((process) => process.noteId === noteId);
+  const entry = buildProcessEntry(noteId, doc, file, prior);
+  if (!entry) {
+    return {
+      ...index,
+      updatedAt: file.modifiedTime,
+      processes: index.processes.filter((process) => process.noteId !== noteId),
+    };
+  }
+  return {
+    ...index,
+    updatedAt: file.modifiedTime,
+    processes: [
+      ...index.processes.filter((process) => process.noteId !== noteId),
+      entry,
+    ],
+  };
+}
+
+/**
+ * フォーク直後のプロセスをインデックスへ追加する。
+ *
+ * プロセスインデックスは投影キャッシュなので、ノート作成の正典にはしない。
+ * ただしフォーク元のタイトルは後から変わる可能性があるため、作成時点の
+ * スナップショットをここへ保存する。
+ */
+export function addForkedProcess(
+  index: ProcessIndex,
+  childNoteId: string,
+  childDoc: GraphiumDocument,
+  childFile: Pick<GraphiumFile, "modifiedTime">,
+  forkedFrom: ProcessForkOrigin,
+): ProcessIndex {
+  const prior = index.processes.find((process) => process.noteId === childNoteId);
+  const entry = buildProcessEntry(childNoteId, childDoc, childFile, prior);
+  if (!entry) return index;
+
+  return {
+    ...index,
+    updatedAt: forkedFrom.forkedAt,
+    processes: [
+      ...index.processes.filter((process) => process.noteId !== childNoteId),
+      { ...entry, forkedFrom },
+    ],
+  };
+}
+
 // ── アプリが知っている最新の投影 ──
 //
 // step ブロックのパラメータピッカーは BlockNote の render の中から読む。

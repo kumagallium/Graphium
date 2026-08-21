@@ -16,6 +16,7 @@ import type { BlockLink } from "../block-link/link-types";
 import type {
   GraphiumDocument,
   GraphiumPage,
+  InlineHighlight,
   NoteLink,
   TableMeta,
 } from "../../lib/document-types";
@@ -89,6 +90,7 @@ export function remapByBlockId<T>(
 export function remapLinks(
   links: readonly BlockLink[] | undefined,
   idMap: ReadonlyMap<string, string>,
+  pageIdMap?: ReadonlyMap<string, string>,
 ): BlockLink[] {
   if (!links) return [];
   const out: BlockLink[] = [];
@@ -101,9 +103,26 @@ export function remapLinks(
       id: newId(),
       sourceBlockId: newSource,
       targetBlockId: newTarget,
+      ...(link.targetPageId && pageIdMap?.has(link.targetPageId)
+        ? { targetPageId: pageIdMap.get(link.targetPageId) }
+        : {}),
     });
   }
+
   return out;
+}
+
+function remapHighlights(
+  highlights: readonly InlineHighlight[] | undefined,
+  idMap: ReadonlyMap<string, string>,
+): InlineHighlight[] | undefined {
+  if (!highlights) return undefined;
+  const remapped = highlights.flatMap((highlight) => {
+    const blockId = idMap.get(highlight.blockId);
+    if (!blockId) return [];
+    return [{ ...highlight, id: newId(), blockId }];
+  });
+  return remapped.length > 0 ? remapped : undefined;
 }
 
 /**
@@ -144,26 +163,62 @@ export function buildDerivedDocument(input: BuildDerivedDocumentInput): Graphium
   const { sourceDoc, sourceNoteId, derivedTitle } = input;
   const now = input.now ?? new Date().toISOString();
 
-  const sourcePage: Partial<GraphiumPage> = sourceDoc.pages?.[0] ?? {};
-  const { blocks, idMap } = cloneBlocksWithIdMap(sourcePage.blocks ?? []);
-  // Older notes still carry the legacy side stores; convert before remapping so a
-  // note derived from one keeps its table annotations.
-  const sourceTableMeta = migrateTableMeta(sourcePage);
+  const sourcePages: Partial<GraphiumPage>[] =
+    sourceDoc.pages && sourceDoc.pages.length > 0 ? sourceDoc.pages : [{}];
+  const pageIds = sourcePages.map((_, index) => (index === 0 ? "main" : newId()));
+  const pageIdMap = new Map<string, string>();
+  sourcePages.forEach((sourcePage, index) => {
+    if (sourcePage.id) pageIdMap.set(sourcePage.id, pageIds[index]);
+  });
+  const clonedPages = sourcePages.map((sourcePage) => {
+    const { blocks, idMap } = cloneBlocksWithIdMap(sourcePage.blocks ?? []);
+    return { sourcePage, blocks, idMap };
+  });
+  // A document-level map keeps links valid even when they connect blocks on
+  // different pages.
+  const idMap = new Map<string, string>();
+  for (const clonedPage of clonedPages) {
+    for (const [oldId, newId] of clonedPage.idMap) idMap.set(oldId, newId);
+  }
 
-  const newPage: GraphiumPage = {
-    id: "main",
-    title: derivedTitle,
-    blocks,
-    labels: remapLabels(sourcePage.labels, idMap),
-    provLinks: remapLinks(sourcePage.provLinks as BlockLink[] | undefined, idMap),
-    knowledgeLinks: remapLinks(sourcePage.knowledgeLinks as BlockLink[] | undefined, idMap),
-    tableMeta: remapTableMeta(sourceTableMeta, idMap),
-  };
+  const pages: GraphiumPage[] = clonedPages.map(({ sourcePage, blocks }, index) => {
+    // Older notes still carry the legacy side stores; convert before remapping so a
+    // note derived from one keeps its table annotations.
+    const sourceTableMeta = migrateTableMeta(sourcePage);
+    return {
+      id: pageIds[index],
+      title: index === 0 ? derivedTitle : sourcePage.title ?? "",
+      blocks,
+      labels: remapLabels(sourcePage.labels, idMap),
+      provLinks: remapLinks(sourcePage.provLinks as BlockLink[] | undefined, idMap, pageIdMap),
+      knowledgeLinks: remapLinks(sourcePage.knowledgeLinks as BlockLink[] | undefined, idMap, pageIdMap),
+      tableMeta: remapTableMeta(sourceTableMeta, idMap),
+      highlights: remapHighlights(sourcePage.highlights, idMap),
+      mediaInlineLabels: remapByBlockId(sourcePage.mediaInlineLabels, idMap),
+      blockAlignments: remapByBlockId(sourcePage.blockAlignments, idMap),
+      mediaOcr: remapByBlockId(sourcePage.mediaOcr, idMap),
+      ...(sourcePage.derivedFromPageId
+        ? {
+            derivedFromPageId:
+              pageIdMap.get(sourcePage.derivedFromPageId) ?? sourcePage.derivedFromPageId,
+          }
+        : {}),
+      ...(sourcePage.derivedFromBlockId
+        ? {
+            derivedFromBlockId:
+              idMap.get(sourcePage.derivedFromBlockId) ?? sourcePage.derivedFromBlockId,
+          }
+        : {}),
+      ...(sourcePage.links
+        ? { links: remapLinks(sourcePage.links as BlockLink[], idMap, pageIdMap) }
+        : {}),
+    };
+  });
 
   return {
     version: 3,
     title: derivedTitle,
-    pages: [newPage],
+    pages,
     derivedFromNoteId: sourceNoteId,
     createdAt: now,
     modifiedAt: now,

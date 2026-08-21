@@ -129,7 +129,12 @@ const Frame = (args: React.ComponentProps<typeof ProcessGalleryView>) => (
 );
 
 export const Default: Story = {
-  args: { processIndex: INDEX, onBack: () => {}, onNavigateNote: () => {} },
+  args: {
+    processIndex: INDEX,
+    onBack: () => {},
+    onNavigateNote: () => {},
+    onForkProcess: async () => "forked",
+  },
   render: Frame,
 };
 
@@ -139,6 +144,7 @@ export const WithFork: Story = {
     processIndex: { ...INDEX, processes: [INDEX.processes[2], INDEX.processes[0]] },
     onBack: () => {},
     onNavigateNote: () => {},
+    onForkProcess: async () => "forked",
   },
   render: Frame,
 };
@@ -164,6 +170,7 @@ export const LongProcess: Story = {
     },
     onBack: () => {},
     onNavigateNote: () => {},
+    onForkProcess: async () => "forked",
   },
   render: Frame,
 };
@@ -174,12 +181,18 @@ export const Empty: Story = {
     processIndex: { version: 1, updatedAt: daysAgo(0), processes: [] },
     onBack: () => {},
     onNavigateNote: () => {},
+    onForkProcess: async () => "forked",
   },
   render: Frame,
 };
 
 /** インデックスがまだ作られていない（初回・再投影前） */
 export const NotIndexedYet: Story = {
-  args: { processIndex: null, onBack: () => {}, onNavigateNote: () => {} },
+  args: {
+    processIndex: null,
+    onBack: () => {},
+    onNavigateNote: () => {},
+    onForkProcess: async () => "forked",
+  },
   render: Frame,
 };

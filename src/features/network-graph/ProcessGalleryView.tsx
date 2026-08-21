@@ -17,7 +17,7 @@
 // ──────────────────────────────────────────────
 
 import { useMemo, useState } from "react";
-import { GitBranch, ArrowRight, CornerDownRight, ExternalLink } from "lucide-react";
+import { GitBranch, GitFork, ArrowRight, CornerDownRight, ExternalLink } from "lucide-react";
 import { useT } from "../../i18n";
 import type { ProcessIndex, ProcessIndexEntry } from "./process-index";
 import { StepFlowView } from "./step-flow-view";
@@ -26,6 +26,7 @@ export type ProcessGalleryViewProps = {
   processIndex: ProcessIndex | null;
   onBack: () => void;
   onNavigateNote: (noteId: string) => void;
+  onForkProcess: (noteId: string) => Promise<string | null>;
 };
 
 type SortKey = "stepCount" | "modifiedAt" | "title";
@@ -43,12 +44,15 @@ export function ProcessGalleryView({
   processIndex,
   onBack,
   onNavigateNote,
+  onForkProcess,
 }: ProcessGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("modifiedAt");
   const [sortAsc, setSortAsc] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [forkingNoteId, setForkingNoteId] = useState<string | null>(null);
+  const [forkError, setForkError] = useState(false);
 
   const processes = processIndex?.processes ?? [];
 
@@ -103,6 +107,20 @@ export function ProcessGalleryView({
   // effect で選択 state を書き戻さない — 絞り込みのたびに選択が動いて読めなくなる。
   const selected =
     filtered.find((entry) => entry.noteId === selectedId) ?? filtered[0] ?? null;
+
+  const handleFork = async () => {
+    if (!selected || forkingNoteId) return;
+    setForkingNoteId(selected.noteId);
+    setForkError(false);
+    try {
+      const newNoteId = await onForkProcess(selected.noteId);
+      if (!newNoteId) setForkError(true);
+    } catch {
+      setForkError(true);
+    } finally {
+      setForkingNoteId(null);
+    }
+  };
 
   return (
     <div className="flex-1 flex overflow-hidden bg-background">
@@ -169,7 +187,20 @@ export function ProcessGalleryView({
                 <ExternalLink size={11} strokeWidth={2.2} />
                 {t("process.openNote")}
               </button>
+              <button
+                onClick={handleFork}
+                disabled={forkingNoteId !== null}
+                className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-border text-foreground hover:bg-surface-hover disabled:opacity-50 disabled:cursor-wait transition-colors"
+              >
+                <GitFork size={11} strokeWidth={2.2} />
+                {forkingNoteId === selected.noteId ? t("process.forking") : t("process.fork")}
+              </button>
             </div>
+            {forkError && (
+              <div role="alert" className="px-4 py-1.5 border-b border-border text-[11px] text-destructive">
+                {t("process.forkFailed")}
+              </div>
+            )}
             <div className="flex-1 min-h-0">
               {/* コールバックを渡さない = 読み取り専用（P-3）。
                   variant="preview" で属性テーブルを畳み、縮小の下限を上げる。

@@ -9,8 +9,11 @@ export { parseExternalSource, isExternalSourceId, type ExternalSourceKind } from
 export { ProcessGalleryView } from "./ProcessGalleryView";
 export { StepHistoryPicker } from "./StepHistoryPicker";
 export {
+  addForkedProcess,
   ensureProcessIndex,
   readProcessIndex,
+  saveProcessIndex,
+  updateProcessEntry,
   collectStepNames,
   type StepNameStat,
   collectParamKeysForStep,
@@ -19,5 +22,6 @@ export {
   clearLatestProcessIndex,
   type ProcessIndex,
   type ProcessIndexEntry,
+  type ProcessForkOrigin,
   type ParamKeyStat,
 } from "./process-index";

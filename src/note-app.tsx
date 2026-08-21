@@ -8385,6 +8385,15 @@ export function NoteApp() {
               fm.handleOpenFile(noteId);
               router.navigate({ view: "editor", fileId: noteId });
             }}
+            onForkProcess={async (noteId) => {
+              const newNoteId = await fm.handleForkProcess(noteId);
+              if (newNoteId) {
+                fm.setShowProcessGallery(false);
+                await fm.handleOpenFile(newNoteId);
+                router.navigate({ view: "editor", fileId: newNoteId });
+              }
+              return newNoteId;
+            }}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView
