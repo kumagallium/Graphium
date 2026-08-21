@@ -89,7 +89,7 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
     createFile: [] as string[],
     uploadMedia: [] as string[],
   };
-  const flags = { failListFiles: false };
+  const flags = { failListFiles: false, failSaveFile: false };
   const mediaFiles: { id: string; name: string; mimeType: string; createdTime: string }[] = [];
   const mediaBytes = new Map<string, Uint8Array>();
   let idCounter = 0;
@@ -126,6 +126,7 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
       return id;
     },
     async saveFile(fileId: string, content: GraphiumDocument): Promise<void> {
+      if (flags.failSaveFile) throw new Error("save failure");
       calls.saveFile.push(fileId);
       const existing = files.get(fileId);
       files.set(fileId, {
@@ -289,6 +290,84 @@ describe("useFileManager: activeFileId が set なら必ず saveFile（PR #454 �
     expect(mock.calls.saveFile).toEqual(["created-1"]);
     expect(mock.files.size).toBe(1);
     expect(mock.files.get("created-1")?.doc.title).toBe("新しいノート 更新");
+  });
+});
+
+describe("useFileManager: プロセス一覧からノートをフォークする", () => {
+  it("非アクティブなプロセスを複製し、派生元リンクと起源メタデータを更新する", async () => {
+    const source = mockDoc("元プロセス", {
+      pages: [
+        {
+          id: "page-1",
+          title: "Main",
+          blocks: [
+            {
+              id: "step-1",
+              type: "step",
+              content: [{ type: "text", text: "焼成", styles: {} }],
+              children: [],
+            },
+          ],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+        },
+      ],
+    });
+    const mock = setupProvider({ source });
+    const { result } = await renderFileManager();
+
+    await act(async () => {
+      result.current.setShowProcessGallery(true);
+    });
+    await waitFor(() => {
+      expect(result.current.processIndex?.processes).toHaveLength(1);
+    });
+
+    let newNoteId: string | null = null;
+    await act(async () => {
+      newNoteId = await result.current.handleForkProcess("source");
+    });
+
+    expect(newNoteId).toBe("created-1");
+    expect(mock.files.get("created-1")?.doc.derivedFromNoteId).toBe("source");
+    expect(mock.files.get("source")?.doc.noteLinks).toEqual([
+      { targetNoteId: "created-1", sourceBlockId: "", type: "derived_from" },
+    ]);
+    expect(result.current.processIndex?.processes.find((p) => p.noteId === "created-1")?.forkedFrom)
+      .toMatchObject({ noteId: "source", title: "元プロセス" });
+  });
+
+  it("派生元の保存に失敗したら作成済みの子ノートを削除する", async () => {
+    const source = mockDoc("元プロセス", {
+      pages: [
+        {
+          id: "page-1",
+          title: "Main",
+          blocks: [{ id: "step-1", type: "step", content: [{ type: "text", text: "焼成", styles: {} }], children: [] }],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+        },
+      ],
+    });
+    const mock = setupProvider({ source });
+    const { result } = await renderFileManager();
+    await act(async () => {
+      result.current.setShowProcessGallery(true);
+    });
+    await waitFor(() => expect(result.current.processIndex?.processes).toHaveLength(1));
+
+    mock.flags.failSaveFile = true;
+    let newNoteId: string | null = null;
+    await act(async () => {
+      newNoteId = await result.current.handleForkProcess("source");
+    });
+
+    expect(newNoteId).toBeNull();
+    expect(mock.calls.createFile).toEqual(["created-1"]);
+    expect(mock.files.has("created-1")).toBe(false);
+    expect(mock.files.has("source")).toBe(true);
   });
 });
 

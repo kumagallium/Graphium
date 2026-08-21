@@ -29,13 +29,16 @@ import { loadSnapshot } from "../features/version-snapshots/snapshot-store";
 import { findSnapshotsReferencingAsset } from "../features/version-snapshots/snapshot-refs";
 import { registerPendingOcrFile } from "../features/media-ocr";
 import {
+  addForkedProcess,
   buildNoteGraph,
   buildLineageTree,
   type LineageNode,
   type NoteGraphData,
   ensureProcessIndex,
   readProcessIndex,
+  saveProcessIndex,
   setLatestProcessIndex,
+  updateProcessEntry,
   type ProcessIndex,
 } from "../features/network-graph";
 import {
@@ -224,6 +227,9 @@ export function useFileManager(authenticated: boolean) {
   // プロセス一覧の表示状態と、その投影キャッシュ（.graphium-process-index.json）
   const [showProcessGallery, setShowProcessGallery] = useState(false);
   const [processIndex, setProcessIndex] = useState<ProcessIndex | null>(null);
+  const processIndexRef = useRef<ProcessIndex | null>(null);
+  const processProjectionPromiseRef = useRef<Promise<ProcessIndex | null> | null>(null);
+  const processMutationRef = useRef(false);
   const processProjectingRef = useRef(false);
   // Wiki 関連の状態
   const [wikiFiles, setWikiFiles] = useState<GraphiumFile[]>([]);
@@ -452,25 +458,35 @@ export function useFileManager(authenticated: boolean) {
   // 起動経路に載せると一覧を見ない人にまで待ち時間が乗るので、開いた人だけが払う。
   useEffect(() => {
     if (!showProcessGallery) return;
+    if (processMutationRef.current) return;
     if (processProjectingRef.current) return;
     processProjectingRef.current = true;
     let cancelled = false;
-    (async () => {
+    const projection = (async (): Promise<ProcessIndex | null> => {
       try {
         // ゴミ箱・アーカイブのノートは一覧に出さないので、投影もしない
         const targets = files.filter(
           (f) => !trashedIdSet.has(f.id) && !archivedIdSet.has(f.id),
         );
         const idx = await ensureProcessIndex(targets, docCacheRef.current, loadFile);
-        if (cancelled) return;
+        if (cancelled) return null;
+        processIndexRef.current = idx;
         setProcessIndex(idx);
         setLatestProcessIndex(idx);
+        return idx;
       } catch (err) {
         console.error("プロセスインデックスの構築に失敗:", err);
+        return null;
       } finally {
         processProjectingRef.current = false;
       }
     })();
+    processProjectionPromiseRef.current = projection;
+    void projection.finally(() => {
+      if (processProjectionPromiseRef.current === projection) {
+        processProjectionPromiseRef.current = null;
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -484,7 +500,9 @@ export function useFileManager(authenticated: boolean) {
     readProcessIndex()
       .then((idx) => {
         if (cancelled || !idx) return;
-        setProcessIndex((prev) => prev ?? idx);
+        if (processIndexRef.current) return;
+        processIndexRef.current = idx;
+        setProcessIndex(idx);
         setLatestProcessIndex(idx);
       })
       .catch(() => {});
@@ -1129,14 +1147,29 @@ export function useFileManager(authenticated: boolean) {
     [],
   );
 
-  // ノート全体を派生する（Phase 4）
-  // 既存ノートの blocks / labels / provLinks / knowledgeLinks を新 ID で複製し、
-  // derivedFromNoteId を張った別ファイルとして保存する。
-  const handleDeriveWholeNote = useCallback(
-    async (derivedTitle?: string) => {
-      const sourceNoteId = activeFileIdRef.current;
-      if (!sourceNoteId) return;
+  // ノート全体を派生する共通処理（Phase 4）。
+  // sourceNoteId を明示的に受け取れるようにして、本文ヘッダーとプロセス一覧の
+  // どちらからでも同じ複製経路を使う。
+  const deriveWholeNote = useCallback(
+    async ({
+      sourceNoteId,
+      derivedTitle,
+      openDerivedNote,
+      processFork,
+    }: {
+      sourceNoteId: string;
+      derivedTitle?: string;
+      openDerivedNote: boolean;
+      processFork: boolean;
+    }): Promise<string | null> => {
       setDeriving(true);
+      let newFileId: string | null = null;
+      let sourceSaved = false;
+      if (processFork) {
+        const projection = processProjectionPromiseRef.current;
+        if (projection) await projection;
+        processMutationRef.current = true;
+      }
       try {
         // Drive 上の最新を読み直してからクローン（ローカルで編集中の未保存内容より
         // 永続化された最新を派生元にする方が PROV 的に正しい）
@@ -1151,12 +1184,13 @@ export function useFileManager(authenticated: boolean) {
           now,
         });
         newDoc = await recordRevision(newDoc, null, "human_derivation");
-        const newFileId = await createFile(newDoc.title, newDoc);
+        const createdFileId = await createFile(newDoc.title, newDoc);
+        newFileId = createdFileId;
 
         // 元ノートに derived_from の noteLinks を追加して保存
         let updatedSource: GraphiumDocument = {
           ...sourceDoc,
-          noteLinks: appendDerivedNoteLink(sourceDoc.noteLinks, newFileId),
+          noteLinks: appendDerivedNoteLink(sourceDoc.noteLinks, createdFileId),
           modifiedAt: now,
         };
         updatedSource = await recordRevision(
@@ -1166,30 +1200,99 @@ export function useFileManager(authenticated: boolean) {
           { force: true },
         );
         await saveFile(sourceNoteId, updatedSource);
+        sourceSaved = true;
         docCacheRef.current.set(sourceNoteId, updatedSource);
-        setActiveDoc(updatedSource);
+        docCacheRef.current.set(createdFileId, newDoc);
+        if (sourceNoteId === activeFileIdRef.current) {
+          setActiveDoc(updatedSource);
+        }
 
         setFiles((prev) => [
-          { id: newFileId, name: `${newDoc.title}.graphium.json`, modifiedTime: now, createdTime: now },
+          { id: createdFileId, name: `${newDoc.title}.graphium.json`, modifiedTime: now, createdTime: now },
           ...prev,
         ]);
 
         if (noteIndexRef.current) {
-          let updatedIndex = updateIndexEntry(noteIndexRef.current, newFileId, newDoc);
+          let updatedIndex = updateIndexEntry(noteIndexRef.current, createdFileId, newDoc);
           updatedIndex = updateIndexEntry(updatedIndex, sourceNoteId, updatedSource);
           noteIndexRef.current = updatedIndex;
           setNoteIndex(updatedIndex);
           saveIndexFile(updatedIndex).catch((err) => console.warn("インデックス保存失敗:", err));
         }
 
-        handleOpenFile(newFileId);
+        if (processFork && processIndexRef.current) {
+          let updatedProcessIndex = updateProcessEntry(
+            processIndexRef.current,
+            sourceNoteId,
+            updatedSource,
+            { modifiedTime: now },
+          );
+          updatedProcessIndex = addForkedProcess(
+            updatedProcessIndex,
+            createdFileId,
+            newDoc,
+            { modifiedTime: now },
+            { noteId: sourceNoteId, title: sourceDoc.title, forkedAt: now },
+          );
+          processIndexRef.current = updatedProcessIndex;
+          setProcessIndex(updatedProcessIndex);
+          setLatestProcessIndex(updatedProcessIndex);
+          try {
+            await saveProcessIndex(updatedProcessIndex);
+          } catch (err) {
+            // プロセス一覧は投影キャッシュなので、ノート作成自体は成功として扱う。
+            console.warn("プロセスインデックス保存失敗:", err);
+          }
+        }
+
+        if (openDerivedNote) {
+          await handleOpenFile(createdFileId, newDoc);
+        }
+        return createdFileId;
       } catch (err) {
+        if (newFileId && !sourceSaved) {
+          try {
+            await deleteFile(newFileId);
+          } catch (cleanupErr) {
+            console.error("派生先ノートのクリーンアップに失敗:", cleanupErr);
+          }
+        }
         console.error("ノート全体の派生に失敗:", err);
+        return null;
       } finally {
+        if (processFork) processMutationRef.current = false;
         setDeriving(false);
       }
     },
     [handleOpenFile],
+  );
+
+  // ノート全体を派生する（ヘッダーメニューから呼ばれる）。
+  const handleDeriveWholeNote = useCallback(
+    async (derivedTitle?: string): Promise<string | null> => {
+      const sourceNoteId = activeFileIdRef.current;
+      if (!sourceNoteId) return null;
+      return deriveWholeNote({
+        sourceNoteId,
+        derivedTitle,
+        openDerivedNote: true,
+        processFork: false,
+      });
+    },
+    [deriveWholeNote],
+  );
+
+  // プロセス一覧からノート全体をフォークする。
+  // 一覧で開いているノートとは別のノートを派生元にできるため、
+  // アクティブノートを直接参照する handleDeriveWholeNote とは分ける。
+  const handleForkProcess = useCallback(
+    async (sourceNoteId: string): Promise<string | null> =>
+      deriveWholeNote({
+        sourceNoteId,
+        openDerivedNote: false,
+        processFork: true,
+      }),
+    [deriveWholeNote],
   );
 
   // 手動で残した版（スナップショット）を下敷きに新ノートを派生する。
@@ -2656,6 +2759,7 @@ export function useFileManager(authenticated: boolean) {
     handleDeriveNote,
     handleCreateLinkedNote,
     handleDeriveWholeNote,
+    handleForkProcess,
     handleDeriveFromSnapshot,
     handleAiDeriveNote,
     handleDelete,

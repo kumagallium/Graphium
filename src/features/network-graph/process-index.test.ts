@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  addForkedProcess,
   buildProcessEntry,
   collectStepInheritance,
   findStaleProcessFiles,
@@ -121,6 +122,33 @@ describe("buildProcessEntry", () => {
     } as ProcessIndexEntry;
     const entry = buildProcessEntry("n1", doc([step("s1", "焼成")]), file(NOW), prior);
     expect(entry!.forkedFrom).toEqual({ noteId: "n0", title: "元プロセス", forkedAt: NOW });
+  });
+});
+
+describe("addForkedProcess", () => {
+  it("フォークしたノートを一覧へ追加し、元ノートのスナップショットを保持する", () => {
+    const source = buildProcessEntry("source", doc([step("s1", "焼成")]), file(NOW))!;
+    const index: ProcessIndex = {
+      version: PROCESS_INDEX_VERSION,
+      updatedAt: NOW,
+      processes: [source],
+    };
+    const childDoc = doc([step("s2", "冷却")], "派生ノート");
+    const forkedAt = "2026-08-21T00:00:00.000Z";
+
+    const next = addForkedProcess(
+      index,
+      "child",
+      childDoc,
+      file(forkedAt),
+      { noteId: "source", title: "元ノート", forkedAt },
+    );
+
+    expect(next.processes).toHaveLength(2);
+    expect(next.processes.find((process) => process.noteId === "child")).toMatchObject({
+      title: "派生ノート",
+      forkedFrom: { noteId: "source", title: "元ノート", forkedAt },
+    });
   });
 });
 
