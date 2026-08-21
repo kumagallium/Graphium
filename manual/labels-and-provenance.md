@@ -24,6 +24,12 @@ Write the same operation often enough and you end up recalling the same conditio
 
 Pressing it lists **the step names you have written before**. Picking one fills in the step title, then offers what that step recorded.
 
+![The list of past step names, opened from the icon](/screenshots/step-history-names.png)
+
+Picking one moves to the second stage, which offers what can be carried over.
+
+![The second stage: choosing what to inherit](/screenshots/step-history-picker.png)
+
 - Steps with **nothing to carry over stay in the list**. Seeing "放電プラズマ焼結" before you type "SPS" is what keeps one operation from splitting into two names — a name that differs by a character is a different step from then on.
 - The second stage separates **parameters written on the step itself** from **the materials, tools and outputs it used or produced**. The separation matters: if "pressure 100 MPa" was written on the powder going in, it comes back on the powder. Flattening it into the step's own conditions would leave two records of the same experiment no longer lining up.
 - What you pick **arrives empty**. Past values appear only as small greyed examples to jog memory; they are never written into the cells. A number left over from last time reads as this run's condition.
@@ -153,6 +159,17 @@ Labels and links also feed graphs that span your whole workspace:
 - **Lineage** — the second sub-tab of **Graph**: a tree of the current note's upstream sources — the notes, materials, and versions it was derived from.
 - **Global Graph** <Badge type="tip" text="Added in v0.16.5 (2026-06-29)" /> — in the sidebar: every note at once, layered as **Sources**, **Notes**, and **Claim · Insight** ([Knowledge layer](/knowledge-layer) entries), with edges for **Derived**, **Used**, and **Reference** relations. Toggle **Hide references** or **Show isolated**, color nodes by type or context, and **Group by context** to pull related notes into clusters.
 - **Activity graph editor** — the **Steps (only)** view described [above](#the-provenance-graph-panel), where the step order itself can be rewired by dragging.
-- **Process list** <Badge type="tip" text="Added in v0.40.0 (2026-08-20)" /> — in the sidebar under **Processes**: the flow each note describes, listed side by side. A row leads with the flow rather than the title (**Weigh → Mix → Press +3**), because what an experiment *is* comes across through its sequence long before its name does. Selecting a row draws that flow on the right — the same figure you see with the note open. Search matches step names too, so "which notes did a firing step" is findable without knowing what they were called. A process **cannot be edited here**: it is derived from the note's text, so the note is where you change it.
+- **Process list** — in the sidebar under **Processes**: the flow each note describes, listed side by side (see [Process list](#process-list) below).
+
+## Process list <Badge type="tip" text="Added in v0.40.0 (2026-08-20)" /> {#process-list}
+
+**Processes** in the sidebar lists the flow each note describes, side by side.
+
+![The process list, with the selected process drawn beside it](/screenshots/process-list.png)
+
+- A row leads with the **flow** rather than the title (**Ball milling → Hot pressing**), because what an experiment *is* comes across through its sequence long before its name does.
+- Selecting a row draws that flow on the right — **the same figure** you see in the right panel with the note open.
+- Search **matches step names too**, so "which notes did a sintering step" is findable without knowing what those notes were called.
+- A process **cannot be edited here**. It is derived from the note's text, so the note is where you change it (**Open note**, top right).
 
 Together these answer the question labels exist for: not just "what did I write," but "where did this come from, and what did it lead to."
