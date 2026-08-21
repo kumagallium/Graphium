@@ -170,6 +170,7 @@ Labels and links also feed graphs that span your whole workspace:
 - A row leads with the **flow** rather than the title (**Ball milling → Hot pressing**), because what an experiment *is* comes across through its sequence long before its name does.
 - Selecting a row draws that flow on the right — **the same figure** you see in the right panel with the note open.
 - Search **matches step names too**, so "which notes did a sintering step" is findable without knowing what those notes were called.
-- A process **cannot be edited here**. It is derived from the note's text, so the note is where you change it (**Open note**, top right).
+- To use an existing process as the starting point for another run, select it and choose **Copy this process and open a note**. Graphium copies the whole note, opens the copy, and records which note it came from. The original stays unchanged.
+- A process **cannot be edited directly here**. It is derived from the note's text, so use **Open note** to change the original.
 
 Together these answer the question labels exist for: not just "what did I write," but "where did this come from, and what did it lead to."
