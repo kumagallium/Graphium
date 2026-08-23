@@ -41,12 +41,13 @@ export function appendEntitySpanToStep(
   stepBlockId: string,
   kind: StepIoKind,
   text: string,
+  requestedEntityId?: string,
 ): string | null {
   const trimmed = text.trim();
   if (!editor || !trimmed) return null;
   const step = findBlockById(editor.document ?? [], stepBlockId);
   if (!step || step.type !== "step") return null;
-  const entityId = makeEntityId(kind);
+  const entityId = requestedEntityId || makeEntityId(kind);
   const styleValue = kind === "attribute" ? `${entityId}@${PARENT_ACTIVITY_MARKER}` : entityId;
   const content = [{ type: "text", text: trimmed, styles: { [STYLE_KEY[kind]]: styleValue } }];
   const children: any[] = step.children ?? [];
@@ -67,6 +68,176 @@ export function appendEntitySpanToStep(
     return null;
   }
   return entityId;
+}
+
+const INPUT_STYLE_KEYS = ["inlineMaterial", "inlineTool"] as const;
+
+function inputStyleMatches(content: any, entityId: string): boolean {
+  if (content?.type !== "text") return false;
+  return INPUT_STYLE_KEYS.some((key) => content.styles?.[key] === entityId);
+}
+
+/**
+ * 指定 step 内の material / tool span を entityId で探し、テキストを更新する。
+ * 分割された span はブロック内の先頭 piece へ統合する。
+ * @returns 更新したブロック数
+ */
+export function updateStepInputEntityText(
+  editor: any,
+  stepBlockId: string,
+  entityId: string,
+  text: string,
+): number {
+  const trimmed = text.trim();
+  if (!editor || !entityId || !trimmed) return 0;
+  const step = findBlockById(editor.document ?? [], stepBlockId);
+  if (!step || step.type !== "step") return 0;
+  const updates: Array<{ id: string; content: any[] }> = [];
+
+  const rewrite = (content: any[]): { content: any[]; matched: boolean; changed: boolean } => {
+    let matched = false;
+    let changed = false;
+    let replaced = false;
+    const next: any[] = [];
+    for (const item of content ?? []) {
+      if (inputStyleMatches(item, entityId)) {
+        matched = true;
+        if (!replaced) {
+          next.push(item.text === trimmed ? item : { ...item, text: trimmed });
+          changed ||= item.text !== trimmed;
+          replaced = true;
+        } else {
+          changed = true;
+        }
+      } else if (item?.type === "link" && Array.isArray(item.content)) {
+        const inner = rewrite(item.content);
+        next.push(inner.changed ? { ...item, content: inner.content } : item);
+        matched ||= inner.matched;
+        changed ||= inner.changed;
+      } else {
+        next.push(item);
+      }
+    }
+    return { content: next, matched, changed };
+  };
+
+  const visit = (blocks: any[]) => {
+    for (const block of blocks ?? []) {
+      if (Array.isArray(block?.content)) {
+        const result = rewrite(block.content);
+        if (result.matched && result.changed && block.id) {
+          updates.push({ id: block.id, content: result.content });
+        }
+      }
+      // 入れ子 step は別 Activity なので、指定 step の入力としては触らない
+      if (block?.type !== "step" && Array.isArray(block?.children)) visit(block.children);
+    }
+  };
+  visit(step.children ?? []);
+
+  let updated = 0;
+  for (const item of updates) {
+    try {
+      editor.updateBlock(item.id, { content: item.content });
+      updated += 1;
+    } catch {
+      // 編集中に対象ブロックが消えた場合は更新件数に含めない
+    }
+  }
+  return updated;
+}
+
+/**
+ * 指定 step に専用行として追加された material / tool span を削除する。
+ * 他のテキストや inline content が混在する行は対象 span だけを削除する。
+ * step の唯一の子は空段落に戻し、編集可能な本文を残す。
+ */
+export function removeDedicatedStepInputEntity(
+  editor: any,
+  stepBlockId: string,
+  entityId: string,
+): number {
+  if (!editor || !entityId) return 0;
+  const step = findBlockById(editor.document ?? [], stepBlockId);
+  if (!step || step.type !== "step") return 0;
+  const removeIds: string[] = [];
+  const updates: Array<{ id: string; content: any[] }> = [];
+
+  const rewrite = (
+    content: any[],
+  ): { content: any[]; matched: boolean; hasMeaningfulRemainder: boolean } => {
+    let matched = false;
+    let hasMeaningfulRemainder = false;
+    const next: any[] = [];
+    for (const item of content ?? []) {
+      if (inputStyleMatches(item, entityId)) {
+        matched = true;
+        continue;
+      }
+      if (item?.type === "link" && Array.isArray(item.content)) {
+        const inner = rewrite(item.content);
+        if (!inner.matched) {
+          next.push(item);
+          hasMeaningfulRemainder ||= inner.hasMeaningfulRemainder;
+          continue;
+        }
+        matched ||= inner.matched;
+        if (inner.content.length > 0) {
+          next.push({ ...item, content: inner.content });
+          hasMeaningfulRemainder ||= inner.hasMeaningfulRemainder;
+        }
+        continue;
+      }
+      next.push(item);
+      hasMeaningfulRemainder ||=
+        item?.type !== "text" || (item.text ?? "").trim() !== "";
+    }
+    return { content: next, matched, hasMeaningfulRemainder };
+  };
+
+  const visit = (blocks: any[]) => {
+    for (const block of blocks ?? []) {
+      if (
+        block?.id &&
+        block.type === "paragraph" &&
+        (block.children ?? []).length === 0 &&
+        Array.isArray(block.content)
+      ) {
+        const result = rewrite(block.content);
+        if (result.matched) {
+          if (!result.hasMeaningfulRemainder) {
+            if ((step.children ?? []).length === 1 && step.children[0]?.id === block.id) {
+              updates.push({ id: block.id, content: [] });
+            } else {
+              removeIds.push(block.id);
+            }
+          } else {
+            updates.push({ id: block.id, content: result.content });
+          }
+        }
+      }
+      if (block?.type !== "step" && Array.isArray(block?.children)) visit(block.children);
+    }
+  };
+  visit(step.children ?? []);
+  let changed = 0;
+  for (const update of updates) {
+    try {
+      editor.updateBlock(update.id, { content: update.content });
+      changed += 1;
+    } catch {
+      // 編集中に対象段落が消えた場合、その段落は変更件数に含めない
+    }
+  }
+  if (removeIds.length > 0) {
+    try {
+      editor.removeBlocks(removeIds);
+      changed += removeIds.length;
+    } catch {
+      // 編集中に対象段落が消えた場合、更新できた段落分だけを返す
+    }
+  }
+  return changed;
 }
 
 /**

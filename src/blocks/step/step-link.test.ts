@@ -4,7 +4,11 @@
 // 文書順に並べたもの。タイトルは Activity 名と同じ流儀（連番プレフィックス除去）。
 
 import { describe, it, expect } from "vitest";
-import { collectStepPredecessorCandidates } from "./view";
+import {
+  calculateCascadePosition,
+  collectStepPredecessorCandidates,
+  groupCrossNoteOutputs,
+} from "./view";
 
 const step = (id: string, title: string, children: any[] = []) => ({
   id,
@@ -27,6 +31,131 @@ describe("collectStepPredecessorCandidates", () => {
       { blockId: "s1", title: "前処理" },
       { blockId: "s3", title: "評価" },
     ]);
+  });
+
+  describe("calculateCascadePosition", () => {
+    it("右端付近では全列が画面内に収まる位置まで左へずらす", () => {
+      const position = calculateCascadePosition(
+        { top: 360, right: 1228, bottom: 382 },
+        { width: 1472, height: 826 },
+        3,
+      );
+
+      expect(position).toEqual({
+        top: 386,
+        left: 452,
+        width: 1012,
+        maxHeight: 362,
+      });
+    });
+
+    it("右側に十分な空きがあればトリガー直下の位置を維持する", () => {
+      const position = calculateCascadePosition(
+        { top: 120, right: 642, bottom: 142 },
+        { width: 1472, height: 826 },
+        3,
+      );
+
+      expect(position).toEqual({
+        top: 146,
+        left: 362,
+        width: 1012,
+        maxHeight: 362,
+      });
+    });
+
+    it("全列が収まらない幅では画面内にスクロール領域を作る", () => {
+      const position = calculateCascadePosition(
+        { top: 220, right: 740, bottom: 242 },
+        { width: 768, height: 700 },
+        3,
+      );
+
+      expect(position).toEqual({
+        top: 246,
+        left: 8,
+        width: 752,
+        maxHeight: 362,
+      });
+    });
+
+    it("上下どちらにも収まらない場合は画面内の高さに制限する", () => {
+      const position = calculateCascadePosition(
+        { top: 350, right: 740, bottom: 370 },
+        { width: 768, height: 700 },
+        1,
+      );
+
+      expect(position).toEqual({
+        top: 8,
+        left: 236,
+        width: 524,
+        maxHeight: 362,
+      });
+    });
+  });
+
+  describe("groupCrossNoteOutputs", () => {
+    it("ノート → step → output の階層へまとめる", () => {
+      const output = (
+        noteId: string,
+        noteTitle: string,
+        stepId: string,
+        stepName: string,
+        label: string,
+      ) => ({
+        noteId,
+        noteTitle,
+        sourceModifiedAt: "2026-08-21T00:00:00.000Z",
+        stepId,
+        stepName,
+        entityIdentity: `${stepId}:${label}`,
+        identityStable: true,
+        label,
+        outputIndex: 0,
+        outputCount: 1,
+      });
+
+      expect(
+        groupCrossNoteOutputs([
+          output("n1", "実験 A", "s1", "合成", "試料 A"),
+          output("n1", "実験 A", "s1", "合成", "試料 B"),
+          output("n1", "実験 A", "s2", "評価", "測定結果"),
+          output("n2", "実験 B", "s3", "焼成", "焼成体"),
+        ]),
+      ).toEqual([
+        {
+          noteId: "n1",
+          noteTitle: "実験 A",
+          steps: [
+            {
+              stepId: "s1",
+              stepName: "合成",
+              outputs: [
+                expect.objectContaining({ label: "試料 A" }),
+                expect.objectContaining({ label: "試料 B" }),
+              ],
+            },
+            {
+              stepId: "s2",
+              stepName: "評価",
+              outputs: [expect.objectContaining({ label: "測定結果" })],
+            },
+          ],
+        },
+        {
+          noteId: "n2",
+          noteTitle: "実験 B",
+          steps: [
+            {
+              stepId: "s3",
+              stepName: "焼成",
+              outputs: [expect.objectContaining({ label: "焼成体" })],
+            },
+          ],
+        },
+      ]);
+    });
   });
 
   it("タイトルの連番プレフィックスは除かれる（Activity 名と同じ見た目）", () => {

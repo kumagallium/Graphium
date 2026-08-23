@@ -9,16 +9,26 @@ import { describe, it, expect } from "vitest";
 import {
   addForkedProcess,
   buildProcessEntry,
+  ensureProcessIndex,
   collectStepInheritance,
   findStaleProcessFiles,
   collectParamKeysForStep,
   collectStepNames,
+  collectCrossNoteOutputs,
+  resolveCrossNoteOutput,
+  clearLatestProcessIndex,
+  requestLatestProcessIndexRefresh,
+  setLatestProcessIndexRefreshRequester,
+  setLatestProcessIndex,
+  subscribeLatestProcessIndex,
+  wouldCreateCrossNoteCycle,
   PROCESS_INDEX_VERSION,
   type ProcessIndex,
   type ProcessIndexEntry,
 } from "./process-index";
 import { splitAttrLabel } from "./activity-graph-adapter";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
+import type { StorageProvider } from "../../lib/storage/types";
 import { t } from "../../i18n";
 
 const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
@@ -73,6 +83,49 @@ describe("buildProcessEntry", () => {
     expect(entry!.summary.materialCount).toBe(1);
     expect(entry!.summary.toolCount).toBe(1);
     expect(entry!.summary.outputCount).toBe(1);
+  });
+
+  it("構造化 table output の rowIdentity をプロセス投影まで保持する", () => {
+    // pageToGeneratorInput はページのラベルを使うため、テスト用 doc へ明示的に設定する。
+    const withLabel = doc([
+      step("s1", "焼成", [{
+        id: "output-table",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[styled("名前")]] },
+            { cells: [[styled("焼成体", { tableRowIdentity: "row_product" })]] },
+          ],
+        },
+        children: [],
+      }]),
+    ], "テストノート");
+    withLabel.pages[0].labels = { "output-table": "output" };
+    const projected = buildProcessEntry("n1", withLabel, file(NOW));
+    expect(projected?.graph.entities).toContainEqual(expect.objectContaining({
+      label: "焼成体",
+      rowIdentity: "row_product",
+    }));
+  });
+
+  it("ノート横断リンクをプロセス一覧の外部由来表示へ引き継ぐ", () => {
+    const source = doc([step("s1", "観察")]);
+    source.pages[0].provLinks = [{
+      id: "link-1",
+      sourceBlockId: "s1",
+      targetBlockId: "source-step",
+      type: "informed_by",
+      layer: "prov",
+      createdBy: "human",
+      targetNoteId: "source-note",
+      targetEntityId: "source-output",
+      sourceEntityId: "current-input",
+    }];
+
+    const entry = buildProcessEntry("n1", source, file(NOW));
+
+    expect(entry?.crossNoteLinks).toEqual(source.pages[0].provLinks);
   });
 
   it("直線の手順は branching にならない", () => {
@@ -152,6 +205,70 @@ describe("addForkedProcess", () => {
   });
 });
 
+describe("wouldCreateCrossNoteCycle", () => {
+  const externalLink = (targetNoteId: string) => ({
+    id: `link-${targetNoteId}`,
+    sourceBlockId: "source-step",
+    targetBlockId: "target-step",
+    targetNoteId,
+    type: "informed_by" as const,
+    layer: "prov" as const,
+    createdBy: "human" as const,
+  });
+
+  it("参照先から現在ノートへ戻る依存があれば拒否する", () => {
+    const index: ProcessIndex = {
+      version: PROCESS_INDEX_VERSION,
+      updatedAt: NOW,
+      processes: [{
+        noteId: "note-b",
+        title: "B",
+        sourceModifiedAt: NOW,
+        projectedAt: NOW,
+        graph: { steps: [], entities: [], edges: [] },
+        crossNoteLinks: [externalLink("note-a")],
+        summary: {
+          stepCount: 0,
+          materialCount: 0,
+          toolCount: 0,
+          outputCount: 0,
+          branching: false,
+        },
+      }],
+    };
+
+    expect(
+      wouldCreateCrossNoteCycle(index, "note-a", "note-b", []),
+    ).toBe(true);
+  });
+
+  it("現在ノートへ戻らない別ノート参照は許可する", () => {
+    const index: ProcessIndex = {
+      version: PROCESS_INDEX_VERSION,
+      updatedAt: NOW,
+      processes: [{
+        noteId: "note-b",
+        title: "B",
+        sourceModifiedAt: NOW,
+        projectedAt: NOW,
+        graph: { steps: [], entities: [], edges: [] },
+        crossNoteLinks: [externalLink("note-c")],
+        summary: {
+          stepCount: 0,
+          materialCount: 0,
+          toolCount: 0,
+          outputCount: 0,
+          branching: false,
+        },
+      }],
+    };
+
+    expect(
+      wouldCreateCrossNoteCycle(index, "note-a", "note-b", []),
+    ).toBe(false);
+  });
+});
+
 describe("findStaleProcessFiles", () => {
   const index = (entries: Partial<ProcessIndexEntry>[]): ProcessIndex => ({
     version: PROCESS_INDEX_VERSION,
@@ -189,6 +306,332 @@ describe("findStaleProcessFiles", () => {
     const i = index([{ noteId: "n1", sourceModifiedAt: NOW }]);
     const files = [gfile("n1", "2026-08-20T00:00:00.500Z")];
     expect(findStaleProcessFiles(i, files)).toHaveLength(0);
+  });
+});
+
+describe("ensureProcessIndex の scope 失効", () => {
+  it("provider 切替後に完了した loadDoc を共有 cache へ入れない", async () => {
+    const files: GraphiumFile[] = [
+      {
+        id: "n1",
+        name: "n1.graphium.json",
+        modifiedTime: NOW,
+        createdTime: NOW,
+      },
+    ];
+    const cache = new Map<string, GraphiumDocument>();
+    let current = true;
+    let releaseLoad!: () => void;
+    let markLoadStarted!: () => void;
+    const loadGate = new Promise<void>((resolve) => {
+      releaseLoad = resolve;
+    });
+    const loadStarted = new Promise<void>((resolve) => {
+      markLoadStarted = resolve;
+    });
+    const operation = ensureProcessIndex(
+      files,
+      cache,
+      async () => {
+        markLoadStarted();
+        await loadGate;
+        return doc([step("s1", "合成")]);
+      },
+      null,
+      () => current,
+      {} as StorageProvider,
+    );
+
+    await loadStarted;
+    current = false;
+    releaseLoad();
+    await operation;
+
+    expect(cache.has("n1")).toBe(false);
+  });
+});
+
+describe("ノート横断 output 参照", () => {
+  const outputEntry = (
+    noteId: string,
+    outputs: Array<{
+      id: string;
+      entityId?: string;
+      label: string;
+      tableRef?: { blockId: string; rowName: string };
+      rowIdentity?: string;
+    }>,
+  ): ProcessIndexEntry =>
+    ({
+      noteId,
+      title: `${noteId} のノート`,
+      sourceModifiedAt: NOW,
+      graph: {
+        steps: [{ id: `${noteId}-step`, name: "合成", params: [] }],
+        entities: outputs.map((output) => ({
+          ...output,
+          kind: "output",
+          attrs: [],
+        })),
+        edges: outputs.map((output, i) => ({
+          id: `${noteId}-edge-${i}`,
+          kind: "generates",
+          source: `${noteId}-step`,
+          target: output.id,
+        })),
+      },
+    }) as any;
+  const index = (processes: ProcessIndexEntry[]): ProcessIndex => ({
+    version: PROCESS_INDEX_VERSION,
+    updatedAt: NOW,
+    processes,
+  });
+
+  it("generates 辺から同名 output を identity 付きで別々に列挙する", () => {
+    const i = index([
+      outputEntry("n1", [
+        { id: "inline_output_a", entityId: "output-a", label: "生成物" },
+        { id: "inline_output_b", entityId: "output-b", label: "生成物" },
+      ]),
+      outputEntry("n2", [{ id: "result_table_row", label: "生成物" }]),
+    ]);
+    expect(collectCrossNoteOutputs(i, { excludeNoteId: "n2" })).toEqual([
+      {
+        noteId: "n1",
+        noteTitle: "n1 のノート",
+        sourceModifiedAt: NOW,
+        stepId: "n1-step",
+        stepName: "合成",
+        entityIdentity: "output-a",
+        identityStable: true,
+        label: "生成物",
+        outputIndex: 0,
+        outputCount: 2,
+      },
+      {
+        noteId: "n1",
+        noteTitle: "n1 のノート",
+        sourceModifiedAt: NOW,
+        stepId: "n1-step",
+        stepName: "合成",
+        entityIdentity: "output-b",
+        identityStable: true,
+        label: "生成物",
+        outputIndex: 1,
+        outputCount: 2,
+      },
+    ]);
+  });
+
+  it("entityId が安定していればラベル変更後も同じ output を解決する", () => {
+    const i = index([
+      outputEntry("n1", [{ id: "inline_output_new", entityId: "output-a", label: "改名後" }]),
+    ]);
+    expect(
+      resolveCrossNoteOutput(i, {
+        noteId: "n1",
+        stepId: "n1-step",
+        entityIdentity: "output-a",
+        identityStable: true,
+        outputIndex: 0,
+        outputCount: 1,
+      })?.label,
+    ).toBe("改名後");
+  });
+
+  it("表 output は参照元が未更新なら identity と位置で解決する", () => {
+    const i = index([
+      outputEntry("n1", [
+        {
+          id: "result_table_a",
+          label: "A",
+          tableRef: { blockId: "table", rowName: "A" },
+        },
+        {
+          id: "result_table_b",
+          label: "B",
+          tableRef: { blockId: "table", rowName: "B" },
+        },
+      ]),
+    ]);
+    expect(
+      resolveCrossNoteOutput(i, {
+        noteId: "n1",
+        sourceModifiedAt: NOW,
+        stepId: "n1-step",
+        entityIdentity: "result_table_a",
+        identityStable: false,
+        outputIndex: 0,
+        outputCount: 2,
+      })?.label,
+    ).toBe("A");
+  });
+
+  it("表の行削除と追加で ID・位置・件数が再利用されても別行へ誤接続しない", () => {
+    const i = index([
+      outputEntry("n1", [
+        {
+          id: "result_table_same",
+          label: "同名",
+          tableRef: { blockId: "table", rowName: "同名" },
+        },
+      ]),
+    ]);
+    expect(
+      resolveCrossNoteOutput(i, {
+        noteId: "n1",
+        sourceModifiedAt: "2026-08-19T00:00:00.000Z",
+        stepId: "n1-step",
+        // 更新後も ID・位置・件数が同じだが、実体は削除後に追加された別行。
+        entityIdentity: "result_table_same",
+        identityStable: false,
+        outputIndex: 0,
+        outputCount: 2,
+      }),
+    ).toBeNull();
+  });
+
+  it("stable output は件数・位置が一致しても identity 不一致なら解決しない", () => {
+    const i = index([
+      outputEntry("n1", [
+        { id: "inline_output_new", entityId: "output-new", label: "別出力" },
+      ]),
+    ]);
+    expect(
+      resolveCrossNoteOutput(i, {
+        noteId: "n1",
+        stepId: "n1-step",
+        entityIdentity: "output-old",
+        identityStable: true,
+        outputIndex: 0,
+        outputCount: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("表 output は参照元の更新後に改名されると安全側で broken にする", () => {
+    const i = index([
+      outputEntry("n1", [
+        {
+          id: "result_table_renamed",
+          label: "改名後",
+          tableRef: { blockId: "table", rowName: "改名後" },
+        },
+        {
+          id: "result_table_added",
+          label: "追加",
+          tableRef: { blockId: "table", rowName: "追加" },
+        },
+      ]),
+    ]);
+    expect(
+      resolveCrossNoteOutput(i, {
+        noteId: "n1",
+        sourceModifiedAt: "2026-08-19T00:00:00.000Z",
+        stepId: "n1-step",
+        entityIdentity: "result_table_before-rename",
+        identityStable: false,
+        outputIndex: 0,
+        outputCount: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("永続 row identity の表 output は更新時刻・ノート名・行名の変更後も解決する", () => {
+    const i = index([
+      {
+        ...outputEntry("n1", [{
+          id: "result_table_rename",
+          label: "改名後の行",
+          tableRef: { blockId: "table", rowName: "改名後の行" },
+          rowIdentity: "row_stable",
+        }]),
+        title: "改名後のノート",
+        sourceModifiedAt: "2026-08-21T00:00:00.000Z",
+      },
+    ]);
+    expect(
+      resolveCrossNoteOutput(i, {
+        noteId: "n1",
+        sourceModifiedAt: NOW,
+        stepId: "n1-step",
+        entityIdentity: "row_stable",
+        identityStable: true,
+        outputIndex: 0,
+        outputCount: 1,
+      }),
+    ).toMatchObject({
+      noteTitle: "改名後のノート",
+      label: "改名後の行",
+      entityIdentity: "row_stable",
+      identityStable: true,
+    });
+  });
+
+  it("元行削除後に別 identity の行を追加した場合は broken にする", () => {
+    const i = index([
+      outputEntry("n1", [{
+        id: "result_table_new",
+        label: "追加された別行",
+        tableRef: { blockId: "table", rowName: "追加された別行" },
+        rowIdentity: "row_new",
+      }]),
+    ]);
+    expect(
+      resolveCrossNoteOutput(i, {
+        noteId: "n1",
+        stepId: "n1-step",
+        entityIdentity: "row_removed",
+        identityStable: true,
+        outputIndex: 0,
+        outputCount: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("stable output は別 output が追加されても exact identity で継続する", () => {
+    const i = index([
+      outputEntry("n1", [
+        { id: "inline_output_a", entityId: "output-a", label: "継続" },
+        { id: "inline_output_b", entityId: "output-b", label: "追加" },
+      ]),
+    ]);
+    expect(
+      resolveCrossNoteOutput(i, {
+        noteId: "n1",
+        stepId: "n1-step",
+        entityIdentity: "output-a",
+        identityStable: true,
+        outputIndex: 0,
+        outputCount: 1,
+      })?.label,
+    ).toBe("継続");
+  });
+
+  it("latest index の set / clear を購読先へ通知する", () => {
+    let notified = 0;
+    const unsubscribe = subscribeLatestProcessIndex(() => {
+      notified += 1;
+    });
+
+    const i = index([]);
+    setLatestProcessIndex(i);
+    clearLatestProcessIndex();
+    unsubscribe();
+    setLatestProcessIndex(null);
+    expect(notified).toBe(2);
+  });
+
+  it("step ピッカーから登録済みの遅延投影を要求できる", () => {
+    let requested = 0;
+    setLatestProcessIndexRefreshRequester(() => {
+      requested += 1;
+    });
+    requestLatestProcessIndexRefresh();
+    expect(requested).toBe(1);
+    setLatestProcessIndexRefreshRequester(null);
+    requestLatestProcessIndexRefresh();
+    expect(requested).toBe(1);
   });
 });
 

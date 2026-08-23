@@ -46,6 +46,22 @@ export type BlockLink = {
   targetPageId?: string;
   /** リンク先ノートの Google Drive ファイル ID（ノート間参照用） */
   targetNoteId?: string;
+  /** 参照元ノートにある具体的な output の identity */
+  targetEntityId?: string;
+  /** 選択時点での、参照元 step 内 output 順（0 始まり） */
+  targetEntityIndex?: number;
+  /** 選択時点での、参照元 step 内 output 件数 */
+  targetEntityCount?: number;
+  /** false の場合、identity は表の行位置由来で安定しない */
+  targetEntityStable?: boolean;
+  /** 参照元を投影した時点の更新日時。不安定な表行 identity の再利用防止に使う */
+  targetSourceModifiedAt?: string;
+  /** 現在ノート側に作った material span の entityId */
+  sourceEntityId?: string;
+  /** 投影未読・リンク切れでも表示するためのスナップショット */
+  targetEntityLabel?: string;
+  targetNoteTitle?: string;
+  targetStepTitle?: string;
 };
 
 import { t } from "../../i18n";

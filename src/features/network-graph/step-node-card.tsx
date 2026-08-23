@@ -8,20 +8,21 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
-import { FileText, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ExternalLink, FileText, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t } from "../../i18n";
-import type { ActivityNode } from "./activity-graph-adapter";
+import type { ActivityNode, FlowStep } from "./activity-graph-adapter";
 import { KIND_PALETTE, selectionRing } from "./flow-palette";
 
 export type StepNodeData = {
   /** F 案では FlowStep（id/name/params）を渡す。旧 ActivityNode も型互換
    *  （inputs/outputs はもう表示しない — Entity は独立ノードになった） */
-  activity: Pick<ActivityNode, "id" | "name" | "params"> &
+  activity: Pick<FlowStep, "id" | "name" | "params" | "externalOrigin"> &
     Partial<Pick<ActivityNode, "inputs" | "outputs">>;
   onRename?: (blockId: string, title: string) => void;
   onDelete?: (blockId: string) => void;
   onJump?: (blockId: string) => void;
+  onOpenExternalNote?: (noteId: string) => void;
   /** 削除確認に出す「中身のブロック数」。押した瞬間に評価する（stale 回避） */
   getContentCount?: (blockId: string) => number;
   /**
@@ -67,8 +68,10 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
     onRename,
     onDelete,
     onJump,
+    onOpenExternalNote,
     getContentCount,
   } = data;
+  const external = activity.externalOrigin;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(activity.name);
   const [confirmCount, setConfirmCount] = useState<number | null>(null);
@@ -123,12 +126,13 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   return (
     <div
       ref={cardRef}
+      data-test={external ? "external-process-node" : undefined}
       style={{
         minWidth: 180,
         maxWidth: 240,
         borderRadius: 8,
         background: "var(--color-card)",
-        border: `1.5px solid ${ACTIVITY_BLUE}`,
+        border: `1.5px ${external ? "dashed" : "solid"} ${ACTIVITY_BLUE}`,
         // 選択は枠を太くせずリングで示す。太さを変えるとノードの実寸が変わり、
         // React Flow が測り直してレイアウトが動く
         boxShadow: selected ? selectionRing(ACTIVITY_BLUE) : "var(--shadow-1)",
@@ -155,6 +159,13 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
             background: ACTIVITY_BLUE,
           }}
         />
+        {external && (
+          <ExternalLink
+            size={11}
+            aria-label={t("activityGraph.externalProcess")}
+            style={{ flexShrink: 0, color: ACTIVITY_TEXT }}
+          />
+        )}
         {editing ? (
           <input
             ref={inputRef}
@@ -248,6 +259,51 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         )}
       </div>
 
+      {external && (
+        <button
+          type="button"
+          className="nodrag"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenExternalNote?.(external.noteId);
+          }}
+          aria-label={t("activityGraph.openExternalProcess", {
+            note: external.noteTitle,
+          })}
+          title={t("activityGraph.openExternalProcess", {
+            note: external.noteTitle,
+          })}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            width: "100%",
+            padding: "4px 10px 6px",
+            border: "none",
+            background: "transparent",
+            color: external.broken
+              ? "var(--color-error)"
+              : "var(--color-text-secondary)",
+            cursor: "pointer",
+            fontSize: 10,
+            textAlign: "left",
+          }}
+        >
+          <ExternalLink size={11} style={{ flexShrink: 0 }} />
+          <span
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {external.noteTitle}
+            {external.broken ? ` — ${t("step.brokenLink")}` : ""}
+          </span>
+        </button>
+      )}
+
       {/* 削除確認（中身がある step は 1 クリックで消さない） */}
       {selected && confirmCount !== null && (
         <div className="nodrag" style={{ padding: "0 8px 6px 10px" }}>
@@ -320,19 +376,22 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
       )}
 
       {/* 上=入力（受け側・白抜き）、下=出力（掴んで接続・青塗り） */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{
-          width: 9,
-          height: 9,
-          background: "var(--color-card)",
-          border: `2px solid ${ACTIVITY_BLUE}`,
-        }}
-      />
+      {!external && (
+        <Handle
+          type="target"
+          position={Position.Top}
+          style={{
+            width: 9,
+            height: 9,
+            background: "var(--color-card)",
+            border: `2px solid ${ACTIVITY_BLUE}`,
+          }}
+        />
+      )}
       <Handle
         type="source"
         position={Position.Bottom}
+        isConnectable={!external}
         style={{
           width: 11,
           height: 11,

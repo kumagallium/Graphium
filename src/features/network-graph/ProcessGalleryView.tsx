@@ -21,6 +21,7 @@ import { GitBranch, GitFork, ArrowRight, CornerDownRight, ExternalLink } from "l
 import { useT } from "../../i18n";
 import type { ProcessIndex, ProcessIndexEntry } from "./process-index";
 import { StepFlowView } from "./step-flow-view";
+import { addCrossNoteOriginsToFlowGraph } from "./cross-note-flow";
 
 export type ProcessGalleryViewProps = {
   processIndex: ProcessIndex | null;
@@ -107,6 +108,17 @@ export function ProcessGalleryView({
   // effect で選択 state を書き戻さない — 絞り込みのたびに選択が動いて読めなくなる。
   const selected =
     filtered.find((entry) => entry.noteId === selectedId) ?? filtered[0] ?? null;
+  const selectedGraph = useMemo(
+    () =>
+      selected
+        ? addCrossNoteOriginsToFlowGraph(
+            selected.graph,
+            selected.crossNoteLinks ?? [],
+            processIndex,
+          )
+        : null,
+    [processIndex, selected],
+  );
 
   const handleFork = async () => {
     if (!selected || forkingNoteId) return;
@@ -209,7 +221,12 @@ export function ProcessGalleryView({
                   てから ELK を流す」作りなので、同じインスタンスに別プロセスの
                   graph を渡すと新旧のノードが混ざって数が合わず、レイアウトが
                   走らないまま全ノードが原点に重なる（実際に選択を切り替えて再現）。 */}
-              <StepFlowView key={selected.noteId} graph={selected.graph} variant="preview" />
+              <StepFlowView
+                key={`${selected.noteId}:${processIndex?.updatedAt ?? ""}`}
+                graph={selectedGraph ?? selected.graph}
+                variant="preview"
+                onOpenExternalNote={onNavigateNote}
+              />
             </div>
           </>
         ) : (

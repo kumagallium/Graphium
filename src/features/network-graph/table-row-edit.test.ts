@@ -47,6 +47,18 @@ describe("table-row-edit", () => {
     ]);
   });
 
+  it("renameTableRow は先頭セルの tableRowIdentity を保持する", () => {
+    const ed = makeEditor();
+    const first = (ed.document[0].children[0] as any).content.rows[1].cells[0].content[0];
+    first.styles = { tableRowIdentity: "row_batch_a", italic: "true" };
+
+    expect(renameTableRow(ed, "tbl-1", "バッチA", "改名後")).toBe(true);
+    expect(ed.updates[0].content.rows[1].cells[0].content[0].styles).toEqual({
+      tableRowIdentity: "row_batch_a",
+      italic: "true",
+    });
+  });
+
   it("setTableCell はヘッダの列名でセルを特定して書き換える", () => {
     const ed = makeEditor();
     expect(setTableCell(ed, "tbl-1", "バッチB", "メモ", "予備")).toBe(true);

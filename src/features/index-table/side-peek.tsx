@@ -73,6 +73,10 @@ import {
 } from "@features/block-lifecycle/clipboard";
 import { regenInlineEntitiesInBlocks } from "@features/inline-label/regen-on-paste";
 import {
+  normalizeTableRowIdentities,
+  syncTableRowIdentitiesToEditor,
+} from "../../lib/table-row-identity";
+import {
   getMemoSlashMenuItem,
   setMemoPickerCallback,
   MemoPickerModal,
@@ -124,6 +128,7 @@ import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
+import { setEditorSidePeekCallback } from "./context";
 
 type SidePeekProps = {
   noteId: string;
@@ -228,7 +233,7 @@ export function SidePeek(props: SidePeekProps) {
   return (
     <ProvLabelsEnabledProvider enabled={isProvLabelsEnabled()}>
     <LabelStoreProvider>
-      <LinkStoreProvider>
+      <LinkStoreProvider noteId={props.noteId}>
         <BlockAlignmentProvider>
           <TableMetaStoreProvider>
             <SidePeekInner {...props} />
@@ -331,6 +336,8 @@ function SidePeekInner({
   // onSaved は毎レンダリング新しい関数になり得るため ref 経由で参照する
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+  const onOpenNoteInPeekRef = useRef(onOpenNoteInPeek);
+  onOpenNoteInPeekRef.current = onOpenNoteInPeek;
   // メインエディタ側のタイトルリネームを、このピークで開いているノートの本文へ
   // ライブ反映する命令口を登録する。ファイル直書きだとピークの次のオートセーブが
   // 旧内容で上書きして伝播が巻き戻るため、エディタ経由で書き換えて通常のオート
@@ -784,6 +791,12 @@ function SidePeekInner({
     setCitePickerCallback(sidePeekEditor, setCitePickerKind);
     setSharedCitePickerCallback(sidePeekEditor, () => setSharedCitePickerOpen(true));
     setChartAssetSourceCallback(sidePeekEditor, (onDone) => setChartAssetRequest({ onDone }));
+    setEditorSidePeekCallback(sidePeekEditor, (targetNoteId) => {
+      const callback = onOpenNoteInPeekRef.current;
+      if (!callback) return false;
+      callback(targetNoteId);
+      return true;
+    });
     return () => {
       setMediaPickerCallback(sidePeekEditor, null);
       setMemoPickerCallback(sidePeekEditor, null);
@@ -791,6 +804,7 @@ function SidePeekInner({
       setCitePickerCallback(sidePeekEditor, null);
       setSharedCitePickerCallback(sidePeekEditor, null);
       setChartAssetSourceCallback(sidePeekEditor, null);
+      setEditorSidePeekCallback(sidePeekEditor, null);
     };
   }, [sidePeekEditor]);
 
@@ -1013,7 +1027,7 @@ function SidePeekInner({
     const editor = editorRef.current;
     if (!editor || !docRef.current) return;
 
-    const currentBlocks = editor.document;
+    const currentBlocks = syncTableRowIdentitiesToEditor(editor);
     // ページ差分フィールド（labels / provLinks / knowledgeLinks / blockAlignments）は
     // メインエディタ（note-app.tsx buildDocument）と同じ組み立てを共有モジュールに集約。
     // リンクは restoreLinks 済みの linkStore を真実として layer 別に書き出す
@@ -1038,7 +1052,7 @@ function SidePeekInner({
     // SidePeek は歴史的に syncUsedIn / recordRevision を迂回する（=メタデータは
     // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
     // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
-    const updatedDoc: GraphiumDocument = {
+    const updatedDoc: GraphiumDocument = normalizeTableRowIdentities({
       ...docRef.current,
       ...(latestChats ? { chats: latestChats } : {}),
       pages: [
@@ -1053,7 +1067,7 @@ function SidePeekInner({
         },
       ],
       modifiedAt: new Date().toISOString(),
-    };
+    });
 
     setSaveStatus("saving");
     try {

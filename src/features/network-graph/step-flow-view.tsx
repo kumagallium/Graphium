@@ -80,6 +80,8 @@ export type StepFlowViewProps = {
   onDeleteActivity?: (blockId: string) => void;
   /** step カードの「本文へ」 */
   onJumpToBlock?: (blockId: string) => void;
+  /** 別ノート由来の step / input から参照元ノートを開く */
+  onOpenExternalNote?: (noteId: string) => void;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
   /** 共有行の「表に追加」: その step の kind 表に行を書く（表が無ければ作る） */
@@ -150,7 +152,20 @@ const EDGE_STYLES: Record<string, Partial<Edge>> = {
     style: { stroke: ACTIVITY_BLUE, strokeWidth: 1.5, strokeDasharray: "6 4" },
     markerEnd: { type: MarkerType.ArrowClosed, color: ACTIVITY_BLUE, width: 16, height: 16 },
   },
+  external: {
+    style: { stroke: OUTPUT_TERRACOTTA, strokeWidth: 1.5, strokeDasharray: "5 4" },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: OUTPUT_TERRACOTTA,
+      width: 16,
+      height: 16,
+    },
+  },
 };
+
+function isEditableStep(graph: FlowGraphData, id: string): boolean {
+  return graph.steps.some((step) => step.id === id && !step.externalOrigin);
+}
 
 function StepFlowCanvas({
   graph,
@@ -162,6 +177,7 @@ function StepFlowCanvas({
   onRenameActivity,
   onDeleteActivity,
   onJumpToBlock,
+  onOpenExternalNote,
   getStepContentCount,
   onAddEntity,
   onRenameEntity,
@@ -255,10 +271,11 @@ function StepFlowCanvas({
         position: prevPos.get(s.id) ?? { x: 0, y: 0 },
         data: {
           activity: s,
-          onRename: onRenameActivity,
-          onDelete: onDeleteActivity,
-          onJump: onJumpToBlock,
-          getContentCount: getStepContentCount,
+          onRename: s.externalOrigin ? undefined : onRenameActivity,
+          onDelete: s.externalOrigin ? undefined : onDeleteActivity,
+          onJump: s.externalOrigin ? undefined : onJumpToBlock,
+          onOpenExternalNote,
+          getContentCount: s.externalOrigin ? undefined : getStepContentCount,
           distinguishers: distinguishers.get(s.id),
           showParams,
         },
@@ -275,6 +292,7 @@ function StepFlowCanvas({
           onRemoveEntity,
           onRenameTableRow,
           onRemoveTableRow,
+          onOpenExternalNote,
           showParams,
         },
         draggable: false,
@@ -294,6 +312,12 @@ function StepFlowCanvas({
               labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
               labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
             }
+          : e.kind === "external"
+            ? {
+                label: t("activityGraph.externalProcess"),
+                labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
+                labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
+              }
           : {}),
         data: { kind: e.kind, deletable: e.deletable ?? false },
       })),
@@ -308,6 +332,7 @@ function StepFlowCanvas({
     onRenameActivity,
     onDeleteActivity,
     onJumpToBlock,
+    onOpenExternalNote,
     getStepContentCount,
     onRenameEntity,
     onRemoveEntity,
@@ -392,13 +417,13 @@ function StepFlowCanvas({
       const g = graphRef.current;
       const sourceEntity = g.entities.find((e) => e.id === conn.source);
       const targetIsStep = g.steps.some((s) => s.id === conn.target);
-      if (!targetIsStep) return;
+      if (!targetIsStep || !isEditableStep(g, conn.target)) return;
       if (sourceEntity) {
         // Entity → step: その Entity を対象手順の入力にする（本文に同名 span 合成）
         onConnectEntityToStep?.(sourceEntity.id, conn.target);
         return;
       }
-      if (g.steps.some((s) => s.id === conn.source)) {
+      if (isEditableStep(g, conn.source)) {
         // step → step: 順序のみの依存（informed_by）
         const res = onConnectSteps?.(conn.source, conn.target);
         if (res && res.error === "cycle_detected") setCycleWarnAt(Date.now());
@@ -425,7 +450,8 @@ function StepFlowCanvas({
       if (!conn.source || !conn.target || conn.source === conn.target) return false;
       const g = graphRef.current;
       // 受け側は step のみ（entity への接続 = 生成関係はドキュメント側で書く）
-      if (!g.steps.some((s) => s.id === conn.target)) return false;
+      if (!isEditableStep(g, conn.target)) return false;
+      if (g.steps.some((step) => step.id === conn.source && step.externalOrigin)) return false;
       return !edges.some((e) => e.source === conn.source && e.target === conn.target);
     },
     [edges],
@@ -435,7 +461,7 @@ function StepFlowCanvas({
   const selection: FlowSelection = selectedId
     ? (() => {
         const step = graph.steps.find((s) => s.id === selectedId);
-        if (step) return { kind: "step" as const, step };
+        if (step && !step.externalOrigin) return { kind: "step" as const, step };
         const entity = graph.entities.find((e) => e.id === selectedId);
         return entity ? { kind: "entity" as const, entity } : null;
       })()

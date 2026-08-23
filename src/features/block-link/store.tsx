@@ -26,7 +26,23 @@ function generateLinkId() {
 
 export type AddLinkResult = { error: null; link: BlockLink } | { error: "cycle_detected"; link: null };
 
+type CrossNoteLinkPatch = Partial<
+  Pick<
+    BlockLink,
+    | "targetEntityId"
+    | "targetEntityIndex"
+    | "targetEntityCount"
+    | "targetEntityStable"
+    | "targetSourceModifiedAt"
+    | "targetEntityLabel"
+    | "targetNoteTitle"
+    | "targetStepTitle"
+  >
+>;
+
 export type LinkStore = {
+  /** このストアを所有するエディタのノート ID */
+  readonly noteId: string | null;
   links: BlockLink[];
   /** リンクを追加（PROV 層は循環検出あり） */
   addLink: (params: {
@@ -36,10 +52,21 @@ export type LinkStore = {
     createdBy: CreatedBy;
     targetPageId?: string;
     targetNoteId?: string;
+    targetEntityId?: string;
+    targetEntityIndex?: number;
+    targetEntityCount?: number;
+    targetEntityStable?: boolean;
+    targetSourceModifiedAt?: string;
+    sourceEntityId?: string;
+    targetEntityLabel?: string;
+    targetNoteTitle?: string;
+    targetStepTitle?: string;
     layer?: LinkLayer;
   }) => AddLinkResult;
   /** リンクを削除 */
   removeLink: (linkId: string) => void;
+  /** ノート横断参照の解決結果・スナップショットだけを更新 */
+  updateLink: (linkId: string, patch: CrossNoteLinkPatch) => void;
   /** 特定ブロックから出るリンク（正参照） */
   getOutgoing: (blockId: string) => BlockLink[];
   /** 特定ブロックへ来るリンク（逆参照） */
@@ -56,7 +83,13 @@ export type LinkStore = {
 
 const LinkStoreContext = createContext<LinkStore | null>(null);
 
-export function LinkStoreProvider({ children }: { children: ReactNode }) {
+export function LinkStoreProvider({
+  children,
+  noteId = null,
+}: {
+  children: ReactNode;
+  noteId?: string | null;
+}) {
   const [links, setLinks] = useState<BlockLink[]>([]);
 
   const addLink = useCallback(
@@ -67,12 +100,21 @@ export function LinkStoreProvider({ children }: { children: ReactNode }) {
       createdBy: CreatedBy;
       targetPageId?: string;
       targetNoteId?: string;
+      targetEntityId?: string;
+      targetEntityIndex?: number;
+      targetEntityCount?: number;
+      targetEntityStable?: boolean;
+      targetSourceModifiedAt?: string;
+      sourceEntityId?: string;
+      targetEntityLabel?: string;
+      targetNoteTitle?: string;
+      targetStepTitle?: string;
       layer?: LinkLayer;
     }): AddLinkResult => {
       const layer = params.layer ?? (isProvLink(params.type) ? "prov" : "knowledge");
 
       // PROV 層は DAG 制約: 循環検出
-      if (layer === "prov") {
+      if (layer === "prov" && !params.targetNoteId) {
         const wouldCycle = detectCycle(links, params.sourceBlockId, params.targetBlockId);
         if (wouldCycle) {
           return { error: "cycle_detected", link: null };
@@ -88,6 +130,15 @@ export function LinkStoreProvider({ children }: { children: ReactNode }) {
         createdBy: params.createdBy,
         targetPageId: params.targetPageId,
         targetNoteId: params.targetNoteId,
+        targetEntityId: params.targetEntityId,
+        targetEntityIndex: params.targetEntityIndex,
+        targetEntityCount: params.targetEntityCount,
+        targetEntityStable: params.targetEntityStable,
+        targetSourceModifiedAt: params.targetSourceModifiedAt,
+        sourceEntityId: params.sourceEntityId,
+        targetEntityLabel: params.targetEntityLabel,
+        targetNoteTitle: params.targetNoteTitle,
+        targetStepTitle: params.targetStepTitle,
       };
       setLinks((prev) => [...prev, link]);
       return { error: null, link };
@@ -97,6 +148,12 @@ export function LinkStoreProvider({ children }: { children: ReactNode }) {
 
   const removeLink = useCallback((linkId: string) => {
     setLinks((prev) => prev.filter((l) => l.id !== linkId));
+  }, []);
+
+  const updateLink = useCallback((linkId: string, patch: CrossNoteLinkPatch) => {
+    setLinks((prev) =>
+      prev.map((link) => (link.id === linkId ? { ...link, ...patch } : link)),
+    );
   }, []);
 
   const getOutgoing = useCallback(
@@ -143,7 +200,19 @@ export function LinkStoreProvider({ children }: { children: ReactNode }) {
 
   return (
     <LinkStoreContext.Provider
-      value={{ links, addLink, removeLink, getOutgoing, getIncoming, getAllLinks, restoreLinks, transferLinks, removeLinksForBlock }}
+      value={{
+        noteId,
+        links,
+        addLink,
+        removeLink,
+        updateLink,
+        getOutgoing,
+        getIncoming,
+        getAllLinks,
+        restoreLinks,
+        transferLinks,
+        removeLinksForBlock,
+      }}
     >
       {children}
     </LinkStoreContext.Provider>
@@ -166,7 +235,7 @@ function detectCycle(
   targetBlockId: string,
 ): boolean {
   // target から BFS で source に到達可能か？
-  const provLinks = links.filter((l) => l.layer === "prov");
+  const provLinks = links.filter((l) => l.layer === "prov" && !l.targetNoteId);
   const adjacency = new Map<string, string[]>();
   for (const link of provLinks) {
     const targets = adjacency.get(link.sourceBlockId) ?? [];

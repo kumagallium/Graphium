@@ -634,7 +634,7 @@ describe("Phase 3: テーブル構造化属性", () => {
           type: "tableContent",
           rows: [
             { cells: [[{ type: "text", text: "項目" }], [{ type: "text", text: "値" }]] },
-            { cells: [[{ type: "text", text: "密度" }], [{ type: "text", text: "8.96 g/cm³" }]] },
+            { cells: [[{ type: "text", text: "密度", styles: { tableRowIdentity: "row_density" } }], [{ type: "text", text: "8.96 g/cm³" }]] },
             { cells: [[{ type: "text", text: "硬度" }], [{ type: "text", text: "HV 120" }]] },
           ],
         },
@@ -652,6 +652,7 @@ describe("Phase 3: テーブル構造化属性", () => {
     expect(densityEntity).toBeDefined();
     expect(densityEntity!["rdfs:label"]).toBe("密度");
     expect(densityEntity!["graphium:値"]).toBe("8.96 g/cm³");
+    expect(densityEntity!["graphium:tableRowId"]).toBe("row_density");
 
     // wasGeneratedBy 関係
     const relations = getRelations(doc);
@@ -841,6 +842,26 @@ describe("parseStructuredTable", () => {
     };
     expect(parseStructuredTable(block)).toBeNull();
   });
+
+  it("先頭セルの tableRowIdentity を構造化行へ転写する", () => {
+    const block = {
+      type: "table",
+      content: {
+        rows: [
+          { cells: [[{ type: "text", text: "名前" }]] },
+          {
+            cells: [{
+              type: "tableCell",
+              content: [{ type: "text", text: "Cu", styles: { tableRowIdentity: "row_cu" } }],
+            }],
+          },
+        ],
+      },
+    };
+    expect(parseStructuredTable(block)?.rows).toEqual([
+      { name: "Cu", attrs: {}, rowIdentity: "row_cu" },
+    ]);
+  });
 });
 
 // ──────────────────────────────────
@@ -915,6 +936,33 @@ describe("孤立リンク（G-ORPHAN-LINK）", () => {
     const warnings = getWarnings(doc);
 
     expect(warnings.some((w: any) => w.type === "broken-link")).toBe(true);
+  });
+
+  it("外部ノートの target block はローカルに無くても broken-link にしない", () => {
+    const externalLink = {
+      id: "external-link",
+      sourceBlockId: "h2-fry",
+      targetBlockId: "source-step",
+      targetNoteId: "source-note",
+      targetEntityId: "output-1",
+      type: "informed_by" as const,
+      layer: "prov" as const,
+      createdBy: "human" as const,
+    };
+    const doc = generateProvDocument({
+      blocks: curryBlocks,
+      labels: curryLabels,
+      links: [externalLink],
+    });
+
+    expect(getWarnings(doc).some((w: any) => w.type === "broken-link")).toBe(false);
+    expect(
+      getRelations(doc).some(
+        (relation) =>
+          relation.from === "activity_h2-fry" &&
+          relation.to === "activity_source-step",
+      ),
+    ).toBe(false);
   });
 
   it("ソースブロックが削除済みのリンクもスキップされる", () => {

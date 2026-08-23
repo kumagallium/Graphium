@@ -343,6 +343,26 @@ describe("テーブル行の tableRef", () => {
     expect(row?.tableRef).toEqual({ blockId: "tbl-1", rowName: "バッチA" });
   });
 
+  it("PROV の tableRowId を FlowEntity へ転写する", () => {
+    const g = provDocToFlowGraph(
+      doc([
+        { "@id": "activity_s1", "@type": "prov:Activity", "rdfs:label": "焼成", "graphium:blockId": "s1" },
+        {
+          "@id": "result_tbl-1_バッチA",
+          "@type": "prov:Entity",
+          "rdfs:label": "バッチA",
+          "graphium:blockId": "tbl-1",
+          "graphium:tableRowId": "row_batch_a",
+          "prov:wasGeneratedBy": [{ "@id": "activity_s1" }],
+        },
+      ]),
+    );
+    expect(g.entities[0]).toMatchObject({
+      rowIdentity: "row_batch_a",
+      tableRef: { blockId: "tbl-1", rowName: "バッチA" },
+    });
+  });
+
   it("output ラベルの段落（result_<blockId>）は表の行ではないので tableRef を持たない", () => {
     const g = provDocToFlowGraph(
       doc([

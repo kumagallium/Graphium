@@ -13,6 +13,7 @@ import { isProvLink } from "../block-link/link-types";
 import { createWarning, type ProvWarning } from "./errors";
 import { buildDocumentProvenanceBundle, type DocumentProvenanceBundle } from "../document-provenance/prov-output";
 import { t } from "../../i18n";
+import { extractTableCellText } from "../../lib/table-row-identity";
 
 // ── PROV-JSON-LD の型定義（Phase 3: 埋め込み形式） ──
 
@@ -73,6 +74,8 @@ type InternalNode = {
   mediaType?: string;
   /** メディア URL */
   mediaUrl?: string;
+  /** 構造化テーブル行の永続 identity */
+  tableRowIdentity?: string;
 };
 
 type InternalRelation = {
@@ -106,6 +109,7 @@ export type GeneratorInput = {
 type StructuredTableRow = {
   name: string;
   attrs: Record<string, string>;
+  rowIdentity?: string;
 };
 
 type StructuredTable = {
@@ -136,7 +140,8 @@ export function parseStructuredTable(block: any): StructuredTable | null {
         attrs[headers[j]] = value;
       }
     }
-    dataRows.push({ name, attrs });
+    const rowIdentity = extractTableRowIdentity(cells[0]);
+    dataRows.push(rowIdentity ? { name, attrs, rowIdentity } : { name, attrs });
   }
 
   return { rows: dataRows };
@@ -252,11 +257,15 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const sourceExists = blocks.some((b: any) => findBlockById(b, link.sourceBlockId));
     const targetExists = blocks.some((b: any) => findBlockById(b, link.targetBlockId));
 
-    if (!sourceExists || !targetExists) {
+    if (!sourceExists || (!link.targetNoteId && !targetExists)) {
       warnings.push(createWarning("broken-link", link.sourceBlockId,
         `リンク ${link.type} の${!sourceExists ? "元" : "先"} ${!sourceExists ? link.sourceBlockId : link.targetBlockId} が存在しません — スキップ`));
       continue;
     }
+
+    // ノート横断 informed_by は参照元 Activity をこのローカル投影へ合成しない。
+    // 現在側に作った material span の used は通常の inline 投影で残る。
+    if (link.targetNoteId) continue;
 
     validLinks.push(link);
     if (link.type === "informed_by") {
@@ -398,6 +407,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               blockId: lb.block.id,
               params: Object.keys(row.attrs).length > 0 ? row.attrs : undefined,
               entitySubtype: subtype,
+              tableRowIdentity: row.rowIdentity,
             });
             for (const actId of getActivityIdsForScope(lb.block.id)) {
               relations.push({ "@type": "prov:used", from: actId, to: entityId });
@@ -463,6 +473,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               label: row.name,
               blockId: lb.block.id,
               params: Object.keys(row.attrs).length > 0 ? row.attrs : undefined,
+              tableRowIdentity: row.rowIdentity,
             });
             for (const actId of getActivityIdsForScope(lb.block.id)) {
               relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
@@ -1325,6 +1336,9 @@ function buildProvJsonLd(
     if (n.entitySubtype) {
       jsonLdNode["graphium:entityType"] = n.entitySubtype;
     }
+    if (n.tableRowIdentity) {
+      jsonLdNode["graphium:tableRowId"] = n.tableRowIdentity;
+    }
     // メディア Entity のプロパティ
     if (n.mediaType) {
       jsonLdNode["graphium:mediaType"] = n.mediaType;
@@ -1451,15 +1465,21 @@ function getBlockText(block: any): string {
 
 /** テーブルセルからテキストを抽出 */
 function extractCellText(cell: any): string {
-  // BlockNote エディタ出力形式: { type: "tableCell", content: [...] }
-  if (cell && !Array.isArray(cell) && cell.type === "tableCell") {
-    return extractInlineText(cell.content ?? []);
+  return extractTableCellText(cell);
+}
+
+/** テーブル先頭セルの text inline に保存された行 identity を読む */
+function extractTableRowIdentity(cell: any): string | undefined {
+  const content = cell && !Array.isArray(cell) && cell.type === "tableCell"
+    ? cell.content
+    : Array.isArray(cell)
+      ? cell
+      : [];
+  for (const inline of content ?? []) {
+    const identity = inline?.styles?.tableRowIdentity;
+    if (typeof identity === "string" && identity) return identity;
   }
-  // テスト用・旧形式: [{ type: "text", text: "..." }]
-  if (Array.isArray(cell)) {
-    return extractInlineText(cell);
-  }
-  return "";
+  return undefined;
 }
 
 /** InlineContent 配列からテキストを結合（リンク・画像の URL も抽出） */

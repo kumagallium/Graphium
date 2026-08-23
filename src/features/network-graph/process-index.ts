@@ -19,16 +19,23 @@
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import { generateProvDocument } from "../prov-generator/generator";
 import { pageToGeneratorInput } from "../prov-generator/page-input";
-import { provDocToFlowGraph, type FlowGraphData } from "./activity-graph-adapter";
+import {
+  provDocToFlowGraph,
+  type FlowEntity,
+  type FlowGraphData,
+} from "./activity-graph-adapter";
 import { t } from "../../i18n";
 import { readAppDataFile, writeAppDataFile } from "../../lib/storage/app-data-file";
+import { getActiveProvider } from "../../lib/storage/registry";
+import type { StorageProvider } from "../../lib/storage/types";
+import { isProvLink, type BlockLink } from "../block-link/link-types";
 
 /**
  * 投影ロジック（generator + adapter）の版。
  * 出力の形が変わったら上げる → 読み込み時に全再投影される。
  * note-index の INDEX_SCHEMA_VERSION とは独立に上げてよい（別ファイルにした理由）。
  */
-export const PROCESS_INDEX_VERSION = 1;
+export const PROCESS_INDEX_VERSION = 3;
 
 const APP_DATA_KEY = "process-index";
 const DRIVE_FILE_NAME = ".graphium-process-index.json";
@@ -69,6 +76,8 @@ export type ProcessIndexEntry = {
   projectedAt: string;
   /** P-1 の産物。ただし URL は落としてある（P-2） */
   graph: FlowGraphData;
+  /** 表示時に参照元プロセスを1段だけ重ねるためのノート横断リンク */
+  crossNoteLinks?: BlockLink[];
   summary: ProcessSummary;
   forkedFrom?: ProcessForkOrigin;
 };
@@ -99,6 +108,21 @@ function stripVolatileFields(graph: FlowGraphData): FlowGraphData {
     edges: graph.edges,
     entities: graph.entities.map(({ mediaUrl: _url, mediaType: _type, ...rest }) => rest),
   };
+}
+
+function isCrossNoteLink(value: unknown): value is BlockLink {
+  if (!value || typeof value !== "object") return false;
+  const link = value as Partial<BlockLink>;
+  return (
+    typeof link.id === "string" &&
+    typeof link.sourceBlockId === "string" &&
+    typeof link.targetBlockId === "string" &&
+    typeof link.type === "string" &&
+    isProvLink(link.type) &&
+    link.layer === "prov" &&
+    (link.createdBy === "human" || link.createdBy === "ai" || link.createdBy === "system") &&
+    typeof link.targetNoteId === "string"
+  );
 }
 
 /**
@@ -183,12 +207,16 @@ export function buildProcessEntry(
   if (merged.steps.length === 0) return null;
 
   const graph = stripVolatileFields(merged);
+  const crossNoteLinks = doc.pages.flatMap((page) =>
+    (Array.isArray(page.provLinks) ? page.provLinks : []).filter(isCrossNoteLink),
+  );
   return {
     noteId,
     title: doc.title || "",
     sourceModifiedAt: file.modifiedTime,
     projectedAt: new Date().toISOString(),
     graph,
+    crossNoteLinks,
     summary: summarize(graph),
     // フォーク元は投影で作られる情報ではないので、既存エントリから引き継ぐ
     ...(prior?.forkedFrom ? { forkedFrom: prior.forkedFrom } : {}),
@@ -253,14 +281,21 @@ export function addForkedProcess(
 //
 // step ブロックのパラメータピッカーは BlockNote の render の中から読む。
 // Provider を増やすと SidePeek / Storybook で張り忘れが起きるので、
-// media-index の latestIndex と同じくモジュール変数で配る（読む側は購読しない
-// — ボタンを押した瞬間の内容が読めれば足りる）。
+// media-index の latestIndex と同じくモジュール変数で配る。ノート横断 output は
+// 改名追随が必要なので、step ブロックから useSyncExternalStore で購読できるようにする。
 
 let latestProcessIndex: ProcessIndex | null = null;
+const latestProcessIndexListeners = new Set<() => void>();
+let latestProcessIndexRefreshRequester: (() => void) | null = null;
+
+function notifyLatestProcessIndexListeners(): void {
+  for (const listener of latestProcessIndexListeners) listener();
+}
 
 /** 一覧の投影結果をアプリ全体へ配る */
 export function setLatestProcessIndex(index: ProcessIndex | null): void {
   latestProcessIndex = index;
+  notifyLatestProcessIndexListeners();
 }
 
 /** 直近の投影結果。まだ一度も投影・読み込みをしていなければ null */
@@ -268,19 +303,217 @@ export function getLatestProcessIndex(): ProcessIndex | null {
   return latestProcessIndex;
 }
 
+/** step ブロックから最新投影を購読する（useSyncExternalStore 用） */
+export function subscribeLatestProcessIndex(listener: () => void): () => void {
+  latestProcessIndexListeners.add(listener);
+  return () => latestProcessIndexListeners.delete(listener);
+}
+
+/**
+ * step ピッカーなど、プロセス一覧以外の入口から投影の最新化を要求する。
+ * 実際の読み書きはファイル一覧と doc cache を持つ useFileManager が登録する。
+ */
+export function setLatestProcessIndexRefreshRequester(requester: (() => void) | null): void {
+  latestProcessIndexRefreshRequester = requester;
+}
+
+export function requestLatestProcessIndexRefresh(): void {
+  latestProcessIndexRefreshRequester?.();
+}
+
 /** サインアウト時に捨てる */
 export function clearLatestProcessIndex(): void {
-  latestProcessIndex = null;
+  setLatestProcessIndex(null);
+}
+
+// ── ノート横断 output 参照 ──
+
+/** ある step が生成した具体的な output 1 件 */
+export type CrossNoteOutputOccurrence = {
+  noteId: string;
+  noteTitle: string;
+  sourceModifiedAt: string;
+  stepId: string;
+  stepName: string;
+  /** table row identity、entityId、PROV ノード id の順で採用する */
+  entityIdentity: string;
+  /** false は永続 identity を持たない legacy 構造化テーブル行 */
+  identityStable: boolean;
+  label: string;
+  /** 同一 step 内の output 順（0 始まり） */
+  outputIndex: number;
+  outputCount: number;
+};
+
+export type CrossNoteOutputRef = {
+  noteId: string;
+  sourceModifiedAt?: string;
+  stepId: string;
+  entityIdentity: string;
+  identityStable?: boolean;
+  outputIndex?: number;
+  outputCount?: number;
+};
+
+function outputIdentity(entity: FlowEntity): string {
+  return entity.rowIdentity ?? entity.entityId ?? entity.id;
+}
+
+/**
+ * process index の generates 辺から、具体的な output occurrence を列挙する。
+ * 同名でも identity と step 内位置を保持するため別候補のまま返す。
+ */
+export function collectCrossNoteOutputs(
+  index: ProcessIndex | null,
+  options: { excludeNoteId?: string | null } = {},
+): CrossNoteOutputOccurrence[] {
+  if (!index) return [];
+  const occurrences: CrossNoteOutputOccurrence[] = [];
+
+  for (const process of index.processes) {
+    if (options.excludeNoteId && process.noteId === options.excludeNoteId) continue;
+    const stepById = new Map(process.graph.steps.map((step) => [step.id, step]));
+    const entityById = new Map(process.graph.entities.map((entity) => [entity.id, entity]));
+    const outputIdsByStep = new Map<string, string[]>();
+
+    for (const edge of process.graph.edges) {
+      if (edge.kind !== "generates" || !stepById.has(edge.source)) continue;
+      const entity = entityById.get(edge.target);
+      if (!entity || entity.kind !== "output") continue;
+      const ids = outputIdsByStep.get(edge.source) ?? [];
+      if (!ids.includes(edge.target)) ids.push(edge.target);
+      outputIdsByStep.set(edge.source, ids);
+    }
+
+    for (const step of process.graph.steps) {
+      const outputIds = outputIdsByStep.get(step.id) ?? [];
+      const outputCount = outputIds.length;
+      outputIds.forEach((id, outputIndex) => {
+        const entity = entityById.get(id);
+        if (!entity) return;
+        occurrences.push({
+          noteId: process.noteId,
+          noteTitle: process.title,
+          sourceModifiedAt: process.sourceModifiedAt,
+          stepId: step.id,
+          stepName: step.name,
+          entityIdentity: outputIdentity(entity),
+          identityStable: !!entity.rowIdentity || !entity.tableRef,
+          label: entity.label,
+          outputIndex,
+          outputCount,
+        });
+      });
+    }
+  }
+
+  return occurrences;
+}
+
+/**
+ * 保存済み参照を最新投影へ解決する。
+ * 安定 identity は exact match だけで解決する。永続 identity を持たない legacy
+ * 表の行だけは、削除・追加による誤接続を避けるため旧来の鮮度・位置照合を続ける。
+ */
+export function resolveCrossNoteOutput(
+  index: ProcessIndex | null,
+  ref: CrossNoteOutputRef,
+): CrossNoteOutputOccurrence | null {
+  const outputs = collectCrossNoteOutputs(index).filter(
+    (output) => output.noteId === ref.noteId && output.stepId === ref.stepId,
+  );
+  if (ref.identityStable !== false) {
+    return outputs.find((output) => output.entityIdentity === ref.entityIdentity) ?? null;
+  }
+
+  if (!ref.sourceModifiedAt) return null;
+  return outputs.find(
+    (output) =>
+      output.sourceModifiedAt === ref.sourceModifiedAt &&
+      output.entityIdentity === ref.entityIdentity &&
+      output.outputIndex === ref.outputIndex &&
+      output.outputCount === ref.outputCount,
+  ) ?? null;
+}
+
+/**
+ * ノート横断の依存をノート単位の DAG として検査する。
+ * 現在ノートだけは保存済み index より live links を優先し、連続操作も取りこぼさない。
+ */
+export function wouldCreateCrossNoteCycle(
+  index: ProcessIndex | null,
+  currentNoteId: string | null,
+  targetNoteId: string,
+  currentLinks: BlockLink[],
+): boolean {
+  if (!currentNoteId) return false;
+  if (currentNoteId === targetNoteId) return true;
+
+  const adjacency = new Map<string, Set<string>>();
+  const add = (source: string, target: string) => {
+    if (!adjacency.has(source)) adjacency.set(source, new Set());
+    adjacency.get(source)!.add(target);
+  };
+
+  for (const process of index?.processes ?? []) {
+    const links =
+      process.noteId === currentNoteId
+        ? currentLinks
+        : (process.crossNoteLinks ?? []);
+    for (const link of links) {
+      if (link.type === "informed_by" && link.targetNoteId) {
+        add(process.noteId, link.targetNoteId);
+      }
+    }
+  }
+  if (!(index?.processes ?? []).some((process) => process.noteId === currentNoteId)) {
+    for (const link of currentLinks) {
+      if (link.type === "informed_by" && link.targetNoteId) {
+        add(currentNoteId, link.targetNoteId);
+      }
+    }
+  }
+  add(currentNoteId, targetNoteId);
+
+  const visited = new Set<string>();
+  const queue = [targetNoteId];
+  while (queue.length > 0) {
+    const noteId = queue.shift()!;
+    if (noteId === currentNoteId) return true;
+    if (visited.has(noteId)) continue;
+    visited.add(noteId);
+    for (const next of adjacency.get(noteId) ?? []) {
+      if (!visited.has(next)) queue.push(next);
+    }
+  }
+  return false;
 }
 
 // ── 読み書き ──
 
-export async function readProcessIndex(): Promise<ProcessIndex | null> {
-  return readAppDataFile<ProcessIndex>(APP_DATA_KEY, DRIVE_FILE_NAME);
+export async function readProcessIndex(
+  provider: StorageProvider = getActiveProvider(),
+): Promise<ProcessIndex | null> {
+  return readAppDataFile<ProcessIndex>(APP_DATA_KEY, DRIVE_FILE_NAME, provider);
 }
 
-export async function saveProcessIndex(index: ProcessIndex): Promise<void> {
-  await writeAppDataFile(APP_DATA_KEY, DRIVE_FILE_NAME, index);
+let processIndexSaveChain: Promise<void> = Promise.resolve();
+
+export function saveProcessIndex(
+  index: ProcessIndex,
+  shouldSave: () => boolean = () => true,
+  provider: StorageProvider = getActiveProvider(),
+): Promise<void> {
+  const operation = processIndexSaveChain.then(async () => {
+    if (!shouldSave()) return;
+    await writeAppDataFile(APP_DATA_KEY, DRIVE_FILE_NAME, index, provider);
+  });
+  // 個々の呼び出しには operation の失敗を返しつつ、内部キューは失敗後も継続する。
+  processIndexSaveChain = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  return operation;
 }
 
 // ── 鮮度判定と再投影 ──
@@ -324,8 +557,17 @@ export async function ensureProcessIndex(
   docCache: Map<string, GraphiumDocument>,
   loadDoc: (fileId: string) => Promise<GraphiumDocument>,
   prefetched?: ProcessIndex | null,
+  isCurrent: () => boolean = () => true,
+  provider: StorageProvider = getActiveProvider(),
 ): Promise<ProcessIndex> {
-  const existing = prefetched !== undefined ? prefetched : await readProcessIndex();
+  const empty = (): ProcessIndex => ({
+    version: PROCESS_INDEX_VERSION,
+    updatedAt: new Date().toISOString(),
+    processes: [],
+  });
+  if (!isCurrent()) return prefetched ?? empty();
+  const existing = prefetched !== undefined ? prefetched : await readProcessIndex(provider);
+  if (!isCurrent()) return existing ?? empty();
   const versionMatches = existing?.version === PROCESS_INDEX_VERSION;
   const prior = new Map((existing?.processes ?? []).map((p) => [p.noteId, p]));
 
@@ -336,7 +578,7 @@ export async function ensureProcessIndex(
     const kept = existing!.processes.filter((p) => fileIds.has(p.noteId));
     if (kept.length === existing!.processes.length) return existing!;
     const pruned = { ...existing!, updatedAt: new Date().toISOString(), processes: kept };
-    await saveProcessIndex(pruned);
+    await saveProcessIndex(pruned, isCurrent, provider);
     return pruned;
   }
 
@@ -344,9 +586,11 @@ export async function ensureProcessIndex(
     targets
       .filter((f) => !docCache.has(f.id))
       .map(async (f) => {
-        docCache.set(f.id, await loadDoc(f.id));
+        const doc = await loadDoc(f.id);
+        if (isCurrent()) docCache.set(f.id, doc);
       }),
   );
+  if (!isCurrent()) return existing ?? empty();
 
   const processes: ProcessIndexEntry[] = [];
   for (const file of files) {
@@ -374,7 +618,7 @@ export async function ensureProcessIndex(
     updatedAt: new Date().toISOString(),
     processes,
   };
-  await saveProcessIndex(index);
+  await saveProcessIndex(index, isCurrent, provider);
   return index;
 }
 
