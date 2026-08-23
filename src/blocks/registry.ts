@@ -6,7 +6,8 @@
 // Peek を開いた瞬間にカスタムブロックが除去されたまま自動保存されて
 // データが壊れる不具合が起きたため、登録漏れを構造的に防ぐ目的で集約する。
 
-import { defaultBlockSpecs } from "@blocknote/core";
+import { defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
+import { inlineLabelStyleSpecs } from "../features/inline-label/styles";
 import type { CustomBlockEntry } from "../base/schema";
 import { pdfViewerBlock } from "./pdf-viewer";
 import { bookmarkBlock } from "./bookmark";
@@ -106,7 +107,9 @@ export function sanitizeBlocksForLoad(
     }
     out.push({
       ...b,
-      content: mapContent ? mapContent(b.content) : b.content,
+      // 未知 style の除去（下記）は BlockNote の throw を防ぐ共通処理。
+      // mapContent（呼び出し元ごとの inline 検査）とは独立に必ず通す。
+      content: sanitizeContentStyles(mapContent ? mapContent(b.content) : b.content),
       children,
     });
   }
@@ -127,3 +130,65 @@ export const KNOWN_INLINE_TYPES: ReadonlySet<string> = new Set([
   "link",
   ...CUSTOM_INLINE_TYPES,
 ]);
+
+// 保存済みノートを読み込むときに「知っている style キー」の集合。
+// BlockNote は styleSchema に無い style キーを含むコンテンツで throw するため
+// （silent drop ではなく画面全損）、未来のビルドが保存したノートを
+// このビルドが開けるように、未知キーは読込時に剥がす。
+// ブロック型と同じく schema の実物（defaultStyleSpecs / inlineLabelStyleSpecs）
+// から導出する — 手書きの列挙は style を足した時に取りこぼす。
+export const KNOWN_STYLE_KEYS: ReadonlySet<string> = new Set([
+  ...Object.keys(defaultStyleSpecs),
+  ...Object.keys(inlineLabelStyleSpecs),
+]);
+
+// inline ノードの styles / ネスト content から未知 style キーを取り除く。
+// 剥がすのは throw 回避のための最終手段で、識別情報は失われる（たとえば
+// tableRowIdentity は次の保存で再採番される）。既知キーには一切触れない。
+function sanitizeInlineStyles(inline: any): any {
+  if (!inline || typeof inline !== "object") return inline;
+  let next = inline;
+  const styles = inline.styles;
+  if (styles && typeof styles === "object") {
+    const unknown = Object.keys(styles).filter((key) => !KNOWN_STYLE_KEYS.has(key));
+    if (unknown.length > 0) {
+      const kept = Object.fromEntries(
+        Object.entries(styles).filter(([key]) => KNOWN_STYLE_KEYS.has(key)),
+      );
+      next = { ...next, styles: kept };
+    }
+  }
+  if (Array.isArray(next.content)) {
+    const content = next.content.map(sanitizeInlineStyles);
+    if (content.some((c: any, i: number) => c !== next.content[i])) {
+      next = { ...next, content };
+    }
+  }
+  return next;
+}
+
+// ブロックの content（inline 配列 / テーブル content）から未知 style キーを剥がす。
+// テーブルはセル内 inline の styles に永続 mark が入るため、rows/cells も再帰する。
+export function sanitizeContentStyles(content: any): any {
+  if (!content) return content;
+  if (Array.isArray(content)) {
+    const next = content.map(sanitizeInlineStyles);
+    return next.some((c: any, i: number) => c !== content[i]) ? next : content;
+  }
+  if (typeof content === "object" && Array.isArray(content.rows)) {
+    const rows = content.rows.map((row: any) => {
+      if (!Array.isArray(row?.cells)) return row;
+      const cells = row.cells.map((cell: any) => {
+        if (Array.isArray(cell)) return sanitizeContentStyles(cell);
+        if (cell && typeof cell === "object" && Array.isArray(cell.content)) {
+          const inner = sanitizeContentStyles(cell.content);
+          return inner === cell.content ? cell : { ...cell, content: inner };
+        }
+        return cell;
+      });
+      return cells.some((c: any, i: number) => c !== row.cells[i]) ? { ...row, cells } : row;
+    });
+    return rows.some((r: any, i: number) => r !== content.rows[i]) ? { ...content, rows } : content;
+  }
+  return content;
+}

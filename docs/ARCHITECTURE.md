@@ -1307,6 +1307,7 @@ people most often need to find.
 | Note JSON shape and migrations | `src/lib/document-types.ts`, `src/lib/document-migration.ts` |
 | Index file (note list, schema version) | `src/features/navigation/index-file.ts` |
 | Process index (cross-note step graphs, step reuse) | `src/features/network-graph/process-index.ts` |
+| Cross-note output references (durable row ids, upstream overlay) | `src/lib/table-row-identity.ts`, `src/features/network-graph/cross-note-flow.ts` |
 | Sharing / Library / Fork | `src/features/sharing/`, `src/lib/storage/shared/` |
 | Settings UI (model, profile, fonts) | `src/features/settings/` |
 | Slash-template commands (Plan / Run) | `src/features/template/` |
