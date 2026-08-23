@@ -481,6 +481,18 @@ export function ActivityGraphEditor({
           }),
       ];
 
+      // この step の表にある外部参照行（行名 → 由来）。参照元の現在の属性を
+      // パネルに読み取り専用で並記するための情報
+      const externalOrigins: Record<string, import("./activity-graph-adapter").ExternalFlowOrigin> = {};
+      for (const e of g.entities) {
+        if (!e.externalOrigin) continue;
+        // 外部参照行は定義上この step の表に足したもの。リネーム後は
+        // entity @id が旧行名のままになり tableRef が取れないことがあるため、
+        // 「この step につながっているか」だけで拾う
+        if (!connectedIds.has(e.id)) continue;
+        externalOrigins[e.label.trim()] = e.externalOrigin;
+      }
+
       const ref = selection.kind === "entity" ? selection.entity.tableRef : undefined;
       return {
         stepId,
@@ -490,6 +502,7 @@ export function ActivityGraphEditor({
         proseHighlight:
           selection.kind === "entity" && !ref ? (selection.entity.entityId ?? undefined) : undefined,
         prose,
+        externalOrigins,
       };
     },
     [getEditor, owningStepOf, findSectionTable],

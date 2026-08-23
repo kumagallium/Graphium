@@ -15,7 +15,6 @@ import { calcSlashItem } from "./blocks/calc";
 import { inlineMathSlashItem } from "./features/inline-math/spec";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { stepSlashItem } from "./blocks/step";
-import { ExternalOriginLayer } from "./blocks/step/external-origin-layer";
 import { columnsSlashItem } from "./blocks/multi-column";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
@@ -3948,6 +3947,26 @@ function NoteEditorInner({
           return;
         }
       }
+      // 外部参照インプット行（data-row-identity）は、@と同じ青リンクとして
+      // 参照元ノートを Side Peek で開く。テーブル内なので isMentionSpan より先に見る
+      const rowIdentityEl = target.closest("[data-row-identity]");
+      if (rowIdentityEl && target.closest('[contenteditable="true"]')) {
+        const identity = rowIdentityEl.getAttribute("data-row-identity");
+        const extLink = identity
+          ? linkStore
+              .getAllLinks()
+              .find(
+                (l) =>
+                  l.type === "informed_by" && !!l.targetNoteId && l.sourceEntityId === identity,
+              )
+          : null;
+        if (extLink?.targetNoteId) {
+          e.preventDefault();
+          e.stopPropagation();
+          setSidePeekNoteId(extLink.targetNoteId);
+          return;
+        }
+      }
       if (!isMentionSpan(target)) return;
       const noteName = target.textContent!.trim().slice(1);
       // まず記録済みリンク（linkStore）から厳密な ID で解決する。挿入時に
@@ -4305,7 +4324,6 @@ function NoteEditorInner({
         hidden={!isDesktop && rightTab !== null}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <ExternalOriginLayer editorRef={editorRef} />
       <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />

@@ -856,6 +856,7 @@ export const ja: Record<string, string> = {
   "flowTable.shared": "共有",
   "flowTable.sharedHint": "同じものを別のステップでも使っています。実体はそちらの表にあります",
   "flowTable.sharedFrom": "{step} の表",
+  "flowTable.externalAttrsFrom": "参照元（{note} › {step}）より",
   "activityGraph.relayout": "整列",
   "activityGraph.toggleParams": "パラメータ",
   "activityGraph.externalProcess": "別ノート",

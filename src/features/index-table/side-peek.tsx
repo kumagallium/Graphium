@@ -85,7 +85,6 @@ import {
 import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
 import { LabelStoreProvider, ProvLabelsEnabledProvider, useProvLabelsEnabled, useLabelStore } from "@features/context-label/store";
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
-import { ExternalOriginLayer } from "../../blocks/step/external-origin-layer";
 import {
   TableMetaStoreProvider,
   useTableMetaStore,
@@ -735,6 +734,26 @@ function SidePeekInner({
           } else {
             void openExternalUrl(href);
           }
+          return;
+        }
+      }
+      // 外部参照インプット行（data-row-identity）: このピークの linkStore で
+      // informed_by を解決し、参照元ノートをピークで開き直す（@と同じ導線）
+      const rowIdentityEl = target.closest("[data-row-identity]");
+      if (rowIdentityEl && target.closest('[contenteditable="true"]')) {
+        const identity = rowIdentityEl.getAttribute("data-row-identity");
+        const extLink = identity
+          ? linkStoreRef.current
+              .getAllLinks()
+              .find(
+                (l) =>
+                  l.type === "informed_by" && !!l.targetNoteId && l.sourceEntityId === identity,
+              )
+          : null;
+        if (extLink?.targetNoteId) {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenNoteInPeek(extLink.targetNoteId);
           return;
         }
       }
@@ -1469,8 +1488,6 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
-            {/* 外部参照インプット行の由来チップ（メインと同じ層をピークの外枠で） */}
-            <ExternalOriginLayer editorRef={editorRef} wrapperEl={wrapperEl} />
             {/* 表の名前・取り込み元バッジ・長い表の折りたたみ。メインと同じ層を
                 ピークの外枠に閉じて使う（wrapperEl 無しだとメイン側の表を測る） */}
             <TableCaptionLayer editorRef={editorRef} wrapperEl={wrapperEl} />

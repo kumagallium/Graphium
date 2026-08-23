@@ -64,6 +64,9 @@ const RESERVED_KEYS = new Set([
   "graphium:mediaType",
   "graphium:mediaUrl",
   "graphium:phase",
+  // 行の永続 identity は FlowEntity.rowIdentity として別に拾う。
+  // パラメータ扱いすると「tableRowId: row_...」がノードや列コピーに混入する
+  "graphium:tableRowId",
 ]);
 
 /** informed_by desugar が立てる合成 output（「〜の結果」プレースホルダ）か */
@@ -235,6 +238,8 @@ export type ExternalFlowOrigin = {
   stepTitle: string;
   outputLabel: string;
   broken: boolean;
+  /** 参照元 output の現在の属性（読み取り専用表示用。投影時点の値） */
+  attrs?: { key: string | null; value: string }[];
 };
 
 export type FlowEntity = {

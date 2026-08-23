@@ -114,6 +114,7 @@ describe("collectStepPredecessorCandidates", () => {
         label,
         outputIndex: 0,
         outputCount: 1,
+        attrs: [],
       });
 
       expect(

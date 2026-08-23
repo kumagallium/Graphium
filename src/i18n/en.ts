@@ -855,6 +855,7 @@ export const en: Record<string, string> = {
   "flowTable.shared": "Shared",
   "flowTable.sharedHint": "The same thing is used by another step — its row lives in that step's table",
   "flowTable.sharedFrom": "In {step}",
+  "flowTable.externalAttrsFrom": "From source ({note} › {step})",
   "activityGraph.relayout": "Tidy up",
   "activityGraph.toggleParams": "Parameters",
   "activityGraph.externalProcess": "Other note",

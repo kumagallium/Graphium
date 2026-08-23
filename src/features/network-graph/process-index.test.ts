@@ -407,6 +407,7 @@ describe("ノート横断 output 参照", () => {
         label: "生成物",
         outputIndex: 0,
         outputCount: 2,
+        attrs: [],
       },
       {
         noteId: "n1",
@@ -419,6 +420,7 @@ describe("ノート横断 output 参照", () => {
         label: "生成物",
         outputIndex: 1,
         outputCount: 2,
+        attrs: [],
       },
     ]);
   });

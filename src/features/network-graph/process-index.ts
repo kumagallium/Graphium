@@ -21,6 +21,7 @@ import { generateProvDocument } from "../prov-generator/generator";
 import { pageToGeneratorInput } from "../prov-generator/page-input";
 import {
   provDocToFlowGraph,
+  splitAttrLabel,
   type FlowEntity,
   type FlowGraphData,
 } from "./activity-graph-adapter";
@@ -343,6 +344,8 @@ export type CrossNoteOutputOccurrence = {
   /** 同一 step 内の output 順（0 始まり） */
   outputIndex: number;
   outputCount: number;
+  /** 参照元 output の属性（投影時点）。key はコロン分解できたときだけ入る */
+  attrs: { key: string | null; value: string }[];
 };
 
 export type CrossNoteOutputRef = {
@@ -402,6 +405,7 @@ export function collectCrossNoteOutputs(
           label: entity.label,
           outputIndex,
           outputCount,
+          attrs: (entity.attrs ?? []).map((attr) => splitAttrLabel(attr.label)),
         });
       });
     }

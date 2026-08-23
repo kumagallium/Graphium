@@ -472,3 +472,43 @@ export function removeExternalInputRow(editor: any, rowIdentity: string): boolea
   if (!hit) return false;
   return removeTableRowAt(editor, hit.tableBlockId, hit.rowIndex);
 }
+
+/**
+ * 外部参照行の名前テキストに @メンションと同じリンク色を付ける。
+ * blue = リンク生存、red = リンク切れ。textColor は BlockNote 標準スタイル
+ * なので旧ビルドでも throw しない（@ノートリンクと同じ表現に揃える）。
+ */
+export function setExternalInputRowLinkColor(
+  editor: any,
+  rowIdentity: string,
+  color: "blue" | "red",
+): boolean {
+  if (!editor) return false;
+  const hit = findRowByIdentity(editor.document ?? [], rowIdentity);
+  if (!hit) return false;
+  const table = findBlockById(editor.document ?? [], hit.tableBlockId);
+  const rows: any[] = table?.content?.rows ?? [];
+  const row = rows[hit.rowIndex + 1];
+  if (!row) return false;
+  const cell = row.cells?.[0];
+  const content = Array.isArray(cell) ? cell : cell?.content;
+  if (!Array.isArray(content)) return false;
+  let changed = false;
+  const next = content.map((inline: any) => {
+    if (inline?.type !== "text") return inline;
+    if (inline.styles?.textColor === color) return inline;
+    changed = true;
+    return { ...inline, styles: { ...(inline.styles ?? {}), textColor: color } };
+  });
+  if (!changed) return false;
+  const nextCell = Array.isArray(cell) ? next : { ...cell, content: next };
+  const nextRows = rows.map((r, i) =>
+    i === hit.rowIndex + 1 ? { ...r, cells: [nextCell, ...r.cells.slice(1)] } : r,
+  );
+  try {
+    editor.updateBlock(hit.tableBlockId, { content: { ...table.content, rows: nextRows } });
+    return true;
+  } catch {
+    return false;
+  }
+}

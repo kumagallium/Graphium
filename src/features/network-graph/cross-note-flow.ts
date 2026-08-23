@@ -56,6 +56,8 @@ export function addCrossNoteOriginsToFlowGraph(
       outputLabel:
         resolved?.label ?? link.targetEntityLabel ?? link.targetEntityId!,
       broken: !resolved,
+      // 参照元の現在の属性。パネルで「参照元より（編集不可）」として並記する
+      attrs: resolved?.attrs,
     };
     const stepId = externalStepId(noteId, link.targetBlockId);
     if (!stepIds.has(stepId)) {

@@ -46,14 +46,17 @@ import {
   collectStepOutputs,
   findLabeledTableInStep,
   removeExternalInputRow,
+  setExternalInputRowLinkColor,
   stepHasInputText,
   updateExternalInputRowText,
 } from "./step-io";
 import {
+  addTableColumn,
   addTableColumns,
   appendEntityRowToTable,
   ensureParameterTable,
   readTable,
+  setTableCellAt,
 } from "../../features/network-graph/table-row-edit";
 import { StepHistoryPicker } from "../../features/network-graph/StepHistoryPicker";
 import {
@@ -728,6 +731,28 @@ export const StepBlock = createReactBlockSpec(
         );
         if (!appended) return;
         if (appended.created) labelStore.setLabel(appended.tableBlockId, "material");
+        // 参照元 output の属性を、選択時点のスナップショットとして列にコピーする
+        // （2026-08-24 合意）。以後このノートで自由に編集でき、参照元は変わらない。
+        // 参照元の「現在値」はフローパネル側に読み取り専用で並記される。
+        const keyedAttrs = output.attrs.filter((attr) => attr.key);
+        if (keyedAttrs.length > 0) {
+          let table = readTable(props.editor, appended.tableBlockId);
+          const rowIdx = table ? table.rows.findIndex((r) => r[0] === output.label) : -1;
+          if (table && rowIdx >= 0) {
+            for (const attr of keyedAttrs) {
+              let colIdx = table!.headers.indexOf(attr.key!);
+              if (colIdx < 0) {
+                addTableColumn(props.editor, appended.tableBlockId, attr.key!);
+                colIdx = table!.headers.length;
+                table = readTable(props.editor, appended.tableBlockId) ?? table;
+              }
+              setTableCellAt(props.editor, appended.tableBlockId, rowIdx, colIdx, attr.value);
+            }
+          }
+        }
+        // @ノートリンクと同じ「青 = リンク」の表現。クリック解決は
+        // note-app / side-peek の @ハンドラが data-row-identity で行う
+        setExternalInputRowLinkColor(props.editor, appended.rowIdentity, "blue");
         const sourceEntityId = appended.rowIdentity;
         const result = linkStore.addLink({
           sourceBlockId: props.block.id,
@@ -758,6 +783,12 @@ export const StepBlock = createReactBlockSpec(
         for (const link of externalPrevLinks) {
           if (!link.sourceEntityId) continue;
           const resolved = resolveExternalLink(link);
+          // リンク切れは @リンクの赤で示す（復活したら青へ戻す）
+          setExternalInputRowLinkColor(
+            props.editor,
+            link.sourceEntityId,
+            resolved ? "blue" : "red",
+          );
           if (!resolved) continue;
           updateExternalInputRowText(props.editor, link.sourceEntityId, resolved.label);
           if (

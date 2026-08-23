@@ -412,10 +412,14 @@ reports as broken rather than guessing a row. Picking an external output
 also appends a row to the consuming step's material table (creating and
 labelling one if the step has none — the same funnel graph-side additions
 use), so the local graph gains a real input entity. The new row's durable
-id is stored on the link as `sourceEntityId`, and the row shows its origin
-(`← note › step`) as a small overlay chip that opens the source note.
-Attributes are **not** copied — conditions live in the source note, one
-click away, so there is never a second copy to drift out of date.
+id is stored on the link as `sourceEntityId`, and the row's name is
+colored like an @-mention link (`textColor: blue`, turning red when the
+reference breaks); clicking it opens the source note. The source output's
+keyed attributes are copied into ordinary table columns **as a snapshot
+at pick time** — editable freely in this note, never written back to the
+source — while the source's *current* values are shown read-only in the
+flow panel ("From source"), so drift between the copy and the source
+stays visible.
 
 The PROV generator does **not** synthesize the foreign Activity into the
 local projection — a note's graph stays self-contained, and the material

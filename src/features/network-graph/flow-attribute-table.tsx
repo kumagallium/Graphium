@@ -19,7 +19,13 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link2, Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t, getDisplayLabel } from "../../i18n";
-import { splitAttrLabel, type ActivityIoKind, type FlowEntity, type FlowStep } from "./activity-graph-adapter";
+import {
+  splitAttrLabel,
+  type ActivityIoKind,
+  type ExternalFlowOrigin,
+  type FlowEntity,
+  type FlowStep,
+} from "./activity-graph-adapter";
 import { KIND_PALETTE } from "./flow-palette";
 import type { TableData } from "./table-row-edit";
 
@@ -57,6 +63,8 @@ export type StepPanelData = {
   prose: ProseItem[];
   /** 本文ハイライト由来の項目を選択中: その entityId */
   proseHighlight?: string;
+  /** 外部参照インプット行（行名 → 由来）。参照元の現在の属性を RO で並記する */
+  externalOrigins?: Record<string, ExternalFlowOrigin>;
 };
 
 export type FlowStepPanelProps = {
@@ -744,6 +752,43 @@ export function FlowStepPanel({
         {kind === "attribute"
           ? paramGrid(table, ghosts)
           : entityGrid(table, kind as ActivityIoKind, ghosts)}
+        {/* 外部参照行の「参照元の現在値」。編集経路は無い（読み取り専用） —
+            表の列は選択時点のコピーで自由に編集できるので、参照元とのズレは
+            ここで気づける。broken はリンク切れとして示す */}
+        {kind === "material" &&
+          Object.entries(data.externalOrigins ?? {}).map(([rowName, origin]) => (
+            <div
+              key={`origin:${rowName}`}
+              style={{
+                margin: "0 4px 4px",
+                padding: "3px 8px",
+                borderRadius: 4,
+                background: "var(--color-surface)",
+                fontSize: 10.5,
+                lineHeight: 1.6,
+                color: origin.broken
+                  ? "var(--color-error)"
+                  : "var(--color-text-tertiary)",
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{rowName}</span>
+              {" — "}
+              {origin.broken
+                ? `${origin.noteTitle} › ${origin.stepTitle}（${t("step.brokenLink")}）`
+                : t("flowTable.externalAttrsFrom", {
+                    note: origin.noteTitle,
+                    step: origin.stepTitle,
+                  })}
+              {!origin.broken && (origin.attrs?.length ?? 0) > 0 && (
+                <span>
+                  {": "}
+                  {origin.attrs!
+                    .map((a) => (a.key ? `${a.key}: ${a.value}` : a.value))
+                    .join(" ・ ")}
+                </span>
+              )}
+            </div>
+          ))}
       </div>
     );
   };
