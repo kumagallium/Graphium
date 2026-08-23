@@ -42,11 +42,12 @@ import { useLabelStore } from "../../features/context-label/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
 import {
   appendEntitySpanToStep,
+  appendExternalInputRowToStep,
   collectStepOutputs,
   findLabeledTableInStep,
-  removeDedicatedStepInputEntity,
+  removeExternalInputRow,
   stepHasInputText,
-  updateStepInputEntityText,
+  updateExternalInputRowText,
 } from "./step-io";
 import {
   addTableColumns,
@@ -688,11 +689,7 @@ export const StepBlock = createReactBlockSpec(
       const removeExternalLink = (link: (typeof externalPrevLinks)[number]) => {
         linkStore.removeLink(link.id);
         if (link.sourceEntityId) {
-          removeDedicatedStepInputEntity(
-            props.editor,
-            props.block.id,
-            link.sourceEntityId,
-          );
+          removeExternalInputRow(props.editor, link.sourceEntityId);
         }
       };
 
@@ -714,13 +711,24 @@ export const StepBlock = createReactBlockSpec(
           return;
         }
         setCycleWarn(false);
-        const sourceEntityId = appendEntitySpanToStep(
+        // 受け取りは [インプット] 表の行にする（D-1 / 2026-08-23 合意）。
+        // 行は tableRowIdentity で追跡し、それをリンクの sourceEntityId に持つ
+        const appended = appendExternalInputRowToStep(
           props.editor,
           props.block.id,
-          "material",
           output.label,
+          (stepId) =>
+            findLabeledTableInStep(
+              (props.editor as any).document ?? [],
+              labelStore.labels,
+              stepId,
+              "material",
+            ),
+          t("graphTable.nameColumn"),
         );
-        if (!sourceEntityId) return;
+        if (!appended) return;
+        if (appended.created) labelStore.setLabel(appended.tableBlockId, "material");
+        const sourceEntityId = appended.rowIdentity;
         const result = linkStore.addLink({
           sourceBlockId: props.block.id,
           targetBlockId: output.stepId,
@@ -738,7 +746,7 @@ export const StepBlock = createReactBlockSpec(
           createdBy: "human",
         });
         if (result.error) {
-          removeDedicatedStepInputEntity(props.editor, props.block.id, sourceEntityId);
+          removeExternalInputRow(props.editor, sourceEntityId);
           return;
         }
         closeExternalPicker();
@@ -751,12 +759,7 @@ export const StepBlock = createReactBlockSpec(
           if (!link.sourceEntityId) continue;
           const resolved = resolveExternalLink(link);
           if (!resolved) continue;
-          updateStepInputEntityText(
-            props.editor,
-            props.block.id,
-            link.sourceEntityId,
-            resolved.label,
-          );
+          updateExternalInputRowText(props.editor, link.sourceEntityId, resolved.label);
           if (
             link.targetEntityId !== resolved.entityIdentity ||
             link.targetEntityIndex !== resolved.outputIndex ||
@@ -1515,94 +1518,6 @@ export const StepBlock = createReactBlockSpec(
               </div>
             )}
           </div>
-          {externalPrevLinks.length > 0 && (
-            <div
-              contentEditable={false}
-              data-test="step-external-origins"
-              style={{
-                flex: "1 0 100%",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 4,
-                paddingLeft: 26,
-              }}
-            >
-              {externalPrevLinks.map((link) => {
-                const resolved = resolveExternalLink(link);
-                const broken = !resolved;
-                const outputLabel =
-                  resolved?.label ??
-                  link.targetEntityLabel ??
-                  t("step.externalUnknownOutput");
-                const noteTitle =
-                  resolved?.noteTitle ??
-                  link.targetNoteTitle ??
-                  link.targetNoteId ??
-                  t("step.externalUnknownNote");
-                const stepTitle =
-                  resolved?.stepName ??
-                  link.targetStepTitle ??
-                  link.targetBlockId.slice(0, 8);
-                return (
-                  <button
-                    key={`origin:${link.id}`}
-                    type="button"
-                    data-test="step-external-origin"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      if (link.targetNoteId) {
-                        if (!openEditorSidePeek(props.editor, link.targetNoteId)) {
-                          getIndexTableCallbacks()?.onOpenSidePeek(link.targetNoteId);
-                        }
-                      }
-                    }}
-                    title={t("step.openExternalSource", {
-                      note: noteTitle,
-                      step: stepTitle,
-                    })}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      minWidth: 0,
-                      maxWidth: "min(100%, 420px)",
-                      padding: "2px 7px",
-                      borderRadius: 6,
-                      border: `1px solid ${
-                        broken ? "var(--color-error)" : "var(--color-label-entity)"
-                      }`,
-                      background: broken
-                        ? "color-mix(in srgb, var(--color-error) 8%, transparent)"
-                        : "var(--color-label-entity-bg)",
-                      color: broken
-                        ? "var(--color-error)"
-                        : "var(--color-label-entity)",
-                      cursor: "pointer",
-                      fontSize: 10,
-                      fontWeight: 500,
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    <ExternalLink size={11} strokeWidth={2.1} style={{ flex: "0 0 auto" }} />
-                    <span
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {outputLabel}
-                      <span style={{ color: "var(--color-text-tertiary)" }}>
-                        {" "}
-                        ← {noteTitle} › {stepTitle}
-                      </span>
-                      {broken ? ` — ${t("step.brokenLink")}` : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
       );
     },

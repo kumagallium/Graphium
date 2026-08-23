@@ -344,8 +344,11 @@ function StepFlowCanvas({
   ]);
 
   // ── 全ノードの実測サイズが揃った時点で ELK レイアウト ──
+  // 実行中フラグ。ELK は非同期なので、完了前に graph が変わったときは
+  // 完了後にもう一周して「最後の要求が必ず勝つ」ようにする
+  const layoutRunningRef = useRef(false);
   const tryLayout = useCallback(() => {
-    if (!needsLayoutRef.current) return;
+    if (!needsLayoutRef.current || layoutRunningRef.current) return;
     const current = getNodes();
     // store が最新の graph をまだ反映していない間は消費しない。
     // ここで走らせると「古い一覧は全部測定済み」で ELK が確定してしまい、
@@ -358,7 +361,7 @@ function StepFlowCanvas({
       !current.every((n) => expected.has(n.id) && n.measured?.width)
     )
       return;
-    needsLayoutRef.current = false;
+    layoutRunningRef.current = true;
     const sized = current.map((n) => ({
       id: n.id,
       width: n.measured?.width ?? 180,
@@ -366,8 +369,13 @@ function StepFlowCanvas({
     }));
     void layoutStepFlow(
       sized,
-      graphRef.current.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+      g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
     ).then((positions) => {
+      // 適用できたときだけ要求を消す。ELK が失敗した場合（下の catch）は
+      // 要求を残し、次の変化・整列ボタンで再試行できるようにする。
+      // 以前はレイアウト開始前に消していたため、一度失敗すると誰も再実行せず
+      // ノードが (0,0) や旧位置に置き去りのまま「グラフが消えた」状態に固定された
+      needsLayoutRef.current = false;
       setNodes((nds: Node[]) =>
         nds.map((n: Node) => ({ ...n, position: positions.get(n.id) ?? n.position })),
       );
@@ -391,6 +399,13 @@ function StepFlowCanvas({
           },
         );
       });
+    }).catch((err) => {
+      // ELK の失敗を握り潰さない。needsLayout は残っているので再試行可能
+      console.warn("手順フローのレイアウトに失敗:", err);
+    }).finally(() => {
+      layoutRunningRef.current = false;
+      // 実行中に graph が変わって新しい要求が積まれていたら、そのまま続けて並べ直す
+      if (needsLayoutRef.current) requestAnimationFrame(() => tryLayout());
     });
   }, [getNodes, setNodes, fitView, getViewport, setViewport, variant]);
 

@@ -71,10 +71,15 @@ const inlineOutputStyle = buildSpec("output");
 const tableRowIdentityStyle = createStyleSpec(
   { type: TABLE_ROW_IDENTITY_STYLE, propSchema: "string" },
   {
-    render: () => {
+    render: (rawValue) => {
       // 行 identity は永続化専用の mark で、本文の見た目を変えない。
+      // data 属性はオーバーレイ（外部参照の由来チップ）が行の DOM 位置を
+      // 特定するために出す（inlineLabel の data-entity-id と同じパターン）。
       const span = document.createElement("span");
       span.style.display = "contents";
+      if (typeof rawValue === "string" && rawValue) {
+        span.setAttribute("data-row-identity", rawValue);
+      }
       return { dom: span, contentDOM: span };
     },
   },

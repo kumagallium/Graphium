@@ -120,6 +120,16 @@ export function removeTableRow(editor: any, tableBlockId: string, rowName: strin
   return writeRows(editor, t.block, rows);
 }
 
+/** データ行を index で削除する（rowIndex はデータ行 0 始まり。同名行があっても誤爆しない） */
+export function removeTableRowAt(editor: any, tableBlockId: string, rowIndex: number): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  if (!block) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  const target = rowIndex + 1; // ヘッダ行の分
+  if (target < 1 || target >= rows.length) return false;
+  return writeRows(editor, block, rows.filter((_, i) => i !== target));
+}
+
 /**
  * step 内の該当ラベル付きテーブルに行を足す。無ければテーブルを作って 1 行目に書く。
  *

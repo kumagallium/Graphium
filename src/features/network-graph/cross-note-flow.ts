@@ -69,8 +69,14 @@ export function addCrossNoteOriginsToFlowGraph(
       stepIds.add(stepId);
     }
 
+    // sourceEntityId は表行受け取りでは行の tableRowIdentity（rowIdentity）、
+    // 旧 span 受け取りでは inline の entityId。どちらでも現在側の入力を見つける
     const localEntity = link.sourceEntityId
-      ? entities.find((entity) => entity.entityId === link.sourceEntityId)
+      ? entities.find(
+          (entity) =>
+            entity.entityId === link.sourceEntityId ||
+            entity.rowIdentity === link.sourceEntityId,
+        )
       : undefined;
     if (localEntity) localEntity.externalOrigin = origin;
 

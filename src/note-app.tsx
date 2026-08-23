@@ -15,6 +15,7 @@ import { calcSlashItem } from "./blocks/calc";
 import { inlineMathSlashItem } from "./features/inline-math/spec";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { stepSlashItem } from "./blocks/step";
+import { ExternalOriginLayer } from "./blocks/step/external-origin-layer";
 import { columnsSlashItem } from "./blocks/multi-column";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
@@ -4304,6 +4305,7 @@ function NoteEditorInner({
         hidden={!isDesktop && rightTab !== null}
       />
       <IndexTableIconLayer editorRef={editorRef} />
+      <ExternalOriginLayer editorRef={editorRef} />
       <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />

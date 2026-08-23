@@ -409,8 +409,13 @@ predates durable row ids (see below) fall back to a position fingerprint
 `targetSourceModifiedAt`), and `targetEntityStable: false` marks that
 fallback — if the source note has been modified since, the reference
 reports as broken rather than guessing a row. Picking an external output
-also drops a material span into the consuming step (`sourceEntityId`), so
-the local graph gains a real input entity.
+also appends a row to the consuming step's material table (creating and
+labelling one if the step has none — the same funnel graph-side additions
+use), so the local graph gains a real input entity. The new row's durable
+id is stored on the link as `sourceEntityId`, and the row shows its origin
+(`← note › step`) as a small overlay chip that opens the source note.
+Attributes are **not** copied — conditions live in the source note, one
+click away, so there is never a second copy to drift out of date.
 
 The PROV generator does **not** synthesize the foreign Activity into the
 local projection — a note's graph stays self-contained, and the material

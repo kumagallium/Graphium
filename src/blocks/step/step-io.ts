@@ -361,3 +361,114 @@ export function findLabeledTableInStep(
   visit(step.children ?? []);
   return found;
 }
+
+// ── 外部参照アウトプットの表行受け取り ──
+//
+// 別ノートの output を受けるときは、本文 span ではなく [インプット] 表の行に
+// する（D-1 案 / 2026-08-23 合意）。グラフからの追加と同じ「試料表が育つ」
+// 書き込み口（appendEntityRowToTable）に乗せ、行は tableRowIdentity で
+// 追跡する。属性は持ってこない — 条件は参照元を開いて見る。
+
+import { appendEntityRowToTable, removeTableRowAt, setTableCellAt } from "../../features/network-graph/table-row-edit";
+import {
+  TABLE_ROW_IDENTITY_STYLE,
+  extractTableCellText,
+  syncTableRowIdentitiesToEditor,
+} from "../../lib/table-row-identity";
+
+function rowIdentityOfCell(cell: any): string | null {
+  const content = Array.isArray(cell) ? cell : cell?.content;
+  const walk = (inlines: any[]): string | null => {
+    for (const inline of inlines ?? []) {
+      const value = inline?.styles?.[TABLE_ROW_IDENTITY_STYLE];
+      if (typeof value === "string" && value) return value;
+      if (inline?.type === "link" && Array.isArray(inline.content)) {
+        const nested = walk(inline.content);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  };
+  return walk(content ?? []);
+}
+
+/** rowIdentity から所属テーブルと行名を引く（見つからなければ null） */
+export function findRowByIdentity(
+  doc: any[],
+  rowIdentity: string,
+): { tableBlockId: string; rowName: string; rowIndex: number } | null {
+  if (!rowIdentity) return null;
+  let found: { tableBlockId: string; rowName: string; rowIndex: number } | null = null;
+  const visit = (blocks: any[]) => {
+    for (const b of blocks ?? []) {
+      if (found) return;
+      if (b?.type === "table" && Array.isArray(b.content?.rows)) {
+        const rows: any[] = b.content.rows;
+        for (let i = 1; i < rows.length; i += 1) {
+          if (rowIdentityOfCell(rows[i]?.cells?.[0]) === rowIdentity) {
+            found = {
+              tableBlockId: b.id,
+              rowName: extractTableCellText(rows[i].cells[0]),
+              rowIndex: i - 1,
+            };
+            return;
+          }
+        }
+      }
+      if (Array.isArray(b?.children)) visit(b.children);
+    }
+  };
+  visit(doc ?? []);
+  return found;
+}
+
+/**
+ * 外部参照の受け取り: step の [インプット] 表に行を足し、その行の
+ * tableRowIdentity を返す（表が無ければ作る。ラベル付与は呼び出し側）。
+ *
+ * @returns rowIdentity（リンクの sourceEntityId として保存する）。失敗時 null
+ */
+export function appendExternalInputRowToStep(
+  editor: any,
+  stepBlockId: string,
+  label: string,
+  findLabeledTableId: (stepBlockId: string) => string | null,
+  headerName: string,
+): { rowIdentity: string; tableBlockId: string; created: boolean } | null {
+  const trimmed = label.trim();
+  if (!editor || !trimmed) return null;
+  const result = appendEntityRowToTable(editor, stepBlockId, trimmed, findLabeledTableId, headerName);
+  if (!result) return null;
+  // 追加した行（と、まだ未採番の既存行）へ identity を振る。
+  // 保存時の normalizeTableRowIdentities と同じ規則なので保存でも維持される
+  syncTableRowIdentitiesToEditor(editor);
+  const table = findBlockById(editor.document ?? [], result.tableBlockId);
+  const rows: any[] = table?.content?.rows ?? [];
+  for (const row of rows.slice(1)) {
+    if (extractTableCellText(row?.cells?.[0]) !== trimmed) continue;
+    const identity = rowIdentityOfCell(row.cells[0]);
+    if (identity) return { rowIdentity: identity, ...result };
+  }
+  return null;
+}
+
+/** 外部参照の行の名前を追随更新する（rowIdentity で行を特定。同名行があっても誤爆しない） */
+export function updateExternalInputRowText(
+  editor: any,
+  rowIdentity: string,
+  text: string,
+): boolean {
+  const trimmed = text.trim();
+  if (!editor || !trimmed) return false;
+  const hit = findRowByIdentity(editor.document ?? [], rowIdentity);
+  if (!hit || hit.rowName === trimmed) return false;
+  return setTableCellAt(editor, hit.tableBlockId, hit.rowIndex, 0, trimmed);
+}
+
+/** 外部参照の行を削除する（rowIdentity で行を特定。同名行があっても誤爆しない） */
+export function removeExternalInputRow(editor: any, rowIdentity: string): boolean {
+  if (!editor) return false;
+  const hit = findRowByIdentity(editor.document ?? [], rowIdentity);
+  if (!hit) return false;
+  return removeTableRowAt(editor, hit.tableBlockId, hit.rowIndex);
+}
