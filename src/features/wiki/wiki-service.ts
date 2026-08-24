@@ -145,17 +145,24 @@ export function buildWikiDocument(
   language?: string,
   /** ノート/Wiki のタイトル→ID マッピング（インライン引用リンク解決用） */
   noteIndex?: NoteIndex,
+  /** 再生成（regenerate）時、この Wiki 自身のファイル ID。relatedClaims が自 ID に
+   *  解決されても knowledgeLink 化しない（自己参照の生成抑止） */
+  selfId?: string,
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex, ingesterOutput.title);
 
   // 関連セクションを追加（派生元ノート + 関連 Concept）
+  // selfTitle には生成中の Wiki 自身のタイトル（ingesterOutput.title）を渡す。
+  // parseInlineCitations と同じ selfTitle ガードを relatedClaims にも適用する。
   const relations = buildRelationBlocks(
     sourceNoteId,
     sourceNoteTitle,
     ingesterOutput.relatedClaims,
     existingWikiTitles,
     ingesterOutput.externalReferences,
+    ingesterOutput.title,
+    selfId,
   );
   converted.blocks.push(...relations.blocks);
 
@@ -768,6 +775,11 @@ function buildRelationBlocks(
   relatedClaims?: { title: string; citation: string }[],
   existingWikiTitles?: { id: string; title: string }[],
   externalReferences?: { url: string; title: string; citation: string }[],
+  /** 生成中／再生成中の Wiki 自身のタイトル。parseInlineCitations の selfTitle ガードと
+   *  同じ理由で、relatedClaims が自分自身と同じタイトルに解決された場合はリンク化しない */
+  selfTitle?: string,
+  /** 生成中／再生成中の Wiki 自身のファイル ID（判明していれば）。自 ID への解決も除外する */
+  selfId?: string,
 ): RelationBlocksResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
@@ -807,7 +819,13 @@ function buildRelationBlocks(
   // 関連 Concept への @リンク（引用付き）
   if (relatedClaims && relatedClaims.length > 0 && existingWikiTitles) {
     for (const concept of relatedClaims) {
-      const wiki = existingWikiTitles.find((w) => w.title === concept.title);
+      let wiki = existingWikiTitles.find((w) => w.title === concept.title);
+      // 自己参照の生成抑止: 解決結果が自ノート（自 ID / 自タイトル）と一致する場合は
+      // knowledgeLink を作らない。pushCitation の selfTitle ガードと同じ理由
+      // （LLM が自分自身を根拠として引用してくることがある）。
+      if (wiki && ((selfId && wiki.id === selfId) || (selfTitle && wiki.title.trim() === selfTitle.trim()))) {
+        wiki = undefined;
+      }
       const blockId = crypto.randomUUID();
       const label = wiki ? `🤖 ${concept.title}` : concept.title;
       const citationText = concept.citation ? ` — ${concept.citation}` : "";
@@ -1878,6 +1896,9 @@ export function buildAtomDocument(
   candidate: AtomCandidate,
   model: string | null,
   language?: string,
+  /** 再生成（re-lift）時、この Atom 自身のファイル ID。derivedFromClaims に
+   *  自 ID が紛れていても knowledgeLinks 化しない（自己参照の生成抑止） */
+  selfId?: string,
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const blocks: any[] = candidate.body
@@ -1904,6 +1925,9 @@ export function buildAtomDocument(
     });
     for (let i = 0; i < candidate.derivedFromClaims.length; i++) {
       const conceptId = candidate.derivedFromClaims[i];
+      // 自己参照の生成抑止: derivedFromClaims に自 ID（re-lift 時の温存漏れ等）が
+      // 紛れていても、自分自身を引用する knowledgeLink は作らない
+      if (selfId && conceptId === selfId) continue;
       // タイトルが取れない場合は ID にフォールバックするが、これは index 不整合のサインなので
       // 実運用ではほぼ起きない想定
       const conceptTitle = candidate.derivedFromConceptTitles?.[i] ?? conceptId;

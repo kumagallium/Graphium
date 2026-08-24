@@ -597,3 +597,50 @@ describe("migrateProcedureHeadingsToSteps (v5→v6)", () => {
     expect(key(after)).toEqual(key(before));
   });
 });
+
+describe("migrateToLatest - 自己参照リンクのサニタイズ", () => {
+  const linkDoc = (knowledgeLinks: any[], provLinks: any[] = []): GraphiumDocument =>
+    baseDoc(LATEST_DOCUMENT_VERSION, {
+      id: "p1",
+      title: "p1",
+      blocks: [],
+      labels: {},
+      provLinks,
+      knowledgeLinks,
+    });
+
+  it("selfId を渡すと knowledgeLinks の自己参照（targetNoteId === selfId）を除去する", () => {
+    const doc = linkDoc([
+      { id: "l1", sourceBlockId: "b1", targetBlockId: "", targetNoteId: "self-id", type: "reference", layer: "knowledge", createdBy: "ai" },
+      { id: "l2", sourceBlockId: "b2", targetBlockId: "", targetNoteId: "other-id", type: "reference", layer: "knowledge", createdBy: "ai" },
+    ]);
+    migrateToLatest(doc, "self-id");
+    expect(doc.pages[0].knowledgeLinks).toEqual([
+      { id: "l2", sourceBlockId: "b2", targetBlockId: "", targetNoteId: "other-id", type: "reference", layer: "knowledge", createdBy: "ai" },
+    ]);
+  });
+
+  it("selfId を渡すと provLinks の自己参照も除去する", () => {
+    const doc = linkDoc([], [
+      { id: "l1", sourceBlockId: "b1", targetBlockId: "", targetNoteId: "self-id", type: "informed_by", layer: "prov", createdBy: "ai" },
+    ]);
+    migrateToLatest(doc, "self-id");
+    expect(doc.pages[0].provLinks).toEqual([]);
+  });
+
+  it("selfId を渡さない場合は自己参照リンクをそのまま残す（後方互換）", () => {
+    const doc = linkDoc([
+      { id: "l1", sourceBlockId: "b1", targetBlockId: "", targetNoteId: "self-id", type: "reference", layer: "knowledge", createdBy: "ai" },
+    ]);
+    migrateToLatest(doc);
+    expect(doc.pages[0].knowledgeLinks).toHaveLength(1);
+  });
+
+  it("自己参照が無ければ selfId を渡しても変化しない", () => {
+    const doc = linkDoc([
+      { id: "l1", sourceBlockId: "b1", targetBlockId: "", targetNoteId: "other-id", type: "reference", layer: "knowledge", createdBy: "ai" },
+    ]);
+    migrateToLatest(doc, "self-id");
+    expect(doc.pages[0].knowledgeLinks).toHaveLength(1);
+  });
+});

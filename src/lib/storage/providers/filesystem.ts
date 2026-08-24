@@ -73,7 +73,7 @@ export class LocalFilesystemProvider implements StorageProvider {
 
   async loadFile(fileId: string): Promise<GraphiumDocument> {
     const json = await invoke<string>("read_note_file", { fileId });
-    return migrateToLatest(JSON.parse(json) as GraphiumDocument);
+    return migrateToLatest(JSON.parse(json) as GraphiumDocument, fileId);
   }
 
   async createFile(title: string, content: GraphiumDocument): Promise<string> {
@@ -261,7 +261,7 @@ export class LocalFilesystemProvider implements StorageProvider {
 
   async loadWikiFile(fileId: string): Promise<GraphiumDocument> {
     const json = await invoke<string>("read_wiki_file", { fileId });
-    return migrateToLatest(JSON.parse(json) as GraphiumDocument);
+    return migrateToLatest(JSON.parse(json) as GraphiumDocument, fileId);
   }
 
   async createWikiFile(title: string, content: GraphiumDocument): Promise<string> {

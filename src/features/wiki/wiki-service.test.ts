@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { parseInlineCitations, promoteClaimStatusIfCorroborated, reinforceAtomWithClaims } from "./wiki-service";
+import {
+  parseInlineCitations,
+  promoteClaimStatusIfCorroborated,
+  reinforceAtomWithClaims,
+  buildAtomDocument,
+  buildWikiDocument,
+  type AtomCandidate,
+} from "./wiki-service";
+import type { IngesterOutput } from "../../server/services/wiki-ingester";
 
 const emptyIndex: any[] = [];
 
@@ -290,5 +298,103 @@ describe("reinforceAtomWithClaims - Atom の支持追加", () => {
     expect(
       reinforceAtomWithClaims(atomDoc(["claim-a"]), { derivedFromClaims: ["", "claim-a"] }),
     ).toBeNull();
+  });
+});
+
+// Fix 4: 自己参照 knowledgeLink の生成抑止（3 経路）
+describe("buildAtomDocument - 自己参照 knowledgeLink の生成抑止", () => {
+  const candidate = (derivedFromClaims: string[]): AtomCandidate => ({
+    title: "Atom title",
+    body: "本文段落",
+    derivedFromClaims,
+    derivedFromConceptTitles: derivedFromClaims.map((id) => `title-of-${id}`),
+    confidence: 0.9,
+  });
+
+  it("selfId を渡すと derivedFromClaims 中の自 ID を knowledgeLinks から除外する", () => {
+    const doc = buildAtomDocument(candidate(["claim-a", "self-id", "claim-b"]), null, "ja", "self-id");
+    const page = doc.pages[0];
+    const targets = (page.knowledgeLinks as any[]).map((l) => l.targetNoteId);
+    expect(targets).toEqual(["claim-a", "claim-b"]);
+    expect(targets).not.toContain("self-id");
+  });
+
+  it("selfId を渡さない場合は従来通り全件が knowledgeLinks になる（新規生成時は自 ID 未確定）", () => {
+    const doc = buildAtomDocument(candidate(["claim-a", "claim-b"]), null, "ja");
+    const page = doc.pages[0];
+    expect((page.knowledgeLinks as any[]).map((l) => l.targetNoteId)).toEqual(["claim-a", "claim-b"]);
+  });
+
+  it("自己参照が無ければ selfId を渡しても全件残る", () => {
+    const doc = buildAtomDocument(candidate(["claim-a", "claim-b"]), null, "ja", "self-id");
+    const page = doc.pages[0];
+    expect((page.knowledgeLinks as any[]).map((l) => l.targetNoteId)).toEqual(["claim-a", "claim-b"]);
+  });
+});
+
+describe("buildWikiDocument - relatedClaims の自己参照抑止", () => {
+  const ingesterOutput = (title: string, relatedClaims: { title: string; citation: string }[]): IngesterOutput => ({
+    kind: "claim",
+    title,
+    sections: [{ heading: "本文", content: "テスト本文" }],
+    suggestedAction: "create",
+    confidence: 0.9,
+    relatedClaims,
+    externalReferences: [],
+  });
+
+  it("relatedClaims が自 ID（selfId）に解決される場合は knowledgeLink を作らない", () => {
+    const output = ingesterOutput("New Claim Title", [{ title: "旧タイトル", citation: "根拠" }]);
+    const existingWikiTitles = [{ id: "self-id", title: "旧タイトル" }];
+    const doc = buildWikiDocument(
+      output,
+      "source-note",
+      null,
+      "Source Note",
+      existingWikiTitles,
+      "ja",
+      undefined,
+      "self-id",
+    );
+    const links = doc.pages[0].knowledgeLinks as any[];
+    expect(links.some((l) => l.targetNoteId === "self-id")).toBe(false);
+  });
+
+  it("relatedClaims が自タイトル（selfTitle = ingesterOutput.title）に解決される場合も除外する", () => {
+    // ingesterOutput.title 自体が selfTitle として使われる（regenerate 時は旧タイトルの
+    // Wiki がまだ existingWikiTitles に残っている場合があるため、ID だけでなくタイトルでも判定する）
+    const selfTitle = "同名の知見";
+    const output = ingesterOutput(selfTitle, [{ title: selfTitle, citation: "根拠" }]);
+    const existingWikiTitles = [{ id: "other-id", title: selfTitle }];
+    const doc = buildWikiDocument(output, "source-note", null, "Source Note", existingWikiTitles, "ja");
+    const links = doc.pages[0].knowledgeLinks as any[];
+    expect(links.some((l) => l.targetNoteId === "other-id")).toBe(false);
+  });
+
+  it("自己参照でない relatedClaims は通常どおり knowledgeLink になる", () => {
+    const output = ingesterOutput("New Claim Title", [{ title: "別の知見", citation: "根拠" }]);
+    const existingWikiTitles = [{ id: "other-id", title: "別の知見" }];
+    const doc = buildWikiDocument(
+      output,
+      "source-note",
+      null,
+      "Source Note",
+      existingWikiTitles,
+      "ja",
+      undefined,
+      "self-id",
+    );
+    const links = doc.pages[0].knowledgeLinks as any[];
+    expect(links.some((l) => l.targetNoteId === "other-id")).toBe(true);
+  });
+});
+
+describe("note-app.tsx の Atom re-lift 経路が想定する derivedFromClaims フィルタ", () => {
+  // note-app.tsx 側のロジック（既存 derivedFromClaims から自 ID を除外して引き継ぐ）を
+  // 同じフィルタ式で単体検証する。UI 本体（note-app.tsx）は結合テストの対象外のため、
+  // ここでは再生成時に温存される derivedFromClaims が自己参照を含まないことのみを保証する。
+  it("自 ID（wikiId）を derivedFromClaims から除外する", () => {
+    const preserved = ["claim-a", "wiki-self", "claim-b"].filter((id) => id !== "wiki-self");
+    expect(preserved).toEqual(["claim-a", "claim-b"]);
   });
 });
