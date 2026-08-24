@@ -2870,4 +2870,33 @@ describe("ブロック間リンク4種のPROV射影", () => {
       to: "entity_mat-a1",
     });
   });
+
+  it("同名材料同士に derived_from を張っても、統合後に self-loop relation を残さない（修正A）", () => {
+    // mat-a1 / mat-a2 は別の手順スコープにある同名（"溶媒"）の material。
+    // その間に derived_from を張ると、統合（mat-a2 → mat-a1）の後は
+    // from も to も entity_mat-a1 になり得る。self-loop は除去されるべき。
+    const blocks: any[] = [
+      { id: "h-x", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順X" }], children: [] },
+      { id: "mat-a1", type: "paragraph", content: [{ type: "text", text: "溶媒" }], children: [] },
+      { id: "h-y", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順Y" }], children: [] },
+      { id: "mat-a2", type: "paragraph", content: [{ type: "text", text: "溶媒" }], children: [] },
+    ];
+    const labels = new Map([
+      ["h-x", "procedure"],
+      ["mat-a1", "material"],
+      ["h-y", "procedure"],
+      ["mat-a2", "material"],
+    ]);
+    const links = [
+      { id: "link-1", sourceBlockId: "mat-a2", targetBlockId: "mat-a1", type: "derived_from" as const, layer: "prov" as const, createdBy: "human" as const },
+    ];
+    const doc = generateProvDocument({ blocks, labels, links });
+
+    // 統合自体は壊れていない（同名 material が 1 Entity になる）
+    const materials = doc["@graph"].filter((n: any) => n["graphium:entityType"] === "material");
+    expect(materials).toHaveLength(1);
+
+    // self-loop（from === to）の relation は 1 つも無い
+    expect(getRelations(doc).some((r) => r.from === r.to)).toBe(false);
+  });
 });

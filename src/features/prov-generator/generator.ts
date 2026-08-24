@@ -1480,6 +1480,17 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
+  // ── self-loop relation の除去 ──
+  // Entity 統合（同名 material/tool の canonical 化）や informed_by の unification
+  // reroute は、dup → canonical へ relations の from/to を書き換える。dup と canonical
+  // の間に元々 wasDerivedFrom（derived_from / reproduction_of リンク由来）等が
+  // あると、from/to が両方 canonical になり自己参照 relation が残ってしまう。
+  // PROV では used / wasGeneratedBy / wasDerivedFrom いずれも自己参照は無意味なので、
+  // 個別の reroute 箇所ではなく最終組み立て段階でまとめて除去する。
+  for (let i = relations.length - 1; i >= 0; i--) {
+    if (relations[i].from === relations[i].to) relations.splice(i, 1);
+  }
+
   if (import.meta.env.DEV) {
     console.log("生成ノード:", nodes.map((n) => `${n["@type"]} "${n.label}" (${n["@id"]})`));
     console.log("生成リレーション:", relations.map((r) => `${r["@type"]} ${r.from} → ${r.to}`));

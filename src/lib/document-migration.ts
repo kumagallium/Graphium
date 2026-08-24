@@ -93,10 +93,10 @@ export function migrateToLatest(doc: GraphiumDocument, selfId?: string): Graphiu
 function stripSelfReferenceLinks(doc: GraphiumDocument, selfId: string): void {
   for (const page of doc.pages ?? []) {
     if (Array.isArray(page.knowledgeLinks)) {
-      page.knowledgeLinks = page.knowledgeLinks.filter((l: any) => l?.targetNoteId !== selfId);
+      page.knowledgeLinks = page.knowledgeLinks.filter((l) => l?.targetNoteId !== selfId);
     }
     if (Array.isArray(page.provLinks)) {
-      page.provLinks = page.provLinks.filter((l: any) => l?.targetNoteId !== selfId);
+      page.provLinks = page.provLinks.filter((l) => l?.targetNoteId !== selfId);
     }
   }
 }
