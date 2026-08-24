@@ -1432,6 +1432,12 @@ export const en: Record<string, string> = {
   "updater.available": "Graphium {version} is available",
   "updater.install": "Restart to update",
   "updater.installing": "Downloading...",
+  "updater.downloading": "Downloading... {percent}%",
+  "updater.downloadingBytes": "Downloading... {mb} MB",
+  "updater.installingNow": "Installing... restarting shortly",
+  "updater.error": "Update failed",
+  "updater.errorDetailShow": "Show details",
+  "updater.errorDetailHide": "Hide details",
 
   // ── Backend-down banner (desktop: the sidecar exited unexpectedly) ──
   "backendDown.message": "The AI backend has stopped. Restart it to use AI features.",

@@ -8,10 +8,19 @@ import pkg from "../../package.json";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 時間
 
+// ダウンロードの reqwest リクエスト全体に効くタイムアウト。
+// 未設定だと回線 stall 時に永久に待ち続け、バナーが「ダウンロード中」のまま固まる。
+const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000; // 10 分
+
+/** ダウンロード進捗を UI に伝えるコールバックの引数 */
+export type UpdateProgress =
+  | { phase: "downloading"; downloaded: number; total?: number }
+  | { phase: "installing" };
+
 /** 更新情報を UI に伝える CustomEvent の detail 型 */
 export type UpdateAvailableDetail = {
   version: string;
-  install: () => Promise<void>;
+  install: (onProgress: (p: UpdateProgress) => void) => Promise<void>;
 };
 
 /** checkForUpdates の戻り値（手動チェック UI 用） */
@@ -62,8 +71,26 @@ export async function checkForUpdates(): Promise<CheckResult> {
       console.log(`[updater] Update available: ${update.version}`);
       const detail: UpdateAvailableDetail = {
         version: update.version,
-        install: async () => {
-          await update.downloadAndInstall();
+        install: async (onProgress) => {
+          let downloaded = 0;
+          let total: number | undefined;
+          await update.download(
+            (event) => {
+              if (event.event === "Started") {
+                total = event.data.contentLength;
+                downloaded = 0;
+                onProgress({ phase: "downloading", downloaded, total });
+              } else if (event.event === "Progress") {
+                downloaded += event.data.chunkLength;
+                onProgress({ phase: "downloading", downloaded, total });
+              }
+            },
+            { timeout: DOWNLOAD_TIMEOUT_MS },
+          );
+          onProgress({ phase: "installing" });
+          await update.install();
+          // Windows では install() から戻らない（インストーラ起動と同時に
+          // プロセスが exit(0) で終了する）ため、relaunch は実質 macOS 用。
           const { relaunch } = await import("@tauri-apps/plugin-process");
           await relaunch();
         },
