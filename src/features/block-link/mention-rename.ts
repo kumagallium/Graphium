@@ -15,6 +15,7 @@
 // ──────────────────────────────────────────────
 
 import type { GraphiumDocument } from "../../lib/document-types";
+import type { BlockLink } from "../../lib/block-link-types";
 import { formatWikiMentionLabel } from "./mention-menu";
 
 type InlineRun = {
@@ -163,7 +164,7 @@ export function applyMentionRenameToDoc(
   if (!oldTitle || !newTitle || oldTitle === newTitle) return null;
   const page = doc.pages?.[0];
   if (!page) return null;
-  const links: Array<{ sourceBlockId?: string; targetNoteId?: string }> = [
+  const links: Array<Pick<BlockLink, "sourceBlockId" | "targetNoteId">> = [
     ...(page.provLinks ?? []),
     ...(page.knowledgeLinks ?? []),
     ...(page.links ?? []),

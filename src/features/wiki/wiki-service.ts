@@ -390,7 +390,7 @@ export async function rewriteAndMerge(
     const finalBlocks = [...converted.blocks, ...refBlocks];
 
     // 既存の knowledgeLinks から References セクション以外のものを除去し、新しいものを追加
-    const existingRefLinks = (page.knowledgeLinks ?? []).filter((link: any) => {
+    const existingRefLinks = (page.knowledgeLinks ?? []).filter((link) => {
       if (refIndex < 0) return true;
       const refBlockIds = new Set(refBlocks.map((b: any) => b.id));
       return refBlockIds.has(link.sourceBlockId);

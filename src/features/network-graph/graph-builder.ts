@@ -158,7 +158,7 @@ export function buildNoteGraph(
     // knowledgeLinks(reference) もネットワークグラフではエッジとして表示する。
     // 来歴ビューは noteLinks のみ参照するため循環は起きない（PROV と知識参照を分離している）。
     for (const page of doc.pages) {
-      const knowledgeLinks = (page.knowledgeLinks ?? []) as Array<{ targetNoteId?: string; sourceBlockId?: string }>;
+      const knowledgeLinks = page.knowledgeLinks ?? [];
       for (const link of knowledgeLinks) {
         if (!link.targetNoteId || !fileIds.has(link.targetNoteId)) continue;
         const key = `${fileId}->${link.targetNoteId}`;

@@ -158,6 +158,26 @@ function migrateConceptKindToClaim(doc: GraphiumDocument): void {
   }
 }
 
+let migrationLinkIdCounter = 0;
+/** 移行専用の id 生成。BlockLink.id が欠けている旧データ救済用（通常は不要） */
+function generateMigrationLinkId(): string {
+  return `link-migrated-${Date.now()}-${migrationLinkIdCounter++}`;
+}
+
+/**
+ * BlockLink の必須フィールド（id / createdBy）が欠けたまま v2 に流れないよう補完する。
+ * 通常の運用データでは id / createdBy は常に付与済み（features/block-link/store.tsx
+ * generateLinkId）だが、旧バージョンや外部由来データで欠けている可能性を排除できないため、
+ * ここで型を満たすところまで面倒を見る（スキーマは変えない・値の補完のみ）。
+ */
+function ensureBlockLinkFields(link: any): any {
+  return {
+    ...link,
+    id: typeof link.id === "string" && link.id ? link.id : generateMigrationLinkId(),
+    createdBy: link.createdBy ?? "human",
+  };
+}
+
 /** v1 → v2: ページ内の links を provLinks / knowledgeLinks に分解 */
 function migrateLinksToV2(doc: GraphiumDocument): void {
   for (const page of doc.pages ?? []) {
@@ -168,10 +188,11 @@ function migrateLinksToV2(doc: GraphiumDocument): void {
         const isProv = !link.type || [
           "derived_from", "used", "generated", "reproduction_of", "informed_by",
         ].includes(link.type);
+        const migrated = ensureBlockLinkFields(link);
         if (isProv) {
-          provLinks.push({ ...link, layer: "prov" });
+          provLinks.push({ ...migrated, layer: "prov" });
         } else {
-          knowledgeLinks.push({ ...link, layer: "knowledge" });
+          knowledgeLinks.push({ ...migrated, layer: "knowledge" });
         }
       }
       page.provLinks = provLinks;

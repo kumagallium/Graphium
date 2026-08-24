@@ -14,6 +14,7 @@
 // 候補型（AtomCandidate / IngesterOutput）には依存しない（生テキストから組み立てる）。
 
 import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-types";
+import type { BlockLink } from "../../lib/block-link-types";
 import { t } from "../../i18n";
 
 /** 取り込みボタンで作れる kind。verb 回答は claim（知見）か atom（洞察）に落とす。 */
@@ -74,10 +75,8 @@ type Block = {
   children: unknown[];
 };
 
-type KnowledgeLink = {
-  id: string;
-  sourceBlockId: string;
-  targetBlockId: string;
+// knowledgeLinks（reference）のローカル別名。BlockLink の再利用に統一し、二重定義を避ける。
+type KnowledgeLink = BlockLink & {
   targetNoteId: string;
   type: "reference";
   layer: "knowledge";
