@@ -16,6 +16,7 @@ import type {
 } from "../../lib/document-types";
 import { downloadBlob } from "../../lib/download-file";
 import { parseExternalSource } from "../network-graph/external-source";
+import type { BlockLink } from "../block-link/link-types";
 
 // ── W3C PROV-JSON-LD 出力型 ──
 
@@ -379,11 +380,101 @@ function stripContentDiff(prov: DocumentProvenance): DocumentProvenance {
   };
 }
 
-export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntities?: WikiEntityInfo[]): W3CProvDocument {
+/**
+ * 他ノート output 参照（cross-note informed_by リンク）を外部 Entity スタブ + 関係として emit する。
+ *
+ * ローカルの PROV グラフは自己完結（ノート単位で完結）させる設計のため、
+ * `targetNoteId` / `targetEntityId` 付き informed_by リンクは generateProvDocument の
+ * 射影対象にならない（DATA_MODEL.md §2.3 参照）。エクスポートはノート横断で読まれる
+ * 前提のドキュメントなので、ここで外部スタブとして初めて可視化する。
+ *
+ * - ローカル側の受け（#751 の表行、または旧形式の inline span）が見つかれば Derivation。
+ * - 見つからなくても受け側 step の Activity があれば Usage にフォールバック。
+ * - どちらも無ければそのリンクはスキップする（エクスポートを壊さない）。
+ */
+function emitCrossNoteLinks(provDoc: ProvJsonLd, links: BlockLink[]): W3CProvNode[] {
+  const out: W3CProvNode[] = [];
+  // 同一外部 output スタブの重複宣言を防ぐ（noteId + entityId 単位）
+  const declaredStubs = new Map<string, W3CProvNode>();
+  const seenRelations = new Set<string>();
+
+  for (const link of links) {
+    if (link.type !== "informed_by" || !link.targetNoteId || !link.targetEntityId) continue;
+
+    const stubId = `graphium:note/${encodeURIComponent(link.targetNoteId)}/output/${encodeURIComponent(link.targetEntityId)}`;
+
+    // ローカル側の対応ノードを探す: (a) #751 の表行受け（graphium:tableRowId）が
+    // 優先。無ければ (b) 旧形式の inline span 受け（inline_<label>_<entityId> の
+    // entityId 部分が sourceEntityId と一致するノード）。
+    const localNode = link.sourceEntityId
+      ? (provDoc["@graph"].find((n) => n["graphium:tableRowId"] === link.sourceEntityId) ??
+          provDoc["@graph"].find(
+            (n) => n["@id"].startsWith("inline_") && n["@id"].endsWith(`_${link.sourceEntityId}`),
+          ))
+      : undefined;
+
+    let relation: W3CProvNode | null = null;
+    if (localNode) {
+      relation = {
+        "@type": "Derivation",
+        "@id": `_:cross_note_derivation_${encodeURIComponent(localNode["@id"])}_${encodeURIComponent(stubId)}`,
+        generatedEntity: localNode["@id"],
+        usedEntity: stubId,
+        "graphium:linkType": "cross_note_output",
+      };
+    } else {
+      // ローカル側が未解決 → 受け側 step の Activity が存在する場合のみ Usage で繋ぐ
+      const activityId = `activity_${link.sourceBlockId}`;
+      const hasActivity = provDoc["@graph"].some((n) => n["@id"] === activityId);
+      if (hasActivity) {
+        relation = {
+          "@type": "Usage",
+          "@id": `_:cross_note_usage_${encodeURIComponent(activityId)}_${encodeURIComponent(stubId)}`,
+          activity: activityId,
+          entity: stubId,
+        };
+      }
+    }
+
+    // 受け側が何も見つからない場合はこのリンクをスキップ（スタブも宣言しない）
+    if (!relation) continue;
+    if (seenRelations.has(relation["@id"])) continue;
+    seenRelations.add(relation["@id"]);
+    out.push(relation);
+
+    if (!declaredStubs.has(stubId)) {
+      const stub: W3CProvNode = {
+        "@type": "Entity",
+        "@id": stubId,
+        label: toW3CLabel(link.targetEntityLabel ?? link.targetEntityId),
+        "graphium:external": true,
+        "graphium:sourceNoteId": link.targetNoteId,
+        "graphium:sourceStepId": link.targetBlockId,
+      };
+      if (link.targetNoteTitle) stub["graphium:sourceNoteTitle"] = link.targetNoteTitle;
+      if (link.targetStepTitle) stub["graphium:sourceStepTitle"] = link.targetStepTitle;
+      declaredStubs.set(stubId, stub);
+    }
+  }
+
+  return [...declaredStubs.values(), ...out];
+}
+
+export function buildW3CProvJsonLd(
+  provDoc: ProvJsonLd,
+  title: string,
+  wikiEntities?: WikiEntityInfo[],
+  crossNoteLinks?: BlockLink[],
+): W3CProvDocument {
   const graph: W3CProvNode[] = [];
 
   // Content Provenance（実験手順のPROVグラフ）
   graph.push(...convertContentProvenance(provDoc));
+
+  // 他ノート output 参照（cross-note informed_by）: 外部スタブ + Derivation/Usage
+  if (crossNoteLinks && crossNoteLinks.length > 0) {
+    graph.push(...emitCrossNoteLinks(provDoc, crossNoteLinks));
+  }
 
   // Wiki Knowledge Layer（AI 生成ドキュメント）を Entity として追加
   if (wikiEntities) {
@@ -556,10 +647,11 @@ export async function exportProvJsonLd(options: {
   title: string;
   provDoc: ProvJsonLd;
   wikiEntities?: WikiEntityInfo[];
+  crossNoteLinks?: BlockLink[];
 }): Promise<void> {
-  const { title, provDoc, wikiEntities } = options;
+  const { title, provDoc, wikiEntities, crossNoteLinks } = options;
 
-  const jsonLd = buildW3CProvJsonLd(provDoc, title, wikiEntities);
+  const jsonLd = buildW3CProvJsonLd(provDoc, title, wikiEntities, crossNoteLinks);
   const jsonStr = JSON.stringify(jsonLd, null, 2);
 
   const blob = new Blob([jsonStr], { type: "application/ld+json" });

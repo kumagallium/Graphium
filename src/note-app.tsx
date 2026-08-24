@@ -2621,8 +2621,13 @@ function NoteEditorInner({
   // wiki state から組み立てた wikiEntities を prop で受け取り、ここでは受け流す。
   const handleExportProvJsonLd = useCallback(() => {
     if (!provDoc || provDoc["@graph"].length === 0) return;
-    void exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities });
-  }, [title, provDoc, provWikiEntities]);
+    // 他ノート output 参照（cross-note informed_by）を外部スタブとして export に含める。
+    // ローカル PROV 射影には出ない参照なので、ここで linkStore から拾って渡す。
+    const crossNoteLinks = linkStore.links.filter(
+      (l) => l.type === "informed_by" && !!l.targetNoteId && !!l.targetEntityId,
+    );
+    void exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities, crossNoteLinks });
+  }, [title, provDoc, provWikiEntities, linkStore.links]);
 
   // ラベル・リンク・テーブル注釈・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
