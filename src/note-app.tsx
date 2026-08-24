@@ -198,7 +198,7 @@ import {
   type AtomCandidate, getDocEmbedding, pickFarthestSeeds, buildClusterSlice, pickClusterCount,
   rankCandidatesByRelevance,
   // Atom（実験的）
-  atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims,
+  atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
   // Discovery 共通: embedding ベース重複検出
   partitionCandidatesByEmbedding,
   // インライン引用リンク
@@ -7297,10 +7297,15 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
 
-        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, getLocale());
+        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, getLocale(), wikiId);
         // 既存 Atom が持っていた derivedFromClaims を温存する
         // （atomizer 提案の derivedFromClaims はその回の入力に依存し、
         //  ユーザーが手動で集めたソース集合とは限らない）
+        // 自己参照の生成抑止: 過去バグ由来で自 ID が紛れていても引き継がない
+        const preservedDerivedFromClaims = filterSelfFromDerivedFromClaims(
+          doc.wikiMeta?.derivedFromClaims ?? newDoc.wikiMeta!.derivedFromClaims ?? [],
+          wikiId,
+        );
         const rewritten: GraphiumDocument = {
           ...newDoc,
           // buildAtomDocument は素の新規 doc を返すため、ここで引き継がないと
@@ -7311,7 +7316,7 @@ export function NoteApp() {
           modifiedAt: new Date().toISOString(),
           wikiMeta: {
             ...newDoc.wikiMeta!,
-            derivedFromClaims: doc.wikiMeta?.derivedFromClaims ?? newDoc.wikiMeta!.derivedFromClaims,
+            derivedFromClaims: preservedDerivedFromClaims,
             generatedBy: {
               model: atomResult.model ?? selectedModel ?? "unknown",
               version: "1.0.0",
@@ -7486,6 +7491,7 @@ export function NoteApp() {
             undefined,
             getLocale(),
             buildNoteIndex(fm.noteIndex),
+            wikiId,
           );
           // derivedFromNotes は **元の配列をそのまま保持** する。
           // 自己参照（wikiId）と取得失敗ソースだけ落として保存する設計。

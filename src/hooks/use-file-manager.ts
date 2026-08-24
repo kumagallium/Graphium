@@ -1221,8 +1221,10 @@ export function useFileManager(authenticated: boolean) {
           createdAt: now,
           modifiedAt: now,
         };
-        // ドキュメント来歴: 手動派生ノート作成を記録
-        newDoc = await recordRevision(newDoc, null, "human_derivation");
+        // ドキュメント来歴: 手動派生ノート作成を記録（派生元は EditActivity.used に残す）
+        newDoc = await recordRevision(newDoc, null, "human_derivation", {
+          sources: newDoc.derivedFromNoteId ? [newDoc.derivedFromNoteId] : undefined,
+        });
         newDoc = normalizeTableRowIdentities(newDoc);
         const newFileId = await createFile(newDoc.title, newDoc);
 
@@ -1299,7 +1301,10 @@ export function useFileManager(authenticated: boolean) {
           createdAt: now,
           modifiedAt: now,
         };
-        newDoc = await recordRevision(newDoc, null, "human_derivation");
+        // 派生元ノート ID を EditActivity.used に残す（何から派生したかの Usage）
+        newDoc = await recordRevision(newDoc, null, "human_derivation", {
+          sources: derivedFromNoteId ? [derivedFromNoteId] : undefined,
+        });
         newDoc = normalizeTableRowIdentities(newDoc);
         const newFileId = await createFile(newDoc.title, newDoc);
         docCacheRef.current.set(newFileId, newDoc);
@@ -1364,7 +1369,8 @@ export function useFileManager(authenticated: boolean) {
           derivedTitle: title,
           now,
         });
-        newDoc = await recordRevision(newDoc, null, "human_derivation");
+        // 派生元ノート ID を EditActivity.used に残す（何から派生したかの Usage）
+        newDoc = await recordRevision(newDoc, null, "human_derivation", { sources: [sourceNoteId] });
         newDoc = normalizeTableRowIdentities(newDoc);
         const createdFileId = await createFile(newDoc.title, newDoc);
         newFileId = createdFileId;
@@ -1500,7 +1506,8 @@ export function useFileManager(authenticated: boolean) {
           derivedTitle: title,
           now,
         });
-        newDoc = await recordRevision(newDoc, null, "human_derivation");
+        // 派生元ノート ID を EditActivity.used に残す（何から派生したかの Usage）
+        newDoc = await recordRevision(newDoc, null, "human_derivation", { sources: [sourceNoteId] });
         newDoc = normalizeTableRowIdentities(newDoc);
         const newFileId = await createFile(newDoc.title, newDoc);
 

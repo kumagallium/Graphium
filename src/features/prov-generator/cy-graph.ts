@@ -19,6 +19,7 @@ export const THEME = {
     wasInformedBy:  "#5b8fb9",
     used:           "#4B7A52",
     wasGeneratedBy: "#c26356",
+    wasDerivedFrom: "#8b7ab5",  // LINK_TYPE_META.derived_from と同系色
     parameter:      "#c08b3e",
     default:        "#6b7f6e",
   },
@@ -233,6 +234,10 @@ export const cyStyles: cytoscape.StylesheetStyle[] = [
   {
     selector: 'edge[label = "wasGeneratedBy"]',
     style: { "line-color": THEME.edge.wasGeneratedBy, "target-arrow-color": THEME.edge.wasGeneratedBy },
+  },
+  {
+    selector: 'edge[label = "wasDerivedFrom"]',
+    style: { "line-color": THEME.edge.wasDerivedFrom, "target-arrow-color": THEME.edge.wasDerivedFrom },
   },
   {
     selector: 'edge[label = "parameter"]',

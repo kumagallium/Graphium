@@ -36,19 +36,21 @@ export type NoteNode = {
   noteContexts?: string[];
 };
 
-/** エッジが表す関係種別（全ノードグラフで線種・色を分けるために使う）。
+/** エッジが表す関係種別（将来、線種・色を分けるために使う想定）。
  *  - derived   : 派生（PROV 派生・ノート→Knowledge の取り込み・Concept→Atom など上流→下流）
  *  - used      : 素材利用（外部ソース pdf:/url:/document:/chat: → ノート）
  *  - reference : 参照（knowledge link）
- * 2ホップグラフ（buildNoteGraph）では未設定。全ノードグラフ（buildGlobalGraph）でのみ付与する。 */
+ * buildNoteGraph（2ホップグラフ）・buildGlobalGraph（全ノードグラフ）どちらでも付与する。
+ * ただし現状 UI 側（view.tsx）は relation による色分け・線種変更を行っていない
+ * （エッジラベルには sourceBlockLabel の本文抜粋のみを表示する）。 */
 export type EdgeRelation = "derived" | "used" | "reference";
 
 export type NoteEdge = {
   source: string;
   target: string;
-  /** 引用元ブロックのテキスト（派生元ブロック内容） */
+  /** 引用元ブロックのテキスト（派生元ブロック内容）。関係キー文字列は入れない。 */
   sourceBlockLabel?: string;
-  /** 関係種別（全ノードグラフでのみ付与）。 */
+  /** 関係種別（derived / used / reference）。 */
   relation?: EdgeRelation;
 };
 
@@ -114,14 +116,23 @@ export function buildNoteGraph(
   // 隣接リスト（双方向）
   const adjacency = new Map<string, Set<string>>();
 
-  const addEdge = (from: string, to: string, sourceBlockLabel?: string) => {
+  // relation は buildGlobalGraph と同じ意味論（derived / used / reference）。
+  // sourceBlockLabel には本文抜粋（extractBlockText の結果）だけを入れる。
+  // 関係キー文字列（"ingest" / "atomize" / "url" / "media" / ext.kind）は
+  // relation に正規化し、ラベルには混入させない（内部キーが画面に出ないように）。
+  const addEdge = (
+    from: string,
+    to: string,
+    relation: EdgeRelation,
+    sourceBlockLabel?: string,
+  ) => {
     // 自己ループ（from === to）は描画しない。
     // 再生成でリネームされた知見が自分自身を source 引用すると、
     // knowledgeLinks の targetNoteId が自分を指す自己参照リンクになり得る
     // （実データで全 knowledgeLink の過半数が該当）。lineage-builder /
     // activity-graph-adapter と同様、ここで一律に弾く。
     if (from === to) return;
-    allEdges.push({ source: from, target: to, sourceBlockLabel });
+    allEdges.push({ source: from, target: to, sourceBlockLabel, relation });
     if (!adjacency.has(from)) adjacency.set(from, new Set());
     if (!adjacency.has(to)) adjacency.set(to, new Set());
     adjacency.get(from)!.add(to);
@@ -139,7 +150,7 @@ export function buildNoteGraph(
         docs.get(doc.derivedFromNoteId),
         doc.derivedFromBlockId,
       );
-      addEdge(doc.derivedFromNoteId, fileId, blockLabel);
+      addEdge(doc.derivedFromNoteId, fileId, "derived", blockLabel);
     }
     // noteLinks: このノートの子（存在チェック）
     // 同じ (from,to) ペアが複数経路で来ても 1 本だけ採用するための dedup セット
@@ -151,21 +162,21 @@ export function buildNoteGraph(
           if (edgeSeen.has(key)) continue;
           edgeSeen.add(key);
           const blockLabel = extractBlockText(doc, link.sourceBlockId);
-          addEdge(fileId, link.targetNoteId, blockLabel);
+          addEdge(fileId, link.targetNoteId, "derived", blockLabel);
         }
       }
     }
     // knowledgeLinks(reference) もネットワークグラフではエッジとして表示する。
     // 来歴ビューは noteLinks のみ参照するため循環は起きない（PROV と知識参照を分離している）。
     for (const page of doc.pages) {
-      const knowledgeLinks = (page.knowledgeLinks ?? []) as Array<{ targetNoteId?: string; sourceBlockId?: string }>;
+      const knowledgeLinks = page.knowledgeLinks ?? [];
       for (const link of knowledgeLinks) {
         if (!link.targetNoteId || !fileIds.has(link.targetNoteId)) continue;
         const key = `${fileId}->${link.targetNoteId}`;
         if (edgeSeen.has(key)) continue;
         edgeSeen.add(key);
         const blockLabel = extractBlockText(doc, link.sourceBlockId);
-        addEdge(fileId, link.targetNoteId, blockLabel);
+        addEdge(fileId, link.targetNoteId, "reference", blockLabel);
       }
     }
     // Wiki の derivedFromNotes: Wiki → 派生元ノートのエッジ
@@ -174,10 +185,10 @@ export function buildNoteGraph(
       for (const sourceId of doc.wikiMeta.derivedFromNotes) {
         const ext = parseExternalSource(sourceId);
         if (ext) {
-          // 外部ソースはエッジ追加（fileIds チェック不要）
-          addEdge(sourceId, fileId, ext.kind);
+          // 外部ソースはエッジ追加（fileIds チェック不要）。素材利用は "used"。
+          addEdge(sourceId, fileId, "used");
         } else if (fileIds.has(sourceId)) {
-          addEdge(sourceId, fileId, "ingest");
+          addEdge(sourceId, fileId, "derived");
         }
       }
     }
@@ -189,17 +200,17 @@ export function buildNoteGraph(
     ) {
       for (const conceptId of doc.wikiMeta.derivedFromClaims) {
         if (fileIds.has(conceptId)) {
-          addEdge(conceptId, fileId, "atomize");
+          addEdge(conceptId, fileId, "derived");
         }
       }
     }
     // 通常ノートの top-level sourceUrl（url-to-prov 由来）→ 外部 URL ノードへのエッジ
     if (doc.source !== "ai" && doc.sourceUrl) {
-      addEdge(`url:${doc.sourceUrl}`, fileId, "url");
+      addEdge(`url:${doc.sourceUrl}`, fileId, "used");
     }
     // 通常ノートの top-level sourcePdfFileId（pdf-to-prov 由来）→ PDF ノードへのエッジ
     if (doc.source !== "ai" && doc.sourcePdfFileId) {
-      addEdge(`pdf:${doc.sourcePdfFileId}`, fileId, "url");
+      addEdge(`pdf:${doc.sourcePdfFileId}`, fileId, "used");
     }
   }
 
@@ -212,22 +223,22 @@ export function buildNoteGraph(
       if (!m.usedIn.some((u) => usageKeys.includes(u.noteId))) continue;
       if (m.type === "image" || m.type === "video" || m.type === "audio") {
         // 画像・動画・音声はサムネイル付きの media: ノードで表示する。
-        addEdge(`media:${m.fileId}`, currentNoteId, "media");
+        addEdge(`media:${m.fileId}`, currentNoteId, "used");
       } else if (m.type === "url") {
         // URL ブックマークを本文のインラインリンクで使った場合も、PROV 由来
         // （top-level sourceUrl）と同じ url: ノードで近接グラフに出す。URL 素材の
         // fileId は "url:<生URL>" なので m.url から同じ id を組み立てる。
         // これを入れないと、アセットグラフには URL が出るのに近接グラフには出ない
         // という素材タイプ間の不一致になる（usedIn ベースで両グラフの定義を揃える）。
-        addEdge(`url:${m.url}`, currentNoteId, "url");
+        addEdge(`url:${m.url}`, currentNoteId, "used");
       } else if (m.type === "pdf") {
         // PDF は埋め込み（pdf ブロック）・@リンク引用どちらも usedIn 経由でここに来る。
         // pdf: ノードとして近接グラフに出す（アセットグラフと定義を揃える）。
-        addEdge(`pdf:${m.fileId}`, currentNoteId, "media");
+        addEdge(`pdf:${m.fileId}`, currentNoteId, "used");
       } else if (m.type === "document") {
         // Word(.docx) 等の document 素材。埋め込み（file ブロック）・@リンク引用とも
         // usedIn 経由で document: ノードとして近接グラフに出す。
-        addEdge(`document:${m.fileId}`, currentNoteId, "media");
+        addEdge(`document:${m.fileId}`, currentNoteId, "used");
       }
     }
   }

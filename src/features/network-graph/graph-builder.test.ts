@@ -274,3 +274,196 @@ describe("buildNoteGraph — 利用メディアの一貫表示（usedIn）", () 
     expect(pdfNode!.id).toBe("pdf:pdf-1");
   });
 });
+
+describe("buildNoteGraph — relation の分離（内部キーがラベルに混入しない）", () => {
+  const RELATION_KEYS = ["ingest", "atomize", "url", "media"];
+
+  it("Wiki の derivedFromNotes（通常ノート）は relation=derived で sourceBlockLabel に関係キーが入らない", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "claim-1",
+        {
+          title: "知見",
+          source: "ai",
+          pages: [{ id: "p", title: "知見", blocks: [] }],
+          wikiMeta: {
+            kind: "claim",
+            derivedFromNotes: ["note-1"],
+            derivedFromChats: [],
+          },
+        } as unknown as GraphiumDocument,
+      ],
+      [
+        "note-1",
+        {
+          title: "元ノート",
+          source: "user",
+          pages: [{ id: "p", title: "元ノート", blocks: [] }],
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const graph = buildNoteGraph(
+      "claim-1",
+      [file("claim-1"), file("note-1")],
+      docs,
+      null,
+    );
+    const edge = graph.edges.find(
+      (e) => e.source === "note-1" && e.target === "claim-1",
+    );
+    expect(edge).toBeDefined();
+    expect(edge!.relation).toBe("derived");
+    expect(edge!.sourceBlockLabel).toBeUndefined();
+    for (const e of graph.edges) {
+      expect(RELATION_KEYS).not.toContain(e.sourceBlockLabel);
+    }
+  });
+
+  it("Atom の derivedFromClaims（旧 'atomize'）は relation=derived でラベルに 'atomize' が入らない", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "atom-1",
+        {
+          title: "洞察",
+          source: "ai",
+          pages: [{ id: "p", title: "洞察", blocks: [] }],
+          wikiMeta: {
+            kind: "atom",
+            derivedFromNotes: [],
+            derivedFromChats: [],
+            derivedFromClaims: ["claim-1"],
+          },
+        } as unknown as GraphiumDocument,
+      ],
+      [
+        "claim-1",
+        {
+          title: "知見",
+          source: "ai",
+          pages: [{ id: "p", title: "知見", blocks: [] }],
+          wikiMeta: { kind: "claim", derivedFromNotes: [], derivedFromChats: [] },
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const graph = buildNoteGraph(
+      "atom-1",
+      [file("atom-1"), file("claim-1")],
+      docs,
+      null,
+    );
+    const edge = graph.edges.find(
+      (e) => e.source === "claim-1" && e.target === "atom-1",
+    );
+    expect(edge).toBeDefined();
+    expect(edge!.relation).toBe("derived");
+    expect(edge!.sourceBlockLabel).toBeUndefined();
+  });
+
+  it("外部ソース（url:/pdf:）は relation=used でラベルに 'url' が入らない", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "note-1",
+        {
+          title: "Note",
+          source: "user",
+          pages: [{ id: "p", title: "Note", blocks: [] }],
+          sourceUrl: "https://example.com/a",
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const graph = buildNoteGraph("note-1", [file("note-1")], docs, null);
+    const edge = graph.edges.find(
+      (e) => e.source === "url:https://example.com/a" && e.target === "note-1",
+    );
+    expect(edge).toBeDefined();
+    expect(edge!.relation).toBe("used");
+    expect(edge!.sourceBlockLabel).toBeUndefined();
+  });
+
+  it("使用メディア（media:/pdf:/document:）は relation=used でラベルに 'media' が入らない", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "note-1",
+        {
+          title: "Note",
+          source: "user",
+          pages: [{ id: "p", title: "Note", blocks: [] }],
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const media: MediaIndex = {
+      version: 2,
+      updatedAt: "",
+      media: [
+        {
+          fileId: "img-1",
+          name: "fig.png",
+          type: "image",
+          mimeType: "image/png",
+          url: "cdn://img-1",
+          thumbnailUrl: "",
+          uploadedAt: "",
+          usedIn: [{ noteId: "note-1", noteTitle: "Note", blockId: "b1" }],
+        },
+      ],
+    } as unknown as MediaIndex;
+    const graph = buildNoteGraph("note-1", [file("note-1")], docs, media);
+    const edge = graph.edges.find(
+      (e) => e.source === "media:img-1" && e.target === "note-1",
+    );
+    expect(edge).toBeDefined();
+    expect(edge!.relation).toBe("used");
+    expect(edge!.sourceBlockLabel).toBeUndefined();
+  });
+
+  it("knowledgeLinks 由来は relation=reference", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "atom-1",
+        {
+          title: "洞察",
+          source: "ai",
+          pages: [
+            {
+              id: "p",
+              title: "洞察",
+              blocks: [],
+              knowledgeLinks: [
+                {
+                  id: "kl",
+                  sourceBlockId: "b",
+                  targetBlockId: "",
+                  targetNoteId: "claim-1",
+                  type: "reference",
+                  layer: "knowledge",
+                  createdBy: "ai",
+                },
+              ],
+            },
+          ],
+          wikiMeta: { kind: "atom", derivedFromNotes: [], derivedFromChats: [] },
+        } as unknown as GraphiumDocument,
+      ],
+      [
+        "claim-1",
+        {
+          title: "知見",
+          source: "ai",
+          pages: [{ id: "p", title: "知見", blocks: [] }],
+          wikiMeta: { kind: "claim", derivedFromNotes: [], derivedFromChats: [] },
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const graph = buildNoteGraph(
+      "atom-1",
+      [file("atom-1"), file("claim-1")],
+      docs,
+      null,
+    );
+    const edge = graph.edges.find(
+      (e) => e.source === "atom-1" && e.target === "claim-1",
+    );
+    expect(edge).toBeDefined();
+    expect(edge!.relation).toBe("reference");
+  });
+});

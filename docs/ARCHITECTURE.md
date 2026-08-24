@@ -319,6 +319,19 @@ to which Activity:
 The two never overlap: headings inside a step are ordinary subheadings and
 create no Activity of their own, which keeps a block from being bound twice.
 
+Besides labels, a note can carry explicit **block-to-block links**
+(`page.provLinks`, type `BlockLink` — `src/lib/block-link-types.ts`, created
+from the block-link editor or by auto-link). All five PROV link types are
+projected into the graph: `informed_by` desugars into a step handoff
+(described in DATA_MODEL §2.3); `derived_from`, `reproduction_of`, `used`
+and `generated` are projected directly right after, resolving each
+endpoint block to whichever Entity/Activity node represents it (falling
+back to a synthesized node when the block carries no label of its own),
+so no link type is silently dropped. See
+[DATA_MODEL.md §2.3](./DATA_MODEL.md#23-prov-dm-label-model) ("The other
+four `provLinks` types") for the resolution and fallback rules, and the
+warnings raised when an endpoint cannot be resolved as expected.
+
 `[Plan]` / `[Result]` phases were withdrawn (plan-vs-actual comparison
 pays off across runs of a protocol, which note-level splitting covers: a
 plan note whose index table links to one execution note per run), and

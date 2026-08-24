@@ -44,10 +44,26 @@ function mockDoc(overrides: Partial<GraphiumDocument> = {}): GraphiumDocument {
         ],
         labels: { b2: "entity:sample" },
         provLinks: [
-          { targetNoteId: "note-A", targetBlockId: "bA1" },
+          {
+            id: "link-1",
+            sourceBlockId: "b2",
+            targetBlockId: "bA1",
+            type: "derived_from",
+            layer: "prov",
+            createdBy: "human",
+            targetNoteId: "note-A",
+          },
         ],
         knowledgeLinks: [
-          { targetNoteId: "note-B" },
+          {
+            id: "link-2",
+            sourceBlockId: "b2",
+            targetBlockId: "bA1",
+            type: "reference",
+            layer: "knowledge",
+            createdBy: "human",
+            targetNoteId: "note-B",
+          },
         ],
         indexTables: {
           "table-1": { "Sample-001": "note-C", "Sample-002": "note-D" },

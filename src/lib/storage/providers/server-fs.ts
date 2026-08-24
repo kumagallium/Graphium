@@ -142,7 +142,7 @@ export class ServerFilesystemProvider implements StorageProvider {
   async loadFile(fileId: string): Promise<GraphiumDocument> {
     const res = await authedFetchInternal(`/api/storage/notes/${encodeURIComponent(fileId)}`);
     const json = (await res.json()) as GraphiumDocument;
-    return migrateToLatest(json);
+    return migrateToLatest(json, fileId);
   }
 
   async createFile(_title: string, content: GraphiumDocument): Promise<string> {
@@ -320,7 +320,7 @@ export class ServerFilesystemProvider implements StorageProvider {
 
   async loadWikiFile(fileId: string): Promise<GraphiumDocument> {
     const res = await authedFetchInternal(`/api/storage/wiki/${encodeURIComponent(fileId)}`);
-    return migrateToLatest((await res.json()) as GraphiumDocument);
+    return migrateToLatest((await res.json()) as GraphiumDocument, fileId);
   }
 
   async createWikiFile(_title: string, content: GraphiumDocument): Promise<string> {

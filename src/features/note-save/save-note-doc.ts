@@ -28,6 +28,7 @@
 // recordRevision を内部で呼ばない）。統合するとしても別 PR で行う。
 
 import type { GraphiumDocument } from "../../lib/document-types";
+import type { BlockLink } from "../../lib/block-link-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 
 /**
@@ -35,8 +36,8 @@ import { getActiveProvider } from "../../lib/storage/registry";
  * note-app / side-peek 双方の linkStore がこの形を満たす。
  */
 export interface LinkSource {
-  /** layer フィールド（"prov" | "knowledge"）を持つリンクの全件 */
-  getAllLinks(): Array<{ layer?: string; [k: string]: unknown }>;
+  /** BlockLink の全件（layer で prov / knowledge に振り分けられる） */
+  getAllLinks(): BlockLink[];
 }
 
 /**
@@ -71,8 +72,8 @@ export interface BuildSavedPageFieldsInput {
  */
 export interface SavedPageFields {
   labels: Record<string, string>;
-  provLinks: unknown[];
-  knowledgeLinks: unknown[];
+  provLinks: BlockLink[];
+  knowledgeLinks: BlockLink[];
   blockAlignments: Record<string, "left" | "center" | "right"> | undefined;
 }
 

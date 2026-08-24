@@ -5,7 +5,8 @@
 
 export type ProvWarningType =
   | "unknown-label"          // 未知のラベル → Layer 3 扱い
-  | "broken-link";           // 前手順リンク先が存在しない
+  | "broken-link"            // 前手順リンク先が存在しない
+  | "activity-unresolved";   // used/generated リンクの Activity 端点が解決できず wasDerivedFrom にフォールバック
 
 export type ProvWarning = {
   type: ProvWarningType;

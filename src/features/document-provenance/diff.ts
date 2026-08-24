@@ -111,10 +111,10 @@ export function computeRevisionSummary(
   }
 
   // リンク差分
-  const prevProvIds = new Set(prevPage.provLinks.map((l: any) => l.id));
-  const currentProvIds = new Set(currentPage.provLinks.map((l: any) => l.id));
-  const prevKnowledgeIds = new Set(prevPage.knowledgeLinks.map((l: any) => l.id));
-  const currentKnowledgeIds = new Set(currentPage.knowledgeLinks.map((l: any) => l.id));
+  const prevProvIds = new Set(prevPage.provLinks.map((l) => l.id));
+  const currentProvIds = new Set(currentPage.provLinks.map((l) => l.id));
+  const prevKnowledgeIds = new Set(prevPage.knowledgeLinks.map((l) => l.id));
+  const currentKnowledgeIds = new Set(currentPage.knowledgeLinks.map((l) => l.id));
 
   let provLinksAdded = 0;
   let provLinksRemoved = 0;

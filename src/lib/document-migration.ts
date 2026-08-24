@@ -27,8 +27,13 @@ export const LATEST_DOCUMENT_VERSION = 6;
 
 const INLINE_TYPE_LABELS = new Set(["material", "tool", "attribute", "output"]);
 
-/** 読み込んだドキュメントを最新 version に揃える（破壊的に変更して同じ参照を返す） */
-export function migrateToLatest(doc: GraphiumDocument): GraphiumDocument {
+/**
+ * 読み込んだドキュメントを最新 version に揃える（破壊的に変更して同じ参照を返す）
+ * @param selfId このドキュメント自身のファイル ID（loadFile が受け取った fileId）。
+ *   渡された場合、provLinks / knowledgeLinks から自己参照（targetNoteId === selfId）を
+ *   除去する（過去の生成バグ由来の無意味データのサニタイズ。スキーマは変えない）。
+ */
+export function migrateToLatest(doc: GraphiumDocument, selfId?: string): GraphiumDocument {
   if (!doc || typeof doc !== "object") return doc;
 
   // v1 → v2: links を provLinks / knowledgeLinks に分離
@@ -72,7 +77,28 @@ export function migrateToLatest(doc: GraphiumDocument): GraphiumDocument {
   // `inline*` キーは安全のため除去する。
   stripUnknownInlineStyles(doc);
 
+  // 自己参照リンクの除去（version 非依存、毎回 idempotent）。
+  // re-lift 時の温存漏れ等の過去バグにより knowledgeLinks / provLinks の
+  // targetNoteId が自ノート自身を指すデータが混入することがある。
+  // 読み込みのたびに掃除しておけば、旧ビルドで保存されたファイルでも
+  // 描画側の防御を待たずに自己参照が解消される。
+  if (selfId) {
+    stripSelfReferenceLinks(doc, selfId);
+  }
+
   return doc;
+}
+
+/** knowledgeLinks / provLinks から targetNoteId === selfId の自己参照を除去する */
+function stripSelfReferenceLinks(doc: GraphiumDocument, selfId: string): void {
+  for (const page of doc.pages ?? []) {
+    if (Array.isArray(page.knowledgeLinks)) {
+      page.knowledgeLinks = page.knowledgeLinks.filter((l) => l?.targetNoteId !== selfId);
+    }
+    if (Array.isArray(page.provLinks)) {
+      page.provLinks = page.provLinks.filter((l) => l?.targetNoteId !== selfId);
+    }
+  }
 }
 
 const KNOWN_INLINE_STYLE_KEYS = new Set([
@@ -158,6 +184,26 @@ function migrateConceptKindToClaim(doc: GraphiumDocument): void {
   }
 }
 
+let migrationLinkIdCounter = 0;
+/** 移行専用の id 生成。BlockLink.id が欠けている旧データ救済用（通常は不要） */
+function generateMigrationLinkId(): string {
+  return `link-migrated-${Date.now()}-${migrationLinkIdCounter++}`;
+}
+
+/**
+ * BlockLink の必須フィールド（id / createdBy）が欠けたまま v2 に流れないよう補完する。
+ * 通常の運用データでは id / createdBy は常に付与済み（features/block-link/store.tsx
+ * generateLinkId）だが、旧バージョンや外部由来データで欠けている可能性を排除できないため、
+ * ここで型を満たすところまで面倒を見る（スキーマは変えない・値の補完のみ）。
+ */
+function ensureBlockLinkFields(link: any): any {
+  return {
+    ...link,
+    id: typeof link.id === "string" && link.id ? link.id : generateMigrationLinkId(),
+    createdBy: link.createdBy ?? "human",
+  };
+}
+
 /** v1 → v2: ページ内の links を provLinks / knowledgeLinks に分解 */
 function migrateLinksToV2(doc: GraphiumDocument): void {
   for (const page of doc.pages ?? []) {
@@ -168,10 +214,11 @@ function migrateLinksToV2(doc: GraphiumDocument): void {
         const isProv = !link.type || [
           "derived_from", "used", "generated", "reproduction_of", "informed_by",
         ].includes(link.type);
+        const migrated = ensureBlockLinkFields(link);
         if (isProv) {
-          provLinks.push({ ...link, layer: "prov" });
+          provLinks.push({ ...migrated, layer: "prov" });
         } else {
-          knowledgeLinks.push({ ...link, layer: "knowledge" });
+          knowledgeLinks.push({ ...migrated, layer: "knowledge" });
         }
       }
       page.provLinks = provLinks;
