@@ -198,7 +198,7 @@ import {
   type AtomCandidate, getDocEmbedding, pickFarthestSeeds, buildClusterSlice, pickClusterCount,
   rankCandidatesByRelevance,
   // Atom（実験的）
-  atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims,
+  atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
   // Discovery 共通: embedding ベース重複検出
   partitionCandidatesByEmbedding,
   // インライン引用リンク
@@ -7302,9 +7302,10 @@ export function NoteApp() {
         // （atomizer 提案の derivedFromClaims はその回の入力に依存し、
         //  ユーザーが手動で集めたソース集合とは限らない）
         // 自己参照の生成抑止: 過去バグ由来で自 ID が紛れていても引き継がない
-        const preservedDerivedFromClaims = (
-          doc.wikiMeta?.derivedFromClaims ?? newDoc.wikiMeta!.derivedFromClaims ?? []
-        ).filter((id) => id !== wikiId);
+        const preservedDerivedFromClaims = filterSelfFromDerivedFromClaims(
+          doc.wikiMeta?.derivedFromClaims ?? newDoc.wikiMeta!.derivedFromClaims ?? [],
+          wikiId,
+        );
         const rewritten: GraphiumDocument = {
           ...newDoc,
           // buildAtomDocument は素の新規 doc を返すため、ここで引き継がないと

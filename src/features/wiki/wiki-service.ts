@@ -1889,6 +1889,16 @@ export async function atomizeConcepts(
 }
 
 /**
+ * derivedFromClaims から自己参照 ID を除外する。
+ * note-app.tsx の Atom re-lift 経路（既存 derivedFromClaims を温存しつつ
+ * 再生成する処理）が使う。過去バグ由来で自 ID が紛れ込んでいても、
+ * 再生成のたびに引き継がないための共通フィルタ。
+ */
+export function filterSelfFromDerivedFromClaims(claimIds: string[], selfNoteId: string): string[] {
+  return claimIds.filter((id) => id !== selfNoteId);
+}
+
+/**
  * AtomCandidate から GraphiumDocument を構築する。
  * Atom は Zettel 1 アイデアなので、本文は短い段落のみ。見出しは付けない。
  */

@@ -5,6 +5,7 @@ import {
   reinforceAtomWithClaims,
   buildAtomDocument,
   buildWikiDocument,
+  filterSelfFromDerivedFromClaims,
   type AtomCandidate,
 } from "./wiki-service";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
@@ -389,12 +390,16 @@ describe("buildWikiDocument - relatedClaims の自己参照抑止", () => {
   });
 });
 
-describe("note-app.tsx の Atom re-lift 経路が想定する derivedFromClaims フィルタ", () => {
-  // note-app.tsx 側のロジック（既存 derivedFromClaims から自 ID を除外して引き継ぐ）を
-  // 同じフィルタ式で単体検証する。UI 本体（note-app.tsx）は結合テストの対象外のため、
-  // ここでは再生成時に温存される derivedFromClaims が自己参照を含まないことのみを保証する。
+describe("filterSelfFromDerivedFromClaims - note-app.tsx の Atom re-lift 経路が使う自己参照フィルタ", () => {
+  // note-app.tsx 側は wiki-service.ts が export するこの関数をそのまま呼ぶ
+  // （filterSelfFromDerivedFromClaims が変更されれば、この検証も追従する）。
   it("自 ID（wikiId）を derivedFromClaims から除外する", () => {
-    const preserved = ["claim-a", "wiki-self", "claim-b"].filter((id) => id !== "wiki-self");
+    const preserved = filterSelfFromDerivedFromClaims(["claim-a", "wiki-self", "claim-b"], "wiki-self");
+    expect(preserved).toEqual(["claim-a", "claim-b"]);
+  });
+
+  it("自 ID が含まれていなければ元のまま返す", () => {
+    const preserved = filterSelfFromDerivedFromClaims(["claim-a", "claim-b"], "wiki-self");
     expect(preserved).toEqual(["claim-a", "claim-b"]);
   });
 });

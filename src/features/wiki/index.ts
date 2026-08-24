@@ -27,7 +27,7 @@ export {
   // Claim snapshot 構築（Atomizer / Cmd-K Composer など downstream consumer 共通）
   buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
   // Atom（実験的）
-  atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims,
+  atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
   // Discovery 共通: embedding ベース重複検出
   dedupCandidatesByEmbedding, partitionCandidatesByEmbedding,
   // インライン引用リンク
