@@ -351,6 +351,50 @@ describe("provDocToFlowGraph — prov:wasDerivedFrom（derived エッジ、#754�
     });
   });
 
+  it("graphium:linkType 付きの wasDerivedFrom は FlowEdge.linkType に伝播する（reproduction_of 等の色分け用）", () => {
+    const doc = makeDoc([
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      {
+        "@id": "inline_output_ent_origin",
+        "@type": "prov:Entity",
+        "rdfs:label": "先行研究",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+      },
+      {
+        "@id": "inline_output_ent_repro",
+        "@type": "prov:Entity",
+        "rdfs:label": "再現実験",
+        "prov:wasDerivedFrom": [{ "@id": "inline_output_ent_origin", "graphium:linkType": "reproduction_of" }],
+      },
+    ]);
+
+    const { edges } = provDocToFlowGraph(doc);
+    const edge = edges.find((e) => e.kind === "derived");
+    expect(edge?.linkType).toBe("reproduction_of");
+  });
+
+  it("graphium:linkType 無しの wasDerivedFrom は FlowEdge.linkType が undefined のまま（derived_from 由来）", () => {
+    const doc = makeDoc([
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      {
+        "@id": "inline_output_ent_origin",
+        "@type": "prov:Entity",
+        "rdfs:label": "元試料",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+      },
+      {
+        "@id": "inline_output_ent_derived",
+        "@type": "prov:Entity",
+        "rdfs:label": "派生試料",
+        "prov:wasDerivedFrom": [{ "@id": "inline_output_ent_origin" }],
+      },
+    ]);
+
+    const { edges } = provDocToFlowGraph(doc);
+    const edge = edges.find((e) => e.kind === "derived");
+    expect(edge?.linkType).toBeUndefined();
+  });
+
   it("端点 Entity が used/generates に登場しない場合は block kind で合成ノードを追加する", () => {
     const doc = makeDoc([
       { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },

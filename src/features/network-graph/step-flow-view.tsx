@@ -38,6 +38,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { LayoutGrid, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
+import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
 import { computeStepDistinguishers, type FlowGraphData } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
@@ -52,9 +53,26 @@ const ACTIVITY_BLUE = KIND_PALETTE.activity.main;
 const MATERIAL_GREEN = KIND_PALETTE.material.main;
 const OUTPUT_TERRACOTTA = KIND_PALETTE.output.main;
 const DANGER = "var(--color-destructive)";
-// derived_from / reproduction_of リンク由来。block-link 側の LINK_TYPE_META.derived_from
-// と同じ紫（link-types.ts 参照）で、他のリレーション由来エッジと見分けられるようにする
-const DERIVED_PURPLE = "#8b7ab5";
+
+/**
+ * derived エッジ（prov:wasDerivedFrom）の色とラベルを、元のブロック間リンク種別で
+ * 出し分ける。generator.ts の wasDerivedFrom は 3 由来を区別なく生成するため
+ * （derived_from / reproduction_of / used・generated の Activity 未解決フォールバック）、
+ * FlowEdge.linkType（無指定=derived_from）を見て block-link 側の
+ * LINK_TYPE_META と同じ色分けに揃える。
+ */
+function derivedEdgeVisual(linkType?: string): { color: string; label: string } {
+  switch (linkType) {
+    case "reproduction_of":
+      return { color: LINK_TYPE_META.reproduction_of.color, label: getLinkTypeLabel("reproduction_of") };
+    case "used":
+      return { color: LINK_TYPE_META.used.color, label: getLinkTypeLabel("used") };
+    case "generated":
+      return { color: LINK_TYPE_META.generated.color, label: getLinkTypeLabel("generated") };
+    default:
+      return { color: LINK_TYPE_META.derived_from.color, label: t("activityGraph.derivedFrom") };
+  }
+}
 
 /** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */
 export type ConnectResult = { error: string | null };
@@ -164,10 +182,8 @@ const EDGE_STYLES: Record<string, Partial<Edge>> = {
       height: 16,
     },
   },
-  derived: {
-    style: { stroke: DERIVED_PURPLE, strokeWidth: 1.5 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: DERIVED_PURPLE, width: 16, height: 16 },
-  },
+  // derived は linkType で色が分かれるため EDGE_STYLES では定義せず、
+  // setEdges 内で derivedEdgeVisual() から動的に組み立てる
 };
 
 function isEditableStep(graph: FlowGraphData, id: string): boolean {
@@ -308,32 +324,42 @@ function StepFlowCanvas({
       return [...stepNodes, ...entityNodes];
     });
     setEdges(
-      graph.edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        ...EDGE_STYLES[e.kind],
-        ...(e.kind === "orderOnly"
-          ? {
-              label: t("activityGraph.orderOnly"),
-              labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
-              labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
-            }
-          : e.kind === "external"
+      graph.edges.map((e) => {
+        // derived は linkType で色分けが変わるため、他の kind と違い静的な
+        // EDGE_STYLES を引かず、その場で色・ラベルを組み立てる
+        const derived = e.kind === "derived" ? derivedEdgeVisual(e.linkType) : null;
+        return {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          ...(derived
             ? {
-                label: t("activityGraph.externalProcess"),
-                labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
+                style: { stroke: derived.color, strokeWidth: 1.5 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: derived.color, width: 16, height: 16 },
+              }
+            : EDGE_STYLES[e.kind]),
+          ...(e.kind === "orderOnly"
+            ? {
+                label: t("activityGraph.orderOnly"),
+                labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
                 labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
               }
-            : e.kind === "derived"
+            : e.kind === "external"
               ? {
-                  label: t("activityGraph.derivedFrom"),
-                  labelStyle: { fontSize: 9, fill: DERIVED_PURPLE, fontWeight: 700 },
+                  label: t("activityGraph.externalProcess"),
+                  labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
                   labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
                 }
-          : {}),
-        data: { kind: e.kind, deletable: e.deletable ?? false },
-      })),
+              : derived
+                ? {
+                    label: derived.label,
+                    labelStyle: { fontSize: 9, fill: derived.color, fontWeight: 700 },
+                    labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
+                  }
+                : {}),
+          data: { kind: e.kind, deletable: e.deletable ?? false },
+        };
+      }),
     );
     needsLayoutRef.current = true;
     // 既存ノードの position 更新だけで dimensions change が来ないケースに備えて、

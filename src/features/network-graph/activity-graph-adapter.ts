@@ -272,6 +272,9 @@ export type FlowEdge = {
   target: string;
   /** orderOnly のみ: 裏に informed_by リンクがあり削除できるか（editor 側で判定して付与） */
   deletable?: boolean;
+  /** derived のみ: 元のブロック間リンク種別（derived_from / reproduction_of / used / generated）。
+   *  無指定は derived_from 由来 — 表示側の色・ラベルの出し分けに使う */
+  linkType?: string;
 };
 
 export type FlowGraphData = {
@@ -394,7 +397,13 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
     const derived = collectEntity(r.from); // 派生した側
     const origin = collectEntity(r.to); // 派生元
     if (!derived || !origin) continue;
-    pushEdge({ id: `derived-${r.to}->${r.from}`, kind: "derived", source: r.to, target: r.from });
+    pushEdge({
+      id: `derived-${r.to}->${r.from}`,
+      kind: "derived",
+      source: r.to,
+      target: r.from,
+      linkType: r.linkType,
+    });
   }
 
   return { steps, entities: Array.from(entities.values()), edges };
