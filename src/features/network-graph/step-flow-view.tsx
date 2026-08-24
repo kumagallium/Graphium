@@ -45,6 +45,7 @@ import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
 import { FlowStepPanel, type FlowSelection, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
+import { seedUnplacedFlowNodes, useGraphLayout } from "./use-graph-layout";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useResizableWidth } from "../../hooks/use-resizable-width";
 import { useResizableHeight } from "../../hooks/use-resizable-height";
@@ -117,6 +118,12 @@ export type StepFlowViewProps = {
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
   /** 属性テーブルの置き場所。below = グラフの下（右パネル）、side = 右横（全画面） */
   tableLayout?: "below" | "side";
+  /**
+   * 手動配置を保存するスコープ（provFlowScope(noteId)）。
+   * 指定するとノードをドラッグで動かせるようになり、並びが保存・復元される。
+   * 未指定なら従来どおり自動レイアウト専用（ドラッグ不可）。
+   */
+  layoutScope?: string | null;
   /**
    * 使われ方。"preview" はプロセス一覧の右ペインのように、構造だけを見せて
    * 編集させない場所で使う: 属性テーブルを畳み、初期表示で縮小しすぎない
@@ -208,6 +215,7 @@ function StepFlowCanvas({
   onRenameTableRow,
   onRemoveTableRow,
   tableLayout = "below",
+  layoutScope = null,
   variant = "editor",
   getPanelFor,
   onSetCell,
@@ -252,6 +260,27 @@ function StepFlowCanvas({
 
   const prevNodeIdsRef = useRef<Set<string>>(new Set());
   const { fitView, getNodes, getViewport, setViewport } = useReactFlow();
+
+  // ── 手動配置の保存（ノート周辺グラフと同じ仕組み・同じ保存先）──
+  //
+  // 保存済みの座標があるノードはその位置に戻し、ELK は流さない。1 つノードが
+  // 増えただけで手で整えた並びが崩れないようにするため（Cytoscape 側と同じ方針）。
+  const {
+    ready: layoutReady,
+    positions: savedPositions,
+    save: saveLayout,
+    reset: resetLayout,
+    hasSaved: hasSavedLayout,
+    resetSeq: layoutResetSeq,
+  } = useGraphLayout(layoutScope);
+  // ノード再構築 effect の依存には入れない（保存のたびに参照が変わり、
+  // ドラッグ → 保存 → 再構築のループになる）
+  const savedPositionsRef = useRef(savedPositions);
+  savedPositionsRef.current = savedPositions;
+  const saveLayoutRef = useRef(saveLayout);
+  saveLayoutRef.current = saveLayout;
+  // 手動配置を使っている間は ELK を走らせない。resetLayout でこの旗が下りる
+  const usingSavedLayoutRef = useRef(false);
   // プレビューは全体を収めるより読めることを優先する
   const fitMinZoom = variant === "preview" ? 0.55 : 0.2;
   // 接続判定用に最新の graph を ref でも持つ（cy 初期化不要の React Flow でも
@@ -267,6 +296,9 @@ function StepFlowCanvas({
 
   // ── FlowGraphData → React Flow の nodes / edges 同期 ──
   useEffect(() => {
+    // 保存済みの配置を読み終えるまで組まない。先に ELK で組むと、復元のたびに
+    // ノードが並べ直されて見える
+    if (!layoutReady) return;
     setEdgeMenu(null);
     // 選択中ノードが消えた場合、同じ更新で新しく現れたノードが 1 つだけなら
     // それが「同じもの」の付け替え（表に移した・行名を変えた）なので選択を移す
@@ -285,13 +317,16 @@ function StepFlowCanvas({
     prevNodeIdsRef.current = currentIds;
     setNodes((prev: Node[]) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
+      // 保存済みの座標。スコープが無い文脈（プレビュー等）では常に null
+      const saved = savedPositionsRef.current;
+      const nodesAreDraggable = !!layoutScope;
       // 同名ステップ（条件違いの並列ラン）を見分けるためのパラメータ
       const distinguishers = computeStepDistinguishers(graph.steps);
       const showParams = showParamsRef.current;
       const stepNodes: Node[] = graph.steps.map((s) => ({
         id: s.id,
         type: "step" as const,
-        position: prevPos.get(s.id) ?? { x: 0, y: 0 },
+        position: saved?.[s.id] ?? prevPos.get(s.id) ?? { x: 0, y: 0 },
         data: {
           activity: s,
           onRename: s.externalOrigin ? undefined : onRenameActivity,
@@ -302,13 +337,13 @@ function StepFlowCanvas({
           distinguishers: distinguishers.get(s.id),
           showParams,
         },
-        draggable: false,
+        draggable: nodesAreDraggable,
         selected: s.id === selectedIdRef.current,
       }));
       const entityNodes: Node[] = graph.entities.map((e) => ({
         id: e.id,
         type: "entity" as const,
-        position: prevPos.get(e.id) ?? { x: 0, y: 0 },
+        position: saved?.[e.id] ?? prevPos.get(e.id) ?? { x: 0, y: 0 },
         data: {
           entity: e,
           onRenameEntity,
@@ -318,7 +353,7 @@ function StepFlowCanvas({
           onOpenExternalNote,
           showParams,
         },
-        draggable: false,
+        draggable: nodesAreDraggable,
         selected: e.id === selectedIdRef.current,
       }));
       return [...stepNodes, ...entityNodes];
@@ -361,10 +396,22 @@ function StepFlowCanvas({
         };
       }),
     );
-    needsLayoutRef.current = true;
-    // 既存ノードの position 更新だけで dimensions change が来ないケースに備えて、
-    // 次フレームで「全ノード実測済みなら即レイアウト」も試す
-    requestAnimationFrame(() => tryLayout());
+    // 保存済みの配置が 1 つでもあるなら ELK は流さない（手で整えた並びを保つ）。
+    // 保存に無い新しいノードだけ、既存の並びの下に仮置きして気づけるようにする
+    const savedNow = savedPositionsRef.current;
+    const placedCount = savedNow
+      ? [...graph.steps, ...graph.entities].filter((n) => savedNow[n.id]).length
+      : 0;
+    usingSavedLayoutRef.current = placedCount > 0;
+    if (usingSavedLayoutRef.current && savedNow) {
+      needsLayoutRef.current = false;
+      setNodes((nds: Node[]) => seedUnplacedFlowNodes(nds, savedNow));
+    } else {
+      needsLayoutRef.current = true;
+      // 既存ノードの position 更新だけで dimensions change が来ないケースに備えて、
+      // 次フレームで「全ノード実測済みなら即レイアウト」も試す
+      requestAnimationFrame(() => tryLayout());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     graph,
@@ -380,6 +427,11 @@ function StepFlowCanvas({
     showParams,
     setNodes,
     setEdges,
+    // 保存済み配置の読み込み完了とリセットで組み直す。savedPositions / saveLayout
+    // 自体は ref 経由で読む（依存に入れるとドラッグ → 保存 → 再構築のループになる）
+    layoutReady,
+    layoutResetSeq,
+    layoutScope,
   ]);
 
   // ── 全ノードの実測サイズが揃った時点で ELK レイアウト ──
@@ -453,6 +505,12 @@ function StepFlowCanvas({
     (changes: NodeChange<Node>[]) => {
       onNodesChange(changes);
       if (!changes.some((c) => c.type === "dimensions")) return;
+      // 手動で整えた並びを使っている間は、カードの実寸が変わっても並べ直さない
+      // （勝手に ELK が走ると手で整えた配置が消える。戻したいときは「整列」を押す）
+      if (usingSavedLayoutRef.current) {
+        relayoutAfterResizeRef.current = false;
+        return;
+      }
       if (relayoutAfterResizeRef.current) {
         relayoutAfterResizeRef.current = false;
         needsLayoutRef.current = true;
@@ -603,7 +661,16 @@ function StepFlowCanvas({
         }}
         onPaneClick={() => setEdgeMenu(null)}
         onMove={() => setEdgeMenu(null)}
-        nodesDraggable={false}
+        // ドラッグが終わったら、その時点の全ノード座標を保存する。複数選択して
+        // まとめて動かした場合も、動いた分がまとめて 1 回の保存になる
+        onNodeDragStop={() => {
+          if (!layoutScope) return;
+          const positions: Record<string, { x: number; y: number }> = {};
+          for (const n of getNodes()) positions[n.id] = { x: n.position.x, y: n.position.y };
+          usingSavedLayoutRef.current = true;
+          saveLayoutRef.current(positions);
+        }}
+        nodesDraggable={!!layoutScope}
         deleteKeyCode={null}
         minZoom={0.2}
         maxZoom={4}
@@ -618,10 +685,13 @@ function StepFlowCanvas({
             {/* レイアウトの手動やり直し。自動レイアウトが原則だが、崩れたときの逃げ道 */}
             <button
               onClick={() => {
+                // 手で整えた並びがあれば手放して、自動配置に戻す
+                if (hasSavedLayout) resetLayout();
+                usingSavedLayoutRef.current = false;
                 needsLayoutRef.current = true;
                 requestAnimationFrame(() => tryLayout());
               }}
-              title={t("activityGraph.relayout")}
+              title={hasSavedLayout ? t("graph.layout.resetHint") : t("activityGraph.relayout")}
               style={toolbarBtnStyle("var(--color-text-tertiary)")}
               onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-card)")}

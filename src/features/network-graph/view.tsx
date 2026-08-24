@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, X } from "lucide-react";
+import { Maximize2, RotateCcw, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import type { NoteGraphData } from "./graph-builder";
@@ -18,6 +18,13 @@ import { useT } from "../../i18n";
 import { resolveMediaThumbUrl } from "../asset-browser/media-thumbnails";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
 import { openExternalUrl } from "../../lib/external-link";
+import { noteGraphScope } from "./graph-layout";
+import {
+  applySavedPositions,
+  attachCytoscapeLayoutPersistence,
+  seedUnplacedNodes,
+  useGraphLayout,
+} from "./use-graph-layout";
 
 // fcose レイアウト登録（重複防止）
 ensureCytoscapePlugins();
@@ -107,6 +114,16 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
     selector: "node:active",
     style: {
       "overlay-opacity": 0.08,
+    },
+  },
+  // 範囲選択中のノード。design.md の「選択は枠の太さを変えずリング」に倣い、
+  // border-width ではなく overlay で表す（実寸が変わるとレイアウトが動く）
+  {
+    selector: "node:selected",
+    style: {
+      "overlay-opacity": 0.2,
+      "overlay-color": "#4B7A52",
+      "overlay-padding": 4,
     },
   },
   // ホバー中のノード（フルラベルに切り替え）
@@ -242,6 +259,26 @@ export function NetworkGraphPanel({
   }, [data.nodes]);
   const [expanded, setExpanded] = useState(false);
 
+  // ── 手動配置の保存 ──
+  //
+  // スコープは中心ノート（isCurrent）。中心を持たないグラフは保存対象外にする。
+  const currentNodeId = data.nodes.find((n) => n.isCurrent)?.id ?? null;
+  const layoutScope = currentNodeId ? noteGraphScope(currentNodeId) : null;
+  const {
+    ready: layoutReady,
+    positions: savedPositions,
+    save: saveLayout,
+    reset: resetLayout,
+    hasSaved: hasSavedLayout,
+    resetSeq: layoutResetSeq,
+  } = useGraphLayout(layoutScope);
+  // 保存のたびに参照が変わるので、グラフ構築 effect の依存には入れず ref で読む
+  // （入れるとドラッグ→保存→再構築のループになる）
+  const savedPositionsRef = useRef(savedPositions);
+  savedPositionsRef.current = savedPositions;
+  const saveLayoutRef = useRef(saveLayout);
+  saveLayoutRef.current = saveLayout;
+
   const handleNavigate = useCallback(
     (noteId: string) => onNavigate(noteId),
     [onNavigate]
@@ -259,6 +296,10 @@ export function NetworkGraphPanel({
 
   useEffect(() => {
     if (!containerRef.current) return;
+
+    // 保存済みの配置を読み終えるまで組まない。先に自動レイアウトで組んでしまうと、
+    // 復元のたびにノードが飛んで見える
+    if (!layoutReady) return;
 
     // グラフデータが空なら表示しない
     if (data.nodes.length === 0) {
@@ -347,6 +388,11 @@ export function NetworkGraphPanel({
       });
     }
 
+    // 保存済みの座標を要素に流し込む。1 つでも復元できたら自動レイアウトは流さず、
+    // 新しく増えたノードだけ既存の並びの外周に置く（手で整えた並びを崩さない）
+    const { unplacedIds, placedCount } = applySavedPositions(elements, savedPositionsRef.current);
+    const useSavedLayout = placedCount > 0;
+
     // 既存インスタンスがあれば破棄
     if (cyRef.current) {
       cyRef.current.destroy();
@@ -361,7 +407,12 @@ export function NetworkGraphPanel({
       // （ノード自体の label は data.label = 省略形）
       userZoomingEnabled: true,
       userPanningEnabled: true,
-      boxSelectionEnabled: false,
+      // 範囲選択（shift または ⌘ + 背景ドラッグ）。選択したノードは
+      // どれか 1 つを掴めばまとめて動く（Cytoscape の標準挙動）
+      boxSelectionEnabled: true,
+      // single: 単発クリックの選択は置き換え（ノードのクリックは本来ナビゲーション
+      // なので累積させない）。矩形選択は single でも複数選択になる
+      selectionType: "single",
       wheelSensitivity: 0.3,
       minZoom: 0.2,
       maxZoom: 4,
@@ -373,6 +424,11 @@ export function NetworkGraphPanel({
     //   - idealEdgeLength を hop 差に応じて変える（中心→hop1 は短い、hop2 へは長い）
     //     ことで「ホップ数が近いほど中心に近い」配置になる。
     //   - hop 数が多いノード自体に少し負の gravity をかけて外側へ押し出す
+    if (useSavedLayout) {
+      // 手動で整えた並びを復元。新しく増えたノードは外周に仮置きする
+      seedUnplacedNodes(cy, unplacedIds);
+      cy.fit(undefined, 20);
+    } else {
     const layout = cy.layout({
       name: "fcose",
       animate: true,
@@ -405,6 +461,12 @@ export function NetworkGraphPanel({
       cy.fit(undefined, 20);
     });
     layout.run();
+    }
+
+    // ドラッグ終了で現在の並びを保存する
+    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) =>
+      saveLayoutRef.current(positions),
+    );
 
     // ── ホバーエフェクト ──
 
@@ -479,10 +541,23 @@ export function NetworkGraphPanel({
     cyRef.current = cy;
 
     return () => {
+      detachPersistence();
       cy.destroy();
       cyRef.current = null;
     };
-  }, [data, handleNavigate, onOpenMedia, onOpenUrl, onOpenMemo, expanded, mediaThumbs]);
+    // savedPositions / saveLayout は ref 経由で読む（依存に入れると
+    // ドラッグ → 保存 → 再構築のループになる）
+  }, [
+    data,
+    handleNavigate,
+    onOpenMedia,
+    onOpenUrl,
+    onOpenMemo,
+    expanded,
+    mediaThumbs,
+    layoutReady,
+    layoutResetSeq,
+  ]);
 
   if (data.nodes.length === 0) {
     return (
@@ -516,6 +591,16 @@ export function NetworkGraphPanel({
         </span>
       ))}
       <span className="ml-auto flex items-center gap-1">
+        {hasSavedLayout && (
+          <button
+            onClick={resetLayout}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title={t("graph.layout.resetHint")}
+            aria-label={t("graph.layout.reset")}
+          >
+            <RotateCcw size={12} />
+          </button>
+        )}
         <span>{t("panel.graph.stats", { nodes: String(data.nodes.length), edges: String(data.edges.length) })}</span>
         <button
           onClick={() => setExpanded((v) => !v)}

@@ -5137,7 +5137,7 @@ function NoteEditorInner({
                 />
               )}
               {rightTab === "prov" && provLabelsEnabled && (
-                <ProvGraphPanel doc={provDoc} editorRef={editorRef} />
+                <ProvGraphPanel doc={provDoc} editorRef={editorRef} noteId={fileId} />
               )}
               {rightTab === "chat" && (
                 <AiAssistantPanel
