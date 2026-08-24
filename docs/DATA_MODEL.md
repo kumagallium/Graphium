@@ -432,6 +432,15 @@ shown in the flow view is overlaid at display time from the process index
 (§5.3), which also refuses to create a cross-note reference that would
 close a cycle between notes (`wouldCreateCrossNoteCycle`).
 
+The PROV-JSON-LD export is the one place this reference does surface: it
+represents each cross-note `informed_by` link as an external Entity stub
+(`graphium:note/<noteId>/output/<entityId>`, carrying the labelled
+snapshot) plus a `Derivation` from the local receiving node — or a
+`Usage` from the receiving step's Activity when no local node resolves.
+This does not change the local-projection rule above; the stub is a
+read-only reference for tools consuming the export, not a synthesized
+foreign Activity.
+
 **The other four `provLinks` types.** `derived_from`, `reproduction_of`,
 `used` and `generated` are projected too, right after the `informed_by`
 handoff pass. Their endpoints are not necessarily steps, so the generator
