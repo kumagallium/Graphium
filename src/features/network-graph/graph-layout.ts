@@ -160,8 +160,14 @@ export function flushGraphLayouts(
 }
 
 /**
- * スコープの配置を丸ごと差し替える。座標が 1 つも無ければスコープごと消す
- * （「自動レイアウトに戻した」状態を空オブジェクトで残さない）。
+ * 渡された座標を既存の配置に**上書きマージ**する。
+ *
+ * 差し替えではなくマージなのは、全体グラフのように「今見えているノードだけ」を
+ * 描くビューがあるため。層フィルタで一部を隠した状態でドラッグしたときに差し替えて
+ * しまうと、隠れていたノードの座標が消えて、フィルタを戻した瞬間に並びが崩れる。
+ *
+ * 消えたノードの座標は残り続けるが、復元時に照合されないだけで害はない
+ * （リセットすればまとめて消える）。
  */
 export function saveGraphLayout(
   scope: string,
@@ -169,21 +175,24 @@ export function saveGraphLayout(
   provider: StorageProvider = getActiveProvider(),
 ): void {
   const file = cache ?? (cache = emptyFile());
-  if (Object.keys(positions).length === 0) {
+  const merged = { ...(file.layouts[scope]?.positions ?? {}), ...positions };
+  if (Object.keys(merged).length === 0) {
     delete file.layouts[scope];
   } else {
-    file.layouts[scope] = { positions, updatedAt: Date.now() };
+    file.layouts[scope] = { positions: merged, updatedAt: Date.now() };
     pruneScopes(file);
   }
   scheduleFlush(provider);
 }
 
-/** そのグラフを自動レイアウトに戻す */
+/** そのグラフを自動レイアウトに戻す（保存済みの座標をまとめて捨てる） */
 export function clearGraphLayout(
   scope: string,
   provider: StorageProvider = getActiveProvider(),
 ): void {
-  saveGraphLayout(scope, {}, provider);
+  const file = cache ?? (cache = emptyFile());
+  delete file.layouts[scope];
+  scheduleFlush(provider);
 }
 
 /** 保存済みの配置を持っているか（「リセット」ボタンの出し分けに使う） */

@@ -10,7 +10,7 @@
 // 配色は knowledge-colors.ts と 2 ホップグラフ（view.tsx）に合わせている。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { RotateCcw, Search } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
@@ -19,6 +19,21 @@ import { aggregateNoteContexts, noteContextHue } from "../note-context/context-t
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import type { NoteNode, NoteGraphData, EdgeRelation } from "./graph-builder";
+import { globalGraphScope } from "./graph-layout";
+import {
+  GRAPH_BG_COLOR,
+  GRAPH_INIT_OPTIONS,
+  baseEdgeStyle,
+  baseNodeStyle,
+  hoverFullLabelStyle,
+  interactionStyles,
+} from "./graph-theme";
+import {
+  applySavedPositions,
+  attachCytoscapeLayoutPersistence,
+  seedUnplacedNodes,
+  useGraphLayout,
+} from "./use-graph-layout";
 
 // fcose レイアウト登録（重複防止）
 ensureCytoscapePlugins();
@@ -207,7 +222,6 @@ const REL_COLOR: Record<EdgeRelation, string> = {
   reference: "#5b8fb9",
 };
 
-const BG_COLOR = "#fafdf7";
 
 // ── Cytoscape スタイル ──
 
@@ -215,40 +229,16 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
-      label: "data(label)",
-      "text-wrap": "wrap",
-      // auto(既定)は折返し行の字間が崩れて描画される(cytoscape の複数行描画の不具合回避)
-      "text-justification": "center" as any,
-      "text-max-width": "150px",
-      "font-size": "10px",
-      "font-family":
-        "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
-      "text-valign": "bottom",
-      "text-margin-y": 5,
-      color: "#3a4a3d",
+      ...baseNodeStyle,
       "background-color": "data(color)",
       "border-color": "data(borderColor)",
-      "border-width": 2,
       shape: "data(shape)" as any,
       width: "data(size)",
       height: "data(size)",
-      "transition-property": "opacity, width, height, border-width" as any,
-      "transition-duration": 180,
-      "transition-timing-function": "ease-in-out-sine" as any,
     },
   },
-  {
-    selector: "node.hover",
-    style: {
-      "border-width": 3,
-      "overlay-opacity": 0.06,
-      "overlay-color": "#000",
-      label: "data(fullLabel)" as any,
-      "font-weight": "bold" as any,
-      "z-index": 999,
-    },
-  },
-  { selector: "node.faded", style: { opacity: 0.12 } },
+  ...interactionStyles,
+  hoverFullLabelStyle,
   {
     // 検索ヒット: 琥珀色の太枠 + フルラベル表示。faded より優先されるよう後段に置く
     selector: "node.search-hit",
@@ -263,22 +253,15 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "edge",
     style: {
-      width: 1.6,
+      ...baseEdgeStyle,
       "line-color": "data(color)",
       "target-arrow-color": "data(color)",
-      "target-arrow-shape": "triangle",
-      "arrow-scale": 0.8,
       "line-style": "data(lineStyle)" as any,
-      "curve-style": "unbundled-bezier" as any,
-      "control-point-distances": 28,
-      "control-point-weights": 0.5,
+      // 全体グラフはエッジが多いので、既定より少しだけ引く
       opacity: 0.85,
-      "transition-property": "opacity, width" as any,
-      "transition-duration": 180,
     },
   },
-  { selector: "edge.hover-connected", style: { width: 2.6, opacity: 1, "z-index": 10 } },
-  { selector: "edge.faded", style: { opacity: 0.06 } },
+  { selector: "edge.hover-connected", style: { width: 2.5, opacity: 1, "z-index": 10 } },
   {
     // 「文脈で寄せる」用の不可視エッジ。描画・操作はさせず fcose の引力計算にだけ効かせる
     // （display:none だとレイアウト対象から外れるので opacity 0 で隠す）。
@@ -371,6 +354,7 @@ export function GlobalGraphCanvas({
   onOpenMemo?: (captureId: string) => void;
   height?: number | string;
 }) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   // mouseout ハンドラ（cy 構築時のクロージャ）から最新の検索クエリ・色モードを
@@ -381,6 +365,25 @@ export function GlobalGraphCanvas({
   colorModeRef.current = colorMode;
   // Enter 巡回の現在位置（クエリが変わったら 0 に戻す）
   const jumpIndexRef = useRef(0);
+
+  // ── 手動配置の保存（周辺グラフ・手順フローと同じ仕組み・同じ保存先）──
+  const {
+    ready: layoutReady,
+    positions: savedPositions,
+    save: saveLayout,
+    reset: resetLayout,
+    hasSaved: hasSavedLayout,
+    resetSeq: layoutResetSeq,
+  } = useGraphLayout(globalGraphScope());
+  const savedPositionsRef = useRef(savedPositions);
+  savedPositionsRef.current = savedPositions;
+  const saveLayoutRef = useRef(saveLayout);
+  saveLayoutRef.current = saveLayout;
+  // 「文脈で寄せる」は並べ直しそのものが目的の操作なので、保存済みの配置があっても
+  // その切り替え直後だけは fcose を流す（並べ直した後にドラッグすればまた保存される）。
+  // 比較は effect の中で行う — レンダー中に ref を更新すると StrictMode の
+  // 二重レンダーで変化を食われる
+  const lastClusterRef = useRef(clusterByContext);
 
   // 表示中の層・参照・文脈タグ・未分類・孤立フィルタを適用
   const { nodes: shownNodes, edges: shownEdges } = useMemo(
@@ -397,6 +400,11 @@ export function GlobalGraphCanvas({
 
   useEffect(() => {
     if (!containerRef.current) return;
+    // 保存済みの配置を読み終えるまで組まない（読み込み後に並べ直して見えないように）
+    if (!layoutReady) return;
+    // 「文脈で寄せる」の切り替え直後か
+    const clusterChanged = lastClusterRef.current !== clusterByContext;
+    lastClusterRef.current = clusterByContext;
     if (shownNodes.length === 0) {
       if (cyRef.current) {
         cyRef.current.destroy();
@@ -473,6 +481,15 @@ export function GlobalGraphCanvas({
       }
     }
 
+    // 保存済みの座標を流し込む。1 つでも復元できたら fcose は流さず、
+    // 新しく現れたノードだけ外周に仮置きする（手で整えた並びを崩さない）。
+    // ただし「文脈で寄せる」の切り替え直後は、並べ直しが目的なので保存を無視する
+    const { unplacedIds, placedCount } = applySavedPositions(
+      elements,
+      clusterChanged ? null : savedPositionsRef.current,
+    );
+    const useSavedLayout = placedCount > 0;
+
     if (cyRef.current) cyRef.current.destroy();
 
     const cy = cytoscape({
@@ -480,23 +497,22 @@ export function GlobalGraphCanvas({
       elements,
       style: graphStyle,
       layout: { name: "preset" },
-      wheelSensitivity: 0.3,
+      ...GRAPH_INIT_OPTIONS,
+      // 全体グラフだけは俯瞰のためにズームの下限を広く取る（他のグラフは 0.2–4）
       minZoom: 0.1,
       maxZoom: 3,
-      boxSelectionEnabled: false,
-      // 俯瞰用の読み取り専用グラフ。ノードはドラッグで動かせないようにし
-      // （autoungrabify）、背景でもノード上でもドラッグでパンできるようにする。
-      // クリック（tap）はナビゲーションに使うので、ドラッグと自然に共存する。
-      userPanningEnabled: true,
-      autoungrabify: true,
     });
-    // パン可能であることを示すため掴むカーソルにする。
+    // 背景はドラッグでパンできる。ノードの上ではドラッグが「動かす」に変わる
     containerRef.current.style.cursor = "grab";
 
     // 「文脈で寄せる」時はクラスター内を固めるだけでなく、クラスター**間**を離す:
     // 仮想エッジ（短い理想長・強い弾性）が塊を作り、実エッジは理想長を大きく伸ばし
     // 弾性も落として「緩い腕」にする。反発を強め・中心重力をほぼ切って塊同士を
     // 引き離す。値は Storybook「文脈クラスター（大規模）」で見た目調整したもの。
+    if (useSavedLayout) {
+      seedUnplacedNodes(cy, unplacedIds);
+      cy.fit(undefined, 30);
+    } else {
     const lay = cy.layout({
       name: "fcose",
       animate: true,
@@ -514,6 +530,12 @@ export function GlobalGraphCanvas({
     } as any);
     lay.on("layoutstop", () => cy.fit(undefined, 30));
     lay.run();
+    }
+
+    // ドラッグ終了で現在の並びを保存する
+    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) =>
+      saveLayoutRef.current(positions),
+    );
 
     // ホバーで隣接を強調
     cy.on("mouseover", "node", (evt) => {
@@ -564,10 +586,23 @@ export function GlobalGraphCanvas({
 
     cyRef.current = cy;
     return () => {
+      detachPersistence();
       cy.destroy();
       cyRef.current = null;
     };
-  }, [shownNodes, shownEdges, clusterByContext, onNavigate, onOpenMedia, onOpenUrl, onOpenMemo]);
+    // savedPositions / saveLayout は ref 経由で読む（依存に入れると
+    // ドラッグ → 保存 → 再構築のループになる）
+  }, [
+    shownNodes,
+    shownEdges,
+    clusterByContext,
+    onNavigate,
+    onOpenMedia,
+    onOpenUrl,
+    onOpenMemo,
+    layoutReady,
+    layoutResetSeq,
+  ]);
 
   // 色モード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）
   useEffect(() => {
@@ -612,10 +647,35 @@ export function GlobalGraphCanvas({
   }, [searchJumpToken]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{ width: "100%", height, background: BG_COLOR }}
-    />
+    <div style={{ position: "relative", width: "100%", height }}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%", background: GRAPH_BG_COLOR }} />
+      {/* 手で整えた並びがあるときだけ、自動配置に戻す入口を出す */}
+      {hasSavedLayout && (
+        <button
+          onClick={resetLayout}
+          title={t("graph.layout.resetHint")}
+          aria-label={t("graph.layout.reset")}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 8px",
+            fontSize: 12,
+            color: "var(--color-text-tertiary)",
+            background: "var(--color-card)",
+            border: "1px solid var(--color-border)",
+            borderRadius: 6,
+            cursor: "pointer",
+            boxShadow: "0 1px 3px rgba(30, 20, 10, 0.08)",
+          }}
+        >
+          <RotateCcw size={13} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -947,7 +1007,7 @@ export function GlobalGraphView({
   }, [onClose]);
 
   return (
-    <div className="flex flex-col h-full w-full" style={{ background: BG_COLOR }}>
+    <div className="flex flex-col h-full w-full" style={{ background: GRAPH_BG_COLOR }}>
       {/* ヘッダー / ツールバー */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap">
         <span className="text-sm font-bold text-foreground">{t("globalGraph.title")}</span>

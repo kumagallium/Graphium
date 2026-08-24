@@ -97,12 +97,19 @@ describe("保存", () => {
     expect(written.layouts["note:a"]).toBeTruthy();
   });
 
-  it("空の座標で保存するとスコープごと消える（自動配置に戻した状態を残さない）", async () => {
+  it("保存はマージ（見えているノードだけ保存しても、隠れていた座標は消えない）", async () => {
     readMock.mockResolvedValue(null);
     await ensureGraphLayouts();
-    saveGraphLayout("note:a", { n1: { x: 5, y: 6 } });
+    saveGraphLayout("note:a", { n1: { x: 1, y: 1 }, n2: { x: 2, y: 2 } });
+    // n2 を層フィルタで隠した状態で n1 だけ動かした、という想定
+    saveGraphLayout("note:a", { n1: { x: 9, y: 9 } });
+    expect(getGraphLayout("note:a")).toEqual({ n1: { x: 9, y: 9 }, n2: { x: 2, y: 2 } });
+  });
+
+  it("何も保存されていないスコープに空を保存しても増えない", async () => {
+    readMock.mockResolvedValue(null);
+    await ensureGraphLayouts();
     saveGraphLayout("note:a", {});
-    expect(getGraphLayout("note:a")).toBeNull();
     expect(hasGraphLayout("note:a")).toBe(false);
   });
 

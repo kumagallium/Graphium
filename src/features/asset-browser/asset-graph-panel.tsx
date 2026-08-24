@@ -4,9 +4,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, X } from "lucide-react";
+import { Maximize2, RotateCcw, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
+import { assetGraphScope } from "../network-graph/graph-layout";
+import {
+  GRAPH_BG_COLOR,
+  GRAPH_INIT_OPTIONS,
+  baseEdgeStyle,
+  baseNodeStyle,
+  interactionStyles,
+} from "../network-graph/graph-theme";
+import {
+  applySavedPositions,
+  attachCytoscapeLayoutPersistence,
+  seedUnplacedNodes,
+  useGraphLayout,
+} from "../network-graph/use-graph-layout";
 import { useT } from "../../i18n";
 import type { MediaIndex, MediaIndexEntry } from "./media-index";
 import type { WikiKind } from "../../lib/document-types";
@@ -29,58 +43,33 @@ const NOTE_NODE_COLOR = "#5b8fb9";
 const NOTE_BORDER = "#4a7da6";
 const EDGE_COLOR = "#b8d4bb";
 const EDGE_DERIVED_COLOR = "#c7b389";
-const BG_COLOR = "#fafdf7";
 
 const graphStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
-      label: "data(label)",
-      "text-wrap": "wrap",
-      // auto(既定)は折返し行の字間が崩れて描画される(cytoscape の複数行描画の不具合回避)
-      "text-justification": "center" as any,
-      "text-max-width": "100px",
-      "font-size": "10px",
-      "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
-      "text-valign": "bottom",
-      "text-margin-y": 6,
+      ...baseNodeStyle,
       "background-color": "data(color)",
       shape: "data(shape)" as any,
       width: "data(size)",
       height: "data(size)",
-      "border-width": 2,
       "border-color": "data(borderColor)",
-      color: "#6b7f6e",
-      "transition-property": "background-color, border-color, opacity, width, height" as any,
-      "transition-duration": 200,
     },
   },
+  ...interactionStyles,
   {
+    // 中心（今見ている素材）だけ少し強く。大きさは変えずウェイトで示す
     selector: "node.center-node",
     style: {
       "font-weight": "bold" as any,
-      "font-size": "11px",
-    },
-  },
-  {
-    selector: "node.clickable.hover",
-    style: {
-      "border-width": 3,
-      "overlay-opacity": 0.06,
-      "overlay-color": "#000",
     },
   },
   {
     selector: "edge",
     style: {
-      width: 1.5,
+      ...baseEdgeStyle,
       "line-color": EDGE_COLOR,
       "target-arrow-color": EDGE_COLOR,
-      "target-arrow-shape": "triangle",
-      "arrow-scale": 0.8,
-      "curve-style": "unbundled-bezier" as any,
-      "control-point-distances": 30,
-      "control-point-weights": 0.5,
       opacity: 0.7,
     },
   },
@@ -290,6 +279,20 @@ export function AssetGraphPanel({
   const cyRef = useRef<cytoscape.Core | null>(null);
   const [expanded, setExpanded] = useState(false);
 
+  // ── 手動配置の保存（ノート周辺グラフ・手順フロー・全体グラフと同じ仕組み）──
+  const {
+    ready: layoutReady,
+    positions: savedPositions,
+    save: saveLayout,
+    reset: resetLayout,
+    hasSaved: hasSavedLayout,
+    resetSeq: layoutResetSeq,
+  } = useGraphLayout(assetGraphScope(entry.fileId));
+  const savedPositionsRef = useRef(savedPositions);
+  savedPositionsRef.current = savedPositions;
+  const saveLayoutRef = useRef(saveLayout);
+  saveLayoutRef.current = saveLayout;
+
   // ESC で拡大解除（ノート graph と同じ挙動）
   useEffect(() => {
     if (!expanded) return;
@@ -338,7 +341,14 @@ export function AssetGraphPanel({
   // グラフ描画
   useEffect(() => {
     if (!graphContainerRef.current) return;
+    // 保存済みの配置を読み終えるまで組まない（読み込み後に並べ直して見えないように）
+    if (!layoutReady) return;
     const elements = buildMediaGraph(entry, mediaIndex ?? null, getKnowledgeKind, assetThumbUrls);
+
+    // 保存済みの座標を流し込む。1 つでも復元できたら fcose は流さず、
+    // 新しく現れたノードだけ外周に仮置きする（手で整えた並びを崩さない）
+    const { unplacedIds, placedCount } = applySavedPositions(elements, savedPositionsRef.current);
+    const useSavedLayout = placedCount > 0;
 
     if (cyRef.current) {
       cyRef.current.destroy();
@@ -349,14 +359,16 @@ export function AssetGraphPanel({
       elements,
       style: graphStyle,
       layout: { name: "preset" },
-      userZoomingEnabled: true,
-      userPanningEnabled: true,
-      boxSelectionEnabled: false,
-      wheelSensitivity: 0.3,
+      ...GRAPH_INIT_OPTIONS,
+      // 素材まわりは小さなグラフなので、引きすぎないよう下限を上げる
       minZoom: 0.3,
       maxZoom: 3,
     });
 
+    if (useSavedLayout) {
+      seedUnplacedNodes(cy, unplacedIds);
+      cy.fit(undefined, 20);
+    } else {
     const layout = cy.layout({
       name: "fcose",
       animate: true,
@@ -376,6 +388,12 @@ export function AssetGraphPanel({
       cy.fit(undefined, 20);
     });
     layout.run();
+    }
+
+    // ドラッグ終了で現在の並びを保存する
+    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) =>
+      saveLayoutRef.current(positions),
+    );
 
     cy.on("mouseover", "node.clickable", (evt) => {
       evt.target.addClass("hover");
@@ -399,10 +417,24 @@ export function AssetGraphPanel({
     cyRef.current = cy;
 
     return () => {
+      detachPersistence();
       cy.destroy();
       cyRef.current = null;
     };
-  }, [entry, mediaIndex, getKnowledgeKind, onNavigateNote, onOpenNoteSidePeek, onSwitchAsset, assetThumbUrls, expanded]);
+    // savedPositions / saveLayout は ref 経由で読む（依存に入れると
+    // ドラッグ → 保存 → 再構築のループになる）
+  }, [
+    entry,
+    mediaIndex,
+    getKnowledgeKind,
+    onNavigateNote,
+    onOpenNoteSidePeek,
+    onSwitchAsset,
+    assetThumbUrls,
+    expanded,
+    layoutReady,
+    layoutResetSeq,
+  ]);
 
   // 凡例 + 拡大トグル（拡大時 / 通常時で共通）
   const legendBar = (showLegend || enableExpand) ? (
@@ -443,6 +475,17 @@ export function AssetGraphPanel({
             {t("asset.clickToNavigate")}
           </span>
         )}
+        {/* 手で整えた並びがあるときだけ、自動配置に戻す入口を出す */}
+        {hasSavedLayout && (
+          <button
+            onClick={resetLayout}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title={t("graph.layout.resetHint")}
+            aria-label={t("graph.layout.reset")}
+          >
+            <RotateCcw size={12} />
+          </button>
+        )}
         {enableExpand && (
           <button
             onClick={() => setExpanded((v) => !v)}
@@ -466,7 +509,7 @@ export function AssetGraphPanel({
       >
         <div
           className="relative flex flex-col rounded-lg shadow-2xl overflow-hidden"
-          style={{ background: BG_COLOR, width: "min(1400px, 95vw)", height: "92vh" }}
+          style={{ background: GRAPH_BG_COLOR, width: "min(1400px, 95vw)", height: "92vh" }}
           onClick={(e) => e.stopPropagation()}
         >
           {legendBar}
@@ -483,7 +526,7 @@ export function AssetGraphPanel({
       <div
         ref={graphContainerRef}
         className="flex-1"
-        style={{ background: BG_COLOR }}
+        style={{ background: GRAPH_BG_COLOR }}
       />
     </div>
   );

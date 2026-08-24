@@ -67,7 +67,7 @@ export function useGraphLayout(scope: string | null): UseGraphLayoutResult {
     (positions: GraphLayoutPositions) => {
       if (!scope) return;
       saveGraphLayout(scope, positions);
-      setHasSaved(Object.keys(positions).length > 0);
+      setHasSaved(hasGraphLayout(scope));
     },
     [scope],
   );
@@ -100,8 +100,9 @@ export function attachCytoscapeLayoutPersistence(
   const handler = () => {
     const positions: GraphLayoutPositions = {};
     cy.nodes().forEach((node) => {
-      // 不可視のダミーノード（文脈で寄せる用など）は保存しない
-      if (node.hasClass("layout-only")) return;
+      // 不可視のダミーノードは保存しない。全体グラフの cluster-hub は
+      // レイアウト計算のためだけに存在し、ユーザーには見えない
+      if (node.hasClass("cluster-hub")) return;
       const p = node.position();
       positions[node.id()] = { x: p.x, y: p.y };
     });
@@ -120,21 +121,29 @@ export function attachCytoscapeLayoutPersistence(
  * 保存済みなら、新しく増えたノードだけを自動レイアウトの対象にする —
  * こうしないと、ノートに 1 つ素材を足しただけで手で整えた並びが全部崩れる。
  */
+/** ノードとして配置の対象になるか（エッジと不可視のダミーは除く） */
+function isPlaceableNode(el: cytoscape.ElementDefinition): boolean {
+  // エッジは source を持つ
+  if (el.data.source) return false;
+  // 全体グラフの cluster-hub はレイアウト計算のためだけの不可視ノード
+  if (typeof el.classes === "string" && el.classes.includes("cluster-hub")) return false;
+  return true;
+}
+
 export function applySavedPositions(
   elements: cytoscape.ElementDefinition[],
   positions: GraphLayoutPositions | null,
 ): { unplacedIds: string[]; placedCount: number } {
   if (!positions) {
     return {
-      unplacedIds: elements.filter((el) => !el.data.source).map((el) => String(el.data.id)),
+      unplacedIds: elements.filter(isPlaceableNode).map((el) => String(el.data.id)),
       placedCount: 0,
     };
   }
   const unplacedIds: string[] = [];
   let placedCount = 0;
   for (const el of elements) {
-    // エッジは source を持つ。ノードだけが対象
-    if (el.data.source) continue;
+    if (!isPlaceableNode(el)) continue;
     const id = String(el.data.id);
     const saved = positions[id];
     if (saved) {

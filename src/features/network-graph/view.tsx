@@ -20,6 +20,15 @@ import { activityTypeLabelKey } from "../document-provenance/activity-label";
 import { openExternalUrl } from "../../lib/external-link";
 import { noteGraphScope } from "./graph-layout";
 import {
+  GRAPH_ACCENT_COLOR,
+  GRAPH_BG_COLOR,
+  GRAPH_INIT_OPTIONS,
+  baseEdgeStyle,
+  baseNodeStyle,
+  hoverFullLabelStyle,
+  interactionStyles,
+} from "./graph-theme";
+import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
   seedUnplacedNodes,
@@ -40,7 +49,6 @@ const NODE_COLORS = {
 } as const;
 
 const EDGE_COLOR = "#b8d4bb"; // 淡いグリーン
-const BG_COLOR = "#fafdf7";   // テーマ背景
 
 type ExternalKind = "pdf" | "url" | "document" | "chat" | "memo" | "media";
 
@@ -88,86 +96,22 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
-      label: "data(label)",
-      "text-wrap": "wrap",
-      // auto(既定)は折返し行の字間が崩れて描画される(cytoscape の複数行描画の不具合回避)
-      "text-justification": "center" as any,
-      "text-max-width": "100px",
-      "font-size": "10px",
-      "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
-      "text-valign": "bottom",
-      "text-margin-y": 6,
+      ...baseNodeStyle,
       "background-color": "data(color)",
       shape: "data(shape)" as any,
       width: "data(size)",
       height: "data(size)",
-      "border-width": 2,
       "border-color": "data(borderColor)",
-      color: "#6b7f6e",
-      // スムーズなトランジション
-      "transition-property": "background-color, border-color, opacity, width, height" as any,
-      "transition-duration": 200,
-      "transition-timing-function": "ease-in-out-sine" as any,
     },
   },
-  {
-    selector: "node:active",
-    style: {
-      "overlay-opacity": 0.08,
-    },
-  },
-  // 範囲選択中のノード。design.md の「選択は枠の太さを変えずリング」に倣い、
-  // border-width ではなく overlay で表す（実寸が変わるとレイアウトが動く）
-  {
-    selector: "node:selected",
-    style: {
-      "overlay-opacity": 0.2,
-      "overlay-color": "#4B7A52",
-      "overlay-padding": 4,
-    },
-  },
-  // ホバー中のノード（フルラベルに切り替え）
-  {
-    selector: "node.hover",
-    style: {
-      "border-width": 3,
-      "overlay-opacity": 0.06,
-      "overlay-color": "#000",
-      label: "data(fullLabel)" as any,
-      "font-weight": "bold" as any,
-      "z-index": 999,
-    },
-  },
-  // ホバーノードの隣接ノード
-  {
-    selector: "node.hover-neighbor",
-    style: {
-      opacity: 1,
-    },
-  },
-  // フェード対象
-  {
-    selector: "node.faded",
-    style: {
-      opacity: 0.15,
-    },
-  },
+  ...interactionStyles,
+  hoverFullLabelStyle,
   {
     selector: "edge",
     style: {
-      width: 1.5,
+      ...baseEdgeStyle,
       "line-color": EDGE_COLOR,
       "target-arrow-color": EDGE_COLOR,
-      "target-arrow-shape": "triangle",
-      "arrow-scale": 0.8,
-      "curve-style": "unbundled-bezier" as any,
-      "control-point-distances": 30,
-      "control-point-weights": 0.5,
-      opacity: 1,
-      // スムーズなトランジション
-      "transition-property": "opacity, width, line-color" as any,
-      "transition-duration": 200,
-      "transition-timing-function": "ease-in-out-sine" as any,
     },
   },
   // ホバーノードに接続するエッジ
@@ -175,15 +119,9 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
     selector: "edge.hover-connected",
     style: {
       width: 2.5,
-      "line-color": "#4B7A52",
-      "target-arrow-color": "#4B7A52",
+      "line-color": GRAPH_ACCENT_COLOR,
+      "target-arrow-color": GRAPH_ACCENT_COLOR,
       "z-index": 10,
-    },
-  },
-  {
-    selector: "edge.faded",
-    style: {
-      opacity: 0.08,
     },
   },
   // 画像 / 動画メディアノード: サムネイルを背景画像として表示
@@ -405,17 +343,7 @@ export function NetworkGraphPanel({
       layout: { name: "preset" },
       // ラベル衝突を抑えるため、ホバー時にフルラベルを表示する設定
       // （ノード自体の label は data.label = 省略形）
-      userZoomingEnabled: true,
-      userPanningEnabled: true,
-      // 範囲選択（shift または ⌘ + 背景ドラッグ）。選択したノードは
-      // どれか 1 つを掴めばまとめて動く（Cytoscape の標準挙動）
-      boxSelectionEnabled: true,
-      // single: 単発クリックの選択は置き換え（ノードのクリックは本来ナビゲーション
-      // なので累積させない）。矩形選択は single でも複数選択になる
-      selectionType: "single",
-      wheelSensitivity: 0.3,
-      minZoom: 0.2,
-      maxZoom: 4,
+      ...GRAPH_INIT_OPTIONS,
     });
 
     // fcose レイアウト実行（要素描画後にアニメーション開始）
@@ -623,7 +551,7 @@ export function NetworkGraphPanel({
       >
         <div
           className="relative flex flex-col rounded-lg shadow-2xl overflow-hidden"
-          style={{ background: BG_COLOR, width: "min(1400px, 95vw)", height: "92vh" }}
+          style={{ background: GRAPH_BG_COLOR, width: "min(1400px, 95vw)", height: "92vh" }}
           onClick={(e) => e.stopPropagation()}
         >
           {legendBar}
@@ -635,7 +563,7 @@ export function NetworkGraphPanel({
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ background: BG_COLOR }}>
+    <div className="flex flex-col h-full" style={{ background: GRAPH_BG_COLOR }}>
       {legendBar}
       <div ref={containerRef} className="flex-1" />
     </div>

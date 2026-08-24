@@ -173,11 +173,24 @@ talks to LLM and embedding backends.
   `used` (entity → step),
   `generates` (step → entity), and order-only `informed_by` drawn dashed —
   the last one is what a handoff degrades to when the note does not say
-  which output was used. The read-only, exploration-oriented graphs (note
-  graph, global graph, asset graph) stay on cytoscape (canvas), which
+  which output was used. The exploration-oriented graphs (note graph,
+  global graph, asset graph) stay on cytoscape (canvas), which
   scales better for large force-directed views;
   `provToCytoscapeElements` also still feeds printing, where the graph is
   rasterized to a PNG and appended to the printed note.
+- **Layout is automatic until you disagree with it.** Every graph can be
+  rearranged by hand — drag a node, or shift-drag the background to select
+  a group and move it as one — and the arrangement is remembered per graph
+  in appdata (`DATA_MODEL.md` §5.4), so it survives reopening the note and
+  syncs to the user's other devices. Once an arrangement exists the
+  automatic layout stops running for that graph; only nodes that appeared
+  since the save are placed automatically, which is what keeps adding one
+  material from scrambling a graph someone arranged deliberately. A reset
+  control (the step flow reuses its existing "arrange" button) drops the
+  arrangement and hands the graph back to fcose / ELK. Both graph
+  libraries share one store and one set of gestures on purpose: the two
+  panels sit next to each other, and a graph that behaves differently
+  depending on which tab it is in reads as two unrelated tools.
 - **Every graph edit is a document edit.** Steps can be added, renamed and
   deleted; entities renamed, removed and given attributes; dragging an
   entity onto a step makes it that step's input (and links `informed_by`,
@@ -1316,6 +1329,8 @@ people most often need to find.
 | Knowledge UI and service | `src/features/wiki/` |
 | Knowledge pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
 | Inter-note network graph (Cytoscape) | `src/features/network-graph/` |
+| Shared graph styling and interaction (all cytoscape views) | `src/features/network-graph/graph-theme.ts` |
+| Saved manual graph arrangements (both graph libraries) | `src/features/network-graph/graph-layout.ts`, `use-graph-layout.ts` |
 | Storage provider | `src/lib/storage/providers/`, `src/lib/storage/registry.ts` |
 | Note JSON shape and migrations | `src/lib/document-types.ts`, `src/lib/document-migration.ts` |
 | Index file (note list, schema version) | `src/features/navigation/index-file.ts` |
