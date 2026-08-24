@@ -19,7 +19,10 @@ function cellText(cell: any): string {
 
 /** セルの形式（tableCell / 旧 inline 配列）を保ったままテキストを差し替える */
 function withCellText(cell: any, text: string): any {
-  const content = [{ type: "text", text, styles: {} }];
+  const priorContent = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? (cell.content ?? []) : [];
+  const priorText = priorContent.find((inline: any) => inline?.type === "text");
+  // 名前セルの tableRowIdentity を含め、既存の text style を落とさない。
+  const content = [{ type: "text", text, styles: { ...(priorText?.styles ?? {}) } }];
   if (cell && !Array.isArray(cell) && cell.type === "tableCell") {
     return { ...cell, content };
   }
@@ -115,6 +118,16 @@ export function removeTableRow(editor: any, tableBlockId: string, rowName: strin
   if (!t) return false;
   const rows = t.rows.filter((_, i) => i !== t.rowIndex);
   return writeRows(editor, t.block, rows);
+}
+
+/** データ行を index で削除する（rowIndex はデータ行 0 始まり。同名行があっても誤爆しない） */
+export function removeTableRowAt(editor: any, tableBlockId: string, rowIndex: number): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  if (!block) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  const target = rowIndex + 1; // ヘッダ行の分
+  if (target < 1 || target >= rows.length) return false;
+  return writeRows(editor, block, rows.filter((_, i) => i !== target));
 }
 
 /**
@@ -439,4 +452,3 @@ export function ensureParameterTable(
   });
   return id ? { tableBlockId: id, created: true } : null;
 }
-

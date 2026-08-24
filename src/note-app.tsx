@@ -85,6 +85,7 @@ import {
   type ChartAssetSourceResult,
 } from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
+import { syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
 import {
@@ -892,7 +893,7 @@ function NoteEditor(props: NoteEditorProps) {
   return (
     <ProvLabelsEnabledProvider enabled={props.provLabelsEnabled ?? true}>
     <LabelStoreProvider>
-      <LinkStoreProvider>
+      <LinkStoreProvider noteId={props.fileId ?? null}>
         <TableMetaStoreProvider>
         <MediaInlineLabelProvider>
         <MediaOcrProvider>
@@ -2274,7 +2275,8 @@ function NoteEditorInner({
 
   // ── 保存ロジック ──
   const buildDocument = useCallback(async (): Promise<GraphiumDocument> => {
-    const blocks = editorRef.current?.document || [];
+    const editor = editorRef.current;
+    const blocks = editor ? syncTableRowIdentitiesToEditor(editor) : [];
     // labels / provLinks / knowledgeLinks / blockAlignments の組み立ては
     // SidePeek（side-peek.tsx doSave）と同一なので共有モジュールに集約。
     const {
@@ -3942,6 +3944,26 @@ function NoteEditorInner({
           e.preventDefault();
           e.stopPropagation();
           setMaterialSidePeekEntry(buildUrlPeekEntry(href, mediaIndex ?? null));
+          return;
+        }
+      }
+      // 外部参照インプット行（data-row-identity）は、@と同じ青リンクとして
+      // 参照元ノートを Side Peek で開く。テーブル内なので isMentionSpan より先に見る
+      const rowIdentityEl = target.closest("[data-row-identity]");
+      if (rowIdentityEl && target.closest('[contenteditable="true"]')) {
+        const identity = rowIdentityEl.getAttribute("data-row-identity");
+        const extLink = identity
+          ? linkStore
+              .getAllLinks()
+              .find(
+                (l) =>
+                  l.type === "informed_by" && !!l.targetNoteId && l.sourceEntityId === identity,
+              )
+          : null;
+        if (extLink?.targetNoteId) {
+          e.preventDefault();
+          e.stopPropagation();
+          setSidePeekNoteId(extLink.targetNoteId);
           return;
         }
       }

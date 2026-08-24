@@ -8,13 +8,19 @@
 // provToCytoscapeElements は PDF 書き出し（features/pdf-export）が使うので残す。
 // ──────────────────────────────────────────────
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
 import type { ProvJsonLd, ProvJsonLdNode, ProvAttribute } from "./generator";
 import { extractRelations } from "./generator";
 import { ActivityGraphEditor } from "../network-graph/activity-graph-editor";
 import { provDocToFlowGraph } from "../network-graph/activity-graph-adapter";
+import { addCrossNoteOriginsToFlowGraph } from "../network-graph/cross-note-flow";
+import {
+  getLatestProcessIndex,
+  subscribeLatestProcessIndex,
+} from "../network-graph/process-index";
+import { useLinkStore } from "../block-link/store";
 import { t, getDisplayLabelName } from "../../i18n";
 import { THEME } from "./cy-graph";
 
@@ -228,7 +234,18 @@ export function ProvGraphPanel({
 
   // 統計はフロービューが実際に描くもの（step / Entity / エッジ）で数える。
   // パラメータはノードではなく各ノードの属性行なので数に含めない。
-  const flow = useMemo(() => provDocToFlowGraph(doc), [doc]);
+  // 別ノート参照の外部 step も描画される以上、数に含める（描画とカウントの
+  // ソースを ActivityGraphEditor と同じ合成に揃える）
+  const linkStore = useLinkStore();
+  const processIndex = useSyncExternalStore(
+    subscribeLatestProcessIndex,
+    getLatestProcessIndex,
+    getLatestProcessIndex,
+  );
+  const flow = useMemo(
+    () => addCrossNoteOriginsToFlowGraph(provDocToFlowGraph(doc), linkStore.links, processIndex),
+    [doc, linkStore.links, processIndex],
+  );
 
   const legendBar = (
     <div style={legendBarStyle}>

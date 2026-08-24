@@ -18,28 +18,61 @@
 import { createReactBlockSpec } from "@blocknote/react";
 import { defaultProps } from "@blocknote/core";
 import { TextSelection } from "prosemirror-state";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronRight, History, Link2, ListChecks, Plus } from "lucide-react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
+import {
+  Check,
+  ChevronRight,
+  ExternalLink,
+  History,
+  Link2,
+  ListChecks,
+  Plus,
+  Search,
+} from "lucide-react";
 import { useLinkStore } from "../../features/block-link/store";
 import { useLabelStore } from "../../features/context-label/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
 import {
   appendEntitySpanToStep,
+  appendExternalInputRowToStep,
   collectStepOutputs,
   findLabeledTableInStep,
+  removeExternalInputRow,
+  setExternalInputRowLinkColor,
   stepHasInputText,
+  updateExternalInputRowText,
 } from "./step-io";
 import {
+  addTableColumn,
   addTableColumns,
   appendEntityRowToTable,
   ensureParameterTable,
   readTable,
+  setTableCellAt,
 } from "../../features/network-graph/table-row-edit";
 import { StepHistoryPicker } from "../../features/network-graph/StepHistoryPicker";
 import {
+  getIndexTableCallbacks,
+  openEditorSidePeek,
+} from "../../features/index-table/context";
+import {
   collectStepInheritance,
   collectStepNames,
+  collectCrossNoteOutputs,
   getLatestProcessIndex,
+  requestLatestProcessIndexRefresh,
+  resolveCrossNoteOutput,
+  subscribeLatestProcessIndex,
+  wouldCreateCrossNoteCycle,
+  type CrossNoteOutputOccurrence,
   type InheritableEntity,
 } from "../../features/network-graph/process-index";
 import { splitAttrLabel } from "../../features/network-graph/activity-graph-adapter";
@@ -54,6 +87,77 @@ function inlineText(block: any): string {
 }
 
 export type StepLinkCandidate = { blockId: string; title: string };
+
+export type CrossNoteOutputGroup = {
+  noteId: string;
+  noteTitle: string;
+  steps: Array<{
+    stepId: string;
+    stepName: string;
+    outputs: CrossNoteOutputOccurrence[];
+  }>;
+};
+
+const CASCADE_ROOT_WIDTH = 280;
+const CASCADE_PANEL_WIDTH = 240;
+const CASCADE_PANEL_GAP = 4;
+const CASCADE_VIEWPORT_MARGIN = 8;
+const CASCADE_MAX_HEIGHT = 362;
+
+export function calculateCascadePosition(
+  trigger: Pick<DOMRect, "top" | "right" | "bottom">,
+  viewport: { width: number; height: number },
+  panelDepth: number,
+): { top: number; left: number; width: number; maxHeight: number } {
+  const totalWidth =
+    CASCADE_ROOT_WIDTH + panelDepth * (CASCADE_PANEL_WIDTH + CASCADE_PANEL_GAP);
+  const width = Math.min(
+    totalWidth,
+    Math.max(0, viewport.width - CASCADE_VIEWPORT_MARGIN * 2),
+  );
+  const preferredLeft = trigger.right - CASCADE_ROOT_WIDTH;
+  const left = Math.max(
+    CASCADE_VIEWPORT_MARGIN,
+    Math.min(preferredLeft, viewport.width - width - CASCADE_VIEWPORT_MARGIN),
+  );
+  const maxHeight = Math.min(
+    CASCADE_MAX_HEIGHT,
+    Math.max(0, viewport.height - CASCADE_VIEWPORT_MARGIN * 2),
+  );
+  const below = trigger.bottom + CASCADE_PANEL_GAP;
+  const top =
+    below + maxHeight <= viewport.height - CASCADE_VIEWPORT_MARGIN
+      ? below
+      : trigger.top - maxHeight - CASCADE_PANEL_GAP >= CASCADE_VIEWPORT_MARGIN
+        ? trigger.top - maxHeight - CASCADE_PANEL_GAP
+        : CASCADE_VIEWPORT_MARGIN;
+  return { top, left, width, maxHeight };
+}
+
+/** 大量の外部 output を、ピッカーのノート → step → output 階層へ整形する */
+export function groupCrossNoteOutputs(
+  outputs: CrossNoteOutputOccurrence[],
+): CrossNoteOutputGroup[] {
+  const notes = new Map<string, CrossNoteOutputGroup>();
+  for (const output of outputs) {
+    let note = notes.get(output.noteId);
+    if (!note) {
+      note = { noteId: output.noteId, noteTitle: output.noteTitle, steps: [] };
+      notes.set(output.noteId, note);
+    } else {
+      note.noteTitle = output.noteTitle;
+    }
+    let step = note.steps.find((candidate) => candidate.stepId === output.stepId);
+    if (!step) {
+      step = { stepId: output.stepId, stepName: output.stepName, outputs: [] };
+      note.steps.push(step);
+    } else {
+      step.stepName = output.stepName;
+    }
+    step.outputs.push(output);
+  }
+  return [...notes.values()];
+}
 
 /**
  * 選択位置が step の中にあるか（ProseMirror の祖先を辿る）。
@@ -255,6 +359,12 @@ export const StepBlock = createReactBlockSpec(
       const [pickerOpen, setPickerOpen] = useState(false);
       // 前手順ピッカーで出力サブメニューを開いているステップ（blockId）
       const [openOutputsFor, setOpenOutputsFor] = useState<string | null>(null);
+      const [externalPickerLevel, setExternalPickerLevel] = useState<
+        "notes" | "steps" | "outputs" | null
+      >(null);
+      const [selectedExternalNoteId, setSelectedExternalNoteId] = useState<string | null>(null);
+      const [selectedExternalStepId, setSelectedExternalStepId] = useState<string | null>(null);
+      const [externalNoteQuery, setExternalNoteQuery] = useState("");
       // 後続（次ステップ）側のピッカー
       const [nextOpen, setNextOpen] = useState(false);
       // 過去の手順からの引き継ぎピッカー（名前 → パラメータの 2 段）
@@ -263,17 +373,58 @@ export const StepBlock = createReactBlockSpec(
       const [pickedName, setPickedName] = useState<string | null>(null);
       // 循環でリンクを拒否されたとき、無反応に見えないよう理由を出す
       const [cycleWarn, setCycleWarn] = useState(false);
+      const [pickerPosition, setPickerPosition] = useState<{
+        top: number;
+        left: number;
+        width: number;
+        maxHeight: number;
+      } | null>(null);
       const rootRef = useRef<HTMLDivElement>(null);
+      const pickerMenuRef = useRef<HTMLDivElement>(null);
+      const pickerTriggerRef = useRef<HTMLButtonElement>(null);
+      const processIndex = useSyncExternalStore(
+        subscribeLatestProcessIndex,
+        getLatestProcessIndex,
+        getLatestProcessIndex,
+      );
+      const crossNoteOutputs = useMemo(
+        () => collectCrossNoteOutputs(processIndex, { excludeNoteId: linkStore.noteId }),
+        [processIndex, linkStore.noteId],
+      );
+      const crossNoteGroups = useMemo(
+        () => groupCrossNoteOutputs(crossNoteOutputs),
+        [crossNoteOutputs],
+      );
+      const selectedExternalNote =
+        crossNoteGroups.find((note) => note.noteId === selectedExternalNoteId) ?? null;
+      const selectedExternalStep =
+        selectedExternalNote?.steps.find((step) => step.stepId === selectedExternalStepId) ?? null;
+      const filteredExternalNotes = useMemo(() => {
+        const query = externalNoteQuery.trim().toLocaleLowerCase();
+        if (!query) return crossNoteGroups;
+        return crossNoteGroups.filter((note) =>
+          `${note.noteTitle} ${note.steps.map((step) => step.stepName).join(" ")}`
+            .toLocaleLowerCase()
+            .includes(query),
+        );
+      }, [crossNoteGroups, externalNoteQuery]);
 
       // 外側クリックでピッカーを閉じる（callout の variant ピッカーと同じ流儀）
       useEffect(() => {
         if (!pickerOpen && !nextOpen && !paramOpen) return;
         const onDown = (e: MouseEvent) => {
-          if (!rootRef.current?.contains(e.target as Node)) {
+          if (
+            !rootRef.current?.contains(e.target as Node) &&
+            !pickerMenuRef.current?.contains(e.target as Node)
+          ) {
             setPickerOpen(false);
             setNextOpen(false);
             setParamOpen(false);
             setOpenOutputsFor(null);
+            setExternalPickerLevel(null);
+            setSelectedExternalNoteId(null);
+            setSelectedExternalStepId(null);
+            setExternalNoteQuery("");
           }
         };
         document.addEventListener("mousedown", onDown);
@@ -288,14 +439,14 @@ export const StepBlock = createReactBlockSpec(
       const effectiveName = pickedName ?? stepTitle;
       const inheritance = useMemo(
         () =>
-          collectStepInheritance(getLatestProcessIndex(), effectiveName, splitAttrLabel, {
+          collectStepInheritance(processIndex, effectiveName, splitAttrLabel, {
             excludeStepId: props.block.id,
           }),
-        [effectiveName, paramOpen, props.block.id],
+        [effectiveName, paramOpen, processIndex, props.block.id],
       );
       const stepNameStats = useMemo(
-        () => collectStepNames(getLatestProcessIndex(), splitAttrLabel),
-        [paramOpen],
+        () => collectStepNames(processIndex, splitAttrLabel),
+        [paramOpen, processIndex],
       );
       // 過去に書いた手順が 1 つでもあれば入口を出す。名前だけでも選ぶ価値がある
       // （記録の無い名前を打ったときに沈黙するのが、いちばん困る）
@@ -395,16 +546,62 @@ export const StepBlock = createReactBlockSpec(
         .filter((l) => l.type === "informed_by");
       const nextLinks = linkStore
         .getIncoming(props.block.id)
-        .filter((l) => l.type === "informed_by");
+        .filter((l) => l.type === "informed_by" && !l.targetNoteId);
+      const localPrevLinks = prevLinks.filter((link) => !link.targetNoteId);
+      const externalPrevLinks = prevLinks.filter((link) => !!link.targetNoteId);
 
       const doc: any[] = (props.editor as any).document ?? [];
       const candidates = collectStepPredecessorCandidates(doc, props.block.id);
+      const selectedLocalCandidate =
+        candidates.find((candidate) => candidate.blockId === openOutputsFor) ?? null;
+      const selectedLocalOutputs = selectedLocalCandidate
+        ? collectStepOutputs(doc, labelStore.labels, selectedLocalCandidate.blockId)
+        : [];
+      const cascadePanelDepth =
+        externalPickerLevel === "outputs" && selectedExternalStep
+          ? 3
+          : (externalPickerLevel === "steps" || externalPickerLevel === "outputs") &&
+              selectedExternalNote
+            ? 2
+            : externalPickerLevel || selectedLocalCandidate
+              ? 1
+              : 0;
+      useLayoutEffect(() => {
+        if (!pickerOpen) {
+          setPickerPosition(null);
+          return;
+        }
+        const placeCascade = () => {
+          const trigger = pickerTriggerRef.current;
+          if (!trigger) return;
+          const rect = trigger.getBoundingClientRect();
+          setPickerPosition(
+            calculateCascadePosition(
+              rect,
+              { width: window.innerWidth, height: window.innerHeight },
+              cascadePanelDepth,
+            ),
+          );
+        };
+        placeCascade();
+        window.addEventListener("resize", placeCascade);
+        window.addEventListener("scroll", placeCascade, true);
+        return () => {
+          window.removeEventListener("resize", placeCascade);
+          window.removeEventListener("scroll", placeCascade, true);
+        };
+      }, [cascadePanelDepth, pickerOpen]);
+      useLayoutEffect(() => {
+        const menu = pickerMenuRef.current;
+        if (!menu || !pickerOpen) return;
+        menu.scrollLeft = menu.scrollWidth - menu.clientWidth;
+      }, [cascadePanelDepth, pickerOpen, pickerPosition?.width]);
       const allSteps = collectAllSteps(doc);
       const titleOf = (blockId: string) =>
         allSteps.find((c) => c.blockId === blockId)?.title ?? blockId.slice(0, 8);
 
       const toggleCandidate = (blockId: string) => {
-        const existing = prevLinks.find((l) => l.targetBlockId === blockId);
+        const existing = localPrevLinks.find((l) => l.targetBlockId === blockId);
         if (existing) {
           linkStore.removeLink(existing.id);
           setCycleWarn(false);
@@ -420,10 +617,25 @@ export const StepBlock = createReactBlockSpec(
         setCycleWarn(result.error === "cycle_detected");
       };
 
+      const firstExternalLink = externalPrevLinks[0];
+      const firstExternalOutput =
+        firstExternalLink?.targetNoteId && firstExternalLink.targetEntityId
+          ? resolveCrossNoteOutput(processIndex, {
+              noteId: firstExternalLink.targetNoteId,
+              sourceModifiedAt: firstExternalLink.targetSourceModifiedAt,
+              stepId: firstExternalLink.targetBlockId,
+              entityIdentity: firstExternalLink.targetEntityId,
+              identityStable: firstExternalLink.targetEntityStable,
+              outputIndex: firstExternalLink.targetEntityIndex,
+              outputCount: firstExternalLink.targetEntityCount,
+            })
+          : null;
       const linked = prevLinks.length > 0;
-      const chipText = linked
-        ? `← ${titleOf(prevLinks[0].targetBlockId)}${prevLinks.length > 1 ? ` +${prevLinks.length - 1}` : ""}`
-        : t("step.prevLink");
+      const chipText = firstExternalLink
+        ? `← ${firstExternalOutput?.noteTitle ?? firstExternalLink.targetNoteTitle ?? firstExternalLink.targetNoteId} › ${firstExternalOutput?.stepName ?? firstExternalLink.targetStepTitle ?? firstExternalLink.targetBlockId.slice(0, 8)} › ${firstExternalOutput?.label ?? firstExternalLink.targetEntityLabel ?? t("step.externalUnknownOutput")}${firstExternalOutput ? "" : ` (${t("step.brokenLink")})`}${prevLinks.length > 1 ? ` +${prevLinks.length - 1}` : ""}`
+        : linked
+          ? `← ${titleOf(localPrevLinks[0].targetBlockId)}${prevLinks.length > 1 ? ` +${prevLinks.length - 1}` : ""}`
+          : t("step.prevLink");
 
       // 出力を選んで受ける: 自分の本文に同名の材料 span を合成し（テキスト
       // 一致の unification が出力と 1 Entity に merge する）、手順順序
@@ -431,7 +643,7 @@ export const StepBlock = createReactBlockSpec(
       const pickOutput = (prevBlockId: string, outputLabel: string) => {
         const editor = props.editor as any;
         appendEntitySpanToStep(editor, props.block.id, "material", outputLabel);
-        if (!prevLinks.some((l) => l.targetBlockId === prevBlockId)) {
+        if (!localPrevLinks.some((l) => l.targetBlockId === prevBlockId)) {
           const result = linkStore.addLink({
             sourceBlockId: props.block.id,
             targetBlockId: prevBlockId,
@@ -443,6 +655,165 @@ export const StepBlock = createReactBlockSpec(
         }
         setPickerOpen(false);
       };
+
+      const resolveExternalLink = (link: (typeof externalPrevLinks)[number]) => {
+        if (!link.targetNoteId || !link.targetEntityId) return null;
+        return resolveCrossNoteOutput(processIndex, {
+          noteId: link.targetNoteId,
+          sourceModifiedAt: link.targetSourceModifiedAt,
+          stepId: link.targetBlockId,
+          entityIdentity: link.targetEntityId,
+          identityStable: link.targetEntityStable,
+          outputIndex: link.targetEntityIndex,
+          outputCount: link.targetEntityCount,
+        });
+      };
+
+      const activeExternalLink = (output: CrossNoteOutputOccurrence) =>
+        externalPrevLinks.find((link) => {
+          if (
+            link.targetNoteId !== output.noteId ||
+            link.targetBlockId !== output.stepId
+          ) {
+            return false;
+          }
+          const resolved = resolveExternalLink(link);
+          return resolved?.entityIdentity === output.entityIdentity;
+        });
+
+      const closeExternalPicker = () => {
+        setPickerOpen(false);
+        setExternalPickerLevel(null);
+        setSelectedExternalNoteId(null);
+        setSelectedExternalStepId(null);
+        setExternalNoteQuery("");
+      };
+
+      const removeExternalLink = (link: (typeof externalPrevLinks)[number]) => {
+        linkStore.removeLink(link.id);
+        if (link.sourceEntityId) {
+          removeExternalInputRow(props.editor, link.sourceEntityId);
+        }
+      };
+
+      const toggleExternalOutput = (output: CrossNoteOutputOccurrence) => {
+        const existing = activeExternalLink(output);
+        if (existing) {
+          removeExternalLink(existing);
+          return;
+        }
+        if (
+          wouldCreateCrossNoteCycle(
+            processIndex,
+            linkStore.noteId,
+            output.noteId,
+            linkStore.links,
+          )
+        ) {
+          setCycleWarn(true);
+          return;
+        }
+        setCycleWarn(false);
+        // 受け取りは [インプット] 表の行にする（D-1 / 2026-08-23 合意）。
+        // 行は tableRowIdentity で追跡し、それをリンクの sourceEntityId に持つ
+        const appended = appendExternalInputRowToStep(
+          props.editor,
+          props.block.id,
+          output.label,
+          (stepId) =>
+            findLabeledTableInStep(
+              (props.editor as any).document ?? [],
+              labelStore.labels,
+              stepId,
+              "material",
+            ),
+          t("graphTable.nameColumn"),
+        );
+        if (!appended) return;
+        if (appended.created) labelStore.setLabel(appended.tableBlockId, "material");
+        // 参照元 output の属性を、選択時点のスナップショットとして列にコピーする
+        // （2026-08-24 合意）。以後このノートで自由に編集でき、参照元は変わらない。
+        // 参照元の「現在値」はフローパネル側に読み取り専用で並記される。
+        const keyedAttrs = output.attrs.filter((attr) => attr.key);
+        if (keyedAttrs.length > 0) {
+          let table = readTable(props.editor, appended.tableBlockId);
+          const rowIdx = table ? table.rows.findIndex((r) => r[0] === output.label) : -1;
+          if (table && rowIdx >= 0) {
+            for (const attr of keyedAttrs) {
+              let colIdx = table!.headers.indexOf(attr.key!);
+              if (colIdx < 0) {
+                addTableColumn(props.editor, appended.tableBlockId, attr.key!);
+                colIdx = table!.headers.length;
+                table = readTable(props.editor, appended.tableBlockId) ?? table;
+              }
+              setTableCellAt(props.editor, appended.tableBlockId, rowIdx, colIdx, attr.value);
+            }
+          }
+        }
+        // @ノートリンクと同じ「青 = リンク」の表現。クリック解決は
+        // note-app / side-peek の @ハンドラが data-row-identity で行う
+        setExternalInputRowLinkColor(props.editor, appended.rowIdentity, "blue");
+        const sourceEntityId = appended.rowIdentity;
+        const result = linkStore.addLink({
+          sourceBlockId: props.block.id,
+          targetBlockId: output.stepId,
+          targetNoteId: output.noteId,
+          targetEntityId: output.entityIdentity,
+          targetEntityIndex: output.outputIndex,
+          targetEntityCount: output.outputCount,
+          targetEntityStable: output.identityStable,
+          targetSourceModifiedAt: output.sourceModifiedAt,
+          sourceEntityId,
+          targetEntityLabel: output.label,
+          targetNoteTitle: output.noteTitle,
+          targetStepTitle: output.stepName,
+          type: "informed_by",
+          createdBy: "human",
+        });
+        if (result.error) {
+          removeExternalInputRow(props.editor, sourceEntityId);
+          return;
+        }
+        closeExternalPicker();
+      };
+
+      // 参照元 output の改名は、保存後に届く process index 更新へ追随する。
+      // editor mutation は React render 中ではなく effect で行う。
+      useEffect(() => {
+        for (const link of externalPrevLinks) {
+          if (!link.sourceEntityId) continue;
+          const resolved = resolveExternalLink(link);
+          // リンク切れは @リンクの赤で示す（復活したら青へ戻す）
+          setExternalInputRowLinkColor(
+            props.editor,
+            link.sourceEntityId,
+            resolved ? "blue" : "red",
+          );
+          if (!resolved) continue;
+          updateExternalInputRowText(props.editor, link.sourceEntityId, resolved.label);
+          if (
+            link.targetEntityId !== resolved.entityIdentity ||
+            link.targetEntityIndex !== resolved.outputIndex ||
+            link.targetEntityCount !== resolved.outputCount ||
+            link.targetEntityStable !== resolved.identityStable ||
+            link.targetSourceModifiedAt !== resolved.sourceModifiedAt ||
+            link.targetEntityLabel !== resolved.label ||
+            link.targetNoteTitle !== resolved.noteTitle ||
+            link.targetStepTitle !== resolved.stepName
+          ) {
+            linkStore.updateLink(link.id, {
+              targetEntityId: resolved.entityIdentity,
+              targetEntityIndex: resolved.outputIndex,
+              targetEntityCount: resolved.outputCount,
+              targetEntityStable: resolved.identityStable,
+              targetSourceModifiedAt: resolved.sourceModifiedAt,
+              targetEntityLabel: resolved.label,
+              targetNoteTitle: resolved.noteTitle,
+              targetStepTitle: resolved.stepName,
+            });
+          }
+        }
+      }, [processIndex, linkStore.links, props.block.id, props.editor]);
 
       // 後続側の候補: 前手順候補と同じ除外規則（自分・祖先・子孫を除く）に、
       // 既にリンク済みだが候補外の後続（旧 UI で張られた等）を足して外せるようにする
@@ -652,14 +1023,25 @@ export const StepBlock = createReactBlockSpec(
             <button
               type="button"
               onClick={() => {
-                setPickerOpen((v) => !v);
+                requestLatestProcessIndexRefresh();
+                setPickerOpen((v) => {
+                  const next = !v;
+                  if (!next) {
+                    setExternalPickerLevel(null);
+                    setSelectedExternalNoteId(null);
+                    setSelectedExternalStepId(null);
+                    setExternalNoteQuery("");
+                  }
+                  return next;
+                });
                 setNextOpen(false);
                 setCycleWarn(false);
                 setOpenOutputsFor(null);
               }}
-              title={t("labelUi.prevStepLink")}
+              title={linked ? chipText : t("labelUi.prevStepLink")}
               aria-expanded={pickerOpen}
               data-test="step-prev-link"
+              ref={pickerTriggerRef}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -667,7 +1049,7 @@ export const StepBlock = createReactBlockSpec(
                 marginTop: 1,
                 padding: "0 8px",
                 height: 20,
-                maxWidth: 180,
+                maxWidth: firstExternalLink ? 300 : 180,
                 borderRadius: 10,
                 cursor: "pointer",
                 fontSize: 11,
@@ -686,131 +1068,377 @@ export const StepBlock = createReactBlockSpec(
                 {chipText}
               </span>
             </button>
-            {pickerOpen && (
-              <div role="menu" style={pickerStyles.menu}>
-                <div style={pickerStyles.header}>{t("step.pickerStepsHeader")}</div>
-                {candidates.length === 0 && (
-                  <div style={pickerStyles.empty}>{t("step.noOtherSteps")}</div>
-                )}
-                {cycleWarn && (
-                  <div style={{ ...pickerStyles.empty, color: "var(--color-error)" }}>
-                    {t("step.cycleBlocked")}
-                  </div>
-                )}
-                {candidates.map((c) => {
-                  const active = prevLinks.some((l) => l.targetBlockId === c.blockId);
-                  const outputs = collectStepOutputs(doc, labelStore.labels, c.blockId);
-                  // 第 1 階層はステップだけ。出力を持つステップはホバー（クリックでも）で
-                  // サブメニューを開き、そこで「どの出力を受けるか」を選ぶ。
-                  // 出力を持たないステップは従来どおりクリックで順序リンクの付け外し。
-                  const submenuOpen = outputs.length > 0 && openOutputsFor === c.blockId;
-                  return (
+            {pickerOpen &&
+              pickerPosition &&
+              typeof document !== "undefined" &&
+              createPortal(
+                <div
+                  ref={pickerMenuRef}
+                  role="menu"
+                  style={{
+                    ...pickerStyles.cascadeMenu,
+                    top: pickerPosition.top,
+                    left: pickerPosition.left,
+                    width: pickerPosition.width,
+                    maxHeight: pickerPosition.maxHeight,
+                  }}
+                >
+                  <div style={pickerStyles.cascadeRootPanel}>
                     <div
-                      key={c.blockId}
-                      style={{ position: "relative" }}
-                      onMouseEnter={() => outputs.length > 0 && setOpenOutputsFor(c.blockId)}
-                      onMouseLeave={() =>
-                        setOpenOutputsFor((prev) => (prev === c.blockId ? null : prev))
-                      }
+                      style={{
+                        ...pickerStyles.cascadeColumn,
+                        maxHeight: Math.max(0, pickerPosition.maxHeight - 2),
+                      }}
                     >
+                  <div style={pickerStyles.header}>{t("step.pickerStepsHeader")}</div>
+                  {candidates.length === 0 && (
+                    <div style={pickerStyles.empty}>{t("step.noOtherSteps")}</div>
+                  )}
+                  {cycleWarn && (
+                    <div style={{ ...pickerStyles.empty, color: "var(--color-error)" }}>
+                      {t("step.cycleBlocked")}
+                    </div>
+                  )}
+                  {candidates.map((c) => {
+                    const active = localPrevLinks.some((l) => l.targetBlockId === c.blockId);
+                    const outputs = collectStepOutputs(doc, labelStore.labels, c.blockId);
+                    const submenuOpen = outputs.length > 0 && openOutputsFor === c.blockId;
+                    return (
+                      <div key={c.blockId}>
+                        <button
+                          type="button"
+                          role={outputs.length > 0 ? "menuitem" : "menuitemcheckbox"}
+                          aria-checked={outputs.length > 0 ? undefined : active}
+                          aria-haspopup={outputs.length > 0 || undefined}
+                          aria-expanded={outputs.length > 0 ? submenuOpen : undefined}
+                          onClick={() => {
+                            if (outputs.length === 0) {
+                              toggleCandidate(c.blockId);
+                              return;
+                            }
+                            setExternalPickerLevel(null);
+                            setSelectedExternalNoteId(null);
+                            setSelectedExternalStepId(null);
+                            setOpenOutputsFor(submenuOpen ? null : c.blockId);
+                          }}
+                          style={{
+                            ...pickerStyles.item,
+                            width: "100%",
+                            background:
+                              active || submenuOpen
+                                ? "var(--color-label-activity-bg)"
+                                : "transparent",
+                            color: active
+                              ? "var(--color-label-activity)"
+                              : "var(--color-foreground)",
+                          }}
+                        >
+                          <span style={pickerStyles.itemLabel}>{c.title}</span>
+                          <span style={pickerStyles.itemActions}>
+                            {active && <Check size={13} strokeWidth={2.4} />}
+                            {outputs.length > 0 && (
+                              <ChevronRight
+                                size={13}
+                                strokeWidth={2.2}
+                                style={{ color: "var(--color-text-tertiary)" }}
+                              />
+                            )}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div style={pickerStyles.header}>{t("step.externalOutputsHeader")}</div>
+                  {externalPrevLinks.map((link) => {
+                    const resolved = resolveExternalLink(link);
+                    const broken = !resolved;
+                    return (
                       <button
+                        key={link.id}
                         type="button"
-                        role={outputs.length > 0 ? "menuitem" : "menuitemcheckbox"}
-                        aria-checked={outputs.length > 0 ? undefined : active}
-                        aria-haspopup={outputs.length > 0 || undefined}
-                        aria-expanded={outputs.length > 0 ? submenuOpen : undefined}
-                        onClick={() =>
-                          outputs.length > 0
-                            ? setOpenOutputsFor(submenuOpen ? null : c.blockId)
-                            : toggleCandidate(c.blockId)
-                        }
+                        role="menuitemcheckbox"
+                        aria-checked
+                        onClick={() => removeExternalLink(link)}
                         style={{
                           ...pickerStyles.item,
                           width: "100%",
-                          background:
-                            active || submenuOpen
-                              ? "var(--color-label-activity-bg)"
-                              : "transparent",
-                          color: active
-                            ? "var(--color-label-activity)"
-                            : "var(--color-foreground)",
+                          background: "var(--color-label-activity-bg)",
+                          color: broken
+                            ? "var(--color-error)"
+                            : "var(--color-label-activity)",
                         }}
                       >
-                        <span style={pickerStyles.itemLabel}>{c.title}</span>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 2, flex: "0 0 auto" }}>
-                          {active && <Check size={13} strokeWidth={2.4} />}
-                          {outputs.length > 0 && (
-                            <ChevronRight
-                              size={13}
-                              strokeWidth={2.2}
-                              style={{ color: "var(--color-text-tertiary)" }}
-                            />
-                          )}
+                        <span style={pickerStyles.itemDetails}>
+                          <span style={pickerStyles.itemLabel}>
+                            {resolved?.label ??
+                              link.targetEntityLabel ??
+                              t("step.externalUnknownOutput")}
+                          </span>
+                          <span style={pickerStyles.itemMeta}>
+                            {resolved?.noteTitle ??
+                              link.targetNoteTitle ??
+                              link.targetNoteId}{" "}
+                            ›{" "}
+                            {resolved?.stepName ??
+                              link.targetStepTitle ??
+                              link.targetBlockId.slice(0, 8)}
+                            {broken ? ` — ${t("step.brokenLink")}` : ""}
+                          </span>
                         </span>
+                        <Check size={13} strokeWidth={2.4} />
                       </button>
-                      {submenuOpen && (
-                        <div role="menu" style={pickerStyles.submenu}>
-                          <div style={pickerStyles.header}>{t("step.pickerOutputsHeader")}</div>
-                          {outputs.map((o) => {
-                            const received = stepHasInputText(doc, props.block.id, o);
-                            return (
-                              <button
-                                key={`${c.blockId}:${o}`}
-                                type="button"
-                                role="menuitemcheckbox"
-                                aria-checked={received}
-                                onClick={() => !received && pickOutput(c.blockId, o)}
-                                style={{
-                                  ...pickerStyles.item,
-                                  width: "100%",
-                                  cursor: received ? "default" : "pointer",
-                                  color: "var(--color-foreground)",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    flex: "0 0 auto",
-                                    width: 7,
-                                    height: 7,
-                                    borderRadius: "50%",
-                                    background: "var(--color-label-result, #c26356)",
-                                  }}
-                                />
-                                {/* 丸印の隣に寄せる（item は space-between なので flex:1 が要る） */}
-                                <span style={{ ...pickerStyles.itemLabel, flex: 1, textAlign: "left" }}>
-                                  {o}
-                                </span>
-                                {received && <Check size={13} strokeWidth={2.4} />}
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            role="menuitemcheckbox"
-                            aria-checked={active}
-                            onClick={() => toggleCandidate(c.blockId)}
-                            style={{
-                              ...pickerStyles.item,
-                              width: "100%",
-                              background: active
-                                ? "var(--color-label-activity-bg)"
-                                : "transparent",
-                              color: active
-                                ? "var(--color-label-activity)"
-                                : "var(--color-text-tertiary)",
-                            }}
-                          >
-                            <span style={pickerStyles.itemLabel}>
-                              {t("step.unspecifiedOutput")}
-                            </span>
-                            {active && <Check size={13} strokeWidth={2.4} />}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                  {crossNoteGroups.length === 0 ? (
+                    externalPrevLinks.length === 0 && (
+                      <div style={pickerStyles.empty}>{t("step.noExternalOutputs")}</div>
+                    )
+                  ) : (
+                    <button
+                     type="button"
+                     role="menuitem"
+                     onClick={() => {
+                       setOpenOutputsFor(null);
+                       setExternalPickerLevel((level) => (level ? null : "notes"));
+                       setSelectedExternalNoteId(null);
+                       setSelectedExternalStepId(null);
+                     }}
+                     style={{
+                       ...pickerStyles.item,
+                       width: "100%",
+                       background: externalPickerLevel
+                         ? "var(--color-label-activity-bg)"
+                         : "transparent",
+                       color: "var(--color-foreground)",
+                     }}
+                   >
+                     <span style={pickerStyles.itemLabel}>
+                       {t("step.chooseExternalNote")}
+                     </span>
+                     <ChevronRight size={13} strokeWidth={2.2} />
+                   </button>
+                 )}
+                   </div>
+                 </div>
+                 {selectedLocalCandidate && externalPickerLevel === null && (
+                   <div role="menu" style={pickerStyles.cascadePanel}>
+                     <div style={pickerStyles.cascadePanelColumn}>
+                       <div style={pickerStyles.header}>
+                         {selectedLocalCandidate.title} › {t("step.pickerOutputsHeader")}
+                       </div>
+                       {selectedLocalOutputs.map((output) => {
+                         const active = localPrevLinks.some(
+                           (link) => link.targetBlockId === selectedLocalCandidate.blockId,
+                         );
+                         const received =
+                           active && stepHasInputText(doc, props.block.id, output);
+                         return (
+                           <button
+                             key={`${selectedLocalCandidate.blockId}:${output}`}
+                             type="button"
+                             role="menuitemcheckbox"
+                             aria-checked={received}
+                             onClick={() =>
+                               !received && pickOutput(selectedLocalCandidate.blockId, output)
+                             }
+                             style={{
+                               ...pickerStyles.item,
+                               width: "100%",
+                               cursor: received ? "default" : "pointer",
+                               color: "var(--color-foreground)",
+                             }}
+                           >
+                             <span style={pickerStyles.outputDot} />
+                             <span
+                               style={{
+                                 ...pickerStyles.itemLabel,
+                                 flex: 1,
+                                 textAlign: "left",
+                               }}
+                             >
+                               {output}
+                             </span>
+                             {received && <Check size={13} strokeWidth={2.4} />}
+                           </button>
+                         );
+                       })}
+                       <button
+                         type="button"
+                         role="menuitemcheckbox"
+                         aria-checked={localPrevLinks.some(
+                           (link) => link.targetBlockId === selectedLocalCandidate.blockId,
+                         )}
+                         onClick={() => toggleCandidate(selectedLocalCandidate.blockId)}
+                         style={{
+                           ...pickerStyles.item,
+                           width: "100%",
+                           background: localPrevLinks.some(
+                             (link) => link.targetBlockId === selectedLocalCandidate.blockId,
+                           )
+                             ? "var(--color-label-activity-bg)"
+                             : "transparent",
+                           color: localPrevLinks.some(
+                             (link) => link.targetBlockId === selectedLocalCandidate.blockId,
+                           )
+                             ? "var(--color-label-activity)"
+                             : "var(--color-text-tertiary)",
+                         }}
+                       >
+                         <span style={pickerStyles.itemLabel}>{t("step.unspecifiedOutput")}</span>
+                         {localPrevLinks.some(
+                           (link) => link.targetBlockId === selectedLocalCandidate.blockId,
+                         ) && <Check size={13} strokeWidth={2.4} />}
+                       </button>
+                     </div>
+                   </div>
+                 )}
+                 {externalPickerLevel && (
+                   <div role="menu" style={pickerStyles.cascadePanel}>
+                     <div style={pickerStyles.cascadePanelColumn}>
+                       <div style={pickerStyles.header}>{t("step.chooseExternalNote")}</div>
+                       <label style={pickerStyles.searchBox}>
+                         <Search size={13} strokeWidth={2} />
+                         <input
+                           autoFocus
+                           value={externalNoteQuery}
+                           onChange={(event) => setExternalNoteQuery(event.target.value)}
+                           placeholder={t("step.searchExternalNotes")}
+                           style={pickerStyles.searchInput}
+                         />
+                       </label>
+                       {filteredExternalNotes.length === 0 ? (
+                         <div style={pickerStyles.empty}>
+                           {t("step.noMatchingExternalNotes")}
+                         </div>
+                       ) : (
+                         filteredExternalNotes.map((note) => (
+                           <button
+                             key={note.noteId}
+                             type="button"
+                             role="menuitem"
+                             onClick={() => {
+                               setSelectedExternalNoteId(note.noteId);
+                               setSelectedExternalStepId(null);
+                               setExternalPickerLevel("steps");
+                             }}
+                             style={{
+                               ...pickerStyles.item,
+                               width: "100%",
+                               background:
+                                 selectedExternalNoteId === note.noteId
+                                   ? "var(--color-label-activity-bg)"
+                                   : "transparent",
+                               color: "var(--color-foreground)",
+                             }}
+                           >
+                             <span style={pickerStyles.itemDetails}>
+                               <span style={pickerStyles.itemLabel}>{note.noteTitle}</span>
+                               <span style={pickerStyles.itemMeta}>
+                                 {t("step.externalNoteSummary", {
+                                   steps: String(note.steps.length),
+                                   outputs: String(
+                                     note.steps.reduce(
+                                       (count, step) => count + step.outputs.length,
+                                       0,
+                                     ),
+                                   ),
+                                 })}
+                               </span>
+                             </span>
+                             <ChevronRight size={13} strokeWidth={2.2} />
+                           </button>
+                         ))
+                       )}
+                     </div>
+                     {(externalPickerLevel === "steps" ||
+                       externalPickerLevel === "outputs") &&
+                       selectedExternalNote && (
+                       <div role="menu" style={pickerStyles.cascadePanel}>
+                         <div style={pickerStyles.cascadePanelColumn}>
+                           <div style={pickerStyles.header}>
+                             {selectedExternalNote.noteTitle} › {t("step.chooseExternalStep")}
+                           </div>
+                           {(selectedExternalNote?.steps ?? []).map((step) => (
+                             <button
+                               key={step.stepId}
+                               type="button"
+                               role="menuitem"
+                               onClick={() => {
+                                 setSelectedExternalStepId(step.stepId);
+                                 setExternalPickerLevel("outputs");
+                               }}
+                               style={{
+                                 ...pickerStyles.item,
+                                 width: "100%",
+                                 background:
+                                   selectedExternalStepId === step.stepId
+                                     ? "var(--color-label-activity-bg)"
+                                     : "transparent",
+                                 color: "var(--color-foreground)",
+                               }}
+                             >
+                               <span style={pickerStyles.itemDetails}>
+                                 <span style={pickerStyles.itemLabel}>{step.stepName}</span>
+                                 <span style={pickerStyles.itemMeta}>
+                                   {t("step.externalOutputCount", {
+                                     count: String(step.outputs.length),
+                                   })}
+                                 </span>
+                               </span>
+                               <ChevronRight size={13} strokeWidth={2.2} />
+                             </button>
+                           ))}
+                         </div>
+                         {externalPickerLevel === "outputs" && selectedExternalStep && (
+                           <div role="menu" style={pickerStyles.cascadePanel}>
+                             <div style={pickerStyles.cascadePanelColumn}>
+                               <div style={pickerStyles.header}>
+                                 {selectedExternalStep.stepName} ›{" "}
+                                 {t("step.pickerOutputsHeader")}
+                               </div>
+                               {(selectedExternalStep?.outputs ?? []).map((output) => {
+                                 const activeLink = activeExternalLink(output);
+                                 return (
+                                   <button
+                                     key={`${output.noteId}:${output.stepId}:${output.entityIdentity}`}
+                                     type="button"
+                                     role="menuitemcheckbox"
+                                     aria-checked={!!activeLink}
+                                     onClick={() => toggleExternalOutput(output)}
+                                     style={{
+                                       ...pickerStyles.item,
+                                       width: "100%",
+                                       background: activeLink
+                                         ? "var(--color-label-activity-bg)"
+                                         : "transparent",
+                                       color: activeLink
+                                         ? "var(--color-label-activity)"
+                                         : "var(--color-foreground)",
+                                     }}
+                                   >
+                                     <span style={pickerStyles.outputDot} />
+                                     <span
+                                       style={{
+                                         ...pickerStyles.itemLabel,
+                                         flex: 1,
+                                         textAlign: "left",
+                                       }}
+                                     >
+                                       {output.label}
+                                     </span>
+                                     {activeLink && <Check size={13} strokeWidth={2.4} />}
+                                   </button>
+                                 );
+                               })}
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                     )}
+                   </div>
+                 )}
+                </div>,
+              document.body,
             )}
           </div>
           {/* 次ステップ（編集不可）。
@@ -928,6 +1556,49 @@ export const StepBlock = createReactBlockSpec(
 );
 
 const pickerStyles: Record<string, React.CSSProperties> = {
+  cascadeMenu: {
+    position: "fixed",
+    zIndex: 120,
+    display: "flex",
+    alignItems: "flex-start",
+    gap: CASCADE_PANEL_GAP,
+    overflowX: "auto",
+    overflowY: "hidden",
+  },
+  cascadeRootPanel: {
+    flex: `0 0 ${CASCADE_ROOT_WIDTH}px`,
+    overflow: "hidden",
+    borderRadius: 8,
+    background: "var(--color-card)",
+    border: "1px solid var(--color-border)",
+    boxShadow: "var(--shadow-2)",
+  },
+  cascadeColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: 6,
+    maxHeight: 360,
+    overflowY: "auto",
+    overflowX: "hidden",
+  },
+  cascadePanel: {
+    display: "contents",
+  },
+  cascadePanelColumn: {
+    flex: `0 0 ${CASCADE_PANEL_WIDTH}px`,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: 6,
+    maxHeight: "min(360px, calc(100vh - 16px))",
+    overflowY: "auto",
+    overflowX: "hidden",
+    borderRadius: 8,
+    background: "var(--color-card)",
+    border: "1px solid var(--color-border)",
+    boxShadow: "var(--shadow-2)",
+  },
   menu: {
     position: "absolute",
     top: "calc(100% + 4px)",
@@ -937,8 +1608,11 @@ const pickerStyles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 2,
     padding: 6,
-    minWidth: 180,
-    maxWidth: 260,
+    minWidth: 220,
+    width: 280,
+    maxWidth: "min(320px, calc(100vw - 24px))",
+    maxHeight: 360,
+    overflowY: "auto",
     borderRadius: 8,
     background: "var(--color-card)",
     border: "1px solid var(--color-border)",
@@ -950,25 +1624,6 @@ const pickerStyles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     letterSpacing: "0.03em",
     color: "var(--color-text-tertiary)",
-  },
-  // 出力サブメニュー。シェブロン（›）の向きに合わせて右へ開く。
-  // 左開きにするとエディタ列の左端で切れる（実測）。
-  submenu: {
-    position: "absolute",
-    top: -6,
-    left: "100%",
-    marginLeft: 4,
-    zIndex: 21,
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    padding: 6,
-    minWidth: 160,
-    maxWidth: 240,
-    borderRadius: 8,
-    background: "var(--color-card)",
-    border: "1px solid var(--color-border)",
-    boxShadow: "var(--shadow-2)",
   },
   empty: {
     padding: "4px 8px 6px",
@@ -994,5 +1649,54 @@ const pickerStyles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  itemActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
+    flex: "0 0 auto",
+  },
+  itemDetails: {
+    minWidth: 0,
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 1,
+  },
+  itemMeta: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontSize: 10,
+    fontWeight: 400,
+    color: "var(--color-text-tertiary)",
+  },
+  outputDot: {
+    flex: "0 0 auto",
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    background: "var(--color-label-result, #c26356)",
+  },
+  searchBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    margin: "2px 2px 4px",
+    padding: "5px 7px",
+    border: "1px solid var(--color-border)",
+    borderRadius: 6,
+    color: "var(--color-text-tertiary)",
+  },
+  searchInput: {
+    minWidth: 0,
+    width: "100%",
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    color: "var(--color-foreground)",
+    fontSize: 12,
   },
 };

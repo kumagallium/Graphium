@@ -13,7 +13,13 @@
 // 毎レンダーでグラフ全体が再構築されてしまう。
 // ──────────────────────────────────────────────
 
-import { useCallback, useMemo, useReducer, useRef } from "react";
+import {
+  useCallback,
+  useMemo,
+  useReducer,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { StepFlowView, type EntityKind } from "./step-flow-view";
 import { provDocToFlowGraph, splitAttrLabel, type ActivityIoKind } from "./activity-graph-adapter";
 import { useLinkStore } from "../block-link/store";
@@ -38,6 +44,15 @@ import {
   ensureParameterTable,
 } from "./table-row-edit";
 import type { ProvJsonLd } from "../prov-generator/generator";
+import {
+  getLatestProcessIndex,
+  subscribeLatestProcessIndex,
+} from "./process-index";
+import { addCrossNoteOriginsToFlowGraph } from "./cross-note-flow";
+import {
+  getIndexTableCallbacks,
+  openEditorSidePeek,
+} from "../index-table/context";
 
 /** 文書順で最後の step ブロック id（ネスト含む）。新しい手順の挿入位置に使う */
 function findLastStepId(blocks: any[]): string | null {
@@ -121,33 +136,43 @@ export function ActivityGraphEditor({
   linkStoreRef.current = linkStore;
   const labelStoreRef = useRef(labelStore);
   labelStoreRef.current = labelStore;
+  const processIndex = useSyncExternalStore(
+    subscribeLatestProcessIndex,
+    getLatestProcessIndex,
+    getLatestProcessIndex,
+  );
 
   const flowGraph = useMemo(() => provDocToFlowGraph(doc), [doc]);
-  // コールバックを安定参照に保つため、最新のグラフは ref 経由でも読めるようにする
-  const flowGraphRef = useRef(flowGraph);
-  flowGraphRef.current = flowGraph;
 
   // orderOnly エッジのうち、裏に informed_by リンクがあるものだけ削除可能。
   // 本文のラベル由来の手順依存は対応リンクが無いので削除対象外にする。
-  const graph = useMemo(
-    () => ({
-      ...flowGraph,
-      edges: flowGraph.edges.map((e) =>
+  const graph = useMemo(() => {
+    const withExternalOrigins = addCrossNoteOriginsToFlowGraph(
+      flowGraph,
+      linkStore.links,
+      processIndex,
+    );
+    return {
+      ...withExternalOrigins,
+      edges: withExternalOrigins.edges.map((e) =>
         e.kind === "orderOnly"
           ? {
               ...e,
               deletable: linkStore.links.some(
                 (l) =>
                   l.type === "informed_by" &&
+                  !l.targetNoteId &&
                   l.sourceBlockId === e.target &&
                   l.targetBlockId === e.source,
               ),
             }
           : e,
       ),
-    }),
-    [flowGraph, linkStore.links],
-  );
+    };
+  }, [flowGraph, linkStore.links, processIndex]);
+  // コールバックを安定参照に保つため、外部プロセスを含む最新グラフを ref でも読む。
+  const flowGraphRef = useRef(graph);
+  flowGraphRef.current = graph;
 
   const getEditor = useCallback(() => editorRef?.current ?? null, [editorRef]);
 
@@ -456,6 +481,18 @@ export function ActivityGraphEditor({
           }),
       ];
 
+      // この step の表にある外部参照行（行名 → 由来）。参照元の現在の属性を
+      // パネルに読み取り専用で並記するための情報
+      const externalOrigins: Record<string, import("./activity-graph-adapter").ExternalFlowOrigin> = {};
+      for (const e of g.entities) {
+        if (!e.externalOrigin) continue;
+        // 外部参照行は定義上この step の表に足したもの。リネーム後は
+        // entity @id が旧行名のままになり tableRef が取れないことがあるため、
+        // 「この step につながっているか」だけで拾う
+        if (!connectedIds.has(e.id)) continue;
+        externalOrigins[e.label.trim()] = e.externalOrigin;
+      }
+
       const ref = selection.kind === "entity" ? selection.entity.tableRef : undefined;
       return {
         stepId,
@@ -465,6 +502,7 @@ export function ActivityGraphEditor({
         proseHighlight:
           selection.kind === "entity" && !ref ? (selection.entity.entityId ?? undefined) : undefined,
         prose,
+        externalOrigins,
       };
     },
     [getEditor, owningStepOf, findSectionTable],
@@ -705,6 +743,11 @@ export function ActivityGraphEditor({
     },
     [getEditor],
   );
+  const onOpenExternalNote = useCallback((noteId: string) => {
+    if (!openEditorSidePeek(getEditor(), noteId)) {
+      getIndexTableCallbacks()?.onOpenSidePeek(noteId);
+    }
+  }, [getEditor]);
 
   const hasEditor = !!editorRef;
 
@@ -723,6 +766,7 @@ export function ActivityGraphEditor({
       onAddEntity={hasEditor ? onAddEntity : undefined}
       onRenameEntity={hasEditor ? onRenameEntity : undefined}
       onRemoveEntity={hasEditor ? onRemoveEntity : undefined}
+      onOpenExternalNote={onOpenExternalNote}
       onRenameTableRow={hasEditor ? onRenameTableRow : undefined}
       onRemoveTableRow={hasEditor ? onRemoveTableRow : undefined}
       tableLayout={tableLayout}

@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GraphiumFile, GraphiumDocument, WikiKind, WikiMetaSummary } from "../lib/document-types";
+import { clearAppDataFileCache } from "../lib/storage/app-data-file";
 import { getActiveProvider } from "../lib/storage/registry";
 import { PROV_TEMPLATE } from "../lib/prov-template";
 import { recordRevision } from "../features/document-provenance/tracker";
@@ -37,8 +38,11 @@ import {
   ensureProcessIndex,
   readProcessIndex,
   saveProcessIndex,
+  buildProcessEntry,
   setLatestProcessIndex,
   updateProcessEntry,
+  setLatestProcessIndexRefreshRequester,
+  clearLatestProcessIndex,
   type ProcessIndex,
 } from "../features/network-graph";
 import {
@@ -88,6 +92,7 @@ import {
 import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
+import { normalizeTableRowIdentities } from "../lib/table-row-identity";
 import { t as tStatic } from "../i18n";
 
 // ストレージプロバイダー経由のファイル操作ヘルパー
@@ -228,9 +233,10 @@ export function useFileManager(authenticated: boolean) {
   const [showProcessGallery, setShowProcessGallery] = useState(false);
   const [processIndex, setProcessIndex] = useState<ProcessIndex | null>(null);
   const processIndexRef = useRef<ProcessIndex | null>(null);
-  const processProjectionPromiseRef = useRef<Promise<ProcessIndex | null> | null>(null);
   const processMutationRef = useRef(false);
   const processProjectingRef = useRef(false);
+  const processIndexOperationChainRef = useRef<Promise<void>>(Promise.resolve());
+  const processIndexGenerationRef = useRef(0);
   // Wiki 関連の状態
   const [wikiFiles, setWikiFiles] = useState<GraphiumFile[]>([]);
   const [activeWikiKind, setActiveWikiKind] = useState<WikiKind | null>(null);
@@ -453,63 +459,119 @@ export function useFileManager(authenticated: boolean) {
     }
   }, []);
 
-  // プロセス一覧を開いたときだけ投影を最新化する。
-  // 投影はノート本文の読み込み + PROV 生成を伴い、note-index の構築より重い。
-  // 起動経路に載せると一覧を見ない人にまで待ち時間が乗るので、開いた人だけが払う。
-  useEffect(() => {
-    if (!showProcessGallery) return;
+  const enqueueProcessIndexOperation = useCallback(
+    (operation: () => void | Promise<void>): Promise<void> => {
+      const next = processIndexOperationChainRef.current
+        .catch(() => undefined)
+        .then(operation);
+      processIndexOperationChainRef.current = next.catch(() => undefined);
+      return next;
+    },
+    [],
+  );
+
+  const createProcessIndexScope = useCallback(() => {
+    const generation = processIndexGenerationRef.current;
+    const provider = storage();
+    return {
+      provider,
+      isCurrent: () =>
+        generation === processIndexGenerationRef.current && storage() === provider,
+    };
+  }, []);
+
+  // プロセス一覧または step の前手順ピッカーを開いたときだけ投影を最新化する。
+  // 投影はノート本文の読み込み + PROV 生成を伴うため、起動経路には載せない。
+  const refreshProcessIndex = useCallback(() => {
+    if (!authenticated || processProjectingRef.current) return;
+    // プロセスのフォークがインデックスを書き換えている最中は投影しない
     if (processMutationRef.current) return;
-    if (processProjectingRef.current) return;
+    const { provider, isCurrent } = createProcessIndexScope();
     processProjectingRef.current = true;
-    let cancelled = false;
-    const projection = (async (): Promise<ProcessIndex | null> => {
+    void enqueueProcessIndexOperation(async () => {
       try {
+        if (!isCurrent()) return;
         // ゴミ箱・アーカイブのノートは一覧に出さないので、投影もしない
         const targets = files.filter(
           (f) => !trashedIdSet.has(f.id) && !archivedIdSet.has(f.id),
         );
-        const idx = await ensureProcessIndex(targets, docCacheRef.current, loadFile);
-        if (cancelled) return null;
+        const idx = await ensureProcessIndex(
+          targets,
+          docCacheRef.current,
+          loadFile,
+          undefined,
+          isCurrent,
+          provider,
+        );
+        if (!isCurrent()) return;
         processIndexRef.current = idx;
         setProcessIndex(idx);
         setLatestProcessIndex(idx);
-        return idx;
       } catch (err) {
         console.error("プロセスインデックスの構築に失敗:", err);
-        return null;
       } finally {
-        processProjectingRef.current = false;
+        if (isCurrent()) processProjectingRef.current = false;
       }
-    })();
-    processProjectionPromiseRef.current = projection;
-    void projection.finally(() => {
-      if (processProjectionPromiseRef.current === projection) {
-        processProjectionPromiseRef.current = null;
+    });
+  }, [
+    authenticated,
+    files,
+    trashedIdSet,
+    archivedIdSet,
+    enqueueProcessIndexOperation,
+    createProcessIndexScope,
+  ]);
+
+  useEffect(() => {
+    setLatestProcessIndexRefreshRequester(refreshProcessIndex);
+    return () => setLatestProcessIndexRefreshRequester(null);
+  }, [refreshProcessIndex]);
+
+  useEffect(() => {
+    if (!showProcessGallery) return;
+    refreshProcessIndex();
+  }, [showProcessGallery, refreshProcessIndex]);
+
+  // 保存済みの投影を起動時に読むだけ読む（投影はしない）。
+  // サイドバーの件数を一覧の件数と揃えるためで、無ければ note-index から推定する。
+  useEffect(() => {
+    if (!authenticated || !noteIndex || processIndexRef.current) return;
+    let cancelled = false;
+    const { provider, isCurrent } = createProcessIndexScope();
+    void enqueueProcessIndexOperation(async () => {
+      try {
+        if (cancelled || !isCurrent() || processIndexRef.current) return;
+        const idx = await readProcessIndex(provider);
+        if (cancelled || !isCurrent() || !idx || processIndexRef.current) return;
+        const excludedIds = new Set(
+          (noteIndexRef.current?.notes ?? [])
+            .filter((note) => note.deletedAt || note.archivedAt)
+            .map((note) => note.noteId),
+        );
+        const processes = idx.processes.filter((process) => !excludedIds.has(process.noteId));
+        const current =
+          processes.length === idx.processes.length
+            ? idx
+            : { ...idx, updatedAt: new Date().toISOString(), processes };
+        processIndexRef.current = current;
+        setProcessIndex(current);
+        setLatestProcessIndex(current);
+        if (current !== idx) {
+          await saveProcessIndex(current, isCurrent, provider);
+        }
+      } catch (err) {
+        console.warn("プロセスインデックスの読み込みに失敗:", err);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [showProcessGallery, files, trashedIdSet, archivedIdSet]);
-
-  // 保存済みの投影を起動時に読むだけ読む（投影はしない）。
-  // サイドバーの件数を一覧の件数と揃えるためで、無ければ note-index から推定する。
-  useEffect(() => {
-    if (!authenticated) return;
-    let cancelled = false;
-    readProcessIndex()
-      .then((idx) => {
-        if (cancelled || !idx) return;
-        if (processIndexRef.current) return;
-        processIndexRef.current = idx;
-        setProcessIndex(idx);
-        setLatestProcessIndex(idx);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [authenticated]);
+  }, [
+    authenticated,
+    noteIndex,
+    enqueueProcessIndexOperation,
+    createProcessIndexScope,
+  ]);
 
   // メディアインデックスを再読み込み（Pull-to-Refresh 用）
   const refreshMediaIndex = useCallback(async () => {
@@ -601,6 +663,10 @@ export function useFileManager(authenticated: boolean) {
 
   // ファイルを開く（キャッシュ優先、cachedDoc が渡された場合はキャッシュを即時更新）
   const handleOpenFile = useCallback(async (fileId: string, cachedDoc?: GraphiumDocument) => {
+    const generation = processIndexGenerationRef.current;
+    const provider = storage();
+    const isCurrent = () =>
+      generation === processIndexGenerationRef.current && storage() === provider;
     try {
       // ノート一覧・ギャラリービューを閉じる
       setShowNoteList(false);
@@ -631,10 +697,16 @@ export function useFileManager(authenticated: boolean) {
         // 最近のノートに追加
         setRecentNotes(addToRecent(fileId, cached.title));
         // バックグラウンドで最新を取得してキャッシュ更新
-        loadFile(fileId).then((doc) => docCacheRef.current.set(fileId, doc)).catch(() => {});
+        provider
+          .loadFile(fileId)
+          .then((doc) => {
+            if (isCurrent()) docCacheRef.current.set(fileId, doc);
+          })
+          .catch(() => {});
         return;
       }
-      const doc = await loadFile(fileId);
+      const doc = await provider.loadFile(fileId);
+      if (!isCurrent()) return;
       docCacheRef.current.set(fileId, doc);
       setActiveFileId(fileId);
       setActiveDoc(doc);
@@ -649,12 +721,18 @@ export function useFileManager(authenticated: boolean) {
   // 認証が切れたら全 state をリセット（プロバイダー切り替え時に古いデータが残るのを防ぐ）
   useEffect(() => {
     if (!authenticated) {
+      processIndexGenerationRef.current += 1;
+      processProjectingRef.current = false;
+      clearAppDataFileCache();
       setFiles([]);
       setFilesLoading(true); // 次回認証時にインデックスが空で確定しないようにする
       setNoteIndex(null);
       noteIndexRef.current = null;
       setMediaIndex(null);
       mediaIndexRef.current = null;
+      setProcessIndex(null);
+      processIndexRef.current = null;
+      clearLatestProcessIndex();
       setActiveDoc(null);
       setSourceDoc(null);
       _setActiveFileId(null);
@@ -663,6 +741,13 @@ export function useFileManager(authenticated: boolean) {
       setNoteGraphData({ nodes: [], edges: [] });
     }
   }, [authenticated]);
+
+  useEffect(
+    () => () => {
+      processIndexGenerationRef.current += 1;
+    },
+    [],
+  );
 
   // 認証完了後にファイル一覧を取得し、インデックスを構築、最後に開いたファイルを復元
   useEffect(() => {
@@ -915,6 +1000,91 @@ export function useFileManager(authenticated: boolean) {
     setEditorKey((k) => k + 1);
   }, [setActiveFileId]);
 
+  const updateLoadedProcessIndexEntry = useCallback(
+    (noteId: string, doc: GraphiumDocument, modifiedTime?: string) => {
+      if (/^(wiki|skill):/.test(noteId)) return;
+      const { provider, isCurrent } = createProcessIndexScope();
+      void enqueueProcessIndexOperation(async () => {
+        if (!isCurrent()) return;
+        const current = processIndexRef.current;
+        if (!current) return;
+        const rawId = noteId.replace(/^(wiki|skill):/, "");
+        const noteEntry = noteIndexRef.current?.notes.find((note) => note.noteId === rawId);
+        if (
+          noteIndexRef.current &&
+          (!noteEntry || noteEntry.deletedAt || noteEntry.archivedAt)
+        ) {
+          return;
+        }
+        const timestamp = modifiedTime ?? doc.modifiedAt ?? new Date().toISOString();
+        try {
+          const prior = current.processes.find((entry) => entry.noteId === rawId);
+          const entry =
+            doc.source === "ai"
+              ? null
+              : buildProcessEntry(rawId, doc, { modifiedTime: timestamp }, prior);
+          const processes = current.processes.filter((process) => process.noteId !== rawId);
+          if (entry) processes.push(entry);
+          const updated: ProcessIndex = {
+            ...current,
+            updatedAt: timestamp,
+            processes,
+          };
+          processIndexRef.current = updated;
+          setProcessIndex(updated);
+          setLatestProcessIndex(updated);
+          await saveProcessIndex(updated, isCurrent, provider);
+        } catch (err) {
+          // 派生キャッシュの失敗で、完了済みのユーザー保存を失敗扱いにしない
+          console.warn("プロセスインデックス差分更新失敗:", err);
+        }
+      });
+    },
+    [enqueueProcessIndexOperation, createProcessIndexScope],
+  );
+
+  const removeLoadedProcessIndexEntry = useCallback(
+    (noteId: string) => {
+      if (/^(wiki|skill):/.test(noteId)) return;
+      const { provider, isCurrent } = createProcessIndexScope();
+      void enqueueProcessIndexOperation(async () => {
+        if (!isCurrent()) return;
+        const current = processIndexRef.current;
+        if (!current || !current.processes.some((process) => process.noteId === noteId)) return;
+        const updated: ProcessIndex = {
+          ...current,
+          updatedAt: new Date().toISOString(),
+          processes: current.processes.filter((process) => process.noteId !== noteId),
+        };
+        processIndexRef.current = updated;
+        setProcessIndex(updated);
+        setLatestProcessIndex(updated);
+        try {
+          await saveProcessIndex(updated, isCurrent, provider);
+        } catch (err) {
+          console.warn("プロセスインデックス差分削除失敗:", err);
+        }
+      });
+    },
+    [enqueueProcessIndexOperation, createProcessIndexScope],
+  );
+
+  const restoreLoadedProcessIndexEntry = useCallback(
+    async (noteId: string, isWiki = false) => {
+      if (isWiki) return;
+      const { provider, isCurrent } = createProcessIndexScope();
+      const doc = docCacheRef.current.get(noteId) ?? (await provider.loadFile(noteId));
+      if (!isCurrent()) return;
+      docCacheRef.current.set(noteId, doc);
+      const modifiedTime =
+        files.find((file) => file.id === noteId)?.modifiedTime ??
+        doc.modifiedAt ??
+        new Date().toISOString();
+      updateLoadedProcessIndexEntry(noteId, doc, modifiedTime);
+    },
+    [files, updateLoadedProcessIndexEntry, createProcessIndexScope],
+  );
+
   // 保存（ref 経由で常に最新の activeFileId を使用）
   const handleSave = useCallback(
     async (doc: GraphiumDocument) => {
@@ -937,8 +1107,13 @@ export function useFileManager(authenticated: boolean) {
             doc = { ...doc, derivedFromNoteId: undefined, derivedFromBlockId: undefined };
           }
         }
+        // テーブル行の identity は保存時にのみ補う。以降の保存・キャッシュ・投影は
+        // 同じ正規化済みドキュメントを使い、ノート横断参照とのズレを作らない。
+        doc = normalizeTableRowIdentities(doc);
 
         const currentFileId = activeFileIdRef.current;
+        let savedFileId: string;
+        let savedModifiedTime: string;
         if (currentFileId) {
           // 既存ノートは常に同じ id へ上書き保存する。
           // ここで「新規作成」分岐に落ちると、同一ノートが新 id で複製され、
@@ -947,6 +1122,8 @@ export function useFileManager(authenticated: boolean) {
           // currentFileId が立っている = そのノートは開いていてゴミ箱にない、が保証される。
           // よって一覧（files）が transient なロード失敗で stale/空でも、複製ではなく上書きが正しい。
           await saveFile(currentFileId, doc);
+          savedModifiedTime = new Date().toISOString();
+          savedFileId = currentFileId;
           // キャッシュも更新
           docCacheRef.current.set(currentFileId, doc);
           // activeDoc も最新化しておく。一覧やギャラリー等から本文へ戻ってエディタが
@@ -960,7 +1137,7 @@ export function useFileManager(authenticated: boolean) {
           // ローカルのファイル一覧を upsert（stale で欠けていても復元する）
           setFiles((prev) => {
             const name = `${doc.title}.graphium.json`;
-            const modifiedTime = new Date().toISOString();
+            const modifiedTime = savedModifiedTime;
             if (prev.some((f) => f.id === currentFileId)) {
               return prev.map((f) =>
                 f.id === currentFileId ? { ...f, name, modifiedTime } : f
@@ -976,6 +1153,8 @@ export function useFileManager(authenticated: boolean) {
         } else {
           // 新規作成
           const newId = await createFile(doc.title, doc);
+          savedModifiedTime = new Date().toISOString();
+          savedFileId = newId;
           docCacheRef.current.set(newId, doc);
           setActiveDoc(doc);
           setActiveFileId(newId);
@@ -985,27 +1164,26 @@ export function useFileManager(authenticated: boolean) {
           const newFile: GraphiumFile = {
             id: newId,
             name: `${doc.title}.graphium.json`,
-            modifiedTime: new Date().toISOString(),
-            createdTime: new Date().toISOString(),
+            modifiedTime: savedModifiedTime,
+            createdTime: savedModifiedTime,
           };
           setFiles((prev) => [newFile, ...prev]);
         }
 
+        // 未ロードなら、一覧を開いたときに構築する既存の遅延方針を維持する。
+        updateLoadedProcessIndexEntry(savedFileId, doc, savedModifiedTime);
+
         // インデックスを差分更新
         if (noteIndexRef.current) {
-          const savedFileId = currentFileId ?? activeFileIdRef.current;
-          if (savedFileId) {
-            const updated = updateIndexEntry(noteIndexRef.current, savedFileId, doc);
-            noteIndexRef.current = updated;
-            setNoteIndex(updated);
-            queueSaveIndex(updated);
-          }
+          const updated = updateIndexEntry(noteIndexRef.current, savedFileId, doc);
+          noteIndexRef.current = updated;
+          setNoteIndex(updated);
+          queueSaveIndex(updated);
         }
 
         // メディアインデックスの usedIn を同期
         if (mediaIndexRef.current) {
-          const savedFileId = currentFileId ?? activeFileIdRef.current;
-          if (savedFileId && doc.pages[0]) {
+          if (doc.pages[0]) {
             const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
             // PROV ノートはトップレベル `sourcePdfFileId` で PDF を参照するので
             // document-level の PDF 参照も渡して usedIn に反映する。
@@ -1024,7 +1202,7 @@ export function useFileManager(authenticated: boolean) {
         setSaving(false);
       }
     },
-    [setActiveFileId, files, filesLoading]
+    [setActiveFileId, files, filesLoading, updateLoadedProcessIndexEntry]
   );
 
   // 派生ノートを別ファイルとして作成
@@ -1045,6 +1223,7 @@ export function useFileManager(authenticated: boolean) {
         };
         // ドキュメント来歴: 手動派生ノート作成を記録
         newDoc = await recordRevision(newDoc, null, "human_derivation");
+        newDoc = normalizeTableRowIdentities(newDoc);
         const newFileId = await createFile(newDoc.title, newDoc);
 
         // 元ノートに noteLinks を追加して保存（Drive から最新を読み直して provenance を引き継ぐ）
@@ -1121,6 +1300,7 @@ export function useFileManager(authenticated: boolean) {
           modifiedAt: now,
         };
         newDoc = await recordRevision(newDoc, null, "human_derivation");
+        newDoc = normalizeTableRowIdentities(newDoc);
         const newFileId = await createFile(newDoc.title, newDoc);
         docCacheRef.current.set(newFileId, newDoc);
 
@@ -1166,8 +1346,9 @@ export function useFileManager(authenticated: boolean) {
       let newFileId: string | null = null;
       let sourceSaved = false;
       if (processFork) {
-        const projection = processProjectionPromiseRef.current;
-        if (projection) await projection;
+        // 進行中の投影を待ってから複製する。投影が後から走ると、
+        // 複製で足したエントリを巻き戻したインデックスで上書きしてしまう。
+        await enqueueProcessIndexOperation(() => {});
         processMutationRef.current = true;
       }
       try {
@@ -1184,6 +1365,7 @@ export function useFileManager(authenticated: boolean) {
           now,
         });
         newDoc = await recordRevision(newDoc, null, "human_derivation");
+        newDoc = normalizeTableRowIdentities(newDoc);
         const createdFileId = await createFile(newDoc.title, newDoc);
         newFileId = createdFileId;
 
@@ -1264,7 +1446,7 @@ export function useFileManager(authenticated: boolean) {
         setDeriving(false);
       }
     },
-    [handleOpenFile],
+    [handleOpenFile, enqueueProcessIndexOperation],
   );
 
   // ノート全体を派生する（ヘッダーメニューから呼ばれる）。
@@ -1319,6 +1501,7 @@ export function useFileManager(authenticated: boolean) {
           now,
         });
         newDoc = await recordRevision(newDoc, null, "human_derivation");
+        newDoc = normalizeTableRowIdentities(newDoc);
         const newFileId = await createFile(newDoc.title, newDoc);
 
         // 元ノートに derived_from の noteLinks を追加して保存
@@ -1369,6 +1552,7 @@ export function useFileManager(authenticated: boolean) {
         // ドキュメント来歴: AI 派生ノート作成を記録
         const model = doc.generatedBy?.model ?? doc.generatedBy?.agent;
         doc = await recordRevision(doc, null, "ai_derivation", { agentLabel: model });
+        doc = normalizeTableRowIdentities(doc);
         const newFileId = await createFile(doc.title, doc);
         const now = new Date().toISOString();
 
@@ -1438,6 +1622,7 @@ export function useFileManager(authenticated: boolean) {
           setNoteIndex(updated);
           queueSaveIndex(updated);
         }
+        removeLoadedProcessIndexEntry(fileId);
         // 開いていれば閉じる
         if (activeFileId === fileId) {
           setActiveFileId(null);
@@ -1448,7 +1633,7 @@ export function useFileManager(authenticated: boolean) {
         console.error("ゴミ箱への移動に失敗:", err);
       }
     },
-    [activeFileId, setActiveFileId]
+    [activeFileId, setActiveFileId, removeLoadedProcessIndexEntry]
   );
 
   // 通常ノートをアーカイブする（ファイル本体は残し、archivedAt をセットするだけ）。
@@ -1466,6 +1651,7 @@ export function useFileManager(authenticated: boolean) {
           setNoteIndex(updated);
           queueSaveIndex(updated);
         }
+        removeLoadedProcessIndexEntry(fileId);
         // 開いていれば閉じる
         if (activeFileId === fileId) {
           setActiveFileId(null);
@@ -1476,7 +1662,7 @@ export function useFileManager(authenticated: boolean) {
         console.error("ノートのアーカイブに失敗:", err);
       }
     },
-    [activeFileId, setActiveFileId]
+    [activeFileId, setActiveFileId, removeLoadedProcessIndexEntry]
   );
 
   // ゴミ箱から復元（deletedAt を消す）
@@ -1489,11 +1675,12 @@ export function useFileManager(authenticated: boolean) {
           setNoteIndex(updated);
           queueSaveIndex(updated);
         }
+        await restoreLoadedProcessIndexEntry(fileId);
       } catch (err) {
         console.error("ゴミ箱からの復元に失敗:", err);
       }
     },
-    []
+    [restoreLoadedProcessIndexEntry]
   );
 
   // 完全削除（OS のゴミ箱へ送る or プロバイダ固有の最終削除）
@@ -1571,6 +1758,7 @@ export function useFileManager(authenticated: boolean) {
           setNoteIndex(updated);
           queueSaveIndex(updated);
         }
+        removeLoadedProcessIndexEntry(fileId);
         // メディアインデックスから usedIn を除去
         if (mediaIndexRef.current) {
           const updated = removeNoteFromUsedIn(mediaIndexRef.current, fileId);
@@ -1594,7 +1782,7 @@ export function useFileManager(authenticated: boolean) {
         console.error("完全削除に失敗:", err);
       }
     },
-    [activeFileId, refreshFiles, setActiveFileId]
+    [activeFileId, refreshFiles, setActiveFileId, removeLoadedProcessIndexEntry]
   );
 
   // キャッシュからドキュメントを取得
@@ -1681,6 +1869,7 @@ export function useFileManager(authenticated: boolean) {
       if (noteId === activeFileIdRef.current) {
         setActiveDoc(doc);
       }
+      updateLoadedProcessIndexEntry(noteId, doc, doc.modifiedAt);
       // インデックス（一覧のタイトル・「文脈」列表示の源）をエントリ単位で作り直す。
       // インデックス側の noteId はプレフィックス無しの raw id。既存エントリがあるときだけ
       // 更新する（updateIndexEntry は不一致だと新規追加するため、インデックス管理外の id で
@@ -1693,7 +1882,7 @@ export function useFileManager(authenticated: boolean) {
         queueSaveIndex(updated);
       }
     },
-    [setNoteIndex, queueSaveIndex]
+    [setNoteIndex, queueSaveIndex, updateLoadedProcessIndexEntry]
   );
 
   // ノート / Wiki のタイトル変更を、@メンションで参照している他ノートの本文ラベルへ
@@ -2281,19 +2470,22 @@ export function useFileManager(authenticated: boolean) {
   const handleRestoreFromArchive = useCallback(
     async (fileId: string) => {
       try {
+        const isWiki =
+          noteIndexRef.current?.notes.find((note) => note.noteId === fileId)?.source === "ai";
         if (noteIndexRef.current) {
           const updated = restoreFromArchive(noteIndexRef.current, fileId);
           noteIndexRef.current = updated;
           setNoteIndex(updated);
           queueSaveIndex(updated);
         }
+        await restoreLoadedProcessIndexEntry(fileId, isWiki);
         // wiki の場合は wikiFiles state にも戻す必要がある — 次回 listWikiFiles で同期される
         await refreshFiles();
       } catch (err) {
         console.error("アーカイブからの復元に失敗:", err);
       }
     },
-    []
+    [refreshFiles, restoreLoadedProcessIndexEntry]
   );
 
   // アーカイブからゴミ箱に送る（archivedAt → deletedAt 付け替え）
@@ -2323,6 +2515,7 @@ export function useFileManager(authenticated: boolean) {
     async (doc: GraphiumDocument): Promise<string> => {
       const agentLabel = doc.generatedBy?.model ?? doc.generatedBy?.agent;
       doc = await recordRevision(doc, null, "ai_derivation", { agentLabel });
+      doc = normalizeTableRowIdentities(doc);
       const newFileId = await createFile(doc.title, doc);
       const now = new Date().toISOString();
       docCacheRef.current.set(newFileId, doc);
@@ -2362,6 +2555,7 @@ export function useFileManager(authenticated: boolean) {
   const handleCreateNoteFromImport = useCallback(
     async (doc: GraphiumDocument): Promise<string> => {
       doc = await recordRevision(doc, null, "human_derivation");
+      doc = normalizeTableRowIdentities(doc);
       const newFileId = await createFile(doc.title, doc);
       const now = new Date().toISOString();
       docCacheRef.current.set(newFileId, doc);

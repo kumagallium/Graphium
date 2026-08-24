@@ -11,48 +11,58 @@
 // ──────────────────────────────────────────────
 
 import { getActiveProvider } from "./registry";
+import type { StorageProvider } from "./types";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
 
-function authedFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  return getActiveProvider().authedFetch(url, options);
-}
+type ProviderCache = {
+  folderId: string | null;
+  fileIds: Map<string, string>;
+};
 
-let cachedFolderId: string | null = null;
-const cachedFileIds = new Map<string, string>();
+let providerCaches = new WeakMap<StorageProvider, ProviderCache>();
+
+function cacheFor(provider: StorageProvider): ProviderCache {
+  const cached = providerCaches.get(provider);
+  if (cached) return cached;
+  const created: ProviderCache = { folderId: null, fileIds: new Map() };
+  providerCaches.set(provider, created);
+  return created;
+}
 
 /** サインアウト時にキャッシュを捨てる */
 export function clearAppDataFileCache(): void {
-  cachedFolderId = null;
-  cachedFileIds.clear();
+  providerCaches = new WeakMap();
 }
 
-async function getFolderId(): Promise<string> {
-  if (cachedFolderId) return cachedFolderId;
+async function getFolderId(provider: StorageProvider): Promise<string> {
+  const cache = cacheFor(provider);
+  if (cache.folderId) return cache.folderId;
   const query = `name='Graphium' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const res = await authedFetch(
+  const res = await provider.authedFetch(
     `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id)&spaces=drive`,
   );
   const data = await res.json();
   const id = data.files?.[0]?.id;
   if (!id) throw new Error("Graphium フォルダが見つかりません");
-  cachedFolderId = id;
+  cache.folderId = id;
   return id;
 }
 
-async function findFileId(driveFileName: string): Promise<string | null> {
-  const cached = cachedFileIds.get(driveFileName);
+async function findFileId(provider: StorageProvider, driveFileName: string): Promise<string | null> {
+  const cache = cacheFor(provider);
+  const cached = cache.fileIds.get(driveFileName);
   if (cached) return cached;
-  const folderId = await getFolderId();
+  const folderId = await getFolderId(provider);
   const query = `name='${driveFileName}' and '${folderId}' in parents and trashed=false`;
-  const res = await authedFetch(
+  const res = await provider.authedFetch(
     `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id)&spaces=drive`,
   );
   const data = await res.json();
   const id = data.files?.[0]?.id;
   if (!id) return null;
-  cachedFileIds.set(driveFileName, id);
+  cache.fileIds.set(driveFileName, id);
   return id;
 }
 
@@ -61,14 +71,17 @@ async function findFileId(driveFileName: string): Promise<string | null> {
  * @param key readAppData 用のキー（プロバイダ側のファイル名になる）
  * @param driveFileName Google Drive でのファイル名（隠しファイル）
  */
-export async function readAppDataFile<T>(key: string, driveFileName: string): Promise<T | null> {
-  const provider = getActiveProvider();
+export async function readAppDataFile<T>(
+  key: string,
+  driveFileName: string,
+  provider: StorageProvider = getActiveProvider(),
+): Promise<T | null> {
   if (provider.readAppData) {
     return ((await provider.readAppData(key)) as T | null) ?? null;
   }
-  const fileId = await findFileId(driveFileName);
+  const fileId = await findFileId(provider, driveFileName);
   if (!fileId) return null;
-  const res = await authedFetch(`${DRIVE_API}/files/${fileId}?alt=media`);
+  const res = await provider.authedFetch(`${DRIVE_API}/files/${fileId}?alt=media`);
   return (await res.json()) as T;
 }
 
@@ -77,34 +90,34 @@ export async function writeAppDataFile(
   key: string,
   driveFileName: string,
   data: unknown,
+  provider: StorageProvider = getActiveProvider(),
 ): Promise<void> {
-  const provider = getActiveProvider();
   if (provider.writeAppData) {
     await provider.writeAppData(key, data);
     return;
   }
   const body = JSON.stringify(data);
-  const fileId = await findFileId(driveFileName);
+  const fileId = await findFileId(provider, driveFileName);
   if (fileId) {
-    await authedFetch(`${UPLOAD_API}/files/${fileId}?uploadType=media`, {
+    await provider.authedFetch(`${UPLOAD_API}/files/${fileId}?uploadType=media`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body,
     });
     return;
   }
-  const folderId = await getFolderId();
+  const folderId = await getFolderId(provider);
   const boundary = "graphium_appdata_boundary";
   const metadata = JSON.stringify({ name: driveFileName, parents: [folderId] });
   const multipart =
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
     `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n` +
     `--${boundary}--`;
-  const res = await authedFetch(`${UPLOAD_API}/files?uploadType=multipart&fields=id`, {
+  const res = await provider.authedFetch(`${UPLOAD_API}/files?uploadType=multipart&fields=id`, {
     method: "POST",
     headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
     body: multipart,
   });
   const created = await res.json();
-  if (created?.id) cachedFileIds.set(driveFileName, created.id);
+  if (created?.id) cacheFor(provider).fileIds.set(driveFileName, created.id);
 }

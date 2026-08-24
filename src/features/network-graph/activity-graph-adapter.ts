@@ -64,6 +64,9 @@ const RESERVED_KEYS = new Set([
   "graphium:mediaType",
   "graphium:mediaUrl",
   "graphium:phase",
+  // 行の永続 identity は FlowEntity.rowIdentity として別に拾う。
+  // パラメータ扱いすると「tableRowId: row_...」がノードや列コピーに混入する
+  "graphium:tableRowId",
 ]);
 
 /** informed_by desugar が立てる合成 output（「〜の結果」プレースホルダ）か */
@@ -224,6 +227,19 @@ export type FlowStep = {
   id: string; // blockId
   name: string;
   params: ActivityParam[];
+  /** 別ノートの output 参照から投影した、読み取り専用の上流 step */
+  externalOrigin?: ExternalFlowOrigin;
+};
+
+export type ExternalFlowOrigin = {
+  noteId: string;
+  noteTitle: string;
+  stepId: string;
+  stepTitle: string;
+  outputLabel: string;
+  broken: boolean;
+  /** 参照元 output の現在の属性（読み取り専用表示用。投影時点の値） */
+  attrs?: { key: string | null; value: string }[];
 };
 
 export type FlowEntity = {
@@ -234,13 +250,17 @@ export type FlowEntity = {
   entityId?: string;
   /** 構造化テーブルの行由来なら、ノート側テーブルのセル編集が可能 */
   tableRef?: { blockId: string; rowName: string };
+  /** 構造化テーブル行の永続 identity（本文 inline の entityId とは別物） */
+  rowIdentity?: string;
   /** 属性行。インラインの従属 attribute は entityId 付き、テーブル列は tableRef 経由で編集 */
   attrs: ActivityParam[];
   mediaUrl?: string;
   mediaType?: string;
+  /** この入力が別ノートの output を実体参照している場合の由来 */
+  externalOrigin?: ExternalFlowOrigin;
 };
 
-export type FlowEdgeKind = "used" | "generates" | "orderOnly";
+export type FlowEdgeKind = "used" | "generates" | "orderOnly" | "external";
 
 export type FlowEdge = {
   id: string;
@@ -312,6 +332,8 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
       // （実バグ）。ラベル付き段落の output は `result_<blockId>`（行名の節が
       // 無い）なので、行名の節まで一致するものだけを表の行とみなす。
       tableRef: tableRefOf(id, n["graphium:blockId"], n["rdfs:label"]),
+      rowIdentity:
+        typeof n["graphium:tableRowId"] === "string" ? n["graphium:tableRowId"] : undefined,
       attrs: extractAttrs(n),
       mediaUrl: n["graphium:mediaUrl"],
       mediaType: n["graphium:mediaType"],

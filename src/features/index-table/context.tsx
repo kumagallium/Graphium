@@ -60,3 +60,28 @@ export function setIndexTableCallbacks(
 export function getIndexTableCallbacks(): IndexTableContextValue | null {
   return _indexTableCallbacks;
 }
+
+const editorSidePeekCallbacks = new WeakMap<object, (noteId: string) => boolean>();
+
+/**
+ * カスタムブロックが属するエディタ自身の Side Peek を開く。
+ * メインエディタと複数の Side Peek が同時に存在できるため、グローバル値ではなく
+ * editor 実体をキーにして遷移先を分離する。
+ */
+export function setEditorSidePeekCallback(
+  editor: object,
+  callback: ((noteId: string) => boolean) | null,
+) {
+  if (callback) editorSidePeekCallbacks.set(editor, callback);
+  else editorSidePeekCallbacks.delete(editor);
+}
+
+export function openEditorSidePeek(editor: unknown, noteId: string): boolean {
+  if (
+    editor === null ||
+    (typeof editor !== "object" && typeof editor !== "function")
+  ) {
+    return false;
+  }
+  return editorSidePeekCallbacks.get(editor)?.(noteId) ?? false;
+}

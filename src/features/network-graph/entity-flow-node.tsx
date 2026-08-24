@@ -10,7 +10,16 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { FileText, Film, Image as ImageIcon, Music, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  FileText,
+  Film,
+  Image as ImageIcon,
+  Music,
+  Pencil,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { t } from "../../i18n";
@@ -29,6 +38,8 @@ export type EntityFlowNodeData = {
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
   /** ツールバーの「パラメータを表示」。オンならカードに属性を全件並べる */
   showParams?: boolean;
+  /** 別ノート由来の input から参照元ノートを開く */
+  onOpenExternalNote?: (noteId: string) => void;
 };
 
 export type EntityFlowNodeType = Node<EntityFlowNodeData, "entity">;
@@ -117,6 +128,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
     onRemoveEntity,
     onRenameTableRow,
     onRemoveTableRow,
+    onOpenExternalNote,
   } = data;
   const c = KIND_PALETTE[entity.kind];
   const inlineEditable = !!entity.entityId;
@@ -177,6 +189,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
 
   return (
     <div
+      data-test={entity.externalOrigin ? "external-origin-entity" : undefined}
       style={{
         minWidth: 140,
         maxWidth: 220,
@@ -291,6 +304,50 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
             entity.attrs.length
           )}
         </div>
+      )}
+
+      {entity.externalOrigin && (
+        <button
+          type="button"
+          className="nodrag"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenExternalNote?.(entity.externalOrigin!.noteId);
+          }}
+          aria-label={t("activityGraph.openExternalProcess", {
+            note: entity.externalOrigin.noteTitle,
+          })}
+          title={t("activityGraph.openExternalProcess", {
+            note: entity.externalOrigin.noteTitle,
+          })}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            width: "100%",
+            padding: "3px 10px 6px",
+            border: "none",
+            background: "transparent",
+            color: entity.externalOrigin.broken
+              ? "var(--color-error)"
+              : "var(--color-text-tertiary)",
+            cursor: "pointer",
+            fontSize: 9,
+            textAlign: "left",
+          }}
+        >
+          <ExternalLink size={10} style={{ flexShrink: 0 }} />
+          <span
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {entity.externalOrigin.noteTitle} › {entity.externalOrigin.stepTitle}
+          </span>
+        </button>
       )}
 
       <Handle

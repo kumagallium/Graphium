@@ -22,6 +22,12 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useFileManager } from "./use-file-manager";
 import { registerProvider, setActiveProvider } from "../lib/storage/registry";
 import { clearMediaIndexCache, type MediaIndexEntry } from "../features/asset-browser";
+import {
+  buildProcessEntry,
+  clearLatestProcessIndex,
+  PROCESS_INDEX_VERSION,
+  type ProcessIndex,
+} from "../features/network-graph/process-index";
 import type { StorageProvider } from "../lib/storage/types";
 import type { GraphiumDocument, GraphiumFile } from "../lib/document-types";
 
@@ -62,6 +68,32 @@ function mockDoc(title: string, overrides: Partial<GraphiumDocument> = {}): Grap
     modifiedAt: "2026-01-02T00:00:00Z",
     ...overrides,
   };
+}
+
+function mockProcessDoc(title: string): GraphiumDocument {
+  const document = mockDoc(title);
+  document.pages[0].blocks = [
+    {
+      id: "step-1",
+      type: "step",
+      content: [{ type: "text", text: "合成" }],
+      children: [
+        {
+          id: "output-1",
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: `${title}の生成物`,
+              styles: { inlineOutput: "output-entity-1" },
+            },
+          ],
+          children: [],
+        },
+      ],
+    },
+  ] as GraphiumDocument["pages"][number]["blocks"];
+  return document;
 }
 
 /**
@@ -205,6 +237,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   // media-index は「保存中を含む最新」をモジュールに持つので、テスト間で捨てる
   clearMediaIndexCache();
+  clearLatestProcessIndex();
 });
 
 // ---------------------------------------------------------------------------
@@ -234,6 +267,36 @@ describe("useFileManager: activeFileId が set なら必ず saveFile（PR #454 �
     // ストレージ上もノートは 1 件のまま、内容が更新されている
     expect(mock.files.size).toBe(1);
     expect(mock.files.get("note-1")?.doc.title).toBe("編集後のノート");
+  });
+
+  it("保存前に構造化テーブルの非空行へ identity を付ける", async () => {
+    const mock = setupProvider({ "note-1": mockDoc("最初のノート") });
+    const { result } = await renderFileManager();
+    await act(async () => {
+      await result.current.handleOpenFile("note-1");
+    });
+    const edited = mockDoc("テーブル付きノート");
+    edited.pages[0].blocks = [{
+      id: "table-1",
+      type: "table",
+      content: {
+        type: "tableContent",
+        rows: [
+          { cells: [[{ type: "text", text: "名前", styles: {} }]] },
+          { cells: [[{ type: "text", text: "生成物", styles: {} }]] },
+          { cells: [[{ type: "text", text: "", styles: {} }]] },
+        ],
+      },
+      children: [],
+    }] as any;
+
+    await act(async () => {
+      await result.current.handleSave(edited);
+    });
+
+    const rows = (mock.files.get("note-1")!.doc.pages[0].blocks[0] as any).content.rows;
+    expect(rows[1].cells[0][0].styles.tableRowIdentity).toMatch(/^row_/);
+    expect(rows[2].cells[0][0].styles.tableRowIdentity).toBeUndefined();
   });
 
   it("一覧取得が transient に失敗した直後の保存でも、複製ではなく上書きになる", async () => {
@@ -368,6 +431,269 @@ describe("useFileManager: プロセス一覧からノートをフォークする
     expect(mock.calls.createFile).toEqual(["created-1"]);
     expect(mock.files.has("created-1")).toBe(false);
     expect(mock.files.has("source")).toBe(true);
+  });
+});
+
+describe("useFileManager: プロセスインデックス更新の直列化", () => {
+  it("実行中の全件 refresh が、後から保存したノートの差分更新を巻き戻さない", async () => {
+    const original = mockProcessDoc("更新前");
+    const edited = mockProcessDoc("更新後");
+    const mock = setupProvider({ "note-1": original });
+    const prior = buildProcessEntry(
+      "note-1",
+      original,
+      { modifiedTime: "2026-01-01T00:00:00.000Z" },
+    );
+    expect(prior).not.toBeNull();
+    if (!prior) throw new Error("テスト用プロセスの投影に失敗");
+    mock.appData.set("process-index", {
+      version: PROCESS_INDEX_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      processes: [prior],
+    } satisfies ProcessIndex);
+
+    const { result } = await renderFileManager();
+    await waitFor(() => {
+      expect(result.current.processIndex?.processes[0]?.title).toBe("更新前");
+    });
+    await act(async () => {
+      await result.current.handleOpenFile("note-1");
+    });
+
+    let releaseRefreshWrite!: () => void;
+    let markRefreshWriteStarted!: () => void;
+    const refreshWriteGate = new Promise<void>((resolve) => {
+      releaseRefreshWrite = resolve;
+    });
+    const refreshWriteStarted = new Promise<void>((resolve) => {
+      markRefreshWriteStarted = resolve;
+    });
+    const writeAppData = mock.provider.writeAppData!.bind(mock.provider);
+    let processWriteCount = 0;
+    vi.spyOn(mock.provider, "writeAppData").mockImplementation(async (key, data) => {
+      if (key === "process-index" && processWriteCount++ === 0) {
+        markRefreshWriteStarted();
+        await refreshWriteGate;
+      }
+      await writeAppData(key, data);
+    });
+
+    act(() => {
+      result.current.setShowProcessGallery(true);
+    });
+    await refreshWriteStarted;
+
+    const saveFile = mock.provider.saveFile.bind(mock.provider);
+    vi.spyOn(mock.provider, "saveFile").mockImplementation(async (fileId, content) => {
+      await saveFile(fileId, content);
+      // handleSave が差分更新をキューへ積んだ後に、古い refresh の保存を完了させる。
+      window.setTimeout(releaseRefreshWrite, 0);
+    });
+
+    await act(async () => {
+      await result.current.handleSave(edited);
+    });
+
+    await waitFor(() => {
+      expect(result.current.processIndex?.processes[0]?.title).toBe("更新後");
+    });
+  });
+
+  it("実行中の refresh はサインアウト後に process index を復活させない", async () => {
+      const original = mockProcessDoc("更新前");
+      const mock = setupProvider({ "note-1": original });
+      const prior = buildProcessEntry(
+        "note-1",
+        original,
+        { modifiedTime: "2026-01-01T00:00:00.000Z" },
+      );
+      if (!prior) throw new Error("テスト用プロセスの投影に失敗");
+      mock.appData.set("process-index", {
+        version: PROCESS_INDEX_VERSION,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        processes: [prior],
+      } satisfies ProcessIndex);
+
+      const hook = renderHook(
+        ({ authenticated }) => useFileManager(authenticated),
+        { initialProps: { authenticated: true } },
+      );
+      await waitFor(() => {
+        expect(hook.result.current.filesLoading).toBe(false);
+        expect(hook.result.current.processIndex?.processes).toHaveLength(1);
+      });
+
+      let releaseRefreshWrite!: () => void;
+      let markRefreshWriteStarted!: () => void;
+      const refreshWriteGate = new Promise<void>((resolve) => {
+        releaseRefreshWrite = resolve;
+      });
+      const refreshWriteStarted = new Promise<void>((resolve) => {
+        markRefreshWriteStarted = resolve;
+      });
+      const writeAppData = mock.provider.writeAppData!.bind(mock.provider);
+      vi.spyOn(mock.provider, "writeAppData").mockImplementation(async (key, data) => {
+        if (key === "process-index") {
+          markRefreshWriteStarted();
+          await refreshWriteGate;
+        }
+        await writeAppData(key, data);
+      });
+
+      act(() => {
+        hook.result.current.setShowProcessGallery(true);
+      });
+      await refreshWriteStarted;
+      const replacement = createMockProvider();
+      registerProvider(replacement.provider);
+      setActiveProvider("test-mem");
+      act(() => {
+        hook.rerender({ authenticated: false });
+      });
+      await act(async () => {
+        releaseRefreshWrite();
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(hook.result.current.processIndex).toBeNull();
+        expect(replacement.appData.has("process-index")).toBe(false);
+      });
+    });
+
+    it("ゴミ箱へ移動したノートを process index と外部 output 候補から除く", async () => {
+      const original = mockProcessDoc("削除対象");
+      const mock = setupProvider({ "note-1": original });
+      const prior = buildProcessEntry(
+        "note-1",
+        original,
+        { modifiedTime: original.modifiedAt ?? "2026-01-02T00:00:00.000Z" },
+      );
+      if (!prior) throw new Error("テスト用プロセスの投影に失敗");
+      mock.appData.set("process-index", {
+        version: PROCESS_INDEX_VERSION,
+        updatedAt: "2026-01-02T00:00:00.000Z",
+        processes: [prior],
+      } satisfies ProcessIndex);
+
+      const { result } = await renderFileManager();
+      await waitFor(() => {
+        expect(result.current.processIndex?.processes).toHaveLength(1);
+      });
+      await act(async () => {
+        await result.current.handleDelete("note-1");
+      });
+
+      await waitFor(() => {
+        expect(result.current.processIndex?.processes).toEqual([]);
+        const saved = mock.appData.get("process-index") as ProcessIndex | undefined;
+        expect(saved?.processes).toEqual([]);
+      });
+  });
+
+  it("初期 process index 読み込み中のゴミ箱移動でも削除済み entry を復活させない", async () => {
+      const original = mockProcessDoc("削除対象");
+      const mock = setupProvider({ "note-1": original });
+      const prior = buildProcessEntry(
+        "note-1",
+        original,
+        { modifiedTime: original.modifiedAt ?? "2026-01-02T00:00:00.000Z" },
+      );
+      if (!prior) throw new Error("テスト用プロセスの投影に失敗");
+      mock.appData.set("process-index", {
+        version: PROCESS_INDEX_VERSION,
+        updatedAt: "2026-01-02T00:00:00.000Z",
+        processes: [prior],
+      } satisfies ProcessIndex);
+
+      let releaseRead!: () => void;
+      let markReadStarted!: () => void;
+      const readGate = new Promise<void>((resolve) => {
+        releaseRead = resolve;
+      });
+      const readStarted = new Promise<void>((resolve) => {
+        markReadStarted = resolve;
+      });
+      const readAppData = mock.provider.readAppData!.bind(mock.provider);
+      vi.spyOn(mock.provider, "readAppData").mockImplementation(async (key) => {
+        const value = await readAppData(key);
+        if (key === "process-index") {
+          markReadStarted();
+          await readGate;
+        }
+        return value;
+      });
+
+      const { result } = await renderFileManager();
+      await readStarted;
+      await act(async () => {
+        await result.current.handleDelete("note-1");
+      });
+      await act(async () => {
+        releaseRead();
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(result.current.processIndex?.processes).toEqual([]);
+      });
+  });
+
+  it("削除後に遅延保存が完了しても process entry を再追加しない", async () => {
+    const original = mockProcessDoc("保存前");
+    const edited = mockProcessDoc("保存後");
+    const mock = setupProvider({ "note-1": original });
+    const prior = buildProcessEntry(
+      "note-1",
+      original,
+      { modifiedTime: original.modifiedAt ?? "2026-01-02T00:00:00.000Z" },
+    );
+    if (!prior) throw new Error("テスト用プロセスの投影に失敗");
+    mock.appData.set("process-index", {
+      version: PROCESS_INDEX_VERSION,
+      updatedAt: "2026-01-02T00:00:00.000Z",
+      processes: [prior],
+    } satisfies ProcessIndex);
+
+    const { result } = await renderFileManager();
+    await waitFor(() => {
+      expect(result.current.processIndex?.processes).toHaveLength(1);
+    });
+    await act(async () => {
+      await result.current.handleOpenFile("note-1");
+    });
+
+    let releaseSave!: () => void;
+    let markSaveStarted!: () => void;
+    const saveGate = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve;
+    });
+    const saveFile = mock.provider.saveFile.bind(mock.provider);
+    vi.spyOn(mock.provider, "saveFile").mockImplementation(async (fileId, content) => {
+      markSaveStarted();
+      await saveGate;
+      await saveFile(fileId, content);
+    });
+
+    let savePromise!: Promise<void>;
+    act(() => {
+      savePromise = result.current.handleSave(edited);
+    });
+    await saveStarted;
+    await act(async () => {
+      await result.current.handleDelete("note-1");
+    });
+    await act(async () => {
+      releaseSave();
+      await savePromise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.processIndex?.processes).toEqual([]);
+    });
   });
 });
 

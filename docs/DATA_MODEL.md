@@ -351,6 +351,19 @@ inside prose only loses its mark — the text is never destroyed.
 (outputs use the historical `result_` prefix), which is enough to write
 back the row's first cell (its name), any cell matched by header column,
 or to delete the row (`src/features/network-graph/table-row-edit.ts`).
+
+**Durable row identity.** A structured-table row has no block id of its
+own, so anything that needs to keep pointing at *that row* across renames
+— cross-note output references above all — uses a generated
+`row_<random>` id stored as a `tableRowIdentity` inline style (a
+ProseMirror mark) on the first cell's content
+(`src/lib/table-row-identity.ts`). A mark is the one piece of state that
+travels with the row through cell edits. Saving normalizes identities:
+every non-empty data row gets one, and a duplicated id (row copied) keeps
+the first occurrence and re-mints the rest. The style is registered in
+the editor schema but renders as an invisible `display: contents` span,
+and the PROV generator carries it onto the emitted node as
+`graphium:tableRowId`.
 Adding an input, tool or output from the graph appends a row to that
 step's labelled table — creating and labelling one if the step has none —
 so the note accumulates a sample table rather than one-word paragraphs.
@@ -384,6 +397,36 @@ Entity, which is what the flow view draws as a solid edge. Both inline
 output spans and `result_*` outputs (output-labelled paragraphs and table
 rows) take part in that unification, and the output side always survives
 the merge so table-row attributes are preserved.
+
+**Cross-note handoffs.** An `informed_by` link may also point at a step in
+*another* note (`targetNoteId` set). Such a link carries the identity of
+the specific output being consumed, not just the step: `targetEntityId`
+plus a snapshot of the labels involved (`targetEntityLabel`,
+`targetNoteTitle`, `targetStepTitle`) so the origin can still be shown
+after the source note is renamed, moved, or deleted. Rows whose identity
+predates durable row ids (see below) fall back to a position fingerprint
+(`targetEntityIndex` / `targetEntityCount` pinned to
+`targetSourceModifiedAt`), and `targetEntityStable: false` marks that
+fallback — if the source note has been modified since, the reference
+reports as broken rather than guessing a row. Picking an external output
+also appends a row to the consuming step's material table (creating and
+labelling one if the step has none — the same funnel graph-side additions
+use), so the local graph gains a real input entity. The new row's durable
+id is stored on the link as `sourceEntityId`, and the row's name is
+colored like an @-mention link (`textColor: blue`, turning red when the
+reference breaks); clicking it opens the source note. The source output's
+keyed attributes are copied into ordinary table columns **as a snapshot
+at pick time** — editable freely in this note, never written back to the
+source — while the source's *current* values are shown read-only in the
+flow panel ("From source"), so drift between the copy and the source
+stays visible.
+
+The PROV generator does **not** synthesize the foreign Activity into the
+local projection — a note's graph stays self-contained, and the material
+span's `used` edge is what persists locally. The one-step upstream node
+shown in the flow view is overlaid at display time from the process index
+(§5.3), which also refuses to create a cross-note reference that would
+close a cycle between notes (`wouldCreateCrossNoteCycle`).
 
 **Same-named materials and tools merge.** Within a note, material or tool
 entities whose labels match (case- and whitespace-insensitive) collapse
@@ -1358,7 +1401,7 @@ right-hand panel. It powers the process list and lets a step being
 written pull in what past runs of that step recorded.
 
 ```ts
-const PROCESS_INDEX_VERSION = 1;
+const PROCESS_INDEX_VERSION = 3;
 
 type ProcessIndex = {
   version: number;
@@ -1367,11 +1410,14 @@ type ProcessIndex = {
 };
 
 type ProcessIndexEntry = {
-  noteId: string;           // v1 is one process per note, so this is the key
+  noteId: string;           // one process per note, so this is the key
   title: string;            // copied from the note title
   sourceModifiedAt: string; // the note's modifiedTime, for staleness checks
   projectedAt: string;
   graph: FlowGraphData;     // steps, entities, edges — as projected
+  crossNoteLinks?: BlockLink[]; // this note's informed_by links into other notes,
+                            // so the flow view can overlay the one-step upstream
+                            // origin (§2.2) without loading the source note
   summary: {
     stepCount: number;
     materialCount: number;
@@ -1428,11 +1474,18 @@ instance, so two runs of the same recipe are two Activities. `forkedFrom`
 records where the copy came from and is preserved across re-projection,
 but it never follows later changes to the origin.
 
+The index is also what **cross-note output references** resolve against
+(§2.2): `resolveCrossNoteOutput` looks the referenced output up by its
+row identity — or, for pre-identity fallback references, by position
+pinned to the projected `sourceModifiedAt` — and a reference that no
+longer resolves is shown as broken instead of being silently re-matched.
+
 #### `PROCESS_INDEX_VERSION`
 
 | Version | Change |
 | --- | --- |
 | 1 | Initial format |
+| 2–3 | Cross-note output references: `crossNoteLinks` on entries; projected graphs carry output identity (`graphium:tableRowId`) and external-origin overlay data |
 
 Bump it whenever the shape of `graph` or `summary` changes, or when the
 projection itself starts producing different output. A mismatch triggers
@@ -1776,6 +1829,7 @@ Hard rules for changing any schema in this document.
 | IndexedDB stores or keys | Bump `DB_VERSION` in `local.ts` and write an `onupgradeneeded` migration. Do not silently change the layout. |
 | `SharedEntry` / `BlobRef` shape | Bump the provider's stored format if needed; `verifyHash` must keep working against existing data. |
 | Tauri command signatures | Update the matching TypeScript wrappers in lockstep. |
+| Persisted inline styles (`createStyleSpec`) | Register the style in **every** `BlockNoteSchema.create` site *and* in `KNOWN_STYLE_KEYS` (`src/blocks/registry.ts`). BlockNote **throws** on a style key missing from its schema, so a build that predates the style cannot open notes saved with it. Builds that include the load-time sanitizer strip unknown style keys instead of crashing — which loses that style's data on older builds, so ship the addition with a release note. |
 
 These rules are also captured in the project's `CLAUDE.md` "破壊的変更
 チェック" section.

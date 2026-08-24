@@ -18,13 +18,15 @@ vi.mock("react-pdf", () => ({
 }));
 vi.mock("../lib/pdfjs-config", () => ({}));
 
-import { defaultBlockSpecs } from "@blocknote/core";
+import { defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
+import { inlineLabelStyleSpecs } from "../features/inline-label/styles";
 import {
   customBlockEntries,
   CUSTOM_BLOCK_TYPES,
   KNOWN_BLOCK_TYPES,
   CUSTOM_INLINE_TYPES,
   KNOWN_INLINE_TYPES,
+  KNOWN_STYLE_KEYS,
   sanitizeBlocksForLoad,
 } from "./registry";
 import { blockMarkdownConverters } from "./markdown";
@@ -309,5 +311,81 @@ describe("sanitize のカラム構造修復（不正構造で BlockNoteEditor.cr
     expect(out.map((b: any) => b.type)).toEqual(["columnList", "paragraph"]);
     expect(out[0].children).toHaveLength(2);
     expect(out[1].id).toBe("stray");
+  });
+});
+
+describe("KNOWN_STYLE_KEYS と未知 style の除去", () => {
+  // BlockNote は styleSchema に無い style キーで throw する（silent drop ではない）。
+  // 未来のビルドが新しい永続 style を保存しても、このビルドがノートを開けることを保証する。
+
+  it("schema に渡す全 style（default + inline label）が既知集合に入る", () => {
+    for (const key of Object.keys(defaultStyleSpecs)) {
+      expect(KNOWN_STYLE_KEYS.has(key), `default style ${key}`).toBe(true);
+    }
+    for (const key of Object.keys(inlineLabelStyleSpecs)) {
+      expect(KNOWN_STYLE_KEYS.has(key), `custom style ${key}`).toBe(true);
+    }
+  });
+
+  it("tableRowIdentity が既知集合に入る（読込で剥がされない）", () => {
+    expect(KNOWN_STYLE_KEYS.has("tableRowIdentity")).toBe(true);
+  });
+
+  it("段落 inline の未知 style キーだけを剥がし、既知 style は残す", () => {
+    const out = sanitizeLike([
+      {
+        id: "p1",
+        type: "paragraph",
+        content: [
+          { type: "text", text: "hello", styles: { bold: true, futureStyle: "x" } },
+        ],
+        children: [],
+      },
+    ]);
+    expect(out[0].content[0].styles).toEqual({ bold: true });
+  });
+
+  it("テーブルセル内 inline の未知 style キーを剥がす（link のネストも含む）", () => {
+    const out = sanitizeLike([
+      {
+        id: "t1",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            {
+              cells: [
+                [{ type: "text", text: "行A", styles: { tableRowIdentity: "row_1", futureStyle: "x" } }],
+                {
+                  type: "tableCell",
+                  content: [
+                    {
+                      type: "link",
+                      href: "https://example.com",
+                      styles: { futureStyle: "y" },
+                      content: [{ type: "text", text: "リンク", styles: { futureStyle: "z", italic: true } }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        children: [],
+      },
+    ]);
+    const rows = out[0].content.rows;
+    expect(rows[0].cells[0][0].styles).toEqual({ tableRowIdentity: "row_1" });
+    const link = rows[0].cells[1].content[0];
+    expect(link.styles).toEqual({});
+    expect(link.content[0].styles).toEqual({ italic: true });
+  });
+
+  it("未知 style が無いブロックはオブジェクト同一性を保つ（無駄な再構築をしない）", () => {
+    const content = [{ type: "text", text: "そのまま", styles: { bold: true } }];
+    const out = sanitizeLike([
+      { id: "p1", type: "paragraph", content, children: [] },
+    ]);
+    expect(out[0].content).toBe(content);
   });
 });
