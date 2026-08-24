@@ -176,8 +176,12 @@ type GraphiumPage = {
                                      // plus material / tool / output on table blocks (§2.3)
 
   // ── provenance graph edges ──────────────────────────
-  provLinks: ProvLink[];             // DAG-constrained
-  knowledgeLinks: KnowledgeLink[];   // cycles allowed
+  provLinks: BlockLink[];            // DAG-constrained. type: "derived_from" | "used" |
+                                     // "generated" | "reproduction_of" | "informed_by"
+  knowledgeLinks: BlockLink[];       // cycles allowed. type: "reference"
+                                     // BlockLink is defined in src/lib/block-link-types.ts
+                                     // (re-exported from features/block-link/link-types.ts,
+                                     // which keeps only the display metadata)
 
   // ── inline highlights (v5+) ─────────────────────────
   highlights?: InlineHighlight[];    // material / tool / attribute / output
@@ -427,6 +431,39 @@ span's `used` edge is what persists locally. The one-step upstream node
 shown in the flow view is overlaid at display time from the process index
 (§5.3), which also refuses to create a cross-note reference that would
 close a cycle between notes (`wouldCreateCrossNoteCycle`).
+
+**The other four `provLinks` types.** `derived_from`, `reproduction_of`,
+`used` and `generated` are projected too, right after the `informed_by`
+handoff pass. Their endpoints are not necessarily steps, so the generator
+resolves each block to a node rather than assuming one:
+
+- `resolveEntityForBlock(blockId)` — if the block is a `step`/heading
+  Activity, its single explicit output entity (the same output-proxy
+  resolution as `informed_by` above); if the block carries exactly one
+  Entity of its own (`inline_*` / `entity_*` / a non-synthetic `result_*`),
+  that one; otherwise a `block_<blockId>` Entity is synthesized from the
+  block's own text (first 30 characters) and reused on subsequent lookups.
+- `resolveActivityForBlock(blockId)` — the block's own `activity_<blockId>`
+  if it is a step/heading, else its enclosing scope's Activity, else `null`.
+
+`derived_from` and `reproduction_of` project as
+`wasDerivedFrom(resolveEntity(source) → resolveEntity(target))`;
+`reproduction_of` additionally tags the relation with
+`graphium:linkType: "reproduction_of"` (exported by `export-jsonld.ts`),
+since PROV's `wasDerivedFrom` alone cannot distinguish it from a plain
+derivation. `used` projects as
+`used(resolveActivity(source) → resolveEntity(target))` and `generated` as
+`wasGeneratedBy(resolveEntity(target) → resolveActivity(source))`; when the
+source block cannot be resolved to an Activity, both fall back to
+`wasDerivedFrom` between the two resolved Entities (also tagged with the
+original `graphium:linkType`, `"used"` or `"generated"`) and a warning is
+recorded rather than silently changing what the link means. Links whose
+target lives in another note (`targetNoteId`) or points off the current
+page (`targetPageId`) are skipped without a warning, same as cross-note
+`informed_by` — this is how `derived_from`/auto-link edges to blocks
+outside the page are handled (see `src/features/block-link/auto-link.ts`).
+A relation already present for the same `(@type, from, to)` is not added
+twice.
 
 **Same-named materials and tools merge.** Within a note, material or tool
 entities whose labels match (case- and whitespace-insensitive) collapse
