@@ -52,6 +52,9 @@ const ACTIVITY_BLUE = KIND_PALETTE.activity.main;
 const MATERIAL_GREEN = KIND_PALETTE.material.main;
 const OUTPUT_TERRACOTTA = KIND_PALETTE.output.main;
 const DANGER = "var(--color-destructive)";
+// derived_from / reproduction_of リンク由来。block-link 側の LINK_TYPE_META.derived_from
+// と同じ紫（link-types.ts 参照）で、他のリレーション由来エッジと見分けられるようにする
+const DERIVED_PURPLE = "#8b7ab5";
 
 /** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */
 export type ConnectResult = { error: string | null };
@@ -160,6 +163,10 @@ const EDGE_STYLES: Record<string, Partial<Edge>> = {
       width: 16,
       height: 16,
     },
+  },
+  derived: {
+    style: { stroke: DERIVED_PURPLE, strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: DERIVED_PURPLE, width: 16, height: 16 },
   },
 };
 
@@ -318,6 +325,12 @@ function StepFlowCanvas({
                 labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
                 labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
               }
+            : e.kind === "derived"
+              ? {
+                  label: t("activityGraph.derivedFrom"),
+                  labelStyle: { fontSize: 9, fill: DERIVED_PURPLE, fontWeight: 700 },
+                  labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
+                }
           : {}),
         data: { kind: e.kind, deletable: e.deletable ?? false },
       })),

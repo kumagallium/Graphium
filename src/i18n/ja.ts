@@ -840,6 +840,7 @@ export const ja: Record<string, string> = {
   "activityGraph.editChip": "編集",
   "activityGraph.removeChip": "本文のラベルを外す",
   "activityGraph.orderOnly": "順序のみ",
+  "activityGraph.derivedFrom": "派生元",
   "activityGraph.addAttr": "パラメータ",
   "step.unspecifiedOutput": "出力を特定しない",
   "graphTable.nameColumn": "名前",

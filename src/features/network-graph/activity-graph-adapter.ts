@@ -245,7 +245,9 @@ export type ExternalFlowOrigin = {
 export type FlowEntity = {
   id: string; // provDoc の @id（そのままノード id に使う）
   label: string;
-  kind: ActivityIoKind;
+  /** "block" はラベル無し段落等から合成された Entity（used/generates に登場せず
+   *  derived エッジの端点としてのみ現れる）。汎用の薄いノードで表示する */
+  kind: ActivityIoKind | "block";
   /** インライン span 由来なら本文編集（リネーム・削除・属性追加）が可能 */
   entityId?: string;
   /** 構造化テーブルの行由来なら、ノート側テーブルのセル編集が可能 */
@@ -260,7 +262,7 @@ export type FlowEntity = {
   externalOrigin?: ExternalFlowOrigin;
 };
 
-export type FlowEdgeKind = "used" | "generates" | "orderOnly" | "external";
+export type FlowEdgeKind = "used" | "generates" | "orderOnly" | "external" | "derived";
 
 export type FlowEdge = {
   id: string;
@@ -315,11 +317,16 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
     if (existing) return existing;
     const n = nodeById.get(id);
     if (!n || n["@type"] !== "prov:Entity") return null;
-    const kind: ActivityIoKind = generatedIds.has(id)
-      ? "output"
-      : n["graphium:entityType"] === "tool"
-        ? "tool"
-        : "material";
+    // `block_<blockId>` は「ブロックを Entity として解決できない（ラベル無し段落等）」
+    // ときの合成プレースホルダ（generator.ts の ensureBlockEntity）。material/tool/output
+    // どれでもないので専用の "block" kind にし、汎用の薄いスタイルで表示する。
+    const kind: ActivityIoKind | "block" = id.startsWith("block_")
+      ? "block"
+      : generatedIds.has(id)
+        ? "output"
+        : n["graphium:entityType"] === "tool"
+          ? "tool"
+          : "material";
     const entity: FlowEntity = {
       id,
       label: n["rdfs:label"] || id,
@@ -374,6 +381,20 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
         pushEdge({ id: `gen-${stepId}->${r.from}`, kind: "generates", source: stepId, target: r.from });
       }
     }
+  }
+
+  // prov:wasDerivedFrom（derived_from / reproduction_of 等のブロック間リンク由来）:
+  // relation は「from（派生した側）→ to（派生元）」なので、フロー上は時間の流れに
+  // 沿わせて逆向き＝ source=派生元 / target=派生した側 のエッジにする。
+  // synthetic（result_synthetic_*）は他エッジと同じくノード化しない — 端点に
+  // 出た場合はエッジごと出さない（producer step へ畳み替えるほどの情報を持たない）。
+  for (const r of relations) {
+    if (r["@type"] !== "prov:wasDerivedFrom") continue;
+    if (isSyntheticResult(r.from) || isSyntheticResult(r.to)) continue;
+    const derived = collectEntity(r.from); // 派生した側
+    const origin = collectEntity(r.to); // 派生元
+    if (!derived || !origin) continue;
+    pushEdge({ id: `derived-${r.to}->${r.from}`, kind: "derived", source: r.to, target: r.from });
   }
 
   return { steps, entities: Array.from(entities.values()), edges };

@@ -152,6 +152,40 @@ export const ParallelRuns: Story = {
   render: () => <StepFlowView graph={PARALLEL_RUNS_GRAPH} />,
 };
 
+// ── derived エッジ（#754: derived_from / reproduction_of リンク由来）──
+//
+// block-link で書いた derived_from / reproduction_of が prov:wasDerivedFrom として
+// フローに出るケース。派生元 → 派生した側の向きに紫の実線を張る。派生元がラベル
+// 無し段落から合成された Entity（block kind）のケースも合わせて確認する。
+
+const DERIVED_GRAPH: FlowGraphData = {
+  steps: [{ id: "s-synthesize", name: "合成", params: [] }],
+  entities: [
+    { id: "inline_output_ent_sample", label: "試料A", kind: "output", entityId: "ent_sample", attrs: [] },
+    {
+      // reproduction_of で参照した先行研究の結果（ラベル無し段落から合成された block kind）
+      id: "block_prior_result",
+      label: "先行研究の結果（再現対象）",
+      kind: "block",
+      attrs: [],
+    },
+  ],
+  edges: [
+    { id: "g-sample", kind: "generates", source: "s-synthesize", target: "inline_output_ent_sample" },
+    {
+      id: "derived-1",
+      kind: "derived",
+      source: "block_prior_result",
+      target: "inline_output_ent_sample",
+    },
+  ],
+};
+
+export const DerivedEdge: Story = {
+  name: "derived エッジ（wasDerivedFrom）",
+  render: () => <StepFlowView graph={DERIVED_GRAPH} />,
+};
+
 export const EmptyState: Story = {
   name: "空状態（手順ゼロの入口）",
   render: () => (
@@ -382,7 +416,10 @@ function Playground() {
               .filter((pp) => !!pp.entityId)
               .map((pp) => ({ entityId: pp.entityId!, kind: "attribute" as const, label: pp.label })),
             ...graph.entities
-              .filter((e) => !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId)
+              .filter(
+                (e): e is typeof e & { kind: Exclude<typeof e.kind, "block"> } =>
+                  e.kind !== "block" && !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId,
+              )
               .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label, attrs: e.attrs })),
           ],
         };

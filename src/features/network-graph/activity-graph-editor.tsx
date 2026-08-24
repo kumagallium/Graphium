@@ -460,7 +460,11 @@ export function ActivityGraphEditor({
           .map((p) => ({ entityId: p.entityId!, kind: "attribute" as const, label: p.label })),
         ...g.entities
           .filter(
-            (e) =>
+            (e): e is typeof e & { kind: ActivityIoKind } =>
+              // "block" は derived エッジ専用の合成 Entity。used/generates で
+              // つながることはないので connectedIds にも入らない実装上の不変条件だが、
+              // ここでも明示して material/tool/output 専用セクションへの型を絞る
+              e.kind !== "block" &&
               connectedIds.has(e.id) &&
               !ownTableIds.has(e.tableRef?.blockId ?? "") &&
               !ownRowNames[e.kind]?.has(e.label.trim()),
@@ -661,7 +665,10 @@ export function ActivityGraphEditor({
       const g = flowGraphRef.current;
       const entity = g.entities.find((e) => e.id === entityNodeId);
       if (!entity) return;
-      const kind: ActivityIoKind = entity.kind === "output" ? "material" : entity.kind;
+      // output と同様、block（derived エッジ専用の合成 Entity）も接続時は
+      // 汎用の material として書く（block 自体を種類として本文に書く語彙は無い）
+      const kind: ActivityIoKind =
+        entity.kind === "output" || entity.kind === "block" ? "material" : entity.kind;
       onAddEntity(stepBlockId, kind, entity.label);
       const gen = g.edges.find((e) => e.kind === "generates" && e.target === entityNodeId);
       if (gen && gen.source !== stepBlockId) {
@@ -710,7 +717,7 @@ export function ActivityGraphEditor({
       appendEntitySpanToStep(
         editor,
         newId,
-        entity.kind === "output" ? "material" : entity.kind,
+        entity.kind === "output" || entity.kind === "block" ? "material" : entity.kind,
         entity.label,
       );
       if (producer) {
