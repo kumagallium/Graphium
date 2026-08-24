@@ -1,18 +1,19 @@
-// Synthesis Discovery 用のサンプリング戦略
+// Discovery 用のサンプリング戦略
 //
-// 背景: Synthesizer は 1 プロンプトに最大 MAX_SNAPSHOTS_PER_RUN (=50) の Atom を
+// 背景: Atomizer/Synthesizer は 1 プロンプトに最大 MAX_SNAPSHOTS_PER_RUN (=50) 件を
 // フラットに並べて投げる設計のため、modifiedTime 降順の単純な上位 50 件だけを
 // 使うと、直近に触られた領域（例: PROV / Graphium）が枠を独占し、
-// 古い領域（例: 材料科学）の Atom が永遠に視野に入らない問題があった。
+// 古い領域（例: 材料科学）が永遠に視野に入らない問題があった。
 //
-// Phase 1: 「類似クラスタ集中」サンプリング
-//   - 全 Atom 母集団から「シード Atom」を iteration 数だけ選ぶ
-//   - シード同士は farthest-point sampling で互いに離す（領域の網羅性を上げる）
-//   - 各 iteration では、シードに類似する Atom 上位 limit 件を 1 スライスとして
-//     synthesizer に渡す
+// 「類似クラスタ集中」サンプリング + カバレッジ実測プラン
+//   - シード 1 件につき、シードに類似する上位 limit 件を 1 スライスとして LLM に渡す
+//   - シード列は planCoverageSeeds() が決める: 未カバーの候補から farthest-point で
+//     選び続け、全候補が少なくとも 1 回スライスに入るまで（= カバレッジ 100%）伸ばす
+//   - 「1 クラスタあたり何件拾えるか」の見積もり係数は置かない。スライスは決定論なので
+//     視野（和集合）を実測でき、必要回数・到達カバレッジはすべて計算値として返す
 //
 // 類似度は embedding が両方にあれば cosine、そうでなければ title + bodyPreview の
-// トークン Jaccard でフォールバック。embedding 未生成の Atom も対象から漏らさない。
+// トークン Jaccard でフォールバック。embedding 未生成の候補も対象から漏らさない。
 
 import { embeddingStore } from "../../lib/embedding-store";
 import { cosineSimilarity } from "../../lib/vector";
@@ -96,47 +97,77 @@ export async function getDocEmbedding(wikiDocId: string): Promise<number[] | nul
 }
 
 /**
- * Farthest-point sampling でシード Atom を K 件選ぶ。
- * - 最初のシード: modifiedTime が最も新しい Atom（直近触れた領域を 1 回は拾う）
- * - 以降のシード: 既に選ばれたシード集合への「最大類似度」が最も小さい Atom を選ぶ
- *   （= 既存シードから最も遠い Atom）
+ * カバレッジ実測プラン。planCoverageSeeds() の戻り値。
  *
- * これにより、シードは Atom 空間の異なる領域に分散する。
+ * - `seeds[0..i]` を順に実行すると、視野（スライスの和集合）は
+ *   `cumulativeCovered[i]` 件になる（単調増加、最後は totalCount = 100%）。
+ * - 呼び出し側は予算 b で `seeds.slice(0, b)` と `cumulativeCovered[b-1]` を使う。
+ *   `seeds.length` が「全件を視野に入れるのに必要な LLM 呼び出し回数」の実測値。
  */
-export function pickFarthestSeeds(
+export type CoveragePlan = {
+  /** カバレッジ 100% に到達するまでの順序付きシード列 */
+  seeds: AtomCandidate[];
+  /** seeds[0..i] 実行後に視野に入る候補数（和集合・単調増加） */
+  cumulativeCovered: number[];
+  /** 母集団の総数 */
+  totalCount: number;
+};
+
+/**
+ * 全候補が少なくとも 1 回スライスに入るまでのシード列を決定論的に計画する。
+ *
+ * - 最初のシード: modifiedTime が最も新しい候補（直近触れた領域を 1 回は拾う）
+ * - 以降のシード: **まだ視野に入っていない候補**のうち、既存シード集合への
+ *   最大類似度が最小のもの（farthest-point の未カバー限定版）。
+ *   シード自身は必ず自分のスライスに入るため、1 反復ごとに視野が少なくとも
+ *   1 件増える = 必ず停止する。
+ *
+ * LLM は呼ばない（スライスは決定論なので視野は計算だけで実測できる）。
+ * 計算量は O(totalCount × seeds.length) の類似度評価。
+ */
+export function planCoverageSeeds(
   atoms: AtomCandidate[],
-  k: number,
-): AtomCandidate[] {
-  if (atoms.length === 0 || k <= 0) return [];
-  if (atoms.length <= k) return [...atoms];
+  sliceLimit: number,
+): CoveragePlan {
+  if (atoms.length === 0 || sliceLimit <= 0) {
+    return { seeds: [], cumulativeCovered: [], totalCount: atoms.length };
+  }
 
   const tokenCache = new Map<AtomCandidate, Set<string>>();
+  const covered = new Set<AtomCandidate>();
   const seeds: AtomCandidate[] = [];
+  const cumulativeCovered: number[] = [];
+  // 各候補の「これまでのシード集合への最大類似度」。次シード選びを O(n)/反復にする
+  const maxSimToSeeds = new Map<AtomCandidate, number>();
 
   // 1 つ目: modifiedTime 降順で最新
-  const byTime = [...atoms].sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime));
-  seeds.push(byTime[0]);
+  let seed: AtomCandidate | null =
+    [...atoms].sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime))[0];
 
-  // 2 つ目以降: 既存シード集合への max similarity が最小の Atom
-  while (seeds.length < k) {
+  while (seed) {
+    seeds.push(seed);
+    for (const m of buildClusterSlice(atoms, seed, sliceLimit)) covered.add(m);
+    cumulativeCovered.push(covered.size);
+    if (covered.size >= atoms.length) break;
+
+    // 未カバー候補の maxSim を今回のシード分だけ更新し、最遠の未カバー候補を次シードにする
     let bestAtom: AtomCandidate | null = null;
     let bestScore = Infinity; // 小さい = 既存シードから遠い
     for (const a of atoms) {
-      if (seeds.includes(a)) continue;
-      let maxSim = 0;
-      for (const s of seeds) {
-        const sim = similarity(a, s, tokenCache);
-        if (sim > maxSim) maxSim = sim;
-      }
+      if (covered.has(a)) continue;
+      const sim = similarity(a, seed, tokenCache);
+      const prev = maxSimToSeeds.get(a) ?? 0;
+      const maxSim = sim > prev ? sim : prev;
+      maxSimToSeeds.set(a, maxSim);
       if (maxSim < bestScore) {
         bestScore = maxSim;
         bestAtom = a;
       }
     }
-    if (!bestAtom) break;
-    seeds.push(bestAtom);
+    seed = bestAtom;
   }
-  return seeds;
+
+  return { seeds, cumulativeCovered, totalCount: atoms.length };
 }
 
 /** 関連度ランキングに必要な最小フィーチャ。AtomCandidate のサブセット。 */
@@ -195,29 +226,6 @@ export function rankCandidatesByRelevance<T extends RelevanceFeature>(
   scored.sort((a, b) => b.score - a.score);
   if (candidates.length <= limit) return scored.map((s) => s.candidate);
   return scored.slice(0, limit).map((s) => s.candidate);
-}
-
-/**
- * 母集団のアイテム数からクラスタ数（= seed 数 = LLM 呼び出し回数）を動的決定する。
- *
- *   K = clamp( ceil(itemCount / effectiveCoverage), 1, maxK )
- *
- * - `effectiveCoverage` は「1 クラスタが新規に拾うユニーク件数の見積もり」。
- *   各クラスタは sliceSize (=50) 件を含むが、クラスタ間で重複があるので
- *   実効的なユニークカバーはそれより小さい。経験則で 60% 程度として 30 を採用。
- * - `maxK` は 1 クリックあたりの LLM コスト天井。
- *
- * 例: itemCount=250, effectiveCoverage=30, maxK=8 → K = min(ceil(250/30), 8) = 8
- *     itemCount=80,  effectiveCoverage=30, maxK=8 → K = min(3, 8) = 3
- *     itemCount=30,  effectiveCoverage=30, maxK=8 → K = min(1, 8) = 1
- */
-export function pickClusterCount(
-  itemCount: number,
-  opts: { effectiveCoverage: number; maxK: number },
-): number {
-  if (itemCount <= 0) return 0;
-  const k = Math.ceil(itemCount / Math.max(1, opts.effectiveCoverage));
-  return Math.min(Math.max(1, k), opts.maxK);
 }
 
 /**

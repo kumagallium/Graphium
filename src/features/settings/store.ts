@@ -301,6 +301,14 @@ export type Settings = {
   colorMode: ColorMode;
   /** 実験的機能のオン/オフ */
   experimental: ExperimentalSettings;
+  /**
+   * ノート取り込み時の洞察スキャン予算（= LLM 呼び出し回数の上限）。
+   * 取り込みのたびに、知見全体からクラスタを最大この回数だけ選んで洞察を探す。
+   * 0 = 取り込み時には探さない（メンテナンスの「洞察を発見」だけを使う運用）。
+   * 「1 クラスタあたり何件拾えるか」の見積もり係数は置かず、実際に視野へ入った
+   * 知見数（カバレッジ）は planCoverageSeeds() の実測値を結果表示に出す。
+   */
+  atomizeIngestBudget: number;
   /** 使用量ダッシュボードの表示通貨。"usd" | "jpy"。 */
   displayCurrency: LLMRateCurrency;
   /** USD ⇔ JPY 換算レート（1 USD = ¥X）。表示通貨と異なる単位の cost を換算するときに使う。 */
@@ -338,7 +346,18 @@ const DEFAULT_SETTINGS: Settings = {
   },
   displayCurrency: "usd",
   usdJpyRate: 150,
+  atomizeIngestBudget: 3,
 };
+
+/** atomizeIngestBudget の許容範囲。上限は UI ガード（大規模スキャンはメンテナンスの
+ *  「洞察を発見」が担当なので、取り込みごとの予算はこの範囲で足りる）。 */
+export const ATOMIZE_INGEST_BUDGET_MAX = 10;
+
+/** 壊れた値・範囲外を既定値 3 / [0, MAX] に丸める */
+function normalizeAtomizeIngestBudget(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return DEFAULT_SETTINGS.atomizeIngestBudget;
+  return Math.min(ATOMIZE_INGEST_BUDGET_MAX, Math.max(0, Math.round(raw)));
+}
 
 /**
  * customLabels のキーは Phase 2 で日本語ブラケット（[手順] 等）から
@@ -508,6 +527,7 @@ export function loadSettings(): Settings {
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
         autoGrounding: typeof exp?.autoGrounding === "boolean" ? exp.autoGrounding : false,
       },
+      atomizeIngestBudget: normalizeAtomizeIngestBudget(parsed.atomizeIngestBudget),
       // boolean 以外（壊れた値）は undefined（未確定）に倒す。起動時に判定して確定する。
       enableProvLabels:
         typeof parsed.enableProvLabels === "boolean" ? parsed.enableProvLabels : undefined,
@@ -648,6 +668,13 @@ export function isAgentConfigured(): boolean {
  */
 export function isAtomLayerEnabled(): boolean {
   return true;
+}
+
+/**
+ * ノート取り込み時の洞察スキャン予算（LLM 呼び出し回数の上限）。0 = 取り込み時は探さない。
+ */
+export function getAtomizeIngestBudget(): number {
+  return normalizeAtomizeIngestBudget(loadSettings().atomizeIngestBudget);
 }
 
 /**

@@ -23,7 +23,7 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson } from "./store";
 import {
   fetchModels,
   type ModelInfo,
@@ -167,6 +167,10 @@ export type DiscoveryProgressInfo = {
   clusterSize?: number;
   /** クラスタに含まれるアイテム名のプレビュー（先頭 N 件）。中身が見えない問題への対策。 */
   clusterMemberTitles?: string[];
+  /** 実測カバレッジ: この iter までに視野へ入った母集団件数（和集合） */
+  coveredSoFar?: number;
+  /** 母集団の総数 */
+  populationTotal?: number;
 };
 export type DiscoveryHandler = (
   onProgress?: (info: DiscoveryProgressInfo) => void,
@@ -175,7 +179,14 @@ export type DiscoveryHandler = (
    * signal: 進行中の LLM 呼び出しごと中断する（発見のキャンセル用）。
    */
   options?: { theme?: string; signal?: AbortSignal },
-) => Promise<{ ok: boolean; created: number; iterations: number; error?: string; aborted?: boolean }>;
+) => Promise<{ ok: boolean; created: number; iterations: number; reinforced?: number; covered?: number; total?: number; error?: string; aborted?: boolean }>;
+
+/**
+ * 実行前プラン: 「全 {total} 件を視野に入れるには LLM を {runs} 回呼ぶ」の実測値。
+ * LLM は呼ばず計算だけで決まるため、確認ダイアログの表示に使える。
+ * null = プラン不能（対象が 2 件未満など）。
+ */
+export type PlanDiscoveryHandler = () => Promise<{ total: number; runs: number } | null>;
 
 type BulkFailedItem = { id: string; title: string; error?: string };
 type BulkProgress = {
@@ -210,11 +221,14 @@ type SettingsModalProps = {
   /** Maintenance タブの「Atom を発見」ハンドラ（atomLayer 有効時のみ表示）。
    *  全 Concept を見渡し、複数 Concept にまたがる共通抽象を auto-loop で発見する。 */
   onRunAtomizeDiscovery?: DiscoveryHandler;
+  /** 「Atom を発見」の実行前プラン（全件視野に必要な LLM 呼び出し回数の実測値）。
+   *  確認ダイアログに表示する。 */
+  onPlanAtomizeDiscovery?: PlanDiscoveryHandler;
   /** 全 Wiki の embedding を再生成する。AI チャットでの引用検索（Retriever）の精度を回復させたい時に使う。 */
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onReembedAllWikis }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -233,6 +247,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     dimensions?: number;
   }>({ status: "idle" });
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
+  // 取り込み時の洞察スキャン予算（LLM 呼び出し回数上限、0 = 取り込み時は探さない）
+  const [atomizeIngestBudget, setAtomizeIngestBudget] = useState(3);
   // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
   // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
   const [groundingModelStored, setGroundingModelStored] = useState("");
@@ -348,6 +364,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     clusterTotal?: number;
     clusterSize?: number;
     clusterMemberTitles?: string[];
+    coveredCount?: number;
+    populationCount?: number;
+    reinforced?: number;
   };
   const [atomizeRunning, setAtomizeRunning] = useState(false);
   const [atomizeProgress, setAtomizeProgress] = useState<DiscoveryUiState | null>(null);
@@ -518,6 +537,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setJpFont(settings.jpFont ?? "");
     setColorMode(settings.colorMode ?? "");
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false });
+    setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
     setSaved(false);
     setShowAddForm(false);
     setDeleteConfirm(null);
@@ -1078,12 +1098,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       jpFont,
       colorMode,
       experimental,
+      atomizeIngestBudget,
     });
     applyFontMode(latinFont, jpFont);
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -2696,6 +2717,37 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             </div>
 
+            {/* 洞察の発見 — 取り込み時のスキャン予算（LLM 呼び出し回数上限）。
+                「1 クラスタで何件拾えるか」の見積もり係数は置かず、ユーザーが決めるのは
+                コスト（回数）だけ。実際に視野へ入った件数は結果に実測値で表示される。 */}
+            <div className="border-t border-border pt-6">
+              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionDiscovery")}</h3>
+              <div>
+                <label className="text-xs font-medium text-foreground mb-2 block" htmlFor="atomize-ingest-budget">
+                  {t("settings.atomizeIngestBudget")}
+                </label>
+                <input
+                  id="atomize-ingest-budget"
+                  type="number"
+                  min={0}
+                  max={ATOMIZE_INGEST_BUDGET_MAX}
+                  step={1}
+                  value={atomizeIngestBudget}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setAtomizeIngestBudget(
+                      Number.isFinite(v) ? Math.min(ATOMIZE_INGEST_BUDGET_MAX, Math.max(0, Math.round(v))) : 3,
+                    );
+                    setSaved(false);
+                  }}
+                  className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  {t("settings.atomizeIngestBudget.help")}
+                </p>
+              </div>
+            </div>
+
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
             <div className="border-t border-border pt-6">
               <div className="flex items-center gap-1.5 mb-2">
@@ -3098,6 +3150,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               wikiSummaries={wikiSummaries ?? []}
               onRegenerateWiki={onRegenerateWiki}
               onRunAtomizeDiscovery={onRunAtomizeDiscovery}
+              onPlanAtomizeDiscovery={onPlanAtomizeDiscovery}
               atomLayerEnabled={true}
               availableModels={models}
               defaultModel={model || defaultModel}
@@ -3155,6 +3208,11 @@ type DiscoveryRunState = {
   clusterTotal?: number;
   clusterSize?: number;
   clusterMemberTitles?: string[];
+  /** 実測カバレッジ: 視野に入った母集団件数（和集合）/ 総数 */
+  coveredCount?: number;
+  populationCount?: number;
+  /** 既存への支持追加（reinforcement）件数 */
+  reinforced?: number;
 };
 
 type MaintenanceTabProps = {
@@ -3162,6 +3220,7 @@ type MaintenanceTabProps = {
   wikiSummaries: WikiSummaryForSettings[];
   onRegenerateWiki?: RegenerateWikiHandler;
   onRunAtomizeDiscovery?: DiscoveryHandler;
+  onPlanAtomizeDiscovery?: PlanDiscoveryHandler;
   atomLayerEnabled: boolean;
   availableModels: ModelInfo[];
   defaultModel: string;
@@ -3189,6 +3248,7 @@ function MaintenanceTab({
   wikiSummaries,
   onRegenerateWiki,
   onRunAtomizeDiscovery,
+  onPlanAtomizeDiscovery,
   atomLayerEnabled,
   availableModels,
   defaultModel,
@@ -3298,15 +3358,25 @@ function MaintenanceTab({
     : k === "atom" ? t("settings.maintenance.kind.atom")
     : t("settings.maintenance.kind.synthesis");
 
-  // ── Atom 候補の発見（auto-loop: 0 件返却 or 上限まで自動継続）──
+  // ── Atom 候補の発見（カバレッジ 100% まで自動継続。途中キャンセル可）──
   const conceptCount = wikiSummaries.filter((w) => w.kind === "claim").length;
   const handleRunAtomizeDiscovery = async () => {
     if (!onRunAtomizeDiscovery || atomizeRunning) return;
     if (conceptCount < 2) return;
-    if (!window.confirm(t("settings.maintenance.atomize.confirm").replace("{count}", String(conceptCount)))) return;
+    // 実行前プラン: 「全 {claims} 件を視野に入れるには {runs} 回」の実測値を確認ダイアログに出す。
+    // LLM は呼ばないので、ここで一度計算してから確認する。
+    const plan = onPlanAtomizeDiscovery ? await onPlanAtomizeDiscovery() : null;
+    if (!plan) return;
+    const confirmed = window.confirm(
+      t("settings.maintenance.atomize.confirm", {
+        claims: String(plan.total),
+        runs: String(plan.runs),
+      }),
+    );
+    if (!confirmed) return;
 
     setAtomizeRunning(true);
-    setAtomizeProgress({ status: "running", inputCount: conceptCount, iteration: 1, created: 0 });
+    setAtomizeProgress({ status: "running", inputCount: conceptCount, iteration: 1, created: 0, populationCount: plan.total });
     const atomizeController = new AbortController();
     atomizeAbortRef.current = atomizeController;
 
@@ -3320,14 +3390,22 @@ function MaintenanceTab({
         clusterTotal: info.clusterTotal,
         clusterSize: info.clusterSize,
         clusterMemberTitles: info.clusterMemberTitles,
+        coveredCount: info.coveredSoFar,
+        populationCount: info.populationTotal,
       });
     }, { signal: atomizeController.signal });
     atomizeAbortRef.current = null;
-    if (result.ok) {
-      setAtomizeProgress({ status: "done", inputCount: conceptCount, created: result.created, iterations: result.iterations });
-    } else if (result.aborted) {
-      // ユーザーの中断。作成済み分の件数は見せる（失敗表示にはしない）
-      setAtomizeProgress({ status: "done", inputCount: conceptCount, created: result.created, iterations: result.iterations });
+    if (result.ok || result.aborted) {
+      // 中断でも作成済み分と実測カバレッジは見せる（失敗表示にはしない）
+      setAtomizeProgress({
+        status: "done",
+        inputCount: conceptCount,
+        created: result.created,
+        iterations: result.iterations,
+        reinforced: result.reinforced,
+        coveredCount: result.covered,
+        populationCount: result.total,
+      });
     } else {
       setAtomizeProgress({ status: "error", inputCount: conceptCount, error: result.error });
     }
@@ -3353,6 +3431,8 @@ function MaintenanceTab({
           doneKey="settings.maintenance.atomize.doneCount"
           runKey="settings.maintenance.atomize.run"
           runningKey="settings.maintenance.atomize.running"
+          coverageKey="settings.maintenance.atomize.coverage"
+          reinforcedKey="settings.maintenance.atomize.reinforcedLine"
         />
       )}
 
@@ -3647,6 +3727,10 @@ type DiscoveryCardProps = {
   doneKey: string;
   runKey: string;
   runningKey: string;
+  /** 実測カバレッジ行の i18n キー（{covered} {total} プレースホルダ）。未指定なら非表示 */
+  coverageKey?: string;
+  /** 既存への支持追加行の i18n キー（{count} プレースホルダ）。未指定なら非表示 */
+  reinforcedKey?: string;
 };
 
 function DiscoveryCard({
@@ -3663,7 +3747,17 @@ function DiscoveryCard({
   doneKey,
   runKey,
   runningKey,
+  coverageKey,
+  reinforcedKey,
 }: DiscoveryCardProps) {
+  // 実測カバレッジ行（running / done 共通）。「新規 0 件」が『見た上で無かった』のか
+  // 『まだ見ていない』のかを区別できるように、視野の和集合を常に見せる。
+  const coverageLine =
+    coverageKey && progress?.coveredCount !== undefined && progress?.populationCount !== undefined
+      ? t(coverageKey)
+          .replace("{covered}", String(progress.coveredCount))
+          .replace("{total}", String(progress.populationCount))
+      : null;
   return (
     <div className="rounded-lg border border-border p-3 space-y-3">
       <div>
@@ -3712,15 +3806,28 @@ function DiscoveryCard({
                   </ul>
                 </details>
               )}
+              {coverageLine && (
+                <div className="ml-4 text-xs opacity-80">{coverageLine}</div>
+              )}
             </div>
           )}
           {progress.status === "done" && (
-            <div className="text-foreground">
-              {t(doneKey).replace("{count}", String(progress.created ?? 0))}
-              {progress.iterations !== undefined && (
-                <span className="ml-2 text-muted-foreground opacity-70">
-                  ({progress.iterations} iter)
-                </span>
+            <div className="text-foreground space-y-0.5">
+              <div>
+                {t(doneKey).replace("{count}", String(progress.created ?? 0))}
+                {progress.iterations !== undefined && (
+                  <span className="ml-2 text-muted-foreground opacity-70">
+                    ({progress.iterations} iter)
+                  </span>
+                )}
+              </div>
+              {reinforcedKey && (progress.reinforced ?? 0) > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  {t(reinforcedKey).replace("{count}", String(progress.reinforced))}
+                </div>
+              )}
+              {coverageLine && (
+                <div className="text-xs text-muted-foreground">{coverageLine}</div>
               )}
             </div>
           )}

@@ -150,7 +150,7 @@ import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps }
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -195,7 +195,7 @@ import {
   // Synthesis
   buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
   type ClaimSnapshot,
-  type AtomCandidate, getDocEmbedding, pickFarthestSeeds, buildClusterSlice, pickClusterCount,
+  type AtomCandidate, getDocEmbedding, buildClusterSlice, planCoverageSeeds,
   rankCandidatesByRelevance,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
@@ -6446,10 +6446,13 @@ export function NoteApp() {
     };
 
     // 自動 Atomize: atom レイヤは default 有効化済み（design revision 2026-05-27）。
-    // 全 Concept を見渡して共通抽象を discover する。Phase 1: クラスタ集中サンプリングを適用。
-    // バルク投入直後の自動実行なので、メンテよりも K の上限を控えめ（=3）にする。
+    // 全 Concept を見渡して共通抽象を discover する（クラスタ集中サンプリング）。
+    // 取り込みごとの LLM 呼び出し回数は設定の「取り込み時の洞察スキャン予算」で
+    // ユーザーが決める（既定 3、0 = 取り込み時は探さない）。どこまで視野に入ったかは
+    // planCoverageSeeds() の実測値で報告する。全域スキャンはメンテナンスの「洞察を発見」。
     const atomLabel = tStatic("settings.maintenance.kind.atom");
-    if (isAtomLayerEnabled()) {
+    const atomizeBudget = getAtomizeIngestBudget();
+    if (isAtomLayerEnabled() && atomizeBudget > 0) {
       try {
         const allClaimSnapshots = buildClaimSnapshots(
           fm.wikiFiles,
@@ -6471,11 +6474,8 @@ export function NoteApp() {
             embedding: claimEmbeddings[i],
             modifiedTime: claimModifiedByFileId.get(s.id) ?? "",
           }));
-          const clusterCount = pickClusterCount(claimCandidates.length, {
-            effectiveCoverage: 30,
-            maxK: 3,
-          });
-          const seeds = pickFarthestSeeds(claimCandidates, clusterCount);
+          const coveragePlan = planCoverageSeeds(claimCandidates, MAX_SNAPSHOTS_PER_RUN);
+          const seeds = coveragePlan.seeds.slice(0, atomizeBudget);
           const existingAtomTitles = [...fm.wikiMetas.entries()]
             .filter(([, m]) => m.kind === "atom")
             .map(([, m]) => m.title);
@@ -6543,13 +6543,21 @@ export function NoteApp() {
               saveWikiFile: fm.handleSaveWikiFile,
             });
           }
+          // 実測カバレッジ（このスキャンで視野に入った知見の和集合）を必ず添える。
+          // 「新規 0 件」が『見た上で無かった』のか『まだ見ていない』のかを区別できるようにする。
+          const coveredCount = coveragePlan.cumulativeCovered[seeds.length - 1] ?? 0;
+          const coverageNote = tStatic("ingest.atomizeCoverage", {
+            covered: String(coveredCount),
+            total: String(coveragePlan.totalCount),
+          });
           updateStage(
             "atomize",
             "done",
-            createdAtoms > 0 || reinforcedAtoms > 0
+            (createdAtoms > 0 || reinforcedAtoms > 0
               ? `${createdAtoms} ${atomLabel}`
                 + (reinforcedAtoms > 0 ? ` / ${tStatic("ingest.reinforced", { count: String(reinforcedAtoms) })}` : "")
-              : tStatic("ingest.noNewAtoms", { kind: atomLabel }),
+              : tStatic("ingest.noNewAtoms", { kind: atomLabel }))
+              + ` (${coverageNote})`,
           );
         }
       } catch (err) {
@@ -7565,12 +7573,47 @@ export function NoteApp() {
     }
   }, [fm, capture.captureIndex]);
 
-  // 全 Concept を見渡して共通抽象（Atom）を発見する discovery 呼び出し（auto-loop 付き）。
-  // - Maintenance タブの「Atom を発見」ボタンから呼ばれる。
-  // - 1 回の LLM 呼び出しで上限 5 件しか出ないため、収束（0 件返却）まで内部でループする。
-  // - 無限ループ防止に MAX_ITERATIONS の hard cap を置く（必ず終了する保証）。
+  // Maintenance の「洞察を発見」用: 全 Claim を AtomCandidate（snapshot + embedding +
+  // modifiedTime）に組み立てる。プラン（実行前の見積もり表示）と実行の両方が使う。
+  // LLM は呼ばない（embedding は IndexedDB からの読み出しのみ）。
+  // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
+  const buildAtomizeClaimCandidates = useCallback(async (): Promise<AtomCandidate[]> => {
+    const allClaimSnapshots = buildClaimSnapshots(
+      fm.wikiFiles,
+      fm.wikiMetas,
+      fm.getCachedDoc,
+      "claim",
+      Number.POSITIVE_INFINITY,
+    );
+    const claimModifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
+    const claimEmbeddings = await Promise.all(
+      allClaimSnapshots.map((s) => getDocEmbedding(s.id).catch(() => null)),
+    );
+    return allClaimSnapshots.map((s, i) => ({
+      snapshot: s,
+      similarityText: `${s.title}\n${s.bodyPreview}`,
+      embedding: claimEmbeddings[i],
+      modifiedTime: claimModifiedByFileId.get(s.id) ?? "",
+    }));
+  }, [fm]);
+
+  // 実行前プラン: 「全 {total} 件を視野に入れるには LLM を {runs} 回呼ぶ」の実測値を返す。
+  // Maintenance タブが確認ダイアログに使う。LLM は呼ばず、計算だけで決まる。
+  const planAtomizeDiscovery = useCallback(async (): Promise<{ total: number; runs: number } | null> => {
+    if (!isAtomLayerEnabled()) return null;
+    const claimCandidates = await buildAtomizeClaimCandidates();
+    if (claimCandidates.length < 2) return null;
+    const plan = planCoverageSeeds(claimCandidates, MAX_SNAPSHOTS_PER_RUN);
+    return { total: plan.totalCount, runs: plan.seeds.length };
+  }, [buildAtomizeClaimCandidates]);
+
+  // 全 Concept を見渡して共通抽象（Atom）を発見する discovery 呼び出し。
+  // - Maintenance タブの「洞察を発見」ボタンから呼ばれる。
+  // - シード列は planCoverageSeeds() が決める: 全 Claim が少なくとも 1 回視野に入るまで
+  //   （= カバレッジ 100%）クラスタを回す。回数は母集団の分布からの実測値で、
+  //   実行前に確認ダイアログへ表示される。途中キャンセル可（作成済み分は残る）。
   // - 各イテレーション後に既存 Atom タイトルを更新して LLM に渡し、重複提案を抑制する。
-  // - 自動 Atomize（ingest 後）はループせず 1 回だけ走る — 意図的に分離している。
+  // - 自動 Atomize（ingest 後）は設定の予算件数だけ走る — 意図的に分離している。
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
   const runAtomizeDiscovery = useCallback(async (
     onProgress?: (info: {
@@ -7580,9 +7623,11 @@ export function NoteApp() {
       clusterTotal?: number;
       clusterSize?: number;
       clusterMemberTitles?: string[];
+      coveredSoFar?: number;
+      populationTotal?: number;
     }) => void,
     options?: { signal?: AbortSignal },
-  ): Promise<{ ok: boolean; created: number; iterations: number; error?: string; aborted?: boolean }> => {
+  ): Promise<{ ok: boolean; created: number; iterations: number; reinforced?: number; covered?: number; total?: number; error?: string; aborted?: boolean }> => {
     if (!isAtomLayerEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Atom layer is disabled" };
     }
@@ -7590,38 +7635,15 @@ export function NoteApp() {
     if (!ensureAgentConfigured()) {
       return { ok: false, created: 0, iterations: 0, error: tStatic("settings.aiNotConfigured") };
     }
-    // Phase 1: クラスタ集中サンプリング（Synthesis Discovery と同じ手法）。
-    // 母集団は modifiedTime 上限なしで全 Claim を取得し、farthest-point で
-    // 散らした seed ごとに別領域のクラスタを atomizer に投げる。
-    const allClaimSnapshots = buildClaimSnapshots(
-      fm.wikiFiles,
-      fm.wikiMetas,
-      fm.getCachedDoc,
-      "claim",
-      Number.POSITIVE_INFINITY,
-    );
+    const claimCandidates = await buildAtomizeClaimCandidates();
+    const allClaimSnapshots = claimCandidates.map((c) => c.snapshot);
     if (allClaimSnapshots.length < 2) {
       return { ok: false, created: 0, iterations: 0, error: "Need at least 2 Claims" };
     }
 
-    const claimModifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
-    const claimEmbeddings = await Promise.all(
-      allClaimSnapshots.map((s) => getDocEmbedding(s.id).catch(() => null)),
-    );
-    const claimCandidates: AtomCandidate[] = allClaimSnapshots.map((s, i) => ({
-      snapshot: s,
-      similarityText: `${s.title}\n${s.bodyPreview}`,
-      embedding: claimEmbeddings[i],
-      modifiedTime: claimModifiedByFileId.get(s.id) ?? "",
-    }));
-
-    // クラスタ数（= seed 数 = LLM 呼び出し回数）は母集団から動的に決める。
-    // 1 クラスタあたり effectiveCoverage ≈ 30 件のユニーク貢献を見込み、上限 10。
-    const MAX_ITERATIONS = pickClusterCount(claimCandidates.length, {
-      effectiveCoverage: 30,
-      maxK: 10,
-    });
-    const seeds = pickFarthestSeeds(claimCandidates, MAX_ITERATIONS);
+    // カバレッジ 100% までのシード列（実測プラン）。
+    const coveragePlan = planCoverageSeeds(claimCandidates, MAX_SNAPSHOTS_PER_RUN);
+    const seeds = coveragePlan.seeds;
     const existingAtomTitles = [...fm.wikiMetas.entries()]
       .filter(([, m]) => m.kind === "atom")
       .map(([, m]) => m.title);
@@ -7654,6 +7676,8 @@ export function NoteApp() {
           clusterTotal: seeds.length,
           clusterSize: slice.length,
           clusterMemberTitles: slice.map((s) => s.title),
+          coveredSoFar: coveragePlan.cumulativeCovered[iter - 1] ?? 0,
+          populationTotal: coveragePlan.totalCount,
         });
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
@@ -7703,6 +7727,7 @@ export function NoteApp() {
           existingAtomTitles.push(candidate.title);
         }
       }
+      const coveredFinal = coveragePlan.cumulativeCovered[lastIteration - 1] ?? 0;
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
           i.id === toastId
@@ -7712,13 +7737,16 @@ export function NoteApp() {
                 detail: undefined,
                 result:
                   `${totalCreated} ${atomLabel}`
-                  + (totalReinforced > 0 ? ` / ${tStatic("ingest.reinforced", { count: String(totalReinforced) })}` : ""),
+                  + (totalReinforced > 0 ? ` / ${tStatic("ingest.reinforced", { count: String(totalReinforced) })}` : "")
+                  + ` (${tStatic("ingest.atomizeCoverage", { covered: String(coveredFinal), total: String(coveragePlan.totalCount) })})`,
               }
             : i
         ),
       }));
-      return { ok: true, created: totalCreated, iterations: lastIteration };
+      return { ok: true, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, covered: coveredFinal, total: coveragePlan.totalCount };
     } catch (err) {
+      // 中断・エラーでも「どこまで視野に入れたか」は実測値として返す（作成済み分は残る）
+      const coveredSoFar = coveragePlan.cumulativeCovered[lastIteration - 1] ?? 0;
       if (isAbortError(err) || options?.signal?.aborted) {
         // ユーザーの中断。ここまでに作成した Atom は残し、失敗扱いにしない。
         setIngestToast((prev) => ({
@@ -7726,7 +7754,7 @@ export function NoteApp() {
             i.id === toastId ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : i
           ),
         }));
-        return { ok: false, created: totalCreated, iterations: lastIteration, aborted: true };
+        return { ok: false, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, covered: coveredSoFar, total: coveragePlan.totalCount, aborted: true };
       }
       console.error("Atomize discovery failed:", err);
       setIngestToast((prev) => ({
@@ -7734,9 +7762,9 @@ export function NoteApp() {
           i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
         ),
       }));
-      return { ok: false, created: totalCreated, iterations: lastIteration, error: localizeAiError(err) };
+      return { ok: false, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, covered: coveredSoFar, total: coveragePlan.totalCount, error: localizeAiError(err) };
     }
-  }, [fm]);
+  }, [fm, buildAtomizeClaimCandidates]);
 
   // Settings → Maintenance タブから呼ばれる Wiki サマリー
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
@@ -9363,6 +9391,7 @@ export function NoteApp() {
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}
         onRunAtomizeDiscovery={runAtomizeDiscovery}
+        onPlanAtomizeDiscovery={planAtomizeDiscovery}
         onReembedAllWikis={async (onProgress) => {
           // 全 Wiki を順次 embed し直す。キャッシュにない wiki は storage から読み出す。
           const { getActiveProvider } = await import("./lib/storage/registry");
