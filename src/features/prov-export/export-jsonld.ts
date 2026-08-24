@@ -392,6 +392,18 @@ function stripContentDiff(prov: DocumentProvenance): DocumentProvenance {
  * - 見つからなくても受け側 step の Activity があれば Usage にフォールバック。
  * - どちらも無ければそのリンクはスキップする（エクスポートを壊さない）。
  */
+/** inline span ノードの `@id`（`inline_<label>_<entityId>` 形式、既知 label prefix のみ）
+ *  から entityId 部分を抜き出す。既知 prefix に一致しなければ null（表 prefix 以外の
+ *  inline_* ノード — 例えば "_plan" サフィックス付き execution/plan ノードは、
+ *  末尾一致では entityId + "_plan" が丸ごと違う値になるため自然に除外される）。 */
+const INLINE_ENTITY_ID_PREFIXES = ["inline_material_", "inline_tool_", "inline_output_"];
+function extractInlineEntityId(nodeId: string): string | null {
+  for (const prefix of INLINE_ENTITY_ID_PREFIXES) {
+    if (nodeId.startsWith(prefix)) return nodeId.slice(prefix.length);
+  }
+  return null;
+}
+
 function emitCrossNoteLinks(provDoc: ProvJsonLd, links: BlockLink[]): W3CProvNode[] {
   const out: W3CProvNode[] = [];
   // 同一外部 output スタブの重複宣言を防ぐ（noteId + entityId 単位）
@@ -405,12 +417,13 @@ function emitCrossNoteLinks(provDoc: ProvJsonLd, links: BlockLink[]): W3CProvNod
 
     // ローカル側の対応ノードを探す: (a) #751 の表行受け（graphium:tableRowId）が
     // 優先。無ければ (b) 旧形式の inline span 受け（inline_<label>_<entityId> の
-    // entityId 部分が sourceEntityId と一致するノード）。
+    // <label> 部分は既知の固定 prefix のいずれかなので、それを剥がした残り全体を
+    // sourceEntityId と厳密一致させる。entityId 自体に `_` を含み得るため、末尾一致
+    // だと `inline_material_foo_bar` に entityId="bar" が誤マッチしうる —
+    // cross-note-flow.ts の厳密一致と同じ思想）。
     const localNode = link.sourceEntityId
       ? (provDoc["@graph"].find((n) => n["graphium:tableRowId"] === link.sourceEntityId) ??
-          provDoc["@graph"].find(
-            (n) => n["@id"].startsWith("inline_") && n["@id"].endsWith(`_${link.sourceEntityId}`),
-          ))
+          provDoc["@graph"].find((n) => extractInlineEntityId(n["@id"]) === link.sourceEntityId))
       : undefined;
 
     let relation: W3CProvNode | null = null;

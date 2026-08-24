@@ -439,7 +439,13 @@ snapshot) plus a `Derivation` from the local receiving node — or a
 `Usage` from the receiving step's Activity when no local node resolves.
 This does not change the local-projection rule above; the stub is a
 read-only reference for tools consuming the export, not a synthesized
-foreign Activity.
+foreign Activity. The asymmetry with the same-note case is intentional:
+within a note the handoff unifies into one shared Entity (`used`),
+because both ends of the link live in the same graph and can genuinely
+be the same thing, while a cross-note reference copies a snapshot into
+the consuming note's own table row — never writing back to the source —
+which is why it exports as a `Derivation` (a new, locally-owned Entity
+derived from an external one) rather than a shared `used` edge.
 
 **The other four `provLinks` types.** `derived_from`, `reproduction_of`,
 `used` and `generated` are projected too, right after the `informed_by`

@@ -693,6 +693,29 @@ describe("buildW3CProvJsonLd — cross-note output references", () => {
     expect(deriv).toBeDefined();
   });
 
+  it("does not suffix-match an inline node whose entityId happens to contain an underscore", () => {
+    // entityId 自体に "_" を含む場合、末尾一致だと inline_material_foo_bar が
+    // sourceEntityId: "bar" に誤マッチしてしまう。prefix を剥がした残り全体の
+    // 厳密一致でなければ弾けないことを確認する。
+    const provDoc: ProvJsonLd = {
+      "@context": emptyProv["@context"],
+      "@graph": [
+        {
+          "@id": "inline_material_foo_bar",
+          "@type": "prov:Entity",
+          "rdfs:label": "Foo bar",
+        } as any,
+      ],
+    };
+    const link = baseLink({ sourceEntityId: "bar", targetEntityId: "bar" });
+    const doc = buildW3CProvJsonLd(provDoc, "n", undefined, [link]);
+
+    const deriv = doc["@graph"].find(
+      (n: any) => n["@type"] === "Derivation" && n.generatedEntity === "inline_material_foo_bar",
+    );
+    expect(deriv).toBeUndefined();
+  });
+
   it("falls back to a Usage on the receiving step's Activity when no local node resolves", () => {
     const provDoc: ProvJsonLd = {
       "@context": emptyProv["@context"],
