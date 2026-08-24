@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.42.1](https://github.com/kumagallium/Graphium/compare/v0.42.0...v0.42.1) - 2026-08-24
+
+- fix(prov): project all block-link types into the PROV graph and clear edge-data debt by @kumagallium in https://github.com/kumagallium/Graphium/pull/754
+- feat(export): emit cross-note output references in PROV-JSON-LD by @kumagallium in https://github.com/kumagallium/Graphium/pull/755
+- feat(flow): render wasDerivedFrom edges in the step flow view by @kumagallium in https://github.com/kumagallium/Graphium/pull/756
+
 ## [v0.42.0](https://github.com/kumagallium/Graphium/compare/v0.41.0...v0.42.0) - 2026-08-24
 
 - feat(step): cross-note output references with durable row identity by @kumagallium in https://github.com/kumagallium/Graphium/pull/751
