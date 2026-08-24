@@ -29,6 +29,7 @@ import { useAiAssistant, upsertChat } from "../ai-assistant/store";
 import { loadAssetChats, saveAssetChats } from "./asset-chat-store";
 import type { ScopeChat } from "../../lib/document-types";
 import { assembleCitedAssetContext } from "../ai-assistant/cited-document-context";
+import { loadUrlText } from "../ai-assistant/url-text-loader";
 import { runAgent } from "../ai-assistant/api";
 import { isAgentConfigured, getChatSynthesisModelName } from "../settings";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -146,6 +147,9 @@ export function MaterialFullView({
             captureIndex: captureIndex ?? null,
             provider: getActiveProvider(),
             scope: DEFAULT_GROUNDING_SCOPE,
+            // URL 素材の本文取得。これが無いと excerpt（取り込み時の抜粋）どまりになり、
+            // PDF を指す URL（arXiv 等）では文脈が空になって AI が中身に答えられない。
+            loadUrlText,
           },
         );
         const message = assetCtx

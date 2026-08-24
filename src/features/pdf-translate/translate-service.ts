@@ -409,6 +409,11 @@ export type ReaderArticleClient = {
   leadImage: string | null;
   /** 取得日時（ISO 8601） */
   fetchedAt: string;
+  /**
+   * サーバーが PDF を検知した場合 "pdf"（textContent は空）。呼び出し側は
+   * pdf-proxy 経由での取得（表示・テキスト抽出）に切り替える。通常記事では undefined。
+   */
+  kind?: "pdf";
 };
 
 /**
@@ -431,6 +436,7 @@ export async function fetchReaderArticle(url: string): Promise<ReaderArticleClie
     lang: typeof a.lang === "string" ? a.lang : null,
     leadImage: typeof a.leadImage === "string" ? a.leadImage : null,
     fetchedAt: typeof a.fetchedAt === "string" ? a.fetchedAt : new Date().toISOString(),
+    ...(a.kind === "pdf" ? { kind: "pdf" as const } : {}),
   };
 }
 
