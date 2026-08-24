@@ -16,6 +16,7 @@ export function UpdateBanner() {
   const [rechecking, setRechecking] = useState(false);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showErrorDetail, setShowErrorDetail] = useState(false);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -30,6 +31,7 @@ export function UpdateBanner() {
     if (!update) return;
     setInstalling(true);
     setError(null);
+    setShowErrorDetail(false);
     try {
       await update.install((p) => setProgress(p));
     } catch (e) {
@@ -73,59 +75,96 @@ export function UpdateBanner() {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 12,
-        padding: "6px 16px",
-        background: "#edf5ee",
-        borderBottom: "1px solid #c5ddc8",
-        fontSize: 13,
-        color: "#2d5a32",
-      }}
-    >
-      <span>{t("updater.available", { version: update.version })}</span>
-      <button
-        onClick={handleRecheck}
-        disabled={rechecking || installing}
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      <div
         style={{
-          padding: "3px 12px",
-          fontSize: 12,
-          fontWeight: 600,
-          borderRadius: 4,
-          border: "1px solid #4B7A52",
-          background: "transparent",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 12,
+          padding: "6px 16px",
+          background: "#edf5ee",
+          borderBottom: "1px solid #c5ddc8",
+          fontSize: 13,
           color: "#2d5a32",
-          cursor: rechecking || installing ? "default" : "pointer",
-          opacity: rechecking ? 0.6 : 1,
         }}
       >
-        {rechecking
-          ? t("settings.about.checking")
-          : t("settings.about.checkNow")}
-      </button>
-      <button
-        onClick={handleInstall}
-        disabled={installing}
-        style={{
-          padding: "3px 12px",
-          fontSize: 12,
-          fontWeight: 600,
-          borderRadius: 4,
-          border: "1px solid #4B7A52",
-          background: installing ? "#c5ddc8" : "#4B7A52",
-          color: "#fff",
-          cursor: installing ? "default" : "pointer",
-        }}
-      >
-        {installLabel}
-      </button>
-      {error && (
-        <span style={{ color: "#a33", fontSize: 12 }}>
-          {t("updater.error", { message: error })}
-        </span>
+        <span>{t("updater.available", { version: update.version })}</span>
+        <button
+          onClick={handleRecheck}
+          disabled={rechecking || installing}
+          style={{
+            padding: "3px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 4,
+            border: "1px solid #4B7A52",
+            background: "transparent",
+            color: "#2d5a32",
+            cursor: rechecking || installing ? "default" : "pointer",
+            opacity: rechecking ? 0.6 : 1,
+          }}
+        >
+          {rechecking
+            ? t("settings.about.checking")
+            : t("settings.about.checkNow")}
+        </button>
+        <button
+          onClick={handleInstall}
+          disabled={installing}
+          style={{
+            padding: "3px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 4,
+            border: "1px solid #4B7A52",
+            background: installing ? "#c5ddc8" : "#4B7A52",
+            color: "#fff",
+            cursor: installing ? "default" : "pointer",
+          }}
+        >
+          {installLabel}
+        </button>
+        {error && (
+          <>
+            <span style={{ color: "#a33", fontSize: 12 }}>
+              {t("updater.error")}
+            </span>
+            <button
+              onClick={() => setShowErrorDetail((v) => !v)}
+              style={{
+                padding: 0,
+                fontSize: 12,
+                border: "none",
+                background: "transparent",
+                color: "#a33",
+                textDecoration: "underline",
+                cursor: "pointer",
+              }}
+            >
+              {showErrorDetail
+                ? t("updater.errorDetailHide")
+                : t("updater.errorDetailShow")}
+            </button>
+          </>
+        )}
+      </div>
+      {error && showErrorDetail && (
+        <div
+          style={{
+            padding: "6px 16px",
+            background: "rgba(170, 51, 51, 0.06)",
+            borderBottom: "1px solid #c5ddc8",
+            fontFamily: "monospace",
+            fontSize: 11,
+            color: "#a33",
+            userSelect: "text",
+            wordBreak: "break-all",
+            overflowWrap: "break-word",
+          }}
+        >
+          {error}
+        </div>
       )}
     </div>
   );

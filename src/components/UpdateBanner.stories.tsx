@@ -65,7 +65,13 @@ export const InstallError: Story = {
   render: () => (
     <BannerWithUpdate
       version="0.29.0"
-      install={() => Promise.reject(new Error("Network error"))}
+      install={() =>
+        Promise.reject(
+          new Error(
+            "error sending request for url (https://github.com/kumagallium/graphium/releases/download/v0.29.0/graphium_0.29.0_x64-setup.nsis.zip): error trying to connect: tcp connect error: Connection timed out (os error 60)",
+          ),
+        )
+      }
     />
   ),
 };

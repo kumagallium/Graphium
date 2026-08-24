@@ -1435,7 +1435,9 @@ export const ja: Record<string, string> = {
   "updater.downloading": "ダウンロード中... {percent}%",
   "updater.downloadingBytes": "ダウンロード中... {mb} MB",
   "updater.installingNow": "インストール中... まもなく再起動します",
-  "updater.error": "更新に失敗しました: {message}",
+  "updater.error": "更新に失敗しました",
+  "updater.errorDetailShow": "詳細を表示",
+  "updater.errorDetailHide": "詳細を隠す",
 
   // ── バックエンド停止バナー（デスクトップ版で sidecar が予期せず終了したとき）──
   "backendDown.message": "AI バックエンドが停止しました。AI 機能を使うには再起動が必要です。",
