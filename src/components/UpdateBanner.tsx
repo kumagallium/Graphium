@@ -3,13 +3,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useT } from "../i18n";
-import { checkForUpdates, type UpdateAvailableDetail } from "../lib/updater";
+import {
+  checkForUpdates,
+  type UpdateAvailableDetail,
+  type UpdateProgress,
+} from "../lib/updater";
 
 export function UpdateBanner() {
   const t = useT();
   const [update, setUpdate] = useState<UpdateAvailableDetail | null>(null);
   const [installing, setInstalling] = useState(false);
   const [rechecking, setRechecking] = useState(false);
+  const [progress, setProgress] = useState<UpdateProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -23,11 +29,14 @@ export function UpdateBanner() {
   const handleInstall = useCallback(async () => {
     if (!update) return;
     setInstalling(true);
+    setError(null);
     try {
-      await update.install();
+      await update.install((p) => setProgress(p));
     } catch (e) {
       console.error("[updater] Install failed:", e);
+      setError(e instanceof Error ? e.message : String(e));
       setInstalling(false);
+      setProgress(null);
     }
   }, [update]);
 
@@ -46,6 +55,22 @@ export function UpdateBanner() {
   }, []);
 
   if (!update) return null;
+
+  // installing 中のボタンラベルは進捗の有無・種類で出し分ける
+  let installLabel = t("updater.install");
+  if (installing) {
+    if (progress?.phase === "downloading" && progress.total) {
+      const percent = Math.round((progress.downloaded / progress.total) * 100);
+      installLabel = t("updater.downloading", { percent: String(percent) });
+    } else if (progress?.phase === "downloading") {
+      const mb = (progress.downloaded / 1024 / 1024).toFixed(1);
+      installLabel = t("updater.downloadingBytes", { mb });
+    } else if (progress?.phase === "installing") {
+      installLabel = t("updater.installingNow");
+    } else {
+      installLabel = t("updater.installing");
+    }
+  }
 
   return (
     <div
@@ -95,8 +120,13 @@ export function UpdateBanner() {
           cursor: installing ? "default" : "pointer",
         }}
       >
-        {installing ? t("updater.installing") : t("updater.install")}
+        {installLabel}
       </button>
+      {error && (
+        <span style={{ color: "#a33", fontSize: 12 }}>
+          {t("updater.error", { message: error })}
+        </span>
+      )}
     </div>
   );
 }

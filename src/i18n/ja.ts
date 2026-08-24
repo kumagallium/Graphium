@@ -1432,6 +1432,10 @@ export const ja: Record<string, string> = {
   "updater.available": "Graphium {version} が利用可能です",
   "updater.install": "再起動して更新",
   "updater.installing": "ダウンロード中...",
+  "updater.downloading": "ダウンロード中... {percent}%",
+  "updater.downloadingBytes": "ダウンロード中... {mb} MB",
+  "updater.installingNow": "インストール中... まもなく再起動します",
+  "updater.error": "更新に失敗しました: {message}",
 
   // ── バックエンド停止バナー（デスクトップ版で sidecar が予期せず終了したとき）──
   "backendDown.message": "AI バックエンドが停止しました。AI 機能を使うには再起動が必要です。",
