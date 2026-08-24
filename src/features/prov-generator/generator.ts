@@ -35,8 +35,9 @@ export type ProvJsonLdNode = {
   /** 同一 Entity が複数 Activity に生成され得るため配列（PROV-DM 上 Generation に
    *  cardinality 上限はない）。単一値だと最後の生成元で上書きされ生成エッジが欠落する。 */
   "prov:wasGeneratedBy"?: { "@id": string }[];
-  /** Phase D-2: execution Entity から plan Entity への derivation 関係 */
-  "prov:wasDerivedFrom"?: { "@id": string }[];
+  /** Phase D-2: execution Entity から plan Entity への derivation 関係。
+   *  ブロック間リンク由来（derived_from/reproduction_of/フォールバック射影）も同じ配列に入る。 */
+  "prov:wasDerivedFrom"?: { "@id": string; "graphium:linkType"?: string }[];
   "graphium:attributes"?: ProvAttribute[];
   "graphium:blockId"?: string;
   [key: `graphium:${string}`]: any;
@@ -83,6 +84,12 @@ type InternalRelation = {
   from: string;
   to: string;
   linkId?: string;
+  /**
+   * 元の BlockLink.type（"reproduction_of" 由来の wasDerivedFrom、
+   * および used/generated の Activity 解決フォールバックのみ付与）。
+   * @type だけでは区別できない由来を残す。export-jsonld で graphium:linkType として出力する。
+   */
+  linkType?: string;
 };
 
 // ── 入力データの型 ──
@@ -257,15 +264,26 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const sourceExists = blocks.some((b: any) => findBlockById(b, link.sourceBlockId));
     const targetExists = blocks.some((b: any) => findBlockById(b, link.targetBlockId));
 
-    if (!sourceExists || (!link.targetNoteId && !targetExists)) {
+    if (!sourceExists) {
       warnings.push(createWarning("broken-link", link.sourceBlockId,
-        `リンク ${link.type} の${!sourceExists ? "元" : "先"} ${!sourceExists ? link.sourceBlockId : link.targetBlockId} が存在しません — スキップ`));
+        `リンク ${link.type} の元 ${link.sourceBlockId} が存在しません — スキップ`));
       continue;
     }
 
-    // ノート横断 informed_by は参照元 Activity をこのローカル投影へ合成しない。
+    // ノート横断（targetNoteId）は参照元 Activity をこのローカル投影へ合成しない。
     // 現在側に作った material span の used は通常の inline 投影で残る。
     if (link.targetNoteId) continue;
+
+    // ページ横断（targetPageId が現ページ外を指す）も同じ「ノートの PROV は自己完結」
+    // 原則でこのページには射影しない。auto-link（system 生成の derived_from）が該当。
+    // これはデータの壊れではないので broken-link 警告は出さない。
+    if (link.targetPageId && !targetExists) continue;
+
+    if (!targetExists) {
+      warnings.push(createWarning("broken-link", link.sourceBlockId,
+        `リンク ${link.type} の先 ${link.targetBlockId} が存在しません — スキップ`));
+      continue;
+    }
 
     validLinks.push(link);
     if (link.type === "informed_by") {
@@ -1203,6 +1221,170 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     relations.push({ "@type": "prov:used", from: currentActId, to: proxyId, linkId: link.id });
   }
 
+  // ── derived_from / reproduction_of / used / generated → PROV 射影 ──
+  //
+  // ブロック間リンクの端点は「見出し／step（Activity）」「材料・ツール・結果の
+  // ラベル付きブロック（Entity 1 個）」「ラベルの無い普通のブロック」のいずれもあり得る。
+  // 端点の種類によらず必ず Entity/Activity ノードへ解決できるようにする（フォールバックあり
+  // = 「射影できないリンク」を作らない）。
+  //
+  // - resolveEntityForBlock: ブロック → Entity。Activity ならその出力（output-proxy、
+  //   informed_by の (a)(c) と同じ規則）、非 Activity ならそのブロック直属の Entity が
+  //   ちょうど1個ならそれ、0個/複数なら block_<blockId> を合成する。
+  // - resolveActivityForBlock: ブロック → Activity。見出し/step 自身、もしくは
+  //   スコープ帰属（blockToActivityId）。無ければ null。
+  const ownEntityNodesForBlock = (blockId: string) =>
+    nodes.filter(
+      (n) =>
+        n.blockId === blockId &&
+        (n["@id"].startsWith("inline_") ||
+          n["@id"].startsWith("entity_") ||
+          (n["@id"].startsWith("result_") && !n["@id"].startsWith("result_synthetic_"))),
+    );
+
+  // informed_by の (c) と同じ合成規則。同 ID の synthetic が既にあれば再利用する
+  // （informed_by が先に同じ Activity の合成を作っていた場合、二重に作らない）。
+  function ensureSyntheticOutputEntity(actId: string, blockId: string): string {
+    const syntheticId = `result_synthetic_${blockId}`;
+    if (!nodes.find((n) => n["@id"] === syntheticId)) {
+      const actLabel = nodes.find((n) => n["@id"] === actId)?.label ?? t("prov.prevStepFallback");
+      nodes.push({
+        "@id": syntheticId,
+        "@type": "prov:Entity",
+        label: t("prov.resultOf", { label: actLabel }),
+        blockId,
+      });
+      relations.push({ "@type": "prov:wasGeneratedBy", from: syntheticId, to: actId });
+    }
+    return syntheticId;
+  }
+
+  const blockById = new Map<string, any>();
+  for (const b of flatBlocks) blockById.set(b.id, b);
+
+  function ensureBlockEntity(blockId: string): string {
+    const blockEntityId = `block_${blockId}`;
+    if (!nodes.find((n) => n["@id"] === blockEntityId)) {
+      const block = blockById.get(blockId);
+      const text = block ? getBlockText(block).trim() : "";
+      nodes.push({
+        "@id": blockEntityId,
+        "@type": "prov:Entity",
+        label: text ? text.slice(0, 30) : t("prov.untitledBlock"),
+        blockId,
+      });
+    }
+    return blockEntityId;
+  }
+
+  function resolveEntityForBlock(blockId: string): string {
+    const actId = `activity_${blockId}`;
+    if (nodes.some((n) => n["@id"] === actId)) {
+      const outputs = findOutputEntitiesForActivity(actId);
+      if (outputs.length === 1) return outputs[0]["@id"];
+      if (outputs.length === 0) {
+        const legacyResult = nodes.find(
+          (n) => n["@id"].startsWith("result_") && blockToActivityId.get(n.blockId) === actId,
+        );
+        if (legacyResult) return legacyResult["@id"];
+      }
+      // 0個（legacy も無し）または複数 → synthetic に落とす（勝手に1つを選ばない）
+      return ensureSyntheticOutputEntity(actId, blockId);
+    }
+
+    const ownEntities = ownEntityNodesForBlock(blockId);
+    if (ownEntities.length === 1) return ownEntities[0]["@id"];
+
+    // 0個または複数 → ブロック自体を表す Entity を合成
+    return ensureBlockEntity(blockId);
+  }
+
+  function resolveActivityForBlock(blockId: string): string | null {
+    const actId = `activity_${blockId}`;
+    if (nodes.some((n) => n["@id"] === actId)) return actId;
+    return blockToActivityId.get(blockId) ?? null;
+  }
+
+  function addRelationUnique(rel: InternalRelation) {
+    const exists = relations.some(
+      (r) => r["@type"] === rel["@type"] && r.from === rel.from && r.to === rel.to,
+    );
+    if (!exists) relations.push(rel);
+  }
+
+  for (const link of validLinks) {
+    if (link.type === "informed_by") continue; // 上のループで処理済み
+
+    switch (link.type) {
+      case "derived_from": {
+        const fromId = resolveEntityForBlock(link.sourceBlockId);
+        const toId = resolveEntityForBlock(link.targetBlockId);
+        addRelationUnique({ "@type": "prov:wasDerivedFrom", from: fromId, to: toId, linkId: link.id });
+        break;
+      }
+      case "reproduction_of": {
+        const fromId = resolveEntityForBlock(link.sourceBlockId);
+        const toId = resolveEntityForBlock(link.targetBlockId);
+        addRelationUnique({
+          "@type": "prov:wasDerivedFrom",
+          from: fromId,
+          to: toId,
+          linkId: link.id,
+          linkType: "reproduction_of",
+        });
+        break;
+      }
+      case "used": {
+        const entityId = resolveEntityForBlock(link.targetBlockId);
+        const actId = resolveActivityForBlock(link.sourceBlockId);
+        if (actId) {
+          addRelationUnique({ "@type": "prov:used", from: actId, to: entityId, linkId: link.id });
+        } else {
+          // Activity に解決できない（見出し/step でもスコープ内でもない）source は
+          // used の意味を保てないので wasDerivedFrom に落とし、警告を出す。
+          const sourceEntityId = resolveEntityForBlock(link.sourceBlockId);
+          addRelationUnique({
+            "@type": "prov:wasDerivedFrom",
+            from: sourceEntityId,
+            to: entityId,
+            linkId: link.id,
+            linkType: "used",
+          });
+          warnings.push(createWarning(
+            "activity-unresolved",
+            link.sourceBlockId,
+            `リンク used の元 ${link.sourceBlockId} を Activity として解決できず、wasDerivedFrom にフォールバックしました`,
+          ));
+        }
+        break;
+      }
+      case "generated": {
+        const entityId = resolveEntityForBlock(link.targetBlockId);
+        const actId = resolveActivityForBlock(link.sourceBlockId);
+        if (actId) {
+          addRelationUnique({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId, linkId: link.id });
+        } else {
+          const sourceEntityId = resolveEntityForBlock(link.sourceBlockId);
+          addRelationUnique({
+            "@type": "prov:wasDerivedFrom",
+            from: entityId,
+            to: sourceEntityId,
+            linkId: link.id,
+            linkType: "generated",
+          });
+          warnings.push(createWarning(
+            "activity-unresolved",
+            link.sourceBlockId,
+            `リンク generated の元 ${link.sourceBlockId} を Activity として解決できず、wasDerivedFrom にフォールバックしました`,
+          ));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   // ── 同名の材料・道具は 1 つの Entity に統合する ──
   // 「同じ乳鉢を別の手順でも使う」と書いたとき、手順ごとに別ノードへ
   // 割れないように、種類（material / tool）とラベルのテキスト一致で束ねる。
@@ -1403,10 +1585,14 @@ function buildProvJsonLd(
         // Phase D-2: execution Entity (from) は plan Entity (to) から派生
         // PROV-DM の wasDerivedFrom 短縮形。Activity (Step) は両 Entity の
         // used 関係から復元可能なので、ここでは Entity 間の関係のみ記録する。
+        // ブロック間リンク由来（reproduction_of / used・generated のフォールバック）は
+        // 元の link.type を linkType として残す（@type だけでは由来が区別できないため）。
         if (!sourceNode["prov:wasDerivedFrom"]) {
           sourceNode["prov:wasDerivedFrom"] = [];
         }
-        sourceNode["prov:wasDerivedFrom"]!.push({ "@id": rel.to });
+        sourceNode["prov:wasDerivedFrom"]!.push(
+          rel.linkType ? { "@id": rel.to, "graphium:linkType": rel.linkType } : { "@id": rel.to },
+        );
         break;
       }
       // graphium:hasAttribute は廃止 — 属性は graphium:attributes に直接埋め込み
@@ -1604,6 +1790,15 @@ export function extractRelations(doc: ProvJsonLd): FlatRelation[] {
       for (const ref of node["prov:wasGeneratedBy"]) {
         relations.push({
           "@type": "prov:wasGeneratedBy",
+          from: node["@id"],
+          to: ref["@id"],
+        });
+      }
+    }
+    if (node["prov:wasDerivedFrom"]) {
+      for (const ref of node["prov:wasDerivedFrom"]) {
+        relations.push({
+          "@type": "prov:wasDerivedFrom",
           from: node["@id"],
           to: ref["@id"],
         });

@@ -2688,3 +2688,186 @@ describe("名前がまだ空の表はノードを作らない", () => {
     expect(entities[0]["rdfs:label"]).toBe("Ni粉末");
   });
 });
+
+// ──────────────────────────────────
+// ブロック間リンク 4 種の PROV 射影（derived_from / reproduction_of / used / generated）
+//
+// informed_by 以外は収集はされるが未消費だった（エッジ負債）。
+// resolveEntityForBlock / resolveActivityForBlock で端点を必ず Entity/Activity に
+// 解決し、Activity 解決不能時は wasDerivedFrom + 警告にフォールバックする。
+// ──────────────────────────────────
+
+describe("ブロック間リンク4種のPROV射影", () => {
+  // plain-c: どの見出しスコープにも属さない、ラベルの無いただの段落
+  //          （used/generated の Activity 解決フォールバックの検証に使う）
+  const linkProjBlocks: any[] = [
+    { id: "plain-c", type: "paragraph", content: [{ type: "text", text: "ただの説明文です" }], children: [] },
+    { id: "h-a", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順A" }], children: [] },
+    { id: "ent-a", type: "paragraph", content: [{ type: "text", text: "材料A" }], children: [] },
+    { id: "h-b", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順B" }], children: [] },
+    { id: "ent-b", type: "paragraph", content: [{ type: "text", text: "材料B" }], children: [] },
+    {
+      id: "step-1",
+      type: "step",
+      content: [{ type: "text", text: "ステップ1: 混ぜる" }],
+      children: [
+        { id: "step1-out", type: "paragraph", content: [{ type: "text", text: "混合物" }], children: [] },
+      ],
+    },
+  ];
+  const linkProjLabels = new Map([
+    ["h-a", "procedure"],
+    ["ent-a", "material"],
+    ["h-b", "procedure"],
+    ["ent-b", "material"],
+    ["step1-out", "output"],
+  ]);
+
+  const buildLinkProjDoc = (links: any[]) =>
+    generateProvDocument({ blocks: linkProjBlocks, labels: linkProjLabels, links });
+
+  it("derived_from: Entity → Entity の基本射影", () => {
+    const doc = buildLinkProjDoc([
+      { id: "link-1", sourceBlockId: "ent-b", targetBlockId: "ent-a", type: "derived_from", layer: "prov", createdBy: "human" },
+    ]);
+    const relations = getRelations(doc);
+    expect(relations).toContainEqual({ "@type": "prov:wasDerivedFrom", from: "entity_ent-b", to: "entity_ent-a" });
+    // linkType は derived_from では付与しない（@type だけで由来が一意なため）
+    const entB = doc["@graph"].find((n) => n["@id"] === "entity_ent-b") as any;
+    expect(entB["prov:wasDerivedFrom"][0]).toEqual({ "@id": "entity_ent-a" });
+    expect(getWarnings(doc)).toHaveLength(0);
+  });
+
+  it("reproduction_of: wasDerivedFrom に射影され、linkType が保持される", () => {
+    const doc = buildLinkProjDoc([
+      { id: "link-1", sourceBlockId: "ent-b", targetBlockId: "ent-a", type: "reproduction_of", layer: "prov", createdBy: "human" },
+    ]);
+    const entB = doc["@graph"].find((n) => n["@id"] === "entity_ent-b") as any;
+    expect(entB["prov:wasDerivedFrom"]).toEqual([{ "@id": "entity_ent-a", "graphium:linkType": "reproduction_of" }]);
+  });
+
+  it("used: Activity → Entity の基本射影", () => {
+    const doc = buildLinkProjDoc([
+      { id: "link-1", sourceBlockId: "h-b", targetBlockId: "ent-a", type: "used", layer: "prov", createdBy: "human" },
+    ]);
+    const actB = doc["@graph"].find((n) => n["@id"] === "activity_h-b") as any;
+    const usedIds = (actB?.["prov:used"] ?? []).map((u: any) => u["@id"]);
+    expect(usedIds).toContain("entity_ent-a");
+    expect(getWarnings(doc)).toHaveLength(0);
+  });
+
+  it("generated: Entity ← Activity の基本射影（wasGeneratedBy）", () => {
+    const doc = buildLinkProjDoc([
+      { id: "link-1", sourceBlockId: "h-b", targetBlockId: "ent-a", type: "generated", layer: "prov", createdBy: "human" },
+    ]);
+    const entA = doc["@graph"].find((n) => n["@id"] === "entity_ent-a") as any;
+    const genIds = (entA?.["prov:wasGeneratedBy"] ?? []).map((g: any) => g["@id"]);
+    expect(genIds).toContain("activity_h-b");
+    expect(getWarnings(doc)).toHaveLength(0);
+  });
+
+  it("used: Activity に解決できない source は wasDerivedFrom にフォールバックし警告が出る", () => {
+    const doc = buildLinkProjDoc([
+      { id: "link-1", sourceBlockId: "plain-c", targetBlockId: "ent-a", type: "used", layer: "prov", createdBy: "human" },
+    ]);
+    const relations = getRelations(doc);
+    expect(relations).toContainEqual({ "@type": "prov:wasDerivedFrom", from: "block_plain-c", to: "entity_ent-a" });
+    const warnings = getWarnings(doc);
+    expect(warnings.some((w: any) => w.type === "activity-unresolved")).toBe(true);
+    // 合成された block_<id> Entity は本文先頭を label にする
+    const blockEnt = doc["@graph"].find((n) => n["@id"] === "block_plain-c") as any;
+    expect(blockEnt?.["rdfs:label"]).toBe("ただの説明文です");
+  });
+
+  it("generated: Activity に解決できない source は wasDerivedFrom(target→source) にフォールバックし警告が出る", () => {
+    const doc = buildLinkProjDoc([
+      { id: "link-1", sourceBlockId: "plain-c", targetBlockId: "ent-a", type: "generated", layer: "prov", createdBy: "human" },
+    ]);
+    const relations = getRelations(doc);
+    expect(relations).toContainEqual({ "@type": "prov:wasDerivedFrom", from: "entity_ent-a", to: "block_plain-c" });
+    expect(getWarnings(doc).some((w: any) => w.type === "activity-unresolved")).toBe(true);
+  });
+
+  it("step ブロックを端点とする derived_from は output-proxy 経由で解決される", () => {
+    const doc = buildLinkProjDoc([
+      { id: "link-1", sourceBlockId: "step-1", targetBlockId: "ent-a", type: "derived_from", layer: "prov", createdBy: "human" },
+    ]);
+    const relations = getRelations(doc);
+    expect(relations).toContainEqual({ "@type": "prov:wasDerivedFrom", from: "result_step1-out", to: "entity_ent-a" });
+  });
+
+  it("targetNoteId 付き（cross-note）はこのページには射影せず、警告も出ない", () => {
+    const doc = buildLinkProjDoc([
+      {
+        id: "link-1",
+        sourceBlockId: "ent-b",
+        targetBlockId: "external-block",
+        targetNoteId: "other-note",
+        type: "derived_from",
+        layer: "prov",
+        createdBy: "human",
+      },
+    ]);
+    expect(getWarnings(doc)).toHaveLength(0);
+    expect(getRelations(doc).some((r) => r["@type"] === "prov:wasDerivedFrom")).toBe(false);
+  });
+
+  it("targetPageId が現ページ外を指す（cross-page / auto-link）は射影せず、警告も出ない", () => {
+    const doc = buildLinkProjDoc([
+      {
+        id: "link-1",
+        sourceBlockId: "ent-b",
+        targetBlockId: "other-page-block",
+        targetPageId: "other-page-id",
+        type: "derived_from",
+        layer: "prov",
+        createdBy: "human",
+      },
+    ]);
+    expect(getWarnings(doc)).toHaveLength(0);
+    expect(getRelations(doc).some((r) => r["@type"] === "prov:wasDerivedFrom")).toBe(false);
+  });
+
+  it("同じ (@type, from, to) の重複射影は 1 本にまとめる", () => {
+    const doc = buildLinkProjDoc([
+      { id: "link-1", sourceBlockId: "ent-b", targetBlockId: "ent-a", type: "derived_from", layer: "prov", createdBy: "human" },
+      { id: "link-2", sourceBlockId: "ent-b", targetBlockId: "ent-a", type: "derived_from", layer: "prov", createdBy: "human" },
+    ]);
+    const matches = getRelations(doc).filter(
+      (r) => r["@type"] === "prov:wasDerivedFrom" && r.from === "entity_ent-b" && r.to === "entity_ent-a",
+    );
+    expect(matches).toHaveLength(1);
+  });
+
+  it("同名材料の統合（reroute）後も derived_from の射影先が canonical ノードに向く", () => {
+    // mat-a1 / mat-a2 は別の手順スコープにある同名（"溶媒"）の material。
+    // 「同名の材料・道具は 1 つの Entity に統合する」パスで mat-a2 は mat-a1 に吸収される。
+    const blocks: any[] = [
+      { id: "h-x", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順X" }], children: [] },
+      { id: "mat-a1", type: "paragraph", content: [{ type: "text", text: "溶媒" }], children: [] },
+      { id: "h-y", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順Y" }], children: [] },
+      { id: "mat-a2", type: "paragraph", content: [{ type: "text", text: "溶媒" }], children: [] },
+      { id: "ent-src", type: "paragraph", content: [{ type: "text", text: "元試料" }], children: [] },
+    ];
+    const labels = new Map([
+      ["h-x", "procedure"],
+      ["mat-a1", "material"],
+      ["h-y", "procedure"],
+      ["mat-a2", "material"],
+      ["ent-src", "material"],
+    ]);
+    const links = [
+      { id: "link-1", sourceBlockId: "ent-src", targetBlockId: "mat-a2", type: "derived_from" as const, layer: "prov" as const, createdBy: "human" as const },
+    ];
+    const doc = generateProvDocument({ blocks, labels, links });
+
+    // mat-a2 の Entity ノードは統合で消えている
+    expect(doc["@graph"].some((n) => n["@id"] === "entity_mat-a2")).toBe(false);
+    // 射影された derived_from は canonical（entity_mat-a1）に向く
+    expect(getRelations(doc)).toContainEqual({
+      "@type": "prov:wasDerivedFrom",
+      from: "entity_ent-src",
+      to: "entity_mat-a1",
+    });
+  });
+});

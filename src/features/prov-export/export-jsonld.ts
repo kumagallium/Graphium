@@ -168,7 +168,9 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
       }
     }
 
-    // wasDerivedFrom: execution Entity → plan Entity（Plan/Execution の派生関係）
+    // wasDerivedFrom: execution Entity → plan Entity（Plan/Execution の派生関係）に加え、
+    // ブロック間リンク由来（derived_from / reproduction_of / used・generated のフォールバック）も
+    // 同じ配列に入る。後者は元の link.type を graphium:linkType として残す。
     if (node["prov:wasDerivedFrom"]) {
       for (const ref of node["prov:wasDerivedFrom"]) {
         w3cNodes.push({
@@ -176,6 +178,7 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
           "@id": `_:derivation_${node["@id"]}_${ref["@id"]}`,
           generatedEntity: node["@id"],
           usedEntity: ref["@id"],
+          ...(ref["graphium:linkType"] ? { "graphium:linkType": ref["graphium:linkType"] } : {}),
         });
       }
     }

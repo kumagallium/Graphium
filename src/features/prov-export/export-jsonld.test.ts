@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { buildW3CProvJsonLd, type WikiEntityInfo } from "./export-jsonld";
-import type { ProvJsonLd } from "../prov-generator";
+import { generateProvDocument, type ProvJsonLd } from "../prov-generator";
 
 const emptyProv: ProvJsonLd = {
   "@context": {
@@ -545,5 +545,71 @@ describe("buildW3CProvJsonLd — PROV-DM compliance fixes", () => {
       .map((g: any) => g.activity)
       .sort();
     expect(acts).toEqual(["activity_a", "activity_b"]);
+  });
+});
+
+// ── Fix 1: block-link derived_from/reproduction_of projection reaches graphium:linkType ──
+
+describe("buildW3CProvJsonLd — block-link linkType passthrough (edge debt Fix 1)", () => {
+  it("emits graphium:linkType on the Derivation edge for a reproduction_of block-link", () => {
+    const blocks = [
+      { id: "ent-a", type: "paragraph", content: [{ type: "text", text: "Sample A" }], children: [] },
+      { id: "ent-b", type: "paragraph", content: [{ type: "text", text: "Sample B" }], children: [] },
+    ];
+    const labels = new Map([
+      ["ent-a", "material"],
+      ["ent-b", "material"],
+    ]);
+    const links = [
+      {
+        id: "link-repro",
+        sourceBlockId: "ent-b",
+        targetBlockId: "ent-a",
+        type: "reproduction_of" as const,
+        layer: "prov" as const,
+        createdBy: "human" as const,
+      },
+    ];
+    const provDoc = generateProvDocument({ blocks, labels, links });
+    const doc = buildW3CProvJsonLd(provDoc, "note-title");
+    const deriv = doc["@graph"].find(
+      (n: any) =>
+        n["@type"] === "Derivation" &&
+        n.generatedEntity === "entity_ent-b" &&
+        n.usedEntity === "entity_ent-a",
+    );
+    expect(deriv).toBeDefined();
+    expect((deriv as any)["graphium:linkType"]).toBe("reproduction_of");
+  });
+
+  it("omits graphium:linkType for a plain derived_from block-link", () => {
+    const blocks = [
+      { id: "ent-a", type: "paragraph", content: [{ type: "text", text: "Sample A" }], children: [] },
+      { id: "ent-b", type: "paragraph", content: [{ type: "text", text: "Sample B" }], children: [] },
+    ];
+    const labels = new Map([
+      ["ent-a", "material"],
+      ["ent-b", "material"],
+    ]);
+    const links = [
+      {
+        id: "link-derived",
+        sourceBlockId: "ent-b",
+        targetBlockId: "ent-a",
+        type: "derived_from" as const,
+        layer: "prov" as const,
+        createdBy: "human" as const,
+      },
+    ];
+    const provDoc = generateProvDocument({ blocks, labels, links });
+    const doc = buildW3CProvJsonLd(provDoc, "note-title");
+    const deriv = doc["@graph"].find(
+      (n: any) =>
+        n["@type"] === "Derivation" &&
+        n.generatedEntity === "entity_ent-b" &&
+        n.usedEntity === "entity_ent-a",
+    );
+    expect(deriv).toBeDefined();
+    expect((deriv as any)["graphium:linkType"]).toBeUndefined();
   });
 });

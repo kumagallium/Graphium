@@ -2126,6 +2126,7 @@ export const en: Record<string, string> = {
   "graph.growthSummary": "Grew {count}× · last: {op}",
   "prov.prevStepFallback": "Previous step",
   "prov.resultOf": "Result of {label}",
+  "prov.untitledBlock": "Untitled block",
 
   // 設定
   "settings.ai.modelNotFound": "Model not found",

@@ -2123,6 +2123,7 @@ export const ja: Record<string, string> = {
   "graph.growthSummary": "成長 {count} 回 · 最終: {op}",
   "prov.prevStepFallback": "前手順",
   "prov.resultOf": "{label} の結果",
+  "prov.untitledBlock": "無題のブロック",
 
   // 設定
   "settings.ai.modelNotFound": "モデルが見つかりません",
