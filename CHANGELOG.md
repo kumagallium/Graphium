@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.42.2](https://github.com/kumagallium/Graphium/compare/v0.42.1...v0.42.2) - 2026-08-24
+
+- fix(ai-chat): ground URL-material chat in the page/PDF content by @kumagallium in https://github.com/kumagallium/Graphium/pull/757
+- fix(updater): surface download progress, errors, and a timeout in the update banner by @kumagallium in https://github.com/kumagallium/Graphium/pull/759
+
 ## [v0.42.1](https://github.com/kumagallium/Graphium/compare/v0.42.0...v0.42.1) - 2026-08-24
 
 - fix(prov): project all block-link types into the PROV graph and clear edge-data debt by @kumagallium in https://github.com/kumagallium/Graphium/pull/754
