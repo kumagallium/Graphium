@@ -298,23 +298,10 @@ import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 
-// URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）。LLM 加工前の原語原文を Reader 経由で
-// 取り、セッション内キャッシュする。永続保存版（B-persist）は下の persistUrlSourceText / loadMediaText。
-const urlTextCache = new Map<string, string>();
-async function loadUrlText(url: string): Promise<string | undefined> {
-  const cached = urlTextCache.get(url);
-  if (cached != null) return cached;
-  try {
-    const { fetchReaderArticle } = await import("./features/pdf-translate/translate-service");
-    const article = await fetchReaderArticle(url);
-    const text = (article.textContent || "").trim();
-    if (!text) return undefined;
-    urlTextCache.set(url, text);
-    return text;
-  } catch {
-    return undefined;
-  }
-}
+// URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）は共有チョークポイント
+// url-text-loader.ts の loadUrlText を使う（PDF URL は pdf-proxy 経由でテキスト抽出）。
+// 永続保存版（B-persist）は下の persistUrlSourceText / loadMediaText。
+import { loadUrlText } from "./features/ai-assistant/url-text-loader";
 
 // URL の原語原文（LLM 加工前）を永続保存し、保存先メディア ID を返す（B-persist）。
 // 空文字・未対応プロバイダ・保存失敗時は undefined を返し、呼び出し側は B-runtime の
