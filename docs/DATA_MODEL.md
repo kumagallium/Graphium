@@ -566,6 +566,10 @@ Unlike `wikiMeta.derivedFromNotes` (a cumulative *current-value set*),
 `used` keeps the per-operation attribution: which save was caused by
 which source. Both fields are optional additions, so documents written
 by older builds load unchanged.
+Note-level derivation operations (whole-note derive, fork-from-snapshot)
+also set `used` on their `human_derivation` `EditActivity` to the source
+note id, so the provenance bundle records what a derived note was copied
+from, not just Wiki growth.
 
 The revision log is **uncapped**. Every save appends a `RevisionEntity`
 (hash + activity + timestamps) and the entry is kept indefinitely;

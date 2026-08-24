@@ -1364,7 +1364,8 @@ export function useFileManager(authenticated: boolean) {
           derivedTitle: title,
           now,
         });
-        newDoc = await recordRevision(newDoc, null, "human_derivation");
+        // 派生元ノート ID を EditActivity.used に残す（何から派生したかの Usage）
+        newDoc = await recordRevision(newDoc, null, "human_derivation", { sources: [sourceNoteId] });
         newDoc = normalizeTableRowIdentities(newDoc);
         const createdFileId = await createFile(newDoc.title, newDoc);
         newFileId = createdFileId;
@@ -1500,7 +1501,8 @@ export function useFileManager(authenticated: boolean) {
           derivedTitle: title,
           now,
         });
-        newDoc = await recordRevision(newDoc, null, "human_derivation");
+        // 派生元ノート ID を EditActivity.used に残す（何から派生したかの Usage）
+        newDoc = await recordRevision(newDoc, null, "human_derivation", { sources: [sourceNoteId] });
         newDoc = normalizeTableRowIdentities(newDoc);
         const newFileId = await createFile(newDoc.title, newDoc);
 

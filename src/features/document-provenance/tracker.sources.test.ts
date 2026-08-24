@@ -58,6 +58,18 @@ describe("recordRevision + sources (prov:used)", () => {
     expect(doc2.documentProvenance!.activities[0].used).toBeUndefined();
   });
 
+  it("human_derivation（ノート全体派生・版からの派生）でも sources が used に記録される（Fix 5）", async () => {
+    const doc = await recordRevision(makeDoc(), null, "human_derivation", {
+      sources: ["source-note-id"],
+    });
+    const activity = doc.documentProvenance!.activities[0];
+    expect(activity.type).toBe("human_derivation");
+    expect(activity.used).toEqual(["source-note-id"]);
+    // human_derivation は人間エージェントとして分類される（AI 化しない）
+    const agent = doc.documentProvenance!.agents.find((a) => a.id === activity.wasAssociatedWith);
+    expect(agent?.type).toBe("human");
+  });
+
   it("wiki_* 系の操作は AI エージェントとして分類される", async () => {
     const types = [
       "wiki_ingest",
