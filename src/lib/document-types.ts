@@ -2,6 +2,7 @@
 // ストレージプロバイダーに依存しない、アプリケーション固有の型
 
 import type { DocumentProvenance } from "../features/document-provenance/types";
+import type { BlockLink } from "./block-link-types";
 
 // AI Wiki ドキュメントの種類
 // summary  : 1 ノートに対する内部向け要約
@@ -845,9 +846,9 @@ export type GraphiumPage = {
    */
   labels: Record<string, string>;
   /** PROV 層リンク（DAG 制約） */
-  provLinks: any[];
+  provLinks: BlockLink[];
   /** 知識層リンク（循環 OK） */
-  knowledgeLinks: any[];
+  knowledgeLinks: BlockLink[];
   /** @deprecated v1 互換: 旧 links フィールド。読み込み時に provLinks/knowledgeLinks に変換する */
   links?: any[];
   /**

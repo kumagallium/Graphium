@@ -18,6 +18,7 @@ import {
 import { registerProvider, setActiveProvider } from "../../lib/storage/registry";
 import type { StorageProvider } from "../../lib/storage/types";
 import type { GraphiumDocument } from "../../lib/document-types";
+import type { BlockLink } from "../../lib/block-link-types";
 
 // ---------------------------------------------------------------------------
 // テスト用スタブ
@@ -27,7 +28,19 @@ function labelStoreOf(entries: [string, string][]): LabelSnapshotSource {
   return { getSnapshot: () => ({ labels: entries }) };
 }
 
-function linkStoreOf(links: Array<{ layer?: string; id: string }>): LinkSource {
+// layer による振り分けのみを検証するため、他フィールドはダミー値で固定する
+function testLink(overrides: Partial<BlockLink> & { id: string }): BlockLink {
+  return {
+    sourceBlockId: "b1",
+    targetBlockId: "b2",
+    type: "reference",
+    layer: "knowledge",
+    createdBy: "human",
+    ...overrides,
+  } as BlockLink;
+}
+
+function linkStoreOf(links: BlockLink[]): LinkSource {
   return { getAllLinks: () => links };
 }
 
@@ -123,21 +136,19 @@ describe("buildSavedPageFields", () => {
   });
 
   it("リンクを layer で prov / knowledge に振り分ける（layer 未設定は両方から除外）", () => {
+    const p1 = testLink({ id: "p1", layer: "prov", type: "derived_from" });
+    const k1 = testLink({ id: "k1", layer: "knowledge" });
+    const p2 = testLink({ id: "p2", layer: "prov", type: "derived_from" });
+    // layer 未設定はどちらにも入らない（元の filter と同じ）。実データでは
+    // 起こり得ないが、防御的な filter の挙動を確かめるため意図的に型を崩す
+    const noLayer = { ...testLink({ id: "no-layer" }), layer: undefined } as unknown as BlockLink;
     const { provLinks, knowledgeLinks } = buildSavedPageFields({
       labelStore: labelStoreOf([]),
-      linkStore: linkStoreOf([
-        { layer: "prov", id: "p1" },
-        { layer: "knowledge", id: "k1" },
-        { layer: "prov", id: "p2" },
-        { id: "no-layer" }, // layer 未設定はどちらにも入らない（元の filter と同じ）
-      ]),
+      linkStore: linkStoreOf([p1, k1, p2, noLayer]),
       blockAlignmentStore: alignmentStoreOf({}),
     });
-    expect(provLinks).toEqual([
-      { layer: "prov", id: "p1" },
-      { layer: "prov", id: "p2" },
-    ]);
-    expect(knowledgeLinks).toEqual([{ layer: "knowledge", id: "k1" }]);
+    expect(provLinks).toEqual([p1, p2]);
+    expect(knowledgeLinks).toEqual([k1]);
   });
 
   it("blockAlignments が空なら undefined（フィールド省略）", () => {
