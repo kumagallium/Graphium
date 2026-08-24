@@ -1785,6 +1785,9 @@ export type FlatRelation = {
   "@type": string;
   from: string;
   to: string;
+  /** wasDerivedFrom のみ: 元のブロック間リンク種別（derived_from / reproduction_of /
+   *  used・generated の Activity 未解決フォールバック）。無指定は derived_from 由来 */
+  linkType?: string;
 };
 
 /** ProvJsonLd の埋め込み関係をフラットなリストに展開する */
@@ -1812,6 +1815,7 @@ export function extractRelations(doc: ProvJsonLd): FlatRelation[] {
           "@type": "prov:wasDerivedFrom",
           from: node["@id"],
           to: ref["@id"],
+          linkType: ref["graphium:linkType"],
         });
       }
     }

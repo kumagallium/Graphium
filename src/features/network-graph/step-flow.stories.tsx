@@ -152,6 +152,59 @@ export const ParallelRuns: Story = {
   render: () => <StepFlowView graph={PARALLEL_RUNS_GRAPH} />,
 };
 
+// ── derived エッジ（#754: derived_from / reproduction_of リンク由来）──
+//
+// block-link で書いた derived_from / reproduction_of が prov:wasDerivedFrom として
+// フローに出るケース。派生元 → 派生した側の向きに実線を張る。generator.ts の
+// wasDerivedFrom は 3 由来（derived_from / reproduction_of / used・generated の
+// フォールバック）を区別なく生成するが、FlowEdge.linkType で LINK_TYPE_META と
+// 同じ色に出し分ける（derived_from=紫 / reproduction_of=橙）。派生元がラベル無し
+// 段落から合成された Entity（block kind）のケースも合わせて確認する。
+
+const DERIVED_GRAPH: FlowGraphData = {
+  steps: [{ id: "s-synthesize", name: "合成", params: [] }],
+  entities: [
+    { id: "inline_output_ent_sample", label: "試料A", kind: "output", entityId: "ent_sample", attrs: [] },
+    {
+      // derived_from で参照した先行研究の結果（ラベル無し段落から合成された block kind）
+      id: "block_prior_result",
+      label: "先行研究の結果",
+      kind: "block",
+      attrs: [],
+    },
+    {
+      // reproduction_of で再現対象にした過去の実験（別の block kind）
+      id: "block_repro_target",
+      label: "再現対象の実験",
+      kind: "block",
+      attrs: [],
+    },
+  ],
+  edges: [
+    { id: "g-sample", kind: "generates", source: "s-synthesize", target: "inline_output_ent_sample" },
+    // linkType 無し = derived_from（紫）
+    {
+      id: "derived-1",
+      kind: "derived",
+      source: "block_prior_result",
+      target: "inline_output_ent_sample",
+    },
+    // linkType = reproduction_of（橙）
+    {
+      id: "derived-2",
+      kind: "derived",
+      source: "block_repro_target",
+      target: "inline_output_ent_sample",
+      linkType: "reproduction_of",
+    },
+  ],
+};
+
+export const DerivedEdge: Story = {
+  name: "derived エッジ（wasDerivedFrom）",
+  render: () => <StepFlowView graph={DERIVED_GRAPH} />,
+};
+
 export const EmptyState: Story = {
   name: "空状態（手順ゼロの入口）",
   render: () => (
@@ -382,7 +435,10 @@ function Playground() {
               .filter((pp) => !!pp.entityId)
               .map((pp) => ({ entityId: pp.entityId!, kind: "attribute" as const, label: pp.label })),
             ...graph.entities
-              .filter((e) => !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId)
+              .filter(
+                (e): e is typeof e & { kind: Exclude<typeof e.kind, "block"> } =>
+                  e.kind !== "block" && !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId,
+              )
               .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label, attrs: e.attrs })),
           ],
         };

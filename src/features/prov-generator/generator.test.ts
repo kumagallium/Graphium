@@ -2771,7 +2771,12 @@ describe("ブロック間リンク4種のPROV射影", () => {
       { id: "link-1", sourceBlockId: "plain-c", targetBlockId: "ent-a", type: "used", layer: "prov", createdBy: "human" },
     ]);
     const relations = getRelations(doc);
-    expect(relations).toContainEqual({ "@type": "prov:wasDerivedFrom", from: "block_plain-c", to: "entity_ent-a" });
+    expect(relations).toContainEqual({
+      "@type": "prov:wasDerivedFrom",
+      from: "block_plain-c",
+      to: "entity_ent-a",
+      linkType: "used",
+    });
     const warnings = getWarnings(doc);
     expect(warnings.some((w: any) => w.type === "activity-unresolved")).toBe(true);
     // 合成された block_<id> Entity は本文先頭を label にする
@@ -2784,7 +2789,12 @@ describe("ブロック間リンク4種のPROV射影", () => {
       { id: "link-1", sourceBlockId: "plain-c", targetBlockId: "ent-a", type: "generated", layer: "prov", createdBy: "human" },
     ]);
     const relations = getRelations(doc);
-    expect(relations).toContainEqual({ "@type": "prov:wasDerivedFrom", from: "entity_ent-a", to: "block_plain-c" });
+    expect(relations).toContainEqual({
+      "@type": "prov:wasDerivedFrom",
+      from: "entity_ent-a",
+      to: "block_plain-c",
+      linkType: "generated",
+    });
     expect(getWarnings(doc).some((w: any) => w.type === "activity-unresolved")).toBe(true);
   });
 

@@ -323,6 +323,160 @@ describe("provDocToFlowGraph（F 案: Entity 独立ノード）", () => {
   });
 });
 
+describe("provDocToFlowGraph — prov:wasDerivedFrom（derived エッジ、#754）", () => {
+  it("wasDerivedFrom を derived エッジに変換する（source=派生元 / target=派生した側）", () => {
+    const doc = makeDoc([
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      {
+        "@id": "inline_output_ent_origin",
+        "@type": "prov:Entity",
+        "rdfs:label": "元試料",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+      },
+      {
+        "@id": "inline_output_ent_derived",
+        "@type": "prov:Entity",
+        "rdfs:label": "派生試料",
+        // from=派生した側（derived）, to=派生元（origin）
+        "prov:wasDerivedFrom": [{ "@id": "inline_output_ent_origin" }],
+      },
+    ]);
+
+    const { edges } = provDocToFlowGraph(doc);
+    expect(edges).toContainEqual({
+      id: "derived-inline_output_ent_origin->inline_output_ent_derived",
+      kind: "derived",
+      source: "inline_output_ent_origin",
+      target: "inline_output_ent_derived",
+    });
+  });
+
+  it("graphium:linkType 付きの wasDerivedFrom は FlowEdge.linkType に伝播する（reproduction_of 等の色分け用）", () => {
+    const doc = makeDoc([
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      {
+        "@id": "inline_output_ent_origin",
+        "@type": "prov:Entity",
+        "rdfs:label": "先行研究",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+      },
+      {
+        "@id": "inline_output_ent_repro",
+        "@type": "prov:Entity",
+        "rdfs:label": "再現実験",
+        "prov:wasDerivedFrom": [{ "@id": "inline_output_ent_origin", "graphium:linkType": "reproduction_of" }],
+      },
+    ]);
+
+    const { edges } = provDocToFlowGraph(doc);
+    const edge = edges.find((e) => e.kind === "derived");
+    expect(edge?.linkType).toBe("reproduction_of");
+  });
+
+  it("graphium:linkType 無しの wasDerivedFrom は FlowEdge.linkType が undefined のまま（derived_from 由来）", () => {
+    const doc = makeDoc([
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      {
+        "@id": "inline_output_ent_origin",
+        "@type": "prov:Entity",
+        "rdfs:label": "元試料",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+      },
+      {
+        "@id": "inline_output_ent_derived",
+        "@type": "prov:Entity",
+        "rdfs:label": "派生試料",
+        "prov:wasDerivedFrom": [{ "@id": "inline_output_ent_origin" }],
+      },
+    ]);
+
+    const { edges } = provDocToFlowGraph(doc);
+    const edge = edges.find((e) => e.kind === "derived");
+    expect(edge?.linkType).toBeUndefined();
+  });
+
+  it("端点 Entity が used/generates に登場しない場合は block kind で合成ノードを追加する", () => {
+    const doc = makeDoc([
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      { "@id": "activity_B", "@type": "prov:Activity", "rdfs:label": "B", "graphium:blockId": "blkB" },
+      // ラベル無し段落から合成された Entity（generator.ts の ensureBlockEntity 相当）
+      { "@id": "block_blkA", "@type": "prov:Entity", "rdfs:label": "ある操作をした" },
+      {
+        "@id": "block_blkB",
+        "@type": "prov:Entity",
+        "rdfs:label": "別の操作をした",
+        "prov:wasDerivedFrom": [{ "@id": "block_blkA" }],
+      },
+    ]);
+
+    const { entities, edges } = provDocToFlowGraph(doc);
+    expect(entities.map((e) => `${e.kind}:${e.label}`).sort()).toEqual([
+      "block:ある操作をした",
+      "block:別の操作をした",
+    ]);
+    expect(edges).toContainEqual({
+      id: "derived-block_blkA->block_blkB",
+      kind: "derived",
+      source: "block_blkA",
+      target: "block_blkB",
+    });
+  });
+
+  it("synthetic（result_synthetic_*）が端点になる場合はノードもエッジも作らない", () => {
+    const doc = makeDoc([
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      {
+        "@id": "result_synthetic_blkA",
+        "@type": "prov:Entity",
+        "rdfs:label": "A の結果",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+        "prov:wasDerivedFrom": [{ "@id": "block_other" }],
+      },
+      { "@id": "block_other", "@type": "prov:Entity", "rdfs:label": "他の何か" },
+    ]);
+
+    const { entities, edges } = provDocToFlowGraph(doc);
+    expect(entities.some((e) => e.id === "result_synthetic_blkA")).toBe(false);
+    expect(edges.some((e) => e.kind === "derived")).toBe(false);
+  });
+
+  it("既存の used/generates エッジ・ノード数は wasDerivedFrom の有無に影響されない", () => {
+    const baseGraph = [
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      {
+        "@id": "activity_B",
+        "@type": "prov:Activity",
+        "rdfs:label": "B",
+        "graphium:blockId": "blkB",
+        "prov:used": [{ "@id": "inline_output_ent_x" }],
+      },
+      {
+        "@id": "inline_output_ent_x",
+        "@type": "prov:Entity",
+        "rdfs:label": "中間体",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+      },
+    ];
+    const without = provDocToFlowGraph(makeDoc(baseGraph));
+    const withDerived = provDocToFlowGraph(
+      makeDoc([
+        ...baseGraph,
+        { "@id": "block_extra", "@type": "prov:Entity", "rdfs:label": "追加ノート" },
+        {
+          "@id": "inline_output_ent_x",
+          "@type": "prov:Entity",
+          "rdfs:label": "中間体",
+          "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+          "prov:wasDerivedFrom": [{ "@id": "block_extra" }],
+        },
+      ]),
+    );
+    const usedGenEdges = (g: typeof without) => g.edges.filter((e) => e.kind !== "derived");
+    expect(usedGenEdges(withDerived)).toEqual(usedGenEdges(without));
+    expect(withDerived.entities.filter((e) => e.kind !== "block")).toEqual(without.entities);
+  });
+});
+
 describe("テーブル行の tableRef", () => {
   const doc = (nodes: any[]) => ({ "@context": {}, "@graph": nodes }) as any;
 

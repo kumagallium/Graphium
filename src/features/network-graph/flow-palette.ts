@@ -10,7 +10,7 @@
 
 import type { ActivityIoKind } from "./activity-graph-adapter";
 
-export type FlowNodeKind = ActivityIoKind | "activity";
+export type FlowNodeKind = ActivityIoKind | "activity" | "block";
 
 export type FlowKindColors = { main: string; bg: string; text: string };
 
@@ -19,6 +19,9 @@ export const KIND_PALETTE: Record<FlowNodeKind, FlowKindColors> = {
   material: { main: "#4B7A52", bg: "var(--color-label-entity-bg)", text: "#2d4a32" },
   tool: { main: "#c08b3e", bg: "var(--color-label-parameter-bg)", text: "#7a5a22" },
   output: { main: "#c26356", bg: "var(--color-label-result-bg)", text: "#a8513f" },
+  // block: ラベル無し段落から合成された Entity（derived エッジの端点専用）。
+  // どの PROV ラベルにも属さないので UI ニュートラルなグレーで表示する
+  block: { main: "var(--color-text-tertiary)", bg: "var(--color-surface)", text: "var(--color-text-tertiary)" },
 };
 
 /** 選択の表し方。枠の太さは変えずリングにする（実寸が変わると React Flow が測り直す） */

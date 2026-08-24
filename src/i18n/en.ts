@@ -839,6 +839,7 @@ export const en: Record<string, string> = {
   "activityGraph.editChip": "Edit",
   "activityGraph.removeChip": "Remove label from text",
   "activityGraph.orderOnly": "order only",
+  "activityGraph.derivedFrom": "derived from",
   "activityGraph.addAttr": "Parameter",
   "step.unspecifiedOutput": "Without a specific output",
   "graphTable.nameColumn": "Name",
