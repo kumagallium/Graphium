@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.42.0](https://github.com/kumagallium/Graphium/compare/v0.41.0...v0.42.0) - 2026-08-24
+
+- feat(step): cross-note output references with durable row identity by @kumagallium in https://github.com/kumagallium/Graphium/pull/751
+
 ## [v0.41.0](https://github.com/kumagallium/Graphium/compare/v0.40.2...v0.41.0) - 2026-08-21
 
 - feat: プロセス一覧からノートをコピー可能にする by @kumagallium in https://github.com/kumagallium/Graphium/pull/748
