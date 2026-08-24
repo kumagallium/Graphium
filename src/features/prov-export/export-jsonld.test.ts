@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { buildW3CProvJsonLd, type WikiEntityInfo } from "./export-jsonld";
 import { generateProvDocument, type ProvJsonLd } from "../prov-generator";
+import type { BlockLink } from "../block-link/link-types";
 
 const emptyProv: ProvJsonLd = {
   "@context": {
@@ -611,5 +612,177 @@ describe("buildW3CProvJsonLd — block-link linkType passthrough (edge debt Fix 
     );
     expect(deriv).toBeDefined();
     expect((deriv as any)["graphium:linkType"]).toBeUndefined();
+  });
+});
+
+// ── 他ノート output 参照（cross-note informed_by）の export 反映 ──
+describe("buildW3CProvJsonLd — cross-note output references", () => {
+  function baseLink(overrides: Partial<BlockLink>): BlockLink {
+    return {
+      id: "link-cross",
+      sourceBlockId: "h-step",
+      targetBlockId: "src-step",
+      type: "informed_by",
+      layer: "prov",
+      createdBy: "human",
+      targetNoteId: "note-b",
+      targetEntityId: "row_123",
+      sourceEntityId: "row_123",
+      targetEntityLabel: "Sample X",
+      targetNoteTitle: "Note B",
+      targetStepTitle: "Synthesis",
+      ...overrides,
+    };
+  }
+
+  it("emits an external stub + Derivation when the local table-row receiver resolves", () => {
+    const provDoc: ProvJsonLd = {
+      "@context": emptyProv["@context"],
+      "@graph": [
+        {
+          "@id": "entity_row-node",
+          "@type": "prov:Entity",
+          "rdfs:label": "Sample X",
+          "graphium:tableRowId": "row_123",
+        } as any,
+      ],
+    };
+    const link = baseLink({});
+    const doc = buildW3CProvJsonLd(provDoc, "n", undefined, [link]);
+
+    const stubId = `graphium:note/${encodeURIComponent("note-b")}/output/${encodeURIComponent("row_123")}`;
+    const stub = doc["@graph"].find((n: any) => n["@id"] === stubId);
+    expect(stub).toBeDefined();
+    expect(stub!["graphium:external"]).toBe(true);
+    expect((stub as any)["graphium:sourceNoteId"]).toBe("note-b");
+    expect((stub as any)["graphium:sourceStepId"]).toBe("src-step");
+    expect((stub as any)["graphium:sourceNoteTitle"]).toBe("Note B");
+    expect((stub as any)["graphium:sourceStepTitle"]).toBe("Synthesis");
+
+    const deriv = doc["@graph"].find(
+      (n: any) =>
+        n["@type"] === "Derivation" &&
+        n.generatedEntity === "entity_row-node" &&
+        n.usedEntity === stubId,
+    );
+    expect(deriv).toBeDefined();
+    expect((deriv as any)["graphium:linkType"]).toBe("cross_note_output");
+  });
+
+  it("resolves the legacy inline-span receiver when no table-row node matches", () => {
+    const provDoc: ProvJsonLd = {
+      "@context": emptyProv["@context"],
+      "@graph": [
+        {
+          "@id": "inline_material_ent42",
+          "@type": "prov:Entity",
+          "rdfs:label": "Sample X",
+        } as any,
+      ],
+    };
+    const link = baseLink({ sourceEntityId: "ent42", targetEntityId: "ent42" });
+    const doc = buildW3CProvJsonLd(provDoc, "n", undefined, [link]);
+
+    const stubId = `graphium:note/${encodeURIComponent("note-b")}/output/${encodeURIComponent("ent42")}`;
+    const deriv = doc["@graph"].find(
+      (n: any) =>
+        n["@type"] === "Derivation" &&
+        n.generatedEntity === "inline_material_ent42" &&
+        n.usedEntity === stubId,
+    );
+    expect(deriv).toBeDefined();
+  });
+
+  it("does not suffix-match an inline node whose entityId happens to contain an underscore", () => {
+    // entityId 自体に "_" を含む場合、末尾一致だと inline_material_foo_bar が
+    // sourceEntityId: "bar" に誤マッチしてしまう。prefix を剥がした残り全体の
+    // 厳密一致でなければ弾けないことを確認する。
+    const provDoc: ProvJsonLd = {
+      "@context": emptyProv["@context"],
+      "@graph": [
+        {
+          "@id": "inline_material_foo_bar",
+          "@type": "prov:Entity",
+          "rdfs:label": "Foo bar",
+        } as any,
+      ],
+    };
+    const link = baseLink({ sourceEntityId: "bar", targetEntityId: "bar" });
+    const doc = buildW3CProvJsonLd(provDoc, "n", undefined, [link]);
+
+    const deriv = doc["@graph"].find(
+      (n: any) => n["@type"] === "Derivation" && n.generatedEntity === "inline_material_foo_bar",
+    );
+    expect(deriv).toBeUndefined();
+  });
+
+  it("falls back to a Usage on the receiving step's Activity when no local node resolves", () => {
+    const provDoc: ProvJsonLd = {
+      "@context": emptyProv["@context"],
+      "@graph": [
+        { "@id": "activity_h-step", "@type": "prov:Activity", "rdfs:label": "Step" } as any,
+      ],
+    };
+    const link = baseLink({ sourceBlockId: "h-step", sourceEntityId: "row_missing" });
+    const doc = buildW3CProvJsonLd(provDoc, "n", undefined, [link]);
+
+    const stubId = `graphium:note/${encodeURIComponent("note-b")}/output/${encodeURIComponent("row_123")}`;
+    const usage = doc["@graph"].find(
+      (n: any) => n["@type"] === "Usage" && n.activity === "activity_h-step" && n.entity === stubId,
+    );
+    expect(usage).toBeDefined();
+    const deriv = doc["@graph"].find((n: any) => n["@type"] === "Derivation" && n.usedEntity === stubId);
+    expect(deriv).toBeUndefined();
+  });
+
+  it("skips the link entirely (no stub, no relation) when neither local node nor Activity resolves", () => {
+    const provDoc: ProvJsonLd = { "@context": emptyProv["@context"], "@graph": [] };
+    const link = baseLink({ sourceEntityId: "row_missing" });
+    const doc = buildW3CProvJsonLd(provDoc, "n", undefined, [link]);
+
+    const stubId = `graphium:note/${encodeURIComponent("note-b")}/output/${encodeURIComponent("row_123")}`;
+    expect(doc["@graph"].find((n: any) => n["@id"] === stubId)).toBeUndefined();
+  });
+
+  it("leaves output unchanged when crossNoteLinks is omitted", () => {
+    const provDoc: ProvJsonLd = {
+      "@context": emptyProv["@context"],
+      "@graph": [
+        {
+          "@id": "entity_row-node",
+          "@type": "prov:Entity",
+          "rdfs:label": "Sample X",
+          "graphium:tableRowId": "row_123",
+        } as any,
+      ],
+    };
+    const withLinks = buildW3CProvJsonLd(provDoc, "n", undefined, [baseLink({})]);
+    const without = buildW3CProvJsonLd(provDoc, "n");
+    // crossNoteLinks 未指定時は従来どおり Content Provenance の変換結果のみ
+    expect(without["@graph"]).toEqual(buildW3CProvJsonLd(provDoc, "n")["@graph"]);
+    expect(without["@graph"]).toHaveLength(1);
+    expect(withLinks["@graph"].length).toBeGreaterThan(without["@graph"].length);
+  });
+
+  it("dedups identical cross-note references into a single stub and relation", () => {
+    const provDoc: ProvJsonLd = {
+      "@context": emptyProv["@context"],
+      "@graph": [
+        {
+          "@id": "entity_row-node",
+          "@type": "prov:Entity",
+          "rdfs:label": "Sample X",
+          "graphium:tableRowId": "row_123",
+        } as any,
+      ],
+    };
+    const link = baseLink({});
+    const doc = buildW3CProvJsonLd(provDoc, "n", undefined, [link, { ...link, id: "link-cross-dup" }]);
+
+    const stubId = `graphium:note/${encodeURIComponent("note-b")}/output/${encodeURIComponent("row_123")}`;
+    const stubs = doc["@graph"].filter((n: any) => n["@id"] === stubId);
+    const derivs = doc["@graph"].filter((n: any) => n["@type"] === "Derivation" && n.usedEntity === stubId);
+    expect(stubs).toHaveLength(1);
+    expect(derivs).toHaveLength(1);
   });
 });
