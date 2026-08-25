@@ -82,6 +82,20 @@ export async function shareNote(
   doc: GraphiumDocument,
   options: ShareNoteOptions,
 ): Promise<ShareNoteResult> {
+  return shareGraphiumDocument(doc, "note", {}, options);
+}
+
+/**
+ * ノート / Knowledge 共通の Share コア。GraphiumDocument を JSON 化して
+ * shared に書き出すフローは entry type と extra フィールド以外同一。
+ * share-knowledge.ts からも使う（features/sharing 内部専用）。
+ */
+export async function shareGraphiumDocument(
+  doc: GraphiumDocument,
+  entryType: "note" | "knowledge",
+  extraFields: Record<string, unknown>,
+  options: ShareNoteOptions,
+): Promise<ShareNoteResult> {
   try {
     // ── Phase 2c-1: 自動 blob 化 ──
     const extractFileId =
@@ -123,7 +137,7 @@ export async function shareNote(
 
     const baseEntry: SharedEntry = {
       id,
-      type: "note",
+      type: entryType,
       author: options.author,
       created_at: doc.sharedRef?.sharedAt ?? now,
       updated_at: now,
@@ -131,6 +145,7 @@ export async function shareNote(
       prov: { derived_from: [] },
       extra: {
         title: doc.title,
+        ...extraFields,
         // Phase 2c-1: 埋め込まれた媒体の BlobRef 一覧（dedup 済み）
         ...(blobs.length > 0 ? { blobs } : {}),
       },
@@ -144,7 +159,7 @@ export async function shareNote(
       ...doc,
       sharedRef: {
         id,
-        type: "note",
+        type: entryType,
         sharedAt: now,
         hash,
       },

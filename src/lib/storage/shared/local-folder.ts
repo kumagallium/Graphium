@@ -28,13 +28,13 @@ import { isValidSharedId } from "./id";
 
 // SharedEntry.type ("note" 等、単数) と shared フォルダ名 ("notes" 等、複数) の対応。
 // Tauri 側コマンドはフォルダ名を期待する（lib.rs の SHARED_ENTRY_TYPES）。
-const TYPE_TO_FOLDER: Record<SharedEntryType, string> = {
+// export はテスト用（Rust 側 SHARED_ENTRY_TYPES との整合検査）
+export const TYPE_TO_FOLDER: Record<SharedEntryType, string> = {
   note: "notes",
   reference: "references",
   "data-manifest": "data-manifests",
   template: "templates",
-  claim: "claims",
-  atom: "atoms",
+  knowledge: "knowledge",
   report: "reports",
 };
 

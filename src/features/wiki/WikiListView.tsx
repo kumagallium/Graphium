@@ -3,7 +3,7 @@
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Bot, Filter, Search, Trash2, RefreshCw, Globe2, Eraser } from "lucide-react";
+import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser } from "lucide-react";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { cn } from "../../lib/utils";
 import type {
@@ -75,6 +75,12 @@ type Props = {
    * まとめて剥がす用途。KB 側は触らない（ノートの grounding.validity のみ）。
    */
   onClearWorldValidity?: (wikiId: string) => Promise<unknown> | void;
+  /**
+   * 一括チーム共有（任意）— 提供時のみアクションバーに表示。
+   * 選択 id を渡すだけで、実行と進捗表示は呼び出し側（BulkShareModal）が担う。
+   * デスクトップ + shared root + identity が揃っている場合にのみ渡される。
+   */
+  onShareSelected?: (wikiIds: string[]) => void;
 };
 
 // 削除確認ダイアログ
@@ -212,6 +218,7 @@ export function WikiListView({
   onRegenerateWiki,
   onWorldCheckWiki,
   onClearWorldValidity,
+  onShareSelected,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -469,6 +476,20 @@ export function WikiListView({
         </span>
         {someSelected && (
           <div className="ml-auto flex items-center gap-2">
+            {onShareSelected && (
+              <button
+                onClick={() => {
+                  const ids = [...selectedIds];
+                  setSelectedIds(new Set());
+                  onShareSelected(ids);
+                }}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                title={t("share.bulk.title")}
+              >
+                <Share2 size={12} />
+                {t("share.bulk.selected", { count: String(selectedIds.size) })}
+              </button>
+            )}
             {onWorldCheckWiki && wikiKind !== "summary" && (
               <button
                 onClick={() => {

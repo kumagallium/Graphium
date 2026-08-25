@@ -59,9 +59,9 @@ You can move the data folder anywhere — even into a Dropbox, Google Drive, or 
 
 ## Updating
 
-Graphium checks for updates automatically on launch and every 24 hours. When a new version is available, a banner appears at the top of the window — "Graphium x.x.x is available" — with a **Restart to update** button. Clicking it downloads the update, installs it, and relaunches the app automatically. The banner keeps showing the version it found at check time, so if an even newer release has come out since, click the banner's **Check for updates** button to refresh it to the latest version before installing.
+Graphium checks for updates automatically on launch and every 24 hours. When a new version is available, a banner appears at the top of the window — "Graphium x.x.x is available" — with a **Restart to update** button. Clicking it downloads the update, installs it, and relaunches the app automatically. While the update downloads, the banner shows the progress, and if anything fails the error appears right on the banner so you can simply try again. The banner keeps showing the version it found at check time, so if an even newer release has come out since, click the banner's **Check for updates** button to refresh it to the latest version before installing.
 
-You can also check manually: open Settings → **About** and click **Check for updates**. If you're current, it reports "You're on the latest version"; the browser version shows that update checks are only available in the desktop app.
+You can also check manually: open Settings → **About** and click **Check for updates**. If you're current, it reports "You're on the latest version". If a new version is found, a **Restart to update** button appears right there, so you can install without leaving Settings — it works the same way as the banner, showing download progress on the button and any error below it. The browser version shows that update checks are only available in the desktop app.
 
 ![The About tab shows the app version; on the desktop app the Updates section offers a manual check](/screenshots/settings-about-updates.png)
 

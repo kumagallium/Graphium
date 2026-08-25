@@ -18,6 +18,9 @@ export const AI_ERROR_CODES = {
   EMBEDDING_MODEL_UNSUPPORTED: "EMBEDDING_MODEL_UNSUPPORTED",
   /** PROV ingester の LLM 出力が再試行しても構造化ブロックにならなかった（502） */
   PROV_STRUCTURE_FAILED: "PROV_STRUCTURE_FAILED",
+  /** Atomizer の LLM 出力が JSON として解釈できず、jsonrepair でも修復できなかった。
+   *  典型原因は出力トークン上限による途中切断。「候補 0 件」と区別して表示する。 */
+  ATOMIZER_OUTPUT_UNPARSEABLE: "ATOMIZER_OUTPUT_UNPARSEABLE",
 } as const;
 
 export type AiErrorCode = keyof typeof AI_ERROR_CODES;

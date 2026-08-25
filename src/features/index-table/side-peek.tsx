@@ -118,6 +118,7 @@ import {
   setSharedCitePickerCallback,
   insertSharedCitations,
 } from "../../blocks/shared-citation";
+import { tryConvertSharedCitationPaste } from "../../blocks/shared-citation/paste";
 import {
   ChartAssetSourceFlow,
   setChartAssetSourceCallback,
@@ -675,6 +676,8 @@ function SidePeekInner({
       const pastedText = e.clipboardData?.getData("text/plain")?.trim();
       if (pastedText && !/\s/.test(pastedText)) {
         if (tryConvertNoteLinkPaste(e, pastedText)) return;
+        // 共有エントリの引用リンク（#shared/<id>）単体 → 引用カードに変換
+        if (tryConvertSharedCitationPaste(e, pastedText, () => editorRef.current)) return;
       }
 
       // 4) URL 単体ペースト → ブックマーク選択メニュー
