@@ -9,7 +9,7 @@ import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
-import { aiErrorFromResponse } from "../../lib/ai-error";
+import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { t } from "../../i18n";
 
 import type { GraphiumIndex } from "../navigation";
@@ -946,9 +946,14 @@ export async function embedWikiSections(
         );
       }
       embeddingSuccess = true;
+    } else {
+      // エラーレスポンスを読まずに捨てると失敗がサーバーログにしか残らない。
+      // フォールバック保存は続けるが、原因はトーストで可視化する
+      notifyEmbeddingFailure(await aiErrorFromResponse(res, "Embedding request failed"));
     }
-  } catch {
-    // Embedding API 失敗（プロバイダー非対応など）
+  } catch (err) {
+    // Embedding API 失敗（ネットワーク断・プロバイダー非対応など）
+    notifyEmbeddingFailure(err);
   }
 
   // Embedding が使えなくてもテキストだけ保存（フォールバック Retriever 用）
@@ -1766,7 +1771,11 @@ export async function partitionCandidatesByEmbedding<T extends { title: string; 
         embedding_model: getEmbeddingModel() || undefined,
       }),
     });
-    if (!res.ok) return { kept: candidates, duplicates: [] }; // fail-open
+    if (!res.ok) {
+      // fail-open は維持しつつ、重複判定が素通しになっていることを可視化する
+      notifyEmbeddingFailure(await aiErrorFromResponse(res, "Embedding request failed"));
+      return { kept: candidates, duplicates: [] };
+    }
 
     const data = await res.json() as {
       embeddings: { documentId: string; sectionId: string; vector: number[] }[];
@@ -1796,6 +1805,7 @@ export async function partitionCandidatesByEmbedding<T extends { title: string; 
     return { kept, duplicates };
   } catch (err) {
     console.warn("partitionCandidatesByEmbedding failed, falling through:", err);
+    notifyEmbeddingFailure(err);
     return { kept: candidates, duplicates: [] }; // fail-open
   }
 }

@@ -675,7 +675,8 @@ Notes:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
     embedding model (OpenAI-compatible; absent or failing, this side is
-    simply empty).
+    simply empty — failures are not silent, see the error-response
+    section in §6).
   - **A lexical (BM25) index** over Wiki sections, note bodies, and asset
     text (`src/features/lexical-search/`, MiniSearch) — keyword match,
     model-independent, fully local. Tokenization is `Intl.Segmenter` for
@@ -1228,6 +1229,16 @@ gracefully. Auth errors (401) from any LLM call are normalized in one
 place — `runAgentLoop()` / `describeAuthError()` in
 `src/server/services/agent-loop.ts` — because every AI feature funnels
 through that loop.
+
+Embedding calls are the one place where an error has no natural surface:
+they run fire-and-forget behind saves and searches, and the callers keep
+working on degraded fallbacks (text-only sections, lexical-only
+retrieval, fail-open dedup). So embedding failures are funneled through
+`notifyEmbeddingFailure()` (`src/lib/ai-error.ts`), which shows each
+distinct cause once per session as a toast pointing at the Embedding
+model setting (Settings → AI, where a Test embedding button verifies the
+connection). The fallback behavior itself is unchanged — the funnel is
+notification, not control flow.
 
 When running as PWA only, all of this is absent and the editor still
 works.
