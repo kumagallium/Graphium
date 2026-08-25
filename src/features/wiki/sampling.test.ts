@@ -5,9 +5,8 @@ import {
   jaccard,
   cosine,
   similarity,
-  pickFarthestSeeds,
   buildClusterSlice,
-  pickClusterCount,
+  planCoverageSeeds,
   rankCandidatesByRelevance,
   type AtomCandidate,
 } from "./sampling";
@@ -121,13 +120,40 @@ describe("similarity", () => {
   });
 });
 
-describe("pickFarthestSeeds", () => {
-  it("returns all atoms when k >= atoms.length", () => {
-    const atoms = [
-      mkAtom("a", "x", "x"),
-      mkAtom("b", "y", "y"),
-    ];
-    expect(pickFarthestSeeds(atoms, 5)).toHaveLength(2);
+describe("planCoverageSeeds", () => {
+  it("returns empty plan for empty input or sliceLimit <= 0", () => {
+    expect(planCoverageSeeds([], 50).seeds).toHaveLength(0);
+    expect(planCoverageSeeds([], 50).totalCount).toBe(0);
+    expect(planCoverageSeeds([mkAtom("a", "x", "x")], 0).seeds).toHaveLength(0);
+  });
+
+  it("reaches 100% coverage: last cumulativeCovered equals totalCount", () => {
+    const atoms = Array.from({ length: 23 }, (_, i) =>
+      mkAtom(`a${i}`, `topic-${i % 5} title ${i}`, `body ${i}`),
+    );
+    const plan = planCoverageSeeds(atoms, 7);
+    expect(plan.totalCount).toBe(23);
+    expect(plan.cumulativeCovered[plan.cumulativeCovered.length - 1]).toBe(23);
+    expect(plan.cumulativeCovered).toHaveLength(plan.seeds.length);
+  });
+
+  it("uses a single seed when the slice can hold the whole population", () => {
+    const atoms = Array.from({ length: 10 }, (_, i) =>
+      mkAtom(`a${i}`, `title ${i}`, `body ${i}`),
+    );
+    const plan = planCoverageSeeds(atoms, 50);
+    expect(plan.seeds).toHaveLength(1);
+    expect(plan.cumulativeCovered).toEqual([10]);
+  });
+
+  it("cumulativeCovered is strictly increasing (every seed adds new coverage)", () => {
+    const atoms = Array.from({ length: 40 }, (_, i) =>
+      mkAtom(`a${i}`, `cluster-${i % 8} word ${i}`, `text ${i}`),
+    );
+    const plan = planCoverageSeeds(atoms, 5);
+    for (let i = 1; i < plan.cumulativeCovered.length; i++) {
+      expect(plan.cumulativeCovered[i]).toBeGreaterThan(plan.cumulativeCovered[i - 1]);
+    }
   });
 
   it("first seed is the most-recently-modified", () => {
@@ -136,11 +162,11 @@ describe("pickFarthestSeeds", () => {
       mkAtom("new", "β", "β", null, "2026-05-01T00:00:00.000Z"),
       mkAtom("mid", "γ", "γ", null, "2025-06-01T00:00:00.000Z"),
     ];
-    const seeds = pickFarthestSeeds(atoms, 1);
-    expect(seeds[0].snapshot.id).toBe("new");
+    const plan = planCoverageSeeds(atoms, 1);
+    expect(plan.seeds[0].snapshot.id).toBe("new");
   });
 
-  it("spreads seeds across distinct clusters (jaccard fallback)", () => {
+  it("second seed jumps to the uncovered far cluster (jaccard fallback)", () => {
     const provCluster = [
       mkAtom("p1", "PROV provenance tracking", "lineage activity"),
       mkAtom("p2", "PROV provenance lineage", "tracking activity entity"),
@@ -154,17 +180,33 @@ describe("pickFarthestSeeds", () => {
     const atoms = [...provCluster, ...materialsCluster];
     // recent: pick p1 first
     atoms[0].modifiedTime = "2026-05-01T00:00:00.000Z";
-    const seeds = pickFarthestSeeds(atoms, 2);
-    expect(seeds).toHaveLength(2);
-    // 1st seed should be in PROV cluster (most recent)
-    expect(provCluster.some((p) => p.snapshot.id === seeds[0].snapshot.id)).toBe(true);
-    // 2nd seed should be in materials cluster (farthest from PROV)
-    expect(materialsCluster.some((m) => m.snapshot.id === seeds[1].snapshot.id)).toBe(true);
+    const plan = planCoverageSeeds(atoms, 3);
+    // 1st seed: PROV cluster (most recent) → its slice covers the PROV side
+    expect(provCluster.some((p) => p.snapshot.id === plan.seeds[0].snapshot.id)).toBe(true);
+    // 2nd seed: uncovered materials cluster (farthest from seed 1)
+    expect(materialsCluster.some((m) => m.snapshot.id === plan.seeds[1].snapshot.id)).toBe(true);
+    // 2 slices of 3 cover all 6
+    expect(plan.cumulativeCovered[plan.cumulativeCovered.length - 1]).toBe(6);
   });
 
-  it("returns empty for empty input or k=0", () => {
-    expect(pickFarthestSeeds([], 3)).toHaveLength(0);
-    expect(pickFarthestSeeds([mkAtom("a", "x", "x")], 0)).toHaveLength(0);
+  it("is deterministic for the same input", () => {
+    const atoms = Array.from({ length: 17 }, (_, i) =>
+      mkAtom(`a${i}`, `theme-${i % 4} title ${i}`, `body ${i}`),
+    );
+    const p1 = planCoverageSeeds(atoms, 4);
+    const p2 = planCoverageSeeds(atoms, 4);
+    expect(p1.seeds.map((s) => s.snapshot.id)).toEqual(p2.seeds.map((s) => s.snapshot.id));
+    expect(p1.cumulativeCovered).toEqual(p2.cumulativeCovered);
+  });
+
+  it("terminates even in the degenerate all-identical case (sliceLimit 1)", () => {
+    const atoms = Array.from({ length: 6 }, (_, i) =>
+      mkAtom(`a${i}`, "same title", "same body"),
+    );
+    const plan = planCoverageSeeds(atoms, 1);
+    // 各スライスは seed 自身しか含まないので、全件カバーには 6 seed 必要
+    expect(plan.seeds).toHaveLength(6);
+    expect(plan.cumulativeCovered[5]).toBe(6);
   });
 });
 
@@ -193,35 +235,6 @@ describe("buildClusterSlice", () => {
     expect(slice[0]).toBe(seed);
     expect(slice[1]).toBe(near);
     expect(slice[2]).toBe(far);
-  });
-});
-
-describe("pickClusterCount", () => {
-  const opts = { effectiveCoverage: 30, maxK: 8 };
-
-  it("returns 0 for empty corpus", () => {
-    expect(pickClusterCount(0, opts)).toBe(0);
-  });
-
-  it("returns 1 for small corpus", () => {
-    expect(pickClusterCount(1, opts)).toBe(1);
-    expect(pickClusterCount(30, opts)).toBe(1);
-  });
-
-  it("scales with corpus size", () => {
-    expect(pickClusterCount(31, opts)).toBe(2);
-    expect(pickClusterCount(60, opts)).toBe(2);
-    expect(pickClusterCount(90, opts)).toBe(3);
-  });
-
-  it("clamps to maxK", () => {
-    expect(pickClusterCount(250, opts)).toBe(8);
-    expect(pickClusterCount(10000, opts)).toBe(8);
-  });
-
-  it("uses different maxK independently", () => {
-    expect(pickClusterCount(250, { effectiveCoverage: 30, maxK: 10 })).toBe(9);
-    expect(pickClusterCount(500, { effectiveCoverage: 30, maxK: 10 })).toBe(10);
   });
 });
 

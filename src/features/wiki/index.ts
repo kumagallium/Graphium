@@ -39,7 +39,7 @@ export {
   type AtomCandidate,
   tokenize, jaccard, cosine, similarity,
   getDocEmbedding,
-  pickFarthestSeeds, buildClusterSlice, pickClusterCount,
+  buildClusterSlice, planCoverageSeeds, type CoveragePlan,
   rankCandidatesByRelevance, type RelevanceFeature,
 } from "./sampling";
 export { wikiLog } from "./wiki-log";
