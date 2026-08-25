@@ -86,6 +86,8 @@ If Insights seem rare or read like restatements of your Claims, switch only the 
 
 Rather than trusting a recommendation, you can measure the model you picked. **Test insight model**, next to the Chat & Insight model selector, runs the selected model once over three bundled test Claims about bread-making and shows the Insights it produced right there.
 
+![Test insight model, with the bundled Claims and the expected answer expanded](/screenshots/settings-insight-test.png)
+
 Open **Show what the test contains** to see the three Claims and the expected answer before running: two of the Claims (under-kneaded dough collapses, over-proofed dough collapses) should fold into one rule about a viable range, and the third — a one-off note about today's flour — is there as noise. A capable model returns that folded Insight; a struggling one returns restatements of the Claims, or nothing.
 
 Each candidate shows which Claims it cites, and a **possible restatement** badge when its wording barely differs from a source Claim. A summary line counts the folds and restatements so a long result stays readable. The test runs the same multi-stage pipeline as real discovery, so it takes from tens of seconds to a few minutes — that wait is itself a preview of discovery speed with this model.
