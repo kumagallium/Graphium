@@ -233,6 +233,7 @@ import {
   setSharedEntryOpenCallback,
   insertSharedCitations,
 } from "./blocks/shared-citation";
+import { tryConvertSharedCitationPaste } from "./blocks/shared-citation/paste";
 import { collectNewSharedCitationSources } from "./blocks/shared-citation/collect";
 import type { CaptureEntry } from "./features/mobile-capture";
 import {
@@ -2144,6 +2145,13 @@ function NoteEditorInner({
           // 単一トークンのノートリンクは他ブロックと同様にメンション変換する
           const token = cleaned.trim();
           if (token && !/\s/.test(token) && tryConvertNoteLinkPaste(e, token)) return;
+          // 共有エントリの引用リンク（#shared/<id>）も同様にカード変換する
+          if (
+            token &&
+            !/\s/.test(token) &&
+            tryConvertSharedCitationPaste(e, token, () => editorRef.current)
+          )
+            return;
           // ProseMirror / BlockNote の paste handler も同じ DOM に付いており、
           // preventDefault だけだと続けて走ってブロックを改行追加 + paragraph 置換してしまう。
           // capture phase で完全に乗っ取るため stopImmediatePropagation も呼ぶ。
@@ -2210,6 +2218,8 @@ function NoteEditorInner({
       const pastedText = e.clipboardData?.getData("text/plain")?.trim();
       if (pastedText && !/\s/.test(pastedText)) {
         if (tryConvertNoteLinkPaste(e, pastedText)) return;
+        // 共有エントリの引用リンク（#shared/<id>）単体 → 引用カードに変換
+        if (tryConvertSharedCitationPaste(e, pastedText, () => editorRef.current)) return;
       }
 
       // 既存: URL のみのペーストならブックマーク選択メニューを出す

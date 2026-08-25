@@ -12,10 +12,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ExternalLink,
   GitFork,
   Library,
+  Link2,
   RefreshCw,
   ShieldQuestion,
   Trash2,
@@ -34,6 +36,7 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { loadAllSharedEntries } from "./shared-library-loader";
+import { buildSharedCitationLink } from "./citation-link";
 import {
   collectSharedBlobHashes,
   rewriteSharedBlobUrls,
@@ -121,6 +124,16 @@ export function SharedLibraryView({
   const [selected, setSelected] = useState<SharedEntry | null>(null);
   const [hashStatus, setHashStatus] = useState<Record<string, HashStatus>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 「引用リンクをコピー」の完了フィードバック（1.5 秒だけチェック表示）
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyCitationLink = useCallback((entry: SharedEntry) => {
+    void navigator.clipboard?.writeText(buildSharedCitationLink(entry.id));
+    setCopiedId(entry.id);
+    window.setTimeout(() => {
+      setCopiedId((prev) => (prev === entry.id ? null : prev));
+    }, 1500);
+  }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -345,6 +358,17 @@ export function SharedLibraryView({
                     {entry.version && entry.version > 1 ? ` · v${entry.version}` : ""}
                   </span>
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => copyCitationLink(entry)}
+                      className="px-2 py-1 text-[11px] rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
+                      title={t("share.copyCitation")}
+                    >
+                      {copiedId === entry.id ? (
+                        <Check size={11} className="text-emerald-600" />
+                      ) : (
+                        <Link2 size={11} />
+                      )}
+                    </button>
                     {!isMine && isForkable(entry.type) && (
                       <button
                         onClick={() => handleFork(entry)}
@@ -487,6 +511,9 @@ function SharedEntryDetail({
 }: DetailProps) {
   const [body, setBody] = useState<string | null>(null);
   const [bodyError, setBodyError] = useState<string | null>(null);
+  // 「引用リンクをコピー」の完了フィードバック（コンポーネントは entry ごとに
+  // key remount されるため、ローカル state で持って問題ない）
+  const [citationCopied, setCitationCopied] = useState(false);
   // 既存ノートのサイドピークと同じ幅設定を共有する（storage key 共通 = 幅の記憶も共通）
   const peekResize = useSidePeekWidth();
 
@@ -613,6 +640,22 @@ function SharedEntryDetail({
               : t("share.readOnlyOthers")}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                void navigator.clipboard?.writeText(buildSharedCitationLink(entry.id));
+                setCitationCopied(true);
+                window.setTimeout(() => setCitationCopied(false), 1500);
+              }}
+              className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
+              title={t("share.copyCitationHint")}
+            >
+              {citationCopied ? (
+                <Check size={12} className="text-emerald-600" />
+              ) : (
+                <Link2 size={12} />
+              )}
+              {citationCopied ? t("share.copied") : t("share.copyCitation")}
+            </button>
             {onFork && !isMine && (
               <button
                 onClick={onFork}
