@@ -19,31 +19,40 @@ import {
 } from "./graph-layout";
 
 /**
- * 範囲選択ヒントを出した回数（端末ごと・グラフ横断）。
+ * 範囲選択を使ったことがあるか（端末ごと・グラフ横断）。
  *
  * shift + 背景ドラッグは、知らなければ絶対に見つからない操作。かといって常設の
  * 説明文を置くと邪魔になる（手順フロービューの「常設の説明文は置かない」方針）。
  * そこで**ノードを動かした直後**に下中央へ出す — ノードを動かした人は
  * 「並べ替えたい人」なので、まさにその情報が要る場面にいる。
  *
- * 一度きりだと、ノードを動かすのに集中していて見落とすと二度と出会えない。
- * かといって毎回出すとうるさいので、数回で打ち切る。
+ * やめどきは回数ではなく**その人が覚えたかどうか**で決める。複数ノードをまとめて
+ * 動かせた時点で用は済んでいるので、そこで打ち切る。「N 回まで」だと、N 回で
+ * 覚える保証も、N+1 回目に要らない保証も無い。
  */
-const SELECTION_HINT_KEY = "graphium:graphSelectionHintSeen";
-
-/** 何回まで出すか */
-const SELECTION_HINT_MAX = 3;
+const SELECTION_LEARNED_KEY = "graphium:graphSelectionLearned";
 
 /** ヒントを出しておく時間。読み切って理解するには 6 秒では短い */
 const SELECTION_HINT_MS = 9000;
+
+/**
+ * このセッションでもう出したか。並べ替えの最中はドラッグが続くので、
+ * 覚えるまで出すとはいえ 1 回のセッションで何度も出すのはうるさい。
+ * ページを開き直せばまた出る（まだ覚えていなければ）。
+ */
+let selectionHintShownThisSession = false;
 
 export type UseGraphLayoutResult = {
   /** appdata の読み込みが済んだか。false の間はグラフを組まない */
   ready: boolean;
   /** 保存済みの座標。無ければ null */
   positions: GraphLayoutPositions | null;
-  /** 現在の座標を保存する */
-  save: (positions: GraphLayoutPositions) => void;
+  /**
+   * 現在の座標を保存する。
+   * movedMultiple: 複数ノードをまとめて動かしたか（＝範囲選択を使えた）。
+   * これが来たらヒントの役目は終わりなので、以後は出さない。
+   */
+  save: (positions: GraphLayoutPositions, movedMultiple?: boolean) => void;
   /** 自動レイアウトに戻す */
   reset: () => void;
   /** 保存済みの配置を持っているか（リセットボタンの出し分け用） */
@@ -53,7 +62,7 @@ export type UseGraphLayoutResult = {
    * 「保存を捨てた直後に自動レイアウトを流し直す」を明示的に起こす。
    */
   resetSeq: number;
-  /** 範囲選択のヒントを今出すべきか（ノードを動かした直後、上限回数まで） */
+  /** 範囲選択のヒントを今出すべきか（1 ノードだけ動かした直後、まだ覚えていなければ） */
   showSelectionHint: boolean;
 };
 
@@ -86,17 +95,21 @@ export function useGraphLayout(scope: string | null): UseGraphLayoutResult {
   }, [scope]);
 
   const save = useCallback(
-    (positions: GraphLayoutPositions) => {
+    (positions: GraphLayoutPositions, movedMultiple = false) => {
       if (!scope) return;
       saveGraphLayout(scope, positions);
       setHasSaved(hasGraphLayout(scope));
-      // 動かした人に、まとめて動かす方法を知らせる（上限回数まで）
       try {
-        const shown = Number(localStorage.getItem(SELECTION_HINT_KEY) ?? "0");
-        if (!Number.isFinite(shown) || shown < SELECTION_HINT_MAX) {
-          localStorage.setItem(SELECTION_HINT_KEY, String((Number.isFinite(shown) ? shown : 0) + 1));
-          setShowSelectionHint(true);
+        // まとめて動かせた＝もう知っている。ここでヒントは役目を終える
+        if (movedMultiple) {
+          localStorage.setItem(SELECTION_LEARNED_KEY, "1");
+          setShowSelectionHint(false);
+          return;
         }
+        if (localStorage.getItem(SELECTION_LEARNED_KEY) === "1") return;
+        if (selectionHintShownThisSession) return;
+        selectionHintShownThisSession = true;
+        setShowSelectionHint(true);
       } catch {
         // プライベートモード等で読み書きできなくても保存自体は続ける
       }
@@ -134,7 +147,7 @@ export function useGraphLayout(scope: string | null): UseGraphLayoutResult {
  */
 export function attachCytoscapeLayoutPersistence(
   cy: cytoscape.Core,
-  save: (positions: GraphLayoutPositions) => void,
+  save: (positions: GraphLayoutPositions, movedMultiple: boolean) => void,
 ): () => void {
   const handler = () => {
     const positions: GraphLayoutPositions = {};
@@ -145,7 +158,9 @@ export function attachCytoscapeLayoutPersistence(
       const p = node.position();
       positions[node.id()] = { x: p.x, y: p.y };
     });
-    save(positions);
+    // 選択が 2 つ以上あれば、掴んだ 1 つと一緒に全部動いている
+    // （Cytoscape は選択集合をまとめて動かす）＝範囲選択を使えた人
+    save(positions, cy.nodes(":selected").length > 1);
   };
   cy.on("dragfree", "node", handler);
   return () => {

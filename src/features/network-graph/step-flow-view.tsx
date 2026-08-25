@@ -690,7 +690,7 @@ function StepFlowCanvas({
           needsLayoutRef.current = false;
           beginDrag();
         }}
-        onNodeDragStop={() => {
+        onNodeDragStop={(_e, _node, dragged) => {
           if (!layoutScope) {
             endDrag();
             return;
@@ -698,7 +698,8 @@ function StepFlowCanvas({
           const positions: Record<string, { x: number; y: number }> = {};
           for (const n of getNodes()) positions[n.id] = { x: n.position.x, y: n.position.y };
           usingSavedLayoutRef.current = true;
-          saveLayoutRef.current(positions);
+          // 掴んだノード以外も動いていれば、範囲選択を使えた人
+          saveLayoutRef.current(positions, (dragged?.length ?? 1) > 1);
           // 保存の後で、待たせていた作り直しを許可する（順序が逆だと
           // 保存されていない座標で組み直してしまう）
           endDrag();

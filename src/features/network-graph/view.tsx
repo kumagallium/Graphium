@@ -416,8 +416,8 @@ export function NetworkGraphPanel({
     }
 
     // ドラッグ終了で現在の並びを保存し、その後で（待たせていた）組み直しを許可する
-    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) => {
-      saveLayoutRef.current(positions);
+    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions, movedMultiple) => {
+      saveLayoutRef.current(positions, movedMultiple);
       endDragRef.current();
     });
     const onDragStart = () => beginDrag();

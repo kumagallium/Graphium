@@ -2,9 +2,63 @@ import { describe, it, expect, vi } from "vitest";
 import type cytoscape from "cytoscape";
 import {
   applySavedPositions,
+  attachCytoscapeLayoutPersistence,
   seedUnplacedFlowNodes,
   stopLayoutOnGrab,
 } from "./use-graph-layout";
+
+describe("attachCytoscapeLayoutPersistence（何を保存し、何を伝えるか）", () => {
+  function fakeCyWithNodes(nodes: Array<{ id: string; selected: boolean; cluster?: boolean }>) {
+    const handlers = new Map<string, () => void>();
+    const list = nodes.map((n) => ({
+      id: () => n.id,
+      position: () => ({ x: 1, y: 2 }),
+      hasClass: (c: string) => c === "cluster-hub" && !!n.cluster,
+      selected: n.selected,
+    }));
+    return {
+      on: (event: string, _sel: string, handler: () => void) => handlers.set(event, handler),
+      off: (event: string) => handlers.delete(event),
+      // 配列をそのまま返す（forEach / length はそれで足りる）
+      nodes: (selector?: string) =>
+        selector === ":selected" ? list.filter((n) => n.selected) : list,
+      fire: (event: string) => handlers.get(event)?.(),
+    };
+  }
+
+  it("1 つだけ動かしたときは「まとめて動かした」と伝えない", () => {
+    const cy = fakeCyWithNodes([
+      { id: "a", selected: true },
+      { id: "b", selected: false },
+    ]);
+    const save = vi.fn();
+    attachCytoscapeLayoutPersistence(cy as never, save);
+    cy.fire("dragfree");
+    expect(save).toHaveBeenCalledWith(expect.anything(), false);
+  });
+
+  it("複数選択して動かしたときは「まとめて動かした」と伝える（ヒントの役目が終わる合図）", () => {
+    const cy = fakeCyWithNodes([
+      { id: "a", selected: true },
+      { id: "b", selected: true },
+    ]);
+    const save = vi.fn();
+    attachCytoscapeLayoutPersistence(cy as never, save);
+    cy.fire("dragfree");
+    expect(save).toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  it("不可視のダミーノード（cluster-hub）は保存しない", () => {
+    const cy = fakeCyWithNodes([
+      { id: "a", selected: false },
+      { id: "hub", selected: false, cluster: true },
+    ]);
+    const save = vi.fn();
+    attachCytoscapeLayoutPersistence(cy as never, save);
+    cy.fire("dragfree");
+    expect(Object.keys(save.mock.calls[0][0])).toEqual(["a"]);
+  });
+});
 
 describe("stopLayoutOnGrab（ドラッグで自動レイアウトに引き下がってもらう）", () => {
   /** on/off とハンドラ発火だけを持つ最小の Cytoscape 代役 */
