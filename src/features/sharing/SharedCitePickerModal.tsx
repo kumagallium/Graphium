@@ -5,12 +5,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Atom as AtomIcon,
   BookOpen,
+  Brain,
   Database,
   FileText,
   LayoutTemplate,
-  Lightbulb,
   ScrollText,
   type LucideIcon,
 } from "lucide-react";
@@ -25,8 +24,7 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
   reference: BookOpen,
   "data-manifest": Database,
   template: LayoutTemplate,
-  claim: Lightbulb,
-  atom: AtomIcon,
+  knowledge: Brain,
   report: ScrollText,
 };
 

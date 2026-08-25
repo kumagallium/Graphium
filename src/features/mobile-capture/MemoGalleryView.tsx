@@ -6,6 +6,13 @@ import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History,
 import { CaptureDialog } from "./CaptureDialog";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
+import {
+  GRAPH_BG_COLOR,
+  GRAPH_INIT_OPTIONS,
+  baseEdgeStyle,
+  baseNodeStyle,
+  interactionStyles,
+} from "../network-graph/graph-theme";
 import { getActiveCaptures, type CaptureIndex, type CaptureEntry } from "./capture-store";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
@@ -79,56 +86,33 @@ const MEMO_BORDER = "#a67832";
 const NOTE_NODE_COLOR = "#5b8fb9";
 const NOTE_BORDER = "#4a7da6";
 const EDGE_COLOR = "#b8d4bb";
-const BG_COLOR = "#fafdf7";
 
 const graphStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
-      label: "data(label)",
-      "text-wrap": "wrap",
-      "text-max-width": "100px",
-      "font-size": "10px",
-      "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
-      "text-valign": "bottom",
-      "text-margin-y": 6,
+      ...baseNodeStyle,
       "background-color": "data(color)",
       width: "data(size)",
       height: "data(size)",
-      "border-width": 2,
       "border-color": "data(borderColor)",
-      color: "#6b7f6e",
-      "transition-property": "background-color, border-color, opacity, width, height" as any,
-      "transition-duration": 200,
     },
   },
+  ...interactionStyles,
   {
+    // 中心のメモ。大きさは変えずウェイトと形で示す
     selector: "node.memo-node",
     style: {
       shape: "diamond",
       "font-weight": "bold" as any,
-      "font-size": "11px",
-    },
-  },
-  {
-    selector: "node.note-node.hover",
-    style: {
-      "border-width": 3,
-      "overlay-opacity": 0.06,
-      "overlay-color": "#000",
     },
   },
   {
     selector: "edge",
     style: {
-      width: 1.5,
+      ...baseEdgeStyle,
       "line-color": EDGE_COLOR,
       "target-arrow-color": EDGE_COLOR,
-      "target-arrow-shape": "triangle",
-      "arrow-scale": 0.8,
-      "curve-style": "unbundled-bezier" as any,
-      "control-point-distances": 30,
-      "control-point-weights": 0.5,
       opacity: 0.7,
     },
   },
@@ -228,10 +212,8 @@ function MemoDetailModal({
       elements,
       style: graphStyle,
       layout: { name: "preset" },
-      userZoomingEnabled: true,
-      userPanningEnabled: true,
-      boxSelectionEnabled: false,
-      wheelSensitivity: 0.3,
+      ...GRAPH_INIT_OPTIONS,
+      // 小さなグラフなので引きすぎないよう下限を上げる
       minZoom: 0.3,
       maxZoom: 3,
     });
@@ -446,7 +428,7 @@ function MemoDetailModal({
                     </span>
                     <span className="ml-auto">{t("asset.clickToNavigate")}</span>
                   </div>
-                  <div ref={graphRef} className="flex-1" style={{ background: BG_COLOR }} />
+                  <div ref={graphRef} className="flex-1" style={{ background: GRAPH_BG_COLOR }} />
                 </>
               )}
 

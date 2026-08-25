@@ -10,6 +10,8 @@
 //
 //   Atom が安定すれば、Atom を組み合わせる Synthesis も安定する。
 
+import { jsonrepair } from "jsonrepair";
+import { CodedError } from "../../lib/ai-error-codes.js";
 import type { AtomRelation, AtomType, AtomShape, AtomTransfer, EpistemicStatus, ShapeFamily } from "../../lib/document-types.js";
 import {
   ATOM_RELATION_TYPE_VALUES,
@@ -402,6 +404,26 @@ export function buildAtomizerUserMessage(
   return `Scan the following ${concepts.length} Claim pages and factor out the structural rules behind them (Atoms). For each, run the four steps — decompose → classify the shape → abstract the roles → (optionally) name a transfer. An Atom may cover one Claim or several.${statusLegend}\n\n${blocks.join("\n\n")}${existingNote}`;
 }
 
+/**
+ * Atomizer の LLM 応答が JSON として解釈できなかったときに投げる。
+ * 典型原因はモデル出力の途中切断（出力トークン上限）。routes/wiki.ts の catch が
+ * errorBody() 経由で code をクライアントへ通し、localizeAiError が i18n 文言で表示する —
+ * 握りつぶして [] を返すと『見た上で洞察なし』と『応答が壊れていた』が
+ * 見分けられない silent failure になる。
+ */
+export class AtomizerOutputParseError extends CodedError {
+  /** 元のパース例外（tsconfig の lib が ES2022.Error 未満のため Error.cause は使わない） */
+  readonly parseCause: unknown;
+  constructor(cause: unknown, excerpt: string) {
+    super(
+      `Atomizer output was not valid JSON (model response truncated?). Head of output: ${excerpt}`,
+      "ATOMIZER_OUTPUT_UNPARSEABLE",
+    );
+    this.name = "AtomizerOutputParseError";
+    this.parseCause = cause;
+  }
+}
+
 export function parseAtomizerOutput(
   text: string,
   conceptIdToTitle: Map<string, string>,
@@ -419,14 +441,38 @@ export function parseAtomizerOutput(
    */
   conceptIdToRebuttals?: Map<string, string[] | undefined>,
 ): AtomCandidate[] {
-  try {
+  {
     let jsonText = text.trim();
     const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
     if (jsonMatch) jsonText = jsonMatch[1].trim();
 
-    const parsed = JSON.parse(jsonText);
-    const atoms = parsed.atoms ?? parsed;
-    if (!Array.isArray(atoms)) return [];
+    let parsed: unknown;
+    let repaired = false;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (err) {
+      // 出力上限による途中切断などの壊れ JSON。捨てる前に jsonrepair で機械修復を試みる
+      // （#649 の prov-ingester と同じ方針）。修復では途中で切れた最後の要素が不完全な
+      // まま残ることがあるが、下の必須フィールド検証（title / body / sourceConceptIds）が
+      // 弾くので、完全な要素だけが salvage される。
+      try {
+        parsed = JSON.parse(jsonrepair(jsonText));
+        repaired = true;
+        console.warn("Atomizer 出力の JSON を jsonrepair で修復してパースした（途中切断の可能性）");
+      } catch {
+        console.error("Atomizer 出力のパース失敗（修復不能）:", err);
+        throw new AtomizerOutputParseError(err, jsonText.slice(0, 200));
+      }
+    }
+    const atoms = (parsed as { atoms?: unknown })?.atoms ?? parsed;
+    // 有効な JSON だが契約（atoms 配列）と違う形 — prose や別スキーマを返してきたケース。
+    // これも「0 件」ではなく解析失敗として扱う。
+    if (!Array.isArray(atoms)) {
+      throw new AtomizerOutputParseError(
+        new Error("parsed output is not an atoms array"),
+        jsonText.slice(0, 200),
+      );
+    }
 
     const out: AtomCandidate[] = [];
     for (const a of atoms) {
@@ -566,10 +612,15 @@ export function parseAtomizerOutput(
         relatedAtoms,
       });
     }
+    // 修復が必要だった上に salvage も 0 件 → 実質的に応答全体が壊れていた。
+    // 「見た上で洞察なし」と混同させず、解析失敗として報告する。
+    if (repaired && out.length === 0) {
+      throw new AtomizerOutputParseError(
+        new Error("repaired JSON contained no complete atom"),
+        jsonText.slice(0, 200),
+      );
+    }
     return out;
-  } catch (err) {
-    console.error("Atomizer 出力のパース失敗:", err);
-    return [];
   }
 }
 

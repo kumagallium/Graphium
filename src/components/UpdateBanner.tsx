@@ -3,13 +3,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useT } from "../i18n";
-import { checkForUpdates, type UpdateAvailableDetail } from "../lib/updater";
+import {
+  checkForUpdates,
+  type UpdateAvailableDetail,
+  type UpdateProgress,
+} from "../lib/updater";
 
 export function UpdateBanner() {
   const t = useT();
   const [update, setUpdate] = useState<UpdateAvailableDetail | null>(null);
   const [installing, setInstalling] = useState(false);
   const [rechecking, setRechecking] = useState(false);
+  const [progress, setProgress] = useState<UpdateProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showErrorDetail, setShowErrorDetail] = useState(false);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -23,11 +30,15 @@ export function UpdateBanner() {
   const handleInstall = useCallback(async () => {
     if (!update) return;
     setInstalling(true);
+    setError(null);
+    setShowErrorDetail(false);
     try {
-      await update.install();
+      await update.install((p) => setProgress(p));
     } catch (e) {
       console.error("[updater] Install failed:", e);
+      setError(e instanceof Error ? e.message : String(e));
       setInstalling(false);
+      setProgress(null);
     }
   }, [update]);
 
@@ -47,56 +58,114 @@ export function UpdateBanner() {
 
   if (!update) return null;
 
+  // installing 中のボタンラベルは進捗の有無・種類で出し分ける
+  let installLabel = t("updater.install");
+  if (installing) {
+    if (progress?.phase === "downloading" && progress.total) {
+      const percent = Math.round((progress.downloaded / progress.total) * 100);
+      installLabel = t("updater.downloading", { percent: String(percent) });
+    } else if (progress?.phase === "downloading") {
+      const mb = (progress.downloaded / 1024 / 1024).toFixed(1);
+      installLabel = t("updater.downloadingBytes", { mb });
+    } else if (progress?.phase === "installing") {
+      installLabel = t("updater.installingNow");
+    } else {
+      installLabel = t("updater.installing");
+    }
+  }
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 12,
-        padding: "6px 16px",
-        background: "#edf5ee",
-        borderBottom: "1px solid #c5ddc8",
-        fontSize: 13,
-        color: "#2d5a32",
-      }}
-    >
-      <span>{t("updater.available", { version: update.version })}</span>
-      <button
-        onClick={handleRecheck}
-        disabled={rechecking || installing}
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      <div
         style={{
-          padding: "3px 12px",
-          fontSize: 12,
-          fontWeight: 600,
-          borderRadius: 4,
-          border: "1px solid #4B7A52",
-          background: "transparent",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 12,
+          padding: "6px 16px",
+          background: "#edf5ee",
+          borderBottom: "1px solid #c5ddc8",
+          fontSize: 13,
           color: "#2d5a32",
-          cursor: rechecking || installing ? "default" : "pointer",
-          opacity: rechecking ? 0.6 : 1,
         }}
       >
-        {rechecking
-          ? t("settings.about.checking")
-          : t("settings.about.checkNow")}
-      </button>
-      <button
-        onClick={handleInstall}
-        disabled={installing}
-        style={{
-          padding: "3px 12px",
-          fontSize: 12,
-          fontWeight: 600,
-          borderRadius: 4,
-          border: "1px solid #4B7A52",
-          background: installing ? "#c5ddc8" : "#4B7A52",
-          color: "#fff",
-          cursor: installing ? "default" : "pointer",
-        }}
-      >
-        {installing ? t("updater.installing") : t("updater.install")}
-      </button>
+        <span>{t("updater.available", { version: update.version })}</span>
+        <button
+          onClick={handleRecheck}
+          disabled={rechecking || installing}
+          style={{
+            padding: "3px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 4,
+            border: "1px solid #4B7A52",
+            background: "transparent",
+            color: "#2d5a32",
+            cursor: rechecking || installing ? "default" : "pointer",
+            opacity: rechecking ? 0.6 : 1,
+          }}
+        >
+          {rechecking
+            ? t("settings.about.checking")
+            : t("settings.about.checkNow")}
+        </button>
+        <button
+          onClick={handleInstall}
+          disabled={installing}
+          style={{
+            padding: "3px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 4,
+            border: "1px solid #4B7A52",
+            background: installing ? "#c5ddc8" : "#4B7A52",
+            color: "#fff",
+            cursor: installing ? "default" : "pointer",
+          }}
+        >
+          {installLabel}
+        </button>
+        {error && (
+          <>
+            <span style={{ color: "#a33", fontSize: 12 }}>
+              {t("updater.error")}
+            </span>
+            <button
+              onClick={() => setShowErrorDetail((v) => !v)}
+              style={{
+                padding: 0,
+                fontSize: 12,
+                border: "none",
+                background: "transparent",
+                color: "#a33",
+                textDecoration: "underline",
+                cursor: "pointer",
+              }}
+            >
+              {showErrorDetail
+                ? t("updater.errorDetailHide")
+                : t("updater.errorDetailShow")}
+            </button>
+          </>
+        )}
+      </div>
+      {error && showErrorDetail && (
+        <div
+          style={{
+            padding: "6px 16px",
+            background: "rgba(170, 51, 51, 0.06)",
+            borderBottom: "1px solid #c5ddc8",
+            fontFamily: "monospace",
+            fontSize: 11,
+            color: "#a33",
+            userSelect: "text",
+            wordBreak: "break-all",
+            overflowWrap: "break-word",
+          }}
+        >
+          {error}
+        </div>
+      )}
     </div>
   );
 }

@@ -215,9 +215,12 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
  */
 export function ProvGraphPanel({
   doc,
+  noteId,
   editorRef,
 }: {
   doc: ProvJsonLd | null;
+  /** 手動配置の保存スコープに使う、いま開いているノートの id */
+  noteId?: string | null;
   /** メインエディタへの参照。フロービューのノード操作（追加・リネーム・削除）に使う */
   editorRef?: { current: any };
 }) {
@@ -281,7 +284,7 @@ export function ProvGraphPanel({
             蓋をしていたが、書く場所になった今は余白を残す理由がない */}
         {!expanded && (
           <div style={{ height: "calc(100vh - 122px)", minHeight: 380 }}>
-            <ActivityGraphEditor doc={doc} editorRef={editorRef} />
+            <ActivityGraphEditor doc={doc} editorRef={editorRef} noteId={noteId} />
           </div>
         )}
       </div>
@@ -292,7 +295,7 @@ export function ProvGraphPanel({
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             {legendBar}
             <div style={{ height: window.innerHeight - 120 }}>
-              <ActivityGraphEditor doc={doc} editorRef={editorRef} tableLayout="side" />
+              <ActivityGraphEditor doc={doc} editorRef={editorRef} noteId={noteId} tableLayout="side" />
             </div>
           </div>
         </div>,
