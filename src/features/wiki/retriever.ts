@@ -11,6 +11,7 @@
 // [Source: "title"] に正規化し、パネルがタイトル → 参照先に解決してジャンプする）。
 
 import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
+import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { getEmbeddingModel, getEmbeddingLLMModel } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 import { lexicalSearch, reciprocalRankFusion, type LexicalHit } from "../lexical-search";
@@ -56,7 +57,7 @@ export type RetrievedPassage = {
 
 /**
  * 埋め込みで Wiki セクションを引く。埋め込みが使えない（モデル未設定・API 失敗・索引空）
- * ときは空配列を返す（例外にしない）。
+ * ときは空配列を返す（例外にしない）。API 失敗は notifyEmbeddingFailure で可視化する。
  */
 async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): Promise<SearchResult[]> {
   try {
@@ -84,14 +85,19 @@ async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): P
         ...(embModel ? { embedding_model: embModel } : {}),
       }),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      // 空配列（語彙検索へ委譲）は維持しつつ、埋め込み検索が効いていないことを可視化する
+      notifyEmbeddingFailure(await aiErrorFromResponse(res, "Embedding request failed"));
+      return [];
+    }
     const data = await res.json() as { embeddings: { vector: number[] }[] };
     const queryVector = data.embeddings?.[0]?.vector;
     if (!queryVector) return [];
     // 除外分を見込んで多めに取り、@引用・派生知識と重複するものを落とす
     const results = await embeddingStore.searchByVector(queryVector, TOP_K + LEXICAL_CANDIDATES + (excludeIds?.size ?? 0));
     return results.filter((r) => r.score >= MIN_SCORE && !excludeIds?.has(r.documentId));
-  } catch {
+  } catch (err) {
+    notifyEmbeddingFailure(err);
     return [];
   }
 }

@@ -68,6 +68,38 @@ export function localizeAiError(err: unknown): string {
 /** AI 未設定ガード発火の通知イベント。note-app がトースト表示のために listen する */
 export const AI_NOT_CONFIGURED_EVENT = "graphium-ai-not-configured";
 
+/** Embedding 生成失敗の通知イベント。note-app がトースト表示のために listen する */
+export const EMBEDDING_FAILED_EVENT = "graphium-embedding-failed";
+
+// 通知済みの失敗シグネチャ（エラーコード、無ければメッセージ）。
+// embedding は保存・検索のたびに自動で走るので、同じ原因の連発はセッション内 1 回に抑え、
+// 設定変更などで原因が変わったときだけ改めて通知する。
+const notifiedEmbeddingFailures = new Set<string>();
+
+/**
+ * Embedding 失敗の共通通知ファネル。
+ * embedding 呼び出しは fire-and-forget（embedWikiSections / denseWikiSearch /
+ * partitionCandidatesByEmbedding）で、失敗しても呼び出し側はフォールバック
+ * （text-only 保存・語彙検索・fail-open）で黙って続行する。その劣化をユーザーが
+ * 知る手段がサーバーログしか無かったので、失敗をここへ集約してトースト
+ * （EMBEDDING_FAILED_EVENT → note-app）で可視化する。呼び出し側のフォールバック
+ * 動作は変えない — これは通知であって制御フローではない。
+ */
+export function notifyEmbeddingFailure(err: unknown): void {
+  // テスト（Node）や SSR では通知先が無い
+  if (typeof window === "undefined") return;
+  const signature =
+    aiErrorCodeOf(err) ??
+    (err instanceof Error && err.message ? err.message : String(err));
+  if (notifiedEmbeddingFailures.has(signature)) return;
+  notifiedEmbeddingFailures.add(signature);
+  window.dispatchEvent(
+    new CustomEvent(EMBEDDING_FAILED_EVENT, {
+      detail: { message: localizeAiError(err) },
+    }),
+  );
+}
+
 // ガード発火の連続 dispatch 抑制用タイムスタンプ（下の ensureAgentConfigured 参照）
 let lastGuardDispatchAt = 0;
 

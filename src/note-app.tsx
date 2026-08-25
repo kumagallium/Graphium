@@ -266,7 +266,7 @@ import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { schedulePastedImageCapture } from "./features/asset-browser/paste-image-capture";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
-import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
+import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
@@ -5554,6 +5554,30 @@ export function NoteApp() {
     };
     window.addEventListener(AI_NOT_CONFIGURED_EVENT, handler);
     return () => window.removeEventListener(AI_NOT_CONFIGURED_EVENT, handler);
+  }, []);
+  // Embedding 失敗（notifyEmbeddingFailure → EMBEDDING_FAILED_EVENT）のトースト表示。
+  // 発火元は同じ原因をセッション内 1 回に抑えているので、ここは受けて表示するだけ。
+  // 固定 id で置き換え、エラー詳細と設定 → AI（Test embedding）への誘導を出す。
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const message = (e as CustomEvent<{ message?: string }>).detail?.message;
+      const id = "embedding-failure";
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== id),
+          {
+            id,
+            status: "error" as const,
+            noteTitle: tStatic("aiError.embeddingFailedTitle"),
+            result: message
+              ? `${message} — ${tStatic("aiError.embeddingFailedHint")}`
+              : tStatic("aiError.embeddingFailedHint"),
+          },
+        ],
+      }));
+    };
+    window.addEventListener(EMBEDDING_FAILED_EVENT, handler);
+    return () => window.removeEventListener(EMBEDDING_FAILED_EVENT, handler);
   }, []);
   // Wiki Log 表示状態
   const [activeWikiView, setActiveWikiView] = useState<"log" | "lint" | null>(null);
