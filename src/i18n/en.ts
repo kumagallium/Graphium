@@ -318,6 +318,8 @@ export const en: Record<string, string> = {
   "aiError.embeddingModelUnsupported": "Embedding requires an OpenAI-compatible model. Add one in Settings → AI.",
   "aiError.provStructureFailed": "Couldn't turn the AI output into a structured note. Please try again — or switch the model in Settings → AI (Claude models are the most reliable for this).",
   "aiError.atomizerOutputUnparseable": "The insight model's response was cut off or unreadable. Please try again — if it keeps happening, switching the Chat & Insight model in Settings → AI usually helps.",
+  "aiError.embeddingFailedTitle": "Embedding generation is failing",
+  "aiError.embeddingFailedHint": "Citation search and duplicate detection fall back to plain text matching until this is fixed. Check the Embedding model in Settings → AI — the Test embedding button verifies the connection.",
 
   // ── AI チャット ──
   "aiChat.title": "AI Chat",

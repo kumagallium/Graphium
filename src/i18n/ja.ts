@@ -318,6 +318,8 @@ export const ja: Record<string, string> = {
   "aiError.embeddingModelUnsupported": "Embedding は OpenAI 互換モデルのみ対応です。設定 → AI で OpenAI 互換モデルを追加してください。",
   "aiError.provStructureFailed": "AI の出力をノート構造に変換できませんでした。もう一度実行するか、設定 → AI でモデルを切り替えると成功しやすくなります（Claude 系モデルが安定しています）。",
   "aiError.atomizerOutputUnparseable": "洞察モデルの応答が途中で切れているか、解釈できない形式でした。もう一度お試しください。繰り返す場合は、設定 → AI のチャット・洞察モデルを切り替えると成功しやすくなります。",
+  "aiError.embeddingFailedTitle": "埋め込み（Embedding）の生成に失敗しています",
+  "aiError.embeddingFailedHint": "解決するまで、引用検索や重複判定はテキスト一致で代替されます。設定 → AI の Embedding model を確認してください（Test embedding で接続を確認できます）。",
 
   // ── AI チャット ──
   "aiChat.title": "AI チャット",
