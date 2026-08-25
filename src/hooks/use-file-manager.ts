@@ -2294,6 +2294,30 @@ export function useFileManager(authenticated: boolean) {
     }
   }, [setActiveFileId]);
 
+  // 任意 id のノートを上書き保存する（一括共有など、アクティブノート以外への
+  // メタデータ書き戻し用）。handleSave（アクティブ専用）との違い:
+  // - 孤児リンク掃除・テーブル行 identity 正規化はしない（読み込んだ doc に
+  //   フィールドを足して書き戻す用途で、本文には触らないため）
+  // - docCache / 一覧の modifiedTime を追従させ、対象がアクティブノートなら
+  //   activeDoc も更新する（エディタの sharedRefState が initialDoc 経由で追従し、
+  //   次のオートセーブで書き戻したフィールドが巻き戻るのを防ぐ）
+  const handleSaveNoteById = useCallback(
+    async (fileId: string, doc: GraphiumDocument): Promise<void> => {
+      await saveFile(fileId, doc);
+      const modifiedTime = new Date().toISOString();
+      docCacheRef.current.set(fileId, doc);
+      if (fileId === activeFileIdRef.current) {
+        setActiveDoc(doc);
+      }
+      setFiles((prev) =>
+        prev.some((f) => f.id === fileId)
+          ? prev.map((f) => (f.id === fileId ? { ...f, modifiedTime } : f))
+          : prev,
+      );
+    },
+    [],
+  );
+
   // Wiki を保存
   // 戻り値: 実際に保存できたら true。savingRef ガードでスキップした場合と
   // 保存例外の場合は false（従来は void で成功と区別できず、バックグラウンド
@@ -2957,6 +2981,7 @@ export function useFileManager(authenticated: boolean) {
     handleNewNote,
     handleNewFromTemplate,
     handleSave,
+    handleSaveNoteById,
     handleDeriveNote,
     handleCreateLinkedNote,
     handleDeriveWholeNote,

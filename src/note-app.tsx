@@ -172,6 +172,8 @@ import {
   unshareEntry,
   SharedLibraryView,
   materializeSharedBlobs,
+  BulkShareModal,
+  type BulkShareTarget,
 } from "./features/sharing";
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { DocumentProvenancePanel } from "./features/document-provenance";
@@ -5447,6 +5449,8 @@ export function NoteApp() {
   // 引用カードの「開く」から Library の特定エントリへ飛ぶための一時 state。
   // SharedLibraryView が consume したら onFocusConsumed で null に戻す。
   const [sharedLibraryFocusId, setSharedLibraryFocusId] = useState<string | null>(null);
+  // 一括チーム共有の対象（null 以外で BulkShareModal を表示）
+  const [bulkShareTargets, setBulkShareTargets] = useState<BulkShareTarget[] | null>(null);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
   // データ構築は fm 宣言後に行う（globalGraphData）。
   const [showGlobalGraph, setShowGlobalGraph] = useState(false);
@@ -8456,6 +8460,12 @@ export function NoteApp() {
             onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
             onSetNoteContexts={fm.updateNoteContexts}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
+            onShareSelected={
+              isTauri() && getSharedRoot() && loadAuthorIdentity()
+                ? (ids) =>
+                    setBulkShareTargets(ids.map((id) => ({ id, kind: "note" as const })))
+                : undefined
+            }
             onIngestNotes={aiUiEnabled ? async (ids) => {
               // AI 未設定なら発火させない（enqueueIngest にも同ガードがあるが、
               // doc ロード等の無駄な前処理に入る前にここで止める）
@@ -8716,6 +8726,12 @@ export function NoteApp() {
             onRegenerateWiki={aiUiEnabled ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
             onWorldCheckWiki={aiUiEnabled ? (wikiId) => handleWorldCheckWiki(wikiId, "bulk") : undefined}
             onClearWorldValidity={(wikiId) => handleClearWorldValidity(wikiId)}
+            onShareSelected={
+              isTauri() && getSharedRoot() && loadAuthorIdentity()
+                ? (ids) =>
+                    setBulkShareTargets(ids.map((id) => ({ id, kind: "knowledge" as const })))
+                : undefined
+            }
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView
@@ -9385,6 +9401,39 @@ export function NoteApp() {
       {showReleaseNotes && (
         <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
       )}
+      {bulkShareTargets && (() => {
+        const bulkRoot = getSharedRoot();
+        const bulkAuthor = loadAuthorIdentity();
+        if (!bulkRoot || !bulkAuthor) return null;
+        return (
+          <BulkShareModal
+            targets={bulkShareTargets}
+            deps={{
+              root: bulkRoot,
+              author: bulkAuthor,
+              blobRoot: getBlobRoot() ?? undefined,
+              // 対象は保存済みドキュメント（開いている未保存編集は含まれない）
+              loadNote: async (id) => {
+                try {
+                  return await getActiveProvider().loadFile(id);
+                } catch {
+                  return null;
+                }
+              },
+              saveNote: fm.handleSaveNoteById,
+              loadKnowledge: async (id) => {
+                try {
+                  return (await getActiveProvider().loadWikiFile?.(id)) ?? null;
+                } catch {
+                  return null;
+                }
+              },
+              saveKnowledge: (id, doc) => fm.handleSaveWikiFile(id, doc),
+            }}
+            onClose={() => setBulkShareTargets(null)}
+          />
+        );
+      })()}
       <WelcomeDialog />
       <SettingsModal
         isOpen={showSettings}

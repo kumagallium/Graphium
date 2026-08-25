@@ -37,3 +37,11 @@ export {
 } from "./materialize-blobs";
 export { loadAllSharedEntries, type SharedLibraryLoadResult } from "./shared-library-loader";
 export { SharedLibraryView } from "./SharedLibraryView";
+export {
+  bulkShare,
+  type BulkShareTarget,
+  type BulkShareDeps,
+  type BulkShareSummary,
+  type BulkShareItemResult,
+} from "./bulk-share";
+export { BulkShareModal } from "./BulkShareModal";
