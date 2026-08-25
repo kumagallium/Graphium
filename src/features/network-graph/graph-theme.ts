@@ -101,6 +101,21 @@ export const baseEdgeStyle = {
  */
 export const interactionStyles: cytoscape.StylesheetStyle[] = [
   {
+    // 範囲選択でドラッグ中に出る矩形。Cytoscape の既定は薄いグレーで、
+    // このアプリの背景（#fafdf7）の上ではほとんど見えない。React Flow は
+    // 既定で矩形をはっきり描くので、揃えないと「手順フローでは枠が出るのに
+    // ノートのグラフでは出ない」ように見える。数値は app.css の
+    // `.react-flow__selection` と対で管理すること
+    selector: "core",
+    // core のスタイル型は全プロパティ必須なので、一部だけ与えるにはキャストが要る
+    style: {
+      "selection-box-color": GRAPH_ACCENT_COLOR,
+      "selection-box-opacity": 0.12,
+      "selection-box-border-color": GRAPH_ACCENT_COLOR,
+      "selection-box-border-width": 1,
+    } as any,
+  },
+  {
     selector: "node:active",
     style: {
       "overlay-opacity": 0.08,

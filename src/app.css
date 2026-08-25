@@ -782,6 +782,16 @@ body.gph-col-resizing * {
   white-space: pre;
 }
 
+/* ── 範囲選択の矩形（React Flow 側）────────────────────────
+   Cytoscape のグラフと同じ見え方にする。Cytoscape 側は
+   features/network-graph/graph-theme.ts の core スタイルが正で、
+   ここはその数値に合わせた React Flow 版。React Flow の既定は青系なので、
+   同じ操作なのに手順フローだけ別の色で囲われることになる。 */
+.react-flow__selection {
+  background: rgba(75, 122, 82, 0.12); /* #4B7A52 12% */
+  border: 1px solid #4b7a52;
+}
+
 @media print {
   @page {
     size: A4 portrait;
