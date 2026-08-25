@@ -1479,7 +1479,7 @@ export const en: Record<string, string> = {
   "settings.about.checkNow": "Check for updates",
   "settings.about.checking": "Checking...",
   "settings.about.upToDate": "You're on the latest version",
-  "settings.about.available": "Graphium {version} is available (install from the banner at the top)",
+  "settings.about.available": "Graphium {version} is available",
   "settings.about.checkFailed": "Failed to check for updates",
   "settings.about.unsupported": "Update checks are not available in this environment",
 

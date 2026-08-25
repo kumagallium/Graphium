@@ -1478,7 +1478,7 @@ export const ja: Record<string, string> = {
   "settings.about.checkNow": "更新を確認",
   "settings.about.checking": "確認中...",
   "settings.about.upToDate": "最新版を使用しています",
-  "settings.about.available": "Graphium {version} が利用可能です（上部のバナーから更新できます）",
+  "settings.about.available": "Graphium {version} が利用可能です",
   "settings.about.checkFailed": "更新の確認に失敗しました",
   "settings.about.unsupported": "この環境では更新の確認は利用できません",
 
