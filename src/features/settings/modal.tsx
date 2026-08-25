@@ -30,6 +30,10 @@ import {
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
+import {
+  runInsightModelTest, getInsightTestClaims, getInsightTestReference,
+  RESTATEMENT_BADGE_THRESHOLD, type InsightTestResult,
+} from "../wiki/insight-model-test";
 import { getAppVersion, checkForUpdates, type CheckResult } from "../../lib/updater";
 import { restartSidecar, getSidecarState, getRecentSidecarLog } from "../../lib/sidecar";
 import {
@@ -233,6 +237,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     dimensions?: number;
   }>({ status: "idle" });
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
+  // 洞察モデルの能力テスト。同梱のテスト用知見（パン作り・6 件）で 1 回だけ atomize し、
+  // 結果をその場に表示する。ノート・ナレッジ・インデックスにはどこにも保存しない。
+  const [insightTestState, setInsightTestState] = useState<{
+    status: "idle" | "running" | "done" | "error";
+    result?: InsightTestResult;
+    error?: string;
+  }>({ status: "idle" });
+  const insightTestAbortRef = useRef<AbortController | null>(null);
   // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
   // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
   const [groundingModelStored, setGroundingModelStored] = useState("");
@@ -731,6 +743,31 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   // 埋め込みモデルへの接続テスト。/api/embeddings/test に 1 リクエスト送って、
   // 成功なら次元数を、失敗ならプロバイダーが返したエラー文をそのまま表示する。
   // モデル設定が未保存でも、UI の選択値を直接 X-LLM-API-Key として注入してテストする。
+  // 洞察モデルの能力テスト実行。ドロップダウンで選択中（未保存でも可）のモデルを使う —
+  // 「これから保存しようとしているモデル」を試せるのが自然なため（embedding テストと同じ作法）。
+  const handleRunInsightTest = useCallback(async () => {
+    if (insightTestState.status === "running") return;
+    const controller = new AbortController();
+    insightTestAbortRef.current = controller;
+    setInsightTestState({ status: "running" });
+    try {
+      const result = await runInsightModelTest(
+        locale,
+        chatSynthesisModel || model || undefined,
+        controller.signal,
+      );
+      setInsightTestState({ status: "done", result });
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setInsightTestState({ status: "idle" });
+        return;
+      }
+      setInsightTestState({ status: "error", error: localizeAiError(err) });
+    } finally {
+      insightTestAbortRef.current = null;
+    }
+  }, [insightTestState.status, locale, chatSynthesisModel, model]);
+
   const handleTestEmbedding = useCallback(async () => {
     setEmbTestState({ status: "running" });
     try {
@@ -2572,6 +2609,112 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   <p className="text-xs text-muted-foreground mt-2">
                     {t("settings.chatSynthesisModelHelp")}
                   </p>
+
+                  {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
+                      入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleRunInsightTest}
+                      disabled={insightTestState.status === "running" || models.length === 0}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {insightTestState.status === "running"
+                        ? t("settings.insightTest.running")
+                        : t("settings.insightTest.button")}
+                    </button>
+                    {insightTestState.status === "running" && (
+                      <button
+                        type="button"
+                        onClick={() => insightTestAbortRef.current?.abort()}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {t("common.cancel")}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t("settings.insightTest.help")}
+                  </p>
+                  {insightTestState.status === "error" && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
+                      ⚠ {insightTestState.error}
+                    </p>
+                  )}
+                  {insightTestState.status === "done" && insightTestState.result && (
+                    <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
+                      <details className="text-muted-foreground">
+                        <summary className="cursor-pointer select-none">
+                          {t("settings.insightTest.claimsTitle")}
+                        </summary>
+                        <ul className="mt-1 ml-2 list-disc list-inside space-y-0.5">
+                          {getInsightTestClaims(locale).map((c) => (
+                            <li key={c.id} className="break-words">{c.title}</li>
+                          ))}
+                        </ul>
+                      </details>
+
+                      <div>
+                        <div className="font-medium text-foreground mb-1">
+                          {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
+                          {insightTestState.result.model && (
+                            <span className="ml-2 text-muted-foreground opacity-70">
+                              ({insightTestState.result.model})
+                            </span>
+                          )}
+                        </div>
+                        {insightTestState.result.candidates.length === 0 ? (
+                          <p className="text-muted-foreground">{t("settings.insightTest.empty")}</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {insightTestState.result.candidates.map((cand, i) => (
+                              <li key={`${i}-${cand.title}`} className="border-l-2 border-border pl-2">
+                                <div className="text-foreground break-words">{cand.title}</div>
+                                <div className="text-muted-foreground break-words">{cand.body}</div>
+                                <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded ${
+                                      cand.sourceTitles.length >= 2
+                                        ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
+                                        : "bg-muted text-muted-foreground"
+                                    }`}
+                                  >
+                                    {t("settings.insightTest.sources", { count: String(cand.sourceTitles.length) })}
+                                  </span>
+                                  {cand.restatement >= RESTATEMENT_BADGE_THRESHOLD && (
+                                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                      {t("settings.insightTest.restatement")}
+                                    </span>
+                                  )}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="font-medium text-foreground mb-1">
+                          {t("settings.insightTest.referenceTitle")}
+                        </div>
+                        <ul className="space-y-2">
+                          {getInsightTestReference(locale).map((r, i) => (
+                            <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
+                              <div className="text-foreground break-words">{r.title}</div>
+                              <div className="text-muted-foreground break-words">{r.body}</div>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="text-muted-foreground mt-1">
+                          {t("settings.insightTest.referenceNote")}
+                        </p>
+                      </div>
+
+                      <p className="text-muted-foreground opacity-80">
+                        {t("settings.insightTest.notSaved")}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Embedding モデル選択 */}
