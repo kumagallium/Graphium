@@ -3,6 +3,8 @@ import {
   getInsightTestClaims,
   getInsightTestReference,
   restatementScore,
+  getLastInsightTestResult,
+  setLastInsightTestResult,
   RESTATEMENT_BADGE_THRESHOLD,
   INSIGHT_TEST_ID_PREFIX,
 } from "./insight-model-test";
@@ -66,5 +68,15 @@ describe("restatementScore（言い換え検出 — 表示バッジ専用）", (
 
   it("無関係な文はほぼ 0", () => {
     expect(restatementScore("量子コンピュータの誤り訂正には冗長性が要る", claims)).toBeLessThan(0.2);
+  });
+});
+
+describe("直近結果のメモリキャッシュ（モーダル unmount をまたぐ復元用）", () => {
+  it("set → get で往復し、null でクリアできる", () => {
+    const result = { candidates: [], model: "test-model" };
+    setLastInsightTestResult(result);
+    expect(getLastInsightTestResult()).toBe(result);
+    setLastInsightTestResult(null);
+    expect(getLastInsightTestResult()).toBeNull();
   });
 });

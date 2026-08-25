@@ -32,6 +32,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
   runInsightModelTest, getInsightTestClaims, getInsightTestReference,
+  getLastInsightTestResult, setLastInsightTestResult,
   RESTATEMENT_BADGE_THRESHOLD, type InsightTestResult,
 } from "../wiki/insight-model-test";
 import { getAppVersion, checkForUpdates, type CheckResult } from "../../lib/updater";
@@ -239,11 +240,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
   // 洞察モデルの能力テスト。同梱のテスト用知見（パン作り・6 件）で 1 回だけ atomize し、
   // 結果をその場に表示する。ノート・ナレッジ・インデックスにはどこにも保存しない。
+  // モーダルは閉じると unmount されるので、直近の結果はモジュール内キャッシュから復元する
+  // （LLM 1 回ぶんを無駄にしない。ページリロードで揮発）。
   const [insightTestState, setInsightTestState] = useState<{
     status: "idle" | "running" | "done" | "error";
     result?: InsightTestResult;
     error?: string;
-  }>({ status: "idle" });
+  }>(() => {
+    const cached = getLastInsightTestResult();
+    return cached ? { status: "done", result: cached } : { status: "idle" };
+  });
   const insightTestAbortRef = useRef<AbortController | null>(null);
   // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
   // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
@@ -2659,18 +2665,31 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   {insightTestState.status === "done" && insightTestState.result && (
                     <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
                       <div>
-                        <div className="font-medium text-foreground mb-1">
-                          {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
-                          {insightTestState.result.model && (
-                            <span className="ml-2 text-muted-foreground opacity-70">
-                              ({insightTestState.result.model})
-                            </span>
-                          )}
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="font-medium text-foreground flex-1 min-w-0">
+                            {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
+                            {insightTestState.result.model && (
+                              <span className="ml-2 text-muted-foreground opacity-70">
+                                ({insightTestState.result.model})
+                              </span>
+                            )}
+                          </div>
+                          {/* 結果はモーダルを閉じても残る（メモリキャッシュ）ので、明示的に消す導線を置く */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLastInsightTestResult(null);
+                              setInsightTestState({ status: "idle" });
+                            }}
+                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {t("settings.insightTest.clear")}
+                          </button>
                         </div>
                         {insightTestState.result.candidates.length === 0 ? (
                           <p className="text-muted-foreground">{t("settings.insightTest.empty")}</p>
                         ) : (
-                          <ul className="space-y-2">
+                          <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
                             {insightTestState.result.candidates.map((cand, i) => (
                               <li key={`${i}-${cand.title}`} className="border-l-2 border-border pl-2">
                                 <div className="text-foreground break-words">{cand.title}</div>

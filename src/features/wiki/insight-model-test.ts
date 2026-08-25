@@ -178,6 +178,20 @@ export type InsightTestResult = {
   model?: string;
 };
 
+// 直近のテスト結果のメモリキャッシュ。設定モーダルは閉じると unmount されるため、
+// React state だけだと開き直しで結果が消える（LLM 1 回ぶんが無駄になる）。
+// localStorage には置かない — 「テストは何も保存しない」の約束どおり、
+// ページを離れれば揮発するインメモリ保持に留める。
+let lastInsightTestResult: InsightTestResult | null = null;
+
+export function getLastInsightTestResult(): InsightTestResult | null {
+  return lastInsightTestResult;
+}
+
+export function setLastInsightTestResult(result: InsightTestResult | null): void {
+  lastInsightTestResult = result;
+}
+
 /**
  * テストを 1 回実行する。LLM 呼び出しは atomize の 1 回だけ。
  * どこにも保存しない: snapshot は同梱定数から組み立て、結果は返すだけ。
@@ -208,5 +222,7 @@ export async function runInsightModelTest(
     restatement: restatementScore(a.title, claims),
     atomType: a.atomType,
   }));
-  return { candidates, model: res.model };
+  const result: InsightTestResult = { candidates, model: res.model };
+  setLastInsightTestResult(result);
+  return result;
 }
