@@ -43,7 +43,12 @@
     "resources": [
       "sidecar/server.mjs",
       "sidecar/node*"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    }
   },
   "plugins": {
     "updater": {

@@ -98,6 +98,67 @@ static SHUTDOWN_ACK: AtomicBool = AtomicBool::new(false);
 #[derive(Default)]
 struct NativeSidecarState(Mutex<Option<u32>>);
 
+// Windows: sidecar を本体プロセスの Job Object に入れ、本体終了時に OS が
+// 確実に道連れ終了させる。
+//
+// Windows では親プロセスが死んでも子プロセスは終了しない。自動更新・強制終了・
+// クラッシュで本体だけが先に消えると node.exe が孤児化し、
+//   (1) インストーラが sidecar\node.exe を上書きできず
+//       "Error opening file for writing" で失敗する（実行中 exe はロックされる）
+//   (2) port を握ったままの古い sidecar を新バージョンが誤って再利用する
+// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 付きの Job に子を割り当てておくと、
+// 本体終了で Job ハンドルが閉じた瞬間に OS が中の子プロセスを kill する。
+// JS 側 watchdog（2 秒間隔ポーリング）より速く確実な、多層防御の 1 層目。
+#[cfg(windows)]
+mod sidecar_job {
+    use std::sync::OnceLock;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+
+    // Job ハンドルは本体プロセスの生存中ずっと開いたままにする（閉じた瞬間に
+    // 中の子が kill されるため、意図的に解放しない）。HANDLE は Send でない
+    // 生ポインタなので usize で保持する。
+    static JOB: OnceLock<usize> = OnceLock::new();
+
+    fn create_kill_on_close_job() -> usize {
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job.is_null() {
+                return 0;
+            }
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let ok = SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const core::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            if ok == 0 {
+                // kill 保証を設定できなかった Job は使わない
+                CloseHandle(job);
+                return 0;
+            }
+            job as usize
+        }
+    }
+
+    /// spawn 直後の子プロセスを Job に割り当てる。失敗しても致命ではない
+    /// （watchdog と NSIS フックが後段の防御として残る）。
+    pub fn assign(child: &std::process::Child) -> bool {
+        let job = *JOB.get_or_init(create_kill_on_close_job);
+        if job == 0 {
+            return false;
+        }
+        use std::os::windows::io::AsRawHandle;
+        unsafe { AssignProcessToJobObject(job as _, child.as_raw_handle() as _) != 0 }
+    }
+}
+
 /// 子プロセスを Rust 側で起動する。
 /// 戻り値は spawn できた PID。renderer 側はその後 `sidecar-log` /
 /// `sidecar-closed` イベントをリッスンしてバックエンドの状態を追う。
@@ -198,6 +259,14 @@ fn start_native_sidecar(
     let pid = child.id();
 
     emit_log(&app, format!("[native] spawned pid={pid}"));
+
+    // Windows: 本体終了時に sidecar が確実に道連れになるよう Job Object へ入れる
+    // （詳細は sidecar_job モジュールのコメント参照）
+    #[cfg(windows)]
+    {
+        let assigned = sidecar_job::assign(&child);
+        emit_log(&app, format!("[native] job object assigned={assigned}"));
+    }
 
     // ファイルへの永続ログを開く。失敗しても sidecar 自体は起動させる。
     let log_file: std::sync::Arc<Mutex<Option<std::fs::File>>> =
