@@ -311,6 +311,7 @@ export const en: Record<string, string> = {
   "aiError.apiKeyForbidden": "The API key does not have permission for this operation.",
   "aiError.embeddingModelUnsupported": "Embedding requires an OpenAI-compatible model. Add one in Settings → AI.",
   "aiError.provStructureFailed": "Couldn't turn the AI output into a structured note. Please try again — or switch the model in Settings → AI (Claude models are the most reliable for this).",
+  "aiError.atomizerOutputUnparseable": "The insight model's response was cut off or unreadable. Please try again — if it keeps happening, switching the Chat & Insight model in Settings → AI usually helps.",
 
   // ── AI チャット ──
   "aiChat.title": "AI Chat",
@@ -534,7 +535,7 @@ export const en: Record<string, string> = {
   "settings.modelHelp": "Used as a fallback for everything, and directly for background tasks (ingest, lint, rewrite, cross-update).",
   "settings.chatSynthesisModel": "Chat & Insight model",
   "settings.chatSynthesisModelSameAsDefault": "Same as default model",
-  "settings.chatSynthesisModelHelp": "Optional. Used for AI Chat and Insight generation (abstracting across multiple Claims). Falls back to the default model when empty.",
+  "settings.chatSynthesisModelHelp": "Optional. Used for AI Chat and Insight generation (abstracting across multiple Claims). Falls back to the default model when empty. Insight abstraction is the most demanding step in the pipeline — small or local models tend to return zero Insights or mere restatements, so a frontier-tier model (e.g. Claude Opus / Sonnet) is recommended here. Being \"reasoning-capable\" or merely large is not always enough.",
   "settings.groundingModel": "World-grounding model",
   "settings.groundingModelSameAsDefault": "Same as Chat & Insight model",
   "settings.groundingModelHelp": "Optional. Used to judge claims against world knowledge when the distilled KB has no hit. Falls back to the Chat & Insight model (and then the default model) when left empty — you usually don't need to set this separately. Each result is cached locally so the next check on a similar claim is instant.",

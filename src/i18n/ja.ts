@@ -311,6 +311,7 @@ export const ja: Record<string, string> = {
   "aiError.apiKeyForbidden": "API キーにこの操作の権限がありません。",
   "aiError.embeddingModelUnsupported": "Embedding は OpenAI 互換モデルのみ対応です。設定 → AI で OpenAI 互換モデルを追加してください。",
   "aiError.provStructureFailed": "AI の出力をノート構造に変換できませんでした。もう一度実行するか、設定 → AI でモデルを切り替えると成功しやすくなります（Claude 系モデルが安定しています）。",
+  "aiError.atomizerOutputUnparseable": "洞察モデルの応答が途中で切れているか、解釈できない形式でした。もう一度お試しください。繰り返す場合は、設定 → AI のチャット・洞察モデルを切り替えると成功しやすくなります。",
 
   // ── AI チャット ──
   "aiChat.title": "AI チャット",
@@ -534,7 +535,7 @@ export const ja: Record<string, string> = {
   "settings.modelHelp": "全体のフォールバックとして使われ、バックグラウンド処理（Ingest・Lint・Rewrite・Cross-Update）でも直接使われます。",
   "settings.chatSynthesisModel": "チャット・洞察モデル",
   "settings.chatSynthesisModelSameAsDefault": "デフォルトモデルと同じ",
-  "settings.chatSynthesisModelHelp": "任意。AI チャットと洞察生成（複数の知見からの抽象化）で使われます。未指定の場合はデフォルトモデルが使われます。",
+  "settings.chatSynthesisModelHelp": "任意。AI チャットと洞察生成（複数の知見からの抽象化）で使われます。未指定の場合はデフォルトモデルが使われます。洞察の抽象化はパイプラインで最も能力を要求する処理です。小型・ローカルモデルでは 0 件や知見の言い換えに留まりやすいため、最上位級モデル（例: Claude Opus / Sonnet）の割り当てをおすすめします。「推論対応」や大きさだけでは足りないことがあります。",
   "settings.groundingModel": "世界モデル照合用モデル",
   "settings.groundingModelSameAsDefault": "チャット・洞察モデルと同じ",
   "settings.groundingModelHelp": "任意。蒸留 KB にヒットしなかった主張をモデル内部知識で判定します。未指定の場合はチャット・洞察モデル（さらにそれも空ならデフォルトモデル）にフォールバックするので、わざわざ別に設定する必要はありません。判定結果はローカル KB に沈殿し、次回以降は KB ヒットで即答されます（使うほど安くなる）。",
