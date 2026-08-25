@@ -30,6 +30,33 @@ export function useGraphDataKey(value: unknown): string {
 }
 
 /**
+ * グラフの**形**だけを表すキー（どのノードが、どう繋がっているか）。
+ *
+ * 中身のキー（useGraphDataKey）はラベル・件数・属性の変化でも変わるが、それは
+ * 並べ直す理由にならない。名前が 1 文字変わっただけで自動レイアウトが走ると、
+ * ノートを開いた直後や入力のたびにノードが飛び回る。
+ *
+ * 形が同じなら位置はそのまま、形が変わったときだけ並べ直す — という判断に使う。
+ */
+export function graphStructureKey(
+  nodeIds: Iterable<string>,
+  edges: Iterable<{ source: string; target: string }>,
+): string {
+  const ids = [...nodeIds];
+  const links = [...edges].map((e) => `${e.source}>${e.target}`);
+  // 並び順の揺れでキーが変わらないよう、両方ソートしてから畳む
+  return `${ids.slice().sort().join("|")}//${links.sort().join("|")}`;
+}
+
+export function useGraphStructureKey(
+  nodeIds: Iterable<string>,
+  edges: Iterable<{ source: string; target: string }>,
+): string {
+  const key = graphStructureKey(nodeIds, edges);
+  return useMemo(() => key, [key]);
+}
+
+/**
  * 「今このグラフを組み直してよいか」まで含めたキー。
  *
  * ドラッグの最中にグラフが組み直されると、Cytoscape のインスタンスごと破棄されて

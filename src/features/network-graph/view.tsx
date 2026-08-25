@@ -19,7 +19,7 @@ import { resolveMediaThumbUrl } from "../asset-browser/media-thumbnails";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
 import { openExternalUrl } from "../../lib/external-link";
 import { noteGraphScope } from "./graph-layout";
-import { useGraphDataKey, useGraphRenderKey } from "./graph-identity";
+import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
 import {
   GRAPH_ACCENT_COLOR,
@@ -33,6 +33,7 @@ import {
 import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
+  captureCytoscapePositions,
   seedUnplacedNodes,
   stopLayoutOnGrab,
   useGraphLayout,
@@ -171,6 +172,15 @@ export function NetworkGraphPanel({
   const dataKey = useGraphDataKey(data);
   // ドラッグ中は組み直しを待たせる（途中で破棄されると保存のきっかけを失う）
   const { renderKey, beginDrag, endDrag } = useGraphRenderKey(dataKey);
+  // 並べ直すのは「形が変わったとき」だけ。ラベルや件数が変わっただけで fcose を
+  // 流すと、ノートを保存するたびにノードが飛び回る
+  const structureKey = useGraphStructureKey(
+    data.nodes.map((n) => n.id),
+    data.edges,
+  );
+  const lastStructureRef = useRef<string | null>(null);
+  // 組み直す直前の座標。形が変わっていなければこれを引き継ぐ
+  const prevPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
@@ -340,16 +350,27 @@ export function NetworkGraphPanel({
       });
     }
 
+    // 形が同じなら前回の座標を引き継ぎ、保存済みがあればそれを上に重ねる。
+    // これで「中身だけ変わった」再構築ではノードが動かない
+    const structureChanged = lastStructureRef.current !== structureKey;
+    lastStructureRef.current = structureKey;
+    const carried = structureChanged ? null : prevPositionsRef.current;
+    const basePositions =
+      carried || savedPositionsRef.current
+        ? { ...(carried ?? {}), ...(savedPositionsRef.current ?? {}) }
+        : null;
+
     // 保存済みの座標を要素に流し込む。1 つでも復元できたら自動レイアウトは流さず、
     // 新しく増えたノードだけ既存の並びの外周に置く（手で整えた並びを崩さない）
-    const { unplacedIds, placedCount } = applySavedPositions(elements, savedPositionsRef.current);
+    const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
     const useSavedLayout = placedCount > 0;
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
 
-    // 既存インスタンスがあれば破棄
+    // 既存インスタンスがあれば、座標を控えてから破棄
     if (cyRef.current) {
+      prevPositionsRef.current = captureCytoscapePositions(cyRef.current);
       cyRef.current.destroy();
     }
 
@@ -515,6 +536,7 @@ export function NetworkGraphPanel({
     layoutReady,
     layoutResetSeq,
     beginDrag,
+    structureKey,
   ]);
 
   if (data.nodes.length === 0) {
@@ -551,7 +573,11 @@ export function NetworkGraphPanel({
       <span className="ml-auto flex items-center gap-1">
         {hasSavedLayout && (
           <button
-            onClick={resetLayout}
+            onClick={() => {
+              prevPositionsRef.current = null;
+              lastStructureRef.current = null;
+              resetLayout();
+            }}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t("graph.layout.resetHint")}
             aria-label={t("graph.layout.reset")}

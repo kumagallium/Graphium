@@ -212,7 +212,7 @@ export const ja: Record<string, string> = {
   "graph.layout.reset": "並びをリセット",
   "graph.layout.resetHint": "保存した並びを手放して、自動配置に戻します",
   "graph.layout.saved": "並びを保存しました",
-  "graph.layout.selectHint": "背景を Shift + ドラッグすると、複数のノードをまとめて動かせます",
+  "graph.layout.selectHint": "Shift + ドラッグでまとめて選択",
   "panel.graph": "グラフ",
   "panel.chat": "チャット",
   "panel.memos": "メモ",

@@ -45,7 +45,7 @@ import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
 import { FlowStepPanel, type FlowSelection, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
-import { useGraphDataKey, useGraphRenderKey } from "./graph-identity";
+import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
 import { seedUnplacedFlowNodes, useGraphLayout } from "./use-graph-layout";
 import { ResizeHandle } from "../../components/ResizeHandle";
@@ -300,6 +300,13 @@ function StepFlowCanvas({
   // ドラッグ中はノードの作り直しを待たせる。作り直すと position が prevPos 由来に
   // 戻り、ドラッグ途中の位置が失われる（＝動かしたのに戻る）
   const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey);
+  // 並べ直すのは「形が変わったとき」だけ。名前や件数が変わっただけで ELK を
+  // 流すと、入力のたびにノードが動いて読めなくなる
+  const structureKey = useGraphStructureKey(
+    [...graph.steps.map((x) => x.id), ...graph.entities.map((x) => x.id)],
+    graph.edges,
+  );
+  const lastStructureRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!cycleWarnAt) return;
@@ -416,14 +423,19 @@ function StepFlowCanvas({
       ? [...graph.steps, ...graph.entities].filter((n) => savedNow[n.id]).length
       : 0;
     usingSavedLayoutRef.current = placedCount > 0;
+    // 形が前回と同じなら、位置は prevPos で引き継がれている。並べ直す理由が無い
+    const structureChanged = lastStructureRef.current !== structureKey;
+    lastStructureRef.current = structureKey;
     if (usingSavedLayoutRef.current && savedNow) {
       needsLayoutRef.current = false;
       setNodes((nds: Node[]) => seedUnplacedFlowNodes(nds, savedNow));
-    } else {
+    } else if (structureChanged) {
       needsLayoutRef.current = true;
       // 既存ノードの position 更新だけで dimensions change が来ないケースに備えて、
       // 次フレームで「全ノード実測済みなら即レイアウト」も試す
       requestAnimationFrame(() => tryLayout());
+    } else {
+      needsLayoutRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -445,6 +457,7 @@ function StepFlowCanvas({
     layoutReady,
     layoutResetSeq,
     layoutScope,
+    structureKey,
   ]);
 
   // ── 全ノードの実測サイズが揃った時点で ELK レイアウト ──
@@ -723,6 +736,8 @@ function StepFlowCanvas({
                 if (hasSavedLayout) resetLayout();
                 usingSavedLayoutRef.current = false;
                 layoutAbandonedRef.current = false;
+                // 形が変わっていなくても、押されたら並べ直す
+                lastStructureRef.current = null;
                 needsLayoutRef.current = true;
                 requestAnimationFrame(() => tryLayout());
               }}

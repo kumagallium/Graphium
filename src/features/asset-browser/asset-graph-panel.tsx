@@ -8,7 +8,7 @@ import { Maximize2, RotateCcw, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { assetGraphScope } from "../network-graph/graph-layout";
-import { useGraphDataKey, useGraphRenderKey } from "../network-graph/graph-identity";
+import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "../network-graph/graph-identity";
 import { GraphSelectionHint } from "../network-graph/GraphSelectionHint";
 import {
   GRAPH_BG_COLOR,
@@ -20,6 +20,7 @@ import {
 import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
+  captureCytoscapePositions,
   seedUnplacedNodes,
   stopLayoutOnGrab,
   useGraphLayout,
@@ -350,6 +351,16 @@ export function AssetGraphPanel({
   const graphKey = useGraphDataKey(graphElements);
   // ドラッグ中は組み直しを待たせる（途中で破棄されると保存のきっかけを失う）
   const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey);
+  // 並べ直すのは「形が変わったとき」だけ（ラベルや件数の変化では動かさない）
+  const structureKey = useGraphStructureKey(
+    graphElements.filter((el) => !el.data.source).map((el) => String(el.data.id)),
+    graphElements
+      .filter((el) => el.data.source)
+      .map((el) => ({ source: String(el.data.source), target: String(el.data.target) })),
+  );
+  const lastStructureRef = useRef<string | null>(null);
+  // 組み直す直前の座標。形が変わっていなければこれを引き継ぐ
+  const prevPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
@@ -363,13 +374,22 @@ export function AssetGraphPanel({
 
     // 保存済みの座標を流し込む。1 つでも復元できたら fcose は流さず、
     // 新しく現れたノードだけ外周に仮置きする（手で整えた並びを崩さない）
-    const { unplacedIds, placedCount } = applySavedPositions(elements, savedPositionsRef.current);
+    // 形が同じなら前回の座標を引き継ぎ、保存済みがあればそれを上に重ねる
+    const structureChanged = lastStructureRef.current !== structureKey;
+    lastStructureRef.current = structureKey;
+    const carried = structureChanged ? null : prevPositionsRef.current;
+    const basePositions =
+      carried || savedPositionsRef.current
+        ? { ...(carried ?? {}), ...(savedPositionsRef.current ?? {}) }
+        : null;
+    const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
     const useSavedLayout = placedCount > 0;
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
 
     if (cyRef.current) {
+      prevPositionsRef.current = captureCytoscapePositions(cyRef.current);
       cyRef.current.destroy();
     }
 
@@ -465,6 +485,7 @@ export function AssetGraphPanel({
     layoutReady,
     layoutResetSeq,
     beginDrag,
+    structureKey,
   ]);
 
   // 凡例 + 拡大トグル（拡大時 / 通常時で共通）
@@ -509,7 +530,11 @@ export function AssetGraphPanel({
         {/* 手で整えた並びがあるときだけ、自動配置に戻す入口を出す */}
         {hasSavedLayout && (
           <button
-            onClick={resetLayout}
+            onClick={() => {
+              prevPositionsRef.current = null;
+              lastStructureRef.current = null;
+              resetLayout();
+            }}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={t("graph.layout.resetHint")}
             aria-label={t("graph.layout.reset")}

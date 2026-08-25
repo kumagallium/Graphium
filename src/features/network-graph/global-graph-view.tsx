@@ -20,7 +20,7 @@ import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import type { NoteNode, NoteGraphData, EdgeRelation } from "./graph-builder";
 import { globalGraphScope } from "./graph-layout";
-import { useGraphDataKey, useGraphRenderKey } from "./graph-identity";
+import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
 import {
   GRAPH_BG_COLOR,
@@ -33,6 +33,7 @@ import {
 import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
+  captureCytoscapePositions,
   seedUnplacedNodes,
   stopLayoutOnGrab,
   useGraphLayout,
@@ -405,6 +406,14 @@ export function GlobalGraphCanvas({
   const shownKey = useGraphDataKey(shownNodes) + "|" + useGraphDataKey(shownEdges);
   // ドラッグ中は組み直しを待たせる（途中で破棄されると保存のきっかけを失う）
   const { renderKey, beginDrag, endDrag } = useGraphRenderKey(shownKey);
+  // 並べ直すのは「形が変わったとき」だけ（ラベルや件数の変化では動かさない）
+  const structureKey = useGraphStructureKey(
+    shownNodes.map((n) => n.id),
+    shownEdges,
+  );
+  const lastStructureRef = useRef<string | null>(null);
+  // 組み直す直前の座標。形が変わっていなければこれを引き継ぐ
+  const prevPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
@@ -494,16 +503,22 @@ export function GlobalGraphCanvas({
     // 保存済みの座標を流し込む。1 つでも復元できたら fcose は流さず、
     // 新しく現れたノードだけ外周に仮置きする（手で整えた並びを崩さない）。
     // ただし「文脈で寄せる」の切り替え直後は、並べ直しが目的なので保存を無視する
-    const { unplacedIds, placedCount } = applySavedPositions(
-      elements,
-      clusterChanged ? null : savedPositionsRef.current,
-    );
+    // 形が同じなら前回の座標を引き継ぎ、保存済みがあればそれを上に重ねる
+    const structureChanged = lastStructureRef.current !== structureKey;
+    lastStructureRef.current = structureKey;
+    const carried = structureChanged || clusterChanged ? null : prevPositionsRef.current;
+    const saved = clusterChanged ? null : savedPositionsRef.current;
+    const basePositions = carried || saved ? { ...(carried ?? {}), ...(saved ?? {}) } : null;
+    const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
     const useSavedLayout = placedCount > 0;
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
 
-    if (cyRef.current) cyRef.current.destroy();
+    if (cyRef.current) {
+      prevPositionsRef.current = captureCytoscapePositions(cyRef.current);
+      cyRef.current.destroy();
+    }
 
     const cy = cytoscape({
       container: containerRef.current,
@@ -630,6 +645,7 @@ export function GlobalGraphCanvas({
     layoutReady,
     layoutResetSeq,
     beginDrag,
+    structureKey,
   ]);
 
   // 色モード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）
@@ -681,7 +697,11 @@ export function GlobalGraphCanvas({
       {/* 手で整えた並びがあるときだけ、自動配置に戻す入口を出す */}
       {hasSavedLayout && (
         <button
-          onClick={resetLayout}
+          onClick={() => {
+            prevPositionsRef.current = null;
+            lastStructureRef.current = null;
+            resetLayout();
+          }}
           title={t("graph.layout.resetHint")}
           aria-label={t("graph.layout.reset")}
           style={{

@@ -21,26 +21,28 @@ import {
 /**
  * 範囲選択を使ったことがあるか（端末ごと・グラフ横断）。
  *
- * shift + 背景ドラッグは、知らなければ絶対に見つからない操作。かといって常設の
- * 説明文を置くと邪魔になる（手順フロービューの「常設の説明文は置かない」方針）。
- * そこで**ノードを動かした直後**に下中央へ出す — ノードを動かした人は
- * 「並べ替えたい人」なので、まさにその情報が要る場面にいる。
+ * shift + 背景ドラッグは、知らなければ絶対に見つからない操作。数秒で消える案内は
+ * ノードを動かすことに集中している最中に出るので、そもそも目に入らない。
  *
- * やめどきは回数ではなく**その人が覚えたかどうか**で決める。複数ノードをまとめて
- * 動かせた時点で用は済んでいるので、そこで打ち切る。「N 回まで」だと、N 回で
- * 覚える保証も、N+1 回目に要らない保証も無い。
+ * そこで手順フローの「まだエッジが 1 本も無いときだけ、つなぎ方を下中央に薄く出す」
+ * と同じ形にする — **条件が続く限り出しっぱなし、条件が消えたら出さない**:
+ *
+ *   出す条件 = 手で並べたことがある（＝並べ替えに関心がある）
+ *              かつ まだ範囲選択を使ったことがない
+ *
+ * 一度でもまとめて動かせば用は済むので、以後どのグラフでも出ない。ドラッグ自体を
+ * したことがない人には最初から出ない。
  */
 const SELECTION_LEARNED_KEY = "graphium:graphSelectionLearned";
 
-/** ヒントを出しておく時間。読み切って理解するには 6 秒では短い */
-const SELECTION_HINT_MS = 9000;
-
-/**
- * このセッションでもう出したか。並べ替えの最中はドラッグが続くので、
- * 覚えるまで出すとはいえ 1 回のセッションで何度も出すのはうるさい。
- * ページを開き直せばまた出る（まだ覚えていなければ）。
- */
-let selectionHintShownThisSession = false;
+function readSelectionLearned(): boolean {
+  try {
+    return localStorage.getItem(SELECTION_LEARNED_KEY) === "1";
+  } catch {
+    // プライベートモード等で読めなければ、案内は出す側に倒す
+    return false;
+  }
+}
 
 export type UseGraphLayoutResult = {
   /** appdata の読み込みが済んだか。false の間はグラフを組まない */
@@ -62,7 +64,7 @@ export type UseGraphLayoutResult = {
    * 「保存を捨てた直後に自動レイアウトを流し直す」を明示的に起こす。
    */
   resetSeq: number;
-  /** 範囲選択のヒントを今出すべきか（1 ノードだけ動かした直後、まだ覚えていなければ） */
+  /** 範囲選択の案内を出すべきか（手で並べたことがあり、まだ範囲選択を使っていない） */
   showSelectionHint: boolean;
 };
 
@@ -72,7 +74,7 @@ export type UseGraphLayoutResult = {
 export function useGraphLayout(scope: string | null): UseGraphLayoutResult {
   const [ready, setReady] = useState(false);
   const [resetSeq, setResetSeq] = useState(0);
-  const [showSelectionHint, setShowSelectionHint] = useState(false);
+  const [selectionLearned, setSelectionLearned] = useState(readSelectionLearned);
   // 保存済みの有無だけは表示に使うので state に持つ
   const [hasSaved, setHasSaved] = useState(false);
 
@@ -99,19 +101,14 @@ export function useGraphLayout(scope: string | null): UseGraphLayoutResult {
       if (!scope) return;
       saveGraphLayout(scope, positions);
       setHasSaved(hasGraphLayout(scope));
-      try {
-        // まとめて動かせた＝もう知っている。ここでヒントは役目を終える
-        if (movedMultiple) {
+      // まとめて動かせた＝もう知っている。ここで案内は役目を終える
+      if (movedMultiple && !selectionLearned) {
+        setSelectionLearned(true);
+        try {
           localStorage.setItem(SELECTION_LEARNED_KEY, "1");
-          setShowSelectionHint(false);
-          return;
+        } catch {
+          // プライベートモード等で書けなくても、このセッション中は消えたままにする
         }
-        if (localStorage.getItem(SELECTION_LEARNED_KEY) === "1") return;
-        if (selectionHintShownThisSession) return;
-        selectionHintShownThisSession = true;
-        setShowSelectionHint(true);
-      } catch {
-        // プライベートモード等で読み書きできなくても保存自体は続ける
       }
     },
     [scope],
@@ -124,15 +121,11 @@ export function useGraphLayout(scope: string | null): UseGraphLayoutResult {
     setResetSeq((n) => n + 1);
   }, [scope]);
 
-  // 出しっぱなしにはしない
-  useEffect(() => {
-    if (!showSelectionHint) return;
-    const id = setTimeout(() => setShowSelectionHint(false), SELECTION_HINT_MS);
-    return () => clearTimeout(id);
-  }, [showSelectionHint]);
-
   // ready になってから読む（ensureGraphLayouts 前は必ず null）
   const positions = ready && scope ? getGraphLayout(scope) : null;
+
+  // 並べ替えに関心があり（手で並べた実績があり）、まだ範囲選択を知らない人にだけ出す
+  const showSelectionHint = hasSaved && !selectionLearned;
 
   return { ready, positions, save, reset, hasSaved, resetSeq, showSelectionHint };
 }
@@ -145,22 +138,28 @@ export function useGraphLayout(scope: string | null): UseGraphLayoutResult {
  * 次に開いたとき「動かしたノードだけ元の位置、他は自動レイアウトで別の場所」
  * という混ざった状態になってしまう。
  */
+/**
+ * 今のノード座標を控える。不可視のダミーノード（全体グラフの cluster-hub は
+ * レイアウト計算のためだけに存在する）は含めない。
+ */
+export function captureCytoscapePositions(cy: cytoscape.Core): GraphLayoutPositions {
+  const positions: GraphLayoutPositions = {};
+  cy.nodes().forEach((node) => {
+    if (node.hasClass("cluster-hub")) return;
+    const p = node.position();
+    positions[node.id()] = { x: p.x, y: p.y };
+  });
+  return positions;
+}
+
 export function attachCytoscapeLayoutPersistence(
   cy: cytoscape.Core,
   save: (positions: GraphLayoutPositions, movedMultiple: boolean) => void,
 ): () => void {
   const handler = () => {
-    const positions: GraphLayoutPositions = {};
-    cy.nodes().forEach((node) => {
-      // 不可視のダミーノードは保存しない。全体グラフの cluster-hub は
-      // レイアウト計算のためだけに存在し、ユーザーには見えない
-      if (node.hasClass("cluster-hub")) return;
-      const p = node.position();
-      positions[node.id()] = { x: p.x, y: p.y };
-    });
     // 選択が 2 つ以上あれば、掴んだ 1 つと一緒に全部動いている
     // （Cytoscape は選択集合をまとめて動かす）＝範囲選択を使えた人
-    save(positions, cy.nodes(":selected").length > 1);
+    save(captureCytoscapePositions(cy), cy.nodes(":selected").length > 1);
   };
   cy.on("dragfree", "node", handler);
   return () => {

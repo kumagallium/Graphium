@@ -121,15 +121,25 @@ export const interactionStyles: cytoscape.StylesheetStyle[] = [
       "overlay-opacity": 0.08,
     },
   },
-  // 範囲選択中のノード。design.md の「選択は枠の太さを変えずリング」に倣い、
-  // border-width ではなく overlay で表す（実寸が変わるとレイアウトが動く）
+  // 選択中のノード。React Flow 側が選択したノードにリングを残すのに合わせ、
+  // こちらも輪郭で示す。塗り（overlay）だけだとノードの色に馴染んでしまい、
+  // 選択が解けたのか続いているのか分からない。
+  //
+  // border-width ではなく outline を使う: 枠を太らせるとノードの実寸が変わり、
+  // レイアウトが動く（design.md「選択は枠の太さを変えずリング」）。outline は
+  // ノードの外側に描かれるので実寸に影響しない。
   {
     selector: "node:selected",
     style: {
-      "overlay-opacity": 0.2,
+      "outline-width": 3,
+      "outline-color": GRAPH_ACCENT_COLOR,
+      "outline-opacity": 0.9,
+      "outline-offset": 2,
+      // うっすら塗りも足して、輪郭だけより「選ばれている」感を出す
+      "overlay-opacity": 0.1,
       "overlay-color": GRAPH_ACCENT_COLOR,
       "overlay-padding": 4,
-    },
+    } as any,
   },
   // ホバー中のノード
   {
