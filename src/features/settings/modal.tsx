@@ -31,6 +31,11 @@ import {
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
+  runInsightModelTest, getInsightTestClaims, getInsightTestReference,
+  getLastInsightTestResult, setLastInsightTestResult, summarizeInsightTest,
+  RESTATEMENT_BADGE_THRESHOLD, type InsightTestResult,
+} from "../wiki/insight-model-test";
+import {
   getAppVersion,
   checkForUpdates,
   type CheckResult,
@@ -254,6 +259,28 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
   // 取り込み時の洞察スキャン予算（LLM 呼び出し回数上限、0 = 取り込み時は探さない）
   const [atomizeIngestBudget, setAtomizeIngestBudget] = useState(3);
+  // 洞察モデルの能力テスト。同梱のテスト用知見（パン作り・3 件）で 1 回だけ atomize し、
+  // 結果をその場に表示する。ノート・ナレッジ・インデックスにはどこにも保存しない。
+  // モーダルは閉じると unmount されるので、直近の結果はモジュール内キャッシュから復元する
+  // （LLM 1 回ぶんを無駄にしない。ページリロードで揮発）。
+  const [insightTestState, setInsightTestState] = useState<{
+    status: "idle" | "running" | "done" | "error";
+    result?: InsightTestResult;
+    error?: string;
+  }>(() => {
+    const cached = getLastInsightTestResult();
+    return cached ? { status: "done", result: cached } : { status: "idle" };
+  });
+  const insightTestAbortRef = useRef<AbortController | null>(null);
+  // 実行中の経過秒。テストは本番と同じ多段パイプライン（抽象化→ジャッジ→書き直し）を
+  // 通るため数十秒〜数分かかる。無反応に見えないよう経過を見せる。
+  const [insightTestElapsed, setInsightTestElapsed] = useState(0);
+  useEffect(() => {
+    if (insightTestState.status !== "running") return;
+    setInsightTestElapsed(0);
+    const timer = setInterval(() => setInsightTestElapsed((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [insightTestState.status]);
   // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
   // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
   const [groundingModelStored, setGroundingModelStored] = useState("");
@@ -756,6 +783,31 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   // 埋め込みモデルへの接続テスト。/api/embeddings/test に 1 リクエスト送って、
   // 成功なら次元数を、失敗ならプロバイダーが返したエラー文をそのまま表示する。
   // モデル設定が未保存でも、UI の選択値を直接 X-LLM-API-Key として注入してテストする。
+  // 洞察モデルの能力テスト実行。ドロップダウンで選択中（未保存でも可）のモデルを使う —
+  // 「これから保存しようとしているモデル」を試せるのが自然なため（embedding テストと同じ作法）。
+  const handleRunInsightTest = useCallback(async () => {
+    if (insightTestState.status === "running") return;
+    const controller = new AbortController();
+    insightTestAbortRef.current = controller;
+    setInsightTestState({ status: "running" });
+    try {
+      const result = await runInsightModelTest(
+        locale,
+        chatSynthesisModel || model || undefined,
+        controller.signal,
+      );
+      setInsightTestState({ status: "done", result });
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setInsightTestState({ status: "idle" });
+        return;
+      }
+      setInsightTestState({ status: "error", error: localizeAiError(err) });
+    } finally {
+      insightTestAbortRef.current = null;
+    }
+  }, [insightTestState.status, locale, chatSynthesisModel, model]);
+
   const handleTestEmbedding = useCallback(async () => {
     setEmbTestState({ status: "running" });
     try {
@@ -2598,6 +2650,161 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   <p className="text-xs text-muted-foreground mt-2">
                     {t("settings.chatSynthesisModelHelp")}
                   </p>
+
+                  {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
+                      入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleRunInsightTest}
+                      disabled={insightTestState.status === "running" || models.length === 0}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {insightTestState.status === "running"
+                        ? t("settings.insightTest.runningFor", { sec: String(insightTestElapsed) })
+                        : t("settings.insightTest.button")}
+                    </button>
+                    {insightTestState.status === "running" && (
+                      <button
+                        type="button"
+                        onClick={() => insightTestAbortRef.current?.abort()}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {t("common.cancel")}
+                      </button>
+                    )}
+                  </div>
+                  {/* 常時表示は 1 行だけ（design.md: 常設の長文説明は置かない）。
+                      知見の中身・期待される答え・所要時間はトグルの中へ。 */}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t("settings.insightTest.help")}
+                  </p>
+                  <details className="mt-1 text-xs text-muted-foreground">
+                    <summary className="cursor-pointer select-none">
+                      {t("settings.insightTest.detailsTitle")}
+                    </summary>
+                    {/* 中身は 1 つの箱に束ねて ml-4 でインデントする（既存 DiscoveryCard の
+                        details と同じ量）。トグルに属することを字下げで示す。 */}
+                    <div className="mt-1 ml-4 space-y-2">
+                      <ol className="space-y-1.5">
+                        {getInsightTestClaims(locale).map((c, i) => (
+                          <li key={c.id} className="break-words">
+                            <span className="text-foreground">{i + 1}. {c.title}</span>
+                            <span className="block ml-4 opacity-80">{c.body}</span>
+                          </li>
+                        ))}
+                      </ol>
+                      {/* 期待される答えの実体（参考洞察）。モデルには知見しか送らないので、
+                          実行前にここで見せてもテストは汚れない。答え合わせもこの 1 箇所に集約。 */}
+                      <div>
+                        <div className="font-medium text-foreground mb-1">
+                          {t("settings.insightTest.expectedTitle")}
+                        </div>
+                        <ul className="space-y-2">
+                          {getInsightTestReference(locale).map((r, i) => (
+                            <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
+                              <div className="text-foreground break-words">{r.title}</div>
+                              <div className="break-words">{r.body}</div>
+                              <div className="mt-0.5">
+                                <span className="px-1.5 py-0.5 rounded bg-muted">
+                                  {t("settings.insightTest.referenceFolds", { nums: r.foldsClaimNumbers.join(" · ") })}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <p>{t("settings.insightTest.referenceNote")}</p>
+                    </div>
+                  </details>
+                  {insightTestState.status === "error" && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
+                      ⚠ {insightTestState.error}
+                    </p>
+                  )}
+                  {insightTestState.status === "done" && insightTestState.result && (
+                    <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="font-medium text-foreground flex-1 min-w-0">
+                            {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
+                            {insightTestState.result.model && (
+                              <span className="ml-2 text-muted-foreground opacity-70">
+                                ({insightTestState.result.model})
+                              </span>
+                            )}
+                          </div>
+                          {/* 結果はモーダルを閉じても残る（メモリキャッシュ）ので、明示的に消す導線を置く */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLastInsightTestResult(null);
+                              setInsightTestState({ status: "idle" });
+                            }}
+                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {t("settings.insightTest.clear")}
+                          </button>
+                        </div>
+                        {/* 1 行サマリ — 候補が多くても全体像を先に掴めるようにする（目視検証の負担軽減）。
+                            数えられる量だけで、合否判定はしない。 */}
+                        {insightTestState.result.candidates.length > 0 && (() => {
+                          const s = summarizeInsightTest(insightTestState.result.candidates);
+                          return (
+                            <p className="text-muted-foreground mb-1.5">
+                              {t("settings.insightTest.summary", {
+                                folds: String(s.foldCount),
+                                restates: String(s.restatementCount),
+                                covered: String(s.coveredNumbers.length),
+                                total: String(getInsightTestClaims(locale).length),
+                              })}
+                              {/* 一回性知見の引用は中立情報（持ち上げて拾うのは仕様上許容 — #459）。
+                                  警告色は「言い換えのまま拾った」ときだけ。 */}
+                              {s.oneOffRestated ? (
+                                <span className="ml-2 text-amber-700 dark:text-amber-400">
+                                  {t("settings.insightTest.oneOffRestated")}
+                                </span>
+                              ) : s.citesOneOffFact ? (
+                                <span className="ml-2">{t("settings.insightTest.oneOffCited")}</span>
+                              ) : null}
+                            </p>
+                          );
+                        })()}
+                        {insightTestState.result.candidates.length === 0 ? (
+                          <p className="text-muted-foreground">{t("settings.insightTest.empty")}</p>
+                        ) : (
+                          <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                            {insightTestState.result.candidates.map((cand, i) => (
+                              <li key={`${i}-${cand.title}`} className="border-l-2 border-border pl-2">
+                                <div className="text-foreground break-words">{cand.title}</div>
+                                <div className="text-muted-foreground break-words">{cand.body}</div>
+                                <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                  {/* 引用番号チップ — 参考例の「折り畳む知見: 1 · 2」と直接突き合わせられる */}
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded ${
+                                      cand.sourceNumbers.length >= 2
+                                        ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
+                                        : "bg-muted text-muted-foreground"
+                                    }`}
+                                  >
+                                    {cand.sourceNumbers.length > 0
+                                      ? t("settings.insightTest.sourcesNums", { nums: cand.sourceNumbers.join(" · ") })
+                                      : t("settings.insightTest.sources", { count: String(cand.sourceTitles.length) })}
+                                  </span>
+                                  {cand.restatement >= RESTATEMENT_BADGE_THRESHOLD && (
+                                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                      {t("settings.insightTest.restatement")}
+                                    </span>
+                                  )}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                    </div>
+                  )}
                 </div>
 
                 {/* Embedding モデル選択 */}
