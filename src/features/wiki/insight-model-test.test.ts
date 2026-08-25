@@ -29,11 +29,24 @@ describe("insight-model-test corpus", () => {
   it.each(["ja", "en"])("%s: 参考例は 3 件で、折り畳み（2 件引用）の例を含む", (locale) => {
     const refs = getInsightTestReference(locale);
     expect(refs).toHaveLength(3);
-    expect(refs.some((r) => r.foldsClaims >= 2)).toBe(true);
+    expect(refs.some((r) => r.foldsClaimNumbers.length >= 2)).toBe(true);
     for (const r of refs) {
       expect(r.title.length).toBeGreaterThan(0);
       expect(r.body.length).toBeGreaterThan(0);
     }
+  });
+
+  it.each(["ja", "en"])("%s: 参考例の折り畳み番号は実在する知見番号を指し、知見 6（一回性）はどの例にも畳まれない", (locale) => {
+    const claimCount = getInsightTestClaims(locale).length;
+    const folded = new Set<number>();
+    for (const r of getInsightTestReference(locale)) {
+      for (const n of r.foldsClaimNumbers) {
+        expect(n).toBeGreaterThanOrEqual(1);
+        expect(n).toBeLessThanOrEqual(claimCount);
+        folded.add(n);
+      }
+    }
+    expect(folded.has(6)).toBe(false);
   });
 });
 

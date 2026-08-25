@@ -100,24 +100,26 @@ export function getInsightTestClaims(locale: string): InsightTestClaim[] {
  * 参考: この知見群から期待される抽象の水準。
  * 特定モデルの逐語出力ではなく「このくらい持ち上がっていれば合格」という基準線。
  * ユーザーが自分のモデルの出力と見比べるために表示する。
+ * foldsClaimNumbers は「どの知見（1 始まりの表示番号）を折り畳むのが期待か」の対応表 —
+ * 何が正解かをユーザーが照合できるようにする。番号は getInsightTestClaims の並び順。
  */
-export type InsightTestReference = { title: string; body: string; foldsClaims: number };
+export type InsightTestReference = { title: string; body: string; foldsClaimNumbers: number[] };
 
 const REFERENCE_JA: InsightTestReference[] = [
   {
     title: "時間をかけた変化は質を深め、急がせた変化は構造を粗くする",
     body: "同じ工程でも、ゆっくり進めると狙った性質が育ち、急がせると内部の構造が乱れる。速度は結果の量ではなく質を変える。",
-    foldsClaims: 2,
+    foldsClaimNumbers: [1, 2],
   },
   {
     title: "内部の骨組みには、育ち不足でも育ちすぎでも崩れる適正な範囲がある",
     body: "構造を支える骨組みは、足りなければ持ちこたえられず、進みすぎれば自壊する。良い状態は両端の間の帯にある。",
-    foldsClaims: 2,
+    foldsClaimNumbers: [3, 4],
   },
   {
     title: "同じ材料でも、工程が生んだ内部構造が仕上がりを決める",
     body: "何でできているかが同じでも、どう作られたかで内部の構造が変わり、最終的な性質はその構造が決める。",
-    foldsClaims: 1,
+    foldsClaimNumbers: [5],
   },
 ];
 
@@ -125,17 +127,17 @@ const REFERENCE_EN: InsightTestReference[] = [
   {
     title: "Slow change deepens quality; rushed change coarsens structure",
     body: "The same process grows the desired property when given time, and disorders the internal structure when rushed. Speed changes the quality of the outcome, not just its amount.",
-    foldsClaims: 2,
+    foldsClaimNumbers: [1, 2],
   },
   {
     title: "An internal framework has a viable range — too little or too much development both collapse it",
     body: "A supporting structure fails when underdeveloped and destroys itself when overdeveloped. The good state lives in the band between the extremes.",
-    foldsClaims: 2,
+    foldsClaimNumbers: [3, 4],
   },
   {
     title: "With identical ingredients, the structure created by the process decides the outcome",
     body: "Even when the components are the same, how the thing was made changes its internal structure — and that structure determines the final properties.",
-    foldsClaims: 1,
+    foldsClaimNumbers: [5],
   },
 ];
 

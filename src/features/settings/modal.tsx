@@ -2636,6 +2636,21 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   <p className="text-xs text-muted-foreground mt-1">
                     {t("settings.insightTest.help")}
                   </p>
+                  {/* テストに使う知見（本文込み）。実行前から中身を確認できるように、
+                      結果パネルの外に常設する。番号は参考例の「折り畳む知見」と対応。 */}
+                  <details className="mt-1 text-xs text-muted-foreground">
+                    <summary className="cursor-pointer select-none">
+                      {t("settings.insightTest.claimsTitle")}
+                    </summary>
+                    <ol className="mt-1 ml-1 space-y-1.5">
+                      {getInsightTestClaims(locale).map((c, i) => (
+                        <li key={c.id} className="break-words">
+                          <span className="text-foreground">{i + 1}. {c.title}</span>
+                          <span className="block ml-4 opacity-80">{c.body}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
                   {insightTestState.status === "error" && (
                     <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
                       ⚠ {insightTestState.error}
@@ -2643,17 +2658,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   )}
                   {insightTestState.status === "done" && insightTestState.result && (
                     <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
-                      <details className="text-muted-foreground">
-                        <summary className="cursor-pointer select-none">
-                          {t("settings.insightTest.claimsTitle")}
-                        </summary>
-                        <ul className="mt-1 ml-2 list-disc list-inside space-y-0.5">
-                          {getInsightTestClaims(locale).map((c) => (
-                            <li key={c.id} className="break-words">{c.title}</li>
-                          ))}
-                        </ul>
-                      </details>
-
                       <div>
                         <div className="font-medium text-foreground mb-1">
                           {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
@@ -2693,22 +2697,31 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         )}
                       </div>
 
-                      <div>
-                        <div className="font-medium text-foreground mb-1">
+                      {/* 正解の例はトグルに畳む — 初見の情報量を増やさず、
+                          自分のモデルの出力を先に見てから答え合わせできる順序にする。 */}
+                      <details>
+                        <summary className="cursor-pointer select-none font-medium text-foreground">
                           {t("settings.insightTest.referenceTitle")}
-                        </div>
-                        <ul className="space-y-2">
+                        </summary>
+                        <ul className="mt-1.5 space-y-2">
                           {getInsightTestReference(locale).map((r, i) => (
                             <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
                               <div className="text-foreground break-words">{r.title}</div>
                               <div className="text-muted-foreground break-words">{r.body}</div>
+                              <div className="mt-0.5">
+                                <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                  {t("settings.insightTest.referenceFolds", {
+                                    nums: r.foldsClaimNumbers.join(" · "),
+                                  })}
+                                </span>
+                              </div>
                             </li>
                           ))}
                         </ul>
-                        <p className="text-muted-foreground mt-1">
+                        <p className="text-muted-foreground mt-1.5">
                           {t("settings.insightTest.referenceNote")}
                         </p>
-                      </div>
+                      </details>
 
                       <p className="text-muted-foreground opacity-80">
                         {t("settings.insightTest.notSaved")}
