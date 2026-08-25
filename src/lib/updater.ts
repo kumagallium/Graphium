@@ -27,7 +27,8 @@ export type UpdateAvailableDetail = {
 export type CheckResult =
   | { status: "unsupported" }
   | { status: "up-to-date" }
-  | { status: "available"; version: string }
+  // install を含めることで、設定画面など呼び出し元がその場で更新を実行できる
+  | { status: "available"; version: string; install: UpdateAvailableDetail["install"] }
   | { status: "error"; message: string };
 
 /** Tauri 環境では実バージョン、それ以外では package.json の version を返す */
@@ -98,7 +99,7 @@ export async function checkForUpdates(): Promise<CheckResult> {
       window.dispatchEvent(
         new CustomEvent("graphium-update-available", { detail }),
       );
-      return { status: "available", version: update.version };
+      return { status: "available", version: update.version, install: detail.install };
     }
     console.log("[updater] App is up to date");
     return { status: "up-to-date" };

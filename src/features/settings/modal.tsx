@@ -35,7 +35,12 @@ import {
   getLastInsightTestResult, setLastInsightTestResult, summarizeInsightTest,
   RESTATEMENT_BADGE_THRESHOLD, type InsightTestResult,
 } from "../wiki/insight-model-test";
-import { getAppVersion, checkForUpdates, type CheckResult } from "../../lib/updater";
+import {
+  getAppVersion,
+  checkForUpdates,
+  type CheckResult,
+  type UpdateProgress,
+} from "../../lib/updater";
 import { restartSidecar, getSidecarState, getRecentSidecarLog } from "../../lib/sidecar";
 import {
   getGraphiumRoot,
@@ -4269,6 +4274,9 @@ function AboutTab() {
     | { status: "checking" }
     | CheckResult
   >({ status: "idle" });
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState<UpdateProgress | null>(null);
+  const [installError, setInstallError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -4286,11 +4294,38 @@ function AboutTab() {
 
   const handleCheck = useCallback(async () => {
     setCheckState({ status: "checking" });
+    setInstallError(null);
     const result = await checkForUpdates();
     setCheckState(result);
   }, []);
 
+  const handleInstall = useCallback(async () => {
+    if (checkState.status !== "available") return;
+    setInstalling(true);
+    setInstallError(null);
+    try {
+      await checkState.install((p) => setProgress(p));
+    } catch (e) {
+      console.error("[updater] Install failed:", e);
+      setInstallError(e instanceof Error ? e.message : String(e));
+      setInstalling(false);
+      setProgress(null);
+    }
+  }, [checkState]);
+
   const tauri = isTauri();
+
+  // installing 中のボタンラベルは進捗の有無・種類で出し分ける（UpdateBanner と同じ規則）
+  let installLabel = t("updater.installing");
+  if (progress?.phase === "downloading" && progress.total) {
+    const percent = Math.round((progress.downloaded / progress.total) * 100);
+    installLabel = t("updater.downloading", { percent: String(percent) });
+  } else if (progress?.phase === "downloading") {
+    const mb = (progress.downloaded / 1024 / 1024).toFixed(1);
+    installLabel = t("updater.downloadingBytes", { mb });
+  } else if (progress?.phase === "installing") {
+    installLabel = t("updater.installingNow");
+  }
 
   return (
     <div className="space-y-6">
@@ -4332,7 +4367,7 @@ function AboutTab() {
               <Button
                 size="sm"
                 onClick={handleCheck}
-                disabled={checkState.status === "checking"}
+                disabled={checkState.status === "checking" || installing}
               >
                 {checkState.status === "checking" ? (
                   <>
@@ -4354,9 +4389,35 @@ function AboutTab() {
               </div>
             )}
             {checkState.status === "available" && (
-              <div className="flex items-center gap-1.5 text-xs text-foreground">
-                <AlertCircle size={14} className="text-amber-500" />
-                {t("settings.about.available", { version: checkState.version })}
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-xs text-foreground">
+                  <AlertCircle size={14} className="text-amber-500" />
+                  {t("settings.about.available", { version: checkState.version })}
+                </div>
+                <Button size="sm" onClick={handleInstall} disabled={installing}>
+                  {installing ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin mr-1.5" />
+                      {installLabel}
+                    </>
+                  ) : (
+                    <>
+                      <Download size={12} className="mr-1.5" />
+                      {t("updater.install")}
+                    </>
+                  )}
+                </Button>
+                {installError && (
+                  <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
+                    <XCircle size={14} className="mt-0.5 shrink-0" />
+                    <div className="min-w-0 flex-1 break-words">
+                      {t("updater.error")}
+                      <div className="text-foreground/70 mt-0.5 font-mono select-text">
+                        {installError}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {checkState.status === "error" && (

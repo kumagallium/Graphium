@@ -166,6 +166,19 @@ Labels and links also feed graphs that span your whole workspace:
 - **Activity graph editor** — the **Steps (only)** view described [above](#the-provenance-graph-panel), where the step order itself can be rewired by dragging.
 - **Process list** — in the sidebar under **Processes**: the flow each note describes, listed side by side (see [Process list](#process-list) below).
 
+## Arranging graphs by hand <Badge type="tip" text="Added in v0.43.0 (2026-08-25)" /> {#arranging-graphs-by-hand}
+
+Every graph lays itself out automatically — and until this version, kept doing so. Now the arrangement is yours to keep. This works the same way in every graph in the app: the **Steps** panel, the **Graph** tab, the **Global Graph**, and a material's graph.
+
+![Two steps and their entities box-selected in the steps view, enclosed by a dashed rectangle](/screenshots/graph-arrange_en.png)
+
+- **Drag a node to move it.** The arrangement is saved per graph and comes back when you return — on your other devices too, since it is stored with your workspace data. Notes themselves are untouched.
+- **Shift-drag the background to select a group.** A dashed rectangle stays around the selection, and dragging any node inside it moves the whole subgraph together. A one-line hint under the graph teaches the gesture until the first time you use it.
+- **New nodes don't scramble your work.** Once a graph is arranged by hand, automatic layout stays out of the way: a material or step added later is placed near the existing arrangement instead of everything being reshuffled.
+- **Back to automatic** — the ↺ button in the graph's corner (in the Steps view, the existing **Tidy up** button) discards the saved arrangement and hands the graph back to the layout engine.
+
+In the Steps view, grabbing the middle of a card moves it; the small ports at the card's edges still create connections, as before.
+
 ## Process list <Badge type="tip" text="Added in v0.40.0 (2026-08-20)" /> {#process-list}
 
 **Processes** in the sidebar lists the flow each note describes, side by side.

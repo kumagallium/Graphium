@@ -752,8 +752,11 @@ export type GraphiumDocument = {
   sharedRef?: {
     /** SharedEntry.id（uuidv7） */
     id: string;
-    /** SharedEntry.type（Phase 2a は "note" 固定） */
-    type: "note";
+    /**
+     * SharedEntry.type。ノートは "note"、Knowledge（Wiki）ページは "knowledge"。
+     * 旧データは "note" のみ（knowledge 共有導入前に Wiki へ sharedRef が付くことはない）。
+     */
+    type: "note" | "knowledge";
     /** ISO-8601 最終共有日時 */
     sharedAt: string;
     /** 共有時の SharedEntry.hash（変更検知用） */
