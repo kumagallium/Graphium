@@ -19,6 +19,8 @@ import { resolveMediaThumbUrl } from "../asset-browser/media-thumbnails";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
 import { openExternalUrl } from "../../lib/external-link";
 import { noteGraphScope } from "./graph-layout";
+import { useGraphDataKey, useGraphRenderKey } from "./graph-identity";
+import { GraphSelectionHint } from "./GraphSelectionHint";
 import {
   GRAPH_ACCENT_COLOR,
   GRAPH_BG_COLOR,
@@ -32,6 +34,7 @@ import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
   seedUnplacedNodes,
+  stopLayoutOnGrab,
   useGraphLayout,
 } from "./use-graph-layout";
 
@@ -162,6 +165,15 @@ export function NetworkGraphPanel({
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
 
+  // グラフの中身が同じ限り作り直さない。data は元ファイルが読み込まれるたびに
+  // 新しいオブジェクトになるので、参照を依存にするとノートを保存するたびに
+  // グラフが組み直され、自動レイアウトが走ってノードが飛ぶ
+  const dataKey = useGraphDataKey(data);
+  // ドラッグ中は組み直しを待たせる（途中で破棄されると保存のきっかけを失う）
+  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(dataKey);
+  const endDragRef = useRef(endDrag);
+  endDragRef.current = endDrag;
+
   // 画像 / 動画メディアノードのサムネイル静止画 URL を非同期解決して保持する。
   // プロバイダ依存の URL（media-server:// 等）は Cytoscape の background-image で
   // 直接読めない（動画はそもそも image MIME ではない）ため、resolveMediaThumbUrl を経由する。
@@ -194,7 +206,8 @@ export function NetworkGraphPanel({
     return () => {
       cancelled = true;
     };
-  }, [data.nodes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataKey]);
   const [expanded, setExpanded] = useState(false);
 
   // ── 手動配置の保存 ──
@@ -209,6 +222,7 @@ export function NetworkGraphPanel({
     reset: resetLayout,
     hasSaved: hasSavedLayout,
     resetSeq: layoutResetSeq,
+    showSelectionHint,
   } = useGraphLayout(layoutScope);
   // 保存のたびに参照が変わるので、グラフ構築 effect の依存には入れず ref で読む
   // （入れるとドラッグ→保存→再構築のループになる）
@@ -330,6 +344,9 @@ export function NetworkGraphPanel({
     // 新しく増えたノードだけ既存の並びの外周に置く（手で整えた並びを崩さない）
     const { unplacedIds, placedCount } = applySavedPositions(elements, savedPositionsRef.current);
     const useSavedLayout = placedCount > 0;
+    // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
+    let layoutStoppedByUser = false;
+    let detachGrabStop: (() => void) | null = null;
 
     // 既存インスタンスがあれば破棄
     if (cyRef.current) {
@@ -386,15 +403,25 @@ export function NetworkGraphPanel({
       padding: 60,
     } as any);
     layout.on("layoutstop", () => {
-      cy.fit(undefined, 20);
+      // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
+      if (!layoutStoppedByUser) cy.fit(undefined, 20);
     });
     layout.run();
+    detachGrabStop = stopLayoutOnGrab(cy, {
+      stop: () => {
+        layoutStoppedByUser = true;
+        layout.stop();
+      },
+    });
     }
 
-    // ドラッグ終了で現在の並びを保存する
-    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) =>
-      saveLayoutRef.current(positions),
-    );
+    // ドラッグ終了で現在の並びを保存し、その後で（待たせていた）組み直しを許可する
+    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) => {
+      saveLayoutRef.current(positions);
+      endDragRef.current();
+    });
+    const onDragStart = () => beginDrag();
+    cy.on("drag", "node", onDragStart);
 
     // ── ホバーエフェクト ──
 
@@ -469,6 +496,8 @@ export function NetworkGraphPanel({
     cyRef.current = cy;
 
     return () => {
+      cy.off("drag", "node", onDragStart);
+      detachGrabStop?.();
       detachPersistence();
       cy.destroy();
       cyRef.current = null;
@@ -476,7 +505,7 @@ export function NetworkGraphPanel({
     // savedPositions / saveLayout は ref 経由で読む（依存に入れると
     // ドラッグ → 保存 → 再構築のループになる）
   }, [
-    data,
+    renderKey,
     handleNavigate,
     onOpenMedia,
     onOpenUrl,
@@ -485,6 +514,7 @@ export function NetworkGraphPanel({
     mediaThumbs,
     layoutReady,
     layoutResetSeq,
+    beginDrag,
   ]);
 
   if (data.nodes.length === 0) {
@@ -555,7 +585,10 @@ export function NetworkGraphPanel({
           onClick={(e) => e.stopPropagation()}
         >
           {legendBar}
-          <div ref={containerRef} className="flex-1" />
+          <div className="flex-1 relative">
+            <div ref={containerRef} className="w-full h-full" />
+            <GraphSelectionHint show={showSelectionHint} />
+          </div>
         </div>
       </div>,
       document.body,
@@ -565,7 +598,10 @@ export function NetworkGraphPanel({
   return (
     <div className="flex flex-col h-full" style={{ background: GRAPH_BG_COLOR }}>
       {legendBar}
-      <div ref={containerRef} className="flex-1" />
+      <div className="flex-1 relative">
+        <div ref={containerRef} className="w-full h-full" />
+        <GraphSelectionHint show={showSelectionHint} />
+      </div>
     </div>
   );
 }

@@ -2,12 +2,14 @@
 // 旧 MediaDetailModal から分離して、MaterialSidePeek / 右パネル / Full view 等で再利用できる
 // 形にしたもの。表示するか自体は呼び出し側で判定する（showGraph 判定はこのコンポーネントの中）。
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, RotateCcw, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { assetGraphScope } from "../network-graph/graph-layout";
+import { useGraphDataKey, useGraphRenderKey } from "../network-graph/graph-identity";
+import { GraphSelectionHint } from "../network-graph/GraphSelectionHint";
 import {
   GRAPH_BG_COLOR,
   GRAPH_INIT_OPTIONS,
@@ -19,6 +21,7 @@ import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
   seedUnplacedNodes,
+  stopLayoutOnGrab,
   useGraphLayout,
 } from "../network-graph/use-graph-layout";
 import { useT } from "../../i18n";
@@ -287,6 +290,7 @@ export function AssetGraphPanel({
     reset: resetLayout,
     hasSaved: hasSavedLayout,
     resetSeq: layoutResetSeq,
+    showSelectionHint,
   } = useGraphLayout(assetGraphScope(entry.fileId));
   const savedPositionsRef = useRef(savedPositions);
   savedPositionsRef.current = savedPositions;
@@ -338,17 +342,32 @@ export function AssetGraphPanel({
     };
   }, [entry, mediaIndex]);
 
+  // 描画し直すかは中身で決める（mediaIndex の参照は更新のたびに変わる）
+  const graphElements = useMemo(
+    () => buildMediaGraph(entry, mediaIndex ?? null, getKnowledgeKind, assetThumbUrls),
+    [entry, mediaIndex, getKnowledgeKind, assetThumbUrls],
+  );
+  const graphKey = useGraphDataKey(graphElements);
+  // ドラッグ中は組み直しを待たせる（途中で破棄されると保存のきっかけを失う）
+  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey);
+  const endDragRef = useRef(endDrag);
+  endDragRef.current = endDrag;
+
   // グラフ描画
   useEffect(() => {
     if (!graphContainerRef.current) return;
     // 保存済みの配置を読み終えるまで組まない（読み込み後に並べ直して見えないように）
     if (!layoutReady) return;
-    const elements = buildMediaGraph(entry, mediaIndex ?? null, getKnowledgeKind, assetThumbUrls);
+    // applySavedPositions が要素を書き換えるので、メモ化した配列は複製してから渡す
+    const elements = graphElements.map((el) => ({ ...el }));
 
     // 保存済みの座標を流し込む。1 つでも復元できたら fcose は流さず、
     // 新しく現れたノードだけ外周に仮置きする（手で整えた並びを崩さない）
     const { unplacedIds, placedCount } = applySavedPositions(elements, savedPositionsRef.current);
     const useSavedLayout = placedCount > 0;
+    // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
+    let layoutStoppedByUser = false;
+    let detachGrabStop: (() => void) | null = null;
 
     if (cyRef.current) {
       cyRef.current.destroy();
@@ -385,15 +404,25 @@ export function AssetGraphPanel({
       padding: 30,
     } as any);
     layout.on("layoutstop", () => {
-      cy.fit(undefined, 20);
+      // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
+      if (!layoutStoppedByUser) cy.fit(undefined, 20);
     });
     layout.run();
+    detachGrabStop = stopLayoutOnGrab(cy, {
+      stop: () => {
+        layoutStoppedByUser = true;
+        layout.stop();
+      },
+    });
     }
 
-    // ドラッグ終了で現在の並びを保存する
-    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) =>
-      saveLayoutRef.current(positions),
-    );
+    // ドラッグ終了で現在の並びを保存し、その後で（待たせていた）組み直しを許可する
+    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) => {
+      saveLayoutRef.current(positions);
+      endDragRef.current();
+    });
+    const onDragStart = () => beginDrag();
+    cy.on("drag", "node", onDragStart);
 
     cy.on("mouseover", "node.clickable", (evt) => {
       evt.target.addClass("hover");
@@ -417,23 +446,25 @@ export function AssetGraphPanel({
     cyRef.current = cy;
 
     return () => {
+      cy.off("drag", "node", onDragStart);
+      detachGrabStop?.();
       detachPersistence();
       cy.destroy();
       cyRef.current = null;
     };
     // savedPositions / saveLayout は ref 経由で読む（依存に入れると
     // ドラッグ → 保存 → 再構築のループになる）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    entry,
-    mediaIndex,
+    renderKey,
     getKnowledgeKind,
     onNavigateNote,
     onOpenNoteSidePeek,
     onSwitchAsset,
-    assetThumbUrls,
     expanded,
     layoutReady,
     layoutResetSeq,
+    beginDrag,
   ]);
 
   // 凡例 + 拡大トグル（拡大時 / 通常時で共通）
@@ -513,7 +544,10 @@ export function AssetGraphPanel({
           onClick={(e) => e.stopPropagation()}
         >
           {legendBar}
-          <div ref={graphContainerRef} className="flex-1" />
+          <div className="flex-1 relative">
+            <div ref={graphContainerRef} className="w-full h-full" />
+            <GraphSelectionHint show={showSelectionHint} />
+          </div>
         </div>
       </div>,
       document.body,
@@ -523,11 +557,10 @@ export function AssetGraphPanel({
   return (
     <div className="flex flex-col h-full">
       {legendBar}
-      <div
-        ref={graphContainerRef}
-        className="flex-1"
-        style={{ background: GRAPH_BG_COLOR }}
-      />
+      <div className="flex-1 relative" style={{ background: GRAPH_BG_COLOR }}>
+        <div ref={graphContainerRef} className="w-full h-full" />
+        <GraphSelectionHint show={showSelectionHint} />
+      </div>
     </div>
   );
 }

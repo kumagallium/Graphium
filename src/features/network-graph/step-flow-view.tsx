@@ -45,6 +45,8 @@ import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
 import { FlowStepPanel, type FlowSelection, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
+import { useGraphDataKey, useGraphRenderKey } from "./graph-identity";
+import { GraphSelectionHint } from "./GraphSelectionHint";
 import { seedUnplacedFlowNodes, useGraphLayout } from "./use-graph-layout";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useResizableWidth } from "../../hooks/use-resizable-width";
@@ -272,6 +274,7 @@ function StepFlowCanvas({
     reset: resetLayout,
     hasSaved: hasSavedLayout,
     resetSeq: layoutResetSeq,
+    showSelectionHint,
   } = useGraphLayout(layoutScope);
   // ノード再構築 effect の依存には入れない（保存のたびに参照が変わり、
   // ドラッグ → 保存 → 再構築のループになる）
@@ -281,12 +284,22 @@ function StepFlowCanvas({
   saveLayoutRef.current = saveLayout;
   // 手動配置を使っている間は ELK を走らせない。resetLayout でこの旗が下りる
   const usingSavedLayoutRef = useRef(false);
+  // ユーザーがノードを掴んだ。走っている（非同期の）ELK の結果は捨てる —
+  // ELK は Promise で返ってくるので、ドラッグ中に解決すると位置を上書きして
+  // 「動かしたのに元の場所へ戻る」になる。掴んだ時点で人の意思の方が新しい
+  const layoutAbandonedRef = useRef(false);
   // プレビューは全体を収めるより読めることを優先する
   const fitMinZoom = variant === "preview" ? 0.55 : 0.2;
   // 接続判定用に最新の graph を ref でも持つ（cy 初期化不要の React Flow でも
   // コールバック安定化のため）
   const graphRef = useRef(graph);
   graphRef.current = graph;
+  // ノードを作り直すかは中身で決める。graph は PROV の再生成のたびに新しい
+  // オブジェクトになるので、参照を依存にすると入力のたびに ELK が流れてノードが動く
+  const graphKey = useGraphDataKey(graph);
+  // ドラッグ中はノードの作り直しを待たせる。作り直すと position が prevPos 由来に
+  // 戻り、ドラッグ途中の位置が失われる（＝動かしたのに戻る）
+  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey);
 
   useEffect(() => {
     if (!cycleWarnAt) return;
@@ -414,7 +427,7 @@ function StepFlowCanvas({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    graph,
+    renderKey,
     onRenameActivity,
     onDeleteActivity,
     onJumpToBlock,
@@ -462,6 +475,11 @@ function StepFlowCanvas({
       sized,
       g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
     ).then((positions) => {
+      // ドラッグが始まっていたら、この結果はもう古い
+      if (layoutAbandonedRef.current) {
+        needsLayoutRef.current = false;
+        return;
+      }
       // 適用できたときだけ要求を消す。ELK が失敗した場合（下の catch）は
       // 要求を残し、次の変化・整列ボタンで再試行できるようにする。
       // 以前はレイアウト開始前に消していたため、一度失敗すると誰も再実行せず
@@ -624,6 +642,7 @@ function StepFlowCanvas({
       }}
     >
     <div ref={wrapperRef} style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0 }}>
+      <GraphSelectionHint show={showSelectionHint} />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -663,12 +682,26 @@ function StepFlowCanvas({
         onMove={() => setEdgeMenu(null)}
         // ドラッグが終わったら、その時点の全ノード座標を保存する。複数選択して
         // まとめて動かした場合も、動いた分がまとめて 1 回の保存になる
+        // DragStart ではなく Drag（実際に動いた）で判定する。DragStart は
+        // 選択目的の単なるクリックでも発火するので、それで自動レイアウトを
+        // 捨てると手順を足しても並べ直されなくなる
+        onNodeDrag={() => {
+          layoutAbandonedRef.current = true;
+          needsLayoutRef.current = false;
+          beginDrag();
+        }}
         onNodeDragStop={() => {
-          if (!layoutScope) return;
+          if (!layoutScope) {
+            endDrag();
+            return;
+          }
           const positions: Record<string, { x: number; y: number }> = {};
           for (const n of getNodes()) positions[n.id] = { x: n.position.x, y: n.position.y };
           usingSavedLayoutRef.current = true;
           saveLayoutRef.current(positions);
+          // 保存の後で、待たせていた作り直しを許可する（順序が逆だと
+          // 保存されていない座標で組み直してしまう）
+          endDrag();
         }}
         nodesDraggable={!!layoutScope}
         deleteKeyCode={null}
@@ -688,6 +721,7 @@ function StepFlowCanvas({
                 // 手で整えた並びがあれば手放して、自動配置に戻す
                 if (hasSavedLayout) resetLayout();
                 usingSavedLayoutRef.current = false;
+                layoutAbandonedRef.current = false;
                 needsLayoutRef.current = true;
                 requestAnimationFrame(() => tryLayout());
               }}

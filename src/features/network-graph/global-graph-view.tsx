@@ -20,6 +20,8 @@ import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import type { NoteNode, NoteGraphData, EdgeRelation } from "./graph-builder";
 import { globalGraphScope } from "./graph-layout";
+import { useGraphDataKey, useGraphRenderKey } from "./graph-identity";
+import { GraphSelectionHint } from "./GraphSelectionHint";
 import {
   GRAPH_BG_COLOR,
   GRAPH_INIT_OPTIONS,
@@ -32,6 +34,7 @@ import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
   seedUnplacedNodes,
+  stopLayoutOnGrab,
   useGraphLayout,
 } from "./use-graph-layout";
 
@@ -374,6 +377,7 @@ export function GlobalGraphCanvas({
     reset: resetLayout,
     hasSaved: hasSavedLayout,
     resetSeq: layoutResetSeq,
+    showSelectionHint,
   } = useGraphLayout(globalGraphScope());
   const savedPositionsRef = useRef(savedPositions);
   savedPositionsRef.current = savedPositions;
@@ -397,6 +401,12 @@ export function GlobalGraphCanvas({
       }),
     [data, visibleLayers, hideReferences, hideIsolated, contextFilter, hideUncategorized],
   );
+  // 描画し直すかは中身で決める（data の参照はノート保存のたびに変わる）
+  const shownKey = useGraphDataKey(shownNodes) + "|" + useGraphDataKey(shownEdges);
+  // ドラッグ中は組み直しを待たせる（途中で破棄されると保存のきっかけを失う）
+  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(shownKey);
+  const endDragRef = useRef(endDrag);
+  endDragRef.current = endDrag;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -489,6 +499,9 @@ export function GlobalGraphCanvas({
       clusterChanged ? null : savedPositionsRef.current,
     );
     const useSavedLayout = placedCount > 0;
+    // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
+    let layoutStoppedByUser = false;
+    let detachGrabStop: (() => void) | null = null;
 
     if (cyRef.current) cyRef.current.destroy();
 
@@ -528,14 +541,26 @@ export function GlobalGraphCanvas({
       nodeSeparation: 120,
       padding: 50,
     } as any);
-    lay.on("layoutstop", () => cy.fit(undefined, 30));
+    lay.on("layoutstop", () => {
+      // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
+      if (!layoutStoppedByUser) cy.fit(undefined, 30);
+    });
     lay.run();
+    detachGrabStop = stopLayoutOnGrab(cy, {
+      stop: () => {
+        layoutStoppedByUser = true;
+        lay.stop();
+      },
+    });
     }
 
-    // ドラッグ終了で現在の並びを保存する
-    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) =>
-      saveLayoutRef.current(positions),
-    );
+    // ドラッグ終了で現在の並びを保存し、その後で（待たせていた）組み直しを許可する
+    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions) => {
+      saveLayoutRef.current(positions);
+      endDragRef.current();
+    });
+    const onDragStart = () => beginDrag();
+    cy.on("drag", "node", onDragStart);
 
     // ホバーで隣接を強調
     cy.on("mouseover", "node", (evt) => {
@@ -586,15 +611,17 @@ export function GlobalGraphCanvas({
 
     cyRef.current = cy;
     return () => {
+      cy.off("drag", "node", onDragStart);
+      detachGrabStop?.();
       detachPersistence();
       cy.destroy();
       cyRef.current = null;
     };
     // savedPositions / saveLayout は ref 経由で読む（依存に入れると
     // ドラッグ → 保存 → 再構築のループになる）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    shownNodes,
-    shownEdges,
+    renderKey,
     clusterByContext,
     onNavigate,
     onOpenMedia,
@@ -602,6 +629,7 @@ export function GlobalGraphCanvas({
     onOpenMemo,
     layoutReady,
     layoutResetSeq,
+    beginDrag,
   ]);
 
   // 色モード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）
@@ -649,6 +677,7 @@ export function GlobalGraphCanvas({
   return (
     <div style={{ position: "relative", width: "100%", height }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%", background: GRAPH_BG_COLOR }} />
+      <GraphSelectionHint show={showSelectionHint} />
       {/* 手で整えた並びがあるときだけ、自動配置に戻す入口を出す */}
       {hasSavedLayout && (
         <button

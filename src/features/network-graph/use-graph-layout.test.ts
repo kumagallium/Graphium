@@ -1,6 +1,63 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type cytoscape from "cytoscape";
-import { applySavedPositions, seedUnplacedFlowNodes } from "./use-graph-layout";
+import {
+  applySavedPositions,
+  seedUnplacedFlowNodes,
+  stopLayoutOnGrab,
+} from "./use-graph-layout";
+
+describe("stopLayoutOnGrab（ドラッグで自動レイアウトに引き下がってもらう）", () => {
+  /** on/off とハンドラ発火だけを持つ最小の Cytoscape 代役 */
+  function fakeCy() {
+    const handlers = new Map<string, () => void>();
+    return {
+      on: (event: string, _selector: string, handler: () => void) => {
+        handlers.set(event, handler);
+      },
+      off: (event: string) => {
+        handlers.delete(event);
+      },
+      fire: (event: string) => handlers.get(event)?.(),
+      has: (event: string) => handlers.has(event),
+    };
+  }
+
+  it("ノードが動いたら走っているレイアウトを止める", () => {
+    const cy = fakeCy();
+    const layout = { stop: vi.fn() };
+    stopLayoutOnGrab(cy as unknown as cytoscape.Core, layout);
+    cy.fire("drag");
+    expect(layout.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("掴んだだけ（クリック）では止めない — ナビゲーションのクリックで並びが固まらないように", () => {
+    const cy = fakeCy();
+    const layout = { stop: vi.fn() };
+    stopLayoutOnGrab(cy as unknown as cytoscape.Core, layout);
+    expect(cy.has("grab")).toBe(false);
+    cy.fire("grab");
+    expect(layout.stop).not.toHaveBeenCalled();
+  });
+
+  it("ドラッグ中に何度発火しても止めるのは一度だけ", () => {
+    const cy = fakeCy();
+    const layout = { stop: vi.fn() };
+    stopLayoutOnGrab(cy as unknown as cytoscape.Core, layout);
+    cy.fire("drag");
+    cy.fire("drag");
+    cy.fire("drag");
+    expect(layout.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("解除するとハンドラが外れる", () => {
+    const cy = fakeCy();
+    const layout = { stop: vi.fn() };
+    const detach = stopLayoutOnGrab(cy as unknown as cytoscape.Core, layout);
+    detach();
+    cy.fire("drag");
+    expect(layout.stop).not.toHaveBeenCalled();
+  });
+});
 
 describe("applySavedPositions（Cytoscape の要素定義に保存座標を流し込む）", () => {
   const elements = (): cytoscape.ElementDefinition[] => [
