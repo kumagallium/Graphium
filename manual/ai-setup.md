@@ -69,6 +69,19 @@ Under **Model assignment**, you decide which registered model handles which job.
 
 The **World grounding** section also has an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
 
+### How capable a model does each job need?
+
+Graphium is model-agnostic, but the jobs are not equally demanding. A rough guide:
+
+| Job | What it demands | Works well with |
+|---|---|---|
+| Summaries, Claim extraction, chat | Careful reading and faithful extraction | Most mid-size and larger models, including good local ones |
+| **Insight generation** (abstraction across Claims) | The hardest step in the pipeline: lifting domain findings into transferable rules without diluting them into platitudes | **A frontier-tier model** — for example Claude Opus or Claude Sonnet, or another vendor's flagship. Assign it as the **Chat & Insight model**. "Reasoning-capable" or merely large is not enough by itself: in our testing, a 120B-class open reasoning model produced only restatements of the Claims where a frontier model found real cross-Claim patterns |
+| Procedure structuring (PROV extraction) | Strict structured output over long documents | Frontier-tier models are the most reliable here too |
+| Embeddings | An embeddings endpoint (not chat) | An embedding-capable model — use **Test embedding** to verify before saving |
+
+If Insights seem rare or read like restatements of your Claims, switch only the **Chat & Insight model** to a stronger one and run discovery again — the [FAQ](/faq) walks through this one-variable experiment.
+
 ## MCP servers <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" />
 
 MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; under **MCP Servers**, click **Add MCP server** and pick one of three modes:
