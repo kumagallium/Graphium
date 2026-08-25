@@ -20,6 +20,7 @@ import {
 import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
+  attachSelectionBoundsOverlay,
   captureCytoscapePositions,
   seedUnplacedNodes,
   stopLayoutOnGrab,
@@ -349,18 +350,18 @@ export function AssetGraphPanel({
     [entry, mediaIndex, getKnowledgeKind, assetThumbUrls],
   );
   const graphKey = useGraphDataKey(graphElements);
-  // ドラッグ中は組み直しを待たせる（途中で破棄されると保存のきっかけを失う）
-  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey);
-  // 並べ直すのは「形が変わったとき」だけ（ラベルや件数の変化では動かさない）
+  // グラフの「形」。読み込み中に形が連続で変わる間は組み直しを 1 回にまとめる
   const structureKey = useGraphStructureKey(
     graphElements.filter((el) => !el.data.source).map((el) => String(el.data.id)),
     graphElements
       .filter((el) => el.data.source)
       .map((el) => ({ source: String(el.data.source), target: String(el.data.target) })),
   );
-  const lastStructureRef = useRef<string | null>(null);
-  // 組み直す直前の座標。形が変わっていなければこれを引き継ぐ
+  // ドラッグ中と読み込み中の連続変化は、組み直しを待たせて 1 回にする
+  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey, structureKey);
+  // 組み直す直前の座標と視点。次のグラフが引き継ぐ
   const prevPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
+  const prevViewportRef = useRef<{ zoom: number; pan: { x: number; y: number }; w: number; h: number } | null>(null);
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
@@ -372,24 +373,31 @@ export function AssetGraphPanel({
     // applySavedPositions が要素を書き換えるので、メモ化した配列は複製してから渡す
     const elements = graphElements.map((el) => ({ ...el }));
 
-    // 保存済みの座標を流し込む。1 つでも復元できたら fcose は流さず、
-    // 新しく現れたノードだけ外周に仮置きする（手で整えた並びを崩さない）
-    // 形が同じなら前回の座標を引き継ぎ、保存済みがあればそれを上に重ねる
-    const structureChanged = lastStructureRef.current !== structureKey;
-    lastStructureRef.current = structureKey;
-    const carried = structureChanged ? null : prevPositionsRef.current;
+    // 前回の座標を常に引き継ぎ、手動保存があればそれを上に重ねる
+    const persisted = savedPositionsRef.current;
+    const carried = prevPositionsRef.current;
     const basePositions =
-      carried || savedPositionsRef.current
-        ? { ...(carried ?? {}), ...(savedPositionsRef.current ?? {}) }
-        : null;
-    const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
-    const useSavedLayout = placedCount > 0;
+      carried || persisted ? { ...(carried ?? {}), ...(persisted ?? {}) } : null;
+    const { unplacedIds } = applySavedPositions(elements, basePositions);
+    // 手で整えた並び（保存）を持つノードが 1 つでもあれば fcose は流さない
+    const persistedCount = persisted
+      ? elements.filter((el) => !el.data.source && persisted[String(el.data.id)]).length
+      : 0;
+    const useSavedLayout = persistedCount > 0;
+    // ノードが増えていない組み直しも並べ直さない
+    const contentOnlyRebuild = !!carried && unplacedIds.length === 0;
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
 
     if (cyRef.current) {
       prevPositionsRef.current = captureCytoscapePositions(cyRef.current);
+      prevViewportRef.current = {
+        zoom: cyRef.current.zoom(),
+        pan: { ...cyRef.current.pan() },
+        w: cyRef.current.width(),
+        h: cyRef.current.height(),
+      };
       cyRef.current.destroy();
     }
 
@@ -404,17 +412,26 @@ export function AssetGraphPanel({
       maxZoom: 3,
     });
 
-    if (useSavedLayout) {
+    if (useSavedLayout || contentOnlyRebuild) {
+      // 並べ直さない。新しく増えたノードだけ外周に仮置きし、視点は直前のまま保つ
       seedUnplacedNodes(cy, unplacedIds);
-      cy.fit(undefined, 20);
+      const vp = prevViewportRef.current;
+      if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
+        cy.viewport({ zoom: vp.zoom, pan: vp.pan });
+      } else {
+        cy.fit(undefined, 20);
+      }
     } else {
+    // 前回の座標があれば、そこから続きを計算する（配置替えの繰り返しを見せない）
+    const gentle = !!carried;
+    if (gentle) seedUnplacedNodes(cy, unplacedIds);
     const layout = cy.layout({
       name: "fcose",
       animate: true,
-      animationDuration: 600,
+      animationDuration: gentle ? 400 : 600,
       animationEasing: "ease-out-cubic" as any,
       quality: "default",
-      randomize: true,
+      randomize: !gentle,
       nodeRepulsion: 5000,
       idealEdgeLength: 100,
       edgeElasticity: 0.45,
@@ -443,6 +460,8 @@ export function AssetGraphPanel({
     });
     const onDragStart = () => beginDrag();
     cy.on("drag", "node", onDragStart);
+    // 複数選択中はグループを囲む矩形を出す（React Flow と同じ見え方）
+    const detachSelectionBounds = attachSelectionBoundsOverlay(cy);
 
     cy.on("mouseover", "node.clickable", (evt) => {
       evt.target.addClass("hover");
@@ -467,6 +486,7 @@ export function AssetGraphPanel({
 
     return () => {
       cy.off("drag", "node", onDragStart);
+      detachSelectionBounds();
       detachGrabStop?.();
       detachPersistence();
       cy.destroy();
@@ -485,7 +505,6 @@ export function AssetGraphPanel({
     layoutReady,
     layoutResetSeq,
     beginDrag,
-    structureKey,
   ]);
 
   // 凡例 + 拡大トグル（拡大時 / 通常時で共通）
@@ -531,8 +550,9 @@ export function AssetGraphPanel({
         {hasSavedLayout && (
           <button
             onClick={() => {
+              // 引き継ぎも捨てて、次の構築で最初から並べ直させる
               prevPositionsRef.current = null;
-              lastStructureRef.current = null;
+              prevViewportRef.current = null;
               resetLayout();
             }}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

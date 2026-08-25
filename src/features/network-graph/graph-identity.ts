@@ -57,43 +57,90 @@ export function useGraphStructureKey(
 }
 
 /**
- * 「今このグラフを組み直してよいか」まで含めたキー。
+ * 形が変わる組み直しをまとめるための待ち時間。ノートを開くと、ノート本体 →
+ * 周辺ノート → 素材インデックス → PROV 再生成、と読み込みが数百 ms 間隔で続き、
+ * そのたびにグラフが育つ。1 回ごとに並べ直すと配置替えの連打に見えるので、
+ * 変化が静まってから 1 回で組む。
+ */
+const STRUCTURE_DEBOUNCE_MS = 450;
+
+/**
+ * 「今このグラフを組み直してよいか」まで含めたキー。2 つの事情で組み直しを待たせる:
  *
- * ドラッグの最中にグラフが組み直されると、Cytoscape のインスタンスごと破棄されて
- * `dragfree`（＝保存のきっかけ）が永久に来ない。ユーザーから見ると「動かしたのに
- * 元の場所へ戻った」になる。ノートを開いた直後はノートが順々に読み込まれてグラフが
- * 何度も育つので、ちょうどこの窓に入りやすい。
- *
- * 中身が変わったこと自体は正しいので、**捨てるのではなく遅らせる**。ドラッグが
- * 終わってから最新の中身で組み直す。
+ * 1. **ドラッグ中**。組み直されると Cytoscape のインスタンスごと破棄されて
+ *    `dragfree`（＝保存のきっかけ）が永久に来ず、「動かしたのに元へ戻った」になる。
+ *    ドラッグが終わってから最新の中身で組み直す。
+ * 2. **形が変わる変化の連打**（読み込み中）。1 回ごとに組んで並べ直すと
+ *    配置替えが何度も走って見える。静まるまで待って 1 回で組む。
+ *    形が変わらない変化（ラベル・件数）は待たせない — どうせ並べ直さないので、
+ *    組み直しても見た目は動かない。
  *
  * `endDrag` は必ず保存の**後**に呼ぶこと（保存前に呼ぶと、保存されていない座標で
  * 組み直してしまい、結局同じ症状になる）。
  */
-export function useGraphRenderKey(dataKey: string): {
+export function useGraphRenderKey(
+  dataKey: string,
+  structureKey: string,
+): {
   renderKey: string;
   beginDrag: () => void;
   endDrag: () => void;
 } {
   const [renderKey, setRenderKey] = useState(dataKey);
   const draggingRef = useRef(false);
-  const latestRef = useRef(dataKey);
-  latestRef.current = dataKey;
+  const latestKeyRef = useRef(dataKey);
+  latestKeyRef.current = dataKey;
+  const latestStructureRef = useRef(structureKey);
+  latestStructureRef.current = structureKey;
+  // いま画面に出ているグラフの形
+  const renderedStructureRef = useRef(structureKey);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const commit = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    renderedStructureRef.current = latestStructureRef.current;
+    setRenderKey(latestKeyRef.current);
+  }, []);
 
   useEffect(() => {
     if (draggingRef.current) return;
-    setRenderKey(dataKey);
-  }, [dataKey]);
+    // 形が同じなら即時（並べ直しは起きないので、待たせる理由が無い）
+    if (structureKey === renderedStructureRef.current) {
+      commit();
+      return;
+    }
+    // 形が変わった: 静まるのを待って 1 回で組む。さらに変化が来たら待ち直す
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (!draggingRef.current) commit();
+    }, STRUCTURE_DEBOUNCE_MS);
+  }, [dataKey, structureKey, commit]);
+
+  // アンマウント時に待ちを捨てる
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   const beginDrag = useCallback(() => {
     draggingRef.current = true;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
 
   const endDrag = useCallback(() => {
     draggingRef.current = false;
     // ドラッグ中に溜まった変化をここで反映する
-    setRenderKey(latestRef.current);
-  }, []);
+    commit();
+  }, [commit]);
 
   return { renderKey, beginDrag, endDrag };
 }

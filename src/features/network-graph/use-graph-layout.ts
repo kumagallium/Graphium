@@ -27,11 +27,12 @@ import {
  * そこで手順フローの「まだエッジが 1 本も無いときだけ、つなぎ方を下中央に薄く出す」
  * と同じ形にする — **条件が続く限り出しっぱなし、条件が消えたら出さない**:
  *
- *   出す条件 = 手で並べたことがある（＝並べ替えに関心がある）
- *              かつ まだ範囲選択を使ったことがない
+ *   出す条件 = ノードを動かせるグラフで、まだ範囲選択を使ったことがない
  *
- * 一度でもまとめて動かせば用は済むので、以後どのグラフでも出ない。ドラッグ自体を
- * したことがない人には最初から出ない。
+ * 一度でもまとめて動かせば用は済むので、以後どのグラフでも出ない。
+ * 「手で並べた人にだけ出す」という絞りは入れない — その条件だと、並べたことの
+ * ないグラフでは案内が出ず、ユーザーには出たり出なかったりに見える（実際に
+ * 「出ていない」と報告された）。1 行の薄い文字なので常設で邪魔にならない。
  */
 const SELECTION_LEARNED_KEY = "graphium:graphSelectionLearned";
 
@@ -64,7 +65,7 @@ export type UseGraphLayoutResult = {
    * 「保存を捨てた直後に自動レイアウトを流し直す」を明示的に起こす。
    */
   resetSeq: number;
-  /** 範囲選択の案内を出すべきか（手で並べたことがあり、まだ範囲選択を使っていない） */
+  /** 範囲選択の案内を出すべきか（動かせるグラフで、まだ範囲選択を使っていない） */
   showSelectionHint: boolean;
 };
 
@@ -124,8 +125,8 @@ export function useGraphLayout(scope: string | null): UseGraphLayoutResult {
   // ready になってから読む（ensureGraphLayouts 前は必ず null）
   const positions = ready && scope ? getGraphLayout(scope) : null;
 
-  // 並べ替えに関心があり（手で並べた実績があり）、まだ範囲選択を知らない人にだけ出す
-  const showSelectionHint = hasSaved && !selectionLearned;
+  // 動かせるグラフ（scope あり）で、まだ範囲選択を知らない人にだけ出す
+  const showSelectionHint = !!scope && !selectionLearned;
 
   return { ready, positions, save, reset, hasSaved, resetSeq, showSelectionHint };
 }
@@ -164,6 +165,62 @@ export function attachCytoscapeLayoutPersistence(
   cy.on("dragfree", "node", handler);
   return () => {
     cy.off("dragfree", "node", handler);
+  };
+}
+
+/**
+ * 選択中ノードの集合を囲む矩形を、グラフの上に重ねて描く。返り値は解除関数。
+ *
+ * React Flow は複数選択すると選択グループを囲む矩形が残る。Cytoscape には
+ * 相当する表示が無く、同じ操作をしても「選択が続いているのか」が読めない。
+ * 選択ノードの renderedBoundingBox を毎フレーム追いかける DOM 要素で揃える。
+ *
+ * 見た目は app.css の `.react-flow__nodesselection-rect`（React Flow 側）と
+ * 対で管理する。
+ */
+export function attachSelectionBoundsOverlay(cy: cytoscape.Core): () => void {
+  const container = cy.container();
+  if (!container) return () => {};
+  const el = document.createElement("div");
+  el.dataset.graphSelectionBounds = "true";
+  Object.assign(el.style, {
+    position: "absolute",
+    pointerEvents: "none",
+    zIndex: "4",
+    display: "none",
+    background: "rgba(75, 122, 82, 0.08)",
+    border: "1px dashed #4b7a52",
+    borderRadius: "4px",
+  } satisfies Partial<CSSStyleDeclaration>);
+  // Cytoscape はコンテナを position: relative にするので、この子は重なって描ける
+  container.appendChild(el);
+
+  let raf = 0;
+  const update = () => {
+    raf = 0;
+    const sel = cy.nodes(":selected");
+    if (sel.length < 2) {
+      el.style.display = "none";
+      return;
+    }
+    const bb = sel.renderedBoundingBox({ includeLabels: false, includeOverlays: false } as any);
+    const pad = 10;
+    el.style.display = "block";
+    el.style.left = `${bb.x1 - pad}px`;
+    el.style.top = `${bb.y1 - pad}px`;
+    el.style.width = `${bb.w + pad * 2}px`;
+    el.style.height = `${bb.h + pad * 2}px`;
+  };
+  const schedule = () => {
+    if (!raf) raf = requestAnimationFrame(update);
+  };
+  // render はパン・ズーム・ドラッグ・選択変更のすべてで発火する。raf で 1 フレーム
+  // 1 回に間引かれるので、毎回スタイルを書き直しても負荷にはならない
+  cy.on("render", schedule);
+  return () => {
+    cy.off("render", schedule);
+    if (raf) cancelAnimationFrame(raf);
+    el.remove();
   };
 }
 

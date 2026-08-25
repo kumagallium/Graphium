@@ -297,15 +297,15 @@ function StepFlowCanvas({
   // ノードを作り直すかは中身で決める。graph は PROV の再生成のたびに新しい
   // オブジェクトになるので、参照を依存にすると入力のたびに ELK が流れてノードが動く
   const graphKey = useGraphDataKey(graph);
-  // ドラッグ中はノードの作り直しを待たせる。作り直すと position が prevPos 由来に
-  // 戻り、ドラッグ途中の位置が失われる（＝動かしたのに戻る）
-  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey);
   // 並べ直すのは「形が変わったとき」だけ。名前や件数が変わっただけで ELK を
   // 流すと、入力のたびにノードが動いて読めなくなる
   const structureKey = useGraphStructureKey(
     [...graph.steps.map((x) => x.id), ...graph.entities.map((x) => x.id)],
     graph.edges,
   );
+  // ドラッグ中と読み込み中の連続変化は、作り直しを待たせて 1 回にする
+  // （ドラッグ中に作り直すと position が prevPos 由来に戻り、途中の位置が失われる）
+  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey, structureKey);
   const lastStructureRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -457,7 +457,6 @@ function StepFlowCanvas({
     layoutReady,
     layoutResetSeq,
     layoutScope,
-    structureKey,
   ]);
 
   // ── 全ノードの実測サイズが揃った時点で ELK レイアウト ──
@@ -702,6 +701,23 @@ function StepFlowCanvas({
           layoutAbandonedRef.current = true;
           needsLayoutRef.current = false;
           beginDrag();
+        }}
+        // 選択グループの矩形を掴んで動かしたとき（onNodeDragStop は発火しない）
+        onSelectionDragStart={() => {
+          layoutAbandonedRef.current = true;
+          needsLayoutRef.current = false;
+          beginDrag();
+        }}
+        onSelectionDragStop={() => {
+          if (!layoutScope) {
+            endDrag();
+            return;
+          }
+          const positions: Record<string, { x: number; y: number }> = {};
+          for (const n of getNodes()) positions[n.id] = { x: n.position.x, y: n.position.y };
+          usingSavedLayoutRef.current = true;
+          saveLayoutRef.current(positions, true);
+          endDrag();
         }}
         onNodeDragStop={(_e, _node, dragged) => {
           if (!layoutScope) {

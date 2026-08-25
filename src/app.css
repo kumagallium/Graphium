@@ -792,6 +792,14 @@ body.gph-col-resizing * {
   border: 1px solid #4b7a52;
 }
 
+/* 選択が確定した後、グループを囲んで残る矩形。Cytoscape 側は
+   use-graph-layout.ts の attachSelectionBoundsOverlay が同じ見た目を描く。 */
+.react-flow__nodesselection-rect {
+  background: rgba(75, 122, 82, 0.08);
+  border: 1px dashed #4b7a52;
+  border-radius: 4px;
+}
+
 @media print {
   @page {
     size: A4 portrait;

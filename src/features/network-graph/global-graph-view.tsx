@@ -33,6 +33,7 @@ import {
 import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
+  attachSelectionBoundsOverlay,
   captureCytoscapePositions,
   seedUnplacedNodes,
   stopLayoutOnGrab,
@@ -404,16 +405,16 @@ export function GlobalGraphCanvas({
   );
   // 描画し直すかは中身で決める（data の参照はノート保存のたびに変わる）
   const shownKey = useGraphDataKey(shownNodes) + "|" + useGraphDataKey(shownEdges);
-  // ドラッグ中は組み直しを待たせる（途中で破棄されると保存のきっかけを失う）
-  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(shownKey);
-  // 並べ直すのは「形が変わったとき」だけ（ラベルや件数の変化では動かさない）
+  // グラフの「形」。読み込み中に形が連続で変わる間は組み直しを 1 回にまとめる
   const structureKey = useGraphStructureKey(
     shownNodes.map((n) => n.id),
     shownEdges,
   );
-  const lastStructureRef = useRef<string | null>(null);
-  // 組み直す直前の座標。形が変わっていなければこれを引き継ぐ
+  // ドラッグ中と読み込み中の連続変化は、組み直しを待たせて 1 回にする
+  const { renderKey, beginDrag, endDrag } = useGraphRenderKey(shownKey, structureKey);
+  // 組み直す直前の座標と視点。次のグラフが引き継ぐ
   const prevPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
+  const prevViewportRef = useRef<{ zoom: number; pan: { x: number; y: number }; w: number; h: number } | null>(null);
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
@@ -500,23 +501,29 @@ export function GlobalGraphCanvas({
       }
     }
 
-    // 保存済みの座標を流し込む。1 つでも復元できたら fcose は流さず、
-    // 新しく現れたノードだけ外周に仮置きする（手で整えた並びを崩さない）。
-    // ただし「文脈で寄せる」の切り替え直後は、並べ直しが目的なので保存を無視する
-    // 形が同じなら前回の座標を引き継ぎ、保存済みがあればそれを上に重ねる
-    const structureChanged = lastStructureRef.current !== structureKey;
-    lastStructureRef.current = structureKey;
-    const carried = structureChanged || clusterChanged ? null : prevPositionsRef.current;
-    const saved = clusterChanged ? null : savedPositionsRef.current;
-    const basePositions = carried || saved ? { ...(carried ?? {}), ...(saved ?? {}) } : null;
-    const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
-    const useSavedLayout = placedCount > 0;
+    // 前回の座標を常に引き継ぎ、手動保存があればそれを上に重ねる。
+    // ただし「文脈で寄せる」の切り替え直後は、並べ直しが目的なのでどちらも無視する
+    const carried = clusterChanged ? null : prevPositionsRef.current;
+    const persisted = clusterChanged ? null : savedPositionsRef.current;
+    const basePositions = carried || persisted ? { ...(carried ?? {}), ...(persisted ?? {}) } : null;
+    const { unplacedIds } = applySavedPositions(elements, basePositions);
+    // 手で整えた並び（保存）を持つノードが 1 つでもあれば fcose は流さない
+    const persistedCount = persisted ? shownNodes.filter((n) => persisted[n.id]).length : 0;
+    const useSavedLayout = persistedCount > 0;
+    // ノードが増えていない組み直し（中身の変化・削除・フィルタで減っただけ）も並べ直さない
+    const contentOnlyRebuild = !!carried && unplacedIds.length === 0;
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
 
     if (cyRef.current) {
       prevPositionsRef.current = captureCytoscapePositions(cyRef.current);
+      prevViewportRef.current = {
+        zoom: cyRef.current.zoom(),
+        pan: { ...cyRef.current.pan() },
+        w: cyRef.current.width(),
+        h: cyRef.current.height(),
+      };
       cyRef.current.destroy();
     }
 
@@ -537,15 +544,25 @@ export function GlobalGraphCanvas({
     // 仮想エッジ（短い理想長・強い弾性）が塊を作り、実エッジは理想長を大きく伸ばし
     // 弾性も落として「緩い腕」にする。反発を強め・中心重力をほぼ切って塊同士を
     // 引き離す。値は Storybook「文脈クラスター（大規模）」で見た目調整したもの。
-    if (useSavedLayout) {
+    if (useSavedLayout || contentOnlyRebuild) {
+      // 並べ直さない。新しく増えたノードだけ外周に仮置きし、視点は直前のまま保つ
       seedUnplacedNodes(cy, unplacedIds);
-      cy.fit(undefined, 30);
+      const vp = prevViewportRef.current;
+      if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
+        cy.viewport({ zoom: vp.zoom, pan: vp.pan });
+      } else {
+        cy.fit(undefined, 30);
+      }
     } else {
+    // 前回の座標があれば、そこから続きを計算する（読み込み中にノードが増える
+    // たび全体を並べ直すと、配置替えが何度も走って見える）
+    const gentle = !clusterChanged && !!carried;
+    if (gentle) seedUnplacedNodes(cy, unplacedIds);
     const lay = cy.layout({
       name: "fcose",
       animate: true,
-      animationDuration: 700,
-      randomize: true,
+      animationDuration: gentle ? 400 : 700,
+      randomize: !gentle,
       quality: "default",
       nodeRepulsion: clusterByContext ? 30000 : 9000,
       idealEdgeLength: (edge: any) =>
@@ -576,6 +593,8 @@ export function GlobalGraphCanvas({
     });
     const onDragStart = () => beginDrag();
     cy.on("drag", "node", onDragStart);
+    // 複数選択中はグループを囲む矩形を出す（React Flow と同じ見え方）
+    const detachSelectionBounds = attachSelectionBoundsOverlay(cy);
 
     // ホバーで隣接を強調
     cy.on("mouseover", "node", (evt) => {
@@ -627,6 +646,7 @@ export function GlobalGraphCanvas({
     cyRef.current = cy;
     return () => {
       cy.off("drag", "node", onDragStart);
+      detachSelectionBounds();
       detachGrabStop?.();
       detachPersistence();
       cy.destroy();
@@ -645,7 +665,6 @@ export function GlobalGraphCanvas({
     layoutReady,
     layoutResetSeq,
     beginDrag,
-    structureKey,
   ]);
 
   // 色モード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）
@@ -698,8 +717,9 @@ export function GlobalGraphCanvas({
       {hasSavedLayout && (
         <button
           onClick={() => {
+            // 引き継ぎも捨てて、次の構築で最初から並べ直させる
             prevPositionsRef.current = null;
-            lastStructureRef.current = null;
+            prevViewportRef.current = null;
             resetLayout();
           }}
           title={t("graph.layout.resetHint")}
