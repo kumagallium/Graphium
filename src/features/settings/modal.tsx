@@ -2648,14 +2648,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       </button>
                     )}
                   </div>
+                  {/* 常時表示は 1 行だけ（design.md: 常設の長文説明は置かない）。
+                      知見の中身・期待される答え・所要時間はトグルの中へ。 */}
                   <p className="text-xs text-muted-foreground mt-1">
                     {t("settings.insightTest.help")}
                   </p>
-                  {/* テストに使う知見（本文込み）。実行前から中身を確認できるように、
-                      結果パネルの外に常設する。番号は参考例の「折り畳む知見」と対応。 */}
                   <details className="mt-1 text-xs text-muted-foreground">
                     <summary className="cursor-pointer select-none">
-                      {t("settings.insightTest.claimsTitle")}
+                      {t("settings.insightTest.detailsTitle")}
                     </summary>
                     <ol className="mt-1 ml-1 space-y-1.5">
                       {getInsightTestClaims(locale).map((c, i) => (
@@ -2665,6 +2665,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </li>
                       ))}
                     </ol>
+                    <p className="mt-1.5">{t("settings.insightTest.expectedLine")}</p>
                   </details>
                   {insightTestState.status === "error" && (
                     <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
@@ -2707,11 +2708,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                                 covered: String(s.coveredNumbers.length),
                                 total: String(getInsightTestClaims(locale).length),
                               })}
-                              {s.citesOneOffFact && (
+                              {/* 一回性知見の引用は中立情報（持ち上げて拾うのは仕様上許容 — #459）。
+                                  警告色は「言い換えのまま拾った」ときだけ。 */}
+                              {s.oneOffRestated ? (
                                 <span className="ml-1.5 text-amber-700 dark:text-amber-400">
-                                  {t("settings.insightTest.oneOffCited")}
+                                  {t("settings.insightTest.oneOffRestated")}
                                 </span>
-                              )}
+                              ) : s.citesOneOffFact ? (
+                                <span className="ml-1.5">{t("settings.insightTest.oneOffCited")}</span>
+                              ) : null}
                             </p>
                           );
                         })()}
@@ -2773,10 +2778,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           {t("settings.insightTest.referenceNote")}
                         </p>
                       </details>
-
-                      <p className="text-muted-foreground opacity-80">
-                        {t("settings.insightTest.notSaved")}
-                      </p>
                     </div>
                   )}
                 </div>

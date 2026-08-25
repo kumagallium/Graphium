@@ -11,13 +11,14 @@
 //   - 【採点しない】機械採点器は恣意性の持ち込みになるので置かない。表示するのは
 //     客観シグナル 2 つ（折り畳み = 2 知見以上の引用 / 言い換えの可能性 = 元知見との
 //     トークン重なり）と、期待される抽象水準の参考例だけ。判断はユーザーがする。
-//   - 【期待解は 1 件】テストは最小構成にする: 畳める知見 2 件 + 一回性のノイズ 1 件で、
-//     期待される洞察はちょうど 1 件（知見 1・2 を折り畳み、3 は引用しない）。
-//     答え合わせが一目で済み、入力が小さいぶん実行も速い。
+//   - 【核となる期待解は 1 件】テストは最小構成にする: 畳める知見 2 件 + 一回性の知見 1 件。
+//     合格の中心は「知見 1・2 を 1 つの規則に畳んだ洞察」が出ること。
 //     (1)(2) は「構造の成熟には適正範囲がある」（不足でも過剰でも破綻する逆 U 字）—
 //     単純な因果 2 本を 1 つの境界構造に畳む、言い換えでは到達できない抽象を要求する。
-//     能力のあるモデルは 1・2 を畳んだ洞察 1 件を返し、力不足のモデルは知見の言い換えを
-//     知見と同数返すか、空リストを返すか、ノイズ (3) まで拾う。
+//     ただし「ちょうど 1 件」は要求しない: 能力のあるモデルは同じペアから別の切り口の
+//     妥当な抽象（発生と保持の分離など）や、知見 3 を持ち上げた単独洞察を追加で出すことが
+//     ある — 単独でも可搬なら Atom は仕様上有効（#459）なので、これらは減点ではない。
+//     力不足のシグナルは「言い換えが知見と同数並ぶ」「空リスト」「3 を言い換えのまま拾う」。
 
 import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { atomizeConcepts, type AtomCandidate } from "./wiki-service";
@@ -141,17 +142,24 @@ export type InsightTestSummary = {
   restatementCount: number;
   /** 引用された知見番号の和集合（視野） */
   coveredNumbers: number[];
-  /** 一回性の知見（6）を引用した候補があるか。true は言い換え寄りのシグナル */
+  /** 一回性の知見を引用した候補があるか（中立情報 — 持ち上げて拾うのは仕様上許容） */
   citesOneOffFact: boolean;
+  /** 一回性の知見を「言い換えのまま」拾った候補があるか。これは力不足のシグナル */
+  oneOffRestated: boolean;
 };
 
 export function summarizeInsightTest(candidates: InsightTestCandidate[]): InsightTestSummary {
   const covered = new Set<number>();
   let foldCount = 0;
   let restatementCount = 0;
+  let oneOffRestated = false;
   for (const c of candidates) {
     if (c.sourceNumbers.length >= 2) foldCount += 1;
-    if (c.restatement >= RESTATEMENT_BADGE_THRESHOLD) restatementCount += 1;
+    const restated = c.restatement >= RESTATEMENT_BADGE_THRESHOLD;
+    if (restated) restatementCount += 1;
+    // 一回性の知見を引用すること自体は仕様上許容（単独でも可搬なら Atom — #459）。
+    // 警告に値するのは「言い換えのまま拾った」場合だけなので、両条件の合致を見る。
+    if (restated && c.sourceNumbers.includes(INSIGHT_TEST_ONE_OFF_NUMBER)) oneOffRestated = true;
     for (const n of c.sourceNumbers) covered.add(n);
   }
   return {
@@ -159,6 +167,7 @@ export function summarizeInsightTest(candidates: InsightTestCandidate[]): Insigh
     restatementCount,
     coveredNumbers: [...covered].sort((a, b) => a - b),
     citesOneOffFact: covered.has(INSIGHT_TEST_ONE_OFF_NUMBER),
+    oneOffRestated,
   };
 }
 

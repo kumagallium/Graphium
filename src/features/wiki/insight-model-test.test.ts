@@ -81,12 +81,21 @@ describe("summarizeInsightTest（目視検証を軽くする 1 行サマリ）",
     const s = summarizeInsightTest([
       mk([1, 2]),          // 折り畳み
       mk([2], 0.9),        // 単独 + 言い換え
-      mk([3]),             // 一回性を引用
+      mk([3]),             // 一回性を引用（持ち上げ済み = 中立）
     ]);
     expect(s.foldCount).toBe(1);
     expect(s.restatementCount).toBe(1);
     expect(s.coveredNumbers).toEqual([1, 2, 3]);
     expect(s.citesOneOffFact).toBe(true);
+    expect(s.oneOffRestated).toBe(false);
+  });
+
+  it("一回性の知見を言い換えのまま拾ったときだけ oneOffRestated が立つ", () => {
+    const neutral = summarizeInsightTest([mk([3], 0.2)]);
+    expect(neutral.citesOneOffFact).toBe(true);
+    expect(neutral.oneOffRestated).toBe(false);
+    const bad = summarizeInsightTest([mk([3], 0.9)]);
+    expect(bad.oneOffRestated).toBe(true);
   });
 
   it("空の候補では全部ゼロ", () => {
