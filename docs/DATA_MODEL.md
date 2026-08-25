@@ -103,7 +103,7 @@ type GraphiumDocument = {
   wikiMeta?: WikiMeta;
 
   // ── shared storage refs (Phase 2) ───────────────────
-  sharedRef?: { id; type: "note"; sharedAt; hash };
+  sharedRef?: { id; type: "note" | "knowledge"; sharedAt; hash };
   forkedFrom?: { sharedId; hash; authorName; authorEmail; forkedAt };
 
   // ── skill metadata (only when source === "skill") ───
@@ -1547,6 +1547,48 @@ Bump it whenever the shape of `graph` or `summary` changes, or when the
 projection itself starts producing different output. A mismatch triggers
 a full re-projection, with `forkedFrom` carried over from the old entries.
 
+### 5.4 Saved graph arrangements: `GraphLayoutFile`
+
+A third appdata file (`.graphium-graph-layouts.json`) remembers where the
+user dragged nodes. Every graph in the app writes to it — the note graph
+and the asset graph (cytoscape), the global graph, and the step flow
+(React Flow) — so an arrangement behaves the same wherever you made it.
+
+```ts
+const GRAPH_LAYOUT_VERSION = 1;
+
+type GraphLayoutFile = {
+  version: number;
+  layouts: Record<string, {          // key: scope, see below
+    positions: Record<string, { x: number; y: number }>;  // node id → position
+    updatedAt: number;               // epoch ms, used to evict the oldest
+  }>;
+};
+```
+
+A **scope** is the kind of view plus what it is showing: `note:<noteId>`
+for a note's neighbourhood graph, `prov:<noteId>` for its step flow,
+`global` for the all-notes graph, and `asset:<fileId>` for a material's
+graph. The same note has separate scopes for its neighbourhood graph and
+its step flow, because those are different graphs.
+
+Three properties are worth stating, because they are what make a saved
+arrangement feel stable rather than fragile:
+
+- **A saved arrangement wins over automatic layout.** If even one node has
+  a stored position, fcose / ELK does not run; nodes that are new since
+  the save are seeded near the existing ones instead. Adding one material
+  to a note therefore does not scramble a graph arranged by hand.
+- **Writes merge rather than replace.** The global graph draws only what
+  its layer and context filters let through, so replacing the scope would
+  drop the coordinates of everything currently hidden.
+- **A version mismatch is discarded, not migrated.** Losing a manual
+  arrangement only falls back to automatic layout, so a migration would
+  cost more than it is worth.
+
+This file is deliberately kept out of note JSON: the global graph has no
+note it belongs to, so there would be nowhere to put its arrangement.
+
 ## 6. Storage providers
 
 ### 6.1 The `StorageProvider` interface
@@ -1653,6 +1695,7 @@ Graphium/
 │   └── <fileId>.txt          # persisted URL source text (B-persist)
 └── appdata/
     ├── note-index.json             # the GraphiumIndex
+    ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     └── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
 ```
 
@@ -1727,7 +1770,7 @@ in `src/lib/storage/shared/types.ts`.
 ```ts
 type SharedEntryType =
   | "note" | "reference" | "data-manifest"
-  | "template" | "claim" | "atom" | "report";
+  | "template" | "knowledge" | "report";
 
 type SharedEntry = {
   id: string;                  // uuidv7
@@ -1766,6 +1809,12 @@ Key model choices:
   major changes mint a new id and link back via `supersedes`.
 - **Tombstones, not deletes** — `status: "unshared"` is the recovery
   path for accidental sharing. Hard delete is provider-optional.
+- **Knowledge is one type** — Knowledge (wiki) pages share as a single
+  `"knowledge"` type; the internal classification (`summary` / `claim` /
+  `atom` / `synthesis`) travels in `extra.wikiKind`. `WikiKind` is an
+  evolving vocabulary, so it is kept out of the shared format's folder
+  structure — older builds can still list, preview, and fork an entry
+  whose `wikiKind` they do not know.
 
 ### 7.2 `BlobRef`
 
@@ -1803,7 +1852,7 @@ A personal note that has been shared carries `sharedRef`:
 ```ts
 sharedRef?: {
   id: string;       // SharedEntry.id
-  type: "note";
+  type: "note" | "knowledge";
   sharedAt: string; // ISO 8601
   hash: string;     // SharedEntry.hash at share time
 };

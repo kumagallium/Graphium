@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.44.0](https://github.com/kumagallium/Graphium/compare/v0.43.0...v0.44.0) - 2026-08-25
+
+- feat(sharing): knowledge share/fork, bulk share, and copy-citation links by @kumagallium in https://github.com/kumagallium/Graphium/pull/771
+
+## [v0.43.0](https://github.com/kumagallium/Graphium/compare/v0.42.6...v0.43.0) - 2026-08-25
+
+- feat(graph): saved manual arrangements, group selection, and one consistent graph experience by @kumagallium in https://github.com/kumagallium/Graphium/pull/774
+
+## [v0.42.6](https://github.com/kumagallium/Graphium/compare/v0.42.5...v0.42.6) - 2026-08-25
+
+- fix(ci): build the Windows updater zip uncompressed (Stored) by @kumagallium in https://github.com/kumagallium/Graphium/pull/772
+
+## [v0.42.5](https://github.com/kumagallium/Graphium/compare/v0.42.4...v0.42.5) - 2026-08-25
+
+- Add an install button to the Settings About tab when an update is found by @kumagallium in https://github.com/kumagallium/Graphium/pull/766
+- fix(windows): kill app process tree before sidecar cleanup in NSIS hook by @kumagallium in https://github.com/kumagallium/Graphium/pull/770
+
+## [v0.42.4](https://github.com/kumagallium/Graphium/compare/v0.42.3...v0.42.4) - 2026-08-25
+
+- fix(windows): prevent sidecar node.exe from blocking installer writes by @kumagallium in https://github.com/kumagallium/Graphium/pull/767
+
+## [v0.42.3](https://github.com/kumagallium/Graphium/compare/v0.42.2...v0.42.3) - 2026-08-25
+
+- Fix silent zero-insight failures on Anthropic models (max_tokens truncation) by @kumagallium in https://github.com/kumagallium/Graphium/pull/762
+
 ## [v0.42.2](https://github.com/kumagallium/Graphium/compare/v0.42.1...v0.42.2) - 2026-08-24
 
 - fix(ai-chat): ground URL-material chat in the page/PDF content by @kumagallium in https://github.com/kumagallium/Graphium/pull/757

@@ -173,11 +173,24 @@ talks to LLM and embedding backends.
   `used` (entity → step),
   `generates` (step → entity), and order-only `informed_by` drawn dashed —
   the last one is what a handoff degrades to when the note does not say
-  which output was used. The read-only, exploration-oriented graphs (note
-  graph, global graph, asset graph) stay on cytoscape (canvas), which
+  which output was used. The exploration-oriented graphs (note graph,
+  global graph, asset graph) stay on cytoscape (canvas), which
   scales better for large force-directed views;
   `provToCytoscapeElements` also still feeds printing, where the graph is
   rasterized to a PNG and appended to the printed note.
+- **Layout is automatic until you disagree with it.** Every graph can be
+  rearranged by hand — drag a node, or shift-drag the background to select
+  a group and move it as one — and the arrangement is remembered per graph
+  in appdata (`DATA_MODEL.md` §5.4), so it survives reopening the note and
+  syncs to the user's other devices. Once an arrangement exists the
+  automatic layout stops running for that graph; only nodes that appeared
+  since the save are placed automatically, which is what keeps adding one
+  material from scrambling a graph someone arranged deliberately. A reset
+  control (the step flow reuses its existing "arrange" button) drops the
+  arrangement and hands the graph back to fcose / ELK. Both graph
+  libraries share one store and one set of gestures on purpose: the two
+  panels sit next to each other, and a graph that behaves differently
+  depending on which tab it is in reads as two unrelated tools.
 - **Every graph edit is a document edit.** Steps can be added, renamed and
   deleted; entities renamed, removed and given attributes; dragging an
   entity onto a step makes it that step's input (and links `informed_by`,
@@ -1025,7 +1038,17 @@ The same `src/` tree is built three different ways.
   sent `SIGTERM` and replaced. The sidecar additionally runs a watchdog that
   exits as soon as `GRAPHIUM_PARENT_PID` is gone, so it can never outlive the
   app and orphan port 3001 — an orphan would otherwise let a newer app reuse
-  old code and return 404 for routes added after that build.
+  old code and return 404 for routes added after that build. On Windows —
+  where killing a parent process does not kill its children, and a running
+  `node.exe` locks its file so an installer cannot overwrite it — the app
+  additionally assigns the sidecar to a Job Object with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` (`sidecar_job` in
+  `src-tauri/src/lib.rs`), so the OS reaps it the moment the app exits, and
+  the NSIS installer runs a pre-install hook
+  (`src-tauri/windows/hooks.nsh`) that first kills the running app's whole
+  process tree (`taskkill /F /T` — child-first kills would race the app's
+  own sidecar auto-restart) and then stops any leftover orphan sidecar
+  processes before copying files.
 - The sidecar binds to loopback only (`127.0.0.1`; override with
   `GRAPHIUM_BIND_HOST`). Most of the local API is unauthenticated, so the
   server must never be reachable from other machines on the network. The
@@ -1170,6 +1193,10 @@ flowchart LR
 
 Key pieces:
 
+- **Share targets** — notes and Knowledge (wiki) pages share as full
+  documents (a Knowledge page forks back into the wiki, with
+  environment-bound lineage fields reset); single media files and
+  references share as manifests
 - **`src/features/sharing/`** — Library view, Share / Unshare actions, Fork
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
@@ -1327,6 +1354,8 @@ people most often need to find.
 | Knowledge UI and service | `src/features/wiki/` |
 | Knowledge pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
 | Inter-note network graph (Cytoscape) | `src/features/network-graph/` |
+| Shared graph styling and interaction (all cytoscape views) | `src/features/network-graph/graph-theme.ts` |
+| Saved manual graph arrangements (both graph libraries) | `src/features/network-graph/graph-layout.ts`, `use-graph-layout.ts` |
 | Storage provider | `src/lib/storage/providers/`, `src/lib/storage/registry.ts` |
 | Note JSON shape and migrations | `src/lib/document-types.ts`, `src/lib/document-migration.ts` |
 | Index file (note list, schema version) | `src/features/navigation/index-file.ts` |

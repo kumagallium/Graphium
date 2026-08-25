@@ -5,17 +5,19 @@
 // - 各カード: title / author / sharedAt / hash 検証バッジ
 // - カードクリックで読み取り専用の詳細パネルを開く
 // - 自分作 → Update 動線（ヒントのみ）/ Unshare ボタン
-// - 他人作（type=note）→ Fork ボタン（type 別 fork は v2+）
+// - 他人作（type=note / knowledge）→ Fork ボタン（note → notes、knowledge → wiki）
 //
 // 設計詳細: docs/internal/team-shared-storage-design.md §3 Library / §8 共有 Concept
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ExternalLink,
   GitFork,
   Library,
+  Link2,
   RefreshCw,
   ShieldQuestion,
   Trash2,
@@ -34,6 +36,7 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { loadAllSharedEntries } from "./shared-library-loader";
+import { buildSharedCitationLink } from "./citation-link";
 import {
   collectSharedBlobHashes,
   rewriteSharedBlobUrls,
@@ -60,6 +63,8 @@ type Props = {
   currentIdentity: AuthorIdentity | null;
   /** ノートの fork 実行（呼び出し側で新規ノートを作成して開く） */
   onForkNote: (sharedId: string) => Promise<void>;
+  /** Knowledge の fork 実行（呼び出し側で新規 Wiki ページを作成して開く） */
+  onForkKnowledge: (sharedId: string) => Promise<void>;
   /** 自分作ノートの Unshare（成功時はリストを再読み込み） */
   onUnshare: (entry: SharedEntry) => Promise<void>;
   onBack: () => void;
@@ -69,13 +74,19 @@ type Props = {
 };
 
 // 共有導線（Share ボタン）が実装されている type のみ tab に出す。
-// concept / atom / template / report は SharedEntryType としては予約されており
+// template / report は SharedEntryType としては予約されており
 // データ層は読み書きできるが、UI に「Share」エントリポイントが整うまで非表示。
 const TYPE_TABS: { type: SharedEntryType; label: string }[] = [
   { type: "note", label: "Notes" },
+  { type: "knowledge", label: "Knowledge" },
   { type: "reference", label: "References" },
   { type: "data-manifest", label: "Data" },
 ];
+
+/** fork 導線を持つ type（fork 先: note → notes、knowledge → wiki） */
+function isForkable(type: SharedEntryType): boolean {
+  return type === "note" || type === "knowledge";
+}
 
 function entryTitle(entry: SharedEntry): string {
   const t = (entry.extra as Record<string, unknown> | undefined)?.title;
@@ -89,6 +100,7 @@ export function SharedLibraryView({
   sharedRoot,
   currentIdentity,
   onForkNote,
+  onForkKnowledge,
   onUnshare,
   onBack,
   focusEntryId,
@@ -103,8 +115,7 @@ export function SharedLibraryView({
     reference: [],
     "data-manifest": [],
     template: [],
-    claim: [],
-    atom: [],
+    knowledge: [],
     report: [],
   });
   const [loadErrors, setLoadErrors] = useState<
@@ -113,6 +124,16 @@ export function SharedLibraryView({
   const [selected, setSelected] = useState<SharedEntry | null>(null);
   const [hashStatus, setHashStatus] = useState<Record<string, HashStatus>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 「引用リンクをコピー」の完了フィードバック（1.5 秒だけチェック表示）
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyCitationLink = useCallback((entry: SharedEntry) => {
+    void navigator.clipboard?.writeText(buildSharedCitationLink(entry.id));
+    setCopiedId(entry.id);
+    window.setTimeout(() => {
+      setCopiedId((prev) => (prev === entry.id ? null : prev));
+    }, 1500);
+  }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -154,8 +175,7 @@ export function SharedLibraryView({
       reference: 0,
       "data-manifest": 0,
       template: 0,
-      claim: 0,
-      atom: 0,
+      knowledge: 0,
       report: 0,
     };
     for (const t of TYPE_TABS) {
@@ -182,12 +202,16 @@ export function SharedLibraryView({
     async (entry: SharedEntry) => {
       setBusyId(entry.id);
       try {
-        await onForkNote(entry.id);
+        if (entry.type === "knowledge") {
+          await onForkKnowledge(entry.id);
+        } else {
+          await onForkNote(entry.id);
+        }
       } finally {
         setBusyId(null);
       }
     },
-    [onForkNote],
+    [onForkNote, onForkKnowledge],
   );
 
   const handleUnshare = useCallback(
@@ -327,15 +351,30 @@ export function SharedLibraryView({
                 <div className="flex items-center justify-between gap-2 mt-1">
                   <span className="text-[10px] text-muted-foreground/70">
                     {entry.type}
+                    {entry.type === "knowledge" &&
+                    typeof (entry.extra as Record<string, unknown> | undefined)?.wikiKind === "string"
+                      ? ` · ${(entry.extra as Record<string, unknown>).wikiKind as string}`
+                      : ""}
                     {entry.version && entry.version > 1 ? ` · v${entry.version}` : ""}
                   </span>
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    {!isMine && entry.type === "note" && (
+                    <button
+                      onClick={() => copyCitationLink(entry)}
+                      className="px-2 py-1 text-[11px] rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
+                      title={t("share.copyCitation")}
+                    >
+                      {copiedId === entry.id ? (
+                        <Check size={11} className="text-emerald-600" />
+                      ) : (
+                        <Link2 size={11} />
+                      )}
+                    </button>
+                    {!isMine && isForkable(entry.type) && (
                       <button
                         onClick={() => handleFork(entry)}
                         disabled={isBusy}
                         className="px-2 py-1 text-[11px] rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1 disabled:opacity-50"
-                        title="Fork to my notes"
+                        title={entry.type === "knowledge" ? "Fork to my knowledge" : "Fork to my notes"}
                       >
                         <GitFork size={11} />
                         Fork
@@ -375,7 +414,7 @@ export function SharedLibraryView({
           sharedRoot={sharedRoot}
           onVerifyHash={() => verifyHash(selected)}
           onFork={
-            selected.type === "note"
+            isForkable(selected.type)
               ? () => handleFork(selected)
               : undefined
           }
@@ -472,6 +511,9 @@ function SharedEntryDetail({
 }: DetailProps) {
   const [body, setBody] = useState<string | null>(null);
   const [bodyError, setBodyError] = useState<string | null>(null);
+  // 「引用リンクをコピー」の完了フィードバック（コンポーネントは entry ごとに
+  // key remount されるため、ローカル state で持って問題ない）
+  const [citationCopied, setCitationCopied] = useState(false);
   // 既存ノートのサイドピークと同じ幅設定を共有する（storage key 共通 = 幅の記憶も共通）
   const peekResize = useSidePeekWidth();
 
@@ -598,13 +640,29 @@ function SharedEntryDetail({
               : t("share.readOnlyOthers")}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                void navigator.clipboard?.writeText(buildSharedCitationLink(entry.id));
+                setCitationCopied(true);
+                window.setTimeout(() => setCitationCopied(false), 1500);
+              }}
+              className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
+              title={t("share.copyCitationHint")}
+            >
+              {citationCopied ? (
+                <Check size={12} className="text-emerald-600" />
+              ) : (
+                <Link2 size={12} />
+              )}
+              {citationCopied ? t("share.copied") : t("share.copyCitation")}
+            </button>
             {onFork && !isMine && (
               <button
                 onClick={onFork}
                 className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
               >
                 <GitFork size={12} />
-                Fork to my notes
+                {entry.type === "knowledge" ? "Fork to my knowledge" : "Fork to my notes"}
               </button>
             )}
             {isMine && (
@@ -682,12 +740,12 @@ function SharedEntryBody({
     return <DataManifestPreview entry={entry} />;
   }
 
-  if (entry.type === "note") {
+  if (entry.type === "note" || entry.type === "knowledge") {
     // body は GraphiumDocument JSON。読み取り専用エディタでフル内容を表示する
     return <SharedNotePreview body={body} />;
   }
 
-  // template / concept / report はテキスト系として中身をそのまま表示
+  // template / report はテキスト系として中身をそのまま表示
   return (
     <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 p-3 rounded">
       {body.slice(0, 8000)}

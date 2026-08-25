@@ -104,6 +104,6 @@ The app's identity card.
 | Group | What it does |
 |---|---|
 | **About this app** | Shows the app name and **Version**. |
-| **Updates** | Desktop only — Graphium checks automatically on launch and every 24 hours, and **Check for updates** runs a check on demand; see [Updating](/desktop-app#updating). |
+| **Updates** | Desktop only — Graphium checks automatically on launch and every 24 hours, and **Check for updates** runs a check on demand — when a new version is found you can install it right there; see [Updating](/desktop-app#updating). |
 
 In the browser version, the **Updates** group simply notes that update checks are only available in the desktop app.

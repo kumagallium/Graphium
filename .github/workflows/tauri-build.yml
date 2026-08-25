@@ -188,12 +188,26 @@ jobs:
           # リリース済みの -setup.exe から自分で -setup.nsis.zip を組み立て、リリースへ
           # アップロードしてから署名する。これで tauri-action の updater 挙動に依存せず
           # 確実に Windows の updater バンドル＋署名を用意できる。
+          #
+          # 【重要】zip は必ず -0（無圧縮 / Stored）で固めること。
+          # tauri-plugin-updater の zip crate は default-features = false で
+          # ビルドされており、圧縮メソッドを一切持たない = Stored しか展開できない。
+          # Info-ZIP の既定（Deflate）で固めると、全 Windows クライアントが
+          # "unsupported Zip archive: Compression method not supported" で
+          # 自動更新に 100% 失敗する（v0.42.5 まで実害）。exe は既に圧縮済みで
+          # Deflate でも 0.03% しか縮まないため、無圧縮によるサイズ増は無い。
           WIN_EXE="Graphium_${VERSION}_x64-setup.exe"
           WIN_ZIP="Graphium_${VERSION}_x64-setup.nsis.zip"
           echo "Downloading ${WIN_EXE}..."
           if gh release download "$TAG" --pattern "$WIN_EXE" --dir /tmp/assets --repo "$REPO" --clobber 2>/dev/null; then
             echo "Building ${WIN_ZIP} from ${WIN_EXE}..."
-            ( cd /tmp/assets && zip -j -q "$WIN_ZIP" "$WIN_EXE" )
+            ( cd /tmp/assets && zip -j -q -0 "$WIN_ZIP" "$WIN_EXE" )
+            # 再発防止ガード: Stored 以外の圧縮メソッドが混入していたら、壊れた
+            # バンドルを配布する前にジョブごと失敗させる。
+            if unzip -v "/tmp/assets/$WIN_ZIP" | grep -qE "Defl|Bzp2|LZMA|Zstd|Defl64|PPMd"; then
+              echo "::error::${WIN_ZIP} contains a compressed entry; the updater's zip crate can only extract Stored (uncompressed) archives"
+              exit 1
+            fi
             echo "Uploading ${WIN_ZIP} to release..."
             gh release upload "$TAG" "/tmp/assets/$WIN_ZIP" --clobber --repo "$REPO"
           else

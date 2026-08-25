@@ -2,7 +2,7 @@
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Download, Filter, Archive, Image as ImageIcon, FileText } from "lucide-react";
+import { BookOpen, Download, Filter, Archive, Image as ImageIcon, FileText, Share2 } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
 import { MenuItem } from "@/ui/menu-item";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
@@ -105,6 +105,7 @@ export function NoteListView({
   onIngestNotes,
   onSetNoteContexts,
   onDeleteContextEverywhere,
+  onShareSelected,
 }: {
   noteIndex: GraphiumIndex | null;
   /** クリック時のコールバック（サイドピーク表示用） */
@@ -135,6 +136,12 @@ export function NoteListView({
   onSetNoteContexts?: (noteId: string, contexts: string[]) => Promise<void> | void;
   /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
   onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
+  /**
+   * 一括チーム共有（任意）— 提供時のみアクションバーに表示。
+   * 選択 id を渡すだけで、実行と進捗表示は呼び出し側（BulkShareModal）が担う。
+   * デスクトップ + shared root + identity が揃っている場合にのみ渡される。
+   */
+  onShareSelected?: (noteIds: string[]) => void;
 }) {
   const [entries, setEntries] = useState<NoteListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -544,6 +551,20 @@ export function NoteListView({
         {/* 一括アクション（複数選択時） */}
         {someSelected && (
           <div className="ml-auto flex items-center gap-2">
+            {onShareSelected && (
+              <button
+                onClick={() => {
+                  const ids = [...selectedIds];
+                  setSelectedIds(new Set());
+                  onShareSelected(ids);
+                }}
+                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5"
+                title={t("share.bulk.title")}
+              >
+                <Share2 size={12} />
+                {t("share.bulk.selected", { count: String(selectedIds.size) })}
+              </button>
+            )}
             {onIngestNotes && (
               <button
                 onClick={async () => {
