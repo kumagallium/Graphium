@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.44.0](https://github.com/kumagallium/Graphium/compare/v0.43.0...v0.44.0) - 2026-08-25
+
+- feat(sharing): knowledge share/fork, bulk share, and copy-citation links by @kumagallium in https://github.com/kumagallium/Graphium/pull/771
+
 ## [v0.43.0](https://github.com/kumagallium/Graphium/compare/v0.42.6...v0.43.0) - 2026-08-25
 
 - feat(graph): saved manual arrangements, group selection, and one consistent graph experience by @kumagallium in https://github.com/kumagallium/Graphium/pull/774
