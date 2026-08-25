@@ -1325,13 +1325,14 @@ fn get_media_path(file_id: String) -> Result<String, String> {
 //   - hash は "sha256:<64 hex>" 形式のみ許可
 //   - すべてのコマンドで root は呼び出し側から渡され、上記の構造のみ触る
 
+// TS 側 TYPE_TO_FOLDER（src/lib/storage/shared/local-folder.ts）と揃えること。
+// Knowledge（wiki）は "knowledge" 1 フォルダに集約（内部分類は entry の extra.wikiKind）。
 const SHARED_ENTRY_TYPES: &[&str] = &[
     "notes",
     "references",
     "data-manifests",
     "templates",
-    "concepts",
-    "atoms",
+    "knowledge",
     "reports",
 ];
 
@@ -2001,6 +2002,18 @@ mod tests {
         )
         .unwrap();
         fs::write(dir.join(id), bytes).unwrap();
+    }
+
+    #[test]
+    fn shared_entry_types_accepts_knowledge_and_rejects_legacy() {
+        assert!(validate_entry_type("knowledge").is_ok());
+        assert!(validate_entry_type("notes").is_ok());
+        // TS 側から一度も書かれたことのない旧フォルダ名は許可しない
+        assert!(validate_entry_type("concepts").is_err());
+        assert!(validate_entry_type("atoms").is_err());
+        // パストラバーサル防御
+        assert!(validate_entry_type("../notes").is_err());
+        assert!(validate_entry_type("").is_err());
     }
 
     #[test]

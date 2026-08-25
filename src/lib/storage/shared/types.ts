@@ -12,14 +12,21 @@
 
 import type { AuthorIdentity } from "../../../features/document-provenance/types";
 
-/** SharedEntry の種別。フォルダ構造 (notes/, references/, ...) と 1:1 で対応する。 */
+/**
+ * SharedEntry の種別。フォルダ構造 (notes/, references/, ...) と 1:1 で対応する。
+ *
+ * Knowledge（Wiki）は 1 つの "knowledge" type に集約し、内部分類
+ * （summary / claim / atom / synthesis）は extra.wikiKind に持たせる。
+ * WikiKind は今後も増減しうる流動的な分類なので、共有フォーマットの語彙
+ * （= フォルダ構造 = 旧バージョンの Graphium も読む永続層）には焼き込まない。
+ * 未知の wikiKind でも「Knowledge エントリ」として表示・fork できる前方互換を保つ。
+ */
 export type SharedEntryType =
   | "note"
   | "reference"
   | "data-manifest"
   | "template"
-  | "claim"
-  | "atom"
+  | "knowledge"
   | "report";
 
 /** 同一 ID 上書き時の hash 履歴（軽量、本文は持たない）。 */

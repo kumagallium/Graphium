@@ -166,10 +166,14 @@ import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, u
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
 import {
   shareNote,
+  shareKnowledge,
   forkSharedNote,
+  forkSharedKnowledge,
   unshareEntry,
   SharedLibraryView,
   materializeSharedBlobs,
+  BulkShareModal,
+  type BulkShareTarget,
 } from "./features/sharing";
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { DocumentProvenancePanel } from "./features/document-provenance";
@@ -229,6 +233,7 @@ import {
   setSharedEntryOpenCallback,
   insertSharedCitations,
 } from "./blocks/shared-citation";
+import { tryConvertSharedCitationPaste } from "./blocks/shared-citation/paste";
 import { collectNewSharedCitationSources } from "./blocks/shared-citation/collect";
 import type { CaptureEntry } from "./features/mobile-capture";
 import {
@@ -2140,6 +2145,13 @@ function NoteEditorInner({
           // 単一トークンのノートリンクは他ブロックと同様にメンション変換する
           const token = cleaned.trim();
           if (token && !/\s/.test(token) && tryConvertNoteLinkPaste(e, token)) return;
+          // 共有エントリの引用リンク（#shared/<id>）も同様にカード変換する
+          if (
+            token &&
+            !/\s/.test(token) &&
+            tryConvertSharedCitationPaste(e, token, () => editorRef.current)
+          )
+            return;
           // ProseMirror / BlockNote の paste handler も同じ DOM に付いており、
           // preventDefault だけだと続けて走ってブロックを改行追加 + paragraph 置換してしまう。
           // capture phase で完全に乗っ取るため stopImmediatePropagation も呼ぶ。
@@ -2206,6 +2218,8 @@ function NoteEditorInner({
       const pastedText = e.clipboardData?.getData("text/plain")?.trim();
       if (pastedText && !/\s/.test(pastedText)) {
         if (tryConvertNoteLinkPaste(e, pastedText)) return;
+        // 共有エントリの引用リンク（#shared/<id>）単体 → 引用カードに変換
+        if (tryConvertSharedCitationPaste(e, pastedText, () => editorRef.current)) return;
       }
 
       // 既存: URL のみのペーストならブックマーク選択メニューを出す
@@ -2472,7 +2486,8 @@ function NoteEditorInner({
       const docWithRef: GraphiumDocument = sharedRefState
         ? { ...baseDoc, sharedRef: sharedRefState }
         : baseDoc;
-      const result = await shareNote(docWithRef, {
+      // Wiki（Knowledge ページ）は type: "knowledge" として共有する
+      const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
         root: sharedRoot,
         author: sharedAuthor,
         blobRoot: getBlobRoot() ?? undefined,
@@ -2493,7 +2508,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, onSave, t, sharedRefState]);
+  }, [sharedRoot, sharedAuthor, buildDocument, onSave, t, sharedRefState, isWikiDoc]);
 
   // ── メモ挿入（メモギャラリーから） ──
   useEffect(() => {
@@ -4514,7 +4529,7 @@ function NoteEditorInner({
           onRestoreFromTrash={onRestoreFromTrash}
           onDelete={onDeleteNote}
           deleteDisabled={!fileId || saving}
-          onShare={!isWikiDoc ? handleShare : undefined}
+          onShare={!isSkillDoc ? handleShare : undefined}
           shareDisabled={!!shareDisabledReason || saving}
           shareDisabledReason={shareDisabledReason}
           isShared={isShared}
@@ -5444,6 +5459,8 @@ export function NoteApp() {
   // 引用カードの「開く」から Library の特定エントリへ飛ぶための一時 state。
   // SharedLibraryView が consume したら onFocusConsumed で null に戻す。
   const [sharedLibraryFocusId, setSharedLibraryFocusId] = useState<string | null>(null);
+  // 一括チーム共有の対象（null 以外で BulkShareModal を表示）
+  const [bulkShareTargets, setBulkShareTargets] = useState<BulkShareTarget[] | null>(null);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
   // データ構築は fm 宣言後に行う（globalGraphData）。
   const [showGlobalGraph, setShowGlobalGraph] = useState(false);
@@ -8453,6 +8470,12 @@ export function NoteApp() {
             onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
             onSetNoteContexts={fm.updateNoteContexts}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
+            onShareSelected={
+              isTauri() && getSharedRoot() && loadAuthorIdentity()
+                ? (ids) =>
+                    setBulkShareTargets(ids.map((id) => ({ id, kind: "note" as const })))
+                : undefined
+            }
             onIngestNotes={aiUiEnabled ? async (ids) => {
               // AI 未設定なら発火させない（enqueueIngest にも同ガードがあるが、
               // doc ロード等の無駄な前処理に入る前にここで止める）
@@ -8713,6 +8736,12 @@ export function NoteApp() {
             onRegenerateWiki={aiUiEnabled ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
             onWorldCheckWiki={aiUiEnabled ? (wikiId) => handleWorldCheckWiki(wikiId, "bulk") : undefined}
             onClearWorldValidity={(wikiId) => handleClearWorldValidity(wikiId)}
+            onShareSelected={
+              isTauri() && getSharedRoot() && loadAuthorIdentity()
+                ? (ids) =>
+                    setBulkShareTargets(ids.map((id) => ({ id, kind: "knowledge" as const })))
+                : undefined
+            }
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView
@@ -8750,6 +8779,38 @@ export function NoteApp() {
               setShowSharedLibrary(false); setShowGlobalGraph(false);
               fm.handleOpenFile(newFileId);
               router.navigate({ view: "editor", fileId: newFileId });
+            }}
+            onForkKnowledge={async (sharedId) => {
+              const root = getSharedRoot();
+              if (!root) return;
+              const result = await forkSharedKnowledge(sharedId, { root });
+              if (!result.ok) {
+                alert(`Fork failed: ${result.error}`);
+                return;
+              }
+              // ノート fork と同様、埋め込みメディアの shared-blob: 参照を materialize
+              let docToSave = result.doc;
+              const extraBlobs = (result.original.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
+              const blobRoot = getBlobRoot();
+              if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
+                const blobProvider = new LocalFolderBlobProvider(blobRoot);
+                const materialized = await materializeSharedBlobs(result.doc, {
+                  blobs: extraBlobs,
+                  fetchBytes: (ref) => blobProvider.get(ref),
+                  uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
+                });
+                docToSave = materialized.doc;
+                if (materialized.missing.length > 0) {
+                  alert(
+                    `Forked, but ${materialized.missing.length} embedded media could not be restored from blob root. They appear as broken references in the new page.`,
+                  );
+                }
+              }
+              const newWikiId = await fm.handleCreateWikiFile(docToSave);
+              const kind = docToSave.wikiMeta?.kind;
+              setShowSharedLibrary(false); setShowGlobalGraph(false);
+              fm.handleOpenWikiFile(newWikiId);
+              if (kind) router.navigate({ view: "wiki-editor", kind, wikiId: newWikiId });
             }}
             onUnshare={async (entry) => {
               const author = loadAuthorIdentity();
@@ -9350,6 +9411,39 @@ export function NoteApp() {
       {showReleaseNotes && (
         <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
       )}
+      {bulkShareTargets && (() => {
+        const bulkRoot = getSharedRoot();
+        const bulkAuthor = loadAuthorIdentity();
+        if (!bulkRoot || !bulkAuthor) return null;
+        return (
+          <BulkShareModal
+            targets={bulkShareTargets}
+            deps={{
+              root: bulkRoot,
+              author: bulkAuthor,
+              blobRoot: getBlobRoot() ?? undefined,
+              // 対象は保存済みドキュメント（開いている未保存編集は含まれない）
+              loadNote: async (id) => {
+                try {
+                  return await getActiveProvider().loadFile(id);
+                } catch {
+                  return null;
+                }
+              },
+              saveNote: fm.handleSaveNoteById,
+              loadKnowledge: async (id) => {
+                try {
+                  return (await getActiveProvider().loadWikiFile?.(id)) ?? null;
+                } catch {
+                  return null;
+                }
+              },
+              saveKnowledge: (id, doc) => fm.handleSaveWikiFile(id, doc),
+            }}
+            onClose={() => setBulkShareTargets(null)}
+          />
+        );
+      })()}
       <WelcomeDialog />
       <SettingsModal
         isOpen={showSettings}

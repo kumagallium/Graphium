@@ -18,7 +18,7 @@ const meta: Meta<typeof SharedCitationCard> = {
     },
     entryType: {
       control: "select",
-      options: ["note", "reference", "data-manifest", "template", "claim", "atom", "report"],
+      options: ["note", "reference", "data-manifest", "template", "knowledge", "report"],
     },
   },
 };
@@ -86,8 +86,7 @@ export const AllTypes: Story = {
           ["reference", "Ceder et al., Nature Materials (2024)"],
           ["data-manifest", "NaCl 単結晶 XRD（2026-05-12 測定）"],
           ["template", "実験ノートテンプレート v3"],
-          ["claim", "焼結温度 800°C 以上で粒径が急増する"],
-          ["atom", "前駆体の粒径が最終密度を支配する"],
+          ["knowledge", "焼結温度 800°C 以上で粒径が急増する"],
           ["report", "2026 年度上期 進捗レポート"],
         ] as [SharedEntryType, string][]
       ).map(([entryType, title]) => (
