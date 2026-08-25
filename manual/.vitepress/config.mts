@@ -42,6 +42,7 @@ const enSidebar = [
     items: [
       { text: 'Settings', link: '/settings' },
       { text: 'Keyboard shortcuts', link: '/shortcuts' },
+      { text: 'FAQ', link: '/faq' },
       { text: 'Feature roadmap', link: '/roadmap' },
       { text: 'Release history', link: '/release-history' },
     ],
@@ -86,6 +87,7 @@ const jaSidebar = [
     items: [
       { text: '設定', link: '/ja/settings' },
       { text: 'キーボードショートカット', link: '/ja/shortcuts' },
+      { text: 'よくある質問', link: '/ja/faq' },
       { text: '機能ロードマップ', link: '/ja/roadmap' },
       { text: 'リリース履歴', link: '/ja/release-history' },
     ],
