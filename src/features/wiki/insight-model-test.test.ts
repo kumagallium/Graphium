@@ -8,14 +8,15 @@ import {
   summarizeInsightTest,
   RESTATEMENT_BADGE_THRESHOLD,
   INSIGHT_TEST_ID_PREFIX,
+  INSIGHT_TEST_ONE_OFF_NUMBER,
 } from "./insight-model-test";
 
 describe("insight-model-test corpus", () => {
-  it.each(["ja", "en"])("%s: 6 件・非空・prefix 付きユニーク ID", (locale) => {
+  it.each(["ja", "en"])("%s: 3 件・非空・prefix 付きユニーク ID", (locale) => {
     const claims = getInsightTestClaims(locale);
-    expect(claims).toHaveLength(6);
+    expect(claims).toHaveLength(3);
     const ids = new Set(claims.map((c) => c.id));
-    expect(ids.size).toBe(6);
+    expect(ids.size).toBe(3);
     for (const c of claims) {
       expect(c.id.startsWith(INSIGHT_TEST_ID_PREFIX)).toBe(true);
       expect(c.title.length).toBeGreaterThan(0);
@@ -29,18 +30,17 @@ describe("insight-model-test corpus", () => {
     expect(ja).toEqual(en);
   });
 
-  it.each(["ja", "en"])("%s: 参考例は 3 件で、折り畳み（2 件引用）の例を含む", (locale) => {
+  it.each(["ja", "en"])("%s: 期待解はちょうど 1 件で、2 件の知見を折り畳む", (locale) => {
     const refs = getInsightTestReference(locale);
-    expect(refs).toHaveLength(3);
-    expect(refs.some((r) => r.foldsClaimNumbers.length >= 2)).toBe(true);
-    for (const r of refs) {
-      expect(r.title.length).toBeGreaterThan(0);
-      expect(r.body.length).toBeGreaterThan(0);
-    }
+    expect(refs).toHaveLength(1);
+    expect(refs[0].foldsClaimNumbers.length).toBeGreaterThanOrEqual(2);
+    expect(refs[0].title.length).toBeGreaterThan(0);
+    expect(refs[0].body.length).toBeGreaterThan(0);
   });
 
-  it.each(["ja", "en"])("%s: 参考例の折り畳み番号は実在する知見番号を指し、知見 6（一回性）はどの例にも畳まれない", (locale) => {
+  it.each(["ja", "en"])("%s: 折り畳み番号は実在する知見番号を指し、一回性の知見はどの例にも畳まれない", (locale) => {
     const claimCount = getInsightTestClaims(locale).length;
+    expect(INSIGHT_TEST_ONE_OFF_NUMBER).toBeLessThanOrEqual(claimCount);
     const folded = new Set<number>();
     for (const r of getInsightTestReference(locale)) {
       for (const n of r.foldsClaimNumbers) {
@@ -49,7 +49,7 @@ describe("insight-model-test corpus", () => {
         folded.add(n);
       }
     }
-    expect(folded.has(6)).toBe(false);
+    expect(folded.has(INSIGHT_TEST_ONE_OFF_NUMBER)).toBe(false);
   });
 });
 
@@ -80,13 +80,12 @@ describe("summarizeInsightTest（目視検証を軽くする 1 行サマリ）",
   it("折り畳み数・言い換え数・視野・一回性引用を集計する", () => {
     const s = summarizeInsightTest([
       mk([1, 2]),          // 折り畳み
-      mk([3, 4]),          // 折り畳み
-      mk([5], 0.9),        // 単独 + 言い換え
-      mk([6]),             // 一回性を引用
+      mk([2], 0.9),        // 単独 + 言い換え
+      mk([3]),             // 一回性を引用
     ]);
-    expect(s.foldCount).toBe(2);
+    expect(s.foldCount).toBe(1);
     expect(s.restatementCount).toBe(1);
-    expect(s.coveredNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(s.coveredNumbers).toEqual([1, 2, 3]);
     expect(s.citesOneOffFact).toBe(true);
   });
 

@@ -11,11 +11,13 @@
 //   - 【採点しない】機械採点器は恣意性の持ち込みになるので置かない。表示するのは
 //     客観シグナル 2 つ（折り畳み = 2 知見以上の引用 / 言い換えの可能性 = 元知見との
 //     トークン重なり）と、期待される抽象水準の参考例だけ。判断はユーザーがする。
-//   - 【構造を仕込む】テスト知見には畳める構造を意図的に入れてある:
-//       (1)(2) 時間×温度のトレードオフ / (3)(4) 構造の成熟には適正範囲がある /
-//       (5) 単独でも可搬な工程→構造→性質 / (6) 畳めない一回性の事実（ノイズ耐性の確認）。
-//     能力のあるモデルはこれらを折り畳んだ抽象を返し、力不足のモデルは知見の言い換えを
-//     知見と同数返すか、空リストを返す。
+//   - 【期待解は 1 件】テストは最小構成にする: 畳める知見 2 件 + 一回性のノイズ 1 件で、
+//     期待される洞察はちょうど 1 件（知見 1・2 を折り畳み、3 は引用しない）。
+//     答え合わせが一目で済み、入力が小さいぶん実行も速い。
+//     (1)(2) は「構造の成熟には適正範囲がある」（不足でも過剰でも破綻する逆 U 字）—
+//     単純な因果 2 本を 1 つの境界構造に畳む、言い換えでは到達できない抽象を要求する。
+//     能力のあるモデルは 1・2 を畳んだ洞察 1 件を返し、力不足のモデルは知見の言い換えを
+//     知見と同数返すか、空リストを返すか、ノイズ (3) まで拾う。
 
 import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { atomizeConcepts, type AtomCandidate } from "./wiki-service";
@@ -29,31 +31,16 @@ export const INSIGHT_TEST_ID_PREFIX = "insight-model-test-";
 const CLAIMS_JA: InsightTestClaim[] = [
   {
     id: `${INSIGHT_TEST_ID_PREFIX}1`,
-    title: "低温で長時間発酵させた生地は香りが深くなる",
-    body: "冷蔵庫で一晩（8〜12 時間）発酵させたパン生地は、常温 1 時間で発酵させた生地より香りの成分が増え、味に複雑さが出た。",
-  },
-  {
-    id: `${INSIGHT_TEST_ID_PREFIX}2`,
-    title: "高温で急がせた発酵は気泡を粗くする",
-    body: "30 度を超える場所で 40 分の急速発酵をした生地は、気泡が不揃いに大きくなり、焼き上がりのきめが粗くなった。",
-  },
-  {
-    id: `${INSIGHT_TEST_ID_PREFIX}3`,
     title: "こねが足りない生地は気泡を保持できない",
     body: "グルテンの膜が十分に育っていない生地は、発酵で生まれたガスを抱えきれず、焼き上がりが平たく詰まった。",
   },
   {
-    id: `${INSIGHT_TEST_ID_PREFIX}4`,
+    id: `${INSIGHT_TEST_ID_PREFIX}2`,
     title: "発酵を進めすぎた生地は焼成中に潰れる",
     body: "過発酵の生地は骨格が弱り、オーブンの熱でいったん持ち上がったあとに沈んで、目の詰まった層ができた。",
   },
   {
-    id: `${INSIGHT_TEST_ID_PREFIX}5`,
-    title: "同じ配合でも捏ね方で食感が変わる",
-    body: "材料と分量がまったく同じでも、捏ねる強さと時間を変えると、しっとりからふわふわまで食感が別物になった。",
-  },
-  {
-    id: `${INSIGHT_TEST_ID_PREFIX}6`,
+    id: `${INSIGHT_TEST_ID_PREFIX}3`,
     title: "今日開けた粉は吸水が多かった",
     body: "新しく開けた袋の粉は、いつもの加水率だと生地がかたく、水を 15 グラム足してちょうどよくなった。",
   },
@@ -62,31 +49,16 @@ const CLAIMS_JA: InsightTestClaim[] = [
 const CLAIMS_EN: InsightTestClaim[] = [
   {
     id: `${INSIGHT_TEST_ID_PREFIX}1`,
-    title: "Slow, cold fermentation deepens the aroma of dough",
-    body: "Bread dough fermented overnight in the fridge (8–12 hours) developed more aroma compounds and a more complex taste than dough proofed for one hour at room temperature.",
-  },
-  {
-    id: `${INSIGHT_TEST_ID_PREFIX}2`,
-    title: "Rushed, warm fermentation makes the crumb coarse",
-    body: "Dough proofed fast for 40 minutes above 30°C developed unevenly large bubbles and a coarse crumb after baking.",
-  },
-  {
-    id: `${INSIGHT_TEST_ID_PREFIX}3`,
     title: "Under-kneaded dough cannot hold its gas",
     body: "Dough whose gluten film had not developed enough could not retain the gas produced during fermentation, and the loaf came out flat and dense.",
   },
   {
-    id: `${INSIGHT_TEST_ID_PREFIX}4`,
+    id: `${INSIGHT_TEST_ID_PREFIX}2`,
     title: "Over-proofed dough collapses during baking",
     body: "Dough left to ferment too long lost its structural strength; it rose briefly in the oven's heat and then sank, leaving a dense layer.",
   },
   {
-    id: `${INSIGHT_TEST_ID_PREFIX}5`,
-    title: "The same recipe gives a different texture depending on kneading",
-    body: "With identical ingredients and amounts, changing only the strength and duration of kneading turned the texture from moist to fluffy — practically a different bread.",
-  },
-  {
-    id: `${INSIGHT_TEST_ID_PREFIX}6`,
+    id: `${INSIGHT_TEST_ID_PREFIX}3`,
     title: "Today's new bag of flour absorbed more water",
     body: "A freshly opened bag of flour made the dough stiff at the usual hydration; adding 15 g of water brought it back to normal.",
   },
@@ -107,37 +79,17 @@ export type InsightTestReference = { title: string; body: string; foldsClaimNumb
 
 const REFERENCE_JA: InsightTestReference[] = [
   {
-    title: "時間をかけた変化は質を深め、急がせた変化は構造を粗くする",
-    body: "同じ工程でも、ゆっくり進めると狙った性質が育ち、急がせると内部の構造が乱れる。速度は結果の量ではなく質を変える。",
-    foldsClaimNumbers: [1, 2],
-  },
-  {
     title: "内部の骨組みには、育ち不足でも育ちすぎでも崩れる適正な範囲がある",
     body: "構造を支える骨組みは、足りなければ持ちこたえられず、進みすぎれば自壊する。良い状態は両端の間の帯にある。",
-    foldsClaimNumbers: [3, 4],
-  },
-  {
-    title: "同じ材料でも、工程が生んだ内部構造が仕上がりを決める",
-    body: "何でできているかが同じでも、どう作られたかで内部の構造が変わり、最終的な性質はその構造が決める。",
-    foldsClaimNumbers: [5],
+    foldsClaimNumbers: [1, 2],
   },
 ];
 
 const REFERENCE_EN: InsightTestReference[] = [
   {
-    title: "Slow change deepens quality; rushed change coarsens structure",
-    body: "The same process grows the desired property when given time, and disorders the internal structure when rushed. Speed changes the quality of the outcome, not just its amount.",
-    foldsClaimNumbers: [1, 2],
-  },
-  {
     title: "An internal framework has a viable range — too little or too much development both collapse it",
     body: "A supporting structure fails when underdeveloped and destroys itself when overdeveloped. The good state lives in the band between the extremes.",
-    foldsClaimNumbers: [3, 4],
-  },
-  {
-    title: "With identical ingredients, the structure created by the process decides the outcome",
-    body: "Even when the components are the same, how the thing was made changes its internal structure — and that structure determines the final properties.",
-    foldsClaimNumbers: [5],
+    foldsClaimNumbers: [1, 2],
   },
 ];
 
@@ -176,7 +128,7 @@ export type InsightTestCandidate = {
 };
 
 /** 一回性の事実（どの洞察にも畳まれないのが期待）の表示番号 */
-export const INSIGHT_TEST_ONE_OFF_NUMBER = 6;
+export const INSIGHT_TEST_ONE_OFF_NUMBER = 3;
 
 /**
  * 結果の要約。候補が多いときに 1 行で全体像を掴めるようにする — 目視検証の負担を下げる。
