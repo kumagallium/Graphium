@@ -32,7 +32,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
   runInsightModelTest, getInsightTestClaims, getInsightTestReference,
-  getLastInsightTestResult, setLastInsightTestResult,
+  getLastInsightTestResult, setLastInsightTestResult, summarizeInsightTest,
   RESTATEMENT_BADGE_THRESHOLD, type InsightTestResult,
 } from "../wiki/insight-model-test";
 import { getAppVersion, checkForUpdates, type CheckResult } from "../../lib/updater";
@@ -251,6 +251,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     return cached ? { status: "done", result: cached } : { status: "idle" };
   });
   const insightTestAbortRef = useRef<AbortController | null>(null);
+  // 実行中の経過秒。テストは本番と同じ多段パイプライン（抽象化→ジャッジ→書き直し）を
+  // 通るため数十秒〜数分かかる。無反応に見えないよう経過を見せる。
+  const [insightTestElapsed, setInsightTestElapsed] = useState(0);
+  useEffect(() => {
+    if (insightTestState.status !== "running") return;
+    setInsightTestElapsed(0);
+    const timer = setInterval(() => setInsightTestElapsed((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [insightTestState.status]);
   // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
   // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
   const [groundingModelStored, setGroundingModelStored] = useState("");
@@ -2626,7 +2635,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {insightTestState.status === "running"
-                        ? t("settings.insightTest.running")
+                        ? t("settings.insightTest.runningFor", { sec: String(insightTestElapsed) })
                         : t("settings.insightTest.button")}
                     </button>
                     {insightTestState.status === "running" && (
@@ -2686,6 +2695,26 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                             {t("settings.insightTest.clear")}
                           </button>
                         </div>
+                        {/* 1 行サマリ — 候補が多くても全体像を先に掴めるようにする（目視検証の負担軽減）。
+                            数えられる量だけで、合否判定はしない。 */}
+                        {insightTestState.result.candidates.length > 0 && (() => {
+                          const s = summarizeInsightTest(insightTestState.result.candidates);
+                          return (
+                            <p className="text-muted-foreground mb-1.5">
+                              {t("settings.insightTest.summary", {
+                                folds: String(s.foldCount),
+                                restates: String(s.restatementCount),
+                                covered: String(s.coveredNumbers.length),
+                                total: String(getInsightTestClaims(locale).length),
+                              })}
+                              {s.citesOneOffFact && (
+                                <span className="ml-1.5 text-amber-700 dark:text-amber-400">
+                                  {t("settings.insightTest.oneOffCited")}
+                                </span>
+                              )}
+                            </p>
+                          );
+                        })()}
                         {insightTestState.result.candidates.length === 0 ? (
                           <p className="text-muted-foreground">{t("settings.insightTest.empty")}</p>
                         ) : (
@@ -2695,14 +2724,17 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                                 <div className="text-foreground break-words">{cand.title}</div>
                                 <div className="text-muted-foreground break-words">{cand.body}</div>
                                 <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                  {/* 引用番号チップ — 参考例の「折り畳む知見: 1 · 2」と直接突き合わせられる */}
                                   <span
                                     className={`px-1.5 py-0.5 rounded ${
-                                      cand.sourceTitles.length >= 2
+                                      cand.sourceNumbers.length >= 2
                                         ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
                                         : "bg-muted text-muted-foreground"
                                     }`}
                                   >
-                                    {t("settings.insightTest.sources", { count: String(cand.sourceTitles.length) })}
+                                    {cand.sourceNumbers.length > 0
+                                      ? t("settings.insightTest.sourcesNums", { nums: cand.sourceNumbers.join(" · ") })
+                                      : t("settings.insightTest.sources", { count: String(cand.sourceTitles.length) })}
                                   </span>
                                   {cand.restatement >= RESTATEMENT_BADGE_THRESHOLD && (
                                     <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">

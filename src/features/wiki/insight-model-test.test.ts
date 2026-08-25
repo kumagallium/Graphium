@@ -5,6 +5,7 @@ import {
   restatementScore,
   getLastInsightTestResult,
   setLastInsightTestResult,
+  summarizeInsightTest,
   RESTATEMENT_BADGE_THRESHOLD,
   INSIGHT_TEST_ID_PREFIX,
 } from "./insight-model-test";
@@ -68,6 +69,33 @@ describe("restatementScore（言い換え検出 — 表示バッジ専用）", (
 
   it("無関係な文はほぼ 0", () => {
     expect(restatementScore("量子コンピュータの誤り訂正には冗長性が要る", claims)).toBeLessThan(0.2);
+  });
+});
+
+describe("summarizeInsightTest（目視検証を軽くする 1 行サマリ）", () => {
+  const mk = (sourceNumbers: number[], restatement = 0) => ({
+    title: "t", body: "b", sourceTitles: [], sourceNumbers, restatement,
+  });
+
+  it("折り畳み数・言い換え数・視野・一回性引用を集計する", () => {
+    const s = summarizeInsightTest([
+      mk([1, 2]),          // 折り畳み
+      mk([3, 4]),          // 折り畳み
+      mk([5], 0.9),        // 単独 + 言い換え
+      mk([6]),             // 一回性を引用
+    ]);
+    expect(s.foldCount).toBe(2);
+    expect(s.restatementCount).toBe(1);
+    expect(s.coveredNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(s.citesOneOffFact).toBe(true);
+  });
+
+  it("空の候補では全部ゼロ", () => {
+    const s = summarizeInsightTest([]);
+    expect(s.foldCount).toBe(0);
+    expect(s.restatementCount).toBe(0);
+    expect(s.coveredNumbers).toEqual([]);
+    expect(s.citesOneOffFact).toBe(false);
   });
 });
 

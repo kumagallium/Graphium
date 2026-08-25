@@ -167,10 +167,48 @@ export type InsightTestCandidate = {
   body: string;
   /** 引用した知見のタイトル（折り畳みシグナル: 2 件以上なら知見をまたげている） */
   sourceTitles: string[];
+  /** 引用した知見の表示番号（1 始まり・knowledge リストと参考例の番号に対応）。
+   *  参考例の「折り畳む知見: 1 · 2」と突き合わせる答え合わせ用。 */
+  sourceNumbers: number[];
   /** 元知見との最大トークン重なり（0..1）。しきい値超えで「言い換えの可能性」バッジ */
   restatement: number;
   atomType?: AtomCandidate["atomType"];
 };
+
+/** 一回性の事実（どの洞察にも畳まれないのが期待）の表示番号 */
+export const INSIGHT_TEST_ONE_OFF_NUMBER = 6;
+
+/**
+ * 結果の要約。候補が多いときに 1 行で全体像を掴めるようにする — 目視検証の負担を下げる。
+ * 客観的に数えられる量だけを集計し、合否判定はしない。
+ */
+export type InsightTestSummary = {
+  /** 2 件以上の知見を引用した候補数（折り畳みの成立数） */
+  foldCount: number;
+  /** 「言い換えの可能性」バッジが付く候補数 */
+  restatementCount: number;
+  /** 引用された知見番号の和集合（視野） */
+  coveredNumbers: number[];
+  /** 一回性の知見（6）を引用した候補があるか。true は言い換え寄りのシグナル */
+  citesOneOffFact: boolean;
+};
+
+export function summarizeInsightTest(candidates: InsightTestCandidate[]): InsightTestSummary {
+  const covered = new Set<number>();
+  let foldCount = 0;
+  let restatementCount = 0;
+  for (const c of candidates) {
+    if (c.sourceNumbers.length >= 2) foldCount += 1;
+    if (c.restatement >= RESTATEMENT_BADGE_THRESHOLD) restatementCount += 1;
+    for (const n of c.sourceNumbers) covered.add(n);
+  }
+  return {
+    foldCount,
+    restatementCount,
+    coveredNumbers: [...covered].sort((a, b) => a - b),
+    citesOneOffFact: covered.has(INSIGHT_TEST_ONE_OFF_NUMBER),
+  };
+}
 
 export type InsightTestResult = {
   candidates: InsightTestCandidate[];
@@ -215,10 +253,14 @@ export async function runInsightModelTest(
     ...(model ? { model } : {}),
     ...(signal ? { signal } : {}),
   });
+  const idToNumber = new Map(claims.map((c, i) => [c.id, i + 1]));
   const candidates: InsightTestCandidate[] = res.atoms.map((a) => ({
     title: a.title,
     body: a.body,
     sourceTitles: a.derivedFromConceptTitles,
+    sourceNumbers: a.derivedFromClaims
+      .map((id) => idToNumber.get(id))
+      .filter((n): n is number => n !== undefined),
     restatement: restatementScore(a.title, claims),
     atomType: a.atomType,
   }));
