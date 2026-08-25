@@ -50,8 +50,9 @@ Everything AI-related, ordered as a setup flow: register models first, then assi
 | Group | What it does |
 |---|---|
 | **Registered Models** | Add and manage models — Anthropic, OpenAI, Google Gemini, OpenAI-compatible endpoints, or a GitHub Copilot subscription — with optional per-model pricing. |
-| **Model assignment** | Choose which registered model plays each role: **Default model**, **Chat & Insight model**, and **Embedding model** (with a **Test embedding** check). |
+| **Model assignment** | Choose which registered model plays each role: **Default model**, **Chat & Insight model** (with a **Test insight model** check <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />), and **Embedding model** (with a **Test embedding** check). |
 | **World grounding** | Turn on **Auto-ground new knowledge** and optionally set a dedicated grounding model; see [World grounding](/ai-grounding). |
+| **Insight discovery** <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" /> | **Scans per ingest (max)** — how many LLM calls Insight scanning may spend each time a note is added to Knowledge (default 3; 0 skips scanning at ingest). See [Knowledge layer](/knowledge-layer). |
 | **MCP Servers** <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" /> | Connect external tool servers directly — **Paste JSON** from a server's README, configure one by hand with **Manual**, or pull candidates **From registry**. |
 
 In the browser version, where there is no backend, this tab shows an upgrade notice instead. MCP servers come in two types — **Local** (launched and managed by Graphium; desktop app only) and **Remote** (connects to an already-running server by URL).

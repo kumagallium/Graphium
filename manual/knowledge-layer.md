@@ -83,6 +83,8 @@ Two buttons at the bottom of the sidebar's **Knowledge** section open maintenanc
 
 Insights are found by scanning claims for patterns that recur across two or more of them. This happens incrementally during ingestion, and you can run it across your whole corpus from [Settings](/settings) → **Knowledge** → **Discover Insights from Claims** → **Discover Insights**. Existing insights are sent to the model so duplicates aren't recreated — when a new claim supports an insight you already have, the insight is reinforced instead of duplicated.
 
+**Every scan reports how much it looked at** <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />. Claims are scanned cluster by cluster, and the result reports the coverage it measured — **covered n/m** after an ingest, **Claims in view: n/m** in the corpus-wide run — meaning how many of your claims were in view at least once. So "no new insights" is never ambiguous: you can see whether the scan looked at everything and found nothing new, or simply hasn't reached the rest of your corpus yet. The corpus-wide run continues until every claim has been in view, and tells you up front how many LLM calls that takes; ingest-time scanning is capped by **Scans per ingest** in [Settings](/settings) → AI, so you decide what each ingest costs. If Insights are rare, the [FAQ](/faq) walks through how to tell whether it's your material or your model.
+
 ## Bulk regeneration and re-embedding
 
 The [Settings](/settings) → **Knowledge** tab holds corpus-wide maintenance:

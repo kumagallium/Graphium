@@ -82,6 +82,16 @@ Graphium is model-agnostic, but the jobs are not equally demanding. A rough guid
 
 If Insights seem rare or read like restatements of your Claims, switch only the **Chat & Insight model** to a stronger one and run discovery again — the [FAQ](/faq) walks through this one-variable experiment.
 
+### Test insight model <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />
+
+Rather than trusting a recommendation, you can measure the model you picked. **Test insight model**, next to the Chat & Insight model selector, runs the selected model once over three bundled test Claims about bread-making and shows the Insights it produced right there.
+
+Open **Show what the test contains** to see the three Claims and the expected answer before running: two of the Claims (under-kneaded dough collapses, over-proofed dough collapses) should fold into one rule about a viable range, and the third — a one-off note about today's flour — is there as noise. A capable model returns that folded Insight; a struggling one returns restatements of the Claims, or nothing.
+
+Each candidate shows which Claims it cites, and a **possible restatement** badge when its wording barely differs from a source Claim. A summary line counts the folds and restatements so a long result stays readable. The test runs the same multi-stage pipeline as real discovery, so it takes from tens of seconds to a few minutes — that wait is itself a preview of discovery speed with this model.
+
+Nothing from the test is written to your notes or Knowledge: the test Claims live in the app itself, and the result is kept only until you close the app (or press **Clear result**).
+
 ## MCP servers <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" />
 
 MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; under **MCP Servers**, click **Add MCP server** and pick one of three modes:
