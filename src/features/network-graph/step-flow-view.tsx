@@ -654,7 +654,11 @@ function StepFlowCanvas({
       }}
     >
     <div ref={wrapperRef} style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0 }}>
-      <GraphSelectionHint show={showSelectionHint} />
+      <GraphSelectionHint
+        show={showSelectionHint}
+        // エッジ 0 のときは下中央に接続ヒントが出るので、重ならないよう 1 行分上げる
+        bottom={variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0 ? 32 : 10}
+      />
       <ReactFlow
         nodes={nodes}
         edges={edges}

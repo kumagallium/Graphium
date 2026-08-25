@@ -7,7 +7,14 @@
 
 import { useT } from "../../i18n";
 
-export function GraphSelectionHint({ show }: { show: boolean }) {
+export function GraphSelectionHint({
+  show,
+  bottom = 10,
+}: {
+  show: boolean;
+  /** 下端からの距離。同じ場所に別のヒント（手順フローの接続ヒント）が出る文脈では上へ避ける */
+  bottom?: number;
+}) {
   const t = useT();
   if (!show) return null;
   return (
@@ -15,7 +22,7 @@ export function GraphSelectionHint({ show }: { show: boolean }) {
       // グラフ本体の操作を邪魔しない（クリックは下のキャンバスへ抜ける）
       style={{
         position: "absolute",
-        bottom: 10,
+        bottom,
         left: 0,
         right: 0,
         textAlign: "center",
