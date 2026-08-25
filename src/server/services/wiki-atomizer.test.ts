@@ -15,6 +15,7 @@ import { describe, it, expect } from "vitest";
 import {
   detectRung1Tokens,
   parseAtomizerOutput,
+  AtomizerOutputParseError,
   buildAtomizerUserMessage,
   parseReliftOutput,
   buildReliftUserMessage,
@@ -166,6 +167,66 @@ describe("parseAtomizerOutput — portability gates removed (single rule = promp
     });
     const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
     expect(out).toHaveLength(2);
+  });
+});
+
+describe("parseAtomizerOutput — 途中切断・壊れ JSON の扱い（silent 0 件成功にしない）", () => {
+  function makeIdMap(snapshots: { id: string; title: string }[]): Map<string, string> {
+    return new Map(snapshots.map((c) => [c.id, c.title]));
+  }
+  const baseSnapshots = [
+    { id: "c1", title: "Claim 1" },
+    { id: "c2", title: "Claim 2" },
+  ];
+
+  it("途中で切れた JSON は jsonrepair で修復し、完全な要素だけ salvage する", () => {
+    const full = JSON.stringify({
+      atoms: [
+        {
+          title: "完全なほうの洞察",
+          body: "最初の要素は完全に出力されている。",
+          sourceConceptIds: ["c1"],
+          confidence: 0.9,
+        },
+        {
+          title: "途中で切れる洞察",
+          body: "この本文の途中でモデル出力が max_tokens に達して切断される想定",
+          sourceConceptIds: ["c2"],
+          confidence: 0.8,
+        },
+      ],
+    });
+    // 2 個目の body 文字列の内側で切断（実際に観測された「Unterminated string」を再現）
+    const cutAt = full.indexOf("切断される想定");
+    const truncated = full.slice(0, cutAt);
+    const out = parseAtomizerOutput(truncated, makeIdMap(baseSnapshots));
+    expect(out).toHaveLength(1);
+    expect(out[0].title).toBe("完全なほうの洞察");
+  });
+
+  it("修復しても完全な要素が 1 件も無ければ AtomizerOutputParseError を投げる", () => {
+    const garbageTruncated = `{"atoms": [{"title": "冒頭で切れ`;
+    expect(() => parseAtomizerOutput(garbageTruncated, makeIdMap(baseSnapshots)))
+      .toThrow(AtomizerOutputParseError);
+  });
+
+  it("JSON ですらない散文は AtomizerOutputParseError（code 付き）を投げる", () => {
+    try {
+      parseAtomizerOutput("I could not find any shared pattern across these claims.", makeIdMap(baseSnapshots));
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(AtomizerOutputParseError);
+      expect((err as AtomizerOutputParseError).code).toBe("ATOMIZER_OUTPUT_UNPARSEABLE");
+    }
+  });
+
+  it("有効な JSON でも atoms 配列でない形は解析失敗として投げる", () => {
+    expect(() => parseAtomizerOutput(JSON.stringify({ message: "no atoms here" }), makeIdMap(baseSnapshots)))
+      .toThrow(AtomizerOutputParseError);
+  });
+
+  it("正常な空配列（{\"atoms\": []}）は従来どおり 0 件の正常完了", () => {
+    expect(parseAtomizerOutput(JSON.stringify({ atoms: [] }), makeIdMap(baseSnapshots))).toEqual([]);
   });
 });
 

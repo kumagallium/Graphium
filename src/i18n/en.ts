@@ -311,6 +311,7 @@ export const en: Record<string, string> = {
   "aiError.apiKeyForbidden": "The API key does not have permission for this operation.",
   "aiError.embeddingModelUnsupported": "Embedding requires an OpenAI-compatible model. Add one in Settings → AI.",
   "aiError.provStructureFailed": "Couldn't turn the AI output into a structured note. Please try again — or switch the model in Settings → AI (Claude models are the most reliable for this).",
+  "aiError.atomizerOutputUnparseable": "The insight model's response was cut off or unreadable. Please try again — if it keeps happening, switching the Chat & Insight model in Settings → AI usually helps.",
 
   // ── AI チャット ──
   "aiChat.title": "AI Chat",

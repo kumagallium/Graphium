@@ -105,6 +105,14 @@ export function describeAuthError(
   };
 }
 
+/**
+ * Anthropic プロバイダに明示する出力トークン上限。
+ * 現行 Claude（Opus/Sonnet/Haiku 4.5+）の出力上限は 64K〜128K なので全モデル安全圏。
+ * thinking（Opus 5 系は常時オン）と本文がこの枠を分け合うため、小さすぎると
+ * JSON 出力が途中切断される。
+ */
+const ANTHROPIC_MAX_OUTPUT_TOKENS = 16384;
+
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
   try {
     return await runAgentLoopInner(params);
@@ -172,6 +180,13 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
       system: systemPrompt,
       messages,
       ...(temperature !== undefined && supportsTemperature ? { temperature } : {}),
+      // Anthropic は API 仕様上 max_tokens が必須で、未指定だと AI SDK の小さな既定値に
+      // 頭打ちされる。現行 Claude は thinking が同じ max_tokens を消費するため、既定値の
+      // ままだと atomize / ingest のような長い JSON 出力が本文の途中で切れて壊れ JSON に
+      // なる（「洞察 0 件」に見える silent failure の原因）。現行 Claude の出力上限は
+      // 64K〜128K なので 16K は全モデル安全圏。openai-compatible はプロバイダ既定
+      // （通常はモデル上限）が使われるので指定しない。
+      ...(modelConfig?.provider === "anthropic" ? { maxOutputTokens: ANTHROPIC_MAX_OUTPUT_TOKENS } : {}),
       // tools が空の場合は undefined にする
       ...(hasTools ? { tools: tools as any } : {}),
       stopWhen: stepCountIs(maxSteps),
