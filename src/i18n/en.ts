@@ -535,7 +535,7 @@ export const en: Record<string, string> = {
   "settings.modelHelp": "Used as a fallback for everything, and directly for background tasks (ingest, lint, rewrite, cross-update).",
   "settings.chatSynthesisModel": "Chat & Insight model",
   "settings.chatSynthesisModelSameAsDefault": "Same as default model",
-  "settings.chatSynthesisModelHelp": "Optional. Used for AI Chat and Insight generation (abstracting across multiple Claims). Falls back to the default model when empty.",
+  "settings.chatSynthesisModelHelp": "Optional. Used for AI Chat and Insight generation (abstracting across multiple Claims). Falls back to the default model when empty. Insight abstraction is the most demanding step in the pipeline — small or local models tend to return zero Insights or mere restatements, so a frontier-tier model (e.g. Claude Opus / Sonnet) is recommended here. Being \"reasoning-capable\" or merely large is not always enough.",
   "settings.groundingModel": "World-grounding model",
   "settings.groundingModelSameAsDefault": "Same as Chat & Insight model",
   "settings.groundingModelHelp": "Optional. Used to judge claims against world knowledge when the distilled KB has no hit. Falls back to the Chat & Insight model (and then the default model) when left empty — you usually don't need to set this separately. Each result is cached locally so the next check on a similar claim is instant.",

@@ -535,7 +535,7 @@ export const ja: Record<string, string> = {
   "settings.modelHelp": "全体のフォールバックとして使われ、バックグラウンド処理（Ingest・Lint・Rewrite・Cross-Update）でも直接使われます。",
   "settings.chatSynthesisModel": "チャット・洞察モデル",
   "settings.chatSynthesisModelSameAsDefault": "デフォルトモデルと同じ",
-  "settings.chatSynthesisModelHelp": "任意。AI チャットと洞察生成（複数の知見からの抽象化）で使われます。未指定の場合はデフォルトモデルが使われます。",
+  "settings.chatSynthesisModelHelp": "任意。AI チャットと洞察生成（複数の知見からの抽象化）で使われます。未指定の場合はデフォルトモデルが使われます。洞察の抽象化はパイプラインで最も能力を要求する処理です。小型・ローカルモデルでは 0 件や知見の言い換えに留まりやすいため、最上位級モデル（例: Claude Opus / Sonnet）の割り当てをおすすめします。「推論対応」や大きさだけでは足りないことがあります。",
   "settings.groundingModel": "世界モデル照合用モデル",
   "settings.groundingModelSameAsDefault": "チャット・洞察モデルと同じ",
   "settings.groundingModelHelp": "任意。蒸留 KB にヒットしなかった主張をモデル内部知識で判定します。未指定の場合はチャット・洞察モデル（さらにそれも空ならデフォルトモデル）にフォールバックするので、わざわざ別に設定する必要はありません。判定結果はローカル KB に沈殿し、次回以降は KB ヒットで即答されます（使うほど安くなる）。",
