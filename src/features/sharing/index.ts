@@ -10,10 +10,20 @@ export {
   type ShareReferenceOptions,
 } from "./share-reference";
 export {
+  shareKnowledge,
+  type ShareKnowledgeResult,
+  type ShareKnowledgeOptions,
+} from "./share-knowledge";
+export {
   forkSharedNote,
   type ForkSharedNoteResult,
   type ForkSharedNoteOptions,
 } from "./fork-note";
+export {
+  forkSharedKnowledge,
+  type ForkSharedKnowledgeResult,
+  type ForkSharedKnowledgeOptions,
+} from "./fork-knowledge";
 export {
   unshareEntry,
   type UnshareEntryResult,

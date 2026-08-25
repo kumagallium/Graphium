@@ -103,7 +103,7 @@ type GraphiumDocument = {
   wikiMeta?: WikiMeta;
 
   // ── shared storage refs (Phase 2) ───────────────────
-  sharedRef?: { id; type: "note"; sharedAt; hash };
+  sharedRef?: { id; type: "note" | "knowledge"; sharedAt; hash };
   forkedFrom?: { sharedId; hash; authorName; authorEmail; forkedAt };
 
   // ── skill metadata (only when source === "skill") ───
@@ -1727,7 +1727,7 @@ in `src/lib/storage/shared/types.ts`.
 ```ts
 type SharedEntryType =
   | "note" | "reference" | "data-manifest"
-  | "template" | "claim" | "atom" | "report";
+  | "template" | "knowledge" | "report";
 
 type SharedEntry = {
   id: string;                  // uuidv7
@@ -1766,6 +1766,12 @@ Key model choices:
   major changes mint a new id and link back via `supersedes`.
 - **Tombstones, not deletes** — `status: "unshared"` is the recovery
   path for accidental sharing. Hard delete is provider-optional.
+- **Knowledge is one type** — Knowledge (wiki) pages share as a single
+  `"knowledge"` type; the internal classification (`summary` / `claim` /
+  `atom` / `synthesis`) travels in `extra.wikiKind`. `WikiKind` is an
+  evolving vocabulary, so it is kept out of the shared format's folder
+  structure — older builds can still list, preview, and fork an entry
+  whose `wikiKind` they do not know.
 
 ### 7.2 `BlobRef`
 
@@ -1803,7 +1809,7 @@ A personal note that has been shared carries `sharedRef`:
 ```ts
 sharedRef?: {
   id: string;       // SharedEntry.id
-  type: "note";
+  type: "note" | "knowledge";
   sharedAt: string; // ISO 8601
   hash: string;     // SharedEntry.hash at share time
 };

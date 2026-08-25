@@ -166,7 +166,9 @@ import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, u
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
 import {
   shareNote,
+  shareKnowledge,
   forkSharedNote,
+  forkSharedKnowledge,
   unshareEntry,
   SharedLibraryView,
   materializeSharedBlobs,
@@ -2472,7 +2474,8 @@ function NoteEditorInner({
       const docWithRef: GraphiumDocument = sharedRefState
         ? { ...baseDoc, sharedRef: sharedRefState }
         : baseDoc;
-      const result = await shareNote(docWithRef, {
+      // Wiki（Knowledge ページ）は type: "knowledge" として共有する
+      const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
         root: sharedRoot,
         author: sharedAuthor,
         blobRoot: getBlobRoot() ?? undefined,
@@ -2493,7 +2496,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, onSave, t, sharedRefState]);
+  }, [sharedRoot, sharedAuthor, buildDocument, onSave, t, sharedRefState, isWikiDoc]);
 
   // ── メモ挿入（メモギャラリーから） ──
   useEffect(() => {
@@ -4514,7 +4517,7 @@ function NoteEditorInner({
           onRestoreFromTrash={onRestoreFromTrash}
           onDelete={onDeleteNote}
           deleteDisabled={!fileId || saving}
-          onShare={!isWikiDoc ? handleShare : undefined}
+          onShare={!isSkillDoc ? handleShare : undefined}
           shareDisabled={!!shareDisabledReason || saving}
           shareDisabledReason={shareDisabledReason}
           isShared={isShared}
@@ -8750,6 +8753,38 @@ export function NoteApp() {
               setShowSharedLibrary(false); setShowGlobalGraph(false);
               fm.handleOpenFile(newFileId);
               router.navigate({ view: "editor", fileId: newFileId });
+            }}
+            onForkKnowledge={async (sharedId) => {
+              const root = getSharedRoot();
+              if (!root) return;
+              const result = await forkSharedKnowledge(sharedId, { root });
+              if (!result.ok) {
+                alert(`Fork failed: ${result.error}`);
+                return;
+              }
+              // ノート fork と同様、埋め込みメディアの shared-blob: 参照を materialize
+              let docToSave = result.doc;
+              const extraBlobs = (result.original.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
+              const blobRoot = getBlobRoot();
+              if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
+                const blobProvider = new LocalFolderBlobProvider(blobRoot);
+                const materialized = await materializeSharedBlobs(result.doc, {
+                  blobs: extraBlobs,
+                  fetchBytes: (ref) => blobProvider.get(ref),
+                  uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
+                });
+                docToSave = materialized.doc;
+                if (materialized.missing.length > 0) {
+                  alert(
+                    `Forked, but ${materialized.missing.length} embedded media could not be restored from blob root. They appear as broken references in the new page.`,
+                  );
+                }
+              }
+              const newWikiId = await fm.handleCreateWikiFile(docToSave);
+              const kind = docToSave.wikiMeta?.kind;
+              setShowSharedLibrary(false); setShowGlobalGraph(false);
+              fm.handleOpenWikiFile(newWikiId);
+              if (kind) router.navigate({ view: "wiki-editor", kind, wikiId: newWikiId });
             }}
             onUnshare={async (entry) => {
               const author = loadAuthorIdentity();
