@@ -2657,33 +2657,39 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     <summary className="cursor-pointer select-none">
                       {t("settings.insightTest.detailsTitle")}
                     </summary>
-                    <ol className="mt-1 ml-1 space-y-1.5">
-                      {getInsightTestClaims(locale).map((c, i) => (
-                        <li key={c.id} className="break-words">
-                          <span className="text-foreground">{i + 1}. {c.title}</span>
-                          <span className="block ml-4 opacity-80">{c.body}</span>
-                        </li>
-                      ))}
-                    </ol>
-                    {/* 期待される答えの実体（参考洞察）。モデルには知見しか送らないので、
-                        実行前にここで見せてもテストは汚れない。答え合わせもこの 1 箇所に集約。 */}
-                    <div className="mt-2 font-medium text-foreground">
-                      {t("settings.insightTest.expectedTitle")}
+                    {/* 中身は 1 つの箱に束ねて ml-4 でインデントする（既存 DiscoveryCard の
+                        details と同じ量）。トグルに属することを字下げで示す。 */}
+                    <div className="mt-1 ml-4 space-y-2">
+                      <ol className="space-y-1.5">
+                        {getInsightTestClaims(locale).map((c, i) => (
+                          <li key={c.id} className="break-words">
+                            <span className="text-foreground">{i + 1}. {c.title}</span>
+                            <span className="block ml-4 opacity-80">{c.body}</span>
+                          </li>
+                        ))}
+                      </ol>
+                      {/* 期待される答えの実体（参考洞察）。モデルには知見しか送らないので、
+                          実行前にここで見せてもテストは汚れない。答え合わせもこの 1 箇所に集約。 */}
+                      <div>
+                        <div className="font-medium text-foreground mb-1">
+                          {t("settings.insightTest.expectedTitle")}
+                        </div>
+                        <ul className="space-y-2">
+                          {getInsightTestReference(locale).map((r, i) => (
+                            <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
+                              <div className="text-foreground break-words">{r.title}</div>
+                              <div className="break-words">{r.body}</div>
+                              <div className="mt-0.5">
+                                <span className="px-1.5 py-0.5 rounded bg-muted">
+                                  {t("settings.insightTest.referenceFolds", { nums: r.foldsClaimNumbers.join(" · ") })}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <p>{t("settings.insightTest.referenceNote")}</p>
                     </div>
-                    <ul className="mt-1 space-y-2">
-                      {getInsightTestReference(locale).map((r, i) => (
-                        <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
-                          <div className="text-foreground break-words">{r.title}</div>
-                          <div className="break-words">{r.body}</div>
-                          <div className="mt-0.5">
-                            <span className="px-1.5 py-0.5 rounded bg-muted">
-                              {t("settings.insightTest.referenceFolds", { nums: r.foldsClaimNumbers.join(" · ") })}
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-1.5">{t("settings.insightTest.referenceNote")}</p>
                   </details>
                   {insightTestState.status === "error" && (
                     <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
@@ -2729,11 +2735,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                               {/* 一回性知見の引用は中立情報（持ち上げて拾うのは仕様上許容 — #459）。
                                   警告色は「言い換えのまま拾った」ときだけ。 */}
                               {s.oneOffRestated ? (
-                                <span className="ml-1.5 text-amber-700 dark:text-amber-400">
+                                <span className="ml-2 text-amber-700 dark:text-amber-400">
                                   {t("settings.insightTest.oneOffRestated")}
                                 </span>
                               ) : s.citesOneOffFact ? (
-                                <span className="ml-1.5">{t("settings.insightTest.oneOffCited")}</span>
+                                <span className="ml-2">{t("settings.insightTest.oneOffCited")}</span>
                               ) : null}
                             </p>
                           );
