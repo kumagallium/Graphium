@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.42.6](https://github.com/kumagallium/Graphium/compare/v0.42.5...v0.42.6) - 2026-08-25
+
+- fix(ci): build the Windows updater zip uncompressed (Stored) by @kumagallium in https://github.com/kumagallium/Graphium/pull/772
+
 ## [v0.42.5](https://github.com/kumagallium/Graphium/compare/v0.42.4...v0.42.5) - 2026-08-25
 
 - Add an install button to the Settings About tab when an update is found by @kumagallium in https://github.com/kumagallium/Graphium/pull/766
