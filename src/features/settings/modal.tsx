@@ -2665,7 +2665,25 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </li>
                       ))}
                     </ol>
-                    <p className="mt-1.5">{t("settings.insightTest.expectedLine")}</p>
+                    {/* 期待される答えの実体（参考洞察）。モデルには知見しか送らないので、
+                        実行前にここで見せてもテストは汚れない。答え合わせもこの 1 箇所に集約。 */}
+                    <div className="mt-2 font-medium text-foreground">
+                      {t("settings.insightTest.expectedTitle")}
+                    </div>
+                    <ul className="mt-1 space-y-2">
+                      {getInsightTestReference(locale).map((r, i) => (
+                        <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
+                          <div className="text-foreground break-words">{r.title}</div>
+                          <div className="break-words">{r.body}</div>
+                          <div className="mt-0.5">
+                            <span className="px-1.5 py-0.5 rounded bg-muted">
+                              {t("settings.insightTest.referenceFolds", { nums: r.foldsClaimNumbers.join(" · ") })}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1.5">{t("settings.insightTest.referenceNote")}</p>
                   </details>
                   {insightTestState.status === "error" && (
                     <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
@@ -2753,31 +2771,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         )}
                       </div>
 
-                      {/* 正解の例はトグルに畳む — 初見の情報量を増やさず、
-                          自分のモデルの出力を先に見てから答え合わせできる順序にする。 */}
-                      <details>
-                        <summary className="cursor-pointer select-none font-medium text-foreground">
-                          {t("settings.insightTest.referenceTitle")}
-                        </summary>
-                        <ul className="mt-1.5 space-y-2">
-                          {getInsightTestReference(locale).map((r, i) => (
-                            <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
-                              <div className="text-foreground break-words">{r.title}</div>
-                              <div className="text-muted-foreground break-words">{r.body}</div>
-                              <div className="mt-0.5">
-                                <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                                  {t("settings.insightTest.referenceFolds", {
-                                    nums: r.foldsClaimNumbers.join(" · "),
-                                  })}
-                                </span>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                        <p className="text-muted-foreground mt-1.5">
-                          {t("settings.insightTest.referenceNote")}
-                        </p>
-                      </details>
                     </div>
                   )}
                 </div>
