@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.45.0](https://github.com/kumagallium/Graphium/compare/v0.44.0...v0.45.0) - 2026-08-25
+
+- Replace atomize cluster-count heuristic with measured coverage plan by @kumagallium in https://github.com/kumagallium/Graphium/pull/760
+- Add FAQ page on knowledge-pipeline thresholds (en/ja) by @kumagallium in https://github.com/kumagallium/Graphium/pull/761
+- Surface embedding failures to the user instead of failing silently by @kumagallium in https://github.com/kumagallium/Graphium/pull/763
+- Add insight-model capability test in Settings → AI by @kumagallium in https://github.com/kumagallium/Graphium/pull/765
+
 ## [v0.44.0](https://github.com/kumagallium/Graphium/compare/v0.43.0...v0.44.0) - 2026-08-25
 
 - feat(sharing): knowledge share/fork, bulk share, and copy-citation links by @kumagallium in https://github.com/kumagallium/Graphium/pull/771
