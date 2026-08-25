@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.42.4](https://github.com/kumagallium/Graphium/compare/v0.42.3...v0.42.4) - 2026-08-25
+
+- fix(windows): prevent sidecar node.exe from blocking installer writes by @kumagallium in https://github.com/kumagallium/Graphium/pull/767
+
+## [v0.42.3](https://github.com/kumagallium/Graphium/compare/v0.42.2...v0.42.3) - 2026-08-25
+
+- Fix silent zero-insight failures on Anthropic models (max_tokens truncation) by @kumagallium in https://github.com/kumagallium/Graphium/pull/762
+
 ## [v0.42.2](https://github.com/kumagallium/Graphium/compare/v0.42.1...v0.42.2) - 2026-08-24
 
 - fix(ai-chat): ground URL-material chat in the page/PDF content by @kumagallium in https://github.com/kumagallium/Graphium/pull/757
