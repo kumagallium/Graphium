@@ -1037,7 +1037,17 @@ The same `src/` tree is built three different ways.
   sent `SIGTERM` and replaced. The sidecar additionally runs a watchdog that
   exits as soon as `GRAPHIUM_PARENT_PID` is gone, so it can never outlive the
   app and orphan port 3001 — an orphan would otherwise let a newer app reuse
-  old code and return 404 for routes added after that build.
+  old code and return 404 for routes added after that build. On Windows —
+  where killing a parent process does not kill its children, and a running
+  `node.exe` locks its file so an installer cannot overwrite it — the app
+  additionally assigns the sidecar to a Job Object with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` (`sidecar_job` in
+  `src-tauri/src/lib.rs`), so the OS reaps it the moment the app exits, and
+  the NSIS installer runs a pre-install hook
+  (`src-tauri/windows/hooks.nsh`) that first kills the running app's whole
+  process tree (`taskkill /F /T` — child-first kills would race the app's
+  own sidecar auto-restart) and then stops any leftover orphan sidecar
+  processes before copying files.
 - The sidecar binds to loopback only (`127.0.0.1`; override with
   `GRAPHIUM_BIND_HOST`). Most of the local API is unauthenticated, so the
   server must never be reachable from other machines on the network. The
