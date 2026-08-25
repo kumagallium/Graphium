@@ -4,6 +4,12 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
+import {
+  GRAPH_INIT_OPTIONS,
+  baseEdgeStyle,
+  baseNodeStyle,
+  interactionStyles,
+} from "../network-graph/graph-theme";
 import { useT, getDisplayLabelName } from "../../i18n";
 import { Modal, ModalHeader, ModalBody } from "../../ui/modal";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -65,46 +71,21 @@ const networkStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
-      label: "data(label)",
-      "text-wrap": "wrap",
-      "text-max-width": "120px",
-      "font-size": "11px",
-      "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
-      "text-valign": "bottom",
-      "text-margin-y": 6,
+      ...baseNodeStyle,
       "background-color": "data(color)",
       width: "data(size)",
       height: "data(size)",
-      "border-width": 2,
       "border-color": "data(borderColor)",
-      color: "#6b7f6e",
-      "transition-property": "background-color, border-color, opacity, width, height" as any,
-      "transition-duration": 200,
     },
   },
-  {
-    selector: "node.hover",
-    style: {
-      "border-width": 3,
-      "overlay-opacity": 0.06,
-      "overlay-color": "#000",
-    },
-  },
-  {
-    selector: "node.faded",
-    style: { opacity: 0.15 },
-  },
+  ...interactionStyles,
   {
     selector: "edge",
     style: {
-      width: 1.5,
+      ...baseEdgeStyle,
       "line-color": EDGE_COLOR,
-      "curve-style": "unbundled-bezier" as any,
-      "control-point-distances": 30,
-      "control-point-weights": 0.5,
-      opacity: 1,
-      "transition-property": "opacity, width, line-color" as any,
-      "transition-duration": 200,
+      // ラベルとノートの結び付きに向きは無いので矢印は出さない
+      "target-arrow-shape": "none" as any,
     },
   },
   {
@@ -114,10 +95,6 @@ const networkStyle: cytoscape.StylesheetStyle[] = [
       "line-color": CENTER_COLOR,
       "z-index": 10,
     },
-  },
-  {
-    selector: "edge.faded",
-    style: { opacity: 0.08 },
   },
 ];
 
@@ -199,10 +176,8 @@ function LabelNetworkModal({
         elements,
         style: networkStyle,
         layout: { name: "preset" },
-        userZoomingEnabled: true,
-        userPanningEnabled: true,
-        boxSelectionEnabled: false,
-        wheelSensitivity: 0.3,
+        ...GRAPH_INIT_OPTIONS,
+        // 小さなグラフなので引きすぎないよう下限を上げる
         minZoom: 0.3,
         maxZoom: 3,
       });

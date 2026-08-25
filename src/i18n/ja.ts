@@ -207,6 +207,12 @@ export const ja: Record<string, string> = {
   "panel.graph.empty": "派生関係がありません",
   "panel.graph.expand": "全画面表示",
   "panel.graph.collapse": "閉じる (Esc)",
+
+  // ── グラフの手動配置（ノート周辺グラフと手順フローで共通）──
+  "graph.layout.reset": "並びをリセット",
+  "graph.layout.resetHint": "保存した並びを手放して、自動配置に戻します",
+  "graph.layout.saved": "並びを保存しました",
+  "graph.layout.selectHint": "Shift + ドラッグでまとめて選択",
   "panel.graph": "グラフ",
   "panel.chat": "チャット",
   "panel.memos": "メモ",

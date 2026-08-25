@@ -49,6 +49,7 @@ import {
   subscribeLatestProcessIndex,
 } from "./process-index";
 import { addCrossNoteOriginsToFlowGraph } from "./cross-note-flow";
+import { provFlowScope } from "./graph-layout";
 import {
   getIndexTableCallbacks,
   openEditorSidePeek,
@@ -122,10 +123,13 @@ export function ActivityGraphEditor({
   doc,
   editorRef,
   tableLayout,
+  noteId,
 }: {
   doc: ProvJsonLd | null;
   /** メインエディタ（BlockNote）への参照。無ければノード操作は出さない（接続のみ） */
   editorRef?: { current: any };
+  /** 手動配置の保存スコープに使う、いま開いているノートの id（無ければ保存しない） */
+  noteId?: string | null;
   /** 属性テーブルの置き場所（全画面では右横） */
   tableLayout?: "below" | "side";
 }) {
@@ -777,6 +781,7 @@ export function ActivityGraphEditor({
       onRenameTableRow={hasEditor ? onRenameTableRow : undefined}
       onRemoveTableRow={hasEditor ? onRemoveTableRow : undefined}
       tableLayout={tableLayout}
+      layoutScope={noteId ? provFlowScope(noteId) : null}
       getPanelFor={hasEditor ? getPanelFor : undefined}
       onSetCell={hasEditor ? onSetCell : undefined}
       onRenameColumn={hasEditor ? onRenameColumn : undefined}

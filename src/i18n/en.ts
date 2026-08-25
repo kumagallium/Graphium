@@ -207,6 +207,12 @@ export const en: Record<string, string> = {
   "panel.graph.empty": "No derivation links yet",
   "panel.graph.expand": "Expand",
   "panel.graph.collapse": "Close (Esc)",
+
+  // ── Manual graph arrangement (shared by the note graph and the step flow) ──
+  "graph.layout.reset": "Reset arrangement",
+  "graph.layout.resetHint": "Discard the saved arrangement and lay the graph out automatically",
+  "graph.layout.saved": "Arrangement saved",
+  "graph.layout.selectHint": "Shift-drag to select several",
   "panel.graph": "Graph",
   "panel.chat": "Chat",
   "panel.memos": "Memos",
