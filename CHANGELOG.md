@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.45.1](https://github.com/kumagallium/Graphium/compare/v0.45.0...v0.45.1) - 2026-08-26
+
+- docs(manual): document knowledge sharing, bulk share, and citation links by @kumagallium in https://github.com/kumagallium/Graphium/pull/779
+- Show a splash while the app loads instead of a blank window by @kumagallium in https://github.com/kumagallium/Graphium/pull/780
+
 ## [v0.45.0](https://github.com/kumagallium/Graphium/compare/v0.44.0...v0.45.0) - 2026-08-25
 
 - Replace atomize cluster-count heuristic with measured coverage plan by @kumagallium in https://github.com/kumagallium/Graphium/pull/760
