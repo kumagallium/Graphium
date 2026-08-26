@@ -83,9 +83,21 @@ Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appe
 
 The shared copy is a snapshot. To update it, edit your local note and choose **Update shared copy** from the same menu. To withdraw it, use **Unshare** in the shared library; Graphium warns that other members may have already viewed, cached, or forked it, so it cannot be fully erased.
 
+### Share knowledge pages too <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
+
+Knowledge pages — summaries, claims, and insights — share the same way. Open a page's `⋯` menu, choose **Share with team**, and it appears under **Knowledge** in the shared library, next to the shared notes. **Update shared copy** and **Unshare** work as they do for notes.
+
+Forking one brings it into your knowledge rather than your notes, so it sits with your own claims and insights and joins your searches and graphs. Its lineage does not come along: a shared page's "derived from" links point at notes, chats, and claims in the author's library, and those ids mean nothing in yours. The fork starts with that lineage cleared and records where it came from instead, so nothing is left dangling or pointing at the wrong page. The text, the semantic type, and any sections edited by hand arrive intact. World-check results and search embeddings are rebuilt on your side rather than carried over.
+
+### Share several at once <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
+
+Select notes with the checkboxes in the notes list, or knowledge pages in a Knowledge list, and a **Share** button with the count on it joins the other bulk actions. Sharing runs one item at a time and ends with a summary: how many were newly shared, how many updated entries you had shared before, and which ones failed and why. One failure does not stop the rest, and you can cancel partway — whatever was already shared stays shared.
+
+The button appears in the desktop app once a shared folder and an identity are set. What travels is the saved version of each item, so save the note you are editing before you share it.
+
 ### Browse and fork
 
-Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists shared notes, references, and data files from everyone on the team. Entries from others are read-only — press **Fork** to copy a note into your own storage, where you can edit it freely. Any media the note carries is materialized into your local library automatically, and the fork records where it came from.
+Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
 
 ### Cite a shared entry in your notes <Badge type="tip" text="Added in v0.31.0 (2026-08-12)" />
 
@@ -99,6 +111,12 @@ The badge tells you the state of the shared side:
 - **Not found** — the entry was removed or unshared.
 
 When the author updates the entry in place, your card follows automatically. When they publish a major revision, the card keeps pointing at the version you cited and shows **A newer version is available** instead — your past analysis never changes underneath you. Click the arrow on the card to open the entry in the shared library. Citations are also recorded in the note's provenance, so an exported evidence bundle shows which shared entries your note used.
+
+### Copy a citation link from the library <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
+
+You can also start from the other end. In **Library** → **Shared**, press **Copy citation link** on an entry — on its card or in its detail panel — and paste the link into any note. It becomes the same citation card, with the same badges and the same behaviour.
+
+Pasting is what makes this worth having: the library takes over the screen, so while you are browsing it you cannot see the note you are aiming at. Copying the link lets you find the entry first and decide where it lands afterwards. The link is plain text, so it can travel in a chat message as well; a teammate on the same shared folder gets the same card by pasting it into a note of their own.
 
 ## Exports
 
