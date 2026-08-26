@@ -114,6 +114,13 @@ export function miniSearchOptions() {
       boost: { title: 2 },
       combineWith: "OR" as const,
     },
+    // 自動 vacuum は使わない。MiniSearch の自動 vacuum は転置索引を
+    // 1000 語ごとに await で中断しながら掃除するが、その中断中に addAll が走ると
+    // 索引の radix tree が組み変わり、掃除側のイテレータが宙を指して落ちる
+    // （TypeError: Cannot read properties of undefined (reading 'keys')）。
+    // reconcile は「1 ソース索引 → 譲る」を繰り返すので、この中断と必ず噛み合う。
+    // 代わりに vacuumIfDirty() で「途中で譲らない」掃除を明示的に走らせる
+    autoVacuum: false as const,
   };
 }
 
@@ -129,6 +136,11 @@ export type LexicalIndexSnapshot = {
 
 /** tokenizer / options を変えたら上げる */
 export const LEXICAL_FORMAT_VERSION = 1;
+
+// 掃除に踏み切るしきい値（MiniSearch の自動 vacuum の既定値と同じ）。
+// 「削除済みが 20 件以上」かつ「索引の 1 割以上が削除済み」で掃除する
+const VACUUM_MIN_DIRT_COUNT = 20;
+const VACUUM_MIN_DIRT_FACTOR = 0.1;
 
 export class LexicalIndex {
   private ms: MiniSearch<LexicalDoc>;
@@ -268,6 +280,24 @@ export class LexicalIndex {
   clear(): void {
     this.ms.removeAll();
     this.sources.clear();
+  }
+
+  /**
+   * discard の残骸（転置索引に残った削除済み文書への参照）を掃除する。
+   * 溜まっていなければ何もしない。掃除したら true。
+   *
+   * `batchSize: Infinity` は「1000 語ごとに await で中断する」既定を無効にするための指定で、
+   * これが本質。MiniSearch の掃除は中断中に索引が書き換わることを想定しておらず、
+   * 中断すると reconcile の addAll と噛み合って自身のイテレータを壊す。
+   * 中断しなければ掃除は同期的に走り切るので、誰と並走しても壊れない。
+   *
+   * 残骸は検索結果にもスコアにも影響しない（生存文書だけが結果に入る）。
+   * 掃除の目的はメモリとスナップショットの肥大を抑えること
+   */
+  async vacuumIfDirty(): Promise<boolean> {
+    if (this.ms.dirtCount < VACUUM_MIN_DIRT_COUNT || this.ms.dirtFactor < VACUUM_MIN_DIRT_FACTOR) return false;
+    await this.ms.vacuum({ batchSize: Infinity });
+    return true;
   }
 
   /** 検索（同期）。索引が空なら空配列 */

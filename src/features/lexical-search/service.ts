@@ -381,6 +381,15 @@ class LexicalSearchService {
     this.dirty = false;
     this.saving = (async () => {
       try {
+        // 直列化の前に discard の残骸を落としておく（スナップショットと使用メモリを小さく保つ）。
+        // ここで掃除するのは、保存が whenIdle + デバウンス越しに呼ばれる＝比較的静かな
+        // タイミングだから。掃除は途中で譲らないので、reconcile と並走していても壊れない。
+        // 失敗しても保存は続ける — 残骸が残るだけで検索結果は正しい
+        try {
+          await idx.vacuumIfDirty();
+        } catch (err) {
+          console.warn("語彙インデックスの掃除に失敗:", err);
+        }
         await lexicalIndexStore.save(idx.toSnapshot(), scope);
         this.setStatus({ savedAt: new Date().toISOString() });
       } catch (e) {
