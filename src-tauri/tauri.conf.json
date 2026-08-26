@@ -12,6 +12,17 @@
   "app": {
     "windows": [
       {
+        "label": "splash",
+        "title": "Graphium",
+        "url": "splash.html",
+        "width": 440,
+        "height": 300,
+        "resizable": false,
+        "center": true,
+        "skipTaskbar": true
+      },
+      {
+        "label": "main",
         "title": "Graphium",
         "url": "app/index.html",
         "width": 1200,
@@ -20,7 +31,8 @@
         "minHeight": 600,
         "center": true,
         "resizable": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "visible": false
       }
     ],
     "security": {

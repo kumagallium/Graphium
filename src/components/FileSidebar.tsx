@@ -3,7 +3,9 @@
 import { useMemo, type ReactNode } from "react";
 import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
+import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { isTauri } from "../lib/platform";
 import type { WikiKind } from "../lib/document-types";
 import { type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
@@ -74,8 +76,13 @@ export type FileSidebarProps = {
   onShowWikiList?: (kind: WikiKind) => void;
   /** 現在アクティブな Wiki カテゴリ（ハイライト用） */
   activeWikiKind?: WikiKind | null;
-  /** AI バックエンドが利用可能か（false なら AI セクション非表示） */
-  aiAvailable?: boolean;
+  /**
+   * AI バックエンドが利用可能か。
+   * `null` = まだ判定中（デスクトップ版の sidecar 起動待ち）。判定中と到達不可を
+   * 区別しないと、起動直後の数秒だけ web 版向けの「デスクトップ版を入手」が
+   * 出てしまう（2026-08-26）。false なら AI セクションの中身を案内に差し替える。
+   */
+  aiAvailable?: boolean | null;
   /** Wiki ログ表示 */
   onShowWikiLog?: () => void;
   /** Wiki ヘルスチェック表示 */
@@ -418,7 +425,12 @@ export function FileSidebar({
         )}
 
         {/* ② ナレッジ（AI が編む脳）— Notes 直下に配置 */}
-        {onShowWikiList && !aiAvailable && (
+        {/* 到達性が未判定（null）の間は「起動中」だけを示す。ここで web 版向けの
+            AiUpgradeNotice を出すと、デスクトップ版の起動直後の数秒間だけ
+            「デスクトップ版を入手」が出るという矛盾した表示になる（2026-08-26）。
+            節そのものは出しておくので、判定が付いても場所が動かない。
+            web に待つバックエンドは無いので、この表示はデスクトップ版だけ。 */}
+        {onShowWikiList && aiAvailable === null && isTauri() && (
           <CollapsibleSection
             storageKey="ai"
             title={(
@@ -429,7 +441,23 @@ export function FileSidebar({
             )}
             defaultOpen={false}
           >
-            <AiUpgradeNotice variant="card" />
+            <BackendStartingNotice />
+          </CollapsibleSection>
+        )}
+        {/* 到達不可が確定。web はデスクトップ版への導線、デスクトップは
+            バックエンドが起動しなかったということなので再起動の導線を出す。 */}
+        {onShowWikiList && aiAvailable === false && (
+          <CollapsibleSection
+            storageKey="ai"
+            title={(
+              <span className="flex items-center gap-1">
+                {t("sidebar.knowledge")}
+                <Sparkles size={11} className="text-muted-foreground/60" />
+              </span>
+            )}
+            defaultOpen={false}
+          >
+            {isTauri() ? <BackendUnavailableNotice /> : <AiUpgradeNotice variant="card" />}
           </CollapsibleSection>
         )}
         {/* AI モデル未登録（agentConfigured=false）ならナレッジセクション自体を隠す。
@@ -660,6 +688,14 @@ export function FileSidebar({
         >
           <SettingsIcon size={12} className="shrink-0" />
           <span className="flex-1 text-left">{t("common.settings")}</span>
+          {/* デスクトップ版の起動待ちの間も点の場所を確保しておく。判定が付いた
+              瞬間に点が生えるより、灰色が色付く方が落ち着いて見える。 */}
+          {aiAvailable === null && isTauri() && (
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-pulse"
+              title={t("sidebar.backendStarting")}
+            />
+          )}
           {aiAvailable && (agentConfigured ? (
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" title={t("sidebar.aiConnected")} />
           ) : (

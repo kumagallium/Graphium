@@ -986,6 +986,18 @@ The same `src/` tree is built three different ways.
   with 150% display scaling by default, so a 1920×1080 laptop exposes only
   1280×720 logical pixels to the webview — a taller default window would
   open with its bottom edge below the screen.
+- The window that opens first is a splash (`public/splash.html`, label
+  `splash`). `main` is created with `visible: false` and revealed by the
+  `app_ready` command once the frontend has painted — the bundle is over
+  6 MB and the webview needs a second or three to parse it, which would
+  otherwise show as a blank window. The sidecar is not waited on: it
+  starts in parallel (about a second) and the sidebar reports its
+  progress, so an install that never uses AI is not held up. Two
+  safeguards keep the app from ending up windowless — Rust reveals `main`
+  after 20 seconds regardless, and closing the splash by hand reveals it
+  too. `tauri-plugin-window-state` runs without `StateFlags::VISIBLE`,
+  since a restored `visible: true` would otherwise show `main` before the
+  frontend is ready.
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
   matched by TypeScript wrappers

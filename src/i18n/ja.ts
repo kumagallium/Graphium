@@ -113,6 +113,8 @@ export const ja: Record<string, string> = {
   "sidebar.releaseNotes": "Release Notes",
   "sidebar.aiConnected": "AI 接続済み",
   "sidebar.aiNotConfigured": "AI 未設定",
+  "sidebar.backendStarting": "バックエンドを起動しています…",
+  "sidebar.backendUnavailable": "バックエンドが起動していないため、AI 機能は使えません。",
   "sidebar.library": "ライブラリ",
   "sidebar.shared": "共有",
   "sidebar.skill": "スキル",

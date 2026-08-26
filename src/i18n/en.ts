@@ -113,6 +113,8 @@ export const en: Record<string, string> = {
   "sidebar.releaseNotes": "Release Notes",
   "sidebar.aiConnected": "AI connected",
   "sidebar.aiNotConfigured": "AI not configured",
+  "sidebar.backendStarting": "Starting the backend…",
+  "sidebar.backendUnavailable": "The backend isn't running, so AI features are unavailable.",
   "sidebar.library": "Library",
   "sidebar.shared": "Shared",
   "sidebar.skill": "Skill",

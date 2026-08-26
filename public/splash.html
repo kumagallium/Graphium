@@ -1,0 +1,124 @@
+<!doctype html>
+<!--
+  起動スプラッシュ（デスクトップ版専用）
+
+  アプリのバンドルは 6 MB を超え、WKWebView / WebView2 がそれをパースし終える
+  まで #root は空のままになる。tauri.conf の main ウィンドウをそのまま出すと、
+  その 1〜3 秒がただの白い画面として見える。main を visible=false で作り、
+  代わりにこの軽い HTML を先に見せて、フロントの初回描画が済んだ時点
+  （src/main.tsx の app_ready）で入れ替える。
+
+  ここは Vite のバンドルを通さない public/ の静的ファイルなので、アプリ本体の
+  CSS/JS を一切待たずに描画できる。色は src/app.css の design.md 基準 hex を
+  直接書いてある（トークンを読み込むと待ちが発生するため）。tauri.conf の CSP は
+  script-src 'self' なのでインラインスクリプトは使えない。文言の切り替えは
+  同階層の splash.js が行う。
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Graphium</title>
+    <style>
+      :root {
+        --paper: #fafdf7;
+        --ink: #1a2e1d;
+        --ink-muted: #4a6350;
+        --rule: #d5e0d7;
+        --forest: #4b7a52;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #131a14;
+          --ink: #e3ece4;
+          --ink-muted: #9db3a2;
+          --rule: #2b3a2d;
+          --forest: #7fae86;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        padding: 0 32px;
+        text-align: center;
+      }
+      img {
+        width: 52px;
+        height: 52px;
+        /* ロゴだけ先に出て文字が遅れると落ち着かないので、まとめて淡く入れる */
+        animation: fade 420ms ease-out both;
+      }
+      h1 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        animation: fade 420ms ease-out 60ms both;
+      }
+      p {
+        margin: -6px 0 0;
+        font-size: 11.5px;
+        line-height: 1.6;
+        color: var(--ink-muted);
+        animation: fade 420ms ease-out 120ms both;
+      }
+      .bar {
+        width: 180px;
+        height: 3px;
+        margin-top: 6px;
+        border-radius: 999px;
+        background: var(--rule);
+        overflow: hidden;
+      }
+      /* 進捗は測れない（バンドルのパースに進捗イベントは無い）ので、
+         長さの分かるバーではなく流れ続けるバーにする。 */
+      .bar > span {
+        display: block;
+        width: 38%;
+        height: 100%;
+        border-radius: 999px;
+        background: var(--forest);
+        animation: slide 1.15s ease-in-out infinite;
+      }
+      @keyframes slide {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(280%); }
+      }
+      @keyframes fade {
+        from { opacity: 0; transform: translateY(3px); }
+        to { opacity: 1; transform: none; }
+      }
+      /* 動きを減らす設定を尊重する。バーは止めて存在だけ残す。 */
+      @media (prefers-reduced-motion: reduce) {
+        img, h1, p { animation: none; }
+        .bar > span { animation: none; width: 100%; opacity: 0.5; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="./logo.png" alt="" />
+      <h1 id="title">Getting Graphium ready…</h1>
+      <p id="sub">Your notes stay on this computer.</p>
+      <div class="bar"><span></span></div>
+    </main>
+    <script src="./splash.js"></script>
+  </body>
+</html>

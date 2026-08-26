@@ -5,7 +5,7 @@ import { Component, useCallback, useEffect, useMemo, useRef, useState, type Erro
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
-import { ensureSidecar } from "./lib/sidecar";
+import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
@@ -5379,6 +5379,21 @@ export function NoteApp() {
     }
   }, []);
   useEffect(() => { void checkAiReadiness(); }, [checkAiReadiness]);
+  // デスクトップ版: 上の readiness チェックは mount 時 1 回きりなので、その瞬間に
+  // sidecar がまだ起動途中だと aiAvailable が false（= AI 無し）に固定される。
+  // sidecar が ready に遷移したら再チェックして自動で復帰させる（AI パネルと同じ
+  // 作法）。サイドバーの「バックエンドを再起動」からの復帰もこの購読が拾う。
+  // ready→ready の同値通知では発火させない（checkAiReadiness 内の ensureSidecar
+  // が setState(ready) を呼ぶため、往復して無限ループになる）。
+  useEffect(() => {
+    if (!isTauri()) return;
+    let prevStatus = getSidecarState().status;
+    return subscribeSidecarState((s) => {
+      const was = prevStatus;
+      prevStatus = s.status;
+      if (s.status === "ready" && was !== "ready") void checkAiReadiness();
+    });
+  }, [checkAiReadiness]);
   // AI UI の表示可否。到達性（aiAvailable）に加えて「モデルが 1 件以上登録済み」
   // （agentConfigured）まで要求する。モデル未登録のユーザーには AI 関連 UI
   // （ナレッジ生成・チャット・Composer・素材の AI アクション等）を出さない。
@@ -7908,7 +7923,9 @@ export function NoteApp() {
     showAtomLayer: true,
     onShowWikiList: (kind: WikiKind) => { closeAllViews(); fm.setActiveWikiKind(kind); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
-    aiAvailable: aiAvailable ?? false,
+    // null（判定中）のまま渡す。false に潰すと、デスクトップ版の起動直後に
+    // 「バックエンド無し = web 版」と同じ案内（デスクトップ版を入手）が数秒出る。
+    aiAvailable,
     onShowWikiLog: () => { closeAllViews(); setActiveWikiView("log"); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
     onShowWikiLint: () => { closeAllViews(); setActiveWikiView("lint"); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
     activeWikiView,
