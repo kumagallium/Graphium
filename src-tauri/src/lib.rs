@@ -352,6 +352,38 @@ fn stop_native_sidecar(state: tauri::State<'_, NativeSidecarState>) -> Result<()
     Ok(())
 }
 
+// --- 起動スプラッシュ ---
+//
+// アプリのバンドルは 6 MB を超え、WebView がそれをパースし終えるまで #root は
+// 空のままになる。main ウィンドウをそのまま出すと、その 1〜3 秒がただの白い
+// 画面として見える。main は tauri.conf で visible=false にしておき、代わりに
+// 軽い静的ページ（public/splash.html）を先に見せて、フロントの初回描画が
+// 済んだ時点で入れ替える。sidecar の起動（実測 約 1 秒）は待たない。待っても
+// AI を使わない利用者の起動が遅くなるだけで、起動待ちはサイドバー側で示す。
+
+const SPLASH_LABEL: &str = "splash";
+const MAIN_LABEL: &str = "main";
+
+/// スプラッシュを閉じてメインウィンドウを見せる。
+///
+/// 何度呼ばれても害はない（show / close は冪等）。フロントの `app_ready`、
+/// 起動タイムアウト、スプラッシュを手で閉じられた場合の 3 経路から呼ばれる。
+fn reveal_main(app: &tauri::AppHandle) {
+    if let Some(main) = app.get_webview_window(MAIN_LABEL) {
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+    if let Some(splash) = app.get_webview_window(SPLASH_LABEL) {
+        let _ = splash.close();
+    }
+}
+
+/// フロントエンドの初回描画が終わった合図（src/main.tsx から呼ぶ）。
+#[tauri::command]
+fn app_ready(app: tauri::AppHandle) {
+    reveal_main(&app);
+}
+
 /// フロントエンドから呼ぶ「sidecar の後始末が終わったので終了してよい」通知
 #[tauri::command]
 fn shutdown_ack(app: tauri::AppHandle) {
@@ -1848,6 +1880,7 @@ pub fn run() {
             inbox_read,
             inbox_mark_imported,
             inbox_discard,
+            app_ready,
             shutdown_ack,
             kill_pid,
             save_bytes_with_dialog,
@@ -1863,8 +1896,47 @@ pub fn run() {
             // 値にしてあるが、広い画面のユーザーが毎回ウィンドウを広げ直す羽目にならない
             // よう、調整後のサイズを次回起動に引き継ぐ。
             #[cfg(desktop)]
-            app.handle()
-                .plugin(tauri_plugin_window_state::Builder::default().build())?;
+            {
+                use tauri_plugin_window_state::StateFlags;
+                app.handle().plugin(
+                    tauri_plugin_window_state::Builder::default()
+                        // 既定は StateFlags::all() で、そこには VISIBLE が入る。
+                        // 前回の表示状態まで復元されると、main が
+                        // tauri.conf の visible=false を無視して起動直後に出て
+                        // しまい、スプラッシュを出す意味が無くなる。表示の
+                        // タイミングだけはこちらで持つ（reveal_main）。
+                        .with_state_flags(StateFlags::all().difference(StateFlags::VISIBLE))
+                        // スプラッシュは毎回中央に出す。位置を覚えると、main を
+                        // 動かしたあとの起動でスプラッシュだけ前回の場所に出る。
+                        .with_denylist(&[SPLASH_LABEL])
+                        .build(),
+                )?;
+            }
+
+            // フロントが app_ready を呼べないまま固まっても、非表示の main と
+            // スプラッシュだけが残ってアプリが使えなくなることは避ける。実測の
+            // 起動は数秒なので、その数倍を上限にする。
+            {
+                let handle = app.handle().clone();
+                thread::spawn(move || {
+                    thread::sleep(std::time::Duration::from_secs(20));
+                    reveal_main(&handle);
+                });
+            }
+
+            // スプラッシュを手で閉じられたときも main を出す。非表示のまま
+            // 残るとウィンドウの無いプロセスだけが生き続けることになる。
+            if let Some(splash) = app.get_webview_window(SPLASH_LABEL) {
+                let handle = app.handle().clone();
+                splash.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { .. } = event {
+                        if let Some(main) = handle.get_webview_window(MAIN_LABEL) {
+                            let _ = main.show();
+                            let _ = main.set_focus();
+                        }
+                    }
+                });
+            }
 
             // 旧形式（拡張子なし）メディアの拡張子付与マイグレーション。
             // フロントエンドのロード前に同期実行するので、読み込みとの競合はない。

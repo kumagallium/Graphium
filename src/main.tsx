@@ -67,3 +67,21 @@ createRoot(document.getElementById("root")!).render(
     </LocaleProvider>
   </StrictMode>
 );
+
+// ── 起動スプラッシュを閉じる（デスクトップ版） ──
+// main ウィンドウは tauri.conf で visible=false にしてあり、その間 public/
+// splash.html が表示されている。バンドルのパースが終わって実際にピクセルが
+// 出てから入れ替えたいので rAF を 2 回挟む（1 回だと最初のレイアウト前に
+// 切り替わり、一瞬だけ空のウィンドウが見える）。sidecar の起動は待たない
+// ── 待たせても AI を使わない利用者の起動が遅くなるだけで、起動中である
+// ことはサイドバーのナレッジ節が示す。
+// ここが失敗しても Rust 側の 20 秒フォールバックが main を出す。
+if (isTauri()) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      void import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke("app_ready"))
+        .catch((e) => console.error("[main] app_ready invoke failed", e));
+    });
+  });
+}
