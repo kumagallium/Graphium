@@ -4,7 +4,7 @@
 //
 // 本ストーリーは Storybook 上での視覚合意用。確定したら FileSidebar.tsx に反映する。
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   Image, FileText, Video, Volume2, Link, StickyNote, Bot, History,
@@ -488,6 +488,39 @@ export const NoAiConfigured: Story = {
         <p className="mt-4 text-xs">
           既存の wiki データが残っている場合（wikiCounts &gt; 0）はナレッジセクションを
           閲覧用に維持する（データ喪失に見せないため）。
+        </p>
+      </div>
+    </div>
+  ),
+};
+
+// サイドバーの「起動中」表示はデスクトップ版だけのもので、判定は platform.ts の
+// isTauri() がモジュール直呼びで行う。Storybook で見るには Tauri の注入ポイントを
+// 差し込むしかないので、描画前に立てて、ストーリーを離れたら必ず戻す。
+function WithFakeTauri({ children }: { children: ReactNode }) {
+  const w = window as unknown as Record<string, unknown>;
+  if (!("__TAURI_INTERNALS__" in w)) w.__TAURI_INTERNALS__ = {};
+  useEffect(() => () => { delete w.__TAURI_INTERNALS__; }, [w]);
+  return <>{children}</>;
+}
+
+export const BackendStarting: Story = {
+  name: "起動中（バックエンド待ち）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <WithFakeTauri>
+        <FileSidebar {...COMMON_PROPS} aiAvailable={null} />
+      </WithFakeTauri>
+      <div className="flex-1 p-8 text-sm text-muted-foreground">
+        <h2 className="text-base font-semibold mb-2">デスクトップ版の起動直後</h2>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>ナレッジセクションは出したまま（判定が付いても場所が動かない）</li>
+          <li>中身は「バックエンドを起動しています…」</li>
+          <li>設定の点は灰色で脈動（緑/橙に色が変わる）</li>
+        </ol>
+        <p className="mt-4 text-xs">
+          以前はここで web 版向けの「デスクトップ版を入手」が数秒出ていた。
+          デスクトップアプリの中でデスクトップ版を勧める矛盾した表示だった。
         </p>
       </div>
     </div>

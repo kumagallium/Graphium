@@ -15,6 +15,8 @@ Open [Settings](/settings) and pick the **AI** tab. Everything on this page live
 ![AI tab with registered models and model assignment](/screenshots/settings-ai-models.png)
 
 ::: info Checking the connection
+When you launch the desktop app, the backend takes a few seconds to come up. While it does, the **Knowledge** section in the sidebar reads **Starting the backend…** and the dot beside **Settings** stays grey — it turns green once AI is ready. If the backend never comes up, that same section offers a **Restart backend** button.
+
 The AI tab checks the backend each time you open it. A per-component **Connection Status** panel lives on the **Knowledge** tab; when the backend is down, the desktop app also offers a **Restart backend** button there, with **Show log** to see what went wrong.
 
 If the backend stops on its own while the app is running, the desktop app shows a banner at the top of the window — **The AI backend has stopped. Restart it to use AI features.** — with the same **Restart backend** and **Show log** buttons, so you don't have to open Settings to recover.
