@@ -7881,11 +7881,23 @@ export function NoteApp() {
   }
 
   // ローカルストレージは init() 完了後に signedIn=true になるため通常ここは通らない。
-  // 何らかの理由で初期化に失敗した場合のみ、簡素なフォールバックを表示する。
+  // ここに落ちるのは init の invoke が 3 回とも宙吊りになったとき（起動時の IPC
+  // 競合。use-storage.ts の INIT_MAX_ATTEMPTS 参照）。
+  //
+  // 以前は "読み込み中..." と出すだけで回復手段が無く、アプリを閉じて開き直す
+  // しかなかった。実際 v0.45.1 では、スプラッシュが非表示の main を 20 秒抱え
+  // 込んだせいでリトライが全部そこで空振りし、この画面で止まる報告が出ている。
+  // 窓を作り直せば通ることがほとんどなので、その場で再読み込みできるようにする。
   if (!authenticated) {
     return (
-      <div className="flex items-center justify-center h-dvh bg-background">
-        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      <div className="flex flex-col items-center justify-center h-dvh bg-background gap-3 px-8 text-center">
+        <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">{t("startup.initFailed")}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-3 py-1.5 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
+        >
+          {t("startup.reload")}
+        </button>
       </div>
     );
   }
