@@ -38,9 +38,13 @@ import {
 import {
   getAppVersion,
   checkForUpdates,
+  toUpdaterErrorInfo,
+  MANUAL_DOWNLOAD_URL,
   type CheckResult,
   type UpdateProgress,
+  type UpdaterErrorInfo,
 } from "../../lib/updater";
+import { openExternalUrl } from "../../lib/external-link";
 import { restartSidecar, getSidecarState, getRecentSidecarLog } from "../../lib/sidecar";
 import {
   getGraphiumRoot,
@@ -4373,6 +4377,40 @@ function KbEntryRow({
 // ・Web 環境: package.json の version を表示、更新確認はサポート外
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * 更新の失敗を「何が起きたか」と「次に何ができるか」で見せる。
+ *
+ * updater が返す生の文字列（reqwest の `error decoding response body` 等）は
+ * それ単体では行動につながらないので、分類済みの説明を主役にし、生の文字列は
+ * 問い合わせ用に下に添える。自動更新が使えないケースでは手動ダウンロードに逃がす。
+ */
+function UpdaterErrorNotice({ error }: { error: UpdaterErrorInfo }) {
+  const { t } = useLocale();
+  return (
+    <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
+      <XCircle size={14} className="mt-0.5 shrink-0" />
+      <div className="min-w-0 flex-1 break-words space-y-1">
+        <div>{t(error.key)}</div>
+        {error.offerManualDownload && (
+          <button
+            type="button"
+            onClick={() => void openExternalUrl(MANUAL_DOWNLOAD_URL)}
+            className="underline hover:no-underline"
+          >
+            {t("updater.manualDownload")}
+          </button>
+        )}
+        <div className="text-foreground/70 font-mono select-text">
+          <div>
+            {t("updater.errorRawLabel")}: {error.raw}
+          </div>
+          {error.detail && <div>{error.detail}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AboutTab() {
   const { t } = useLocale();
   const [version, setVersion] = useState<string>("");
@@ -4383,7 +4421,7 @@ function AboutTab() {
   >({ status: "idle" });
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
-  const [installError, setInstallError] = useState<string | null>(null);
+  const [installError, setInstallError] = useState<UpdaterErrorInfo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -4414,7 +4452,7 @@ function AboutTab() {
       await checkState.install((p) => setProgress(p));
     } catch (e) {
       console.error("[updater] Install failed:", e);
-      setInstallError(e instanceof Error ? e.message : String(e));
+      setInstallError(toUpdaterErrorInfo(e));
       setInstalling(false);
       setProgress(null);
     }
@@ -4514,27 +4552,20 @@ function AboutTab() {
                     </>
                   )}
                 </Button>
-                {installError && (
-                  <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
-                    <XCircle size={14} className="mt-0.5 shrink-0" />
-                    <div className="min-w-0 flex-1 break-words">
-                      {t("updater.error")}
-                      <div className="text-foreground/70 mt-0.5 font-mono select-text">
-                        {installError}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {installError && <UpdaterErrorNotice error={installError} />}
+              </div>
+            )}
+            {checkState.status === "manual" && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-xs text-foreground">
+                  <AlertCircle size={14} className="text-amber-500" />
+                  {t("updater.manualAvailable", { version: checkState.version })}
+                </div>
+                <UpdaterErrorNotice error={checkState.error} />
               </div>
             )}
             {checkState.status === "error" && (
-              <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
-                <XCircle size={14} className="mt-0.5 shrink-0" />
-                <div className="min-w-0 flex-1 break-words">
-                  {t("settings.about.checkFailed")}
-                  <div className="text-foreground/70 mt-0.5">{checkState.message}</div>
-                </div>
-              </div>
+              <UpdaterErrorNotice error={checkState.error} />
             )}
             {checkState.status === "unsupported" && (
               <div className="text-xs text-muted-foreground">

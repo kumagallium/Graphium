@@ -1473,6 +1473,12 @@ export const ja: Record<string, string> = {
   "updater.error": "更新に失敗しました",
   "updater.errorDetailShow": "詳細を表示",
   "updater.errorDetailHide": "詳細を隠す",
+  "updater.errorNetwork": "ネットワークの状態が原因で更新を取得できませんでした。時間をおいて試すか、下のリンクから手動で更新できます",
+  "updater.errorIntegrity": "ダウンロードした更新ファイルを検証できませんでした。下のリンクから手動で更新できます",
+  "updater.errorUnknown": "更新を適用できませんでした",
+  "updater.errorRawLabel": "エラーの詳細",
+  "updater.manualDownload": "手動でダウンロード",
+  "updater.manualAvailable": "Graphium {version} が公開されていますが、自動更新を実行できませんでした",
 
   // ── バックエンド停止バナー（デスクトップ版で sidecar が予期せず終了したとき）──
   "backendDown.message": "AI バックエンドが停止しました。AI 機能を使うには再起動が必要です。",
