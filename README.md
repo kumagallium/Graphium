@@ -164,6 +164,37 @@ Some people read more comfortably with letterforms designed for dyslexia. Graphi
 
 Graphium exports provenance as **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** — a W3C standard built on Linked Data. This is not a proprietary format: any tool that understands PROV-DM or JSON-LD can consume Graphium's output. Provenance data is portable by design.
 
+Graphium also runs as an **[MCP](https://modelcontextprotocol.io) server**. Claude Desktop, Claude Code, or any MCP client can search your notes, read a procedure step by step with the materials and conditions of each step, find every note that used a given material or instrument, trace what a note was derived from, and add new notes. Your vault stays on your machine, and Graphium itself does not need to be running.
+
+<details>
+<summary><b>Connecting an MCP client</b></summary>
+
+Build the server once:
+
+```bash
+pnpm install
+pnpm bundle:mcp
+```
+
+Then point your client at the bundle. For Claude Desktop, in `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "graphium": {
+      "command": "node",
+      "args": ["/absolute/path/to/Graphium/dist-mcp/graphium-mcp.mjs"]
+    }
+  }
+}
+```
+
+It reads `~/Documents/Graphium` by default. If your notes live elsewhere, set `GRAPHIUM_ROOT` in the server's `env`.
+
+Seven tools are exposed: `search_notes`, `get_note`, `get_note_steps`, `find_notes_using`, `list_entities`, `trace_lineage`, and `create_note`. Everything they return carries the note and block id, so the agent can cite exactly what it read and you can open that block in Graphium. Only `create_note` writes, and it only ever adds a new note — existing notes are never modified. See [ARCHITECTURE.md §4.4](docs/ARCHITECTURE.md) for the details.
+
+</details>
+
 ## How to use
 
 ### Option 1: Use online (no setup)

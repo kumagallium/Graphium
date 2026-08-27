@@ -963,7 +963,7 @@ handles content addressed by hash for the Library / Fork features
 
 ## 4. Distribution targets
 
-The same `src/` tree is built three different ways.
+The same `src/` tree is built four different ways.
 
 ### 4.1 Web (PWA)
 
@@ -1191,6 +1191,55 @@ The same `src/` tree is built three different ways.
 - Storage: `server-fs` provider; notes live on the host filesystem
 - AI: ships with LLM and embedding endpoints wired up
 
+### 4.4 MCP server (stdio)
+
+Graphium also ships as an [MCP](https://modelcontextprotocol.io) server, so
+an outside agent (Claude Desktop, Claude Code, or anything else speaking MCP)
+can read your vault and add notes to it.
+
+- Entry: `src/mcp/index.ts`, bundled by `pnpm bundle:mcp` into
+  `dist-mcp/graphium-mcp.mjs` (a single file, run with `node`)
+- Transport: stdio — the client spawns the process
+- Storage: **the vault files directly**, not a `StorageProvider`. It resolves
+  the root from `GRAPHIUM_ROOT`, then the desktop app's `config.json`, then
+  `~/Documents/Graphium` — the same order as the Claude Code skill in
+  `scripts/claude-code-skill/save-to-graphium/`
+- Requires no running Graphium: the app can be closed, or not installed at all
+
+This target deliberately does **not** reuse the Node server (§6). The server
+exists to hold API keys and talk to LLMs; the MCP server holds neither, because
+the model calling it lives on the client side.
+
+Tools (7):
+
+| Tool | What it answers |
+|---|---|
+| `search_notes` | full-text search over titles, bodies, step names and labels |
+| `get_note` | one note as Markdown, plus its steps, labels and links |
+| `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step |
+| `find_notes_using` | which notes used this material / tool / condition / output |
+| `list_entities` | what is labelled across the whole vault, most-shared first |
+| `trace_lineage` | what a note was derived from, and what was derived from it |
+| `create_note` | write a new note (never edits existing ones) |
+
+Two design rules hold this target together:
+
+- **Every result carries `noteId` and `blockId`.** An agent that cites Graphium
+  must be able to point at the block it read, and the user must be able to open
+  it. A summary you cannot trace back is not what this project is for.
+- **No tool infers provenance.** `create_note` records the fact that a write
+  happened — who, which client, which model — and nothing else. Reconstructing
+  "the steps you probably took" from a conversation would produce a graph that
+  looks like provenance but cannot be checked against anything, which is worse
+  than having none.
+
+Search is rebuilt in-process on first use rather than read from the app: the
+lexical index (§3.3) lives in IndexedDB and is unreachable from outside the
+browser. Reading the whole vault costs ~160ms and the MiniSearch build brings
+first search to ~600ms; later calls are ~2ms. The tokenizer is imported from
+`src/features/lexical-search/tokenizer.ts` so that CJK segmentation matches the
+app — otherwise a query would hit in Graphium and miss over MCP.
+
 ## 5. Sharing and Library
 
 Graphium has an opt-in sharing model that does **not** require a central
@@ -1385,6 +1434,7 @@ people most often need to find.
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |
 | Tauri integration | `src-tauri/src/lib.rs`, `src/lib/menu-events.ts` |
+| MCP server (tools an outside agent can call) | `src/mcp/` |
 | Landing page | `src/landing/` |
 
 ## 9. Compatibility and migrations
