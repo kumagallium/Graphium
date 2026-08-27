@@ -27,7 +27,16 @@ function noopActions(): RouteActions {
     setShowMobile: vi.fn(),
     setShowSharedLibrary: vi.fn(),
     clearViews: vi.fn(),
+    setPeek: vi.fn(),
   };
+}
+
+/** navigate 直後の 1 フレームは自前の pushState を popstate と誤認しないよう抑止されている。
+ *  ユーザーの「戻る」相当を発火させる前に、その解除を待つ。 */
+async function flushNavigate() {
+  await act(async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  });
 }
 
 let pushSpy: ReturnType<typeof vi.spyOn>;
@@ -120,11 +129,7 @@ describe("useHashRouter のハッシュ解決", () => {
     expect(window.location.hash).toBe("#note/wiki:k1");
     expect(result.current.parseHash()).toEqual({ view: "editor", fileId: "wiki:k1" });
 
-    // navigate 直後の 1 フレームは自前の pushState を popstate と誤認しないよう
-    // 抑止されている。解除を待ってから、ユーザーの「戻る」相当を発火させる。
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-    });
+    await flushNavigate();
     // popstate 経由の復元では wiki: を剥がして Knowledge ノートとして開く
     act(() => {
       window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 1 } }));
@@ -136,5 +141,79 @@ describe("useHashRouter のハッシュ解決", () => {
     const { result } = renderHook(() => useHashRouter(noopActions(), true));
     window.location.hash = "#wiki/claim/k9";
     expect(result.current.parseHash()).toEqual({ view: "wiki-editor", kind: "claim", wikiId: "k9" });
+  });
+});
+
+describe("サイドピークの履歴", () => {
+  it("ピークを開くと 1 段積み、切り替えでもう 1 段積む", () => {
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+
+    act(() => result.current.navigate({ view: "editor", fileId: "a" }));
+    pushSpy.mockClear();
+
+    act(() => result.current.navigate({ view: "editor", fileId: "a", peek: "p1" }));
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe("#note/a?peek=p1");
+
+    act(() => result.current.navigate({ view: "editor", fileId: "a", peek: "p2" }));
+    expect(pushSpy).toHaveBeenCalledTimes(2);
+    expect(window.location.hash).toBe("#note/a?peek=p2");
+  });
+
+  it("同じピークを開き直しても積まない", () => {
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+
+    act(() => result.current.navigate({ view: "editor", fileId: "a", peek: "p1" }));
+    pushSpy.mockClear();
+
+    act(() => result.current.navigate({ view: "editor", fileId: "a", peek: "p1" }));
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  it("ピークを閉じる遷移も 1 段積む（戻れば開いていた状態に帰る）", () => {
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+
+    act(() => result.current.navigate({ view: "editor", fileId: "a", peek: "p1" }));
+    pushSpy.mockClear();
+
+    act(() => result.current.navigate({ view: "editor", fileId: "a" }));
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe("#note/a");
+  });
+
+  it("ピーク付き URL を往復でき、popstate でビューの後にピークが当たる", async () => {
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+
+    act(() => result.current.navigate({ view: "editor", fileId: "a", peek: "wiki:k1" }));
+    expect(result.current.parseHash()).toEqual({ view: "editor", fileId: "a", peek: "wiki:k1" });
+
+    await flushNavigate();
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 1 } }));
+    });
+    // ピークはビューを立て終えたあとに当てる（先に当てると畳まれて消える）
+    expect(actions.clearViews).toHaveBeenCalled();
+    expect(actions.setPeek).toHaveBeenLastCalledWith("wiki:k1", "editor");
+  });
+
+  it("ピークの無いルートでは setPeek に null が渡る", async () => {
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+
+    act(() => result.current.navigate({ view: "notes" }));
+    await flushNavigate();
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 1 } }));
+    });
+    expect(actions.setPeek).toHaveBeenLastCalledWith(null, "notes");
+  });
+
+  it("一覧やギャラリーの上でもピークを表現できる", () => {
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+
+    act(() => result.current.navigate({ view: "notes", peek: "n1" }));
+    expect(window.location.hash).toBe("#notes?peek=n1");
+    expect(result.current.parseHash()).toEqual({ view: "notes", peek: "n1" });
   });
 });
