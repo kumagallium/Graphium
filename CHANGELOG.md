@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.45.4](https://github.com/kumagallium/Graphium/compare/v0.45.3...v0.45.4) - 2026-08-27
+
+- [feat] Put the side peek on the history stack by @kumagallium in https://github.com/kumagallium/Graphium/pull/786
+
 ## [v0.45.3](https://github.com/kumagallium/Graphium/compare/v0.45.2...v0.45.3) - 2026-08-27
 
 - Stop waiting on rAF to close the splash (20s launch regression in v0.45.1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/784
