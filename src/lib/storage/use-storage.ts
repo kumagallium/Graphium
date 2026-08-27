@@ -5,18 +5,69 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getActiveProvider, setActiveProvider, initProviders, probeServerProvider } from "./registry";
 import type { StorageProvider } from "./types";
 
-// 初期化 1 回あたりの上限（ミリ秒）。
-// Tauri デスクトップの list_note_files は本来一瞬で返るが、起動直後の IPC 初期化
-// 競合で invoke が応答を返さず永久 pending 化することがある（Rust も WebView も
-// idle のまま「読み込み中」で固まる = ユーザー報告の「アップデート後の再起動で
-// 止まる／開き直すと直る」）。その宙吊りをこの時間で「異常」と判断してリトライに
-// 回す。通常のディスク読み取りを誤って打ち切らないよう十分長めに取る。
-const INIT_ATTEMPT_TIMEOUT_MS = 5000;
-// 初期化の最大試行回数。宙吊りは起動タイミング依存なので、少し待って invoke を
-// 再発行すれば次はたいてい通る（手動の「閉じて開き直す」をアプリ内で自動化する）。
-const INIT_MAX_ATTEMPTS = 3;
+// 初期化 1 回あたりの上限（ミリ秒）。試行ごとに伸ばす。
+//
+// Tauri デスクトップの list_note_files は本来一瞬で返るが、応答が返らない事情が
+// 2 つある。ひとつは起動直後の IPC 初期化競合で invoke が永久 pending 化する例
+// （Rust も WebView も idle のまま固まる = 「アップデート後の再起動で止まる／
+// 開き直すと直る」）。もうひとつは macOS の TCC で、書類フォルダへのアクセス許可
+// ダイアログが出ている間、read_dir はユーザーが答えるまでブロックされる。
+// 後者は「待てば通る」ので、回を追うごとに猶予を伸ばして答える時間を作る。
+const INIT_ATTEMPT_TIMEOUT_MS = [5000, 10000, 15000];
 // リトライ前の待機（ミリ秒）。IPC チャネルが確立するまでの猶予。
 const INIT_RETRY_DELAY_MS = 400;
+
+/**
+ * 起動時のストレージ初期化が失敗した理由。
+ *
+ * 以前はこれを握り潰して「ノートフォルダを読み込めませんでした」とだけ出していた
+ * ので、権限で弾かれたのか宙吊りだったのか保存先が消えたのかを、報告を受けても
+ * 切り分けられなかった。分類と生エラーの両方を UI まで運ぶ。
+ */
+export type StorageInitFailure = {
+  /** UI が t() に渡す i18n キー */
+  key:
+    | "startup.initFailedPermission"
+    | "startup.initFailedTimeout"
+    | "startup.initFailedMissing"
+    | "startup.initFailed";
+  /** 生のエラー文字列（詳細表示・問い合わせ用に残す） */
+  raw: string;
+  /** OS のフォルダアクセス許可を案内すべきか */
+  needsFolderAccess: boolean;
+};
+
+/** 初期化エラーを、ユーザーが次に取れる行動で分類する */
+export function classifyInitFailure(e: unknown): StorageInitFailure {
+  const raw = e instanceof Error ? e.message : String(e);
+  const lower = raw.toLowerCase();
+
+  // withTimeout が付ける印。宙吊りか、TCC ダイアログの応答待ちで返ってこない
+  if (lower.includes("init timeout after")) {
+    return { key: "startup.initFailedTimeout", raw, needsFolderAccess: false };
+  }
+
+  // EPERM(1) / EACCES(13)。macOS の書類フォルダ拒否がここに来る
+  if (
+    lower.includes("operation not permitted") ||
+    lower.includes("permission denied") ||
+    /os error (1|13)\)/.test(lower) ||
+    lower.includes("アクセスが拒否されました")
+  ) {
+    return { key: "startup.initFailedPermission", raw, needsFolderAccess: true };
+  }
+
+  // ENOENT(2)。保存先を外部ドライブ等に変えていて、それが今は無い場合
+  if (
+    lower.includes("no such file or directory") ||
+    /os error 2\)/.test(lower) ||
+    lower.includes("が見つかりません")
+  ) {
+    return { key: "startup.initFailedMissing", raw, needsFolderAccess: false };
+  }
+
+  return { key: "startup.initFailed", raw, needsFolderAccess: false };
+}
 
 /**
  * Promise にタイムアウトを付ける。時間内に解決しなければ reject する。
@@ -45,6 +96,7 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 /** ストレージプロバイダーの初期化状態を管理する Hook */
 export function useStorage() {
   const [authenticated, setAuthenticated] = useState(false);
+  const [initFailure, setInitFailure] = useState<StorageInitFailure | null>(null);
   const [loading, setLoading] = useState(true);
   const [provider, setProvider] = useState<StorageProvider | null>(null);
   // プロバイダー切り替えを検知するためのカウンター
@@ -73,22 +125,33 @@ export function useStorage() {
       // invoke を再発行してリトライする。全滅しても loading は必ず解除して UI を出し、
       // 無限「読み込み中」を根絶する。
       let ok = false;
-      for (let attempt = 1; attempt <= INIT_MAX_ATTEMPTS && !cancelled; attempt++) {
+      let failure: StorageInitFailure | null = null;
+      const attempts = INIT_ATTEMPT_TIMEOUT_MS.length;
+      for (let attempt = 1; attempt <= attempts && !cancelled; attempt++) {
         try {
-          await withTimeout(p.init(), INIT_ATTEMPT_TIMEOUT_MS);
+          await withTimeout(p.init(), INIT_ATTEMPT_TIMEOUT_MS[attempt - 1]);
           ok = true;
+          failure = null;
           break;
         } catch (e) {
-          console.warn(`ストレージ初期化 試行 ${attempt}/${INIT_MAX_ATTEMPTS} 失敗:`, e);
-          if (attempt < INIT_MAX_ATTEMPTS && !cancelled) await delay(INIT_RETRY_DELAY_MS);
+          failure = classifyInitFailure(e);
+          console.warn(
+            `ストレージ初期化 試行 ${attempt}/${attempts} 失敗 [${failure.key}]:`,
+            failure.raw,
+          );
+          // 権限で弾かれている場合、同じ呼び出しは何度やっても同じところで返る。
+          // 粘らずに案内へ回し、ユーザーが許可してから再読み込みしてもらう。
+          if (failure.needsFolderAccess) break;
+          if (attempt < attempts && !cancelled) await delay(INIT_RETRY_DELAY_MS);
         }
       }
       if (cancelled) return;
       initDoneRef.current = ok;
+      setInitFailure(failure);
       if (ok) {
         setAuthenticated(p.getAuthState().isSignedIn);
       } else {
-        console.error("ストレージ初期化に失敗しました（リトライ上限に到達）");
+        console.error("ストレージ初期化に失敗しました:", failure?.raw);
       }
       setLoading(false);
     })();
@@ -109,5 +172,5 @@ export function useStorage() {
     setProviderVersion((v) => v + 1);
   }, [provider]);
 
-  return { authenticated, loading, provider, switchProvider };
+  return { authenticated, loading, provider, initFailure, switchProvider };
 }

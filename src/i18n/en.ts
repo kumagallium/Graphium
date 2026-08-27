@@ -69,6 +69,12 @@ export const en: Record<string, string> = {
   "common.loading": "Loading...",
   "startup.initFailed": "Graphium could not read your notes folder. Reloading usually clears it.",
   "startup.reload": "Reload",
+  "startup.initFailedPermission": "Graphium could not open your notes folder — macOS is blocking access until you allow it.",
+  "startup.initFailedTimeout": "Reading your notes folder is taking longer than usual. Reloading usually clears it.",
+  "startup.initFailedMissing": "Graphium could not find your notes folder. If you keep it on an external drive or a synced folder, check that it is available.",
+  "startup.folderAccessHint": "Open System Settings → Privacy & Security → Files and Folders, turn on the Documents folder for Graphium, then reload.",
+  "startup.errorDetailShow": "Show details",
+  "startup.errorDetailHide": "Hide details",
   "common.table": "[Table]",
   "common.color": "Color",
 

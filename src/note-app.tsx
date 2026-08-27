@@ -151,7 +151,7 @@ import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assist
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
-import { useStorage } from "./lib/storage/use-storage";
+import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
@@ -5335,8 +5335,55 @@ class ListSidePeekBoundary extends Component<
 }
 
 // ── メインアプリ ──
+/**
+ * 起動時のストレージ初期化が失敗したときの画面。
+ *
+ * 「読み込めませんでした」だけでは、権限で弾かれたのか・応答が返らなかったのか・
+ * 保存先が消えたのかが誰にも分からない。分類した説明を主役に置き、OS の許可が
+ * 要るケースだけ手順を添え、生のエラーは問い合わせ用に畳んでおく。
+ */
+function StartupInitFailureScreen({ failure }: { failure: StorageInitFailure | null }) {
+  const t = useT();
+  const [showDetail, setShowDetail] = useState(false);
+  const messageKey = failure?.key ?? "startup.initFailed";
+
+  return (
+    <div className="flex flex-col items-center justify-center h-dvh bg-background gap-3 px-8 text-center">
+      <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
+        {t(messageKey)}
+      </p>
+      {failure?.needsFolderAccess && (
+        <p className="text-xs text-muted-foreground/80 max-w-sm leading-relaxed">
+          {t("startup.folderAccessHint")}
+        </p>
+      )}
+      <button
+        onClick={() => window.location.reload()}
+        className="px-3 py-1.5 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
+      >
+        {t("startup.reload")}
+      </button>
+      {failure && (
+        <>
+          <button
+            onClick={() => setShowDetail((v) => !v)}
+            className="text-xs text-muted-foreground/70 underline hover:no-underline"
+          >
+            {showDetail ? t("startup.errorDetailHide") : t("startup.errorDetailShow")}
+          </button>
+          {showDetail && (
+            <div className="max-w-md text-[11px] font-mono text-muted-foreground/70 select-text break-words">
+              {failure.raw}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function NoteApp() {
-  const { authenticated, loading: authLoading } = useStorage();
+  const { authenticated, loading: authLoading, initFailure } = useStorage();
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
@@ -7953,25 +8000,15 @@ export function NoteApp() {
   }
 
   // ローカルストレージは init() 完了後に signedIn=true になるため通常ここは通らない。
-  // ここに落ちるのは init の invoke が 3 回とも宙吊りになったとき（起動時の IPC
-  // 競合。use-storage.ts の INIT_MAX_ATTEMPTS 参照）。
+  // ここに落ちるのは init が最後まで失敗したとき（起動時の IPC 競合による宙吊り、
+  // macOS の書類フォルダ拒否、保存先の消失。use-storage.ts の classifyInitFailure）。
   //
   // 以前は "読み込み中..." と出すだけで回復手段が無く、アプリを閉じて開き直す
   // しかなかった。実際 v0.45.1 では、スプラッシュが非表示の main を 20 秒抱え
   // 込んだせいでリトライが全部そこで空振りし、この画面で止まる報告が出ている。
   // 窓を作り直せば通ることがほとんどなので、その場で再読み込みできるようにする。
   if (!authenticated) {
-    return (
-      <div className="flex flex-col items-center justify-center h-dvh bg-background gap-3 px-8 text-center">
-        <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">{t("startup.initFailed")}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-3 py-1.5 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
-        >
-          {t("startup.reload")}
-        </button>
-      </div>
-    );
+    return <StartupInitFailureScreen failure={initFailure} />;
   }
 
   const sidebarProps = {

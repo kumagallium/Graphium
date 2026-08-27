@@ -69,6 +69,12 @@ export const ja: Record<string, string> = {
   "common.loading": "読み込み中...",
   "startup.initFailed": "ノートフォルダを読み込めませんでした。再読み込みで直ることがほとんどです。",
   "startup.reload": "再読み込み",
+  "startup.initFailedPermission": "ノートフォルダを開けませんでした。macOS がアクセスを保留しているようです。",
+  "startup.initFailedTimeout": "ノートフォルダの読み込みに時間がかかっています。再読み込みで直ることがほとんどです。",
+  "startup.initFailedMissing": "ノートフォルダが見つかりませんでした。外付けドライブや同期フォルダに置いている場合は、使える状態か確認してください。",
+  "startup.folderAccessHint": "システム設定 → プライバシーとセキュリティ → ファイルとフォルダ を開き、Graphium の「書類」フォルダをオンにしてから再読み込みしてください。",
+  "startup.errorDetailShow": "詳細を表示",
+  "startup.errorDetailHide": "詳細を隠す",
   "common.table": "[テーブル]",
   "common.color": "色",
 

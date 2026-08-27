@@ -108,6 +108,14 @@ If AI endpoints start returning errors (such as 404s) immediately after an autom
 
 This is expected — the Windows build is unsigned. Click **More info**, then **Run anyway** (see [Install on Windows](#install-on-windows)).
 
+### Graphium can't read your notes folder on startup
+
+If Graphium stops on a screen saying it could not open your notes folder, press **Show details** — it names what actually failed, and the fix follows from that:
+
+- **macOS is blocking access.** Open System Settings → Privacy & Security → Files and Folders, turn on the Documents folder for Graphium, then press **Reload**. This can surface right after an update, because the replaced app may be asked to confirm access again.
+- **It is taking longer than usual.** The folder did not answer in time. Press **Reload** — the second attempt usually goes through.
+- **The folder was not found.** If you moved the save location to an external drive or a synced folder via Settings → **Storage**, check that it is mounted and available.
+
 ### The app can't write to its data folder on macOS
 
 If Graphium reports it cannot save, check System Settings → Privacy & Security → Files and Folders and make sure Graphium has access to your Documents folder, or move the save location to a folder it can reach via Settings → **Storage**.
