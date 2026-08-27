@@ -79,6 +79,46 @@ Search covers titles, body text, step names and labels, and works in Japanese wi
 
 Every answer carries the note id and the block id, so the assistant can tell you exactly where something came from and you can open that spot in Graphium.
 
+### What an answer looks like
+
+Asking for a procedure gives you the steps in order, with what each one used:
+
+```
+# 多結晶CuGaTe2のボールミリング条件と熱電特性 の手順（9 件）
+
+1. 溶融  [blockId: 801e35ed-…]
+   material: Cu, Ga, Te
+   tool: シリカ管
+   attribute: 99.99%, 99.999%
+   純度99.99%のCu、純度99.99%のGa、純度99.999%のTeをシリカ管に封入し、直接反応によって溶融する。
+
+3. ボールミリング  [blockId: b2cd7d10-…]
+   material: 粉末
+   tool: プラネタリーボールミル, WC ボール
+   attribute: rpm: 300, ball-to-powder ratio: 2:6:1, atmosphere: Ar, time: 0 h
+```
+
+Asking which notes share an instrument gives you the set, with the block in each:
+
+```
+■ tool: グラファイトダイ  — 3 ノート
+   - 多結晶CuGaTe2のボールミリング条件と熱電特性  [noteId: 70ac6b8a-…, blockId: 540904a1-…]
+   - CuGaTe2 のボールミリング条件が熱電特性に与える影響  [noteId: 585e605f-…, blockId: d22a6e98-…]
+```
+
+### Things worth asking
+
+You never name a tool — ask in plain language and the assistant picks. These work well:
+
+- *"Which of my experiments used a graphite die?"* — the comparison you cannot get from a general-purpose model, because it needs your records
+- *"Walk me through the CuGaTe2 ball-milling procedure, with the conditions for each step."* — pulls a procedure into the conversation so you can adapt it
+- *"What instruments and materials show up across my notes?"* — a way to see the shape of what you have recorded
+- *"I ran this at 873 K instead. How does that compare to what I did before?"* — your own notes as the baseline
+- *"Where did this conclusion come from?"* — follows the provenance back to the notes it was derived from
+- *"Save what we just worked out as a note titled …"* — writes the conversation's outcome into your vault
+
+A good habit is to ask for the note it used. The assistant has the ids, so "which note is that from?" always has an answer, and you can open it in Graphium to check.
+
 ### Labels make it much better
 
 `find_notes_using` and `list_entities` read the **material / tool / condition / output** highlights you put in your notes. If you have not labelled anything yet, those two tools have nothing to work with — search and the other five still work fine.
