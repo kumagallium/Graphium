@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.45.3](https://github.com/kumagallium/Graphium/compare/v0.45.2...v0.45.3) - 2026-08-27
+
+- Stop waiting on rAF to close the splash (20s launch regression in v0.45.1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/784
+
 ## [v0.45.2](https://github.com/kumagallium/Graphium/compare/v0.45.1...v0.45.2) - 2026-08-27
 
 - [fix] Route every full-screen note open through one navigation entry by @kumagallium in https://github.com/kumagallium/Graphium/pull/781
