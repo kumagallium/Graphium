@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.45.2](https://github.com/kumagallium/Graphium/compare/v0.45.1...v0.45.2) - 2026-08-27
+
+- [fix] Route every full-screen note open through one navigation entry by @kumagallium in https://github.com/kumagallium/Graphium/pull/781
+- Stop MiniSearch auto-vacuum from racing the lexical reconcile by @kumagallium in https://github.com/kumagallium/Graphium/pull/782
+
 ## [v0.45.1](https://github.com/kumagallium/Graphium/compare/v0.45.0...v0.45.1) - 2026-08-26
 
 - docs(manual): document knowledge sharing, bulk share, and citation links by @kumagallium in https://github.com/kumagallium/Graphium/pull/779
