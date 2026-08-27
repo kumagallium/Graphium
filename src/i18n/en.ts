@@ -67,6 +67,8 @@ export const en: Record<string, string> = {
   "common.cancel": "Cancel",
   "common.settings": "Settings",
   "common.loading": "Loading...",
+  "startup.initFailed": "Graphium could not read your notes folder. Reloading usually clears it.",
+  "startup.reload": "Reload",
   "common.table": "[Table]",
   "common.color": "Color",
 

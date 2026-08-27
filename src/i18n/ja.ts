@@ -67,6 +67,8 @@ export const ja: Record<string, string> = {
   "common.cancel": "キャンセル",
   "common.settings": "設定",
   "common.loading": "読み込み中...",
+  "startup.initFailed": "ノートフォルダを読み込めませんでした。再読み込みで直ることがほとんどです。",
+  "startup.reload": "再読み込み",
   "common.table": "[テーブル]",
   "common.color": "色",
 
