@@ -182,7 +182,7 @@ import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, rea
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
-import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
+import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner, WikiContextDrawer,
   IngestToast, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
@@ -853,7 +853,11 @@ type NoteEditorProps = {
   /** WikiBanner 等の外部 UI から SidePeek を開くための ref。
    *  NoteEditorInner が useEffect で setSidePeekNoteId を登録する。
    *  composerSubmitRef と同じ流儀。 */
-  openSidePeekRef?: React.MutableRefObject<((noteId: string) => void) | null>;
+  openSidePeekRef?: React.MutableRefObject<((noteId: string | null) => void) | null>;
+  /** エディタ内でサイドピークが開閉・切り替わったことを NoteApp へ知らせる。
+   *  NoteApp はこれを受けて URL に peek を反映し、履歴を 1 段積む
+   *  （ピークも「開いたものは戻れる」に揃えるため）。 */
+  onSidePeekChange?: (noteId: string | null) => void;
   /**
    * NoteApp 側から素材サイドピークを開くための命令口（openSidePeekRef と同じ流儀）。
    * memo: ソースのその場プレビュー（メモピーク）で使う。
@@ -1078,6 +1082,7 @@ function NoteEditorInner({
   onPropagateMentionRename,
   provWikiEntities,
   openSidePeekRef,
+  onSidePeekChange,
   composerCitationRef,
   chatRunApplyRef,
   subHeaderSlot,
@@ -1176,7 +1181,9 @@ function NoteEditorInner({
     if (f) return f.name.replace(/\.(graphium|provnote)\.json$/, "");
     return null;
   };
-  const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
+  // 初期値を URL から取る。ノートを開き直すとこのコンポーネントは作り直されるので、
+  // 命令口（openSidePeekRef）だけに頼ると ref 登録前に届いたピーク指定を取りこぼす。
+  const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(() => readPeekFromHash());
   // @ メニューの「新しいノートを作成」で名前を入力するダイアログ（IME 安全）
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // @ で引用したドキュメント素材（PDF/docx）をクリックしたときに開く素材サイドピーク
@@ -3240,11 +3247,18 @@ function NoteEditorInner({
   // ノート未開時は ref が null のままになり、呼び出し側はフォールバックで全画面遷移する。
   useEffect(() => {
     if (!openSidePeekRef) return;
-    openSidePeekRef.current = (noteId: string) => setSidePeekNoteId(noteId);
+    openSidePeekRef.current = (noteId: string | null) => setSidePeekNoteId(noteId);
     return () => {
       if (openSidePeekRef.current) openSidePeekRef.current = null;
     };
   }, [openSidePeekRef]);
+
+  // ピークの開閉を NoteApp へ通知する。NoteApp 側が URL に反映して履歴を積むので、
+  // 「戻る」でピークを開く前まで巻き戻せる。URL 由来の適用時は NoteApp が
+  // 自分で握りつぶすので、ここでは素直に流すだけでよい。
+  useEffect(() => {
+    onSidePeekChange?.(sidePeekNoteId);
+  }, [sidePeekNoteId, onSidePeekChange]);
 
   // 素材サイドピーク版の命令口。エディタ表示中は memo: ソースのその場プレビューを
   // エディタ内の素材ピークで開く（アンマウント時は null に戻り、呼び出し側は
@@ -5506,7 +5520,7 @@ export function NoteApp() {
   // WikiBanner から SidePeek を開くための ref。NoteEditorInner が useEffect で
   // setSidePeekNoteId を登録する（composerSubmitRef と同じ流儀）。
   // 登録前 / ノート未開時は null。WikiBanner 側は null フォールバックで通常遷移する。
-  const openSidePeekRef = useRef<((noteId: string) => void) | null>(null);
+  const openSidePeekRef = useRef<((noteId: string | null) => void) | null>(null);
   // エディタ内の素材サイドピークを NoteApp 側から開く命令口（openSidePeekRef と同じ流儀）。
   // memo: ソースのその場プレビューで使う。エディタ非表示時は null。
   const openMaterialPeekRef = useRef<((entry: MediaIndexEntry) => void) | null>(null);
@@ -6130,6 +6144,9 @@ export function NoteApp() {
   );
 
   // ─── URL ハッシュルーター ───
+  // URL 由来でピークを当てている最中フラグ。立てずにいると、applyRoute が入れた
+  // ピークをエディタが「ユーザーが開いた」として跳ね返し、navigate が二重に走る。
+  const applyingPeekRef = useRef(false);
   const routeActions: RouteActions = useMemo(() => ({
     openFile: (fileId: string) => fm.handleOpenFile(fileId),
     openWikiFile: (wikiId: string) => fm.handleOpenWikiFile(wikiId),
@@ -6146,6 +6163,28 @@ export function NoteApp() {
     // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
     // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
     clearViews: closeAllViews,
+    // ピークの器はビューごとに別物（本文エディタ内 / 一覧・ギャラリー / 素材ギャラリー）。
+    // 取り違えると「開いたのに出ない」「閉じても残る」になるので view で振り分ける。
+    setPeek: (noteId, view) => {
+      applyingPeekRef.current = true;
+      if (view === "assets") {
+        setAssetSidePeekNoteId(noteId);
+        setListSidePeekNoteId(null);
+        openSidePeekRef.current?.(null);
+      } else if (view === "editor" || view === "wiki-editor") {
+        // 本文のピークはエディタ内 state。命令口（ref）から入れる。
+        // ノートごと切り替わった直後で ref 未登録のときは、エディタが
+        // マウント時に readPeekFromHash() で自分で拾う。
+        openSidePeekRef.current?.(noteId);
+        setListSidePeekNoteId(null);
+        setAssetSidePeekNoteId(null);
+      } else {
+        setListSidePeekNoteId(noteId);
+        setAssetSidePeekNoteId(null);
+        openSidePeekRef.current?.(null);
+      }
+      requestAnimationFrame(() => { applyingPeekRef.current = false; });
+    },
   }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
@@ -6175,6 +6214,38 @@ export function NoteApp() {
     },
     [closeAllViews, fm, router],
   );
+
+  // ─── サイドピークを開く／閉じる唯一の入口 ───
+  // ビューは変えず URL の peek だけを差し替えて履歴を 1 段積む。これで
+  // 「ピーク① → ピーク②」と辿ってから戻ると ① に帰り、もう一度戻るとピーク前に戻る。
+  // 閉じる操作（× / Esc）も 1 段積む — 戻れば開いていた状態に帰るのが「戻る」の意味。
+  const openPeek = useCallback((noteId: string | null) => {
+    if (applyingPeekRef.current) return; // URL 由来の適用は跳ね返さない（無限ループ防止）
+    const current = router.parseHash();
+    if ((current.peek ?? null) === noteId) return; // 同じピークは積まない
+    router.navigate({ ...current, peek: noteId ?? undefined });
+  }, [router]);
+
+  // 一覧・ギャラリー上のノートピーク。本文のピークと違って state はここにあるので、
+  // state と URL を揃えて動かす。
+  const openListPeek = useCallback((noteId: string | null) => {
+    setListSidePeekNoteId(noteId);
+    openPeek(noteId);
+  }, [openPeek]);
+
+  // 素材ギャラリー上のノートピーク。
+  const openAssetPeek = useCallback((noteId: string | null) => {
+    setAssetSidePeekNoteId(noteId);
+    openPeek(noteId);
+  }, [openPeek]);
+
+  // 別のピーク（素材・メモ）や全体グラフへ移るためにノートピークを畳むとき用。
+  // ユーザーが「閉じた」訳ではないので履歴は積まず、URL からピークだけ落とす。
+  const dropPeekFromUrl = useCallback(() => {
+    const current = router.parseHash();
+    if (!current.peek) return;
+    router.replace({ ...current, peek: undefined });
+  }, [router]);
 
   // 新規ノートは保存されて初めて fileId が決まる。決まった時点で URL を差し替える。
   // これが無いと、書いたノートがリロードで開かず（URL が home のまま）、
@@ -6255,6 +6326,7 @@ export function NoteApp() {
     } else {
       // ノートピークと素材ピークを同時に開かない（既存の onOpenMaterialPeek と同じ扱い）
       setListSidePeekNoteId(null);
+      dropPeekFromUrl();
       setListMaterialPeekEntry(entry);
     }
   }, [capture.captureIndex, closeAllViews, router]);
@@ -7931,6 +8003,7 @@ export function NoteApp() {
       closeAllViews();
       setShowGlobalGraph(true);
       setListSidePeekNoteId(null);
+      dropPeekFromUrl();
       setSidebarOpen(false);
     },
     globalGraphActive: showGlobalGraph,
@@ -8042,7 +8115,7 @@ export function NoteApp() {
               // ノード単クリック → 共有 SidePeek で中身プレビュー（本開きは SidePeek 内から）。
               // noteId は wiki ノードに `wiki:` prefix 付き（SidePeek の規約に合わせる）。
               setListMaterialPeekEntry(null);
-              setListSidePeekNoteId(noteId);
+              openListPeek(noteId);
             }}
             onOpenMemo={handleOpenMemoSource}
             onOpenMedia={(fileId) => {
@@ -8051,12 +8124,14 @@ export function NoteApp() {
               const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
               if (!target) return;
               setListSidePeekNoteId(null);
+              dropPeekFromUrl();
               setListMaterialPeekEntry(target);
             }}
             onOpenUrl={(url) => {
               // URL ソースノードクリック → 素材サイドピーク（URL リーダー）でプレビュー。
               // 未登録 URL も本文内リンクと同じくアドホック entry でリーダー表示する。
               setListSidePeekNoteId(null);
+              dropPeekFromUrl();
               setListMaterialPeekEntry(buildUrlPeekEntry(url, fm.mediaIndex ?? null));
             }}
             onClose={() => setShowGlobalGraph(false)}
@@ -8070,14 +8145,14 @@ export function NoteApp() {
             focusFullMode={focusedMaterial?.fullMode}
             onFocusConsumed={() => setFocusedMaterial(null)}
             backToListSeq={assetViewResetSeq}
-            onBack={() => { setAssetSidePeekNoteId(null); fm.setActiveAssetType(null); }}
+            onBack={() => { setAssetSidePeekNoteId(null); dropPeekFromUrl(); fm.setActiveAssetType(null); }}
             onOpenNoteInSidePeek={(noteId) => {
               // 利用ノードクリック等：アセット画面を離れず、右に SidePeek で開く。
               // wiki: プレフィックスは剥がさず保持する。SidePeek は noteId の
               // wiki: 有無で loadWikiFile / loadFile を切り替えるため、剥がすと
               // 要約等の Knowledge ノートが loadFile 経由になり「読み込みに失敗」する。
               // getCachedDoc / appKnowledgeMap も wiki: 付きキーで引く。
-              setAssetSidePeekNoteId(noteId);
+              openAssetPeek(noteId);
             }}
             onNavigateNote={(noteId) => {
               // PDF アセットの利用ノートグラフから Wiki ノートをクリックしたケース：
@@ -8342,7 +8417,7 @@ export function NoteApp() {
                     const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);
                     // Reader を全画面表示にして、その右に翻訳ノートを SidePeek で開く（読みながら照合）
                     setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
-                    setAssetSidePeekNoteId(newNoteId);
+                    openAssetPeek(newNoteId);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.pageCount} parts` } : i) }));
                   } catch (err) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
@@ -8390,7 +8465,7 @@ export function NoteApp() {
                   const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);
                   // PDF を全画面表示にして、その右に翻訳ノートを SidePeek で開く（読みながら照合）。
                   setFocusedMaterial({ fileId: entry.fileId!, fullMode: true });
-                  setAssetSidePeekNoteId(newNoteId);
+                  openAssetPeek(newNoteId);
                   const note = `${result.pageCount} pages`
                     + (result.imageCount > 0 ? `, ${result.imageCount} figures` : "")
                     + (result.truncated ? " (truncated)" : "");
@@ -8497,7 +8572,7 @@ export function NoteApp() {
               // SidePeek 内部は AiAssistant コンテキストを要求するため Provider で包み、
               // エラーバウンダリでアプリ全体の白画面化を防ぐ。
               <AiAssistantProvider aiAvailable={aiUiEnabled}>
-                <ListSidePeekBoundary onClose={() => setAssetSidePeekNoteId(null)}>
+                <ListSidePeekBoundary onClose={() => openAssetPeek(null)}>
                   <SidePeek
                     // ノート切替で丸ごと作り直す（前ノートの本文で上書きするデータ破壊を防ぐ）
                     key={noteId}
@@ -8506,7 +8581,7 @@ export function NoteApp() {
                     cachedDoc={fm.getCachedDoc(noteId) ?? undefined}
                     getCachedDoc={fm.getCachedDoc}
                     onSaved={handleListPeekSaved}
-                    onClose={() => setAssetSidePeekNoteId(null)}
+                    onClose={() => openAssetPeek(null)}
                     onNavigate={(navId, savedDoc) => {
                       // SidePeek 内のリンクから本格的に開く場合はアセット画面を含む
                       // 上位ビューを全て畳んでから本文へ遷移する（navigateToNote が畳む）。
@@ -8519,7 +8594,7 @@ export function NoteApp() {
                     onAddUrlBookmark={fm.handleAddUrlBookmark}
                     noteIndex={fm.noteIndex ?? null}
                     onCreateLinkedNote={fm.handleCreateLinkedNote}
-                    onOpenNoteInPeek={(peekId) => setAssetSidePeekNoteId(peekId)}
+                    onOpenNoteInPeek={(peekId) => openAssetPeek(peekId)}
                     onOpenMemoSource={handleOpenMemoSource}
                   />
                 </ListSidePeekBoundary>
@@ -8547,7 +8622,7 @@ export function NoteApp() {
         ) : fm.showNoteList ? (
           <NoteListView
             noteIndex={fm.noteIndex}
-            onOpenNote={(noteId) => { setListSidePeekNoteId(noteId); }}
+            onOpenNote={(noteId) => openListPeek(noteId)}
             onOpenNoteFull={(noteId) => navigateToNote(noteId)}
             onBack={() => { setListSidePeekNoteId(null); fm.setShowNoteList(false); router.navigate({ view: "home" }); }}
             onDeleteNotes={async (ids) => {
@@ -8572,7 +8647,7 @@ export function NoteApp() {
             onArchiveNotes={async (ids) => {
               for (const id of ids) await fm.handleArchiveNote(id);
             }}
-            onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
+            onOpenWikiPeek={(wikiNoteId) => openListPeek(wikiNoteId)}
             onSetNoteContexts={fm.updateNoteContexts}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
             onShareSelected={
@@ -8805,7 +8880,7 @@ export function NoteApp() {
                 setLintLoading(false);
               }
             }}
-            onOpenWiki={(wikiId) => { setListSidePeekNoteId(`wiki:${wikiId}`); }}
+            onOpenWiki={(wikiId) => openListPeek(`wiki:${wikiId}`)}
             onBack={() => setActiveWikiView(null)}
             onRegenerateWiki={async (wikiId) => {
               await regenerateWikiById(wikiId, { openAfter: false });
@@ -8828,7 +8903,7 @@ export function NoteApp() {
             wikiKind={fm.activeWikiKind}
             wikiFiles={fm.wikiFiles}
             wikiMetas={fm.wikiMetas}
-            onOpenWiki={(wikiId) => { setListSidePeekNoteId(`wiki:${wikiId}`); }}
+            onOpenWiki={(wikiId) => openListPeek(`wiki:${wikiId}`)}
             // navigateToNote を通さない唯一の全画面遷移。kind が確定しているこの導線だけは
             // URL を #knowledge/<kind>/<id> にして、リロード時に一覧の文脈まで復元する。
             onOpenWikiFull={(wikiId) => { const kind = fm.activeWikiKind!; setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind, wikiId }); }}
@@ -8949,7 +9024,7 @@ export function NoteApp() {
             onOpenArchived={(noteId, isWiki) => {
               // アーカイブされた wiki / ノートをサイドピークで閲覧する。
               // 編集導線は WikiBanner 側で「Archived」表示にして抑制する。
-              setListSidePeekNoteId(isWiki ? `wiki:${noteId}` : noteId);
+              openListPeek(isWiki ? `wiki:${noteId}` : noteId);
             }}
             archivedMedia={fm.mediaIndex?.media.filter((m) => m.archivedAt) ?? []}
             onRestoreMedia={fm.handleRestoreMedia}
@@ -9261,6 +9336,7 @@ export function NoteApp() {
             onPeekSaved={fm.reindexNoteFromDoc}
             onPropagateMentionRename={fm.propagateMentionRename}
             openSidePeekRef={openSidePeekRef}
+            onSidePeekChange={openPeek}
             openMaterialPeekRef={openMaterialPeekRef}
             composerCitationRef={composerCitationRef}
             chatRunApplyRef={chatRunApplyRef}
@@ -9372,7 +9448,7 @@ export function NoteApp() {
       {/* 一覧ビュー用サイドピーク（NoteEditorInner 外で表示） */}
       {listSidePeekNoteId && (
         <AiAssistantProvider aiAvailable={false}>
-          <ListSidePeekBoundary onClose={() => setListSidePeekNoteId(null)}>
+          <ListSidePeekBoundary onClose={() => openListPeek(null)}>
             <SidePeek
               // ノート切替で丸ごと作り直す（前ノートの本文で上書きするデータ破壊を防ぐ）
               key={listSidePeekNoteId}
@@ -9383,6 +9459,7 @@ export function NoteApp() {
               onOpenMaterialPeek={(entry) => {
                 // ピーク内の素材リンク（URL/@素材）→ 素材サイドピークへ切り替える
                 setListSidePeekNoteId(null);
+                dropPeekFromUrl();
                 setListMaterialPeekEntry(entry);
               }}
               onOpenMemoSource={handleOpenMemoSource}
@@ -9412,8 +9489,8 @@ export function NoteApp() {
               onAddUrlBookmark={fm.handleAddUrlBookmark}
               noteIndex={fm.noteIndex ?? null}
               onCreateLinkedNote={fm.handleCreateLinkedNote}
-              onOpenNoteInPeek={(peekId) => setListSidePeekNoteId(peekId)}
-              onClose={() => setListSidePeekNoteId(null)}
+              onOpenNoteInPeek={(peekId) => openListPeek(peekId)}
+              onClose={() => openListPeek(null)}
               onNavigate={(noteId, savedDoc) => {
                 // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）は
                 // navigateToNote が全て畳む。1 つでも残すと activeFileId が変わっても
@@ -9477,7 +9554,7 @@ export function NoteApp() {
           onOpenNoteInSidePeek={(noteId) => {
             // 素材ピーク内の利用ノードクリック → ノートの SidePeek に切り替える
             setListMaterialPeekEntry(null);
-            setListSidePeekNoteId(noteId);
+            openListPeek(noteId);
           }}
           onNavigateNote={(noteId) => {
             // MediaUsage.noteId は Wiki の場合 `wiki:{id}` prefix で格納されている。

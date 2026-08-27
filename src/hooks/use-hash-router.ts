@@ -7,7 +7,8 @@ import type { MediaType } from "../features/asset-browser";
 
 // ─── ルート定義 ───
 
-export type AppRoute =
+/** ビュー本体（サイドピークを含まない画面の状態） */
+export type ViewRoute =
   | { view: "editor"; fileId: string }
   | { view: "notes" }
   | { view: "wiki-list"; kind: WikiKind }
@@ -21,9 +22,14 @@ export type AppRoute =
   | { view: "shared-library" }
   | { view: "home" }; // デフォルト（何も開いていない状態）
 
+/** ビュー + サイドピーク。ピークはどのビューの上にも開くので、view とは直交させる。
+ *  URL 上は `#note/<id>?peek=<peekId>` のようにクエリで表す（パスに混ぜると
+ *  fileId 自身が `/` を含めなくなる制約が増えるため）。 */
+export type AppRoute = ViewRoute & { peek?: string };
+
 // ─── ハッシュ ↔ ルート変換 ───
 
-function routeToHash(route: AppRoute): string {
+function viewToHash(route: ViewRoute): string {
   switch (route.view) {
     case "editor": return `#note/${route.fileId}`;
     case "notes": return "#notes";
@@ -40,19 +46,34 @@ function routeToHash(route: AppRoute): string {
   }
 }
 
+function routeToHash(route: AppRoute): string {
+  const base = viewToHash(route);
+  if (!route.peek) return base;
+  const query = `peek=${encodeURIComponent(route.peek)}`;
+  // home（base 空）にピークだけ乗る形も表現できるようにしておく
+  return base ? `${base}?${query}` : `#?${query}`;
+}
+
 function parseHash(hash: string): AppRoute {
   // "#" を除去
-  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (!raw) return { view: "home" };
+  const withQuery = hash.startsWith("#") ? hash.slice(1) : hash;
+  const queryAt = withQuery.indexOf("?");
+  const raw = queryAt >= 0 ? withQuery.slice(0, queryAt) : withQuery;
+  const peek =
+    queryAt >= 0
+      ? new URLSearchParams(withQuery.slice(queryAt + 1)).get("peek") ?? undefined
+      : undefined;
+  const withPeek = (view: ViewRoute): AppRoute => (peek ? { ...view, peek } : view);
+  if (!raw) return withPeek({ view: "home" });
 
   const parts = raw.split("/");
 
   switch (parts[0]) {
     case "note":
-      if (parts[1]) return { view: "editor", fileId: decodeURIComponent(parts.slice(1).join("/")) };
+      if (parts[1]) return withPeek({ view: "editor", fileId: decodeURIComponent(parts.slice(1).join("/")) });
       break;
     case "notes":
-      return { view: "notes" };
+      return withPeek({ view: "notes" });
     // 新ルート (#knowledge/...) と旧ルート (#wiki/...) を同じ意味として解決。
     // 旧ブックマーク互換のため "wiki" もここで受ける（writes は常に #knowledge/...）。
     case "knowledge":
@@ -60,32 +81,38 @@ function parseHash(hash: string): AppRoute {
       if (parts.length >= 3) {
         const kind = parts[1] as WikiKind;
         const wikiId = decodeURIComponent(parts.slice(2).join("/"));
-        return { view: "wiki-editor", kind, wikiId };
+        return withPeek({ view: "wiki-editor", kind, wikiId });
       }
       if (parts[1]) {
-        return { view: "wiki-list", kind: parts[1] as WikiKind };
+        return withPeek({ view: "wiki-list", kind: parts[1] as WikiKind });
       }
       break;
     case "knowledge-log":
     case "wiki-log":
-      return { view: "wiki-log" };
+      return withPeek({ view: "wiki-log" });
     case "knowledge-lint":
     case "wiki-lint":
-      return { view: "wiki-lint" };
+      return withPeek({ view: "wiki-lint" });
     case "assets":
-      if (parts[1]) return { view: "assets", mediaType: parts[1] as MediaType };
+      if (parts[1]) return withPeek({ view: "assets", mediaType: parts[1] as MediaType });
       break;
     case "labels":
-      if (parts[1]) return { view: "labels", label: decodeURIComponent(parts[1]) };
+      if (parts[1]) return withPeek({ view: "labels", label: decodeURIComponent(parts[1]) });
       break;
     case "memos":
-      return { view: "memos" };
+      return withPeek({ view: "memos" });
     case "mobile":
-      return { view: "mobile" };
+      return withPeek({ view: "mobile" });
     case "shared-library":
-      return { view: "shared-library" };
+      return withPeek({ view: "shared-library" });
   }
-  return { view: "home" };
+  return withPeek({ view: "home" });
+}
+
+/** 現在の URL が指しているサイドピーク。エディタが再マウント時の初期値に使う。
+ *  命令口（ref）だけだと、ref 登録より前に届いた popstate のピーク指定を取りこぼす。 */
+export function readPeekFromHash(): string | null {
+  return parseHash(window.location.hash).peek ?? null;
 }
 
 // ─── ルートディスパッチ（アプリ状態への反映） ───
@@ -102,6 +129,10 @@ export type RouteActions = {
   setShowMobile: (show: boolean) => void;
   setShowSharedLibrary?: (show: boolean) => void;
   clearViews: () => void;
+  /** サイドピークの適用（null で閉じる）。ビューを立て終えたあとに呼ばれる。
+   *  ビュー切り替え側がピークを畳む実装なので、順序が逆だと開いた直後に消える。
+   *  ピークの器はビューごとに別（本文・一覧・素材ギャラリー）なので view も渡す。 */
+  setPeek: (noteId: string | null, view: ViewRoute["view"]) => void;
 };
 
 // ─── Hook ───
@@ -178,6 +209,8 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
         actions.clearViews();
         break;
     }
+    // ピークはビューの上に重なるので、ビューを立て終えてから適用する。
+    actions.setPeek(route.peek ?? null, route.view);
   }, [actions]);
 
   // URL をプッシュ（ブラウザ履歴に追加）
