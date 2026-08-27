@@ -6061,25 +6061,6 @@ export function NoteApp() {
     return out;
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex, fm.activeFileId]);
 
-  // 検索結果からノート行をクリック / Enter したときのジャンプハンドラ。
-  // wiki エントリは handleOpenWikiFile + wikiKind ナビ、それ以外は handleOpenFile。
-  // source === "ai" でなくても、index 側に wikiKind があれば wiki 経路に振る
-  // （古いインデックスや source 欠落エントリで Recent Notes に wiki が混入するのを防ぐ）。
-  const handleComposerNoteSelect = useCallback(
-    (noteId: string, source: "human" | "ai" | "skill" | undefined) => {
-      setComposerPrompt("");
-      composer.closeComposer();
-      const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
-      if (source === "ai" || entry?.wikiKind) {
-        if (entry?.wikiKind) fm.setActiveWikiKind(entry.wikiKind);
-        fm.handleOpenWikiFile(noteId);
-        return;
-      }
-      fm.handleOpenFile(noteId);
-    },
-    [composer, fm],
-  );
-
   // Cmd+K: どこからでも Composer を開く。
   // ノート編集中は AI 質問まで使えるが、一覧・Wiki ハブ・アセットギャラリー等では
   // NoteEditor が描画されておらず composerSubmitRef が空なので、検索専用として開く
@@ -6167,6 +6148,59 @@ export function NoteApp() {
     clearViews: closeAllViews,
   }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
+
+  // ─── ノートを全画面（本文）で開く唯一の入口 ───
+  // ここを通さず fm.handleOpenFile / fm.handleOpenWikiFile を直接呼ぶと URL も履歴も
+  // 更新されない。すると内部リンクを辿ったあとの「戻る」が辿り始めより前へ飛び、
+  // リロードでも別のノートが開く（ユーザーから「戻るが直感と違う」と報告された挙動）。
+  // 全画面遷移は必ずこの関数を経由させること。
+  // 例外は use-hash-router の applyRoute（popstate からの復元）だけ — あそこで
+  // navigate すると戻った先をもう一度積んでしまうので、直接 fm を呼ぶのが正しい。
+  const navigateToNote = useCallback(
+    (noteId: string, cachedDoc?: GraphiumDocument) => {
+      closeAllViews();
+      // 全画面へ移るので、開いたままの SidePeek / 素材ピークは畳む
+      setListSidePeekNoteId(null);
+      setAssetSidePeekNoteId(null);
+      setListMaterialPeekEntry(null);
+      if (noteId.startsWith("wiki:")) {
+        fm.handleOpenWikiFile(noteId.slice("wiki:".length));
+      } else {
+        fm.handleOpenFile(noteId, cachedDoc);
+      }
+      // Knowledge ノートも `#note/wiki:<id>` で表現する（applyRoute が prefix を見て
+      // openWikiFile に振り分ける）。kind が確定している一覧からの遷移だけは
+      // `#knowledge/<kind>/<id>` を使うので、そちらは個別に navigate している。
+      router.navigate({ view: "editor", fileId: noteId });
+    },
+    [closeAllViews, fm, router],
+  );
+
+  // 新規ノートは保存されて初めて fileId が決まる。決まった時点で URL を差し替える。
+  // これが無いと、書いたノートがリロードで開かず（URL が home のまま）、
+  // 「戻る」も 1 段ずれる。移動ではないので履歴は積まない（replace）。
+  // 起動直後に最後のノートを自動で開く経路も同じ条件に乗る（URL 未指定のときだけ）。
+  const prevFileIdForUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevFileIdForUrlRef.current;
+    prevFileIdForUrlRef.current = fm.activeFileId;
+    if (prev === null && fm.activeFileId && !window.location.hash) {
+      router.replace({ view: "editor", fileId: fm.activeFileId });
+    }
+  }, [fm.activeFileId, router]);
+
+  // 検索結果からノート行をクリック / Enter したときのジャンプハンドラ。
+  // source === "ai" でなくても、index 側に wikiKind があれば wiki 経路に振る
+  // （古いインデックスや source 欠落エントリで Recent Notes に wiki が混入するのを防ぐ）。
+  const handleComposerNoteSelect = useCallback(
+    (noteId: string, source: "human" | "ai" | "skill" | undefined) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+      navigateToNote(source === "ai" || entry?.wikiKind ? `wiki:${noteId}` : noteId);
+    },
+    [composer, fm, navigateToNote],
+  );
 
   // 引用カードの「開く」→ Library の該当エントリを選択表示で開く。
   // Library はアプリレベルのビューなのでコールバックもアプリ単位で 1 個登録する。
@@ -7386,7 +7420,7 @@ export function NoteApp() {
           sources: snapshots.map((s) => s.id),
         });
         embedWikiSections(wikiId, rewritten).catch(() => {});
-        if (openAfter) fm.handleOpenWikiFile(wikiId);
+        if (openAfter) navigateToNote(`wiki:${wikiId}`);
         const modelLabel = atomResult.model ?? selectedModel ?? "default";
         wikiLog.append("regenerate", [wikiId], `Regenerated atom "${wikiTitle}" with ${modelLabel} from ${snapshots.length} source(s)`).catch(() => {});
 
@@ -7578,7 +7612,7 @@ export function NoteApp() {
             sources: parts.map((p) => p.sourceNoteId),
           });
           embedWikiSections(wikiId, rewritten).catch(() => {});
-          if (openAfter) fm.handleOpenWikiFile(wikiId);
+          if (openAfter) navigateToNote(`wiki:${wikiId}`);
           const modelLabel = result.model ?? selectedModel ?? "default";
           const sourceSummary =
             skipped.length > 0
@@ -7861,8 +7895,11 @@ export function NoteApp() {
     // ヘッダーの「戻る」導線。ノート A →（ピーク等経由で）ノート B / 素材へ飛んだあと A へ戻る。
     onBack: router.back,
     canGoBack: router.canGoBack,
-    onSelect: (fileId: string) => { closeAllViews(); fm.handleOpenFile(fileId); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
-    onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); },
+    onSelect: (fileId: string) => { navigateToNote(fileId); setSidebarOpen(false); },
+    // 新規ノートはまだ ID が無いので URL は home。保存で ID が付いた時点で
+    // 下の useEffect が URL を差し替える。ここで home を積んでおくことで
+    // 「新規ノートを開いた直後に戻る」が直前のノートへ帰る。
+    onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); router.navigate({ view: "home" }); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
@@ -8031,12 +8068,10 @@ export function NoteApp() {
               setAssetSidePeekNoteId(noteId);
             }}
             onNavigateNote={(noteId) => {
-              setAssetSidePeekNoteId(null);
-              closeAllViews();
               // PDF アセットの利用ノートグラフから Wiki ノートをクリックしたケース：
               // MediaUsage.noteId は Wiki の場合 `wiki:{id}` prefix で格納されている。
-              if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice(5));
-              else fm.handleOpenFile(noteId);
+              // prefix の振り分けとビューの畳みは navigateToNote に任せる。
+              navigateToNote(noteId);
             }}
             onDeleteMedia={fm.handleDeleteMedia}
             onArchiveMedia={fm.handleArchiveMedia}
@@ -8462,11 +8497,8 @@ export function NoteApp() {
                     onClose={() => setAssetSidePeekNoteId(null)}
                     onNavigate={(navId, savedDoc) => {
                       // SidePeek 内のリンクから本格的に開く場合はアセット画面を含む
-                      // 上位ビューを全て畳んでから本文へ遷移する。
-                      setAssetSidePeekNoteId(null);
-                      closeAllViews();
-                      if (navId.startsWith("wiki:")) fm.handleOpenWikiFile(navId.slice(5));
-                      else fm.handleOpenFile(navId, savedDoc);
+                      // 上位ビューを全て畳んでから本文へ遷移する（navigateToNote が畳む）。
+                      navigateToNote(navId, savedDoc);
                     }}
                     wikiEntries={appKnowledgeMap.get(noteId) ?? []}
                     mediaIndex={fm.mediaIndex ?? null}
@@ -8486,18 +8518,10 @@ export function NoteApp() {
           <ProcessGalleryView
             processIndex={fm.processIndex}
             onBack={() => fm.setShowProcessGallery(false)}
-            onNavigateNote={(noteId) => {
-              fm.setShowProcessGallery(false);
-              fm.handleOpenFile(noteId);
-              router.navigate({ view: "editor", fileId: noteId });
-            }}
+            onNavigateNote={(noteId) => navigateToNote(noteId)}
             onForkProcess={async (noteId) => {
               const newNoteId = await fm.handleForkProcess(noteId);
-              if (newNoteId) {
-                fm.setShowProcessGallery(false);
-                await fm.handleOpenFile(newNoteId);
-                router.navigate({ view: "editor", fileId: newNoteId });
-              }
+              if (newNoteId) navigateToNote(newNoteId);
               return newNoteId;
             }}
           />
@@ -8506,13 +8530,13 @@ export function NoteApp() {
             noteIndex={fm.noteIndex}
             label={fm.activeLabel}
             onBack={() => fm.setActiveLabel(null)}
-            onNavigateNote={(noteId) => { fm.setActiveLabel(null); fm.handleOpenFile(noteId); }}
+            onNavigateNote={(noteId) => navigateToNote(noteId)}
           />
         ) : fm.showNoteList ? (
           <NoteListView
             noteIndex={fm.noteIndex}
             onOpenNote={(noteId) => { setListSidePeekNoteId(noteId); }}
-            onOpenNoteFull={(noteId) => { setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenFile(noteId); router.navigate({ view: "editor", fileId: noteId }); }}
+            onOpenNoteFull={(noteId) => navigateToNote(noteId)}
             onBack={() => { setListSidePeekNoteId(null); fm.setShowNoteList(false); router.navigate({ view: "home" }); }}
             onDeleteNotes={async (ids) => {
               // 参照警告: 1件以上から参照されている場合は info 確認を出してから移動
@@ -8678,11 +8702,7 @@ export function NoteApp() {
                 window.alert(msg.join("\n"));
               }
 
-              if (lastNewId && mdFiles.length === 1) {
-                fm.setShowNoteList(false);
-                fm.handleOpenFile(lastNewId);
-                router.navigate({ view: "editor", fileId: lastNewId });
-              }
+              if (lastNewId && mdFiles.length === 1) navigateToNote(lastNewId);
             }}
           />
         ) : showMemos ? (
@@ -8698,11 +8718,9 @@ export function NoteApp() {
             onArchiveMemo={capture.handleArchiveCapture}
             onEditMemo={capture.handleEditCapture}
             onNavigateNote={(noteId) => {
-              setShowMemos(false);
               // knowledgedInto は直接 ingest 化後は wiki:<id> を記録する（ノートではなく
               // ナレッジが生成されるため）。旧フローで記録された生ノート ID とも共存。
-              if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice("wiki:".length));
-              else fm.handleOpenFile(noteId);
+              navigateToNote(noteId);
             }}
             insertDisabled={!fm.activeFileId}
             onCreateMemo={capture.handleCreateCapture}
@@ -8746,7 +8764,7 @@ export function NoteApp() {
         ) : activeWikiView === "log" ? (
           <WikiLogView
             onBack={() => setActiveWikiView(null)}
-            onOpenWiki={(wikiId) => { setActiveWikiView(null); fm.handleOpenWikiFile(wikiId); }}
+            onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
           />
         ) : activeWikiView === "lint" ? (
           <WikiLintView
@@ -8799,6 +8817,8 @@ export function NoteApp() {
             wikiFiles={fm.wikiFiles}
             wikiMetas={fm.wikiMetas}
             onOpenWiki={(wikiId) => { setListSidePeekNoteId(`wiki:${wikiId}`); }}
+            // navigateToNote を通さない唯一の全画面遷移。kind が確定しているこの導線だけは
+            // URL を #knowledge/<kind>/<id> にして、リロード時に一覧の文脈まで復元する。
             onOpenWikiFull={(wikiId) => { const kind = fm.activeWikiKind!; setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind, wikiId }); }}
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
@@ -8845,9 +8865,8 @@ export function NoteApp() {
                 }
               }
               const newFileId = await fm.handleCreateNoteFromImport(docToSave);
-              setShowSharedLibrary(false); setShowGlobalGraph(false);
-              fm.handleOpenFile(newFileId);
-              router.navigate({ view: "editor", fileId: newFileId });
+              setShowGlobalGraph(false);
+              navigateToNote(newFileId);
             }}
             onForkKnowledge={async (sharedId) => {
               const root = getSharedRoot();
@@ -8876,10 +8895,8 @@ export function NoteApp() {
                 }
               }
               const newWikiId = await fm.handleCreateWikiFile(docToSave);
-              const kind = docToSave.wikiMeta?.kind;
-              setShowSharedLibrary(false); setShowGlobalGraph(false);
-              fm.handleOpenWikiFile(newWikiId);
-              if (kind) router.navigate({ view: "wiki-editor", kind, wikiId: newWikiId });
+              setShowGlobalGraph(false);
+              navigateToNote(`wiki:${newWikiId}`);
             }}
             onUnshare={async (entry) => {
               const author = loadAuthorIdentity();
@@ -9045,11 +9062,7 @@ export function NoteApp() {
                             openSidePeek(noteId);
                             return;
                           }
-                          if (noteId.startsWith("wiki:")) {
-                            fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
-                          } else {
-                            fm.handleOpenFile(noteId);
-                          }
+                          navigateToNote(noteId);
                         }}
                         onOpenMemo={handleOpenMemoSource}
                         onClearWorldValidity={
@@ -9152,7 +9165,7 @@ export function NoteApp() {
               if (openSidePeek) {
                 openSidePeek(newFileId);
               } else {
-                fm.handleOpenFile(newFileId);
+                navigateToNote(newFileId);
               }
               return newFileId;
             }}
@@ -9170,13 +9183,7 @@ export function NoteApp() {
               if (openSidePeek) openSidePeek(`wiki:${newId}`);
               return newId;
             } : undefined}
-            onNavigateNote={(noteId: string, cachedDoc?: import("./lib/document-types").GraphiumDocument) => {
-              if (noteId.startsWith("wiki:")) {
-                fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
-              } else {
-                fm.handleOpenFile(noteId, cachedDoc);
-              }
-            }}
+            onNavigateNote={navigateToNote}
             onOpenMedia={(fileId: string) => {
               // ノート右パネルのグラフから素材ノードクリック → Material gallery に切り替え
               // て該当 fileId を Full view で開く（旧 blob: open に代わる導線）。
@@ -9396,18 +9403,11 @@ export function NoteApp() {
               onOpenNoteInPeek={(peekId) => setListSidePeekNoteId(peekId)}
               onClose={() => setListSidePeekNoteId(null)}
               onNavigate={(noteId, savedDoc) => {
-                setListSidePeekNoteId(null);
-                // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）を
-                // 全て畳んでから本文へ遷移する。1 つでも残すと activeFileId が変わっても
+                // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）は
+                // navigateToNote が全て畳む。1 つでも残すと activeFileId が変わっても
                 // そのビューが優先表示され、「最大化したのに別の一覧が出る」バグになる
                 // （例: スキル一覧を開いた後にノートを最大化するとスキル一覧が残る）。
-                closeAllViews();
-                if (noteId.startsWith("wiki:")) {
-                  fm.handleOpenWikiFile(noteId.replace(/^wiki:/, ""));
-                } else {
-                  fm.handleOpenFile(noteId, savedDoc);
-                }
-                router.navigate({ view: "editor", fileId: noteId });
+                navigateToNote(noteId, savedDoc);
               }}
               onNoteContextsChange={(id, doc) => fm.reindexNoteFromDoc(id, doc)}
               onDeleteContextEverywhere={handleDeleteContextEverywhere}
@@ -9468,12 +9468,8 @@ export function NoteApp() {
             setListSidePeekNoteId(noteId);
           }}
           onNavigateNote={(noteId) => {
-            setListMaterialPeekEntry(null);
-            setListSidePeekNoteId(null);
-            closeAllViews();
             // MediaUsage.noteId は Wiki の場合 `wiki:{id}` prefix で格納されている。
-            if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice(5));
-            else fm.handleOpenFile(noteId);
+            navigateToNote(noteId);
           }}
         />
       )}

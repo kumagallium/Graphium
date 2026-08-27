@@ -187,7 +187,9 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
     suppressRef.current = true;
     // 同じ URL への再遷移は履歴を積まない（replaceState）。同一ノートを開き直したときに
     // 「戻る」で自分自身へ戻る無限ループのような無駄な履歴段を作らないため。
-    if (hash && hash === window.location.hash) {
+    // home（hash 空）も同一判定に含める。ここを除外すると、一覧を閉じるたびに
+    // 同じ home が積み重なり、「戻るを押しても画面が変わらない」空振り段ができる。
+    if (hash === window.location.hash) {
       window.history.replaceState({ __seq: seqRef.current }, "", url);
     } else {
       seqRef.current += 1;
@@ -195,6 +197,17 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
       setCanGoBack(seqRef.current > 0);
     }
     // pushState 後すぐに suppress を解除
+    requestAnimationFrame(() => { suppressRef.current = false; });
+  }, []);
+
+  // 履歴を積まずに現在のエントリの URL だけ差し替える。
+  // ユーザーの移動ではない URL 更新（新規ノートが保存されて ID が確定した等）に使う。
+  // ここで navigate を使うと空振りの履歴段ができ、「戻る」が 1 回無反応になる。
+  const replace = useCallback((route: AppRoute) => {
+    const hash = routeToHash(route);
+    const url = hash || window.location.pathname + window.location.search;
+    suppressRef.current = true;
+    window.history.replaceState({ __seq: seqRef.current }, "", url);
     requestAnimationFrame(() => { suppressRef.current = false; });
   }, []);
 
@@ -235,5 +248,5 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
     }
   }, [ready, applyRoute]);
 
-  return { navigate, back, canGoBack, parseHash: () => parseHash(window.location.hash) };
+  return { navigate, replace, back, canGoBack, parseHash: () => parseHash(window.location.hash) };
 }
