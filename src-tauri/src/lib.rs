@@ -364,11 +364,29 @@ fn stop_native_sidecar(state: tauri::State<'_, NativeSidecarState>) -> Result<()
 const SPLASH_LABEL: &str = "splash";
 const MAIN_LABEL: &str = "main";
 
+/// main を見せたか。3 つの経路すべてがここを見る。フォールバックのスレッドは
+/// 正常起動でも必ず起きるので、これで弾かないと "timeout" のログが毎回出て、
+/// 本当にフロントが合図を送れなかったケースと見分けが付かなくなる。
+static MAIN_REVEALED: AtomicBool = AtomicBool::new(false);
+
+/// setup に入った時刻。スプラッシュが何 ms 出ていたかを残すためだけに使う。
+/// v0.45.1 の 20 秒はこれが無かったせいで実機の目視でしか気づけなかった。
+static BOOT_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 /// スプラッシュを閉じてメインウィンドウを見せる。
 ///
 /// 何度呼ばれても害はない（show / close は冪等）。フロントの `app_ready`、
 /// 起動タイムアウト、スプラッシュを手で閉じられた場合の 3 経路から呼ばれる。
-fn reveal_main(app: &tauri::AppHandle) {
+///
+/// `via` はどの経路で呼ばれたかを stderr に残すためだけのもの。正常時は必ず
+/// `app_ready` で、`timeout` が出ていたらフロントが合図を送れていない
+/// （v0.45.1 の rAF 凍結がまさにこれで、切り分けに実機の目視が要った）。
+fn reveal_main(app: &tauri::AppHandle, via: &str) {
+    if MAIN_REVEALED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let ms = BOOT_AT.get().map_or(0, |t| t.elapsed().as_millis());
+    eprintln!("[splash] revealing main window via {via} ({ms}ms after boot)");
     if let Some(main) = app.get_webview_window(MAIN_LABEL) {
         let _ = main.show();
         let _ = main.set_focus();
@@ -381,7 +399,7 @@ fn reveal_main(app: &tauri::AppHandle) {
 /// フロントエンドの初回描画が終わった合図（src/main.tsx から呼ぶ）。
 #[tauri::command]
 fn app_ready(app: tauri::AppHandle) {
-    reveal_main(&app);
+    reveal_main(&app, "app_ready");
 }
 
 /// フロントエンドから呼ぶ「sidecar の後始末が終わったので終了してよい」通知
@@ -1890,6 +1908,7 @@ pub fn run() {
         ])
         .manage(NativeSidecarState::default())
         .setup(|app| {
+            let _ = BOOT_AT.set(std::time::Instant::now());
             // ウィンドウのサイズ・位置を前回終了時の状態に復元する（デスクトップのみ）。
             // Windows の既定表示スケールは 150% なので、1920x1080 の実機でも Web 側から
             // 見える論理解像度は 1280x720 しかない。tauri.conf の初期サイズはそこに収まる
@@ -1914,13 +1933,18 @@ pub fn run() {
             }
 
             // フロントが app_ready を呼べないまま固まっても、非表示の main と
-            // スプラッシュだけが残ってアプリが使えなくなることは避ける。実測の
-            // 起動は数秒なので、その数倍を上限にする。
+            // スプラッシュだけが残ってアプリが使えなくなることは避ける。
+            //
+            // ここが発火するのは異常時だけ ── のはずが、v0.45.1 ではフロントが
+            // 非表示ウィンドウで requestAnimationFrame を待っており（非表示の
+            // WebView は描画フレームを回さないので永久に発火しない）、この保険が
+            // 毎起動の待ち時間そのものになっていた。保険が長いほど事故ったときの
+            // 体感が悪くなるので、正常な起動に要る時間を少し超える程度に留める。
             {
                 let handle = app.handle().clone();
                 thread::spawn(move || {
-                    thread::sleep(std::time::Duration::from_secs(20));
-                    reveal_main(&handle);
+                    thread::sleep(std::time::Duration::from_secs(8));
+                    reveal_main(&handle, "timeout");
                 });
             }
 
@@ -1930,9 +1954,14 @@ pub fn run() {
                 let handle = app.handle().clone();
                 splash.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { .. } = event {
-                        if let Some(main) = handle.get_webview_window(MAIN_LABEL) {
-                            let _ = main.show();
-                            let _ = main.set_focus();
+                        // reveal_main を呼ぶと close の最中に close を呼び返す
+                        // ことになるので、main を出すところだけを直接やる。
+                        if !MAIN_REVEALED.swap(true, Ordering::SeqCst) {
+                            eprintln!("[splash] revealing main window via splash-closed");
+                            if let Some(main) = handle.get_webview_window(MAIN_LABEL) {
+                                let _ = main.show();
+                                let _ = main.set_focus();
+                            }
                         }
                     }
                 });

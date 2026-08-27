@@ -70,18 +70,22 @@ createRoot(document.getElementById("root")!).render(
 
 // ── 起動スプラッシュを閉じる（デスクトップ版） ──
 // main ウィンドウは tauri.conf で visible=false にしてあり、その間 public/
-// splash.html が表示されている。バンドルのパースが終わって実際にピクセルが
-// 出てから入れ替えたいので rAF を 2 回挟む（1 回だと最初のレイアウト前に
-// 切り替わり、一瞬だけ空のウィンドウが見える）。sidecar の起動は待たない
-// ── 待たせても AI を使わない利用者の起動が遅くなるだけで、起動中である
-// ことはサイドバーのナレッジ節が示す。
-// ここが失敗しても Rust 側の 20 秒フォールバックが main を出す。
+// splash.html が表示されている。
+//
+// **ここで requestAnimationFrame を待ってはいけない。** 非表示の WebView は
+// 描画フレームを回さないので rAF のコールバックは発火せず、app_ready が永久に
+// 呼ばれない。v0.45.1 では「ピクセルが出てから切り替える」つもりで rAF を
+// 2 回挟み、その結果 Rust 側の 20 秒フォールバックが毎回スプラッシュを閉じて
+// いた（= 全ユーザーが毎起動 20 秒待たされた）。
+//
+// render() は初回マウントを同期でコミットするので、この時点で DOM は組み上
+// がっている。reveal_main は show() → close() の順なので、main が表示された
+// フレームでそのまま中身が描かれる。
+//
+// sidecar の起動は待たない ── 待たせても AI を使わない利用者の起動が遅く
+// なるだけで、起動中であることはサイドバーのナレッジ節が示す。
 if (isTauri()) {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      void import("@tauri-apps/api/core")
-        .then(({ invoke }) => invoke("app_ready"))
-        .catch((e) => console.error("[main] app_ready invoke failed", e));
-    });
-  });
+  void import("@tauri-apps/api/core")
+    .then(({ invoke }) => invoke("app_ready"))
+    .catch((e) => console.error("[main] app_ready invoke failed", e));
 }

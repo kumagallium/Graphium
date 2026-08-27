@@ -988,14 +988,19 @@ The same `src/` tree is built three different ways.
   open with its bottom edge below the screen.
 - The window that opens first is a splash (`public/splash.html`, label
   `splash`). `main` is created with `visible: false` and revealed by the
-  `app_ready` command once the frontend has painted — the bundle is over
+  `app_ready` command, which `main.tsx` calls right after `render()` — the
+  bundle is over
   6 MB and the webview needs a second or three to parse it, which would
   otherwise show as a blank window. The sidecar is not waited on: it
   starts in parallel (about a second) and the sidebar reports its
   progress, so an install that never uses AI is not held up. Two
   safeguards keep the app from ending up windowless — Rust reveals `main`
-  after 20 seconds regardless, and closing the splash by hand reveals it
-  too. `tauri-plugin-window-state` runs without `StateFlags::VISIBLE`,
+  after 8 seconds regardless, and closing the splash by hand reveals it
+  too. Do **not** wait for `requestAnimationFrame` before calling
+  `app_ready`: a window that is not visible runs no animation frames, so
+  the callback never fires and the 8-second fallback becomes the startup
+  time for every user (v0.45.1 shipped with exactly that bug, at 20
+  seconds). `tauri-plugin-window-state` runs without `StateFlags::VISIBLE`,
   since a restored `visible: true` would otherwise show `main` before the
   frontend is ready.
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
