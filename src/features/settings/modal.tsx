@@ -38,7 +38,7 @@ import {
 import {
   getAppVersion,
   checkForUpdates,
-  classifyUpdaterError,
+  toUpdaterErrorInfo,
   MANUAL_DOWNLOAD_URL,
   type CheckResult,
   type UpdateProgress,
@@ -4401,7 +4401,10 @@ function UpdaterErrorNotice({ error }: { error: UpdaterErrorInfo }) {
           </button>
         )}
         <div className="text-foreground/70 font-mono select-text">
-          {t("updater.errorRawLabel")}: {error.raw}
+          <div>
+            {t("updater.errorRawLabel")}: {error.raw}
+          </div>
+          {error.detail && <div>{error.detail}</div>}
         </div>
       </div>
     </div>
@@ -4449,7 +4452,7 @@ function AboutTab() {
       await checkState.install((p) => setProgress(p));
     } catch (e) {
       console.error("[updater] Install failed:", e);
-      setInstallError(classifyUpdaterError(e));
+      setInstallError(toUpdaterErrorInfo(e));
       setInstalling(false);
       setProgress(null);
     }

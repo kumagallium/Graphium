@@ -98,7 +98,7 @@ External links in notes and citations open in your default OS browser, not insid
 
 ### The update fails to download
 
-If the banner or Settings → **About** reports that the update couldn't be fetched, the download was cut short before it finished — usually a slow connection, a corporate proxy, or security software inspecting the traffic. Graphium retries once on its own. If it still fails, wait a little and press **Check for updates** again. When it keeps failing, use the **Download manually** link shown next to the error to get the installer from the release page and run it over your current install; your notes in `Documents/Graphium` are untouched. The updater's own message is kept under **Show details** (**Error details** in Settings) — worth quoting if you report the problem.
+If the banner or Settings → **About** reports that the update couldn't be fetched, the download was cut short before it finished — usually a slow connection, a corporate proxy, or security software inspecting the traffic. Graphium retries once on its own. If it still fails, wait a little and press **Check for updates** again. When it keeps failing, use the **Download manually** link shown next to the error to get the installer from the release page and run it over your current install; your notes in `Documents/Graphium` are untouched. **Show details** (**Error details** in Settings) keeps the updater's own message along with how far the download got before it stopped — worth quoting if you report the problem.
 
 ### AI features fail right after an update
 

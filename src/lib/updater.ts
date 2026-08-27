@@ -22,6 +22,17 @@ const DOWNLOAD_TIMEOUT_MS = 30 * 60 * 1000; // 30 分
 // 破棄されるので、単純に最初からやり直すだけでよい）。
 const DOWNLOAD_RETRY_COUNT = 1;
 
+/**
+ * ダウンロード失敗を、分類済みの情報ごと呼び出し元へ渡すための例外。
+ * 実測値（何 MB で切れたか）は catch した側では取れないので、ここに載せて運ぶ。
+ */
+export class UpdaterDownloadError extends Error {
+  constructor(readonly info: UpdaterErrorInfo) {
+    super(info.raw);
+    this.name = "UpdaterDownloadError";
+  }
+}
+
 /** 自動更新が使えないときに案内する手動ダウンロード先 */
 export const MANUAL_DOWNLOAD_URL =
   "https://github.com/kumagallium/Graphium/releases/latest";
@@ -59,6 +70,20 @@ export type UpdaterErrorInfo = {
   raw: string;
   /** 手動ダウンロードを案内すべきか */
   offerManualDownload: boolean;
+  /**
+   * ダウンロード中に落ちた場合の実測値（何 MB まで届いたか・何秒かかったか）。
+   * reqwest はタイムアウト超過も途中切断も同じ一文にまとめてしまうため、
+   * この行が無いと報告を受けても原因を切り分けられない。
+   */
+  detail?: string;
+};
+
+/** ダウンロード中の失敗を切り分けるために classifyUpdaterError へ渡す実測値 */
+export type DownloadAttemptStats = {
+  downloaded: number;
+  total?: number;
+  elapsedMs: number;
+  timeoutMs: number;
 };
 
 /** checkForUpdates の戻り値（手動チェック UI 用） */
@@ -84,6 +109,25 @@ export async function getAppVersion(): Promise<string> {
   return pkg.version;
 }
 
+/** タイムアウト超過とみなす割合。実測がここに達していれば打ち切られたと読む */
+const TIMEOUT_MARGIN = 0.95;
+
+/** ダウンロードが打ち切られたのか、途中で切れたのかを実測から判定する */
+export function hitDownloadTimeout(stats: DownloadAttemptStats): boolean {
+  return stats.elapsedMs >= stats.timeoutMs * TIMEOUT_MARGIN;
+}
+
+/** 失敗したダウンロードの実測値を 1 行にまとめる（詳細表示・問い合わせ用） */
+export function describeDownloadAttempt(stats: DownloadAttemptStats): string {
+  const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
+  const got = mb(stats.downloaded);
+  const of = stats.total ? ` / ${mb(stats.total)}` : "";
+  const secs = Math.round(stats.elapsedMs / 1000);
+  const limit = Math.round(stats.timeoutMs / 1000);
+  const verdict = hitDownloadTimeout(stats) ? "timeout" : "interrupted";
+  return `download: ${got}${of} MB in ${secs}s (limit ${limit}s) — ${verdict}`;
+}
+
 /**
  * updater の生エラーを分類する。
  *
@@ -93,9 +137,13 @@ export async function getAppVersion(): Promise<string> {
  * タイムアウト超過などで、いずれもユーザー側のネットワーク事情。そのまま出すと
  * 何をすればいいか分からないので、ネットワーク系として括り直して手動導線を出す。
  */
-export function classifyUpdaterError(e: unknown): UpdaterErrorInfo {
+export function classifyUpdaterError(
+  e: unknown,
+  stats?: DownloadAttemptStats,
+): UpdaterErrorInfo {
   const raw = e instanceof Error ? e.message : String(e);
   const lower = raw.toLowerCase();
+  const detail = stats ? describeDownloadAttempt(stats) : undefined;
 
   const isNetwork =
     lower.includes("error decoding response body") ||
@@ -108,7 +156,7 @@ export function classifyUpdaterError(e: unknown): UpdaterErrorInfo {
     lower.includes("download request failed with status") ||
     lower.includes("could not fetch a valid release json");
   if (isNetwork) {
-    return { key: "updater.errorNetwork", raw, offerManualDownload: true };
+    return { key: "updater.errorNetwork", raw, offerManualDownload: true, detail };
   }
 
   // 署名検証・base64 デコードの失敗は配布物側の問題。手動ダウンロードでも
@@ -118,10 +166,19 @@ export function classifyUpdaterError(e: unknown): UpdaterErrorInfo {
     lower.includes("minisign") ||
     lower.includes("base64");
   if (isIntegrity) {
-    return { key: "updater.errorIntegrity", raw, offerManualDownload: true };
+    return { key: "updater.errorIntegrity", raw, offerManualDownload: true, detail };
   }
 
-  return { key: "updater.errorUnknown", raw, offerManualDownload: true };
+  return { key: "updater.errorUnknown", raw, offerManualDownload: true, detail };
+}
+
+/**
+ * catch した例外から表示用の情報を取り出す。
+ * ダウンロード経路は実測値を載せた UpdaterDownloadError を投げてくるので、
+ * それを潰さずに使う（分類し直すと detail が消える）。
+ */
+export function toUpdaterErrorInfo(e: unknown): UpdaterErrorInfo {
+  return e instanceof UpdaterDownloadError ? e.info : classifyUpdaterError(e);
 }
 
 /**
@@ -200,6 +257,7 @@ export async function checkForUpdates(): Promise<CheckResult> {
           for (let attempt = 0; ; attempt++) {
             let downloaded = 0;
             let total: number | undefined;
+            const startedAt = Date.now();
             try {
               await update.download(
                 (event) => {
@@ -216,15 +274,24 @@ export async function checkForUpdates(): Promise<CheckResult> {
               );
               break;
             } catch (e) {
-              const info = classifyUpdaterError(e);
-              // ネットワーク由来なら一度だけ取り直す。それ以外は即座に投げる
+              const stats: DownloadAttemptStats = {
+                downloaded,
+                total,
+                elapsedMs: Date.now() - startedAt,
+                timeoutMs: DOWNLOAD_TIMEOUT_MS,
+              };
+              const info = classifyUpdaterError(e, stats);
+              // ネットワーク由来なら一度だけ取り直す。ただし制限時間まで粘った末の
+              // 打ち切りは、同じ回線でもう一度やっても同じところで終わるだけなので
+              // 取り直さず、手動ダウンロードに送る。
               if (
                 attempt >= DOWNLOAD_RETRY_COUNT ||
-                info.key !== "updater.errorNetwork"
+                info.key !== "updater.errorNetwork" ||
+                hitDownloadTimeout(stats)
               ) {
-                throw e;
+                throw new UpdaterDownloadError(info);
               }
-              console.warn("[updater] Download failed, retrying once:", info.raw);
+              console.warn("[updater] Download failed, retrying once:", info.detail);
               onProgress({ phase: "downloading", downloaded: 0, total: undefined });
             }
           }

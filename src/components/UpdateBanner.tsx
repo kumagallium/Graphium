@@ -11,7 +11,7 @@ import { useT } from "../i18n";
 import { openExternalUrl } from "../lib/external-link";
 import {
   checkForUpdates,
-  classifyUpdaterError,
+  toUpdaterErrorInfo,
   MANUAL_DOWNLOAD_URL,
   type ManualUpdateDetail,
   type UpdateAvailableDetail,
@@ -57,7 +57,7 @@ export function UpdateBanner() {
       await update.install((p) => setProgress(p));
     } catch (e) {
       console.error("[updater] Install failed:", e);
-      setError(classifyUpdaterError(e));
+      setError(toUpdaterErrorInfo(e));
       setInstalling(false);
       setProgress(null);
     }
@@ -208,7 +208,8 @@ export function UpdateBanner() {
             overflowWrap: "break-word",
           }}
         >
-          {shownError.raw}
+          {shownError.detail && <div>{shownError.detail}</div>}
+          <div>{shownError.raw}</div>
         </div>
       )}
     </div>
