@@ -96,6 +96,10 @@ External links in notes and citations open in your default OS browser, not insid
 
 ## Troubleshooting
 
+### The update fails to download
+
+If the banner or Settings → **About** reports that the update couldn't be fetched, the download was cut short before it finished — usually a slow connection, a corporate proxy, or security software inspecting the traffic. Graphium retries once on its own. If it still fails, wait a little and press **Check for updates** again. When it keeps failing, use the **Download manually** link shown next to the error to get the installer from the release page and run it over your current install; your notes in `Documents/Graphium` are untouched. The updater's own message is kept under **Show details** (**Error details** in Settings) — worth quoting if you report the problem.
+
 ### AI features fail right after an update
 
 If AI endpoints start returning errors (such as 404s) immediately after an automatic update, an old helper process from the previous version may still be running. Quit Graphium completely (`⌘Q` on macOS, or close the window on Windows) and relaunch it. If AI features still don't respond, try **Backend** → **Restart Backend** from the menu bar.

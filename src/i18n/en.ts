@@ -1473,6 +1473,12 @@ export const en: Record<string, string> = {
   "updater.error": "Update failed",
   "updater.errorDetailShow": "Show details",
   "updater.errorDetailHide": "Hide details",
+  "updater.errorNetwork": "Couldn't fetch the update, most likely because of the network connection. Try again later, or update manually from the link below.",
+  "updater.errorIntegrity": "Couldn't verify the downloaded update file. You can update manually from the link below.",
+  "updater.errorUnknown": "Couldn't apply the update.",
+  "updater.errorRawLabel": "Error details",
+  "updater.manualDownload": "Download manually",
+  "updater.manualAvailable": "Graphium {version} is available, but the automatic update couldn't run",
 
   // ── Backend-down banner (desktop: the sidecar exited unexpectedly) ──
   "backendDown.message": "The AI backend has stopped. Restart it to use AI features.",
