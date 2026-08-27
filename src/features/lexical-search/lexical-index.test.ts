@@ -6,7 +6,7 @@
 // - スナップショット往復で検索結果が変わらない
 
 import { describe, expect, it } from "vitest";
-import { LEXICAL_FORMAT_VERSION, LexicalIndex, docId } from "./lexical-index";
+import { LEXICAL_FORMAT_VERSION, LexicalIndex, docId, miniSearchOptions } from "./lexical-index";
 
 function sampleIndex(): LexicalIndex {
   const idx = new LexicalIndex();
@@ -221,5 +221,98 @@ describe("LexicalIndex — listChunks / vocabulary", () => {
     // ソースを外すと語彙からも消える（discard 済みは数えない）
     idx.removeSource("a1");
     expect(idx.vocabulary().find((v) => v.term === "ppms")).toBeUndefined();
+  });
+});
+
+describe("LexicalIndex — 掃除（vacuum）", () => {
+  // MiniSearch の自動 vacuum は転置索引を 1000 語ごとに await で中断しながら掃除する。
+  // その中断中に addAll が走ると radix tree が組み変わり、掃除側のイテレータが宙を指して
+  // 落ちる（TypeError: ... reading 'keys'）。reconcile は「1 ソース索引 → 譲る」を
+  // 繰り返すので必ず噛み合う。だから自動 vacuum は切って、途中で譲らない掃除を明示で走らせる
+
+  /** term 数が MiniSearch の中断単位（1000 語）を超える索引を作る */
+  function bigIndex(sources: number, generation = 0): LexicalIndex {
+    const idx = new LexicalIndex();
+    for (let s = 0; s < sources; s++) idx.upsertSource(bigSource(s, generation));
+    return idx;
+  }
+
+  function bigSource(s: number, generation: number) {
+    return {
+      kind: "note" as const,
+      sourceId: `n${s}`,
+      title: `ノート ${s}`,
+      fingerprint: `v${generation}`,
+      chunks: [0, 1, 2].map((c) => ({
+        chunkId: `b${c}`,
+        // ソース固有の語で語彙を広げつつ、共通語も混ぜて df を持たせる
+        text:
+          Array.from({ length: 40 }, (_, i) => `s${s}g${generation}c${c}w${i}`).join(" ") +
+          " " +
+          Array.from({ length: 20 }, (_, i) => `common${(s + i) % 200}`).join(" "),
+      })),
+    };
+  }
+
+  it("自動 vacuum を無効にしている（有効だと reconcile 中に索引が壊れる）", () => {
+    expect(miniSearchOptions().autoVacuum).toBe(false);
+  });
+
+  it("残骸が溜まっていなければ掃除しない", async () => {
+    const idx = sampleIndex();
+    expect(await idx.vacuumIfDirty()).toBe(false);
+    idx.removeSource("a1");
+    // 削除は 2 チャンクだけ。しきい値（20 件）に届かないので掃除しない
+    expect(await idx.vacuumIfDirty()).toBe(false);
+  });
+
+  it("溜まった残骸を落とし、検索結果は変わらない", async () => {
+    const idx = bigIndex(40);
+    const before = idx.termCount;
+    for (let s = 0; s < 20; s++) idx.removeSource(`n${s}`);
+
+    const hitsBeforeVacuum = idx.search("common7", { limit: 100 });
+    expect(await idx.vacuumIfDirty()).toBe(true);
+    const hitsAfterVacuum = idx.search("common7", { limit: 100 });
+
+    // 掃除で語彙は減る（削除済みだけを含んでいた語が落ちる）
+    expect(idx.termCount).toBeLessThan(before);
+    // 掃除は検索結果にもスコアにも影響しない（残骸は元から結果に出ない）
+    expect(hitsAfterVacuum.map((h) => h.id)).toEqual(hitsBeforeVacuum.map((h) => h.id));
+    expect(hitsAfterVacuum.map((h) => h.score)).toEqual(hitsBeforeVacuum.map((h) => h.score));
+    // 残っているソースは全部引ける
+    expect(idx.sourceCount).toBe(20);
+    expect(idx.search("s25g0c0w5")[0]?.sourceId).toBe("n25");
+    // 消したソースは引けない
+    expect(idx.search("s5g0c0w5")).toEqual([]);
+  });
+
+  it("reconcile と同じ形（1 ソースずつ差し替えて譲る）を繰り返しても壊れない", async () => {
+    const idx = bigIndex(40);
+    const errors: unknown[] = [];
+    const onUnhandled = (e: PromiseRejectionEvent | unknown) => errors.push(e);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      // service.reconcile と同じ: upsertSource → イベントループに譲る、を全ソース分
+      for (let generation = 1; generation <= 3; generation++) {
+        for (let s = 0; s < 40; s++) {
+          idx.upsertSource(bigSource(s, generation));
+          // 保存（saveNow）の掃除が並走で挟まる状況を再現する
+          await idx.vacuumIfDirty();
+          await new Promise<void>((r) => setTimeout(r, 0));
+        }
+      }
+      // 宙に浮いた rejection が届くのを待つ
+      await new Promise<void>((r) => setTimeout(r, 50));
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+
+    expect(errors).toEqual([]);
+    expect(idx.sourceCount).toBe(40);
+    expect(idx.documentCount).toBe(120);
+    // 最新世代の語で引け、古い世代の語は消えている
+    expect(idx.search("s7g3c0w5")[0]?.sourceId).toBe("n7");
+    expect(idx.search("s7g0c0w5")).toEqual([]);
   });
 });
