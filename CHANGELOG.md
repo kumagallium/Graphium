@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.45.5](https://github.com/kumagallium/Graphium/compare/v0.45.4...v0.45.5) - 2026-08-27
+
+- [fix] Make updater failures actionable instead of showing raw reqwest errors by @kumagallium in https://github.com/kumagallium/Graphium/pull/788
+
 ## [v0.45.4](https://github.com/kumagallium/Graphium/compare/v0.45.3...v0.45.4) - 2026-08-27
 
 - [feat] Put the side peek on the history stack by @kumagallium in https://github.com/kumagallium/Graphium/pull/786
