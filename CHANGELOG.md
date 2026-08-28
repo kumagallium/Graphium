@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.47.1](https://github.com/kumagallium/Graphium/compare/v0.47.0...v0.47.1) - 2026-08-28
+
+- [fix] Relaunch through launchd so an update keeps folder access by @kumagallium in https://github.com/kumagallium/Graphium/pull/797
+
 ## [v0.47.0](https://github.com/kumagallium/Graphium/compare/v0.46.0...v0.47.0) - 2026-08-28
 
 - [fix] Align the toggle arrow and drag handle with heading text by @kumagallium in https://github.com/kumagallium/Graphium/pull/793
