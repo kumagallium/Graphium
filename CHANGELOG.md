@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.46.0](https://github.com/kumagallium/Graphium/compare/v0.45.5...v0.46.0) - 2026-08-28
+
+- [fix] Say why the notes folder could not be read at startup by @kumagallium in https://github.com/kumagallium/Graphium/pull/790
+- [feat] Let outside agents read and write the vault over MCP by @kumagallium in https://github.com/kumagallium/Graphium/pull/792
+
 ## [v0.45.5](https://github.com/kumagallium/Graphium/compare/v0.45.4...v0.45.5) - 2026-08-27
 
 - [fix] Make updater failures actionable instead of showing raw reqwest errors by @kumagallium in https://github.com/kumagallium/Graphium/pull/788
