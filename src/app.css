@@ -956,6 +956,20 @@ body.gph-col-resizing * {
   transform: translateX(-28px);
 }
 
+/* SideMenu を載せているラッパー（floating-ui が作る、クラスの付かない div）は
+   本文の左端まで幅いっぱいに広がっている。上の transform で動くのは中身だけなので、
+   ラッパーは元の位置に居座り、その下敷きになった ▶ がマウスを受け取れなくなる
+   （▶ に近づけると .bn-block-outer:hover が外れる一方で ▶ 自身の :hover も
+   立たないため、すっと消えてしまう）。ラッパーは素通しにして、実際のハンドルだけが
+   マウスを受け取るようにする。SideMenu の表示はブロックへのホバーで決まるので、
+   ラッパーを透過させても出なくなることはない。 */
+.bn-container > div:has(> .bn-side-menu) {
+  pointer-events: none;
+}
+.bn-container > div:has(> .bn-side-menu) > .bn-side-menu {
+  pointer-events: auto;
+}
+
 /* 印刷・PDF 書き出しでは畳んだところも出す（紙に残らないと困る） */
 @media print {
   .bn-editor .gph-heading-hidden {
