@@ -112,7 +112,7 @@ This is expected — the Windows build is unsigned. Click **More info**, then **
 
 If Graphium stops on a screen saying it could not open your notes folder, press **Show details** — it names what actually failed, and the fix follows from that:
 
-- **macOS is blocking access.** Open System Settings → Privacy & Security → Files and Folders, turn on the Documents folder for Graphium, then press **Reload**. This can surface right after an update, because the replaced app may be asked to confirm access again.
+- **macOS is withholding access.** This almost always shows up right after an update: the replaced app starts while still carrying the permissions of the version it replaced, and launching it again clears it. Press **Restart Graphium** on that screen, or quit Graphium completely (`⌘Q`) and open it again. If the same screen comes back, open System Settings → Privacy & Security → Files and Folders, turn on the Documents folder for Graphium, then press **Reload**.
 - **It is taking longer than usual.** The folder did not answer in time. Press **Reload** — the second attempt usually goes through.
 - **The folder was not found.** If you moved the save location to an external drive or a synced folder via Settings → **Storage**, check that it is mounted and available.
 

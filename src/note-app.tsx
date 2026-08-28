@@ -4,6 +4,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
@@ -5341,6 +5342,12 @@ class ListSidePeekBoundary extends Component<
  * 「読み込めませんでした」だけでは、権限で弾かれたのか・応答が返らなかったのか・
  * 保存先が消えたのかが誰にも分からない。分類した説明を主役に置き、OS の許可が
  * 要るケースだけ手順を添え、生のエラーは問い合わせ用に畳んでおく。
+ *
+ * macOS で権限に弾かれるケースの大半は、アップデータが `.app` を置き換えた直後の
+ * 初回起動で TCC の責任プロセスが更新前のバンドルに紐付いたまま残っているもので、
+ * 起動し直せば通る（詳細は lib/relaunch.ts）。システム設定を触る必要は無いのに
+ * そちらへ案内すると、エントリが無い設定画面を探し回らせることになる。
+ * 起動し直す導線を先に出し、システム設定は効かなかったときの二の手に置く。
  */
 function StartupInitFailureScreen({ failure }: { failure: StorageInitFailure | null }) {
   const t = useT();
@@ -5353,16 +5360,31 @@ function StartupInitFailureScreen({ failure }: { failure: StorageInitFailure | n
         {t(messageKey)}
       </p>
       {failure?.needsFolderAccess && (
-        <p className="text-xs text-muted-foreground/80 max-w-sm leading-relaxed">
-          {t("startup.folderAccessHint")}
-        </p>
+        <>
+          <p className="text-xs text-muted-foreground/80 max-w-sm leading-relaxed">
+            {t("startup.folderAccessHint")}
+          </p>
+          <p className="text-xs text-muted-foreground/60 max-w-sm leading-relaxed">
+            {t("startup.folderAccessHintSettings")}
+          </p>
+        </>
       )}
-      <button
-        onClick={() => window.location.reload()}
-        className="px-3 py-1.5 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
-      >
-        {t("startup.reload")}
-      </button>
+      <div className="flex items-center gap-2">
+        {failure?.needsFolderAccess && isTauri() && (
+          <button
+            onClick={() => void relaunchApp()}
+            className="px-3 py-1.5 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
+          >
+            {t("startup.restartApp")}
+          </button>
+        )}
+        <button
+          onClick={() => window.location.reload()}
+          className="px-3 py-1.5 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
+        >
+          {t("startup.reload")}
+        </button>
+      </div>
       {failure && (
         <>
           <button

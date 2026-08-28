@@ -139,8 +139,9 @@ export function useStorage() {
             `ストレージ初期化 試行 ${attempt}/${attempts} 失敗 [${failure.key}]:`,
             failure.raw,
           );
-          // 権限で弾かれている場合、同じ呼び出しは何度やっても同じところで返る。
-          // 粘らずに案内へ回し、ユーザーが許可してから再読み込みしてもらう。
+          // 権限で弾かれている場合、同じプロセスの中では何度やっても同じところで
+          // 返る（TCC の判定はプロセス単位で決まる）。粘らずに案内へ回し、
+          // 起動し直してもらう。
           if (failure.needsFolderAccess) break;
           if (attempt < attempts && !cancelled) await delay(INIT_RETRY_DELAY_MS);
         }

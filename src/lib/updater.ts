@@ -298,9 +298,12 @@ export async function checkForUpdates(): Promise<CheckResult> {
           onProgress({ phase: "installing" });
           await update.install();
           // Windows では install() から戻らない（インストーラ起動と同時に
-          // プロセスが exit(0) で終了する）ため、relaunch は実質 macOS 用。
-          const { relaunch } = await import("@tauri-apps/plugin-process");
-          await relaunch();
+          // プロセスが exit(0) で終了する）ため、ここは実質 macOS 用。
+          // その macOS では relaunch() を直に呼ばない。置き換え直後のバンドルから
+          // spawn すると TCC の責任プロセスが更新前のバンドルに紐付いたままになり、
+          // 初回起動だけ書類フォルダが読めなくなる（relaunchApp のコメント参照）。
+          const { relaunchApp } = await import("./relaunch");
+          await relaunchApp();
         },
       };
       window.dispatchEvent(
