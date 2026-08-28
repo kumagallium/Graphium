@@ -40,6 +40,25 @@ On wide screens the note body is capped at a readable column width and centered,
 
 When a note needs the whole window — wide tables, charts, or images — open the **⋯** menu in the top-right corner and choose **Full width**. A check mark shows the current state, and the choice is saved per note.
 
+### Collapsing headings {#collapsing-headings}
+
+Every heading folds away what sits under it. Hover a heading and a small ▸ appears
+to its left; click it to collapse. The arrow stays visible while a section is
+collapsed, so you can tell at a glance that something is folded there — otherwise
+it keeps out of the way and the heading reads as an ordinary heading.
+
+![A section folded under "Bulk ferment" — the arrow stays visible while a section is collapsed](/screenshots/collapsing-headings.png)
+
+A heading takes everything down to the next heading of the same or higher level.
+Collapsing an `H2` hides its paragraphs and any `H3` sections beneath it, and stops
+at the next `H2`. A heading with nothing under it has no arrow.
+
+Folding is a view setting, not part of the note. Nothing is written to the note
+file, so exports, Markdown, and the provenance graph always contain the full text.
+The folded state is remembered on this device only. While the in-note search
+(`⌘F` / `Ctrl+F`) has a term in it, folded sections are shown so that matches are
+never hidden from you.
+
 ### The turn-into menu <Badge type="tip" text="Added in v0.18.0 (2026-07-15)" />
 
 Hover a text block and open the drag-handle (⠿) menu; **Turn into** converts the block in place:

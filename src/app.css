@@ -881,3 +881,104 @@ body.gph-col-resizing * {
     page-break-after: avoid;
   }
 }
+
+/* ── 見出しの折りたたみ（features/collapsible-heading） ──────────────
+   Obsidian と同じで、すべての見出しがその配下を畳める。畳んだ範囲は
+   ProseMirror の decoration で class が付くだけで、ノートの中身は変わらない。
+
+   ▶ は普段は見えず、見出しにマウスが乗ったときだけ出る（普通の見出しに
+   見せておきたいため）。畳んでいる間だけは、畳まれていることが分かるように
+   出したままにする。 */
+
+/* 畳まれたブロック。BlockNote 標準のトグルと同じ display: none 方式。 */
+.bn-editor .gph-heading-hidden {
+  display: none;
+}
+
+/* ▶ の位置の基準。見出し 1 行分の高さを基準にしたいので、
+   .bn-block（children 込みの高さ）ではなく見出し要素そのものに relative を置く。 */
+.bn-editor .bn-block-content[data-content-type="heading"] > h1,
+.bn-editor .bn-block-content[data-content-type="heading"] > h2,
+.bn-editor .bn-block-content[data-content-type="heading"] > h3,
+.bn-editor .bn-block-content[data-content-type="heading"] > h4,
+.bn-editor .bn-block-content[data-content-type="heading"] > h5,
+.bn-editor .bn-block-content[data-content-type="heading"] > h6 {
+  position: relative;
+}
+
+.bn-editor .gph-heading-toggle {
+  position: absolute;
+  /* 見出しテキストの左外（ガター）へ。本文の左端は動かさない。 */
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 右の padding は見出し文字との「隙間」だが、当たり判定には含める。
+     margin にすると隙間がホバー圏外になり、見出しからボタンへマウスを
+     動かす途中でボタンが消えて押せなくなる（.bn-block-outer:hover が
+     外れるため）。padding なら見出しと地続きになる。 */
+  width: 26px;
+  height: 20px;
+  padding: 0 6px 0 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  /* 色は scene の ink スケールに乗せる（固定色だとダークモードで浮く） */
+  color: var(--ink-4);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 展開中は下向き（▼）。折りたたみ中は右向き（▶）のまま。 */
+.bn-editor .gph-heading-toggle[data-collapsed="false"] > svg {
+  transform: rotate(90deg);
+}
+
+/* 見出しにマウスが乗ったとき／畳んでいる間／キーボードフォーカス時に見せる */
+.bn-editor .bn-block-outer:hover > .bn-block > .bn-block-content[data-content-type="heading"] .gph-heading-toggle,
+.bn-editor .gph-heading-toggle[data-collapsed="true"],
+.bn-editor .gph-heading-toggle:hover,
+.bn-editor .gph-heading-toggle:focus-visible {
+  opacity: 1;
+}
+
+/* ホバーの手応えは色の濃さだけにする。背景を敷くと見出しの脇に四角が出て、
+   本文を読んでいる最中に目立ちすぎる。 */
+.bn-editor .gph-heading-toggle:hover {
+  color: var(--ink-2);
+}
+
+/* ドラッグハンドルは ▶ のぶんだけ外へ寄せる（見出しブロックのときだけ）。
+   寄せないと ＋⠿ と ▶ が同じ場所を取り合う。 */
+.bn-side-menu[data-block-type="heading"] {
+  transform: translateX(-28px);
+}
+
+/* SideMenu を載せているラッパー（floating-ui が作る、クラスの付かない div）は
+   本文の左端まで幅いっぱいに広がっている。上の transform で動くのは中身だけなので、
+   ラッパーは元の位置に居座り、その下敷きになった ▶ がマウスを受け取れなくなる
+   （▶ に近づけると .bn-block-outer:hover が外れる一方で ▶ 自身の :hover も
+   立たないため、すっと消えてしまう）。ラッパーは素通しにして、実際のハンドルだけが
+   マウスを受け取るようにする。SideMenu の表示はブロックへのホバーで決まるので、
+   ラッパーを透過させても出なくなることはない。 */
+.bn-container > div:has(> .bn-side-menu) {
+  pointer-events: none;
+}
+.bn-container > div:has(> .bn-side-menu) > .bn-side-menu {
+  pointer-events: auto;
+}
+
+/* 印刷・PDF 書き出しでは畳んだところも出す（紙に残らないと困る） */
+@media print {
+  .bn-editor .gph-heading-hidden {
+    display: revert;
+  }
+  .bn-editor .gph-heading-toggle {
+    display: none;
+  }
+}
