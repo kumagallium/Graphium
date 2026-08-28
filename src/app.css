@@ -493,35 +493,63 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 /* BlockNote 見出しサイズ（design.md / Notion 準拠）
    H1: 30px/700 — ページタイトル
    H2: 24px/600 — セクション見出し
-   H3: 20px/600 — サブ見出し */
+   H3: 20px/600 — サブ見出し
+
+   見出しの前後の余白は h 要素の margin ではなく .bn-block-outer の padding で作る。
+   h に margin を置くと .bn-block-content（＝ブロックの矩形）が余白ぶん縦に伸び、
+   その矩形を基準に置かれるものが軒並み上へずれる:
+     - ドラッグハンドル（.bn-side-menu）はブロック上端に合わせて配置される
+     - トグル見出しの ▶（.bn-toggle-wrapper）は align-items: center が
+       「マージン込みのボックス」で中央を取るため、見出し文字だけが下がる
+   余白を outer 側の padding に出すと block-content はテキストだけの矩形になり、
+   両方が自然に揃う（下の SideMenu 高さの固定値もこの矩形と一致する）。 */
 .bn-editor h1 {
   font-size: 30px !important;
   font-weight: 700 !important;
   line-height: 1.3 !important;
-  margin-top: var(--heading-space-above-1) !important;
-  margin-bottom: var(--heading-space-below-1) !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }
 .bn-editor h2 {
   font-size: 24px !important;
   font-weight: 600 !important;
   line-height: 1.3 !important;
-  margin-top: var(--heading-space-above-2) !important;
-  margin-bottom: var(--heading-space-below-2) !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }
 .bn-editor h3 {
   font-size: 20px !important;
   font-weight: 600 !important;
   line-height: 1.4 !important;
-  margin-top: var(--heading-space-above-3) !important;
-  margin-bottom: var(--heading-space-below-3) !important;
-}
-/* 先頭ブロックの見出しは上マージンを 0 に（書き出しが浮かないように）。
-   実 DOM 構造: .bn-editor > .bn-block-group > .bn-block-outer:first-child
-                 > .bn-block > .bn-block-content > h1/h2/h3(.bn-inline-content) */
-.bn-editor > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content > h1,
-.bn-editor > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content > h2,
-.bn-editor > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content > h3 {
   margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+/* 見出しブロックの前後の余白。level=1 は data-level 属性が付かないので :not() で拾う。
+   実 DOM 構造: .bn-block-outer > .bn-block > .bn-block-content[data-content-type="heading"] */
+.bn-editor
+  .bn-block-outer:has(
+    > .bn-block > .bn-block-content[data-content-type="heading"]:not([data-level])
+  ) {
+  padding-top: var(--heading-space-above-1);
+  padding-bottom: var(--heading-space-below-1);
+}
+.bn-editor
+  .bn-block-outer:has(
+    > .bn-block > .bn-block-content[data-content-type="heading"][data-level="2"]
+  ) {
+  padding-top: var(--heading-space-above-2);
+  padding-bottom: var(--heading-space-below-2);
+}
+.bn-editor
+  .bn-block-outer:has(
+    > .bn-block > .bn-block-content[data-content-type="heading"][data-level="3"]
+  ) {
+  padding-top: var(--heading-space-above-3);
+  padding-bottom: var(--heading-space-below-3);
+}
+/* 先頭ブロックの見出しは上の余白を 0 に（書き出しが浮かないように） */
+.bn-editor > .bn-block-group > .bn-block-outer:first-child {
+  padding-top: 0 !important;
 }
 
 /* SideMenu 高さをカスタム見出しサイズに合わせる
