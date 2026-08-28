@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.47.0](https://github.com/kumagallium/Graphium/compare/v0.46.0...v0.47.0) - 2026-08-28
+
+- [fix] Align the toggle arrow and drag handle with heading text by @kumagallium in https://github.com/kumagallium/Graphium/pull/793
+- [feat] Fold headings the way Obsidian does, and retire toggle headings by @kumagallium in https://github.com/kumagallium/Graphium/pull/795
+
 ## [v0.46.0](https://github.com/kumagallium/Graphium/compare/v0.45.5...v0.46.0) - 2026-08-28
 
 - [fix] Say why the notes folder could not be read at startup by @kumagallium in https://github.com/kumagallium/Graphium/pull/790
