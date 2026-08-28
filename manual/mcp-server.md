@@ -1,6 +1,10 @@
-# Connecting from Claude (MCP)
+# Connecting from Claude (MCP) <Badge type="tip" text="Added in v0.46.0 (2026-08-28)" />
 
 Graphium can act as an **MCP server**, which means an AI assistant that lives outside Graphium — Claude Desktop, Claude Code, or any other [MCP](https://modelcontextprotocol.io) client — can look inside your notes and add new ones.
+
+::: tip This is the opposite direction from MCP servers in Setting up AI
+[That page](/ai-setup#mcp-servers) is about Graphium as the **client**, calling out to other tools from its own AI chat. This page is about Graphium as the **server**, with an outside assistant calling in to your notes. They are independent: use either, both, or neither.
+:::
 
 Instead of opening Graphium, finding the right note, and copying a procedure into a chat window, you ask the assistant directly:
 

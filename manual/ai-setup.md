@@ -110,6 +110,8 @@ MCP (Model Context Protocol) is an open standard that lets the AI chat call exte
 
 Every server in the list can be toggled on and off, edited, or removed. One practical tip from the app itself: adding a web-search server (e.g. Tavily) lets External grounding search the live web on any model.
 
+Note that this is Graphium as the **client**, reaching out to other tools. Graphium can also run as an MCP **server**, so that Claude Desktop or Claude Code reads your notes from outside — see [Connecting from Claude](/mcp-server). The two are independent.
+
 ## The Usage tab <Badge type="tip" text="Added in v0.12.0 (2026-05-28)" />
 
 The **Usage** tab in Settings shows **AI Usage**: token consumption per AI feature, so you can see where your budget actually goes.
