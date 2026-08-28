@@ -45,7 +45,9 @@
     "bench:adversarial": "tsx bench/adversarial.ts",
     "bench:performance": "tsx bench/performance.ts",
     "test:migration": "tsx bench/migration.ts",
-    "lint:deps": "depcruise src --config .dependency-cruiser.cjs --ignore-known"
+    "lint:deps": "depcruise src --config .dependency-cruiser.cjs --ignore-known",
+    "bundle:mcp": "node scripts/bundle-mcp.mjs",
+    "test:e2e:mcp": "node e2e/mcp-smoke.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",
