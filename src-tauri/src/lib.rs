@@ -1789,6 +1789,80 @@ fn print_webview(window: tauri::WebviewWindow) -> Result<(), String> {
         .map_err(|e| format!("印刷パネルを開けません: {e}"));
 }
 
+/// 実行中の `.app` バンドルのパスを返す（macOS）。
+/// `cargo run` のようにバンドル化されていない起動では解決できないので Err を返す。
+#[cfg(target_os = "macos")]
+fn current_bundle_path() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("実行ファイルのパス取得に失敗: {e}"))?;
+    // <Bundle>.app/Contents/MacOS/<exe> なので 3 つ上が .app
+    let bundle = exe
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .ok_or("バンドルのパスを解決できません")?;
+    if bundle.extension().and_then(|e| e.to_str()) != Some("app") {
+        return Err("バンドルとして起動していません".to_string());
+    }
+    Ok(bundle.to_path_buf())
+}
+
+/// アプリを launchd 経由で起動し直す（macOS 専用）。
+///
+/// Tauri の `relaunch()` は今のプロセスから新しいバイナリを spawn する。平常時は
+/// それで足りるが、アップデータが `.app` を丸ごと置き換えた直後だけ事情が変わる。
+/// macOS の TCC は子プロセスに親の責任プロセス（responsible process）を継がせる
+/// ので、置き換え済みで解決できなくなったバンドルの identity を背負ったまま起動し、
+/// 書類フォルダが `Operation not permitted` で弾かれる。ユーザーから見ると
+/// 「更新した直後だけノートが開けない、一度閉じて開き直すと直る」という形で出る。
+///
+/// `open` に任せると launchd が責任プロセスになり、置き換え後のバンドルの署名で
+/// 評価し直される。ただし `open` は起動中のアプリを前面に出すだけなので、今の
+/// プロセスが消えるのを待ってから叩く必要がある。待ちは別プロセスに任せる。
+///
+/// 終了は `app.exit(0)` ではなくウィンドウを閉じて既存の終了経路に乗せる。
+/// sidecar の後始末はフロントが `app-close-requested` を受けてから `shutdown_ack`
+/// を返すまでの間に走るので、そこを飛ばすと sidecar が残ってポートを掴んだままになる。
+#[tauri::command]
+fn relaunch_via_launchd(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let bundle = current_bundle_path()?;
+        // パスにスペースや引用符が入っていても壊れないようシングルクォートで包む
+        let quoted = format!("'{}'", bundle.to_string_lossy().replace('\'', r"'\''"));
+        let pid = std::process::id();
+        // 自分が消えるまで最大 10 秒待ってから open する。待ち切っても open は
+        // 投げる（前面に出るだけで害はない）。
+        let script = format!(
+            "for _ in $(seq 1 100); do kill -0 {pid} 2>/dev/null || break; sleep 0.1; done; \
+             /usr/bin/open -a {quoted}"
+        );
+        Command::new("/bin/sh")
+            .arg("-c")
+            .arg(script)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("再起動コマンドの起動に失敗: {e}"))?;
+
+        // 既存の終了経路（CloseRequested → sidecar 停止 → shutdown_ack）に乗せる。
+        // ウィンドウが取れないときだけ直接落とす。
+        if let Some(window) = app.get_webview_window("main") {
+            window
+                .close()
+                .map_err(|e| format!("ウィンドウを閉じられません: {e}"))?;
+        } else {
+            app.exit(0);
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Err("launchd 経由の再起動は macOS 専用です".to_string())
+    }
+}
+
 /// フロント側で生成したファイル（PDF / PROV-JSON-LD / Markdown / zip）を
 /// ネイティブの保存ダイアログ経由でディスクに保存する。
 ///
@@ -1903,6 +1977,7 @@ pub fn run() {
             kill_pid,
             save_bytes_with_dialog,
             print_webview,
+            relaunch_via_launchd,
             start_native_sidecar,
             stop_native_sidecar,
         ])

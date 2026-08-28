@@ -1014,6 +1014,21 @@ The same `src/` tree is built four different ways.
   raises no event the frontend can see, so `printAndWait` resolves as soon
   as the panel is open and the print tree is left in the DOM — it sits
   off-screen and is discarded at the start of the next print
+- Relaunching after an update goes through the `relaunch_via_launchd`
+  command rather than the process plugin's `relaunch()`. `relaunch()`
+  spawns the new binary from the current process, and on macOS a child
+  inherits its parent's TCC responsible process — so the app the updater
+  has just replaced hands down an identity that no longer resolves, and
+  the first launch after an update is denied `~/Documents` with `EPERM`
+  ("the notes folder will not open right after updating, but opening the
+  app again fixes it"). The command hands the launch to `open` instead, so
+  launchd becomes responsible and the replaced bundle's signature is
+  evaluated afresh. `open` only focuses an app that is already running, so
+  it waits for the current process to exit first; and the app closes its
+  main window rather than calling `app.exit(0)`, keeping the normal
+  shutdown path (frontend stops the sidecar, then `shutdown_ack`) intact.
+  The same command backs the **Restart Graphium** button on the startup
+  failure screen. Non-macOS and non-bundled runs fall back to `relaunch()`
 - AI / Knowledge features run inside the app via a Node sidecar:
   `scripts/fetch-node.mjs` downloads Node 22 and renames it to
   `binaries/graphium-server-<triple>[.exe]` so Tauri can spawn it as a
