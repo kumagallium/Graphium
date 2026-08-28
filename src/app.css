@@ -925,10 +925,11 @@ body.gph-col-resizing * {
   border: none;
   border-radius: 4px;
   background: none;
-  color: var(--gph-text-muted, #6b7280);
+  /* 色は scene の ink スケールに乗せる（固定色だとダークモードで浮く） */
+  color: var(--ink-4);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease, background-color 0.12s ease;
+  transition: opacity 0.12s ease, color 0.12s ease;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -946,8 +947,10 @@ body.gph-col-resizing * {
   opacity: 1;
 }
 
+/* ホバーの手応えは色の濃さだけにする。背景を敷くと見出しの脇に四角が出て、
+   本文を読んでいる最中に目立ちすぎる。 */
 .bn-editor .gph-heading-toggle:hover {
-  background-color: var(--gph-hover-bg, rgba(0, 0, 0, 0.06));
+  color: var(--ink-2);
 }
 
 /* ドラッグハンドルは ▶ のぶんだけ外へ寄せる（見出しブロックのときだけ）。
