@@ -191,6 +191,8 @@ Then point your client at the bundle. For Claude Desktop, in `claude_desktop_con
 
 It reads `~/Documents/Graphium` by default. If your notes live elsewhere, set `GRAPHIUM_ROOT` in the server's `env`.
 
+Nothing here is Claude-specific — it is a plain stdio MCP server, so Cursor, VS Code, Zed, Cline and other MCP clients work the same way; only the location of the config differs. For Claude Code: `claude mcp add graphium -- node /absolute/path/to/dist-mcp/graphium-mcp.mjs`. The client must run on the same machine as your vault, and needs Node.js 20+.
+
 Seven tools are exposed: `search_notes`, `get_note`, `get_note_steps`, `find_notes_using`, `list_entities`, `trace_lineage`, and `create_note`. Everything they return carries the note and block id, so the agent can cite exactly what it read and you can open that block in Graphium. Only `create_note` writes, and it only ever adds a new note — existing notes are never modified. See [ARCHITECTURE.md §4.4](docs/ARCHITECTURE.md) for the details.
 
 </details>

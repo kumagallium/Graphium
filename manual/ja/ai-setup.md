@@ -110,7 +110,7 @@ MCP（Model Context Protocol）は、AI チャットが外部のツール — We
 
 一覧の各サーバーは、有効・無効の切り替え、編集、削除ができます。アプリ自身が挙げている実用的なヒントをひとつ。検索系のサーバー（例: Tavily）を追加すると、どのモデルでも **外部参照** が生きた Web を検索できるようになります。
 
-ここでの Graphium は、外のツールを呼びに行く**クライアント**の側です。Graphium は逆に MCP **サーバー**としても動き、Claude Desktop や Claude Code が外からあなたのノートを読めるようにもできます（[Claude から使う](/ja/mcp-server)）。両者は独立した設定です。
+ここでの Graphium は、外のツールを呼びに行く**クライアント**の側です。Graphium は逆に MCP **サーバー**としても動き、Graphium の外にいるアシスタント — Claude Desktop、Claude Code、Cursor など — が、あなたのノートを外から読めるようにもできます（[AI アシスタントから使う](/ja/mcp-server)）。両者は独立した設定です。
 
 ## 使用量タブ <Badge type="tip" text="v0.12.0 (2026-05-28) で追加" />
 

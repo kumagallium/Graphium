@@ -35,7 +35,7 @@ const enSidebar = [
     items: [
       { text: 'Desktop app', link: '/desktop-app' },
       { text: 'Storage & sync', link: '/storage-and-sync' },
-      { text: 'Connecting from Claude (MCP)', link: '/mcp-server' },
+      { text: 'Connecting an AI assistant (MCP)', link: '/mcp-server' },
     ],
   },
   {
@@ -81,7 +81,7 @@ const jaSidebar = [
     items: [
       { text: 'デスクトップアプリ', link: '/ja/desktop-app' },
       { text: '保存と同期', link: '/ja/storage-and-sync' },
-      { text: 'Claude から使う (MCP)', link: '/ja/mcp-server' },
+      { text: 'AI アシスタントから使う (MCP)', link: '/ja/mcp-server' },
     ],
   },
   {

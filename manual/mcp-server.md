@@ -1,4 +1,4 @@
-# Connecting from Claude (MCP) <Badge type="tip" text="Added in v0.46.0 (2026-08-28)" />
+# Connecting from an AI assistant (MCP) <Badge type="tip" text="Added in v0.46.0 (2026-08-28)" />
 
 Graphium can act as an **MCP server**, which means an AI assistant that lives outside Graphium — Claude Desktop, Claude Code, or any other [MCP](https://modelcontextprotocol.io) client — can look inside your notes and add new ones.
 
@@ -50,6 +50,20 @@ This produces a single file at `dist-mcp/graphium-mcp.mjs`.
 Use the full path, not a relative one. For Claude Code, run `claude mcp add graphium -- node /absolute/path/to/Graphium/dist-mcp/graphium-mcp.mjs` instead.
 
 **3. Restart the client.** Claude Desktop needs a full restart, not just a new conversation.
+
+### Other MCP clients
+
+Nothing here is specific to Claude. Graphium speaks the standard protocol over stdio, so **any client that can launch a local MCP server works** — Cursor, VS Code, Zed, Cline, and others. What every one of them needs is the same two pieces: the command `node`, and the absolute path to `graphium-mcp.mjs`.
+
+Where you put that differs by client, and these settings move around between versions, so check your client's own MCP documentation for the exact location and shape. Many accept the `mcpServers` JSON above as-is.
+
+| Client | How to add it |
+|---|---|
+| Claude Desktop | Settings → Developer → Edit Config |
+| Claude Code | `claude mcp add graphium -- node <path>` |
+| Cursor, VS Code, Zed, Cline, … | Their own MCP settings — usually the same JSON shape |
+
+Two limits worth knowing: the server runs as a **local process** (there is no hosted URL to point at — remote HTTP transport is not supported), and it needs **Node.js 20+** on the machine running the client. Since your notes stay on your disk, the client has to be on the same machine as your vault.
 
 By default the server reads `~/Documents/Graphium`. If you changed the Graphium folder in **⚙ Settings → General**, the server follows that setting automatically. To point it somewhere else explicitly, add an `env` block:
 

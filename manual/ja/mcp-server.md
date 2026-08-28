@@ -1,4 +1,4 @@
-# Claude から使う（MCP）<Badge type="tip" text="v0.46.0 (2026-08-28) で追加" />
+# AI アシスタントから使う（MCP）<Badge type="tip" text="v0.46.0 (2026-08-28) で追加" />
 
 Graphium は **MCP サーバー**としても動きます。Graphium の外にいる AI アシスタント — Claude Desktop、Claude Code、その他の [MCP](https://modelcontextprotocol.io) クライアント — が、あなたのノートの中を見たり、新しいノートを書き足したりできるようになります。
 
@@ -50,6 +50,20 @@ pnpm bundle:mcp
 パスは相対パスではなく、フルパスで書きます。Claude Code の場合は代わりに `claude mcp add graphium -- node /absolute/path/to/Graphium/dist-mcp/graphium-mcp.mjs` を実行します。
 
 **3. クライアントを再起動する。** Claude Desktop は、新しい会話を始めるだけでなく、アプリごと再起動する必要があります。
+
+### ほかの MCP クライアント
+
+ここに Claude 固有のものはありません。Graphium は標準のプロトコルを stdio で話すので、**ローカルの MCP サーバーを起動できるクライアントであれば動きます** — Cursor、VS Code、Zed、Cline など。どのクライアントでも必要なのは同じ 2 つ、`node` というコマンドと、`graphium-mcp.mjs` へのフルパスです。
+
+それをどこに書くかはクライアントによって違い、しかもこの設定はバージョンによって移動しがちです。正確な場所と書式は、お使いのクライアントの MCP ドキュメントを確認してください。上の `mcpServers` の JSON をそのまま受け取るものも多くあります。
+
+| クライアント | 追加のしかた |
+|---|---|
+| Claude Desktop | 設定 → 開発者 → 構成を編集 |
+| Claude Code | `claude mcp add graphium -- node <パス>` |
+| Cursor / VS Code / Zed / Cline など | それぞれの MCP 設定（多くは同じ形の JSON） |
+
+制約が 2 つあります。サーバーは**ローカルのプロセス**として動きます（接続先の URL があるわけではなく、リモート HTTP には対応していません）。また、クライアントを動かすマシンに **Node.js 20 以降**が必要です。ノートは手元のディスクにあるので、クライアントも vault と同じマシンにいる必要があります。
 
 サーバーは既定で `~/Documents/Graphium` を読みます。**⚙ 設定 → 一般** で Graphium のフォルダを変更している場合は、その設定に自動で従います。別の場所を明示したいときは `env` を足します。
 
