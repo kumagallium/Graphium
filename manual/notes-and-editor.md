@@ -40,7 +40,7 @@ On wide screens the note body is capped at a readable column width and centered,
 
 When a note needs the whole window — wide tables, charts, or images — open the **⋯** menu in the top-right corner and choose **Full width**. A check mark shows the current state, and the choice is saved per note.
 
-### Collapsing headings {#collapsing-headings}
+### Collapsing headings <Badge type="tip" text="Added in v0.47.0 (2026-08-28)" /> {#collapsing-headings}
 
 Every heading folds away what sits under it. Hover a heading and a small ▸ appears
 to its left; click it to collapse. The arrow stays visible while a section is
