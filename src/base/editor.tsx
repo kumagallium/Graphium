@@ -10,7 +10,7 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { blockNoteShadCNComponents } from "./blocknote-shadcn-overrides";
-import { BlockNoteSchema, createCodeBlockSpec, defaultBlockSpecs, defaultStyleSpecs, defaultInlineContentSpecs } from "@blocknote/core";
+import { BlockNoteSchema, createCodeBlockSpec, createHeadingBlockSpec, defaultBlockSpecs, defaultStyleSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { codeBlockOptions } from "@blocknote/code-block";
 
 /**
@@ -23,6 +23,16 @@ import { codeBlockOptions } from "@blocknote/code-block";
  * prosemirror-highlight の shiki パーサは getLoadedThemes()[0] を採用するため、
  * ロード後に min-light を先頭に並べ替える。
  */
+// 見出しブロック。BlockNote 標準の「トグル見出し」(isToggleable) は使わない。
+// 折りたたみは collapsible-heading に一本化してあり、そちらは全部の見出しが対象で、
+// 状態をノートに書かない。2 つの折りたたみが並ぶとユーザーが使い分けを
+// 意識することになるので、標準側を切って導線を 1 本にする。
+//
+// prop をスキーマから外す形になるが、既存ノートに残る isToggleable: true は
+// BlockNote 側が黙って捨てるだけで、本文も children も失われない
+// （features/collapsible-heading/legacy-toggle-compat.test.ts で固定）。
+const plainHeading = createHeadingBlockSpec({ allowToggleHeadings: false });
+
 const lightCodeBlock = createCodeBlockSpec({
   ...codeBlockOptions,
   createHighlighter: async () => {
@@ -54,6 +64,8 @@ import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
 import { documentSearchExtension } from "@/features/document-search/search-plugin";
+import { collapsibleHeadingExtension } from "@/features/collapsible-heading/collapse-plugin";
+import { t } from "../i18n";
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
 import { stepTitleEnterExtension } from "../blocks/step/step-title-enter";
@@ -122,6 +134,7 @@ export function SandboxEditor({
     blockSpecs: {
       ...defaultBlockSpecs,
       codeBlock: lightCodeBlock,
+      heading: plainHeading,
       ...customSpecs,
     } as any,
     // インライン数式（$...$）を本文中の要素として持てるようにする。
@@ -162,6 +175,12 @@ export function SandboxEditor({
       imeCompositionHealExtension,
       preserveChildIndentOnBackspaceExtension,
       documentSearchExtension,
+      // 見出しの折りたたみ。ラベルは getter で遅らせる（拡張はエディタ生成時に
+      // 1 度しか作られないので、即時評価すると言語切り替えに追従しない）。
+      collapsibleHeadingExtension({
+        get collapse() { return t("editor.collapseHeading"); },
+        get expand() { return t("editor.expandHeading"); },
+      }),
       openLinkInSidePeekExtension,
       // step タイトルで「1. 」等がリスト等へのブロック変換を起こし、カードが
       // 消えるのを防ぐ（step-title-autoformat-guard.ts 参照）

@@ -166,6 +166,8 @@ export const ja: Record<string, string> = {
   "editor.duplicate": "複製",
   // ── 種類を変更（Turn into）──
   "editor.turnInto": "種類を変更",
+  "editor.collapseHeading": "折りたたむ",
+  "editor.expandHeading": "展開する",
   "editor.turnIntoType.paragraph": "テキスト",
   "editor.turnIntoType.heading1": "見出し1",
   "editor.turnIntoType.heading2": "見出し2",
