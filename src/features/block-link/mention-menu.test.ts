@@ -79,17 +79,25 @@ describe("getAssetSuggestions", () => {
     ...over,
   });
 
-  it("pdf / document / data を候補にし、それ以外は含めない", () => {
+  it("pdf / document / data / image を候補にし、それ以外は含めない", () => {
     const idx = {
       media: [
         media({ fileId: "p1", name: "論文.pdf", type: "pdf" }),
         media({ fileId: "d1", name: "報告.docx", type: "document" }),
         media({ fileId: "c1", name: "測定.csv", type: "data" }),
         media({ fileId: "i1", name: "写真.png", type: "image" }),
+        media({ fileId: "v1", name: "動画.mp4", type: "video" }),
       ],
     } as any;
     const suggestions = getAssetSuggestions(idx);
-    expect(suggestions.map((s) => s.id).sort()).toEqual(["c1", "d1", "p1"]);
+    expect(suggestions.map((s) => s.id).sort()).toEqual(["c1", "d1", "i1", "p1"]);
+  });
+
+  it("画像素材は 🖼 のラベルで assetType を持つ（選ぶとインライン画像として埋まる）", () => {
+    const idx = { media: [media({ fileId: "i1", name: "写真.png", type: "image" })] } as any;
+    const sug = getAssetSuggestions(idx)[0];
+    expect(sug.label).toBe("🖼 写真.png");
+    expect(sug.assetType).toBe("image");
   });
 
   it("データ素材は 🧾、それ以外は 📄 のラベルで、assetType を持つ", () => {

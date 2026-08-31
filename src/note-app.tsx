@@ -1812,7 +1812,12 @@ function NoteEditorInner({
           setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
           return true;
         }
-        if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "data") {
+        if (
+          ext.kind === "pdf" ||
+          ext.kind === "document" ||
+          ext.kind === "data" ||
+          ext.kind === "image"
+        ) {
           const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
           if (entry) {
             setMaterialSidePeekEntry(entry);
@@ -5059,6 +5064,17 @@ function NoteEditorInner({
                     markDirty();
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                } else if (suggestion.type === "asset" && suggestion.assetType === "image") {
+                  // 画像素材はリンク文字ではなく、その場に見えるインライン画像として埋める
+                  // （セルの中に画像を置く経路。クリックで素材ピーク）。実体は fileId 参照
+                  const imageName = suggestion.label.replace(/^🖼\s*/, "");
+                  setTimeout(() => {
+                    editorRef.current?.insertInlineContent([
+                      { type: "inlineImage", props: { fileId: suggestion.id, name: imageName } } as any,
+                      { type: "text", text: " ", styles: {} },
+                    ]);
+                  }, 100);
+                  markDirty();
                 } else if (suggestion.type === "asset") {
                   // 素材（PDF/docx/データ本体）の引用。ノートではなく素材を指す。
                   // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が

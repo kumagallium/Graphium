@@ -2025,6 +2025,8 @@ export const ja: Record<string, string> = {
   "tableMeta.expandSortApplyHint": "列見出しをクリックすると表そのものを並べ替えます（取り消しで戻せます）",
   "tableMeta.sortAsc": "昇順で並べ替え",
   "paramLink.open": "参照先を開く",
+  "inlineImage.clickToOpen": "クリックで大きく表示",
+  "inlineImage.missing": "画像を読み込めません",
   "tableMeta.sortDesc": "降順で並べ替え",
 
   // 時系列テーブル

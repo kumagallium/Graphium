@@ -53,6 +53,7 @@ const lightCodeBlock = createCodeBlockSpec({
 });
 import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
 import { inlineMathSpecs } from "@features/inline-math/spec";
+import { inlineImageSpecs } from "@features/inline-image/spec";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CustomBlockEntry } from "./schema";
@@ -149,6 +150,7 @@ export function SandboxEditor({
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
       ...inlineMathSpecs,
+      ...inlineImageSpecs,
     } as any,
     styleSpecs: {
       ...defaultStyleSpecs,
