@@ -26,11 +26,32 @@ export const INLINE_IMAGE_DRAG_MIME = "application/x-graphium-inline-image";
 /** fileId → blob URL の解決キャッシュ。失敗は溜めない（次回開いたとき再試行） */
 const blobUrlCache = new Map<string, Promise<string>>();
 
+/**
+ * blob URL → fileId の逆引き。
+ * 画像を直接ドラッグすると、ブラウザのネイティブ画像ドラッグになって
+ * dataTransfer には img の src（blob URL）しか乗らない。そこから素材を
+ * 特定できるように、解決した URL を控えておく。
+ */
+const fileIdByBlobUrl = new Map<string, string>();
+
+export function rememberBlobUrl(url: string, fileId: string) {
+  if (url.startsWith("blob:")) fileIdByBlobUrl.set(url, fileId);
+}
+
+export function fileIdFromBlobUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return fileIdByBlobUrl.get(url) ?? null;
+}
+
 function loadBlobUrl(fileId: string): Promise<string> {
   const cached = blobUrlCache.get(fileId);
   if (cached) return cached;
   const p = getActiveProvider()
     .getMediaBlobUrl(fileId)
+    .then((url) => {
+      rememberBlobUrl(url, fileId);
+      return url;
+    })
     .catch((e) => {
       blobUrlCache.delete(fileId);
       throw e;
@@ -166,10 +187,19 @@ export const InlineImage = createReactInlineContentSpec(
                 alt={name}
                 draggable={editable}
                 onDragStart={(e) => {
-                  // 本文へ出すと画像ブロックに戻る。位置は drop 側が DOM から引く
+                  // 本文へ出すと画像ブロックに戻る。
+                  // 掴んだ画像そのものの位置を載せる — fileId だけだと、同じ素材が
+                  // 他のセルにもあるとき別の画像を消してしまう（複製に見える）
+                  let pos: number | null = null;
+                  try {
+                    const view = (props.editor as any)?._tiptapEditor?.view;
+                    if (view && e.currentTarget) pos = view.posAtDOM(e.currentTarget, 0);
+                  } catch {
+                    pos = null;
+                  }
                   e.dataTransfer.setData(
                     INLINE_IMAGE_DRAG_MIME,
-                    JSON.stringify({ fileId, name })
+                    JSON.stringify({ fileId, name, pos })
                   );
                   e.dataTransfer.effectAllowed = "move";
                 }}

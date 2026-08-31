@@ -53,7 +53,7 @@ const lightCodeBlock = createCodeBlockSpec({
 });
 import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
 import { inlineMathSpecs } from "@features/inline-math/spec";
-import { inlineImageSpecs, INLINE_IMAGE_DRAG_MIME } from "@features/inline-image/spec";
+import { inlineImageSpecs, INLINE_IMAGE_DRAG_MIME, fileIdFromBlobUrl } from "@features/inline-image/spec";
 import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
 import { getActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
@@ -135,6 +135,36 @@ type SandboxEditorProps = {
  * 読み、その中の画像を取り出す（HTML をパースすると src が blob URL に解決済みで
  * fileId が取れない）。セル外なら false を返して既定のブロック移動に任せる。
  */
+/**
+ * ブラウザのネイティブ画像ドラッグをセルで受ける。
+ * 画像ブロックの中の img をそのまま掴むと BlockNote のブロックドラッグにならず
+ * （blocknote/html が乗らない）、どの経路にも当たらずセルに入らなかった。
+ * 落とした先がセルなら inline 画像として入れ、掴んだ元の画像ブロックは消す。
+ */
+function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): boolean {
+  if (event.dataTransfer?.types?.includes("blocknote/html")) return false;
+  const dragged = draggedImageFileId(event);
+  if (!dragged) return false;
+  const cellPos = dropCellPos(view, event);
+  if (cellPos === null) return false;
+  const nodeType = view.state.schema.nodes.inlineImage;
+  if (!nodeType) return false;
+  event.preventDefault();
+  clearCellDropState();
+  // 掴んだ元が画像ブロックなら消す（同じ素材のブロックの最初の 1 つ）
+  const sourceBlock = editor?.document?.find?.(
+    (b: any) =>
+      b.type === "image" &&
+      typeof b.props?.url === "string" &&
+      b.props.url.endsWith(dragged.fileId),
+  );
+  view.dispatch(
+    view.state.tr.insert(cellPos, nodeType.create({ fileId: dragged.fileId, name: dragged.name })),
+  );
+  if (sourceBlock) editor.removeBlocks([sourceBlock.id]);
+  return true;
+}
+
 function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
   // ブロックのドラッグでなければ関与しない（ファイル drop や外部 HTML と区別する）
   if (!event.dataTransfer?.types?.includes("blocknote/html")) return false;
@@ -180,7 +210,7 @@ function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
 function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean {
   const raw = event.dataTransfer?.getData(INLINE_IMAGE_DRAG_MIME);
   if (!raw || !editor) return false;
-  let payload: { fileId?: string; name?: string };
+  let payload: { fileId?: string; name?: string; pos?: number | null };
   try {
     payload = JSON.parse(raw);
   } catch {
@@ -202,18 +232,30 @@ function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean
   if (!targetBlockId) return false;
   event.preventDefault();
   clearCellDropState();
-  // 元のインライン画像を消す（同じ fileId の最初の 1 つ）
+  // 掴んだ画像そのものを消す。fileId だけで探すと、同じ素材が他のセルにもあるとき
+  // 別の画像を消してしまい「複製された」ように見える（実際に起きた）
   let fromPos = -1;
   let size = 0;
-  view.state.doc.descendants((node: any, pos: number) => {
-    if (fromPos >= 0) return false;
-    if (node.type?.name === "inlineImage" && node.attrs?.fileId === payload.fileId) {
-      fromPos = pos;
+  const draggedPos = typeof payload.pos === "number" ? payload.pos : null;
+  if (draggedPos !== null && draggedPos >= 0 && draggedPos < view.state.doc.content.size) {
+    const node = view.state.doc.nodeAt(draggedPos);
+    if (node?.type?.name === "inlineImage" && node.attrs?.fileId === payload.fileId) {
+      fromPos = draggedPos;
       size = node.nodeSize;
-      return false;
     }
-    return true;
-  });
+  }
+  if (fromPos < 0) {
+    // 位置が取れなかったときだけ fileId で探す（従来の挙動）
+    view.state.doc.descendants((node: any, pos: number) => {
+      if (fromPos >= 0) return false;
+      if (node.type?.name === "inlineImage" && node.attrs?.fileId === payload.fileId) {
+        fromPos = pos;
+        size = node.nodeSize;
+        return false;
+      }
+      return true;
+    });
+  }
   if (fromPos >= 0) view.dispatch(view.state.tr.delete(fromPos, fromPos + size));
   // 画像ブロックは editor API で足す。ProseMirror ノードを直接組むと BlockNote の
   // URL 解決（resolveFileUrl）を通らず、media-server:// のまま img に入って
@@ -327,6 +369,26 @@ function markIndicatorPending() {
   if (!dropIndicator || dropIndicator.box.style.display === "none") return;
   dropIndicator.caret.style.display = "none";
   dropIndicator.box.setAttribute("data-pending", "true");
+}
+
+/**
+ * ブラウザのネイティブ画像ドラッグ（img 要素をそのまま掴んだ場合）から素材を特定する。
+ * この経路では dataTransfer に img の src（blob URL）しか乗らないので、
+ * inline-image が控えている blob URL → fileId の対応で引き直す。
+ */
+function draggedImageFileId(event: DragEvent): { fileId: string; name: string } | null {
+  const dt = event.dataTransfer;
+  if (!dt) return null;
+  const html = dt.getData("text/html");
+  if (html) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const img = doc.querySelector("img");
+    const fileId = fileIdFromBlobUrl(img?.getAttribute("src"));
+    if (fileId) return { fileId, name: img?.getAttribute("alt") ?? "" };
+  }
+  const uri = dt.getData("text/uri-list") || dt.getData("text/plain");
+  const fileId = fileIdFromBlobUrl(uri?.trim());
+  return fileId ? { fileId, name: "" } : null;
 }
 
 /** そのドラッグがセルに入れられる画像か（ファイル / 画像ブロック / セルの画像） */
@@ -554,7 +616,8 @@ export function SandboxEditor({
             const handled =
               insertCellImagesFromFiles(view, event?.dataTransfer, event, uploadFileRef.current) ||
               moveImageBlockIntoCell(view, event) ||
-              moveCellImageToBlock(view, event, editorRef.current);
+              moveCellImageToBlock(view, event, editorRef.current) ||
+              moveNativeImageIntoCell(view, event, editorRef.current);
             if (!handled && isImageDrag(view, event)) {
               // 受け入れ表示（バー）を出したのに取りこぼした状態。BlockNote の既定処理に
               // 落ちるとセルの外にブロックができるので、原因を追えるよう残す

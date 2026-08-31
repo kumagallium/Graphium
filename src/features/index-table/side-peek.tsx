@@ -136,6 +136,7 @@ import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { setEditorSidePeekCallback } from "./context";
 import { isExternalSourceId } from "@features/network-graph/external-source";
+import { rememberBlobUrl } from "@features/inline-image/spec";
 
 type SidePeekProps = {
   noteId: string;
@@ -1859,8 +1860,11 @@ function SidePeekInner({
                 resolveFileUrl={async (url: string) => {
                   const p = getActiveProvider();
                   const fid = p.extractFileId(url);
-                  if (fid) return p.getMediaBlobUrl(fid);
-                  return url;
+                  if (!fid) return url;
+                  const blobUrl = await p.getMediaBlobUrl(fid);
+                  // 画像を直接ドラッグしたときに素材へ引き戻すための対応（note-app と同じ）
+                  rememberBlobUrl(blobUrl, fid);
+                  return blobUrl;
                 }}
               />
             </div>

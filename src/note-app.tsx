@@ -155,6 +155,7 @@ import { saveNoteDoc } from "./features/note-save";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
+import { rememberBlobUrl } from "./features/inline-image/spec";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
@@ -4950,8 +4951,12 @@ function NoteEditorInner({
               resolveFileUrl={async (url: string) => {
                 const p = getActiveProvider();
                 const fid = p.extractFileId(url);
-                if (fid) return p.getMediaBlobUrl(fid);
-                return url;
+                if (!fid) return url;
+                const blobUrl = await p.getMediaBlobUrl(fid);
+                // 画像を直接ドラッグしたとき、blob URL しか手掛かりが無い。
+                // 素材に引き戻せるよう対応を控える（inline-image と共用）
+                rememberBlobUrl(blobUrl, fid);
+                return blobUrl;
               }}
               getMentionSuggestions={(query) => {
                 mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
