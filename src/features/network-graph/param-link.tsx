@@ -134,15 +134,32 @@ export function ParamValueField({
     setHighlighted(-1);
   }, [query, suggestions.length]);
 
-  // ドロップダウンは fixed で input の直下に置く（右パネルの overflow に切られない）
-  const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
+  // ドロップダウンは fixed で input の近くに置く（右パネルの overflow に切られない）。
+  // 画面下端に近い入力では下に収まらないので、空きの広い側（上下）へ開く
+  const [rect, setRect] = useState<
+    | { left: number; width: number; maxHeight: number; top?: number; bottom?: number }
+    | null
+  >(null);
   useLayoutEffect(() => {
     if (suggestions.length === 0) {
       setRect(null);
       return;
     }
     const r = inputRef.current?.getBoundingClientRect();
-    if (r) setRect({ left: r.left, top: r.bottom + 2, width: Math.max(r.width, 220) });
+    if (!r) return;
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const base = { left: r.left, width: Math.max(r.width, 220) };
+    if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
+      setRect({ ...base, top: r.bottom + 2, maxHeight: Math.min(220, Math.max(spaceBelow, 80)) });
+    } else {
+      // 上に開く。bottom 指定にすると候補数が変わっても input 側に張り付いたまま伸びる
+      setRect({
+        ...base,
+        bottom: window.innerHeight - r.top + 2,
+        maxHeight: Math.min(220, Math.max(spaceAbove, 80)),
+      });
+    }
   }, [suggestions.length, value]);
 
   return (
@@ -186,9 +203,10 @@ export function ParamValueField({
               position: "fixed",
               left: rect.left,
               top: rect.top,
+              bottom: rect.bottom,
               minWidth: rect.width,
               maxWidth: 340,
-              maxHeight: 220,
+              maxHeight: rect.maxHeight,
               overflowY: "auto",
               background: "var(--color-card)",
               border: "1px solid var(--color-border)",
