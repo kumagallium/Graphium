@@ -1822,7 +1822,7 @@ export function useFileManager(authenticated: boolean) {
     async (noteId: string, contexts: string[]): Promise<void> => {
       const doc = await loadDoc(noteId);
       if (!doc) {
-        console.warn("文脈更新: ノートが読み込めませんでした:", noteId);
+        console.warn("フォルダ更新: ノートが読み込めませんでした:", noteId);
         return;
       }
       const normalized = normalizeNoteContexts(contexts);
@@ -1846,7 +1846,7 @@ export function useFileManager(authenticated: boolean) {
           queueSaveIndex(updated);
         }
       } catch (err) {
-        console.error("文脈の保存に失敗:", err);
+        console.error("フォルダの保存に失敗:", err);
         alert(tStatic("nav.contextSaveFailed"));
       }
     },
@@ -2012,7 +2012,7 @@ export function useFileManager(authenticated: boolean) {
           updatedIndex = updateIndexEntry(updatedIndex, entry.noteId, nextDoc);
           removed += 1;
         } catch (err) {
-          console.error("文脈の一括削除に失敗:", entry.noteId, err);
+          console.error("フォルダの一括削除に失敗:", entry.noteId, err);
         }
       }
       if (removed > 0) {
