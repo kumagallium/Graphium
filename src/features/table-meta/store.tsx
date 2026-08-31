@@ -46,6 +46,16 @@ type TableMetaStoreValue = {
   // ── note-link 列の行 → ノート紐付け ──
   getNoteLinks: (blockId: string) => Record<string, string>;
   setNoteLink: (blockId: string, rowValue: string, noteId: string) => void;
+  // ── 表の中身（計算ブロックなど「表を読む側」への配布）──
+  /**
+   * 表示名 → { 列名 → 数値の配列 }。ホスト（ノート）が本文の変更のたびに置き直す。
+   * ブロックの render に渡る editor.document は描画時点のスナップショットで
+   * 古くなる（実測）ため、生きた表の中身はここから読む。null は未配布
+   * （ノート読込直後など）。読む側は自前のフォールバックを持つ
+   */
+  tableColumns: Record<string, Record<string, number[]>> | null;
+  /** ホストが本文の変更のたびに表の中身を置き直す */
+  setTableColumns: (columns: Record<string, Record<string, number[]>>) => void;
   // ── 保存・復元 ──
   getSnapshot: () => Record<string, TableMeta>;
   restore: (data: Record<string, TableMeta> | undefined) => void;
@@ -59,6 +69,19 @@ const TableMetaContext = createContext<TableMetaStoreValue | null>(null);
 
 export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
   const [metas, setMetas] = useState<TableMetaState>(new Map());
+  // 表の中身（表示名 → 列名 → 数値）。ホストが編集のたびに置き直す
+  const [tableColumns, setTableColumnsState] = useState<
+    Record<string, Record<string, number[]>> | null
+  >(null);
+  const setTableColumns = useCallback(
+    (columns: Record<string, Record<string, number[]>>) => {
+      // 中身が同じなら参照も変えない（calc の再評価を無駄に起こさない）
+      setTableColumnsState((prev) =>
+        prev && JSON.stringify(prev) === JSON.stringify(columns) ? prev : columns
+      );
+    },
+    []
+  );
   const metasRef = useRef(metas);
   metasRef.current = metas;
   const [captionEditRequest, setCaptionEditRequest] = useState<string | null>(null);
@@ -208,6 +231,8 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         setSource,
         getNoteLinks,
         setNoteLink,
+        tableColumns,
+        setTableColumns,
         getSnapshot,
         restore,
         captionEditRequest,

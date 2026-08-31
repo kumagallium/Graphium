@@ -45,10 +45,18 @@ function formatValue(math: Awaited<ReturnType<typeof loadMathJs>>, value: unknow
 /**
  * ソース全体を評価して行ごとの結果を返す。
  * 評価は毎回まっさらなスコープで行う（前回評価の残留変数を持ち越さない）。
+ *
+ * tableScope には「名前を付けた表の列」が入る（`秤量表.質量` のように参照できる）。
+ * 表の側には何も書き込まない — 参照は評価時に片方向で解決するだけ。
  */
-export async function evaluateSource(source: string): Promise<CalcLineResult[]> {
+export async function evaluateSource(
+  source: string,
+  tableScope?: Record<string, unknown>,
+): Promise<CalcLineResult[]> {
   const math = await loadMathJs();
   const scope = new Map<string, unknown>();
+  // 表由来の変数を先に置く。以降の行で同じ名前に代入されたら、そちらが勝つ
+  for (const [key, value] of Object.entries(tableScope ?? {})) scope.set(key, value);
   const lines = source.split("\n");
 
   return lines.map((line): CalcLineResult => {

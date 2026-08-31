@@ -36,6 +36,35 @@ describe("evaluateSource", () => {
     expect(last.text).toBe("4.2313135 g");
   });
 
+  it("表の列を文字列キーで参照して集計できる", async () => {
+    // mathjs の識別子は ASCII 限定なので、日本語名は文字列キーで引く
+    const scope = { table: { 秤量表: { 質量: [0.5, 0.33], モル質量: [197.34, 79.87] } } };
+    const results = await evaluateSource(
+      'total = sum(table["秤量表"]["質量"])\nmean(table["秤量表"]["モル質量"])\ntotal * 2',
+      scope
+    );
+    expect(results[0]).toEqual({ kind: "value", text: "0.83" });
+    expect(results[1]).toEqual({ kind: "value", text: "138.605" });
+    expect(results[2]).toEqual({ kind: "value", text: "1.66" });
+  });
+
+  it("col() でも同じ列を引ける（短い書き方）", async () => {
+    const scope = { col: (t: unknown, c: unknown) => (t === "秤量表" && c === "質量" ? [1, 2, 3] : []) };
+    const results = await evaluateSource('sum(col("秤量表", "質量"))', scope);
+    expect(results[0]).toEqual({ kind: "value", text: "6" });
+  });
+
+  it("同じ名前に代入したら、以降はそちらが勝つ", async () => {
+    const results = await evaluateSource("total = 5\ntotal + 1", { total: 99 });
+    expect(results[1]).toEqual({ kind: "value", text: "6" });
+  });
+
+  it("表スコープを渡さなければ参照はエラー（他の行は動く）", async () => {
+    const results = await evaluateSource('sum(table["秤量表"]["質量"])\n2 + 3');
+    expect(results[0].kind).toBe("error");
+    expect(results[1]).toEqual({ kind: "value", text: "5" });
+  });
+
   it("エラー行があっても他の行の評価は続く", async () => {
     const results = await evaluateSource("nope + 1\n2 * 3");
     expect(results[0].kind).toBe("error");

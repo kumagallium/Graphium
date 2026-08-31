@@ -10,7 +10,10 @@
 //   target / (197.34 + 79.87) * 197.34      → 3.5595 g
 //
 // 設計上の決め事:
-// - 変数スコープはブロック内で閉じる（ブロック間共有はしない）
+// - 変数スコープはブロック内で閉じる（ブロック間共有はしない）。
+//   例外は「名前を付けた表の列」で、`table["秤量表"]["質量"]` や
+//   `col("秤量表", "質量")` として読める（table-scope.ts）。
+//   表の側には式も結果も書き込まない — 参照は評価時に片方向で解決するだけ
 // - props には式（source）と評価スナップショット（results）の両方を保存する。
 //   式だけだと、mathjs のバージョン差や将来の関数変更で「当時の値」が
 //   再現できなくなる。実験ノートとしては評価時の値が一次記録になる。
@@ -18,9 +21,12 @@
 // - 配色は design.md のトークン（--color-*）のみを使う
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Calculator } from "lucide-react";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
+import { buildTableIndex, collectTableColumns, makeColumnLookup } from "./table-scope";
+import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
+import { useTableMetaStoreOptional } from "../../features/table-meta/store";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { t, useLocaleSubscription } from "../../i18n";
 
@@ -70,12 +76,47 @@ export const CalcBlock = createReactBlockSpec(
         });
       };
 
+      // 参照できる表（名前が付いているものだけ）。
+      // ホストが編集のたびにストアへ置き直す列データを読む。ブロックの render に
+      // 渡る editor.document は描画時点のスナップショットで古くなるため（実測）、
+      // ストアが未配布の間（ノート読込直後）だけ document から読むフォールバックを使う
+      const tableStore = useTableMetaStoreOptional();
+      const tableScope = useMemo(() => {
+        if (!tableStore) return null;
+        let index = tableStore.tableColumns;
+        if (!index) {
+          const doc = (props.editor as any)?.document;
+          if (!Array.isArray(doc)) return null;
+          const displayNames = computeTableDisplayNames(
+            doc,
+            (blockId: string) => tableStore.hasColumnType(blockId, "datetime-auto"),
+            tableStore.getCaption,
+          );
+          index = buildTableIndex(collectTableColumns(doc, displayNames));
+        }
+        // col("表", "列") 用の逆引きも同じ中身から作る
+        const tables = new Map(
+          Object.entries(index).map(([t, cols]) => [t, new Map(Object.entries(cols))])
+        );
+        return { index, lookup: makeColumnLookup(tables) };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [tableStore?.tableColumns, tableStore?.metas]);
+      // 表の中身が変わったかを見る署名（列名と値だけ。位置や書式は無視する）
+      const tableSignature = tableScope ? JSON.stringify(tableScope.index) : "";
+
       // 入力から少し置いて評価。結果はスナップショットとして props にも保存する
       useEffect(() => {
         if (!editable) return;
         const gen = ++evalGen.current;
         const timer = setTimeout(async () => {
-          const evaluated = await evaluateSource(draft);
+          // mathjs の識別子は ASCII 限定なので、表は文字列キーで引く形にする
+          //   表["秤量表"]["質量"] / col("秤量表", "質量")
+          const evaluated = await evaluateSource(
+            draft,
+            tableScope
+              ? { table: tableScope.index, col: tableScope.lookup, column: tableScope.lookup }
+              : undefined,
+          );
           if (gen !== evalGen.current) return;
           setResults(evaluated);
           // 評価中にさらに入力が進んでいたら、その評価に任せる
@@ -85,7 +126,7 @@ export const CalcBlock = createReactBlockSpec(
         }, 200);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [draft, editable]);
+      }, [draft, editable, tableSignature]);
 
       const copyResult = (index: number, text: string) => {
         void navigator.clipboard?.writeText(text);
