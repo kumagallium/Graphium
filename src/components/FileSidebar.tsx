@@ -48,6 +48,10 @@ export type FileSidebarProps = {
   onSelectFolder?: (path: string, contextValues: string[]) => void;
   /** 未分類（文脈なしノート）フォルダのクリック */
   onSelectUnfiledFolder?: () => void;
+  /** ノート 0 件の空フォルダ定義（appdata 由来）。タグ由来のフォルダと名寄せで和集合表示 */
+  emptyFolders?: readonly string[];
+  /** 「＋ 新しいフォルダ」の確定。未指定なら作成行を出さない */
+  onCreateFolder?: (path: string) => void;
   mediaIndex: MediaIndex | null;
   onShowAssetGallery: (type: MediaType) => void;
   noteIndex: GraphiumIndex | null;
@@ -173,6 +177,8 @@ export function FileSidebar({
   selectedFolder = null,
   onSelectFolder,
   onSelectUnfiledFolder,
+  emptyFolders,
+  onCreateFolder,
   mediaIndex,
   onShowAssetGallery,
   noteIndex,
@@ -254,7 +260,10 @@ export function FileSidebar({
   }, [noteIndex]);
   // 親フォルダ選択時に子を含めた文脈フィルタへ展開するためのツリー
   // （FolderTree も内部で組むが軽い計算なので二重でよしとする）
-  const folderTree = useMemo(() => buildFolderTree(folderData.folders), [folderData.folders]);
+  const folderTree = useMemo(
+    () => buildFolderTree(folderData.folders, emptyFolders ?? []),
+    [folderData.folders, emptyFolders],
+  );
   // セクションヘッダの件数はフォルダ数（ラベルセクションが「種類数」を出す慣例に合わせる）
   const folderCount = useMemo(
     () => folderTree.reduce((sum, n) => sum + 1 + n.children.length, 0),
@@ -414,12 +423,14 @@ export function FileSidebar({
           >
             <FolderTree
               folders={folderData.folders}
+              emptyFolders={emptyFolders}
               unfiledCount={folderData.unfiledCount}
               selected={selectedFolder}
               onSelectFolder={(path) =>
                 onSelectFolder(path, expandFolderToContextValues(folderTree, path))
               }
               onSelectUnfiled={onSelectUnfiledFolder}
+              onCreateFolder={onCreateFolder}
             />
           </CollapsibleSection>
         )}

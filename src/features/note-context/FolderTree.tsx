@@ -4,6 +4,8 @@
 // - 行クリック = フォルダを開く（ノート一覧をその文脈で絞り込む）。子があれば同時に展開
 // - シェブロン = 開閉のみ（選択しない）
 // - 「＋ 新しいフォルダ」= インライン入力。"親/子" 記法で 2 階層まで（validateFolderPath）
+// - 親フォルダのホバー時の「＋」= そのフォルダの中に子を作る（スラッシュを手で打たせない）。
+//   2 階層制約により子フォルダには出さない
 // - 右クリックメニュー（移動・削除・リネーム・サブフォルダ作成）と D&D は後続段で載せる。
 //   このコンポーネントはツリーの見た目とナビゲーションだけを担い、
 //   フォルダ削除＝タグ剥がし等のデータ操作は呼び出し側の責務にする
@@ -76,15 +78,74 @@ export function FolderTree({
       return next;
     });
 
-  // インライン新規作成
-  const [creating, setCreating] = useState(false);
+  // インライン新規作成。creating = null なら閉、"" ならルート、"親名" ならその子を作る
+  const [creating, setCreating] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [draftError, setDraftError] = useState<"invalid" | "tooDeep" | null>(null);
   const closeDraft = () => {
-    setCreating(false);
+    setCreating(null);
     setDraft("");
     setDraftError(null);
   };
+  const openDraftUnder = (parent: string) => {
+    setDraft("");
+    setDraftError(null);
+    setCreating(parent);
+    // 子を作るときは親を開いておく（作った直後に見えないと迷子になる）
+    if (parent) {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.add(parent.toLowerCase());
+        return next;
+      });
+    }
+  };
+  /** 入力値を確定する。親配下なら "親/入力" に組み立ててから検証する */
+  const commitDraft = () => {
+    if (creating === null) return;
+    const raw = draft.trim();
+    if (!raw) {
+      closeDraft();
+      return;
+    }
+    const path = creating ? `${creating}/${raw}` : raw;
+    const verdict = validateFolderPath(path);
+    if (verdict !== "ok") {
+      // raw は空でないので "empty" は返らないが、型を絞るためにフォールバックを置く
+      setDraftError(verdict === "empty" ? "invalid" : verdict);
+      return;
+    }
+    onCreateFolder?.(path);
+    closeDraft();
+  };
+
+  const draftInput = (indent: boolean) => (
+    <div className={`py-1 pr-2 ${indent ? "pl-9" : "px-2"}`}>
+      <input
+        autoFocus
+        value={draft}
+        placeholder={creating ? t("nav.folderNameChildPlaceholder") : t("nav.folderNamePlaceholder")}
+        className="w-full text-sm px-1.5 py-0.5 rounded border border-sidebar-border bg-background outline-none focus:border-primary/50"
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setDraftError(null);
+        }}
+        onKeyDown={(e) => {
+          // IME 変換確定の Enter では作成しない（WKWebView の確定順対策も含む）
+          if (isImeKey(e)) return;
+          if (e.key === "Enter") commitDraft();
+          else if (e.key === "Escape") closeDraft();
+        }}
+        onBlur={closeDraft}
+        {...compositionHandlers}
+      />
+      {draftError && (
+        <p className="text-[11px] text-destructive mt-0.5">
+          {t(draftError === "tooDeep" ? "nav.folderDepthLimit" : "nav.folderNameInvalid")}
+        </p>
+      )}
+    </div>
+  );
 
   const selectedKey = selected && selected !== UNFILED_PATH ? selected.toLowerCase() : null;
 
@@ -93,8 +154,10 @@ export function FolderTree({
     const hasChildren = node.children.length > 0;
     const isOpen = expanded.has(key);
     const isActive = selectedKey === key;
+    // 子フォルダを作れるのは root だけ（2 階層制約）
+    const canAddChild = !isChild && !!onCreateFolder;
     return (
-      <div key={node.path} className={rowShellClass(isActive)}>
+      <div key={node.path} className={`group ${rowShellClass(isActive)}`}>
         {/* シェブロン列: root で子ありのときだけ開閉ボタン。それ以外は幅合わせ */}
         {!isChild && hasChildren ? (
           <button
@@ -118,7 +181,7 @@ export function FolderTree({
             // 開く操作と選択を一体にする（エクスプローラーの「フォルダを開く」感覚）
             if (hasChildren && !isOpen) toggleExpand(key);
           }}
-          className={`flex-1 min-w-0 flex items-center gap-1.5 py-1 pr-2 pl-1.5 text-sm text-left ${
+          className={`flex-1 min-w-0 flex items-center gap-1.5 py-1 pl-1.5 text-sm text-left ${
             isActive ? "font-semibold" : ""
           }`}
         >
@@ -130,6 +193,21 @@ export function FolderTree({
             <span className="text-xs text-muted-foreground tabular-nums">{node.totalCount}</span>
           )}
         </button>
+        {/* このフォルダの中に子を作る。スラッシュを手で打たせないための入口。
+            常時表示にするとツリーが賑やかになるので hover / フォーカス時だけ出す */}
+        {canAddChild ? (
+          <button
+            type="button"
+            title={t("nav.newSubfolderIn", { value: node.name })}
+            aria-label={t("nav.newSubfolderIn", { value: node.name })}
+            onClick={() => openDraftUnder(node.path)}
+            className="w-5 h-5 mr-1.5 shrink-0 inline-flex items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-opacity"
+          >
+            <Plus size={12} />
+          </button>
+        ) : (
+          <span className="w-5 mr-1.5 shrink-0" aria-hidden />
+        )}
       </div>
     );
   };
@@ -141,6 +219,9 @@ export function FolderTree({
           {renderFolderRow(node, false)}
           {expanded.has(node.path.toLowerCase()) &&
             node.children.map((child) => renderFolderRow(child, true))}
+          {/* このフォルダ配下の新規入力（＋ボタン由来）は子の末尾に出す。
+              子がまだ無い（＝シェブロンが無く展開の概念がない）フォルダでも出す */}
+          {creating === node.path && draftInput(true)}
         </div>
       ))}
 
@@ -168,10 +249,10 @@ export function FolderTree({
         </>
       )}
 
-      {onCreateFolder && !creating && (
+      {onCreateFolder && creating === null && (
         <button
           type="button"
-          onClick={() => setCreating(true)}
+          onClick={() => openDraftUnder("")}
           className="w-full flex items-center gap-1.5 py-1 pr-2 rounded text-xs text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
         >
           <span className="w-4 ml-2 shrink-0" aria-hidden />
@@ -179,46 +260,7 @@ export function FolderTree({
           <span className="flex-1 text-left">{t("nav.newFolder")}</span>
         </button>
       )}
-      {onCreateFolder && creating && (
-        <div className="px-2 py-1">
-          <input
-            autoFocus
-            value={draft}
-            placeholder={t("nav.folderNamePlaceholder")}
-            className="w-full text-sm px-1.5 py-0.5 rounded border border-sidebar-border bg-background outline-none focus:border-primary/50"
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setDraftError(null);
-            }}
-            onKeyDown={(e) => {
-              // IME 変換確定の Enter では作成しない（WKWebView の確定順対策も含む）
-              if (isImeKey(e)) return;
-              if (e.key === "Enter") {
-                const verdict = validateFolderPath(draft);
-                if (verdict === "empty") {
-                  closeDraft();
-                  return;
-                }
-                if (verdict !== "ok") {
-                  setDraftError(verdict);
-                  return;
-                }
-                onCreateFolder(draft.trim());
-                closeDraft();
-              } else if (e.key === "Escape") {
-                closeDraft();
-              }
-            }}
-            onBlur={closeDraft}
-            {...compositionHandlers}
-          />
-          {draftError && (
-            <p className="text-[11px] text-destructive mt-0.5">
-              {t(draftError === "tooDeep" ? "nav.folderDepthLimit" : "nav.folderNameInvalid")}
-            </p>
-          )}
-        </div>
-      )}
+      {onCreateFolder && creating === "" && draftInput(false)}
     </div>
   );
 }

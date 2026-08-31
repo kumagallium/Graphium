@@ -93,9 +93,13 @@ export const CreateFolder: Story = {
         />
         <p className="text-[11px] text-muted-foreground mt-4 leading-relaxed">
           「＋ 新しいフォルダ」→ 名前を入れて Enter。まだノートが無いフォルダは件数なしで並ぶ
-          （空フォルダ。実装では appdata の定義ファイルに永続化する）。
+          （空フォルダ。appdata の定義ファイルに永続化される）。
           「親/子」と書くとサブフォルダ。「a/b/c」は 2 階層制約でエラーになる。
           Esc・フォーカスアウトでキャンセル。
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+          親フォルダにホバーすると右端に「＋」が出る。ここから作るとスラッシュを打たずに
+          その中のフォルダを作れる（子フォルダには 2 階層制約のため出ない）。
         </p>
       </div>
     );
