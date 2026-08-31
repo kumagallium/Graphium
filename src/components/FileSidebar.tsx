@@ -404,7 +404,12 @@ export function FileSidebar({
           <span className="shrink-0 -ml-0.5" aria-hidden>
             <ArrowRight size={12} />
           </span>
-          <span className="flex-1 text-left">{t("nav.notes")}</span>
+          {/* 「ノート」でなく「すべてのノート」— 直下にフォルダが並ぶと、
+              「ノート」ではフォルダとの包含関係（フォルダの中身もノート）が読めない。
+              遷移先の一覧ヘッダのパンくずと同じ nav.noteList を使い、名前を一致させる。
+              プロセス・メモは下にフォルダを持たないのでこの問題が無く、揃えない
+              （見方の重複は左ナビ IA 第 2 ラウンドで扱う / design.md 2026-08-31） */}
+          <span className="flex-1 text-left">{t("nav.noteList")}</span>
           {noteCount > 0 && (
             <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{noteCount}</span>
           )}
