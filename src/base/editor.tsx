@@ -229,66 +229,104 @@ function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean
 // ── セルへの画像ドロップの見せ方 ──
 //
 // ブロックのドロップは青い挿入バーが出るが、セルの中への挿入にはそれが出ない。
-// 受け取る側のセルを枠で示し、アップロード中はそのまま点滅させる（大きい画像は
-// 数秒かかるので、無反応に見えると「入らなかった」と思われる）。
+// 受け取るセルの矩形と挿入位置のバーを描いて、どこに入るかを示す。
+//
+// **ProseMirror が持つ DOM（td）には触らない。** 属性を付け外しすると
+// ProseMirror の DOM 監視が反応して、ドラッグ中に状態が乱れる（表示がちらつき、
+// ドロップが通ったり通らなかったりする）。表示はすべて body 直下のオーバーレイで持つ。
+// dragover は毎フレーム飛んでくるので、計算は rAF で 1 フレーム 1 回に間引く。
 
-/** いま受け入れ表示をしているセル。属性の付け外しはこの 1 つに閉じる */
-let dropTargetCell: HTMLElement | null = null;
-/** 挿入位置を示す縦バー（ブロックのドロップカーソルと同じ語彙）。body 直下に 1 本だけ持つ */
-let dropCaretEl: HTMLElement | null = null;
+type DropIndicator = { box: HTMLElement; caret: HTMLElement };
+let dropIndicator: DropIndicator | null = null;
+let indicatorRaf = 0;
+let pendingPoint: { x: number; y: number; view: any } | null = null;
+/** 直前に描いたセル。同じセルの間は測り直さない */
+let lastIndicatorCell: HTMLElement | null = null;
 
-function ensureDropCaret(): HTMLElement {
-  if (dropCaretEl?.isConnected) return dropCaretEl;
-  const el = document.createElement("div");
-  el.setAttribute("data-cell-drop-caret", "true");
-  document.body.appendChild(el);
-  dropCaretEl = el;
-  return el;
+function ensureIndicator(): DropIndicator {
+  if (dropIndicator?.box.isConnected) return dropIndicator;
+  const box = document.createElement("div");
+  box.setAttribute("data-cell-drop-box", "true");
+  const caret = document.createElement("div");
+  caret.setAttribute("data-cell-drop-caret", "true");
+  document.body.append(box, caret);
+  dropIndicator = { box, caret };
+  return dropIndicator;
 }
 
-/**
- * セルの中の挿入位置にバーを出す。セルの外枠を光らせるだけだと、表の罫線に
- * 紛れて「入るのかどうか」が分からない（実機で見えないという指摘）。
- */
-function showCellDropCaret(view: any, pos: number) {
-  const coords = view.coordsAtPos(pos);
-  if (!coords) return;
-  const caret = ensureDropCaret();
-  const height = Math.max(16, coords.bottom - coords.top);
-  caret.style.left = `${coords.left - 1}px`;
-  caret.style.top = `${coords.top}px`;
-  caret.style.height = `${height}px`;
-  caret.style.display = "block";
-}
-
-function hideDropCaret() {
-  if (dropCaretEl) dropCaretEl.style.display = "none";
-}
-
-function setCellDropState(cell: HTMLElement | null, attr: "data-cell-drop-target" | "data-cell-drop-pending") {
-  if (dropTargetCell && dropTargetCell !== cell) {
-    dropTargetCell.removeAttribute("data-cell-drop-target");
-    dropTargetCell.removeAttribute("data-cell-drop-pending");
-  }
-  dropTargetCell = cell;
-  cell?.setAttribute(attr, "true");
+function hideIndicator() {
+  if (!dropIndicator) return;
+  dropIndicator.box.style.display = "none";
+  dropIndicator.caret.style.display = "none";
+  dropIndicator.box.removeAttribute("data-pending");
 }
 
 export function clearCellDropState() {
-  hideDropCaret();
-  if (!dropTargetCell) return;
-  dropTargetCell.removeAttribute("data-cell-drop-target");
-  dropTargetCell.removeAttribute("data-cell-drop-pending");
-  dropTargetCell = null;
+  draggedImageCache = null;
+  if (indicatorRaf) {
+    cancelAnimationFrame(indicatorRaf);
+    indicatorRaf = 0;
+  }
+  pendingPoint = null;
+  lastIndicatorCell = null;
+  hideIndicator();
 }
 
-/** 座標の下にあるセル要素（無ければ null） */
-function cellElementAt(view: any, event: DragEvent): HTMLElement | null {
-  const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-  if (!at || !isInsideTableCell(view, at.pos)) return null;
+/** 受け入れ表示を描く（rAF の中から呼ばれる） */
+function drawIndicator(view: any, x: number, y: number) {
+  const at = view.posAtCoords({ left: x, top: y });
+  if (!at || !isInsideTableCell(view, at.pos)) {
+    lastIndicatorCell = null;
+    hideIndicator();
+    return;
+  }
   const dom = view.domAtPos(at.pos)?.node as Node | undefined;
   const el = dom?.nodeType === 1 ? (dom as HTMLElement) : (dom?.parentElement ?? null);
-  return el?.closest("td, th") ?? null;
+  const cell = el?.closest("td, th") as HTMLElement | null;
+  if (!cell) {
+    lastIndicatorCell = null;
+    hideIndicator();
+    return;
+  }
+  const { box, caret } = ensureIndicator();
+  if (cell !== lastIndicatorCell) {
+    const r = cell.getBoundingClientRect();
+    box.style.left = `${r.left}px`;
+    box.style.top = `${r.top}px`;
+    box.style.width = `${r.width}px`;
+    box.style.height = `${r.height}px`;
+    box.style.display = "block";
+    lastIndicatorCell = cell;
+  }
+  const coords = view.coordsAtPos(at.pos);
+  if (coords) {
+    caret.style.left = `${coords.left - 1}px`;
+    caret.style.top = `${coords.top}px`;
+    caret.style.height = `${Math.max(16, coords.bottom - coords.top)}px`;
+    caret.style.display = "block";
+  }
+}
+
+/** dragover から呼ぶ。座標だけ控えて、描画は次のフレームにまとめる */
+function scheduleIndicator(view: any, event: DragEvent) {
+  pendingPoint = { x: event.clientX, y: event.clientY, view };
+  if (indicatorRaf) return;
+  indicatorRaf = requestAnimationFrame(() => {
+    indicatorRaf = 0;
+    const p = pendingPoint;
+    if (p) drawIndicator(p.view, p.x, p.y);
+  });
+}
+
+/** アップロード中の表示（矩形を点滅させる。バーは消す） */
+function markIndicatorPending() {
+  if (indicatorRaf) {
+    cancelAnimationFrame(indicatorRaf);
+    indicatorRaf = 0;
+  }
+  if (!dropIndicator || dropIndicator.box.style.display === "none") return;
+  dropIndicator.caret.style.display = "none";
+  dropIndicator.box.setAttribute("data-pending", "true");
 }
 
 /** そのドラッグがセルに入れられる画像か（ファイル / 画像ブロック / セルの画像） */
@@ -301,15 +339,34 @@ function isImageDrag(view: any, event: DragEvent): boolean {
     return true;
   if (dt.types?.includes("Files")) return true;
   if (dt.types?.includes(INLINE_IMAGE_DRAG_MIME)) return true;
-  if (dt.types?.includes("blocknote/html")) {
-    // ブロックのドラッグ。中身が画像のときだけ受け入れ表示を出す
-    const dragged = (view.state.selection as any)?.node;
-    if (!dragged) return false;
-    let found = dragged.type?.name === "image";
-    if (!found) dragged.descendants?.((n: any) => (found = found || n.type?.name === "image") && false);
-    return found;
-  }
+  if (dt.types?.includes("blocknote/html")) return draggedBlockHasImage(view);
   return false;
+}
+
+/**
+ * ドラッグ中のブロック（NodeSelection）が画像を含むか。
+ * dragover は毎フレーム飛んでくるので、同じ選択の間は結果を使い回す。
+ */
+let draggedImageCache: { from: number; hasImage: boolean } | null = null;
+
+function draggedBlockHasImage(view: any): boolean {
+  const selection = view.state.selection;
+  const dragged = (selection as any)?.node;
+  if (!dragged) {
+    draggedImageCache = null;
+    return false;
+  }
+  const cached = draggedImageCache;
+  if (cached && cached.from === selection.from) return cached.hasImage;
+  let found = dragged.type?.name === "image";
+  if (!found) {
+    dragged.descendants?.((n: any) => {
+      if (n.type?.name === "image") found = true;
+      return !found;
+    });
+  }
+  draggedImageCache = { from: selection.from, hasImage: found };
+  return found;
 }
 
 /** その位置がテーブルのセルの中か */
@@ -384,10 +441,7 @@ function insertCellImagesFromFiles(
   }
   dropEvent?.preventDefault();
   // 大きい画像はアップロードに数秒かかる。その間セルを点滅させて受け取り中だと示す
-  if (dropEvent) {
-    hideDropCaret();
-    setCellDropState(cellElementAt(view, dropEvent), "data-cell-drop-pending");
-  }
+  if (dropEvent) markIndicatorPending();
   void (async () => {
     let insertAt = pos;
     for (const file of images) {
@@ -481,16 +535,10 @@ export function SandboxEditor({
           // 受け入れ先のセルを枠で示す（既定のドロップカーソル処理は邪魔しない）
           dragover: (view: any, event: any) => {
             if (!isImageDrag(view, event)) return false;
-            const cell = cellElementAt(view, event);
-            setCellDropState(cell, "data-cell-drop-target");
-            if (cell) {
-              const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-              if (at) showCellDropCaret(view, at.pos);
-              // ファイルのドラッグは preventDefault しないと drop が発火しない
-              event.preventDefault();
-            } else {
-              hideDropCaret();
-            }
+            // ファイルのドラッグは preventDefault しないと drop が発火しない。
+            // セルの内外で出し分けると境目で挙動が変わるので、画像のドラッグなら常に呼ぶ
+            event.preventDefault();
+            scheduleIndicator(view, event);
             return false;
           },
           dragleave: () => {
