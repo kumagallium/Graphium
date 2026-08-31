@@ -2020,6 +2020,10 @@ export const en: Record<string, string> = {
   "tableMeta.namePlaceholder": "Table name",
   "tableMeta.nameHint": "A name makes this table easy to reference from charts",
   "tableMeta.autoName": "Table {n}",
+  "tableMeta.expand": "Expand",
+  "tableMeta.expandUntitled": "Table",
+  "tableMeta.expandCount": "{rows} rows × {cols} columns",
+  "tableMeta.expandSortHint": "Click a column header to sort — the table itself is not changed",
 
   // 記録テーブル
   "logTable.colDateTime": "Date/Time",

@@ -11,9 +11,11 @@ export {
 } from "./store";
 export type { TableMetaStoreValue } from "./store";
 export { TableCaptionLayer } from "./caption-layer";
+export { TableExpandModal } from "./expand-modal";
+export type { TableExpandData } from "./expand-modal";
 export { computeTableDisplayNames } from "./auto-name";
 export { migrateTableMeta } from "./migration";
-export { collectTableBlocks, readCellText, readFirstColumnName } from "./table-cells";
+export { collectTableBlocks, readCellText, readFirstColumnName, readTableData } from "./table-cells";
 export {
   findColumnNameByType,
   hasColumnType,

@@ -63,11 +63,14 @@ import {
   TableMetaStoreProvider,
   useTableMetaStore,
   TableCaptionLayer,
+  TableExpandModal,
   migrateTableMeta,
   hasColumnType,
   readFirstColumnName,
+  readTableData,
   type ColumnType,
   type TableSource,
+  type TableExpandData,
 } from "./features/table-meta";
 import {
   DataImportModal,
@@ -1784,6 +1787,16 @@ function NoteEditorInner({
     },
     []
   );
+
+  // テーブルの拡大表示。開いた時点の中身を読み取り専用スナップショットとして
+  // モーダルに出す（並べ替えはモーダル内だけで完結し、ノートには書き戻さない）
+  const [tableExpandData, setTableExpandData] = useState<TableExpandData | null>(null);
+  const handleTableExpand = useCallback((blockId: string, displayName: string) => {
+    const editor = editorRef.current;
+    const data = readTableData(editor?.getBlock?.(blockId));
+    if (!data) return;
+    setTableExpandData({ name: displayName, ...data });
+  }, []);
 
   // データ素材ピッカーで「ファイルからアップロード」を選んだとき。
   // まだ素材にしないのは、ダイアログをキャンセルしたファイルまで溜めないため
@@ -4346,7 +4359,8 @@ function NoteEditorInner({
         hidden={!isDesktop && rightTab !== null}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} />
+      <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} onExpand={handleTableExpand} />
+      <TableExpandModal data={tableExpandData} onClose={() => setTableExpandData(null)} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}

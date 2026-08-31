@@ -2018,6 +2018,10 @@ export const ja: Record<string, string> = {
   "tableMeta.namePlaceholder": "テーブルの名前",
   "tableMeta.nameHint": "名前を付けるとチャートから参照しやすくなります",
   "tableMeta.autoName": "表 {n}",
+  "tableMeta.expand": "拡大表示",
+  "tableMeta.expandUntitled": "テーブル",
+  "tableMeta.expandCount": "{rows} 行 × {cols} 列",
+  "tableMeta.expandSortHint": "列見出しをクリックすると並べ替えできます（元の表は変わりません）",
 
   // 時系列テーブル
   "logTable.colDateTime": "日時",
