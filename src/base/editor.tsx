@@ -155,8 +155,8 @@ function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
   }
   if (!image) dragged.descendants?.(pick);
   if (!image) return false;
-  const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-  if (!at || !isInsideTableCell(view, at.pos)) return false;
+  const cellPos = dropCellPos(view, event);
+  if (cellPos === null) return false;
   const fileId = getActiveProvider().extractFileId(image.url);
   const nodeType = view.state.schema.nodes.inlineImage;
   if (!fileId || !nodeType) return false;
@@ -164,7 +164,7 @@ function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
   clearCellDropState();
   // 挿入 → 元ブロック削除の順に組む（先に消すと挿入位置がずれる）
   const tr = view.state.tr;
-  tr.insert(at.pos, nodeType.create({ fileId, name: image.name }));
+  tr.insert(cellPos, nodeType.create({ fileId, name: image.name }));
   const from = tr.mapping.map(selection.from);
   const to = tr.mapping.map(selection.to);
   if (to > from) tr.delete(from, to);
@@ -298,7 +298,11 @@ function cellElementAt(view: any, event: DragEvent): HTMLElement | null {
 function isImageDrag(view: any, event: DragEvent): boolean {
   const dt = event.dataTransfer;
   if (!dt) return false;
-  if ([...(dt.items ?? [])].some((i) => i.kind === "file" && i.type.startsWith("image/"))) return true;
+  // dragover 中は file の名前が読めないため、MIME が空のファイルも受け入れ表示に含める
+  // （落とした時点で画像でなければ既定処理に落ちる）
+  if ([...(dt.items ?? [])].some((i) => i.kind === "file" && (i.type.startsWith("image/") || !i.type)))
+    return true;
+  if (dt.types?.includes("Files")) return true;
   if (dt.types?.includes(INLINE_IMAGE_DRAG_MIME)) return true;
   if (dt.types?.includes("blocknote/html")) {
     // ブロックのドラッグ。中身が画像のときだけ受け入れ表示を出す
@@ -321,23 +325,66 @@ function isInsideTableCell(view: any, pos: number): boolean {
   return false;
 }
 
+/** 拡張子で画像とみなすもの。Finder からのドラッグは MIME が空のことがある */
+const IMAGE_FILE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|heic|heif|tiff?)$/i;
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/") || (!file.type && IMAGE_FILE_EXT.test(file.name));
+}
+
+/** DataTransfer から画像ファイルを取り出す（files が空でも items から拾う） */
+function imageFilesFrom(dt: DataTransfer | null | undefined): File[] {
+  if (!dt) return [];
+  const fromFiles = [...(dt.files ?? [])];
+  if (fromFiles.length === 0) {
+    // 一部の環境では files が空で items にだけ入る
+    for (const item of dt.items ?? []) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (file) fromFiles.push(file);
+    }
+  }
+  return fromFiles.filter(isImageFile);
+}
+
+/**
+ * 落とした位置のセル。座標が罫線やセルの継ぎ目に乗ると posAtCoords が
+ * セルの外を指すので、イベントの発生要素からも辿って補う。
+ */
+function dropCellPos(view: any, event: DragEvent): number | null {
+  const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (at && isInsideTableCell(view, at.pos)) return at.pos;
+  const target = event.target as HTMLElement | null;
+  const cell = target?.closest?.("td, th");
+  if (!cell) return null;
+  // セルの中の編集可能な位置（先頭）を使う
+  const inner = cell.querySelector("p, div[data-node-type]") ?? cell;
+  try {
+    const pos = view.posAtDOM(inner, 0);
+    return isInsideTableCell(view, pos) ? pos : null;
+  } catch {
+    return null;
+  }
+}
+
 function insertCellImagesFromFiles(
   view: any,
-  fileList: FileList | null | undefined,
+  dataTransfer: DataTransfer | null | undefined,
   dropEvent: DragEvent | null,
   uploadFile: ((file: File) => Promise<string>) | undefined,
 ): boolean {
-  if (!uploadFile || !fileList?.length) return false;
-  const images = [...fileList].filter((f) => f.type.startsWith("image/"));
+  if (!uploadFile) return false;
+  const images = imageFilesFrom(dataTransfer);
   if (!images.length) return false;
   // 位置: drop は座標から、paste は現在のキャレット
   let pos = view.state.selection.from;
   if (dropEvent) {
-    const at = view.posAtCoords({ left: dropEvent.clientX, top: dropEvent.clientY });
-    if (!at) return false;
-    pos = at.pos;
+    const cellPos = dropCellPos(view, dropEvent);
+    if (cellPos === null) return false;
+    pos = cellPos;
+  } else if (!isInsideTableCell(view, pos)) {
+    return false;
   }
-  if (!isInsideTableCell(view, pos)) return false;
   dropEvent?.preventDefault();
   // 大きい画像はアップロードに数秒かかる。その間セルを点滅させて受け取り中だと示す
   if (dropEvent) {
@@ -357,8 +404,10 @@ function insertCellImagesFromFiles(
         const node = nodeType.create({ fileId, name: file.name });
         view.dispatch(view.state.tr.insert(at, node));
         insertAt = at + node.nodeSize;
-      } catch {
-        // 失敗した画像だけ諦めて残りは続ける（素材未登録のまま挿さない）
+      } catch (e) {
+        // 失敗した画像だけ諦めて残りは続ける（素材未登録のまま挿さない）。
+        // 黙って消えると「落としたのに入らない」と見えるので、原因は残す
+        console.error("[graphium] failed to insert dropped image into cell", file.name, e);
       }
     }
     clearCellDropState();
@@ -413,6 +462,11 @@ export function SandboxEditor({
   const locale = useLocaleSubscription();
   const editorRef = useRef<any>(null);
 
+  // _tiptapOptions は useCreateBlockNote の初回実行時のクロージャに固定されるため、
+  // props の uploadFile を直接参照すると後から渡された関数を見られない。ref 越しに読む
+  const uploadFileRef = useRef(uploadFile);
+  uploadFileRef.current = uploadFile;
+
   const editor = useCreateBlockNote({
     schema,
     initialContent: editorRef.current
@@ -450,17 +504,29 @@ export function SandboxEditor({
             clearCellDropState();
             return false;
           },
-          drop: (view: any, event: any) =>
+          drop: (view: any, event: any) => {
             // ファイルの drop（外部から）と、ノート内の画像ブロックの drag（内部）の両方
-            insertCellImagesFromFiles(view, event?.dataTransfer?.files, event, uploadFile) ||
-            moveImageBlockIntoCell(view, event) ||
-            moveCellImageToBlock(view, event),
+            const handled =
+              insertCellImagesFromFiles(view, event?.dataTransfer, event, uploadFileRef.current) ||
+              moveImageBlockIntoCell(view, event) ||
+              moveCellImageToBlock(view, event);
+            if (!handled && isImageDrag(view, event)) {
+              // 受け入れ表示（バー）を出したのに取りこぼした状態。BlockNote の既定処理に
+              // 落ちるとセルの外にブロックができるので、原因を追えるよう残す
+              console.warn("[graphium] image drop over a cell was not handled", {
+                types: [...(event?.dataTransfer?.types ?? [])],
+                files: event?.dataTransfer?.files?.length ?? 0,
+              });
+            }
+            clearCellDropState();
+            return handled;
+          },
           paste: (view: any, event: any) => {
             const handled = insertCellImagesFromFiles(
               view,
-              event?.clipboardData?.files,
+              event?.clipboardData,
               null,
-              uploadFile
+              uploadFileRef.current
             );
             // true でも PM は既定動作を止めないので、ブラウザの貼り付けを自前で止める
             if (handled) event?.preventDefault?.();
