@@ -161,6 +161,7 @@ function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
   const nodeType = view.state.schema.nodes.inlineImage;
   if (!fileId || !nodeType) return false;
   event.preventDefault();
+  clearCellDropState();
   // 挿入 → 元ブロック削除の順に組む（先に消すと挿入位置がずれる）
   const tr = view.state.tr;
   tr.insert(at.pos, nodeType.create({ fileId, name: image.name }));
@@ -191,6 +192,7 @@ function moveCellImageToBlock(view: any, event: DragEvent): boolean {
   const imageType = view.state.schema.nodes.image;
   if (!imageType) return false;
   event.preventDefault();
+  clearCellDropState();
   // 元のインライン画像を探す（同じ fileId の最初の 1 つ）
   let fromPos = -1;
   let size = 0;
@@ -227,6 +229,57 @@ function moveCellImageToBlock(view: any, event: DragEvent): boolean {
   return true;
 }
 
+// ── セルへの画像ドロップの見せ方 ──
+//
+// ブロックのドロップは青い挿入バーが出るが、セルの中への挿入にはそれが出ない。
+// 受け取る側のセルを枠で示し、アップロード中はそのまま点滅させる（大きい画像は
+// 数秒かかるので、無反応に見えると「入らなかった」と思われる）。
+
+/** いま受け入れ表示をしているセル。属性の付け外しはこの 1 つに閉じる */
+let dropTargetCell: HTMLElement | null = null;
+
+function setCellDropState(cell: HTMLElement | null, attr: "data-cell-drop-target" | "data-cell-drop-pending") {
+  if (dropTargetCell && dropTargetCell !== cell) {
+    dropTargetCell.removeAttribute("data-cell-drop-target");
+    dropTargetCell.removeAttribute("data-cell-drop-pending");
+  }
+  dropTargetCell = cell;
+  cell?.setAttribute(attr, "true");
+}
+
+export function clearCellDropState() {
+  if (!dropTargetCell) return;
+  dropTargetCell.removeAttribute("data-cell-drop-target");
+  dropTargetCell.removeAttribute("data-cell-drop-pending");
+  dropTargetCell = null;
+}
+
+/** 座標の下にあるセル要素（無ければ null） */
+function cellElementAt(view: any, event: DragEvent): HTMLElement | null {
+  const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (!at || !isInsideTableCell(view, at.pos)) return null;
+  const dom = view.domAtPos(at.pos)?.node as Node | undefined;
+  const el = dom?.nodeType === 1 ? (dom as HTMLElement) : (dom?.parentElement ?? null);
+  return el?.closest("td, th") ?? null;
+}
+
+/** そのドラッグがセルに入れられる画像か（ファイル / 画像ブロック / セルの画像） */
+function isImageDrag(view: any, event: DragEvent): boolean {
+  const dt = event.dataTransfer;
+  if (!dt) return false;
+  if ([...(dt.items ?? [])].some((i) => i.kind === "file" && i.type.startsWith("image/"))) return true;
+  if (dt.types?.includes(INLINE_IMAGE_DRAG_MIME)) return true;
+  if (dt.types?.includes("blocknote/html")) {
+    // ブロックのドラッグ。中身が画像のときだけ受け入れ表示を出す
+    const dragged = (view.state.selection as any)?.node;
+    if (!dragged) return false;
+    let found = dragged.type?.name === "image";
+    if (!found) dragged.descendants?.((n: any) => (found = found || n.type?.name === "image") && false);
+    return found;
+  }
+  return false;
+}
+
 /** その位置がテーブルのセルの中か */
 function isInsideTableCell(view: any, pos: number): boolean {
   const $pos = view.state.doc.resolve(pos);
@@ -255,6 +308,8 @@ function insertCellImagesFromFiles(
   }
   if (!isInsideTableCell(view, pos)) return false;
   dropEvent?.preventDefault();
+  // 大きい画像はアップロードに数秒かかる。その間セルを点滅させて受け取り中だと示す
+  if (dropEvent) setCellDropState(cellElementAt(view, dropEvent), "data-cell-drop-pending");
   void (async () => {
     let insertAt = pos;
     for (const file of images) {
@@ -272,6 +327,7 @@ function insertCellImagesFromFiles(
         // 失敗した画像だけ諦めて残りは続ける（素材未登録のまま挿さない）
       }
     }
+    clearCellDropState();
   })();
   return true;
 }
@@ -337,6 +393,20 @@ export function SandboxEditor({
     _tiptapOptions: {
       editorProps: {
         handleDOMEvents: {
+          // 受け入れ先のセルを枠で示す（既定のドロップカーソル処理は邪魔しない）
+          dragover: (view: any, event: any) => {
+            if (!isImageDrag(view, event)) return false;
+            setCellDropState(cellElementAt(view, event), "data-cell-drop-target");
+            return false;
+          },
+          dragleave: () => {
+            clearCellDropState();
+            return false;
+          },
+          dragend: () => {
+            clearCellDropState();
+            return false;
+          },
           drop: (view: any, event: any) =>
             // ファイルの drop（外部から）と、ノート内の画像ブロックの drag（内部）の両方
             insertCellImagesFromFiles(view, event?.dataTransfer?.files, event, uploadFile) ||

@@ -443,6 +443,28 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   padding: 0 !important;
 }
 
+/* セルへ画像をドロップするときの受け入れ表示。
+   ブロックのドロップと違い挿入バーが出ないので、受け取るセル自身を枠で示す */
+.bn-editor td[data-cell-drop-target],
+.bn-editor th[data-cell-drop-target] {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+/* アップロード中（大きい画像は数秒かかる）。同じ枠を点滅させて受け取り中を示す */
+.bn-editor td[data-cell-drop-pending],
+.bn-editor th[data-cell-drop-pending] {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  animation: cell-drop-pending 1s ease-in-out infinite;
+}
+@keyframes cell-drop-pending {
+  50% { outline-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bn-editor td[data-cell-drop-pending],
+  .bn-editor th[data-cell-drop-pending] { animation: none; }
+}
+
 /* @メンションテキスト（青色）をクリック可能に見せる */
 .bn-editor [data-style-type="textColor"][data-value="blue"] {
   cursor: pointer;
