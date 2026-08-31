@@ -43,6 +43,33 @@ export function fileIdFromBlobUrl(url: string | null | undefined): string | null
   return fileIdByBlobUrl.get(url) ?? null;
 }
 
+/**
+ * いまノート内で掴んでいる画像素材。
+ *
+ * dataTransfer に載せたカスタム MIME は、デスクトップ（WKWebView）だと drop 側で
+ * 読めないことがある。読めないとどの受け口にも当たらず、ProseMirror の既定処理が
+ * text/plain（＝画像の名前）を挿してしまい、画像が文字に化ける。ドラッグ元も先も
+ * 同じドキュメントなので、素の変数で覚えておけば環境差の影響を受けない。
+ */
+export type ActiveImageDrag = {
+  fileId: string;
+  name: string;
+  /** 掴んだノードの位置。同じ素材が複数あるとき、掴んだものだけを消すのに使う */
+  pos: number | null;
+  /** 掴んだ元がテーブルのセルの中（inlineImage）か、本文の画像ブロックか */
+  inCell: boolean;
+};
+
+let activeImageDrag: ActiveImageDrag | null = null;
+
+export function setActiveImageDrag(drag: ActiveImageDrag | null) {
+  activeImageDrag = drag;
+}
+
+export function getActiveImageDrag(): ActiveImageDrag | null {
+  return activeImageDrag;
+}
+
 function loadBlobUrl(fileId: string): Promise<string> {
   const cached = blobUrlCache.get(fileId);
   if (cached) return cached;
