@@ -57,7 +57,7 @@ export { LabelGalleryView } from "./LabelGalleryView";
 export { UrlBookmarkModal } from "./UrlBookmarkModal";
 export type { UrlBookmarkModalProps } from "./UrlBookmarkModal";
 
-export { getMediaSlashMenuItems, setMediaPickerCallback, DEFAULT_MEDIA_SLASH_TITLES } from "./slash-menu-items";
+export { getMediaSlashMenuItems, setMediaPickerCallback, DEFAULT_MEDIA_SLASH_KEYS } from "./slash-menu-items";
 
 export { UrlPasteMenu } from "./UrlPasteMenu";
 export type { UrlPasteMenuProps } from "./UrlPasteMenu";

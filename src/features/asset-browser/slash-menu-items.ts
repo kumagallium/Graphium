@@ -42,8 +42,8 @@ function createMediaSlashItem(
   };
 }
 
-/** デフォルトスラッシュメニューから除外する title 一覧 */
-export const DEFAULT_MEDIA_SLASH_TITLES = ["Image", "Video", "Audio"];
+/** デフォルトスラッシュメニューから除外するアイテムの辞書キー一覧 */
+export const DEFAULT_MEDIA_SLASH_KEYS = ["image", "video", "audio"];
 
 /** スラッシュメニューに追加するメディア挿入アイテム（デフォルトの Image/Video/Audio を差し替え） */
 export function getMediaSlashMenuItems(): SlashMenuItem[] {

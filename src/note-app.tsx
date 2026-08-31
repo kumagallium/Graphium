@@ -249,7 +249,7 @@ import {
   NoteMemosSection,
   getMediaSlashMenuItems,
   setMediaPickerCallback,
-  DEFAULT_MEDIA_SLASH_TITLES,
+  DEFAULT_MEDIA_SLASH_KEYS,
   UrlPasteMenu,
   extractDomain,
   generateUrlBookmarkId,
@@ -4881,7 +4881,7 @@ function NoteEditorInner({
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
               extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
-              excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
+              excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
               onChange={handleContentChange}

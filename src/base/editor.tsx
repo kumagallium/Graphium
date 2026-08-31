@@ -54,7 +54,7 @@ const lightCodeBlock = createCodeBlockSpec({
 import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
 import { inlineMathSpecs } from "@features/inline-math/spec";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
-import { FC, useCallback, useEffect, useMemo } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
@@ -67,7 +67,8 @@ import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
 import { documentSearchExtension } from "@/features/document-search/search-plugin";
 import { collapsibleHeadingExtension } from "@/features/collapsible-heading/collapse-plugin";
-import { t } from "../i18n";
+import { t, useLocaleSubscription } from "../i18n";
+import { getBlockNoteDictionary } from "./blocknote-dictionary";
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
 import { stepTitleEnterExtension } from "../blocks/step/step-title-enter";
@@ -93,8 +94,11 @@ type SandboxEditorProps = {
   formattingToolbar?: FC<FormattingToolbarProps>;
   /** 追加のスラッシュメニューアイテム */
   extraSlashMenuItems?: SlashMenuItem[];
-  /** デフォルトスラッシュメニューから除外するアイテムの title */
-  excludeDefaultSlashTitles?: string[];
+  /**
+   * デフォルトスラッシュメニューから除外するアイテムの辞書キー（"image" 等）。
+   * タイトルは表示言語で変わるため、言語に依存しないキーで指定する。
+   */
+  excludeDefaultSlashKeys?: string[];
   /** エディタインスタンスを外部に公開するコールバック */
   onEditorReady?: (editor: any) => void;
   /** エディタの内容が変更されたときのコールバック */
@@ -119,7 +123,7 @@ export function SandboxEditor({
   sideMenu,
   formattingToolbar,
   extraSlashMenuItems,
-  excludeDefaultSlashTitles,
+  excludeDefaultSlashKeys,
   onEditorReady,
   onChange,
   uploadFile,
@@ -152,9 +156,19 @@ export function SandboxEditor({
     } as any,
   });
 
+  // BlockNote 内蔵 UI の文言をアプリの言語設定に連動させる。
+  // プレースホルダはエディタ生成時に CSS ルールとして固定されるため、辞書の
+  // 差し替えにはエディタの作り直しが必要。deps の locale 変更で再生成し、
+  // そのとき編集中の内容は editorRef 経由で新しいエディタに引き継ぐ。
+  const locale = useLocaleSubscription();
+  const editorRef = useRef<any>(null);
+
   const editor = useCreateBlockNote({
     schema,
-    initialContent: initialContent?.length ? (initialContent as any) : undefined,
+    initialContent: editorRef.current
+      ? (editorRef.current.document as any)
+      : initialContent?.length ? (initialContent as any) : undefined,
+    dictionary: getBlockNoteDictionary(locale),
     uploadFile,
     resolveFileUrl,
     // ブロック左右端へのドラッグで縦のドロップカーソルを出す
@@ -195,7 +209,12 @@ export function SandboxEditor({
       // ブロックの左右端へのドロップでカラム生成（multi-column/drop-to-columns.ts 参照）
       dropToColumnsExtension(),
     ],
-  });
+  }, [locale]);
+
+  // 言語切替での再生成時に内容を引き継げるよう、最新のエディタを保持する
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   // エディタインスタンスを外部に公開
   useEffect(() => {
@@ -224,14 +243,16 @@ export function SandboxEditor({
 
   // スラッシュメニューのカスタム getItems
   const excludeSet = useMemo(
-    () => new Set(excludeDefaultSlashTitles ?? []),
-    [excludeDefaultSlashTitles],
+    () => new Set(excludeDefaultSlashKeys ?? []),
+    [excludeDefaultSlashKeys],
   );
   // デフォルトアイテムを1回だけ取得（毎回呼ぶと蓄積する問題を防ぐ）
   const defaultSlashItems = useMemo(() => {
     let items = getDefaultReactSlashMenuItems(editor as any);
     if (excludeSet.size > 0) {
-      items = items.filter((item: any) => !excludeSet.has(item.title));
+      // 既定アイテムは辞書キー（"image" 等）を持つ。タイトルは言語で変わるので
+      // キーで除外する
+      items = items.filter((item: any) => !excludeSet.has(item.key));
     }
     return items;
   }, [editor, excludeSet]);
