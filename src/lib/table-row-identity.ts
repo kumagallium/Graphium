@@ -29,6 +29,11 @@ function inlineText(inlines: any[]): string {
       if (inline?.type === "image" && typeof inline.props?.url === "string") {
         return inline.props.url;
       }
+      // インライン画像はファイル名をその行の名前として扱う。空文字を返すと
+      // 「画像だけのセル」が無名になり、行が Entity として立たなくなる
+      if (inline?.type === "inlineImage" && typeof inline.props?.name === "string") {
+        return inline.props.name;
+      }
       return "";
     })
     .join("");

@@ -122,6 +122,7 @@ export function sanitizeBlocksForLoad(
 // （実際に inlineMath を足したとき、ここに無いせいで本文から数式だけが消えた）。
 export const CUSTOM_INLINE_TYPES: ReadonlySet<string> = new Set([
   "inlineMath",
+  "inlineImage",
 ]);
 
 // 保存済みノートを読み込むときに「知っているインライン型」の集合。

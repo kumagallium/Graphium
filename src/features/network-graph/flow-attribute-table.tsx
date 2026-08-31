@@ -16,8 +16,10 @@
 // チップを置く。表がまだ無いセクションは破線カード。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link2, Plus, Trash2 } from "lucide-react";
+import { Link2, Plus, Trash2, X } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
+import { ParamLinkButton, ParamValueField, resolveParamLinkTarget } from "./param-link";
+import { getActiveProvider } from "../../lib/storage/registry";
 import { t, getDisplayLabel } from "../../i18n";
 import {
   splitAttrLabel,
@@ -91,6 +93,13 @@ export type FlowStepPanelProps = {
   onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
   /** 共有行を、このステップの表にも 1 行として置く（同じモノなのでグラフでは 1 ノードのまま） */
   onAddSharedRow?: (stepBlockId: string, kind: ActivityIoKind, name: string) => void;
+  /**
+   * セル値の @参照（ノート / 素材）を開く。ID はノートの素 ID または
+   * 外部ソース ID（pdf:/document:/data: 等）で、振り分けは受け側の Side Peek が行う
+   */
+  onOpenExternalNote?: (id: string) => void;
+  /** 画像セルから画像だけを外す（テキスト・行 ID は残す） */
+  onRemoveCellImage?: (blockId: string, rowIndex: number, colIndex: number) => void;
 };
 
 const SECTION_ORDER: SectionKind[] = ["attribute", "material", "tool", "output"];
@@ -204,6 +213,52 @@ function SectionChip({ kind }: { kind: SectionKind }) {
   );
 }
 
+/** 右パネルのセルに埋まっているインライン画像のサムネイル（ノードのサムネと同じ流儀） */
+function CellImageThumb({
+  fileId,
+  alt,
+  onOpen,
+}: {
+  fileId: string;
+  alt: string;
+  onOpen?: (id: string) => void;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getActiveProvider()
+      .getMediaBlobUrl(fileId)
+      .then((url: string) => {
+        if (!cancelled) setSrc(url);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId]);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      // テキストのクリック（セル編集）と分けるため、画像自体が開くボタンを兼ねる
+      onClick={onOpen ? (e) => { e.stopPropagation(); onOpen(`image:${fileId}`); } : undefined}
+      title={onOpen ? t("inlineImage.clickToOpen") : undefined}
+      style={{
+        height: 28,
+        maxWidth: 72,
+        objectFit: "cover",
+        borderRadius: 3,
+        border: "1px solid var(--color-border)",
+        verticalAlign: "middle",
+        cursor: onOpen ? "pointer" : "default",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 export function FlowStepPanel({
   selection,
   data,
@@ -218,6 +273,8 @@ export function FlowStepPanel({
   onMoveEntityToTable,
   onMoveParamToTable,
   onAddSharedRow,
+  onOpenExternalNote,
+  onRemoveCellImage,
 }: FlowStepPanelProps) {
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
   //           / `inline:<entityId>`（本文ハイライトの名前）
@@ -232,6 +289,56 @@ export function FlowStepPanel({
   const [pendingFocus, setPendingFocus] = useState<SectionKind | null>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const sectionRefs = useRef<Partial<Record<SectionKind, HTMLDivElement | null>>>({});
+
+  // セル値の表示。値が @ノート名 / @素材名 として解決できるときだけ、
+  // 隣に参照先を開くボタン（↗）を添える。テキスト部分のクリックは従来どおり編集
+  const cellValue = (text: string, table?: TableData | null, r?: number, c?: number) => {
+    const imageFileId =
+      table?.cellImages && r !== undefined && c !== undefined
+        ? table.cellImages[`${r}:${c}`]
+        : undefined;
+    const target = onOpenExternalNote ? resolveParamLinkTarget(text) : null;
+    if (!target && !imageFileId) return text;
+    const blockId = table?.blockId;
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}>
+        {imageFileId && (
+          <CellImageThumb fileId={imageFileId} alt={text} onOpen={onOpenExternalNote} />
+        )}
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{text}</span>
+        {target && <ParamLinkButton targetId={target} onOpen={onOpenExternalNote!} />}
+        {/* 画像セルはテキスト編集に入らないので、外す操作をここに置く
+            （× のあと空セルになり、ふつうに文字を打てる状態に戻る） */}
+        {imageFileId && onRemoveCellImage && blockId && r !== undefined && c !== undefined && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemoveCellImage(blockId, r, c);
+            }}
+            title={t("flowTable.removeCellImage")}
+            aria-label={t("flowTable.removeCellImage")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 14,
+              height: 14,
+              padding: 0,
+              border: "none",
+              borderRadius: 3,
+              background: "transparent",
+              color: "var(--color-text-tertiary)",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <X size={10} />
+          </button>
+        )}
+      </span>
+    );
+  };
 
   const stepId = data?.stepId ?? null;
   useEffect(() => {
@@ -286,51 +393,60 @@ export function FlowStepPanel({
     );
   }
 
-  const commitEdit = () => {
-    if (edit) {
-      const v = edit.draft.trim();
-      const parts = edit.key.split(":");
-      if (parts[0] === "h" && v) onRenameColumn?.(parts[1], Number(parts[2]), v);
-      else if (parts[0] === "c") onSetCell?.(parts[1], Number(parts[2]), Number(parts[3]), edit.draft);
-      else if (parts[0] === "inline" && v) onRenameEntity?.(edit.key.slice("inline:".length), v);
-    }
+  /** 編集の確定（値を直渡し）。@候補の確定は state（edit.draft）を経由すると
+   *  古い値で確定してしまうので、こちらを直接呼ぶ */
+  const commitEditValue = (key: string, raw: string) => {
+    const v = raw.trim();
+    const parts = key.split(":");
+    if (parts[0] === "h" && v) onRenameColumn?.(parts[1], Number(parts[2]), v);
+    else if (parts[0] === "c") onSetCell?.(parts[1], Number(parts[2]), Number(parts[3]), raw);
+    else if (parts[0] === "inline" && v) onRenameEntity?.(key.slice("inline:".length), v);
     setEdit(null);
   };
+  const commitEdit = () => {
+    if (edit) commitEditValue(edit.key, edit.draft);
+    else setEdit(null);
+  };
 
-  const commitAdd = () => {
-    if (adding) {
-      const v = adding.draft.trim();
-      if (v) {
-        if (adding.what === "firstCell") {
-          onCreateSectionTable?.(data.stepId, adding.kind, v);
-          // パラメータはキーを名付けたので、続けて値を打てるようにする
-          if (adding.kind === "attribute") setPendingFocus("attribute");
-        } else if (adding.what === "column") onAddColumn?.(adding.blockId, v);
-        else onAddRow?.(adding.blockId, v);
-      }
+  const commitAddValue = (
+    a: { what: "column" | "row"; blockId: string } | { what: "firstCell"; kind: SectionKind },
+    raw: string
+  ) => {
+    const v = raw.trim();
+    if (v) {
+      if (a.what === "firstCell") {
+        onCreateSectionTable?.(data.stepId, a.kind, v);
+        // パラメータはキーを名付けたので、続けて値を打てるようにする
+        if (a.kind === "attribute") setPendingFocus("attribute");
+      } else if (a.what === "column") onAddColumn?.(a.blockId, v);
+      else onAddRow?.(a.blockId, v);
     }
     setAdding(null);
   };
+  const commitAdd = () => {
+    if (adding) commitAddValue(adding, adding.draft);
+    else setAdding(null);
+  };
 
-  const field = (value: string, onChange: (v: string) => void, onCommit: () => void) => (
-    <input
+  // すべての編集入力に @候補（本文メンションと同じ参照）を出す。
+  // onPickValue は候補確定時の処理（state を経由せず値を直渡しで確定する）
+  const field = (
+    value: string,
+    onChange: (v: string) => void,
+    onCommit: () => void,
+    onPickValue: (v: string) => void
+  ) => (
+    <ParamValueField
       value={value}
-      autoFocus
-      onFocus={(e) => e.target.select()}
-      onChange={(e) => onChange(e.target.value)}
-      {...compositionHandlers}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && !isImeKey(e)) onCommit();
-        else if (e.key === "Escape") {
-          e.stopPropagation();
-          setEdit(null);
-          setAdding(null);
-        }
-      }}
-      onBlur={() => {
+      onChange={onChange}
+      onCommit={onCommit}
+      onCancel={() => {
         setEdit(null);
         setAdding(null);
       }}
+      onPick={onPickValue}
+      compositionHandlers={compositionHandlers}
+      isImeKey={isImeKey}
       style={inputStyle}
     />
   );
@@ -350,7 +466,7 @@ export function FlowStepPanel({
     }
 
     return editing(k) ? (
-      field(edit!.draft, (v) => setEdit({ key: k, draft: v }), commitEdit)
+      field(edit!.draft, (v) => setEdit({ key: k, draft: v }), commitEdit, (v) => commitEditValue(k, v))
     ) : (
       <span
         style={{ ...ghostText, cursor: onRenameEntity ? "text" : "default", ...extraStyle }}
@@ -400,7 +516,7 @@ export function FlowStepPanel({
               return (
                 <th key={col} style={th}>
                   {blockId && editing(key) ? (
-                    field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit)
+                    field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v))
                   ) : (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <span
@@ -431,7 +547,7 @@ export function FlowStepPanel({
             {trailing && (
               <th style={{ ...th, borderRight: "none" }}>
                 {adding?.what === "column" && adding.blockId === blockId ? (
-                  field(adding.draft, (v) => setAdding({ what: "column", blockId: blockId!, draft: v }), commitAdd)
+                  field(adding.draft, (v) => setAdding({ what: "column", blockId: blockId!, draft: v }), commitAdd, (v) => commitAddValue({ what: "column", blockId: blockId! }, v))
                 ) : (
                   <button
                     onClick={() => setAdding({ what: "column", blockId: blockId!, draft: "" })}
@@ -454,9 +570,14 @@ export function FlowStepPanel({
                   <td
                     key={col}
                     style={td}
-                    onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
+                    onClick={() => {
+                      // 画像が入っているセルはクリックで編集に入らない。
+                      // 入ると draft（テキスト）で確定したとき画像が消える
+                      if (table?.cellImages?.[`${r}:${col}`]) return;
+                      if (onSetCell && !editing(key)) setEdit({ key, draft: row[col] ?? "" });
+                    }}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : (row[col] ?? "")}
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "", table, r, col)}
                   </td>
                 );
               })}
@@ -548,9 +669,11 @@ export function FlowStepPanel({
             <tr>
               <td style={td} onClick={() => !editing("first") && setAdding({ what: "firstCell", kind, draft: "" })}>
                 {adding?.what === "firstCell" && adding.kind === kind ? (
-                  field(adding.draft, (v) => setAdding({ what: "firstCell", kind, draft: v }), commitAdd)
+                  field(adding.draft, (v) => setAdding({ what: "firstCell", kind, draft: v }), commitAdd, (v) => commitAddValue({ what: "firstCell", kind }, v))
                 ) : (
-                  <span style={ghostText}>{getDisplayLabel(kind).replace(/^\[|\]$/g, "")}</span>
+                  <span style={{ ...ghostText, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Plus size={11} /> {getDisplayLabel(kind).replace(/^\[|\]$/g, "")}
+                  </span>
                 )}
               </td>
               {ghostAttrCols.map((col) => (
@@ -564,7 +687,7 @@ export function FlowStepPanel({
               <td colSpan={headers.length + (trailing ? 1 : 0)} style={{ border: "none", padding: 0 }}>
                 {adding?.what === "row" && adding.blockId === table.blockId ? (
                   <div style={{ padding: "3px 6px", maxWidth: 220 }}>
-                    {field(adding.draft, (v) => setAdding({ what: "row", blockId: table.blockId, draft: v }), commitAdd)}
+                    {field(adding.draft, (v) => setAdding({ what: "row", blockId: table.blockId, draft: v }), commitAdd, (v) => commitAddValue({ what: "row", blockId: table.blockId }, v))}
                   </div>
                 ) : (
                   <button
@@ -599,7 +722,7 @@ export function FlowStepPanel({
               return (
                 <th key={col} style={th}>
                   {editing(key) ? (
-                    field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit)
+                    field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v))
                   ) : (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <span
@@ -641,7 +764,7 @@ export function FlowStepPanel({
             {trailing && (
               <th style={{ ...th, borderRight: "none" }}>
                 {adding?.what === "column" && adding.blockId === blockId ? (
-                  field(adding.draft, (v) => setAdding({ what: "column", blockId: blockId!, draft: v }), commitAdd)
+                  field(adding.draft, (v) => setAdding({ what: "column", blockId: blockId!, draft: v }), commitAdd, (v) => commitAddValue({ what: "column", blockId: blockId! }, v))
                 ) : (
                   <button
                     onClick={() => setAdding({ what: "column", blockId: blockId!, draft: "" })}
@@ -656,9 +779,11 @@ export function FlowStepPanel({
             {!table && onCreateSectionTable && (
               <th style={th} onClick={() => setAdding({ what: "firstCell", kind: "attribute", draft: "" })}>
                 {adding?.what === "firstCell" && adding.kind === "attribute" ? (
-                  field(adding.draft, (v) => setAdding({ what: "firstCell", kind: "attribute", draft: v }), commitAdd)
+                  field(adding.draft, (v) => setAdding({ what: "firstCell", kind: "attribute", draft: v }), commitAdd, (v) => commitAddValue({ what: "firstCell", kind: "attribute" }, v))
                 ) : (
-                  <span style={ghostText}>{t("graphTable.paramColumn")}</span>
+                  <span style={{ ...ghostText, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Plus size={11} /> {t("graphTable.paramColumn")}
+                  </span>
                 )}
               </th>
             )}
@@ -680,9 +805,14 @@ export function FlowStepPanel({
                   <td
                     key={col}
                     style={td}
-                    onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
+                    onClick={() => {
+                      // 画像が入っているセルはクリックで編集に入らない。
+                      // 入ると draft（テキスト）で確定したとき画像が消える
+                      if (table?.cellImages?.[`${r}:${col}`]) return;
+                      if (onSetCell && !editing(key)) setEdit({ key, draft: row[col] ?? "" });
+                    }}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : (row[col] ?? "")}
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "", table, r, col)}
                   </td>
                 );
               })}

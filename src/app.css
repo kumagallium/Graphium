@@ -443,6 +443,39 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   padding: 0 !important;
 }
 
+/* セルへ画像をドロップするときの受け入れ表示。
+   ProseMirror の DOM（td）は触らず、body 直下のオーバーレイで描く
+   （td に属性を付けると DOM 監視が反応してドラッグ中の挙動が乱れる） */
+[data-cell-drop-box] {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 9999;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--color-primary) 14%, transparent);
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+/* アップロード中（大きい画像は数秒かかる）。受け取り中だと分かるよう点滅させる */
+[data-cell-drop-box][data-pending] {
+  animation: cell-drop-pending 1s ease-in-out infinite;
+}
+/* 挿入位置の縦バー（ブロックのドロップカーソルと同じ見え方） */
+[data-cell-drop-caret] {
+  position: fixed;
+  display: none;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-primary);
+  pointer-events: none;
+  z-index: 10000;
+}
+@keyframes cell-drop-pending {
+  50% { opacity: 0.25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-cell-drop-box][data-pending] { animation: none; }
+}
+
 /* @メンションテキスト（青色）をクリック可能に見せる */
 .bn-editor [data-style-type="textColor"][data-value="blue"] {
   cursor: pointer;

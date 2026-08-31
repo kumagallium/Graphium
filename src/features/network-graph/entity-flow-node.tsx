@@ -9,8 +9,10 @@
 // table-row-edit を通る。
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { ParamLinkButton, resolveParamLinkTarget } from "./param-link";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
+  ArrowUpRight,
   ExternalLink,
   FileText,
   Film,
@@ -79,7 +81,16 @@ const attrInputStyle: CSSProperties = {
 };
 
 /** 画像 Entity のサムネイル。local-media:// は Blob URL に変換する（AssetGalleryView と同じ流儀） */
-function EntityThumbnail({ url, alt }: { url: string; alt: string }) {
+function EntityThumbnail({
+  url,
+  alt,
+  onOpen,
+}: {
+  url: string;
+  alt: string;
+  /** 素材ピークで大きく見る。ノード選択（クリック）と混ざらないよう ↗ ボタンだけがリンク */
+  onOpen?: (id: string) => void;
+}) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,8 +113,9 @@ function EntityThumbnail({ url, alt }: { url: string; alt: string }) {
   }, [url]);
 
   if (!src) return null;
+  const fileId = getActiveProvider().extractFileId(url);
   return (
-    <div style={{ padding: "4px 8px 0" }}>
+    <div style={{ padding: "4px 8px 0", position: "relative" }}>
       <img
         src={src}
         alt={alt}
@@ -117,6 +129,37 @@ function EntityThumbnail({ url, alt }: { url: string; alt: string }) {
           background: "var(--color-surface)",
         }}
       />
+      {onOpen && fileId && (
+        <button
+          type="button"
+          className="nodrag"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(`image:${fileId}`);
+          }}
+          title={t("inlineImage.clickToOpen")}
+          aria-label={t("inlineImage.clickToOpen")}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 18,
+            height: 18,
+            padding: 0,
+            border: "none",
+            borderRadius: 4,
+            background: "var(--color-card)",
+            color: "var(--color-text-secondary)",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.18)",
+            cursor: "pointer",
+          }}
+        >
+          <ArrowUpRight size={12} />
+        </button>
+      )}
     </div>
   );
 }
@@ -274,7 +317,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
 
       {/* 画像 Entity はサムネイルを出す（動画・音声・PDF はヘッダのアイコンで示す） */}
       {entity.mediaUrl && entity.mediaType === "image" && (
-        <EntityThumbnail url={entity.mediaUrl} alt={entity.label} />
+        <EntityThumbnail url={entity.mediaUrl} alt={entity.label} onOpen={onOpenExternalNote} />
       )}
 
       {/* 属性の編集はテーブルパネル側。既定は「ある」ことだけ示し、
@@ -294,11 +337,20 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
           <SlidersHorizontal size={10} style={{ flexShrink: 0, marginTop: data.showParams ? 2 : 0 }} />
           {data.showParams ? (
             <span style={{ overflowWrap: "anywhere" }}>
-              {entity.attrs.map((a, i) => (
-                <span key={i} style={{ display: "block" }}>
-                  {a.label}
-                </span>
-              ))}
+              {entity.attrs.map((a, i) => {
+                // 値が @参照ならその場から飛べるようにする（表パネルと同じ ↗）
+                const target = data.onOpenExternalNote
+                  ? resolveParamLinkTarget(splitAttrLabel(a.label).value)
+                  : null;
+                return (
+                  <span key={i} style={{ display: "block" }}>
+                    {a.label}
+                    {target && (
+                      <ParamLinkButton targetId={target} onOpen={data.onOpenExternalNote!} />
+                    )}
+                  </span>
+                );
+              })}
             </span>
           ) : (
             entity.attrs.length

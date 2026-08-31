@@ -117,6 +117,8 @@ type StructuredTableRow = {
   name: string;
   attrs: Record<string, string>;
   rowIdentity?: string;
+  /** 行のどこかにインライン画像があればその fileId（ノードのサムネイルに使う） */
+  imageFileId?: string;
 };
 
 type StructuredTable = {
@@ -148,7 +150,14 @@ export function parseStructuredTable(block: any): StructuredTable | null {
       }
     }
     const rowIdentity = extractTableRowIdentity(cells[0]);
-    dataRows.push(rowIdentity ? { name, attrs, rowIdentity } : { name, attrs });
+    // 行の中のインライン画像（セルに埋めた画像）。ノードにサムネイルを出すために拾う
+    const imageFileId = findInlineImageFileId(cells);
+    dataRows.push({
+      name,
+      attrs,
+      ...(rowIdentity ? { rowIdentity } : {}),
+      ...(imageFileId ? { imageFileId } : {}),
+    });
   }
 
   return { rows: dataRows };
@@ -426,6 +435,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               params: Object.keys(row.attrs).length > 0 ? row.attrs : undefined,
               entitySubtype: subtype,
               tableRowIdentity: row.rowIdentity,
+              // セルに埋めた画像はノードのサムネイルにも出す（画像ブロック由来の
+              // Entity と同じ見え方に揃える）。url は provider が解決できる形にする
+              ...(row.imageFileId
+                ? { mediaType: "image", mediaUrl: `media-server://${row.imageFileId}` }
+                : {}),
             });
             for (const actId of getActivityIdsForScope(lb.block.id)) {
               relations.push({ "@type": "prov:used", from: actId, to: entityId });
@@ -492,6 +506,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               blockId: lb.block.id,
               params: Object.keys(row.attrs).length > 0 ? row.attrs : undefined,
               tableRowIdentity: row.rowIdentity,
+              // セルに埋めた画像はノードのサムネイルにも出す（画像ブロック由来の
+              // Entity と同じ見え方に揃える）。url は provider が解決できる形にする
+              ...(row.imageFileId
+                ? { mediaType: "image", mediaUrl: `media-server://${row.imageFileId}` }
+                : {}),
             });
             for (const actId of getActivityIdsForScope(lb.block.id)) {
               relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
@@ -1663,6 +1682,23 @@ function getBlockText(block: any): string {
 /** テーブルセルからテキストを抽出 */
 function extractCellText(cell: any): string {
   return extractTableCellText(cell);
+}
+
+/** 行のセル群から最初のインライン画像の fileId を探す（無ければ undefined） */
+function findInlineImageFileId(cells: any[]): string | undefined {
+  for (const cell of cells ?? []) {
+    const content = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? cell.content : null;
+    for (const inline of content ?? []) {
+      if (
+        inline?.type === "inlineImage" &&
+        typeof inline.props?.fileId === "string" &&
+        inline.props.fileId
+      ) {
+        return inline.props.fileId;
+      }
+    }
+  }
+  return undefined;
 }
 
 /** テーブル先頭セルの text inline に保存された行 identity を読む */

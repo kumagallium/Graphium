@@ -43,7 +43,7 @@ import { stepSlashItem } from "../../blocks/step";
 import { columnsSlashItem } from "../../blocks/multi-column";
 import {
   getMediaSlashMenuItems,
-  DEFAULT_MEDIA_SLASH_TITLES,
+  DEFAULT_MEDIA_SLASH_KEYS,
   MediaPickerModal,
   setMediaPickerCallback,
   extractDomain,
@@ -89,7 +89,12 @@ import {
   TableMetaStoreProvider,
   useTableMetaStore,
   TableCaptionLayer,
+  TableExpandModal,
   migrateTableMeta,
+  readTableData,
+  sortTableBlock,
+  type TableExpandData,
+  type SortState,
 } from "@features/table-meta";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
@@ -130,6 +135,8 @@ import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { setEditorSidePeekCallback } from "./context";
+import { isExternalSourceId } from "@features/network-graph/external-source";
+import { rememberBlobUrl } from "@features/inline-image/spec";
 
 type SidePeekProps = {
   noteId: string;
@@ -310,6 +317,10 @@ function SidePeekInner({
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
   // スラッシュメニューのピッカー状態（main editor とは独立に SidePeek 側で持つ）
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
+  // テーブルの拡大表示（メインと同じ。見出しクリックの並べ替えは実表に反映する）
+  const [tableExpandData, setTableExpandData] = useState<TableExpandData | null>(null);
+  const [tableExpandSort, setTableExpandSort] = useState<SortState>(null);
+  const tableExpandBlockIdRef = useRef<string | null>(null);
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
   // URL ペースト検知 → ブックマーク/リンク選択メニュー（メインエディタと同じ挙動）
@@ -717,7 +728,20 @@ function SidePeekInner({
     const isMentionSpan = (el: HTMLElement): boolean => {
       if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
       if (!el.closest(".bn-editor")) return false;
-      if (el.closest("table")) return false;
+      // note-link 列の先頭列セルは行アイコンの担当（note-app 側と同じ絞り込み）。
+      // それ以外のセル内メンションはピーク内でも押せるようにする
+      const cellEl = el.closest("td, th");
+      if (cellEl) {
+        const tableBlockId = el.closest("[data-id]")?.getAttribute("data-id");
+        const isFirstColumn = cellEl.parentElement?.children[0] === cellEl;
+        if (
+          isFirstColumn &&
+          tableBlockId &&
+          tableMetaStore.hasColumnType(tableBlockId, "note-link")
+        ) {
+          return false;
+        }
+      }
       const text = el.textContent?.trim();
       return !!text && text.startsWith("@") && !text.startsWith("@#");
     };
@@ -801,7 +825,7 @@ function SidePeekInner({
     };
     root.addEventListener("click", onClick, true);
     return () => root.removeEventListener("click", onClick, true);
-  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor]);
+  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor, tableMetaStore]);
 
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
@@ -815,6 +839,10 @@ function SidePeekInner({
     setSharedCitePickerCallback(sidePeekEditor, () => setSharedCitePickerOpen(true));
     setChartAssetSourceCallback(sidePeekEditor, (onDone) => setChartAssetRequest({ onDone }));
     setEditorSidePeekCallback(sidePeekEditor, (targetNoteId) => {
+      // 外部ソース ID（pdf:/document:/data:/url: — グラフのパラメータ ↗ 等）は
+      // ノートとして開けないので false を返し、メイン側の振り分け
+      // （getIndexTableCallbacks().onOpenSidePeek → 素材ピーク）に倒す
+      if (isExternalSourceId(targetNoteId)) return false;
       const callback = onOpenNoteInPeekRef.current;
       if (!callback) return false;
       callback(targetNoteId);
@@ -880,6 +908,15 @@ function SidePeekInner({
       // insertInlineContent の onChange 経由で自動保存される
       insertInlineAtSlash(editor, currentBlock, [
         { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      setPickerMediaType(null);
+      return;
+    }
+    // セル内から選んだ画像はインライン画像として埋める（note-app 側と同じ分岐）
+    if (entry.type === "image" && entry.fileId && currentBlock.type === "table") {
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "inlineImage", props: { fileId: entry.fileId, name: entry.name } } as any,
         { type: "text", text: " ", styles: {} },
       ]);
       setPickerMediaType(null);
@@ -1493,7 +1530,31 @@ function SidePeekInner({
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
             {/* 表の名前・取り込み元バッジ・長い表の折りたたみ。メインと同じ層を
                 ピークの外枠に閉じて使う（wrapperEl 無しだとメイン側の表を測る） */}
-            <TableCaptionLayer editorRef={editorRef} wrapperEl={wrapperEl} />
+            <TableCaptionLayer
+              editorRef={editorRef}
+              wrapperEl={wrapperEl}
+              onExpand={(blockId, displayName) => {
+                const data = readTableData(editorRef.current?.getBlock?.(blockId));
+                if (!data) return;
+                tableExpandBlockIdRef.current = blockId;
+                setTableExpandSort(null);
+                setTableExpandData({ name: displayName, ...data });
+              }}
+            />
+            <TableExpandModal
+              data={tableExpandData}
+              onClose={() => setTableExpandData(null)}
+              onSort={(col, dir) => {
+                const blockId = tableExpandBlockIdRef.current;
+                const editor = editorRef.current;
+                if (!blockId || !editor) return;
+                sortTableBlock(editor, blockId, col, dir);
+                const data = readTableData(editor.getBlock?.(blockId));
+                if (data) setTableExpandData((prev) => (prev ? { ...prev, ...data } : prev));
+                setTableExpandSort({ col, dir });
+              }}
+              activeSort={tableExpandSort}
+            />
             {/* 右ガター（80px）はラベルバッジを置く場所。
                 何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
                 ラベルが無いときは左右対称（24px）にする。
@@ -1748,7 +1809,7 @@ function SidePeekInner({
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                   ...(isTauri() ? [sharedCitationSlashItem] : []),
                 ]}
-                excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
+                excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
                 // `@` 参照: 他ノートの参照 + 「新規ノートを作成」。メインエディタと同じく
@@ -1799,8 +1860,11 @@ function SidePeekInner({
                 resolveFileUrl={async (url: string) => {
                   const p = getActiveProvider();
                   const fid = p.extractFileId(url);
-                  if (fid) return p.getMediaBlobUrl(fid);
-                  return url;
+                  if (!fid) return url;
+                  const blobUrl = await p.getMediaBlobUrl(fid);
+                  // 画像を直接ドラッグしたときに素材へ引き戻すための対応（note-app と同じ）
+                  rememberBlobUrl(blobUrl, fid);
+                  return blobUrl;
                 }}
               />
             </div>

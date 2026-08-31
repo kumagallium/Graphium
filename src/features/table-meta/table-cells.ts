@@ -39,3 +39,22 @@ export function collectTableBlocks(blocks: any[]): Map<string, any> {
   visit(blocks ?? []);
   return found;
 }
+
+/**
+ * テーブルブロックの中身を「ヘッダ + データ行」の文字列二次元配列として読む。
+ * 拡大表示（モーダル）用のスナップショット。
+ *
+ * 列数はヘッダ行とデータ行の最大に揃える — 見出しに合わせて切り詰めると、
+ * 見出しより列が多い行の値が黙って消える（データ取り込みで踏んだ罠と同じ）。
+ */
+export function readTableData(block: any): { header: string[]; rows: string[][] } | null {
+  if (block?.type !== "table") return null;
+  const rawRows: any[] = block.content?.rows ?? [];
+  if (rawRows.length === 0) return null;
+  const cellRows = rawRows.map((r) => (r?.cells ?? []).map((c: any) => readCellText(c)));
+  const colCount = Math.max(...cellRows.map((r) => r.length), 1);
+  const pad = (r: string[]) =>
+    r.length >= colCount ? r : [...r, ...Array(colCount - r.length).fill("")];
+  const [header, ...rows] = cellRows.map(pad);
+  return { header, rows };
+}

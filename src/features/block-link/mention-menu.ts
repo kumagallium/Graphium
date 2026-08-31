@@ -27,6 +27,11 @@ export type ReferenceSuggestion = {
    * shadcn の SuggestionMenu.Item が item.subtext をそのまま描画する。
    */
   subtext?: string;
+  /**
+   * type === "asset" のときの素材の種類（"pdf" / "document" / "data"）。
+   * 選択時に外部ソース ID（pdf:/document:/data:）のプレフィックスを決めるために使う。
+   */
+  assetType?: string;
 };
 
 /** modifiedAt(ISO) を YYYY-MM-DD HH:mm（ローカル日時）に整形する。不正値は空文字。 */
@@ -92,6 +97,11 @@ export function resolveMentionTargetFromLinks(
   mentionText: string,
   links: ReadonlyArray<{ sourceBlockId: string; targetNoteId?: string; type?: string }>,
   noteIndex: GraphiumIndex | null | undefined,
+  /**
+   * 素材名 → 外部ソース ID（"pdf:<fileId>" / "data:<fileId>" 等）。
+   * 素材メンションのラベルは noteIndex で照合できないため、これで照合する。
+   */
+  resolveAssetId?: (name: string) => string | null,
 ): { noteId: string; isWiki: boolean } | null {
   if (!blockId) return null;
   const candidates = links.filter(
@@ -104,6 +114,15 @@ export function resolveMentionTargetFromLinks(
     if (entry && entry.title === mentionText) {
       return { noteId: c.targetNoteId as string, isWiki: entry.source === "ai" };
     }
+  }
+  // 素材メンション: ラベル（素材名）から外部ソース ID を引いて候補と照合する。
+  // 一致すればそれ、無ければ null — 素材名として解決できる mentionText を
+  // 下の先頭候補（同じブロックの別メンションのリンク）へ倒すと、クリックで
+  // 無関係なノートが開いてしまう。null なら呼び出し側の素材名逆引きが拾う
+  const assetId = resolveAssetId?.(mentionText);
+  if (assetId) {
+    const c = candidates.find((l) => l.targetNoteId === assetId);
+    return c ? { noteId: assetId, isWiki: false } : null;
   }
   // タイトル一致が無い（作成後にタイトル変更された等）→ 先頭候補にフォールバック。
   const first = candidates[0];
@@ -279,20 +298,26 @@ export function getNoteSuggestions(
 }
 
 /**
- * 取り込んだドキュメント素材（PDF / docx 等）を @ 候補として収集する。
- * ノート由来ではなく「素材そのもの」を引用したい場合（論文 PDF の引用等）に使う。
- * 選択すると本文に @素材名 を挿入し、doc.citedAssetFileIds に fileId を記録する。
+ * 取り込んだドキュメント素材（PDF / docx / 区切りテキスト等）を @ 候補として収集する。
+ * ノート由来ではなく「素材そのもの」を引用したい場合（論文 PDF の引用、測定データの
+ * 参照等）に使う。選択すると本文に @素材名 を挿入し、doc.citedAssetFileIds に fileId を
+ * 記録する（データ素材はテーブルのセル内から測定ファイルを指すのが主な用途）。
  */
 export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSuggestion[] {
   if (!mediaIndex) return [];
   return mediaIndex.media
-    .filter((m) => m.type === "pdf" || m.type === "document")
+    .filter(
+      (m) => m.type === "pdf" || m.type === "document" || m.type === "data" || m.type === "image"
+    )
     .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
     .slice(0, 15)
     .map((m) => ({
       type: "asset" as const,
       id: m.fileId,
-      label: `📄 ${m.name}`,
+      // 絵文字はピッカーのサムネイルと同じ使い分け（データ素材は 🧾）。
+      // 画像（🖼）は選ぶとリンク文字ではなくインライン画像として埋まる
+      label: `${m.type === "data" ? "🧾" : m.type === "image" ? "🖼" : "📄"} ${m.name}`,
       group: t("mention.groupAssets"),
+      assetType: m.type,
     }));
 }
