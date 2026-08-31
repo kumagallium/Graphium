@@ -108,15 +108,25 @@ export async function addFolderDefinition(
   return file.folders;
 }
 
-/** フォルダ定義から除いて保存する（フォルダ削除用）。返り値は反映後の一覧 */
+/** そのフォルダ自身か、その子（"親/子"）にあたるか */
+function isSelfOrChild(candidate: string, path: string): boolean {
+  const key = candidate.trim().toLowerCase();
+  const target = path.trim().toLowerCase();
+  return key === target || key.startsWith(`${target}/`);
+}
+
+/**
+ * フォルダ定義から除いて保存する（フォルダ削除用）。**子の定義も一緒に除く** —
+ * 親を消したのに "親/子" が残ると、その定義だけで親がツリーに生き返ってしまう。
+ * 返り値は反映後の一覧。
+ */
 export async function removeFolderDefinition(
   path: string,
   provider: StorageProvider = getActiveProvider(),
 ): Promise<string[]> {
   await ensureFolderDefinitions(provider);
   const file = cache ?? emptyFile();
-  const key = path.trim().toLowerCase();
-  const next = file.folders.filter((f) => f.trim().toLowerCase() !== key);
+  const next = file.folders.filter((f) => !isSelfOrChild(f, path));
   if (next.length !== file.folders.length) {
     file.folders = next;
     cache = file;
@@ -125,6 +135,51 @@ export async function removeFolderDefinition(
     } catch {
       // 書けなくてもメモリ上は有効
     }
+  }
+  return file.folders;
+}
+
+/**
+ * フォルダ定義の名前を変える。**子の定義も追従させる** — 親だけ変えると
+ * "旧親/子" が取り残され、ツリー上で旧名のフォルダが生き残ってしまう。
+ * 返り値は反映後の一覧。
+ */
+export async function renameFolderDefinition(
+  from: string,
+  to: string,
+  provider: StorageProvider = getActiveProvider(),
+): Promise<string[]> {
+  await ensureFolderDefinitions(provider);
+  const file = cache ?? emptyFile();
+  const fromTrimmed = from.trim();
+  const toTrimmed = to.trim();
+  if (!fromTrimmed || !toTrimmed) return file.folders;
+
+  let changed = false;
+  const renamed = file.folders.map((f) => {
+    if (!isSelfOrChild(f, fromTrimmed)) return f;
+    changed = true;
+    // 子は親部分だけ差し替え、子側の表記はそのまま残す
+    return `${toTrimmed}${f.trim().slice(fromTrimmed.length)}`;
+  });
+  if (!changed) return file.folders;
+
+  // 変更後に既存と重複しうる（"A" → "B" で "B" が既にある）ので小文字比較で畳む
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const f of renamed) {
+    const key = f.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    next.push(f);
+  }
+
+  file.folders = next;
+  cache = file;
+  try {
+    await writeAppDataFile(APP_DATA_KEY, DRIVE_FILE_NAME, file, provider);
+  } catch {
+    // 書けなくてもメモリ上は有効
   }
   return file.folders;
 }

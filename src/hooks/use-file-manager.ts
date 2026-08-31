@@ -2004,24 +2004,30 @@ export function useFileManager(authenticated: boolean) {
     [setNoteIndex, queueSaveIndex],
   );
 
-  // 文脈ラベル（候補）を全ノートから一括削除する。使用中の各ノートから該当文脈を外して保存し、
+  // フォルダ（文脈ラベル）を全ノートから一括削除する。使用中の各ノートから外して保存し、
   // インデックス・doc キャッシュを更新する。どのノートも使わなくなるので候補一覧からも消える。
   // 削除した件数を返す（呼び出し側の確認ダイアログは別途 count を見て出す）。
+  //
+  // **子フォルダ（"親/子"）も一緒に外す。** 親を消したのに子タグが残ると、その子だけで
+  // 親がツリーに生き返る。確認ダイアログに出す件数（親の totalCount）も子を含んでいるので、
+  // 消える範囲と見せた件数をここで一致させる。
   const deleteNoteContextEverywhere = useCallback(
     async (value: string): Promise<number> => {
       const key = value.trim().toLowerCase();
       if (!key || !noteIndexRef.current) return 0;
+      const matches = (c: string): boolean => {
+        const k = c.trim().toLowerCase();
+        return k === key || k.startsWith(`${key}/`);
+      };
       const targets = noteIndexRef.current.notes.filter((n) =>
-        (n.noteContexts ?? []).some((c) => c.trim().toLowerCase() === key),
+        (n.noteContexts ?? []).some(matches),
       );
       let updatedIndex = noteIndexRef.current;
       let removed = 0;
       for (const entry of targets) {
         const doc = await loadDoc(entry.noteId);
         if (!doc) continue;
-        const next = normalizeNoteContexts(
-          (doc.noteContexts ?? []).filter((c) => c.trim().toLowerCase() !== key),
-        );
+        const next = normalizeNoteContexts((doc.noteContexts ?? []).filter((c) => !matches(c)));
         const nextDoc: GraphiumDocument = {
           ...doc,
           noteContexts: next,

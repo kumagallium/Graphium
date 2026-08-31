@@ -17,6 +17,7 @@ import {
   clearFolderDefinitionsCache,
   ensureFolderDefinitions,
   removeFolderDefinition,
+  renameFolderDefinition,
 } from "./folder-store";
 
 beforeEach(() => {
@@ -89,6 +90,41 @@ describe("削除", () => {
   it("無いものを除いても何も起きない", async () => {
     readMock.mockResolvedValue({ version: FOLDER_DEFS_VERSION, folders: ["下書き"] });
     expect(await removeFolderDefinition("存在しない")).toEqual(["下書き"]);
+    expect(writeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("親子の連動", () => {
+  it("削除は子の定義も一緒に消す（親だけ消すと子で親が生き返る）", async () => {
+    readMock.mockResolvedValue({
+      version: FOLDER_DEFS_VERSION,
+      folders: ["Sourdough", "Sourdough/Day 7", "Sourdoughs", "Kiln"],
+    });
+    const result = await removeFolderDefinition("Sourdough");
+    // "Sourdoughs" は別のフォルダなので巻き込まない（前方一致だけで消さない）
+    expect(result).toEqual(["Sourdoughs", "Kiln"]);
+  });
+
+  it("名前の変更は子も追従する（子側の表記は保つ）", async () => {
+    readMock.mockResolvedValue({
+      version: FOLDER_DEFS_VERSION,
+      folders: ["Sourdough", "Sourdough/Day 7", "Kiln"],
+    });
+    const result = await renameFolderDefinition("Sourdough", "Levain");
+    expect(result).toEqual(["Levain", "Levain/Day 7", "Kiln"]);
+  });
+
+  it("変更先が既にあるときは重複させない", async () => {
+    readMock.mockResolvedValue({
+      version: FOLDER_DEFS_VERSION,
+      folders: ["A", "B"],
+    });
+    expect(await renameFolderDefinition("A", "b")).toEqual(["b"]);
+  });
+
+  it("対象が無ければ何も書かない", async () => {
+    readMock.mockResolvedValue({ version: FOLDER_DEFS_VERSION, folders: ["A"] });
+    expect(await renameFolderDefinition("Z", "Y")).toEqual(["A"]);
     expect(writeMock).not.toHaveBeenCalled();
   });
 });

@@ -188,7 +188,7 @@ import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues } from "./features/note-context/folder-tree-model";
-import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition } from "./features/note-context/folder-store";
+import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
@@ -9865,13 +9865,9 @@ export function NoteApp() {
           onClose={() => setFolderMenu(null)}
           onRename={(from, to) => {
             void (async () => {
+              // ノートのタグと、まだノートが無いフォルダの定義。どちらも子を連れて動く
               await fm.renameNoteContextEverywhere(from, to);
-              // 空フォルダ定義側も追従させる（ノートがまだ 1 件も無いフォルダ）
-              const defs = await ensureFolderDefinitions();
-              if (defs.some((d) => d.trim().toLowerCase() === from.trim().toLowerCase())) {
-                await removeFolderDefinition(from);
-                setEmptyFolders(await addFolderDefinition(to));
-              }
+              setEmptyFolders(await renameFolderDefinition(from, to));
               // 開いていたフォルダの名前が変わったら選択も新しい名前へ移す
               if (selectedFolder === from) {
                 setSelectedFolder(to);
