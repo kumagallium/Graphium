@@ -43,7 +43,7 @@ import { stepSlashItem } from "../../blocks/step";
 import { columnsSlashItem } from "../../blocks/multi-column";
 import {
   getMediaSlashMenuItems,
-  DEFAULT_MEDIA_SLASH_TITLES,
+  DEFAULT_MEDIA_SLASH_KEYS,
   MediaPickerModal,
   setMediaPickerCallback,
   extractDomain,
@@ -1748,7 +1748,7 @@ function SidePeekInner({
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                   ...(isTauri() ? [sharedCitationSlashItem] : []),
                 ]}
-                excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
+                excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
                 // `@` 参照: 他ノートの参照 + 「新規ノートを作成」。メインエディタと同じく
