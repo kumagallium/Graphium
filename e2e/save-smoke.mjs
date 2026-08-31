@@ -151,8 +151,8 @@ async function createNoteViaUi(page, title, body) {
 }
 
 async function openNoteListFromSidebar(page) {
-  // サイドバーの「Notes」ナビ（テキスト + 件数バッジ）。「+ Note」とは一致しない。
-  await page.getByRole("button", { name: /^Notes\b/ }).first().click();
+  // サイドバーの「All Notes」ナビ（テキスト + 件数バッジ）。「+ Note」とは一致しない。
+  await page.getByRole("button", { name: /^All Notes\b/ }).first().click();
   await page.locator("table tbody tr").first().waitFor({ timeout: 15_000 });
 }
 
