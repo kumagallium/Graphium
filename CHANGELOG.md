@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.49.0](https://github.com/kumagallium/Graphium/compare/v0.48.0...v0.49.0) - 2026-08-31
+
+- [feat] Sidebar folder tree (noteContexts presented as folders) by @kumagallium in https://github.com/kumagallium/Graphium/pull/804
+- [fix] Rename Context to Folder across the UI and manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/805
+
 ## [v0.48.0](https://github.com/kumagallium/Graphium/compare/v0.47.1...v0.48.0) - 2026-08-31
 
 - [feat] Table expand view with view-only sorting by @kumagallium in https://github.com/kumagallium/Graphium/pull/798
