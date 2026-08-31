@@ -126,6 +126,55 @@ type SandboxEditorProps = {
  * 落ちてしまう。セル内のときだけ「素材として登録 → inlineImage を挿入」に差し替え、
  * セル外は false を返して既定の画像ブロック挿入に任せる。
  */
+/**
+ * ノート内の画像ブロックをセルへドラッグしたときの受け口。
+ * ProseMirror の内部ドラッグ（view.dragging）に画像ブロックが入っていて、
+ * 落とした先がセルなら、インライン画像に変えて元のブロックを消す（移動）。
+ * セル外なら false を返して既定のブロック移動に任せる。
+ */
+function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
+  const slice = view.dragging?.slice;
+  if (!slice) return false;
+  // ドラッグ中の断片から画像ブロック（url / name を持つ image ノード）を拾う
+  let image: { url: string; name: string } | undefined;
+  slice.content.descendants((node: any) => {
+    if (image) return false;
+    if (node.type?.name === "image" && typeof node.attrs?.url === "string" && node.attrs.url) {
+      image = { url: node.attrs.url, name: String(node.attrs.name ?? "") };
+      return false;
+    }
+    return true;
+  });
+  if (!image) return false;
+  const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (!at || !isInsideTableCell(view, at.pos)) return false;
+  const fileId = getActiveProvider().extractFileId(image.url);
+  const nodeType = view.state.schema.nodes.inlineImage;
+  if (!fileId || !nodeType) return false;
+  event.preventDefault();
+  const tr = view.state.tr;
+  // 元ブロックを先に消すと挿入位置がずれるので、挿入 → 元位置を消す の順に組む
+  tr.insert(at.pos, nodeType.create({ fileId, name: image.name }));
+  const from = view.dragging.move ? tr.mapping.map(view.state.selection.from) : null;
+  if (from !== null) {
+    const to = tr.mapping.map(view.state.selection.to);
+    if (to > from) tr.delete(from, to);
+  }
+  view.dispatch(tr);
+  view.dragging = null;
+  return true;
+}
+
+/** その位置がテーブルのセルの中か */
+function isInsideTableCell(view: any, pos: number): boolean {
+  const $pos = view.state.doc.resolve(pos);
+  for (let d = $pos.depth; d > 0; d--) {
+    const name = $pos.node(d).type.name;
+    if (name === "tableCell" || name === "tableHeader") return true;
+  }
+  return false;
+}
+
 function insertCellImagesFromFiles(
   view: any,
   fileList: FileList | null | undefined,
@@ -142,16 +191,7 @@ function insertCellImagesFromFiles(
     if (!at) return false;
     pos = at.pos;
   }
-  const $pos = view.state.doc.resolve(pos);
-  let inCell = false;
-  for (let d = $pos.depth; d > 0; d--) {
-    const name = $pos.node(d).type.name;
-    if (name === "tableCell" || name === "tableHeader") {
-      inCell = true;
-      break;
-    }
-  }
-  if (!inCell) return false;
+  if (!isInsideTableCell(view, pos)) return false;
   dropEvent?.preventDefault();
   void (async () => {
     let insertAt = pos;
@@ -236,7 +276,9 @@ export function SandboxEditor({
       editorProps: {
         handleDOMEvents: {
           drop: (view: any, event: any) =>
-            insertCellImagesFromFiles(view, event?.dataTransfer?.files, event, uploadFile),
+            // ファイルの drop（外部から）と、ノート内の画像ブロックの drag（内部）の両方
+            insertCellImagesFromFiles(view, event?.dataTransfer?.files, event, uploadFile) ||
+            moveImageBlockIntoCell(view, event),
           paste: (view: any, event: any) => {
             const handled = insertCellImagesFromFiles(
               view,

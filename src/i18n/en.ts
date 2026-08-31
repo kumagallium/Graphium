@@ -2031,6 +2031,7 @@ export const en: Record<string, string> = {
   "paramLink.open": "Open reference",
   "inlineImage.clickToOpen": "Click to view larger",
   "inlineImage.missing": "Image unavailable",
+  "inlineImage.resize": "Drag to resize (double-click to reset)",
   "tableMeta.sortDesc": "Sort descending",
 
   // 記録テーブル

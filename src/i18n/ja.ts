@@ -2029,6 +2029,7 @@ export const ja: Record<string, string> = {
   "paramLink.open": "参照先を開く",
   "inlineImage.clickToOpen": "クリックで大きく表示",
   "inlineImage.missing": "画像を読み込めません",
+  "inlineImage.resize": "ドラッグでサイズ変更（ダブルクリックで元に戻す）",
   "tableMeta.sortDesc": "降順で並べ替え",
 
   // 時系列テーブル

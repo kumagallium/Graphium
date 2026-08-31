@@ -8,6 +8,7 @@
 // データ行」— 同名行が複数ある場合は最初の行だけが対象（既知の制限）。
 
 import { resolveParamLinkTarget } from "./param-link";
+import { TABLE_ROW_IDENTITY_STYLE } from "../../lib/table-row-identity";
 
 /** セルからテキストを取り出す（generator の extractCellText と同じ 2 形式対応） */
 function cellText(cell: any): string {
@@ -19,33 +20,45 @@ function cellText(cell: any): string {
     .trim();
 }
 
+/**
+ * 値から inline content を組み立てる共通ルール。
+ * - `@画像素材名` → インライン画像（セルの中に画像が見える）。行 ID が要る名前セルは
+ *   画像 + 名前テキストにして identity を保つ（画像だけだと style の置き場所が無い）
+ * - それ以外の `@参照` → 本文セルの @メンションと同じ青いテキスト
+ */
+function buildCellContent(text: string, styles: Record<string, string>): any[] {
+  const target = resolveParamLinkTarget(text);
+  if (target?.startsWith("image:")) {
+    const fileId = target.slice("image:".length);
+    const name = text.trim().replace(/^@/, "");
+    const image = { type: "inlineImage", props: { fileId, name } };
+    const identity = styles[TABLE_ROW_IDENTITY_STYLE];
+    // 行 ID は text inline の style にしか置けない。名前セルは名前も残す
+    return identity
+      ? [image, { type: "text", text: name, styles: { [TABLE_ROW_IDENTITY_STYLE]: identity } }]
+      : [image];
+  }
+  const next = { ...styles };
+  if (target) next.textColor = "blue";
+  else if (next.textColor === "blue") delete next.textColor;
+  return [{ type: "text", text, styles: next }];
+}
+
 /** セルの形式（tableCell / 旧 inline 配列）を保ったままテキストを差し替える */
 function withCellText(cell: any, text: string): any {
   const priorContent = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? (cell.content ?? []) : [];
   const priorText = priorContent.find((inline: any) => inline?.type === "text");
   // 名前セルの tableRowIdentity を含め、既存の text style を落とさない。
-  const styles: Record<string, string> = { ...(priorText?.styles ?? {}) };
-  // @参照として解決できる値は、本文セルの @メンションと同じ青にする
-  // （見た目が揃い、本文側のクリックハンドラの対象にもなる）。
-  // @参照でなくなったら青だけ外す（他の色・行 ID スタイルは触らない）
-  if (resolveParamLinkTarget(text)) styles.textColor = "blue";
-  else if (styles.textColor === "blue") delete styles.textColor;
-  const content = [{ type: "text", text, styles }];
+  const content = buildCellContent(text, { ...(priorText?.styles ?? {}) });
   if (cell && !Array.isArray(cell) && cell.type === "tableCell") {
     return { ...cell, content };
   }
   return content;
 }
 
-/** 新しいセルの content を作る（@参照なら withCellText と同じ規則で青にする） */
+/** 新しいセルの content を作る（withCellText と同じ規則） */
 function newCellContent(text: string): any[] {
-  return [
-    {
-      type: "text",
-      text,
-      styles: resolveParamLinkTarget(text) ? { textColor: "blue" } : {},
-    },
-  ];
+  return buildCellContent(text, {});
 }
 
 type TableTarget = {

@@ -11,7 +11,7 @@
 // 再マウントしうるので、毎回 provider を叩くとセル編集がちらつく。
 
 import { createReactInlineContentSpec } from "@blocknote/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImageOff } from "lucide-react";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { getIndexTableCallbacks } from "../index-table/context";
@@ -41,6 +41,11 @@ export const InlineImage = createReactInlineContentSpec(
       fileId: { default: "" },
       /** 素材名（alt・読み込み失敗時の表示・Markdown 書き出しの alt） */
       name: { default: "" },
+      /**
+       * 表示幅（px）。0 は既定（行の高さに収まるサムネイル）。
+       * 右下のハンドルをドラッグすると入る。追加プロパティなので既存データは 0 のまま
+       */
+      width: { default: 0 },
     },
     content: "none" as const,
   },
@@ -48,8 +53,13 @@ export const InlineImage = createReactInlineContentSpec(
     render: (props) => {
       const fileId = String((props.inlineContent as any).props?.fileId ?? "");
       const name = String((props.inlineContent as any).props?.name ?? "");
+      const width = Number((props.inlineContent as any).props?.width ?? 0) || 0;
+      const editable = (props.editor as any).isEditable !== false;
       const [url, setUrl] = useState<string | null>(null);
       const [failed, setFailed] = useState(false);
+      // ドラッグ中の見た目だけ先に動かし、離したときに一度だけ保存する
+      const [dragWidth, setDragWidth] = useState<number | null>(null);
+      const imgRef = useRef<HTMLImageElement | null>(null);
 
       useEffect(() => {
         if (!fileId) {
@@ -69,6 +79,35 @@ export const InlineImage = createReactInlineContentSpec(
           cancelled = true;
         };
       }, [fileId]);
+
+      const shownWidth = dragWidth ?? (width || 0);
+
+      const commitWidth = (next: number) => {
+        setDragWidth(null);
+        (props.updateInlineContent as any)({
+          type: "inlineImage",
+          props: { fileId, name, width: Math.round(next) },
+        });
+      };
+
+      /** 右下ハンドルのドラッグ。掴んだ時点の幅から水平移動ぶんを足す */
+      const startResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startWidth = imgRef.current?.getBoundingClientRect().width ?? 120;
+        const onMove = (ev: MouseEvent) => {
+          // 極端に潰れる/伸びるのを防ぐ（セルの中に収まる範囲）
+          setDragWidth(Math.max(24, Math.min(640, startWidth + (ev.clientX - startX))));
+        };
+        const onUp = (ev: MouseEvent) => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          commitWidth(Math.max(24, Math.min(640, startWidth + (ev.clientX - startX))));
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      };
 
       const open = () => {
         if (!fileId) return;
@@ -114,19 +153,57 @@ export const InlineImage = createReactInlineContentSpec(
               {name || t("inlineImage.missing")}
             </span>
           ) : (
-            <img
-              src={url}
-              alt={name}
-              style={{
-                // 行内に収まりつつ絵として判別できる高さ。セルの行も同じだけ育つ
-                maxHeight: "3.2em",
-                maxWidth: 220,
-                borderRadius: 4,
-                border: "1px solid var(--color-border)",
-                display: "inline-block",
-                objectFit: "contain",
-              }}
-            />
+            <span style={{ position: "relative", display: "inline-flex", lineHeight: 0 }}>
+              <img
+                ref={imgRef}
+                src={url}
+                alt={name}
+                style={
+                  shownWidth
+                    ? {
+                        width: shownWidth,
+                        height: "auto",
+                        borderRadius: 4,
+                        border: "1px solid var(--color-border)",
+                        display: "inline-block",
+                        objectFit: "contain",
+                      }
+                    : {
+                        // 既定は行内に収まりつつ絵として判別できる高さ。セルの行も同じだけ育つ
+                        maxHeight: "3.2em",
+                        maxWidth: 220,
+                        borderRadius: 4,
+                        border: "1px solid var(--color-border)",
+                        display: "inline-block",
+                        objectFit: "contain",
+                      }
+                }
+              />
+              {editable && (
+                // 右下のリサイズハンドル。掴んでいる間だけ画面全体で座標を追う
+                <span
+                  onMouseDown={startResize}
+                  onDoubleClick={(e) => {
+                    // ダブルクリックで既定サイズに戻す（幅を捨てる）
+                    e.stopPropagation();
+                    commitWidth(0);
+                  }}
+                  title={t("inlineImage.resize")}
+                  style={{
+                    position: "absolute",
+                    right: -3,
+                    bottom: -3,
+                    width: 10,
+                    height: 10,
+                    borderRadius: 2,
+                    border: "1px solid var(--color-border)",
+                    background: "var(--color-card)",
+                    cursor: "nwse-resize",
+                    opacity: 0.85,
+                  }}
+                />
+              )}
+            </span>
           )}
         </span>
       );
