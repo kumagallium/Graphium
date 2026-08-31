@@ -177,9 +177,9 @@ function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
  * セル外に落ちたら画像ブロックとして置き直し、元のインライン画像を消す。
  * セル内での移動は既定に任せる（インライン要素のままで良い）。
  */
-function moveCellImageToBlock(view: any, event: DragEvent): boolean {
+function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean {
   const raw = event.dataTransfer?.getData(INLINE_IMAGE_DRAG_MIME);
-  if (!raw) return false;
+  if (!raw || !editor) return false;
   let payload: { fileId?: string; name?: string };
   try {
     payload = JSON.parse(raw);
@@ -189,11 +189,20 @@ function moveCellImageToBlock(view: any, event: DragEvent): boolean {
   if (!payload.fileId) return false;
   const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
   if (!at || isInsideTableCell(view, at.pos)) return false;
-  const imageType = view.state.schema.nodes.image;
-  if (!imageType) return false;
+  // 落とし先のブロック（段落の途中には差し込まない）
+  const $at = view.state.doc.resolve(at.pos);
+  let targetBlockId: string | null = null;
+  for (let d = $at.depth; d > 0; d--) {
+    const node = $at.node(d);
+    if (node.type.name === "blockContainer") {
+      targetBlockId = node.attrs?.id ?? null;
+      break;
+    }
+  }
+  if (!targetBlockId) return false;
   event.preventDefault();
   clearCellDropState();
-  // 元のインライン画像を探す（同じ fileId の最初の 1 つ）
+  // 元のインライン画像を消す（同じ fileId の最初の 1 つ）
   let fromPos = -1;
   let size = 0;
   view.state.doc.descendants((node: any, pos: number) => {
@@ -205,27 +214,15 @@ function moveCellImageToBlock(view: any, event: DragEvent): boolean {
     }
     return true;
   });
-  const tr = view.state.tr;
-  // 落とし先の blockContainer の後ろに画像ブロックを置く（段落の途中に差し込まない）
-  const $at = view.state.doc.resolve(at.pos);
-  let insertAt = at.pos;
-  for (let d = $at.depth; d > 0; d--) {
-    if ($at.node(d).type.name === "blockContainer") {
-      insertAt = $at.after(d);
-      break;
-    }
-  }
-  const container = view.state.schema.nodes.blockContainer;
-  const imageNode = imageType.create({
-    url: `media-server://${payload.fileId}`,
-    name: payload.name ?? "",
-  });
-  tr.insert(insertAt, container ? container.create(null, imageNode) : imageNode);
-  if (fromPos >= 0) {
-    const from = tr.mapping.map(fromPos);
-    tr.delete(from, from + size);
-  }
-  view.dispatch(tr);
+  if (fromPos >= 0) view.dispatch(view.state.tr.delete(fromPos, fromPos + size));
+  // 画像ブロックは editor API で足す。ProseMirror ノードを直接組むと BlockNote の
+  // URL 解決（resolveFileUrl）を通らず、media-server:// のまま img に入って
+  // ERR_UNKNOWN_URL_SCHEME になる
+  editor.insertBlocks(
+    [{ type: "image", props: { url: `media-server://${payload.fileId}`, name: payload.name ?? "" } }],
+    targetBlockId,
+    "after",
+  );
   return true;
 }
 
@@ -509,7 +506,7 @@ export function SandboxEditor({
             const handled =
               insertCellImagesFromFiles(view, event?.dataTransfer, event, uploadFileRef.current) ||
               moveImageBlockIntoCell(view, event) ||
-              moveCellImageToBlock(view, event);
+              moveCellImageToBlock(view, event, editorRef.current);
             if (!handled && isImageDrag(view, event)) {
               // 受け入れ表示（バー）を出したのに取りこぼした状態。BlockNote の既定処理に
               // 落ちるとセルの外にブロックができるので、原因を追えるよう残す
