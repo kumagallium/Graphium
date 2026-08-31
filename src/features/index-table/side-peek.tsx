@@ -138,6 +138,7 @@ import { setEditorSidePeekCallback } from "./context";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
+import { applyCalcWritebacks, type CalcWritebackRequest } from "../../blocks/calc/writeback";
 
 type SidePeekProps = {
   noteId: string;
@@ -841,7 +842,13 @@ function SidePeekInner({
     setChartAssetSourceCallback(sidePeekEditor, (onDone) => setChartAssetRequest({ onDone }));
     // 表の中身を読む側（計算ブロック）への配布（note-app と同じ理由・同じ経路）
     let publishTimer: ReturnType<typeof setTimeout> | null = null;
-    const publish = () => publishTableColumns(sidePeekEditor, tableMetaStore);
+    const publish = () => {
+      publishTableColumns(sidePeekEditor, tableMetaStore);
+      applyCalcWritebacks(
+        sidePeekEditor,
+        tableMetaStore.calcWritebacks as Record<string, CalcWritebackRequest[]>,
+      );
+    };
     const offContentChange =
       typeof sidePeekEditor.onEditorContentChange === "function"
         ? sidePeekEditor.onEditorContentChange(() => {

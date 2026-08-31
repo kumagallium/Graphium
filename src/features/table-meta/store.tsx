@@ -57,6 +57,15 @@ type TableMetaStoreValue = {
   tableColumns: TableColumnsIndex | null;
   /** ホストが本文の変更のたびに表の中身を置き直す */
   setTableColumns: (columns: TableColumnsIndex) => void;
+  /** 表示名 → 表ブロック ID（書き戻し先の選択・保存は blockId で行う） */
+  tableBlockIds: Record<string, string> | null;
+  setTableBlockIds: (ids: Record<string, string>) => void;
+  /**
+   * calc ブロックからの書き戻し宣言（calcBlockId → 書きたい内容）。
+   * 実際の書き込みはホストが行う（applyCalcWritebacks）。null で宣言を消す
+   */
+  calcWritebacks: Record<string, unknown[]>;
+  setCalcWriteback: (calcBlockId: string, requests: unknown[] | null) => void;
   // ── 保存・復元 ──
   getSnapshot: () => Record<string, TableMeta>;
   restore: (data: Record<string, TableMeta> | undefined) => void;
@@ -81,6 +90,27 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+  const [tableBlockIds, setTableBlockIdsState] = useState<Record<string, string> | null>(null);
+  const setTableBlockIds = useCallback((ids: Record<string, string>) => {
+    setTableBlockIdsState((prev) =>
+      prev && JSON.stringify(prev) === JSON.stringify(ids) ? prev : ids
+    );
+  }, []);
+  // calc → 表の書き戻し宣言。書き込みハンドラ（ホスト）とは参照同値スキップで縁を切る
+  const [calcWritebacks, setCalcWritebacksState] = useState<Record<string, unknown[]>>({});
+  const setCalcWriteback = useCallback((calcBlockId: string, requests: unknown[] | null) => {
+    setCalcWritebacksState((prev) => {
+      const current = prev[calcBlockId];
+      if (requests === null) {
+        if (current === undefined) return prev;
+        const next = { ...prev };
+        delete next[calcBlockId];
+        return next;
+      }
+      if (current && JSON.stringify(current) === JSON.stringify(requests)) return prev;
+      return { ...prev, [calcBlockId]: requests };
+    });
+  }, []);
   const metasRef = useRef(metas);
   metasRef.current = metas;
   const [captionEditRequest, setCaptionEditRequest] = useState<string | null>(null);
@@ -206,6 +236,10 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
       if (!isTableMetaEmpty(meta)) next.set(blockId, meta);
     }
     setMetas(next);
+    // ノートをまたいで前のノートの配布・宣言を残さない（誤書き込み防止）
+    setTableColumnsState(null);
+    setTableBlockIdsState(null);
+    setCalcWritebacksState({});
   }, []);
 
   const requestCaptionEdit = useCallback((blockId: string) => {
@@ -232,6 +266,10 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         setNoteLink,
         tableColumns,
         setTableColumns,
+        tableBlockIds,
+        setTableBlockIds,
+        calcWritebacks,
+        setCalcWriteback,
         getSnapshot,
         restore,
         captionEditRequest,

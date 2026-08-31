@@ -112,10 +112,19 @@ export function publishTableColumns(
   store: {
     getCaption: (blockId: string) => string;
     setTableColumns: (columns: TableColumnsIndex) => void;
+    setTableBlockIds?: (ids: Record<string, string>) => void;
   } | null | undefined,
 ): void {
   const doc = editor?.document;
   if (!Array.isArray(doc) || !store) return;
   const displayNames = computeTableDisplayNames(doc, store.getCaption);
   store.setTableColumns(buildTableIndex(collectTableColumns(doc, displayNames)));
+  // 書き戻し先の選択・実行は blockId で行うため、表示名 → blockId も一緒に配る
+  if (store.setTableBlockIds) {
+    const ids: Record<string, string> = {};
+    for (const [blockId, name] of displayNames) {
+      if (!(name in ids)) ids[name] = blockId; // 同名は文書順で先の表（読み取りと同じ規則）
+    }
+    store.setTableBlockIds(ids);
+  }
 }

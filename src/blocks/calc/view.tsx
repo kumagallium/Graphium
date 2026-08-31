@@ -22,8 +22,15 @@
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Calculator } from "lucide-react";
+import { ArrowRightToLine, Calculator } from "lucide-react";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
+import {
+  assignedVariableOf,
+  extractReadColumns,
+  parseCalcTargets,
+  type CalcTargets,
+  type CalcWritebackRequest,
+} from "./writeback";
 import { applyCalcSuggestion, computeCalcSuggestion, type CalcSuggestion } from "./suggest";
 import { buildTableIndex, collectTableColumns } from "./table-scope";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
@@ -40,6 +47,8 @@ export const CalcBlock = createReactBlockSpec(
       // 最終評価スナップショット（CalcLineResult[] の JSON）。
       // 読み取り専用表示や、評価エンジン読込前の初期表示に使う。
       results: { default: "" },
+      // 表への書き戻し先（CalcTargets の JSON）。変数名 → { tableBlockId, column }
+      targets: { default: "" },
     },
     content: "none" as const,
   },
@@ -49,7 +58,9 @@ export const CalcBlock = createReactBlockSpec(
       useLocaleSubscription();
       const source = String(props.block.props.source ?? "");
       const savedResults = String(props.block.props.results ?? "");
+      const savedTargets = String((props.block.props as { targets?: string }).targets ?? "");
       const editable = (props.editor as any).isEditable !== false;
+      const targets = useMemo(() => parseCalcTargets(savedTargets), [savedTargets]);
 
       const [draft, setDraft] = useState(source);
       const [results, setResults] = useState<CalcLineResult[]>(() => parseCalcResults(savedResults));
@@ -57,6 +68,8 @@ export const CalcBlock = createReactBlockSpec(
       // 表参照の入力補完（table[ / col( の途中で表名・列名の候補を出す）
       const [suggest, setSuggest] = useState<CalcSuggestion | null>(null);
       const [suggestIndex, setSuggestIndex] = useState(0);
+      // 書き戻し先ピッカー（⇥ で開く。表 → 列の 2 段選択）
+      const [picker, setPicker] = useState<{ varName: string; tableName: string | null } | null>(null);
       const textareaRef = useRef<HTMLTextAreaElement>(null);
       // 評価の順序が入れ替わっても古い結果で上書きしないための世代カウンタ
       const evalGen = useRef(0);
@@ -70,12 +83,19 @@ export const CalcBlock = createReactBlockSpec(
         }
       }, [source]);
 
-      const commit = (nextSource: string, nextResults?: CalcLineResult[]) => {
+      const commit = (
+        nextSource: string,
+        nextResults?: CalcLineResult[],
+        nextTargets?: CalcTargets,
+      ) => {
         lastCommitted.current = nextSource;
         (props.editor as any).updateBlock(props.block, {
           props: {
             source: nextSource,
             ...(nextResults ? { results: JSON.stringify(nextResults) } : {}),
+            ...(nextTargets !== undefined
+              ? { targets: Object.keys(nextTargets).length > 0 ? JSON.stringify(nextTargets) : "" }
+              : {}),
           },
         });
       };
@@ -120,6 +140,23 @@ export const CalcBlock = createReactBlockSpec(
         refreshSuggest(r.text, r.caret);
       };
 
+      // この式が読んでいる (表名, 列名)。読んでいる列へ書くと発振するので候補から外す
+      const readColumns = useMemo(() => extractReadColumns(draft), [draft]);
+      const setTarget = (varName: string, target: { tableBlockId: string; column: string } | null) => {
+        const next: CalcTargets = { ...targets };
+        if (target) next[varName] = target;
+        else delete next[varName];
+        commit(draft, undefined, next);
+        setPicker(null);
+      };
+      // 表示用: blockId → 表示名（ストア配布の逆引き）
+      const tableNameOfId = (blockId: string): string | undefined => {
+        for (const [name, id] of Object.entries(tableStore?.tableBlockIds ?? {})) {
+          if (id === blockId) return name;
+        }
+        return undefined;
+      };
+
       // 入力から少し置いて評価。結果はスナップショットとして props にも保存する
       useEffect(() => {
         if (!editable) return;
@@ -127,9 +164,23 @@ export const CalcBlock = createReactBlockSpec(
         const timer = setTimeout(async () => {
           // mathjs の識別子は ASCII 限定なので、表は文字列キーで引く形にする
           //   表["秤量表"]["質量"] / col("秤量表", "質量")
-          const evaluated = await evaluateSource(draft, tableIndex ?? undefined);
+          const { lines: evaluated, exports } = await evaluateSource(
+            draft,
+            tableIndex ?? undefined,
+            Object.keys(targets),
+          );
           if (gen !== evalGen.current) return;
           setResults(evaluated);
+          // 書き戻し先が設定された変数の値をストアに宣言する。
+          // 実際の書き込みはホスト（実エディタを持つ側）が差分だけ行う
+          if (tableStore) {
+            const requests: CalcWritebackRequest[] = [];
+            for (const [name, target] of Object.entries(targets)) {
+              const texts = exports[name];
+              if (texts) requests.push({ ...target, texts });
+            }
+            tableStore.setCalcWriteback(props.block.id, requests.length > 0 ? requests : null);
+          }
           // 評価中にさらに入力が進んでいたら、その評価に任せる
           if (draft === lastCommitted.current) {
             commit(draft, evaluated);
@@ -137,7 +188,16 @@ export const CalcBlock = createReactBlockSpec(
         }, 200);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [draft, editable, tableSignature]);
+      }, [draft, editable, tableSignature, savedTargets]);
+
+      // ブロックが消えたら宣言も消す（残ると表が同期され続ける）
+      useEffect(() => {
+        const blockId = props.block.id;
+        return () => {
+          tableStore?.setCalcWriteback(blockId, null);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
 
       const copyResult = (index: number, text: string) => {
         void navigator.clipboard?.writeText(text);
@@ -230,8 +290,9 @@ export const CalcBlock = createReactBlockSpec(
 
             {/* 右: 行ごとの評価結果。クリックでコピーできる */}
             {!empty && (
-              <div data-calc-results style={styles.resultsCol} aria-hidden={false}>
-                {lines.map((_, i) => {
+              <div data-calc-results style={styles.resultsColWrap}>
+              <div style={styles.resultsCol} aria-hidden={false}>
+                {lines.map((line, i) => {
                   const r = results[i];
                   if (!r || r.kind === "empty" || r.kind === "comment") {
                     return <div key={i} style={styles.resultLine}>{" "}</div>;
@@ -243,17 +304,98 @@ export const CalcBlock = createReactBlockSpec(
                       </div>
                     );
                   }
+                  const varName = editable ? assignedVariableOf(line) : null;
+                  const target = varName ? targets[varName] : undefined;
+                  const targetLabel = target
+                    ? `${tableNameOfId(target.tableBlockId) ?? "?"} → ${target.column}`
+                    : undefined;
                   return (
-                    <div
-                      key={i}
-                      style={{ ...styles.resultLine, ...styles.resultValue }}
-                      title={t("calc.clickToCopy")}
-                      onClick={() => copyResult(i, r.text ?? "")}
-                    >
-                      {copiedLine === i ? t("calc.copied") : r.text || " "}
+                    <div key={i} style={{ ...styles.resultLine, ...styles.resultRow }}>
+                      <span
+                        style={styles.resultValue}
+                        title={t("calc.clickToCopy")}
+                        onClick={() => copyResult(i, r.text ?? "")}
+                      >
+                        {copiedLine === i ? t("calc.copied") : r.text || " "}
+                      </span>
+                      {varName && (
+                        <button
+                          type="button"
+                          data-test="calc-writeback-btn"
+                          title={targetLabel ?? t("calc.writeToTable")}
+                          onClick={() =>
+                            setPicker((cur) =>
+                              cur?.varName === varName ? null : { varName, tableName: null }
+                            )
+                          }
+                          style={{
+                            ...styles.writebackBtn,
+                            ...(target ? styles.writebackBtnActive : {}),
+                          }}
+                        >
+                          <ArrowRightToLine size={12} strokeWidth={2} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
+              </div>
+              {picker && (
+                <div style={styles.writebackBox} data-test="calc-writeback-picker">
+                  <div style={styles.writebackLabel}>
+                    {picker.tableName === null
+                      ? `${picker.varName} → ${t("calc.writebackPickTable")}`
+                      : `${picker.varName} → ${picker.tableName} → ${t("calc.writebackPickColumn")}`}
+                  </div>
+                  <div style={styles.writebackItems}>
+                    {picker.tableName === null ? (
+                      <>
+                        {Object.keys(tableStore?.tableColumns ?? {}).map((name) => (
+                          <button
+                            key={name}
+                            type="button"
+                            style={styles.suggestItem}
+                            onClick={() => setPicker({ ...picker, tableName: name })}
+                          >
+                            {name}
+                          </button>
+                        ))}
+                        {targets[picker.varName] && (
+                          <button
+                            type="button"
+                            style={{ ...styles.suggestItem, ...styles.writebackClear }}
+                            onClick={() => setTarget(picker.varName, null)}
+                          >
+                            {t("calc.writebackClear")}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      Object.keys(tableStore?.tableColumns?.[picker.tableName] ?? {}).map((column) => {
+                        const reads = readColumns.has(`${picker.tableName} ${column}`);
+                        const blockId = tableStore?.tableBlockIds?.[picker.tableName ?? ""];
+                        return (
+                          <button
+                            key={column}
+                            type="button"
+                            disabled={reads || !blockId}
+                            title={reads ? t("calc.writebackReadColumn") : undefined}
+                            style={{
+                              ...styles.suggestItem,
+                              ...(reads || !blockId ? styles.writebackDisabled : {}),
+                            }}
+                            onClick={() =>
+                              blockId && setTarget(picker.varName, { tableBlockId: blockId, column })
+                            }
+                          >
+                            {column}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
               </div>
             )}
           </div>
@@ -339,9 +481,15 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "pre",
     color: "var(--color-text-tertiary)",
   },
-  resultsCol: {
+  resultsColWrap: {
     flexShrink: 0,
     maxWidth: "45%",
+    position: "relative",
+    display: "flex",
+  },
+  resultsCol: {
+    flex: 1,
+    minWidth: 0,
     padding: "6px 8px",
     borderRadius: 6,
     background: "var(--color-card)",
@@ -356,9 +504,66 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "pre",
     minHeight: `${LINE_HEIGHT}em`,
   },
+  resultRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 4,
+  },
   resultValue: {
     color: "var(--color-primary)",
     cursor: "pointer",
+  },
+  writebackBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 18,
+    height: 18,
+    padding: 0,
+    border: "none",
+    borderRadius: 4,
+    background: "transparent",
+    color: "var(--color-text-tertiary)",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  writebackBtnActive: {
+    color: "var(--color-primary)",
+    background: "var(--color-muted)",
+  },
+  writebackBox: {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    right: 0,
+    zIndex: 30,
+    minWidth: 180,
+    maxWidth: 320,
+    padding: 6,
+    borderRadius: 6,
+    background: "var(--color-card)",
+    border: "1px solid var(--color-border)",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+  },
+  writebackLabel: {
+    fontSize: 11,
+    color: "var(--color-muted-foreground)",
+    padding: "0 4px 4px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  writebackItems: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 2,
+  },
+  writebackClear: {
+    color: "var(--color-error)",
+  },
+  writebackDisabled: {
+    opacity: 0.4,
+    cursor: "not-allowed",
   },
   resultError: {
     color: "var(--color-error)",

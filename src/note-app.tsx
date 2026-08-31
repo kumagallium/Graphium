@@ -157,6 +157,7 @@ import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assist
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
 import { rememberBlobUrl } from "./features/inline-image/spec";
 import { publishTableColumns } from "./blocks/calc/table-scope";
+import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
@@ -4441,7 +4442,14 @@ function NoteEditorInner({
     const editor: any = mainEditor;
     if (!editor || typeof editor.onEditorContentChange !== "function") return;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const publish = () => publishTableColumns(editor, tableMetaStoreRef.current);
+    const publish = () => {
+      publishTableColumns(editor, tableMetaStoreRef.current);
+      // calc → 表の書き戻しも同じ拍で適用する（差分が無ければ何もしない）
+      applyCalcWritebacks(
+        editor,
+        tableMetaStoreRef.current.calcWritebacks as Record<string, CalcWritebackRequest[]>,
+      );
+    };
     const off = editor.onEditorContentChange(() => {
       // タイプ毎に全表を読み直すのは無駄なので少し待って 1 回にまとめる
       if (timer) clearTimeout(timer);
@@ -4455,6 +4463,15 @@ function NoteEditorInner({
     // metas も依存に含める: キャプション変更（表の改名）は本文編集ではないため
     // onEditorContentChange が発火しない。表示名の変化はこの再実行で配り直す
   }, [mainEditor, tableMetaStore.metas]);
+
+  // 書き戻しの宣言が変わった瞬間にも適用する（本文編集を伴わない、
+  // 式の評価完了や ⇥ の設定直後のため）。applyCalcWritebacks は冪等
+  useEffect(() => {
+    applyCalcWritebacks(
+      mainEditor,
+      tableMetaStore.calcWritebacks as Record<string, CalcWritebackRequest[]>,
+    );
+  }, [mainEditor, tableMetaStore.calcWritebacks]);
 
   // 貼られた画像の自動 OCR。ノートを開いた時点の既存画像は対象外で、
   // このノートを開いている間に新しく入った画像だけを読む。
