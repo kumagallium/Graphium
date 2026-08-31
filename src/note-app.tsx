@@ -154,7 +154,7 @@ import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
-import { setParamLinkResolver } from "./features/network-graph/param-link";
+import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
@@ -4060,6 +4060,22 @@ function NoteEditorInner({
       if (note) return note.isWiki ? `wiki:${note.noteId}` : note.noteId;
       return resolveAssetExternalId(name);
     });
+    // 値セルで @ を打ったときの候補も本文メンションと同じ材料から出す。
+    // 表の値は測定ファイル参照が本命なので素材を先に並べる
+    setParamLinkSuggestions((query) => {
+      const q = query.normalize("NFC").toLowerCase();
+      const assets = getAssetSuggestions(mediaIndex).map((sug) => ({
+        label: sug.label,
+        insert: `@${sug.label.replace(/^(📄|🧾)\s*/, "")}`,
+      }));
+      const notes = getNoteSuggestions(files, undefined, noteIndex).map((sug) => ({
+        label: sug.label,
+        insert: `@${sug.label}`,
+      }));
+      return [...assets, ...notes]
+        .filter((sug) => q === "" || sug.label.normalize("NFC").toLowerCase().includes(q))
+        .slice(0, 8);
+    });
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       // サイドピーク内のメンションは、そのピーク自身の linkStore で解決する必要があるため
@@ -4162,6 +4178,7 @@ function NoteEditorInner({
     return () => {
       document.removeEventListener("click", handleClick, true);
       setParamLinkResolver(null);
+      setParamLinkSuggestions(null);
     };
   }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource, tableMetaStore]);
 

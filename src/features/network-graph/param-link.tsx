@@ -9,7 +9,9 @@
 // - 開く経路は onOpenExternalNote（既存）に乗せる。外部ソース ID
 //   （pdf:/document:/data:/url:）の振り分けは受け側の Side Peek 実装が行う
 
-import { ExternalLink } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
+import { ArrowUpRight } from "lucide-react";
 import { t } from "../../i18n";
 
 /**
@@ -35,7 +37,9 @@ export function resolveParamLinkTarget(value: string | null | undefined): string
 
 /**
  * 参照先へ飛ぶ小さなボタン。解決できた値の隣に置く。
- * （別ノート由来ノードの ↗ と同じ語彙。編集クリックと混ざらないようボタンだけがリンク）
+ * アイコンは共有引用カードの「開く」と同じ ArrowUpRight — サイドピークで開く操作の
+ * 既存語彙で、ExternalLink（箱 + 矢印）だと別タブで開きそうに見えるため使わない。
+ * 編集クリックと混ざらないようボタンだけがリンク
  */
 export function ParamLinkButton({
   targetId,
@@ -72,7 +76,155 @@ export function ParamLinkButton({
         flexShrink: 0,
       }}
     >
-      <ExternalLink size={size} />
+      <ArrowUpRight size={size} />
     </button>
+  );
+}
+
+/** @入力の候補。label は一覧表示用（絵文字可）、insert は確定時にセルへ入る値 */
+export type ParamLinkSuggestion = { label: string; insert: string };
+
+let paramLinkSuggestions: ((query: string) => ParamLinkSuggestion[]) | null = null;
+
+export function setParamLinkSuggestions(
+  provider: ((query: string) => ParamLinkSuggestion[]) | null
+) {
+  paramLinkSuggestions = provider;
+}
+
+/**
+ * 値セルの編集入力。値を `@` で始めると、本文の @メンションと同じ候補
+ * （ノート・素材）が下に出て、選ぶと `@名前` が確定される。
+ * - 候補の確定は onPick（親がセル値の確定まで行う）。Enter は候補を
+ *   ↑↓ で選んでいるときだけ候補確定、それ以外は通常の確定（onCommit）
+ * - 候補クリックは mousedown で拾う（blur で編集が閉じるより先に動かす）
+ */
+export function ParamValueField({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+  onPick,
+  compositionHandlers,
+  isImeKey,
+  style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  onPick: (insert: string) => void;
+  compositionHandlers: Record<string, unknown>;
+  isImeKey: (e: React.KeyboardEvent) => boolean;
+  style?: CSSProperties;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  // -1 = 候補を選んでいない（Enter は通常確定）。↑↓ で 0..n-1 に入る
+  const [highlighted, setHighlighted] = useState(-1);
+
+  const trimmed = value.trimStart();
+  const query = trimmed.startsWith("@") ? trimmed.slice(1) : null;
+  const suggestions = useMemo(
+    () => (query !== null && paramLinkSuggestions ? paramLinkSuggestions(query) : []),
+    [query]
+  );
+
+  // 候補の出現・消滅や入力で選択状態をリセット
+  useLayoutEffect(() => {
+    setHighlighted(-1);
+  }, [query, suggestions.length]);
+
+  // ドロップダウンは fixed で input の直下に置く（右パネルの overflow に切られない）
+  const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
+  useLayoutEffect(() => {
+    if (suggestions.length === 0) {
+      setRect(null);
+      return;
+    }
+    const r = inputRef.current?.getBoundingClientRect();
+    if (r) setRect({ left: r.left, top: r.bottom + 2, width: Math.max(r.width, 220) });
+  }, [suggestions.length, value]);
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        value={value}
+        autoFocus
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => onChange(e.target.value)}
+        {...compositionHandlers}
+        onKeyDown={(e) => {
+          if (suggestions.length > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            e.preventDefault();
+            setHighlighted((cur) => {
+              const n = suggestions.length;
+              if (e.key === "ArrowDown") return (cur + 1) % n;
+              return cur <= 0 ? n - 1 : cur - 1;
+            });
+            return;
+          }
+          if (e.key === "Enter" && !isImeKey(e)) {
+            if (highlighted >= 0 && suggestions[highlighted]) {
+              e.preventDefault();
+              onPick(suggestions[highlighted].insert);
+            } else {
+              onCommit();
+            }
+          } else if (e.key === "Escape") {
+            e.stopPropagation();
+            onCancel();
+          }
+        }}
+        onBlur={onCancel}
+        style={style}
+      />
+      {rect &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              left: rect.left,
+              top: rect.top,
+              minWidth: rect.width,
+              maxWidth: 340,
+              maxHeight: 220,
+              overflowY: "auto",
+              background: "var(--color-card)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 8,
+              boxShadow: "var(--shadow-2, 0 4px 12px rgba(0,0,0,0.12))",
+              zIndex: 300,
+              padding: 3,
+            }}
+          >
+            {suggestions.map((sug, i) => (
+              <div
+                key={`${sug.insert}:${i}`}
+                // click では blur（編集終了）が先に走るので mousedown で確定する
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onPick(sug.insert);
+                }}
+                onMouseEnter={() => setHighlighted(i)}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 5,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  background: highlighted === i ? "var(--color-accent)" : "transparent",
+                  color: "var(--color-foreground)",
+                }}
+              >
+                {sug.label}
+              </div>
+            ))}
+          </div>,
+          document.body
+        )}
+    </>
   );
 }

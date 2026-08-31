@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link2, Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
-import { ParamLinkButton, resolveParamLinkTarget } from "./param-link";
+import { ParamLinkButton, ParamValueField, resolveParamLinkTarget } from "./param-link";
 import { t, getDisplayLabel } from "../../i18n";
 import {
   splitAttrLabel,
@@ -317,6 +317,27 @@ export function FlowStepPanel({
     setEdit(null);
   };
 
+  /** @候補の確定。edit.draft（state）を経由すると古い値で確定してしまうので値を直渡しする */
+  const commitCellValue = (key: string, v: string) => {
+    const parts = key.split(":");
+    if (parts[0] === "c") onSetCell?.(parts[1], Number(parts[2]), Number(parts[3]), v);
+    setEdit(null);
+  };
+
+  /** 値セル用の編集入力（@ で本文と同じ参照候補が出る）。列名・行名の編集は素の field のまま */
+  const valueField = (key: string) => (
+    <ParamValueField
+      value={edit!.draft}
+      onChange={(v) => setEdit({ key, draft: v })}
+      onCommit={commitEdit}
+      onCancel={() => setEdit(null)}
+      onPick={(insert) => commitCellValue(key, insert)}
+      compositionHandlers={compositionHandlers}
+      isImeKey={isImeKey}
+      style={inputStyle}
+    />
+  );
+
   const commitAdd = () => {
     if (adding) {
       const v = adding.draft.trim();
@@ -476,7 +497,7 @@ export function FlowStepPanel({
                     style={td}
                     onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : cellValue(row[col] ?? "")}
+                    {editing(key) ? valueField(key) : cellValue(row[col] ?? "")}
                   </td>
                 );
               })}
@@ -702,7 +723,7 @@ export function FlowStepPanel({
                     style={td}
                     onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : cellValue(row[col] ?? "")}
+                    {editing(key) ? valueField(key) : cellValue(row[col] ?? "")}
                   </td>
                 );
               })}
