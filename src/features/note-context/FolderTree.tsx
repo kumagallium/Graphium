@@ -36,7 +36,7 @@ export type FolderTreeProps = {
 // 行の外殻。シェブロン（開閉）と本体（選択）は別ボタンにするため
 // interactive 要素を入れ子にせず、div がホバー/選択の見た目を持つ
 const rowShellClass = (active: boolean) =>
-  `flex items-center rounded transition-colors ${
+  `relative flex items-center rounded transition-colors ${
     active
       ? "bg-primary/10 text-primary"
       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -181,7 +181,7 @@ export function FolderTree({
             // 開く操作と選択を一体にする（エクスプローラーの「フォルダを開く」感覚）
             if (hasChildren && !isOpen) toggleExpand(key);
           }}
-          className={`flex-1 min-w-0 flex items-center gap-1.5 py-1 pl-1.5 text-sm text-left ${
+          className={`flex-1 min-w-0 flex items-center gap-1.5 py-1 pr-2 pl-1.5 text-sm text-left ${
             isActive ? "font-semibold" : ""
           }`}
         >
@@ -190,23 +190,37 @@ export function FolderTree({
           </span>
           <span className="flex-1 truncate">{node.name}</span>
           {node.totalCount > 0 && (
-            <span className="text-xs text-muted-foreground tabular-nums">{node.totalCount}</span>
+            // ＋ が出ている間は件数をその左に逃がす（重ねて隠さない）。
+            // 位置が動くのは ＋ が出ている行だけなので、他セクションとの縦揃えは保たれる。
+            <span
+              className={`text-xs text-muted-foreground tabular-nums transition-[margin] ${
+                canAddChild ? (isActive ? "mr-6" : "group-hover:mr-6") : ""
+              }`}
+            >
+              {node.totalCount}
+            </span>
           )}
         </button>
         {/* このフォルダの中に子を作る。スラッシュを手で打たせないための入口。
-            常時表示にするとツリーが賑やかになるので hover / フォーカス時だけ出す */}
-        {canAddChild ? (
+            件数の「右」に絶対配置で重ねる — 行の流れに置くと件数が押し出されて、
+            他セクション（素材・ラベル）の件数の右端と縦に揃わなくなる。
+            hover に加えて選択中も出す（選択したフォルダで次にやることが「中に作る」なので、
+            マウスを載せ直さずに続けられる）。 */}
+        {canAddChild && (
           <button
             type="button"
             title={t("nav.newSubfolderIn", { value: node.name })}
             aria-label={t("nav.newSubfolderIn", { value: node.name })}
             onClick={() => openDraftUnder(node.path)}
-            className="w-5 h-5 mr-1.5 shrink-0 inline-flex items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-opacity"
+            // right-1.5 = 6px: アイコンの右端が他セクションの件数の右端（同じ pr-2 の内側）に揃う
+            className={`absolute right-1.5 w-5 h-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-opacity ${
+              isActive
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            }`}
           >
             <Plus size={12} />
           </button>
-        ) : (
-          <span className="w-5 mr-1.5 shrink-0" aria-hidden />
         )}
       </div>
     );
