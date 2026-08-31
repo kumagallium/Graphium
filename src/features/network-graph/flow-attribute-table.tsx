@@ -16,9 +16,10 @@
 // チップを置く。表がまだ無いセクションは破線カード。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link2, Plus, Trash2 } from "lucide-react";
+import { Link2, Plus, Trash2, X } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { ParamLinkButton, ParamValueField, resolveParamLinkTarget } from "./param-link";
+import { getActiveProvider } from "../../lib/storage/registry";
 import { t, getDisplayLabel } from "../../i18n";
 import {
   splitAttrLabel,
@@ -97,6 +98,8 @@ export type FlowStepPanelProps = {
    * 外部ソース ID（pdf:/document:/data: 等）で、振り分けは受け側の Side Peek が行う
    */
   onOpenExternalNote?: (id: string) => void;
+  /** 画像セルから画像だけを外す（テキスト・行 ID は残す） */
+  onRemoveCellImage?: (blockId: string, rowIndex: number, colIndex: number) => void;
 };
 
 const SECTION_ORDER: SectionKind[] = ["attribute", "material", "tool", "output"];
@@ -210,6 +213,52 @@ function SectionChip({ kind }: { kind: SectionKind }) {
   );
 }
 
+/** 右パネルのセルに埋まっているインライン画像のサムネイル（ノードのサムネと同じ流儀） */
+function CellImageThumb({
+  fileId,
+  alt,
+  onOpen,
+}: {
+  fileId: string;
+  alt: string;
+  onOpen?: (id: string) => void;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getActiveProvider()
+      .getMediaBlobUrl(fileId)
+      .then((url: string) => {
+        if (!cancelled) setSrc(url);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId]);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      // テキストのクリック（セル編集）と分けるため、画像自体が開くボタンを兼ねる
+      onClick={onOpen ? (e) => { e.stopPropagation(); onOpen(`image:${fileId}`); } : undefined}
+      title={onOpen ? t("inlineImage.clickToOpen") : undefined}
+      style={{
+        height: 28,
+        maxWidth: 72,
+        objectFit: "cover",
+        borderRadius: 3,
+        border: "1px solid var(--color-border)",
+        verticalAlign: "middle",
+        cursor: onOpen ? "pointer" : "default",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 export function FlowStepPanel({
   selection,
   data,
@@ -225,6 +274,7 @@ export function FlowStepPanel({
   onMoveParamToTable,
   onAddSharedRow,
   onOpenExternalNote,
+  onRemoveCellImage,
 }: FlowStepPanelProps) {
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
   //           / `inline:<entityId>`（本文ハイライトの名前）
@@ -242,13 +292,50 @@ export function FlowStepPanel({
 
   // セル値の表示。値が @ノート名 / @素材名 として解決できるときだけ、
   // 隣に参照先を開くボタン（↗）を添える。テキスト部分のクリックは従来どおり編集
-  const cellValue = (text: string) => {
+  const cellValue = (text: string, table?: TableData | null, r?: number, c?: number) => {
+    const imageFileId =
+      table?.cellImages && r !== undefined && c !== undefined
+        ? table.cellImages[`${r}:${c}`]
+        : undefined;
     const target = onOpenExternalNote ? resolveParamLinkTarget(text) : null;
-    if (!target) return text;
+    if (!target && !imageFileId) return text;
+    const blockId = table?.blockId;
     return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, maxWidth: "100%" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}>
+        {imageFileId && (
+          <CellImageThumb fileId={imageFileId} alt={text} onOpen={onOpenExternalNote} />
+        )}
         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{text}</span>
-        <ParamLinkButton targetId={target} onOpen={onOpenExternalNote!} />
+        {target && <ParamLinkButton targetId={target} onOpen={onOpenExternalNote!} />}
+        {/* 画像セルはテキスト編集に入らないので、外す操作をここに置く
+            （× のあと空セルになり、ふつうに文字を打てる状態に戻る） */}
+        {imageFileId && onRemoveCellImage && blockId && r !== undefined && c !== undefined && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemoveCellImage(blockId, r, c);
+            }}
+            title={t("flowTable.removeCellImage")}
+            aria-label={t("flowTable.removeCellImage")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 14,
+              height: 14,
+              padding: 0,
+              border: "none",
+              borderRadius: 3,
+              background: "transparent",
+              color: "var(--color-text-tertiary)",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <X size={10} />
+          </button>
+        )}
       </span>
     );
   };
@@ -483,9 +570,14 @@ export function FlowStepPanel({
                   <td
                     key={col}
                     style={td}
-                    onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
+                    onClick={() => {
+                      // 画像が入っているセルはクリックで編集に入らない。
+                      // 入ると draft（テキスト）で確定したとき画像が消える
+                      if (table?.cellImages?.[`${r}:${col}`]) return;
+                      if (onSetCell && !editing(key)) setEdit({ key, draft: row[col] ?? "" });
+                    }}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "")}
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "", table, r, col)}
                   </td>
                 );
               })}
@@ -713,9 +805,14 @@ export function FlowStepPanel({
                   <td
                     key={col}
                     style={td}
-                    onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
+                    onClick={() => {
+                      // 画像が入っているセルはクリックで編集に入らない。
+                      // 入ると draft（テキスト）で確定したとき画像が消える
+                      if (table?.cellImages?.[`${r}:${col}`]) return;
+                      if (onSetCell && !editing(key)) setEdit({ key, draft: row[col] ?? "" });
+                    }}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "")}
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "", table, r, col)}
                   </td>
                 );
               })}

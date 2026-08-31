@@ -894,6 +894,7 @@ export const en: Record<string, string> = {
   "flowTable.noTableYet": "No table yet",
   "flowTable.addToTable": "Add to the table",
   "flowTable.addColumn": "Column",
+  "flowTable.removeCellImage": "Remove image",
   "flowTable.removeColumn": "Remove column",
   "flowTable.addRow": "Add row",
   "flowTable.resizeHandle": "Drag to resize / double-click to reset",
@@ -1368,6 +1369,8 @@ export const en: Record<string, string> = {
   "asset.slashAudioSub": "Upload new or insert existing audio",
   "asset.slashDocument": "Document",
   "asset.slashDocumentSub": "Upload new or insert existing PDF / Word",
+  "asset.slashCellImage": "Image",
+  "asset.slashCellImageSub": "Pick an asset to embed in the cell",
   "asset.slashData": "Data",
   "asset.slashDataSub": "Insert a .csv / .txt / .dat as a table",
   // ── Cite picker (/claims, /Insights) ──
@@ -2027,6 +2030,9 @@ export const en: Record<string, string> = {
   "tableMeta.expandSortApplyHint": "Click a column header to sort the table itself — undo to revert",
   "tableMeta.sortAsc": "Sort ascending",
   "paramLink.open": "Open reference",
+  "inlineImage.clickToOpen": "Click to view larger",
+  "inlineImage.missing": "Image unavailable",
+  "inlineImage.resize": "Drag to resize (double-click to reset)",
   "tableMeta.sortDesc": "Sort descending",
 
   // 記録テーブル

@@ -895,6 +895,7 @@ export const ja: Record<string, string> = {
   "flowTable.noTableYet": "まだ表がありません",
   "flowTable.addToTable": "表に追加",
   "flowTable.addColumn": "列",
+  "flowTable.removeCellImage": "画像を外す",
   "flowTable.removeColumn": "列を削除",
   "flowTable.addRow": "行を追加",
   "flowTable.resizeHandle": "ドラッグでサイズを変更 / ダブルクリックで既定に戻す",
@@ -1368,6 +1369,8 @@ export const ja: Record<string, string> = {
   "asset.slashAudioSub": "新規アップロードまたは既存の音声から挿入",
   "asset.slashDocument": "ドキュメント",
   "asset.slashDocumentSub": "新規アップロードまたは既存の PDF / Word から挿入",
+  "asset.slashCellImage": "画像",
+  "asset.slashCellImageSub": "素材から選んでセルに埋め込む",
   "asset.slashData": "データ",
   "asset.slashDataSub": ".csv / .txt / .dat を表として挿入",
   // ── 引用ピッカー (/claims, /Insights) ──
@@ -2025,6 +2028,9 @@ export const ja: Record<string, string> = {
   "tableMeta.expandSortApplyHint": "列見出しをクリックすると表そのものを並べ替えます（取り消しで戻せます）",
   "tableMeta.sortAsc": "昇順で並べ替え",
   "paramLink.open": "参照先を開く",
+  "inlineImage.clickToOpen": "クリックで大きく表示",
+  "inlineImage.missing": "画像を読み込めません",
+  "inlineImage.resize": "ドラッグでサイズ変更（ダブルクリックで元に戻す）",
   "tableMeta.sortDesc": "降順で並べ替え",
 
   // 時系列テーブル

@@ -53,6 +53,9 @@ const lightCodeBlock = createCodeBlockSpec({
 });
 import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
 import { inlineMathSpecs } from "@features/inline-math/spec";
+import { inlineImageSpecs, INLINE_IMAGE_DRAG_MIME, fileIdFromBlobUrl } from "@features/inline-image/spec";
+import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
+import { getActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CustomBlockEntry } from "./schema";
@@ -117,6 +120,496 @@ type SandboxEditorProps = {
 
 // サンドボックス共通エディタ
 // blocks を渡すだけでカスタムブロック入りエディタが立ち上がる
+/**
+ * セルへの画像ファイル drop / paste をインライン画像（inlineImage）として受ける。
+ * セルはブロックを持てないため、既定処理に任せると画像ブロックがテーブルの外に
+ * 落ちてしまう。セル内のときだけ「素材として登録 → inlineImage を挿入」に差し替え、
+ * セル外は false を返して既定の画像ブロック挿入に任せる。
+ */
+/**
+ * ノート内の画像ブロックをセルへドラッグしたときの受け口。
+ *
+ * BlockNote はブロックのドラッグを `dataTransfer.setData("blocknote/html")` と
+ * **NodeSelection**（ドラッグ元の blockContainer を選択）で表す — ProseMirror の
+ * `view.dragging` は使わない。なので落とした時点の selection からドラッグ元ノードを
+ * 読み、その中の画像を取り出す（HTML をパースすると src が blob URL に解決済みで
+ * fileId が取れない）。セル外なら false を返して既定のブロック移動に任せる。
+ */
+/**
+ * ブラウザのネイティブ画像ドラッグをセルで受ける。
+ * 画像ブロックの中の img をそのまま掴むと BlockNote のブロックドラッグにならず
+ * （blocknote/html が乗らない）、どの経路にも当たらずセルに入らなかった。
+ * 落とした先がセルなら inline 画像として入れ、掴んだ元の画像ブロックは消す。
+ */
+function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): boolean {
+  if (event.dataTransfer?.types?.includes("blocknote/html")) return false;
+  const dragged = draggedImageFileId(event);
+  if (!dragged) return false;
+  const cellPos = dropCellPos(view, event);
+  if (cellPos === null) return false;
+  const nodeType = view.state.schema.nodes.inlineImage;
+  if (!nodeType) return false;
+  event.preventDefault();
+  clearCellDropState();
+  // 掴んだ元が画像ブロックなら消す（同じ素材のブロックの最初の 1 つ）
+  const sourceBlock = editor?.document?.find?.(
+    (b: any) =>
+      b.type === "image" &&
+      typeof b.props?.url === "string" &&
+      b.props.url.endsWith(dragged.fileId),
+  );
+  view.dispatch(
+    view.state.tr.insert(cellPos, nodeType.create({ fileId: dragged.fileId, name: dragged.name })),
+  );
+  if (sourceBlock) editor.removeBlocks([sourceBlock.id]);
+  return true;
+}
+
+function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
+  // ブロックのドラッグでなければ関与しない（ファイル drop や外部 HTML と区別する）
+  if (!event.dataTransfer?.types?.includes("blocknote/html")) return false;
+  const selection = view.state.selection;
+  const dragged = (selection as any)?.node;
+  if (!dragged) return false;
+  let image: { url: string; name: string } | undefined;
+  const pick = (node: any) => {
+    if (image) return false;
+    if (node.type?.name === "image" && typeof node.attrs?.url === "string" && node.attrs.url) {
+      image = { url: node.attrs.url, name: String(node.attrs.name ?? "") };
+      return false;
+    }
+    return true;
+  };
+  if (!pick(dragged)) {
+    // dragged 自身が画像ではない: blockContainer なので中を探す
+  }
+  if (!image) dragged.descendants?.(pick);
+  if (!image) return false;
+  const cellPos = dropCellPos(view, event);
+  if (cellPos === null) return false;
+  const fileId = getActiveProvider().extractFileId(image.url);
+  const nodeType = view.state.schema.nodes.inlineImage;
+  if (!fileId || !nodeType) return false;
+  event.preventDefault();
+  clearCellDropState();
+  // 挿入 → 元ブロック削除の順に組む（先に消すと挿入位置がずれる）
+  const tr = view.state.tr;
+  tr.insert(cellPos, nodeType.create({ fileId, name: image.name }));
+  const from = tr.mapping.map(selection.from);
+  const to = tr.mapping.map(selection.to);
+  if (to > from) tr.delete(from, to);
+  view.dispatch(tr);
+  return true;
+}
+
+/**
+ * セルの中のインライン画像を本文へドラッグしたときの受け口（ブロック → セルの逆）。
+ * セル外に落ちたら画像ブロックとして置き直し、元のインライン画像を消す。
+ * セル内での移動は既定に任せる（インライン要素のままで良い）。
+ */
+function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean {
+  const raw = event.dataTransfer?.getData(INLINE_IMAGE_DRAG_MIME);
+  if (!raw || !editor) return false;
+  let payload: { fileId?: string; name?: string; pos?: number | null };
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  if (!payload.fileId) return false;
+  const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (!at || isInsideTableCell(view, at.pos)) return false;
+  // 落とし先のブロック（段落の途中には差し込まない）
+  const $at = view.state.doc.resolve(at.pos);
+  let targetBlockId: string | null = null;
+  for (let d = $at.depth; d > 0; d--) {
+    const node = $at.node(d);
+    if (node.type.name === "blockContainer") {
+      targetBlockId = node.attrs?.id ?? null;
+      break;
+    }
+  }
+  if (!targetBlockId) return false;
+  event.preventDefault();
+  clearCellDropState();
+  // 掴んだ画像そのものを消す。fileId だけで探すと、同じ素材が他のセルにもあるとき
+  // 別の画像を消してしまい「複製された」ように見える（実際に起きた）
+  let fromPos = -1;
+  let size = 0;
+  const draggedPos = typeof payload.pos === "number" ? payload.pos : null;
+  if (draggedPos !== null && draggedPos >= 0 && draggedPos < view.state.doc.content.size) {
+    const node = view.state.doc.nodeAt(draggedPos);
+    if (node?.type?.name === "inlineImage" && node.attrs?.fileId === payload.fileId) {
+      fromPos = draggedPos;
+      size = node.nodeSize;
+    }
+  }
+  if (fromPos < 0) {
+    // 位置が取れなかったときだけ fileId で探す（従来の挙動）
+    view.state.doc.descendants((node: any, pos: number) => {
+      if (fromPos >= 0) return false;
+      if (node.type?.name === "inlineImage" && node.attrs?.fileId === payload.fileId) {
+        fromPos = pos;
+        size = node.nodeSize;
+        return false;
+      }
+      return true;
+    });
+  }
+  // 画像ブロックは editor API で足す。ProseMirror ノードを直接組むと BlockNote の
+  // URL 解決（resolveFileUrl）を通らず、media-server:// のまま img に入って
+  // ERR_UNKNOWN_URL_SCHEME になる。
+  // 先に足してから消す — 逆にすると、挿入でつまずいたとき画像だけ失われる
+  editor.insertBlocks(
+    [{ type: "image", props: { url: `media-server://${payload.fileId}`, name: payload.name ?? "" } }],
+    targetBlockId,
+    "after",
+  );
+  if (fromPos >= 0) {
+    const tr = view.state.tr;
+    // 挿入で位置がずれるのでマップし直す
+    const from = tr.mapping.map(fromPos);
+    view.dispatch(tr.delete(from, from + size));
+  }
+  return true;
+}
+
+// ── セルへの画像ドロップの見せ方 ──
+//
+// ブロックのドロップは青い挿入バーが出るが、セルの中への挿入にはそれが出ない。
+// 受け取るセルの矩形と挿入位置のバーを描いて、どこに入るかを示す。
+//
+// **ProseMirror が持つ DOM（td）には触らない。** 属性を付け外しすると
+// ProseMirror の DOM 監視が反応して、ドラッグ中に状態が乱れる（表示がちらつき、
+// ドロップが通ったり通らなかったりする）。表示はすべて body 直下のオーバーレイで持つ。
+// dragover は毎フレーム飛んでくるので、計算は rAF で 1 フレーム 1 回に間引く。
+
+type DropIndicator = { box: HTMLElement; caret: HTMLElement };
+let dropIndicator: DropIndicator | null = null;
+let indicatorRaf = 0;
+let pendingPoint: { x: number; y: number; view: any } | null = null;
+/** 直前に描いたセル。同じセルの間は測り直さない */
+let lastIndicatorCell: HTMLElement | null = null;
+
+function ensureIndicator(): DropIndicator {
+  if (dropIndicator?.box.isConnected) return dropIndicator;
+  const box = document.createElement("div");
+  box.setAttribute("data-cell-drop-box", "true");
+  const caret = document.createElement("div");
+  caret.setAttribute("data-cell-drop-caret", "true");
+  document.body.append(box, caret);
+  dropIndicator = { box, caret };
+  return dropIndicator;
+}
+
+function hideIndicator() {
+  if (!dropIndicator) return;
+  dropIndicator.box.style.display = "none";
+  dropIndicator.caret.style.display = "none";
+  dropIndicator.box.removeAttribute("data-pending");
+}
+
+export function clearCellDropState() {
+  stopDragScroll();
+  draggedImageCache = null;
+  if (indicatorRaf) {
+    cancelAnimationFrame(indicatorRaf);
+    indicatorRaf = 0;
+  }
+  pendingPoint = null;
+  lastIndicatorCell = null;
+  hideIndicator();
+}
+
+/** 受け入れ表示を描く（rAF の中から呼ばれる） */
+function drawIndicator(view: any, x: number, y: number) {
+  const at = view.posAtCoords({ left: x, top: y });
+  if (!at || !isInsideTableCell(view, at.pos)) {
+    lastIndicatorCell = null;
+    hideIndicator();
+    return;
+  }
+  const dom = view.domAtPos(at.pos)?.node as Node | undefined;
+  const el = dom?.nodeType === 1 ? (dom as HTMLElement) : (dom?.parentElement ?? null);
+  const cell = el?.closest("td, th") as HTMLElement | null;
+  if (!cell) {
+    lastIndicatorCell = null;
+    hideIndicator();
+    return;
+  }
+  const { box, caret } = ensureIndicator();
+  if (cell !== lastIndicatorCell) {
+    const r = cell.getBoundingClientRect();
+    box.style.left = `${r.left}px`;
+    box.style.top = `${r.top}px`;
+    box.style.width = `${r.width}px`;
+    box.style.height = `${r.height}px`;
+    box.style.display = "block";
+    lastIndicatorCell = cell;
+  }
+  const coords = view.coordsAtPos(at.pos);
+  if (coords) {
+    caret.style.left = `${coords.left - 1}px`;
+    caret.style.top = `${coords.top}px`;
+    caret.style.height = `${Math.max(16, coords.bottom - coords.top)}px`;
+    caret.style.display = "block";
+  }
+}
+
+// ── ドラッグ中の自動スクロール ──
+//
+// BlockNote も ProseMirror もドラッグ中のスクロールを持たないため、入れたいセルが
+// 画面の外にあると、そこまで運べずウィンドウの外へ出てしまう。端に近づいている間だけ
+// スクロールし続ける（マウスが止まると dragover が来なくなるのでタイマーで回す）。
+
+const DRAG_SCROLL_MARGIN = 72;
+const DRAG_SCROLL_SPEED = 14;
+let dragScrollTimer = 0;
+let dragScrollTarget: { el: HTMLElement | Window; dir: -1 | 1 } | null = null;
+
+/** エディタを載せているスクロール領域（無ければウィンドウ） */
+function scrollContainerOf(el: HTMLElement | null): HTMLElement | Window {
+  let node: HTMLElement | null = el;
+  while (node) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) return node;
+    node = node.parentElement;
+  }
+  return window;
+}
+
+function stopDragScroll() {
+  if (dragScrollTimer) clearInterval(dragScrollTimer);
+  dragScrollTimer = 0;
+  dragScrollTarget = null;
+}
+
+/**
+ * 端にいる間スクロールし続ける。requestAnimationFrame ではなくタイマーで回すのは、
+ * rAF が止まる環境（タブが背面、埋め込みビュー）でもドラッグ中は動かしたいため。
+ */
+function runDragScroll() {
+  const target = dragScrollTarget;
+  if (!target) {
+    stopDragScroll();
+    return;
+  }
+  const delta = DRAG_SCROLL_SPEED * target.dir;
+  if (target.el instanceof Window) target.el.scrollBy(0, delta);
+  else target.el.scrollTop += delta;
+}
+
+/** ポインタが上下の端にある間だけスクロールを回す */
+function updateDragScroll(view: any, y: number) {
+  const el = scrollContainerOf(view.dom as HTMLElement);
+  const rect =
+    el instanceof Window
+      ? { top: 0, bottom: window.innerHeight }
+      : (el as HTMLElement).getBoundingClientRect();
+  let dir: -1 | 1 | 0 = 0;
+  if (y < rect.top + DRAG_SCROLL_MARGIN) dir = -1;
+  else if (y > rect.bottom - DRAG_SCROLL_MARGIN) dir = 1;
+  if (dir === 0) {
+    stopDragScroll();
+    return;
+  }
+  dragScrollTarget = { el, dir };
+  if (!dragScrollTimer) dragScrollTimer = window.setInterval(runDragScroll, 16);
+}
+
+/**
+ * dragover から呼ぶ。座標だけ控えて、描画は次のフレームにまとめる。
+ * rAF が動かない環境（タブが背面、埋め込みビュー）でも表示が消えないよう、
+ * 一定時間フレームが来なければその場で描く。
+ */
+const INDICATOR_FALLBACK_MS = 40;
+let lastIndicatorDrawAt = 0;
+
+function scheduleIndicator(view: any, event: DragEvent) {
+  pendingPoint = { x: event.clientX, y: event.clientY, view };
+  const now = Date.now();
+  if (now - lastIndicatorDrawAt > INDICATOR_FALLBACK_MS) {
+    lastIndicatorDrawAt = now;
+    drawIndicator(view, event.clientX, event.clientY);
+    return;
+  }
+  if (indicatorRaf) return;
+  indicatorRaf = requestAnimationFrame(() => {
+    indicatorRaf = 0;
+    lastIndicatorDrawAt = Date.now();
+    const p = pendingPoint;
+    if (p) drawIndicator(p.view, p.x, p.y);
+  });
+}
+
+/** アップロード中の表示（矩形を点滅させる。バーは消す） */
+function markIndicatorPending() {
+  if (indicatorRaf) {
+    cancelAnimationFrame(indicatorRaf);
+    indicatorRaf = 0;
+  }
+  if (!dropIndicator || dropIndicator.box.style.display === "none") return;
+  dropIndicator.caret.style.display = "none";
+  dropIndicator.box.setAttribute("data-pending", "true");
+}
+
+/**
+ * ブラウザのネイティブ画像ドラッグ（img 要素をそのまま掴んだ場合）から素材を特定する。
+ * この経路では dataTransfer に img の src（blob URL）しか乗らないので、
+ * inline-image が控えている blob URL → fileId の対応で引き直す。
+ */
+function draggedImageFileId(event: DragEvent): { fileId: string; name: string } | null {
+  const dt = event.dataTransfer;
+  if (!dt) return null;
+  const html = dt.getData("text/html");
+  if (html) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const img = doc.querySelector("img");
+    const fileId = fileIdFromBlobUrl(img?.getAttribute("src"));
+    if (fileId) return { fileId, name: img?.getAttribute("alt") ?? "" };
+  }
+  const uri = dt.getData("text/uri-list") || dt.getData("text/plain");
+  const fileId = fileIdFromBlobUrl(uri?.trim());
+  return fileId ? { fileId, name: "" } : null;
+}
+
+/** そのドラッグがセルに入れられる画像か（ファイル / 画像ブロック / セルの画像） */
+function isImageDrag(view: any, event: DragEvent): boolean {
+  const dt = event.dataTransfer;
+  if (!dt) return false;
+  // dragover 中は file の名前が読めないため、MIME が空のファイルも受け入れ表示に含める
+  // （落とした時点で画像でなければ既定処理に落ちる）
+  if ([...(dt.items ?? [])].some((i) => i.kind === "file" && (i.type.startsWith("image/") || !i.type)))
+    return true;
+  if (dt.types?.includes("Files")) return true;
+  if (dt.types?.includes(INLINE_IMAGE_DRAG_MIME)) return true;
+  if (dt.types?.includes("blocknote/html")) return draggedBlockHasImage(view);
+  return false;
+}
+
+/**
+ * ドラッグ中のブロック（NodeSelection）が画像を含むか。
+ * dragover は毎フレーム飛んでくるので、同じ選択の間は結果を使い回す。
+ */
+let draggedImageCache: { from: number; hasImage: boolean } | null = null;
+
+function draggedBlockHasImage(view: any): boolean {
+  const selection = view.state.selection;
+  const dragged = (selection as any)?.node;
+  if (!dragged) {
+    draggedImageCache = null;
+    return false;
+  }
+  const cached = draggedImageCache;
+  if (cached && cached.from === selection.from) return cached.hasImage;
+  let found = dragged.type?.name === "image";
+  if (!found) {
+    dragged.descendants?.((n: any) => {
+      if (n.type?.name === "image") found = true;
+      return !found;
+    });
+  }
+  draggedImageCache = { from: selection.from, hasImage: found };
+  return found;
+}
+
+/** その位置がテーブルのセルの中か */
+function isInsideTableCell(view: any, pos: number): boolean {
+  const $pos = view.state.doc.resolve(pos);
+  for (let d = $pos.depth; d > 0; d--) {
+    const name = $pos.node(d).type.name;
+    if (name === "tableCell" || name === "tableHeader") return true;
+  }
+  return false;
+}
+
+/** 拡張子で画像とみなすもの。Finder からのドラッグは MIME が空のことがある */
+const IMAGE_FILE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|heic|heif|tiff?)$/i;
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/") || (!file.type && IMAGE_FILE_EXT.test(file.name));
+}
+
+/** DataTransfer から画像ファイルを取り出す（files が空でも items から拾う） */
+function imageFilesFrom(dt: DataTransfer | null | undefined): File[] {
+  if (!dt) return [];
+  const fromFiles = [...(dt.files ?? [])];
+  if (fromFiles.length === 0) {
+    // 一部の環境では files が空で items にだけ入る
+    for (const item of dt.items ?? []) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (file) fromFiles.push(file);
+    }
+  }
+  return fromFiles.filter(isImageFile);
+}
+
+/**
+ * 落とした位置のセル。座標が罫線やセルの継ぎ目に乗ると posAtCoords が
+ * セルの外を指すので、イベントの発生要素からも辿って補う。
+ */
+function dropCellPos(view: any, event: DragEvent): number | null {
+  const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (at && isInsideTableCell(view, at.pos)) return at.pos;
+  const target = event.target as HTMLElement | null;
+  const cell = target?.closest?.("td, th");
+  if (!cell) return null;
+  // セルの中の編集可能な位置（先頭）を使う
+  const inner = cell.querySelector("p, div[data-node-type]") ?? cell;
+  try {
+    const pos = view.posAtDOM(inner, 0);
+    return isInsideTableCell(view, pos) ? pos : null;
+  } catch {
+    return null;
+  }
+}
+
+function insertCellImagesFromFiles(
+  view: any,
+  dataTransfer: DataTransfer | null | undefined,
+  dropEvent: DragEvent | null,
+  uploadFile: ((file: File) => Promise<string>) | undefined,
+): boolean {
+  if (!uploadFile) return false;
+  const images = imageFilesFrom(dataTransfer);
+  if (!images.length) return false;
+  // 位置: drop は座標から、paste は現在のキャレット
+  let pos = view.state.selection.from;
+  if (dropEvent) {
+    const cellPos = dropCellPos(view, dropEvent);
+    if (cellPos === null) return false;
+    pos = cellPos;
+  } else if (!isInsideTableCell(view, pos)) {
+    return false;
+  }
+  dropEvent?.preventDefault();
+  // 大きい画像はアップロードに数秒かかる。その間セルを点滅させて受け取り中だと示す
+  if (dropEvent) markIndicatorPending();
+  void (async () => {
+    let insertAt = pos;
+    for (const file of images) {
+      try {
+        const url = await uploadFile(file);
+        const fileId = getActiveProvider().extractFileId(url);
+        const nodeType = view.state.schema.nodes.inlineImage;
+        if (!fileId || !nodeType || view.isDestroyed) continue;
+        // アップロード中に文書が縮んでいても範囲内に収める
+        const at = Math.min(insertAt, view.state.doc.content.size);
+        const node = nodeType.create({ fileId, name: file.name });
+        view.dispatch(view.state.tr.insert(at, node));
+        insertAt = at + node.nodeSize;
+      } catch (e) {
+        // 失敗した画像だけ諦めて残りは続ける（素材未登録のまま挿さない）。
+        // 黙って消えると「落としたのに入らない」と見えるので、原因は残す
+        console.error("[graphium] failed to insert dropped image into cell", file.name, e);
+      }
+    }
+    clearCellDropState();
+  })();
+  return true;
+}
+
 export function SandboxEditor({
   blocks = [],
   initialContent,
@@ -149,6 +642,7 @@ export function SandboxEditor({
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
       ...inlineMathSpecs,
+      ...inlineImageSpecs,
     } as any,
     styleSpecs: {
       ...defaultStyleSpecs,
@@ -163,6 +657,11 @@ export function SandboxEditor({
   const locale = useLocaleSubscription();
   const editorRef = useRef<any>(null);
 
+  // _tiptapOptions は useCreateBlockNote の初回実行時のクロージャに固定されるため、
+  // props の uploadFile を直接参照すると後から渡された関数を見られない。ref 越しに読む
+  const uploadFileRef = useRef(uploadFile);
+  uploadFileRef.current = uploadFile;
+
   const editor = useCreateBlockNote({
     schema,
     initialContent: editorRef.current
@@ -170,6 +669,64 @@ export function SandboxEditor({
       : initialContent?.length ? (initialContent as any) : undefined,
     dictionary: getBlockNoteDictionary(locale),
     uploadFile,
+    // セル内への画像 drop / paste はインライン画像として受ける（セル外は既定処理）。
+    // handleDrop/handlePaste では届かない — BlockNote 自身のファイル処理が
+    // handleDOMEvents 段で先にイベントを消費する。直接 props の handleDOMEvents は
+    // プラグイン（BlockNote）より優先されるので、ここで先取りして true を返す
+    _tiptapOptions: {
+      editorProps: {
+        handleDOMEvents: {
+          // 受け入れ先のセルを枠で示す（既定のドロップカーソル処理は邪魔しない）
+          dragover: (view: any, event: any) => {
+            if (!isImageDrag(view, event)) return false;
+            // ファイルのドラッグは preventDefault しないと drop が発火しない。
+            // セルの内外で出し分けると境目で挙動が変わるので、画像のドラッグなら常に呼ぶ
+            event.preventDefault();
+            scheduleIndicator(view, event);
+            // 入れたいセルが画面の外にあっても運べるようにする
+            updateDragScroll(view, event.clientY);
+            return false;
+          },
+          dragleave: () => {
+            clearCellDropState();
+            return false;
+          },
+          dragend: () => {
+            clearCellDropState();
+            return false;
+          },
+          drop: (view: any, event: any) => {
+            // ファイルの drop（外部から）と、ノート内の画像ブロックの drag（内部）の両方
+            const handled =
+              insertCellImagesFromFiles(view, event?.dataTransfer, event, uploadFileRef.current) ||
+              moveImageBlockIntoCell(view, event) ||
+              moveCellImageToBlock(view, event, editorRef.current) ||
+              moveNativeImageIntoCell(view, event, editorRef.current);
+            if (!handled && isImageDrag(view, event)) {
+              // 受け入れ表示（バー）を出したのに取りこぼした状態。BlockNote の既定処理に
+              // 落ちるとセルの外にブロックができるので、原因を追えるよう残す
+              console.warn("[graphium] image drop over a cell was not handled", {
+                types: [...(event?.dataTransfer?.types ?? [])],
+                files: event?.dataTransfer?.files?.length ?? 0,
+              });
+            }
+            clearCellDropState();
+            return handled;
+          },
+          paste: (view: any, event: any) => {
+            const handled = insertCellImagesFromFiles(
+              view,
+              event?.clipboardData,
+              null,
+              uploadFileRef.current
+            );
+            // true でも PM は既定動作を止めないので、ブラウザの貼り付けを自前で止める
+            if (handled) event?.preventDefault?.();
+            return handled;
+          },
+        },
+      },
+    } as any,
     resolveFileUrl,
     // ブロック左右端へのドラッグで縦のドロップカーソルを出す
     // （カラム化ゾーンの判定は multi-column/drop-to-columns.ts）
@@ -284,16 +841,20 @@ export function SandboxEditor({
   const getSlashItems = useMemo(() => {
     if (!hasExtraSlash) return undefined;
     return async (query: string) => {
-      if (!query) return allSlashItems as any;
+      // テーブルのセル内: ブロックを挿入する項目は出せない（セルはインライン専用）。
+      // インラインで完結する項目（画像 → inlineImage）だけの短いメニューにする
+      const inCell = (editor as any).getTextCursorPosition?.()?.block?.type === "table";
+      const items = inCell ? getCellSlashMenuItems() : allSlashItems;
+      if (!query) return items as any;
       // カスタムフィルタ: title と aliases のみでマッチ（group 名でのマッチを防ぐ）
       const q = query.toLowerCase();
-      return allSlashItems.filter((item: any) => {
+      return items.filter((item: any) => {
         if (item.title?.toLowerCase().includes(q)) return true;
         if (item.aliases?.some((a: string) => a.toLowerCase().includes(q))) return true;
         return false;
       }) as any;
     };
-  }, [hasExtraSlash, allSlashItems]);
+  }, [hasExtraSlash, allSlashItems, editor]);
 
   // `#` のラベルオートコンプリートは廃止した。
   // 工程は step ブロック、テーブル / メディアのラベルはドラッグハンドルのメニューに

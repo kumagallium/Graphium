@@ -231,13 +231,17 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       取り込んだ表の元ファイル（tableMeta.source.fileId）を usedIn に含める。
  *       どちらも表のセルやブロックの url に痕跡が残らない参照なので、ブロック走査では
  *       拾えない。bump により既存ノートの参照を一度の再構築で回収する
+ *  - 7: インライン画像（inlineImage — セルや本文の行内に埋めた画像素材）の fileId を
+ *       usedIn に含める。ブロックの url ではなく inline props の参照なので、これを
+ *       入れないと「セルにだけ貼った画像」が未使用扱いになり、削除前の参照チェックを
+ *       すり抜ける。bump により既存ノートの参照を一度の再構築で回収する
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 6 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 7 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4 | 5 | 6;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -631,7 +635,41 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
     // ので tableMeta には出てこない。これを入れないと、別のノートの図に重ねただけの
     // 素材は「利用ノート」が空のままになり、削除前の参照チェックもすり抜けて図が消える
     for (const fileId of collectChartAssetFileIdsFromBlocks(page?.blocks ?? [])) ids.add(fileId);
+    // セル・本文の行内に埋めたインライン画像（inlineImage）。ブロックの url ではなく
+    // inline props の参照なので、ブロック走査（url 抽出）では拾えない
+    for (const fileId of collectInlineImageFileIdsFromBlocks(page?.blocks ?? [])) ids.add(fileId);
   }
+  return ids;
+}
+
+/** ブロック木（セル内・子ブロック・カラム内も含む）からインライン画像の fileId を集める */
+export function collectInlineImageFileIdsFromBlocks(blocks: any[]): Set<string> {
+  const ids = new Set<string>();
+  const visitInline = (content: any) => {
+    if (!content) return;
+    if (Array.isArray(content)) {
+      for (const item of content) visitInline(item);
+      return;
+    }
+    if (typeof content !== "object") return;
+    if (content.type === "inlineImage") {
+      const fileId = content.props?.fileId;
+      if (typeof fileId === "string" && fileId) ids.add(fileId);
+    }
+    // link の中身・tableCell の content・tableContent の rows/cells を辿る
+    if (Array.isArray(content.content)) visitInline(content.content);
+    if (Array.isArray(content.rows)) {
+      for (const row of content.rows) for (const cell of row?.cells ?? []) visitInline(cell);
+    }
+  };
+  const visit = (list: any[]) => {
+    for (const b of list ?? []) {
+      if (!b || typeof b !== "object") continue;
+      visitInline(b.content);
+      if (Array.isArray(b.children)) visit(b.children);
+    }
+  };
+  visit(blocks);
   return ids;
 }
 

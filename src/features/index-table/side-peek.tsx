@@ -136,6 +136,7 @@ import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { setEditorSidePeekCallback } from "./context";
 import { isExternalSourceId } from "@features/network-graph/external-source";
+import { rememberBlobUrl } from "@features/inline-image/spec";
 
 type SidePeekProps = {
   noteId: string;
@@ -907,6 +908,15 @@ function SidePeekInner({
       // insertInlineContent の onChange 経由で自動保存される
       insertInlineAtSlash(editor, currentBlock, [
         { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      setPickerMediaType(null);
+      return;
+    }
+    // セル内から選んだ画像はインライン画像として埋める（note-app 側と同じ分岐）
+    if (entry.type === "image" && entry.fileId && currentBlock.type === "table") {
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "inlineImage", props: { fileId: entry.fileId, name: entry.name } } as any,
         { type: "text", text: " ", styles: {} },
       ]);
       setPickerMediaType(null);
@@ -1850,8 +1860,11 @@ function SidePeekInner({
                 resolveFileUrl={async (url: string) => {
                   const p = getActiveProvider();
                   const fid = p.extractFileId(url);
-                  if (fid) return p.getMediaBlobUrl(fid);
-                  return url;
+                  if (!fid) return url;
+                  const blobUrl = await p.getMediaBlobUrl(fid);
+                  // 画像を直接ドラッグしたときに素材へ引き戻すための対応（note-app と同じ）
+                  rememberBlobUrl(blobUrl, fid);
+                  return blobUrl;
                 }}
               />
             </div>

@@ -45,6 +45,22 @@ function createMediaSlashItem(
 /** デフォルトスラッシュメニューから除外するアイテムの辞書キー一覧 */
 export const DEFAULT_MEDIA_SLASH_KEYS = ["image", "video", "audio"];
 
+/**
+ * テーブルのセル内で出すスラッシュ項目。セルはインライン要素しか持てないため、
+ * ブロックを挿入する項目は出さない。画像はピッカーで選ぶとインライン画像
+ * （inlineImage）としてセルに埋まる（note-app の handlePickerSelect が分岐する）
+ */
+export function getCellSlashMenuItems(): SlashMenuItem[] {
+  return [
+    createMediaSlashItem(
+      "asset.slashCellImage",
+      "asset.slashCellImageSub",
+      "image",
+      ["image", "画像", "がぞう", "photo", "picture", "写真"],
+    ),
+  ];
+}
+
 /** スラッシュメニューに追加するメディア挿入アイテム（デフォルトの Image/Video/Audio を差し替え） */
 export function getMediaSlashMenuItems(): SlashMenuItem[] {
   return [

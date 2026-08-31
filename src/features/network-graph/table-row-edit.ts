@@ -8,6 +8,7 @@
 // データ行」— 同名行が複数ある場合は最初の行だけが対象（既知の制限）。
 
 import { resolveParamLinkTarget } from "./param-link";
+import { TABLE_ROW_IDENTITY_STYLE } from "../../lib/table-row-identity";
 
 /** セルからテキストを取り出す（generator の extractCellText と同じ 2 形式対応） */
 function cellText(cell: any): string {
@@ -19,33 +20,45 @@ function cellText(cell: any): string {
     .trim();
 }
 
+/**
+ * 値から inline content を組み立てる共通ルール。
+ * - `@画像素材名` → インライン画像（セルの中に画像が見える）。行 ID が要る名前セルは
+ *   画像 + 名前テキストにして identity を保つ（画像だけだと style の置き場所が無い）
+ * - それ以外の `@参照` → 本文セルの @メンションと同じ青いテキスト
+ */
+function buildCellContent(text: string, styles: Record<string, string>): any[] {
+  const target = resolveParamLinkTarget(text);
+  if (target?.startsWith("image:")) {
+    const fileId = target.slice("image:".length);
+    const name = text.trim().replace(/^@/, "");
+    const image = { type: "inlineImage", props: { fileId, name } };
+    const identity = styles[TABLE_ROW_IDENTITY_STYLE];
+    // 行 ID は text inline の style にしか置けない。名前セルは名前も残す
+    return identity
+      ? [image, { type: "text", text: name, styles: { [TABLE_ROW_IDENTITY_STYLE]: identity } }]
+      : [image];
+  }
+  const next = { ...styles };
+  if (target) next.textColor = "blue";
+  else if (next.textColor === "blue") delete next.textColor;
+  return [{ type: "text", text, styles: next }];
+}
+
 /** セルの形式（tableCell / 旧 inline 配列）を保ったままテキストを差し替える */
 function withCellText(cell: any, text: string): any {
   const priorContent = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? (cell.content ?? []) : [];
   const priorText = priorContent.find((inline: any) => inline?.type === "text");
   // 名前セルの tableRowIdentity を含め、既存の text style を落とさない。
-  const styles: Record<string, string> = { ...(priorText?.styles ?? {}) };
-  // @参照として解決できる値は、本文セルの @メンションと同じ青にする
-  // （見た目が揃い、本文側のクリックハンドラの対象にもなる）。
-  // @参照でなくなったら青だけ外す（他の色・行 ID スタイルは触らない）
-  if (resolveParamLinkTarget(text)) styles.textColor = "blue";
-  else if (styles.textColor === "blue") delete styles.textColor;
-  const content = [{ type: "text", text, styles }];
+  const content = buildCellContent(text, { ...(priorText?.styles ?? {}) });
   if (cell && !Array.isArray(cell) && cell.type === "tableCell") {
     return { ...cell, content };
   }
   return content;
 }
 
-/** 新しいセルの content を作る（@参照なら withCellText と同じ規則で青にする） */
+/** 新しいセルの content を作る（withCellText と同じ規則） */
 function newCellContent(text: string): any[] {
-  return [
-    {
-      type: "text",
-      text,
-      styles: resolveParamLinkTarget(text) ? { textColor: "blue" } : {},
-    },
-  ];
+  return buildCellContent(text, {});
 }
 
 type TableTarget = {
@@ -304,6 +317,11 @@ export type TableData = {
   headers: string[];
   /** データ行（ヘッダ行を除く）。セルは文字列 */
   rows: string[][];
+  /**
+   * セルに埋まっているインライン画像の fileId（`"<行>:<列>"` → fileId）。
+   * セル値は文字列なので、画像の有無はここで別に持つ（表示だけに使う）
+   */
+  cellImages?: Record<string, string>;
 };
 
 function findTableBlock(editor: any, tableBlockId: string): any | null {
@@ -328,11 +346,69 @@ export function readTable(editor: any, tableBlockId: string): TableData | null {
   if (!block) return null;
   const rows: any[] = block.content?.rows ?? [];
   if (rows.length === 0) return null;
+  const cellImages: Record<string, string> = {};
+  rows.slice(1).forEach((row, r) => {
+    (row.cells ?? []).forEach((cell: any, c: number) => {
+      const fileId = cellImageFileId(cell);
+      if (fileId) cellImages[`${r}:${c}`] = fileId;
+    });
+  });
   return {
     blockId: tableBlockId,
     headers: (rows[0].cells ?? []).map(cellText),
     rows: rows.slice(1).map((r) => (r.cells ?? []).map(cellText)),
+    ...(Object.keys(cellImages).length > 0 ? { cellImages } : {}),
   };
+}
+
+/**
+ * セルからインライン画像だけを外す（テキストと行 ID は残す）。
+ * 画像セルは誤上書きを防ぐためテキスト編集に入らないので、外す操作をここに持つ。
+ */
+export function removeCellImageAt(
+  editor: any,
+  tableBlockId: string,
+  rowIndex: number,
+  colIndex: number,
+): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  if (!block) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  const target = rowIndex + 1; // ヘッダ行の分
+  if (target < 1 || target >= rows.length) return false;
+  const strip = (cell: any): any => {
+    const content = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? cell.content : [];
+    const kept = (content ?? []).filter((inline: any) => inline?.type !== "inlineImage");
+    // 画像しか無かったセルは、行 ID を引き継いだ空テキストにする（行を消さない）
+    const identity = (content ?? []).find((i: any) => i?.styles?.[TABLE_ROW_IDENTITY_STYLE])
+      ?.styles?.[TABLE_ROW_IDENTITY_STYLE];
+    const next =
+      kept.length > 0
+        ? kept
+        : [{ type: "text", text: "", styles: identity ? { [TABLE_ROW_IDENTITY_STYLE]: identity } : {} }];
+    return cell && !Array.isArray(cell) && cell.type === "tableCell" ? { ...cell, content: next } : next;
+  };
+  const next = rows.map((row, i) =>
+    i === target
+      ? { ...row, cells: row.cells.map((c: any, j: number) => (j === colIndex ? strip(c) : c)) }
+      : row,
+  );
+  return writeRows(editor, block, next);
+}
+
+/** セルに埋まっているインライン画像の fileId（無ければ undefined） */
+function cellImageFileId(cell: any): string | undefined {
+  const content = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? cell.content : null;
+  for (const inline of content ?? []) {
+    if (
+      inline?.type === "inlineImage" &&
+      typeof inline.props?.fileId === "string" &&
+      inline.props.fileId
+    ) {
+      return inline.props.fileId;
+    }
+  }
+  return undefined;
 }
 
 /** ヘッダ（列名）を書き換える */

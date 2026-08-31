@@ -402,6 +402,24 @@ describe("sanitizeBlocksForMarkdown", () => {
     expect(result[2].content).toEqual([text("右本文")]);
   });
 
+  it("inlineImage を ![name](media:fileId) のテキストに変換する", () => {
+    const blocks = [
+      {
+        id: "1",
+        type: "paragraph",
+        content: [
+          text("結果: "),
+          { type: "inlineImage", props: { fileId: "img-9", name: "SEM像.png" } },
+        ],
+      },
+    ];
+    const out = sanitizeBlocksForMarkdown(blocks as any, SCHEMA);
+    expect((out[0] as any).content).toEqual([
+      { type: "text", text: "結果: ", styles: {} },
+      { type: "text", text: "![SEM像.png](media:img-9)", styles: {} },
+    ]);
+  });
+
   it("inlineMath を $ ... $ のテキストに戻す", () => {
     const result = sanitizeBlocksForMarkdown(
       [{

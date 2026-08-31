@@ -306,14 +306,17 @@ export function getNoteSuggestions(
 export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSuggestion[] {
   if (!mediaIndex) return [];
   return mediaIndex.media
-    .filter((m) => m.type === "pdf" || m.type === "document" || m.type === "data")
+    .filter(
+      (m) => m.type === "pdf" || m.type === "document" || m.type === "data" || m.type === "image"
+    )
     .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
     .slice(0, 15)
     .map((m) => ({
       type: "asset" as const,
       id: m.fileId,
-      // 絵文字はピッカーのサムネイルと同じ使い分け（データ素材は 🧾）
-      label: `${m.type === "data" ? "🧾" : "📄"} ${m.name}`,
+      // 絵文字はピッカーのサムネイルと同じ使い分け（データ素材は 🧾）。
+      // 画像（🖼）は選ぶとリンク文字ではなくインライン画像として埋まる
+      label: `${m.type === "data" ? "🧾" : m.type === "image" ? "🖼" : "📄"} ${m.name}`,
       group: t("mention.groupAssets"),
       assetType: m.type,
     }));

@@ -85,6 +85,12 @@ function sanitizeInlines(content: unknown, knownStyles: ReadonlySet<string>): In
       // インライン数式 → Markdown の $ ... $ 表記に戻す
       const md = inlineMathToMarkdown(String(item.props?.latex ?? ""));
       if (md) out.push({ type: "text", text: md, styles: {} });
+    } else if (item.type === "inlineImage") {
+      // インライン画像 → Markdown の画像記法。URL は素材ライブラリの内部参照
+      // （書き出し先では解決できないが、何の画像かは alt で分かる）
+      const name = String(item.props?.name ?? "");
+      const fileId = String(item.props?.fileId ?? "");
+      if (fileId) out.push({ type: "text", text: `![${name}](media:${fileId})`, styles: {} });
     } else if (typeof item.text === "string") {
       // 未知の inline type（将来の mention 等）はテキストとして残す
       out.push({ type: "text", text: item.text, styles: {} });

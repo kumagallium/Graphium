@@ -21,6 +21,8 @@
 //                              （@メンションの linkStore にのみ入る。Knowledge 化の対象では
 //                              ないため derivedFromNotes には入らず、ingester のモード判定
 //                              （server/routes/wiki.ts）にも関与しない）
+//   - "image:<mediaFileId>"    画像素材への参照（inlineImage のクリック → 素材ピーク等）。
+//                              data: と同じくリンク用途のみで Knowledge 化には関与しない
 //   上記以外（プレフィックス無し）は通常ノート / Knowledge ノートの素 ID。
 //
 // 注: server/routes/wiki.ts のモード判定 regex はここを import できない
@@ -28,7 +30,7 @@
 // document モード（多数の知見を収穫）、memo: は memo モード（1 断片 ≈ 1 着想を
 // 抽出）と、ingester の Claim ガイダンスがソース種別で切り替わる。
 
-export type ExternalSourceKind = "pdf" | "url" | "document" | "chat" | "memo" | "shared" | "data";
+export type ExternalSourceKind = "pdf" | "url" | "document" | "chat" | "memo" | "shared" | "data" | "image";
 
 const PREFIXES: { kind: ExternalSourceKind; prefix: string }[] = [
   { kind: "pdf", prefix: "pdf:" },
@@ -38,6 +40,7 @@ const PREFIXES: { kind: ExternalSourceKind; prefix: string }[] = [
   { kind: "memo", prefix: "memo:" },
   { kind: "shared", prefix: "shared:" },
   { kind: "data", prefix: "data:" },
+  { kind: "image", prefix: "image:" },
 ];
 
 /**

@@ -155,6 +155,7 @@ import { saveNoteDoc } from "./features/note-save";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
+import { rememberBlobUrl } from "./features/inline-image/spec";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
@@ -1642,6 +1643,17 @@ function NoteEditorInner({
       return;
     }
 
+    // テーブルのセル内から選んだ画像はブロックではなくインライン画像として埋める。
+    // セルはブロックを持てないため、embed のままだと表の外に画像ブロックが落ちる
+    // （セル内スラッシュ「/画像」→ ピッカー、の経路がここに来る）
+    if (entry.type === "image" && entry.fileId && currentBlock.type === "table") {
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "inlineImage", props: { fileId: entry.fileId, name: entry.name } } as any,
+        { type: "text", text: " ", styles: {} },
+      ]);
+      return;
+    }
+
     // 挿入ブロックの選択:
     //   PDF → カスタム pdf ブロック（インラインビューア付き）
     //   Document (.docx 等) → BlockNote 標準 file ブロック（汎用アタッチメント表示）
@@ -1812,7 +1824,12 @@ function NoteEditorInner({
           setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
           return true;
         }
-        if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "data") {
+        if (
+          ext.kind === "pdf" ||
+          ext.kind === "document" ||
+          ext.kind === "data" ||
+          ext.kind === "image"
+        ) {
           const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
           if (entry) {
             setMaterialSidePeekEntry(entry);
@@ -4066,7 +4083,7 @@ function NoteEditorInner({
       const q = query.normalize("NFC").toLowerCase();
       const assets = getAssetSuggestions(mediaIndex).map((sug) => ({
         label: sug.label,
-        insert: `@${sug.label.replace(/^(📄|🧾)\s*/, "")}`,
+        insert: `@${sug.label.replace(/^(📄|🧾|🖼)\s*/, "")}`,
       }));
       const notes = getNoteSuggestions(files, undefined, noteIndex).map((sug) => ({
         label: sug.label,
@@ -4934,8 +4951,12 @@ function NoteEditorInner({
               resolveFileUrl={async (url: string) => {
                 const p = getActiveProvider();
                 const fid = p.extractFileId(url);
-                if (fid) return p.getMediaBlobUrl(fid);
-                return url;
+                if (!fid) return url;
+                const blobUrl = await p.getMediaBlobUrl(fid);
+                // 画像を直接ドラッグしたとき、blob URL しか手掛かりが無い。
+                // 素材に引き戻せるよう対応を控える（inline-image と共用）
+                rememberBlobUrl(blobUrl, fid);
+                return blobUrl;
               }}
               getMentionSuggestions={(query) => {
                 mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
@@ -5059,6 +5080,17 @@ function NoteEditorInner({
                     markDirty();
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                } else if (suggestion.type === "asset" && suggestion.assetType === "image") {
+                  // 画像素材はリンク文字ではなく、その場に見えるインライン画像として埋める
+                  // （セルの中に画像を置く経路。クリックで素材ピーク）。実体は fileId 参照
+                  const imageName = suggestion.label.replace(/^🖼\s*/, "");
+                  setTimeout(() => {
+                    editorRef.current?.insertInlineContent([
+                      { type: "inlineImage", props: { fileId: suggestion.id, name: imageName } } as any,
+                      { type: "text", text: " ", styles: {} },
+                    ]);
+                  }, 100);
+                  markDirty();
                 } else if (suggestion.type === "asset") {
                   // 素材（PDF/docx/データ本体）の引用。ノートではなく素材を指す。
                   // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が
@@ -5077,7 +5109,7 @@ function NoteEditorInner({
                   if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
                     citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
                   }
-                  const assetLabel = suggestion.label.replace(/^(📄|🧾)\s*/, "");
+                  const assetLabel = suggestion.label.replace(/^(📄|🧾|🖼)\s*/, "");
                   setTimeout(() => {
                     editorRef.current?.insertInlineContent([
                       { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },
