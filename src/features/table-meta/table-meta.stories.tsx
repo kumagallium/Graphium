@@ -2,10 +2,11 @@
 // - 日時が入る列を持つテーブル: 標準の行追加（テーブル下端の + 帯・最終セルで Tab）で
 //   行を足すと 1 列目に現在日時が自動で入ることを目視確認する（専用ボタンは無い）
 // - キャプション（テーブルの名前）は、はたらきの付いていないふつうのテーブルにも
-//   付けられる。名前が無いテーブルには何も出ない（付ける入口は ⠿ メニュー）
+//   付けられる。名前が無いテーブルには名前は出ない（付ける入口は ⠿ メニュー）が、
+//   拡大表示（⤢）ボタンはどのテーブルにも出る
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Component, useEffect, useRef, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { SandboxEditor } from "../../base/editor";
 import "../../app.css";
 import {
@@ -15,6 +16,8 @@ import {
 import { LinkStoreProvider } from "../block-link/store";
 import { TableMetaStoreProvider, useTableMetaStore } from "./store";
 import { TableCaptionLayer } from "./caption-layer";
+import { TableExpandModal, type TableExpandData } from "./expand-modal";
+import { readTableData } from "./table-cells";
 import {
   applyLogTableTimestamps,
   primeLogTableRowTracking,
@@ -97,6 +100,8 @@ function TableMetaDemoInner({
   const store = useTableMetaStore();
   const storeRef = useRef(store);
   storeRef.current = store;
+  // 拡大表示（実アプリと同じ配線: ⤢ → 読み取り専用スナップショット → モーダル）
+  const [expandData, setExpandData] = useState<TableExpandData | null>(null);
   useEffect(() => {
     resetLogTableRowTracking();
     if (datetimeColumn !== null) {
@@ -112,13 +117,17 @@ function TableMetaDemoInner({
     // ⠿ メニューもテーブルの列メニューも参照要素の「上」に開くため、テーブルが
     // 画面上端近くにあるとメニューがビューポートの外に出て確認できない。
     // ストーリーではテーブルを画面中ほどまで下げておく。
+    // data-label-wrapper: caption-layer のポータル先。実アプリでは note-app の
+    // エディタ外枠に付いている（無いと層が root を見つけられず何も描かない）
     <div
+      data-label-wrapper
       style={{
         maxWidth: 680,
         marginTop: 280,
         border: "1px solid #e5e7eb",
         borderRadius: 12,
         padding: "28px 8px 8px",
+        position: "relative",
       }}
     >
       <SandboxEditor
@@ -135,7 +144,14 @@ function TableMetaDemoInner({
           );
         }}
       />
-      <TableCaptionLayer editorRef={editorRef} />
+      <TableCaptionLayer
+        editorRef={editorRef}
+        onExpand={(blockId, displayName) => {
+          const data = readTableData(editorRef.current?.getBlock?.(blockId));
+          if (data) setExpandData({ name: displayName, ...data });
+        }}
+      />
+      <TableExpandModal data={expandData} onClose={() => setExpandData(null)} />
     </div>
   );
 }
@@ -185,13 +201,13 @@ export const PlainTableWithCaption: StoryObj = {
 };
 
 export const PlainTableWithoutCaption: StoryObj = {
-  name: "名前の無いふつうのテーブル（何も出ない）",
+  name: "名前の無いふつうのテーブル（拡大表示だけ出る）",
   render: () => (
     <ErrorBoundary>
       <EditorProviders>
         <TableMetaDemoInner
           content={tableContent(
-            "名前もはたらきも無いテーブルには、表の上に何も出ない。付ける入口は ⠿ メニューの「テーブルに名前を付ける」。",
+            "名前もはたらきも無いテーブルには名前は出ず、拡大表示（⤢）だけが出る。名前を付ける入口は ⠿ メニューの「テーブルに名前を付ける」。",
             ["項目", "値"],
             ["密度", "7.87"]
           )}
@@ -199,6 +215,56 @@ export const PlainTableWithoutCaption: StoryObj = {
           caption=""
         />
       </EditorProviders>
+    </ErrorBoundary>
+  ),
+};
+
+/** 拡大表示モーダル単体。大きめの表で並べ替えの手触りを確認する */
+function ExpandModalDemo() {
+  // XRD 測定風のデータ。数値列（2θ・強度）と文字列列（相の帰属）が混在し、
+  // 数値ソートと文字列ソートの両方を 1 つの表で確認できる
+  const rows: string[][] = [];
+  const phases = ["BaTiO3", "TiO2", "不明", ""];
+  for (let i = 0; i < 36; i++) {
+    const angle = 20 + i * 1.7;
+    const intensity = Math.round(1000 * Math.abs(Math.sin(i * 1.3)) + (i % 7) * 40);
+    rows.push([
+      angle.toFixed(2),
+      String(intensity),
+      phases[i % phases.length],
+      i % 5 === 0 ? "肩ピークあり" : "",
+    ]);
+  }
+  const [data, setData] = useState<TableExpandData | null>({
+    name: "XRD 測定（焼成後）",
+    header: ["2θ (deg)", "強度 (counts)", "帰属", "メモ"],
+    rows,
+  });
+  return (
+    <div style={{ padding: 16 }}>
+      <button
+        type="button"
+        onClick={() =>
+          setData({
+            name: "XRD 測定（焼成後）",
+            header: ["2θ (deg)", "強度 (counts)", "帰属", "メモ"],
+            rows,
+          })
+        }
+        style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #d1d5db", cursor: "pointer" }}
+      >
+        拡大表示を開く
+      </button>
+      <TableExpandModal data={data} onClose={() => setData(null)} />
+    </div>
+  );
+}
+
+export const ExpandModal: StoryObj = {
+  name: "拡大表示モーダル（並べ替え付き）",
+  render: () => (
+    <ErrorBoundary>
+      <ExpandModalDemo />
     </ErrorBoundary>
   ),
 };

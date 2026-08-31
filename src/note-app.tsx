@@ -63,11 +63,16 @@ import {
   TableMetaStoreProvider,
   useTableMetaStore,
   TableCaptionLayer,
+  TableExpandModal,
   migrateTableMeta,
   hasColumnType,
   readFirstColumnName,
+  readTableData,
+  sortTableBlock,
   type ColumnType,
   type TableSource,
+  type TableExpandData,
+  type SortState,
 } from "./features/table-meta";
 import {
   DataImportModal,
@@ -149,6 +154,8 @@ import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
+import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
+import { rememberBlobUrl } from "./features/inline-image/spec";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
@@ -246,7 +253,7 @@ import {
   NoteMemosSection,
   getMediaSlashMenuItems,
   setMediaPickerCallback,
-  DEFAULT_MEDIA_SLASH_TITLES,
+  DEFAULT_MEDIA_SLASH_KEYS,
   UrlPasteMenu,
   extractDomain,
   generateUrlBookmarkId,
@@ -1600,6 +1607,16 @@ function NoteEditorInner({
       if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
         citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, entry.fileId];
       }
+      // @メンションの asset 分岐と同じく linkStore にも記録する（クリックで素材を開くため）
+      if (entry.fileId) {
+        linkStore.addLink({
+          sourceBlockId: currentBlock.id,
+          targetBlockId: "",
+          targetNoteId: `${entry.type}:${entry.fileId}`,
+          type: "reference",
+          createdBy: "human",
+        });
+      }
       // insertInlineContent が onChange を発火 → 自動 markDirty。
       // citedAssetFileIdsRef は同期的に更新済みなので、その後の save で拾われる。
       insertInlineAtSlash(editor, currentBlock, [
@@ -1628,6 +1645,17 @@ function NoteEditorInner({
       return;
     }
 
+    // テーブルのセル内から選んだ画像はブロックではなくインライン画像として埋める。
+    // セルはブロックを持てないため、embed のままだと表の外に画像ブロックが落ちる
+    // （セル内スラッシュ「/画像」→ ピッカー、の経路がここに来る）
+    if (entry.type === "image" && entry.fileId && currentBlock.type === "table") {
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "inlineImage", props: { fileId: entry.fileId, name: entry.name } } as any,
+        { type: "text", text: " ", styles: {} },
+      ]);
+      return;
+    }
+
     // 挿入ブロックの選択:
     //   PDF → カスタム pdf ブロック（インラインビューア付き）
     //   Document (.docx 等) → BlockNote 標準 file ブロック（汎用アタッチメント表示）
@@ -1648,7 +1676,7 @@ function NoteEditorInner({
       editor.removeBlocks([currentBlock]);
     }
     // onChange が自動的にトリガーされるので markDirty() は不要
-  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore]);
 
   // データ取り込みダイアログの確定 → テーブルブロックを挿入し、出所を注釈に残す。
   //
@@ -1786,6 +1814,66 @@ function NoteEditorInner({
     },
     []
   );
+
+  // 解決済み ID（ノートの素 ID / wiki: / 外部ソース ID）をサイドピークへ振り分ける。
+  // 本文の @メンション・インデックステーブル・グラフのパラメータ ↗ が同じ経路を通る。
+  // 開けたら true（chat:/shared: など実体の無い ID は false で何もしない）
+  const openPeekTargetId = useCallback(
+    (id: string): boolean => {
+      const ext = parseExternalSource(id);
+      if (ext) {
+        if (ext.kind === "url") {
+          setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
+          return true;
+        }
+        if (
+          ext.kind === "pdf" ||
+          ext.kind === "document" ||
+          ext.kind === "data" ||
+          ext.kind === "image"
+        ) {
+          const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
+          if (entry) {
+            setMaterialSidePeekEntry(entry);
+            return true;
+          }
+          return false;
+        }
+        if (ext.kind === "memo") {
+          onOpenMemoSource?.(ext.key);
+          return true;
+        }
+        return false;
+      }
+      setSidePeekNoteId(id);
+      return true;
+    },
+    [mediaIndex, onOpenMemoSource]
+  );
+
+  // テーブルの拡大表示。開いた時点の中身のスナップショットをモーダルに出す。
+  // 見出しクリックの並べ替えは実テーブルに反映し（列ハンドルメニューと同じ操作の
+  // 別入口）、並べ替え後のスナップショットを読み直す — ビューは常に実表の鏡
+  const [tableExpandData, setTableExpandData] = useState<TableExpandData | null>(null);
+  const [tableExpandSort, setTableExpandSort] = useState<SortState>(null);
+  const tableExpandBlockIdRef = useRef<string | null>(null);
+  const handleTableExpand = useCallback((blockId: string, displayName: string) => {
+    const editor = editorRef.current;
+    const data = readTableData(editor?.getBlock?.(blockId));
+    if (!data) return;
+    tableExpandBlockIdRef.current = blockId;
+    setTableExpandSort(null);
+    setTableExpandData({ name: displayName, ...data });
+  }, []);
+  const handleTableExpandSort = useCallback((col: number, dir: "asc" | "desc") => {
+    const blockId = tableExpandBlockIdRef.current;
+    const editor = editorRef.current;
+    if (!blockId || !editor) return;
+    sortTableBlock(editor, blockId, col, dir);
+    const data = readTableData(editor.getBlock?.(blockId));
+    if (data) setTableExpandData((prev) => (prev ? { ...prev, ...data } : prev));
+    setTableExpandSort({ col, dir });
+  }, []);
 
   // データ素材ピッカーで「ファイルからアップロード」を選んだとき。
   // まだ素材にしないのは、ダイアログをキャンセルしたファイルまで溜めないため
@@ -3912,7 +4000,9 @@ function NoteEditorInner({
       currentFileId: fileId,
       onNavigateNote,
       onRefreshFiles,
-      onOpenSidePeek: (noteId: string) => setSidePeekNoteId(noteId),
+      // 外部ソース ID（pdf:/document:/data:/url:）も受け付ける — グラフの
+      // パラメータ ↗ や別ノート由来ノードがこの経路で素材ピークを開く
+      onOpenSidePeek: (noteId: string) => void openPeekTargetId(noteId),
       onAddNoteLink: (targetNoteId: string, sourceBlockId: string) => {
         const exists = noteLinksRef.current.some(
           (l) => l.targetNoteId === targetNoteId && l.sourceBlockId === sourceBlockId
@@ -3927,14 +4017,29 @@ function NoteEditorInner({
       },
     });
     return () => { setIndexTableCallbacks(null); };
-  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty]);
+  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty, openPeekTargetId]);
 
   // エディタ内の @ノート名クリックでサイドピークを開く
   useEffect(() => {
     const isMentionSpan = (el: HTMLElement): boolean => {
       if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
       if (!el.closest(".bn-editor")) return false;
-      if (el.closest("table")) return false;
+      // インデックステーブル（note-link 列）の先頭列セルだけは icon-layer が
+      // 行ノートを開くのでここでは扱わない。それ以外のセル内メンション
+      // （素材リンク・他ノート参照）は本文と同じにクリックで開く。
+      // 以前はテーブル全体を除外していて、セルに貼った素材リンクが押せなかった
+      const cellEl = el.closest("td, th");
+      if (cellEl) {
+        const tableBlockId = el.closest("[data-id]")?.getAttribute("data-id");
+        const isFirstColumn = cellEl.parentElement?.children[0] === cellEl;
+        if (
+          isFirstColumn &&
+          tableBlockId &&
+          tableMetaStore.hasColumnType(tableBlockId, "note-link")
+        ) {
+          return false;
+        }
+      }
       const text = el.textContent?.trim();
       return !!text && text.startsWith("@") && !text.startsWith("@#");
     };
@@ -3954,6 +4059,42 @@ function NoteEditorInner({
       if (wikiEntry) return { noteId: wikiEntry.noteId, isWiki: true };
       return null;
     };
+    // 素材名 → 外部ソース ID（"data:<fileId>" 等）。リンク照合と逆引きの両方が使う。
+    // macOS のファイル名は NFD で来ることがあるため NFC に正規化して比べる。
+    const resolveAssetExternalId = (name: string): string | null => {
+      const nfc = name.normalize("NFC");
+      const entry = mediaIndex?.media.find((m) => m.name.normalize("NFC") === nfc);
+      return entry ? `${entry.type}:${entry.fileId}` : null;
+    };
+    // 素材名の逆引き（リンク記録の無い既存の @素材名 向けフォールバック）。
+    // 外部ソース ID を返し、下流の素材ピーク振り分けに乗せる。
+    const resolveMentionAssetId = (name: string): { noteId: string; isWiki: boolean } | null => {
+      const id = resolveAssetExternalId(name);
+      return id ? { noteId: id, isWiki: false } : null;
+    };
+    // グラフ側（右パネルの表・カードのパラメータ表示）の @参照は、本文メンションと
+    // 同じ解決を使う。ここ（noteIndex / files / mediaIndex が揃う場所）で登録する
+    setParamLinkResolver((name) => {
+      const note = resolveMentionNoteId(name);
+      if (note) return note.isWiki ? `wiki:${note.noteId}` : note.noteId;
+      return resolveAssetExternalId(name);
+    });
+    // 値セルで @ を打ったときの候補も本文メンションと同じ材料から出す。
+    // 表の値は測定ファイル参照が本命なので素材を先に並べる
+    setParamLinkSuggestions((query) => {
+      const q = query.normalize("NFC").toLowerCase();
+      const assets = getAssetSuggestions(mediaIndex).map((sug) => ({
+        label: sug.label,
+        insert: `@${sug.label.replace(/^(📄|🧾|🖼)\s*/, "")}`,
+      }));
+      const notes = getNoteSuggestions(files, undefined, noteIndex).map((sug) => ({
+        label: sug.label,
+        insert: `@${sug.label}`,
+      }));
+      return [...assets, ...notes]
+        .filter((sug) => q === "" || sug.label.normalize("NFC").toLowerCase().includes(q))
+        .slice(0, 8);
+    });
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       // サイドピーク内のメンションは、そのピーク自身の linkStore で解決する必要があるため
@@ -3998,33 +4139,26 @@ function NoteEditorInner({
       // 解決できなければタイトル逆引きにフォールバック（旧データや素材引用向け）。
       const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
       const resolved =
-        resolveMentionTargetFromLinks(blockId, noteName, linkStore.getAllLinks(), noteIndex) ??
-        resolveMentionNoteId(noteName);
+        resolveMentionTargetFromLinks(
+          blockId,
+          noteName,
+          linkStore.getAllLinks(),
+          noteIndex,
+          resolveAssetExternalId
+        ) ??
+        resolveMentionNoteId(noteName) ??
+        resolveMentionAssetId(noteName);
       if (resolved) {
         e.preventDefault();
         e.stopPropagation();
         // References の「Source: @ラベル」等は linkStore の targetNoteId に外部ソース ID
-        // （url:/pdf:/document:/chat:）がそのまま入る。ノート ID として SidePeek に渡すと
-        // loadFile が失敗して「読み込みに失敗しました」になるため、素材ピークへ振り分ける。
-        const ext = parseExternalSource(resolved.noteId);
-        if (ext) {
-          if (ext.kind === "url") {
-            setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
-          } else if (ext.kind === "pdf" || ext.kind === "document") {
-            const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
-            if (entry) setMaterialSidePeekEntry(entry);
-          } else if (ext.kind === "memo") {
-            // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
-            onOpenMemoSource?.(ext.key);
-          }
-          // chat: は開ける実体が無いので何もしない（グラフノードと同じ扱い）
-          return;
-        }
+        // （url:/pdf:/document:/data:/chat:）がそのまま入る。振り分けは openPeekTargetId に
+        // 集約（chat: は開ける実体が無いので何も起きない）。
         // ノート / Wiki どちらでもまずサイドピークで開く。SidePeek 内の「Open full」で
         // 完全表示に切り替えられる方が、いきなりページ遷移するより流れが良い。
         // Wiki の場合は SidePeek が wiki: プレフィックスで loadWikiFile を呼ぶ。
-        const peekId = resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId;
-        setSidePeekNoteId(peekId);
+        const isExt = parseExternalSource(resolved.noteId) !== null;
+        openPeekTargetId(!isExt && resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId);
         return;
       }
       // ノートで解決できなければ、@ 引用したドキュメント素材として解決を試みる。
@@ -4062,8 +4196,10 @@ function NoteEditorInner({
     document.addEventListener("click", handleClick, true);
     return () => {
       document.removeEventListener("click", handleClick, true);
+      setParamLinkResolver(null);
+      setParamLinkSuggestions(null);
     };
-  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource]);
+  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource, tableMetaStore]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）
@@ -4348,7 +4484,13 @@ function NoteEditorInner({
         hidden={!isDesktop && rightTab !== null}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} />
+      <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} onExpand={handleTableExpand} />
+      <TableExpandModal
+        data={tableExpandData}
+        onClose={() => setTableExpandData(null)}
+        onSort={handleTableExpandSort}
+        activeSort={tableExpandSort}
+      />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
@@ -4803,7 +4945,7 @@ function NoteEditorInner({
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
               extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
-              excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
+              excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
               onChange={handleContentChange}
@@ -4811,8 +4953,12 @@ function NoteEditorInner({
               resolveFileUrl={async (url: string) => {
                 const p = getActiveProvider();
                 const fid = p.extractFileId(url);
-                if (fid) return p.getMediaBlobUrl(fid);
-                return url;
+                if (!fid) return url;
+                const blobUrl = await p.getMediaBlobUrl(fid);
+                // 画像を直接ドラッグしたとき、blob URL しか手掛かりが無い。
+                // 素材に引き戻せるよう対応を控える（inline-image と共用）
+                rememberBlobUrl(blobUrl, fid);
+                return blobUrl;
               }}
               getMentionSuggestions={(query) => {
                 mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
@@ -4936,14 +5082,36 @@ function NoteEditorInner({
                     markDirty();
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                } else if (suggestion.type === "asset" && suggestion.assetType === "image") {
+                  // 画像素材はリンク文字ではなく、その場に見えるインライン画像として埋める
+                  // （セルの中に画像を置く経路。クリックで素材ピーク）。実体は fileId 参照
+                  const imageName = suggestion.label.replace(/^🖼\s*/, "");
+                  setTimeout(() => {
+                    editorRef.current?.insertInlineContent([
+                      { type: "inlineImage", props: { fileId: suggestion.id, name: imageName } } as any,
+                      { type: "text", text: " ", styles: {} },
+                    ]);
+                  }, 100);
+                  markDirty();
                 } else if (suggestion.type === "asset") {
-                  // ドキュメント素材（PDF/docx 本体）の引用。ノートではなく素材を指す。
+                  // 素材（PDF/docx/データ本体）の引用。ノートではなく素材を指す。
                   // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が
                   // その素材の全文＋ハイライトメモを読めるようになる。
+                  // 併せて linkStore にも外部ソース ID（pdf:/document:/data:）で記録する。
+                  // これが無いと @素材名 をクリックしても解決できず何も開かない
+                  // （References の「Source: @ラベル」と同じ形に揃えて既存の
+                  // 素材ピーク振り分けに乗せる）。
+                  linkStore.addLink({
+                    sourceBlockId,
+                    targetBlockId: "",
+                    targetNoteId: `${suggestion.assetType ?? "document"}:${suggestion.id}`,
+                    type: "reference",
+                    createdBy: "human",
+                  });
                   if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
                     citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
                   }
-                  const assetLabel = suggestion.label.replace(/^📄\s*/, "");
+                  const assetLabel = suggestion.label.replace(/^(📄|🧾|🖼)\s*/, "");
                   setTimeout(() => {
                     editorRef.current?.insertInlineContent([
                       { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },

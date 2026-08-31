@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.48.0](https://github.com/kumagallium/Graphium/compare/v0.47.1...v0.48.0) - 2026-08-31
+
+- [feat] Table expand view with view-only sorting by @kumagallium in https://github.com/kumagallium/Graphium/pull/798
+- [feat] Cell links to data assets and real-table sorting by @kumagallium in https://github.com/kumagallium/Graphium/pull/799
+- [fix] Localize BlockNote built-in UI via locale-synced dictionary by @kumagallium in https://github.com/kumagallium/Graphium/pull/802
+- [feat] Open @references from flow panel tables and node cards by @kumagallium in https://github.com/kumagallium/Graphium/pull/801
+- [feat] Embed images inside table cells as inline images by @kumagallium in https://github.com/kumagallium/Graphium/pull/803
+
 ## [v0.47.1](https://github.com/kumagallium/Graphium/compare/v0.47.0...v0.47.1) - 2026-08-28
 
 - [fix] Relaunch through launchd so an update keeps folder access by @kumagallium in https://github.com/kumagallium/Graphium/pull/797

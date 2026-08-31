@@ -135,6 +135,8 @@ export type StepFlowViewProps = {
   /** 選択の裏にある step の中身（全テーブル + 本文 span 由来）を読む */
   getPanelFor?: (selection: FlowSelection) => StepPanelData | null;
   onSetCell?: (blockId: string, rowIndex: number, colIndex: number, value: string) => void;
+  /** 画像セルから画像だけを外す（テキスト・行 ID は残す） */
+  onRemoveCellImage?: (blockId: string, rowIndex: number, colIndex: number) => void;
   onRenameColumn?: (blockId: string, colIndex: number, name: string) => void;
   onAddColumn?: (blockId: string, name: string) => void;
   onRemoveColumn?: (blockId: string, colIndex: number) => void;
@@ -221,6 +223,7 @@ function StepFlowCanvas({
   variant = "editor",
   getPanelFor,
   onSetCell,
+  onRemoveCellImage,
   onRenameColumn,
   onAddColumn,
   onRemoveColumn,
@@ -629,6 +632,7 @@ function StepFlowCanvas({
       selection={selection}
       data={getPanelFor?.(selection) ?? null}
       onSetCell={onSetCell}
+      onRemoveCellImage={onRemoveCellImage}
       onRenameColumn={onRenameColumn}
       onAddColumn={onAddColumn}
       onRemoveColumn={onRemoveColumn}
@@ -639,6 +643,7 @@ function StepFlowCanvas({
       onAddSharedRow={onAddEntity}
       onRenameEntity={onRenameEntity}
       onRemoveEntity={onRemoveEntity}
+      onOpenExternalNote={onOpenExternalNote}
     />
   );
 

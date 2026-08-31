@@ -7,6 +7,8 @@
 // output テラコッタ）に従う。書き込みは data のコールバック経由。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { ParamLinkButton, resolveParamLinkTarget } from "./param-link";
+import { splitAttrLabel } from "./activity-graph-adapter";
 import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
 import { ExternalLink, FileText, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
@@ -363,11 +365,20 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
           <SlidersHorizontal size={10} style={{ flexShrink: 0, marginTop: showParams ? 2 : 0 }} />
           {showParams ? (
             <span style={{ overflowWrap: "anywhere" }}>
-              {activity.params.map((p, i) => (
-                <span key={i} style={{ display: "block" }}>
-                  {p.label}
-                </span>
-              ))}
+              {activity.params.map((p, i) => {
+                // 値が @参照ならその場から飛べるようにする（表パネルと同じ ↗）
+                const target = data.onOpenExternalNote
+                  ? resolveParamLinkTarget(splitAttrLabel(p.label).value)
+                  : null;
+                return (
+                  <span key={i} style={{ display: "block" }}>
+                    {p.label}
+                    {target && (
+                      <ParamLinkButton targetId={target} onOpen={data.onOpenExternalNote!} />
+                    )}
+                  </span>
+                );
+              })}
             </span>
           ) : (
             activity.params.length

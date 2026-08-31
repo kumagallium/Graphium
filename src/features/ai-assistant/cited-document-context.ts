@@ -235,6 +235,22 @@ async function loadPdfFullText(
   }
 }
 
+/** データ素材（区切りテキスト）の全文を読む。失敗時は undefined */
+async function loadDataFullText(
+  mediaFileId: string,
+  deps: Pick<PdfLoadDeps, "provider" | "loadBlob">,
+): Promise<string | undefined> {
+  try {
+    const blob = deps.loadBlob
+      ? await deps.loadBlob(mediaFileId)
+      : await deps.provider.getMediaBlobUrl(mediaFileId).then((url) => fetch(url).then((r) => r.blob()));
+    const { readDataFileText } = await import("../data-import/read-file");
+    return await readDataFileText(blob);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * 引用文書ノートを AI コンテキスト用の Markdown に組み立てる。
  * 文書ノートでなければ null（呼び出し側は従来の本文抽出にフォールバックする）。
@@ -343,12 +359,19 @@ export async function assembleCitedAssetContext(
   const memos = gatherDerivedMemos(deps.captureIndex, asset.fileId, "").map((m) => m.text);
 
   // 全文: PDF は抽出、URL は Reader 経由の本文→抽出済み抜粋の順でフォールバック。
+  // データ素材（区切りテキスト）は本文そのものがテキストなのでそのまま渡す
+  // （長すぎる分は budgetChars で切られる）。
   // docx 等は素材本体からの本文抽出経路が無いためメモのみ（本文は取り込んでノート化して初めて入る）。
   let fullText: string | undefined;
   if (asset.type === "pdf") {
     fullText = await loadPdfFullText(asset.fileId, {
       provider: deps.provider,
       extractPdfText: deps.extractPdfText,
+      loadBlob: deps.loadBlob,
+    });
+  } else if (asset.type === "data") {
+    fullText = await loadDataFullText(asset.fileId, {
+      provider: deps.provider,
       loadBlob: deps.loadBlob,
     });
   } else if (asset.type === "url") {
@@ -361,7 +384,11 @@ export async function assembleCitedAssetContext(
 
   if (memos.length === 0 && !fullText) return null;
 
-  const mediumLabel = asset.type === "pdf" ? "PDF" : asset.type === "url" ? "URL" : "ドキュメント";
+  const mediumLabel =
+    asset.type === "pdf" ? "PDF"
+    : asset.type === "url" ? "URL"
+    : asset.type === "data" ? "データ"
+    : "ドキュメント";
   return formatCitedDocument(
     { title: asset.name, mediumLabel, memos, knowledge: [], fullText },
     deps.budgetChars ?? DEFAULT_BUDGET_CHARS,
