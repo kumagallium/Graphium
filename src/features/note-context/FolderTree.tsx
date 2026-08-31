@@ -12,10 +12,9 @@ import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus } from "l
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
-import { buildFolderTree, splitFolderPath, validateFolderPath, type FolderNode } from "./folder-tree-model";
+import { buildFolderTree, splitFolderPath, validateFolderPath, UNFILED_PATH, type FolderNode } from "./folder-tree-model";
 
-/** 「未分類」を selected で表すための特殊値（実フォルダ名と衝突しない予約値） */
-export const UNFILED_PATH = "__unfiled__";
+export { UNFILED_PATH };
 
 export type FolderTreeProps = {
   /** 使用中フォルダと件数（aggregateNoteContexts の出力をそのまま渡す） */
@@ -147,7 +146,7 @@ export function FolderTree({
 
       {typeof unfiledCount === "number" && (
         <>
-          {tree.length > 0 && <div className="my-1 border-t border-sidebar-border/50" aria-hidden />}
+          {/* 区切り線は引かない — サイドバーは divider が既に多く、増やすと混乱する（2026-08-31 レビュー） */}
           <div className={rowShellClass(selected === UNFILED_PATH)}>
             <span className="w-4 ml-2 shrink-0" aria-hidden />
             <button

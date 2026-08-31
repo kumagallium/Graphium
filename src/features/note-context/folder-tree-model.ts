@@ -8,6 +8,12 @@
 // - 並びは名前昇順。件数順にしないのは、エクスプローラーの「フォルダは名前順」という
 //   メンタルモデルに合わせるため（文脈タグのサジェスト＝件数順とは目的が違う）
 
+/**
+ * 「未分類」（noteContexts が空のノート）をフォルダ選択・文脈フィルタで表すための特殊値。
+ * 実フォルダ名と衝突しないよう予約する。フィルタ側はこの値を見たら「文脈なし」を意味として扱う。
+ */
+export const UNFILED_PATH = "__unfiled__";
+
 export type FolderNode = {
   /** 表示名（パスの末尾セグメント） */
   name: string;
@@ -47,6 +53,25 @@ export function validateFolderPath(value: string): "ok" | "empty" | "invalid" | 
   if (segments.some((s) => !s.trim())) return "invalid";
   if (segments.length > 2) return "tooDeep";
   return "ok";
+}
+
+/**
+ * フォルダ選択を文脈フィルタ（OR・完全一致）の値リストに展開する。
+ * 親フォルダを選んだら子フォルダのノートも含める（件数表示が「直下 + 子合計」なので、
+ * クリックで出る一覧も同じ集合にする）。既存の contextFilter は小文字完全一致の OR なので、
+ * 親 + 全子の path を並べるだけで実現できる。
+ */
+export function expandFolderToContextValues(tree: readonly FolderNode[], path: string): string[] {
+  const key = path.trim().toLowerCase();
+  for (const node of tree) {
+    if (node.path.toLowerCase() === key) {
+      return [node.path, ...node.children.map((c) => c.path)];
+    }
+    for (const child of node.children) {
+      if (child.path.toLowerCase() === key) return [child.path];
+    }
+  }
+  return [path];
 }
 
 type MutableNode = {

@@ -5,6 +5,9 @@ import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History,
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { FolderTree } from "../features/note-context/FolderTree";
+import { aggregateNoteContexts } from "../features/note-context/context-tags";
+import { buildFolderTree, expandFolderToContextValues } from "../features/note-context/folder-tree-model";
 import { isTauri } from "../lib/platform";
 import type { WikiKind } from "../lib/document-types";
 import { type RecentNote } from "../features/navigation";
@@ -32,6 +35,19 @@ export type FileSidebarProps = {
   onShowNoteList: () => void;
   /** ノート一覧画面がアクティブか（ハイライト用） */
   noteListActive?: boolean;
+  /**
+   * フォルダ（noteContexts のフォルダ見せ）— 選択中のフォルダ path。
+   * 未分類は UNFILED_PATH（folder-tree-model）。null は非選択。
+   */
+  selectedFolder?: string | null;
+  /**
+   * フォルダクリック。contextValues はノート一覧の文脈フィルタにそのまま渡せる
+   * 展開済みの値（親フォルダなら子フォルダの path も含む）。
+   * 未指定ならフォルダセクション自体を表示しない。
+   */
+  onSelectFolder?: (path: string, contextValues: string[]) => void;
+  /** 未分類（文脈なしノート）フォルダのクリック */
+  onSelectUnfiledFolder?: () => void;
   mediaIndex: MediaIndex | null;
   onShowAssetGallery: (type: MediaType) => void;
   noteIndex: GraphiumIndex | null;
@@ -154,6 +170,9 @@ export function FileSidebar({
   recentNotes,
   onShowNoteList,
   noteListActive = false,
+  selectedFolder = null,
+  onSelectFolder,
+  onSelectUnfiledFolder,
   mediaIndex,
   onShowAssetGallery,
   noteIndex,
@@ -216,6 +235,31 @@ export function FileSidebar({
     }
     return n;
   }, [noteIndex]);
+
+  // フォルダ（noteContexts のフォルダ見せ）: noteCount と同じ除外条件で
+  // 「人間が書いた active ノート」だけを集計する（wiki/skill/trash/archive は含めない）
+  const folderData = useMemo(() => {
+    if (!noteIndex) return { folders: [] as { value: string; count: number }[], unfiledCount: 0 };
+    const live: { noteContexts?: string[] }[] = [];
+    let unfiled = 0;
+    for (const note of noteIndex.notes) {
+      if (note.wikiKind) continue;
+      if (note.source === "skill") continue;
+      if (note.deletedAt) continue;
+      if (note.archivedAt) continue;
+      live.push(note);
+      if (!note.noteContexts || note.noteContexts.length === 0) unfiled++;
+    }
+    return { folders: aggregateNoteContexts(live), unfiledCount: unfiled };
+  }, [noteIndex]);
+  // 親フォルダ選択時に子を含めた文脈フィルタへ展開するためのツリー
+  // （FolderTree も内部で組むが軽い計算なので二重でよしとする）
+  const folderTree = useMemo(() => buildFolderTree(folderData.folders), [folderData.folders]);
+  // セクションヘッダの件数はフォルダ数（ラベルセクションが「種類数」を出す慣例に合わせる）
+  const folderCount = useMemo(
+    () => folderTree.reduce((sum, n) => sum + 1 + n.children.length, 0),
+    [folderTree],
+  );
 
   // Skill はフッターに移したのでカウントには含めない。
   // synthesis（発想）はサイドバーに表示しないため total にも含めない（design revision 2026-05-27）。
@@ -356,6 +400,29 @@ export function FileSidebar({
             <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{noteCount}</span>
           )}
         </button>
+
+        {/* ①'' フォルダ（noteContexts のフォルダ見せ）— ノート直下・初期畳み。
+            実体はタグなので、このセクションを外してもノートのデータには何も起きない（可逆）。
+            ノート/プロセスと「見方」が被る IA 問題は認識済みで、左ナビ再編の第 2 ラウンドで
+            扱う（design.md 決定事項 2026-08-31）。空フォルダ作成（＋行）は永続化と併せて次段。 */}
+        {onSelectFolder && (
+          <CollapsibleSection
+            storageKey="folders"
+            title={<span title={t("nav.foldersTooltip")}>{t("nav.folders")}</span>}
+            defaultOpen={false}
+            count={folderCount}
+          >
+            <FolderTree
+              folders={folderData.folders}
+              unfiledCount={folderData.unfiledCount}
+              selected={selectedFolder}
+              onSelectFolder={(path) =>
+                onSelectFolder(path, expandFolderToContextValues(folderTree, path))
+              }
+              onSelectUnfiled={onSelectUnfiledFolder}
+            />
+          </CollapsibleSection>
+        )}
 
         {/* ①' プロセス（見出し風リンク） — ノートの別の見方なので隣に置く。
             手順を書いたノートが 1 件も無いうちは出さない（progressive disclosure）。 */}

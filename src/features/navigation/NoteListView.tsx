@@ -20,6 +20,7 @@ import { formatDateTime } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
+import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import {
   aggregateNoteContexts,
   addNoteContext,
@@ -106,6 +107,8 @@ export function NoteListView({
   onSetNoteContexts,
   onDeleteContextEverywhere,
   onShareSelected,
+  contextFilter: controlledContextFilter,
+  onContextFilterChange,
 }: {
   noteIndex: GraphiumIndex | null;
   /** クリック時のコールバック（サイドピーク表示用） */
@@ -137,6 +140,13 @@ export function NoteListView({
   /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
   onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /**
+   * 文脈フィルタの外部制御（サイドバーのフォルダ選択と連動させる用）。
+   * 渡されたら内部 state ではなくこちらを使い、列ヘッダのフィルタ操作は
+   * onContextFilterChange 経由で通知する。UNFILED_PATH は「文脈なし」を意味する。
+   */
+  contextFilter?: string[];
+  onContextFilterChange?: (next: string[]) => void;
+  /**
    * 一括チーム共有（任意）— 提供時のみアクションバーに表示。
    * 選択 id を渡すだけで、実行と進捗表示は呼び出し側（BulkShareModal）が担う。
    * デスクトップ + shared root + identity が揃っている場合にのみ渡される。
@@ -158,8 +168,17 @@ export function NoteListView({
   const [authorFilterOpen, setAuthorFilterOpen] = useState(false);
   const [authorFilterPos, setAuthorFilterPos] = useState({ top: 0, left: 0 });
   const authorFilterBtnRef = useRef<HTMLButtonElement>(null);
-  // 文脈フィルタ（列ヘッダから絞り込み）
-  const [contextFilter, setContextFilter] = useState<string[]>([]);
+  // 文脈フィルタ（列ヘッダから絞り込み）。外部制御（サイドバーのフォルダ選択）が
+  // 渡されたらそちらを正とし、列ヘッダの操作は通知だけする（制御/非制御ハイブリッド）
+  const [internalContextFilter, setInternalContextFilter] = useState<string[]>([]);
+  const contextFilter = controlledContextFilter ?? internalContextFilter;
+  const setContextFilter = useCallback(
+    (next: string[]) => {
+      onContextFilterChange?.(next);
+      if (controlledContextFilter === undefined) setInternalContextFilter(next);
+    },
+    [onContextFilterChange, controlledContextFilter],
+  );
   const [contextFilterOpen, setContextFilterOpen] = useState(false);
   const [contextFilterPos, setContextFilterPos] = useState({ top: 0, left: 0 });
   const contextFilterBtnRef = useRef<HTMLButtonElement>(null);
@@ -261,9 +280,17 @@ export function NoteListView({
     }
 
     // 文脈フィルタ（OR） — 列ヘッダから絞り込み。小文字比較で名寄せする。
+    // UNFILED_PATH は「文脈なしのノート」を意味する特殊値（サイドバーの未分類フォルダから来る）。
     if (contextFilter.length > 0) {
-      const set = new Set(contextFilter.map((c) => c.toLowerCase()));
-      result = result.filter((e) => e.noteContexts.some((c) => set.has(c.toLowerCase())));
+      const hasUnfiled = contextFilter.includes(UNFILED_PATH);
+      const set = new Set(
+        contextFilter.filter((c) => c !== UNFILED_PATH).map((c) => c.toLowerCase()),
+      );
+      result = result.filter(
+        (e) =>
+          (hasUnfiled && e.noteContexts.length === 0) ||
+          e.noteContexts.some((c) => set.has(c.toLowerCase())),
+      );
     }
 
     // ソート
