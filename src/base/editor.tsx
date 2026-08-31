@@ -6,10 +6,12 @@ import {
   SideMenuController,
   SuggestionMenuController,
   FormattingToolbarController,
+  TableHandlesController,
   getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { blockNoteShadCNComponents } from "./blocknote-shadcn-overrides";
+import { SortableTableHandle } from "@features/table-meta/sort-handle";
 import { BlockNoteSchema, createCodeBlockSpec, createHeadingBlockSpec, defaultBlockSpecs, defaultStyleSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { codeBlockOptions } from "@blocknote/code-block";
 
@@ -324,8 +326,12 @@ export function SandboxEditor({
       // スクロール領域でクリップされ、サイドピーク横の右パネル等に隠れる。
       formattingToolbar={false}
       slashMenu={hasExtraSlash ? false : undefined}
+      // 内蔵のテーブルハンドルを無効化し、下で並べ替え付きのカスタムハンドルを描画する
+      tableHandles={false}
       onChange={onChange}
     >
+      {/* 列ハンドルメニューに 昇順 / 降順 の並べ替えを足したテーブルハンドル */}
+      <TableHandlesController tableHandle={SortableTableHandle} />
       {/* 複数ブロック選択: ハイライト + フローティングツールバー */}
       <BlockSelectionManager />
       {/* ⌘D / Ctrl+D: カーソル位置のブロックを直下に複製 */}

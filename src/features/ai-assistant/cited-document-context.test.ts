@@ -410,6 +410,20 @@ describe("assembleCitedAssetContext", () => {
     expect(md).toContain("素材の全文テキスト");
   });
 
+  it("データ素材は本文テキストをそのまま全文として組み立てる", async () => {
+    const md = await assembleCitedAssetContext(
+      { fileId: "data-1", name: "測定.csv", type: "data" },
+      {
+        captureIndex: null,
+        provider: { getMediaBlobUrl: async () => "" },
+        loadBlob: async () => new Blob(["2theta,intensity\n20.0,1200\n"], { type: "text/csv" }),
+      },
+    );
+    expect(md).toContain("## 引用文書: 測定.csv（データ）");
+    expect(md).toContain("2theta,intensity");
+    expect(md).toContain("20.0,1200");
+  });
+
   it("メモも全文も無ければ null", async () => {
     const md = await assembleCitedAssetContext(
       { fileId: "doc-1", name: "x.docx", type: "document" },

@@ -12,6 +12,8 @@ export {
 export type { TableMetaStoreValue } from "./store";
 export { TableCaptionLayer } from "./caption-layer";
 export { TableExpandModal } from "./expand-modal";
+export { sortTableBlock } from "./sort-table";
+export type { SortDir, SortState } from "./sort-table";
 export type { TableExpandData } from "./expand-modal";
 export { computeTableDisplayNames } from "./auto-name";
 export { migrateTableMeta } from "./migration";

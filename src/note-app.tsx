@@ -68,9 +68,11 @@ import {
   hasColumnType,
   readFirstColumnName,
   readTableData,
+  sortTableBlock,
   type ColumnType,
   type TableSource,
   type TableExpandData,
+  type SortState,
 } from "./features/table-meta";
 import {
   DataImportModal,
@@ -1601,6 +1603,16 @@ function NoteEditorInner({
       if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
         citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, entry.fileId];
       }
+      // @メンションの asset 分岐と同じく linkStore にも記録する（クリックで素材を開くため）
+      if (entry.fileId) {
+        linkStore.addLink({
+          sourceBlockId: currentBlock.id,
+          targetBlockId: "",
+          targetNoteId: `${entry.type}:${entry.fileId}`,
+          type: "reference",
+          createdBy: "human",
+        });
+      }
       // insertInlineContent が onChange を発火 → 自動 markDirty。
       // citedAssetFileIdsRef は同期的に更新済みなので、その後の save で拾われる。
       insertInlineAtSlash(editor, currentBlock, [
@@ -1649,7 +1661,7 @@ function NoteEditorInner({
       editor.removeBlocks([currentBlock]);
     }
     // onChange が自動的にトリガーされるので markDirty() は不要
-  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore]);
 
   // データ取り込みダイアログの確定 → テーブルブロックを挿入し、出所を注釈に残す。
   //
@@ -1788,14 +1800,28 @@ function NoteEditorInner({
     []
   );
 
-  // テーブルの拡大表示。開いた時点の中身を読み取り専用スナップショットとして
-  // モーダルに出す（並べ替えはモーダル内だけで完結し、ノートには書き戻さない）
+  // テーブルの拡大表示。開いた時点の中身のスナップショットをモーダルに出す。
+  // 見出しクリックの並べ替えは実テーブルに反映し（列ハンドルメニューと同じ操作の
+  // 別入口）、並べ替え後のスナップショットを読み直す — ビューは常に実表の鏡
   const [tableExpandData, setTableExpandData] = useState<TableExpandData | null>(null);
+  const [tableExpandSort, setTableExpandSort] = useState<SortState>(null);
+  const tableExpandBlockIdRef = useRef<string | null>(null);
   const handleTableExpand = useCallback((blockId: string, displayName: string) => {
     const editor = editorRef.current;
     const data = readTableData(editor?.getBlock?.(blockId));
     if (!data) return;
+    tableExpandBlockIdRef.current = blockId;
+    setTableExpandSort(null);
     setTableExpandData({ name: displayName, ...data });
+  }, []);
+  const handleTableExpandSort = useCallback((col: number, dir: "asc" | "desc") => {
+    const blockId = tableExpandBlockIdRef.current;
+    const editor = editorRef.current;
+    if (!blockId || !editor) return;
+    sortTableBlock(editor, blockId, col, dir);
+    const data = readTableData(editor.getBlock?.(blockId));
+    if (data) setTableExpandData((prev) => (prev ? { ...prev, ...data } : prev));
+    setTableExpandSort({ col, dir });
   }, []);
 
   // データ素材ピッカーで「ファイルからアップロード」を選んだとき。
@@ -3945,7 +3971,22 @@ function NoteEditorInner({
     const isMentionSpan = (el: HTMLElement): boolean => {
       if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
       if (!el.closest(".bn-editor")) return false;
-      if (el.closest("table")) return false;
+      // インデックステーブル（note-link 列）の先頭列セルだけは icon-layer が
+      // 行ノートを開くのでここでは扱わない。それ以外のセル内メンション
+      // （素材リンク・他ノート参照）は本文と同じにクリックで開く。
+      // 以前はテーブル全体を除外していて、セルに貼った素材リンクが押せなかった
+      const cellEl = el.closest("td, th");
+      if (cellEl) {
+        const tableBlockId = el.closest("[data-id]")?.getAttribute("data-id");
+        const isFirstColumn = cellEl.parentElement?.children[0] === cellEl;
+        if (
+          isFirstColumn &&
+          tableBlockId &&
+          tableMetaStore.hasColumnType(tableBlockId, "note-link")
+        ) {
+          return false;
+        }
+      }
       const text = el.textContent?.trim();
       return !!text && text.startsWith("@") && !text.startsWith("@#");
     };
@@ -3964,6 +4005,19 @@ function NoteEditorInner({
       );
       if (wikiEntry) return { noteId: wikiEntry.noteId, isWiki: true };
       return null;
+    };
+    // 素材名 → 外部ソース ID（"data:<fileId>" 等）。リンク照合と逆引きの両方が使う。
+    // macOS のファイル名は NFD で来ることがあるため NFC に正規化して比べる。
+    const resolveAssetExternalId = (name: string): string | null => {
+      const nfc = name.normalize("NFC");
+      const entry = mediaIndex?.media.find((m) => m.name.normalize("NFC") === nfc);
+      return entry ? `${entry.type}:${entry.fileId}` : null;
+    };
+    // 素材名の逆引き（リンク記録の無い既存の @素材名 向けフォールバック）。
+    // 外部ソース ID を返し、下流の素材ピーク振り分けに乗せる。
+    const resolveMentionAssetId = (name: string): { noteId: string; isWiki: boolean } | null => {
+      const id = resolveAssetExternalId(name);
+      return id ? { noteId: id, isWiki: false } : null;
     };
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -4009,8 +4063,15 @@ function NoteEditorInner({
       // 解決できなければタイトル逆引きにフォールバック（旧データや素材引用向け）。
       const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
       const resolved =
-        resolveMentionTargetFromLinks(blockId, noteName, linkStore.getAllLinks(), noteIndex) ??
-        resolveMentionNoteId(noteName);
+        resolveMentionTargetFromLinks(
+          blockId,
+          noteName,
+          linkStore.getAllLinks(),
+          noteIndex,
+          resolveAssetExternalId
+        ) ??
+        resolveMentionNoteId(noteName) ??
+        resolveMentionAssetId(noteName);
       if (resolved) {
         e.preventDefault();
         e.stopPropagation();
@@ -4021,7 +4082,7 @@ function NoteEditorInner({
         if (ext) {
           if (ext.kind === "url") {
             setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
-          } else if (ext.kind === "pdf" || ext.kind === "document") {
+          } else if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "data") {
             const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
             if (entry) setMaterialSidePeekEntry(entry);
           } else if (ext.kind === "memo") {
@@ -4074,7 +4135,7 @@ function NoteEditorInner({
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource]);
+  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource, tableMetaStore]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）
@@ -4360,7 +4421,12 @@ function NoteEditorInner({
       />
       <IndexTableIconLayer editorRef={editorRef} />
       <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} onExpand={handleTableExpand} />
-      <TableExpandModal data={tableExpandData} onClose={() => setTableExpandData(null)} />
+      <TableExpandModal
+        data={tableExpandData}
+        onClose={() => setTableExpandData(null)}
+        onSort={handleTableExpandSort}
+        activeSort={tableExpandSort}
+      />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
@@ -4949,13 +5015,24 @@ function NoteEditorInner({
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
                 } else if (suggestion.type === "asset") {
-                  // ドキュメント素材（PDF/docx 本体）の引用。ノートではなく素材を指す。
+                  // 素材（PDF/docx/データ本体）の引用。ノートではなく素材を指す。
                   // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が
                   // その素材の全文＋ハイライトメモを読めるようになる。
+                  // 併せて linkStore にも外部ソース ID（pdf:/document:/data:）で記録する。
+                  // これが無いと @素材名 をクリックしても解決できず何も開かない
+                  // （References の「Source: @ラベル」と同じ形に揃えて既存の
+                  // 素材ピーク振り分けに乗せる）。
+                  linkStore.addLink({
+                    sourceBlockId,
+                    targetBlockId: "",
+                    targetNoteId: `${suggestion.assetType ?? "document"}:${suggestion.id}`,
+                    type: "reference",
+                    createdBy: "human",
+                  });
                   if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
                     citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
                   }
-                  const assetLabel = suggestion.label.replace(/^📄\s*/, "");
+                  const assetLabel = suggestion.label.replace(/^(📄|🧾)\s*/, "");
                   setTimeout(() => {
                     editorRef.current?.insertInlineContent([
                       { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },
