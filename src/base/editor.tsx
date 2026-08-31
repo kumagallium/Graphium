@@ -256,15 +256,21 @@ function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean
       return true;
     });
   }
-  if (fromPos >= 0) view.dispatch(view.state.tr.delete(fromPos, fromPos + size));
   // 画像ブロックは editor API で足す。ProseMirror ノードを直接組むと BlockNote の
   // URL 解決（resolveFileUrl）を通らず、media-server:// のまま img に入って
-  // ERR_UNKNOWN_URL_SCHEME になる
+  // ERR_UNKNOWN_URL_SCHEME になる。
+  // 先に足してから消す — 逆にすると、挿入でつまずいたとき画像だけ失われる
   editor.insertBlocks(
     [{ type: "image", props: { url: `media-server://${payload.fileId}`, name: payload.name ?? "" } }],
     targetBlockId,
     "after",
   );
+  if (fromPos >= 0) {
+    const tr = view.state.tr;
+    // 挿入で位置がずれるのでマップし直す
+    const from = tr.mapping.map(fromPos);
+    view.dispatch(tr.delete(from, from + size));
+  }
   return true;
 }
 
@@ -304,6 +310,7 @@ function hideIndicator() {
 }
 
 export function clearCellDropState() {
+  stopDragScroll();
   draggedImageCache = null;
   if (indicatorRaf) {
     cancelAnimationFrame(indicatorRaf);
@@ -349,12 +356,87 @@ function drawIndicator(view: any, x: number, y: number) {
   }
 }
 
-/** dragover から呼ぶ。座標だけ控えて、描画は次のフレームにまとめる */
+// ── ドラッグ中の自動スクロール ──
+//
+// BlockNote も ProseMirror もドラッグ中のスクロールを持たないため、入れたいセルが
+// 画面の外にあると、そこまで運べずウィンドウの外へ出てしまう。端に近づいている間だけ
+// スクロールし続ける（マウスが止まると dragover が来なくなるのでタイマーで回す）。
+
+const DRAG_SCROLL_MARGIN = 72;
+const DRAG_SCROLL_SPEED = 14;
+let dragScrollTimer = 0;
+let dragScrollTarget: { el: HTMLElement | Window; dir: -1 | 1 } | null = null;
+
+/** エディタを載せているスクロール領域（無ければウィンドウ） */
+function scrollContainerOf(el: HTMLElement | null): HTMLElement | Window {
+  let node: HTMLElement | null = el;
+  while (node) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) return node;
+    node = node.parentElement;
+  }
+  return window;
+}
+
+function stopDragScroll() {
+  if (dragScrollTimer) clearInterval(dragScrollTimer);
+  dragScrollTimer = 0;
+  dragScrollTarget = null;
+}
+
+/**
+ * 端にいる間スクロールし続ける。requestAnimationFrame ではなくタイマーで回すのは、
+ * rAF が止まる環境（タブが背面、埋め込みビュー）でもドラッグ中は動かしたいため。
+ */
+function runDragScroll() {
+  const target = dragScrollTarget;
+  if (!target) {
+    stopDragScroll();
+    return;
+  }
+  const delta = DRAG_SCROLL_SPEED * target.dir;
+  if (target.el instanceof Window) target.el.scrollBy(0, delta);
+  else target.el.scrollTop += delta;
+}
+
+/** ポインタが上下の端にある間だけスクロールを回す */
+function updateDragScroll(view: any, y: number) {
+  const el = scrollContainerOf(view.dom as HTMLElement);
+  const rect =
+    el instanceof Window
+      ? { top: 0, bottom: window.innerHeight }
+      : (el as HTMLElement).getBoundingClientRect();
+  let dir: -1 | 1 | 0 = 0;
+  if (y < rect.top + DRAG_SCROLL_MARGIN) dir = -1;
+  else if (y > rect.bottom - DRAG_SCROLL_MARGIN) dir = 1;
+  if (dir === 0) {
+    stopDragScroll();
+    return;
+  }
+  dragScrollTarget = { el, dir };
+  if (!dragScrollTimer) dragScrollTimer = window.setInterval(runDragScroll, 16);
+}
+
+/**
+ * dragover から呼ぶ。座標だけ控えて、描画は次のフレームにまとめる。
+ * rAF が動かない環境（タブが背面、埋め込みビュー）でも表示が消えないよう、
+ * 一定時間フレームが来なければその場で描く。
+ */
+const INDICATOR_FALLBACK_MS = 40;
+let lastIndicatorDrawAt = 0;
+
 function scheduleIndicator(view: any, event: DragEvent) {
   pendingPoint = { x: event.clientX, y: event.clientY, view };
+  const now = Date.now();
+  if (now - lastIndicatorDrawAt > INDICATOR_FALLBACK_MS) {
+    lastIndicatorDrawAt = now;
+    drawIndicator(view, event.clientX, event.clientY);
+    return;
+  }
   if (indicatorRaf) return;
   indicatorRaf = requestAnimationFrame(() => {
     indicatorRaf = 0;
+    lastIndicatorDrawAt = Date.now();
     const p = pendingPoint;
     if (p) drawIndicator(p.view, p.x, p.y);
   });
@@ -601,6 +683,8 @@ export function SandboxEditor({
             // セルの内外で出し分けると境目で挙動が変わるので、画像のドラッグなら常に呼ぶ
             event.preventDefault();
             scheduleIndicator(view, event);
+            // 入れたいセルが画面の外にあっても運べるようにする
+            updateDragScroll(view, event.clientY);
             return false;
           },
           dragleave: () => {
