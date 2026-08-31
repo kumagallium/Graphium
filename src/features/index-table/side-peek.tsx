@@ -722,7 +722,20 @@ function SidePeekInner({
     const isMentionSpan = (el: HTMLElement): boolean => {
       if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
       if (!el.closest(".bn-editor")) return false;
-      if (el.closest("table")) return false;
+      // note-link 列の先頭列セルは行アイコンの担当（note-app 側と同じ絞り込み）。
+      // それ以外のセル内メンションはピーク内でも押せるようにする
+      const cellEl = el.closest("td, th");
+      if (cellEl) {
+        const tableBlockId = el.closest("[data-id]")?.getAttribute("data-id");
+        const isFirstColumn = cellEl.parentElement?.children[0] === cellEl;
+        if (
+          isFirstColumn &&
+          tableBlockId &&
+          tableMetaStore.hasColumnType(tableBlockId, "note-link")
+        ) {
+          return false;
+        }
+      }
       const text = el.textContent?.trim();
       return !!text && text.startsWith("@") && !text.startsWith("@#");
     };
@@ -806,7 +819,7 @@ function SidePeekInner({
     };
     root.addEventListener("click", onClick, true);
     return () => root.removeEventListener("click", onClick, true);
-  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor]);
+  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor, tableMetaStore]);
 
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、

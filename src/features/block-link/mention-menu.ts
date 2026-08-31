@@ -97,6 +97,11 @@ export function resolveMentionTargetFromLinks(
   mentionText: string,
   links: ReadonlyArray<{ sourceBlockId: string; targetNoteId?: string; type?: string }>,
   noteIndex: GraphiumIndex | null | undefined,
+  /**
+   * 素材名 → 外部ソース ID（"pdf:<fileId>" / "data:<fileId>" 等）。
+   * 素材メンションのラベルは noteIndex で照合できないため、これで照合する。
+   */
+  resolveAssetId?: (name: string) => string | null,
 ): { noteId: string; isWiki: boolean } | null {
   if (!blockId) return null;
   const candidates = links.filter(
@@ -109,6 +114,15 @@ export function resolveMentionTargetFromLinks(
     if (entry && entry.title === mentionText) {
       return { noteId: c.targetNoteId as string, isWiki: entry.source === "ai" };
     }
+  }
+  // 素材メンション: ラベル（素材名）から外部ソース ID を引いて候補と照合する。
+  // 一致すればそれ、無ければ null — 素材名として解決できる mentionText を
+  // 下の先頭候補（同じブロックの別メンションのリンク）へ倒すと、クリックで
+  // 無関係なノートが開いてしまう。null なら呼び出し側の素材名逆引きが拾う
+  const assetId = resolveAssetId?.(mentionText);
+  if (assetId) {
+    const c = candidates.find((l) => l.targetNoteId === assetId);
+    return c ? { noteId: assetId, isWiki: false } : null;
   }
   // タイトル一致が無い（作成後にタイトル変更された等）→ 先頭候補にフォールバック。
   const first = candidates[0];

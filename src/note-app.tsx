@@ -3955,7 +3955,22 @@ function NoteEditorInner({
     const isMentionSpan = (el: HTMLElement): boolean => {
       if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
       if (!el.closest(".bn-editor")) return false;
-      if (el.closest("table")) return false;
+      // インデックステーブル（note-link 列）の先頭列セルだけは icon-layer が
+      // 行ノートを開くのでここでは扱わない。それ以外のセル内メンション
+      // （素材リンク・他ノート参照）は本文と同じにクリックで開く。
+      // 以前はテーブル全体を除外していて、セルに貼った素材リンクが押せなかった
+      const cellEl = el.closest("td, th");
+      if (cellEl) {
+        const tableBlockId = el.closest("[data-id]")?.getAttribute("data-id");
+        const isFirstColumn = cellEl.parentElement?.children[0] === cellEl;
+        if (
+          isFirstColumn &&
+          tableBlockId &&
+          tableMetaStore.hasColumnType(tableBlockId, "note-link")
+        ) {
+          return false;
+        }
+      }
       const text = el.textContent?.trim();
       return !!text && text.startsWith("@") && !text.startsWith("@#");
     };
@@ -3975,13 +3990,18 @@ function NoteEditorInner({
       if (wikiEntry) return { noteId: wikiEntry.noteId, isWiki: true };
       return null;
     };
-    // 素材名の逆引き（リンク記録の無い既存の @素材名 向けフォールバック）。
-    // 外部ソース ID を返し、下流の素材ピーク振り分けに乗せる。
+    // 素材名 → 外部ソース ID（"data:<fileId>" 等）。リンク照合と逆引きの両方が使う。
     // macOS のファイル名は NFD で来ることがあるため NFC に正規化して比べる。
-    const resolveMentionAssetId = (name: string): { noteId: string; isWiki: boolean } | null => {
+    const resolveAssetExternalId = (name: string): string | null => {
       const nfc = name.normalize("NFC");
       const entry = mediaIndex?.media.find((m) => m.name.normalize("NFC") === nfc);
-      return entry ? { noteId: `${entry.type}:${entry.fileId}`, isWiki: false } : null;
+      return entry ? `${entry.type}:${entry.fileId}` : null;
+    };
+    // 素材名の逆引き（リンク記録の無い既存の @素材名 向けフォールバック）。
+    // 外部ソース ID を返し、下流の素材ピーク振り分けに乗せる。
+    const resolveMentionAssetId = (name: string): { noteId: string; isWiki: boolean } | null => {
+      const id = resolveAssetExternalId(name);
+      return id ? { noteId: id, isWiki: false } : null;
     };
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -4027,7 +4047,13 @@ function NoteEditorInner({
       // 解決できなければタイトル逆引きにフォールバック（旧データや素材引用向け）。
       const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
       const resolved =
-        resolveMentionTargetFromLinks(blockId, noteName, linkStore.getAllLinks(), noteIndex) ??
+        resolveMentionTargetFromLinks(
+          blockId,
+          noteName,
+          linkStore.getAllLinks(),
+          noteIndex,
+          resolveAssetExternalId
+        ) ??
         resolveMentionNoteId(noteName) ??
         resolveMentionAssetId(noteName);
       if (resolved) {
@@ -4093,7 +4119,7 @@ function NoteEditorInner({
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource]);
+  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource, tableMetaStore]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）
