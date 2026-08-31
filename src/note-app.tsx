@@ -1601,6 +1601,16 @@ function NoteEditorInner({
       if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
         citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, entry.fileId];
       }
+      // @メンションの asset 分岐と同じく linkStore にも記録する（クリックで素材を開くため）
+      if (entry.fileId) {
+        linkStore.addLink({
+          sourceBlockId: currentBlock.id,
+          targetBlockId: "",
+          targetNoteId: `${entry.type}:${entry.fileId}`,
+          type: "reference",
+          createdBy: "human",
+        });
+      }
       // insertInlineContent が onChange を発火 → 自動 markDirty。
       // citedAssetFileIdsRef は同期的に更新済みなので、その後の save で拾われる。
       insertInlineAtSlash(editor, currentBlock, [
@@ -1649,7 +1659,7 @@ function NoteEditorInner({
       editor.removeBlocks([currentBlock]);
     }
     // onChange が自動的にトリガーされるので markDirty() は不要
-  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore]);
 
   // データ取り込みダイアログの確定 → テーブルブロックを挿入し、出所を注釈に残す。
   //
@@ -3965,6 +3975,14 @@ function NoteEditorInner({
       if (wikiEntry) return { noteId: wikiEntry.noteId, isWiki: true };
       return null;
     };
+    // 素材名の逆引き（リンク記録の無い既存の @素材名 向けフォールバック）。
+    // 外部ソース ID を返し、下流の素材ピーク振り分けに乗せる。
+    // macOS のファイル名は NFD で来ることがあるため NFC に正規化して比べる。
+    const resolveMentionAssetId = (name: string): { noteId: string; isWiki: boolean } | null => {
+      const nfc = name.normalize("NFC");
+      const entry = mediaIndex?.media.find((m) => m.name.normalize("NFC") === nfc);
+      return entry ? { noteId: `${entry.type}:${entry.fileId}`, isWiki: false } : null;
+    };
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       // サイドピーク内のメンションは、そのピーク自身の linkStore で解決する必要があるため
@@ -4010,7 +4028,8 @@ function NoteEditorInner({
       const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
       const resolved =
         resolveMentionTargetFromLinks(blockId, noteName, linkStore.getAllLinks(), noteIndex) ??
-        resolveMentionNoteId(noteName);
+        resolveMentionNoteId(noteName) ??
+        resolveMentionAssetId(noteName);
       if (resolved) {
         e.preventDefault();
         e.stopPropagation();
@@ -4021,7 +4040,7 @@ function NoteEditorInner({
         if (ext) {
           if (ext.kind === "url") {
             setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
-          } else if (ext.kind === "pdf" || ext.kind === "document") {
+          } else if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "data") {
             const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
             if (entry) setMaterialSidePeekEntry(entry);
           } else if (ext.kind === "memo") {
@@ -4949,13 +4968,24 @@ function NoteEditorInner({
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
                 } else if (suggestion.type === "asset") {
-                  // ドキュメント素材（PDF/docx 本体）の引用。ノートではなく素材を指す。
+                  // 素材（PDF/docx/データ本体）の引用。ノートではなく素材を指す。
                   // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が
                   // その素材の全文＋ハイライトメモを読めるようになる。
+                  // 併せて linkStore にも外部ソース ID（pdf:/document:/data:）で記録する。
+                  // これが無いと @素材名 をクリックしても解決できず何も開かない
+                  // （References の「Source: @ラベル」と同じ形に揃えて既存の
+                  // 素材ピーク振り分けに乗せる）。
+                  linkStore.addLink({
+                    sourceBlockId,
+                    targetBlockId: "",
+                    targetNoteId: `${suggestion.assetType ?? "document"}:${suggestion.id}`,
+                    type: "reference",
+                    createdBy: "human",
+                  });
                   if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
                     citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
                   }
-                  const assetLabel = suggestion.label.replace(/^📄\s*/, "");
+                  const assetLabel = suggestion.label.replace(/^(📄|🧾)\s*/, "");
                   setTimeout(() => {
                     editorRef.current?.insertInlineContent([
                       { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },

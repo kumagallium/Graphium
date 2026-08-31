@@ -27,6 +27,11 @@ export type ReferenceSuggestion = {
    * shadcn の SuggestionMenu.Item が item.subtext をそのまま描画する。
    */
   subtext?: string;
+  /**
+   * type === "asset" のときの素材の種類（"pdf" / "document" / "data"）。
+   * 選択時に外部ソース ID（pdf:/document:/data:）のプレフィックスを決めるために使う。
+   */
+  assetType?: string;
 };
 
 /** modifiedAt(ISO) を YYYY-MM-DD HH:mm（ローカル日時）に整形する。不正値は空文字。 */
@@ -279,20 +284,23 @@ export function getNoteSuggestions(
 }
 
 /**
- * 取り込んだドキュメント素材（PDF / docx 等）を @ 候補として収集する。
- * ノート由来ではなく「素材そのもの」を引用したい場合（論文 PDF の引用等）に使う。
- * 選択すると本文に @素材名 を挿入し、doc.citedAssetFileIds に fileId を記録する。
+ * 取り込んだドキュメント素材（PDF / docx / 区切りテキスト等）を @ 候補として収集する。
+ * ノート由来ではなく「素材そのもの」を引用したい場合（論文 PDF の引用、測定データの
+ * 参照等）に使う。選択すると本文に @素材名 を挿入し、doc.citedAssetFileIds に fileId を
+ * 記録する（データ素材はテーブルのセル内から測定ファイルを指すのが主な用途）。
  */
 export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSuggestion[] {
   if (!mediaIndex) return [];
   return mediaIndex.media
-    .filter((m) => m.type === "pdf" || m.type === "document")
+    .filter((m) => m.type === "pdf" || m.type === "document" || m.type === "data")
     .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
     .slice(0, 15)
     .map((m) => ({
       type: "asset" as const,
       id: m.fileId,
-      label: `📄 ${m.name}`,
+      // 絵文字はピッカーのサムネイルと同じ使い分け（データ素材は 🧾）
+      label: `${m.type === "data" ? "🧾" : "📄"} ${m.name}`,
       group: t("mention.groupAssets"),
+      assetType: m.type,
     }));
 }

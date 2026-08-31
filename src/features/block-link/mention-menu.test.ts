@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getNoteSuggestions } from "./mention-menu";
+import { getAssetSuggestions, getNoteSuggestions } from "./mention-menu";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 
 function note(
@@ -66,5 +66,45 @@ describe("getNoteSuggestions — 同名ノートの subtext", () => {
     expect(dups).toHaveLength(2);
     expect(dups.every((s) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s.subtext ?? ""))).toBe(true);
     expect(suggestions.find((s) => s.label === "本番")?.subtext).toBeUndefined();
+  });
+});
+
+describe("getAssetSuggestions", () => {
+  const media = (over: Partial<{ fileId: string; name: string; type: string; uploadedAt: string }>) => ({
+    fileId: "f1",
+    name: "a.pdf",
+    type: "pdf",
+    uploadedAt: "2026-08-01T00:00:00.000Z",
+    url: "media-server://f1",
+    ...over,
+  });
+
+  it("pdf / document / data を候補にし、それ以外は含めない", () => {
+    const idx = {
+      media: [
+        media({ fileId: "p1", name: "論文.pdf", type: "pdf" }),
+        media({ fileId: "d1", name: "報告.docx", type: "document" }),
+        media({ fileId: "c1", name: "測定.csv", type: "data" }),
+        media({ fileId: "i1", name: "写真.png", type: "image" }),
+      ],
+    } as any;
+    const suggestions = getAssetSuggestions(idx);
+    expect(suggestions.map((s) => s.id).sort()).toEqual(["c1", "d1", "p1"]);
+  });
+
+  it("データ素材は 🧾、それ以外は 📄 のラベルで、assetType を持つ", () => {
+    const idx = {
+      media: [
+        media({ fileId: "p1", name: "論文.pdf", type: "pdf" }),
+        media({ fileId: "c1", name: "測定.csv", type: "data" }),
+      ],
+    } as any;
+    const suggestions = getAssetSuggestions(idx);
+    const pdf = suggestions.find((s) => s.id === "p1")!;
+    const data = suggestions.find((s) => s.id === "c1")!;
+    expect(pdf.label).toBe("📄 論文.pdf");
+    expect(pdf.assetType).toBe("pdf");
+    expect(data.label).toBe("🧾 測定.csv");
+    expect(data.assetType).toBe("data");
   });
 });
