@@ -639,6 +639,7 @@ function StepFlowCanvas({
       onAddSharedRow={onAddEntity}
       onRenameEntity={onRenameEntity}
       onRemoveEntity={onRemoveEntity}
+      onOpenExternalNote={onOpenExternalNote}
     />
   );
 

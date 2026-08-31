@@ -7,6 +7,8 @@
 // 書き換える。行の特定は「1 列目のテキストが rowName に一致する最初の
 // データ行」— 同名行が複数ある場合は最初の行だけが対象（既知の制限）。
 
+import { resolveParamLinkTarget } from "./param-link";
+
 /** セルからテキストを取り出す（generator の extractCellText と同じ 2 形式対応） */
 function cellText(cell: any): string {
   const content = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? (cell.content ?? []) : null;
@@ -22,11 +24,28 @@ function withCellText(cell: any, text: string): any {
   const priorContent = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? (cell.content ?? []) : [];
   const priorText = priorContent.find((inline: any) => inline?.type === "text");
   // 名前セルの tableRowIdentity を含め、既存の text style を落とさない。
-  const content = [{ type: "text", text, styles: { ...(priorText?.styles ?? {}) } }];
+  const styles: Record<string, string> = { ...(priorText?.styles ?? {}) };
+  // @参照として解決できる値は、本文セルの @メンションと同じ青にする
+  // （見た目が揃い、本文側のクリックハンドラの対象にもなる）。
+  // @参照でなくなったら青だけ外す（他の色・行 ID スタイルは触らない）
+  if (resolveParamLinkTarget(text)) styles.textColor = "blue";
+  else if (styles.textColor === "blue") delete styles.textColor;
+  const content = [{ type: "text", text, styles }];
   if (cell && !Array.isArray(cell) && cell.type === "tableCell") {
     return { ...cell, content };
   }
   return content;
+}
+
+/** 新しいセルの content を作る（@参照なら withCellText と同じ規則で青にする） */
+function newCellContent(text: string): any[] {
+  return [
+    {
+      type: "text",
+      text,
+      styles: resolveParamLinkTarget(text) ? { textColor: "blue" } : {},
+    },
+  ];
 }
 
 type TableTarget = {
@@ -205,7 +224,7 @@ export function appendEntityRowToTable(
   })();
   if (!step || step.type !== "step") return null;
 
-  const cell = (text: string) => [{ type: "text", text, styles: {} }];
+  const cell = newCellContent;
   const id = placeBlockInStep(editor, stepBlockId, {
     type: "table",
     content: {
@@ -442,7 +461,7 @@ export function ensureParameterTable(
   visit(editor?.document ?? []);
   if (!step || step.type !== "step") return null;
 
-  const cell = (text: string) => [{ type: "text", text, styles: {} }];
+  const cell = newCellContent;
   const id = placeBlockInStep(editor, stepBlockId, {
     type: "table",
     content: {

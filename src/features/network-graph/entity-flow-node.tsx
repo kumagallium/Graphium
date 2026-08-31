@@ -9,6 +9,7 @@
 // table-row-edit を通る。
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { ParamLinkButton, resolveParamLinkTarget } from "./param-link";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   ExternalLink,
@@ -294,11 +295,20 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
           <SlidersHorizontal size={10} style={{ flexShrink: 0, marginTop: data.showParams ? 2 : 0 }} />
           {data.showParams ? (
             <span style={{ overflowWrap: "anywhere" }}>
-              {entity.attrs.map((a, i) => (
-                <span key={i} style={{ display: "block" }}>
-                  {a.label}
-                </span>
-              ))}
+              {entity.attrs.map((a, i) => {
+                // 値が @参照ならその場から飛べるようにする（表パネルと同じ ↗）
+                const target = data.onOpenExternalNote
+                  ? resolveParamLinkTarget(splitAttrLabel(a.label).value)
+                  : null;
+                return (
+                  <span key={i} style={{ display: "block" }}>
+                    {a.label}
+                    {target && (
+                      <ParamLinkButton targetId={target} onOpen={data.onOpenExternalNote!} />
+                    )}
+                  </span>
+                );
+              })}
             </span>
           ) : (
             entity.attrs.length

@@ -135,6 +135,7 @@ import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { setEditorSidePeekCallback } from "./context";
+import { isExternalSourceId } from "@features/network-graph/external-source";
 
 type SidePeekProps = {
   noteId: string;
@@ -837,6 +838,10 @@ function SidePeekInner({
     setSharedCitePickerCallback(sidePeekEditor, () => setSharedCitePickerOpen(true));
     setChartAssetSourceCallback(sidePeekEditor, (onDone) => setChartAssetRequest({ onDone }));
     setEditorSidePeekCallback(sidePeekEditor, (targetNoteId) => {
+      // 外部ソース ID（pdf:/document:/data:/url: — グラフのパラメータ ↗ 等）は
+      // ノートとして開けないので false を返し、メイン側の振り分け
+      // （getIndexTableCallbacks().onOpenSidePeek → 素材ピーク）に倒す
+      if (isExternalSourceId(targetNoteId)) return false;
       const callback = onOpenNoteInPeekRef.current;
       if (!callback) return false;
       callback(targetNoteId);

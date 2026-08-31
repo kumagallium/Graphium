@@ -2026,6 +2026,7 @@ export const en: Record<string, string> = {
   "tableMeta.expandSortHint": "Click a column header to sort — the table itself is not changed",
   "tableMeta.expandSortApplyHint": "Click a column header to sort the table itself — undo to revert",
   "tableMeta.sortAsc": "Sort ascending",
+  "paramLink.open": "Open reference",
   "tableMeta.sortDesc": "Sort descending",
 
   // 記録テーブル
