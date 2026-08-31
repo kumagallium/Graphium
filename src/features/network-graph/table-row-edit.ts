@@ -361,6 +361,41 @@ export function readTable(editor: any, tableBlockId: string): TableData | null {
   };
 }
 
+/**
+ * セルからインライン画像だけを外す（テキストと行 ID は残す）。
+ * 画像セルは誤上書きを防ぐためテキスト編集に入らないので、外す操作をここに持つ。
+ */
+export function removeCellImageAt(
+  editor: any,
+  tableBlockId: string,
+  rowIndex: number,
+  colIndex: number,
+): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  if (!block) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  const target = rowIndex + 1; // ヘッダ行の分
+  if (target < 1 || target >= rows.length) return false;
+  const strip = (cell: any): any => {
+    const content = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? cell.content : [];
+    const kept = (content ?? []).filter((inline: any) => inline?.type !== "inlineImage");
+    // 画像しか無かったセルは、行 ID を引き継いだ空テキストにする（行を消さない）
+    const identity = (content ?? []).find((i: any) => i?.styles?.[TABLE_ROW_IDENTITY_STYLE])
+      ?.styles?.[TABLE_ROW_IDENTITY_STYLE];
+    const next =
+      kept.length > 0
+        ? kept
+        : [{ type: "text", text: "", styles: identity ? { [TABLE_ROW_IDENTITY_STYLE]: identity } : {} }];
+    return cell && !Array.isArray(cell) && cell.type === "tableCell" ? { ...cell, content: next } : next;
+  };
+  const next = rows.map((row, i) =>
+    i === target
+      ? { ...row, cells: row.cells.map((c: any, j: number) => (j === colIndex ? strip(c) : c)) }
+      : row,
+  );
+  return writeRows(editor, block, next);
+}
+
 /** セルに埋まっているインライン画像の fileId（無ければ undefined） */
 function cellImageFileId(cell: any): string | undefined {
   const content = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? cell.content : null;

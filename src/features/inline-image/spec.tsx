@@ -17,6 +17,12 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { getIndexTableCallbacks } from "../index-table/context";
 import { t } from "../../i18n";
 
+/**
+ * セルの画像をノート本文へドラッグして画像ブロックに戻すための MIME。
+ * ブロック → セルは BlockNote の "blocknote/html" 経路（editor.tsx）で受ける。
+ */
+export const INLINE_IMAGE_DRAG_MIME = "application/x-graphium-inline-image";
+
 /** fileId → blob URL の解決キャッシュ。失敗は溜めない（次回開いたとき再試行） */
 const blobUrlCache = new Map<string, Promise<string>>();
 
@@ -158,6 +164,15 @@ export const InlineImage = createReactInlineContentSpec(
                 ref={imgRef}
                 src={url}
                 alt={name}
+                draggable={editable}
+                onDragStart={(e) => {
+                  // 本文へ出すと画像ブロックに戻る。位置は drop 側が DOM から引く
+                  e.dataTransfer.setData(
+                    INLINE_IMAGE_DRAG_MIME,
+                    JSON.stringify({ fileId, name })
+                  );
+                  e.dataTransfer.effectAllowed = "move";
+                }}
                 style={
                   shownWidth
                     ? {

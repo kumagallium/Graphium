@@ -38,6 +38,7 @@ import {
   readTable,
   renameTableColumn,
   setTableCellAt,
+  removeCellImageAt,
   addTableColumn,
   removeTableColumn,
   addTableRow,
@@ -526,6 +527,16 @@ export function ActivityGraphEditor({
     [getEditor, bumpPanel],
   );
 
+  const onRemoveCellImage = useCallback(
+    (blockId: string, rowIndex: number, colIndex: number) => {
+      const editor = getEditor();
+      if (!editor) return;
+      removeCellImageAt(editor, blockId, rowIndex, colIndex);
+      bumpPanel();
+    },
+    [getEditor, bumpPanel],
+  );
+
   const onRenameColumn = useCallback(
     (blockId: string, colIndex: number, name: string) => {
       const editor = getEditor();
@@ -784,6 +795,7 @@ export function ActivityGraphEditor({
       layoutScope={noteId ? provFlowScope(noteId) : null}
       getPanelFor={hasEditor ? getPanelFor : undefined}
       onSetCell={hasEditor ? onSetCell : undefined}
+      onRemoveCellImage={hasEditor ? onRemoveCellImage : undefined}
       onRenameColumn={hasEditor ? onRenameColumn : undefined}
       onAddColumn={hasEditor ? onAddColumn : undefined}
       onRemoveColumn={hasEditor ? onRemoveColumn : undefined}

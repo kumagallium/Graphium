@@ -894,6 +894,7 @@ export const en: Record<string, string> = {
   "flowTable.noTableYet": "No table yet",
   "flowTable.addToTable": "Add to the table",
   "flowTable.addColumn": "Column",
+  "flowTable.removeCellImage": "Remove image",
   "flowTable.removeColumn": "Remove column",
   "flowTable.addRow": "Add row",
   "flowTable.resizeHandle": "Drag to resize / double-click to reset",

@@ -16,7 +16,7 @@
 // チップを置く。表がまだ無いセクションは破線カード。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link2, Plus, Trash2 } from "lucide-react";
+import { Link2, Plus, Trash2, X } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { ParamLinkButton, ParamValueField, resolveParamLinkTarget } from "./param-link";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -98,6 +98,8 @@ export type FlowStepPanelProps = {
    * 外部ソース ID（pdf:/document:/data: 等）で、振り分けは受け側の Side Peek が行う
    */
   onOpenExternalNote?: (id: string) => void;
+  /** 画像セルから画像だけを外す（テキスト・行 ID は残す） */
+  onRemoveCellImage?: (blockId: string, rowIndex: number, colIndex: number) => void;
 };
 
 const SECTION_ORDER: SectionKind[] = ["attribute", "material", "tool", "output"];
@@ -272,6 +274,7 @@ export function FlowStepPanel({
   onMoveParamToTable,
   onAddSharedRow,
   onOpenExternalNote,
+  onRemoveCellImage,
 }: FlowStepPanelProps) {
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
   //           / `inline:<entityId>`（本文ハイライトの名前）
@@ -296,6 +299,7 @@ export function FlowStepPanel({
         : undefined;
     const target = onOpenExternalNote ? resolveParamLinkTarget(text) : null;
     if (!target && !imageFileId) return text;
+    const blockId = table?.blockId;
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}>
         {imageFileId && (
@@ -303,6 +307,35 @@ export function FlowStepPanel({
         )}
         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{text}</span>
         {target && <ParamLinkButton targetId={target} onOpen={onOpenExternalNote!} />}
+        {/* 画像セルはテキスト編集に入らないので、外す操作をここに置く
+            （× のあと空セルになり、ふつうに文字を打てる状態に戻る） */}
+        {imageFileId && onRemoveCellImage && blockId && r !== undefined && c !== undefined && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemoveCellImage(blockId, r, c);
+            }}
+            title={t("flowTable.removeCellImage")}
+            aria-label={t("flowTable.removeCellImage")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 14,
+              height: 14,
+              padding: 0,
+              border: "none",
+              borderRadius: 3,
+              background: "transparent",
+              color: "var(--color-text-tertiary)",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <X size={10} />
+          </button>
+        )}
       </span>
     );
   };
@@ -537,7 +570,12 @@ export function FlowStepPanel({
                   <td
                     key={col}
                     style={td}
-                    onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
+                    onClick={() => {
+                      // 画像が入っているセルはクリックで編集に入らない。
+                      // 入ると draft（テキスト）で確定したとき画像が消える
+                      if (table?.cellImages?.[`${r}:${col}`]) return;
+                      if (onSetCell && !editing(key)) setEdit({ key, draft: row[col] ?? "" });
+                    }}
                   >
                     {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "", table, r, col)}
                   </td>
@@ -767,7 +805,12 @@ export function FlowStepPanel({
                   <td
                     key={col}
                     style={td}
-                    onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
+                    onClick={() => {
+                      // 画像が入っているセルはクリックで編集に入らない。
+                      // 入ると draft（テキスト）で確定したとき画像が消える
+                      if (table?.cellImages?.[`${r}:${col}`]) return;
+                      if (onSetCell && !editing(key)) setEdit({ key, draft: row[col] ?? "" });
+                    }}
                   >
                     {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "", table, r, col)}
                   </td>

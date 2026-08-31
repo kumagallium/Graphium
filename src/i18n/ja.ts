@@ -895,6 +895,7 @@ export const ja: Record<string, string> = {
   "flowTable.noTableYet": "まだ表がありません",
   "flowTable.addToTable": "表に追加",
   "flowTable.addColumn": "列",
+  "flowTable.removeCellImage": "画像を外す",
   "flowTable.removeColumn": "列を削除",
   "flowTable.addRow": "行を追加",
   "flowTable.resizeHandle": "ドラッグでサイズを変更 / ダブルクリックで既定に戻す",
