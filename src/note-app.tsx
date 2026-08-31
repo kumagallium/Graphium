@@ -154,6 +154,7 @@ import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
+import { setParamLinkResolver } from "./features/network-graph/param-link";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
@@ -1798,6 +1799,37 @@ function NoteEditorInner({
       })();
     },
     []
+  );
+
+  // 解決済み ID（ノートの素 ID / wiki: / 外部ソース ID）をサイドピークへ振り分ける。
+  // 本文の @メンション・インデックステーブル・グラフのパラメータ ↗ が同じ経路を通る。
+  // 開けたら true（chat:/shared: など実体の無い ID は false で何もしない）
+  const openPeekTargetId = useCallback(
+    (id: string): boolean => {
+      const ext = parseExternalSource(id);
+      if (ext) {
+        if (ext.kind === "url") {
+          setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
+          return true;
+        }
+        if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "data") {
+          const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
+          if (entry) {
+            setMaterialSidePeekEntry(entry);
+            return true;
+          }
+          return false;
+        }
+        if (ext.kind === "memo") {
+          onOpenMemoSource?.(ext.key);
+          return true;
+        }
+        return false;
+      }
+      setSidePeekNoteId(id);
+      return true;
+    },
+    [mediaIndex, onOpenMemoSource]
   );
 
   // テーブルの拡大表示。開いた時点の中身のスナップショットをモーダルに出す。
@@ -3949,7 +3981,9 @@ function NoteEditorInner({
       currentFileId: fileId,
       onNavigateNote,
       onRefreshFiles,
-      onOpenSidePeek: (noteId: string) => setSidePeekNoteId(noteId),
+      // 外部ソース ID（pdf:/document:/data:/url:）も受け付ける — グラフの
+      // パラメータ ↗ や別ノート由来ノードがこの経路で素材ピークを開く
+      onOpenSidePeek: (noteId: string) => void openPeekTargetId(noteId),
       onAddNoteLink: (targetNoteId: string, sourceBlockId: string) => {
         const exists = noteLinksRef.current.some(
           (l) => l.targetNoteId === targetNoteId && l.sourceBlockId === sourceBlockId
@@ -3964,7 +3998,7 @@ function NoteEditorInner({
       },
     });
     return () => { setIndexTableCallbacks(null); };
-  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty]);
+  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty, openPeekTargetId]);
 
   // エディタ内の @ノート名クリックでサイドピークを開く
   useEffect(() => {
@@ -4019,6 +4053,13 @@ function NoteEditorInner({
       const id = resolveAssetExternalId(name);
       return id ? { noteId: id, isWiki: false } : null;
     };
+    // グラフ側（右パネルの表・カードのパラメータ表示）の @参照は、本文メンションと
+    // 同じ解決を使う。ここ（noteIndex / files / mediaIndex が揃う場所）で登録する
+    setParamLinkResolver((name) => {
+      const note = resolveMentionNoteId(name);
+      if (note) return note.isWiki ? `wiki:${note.noteId}` : note.noteId;
+      return resolveAssetExternalId(name);
+    });
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       // サイドピーク内のメンションは、そのピーク自身の linkStore で解決する必要があるため
@@ -4076,27 +4117,13 @@ function NoteEditorInner({
         e.preventDefault();
         e.stopPropagation();
         // References の「Source: @ラベル」等は linkStore の targetNoteId に外部ソース ID
-        // （url:/pdf:/document:/chat:）がそのまま入る。ノート ID として SidePeek に渡すと
-        // loadFile が失敗して「読み込みに失敗しました」になるため、素材ピークへ振り分ける。
-        const ext = parseExternalSource(resolved.noteId);
-        if (ext) {
-          if (ext.kind === "url") {
-            setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
-          } else if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "data") {
-            const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
-            if (entry) setMaterialSidePeekEntry(entry);
-          } else if (ext.kind === "memo") {
-            // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
-            onOpenMemoSource?.(ext.key);
-          }
-          // chat: は開ける実体が無いので何もしない（グラフノードと同じ扱い）
-          return;
-        }
+        // （url:/pdf:/document:/data:/chat:）がそのまま入る。振り分けは openPeekTargetId に
+        // 集約（chat: は開ける実体が無いので何も起きない）。
         // ノート / Wiki どちらでもまずサイドピークで開く。SidePeek 内の「Open full」で
         // 完全表示に切り替えられる方が、いきなりページ遷移するより流れが良い。
         // Wiki の場合は SidePeek が wiki: プレフィックスで loadWikiFile を呼ぶ。
-        const peekId = resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId;
-        setSidePeekNoteId(peekId);
+        const isExt = parseExternalSource(resolved.noteId) !== null;
+        openPeekTargetId(!isExt && resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId);
         return;
       }
       // ノートで解決できなければ、@ 引用したドキュメント素材として解決を試みる。
@@ -4134,6 +4161,7 @@ function NoteEditorInner({
     document.addEventListener("click", handleClick, true);
     return () => {
       document.removeEventListener("click", handleClick, true);
+      setParamLinkResolver(null);
     };
   }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource, tableMetaStore]);
 

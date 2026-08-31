@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link2, Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
+import { ParamLinkButton, resolveParamLinkTarget } from "./param-link";
 import { t, getDisplayLabel } from "../../i18n";
 import {
   splitAttrLabel,
@@ -91,6 +92,11 @@ export type FlowStepPanelProps = {
   onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
   /** 共有行を、このステップの表にも 1 行として置く（同じモノなのでグラフでは 1 ノードのまま） */
   onAddSharedRow?: (stepBlockId: string, kind: ActivityIoKind, name: string) => void;
+  /**
+   * セル値の @参照（ノート / 素材）を開く。ID はノートの素 ID または
+   * 外部ソース ID（pdf:/document:/data: 等）で、振り分けは受け側の Side Peek が行う
+   */
+  onOpenExternalNote?: (id: string) => void;
 };
 
 const SECTION_ORDER: SectionKind[] = ["attribute", "material", "tool", "output"];
@@ -218,6 +224,7 @@ export function FlowStepPanel({
   onMoveEntityToTable,
   onMoveParamToTable,
   onAddSharedRow,
+  onOpenExternalNote,
 }: FlowStepPanelProps) {
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
   //           / `inline:<entityId>`（本文ハイライトの名前）
@@ -232,6 +239,19 @@ export function FlowStepPanel({
   const [pendingFocus, setPendingFocus] = useState<SectionKind | null>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const sectionRefs = useRef<Partial<Record<SectionKind, HTMLDivElement | null>>>({});
+
+  // セル値の表示。値が @ノート名 / @素材名 として解決できるときだけ、
+  // 隣に参照先を開くボタン（↗）を添える。テキスト部分のクリックは従来どおり編集
+  const cellValue = (text: string) => {
+    const target = onOpenExternalNote ? resolveParamLinkTarget(text) : null;
+    if (!target) return text;
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, maxWidth: "100%" }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{text}</span>
+        <ParamLinkButton targetId={target} onOpen={onOpenExternalNote!} />
+      </span>
+    );
+  };
 
   const stepId = data?.stepId ?? null;
   useEffect(() => {
@@ -456,7 +476,7 @@ export function FlowStepPanel({
                     style={td}
                     onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : (row[col] ?? "")}
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : cellValue(row[col] ?? "")}
                   </td>
                 );
               })}
@@ -682,7 +702,7 @@ export function FlowStepPanel({
                     style={td}
                     onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : (row[col] ?? "")}
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : cellValue(row[col] ?? "")}
                   </td>
                 );
               })}
