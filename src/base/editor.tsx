@@ -62,7 +62,7 @@ import {
   type ActiveImageDrag,
 } from "@features/inline-image/spec";
 import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
-import { getActiveProvider } from "../lib/storage/registry";
+import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CustomBlockEntry } from "./schema";
@@ -260,7 +260,14 @@ function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean
   // URL 解決（resolveFileUrl）を通らず、media-server:// のまま img に入って
   // ERR_UNKNOWN_URL_SCHEME になる
   editor.insertBlocks(
-    [{ type: "image", props: { url: `media-server://${payload.fileId}`, name: payload.name } }],
+    // URL はプロバイダのスキームで組み立てる。media-server:// 決め打ちだと
+    // デスクトップ（file-media://）で解決できず、画像がリンク切れになる
+    [
+      {
+        type: "image",
+        props: { url: mediaUrlForActiveProvider(payload.fileId), name: payload.name },
+      },
+    ],
     targetBlockId,
     "after",
   );
@@ -324,8 +331,12 @@ function draggedInlineRange(
   return found;
 }
 
-/** 掴んだ画像ブロック。掴んだ位置から辿り、取れなければ素材が一致する最初のブロック */
+/** 掴んだ画像ブロック。掴んだときに控えた id を優先し、素材一致の探索は最後の手段 */
 function draggedImageBlock(view: any, editor: any, payload: ActiveImageDrag): { id: string } | null {
+  if (payload.blockId) {
+    const block = editor?.getBlock?.(payload.blockId);
+    if (block?.type === "image") return { id: payload.blockId };
+  }
   const pos = payload.pos;
   if (pos !== null && pos >= 0 && pos < view.state.doc.content.size) {
     const $pos = view.state.doc.resolve(pos);
@@ -756,52 +767,50 @@ export function SandboxEditor({
           // デスクトップ（WKWebView）では drop 側で素材を特定できずに既定処理へ落ちる
           // ＝ 画像が名前の文字列に化ける。ドラッグ元も先も同じドキュメントなので、
           // ここで覚えておけば dataTransfer が読めなくても素材を追える
+          // 画像を掴んだドラッグを控えておく。dataTransfer のカスタム MIME は
+          // デスクトップ（WKWebView）だと drop 側で読めず、画像ブロックを画像自体で
+          // 掴んだドラッグには PM 標準の text/plain + text/html しか乗らない（実測。
+          // blocknote/html は ⠿ ハンドル経由でしか乗らない）。ドラッグ元も先も同じ
+          // ドキュメントなので、ここで覚えておけば dataTransfer が読めなくても追える
           dragstart: (view: any, event: any) => {
             setActiveImageDrag(null);
             try {
               const el = event?.target as HTMLElement | null;
-              if (!el) return false;
-              let fileId: string | null = null;
-              let name = "";
-              let pos: number | null = null;
-              let inCell = false;
-              if (el.tagName === "IMG") {
-                // img そのもの（セル内画像 / draggable な画像）を掴んだ
-                const img = el as HTMLImageElement;
-                const src = img.getAttribute("src") ?? "";
-                fileId =
-                  fileIdFromBlobUrl(src) ?? (src ? getActiveProvider().extractFileId(src) : null);
-                name = img.getAttribute("alt") ?? "";
-                inCell = !!img.closest?.('[data-test="inline-image"]');
-                try {
-                  pos = view.posAtDOM(img, 0);
-                } catch {
-                  pos = null;
-                }
-              } else {
-                // 画像ブロックをクリック選択してから画像ごと掴むと、ドラッグ元は
-                // 選択中ブロックの DOM（bn-block-content）になり、dataTransfer には
-                // PM 標準の text/plain + text/html しか乗らない（blocknote/html も
-                // 乗らない — 実測）。素材は selection のノードから読む。
-                // NodeSelection の node は blockContainer なので中の image を探す
-                const sel: any = view.state.selection;
-                const dragged = sel?.node;
-                let imageNode: any =
-                  dragged?.type?.name === "image" ? dragged : null;
-                if (!imageNode) {
-                  dragged?.descendants?.((n: any) => {
-                    if (imageNode) return false;
-                    if (n.type?.name === "image") imageNode = n;
-                    return !imageNode;
-                  });
-                }
-                if (imageNode && typeof imageNode.attrs?.url === "string") {
-                  fileId = getActiveProvider().extractFileId(imageNode.attrs.url);
-                  name = String(imageNode.attrs.name ?? "");
-                  pos = typeof sel.from === "number" ? sel.from : null;
-                }
+              if (!el?.closest) return false;
+              // セル内画像は React 側（spec.tsx の onDragStart）が記録する
+              if (el.closest('[data-test="inline-image"]')) return false;
+              // 掴んだ要素の blockContainer から block を引く。selection は見ない —
+              // 掴んでそのままドラッグすると、dragstart 時点では NodeSelection が
+              // まだ張られていないことがある（クリック確定後にしか張られない）
+              const container = el.closest('[data-node-type="blockContainer"]');
+              const blockId = container?.getAttribute("data-id") ?? null;
+              const block = blockId ? editorRef.current?.getBlock?.(blockId) : null;
+              if (block?.type !== "image" || typeof block.props?.url !== "string") return false;
+              const fileId = getActiveProvider().extractFileId(block.props.url);
+              if (!fileId) return false;
+              setActiveImageDrag({
+                fileId,
+                name: String(block.props.name ?? ""),
+                pos: null,
+                inCell: false,
+                blockId,
+              });
+              // 既定のゴーストは選択範囲の実寸（幅いっぱいの画像だと画面を覆う）。
+              // 小さな分身に差し替えて、掴んでいる感覚を保つ
+              const img = container?.querySelector?.("img");
+              if (img && event.dataTransfer) {
+                const ghost = img.cloneNode() as HTMLImageElement;
+                ghost.style.width = "120px";
+                ghost.style.height = "auto";
+                ghost.style.position = "fixed";
+                ghost.style.top = "-1000px";
+                ghost.style.left = "-1000px";
+                document.body.appendChild(ghost);
+                event.dataTransfer.setDragImage(ghost, 24, 24);
+                setTimeout(() => ghost.remove(), 0);
+                // コピー（＋カーソル）ではなく移動として見せる
+                event.dataTransfer.effectAllowed = "move";
               }
-              if (fileId) setActiveImageDrag({ fileId, name, pos, inCell });
             } catch {
               // 記録は最善努力。失敗しても既定のドラッグは邪魔しない
             }
@@ -813,6 +822,8 @@ export function SandboxEditor({
             // ファイルのドラッグは preventDefault しないと drop が発火しない。
             // セルの内外で出し分けると境目で挙動が変わるので、画像のドラッグなら常に呼ぶ
             event.preventDefault();
+            // ノート内の画像の移動はコピー（＋カーソル）ではなく move で見せる
+            if (getActiveImageDrag() && event.dataTransfer) event.dataTransfer.dropEffect = "move";
             scheduleIndicator(view, event);
             // 入れたいセルが画面の外にあっても運べるようにする
             updateDragScroll(view, event.clientY);

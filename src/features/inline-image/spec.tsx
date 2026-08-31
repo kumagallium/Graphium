@@ -58,6 +58,8 @@ export type ActiveImageDrag = {
   pos: number | null;
   /** 掴んだ元がテーブルのセルの中（inlineImage）か、本文の画像ブロックか */
   inCell: boolean;
+  /** 掴んだ画像ブロックの id（本文の画像のみ）。元ブロックの削除に使う */
+  blockId?: string | null;
 };
 
 let activeImageDrag: ActiveImageDrag | null = null;
