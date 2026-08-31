@@ -18,6 +18,25 @@ describe("getBlockNoteDictionary", () => {
     expect(ja.slash_menu.table.title).toBe("テーブル");
   });
 
+  it("ja のスラッシュ項目は英語・日本語どちらの入力でも検索でヒットする", () => {
+    const ja = getBlockNoteDictionary("ja");
+    const matches = (item: { title: string; aliases?: string[] }, q: string) =>
+      item.title.toLowerCase().includes(q.toLowerCase()) ||
+      (item.aliases ?? []).some((a) => a.toLowerCase().includes(q.toLowerCase()));
+    // 同梱 ja が落としている英語 alias が en からマージされている
+    expect(matches(ja.slash_menu.emoji, "emoji")).toBe(true);
+    expect(matches(ja.slash_menu.toggle_list, "toggle")).toBe(true);
+    expect(matches(ja.slash_menu.heading, "heading1")).toBe(true);
+    // 全項目について、en の英語 alias と ja のタイトルの両方でヒットする
+    for (const [key, enItem] of Object.entries(bnEn.slash_menu)) {
+      const jaItem = ja.slash_menu[key as keyof typeof ja.slash_menu];
+      for (const alias of enItem.aliases ?? []) {
+        expect(matches(jaItem, alias), `${key} を英語 alias "${alias}" で検索`).toBe(true);
+      }
+      expect(matches(jaItem, jaItem.title), `${key} を日本語タイトルで検索`).toBe(true);
+    }
+  });
+
   it("ja の上書きしていない項目は BlockNote 同梱の訳のまま", () => {
     const ja = getBlockNoteDictionary("ja");
     expect(ja.table_handle.delete_column_menuitem).toBe(

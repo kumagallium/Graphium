@@ -14,7 +14,7 @@ import type { Locale } from "../i18n";
 // 揃える。数字は半角、リスト名は「〜リスト」形式。
 // 既定の画像/動画/音声の項目はアプリ独自のスラッシュ項目に差し替えて非表示だが、
 // 語彙は他の UI（ファイルパネル等）と揃うよう一緒に直しておく。
-const jaSlashMenu: Dictionary["slash_menu"] = {
+const jaSlashMenuOverrides: Dictionary["slash_menu"] = {
   ...bnJa.slash_menu,
   heading: { ...bnJa.slash_menu.heading, title: "見出し1" },
   heading_2: { ...bnJa.slash_menu.heading_2, title: "見出し2" },
@@ -39,6 +39,24 @@ const jaSlashMenu: Dictionary["slash_menu"] = {
   video: { ...bnJa.slash_menu.video, title: "動画", subtext: "動画を挿入" },
   audio: { ...bnJa.slash_menu.audio, title: "音声", subtext: "音声を挿入" },
 };
+
+// 同梱 ja 辞書は一部の英語 alias を落としている（emoji には "emoji" すら無く、
+// toggle_list には "toggle" 系が無い等）。日本語 UI でも英語コマンドで検索する
+// 使い方（/emoji, /toggle, /heading1）が成り立つよう、en の aliases を
+// 各項目にマージして日英どちらの入力でもヒットさせる。
+const jaSlashMenu = Object.fromEntries(
+  Object.entries(jaSlashMenuOverrides).map(([key, item]) => {
+    const enAliases =
+      (bnEn.slash_menu as Record<string, { aliases?: string[] }>)[key]?.aliases ?? [];
+    const aliases = [...(item.aliases ?? [])];
+    for (const alias of enAliases) {
+      if (!aliases.some((a) => a.toLowerCase() === alias.toLowerCase())) {
+        aliases.push(alias);
+      }
+    }
+    return [key, { ...item, aliases }];
+  }),
+) as Dictionary["slash_menu"];
 
 const ja: Dictionary = {
   ...bnJa,
