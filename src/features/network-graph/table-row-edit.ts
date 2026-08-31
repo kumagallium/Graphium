@@ -304,6 +304,11 @@ export type TableData = {
   headers: string[];
   /** データ行（ヘッダ行を除く）。セルは文字列 */
   rows: string[][];
+  /**
+   * セルに埋まっているインライン画像の fileId（`"<行>:<列>"` → fileId）。
+   * セル値は文字列なので、画像の有無はここで別に持つ（表示だけに使う）
+   */
+  cellImages?: Record<string, string>;
 };
 
 function findTableBlock(editor: any, tableBlockId: string): any | null {
@@ -328,11 +333,34 @@ export function readTable(editor: any, tableBlockId: string): TableData | null {
   if (!block) return null;
   const rows: any[] = block.content?.rows ?? [];
   if (rows.length === 0) return null;
+  const cellImages: Record<string, string> = {};
+  rows.slice(1).forEach((row, r) => {
+    (row.cells ?? []).forEach((cell: any, c: number) => {
+      const fileId = cellImageFileId(cell);
+      if (fileId) cellImages[`${r}:${c}`] = fileId;
+    });
+  });
   return {
     blockId: tableBlockId,
     headers: (rows[0].cells ?? []).map(cellText),
     rows: rows.slice(1).map((r) => (r.cells ?? []).map(cellText)),
+    ...(Object.keys(cellImages).length > 0 ? { cellImages } : {}),
   };
+}
+
+/** セルに埋まっているインライン画像の fileId（無ければ undefined） */
+function cellImageFileId(cell: any): string | undefined {
+  const content = Array.isArray(cell) ? cell : cell?.type === "tableCell" ? cell.content : null;
+  for (const inline of content ?? []) {
+    if (
+      inline?.type === "inlineImage" &&
+      typeof inline.props?.fileId === "string" &&
+      inline.props.fileId
+    ) {
+      return inline.props.fileId;
+    }
+  }
+  return undefined;
 }
 
 /** ヘッダ（列名）を書き換える */

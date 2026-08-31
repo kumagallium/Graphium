@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link2, Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { ParamLinkButton, ParamValueField, resolveParamLinkTarget } from "./param-link";
+import { getActiveProvider } from "../../lib/storage/registry";
 import { t, getDisplayLabel } from "../../i18n";
 import {
   splitAttrLabel,
@@ -210,6 +211,52 @@ function SectionChip({ kind }: { kind: SectionKind }) {
   );
 }
 
+/** 右パネルのセルに埋まっているインライン画像のサムネイル（ノードのサムネと同じ流儀） */
+function CellImageThumb({
+  fileId,
+  alt,
+  onOpen,
+}: {
+  fileId: string;
+  alt: string;
+  onOpen?: (id: string) => void;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getActiveProvider()
+      .getMediaBlobUrl(fileId)
+      .then((url: string) => {
+        if (!cancelled) setSrc(url);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId]);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      // テキストのクリック（セル編集）と分けるため、画像自体が開くボタンを兼ねる
+      onClick={onOpen ? (e) => { e.stopPropagation(); onOpen(`image:${fileId}`); } : undefined}
+      title={onOpen ? t("inlineImage.clickToOpen") : undefined}
+      style={{
+        height: 28,
+        maxWidth: 72,
+        objectFit: "cover",
+        borderRadius: 3,
+        border: "1px solid var(--color-border)",
+        verticalAlign: "middle",
+        cursor: onOpen ? "pointer" : "default",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 export function FlowStepPanel({
   selection,
   data,
@@ -242,13 +289,20 @@ export function FlowStepPanel({
 
   // セル値の表示。値が @ノート名 / @素材名 として解決できるときだけ、
   // 隣に参照先を開くボタン（↗）を添える。テキスト部分のクリックは従来どおり編集
-  const cellValue = (text: string) => {
+  const cellValue = (text: string, table?: TableData | null, r?: number, c?: number) => {
+    const imageFileId =
+      table?.cellImages && r !== undefined && c !== undefined
+        ? table.cellImages[`${r}:${c}`]
+        : undefined;
     const target = onOpenExternalNote ? resolveParamLinkTarget(text) : null;
-    if (!target) return text;
+    if (!target && !imageFileId) return text;
     return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, maxWidth: "100%" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}>
+        {imageFileId && (
+          <CellImageThumb fileId={imageFileId} alt={text} onOpen={onOpenExternalNote} />
+        )}
         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{text}</span>
-        <ParamLinkButton targetId={target} onOpen={onOpenExternalNote!} />
+        {target && <ParamLinkButton targetId={target} onOpen={onOpenExternalNote!} />}
       </span>
     );
   };
@@ -485,7 +539,7 @@ export function FlowStepPanel({
                     style={td}
                     onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "")}
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "", table, r, col)}
                   </td>
                 );
               })}
@@ -715,7 +769,7 @@ export function FlowStepPanel({
                     style={td}
                     onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
                   >
-                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "")}
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit, (v) => commitEditValue(key, v)) : cellValue(row[col] ?? "", table, r, col)}
                   </td>
                 );
               })}
