@@ -23,10 +23,10 @@ Graphium deliberately does not bind `⌘⇧N` (`Ctrl+Shift+N` on Windows/Linux) 
 | **Sort by modified** / **Sort by created** / **Sort by title** / **Sort by outgoing links** | Reorders the list. The default is by creation date. |
 | **Filter by label** | Show only notes that contain a given provenance label. |
 | **Filter by author** | Filter by who wrote the note — and which LLM assisted. |
-| **Filter by context** | Filter by [context tags](#context-tags). |
+| **Filter by folder** | Filter by [folder](#folders). |
 | **Clear filter** | Back to everything. |
 
-Selecting rows lets you act in bulk: move notes to trash, archive them, or add a context tag to all of them at once. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving.
+Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving.
 
 ![The notes list with link counts, labels, and context columns](/screenshots/notes-list.png)
 
@@ -341,9 +341,15 @@ Saved versions are listed in the same panel. Each one offers:
 
 Forking is how you explore a different direction without losing the original: the new note records where it came from, and that link shows up in the [lineage graph](/labels-and-provenance#graph-views-beyond-one-note).
 
-## Context tags
+## Folders
 
-Under the title of every note sits a **Context** button. Context tags are free-form categories or themes ("battery project", "reading notes") — type to add one, or pick from tags you have used before. They are the fastest way to slice the notes list (**Filter by context**) and to color the global graph by project.
+Under the title of every note sits a **Folder** button. Folder names are free-form ("battery project", "reading notes") — type to create one, or pick from folders you have used before. They are the fastest way to slice the notes list (**Filter by folder**) and to color the global graph by project.
+
+The sidebar lists your **Folders** too. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
+
+::: tip One note, several folders
+Unlike folders on your computer, a note can sit in more than one folder at once — think of it as a shortcut. Deleting a folder never deletes the notes inside it: any note that is not in another folder simply becomes **Unfiled**.
+:::
 
 ## Empty-note hints
 

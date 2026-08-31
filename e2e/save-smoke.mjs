@@ -156,7 +156,7 @@ async function openNoteListFromSidebar(page) {
   await page.locator("table tbody tr").first().waitFor({ timeout: 15_000 });
 }
 
-/** 一覧行のタイトルテキスト。行の中央クリックは「＋ Context」ボタン等に
+/** 一覧行のタイトルテキスト。行の中央クリックは「＋ Folder」ボタン等に
  *  当たってしまうため、必ずタイトル文字列そのものをクリックする */
 function noteListTitle(page, title) {
   return page
