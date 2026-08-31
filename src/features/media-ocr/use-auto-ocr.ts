@@ -12,9 +12,42 @@ import { OCR_CAPABLE_BLOCK_TYPES } from "./collect";
 import { takePendingOcrFile } from "./pending-files";
 import { waitForDragIdle } from "./drag-idle";
 import { mirrorOcrToMediaIndex } from "./mirror-to-media-index";
+import { getLatestMediaIndex } from "../asset-browser/media-index";
+import { getActiveProvider } from "../../lib/storage/registry";
 import type { OcrToastState } from "./OcrToast";
 
 type ImageTarget = { id: string; url: string };
+
+/**
+ * この起動中に読み終えた素材。文字が見つからなかったものも含めて覚える。
+ *
+ * 同じ画像でも、テーブルへ出し入れすると画像ブロックが作り直されて id が変わる。
+ * ブロック id だけで見ていると、そのたびに同じ素材を読み直してしまう
+ * （「出し入れごとに毎回 文字認識が走る」と報告された）。
+ */
+const scannedAssetIds = new Set<string>();
+
+/** 控えた「読み終えた素材」を捨てる（保存先を切り替えたときとテストの掃除用） */
+export function clearScannedAssets(): void {
+  scannedAssetIds.clear();
+}
+
+/** 画像ブロックの url から素材 ID を引く（外部 URL の画像などは素材ではない） */
+function assetIdOf(url: string): string | null {
+  try {
+    return getActiveProvider().extractFileId(url) ?? null;
+  } catch {
+    // プロバイダ未初期化（テスト・Storybook）では素材として扱わない
+    return null;
+  }
+}
+
+/** 素材側にすでに残っている読み取り結果 */
+function ocrTextForAsset(assetId: string): string | null {
+  const entry = getLatestMediaIndex()?.media.find((m) => m.fileId === assetId);
+  const text = entry?.ocrText;
+  return typeof text === "string" && text.trim() ? text : null;
+}
 
 /** ブロックツリーから画像ブロック（URL 付き）を再帰的に集める */
 function collectImageBlocks(blocks: any[], out: ImageTarget[] = []): ImageTarget[] {
@@ -80,6 +113,9 @@ export function useAutoImageOcr({
           console.warn("自動 OCR に失敗:", e);
           empty += 1;
         } finally {
+          // 文字が無かった・失敗した素材も控える（同じ画像を運ぶたびに読み直さない）
+          const assetId = assetIdOf(target.url);
+          if (assetId) scannedAssetIds.add(assetId);
           runningRef.current = Math.max(0, runningRef.current - 1);
           setToast((prev) =>
             prev ? { ...prev, running: runningRef.current } : prev,
@@ -105,8 +141,27 @@ export function useAutoImageOcr({
     }
 
     const known = knownRef.current;
-    const fresh = images.filter((i) => !known.has(i.id) && !store.getEntry(i.id));
+    const candidates = images.filter((i) => !known.has(i.id) && !store.getEntry(i.id));
     for (const i of images) known.add(i.id);
+    // ブロックが作り直されただけの画像は読み直さない。素材側に結果が残っていれば
+    // それを写し、読んだ実績だけある（文字が無かった）ものは黙って飛ばす
+    const fresh: ImageTarget[] = [];
+    for (const target of candidates) {
+      const assetId = assetIdOf(target.url);
+      const cached = assetId ? ocrTextForAsset(assetId) : null;
+      if (cached) {
+        store.setEntry(target.id, {
+          text: cached,
+          // 素材側には読み取り時の確度・言語を残していない（表示は 0 で省かれる）
+          confidence: 0,
+          lang: "",
+          extractedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+      if (assetId && scannedAssetIds.has(assetId)) continue;
+      fresh.push(target);
+    }
     if (fresh.length > 0) void runAll(fresh);
   }, [enabled, editorRef, store, runAll]);
 
