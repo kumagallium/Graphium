@@ -2022,6 +2022,9 @@ export const ja: Record<string, string> = {
   "tableMeta.expandUntitled": "テーブル",
   "tableMeta.expandCount": "{rows} 行 × {cols} 列",
   "tableMeta.expandSortHint": "列見出しをクリックすると並べ替えできます（元の表は変わりません）",
+  "tableMeta.expandSortApplyHint": "列見出しをクリックすると表そのものを並べ替えます（取り消しで戻せます）",
+  "tableMeta.sortAsc": "昇順で並べ替え",
+  "tableMeta.sortDesc": "降順で並べ替え",
 
   // 時系列テーブル
   "logTable.colDateTime": "日時",

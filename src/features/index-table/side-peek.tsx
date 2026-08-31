@@ -92,7 +92,9 @@ import {
   TableExpandModal,
   migrateTableMeta,
   readTableData,
+  sortTableBlock,
   type TableExpandData,
+  type SortState,
 } from "@features/table-meta";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
@@ -313,8 +315,10 @@ function SidePeekInner({
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
   // スラッシュメニューのピッカー状態（main editor とは独立に SidePeek 側で持つ）
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
-  // テーブルの拡大表示（メインと同じ読み取り専用スナップショット）
+  // テーブルの拡大表示（メインと同じ。見出しクリックの並べ替えは実表に反映する）
   const [tableExpandData, setTableExpandData] = useState<TableExpandData | null>(null);
+  const [tableExpandSort, setTableExpandSort] = useState<SortState>(null);
+  const tableExpandBlockIdRef = useRef<string | null>(null);
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
   // URL ペースト検知 → ブックマーク/リンク選択メニュー（メインエディタと同じ挙動）
@@ -1516,10 +1520,26 @@ function SidePeekInner({
               wrapperEl={wrapperEl}
               onExpand={(blockId, displayName) => {
                 const data = readTableData(editorRef.current?.getBlock?.(blockId));
-                if (data) setTableExpandData({ name: displayName, ...data });
+                if (!data) return;
+                tableExpandBlockIdRef.current = blockId;
+                setTableExpandSort(null);
+                setTableExpandData({ name: displayName, ...data });
               }}
             />
-            <TableExpandModal data={tableExpandData} onClose={() => setTableExpandData(null)} />
+            <TableExpandModal
+              data={tableExpandData}
+              onClose={() => setTableExpandData(null)}
+              onSort={(col, dir) => {
+                const blockId = tableExpandBlockIdRef.current;
+                const editor = editorRef.current;
+                if (!blockId || !editor) return;
+                sortTableBlock(editor, blockId, col, dir);
+                const data = readTableData(editor.getBlock?.(blockId));
+                if (data) setTableExpandData((prev) => (prev ? { ...prev, ...data } : prev));
+                setTableExpandSort({ col, dir });
+              }}
+              activeSort={tableExpandSort}
+            />
             {/* 右ガター（80px）はラベルバッジを置く場所。
                 何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
                 ラベルが無いときは左右対称（24px）にする。

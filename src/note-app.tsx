@@ -68,9 +68,11 @@ import {
   hasColumnType,
   readFirstColumnName,
   readTableData,
+  sortTableBlock,
   type ColumnType,
   type TableSource,
   type TableExpandData,
+  type SortState,
 } from "./features/table-meta";
 import {
   DataImportModal,
@@ -1798,14 +1800,28 @@ function NoteEditorInner({
     []
   );
 
-  // テーブルの拡大表示。開いた時点の中身を読み取り専用スナップショットとして
-  // モーダルに出す（並べ替えはモーダル内だけで完結し、ノートには書き戻さない）
+  // テーブルの拡大表示。開いた時点の中身のスナップショットをモーダルに出す。
+  // 見出しクリックの並べ替えは実テーブルに反映し（列ハンドルメニューと同じ操作の
+  // 別入口）、並べ替え後のスナップショットを読み直す — ビューは常に実表の鏡
   const [tableExpandData, setTableExpandData] = useState<TableExpandData | null>(null);
+  const [tableExpandSort, setTableExpandSort] = useState<SortState>(null);
+  const tableExpandBlockIdRef = useRef<string | null>(null);
   const handleTableExpand = useCallback((blockId: string, displayName: string) => {
     const editor = editorRef.current;
     const data = readTableData(editor?.getBlock?.(blockId));
     if (!data) return;
+    tableExpandBlockIdRef.current = blockId;
+    setTableExpandSort(null);
     setTableExpandData({ name: displayName, ...data });
+  }, []);
+  const handleTableExpandSort = useCallback((col: number, dir: "asc" | "desc") => {
+    const blockId = tableExpandBlockIdRef.current;
+    const editor = editorRef.current;
+    if (!blockId || !editor) return;
+    sortTableBlock(editor, blockId, col, dir);
+    const data = readTableData(editor.getBlock?.(blockId));
+    if (data) setTableExpandData((prev) => (prev ? { ...prev, ...data } : prev));
+    setTableExpandSort({ col, dir });
   }, []);
 
   // データ素材ピッカーで「ファイルからアップロード」を選んだとき。
@@ -4405,7 +4421,12 @@ function NoteEditorInner({
       />
       <IndexTableIconLayer editorRef={editorRef} />
       <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} onExpand={handleTableExpand} />
-      <TableExpandModal data={tableExpandData} onClose={() => setTableExpandData(null)} />
+      <TableExpandModal
+        data={tableExpandData}
+        onClose={() => setTableExpandData(null)}
+        onSort={handleTableExpandSort}
+        activeSort={tableExpandSort}
+      />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
