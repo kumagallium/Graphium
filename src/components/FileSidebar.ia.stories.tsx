@@ -9,8 +9,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   Image, FileText, Video, Volume2, Link, StickyNote, Bot, History,
   PanelLeftClose, Trash2, Settings as SettingsIcon, Wrench, ShieldCheck, ArrowRight,
+  ChevronDown, ChevronRight, Table,
 } from "lucide-react";
 import { FileSidebar } from "./FileSidebar";
+import { FolderTree } from "../features/note-context/FolderTree";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { type RecentNote } from "../features/navigation";
 import type { GraphiumIndex } from "../features/navigation/index-file";
@@ -567,6 +569,177 @@ export const SideBySide: Story = {
         <div className="flex-1 flex">
           <ProposedFileSidebar {...COMMON_PROPS} />
         </div>
+      </div>
+    </div>
+  ),
+};
+
+// ── フォルダ入り（現行ベース・feat/folder-tree） ─────────────
+//
+// noteContexts を「フォルダ」として見せるセクションを、ノート見出しの直下に挟んだ姿。
+// 現行の実物（左）と、導入後の初期状態（中央: 畳み）・使用中（右: 展開）を並べ、
+// 左ナビのゴチャつきがどれだけ増えるかを判断する。確定したら FileSidebar.tsx に反映する。
+// 件数は左の実物（MOCK_INDEX = 3 ノート）と矛盾しないよう合わせてある。
+
+const FOLDER_DEMO = [
+  { value: "プロジェクトA/実験シリーズ1", count: 1 },
+  { value: "プロジェクトA/実験シリーズ2", count: 1 },
+  { value: "材料X", count: 1 },
+];
+
+function HeadingLink({ label, count, mb }: { label: string; count?: number; mb?: boolean }) {
+  return (
+    <div className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 ${mb ? "mb-1.5 " : ""}text-xs font-semibold text-sidebar-foreground/40`}>
+      <span className="shrink-0 -ml-0.5" aria-hidden><ArrowRight size={12} /></span>
+      <span className="flex-1 text-left">{label}</span>
+      {typeof count === "number" && count > 0 && (
+        <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{count}</span>
+      )}
+    </div>
+  );
+}
+
+function StaticSectionHeader({ title, count, open }: { title: string; count?: number; open: boolean }) {
+  return (
+    <div className="w-full flex items-center gap-1 text-xs font-semibold text-sidebar-foreground/40 mb-1.5">
+      <span className="shrink-0 -ml-0.5">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+      <span className="flex-1 text-left">{title}</span>
+      {typeof count === "number" && count > 0 && (
+        <span className="text-xs text-muted-foreground/70 font-normal">{count}</span>
+      )}
+    </div>
+  );
+}
+
+function ItemRow({ icon, label, count }: { icon: ReactNode; label: string; count?: number }) {
+  return (
+    <div className="w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-sidebar-foreground/70">
+      <span className="text-muted-foreground shrink-0">{icon}</span>
+      <span className="flex-1 text-left">{label}</span>
+      {typeof count === "number" && count > 0 && <span className="text-xs text-muted-foreground">{count}</span>}
+    </div>
+  );
+}
+
+function FooterRow({ icon, label, count, dot }: { icon: ReactNode; label: string; count?: number; dot?: boolean }) {
+  return (
+    <div className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground">
+      <span className="shrink-0">{icon}</span>
+      <span className="flex-1 text-left">{label}</span>
+      {typeof count === "number" && count > 0 && <span className="text-xs">{count}</span>}
+      {dot && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+    </div>
+  );
+}
+
+function MockCurrentWithFolders({ folderOpen, folderSelected = null }: { folderOpen: boolean; folderSelected?: string | null }) {
+  const t = useT();
+  return (
+    <aside className="w-full md:w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col h-full">
+      <div className="p-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
+            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
+          </div>
+          <PanelLeftClose size={14} className="text-muted-foreground" />
+        </div>
+        {/* 実物（COMMON_PROPS）は onNewMemo 無しなので「＋ノート」のみ。条件を揃える */}
+        <div className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85">
+          {t("sidebar.newNote")}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto pb-2">
+        <HeadingLink label={t("nav.notes")} count={3} />
+
+        {/* ★ 新設: フォルダ（ノート直下）。実体は noteContexts */}
+        <div className="px-4 pt-2 pb-1">
+          <StaticSectionHeader title={t("nav.folders")} count={3} open={folderOpen} />
+          {folderOpen && (
+            <FolderTree
+              folders={FOLDER_DEMO}
+              unfiledCount={0}
+              selected={folderSelected}
+              onSelectFolder={() => {}}
+              onSelectUnfiled={() => {}}
+              onCreateFolder={() => {}}
+            />
+          )}
+        </div>
+
+        <HeadingLink label={t("memo.title")} mb />
+
+        {/* ナレッジは実物の初期状態（defaultOpen=false）に合わせて畳みで描く */}
+        <div className="px-4 pt-2 pb-1">
+          <StaticSectionHeader title={t("sidebar.knowledge")} count={26} open={false} />
+        </div>
+
+        <div className="mx-4 my-3 border-t border-sidebar-border/50" aria-hidden />
+
+        <div className="px-4 pt-2 pb-1">
+          <StaticSectionHeader title={t("asset.dataSection")} count={14} open />
+          <div className="space-y-0.5">
+            <ItemRow icon={<Image size={14} />} label={t("asset.type.image")} count={8} />
+            <ItemRow icon={<FileText size={14} />} label={t("asset.type.document")} count={2} />
+            <ItemRow icon={<Table size={14} />} label={t("asset.type.data")} />
+            <ItemRow icon={<Video size={14} />} label={t("asset.type.video")} />
+            <ItemRow icon={<Volume2 size={14} />} label={t("asset.type.audio")} />
+            <ItemRow icon={<Link size={14} />} label={t("asset.type.url")} count={4} />
+          </div>
+        </div>
+
+        <div className="px-4 pt-2 pb-1">
+          <StaticSectionHeader title={t("label.section")} count={5} open />
+          <div className="space-y-0.5">
+            {([["material", 2], ["result", 2], ["procedure", 1], ["attribute", 1], ["tool", 1]] as const).map(([label, count]) => (
+              <div key={label} className="w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-sidebar-foreground/70">
+                <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LABEL_HEX[label] ?? "#8fa394" }} />
+                <span className="flex-1 text-left truncate">{getDisplayLabelName(label)}</span>
+                <span className="text-xs text-muted-foreground">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="p-2 border-t border-sidebar-border space-y-0.5">
+        <FooterRow icon={<Wrench size={12} />} label={t("sidebar.skill")} count={2} />
+        <FooterRow icon={<SettingsIcon size={12} />} label={t("common.settings")} dot />
+        <FooterRow icon={<Trash2 size={12} />} label={t("nav.trashAndArchive")} />
+        <FooterRow icon={<History size={12} />} label={t("sidebar.releaseNotes")} />
+      </div>
+    </aside>
+  );
+}
+
+export const ProposedFolders: Story = {
+  name: "フォルダ入り（現行ベース比較）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }} className="overflow-x-auto">
+      <div className="flex flex-col border-r-2 border-amber-200 shrink-0">
+        <div className="px-3 py-1.5 bg-amber-50 text-[11px] font-semibold text-amber-900 border-b">現行</div>
+        <div className="flex-1 flex min-h-0">
+          <FileSidebar {...COMMON_PROPS} />
+        </div>
+      </div>
+      <div className="flex flex-col border-r-2 border-emerald-200 shrink-0">
+        <div className="px-3 py-1.5 bg-emerald-50 text-[11px] font-semibold text-emerald-900 border-b">フォルダ入り・初期（畳み）</div>
+        <div className="flex-1 flex min-h-0">
+          <MockCurrentWithFolders folderOpen={false} />
+        </div>
+      </div>
+      <div className="flex flex-col shrink-0">
+        <div className="px-3 py-1.5 bg-emerald-50 text-[11px] font-semibold text-emerald-900 border-b">フォルダ入り・使用中（展開）</div>
+        <div className="flex-1 flex min-h-0">
+          <MockCurrentWithFolders folderOpen folderSelected="プロジェクトA/実験シリーズ1" />
+        </div>
+      </div>
+      <div className="flex-1 p-6 text-xs text-muted-foreground min-w-[200px] space-y-2">
+        <p className="text-sm font-semibold text-foreground">フォルダはノート直下・初期は畳み</p>
+        <p>初期状態（中央）で増えるのは「フォルダ」ヘッダ 1 行だけ。開閉は localStorage に永続化する（既存 CollapsibleSection と同じ仕組み）。</p>
+        <p>実体は noteContexts なので、運用をやめてセクションを消してもタグ・一覧・グラフは元のまま（データ影響なし）。</p>
+        <p>件数は左の実物（3 ノート）と整合させてある: 実験シリーズ1 に 1 件・実験シリーズ2 に 1 件・材料X に 1 件。</p>
       </div>
     </div>
   ),

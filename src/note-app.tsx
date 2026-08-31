@@ -187,6 +187,8 @@ import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
+import { UNFILED_PATH } from "./features/note-context/folder-tree-model";
+import { addFolderDefinition, ensureFolderDefinitions } from "./features/note-context/folder-store";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
@@ -5789,6 +5791,15 @@ export function NoteApp() {
   // ここでは ref 経由で参照だけ確保しておく。
   // 一覧ビュー用サイドピーク（NoteEditorInner 外でも使えるグローバルな state）
   const [listSidePeekNoteId, setListSidePeekNoteId] = useState<string | null>(null);
+  // フォルダ（noteContexts のフォルダ見せ）: サイドバーの選択とノート一覧の文脈フィルタを
+  // ここで同期する。selectedFolder はハイライト用の path（未分類は UNFILED_PATH）、
+  // folderContextFilter は一覧に渡す実フィルタ（親フォルダは子 path 込みに展開済み）。
+  // 一覧側で列フィルタを手動操作したらフォルダ選択は解除する（onContextFilterChange）。
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [folderContextFilter, setFolderContextFilter] = useState<string[]>([]);
+  // 空フォルダ定義（appdata）。タグとして実体化する前のフォルダをツリーに出すために持つ。
+  // 読み込みは fm（プロバイダ）初期化後の useEffect で行う（fm 宣言の直後にある）。
+  const [emptyFolders, setEmptyFolders] = useState<string[]>([]);
   // 一覧・全体グラフ用の素材サイドピーク。ノートピークと同時に開くと右端で重なるため
   // 片方を開くとき他方を閉じる（切替式）。
   const [listMaterialPeekEntry, setListMaterialPeekEntry] = useState<MediaIndexEntry | null>(null);
@@ -5877,6 +5888,22 @@ export function NoteApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
+
+  // 空フォルダ定義の読み込み。マウント直後はストレージプロバイダが初期化前で
+  // 読めないことがあるので、noteIndex が読めたタイミング（= プロバイダが使える）で読む。
+  // ensureFolderDefinitions はキャッシュ済みなら即返るので、noteIndex 更新のたびに走っても軽い。
+  useEffect(() => {
+    if (!fm.noteIndex) return;
+    let cancelled = false;
+    ensureFolderDefinitions()
+      .then((folders) => {
+        if (!cancelled) setEmptyFolders(folders);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [fm.noteIndex]);
 
   // 語彙インデックス（BM25）をノート / Wiki / 素材に追従させる。
   // Cmd-K の本文・素材検索と、AI チャットの横断検索（埋め込みと RRF で併用）の共通コア。
@@ -8217,8 +8244,38 @@ export function NoteApp() {
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
-    onShowNoteList: () => { closeAllViews(); fm.setShowNoteList(true); setSidebarOpen(false); router.navigate({ view: "notes" }); },
+    onShowNoteList: () => {
+      closeAllViews();
+      fm.setShowNoteList(true);
+      setSidebarOpen(false);
+      router.navigate({ view: "notes" });
+      // 「ノート」見出し = 全ノート一覧なので、フォルダ絞り込みは解除する
+      setSelectedFolder(null);
+      setFolderContextFilter([]);
+    },
     noteListActive: fm.showNoteList,
+    selectedFolder,
+    onSelectFolder: (path: string, contextValues: string[]) => {
+      closeAllViews();
+      fm.setShowNoteList(true);
+      setSidebarOpen(false);
+      router.navigate({ view: "notes" });
+      setSelectedFolder(path);
+      setFolderContextFilter(contextValues);
+    },
+    onSelectUnfiledFolder: () => {
+      closeAllViews();
+      fm.setShowNoteList(true);
+      setSidebarOpen(false);
+      router.navigate({ view: "notes" });
+      setSelectedFolder(UNFILED_PATH);
+      setFolderContextFilter([UNFILED_PATH]);
+    },
+    emptyFolders,
+    onCreateFolder: (path: string) => {
+      // appdata に永続化し、反映後の一覧でツリーを更新する（作成直後から見える）
+      void addFolderDefinition(path).then(setEmptyFolders);
+    },
     onShowProcessGallery: () => { closeAllViews(); fm.setShowProcessGallery(true); setSidebarOpen(false); },
     processGalleryActive: fm.showProcessGallery,
     processCount: processNoteCount,
@@ -8849,6 +8906,13 @@ export function NoteApp() {
         ) : fm.showNoteList ? (
           <NoteListView
             noteIndex={fm.noteIndex}
+            contextFilter={folderContextFilter}
+            onContextFilterChange={(next) => {
+              // 列ヘッダからの手動操作。フィルタを引き継ぎつつ、サイドバーの
+              // フォルダ選択ハイライトは解除する（もはやフォルダ単位ではないため）
+              setFolderContextFilter(next);
+              setSelectedFolder(null);
+            }}
             onOpenNote={(noteId) => openListPeek(noteId)}
             onOpenNoteFull={(noteId) => navigateToNote(noteId)}
             onBack={() => { setListSidePeekNoteId(null); fm.setShowNoteList(false); router.navigate({ view: "home" }); }}
