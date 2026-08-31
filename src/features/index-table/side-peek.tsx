@@ -89,7 +89,10 @@ import {
   TableMetaStoreProvider,
   useTableMetaStore,
   TableCaptionLayer,
+  TableExpandModal,
   migrateTableMeta,
+  readTableData,
+  type TableExpandData,
 } from "@features/table-meta";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
@@ -310,6 +313,8 @@ function SidePeekInner({
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
   // スラッシュメニューのピッカー状態（main editor とは独立に SidePeek 側で持つ）
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
+  // テーブルの拡大表示（メインと同じ読み取り専用スナップショット）
+  const [tableExpandData, setTableExpandData] = useState<TableExpandData | null>(null);
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
   // URL ペースト検知 → ブックマーク/リンク選択メニュー（メインエディタと同じ挙動）
@@ -1493,7 +1498,15 @@ function SidePeekInner({
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
             {/* 表の名前・取り込み元バッジ・長い表の折りたたみ。メインと同じ層を
                 ピークの外枠に閉じて使う（wrapperEl 無しだとメイン側の表を測る） */}
-            <TableCaptionLayer editorRef={editorRef} wrapperEl={wrapperEl} />
+            <TableCaptionLayer
+              editorRef={editorRef}
+              wrapperEl={wrapperEl}
+              onExpand={(blockId, displayName) => {
+                const data = readTableData(editorRef.current?.getBlock?.(blockId));
+                if (data) setTableExpandData({ name: displayName, ...data });
+              }}
+            />
+            <TableExpandModal data={tableExpandData} onClose={() => setTableExpandData(null)} />
             {/* 右ガター（80px）はラベルバッジを置く場所。
                 何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
                 ラベルが無いときは左右対称（24px）にする。

@@ -5,15 +5,17 @@
 // に保存され、チャートブロックが参照テーブルの表示名として使う（eureco の
 // 「データテーブル1: 地点Aの観測結果」に相当する、参照に耐える名前）。
 //
-// 描画対象は「名前が付いているテーブル」と「日時が自動で入るテーブル（無名でも
-// 表 N を出す）」。名前の無いふつうのテーブルには何も出さない — 付ける入口は
-// ⠿ メニューの「テーブルに名前を付ける」で、そこから編集要求が来たときだけ
-// 入力欄を出す。
+// 描画対象はすべてのテーブル。名前ボタンを出すのは「名前が付いているテーブル」と
+// 「日時が自動で入るテーブル（無名でも 表 N を出す）」だけで、名前の無いふつうの
+// テーブルには拡大表示ボタンだけを出す — 名前を付ける入口は ⠿ メニューの
+// 「テーブルに名前を付ける」で、そこから編集要求が来たときだけ入力欄を出す。
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Maximize2 } from "lucide-react";
 import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
+import { collectTableBlocks } from "./table-cells";
 import { useTableMetaStore } from "./store";
 import type { TableSource } from "./types";
 
@@ -71,6 +73,7 @@ function sourceTooltip(source: TableSource, clickable: boolean): string {
 export function TableCaptionLayer({
   editorRef,
   onReimport,
+  onExpand,
   wrapperEl,
 }: {
   editorRef: React.RefObject<any>;
@@ -80,6 +83,11 @@ export function TableCaptionLayer({
    * 渡されない場合はバッジは表示だけ（ツールチップで出所を示す）になる。
    */
   onReimport?: (blockId: string, source: TableSource) => void;
+  /**
+   * 拡大表示（⤢）を押したときのハンドラ。ホストが表の中身を読んでモーダルを開く。
+   * 渡されない場合はボタン自体を出さない（Storybook の単体表示など）。
+   */
+  onExpand?: (blockId: string, displayName: string) => void;
   /**
    * この層が見るエディタの外枠（ProvIndicatorLayer と同じ流儀）。
    * SidePeek は自分の wrapper を渡す。省略時は最初の [data-label-wrapper]＝
@@ -154,12 +162,15 @@ export function TableCaptionLayer({
     // ラッパー内座標の基準。スクロール量を足すので、スクロールしても測り直さずに済む
     const rootRect = root.getBoundingClientRect();
     setPortalHost((prev) => (prev === root ? prev : root));
+    const docBlocks = (editor as any).document ?? [];
     const displayNames = computeTableDisplayNames(
-      (editor as any).document ?? [],
+      docBlocks,
       (blockId) => store.hasColumnType(blockId, "datetime-auto"),
       store.getCaption
     );
-    const targets = new Set(displayNames.keys());
+    // 拡大表示ボタンは名前の有無に関係なく出すので、走査はすべてのテーブルに広げる。
+    // 名前ボタンを出すかどうかは描画側が displayName の有無で決める
+    const targets = new Set([...collectTableBlocks(docBlocks).keys(), ...displayNames.keys()]);
     // 名前を付ける途中のテーブルは、まだ名前が無くても入力欄を出す
     if (editingRef.current) targets.add(editingRef.current);
 
@@ -406,6 +417,8 @@ export function TableCaptionLayer({
               zIndex: 5,
             }}
           >
+          {/* 名前ボタンは名前（自動名含む）が付いた表だけ。無名の表は拡大表示だけ出す */}
+          {displayName !== "" && (
           <button
             type="button"
             onClick={() => startEditing(blockId)}
@@ -437,8 +450,9 @@ export function TableCaptionLayer({
               (e.currentTarget as HTMLElement).style.background = "transparent";
             }}
           >
-            {displayName || t("tableMeta.namePlaceholder")}
+            {displayName}
           </button>
+          )}
           {/* 取り込み由来のテーブルは出所を出す。名前の隣に置くのは、
               この表が手打ちではなく生データ由来だと一目で分かるようにするため。
               押せるのは「取り込み設定を見直す」入口としてで、素材そのものを開く
@@ -522,6 +536,37 @@ export function TableCaptionLayer({
             >
               {t("tableMeta.rows", { count: String(pos.rowCount) })}
               {isCollapsed(pos) ? " ▾" : " ▴"}
+            </button>
+          )}
+          {/* 拡大表示。大きな表を本文の幅に縛られずに眺めるための入口で、
+              どのテーブルにも出す（無名の表では唯一の要素になる） */}
+          {onExpand && (
+            <button
+              type="button"
+              onClick={() => onExpand(blockId, displayName)}
+              title={t("tableMeta.expand")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 18,
+                height: 18,
+                padding: 0,
+                margin: 0,
+                borderRadius: 9,
+                border: "1px solid var(--color-border)",
+                background: "transparent",
+                color: "var(--color-text-tertiary)",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "transparent";
+              }}
+            >
+              <Maximize2 size={10} strokeWidth={2} />
             </button>
           )}
           </div>
