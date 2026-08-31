@@ -2042,6 +2042,7 @@ export const ja: Record<string, string> = {
   "inlineImage.missing": "画像を読み込めません",
   "inlineImage.resize": "ドラッグでサイズ変更（ダブルクリックで元に戻す）",
   "tableMeta.sortDesc": "降順で並べ替え",
+  "tableMeta.useColumnInCalc": "この列を計算に使う",
 
   // 時系列テーブル
   "logTable.colDateTime": "日時",

@@ -8,6 +8,10 @@
 // - エラーは行単位で表示し、他の行の評価は止めない
 
 import { loadMathJs } from "./mathjs-loader";
+import type {
+  TableColumnData,
+  TableColumnsIndex,
+} from "../../features/table-meta/types";
 
 export type CalcLineResult = {
   /** 元の行テキスト（表示は view 側が持つのでここでは判定材料のみ） */
@@ -42,21 +46,57 @@ function formatValue(math: Awaited<ReturnType<typeof loadMathJs>>, value: unknow
   return math.format(value, { notation: "auto", precision: 8 });
 }
 
+/** 1 列分を mathjs へ渡す値にする。単位が揃っていれば単位付き数量の配列に */
+function toMathColumn(math: Awaited<ReturnType<typeof loadMathJs>>, data: TableColumnData): unknown {
+  if (data.unit) {
+    try {
+      // mathjs が知らない単位表記（"個" など）は throw する。その列は素の数値で返す
+      math.unit(1, data.unit);
+      return data.values.map((v) => math.unit(v, data.unit!));
+    } catch {
+      /* 数値のまま */
+    }
+  }
+  return data.values;
+}
+
 /**
  * ソース全体を評価して行ごとの結果を返す。
  * 評価は毎回まっさらなスコープで行う（前回評価の残留変数を持ち越さない）。
  *
- * tableScope には「名前を付けた表の列」が入る（`秤量表.質量` のように参照できる）。
+ * tables には表の列データが入り、`table["秤量表"]["質量"]` /
+ * `col("秤量表", "質量")` として参照できる。列内で単位表記が揃っていれば
+ * 単位付き数量になる（`sum` が `3 g` を返す）。
  * 表の側には何も書き込まない — 参照は評価時に片方向で解決するだけ。
  */
 export async function evaluateSource(
   source: string,
-  tableScope?: Record<string, unknown>,
+  tables?: TableColumnsIndex,
 ): Promise<CalcLineResult[]> {
   const math = await loadMathJs();
   const scope = new Map<string, unknown>();
-  // 表由来の変数を先に置く。以降の行で同じ名前に代入されたら、そちらが勝つ
-  for (const [key, value] of Object.entries(tableScope ?? {})) scope.set(key, value);
+  if (tables) {
+    // 表由来の変数を先に置く。以降の行で同じ名前に代入されたら、そちらが勝つ
+    const index: Record<string, Record<string, unknown>> = {};
+    for (const [tableName, columns] of Object.entries(tables)) {
+      const cols: Record<string, unknown> = {};
+      for (const [columnName, data] of Object.entries(columns)) {
+        cols[columnName] = toMathColumn(math, data);
+      }
+      index[tableName] = cols;
+    }
+    // col("表", "列"): 無い表・無い列は理由の分かるエラーにする
+    const lookup = (tableName: unknown, columnName: unknown): unknown => {
+      const cols = index[String(tableName)];
+      if (!cols) throw new Error(`table not found: ${String(tableName)}`);
+      const values = cols[String(columnName)];
+      if (values === undefined) throw new Error(`column not found: ${String(columnName)}`);
+      return values;
+    };
+    scope.set("table", index);
+    scope.set("col", lookup);
+    scope.set("column", lookup);
+  }
   const lines = source.split("\n");
 
   return lines.map((line): CalcLineResult => {

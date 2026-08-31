@@ -163,11 +163,7 @@ export function TableCaptionLayer({
     const rootRect = root.getBoundingClientRect();
     setPortalHost((prev) => (prev === root ? prev : root));
     const docBlocks = (editor as any).document ?? [];
-    const displayNames = computeTableDisplayNames(
-      docBlocks,
-      (blockId) => store.hasColumnType(blockId, "datetime-auto"),
-      store.getCaption
-    );
+    const displayNames = computeTableDisplayNames(docBlocks, store.getCaption);
     // 拡大表示ボタンは名前の有無に関係なく出すので、走査はすべてのテーブルに広げる。
     // 名前ボタンを出すかどうかは描画側が displayName の有無で決める
     const targets = new Set([...collectTableBlocks(docBlocks).keys(), ...displayNames.keys()]);

@@ -24,7 +24,8 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Calculator } from "lucide-react";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
-import { buildTableIndex, collectTableColumns, makeColumnLookup } from "./table-scope";
+import { applyCalcSuggestion, computeCalcSuggestion, type CalcSuggestion } from "./suggest";
+import { buildTableIndex, collectTableColumns } from "./table-scope";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 import { useTableMetaStoreOptional } from "../../features/table-meta/store";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
@@ -53,6 +54,9 @@ export const CalcBlock = createReactBlockSpec(
       const [draft, setDraft] = useState(source);
       const [results, setResults] = useState<CalcLineResult[]>(() => parseCalcResults(savedResults));
       const [copiedLine, setCopiedLine] = useState<number | null>(null);
+      // 表参照の入力補完（table[ / col( の途中で表名・列名の候補を出す）
+      const [suggest, setSuggest] = useState<CalcSuggestion | null>(null);
+      const [suggestIndex, setSuggestIndex] = useState(0);
       const textareaRef = useRef<HTMLTextAreaElement>(null);
       // 評価の順序が入れ替わっても古い結果で上書きしないための世代カウンタ
       const evalGen = useRef(0);
@@ -81,28 +85,40 @@ export const CalcBlock = createReactBlockSpec(
       // 渡る editor.document は描画時点のスナップショットで古くなるため（実測）、
       // ストアが未配布の間（ノート読込直後）だけ document から読むフォールバックを使う
       const tableStore = useTableMetaStoreOptional();
-      const tableScope = useMemo(() => {
+      const tableIndex = useMemo(() => {
         if (!tableStore) return null;
-        let index = tableStore.tableColumns;
-        if (!index) {
-          const doc = (props.editor as any)?.document;
-          if (!Array.isArray(doc)) return null;
-          const displayNames = computeTableDisplayNames(
-            doc,
-            (blockId: string) => tableStore.hasColumnType(blockId, "datetime-auto"),
-            tableStore.getCaption,
-          );
-          index = buildTableIndex(collectTableColumns(doc, displayNames));
-        }
-        // col("表", "列") 用の逆引きも同じ中身から作る
-        const tables = new Map(
-          Object.entries(index).map(([t, cols]) => [t, new Map(Object.entries(cols))])
-        );
-        return { index, lookup: makeColumnLookup(tables) };
+        if (tableStore.tableColumns) return tableStore.tableColumns;
+        const doc = (props.editor as any)?.document;
+        if (!Array.isArray(doc)) return null;
+        const displayNames = computeTableDisplayNames(doc, tableStore.getCaption);
+        return buildTableIndex(collectTableColumns(doc, displayNames));
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [tableStore?.tableColumns, tableStore?.metas]);
       // 表の中身が変わったかを見る署名（列名と値だけ。位置や書式は無視する）
-      const tableSignature = tableScope ? JSON.stringify(tableScope.index) : "";
+      const tableSignature = tableIndex ? JSON.stringify(tableIndex) : "";
+
+      const refreshSuggest = (value: string, caret: number) => {
+        setSuggest(computeCalcSuggestion(value, caret, tableIndex));
+        setSuggestIndex(0);
+      };
+
+      const applySuggestionAt = (item: string) => {
+        if (!suggest) return;
+        const caret = textareaRef.current?.selectionStart ?? draft.length;
+        const r = applyCalcSuggestion(draft, caret, suggest, item);
+        setDraft(r.text);
+        commit(r.text);
+        // React の再描画で caret が末尾に飛ぶので置き直す
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (el) {
+            el.focus();
+            el.setSelectionRange(r.caret, r.caret);
+          }
+        });
+        // 表名の確定は列名の候補へそのまま繋がる
+        refreshSuggest(r.text, r.caret);
+      };
 
       // 入力から少し置いて評価。結果はスナップショットとして props にも保存する
       useEffect(() => {
@@ -111,12 +127,7 @@ export const CalcBlock = createReactBlockSpec(
         const timer = setTimeout(async () => {
           // mathjs の識別子は ASCII 限定なので、表は文字列キーで引く形にする
           //   表["秤量表"]["質量"] / col("秤量表", "質量")
-          const evaluated = await evaluateSource(
-            draft,
-            tableScope
-              ? { table: tableScope.index, col: tableScope.lookup, column: tableScope.lookup }
-              : undefined,
-          );
+          const evaluated = await evaluateSource(draft, tableIndex ?? undefined);
           if (gen !== evalGen.current) return;
           setResults(evaluated);
           // 評価中にさらに入力が進んでいたら、その評価に任せる
@@ -148,24 +159,65 @@ export const CalcBlock = createReactBlockSpec(
           <div style={styles.body}>
             {/* 左: ソース入力（行を折り返すと右の結果列とズレるため折り返さない） */}
             {editable ? (
-              <textarea
-                ref={textareaRef}
-                // PDF 書き出しがソース列を識別して差し替えるための目印
-                data-calc-source
-                value={draft}
-                wrap="off"
-                spellCheck={false}
-                placeholder={t("calc.placeholder")}
-                rows={Math.max(lines.length, 1)}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  // 入力のたびに永続化する（保存漏れを作らない）。結果は評価後に追記
-                  commit(e.target.value);
-                }}
-                // BlockNote 側にキーを渡すとブロック削除・改行挿入と競合するため止める
-                onKeyDown={(e) => e.stopPropagation()}
-                style={styles.textarea}
-              />
+              <div style={styles.sourceWrap}>
+                <textarea
+                  ref={textareaRef}
+                  // PDF 書き出しがソース列を識別して差し替えるための目印
+                  data-calc-source
+                  value={draft}
+                  wrap="off"
+                  spellCheck={false}
+                  placeholder={t("calc.placeholder")}
+                  rows={Math.max(lines.length, 1)}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    // 入力のたびに永続化する（保存漏れを作らない）。結果は評価後に追記
+                    commit(e.target.value);
+                    refreshSuggest(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                  }}
+                  // BlockNote 側にキーを渡すとブロック削除・改行挿入と競合するため止める。
+                  // 補完が開いている間は ↑↓ / Enter / Tab / Esc を候補操作に使う
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (!suggest || suggest.items.length === 0) return;
+                    if ((e.nativeEvent as { isComposing?: boolean }).isComposing) return;
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setSuggestIndex((i) => (i + 1) % suggest.items.length);
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setSuggestIndex((i) => (i - 1 + suggest.items.length) % suggest.items.length);
+                    } else if (e.key === "Enter" || e.key === "Tab") {
+                      e.preventDefault();
+                      applySuggestionAt(suggest.items[suggestIndex] ?? suggest.items[0]);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setSuggest(null);
+                    }
+                  }}
+                  onBlur={() => setSuggest(null)}
+                  style={styles.textarea}
+                />
+                {suggest && suggest.items.length > 0 && (
+                  <div style={styles.suggestBox} data-test="calc-suggest">
+                    {suggest.items.slice(0, 8).map((item, i) => (
+                      <button
+                        key={item}
+                        type="button"
+                        // クリックで textarea の blur（= 候補が閉じる）を起こさない
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applySuggestionAt(item)}
+                        style={{
+                          ...styles.suggestItem,
+                          ...(i === suggestIndex ? styles.suggestItemActive : {}),
+                        }}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : (
               <div data-calc-source style={styles.sourceReadonly}>
                 {lines.map((line, i) => (
@@ -246,6 +298,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 12,
     alignItems: "stretch",
   },
+  sourceWrap: {
+    flex: 1,
+    minWidth: 0,
+    position: "relative",
+    display: "flex",
+  },
   textarea: {
     flex: 1,
     minWidth: 0,
@@ -309,5 +367,35 @@ const styles: Record<string, React.CSSProperties> = {
   emptyNote: {
     fontSize: 12,
     color: "var(--color-text-tertiary)",
+  },
+  suggestBox: {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    left: 0,
+    zIndex: 30,
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 2,
+    maxWidth: "100%",
+    padding: 4,
+    borderRadius: 6,
+    background: "var(--color-card)",
+    border: "1px solid var(--color-border)",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+  },
+  suggestItem: {
+    border: "none",
+    borderRadius: 4,
+    padding: "3px 8px",
+    background: "transparent",
+    color: "var(--color-foreground)",
+    fontFamily: mono,
+    fontSize: 12,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  suggestItemActive: {
+    background: "var(--color-muted)",
+    color: "var(--color-primary)",
   },
 };

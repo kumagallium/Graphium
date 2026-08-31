@@ -70,3 +70,12 @@ export function isTableMetaEmpty(meta: TableMeta | undefined): boolean {
   if (meta.source) return false;
   return true;
 }
+
+/** 1 列分の数値データ。unit は列内で単位表記が揃っていたときだけ入る（例: "g", "g/mol"） */
+export type TableColumnData = { values: number[]; unit?: string };
+
+/**
+ * 表示名 → 列名 → 列データ。計算ブロックなど「表を読む側」への配布形。
+ * JSON 化できる素のオブジェクトにして、ストア経由の同値比較を単純に保つ
+ */
+export type TableColumnsIndex = Record<string, Record<string, TableColumnData>>;

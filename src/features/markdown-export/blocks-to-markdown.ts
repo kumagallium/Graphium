@@ -45,7 +45,6 @@ function buildTableNames(
   if (!tableMeta || !Array.isArray(blocks)) return undefined;
   return computeTableDisplayNames(
     blocks,
-    (blockId) => hasColumnType(tableMeta[blockId], "datetime-auto"),
     (blockId) => tableMeta[blockId]?.caption ?? "",
   );
 }

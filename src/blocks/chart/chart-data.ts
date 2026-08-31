@@ -66,14 +66,19 @@ export type ChartDataResult =
   | { kind: "no-series" };
 
 /** 全角数字・桁区切り・単位の混じったセルから数値を取り出す。読めなければ null */
-export function parseNumeric(raw: string): number | null {
-  const s = raw
+/** 数値セルの共通正規化（全角→半角・桁区切り除去）。parseNumeric と単位抽出で共有する */
+export function normalizeNumericText(raw: string): string {
+  return raw
     .trim()
     .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
     .replace(/，/g, ",")
     .replace(/．/g, ".")
     .replace(/[−ー]/g, "-")
     .replace(/,/g, "");
+}
+
+export function parseNumeric(raw: string): number | null {
+  const s = normalizeNumericText(raw);
   if (!s) return null;
   // 先頭の数値部分だけを読む（"6/10" や "36.5℃" を許容）
   const m = s.match(/^[+-]?\d+(\.\d+)?/);

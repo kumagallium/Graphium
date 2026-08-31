@@ -2044,6 +2044,7 @@ export const en: Record<string, string> = {
   "inlineImage.missing": "Image unavailable",
   "inlineImage.resize": "Drag to resize (double-click to reset)",
   "tableMeta.sortDesc": "Sort descending",
+  "tableMeta.useColumnInCalc": "Use column in calculation",
 
   // 記録テーブル
   "logTable.colDateTime": "Date/Time",
