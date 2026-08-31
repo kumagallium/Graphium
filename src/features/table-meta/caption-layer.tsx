@@ -226,6 +226,16 @@ export function TableCaptionLayer({
     return () => cancelAnimationFrame(id);
   }, [collapsedKey, compute]);
 
+  // 上余白 CSS（marginCss）が当たると表が下がる。層の位置は測った時点の rect なので、
+  // 適用対象の集合が変わったフレームの後で測り直す。集合が同じ間は再発火しないため
+  // ループにはならない（折りたたみ CSS の測り直しと同じ理屈）
+  const marginKey = captions.map((pos) => pos.blockId).join(",");
+  useEffect(() => {
+    if (marginKey === "") return;
+    const id = requestAnimationFrame(() => compute());
+    return () => cancelAnimationFrame(id);
+  }, [marginKey, compute]);
+
   useEffect(() => {
     return () => {
       if (retryRef.current !== null) {
@@ -317,9 +327,21 @@ export function TableCaptionLayer({
     )
     .join("");
 
+  // キャプション行（名前・⤢）は表の上に浮かぶ層で、ブロック自体の余白は変わらない。
+  // そのままだと前の段落とキャプションが密着するので、行の高さぶんだけ表ブロックに
+  // 上余白を足す。画面外の表も含めて全件に当てる — スクロールで付け外しすると
+  // 表の位置が跳ぶ（折りたたみ CSS と同じ理由。#716）。適用で表が下がった分は
+  // MutationObserver → compute の再計測が拾って層も追随する
+  const marginCss = captions
+    .map(
+      (pos) =>
+        `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"][data-node-type="blockOuter"]{margin-top:26px;}`
+    )
+    .join("");
+
   return createPortal(
     <>
-      {collapsedCss.length > 0 && <style>{collapsedCss}</style>}
+      <style>{marginCss + collapsedCss}</style>
       {/* 折りたたみ中の表の裾。下に向かって背景へ溶かし、その上に残りの行数を出す。
           「表がここで終わっている」のではなく「まだ続く」と読めるようにするための表現 */}
       {visibleCaptions.filter(isCollapsed).map((pos) => (
