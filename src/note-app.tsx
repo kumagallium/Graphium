@@ -187,8 +187,9 @@ import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
-import { UNFILED_PATH } from "./features/note-context/folder-tree-model";
-import { addFolderDefinition, ensureFolderDefinitions } from "./features/note-context/folder-store";
+import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues } from "./features/note-context/folder-tree-model";
+import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition } from "./features/note-context/folder-store";
+import { FolderMenu } from "./features/note-context/FolderMenu";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
@@ -5800,6 +5801,13 @@ export function NoteApp() {
   // 空フォルダ定義（appdata）。タグとして実体化する前のフォルダをツリーに出すために持つ。
   // 読み込みは fm（プロバイダ）初期化後の useEffect で行う（fm 宣言の直後にある）。
   const [emptyFolders, setEmptyFolders] = useState<string[]>([]);
+  // フォルダの右クリックメニュー（名前の変更・削除）
+  const [folderMenu, setFolderMenu] = useState<{
+    path: string;
+    name: string;
+    noteCount: number;
+    position: { top: number; left: number };
+  } | null>(null);
   // 一覧・全体グラフ用の素材サイドピーク。ノートピークと同時に開くと右端で重なるため
   // 片方を開くとき他方を閉じる（切替式）。
   const [listMaterialPeekEntry, setListMaterialPeekEntry] = useState<MediaIndexEntry | null>(null);
@@ -5904,6 +5912,13 @@ export function NoteApp() {
       cancelled = true;
     };
   }, [fm.noteIndex]);
+
+  // パンくずの親フォルダをクリックしたときに、サイドバーと同じ絞り込み（子を含む）へ
+  // 展開するためのツリー。集計規則はサイドバーと共通（collectFolderSource）
+  const folderTreeForNav = useMemo(
+    () => buildFolderTree(collectFolderSource(fm.noteIndex?.notes ?? []).folders, emptyFolders),
+    [fm.noteIndex, emptyFolders],
+  );
 
   // 語彙インデックス（BM25）をノート / Wiki / 素材に追従させる。
   // Cmd-K の本文・素材検索と、AI チャットの横断検索（埋め込みと RRF で併用）の共通コア。
@@ -8276,6 +8291,10 @@ export function NoteApp() {
       // appdata に永続化し、反映後の一覧でツリーを更新する（作成直後から見える）
       void addFolderDefinition(path).then(setEmptyFolders);
     },
+    onFolderContextMenu: (
+      folder: { path: string; name: string; noteCount: number },
+      position: { top: number; left: number },
+    ) => setFolderMenu({ ...folder, position }),
     onShowProcessGallery: () => { closeAllViews(); fm.setShowProcessGallery(true); setSidebarOpen(false); },
     processGalleryActive: fm.showProcessGallery,
     processCount: processNoteCount,
@@ -8907,6 +8926,21 @@ export function NoteApp() {
           <NoteListView
             noteIndex={fm.noteIndex}
             contextFilter={folderContextFilter}
+            selectedFolder={selectedFolder}
+            onSelectFolder={(path) => {
+              // パンくずの親フォルダ。サイドバーのクリックと同じ絞り込みにする
+              setSelectedFolder(path);
+              setFolderContextFilter(expandFolderToContextValues(folderTreeForNav, path));
+            }}
+            onClearFolder={() => {
+              setSelectedFolder(null);
+              setFolderContextFilter([]);
+            }}
+            onNewNoteInFolder={(folderPath) => {
+              closeAllViews();
+              fm.handleNewNote([folderPath]);
+              router.navigate({ view: "home" });
+            }}
             onContextFilterChange={(next) => {
               // 列ヘッダからの手動操作。フィルタを引き継ぎつつ、サイドバーの
               // フォルダ選択ハイライトは解除する（もはやフォルダ単位ではないため）
@@ -9820,6 +9854,44 @@ export function NoteApp() {
         </AiAssistantProvider>
       )}
       {/* 一覧・全体グラフ用の素材サイドピーク（NoteEditorInner 外で表示） */}
+      {/* フォルダの右クリックメニュー（名前の変更・削除）。
+          実体はタグなので、どちらも全ノートの noteContexts の書き換えに落ちる。 */}
+      {folderMenu && (
+        <FolderMenu
+          path={folderMenu.path}
+          name={folderMenu.name}
+          noteCount={folderMenu.noteCount}
+          position={folderMenu.position}
+          onClose={() => setFolderMenu(null)}
+          onRename={(from, to) => {
+            void (async () => {
+              await fm.renameNoteContextEverywhere(from, to);
+              // 空フォルダ定義側も追従させる（ノートがまだ 1 件も無いフォルダ）
+              const defs = await ensureFolderDefinitions();
+              if (defs.some((d) => d.trim().toLowerCase() === from.trim().toLowerCase())) {
+                await removeFolderDefinition(from);
+                setEmptyFolders(await addFolderDefinition(to));
+              }
+              // 開いていたフォルダの名前が変わったら選択も新しい名前へ移す
+              if (selectedFolder === from) {
+                setSelectedFolder(to);
+                setFolderContextFilter([to]);
+              }
+            })();
+          }}
+          onDelete={(path) => {
+            void (async () => {
+              await fm.deleteNoteContextEverywhere(path);
+              setEmptyFolders(await removeFolderDefinition(path));
+              // 開いていたフォルダを消したら、全ノート表示に戻す
+              if (selectedFolder === path) {
+                setSelectedFolder(null);
+                setFolderContextFilter([]);
+              }
+            })();
+          }}
+        />
+      )}
       {listMaterialPeekEntry && (
         <MaterialSidePeek
           entry={listMaterialPeekEntry}

@@ -156,6 +156,9 @@ export function useFileManager(authenticated: boolean) {
   const [activeDoc, setActiveDoc] = useState<GraphiumDocument | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  // 「このフォルダに新規」で開いたノートに、初回保存時だけ付けるフォルダ（noteContexts）。
+  // 新規ノートは保存されるまで id を持たないので、doc へは保存チョークポイントで載せる。
+  const pendingNewNoteContextsRef = useRef<string[] | null>(null);
   // エディタを強制的にリマウントするためのキー
   const [editorKey, setEditorKey] = useState(0);
   // ノートキャッシュ（Drive API 呼び出しを削減）
@@ -673,6 +676,9 @@ export function useFileManager(authenticated: boolean) {
       setActiveAssetType(null);
       setActiveLabel(null);
       setActiveWikiKind(null);
+      // 保存せずに別のノートへ移ったら、保留していたフォルダは捨てる
+      // （次に作る白紙のノートへ持ち越さない）
+      pendingNewNoteContextsRef.current = null;
       // サイドピーク等から保存済みドキュメントが渡された場合、キャッシュを即時更新。
       // ただし渡された doc が現在のキャッシュより古いと、本文エディタが再マウント時に
       // その古いスナップショットへ巻き戻り、書いた文章が消える。より新しいときだけ採用する。
@@ -971,7 +977,14 @@ export function useFileManager(authenticated: boolean) {
   }, [activeFileId, files, wikiFiles, rebuildGraph]);
 
   // 新しいノートを作成
-  const handleNewNote = useCallback(() => {
+  /**
+   * 新規ノートを開く。`folders` を渡すと、そのノートが最初に保存されるときだけ
+   * noteContexts として書き込まれる（フォルダを開いた状態からの新規作成用）。
+   * 新規ノートはこの時点ではまだファイルが無く id も無いので、doc に直接書けない。
+   * 保存チョークポイント（handleSave）で 1 回だけ適用し、以降は普通のノートと同じ扱いにする。
+   */
+  const handleNewNote = useCallback((folders?: string[]) => {
+    pendingNewNoteContextsRef.current = normalizeNoteContexts(folders) ?? null;
     setActiveFileId(null);
     setActiveDoc(null);
     setEditorKey((k) => k + 1);
@@ -1110,6 +1123,15 @@ export function useFileManager(authenticated: boolean) {
         // テーブル行の identity は保存時にのみ補う。以降の保存・キャッシュ・投影は
         // 同じ正規化済みドキュメントを使い、ノート横断参照とのズレを作らない。
         doc = normalizeTableRowIdentities(doc);
+
+        // 「このフォルダに新規」で開いたノートの初回保存。ユーザーが保存前に
+        // 自分でフォルダを付けていたらそちらを優先し、上書きしない。
+        if (pendingNewNoteContextsRef.current && !activeFileIdRef.current) {
+          if (!doc.noteContexts || doc.noteContexts.length === 0) {
+            doc = { ...doc, noteContexts: pendingNewNoteContextsRef.current };
+          }
+          pendingNewNoteContextsRef.current = null;
+        }
 
         const currentFileId = activeFileIdRef.current;
         let savedFileId: string;
@@ -2021,6 +2043,64 @@ export function useFileManager(authenticated: boolean) {
         queueSaveIndex(updatedIndex);
       }
       return removed;
+    },
+    [loadDoc, setNoteIndex, queueSaveIndex]
+  );
+
+  /**
+   * フォルダの名前を変える（= その値を持つ全ノートの noteContexts を差し替える）。
+   * 親フォルダを変えたときは子（"親/子"）も追従させる — ツリー上は親の下にぶら下がって
+   * 見えているので、親だけ変わって子が取り残されると別のフォルダに割れてしまう。
+   * 変更した件数を返す。
+   */
+  const renameNoteContextEverywhere = useCallback(
+    async (from: string, to: string): Promise<number> => {
+      const fromKey = from.trim().toLowerCase();
+      const nextValue = to.trim();
+      if (!fromKey || !nextValue || !noteIndexRef.current) return 0;
+      // "親" の rename では "親/子" も対象にする
+      const matches = (c: string): boolean => {
+        const key = c.trim().toLowerCase();
+        return key === fromKey || key.startsWith(`${fromKey}/`);
+      };
+      const rewrite = (c: string): string => {
+        const key = c.trim().toLowerCase();
+        if (key === fromKey) return nextValue;
+        // 子は親部分だけ差し替え、子の表記はそのまま保つ
+        return `${nextValue}${c.trim().slice(from.trim().length)}`;
+      };
+      const targets = noteIndexRef.current.notes.filter((n) =>
+        (n.noteContexts ?? []).some(matches),
+      );
+      let updatedIndex = noteIndexRef.current;
+      let changed = 0;
+      for (const entry of targets) {
+        const doc = await loadDoc(entry.noteId);
+        if (!doc) continue;
+        const next = normalizeNoteContexts(
+          (doc.noteContexts ?? []).map((c) => (matches(c) ? rewrite(c) : c)),
+        );
+        const nextDoc: GraphiumDocument = {
+          ...doc,
+          noteContexts: next,
+          modifiedAt: new Date().toISOString(),
+        };
+        try {
+          await saveFile(entry.noteId, nextDoc);
+          docCacheRef.current.set(entry.noteId, nextDoc);
+          if (entry.noteId === activeFileIdRef.current) setActiveDoc(nextDoc);
+          updatedIndex = updateIndexEntry(updatedIndex, entry.noteId, nextDoc);
+          changed += 1;
+        } catch (err) {
+          console.error("フォルダ名の変更に失敗:", entry.noteId, err);
+        }
+      }
+      if (changed > 0) {
+        noteIndexRef.current = updatedIndex;
+        setNoteIndex(updatedIndex);
+        queueSaveIndex(updatedIndex);
+      }
+      return changed;
     },
     [loadDoc, setNoteIndex, queueSaveIndex]
   );
@@ -3001,6 +3081,7 @@ export function useFileManager(authenticated: boolean) {
     reindexNoteFromDoc,
     propagateMentionRename,
     deleteNoteContextEverywhere,
+    renameNoteContextEverywhere,
     handleUploadMedia,
     handleUploadAsset,
     handleDeleteMedia,

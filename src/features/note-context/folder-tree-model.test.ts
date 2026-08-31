@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildFolderTree, splitFolderPath, validateFolderPath } from "./folder-tree-model";
+import {
+  buildFolderTree,
+  collectFolderSource,
+  expandFolderToContextValues,
+  splitFolderPath,
+  validateFolderPath,
+} from "./folder-tree-model";
 
 describe("splitFolderPath", () => {
   it("最初の / だけで分割する（2 個目以降は子名の一部）", () => {
@@ -104,5 +110,55 @@ describe("buildFolderTree", () => {
       { value: "哲学", count: 1 },
     ]);
     expect(tree.map((n) => n.name)).toEqual(["ブログ", "哲学"]);
+  });
+});
+
+describe("collectFolderSource", () => {
+  it("人が書いた生きているノートだけ数える（wiki / skill / ゴミ箱 / アーカイブは除く）", () => {
+    const result = collectFolderSource([
+      { noteContexts: ["研究"] },
+      { noteContexts: ["研究"], wikiKind: "claim" },
+      { noteContexts: ["研究"], source: "skill" },
+      { noteContexts: ["研究"], deletedAt: "2026-08-31T00:00:00Z" },
+      { noteContexts: ["研究"], archivedAt: "2026-08-31T00:00:00Z" },
+    ]);
+    expect(result.folders).toEqual([{ value: "研究", count: 1 }]);
+  });
+
+  it("フォルダに入っていないノートを未分類として数える", () => {
+    const result = collectFolderSource([
+      { noteContexts: ["研究"] },
+      { noteContexts: [] },
+      {},
+      { deletedAt: "2026-08-31T00:00:00Z" },
+    ]);
+    expect(result.unfiledCount).toBe(2);
+  });
+});
+
+describe("expandFolderToContextValues", () => {
+  const tree = buildFolderTree([
+    { value: "プロジェクトA", count: 1 },
+    { value: "プロジェクトA/実験1", count: 1 },
+    { value: "プロジェクトA/実験2", count: 1 },
+    { value: "材料X", count: 1 },
+  ]);
+
+  it("親を選ぶと子も含める（件数表示と同じ集合になる）", () => {
+    expect(expandFolderToContextValues(tree, "プロジェクトA")).toEqual([
+      "プロジェクトA",
+      "プロジェクトA/実験1",
+      "プロジェクトA/実験2",
+    ]);
+  });
+
+  it("子を選んだらその子だけ", () => {
+    expect(expandFolderToContextValues(tree, "プロジェクトA/実験1")).toEqual([
+      "プロジェクトA/実験1",
+    ]);
+  });
+
+  it("ツリーに無い値はそのまま返す（空フォルダ直後など）", () => {
+    expect(expandFolderToContextValues(tree, "未知")).toEqual(["未知"]);
   });
 });

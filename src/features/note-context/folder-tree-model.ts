@@ -8,6 +8,8 @@
 // - 並びは名前昇順。件数順にしないのは、エクスプローラーの「フォルダは名前順」という
 //   メンタルモデルに合わせるため（文脈タグのサジェスト＝件数順とは目的が違う）
 
+import { aggregateNoteContexts } from "./context-tags";
+
 /**
  * 「未分類」（noteContexts が空のノート）をフォルダ選択・文脈フィルタで表すための特殊値。
  * 実フォルダ名と衝突しないよう予約する。フィルタ側はこの値を見たら「文脈なし」を意味として扱う。
@@ -72,6 +74,36 @@ export function expandFolderToContextValues(tree: readonly FolderNode[], path: s
     }
   }
   return [path];
+}
+
+/**
+ * ノートインデックスからフォルダ集計を作る。対象は「人が書いた生きているノート」だけで、
+ * サイドバーの件数（noteCount）と同じ除外規則にそろえる — wiki / skill 由来と
+ * ゴミ箱・アーカイブは数えない。
+ *
+ * サイドバー（ツリー表示）とノート一覧（パンくずの親をたどる）の両方が同じ木を必要とするので、
+ * 集計はここに 1 本だけ置く。
+ */
+export function collectFolderSource(
+  notes: readonly {
+    noteContexts?: string[];
+    wikiKind?: unknown;
+    source?: string;
+    deletedAt?: string;
+    archivedAt?: string;
+  }[],
+): { folders: { value: string; count: number }[]; unfiledCount: number } {
+  const live: { noteContexts?: string[] }[] = [];
+  let unfiledCount = 0;
+  for (const note of notes) {
+    if (note.wikiKind) continue;
+    if (note.source === "skill") continue;
+    if (note.deletedAt) continue;
+    if (note.archivedAt) continue;
+    live.push(note);
+    if (!note.noteContexts || note.noteContexts.length === 0) unfiledCount++;
+  }
+  return { folders: aggregateNoteContexts(live), unfiledCount };
 }
 
 type MutableNode = {
