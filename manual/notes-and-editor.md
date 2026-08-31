@@ -345,7 +345,7 @@ Forking is how you explore a different direction without losing the original: th
 
 Under the title of every note sits a **Folder** button. Folder names are free-form ("battery project", "reading notes") — type to create one, or pick from folders you have used before. They are the fastest way to slice the notes list (**Filter by folder**) and to color the global graph by project.
 
-The sidebar lists your **Folders** too. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
+<Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar lists your **Folders** too. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
 
 ::: tip One note, several folders
 Unlike folders on your computer, a note can sit in more than one folder at once — think of it as a shortcut. Deleting a folder never deletes the notes inside it: any note that is not in another folder simply becomes **Unfiled**.
