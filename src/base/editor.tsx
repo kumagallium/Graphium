@@ -237,6 +237,36 @@ function moveCellImageToBlock(view: any, event: DragEvent): boolean {
 
 /** いま受け入れ表示をしているセル。属性の付け外しはこの 1 つに閉じる */
 let dropTargetCell: HTMLElement | null = null;
+/** 挿入位置を示す縦バー（ブロックのドロップカーソルと同じ語彙）。body 直下に 1 本だけ持つ */
+let dropCaretEl: HTMLElement | null = null;
+
+function ensureDropCaret(): HTMLElement {
+  if (dropCaretEl?.isConnected) return dropCaretEl;
+  const el = document.createElement("div");
+  el.setAttribute("data-cell-drop-caret", "true");
+  document.body.appendChild(el);
+  dropCaretEl = el;
+  return el;
+}
+
+/**
+ * セルの中の挿入位置にバーを出す。セルの外枠を光らせるだけだと、表の罫線に
+ * 紛れて「入るのかどうか」が分からない（実機で見えないという指摘）。
+ */
+function showCellDropCaret(view: any, pos: number) {
+  const coords = view.coordsAtPos(pos);
+  if (!coords) return;
+  const caret = ensureDropCaret();
+  const height = Math.max(16, coords.bottom - coords.top);
+  caret.style.left = `${coords.left - 1}px`;
+  caret.style.top = `${coords.top}px`;
+  caret.style.height = `${height}px`;
+  caret.style.display = "block";
+}
+
+function hideDropCaret() {
+  if (dropCaretEl) dropCaretEl.style.display = "none";
+}
 
 function setCellDropState(cell: HTMLElement | null, attr: "data-cell-drop-target" | "data-cell-drop-pending") {
   if (dropTargetCell && dropTargetCell !== cell) {
@@ -248,6 +278,7 @@ function setCellDropState(cell: HTMLElement | null, attr: "data-cell-drop-target
 }
 
 export function clearCellDropState() {
+  hideDropCaret();
   if (!dropTargetCell) return;
   dropTargetCell.removeAttribute("data-cell-drop-target");
   dropTargetCell.removeAttribute("data-cell-drop-pending");
@@ -309,7 +340,10 @@ function insertCellImagesFromFiles(
   if (!isInsideTableCell(view, pos)) return false;
   dropEvent?.preventDefault();
   // 大きい画像はアップロードに数秒かかる。その間セルを点滅させて受け取り中だと示す
-  if (dropEvent) setCellDropState(cellElementAt(view, dropEvent), "data-cell-drop-pending");
+  if (dropEvent) {
+    hideDropCaret();
+    setCellDropState(cellElementAt(view, dropEvent), "data-cell-drop-pending");
+  }
   void (async () => {
     let insertAt = pos;
     for (const file of images) {
@@ -396,7 +430,16 @@ export function SandboxEditor({
           // 受け入れ先のセルを枠で示す（既定のドロップカーソル処理は邪魔しない）
           dragover: (view: any, event: any) => {
             if (!isImageDrag(view, event)) return false;
-            setCellDropState(cellElementAt(view, event), "data-cell-drop-target");
+            const cell = cellElementAt(view, event);
+            setCellDropState(cell, "data-cell-drop-target");
+            if (cell) {
+              const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+              if (at) showCellDropCaret(view, at.pos);
+              // ファイルのドラッグは preventDefault しないと drop が発火しない
+              event.preventDefault();
+            } else {
+              hideDropCaret();
+            }
             return false;
           },
           dragleave: () => {

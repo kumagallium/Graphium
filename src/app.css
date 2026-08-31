@@ -444,21 +444,34 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 }
 
 /* セルへ画像をドロップするときの受け入れ表示。
-   ブロックのドロップと違い挿入バーが出ないので、受け取るセル自身を枠で示す */
+   ブロックのドロップと違い挿入バーが出ないので、挿入位置にバーを出し（下の
+   data-cell-drop-caret）、受け取るセルは薄く塗る。罫線と紛れないよう塗りを併用する */
 .bn-editor td[data-cell-drop-target],
 .bn-editor th[data-cell-drop-target] {
+  background: color-mix(in oklch, var(--color-primary) 12%, transparent);
   outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
+  outline-offset: -1px;
 }
-/* アップロード中（大きい画像は数秒かかる）。同じ枠を点滅させて受け取り中を示す */
+/* 挿入位置の縦バー（ブロックのドロップカーソルと同じ見え方） */
+[data-cell-drop-caret] {
+  position: fixed;
+  display: none;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-primary);
+  pointer-events: none;
+  z-index: 10000;
+}
+/* アップロード中（大きい画像は数秒かかる）。塗りを点滅させて受け取り中を示す */
 .bn-editor td[data-cell-drop-pending],
 .bn-editor th[data-cell-drop-pending] {
+  background: color-mix(in oklch, var(--color-primary) 12%, transparent);
   outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
+  outline-offset: -1px;
   animation: cell-drop-pending 1s ease-in-out infinite;
 }
 @keyframes cell-drop-pending {
-  50% { outline-color: transparent; }
+  50% { outline-color: transparent; background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bn-editor td[data-cell-drop-pending],
