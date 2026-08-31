@@ -279,6 +279,9 @@ export const InlineImage = createReactInlineContentSpec(
                     INLINE_IMAGE_DRAG_MIME,
                     JSON.stringify({ fileId, name, pos })
                   );
+                  // デスクトップ（WKWebView）は drop 側でカスタム MIME を読めないので、
+                  // 素の変数にも控える（editor.tsx の draggedImagePayload が読む）
+                  setActiveImageDrag({ fileId, name, pos, inCell: true });
                   e.dataTransfer.effectAllowed = "move";
                 }}
                 style={{

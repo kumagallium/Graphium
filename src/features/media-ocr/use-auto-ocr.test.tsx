@@ -23,7 +23,7 @@ const h = vi.hoisted(() => ({
   setEntry: vi.fn(),
   entries: new Map<string, { text: string }>(),
   /** 素材インデックス（fileId → 読み取り済みテキスト）の代役 */
-  media: [] as { fileId: string; ocrText?: string }[],
+  media: [] as { fileId: string; ocrText?: string; uploadedAt?: string }[],
 }));
 
 vi.mock("./run-ocr", () => ({ runOcrForImage: h.runOcrForImage }));
@@ -179,6 +179,37 @@ describe("useAutoImageOcr", () => {
       await flush();
     });
     expect(h.runOcrForImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("ライブラリに前からある素材（アップロードが古い）は自動 OCR しない", async () => {
+    // 素材ピッカーから挿した既存素材にまで OCR が走ると「すでにあるのに毎回読む」
+    // 体験になる。既存素材は素材ギャラリーの一括読み取りに委ねる
+    h.media = [
+      { fileId: "old", uploadedAt: new Date(Date.now() - 3600_000).toISOString() },
+      { fileId: "just-up", uploadedAt: new Date().toISOString() },
+    ];
+    h.runOcrForImage.mockResolvedValue({
+      text: "t",
+      confidence: 90,
+      lang: "jpn+eng",
+      extractedAt: "2026-01-01T00:00:00Z",
+    });
+    const editorRef = makeEditorRef([]);
+    const { result } = renderHook(() =>
+      useAutoImageOcr({ editorRef, noteKey: "note-1" }),
+    );
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    editorRef.current = makeEditorRef(["old", "just-up"]).current;
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    // アップロード直後の素材だけ読む
+    expect(h.runOcrForImage).toHaveBeenCalledTimes(1);
+    expect(h.runOcrForImage).toHaveBeenCalledWith("file-media://just-up");
   });
 
   it("素材側に読み取り済みのテキストがあれば、読み直さず結果だけ写す", async () => {

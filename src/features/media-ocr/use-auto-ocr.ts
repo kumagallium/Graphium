@@ -42,11 +42,24 @@ function assetIdOf(url: string): string | null {
   }
 }
 
-/** 素材側にすでに残っている読み取り結果 */
-function ocrTextForAsset(assetId: string): string | null {
-  const entry = getLatestMediaIndex()?.media.find((m) => m.fileId === assetId);
-  const text = entry?.ocrText;
-  return typeof text === "string" && text.trim() ? text : null;
+/** 素材インデックスのエントリ（無ければ null） */
+function assetEntryOf(assetId: string) {
+  return getLatestMediaIndex()?.media.find((m) => m.fileId === assetId) ?? null;
+}
+
+/**
+ * ライブラリに前からある素材か（アップロードがこの操作より十分前）。
+ *
+ * 自動 OCR は「貼られたまま読まれず残る」のを防ぐためのもので、対象は外から
+ * 新しく持ち込まれた画像。素材ライブラリから選んで挿した画像まで読み始めると、
+ * 「すでにあるものに毎回 OCR が走る」体験になる（実際に報告された）。
+ * 既存素材を文字で引きたいときは素材ギャラリーの一括読み取りを使う。
+ */
+const EXISTING_ASSET_AGE_MS = 60_000;
+
+function isPreexistingAsset(entry: { uploadedAt?: string } | null): boolean {
+  const at = entry?.uploadedAt ? Date.parse(entry.uploadedAt) : NaN;
+  return Number.isFinite(at) && Date.now() - at > EXISTING_ASSET_AGE_MS;
 }
 
 /** ブロックツリーから画像ブロック（URL 付き）を再帰的に集める */
@@ -143,23 +156,29 @@ export function useAutoImageOcr({
     const known = knownRef.current;
     const candidates = images.filter((i) => !known.has(i.id) && !store.getEntry(i.id));
     for (const i of images) known.add(i.id);
-    // ブロックが作り直されただけの画像は読み直さない。素材側に結果が残っていれば
-    // それを写し、読んだ実績だけある（文字が無かった）ものは黙って飛ばす
+    // ブロックが作り直されただけ・素材ライブラリから挿しただけの画像は読まない。
+    // 素材側に結果が残っていればそれを写し、読んだ実績がある（文字が無かった）もの・
+    // 前からライブラリにある素材は黙って飛ばす
     const fresh: ImageTarget[] = [];
     for (const target of candidates) {
       const assetId = assetIdOf(target.url);
-      const cached = assetId ? ocrTextForAsset(assetId) : null;
-      if (cached) {
-        store.setEntry(target.id, {
-          text: cached,
-          // 素材側には読み取り時の確度・言語を残していない（表示は 0 で省かれる）
-          confidence: 0,
-          lang: "",
-          extractedAt: new Date().toISOString(),
-        });
-        continue;
+      if (assetId) {
+        const entry = assetEntryOf(assetId);
+        const cached =
+          typeof entry?.ocrText === "string" && entry.ocrText.trim() ? entry.ocrText : null;
+        if (cached) {
+          store.setEntry(target.id, {
+            text: cached,
+            // 素材側には読み取り時の確度・言語を残していない（表示は 0 で省かれる）
+            confidence: 0,
+            lang: "",
+            extractedAt: new Date().toISOString(),
+          });
+          continue;
+        }
+        if (scannedAssetIds.has(assetId)) continue;
+        if (isPreexistingAsset(entry)) continue;
       }
-      if (assetId && scannedAssetIds.has(assetId)) continue;
       fresh.push(target);
     }
     if (fresh.length > 0) void runAll(fresh);

@@ -248,21 +248,22 @@ function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean
   }
   event.preventDefault();
   clearCellDropState();
+  // 掴んだインライン画像は挿入の前に消す。editor.insertBlocks は別トランザクション
+  // なので、挿入後に古い位置で delete すると（挿入が前方のとき）ずれた範囲を消して
+  // 文書を壊す。削除は inline だけでブロック構造を変えず、挿入・元ブロック削除は
+  // id 参照なので、この順ならどちらも位置ずれの影響を受けない。
+  // （挿入で万一つまずいても素材はライブラリに残る）
+  if (inlineRange) {
+    view.dispatch(view.state.tr.delete(inlineRange.from, inlineRange.from + inlineRange.size));
+  }
   // 画像ブロックは editor API で足す。ProseMirror ノードを直接組むと BlockNote の
   // URL 解決（resolveFileUrl）を通らず、media-server:// のまま img に入って
-  // ERR_UNKNOWN_URL_SCHEME になる。
-  // 先に足してから消す — 逆にすると、挿入でつまずいたとき画像だけ失われる
+  // ERR_UNKNOWN_URL_SCHEME になる
   editor.insertBlocks(
     [{ type: "image", props: { url: `media-server://${payload.fileId}`, name: payload.name } }],
     targetBlockId,
     "after",
   );
-  if (inlineRange) {
-    const tr = view.state.tr;
-    // 挿入で位置がずれるのでマップし直す
-    const from = tr.mapping.map(inlineRange.from);
-    view.dispatch(tr.delete(from, from + inlineRange.size));
-  }
   if (sourceBlock) editor.removeBlocks([sourceBlock.id]);
   return true;
 }
@@ -757,24 +758,53 @@ export function SandboxEditor({
           // ここで覚えておけば dataTransfer が読めなくても素材を追える
           dragstart: (view: any, event: any) => {
             setActiveImageDrag(null);
-            const el = event?.target as HTMLElement | null;
-            if (!el || el.tagName !== "IMG") return false;
-            const src = (el as HTMLImageElement).getAttribute("src") ?? "";
-            const fileId =
-              fileIdFromBlobUrl(src) ?? (src ? getActiveProvider().extractFileId(src) : null);
-            if (!fileId) return false;
-            let pos: number | null = null;
             try {
-              pos = view.posAtDOM(el, 0);
+              const el = event?.target as HTMLElement | null;
+              if (!el) return false;
+              let fileId: string | null = null;
+              let name = "";
+              let pos: number | null = null;
+              let inCell = false;
+              if (el.tagName === "IMG") {
+                // img そのもの（セル内画像 / draggable な画像）を掴んだ
+                const img = el as HTMLImageElement;
+                const src = img.getAttribute("src") ?? "";
+                fileId =
+                  fileIdFromBlobUrl(src) ?? (src ? getActiveProvider().extractFileId(src) : null);
+                name = img.getAttribute("alt") ?? "";
+                inCell = !!img.closest?.('[data-test="inline-image"]');
+                try {
+                  pos = view.posAtDOM(img, 0);
+                } catch {
+                  pos = null;
+                }
+              } else {
+                // 画像ブロックをクリック選択してから画像ごと掴むと、ドラッグ元は
+                // 選択中ブロックの DOM（bn-block-content）になり、dataTransfer には
+                // PM 標準の text/plain + text/html しか乗らない（blocknote/html も
+                // 乗らない — 実測）。素材は selection のノードから読む。
+                // NodeSelection の node は blockContainer なので中の image を探す
+                const sel: any = view.state.selection;
+                const dragged = sel?.node;
+                let imageNode: any =
+                  dragged?.type?.name === "image" ? dragged : null;
+                if (!imageNode) {
+                  dragged?.descendants?.((n: any) => {
+                    if (imageNode) return false;
+                    if (n.type?.name === "image") imageNode = n;
+                    return !imageNode;
+                  });
+                }
+                if (imageNode && typeof imageNode.attrs?.url === "string") {
+                  fileId = getActiveProvider().extractFileId(imageNode.attrs.url);
+                  name = String(imageNode.attrs.name ?? "");
+                  pos = typeof sel.from === "number" ? sel.from : null;
+                }
+              }
+              if (fileId) setActiveImageDrag({ fileId, name, pos, inCell });
             } catch {
-              pos = null;
+              // 記録は最善努力。失敗しても既定のドラッグは邪魔しない
             }
-            setActiveImageDrag({
-              fileId,
-              name: (el as HTMLImageElement).getAttribute("alt") ?? "",
-              pos,
-              inCell: !!el.closest?.('[data-test="inline-image"]'),
-            });
             return false;
           },
           // 受け入れ先のセルを枠で示す（既定のドロップカーソル処理は邪魔しない）
