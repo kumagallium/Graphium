@@ -54,6 +54,8 @@ const lightCodeBlock = createCodeBlockSpec({
 import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
 import { inlineMathSpecs } from "@features/inline-math/spec";
 import { inlineImageSpecs } from "@features/inline-image/spec";
+import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
+import { getActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CustomBlockEntry } from "./schema";
@@ -118,6 +120,60 @@ type SandboxEditorProps = {
 
 // サンドボックス共通エディタ
 // blocks を渡すだけでカスタムブロック入りエディタが立ち上がる
+/**
+ * セルへの画像ファイル drop / paste をインライン画像（inlineImage）として受ける。
+ * セルはブロックを持てないため、既定処理に任せると画像ブロックがテーブルの外に
+ * 落ちてしまう。セル内のときだけ「素材として登録 → inlineImage を挿入」に差し替え、
+ * セル外は false を返して既定の画像ブロック挿入に任せる。
+ */
+function insertCellImagesFromFiles(
+  view: any,
+  fileList: FileList | null | undefined,
+  dropEvent: DragEvent | null,
+  uploadFile: ((file: File) => Promise<string>) | undefined,
+): boolean {
+  if (!uploadFile || !fileList?.length) return false;
+  const images = [...fileList].filter((f) => f.type.startsWith("image/"));
+  if (!images.length) return false;
+  // 位置: drop は座標から、paste は現在のキャレット
+  let pos = view.state.selection.from;
+  if (dropEvent) {
+    const at = view.posAtCoords({ left: dropEvent.clientX, top: dropEvent.clientY });
+    if (!at) return false;
+    pos = at.pos;
+  }
+  const $pos = view.state.doc.resolve(pos);
+  let inCell = false;
+  for (let d = $pos.depth; d > 0; d--) {
+    const name = $pos.node(d).type.name;
+    if (name === "tableCell" || name === "tableHeader") {
+      inCell = true;
+      break;
+    }
+  }
+  if (!inCell) return false;
+  dropEvent?.preventDefault();
+  void (async () => {
+    let insertAt = pos;
+    for (const file of images) {
+      try {
+        const url = await uploadFile(file);
+        const fileId = getActiveProvider().extractFileId(url);
+        const nodeType = view.state.schema.nodes.inlineImage;
+        if (!fileId || !nodeType || view.isDestroyed) continue;
+        // アップロード中に文書が縮んでいても範囲内に収める
+        const at = Math.min(insertAt, view.state.doc.content.size);
+        const node = nodeType.create({ fileId, name: file.name });
+        view.dispatch(view.state.tr.insert(at, node));
+        insertAt = at + node.nodeSize;
+      } catch {
+        // 失敗した画像だけ諦めて残りは続ける（素材未登録のまま挿さない）
+      }
+    }
+  })();
+  return true;
+}
+
 export function SandboxEditor({
   blocks = [],
   initialContent,
@@ -172,6 +228,29 @@ export function SandboxEditor({
       : initialContent?.length ? (initialContent as any) : undefined,
     dictionary: getBlockNoteDictionary(locale),
     uploadFile,
+    // セル内への画像 drop / paste はインライン画像として受ける（セル外は既定処理）。
+    // handleDrop/handlePaste では届かない — BlockNote 自身のファイル処理が
+    // handleDOMEvents 段で先にイベントを消費する。直接 props の handleDOMEvents は
+    // プラグイン（BlockNote）より優先されるので、ここで先取りして true を返す
+    _tiptapOptions: {
+      editorProps: {
+        handleDOMEvents: {
+          drop: (view: any, event: any) =>
+            insertCellImagesFromFiles(view, event?.dataTransfer?.files, event, uploadFile),
+          paste: (view: any, event: any) => {
+            const handled = insertCellImagesFromFiles(
+              view,
+              event?.clipboardData?.files,
+              null,
+              uploadFile
+            );
+            // true でも PM は既定動作を止めないので、ブラウザの貼り付けを自前で止める
+            if (handled) event?.preventDefault?.();
+            return handled;
+          },
+        },
+      },
+    } as any,
     resolveFileUrl,
     // ブロック左右端へのドラッグで縦のドロップカーソルを出す
     // （カラム化ゾーンの判定は multi-column/drop-to-columns.ts）
@@ -286,16 +365,20 @@ export function SandboxEditor({
   const getSlashItems = useMemo(() => {
     if (!hasExtraSlash) return undefined;
     return async (query: string) => {
-      if (!query) return allSlashItems as any;
+      // テーブルのセル内: ブロックを挿入する項目は出せない（セルはインライン専用）。
+      // インラインで完結する項目（画像 → inlineImage）だけの短いメニューにする
+      const inCell = (editor as any).getTextCursorPosition?.()?.block?.type === "table";
+      const items = inCell ? getCellSlashMenuItems() : allSlashItems;
+      if (!query) return items as any;
       // カスタムフィルタ: title と aliases のみでマッチ（group 名でのマッチを防ぐ）
       const q = query.toLowerCase();
-      return allSlashItems.filter((item: any) => {
+      return items.filter((item: any) => {
         if (item.title?.toLowerCase().includes(q)) return true;
         if (item.aliases?.some((a: string) => a.toLowerCase().includes(q))) return true;
         return false;
       }) as any;
     };
-  }, [hasExtraSlash, allSlashItems]);
+  }, [hasExtraSlash, allSlashItems, editor]);
 
   // `#` のラベルオートコンプリートは廃止した。
   // 工程は step ブロック、テーブル / メディアのラベルはドラッグハンドルのメニューに

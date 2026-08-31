@@ -912,6 +912,15 @@ function SidePeekInner({
       setPickerMediaType(null);
       return;
     }
+    // セル内から選んだ画像はインライン画像として埋める（note-app 側と同じ分岐）
+    if (entry.type === "image" && entry.fileId && currentBlock.type === "table") {
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "inlineImage", props: { fileId: entry.fileId, name: entry.name } } as any,
+        { type: "text", text: " ", styles: {} },
+      ]);
+      setPickerMediaType(null);
+      return;
+    }
     const newBlock = entry.type === "pdf"
       ? { type: "pdf", props: { url: entry.url, name: entry.name } }
       : entry.type === "document"

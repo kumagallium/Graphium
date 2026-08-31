@@ -1368,6 +1368,8 @@ export const ja: Record<string, string> = {
   "asset.slashAudioSub": "新規アップロードまたは既存の音声から挿入",
   "asset.slashDocument": "ドキュメント",
   "asset.slashDocumentSub": "新規アップロードまたは既存の PDF / Word から挿入",
+  "asset.slashCellImage": "画像",
+  "asset.slashCellImageSub": "素材から選んでセルに埋め込む",
   "asset.slashData": "データ",
   "asset.slashDataSub": ".csv / .txt / .dat を表として挿入",
   // ── 引用ピッカー (/claims, /Insights) ──

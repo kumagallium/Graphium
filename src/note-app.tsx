@@ -1642,6 +1642,17 @@ function NoteEditorInner({
       return;
     }
 
+    // テーブルのセル内から選んだ画像はブロックではなくインライン画像として埋める。
+    // セルはブロックを持てないため、embed のままだと表の外に画像ブロックが落ちる
+    // （セル内スラッシュ「/画像」→ ピッカー、の経路がここに来る）
+    if (entry.type === "image" && entry.fileId && currentBlock.type === "table") {
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "inlineImage", props: { fileId: entry.fileId, name: entry.name } } as any,
+        { type: "text", text: " ", styles: {} },
+      ]);
+      return;
+    }
+
     // 挿入ブロックの選択:
     //   PDF → カスタム pdf ブロック（インラインビューア付き）
     //   Document (.docx 等) → BlockNote 標準 file ブロック（汎用アタッチメント表示）
@@ -4071,7 +4082,7 @@ function NoteEditorInner({
       const q = query.normalize("NFC").toLowerCase();
       const assets = getAssetSuggestions(mediaIndex).map((sug) => ({
         label: sug.label,
-        insert: `@${sug.label.replace(/^(📄|🧾)\s*/, "")}`,
+        insert: `@${sug.label.replace(/^(📄|🧾|🖼)\s*/, "")}`,
       }));
       const notes = getNoteSuggestions(files, undefined, noteIndex).map((sug) => ({
         label: sug.label,
@@ -5093,7 +5104,7 @@ function NoteEditorInner({
                   if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
                     citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
                   }
-                  const assetLabel = suggestion.label.replace(/^(📄|🧾)\s*/, "");
+                  const assetLabel = suggestion.label.replace(/^(📄|🧾|🖼)\s*/, "");
                   setTimeout(() => {
                     editorRef.current?.insertInlineContent([
                       { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },

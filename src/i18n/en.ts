@@ -1368,6 +1368,8 @@ export const en: Record<string, string> = {
   "asset.slashAudioSub": "Upload new or insert existing audio",
   "asset.slashDocument": "Document",
   "asset.slashDocumentSub": "Upload new or insert existing PDF / Word",
+  "asset.slashCellImage": "Image",
+  "asset.slashCellImageSub": "Pick an asset to embed in the cell",
   "asset.slashData": "Data",
   "asset.slashDataSub": "Insert a .csv / .txt / .dat as a table",
   // ── Cite picker (/claims, /Insights) ──
