@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.50.1](https://github.com/kumagallium/Graphium/compare/v0.50.0...v0.50.1) - 2026-09-01
+
+- [fix] Make cell image drag-and-drop reliable and enlarge inline image defaults by @kumagallium in https://github.com/kumagallium/Graphium/pull/811
+
 ## [v0.50.0](https://github.com/kumagallium/Graphium/compare/v0.49.0...v0.50.0) - 2026-09-01
 
 - [feat] Reference named table columns from the calc block by @kumagallium in https://github.com/kumagallium/Graphium/pull/808
