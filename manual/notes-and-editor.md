@@ -376,6 +376,12 @@ Under the title of every note sits a **Folder** button. Folder names are free-fo
 
 <Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar lists your **Folders** too. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
 
+<Badge type="tip" text="Added in v0.51.0 (2026-09-01)" /> While a folder is open, the breadcrumb above the list reads **All Notes › Sourdough › Day 7** — click any step to go back to it, or **All Notes** to drop the filter. **New in folder** starts a note already inside the folder you are looking at, and right-clicking a folder offers **Rename** and **Delete folder**.
+
+::: warning Deleting a folder never deletes notes
+Renaming or deleting a folder takes its subfolders with it — a folder and what sits under it move together. The notes themselves are never deleted: any note that is not in another folder becomes **Unfiled**. To throw notes away, open the folder and delete them from the list.
+:::
+
 ::: tip One note, several folders
 Unlike folders on your computer, a note can sit in more than one folder at once — think of it as a shortcut. Deleting a folder never deletes the notes inside it: any note that is not in another folder simply becomes **Unfiled**.
 :::
