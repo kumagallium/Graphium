@@ -101,7 +101,6 @@ function collectTables(
   const result: ChartSourceOption[] = [];
   const displayNames = computeTableDisplayNames(
     editor?.document ?? [],
-    (blockId) => tableMeta?.hasColumnType(blockId, "datetime-auto") ?? false,
     (blockId) => tableMeta?.getCaption(blockId) ?? ""
   );
   const visit = (blocks: any[]) => {

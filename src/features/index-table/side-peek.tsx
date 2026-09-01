@@ -137,6 +137,8 @@ import { useIsDesktop } from "../../hooks/use-media-query";
 import { setEditorSidePeekCallback } from "./context";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
+import { publishTableColumns } from "../../blocks/calc/table-scope";
+import { applyCalcWritebacks, type CalcWritebackRequest } from "../../blocks/calc/writeback";
 
 type SidePeekProps = {
   noteId: string;
@@ -462,7 +464,7 @@ function SidePeekInner({
         autoSaveTimerRef.current = null;
       }
     };
-  }, [noteId]);
+  }, [noteId, tableMetaStore]);
 
   // ドキュメント読み込み後にラベル・リンクを復元
   // setLabel / restoreLinks は useCallback で安定な参照
@@ -838,6 +840,23 @@ function SidePeekInner({
     setCitePickerCallback(sidePeekEditor, setCitePickerKind);
     setSharedCitePickerCallback(sidePeekEditor, () => setSharedCitePickerOpen(true));
     setChartAssetSourceCallback(sidePeekEditor, (onDone) => setChartAssetRequest({ onDone }));
+    // 表の中身を読む側（計算ブロック）への配布（note-app と同じ理由・同じ経路）
+    let publishTimer: ReturnType<typeof setTimeout> | null = null;
+    const publish = () => {
+      publishTableColumns(sidePeekEditor, tableMetaStore);
+      applyCalcWritebacks(
+        sidePeekEditor,
+        tableMetaStore.calcWritebacks as Record<string, CalcWritebackRequest[]>,
+      );
+    };
+    const offContentChange =
+      typeof sidePeekEditor.onEditorContentChange === "function"
+        ? sidePeekEditor.onEditorContentChange(() => {
+            if (publishTimer) clearTimeout(publishTimer);
+            publishTimer = setTimeout(publish, 250);
+          })
+        : undefined;
+    publish();
     setEditorSidePeekCallback(sidePeekEditor, (targetNoteId) => {
       // 外部ソース ID（pdf:/document:/data:/url: — グラフのパラメータ ↗ 等）は
       // ノートとして開けないので false を返し、メイン側の振り分け
@@ -856,8 +875,10 @@ function SidePeekInner({
       setSharedCitePickerCallback(sidePeekEditor, null);
       setChartAssetSourceCallback(sidePeekEditor, null);
       setEditorSidePeekCallback(sidePeekEditor, null);
+      if (publishTimer) clearTimeout(publishTimer);
+      if (typeof offContentChange === "function") offContentChange();
     };
-  }, [sidePeekEditor]);
+  }, [sidePeekEditor, tableMetaStore]);
 
   // スラッシュ用に「直前のスラッシュブロック」を退避する。
   // BlockNote はスラッシュアイテム選択時点で `/` を含む空ブロックの中身を消すが、

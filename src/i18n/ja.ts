@@ -420,6 +420,11 @@ export const ja: Record<string, string> = {
   "calc.clickToCopy": "クリックでコピー",
   "calc.copied": "コピーしました",
   "calc.errorMark": "?",
+  "calc.writeToTable": "表へ書き戻す",
+  "calc.writebackPickTable": "書き込む表",
+  "calc.writebackPickColumn": "書き込む列",
+  "calc.writebackClear": "書き戻しを解除",
+  "calc.writebackReadColumn": "この式が読んでいる列には書けません",
   "math.placeholder": "数式を入力（LaTeX）",
   "math.inlinePlaceholder": "数式",
   "math.editorLabel": "数式",
@@ -2042,6 +2047,7 @@ export const ja: Record<string, string> = {
   "inlineImage.missing": "画像を読み込めません",
   "inlineImage.resize": "ドラッグでサイズ変更（ダブルクリックで元に戻す）",
   "tableMeta.sortDesc": "降順で並べ替え",
+  "tableMeta.useColumnInCalc": "この列を計算に使う",
 
   // 時系列テーブル
   "logTable.colDateTime": "日時",

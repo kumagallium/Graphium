@@ -156,6 +156,8 @@ import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps }
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
 import { rememberBlobUrl } from "./features/inline-image/spec";
+import { publishTableColumns } from "./blocks/calc/table-scope";
+import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
@@ -4431,6 +4433,45 @@ function NoteEditorInner({
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);
   }, [markDirty, triggerRegeneration]);
+
+  // 表の中身を読んでいる側（計算ブロック）に、生きた列データを配り続ける。
+  // ブロックの render に渡る editor.document は描画時点のまま古くなり、
+  // BlockNoteView の onChange はプログラム的な updateBlock では発火しない（実測）。
+  // onEditorContentChange はどちらでも発火するので、こちらを購読する
+  useEffect(() => {
+    const editor: any = mainEditor;
+    if (!editor || typeof editor.onEditorContentChange !== "function") return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const publish = () => {
+      publishTableColumns(editor, tableMetaStoreRef.current);
+      // calc → 表の書き戻しも同じ拍で適用する（差分が無ければ何もしない）
+      applyCalcWritebacks(
+        editor,
+        tableMetaStoreRef.current.calcWritebacks as Record<string, CalcWritebackRequest[]>,
+      );
+    };
+    const off = editor.onEditorContentChange(() => {
+      // タイプ毎に全表を読み直すのは無駄なので少し待って 1 回にまとめる
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(publish, 250);
+    });
+    publish(); // 初期配布（ノートを開いた直後の計算にも効かせる）
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (typeof off === "function") off();
+    };
+    // metas も依存に含める: キャプション変更（表の改名）は本文編集ではないため
+    // onEditorContentChange が発火しない。表示名の変化はこの再実行で配り直す
+  }, [mainEditor, tableMetaStore.metas]);
+
+  // 書き戻しの宣言が変わった瞬間にも適用する（本文編集を伴わない、
+  // 式の評価完了や ⇥ の設定直後のため）。applyCalcWritebacks は冪等
+  useEffect(() => {
+    applyCalcWritebacks(
+      mainEditor,
+      tableMetaStore.calcWritebacks as Record<string, CalcWritebackRequest[]>,
+    );
+  }, [mainEditor, tableMetaStore.calcWritebacks]);
 
   // 貼られた画像の自動 OCR。ノートを開いた時点の既存画像は対象外で、
   // このノートを開いている間に新しく入った画像だけを読む。
