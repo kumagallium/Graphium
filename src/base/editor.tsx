@@ -62,6 +62,7 @@ import {
   type ActiveImageDrag,
 } from "@features/inline-image/spec";
 import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
+import { NodeSelection } from "prosemirror-state";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo, useRef } from "react";
@@ -355,6 +356,25 @@ function draggedImageBlock(view: any, editor: any, payload: ActiveImageDrag): { 
         b.props.url.endsWith(payload.fileId),
     ) ?? null
   );
+}
+
+// ── ドラッグゴーストの縮小 ──
+//
+// 画像ブロックの選択ドラッグは、既定だと画像の実寸ゴーストが出る（幅いっぱいの
+// 画像だと画面を覆い、どこに落ちるのか分からなくなる）。小さな分身に差し替える。
+// **dragstart の中で DOM を追加してはいけない** — Chromium はドラッグを中止する。
+// body 直下に 1 個だけ常設し、dragstart では src の差し替えと setDragImage だけ行う。
+let dragGhost: HTMLImageElement | null = null;
+
+function ensureDragGhost(): HTMLImageElement {
+  if (dragGhost?.isConnected) return dragGhost;
+  const img = document.createElement("img");
+  img.setAttribute("data-drag-ghost", "true");
+  img.style.cssText =
+    "position:fixed;top:-1000px;left:-1000px;width:120px;height:auto;pointer-events:none;";
+  document.body.appendChild(img);
+  dragGhost = img;
+  return img;
 }
 
 // ── セルへの画像ドロップの見せ方 ──
@@ -772,6 +792,37 @@ export function SandboxEditor({
           // 掴んだドラッグには PM 標準の text/plain + text/html しか乗らない（実測。
           // blocknote/html は ⠿ ハンドル経由でしか乗らない）。ドラッグ元も先も同じ
           // ドキュメントなので、ここで覚えておけば dataTransfer が読めなくても追える
+          // 画像ブロックを「クリックで選択してから」でないと掴めない問題への先回り。
+          // ブラウザは mousedown の時点で選択の中にいないと選択ドラッグを開始しない
+          // （選択なしで画像を掴んでもドラッグ自体が始まらない — CDP で実測）。
+          // 画像の上で mousedown した瞬間に NodeSelection を張っておけば、
+          // そのまま動かしたときに選択ドラッグとして始まる（BlockNote のクリック
+          // 選択と同じ結果になるだけなので、クリック操作への影響はない）
+          mousedown: (view: any, event: any) => {
+            try {
+              const el = event?.target as HTMLElement | null;
+              if (!el?.closest || el.tagName !== "IMG") return false;
+              if (el.closest('[data-test="inline-image"]')) return false;
+              const container = el.closest('[data-node-type="blockContainer"]');
+              if (!container) return false;
+              const blockId = container.getAttribute("data-id");
+              const block = blockId ? editorRef.current?.getBlock?.(blockId) : null;
+              if (block?.type !== "image") return false;
+              const pos = view.posAtDOM(container, 0);
+              const $pos = view.state.doc.resolve(pos);
+              const before = $pos.before($pos.depth);
+              const node = view.state.doc.nodeAt(before);
+              if (node?.type?.name !== "blockContainer") return false;
+              // すでに同じブロックが選択済みなら何もしない（余計な tr を発行しない）
+              const cur: any = view.state.selection;
+              if (cur instanceof NodeSelection && cur.from === before) return false;
+              const sel = NodeSelection.create(view.state.doc, before);
+              view.dispatch(view.state.tr.setSelection(sel));
+            } catch {
+              // 選択の先張りは最善努力。失敗してもクリックの既定処理に任せる
+            }
+            return false;
+          },
           dragstart: (view: any, event: any) => {
             setActiveImageDrag(null);
             try {
@@ -796,20 +847,17 @@ export function SandboxEditor({
                 blockId,
               });
               // 既定のゴーストは選択範囲の実寸（幅いっぱいの画像だと画面を覆う）。
-              // 小さな分身に差し替えて、掴んでいる感覚を保つ
+              // 常設の縮小分身に差し替える（dragstart 中の DOM 追加はドラッグを殺す）
               const img = container?.querySelector?.("img");
               if (img && event.dataTransfer) {
-                const ghost = img.cloneNode() as HTMLImageElement;
-                ghost.style.width = "120px";
-                ghost.style.height = "auto";
-                ghost.style.position = "fixed";
-                ghost.style.top = "-1000px";
-                ghost.style.left = "-1000px";
-                document.body.appendChild(ghost);
-                event.dataTransfer.setDragImage(ghost, 24, 24);
-                setTimeout(() => ghost.remove(), 0);
-                // コピー（＋カーソル）ではなく移動として見せる
-                event.dataTransfer.effectAllowed = "move";
+                try {
+                  const ghost = ensureDragGhost();
+                  ghost.src = (img as HTMLImageElement).src;
+                  event.dataTransfer.setDragImage(ghost, 24, 24);
+                  event.dataTransfer.effectAllowed = "move";
+                } catch {
+                  // ゴーストは見た目だけ。失敗しても既定表示で続ける
+                }
               }
             } catch {
               // 記録は最善努力。失敗しても既定のドラッグは邪魔しない
