@@ -26,6 +26,37 @@ export type CreateAppOptions = {
   mode: AppMode;
 };
 
+/**
+ * Host ヘッダーの許可判定（DNS リバインディング対策）。
+ *
+ * ローカルサーバーは 127.0.0.1 で待つが、それだけでは外から触られないとは言えない。
+ * 攻撃者のドメインを一旦自分のIPに解決させ、被害者がページを開いた後に 127.0.0.1 へ
+ * 貼り替えると、ブラウザから見て「同一オリジン」のまま、このサーバーへ届いてしまう
+ * （CORS は同一オリジン扱いなので効かない）。そのときブラウザが送る Host は
+ * 攻撃者のドメインなので、Host を見れば弾ける。
+ *
+ * 既定はループバック名のみ。LAN へ意図的に公開する運用（Docker で ports を
+ * 127.0.0.1 以外へ広げる等）では GRAPHIUM_ALLOWED_HOSTS に列挙して明示的に開ける。
+ * 「バインド先を広げただけで LAN 全体へ開く」を既定にしないための fail-closed。
+ */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+export function isAllowedHost(hostHeader: string | undefined, allowList: string[]): boolean {
+  if (!hostHeader) return false; // Host 無し（HTTP/1.0 等）は通さない
+  // ポートを落として名前だけで見る。IPv6 リテラルは括弧の外側にポートが付く。
+  const host = hostHeader.trim().toLowerCase();
+  const name = host.startsWith("[")
+    ? host.slice(0, host.indexOf("]") + 1)
+    : host.split(":")[0];
+  if (LOOPBACK_HOSTS.has(name)) return true;
+  return allowList.some((a) => {
+    const allowed = a.trim().toLowerCase();
+    if (!allowed) return false;
+    // 明示リストはポート付きでもポート無しでも書けるようにする
+    return allowed === host || allowed === name;
+  });
+}
+
 export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   const { mode } = options;
 
@@ -36,6 +67,37 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   }
 
   const app = new Hono();
+
+  // Host 検証。Vercel はデプロイ先ドメインで来るので対象外（そこは公開 API）。
+  if (mode !== "vercel") {
+    const allowedHosts = (process.env.GRAPHIUM_ALLOWED_HOSTS ?? "")
+      .split(",")
+      .map((h) => h.trim())
+      .filter(Boolean);
+    app.use("*", async (c, next) => {
+      // Host ヘッダーが無い経路（HTTP/1.0、テストの app.request 等）では
+      // URL 側のホストで見る。node-server では URL 自体が Host から組まれるので
+      // 実運用では同じ値になる。どちらも無い、が起きないようにするための二段。
+      let host = c.req.header("host");
+      if (!host) {
+        try {
+          host = new URL(c.req.url).host;
+        } catch {
+          host = undefined;
+        }
+      }
+      if (!isAllowedHost(host, allowedHosts)) {
+        return c.json(
+          {
+            error:
+              "Host not allowed. Set GRAPHIUM_ALLOWED_HOSTS to expose this server beyond localhost.",
+          },
+          403,
+        );
+      }
+      await next();
+    });
+  }
 
   // CORS 設定
   const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:5174")

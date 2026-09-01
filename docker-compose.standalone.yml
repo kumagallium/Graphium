@@ -16,7 +16,13 @@ services:
     build:
       context: .
     ports:
-      - "5174:3001"
+    # 既定はホストからのみ。ホスト側 IP を省くと Docker は全インターフェースへ
+    # 公開するので、同一 LAN の誰でも API に届く（storage API は
+    # GRAPHIUM_AUTH_TOKEN 未設定なら無認証なので、ノートの読み書き・削除まで通る）。
+    # 他端末から使うなら、この 127.0.0.1 を外したうえで GRAPHIUM_AUTH_TOKEN と
+    # GRAPHIUM_ALLOWED_HOSTS の両方を設定すること（後者が未設定だとサーバー側が
+    # ループバック以外の Host を 403 で落とす）。
+      - "127.0.0.1:5174:3001"
     volumes:
       - graphium_data:/app/data
     environment:

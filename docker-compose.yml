@@ -22,7 +22,13 @@ services:
     build:
       context: .
     ports:
-      - "5174:3001"
+    # 既定はホストからのみ。ホスト側 IP を省くと Docker は全インターフェースへ
+    # 公開するので、同一 LAN の誰でも API に届く（storage API は
+    # GRAPHIUM_AUTH_TOKEN 未設定なら無認証なので、ノートの読み書き・削除まで通る）。
+    # 他端末から使うなら、この 127.0.0.1 を外したうえで GRAPHIUM_AUTH_TOKEN と
+    # GRAPHIUM_ALLOWED_HOSTS の両方を設定すること（後者が未設定だとサーバー側が
+    # ループバック以外の Host を 403 で落とす）。
+      - "127.0.0.1:5174:3001"
     volumes:
       - graphium_data:/app/data
     environment:
@@ -44,7 +50,7 @@ services:
   crucible-api:
     image: ghcr.io/kumagallium/crucible-api:latest
     ports:
-      - "${CRUCIBLE_API_PORT:-8080}:8000"
+      - "127.0.0.1:${CRUCIBLE_API_PORT:-8080}:8000"
     environment:
       - REGISTRY_FILE=/var/lib/crucible-registry/servers.json
       - DOCKER_HOST=tcp://socket-proxy:2375
@@ -71,7 +77,7 @@ services:
   crucible-ui:
     image: ghcr.io/kumagallium/crucible-ui:latest
     ports:
-      - "${CRUCIBLE_UI_PORT:-8081}:3000"
+      - "127.0.0.1:${CRUCIBLE_UI_PORT:-8081}:3000"
     environment:
       - API_BASE_URL=http://crucible-api:8000
       - REGISTRY_API_KEY=${CRUCIBLE_API_KEY:-}

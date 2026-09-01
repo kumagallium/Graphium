@@ -258,6 +258,7 @@ No `.env` editing required — everything is configured from the browser.
 > - **Cloud backup**: mount a Google Drive / iCloud / Dropbox synced folder to `/app/data` (`volumes: - "~/Google Drive/Graphium:/app/data"`) and the OS handles replication.
 > - **Remote VPS**: use [rclone](https://rclone.org/) or similar to back up `/app/data` to S3 / B2 / etc.
 > - **Authentication**: set `GRAPHIUM_AUTH_TOKEN=<your-secret>` to require an `X-Graphium-Token` header on all storage requests. Configure the same token in **⚙ Settings → Server Storage** in the UI. Without this, anyone who can reach the URL can read/write notes — fine on `localhost`, not for public deployments.
+> - **Reaching it from another device**: the compose files publish on `127.0.0.1` only, so by default nothing outside the host machine can connect. To open it up, drop the `127.0.0.1:` prefix from the `ports` entry **and** set both `GRAPHIUM_AUTH_TOKEN` (so the storage API is not anonymous) and `GRAPHIUM_ALLOWED_HOSTS=<host or host:port>` (the server rejects any `Host` it does not recognise). Both are required on purpose: widening the bind address alone is not enough to open the door.
 
 > **Note:** In Docker mode, all services run without API key authentication and are only accessible from your local machine (`localhost`).
 
