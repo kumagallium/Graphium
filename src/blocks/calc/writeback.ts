@@ -29,6 +29,8 @@ export type CalcWritebackRequest = {
   column: string;
   /** データ行（2 行目以降）へ上から順に入れる文字列。行数より少ない分は空になる */
   texts: string[];
+  /** 表側のバッジに出す計算ブロックの名前（無名なら undefined → 既定ラベル） */
+  calcName?: string;
 };
 
 /** props.targets（JSON）を安全に読む。壊れていたら空 */

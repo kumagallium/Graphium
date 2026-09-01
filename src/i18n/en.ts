@@ -2049,6 +2049,9 @@ export const en: Record<string, string> = {
   "inlineImage.missing": "Image unavailable",
   "inlineImage.resize": "Drag to resize (double-click to reset)",
   "tableMeta.sortDesc": "Sort descending",
+  "tableMeta.calcWriterBadge": "{column} ← {name}",
+  "tableMeta.calcWriterHint": "This column is written by a calc block. Click to jump to it.",
+  "calc.nameHint": "Name this calculation (shown on the table badge)",
   "tableMeta.useColumnInCalc": "Use column in calculation",
 
   // 記録テーブル

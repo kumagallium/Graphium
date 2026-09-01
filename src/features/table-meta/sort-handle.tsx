@@ -86,6 +86,9 @@ function UseColumnInCalcItem({ blockId, colIndex }: { blockId: string; colIndex:
     );
     const tableName = displayNames.get(blockId);
     if (!tableName) return;
+    // 無名の表は自動名「表 N」のままだと並べ替えで番号がずれ、参照が別の表を
+    // 指してしまう。参照された瞬間に自動名をキャプションへ昇格して固定する
+    if (!store.getCaption(blockId)) store.setCaption(blockId, tableName);
     (editor as any).insertBlocks(
       [
         {

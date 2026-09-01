@@ -2047,6 +2047,9 @@ export const ja: Record<string, string> = {
   "inlineImage.missing": "画像を読み込めません",
   "inlineImage.resize": "ドラッグでサイズ変更（ダブルクリックで元に戻す）",
   "tableMeta.sortDesc": "降順で並べ替え",
+  "tableMeta.calcWriterBadge": "{column} ← {name}",
+  "tableMeta.calcWriterHint": "計算ブロックから書き込まれている列です。クリックで計算へ移動します。",
+  "calc.nameHint": "この計算に名前を付ける（表側のバッジに表示されます）",
   "tableMeta.useColumnInCalc": "この列を計算に使う",
 
   // 時系列テーブル

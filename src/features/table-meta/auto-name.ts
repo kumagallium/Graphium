@@ -15,18 +15,37 @@ export function computeTableDisplayNames(
   blocks: any[],
   getCaption: (blockId: string) => string
 ): Map<string, string> {
-  const names = new Map<string, string>();
-  let n = 0;
+  // 先にキャプションを集める: 参照時に自動名がキャプションへ固定された表
+  // （「表 1」という名前の表）があるとき、後から上に追加された表へ同じ
+  // 自動名を振ると参照が乗っ取られてしまう。採番はキャプションを避けて進める
+  const captions = new Set<string>();
+  const tables: any[] = [];
   const visit = (list: any[]) => {
     for (const b of list ?? []) {
       if (b?.type === "table") {
-        n += 1;
+        tables.push(b);
         const caption = getCaption(b.id);
-        names.set(b.id, caption || t("tableMeta.autoName", { n: String(n) }));
+        if (caption) captions.add(caption);
       }
       if (Array.isArray(b?.children)) visit(b.children);
     }
   };
   visit(blocks ?? []);
+
+  const names = new Map<string, string>();
+  let n = 0;
+  for (const b of tables) {
+    const caption = getCaption(b.id);
+    if (caption) {
+      names.set(b.id, caption);
+      continue;
+    }
+    let autoName: string;
+    do {
+      n += 1;
+      autoName = t("tableMeta.autoName", { n: String(n) });
+    } while (captions.has(autoName));
+    names.set(b.id, autoName);
+  }
   return names;
 }
