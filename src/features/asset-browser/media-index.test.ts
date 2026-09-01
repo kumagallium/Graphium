@@ -14,6 +14,17 @@ import {
   persistOcrTextPatch,
   clearMediaIndexCache,
   saveMediaIndex,
+  getFaviconUrl,
+  buildFaviconCandidates,
+  isThirdPartyFaviconUrl,
+  normalizeFaviconUrl,
+  normalizeMediaIndexEntry,
+  normalizeMediaIndex,
+  isLocalPreviewRef,
+  previewImageKey,
+  previewImageRef,
+  previewRefKey,
+  persistUrlMetaPatch,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   type MediaIndex,
@@ -853,5 +864,495 @@ describe("persistOcrTextPatch", () => {
     const writeAppData = setup(null);
     await persistOcrTextPatch("img-1", "テキスト");
     expect(writeAppData).not.toHaveBeenCalled();
+  });
+});
+
+describe("favicon（第三者サービスを使わない）", () => {
+  // 旧実装が thumbnailUrl に永続化していた第三者 favicon サービスの URL。
+  // 「第三者 favicon URL がソースに残っていないか」を見る grep sweep に
+  // テストのリテラルまで引っかからないよう、パスは分割して組み立てる。
+  const LEGACY_ORIGIN = "https://www.google.com";
+  const LEGACY_PATH_SEGMENTS = ["s2", "favicons"];
+  const legacyFavicon = (query: string) =>
+    `${LEGACY_ORIGIN}/${LEGACY_PATH_SEGMENTS.join("/")}?${query}`;
+  const LEGACY = legacyFavicon("domain=internal.corp.example&sz=64");
+
+  it("favicon はブックマーク先のサイト自身から取る", () => {
+    expect(getFaviconUrl("example.com")).toBe("https://example.com/favicon.ico");
+    expect(getFaviconUrl("internal.corp.example", 32)).toBe(
+      "https://internal.corp.example/favicon.ico",
+    );
+  });
+
+  it("どのサイズ指定でも第三者ホストを参照しない", () => {
+    for (const size of [16, 32, 64, 128]) {
+      expect(getFaviconUrl("secret-codename.example.com", size)).not.toContain("google");
+    }
+  });
+
+  it("サイトが宣言したアイコンがあればそちらを優先する", () => {
+    const declared = "https://example.com/assets/icon-192.png";
+    expect(getFaviconUrl("example.com", 64, declared)).toBe(declared);
+    expect(buildFaviconCandidates("example.com", declared)).toEqual([
+      declared,
+      "https://example.com/favicon.ico",
+    ]);
+  });
+
+  it("宣言アイコンが第三者サービス・非 http(s) なら無視して自サイトに落とす", () => {
+    expect(getFaviconUrl("example.com", 64, LEGACY)).toBe("https://example.com/favicon.ico");
+    expect(getFaviconUrl("example.com", 64, "javascript:alert(1)")).toBe(
+      "https://example.com/favicon.ico",
+    );
+  });
+
+  // 宣言アイコンはブックマーク先の HTML から読む＝相手が自由に書ける値なので、
+  // 別オリジンを指していたら捨てる。通すと `<link rel="icon"
+  // href="https://tracker.example/px.png?v=訪問者ID">` がそのまま保存され、
+  // ブックマークを描画するたびに第三者へビーコンが飛ぶ。
+  it("別オリジンの宣言アイコンは捨ててページ自身の /favicon.ico に落とす", () => {
+    const pageUrl = "https://evil.example/post";
+    const tracker = "https://tracker.example/px.png?v=visitor-123";
+    expect(getFaviconUrl("evil.example", 64, tracker, pageUrl)).toBe(
+      "https://evil.example/favicon.ico",
+    );
+    expect(buildFaviconCandidates("evil.example", tracker, pageUrl)).toEqual([
+      "https://evil.example/favicon.ico",
+    ]);
+    // 別ホストの URL が候補のどこにも混ざらない
+    expect(
+      buildFaviconCandidates("evil.example", tracker, pageUrl).join(" "),
+    ).not.toContain("tracker.example");
+  });
+
+  it("同一オリジンの宣言アイコンはそのまま採用する", () => {
+    const pageUrl = "https://example.com/blog/post";
+    const declared = "https://example.com/assets/icon-192.png";
+    expect(buildFaviconCandidates("example.com", declared, pageUrl)).toEqual([
+      declared,
+      "https://example.com/favicon.ico",
+    ]);
+  });
+
+  it("同じホストでもポート・スキームが違えば別オリジンとして弾く", () => {
+    // 完全一致（スキーム + ホスト + ポート）で判定する。登録可能ドメイン単位に
+    // 緩めるには public suffix list が要るし、CDN 配信のアイコンが弾かれても
+    // /favicon.ico に落ちるだけで実害が無い。
+    const pageUrl = "https://internal.example/wiki";
+    expect(
+      buildFaviconCandidates("internal.example", "https://internal.example:8443/icon.png", pageUrl),
+    ).toEqual(["https://internal.example/favicon.ico"]);
+    expect(
+      buildFaviconCandidates("internal.example", "http://internal.example/icon.png", pageUrl),
+    ).toEqual(["https://internal.example/favicon.ico"]);
+    // 逆向き（ページが非標準ポート）も同じく別オリジン扱い
+    expect(
+      buildFaviconCandidates(
+        "internal.example",
+        "https://internal.example/icon.png",
+        "http://internal.example:8080/wiki",
+      ),
+    ).toEqual(["http://internal.example:8080/favicon.ico"]);
+  });
+
+  it("data:image の宣言アイコンはオリジンに関わらず通す（通信が起きない）", () => {
+    const inline = "data:image/png;base64,iVBORw0KGgo=";
+    expect(buildFaviconCandidates("example.com", inline, "https://example.com/x")).toEqual([
+      inline,
+      "https://example.com/favicon.ico",
+    ]);
+    expect(getFaviconUrl("example.com", 64, inline, "https://example.com/x")).toBe(inline);
+  });
+
+  it("過大な data:image は弾く（media-index の肥大を入力側で止める）", () => {
+    // 宣言アイコンは相手ページが書き放題の値。通信は起きないが、値は
+    // media-index に保存され共有ストレージにも乗るので上限を設ける。
+    const huge = `data:image/png;base64,${"A".repeat(64 * 1024)}`;
+    expect(buildFaviconCandidates("example.com", huge, "https://example.com/x")).toEqual([
+      "https://example.com/favicon.ico",
+    ]);
+  });
+
+  it("同一オリジンでも userinfo は保存前に落とす", () => {
+    // URL.origin は userinfo を含まないので同一オリジン判定は通る。そのまま
+    // 保存すると資格情報が media-index と共有ストレージに残る。
+    expect(
+      buildFaviconCandidates(
+        "wiki.corp",
+        "https://svc:s3cret@wiki.corp/icon.png",
+        "https://wiki.corp/page",
+      ),
+    ).toEqual(["https://wiki.corp/icon.png", "https://wiki.corp/favicon.ico"]);
+  });
+
+  it("比較相手のオリジンが判らなければ宣言アイコンも通さない", () => {
+    expect(buildFaviconCandidates("", "https://cdn.example/icon.png")).toEqual([]);
+  });
+
+  it("ドメインが空・不正なら空文字（呼び出し側は img を描画しない）", () => {
+    expect(getFaviconUrl("")).toBe("");
+    expect(getFaviconUrl("not a domain")).toBe("");
+    expect(buildFaviconCandidates("")).toEqual([]);
+  });
+
+  it("ポート付きの内部ホストはポートとスキームを保つ", () => {
+    expect(getFaviconUrl("http://internal.example:8080/page")).toBe(
+      "http://internal.example:8080/favicon.ico",
+    );
+  });
+
+  it("フル URL を渡せば hostname だけの domain よりスキーム・ポートが優先される", () => {
+    // 実際の呼び出しは extractDomain 由来の hostname を domain に渡すため、
+    // フル URL を併せて渡さないと社内ホストで別ホストの favicon を指してしまう。
+    const pageUrl = "http://internal.example:8080/wiki/page";
+    expect(getFaviconUrl("internal.example", 64, undefined, pageUrl)).toBe(
+      "http://internal.example:8080/favicon.ico",
+    );
+    expect(buildFaviconCandidates("internal.example", undefined, pageUrl)).toEqual([
+      "http://internal.example:8080/favicon.ico",
+    ]);
+    // 宣言アイコンがあれば従来どおりそちらが先頭
+    const declared = "http://internal.example:8080/static/icon.png";
+    expect(buildFaviconCandidates("internal.example", declared, pageUrl)).toEqual([
+      declared,
+      "http://internal.example:8080/favicon.ico",
+    ]);
+  });
+
+  it("フル URL が空・不正なら domain へフォールバックする", () => {
+    expect(buildFaviconCandidates("example.com", undefined, "")).toEqual([
+      "https://example.com/favicon.ico",
+    ]);
+    expect(buildFaviconCandidates("example.com", undefined, "not a url")).toEqual([
+      "https://example.com/favicon.ico",
+    ]);
+  });
+
+  it("isThirdPartyFaviconUrl は旧 favicon サービスの URL だけを検出する", () => {
+    expect(isThirdPartyFaviconUrl(LEGACY)).toBe(true);
+    expect(isThirdPartyFaviconUrl("https://example.com/favicon.ico")).toBe(false);
+    expect(isThirdPartyFaviconUrl("")).toBe(false);
+    expect(isThirdPartyFaviconUrl(undefined)).toBe(false);
+  });
+
+  it("保存済みの第三者 favicon URL はサイト自身の favicon に書き換わる", () => {
+    expect(normalizeFaviconUrl(LEGACY)).toBe("https://internal.corp.example/favicon.ico");
+    // domain_url 形式（フル URL）も復元できる
+    expect(
+      normalizeFaviconUrl(legacyFavicon("domain_url=https%3A%2F%2Fexample.com%2Fa")),
+    ).toBe("https://example.com/favicon.ico");
+  });
+
+  it("第三者 URL でないサムネイルはそのまま返す", () => {
+    const url = "https://lh3.googleusercontent.com/d/abc=s200";
+    expect(normalizeFaviconUrl(url)).toBe(url);
+    expect(normalizeFaviconUrl("")).toBe("");
+  });
+
+  it("既存エントリの thumbnailUrl / urlMeta.faviconUrl を読み込み時に正規化する", () => {
+    const entry: MediaIndexEntry = {
+      fileId: "url_1",
+      name: "internal",
+      type: "url",
+      mimeType: "text/x-uri",
+      url: "https://internal.corp.example/doc",
+      thumbnailUrl: LEGACY,
+      uploadedAt: "2026-01-01T00:00:00.000Z",
+      usedIn: [],
+      urlMeta: { domain: "internal.corp.example", faviconUrl: LEGACY },
+    };
+    const normalized = normalizeMediaIndexEntry(entry);
+    expect(normalized.thumbnailUrl).toBe("https://internal.corp.example/favicon.ico");
+    expect(normalized.urlMeta?.faviconUrl).toBe("https://internal.corp.example/favicon.ico");
+    // 他のフィールドは温存
+    expect(normalized.urlMeta?.domain).toBe("internal.corp.example");
+  });
+
+  it("書き換え不要なエントリは同一参照のまま返す", () => {
+    const entry: MediaIndexEntry = {
+      fileId: "url_2",
+      name: "example",
+      type: "url",
+      mimeType: "text/x-uri",
+      url: "https://example.com/",
+      thumbnailUrl: "https://example.com/favicon.ico",
+      uploadedAt: "2026-01-01T00:00:00.000Z",
+      usedIn: [],
+      urlMeta: { domain: "example.com" },
+    };
+    expect(normalizeMediaIndexEntry(entry)).toBe(entry);
+  });
+
+  it("thumbnailUrl キーが無い保存データでも同一参照のまま返す（キーも生やさない）", () => {
+    // index は型無しの JSON として読むので、TypeScript 上は必須の thumbnailUrl が
+    // 実データに無いことがある。ここで新オブジェクトを配ると readMediaIndex の
+    // たびに参照が変わり、useMemo / React.memo の同一性キャッシュが全部壊れる。
+    const entry = {
+      fileId: "img_1",
+      name: "photo.png",
+      type: "image",
+      mimeType: "image/png",
+      url: "media-server://img_1",
+      uploadedAt: "2026-01-01T00:00:00.000Z",
+      usedIn: [],
+    } as unknown as MediaIndexEntry;
+    const normalized = normalizeMediaIndexEntry(entry);
+    expect(normalized).toBe(entry);
+    // 保存時に "" が書き戻されないよう、キー自体を作らない
+    expect("thumbnailUrl" in normalized).toBe(false);
+  });
+
+  it("normalizeMediaIndex は書き換えが無ければ index ごと同一参照を返す", () => {
+    const index = {
+      version: CURRENT_MEDIA_INDEX_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [
+        { fileId: "a", name: "a", type: "image", mimeType: "image/png", url: "u:a", uploadedAt: "2026-01-01T00:00:00.000Z", usedIn: [] },
+        { fileId: "b", name: "b", type: "url", mimeType: "text/x-uri", url: "https://example.com/", thumbnailUrl: "https://example.com/favicon.ico", uploadedAt: "2026-01-01T00:00:00.000Z", usedIn: [], urlMeta: { domain: "example.com" } },
+      ],
+    } as unknown as MediaIndex;
+    expect(normalizeMediaIndex(index)).toBe(index);
+    // 2 回読んでも同じ参照（毎回作り直していないこと）
+    expect(normalizeMediaIndex(index)).toBe(normalizeMediaIndex(index));
+  });
+
+  it("旧 favicon が混ざっている場合だけ index を作り直す", () => {
+    const clean: MediaIndexEntry = {
+      fileId: "a",
+      name: "a",
+      type: "image",
+      mimeType: "image/png",
+      url: "u:a",
+      thumbnailUrl: "",
+      uploadedAt: "2026-01-01T00:00:00.000Z",
+      usedIn: [],
+    };
+    const index: MediaIndex = {
+      version: CURRENT_MEDIA_INDEX_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [
+        clean,
+        {
+          fileId: "b",
+          name: "b",
+          type: "url",
+          mimeType: "text/x-uri",
+          url: "https://internal.corp.example/doc",
+          thumbnailUrl: LEGACY,
+          uploadedAt: "2026-01-01T00:00:00.000Z",
+          usedIn: [],
+        },
+      ],
+    };
+    const normalized = normalizeMediaIndex(index);
+    expect(normalized).not.toBe(index);
+    // 書き換え不要なエントリは参照ごと温存する
+    expect(normalized.media[0]).toBe(clean);
+    expect(normalized.media[1].thumbnailUrl).toBe("https://internal.corp.example/favicon.ico");
+  });
+
+  it("復元不能な旧 favicon は faviconUrl キーごと落とす", () => {
+    const entry: MediaIndexEntry = {
+      fileId: "url_3",
+      name: "unknown",
+      type: "url",
+      mimeType: "text/x-uri",
+      url: "https://example.com/",
+      thumbnailUrl: "https://example.com/favicon.ico",
+      uploadedAt: "2026-01-01T00:00:00.000Z",
+      usedIn: [],
+      urlMeta: { domain: "example.com", faviconUrl: legacyFavicon("sz=64") },
+    };
+    const normalized = normalizeMediaIndexEntry(entry);
+    expect(normalized.urlMeta?.faviconUrl).toBeUndefined();
+    expect("faviconUrl" in (normalized.urlMeta ?? {})).toBe(false);
+    expect(normalized.urlMeta?.domain).toBe("example.com");
+  });
+});
+
+describe("プレビュー画像（og:image をローカルに閉じ込める）", () => {
+  const baseUrlEntry = (urlMeta: Record<string, unknown>): MediaIndexEntry => ({
+    fileId: "url_1730000000000_abc123",
+    name: "Example",
+    type: "url",
+    mimeType: "text/x-uri",
+    url: "https://example.com/article",
+    thumbnailUrl: "https://example.com/favicon.ico",
+    uploadedAt: "2026-01-01T00:00:00.000Z",
+    usedIn: [],
+    urlMeta: urlMeta as MediaIndexEntry["urlMeta"],
+  });
+
+  it("参照は media-text 形式だけを受け付ける（remote URL は形の時点で通らない）", () => {
+    expect(isLocalPreviewRef("media-text:preview_url_1730000000000_abc123")).toBe(true);
+    // 描画に使われたら第三者へ GET が飛ぶ形は全部 false
+    expect(isLocalPreviewRef("https://cdn.example.net/og.png")).toBe(false);
+    expect(isLocalPreviewRef("http://tracker.example/px.png?v=1")).toBe(false);
+    expect(isLocalPreviewRef("//cdn.example.net/og.png")).toBe(false);
+    expect(isLocalPreviewRef("data:image/png;base64,iVBORw0KGgo=")).toBe(false);
+    expect(isLocalPreviewRef("media-text:../../etc/passwd")).toBe(false);
+    expect(isLocalPreviewRef("media-text:")).toBe(false);
+    expect(isLocalPreviewRef(undefined)).toBe(false);
+    expect(isLocalPreviewRef("")).toBe(false);
+  });
+
+  it("キーは fileId から導出し、パス区切りを含む fileId は拒否する", () => {
+    // 保存先はデスクトップが <media_dir>/<key>.txt、sidecar が media-text/<key>.txt。
+    // Rust 側はサニタイズしないので、キーの形をここで担保する。
+    expect(previewImageKey("url_1730000000000_abc123")).toBe(
+      "preview_url_1730000000000_abc123",
+    );
+    expect(previewImageRef("url_1730000000000_abc123")).toBe(
+      "media-text:preview_url_1730000000000_abc123",
+    );
+    for (const bad of ["../evil", "a/b", "a\\b", "url:https://x", "a\0b", ""]) {
+      expect(previewImageKey(bad)).toBeNull();
+      expect(previewImageRef(bad)).toBeNull();
+    }
+    // sidecar の safeId（先頭ドット拒否）と Windows のファイル名（":" 不可）を満たす
+    const key = previewImageKey("url_1_a")!;
+    expect(key.startsWith(".")).toBe(false);
+    expect(key).not.toContain(":");
+    expect(previewRefKey(`media-text:${key}`)).toBe(key);
+  });
+
+  it("保存済みの remote な previewImage は読み込み時に落とす（再保存を要求しない）", () => {
+    // 手編集・共有経由・旧バージョンから remote URL が紛れ込んでも、描画側には渡らない
+    const entry = baseUrlEntry({
+      domain: "example.com",
+      previewImage: "https://cdn.example.net/og.png",
+      ogImage: "https://cdn.example.net/og.png",
+      leadImage: "https://tracker.example/px.png?v=visitor",
+    });
+    const normalized = normalizeMediaIndexEntry(entry);
+    expect(normalized).not.toBe(entry);
+    expect(normalized.urlMeta?.previewImage).toBeUndefined();
+    expect("previewImage" in (normalized.urlMeta ?? {})).toBe(false);
+    // ogImage / leadImage は来歴として残す（描画に使う経路がもう無いので害が無い）
+    expect(normalized.urlMeta?.ogImage).toBe("https://cdn.example.net/og.png");
+    expect(normalized.urlMeta?.leadImage).toBe("https://tracker.example/px.png?v=visitor");
+    expect(normalized.urlMeta?.domain).toBe("example.com");
+  });
+
+  it("ローカル参照はそのまま残し、エントリの参照も作り直さない", () => {
+    const entry = baseUrlEntry({
+      domain: "example.com",
+      previewImage: "media-text:preview_url_1730000000000_abc123",
+      previewImageAt: "2026-07-01T00:00:00.000Z",
+      ogImage: "https://cdn.example.net/og.png",
+    });
+    expect(normalizeMediaIndexEntry(entry)).toBe(entry);
+  });
+
+  it("ogImage だけを持つ既存エントリは同一参照のまま（不要な再生成をしない）", () => {
+    const entry = baseUrlEntry({ domain: "example.com", ogImage: "https://cdn.example.net/og.png" });
+    expect(normalizeMediaIndexEntry(entry)).toBe(entry);
+  });
+
+  it("normalizeMediaIndex は remote な previewImage を含むときだけ作り直す", () => {
+    const clean = baseUrlEntry({ domain: "example.com", ogImage: "https://cdn.example.net/og.png" });
+    const dirty = {
+      ...baseUrlEntry({ domain: "evil.example", previewImage: "https://tracker.example/px.png" }),
+      fileId: "url_2",
+    };
+    const index: MediaIndex = {
+      version: CURRENT_MEDIA_INDEX_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [clean, dirty],
+    };
+    const normalized = normalizeMediaIndex(index);
+    expect(normalized).not.toBe(index);
+    expect(normalized.media[0]).toBe(clean);
+    expect(normalized.media[1].urlMeta?.previewImage).toBeUndefined();
+  });
+
+  it("第三者 favicon と remote previewImage が同居していても両方潰す", () => {
+    const entry = baseUrlEntry({
+      domain: "internal.corp.example",
+      faviconUrl: `${"https://www.google.com"}/${["s2", "favicons"].join("/")}?domain=internal.corp.example`,
+      previewImage: "https://tracker.example/px.png",
+    });
+    entry.url = "https://internal.corp.example/doc";
+    const normalized = normalizeMediaIndexEntry(entry);
+    expect(normalized.urlMeta?.faviconUrl).toBe("https://internal.corp.example/favicon.ico");
+    expect(normalized.urlMeta?.previewImage).toBeUndefined();
+  });
+});
+
+describe("persistUrlMetaPatch（previewImage の後追い書き戻し）", () => {
+  const provider = {
+    readAppData: vi.fn(),
+    writeAppData: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (getActiveProvider as any).mockReturnValue(provider);
+  });
+
+  const indexWith = (urlMeta: Record<string, unknown>): MediaIndex => ({
+    version: CURRENT_MEDIA_INDEX_VERSION,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    media: [
+      {
+        fileId: "url_1",
+        name: "Example",
+        type: "url",
+        mimeType: "text/x-uri",
+        url: "https://example.com/article",
+        thumbnailUrl: "",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        usedIn: [],
+        urlMeta: urlMeta as MediaIndexEntry["urlMeta"],
+      },
+    ],
+  });
+
+  it("previewImage / previewImageAt を書き戻して true を返す", async () => {
+    provider.readAppData.mockResolvedValue(indexWith({ domain: "example.com" }));
+    const applied = await persistUrlMetaPatch("url_1", {
+      previewImage: "media-text:preview_url_1",
+      previewImageAt: "2026-07-29T00:00:00.000Z",
+    });
+    expect(applied).toBe(true);
+    const saved = provider.writeAppData.mock.calls[0][1] as MediaIndex;
+    expect(saved.media[0].urlMeta?.previewImage).toBe("media-text:preview_url_1");
+    expect(saved.media[0].urlMeta?.previewImageAt).toBe("2026-07-29T00:00:00.000Z");
+  });
+
+  it("失敗の記録（previewImageAt だけ）も書ける", async () => {
+    provider.readAppData.mockResolvedValue(indexWith({ domain: "example.com" }));
+    const applied = await persistUrlMetaPatch("url_1", {
+      previewImageAt: "2026-07-29T00:00:00.000Z",
+    });
+    expect(applied).toBe(true);
+    const saved = provider.writeAppData.mock.calls[0][1] as MediaIndex;
+    expect(saved.media[0].urlMeta?.previewImageAt).toBe("2026-07-29T00:00:00.000Z");
+    expect(saved.media[0].urlMeta?.previewImage).toBeUndefined();
+  });
+
+  it("値が同じなら書き込まず false を返す", async () => {
+    provider.readAppData.mockResolvedValue(
+      indexWith({
+        domain: "example.com",
+        previewImage: "media-text:preview_url_1",
+        previewImageAt: "2026-07-29T00:00:00.000Z",
+      }),
+    );
+    const applied = await persistUrlMetaPatch("url_1", {
+      previewImage: "media-text:preview_url_1",
+      previewImageAt: "2026-07-29T00:00:00.000Z",
+    });
+    expect(applied).toBe(false);
+    expect(provider.writeAppData).not.toHaveBeenCalled();
+  });
+
+  it("エントリが index に無ければ false（登録直後のレースを呼び出し側が検出できる）", async () => {
+    provider.readAppData.mockResolvedValue(indexWith({ domain: "example.com" }));
+    const applied = await persistUrlMetaPatch("url_missing", {
+      previewImageAt: "2026-07-29T00:00:00.000Z",
+    });
+    expect(applied).toBe(false);
+    expect(provider.writeAppData).not.toHaveBeenCalled();
   });
 });

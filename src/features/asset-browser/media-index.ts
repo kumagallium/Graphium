@@ -77,7 +77,15 @@ export type UrlMeta = {
   domain: string;
   /** 説明文（OGP description 等） */
   description?: string;
-  /** OGP 画像 URL */
+  /**
+   * OGP 画像の URL（取得元の記録）。
+   *
+   * **描画には使わない。** publisher が自由に書ける値で、しかも CDN・計測ドメインを
+   * 指すのが普通なので、そのまま `<img src>` に載せるとカードを描くたびに第三者へ
+   * GET が飛ぶ（favicon で閉じたのと同じ経路が og:image で開いたままだった）。
+   * 実際に描くのは下の `previewImage`（ローカルにキャッシュした実体）だけ。
+   * ここに残すのは「どこから取ったか」の来歴と、キャッシュの取得元としての用途。
+   */
   ogImage?: string;
   /**
    * Reader Mode (PR3-d) で抽出した本文の冒頭抜粋。
@@ -91,11 +99,36 @@ export type UrlMeta = {
    */
   lang?: string;
   /**
-   * Reader Mode で抽出した記事内の代表画像 URL。
-   * publisher 提供の `ogImage` よりも記事固有の hero 画像を優先したい用途。
-   * 表示優先度: leadImage → ogImage → favicon。
+   * Reader Mode で抽出した記事内の代表画像 URL（取得元の記録）。
+   * `ogImage` と同じく**描画には使わない** — キャッシュ元としてだけ使い、
+   * `ogImage` より優先する（記事固有の hero の方が中身を表すため）。
    */
   leadImage?: string;
+  /**
+   * ローカルにキャッシュしたプレビュー画像への参照。**描画に使うのはこれだけ。**
+   *
+   * 形式は `"media-text:<key>"` のみで、http(s) の URL は構造上ここに入らない
+   * （入っていたら normalizeMediaIndexEntry が読み込み時に落とす）。実体は
+   * `provider.loadMediaText(key)` が返す `data:image/...` の data URL で、
+   * バイト列は登録時に一度だけ sidecar の image-proxy 経由で取得している。
+   * 取得・保存できなかった場合は undefined のままで、描画側は favicon に落ちる
+   * （リモート URL には**絶対に**フォールバックしない）。
+   */
+  previewImage?: string;
+  /**
+   * プレビュー画像の取得を最後に試みた時刻（ISO-8601）。
+   * 成功・失敗どちらでも入れて、失敗したブックマークを毎回叩き直さないための間引きに使う。
+   */
+  previewImageAt?: string;
+  /**
+   * サイト自身が `<link rel="icon">` 等で宣言している favicon の絶対 URL。
+   * favicon は第三者サービス（Google の favicon API 等）を一切経由せず、
+   * ブックマーク先のサイトからのみ取得する。fetchUrlMetadata が登録時に拾う。
+   * ページと別オリジンを指す宣言アイコンは保存しない（他所へのビーコンになるため）。
+   * 未取得（旧データ・CORS 失敗・別オリジン）なら undefined で、
+   * `https://<host>/favicon.ico` にフォールバックする。
+   */
+  faviconUrl?: string;
 };
 
 /**
@@ -338,16 +371,26 @@ async function findIndexFileId(): Promise<string | null> {
   return null;
 }
 
-/** ディスク上のインデックスをそのまま読む（キャッシュを見ない） */
+/**
+ * ディスク上のインデックスをそのまま読む（`latestIndex` を見ない）。
+ *
+ * 読んだ内容は normalizeMediaIndex に通す。旧バージョンは第三者 favicon サービスの
+ * URL（クエリにホスト名を載せる形）を thumbnailUrl / urlMeta.faviconUrl として
+ * **永続化していた**ので、コードを直すだけでは既存の素材を表示するたびにそこへ
+ * ホスト名が送られ続ける。ディスクの中身がプロセスに入る経路はここだけなので、
+ * 読み込み側の正規化もここ 1 箇所でよい。
+ */
 async function readStoredMediaIndex(): Promise<MediaIndex | null> {
   const provider = getActiveProvider();
   if (provider.readAppData) {
-    return (await provider.readAppData("media-index")) as MediaIndex | null;
+    const data = (await provider.readAppData("media-index")) as MediaIndex | null;
+    return data ? normalizeMediaIndex(data) : null;
   }
   const fileId = await findIndexFileId();
   if (!fileId) return null;
   const res = await authedFetch(`${DRIVE_API}/files/${fileId}?alt=media`);
-  return res.json();
+  const data = (await res.json()) as MediaIndex | null;
+  return data ? normalizeMediaIndex(data) : null;
 }
 
 /**
@@ -356,6 +399,11 @@ async function readStoredMediaIndex(): Promise<MediaIndex | null> {
  * ディスクと `latestIndex`（保存中のものを含む最新）を突き合わせ、新しい方を返す。
  * ディスクだけを見ると、保存が飛んでいる最中の更新をなかったことにしてしまう。
  * `updatedAt` は全ての更新ヘルパが付け直す ISO-8601 なので、文字列比較で足りる。
+ *
+ * どちらを返す場合も中身は正規化済み: ディスク由来は readStoredMediaIndex が、
+ * `latestIndex` は saveMediaIndex が控える前に normalizeMediaIndex を通している。
+ * キャッシュを返す枝だけ素通しになると、旧データを読んだ直後の保存以降ずっと
+ * 第三者 favicon URL が消費者へ渡り続けることになるため。
  */
 export async function readMediaIndex(): Promise<MediaIndex | null> {
   const stored = await readStoredMediaIndex();
@@ -366,18 +414,26 @@ export async function readMediaIndex(): Promise<MediaIndex | null> {
   return stored;
 }
 
-/** メディアインデックスを保存（新規作成 or 上書き） */
+/**
+ * メディアインデックスを保存（新規作成 or 上書き）。
+ *
+ * 保存するのは normalizeMediaIndex を通した版。`latestIndex` に控えるのも同じ値なので、
+ * readMediaIndex がディスクを飛ばしてキャッシュを返す枝でも第三者 favicon URL や
+ * 非ローカルの previewImage は消費者に渡らない。書き換えるところが無ければ
+ * normalizeMediaIndex は引数のオブジェクトをそのまま返す（同一性は保たれる）。
+ */
 export async function saveMediaIndex(index: MediaIndex): Promise<void> {
+  const normalized = normalizeMediaIndex(index);
   // 書き込みを投げる前に同期的に控える。ここを await の後ろに置くと、
   // 保存を待っている間に読んだ相手が古い土台の上で更新を組み立ててしまう。
-  latestIndex = index;
+  latestIndex = normalized;
   const provider = getActiveProvider();
   if (provider.writeAppData) {
-    await provider.writeAppData("media-index", index);
+    await provider.writeAppData("media-index", normalized);
     return;
   }
   const fileId = await findIndexFileId();
-  const body = JSON.stringify(index);
+  const body = JSON.stringify(normalized);
 
   if (fileId) {
     await authedFetch(`${UPLOAD_API}/files/${fileId}?uploadType=media`, {
@@ -423,20 +479,38 @@ export function addMediaEntry(
   };
 }
 
+/** persistUrlMetaPatch で後追い更新できる urlMeta のフィールド。 */
+export type UrlMetaPatch = Partial<
+  Pick<UrlMeta, "excerpt" | "lang" | "leadImage" | "previewImage" | "previewImageAt">
+>;
+
 /**
  * 既存 URL メディアエントリの urlMeta を partial 更新する（PR3-d Phase 4）。
- * Reader Mode で抽出した excerpt / lang を後追いで書き戻す用途。
+ * Reader Mode で抽出した excerpt / lang / leadImage と、後追いでキャッシュした
+ * previewImage を書き戻す用途。
  *
  * 該当 fileId が無ければ no-op。`type === "url"` 以外のエントリも no-op。
  * 永続化失敗時は warning ログのみで握り潰す（UI 表示には影響しない）。
+ *
+ * @returns 実際にインデックスへ反映できたら true。呼び出し側が「エントリがまだ
+ *          index に載っていなかった」を検出してリトライできるようにするため
+ *          （登録直後の書き戻しは保存レースになり得る）。
  */
 export async function persistUrlMetaPatch(
   fileId: string,
-  patch: Partial<Pick<UrlMeta, "excerpt" | "lang" | "leadImage">>,
-): Promise<void> {
-  if (!patch.excerpt && !patch.lang && !patch.leadImage) return;
+  patch: UrlMetaPatch,
+): Promise<boolean> {
+  if (
+    !patch.excerpt &&
+    !patch.lang &&
+    !patch.leadImage &&
+    !patch.previewImage &&
+    !patch.previewImageAt
+  ) {
+    return false;
+  }
   const index = await readMediaIndex();
-  if (!index) return;
+  if (!index) return false;
   let changed = false;
   const nextMedia = index.media.map((m) => {
     if (m.fileId !== fileId || m.type !== "url") return m;
@@ -448,14 +522,16 @@ export async function persistUrlMetaPatch(
     if (
       m.urlMeta?.excerpt === nextMeta.excerpt &&
       m.urlMeta?.lang === nextMeta.lang &&
-      m.urlMeta?.leadImage === nextMeta.leadImage
+      m.urlMeta?.leadImage === nextMeta.leadImage &&
+      m.urlMeta?.previewImage === nextMeta.previewImage &&
+      m.urlMeta?.previewImageAt === nextMeta.previewImageAt
     ) {
       return m;
     }
     changed = true;
     return { ...m, urlMeta: nextMeta };
   });
-  if (!changed) return;
+  if (!changed) return false;
   const next: MediaIndex = {
     ...index,
     updatedAt: new Date().toISOString(),
@@ -470,8 +546,10 @@ export async function persistUrlMetaPatch(
         new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "urlMeta-patch", fileId } }),
       );
     }
+    return true;
   } catch (err) {
     console.warn("urlMeta 書き戻し失敗:", err);
+    return false;
   }
 }
 
@@ -1098,9 +1176,299 @@ export function extractDomain(url: string): string {
   }
 }
 
-/** Google Favicon サービスで favicon URL を取得 */
-export function getFaviconUrl(domain: string, size = 64): string {
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
+// ── favicon（第三者サービスを使わない） ──
+//
+// favicon はブックマーク先のサイト自身からのみ取得する。第三者の favicon API に
+// 投げると、社内ホストやサブドメインに含まれるプロジェクトのコードネームまで
+// 「ブックマークカードを描画しただけ」で外部に送られてしまうため。
+// 解決順: サイトが宣言したアイコン (<link rel="icon">) → `https://<host>/favicon.ico`。
+//
+// ここで言う「サイト自身」はページとスキーム・ホスト・ポートまで一致するオリジンを指す。
+// 宣言アイコンはページの HTML から読む値、つまりブックマーク先が自由に書ける値なので、
+// 素通しすると他所を指すアイコン URL をそのまま保存・描画してしまう。別オリジンを
+// 指す宣言アイコンは捨て、`<origin>/favicon.ico` に落とす（判定は sanitizeIconUrl）。
+
+/**
+ * 旧実装が保存していた第三者 favicon サービス（Google の favicon API）の
+ * ホストとパス接頭辞。既存データの検出だけに使い、新規に組み立てることはない。
+ */
+const THIRD_PARTY_FAVICON_HOSTS = new Set(["www.google.com", "google.com"]);
+const THIRD_PARTY_FAVICON_PATH_PREFIX = "/s2/";
+
+/** 第三者 favicon サービスの URL か（旧データ判定用） */
+export function isThirdPartyFaviconUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return (
+      THIRD_PARTY_FAVICON_HOSTS.has(u.hostname) &&
+      u.pathname.startsWith(THIRD_PARTY_FAVICON_PATH_PREFIX)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * favicon の取得元オリジンを求める。`"example.com"` でも
+ * `"http://internal.example:8080/path"` でも受ける。
+ * スキーム省略時は https を仮定し、ポートは保持する（社内ホスト対策）。
+ * 取り出せなければ空文字（呼び出し側は favicon を出さない）。
+ */
+function faviconOrigin(domainOrUrl: string | null | undefined): string {
+  const raw = (domainOrUrl ?? "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    return u.origin;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * アイコン URL として安全に使える形に正す。
+ * 許可するのは data:image と、`pageUrlOrOrigin` と同一オリジンの http(s) だけ。
+ *
+ * 別オリジンを弾くのは、宣言アイコンがページ側の書き放題の値だから。
+ * `<link rel="icon" href="https://tracker.example/px.png?v=訪問者ID">` のような
+ * アイコンを通すと、ブックマークを描画するたびに第三者へ訪問者 ID 付きの
+ * ビーコンが飛ぶ。置き換えたはずの第三者 favicon サービスより、URL を相手が
+ * 選べる分たちが悪い。
+ * 同一オリジン判定はスキーム・ホスト・ポートの完全一致にする。登録可能ドメイン
+ * 単位（CDN 相乗り許容）にするには public suffix list が要るうえ、CDN 配信の
+ * アイコンが弾かれても `<origin>/favicon.ico` に落ちるだけで実害が無い。
+ * data:image はインラインで通信が起きないのでオリジンに関係なく許可する。ただし
+ * 値は media-index に保存され共有ストレージにも乗るので、favicon には過大な
+ * サイズを弾く（相手ページが書き放題の値である以上、保存量の増幅も入力側で止める）。
+ * 旧 Google favicon API は保存済みの値から復活させないよう明示的に弾く
+ * （同一オリジン判定でもまず落ちるが、判定順に依らないようにしておく）。
+ */
+/** data:image の受け入れ上限。favicon 用途には十分で、保存量の増幅を防ぐ。 */
+const MAX_DATA_ICON_LENGTH = 64 * 1024;
+
+function sanitizeIconUrl(
+  url: string | null | undefined,
+  pageUrlOrOrigin: string | null | undefined,
+): string {
+  const raw = (url ?? "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("data:image/")) {
+    return raw.length <= MAX_DATA_ICON_LENGTH ? raw : "";
+  }
+  if (isThirdPartyFaviconUrl(raw)) return "";
+  const pageOrigin = faviconOrigin(pageUrlOrOrigin);
+  if (!pageOrigin) return ""; // 比較相手が判らない → 通さない
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    if (u.origin !== pageOrigin) return "";
+    // URL.origin は userinfo を含まないので、`https://user:pass@host/icon.png` は
+    // 同一オリジン判定を通ってしまう。そのまま返すと資格情報が media-index に
+    // 保存され共有ストレージにも乗るため、ここで落とす。
+    u.username = "";
+    u.password = "";
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * favicon の候補 URL を優先度順に返す。すべてブックマーク先のサイト自身を指す。
+ * 1. サイトが宣言したアイコン（urlMeta.faviconUrl）。origin と同一オリジンのときだけ
+ * 2. 慣習的な `<origin>/favicon.ico`
+ * どちらも作れなければ空配列（= favicon を描画しない）。
+ *
+ * 宣言アイコンをここでも検証するのは、この修正より前に保存された
+ * urlMeta.faviconUrl に別オリジンの値が残り得るため（描画側の最後の関門）。
+ *
+ * origin は `pageUrl`（ブックマーク先のフル URL）があればそちらから取る。
+ * `domain` は extractDomain 由来の hostname だけでスキームとポートが落ちており、
+ * `http://internal.example:8080/wiki` のような社内ホストでは
+ * `https://internal.example/favicon.ico`（別ホスト）を指してしまうため。
+ * フル URL が判らない呼び出し（旧データの domain しか無い等）では従来どおり
+ * domain から https を仮定して組み立てる。
+ */
+export function buildFaviconCandidates(
+  domain: string,
+  declaredUrl?: string,
+  pageUrl?: string,
+): string[] {
+  const candidates: string[] = [];
+  const origin = faviconOrigin(pageUrl) || faviconOrigin(domain);
+  const declared = sanitizeIconUrl(declaredUrl, origin);
+  if (declared) candidates.push(declared);
+  if (origin) {
+    const conventional = `${origin}/favicon.ico`;
+    if (!candidates.includes(conventional)) candidates.push(conventional);
+  }
+  return candidates;
+}
+
+/**
+ * favicon URL を返す。第三者サービスは一切使わない。
+ *
+ * @param domain      ホスト名（URL 文字列でも可）
+ * @param _size       旧 Google favicon API のサイズ指定。呼び出し側の互換のため
+ *                    引数は残すが未使用（サイト自身の favicon にサイズ指定の口は無い）
+ * @param declaredUrl サイトが宣言したアイコン URL（urlMeta.faviconUrl）。
+ *                    ページと同一オリジンならこちらを優先、別オリジンなら捨てる
+ * @param pageUrl     ブックマーク先のフル URL。判るなら渡す（スキーム・ポートの保持用）
+ * @returns 候補が無ければ空文字。`<img src="">` は自ページを再取得してしまうので、
+ *          呼び出し側は空文字なら img を描画しないこと（Favicon コンポーネント推奨）
+ */
+export function getFaviconUrl(
+  domain: string,
+  _size = 64,
+  declaredUrl?: string,
+  pageUrl?: string,
+): string {
+  return buildFaviconCandidates(domain, declaredUrl, pageUrl)[0] ?? "";
+}
+
+/**
+ * 保存済みデータに残っている第三者 favicon URL をサイト自身の favicon に書き換える。
+ *
+ * 旧実装は Google の favicon API の URL（クエリにホスト名を載せる形）を thumbnailUrl
+ * として**永続化していた**ため、コードを直すだけでは既存ノート・既存 media-index を
+ * 開くたびに Google へホスト名が送られ続ける。読み込み時にここで潰す。
+ * 第三者 URL でなければそのまま返す。
+ */
+export function normalizeFaviconUrl(url: string): string {
+  if (!isThirdPartyFaviconUrl(url)) return url;
+  let origin = "";
+  try {
+    const params = new URL(url).searchParams;
+    // 旧 API は domain=<ホスト名> / domain_url=<URL> のどちらの形もあり得る
+    origin = faviconOrigin(params.get("domain") || params.get("domain_url") || "");
+  } catch {
+    // 復元不能 → 第三者 URL を残すより空にする
+  }
+  return origin ? `${origin}/favicon.ico` : "";
+}
+
+// ── プレビュー画像のローカル参照 ──
+//
+// og:image / leadImage は publisher が自由に書ける remote URL なので、描画に使うと
+// カードを描くたびに第三者へ GET が飛ぶ。登録時に一度だけバイト列を取り込んで
+// media-text チャネル（provider.saveMediaText）に data URL として置き、
+// urlMeta.previewImage にはその**ローカル参照だけ**を保存する。
+// 「remote URL が紛れ込まないこと」は文字列の形で保証する — 接頭辞が違えば描画側は
+// 読まないし、normalizeMediaIndexEntry が読み込み時に落とす。
+
+/** urlMeta.previewImage に許すただ一つの形式。 */
+export const PREVIEW_IMAGE_REF_PREFIX = "media-text:";
+
+/**
+ * media-text のキーに付ける接頭辞。
+ *
+ * `:` を含めないのは Windows のファイル名で `name:stream`（代替データストリーム）と
+ * 解釈されるため。保存先はデスクトップが `<media_dir>/<key>.txt`、sidecar が
+ * `<DATA_DIR>/media-text/<key>.txt` で、どちらもキーをそのままファイル名に使う。
+ *
+ * 実メディア ID（crypto.randomUUID）とは接頭辞で必ず食い違うので、IndexedDB 版
+ * （local.ts の `store.put({ id, textContent })` はレコードを丸ごと置き換える）でも
+ * 画像バイナリのレコードを踏み潰す事故は起きない。
+ */
+const PREVIEW_TEXT_KEY_PREFIX = "preview_";
+
+/**
+ * キーに許す文字。sidecar の safeId（`/` `\` `\0` 先頭 `.` を拒否）と
+ * Rust 側（サニタイズ無しで `join(format!("{file_id}.txt"))`）の両方を満たすよう、
+ * 英数字とハイフン・アンダースコアだけに絞る。URL ブックマークの fileId は
+ * `url_<epoch>_<rand>` なので通る。通らない fileId ならキャッシュ自体を諦める。
+ */
+const SAFE_PREVIEW_KEY_RE = /^[A-Za-z0-9_-]{1,120}$/;
+
+/** fileId から media-text のキーを作る。使えない fileId なら null。 */
+export function previewImageKey(fileId: string): string | null {
+  if (!fileId) return null;
+  const key = `${PREVIEW_TEXT_KEY_PREFIX}${fileId}`;
+  return SAFE_PREVIEW_KEY_RE.test(key) ? key : null;
+}
+
+/** fileId から urlMeta.previewImage に保存する参照文字列を作る。使えない fileId なら null。 */
+export function previewImageRef(fileId: string): string | null {
+  const key = previewImageKey(fileId);
+  return key ? `${PREVIEW_IMAGE_REF_PREFIX}${key}` : null;
+}
+
+/**
+ * urlMeta.previewImage がローカル参照として妥当か。
+ * http(s) / data: / プロトコル相対のいずれも false を返す（＝描画されない）。
+ */
+export function isLocalPreviewRef(value: string | null | undefined): boolean {
+  return previewRefKey(value) !== null;
+}
+
+/** ローカル参照から media-text のキーを取り出す。妥当でなければ null。 */
+export function previewRefKey(value: string | null | undefined): string | null {
+  if (typeof value !== "string" || !value.startsWith(PREVIEW_IMAGE_REF_PREFIX)) return null;
+  const key = value.slice(PREVIEW_IMAGE_REF_PREFIX.length);
+  // 接頭辞だけ（= fileId が空）も弾く
+  if (key.length <= PREVIEW_TEXT_KEY_PREFIX.length) return null;
+  if (!key.startsWith(PREVIEW_TEXT_KEY_PREFIX)) return null;
+  return SAFE_PREVIEW_KEY_RE.test(key) ? key : null;
+}
+
+/** MediaIndexEntry 1 件を読み込み時に正規化する（第三者 favicon URL・remote プレビューの除去）
+ *
+ *  index は型無しの JSON として読むので、TypeScript 上は必須の thumbnailUrl が
+ *  実データに無いこともある。「書き換えが要るか」の判定は値の比較ではなく
+ *  isThirdPartyFaviconUrl（旧データ検出そのもの）で行い、書き換えが不要なら
+ *  元の参照をそのまま返す。値比較にすると欠けたキーを "" に正規化した瞬間
+ *  毎回 !== になり、readMediaIndex のたびに新しいオブジェクトを配って
+ *  useMemo / React.memo の同一性キャッシュを全部無効化してしまう。
+ *  同じ理由で、保存データに無かった thumbnailUrl キーをここで生やさない
+ *  （生やすと次の保存で "" が永続化されてしまう）。
+ *
+ *  previewImage も同じ扱いにする。設計上 remote URL は入らないが、手編集・共有経由・
+ *  旧バージョンからの混入に備えて「ローカル参照でなければ落とす」を読み込み時に通す
+ *  （描画側の最後の関門は sanitizeIconUrl と同じ思想）。
+ *  ogImage / leadImage は来歴として残す — 描画に使う経路がもう無いので、
+ *  ここで消さなくてもビーコンにはならない。 */
+export function normalizeMediaIndexEntry(entry: MediaIndexEntry): MediaIndexEntry {
+  const storedFavicon = entry.urlMeta?.faviconUrl;
+  const storedPreview = entry.urlMeta?.previewImage;
+  const thumbIsLegacy = isThirdPartyFaviconUrl(entry.thumbnailUrl);
+  const faviconIsLegacy = isThirdPartyFaviconUrl(storedFavicon);
+  // undefined はそのまま（キーを生やさない）。値があってローカル参照でなければ落とす。
+  const previewIsForeign = storedPreview !== undefined && !isLocalPreviewRef(storedPreview);
+  if (!thumbIsLegacy && !faviconIsLegacy && !previewIsForeign) return entry;
+  const next: MediaIndexEntry = { ...entry };
+  if (thumbIsLegacy) next.thumbnailUrl = normalizeFaviconUrl(entry.thumbnailUrl);
+  if (entry.urlMeta && (faviconIsLegacy || previewIsForeign)) {
+    const {
+      faviconUrl: legacyFavicon,
+      previewImage: _foreignPreview,
+      ...restMeta
+    } = entry.urlMeta;
+    const nextMeta: UrlMeta = { ...restMeta };
+    // faviconUrl は復元可能なら書き換え、不能なら（第三者 URL を残さないため）落とす
+    if (faviconIsLegacy) {
+      const restored = normalizeFaviconUrl(storedFavicon!);
+      if (restored) nextMeta.faviconUrl = restored;
+    } else if (legacyFavicon !== undefined) {
+      nextMeta.faviconUrl = legacyFavicon;
+    }
+    // previewImage は「ローカルに実体がある」以外の意味を持たないので復元はしない
+    if (!previewIsForeign && storedPreview !== undefined) nextMeta.previewImage = storedPreview;
+    next.urlMeta = nextMeta;
+  }
+  return next;
+}
+
+/**
+ * メディアインデックス全体を読み込み時に正規化する。
+ * 変更が無ければ元のオブジェクトをそのまま返す（無駄な再レンダーを避ける）。
+ */
+export function normalizeMediaIndex(index: MediaIndex): MediaIndex {
+  if (!Array.isArray(index?.media)) return index;
+  const media = index.media.map(normalizeMediaIndexEntry);
+  const changed = media.some((m, i) => m !== index.media[i]);
+  return changed ? { ...index, media } : index;
 }
 
 /**
@@ -1154,12 +1522,69 @@ export function buildUrlPeekEntry(
   };
 }
 
-/** URL のメタデータを取得（OGP タイトル・説明・画像）
+/**
+ * `<link rel="...">` の rel からアイコンとしての優先度を返す（小さいほど優先）。
+ * アイコンでない rel は undefined。`rel="mask-icon"` は単色マスク用なので対象外。
+ */
+function iconRelRank(rel: string): number | undefined {
+  const tokens = rel.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.includes("icon")) return tokens.includes("shortcut") ? 1 : 0;
+  if (tokens.includes("apple-touch-icon")) return 2;
+  if (tokens.includes("apple-touch-icon-precomposed")) return 3;
+  return undefined;
+}
+
+/**
+ * ページが自分で宣言している favicon（`<link rel="icon" | "shortcut icon" |
+ * "apple-touch-icon">`）を絶対 URL で取り出す。第三者 favicon サービスを
+ * 使わないための土台。
+ *
+ * DOMParser で作った Document の baseURI はアプリ自身になるため、`link.href`
+ * （解決済みプロパティ）は使えない。生の href 属性を取り、ページの `<base href>`
+ * → ページ URL の順で解決する。
+ *
+ * 同一オリジン判定（sanitizeIconUrl）の基準は解決に使った `<base href>` ではなく
+ * ページ URL そのもの。`<base href="https://tracker.example/">` を置くだけで
+ * アイコンの取得先を他所にすげ替えられてしまうため。
+ */
+function extractDeclaredIconUrl(doc: Document, pageUrl: string): string | undefined {
+  let base = pageUrl;
+  const baseHref = doc.querySelector("base[href]")?.getAttribute("href");
+  if (baseHref) {
+    try {
+      base = new URL(baseHref, pageUrl).toString();
+    } catch {
+      // <base href> が不正 → ページ URL をそのまま基準にする
+    }
+  }
+
+  let best: { rank: number; url: string } | undefined;
+  for (const link of Array.from(doc.querySelectorAll("link[rel]"))) {
+    const rank = iconRelRank(link.getAttribute("rel") ?? "");
+    if (rank === undefined) continue;
+    const href = link.getAttribute("href")?.trim();
+    if (!href) continue;
+    let absolute: string;
+    try {
+      absolute = new URL(href, base).toString();
+    } catch {
+      continue;
+    }
+    const safe = sanitizeIconUrl(absolute, pageUrl);
+    if (!safe) continue;
+    if (!best || rank < best.rank) best = { rank, url: safe };
+  }
+  return best?.url;
+}
+
+/** URL のメタデータを取得（OGP タイトル・説明・画像 + サイト宣言の favicon）
  *  CORS エラー等で取得できない場合はドメイン名のみ返す */
 export async function fetchUrlMetadata(url: string): Promise<{
   title: string;
   description?: string;
   ogImage?: string;
+  /** サイトが `<link rel="icon">` 等で宣言している favicon の絶対 URL */
+  faviconUrl?: string;
   domain: string;
 }> {
   const domain = extractDomain(url);
@@ -1181,7 +1606,8 @@ export async function fetchUrlMetadata(url: string): Promise<{
       doc.querySelector('meta[name="description"]')?.getAttribute("content") ||
       undefined;
     const ogImage = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || undefined;
-    return { title, description, ogImage, domain };
+    const faviconUrl = extractDeclaredIconUrl(doc, url);
+    return { title, description, ogImage, faviconUrl, domain };
   } catch {
     // CORS やネットワークエラー → ドメイン名のみ
     return { title: domain, domain };

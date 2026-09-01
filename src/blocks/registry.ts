@@ -19,6 +19,11 @@ import { calcBlock } from "./calc";
 import { columnListBlock, columnBlock } from "./multi-column";
 import { sharedCitationBlock } from "./shared-citation";
 
+// この配列に載せるのは「BlockNote が知らないブロック型」だけ。
+// 標準型（image / video / audio）の spec 差し替えはここに置かない —— 外部メディア
+// ゲートの差し替えは base/editor.tsx が schema を組む所で標準 spec に被せている
+// （blocks/remote-content）。ここに混ぜると markdown.ts の変換レジストリと
+// CUSTOM_BLOCK_TYPES が「標準型なのにカスタム扱い」になってしまう。
 export const customBlockEntries: CustomBlockEntry[] = [
   pdfViewerBlock,
   bookmarkBlock,

@@ -61,6 +61,16 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # pnpm build が scripts/fetch-fonts.mjs 経由で日本語 Web フォント（約 8MB）を
+      # 取得する。CDN 側の一時的な失敗で Pages のデプロイが落ちないようキャッシュする。
+      # キー / restore-keys の方針は test.yml の同ステップのコメント参照。
+      - name: Cache Japanese webfonts
+        uses: actions/cache@v4
+        with:
+          path: public/fonts/jp
+          key: jp-fonts-${{ runner.os }}-${{ hashFiles('scripts/fetch-fonts.mjs') }}
+
       - run: pnpm build
 
       # ユーザーマニュアル（VitePress）を /Graphium/manual/ 配下として同梱する

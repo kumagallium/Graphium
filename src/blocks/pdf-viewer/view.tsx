@@ -8,6 +8,26 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import "../../lib/pdfjs-config";
 // BlockNote のブロック render は React ツリー外でも呼ばれ得るため、Context 不要の t を使う
 import { t, useLocaleSubscription } from "../../i18n";
+import { isLocalMediaRef, remoteRefHost } from "../../features/asset-browser/local-media-ref";
+import {
+  allowRemoteContentFor,
+  editorRemoteScope,
+  useBlockedRemoteBlock,
+  useRemoteContentAllowed,
+} from "../remote-content/store";
+
+/**
+ * プロバイダの fileId 抽出を描画中に呼ぶための安全版。
+ * getActiveProvider() はプロバイダ未設定だと throw するが、描画のたびに落とすほどの
+ * ことではない。取れなければ null（＝プロバイダ由来ではない）として扱う。
+ */
+function safeExtractFileId(url: string): string | null {
+  try {
+    return getActiveProvider().extractFileId(url);
+  } catch {
+    return null;
+  }
+}
 
 export const PdfViewerBlock = createReactBlockSpec(
   {
@@ -31,9 +51,21 @@ export const PdfViewerBlock = createReactBlockSpec(
       const [blobUrl, setBlobUrl] = useState<string | null>(null);
       const [loading, setLoading] = useState(false);
 
+      // 外部ホストの PDF は、ノートを開いただけでは取りに行かない。
+      // <Document file={url}> は pdf.js がその URL を取りに行くので、image ブロックと
+      // 同じく「開いた＝差出人に通知」になる。判定は「プロバイダ由来か」ではなく
+      // ローカル参照かどうかで行う（blob: の PDF を壊さないため）。
+      // プロバイダを取れない状況（未設定）では取れない側＝外部扱いに倒す。
+      const scope = editorRemoteScope(props.editor);
+      const remoteAllowed = useRemoteContentAllowed(scope);
+      const isRemote =
+        Boolean(url) && !isLocalMediaRef(url) && !safeExtractFileId(url);
+      const gated = isRemote && !remoteAllowed;
+      useBlockedRemoteBlock(scope, props.block.id, gated);
+
       // Google Drive URL → Blob URL に変換（CORS 回避）
       useEffect(() => {
-        if (!url) return;
+        if (!url || gated) return;
         const fileId = getActiveProvider().extractFileId(url);
         if (!fileId) {
           // Drive URL でなければそのまま使用（ローカル blob URL など）
@@ -53,7 +85,7 @@ export const PdfViewerBlock = createReactBlockSpec(
             if (!cancelled) setLoading(false);
           });
         return () => { cancelled = true; };
-      }, [url]);
+      }, [url, gated]);
 
       const onDocumentLoadSuccess = useCallback(
         ({ numPages: total }: { numPages: number }) => {
@@ -76,6 +108,29 @@ export const PdfViewerBlock = createReactBlockSpec(
             <div style={styles.placeholderText}>
               {t("block.pdf.placeholder")}
             </div>
+          </div>
+        );
+      }
+
+      // 外部ホストの PDF をまだ読み込んでいない状態。押すとこのノートの分だけ読み込む。
+      if (gated) {
+        const host = remoteRefHost(url);
+        return (
+          <div
+            style={{ ...styles.placeholder, cursor: "pointer" }}
+            role="button"
+            tabIndex={0}
+            contentEditable={false}
+            onClick={() => allowRemoteContentFor(scope)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); allowRemoteContentFor(scope); }
+            }}
+          >
+            <div style={styles.placeholderIcon}>📄</div>
+            <div style={styles.placeholderText}>
+              {host ? `${t("block.remoteContent.pdf")} — ${host}` : t("block.remoteContent.pdf")}
+            </div>
+            <div style={styles.placeholderText}>{t("block.remoteContent.why")}</div>
           </div>
         );
       }
@@ -158,6 +213,27 @@ export const PdfViewerBlock = createReactBlockSpec(
             </Document>
           </div>
         </div>
+      );
+    },
+    /**
+     * 書き出し・コピー用の HTML。
+     *
+     * createReactBlockSpec は toExternalHTML を渡さないと render に落ちる
+     * （ReactBlockSpec.tsx の `blockImplementation.toExternalHTML || blockImplementation.render`）。
+     * 落ちた先はゲートの分岐を持つビューア本体なので、ブロック中のノートを書き出すと
+     * 枠の文言（「PDF — <host>」等）が本文に入り、URL は残らなかった。bookmark と同じ形で
+     * props だけから組み立て、**ゲートの分岐を持たない**。ブロック中でも同意済みでも
+     * 同じ HTML になる。作るのは `<a>` と `<p>` だけなので、書き出し自体が要求を出さない。
+     * ゲートが変えてよいのは「何を取りに行くか」だけで、「何が書き出されるか」ではない。
+     */
+    toExternalHTML: (props) => {
+      const { url, name } = props.block.props;
+      // URL 未設定のブロックは書き出す中身を持たない
+      if (!url) return <p />;
+      return (
+        <p>
+          <a href={url}>{name || url}</a>
+        </p>
       );
     },
   },

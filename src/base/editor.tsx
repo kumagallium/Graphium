@@ -65,7 +65,7 @@ import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items"
 import { NodeSelection } from "prosemirror-state";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
-import { FC, useCallback, useEffect, useMemo, useRef } from "react";
+import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
@@ -85,6 +85,8 @@ import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-aut
 import { stepTitleEnterExtension } from "../blocks/step/step-title-enter";
 import { columnResizeExtension } from "../blocks/multi-column/column-resize";
 import { dropToColumnsExtension, columnDropCursorPosition } from "../blocks/multi-column/drop-to-columns";
+import { gatedMediaBlockEntries } from "../blocks/remote-content/gated-media-spec";
+import { setEditorRemoteScope } from "../blocks/remote-content/store";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
 
 type SandboxEditorProps = {
@@ -110,8 +112,17 @@ type SandboxEditorProps = {
    * タイトルは表示言語で変わるため、言語に依存しないキーで指定する。
    */
   excludeDefaultSlashKeys?: string[];
-  /** エディタインスタンスを外部に公開するコールバック */
+  /**
+   * エディタインスタンスを外部に公開するコールバック（useEffect で呼ぶ＝描画後）。
+   * 受け手は setState や DOM リスナー登録まで行うので、描画前には走らせられない。
+   * 「いま画面にあるのはどれか」を非同期処理から見たい場合は liveEditorRef を使う。
+   */
   onEditorReady?: (editor: any) => void;
+  /**
+   * いま画面にあるエディタインスタンスを入れる ref（無ければ null）。
+   * onEditorReady より早く、コミット中（useLayoutEffect）に差し替える。
+   */
+  liveEditorRef?: MutableRefObject<any>;
   /** エディタの内容が変更されたときのコールバック */
   onChange?: () => void;
   /** メディアファイルアップロードハンドラ（File → URL を返す） */
@@ -124,6 +135,15 @@ type SandboxEditorProps = {
   getMentionSuggestions?: (query: string) => import("@features/block-link/mention-menu").ReferenceSuggestion[];
   /** 読み取り専用モード（アーカイブ済みノートの閲覧などで使う） */
   editable?: boolean;
+  /**
+   * 外部メディアの読み込み同意をまとめる単位（blocks/remote-content/store.ts の
+   * useRemoteContentScope が採番する、この本文を開いている 1 回分の値）。
+   * ノートの識別子ではない —— 未保存のノートに自動保存で ID が付いても、
+   * エディタが key で作り直されても、同じ本文を開いている限り変わらない。
+   * blocks/remote-content のゲートがブロック描画時に読む。渡さないエディタは
+   * scope が空になり、外部 URL のメディアは常にブロック側に倒れる。
+   */
+  remoteContentScope?: string;
 };
 
 // サンドボックス共通エディタ
@@ -724,6 +744,17 @@ function insertCellImagesFromFiles(
   return true;
 }
 
+/**
+ * 外部メディアゲートを被せた image / video / audio の spec（型名 → spec）。
+ *
+ * 標準 spec を包み直したもので、ブロック型もプロップも標準のまま。URL がローカル
+ * 参照でない間は標準 render を呼ばない（＝その URL が DOM に載る経路が無い）。
+ * 詳細は blocks/remote-content/gated-media-spec.ts。
+ */
+const gatedMediaSpecs = Object.fromEntries(
+  gatedMediaBlockEntries.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec]),
+);
+
 export function SandboxEditor({
   blocks = [],
   initialContent,
@@ -732,12 +763,14 @@ export function SandboxEditor({
   extraSlashMenuItems,
   excludeDefaultSlashKeys,
   onEditorReady,
+  liveEditorRef,
   onChange,
   uploadFile,
   resolveFileUrl,
   onMentionSelect,
   getMentionSuggestions,
   editable = true,
+  remoteContentScope,
 }: SandboxEditorProps) {
   const customSpecs = Object.fromEntries(
     blocks.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec])
@@ -749,6 +782,12 @@ export function SandboxEditor({
       codeBlock: lightCodeBlock,
       heading: plainHeading,
       ...customSpecs,
+      // 外部メディアゲートは customSpecs の後に置く。ここが本文を描画する唯一の入口
+      // （note-app / SidePeek / SharedLibraryView / stories はいずれも SandboxEditor を
+      // 通る）なので、blocks に何を渡すかに関わらず標準メディア spec は必ず差し替わる。
+      // registry.ts の customBlockEntries 側に置くと、呼び出し側が独自の配列を渡した
+      // ときに取りこぼす。
+      ...gatedMediaSpecs,
     } as any,
     // インライン数式（$...$）を本文中の要素として持てるようにする。
     // 未登録のまま保存済みノートを開くと BlockNote が未知 inline で throw するため、
@@ -1015,6 +1054,37 @@ export function SandboxEditor({
     window.addEventListener("dragstart", onWindowDragStart, false);
     return () => window.removeEventListener("dragstart", onWindowDragStart, false);
   }, []);
+
+  // 外部メディアゲートの scope をエディタに刻む。
+  // ブロックの render は editor しか受け取らないので、同意の単位（scope）は
+  // インスタンスに載せて運ぶ。effect ではなくレンダー本体で代入するのは、
+  // effect は最初のブロック描画より後に走り、その 1 回を取りこぼすため。
+  setEditorRemoteScope(editor, remoteContentScope);
+
+  // いま画面にあるインスタンスを、作り直しのコミット中に公開する。
+  //
+  // このエディタは呼び出し側の key で丸ごと作り直されることがある（note-app.tsx の
+  // key={fileId || "new"} は、未採番のノートに自動保存で id が付いた瞬間に変わる）。
+  // 下の onEditorReady は passive effect なので、そのコミットの直後・effect が走る前の
+  // 一瞬だけ、受け手の ref は捨てられた前のインスタンスを指したままになる。その隙に
+  // 解決した非同期処理（外部画像のローカル取り込み）が書き戻すと、getBlock も
+  // updateBlock も成功するのに、誰も見ていない document に書いて消える。
+  // useLayoutEffect はコミットの中で走るので、その隙が無い。
+  //
+  // onEditorReady 自体をここへ移さないのは、あれが「エディタが用意できた」の共有の口で、
+  // 受け手（note-app / SidePeek）が setState やリスナーの貼り直しまで積んでいるため。
+  // 描画前に走らせるとエディタを作るたびに同期の再レンダーを挟むことになる。
+  // 書き戻し先の判定に要るのは ref の差し替え 1 行なので、そこだけ先に走らせる。
+  useLayoutEffect(() => {
+    if (!liveEditorRef) return;
+    liveEditorRef.current = editor;
+    return () => {
+      // 作り直しは「前のツリーの後始末 → 新しいツリーの layout effect」の順なので、
+      // ここで null にしても新しい行き先が消えることはない。
+      // エディタが画面から消えたときだけ null が残る（＝書き戻し先が無い）。
+      if (liveEditorRef.current === editor) liveEditorRef.current = null;
+    };
+  }, [editor, liveEditorRef]);
 
   // エディタインスタンスを外部に公開
   useEffect(() => {

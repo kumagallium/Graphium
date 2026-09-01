@@ -5,13 +5,16 @@
 
 import { ExternalLink } from "lucide-react";
 import { useT } from "../../i18n";
-import { getFaviconUrl, type MediaIndexEntry } from "./media-index";
+import { type MediaIndexEntry } from "./media-index";
+import { usePreviewImage } from "./preview-image";
+import { Favicon } from "./favicon";
 
 export function UrlPreviewCard({ entry }: { entry: MediaIndexEntry }) {
   const t = useT();
   const domain = entry.urlMeta?.domain ?? "";
-  // 表示優先度: leadImage (Reader 抽出) → ogImage (publisher 提供) → favicon
-  const hero = entry.urlMeta?.leadImage || entry.urlMeta?.ogImage;
+  // hero はローカルにキャッシュした data URL だけ。og:image / leadImage の remote URL は
+  // 描画に使わない（カードを描くたびに配信元へ GET が飛ぶため）。無ければ favicon。
+  const hero = usePreviewImage(entry);
   return (
     <div className="flex flex-col items-center justify-center gap-4 max-w-sm text-center px-6">
       {hero ? (
@@ -22,14 +25,7 @@ export function UrlPreviewCard({ entry }: { entry: MediaIndexEntry }) {
           referrerPolicy="no-referrer"
         />
       ) : (
-        <img
-          src={getFaviconUrl(domain, 128)}
-          alt=""
-          className="w-16 h-16 rounded"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
+        <Favicon domain={domain} url={entry.url} iconUrl={entry.urlMeta?.faviconUrl} className="w-16 h-16 rounded" />
       )}
       <div className="space-y-1">
         <p className="text-sm font-medium text-foreground">{entry.name}</p>

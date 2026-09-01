@@ -1547,6 +1547,9 @@ export const en: Record<string, string> = {
   "settings.about.version": "Version",
   "settings.about.updates": "Updates",
   "settings.about.autoCheckNote": "Graphium checks for updates automatically on launch and every 24 hours. You can also check manually below.",
+  "settings.about.autoCheckDisabledNote": "Automatic update checks are off. Use the button below to check manually.",
+  "settings.about.autoCheckToggle": "Check for updates automatically",
+  "settings.about.autoCheckToggleHelp": "When on, Graphium contacts the update server on launch and every 24 hours. Turn it off and Graphium never connects on its own — but you will get no automatic notification of security updates, so check manually with the button below.",
   "settings.about.webNote": "Update checks are only available in the desktop app.",
   "settings.about.checkNow": "Check for updates",
   "settings.about.checking": "Checking...",
@@ -1554,6 +1557,28 @@ export const en: Record<string, string> = {
   "settings.about.available": "Graphium {version} is available",
   "settings.about.checkFailed": "Failed to check for updates",
   "settings.about.unsupported": "Update checks are not available in this environment",
+
+  // ── Remote media in note bodies (what goes out when you open a note) ──
+  "settings.about.privacy": "Privacy",
+  "settings.about.remoteContentToggle": "Always load remote media in notes",
+  "settings.about.remoteContentToggleHelp": "When off (the default), image, video, audio and PDF blocks that point at another site are not fetched when you open a note. They load only after you press \"Load remote images\" for that note. Turn it on and Graphium contacts those URLs as soon as the note opens, which tells whoever wrote the URL your IP address and the moment you opened it. Images you paste yourself are copied onto your device at paste time, so they show up either way.",
+
+  // ── Remote media: per-note bar and block placeholders ──
+  "note.remoteContent.blocked": "This note has {count} item(s) from other sites that have not been loaded",
+  "note.remoteContent.load": "Load remote images",
+  "note.remoteContent.loadHint": "Load the remote media in this note (applies to this note, until you restart the app)",
+  "block.remoteContent.image": "Image from another site",
+  "block.remoteContent.video": "Video from another site",
+  "block.remoteContent.audio": "Audio from another site",
+  "block.remoteContent.pdf": "PDF from another site",
+  "block.remoteContent.why": "Not fetched just because you opened this note. Click to load it.",
+  "block.remoteContent.action": "Load",
+  "pdfExport.remoteMediaOmitted": "Media from another site (not loaded, so not included in the PDF)",
+
+  // ── Copying pasted remote images onto this device ──
+  "remoteImport.running": "Copying remote images…",
+  "remoteImport.done": "Copied {count} image(s) onto this device",
+  "remoteImport.failed": "Could not copy {count} image(s) (left as remote images)",
 
   // ── API キー復旧通知（Keychain ダウングレード罠などの早期発見） ──
   "auth.missingKeyTitle": "Can't read the saved API key for {model}",

@@ -10,18 +10,23 @@ import {
   DEFAULT_OCR_LANG,
   type OcrProgress,
 } from "../../lib/ocr";
+import { isLocalMediaRef } from "../asset-browser/local-media-ref";
 import type { MediaOcrEntry } from "../../lib/document-types";
 
 /**
  * プロバイダ内部スキームの URL を、fetch / <img src> で読める URL に解決する。
- * データ URL・blob URL・通常の http URL はそのまま返す。
+ * データ URL・blob URL はそのまま返す。
+ *
+ * 外部ホストの URL は空文字を返して読み取りを止める。Tesseract は渡された文字列を
+ * 自分で fetch するので、そのまま渡すと本文のブロックが描画をブロックしていても
+ * OCR 経由でその URL へ要求が出てしまう（ブロックの描画とは別経路）。
  */
 export async function resolveMediaUrl(url: string): Promise<string> {
   if (!url) return "";
   const provider = getActiveProvider();
   const fileId = provider.extractFileId(url);
-  if (!fileId) return url;
-  return provider.getMediaBlobUrl(fileId);
+  if (fileId) return provider.getMediaBlobUrl(fileId);
+  return isLocalMediaRef(url) ? url : "";
 }
 
 /**

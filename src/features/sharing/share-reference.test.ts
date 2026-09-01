@@ -79,7 +79,7 @@ describe("shareReference — first share", () => {
     expect(keys.every((k) => k.startsWith("references/"))).toBe(true);
   });
 
-  it("body に URL メタデータが入る（URL / title / domain / description / og_image）", async () => {
+  it("body に URL メタデータが入る（URL / title / domain / description）", async () => {
     await shareReference(makeUrlEntry({ name: "fallback" }), {
       sharedRoot: "/tmp/shared",
       author,
@@ -92,7 +92,18 @@ describe("shareReference — first share", () => {
     expect(body.title).toBe("User Title");
     expect(body.domain).toBe("example.com");
     expect(body.description).toBe("User description");
-    expect(body.og_image).toBe("https://example.com/og.png");
+  });
+
+  it("og:image の remote URL は共有 body に載せない", async () => {
+    // 載せると、受け取った側がカードを描くたびに publisher（多くは CDN・計測
+    // ドメイン）へ GET が飛ぶ ——「チームの誰がいつ見たか」を配信元に配る経路になる
+    await shareReference(makeUrlEntry(), { sharedRoot: "/tmp/shared", author });
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    const raw = atob(stored.body_base64);
+    expect(JSON.parse(raw).og_image).toBeUndefined();
+    expect(raw).not.toContain("https://example.com/og.png");
+    // extra（一覧表示用メタ）にも入っていないこと
+    expect(JSON.stringify(stored.extra ?? {})).not.toContain("og.png");
   });
 
   it("title 未指定なら entry.name、description 未指定なら urlMeta.description", async () => {

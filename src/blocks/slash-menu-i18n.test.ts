@@ -77,6 +77,38 @@ function scanLines(lines: string[]): number[] {
   return hits;
 }
 
+/**
+ * 「描画のたびに Context 非依存の t() を引く React コンポーネント」を持つファイルか。
+ * ＝ useLocaleSubscription() が要る形。除いているのは次の 3 つ。
+ *
+ *  1. useLocale() / useT() から受け取る t。Provider の再描画に素直に追従するので
+ *     購読は要らない。見るのは i18n から直接 import した名前だけ。
+ *  2. スラッシュメニュー項目のラベル getter。読むたびに引き直すので購読は要らない
+ *     （上の 2 つのテストが別途守っている）。
+ *  3. JSX を書けない .ts。BlockNote へ DOM をそのまま返す描画がこれで、フックを
+ *     置ける React コンポーネントがそもそも無い（blocks/remote-content の
+ *     image / video / audio 差し替えと、そのプレースホルダ）。この形の文言が言語切替に
+ *     追従する根拠は base/editor.tsx 側にあり、useCreateBlockNote の deps に locale が
+ *     入っている＝切り替えるとエディタごと作り直されて枠も組み直される。
+ *     実際に切り替えて文言が入れ替わることは blocks/remote-content/gate.test.ts が
+ *     エディタをマウントして確かめている（deps から locale が外れるとあちらが赤くなる）。
+ */
+function needsLocaleSubscription(path: string, source: string): boolean {
+  if (!path.endsWith(".tsx")) return false;
+  const imported = Array.from(
+    source.matchAll(/import\s*\{([^}]*)\}\s*from\s*"[^"]*i18n"/g),
+    (m) => m[1],
+  )
+    .join(",")
+    .split(",")
+    .map((s) => s.trim());
+  const rendering = source.replace(/^\s*get (title|subtext|group)\(\).*$/gm, "");
+  if (imported.includes("t") && /\bt\("/.test(rendering)) return true;
+  return (
+    imported.includes("getCalloutVariantLabel") && /getCalloutVariantLabel\(/.test(rendering)
+  );
+}
+
 function findEagerSlashLabels(): string[] {
   const offenders: string[] = [];
   for (const file of collectSourceFiles(SRC_DIR)) {
@@ -180,29 +212,59 @@ describe("構造ガード", () => {
     expect(scanLines(sample)).toEqual([2]);
   });
 
-  it("t() を使うカスタムブロックは useLocaleSubscription() を呼んでいる", () => {
+  it("Context 非依存の t() で描画するカスタムブロックは useLocaleSubscription() を呼んでいる", () => {
     // BlockNote の render は LocaleProvider の Context を辿れないため、
     // 購読しないと言語を切り替えてもヘッダーラベルが再描画されない。
+    // 何を「購読が要る形」と見なすかは needsLocaleSubscription の doc を参照。
     const blocksDir = join(SRC_DIR, "blocks");
     const missing: string[] = [];
+    const covered: string[] = [];
     for (const name of readdirSync(blocksDir)) {
       const dir = join(blocksDir, name);
       if (!statSync(dir).isDirectory()) continue;
-      const sources = collectSourceFiles(dir).map((f) => readFileSync(f, "utf8"));
-      // 対象は「描画中に翻訳するブロック」。スラッシュメニュー項目のラベル getter は
-      // 呼ばれるたびに引き直すので購読は要らない（上のテストが別途守っている）。
-      const rendering = sources.map((s) =>
-        s.replace(/^\s*get (title|subtext|group)\(\).*$/gm, ""),
-      );
-      const usesI18n = rendering.some(
-        (s) => /\bt\("/.test(s) || /getCalloutVariantLabel\(/.test(s),
-      );
-      if (!usesI18n) continue;
+      const files = collectSourceFiles(dir);
+      if (!files.some((f) => needsLocaleSubscription(f, readFileSync(f, "utf8")))) continue;
+      covered.push(name);
+      const sources = files.map((f) => readFileSync(f, "utf8"));
       if (!sources.some((s) => s.includes("useLocaleSubscription()"))) missing.push(name);
     }
     expect(
       missing,
       `useLocaleSubscription() の呼び出しが無いブロック: ${missing.join(", ")}`,
     ).toEqual([]);
+    // 検出条件を絞りすぎて「対象 0 件で緑」になっていないこと。
+    // 数が減るのは正しい変更でも起こり得るが、代表格が外れたら条件を疑う。
+    expect(covered).toEqual(expect.arrayContaining(["bookmark", "callout", "chart", "math"]));
+  });
+
+  it("この検出条件が Context 経由の t と DOM 描画を巻き込まない", () => {
+    // ガードが効く側（購読が要る形）
+    expect(
+      needsLocaleSubscription(
+        "view.tsx",
+        'import { t, useLocaleSubscription } from "../../i18n";\nconst C = () => <p>{t("block.x")}</p>;',
+      ),
+    ).toBe(true);
+    // useLocale() から受け取る t は Provider の再描画で追従する
+    expect(
+      needsLocaleSubscription(
+        "Bar.tsx",
+        'import { useLocale } from "../../i18n";\nconst B = () => { const { t } = useLocale(); return <p>{t("note.x")}</p>; };',
+      ),
+    ).toBe(false);
+    // .ts は JSX を書けない＝フックを置くコンポーネントが無い
+    expect(
+      needsLocaleSubscription(
+        "placeholder.ts",
+        'import { t } from "../../i18n";\nexport function make() { el.textContent = t("block.x"); }',
+      ),
+    ).toBe(false);
+    // ラベル getter は読むたびに引き直すので購読は要らない
+    expect(
+      needsLocaleSubscription(
+        "index.tsx",
+        'import { t } from "../../i18n";\nexport const fooSlashItem = {\n  get title() { return t("slash.foo"); },\n};',
+      ),
+    ).toBe(false);
   });
 });

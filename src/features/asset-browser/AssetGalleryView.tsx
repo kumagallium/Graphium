@@ -8,13 +8,15 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
-import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, OcrToast, type OcrToastState } from "../media-ocr";
 import { OcrTimeoutError } from "../../lib/ocr";
 
 /** 一括 OCR を打ち切る連続タイムアウト回数 */
 const BULK_OCR_MAX_CONSECUTIVE_TIMEOUTS = 2;
+import { startPreviewBackfill, usePreviewImage } from "./preview-image";
+import { Favicon } from "./favicon";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
 import { AiAssistantProvider } from "../ai-assistant/store";
@@ -259,8 +261,9 @@ function VideoThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
 // URL ブックマークサムネイル: favicon + ドメイン表示
 function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   const domain = entry.urlMeta?.domain ?? "";
-  // 表示優先度: leadImage (Reader 抽出) → ogImage (publisher 提供) → favicon
-  const hero = entry.urlMeta?.leadImage || entry.urlMeta?.ogImage;
+  // hero はローカルにキャッシュした data URL だけ。og:image / leadImage の remote URL は
+  // 描画に使わない（カードを描くたびに配信元へ GET が飛ぶため）。無ければ favicon。
+  const hero = usePreviewImage(entry);
   const [heroFailed, setHeroFailed] = useState(false);
   const showHero = hero && !heroFailed;
 
@@ -276,14 +279,7 @@ function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; comp
             onError={() => setHeroFailed(true)}
           />
         ) : (
-          <img
-            src={getFaviconUrl(domain)}
-            alt=""
-            className="w-5 h-5 rounded"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
+          <Favicon domain={domain} url={entry.url} iconUrl={entry.urlMeta?.faviconUrl} className="w-5 h-5 rounded" />
         )}
       </div>
     );
@@ -303,14 +299,7 @@ function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; comp
   }
   return (
     <div className="w-full h-40 flex flex-col items-center justify-center gap-2 bg-muted px-3">
-      <img
-        src={getFaviconUrl(domain)}
-        alt=""
-        className="w-8 h-8 rounded"
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = "none";
-        }}
-      />
+      <Favicon domain={domain} url={entry.url} iconUrl={entry.urlMeta?.faviconUrl} className="w-8 h-8 rounded" />
       <span className="text-[10px] text-muted-foreground truncate max-w-full">{domain}</span>
     </div>
   );
@@ -366,10 +355,12 @@ function MediaCard({
   // サムネ自体が中身を物語る素材はホバー時のみ名前を出す。
   // それ以外（PDF / 音声 / hero なし URL / その他）はアイコンだけだと
   // 情報量がゼロなので、ファイル名を常時表示する。
+  // hero の有無は同期的に判る previewImage 参照で決める（実体の読み出しは非同期なので、
+  // 読めてから判定するとカードの高さが描画途中で変わる）
   const hasVisualThumbnail =
     entry.type === "image" ||
     entry.type === "video" ||
-    (entry.type === "url" && !!(entry.urlMeta?.leadImage || entry.urlMeta?.ogImage));
+    (entry.type === "url" && isLocalPreviewRef(entry.urlMeta?.previewImage));
 
   return (
     <div className="border border-border rounded-md bg-background hover:border-primary/40 transition-colors group relative overflow-hidden">
@@ -627,6 +618,12 @@ export function AssetGalleryView({
     setDetailEntry(null);
     setDetailFullMode(false);
   }, [backToListSeq]);
+  // この修正より前に登録された URL ブックマークは hero 画像をローカルに持たない。
+  // ギャラリーを開いたタイミングで少しずつ後追い取得する（セッション 1 回・件数と
+  // 間隔で絞る）。取れなければ favicon 表示のままで、remote URL は描かない。
+  useEffect(() => {
+    startPreviewBackfill(mediaIndex);
+  }, [mediaIndex]);
 
   // 親から focusFileId が降ってきたら、その entry を SidePeek / Full view で開く。
   // ノートのグラフから画像ノードクリック → このアセットを Full view で表示、の経路。

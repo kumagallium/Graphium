@@ -644,3 +644,84 @@ describe("migrateToLatest - 自己参照リンクのサニタイズ", () => {
     expect(doc.pages[0].knowledgeLinks).toHaveLength(1);
   });
 });
+
+describe("migrateToLatest: bookmark ブロックの og:image を落とす", () => {
+  const bookmark = (id: string, ogImage: string) => ({
+    id,
+    type: "bookmark",
+    props: {
+      url: "https://example.com/article",
+      title: "Example",
+      description: "desc",
+      ogImage,
+      domain: "example.com",
+    },
+  });
+
+  it("保存済みの remote な og:image を空にする（既存ノートを開いただけで配信元へ出さない）", () => {
+    const doc = baseDoc(LATEST_DOCUMENT_VERSION, {
+      id: "p1",
+      title: "p1",
+      blocks: [bookmark("b1", "https://cdn.example.net/og.png")],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
+    });
+    migrateToLatest(doc);
+    expect((doc.pages[0].blocks[0] as any).props.ogImage).toBe("");
+    // 他の props は温存する（タイトル・説明はカードの中身そのもの）
+    expect((doc.pages[0].blocks[0] as any).props.title).toBe("Example");
+    expect((doc.pages[0].blocks[0] as any).props.url).toBe("https://example.com/article");
+  });
+
+  it("入れ子のブロックも辿る", () => {
+    const doc = baseDoc(LATEST_DOCUMENT_VERSION, {
+      id: "p1",
+      title: "p1",
+      blocks: [
+        {
+          id: "step1",
+          type: "step",
+          props: {},
+          children: [
+            { id: "n", type: "paragraph", content: txt("x") },
+            bookmark("b2", "https://tracker.example/px.png?v=visitor"),
+          ],
+        },
+      ],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
+    });
+    migrateToLatest(doc);
+    expect((doc.pages[0].blocks[0] as any).children[1].props.ogImage).toBe("");
+  });
+
+  it("version は動かさない（全ユーザーのフルマイグレーションを誘発しない）", () => {
+    const doc = baseDoc(LATEST_DOCUMENT_VERSION, {
+      id: "p1",
+      title: "p1",
+      blocks: [bookmark("b1", "https://cdn.example.net/og.png")],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
+    });
+    migrateToLatest(doc);
+    expect(doc.version).toBe(LATEST_DOCUMENT_VERSION);
+  });
+
+  it("idempotent（2 回通しても結果が変わらない）", () => {
+    const doc = baseDoc(LATEST_DOCUMENT_VERSION, {
+      id: "p1",
+      title: "p1",
+      blocks: [bookmark("b1", "https://cdn.example.net/og.png"), bookmark("b3", "")],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
+    });
+    migrateToLatest(doc);
+    const once = JSON.stringify(doc);
+    migrateToLatest(doc);
+    expect(JSON.stringify(doc)).toBe(once);
+  });
+});

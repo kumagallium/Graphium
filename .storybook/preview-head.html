@@ -1,0 +1,17 @@
+<!-- Japanese webfonts (BIZ UDPGothic / Zen Kaku Gothic New), self-hosted.
+     アプリ本体（index.html / app/index.html）に置いてある <link> と同じものを
+     preview iframe にも入れる。日本語の @font-face は src/app.css には無く
+     （unicode-range サブセットが 490 チャンクあるので public/fonts/jp/fonts.css に
+     分離してある）、preview.ts は app.css しか読まないため、これが無いと
+     Storybook だけ日本語がシステムフォントに落ちる。
+
+     - href は "./" 相対。Storybook は base を "./" に固定するので、dev の
+       /iframe.html でも storybook build をサブディレクトリ配下に置いた場合でも
+       同一オリジンの fonts/jp/fonts.css に解決される（第三者への通信は無い）。
+     - fonts.css 内の url() も同ディレクトリ相対なので woff2 も同様に解決される。
+     - public/ の配信は .storybook/main.ts 側のコメント参照（staticDirs 不要）。
+     - この CSS は scripts/fetch-fonts.mjs の生成物で .gitignore 済み。未取得の
+       clone では 404 が 1 本出るだけで Storybook は普通に起動し、従来どおり
+       システムフォントにフォールバックする。日本語フォントを実際に見たいときは
+       `pnpm bundle:fonts`（= node scripts/fetch-fonts.mjs）を一度実行する。 -->
+<link rel="stylesheet" href="./fonts/jp/fonts.css" />

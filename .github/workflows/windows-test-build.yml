@@ -17,6 +17,7 @@ on:
     paths:
       - "src-tauri/**"
       - "scripts/fetch-node.mjs"
+      - "scripts/fetch-fonts.mjs"
       - "scripts/bundle-server.mjs"
       - "src/lib/sidecar.ts"
       - ".github/workflows/windows-test-build.yml"
@@ -59,6 +60,14 @@ jobs:
 
       - name: Bundle server
         run: node scripts/bundle-server.mjs
+
+      # pnpm build が scripts/fetch-fonts.mjs 経由で日本語 Web フォント（約 8MB）を取得する。
+      # キー / restore-keys の方針は test.yml の同ステップのコメント参照。
+      - name: Cache Japanese webfonts
+        uses: actions/cache@v4
+        with:
+          path: public/fonts/jp
+          key: jp-fonts-${{ runner.os }}-${{ hashFiles('scripts/fetch-fonts.mjs') }}
 
       - name: Build frontend
         run: pnpm build

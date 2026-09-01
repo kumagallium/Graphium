@@ -72,6 +72,7 @@ import {
   syncUsedIn,
   removeNoteFromUsedIn,
   deleteMediaFile,
+  previewImageKey,
   renameMediaFile,
   renameMediaEntry,
   extractMediaFromBlocks,
@@ -2277,6 +2278,17 @@ export function useFileManager(authenticated: boolean) {
     // URL ブックマークは Drive 上にファイルがないので削除 API を呼ばない
     if (entry.type !== "url") {
       await deleteMediaFile(entry.fileId);
+    } else {
+      // ただしプレビュー画像のキャッシュ（media-text チャネル）は道連れにする。
+      // 消し損ねても実害は数十 KB の孤児ファイルなので、失敗は無視する
+      const key = previewImageKey(entry.fileId);
+      if (key) {
+        try {
+          await getActiveProvider().deleteMediaText?.(key);
+        } catch {
+          /* best-effort */
+        }
+      }
     }
     const current = mediaIndexRef.current ?? createEmptyIndex();
     const updated = removeMediaEntry(current, entry.fileId);

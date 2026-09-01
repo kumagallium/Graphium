@@ -86,6 +86,11 @@ export function migrateToLatest(doc: GraphiumDocument, selfId?: string): Graphiu
     stripSelfReferenceLinks(doc, selfId);
   }
 
+  // ブックマークブロックに永続化されている og:image の remote URL を落とす
+  // （version 非依存、毎回 idempotent）。詳細は stripBookmarkOgImage を参照。
+  // 上の掃除とは対象が別（links / bookmark props）なので順序に依存しない。
+  stripBookmarkOgImage(doc);
+
   return doc;
 }
 
@@ -116,6 +121,37 @@ const KNOWN_INLINE_STYLE_KEYS = new Set([
 function stripUnknownInlineStyles(doc: GraphiumDocument): void {
   for (const page of doc.pages ?? []) {
     walkBlocksForStyleCleanup(page.blocks ?? []);
+  }
+}
+
+/**
+ * bookmark ブロックの `props.ogImage` を空にする（version 非依存、毎回 idempotent）。
+ *
+ * ブックマークカードの OGP 画像はブロック props に **remote URL のまま**保存されて
+ * いたため、コードから描画を外すだけでは足りない —— 既存ノートを開いた瞬間、
+ * 保存済みの URL で `<img>` が描かれて配信元（多くは CDN・計測ドメイン）へ GET が
+ * 飛ぶ。素材インデックス側の第三者 favicon と同じく、読み込み時にここで潰す。
+ *
+ * `LATEST_DOCUMENT_VERSION` は上げない。上げると全ユーザーのノートが次回起動で
+ * フルマイグレーション扱いになるが、ここでやることは version に依存しない。
+ *
+ * 画像そのものは、URL 素材として登録されていればローカルにキャッシュした
+ * プレビュー（media-index の urlMeta.previewImage）から描き直される。
+ */
+function stripBookmarkOgImage(doc: GraphiumDocument): void {
+  for (const page of doc.pages ?? []) {
+    walkBlocksForBookmarkCleanup(page.blocks ?? []);
+  }
+}
+
+function walkBlocksForBookmarkCleanup(blocks: any[]): void {
+  for (const b of blocks) {
+    if (b?.type === "bookmark" && b.props && b.props.ogImage) {
+      b.props.ogImage = "";
+    }
+    if (Array.isArray(b?.children) && b.children.length > 0) {
+      walkBlocksForBookmarkCleanup(b.children);
+    }
   }
 }
 

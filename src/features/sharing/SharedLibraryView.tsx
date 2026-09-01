@@ -45,6 +45,7 @@ import { formatDate } from "../../lib/format-datetime";
 import { t } from "../../i18n";
 import { SandboxEditor } from "../../base/editor";
 import { customBlockEntries, sanitizeBlocksForLoad } from "../../blocks/registry";
+import { useRemoteContentScope } from "../../blocks/remote-content";
 import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
@@ -812,6 +813,11 @@ function replaceUnresolvableMedia(blocks: any[]): any[] {
 
 export function SharedNotePreview({ body }: { body: string }) {
   const [state, setState] = useState<NotePreviewState>({ phase: "loading" });
+  // 共有ライブラリのプレビューも本文を描くので、外部メディアのゲートが要る。
+  // scope を渡さないと editorRemoteScope() が "" になり、ブロックはされるものの
+  // プレースホルダの「読み込む」が何も起こさない（allowRemoteContentFor("") は
+  // 早期 return する）。押しても無反応のボタンを出さないため、ここで scope を採る。
+  const remoteScope = useRemoteContentScope();
 
   useEffect(() => {
     let cancelled = false;
@@ -902,6 +908,7 @@ export function SharedNotePreview({ body }: { body: string }) {
                       blocks={customBlockEntries}
                       initialContent={state.blocks as any[]}
                       editable={false}
+                      remoteContentScope={remoteScope}
                     />
                   </AiAssistantProvider>
                 </BlockAlignmentProvider>

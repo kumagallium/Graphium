@@ -1252,6 +1252,27 @@ fn read_media_text(file_id: String) -> Result<Option<String>, String> {
         .map_err(|e| format!("原文テキスト読み取り失敗: {e}"))
 }
 
+/// 保存済みの原文テキストを削除（存在しなければ何もしない）。
+/// URL ブックマークの削除に追随してプレビュー画像キャッシュを消すのに使う。
+/// ここだけ ID を検証するのは、削除は取り違えると復元できないため
+/// （sidecar 側 safeId と同じ規則: 区切り文字・NUL・先頭ドットを拒否）。
+#[tauri::command]
+fn delete_media_text(file_id: String) -> Result<(), String> {
+    if file_id.is_empty()
+        || file_id.contains('/')
+        || file_id.contains('\\')
+        || file_id.contains('\0')
+        || file_id.starts_with('.')
+    {
+        return Err("不正なファイル ID".to_string());
+    }
+    let path = media_dir()?.join(format!("{file_id}.txt"));
+    if !path.exists() {
+        return Ok(());
+    }
+    fs::remove_file(&path).map_err(|e| format!("原文テキスト削除失敗: {e}"))
+}
+
 /// メディアファイル一覧を取得。
 /// 素材数に比例して .meta.json を読むため、メインスレッドから逃がす。
 #[tauri::command]
@@ -1949,6 +1970,7 @@ pub fn run() {
             read_media_file,
             save_media_text,
             read_media_text,
+            delete_media_text,
             list_media_files_cmd,
             delete_media_file,
             rename_media_file,

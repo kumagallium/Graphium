@@ -3,6 +3,8 @@
 // PdfViewer と対称な体験を URL アセットに与える。
 // - サーバーの /api/url/reader を叩いて Readability 抽出結果を取得
 // - 本文 HTML を sandbox 化したコンテナに描画（サーバー側で sanitize 済み）
+//   本文画像はサーバーが /api/url/image-proxy 経由に書き換えて返すので、ここでは
+//   ルート相対のパスを apiBase() で解決するだけ（Tauri では 127.0.0.1:3001 になる）
 // - PdfViewer と同じ mouseup + selectionchange パターンで選択検出
 // - 選択確定時に SelectionPill を出して onSaveSelectionAsMemo に流す
 //
@@ -14,10 +16,12 @@ import { ExternalLink, RefreshCw, ImageDown, Loader2, Check } from "lucide-react
 import { useT } from "../../i18n";
 import { apiBase } from "../../lib/platform";
 import type { MediaIndexEntry } from "./media-index";
-import { persistUrlMetaPatch } from "./media-index";
+import { persistUrlMetaPatch, readMediaIndex } from "./media-index";
+import { ensureCachedPreviewImage } from "./preview-image";
 import { SelectionPill, type CitationSource, type PillState } from "./SelectionPill";
 import { UrlPreviewCard } from "./url-preview-card";
 import { buildTextFragment } from "./text-fragment";
+import { resolveProxiedImageSrc, unwrapProxiedImageUrl } from "./reader-image-src";
 import { PdfViewer } from "./PdfViewer";
 
 type ReaderArticle = {
@@ -115,11 +119,21 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset
         // Phase 4: excerpt / lang をインデックスに書き戻して
         // 次回 AssetGalleryView の URL カード等に出せるようにする。
         // 書き込み失敗は UI 表示に影響しないため await しない。
-        void persistUrlMetaPatch(entry.fileId, {
-          excerpt: article.excerpt || undefined,
-          lang: article.lang || undefined,
-          leadImage: article.leadImage || undefined,
-        });
+        void (async () => {
+          await persistUrlMetaPatch(entry.fileId, {
+            excerpt: article.excerpt || undefined,
+            lang: article.lang || undefined,
+            leadImage: article.leadImage || undefined,
+          });
+          // leadImage は og:image より hero として良く、しかも Reader は sidecar 側で
+          // 動くので CORS で潰れた og:image しか無いブックマークでも取れる。
+          // 書き戻した直後の entry を index から読み直してキャッシュを作り直す
+          // （props の entry は leadImage を持たない古い値）。
+          if (!article.leadImage) return;
+          const index = await readMediaIndex().catch(() => null);
+          const fresh = index?.media.find((m) => m.fileId === entry.fileId);
+          if (fresh) void ensureCachedPreviewImage(fresh, { ignoreCooldown: true });
+        })();
       } catch (err) {
         if (cancelled) return;
         const message = err instanceof Error ? err.message : t("asset.url.readerError");
@@ -231,6 +245,15 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset
     setReloadKey((k) => k + 1);
   }, []);
 
+  // 本文中の image-proxy パスを実際に叩ける URL に解決する。
+  // サーバーはルート相対（/api/url/image-proxy?url=...）で返すので、Web ではそのまま、
+  // Tauri では http://127.0.0.1:3001/api/... になる。早期 return より前に呼ぶ必要が
+  // あるので status を見て分岐する。
+  const articleHtml = useMemo(
+    () => (status.kind === "ready" ? resolveProxiedImageSrc(status.article.content, apiBase()) : ""),
+    [status],
+  );
+
   // ── 記事内画像 → Graphium 保存 ──
   // 本文は dangerouslySetInnerHTML なので、article コンテナ上のイベント委譲で
   // <img> hover を検出し、画像右上角に保存ボタンを重ねて出す。
@@ -250,7 +273,10 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset
     const target = e.target as HTMLElement;
     if (!target || target.tagName !== "IMG") return;
     const img = target as HTMLImageElement;
-    const src = img.currentSrc || img.src;
+    // 本文の src は image-proxy 経由に書き換わっているので元の URL に戻す。
+    // そのまま渡すと保存側（note-app）が「プロキシ URL をさらにプロキシに包む」形になり、
+    // ファイル名の導出も壊れる。
+    const src = unwrapProxiedImageUrl(img.currentSrc || img.src);
     // data:/blob: はプロキシで取り込めない（外部 http(s) 画像のみ対象）
     if (!/^https?:/i.test(src)) return;
     const rect = img.getBoundingClientRect();
@@ -474,7 +500,7 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset
           <div
             // サーバー側で sanitize 済み（sanitizeReaderHtml）。
             // ここで dangerouslySetInnerHTML を使う前提はサーバーを信頼すること。
-            dangerouslySetInnerHTML={{ __html: article.content }}
+            dangerouslySetInnerHTML={{ __html: articleHtml }}
           />
         </article>
       </div>

@@ -14,6 +14,7 @@ import { waitForDragIdle } from "./drag-idle";
 import { mirrorOcrToMediaIndex } from "./mirror-to-media-index";
 import { getLatestMediaIndex } from "../asset-browser/media-index";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { isLocalMediaRef } from "../asset-browser/local-media-ref";
 import type { OcrToastState } from "./OcrToast";
 
 type ImageTarget = { id: string; url: string };
@@ -62,12 +63,19 @@ function isPreexistingAsset(entry: { uploadedAt?: string } | null): boolean {
   return Number.isFinite(at) && Date.now() - at > EXISTING_ASSET_AGE_MS;
 }
 
-/** ブロックツリーから画像ブロック（URL 付き）を再帰的に集める */
+/**
+ * ブロックツリーから画像ブロック（ローカル参照の URL 付き）を再帰的に集める。
+ *
+ * 外部ホストの URL は拾わない。Tesseract は渡された URL を自分で取りに行くので、
+ * ここで拾うと本文の描画をゲートで止めている意味が消える。既知集合にも入れないので、
+ * 貼られた画像がローカルへ取り込まれた時点で改めて「新しく入った画像」として
+ * 拾われ、そこで読み取りが走る。
+ */
 function collectImageBlocks(blocks: any[], out: ImageTarget[] = []): ImageTarget[] {
   for (const b of blocks ?? []) {
     if (b?.type && OCR_CAPABLE_BLOCK_TYPES.has(b.type)) {
       const url = typeof b.props?.url === "string" ? b.props.url : "";
-      if (url && b.id) out.push({ id: b.id, url });
+      if (url && b.id && isLocalMediaRef(url)) out.push({ id: b.id, url });
     }
     if (b?.children?.length) collectImageBlocks(b.children, out);
   }

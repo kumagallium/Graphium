@@ -38,6 +38,8 @@ export {
   isMobileCapture,
   getLatestMediaIndex,
   clearMediaIndexCache,
+  previewImageKey,
+  isLocalPreviewRef,
   MEDIA_INDEX_CHANGED_EVENT,
 } from "./media-index";
 export { findSameAsset, computeAssetContentHash, backfillContentHashes } from "./dedupe";
@@ -47,7 +49,16 @@ export type {
   MediaType,
   MediaUsage,
   UrlMeta,
+  UrlMetaPatch,
 } from "./media-index";
+
+export {
+  ensureCachedPreviewImage,
+  loadPreviewImage,
+  usePreviewImage,
+  useBookmarkPreviewImage,
+  startPreviewBackfill,
+} from "./preview-image";
 
 export { MediaPickerModal } from "./MediaPickerModal";
 export type { MediaPickerModalProps, AssetDisplayMode } from "./MediaPickerModal";
@@ -71,8 +82,6 @@ export {
   blockContainsUrlLink,
   registerUrlAsset,
 } from "./url-paste";
-
-export { schedulePastedImageCapture } from "./paste-image-capture";
 
 export { NoteMemosSection, filterMemosByNote } from "./NoteMemosSection";
 export type { NoteMemosSectionProps } from "./NoteMemosSection";
