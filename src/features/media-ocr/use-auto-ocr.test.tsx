@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
-import { useAutoImageOcr } from "./use-auto-ocr";
+import { useAutoImageOcr, clearScannedAssets } from "./use-auto-ocr";
 import { registerPendingOcrFile, takePendingOcrFile } from "./pending-files";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -22,9 +22,21 @@ const h = vi.hoisted(() => ({
   runOcrForImage: vi.fn(),
   setEntry: vi.fn(),
   entries: new Map<string, { text: string }>(),
+  /** 素材インデックス（fileId → 読み取り済みテキスト）の代役 */
+  media: [] as { fileId: string; ocrText?: string; uploadedAt?: string }[],
 }));
 
 vi.mock("./run-ocr", () => ({ runOcrForImage: h.runOcrForImage }));
+// 素材側への写しは別テストの担当（ここでは呼ばれても何もしない）
+vi.mock("./mirror-to-media-index", () => ({ mirrorOcrToMediaIndex: vi.fn() }));
+vi.mock("../asset-browser/media-index", () => ({
+  getLatestMediaIndex: () => ({ media: h.media }),
+}));
+vi.mock("../../lib/storage/registry", () => ({
+  getActiveProvider: () => ({
+    extractFileId: (url: string) => url.replace("file-media://", "") || null,
+  }),
+}));
 vi.mock("./store", () => ({
   useMediaOcrStore: () => ({
     setEntry: h.setEntry,
@@ -54,6 +66,9 @@ beforeEach(() => {
   h.runOcrForImage.mockReset();
   h.setEntry.mockReset();
   h.entries.clear();
+  h.media = [];
+  // 「読み終えた素材」はモジュールシングルトンなのでテストごとに捨てる
+  clearScannedAssets();
   // 前のテストが預けた File を掃除（レジストリはモジュールシングルトン）
   for (const id of ["a", "b", "c", "new"]) takePendingOcrFile(`file-media://${id}`);
 });
@@ -161,6 +176,96 @@ describe("useAutoImageOcr", () => {
 
     await act(async () => {
       window.dispatchEvent(new Event("dragend"));
+      await flush();
+    });
+    expect(h.runOcrForImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("ライブラリに前からある素材（アップロードが古い）は自動 OCR しない", async () => {
+    // 素材ピッカーから挿した既存素材にまで OCR が走ると「すでにあるのに毎回読む」
+    // 体験になる。既存素材は素材ギャラリーの一括読み取りに委ねる
+    h.media = [
+      { fileId: "old", uploadedAt: new Date(Date.now() - 3600_000).toISOString() },
+      { fileId: "just-up", uploadedAt: new Date().toISOString() },
+    ];
+    h.runOcrForImage.mockResolvedValue({
+      text: "t",
+      confidence: 90,
+      lang: "jpn+eng",
+      extractedAt: "2026-01-01T00:00:00Z",
+    });
+    const editorRef = makeEditorRef([]);
+    const { result } = renderHook(() =>
+      useAutoImageOcr({ editorRef, noteKey: "note-1" }),
+    );
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    editorRef.current = makeEditorRef(["old", "just-up"]).current;
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    // アップロード直後の素材だけ読む
+    expect(h.runOcrForImage).toHaveBeenCalledTimes(1);
+    expect(h.runOcrForImage).toHaveBeenCalledWith("file-media://just-up");
+  });
+
+  it("素材側に読み取り済みのテキストがあれば、読み直さず結果だけ写す", async () => {
+    h.media = [{ fileId: "new", ocrText: "すでに読んだ文字" }];
+    const editorRef = makeEditorRef([]);
+    const { result } = renderHook(() =>
+      useAutoImageOcr({ editorRef, noteKey: "note-1" }),
+    );
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    editorRef.current = makeEditorRef(["new"]).current;
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    expect(h.runOcrForImage).not.toHaveBeenCalled();
+    expect(h.setEntry).toHaveBeenCalledWith(
+      "new",
+      expect.objectContaining({ text: "すでに読んだ文字" }),
+    );
+  });
+
+  it("一度読んだ素材は、ブロックが作り直されても読み直さない", async () => {
+    // テーブルへの出し入れで画像ブロックは作り直され、id が変わる。文字が無かった
+    // 画像でも、そのたびに読み直すと「出し入れごとに文字認識が走る」ことになる
+    h.runOcrForImage.mockResolvedValue({
+      text: "",
+      confidence: 0,
+      lang: "jpn+eng",
+      extractedAt: "2026-01-01T00:00:00Z",
+    });
+    const editorRef = makeEditorRef([]);
+    const { result } = renderHook(() =>
+      useAutoImageOcr({ editorRef, noteKey: "note-1" }),
+    );
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    editorRef.current = makeEditorRef(["new"]).current;
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    expect(h.runOcrForImage).toHaveBeenCalledTimes(1);
+
+    // 同じ素材が別のブロック id で戻ってくる（セルから出した直後の状態）
+    editorRef.current = {
+      document: [
+        { id: "new-again", type: "image", props: { url: "file-media://new" }, children: [] },
+      ],
+    };
+    await act(async () => {
+      result.current.scan();
       await flush();
     });
     expect(h.runOcrForImage).toHaveBeenCalledTimes(1);
