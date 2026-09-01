@@ -2,7 +2,7 @@
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Download, Filter, Archive, Image as ImageIcon, FileText, Share2 } from "lucide-react";
+import { BookOpen, Download, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
 import { MenuItem } from "@/ui/menu-item";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
@@ -20,7 +20,7 @@ import { formatDateTime } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
-import { UNFILED_PATH } from "../note-context/folder-tree-model";
+import { UNFILED_PATH, splitFolderPath } from "../note-context/folder-tree-model";
 import {
   aggregateNoteContexts,
   addNoteContext,
@@ -109,6 +109,10 @@ export function NoteListView({
   onShareSelected,
   contextFilter: controlledContextFilter,
   onContextFilterChange,
+  selectedFolder,
+  onSelectFolder,
+  onClearFolder,
+  onNewNoteInFolder,
 }: {
   noteIndex: GraphiumIndex | null;
   /** クリック時のコールバック（サイドピーク表示用） */
@@ -146,6 +150,20 @@ export function NoteListView({
    */
   contextFilter?: string[];
   onContextFilterChange?: (next: string[]) => void;
+  /**
+   * 開いているフォルダの path（未分類は UNFILED_PATH、非選択は null）。
+   * パンくずと「このフォルダに新規ノート」に使う。
+   */
+  selectedFolder?: string | null;
+  /** パンくずの親フォルダをクリックしたとき（そのフォルダを開き直す） */
+  onSelectFolder?: (path: string) => void;
+  /** パンくずの「すべてのノート」をクリックしたとき（フォルダ絞り込みを解除） */
+  onClearFolder?: () => void;
+  /**
+   * 開いているフォルダの中に新規ノートを作る。渡されたときだけボタンを出す。
+   * 作成側で選択中フォルダを自動で付与する。
+   */
+  onNewNoteInFolder?: (folderPath: string) => void;
   /**
    * 一括チーム共有（任意）— 提供時のみアクションバーに表示。
    * 選択 id を渡すだけで、実行と進捗表示は呼び出し側（BulkShareModal）が担う。
@@ -363,6 +381,19 @@ export function NoteListView({
       .sort((a, b) => a.label.localeCompare(b.label, "ja"));
   }, [entries]);
 
+  // パンくずのフォルダ部分。"親/子" は 2 段に割り、親はクリックで開き直せる。
+  // 未分類は階層を持たないので 1 段だけ。
+  const folderTrail = useMemo<{ label: string; onClick?: () => void }[]>(() => {
+    if (!selectedFolder) return [];
+    if (selectedFolder === UNFILED_PATH) return [{ label: t("nav.unfiled") }];
+    const { parent, leaf } = splitFolderPath(selectedFolder);
+    if (!parent) return [{ label: leaf }];
+    return [
+      { label: parent, onClick: onSelectFolder ? () => onSelectFolder(parent) : undefined },
+      { label: leaf },
+    ];
+  }, [selectedFolder, onSelectFolder, t]);
+
   // 文脈ラベルの集計（サジェスト候補 + 列ヘッダフィルタの選択肢の共通ソース）
   const contextAggregate = useMemo(() => aggregateNoteContexts(entries), [entries]);
   const contextFilterOptions = useMemo<FilterOption[]>(
@@ -438,6 +469,10 @@ export function NoteListView({
 
   const allSelected = filtered.length > 0 && filtered.every((e) => selectedIds.has(e.noteId));
   const someSelected = selectedIds.size > 0;
+  // 「このフォルダに新規ノート」を出す条件。未分類は付けるタグが無い（作った直後に
+  // 一覧から消える）ので除く
+  const showNewNoteInFolder =
+    !!onNewNoteInFolder && !!selectedFolder && selectedFolder !== UNFILED_PATH && !someSelected;
 
   // 削除実行
   const handleDeleteConfirm = useCallback(async () => {
@@ -461,13 +496,31 @@ export function NoteListView({
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+        {/* フォルダを開いているときは、パンくずに「すべてのノート > 親 > 子」と出す。
+            エクスプローラーで「今どこにいるか」を示すのと同じ役割で、途中をクリックすれば
+            そこへ戻れる（すべてのノート = 絞り込み解除）。 */}
         <Breadcrumb items={[
           { label: t("nav.home"), onClick: onBack },
-          { label: t("nav.noteList") },
+          ...(folderTrail.length > 0
+            ? [{ label: t("nav.noteList"), onClick: onClearFolder }, ...folderTrail]
+            : [{ label: t("nav.noteList") }]),
         ]} />
         <span className="text-xs text-muted-foreground">
           {loading ? t("nav.loadingNotes") : t("nav.noteCount", { filtered: String(filtered.length), total: String(entries.length) })}
         </span>
+        {/* このフォルダに新規ノート — エクスプローラーの「フォルダの中で新規作成」に当たる操作。
+            未分類は「フォルダ」ではないので出さない（付けるタグが無く、作った直後に
+            一覧から消えることになるため）。 */}
+        {showNewNoteInFolder && (
+          <button
+            onClick={() => onNewNoteInFolder(selectedFolder)}
+            className="ml-auto inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title={t("nav.newNoteInFolderTooltip", { value: folderTrail[folderTrail.length - 1]?.label ?? selectedFolder })}
+          >
+            <Plus size={14} />
+            <span>{t("nav.newNoteInFolder")}</span>
+          </button>
+        )}
         {/* インポートボタン（選択中でなければ表示） */}
         {!someSelected && onImportMarkdown && (
           <button
@@ -483,7 +536,9 @@ export function NoteListView({
               }
             }}
             disabled={importing}
-            className="ml-auto inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            // 右端寄せは「この行で最初に現れる右側ボタン」が担う。フォルダを開いていると
+            // その役は新規ノートボタンなので、ここでは付けない（2 つ付くと間が空く）
+            className={`${showNewNoteInFolder ? "" : "ml-auto "}inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50`}
             title={t("noteList.importFiles")}
             aria-label={t("noteList.importFiles")}
           >

@@ -6,8 +6,7 @@ import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { FolderTree } from "../features/note-context/FolderTree";
-import { aggregateNoteContexts } from "../features/note-context/context-tags";
-import { buildFolderTree, expandFolderToContextValues } from "../features/note-context/folder-tree-model";
+import { buildFolderTree, collectFolderSource, expandFolderToContextValues } from "../features/note-context/folder-tree-model";
 import { isTauri } from "../lib/platform";
 import type { WikiKind } from "../lib/document-types";
 import { type RecentNote } from "../features/navigation";
@@ -52,6 +51,11 @@ export type FileSidebarProps = {
   emptyFolders?: readonly string[];
   /** 「＋ 新しいフォルダ」の確定。未指定なら作成行を出さない */
   onCreateFolder?: (path: string) => void;
+  /** フォルダの右クリック（名前の変更・削除メニュー） */
+  onFolderContextMenu?: (
+    folder: { path: string; name: string; noteCount: number },
+    position: { top: number; left: number },
+  ) => void;
   mediaIndex: MediaIndex | null;
   onShowAssetGallery: (type: MediaType) => void;
   noteIndex: GraphiumIndex | null;
@@ -179,6 +183,7 @@ export function FileSidebar({
   onSelectUnfiledFolder,
   emptyFolders,
   onCreateFolder,
+  onFolderContextMenu,
   mediaIndex,
   onShowAssetGallery,
   noteIndex,
@@ -242,22 +247,12 @@ export function FileSidebar({
     return n;
   }, [noteIndex]);
 
-  // フォルダ（noteContexts のフォルダ見せ）: noteCount と同じ除外条件で
-  // 「人間が書いた active ノート」だけを集計する（wiki/skill/trash/archive は含めない）
-  const folderData = useMemo(() => {
-    if (!noteIndex) return { folders: [] as { value: string; count: number }[], unfiledCount: 0 };
-    const live: { noteContexts?: string[] }[] = [];
-    let unfiled = 0;
-    for (const note of noteIndex.notes) {
-      if (note.wikiKind) continue;
-      if (note.source === "skill") continue;
-      if (note.deletedAt) continue;
-      if (note.archivedAt) continue;
-      live.push(note);
-      if (!note.noteContexts || note.noteContexts.length === 0) unfiled++;
-    }
-    return { folders: aggregateNoteContexts(live), unfiledCount: unfiled };
-  }, [noteIndex]);
+  // フォルダ（noteContexts のフォルダ見せ）。集計規則は folder-tree-model に 1 本化してあり、
+  // ノート一覧側（パンくずの親たどり）も同じものを使う
+  const folderData = useMemo(
+    () => collectFolderSource(noteIndex?.notes ?? []),
+    [noteIndex],
+  );
   // 親フォルダ選択時に子を含めた文脈フィルタへ展開するためのツリー
   // （FolderTree も内部で組むが軽い計算なので二重でよしとする）
   const folderTree = useMemo(
@@ -436,6 +431,7 @@ export function FileSidebar({
               }
               onSelectUnfiled={onSelectUnfiledFolder}
               onCreateFolder={onCreateFolder}
+              onFolderContextMenu={onFolderContextMenu}
             />
           </CollapsibleSection>
         )}

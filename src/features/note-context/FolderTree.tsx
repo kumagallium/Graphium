@@ -31,6 +31,14 @@ export type FolderTreeProps = {
   onSelectUnfiled?: () => void;
   /** 指定すると「＋ 新しいフォルダ」行を出す（作成の永続化は呼び出し側） */
   onCreateFolder?: (path: string) => void;
+  /**
+   * フォルダを右クリックしたとき（名前の変更・削除メニュー用）。
+   * メニュー自体は呼び出し側が出す — ツリーは入口だけを持つ。
+   */
+  onFolderContextMenu?: (
+    folder: { path: string; name: string; noteCount: number },
+    position: { top: number; left: number },
+  ) => void;
 };
 
 // 行の外殻。シェブロン（開閉）と本体（選択）は別ボタンにするため
@@ -50,6 +58,7 @@ export function FolderTree({
   onSelectFolder,
   onSelectUnfiled,
   onCreateFolder,
+  onFolderContextMenu,
 }: FolderTreeProps) {
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
@@ -157,7 +166,21 @@ export function FolderTree({
     // 子フォルダを作れるのは root だけ（2 階層制約）
     const canAddChild = !isChild && !!onCreateFolder;
     return (
-      <div key={node.path} className={`group ${rowShellClass(isActive)}`}>
+      <div
+        key={node.path}
+        className={`group ${rowShellClass(isActive)}`}
+        onContextMenu={
+          onFolderContextMenu
+            ? (e) => {
+                e.preventDefault();
+                onFolderContextMenu(
+                  { path: node.path, name: node.name, noteCount: node.totalCount },
+                  { top: e.clientY, left: e.clientX },
+                );
+              }
+            : undefined
+        }
+      >
         {/* シェブロン列: root で子ありのときだけ開閉ボタン。それ以外は幅合わせ */}
         {!isChild && hasChildren ? (
           <button
