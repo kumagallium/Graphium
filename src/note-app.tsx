@@ -69,6 +69,7 @@ import {
   readFirstColumnName,
   readTableData,
   sortTableBlock,
+  useWideTableBleed,
   type ColumnType,
   type TableSource,
   type TableExpandData,
@@ -1280,6 +1281,8 @@ function NoteEditorInner({
   // buildDocument はスクラッチで組むため ref も併置（noteContexts と同じ流儀）。
   const [fullWidth, setFullWidth] = useState<boolean>(initialDoc?.fullWidth ?? false);
   const fullWidthRef = useRef<boolean>(initialDoc?.fullWidth ?? false);
+  // 本文カラムより広いテーブルのはみ出し量を計算するため、エディタペインの実寸が要る
+  const [editorPaneEl, setEditorPaneEl] = useState<HTMLDivElement | null>(null);
   const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
@@ -4519,6 +4522,16 @@ function NoteEditorInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rightTab, aiAssistant.sourceBlockIds, dirty]);
 
+  // ページ外側パディング。下の JSX と、テーブルのはみ出し量計算の両方で使う
+  const pagePadLeft = isDesktop ? 24 : 16;
+  const pagePadRight = isDesktop ? (labelStore.labels.size > 0 ? 80 : 24) : 16;
+  // 本文カラム（828px）より広いテーブルを右の余白へ張り出させる
+  useWideTableBleed(editorPaneEl, {
+    padLeft: pagePadLeft,
+    padRight: pagePadRight,
+    fullWidth,
+  });
+
   // ── レンダリング ──
   return (
     <>
@@ -4864,14 +4877,14 @@ function NoteEditorInner({
 
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
-        <div data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
+        <div ref={setEditorPaneEl} data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
           {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
               SidePeek と同じ「基本 24px・右はラベルバッジがある時だけ 80px」に揃える。
               条件はブロックラベルのみ — リンクはバッジを描画しない
               （prov-indicator.tsx は label 無しを return null する）ので、リンクを
               条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。
               ドラッグハンドル分の余白は .bn-editor 自体の padding-inline 54px が持つ。 */}
-          <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 24 : 16, paddingRight: isDesktop ? (labelStore.labels.size > 0 ? 80 : 24) : 16, paddingBottom: isDesktop ? 16 : 72 }}>
+          <div style={{ padding: "16px 0", paddingLeft: pagePadLeft, paddingRight: pagePadRight, paddingBottom: isDesktop ? 16 : 72 }}>
           {/* 読みやすい行長のための中央カラム（Notion の本文幅と同じ考え方）。
               828px = 本文テキスト 720px + .bn-editor の padding-inline 54px×2。
               タイトル・文脈タグも px-[54px] で本文と左端が揃っているため一緒に包む。

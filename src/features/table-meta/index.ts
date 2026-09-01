@@ -11,6 +11,7 @@ export {
 } from "./store";
 export type { TableMetaStoreValue } from "./store";
 export { TableCaptionLayer } from "./caption-layer";
+export { computeTableBleed, useWideTableBleed } from "./wide-table-bleed";
 export { TableExpandModal } from "./expand-modal";
 export { sortTableBlock } from "./sort-table";
 export type { SortDir, SortState } from "./sort-table";
