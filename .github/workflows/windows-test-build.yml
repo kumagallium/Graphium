@@ -12,16 +12,29 @@ on:
         required: false
         default: ""
   # Verify Windows build still works on PRs that touch desktop-build paths.
+  #
+  # tauri.conf.json と package.json を外しているのは、tagpr のリリース PR が
+  # その 2 つ（＋ CHANGELOG.md）しか触らないため。tagpr は GITHUB_TOKEN で push する
+  # ので、リリース PR の run は GitHub の承認ゲートに掛かって一度も実行されず、
+  # マージ時に failure として残る。「走っていない赤」を毎リリース出さないために、
+  # run の生成段階で外す（承認ゲートはジョブ評価より前なので if: では止められない）。
+  #
+  # 外したことで、tauri.conf.json だけ / package.json だけを変える PR ではこの
+  # 事前確認が走らなくなる。許容している理由は 2 つ:
+  #   - 依存の変更は必ず pnpm-lock.yaml を伴うので、そちらで拾える
+  #   - これは配布前の動作確認であって、実際のリリースビルドは tauri-build.yml が
+  #     release イベントで必ず回す。取りこぼしても本番の成果物は検証される
+  # 必要なときは workflow_dispatch で ref を指定して手動で回せる。
   pull_request:
     branches: [main]
     paths:
       - "src-tauri/**"
+      - "!src-tauri/tauri.conf.json"
       - "scripts/fetch-node.mjs"
       - "scripts/fetch-fonts.mjs"
       - "scripts/bundle-server.mjs"
       - "src/lib/sidecar.ts"
       - ".github/workflows/windows-test-build.yml"
-      - "package.json"
       - "pnpm-lock.yaml"
 
 permissions:

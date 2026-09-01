@@ -5,6 +5,28 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # tagpr のリリース PR では run を作らない。
+    #
+    # tagpr は GITHUB_TOKEN で push するため、リリース PR の pull_request run は
+    # GitHub の承認ゲートに掛かって action_required のまま一度も実行されない。PR を
+    # マージするとその保留 run は failure として終わる。結果、リリースのたびに
+    # 「一度も走っていない赤」が 3 本並び、本物の失敗が埋もれる。
+    #
+    # 承認ゲートはジョブ評価より前なので job の if: では止められず、pull_request の
+    # branches: は base しか絞れないので head が tagpr-from-* かでも除外できない。
+    # run の生成自体を止められるのは paths フィルタだけ。
+    #
+    # 下の 3 つは tagpr のリリース PR が触る全ファイル。paths-ignore は「変更ファイルが
+    # 全部ここに一致したときだけスキップ」なので、通常の PR（src/ や pnpm-lock.yaml を
+    # 含む）は従来どおり走る。逆に言うと、この 3 つだけを変える人手の PR も
+    # スキップされる — CHANGELOG / バージョン番号だけの変更なので許容している。
+    #
+    # 完全な解は tagpr に PAT / GitHub App のトークンを渡して承認ゲート自体を
+    # 回避すること。そうすればこの除外は不要になる。
+    paths-ignore:
+      - "CHANGELOG.md"
+      - "package.json"
+      - "src-tauri/tauri.conf.json"
   workflow_dispatch:
     inputs:
       mode:
