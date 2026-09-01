@@ -19,8 +19,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # --paginate + --jq はページごとに jq を適用するため、リリースが 2 ページに
+          # なると合計が複数行になり GITHUB_OUTPUT が壊れる（v0.50.0 時点で発現）。
+          # 件数を行で流して awk で合算し、ページ境界に依存しない形にする
           total=$(gh api --paginate "repos/${{ github.repository }}/releases" \
-            --jq '[.[].assets[] | select(.name | endswith(".dmg")) | .download_count] | add // 0')
+            --jq '.[].assets[] | select(.name | endswith(".dmg")) | .download_count' \
+            | awk '{s+=$1} END {print s+0}')
           echo "total=$total" >> "$GITHUB_OUTPUT"
           echo "Total .dmg downloads: $total"
 

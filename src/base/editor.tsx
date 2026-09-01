@@ -53,9 +53,17 @@ const lightCodeBlock = createCodeBlockSpec({
 });
 import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
 import { inlineMathSpecs } from "@features/inline-math/spec";
-import { inlineImageSpecs, INLINE_IMAGE_DRAG_MIME, fileIdFromBlobUrl } from "@features/inline-image/spec";
+import {
+  inlineImageSpecs,
+  INLINE_IMAGE_DRAG_MIME,
+  fileIdFromBlobUrl,
+  getActiveImageDrag,
+  setActiveImageDrag,
+  type ActiveImageDrag,
+} from "@features/inline-image/spec";
 import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
-import { getActiveProvider } from "../lib/storage/registry";
+import { NodeSelection } from "prosemirror-state";
+import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CustomBlockEntry } from "./schema";
@@ -142,8 +150,12 @@ type SandboxEditorProps = {
  * 落とした先がセルなら inline 画像として入れ、掴んだ元の画像ブロックは消す。
  */
 function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): boolean {
-  if (event.dataTransfer?.types?.includes("blocknote/html")) return false;
-  const dragged = draggedImageFileId(event);
+  // ⠿ ハンドルのドラッグ（blocknote/html）は moveImageBlockIntoCell が先に受けるが、
+  // drop 時に selection が失われて素通りすることがある。dragstart 時の記録があれば
+  // こちらで受ける（cellPos が無ければ false のままなので、セル外への通常の
+  // ブロック移動は従来どおり BlockNote / PM の既定処理に落ちる）
+  if (event.dataTransfer?.types?.includes("blocknote/html") && !getActiveImageDrag()) return false;
+  const dragged = draggedImagePayload(event);
   if (!dragged) return false;
   const cellPos = dropCellPos(view, event);
   if (cellPos === null) return false;
@@ -151,16 +163,17 @@ function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): bool
   if (!nodeType) return false;
   event.preventDefault();
   clearCellDropState();
-  // 掴んだ元が画像ブロックなら消す（同じ素材のブロックの最初の 1 つ）
-  const sourceBlock = editor?.document?.find?.(
-    (b: any) =>
-      b.type === "image" &&
-      typeof b.props?.url === "string" &&
-      b.props.url.endsWith(dragged.fileId),
-  );
-  view.dispatch(
-    view.state.tr.insert(cellPos, nodeType.create({ fileId: dragged.fileId, name: dragged.name })),
-  );
+  // 掴んだ元を消す。セルの中の画像なら inline をそのまま、本文なら画像ブロックごと
+  const inlineRange = dragged.inCell ? draggedInlineRange(view, dragged) : null;
+  const sourceBlock = dragged.inCell ? null : draggedImageBlock(view, editor, dragged);
+  const tr = view.state.tr;
+  tr.insert(cellPos, nodeType.create({ fileId: dragged.fileId, name: dragged.name }));
+  if (inlineRange) {
+    // 挿入で位置がずれるのでマップし直す
+    const from = tr.mapping.map(inlineRange.from);
+    tr.delete(from, from + inlineRange.size);
+  }
+  view.dispatch(tr);
   if (sourceBlock) editor.removeBlocks([sourceBlock.id]);
   return true;
 }
@@ -168,6 +181,10 @@ function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): bool
 function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
   // ブロックのドラッグでなければ関与しない（ファイル drop や外部 HTML と区別する）
   if (!event.dataTransfer?.types?.includes("blocknote/html")) return false;
+  // ドロップの時点では、⠿ の dragstart が張った NodeSelection が別の selection に
+  // 置き換わっていることがある（実測: drop ハンドラ内では TextSelection）。
+  // その場合はここでは扱えないので、dragstart 時に控えた記録
+  // （moveNativeImageIntoCell が読む）に任せる
   const selection = view.state.selection;
   const dragged = (selection as any)?.node;
   if (!dragged) return false;
@@ -203,20 +220,16 @@ function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
 }
 
 /**
- * セルの中のインライン画像を本文へドラッグしたときの受け口（ブロック → セルの逆）。
- * セル外に落ちたら画像ブロックとして置き直し、元のインライン画像を消す。
- * セル内での移動は既定に任せる（インライン要素のままで良い）。
+ * 掴んだ画像を本文の画像ブロックとして置き直す受け口（ブロック → セルの逆）。
+ * セルの中の画像を外に出した場合と、本文の画像を画像自体で掴んで動かした場合の両方。
+ * セル内に落ちたときは扱わない（セル間の移動は inline のままでよい）。
  */
 function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean {
-  const raw = event.dataTransfer?.getData(INLINE_IMAGE_DRAG_MIME);
-  if (!raw || !editor) return false;
-  let payload: { fileId?: string; name?: string; pos?: number | null };
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    return false;
-  }
-  if (!payload.fileId) return false;
+  if (!editor) return false;
+  const payload = draggedImagePayload(event);
+  if (!payload) return false;
+  // ⠿ ハンドルで掴んだブロックの移動は BlockNote の既定に任せる
+  if (!payload.inCell && event.dataTransfer?.types?.includes("blocknote/html")) return false;
   const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
   if (!at || isInsideTableCell(view, at.pos)) return false;
   // 落とし先のブロック（段落の途中には差し込まない）
@@ -230,48 +243,146 @@ function moveCellImageToBlock(view: any, event: DragEvent, editor: any): boolean
     }
   }
   if (!targetBlockId) return false;
+  const inlineRange = payload.inCell ? draggedInlineRange(view, payload) : null;
+  const sourceBlock = payload.inCell ? null : draggedImageBlock(view, editor, payload);
+  // 本文の画像を本文へ落としただけ（元が見つからない・落とし先が元自身）なら何もしない。
+  // ここで preventDefault だけして取りこぼすと、既定処理が画像の名前を文字として挿す
+  if (!payload.inCell && (!sourceBlock || sourceBlock.id === targetBlockId)) {
+    if (sourceBlock) {
+      event.preventDefault();
+      clearCellDropState();
+      return true;
+    }
+    return false;
+  }
   event.preventDefault();
   clearCellDropState();
-  // 掴んだ画像そのものを消す。fileId だけで探すと、同じ素材が他のセルにもあるとき
-  // 別の画像を消してしまい「複製された」ように見える（実際に起きた）
-  let fromPos = -1;
-  let size = 0;
-  const draggedPos = typeof payload.pos === "number" ? payload.pos : null;
-  if (draggedPos !== null && draggedPos >= 0 && draggedPos < view.state.doc.content.size) {
-    const node = view.state.doc.nodeAt(draggedPos);
-    if (node?.type?.name === "inlineImage" && node.attrs?.fileId === payload.fileId) {
-      fromPos = draggedPos;
-      size = node.nodeSize;
-    }
-  }
-  if (fromPos < 0) {
-    // 位置が取れなかったときだけ fileId で探す（従来の挙動）
-    view.state.doc.descendants((node: any, pos: number) => {
-      if (fromPos >= 0) return false;
-      if (node.type?.name === "inlineImage" && node.attrs?.fileId === payload.fileId) {
-        fromPos = pos;
-        size = node.nodeSize;
-        return false;
-      }
-      return true;
-    });
+  // 掴んだインライン画像は挿入の前に消す。editor.insertBlocks は別トランザクション
+  // なので、挿入後に古い位置で delete すると（挿入が前方のとき）ずれた範囲を消して
+  // 文書を壊す。削除は inline だけでブロック構造を変えず、挿入・元ブロック削除は
+  // id 参照なので、この順ならどちらも位置ずれの影響を受けない。
+  // （挿入で万一つまずいても素材はライブラリに残る）
+  if (inlineRange) {
+    view.dispatch(view.state.tr.delete(inlineRange.from, inlineRange.from + inlineRange.size));
   }
   // 画像ブロックは editor API で足す。ProseMirror ノードを直接組むと BlockNote の
   // URL 解決（resolveFileUrl）を通らず、media-server:// のまま img に入って
-  // ERR_UNKNOWN_URL_SCHEME になる。
-  // 先に足してから消す — 逆にすると、挿入でつまずいたとき画像だけ失われる
+  // ERR_UNKNOWN_URL_SCHEME になる
   editor.insertBlocks(
-    [{ type: "image", props: { url: `media-server://${payload.fileId}`, name: payload.name ?? "" } }],
+    // URL はプロバイダのスキームで組み立てる。media-server:// 決め打ちだと
+    // デスクトップ（file-media://）で解決できず、画像がリンク切れになる
+    [
+      {
+        type: "image",
+        props: { url: mediaUrlForActiveProvider(payload.fileId), name: payload.name },
+      },
+    ],
     targetBlockId,
     "after",
   );
-  if (fromPos >= 0) {
-    const tr = view.state.tr;
-    // 挿入で位置がずれるのでマップし直す
-    const from = tr.mapping.map(fromPos);
-    view.dispatch(tr.delete(from, from + size));
-  }
+  if (sourceBlock) editor.removeBlocks([sourceBlock.id]);
   return true;
+}
+
+/**
+ * 掴んでいる画像素材。カスタム MIME → 控えておいたドラッグ → ネイティブの順に見る。
+ * デスクトップ（WKWebView）では dataTransfer のカスタム MIME が drop 側で空になり、
+ * 控えた値だけが頼りになる（読めないと画像が名前の文字列に化ける）。
+ */
+function draggedImagePayload(event: DragEvent): ActiveImageDrag | null {
+  const raw = event.dataTransfer?.getData(INLINE_IMAGE_DRAG_MIME);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { fileId?: string; name?: string; pos?: number | null };
+      if (parsed.fileId) {
+        return {
+          fileId: parsed.fileId,
+          name: parsed.name ?? "",
+          pos: typeof parsed.pos === "number" ? parsed.pos : null,
+          inCell: true,
+        };
+      }
+    } catch {
+      // 壊れていたら以降の手段に任せる
+    }
+  }
+  const active = getActiveImageDrag();
+  if (active) return active;
+  const native = draggedImageFileId(event);
+  return native ? { fileId: native.fileId, name: native.name, pos: null, inCell: false } : null;
+}
+
+/**
+ * 掴んだインライン画像の位置と大きさ。
+ * fileId だけで探すと、同じ素材が他のセルにもあるとき別の画像を消してしまい
+ * 「複製された」ように見える（実際に起きた）。掴んだ位置での照合を優先する。
+ */
+function draggedInlineRange(
+  view: any,
+  payload: ActiveImageDrag,
+): { from: number; size: number } | null {
+  const matches = (node: any) =>
+    node?.type?.name === "inlineImage" && node.attrs?.fileId === payload.fileId;
+  const pos = payload.pos;
+  if (pos !== null && pos >= 0 && pos < view.state.doc.content.size) {
+    const node = view.state.doc.nodeAt(pos);
+    if (matches(node)) return { from: pos, size: node.nodeSize };
+  }
+  let found: { from: number; size: number } | null = null;
+  view.state.doc.descendants((node: any, at: number) => {
+    if (found) return false;
+    if (matches(node)) {
+      found = { from: at, size: node.nodeSize };
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
+/** 掴んだ画像ブロック。掴んだときに控えた id を優先し、素材一致の探索は最後の手段 */
+function draggedImageBlock(view: any, editor: any, payload: ActiveImageDrag): { id: string } | null {
+  if (payload.blockId) {
+    const block = editor?.getBlock?.(payload.blockId);
+    if (block?.type === "image") return { id: payload.blockId };
+  }
+  const pos = payload.pos;
+  if (pos !== null && pos >= 0 && pos < view.state.doc.content.size) {
+    const $pos = view.state.doc.resolve(pos);
+    for (let d = $pos.depth; d > 0; d--) {
+      const node = $pos.node(d);
+      if (node.type.name === "blockContainer" && node.attrs?.id) {
+        return { id: node.attrs.id };
+      }
+    }
+  }
+  return (
+    editor?.document?.find?.(
+      (b: any) =>
+        b.type === "image" &&
+        typeof b.props?.url === "string" &&
+        b.props.url.endsWith(payload.fileId),
+    ) ?? null
+  );
+}
+
+// ── ドラッグゴーストの縮小 ──
+//
+// 画像ブロックの選択ドラッグは、既定だと画像の実寸ゴーストが出る（幅いっぱいの
+// 画像だと画面を覆い、どこに落ちるのか分からなくなる）。小さな分身に差し替える。
+// **dragstart の中で DOM を追加してはいけない** — Chromium はドラッグを中止する。
+// body 直下に 1 個だけ常設し、dragstart では src の差し替えと setDragImage だけ行う。
+let dragGhost: HTMLImageElement | null = null;
+
+function ensureDragGhost(): HTMLImageElement {
+  if (dragGhost?.isConnected) return dragGhost;
+  const img = document.createElement("img");
+  img.setAttribute("data-drag-ghost", "true");
+  img.style.cssText =
+    "position:fixed;top:-1000px;left:-1000px;width:120px;height:auto;pointer-events:none;";
+  document.body.appendChild(img);
+  dragGhost = img;
+  return img;
 }
 
 // ── セルへの画像ドロップの見せ方 ──
@@ -477,6 +588,9 @@ function draggedImageFileId(event: DragEvent): { fileId: string; name: string } 
 function isImageDrag(view: any, event: DragEvent): boolean {
   const dt = event.dataTransfer;
   if (!dt) return false;
+  // 画像自体を掴んだドラッグは types に手掛かりが出ないことがある（この判定を外すと
+  // dragover で preventDefault されず、そもそも drop が発火しない）
+  if (getActiveImageDrag()) return true;
   // dragover 中は file の名前が読めないため、MIME が空のファイルも受け入れ表示に含める
   // （落とした時点で画像でなければ既定処理に落ちる）
   if ([...(dt.items ?? [])].some((i) => i.kind === "file" && (i.type.startsWith("image/") || !i.type)))
@@ -676,12 +790,96 @@ export function SandboxEditor({
     _tiptapOptions: {
       editorProps: {
         handleDOMEvents: {
+          // 画像そのものを掴んだドラッグ（img のネイティブドラッグ）を控えておく。
+          // この経路は blocknote/html もカスタム MIME も乗らないことがあり、
+          // デスクトップ（WKWebView）では drop 側で素材を特定できずに既定処理へ落ちる
+          // ＝ 画像が名前の文字列に化ける。ドラッグ元も先も同じドキュメントなので、
+          // ここで覚えておけば dataTransfer が読めなくても素材を追える
+          // 画像を掴んだドラッグを控えておく。dataTransfer のカスタム MIME は
+          // デスクトップ（WKWebView）だと drop 側で読めず、画像ブロックを画像自体で
+          // 掴んだドラッグには PM 標準の text/plain + text/html しか乗らない（実測。
+          // blocknote/html は ⠿ ハンドル経由でしか乗らない）。ドラッグ元も先も同じ
+          // ドキュメントなので、ここで覚えておけば dataTransfer が読めなくても追える
+          // 画像ブロックを「クリックで選択してから」でないと掴めない問題への先回り。
+          // ブラウザは mousedown の時点で選択の中にいないと選択ドラッグを開始しない
+          // （選択なしで画像を掴んでもドラッグ自体が始まらない — CDP で実測）。
+          // 画像の上で mousedown した瞬間に NodeSelection を張っておけば、
+          // そのまま動かしたときに選択ドラッグとして始まる（BlockNote のクリック
+          // 選択と同じ結果になるだけなので、クリック操作への影響はない）
+          mousedown: (view: any, event: any) => {
+            try {
+              const el = event?.target as HTMLElement | null;
+              if (!el?.closest || el.tagName !== "IMG") return false;
+              if (el.closest('[data-test="inline-image"]')) return false;
+              const container = el.closest('[data-node-type="blockContainer"]');
+              if (!container) return false;
+              const blockId = container.getAttribute("data-id");
+              const block = blockId ? editorRef.current?.getBlock?.(blockId) : null;
+              if (block?.type !== "image") return false;
+              const pos = view.posAtDOM(container, 0);
+              const $pos = view.state.doc.resolve(pos);
+              const before = $pos.before($pos.depth);
+              const node = view.state.doc.nodeAt(before);
+              if (node?.type?.name !== "blockContainer") return false;
+              // すでに同じブロックが選択済みなら何もしない（余計な tr を発行しない）
+              const cur: any = view.state.selection;
+              if (cur instanceof NodeSelection && cur.from === before) return false;
+              const sel = NodeSelection.create(view.state.doc, before);
+              view.dispatch(view.state.tr.setSelection(sel));
+            } catch {
+              // 選択の先張りは最善努力。失敗してもクリックの既定処理に任せる
+            }
+            return false;
+          },
+          dragstart: (view: any, event: any) => {
+            setActiveImageDrag(null);
+            try {
+              const el = event?.target as HTMLElement | null;
+              if (!el?.closest) return false;
+              // セル内画像は React 側（spec.tsx の onDragStart）が記録する
+              if (el.closest('[data-test="inline-image"]')) return false;
+              // 掴んだ要素の blockContainer から block を引く。selection は見ない —
+              // 掴んでそのままドラッグすると、dragstart 時点では NodeSelection が
+              // まだ張られていないことがある（クリック確定後にしか張られない）
+              const container = el.closest('[data-node-type="blockContainer"]');
+              const blockId = container?.getAttribute("data-id") ?? null;
+              const block = blockId ? editorRef.current?.getBlock?.(blockId) : null;
+              if (block?.type !== "image" || typeof block.props?.url !== "string") return false;
+              const fileId = getActiveProvider().extractFileId(block.props.url);
+              if (!fileId) return false;
+              setActiveImageDrag({
+                fileId,
+                name: String(block.props.name ?? ""),
+                pos: null,
+                inCell: false,
+                blockId,
+              });
+              // 既定のゴーストは選択範囲の実寸（幅いっぱいの画像だと画面を覆う）。
+              // 常設の縮小分身に差し替える（dragstart 中の DOM 追加はドラッグを殺す）
+              const img = container?.querySelector?.("img");
+              if (img && event.dataTransfer) {
+                try {
+                  const ghost = ensureDragGhost();
+                  ghost.src = (img as HTMLImageElement).src;
+                  event.dataTransfer.setDragImage(ghost, 24, 24);
+                  event.dataTransfer.effectAllowed = "move";
+                } catch {
+                  // ゴーストは見た目だけ。失敗しても既定表示で続ける
+                }
+              }
+            } catch {
+              // 記録は最善努力。失敗しても既定のドラッグは邪魔しない
+            }
+            return false;
+          },
           // 受け入れ先のセルを枠で示す（既定のドロップカーソル処理は邪魔しない）
           dragover: (view: any, event: any) => {
             if (!isImageDrag(view, event)) return false;
             // ファイルのドラッグは preventDefault しないと drop が発火しない。
             // セルの内外で出し分けると境目で挙動が変わるので、画像のドラッグなら常に呼ぶ
             event.preventDefault();
+            // ノート内の画像の移動はコピー（＋カーソル）ではなく move で見せる
+            if (getActiveImageDrag() && event.dataTransfer) event.dataTransfer.dropEffect = "move";
             scheduleIndicator(view, event);
             // 入れたいセルが画面の外にあっても運べるようにする
             updateDragScroll(view, event.clientY);
@@ -692,16 +890,19 @@ export function SandboxEditor({
             return false;
           },
           dragend: () => {
+            setActiveImageDrag(null);
             clearCellDropState();
             return false;
           },
           drop: (view: any, event: any) => {
-            // ファイルの drop（外部から）と、ノート内の画像ブロックの drag（内部）の両方
+            // ノート内のドラッグ（移動）を先に見て、当たらなければ外から来たファイルとして扱う。
+            // 逆にすると、画像を掴んだドラッグに画像データが乗る環境（デスクトップ）で、
+            // すでに素材にある画像を毎回登録し直してしまう（文字認識まで走る）
             const handled =
-              insertCellImagesFromFiles(view, event?.dataTransfer, event, uploadFileRef.current) ||
               moveImageBlockIntoCell(view, event) ||
               moveCellImageToBlock(view, event, editorRef.current) ||
-              moveNativeImageIntoCell(view, event, editorRef.current);
+              moveNativeImageIntoCell(view, event, editorRef.current) ||
+              insertCellImagesFromFiles(view, event?.dataTransfer, event, uploadFileRef.current);
             if (!handled && isImageDrag(view, event)) {
               // 受け入れ表示（バー）を出したのに取りこぼした状態。BlockNote の既定処理に
               // 落ちるとセルの外にブロックができるので、原因を追えるよう残す
@@ -710,6 +911,7 @@ export function SandboxEditor({
                 files: event?.dataTransfer?.files?.length ?? 0,
               });
             }
+            setActiveImageDrag(null);
             clearCellDropState();
             return handled;
           },
@@ -772,6 +974,47 @@ export function SandboxEditor({
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+
+  // ⠿ ハンドル（サイドメニュー）のドラッグを控える。
+  // ハンドルはエディタ DOM の外にあり、PM の handleDOMEvents.dragstart では拾えない。
+  // window のバブル段階なら、BlockNote が dataTransfer（blocknote/html）と
+  // NodeSelection を設定し終えた後に観測できる。ドロップの時点では selection が
+  // 別のものに置き換わっていることがある（実測）ので、ここで素材を控えておき、
+  // drop 側（moveNativeImageIntoCell）は記録から処理する
+  useEffect(() => {
+    const onWindowDragStart = (event: DragEvent) => {
+      try {
+        if (!event.dataTransfer?.types?.includes("blocknote/html")) return;
+        if (getActiveImageDrag()) return; // エディタ内の dragstart で記録済み
+        const view = (editorRef.current as any)?._tiptapEditor?.view;
+        const sel: any = view?.state?.selection;
+        const dragged = sel?.node;
+        if (!dragged) return;
+        let imageNode: any = dragged.type?.name === "image" ? dragged : null;
+        if (!imageNode) {
+          dragged.descendants?.((n: any) => {
+            if (imageNode) return false;
+            if (n.type?.name === "image") imageNode = n;
+            return !imageNode;
+          });
+        }
+        if (!imageNode || typeof imageNode.attrs?.url !== "string" || !imageNode.attrs.url) return;
+        const fileId = getActiveProvider().extractFileId(imageNode.attrs.url);
+        if (!fileId) return;
+        setActiveImageDrag({
+          fileId,
+          name: String(imageNode.attrs.name ?? ""),
+          pos: null,
+          inCell: false,
+          blockId: dragged.attrs?.id ?? null,
+        });
+      } catch {
+        // 記録は最善努力。失敗しても既定のドラッグは邪魔しない
+      }
+    };
+    window.addEventListener("dragstart", onWindowDragStart, false);
+    return () => window.removeEventListener("dragstart", onWindowDragStart, false);
+  }, []);
 
   // エディタインスタンスを外部に公開
   useEffect(() => {

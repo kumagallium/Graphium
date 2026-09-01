@@ -20,9 +20,12 @@ import {
   type TableHandleProps,
 } from "@blocknote/react";
 import { TableHandlesExtension } from "@blocknote/core";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Calculator } from "lucide-react";
 import { t } from "../../i18n";
 import { sortTableBlock, type SortDir } from "./sort-table";
+import { readCellText } from "./table-cells";
+import { computeTableDisplayNames } from "./auto-name";
+import { useTableMetaStoreOptional } from "./store";
 
 function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
   const Components = useComponentsContext()!;
@@ -52,7 +55,56 @@ function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
       >
         {t("tableMeta.sortDesc")}
       </Components.Generic.Menu.Item>
+      <UseColumnInCalcItem blockId={blockId} colIndex={colIndex} />
     </>
+  );
+}
+
+/** mathjs の文字列リテラルに入れる名前のエスケープ */
+function quoteName(name: string): string {
+  return '"' + name.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+
+/**
+ * 「この列を計算に使う」— 表の直下に、この列の合計を求める計算ブロックを
+ * ひな形付きで挿入する。表→計算の連携（table["表示名"]["列名"]）への入口。
+ */
+function UseColumnInCalcItem({ blockId, colIndex }: { blockId: string; colIndex: number }) {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor();
+  const store = useTableMetaStoreOptional();
+
+  const block: any = editor.getBlock(blockId);
+  const columnName = readCellText(block?.content?.rows?.[0]?.cells?.[colIndex]).trim();
+  // ヘッダが空の列は参照式が書けないので出さない（ストア無し = 単体表示も同様）
+  if (!store || !columnName) return null;
+
+  const insertCalc = () => {
+    const displayNames = computeTableDisplayNames(
+      (editor as any).document ?? [],
+      store.getCaption
+    );
+    const tableName = displayNames.get(blockId);
+    if (!tableName) return;
+    // 無名の表は自動名「表 N」のままだと並べ替えで番号がずれ、参照が別の表を
+    // 指してしまう。参照された瞬間に自動名をキャプションへ昇格して固定する
+    if (!store.getCaption(blockId)) store.setCaption(blockId, tableName);
+    (editor as any).insertBlocks(
+      [
+        {
+          type: "calc",
+          props: { source: `sum(table[${quoteName(tableName)}][${quoteName(columnName)}])` },
+        },
+      ],
+      blockId,
+      "after"
+    );
+  };
+
+  return (
+    <Components.Generic.Menu.Item icon={<Calculator size={14} />} onClick={insertCalc}>
+      {t("tableMeta.useColumnInCalc")}
+    </Components.Generic.Menu.Item>
   );
 }
 

@@ -420,6 +420,11 @@ export const en: Record<string, string> = {
   "calc.clickToCopy": "Click to copy",
   "calc.copied": "Copied",
   "calc.errorMark": "?",
+  "calc.writeToTable": "Write back to a table",
+  "calc.writebackPickTable": "target table",
+  "calc.writebackPickColumn": "target column",
+  "calc.writebackClear": "Stop writing back",
+  "calc.writebackReadColumn": "Cannot write to a column this formula reads",
   "math.placeholder": "Enter a formula (LaTeX)",
   "math.inlinePlaceholder": "formula",
   "math.editorLabel": "Formula",
@@ -2048,6 +2053,10 @@ export const en: Record<string, string> = {
   "inlineImage.missing": "Image unavailable",
   "inlineImage.resize": "Drag to resize (double-click to reset)",
   "tableMeta.sortDesc": "Sort descending",
+  "tableMeta.calcWriterBadge": "{column} ← {name}",
+  "tableMeta.calcWriterHint": "This column is written by a calc block. Click to jump to it.",
+  "calc.nameHint": "Name this calculation (shown on the table badge)",
+  "tableMeta.useColumnInCalc": "Use column in calculation",
 
   // 記録テーブル
   "logTable.colDateTime": "Date/Time",

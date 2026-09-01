@@ -108,3 +108,29 @@ export async function probeServerProvider(): Promise<void> {
 
 // モジュール読み込み時に即座に初期化（同期分のみ）
 initProviders();
+
+/**
+ * fileId から、いまのプロバイダで解決できる素材 URL を組み立てる。
+ *
+ * プロバイダごとに内部スキームが違う（local-media:// / file-media:// /
+ * media-server://）。ノートに書く URL を 1 つのスキームに決め打ちすると、
+ * 別プロバイダの環境（デスクトップ等）で extractFileId が効かず
+ * 画像がリンク切れになる。その環境の extractFileId が実際に受け付ける
+ * 形式を検証して選ぶ（プロバイダ実装への依存を増やさないため）。
+ */
+export function mediaUrlForActiveProvider(fileId: string): string {
+  const provider = getActiveProvider();
+  const candidates = [
+    `file-media://${fileId}`,
+    `local-media://${fileId}`,
+    `media-server://${fileId}`,
+  ];
+  for (const url of candidates) {
+    try {
+      if (provider.extractFileId(url) === fileId) return url;
+    } catch {
+      // 判定できない候補は飛ばす
+    }
+  }
+  return `media-server://${fileId}`;
+}

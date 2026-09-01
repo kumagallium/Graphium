@@ -43,6 +43,35 @@ export function fileIdFromBlobUrl(url: string | null | undefined): string | null
   return fileIdByBlobUrl.get(url) ?? null;
 }
 
+/**
+ * いまノート内で掴んでいる画像素材。
+ *
+ * dataTransfer に載せたカスタム MIME は、デスクトップ（WKWebView）だと drop 側で
+ * 読めないことがある。読めないとどの受け口にも当たらず、ProseMirror の既定処理が
+ * text/plain（＝画像の名前）を挿してしまい、画像が文字に化ける。ドラッグ元も先も
+ * 同じドキュメントなので、素の変数で覚えておけば環境差の影響を受けない。
+ */
+export type ActiveImageDrag = {
+  fileId: string;
+  name: string;
+  /** 掴んだノードの位置。同じ素材が複数あるとき、掴んだものだけを消すのに使う */
+  pos: number | null;
+  /** 掴んだ元がテーブルのセルの中（inlineImage）か、本文の画像ブロックか */
+  inCell: boolean;
+  /** 掴んだ画像ブロックの id（本文の画像のみ）。元ブロックの削除に使う */
+  blockId?: string | null;
+};
+
+let activeImageDrag: ActiveImageDrag | null = null;
+
+export function setActiveImageDrag(drag: ActiveImageDrag | null) {
+  activeImageDrag = drag;
+}
+
+export function getActiveImageDrag(): ActiveImageDrag | null {
+  return activeImageDrag;
+}
+
 function loadBlobUrl(fileId: string): Promise<string> {
   const cached = blobUrlCache.get(fileId);
   if (cached) return cached;
@@ -59,6 +88,18 @@ function loadBlobUrl(fileId: string): Promise<string> {
   blobUrlCache.set(fileId, p);
   return p;
 }
+
+/**
+ * 既定（width 未設定）の表示上限。行の高さに収まるだけの小ささだと図の中身が読めないので、
+ * セルの中で内容を判別できるところまで大きく出す。明示リサイズした画像はこの上限を使わない
+ */
+const DEFAULT_MAX_HEIGHT = "8em";
+const DEFAULT_MAX_WIDTH = 240;
+
+/** 手動リサイズの下限・上限（px）。下限は掴み直せるだけの大きさを残す */
+const MIN_WIDTH = 32;
+const MAX_WIDTH = 640;
+const clampWidth = (n: number) => Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, n));
 
 export const InlineImage = createReactInlineContentSpec(
   {
@@ -86,7 +127,13 @@ export const InlineImage = createReactInlineContentSpec(
       const [failed, setFailed] = useState(false);
       // ドラッグ中の見た目だけ先に動かし、離したときに一度だけ保存する
       const [dragWidth, setDragWidth] = useState<number | null>(null);
+      // ハンドルを掴めているか目で分かるようにする（hover とドラッグ中で見た目を変える）
+      const [handleHover, setHandleHover] = useState(false);
+      const [resizing, setResizing] = useState(false);
       const imgRef = useRef<HTMLImageElement | null>(null);
+      // ドラッグ中にノートを切り替えても document のリスナ・body のスタイルを残さない
+      const endResizeRef = useRef<(() => void) | null>(null);
+      useEffect(() => () => endResizeRef.current?.(), []);
 
       useEffect(() => {
         if (!fileId) {
@@ -108,6 +155,8 @@ export const InlineImage = createReactInlineContentSpec(
       }, [fileId]);
 
       const shownWidth = dragWidth ?? (width || 0);
+      /** ハンドルを強調する状態（hover 中 or 掴んでいる最中） */
+      const handleActive = handleHover || resizing;
 
       const commitWidth = (next: number) => {
         setDragWidth(null);
@@ -117,23 +166,54 @@ export const InlineImage = createReactInlineContentSpec(
         });
       };
 
-      /** 右下ハンドルのドラッグ。掴んだ時点の幅から水平移動ぶんを足す */
-      const startResize = (e: React.MouseEvent) => {
+      /**
+       * 右下ハンドルのドラッグ。掴んだ時点の幅から水平移動ぶんを足す。
+       * pointer 系で受けてマウス・ペン・タッチのどれでも掴めるようにし、掴んでいる間は
+       * 画面全体のカーソルと選択を固定する（テキスト選択が走ると掴んだ感覚が壊れる）
+       */
+      const startResize = (e: React.PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
         const startX = e.clientX;
         const startWidth = imgRef.current?.getBoundingClientRect().width ?? 120;
-        const onMove = (ev: MouseEvent) => {
-          // 極端に潰れる/伸びるのを防ぐ（セルの中に収まる範囲）
-          setDragWidth(Math.max(24, Math.min(640, startWidth + (ev.clientX - startX))));
+        const body = document.body;
+        const prevUserSelect = body.style.userSelect;
+        const prevCursor = body.style.cursor;
+        body.style.userSelect = "none";
+        body.style.cursor = "nwse-resize";
+        setResizing(true);
+        setDragWidth(clampWidth(startWidth));
+
+        const onMove = (ev: PointerEvent) => setDragWidth(clampWidth(startWidth + (ev.clientX - startX)));
+        const end = () => {
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", onUp);
+          document.removeEventListener("pointercancel", onCancel);
+          body.style.userSelect = prevUserSelect;
+          body.style.cursor = prevCursor;
+          endResizeRef.current = null;
+          setResizing(false);
         };
-        const onUp = (ev: MouseEvent) => {
-          document.removeEventListener("mousemove", onMove);
-          document.removeEventListener("mouseup", onUp);
-          commitWidth(Math.max(24, Math.min(640, startWidth + (ev.clientX - startX))));
+        const onUp = (ev: PointerEvent) => {
+          end();
+          commitWidth(clampWidth(startWidth + (ev.clientX - startX)));
+          // 離した直後の click を 1 回だけ飲む（そのまま通ると素材ピークが開く）
+          const swallow = (c: MouseEvent) => {
+            c.preventDefault();
+            c.stopPropagation();
+          };
+          window.addEventListener("click", swallow, true);
+          setTimeout(() => window.removeEventListener("click", swallow, true), 0);
         };
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
+        const onCancel = () => {
+          // 中断（タッチのキャンセル等）は幅を捨てて元に戻す
+          end();
+          setDragWidth(null);
+        };
+        endResizeRef.current = onCancel;
+        document.addEventListener("pointermove", onMove);
+        document.addEventListener("pointerup", onUp);
+        document.addEventListener("pointercancel", onCancel);
       };
 
       const open = () => {
@@ -201,33 +281,56 @@ export const InlineImage = createReactInlineContentSpec(
                     INLINE_IMAGE_DRAG_MIME,
                     JSON.stringify({ fileId, name, pos })
                   );
+                  // デスクトップ（WKWebView）は drop 側でカスタム MIME を読めないので、
+                  // 素の変数にも控える（editor.tsx の draggedImagePayload が読む）
+                  setActiveImageDrag({ fileId, name, pos, inCell: true });
                   e.dataTransfer.effectAllowed = "move";
                 }}
-                style={
-                  shownWidth
-                    ? {
-                        width: shownWidth,
-                        height: "auto",
-                        borderRadius: 4,
-                        border: "1px solid var(--color-border)",
-                        display: "inline-block",
-                        objectFit: "contain",
-                      }
-                    : {
-                        // 既定は行内に収まりつつ絵として判別できる高さ。セルの行も同じだけ育つ
-                        maxHeight: "3.2em",
-                        maxWidth: 220,
-                        borderRadius: 4,
-                        border: "1px solid var(--color-border)",
-                        display: "inline-block",
-                        objectFit: "contain",
-                      }
-                }
+                style={{
+                  ...(shownWidth
+                    ? { width: shownWidth, height: "auto" }
+                    : // 既定は絵の中身が読める大きさ。セルの行も同じだけ育つ
+                      { maxHeight: DEFAULT_MAX_HEIGHT, maxWidth: DEFAULT_MAX_WIDTH }),
+                  borderRadius: 4,
+                  border: "1px solid var(--color-border)",
+                  display: "inline-block",
+                  objectFit: "contain",
+                  // 掴んでいる間は対象を光らせる
+                  outline: resizing ? "2px solid var(--color-primary)" : undefined,
+                  outlineOffset: resizing ? 1 : undefined,
+                }}
               />
-              {editable && (
-                // 右下のリサイズハンドル。掴んでいる間だけ画面全体で座標を追う
+              {resizing && dragWidth != null && (
+                // 掴んでいる間の幅表示。動いていることが数字でも分かるようにする。
+                // 画像の外に出すと上の行に被るので、内側の右上に重ねる
                 <span
-                  onMouseDown={startResize}
+                  style={{
+                    position: "absolute",
+                    top: 3,
+                    right: 3,
+                    padding: "1px 6px",
+                    borderRadius: 4,
+                    background: "var(--color-primary)",
+                    color: "var(--color-primary-foreground, #fff)",
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    whiteSpace: "nowrap",
+                    pointerEvents: "none",
+                    zIndex: 2,
+                  }}
+                >
+                  {Math.round(dragWidth)}px
+                </span>
+              )}
+              {editable && (
+                // 右下のリサイズハンドル。掴んでいる間だけ画面全体で座標を追う。
+                // 当たり判定（外側）は見た目のつまみより広く取る — 掴み損ねるとクリックが
+                // そのまま素材ピークになってしまい、狙って掴めない感じが強く出る
+                <span
+                  onPointerDown={startResize}
+                  onPointerEnter={() => setHandleHover(true)}
+                  onPointerLeave={() => setHandleHover(false)}
+                  onClick={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => {
                     // ダブルクリックで既定サイズに戻す（幅を捨てる）
                     e.stopPropagation();
@@ -236,17 +339,32 @@ export const InlineImage = createReactInlineContentSpec(
                   title={t("inlineImage.resize")}
                   style={{
                     position: "absolute",
-                    right: -3,
-                    bottom: -3,
-                    width: 10,
-                    height: 10,
-                    borderRadius: 2,
-                    border: "1px solid var(--color-border)",
-                    background: "var(--color-card)",
+                    right: -9,
+                    bottom: -9,
+                    width: 22,
+                    height: 22,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     cursor: "nwse-resize",
-                    opacity: 0.85,
+                    touchAction: "none",
+                    zIndex: 1,
                   }}
-                />
+                >
+                  <span
+                    style={{
+                      width: handleActive ? 12 : 10,
+                      height: handleActive ? 12 : 10,
+                      borderRadius: 3,
+                      border: `1px solid ${handleActive ? "var(--color-primary)" : "var(--color-border)"}`,
+                      background: handleActive ? "var(--color-primary)" : "var(--color-card)",
+                      boxShadow: handleActive
+                        ? "0 0 0 3px color-mix(in oklab, var(--color-primary) 25%, transparent)"
+                        : "0 1px 2px rgba(0, 0, 0, 0.18)",
+                      transition: "width 80ms, height 80ms, background 80ms, box-shadow 80ms",
+                    }}
+                  />
+                </span>
               )}
             </span>
           )}
