@@ -28,7 +28,7 @@ Graphium deliberately does not bind `⌘⇧N` (`Ctrl+Shift+N` on Windows/Linux) 
 
 Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving.
 
-![The notes list with link counts, labels, and context columns](/screenshots/notes-list.png)
+![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
 ## Editor basics
 
@@ -220,6 +220,35 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 
 ![The Insert Template modal with the Plan and Run templates](/screenshots/template-picker.png)
 
+## Working with tables <Badge type="tip" text="Added in v0.48.0 (2026-08-31)" /> {#tables}
+
+Everything below applies to any table in a note, whatever it started as.
+
+### Expanding a table
+
+A table with more rows than fit comfortably in the note has an **Expand** button above it. It opens the table on its own over the page, with the header row pinned while you scroll, and the row and column count in the corner ("12 rows × 5 columns"). Close it with the ✕, the background, or `Esc`.
+
+### Sorting
+
+Click a column header in the expanded view to sort by it: ascending, then descending, then back to the order you typed. Which one you get depends on where the table lives, and the hint under the title says which:
+
+| Hint | What sorting does |
+|---|---|
+| "Click a column header to sort — the table itself is not changed" | Sorts your view only. The note keeps the order you recorded. |
+| "Click a column header to sort the table itself — undo to revert" | Rewrites the row order in the note. `⌘Z` puts it back. |
+
+To sort the table in place without opening it, use the column handle (⋮⋮) menu: **Sort ascending** and **Sort descending** sit at the bottom. Both are ordinary edits, so undo works.
+
+A column is read as numbers when most of its filled cells are numeric; the rest sort as text. Blank cells always go last, and rows that tie keep their original order.
+
+### Data files and images inside cells
+
+A cell can hold more than text. Type `@` in a cell to insert a material from your library: a `.csv`, `.txt`, or `.dat` file appears as a link you can click to preview, and an image appears inline in the cell. That way a measurement, the raw file it came from, and a photo of the sample sit in one row instead of scattered around the note.
+
+### Long imported tables
+
+A table brought in from a measurement file shows its first rows with the rest folded away, and a **Show 240 more rows** button underneath. Once expanded, the row count in the caption ("263 rows") folds it back.
+
 ## The index table
 
 **Index Table** inserts a table built for managing a list of samples, runs, or items, with **Name**, **Condition 1**, and **Condition 2** columns you can rename and extend. Each row can own a note:
@@ -293,7 +322,7 @@ Type `@` anywhere in the text to open the link menu. Candidates are grouped:
 | **This note** | Headings inside the current note. |
 | **Other notes** | Your other notes, most recent first. |
 | **AI Knowledge** | Knowledge-layer notes, labeled like "🤖 Summary: …". |
-| **Document materials** | Imported PDF / Word materials, for citing sources. |
+| **Document materials** | Materials from your library — PDF and Word for citing sources, and (inside a table cell) data files and images. |
 | **New** | **Create a new note…** — name it in a dialog, and it is created and linked in one step. |
 
 Mentions are live references, not plain text: rename a note and every `@mention` of it updates in the notes that refer to it. <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" />
