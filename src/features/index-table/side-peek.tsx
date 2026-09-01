@@ -34,6 +34,12 @@ import {
   normalizeNoteContexts,
 } from "../note-context/context-tags";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, sanitizeBlocksForLoad } from "../../blocks/registry";
+import {
+  RemoteContentBar,
+  RemoteImportToast,
+  useRemoteContentScope,
+  useRemoteImageImport,
+} from "../../blocks/remote-content";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
 import { mathSlashItem } from "../../blocks/math";
@@ -56,7 +62,6 @@ import {
   blockContainsUrlLink,
   registerUrlAsset,
   buildUrlPeekEntry,
-  schedulePastedImageCapture,
 } from "@features/asset-browser";
 import type { MediaIndex, MediaIndexEntry, MediaType, AssetDisplayMode } from "@features/asset-browser";
 import { parseExternalSource } from "@features/network-graph/external-source";
@@ -301,9 +306,6 @@ function SidePeekInner({
   labelStoreRef.current = labelStore;
   const linkStoreRef = useRef(linkStore);
   linkStoreRef.current = linkStore;
-  // paste リスナー（effect closure）から最新の uploadFile を参照するための ref
-  const uploadFileRef = useRef(uploadFile);
-  uploadFileRef.current = uploadFile;
   const blockAlignmentStore = useBlockAlignmentStore();
   const blockAlignmentStoreRef = useRef(blockAlignmentStore);
   blockAlignmentStoreRef.current = blockAlignmentStore;
@@ -644,7 +646,6 @@ function SidePeekInner({
       // 全コピペ共通: 挿入後にインライン entityId を再発番する後処理（メインと同じ Phase E）。
       // 同 entityId 共有は意図しない場合が多いので、コピー範囲内では一貫した
       // 新 ID に置き換える（旧 ID 同一なら新 ID も同一になる remap）。
-      // beforeIdsForRegen はペースト画像の素材取り込み（schedulePastedImageCapture）とも共有。
       const beforeIdsForRegen = new Set(flattenBlockIds(editor.document));
       const scheduleEntityRegen = () => {
         setTimeout(() => {
@@ -674,16 +675,14 @@ function SidePeekInner({
           });
         }, 0);
         scheduleEntityRegen();
-        schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFileRef.current, e);
         return;
       }
 
       // Graphium ペイロード以外でも entity 再発番は走らせる（プレーン Markdown / HTML 等）
       scheduleEntityRegen();
-      // ウェブページ等の HTML ペーストで入った外部 URL / data URL 画像を素材へ取り込む
-      // （メインエディタの pasteListener と同じ後処理。BlockNote の text/html 経路は
-      //   uploadFile を通らず、素材に残らないため）
-      schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFileRef.current, e);
+      // 貼り付けで入った外部 URL の画像を素材へ取り込むのは、ここではなく
+      // エディタの onChange から呼ぶ useRemoteImageImport（blocks/remote-content）。
+      // メインエディタと同じく、挿入経路ごとではなく変更ハンドラ 1 箇所に集約してある。
 
       // 3) ノートリンク（…#note/<id>）単体 → @タイトルのメンションに変換
       const pastedText = e.clipboardData?.getData("text/plain")?.trim();
@@ -1042,7 +1041,9 @@ function SidePeekInner({
           url: entry.url,
           title: entry.name,
           description: entry.urlMeta?.description ?? "",
-          ogImage: entry.urlMeta?.ogImage ?? "",
+          // og:image の remote URL はブロックに持たせない（描画のたびに配信元へ
+          // GET が飛ぶ）。カードの画像はローカルキャッシュから引く
+          ogImage: "",
           domain: entry.urlMeta?.domain ?? extractDomain(entry.url),
         },
       }],
@@ -1177,10 +1178,26 @@ function SidePeekInner({
     doSaveRef.current = doSave;
   }, [doSave]);
 
+  // 外部メディアゲートの単位。noteId ではなくこのピーク 1 回分の値にする（理由は
+  // blocks/remote-content/store.ts）。閉じれば消えるので、開き直せばまた同意を求める。
+  const remoteScope = useRemoteContentScope();
+
+  // 本文に入ったばかりの外部画像を、その場でローカルへ取り込む（メインエディタと同じ）。
+  // scope はゲート（SandboxEditor の remoteContentScope・RemoteContentBar）と同じ値を使う。
+  // 親が key={noteId} で作り直すので、このピーク 1 回分＝そのノート 1 回分になる。
+  const { scan: scanRemoteImages, toast: remoteImportToast } = useRemoteImageImport({
+    editorRef,
+    scope: remoteScope,
+    uploadFile,
+  });
+
   // 変更検知 → ラベル自動設定 + 3秒後に自動保存
   // labelAutoRef はメインエディタ（note-app.tsx の handleContentChange）と同様、
   // 毎変更時に呼ぶ契約（箇条書き Enter のラベル継承・削除ブロックの孤立ラベル清掃）
   const handleChange = useCallback(() => {
+    // 取り込みは保存状態の判定より前に呼ぶ。取り込めた分は本文がローカル参照になり、
+    // 「外部画像を読み込む」の対象から外れる。
+    scanRemoteImages();
     // 版スナップショット（snapshot:）は読み取り専用。エディタ初期化時の change でも
     // 「未保存」表示や自動保存タイマーを起こさない（doSave 側にも多重ガードあり）。
     if (noteId.startsWith("snapshot:")) return;
@@ -1190,7 +1207,7 @@ function SidePeekInner({
     autoSaveTimerRef.current = setTimeout(() => {
       doSaveRef.current();
     }, 3000);
-  }, [noteId]);
+  }, [noteId, scanRemoteImages]);
 
   // URL ペーストメニュー → ブックマーク/リンク選択（メインエディタと同じ挙動）。
   // 素材登録の usedIn にはこのピークのノートを入れる: SidePeek の保存
@@ -1695,6 +1712,8 @@ function SidePeekInner({
                   )}
                 </div>
               )}
+              {/* 本文の外部メディアをまだ読み込んでいないときの導線（メインエディタと同じ） */}
+              <RemoteContentBar scope={remoteScope} variant="inline" />
               <textarea
                 value={effectiveDoc?.title ?? ""}
                 onChange={(e) => {
@@ -1807,9 +1826,13 @@ function SidePeekInner({
               })()}
               {/* table / audio / file の配置揃えを CSS で適用 */}
               <AlignmentStyleLayer />
+              {/* 外部画像のローカル取り込みの進行トースト（メインエディタと同じ右下ピル） */}
+              <RemoteImportToast state={remoteImportToast} />
               <SandboxEditor
                 key={noteId}
                 editable={!archived && !trashed && !noteId.startsWith("snapshot:")}
+                // 外部メディアの読み込み同意の単位（メインエディタと同じ考え方）
+                remoteContentScope={remoteScope}
                 blocks={customBlockEntries}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}

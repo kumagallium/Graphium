@@ -155,6 +155,14 @@ export const cyStyles: cytoscape.StylesheetStyle[] = [
     },
   },
   // ── メディア Entity / 属性（サムネイル付き — 画像・動画のみ） ──
+  // Cytoscape は background-image を描画時（cytoscape() 直後の rAF）に取得する。
+  // ここが塗るのは data.thumbnailUrl の値そのもので、このスタイルは中身を検証しない。
+  // remote URL が入っていれば描画の時点で第三者へ GET が飛ぶので、「何を入れてよいか」の
+  // 判定は elements を組み立てる側で完結させる決まりにしてある。
+  // 現状 thumbnailUrl を書くのは prov-generator/view.tsx（provToCytoscapeElements と、
+  // その後の非同期解決ループ）だけで、載るのはローカル参照 —— アプリ内スキーム・
+  // blob: ・data:image/ ・media-text のプレビュー参照 —— に限られる。
+  // http(s) はサムネイルを付けずに落とす（背景画像の無い素のノードになる）。
   {
     selector: "node[thumbnailUrl]",
     style: {

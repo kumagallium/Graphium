@@ -7,6 +7,12 @@
    - Atkinson Hyperlegible Next: dyslexia / 視覚障害向け (Braille Institute, 最新版)
    - JetBrains Mono: mono メタ情報
    読みやすさモードは body[data-font="lexend"] / [data-font="atkinson-next"] で切り替え
+
+   日本語（BIZ UDPGothic / Zen Kaku Gothic New）の @font-face はここには無い。
+   unicode-range サブセットが 490 チャンクあるので public/fonts/jp/fonts.css に
+   分離してあり（scripts/fetch-fonts.mjs が生成 / .gitignore 済み）、各 HTML の
+   <link rel="stylesheet"> から読み込む。生成物に依存しないので dev / Storybook /
+   vitest はフォント未取得でもこの CSS を読める。
    ============================================================ */
 @font-face {
   font-family: 'Inter';

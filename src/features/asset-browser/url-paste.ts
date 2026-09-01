@@ -9,6 +9,7 @@ import {
   getFaviconUrl,
 } from "./media-index";
 import type { MediaIndexEntry, MediaUsage } from "./media-index";
+import { ensureCachedPreviewImage } from "./preview-image";
 
 export function isHttpUrl(text: string): boolean {
   try {
@@ -155,17 +156,28 @@ export function registerUrlAsset(
 ): void {
   if (!onAddUrlBookmark) return;
   fetchUrlMetadata(url).then((meta) => {
-    onAddUrlBookmark({
+    const entry: MediaIndexEntry = {
       fileId: generateUrlBookmarkId(),
       name: meta.title,
       type: "url",
       mimeType: "text/x-uri",
       url,
-      thumbnailUrl: getFaviconUrl(meta.domain),
+      // favicon はサイト自身のものだけを保存する（第三者サービスは経由しない）。
+      // 社内ホストのスキーム・ポートを落とさないよう、フル URL も渡す。
+      thumbnailUrl: getFaviconUrl(meta.domain, 64, meta.faviconUrl, url),
       uploadedAt: new Date().toISOString(),
       usedIn,
-      urlMeta: { domain: meta.domain, description: meta.description, ogImage: meta.ogImage },
-    });
+      urlMeta: {
+        domain: meta.domain,
+        description: meta.description,
+        ogImage: meta.ogImage,
+        faviconUrl: meta.faviconUrl,
+      },
+    };
+    onAddUrlBookmark(entry);
+    // OGP 画像の実体を登録時に一度だけ取り込む。以後カードはローカルの
+    // data URL を描くので、描画で配信元へ出ていくことは無い（失敗しても無視）
+    void ensureCachedPreviewImage(entry);
     onRegistered?.();
   });
 }

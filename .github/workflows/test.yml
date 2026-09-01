@@ -38,6 +38,19 @@ jobs:
       - name: Manual drift check
         run: pnpm manual:check
 
+      # 日本語 Web フォントは .gitignore 済みで、pnpm build の先頭（scripts/fetch-fonts.mjs）が
+      # fonts.gstatic.com から 490 チャンク約 8MB を毎回取りに行く。CDN の 429 や一時的な
+      # 名前解決失敗で「変更と無関係に」この Build check が赤くなるのを避けるためキャッシュする。
+      # キーは fetch-fonts.mjs のハッシュ = 要求するファミリ / ウェイトを変えれば必ず取り直す。
+      # restore-keys は張らない: 古い世代が復元されると fetch-fonts が「取得済み」と判断して
+      # 意図と違うフォントのままビルドが通ってしまうため（キー不一致なら取り直させる）。
+      # 取得失敗そのものは fatal のまま。フォント欠けの dist を作らせない。
+      - name: Cache Japanese webfonts
+        uses: actions/cache@v4
+        with:
+          path: public/fonts/jp
+          key: jp-fonts-${{ runner.os }}-${{ hashFiles('scripts/fetch-fonts.mjs') }}
+
       - name: Build check
         run: pnpm build
 

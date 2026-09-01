@@ -3,9 +3,17 @@
 // ライブエディタを持たない一括変換では、markdown-import と同じパターンで
 // default スキーマのヘッドレス BlockNoteEditor を一時生成して
 // blocks-to-markdown.ts に渡す（カスタムブロックの落とし込みはそこで共通化）。
+//
+// ただし blockSpecs は素の defaultBlockSpecs ではなく、inert-media-elements.ts で
+// 包んだものを使う。標準の image / video / audio は HTML 化のときに `<img>` を作って
+// src に URL を代入する＝そこで取得が始まるため、全ノートを回すこの経路が
+// 「ノートに書かれた外部 URL を、画面を出さずに全部叩く」ものになっていた。
+// 包んだ spec は取得を持たない要素で同じ HTML を組み立てるので、書き出される
+// Markdown の文字列は変わらない（URL はテキストとしてそのまま残る）。
 
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import type { GraphiumDocument } from "../../lib/document-types";
+import { inertMediaBlockSpecs } from "./inert-media-elements";
 import { extractInlineText } from "./sanitize-blocks";
 import { blocksToMarkdown } from "./blocks-to-markdown";
 
@@ -15,7 +23,7 @@ let headlessEditor: { blocksToMarkdownLossy: (blocks: any[]) => Promise<string> 
 function getHeadlessEditor() {
   if (!headlessEditor) {
     const schema = BlockNoteSchema.create({
-      blockSpecs: defaultBlockSpecs,
+      blockSpecs: inertMediaBlockSpecs(defaultBlockSpecs),
       styleSpecs: defaultStyleSpecs,
     });
     headlessEditor = BlockNoteEditor.create({ schema }) as any;

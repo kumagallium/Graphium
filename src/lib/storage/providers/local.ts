@@ -270,6 +270,13 @@ export class LocalStorageProvider implements StorageProvider {
     return typeof record?.textContent === "string" ? record.textContent : undefined;
   }
 
+  async deleteMediaText(fileId: string): Promise<void> {
+    // textContent レコードもバイナリと同じ STORE_MEDIA に居るので delete は共通。
+    // 呼び出し側は saveMediaText で発行したキーだけを渡すこと（バイナリの id とは
+    // 名前空間が分かれている前提）。
+    await withStore(STORE_MEDIA, "readwrite", (store) => store.delete(fileId));
+  }
+
   clearCache(): void {
     // ローカルにキャッシュ管理は不要
   }

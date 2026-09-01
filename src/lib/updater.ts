@@ -2,11 +2,20 @@
 // アプリ起動時と 24 時間ごとに更新を確認する
 // 更新が見つかると CustomEvent で UI に通知する
 // 設定画面の About タブから手動でも呼べる
+// 自動チェックは設定 `autoUpdateCheck`（既定 ON）で止められる。
+// 手動チェック（checkForUpdates の直接呼び出し）は設定に関わらず常に動く。
 
 import { isTauri } from "./platform";
+import { isAutoUpdateCheckEnabled } from "../features/settings/store";
 import pkg from "../../package.json";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 時間
+const INITIAL_DELAY_MS = 5000; // 起動後、初回チェックまでの待ち時間
+
+// 自動チェックのタイマー。設定を実行中に OFF にしたとき取り消せるよう、
+// モジュールレベルでハンドルを保持する（null = 未スケジュール）。
+let initialTimer: ReturnType<typeof setTimeout> | null = null;
+let periodicTimer: ReturnType<typeof setInterval> | null = null;
 
 // ダウンロードの reqwest リクエスト全体に効くタイムアウト。
 // 未設定だと回線 stall 時に永久に待ち続け、バナーが「ダウンロード中」のまま固まる。
@@ -225,19 +234,50 @@ export async function checkLatestVersionDirect(): Promise<string | null> {
   return null;
 }
 
-/** 更新チェックを開始する（起動時 1 回呼び出す） */
-export async function initUpdater(): Promise<void> {
-  if (!isTauri()) return;
+/** 予約済みの自動チェックをすべて取り消す */
+function clearSchedule(): void {
+  if (initialTimer !== null) {
+    clearTimeout(initialTimer);
+    initialTimer = null;
+  }
+  if (periodicTimer !== null) {
+    clearInterval(periodicTimer);
+    periodicTimer = null;
+  }
+}
+
+/** 自動チェックを予約する（すでに予約済みなら何もしない） */
+function startSchedule(): void {
+  // periodicTimer は取り消されるまで残るので、二重予約はこれで防げる
+  if (initialTimer !== null || periodicTimer !== null) return;
 
   // 起動後 5 秒待ってから初回チェック（UI の初期化を妨げない）
-  setTimeout(() => {
+  initialTimer = setTimeout(() => {
+    initialTimer = null;
     void checkForUpdates();
-  }, 5000);
+  }, INITIAL_DELAY_MS);
 
   // 定期チェック
-  setInterval(() => {
+  periodicTimer = setInterval(() => {
     void checkForUpdates();
   }, CHECK_INTERVAL_MS);
+}
+
+/**
+ * 設定 `autoUpdateCheck` の現在値に合わせて自動チェックの予約を張り直す。
+ * 設定 UI でトグルした直後に呼ぶと再起動なしで反映される
+ * （OFF: 予約済みの初回 setTimeout と 24 時間 setInterval を取り消す /
+ *   ON: その場で予約し直す）。
+ */
+export function refreshAutoUpdateSchedule(): void {
+  if (!isTauri()) return;
+  if (isAutoUpdateCheckEnabled()) startSchedule();
+  else clearSchedule();
+}
+
+/** 自動更新チェックを開始する（起動時 1 回呼び出す）。設定が OFF なら何も予約しない。 */
+export function initUpdater(): void {
+  refreshAutoUpdateSchedule();
 }
 
 /**

@@ -4,6 +4,7 @@
 
 import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table } from "lucide-react";
 import type { MediaIndexEntry, MediaType } from "./media-index";
+import { usePreviewImage } from "./preview-image";
 import { formatDateTime } from "../../lib/format-datetime";
 
 const TYPE_LABEL: Record<MediaType, string> = {
@@ -87,26 +88,38 @@ function ThumbCell({ entry }: { entry: MediaIndexEntry }) {
       </div>
     );
   }
-  // 表示優先度: leadImage (Reader 抽出) → ogImage (publisher 提供) → fallback アイコン
-  const hero = entry.type === "url" ? (entry.urlMeta?.leadImage || entry.urlMeta?.ogImage) : undefined;
-  if (hero) {
+  if (entry.type === "url") return <UrlThumbCell entry={entry} />;
+  return (
+    <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
+      <TypeIcon type={entry.type} size={16} />
+    </div>
+  );
+}
+
+// URL ブックマークのサムネイル。hero はローカルにキャッシュした data URL だけで、
+// og:image / leadImage の remote URL は描画に使わない（行を描くたびに配信元へ
+// GET が飛ぶため）。キャッシュが無ければ従来どおりタイプアイコンに落ちる。
+// ThumbCell から切り出しているのは、条件分岐の後ろでフックを呼べないため。
+function UrlThumbCell({ entry }: { entry: MediaIndexEntry }) {
+  const hero = usePreviewImage(entry);
+  if (!hero) {
     return (
-      <div className="w-10 h-10 rounded bg-muted overflow-hidden shrink-0">
-        <img
-          src={hero}
-          alt=""
-          className="w-full h-full object-cover"
-          referrerPolicy="no-referrer"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
+      <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
+        <TypeIcon type={entry.type} size={16} />
       </div>
     );
   }
   return (
-    <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
-      <TypeIcon type={entry.type} size={16} />
+    <div className="w-10 h-10 rounded bg-muted overflow-hidden shrink-0">
+      <img
+        src={hero}
+        alt=""
+        className="w-full h-full object-cover"
+        referrerPolicy="no-referrer"
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = "none";
+        }}
+      />
     </div>
   );
 }

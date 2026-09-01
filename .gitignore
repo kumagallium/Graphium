@@ -57,6 +57,15 @@ src-tauri/binaries/graphium-server-*
 # fetch-node temp dir (cleaned up automatically, but ignore in case)
 .tmp-node-fetch/
 
+# Self-hosted Japanese webfonts (downloaded by scripts/fetch-fonts.mjs, ~8MB / 490 subset chunks)
+# 生成 CSS (fonts.css) も同じディレクトリ配下なので、この 1 行で両方無視される。
+# CI はコミットの代わりに actions/cache で使い回す
+# （pnpm build を回す各 workflow の "Cache Japanese webfonts" ステップ）。
+public/fonts/jp/
+
+# fetch-fonts temp dir (cleaned up automatically, but ignore in case)
+.tmp-fonts-fetch/
+
 # Claude Code (private config — managed in parent repo)
 CLAUDE.md
 .claude/

@@ -314,6 +314,25 @@ export type Settings = {
   /** USD ⇔ JPY 換算レート（1 USD = ¥X）。表示通貨と異なる単位の cost を換算するときに使う。 */
   usdJpyRate: number;
   /**
+   * 自動更新チェックの有効/無効（既定 ON）。
+   * ON のとき、デスクトップ版が起動 5 秒後と 24 時間ごとに更新サーバーへ問い合わせる。
+   * OFF にすると一切自動接続しなくなる（＝セキュリティ更新の自動通知も届かない）ので、
+   * 既定は ON のまま。設定 > About の「更新を確認」ボタンによる手動チェックは
+   * この設定に関わらず常に動く。
+   */
+  autoUpdateCheck: boolean;
+  /**
+   * ノート本文の外部メディアを常に読み込むかどうか（既定 OFF = 読み込まない）。
+   *
+   * ON にすると、本文の image / video / audio ブロックが持つ http(s) の URL を、
+   * ノートを開いた時点でそのまま取りに行く。URL を書いた側は、受け取り手の
+   * IP アドレスと開いた時刻を知ることになる。
+   * OFF のときはブロックごとにプレースホルダを描くだけで、ノートごとの
+   * 「外部メディアを読み込む」を押すまでそのホストへは接続しない
+   * （blocks/remote-content/）。
+   */
+  allowRemoteContent: boolean;
+  /**
    * 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効。
    * かなり専門的な機能なので、設定で丸ごとオフにできる。オフのときはラベルの
    * 付与 UI・表示（バッジ / インライン装飾 / PROV パネル）を一切描画しない。
@@ -347,6 +366,8 @@ const DEFAULT_SETTINGS: Settings = {
   displayCurrency: "usd",
   usdJpyRate: 150,
   atomizeIngestBudget: 3,
+  autoUpdateCheck: true,
+  allowRemoteContent: false,
 };
 
 /** atomizeIngestBudget の許容範囲。上限は UI ガード（大規模スキャンはメンテナンスの
@@ -531,6 +552,13 @@ export function loadSettings(): Settings {
       // boolean 以外（壊れた値）は undefined（未確定）に倒す。起動時に判定して確定する。
       enableProvLabels:
         typeof parsed.enableProvLabels === "boolean" ? parsed.enableProvLabels : undefined,
+      // 未保存・壊れた値は既定 ON に倒す（更新はセキュリティ修正の配信経路でもあるため）
+      autoUpdateCheck:
+        typeof parsed.autoUpdateCheck === "boolean" ? parsed.autoUpdateCheck : true,
+      // 未保存・壊れた値は既定 OFF（＝読み込まない）に倒す。ここを true に倒すと、
+      // 設定が壊れているだけで本文の外部 URL へ接続してしまう。
+      allowRemoteContent:
+        typeof parsed.allowRemoteContent === "boolean" ? parsed.allowRemoteContent : false,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -684,6 +712,24 @@ export function getAtomizeIngestBudget(): number {
  */
 export function isAutoGroundingEnabled(): boolean {
   return loadSettings().experimental?.autoGrounding ?? false;
+}
+
+/**
+ * 自動更新チェックが有効かどうか（既定 ON）。
+ * lib/updater.ts のスケジューラがこれを見て、起動時／設定トグル時に
+ * タイマーを張るか取り消すかを決める。手動チェックはこの値を参照しない。
+ */
+export function isAutoUpdateCheckEnabled(): boolean {
+  return loadSettings().autoUpdateCheck !== false;
+}
+
+/**
+ * ノート本文の外部メディアを常に読み込む設定が ON かどうか（既定 OFF）。
+ * blocks/remote-content のゲートがブロック描画のたびに読む即時判定。
+ * 反応的に読む側は useRemoteContentGate を使うこと。
+ */
+export function isRemoteContentAlwaysAllowed(): boolean {
+  return loadSettings().allowRemoteContent === true;
 }
 
 /**

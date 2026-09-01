@@ -86,6 +86,12 @@ export interface StorageProvider {
   saveMediaText?(fileId: string, text: string): Promise<void>;
   /** 保存済み原文テキストを取得。存在しなければ undefined */
   loadMediaText?(fileId: string): Promise<string | undefined>;
+  /**
+   * 保存済み原文テキストを削除する。存在しなくてもエラーにしない。
+   * URL ブックマークを削除したとき、そのプレビュー画像キャッシュを道連れにする用途
+   * （ブックマークはバイナリを持たないので deleteMedia が呼ばれない）。
+   */
+  deleteMediaText?(fileId: string): Promise<void>;
 
   // --- キャッシュクリア ---
   clearCache(): void;

@@ -38,6 +38,7 @@ import {
 import {
   getAppVersion,
   checkForUpdates,
+  refreshAutoUpdateSchedule,
   toUpdaterErrorInfo,
   MANUAL_DOWNLOAD_URL,
   type CheckResult,
@@ -92,6 +93,8 @@ import {
   testBlobConnection,
   type ConnectionTestResult,
 } from "../../lib/storage/shared";
+// 本文の外部メディアゲート。設定トグルを保存した直後に、開いているノートへ即反映する。
+import { refreshRemoteContentGate } from "../../blocks/remote-content/store";
 // デスクトップ側のモバイル送信 = 受け取り専用。受信フォルダ（<root>/Inbox/ の親）の
 // 指定と、スマホで開くための QR だけを持つ。OAuth 接続はスマホ側の仕事なのでここには無い
 // （トークンは端末ごとの localStorage で、デスクトップで接続してもスマホには効かない）。
@@ -4422,6 +4425,14 @@ function AboutTab() {
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [installError, setInstallError] = useState<UpdaterErrorInfo | null>(null);
+  // 自動更新チェックの ON/OFF（既定 ON）。About タブは保存ボタンを持たないので、
+  // UsageTab と同じく localStorage へ即時保存する。
+  const [autoUpdateCheck, setAutoUpdateCheck] = useState<boolean>(() => loadSettings().autoUpdateCheck);
+  // ノート本文の外部メディアを常に読み込むか（既定 OFF = 読み込まない）。
+  // 同じ「何が勝手に外へ出るか」の設定なので更新チェックの隣に置く。
+  const [allowRemoteContent, setAllowRemoteContent] = useState<boolean>(
+    () => loadSettings().allowRemoteContent,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -4457,6 +4468,23 @@ function AboutTab() {
       setProgress(null);
     }
   }, [checkState]);
+
+  // 保存した上で updater の予約を張り直す（OFF: 予約済みタイマーを取り消す /
+  // ON: 再起動を待たずに再予約する）
+  const handleToggleAutoUpdate = useCallback(() => {
+    const next = !autoUpdateCheck;
+    setAutoUpdateCheck(next);
+    saveSettings({ ...loadSettings(), autoUpdateCheck: next });
+    refreshAutoUpdateSchedule();
+  }, [autoUpdateCheck]);
+
+  // 保存したうえで、開いているノートのゲートに即反映する（再読み込みを待たせない）
+  const handleToggleRemoteContent = useCallback(() => {
+    const next = !allowRemoteContent;
+    setAllowRemoteContent(next);
+    saveSettings({ ...loadSettings(), allowRemoteContent: next });
+    refreshRemoteContentGate();
+  }, [allowRemoteContent]);
 
   const tauri = isTauri();
 
@@ -4502,12 +4530,39 @@ function AboutTab() {
           {t("settings.about.updates")}
         </h3>
         <p className="text-xs text-muted-foreground">
-          {tauri
-            ? t("settings.about.autoCheckNote")
-            : t("settings.about.webNote")}
+          {!tauri
+            ? t("settings.about.webNote")
+            : autoUpdateCheck
+              ? t("settings.about.autoCheckNote")
+              : t("settings.about.autoCheckDisabledNote")}
         </p>
         {tauri && (
           <>
+            {/* 自動チェックの ON/OFF（既定 ON）。OFF でも下の手動チェックは動く。 */}
+            <div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleAutoUpdate}
+                  role="switch"
+                  aria-checked={autoUpdateCheck}
+                  aria-label={t("settings.about.autoCheckToggle")}
+                  className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${autoUpdateCheck ? "bg-primary" : "bg-input"}`}
+                >
+                  <span
+                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{ transform: autoUpdateCheck ? "translateX(15px)" : "translateX(1px)" }}
+                  />
+                </button>
+                <label className="text-sm font-medium text-foreground">
+                  {t("settings.about.autoCheckToggle")}
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {t("settings.about.autoCheckToggleHelp")}
+              </p>
+            </div>
+
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
@@ -4574,6 +4629,37 @@ function AboutTab() {
             )}
           </>
         )}
+      </div>
+
+      {/* プライバシーパネル。更新チェックと同じ「何が勝手に外へ出るか」の設定だが、
+          こちらは Web 版でも効くので tauri の分岐の外に置く。 */}
+      <div className="rounded-lg border border-border p-4 space-y-3">
+        <h3 className="text-xs font-semibold text-foreground">
+          {t("settings.about.privacy")}
+        </h3>
+        <div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleToggleRemoteContent}
+              role="switch"
+              aria-checked={allowRemoteContent}
+              aria-label={t("settings.about.remoteContentToggle")}
+              className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${allowRemoteContent ? "bg-primary" : "bg-input"}`}
+            >
+              <span
+                className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                style={{ transform: allowRemoteContent ? "translateX(15px)" : "translateX(1px)" }}
+              />
+            </button>
+            <label className="text-sm font-medium text-foreground">
+              {t("settings.about.remoteContentToggle")}
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            {t("settings.about.remoteContentToggleHelp")}
+          </p>
+        </div>
       </div>
     </div>
   );

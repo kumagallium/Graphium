@@ -27,6 +27,8 @@ if (isTauri()) {
       console.log(`[main] sidecar restart ${ok ? "succeeded" : "failed"}`);
     });
   });
+  // 自動更新チェック。設定 > About の「更新を自動で確認する」が OFF なら何も予約しない
+  // （設定を切り替えた時点で updater 側が予約を張り直すので再起動は不要）。
   initUpdater();
   // Rust 側の CloseRequested → prevent_close → 'app-close-requested' emit を受けて
   // sidecar を停止し、shutdown_ack で Rust に終了許可を返す。

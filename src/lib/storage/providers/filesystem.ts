@@ -239,6 +239,14 @@ export class LocalFilesystemProvider implements StorageProvider {
     }
   }
 
+  async deleteMediaText(fileId: string): Promise<void> {
+    try {
+      await invoke("delete_media_text", { fileId });
+    } catch {
+      // 消せなくても呼び出し側の処理は続ける（残るのは孤児の .txt だけ）
+    }
+  }
+
   clearCache(): void {
     // Blob URL キャッシュをクリア
     for (const url of mediaBlobCache.values()) {

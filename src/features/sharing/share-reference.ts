@@ -64,12 +64,16 @@ export async function shareReference(
     const description = options.description?.trim() || entry.urlMeta?.description;
 
     // body は URL メタデータの JSON。受け取り側はこれを decode して bookmark を復元できる。
+    //
+    // og:image は載せない。remote URL のまま共有フォルダに流すと、受け取った側が
+    // カードを描くたびに publisher（多くは CDN・計測ドメイン）へ GET が飛ぶ
+    // ——「チームの誰がいつその資料を見たか」を配信元に配る経路になる。
+    // 画像は各自の端末でローカルにキャッシュし直す（url があれば復元できる）。
     const referenceBody = {
       url: entry.url,
       title,
       domain: entry.urlMeta?.domain,
       description,
-      og_image: entry.urlMeta?.ogImage,
     };
     const body = new TextEncoder().encode(JSON.stringify(referenceBody));
 

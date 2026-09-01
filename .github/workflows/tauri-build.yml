@@ -129,6 +129,18 @@ jobs:
           cat /tmp/sidecar-smoke.log
           exit 1
 
+      # tauri-action は beforeBuildCommand（= pnpm build）を回すので、その中で
+      # scripts/fetch-fonts.mjs が日本語 Web フォント（約 8MB）を取りに行く。
+      # リリースビルドをフォント CDN の一時的な失敗で落とさないようキャッシュしておく
+      # （キー / restore-keys の方針は test.yml の同ステップのコメント参照）。
+      # キャッシュミス時に取得が失敗したらビルドは失敗させる — フォント欠けのまま
+      # 配布物を作らないことを優先する。
+      - name: Cache Japanese webfonts
+        uses: actions/cache@v4
+        with:
+          path: public/fonts/jp
+          key: jp-fonts-${{ runner.os }}-${{ hashFiles('scripts/fetch-fonts.mjs') }}
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:

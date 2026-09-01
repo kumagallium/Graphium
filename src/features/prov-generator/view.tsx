@@ -22,6 +22,8 @@ import {
 } from "../network-graph/process-index";
 import { useLinkStore } from "../block-link/store";
 import { t, getDisplayLabelName } from "../../i18n";
+import { normalizeFaviconUrl } from "../asset-browser/media-index";
+import { isLocalMediaRef } from "../asset-browser/local-media-ref";
 import { THEME } from "./cy-graph";
 
 
@@ -42,8 +44,36 @@ function getNodeSubtype(node: ProvJsonLdNode): string {
 }
 
 /**
+ * メディア URL → サムネイル URL を解決（ローカル参照のみ、それ以外は undefined）。
+ *
+ * - audio / file はサムネイルを持たない（呼び出し側がラベルにプレフィックスを付ける）
+ * - 旧データに残る第三者 favicon サービスの URL は normalizeFaviconUrl でサイト自身の
+ *   favicon に戻す。戻した先も http(s) なので結局ここは undefined を返すが、
+ *   第三者 URL を下流に持ち越さないため先に潰しておく
+ * - http(s) は取りに行かずサムネイルごと落とす。背景画像の無い素のノードになるのが
+ *   正しい結果で、remote URL へフォールバックはしない
+ *
+ * 返した参照をブラウザが読める URL に直す処理はこのファイルには無い。画面の手順グラフは
+ * React Flow に移り、ここが組み立てる elements を描くのは PDF 書き出し
+ * （pdf-export/print-note.ts）のオフスクリーン Cytoscape だけになった。そこも解決を
+ * 挟まないので、blob: / data: 以外のローカル参照（local-media:// など）は背景画像が
+ * 出ないまま描かれる。いずれにせよ外へは出ない。
+ */
+function resolveThumbUrl(url: string, type?: string): string | undefined {
+  if (type === "audio" || type === "file") return undefined;
+  const safeUrl = normalizeFaviconUrl(url);
+  return isLocalMediaRef(safeUrl) ? safeUrl : undefined;
+}
+
+/**
  * ProvJsonLd → Cytoscape elements 変換
  * Phase 3: 埋め込み関係からエッジを抽出
+ *
+ * ここが返す thumbnailUrl は resolveThumbUrl を通ったローカル参照だけで、http(s) の
+ * URL は入らない。Cytoscape は background-image を「描画時」に読み込むので、elements を
+ * cytoscape() に渡した時点で外部へのリクエストは確定する。判定は必ずこの関数の中で
+ * 完結させること（描画側 — pdf-export/print-note.ts のオフスクリーン Cytoscape — は
+ * elements を渡してから png を取るまでの間に URL を差し替えない）。
  */
 export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefinition[] {
   const elements: cytoscape.ElementDefinition[] = [];
@@ -67,14 +97,6 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
 
   let attrNodeIdx = 0;
   let edgeIdx = 0;
-
-  /** メディア URL → サムネイル URL を解決（画像・動画のみ、音声等はサムネイルなし） */
-  function resolveThumbUrl(url: string, type?: string): string | undefined {
-    if (type === "audio" || type === "file") return undefined;
-    return url.includes("googleusercontent.com")
-      ? url.replace(/=s\d+$/, "=s80")
-      : url;
-  }
 
   // ノード
   for (const node of doc["@graph"]) {
@@ -112,20 +134,17 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
         const value = node[key as `graphium:${string}`] as string;
         const attrId = `attr_${node["@id"]}_${attrNodeIdx++}`;
 
-        // パラメータ値が画像 URL かチェック
-        const isImageUrl = /\.(png|jpe?g|gif|webp|svg|bmp)/i.test(value) ||
-          value.includes("googleusercontent.com/d/");
-        let attrThumbnailUrl: string | undefined;
-        if (isImageUrl) {
-          attrThumbnailUrl = value.includes("googleusercontent.com")
-            ? value.replace(/=s\d+$/, "=s80")
-            : value;
-        }
+        // 値がローカルのメディア参照ならサムネイル、それ以外（http(s) URL や
+        // ただの文字列）は値をテキストで見せる。
+        // 旧実装は「拡張子が画像に見える文字列」を無条件でサムネイル化していたため、
+        // 任意の第三者 URL がグラフを描くたびに取得されていた（ビーコンになり得る）。
+        const attrThumbnailUrl = resolveThumbUrl(value);
 
         elements.push({
           data: {
             id: attrId,
-            label: isImageUrl ? shortKey : `${shortKey}: ${value}`,
+            // サムネイルを出せない場合は値をテキストで見せる
+            label: attrThumbnailUrl ? shortKey : `${shortKey}: ${value}`,
             type: "graphium:Attribute",
             subtype: "parameter",
             ...(attrThumbnailUrl ? { thumbnailUrl: attrThumbnailUrl } : {}),

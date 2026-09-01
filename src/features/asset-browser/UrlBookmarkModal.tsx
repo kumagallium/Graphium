@@ -11,6 +11,41 @@ import {
   extractDomain,
 } from "./media-index";
 import type { MediaIndexEntry } from "./media-index";
+import { ensureCachedPreviewImage } from "./preview-image";
+import { Favicon } from "./favicon";
+
+/**
+ * 取得済みメタデータ。「どの URL のものか」を必ず一緒に持つ。
+ *
+ * タイトル・ドメイン・favicon を URL と別々の state に置くと、URL だけ書き換えた
+ * 直後（自動取得のデバウンス待ち 300ms）は前のサイトのメタデータが state に残る。
+ * その隙に登録を押されると、URL は新しいサイトなのにタイトル・ドメイン・favicon は
+ * 前のサイトのもの、というエントリが保存されてしまう。favicon URL はそのまま
+ * 画像リクエストになるので、ユーザーがブックマークしていないホストを叩くことになり、
+ * 第三者 favicon サービスをやめた意味が無くなる。
+ * 1 つのオブジェクトに束ねて、取得元 URL が一致するときしか読めない形にしている。
+ */
+export type FetchedMeta = {
+  /** このメタデータの取得元 URL（trim 済み） */
+  url: string;
+  title: string;
+  description: string;
+  ogImage?: string;
+  /** サイトが `<link rel="icon">` で宣言している favicon（第三者サービスは使わない） */
+  faviconUrl?: string;
+  domain: string;
+};
+
+/**
+ * 入力中の URL に対して有効なメタデータだけを返す。取得元が違えば null。
+ * null は「メタデータ無し」であって異常ではない — プレビューを待たずに登録した
+ * ときと同じ扱いで、ドメインだけのエントリとして正しく登録できる。
+ */
+export function metaForUrl(meta: FetchedMeta | null, url: string): FetchedMeta | null {
+  const trimmed = url.trim();
+  if (!meta || !trimmed || meta.url !== trimmed) return null;
+  return meta;
+}
 
 export type UrlBookmarkModalProps = {
   onRegister: (entry: MediaIndexEntry) => void;
@@ -20,15 +55,13 @@ export type UrlBookmarkModalProps = {
 export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps) {
   const t = useT();
   const [url, setUrl] = useState("");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [meta, setMeta] = useState<FetchedMeta | null>(null);
   const [fetching, setFetching] = useState(false);
-  const [fetched, setFetched] = useState(false);
-  const [ogImage, setOgImage] = useState<string | undefined>();
-  const [domain, setDomain] = useState("");
   const [registering, setRegistering] = useState(false);
   // 自動取得済み URL を追跡（同じ URL で再取得しないため）
   const lastFetchedUrl = useRef("");
+  // 取得リクエストの世代。追い越された古い応答で新しいメタデータを潰さないため
+  const fetchSeq = useRef(0);
 
   /** URL が有効かどうか */
   const isValidUrl = useCallback((value: string) => {
@@ -46,16 +79,22 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
     if (!trimmed || !isValidUrl(trimmed)) return;
     if (lastFetchedUrl.current === trimmed) return;
     lastFetchedUrl.current = trimmed;
+    const seq = ++fetchSeq.current;
     setFetching(true);
     try {
-      const meta = await fetchUrlMetadata(trimmed);
-      setTitle(meta.title);
-      setDescription(meta.description ?? "");
-      setOgImage(meta.ogImage);
-      setDomain(meta.domain);
-      setFetched(true);
+      const fetched = await fetchUrlMetadata(trimmed);
+      // 追い越された古い応答は捨てる（先に投げた方が後に返ることがある）
+      if (seq !== fetchSeq.current) return;
+      setMeta({
+        url: trimmed,
+        title: fetched.title,
+        description: fetched.description ?? "",
+        ogImage: fetched.ogImage,
+        faviconUrl: fetched.faviconUrl,
+        domain: fetched.domain,
+      });
     } finally {
-      setFetching(false);
+      if (seq === fetchSeq.current) setFetching(false);
     }
   }, [isValidUrl]);
 
@@ -68,13 +107,18 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
     return () => clearTimeout(timer);
   }, [url, isValidUrl, doFetch]);
 
-  // URL 変更時にリセット
-  const handleUrlChange = useCallback((value: string) => {
-    setUrl(value);
-    if (lastFetchedUrl.current && lastFetchedUrl.current !== value.trim()) {
-      setFetched(false);
-    }
-  }, []);
+  // 現在の URL に紐づくメタデータ。URL を書き換えた瞬間に自動で外れるので、
+  // 変更時に個別の state をリセットして回る必要が無い（消し忘れが起きない）。
+  // 元の URL に打ち直せばそのまま復帰する。
+  const currentMeta = metaForUrl(meta, url);
+
+  /** プレビュー内で編集したタイトル・説明を反映（取得元 URL は保ったまま） */
+  const patchMeta = useCallback(
+    (patch: Partial<Pick<FetchedMeta, "title" | "description">>) => {
+      setMeta((prev) => (prev ? { ...prev, ...patch } : prev));
+    },
+    [],
+  );
 
   // ESC / Enter
   const handleKeyDown = useCallback(
@@ -88,29 +132,37 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
   const handleRegister = useCallback(async () => {
     const trimmed = url.trim();
     if (!trimmed) return;
+    // 押した瞬間の URL に対応するメタデータだけを使う。デバウンス待ちの間に
+    // 押されたら「メタデータ無しの登録」になる（前のサイトの値は混ざらない）。
+    const m = metaForUrl(meta, trimmed);
     setRegistering(true);
     try {
-      const d = domain || extractDomain(trimmed);
+      const d = m?.domain || extractDomain(trimmed);
       const entry: MediaIndexEntry = {
         fileId: generateUrlBookmarkId(),
-        name: title.trim() || d,
+        name: m?.title.trim() || d,
         type: "url",
         mimeType: "text/x-uri",
         url: trimmed,
-        thumbnailUrl: getFaviconUrl(d),
+        // favicon はサイト自身のものだけを保存する（第三者サービスは経由しない）。
+        // 社内ホストのスキーム・ポートを落とさないよう、フル URL も渡す。
+        thumbnailUrl: getFaviconUrl(d, 64, m?.faviconUrl, trimmed),
         uploadedAt: new Date().toISOString(),
         usedIn: [],
         urlMeta: {
           domain: d,
-          description: description.trim() || undefined,
-          ogImage,
+          description: m?.description.trim() || undefined,
+          ogImage: m?.ogImage,
+          faviconUrl: m?.faviconUrl,
         },
       };
       onRegister(entry);
+      // OGP 画像の実体を登録時に一度だけ取り込む（描画ではネットワークに出ない）
+      void ensureCachedPreviewImage(entry);
     } finally {
       setRegistering(false);
     }
-  }, [url, title, description, domain, ogImage, onRegister]);
+  }, [url, meta, onRegister]);
 
   const urlValid = isValidUrl(url);
 
@@ -145,7 +197,7 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
               <input
                 type="url"
                 value={url}
-                onChange={(e) => handleUrlChange(e.target.value)}
+                onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="https://example.com/article"
                 autoFocus
@@ -159,8 +211,8 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
             </div>
           </div>
 
-          {/* メタデータプレビュー（取得後に表示） */}
-          {fetched && (
+          {/* メタデータプレビュー（今の URL の分を取得できたときだけ表示） */}
+          {currentMeta && (
             <>
               {/* タイトル */}
               <div>
@@ -169,8 +221,8 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
                 </label>
                 <input
                   type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  value={currentMeta.title}
+                  onChange={(e) => patchMeta({ title: e.target.value })}
                   className="w-full text-xs px-3 py-2 rounded border border-border bg-background text-foreground outline-none focus:border-primary transition-colors"
                 />
               </div>
@@ -181,8 +233,8 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
                   {t("asset.urlDescription")}
                 </label>
                 <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  value={currentMeta.description}
+                  onChange={(e) => patchMeta({ description: e.target.value })}
                   rows={2}
                   placeholder={t("asset.urlDescriptionPlaceholder")}
                   className="w-full text-xs px-3 py-2 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors resize-none"
@@ -192,27 +244,27 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
               {/* プレビューカード */}
               <div className="border border-border rounded-md p-3 bg-muted/30">
                 <div className="flex items-start gap-3">
-                  <img
-                    src={getFaviconUrl(domain)}
-                    alt=""
+                  <Favicon
+                    domain={currentMeta.domain}
+                    url={currentMeta.url}
+                    iconUrl={currentMeta.faviconUrl}
                     className="w-8 h-8 rounded mt-0.5"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-foreground truncate">
-                      {title || domain}
+                      {currentMeta.title || currentMeta.domain}
                     </p>
                     <p className="text-[10px] text-muted-foreground truncate">
-                      {domain}
+                      {currentMeta.domain}
                     </p>
-                    {description && (
+                    {currentMeta.description && (
                       <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
-                        {description}
+                        {currentMeta.description}
                       </p>
                     )}
                   </div>
                   <a
-                    href={url}
+                    href={currentMeta.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-muted-foreground hover:text-primary transition-colors shrink-0"

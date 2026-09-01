@@ -335,6 +335,18 @@ app.put("/media-text/:id", async (c) => {
   }
 });
 
+// 素材の削除に追随して原文テキスト・プレビューキャッシュを消す。存在しなくても 200。
+app.delete("/media-text/:id", (c) => {
+  try {
+    const id = safeId(c.req.param("id"));
+    const path = join(subdir("media-text"), `${id}.txt`);
+    if (existsSync(path)) unlinkSync(path);
+    return c.json({ ok: true });
+  } catch (e) {
+    return c.json({ error: String(e) }, 400);
+  }
+});
+
 // --- アプリデータ（インデックスファイル等の内部メタデータ） ---
 
 app.get("/appdata/:key", (c) => {

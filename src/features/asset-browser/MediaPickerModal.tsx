@@ -16,6 +16,8 @@ import {
   extractDomain,
   mimeToMediaType,
 } from "./media-index";
+import { ensureCachedPreviewImage } from "./preview-image";
+import { Favicon } from "./favicon";
 
 // 画像サムネイル: local-media:// URL を Blob URL に変換して表示
 // AssetGalleryView.ImageThumbnail と同じパターン
@@ -129,11 +131,11 @@ function PickerItem({
       case "url":
         return (
           <div className="w-full h-20 flex flex-col items-center justify-center gap-1 rounded bg-muted px-2">
-            <img
-              src={getFaviconUrl(entry.urlMeta?.domain ?? "", 32)}
-              alt=""
+            <Favicon
+              domain={entry.urlMeta?.domain ?? ""}
+              url={entry.url}
+              iconUrl={entry.urlMeta?.faviconUrl}
               className="w-6 h-6 rounded"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
             <span className="text-[9px] text-muted-foreground truncate max-w-full">
               {entry.urlMeta?.domain ?? ""}
@@ -316,16 +318,21 @@ export function MediaPickerModal({
         type: "url",
         mimeType: "text/x-uri",
         url: targetUrl,
-        thumbnailUrl: getFaviconUrl(meta.domain),
+        // favicon はサイト自身のものだけを保存する（第三者サービスは経由しない）。
+        // 社内ホストのスキーム・ポートを落とさないよう、フル URL も渡す。
+        thumbnailUrl: getFaviconUrl(meta.domain, 64, meta.faviconUrl, targetUrl),
         uploadedAt: new Date().toISOString(),
         usedIn: [],
         urlMeta: {
           domain: meta.domain,
           description: meta.description,
           ogImage: meta.ogImage,
+          faviconUrl: meta.faviconUrl,
         },
       };
       onAddUrlBookmark(entry);
+      // OGP 画像の実体を登録時に一度だけ取り込む（描画ではネットワークに出ない）
+      void ensureCachedPreviewImage(entry);
       onSelect(entry, displayMode);
       onClose();
     } finally {
@@ -417,11 +424,11 @@ export function MediaPickerModal({
                 onClick={() => handleSelect(existingMatch)}
                 className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded border border-border bg-background hover:border-primary transition-colors"
               >
-                <img
-                  src={getFaviconUrl(existingMatch.urlMeta?.domain ?? "", 32)}
-                  alt=""
+                <Favicon
+                  domain={existingMatch.urlMeta?.domain ?? ""}
+                  url={existingMatch.url}
+                  iconUrl={existingMatch.urlMeta?.faviconUrl}
                   className="w-5 h-5 rounded shrink-0"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-foreground truncate">{existingMatch.name}</p>

@@ -19,6 +19,12 @@ import { stepSlashItem } from "./blocks/step";
 import { columnsSlashItem } from "./blocks/multi-column";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
+  RemoteContentBar,
+  RemoteImportToast,
+  useRemoteContentScope,
+  useRemoteImageImport,
+} from "./blocks/remote-content";
+import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
   useProvLabelsEnabled,
@@ -277,7 +283,6 @@ import {
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
-import { schedulePastedImageCapture } from "./features/asset-browser/paste-image-capture";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
@@ -1116,6 +1121,18 @@ function NoteEditorInner({
   // 貼られた画像の自動 OCR。handleContentChange から呼ぶが、その useCallback は
   // hook より前に定義されるため ref 経由で最新の scan を渡す。
   const autoOcrRef = useRef<(() => void) | null>(null);
+  // 貼られたばかりの外部画像のローカル取り込み。autoOcrRef と同じ理由で ref 経由。
+  const remoteImportRef = useRef<(() => void) | null>(null);
+  // 外部メディアゲートの単位。エディタ（SandboxEditor）・バー（RemoteContentBar）・
+  // 取り込み（useRemoteImageImport）で同じ値を使う。ばらけると、取り込み中のブロックが
+  // バーの件数から外れず「自分で貼った画像のせいでバーが出っぱなし」になる。
+  //
+  // fileId ではなく「このエディタ 1 回分」の値を使う。fileId 由来だと未保存のノートが
+  // どれも同じ scope になって同意が混ざり、しかも自動保存で id が付いた瞬間に値が
+  // 変わって同意が外れる（詳細は blocks/remote-content/store.ts）。このコンポーネントは
+  // ノートを開き直すたび key={fm.editorKey} で作り直されるので、同意は 1 ノートを
+  // 開いている間だけ生きる。
+  const remoteScope = useRemoteContentScope();
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
   // チャット実行（chat-run-manager）用のノート識別子。doc キャッシュ・saveNoteDoc と
@@ -1138,6 +1155,12 @@ function NoteEditorInner({
     pendingNoteIdRunsRef.current = [];
   }, [chatStorageId]);
   const editorRef = useRef<any>(null);
+  // 「いま画面にあるエディタ」だけを持つ ref。SandboxEditor がコミット中
+  // （useLayoutEffect）に差し替えるので、上の editorRef と違って、下の
+  // key={fileId || "new"} で作り直された直後でも捨てられた前のインスタンスを指さない
+  // （editorRef は onEditorReady = passive effect 待ちで、その一瞬だけ古いままになる）。
+  // 非同期の結果を本文へ書き戻す処理の行き先に使う（いまは外部画像の取り込みだけ）。
+  const liveEditorRef = useRef<any>(null);
   // picker callbacks をエディタ単位で登録するために、エディタ実体を state でも持つ。
   // editorRef.current は ref なので useEffect の依存に乗せられない。
   const [mainEditor, setMainEditor] = useState<any>(null);
@@ -2093,7 +2116,9 @@ function NoteEditorInner({
           url: entry.url,
           title: entry.name,
           description: entry.urlMeta?.description ?? "",
-          ogImage: entry.urlMeta?.ogImage ?? "",
+          // og:image の remote URL はブロックに持たせない（描画のたびに配信元へ
+          // GET が飛ぶ）。カードの画像はローカルキャッシュから引く
+          ogImage: "",
           domain: entry.urlMeta?.domain ?? extractDomain(entry.url),
         },
       }],
@@ -2273,8 +2298,6 @@ function NoteEditorInner({
       // 同 entityId 共有は意図しない場合が多いので、コピー範囲内では一貫した
       // 新 ID に置き換える（旧 ID 同一なら新 ID も同一になる remap）。
       // 詳細: features/inline-label/regen-on-paste.ts
-      // beforeIdsForRegen はペースト画像の素材取り込み（下の schedulePastedImageCapture）
-      // とも共有する paste 直前スナップショット。
       const beforeIdsForRegen = new Set(flattenBlockIds(editor.document));
       const scheduleEntityRegen = () => {
         setTimeout(() => {
@@ -2305,15 +2328,15 @@ function NoteEditorInner({
           });
         }, 0);
         scheduleEntityRegen();
-        schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFile, e);
         return;
       }
 
       // Graphium ペイロード以外でも entity 再発番は走らせる（プレーン Markdown / HTML 等）
       scheduleEntityRegen();
-      // ウェブページ等の HTML ペーストで入った外部 URL / data URL 画像を素材へ取り込む
-      // （BlockNote の text/html 経路は uploadFile を通らず、素材に残らないため）
-      schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFile, e);
+      // 貼り付けで入った外部 URL の画像を素材へ取り込むのは、ここではなく
+      // handleContentChange の useRemoteImageImport（blocks/remote-content）。
+      // 貼り付けだけを見張ると、ドロップ・Markdown 取り込み・AI の挿入・
+      // FilePanel の Embed タブを取りこぼすため、変更ハンドラ 1 箇所に集約してある。
 
       // Graphium ノートのリンク（…#note/<id>）を単体で貼った場合は、生 URL では
       // なく @タイトル のメンションに変換する（`@` で参照するのと同じ扱い）。
@@ -2673,6 +2696,12 @@ function NoteEditorInner({
   }, [provLabelsEnabled, rightTab]);
 
   // ── PDF エクスポートハンドラー ──
+  //
+  // 外部メディアゲートの scope は渡さない。printNote は画面のエディタ要素を
+  // cloneNode で写して印刷ツリーを組む（pdf-export/print-note.ts の
+  // cloneEditorContent）ので、ゲートが標準 render を呼ばずに止めているメディアは
+  // 画面に `<img>` / `<video>` を持たず、複製にも入らない。印刷が新しく触れる
+  // ホストは無い。
   const handleExportPdf = useCallback(async () => {
     const editorEl = document.querySelector("[data-label-wrapper] .bn-editor") as HTMLElement | null;
     if (!editorEl) return;
@@ -4426,6 +4455,9 @@ function NoteEditorInner({
     markDirty();
     labelAutoRef.current?.();
     triggerRegeneration();
+    // 貼られたばかりの外部画像をローカルへ取り込む。OCR より先に呼ぶ:
+    // OCR はローカル参照の画像だけを読むので、取り込みが済んでから拾わせる。
+    remoteImportRef.current?.();
     // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
     autoOcrRef.current?.();
     // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
@@ -4481,6 +4513,18 @@ function NoteEditorInner({
   // このノートを開いている間に新しく入った画像だけを読む。
   const autoOcr = useAutoImageOcr({ editorRef, noteKey: fileId ?? "new" });
   autoOcrRef.current = autoOcr.scan;
+
+  // 本文に入ったばかりの外部画像を、その場でローカルへ取り込む。
+  // 自分で貼った画像は取り込み後ローカル参照になるので、外部メディアのバーは出ない。
+  // 書き戻し先は liveEditorRef（editorRef ではない）: 取り込みの最中に自動保存で
+  // fileId が付くと下の key={fileId || "new"} でエディタだけが作り直され、editorRef が
+  // 追いつく前に取り込みが解決すると、捨てられたインスタンスへ書いて消えるため。
+  const remoteImport = useRemoteImageImport({
+    editorRef: liveEditorRef,
+    scope: remoteScope,
+    uploadFile,
+  });
+  remoteImportRef.current = remoteImport.scan;
 
   // 初期コンテンツ
   const initialContent = useMemo(() => {
@@ -4875,6 +4919,10 @@ function NoteEditorInner({
         </div>
       )}
 
+      {/* 本文に外部ホストの画像・動画・音声・PDF があり、まだ読み込んでいないときの導線。
+          読み込むまでそのホストへは接続しない（blocks/remote-content/）。 */}
+      <RemoteContentBar scope={remoteScope} />
+
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
         <div ref={setEditorPaneEl} data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
@@ -4993,9 +5041,15 @@ function NoteEditorInner({
             <OcrToast state={autoOcr.toast} />
             {/* 印刷の準備が長引いたときだけ出るトースト（同じ右下ピル） */}
             <PrintToast visible={printPreparing} />
+            {/* 外部画像のローカル取り込みの進行トースト（OCR の 1 段上） */}
+            <RemoteImportToast state={remoteImport.toast} />
             <SandboxEditor
               key={fileId || "new"}
               editable={!archived && !trashed}
+              // 外部メディアの読み込み同意の単位。key とは別の値にする: 新規ノートは
+              // 自動保存で fileId が付いた時点でこの key が変わりエディタが作り直されるが、
+              // 開いている本文は同じなので、同意まで作り直されては困る。
+              remoteContentScope={remoteScope}
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
@@ -5003,6 +5057,9 @@ function NoteEditorInner({
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
+              // 作り直しの直後でも「いま画面にあるインスタンス」を指す ref。
+              // 取り込み中の外部画像の書き戻し先（useRemoteImageImport）に使う。
+              liveEditorRef={liveEditorRef}
               onChange={handleContentChange}
               uploadFile={uploadFile}
               resolveFileUrl={async (url: string) => {

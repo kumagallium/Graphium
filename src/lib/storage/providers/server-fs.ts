@@ -304,6 +304,16 @@ export class ServerFilesystemProvider implements StorageProvider {
     }
   }
 
+  async deleteMediaText(fileId: string): Promise<void> {
+    try {
+      await authedFetchInternal(`/api/storage/media-text/${encodeURIComponent(fileId)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      // 消せなくても呼び出し側の処理は続ける（残るのは孤児の .txt だけ）
+    }
+  }
+
   clearCache(): void {
     for (const url of mediaBlobCache.values()) {
       URL.revokeObjectURL(url);

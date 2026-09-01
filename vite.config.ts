@@ -1,4 +1,6 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from "vite";
+import { defaultExclude } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -220,14 +222,38 @@ export default defineConfig({
       workbox: {
         // アプリシェル（HTML/JS/CSS/フォント）をキャッシュ
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-        // OCR のコアと学習データ（計 10MB 超）はアプリシェルではないので precache しない。
-        // `*.wasm.js` は上の js パターンに当たってしまうため明示的に除外する。
-        globIgnores: ["**/tesseract/**"],
+        // precache から外すもの。列挙すると workbox の既定値ごと上書きされるので、
+        // 既定の node_modules 除外も併せて書く。
+        // - tesseract: OCR のコアと学習データ（計 10MB 超）はアプリシェルではない。
+        //   `*.wasm.js` は上の js パターンに当たってしまうため明示的に除外する。
+        // - fonts/jp/*.woff2: セルフホストした日本語フォント（490 チャンク約 8MB）。
+        //   unicode-range で必要なチャンクだけ遅延取得される設計なので、全部を SW
+        //   インストール時に落とすと分割の意味が無くなる。実際に使われたチャンクは
+        //   下の runtimeCaching で CacheFirst に載る
+        //   （fonts/jp/fonts.css は @font-face 定義そのものなので precache 対象のまま）。
+        globIgnores: [
+          "**/node_modules/**/*",
+          "**/tesseract/**",
+          "fonts/jp/*.woff2",
+          "fonts/jp/**/*.woff2",
+        ],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB（BlockNote 等のバンドルが大きいため）
         // Google API や Drive API はキャッシュしない
         navigateFallback: null,
         runtimeCaching: [
           {
+            // 日本語フォントのサブセット（同一オリジン）。一度使った字はオフラインでも出る。
+            urlPattern: /\/fonts\/jp\/.*\.woff2$/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "jp-font-subsets",
+              expiration: { maxEntries: 512, maxAgeSeconds: 365 * 24 * 60 * 60 },
+            },
+          },
+          {
+            // モバイル送信の Google サインイン。静的な <script> は index.html から
+            // 外したが、この機能を使ったときだけ動的に読む
+            // （features/mobile-capture/inbox/push/google-auth.ts）ので規則は残す
             urlPattern: /^https:\/\/accounts\.google\.com\//,
             handler: "NetworkOnly",
           },
@@ -293,4 +319,12 @@ export default defineConfig({
   },
   // Tauri 環境ではホスト情報をクリアテキストで渡さない
   envPrefix: ["VITE_", "TAURI_ENV_"],
+  test: {
+    // .claude/worktrees/ には別セッションの git worktree が丸ごと入る（.gitignore 済み）。
+    // そこまで走査すると、react は repo root・react-dom は worktree の node_modules から
+    // 解決されて React インスタンスが二重になり、複製されたテストが軒並み
+    // "Cannot read properties of null (reading 'useState')" で落ちる。
+    // defaultExclude を展開しないと node_modules の除外ごと消えるので必ず残す。
+    exclude: [...defaultExclude, ".claude/**"],
+  },
 });

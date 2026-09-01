@@ -1546,6 +1546,9 @@ export const ja: Record<string, string> = {
   "settings.about.version": "バージョン",
   "settings.about.updates": "更新",
   "settings.about.autoCheckNote": "Graphium は起動時と 24 時間ごとに更新を自動で確認します。手動で確認することもできます。",
+  "settings.about.autoCheckDisabledNote": "自動での更新確認はオフです。下のボタンから手動で確認できます。",
+  "settings.about.autoCheckToggle": "更新を自動で確認する",
+  "settings.about.autoCheckToggleHelp": "オンのとき、起動時と 24 時間ごとに更新サーバーへ問い合わせます。オフにすると Graphium から自動で接続しなくなりますが、セキュリティ更新のお知らせも届かなくなるため、下のボタンで手動確認してください。",
   "settings.about.webNote": "更新の確認はデスクトップ版でのみ利用できます。",
   "settings.about.checkNow": "更新を確認",
   "settings.about.checking": "確認中...",
@@ -1553,6 +1556,28 @@ export const ja: Record<string, string> = {
   "settings.about.available": "Graphium {version} が利用可能です",
   "settings.about.checkFailed": "更新の確認に失敗しました",
   "settings.about.unsupported": "この環境では更新の確認は利用できません",
+
+  // ── 本文の外部メディア（ノートを開いた時点で外へ出るものの設定） ──
+  "settings.about.privacy": "プライバシー",
+  "settings.about.remoteContentToggle": "ノート本文の外部メディアを常に読み込む",
+  "settings.about.remoteContentToggleHelp": "オフ（既定）のとき、ノート本文の画像・動画・音声・PDF ブロックに外部サイトの URL が入っていても、ノートを開いた時点では取りに行きません。ノートごとに「外部画像を読み込む」を押したときだけ読み込みます。オンにすると開いた時点でその URL へ接続するため、URL を書いた側にあなたの IP アドレスと開いた時刻が伝わります。自分で貼った画像は貼った時点で端末内に取り込まれるので、この設定に関わらずそのまま表示されます。",
+
+  // ── 本文の外部メディア: ノート単位のバーとブロックのプレースホルダ ──
+  "note.remoteContent.blocked": "このノートには、まだ読み込んでいない外部サイトのメディアが {count} 件あります",
+  "note.remoteContent.load": "外部画像を読み込む",
+  "note.remoteContent.loadHint": "このノートの外部メディアを読み込みます（この操作はこのノート・この起動中のみ有効）",
+  "block.remoteContent.image": "外部サイトの画像",
+  "block.remoteContent.video": "外部サイトの動画",
+  "block.remoteContent.audio": "外部サイトの音声",
+  "block.remoteContent.pdf": "外部サイトの PDF",
+  "block.remoteContent.why": "ノートを開いただけでは取りに行きません。クリックすると読み込みます。",
+  "block.remoteContent.action": "読み込む",
+  "pdfExport.remoteMediaOmitted": "外部サイトのメディア（読み込んでいないため PDF に含めていません）",
+
+  // ── 貼り付け時のローカル取り込み ──
+  "remoteImport.running": "外部画像を取り込んでいます…",
+  "remoteImport.done": "画像 {count} 件をこの端末に取り込みました",
+  "remoteImport.failed": "画像 {count} 件を取り込めませんでした（外部サイトの画像のまま残しています）",
 
   // ── API キー復旧通知（Keychain ダウングレード罠などの早期発見） ──
   "auth.missingKeyTitle": "{model} の保存済み API キーを読み込めません",
