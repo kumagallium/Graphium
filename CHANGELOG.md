@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.51.1](https://github.com/kumagallium/Graphium/compare/v0.51.0...v0.51.1) - 2026-09-01
+
+- [fix] Let wide tables bleed into the page margin instead of clipping them by @kumagallium in https://github.com/kumagallium/Graphium/pull/816
+- [feat] Close third-party network egress: gate remote media and self-host fonts by @kumagallium in https://github.com/kumagallium/Graphium/pull/817
+- [feat] Add a connection test for registered MCP servers by @kumagallium in https://github.com/kumagallium/Graphium/pull/819
+- [fix] Reject unknown Host headers and stop publishing Docker ports to the LAN by @kumagallium in https://github.com/kumagallium/Graphium/pull/818
+
 ## [v0.51.0](https://github.com/kumagallium/Graphium/compare/v0.50.1...v0.51.0) - 2026-09-01
 
 - [docs] Document v0.48.0 table features and refresh the notes-list shot by @kumagallium in https://github.com/kumagallium/Graphium/pull/809
