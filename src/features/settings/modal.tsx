@@ -23,7 +23,7 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson } from "./store";
 import {
   fetchModels,
   type ModelInfo,
@@ -300,6 +300,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [mcpAddMode, setMcpAddMode] = useState<"paste" | "manual" | "registry">("paste");
   const [mcpJson, setMcpJson] = useState("");
   const [mcpJsonError, setMcpJsonError] = useState<"" | "invalid-json" | "no-servers">("");
+  // 登録済みサーバーごとの接続テスト結果。id → 進行中 / 成功（ツール数）/ 失敗（理由）
+  type McpTestState = "testing" | { ok: true; count: number } | { ok: false; message: string };
+  const [mcpTestResults, setMcpTestResults] = useState<Record<string, McpTestState>>({});
   // 追加/編集フォーム: 供給源の種別（stdio = ローカル spawn / remote = HTTP）
   const [mcpType, setMcpType] = useState<"stdio" | "remote">("stdio");
   const [mcpEditingId, setMcpEditingId] = useState<string | null>(null); // null = 新規追加
@@ -1202,16 +1205,67 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setSaved(false);
   }, []);
 
-  // README からコピペした mcpServers JSON を取り込む
+  // README からコピペした mcpServers JSON を取り込む。
+  // 編集中なら 1 件目で対象を置き換える（内部 id と enabled は引き継ぐので、
+  // 名前を変えても一覧の位置とトグル状態は保たれる）。2 件目以降は追加扱い。
   const handleImportMcpJson = useCallback(() => {
     const { servers, error } = parseMcpServersJson(mcpJson);
     if (error) {
       setMcpJsonError(error);
       return;
     }
-    upsertMcpServers(servers);
+    if (mcpEditingId) {
+      const [first, ...rest] = servers;
+      setMcpServers((prev) =>
+        prev.map((s) =>
+          s.id === mcpEditingId ? { ...first, id: mcpEditingId, enabled: s.enabled } : s,
+        ),
+      );
+      // 設定を変えたら前回のテスト結果は当てにならないので捨てる
+      setMcpTestResults((prev) => {
+        const next = { ...prev };
+        delete next[mcpEditingId];
+        return next;
+      });
+      if (rest.length > 0) upsertMcpServers(rest);
+      setSaved(false);
+    } else {
+      upsertMcpServers(servers);
+    }
     resetMcpForm();
-  }, [mcpJson, upsertMcpServers, resetMcpForm]);
+  }, [mcpJson, mcpEditingId, upsertMcpServers, resetMcpForm]);
+
+  /**
+   * 1 サーバーに実際に接続してツール一覧が取れるかを確かめる。
+   * 検証範囲は MCP の握手までなので、どのサーバーでも同じように効く
+   * （トークンの権限や向き先が正しいかまでは分からない）。
+   */
+  const handleTestMcpServer = useCallback(async (entry: McpServerEntry) => {
+    setMcpTestResults((prev) => ({ ...prev, [entry.id]: "testing" }));
+    try {
+      const res = await fetch(`${apiBase()}/mcp/test`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ server: entry }),
+      });
+      const data = (await res.json()) as
+        | { ok: true; tools: string[] }
+        | { ok: false; error: string }
+        | { error: string };
+      if ("ok" in data && data.ok) {
+        setMcpTestResults((prev) => ({ ...prev, [entry.id]: { ok: true, count: data.tools.length } }));
+      } else {
+        const message = "error" in data && data.error ? data.error : "unknown error";
+        setMcpTestResults((prev) => ({ ...prev, [entry.id]: { ok: false, message } }));
+      }
+    } catch (err) {
+      // バックエンドが無い（ブラウザ単体）場合もここに来る
+      setMcpTestResults((prev) => ({
+        ...prev,
+        [entry.id]: { ok: false, message: err instanceof Error ? err.message : String(err) },
+      }));
+    }
+  }, []);
 
   // フォーム入力からエントリを組み立てる（追加・編集共通）。不正なら null。
   const buildMcpEntryFromForm = useCallback((id: string, enabled: boolean): McpServerEntry | null => {
@@ -1275,10 +1329,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setSaved(false);
   }, [mcpEditingId, buildMcpEntryFromForm, resetMcpForm]);
 
-  // 既存エントリを編集フォームに読み込む
+  // 既存エントリを編集フォームに読み込む。
+  // 登録は README からのコピペ（JSON）なので、編集も同じ JSON で行う。
+  // 手動フォームの各項目も同時に埋めておき、「手動入力」タブに切り替えても
+  // 続きから編集できるようにする。
   const handleEditMcpServer = useCallback((entry: McpServerEntry) => {
     setShowMcpForm(true);
-    setMcpAddMode("manual");
+    setMcpAddMode("paste");
+    setMcpJson(toMcpServersJson(entry));
+    setMcpJsonError("");
     setMcpEditingId(entry.id);
     setMcpType(entry.type);
     setMcpName(entry.name);
@@ -2978,40 +3037,64 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 <div className="space-y-2 mb-2">
                   {mcpServers.map((s) => {
                     const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
+                    const test = mcpTestResults[s.id];
                     const badge = s.type === "stdio" ? "local" : s.transport;
                     return (
-                      <div key={s.id} className="flex items-center gap-2 text-xs text-foreground">
-                        <button
-                          onClick={() => handleToggleMcpServer(s.id)}
-                          role="switch"
-                          aria-checked={s.enabled}
-                          aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
-                          className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${s.enabled ? "bg-primary" : "bg-input"}`}
-                        >
-                          <span
-                            className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                            style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
-                          />
-                        </button>
-                        <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
-                          <span className="font-medium">{s.name}</span>
-                          <span className="text-muted-foreground"> — {detail}</span>
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
-                        <button
-                          onClick={() => handleEditMcpServer(s)}
-                          aria-label={t("settings.mcp.edit")}
-                          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          onClick={() => handleRemoveMcpServer(s.id)}
-                          aria-label={t("settings.mcp.remove")}
-                          className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                      <div key={s.id} className="text-xs text-foreground">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleToggleMcpServer(s.id)}
+                            role="switch"
+                            aria-checked={s.enabled}
+                            aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
+                            className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${s.enabled ? "bg-primary" : "bg-input"}`}
+                          >
+                            <span
+                              className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                              style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
+                            />
+                          </button>
+                          <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
+                            <span className="font-medium">{s.name}</span>
+                            <span className="text-muted-foreground"> — {detail}</span>
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
+                          <button
+                            onClick={() => void handleTestMcpServer(s)}
+                            disabled={test === "testing"}
+                            className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground hover:bg-muted disabled:opacity-50"
+                          >
+                            {t("settings.mcp.test")}
+                          </button>
+                          <button
+                            onClick={() => handleEditMcpServer(s)}
+                            aria-label={t("settings.mcp.edit")}
+                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleRemoveMcpServer(s.id)}
+                            aria-label={t("settings.mcp.remove")}
+                            className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        {/* 接続テストの結果。設定を直すたびに消えるので、常に「今の設定」の結果だけが出る */}
+                        {test === "testing" ? (
+                          <p className="mt-1 ml-10 text-xs text-muted-foreground">{t("settings.mcp.testing")}</p>
+                        ) : test && test.ok ? (
+                          <p className="mt-1 ml-10 text-xs text-primary">
+                            {test.count > 0
+                              ? t("settings.mcp.testOk", { count: String(test.count) })
+                              : t("settings.mcp.testOkNoTools")}
+                          </p>
+                        ) : test ? (
+                          <p className="mt-1 ml-10 text-xs text-red-500 break-words">
+                            {t("settings.mcp.testFailed", { message: test.message })}
+                          </p>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -3019,13 +3102,23 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               ) : (
                 <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.empty")}</p>
               )}
+              {/* 接続テストで何が分かって何が分からないかを明示する。
+                  「繋がった＝設定が正しい」と読まれると、権限不足を見落とす。 */}
+              {mcpServers.length > 0 && (
+                <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.testHelp")}</p>
+              )}
 
               {showMcpForm ? (
                 <div className="space-y-2 rounded-md border border-border p-3">
-                  {/* 入力モード: JSON コピペ / 手動 / レジストリから選ぶ。編集中は手動固定 */}
-                  {!mcpEditingId && (
-                    <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                      {(["paste", "manual", "registry"] as const).map((m) => (
+                  {/* 入力モード: JSON コピペ / 手動 / レジストリから選ぶ。
+                      編集中はレジストリ（候補ブラウズ）を外し、JSON と手動だけにする。
+                      登録が JSON コピペなのに編集だけフォーム、では貼った内容との
+                      対応が分からなくなるので、編集も既定は JSON。 */}
+                  <div className="flex gap-1 rounded-md bg-muted p-0.5">
+                    {(mcpEditingId
+                      ? (["paste", "manual"] as const)
+                      : (["paste", "manual", "registry"] as const)
+                    ).map((m) => (
                         <button
                           key={m}
                           onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
@@ -3035,11 +3128,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         >
                           {t(m === "paste" ? "settings.mcp.mode.paste" : m === "manual" ? "settings.mcp.mode.manual" : "settings.mcp.mode.registry")}
                         </button>
-                      ))}
-                    </div>
-                  )}
+                    ))}
+                  </div>
 
-                  {mcpAddMode === "paste" && !mcpEditingId ? (
+                  {mcpAddMode === "paste" ? (
                     <>
                       <textarea
                         value={mcpJson}
@@ -3053,14 +3145,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           {t(mcpJsonError === "invalid-json" ? "settings.mcp.jsonError.invalid" : "settings.mcp.jsonError.empty")}
                         </p>
                       )}
-                      <p className="text-xs text-muted-foreground">{t("settings.mcp.jsonHelp")}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t(mcpEditingId ? "settings.mcp.editJsonHelp" : "settings.mcp.jsonHelp")}
+                      </p>
                       <div className="flex gap-2 pt-1">
                         <button
                           onClick={handleImportMcpJson}
                           disabled={!mcpJson.trim()}
                           className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
                         >
-                          {t("settings.mcp.import")}
+                          {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.import")}
                         </button>
                         <button
                           onClick={resetMcpForm}

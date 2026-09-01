@@ -3156,6 +3156,16 @@ function NoteEditorInner({
                   .join("\n");
                 assistantMessage = `${assistantMessage}\n\n---\n**${webHeading}**\n${list}`;
               }
+              // 繋がらなかった MCP サーバーがあれば、そのことを本文末尾に出す。
+              // 黙って落とすと「設定したはずのツールが使われない」理由が分からない。
+              // 出典セクションと同じく、ローカライズ済みの節として追記する。
+              const mcpErrors = response.mcp_errors ?? [];
+              if (mcpErrors.length > 0) {
+                const names = mcpErrors.map((e) => e.name).filter(Boolean).join(", ");
+                assistantMessage =
+                  `${assistantMessage}\n\n---\n⚠️ ${t("settings.mcp.errorBanner")}` +
+                  (names ? `\n\n  - ${names}` : "");
+              }
               // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
               // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
               const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
