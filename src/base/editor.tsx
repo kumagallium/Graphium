@@ -150,7 +150,11 @@ type SandboxEditorProps = {
  * 落とした先がセルなら inline 画像として入れ、掴んだ元の画像ブロックは消す。
  */
 function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): boolean {
-  if (event.dataTransfer?.types?.includes("blocknote/html")) return false;
+  // ⠿ ハンドルのドラッグ（blocknote/html）は moveImageBlockIntoCell が先に受けるが、
+  // drop 時に selection が失われて素通りすることがある。dragstart 時の記録があれば
+  // こちらで受ける（cellPos が無ければ false のままなので、セル外への通常の
+  // ブロック移動は従来どおり BlockNote / PM の既定処理に落ちる）
+  if (event.dataTransfer?.types?.includes("blocknote/html") && !getActiveImageDrag()) return false;
   const dragged = draggedImagePayload(event);
   if (!dragged) return false;
   const cellPos = dropCellPos(view, event);
@@ -177,6 +181,10 @@ function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): bool
 function moveImageBlockIntoCell(view: any, event: DragEvent): boolean {
   // ブロックのドラッグでなければ関与しない（ファイル drop や外部 HTML と区別する）
   if (!event.dataTransfer?.types?.includes("blocknote/html")) return false;
+  // ドロップの時点では、⠿ の dragstart が張った NodeSelection が別の selection に
+  // 置き換わっていることがある（実測: drop ハンドラ内では TextSelection）。
+  // その場合はここでは扱えないので、dragstart 時に控えた記録
+  // （moveNativeImageIntoCell が読む）に任せる
   const selection = view.state.selection;
   const dragged = (selection as any)?.node;
   if (!dragged) return false;
@@ -966,6 +974,47 @@ export function SandboxEditor({
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+
+  // ⠿ ハンドル（サイドメニュー）のドラッグを控える。
+  // ハンドルはエディタ DOM の外にあり、PM の handleDOMEvents.dragstart では拾えない。
+  // window のバブル段階なら、BlockNote が dataTransfer（blocknote/html）と
+  // NodeSelection を設定し終えた後に観測できる。ドロップの時点では selection が
+  // 別のものに置き換わっていることがある（実測）ので、ここで素材を控えておき、
+  // drop 側（moveNativeImageIntoCell）は記録から処理する
+  useEffect(() => {
+    const onWindowDragStart = (event: DragEvent) => {
+      try {
+        if (!event.dataTransfer?.types?.includes("blocknote/html")) return;
+        if (getActiveImageDrag()) return; // エディタ内の dragstart で記録済み
+        const view = (editorRef.current as any)?._tiptapEditor?.view;
+        const sel: any = view?.state?.selection;
+        const dragged = sel?.node;
+        if (!dragged) return;
+        let imageNode: any = dragged.type?.name === "image" ? dragged : null;
+        if (!imageNode) {
+          dragged.descendants?.((n: any) => {
+            if (imageNode) return false;
+            if (n.type?.name === "image") imageNode = n;
+            return !imageNode;
+          });
+        }
+        if (!imageNode || typeof imageNode.attrs?.url !== "string" || !imageNode.attrs.url) return;
+        const fileId = getActiveProvider().extractFileId(imageNode.attrs.url);
+        if (!fileId) return;
+        setActiveImageDrag({
+          fileId,
+          name: String(imageNode.attrs.name ?? ""),
+          pos: null,
+          inCell: false,
+          blockId: dragged.attrs?.id ?? null,
+        });
+      } catch {
+        // 記録は最善努力。失敗しても既定のドラッグは邪魔しない
+      }
+    };
+    window.addEventListener("dragstart", onWindowDragStart, false);
+    return () => window.removeEventListener("dragstart", onWindowDragStart, false);
+  }, []);
 
   // エディタインスタンスを外部に公開
   useEffect(() => {
