@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2 } from "lucide-react";
+import { Calculator, Maximize2 } from "lucide-react";
 import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
 import { collectTableBlocks } from "./table-cells";
@@ -475,6 +475,61 @@ export function TableCaptionLayer({
               この表が手打ちではなく生データ由来だと一目で分かるようにするため。
               押せるのは「取り込み設定を見直す」入口としてで、素材そのものを開く
               経路ではない（ダウンロードに見えるアイコンは付けない） */}
+          {/* 計算ブロックからの書き戻しバッジ。「どの列 ← どの計算」を表側からも
+              見えるようにする。クリックでその計算ブロックへ移動する */}
+          {(() => {
+            const writers: { calcId: string; column: string; calcName?: string }[] = [];
+            for (const [calcId, requests] of Object.entries(store.calcWritebacks ?? {})) {
+              for (const req of requests as { tableBlockId?: string; column?: string; calcName?: string }[]) {
+                if (req?.tableBlockId === blockId && req.column) {
+                  writers.push({ calcId, column: req.column, calcName: req.calcName });
+                }
+              }
+            }
+            if (writers.length === 0) return null;
+            return writers.map((w) => (
+              <button
+                key={`${w.calcId}-${w.column}`}
+                type="button"
+                title={t("tableMeta.calcWriterHint")}
+                onClick={() => {
+                  document
+                    .querySelector(`[data-id="${w.calcId}"]`)
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  height: 18,
+                  padding: "0 6px",
+                  margin: 0,
+                  borderRadius: 9,
+                  border: "1px solid var(--color-border)",
+                  background: "transparent",
+                  color: "var(--color-text-tertiary)",
+                  fontSize: 10,
+                  whiteSpace: "nowrap",
+                  maxWidth: 220,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                }}
+              >
+                <Calculator size={10} strokeWidth={2} />
+                {t("tableMeta.calcWriterBadge", {
+                  column: w.column,
+                  name: w.calcName || t("calc.label"),
+                })}
+              </button>
+            ));
+          })()}
           {source && (() => {
             const clickable = Boolean(onReimport && source.fileId);
             const label = t("dataImport.sourceBadge", { fileName: source.fileName });

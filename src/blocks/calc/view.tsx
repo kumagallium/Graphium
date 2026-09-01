@@ -22,7 +22,7 @@
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRightToLine, Calculator } from "lucide-react";
+import { ArrowRightToLine, Calculator, Check, ChevronRight } from "lucide-react";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
 import {
   assignedVariableOf,
@@ -49,6 +49,8 @@ export const CalcBlock = createReactBlockSpec(
       results: { default: "" },
       // 表への書き戻し先（CalcTargets の JSON）。変数名 → { tableBlockId, column }
       targets: { default: "" },
+      // 計算ブロックの名前。表側のバッジ「列 ← 名前」や参照の目印に使う
+      name: { default: "" },
     },
     content: "none" as const,
   },
@@ -59,6 +61,7 @@ export const CalcBlock = createReactBlockSpec(
       const source = String(props.block.props.source ?? "");
       const savedResults = String(props.block.props.results ?? "");
       const savedTargets = String((props.block.props as { targets?: string }).targets ?? "");
+      const calcName = String((props.block.props as { name?: string }).name ?? "");
       const editable = (props.editor as any).isEditable !== false;
       const targets = useMemo(() => parseCalcTargets(savedTargets), [savedTargets]);
 
@@ -82,6 +85,22 @@ export const CalcBlock = createReactBlockSpec(
           setDraft(source);
         }
       }, [source]);
+
+      // 名前も同じパターン（IME 入力中に updateBlock しないよう blur/Enter で確定）
+      const [nameDraft, setNameDraft] = useState(calcName);
+      const lastCommittedName = useRef(calcName);
+      useEffect(() => {
+        if (calcName !== lastCommittedName.current) {
+          lastCommittedName.current = calcName;
+          setNameDraft(calcName);
+        }
+      }, [calcName]);
+      const commitName = (value: string) => {
+        const trimmed = value.trim();
+        lastCommittedName.current = trimmed;
+        setNameDraft(trimmed);
+        (props.editor as any).updateBlock(props.block, { props: { name: trimmed } });
+      };
 
       const commit = (
         nextSource: string,
@@ -124,6 +143,14 @@ export const CalcBlock = createReactBlockSpec(
 
       const applySuggestionAt = (item: string) => {
         if (!suggest) return;
+        // 表名を確定した瞬間に、その表が無名（自動名）ならキャプションへ昇格して
+        // 固定する。自動名は文書順で振り直されるため、参照がズレるのを防ぐ
+        if (suggest.kind === "table" && tableStore) {
+          const blockId = tableStore.tableBlockIds?.[item];
+          if (blockId && !tableStore.getCaption(blockId)) {
+            tableStore.setCaption(blockId, item);
+          }
+        }
         const caret = textareaRef.current?.selectionStart ?? draft.length;
         const r = applyCalcSuggestion(draft, caret, suggest, item);
         setDraft(r.text);
@@ -177,7 +204,9 @@ export const CalcBlock = createReactBlockSpec(
             const requests: CalcWritebackRequest[] = [];
             for (const [name, target] of Object.entries(targets)) {
               const texts = exports[name];
-              if (texts) requests.push({ ...target, texts });
+              if (texts) {
+                requests.push({ ...target, texts, ...(calcName ? { calcName } : {}) });
+              }
             }
             tableStore.setCalcWriteback(props.block.id, requests.length > 0 ? requests : null);
           }
@@ -213,7 +242,24 @@ export const CalcBlock = createReactBlockSpec(
           <div style={styles.header}>
             <span style={styles.headerTitle}>
               <Calculator size={14} strokeWidth={2} />
-              {t("calc.label")}
+              {editable ? (
+                <input
+                  value={nameDraft}
+                  placeholder={t("calc.label")}
+                  title={t("calc.nameHint")}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onBlur={() => commitName(nameDraft)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter" && !(e.nativeEvent as { isComposing?: boolean }).isComposing) {
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  style={styles.nameInput}
+                />
+              ) : (
+                calcName || t("calc.label")
+              )}
             </span>
           </div>
           <div style={styles.body}>
@@ -307,7 +353,7 @@ export const CalcBlock = createReactBlockSpec(
                   const varName = editable ? assignedVariableOf(line) : null;
                   const target = varName ? targets[varName] : undefined;
                   const targetLabel = target
-                    ? `${tableNameOfId(target.tableBlockId) ?? "?"} → ${target.column}`
+                    ? `${tableNameOfId(target.tableBlockId) ?? "?"}.${target.column}`
                     : undefined;
                   return (
                     <div key={i} style={{ ...styles.resultLine, ...styles.resultRow }}>
@@ -334,6 +380,9 @@ export const CalcBlock = createReactBlockSpec(
                           }}
                         >
                           <ArrowRightToLine size={12} strokeWidth={2} />
+                          {target && targetLabel && (
+                            <span style={styles.writebackBtnText}>{targetLabel}</span>
+                          )}
                         </button>
                       )}
                     </div>
@@ -342,38 +391,62 @@ export const CalcBlock = createReactBlockSpec(
               </div>
               {picker && (
                 <div style={styles.writebackBox} data-test="calc-writeback-picker">
-                  <div style={styles.writebackLabel}>
-                    {picker.tableName === null
-                      ? `${picker.varName} → ${t("calc.writebackPickTable")}`
-                      : `${picker.varName} → ${picker.tableName} → ${t("calc.writebackPickColumn")}`}
+                  {/* 左パネル: 表の一覧。選ぶと右に列のパネルが展開する
+                      （step の前手順ピッカーと同じカスケードの流儀） */}
+                  <div style={styles.writebackPanel}>
+                    <div style={styles.writebackLabel}>
+                      {`${picker.varName} → ${t("calc.writebackPickTable")}`}
+                    </div>
+                    {Object.keys(tableStore?.tableColumns ?? {}).map((name) => {
+                      const isOpen = picker.tableName === name;
+                      const current = targets[picker.varName];
+                      const isTargetTable =
+                        !!current && tableStore?.tableBlockIds?.[name] === current.tableBlockId;
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          aria-expanded={isOpen}
+                          style={{
+                            ...styles.writebackItem,
+                            ...(isOpen ? styles.writebackItemOpen : {}),
+                          }}
+                          onClick={() => {
+                            // 書き戻し先に選ばれた表も名前を固定する（表示の一貫性）
+                            const blockId = tableStore?.tableBlockIds?.[name];
+                            if (blockId && tableStore && !tableStore.getCaption(blockId)) {
+                              tableStore.setCaption(blockId, name);
+                            }
+                            setPicker({ ...picker, tableName: isOpen ? null : name });
+                          }}
+                        >
+                          <span style={styles.writebackItemLabel}>{name}</span>
+                          <span style={styles.writebackItemIcons}>
+                            {isTargetTable && <Check size={12} strokeWidth={2.4} />}
+                            <ChevronRight size={12} strokeWidth={2.2} />
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {targets[picker.varName] && (
+                      <button
+                        type="button"
+                        style={{ ...styles.writebackItem, ...styles.writebackClear }}
+                        onClick={() => setTarget(picker.varName, null)}
+                      >
+                        {t("calc.writebackClear")}
+                      </button>
+                    )}
                   </div>
-                  <div style={styles.writebackItems}>
-                    {picker.tableName === null ? (
-                      <>
-                        {Object.keys(tableStore?.tableColumns ?? {}).map((name) => (
-                          <button
-                            key={name}
-                            type="button"
-                            style={styles.suggestItem}
-                            onClick={() => setPicker({ ...picker, tableName: name })}
-                          >
-                            {name}
-                          </button>
-                        ))}
-                        {targets[picker.varName] && (
-                          <button
-                            type="button"
-                            style={{ ...styles.suggestItem, ...styles.writebackClear }}
-                            onClick={() => setTarget(picker.varName, null)}
-                          >
-                            {t("calc.writebackClear")}
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      Object.keys(tableStore?.tableColumns?.[picker.tableName] ?? {}).map((column) => {
+                  {picker.tableName !== null && (
+                    <div style={{ ...styles.writebackPanel, ...styles.writebackPanelNext }}>
+                      <div style={styles.writebackLabel}>{t("calc.writebackPickColumn")}</div>
+                      {Object.keys(tableStore?.tableColumns?.[picker.tableName] ?? {}).map((column) => {
                         const reads = readColumns.has(`${picker.tableName} ${column}`);
                         const blockId = tableStore?.tableBlockIds?.[picker.tableName ?? ""];
+                        const current = targets[picker.varName];
+                        const isCurrent =
+                          !!current && current.tableBlockId === blockId && current.column === column;
                         return (
                           <button
                             key={column}
@@ -381,19 +454,20 @@ export const CalcBlock = createReactBlockSpec(
                             disabled={reads || !blockId}
                             title={reads ? t("calc.writebackReadColumn") : undefined}
                             style={{
-                              ...styles.suggestItem,
+                              ...styles.writebackItem,
                               ...(reads || !blockId ? styles.writebackDisabled : {}),
                             }}
                             onClick={() =>
                               blockId && setTarget(picker.varName, { tableBlockId: blockId, column })
                             }
                           >
-                            {column}
+                            <span style={styles.writebackItemLabel}>{column}</span>
+                            {isCurrent && <Check size={12} strokeWidth={2.4} />}
                           </button>
                         );
-                      })
-                    )}
-                  </div>
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
               </div>
@@ -434,6 +508,26 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
+    minWidth: 0,
+    flex: 1,
+  },
+  nameInput: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 240,
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    color: "var(--color-muted-foreground)",
+    fontSize: 12,
+    padding: 0,
+  },
+  writebackBtnText: {
+    fontSize: 10,
+    maxWidth: 140,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   body: {
     display: "flex",
@@ -518,9 +612,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 18,
+    gap: 3,
+    minWidth: 18,
     height: 18,
-    padding: 0,
+    padding: "0 3px",
     border: "none",
     borderRadius: 4,
     background: "transparent",
@@ -537,9 +632,10 @@ const styles: Record<string, React.CSSProperties> = {
     top: "calc(100% + 4px)",
     right: 0,
     zIndex: 30,
-    minWidth: 180,
-    maxWidth: 320,
-    padding: 6,
+    display: "flex",
+    alignItems: "stretch",
+    maxWidth: 420,
+    padding: 4,
     borderRadius: 6,
     background: "var(--color-card)",
     border: "1px solid var(--color-border)",
@@ -553,10 +649,47 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
-  writebackItems: {
+  writebackPanel: {
     display: "flex",
-    flexWrap: "wrap",
+    flexDirection: "column",
     gap: 2,
+    padding: 2,
+    minWidth: 130,
+  },
+  writebackPanelNext: {
+    borderLeft: "1px solid var(--color-border)",
+  },
+  writebackItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    width: "100%",
+    border: "none",
+    borderRadius: 4,
+    padding: "4px 8px",
+    background: "transparent",
+    color: "var(--color-foreground)",
+    fontFamily: mono,
+    fontSize: 12,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    textAlign: "left",
+  },
+  writebackItemOpen: {
+    background: "var(--color-muted)",
+    color: "var(--color-primary)",
+  },
+  writebackItemLabel: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: 180,
+  },
+  writebackItemIcons: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
+    color: "var(--color-text-tertiary)",
   },
   writebackClear: {
     color: "var(--color-error)",
