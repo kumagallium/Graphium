@@ -14,6 +14,7 @@ import wikiRoutes from "./routes/wiki.js";
 import provRoutes from "./routes/prov.js";
 import translateRoutes from "./routes/translate.js";
 import storageRoutes from "./routes/storage.js";
+import mcpRoutes from "./routes/mcp.js";
 import worldGroundingRoutes from "./routes/world-grounding.js";
 import embeddingsRoutes from "./routes/embeddings.js";
 import urlRoutes from "./routes/url.js";
@@ -70,6 +71,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   app.route("/api/prov", provRoutes);
   app.route("/api/translate", translateRoutes);
   app.route("/api/storage", storageRoutes);
+  app.route("/api/mcp", mcpRoutes);
   app.route("/api/world-grounding", worldGroundingRoutes);
   app.route("/api/embeddings", embeddingsRoutes);
   app.route("/api/url", urlRoutes);

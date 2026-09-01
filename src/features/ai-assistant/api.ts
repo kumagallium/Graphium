@@ -103,6 +103,12 @@ export type AgentRunResponse = {
   provenance_id: string | null;
   token_usage: TokenUsage;
   model: string | null;
+  /**
+   * 接続できなかった MCP サーバー。空でなくてもチャット自体は成功している
+   * （動くサーバーのツールだけで走る）。以前はサーバー側の console.warn 止まりで
+   * ユーザーには「ツールが出てこない」としか見えなかったので、ここに載せて伝える。
+   */
+  mcp_errors?: { name: string; target: string; message: string }[];
 };
 
 export type ModelInfo = {

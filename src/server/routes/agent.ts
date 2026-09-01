@@ -173,7 +173,9 @@ app.post("/run", async (c) => {
   for (const e of registryEndpoints) byName.set(e.name, e);
   for (const e of manualEndpoints) byName.set(e.name, e);
   // 接続は永続プールで使い回す（close はプールが管理するのでここでは閉じない）。
-  const { tools } = await getMCPTools([...byName.values()]);
+  // 繋がらなかったサーバーは mcpErrors に入る。動くサーバーだけで続行しつつ、
+  // レスポンスに載せてクライアントに知らせる（黙ってツールが消えるのを避ける）。
+  const { tools, errors: mcpErrors } = await getMCPTools([...byName.values()]);
 
   try {
     const model = await createModel(modelConfig);
@@ -212,6 +214,7 @@ app.post("/run", async (c) => {
       provenance_id: null,
       token_usage: result.tokenUsage,
       model: result.model,
+      mcp_errors: mcpErrors,
     });
   } catch (err) {
     // クライアントが Stop で接続を切った場合（AbortError）はエラーではない。

@@ -247,6 +247,33 @@ export function parseMcpServersJson(text: string): McpJsonParseResult {
 }
 
 /**
+ * 登録済みエントリを mcpServers 形式の JSON 文字列に戻す（parseMcpServersJson の逆）。
+ *
+ * 編集も JSON で行えるようにするためのもの。登録は README からのコピペ（JSON）なのに
+ * 編集だけフォームに切り替わると、貼った内容とフォームの項目の対応が分からなくなる。
+ * 同じ表現で読み書きできれば、その断絶が無くなる。
+ *
+ * enabled / id は出力しない。前者は一覧のトグルが持つ状態で JSON の関心事ではなく、
+ * 後者は内部 ID なのでユーザーに見せる意味がないため（保存時は編集前の id を引き継ぐ）。
+ */
+export function toMcpServersJson(entry: McpServerEntry): string {
+  const cfg: Record<string, unknown> =
+    entry.type === "stdio"
+      ? {
+          command: entry.command,
+          args: entry.args,
+          ...(entry.env && Object.keys(entry.env).length > 0 ? { env: entry.env } : {}),
+        }
+      : {
+          url: entry.url,
+          // parseMcpServersJson は type を transport として読む（Claude Desktop 互換）
+          type: entry.transport,
+          ...(entry.apiKey ? { apiKey: entry.apiKey } : {}),
+        };
+  return JSON.stringify({ mcpServers: { [entry.name]: cfg } }, null, 2);
+}
+
+/**
  * 実験的機能のオン/オフ。
  * - atomLayer: Concept をさらに抽象化した Atom 層を有効にする。
  *              Concept が新規に作成・更新された後、追加で Atom を自動生成する。

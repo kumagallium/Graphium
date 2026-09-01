@@ -98,14 +98,36 @@ function getOrConnect(s: MCPServerInfo): Promise<MCPClient> {
   return entry.clientPromise;
 }
 
+/** 接続に失敗した 1 サーバー。呼び出し側が UI に出せるよう構造化して返す */
+export type MCPConnectionFailure = { name: string; target: string; message: string };
+
+/** Promise.allSettled の reason にサーバー名を載せて運ぶための内部エラー */
+class MCPConnectionError extends Error {
+  readonly serverName: string;
+  readonly target: string;
+  readonly detail: string;
+  constructor(server: MCPServerInfo, cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`${server.name} (${describe(server)}): ${detail}`);
+    this.name = "MCPConnectionError";
+    this.serverName = server.name;
+    this.target = describe(server);
+    this.detail = detail;
+  }
+}
+
 /**
  * 指定サーバー群のツールを取得する。
  * 接続は永続プールで使い回し、接続失敗したサーバーはスキップする（graceful degradation）。
  * 死んだクライアントは破棄して 1 度だけ再接続を試みる。
+ *
+ * 失敗は errors に載せて返す。以前は console.warn で握りつぶしていたため、設定を
+ * 間違えたユーザーには「ツールが出てこない」ようにしか見えず、原因に辿り着けなかった。
+ * ツールが 1 つも取れなくても throw はしない（動くサーバーだけで続行する方針は維持）。
  */
 export async function getMCPTools(
   servers: MCPServerInfo[],
-): Promise<{ tools: Record<string, unknown> }> {
+): Promise<{ tools: Record<string, unknown>; errors: MCPConnectionFailure[] }> {
   let tools: Record<string, unknown> = {};
 
   const results = await Promise.allSettled(
@@ -125,20 +147,56 @@ export async function getMCPTools(
         }
       } catch (err) {
         pool.delete(server.id);
-        throw new Error(`${server.name} (${describe(server)}): ${err instanceof Error ? err.message : err}`);
+        throw new MCPConnectionError(server, err);
       }
     }),
   );
 
+  const errors: MCPConnectionFailure[] = [];
   for (const result of results) {
     if (result.status === "fulfilled") {
       tools = { ...tools, ...result.value.tools };
     } else {
-      console.warn(`MCP 接続失敗: ${result.reason}`);
+      const reason: unknown = result.reason;
+      const failure: MCPConnectionFailure =
+        reason instanceof MCPConnectionError
+          ? { name: reason.serverName, target: reason.target, message: reason.detail }
+          : { name: "", target: "", message: reason instanceof Error ? reason.message : String(reason) };
+      errors.push(failure);
+      console.warn(`MCP 接続失敗: ${failure.name} (${failure.target}): ${failure.message}`);
     }
   }
 
-  return { tools };
+  return { tools, errors };
+}
+
+export type MCPTestResult =
+  | { ok: true; tools: string[] }
+  | { ok: false; error: string };
+
+/**
+ * 1 サーバーの設定が実際に使えるかを確かめる（設定画面の「接続テスト」用）。
+ *
+ * プールは使わず毎回新しく繋いで、終わったら閉じる。プールを使うと「設定を直した
+ * のに古い接続が生きていて成功に見える」「壊れた接続が残って失敗に見える」が起こり、
+ * テストとして信用できないため。
+ *
+ * 検証しているのは MCP プロトコルの握手（initialize → tools/list）だけなので、
+ * stdio / SSE / streamable-http のどれでも、どのサーバーでも同じように効く。
+ * 逆に「トークンのスコープが足りているか」「向き先が正しいワークスペースか」は
+ * ここでは判定できない — 接続できてツールが見えるところまでが保証範囲。
+ */
+export async function testMCPServer(server: MCPServerInfo): Promise<MCPTestResult> {
+  let client: MCPClient | undefined;
+  try {
+    client = await connectWithTimeout(server);
+    const tools = await client.tools();
+    return { ok: true, tools: Object.keys(tools) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    if (client) closeQuietly(Promise.resolve(client));
+  }
 }
 
 /**

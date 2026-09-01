@@ -2,7 +2,7 @@
 // README からコピペされる標準 mcpServers 形式 JSON を正しく取り込めるかを検証
 
 import { describe, it, expect } from "vitest";
-import { parseMcpServersJson } from "./store";
+import { parseMcpServersJson, toMcpServersJson } from "./store";
 
 describe("parseMcpServersJson", () => {
   it("完全形 { mcpServers: {...} } から stdio サーバーを取り込む", () => {
@@ -101,5 +101,66 @@ describe("parseMcpServersJson", () => {
     expect(parseMcpServersJson("").error).toBe("no-servers");
     // command も url も無いエントリは捨てる
     expect(parseMcpServersJson(JSON.stringify({ mcpServers: { x: { foo: 1 } } })).error).toBe("no-servers");
+  });
+});
+
+describe("toMcpServersJson", () => {
+  it("stdio エントリを parseMcpServersJson で読み戻せる形に書き出す", () => {
+    const json = toMcpServersJson({
+      type: "stdio",
+      id: "internal-id",
+      name: "zotlink",
+      command: "/opt/homebrew/bin/zotlink",
+      args: ["--verbose"],
+      env: { ZOTLINK_ZOTERO_ROOT: "/Users/me/Zotero" },
+      enabled: true,
+    });
+    const { servers, error } = parseMcpServersJson(json);
+    expect(error).toBeUndefined();
+    expect(servers).toHaveLength(1);
+    const s = servers[0];
+    expect(s.name).toBe("zotlink");
+    expect(s.type).toBe("stdio");
+    if (s.type === "stdio") {
+      expect(s.command).toBe("/opt/homebrew/bin/zotlink");
+      expect(s.args).toEqual(["--verbose"]);
+      expect(s.env).toEqual({ ZOTLINK_ZOTERO_ROOT: "/Users/me/Zotero" });
+    }
+  });
+
+  it("remote エントリの transport と apiKey が往復する", () => {
+    const json = toMcpServersJson({
+      type: "remote",
+      id: "internal-id",
+      name: "my-api",
+      url: "https://example.com/mcp",
+      transport: "streamable-http",
+      apiKey: "secret",
+      enabled: false,
+    });
+    const { servers } = parseMcpServersJson(json);
+    expect(servers).toHaveLength(1);
+    const s = servers[0];
+    expect(s.type).toBe("remote");
+    if (s.type === "remote") {
+      expect(s.url).toBe("https://example.com/mcp");
+      expect(s.transport).toBe("streamable-http");
+      expect(s.apiKey).toBe("secret");
+    }
+  });
+
+  it("内部 ID と enabled は JSON に出さない（ユーザーに見せる情報ではない）", () => {
+    const json = toMcpServersJson({
+      type: "stdio",
+      id: "internal-id",
+      name: "x",
+      command: "npx",
+      args: [],
+      enabled: false,
+    });
+    expect(json).not.toContain("internal-id");
+    expect(json).not.toContain("enabled");
+    // env が空なら鍵ごと出さない（貼り直すときのノイズを減らす）
+    expect(json).not.toContain("env");
   });
 });
