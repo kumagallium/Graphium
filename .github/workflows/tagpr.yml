@@ -7,7 +7,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   tagpr:
@@ -17,27 +16,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.TAGPR_TOKEN }}
 
+      # TAGPR_TOKEN（PAT）で動かす。GITHUB_TOKEN だと 2 つ困ることが起きる:
+      #
+      #   1. リリース PR の pull_request run が GitHub の承認ゲートに掛かり、
+      #      action_required のまま一度も実行されない。PR をマージするとその保留 run が
+      #      failure として残るので、毎リリース「走っていない赤」が並ぶ（v0.15.3 以降ずっと）
+      #   2. GITHUB_TOKEN が作ったリリースでは release イベントが発火しない
+      #      （GitHub の no-recursion 制約）。そのため以前はここから
+      #      `gh workflow run "Tauri Desktop Build"` を明示的に叩いていた
+      #
+      # PAT にすると push もリリース作成も人間の操作として扱われ、両方とも解消する。
+      # 2 の回避策だった gh workflow run は外した — 残すと release イベントと二重に
+      # 起動し、tauri-build.yml には concurrency 制御が無いので同じリリースへ
+      # 2 つのビルドが並行してアセットを上げてしまう。
       - uses: Songmu/tagpr@v1
         id: tagpr
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # タグが作成された場合、Tauri ビルドを自動トリガー
-      - name: Trigger Tauri build
-        if: steps.tagpr.outputs.tag != ''
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "New tag: ${{ steps.tagpr.outputs.tag }}"
-          gh workflow run "Tauri Desktop Build" -f release_tag="${{ steps.tagpr.outputs.tag }}"
+          GITHUB_TOKEN: ${{ secrets.TAGPR_TOKEN }}
 
       # リリース PR に「この中にマニュアルの機能ロードマップへ載せる節目はあるか」を聞く。
       # ロードマップは自動生成しない — 節目を選ぶ編集判断がページの価値なので、機械は材料を出すだけ。
       #
-      # この job（push: main）の中に置いているのは、tagpr が GITHUB_TOKEN で push する結果
-      # リリース PR では pull_request イベントの workflow が起動しないため。実際 tagpr ブランチでは
-      # CI が 1 本も走らない。コメントを届ける経路はここしかない。
+      # この job（push: main）の中に置いているのは、コメント先の PR 番号と前回タグが
+      # steps.tagpr.outputs.pull_request / base_tag からしか取れず、これらは同一 job 内でしか
+      # 参照できないため（別ワークフローからは読めない）。
       - name: Nudge the roadmap on the release PR
         if: steps.tagpr.outputs.pull_request != ''
         env:
