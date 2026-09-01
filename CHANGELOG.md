@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.51.0](https://github.com/kumagallium/Graphium/compare/v0.50.1...v0.51.0) - 2026-09-01
+
+- [docs] Document v0.48.0 table features and refresh the notes-list shot by @kumagallium in https://github.com/kumagallium/Graphium/pull/809
+- [feat] Folder breadcrumb, new-note-in-folder, and folder rename/delete by @kumagallium in https://github.com/kumagallium/Graphium/pull/810
+
 ## [v0.50.1](https://github.com/kumagallium/Graphium/compare/v0.50.0...v0.50.1) - 2026-09-01
 
 - [fix] Make cell image drag-and-drop reliable and enlarge inline image defaults by @kumagallium in https://github.com/kumagallium/Graphium/pull/811
