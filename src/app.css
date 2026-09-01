@@ -604,6 +604,50 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   color: #2d4a32 !important;
 }
 
+/* ── 本文カラムより広いテーブルを右の余白へ張り出させる ──
+   背景は features/table-meta/wide-table-bleed.ts のコメント参照。
+   はみ出し量 --gph-table-bleed はエディタペイン（[data-label-wrapper]）に
+   載っている。ペインは overflow:auto なので、はみ出してもペインの外には
+   出られない ＝ 右パネルやサイドピークには構造上被らない（z-index 不要）。
+
+   width:auto + min-width:100% で「表が本文幅に収まるなら従来どおり 720px、
+   溢れるなら張り出し幅まで」になる。max-width だけだと狭い表の枠が縮んで
+   選択枠の見た目が変わってしまう。
+   flex-shrink:0 が無いと .bn-block-content（display:flex）に押し戻されて効かない。
+
+   張り出しても収まらない表には横スクロールが残る。macOS のオーバーレイ
+   スクロールバーは触るまで出ないので「切れていること」に気づけないのが
+   元の不具合の主因だった。テーブル枠だけスクロールバーを常時表示する
+   （overflow-x:auto なので、溢れていないテーブルには出ない）。 */
+.bn-editor .bn-block-content[data-content-type="table"] > .tableWrapper {
+  width: auto;
+  min-width: 100%;
+  max-width: calc(100% + var(--gph-table-bleed, 0px));
+  flex-shrink: 0;
+}
+.bn-editor .bn-block-content[data-content-type="table"] > .tableWrapper::-webkit-scrollbar {
+  height: 8px;
+}
+.bn-editor .bn-block-content[data-content-type="table"] > .tableWrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+.bn-editor .bn-block-content[data-content-type="table"] > .tableWrapper::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+.bn-editor .bn-block-content[data-content-type="table"] > .tableWrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}
+/* scrollbar-width / scrollbar-color を書くと Chrome は ::-webkit-scrollbar を
+   丸ごと無視し、macOS では触るまで出ないオーバーレイのままになる（実測で確認）。
+   標準プロパティは ::-webkit-scrollbar 非対応のブラウザ（Firefox）にだけ当てる。 */
+@supports not selector(::-webkit-scrollbar) {
+  .bn-editor .bn-block-content[data-content-type="table"] > .tableWrapper {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+}
+
 /* コードブロック — ライトテーマに合わせる
    BlockNote デフォルトは bg #161616 / 白文字（ダーク前提）。
    github-light シンタックスハイライト（@blocknote/code-block + shiki）に
