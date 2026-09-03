@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.51.2](https://github.com/kumagallium/Graphium/compare/v0.51.1...v0.51.2) - 2026-09-03
+
+- [chore] Stop creating never-run CI on tagpr release PRs by @kumagallium in https://github.com/kumagallium/Graphium/pull/820
+- [chore] Run tagpr with a PAT so release PRs stop hitting the approval gate by @kumagallium in https://github.com/kumagallium/Graphium/pull/821
+- [fix] Keep tables inside their column in multi-column layouts by @kumagallium in https://github.com/kumagallium/Graphium/pull/824
+
 ## [v0.51.1](https://github.com/kumagallium/Graphium/compare/v0.51.0...v0.51.1) - 2026-09-01
 
 - [fix] Let wide tables bleed into the page margin instead of clipping them by @kumagallium in https://github.com/kumagallium/Graphium/pull/816
