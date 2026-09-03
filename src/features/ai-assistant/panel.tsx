@@ -11,6 +11,8 @@ import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useAiAssistant } from "./store";
 import { formatAttachmentTitle, stripAttachmentSuffix } from "./attachment-suffix";
 import { getSourceTitleToRefMap } from "../wiki/retriever";
+// 共有エントリの引用は Library で開く。開き先はアプリ単位のコールバックなので props は増やさない
+import { hasSharedEntryOpenCallback, openSharedEntry } from "../../blocks/shared-citation/callbacks";
 import { fetchModels } from "./api";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "../../lib/sidecar";
 import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
@@ -120,7 +122,8 @@ export function AiAssistantPanel({
 
   // [Source: "title"] 引用クリック用にタイトル→参照先マップを構築。
   // Retriever が LLM に渡したのと同じタイトル空間を使う（noteIndex に wiki が無くても動く）。
-  // 値は Wiki なら wikiId、横断検索で注入したノート本文 / 素材なら `note:<id>` / `asset:<fileId>`。
+  // 値は Wiki なら wikiId、横断検索で注入したノート本文 / 素材 / 共有エントリなら
+  // `note:<id>` / `asset:<fileId>` / `shared:<id>`。
   // messages 更新で再計算（最新応答が含む新規 wiki・新規断片のために）。
   const wikiTitleToId = useMemo(() => {
     const map = getSourceTitleToRefMap();
@@ -1196,7 +1199,7 @@ function stripDisplayMarkers(content: string): string {
 
 /** [Source: "title"] リンクの解決先と開き方 */
 type SourceLinkHandlers = {
-  /** タイトル → 参照先。Wiki は wikiId、ノートは `note:<id>`、素材は `asset:<fileId>` */
+  /** タイトル → 参照先。Wiki は wikiId、ノートは `note:<id>`、素材は `asset:<fileId>`、共有は `shared:<id>` */
   titleToRef: Map<string, string> | undefined;
   onOpenWiki: ((wikiId: string) => void) | undefined;
   onOpenNote?: (noteId: string) => void;
@@ -1212,6 +1215,11 @@ function openHandlerFor(ref: string, h: SourceLinkHandlers): (() => void) | null
   if (ref.startsWith("asset:")) {
     const id = ref.slice("asset:".length);
     return h.onOpenAsset ? () => h.onOpenAsset!(id) : null;
+  }
+  if (ref.startsWith("shared:")) {
+    const id = ref.slice("shared:".length);
+    // Library ビューが載っていない画面（SidePeek だけ等）ではリンクにしない
+    return hasSharedEntryOpenCallback() ? () => openSharedEntry(id) : null;
   }
   return h.onOpenWiki ? () => h.onOpenWiki!(ref) : null;
 }
@@ -1240,7 +1248,7 @@ function replaceSourceLinks(
     const ref = titleToRef.get(title);
     const open = ref ? openHandlerFor(ref, handlers) : null;
     if (open) {
-      const glyph = ref!.startsWith("asset:") ? "📄" : ref!.startsWith("note:") ? "📝" : "📎";
+      const glyph = ref!.startsWith("asset:") ? "📄" : ref!.startsWith("note:") ? "📝" : ref!.startsWith("shared:") ? "🤝" : "📎";
       parts.push(
         <button
           key={`${keyPrefix}-src-${n++}`}

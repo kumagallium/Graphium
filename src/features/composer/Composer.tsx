@@ -8,6 +8,11 @@
 //   - 一致 0 件のときは AI 質問アクションのみ提示
 //   - BM25 / embedding / graph 近傍は別タスク（G-BM25 / G-GRAPHRAG）で hybrid 化
 //
+// 共有ライブラリ:
+//   - 共有ルートに置かれたまま（fork していない）エントリを、題名 / 作者 / 本文で検索
+//   - デスクトップ + 共有ルート設定済み + 設定の「AI と検索の対象に含める」が ON のときだけ
+//   - 選ぶと Library の該当エントリを開く。エディタが出ていれば引用カードも挿せる
+//
 // 画像:
 //   - fm.mediaIndex に対して、ファイル名 + OCR で読み取った画像内の文字で検索
 //   - ノートの下に「画像」セクションとして並べ、選ぶと素材サイドピークが開く
@@ -25,7 +30,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Image as ImageIcon, Search } from "lucide-react";
+import { Bot, Image as ImageIcon, Quote, Search } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
@@ -35,9 +40,22 @@ import { useWebSearchAvailability } from "./use-web-search-availability";
 import type { GraphiumIndex } from "../navigation/index-file";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { getActiveProvider } from "../../lib/storage/registry";
-import { searchNotes, searchMedia, type SearchHit, type MediaHit } from "./search";
+import {
+  searchNotes,
+  searchMedia,
+  searchShared,
+  sharedEntryTitle,
+  type SearchHit,
+  type MediaHit,
+  type SharedHit,
+} from "./search";
 import { collectLexicalHits } from "./lexical-hits";
 import { useLexicalStatus } from "../lexical-search";
+// 共有ライブラリは重い SharedLibraryView を巻き込まないよう、バレルではなくストアを直接引く
+import { useSharedLibrary } from "../sharing/shared-library-store";
+import { getSharedRoot, getSharedAiEnabled } from "../../lib/storage/shared/config";
+import { isTauri } from "../../lib/platform";
+import type { SharedEntry } from "../../lib/storage/shared";
 import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
@@ -62,6 +80,15 @@ type ComposerProps = {
   mediaIndex?: MediaIndex | null;
   /** 素材行を選んだときのハンドラ。未指定時は素材セクションを出さない */
   onMediaSelect?: (entry: MediaIndexEntry) => void;
+  /** 共有エントリ行を選んだときのハンドラ（Library の該当エントリを開く）。
+   *  未指定時は共有セクションを出さない */
+  onSharedSelect?: (entry: SharedEntry) => void;
+  /** 共有エントリの引用カードを今開いているノートに挿すハンドラ。
+   *  canInsertCitation が true のときだけ行の右端にボタンを出す */
+  onSharedInsertCitation?: (entry: SharedEntry) => void;
+  /** エディタの編集面が出ていて引用カードを挿せる状態か（既定 false）。
+   *  ⌘K を開いた時点で呼び出し側が判定して渡す（canAskAi と同じ流儀）。 */
+  canInsertCitation?: boolean;
   /** 現在開いているノートの引用（knowledge link）数。
    *  J1.5: 入力空のとき 0 → 発見カード（既存）/ 1+ → verb メニューを前面に出す。 */
   citationCount?: number;
@@ -76,6 +103,7 @@ type ComposerProps = {
 
 type ResultRow =
   | { kind: "note"; hit: SearchHit }
+  | { kind: "shared"; hit: SharedHit }
   | { kind: "media"; hit: MediaHit }
   | { kind: "ask-ai" }
   | { kind: "card"; card: DiscoveryCard };
@@ -83,6 +111,8 @@ type ResultRow =
 const MAX_RESULTS = 8;
 /** 素材はノートの結果を押しのけない程度に抑える */
 const MAX_MEDIA_RESULTS = 4;
+/** 共有ライブラリも素材と同じ扱い（手元のノートを押しのけない） */
+const MAX_SHARED_RESULTS = 4;
 
 export function Composer(props: ComposerProps) {
   const {
@@ -98,6 +128,9 @@ export function Composer(props: ComposerProps) {
     onNoteSelect,
     mediaIndex,
     onMediaSelect,
+    onSharedSelect,
+    onSharedInsertCitation,
+    canInsertCitation = false,
     citationCount,
     canAskAi = true,
   } = props;
@@ -140,6 +173,29 @@ export function Composer(props: ComposerProps) {
     return searchNotes(prompt, noteIndex.notes, { limit: MAX_RESULTS, bodyHits });
   }, [prompt, noteIndex, onNoteSelect, bodyHits]);
 
+  // 共有ライブラリ — デスクトップ + 共有ルート設定済み + 設定 ON のときだけ出す。
+  // localStorage を読むので、開いた瞬間に評価し直す（設定変更が次に開いたときに効く）。
+  const sharedEnabled = useMemo(
+    () => open && !!onSharedSelect && isTauri() && !!getSharedRoot() && getSharedAiEnabled(),
+    [open, onSharedSelect],
+  );
+  const sharedLibrary = useSharedLibrary();
+
+  // 共有エントリ本文のヒット — 共有エントリ id → 最良チャンク
+  const sharedTextHits = useMemo(() => {
+    if (!sharedEnabled) return new Map();
+    return collectLexicalHits(prompt, ["shared"]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt, sharedEnabled, lexicalRevision]);
+
+  const sharedHits = useMemo(() => {
+    if (!sharedEnabled) return [];
+    return searchShared(prompt, sharedLibrary.entries, {
+      limit: MAX_SHARED_RESULTS,
+      sharedHits: sharedTextHits,
+    });
+  }, [prompt, sharedEnabled, sharedLibrary.entries, sharedTextHits]);
+
   // 素材（ファイル名 + OCR で読み取った画像内の文字 + 索引済みテキスト）
   const mediaHits = useMemo(() => {
     if (!mediaIndex || !onMediaSelect) return [];
@@ -167,6 +223,10 @@ export function Composer(props: ComposerProps) {
   // 発見カードもキーボードで選べるように同じ rows 配列にまとめる
   const rows = useMemo<ResultRow[]>(() => {
     const list: ResultRow[] = hits.map((hit) => ({ kind: "note", hit }));
+    // 手元のノートの後、素材の前（他人の共有物より自分のノートを先に見せる）
+    for (const hit of sharedHits) {
+      list.push({ kind: "shared", hit });
+    }
     for (const hit of mediaHits) {
       list.push({ kind: "media", hit });
     }
@@ -180,7 +240,7 @@ export function Composer(props: ComposerProps) {
       }
     }
     return list;
-  }, [hits, mediaHits, isEmptyQuery, showCards, cards, canAskAi]);
+  }, [hits, sharedHits, mediaHits, isEmptyQuery, showCards, cards, canAskAi]);
 
   // 入力が変わるたびに先頭にハイライトを戻す（ノート行があればそれ、無ければ AI 行）
   useEffect(() => {
@@ -236,6 +296,10 @@ export function Composer(props: ComposerProps) {
     }
     if (row.kind === "card") {
       onDiscoveryCardSelect?.(row.card);
+      return;
+    }
+    if (row.kind === "shared") {
+      onSharedSelect?.(row.hit.entry);
       return;
     }
     if (row.kind === "media") {
@@ -449,6 +513,28 @@ export function Composer(props: ComposerProps) {
               return null;
             })}
 
+            {/* 「共有」セクション — 共有ルートに置かれたままのエントリ（fork 不要で開ける） */}
+            {sharedHits.length > 0 && (
+              <SectionHeading>{t("composer.search.sharedHeading")}</SectionHeading>
+            )}
+            {rows.map((row, i) => {
+              if (row.kind !== "shared") return null;
+              return (
+                <SharedRow
+                  key={row.hit.entry.id}
+                  hit={row.hit}
+                  active={i === activeIndex}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onClick={() => activateRow(row)}
+                  onInsertCitation={
+                    canInsertCitation && onSharedInsertCitation
+                      ? () => onSharedInsertCitation(row.hit.entry)
+                      : undefined
+                  }
+                />
+              );
+            })}
+
             {/* 「素材」セクション — ファイル名、OCR で読み取った画像内の文字、URL 抜粋 / PDF 本文で当たる */}
             {mediaHits.length > 0 && (
               <SectionHeading>{t("composer.search.assetsHeading")}</SectionHeading>
@@ -467,7 +553,7 @@ export function Composer(props: ComposerProps) {
             })}
 
             {/* 一致 0 件 */}
-            {!isEmptyQuery && hits.length === 0 && mediaHits.length === 0 && (
+            {!isEmptyQuery && hits.length === 0 && sharedHits.length === 0 && mediaHits.length === 0 && (
               <div
                 style={{
                   padding: "10px 16px",
@@ -680,6 +766,155 @@ function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
         </span>
       )}
     </button>
+  );
+}
+
+type SharedRowProps = {
+  hit: SharedHit;
+  active: boolean;
+  onMouseEnter: () => void;
+  onClick: () => void;
+  /** 引用カードを挿入する（エディタが出ていないときは undefined＝ボタンを出さない） */
+  onInsertCitation?: () => void;
+};
+
+/** 行頭アイコン。共有 Library の種別タブと同じ見立て（ノート / ナレッジ / 素材） */
+function sharedTypeGlyph(entry: SharedEntry): string {
+  if (entry.type === "knowledge") return "📘";
+  if (entry.type === "reference") return "🔗";
+  if (entry.type === "data-manifest") return "📎";
+  return "📄";
+}
+
+/**
+ * 種別バッジの i18n キー。Library の詳細パネル（SharedLibraryView）と同じ決め方で、
+ * note / knowledge はタブ名、素材は media_type ごとの素材種別名を使う。
+ */
+function sharedTypeLabelKey(entry: SharedEntry): string {
+  if (entry.type === "note") return "library.tab.note";
+  if (entry.type === "knowledge") return "library.tab.knowledge";
+  if (entry.type === "reference") return "asset.type.url";
+  const mediaType = (entry.extra as Record<string, unknown> | undefined)?.media_type;
+  return `asset.type.${typeof mediaType === "string" ? mediaType : "other"}`;
+}
+
+/**
+ * 共有エントリ 1 件の行。選ぶと Library の該当エントリが開く（fork はしない）。
+ * ノート・素材の行と違い、行そのもののボタンと引用挿入ボタンを横に並べるため、
+ * 外枠は div にしてボタンの入れ子を避けている。
+ */
+function SharedRow({ hit, active, onMouseEnter, onClick, onInsertCitation }: SharedRowProps) {
+  const t = useT();
+  const { entry, titleMatches, bodySnippet } = hit;
+  const title = sharedEntryTitle(entry);
+  const authorName = entry.author?.name ?? "";
+
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        background: active ? "var(--paper-2)" : "transparent",
+        borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flex: 1,
+          minWidth: 0,
+          textAlign: "left",
+          padding: bodySnippet ? "6px 8px 6px 16px" : "8px 8px 8px 16px",
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          font: "inherit",
+          color: "var(--ink)",
+        }}
+      >
+        <span style={{ fontSize: 14, flexShrink: 0 }} aria-hidden>{sharedTypeGlyph(entry)}</span>
+        <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+          <span
+            style={{
+              fontSize: 13,
+              lineHeight: 1.4,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <HighlightedTitle title={title || t("library.untitled")} ranges={titleMatches} />
+          </span>
+          {bodySnippet && (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--ink-3)",
+                lineHeight: 1.4,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <HighlightedTitle title={bodySnippet.text} ranges={bodySnippet.ranges} />
+            </span>
+          )}
+        </span>
+        {authorName && (
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--ink-3)",
+              fontFamily: "var(--mono)",
+              flexShrink: 0,
+            }}
+          >
+            @{authorName}
+          </span>
+        )}
+        <span
+          style={{
+            fontSize: 10,
+            color: "var(--ink-3)",
+            flexShrink: 0,
+            padding: "1px 5px",
+            borderRadius: "var(--r-1)",
+            border: "1px solid var(--rule-2)",
+          }}
+        >
+          {t(sharedTypeLabelKey(entry))}
+        </span>
+      </button>
+      {onInsertCitation && (
+        <button
+          type="button"
+          onClick={onInsertCitation}
+          title={t("composer.shared.insertCitation")}
+          aria-label={t("composer.shared.insertCitation")}
+          style={{
+            flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 28,
+            height: 28,
+            marginRight: 10,
+            background: "transparent",
+            border: "1px solid var(--rule-2)",
+            borderRadius: "var(--r-1)",
+            cursor: "pointer",
+            color: "var(--ink-3)",
+          }}
+        >
+          <Quote size={13} aria-hidden />
+        </button>
+      )}
+    </div>
   );
 }
 
