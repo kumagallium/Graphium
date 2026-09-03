@@ -45,3 +45,23 @@ export {
   type BulkShareItemResult,
 } from "./bulk-share";
 export { BulkShareModal } from "./BulkShareModal";
+export {
+  getSharedLibrarySnapshot,
+  refreshSharedLibrary,
+  subscribeSharedLibrary,
+  notifySharedLibraryChanged,
+  readSharedEntryBody,
+  getSharedLibraryRoot,
+  useSharedLibrary,
+  groupSharedEntriesByType,
+  __setSharedLibraryLoaderForTest,
+  type SharedLibrarySnapshot,
+  type SharedLibraryLoader,
+  type SharedEntryReader,
+} from "./shared-library-store";
+export {
+  sharedEntryToSourceInput,
+  sharedEntryFingerprint,
+  SHARED_INDEXABLE_TYPES,
+} from "./shared-entry-source";
+export { useSharedLibrarySync, type SharedLibrarySyncParams } from "./shared-library-sync";

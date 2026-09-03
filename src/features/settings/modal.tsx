@@ -55,6 +55,9 @@ import {
 } from "../../lib/graphium-root";
 import { useLocale, type Locale } from "../../i18n";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
+// 共有ライブラリの読み直し通知（共有ルート・スイッチを変えたとき）。
+// バレルではなくストア本体を直接読む（Library ビューを設定画面に持ち込まないため）
+import { notifySharedLibraryChanged } from "../sharing/shared-library-store";
 import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
 import type { WikiKind } from "../../lib/document-types";
 import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/providers/server-fs";
@@ -86,6 +89,8 @@ import {
   setSharedRoot,
   getBlobRoot,
   setBlobRoot,
+  getSharedAiEnabled,
+  setSharedAiEnabled,
   pickSharedRoot,
   pickBlobRoot,
   pickInboxRoot,
@@ -361,6 +366,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [blobTestResult, setBlobTestResult] = useState<ConnectionTestResult | null>(null);
   const [sharedTestRunning, setSharedTestRunning] = useState(false);
   const [blobTestRunning, setBlobTestRunning] = useState(false);
+  // 共有ライブラリを ⌘K / AI チャットの対象にするか（既定 ON）
+  const [sharedAiEnabled, setSharedAiEnabledState] = useState<boolean>(() => getSharedAiEnabled());
 
   // モバイル送信（デスクトップ = 受け取り側）— ストレージタブ。
   // 受信フォルダと「処理済みを _imported/ に残す」は受信箱ビューのフォルダ設定メニューと
@@ -646,6 +653,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         setSharedRoot(picked);
         setSharedRootState(picked);
         setSharedTestResult(null);
+        // ルートが変わったら共有ストアを読み直す（語彙索引も追従して入れ替わる）
+        notifySharedLibraryChanged();
       }
     } catch (e) {
       setSharedTestResult({ ok: false, error: e instanceof Error ? e.message : String(e) });
@@ -656,6 +665,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setSharedRoot(null);
     setSharedRootState("");
     setSharedTestResult(null);
+    // ルートが外れたら索引から共有分が消える（通知 → desired が空 → reconcile）
+    notifySharedLibraryChanged();
+  }, []);
+
+  const handleToggleSharedAi = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.checked;
+    setSharedAiEnabled(next);
+    setSharedAiEnabledState(next);
+    // OFF にした瞬間に索引から共有分を外したいので、ここでも同じ通知を使う
+    notifySharedLibraryChanged();
   }, []);
 
   const handleTestSharedConnection = useCallback(async () => {
@@ -1954,6 +1973,24 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     </div>
                   )}
                 </div>
+
+                {/* ⌘K / AI チャットの対象に含めるか（共有ルート設定時のみ） */}
+                {sharedRoot && (
+                  <label className="rounded-md border border-border bg-background px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sharedAiEnabled}
+                      onChange={handleToggleSharedAi}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <span className="text-xs text-foreground">
+                      <span>{t("settings.shared.aiEnabled.title")}</span>
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        {t("settings.shared.aiEnabled.help")}
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {/* Blob root */}
                 <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mt-2">

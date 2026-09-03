@@ -29,6 +29,8 @@ export {
   setSharedRoot,
   getBlobRoot,
   setBlobRoot,
+  getSharedAiEnabled,
+  setSharedAiEnabled,
 } from "./config";
 export { pickSharedRoot, pickBlobRoot, pickInboxRoot } from "./picker";
 export {

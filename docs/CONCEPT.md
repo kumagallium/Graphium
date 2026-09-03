@@ -96,7 +96,7 @@ every time you talk to the AI. Every AI conversation in Graphium carries a
 | Scope | What the AI reads | When I reach for it |
 |---|---|---|
 | **External** | Everything Internal reads, plus the web searched fresh — with instructions to cite only sources that actually appeared in the results | Investigating something new |
-| **Internal** | Everything you cited, plus a cross-search of what you have accumulated — the Knowledge layer first, and short passages from your own notes and assets that match your question by keyword | Connecting and structuring what you have |
+| **Internal** | Everything you cited, plus a cross-search of what you have accumulated — the Knowledge layer first, and short passages from your own notes and assets that match your question by keyword. On desktop, if you have a shared library configured, its entries are cross-searched the same way (excludable in Settings → Storage) | Connecting and structuring what you have |
 | **This note** (default) | Only what the note cites, with the original documents taking priority over anything AI-derived | Writing accurately, quoting faithfully |
 
 Two details carry the design. The cross-search in **Internal** reads the

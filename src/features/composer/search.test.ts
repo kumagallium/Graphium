@@ -1,7 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { parseQuery, searchNotes, searchMedia, buildOcrSnippet } from "./search";
+import {
+  parseQuery,
+  searchNotes,
+  searchMedia,
+  searchShared,
+  sharedEntryTitle,
+  buildOcrSnippet,
+  type TextHit,
+} from "./search";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
+import type { SharedEntry, SharedEntryType } from "../../lib/storage/shared";
 
 function entry(partial: Partial<NoteIndexEntry> & { noteId: string; title: string }): NoteIndexEntry {
   return {
@@ -290,5 +299,147 @@ describe("searchMedia()", () => {
 
   it("returns empty for a null index", () => {
     expect(searchMedia("焼結", null)).toEqual([]);
+  });
+});
+
+// ── 共有ライブラリ検索 ──
+
+function shared(
+  partial: Partial<SharedEntry> & { id: string; type?: SharedEntryType } & {
+    title?: string;
+    authorName?: string;
+    authorEmail?: string;
+  },
+): SharedEntry {
+  const { title, authorName, authorEmail, id, ...rest } = partial;
+  return {
+    id,
+    type: partial.type ?? "note",
+    author: partial.author ?? {
+      name: authorName ?? "Tanaka",
+      email: authorEmail ?? `${(authorName ?? "Tanaka").toLowerCase()}@example.com`,
+    },
+    created_at: partial.created_at ?? "2026-04-01T00:00:00.000Z",
+    // 直近ボーナス（daysAgoBoost）が乗らない十分昔の日付にして、スコア比較を安定させる
+    updated_at: partial.updated_at ?? "2026-04-25T00:00:00.000Z",
+    hash: partial.hash ?? `hash-${partial.id}`,
+    prov: partial.prov ?? { derived_from: [] },
+    ...rest,
+    extra: { ...(title !== undefined ? { title } : {}), ...(partial.extra ?? {}) },
+  };
+}
+
+function textHit(score: number, text: string): TextHit {
+  return { score, snippet: { text, ranges: [] } };
+}
+
+describe("sharedEntryTitle()", () => {
+  it("uses extra.title", () => {
+    expect(sharedEntryTitle(shared({ id: "a", title: " 焼結の手順 " }))).toBe("焼結の手順");
+  });
+
+  it("falls back to the original file name (assets carry no title)", () => {
+    const entry = shared({
+      id: "a",
+      type: "data-manifest",
+      extra: { original_filename: "XRD-pattern.csv" },
+    });
+    expect(sharedEntryTitle(entry)).toBe("XRD-pattern.csv");
+  });
+});
+
+describe("searchShared()", () => {
+  const entries: SharedEntry[] = [
+    shared({ id: "s-note", title: "焼結の手順", authorName: "Tanaka" }),
+    shared({ id: "s-knowledge", type: "knowledge", title: "セラミックスの焼結温度", authorName: "Suzuki" }),
+    shared({
+      id: "s-ref",
+      type: "reference",
+      title: "Sintering review",
+      authorName: "Suzuki",
+      extra: { url: "https://example.com/sintering" },
+    }),
+    shared({ id: "s-other", title: "XRD の測定条件", authorName: "Tanaka" }),
+  ];
+
+  it("ranks a title-prefix hit above a title-contains hit", () => {
+    const hits = searchShared("焼結", entries);
+    expect(hits.map((h) => h.entry.id)).toEqual(["s-note", "s-knowledge"]);
+    expect(hits[0].reasons).toContain("title-prefix");
+    expect(hits[1].reasons).toContain("title-contains");
+  });
+
+  it("records titleMatches ranges for highlighting", () => {
+    const [hit] = searchShared("温度", entries);
+    expect(hit.entry.id).toBe("s-knowledge");
+    expect(hit.titleMatches).toEqual([{ start: 9, end: 11 }]);
+  });
+
+  it("filters by @author (display name or email)", () => {
+    // 同点なので順序は保証しない（作者フィルタだけのクエリは「誰の共有物か」の一覧）
+    expect(searchShared("@suzuki", entries).map((h) => h.entry.id).sort()).toEqual([
+      "s-knowledge",
+      "s-ref",
+    ]);
+    expect(searchShared("@example.com", entries)).toHaveLength(4);
+  });
+
+  it("combines free text with @author — the filter narrows, the text ranks", () => {
+    // searchNotes と同じ扱い: 作者フィルタが効いているときのフリーテキストは
+    // 足切りではなく加点（その人の共有物一覧を出しつつ、当たったものを上に出す）
+    const hits = searchShared("焼結 @tanaka", entries);
+    expect(hits.map((h) => h.entry.id)).toEqual(["s-note", "s-other"]);
+    expect(hits[0].reasons).toEqual(expect.arrayContaining(["author", "title-prefix"]));
+    expect(hits[1].reasons).toEqual(["author"]);
+  });
+
+  it("finds an entry by a body hit alone and carries the snippet + reason", () => {
+    const hits = searchShared("焼結", entries, {
+      sharedHits: new Map([["s-other", textHit(4, "…焼結体の XRD…")]]),
+    });
+    const ids = hits.map((h) => h.entry.id);
+    expect(ids).toContain("s-other");
+    const hit = hits.find((h) => h.entry.id === "s-other")!;
+    expect(hit.reasons).toEqual(["body"]);
+    expect(hit.bodySnippet?.text).toBe("…焼結体の XRD…");
+    // 題名ヒットより下（本文だけのヒットは弱い）
+    expect(ids[0]).toBe("s-note");
+  });
+
+  it("returns nothing for an empty query", () => {
+    expect(searchShared("   ", entries)).toEqual([]);
+  });
+
+  it("returns nothing when the query filters notes by #label (shared entries have no labels)", () => {
+    expect(searchShared("焼結 #手順", entries)).toEqual([]);
+  });
+
+  it("leaves out types that are not indexed (template / report)", () => {
+    const withTemplate = [
+      ...entries,
+      shared({ id: "s-template", type: "template", title: "焼結テンプレート" }),
+      shared({ id: "s-report", type: "report", title: "焼結レポート" }),
+    ];
+    expect(searchShared("焼結", withTemplate).map((h) => h.entry.id)).toEqual([
+      "s-note",
+      "s-knowledge",
+    ]);
+  });
+
+  it("leaves out tombstones (unshared entries)", () => {
+    const withTombstone = [
+      ...entries,
+      shared({ id: "s-gone", title: "焼結の下書き", status: "unshared" }),
+    ];
+    expect(searchShared("焼結", withTombstone).map((h) => h.entry.id)).not.toContain("s-gone");
+  });
+
+  it("respects the limit option", () => {
+    expect(searchShared("焼結", entries, { limit: 1 })).toHaveLength(1);
+  });
+
+  it("returns empty for a missing library", () => {
+    expect(searchShared("焼結", null)).toEqual([]);
+    expect(searchShared("焼結", [])).toEqual([]);
   });
 });

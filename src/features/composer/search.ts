@@ -8,9 +8,17 @@
 // （見出し・ラベル・作者）とは持っている情報が違うので、同じ関数に混ぜず
 // 「ノートの結果」「素材の結果」を別セクションとして並べる。素材のテキスト
 // （画像 OCR / URL 抜粋 / PDF）のヒットも同じく `assetHits` として注入する。
+//
+// 共有ライブラリ（fork していない共有ルート上のエントリ）も 3 本目の軸として
+// searchShared() で別立てにする。ラベルも見出しも持たず、代わりに作者と種別が
+// 一級なので、ノート・素材のどちらにも混ぜない。
 
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
+import type { SharedEntry } from "../../lib/storage/shared";
+// 語彙索引に入れている type と揃える（片方だけ増えると「出るのに本文で当たらない」
+// / 「索引にあるのに出ない」というズレになるので、定義は 1 か所から借りる）
+import { SHARED_INDEXABLE_TYPES } from "../sharing/shared-entry-source";
 import { getDisplayLabelName } from "../../i18n";
 
 export type SearchHit = {
@@ -397,6 +405,131 @@ export function searchMedia(
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return b.entry.uploadedAt > a.entry.uploadedAt ? 1 : -1;
+  });
+
+  return hits.slice(0, limit);
+}
+
+// ── 共有ライブラリ検索 ──
+
+export type SharedSearchReason = "title-prefix" | "title-contains" | "author" | "body";
+
+export type SharedHit = {
+  entry: SharedEntry;
+  /** 題名中のヒット範囲（複数）。空配列ならハイライトなし */
+  titleMatches: { start: number; end: number }[];
+  reasons: SharedSearchReason[];
+  score: number;
+  /** 本文（語彙索引の shared レーン）で当たったときの抜粋 */
+  bodySnippet?: TextSnippet;
+};
+
+export type SharedSearchOptions = {
+  /** 最大ヒット数（既定値 4）。素材と同じくノートの結果を押しのけない程度に抑える */
+  limit?: number;
+  /** 共有エントリの本文ヒット。entry.id → ヒット。無ければ題名・作者だけで当てる */
+  sharedHits?: ReadonlyMap<string, TextHit>;
+};
+
+/**
+ * 共有エントリの表示・検索用の題名。
+ * 共有フォーマットでは題名は本体ではなく `extra` に入る（素材は元ファイル名しか無いこともある）。
+ * 語彙索引側（sharedEntryToSourceInput）の title の決め方と揃えてある。
+ */
+export function sharedEntryTitle(entry: SharedEntry): string {
+  const extra = entry.extra as Record<string, unknown> | undefined;
+  const title = typeof extra?.title === "string" ? extra.title.trim() : "";
+  if (title) return title;
+  const filename = typeof extra?.original_filename === "string" ? extra.original_filename.trim() : "";
+  return filename;
+}
+
+/**
+ * クエリを共有ライブラリのエントリ一覧に対して評価する。
+ *
+ * 題名・作者は共有エントリのメタデータで当て、本文は語彙索引の shared レーンの
+ * ヒット（`sharedHits`）を注入してもらう。スコアの重みは searchNotes の同名 reason と同じ。
+ *
+ * 素材検索と同じく、空クエリでは何も返さない（⌘K を開いただけの「最近のノート」
+ * ビューに他人の共有物を混ぜない）。`#ラベル` は手元のノートを絞る記法で、共有
+ * エントリはラベルを持たないので、そのクエリでも返さない。
+ */
+export function searchShared(
+  query: string,
+  entries: SharedEntry[] | null | undefined,
+  options: SharedSearchOptions = {},
+): SharedHit[] {
+  const limit = options.limit ?? 4;
+  if (!entries || entries.length === 0) return [];
+  if (!query.trim()) return [];
+
+  const parsed = parseQuery(query);
+  if (parsed.labelTokens.length > 0) return [];
+  const textLower = parsed.text.trim().toLowerCase();
+  if (!textLower && parsed.authorTokens.length === 0) return [];
+
+  const sharedHits = options.sharedHits;
+  let bodyMax = 0;
+  if (sharedHits) for (const h of sharedHits.values()) bodyMax = Math.max(bodyMax, h.score);
+
+  const hits: SharedHit[] = [];
+
+  for (const entry of entries) {
+    // 索引に入れていない type（template / report）は本文で当たらないので一覧にも出さない
+    if (!(SHARED_INDEXABLE_TYPES as readonly string[]).includes(entry.type)) continue;
+    // tombstone は provider の list に載らないはずだが、DI 経由の一覧も受けるので念のため弾く
+    if (entry.status === "unshared") continue;
+
+    let score = 0;
+    const reasons: SharedSearchReason[] = [];
+
+    // @作者フィルタ — 表示名 / email のどちらかに含まれればよい（searchNotes と同じ重み）
+    if (parsed.authorTokens.length > 0) {
+      const name = (entry.author?.name ?? "").toLowerCase();
+      const email = (entry.author?.email ?? "").toLowerCase();
+      const ok = parsed.authorTokens.every((tok) => name.includes(tok) || email.includes(tok));
+      if (!ok) continue;
+      score += 20;
+      reasons.push("author");
+    }
+
+    const title = sharedEntryTitle(entry);
+    const bodyHit = sharedHits?.get(entry.id);
+    let titleMatches: SharedHit["titleMatches"] = [];
+    let bodySnippet: TextSnippet | undefined;
+
+    if (textLower) {
+      const occurrences = findAllOccurrences(title, textLower);
+      if (occurrences.length > 0) {
+        titleMatches = occurrences;
+        if (title.toLowerCase().startsWith(textLower)) {
+          score += 100;
+          reasons.push("title-prefix");
+        } else {
+          score += 50;
+          reasons.push("title-contains");
+        }
+      } else if (!bodyHit && parsed.authorTokens.length === 0) {
+        // 題名にも本文にも当たらず、作者フィルタも無い → 落とす
+        continue;
+      }
+      // 本文ヒットは題名に当たっていても抜粋として添える（ノート行と同じ扱い）
+      if (bodyHit) {
+        score += BODY_BASE_SCORE + relativeBoost(bodyHit.score, bodyMax, BODY_RELATIVE_SCORE_MAX);
+        reasons.push("body");
+        bodySnippet = bodyHit.snippet;
+      }
+    }
+
+    if (reasons.length === 0) continue;
+
+    score += entry.updated_at ? daysAgoBoost(entry.updated_at) : 0;
+    hits.push({ entry, titleMatches, reasons, score, ...(bodySnippet ? { bodySnippet } : {}) });
+  }
+
+  hits.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return (b.entry.updated_at ?? "") > (a.entry.updated_at ?? "") ? 1 : -1;
   });
 
   return hits.slice(0, limit);
