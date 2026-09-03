@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useLocale, type Locale } from "../../i18n";
 import { getAppVersion } from "../../lib/updater";
+import { getInboxFolder, setInboxFolder } from "./inbox/push/config";
 
 export type MobileSettingsSheetProps = {
   /** push モジュールのロードが済んだか。false の間はストレージ操作を無効化する。 */
@@ -61,6 +62,11 @@ export function MobileSettingsSheet({
   const [version, setVersion] = useState<string>("");
   const [clientIdInput, setClientIdInput] = useState(clientIdOverride);
   const [clientIdSaved, setClientIdSaved] = useState(false);
+  // 送ったものを入れるフォルダ。localStorage に持つので、開いた時点の値を初期値にする
+  const [folderInput, setFolderInput] = useState("");
+  useEffect(() => {
+    setFolderInput(getInboxFolder() ?? "");
+  }, []);
 
   // バージョンは About タブと同じ経路（Tauri は実バージョン / PWA は package.json）
   useEffect(() => {
@@ -172,6 +178,28 @@ export function MobileSettingsSheet({
                   {t("settings.mobilePush.disconnect")}
                 </button>
               )}
+
+              {/* 送り先のフォルダ。空なら未分類のまま届き、デスクトップで振り分ける。
+                  毎回選ばせないのは、モバイルが「素早く放り込む」道具だから
+                  （切り替えたいときだけここで変える）。 */}
+              <div className="pt-2 border-t border-border space-y-1.5">
+                <label className="block text-xs text-muted-foreground">
+                  {t("mobile.settings.folder")}
+                </label>
+                <input
+                  type="text"
+                  value={folderInput}
+                  onChange={(e) => {
+                    setFolderInput(e.target.value);
+                    setInboxFolder(e.target.value);
+                  }}
+                  placeholder={t("mobile.settings.folderPlaceholder")}
+                  className="w-full text-sm px-2.5 py-1.5 rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {t("mobile.settings.folderHint")}
+                </p>
+              </div>
 
               {/* 同梱 ID の無いビルドでは自前 client ID が必須（設定モーダルと同じ注記） */}
               {!hasBundledId && (

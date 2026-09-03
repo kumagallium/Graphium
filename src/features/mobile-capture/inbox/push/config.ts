@@ -31,6 +31,32 @@ const PROVIDER_KEY = "graphium-push-provider";
 export const DEFAULT_GOOGLE_PUSH_CLIENT_ID: string =
   "743366655410-p5k3us8jof0ni4tintbkliq6dqhan13d.apps.googleusercontent.com";
 
+const INBOX_FOLDER_KEY = "graphium-mobile-inbox-folder";
+
+/**
+ * 送ったものを入れるフォルダ（未設定なら null）。
+ *
+ * 送信のたびに選ばせず、一度決めたら覚えておく — モバイルは「素早く放り込む」道具で、
+ * 毎回の選択はその速さを損なう。切り替えたいときだけ設定から変える。
+ */
+export function getInboxFolder(): string | null {
+  try {
+    const v = localStorage.getItem(INBOX_FOLDER_KEY);
+    return v && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setInboxFolder(folder: string | null): void {
+  try {
+    if (!folder || !folder.trim()) localStorage.removeItem(INBOX_FOLDER_KEY);
+    else localStorage.setItem(INBOX_FOLDER_KEY, folder.trim());
+  } catch {
+    // localStorage 不可の環境では黙って無視（他の設定と同じ非致命的挙動）
+  }
+}
+
 /** localStorage に保存された自前 client_id（未設定なら null）。 */
 export function getGoogleClientIdOverride(): string | null {
   try {

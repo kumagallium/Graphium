@@ -2168,6 +2168,11 @@ export function useFileManager(authenticated: boolean) {
           ? { derivedFromAssets: options.derivedFromAssets }
           : {}),
         ...(options?.capture ? { capture: options.capture } : {}),
+        // 送信時に指定されたフォルダをそのまま素材に付ける。モバイルで「いまは材料X」と
+        // 決めておけば、取り込んだ時点で片付いている状態になる。
+        ...(options?.capture?.folder
+          ? { noteContexts: normalizeNoteContexts([options.capture.folder]) }
+          : {}),
       };
       const current = mediaIndexRef.current ?? createEmptyIndex();
       const updated = addMediaEntry(current, entry);

@@ -7754,6 +7754,10 @@ export function NoteApp() {
                 ...(payload.ogImage ? { ogImage: payload.ogImage } : {}),
               },
               capture: meta,
+              // 送信時に指定されたフォルダをそのまま素材に付ける（メディアと同じ扱い）
+              ...(payload.folder?.trim()
+                ? { noteContexts: [payload.folder.trim()] }
+                : {}),
             });
             return { fileId };
           },
