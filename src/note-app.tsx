@@ -6036,9 +6036,15 @@ export function NoteApp() {
 
   // パンくずの親フォルダをクリックしたときに、サイドバーと同じ絞り込み（子を含む）へ
   // 素材の付与ピッカーに渡すノート側フォルダ名（体系を共有するので候補を混ぜる）
+  // ノート由来のフォルダに加えて、空フォルダ（appdata の定義）も混ぜる。
+  // 子フォルダはまだノートが入っていないことが多く、ノート側からしか集めないと
+  // 候補に出ず「素材を入れられない」ように見えてしまう。
   const noteFolderNames = useMemo(
-    () => collectFolderSource(fm.noteIndex?.notes ?? []).folders.map((f) => f.value),
-    [fm.noteIndex],
+    () => [
+      ...collectFolderSource(fm.noteIndex?.notes ?? []).folders.map((f) => f.value),
+      ...emptyFolders,
+    ],
+    [fm.noteIndex, emptyFolders],
   );
   // 展開するためのツリー。集計規則はサイドバーと共通（collectFolderSource）
   const folderTreeForNav = useMemo(

@@ -6,6 +6,7 @@ import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, External
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext } from "../note-context/context-tags";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
+import { ContextBadge } from "../note-context/ContextBadge";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -1627,6 +1628,15 @@ export function AssetGalleryView({
                             </a>
                           )}
                         </div>
+                        {/* この素材が入っているフォルダ。ノートと同じ体系なので、
+                            ノート一覧のフォルダ列と同じ ContextBadge で見せる */}
+                        {(entry.noteContexts ?? []).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {(entry.noteContexts ?? []).map((c) => (
+                              <ContextBadge key={c} value={c} />
+                            ))}
+                          </div>
+                        )}
                         {entry.type === "url" && entry.urlMeta?.domain && (
                           <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                             {entry.urlMeta.domain}

@@ -34,6 +34,7 @@ import {
   Table,
 } from "lucide-react";
 import { useT } from "../../i18n";
+import { ContextBadge } from "../note-context/ContextBadge";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import type { MediaIndexEntry, MediaSharedRef, MediaType } from "./media-index";
 import { SharedBadge } from "./share-media-dialog";
@@ -209,6 +210,10 @@ export function MaterialDetailHeader({
           {t("asset.usedInCount", { count: String(usageNoteCount) })}
         </span>
       )}
+      {/* 入っているフォルダ（ノートと同じ体系）。一覧の列と同じ ContextBadge で見せる */}
+      {(entry.noteContexts ?? []).map((c) => (
+        <ContextBadge key={c} value={c} className="shrink-0" />
+      ))}
       {isShared && <SharedBadge />}
     </div>
   );
