@@ -201,6 +201,7 @@ import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, rea
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues } from "./features/note-context/folder-tree-model";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
+import { computeFolderDrop } from "./features/note-context/folder-drop";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
@@ -8475,6 +8476,25 @@ export function NoteApp() {
       folder: { path: string; name: string; noteCount: number },
       position: { top: number; left: number },
     ) => setFolderMenu({ ...folder, position }),
+    onDropNotesToFolder: (folderPath: string, noteIds: string[], copy: boolean) => {
+      // 移動（既定）は「今開いていたフォルダから出て、落とし先に入る」。
+      // すべてのノート・未分類から動かしたときは出る場所が無いので入るだけになる。
+      // 結果は一覧のフォルダ列のチップに即座に出る（フォルダを開いていれば行が消える）
+      // ので、別途トーストは出さない。
+      void (async () => {
+        for (const noteId of noteIds) {
+          const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+          const next = computeFolderDrop(
+            entry?.noteContexts,
+            folderPath,
+            selectedFolder,
+            copy ? "copy" : "move",
+          );
+          if (next === null) continue;
+          await fm.updateNoteContexts(noteId, next ?? []);
+        }
+      })();
+    },
     onShowProcessGallery: () => { closeAllViews(); fm.setShowProcessGallery(true); setSidebarOpen(false); },
     processGalleryActive: fm.showProcessGallery,
     processCount: processNoteCount,
@@ -9116,6 +9136,7 @@ export function NoteApp() {
               setSelectedFolder(null);
               setFolderContextFilter([]);
             }}
+            onDragNotesToFolder
             onNewNoteInFolder={(folderPath) => {
               closeAllViews();
               fm.handleNewNote([folderPath]);
