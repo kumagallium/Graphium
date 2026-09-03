@@ -909,13 +909,15 @@ export const IaRound2: Story = {
 // ── IA 第 2 ラウンド その 2: 「在り処」で束ねる ─────────────
 //
 // ユーザー案（2026-09-03）: 並べる軸を「何であるか（種類）」から
-// 「どこにあるか（在り処）」へ変える。4 ブロックに区切る:
-//   ① 手元の知識 ② 外とのやり取り ③ ノートに持ち込むもの ④ ノートから生まれるもの
+// 「どこにあるか（在り処）」へ変える。3 ブロックに区切る:
+//   ① 記録と知識 ② 外部連携 ③ 保管庫
 // 「この PC」とは呼ばない — 保存先は同期フォルダや Google Drive にもできるため
-// （welcome.saveLocationHint）。「手元」なら保存先がどこでも成り立つ。
+// （welcome.saveLocationHint）。
+// 保管庫に素材・プロセス・ラベルをまとめたのは、プロセスとラベルを将来その場でも
+// 作れるようにする方針（2026-09-03）による。そうなると「ノートを書いて生まれるもの」
+// ではなくなり、画像などと同じ「取っておいて使い回す部品」になる。
 //
-// D = いただいた案そのまま / E = そこから 3 ブロック目だけ割った修正案。
-// 違いは「プロセスとラベル群を素材の中に置くか、外に出すか」の 1 点。
+// D と E の違いは「プロセスとラベル群を素材の中に置くか、素材と並べるか」の 1 点だけ。
 
 /** 区切りの見出し（グループのラベル）。セクション見出しよりさらに小さく、薄く */
 function GroupLabel({ text }: { text: string }) {
@@ -949,7 +951,7 @@ function LocusUpperBlocks() {
   const t = useT();
   return (
     <>
-      <GroupLabel text="手元の知識" />
+      <GroupLabel text="記録と知識 / Records & knowledge" />
       <div className="px-4 pb-1">
         <StaticSectionHeader title={t("nav.noteList")} count={7} open />
         <div className="space-y-0.5">
@@ -967,7 +969,7 @@ function LocusUpperBlocks() {
         </div>
       </div>
 
-      <GroupLabel text="外とのやり取り" />
+      <GroupLabel text="外部連携 / External" />
       <div className="px-4 pb-1">
         <div className="w-full flex items-center gap-1 px-0 pt-1 pb-1 text-xs font-semibold text-sidebar-foreground/40">
           <span className="shrink-0 -ml-0.5" aria-hidden><ArrowRight size={12} /></span>
@@ -1010,7 +1012,7 @@ function CaseLocusAsProposed() {
   return (
     <MockShell>
       <LocusUpperBlocks />
-      <GroupLabel text="ノートに持ち込むもの" />
+      <GroupLabel text="保管庫 / Repository" />
       <div className="px-4 pb-1">
         <StaticSectionHeader title={t("asset.dataSection")} count={14} open />
         <MaterialItems>
@@ -1037,12 +1039,11 @@ function CaseLocusRefined() {
   return (
     <MockShell>
       <LocusUpperBlocks />
-      <GroupLabel text="ノートに持ち込むもの" />
+      <GroupLabel text="保管庫 / Repository" />
       <div className="px-4 pb-1">
         <StaticSectionHeader title={t("asset.dataSection")} count={14} open />
         <MaterialItems />
       </div>
-      <GroupLabel text="ノートから生まれるもの" />
       <div className="px-4 pb-1">
         <div className="w-full flex items-center gap-1 pt-1 pb-1 text-xs font-semibold text-sidebar-foreground/40">
           <span className="shrink-0 -ml-0.5" aria-hidden><ArrowRight size={12} /></span>
@@ -1083,10 +1084,10 @@ export const IaRound2Locus: Story = {
       <CaseNote
         title="D と E の違いは 1 点"
         points={[
-          "共通: 並べる軸が「種類」から「在り処」へ。モバイルとライブラリが「外とのやり取り」として並び、プロセス・メモがトップから降りる。フォルダは「すべてのノート」の中。",
-          "D: プロセスとラベル群（ステップ・インプット…）を素材の中に置く。素材 > プロセス > ステップ で 3 段になる。",
-          "E: 素材は持ち込むものだけ（メモ・ドキュメント・データ・URL・画像・動画・音声）。プロセスとラベルは「ノートから生まれるもの」として外に出し、どこも 2 段に収める。",
-          "判断材料: 「手順は持ち込むものか？」— 素材は外から持ち込み、手順はノートを書いて生まれる。ラベル群はファイルではなくノート内ブロックに付いた印。見出しの対（持ち込む／生まれる）がそのまま両者の違いになっている。",
+          "共通: 並べる軸が「種類」から「在り処」へ。モバイルとライブラリが「外部連携」として並び、プロセス・メモがトップから降りる。フォルダは「すべてのノート」の中。",
+          "D: プロセスとラベル群を素材の中に置く。保管庫 > 素材 > プロセス > ステップ で 3 段になる。",
+          "E: 保管庫の中で素材・プロセス・ラベルを対等に並べる。どこも 2 段に収まる。",
+          "判断材料: プロセスとラベルは将来その場でも作れるようにする方針なので、画像などと同じ「使い回す部品」になる。素材の一項目（D）ではなく素材と対等（E）の方がその立場に合う。",
           "未確認: ライブラリの references は現状のコードに無い（今は「共有」1 項目のみ）。D/E とも仮置きせず省いてある。",
           "注意: ここは全セクションを開いた状態で描いてある。D で 976px、E で 1057px あり、実画面（800px 前後）には収まらずスクロールになる。実運用では既定でいくつか畳む前提で見てください。",
         ]}
