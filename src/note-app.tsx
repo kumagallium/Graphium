@@ -9624,6 +9624,7 @@ export function NoteApp() {
           <MobileCaptureView
             captureIndex={capture.captureIndex}
             mediaIndex={fm.mediaIndex}
+            vaultFolders={noteFolderNames}
             loading={capture.captureLoading}
             onCreateCapture={capture.handleCreateCapture}
             onDeleteCapture={capture.handleDeleteCapture}
