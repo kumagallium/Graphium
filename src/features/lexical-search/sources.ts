@@ -10,6 +10,8 @@
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 import type { DesiredSource } from "./service";
+import type { SharedEntry } from "../../lib/storage/shared";
+import { SHARED_INDEXABLE_TYPES, sharedEntryFingerprint } from "../sharing/shared-entry-source";
 
 /** FNV-1a 32bit。テキストの「変わったか」を見るだけなので暗号強度は要らない */
 export function fnv1a(text: string): string {
@@ -82,4 +84,21 @@ export function desiredAssetSources(
     }
   }
   return { desired, plans, names };
+}
+
+/**
+ * 共有ライブラリの望ましいソース一覧。
+ *
+ * 共有エントリは fork せず、共有ルートに置いたまま索引する。印は hash なので、
+ * 誰かが上書きすれば（= hash が変われば）自動で索引し直される。
+ * template / report は共有導線が無い（＝ライブラリに出ない）ので対象外。
+ * tombstone はローダー側で除外済みなので、ここには active なものしか来ない。
+ */
+export function desiredSharedSources(entries: SharedEntry[]): DesiredSource[] {
+  const out: DesiredSource[] = [];
+  for (const e of entries) {
+    if (!(SHARED_INDEXABLE_TYPES as readonly string[]).includes(e.type)) continue;
+    out.push({ kind: "shared", sourceId: e.id, fingerprint: sharedEntryFingerprint(e) });
+  }
+  return out;
 }

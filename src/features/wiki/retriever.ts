@@ -9,12 +9,20 @@
 // Wiki は両系統を融合して <knowledge> に、ノート本文・素材は語彙側だけで <notes> に入れる。
 // どちらの断片も [#N | "title"] の番号ハンドルで引用させる（citation-normalize が [#N] を
 // [Source: "title"] に正規化し、パネルがタイトル → 参照先に解決してジャンプする）。
+//
+// 共有ライブラリ（第 3 レーン kind: "shared"）も設定 ON のとき同じ土俵に載せる。
+// 共有ナレッジ（type=knowledge）だけは手元に埋め込みを作ってあるので Wiki と同じく
+// <knowledge> 側へ、それ以外（共有ノート・URL・素材メタ）は <notes> 側へ振り分ける。
 
 import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { getEmbeddingModel, getEmbeddingLLMModel } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
-import { lexicalSearch, reciprocalRankFusion, type LexicalHit } from "../lexical-search";
+import { lexicalSearch, reciprocalRankFusion, type LexicalHit, type LexicalSourceKind } from "../lexical-search";
+// 共有ストアは実ファイル指定で読む（sharing の barrel は View まで引き込むので循環を避ける）
+import { getSharedLibrarySnapshot } from "../sharing/shared-library-store";
+// 設定も config を直に読む（storage/shared の barrel は Tauri のダイアログまで連れてくる）
+import { getSharedAiEnabled } from "../../lib/storage/shared/config";
 
 const TOP_K = 5;
 const MIN_SCORE = 0.3;
@@ -42,10 +50,10 @@ export function clampEmbedQuery(text: string): string {
   return trimmed.length > MAX_EMBED_QUERY_CHARS ? trimmed.slice(0, MAX_EMBED_QUERY_CHARS) : trimmed;
 }
 
-/** 注入する断片の共通形（Wiki セクション / ノート本文 / 素材） */
+/** 注入する断片の共通形（Wiki セクション / ノート本文 / 素材 / 共有エントリ） */
 export type RetrievedPassage = {
-  kind: "wiki" | "note" | "asset";
-  /** Wiki id / ノート id / 素材 fileId */
+  kind: "wiki" | "note" | "asset" | "shared";
+  /** Wiki id / ノート id / 素材 fileId / 共有エントリ id */
   sourceId: string;
   /** セクション id / チャンク id */
   chunkId: string;
@@ -102,8 +110,42 @@ async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): P
   }
 }
 
+/**
+ * 共有レーンの文脈（この検索で使う分だけスナップショットから切り出す）。
+ * enabled が false のときは kinds に "shared" を足さないので、索引に共有文書が
+ * 残っていても混ざらない。
+ */
+type SharedLane = {
+  enabled: boolean;
+  /** 共有エントリが type=knowledge か（＝ <knowledge> 側に載せるか） */
+  isKnowledge: (sourceId: string) => boolean;
+  /** 共有エントリ id → 題名（引用表示と参照解決用） */
+  titles: Map<string, string>;
+};
+
+function sharedLaneContext(): SharedLane {
+  const snapshot = getSharedLibrarySnapshot();
+  // 共有ルート未設定（＝デスクトップ以外も含む）／スイッチ OFF なら丸ごと使わない
+  if (!snapshot.root || !getSharedAiEnabled()) {
+    return { enabled: false, isKnowledge: () => false, titles: new Map() };
+  }
+  const knowledge = new Set<string>();
+  const titles = new Map<string, string>();
+  for (const e of snapshot.entries) {
+    if (e.type === "knowledge") knowledge.add(e.id);
+    const title = (e.extra as Record<string, unknown> | undefined)?.title;
+    if (typeof title === "string" && title.trim()) titles.set(e.id, title.trim());
+  }
+  return { enabled: true, isKnowledge: (id) => knowledge.has(id), titles };
+}
+
+/** 語彙ヒットの kind を <notes> 側の断片 kind に写す（wiki は <notes> には来ない） */
+function passageKind(kind: LexicalSourceKind): RetrievedPassage["kind"] {
+  return kind === "asset" || kind === "shared" ? kind : "note";
+}
+
 /** 語彙インデックスで引く（未ロードなら空） */
-function lexicalHits(userMessage: string, kinds: ("wiki" | "note" | "asset")[], excludeIds?: Set<string>, perSourceLimit?: number): LexicalHit[] {
+function lexicalHits(userMessage: string, kinds: LexicalSourceKind[], excludeIds?: Set<string>, perSourceLimit?: number): LexicalHit[] {
   try {
     return lexicalSearch.search(userMessage, {
       kinds,
@@ -156,17 +198,26 @@ export async function retrieveWikiContext(
   userMessage: string,
   excludeIds?: Set<string>,
 ): Promise<string | null> {
-  // 1. Wiki: 埋め込み（意味）と語彙（BM25）を並行して引き、RRF で束ねる
-  const [dense, lexWiki] = await Promise.all([
+  // 0. 共有レーンの有無を決め、題名マップを差し替える。
+  //    dense 側にも共有ナレッジの documentId が混ざる（手元で埋め込んでいる）ので、
+  //    タイトル解決にはこのマップが要る
+  const shared = sharedLaneContext();
+  setSharedTitleMap(shared.titles);
+
+  // 1. Wiki: 埋め込み（意味）と語彙（BM25）を並行して引き、RRF で束ねる。
+  //    共有ナレッジは同じ扱い（埋め込みも語彙も documentId:sectionId で揃えてある）
+  const [dense, lexWikiLane] = await Promise.all([
     denseWikiSearch(userMessage, excludeIds),
-    Promise.resolve(lexicalHits(userMessage, ["wiki"], excludeIds)),
+    Promise.resolve(lexicalHits(userMessage, shared.enabled ? ["wiki", "shared"] : ["wiki"], excludeIds)),
   ]);
+  const lexWiki = lexWikiLane.filter((h) => h.kind !== "shared" || shared.isKnowledge(h.sourceId));
   const wikiSections = fuseWikiSections(dense, lexWiki);
 
-  // 2. ノート本文・素材: 語彙のみ（埋め込みは Wiki にしか無い）。同じソースからは最大 2 断片
-  const passages = lexicalHits(userMessage, ["note", "asset"], excludeIds, 2)
+  // 2. ノート本文・素材・共有（ナレッジ以外）: 語彙のみ。同じソースからは最大 2 断片
+  const passages = lexicalHits(userMessage, shared.enabled ? ["note", "asset", "shared"] : ["note", "asset"], excludeIds, 2)
+    .filter((h) => h.kind !== "shared" || !shared.isKnowledge(h.sourceId))
     .slice(0, TOP_K_PASSAGES)
-    .map<RetrievedPassage>((h) => ({ kind: h.kind === "asset" ? "asset" : "note", sourceId: h.sourceId, chunkId: h.chunkId, title: h.title, text: h.text, score: h.score }));
+    .map<RetrievedPassage>((h) => ({ kind: passageKind(h.kind), sourceId: h.sourceId, chunkId: h.chunkId, title: h.title, text: h.text, score: h.score }));
 
   if (wikiSections.length > 0 || passages.length > 0) {
     return formatRetrievedContext(wikiSections, passages, _wikiIndexText || undefined);
@@ -286,7 +337,9 @@ export function formatRetrievedContext(
     // titleMap に無い documentId は orphan embedding（削除済み wiki の残骸）。
     // UUID をそのまま title として LLM に渡すと、応答に `[Source: "uuid..."]` が
     // 残って "Knowledge referenced" に意味不明な行が出るため、ここで skip する。
-    const title = _wikiTitleMap.get(r.sourceId) ?? r.title;
+    // 共有ナレッジは _wikiTitleMap に居ないので、共有側の題名マップも見る
+    // （dense ヒットは title が空で来るため、ここで解決できないと skip されてしまう）
+    const title = _wikiTitleMap.get(r.sourceId) || _sharedTitleMap.get(r.sourceId) || r.title;
     if (!title) continue;
     const entry = `[#${n + 1} | "${title}"]\n${r.text}\n\n`;
     if (knowledge.length + entry.length > MAX_CONTEXT_CHARS) break;
@@ -296,15 +349,16 @@ export function formatRetrievedContext(
 
   let notes = "";
   for (const p of passages) {
-    const title = p.title || _noteTitleMap.get(p.sourceId) || "";
+    const title = p.title || _noteTitleMap.get(p.sourceId) || _sharedTitleMap.get(p.sourceId) || "";
     if (!title) continue;
     const text = p.text.length > MAX_PASSAGE_CHARS ? `${p.text.slice(0, MAX_PASSAGE_CHARS)}…` : p.text;
-    const label = p.kind === "asset" ? "asset" : "note";
+    // ラベルと参照の prefix は同じ語（asset / shared / note）で揃えてある
+    const label = p.kind === "asset" || p.kind === "shared" ? p.kind : "note";
     const entry = `[#${n + 1} | "${title}"] (${label})\n${text}\n\n`;
     if (notes.length + entry.length > MAX_PASSAGES_CHARS) break;
     n += 1;
     notes += entry;
-    _passageTitleRefs.set(title, `${p.kind === "asset" ? "asset" : "note"}:${p.sourceId}`);
+    _passageTitleRefs.set(title, `${label}:${p.sourceId}`);
   }
 
   if (!knowledge && !notes && !wikiIndexText) return null as any;
@@ -351,12 +405,27 @@ export function setNoteTitleMap(map: Map<string, string>): void {
 }
 
 /**
+ * 共有エントリ id → 題名。検索のたびに共有ストアのスナップショットから作り直す。
+ * 埋め込み（dense）は documentId しか返さないので、共有ナレッジの題名解決はここが唯一の経路。
+ */
+let _sharedTitleMap: Map<string, string> = new Map();
+export function setSharedTitleMap(map: Map<string, string>): void {
+  _sharedTitleMap = map;
+}
+
+/**
  * タイトル → 参照先のマップ（[Source: "title"] クリック対応用）。
- * Wiki は wikiId そのまま、ノートは `note:<id>`、素材は `asset:<fileId>` の値になる。
+ * Wiki は wikiId そのまま、ノートは `note:<id>`、素材は `asset:<fileId>`、
+ * 共有エントリは `shared:<id>` の値になる。
  * ノート・素材はこのセッションで実際に注入した断片だけ（LLM が引用しうるのはそれだけ）。
  */
 export function getSourceTitleToRefMap(): Map<string, string> {
   const map = new Map<string, string>();
+  // 共有は Wiki 同様に一覧ごと載せる（<knowledge> 側に入った共有ナレッジは
+  // 断片の記録に残らないため）。同名なら実際に注入した断片・Wiki を優先する
+  for (const [id, title] of _sharedTitleMap.entries()) {
+    if (title) map.set(title, `shared:${id}`);
+  }
   for (const [title, ref] of _passageTitleRefs.entries()) map.set(title, ref);
   // Wiki が同名なら Wiki を優先（結晶化した知識の方が引用先として自然）
   for (const [id, title] of _wikiTitleMap.entries()) {

@@ -21,6 +21,7 @@ import { cn } from "../../lib/utils";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
 import { UNFILED_PATH, splitFolderPath } from "../note-context/folder-tree-model";
+import { FOLDER_DRAG_MIME } from "../note-context/folder-drop";
 import {
   aggregateNoteContexts,
   addNoteContext,
@@ -113,6 +114,8 @@ export function NoteListView({
   onSelectFolder,
   onClearFolder,
   onNewNoteInFolder,
+  onDragNotesToFolder,
+  onDraggingNotesChange,
 }: {
   noteIndex: GraphiumIndex | null;
   /** クリック時のコールバック（サイドピーク表示用） */
@@ -165,6 +168,13 @@ export function NoteListView({
    */
   onNewNoteInFolder?: (folderPath: string) => void;
   /**
+   * ノートをサイドバーのフォルダへドラッグできるようにする（渡されたときだけ有効）。
+   * 実際のドロップ処理はサイドバー側なので、ここはドラッグの開始だけを担う。
+   */
+  onDragNotesToFolder?: boolean;
+  /** ドラッグ中の件数を外へ伝える（サイドバーのドロップ先ハイライト用。0 で解除） */
+  onDraggingNotesChange?: (count: number) => void;
+  /**
    * 一括チーム共有（任意）— 提供時のみアクションバーに表示。
    * 選択 id を渡すだけで、実行と進捗表示は呼び出し側（BulkShareModal）が担う。
    * デスクトップ + shared root + identity が揃っている場合にのみ渡される。
@@ -173,6 +183,11 @@ export function NoteListView({
 }) {
   const [entries, setEntries] = useState<NoteListEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // ドラッグ中の件数はサイドバー側のドロップ先ハイライトに使うので、そのまま外へ渡す
+  const setDraggingNoteCount = useCallback(
+    (count: number) => onDraggingNotesChange?.(count),
+    [onDraggingNotesChange],
+  );
   // 既定は作成日の新しい順（ツールバーで並べ替え可能）
   const [sortKey, setSortKey] = useState<SortKey>("createdAt");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
@@ -976,7 +991,27 @@ export function NoteListView({
                       />
                     </td>
                   )}
-                  <td className="py-2 px-3">
+                  {/* タイトルはサイドバーのフォルダへドラッグできる（エクスプローラーと同じく
+                      「名前を掴んで動かす」）。data-no-drag が要るのは use-range-select が
+                      行の mousedown で preventDefault しており、それがネイティブ D&D を
+                      止めてしまうため。この属性が付いた要素では range-select 側が早期 return する。
+                      引き換えに、このセルからは範囲選択を始められない（他の列では従来どおり）。 */}
+                  <td
+                    className="py-2 px-3"
+                    data-no-drag
+                    draggable={!!onDragNotesToFolder}
+                    onDragStart={(e) => {
+                      if (!onDragNotesToFolder) return;
+                      // 選択済みの行を掴んだらその選択全体を、そうでなければその 1 件を運ぶ
+                      const ids = selectedIds.has(entry.noteId)
+                        ? [...selectedIds]
+                        : [entry.noteId];
+                      e.dataTransfer.setData(FOLDER_DRAG_MIME, JSON.stringify(ids));
+                      e.dataTransfer.effectAllowed = "copyMove";
+                      setDraggingNoteCount(ids.length);
+                    }}
+                    onDragEnd={() => setDraggingNoteCount(0)}
+                  >
                     <span className="text-foreground hover:text-primary transition-colors">
                       {entry.title}
                     </span>

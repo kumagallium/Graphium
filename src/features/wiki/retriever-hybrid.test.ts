@@ -3,14 +3,32 @@
 // - formatRetrievedContext: [#N] が <knowledge> と <notes> で連番、予算で切れる、
 //   orphan wiki（titleMap に無い・title 空）は飛ばす、断片は 700 字で切る
 // - getSourceTitleToRefMap: 注入した断片のタイトル → note:/asset: 参照が引ける（Wiki 同名は Wiki 優先）
+// - retrieveWikiContext: 共有レーンの振り分け（knowledge → <knowledge> / それ以外 → <notes>）と
+//   スイッチ OFF のときに kinds へ "shared" を足さないこと
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LexicalHit } from "../lexical-search";
 import type { SearchResult } from "../../lib/embedding-store";
+import type { SharedEntry, SharedEntryType } from "../../lib/storage/shared";
+import {
+  __setSharedLibraryLoaderForTest,
+  groupSharedEntriesByType,
+  refreshSharedLibrary,
+} from "../sharing/shared-library-store";
+
+// 語彙索引は本物を動かさず search だけ差し替える（索引の中身ではなく振り分けを見たい）
+const searchMock = vi.hoisted(() => vi.fn());
+vi.mock("../lexical-search", async (importActual) => {
+  const actual = await importActual<typeof import("../lexical-search")>();
+  return { ...actual, lexicalSearch: { ...actual.lexicalSearch, search: searchMock } };
+});
+
 import {
   formatRetrievedContext,
   fuseWikiSections,
   getSourceTitleToRefMap,
+  retrieveWikiContext,
+  setWikiIndexForRetriever,
   setWikiTitleMap,
   type RetrievedPassage,
 } from "./retriever";
@@ -126,5 +144,106 @@ describe("formatRetrievedContext", () => {
   it("何も無ければ null 相当を返す", () => {
     setWikiTitleMap(new Map());
     expect(formatRetrievedContext([], [], undefined)).toBeNull();
+  });
+});
+
+// ── 共有ライブラリのレーン（第 3 レーン kind: "shared"）──
+// - type=knowledge は <knowledge>（Wiki と同じ RRF の土俵）、それ以外は <notes>（ラベル (shared)）
+// - 参照は shared:<id>。共有ナレッジの題名は共有ストアのスナップショットから解決する
+//   （埋め込みヒットは題名を持たないので、このマップが唯一の経路）
+// - スイッチ OFF なら kinds に "shared" を足さない（索引に残っていても混ざらない）
+describe("retrieveWikiContext（共有ライブラリのレーン）", () => {
+  const KNOWLEDGE_ID = "0195e000-0000-7000-8000-0000000000k1";
+  const NOTE_ID = "0195e000-0000-7000-8000-0000000000n1";
+  const ROOT = "/tmp/shared-root";
+
+  const sharedEntry = (id: string, type: SharedEntryType, title: string): SharedEntry =>
+    ({
+      id,
+      type,
+      author: { name: "Ada", email: "a@b.co" },
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-02T00:00:00Z",
+      hash: "sha256:dummy",
+      prov: { derived_from: [] },
+      extra: { title },
+    }) as SharedEntry;
+
+  beforeEach(async () => {
+    searchMock.mockReset();
+    setWikiTitleMap(new Map());
+    setWikiIndexForRetriever("");
+    // 埋め込みは使わない（fetch を落として dense = [] にする）
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    }));
+    __setSharedLibraryLoaderForTest(
+      async () => ({
+        entries: groupSharedEntriesByType([
+          sharedEntry(KNOWLEDGE_ID, "knowledge", "共有ナレッジ"),
+          sharedEntry(NOTE_ID, "note", "共有ノート"),
+        ]),
+        errors: {},
+      }),
+      { root: ROOT },
+    );
+    await refreshSharedLibrary();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __setSharedLibraryLoaderForTest(null, { root: null });
+  });
+
+  /** kinds に含まれる種類のヒットだけ返す（索引の振る舞いを最小限で真似る） */
+  function serveHits(hits: LexicalHit[]): void {
+    searchMock.mockImplementation((_q: string, opts?: { kinds?: string[] }) => {
+      const kinds = new Set(opts?.kinds ?? []);
+      return hits.filter((h) => kinds.has(h.kind));
+    });
+  }
+
+  it("共有ナレッジは <knowledge>、共有ノートは <notes>、参照は shared:<id>", async () => {
+    serveHits([
+      // 題名を持たないヒット（埋め込み由来と同じ形）でも共有ストアの題名で解決できる
+      lex(KNOWLEDGE_ID, "sec-1", 12, "", "shared"),
+      lex(NOTE_ID, "b1", 8, "共有ノート", "shared"),
+      lex("n1", "b1", 7, "手元ノート", "note"),
+    ]);
+
+    const ctx = (await retrieveWikiContext("焼結 条件"))!;
+    expect(ctx).not.toBeNull();
+    const knowledgeBlock = ctx.slice(ctx.indexOf("<knowledge>"), ctx.indexOf("<notes>"));
+    const notesBlock = ctx.slice(ctx.indexOf("<notes>"));
+    expect(knowledgeBlock).toContain('| "共有ナレッジ"]');
+    expect(notesBlock).toContain('| "共有ノート"] (shared)');
+    expect(notesBlock).toContain('| "手元ノート"] (note)');
+    expect(knowledgeBlock).not.toContain("共有ノート");
+
+    const refs = getSourceTitleToRefMap();
+    expect(refs.get("共有ナレッジ")).toBe(`shared:${KNOWLEDGE_ID}`);
+    expect(refs.get("共有ノート")).toBe(`shared:${NOTE_ID}`);
+    expect(refs.get("手元ノート")).toBe("note:n1");
+
+    // 2 レーンとも kinds に "shared" が足されている
+    const askedKinds = searchMock.mock.calls.map((c) => (c[1] as { kinds?: string[] }).kinds);
+    expect(askedKinds).toContainEqual(["wiki", "shared"]);
+    expect(askedKinds).toContainEqual(["note", "asset", "shared"]);
+  });
+
+  it("スイッチ OFF なら kinds に shared を足さない", async () => {
+    // localStorage に "0"（明示 OFF）を置く。Node 環境には localStorage が無いので丸ごと差し替える
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => (k === "graphium-shared-ai-enabled" ? "0" : null),
+      setItem: () => {},
+      removeItem: () => {},
+    });
+    serveHits([lex(KNOWLEDGE_ID, "sec-1", 12, "共有ナレッジ", "shared"), lex("n1", "b1", 7, "手元ノート", "note")]);
+
+    const ctx = (await retrieveWikiContext("焼結 条件"))!;
+    expect(ctx).not.toContain("共有ナレッジ");
+    const askedKinds = searchMock.mock.calls.map((c) => (c[1] as { kinds?: string[] }).kinds);
+    expect(askedKinds).toContainEqual(["wiki"]);
+    expect(askedKinds).toContainEqual(["note", "asset"]);
   });
 });

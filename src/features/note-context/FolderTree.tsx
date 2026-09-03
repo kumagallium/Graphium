@@ -6,7 +6,8 @@
 // - 「＋ 新しいフォルダ」= インライン入力。"親/子" 記法で 2 階層まで（validateFolderPath）
 // - 親フォルダのホバー時の「＋」= そのフォルダの中に子を作る（スラッシュを手で打たせない）。
 //   2 階層制約により子フォルダには出さない
-// - 右クリックメニュー（移動・削除・リネーム・サブフォルダ作成）と D&D は後続段で載せる。
+// - 右クリック = 名前の変更・削除（メニュー本体は FolderMenu、ここは入口だけ）
+// - ノートのドロップを受け付ける（一覧のタイトルからドラッグ）。Ctrl / Cmd で「出ずに入る」
 //   このコンポーネントはツリーの見た目とナビゲーションだけを担い、
 //   フォルダ削除＝タグ剥がし等のデータ操作は呼び出し側の責務にする
 
@@ -15,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { buildFolderTree, splitFolderPath, validateFolderPath, UNFILED_PATH, type FolderNode } from "./folder-tree-model";
+import { FOLDER_DRAG_MIME, readDraggedNoteIds } from "./folder-drop";
 
 export { UNFILED_PATH };
 
@@ -39,6 +41,11 @@ export type FolderTreeProps = {
     folder: { path: string; name: string; noteCount: number },
     position: { top: number; left: number },
   ) => void;
+  /**
+   * ノートがフォルダに落とされたとき。渡されたときだけドロップを受け付ける。
+   * copy=true は Ctrl / Cmd を押しながら（今の場所から出ずに入る）。
+   */
+  onDropNotes?: (folderPath: string, noteIds: string[], copy: boolean) => void;
 };
 
 // 行の外殻。シェブロン（開閉）と本体（選択）は別ボタンにするため
@@ -59,10 +66,14 @@ export function FolderTree({
   onSelectUnfiled,
   onCreateFolder,
   onFolderContextMenu,
+  onDropNotes,
 }: FolderTreeProps) {
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const tree = useMemo(() => buildFolderTree(folders, emptyFolders ?? []), [folders, emptyFolders]);
+
+  // ドラッグ中に枠を出しているフォルダ（小文字 path キー）
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   // 展開状態（小文字 path キー）。既定は畳み、選択中フォルダの親だけ自動で開く
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -165,10 +176,13 @@ export function FolderTree({
     const isActive = selectedKey === key;
     // 子フォルダを作れるのは root だけ（2 階層制約）
     const canAddChild = !isChild && !!onCreateFolder;
+    const isDropTarget = dropTarget === key;
     return (
       <div
         key={node.path}
-        className={`group ${rowShellClass(isActive)}`}
+        className={`group ${rowShellClass(isActive)}${
+          isDropTarget ? " ring-2 ring-primary/60 bg-primary/10" : ""
+        }`}
         onContextMenu={
           onFolderContextMenu
             ? (e) => {
@@ -180,6 +194,29 @@ export function FolderTree({
               }
             : undefined
         }
+        {...(onDropNotes
+          ? {
+              onDragOver: (e: React.DragEvent) => {
+                if (!e.dataTransfer.types.includes(FOLDER_DRAG_MIME)) return;
+                // preventDefault しないとブラウザがドロップを拒否する
+                e.preventDefault();
+                e.dataTransfer.dropEffect = e.metaKey || e.ctrlKey ? "copy" : "move";
+                setDropTarget(key);
+              },
+              onDragLeave: (e: React.DragEvent) => {
+                // 子要素間の移動でも leave が飛ぶので、行の外に出たときだけ解除する
+                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                setDropTarget((prev) => (prev === key ? null : prev));
+              },
+              onDrop: (e: React.DragEvent) => {
+                const ids = readDraggedNoteIds(e.dataTransfer.getData(FOLDER_DRAG_MIME));
+                setDropTarget(null);
+                if (ids.length === 0) return;
+                e.preventDefault();
+                onDropNotes(node.path, ids, e.metaKey || e.ctrlKey);
+              },
+            }
+          : {})}
       >
         {/* シェブロン列: root で子ありのときだけ開閉ボタン。それ以外は幅合わせ */}
         {!isChild && hasChildren ? (

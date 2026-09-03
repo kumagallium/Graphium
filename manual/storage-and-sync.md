@@ -99,6 +99,12 @@ The button appears in the desktop app once a shared folder and an identity are s
 
 Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
 
+### Shared entries in search and AI chat {#shared-entries-in-search-and-ai-chat}
+
+Shared notes, knowledge pages, references, and data files also show up without forking them: the `⌘K` search palette gets a **Shared** section, and AI chat can cross-search them the same way it cross-searches your own notes (Internal grounding scope). Graphium builds a search index and, for shared knowledge pages, an embedding — both on your own device only. Nothing is written back to the shared folder, and the AI never records a shared entry as a source in provenance unless you insert a citation card yourself.
+
+This is on by default whenever a shared folder is configured, since setting up the shared folder is itself the opt-in step. Turn it off in **Settings** → **Storage** → **Shared storage** if you would rather keep search and AI chat scoped to your own library. Note that the shared folder has no access control inside Graphium: anyone who can read it can index and search it the same way.
+
 ### Cite a shared entry in your notes <Badge type="tip" text="Added in v0.31.0 (2026-08-12)" />
 
 Type `/` in any note and choose **Cite shared entry** to insert a citation card pointing at a shared note, reference, or data file. The card shows the entry's title, author, date, and a verification badge. It stays in your note as a *reference* — the content itself lives in the shared folder, and your note keeps only a lightweight snapshot for display, so the card still renders when the shared folder is unreachable.

@@ -711,6 +711,36 @@ Notes:
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild.
+- **Shared library as a third lexical lane (desktop only).** When a shared
+  root is configured and the "include shared library" setting is on
+  (default on; Settings → Storage), entries left in place in the shared
+  folder — notes, Wiki pages, references and data-manifests, but not
+  templates or reports — are indexed under a third `LexicalSourceKind`,
+  `"shared"` (`src/features/lexical-search/sources.ts →
+  desiredSharedSources`, reconciled by `useSharedLibrarySync` in
+  `src/features/sharing/shared-library-sync.ts`). The index stays
+  per-device and local: nothing is written back to the shared folder, and
+  `LEXICAL_FORMAT_VERSION` is unchanged — shared sources simply coexist
+  with the existing note/asset documents in the same IndexedDB store.
+  `src/features/sharing/shared-library-store.ts` is the single read path
+  for the shared folder (Library view, the citation picker, the lexical
+  sync loop and the embedding sync loop all go through it), and
+  `readSharedEntryBody` verifies each entry's content hash before
+  indexing — a mismatch indexes as empty content and is surfaced as a
+  count in Settings → Storage rather than retried on every reconcile.
+  In `wiki/retriever.ts`, shared hits are split by type: shared **Wiki
+  pages** (`type: "knowledge"`) get an embedding built locally per member
+  (`src/features/sharing/shared-embeddings.ts`, keyed by the entry id —
+  no shared vector cache, since embedding models are not guaranteed to
+  match across members) and join the `<knowledge>` block like any other
+  Wiki page; everything else (shared notes, references, data-manifests)
+  joins the `<notes>` block labeled `(shared)`, citing as `shared:<id>`
+  and resolved by `openSharedEntry` in the chat panel. AI use of a shared
+  passage is not recorded in PROV — only inserting a citation card is
+  (existing `shared:<id>` `used`). The same shared entries also surface in
+  the `⌘K` Composer's "Shared" section (`composer/search.ts →
+  searchShared`), gated the same way (desktop + shared root + the
+  setting).
 - **Auto-merge of redundant Claims.** When the linter / startup-merge
   flow detects two Claims that overlap, one is rewritten into the
   other and the absorbed Claim is **archived, not deleted**. Its file

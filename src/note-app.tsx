@@ -176,7 +176,7 @@ import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
-import { getSharedRoot, getBlobRoot, pickInboxRoot } from "./lib/storage/shared";
+import { getSharedRoot, getBlobRoot, pickInboxRoot, type SharedEntry } from "./lib/storage/shared";
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
 import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
@@ -190,6 +190,8 @@ import {
   SharedLibraryView,
   materializeSharedBlobs,
   BulkShareModal,
+  notifySharedLibraryChanged,
+  useSharedLibrarySync,
   type BulkShareTarget,
 } from "./features/sharing";
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
@@ -199,6 +201,7 @@ import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, rea
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues } from "./features/note-context/folder-tree-model";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
+import { computeFolderDrop } from "./features/note-context/folder-drop";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
@@ -251,6 +254,7 @@ import {
   sharedCitationSlashItem,
   setSharedCitePickerCallback,
   setSharedEntryOpenCallback,
+  openSharedEntry,
   insertSharedCitations,
 } from "./blocks/shared-citation";
 import { tryConvertSharedCitationPaste } from "./blocks/shared-citation/paste";
@@ -885,6 +889,10 @@ type NoteEditorProps = {
   /** 現在開いているノートの引用（knowledge link）数を取得する ref。
    *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
   composerCitationRef?: React.MutableRefObject<(() => number) | null>;
+  /** ⌘K の共有欄から引用カードを挿すための命令口。
+   *  Composer は NoteApp 直下にあってエディタ実体に触れないので、
+   *  composerCitationRef と同じ流儀でここに橋渡しする。エディタ非表示時は null。 */
+  composerInsertSharedRef?: React.MutableRefObject<((entries: SharedEntry[]) => void) | null>;
   /** 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
    *  NoteApp のディスパッチャが、完了時に元ノートが開かれていればこのハンドル経由で
    *  store へ反映する。NoteEditorInner が useEffect で登録する（composerSubmitRef と
@@ -1103,6 +1111,7 @@ function NoteEditorInner({
   openSidePeekRef,
   onSidePeekChange,
   composerCitationRef,
+  composerInsertSharedRef,
   chatRunApplyRef,
   subHeaderSlot,
   contextDrawerSlot,
@@ -2625,6 +2634,8 @@ function NoteEditorInner({
       }
       // sharedRef 付きの doc を保存（personal 側に sharedRef を持たせる）
       onSave(result.doc);
+      // 共有ライブラリが変わった（Library / 引用ピッカー / 語彙索引の追従はこの通知 1 本）
+      notifySharedLibraryChanged();
       // バッジを即時更新（initialDoc は親側で書き替えるまで変わらないので、ローカル state で先に反映）
       setSharedRefState(result.doc.sharedRef);
       window.alert(
@@ -3417,6 +3428,21 @@ function NoteEditorInner({
       if (composerCitationRef.current) composerCitationRef.current = null;
     };
   }, [composerCitationRef, linkStore]);
+
+  // ⌘K の共有欄から引用カードを挿す命令口を登録する（composerCitationRef と同じ流儀）。
+  // 挿し先は「今 DOM に繋がっているエディタ」— ⌘K を開いている間にノートを
+  // 切り替えられると editorRef が古いインスタンスを指し、挿しても画面に出ない。
+  useEffect(() => {
+    if (!composerInsertSharedRef) return;
+    composerInsertSharedRef.current = (entries) => {
+      const editor = liveEditor(editorRef.current) ?? editorRef.current;
+      if (!editor) return;
+      insertSharedCitations(editor, entries);
+    };
+    return () => {
+      if (composerInsertSharedRef.current) composerInsertSharedRef.current = null;
+    };
+  }, [composerInsertSharedRef]);
 
   // AI 回答から別ノートとして派生
   const handleAiDeriveFromChat = useCallback(
@@ -5871,6 +5897,9 @@ export function NoteApp() {
   // 開いた時点でノートの編集面が出ていたか（＝AI 質問まで使えるか）。
   // ノート以外の画面では検索専用として開くので、AI 導線を出し分けるために持つ。
   const [composerCanAskAi, setComposerCanAskAi] = useState(true);
+  // 開いた時点でエディタの編集面が出ていたか（＝共有エントリの引用カードを挿せるか）。
+  // AI の可否（aiUiEnabled）とは別軸なので canAskAi とは分けて持つ。
+  const [composerCanInsertCitation, setComposerCanInsertCitation] = useState(false);
   // 発見カード — Composer が開かれたときに直近 7 日の wikiLog を取得して計算
   const [recentWikiLogEntries, setRecentWikiLogEntries] = useState<WikiLogEntry[]>([]);
   // Composer を開いたときの引用（knowledge link）数。J1.5 の verb メニュー出し分けに使う。
@@ -5887,6 +5916,8 @@ export function NoteApp() {
   const openMaterialPeekRef = useRef<((entry: MediaIndexEntry) => void) | null>(null);
   // 現ノートの引用数を取得する関数を NoteEditorInner が登録する（同じ流儀）。
   const composerCitationRef = useRef<(() => number) | null>(null);
+  // ⌘K の共有欄から引用カードを挿す命令口。NoteEditorInner が登録する（同じ流儀）。
+  const composerInsertSharedRef = useRef<((entries: SharedEntry[]) => void) | null>(null);
   // 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
   // NoteEditorInner が useEffect でハンドルを登録する（composerSubmitRef と同じ流儀）。
   const chatRunApplyRef = useRef<ChatRunApplyHandle | null>(null);
@@ -6051,6 +6082,10 @@ export function NoteApp() {
     getCachedDoc: fm.getCachedDoc,
     loadDoc: fm.loadDoc,
   });
+
+  // 共有ライブラリ（共有ルートに置いたままのエントリ）を語彙索引の第 3 レーンに追従させる。
+  // 索引は手元だけに作られ、共有フォルダには何も書かない。設定 → ストレージで切れる。
+  useSharedLibrarySync({ authenticated });
 
   // 一覧・全体グラフの素材ピーク（未登録 URL の transient エントリ）からの「素材に登録」。
   // エディタが開いていないため保存予約（syncUsedIn）は無し — usedIn は該当ノートの
@@ -6487,6 +6522,8 @@ export function NoteApp() {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setComposerCanAskAi(aiUiEnabled && !!composerSubmitRef.current);
+        // 引用カードの挿入はエディタが出ていれば AI 無効でも使える
+        setComposerCanInsertCitation(!!composerInsertSharedRef.current);
         composer.toggleComposer();
       }
     };
@@ -6703,6 +6740,29 @@ export function NoteApp() {
       router.navigate({ view: "assets", mediaType: entry.type });
     },
     [composer, fm, closeAllViews, router],
+  );
+
+  // Cmd+K の共有欄から共有エントリを選んだとき。
+  // fork はせず、引用カードの「開く」と同じ経路で Library の該当エントリを表示する
+  // （中身を確かめてから fork するか引用するかを決められる）。
+  const handleComposerSharedSelect = useCallback(
+    (entry: SharedEntry) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      openSharedEntry(entry.id);
+    },
+    [composer],
+  );
+
+  // Cmd+K の共有欄から引用カードを今のノートに挿す。
+  // エディタ実体は NoteEditorInner の中なので命令口（ref）越しに呼ぶ。
+  const handleComposerSharedInsertCitation = useCallback(
+    (entry: SharedEntry) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      composerInsertSharedRef.current?.([entry]);
+    },
+    [composer],
   );
 
   // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）を
@@ -8416,6 +8476,25 @@ export function NoteApp() {
       folder: { path: string; name: string; noteCount: number },
       position: { top: number; left: number },
     ) => setFolderMenu({ ...folder, position }),
+    onDropNotesToFolder: (folderPath: string, noteIds: string[], copy: boolean) => {
+      // 移動（既定）は「今開いていたフォルダから出て、落とし先に入る」。
+      // すべてのノート・未分類から動かしたときは出る場所が無いので入るだけになる。
+      // 結果は一覧のフォルダ列のチップに即座に出る（フォルダを開いていれば行が消える）
+      // ので、別途トーストは出さない。
+      void (async () => {
+        for (const noteId of noteIds) {
+          const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+          const next = computeFolderDrop(
+            entry?.noteContexts,
+            folderPath,
+            selectedFolder,
+            copy ? "copy" : "move",
+          );
+          if (next === null) continue;
+          await fm.updateNoteContexts(noteId, next ?? []);
+        }
+      })();
+    },
     onShowProcessGallery: () => { closeAllViews(); fm.setShowProcessGallery(true); setSidebarOpen(false); },
     processGalleryActive: fm.showProcessGallery,
     processCount: processNoteCount,
@@ -9057,6 +9136,7 @@ export function NoteApp() {
               setSelectedFolder(null);
               setFolderContextFilter([]);
             }}
+            onDragNotesToFolder
             onNewNoteInFolder={(folderPath) => {
               closeAllViews();
               fm.handleNewNote([folderPath]);
@@ -9445,7 +9525,9 @@ export function NoteApp() {
               });
               if (!result.ok) {
                 alert(`Unshare failed: ${result.error}`);
+                return;
               }
+              notifySharedLibraryChanged();
             }}
             onBack={() => { setShowSharedLibrary(false); setShowGlobalGraph(false); router.navigate({ view: "home" }); }}
           />
@@ -9785,6 +9867,7 @@ export function NoteApp() {
             onSidePeekChange={openPeek}
             openMaterialPeekRef={openMaterialPeekRef}
             composerCitationRef={composerCitationRef}
+            composerInsertSharedRef={composerInsertSharedRef}
             chatRunApplyRef={chatRunApplyRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
@@ -10074,7 +10157,10 @@ export function NoteApp() {
               },
               saveKnowledge: (id, doc) => fm.handleSaveWikiFile(id, doc),
             }}
-            onClose={() => setBulkShareTargets(null)}
+            onClose={(didShareAny) => {
+              if (didShareAny) notifySharedLibraryChanged();
+              setBulkShareTargets(null);
+            }}
           />
         );
       })()}
@@ -10136,6 +10222,9 @@ export function NoteApp() {
         onNoteSelect={handleComposerNoteSelect}
         mediaIndex={fm.mediaIndex ?? null}
         onMediaSelect={handleComposerMediaSelect}
+        onSharedSelect={handleComposerSharedSelect}
+        onSharedInsertCitation={handleComposerSharedInsertCitation}
+        canInsertCitation={composerCanInsertCitation}
         citationCount={composerCitationCount}
         canAskAi={composerCanAskAi}
       />
