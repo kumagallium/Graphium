@@ -378,6 +378,8 @@ Under the title of every note sits a **Folder** button. Folder names are free-fo
 
 <Badge type="tip" text="Added in v0.51.0 (2026-09-01)" /> While a folder is open, the breadcrumb above the list reads **All Notes › Sourdough › Day 7** — click any step to go back to it, or **All Notes** to drop the filter. **New in folder** starts a note already inside the folder you are looking at, and right-clicking a folder offers **Rename** and **Delete folder**.
 
+<Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> Drag a note by its title in the list and drop it on a folder in the sidebar. Dropping while a folder is open **moves** the note — it leaves the folder you are looking at and joins the one you dropped on; from **All Notes** there is nothing to leave, so it simply joins. Hold `Cmd` (`Ctrl` on Windows) while dropping to keep it where it is and add the new folder as well. Notes you have selected move together.
+
 ::: warning Deleting a folder never deletes notes
 Renaming or deleting a folder takes its subfolders with it — a folder and what sits under it move together. The notes themselves are never deleted: any note that is not in another folder becomes **Unfiled**. To throw notes away, open the folder and delete them from the list.
 :::

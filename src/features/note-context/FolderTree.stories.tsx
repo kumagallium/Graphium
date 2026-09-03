@@ -5,7 +5,8 @@
 // - 未分類（文脈なしノート）の置き場
 // - インライン新規作成と 2 階層制約
 // 右クリックメニュー（名前の変更・削除）は FolderMenu 側の担当で、ツリーは入口だけ持つ。
-// D&D はここでは扱わない（後続段）。
+// D&D のドロップ受けも持つが、ドラッグ元はノート一覧なので Storybook では再現しない
+// （挙動の規則は folder-drop.ts の純関数とそのテストに置いてある）。
 
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";

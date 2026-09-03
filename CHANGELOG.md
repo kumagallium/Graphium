@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.52.0](https://github.com/kumagallium/Graphium/compare/v0.51.2...v0.52.0) - 2026-09-03
+
+- [feat] Show the shared library as a table with search, sort, and filters by @kumagallium in https://github.com/kumagallium/Graphium/pull/825
+- [feat] Search and ground AI chat on shared library entries without forking by @kumagallium in https://github.com/kumagallium/Graphium/pull/828
+- [feat] Drag notes onto folders in the sidebar by @kumagallium in https://github.com/kumagallium/Graphium/pull/823
+- [feat] Regroup the sidebar by where things live (IA round 2) by @kumagallium in https://github.com/kumagallium/Graphium/pull/826
+- [feat] Put materials in folders too by @kumagallium in https://github.com/kumagallium/Graphium/pull/829
+
 ## [v0.51.2](https://github.com/kumagallium/Graphium/compare/v0.51.1...v0.51.2) - 2026-09-03
 
 - [chore] Stop creating never-run CI on tagpr release PRs by @kumagallium in https://github.com/kumagallium/Graphium/pull/820
