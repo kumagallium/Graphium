@@ -7,9 +7,9 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
-  Image, FileText, Video, Volume2, Link, StickyNote, Bot, History,
+  Image, FileText as FileTextIcon, FileText, Video, Volume2, Link, StickyNote, Bot, History,
   PanelLeftClose, Trash2, Settings as SettingsIcon, Wrench, ShieldCheck, ArrowRight,
-  ChevronDown, ChevronRight, Table,
+  ChevronDown, ChevronRight, Table, Folder,
 } from "lucide-react";
 import { FileSidebar } from "./FileSidebar";
 import { FolderTree } from "../features/note-context/FolderTree";
@@ -741,6 +741,167 @@ export const ProposedFolders: Story = {
         <p>実体は noteContexts なので、運用をやめてセクションを消してもタグ・一覧・グラフは元のまま（データ影響なし）。</p>
         <p>件数は左の実物（3 ノート）と整合させてある: 実験シリーズ1 に 1 件・実験シリーズ2 に 1 件・材料X に 1 件。</p>
       </div>
+    </div>
+  ),
+};
+
+// ── IA 第 2 ラウンド: 「見方の重複」をどう束ねるか ─────────────
+//
+// ユーザー指摘（2026-08-31）: すべてのノート / フォルダ / プロセス / メモ は
+// どれも「同じノート集合の見方違い」で、4 行が対等に並んでいて関係が読めない。
+// フォルダ導入で行が 1 つ増えたのを機に、束ね方を 3 案で比べる。
+//
+// 判断材料にしたいのは「1 行あたりの意味の重さ」と「初見で関係が読めるか」。
+
+/** 案の説明を右側に出す共通の枠 */
+function CaseNote({ title, points }: { title: string; points: string[] }) {
+  return (
+    <div className="flex-1 p-6 text-xs text-muted-foreground min-w-[220px] space-y-2">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      {points.map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+    </div>
+  );
+}
+
+/** サイドバーの外枠（ヘッダ・フッタは共通） */
+function MockShell({ children }: { children: ReactNode }) {
+  const t = useT();
+  return (
+    <aside className="w-full md:w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col h-full">
+      <div className="p-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
+            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
+          </div>
+          <PanelLeftClose size={14} className="text-muted-foreground" />
+        </div>
+        <div className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85">
+          {t("sidebar.newNote")}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto pb-2">{children}</div>
+      <div className="p-2 border-t border-sidebar-border space-y-0.5">
+        <FooterRow icon={<Wrench size={12} />} label={t("sidebar.skill")} count={2} />
+        <FooterRow icon={<SettingsIcon size={12} />} label={t("common.settings")} dot />
+        <FooterRow icon={<Trash2 size={12} />} label={t("nav.trashAndArchive")} />
+      </div>
+    </aside>
+  );
+}
+
+/** 共通の下半分（ナレッジ・素材・ラベル）— どの案でも変えない */
+function LowerSections() {
+  const t = useT();
+  return (
+    <>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("sidebar.knowledge")} count={26} open={false} />
+      </div>
+      <div className="mx-4 my-3 border-t border-sidebar-border/50" aria-hidden />
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("asset.dataSection")} count={14} open={false} />
+      </div>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("label.section")} count={5} open={false} />
+      </div>
+    </>
+  );
+}
+
+/** 案 A: 現状（フォルダを足しただけ） */
+function CaseCurrent() {
+  const t = useT();
+  return (
+    <MockShell>
+      <HeadingLink label={t("nav.noteList")} count={7} />
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("nav.folders")} count={3} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Folder size={14} />} label="Sourdough" count={5} />
+          <ItemRow icon={<Folder size={14} />} label="Kiln study" count={1} />
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.unfiled")} count={1} />
+        </div>
+      </div>
+      <HeadingLink label={t("process.title")} count={4} />
+      <HeadingLink label={t("memo.title")} count={1} mb />
+      <LowerSections />
+    </MockShell>
+  );
+}
+
+/** 案 B: ノートの下に見方をぶら下げる（1 つの入口に集約） */
+function CaseNested() {
+  const t = useT();
+  return (
+    <MockShell>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("nav.noteList")} count={7} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Folder size={14} />} label="Sourdough" count={5} />
+          <ItemRow icon={<Folder size={14} />} label="Kiln study" count={1} />
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.unfiled")} count={1} />
+          <div className="pt-1 mt-1 border-t border-sidebar-border/40 space-y-0.5">
+            <ItemRow icon={<ArrowRight size={13} />} label={t("process.title")} count={4} />
+            <ItemRow icon={<ArrowRight size={13} />} label={t("memo.title")} count={1} />
+          </div>
+        </div>
+      </div>
+      <LowerSections />
+    </MockShell>
+  );
+}
+
+/** 案 C: フォルダだけノート直下に入れ、プロセス・メモはフッタのメタ群へ移す */
+function CaseDemoted() {
+  const t = useT();
+  return (
+    <MockShell>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("nav.noteList")} count={7} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Folder size={14} />} label="Sourdough" count={5} />
+          <ItemRow icon={<Folder size={14} />} label="Kiln study" count={1} />
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.unfiled")} count={1} />
+        </div>
+      </div>
+      <LowerSections />
+      <div className="mx-4 my-3 border-t border-sidebar-border/50" aria-hidden />
+      <div className="px-2 space-y-0.5">
+        <FooterRow icon={<ArrowRight size={12} />} label={t("process.title")} count={4} />
+        <FooterRow icon={<ArrowRight size={12} />} label={t("memo.title")} count={1} />
+      </div>
+    </MockShell>
+  );
+}
+
+export const IaRound2: Story = {
+  name: "IA 第 2 ラウンド（見方の重複を束ねる 3 案）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }} className="overflow-x-auto">
+      <div className="flex flex-col border-r-2 border-amber-200 shrink-0">
+        <div className="px-3 py-1.5 bg-amber-50 text-[11px] font-semibold text-amber-900 border-b">A. 現状</div>
+        <div className="flex-1 flex min-h-0"><CaseCurrent /></div>
+      </div>
+      <div className="flex flex-col border-r-2 border-emerald-200 shrink-0">
+        <div className="px-3 py-1.5 bg-emerald-50 text-[11px] font-semibold text-emerald-900 border-b">B. ノートの下に集約</div>
+        <div className="flex-1 flex min-h-0"><CaseNested /></div>
+      </div>
+      <div className="flex flex-col border-r-2 border-emerald-200 shrink-0">
+        <div className="px-3 py-1.5 bg-emerald-50 text-[11px] font-semibold text-emerald-900 border-b">C. フォルダだけ残し、他はメタへ</div>
+        <div className="flex-1 flex min-h-0"><CaseDemoted /></div>
+      </div>
+      <CaseNote
+        title="見るべき点"
+        points={[
+          "A: 「見方」が 4 行、同じ階層に対等に並ぶ。関係が読めないという指摘そのままの状態。",
+          "B: ノートが唯一の入口になり、フォルダ・プロセス・メモはその中の見方として畳まれる。トップレベルは 4 行に減るが、プロセス／メモが 1 段深くなる。",
+          "C: ノートの中はフォルダだけ（＝分類）。プロセスとメモは「別の見方」としてフッタのメタ群に降ろす。トップは最も軽いが、メモは使用頻度が高いと遠くなる。",
+          "共通: ナレッジ・素材・ラベルは別のものを指しているので触らない。",
+        ]}
+      />
     </div>
   ),
 };
