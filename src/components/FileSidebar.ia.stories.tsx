@@ -909,8 +909,10 @@ export const IaRound2: Story = {
 // ── IA 第 2 ラウンド その 2: 「在り処」で束ねる ─────────────
 //
 // ユーザー案（2026-09-03）: 並べる軸を「何であるか（種類）」から
-// 「どこにあるか（在り処）」へ変える。3 ブロックに区切る:
-//   ① この PC の知識 ② この PC の外とのやり取り ③ ノートに持ち込むもの ④ ノートから生まれるもの
+// 「どこにあるか（在り処）」へ変える。4 ブロックに区切る:
+//   ① 手元の知識 ② 外とのやり取り ③ ノートに持ち込むもの ④ ノートから生まれるもの
+// 「この PC」とは呼ばない — 保存先は同期フォルダや Google Drive にもできるため
+// （welcome.saveLocationHint）。「手元」なら保存先がどこでも成り立つ。
 //
 // D = いただいた案そのまま / E = そこから 3 ブロック目だけ割った修正案。
 // 違いは「プロセスとラベル群を素材の中に置くか、外に出すか」の 1 点。
@@ -947,7 +949,7 @@ function LocusUpperBlocks() {
   const t = useT();
   return (
     <>
-      <GroupLabel text="この PC の知識" />
+      <GroupLabel text="手元の知識" />
       <div className="px-4 pb-1">
         <StaticSectionHeader title={t("nav.noteList")} count={7} open />
         <div className="space-y-0.5">
@@ -965,7 +967,7 @@ function LocusUpperBlocks() {
         </div>
       </div>
 
-      <GroupLabel text="この PC の外とのやり取り" />
+      <GroupLabel text="外とのやり取り" />
       <div className="px-4 pb-1">
         <div className="w-full flex items-center gap-1 px-0 pt-1 pb-1 text-xs font-semibold text-sidebar-foreground/40">
           <span className="shrink-0 -ml-0.5" aria-hidden><ArrowRight size={12} /></span>
@@ -1081,7 +1083,7 @@ export const IaRound2Locus: Story = {
       <CaseNote
         title="D と E の違いは 1 点"
         points={[
-          "共通: 並べる軸が「種類」から「在り処」へ。モバイルとライブラリが「この PC の外」として並び、プロセス・メモがトップから降りる。フォルダは「すべてのノート」の中。",
+          "共通: 並べる軸が「種類」から「在り処」へ。モバイルとライブラリが「外とのやり取り」として並び、プロセス・メモがトップから降りる。フォルダは「すべてのノート」の中。",
           "D: プロセスとラベル群（ステップ・インプット…）を素材の中に置く。素材 > プロセス > ステップ で 3 段になる。",
           "E: 素材は持ち込むものだけ（メモ・ドキュメント・データ・URL・画像・動画・音声）。プロセスとラベルは「ノートから生まれるもの」として外に出し、どこも 2 段に収める。",
           "判断材料: 「手順は持ち込むものか？」— 素材は外から持ち込み、手順はノートを書いて生まれる。ラベル群はファイルではなくノート内ブロックに付いた印。見出しの対（持ち込む／生まれる）がそのまま両者の違いになっている。",
