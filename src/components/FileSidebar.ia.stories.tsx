@@ -905,3 +905,190 @@ export const IaRound2: Story = {
     </div>
   ),
 };
+
+// ── IA 第 2 ラウンド その 2: 「在り処」で束ねる ─────────────
+//
+// ユーザー案（2026-09-03）: 並べる軸を「何であるか（種類）」から
+// 「どこにあるか（在り処）」へ変える。3 ブロックに区切る:
+//   ① この PC の知識 ② この PC の外との連携 ③ ノートに使う横断的素材
+//
+// D = いただいた案そのまま / E = そこから 3 ブロック目だけ割った修正案。
+// 違いは「プロセスとラベル群を素材の中に置くか、外に出すか」の 1 点。
+
+/** 区切りの見出し（グループのラベル）。セクション見出しよりさらに小さく、薄く */
+function GroupLabel({ text }: { text: string }) {
+  return (
+    <div className="px-4 pt-3 pb-1">
+      <div className="border-t border-sidebar-border/50 pt-2">
+        <span className="text-[10px] text-sidebar-foreground/35">{text}</span>
+      </div>
+    </div>
+  );
+}
+
+/** PROV ラベルの色ドット付き行 */
+function LabelRow({ label, count }: { label: string; count?: number }) {
+  return (
+    <div className="w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-sidebar-foreground/70">
+      <span
+        className="inline-block w-2 h-2 rounded-full shrink-0"
+        style={{ backgroundColor: LABEL_HEX[label] ?? "#8fa394" }}
+      />
+      <span className="flex-1 text-left truncate">{getDisplayLabelName(label)}</span>
+      {typeof count === "number" && count > 0 && (
+        <span className="text-xs text-muted-foreground">{count}</span>
+      )}
+    </div>
+  );
+}
+
+/** ① と ② は D / E 共通 */
+function LocusUpperBlocks() {
+  const t = useT();
+  return (
+    <>
+      <GroupLabel text="この PC の知識" />
+      <div className="px-4 pb-1">
+        <StaticSectionHeader title={t("nav.noteList")} count={7} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Folder size={14} />} label="Sourdough" count={5} />
+          <ItemRow icon={<Folder size={14} />} label="Kiln study" count={1} />
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.unfiled")} count={1} />
+        </div>
+      </div>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("sidebar.knowledge")} count={26} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Bot size={14} />} label={t("wikiList.kindSummary")} count={9} />
+          <ItemRow icon={<Bot size={14} />} label={t("wikiList.kindClaim")} count={14} />
+          <ItemRow icon={<Bot size={14} />} label={t("wikiList.kindAtom")} count={3} />
+        </div>
+      </div>
+
+      <GroupLabel text="この PC の外との連携" />
+      <div className="px-4 pb-1">
+        <div className="w-full flex items-center gap-1 px-0 pt-1 pb-1 text-xs font-semibold text-sidebar-foreground/40">
+          <span className="shrink-0 -ml-0.5" aria-hidden><ArrowRight size={12} /></span>
+          <span className="flex-1 text-left">{t("mobile.title")}</span>
+          <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">2</span>
+        </div>
+      </div>
+      <div className="px-4 pt-1 pb-1">
+        <StaticSectionHeader title={t("sidebar.library")} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.notes")} count={12} />
+          <ItemRow icon={<Bot size={14} />} label={t("sidebar.knowledge")} count={4} />
+          <ItemRow icon={<Table size={14} />} label={t("asset.type.data")} count={3} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** 素材の中身（メモ入り）。プロセス群を差し込めるようにする */
+function MaterialItems({ children }: { children?: ReactNode }) {
+  const t = useT();
+  return (
+    <div className="space-y-0.5">
+      <ItemRow icon={<StickyNote size={14} />} label={t("memo.title")} count={1} />
+      <ItemRow icon={<FileTextIcon size={14} />} label={t("asset.type.document")} count={6} />
+      {children}
+      <ItemRow icon={<Table size={14} />} label={t("asset.type.data")} count={2} />
+      <ItemRow icon={<Link size={14} />} label={t("asset.type.url")} count={5} />
+      <ItemRow icon={<Image size={14} />} label={t("asset.type.image")} count={4} />
+      <ItemRow icon={<Video size={14} />} label={t("asset.type.video")} />
+      <ItemRow icon={<Volume2 size={14} />} label={t("asset.type.audio")} />
+    </div>
+  );
+}
+
+/** 案 D: いただいた案そのまま（プロセスとラベル群を素材の中に入れる） */
+function CaseLocusAsProposed() {
+  const t = useT();
+  return (
+    <MockShell>
+      <LocusUpperBlocks />
+      <GroupLabel text="ノートに使う横断的素材" />
+      <div className="px-4 pb-1">
+        <StaticSectionHeader title={t("asset.dataSection")} count={14} open />
+        <MaterialItems>
+          {/* 素材の中の 3 段目 */}
+          <div className="pl-2">
+            <StaticSectionHeader title={t("process.title")} count={4} open />
+            <div className="space-y-0.5 pl-2">
+              <LabelRow label="procedure" count={4} />
+              <LabelRow label="material" count={2} />
+              <LabelRow label="tool" count={1} />
+              <LabelRow label="output" count={2} />
+              <LabelRow label="attribute" count={1} />
+            </div>
+          </div>
+        </MaterialItems>
+      </div>
+    </MockShell>
+  );
+}
+
+/** 案 E: 3 ブロック目を「原料」と「横断して見る」に割る */
+function CaseLocusRefined() {
+  const t = useT();
+  return (
+    <MockShell>
+      <LocusUpperBlocks />
+      <GroupLabel text="ノートに使う原料" />
+      <div className="px-4 pb-1">
+        <StaticSectionHeader title={t("asset.dataSection")} count={14} open />
+        <MaterialItems />
+      </div>
+      <GroupLabel text="ノートを横断して見る" />
+      <div className="px-4 pb-1">
+        <div className="w-full flex items-center gap-1 pt-1 pb-1 text-xs font-semibold text-sidebar-foreground/40">
+          <span className="shrink-0 -ml-0.5" aria-hidden><ArrowRight size={12} /></span>
+          <span className="flex-1 text-left">{t("process.title")}</span>
+          <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">4</span>
+        </div>
+      </div>
+      <div className="px-4 pb-1">
+        <StaticSectionHeader title={t("label.section")} count={5} open />
+        <div className="space-y-0.5">
+          <LabelRow label="procedure" count={4} />
+          <LabelRow label="material" count={2} />
+          <LabelRow label="tool" count={1} />
+          <LabelRow label="output" count={2} />
+          <LabelRow label="attribute" count={1} />
+        </div>
+      </div>
+    </MockShell>
+  );
+}
+
+export const IaRound2Locus: Story = {
+  name: "IA 第 2 ラウンド その 2（在り処で束ねる D / E）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }} className="overflow-x-auto">
+      <div className="flex flex-col border-r-2 border-amber-200 shrink-0">
+        <div className="px-3 py-1.5 bg-amber-50 text-[11px] font-semibold text-amber-900 border-b">A. 現状（比較用）</div>
+        <div className="flex-1 flex min-h-0"><CaseCurrent /></div>
+      </div>
+      <div className="flex flex-col border-r-2 border-sky-200 shrink-0">
+        <div className="px-3 py-1.5 bg-sky-50 text-[11px] font-semibold text-sky-900 border-b">D. 在り処（提案そのまま）</div>
+        <div className="flex-1 flex min-h-0"><CaseLocusAsProposed /></div>
+      </div>
+      <div className="flex flex-col border-r-2 border-emerald-200 shrink-0">
+        <div className="px-3 py-1.5 bg-emerald-50 text-[11px] font-semibold text-emerald-900 border-b">E. 在り処（3 ブロック目を割る）</div>
+        <div className="flex-1 flex min-h-0"><CaseLocusRefined /></div>
+      </div>
+      <CaseNote
+        title="D と E の違いは 1 点"
+        points={[
+          "共通: 並べる軸が「種類」から「在り処」へ。モバイルとライブラリが「この PC の外」として並び、プロセス・メモがトップから降りる。フォルダは「すべてのノート」の中。",
+          "D: プロセスとラベル群（ステップ・インプット…）を素材の中に置く。素材 > プロセス > ステップ で 3 段になる。",
+          "E: 素材は原料だけ（メモ・ドキュメント・データ・URL・画像・動画・音声）。プロセスとラベルは「ノートを横断して見る」として外に出し、どこも 2 段に収める。",
+          "判断材料: 「手順は原料の一種か？」— 原料は外から持ち込むもの、手順はノートを書いて生まれるもの。ラベル群はファイルではなくノート内ブロックに付いた印。",
+          "未確認: ライブラリの references は現状のコードに無い（今は「共有」1 項目のみ）。D/E とも仮置きせず省いてある。",
+          "注意: ここは全セクションを開いた状態で描いてある。D で 976px、E で 1057px あり、実画面（800px 前後）には収まらずスクロールになる。実運用では既定でいくつか畳む前提で見てください。",
+        ]}
+      />
+    </div>
+  ),
+};
