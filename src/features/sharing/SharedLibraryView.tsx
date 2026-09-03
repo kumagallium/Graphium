@@ -34,10 +34,13 @@ import {
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
+import { type SharedLibraryLoadResult } from "./shared-library-loader";
 import {
-  loadAllSharedEntries,
-  type SharedLibraryLoadResult,
-} from "./shared-library-loader";
+  groupSharedEntriesByType,
+  readSharedEntryBody,
+  refreshSharedLibrary,
+  useSharedLibrary,
+} from "./shared-library-store";
 import { buildSharedCitationLink } from "./citation-link";
 import {
   collectSharedBlobHashes,
@@ -79,7 +82,10 @@ type Props = {
   /** 引用カードの「開く」から特定エントリを選択表示で開く（consume 後に onFocusConsumed） */
   focusEntryId?: string | null;
   onFocusConsumed?: () => void;
-  /** エントリ読み込み（既定 loadAllSharedEntries）。Storybook でモックに差し替える */
+  /**
+   * エントリ読み込み。既定は共有ストア（shared-library-store）で、
+   * 指定するとストアを使わずこちらから読む（Storybook のモック用 DI）。
+   */
   loadEntries?: (root: string) => Promise<SharedLibraryLoadResult>;
   /** 初期表示タブ（既定 "note"） */
   initialTab?: SharedLibraryTab;
@@ -132,13 +138,15 @@ export function SharedLibraryView({
   onBack,
   focusEntryId,
   onFocusConsumed,
-  loadEntries = loadAllSharedEntries,
+  loadEntries,
   initialTab = "note",
 }: Props) {
   const uiT = useT();
   const [activeTab, setActiveTab] = useState<SharedLibraryTab>(initialTab);
-  const [loading, setLoading] = useState(false);
-  const [entriesByType, setEntriesByType] = useState<
+  // 共有ストア（既定の読み出し経路）。loadEntries が渡されたときだけ下の DI 用 state を使う
+  const shared = useSharedLibrary();
+  const [diLoading, setDiLoading] = useState(false);
+  const [diEntriesByType, setDiEntriesByType] = useState<
     Record<SharedEntryType, SharedEntry[]>
   >({
     note: [],
@@ -148,9 +156,15 @@ export function SharedLibraryView({
     knowledge: [],
     report: [],
   });
-  const [loadErrors, setLoadErrors] = useState<
+  const [diLoadErrors, setDiLoadErrors] = useState<
     Partial<Record<SharedEntryType, string>>
   >({});
+  const entriesByType = useMemo(
+    () => (loadEntries ? diEntriesByType : groupSharedEntriesByType(shared.entries)),
+    [loadEntries, diEntriesByType, shared.entries],
+  );
+  const loadErrors = loadEntries ? diLoadErrors : shared.errors;
+  const loading = loadEntries ? diLoading : shared.loading;
   const [selected, setSelected] = useState<SharedEntry | null>(null);
   const [hashStatus, setHashStatus] = useState<Record<string, HashStatus>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -166,13 +180,18 @@ export function SharedLibraryView({
   }, []);
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (!loadEntries) {
+      // 既定: 共有ストア経由（進行中の読み出しがあれば相乗りする）
+      await refreshSharedLibrary();
+      return;
+    }
+    setDiLoading(true);
     try {
       const result = await loadEntries(sharedRoot);
-      setEntriesByType(result.entries);
-      setLoadErrors(result.errors);
+      setDiEntriesByType(result.entries);
+      setDiLoadErrors(result.errors);
     } finally {
-      setLoading(false);
+      setDiLoading(false);
     }
   }, [sharedRoot, loadEntries]);
 
@@ -435,8 +454,9 @@ function SharedEntryDetail({
     let cancelled = false;
     (async () => {
       try {
-        const provider = new LocalFolderSharedProvider(sharedRoot);
-        const { body: bytes } = await provider.read(entry.id);
+        // 共有ストア経由（本文は id|hash で LRU キャッシュされる。語彙索引が
+        // 直前に読んでいれば I/O ゼロ）
+        const { body: bytes } = await readSharedEntryBody(entry);
         if (cancelled) return;
         const text = new TextDecoder().decode(bytes);
         setBody(text);
@@ -448,7 +468,7 @@ function SharedEntryDetail({
     return () => {
       cancelled = true;
     };
-  }, [entry.id, sharedRoot]);
+  }, [entry]);
 
   const title = entryTitle(entry, uiT);
 

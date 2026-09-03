@@ -6,7 +6,8 @@
 import { describe, expect, it } from "vitest";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
-import { desiredAssetSources, desiredNoteSources, fnv1a } from "./sources";
+import type { SharedEntry } from "../../lib/storage/shared";
+import { desiredAssetSources, desiredNoteSources, desiredSharedSources, fnv1a } from "./sources";
 
 const note = (over: Partial<NoteIndexEntry>): NoteIndexEntry =>
   ({ noteId: "n", title: "t", modifiedAt: "2026-01-01", headings: [], labels: [], outgoingLinks: [], ...over }) as NoteIndexEntry;
@@ -59,5 +60,45 @@ describe("desiredAssetSources", () => {
     expect(fnv1a("abc")).not.toBe(fnv1a("abd"));
     expect(fnv1a("abc")).toBe(fnv1a("abc"));
     expect(fnv1a("")).toMatch(/^[0-9a-f]{8}$/);
+  });
+});
+
+describe("desiredSharedSources", () => {
+  const shared = (over: Partial<SharedEntry>): SharedEntry =>
+    ({
+      id: "s1",
+      type: "note",
+      author: { name: "Ada", email: "a@b.co" },
+      created_at: "2026-01-01",
+      updated_at: "2026-01-02",
+      hash: "sha256:1",
+      prov: { derived_from: [] },
+      ...over,
+    }) as SharedEntry;
+
+  it("note / knowledge / reference / data-manifest が対象。template・report は外す", () => {
+    const out = desiredSharedSources([
+      shared({ id: "n", type: "note" }),
+      shared({ id: "k", type: "knowledge" }),
+      shared({ id: "r", type: "reference" }),
+      shared({ id: "d", type: "data-manifest" }),
+      shared({ id: "t", type: "template" }),
+      shared({ id: "p", type: "report" }),
+    ]);
+    expect(out.map((d) => d.sourceId)).toEqual(["n", "k", "r", "d"]);
+    expect(out.every((d) => d.kind === "shared")).toBe(true);
+  });
+
+  it("fingerprint は hash と type（hash が変われば索引し直す）", () => {
+    const [a] = desiredSharedSources([shared({ hash: "sha256:1", type: "note" })]);
+    const [b] = desiredSharedSources([shared({ hash: "sha256:2", type: "note" })]);
+    const [c] = desiredSharedSources([shared({ hash: "sha256:1", type: "knowledge" })]);
+    expect(a.fingerprint).toBe("sha256:1|note");
+    expect(a.fingerprint).not.toBe(b.fingerprint);
+    expect(a.fingerprint).not.toBe(c.fingerprint);
+  });
+
+  it("空一覧は空（スイッチ OFF / ルート未設定のときの掃除に使う）", () => {
+    expect(desiredSharedSources([])).toEqual([]);
   });
 });

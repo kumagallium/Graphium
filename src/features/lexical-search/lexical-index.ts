@@ -11,8 +11,12 @@
 import MiniSearch, { type SearchResult as MiniSearchResult } from "minisearch";
 import { tokenize } from "./tokenizer";
 
-/** 索引ソースの種類 */
-export type LexicalSourceKind = "note" | "wiki" | "asset";
+/**
+ * 索引ソースの種類。
+ * "shared" は共有ライブラリのエントリ（手元にコピーせず、共有ルートのまま索引する）。
+ * 既存の 3 種と同じ器に入るが、呼び出し側は kinds を明示して混ざらないようにする。
+ */
+export type LexicalSourceKind = "note" | "wiki" | "asset" | "shared";
 
 /** MiniSearch に入れる 1 文書（= 1 チャンク） */
 export type LexicalDoc = {

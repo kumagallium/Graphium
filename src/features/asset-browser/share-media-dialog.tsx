@@ -8,7 +8,7 @@ import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
-import { shareMedia, shareReference } from "../sharing";
+import { notifySharedLibraryChanged, shareMedia, shareReference } from "../sharing";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
 
 export type ShareMediaDialogProps = {
@@ -90,6 +90,8 @@ export function ShareMediaDialog({
         return;
       }
       setSharedRefState(result.sharedRef);
+      // 共有ライブラリが変わった（Library / 引用ピッカー / 語彙索引はこの通知で追従）
+      notifySharedLibraryChanged();
       if (onSharedRefUpdated) {
         await onSharedRefUpdated(entryWithRef, result.sharedRef);
       }

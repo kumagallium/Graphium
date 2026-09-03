@@ -1,7 +1,8 @@
 // Cmd+K 用: 語彙インデックス（BM25）の検索結果を「ソースごと 1 件」に畳む
 //
-// searchNotes / searchMedia は純関数のまま保ち、ここで lexicalSearch（同期）を
-// 引いて noteId / fileId → { score, snippet } の Map にする。索引が未ロードなら
+// searchNotes / searchMedia / searchShared は純関数のまま保ち、ここで lexicalSearch
+// （同期）を引いて sourceId → { score, snippet } の Map にする。sourceId は kind ごとに
+// noteId（note / wiki）・fileId（asset）・共有エントリ id（shared）。索引が未ロードなら
 // 空 Map（＝従来どおりタイトル・見出し・OCR 部分一致だけで動く）。
 
 import { bestHitsBySource, type LexicalSourceKind } from "../lexical-search";

@@ -1667,6 +1667,10 @@ Store: snapshots (keyPath: "scopeKey" = `${provider.id}:${userEmail}`)
        — { scopeKey, snapshot: { formatVersion, index: MiniSearch JSON, sources }, updatedAt }
        — one row per storage scope; `sources` maps sourceId → { kind, fingerprint, chunkIds }
        — chunk ids: note = first block id of the chunk, wiki = H2 section id (same as embeddings), asset = c0, c1, …
+       — a fourth kind, `shared`, indexes entries left in place in the shared library (desktop
+         only, opt-out in Settings → Storage): sourceId = shared entry id, fingerprint =
+         `${hash}|${type}`, chunk ids follow the same note/wiki/asset conventions by entry type.
+         `formatVersion` is unchanged — shared sources coexist with local ones in the same store
 ```
 
 Deleting either database loses nothing: embeddings are regenerated from

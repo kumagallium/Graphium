@@ -15,8 +15,11 @@ import {
 } from "lucide-react";
 import { useT } from "../../i18n";
 import type { SharedEntry, SharedEntryType } from "../../lib/storage/shared";
-import { getSharedRoot } from "../../lib/storage/shared/config";
-import { loadAllSharedEntries } from "./shared-library-loader";
+import {
+  getSharedLibraryRoot,
+  refreshSharedLibrary,
+  useSharedLibrary,
+} from "./shared-library-store";
 import { formatDate } from "../../lib/format-datetime";
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -47,30 +50,16 @@ export function SharedCitePickerModal({
   const inputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [entries, setEntries] = useState<SharedEntry[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const sharedRoot = getSharedRoot();
-
-  // 共有エントリを全種別まとめて読み込む（tombstone は loader 側で除外済み）
+  // 共有エントリは共有ストアから受け取る（tombstone はローダー側で除外済み）。
+  // 開いた時点で最新に合わせたいので refresh を 1 回だけ促す（進行中なら相乗り）
+  const shared = useSharedLibrary();
+  const entries = shared.entries;
+  const loading = shared.loading && shared.loadedAt === null;
+  const sharedLibraryRoot = getSharedLibraryRoot();
   useEffect(() => {
-    if (!sharedRoot) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    loadAllSharedEntries(sharedRoot)
-      .then((result) => {
-        if (cancelled) return;
-        setEntries(Object.values(result.entries).flat());
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sharedRoot]);
+    void refreshSharedLibrary();
+  }, []);
 
   // 自動フォーカス
   useEffect(() => {
@@ -169,7 +158,7 @@ export function SharedCitePickerModal({
 
         {/* 一覧 */}
         <div className="flex-1 overflow-y-auto px-2 py-1.5">
-          {!sharedRoot ? (
+          {!sharedLibraryRoot ? (
             <div className="text-center py-10 text-xs text-muted-foreground px-6">
               {t("share.disabled.noRoot")}
             </div>

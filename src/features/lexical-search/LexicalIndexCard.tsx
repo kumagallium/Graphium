@@ -11,13 +11,15 @@
 //   （「なぜ当たる / 当たらないか」を日本語の分割込みで確かめるためのビュー）
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, FileText, Image as ImageIcon, Loader2, Search, BookOpen } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Image as ImageIcon, Loader2, Search, BookOpen, Users } from "lucide-react";
 import { Button } from "@ui/button";
 import { useLocale } from "../../i18n";
 import { lexicalSearch } from "./service";
 import { useLexicalStatus } from "./use-lexical-sync";
 import { bestHitsBySource } from "./best-hits";
 import type { LexicalSourceKind } from "./lexical-index";
+// 共有ライブラリの hash 不一致件数を 1 行出す（索引に入っているが中身が空のもの）
+import { useSharedLibrary } from "../sharing/shared-library-store";
 
 /** 一覧に出す最大行数（それ以上は「…他 N 件」） */
 const LIST_LIMIT = 100;
@@ -29,7 +31,7 @@ const CHUNK_LIMIT = 40;
 const TERM_CHIP_LIMIT = 40;
 /** 語彙一覧に出す最大行数 */
 const VOCAB_LIMIT = 300;
-const KIND_ORDER: LexicalSourceKind[] = ["note", "wiki", "asset"];
+const KIND_ORDER: LexicalSourceKind[] = ["note", "wiki", "asset", "shared"];
 
 type BrowseMode = "passages" | "vocab";
 
@@ -37,6 +39,7 @@ function KindIcon({ kind }: { kind: LexicalSourceKind }) {
   const cls = "shrink-0 text-muted-foreground";
   if (kind === "wiki") return <BookOpen size={12} className={cls} />;
   if (kind === "asset") return <ImageIcon size={12} className={cls} />;
+  if (kind === "shared") return <Users size={12} className={cls} />;
   return <FileText size={12} className={cls} />;
 }
 
@@ -60,6 +63,7 @@ function TermChips({ terms, more }: { terms: string[]; more: (n: number) => stri
 export function LexicalIndexCard() {
   const { t } = useLocale();
   const status = useLexicalStatus();
+  const sharedMismatched = useSharedLibrary().mismatched;
   const [resetting, setResetting] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [mode, setMode] = useState<BrowseMode>("passages");
@@ -90,7 +94,7 @@ export function LexicalIndexCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [browsing, revision]);
   const kindCounts = useMemo(() => {
-    const c: Record<LexicalSourceKind, number> = { note: 0, wiki: 0, asset: 0 };
+    const c: Record<LexicalSourceKind, number> = { note: 0, wiki: 0, asset: 0, shared: 0 };
     for (const s of sources) c[s.kind] += 1;
     return c;
   }, [sources]);
@@ -177,6 +181,11 @@ export function LexicalIndexCard() {
       {status.lastError && (
         <p className="text-xs text-red-500 mt-2">{status.lastError}</p>
       )}
+      {sharedMismatched.length > 0 && (
+        <p className="text-xs text-muted-foreground mt-2">
+          {t("settings.searchIndex.sharedMismatch", { count: String(sharedMismatched.length) })}
+        </p>
+      )}
 
       {browsing && (
         <div className="mt-3 rounded-lg border border-border p-3 space-y-2">
@@ -187,6 +196,8 @@ export function LexicalIndexCard() {
                 wiki: String(kindCounts.wiki),
                 assets: String(kindCounts.asset),
               })}
+              {kindCounts.shared > 0 &&
+                ` · ${t("settings.searchIndex.sharedCount", { count: String(kindCounts.shared) })}`}
             </div>
             <div className="flex items-center gap-1">
               {modeTab("passages", t("settings.searchIndex.tab.passages"))}
