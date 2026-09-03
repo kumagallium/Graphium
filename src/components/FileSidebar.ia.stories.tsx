@@ -1095,3 +1095,39 @@ export const IaRound2Locus: Story = {
     </div>
   ),
 };
+
+/**
+ * E 案を実物の FileSidebar に反映したあとの姿。
+ * モバイル・ライブラリ・プロセス・ラベルは条件付き表示なので、
+ * すべて揃った状態を見るために props を足してある。
+ */
+export const IaRound2Applied: Story = {
+  name: "IA 第 2 ラウンド（実装後の実物 / 全項目あり）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <FileSidebar
+        {...COMMON_PROPS}
+        onShowMobile={() => {}}
+        mobileCount={2}
+        onShowSharedLibrary={() => {}}
+        onShowProcessGallery={() => {}}
+        processCount={4}
+        memoCount={3}
+        onSelectFolder={() => {}}
+        onSelectUnfiledFolder={() => {}}
+        onCreateFolder={() => {}}
+        emptyFolders={["Sourdough", "Kiln study"]}
+      />
+      <div className="flex-1 p-6 text-xs text-muted-foreground space-y-2">
+        <p className="text-sm font-semibold text-foreground">実装後の実物（E 案）</p>
+        <p>記録と知識: すべてのノート（シェブロンでフォルダ開閉 / 文字で一覧へ）→ ナレッジ</p>
+        <p>外部連携: モバイル → ライブラリ</p>
+        <p>保管庫: 素材（中にメモ）→ プロセス → ラベル</p>
+        <p>
+          条件付き表示のため、実データによってはモバイル（デスクトップ版のみ）・ライブラリ（共有設定時）・
+          プロセス（手順あり）・ラベル（1 件以上）が出ない。ここでは全部出した状態。
+        </p>
+      </div>
+    </div>
+  ),
+};

@@ -4,7 +4,7 @@ Research rarely starts from a blank page — it starts from a paper, a web page,
 
 ## The material gallery
 
-The sidebar has a **Materials** section with one entry per type: **Images**, **Documents** (PDFs and Word files), **Data** (the `.csv` / `.txt` / `.dat` files instruments write, [imported as tables](/notes-and-editor#importing-measurement-data)), **Videos**, **Audio**, and **URLs**. Click any of them to open the gallery. Memos have their own gallery — the **Memos** entry next to Notes.
+The sidebar has a **Materials** section with one entry per type: **Memos**, **Images**, **Documents** (PDFs and Word files), **Data** (the `.csv` / `.txt` / `.dat` files instruments write, [imported as tables](/notes-and-editor#importing-measurement-data)), **Videos**, **Audio**, and **URLs**. Click any of them to open the gallery.
 
 Inside the gallery you can:
 

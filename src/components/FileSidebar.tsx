@@ -139,6 +139,20 @@ export type FileSidebarProps = {
   sharedLibraryActive?: boolean;
 };
 
+/**
+ * セクションのまとまりを示す小さな見出し（IA 第 2 ラウンド E 案）。
+ * セクション見出しよりさらに小さく薄い — ここは「どこにあるか」を示すだけで、
+ * 押す場所ではないため。区切り線と一体にして、divider を別に置かない。
+ */
+function GroupLabel({ text, first = false }: { text: string; first?: boolean }) {
+  return (
+    <div className={first ? "px-4 pt-2 pb-1" : "px-4 pt-3 pb-1"}>
+      <div className={first ? "" : "border-t border-sidebar-border/50 pt-2"}>
+        <span className="text-[10px] text-sidebar-foreground/35">{text}</span>
+      </div>
+    </div>
+  );
+}
 // ラベル色マッピング（NoteListView と同じ）
 const LABEL_HEX: Record<string, string> = {
   procedure: "#5b8fb9",
@@ -378,16 +392,44 @@ export function FileSidebar({
         </button>
       </div>
 
-      {/* セクション一覧
-          IA 構成: ノート → メモ → ナレッジ ─divider─ 素材 → ラベル → Library
-          ノート / メモ は CollapsibleSection ヘッダーと完全に同じスタイル（text-xs font-semibold）
-          に揃え、視覚階層を「セクション見出し」レイヤーで統一する。
-          中身を持たない（クリックで一覧画面に遷移する）ので、シェブロンは出さない。 */}
+      {/* セクション一覧 — IA 第 2 ラウンド E 案（design.md 2026-09-03）。
+          並べる軸は「何であるか（種類）」ではなく「どこにあるか（在り処）」:
+            記録と知識: すべてのノート（中にフォルダ）→ ナレッジ
+            外部連携:   モバイル → ライブラリ
+            保管庫:     素材（中にメモ）→ プロセス → ラベル
+          プロセスとラベルは将来その場でも作れるようにする方針なので、画像などと同じ
+          「取っておいて使い回す部品」として素材と対等に並べる（素材の中に入れない）。
+          見出し風リンク（→）は中身を持たない節で、シェブロンは出さない。 */}
       <div className="flex-1 overflow-y-auto pb-2">
-        {/* ① ノート（見出し風リンク — CollapsibleSection ヘッダーと同階層）
-            ArrowRight を静的に置いて、CollapsibleSection の Chevron と同じ左端位置に揃える。
-            Chevron ではなく Arrow なのは、「クリックで開閉する」誤解を避けるため。
-            → の形は「別の場所に進む」のメンタルモデルが世界共通で、ナビ項目として誤読されない。 */}
+        {/* ── グループ見出し ── */}
+        <GroupLabel text={t("sidebar.groupRecords")} first />
+
+        {/* ① すべてのノート（中にフォルダ）— IA 第 2 ラウンド E 案（2026-09-03）。
+            シェブロン＝フォルダの開閉 / 文字＝一覧へ遷移。フォルダはノートの中の分類なので、
+            独立した節ではなくノートの中身として畳む。 */}
+        {onSelectFolder ? (
+          <CollapsibleSection
+            storageKey="folders"
+            title={<span title={t("nav.foldersTooltip")}>{t("nav.noteList")}</span>}
+            defaultOpen={false}
+            count={noteCount}
+            onTitleClick={onShowNoteList}
+            titleActive={noteListActive}
+          >
+            <FolderTree
+              folders={folderData.folders}
+              emptyFolders={emptyFolders}
+              unfiledCount={folderData.unfiledCount}
+              selected={selectedFolder}
+              onSelectFolder={(path) =>
+                onSelectFolder(path, expandFolderToContextValues(folderTree, path))
+              }
+              onSelectUnfiled={onSelectUnfiledFolder}
+              onCreateFolder={onCreateFolder}
+              onFolderContextMenu={onFolderContextMenu}
+            />
+          </CollapsibleSection>
+        ) : (
         <button
           onClick={onShowNoteList}
           className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
@@ -410,97 +452,6 @@ export function FileSidebar({
           )}
         </button>
 
-        {/* ①'' フォルダ（noteContexts のフォルダ見せ）— ノート直下・初期畳み。
-            実体はタグなので、このセクションを外してもノートのデータには何も起きない（可逆）。
-            ノート/プロセスと「見方」が被る IA 問題は認識済みで、左ナビ再編の第 2 ラウンドで
-            扱う（design.md 決定事項 2026-08-31）。空フォルダ作成（＋行）は永続化と併せて次段。 */}
-        {onSelectFolder && (
-          <CollapsibleSection
-            storageKey="folders"
-            title={<span title={t("nav.foldersTooltip")}>{t("nav.folders")}</span>}
-            defaultOpen={false}
-            count={folderCount}
-          >
-            <FolderTree
-              folders={folderData.folders}
-              emptyFolders={emptyFolders}
-              unfiledCount={folderData.unfiledCount}
-              selected={selectedFolder}
-              onSelectFolder={(path) =>
-                onSelectFolder(path, expandFolderToContextValues(folderTree, path))
-              }
-              onSelectUnfiled={onSelectUnfiledFolder}
-              onCreateFolder={onCreateFolder}
-              onFolderContextMenu={onFolderContextMenu}
-            />
-          </CollapsibleSection>
-        )}
-
-        {/* ①' プロセス（見出し風リンク） — ノートの別の見方なので隣に置く。
-            手順を書いたノートが 1 件も無いうちは出さない（progressive disclosure）。 */}
-        {onShowProcessGallery && processCount > 0 && (
-          <button
-            onClick={onShowProcessGallery}
-            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
-              processGalleryActive
-                ? "text-primary"
-                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
-            }`}
-          >
-            <span className="shrink-0 -ml-0.5" aria-hidden>
-              <ArrowRight size={12} />
-            </span>
-            <span className="flex-1 text-left">{t("process.title")}</span>
-            <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">
-              {processCount}
-            </span>
-          </button>
-        )}
-
-        {/* ②' メモ（見出し風リンク） — ノートと同列。
-            この節の最後の見出しが mb-1.5 でナレッジ節との間隔を作る。モバイル（受信箱）は
-            web では出ないので、その場合はメモがこの節の最後になり mb-1.5 を引き受ける。 */}
-        {onShowMemos && (
-          <button
-            onClick={onShowMemos}
-            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 ${onShowMobile ? "" : "mb-1.5"} text-xs font-semibold transition-colors ${
-              memosActive
-                ? "text-primary"
-                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
-            }`}
-          >
-            <span className="shrink-0 -ml-0.5" aria-hidden>
-              <ArrowRight size={12} />
-            </span>
-            <span className="flex-1 text-left">{t("memo.title")}</span>
-            {memoCount > 0 && (
-              <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{memoCount}</span>
-            )}
-          </button>
-        )}
-
-        {/* ②'' モバイル（見出し風リンク） — メモと対の独立見出し。
-            同期フォルダ <root>/Inbox/ の受信箱（未取り込みファイル）ビューへ遷移する。
-            件数は「未処理件数」= これから捌く数。取り込むと素材になり、ここからは消える。
-            受信箱は Tauri 専用なので、web では onShowMobile が渡らず見出しごと消える。
-            mb-1.5 でナレッジ節との間隔を確保する（この見出しが節の最後）。 */}
-        {onShowMobile && (
-          <button
-            onClick={onShowMobile}
-            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 mb-1.5 text-xs font-semibold transition-colors ${
-              mobileActive
-                ? "text-primary"
-                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
-            }`}
-          >
-            <span className="shrink-0 -ml-0.5" aria-hidden>
-              <ArrowRight size={12} />
-            </span>
-            <span className="flex-1 text-left">{t("mobile.title")}</span>
-            {mobileCount > 0 && (
-              <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{mobileCount}</span>
-            )}
-          </button>
         )}
 
         {/* ② ナレッジ（AI が編む脳）— Notes 直下に配置 */}
@@ -635,8 +586,56 @@ export function FileSidebar({
           </CollapsibleSection>
         )}
 
-        {/* ── divider: 脳の中身（Notes/Knowledge）と入口（Materials/Labels）の区切り ── */}
-        <div className="mx-4 my-3 border-t border-sidebar-border/50" aria-hidden />
+        {/* ── グループ見出し ── */}
+        <GroupLabel text={t("sidebar.groupExternal")} />
+
+        {/* ②'' モバイル（見出し風リンク） — メモと対の独立見出し。
+            同期フォルダ <root>/Inbox/ の受信箱（未取り込みファイル）ビューへ遷移する。
+            件数は「未処理件数」= これから捌く数。取り込むと素材になり、ここからは消える。
+            受信箱は Tauri 専用なので、web では onShowMobile が渡らず見出しごと消える。
+            mb-1.5 でナレッジ節との間隔を確保する（この見出しが節の最後）。 */}
+        {onShowMobile && (
+          <button
+            onClick={onShowMobile}
+            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 mb-1.5 text-xs font-semibold transition-colors ${
+              mobileActive
+                ? "text-primary"
+                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+            }`}
+          >
+            <span className="shrink-0 -ml-0.5" aria-hidden>
+              <ArrowRight size={12} />
+            </span>
+            <span className="flex-1 text-left">{t("mobile.title")}</span>
+            {mobileCount > 0 && (
+              <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{mobileCount}</span>
+            )}
+          </button>
+        )}
+
+        {/* Library セクション（Phase 2c — Shared root が設定されていれば表示） */}
+        {onShowSharedLibrary && (
+          <CollapsibleSection
+            storageKey="library"
+            title={t("sidebar.library")}
+            defaultOpen={false}
+          >
+            <button
+              onClick={onShowSharedLibrary}
+              className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                sharedLibraryActive
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              }`}
+            >
+              <span className="text-muted-foreground shrink-0"><Library size={14} /></span>
+              <span className="flex-1 text-left">{t("sidebar.shared")}</span>
+            </button>
+          </CollapsibleSection>
+        )}
+
+        {/* ── グループ見出し ── */}
+        <GroupLabel text={t("sidebar.groupRepository")} />
 
         {/* ③ 素材（旧: データ） */}
         <CollapsibleSection
@@ -645,6 +644,24 @@ export function FileSidebar({
           defaultOpen={true}
           count={dataCount}
         >
+            {/* メモは「取っておいて使い回す部品」なので素材の中に置く（E 案）。
+                かつては独立見出しだった。 */}
+            {onShowMemos && (
+              <button
+                onClick={onShowMemos}
+                className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                  memosActive
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                }`}
+              >
+                <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
+                <span className="flex-1 text-left">{t("memo.title")}</span>
+                {memoCount > 0 && (
+                  <span className="text-xs text-muted-foreground">{memoCount}</span>
+                )}
+              </button>
+            )}
           {MEDIA_NAV_ITEMS.map(({ type, icon }) => {
             // Documents タブには PDF も含まれる（mediaType の内部区別は維持しつつ UI 上で統合）
             const count = type === "document"
@@ -670,6 +687,27 @@ export function FileSidebar({
             );
           })}
         </CollapsibleSection>
+
+        {/* ①' プロセス（見出し風リンク） — ノートの別の見方なので隣に置く。
+            手順を書いたノートが 1 件も無いうちは出さない（progressive disclosure）。 */}
+        {onShowProcessGallery && processCount > 0 && (
+          <button
+            onClick={onShowProcessGallery}
+            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
+              processGalleryActive
+                ? "text-primary"
+                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+            }`}
+          >
+            <span className="shrink-0 -ml-0.5" aria-hidden>
+              <ArrowRight size={12} />
+            </span>
+            <span className="flex-1 text-left">{t("process.title")}</span>
+            <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">
+              {processCount}
+            </span>
+          </button>
+        )}
 
         {/* ④ ラベル: 1 件以上付与されてから表示（progressive disclosure） */}
         {labelCounts.size > 0 && (
@@ -703,27 +741,6 @@ export function FileSidebar({
                 );
               })}
         </CollapsibleSection>
-        )}
-
-        {/* Library セクション（Phase 2c — Shared root が設定されていれば表示） */}
-        {onShowSharedLibrary && (
-          <CollapsibleSection
-            storageKey="library"
-            title={t("sidebar.library")}
-            defaultOpen={false}
-          >
-            <button
-              onClick={onShowSharedLibrary}
-              className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                sharedLibraryActive
-                  ? "bg-primary/10 text-primary font-semibold"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              }`}
-            >
-              <span className="text-muted-foreground shrink-0"><Library size={14} /></span>
-              <span className="flex-1 text-left">{t("sidebar.shared")}</span>
-            </button>
-          </CollapsibleSection>
         )}
       </div>
 
