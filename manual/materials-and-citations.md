@@ -6,6 +6,8 @@ Research rarely starts from a blank page — it starts from a paper, a web page,
 
 The sidebar has a **Materials** section with one entry per type: **Images**, **Documents** (PDFs and Word files), **Data** (the `.csv` / `.txt` / `.dat` files instruments write, [imported as tables](/notes-and-editor#importing-measurement-data)), **Videos**, **Audio**, and **URLs**. Click any of them to open the gallery. Memos have their own gallery — the **Memos** entry next to Notes.
 
+Materials can go in folders too — the same folders your notes use. Select some in the list view and choose **Add to a folder**, then use the **Folders** button above the list to show only what is in one. A material keeps its folder whether or not any note uses it yet, so you can file a PDF the day you download it.
+
 Inside the gallery you can:
 
 | Control | What it does |

@@ -3,6 +3,7 @@
 
 import { getActiveProvider } from "../../lib/storage/registry";
 import { isDelimitedDataFile } from "../data-import/file-kind";
+import { normalizeNoteContexts } from "../note-context/context-tags";
 // チャートが直接参照する素材（config.assetSources）を利用ノートに数えるため。
 // chart-config は純関数の葉モジュールで、こちらへ戻る import は無い
 import { collectChartAssetFileIds, parseChartBlockConfig } from "../../blocks/chart/chart-config";
@@ -235,6 +236,19 @@ export type MediaIndexEntry = {
    * 設計: docs/internal/mobile-capture-transport-design-2026-07.md §7
    */
   capture?: import("../mobile-capture/inbox/types").CaptureMeta;
+  /**
+   * 素材が入っているフォルダ。ノートと同じ noteContexts の体系を共有する
+   * （「材料X」フォルダにノートも画像も入る）。
+   *
+   * 人が付ける情報で、ノートからは導けない。ensureMediaIndex の再構築は既存エントリを
+   * 土台に usedIn などを埋め直すだけなので、ここは温存される（#699 の「再構築は自分が
+   * 知らない情報を上書きしない」性質）。
+   *
+   * 再構築で回収できる類の情報ではないため、スキーマ版は上げない — 上げても得るものが
+   * 無く、全ユーザーに無駄な全走査を強いるだけになる。古いインデックスはこの欄を
+   * 持たないだけで、そのまま読める（optional・後方互換）。
+   */
+  noteContexts?: string[];
 };
 
 /**
@@ -869,6 +883,22 @@ export function renameMediaEntry(
   return { ...index, updatedAt: new Date().toISOString(), media };
 }
 
+/**
+ * 素材のフォルダ（noteContexts）を差し替える。ノート側の updateNoteContexts に相当する。
+ * 正規化はノートと共通の normalizeNoteContexts に任せ、同じ名寄せ規則（小文字比較・
+ * 表示は初出の形）で揃える。空になったら欄ごと落とす。
+ */
+export function setMediaEntryContexts(
+  index: MediaIndex,
+  fileId: string,
+  contexts: readonly string[],
+): MediaIndex {
+  const next = normalizeNoteContexts([...contexts]);
+  const media = index.media.map((m) =>
+    m.fileId === fileId ? { ...m, noteContexts: next } : m,
+  );
+  return { ...index, updatedAt: new Date().toISOString(), media };
+}
 /** メディアファイルを削除 */
 export async function deleteMediaFile(fileId: string): Promise<void> {
   const provider = getActiveProvider();

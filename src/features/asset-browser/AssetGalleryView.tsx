@@ -2,7 +2,11 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder } from "lucide-react";
+import { UNFILED_PATH } from "../note-context/folder-tree-model";
+import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext } from "../note-context/context-tags";
+import { ContextTagPicker } from "../note-context/ContextTagPicker";
+import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -429,6 +433,13 @@ export type AssetGalleryViewProps = {
   /** 素材を参照している版スナップショット数のオンデマンド集計（削除ダイアログ用） */
   countSnapshotRefs?: (entry: MediaIndexEntry) => Promise<number>;
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
+  /**
+   * 素材のフォルダ（noteContexts）を保存する。渡されたときだけ付与 UI を出す。
+   * ノートと同じフォルダ体系を共有する。
+   */
+  onSetMediaContexts?: (fileId: string, contexts: string[]) => Promise<void> | void;
+  /** ノート側で使われているフォルダ名（付与ピッカーの候補に混ぜる。体系を共有するため） */
+  noteFolders?: readonly string[];
   /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
@@ -561,6 +572,8 @@ export function AssetGalleryView({
   onArchiveMedia,
   countSnapshotRefs,
   onRenameMedia,
+  onSetMediaContexts,
+  noteFolders,
   onAddUrlBookmark,
   onUploadMedia,
   onIngestMedia,
@@ -590,6 +603,16 @@ export function AssetGalleryView({
   const [sortAsc, setSortAsc] = useState(false);
   // Documents タブのサブフィルタ（PDF / Word / All）
   const [docFilter, setDocFilter] = useState<"all" | "pdf" | "word">("all");
+  // フォルダでの絞り込み（ノートと同じ体系。UNFILED_PATH は「フォルダに入っていない素材」）
+  const [folderFilter, setFolderFilter] = useState<string[]>([]);
+  const [folderFilterOpen, setFolderFilterOpen] = useState(false);
+  // 選択した素材へのフォルダ付与（ノート一覧の一括付与と同じ ContextTagPicker）
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignPos, setAssignPos] = useState({ top: 0, left: 0 });
+  const [assignApplied, setAssignApplied] = useState<string[]>([]);
+  const assignBtnRef = useRef<HTMLButtonElement>(null);
+  const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
+  const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
@@ -802,6 +825,18 @@ export function AssetGalleryView({
       if (docFilter === "word") return m.type === "document";
       return m.type === "document" || m.type === "pdf";
     });
+    // フォルダ絞り込み（OR・小文字比較）。ノート一覧の文脈フィルタと同じ規則にそろえる
+    if (folderFilter.length > 0) {
+      const wantsUnfiled = folderFilter.includes(UNFILED_PATH);
+      const set = new Set(
+        folderFilter.filter((c) => c !== UNFILED_PATH).map((c) => c.toLowerCase()),
+      );
+      result = result.filter((m) => {
+        const own = m.noteContexts ?? [];
+        if (wantsUnfiled && own.length === 0) return true;
+        return own.some((c) => set.has(c.trim().toLowerCase()));
+      });
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
@@ -824,7 +859,46 @@ export function AssetGalleryView({
       }
       return sortAsc ? cmp : -cmp;
     });
-  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc, docFilter]);
+  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc, docFilter, folderFilter]);
+
+  // フォルダ絞り込みの選択肢。いま見ている種類の素材に実際に付いているものだけ出す
+  // （空振りする候補を並べない）。未分類は件数が 1 件以上あるときだけ足す。
+  const folderFilterOptions = useMemo<FilterOption[]>(() => {
+    if (!mediaIndex) return [];
+    const inScope = mediaIndex.media.filter((m) => {
+      if (m.archivedAt) return false;
+      if (mediaType !== "document") return m.type === mediaType;
+      return m.type === "document" || m.type === "pdf";
+    });
+    const counts = aggregateNoteContexts(inScope);
+    const options: FilterOption[] = counts.map(({ value, count }) => ({
+      value,
+      label: value,
+      count,
+      icon: (
+        <span
+          className="block w-2.5 h-2.5 rounded-full"
+          style={{ backgroundColor: `hsl(${noteContextHue(value)} 45% 45%)` }}
+        />
+      ),
+    }));
+    const unfiled = inScope.filter((m) => (m.noteContexts ?? []).length === 0).length;
+    if (unfiled > 0) {
+      options.push({ value: UNFILED_PATH, label: t("nav.unfiled"), count: unfiled });
+    }
+    return options;
+  }, [mediaIndex, mediaType, t]);
+
+  // 付与ピッカーの候補。素材に付いているものと、ノート側のフォルダの両方から集める
+  // （体系を共有しているので、ノートで使っているフォルダに素材も入れられるべき）。
+  const assignSuggestions = useMemo(
+    () =>
+      aggregateNoteContexts([
+        ...(mediaIndex?.media ?? []),
+        ...(noteFolders ?? []).map((value) => ({ noteContexts: [value] })),
+      ]),
+    [mediaIndex, noteFolders],
+  );
 
   // Documents タブのサブフィルタ用件数
   const docCounts = useMemo(() => {
@@ -1263,6 +1337,29 @@ export function AssetGalleryView({
               ))}
             </div>
           )}
+          {/* フォルダ絞り込み。ノートと同じ体系なので、一覧の「フォルダ」列と同じ見え方にする */}
+          {folderFilterOptions.length > 0 && (
+            <button
+              ref={folderFilterBtnRef}
+              onClick={() => {
+                const rect = folderFilterBtnRef.current?.getBoundingClientRect();
+                if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left });
+                setFolderFilterOpen((v) => !v);
+              }}
+              title={t("nav.filterContexts")}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-full transition-colors ${
+                folderFilter.length > 0
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <Folder size={12} />
+              <span>{t("nav.folders")}</span>
+              {folderFilter.length > 0 && (
+                <span className="text-[10px] opacity-70">({folderFilter.length})</span>
+              )}
+            </button>
+          )}
           <div className="flex items-center gap-1 ml-auto">
             {/* ソートボタンは gallery モード専用（list モードは列ヘッダのクリックで揃える） */}
             {viewMode === "gallery" && (
@@ -1332,6 +1429,22 @@ export function AssetGalleryView({
               {t("asset.deselectAll")}
             </button>
             <div className="ml-auto flex items-center gap-2">
+              {onSetMediaContexts && (
+                <button
+                  ref={assignBtnRef}
+                  onClick={() => {
+                    const rect = assignBtnRef.current?.getBoundingClientRect();
+                    if (rect) setAssignPos({ top: rect.bottom + 4, left: rect.left - 120 });
+                    setAssignApplied([]);
+                    setAssignOpen(true);
+                  }}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                  title={t("nav.applyContextsTooltip")}
+                >
+                  <Folder size={12} />
+                  {t("nav.applyContexts", { count: String(selectedIds.size) })}
+                </button>
+              )}
               {bulkActionable && onIngestMedia && (
                 <button
                   onClick={handleBulkIngest}
@@ -1624,6 +1737,51 @@ export function AssetGalleryView({
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
           onSaveSelectionAsMemo={onSaveSelectionAsMemo}
           onSaveImageAsAsset={onSaveImageAsAsset}
+        />
+      )}
+      {assignOpen && onSetMediaContexts && (
+        <ContextTagPicker
+          position={assignPos}
+          onClose={() => setAssignOpen(false)}
+          suggestions={assignSuggestions}
+          selected={assignApplied}
+          onAdd={(value) => {
+            // 選択中の素材すべてに足す（既に入っているものはそのまま）
+            void (async () => {
+              for (const fileId of selectedIds) {
+                const entry = mediaIndex?.media.find((m) => m.fileId === fileId);
+                if (!entry) continue;
+                const next = addNoteContext(entry.noteContexts, value);
+                await onSetMediaContexts(fileId, next ?? []);
+              }
+              setAssignApplied((prev) => (prev.includes(value) ? prev : [...prev, value]));
+            })();
+          }}
+          onRemove={(value) => {
+            void (async () => {
+              for (const fileId of selectedIds) {
+                const entry = mediaIndex?.media.find((m) => m.fileId === fileId);
+                if (!entry) continue;
+                const next = removeNoteContext(entry.noteContexts, value);
+                await onSetMediaContexts(fileId, next ?? []);
+              }
+              setAssignApplied((prev) => prev.filter((v) => v !== value));
+            })();
+          }}
+        />
+      )}
+      {folderFilterOpen && (
+        <FilterPopup
+          position={folderFilterPos}
+          onClose={() => setFolderFilterOpen(false)}
+          title={t("nav.folders")}
+          options={folderFilterOptions}
+          selected={folderFilter}
+          onChange={setFolderFilter}
+          searchPlaceholder={t("common.search")}
+          clearLabel={t("nav.clearFilter")}
+          noMatchText={t("nav.contextEmpty")}
+          minWidth={220}
         />
       )}
     </div>

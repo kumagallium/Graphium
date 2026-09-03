@@ -6035,6 +6035,11 @@ export function NoteApp() {
   }, [fm.noteIndex]);
 
   // パンくずの親フォルダをクリックしたときに、サイドバーと同じ絞り込み（子を含む）へ
+  // 素材の付与ピッカーに渡すノート側フォルダ名（体系を共有するので候補を混ぜる）
+  const noteFolderNames = useMemo(
+    () => collectFolderSource(fm.noteIndex?.notes ?? []).folders.map((f) => f.value),
+    [fm.noteIndex],
+  );
   // 展開するためのツリー。集計規則はサイドバーと共通（collectFolderSource）
   const folderTreeForNav = useMemo(
     () => buildFolderTree(collectFolderSource(fm.noteIndex?.notes ?? []).folders, emptyFolders),
@@ -8588,6 +8593,8 @@ export function NoteApp() {
             onArchiveMedia={fm.handleArchiveMedia}
             countSnapshotRefs={fm.countSnapshotRefsForAsset}
             onRenameMedia={handleRenameMediaWithBlockSync}
+            onSetMediaContexts={fm.updateMediaContexts}
+            noteFolders={noteFolderNames}
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
