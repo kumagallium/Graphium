@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.53.0](https://github.com/kumagallium/Graphium/compare/v0.52.0...v0.53.0) - 2026-09-03
+
+- [feat] Show and filter shared notes by the folder they were shared from by @kumagallium in https://github.com/kumagallium/Graphium/pull/831
+
 ## [v0.52.0](https://github.com/kumagallium/Graphium/compare/v0.51.2...v0.52.0) - 2026-09-03
 
 - [feat] Show the shared library as a table with search, sort, and filters by @kumagallium in https://github.com/kumagallium/Graphium/pull/825
