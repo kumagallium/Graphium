@@ -586,8 +586,13 @@ export function FileSidebar({
           </CollapsibleSection>
         )}
 
-        {/* ── グループ見出し ── */}
-        <GroupLabel text={t("sidebar.groupExternal")} />
+        {/* ── グループ見出し ──
+            モバイルも共有ストレージも設定されていなければ、見出しごと出さない。
+            中身が 1 つも無いグループだけが残ると、設定していない機能の存在を
+            見出しだけで匂わせることになるため。 */}
+        {(onShowMobile || onShowSharedLibrary) && (
+          <GroupLabel text={t("sidebar.groupExternal")} />
+        )}
 
         {/* ②'' モバイル（見出し風リンク） — メモと対の独立見出し。
             同期フォルダ <root>/Inbox/ の受信箱（未取り込みファイル）ビューへ遷移する。
