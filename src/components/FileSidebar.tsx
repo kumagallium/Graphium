@@ -56,6 +56,8 @@ export type FileSidebarProps = {
     folder: { path: string; name: string; noteCount: number },
     position: { top: number; left: number },
   ) => void;
+  /** ノートがフォルダへドロップされたとき（copy=true は Ctrl / Cmd 押下） */
+  onDropNotesToFolder?: (folderPath: string, noteIds: string[], copy: boolean) => void;
   mediaIndex: MediaIndex | null;
   onShowAssetGallery: (type: MediaType) => void;
   noteIndex: GraphiumIndex | null;
@@ -184,6 +186,7 @@ export function FileSidebar({
   emptyFolders,
   onCreateFolder,
   onFolderContextMenu,
+  onDropNotesToFolder,
   mediaIndex,
   onShowAssetGallery,
   noteIndex,
@@ -432,6 +435,7 @@ export function FileSidebar({
               onSelectUnfiled={onSelectUnfiledFolder}
               onCreateFolder={onCreateFolder}
               onFolderContextMenu={onFolderContextMenu}
+              onDropNotes={onDropNotesToFolder}
             />
           </CollapsibleSection>
         )}
