@@ -197,6 +197,7 @@ import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues } from "./features/note-context/folder-tree-model";
+import { buildNoteFolderLookup } from "./features/asset-browser/asset-folders";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { ContextBadge } from "./features/note-context/ContextBadge";
@@ -5922,6 +5923,7 @@ export function NoteApp() {
   // 空フォルダ定義（appdata）。タグとして実体化する前のフォルダをツリーに出すために持つ。
   // 読み込みは fm（プロバイダ）初期化後の useEffect で行う（fm 宣言の直後にある）。
   const [emptyFolders, setEmptyFolders] = useState<string[]>([]);
+
   // フォルダの右クリックメニュー（名前の変更・削除）
   const [folderMenu, setFolderMenu] = useState<{
     path: string;
@@ -6039,6 +6041,13 @@ export function NoteApp() {
   // ノート由来のフォルダに加えて、空フォルダ（appdata の定義）も混ぜる。
   // 子フォルダはまだノートが入っていないことが多く、ノート側からしか集めないと
   // 候補に出ず「素材を入れられない」ように見えてしまう。
+
+  // ノート id → そのノートのフォルダ。素材が「使われているノートのフォルダ」に
+  // 属して見えるようにするための参照表（保存はせず、その場で合成する）。
+  const noteFolderLookup = useMemo(
+    () => buildNoteFolderLookup(fm.noteIndex?.notes ?? []),
+    [fm.noteIndex],
+  );
   const noteFolderNames = useMemo(
     () => [
       ...collectFolderSource(fm.noteIndex?.notes ?? []).folders.map((f) => f.value),
@@ -8601,6 +8610,7 @@ export function NoteApp() {
             onRenameMedia={handleRenameMediaWithBlockSync}
             onSetMediaContexts={fm.updateMediaContexts}
             noteFolders={noteFolderNames}
+            noteFolderLookup={noteFolderLookup}
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
@@ -10024,6 +10034,7 @@ export function NoteApp() {
       )}
       {listMaterialPeekEntry && (
         <MaterialSidePeek
+          noteFolderLookup={noteFolderLookup}
           entry={listMaterialPeekEntry}
           onClose={() => setListMaterialPeekEntry(null)}
           mediaIndex={fm.mediaIndex ?? null}

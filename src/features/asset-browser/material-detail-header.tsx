@@ -35,6 +35,10 @@ import {
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { ContextBadge } from "../note-context/ContextBadge";
+import { resolveAssetFolders, type NoteFolderLookup } from "./asset-folders";
+
+/** 参照表が渡らない文脈用（自分で付けたフォルダだけになる） */
+const EMPTY_LOOKUP: NoteFolderLookup = new Map();
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import type { MediaIndexEntry, MediaSharedRef, MediaType } from "./media-index";
 import { SharedBadge } from "./share-media-dialog";
@@ -76,6 +80,8 @@ function TypeIcon({ type, size = 14 }: { type: MediaType; size?: number }) {
 }
 
 export type MaterialDetailHeaderProps = {
+  /** ノート id → フォルダ。使われているノートのフォルダを導出するために使う */
+  noteFolderLookup?: NoteFolderLookup;
   entry: MediaIndexEntry;
   onClose: () => void;
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
@@ -109,6 +115,7 @@ export type MaterialDetailHeaderProps = {
 
 export function MaterialDetailHeader({
   entry,
+  noteFolderLookup,
   onClose,
   onRename,
   onIngest,
@@ -169,6 +176,8 @@ export function MaterialDetailHeader({
 
   const isShared = !!entry.sharedRef;
   const usageNoteCount = new Set(entry.usedIn.map((u) => u.noteId)).size;
+  // 属するフォルダ（自分で付けたもの + 使われているノートのフォルダ）
+  const folders = resolveAssetFolders(entry, noteFolderLookup ?? EMPTY_LOOKUP);
 
   // 名前 + メタチップを共通レンダリング
   const renderNameBlock = () => (
@@ -210,9 +219,14 @@ export function MaterialDetailHeader({
           {t("asset.usedInCount", { count: String(usageNoteCount) })}
         </span>
       )}
-      {/* 入っているフォルダ（ノートと同じ体系）。一覧の列と同じ ContextBadge で見せる */}
-      {(entry.noteContexts ?? []).map((c) => (
-        <ContextBadge key={c} value={c} className="shrink-0" />
+      {/* 入っているフォルダ（ノートと同じ体系）。ノート由来は薄く出し、
+          「外すならノート側」という違いを見せる */}
+      {folders.map((f) => (
+        <ContextBadge
+          key={f.value}
+          value={f.value}
+          className={f.derived ? "shrink-0 opacity-60" : "shrink-0"}
+        />
       ))}
       {isShared && <SharedBadge />}
     </div>

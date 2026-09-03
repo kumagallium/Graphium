@@ -7,6 +7,11 @@ import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext } from "../note-context/context-tags";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
 import { ContextBadge } from "../note-context/ContextBadge";
+import {
+  assetFolderValues,
+  resolveAssetFolders,
+  type NoteFolderLookup,
+} from "./asset-folders";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -441,6 +446,11 @@ export type AssetGalleryViewProps = {
   onSetMediaContexts?: (fileId: string, contexts: string[]) => Promise<void> | void;
   /** ノート側で使われているフォルダ名（付与ピッカーの候補に混ぜる。体系を共有するため） */
   noteFolders?: readonly string[];
+  /**
+   * ノート id → そのノートのフォルダ。素材が使われているノートのフォルダを
+   * 「その素材のフォルダ」として導出するために使う（保存はしない）。
+   */
+  noteFolderLookup?: NoteFolderLookup;
   /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
@@ -575,6 +585,7 @@ export function AssetGalleryView({
   onRenameMedia,
   onSetMediaContexts,
   noteFolders,
+  noteFolderLookup,
   onAddUrlBookmark,
   onUploadMedia,
   onIngestMedia,
@@ -606,6 +617,13 @@ export function AssetGalleryView({
   const [docFilter, setDocFilter] = useState<"all" | "pdf" | "word">("all");
   // フォルダでの絞り込み（ノートと同じ体系。UNFILED_PATH は「フォルダに入っていない素材」）
   const [folderFilter, setFolderFilter] = useState<string[]>([]);
+  // 素材が属するフォルダ（自分で付けたもの + 使われているノートのフォルダ）を求める。
+  // 参照表が渡らない文脈（Storybook など）では自分で付けた分だけになる。
+  const emptyLookup = useMemo(() => new Map<string, readonly string[]>(), []);
+  const foldersOf = useCallback(
+    (entry: MediaIndexEntry) => resolveAssetFolders(entry, noteFolderLookup ?? emptyLookup),
+    [noteFolderLookup, emptyLookup],
+  );
   const [folderFilterOpen, setFolderFilterOpen] = useState(false);
   // 選択した素材へのフォルダ付与（ノート一覧の一括付与と同じ ContextTagPicker）
   const [assignOpen, setAssignOpen] = useState(false);
@@ -833,9 +851,10 @@ export function AssetGalleryView({
         folderFilter.filter((c) => c !== UNFILED_PATH).map((c) => c.toLowerCase()),
       );
       result = result.filter((m) => {
-        const own = m.noteContexts ?? [];
-        if (wantsUnfiled && own.length === 0) return true;
-        return own.some((c) => set.has(c.trim().toLowerCase()));
+        // 導出込み。ノートに貼っただけの素材も、そのノートのフォルダで拾える
+        const all = assetFolderValues(m, noteFolderLookup ?? emptyLookup);
+        if (wantsUnfiled && all.length === 0) return true;
+        return all.some((c) => set.has(c.trim().toLowerCase()));
       });
     }
     if (searchQuery.trim()) {
@@ -860,7 +879,7 @@ export function AssetGalleryView({
       }
       return sortAsc ? cmp : -cmp;
     });
-  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc, docFilter, folderFilter]);
+  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc, docFilter, folderFilter, noteFolderLookup, emptyLookup]);
 
   // フォルダ絞り込みの選択肢。いま見ている種類の素材に実際に付いているものだけ出す
   // （空振りする候補を並べない）。未分類は件数が 1 件以上あるときだけ足す。
@@ -871,7 +890,9 @@ export function AssetGalleryView({
       if (mediaType !== "document") return m.type === mediaType;
       return m.type === "document" || m.type === "pdf";
     });
-    const counts = aggregateNoteContexts(inScope);
+    const counts = aggregateNoteContexts(
+      inScope.map((m) => ({ noteContexts: assetFolderValues(m, noteFolderLookup ?? emptyLookup) })),
+    );
     const options: FilterOption[] = counts.map(({ value, count }) => ({
       value,
       label: value,
@@ -883,13 +904,17 @@ export function AssetGalleryView({
         />
       ),
     }));
-    const unfiled = inScope.filter((m) => (m.noteContexts ?? []).length === 0).length;
+    const unfiled = inScope.filter(
+      (m) => assetFolderValues(m, noteFolderLookup ?? emptyLookup).length === 0,
+    ).length;
     if (unfiled > 0) {
       options.push({ value: UNFILED_PATH, label: t("nav.unfiled"), count: unfiled });
     }
     return options;
-  }, [mediaIndex, mediaType, t]);
+  }, [mediaIndex, mediaType, t, noteFolderLookup, emptyLookup]);
 
+  // その素材が属するフォルダ（自分で付けたもの + 使われているノートのフォルダ）。
+  // 参照表が渡らない文脈（Storybook など）では自分で付けた分だけになる。
   // 付与ピッカーの候補。素材に付いているものと、ノート側のフォルダの両方から集める
   // （体系を共有しているので、ノートで使っているフォルダに素材も入れられるべき）。
   const assignSuggestions = useMemo(
@@ -1141,6 +1166,7 @@ export function AssetGalleryView({
     return (
       <AiAssistantProvider key={detailEntry.fileId} aiAvailable={aiAvailable}>
       <MaterialFullView
+        noteFolderLookup={noteFolderLookup}
         entry={detailEntry}
         onClose={() => {
           setDetailEntry(null);
@@ -1630,10 +1656,15 @@ export function AssetGalleryView({
                         </div>
                         {/* この素材が入っているフォルダ。ノートと同じ体系なので、
                             ノート一覧のフォルダ列と同じ ContextBadge で見せる */}
-                        {(entry.noteContexts ?? []).length > 0 && (
+                        {foldersOf(entry).length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {(entry.noteContexts ?? []).map((c) => (
-                              <ContextBadge key={c} value={c} />
+                            {foldersOf(entry).map((f) => (
+                              <ContextBadge
+                                key={f.value}
+                                value={f.value}
+                                // ノート由来は薄く出す。外すならノート側、という違いを見せる
+                                className={f.derived ? "opacity-60" : undefined}
+                              />
                             ))}
                           </div>
                         )}
@@ -1715,6 +1746,7 @@ export function AssetGalleryView({
           Full mode は早期 return で別ルートに渡す */}
       {detailEntry && (
         <MaterialSidePeek
+          noteFolderLookup={noteFolderLookup}
           inline={isDesktop}
           entry={detailEntry}
           onClose={() => {
