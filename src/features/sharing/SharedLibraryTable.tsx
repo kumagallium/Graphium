@@ -5,11 +5,15 @@
 // 呼び出し側（SharedLibraryView）が type タブ（note / knowledge / asset）に
 // 応じて entries を絞ってから渡す。ここでは検索・並び替え・絞り込みのみを担う。
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Check, Filter, GitFork, Link2, Trash2 } from "lucide-react";
 import type { AuthorIdentity } from "../document-provenance/types";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { NoteListToolbar } from "../navigation/NoteListToolbar";
+import { ContextBadge } from "../note-context/ContextBadge";
+import { aggregateNoteContexts, noteContextHue } from "../note-context/context-tags";
+import { UNFILED_PATH } from "../note-context/folder-tree-model";
+import { getSharedNoteContexts, useSharedLibrary } from "./shared-library-store";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { formatDate } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
@@ -67,6 +71,18 @@ function entryKind(entry: SharedEntry, t: (k: string) => string): { value: strin
   return { value: entry.type, label: entry.type };
 }
 
+// FilterPopup の左側に置く小さな色チップ（NoteListView の LabelDot と同じ見た目）。
+// 表本体の ContextBadge と同じ HSL を使い、絞り込みの選択肢と行のピルが同じ色で対応する。
+// color 無しは「色を持たない選択肢」（未分類）用の中空チップ — 行の左端が揃うようにする。
+function LabelDot({ color }: { color?: string }) {
+  return (
+    <span
+      className={cn("block w-2.5 h-2.5 rounded-full", color ? "" : "border border-border")}
+      style={color ? { backgroundColor: color } : undefined}
+    />
+  );
+}
+
 function isForkable(type: SharedEntry["type"]): boolean {
   return type === "note" || type === "knowledge";
 }
@@ -87,13 +103,22 @@ export function SharedLibraryTable({
 }: SharedLibraryTableProps) {
   const t = useT();
   const showKindColumn = tab === "asset" || tab === "knowledge";
+  // フォルダはノートだけが持つ概念（ナレッジ・素材には無い）ので note タブ限定
+  const showFolderColumn = tab === "note";
+  // 表は表示専用なので、フォルダの値はストアのスナップショットから引く
+  // （共有時に書かれた extra を優先し、無ければ本文から拾った控えで補う）
+  const sharedSnapshot = useSharedLibrary();
 
   const [sortKey, setSortKey] = useState<SharedLibrarySortKey>("updatedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<string[]>([]);
   const [authorFilter, setAuthorFilter] = useState<string[]>([]);
+  const [folderFilter, setFolderFilter] = useState<string[]>([]);
 
+  const [folderFilterOpen, setFolderFilterOpen] = useState(false);
+  const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
+  const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [kindFilterOpen, setKindFilterOpen] = useState(false);
   const [kindFilterPos, setKindFilterPos] = useState({ top: 0, left: 0 });
   const kindFilterBtnRef = useRef<HTMLButtonElement>(null);
@@ -124,6 +149,11 @@ export function SharedLibraryTable({
       .sort((a, b) => a.label.localeCompare(b.label, "ja"));
   }, [entries, showKindColumn, t]);
 
+  const contextsOf = useCallback(
+    (entry: SharedEntry) => getSharedNoteContexts(entry, sharedSnapshot),
+    [sharedSnapshot],
+  );
+
   const authorFilterOptions = useMemo<FilterOption[]>(() => {
     const counts = new Map<string, { label: string; count: number }>();
     for (const entry of entries) {
@@ -140,6 +170,27 @@ export function SharedLibraryTable({
       .sort((a, b) => a.label.localeCompare(b.label, "ja"));
   }, [entries]);
 
+  // フォルダの選択肢（表示中のエントリから集計）。「未分類」は該当が 1 件以上あるときだけ出す
+  const folderFilterOptions = useMemo<FilterOption[]>(() => {
+    if (!showFolderColumn) return [];
+    const options: FilterOption[] = aggregateNoteContexts(
+      entries.map((e) => ({ noteContexts: contextsOf(e) })),
+    )
+      // 色チップはノート一覧のフォルダ列フィルタと同じ（表のピルと同色で対応が付く）
+      .map(({ value, count }) => ({
+        value,
+        label: value,
+        count,
+        icon: <LabelDot color={`hsl(${noteContextHue(value)} 45% 45%)`} />,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
+    const unfiled = entries.filter((e) => contextsOf(e).length === 0).length;
+    // 未分類は実在するフォルダではないので色を持たない（中空チップで左端だけ揃える）
+    if (unfiled > 0)
+      options.push({ value: UNFILED_PATH, label: t("nav.unfiled"), count: unfiled, icon: <LabelDot /> });
+    return options;
+  }, [entries, showFolderColumn, contextsOf, t]);
+
   const filtered = useMemo(() => {
     let result = entries;
 
@@ -148,7 +199,25 @@ export function SharedLibraryTable({
       result = result.filter((entry) => {
         const title = entryTitle(entry, t).toLowerCase();
         const authorName = (entry.author?.name ?? "").toLowerCase();
-        return title.includes(q) || authorName.includes(q);
+        // フォルダ名も検索対象（列に出ている値はどれも同じ部分一致で当たる）
+        const folderHit =
+          showFolderColumn && contextsOf(entry).some((c) => c.toLowerCase().includes(q));
+        return title.includes(q) || authorName.includes(q) || folderHit;
+      });
+    }
+
+    // フォルダフィルタ（OR） — 小文字比較で名寄せする。
+    // UNFILED_PATH は「フォルダ無し」を意味する特殊値（ノート一覧と同じ扱い）
+    if (folderFilter.length > 0) {
+      const hasUnfiled = folderFilter.includes(UNFILED_PATH);
+      const set = new Set(
+        folderFilter.filter((c) => c !== UNFILED_PATH).map((c) => c.toLowerCase()),
+      );
+      result = result.filter((entry) => {
+        const contexts = contextsOf(entry);
+        return (
+          (hasUnfiled && contexts.length === 0) || contexts.some((c) => set.has(c.toLowerCase()))
+        );
       });
     }
 
@@ -182,7 +251,7 @@ export function SharedLibraryTable({
     });
 
     return sorted;
-  }, [entries, searchQuery, kindFilter, authorFilter, sortKey, sortDir, t]);
+  }, [entries, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, sortKey, sortDir, t]);
 
   const emptyKey =
     tab === "note" ? "library.empty.note" : tab === "knowledge" ? "library.empty.knowledge" : "library.empty.asset";
@@ -215,6 +284,40 @@ export function SharedLibraryTable({
                   {t("library.col.title")}
                   {sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
+                {/* フォルダ列（共有した時点のフォルダ）。ノート一覧の同名列と同じ見せ方 */}
+                {showFolderColumn && (
+                  <th className="py-2 px-3 w-[150px]" title={t("nav.noteContextsTooltip")}>
+                    <div className="inline-flex items-center gap-1">
+                      <span>{t("nav.noteContexts")}</span>
+                      {folderFilterOptions.length > 0 && (
+                        <button
+                          ref={folderFilterBtnRef}
+                          type="button"
+                          onClick={() => {
+                            if (folderFilterBtnRef.current) {
+                              const rect = folderFilterBtnRef.current.getBoundingClientRect();
+                              setFolderFilterPos({ top: rect.bottom + 4, left: rect.left });
+                            }
+                            setFolderFilterOpen((v) => !v);
+                          }}
+                          className={cn(
+                            "inline-flex items-center justify-center w-5 h-5 rounded transition-colors",
+                            folderFilter.length > 0
+                              ? "text-primary bg-primary/10 hover:bg-primary/15"
+                              : "text-text-tertiary hover:text-foreground hover:bg-muted",
+                          )}
+                          aria-label={t("library.filterFolder")}
+                          title={t("library.filterFolder")}
+                        >
+                          <Filter size={12} strokeWidth={2.25} />
+                        </button>
+                      )}
+                      {folderFilter.length > 0 && (
+                        <span className="text-[10px] tabular-nums text-primary">({folderFilter.length})</span>
+                      )}
+                    </div>
+                  </th>
+                )}
                 {showKindColumn && (
                   <th className="py-2 px-3 w-[120px]">
                     <div className="inline-flex items-center gap-1">
@@ -310,6 +413,7 @@ export function SharedLibraryTable({
                 const status = hashStatus[entry.id] ?? "unknown";
                 const isBusy = busyId === entry.id;
                 const kind = showKindColumn ? entryKind(entry, t) : null;
+                const contexts = showFolderColumn ? contextsOf(entry) : [];
                 return (
                   <tr
                     key={entry.id}
@@ -322,6 +426,28 @@ export function SharedLibraryTable({
                     <td className="py-2 px-3">
                       <span className="text-foreground">{entryTitle(entry, t)}</span>
                     </td>
+                    {showFolderColumn && (
+                      <td className="py-2 px-3">
+                        {contexts.length > 0 ? (
+                          <span
+                            className="inline-flex flex-wrap items-center gap-1"
+                            title={contexts.join(", ")}
+                          >
+                            {contexts.slice(0, 2).map((c) => (
+                              <ContextBadge key={c} value={c} />
+                            ))}
+                            {contexts.length > 2 && (
+                              <span className="text-[11px] text-muted-foreground">
+                                +{contexts.length - 2}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          // 空欄のダッシュはノート一覧と同じ薄さ（/30）にする
+                          <span className="text-muted-foreground/30 text-xs">—</span>
+                        )}
+                      </td>
+                    )}
                     {showKindColumn && (
                       <td className="py-2 px-3 text-xs text-muted-foreground">{kind?.label}</td>
                     )}
@@ -394,6 +520,20 @@ export function SharedLibraryTable({
         )}
       </div>
 
+      {folderFilterOpen && (
+        <FilterPopup
+          position={folderFilterPos}
+          onClose={() => setFolderFilterOpen(false)}
+          title={t("library.filterFolder")}
+          options={folderFilterOptions}
+          selected={folderFilter}
+          onChange={setFolderFilter}
+          searchPlaceholder={t("common.search")}
+          clearLabel={t("nav.clearFilter")}
+          noMatchText={t("library.noMatch")}
+          minWidth={220}
+        />
+      )}
       {kindFilterOpen && (
         <FilterPopup
           position={kindFilterPos}
