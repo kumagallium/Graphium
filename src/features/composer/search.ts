@@ -33,7 +33,14 @@ export type SearchHit = {
   bodySnippet?: TextSnippet;
 };
 
-export type SearchReason = "title-prefix" | "title-contains" | "heading" | "label" | "author" | "body";
+export type SearchReason =
+  | "title-prefix"
+  | "title-contains"
+  | "heading"
+  | "label"
+  | "author"
+  | "folder"
+  | "body";
 
 /** 抜粋（複数範囲を強調できる） */
 export type TextSnippet = {
@@ -52,6 +59,8 @@ export type TextHit = {
 
 /** 本文ヒットの加点: 見出し一致（25）より下、ラベル/作者フィルタ（30/20）とは独立 */
 const BODY_BASE_SCORE = 12;
+/** フォルダ名一致の加点。ラベル一致と同じ重み（どちらも人が付けた分類軸なので揃える） */
+const FOLDER_SCORE = 30;
 /** 本文ヒットの相対スコアによる上乗せの最大値 */
 const BODY_RELATIVE_SCORE_MAX = 10;
 
@@ -204,6 +213,8 @@ export function searchNotes(
 
     // フリーテキスト
     if (textLower) {
+      // フォルダ名一致（人が付けた分類軸。一覧の「フォルダ」列と同じ値で当てる）
+      const folderHit = (entry.noteContexts ?? []).some((c) => c.toLowerCase().includes(textLower));
       const occurrences = findAllOccurrences(entry.title, textLower);
       if (occurrences.length > 0) {
         titleMatches = occurrences;
@@ -222,10 +233,20 @@ export function searchNotes(
         if (headingHit) {
           score += 25;
           reasons.push("heading");
-        } else if (!bodyHit && parsed.labelTokens.length === 0 && parsed.authorTokens.length === 0) {
-          // フィルタもタイトル/見出し/本文も当たっていない → 落とす
+        } else if (
+          !bodyHit &&
+          !folderHit &&
+          parsed.labelTokens.length === 0 &&
+          parsed.authorTokens.length === 0
+        ) {
+          // フィルタもタイトル/見出し/フォルダ/本文も当たっていない → 落とす
           continue;
         }
+      }
+      // フォルダ名は題名・見出しに当たっていても理由として残す（なぜ出たかが分かるように）
+      if (folderHit) {
+        score += FOLDER_SCORE;
+        reasons.push("folder");
       }
       // 本文（語彙インデックス）ヒット。タイトル・見出しに当たっていても抜粋は添える
       if (bodyHit) {
@@ -412,7 +433,7 @@ export function searchMedia(
 
 // ── 共有ライブラリ検索 ──
 
-export type SharedSearchReason = "title-prefix" | "title-contains" | "author" | "body";
+export type SharedSearchReason = "title-prefix" | "title-contains" | "author" | "folder" | "body";
 
 export type SharedHit = {
   entry: SharedEntry;
@@ -429,6 +450,12 @@ export type SharedSearchOptions = {
   limit?: number;
   /** 共有エントリの本文ヒット。entry.id → ヒット。無ければ題名・作者だけで当てる */
   sharedHits?: ReadonlyMap<string, TextHit>;
+  /**
+   * 共有エントリのフォルダ（共有時点の noteContexts）を引く関数。
+   * 値は共有ストアのスナップショット由来なので、ここを純関数に保つために注入で受ける。
+   * 未指定ならフォルダでは当てない。
+   */
+  noteContextsOf?: (entry: SharedEntry) => string[];
 };
 
 /**
@@ -499,6 +526,10 @@ export function searchShared(
     let bodySnippet: TextSnippet | undefined;
 
     if (textLower) {
+      // 共有時点のフォルダ名一致（手元のノートの folder 理由と揃える）
+      const folderHit = (options.noteContextsOf?.(entry) ?? []).some((c) =>
+        c.toLowerCase().includes(textLower),
+      );
       const occurrences = findAllOccurrences(title, textLower);
       if (occurrences.length > 0) {
         titleMatches = occurrences;
@@ -509,9 +540,13 @@ export function searchShared(
           score += 50;
           reasons.push("title-contains");
         }
-      } else if (!bodyHit && parsed.authorTokens.length === 0) {
-        // 題名にも本文にも当たらず、作者フィルタも無い → 落とす
+      } else if (!bodyHit && !folderHit && parsed.authorTokens.length === 0) {
+        // 題名・本文・フォルダのどれにも当たらず、作者フィルタも無い → 落とす
         continue;
+      }
+      if (folderHit) {
+        score += FOLDER_SCORE;
+        reasons.push("folder");
       }
       // 本文ヒットは題名に当たっていても抜粋として添える（ノート行と同じ扱い）
       if (bodyHit) {

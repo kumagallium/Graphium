@@ -2387,6 +2387,7 @@ export const en: Record<string, string> = {
   "library.sort.author": "Author",
   "library.sort.version": "Version",
   "library.filterKind": "Filter by kind",
+  "library.filterFolder": "Filter by folder",
   "library.hash.ok": "Verified",
   "library.hash.mismatch": "Mismatch",
   "library.hash.error": "Verify error",

@@ -82,7 +82,12 @@ export async function shareNote(
   doc: GraphiumDocument,
   options: ShareNoteOptions,
 ): Promise<ShareNoteResult> {
-  return shareGraphiumDocument(doc, "note", {}, options);
+  // 共有した時点のフォルダ（noteContexts）を extra に載せる。
+  // なぜ: 共有ライブラリの表でも手元のノート一覧と同じ「フォルダ」列で絞り込める
+  //       ようにするため（鏡の原則）。本文にも noteContexts は入っているが、
+  //       一覧は本文を読まずに描くのでメタデータ側にも持たせる。
+  // 再共有（共有コピーの更新）も同じ経路を通るので、共有側のフォルダは常に上書きされる。
+  return shareGraphiumDocument(doc, "note", { noteContexts: doc.noteContexts ?? [] }, options);
 }
 
 /**

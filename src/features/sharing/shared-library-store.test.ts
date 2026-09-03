@@ -3,6 +3,7 @@
 // - 読み出し中の変更通知は取りこぼさない（終わってからもう一度読む）
 // - readSharedEntryBody は hash を照合し、不一致を mismatched に残す
 // - 本文は id|hash でキャッシュされ、二度読まない
+// - 本文から拾った派生メタ（フォルダ）は hash 付きで残り、消えた id は落ちる
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SharedEntry, SharedEntryContent, SharedEntryType } from "../../lib/storage/shared";
@@ -16,6 +17,8 @@ import {
   refreshSharedLibrary,
   subscribeSharedLibrary,
   groupSharedEntriesByType,
+  getSharedNoteContexts,
+  parseDerivedMetaStore,
 } from "./shared-library-store";
 
 const ROOT = "/tmp/shared-root";
@@ -164,5 +167,109 @@ describe("readSharedEntryBody", () => {
   it("ルート未設定では読めない", async () => {
     __setSharedLibraryLoaderForTest(null, { root: null });
     await expect(readSharedEntryBody(entry({}))).rejects.toThrow(/shared root/);
+  });
+});
+
+describe("派生メタ（本文由来のフォルダ）", () => {
+  const NOTE_ID = "0195e000-0000-7000-8000-00000000000c";
+  const docBody = (contexts: string[]) =>
+    new TextEncoder().encode(JSON.stringify({ title: "x", pages: [], noteContexts: contexts }));
+
+  it("本文を読むと派生メタが入る", async () => {
+    const body = docBody(["卒論/焼結"]);
+    const e = await signedEntry(body, { id: NOTE_ID });
+    __setSharedLibraryLoaderForTest(async () => result([e]), {
+      root: ROOT,
+      reader: async () => ({ entry: e, body }),
+    });
+    await refreshSharedLibrary();
+    await readSharedEntryBody(e);
+
+    expect(getSharedLibrarySnapshot().derived[NOTE_ID]).toEqual({
+      hash: e.hash,
+      noteContexts: ["卒論/焼結"],
+    });
+  });
+
+  it("共有から消えた id の派生メタは refresh で落ちる", async () => {
+    const body = docBody(["共通/装置"]);
+    const e = await signedEntry(body, { id: NOTE_ID });
+    let listing: SharedEntry[] = [e];
+    __setSharedLibraryLoaderForTest(async () => result(listing), {
+      root: ROOT,
+      reader: async () => ({ entry: e, body }),
+    });
+    await refreshSharedLibrary();
+    await readSharedEntryBody(e);
+    expect(getSharedLibrarySnapshot().derived[NOTE_ID]).toBeDefined();
+
+    listing = [];
+    await refreshSharedLibrary();
+    expect(getSharedLibrarySnapshot().derived[NOTE_ID]).toBeUndefined();
+  });
+
+  it("hash が合わない本文からは派生メタを作らない", async () => {
+    const body = docBody(["卒論/焼結"]);
+    const stored = await signedEntry(body, { id: NOTE_ID });
+    const listed = { ...stored, hash: "sha256:stale" };
+    __setSharedLibraryLoaderForTest(async () => result([listed]), {
+      root: ROOT,
+      reader: async () => ({ entry: stored, body }),
+    });
+    await refreshSharedLibrary();
+    await readSharedEntryBody(listed);
+    expect(getSharedLibrarySnapshot().derived[NOTE_ID]).toBeUndefined();
+  });
+});
+
+describe("getSharedNoteContexts", () => {
+  const snapshot = (derived: Record<string, { hash: string; noteContexts: string[] }>) =>
+    ({ ...getSharedLibrarySnapshot(), derived }) as ReturnType<typeof getSharedLibrarySnapshot>;
+
+  it("extra.noteContexts があればそれを使う（派生メタより優先）", () => {
+    const e = entry({ id: "x", hash: "sha256:h", extra: { noteContexts: ["extra 側"] } });
+    const contexts = getSharedNoteContexts(e, snapshot({ x: { hash: "sha256:h", noteContexts: ["派生側"] } }));
+    expect(contexts).toEqual(["extra 側"]);
+  });
+
+  it("extra が無ければ hash 一致の派生メタで補う", () => {
+    const e = entry({ id: "x", hash: "sha256:h" });
+    expect(getSharedNoteContexts(e, snapshot({ x: { hash: "sha256:h", noteContexts: ["派生側"] } }))).toEqual([
+      "派生側",
+    ]);
+  });
+
+  it("派生メタの hash が違えば使わない（別の版の値だから）", () => {
+    const e = entry({ id: "x", hash: "sha256:new" });
+    expect(getSharedNoteContexts(e, snapshot({ x: { hash: "sha256:old", noteContexts: ["古い"] } }))).toEqual([]);
+  });
+
+  it("どちらも無ければ空配列", () => {
+    expect(getSharedNoteContexts(entry({ id: "x" }), snapshot({}))).toEqual([]);
+  });
+
+  it("extra.noteContexts が配列でなければ無視する（古い / 壊れたエントリ）", () => {
+    const e = entry({ id: "x", hash: "sha256:h", extra: { noteContexts: "卒論" } });
+    expect(getSharedNoteContexts(e, snapshot({ x: { hash: "sha256:h", noteContexts: ["派生側"] } }))).toEqual([
+      "派生側",
+    ]);
+  });
+});
+
+describe("parseDerivedMetaStore（localStorage からの復元）", () => {
+  it("正しい形だけを取り込む", () => {
+    const raw = JSON.stringify({
+      ok: { hash: "sha256:h", noteContexts: ["卒論", 1] },
+      hashなし: { noteContexts: ["x"] },
+      配列でない: { hash: "sha256:h", noteContexts: "x" },
+      objectでない: 3,
+    });
+    expect(parseDerivedMetaStore(raw)).toEqual({ ok: { hash: "sha256:h", noteContexts: ["卒論"] } });
+  });
+
+  it("壊れた JSON・未保存では空", () => {
+    expect(parseDerivedMetaStore("{")).toEqual({});
+    expect(parseDerivedMetaStore(null)).toEqual({});
+    expect(parseDerivedMetaStore("[1,2]")).toEqual({});
   });
 });

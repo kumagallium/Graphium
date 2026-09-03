@@ -2384,6 +2384,7 @@ export const ja: Record<string, string> = {
   "library.sort.author": "作者",
   "library.sort.version": "版",
   "library.filterKind": "種別で絞り込む",
+  "library.filterFolder": "フォルダで絞り込む",
   "library.hash.ok": "検証済み",
   "library.hash.mismatch": "不一致",
   "library.hash.error": "検証エラー",

@@ -17,6 +17,7 @@ import type { GraphiumDocument } from "../../lib/document-types";
 import type { LexicalSourceInput } from "../lexical-search/lexical-index";
 import { chunkNoteDocument, chunkPlainText } from "../lexical-search/chunk";
 import { extractWikiSections } from "../wiki/section-extract";
+import { normalizeNoteContexts } from "../note-context/context-tags";
 import type { SharedEntry } from "../../lib/storage/shared";
 
 /** 索引対象にする共有エントリの type（template / report は共有導線が無いので対象外） */
@@ -86,4 +87,35 @@ export function sharedEntryToSourceInput(
   const filename = extraString(entry, "original_filename");
   const text = [metaTitle, extraString(entry, "description"), filename].filter(Boolean).join("\n");
   return { ...base, title: metaTitle || filename, chunks: chunkPlainText(text) };
+}
+
+// ── 本文由来の派生メタ ──
+
+/**
+ * 共有エントリの本文からしか取れない、一覧・検索が使うメタデータ。
+ *
+ * なぜ本文から拾うか: `extra.noteContexts` を書くようになったのは途中からで、
+ * それ以前に共有されたエントリのメタデータにはフォルダが入っていない。本文
+ * （共有ノート JSON）には元々 `noteContexts` が入っているので、そこから補える。
+ */
+export type SharedDerivedMeta = {
+  /** 共有した時点のノートのフォルダ（正規化済み。無ければ空配列） */
+  noteContexts: string[];
+};
+
+/**
+ * 読み出した本文から派生メタを取り出す（純関数）。
+ * 対象は type=note かつ hash 照合済み（verified）のときだけ。
+ * それ以外は null を返し、呼び出し側は何も記録しない
+ * （改ざん・書き換え中の本文から一覧の表示値を作らないため）。
+ */
+export function extractSharedDerivedMeta(
+  entry: SharedEntry,
+  body: Uint8Array,
+  verified: boolean,
+): SharedDerivedMeta | null {
+  if (entry.type !== "note" || !verified) return null;
+  const doc = parseDocument(body);
+  if (!doc) return null;
+  return { noteContexts: normalizeNoteContexts(doc.noteContexts) ?? [] };
 }

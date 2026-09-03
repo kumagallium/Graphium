@@ -2,7 +2,7 @@
 //
 // 研究室の「先生と学生」の場面を想定したモックデータ:
 // - currentIdentity は先生（山田先生）
-// - ノート 4 件（学生 2 人 + 先生 1 人、うち 1 件は version 2）
+// - ノート 4 件（学生 2 人 + 先生 1 人、うち 1 件は version 2）。3 件は共有時点のフォルダ付き、1 件は無し
 // - ナレッジ 2 件（wikiKind "summary" / "atom"）
 // - reference 2 件（URL ブックマーク）
 // - data-manifest 3 件（image / pdf / data）
@@ -40,7 +40,7 @@ const NOTES: SharedEntry[] = [
     type: "note",
     author: STUDENT_A,
     updated_at: daysAgo(0.2),
-    extra: { title: "Cu粉末の焼結実験（第1回）" },
+    extra: { title: "Cu粉末の焼結実験（第1回）", noteContexts: ["卒論/焼結"] },
   }),
   makeEntry({
     id: "note-2",
@@ -48,14 +48,14 @@ const NOTES: SharedEntry[] = [
     author: STUDENT_A,
     updated_at: daysAgo(1),
     version: 2,
-    extra: { title: "シリカ管の前処理手順" },
+    extra: { title: "シリカ管の前処理手順", noteContexts: ["共通/装置"] },
   }),
   makeEntry({
     id: "note-3",
     type: "note",
     author: STUDENT_B,
     updated_at: daysAgo(3),
-    extra: { title: "XRD 分析結果まとめ" },
+    extra: { title: "XRD 分析結果まとめ", noteContexts: ["卒論/焼結", "共通/装置"] },
   }),
   makeEntry({
     id: "note-4",
@@ -182,7 +182,7 @@ const meta: Meta<typeof SharedLibraryView> = {
     docs: {
       description: {
         component:
-          "共有ライブラリの表形式ビュー（カードグリッドからの置き換え）。詳細パネルは Tauri の invoke に依存するため、Storybook 上では本文を読み込めない（読み込み中のまま止まる）。",
+          "共有ライブラリの表形式ビュー（カードグリッドからの置き換え）。ノートタブには共有した時点のフォルダ列が並ぶ（1 件はフォルダ無し ＝ 空欄）。詳細パネルは Tauri の invoke に依存するため、Storybook 上では本文を読み込めない（読み込み中のまま止まる）。",
       },
     },
   },

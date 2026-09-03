@@ -7,7 +7,11 @@
 import { describe, expect, it } from "vitest";
 import type { SharedEntry } from "../../lib/storage/shared";
 import type { GraphiumDocument } from "../../lib/document-types";
-import { sharedEntryToSourceInput, sharedEntryFingerprint } from "./shared-entry-source";
+import {
+  sharedEntryToSourceInput,
+  sharedEntryFingerprint,
+  extractSharedDerivedMeta,
+} from "./shared-entry-source";
 
 const entry = (over: Partial<SharedEntry>): SharedEntry =>
   ({
@@ -125,5 +129,35 @@ describe("sharedEntryToSourceInput", () => {
     const c = sharedEntryFingerprint(entry({ hash: "sha256:1", type: "knowledge" }));
     expect(a).not.toBe(b);
     expect(a).not.toBe(c);
+  });
+});
+
+describe("extractSharedDerivedMeta", () => {
+  const noteWithContexts = { ...noteDoc, noteContexts: ["卒論/焼結", " 共通/装置 "] };
+
+  it("note かつ verified なら本文のフォルダを正規化して返す", () => {
+    const meta = extractSharedDerivedMeta(entry({}), encode(noteWithContexts), true);
+    expect(meta).toEqual({ noteContexts: ["卒論/焼結", "共通/装置"] });
+  });
+
+  it("フォルダ未設定のノートは空配列", () => {
+    expect(extractSharedDerivedMeta(entry({}), encode(noteDoc), true)).toEqual({ noteContexts: [] });
+  });
+
+  it("hash 不一致（未検証）の本文からは何も取らない", () => {
+    expect(extractSharedDerivedMeta(entry({}), encode(noteWithContexts), false)).toBeNull();
+  });
+
+  it("note 以外（knowledge）は対象外", () => {
+    const meta = extractSharedDerivedMeta(
+      entry({ type: "knowledge" }),
+      encode(noteWithContexts),
+      true,
+    );
+    expect(meta).toBeNull();
+  });
+
+  it("本文が壊れていれば null", () => {
+    expect(extractSharedDerivedMeta(entry({}), new TextEncoder().encode("{"), true)).toBeNull();
   });
 });
