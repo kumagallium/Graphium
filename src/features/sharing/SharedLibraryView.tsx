@@ -1,9 +1,10 @@
 // Shared Library — 左ナビ「Library > Shared」から開くメインビュー（Phase 2c）。
 //
 // 表示:
-// - shared root から 6 種類の SharedEntry を読み出し、type タブで切り替え
-// - 各カード: title / author / sharedAt / hash 検証バッジ
-// - カードクリックで読み取り専用の詳細パネルを開く
+// - shared root から 6 種類の SharedEntry を読み出し、3 つの表示タブ
+//   （note / knowledge / asset）に集約して表形式（NoteListView と同じ型）で出す。
+//   asset タブは reference + data-manifest を合算する。
+// - 表の行クリックで読み取り専用の詳細パネルを開く
 // - 自分作 → Update 動線（ヒントのみ）/ Unshare ボタン
 // - 他人作（type=note / knowledge）→ Fork ボタン（note → notes、knowledge → wiki）
 //
@@ -13,13 +14,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
-  CheckCircle2,
   ExternalLink,
   GitFork,
   Library,
   Link2,
   RefreshCw,
-  ShieldQuestion,
   Trash2,
   X,
 } from "lucide-react";
@@ -35,14 +34,17 @@ import {
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
-import { loadAllSharedEntries } from "./shared-library-loader";
+import {
+  loadAllSharedEntries,
+  type SharedLibraryLoadResult,
+} from "./shared-library-loader";
 import { buildSharedCitationLink } from "./citation-link";
 import {
   collectSharedBlobHashes,
   rewriteSharedBlobUrls,
 } from "./materialize-blobs";
 import { formatDate } from "../../lib/format-datetime";
-import { t } from "../../i18n";
+import { t, useT } from "../../i18n";
 import { SandboxEditor } from "../../base/editor";
 import { customBlockEntries, sanitizeBlocksForLoad } from "../../blocks/registry";
 import { useRemoteContentScope } from "../../blocks/remote-content";
@@ -56,6 +58,11 @@ import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { BlockAlignmentProvider } from "../block-alignment/store";
 import { AiAssistantProvider } from "../ai-assistant/store";
 import type { GraphiumDocument } from "../../lib/document-types";
+import {
+  SharedLibraryTable,
+  type SharedLibraryTab,
+} from "./SharedLibraryTable";
+import { HashBadge, type HashStatus } from "./hash-badge";
 
 type Props = {
   /** Settings の shared root path */
@@ -72,30 +79,49 @@ type Props = {
   /** 引用カードの「開く」から特定エントリを選択表示で開く（consume 後に onFocusConsumed） */
   focusEntryId?: string | null;
   onFocusConsumed?: () => void;
+  /** エントリ読み込み（既定 loadAllSharedEntries）。Storybook でモックに差し替える */
+  loadEntries?: (root: string) => Promise<SharedLibraryLoadResult>;
+  /** 初期表示タブ（既定 "note"） */
+  initialTab?: SharedLibraryTab;
 };
 
-// 共有導線（Share ボタン）が実装されている type のみ tab に出す。
+// 共有導線（Share ボタン）が実装されている type のみ表示タブに出す。
 // template / report は SharedEntryType としては予約されており
 // データ層は読み書きできるが、UI に「Share」エントリポイントが整うまで非表示。
-const TYPE_TABS: { type: SharedEntryType; label: string }[] = [
-  { type: "note", label: "Notes" },
-  { type: "knowledge", label: "Knowledge" },
-  { type: "reference", label: "References" },
-  { type: "data-manifest", label: "Data" },
+// asset タブは reference + data-manifest を合算する（利用者からは「素材」1 種に見える）。
+const TAB_ORDER: { tab: SharedLibraryTab; labelKey: string; types: SharedEntryType[] }[] = [
+  { tab: "note", labelKey: "library.tab.note", types: ["note"] },
+  { tab: "knowledge", labelKey: "library.tab.knowledge", types: ["knowledge"] },
+  { tab: "asset", labelKey: "library.tab.asset", types: ["reference", "data-manifest"] },
 ];
+
+function typeToTab(type: SharedEntryType): SharedLibraryTab | null {
+  const hit = TAB_ORDER.find((t) => t.types.includes(type));
+  return hit?.tab ?? null;
+}
 
 /** fork 導線を持つ type（fork 先: note → notes、knowledge → wiki） */
 function isForkable(type: SharedEntryType): boolean {
   return type === "note" || type === "knowledge";
 }
 
-function entryTitle(entry: SharedEntry): string {
-  const t = (entry.extra as Record<string, unknown> | undefined)?.title;
-  if (typeof t === "string" && t.trim()) return t;
-  return `(untitled ${entry.type})`;
+function entryTitle(entry: SharedEntry, translate: (k: string) => string): string {
+  const title = (entry.extra as Record<string, unknown> | undefined)?.title;
+  if (typeof title === "string" && title.trim()) return title;
+  return translate("library.untitled");
 }
 
-type HashStatus = "unknown" | "verifying" | "ok" | "mismatch" | "error";
+/** 詳細パネルの type ラベル（note/knowledge はタブ名、reference/data-manifest は素材種別名） */
+function entryTypeLabel(entry: SharedEntry, translate: (k: string, p?: Record<string, string>) => string): string {
+  if (entry.type === "note") return translate("library.tab.note");
+  if (entry.type === "knowledge") return translate("library.tab.knowledge");
+  if (entry.type === "reference") return translate("asset.type.url");
+  if (entry.type === "data-manifest") {
+    const mediaType = (entry.extra as Record<string, unknown> | undefined)?.media_type;
+    return translate(`asset.type.${typeof mediaType === "string" ? mediaType : "other"}`);
+  }
+  return entry.type;
+}
 
 export function SharedLibraryView({
   sharedRoot,
@@ -106,8 +132,11 @@ export function SharedLibraryView({
   onBack,
   focusEntryId,
   onFocusConsumed,
+  loadEntries = loadAllSharedEntries,
+  initialTab = "note",
 }: Props) {
-  const [activeType, setActiveType] = useState<SharedEntryType>("note");
+  const uiT = useT();
+  const [activeTab, setActiveTab] = useState<SharedLibraryTab>(initialTab);
   const [loading, setLoading] = useState(false);
   const [entriesByType, setEntriesByType] = useState<
     Record<SharedEntryType, SharedEntry[]>
@@ -139,13 +168,13 @@ export function SharedLibraryView({
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await loadAllSharedEntries(sharedRoot);
+      const result = await loadEntries(sharedRoot);
       setEntriesByType(result.entries);
       setLoadErrors(result.errors);
     } finally {
       setLoading(false);
     }
-  }, [sharedRoot]);
+  }, [sharedRoot, loadEntries]);
 
   useEffect(() => {
     void reload();
@@ -158,8 +187,12 @@ export function SharedLibraryView({
     for (const [type, list] of Object.entries(entriesByType)) {
       const hit = list.find((e) => e.id === focusEntryId);
       if (hit) {
-        setActiveType(type as SharedEntryType);
-        setSelected(hit);
+        const tab = typeToTab(type as SharedEntryType);
+        // タブを持たない type（template / report）は一覧から辿れないので、選択せず consume だけする
+        if (tab) {
+          setActiveTab(tab);
+          setSelected(hit);
+        }
         onFocusConsumed?.();
         return;
       }
@@ -170,20 +203,24 @@ export function SharedLibraryView({
     }
   }, [focusEntryId, entriesByType, loading, onFocusConsumed]);
 
-  const counts = useMemo(() => {
-    const out: Record<SharedEntryType, number> = {
-      note: 0,
-      reference: 0,
-      "data-manifest": 0,
-      template: 0,
-      knowledge: 0,
-      report: 0,
-    };
-    for (const t of TYPE_TABS) {
-      out[t.type] = entriesByType[t.type].length;
+  // タブごとのエントリ（asset タブは reference + data-manifest を合算し updated_at 降順）
+  const entriesByTab = useMemo<Record<SharedLibraryTab, SharedEntry[]>>(() => {
+    const out = {} as Record<SharedLibraryTab, SharedEntry[]>;
+    for (const { tab, types } of TAB_ORDER) {
+      const merged = types.flatMap((type) => entriesByType[type]);
+      merged.sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+      out[tab] = merged;
     }
     return out;
   }, [entriesByType]);
+
+  const counts = useMemo(() => {
+    const out = {} as Record<SharedLibraryTab, number>;
+    for (const { tab } of TAB_ORDER) {
+      out[tab] = entriesByTab[tab].length;
+    }
+    return out;
+  }, [entriesByTab]);
 
   const verifyHash = useCallback(
     async (entry: SharedEntry) => {
@@ -218,7 +255,9 @@ export function SharedLibraryView({
   const handleUnshare = useCallback(
     async (entry: SharedEntry) => {
       const confirmed = window.confirm(
-        `Unshare "${entryTitle(entry)}"?\n\n` + t("share.unshareConfirmBody"),
+        uiT("library.unshareConfirm", { title: entryTitle(entry, uiT) }) +
+          "\n\n" +
+          uiT("share.unshareConfirmBody"),
       );
       if (!confirmed) return;
       setBusyId(entry.id);
@@ -229,11 +268,16 @@ export function SharedLibraryView({
         setBusyId(null);
       }
     },
-    [onUnshare, reload],
+    [onUnshare, reload, uiT],
   );
 
-  const activeEntries = entriesByType[activeType];
-  const activeError = loadErrors[activeType];
+  const activeEntries = entriesByTab[activeTab];
+  // asset タブは 2 type を合算しているため、失敗した type のエラーをすべて並べて出す
+  // （片方だけ出すと、もう片方の読み込み失敗がユーザーから見えなくなる）
+  const activeErrors = (TAB_ORDER.find((t) => t.tab === activeTab)?.types ?? [])
+    .map((type) => loadErrors[type])
+    .filter((e): e is string => !!e);
+  const activeError = activeErrors.length > 0 ? activeErrors.join(" / ") : undefined;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -241,14 +285,14 @@ export function SharedLibraryView({
       <div className="px-6 py-4 border-b border-border bg-background sticky top-0 z-10">
         <Breadcrumb
           items={[
-            { label: "Library", onClick: onBack },
-            { label: "Shared" },
+            { label: uiT("sidebar.library"), onClick: onBack },
+            { label: uiT("sidebar.shared") },
           ]}
         />
         <div className="mt-2 flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Library size={18} className="text-muted-foreground" />
-            Shared Library
+            {uiT("library.title")}
           </h2>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground truncate max-w-[280px]" title={sharedRoot}>
@@ -258,7 +302,7 @@ export function SharedLibraryView({
               onClick={reload}
               disabled={loading}
               className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-              title="Reload"
+              title={uiT("sidebar.refresh")}
             >
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             </button>
@@ -267,20 +311,20 @@ export function SharedLibraryView({
 
         {/* タブ */}
         <div className="mt-3 flex gap-1 overflow-x-auto">
-          {TYPE_TABS.map((tab) => {
-            const isActive = activeType === tab.type;
-            const count = counts[tab.type];
+          {TAB_ORDER.map(({ tab, labelKey }) => {
+            const isActive = activeTab === tab;
+            const count = counts[tab];
             return (
               <button
-                key={tab.type}
-                onClick={() => setActiveType(tab.type)}
+                key={tab}
+                onClick={() => setActiveTab(tab)}
                 className={`px-3 py-1.5 text-xs rounded-md transition-colors whitespace-nowrap ${
                   isActive
                     ? "bg-primary/10 text-primary font-semibold"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >
-                {tab.label}
+                {uiT(labelKey)}
                 {count > 0 && (
                   <span className="ml-1.5 text-[10px] opacity-70">({count})</span>
                 )}
@@ -292,112 +336,30 @@ export function SharedLibraryView({
 
       {/* リスト + 詳細パネル（既存サイドピークと同じ並置レイアウト） */}
       <div className="flex-1 flex overflow-hidden">
-      <div className="flex-1 min-w-0 overflow-auto px-6 py-4">
+      <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
         {activeError && (
-          <div className="mb-3 p-3 rounded border border-destructive/30 bg-destructive/5 text-xs text-destructive flex items-center gap-2">
+          <div className="m-3 p-3 rounded border border-destructive/30 bg-destructive/5 text-xs text-destructive flex items-center gap-2 shrink-0">
             <AlertTriangle size={14} />
-            <span>Failed to load: {activeError}</span>
+            <span>{uiT("library.loadFailed", { error: activeError })}</span>
           </div>
         )}
 
-        {!activeError && activeEntries.length === 0 && !loading && (
-          <div className="text-center py-12 text-sm text-muted-foreground">
-            No shared {activeType.replace("-", " ")} entries yet.
-          </div>
-        )}
-
-        <div
-          className={`grid gap-3 ${
-            selected
-              ? "grid-cols-1 xl:grid-cols-2"
-              : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-          }`}
-        >
-          {activeEntries.map((entry) => {
-            const isMine =
-              !!currentIdentity &&
-              entry.author?.email === currentIdentity.email;
-            const status = hashStatus[entry.id] ?? "unknown";
-            const isBusy = busyId === entry.id;
-            return (
-              <button
-                key={entry.id}
-                onClick={() => setSelected(entry)}
-                className="text-left p-3 rounded-md border border-border hover:border-primary/50 hover:bg-muted/40 transition-colors flex flex-col gap-2"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-sm font-medium text-foreground truncate flex-1">
-                    {entryTitle(entry)}
-                  </h3>
-                  <HashBadge
-                    status={status}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void verifyHash(entry);
-                    }}
-                  />
-                </div>
-                <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                  <span className="truncate" title={entry.author?.email}>
-                    {entry.author?.name ?? "(unknown)"}
-                    {isMine && (
-                      <span className="ml-1 px-1 py-0.5 rounded bg-primary/10 text-primary text-[9px] uppercase tracking-wide">
-                        you
-                      </span>
-                    )}
-                  </span>
-                  <span className="opacity-50">·</span>
-                  <span>{formatDate(entry.updated_at)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-2 mt-1">
-                  <span className="text-[10px] text-muted-foreground/70">
-                    {entry.type}
-                    {entry.type === "knowledge" &&
-                    typeof (entry.extra as Record<string, unknown> | undefined)?.wikiKind === "string"
-                      ? ` · ${(entry.extra as Record<string, unknown>).wikiKind as string}`
-                      : ""}
-                    {entry.version && entry.version > 1 ? ` · v${entry.version}` : ""}
-                  </span>
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => copyCitationLink(entry)}
-                      className="px-2 py-1 text-[11px] rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
-                      title={t("share.copyCitation")}
-                    >
-                      {copiedId === entry.id ? (
-                        <Check size={11} className="text-emerald-600" />
-                      ) : (
-                        <Link2 size={11} />
-                      )}
-                    </button>
-                    {!isMine && isForkable(entry.type) && (
-                      <button
-                        onClick={() => handleFork(entry)}
-                        disabled={isBusy}
-                        className="px-2 py-1 text-[11px] rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1 disabled:opacity-50"
-                        title={entry.type === "knowledge" ? "Fork to my knowledge" : "Fork to my notes"}
-                      >
-                        <GitFork size={11} />
-                        Fork
-                      </button>
-                    )}
-                    {isMine && (
-                      <button
-                        onClick={() => handleUnshare(entry)}
-                        disabled={isBusy}
-                        className="px-2 py-1 text-[11px] rounded border border-border hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive transition-colors flex items-center gap-1 disabled:opacity-50"
-                        title="Unshare (tombstone)"
-                      >
-                        <Trash2 size={11} />
-                        Unshare
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        <SharedLibraryTable
+          // タブごとに語彙が違う種別フィルタや検索語を持ち越さないよう、タブ切替で表を作り直す
+          key={activeTab}
+          tab={activeTab}
+          entries={activeEntries}
+          currentIdentity={currentIdentity}
+          hashStatus={hashStatus}
+          selectedId={selected?.id ?? null}
+          busyId={busyId}
+          copiedId={copiedId}
+          onSelect={setSelected}
+          onVerifyHash={verifyHash}
+          onCopyCitation={copyCitationLink}
+          onFork={handleFork}
+          onUnshare={handleUnshare}
+        />
       </div>
 
       {/* 詳細パネル（一覧と並置。fixed オーバーレイにしない）。
@@ -428,65 +390,6 @@ export function SharedLibraryView({
   );
 }
 
-function HashBadge({
-  status,
-  onClick,
-}: {
-  status: HashStatus;
-  onClick: (e: React.MouseEvent) => void;
-}) {
-  if (status === "ok") {
-    return (
-      <span
-        className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 dark:text-emerald-400"
-        title="Hash verified"
-      >
-        <CheckCircle2 size={11} />
-        ok
-      </span>
-    );
-  }
-  if (status === "mismatch") {
-    return (
-      <span
-        className="inline-flex items-center gap-0.5 text-[10px] text-destructive"
-        title="Hash mismatch — content may have been tampered with"
-      >
-        <AlertTriangle size={11} />
-        mismatch
-      </span>
-    );
-  }
-  if (status === "verifying") {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-        <RefreshCw size={11} className="animate-spin" />
-      </span>
-    );
-  }
-  if (status === "error") {
-    return (
-      <span
-        className="inline-flex items-center gap-0.5 text-[10px] text-amber-600"
-        title="Verification failed (read error)"
-      >
-        <AlertTriangle size={11} />
-        ?
-      </span>
-    );
-  }
-  return (
-    <button
-      onClick={onClick}
-      className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-      title="Verify hash"
-    >
-      <ShieldQuestion size={11} />
-      verify
-    </button>
-  );
-}
-
 // ── 詳細パネル（read-only viewer） ──
 
 type DetailProps = {
@@ -510,6 +413,7 @@ function SharedEntryDetail({
   onUnshare,
   onClose,
 }: DetailProps) {
+  const uiT = useT();
   const [body, setBody] = useState<string | null>(null);
   const [bodyError, setBodyError] = useState<string | null>(null);
   // 「引用リンクをコピー」の完了フィードバック（コンポーネントは entry ごとに
@@ -546,11 +450,7 @@ function SharedEntryDetail({
     };
   }, [entry.id, sharedRoot]);
 
-  const extra = (entry.extra ?? {}) as Record<string, unknown>;
-  const title =
-    typeof extra.title === "string" && extra.title.trim()
-      ? extra.title
-      : `(untitled ${entry.type})`;
+  const title = entryTitle(entry, uiT);
 
   return (
     <div
@@ -560,17 +460,17 @@ function SharedEntryDetail({
       <ResizeHandle
         handleProps={peekResize.handleProps}
         isResizing={peekResize.isResizing}
-        label={t("sidePeek.resizeHandle")}
+        label={uiT("sidePeek.resizeHandle")}
       />
         {/* ヘッダー */}
         <div className="px-5 py-3 border-b border-border flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="text-[10px] text-muted-foreground/70">
-              {entry.type}
+              {entryTypeLabel(entry, uiT)}
               {entry.version && entry.version > 1 ? ` · v${entry.version}` : ""}
               {isMine && (
                 <span className="ml-1.5 px-1 py-0.5 rounded bg-primary/10 text-primary normal-case">
-                  yours
+                  {uiT("library.you")}
                 </span>
               )}
             </div>
@@ -578,13 +478,13 @@ function SharedEntryDetail({
               {title}
             </h2>
             <div className="text-xs text-muted-foreground mt-0.5 truncate">
-              {entry.author?.name ?? "(unknown)"} · {entry.author?.email ?? ""}
+              {entry.author?.name ?? uiT("library.unknownAuthor")} · {entry.author?.email ?? ""}
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-            aria-label="Close"
+            aria-label={uiT("common.close")}
           >
             <X size={16} />
           </button>
@@ -592,11 +492,11 @@ function SharedEntryDetail({
 
         {/* メタ情報 */}
         <div className="px-5 py-3 border-b border-border text-xs space-y-1.5 bg-muted/20">
-          <DetailRow label="ID" value={<span className="font-mono break-all">{entry.id}</span>} />
-          <DetailRow label="Created" value={formatDate(entry.created_at)} />
-          <DetailRow label="Updated" value={formatDate(entry.updated_at)} />
+          <DetailRow label={uiT("library.detail.id")} value={<span className="font-mono break-all">{entry.id}</span>} />
+          <DetailRow label={uiT("library.detail.created")} value={formatDate(entry.created_at)} />
+          <DetailRow label={uiT("library.detail.updated")} value={formatDate(entry.updated_at)} />
           <DetailRow
-            label="Hash"
+            label={uiT("library.detail.hash")}
             value={
               <span className="flex items-center gap-2">
                 <span className="font-mono text-[10px] truncate max-w-[260px]" title={entry.hash}>
@@ -614,7 +514,7 @@ function SharedEntryDetail({
           />
           {entry.prov.derived_from.length > 0 && (
             <DetailRow
-              label="Derived from"
+              label={uiT("library.detail.derivedFrom")}
               value={
                 <ul className="list-disc list-inside">
                   {entry.prov.derived_from.map((id) => (
@@ -637,8 +537,8 @@ function SharedEntryDetail({
         <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-2">
           <div className="text-xs text-muted-foreground">
             {isMine
-              ? t("share.updateHint")
-              : t("share.readOnlyOthers")}
+              ? uiT("share.updateHint")
+              : uiT("share.readOnlyOthers")}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -648,14 +548,14 @@ function SharedEntryDetail({
                 window.setTimeout(() => setCitationCopied(false), 1500);
               }}
               className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
-              title={t("share.copyCitationHint")}
+              title={uiT("share.copyCitationHint")}
             >
               {citationCopied ? (
                 <Check size={12} className="text-emerald-600" />
               ) : (
                 <Link2 size={12} />
               )}
-              {citationCopied ? t("share.copied") : t("share.copyCitation")}
+              {citationCopied ? uiT("share.copied") : uiT("share.copyCitation")}
             </button>
             {onFork && !isMine && (
               <button
@@ -663,7 +563,7 @@ function SharedEntryDetail({
                 className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
               >
                 <GitFork size={12} />
-                {entry.type === "knowledge" ? "Fork to my knowledge" : "Fork to my notes"}
+                {entry.type === "knowledge" ? uiT("library.forkToKnowledge") : uiT("library.forkToNotes")}
               </button>
             )}
             {isMine && (
@@ -672,7 +572,7 @@ function SharedEntryDetail({
                 className="px-3 py-1.5 text-xs rounded border border-border hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive transition-colors flex items-center gap-1"
               >
                 <Trash2 size={12} />
-                Unshare
+                {uiT("library.unshare")}
               </button>
             )}
           </div>
@@ -703,12 +603,12 @@ function SharedEntryBody({
     return (
       <div className="text-xs text-destructive flex items-center gap-2">
         <AlertTriangle size={14} />
-        Failed to load body: {bodyError}
+        {t("library.detail.bodyLoadFailed", { error: bodyError })}
       </div>
     );
   }
   if (body === null) {
-    return <div className="text-xs text-muted-foreground">Loading…</div>;
+    return <div className="text-xs text-muted-foreground">{t("common.loading")}</div>;
   }
 
   const extra = (entry.extra ?? {}) as Record<string, unknown>;
@@ -857,7 +757,7 @@ export function SharedNotePreview({ body }: { body: string }) {
           blocks.push({
             type: "heading",
             props: { level: 2 },
-            content: [{ type: "text", text: page.title || `Page ${i + 1}`, styles: {} }],
+            content: [{ type: "text", text: page.title || t("library.detail.pageN", { n: String(i + 1) }), styles: {} }],
             children: [],
           });
         }
@@ -940,11 +840,11 @@ function DataManifestPreview({ entry }: { entry: SharedEntry }) {
   return (
     <div className="space-y-3 text-sm">
       {mime && (
-        <div className="text-xs text-muted-foreground">MIME: {mime}</div>
+        <div className="text-xs text-muted-foreground">{t("library.detail.mime", { mime })}</div>
       )}
       {original && (
         <div className="text-xs text-muted-foreground">
-          Original filename: {original}
+          {t("library.detail.originalFilename", { name: original })}
         </div>
       )}
       {blobs.map((b) => (
@@ -1018,7 +918,7 @@ function BlobPreviewCard({
           />
         ) : (
           <div className="p-6 text-xs text-muted-foreground text-center">
-            {loading ? "Loading…" : "Preparing…"}
+            {loading ? t("library.detail.loading") : t("library.detail.preparing")}
           </div>
         )
       ) : isPdf ? (
@@ -1034,7 +934,7 @@ function BlobPreviewCard({
             disabled={loading}
             className="w-full p-6 text-xs text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
           >
-            {loading ? "Loading…" : "Click to load PDF preview"}
+            {loading ? t("library.detail.loading") : t("library.detail.loadPdf")}
           </button>
         )
       ) : isVideo ? (
@@ -1050,7 +950,7 @@ function BlobPreviewCard({
             disabled={loading}
             className="w-full p-6 text-xs text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
           >
-            {loading ? "Loading…" : "Click to load video"}
+            {loading ? t("library.detail.loading") : t("library.detail.loadVideo")}
           </button>
         )
       ) : isAudio ? (
@@ -1062,12 +962,12 @@ function BlobPreviewCard({
             disabled={loading}
             className="w-full p-6 text-xs text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
           >
-            {loading ? "Loading…" : "Click to load audio"}
+            {loading ? t("library.detail.loading") : t("library.detail.loadAudio")}
           </button>
         )
       ) : (
         <div className="p-3 text-xs text-muted-foreground">
-          (No inline preview for this file type)
+          {t("library.detail.noPreview")}
         </div>
       )}
 
@@ -1075,7 +975,7 @@ function BlobPreviewCard({
       <div className="p-2 text-xs space-y-0.5 border-t border-border">
         <div className="font-mono break-all">{blob.uri}</div>
         <div className="text-muted-foreground">
-          {blob.size} bytes ·{" "}
+          {t("library.detail.bytes", { size: String(blob.size) })} ·{" "}
           <span className="font-mono">{blob.hash.slice(0, 16)}…</span>
         </div>
       </div>
