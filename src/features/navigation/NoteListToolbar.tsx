@@ -28,22 +28,31 @@ const SORT_KEYS: { key: SortKey; labelKey: string }[] = [
 // labels / knowledgeCount / author でもソートできる。ツールバー側の SORT_KEYS には
 // あえて入れない（一覧上で使うことが少ない sort key を吸い込んで肥大化させない）。
 
-export function NoteListToolbar({
+// K は並び替えキーの型。省略時は既存の SortKey（ノート一覧用）のまま動く。
+// SharedLibraryTable のように候補セットが異なる呼び出し元は sortOptions で
+// 差し替える（例: 共有日 / タイトル / 作者 / 版）。
+export function NoteListToolbar<K extends string = SortKey>({
   sortKey,
   sortDir,
   onSort,
   searchQuery,
   onSearchChange,
+  sortOptions,
 }: {
-  sortKey: SortKey;
+  sortKey: K;
   sortDir: SortDirection;
-  onSort: (key: SortKey) => void;
+  onSort: (key: K) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  /** 並び替え候補を差し替える（省略時は既定の SORT_KEYS） */
+  sortOptions?: { key: K; labelKey: string }[];
 }) {
   const t = useT();
   const [showSortMenu, setShowSortMenu] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
+  // 省略時のみ既定候補を使う。K は呼び出し元の sortKey から推論されるため、
+  // sortOptions 未指定の呼び出しでは K = SortKey に固定される（呼び出し側で保証）。
+  const options = sortOptions ?? (SORT_KEYS as unknown as { key: K; labelKey: string }[]);
 
   return (
     <div className="flex items-center gap-2 px-6 py-2 border-b border-border/50">
@@ -53,12 +62,12 @@ export function NoteListToolbar({
           onClick={() => setShowSortMenu(!showSortMenu)}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
         >
-          {t(SORT_KEYS.find((o) => o.key === sortKey)?.labelKey ?? "")}
+          {t(options.find((o) => o.key === sortKey)?.labelKey ?? "")}
           {sortDir === "desc" ? " ↓" : " ↑"}
         </button>
         {showSortMenu && (
           <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded-md shadow-md py-1 z-10 min-w-[120px]">
-            {SORT_KEYS.map((opt) => (
+            {options.map((opt) => (
               <button
                 key={opt.key}
                 onClick={() => {
