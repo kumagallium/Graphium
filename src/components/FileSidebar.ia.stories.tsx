@@ -7,9 +7,9 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
-  Image, FileText, Video, Volume2, Link, StickyNote, Bot, History,
+  Image, FileText as FileTextIcon, FileText, Video, Volume2, Link, StickyNote, Bot, History,
   PanelLeftClose, Trash2, Settings as SettingsIcon, Wrench, ShieldCheck, ArrowRight,
-  ChevronDown, ChevronRight, Table,
+  ChevronDown, ChevronRight, Table, Folder,
 } from "lucide-react";
 import { FileSidebar } from "./FileSidebar";
 import { FolderTree } from "../features/note-context/FolderTree";
@@ -740,6 +740,393 @@ export const ProposedFolders: Story = {
         <p>初期状態（中央）で増えるのは「フォルダ」ヘッダ 1 行だけ。開閉は localStorage に永続化する（既存 CollapsibleSection と同じ仕組み）。</p>
         <p>実体は noteContexts なので、運用をやめてセクションを消してもタグ・一覧・グラフは元のまま（データ影響なし）。</p>
         <p>件数は左の実物（3 ノート）と整合させてある: 実験シリーズ1 に 1 件・実験シリーズ2 に 1 件・材料X に 1 件。</p>
+      </div>
+    </div>
+  ),
+};
+
+// ── IA 第 2 ラウンド: 「見方の重複」をどう束ねるか ─────────────
+//
+// ユーザー指摘（2026-08-31）: すべてのノート / フォルダ / プロセス / メモ は
+// どれも「同じノート集合の見方違い」で、4 行が対等に並んでいて関係が読めない。
+// フォルダ導入で行が 1 つ増えたのを機に、束ね方を 3 案で比べる。
+//
+// 判断材料にしたいのは「1 行あたりの意味の重さ」と「初見で関係が読めるか」。
+
+/** 案の説明を右側に出す共通の枠 */
+function CaseNote({ title, points }: { title: string; points: string[] }) {
+  return (
+    <div className="flex-1 p-6 text-xs text-muted-foreground min-w-[220px] space-y-2">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      {points.map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+    </div>
+  );
+}
+
+/** サイドバーの外枠（ヘッダ・フッタは共通） */
+function MockShell({ children }: { children: ReactNode }) {
+  const t = useT();
+  return (
+    <aside className="w-full md:w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col h-full">
+      <div className="p-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
+            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
+          </div>
+          <PanelLeftClose size={14} className="text-muted-foreground" />
+        </div>
+        <div className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85">
+          {t("sidebar.newNote")}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto pb-2">{children}</div>
+      <div className="p-2 border-t border-sidebar-border space-y-0.5">
+        <FooterRow icon={<Wrench size={12} />} label={t("sidebar.skill")} count={2} />
+        <FooterRow icon={<SettingsIcon size={12} />} label={t("common.settings")} dot />
+        <FooterRow icon={<Trash2 size={12} />} label={t("nav.trashAndArchive")} />
+      </div>
+    </aside>
+  );
+}
+
+/** 共通の下半分（ナレッジ・素材・ラベル）— どの案でも変えない */
+function LowerSections() {
+  const t = useT();
+  return (
+    <>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("sidebar.knowledge")} count={26} open={false} />
+      </div>
+      <div className="mx-4 my-3 border-t border-sidebar-border/50" aria-hidden />
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("asset.dataSection")} count={14} open={false} />
+      </div>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("label.section")} count={5} open={false} />
+      </div>
+    </>
+  );
+}
+
+/** 案 A: 現状（フォルダを足しただけ） */
+function CaseCurrent() {
+  const t = useT();
+  return (
+    <MockShell>
+      <HeadingLink label={t("nav.noteList")} count={7} />
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("nav.folders")} count={3} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Folder size={14} />} label="Sourdough" count={5} />
+          <ItemRow icon={<Folder size={14} />} label="Kiln study" count={1} />
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.unfiled")} count={1} />
+        </div>
+      </div>
+      <HeadingLink label={t("process.title")} count={4} />
+      <HeadingLink label={t("memo.title")} count={1} mb />
+      <LowerSections />
+    </MockShell>
+  );
+}
+
+/** 案 B: ノートの下に見方をぶら下げる（1 つの入口に集約） */
+function CaseNested() {
+  const t = useT();
+  return (
+    <MockShell>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("nav.noteList")} count={7} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Folder size={14} />} label="Sourdough" count={5} />
+          <ItemRow icon={<Folder size={14} />} label="Kiln study" count={1} />
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.unfiled")} count={1} />
+          <div className="pt-1 mt-1 border-t border-sidebar-border/40 space-y-0.5">
+            <ItemRow icon={<ArrowRight size={13} />} label={t("process.title")} count={4} />
+            <ItemRow icon={<ArrowRight size={13} />} label={t("memo.title")} count={1} />
+          </div>
+        </div>
+      </div>
+      <LowerSections />
+    </MockShell>
+  );
+}
+
+/** 案 C: フォルダだけノート直下に入れ、プロセス・メモはフッタのメタ群へ移す */
+function CaseDemoted() {
+  const t = useT();
+  return (
+    <MockShell>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("nav.noteList")} count={7} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Folder size={14} />} label="Sourdough" count={5} />
+          <ItemRow icon={<Folder size={14} />} label="Kiln study" count={1} />
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.unfiled")} count={1} />
+        </div>
+      </div>
+      <LowerSections />
+      <div className="mx-4 my-3 border-t border-sidebar-border/50" aria-hidden />
+      <div className="px-2 space-y-0.5">
+        <FooterRow icon={<ArrowRight size={12} />} label={t("process.title")} count={4} />
+        <FooterRow icon={<ArrowRight size={12} />} label={t("memo.title")} count={1} />
+      </div>
+    </MockShell>
+  );
+}
+
+export const IaRound2: Story = {
+  name: "IA 第 2 ラウンド（見方の重複を束ねる 3 案）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }} className="overflow-x-auto">
+      <div className="flex flex-col border-r-2 border-amber-200 shrink-0">
+        <div className="px-3 py-1.5 bg-amber-50 text-[11px] font-semibold text-amber-900 border-b">A. 現状</div>
+        <div className="flex-1 flex min-h-0"><CaseCurrent /></div>
+      </div>
+      <div className="flex flex-col border-r-2 border-emerald-200 shrink-0">
+        <div className="px-3 py-1.5 bg-emerald-50 text-[11px] font-semibold text-emerald-900 border-b">B. ノートの下に集約</div>
+        <div className="flex-1 flex min-h-0"><CaseNested /></div>
+      </div>
+      <div className="flex flex-col border-r-2 border-emerald-200 shrink-0">
+        <div className="px-3 py-1.5 bg-emerald-50 text-[11px] font-semibold text-emerald-900 border-b">C. フォルダだけ残し、他はメタへ</div>
+        <div className="flex-1 flex min-h-0"><CaseDemoted /></div>
+      </div>
+      <CaseNote
+        title="見るべき点"
+        points={[
+          "A: 「見方」が 4 行、同じ階層に対等に並ぶ。関係が読めないという指摘そのままの状態。",
+          "B: ノートが唯一の入口になり、フォルダ・プロセス・メモはその中の見方として畳まれる。トップレベルは 4 行に減るが、プロセス／メモが 1 段深くなる。",
+          "C: ノートの中はフォルダだけ（＝分類）。プロセスとメモは「別の見方」としてフッタのメタ群に降ろす。トップは最も軽いが、メモは使用頻度が高いと遠くなる。",
+          "共通: ナレッジ・素材・ラベルは別のものを指しているので触らない。",
+        ]}
+      />
+    </div>
+  ),
+};
+
+// ── IA 第 2 ラウンド その 2: 「在り処」で束ねる ─────────────
+//
+// ユーザー案（2026-09-03）: 並べる軸を「何であるか（種類）」から
+// 「どこにあるか（在り処）」へ変える。3 ブロックに区切る:
+//   ① 記録と知識 ② 外部連携 ③ 保管庫
+// 「この PC」とは呼ばない — 保存先は同期フォルダや Google Drive にもできるため
+// （welcome.saveLocationHint）。
+// 保管庫に素材・プロセス・ラベルをまとめたのは、プロセスとラベルを将来その場でも
+// 作れるようにする方針（2026-09-03）による。そうなると「ノートを書いて生まれるもの」
+// ではなくなり、画像などと同じ「取っておいて使い回す部品」になる。
+//
+// D と E の違いは「プロセスとラベル群を素材の中に置くか、素材と並べるか」の 1 点だけ。
+
+/** 区切りの見出し（グループのラベル）。セクション見出しよりさらに小さく、薄く */
+function GroupLabel({ text }: { text: string }) {
+  return (
+    <div className="px-4 pt-3 pb-1">
+      <div className="border-t border-sidebar-border/50 pt-2">
+        <span className="text-[10px] text-sidebar-foreground/35">{text}</span>
+      </div>
+    </div>
+  );
+}
+
+/** PROV ラベルの色ドット付き行 */
+function LabelRow({ label, count }: { label: string; count?: number }) {
+  return (
+    <div className="w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-sidebar-foreground/70">
+      <span
+        className="inline-block w-2 h-2 rounded-full shrink-0"
+        style={{ backgroundColor: LABEL_HEX[label] ?? "#8fa394" }}
+      />
+      <span className="flex-1 text-left truncate">{getDisplayLabelName(label)}</span>
+      {typeof count === "number" && count > 0 && (
+        <span className="text-xs text-muted-foreground">{count}</span>
+      )}
+    </div>
+  );
+}
+
+/** ① と ② は D / E 共通 */
+function LocusUpperBlocks() {
+  const t = useT();
+  return (
+    <>
+      <GroupLabel text="記録と知識 / Records & knowledge" />
+      <div className="px-4 pb-1">
+        <StaticSectionHeader title={t("nav.noteList")} count={7} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Folder size={14} />} label="Sourdough" count={5} />
+          <ItemRow icon={<Folder size={14} />} label="Kiln study" count={1} />
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.unfiled")} count={1} />
+        </div>
+      </div>
+      <div className="px-4 pt-2 pb-1">
+        <StaticSectionHeader title={t("sidebar.knowledge")} count={26} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<Bot size={14} />} label={t("wikiList.kindSummary")} count={9} />
+          <ItemRow icon={<Bot size={14} />} label={t("wikiList.kindClaim")} count={14} />
+          <ItemRow icon={<Bot size={14} />} label={t("wikiList.kindAtom")} count={3} />
+        </div>
+      </div>
+
+      <GroupLabel text="外部連携 / External" />
+      <div className="px-4 pb-1">
+        <div className="w-full flex items-center gap-1 px-0 pt-1 pb-1 text-xs font-semibold text-sidebar-foreground/40">
+          <span className="shrink-0 -ml-0.5" aria-hidden><ArrowRight size={12} /></span>
+          <span className="flex-1 text-left">{t("mobile.title")}</span>
+          <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">2</span>
+        </div>
+      </div>
+      <div className="px-4 pt-1 pb-1">
+        <StaticSectionHeader title={t("sidebar.library")} open />
+        <div className="space-y-0.5">
+          <ItemRow icon={<FileTextIcon size={14} />} label={t("nav.notes")} count={12} />
+          <ItemRow icon={<Bot size={14} />} label={t("sidebar.knowledge")} count={4} />
+          <ItemRow icon={<Table size={14} />} label={t("asset.type.data")} count={3} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** 素材の中身（メモ入り）。プロセス群を差し込めるようにする */
+function MaterialItems({ children }: { children?: ReactNode }) {
+  const t = useT();
+  return (
+    <div className="space-y-0.5">
+      <ItemRow icon={<StickyNote size={14} />} label={t("memo.title")} count={1} />
+      <ItemRow icon={<FileTextIcon size={14} />} label={t("asset.type.document")} count={6} />
+      {children}
+      <ItemRow icon={<Table size={14} />} label={t("asset.type.data")} count={2} />
+      <ItemRow icon={<Link size={14} />} label={t("asset.type.url")} count={5} />
+      <ItemRow icon={<Image size={14} />} label={t("asset.type.image")} count={4} />
+      <ItemRow icon={<Video size={14} />} label={t("asset.type.video")} />
+      <ItemRow icon={<Volume2 size={14} />} label={t("asset.type.audio")} />
+    </div>
+  );
+}
+
+/** 案 D: いただいた案そのまま（プロセスとラベル群を素材の中に入れる） */
+function CaseLocusAsProposed() {
+  const t = useT();
+  return (
+    <MockShell>
+      <LocusUpperBlocks />
+      <GroupLabel text="保管庫 / Repository" />
+      <div className="px-4 pb-1">
+        <StaticSectionHeader title={t("asset.dataSection")} count={14} open />
+        <MaterialItems>
+          {/* 素材の中の 3 段目 */}
+          <div className="pl-2">
+            <StaticSectionHeader title={t("process.title")} count={4} open />
+            <div className="space-y-0.5 pl-2">
+              <LabelRow label="procedure" count={4} />
+              <LabelRow label="material" count={2} />
+              <LabelRow label="tool" count={1} />
+              <LabelRow label="output" count={2} />
+              <LabelRow label="attribute" count={1} />
+            </div>
+          </div>
+        </MaterialItems>
+      </div>
+    </MockShell>
+  );
+}
+
+/** 案 E: 3 ブロック目を「原料」と「横断して見る」に割る */
+function CaseLocusRefined() {
+  const t = useT();
+  return (
+    <MockShell>
+      <LocusUpperBlocks />
+      <GroupLabel text="保管庫 / Repository" />
+      <div className="px-4 pb-1">
+        <StaticSectionHeader title={t("asset.dataSection")} count={14} open />
+        <MaterialItems />
+      </div>
+      <div className="px-4 pb-1">
+        <div className="w-full flex items-center gap-1 pt-1 pb-1 text-xs font-semibold text-sidebar-foreground/40">
+          <span className="shrink-0 -ml-0.5" aria-hidden><ArrowRight size={12} /></span>
+          <span className="flex-1 text-left">{t("process.title")}</span>
+          <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">4</span>
+        </div>
+      </div>
+      <div className="px-4 pb-1">
+        <StaticSectionHeader title={t("label.section")} count={5} open />
+        <div className="space-y-0.5">
+          <LabelRow label="procedure" count={4} />
+          <LabelRow label="material" count={2} />
+          <LabelRow label="tool" count={1} />
+          <LabelRow label="output" count={2} />
+          <LabelRow label="attribute" count={1} />
+        </div>
+      </div>
+    </MockShell>
+  );
+}
+
+export const IaRound2Locus: Story = {
+  name: "IA 第 2 ラウンド その 2（在り処で束ねる D / E）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }} className="overflow-x-auto">
+      <div className="flex flex-col border-r-2 border-amber-200 shrink-0">
+        <div className="px-3 py-1.5 bg-amber-50 text-[11px] font-semibold text-amber-900 border-b">A. 現状（比較用）</div>
+        <div className="flex-1 flex min-h-0"><CaseCurrent /></div>
+      </div>
+      <div className="flex flex-col border-r-2 border-sky-200 shrink-0">
+        <div className="px-3 py-1.5 bg-sky-50 text-[11px] font-semibold text-sky-900 border-b">D. 在り処（提案そのまま）</div>
+        <div className="flex-1 flex min-h-0"><CaseLocusAsProposed /></div>
+      </div>
+      <div className="flex flex-col border-r-2 border-emerald-200 shrink-0">
+        <div className="px-3 py-1.5 bg-emerald-50 text-[11px] font-semibold text-emerald-900 border-b">E. 在り処（3 ブロック目を割る）</div>
+        <div className="flex-1 flex min-h-0"><CaseLocusRefined /></div>
+      </div>
+      <CaseNote
+        title="D と E の違いは 1 点"
+        points={[
+          "共通: 並べる軸が「種類」から「在り処」へ。モバイルとライブラリが「外部連携」として並び、プロセス・メモがトップから降りる。フォルダは「すべてのノート」の中。",
+          "D: プロセスとラベル群を素材の中に置く。保管庫 > 素材 > プロセス > ステップ で 3 段になる。",
+          "E: 保管庫の中で素材・プロセス・ラベルを対等に並べる。どこも 2 段に収まる。",
+          "判断材料: プロセスとラベルは将来その場でも作れるようにする方針なので、画像などと同じ「使い回す部品」になる。素材の一項目（D）ではなく素材と対等（E）の方がその立場に合う。",
+          "未確認: ライブラリの references は現状のコードに無い（今は「共有」1 項目のみ）。D/E とも仮置きせず省いてある。",
+          "注意: ここは全セクションを開いた状態で描いてある。D で 976px、E で 1057px あり、実画面（800px 前後）には収まらずスクロールになる。実運用では既定でいくつか畳む前提で見てください。",
+        ]}
+      />
+    </div>
+  ),
+};
+
+/**
+ * E 案を実物の FileSidebar に反映したあとの姿。
+ * モバイル・ライブラリ・プロセス・ラベルは条件付き表示なので、
+ * すべて揃った状態を見るために props を足してある。
+ */
+export const IaRound2Applied: Story = {
+  name: "IA 第 2 ラウンド（実装後の実物 / 全項目あり）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <FileSidebar
+        {...COMMON_PROPS}
+        onShowMobile={() => {}}
+        mobileCount={2}
+        onShowSharedLibrary={() => {}}
+        onShowProcessGallery={() => {}}
+        processCount={4}
+        memoCount={3}
+        onSelectFolder={() => {}}
+        onSelectUnfiledFolder={() => {}}
+        onCreateFolder={() => {}}
+        emptyFolders={["Sourdough", "Kiln study"]}
+      />
+      <div className="flex-1 p-6 text-xs text-muted-foreground space-y-2">
+        <p className="text-sm font-semibold text-foreground">実装後の実物（E 案）</p>
+        <p>記録と知識: すべてのノート（シェブロンでフォルダ開閉 / 文字で一覧へ）→ ナレッジ</p>
+        <p>外部連携: モバイル → ライブラリ</p>
+        <p>保管庫: 素材（中にメモ）→ プロセス → ラベル</p>
+        <p>
+          条件付き表示のため、実データによってはモバイル（デスクトップ版のみ）・ライブラリ（共有設定時）・
+          プロセス（手順あり）・ラベル（1 件以上）が出ない。ここでは全部出した状態。
+        </p>
       </div>
     </div>
   ),
