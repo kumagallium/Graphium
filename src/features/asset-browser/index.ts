@@ -17,6 +17,7 @@ export {
   deleteMediaFile,
   renameMediaFile,
   renameMediaEntry,
+  setMediaEntryContexts,
   extractFileIdFromUrl,
   extractMediaFromBlocks,
   collectPdfFileIdsFromDoc,

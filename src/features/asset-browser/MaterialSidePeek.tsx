@@ -14,6 +14,7 @@ import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
+import type { NoteFolderLookup } from "./asset-folders";
 import { MediaPreview } from "./media-preview";
 import type { CitationSource } from "./SelectionPill";
 import {
@@ -159,10 +160,13 @@ export type MaterialSidePeekProps = {
    * 未指定なら何も描画しない。
    */
   footer?: React.ReactNode;
+  /** ノート id → フォルダ。素材のフォルダ導出に使う（詳細ヘッダへそのまま渡す） */
+  noteFolderLookup?: NoteFolderLookup;
 };
 
 export function MaterialSidePeek({
   entry,
+  noteFolderLookup,
   onClose,
   onToggleFull,
   onDelete,
@@ -246,6 +250,7 @@ export function MaterialSidePeek({
       )}
       <MaterialDetailHeader
         entry={entry}
+        noteFolderLookup={noteFolderLookup}
         onClose={onClose}
         // メモピーク（transient エントリ）は素材ではないため、素材系の操作
         // （リネーム・Knowledge 化・PROV・抽出・共有・削除・Full 昇格）を出さない。

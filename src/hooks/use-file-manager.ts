@@ -64,6 +64,7 @@ import {
 } from "../features/navigation";
 import {
   saveMediaIndex,
+  setMediaEntryContexts,
   createEmptyIndex,
   addMediaEntry,
   removeMediaEntry,
@@ -2217,6 +2218,23 @@ export function useFileManager(authenticated: boolean) {
     saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
   }, []);
 
+  /**
+   * 素材のフォルダ（noteContexts）を差し替えて永続化する。ノート側の
+   * updateNoteContexts に相当し、同じフォルダ体系を共有する。
+   * mediaIndex は再構築されても既存エントリを土台にするので、ここで書いた値は残る。
+   */
+  const updateMediaContexts = useCallback(async (fileId: string, contexts: string[]) => {
+    const current = mediaIndexRef.current;
+    if (!current) return;
+    const updated = setMediaEntryContexts(current, fileId, contexts);
+    mediaIndexRef.current = updated;
+    setMediaIndex(updated);
+    try {
+      await saveMediaIndex(updated);
+    } catch (err) {
+      console.warn("素材のフォルダ保存に失敗:", err);
+    }
+  }, []);
   const handleRenameMedia = useCallback(async (entry: MediaIndexEntry, newName: string) => {
     // URL ブックマークは Drive ファイルがないのでインデックスのみ更新
     if (entry.type !== "url") {
@@ -3101,6 +3119,7 @@ export function useFileManager(authenticated: boolean) {
     handleRestoreMedia,
     countSnapshotRefsForAsset,
     handleRenameMedia,
+    updateMediaContexts,
     handleUpdateMediaSharedRef,
     handleAddUrlBookmark,
     handleCreateNoteFromDocument,
