@@ -56,6 +56,10 @@ describe("runIntake", () => {
     }
     expect(doneSeq[doneSeq.length - 1]).toBe(5);
     expect(progresses.every((p) => p.total === 5)).toBe(true);
+
+    // importMarkdown には classify 前の全ファイル（notes + materials）が
+    // ctx.allFiles として渡る（画像参照の解決に使うため）
+    expect(deps.importMarkdown).toHaveBeenCalledWith(expect.any(Array), expect.any(Function), { allFiles: files });
   });
 
   it("uploadAsset が 1 件 throw しても止まらず failed に入る", async () => {

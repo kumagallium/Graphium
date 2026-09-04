@@ -1925,12 +1925,8 @@ export const ja: Record<string, string> = {
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括ナレッジ化
-  "noteList.importFiles": "ファイルを取り込む",
-  "noteList.importMarkdown": "Markdown (.md) を取り込む",
-  "noteList.importObsidianVault": "Obsidian Vault フォルダを取り込む",
   "noteList.ingestTooltip": "選択したノートから要約と知見を抽出してナレッジに追加します",
   "noteList.ingestSelected": "{count} 件をナレッジ化",
-  "noteList.importProgress": "Markdown 取り込み: {done} / {total}",
   "noteList.importFailedCount": "（失敗: {count}）",
   "noteList.importProcessing": "処理中: {name}",
   "noteList.importFailedFiles": "失敗したファイル: {names}",
@@ -2015,8 +2011,6 @@ export const ja: Record<string, string> = {
   "ingest.noSources": "ソースが 1 件もありません",
 
   // Markdown インポート
-  "import.noMarkdownFiles": "Markdown ファイルが見つかりませんでした。",
-  "import.importedCount": "{count} 件のノートを取り込みました。",
   "import.unresolvedLinksNote": "解決できなかった [[リンク]] はテキストとして残しています。",
 
   // 投入口モーダル（既存資料の一括取り込み）

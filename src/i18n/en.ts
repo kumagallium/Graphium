@@ -1927,12 +1927,8 @@ export const en: Record<string, string> = {
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化
-  "noteList.importFiles": "Import files",
-  "noteList.importMarkdown": "Import Markdown (.md)",
-  "noteList.importObsidianVault": "Import Obsidian Vault folder",
   "noteList.ingestTooltip": "Extract summaries and claims from the selected notes and add them to Knowledge",
   "noteList.ingestSelected": "Add {count} to Knowledge",
-  "noteList.importProgress": "Importing Markdown: {done} / {total}",
   "noteList.importFailedCount": "({count} failed)",
   "noteList.importProcessing": "Processing: {name}",
   "noteList.importFailedFiles": "Failed files: {names}",
@@ -2017,8 +2013,6 @@ export const en: Record<string, string> = {
   "ingest.noSources": "No sources available",
 
   // Markdown インポート
-  "import.noMarkdownFiles": "No Markdown files found.",
-  "import.importedCount": "Imported {count} note(s).",
   "import.unresolvedLinksNote": "Unresolved [[links]] were kept as plain text.",
 
   // 投入口モーダル（既存資料の一括取り込み）

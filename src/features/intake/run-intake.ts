@@ -20,8 +20,17 @@ export type MarkdownImportResult = {
 export type IntakeProgress = { done: number; total: number; current?: string; failed: string[] };
 
 export type IntakeDeps = {
-  /** notes を Graphium ノートとして取り込む。onProgress は notes 内の進捗（done/total は notes 件数基準） */
-  importMarkdown: (files: IntakeFile[], onProgress: (p: IntakeProgress) => void) => Promise<MarkdownImportResult>;
+  /**
+   * notes を Graphium ノートとして取り込む。onProgress は notes 内の進捗
+   * （done/total は notes 件数基準）。ctx.allFiles は classify 前の全ファイル
+   * （notes + materials + skipped）で、Markdown 内の画像参照（![[img.png]] 等）を
+   * 同じフォルダの他ファイルから解決するために使う。
+   */
+  importMarkdown: (
+    files: IntakeFile[],
+    onProgress: (p: IntakeProgress) => void,
+    ctx: { allFiles: IntakeFile[] },
+  ) => Promise<MarkdownImportResult>;
   /** 素材を 1 件アップロードする */
   uploadAsset: (file: File) => Promise<unknown>;
   /** 全件終了後に 1 回だけ呼ぶ（インデックス再構築など） */
@@ -63,9 +72,13 @@ export async function runIntake(
   };
   if (notes.length > 0) {
     try {
-      markdownResult = await deps.importMarkdown(notes, (p) => {
-        onProgress({ done: p.done, total, current: p.current, failed: [...failed, ...p.failed] });
-      });
+      markdownResult = await deps.importMarkdown(
+        notes,
+        (p) => {
+          onProgress({ done: p.done, total, current: p.current, failed: [...failed, ...p.failed] });
+        },
+        { allFiles: files },
+      );
     } catch (err) {
       console.warn("[intake] Markdown の取り込みが途中で失敗:", err);
       markdownResult = { ...markdownResult, failed: notes.map((n) => n.file.name) };
