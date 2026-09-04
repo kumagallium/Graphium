@@ -115,3 +115,170 @@ describe("SharedLibraryTable のフォルダ列", () => {
     expect(unfiledDot?.className).toContain("border-border");
   });
 });
+
+// ── 素材タブの blob 行（共有ノート内の画像・ファイル） ──
+// SharedEntry ではない仮想行なので、版・検証は空欄・操作は「ノートを開く」と「取り込む」だけ。
+// 検索 / 絞り込み / 並び替えは共有エントリの行と同じ経路で効く必要がある。
+
+const assetEntry = (id: string, title: string, mediaType: string): SharedEntry => ({
+  id,
+  type: "data-manifest",
+  author: AUTHOR,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-03T00:00:00Z",
+  hash: `sha256:${id}`,
+  prov: { derived_from: [] },
+  version: 1,
+  extra: { title, media_type: mediaType },
+});
+
+const blobRef = (hash: string, filename?: string) => ({
+  provider: "local-folder",
+  uri: `file:///blobs/${hash}`,
+  hash,
+  size: 10,
+  ...(filename ? { filename } : {}),
+});
+
+/** 同じ画像を 2 ノートが持ち、片方だけが別の PDF も持つ構成 */
+const BLOB_PARENTS: SharedEntry[] = [
+  {
+    ...entry("p1", "焼結ノート", ["卒論/焼結"]),
+    extra: {
+      title: "焼結ノート",
+      noteContexts: ["卒論/焼結"],
+      blobs: [blobRef("sha256:aaa", "spectrum.png"), blobRef("sha256:bbb", "paper.pdf")],
+    },
+  },
+  {
+    ...entry("p2", "装置ノート", ["共通/装置"]),
+    extra: {
+      title: "装置ノート",
+      noteContexts: ["共通/装置"],
+      blobs: [blobRef("sha256:aaa", "spectrum.png")],
+    },
+  },
+];
+
+function renderAssetTable(
+  overrides: Partial<React.ComponentProps<typeof SharedLibraryTable>> = {},
+) {
+  return render(
+    <LocaleProvider>
+      <SharedLibraryTable
+        tab="asset"
+        entries={[assetEntry("a1", "測定データ", "data")]}
+        currentIdentity={AUTHOR}
+        hashStatus={{}}
+        selectedId={null}
+        busyId={null}
+        copiedId={null}
+        onSelect={() => {}}
+        onVerifyHash={() => {}}
+        onCopyCitation={() => {}}
+        onUnshare={() => {}}
+        blobParents={BLOB_PARENTS}
+        {...overrides}
+      />
+    </LocaleProvider>,
+  );
+}
+
+function rowTexts(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll("tbody tr")).map((tr) => tr.textContent ?? "");
+}
+
+describe("SharedLibraryTable の素材タブ（blob 行）", () => {
+  it("同じ hash の blob は 1 行に集約され、出どころ列に件数が出る", () => {
+    const { container } = renderAssetTable();
+    const rows = rowTexts(container);
+    // 共有エントリ 1 + blob 2 種（spectrum.png は 2 ノートで 1 行に畳まれる）
+    expect(rows).toHaveLength(3);
+    const spectrum = rows.find((r) => r.includes("spectrum.png"));
+    expect(spectrum).toContain(t("library.blobOrigins", { count: "2" }));
+    // 1 ノートだけの blob は、そのノートの題名が出どころになる
+    expect(rows.find((r) => r.includes("paper.pdf"))).toContain("焼結ノート");
+  });
+
+  it("種別は拡張子から推定し、版・検証は空欄になる", () => {
+    const { container } = renderAssetTable();
+    const pdfRow = Array.from(container.querySelectorAll("tbody tr")).find((tr) =>
+      tr.textContent?.includes("paper.pdf"),
+    )!;
+    const cells = Array.from(pdfRow.querySelectorAll("td")).map((td) => td.textContent);
+    expect(cells).toContain(t("asset.type.pdf"));
+    // 版（v1 など）は付かず、ダッシュのまま
+    expect(pdfRow.textContent).not.toContain("v1");
+  });
+
+  it("素材タブでもフォルダ列が出て、blob 行は親ノートのフォルダを表示する", () => {
+    const { container } = renderAssetTable();
+    const headers = Array.from(container.querySelectorAll("th"));
+    expect(headers.some((th) => th.textContent?.includes(t("nav.noteContexts")))).toBe(true);
+    const spectrumRow = Array.from(container.querySelectorAll("tbody tr")).find((tr) =>
+      tr.textContent?.includes("spectrum.png"),
+    )!;
+    expect(spectrumRow.textContent).toContain("卒論/焼結");
+  });
+
+  it("検索は blob 行にも効く", () => {
+    const { container } = renderAssetTable();
+    const search = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "spectrum" } });
+    const rows = rowTexts(container);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain("spectrum.png");
+  });
+
+  it("種別フィルタは blob 行にも効く", () => {
+    const { container } = renderAssetTable();
+    const filterBtn = container.querySelector(
+      `button[aria-label="${t("library.filterKind")}"]`,
+    ) as HTMLButtonElement;
+    fireEvent.click(filterBtn);
+    const options = Array.from(
+      document.body.querySelectorAll('button[role="menuitemcheckbox"]'),
+    ) as HTMLElement[];
+    const pdfOption = options.find((o) => o.textContent?.includes(t("asset.type.pdf")))!;
+    expect(pdfOption).toBeTruthy();
+    fireEvent.click(pdfOption);
+    const rows = rowTexts(container);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain("paper.pdf");
+  });
+
+  it("取り込みは onImportBlob に親ノートと BlobRef を渡す", () => {
+    const calls: { parent: string; hash: string }[] = [];
+    const { container } = renderAssetTable({
+      onImportBlob: async (parent, blob) => {
+        calls.push({ parent: parent.id, hash: blob.hash });
+      },
+    });
+    const spectrumRow = Array.from(container.querySelectorAll("tbody tr")).find((tr) =>
+      tr.textContent?.includes("spectrum.png"),
+    )!;
+    const importBtn = spectrumRow.querySelector(
+      `button[aria-label="${t("library.importBlob")}"]`,
+    ) as HTMLButtonElement;
+    expect(importBtn.disabled).toBe(false);
+    fireEvent.click(importBtn);
+    expect(calls).toEqual([{ parent: "p1", hash: "sha256:aaa" }]);
+  });
+
+  it("blob root 未設定（onImportBlob 無し）なら取り込みは無効で理由を出す", () => {
+    const { container } = renderAssetTable();
+    const importBtn = container.querySelector(
+      `button[aria-label="${t("library.importBlob")}"]`,
+    ) as HTMLButtonElement;
+    expect(importBtn.disabled).toBe(true);
+    expect(importBtn.getAttribute("title")).toBe(t("share.noBlobRootPreview"));
+  });
+
+  it("blobParents が無ければ従来どおり共有エントリだけの表になる", () => {
+    const { container } = renderAssetTable({ blobParents: undefined });
+    expect(rowTexts(container)).toHaveLength(1);
+    // 出どころ列は blob 行があるときだけ出す
+    const headers = Array.from(container.querySelectorAll("th"));
+    expect(headers.some((th) => th.textContent?.includes(t("library.col.origins")))).toBe(false);
+  });
+});

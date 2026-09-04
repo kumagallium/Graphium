@@ -10,9 +10,18 @@ import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
 import { notifySharedLibraryChanged, shareMedia, shareReference } from "../sharing";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
+import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
+
+/** lookup 未指定時の空表。毎回新しい Map を作らないよう共有する */
+const EMPTY_NOTE_FOLDER_LOOKUP: NoteFolderLookup = new Map();
 
 export type ShareMediaDialogProps = {
   entry: MediaIndexEntry;
+  /**
+   * ノート id → フォルダ。共有時に「素材ギャラリーが表示している実効フォルダ」を
+   * extra.noteContexts へ載せるために使う。渡されなければフォルダ無しで共有する。
+   */
+  noteFolderLookup?: NoteFolderLookup;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   /** トリガーボタンの className を上書き（既定はパネルアクション色） */
   buttonClassName?: string;
@@ -24,6 +33,7 @@ export type ShareMediaDialogProps = {
  */
 export function ShareMediaDialog({
   entry,
+  noteFolderLookup,
   onSharedRefUpdated,
   buttonClassName,
 }: ShareMediaDialogProps) {
@@ -71,12 +81,15 @@ export function ShareMediaDialog({
       const entryWithRef: MediaIndexEntry = sharedRefState
         ? { ...entry, sharedRef: sharedRefState }
         : entry;
+      // 素材ギャラリーの「フォルダ」と同じ値を共有側にも載せる（AssetGalleryView と同じ引き方）
+      const noteContexts = assetFolderValues(entryWithRef, noteFolderLookup ?? EMPTY_NOTE_FOLDER_LOOKUP);
       const result = isUrlEntry
         ? await shareReference(entryWithRef, {
             sharedRoot,
             author: sharedAuthor,
             title,
             description,
+            noteContexts,
           })
         : await shareMedia(entryWithRef, {
             sharedRoot,
@@ -84,6 +97,7 @@ export function ShareMediaDialog({
             author: sharedAuthor,
             title,
             description,
+            noteContexts,
           });
       if (!result.ok) {
         setError(result.error);
@@ -99,7 +113,7 @@ export function ShareMediaDialog({
     } finally {
       setBusy(false);
     }
-  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, sharedRefState, title, description, onSharedRefUpdated]);
+  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, sharedRefState, title, description, onSharedRefUpdated]);
 
   return (
     <>

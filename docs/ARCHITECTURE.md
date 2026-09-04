@@ -1316,6 +1316,18 @@ Key pieces:
   media is uploaded as `shared-blob:` references; on Fork, those blobs are
   re-materialized into the personal copy
 
+The Library mirrors the personal side's left navigation: alongside
+Notes / Knowledge / Assets it has **Labels** and **Processes** tabs
+that reuse the personal `LabelGalleryView` / `ProcessGalleryView`
+components as-is. Since a shared entry is a manifest, not a body,
+these tabs are backed by a small local-only cache
+(`src/features/sharing/shared-projection.ts`, DATA_MODEL.md §7.6) built
+by riding the existing body-read path (the lexical sync lane) instead
+of fetching notes just to list them. The Assets tab similarly surfaces
+images and files embedded in shared notes (`SharedEntry.extra.blobs`)
+as read-only rows — open the parent note, or copy the file into your
+own materials.
+
 Today the shared backend is a local folder. Other backends (cloud
 buckets, S3, IPFS-style) can be added by implementing the same blob
 interface.

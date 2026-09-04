@@ -43,6 +43,14 @@ import {
 } from "./shared-library-store";
 import { buildSharedCitationLink } from "./citation-link";
 import {
+  buildSharedProcessIndex,
+  countProjectedLabelNotes,
+  countProjectedProcessNotes,
+  useSharedProjection,
+} from "./shared-projection";
+import { SharedLabelsTab } from "./SharedLabelsTab";
+import { ProcessGalleryView } from "../network-graph/ProcessGalleryView";
+import {
   collectSharedBlobHashes,
   rewriteSharedBlobUrls,
 } from "./materialize-blobs";
@@ -89,6 +97,11 @@ type Props = {
   loadEntries?: (root: string) => Promise<SharedLibraryLoadResult>;
   /** 初期表示タブ（既定 "note"） */
   initialTab?: SharedLibraryTab;
+  /**
+   * 共有ノート内の画像・ファイル（extra.blobs）を自分の素材として取り込む。
+   * blob root 未設定などで取り込めない環境では未指定にする（操作を出さない）。
+   */
+  onImportBlob?: (parent: SharedEntry, blob: BlobRef) => Promise<void>;
 };
 
 // 共有導線（Share ボタン）が実装されている type のみ表示タブに出す。
@@ -99,6 +112,11 @@ const TAB_ORDER: { tab: SharedLibraryTab; labelKey: string; types: SharedEntryTy
   { tab: "note", labelKey: "library.tab.note", types: ["note"] },
   { tab: "knowledge", labelKey: "library.tab.knowledge", types: ["knowledge"] },
   { tab: "asset", labelKey: "library.tab.asset", types: ["reference", "data-manifest"] },
+  // ラベル / プロセスは共有ノートの投影から描くタブ。エントリ種別を持たないので
+  // types は空にする（entriesByTab / activeErrors の対象外になる）。
+  // 並びは個人側の左ナビ（素材 → ラベル → プロセス）の鏡にする。
+  { tab: "labels", labelKey: "library.tab.labels", types: [] },
+  { tab: "process", labelKey: "library.tab.process", types: [] },
 ];
 
 function typeToTab(type: SharedEntryType): SharedLibraryTab | null {
@@ -140,6 +158,7 @@ export function SharedLibraryView({
   onFocusConsumed,
   loadEntries,
   initialTab = "note",
+  onImportBlob,
 }: Props) {
   const uiT = useT();
   const [activeTab, setActiveTab] = useState<SharedLibraryTab>(initialTab);
@@ -233,13 +252,59 @@ export function SharedLibraryView({
     return out;
   }, [entriesByType]);
 
+  // ラベル / プロセスは共有ノートの本文から投影した結果を見る（表の行ではない）
+  const projection = useSharedProjection();
+  const sharedNoteIds = useMemo(() => entriesByTab.note.map((e) => e.id), [entriesByTab]);
+
+  // プロセスタブに渡す ProcessIndex。毎レンダーで作り直すと ProcessGalleryView 内の
+  // フローが作り直されて重いので、投影が変わったときだけ組み立てる
+  const sharedProcessIndex = useMemo(() => buildSharedProcessIndex(projection), [projection]);
+
+  // ラベル / プロセスの行から「ノートを開く」= 一覧の詳細パネルで開く。
+  // 共有ノートは個人のノートとして開けないので、遷移先はここになる
+  const openSharedNote = useCallback(
+    (sharedId: string) => {
+      const hit = entriesByTab.note.find((e) => e.id === sharedId);
+      if (hit) setSelected(hit);
+    },
+    [entriesByTab],
+  );
+
+  // プロセスの「派生」は共有ノートの fork に倒す（fork 先は自分のノート）。
+  // onForkNote は新ノート id を返さないが、null を返すと ProcessGalleryView が
+  // 失敗表示になってしまうため、成功の印として共有 id を返す
+  // （戻り値は成否判定にしか使われない。失敗は onForkNote が throw して伝える
+  //  ＝ ProcessGalleryView 側の catch が失敗表示にする）
+  const forkProcessNote = useCallback(
+    async (sharedId: string): Promise<string | null> => {
+      await onForkNote(sharedId);
+      return sharedId;
+    },
+    [onForkNote],
+  );
+
   const counts = useMemo(() => {
     const out = {} as Record<SharedLibraryTab, number>;
     for (const { tab } of TAB_ORDER) {
       out[tab] = entriesByTab[tab].length;
     }
+    // 件数の意味が他タブと違う: ラベルを持つ共有ノート数 / 手順を持つ共有ノート数。
+    // まだ本文を読めていないノートは 0 に見える（読めた分だけ増えていく）
+    out.labels = countProjectedLabelNotes(projection, sharedNoteIds);
+    out.process = countProjectedProcessNotes(projection, sharedNoteIds);
     return out;
-  }, [entriesByTab]);
+  }, [entriesByTab, projection, sharedNoteIds]);
+
+  // 素材タブに仮想行として並べる「共有ノート内の画像・ファイル」の親ノート。
+  // 行の組み立ては SharedLibraryTable 側（後続担当）が行う
+  const blobParents = useMemo(
+    () =>
+      entriesByTab.note.filter((entry) => {
+        const blobs = (entry.extra as Record<string, unknown> | undefined)?.blobs;
+        return Array.isArray(blobs) && blobs.length > 0;
+      }),
+    [entriesByTab],
+  );
 
   const verifyHash = useCallback(
     async (entry: SharedEntry) => {
@@ -264,6 +329,9 @@ export function SharedLibraryView({
         } else {
           await onForkNote(entry.id);
         }
+      } catch {
+        // 失敗の通知は fork 側（呼び出し元のハンドラ）が出す。ここで投げ直すと
+        // ボタンの onClick から未処理の rejection になるだけなので握る
       } finally {
         setBusyId(null);
       }
@@ -363,22 +431,59 @@ export function SharedLibraryView({
           </div>
         )}
 
-        <SharedLibraryTable
-          // タブごとに語彙が違う種別フィルタや検索語を持ち越さないよう、タブ切替で表を作り直す
-          key={activeTab}
-          tab={activeTab}
-          entries={activeEntries}
-          currentIdentity={currentIdentity}
-          hashStatus={hashStatus}
-          selectedId={selected?.id ?? null}
-          busyId={busyId}
-          copiedId={copiedId}
-          onSelect={setSelected}
-          onVerifyHash={verifyHash}
-          onCopyCitation={copyCitationLink}
-          onFork={handleFork}
-          onUnshare={handleUnshare}
-        />
+        {activeTab === "labels" ? (
+          <div
+            className="flex-1 min-h-0 flex flex-col overflow-hidden"
+            data-testid="shared-library-tab-labels"
+          >
+            <SharedLabelsTab
+              projection={projection}
+              entries={entriesByTab.note}
+              onNavigateNote={openSharedNote}
+            />
+          </div>
+        ) : activeTab === "process" ? (
+          <div
+            className="flex-1 min-h-0 flex flex-col overflow-hidden"
+            data-testid="shared-library-tab-process"
+          >
+            {sharedProcessIndex.processes.length === 0 ? (
+              // 本文をまだ読めていない間もここに来る（読めた分から増えていく）ので、
+              // 個人側の process.empty ではなく共有側の言い方にする
+              <div className="flex-1 overflow-auto px-6 py-10 text-center text-xs text-muted-foreground">
+                {uiT("library.empty.process")}
+              </div>
+            ) : (
+              <ProcessGalleryView
+                processIndex={sharedProcessIndex}
+                hideBack
+                onBack={onBack}
+                forkLabel={uiT("library.forkToNotes")}
+                onNavigateNote={openSharedNote}
+                onForkProcess={forkProcessNote}
+              />
+            )}
+          </div>
+        ) : (
+          <SharedLibraryTable
+            // タブごとに語彙が違う種別フィルタや検索語を持ち越さないよう、タブ切替で表を作り直す
+            key={activeTab}
+            tab={activeTab}
+            entries={activeEntries}
+            currentIdentity={currentIdentity}
+            hashStatus={hashStatus}
+            selectedId={selected?.id ?? null}
+            busyId={busyId}
+            copiedId={copiedId}
+            onSelect={setSelected}
+            onVerifyHash={verifyHash}
+            onCopyCitation={copyCitationLink}
+            onFork={handleFork}
+            onUnshare={handleUnshare}
+            blobParents={activeTab === "asset" ? blobParents : undefined}
+            onImportBlob={onImportBlob}
+          />
+        )}
       </div>
 
       {/* 詳細パネル（一覧と並置。fixed オーバーレイにしない）。

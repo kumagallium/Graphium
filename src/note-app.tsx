@@ -195,6 +195,8 @@ import {
   type BulkShareTarget,
 } from "./features/sharing";
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
+// 共有ノート内の画像・ファイルを自分の素材に取り込むときの mime 判定（fork の materialize と同じ経路）
+import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-blobs";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
@@ -9475,12 +9477,15 @@ export function NoteApp() {
             focusEntryId={sharedLibraryFocusId}
             onFocusConsumed={() => setSharedLibraryFocusId(null)}
             onForkNote={async (sharedId) => {
+              // 失敗は throw で呼び出し側に伝える。黙って return すると、
+              // プロセスタブの派生ボタン（onForkProcess）が成否を判定できず
+              // 「何も起きていないのに成功したように見える」状態になる
               const root = getSharedRoot();
-              if (!root) return;
+              if (!root) throw new Error("Shared root is not configured.");
               const result = await forkSharedNote(sharedId, { root });
               if (!result.ok) {
                 alert(`Fork failed: ${result.error}`);
-                return;
+                throw new Error(result.error);
               }
               // Phase 2c-2: shared-blob: 参照を自分のローカルメディアに materialize
               let docToSave = result.doc;
@@ -9553,6 +9558,29 @@ export function NoteApp() {
               notifySharedLibraryChanged();
             }}
             onBack={() => { setShowSharedLibrary(false); setShowGlobalGraph(false); router.navigate({ view: "home" }); }}
+            // 共有ノート内の画像・ファイル（extra.blobs）を自分の素材として取り込む。
+            // fork の materialize と同じ経路（blob root から bytes → mime sniff → 自分の MediaProvider）。
+            // blob root 未設定なら undefined を渡し、表側で操作を無効化させる
+            onImportBlob={
+              getBlobRoot()
+                ? async (_parent, blob) => {
+                    const blobRoot = getBlobRoot();
+                    if (!blobRoot) return;
+                    try {
+                      const bytes = await new LocalFolderBlobProvider(blobRoot).get(blob);
+                      const mime = sniffMimeType(bytes);
+                      const filename =
+                        blob.filename ||
+                        `shared-${blob.hash.replace(/[^a-z0-9]/gi, "").slice(0, 12)}.${extensionForMime(mime)}`;
+                      const file = new File([bytes as BlobPart], filename, { type: mime });
+                      await fm.handleUploadMedia(file);
+                      alert(tStatic("library.importBlobDone", { name: filename }));
+                    } catch (e) {
+                      alert(tStatic("library.importBlobFailed", { error: String(e) }));
+                    }
+                  }
+                : undefined
+            }
           />
         ) : showTrash ? (
           <TrashView
