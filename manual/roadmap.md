@@ -1,3 +1,4 @@
+| **v0.54.0** | 2026-09-04 | [The shared library mirrors your own sidebar](/storage-and-sync#browse-and-fork) — Labels and Processes tabs collect what is inside the notes your team shared, images and files embedded in shared notes appear under Assets, and a page can be [shared as a template](/storage-and-sync#share-a-page-as-a-template) and dropped into any note from `/template`. Materials can be shared several at a time. |
 | **v0.53.0** | 2026-09-03 | [Shared notes keep their folder](/storage-and-sync#browse-and-fork) — a note shared with the team carries the folder it was filed in, so the shared library can be filtered and searched by folder, and `⌘K` finds notes by folder name too. Forking leaves that folder behind: it was the author's filing, not yours. |
 # Feature roadmap
 
