@@ -2,7 +2,7 @@
 // 2026-05-22: ラベルフィルタは列ヘッダ filter popup に移行したため、ここからは外した。
 // 単一情報源（列ヘッダ）を維持するため、ツールバー側にラベル選択を残さない。
 
-import { useRef, useState } from "react";
+import { useRef, useState, type Ref } from "react";
 import { useT } from "../../i18n";
 
 export type SortKey =
@@ -38,6 +38,7 @@ export function NoteListToolbar<K extends string = SortKey>({
   searchQuery,
   onSearchChange,
   sortOptions,
+  searchInputRef,
 }: {
   sortKey: K;
   sortDir: SortDirection;
@@ -46,6 +47,8 @@ export function NoteListToolbar<K extends string = SortKey>({
   onSearchChange: (query: string) => void;
   /** 並び替え候補を差し替える（省略時は既定の SORT_KEYS） */
   sortOptions?: { key: K; labelKey: string }[];
+  /** 検索欄に外部からフォーカスを当てるための ref（復元レポートの「ノートを検索する」から使う） */
+  searchInputRef?: Ref<HTMLInputElement>;
 }) {
   const t = useT();
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -89,6 +92,7 @@ export function NoteListToolbar<K extends string = SortKey>({
       {/* テキスト検索 */}
       <div className="flex-1" />
       <input
+        ref={searchInputRef}
         type="text"
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}

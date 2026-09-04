@@ -35,6 +35,7 @@ import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
+import { IntakeReceptacle, type IntakeFile, type IntakeSource } from "../intake";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
@@ -455,6 +456,8 @@ export type AssetGalleryViewProps = {
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
+  /** 投入口の受け皿から直接渡されたファイル群を取り込む（素材が 1 件も無いときの初回受け皿用） */
+  onIntakeFiles?: (files: IntakeFile[], source: IntakeSource) => void;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
@@ -588,6 +591,7 @@ export function AssetGalleryView({
   noteFolderLookup,
   onAddUrlBookmark,
   onUploadMedia,
+  onIntakeFiles,
   onIngestMedia,
   onCreateProvNote,
   onTranslatePdf,
@@ -1551,9 +1555,15 @@ export function AssetGalleryView({
               <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-16">
-              <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
-            </div>
+            onIntakeFiles && mediaIndex && mediaIndex.media.length === 0 ? (
+              <div className="py-10 max-w-[560px] mx-auto">
+                <IntakeReceptacle lead={t("intake.emptyMaterialsLead")} onFilesSelected={onIntakeFiles} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-16">
+                <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
+              </div>
+            )
           ) : viewMode === "gallery" ? (
             // 列数はコンテナ幅に追従（サイドピークが inline で並ぶと自動で減る）。
             // モバイル（overlay 表示）はリフロー不要なので従来どおり 2 列固定

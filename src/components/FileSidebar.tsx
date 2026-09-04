@@ -22,6 +22,8 @@ export type FileSidebarProps = {
   onNewNote: () => void;
   /** Quick Memo ダイアログを開く（思いつきを 1 行で書き留める入口） */
   onNewMemo?: () => void;
+  /** 投入口（既存資料の一括持ち込み）を開く。手元の資料をそのまま入れる入口。 */
+  onOpenIntake?: () => void;
   /** ヘッダーの「戻る」操作（履歴を 1 段戻す）。canGoBack が false のときは非表示。 */
   onBack?: () => void;
   /** 戻れる履歴があるか。 */
@@ -185,6 +187,7 @@ export function FileSidebar({
   onSelect,
   onNewNote,
   onNewMemo,
+  onOpenIntake,
   onBack,
   canGoBack,
   onRefresh,
@@ -363,7 +366,9 @@ export function FileSidebar({
             ノートに ⌘⇧N を割り当てないのは、ブラウザの「新規シークレットウィンドウ」と衝突して
             preventDefault が効かないため。期待を裏切るより、サイドバーボタン経由に一本化する。
             「メモ=即速度、ノート=じっくり」の非対称さを UI でも素直に表現する。
-            パディングは py-1.5 で抑えて、ロゴが視覚的なトップにくるようにヒエラルキーを保つ。 */}
+            パディングは py-1.5 で抑えて、ロゴが視覚的なトップにくるようにヒエラルキーを保つ。
+            3 本目（投入口）だけは「作る」ではなく「手元の資料を入れる」動詞。ゼロから書くのでは
+            なく過去資産の再利用から始めるのが初回の推奨導線なので、常設のボタンとして見せる。 */}
         {onNewMemo && (
           <button
             onClick={onNewMemo}
@@ -389,10 +394,19 @@ export function FileSidebar({
         <button
           onClick={onNewNote}
           title={t("sidebar.newNoteTooltip")}
-          className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+          className="w-full text-left rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
         >
           {t("sidebar.newNote")}
         </button>
+        {onOpenIntake && (
+          <button
+            onClick={onOpenIntake}
+            title={t("sidebar.intakeTooltip")}
+            className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+          >
+            {t("sidebar.intake")}
+          </button>
+        )}
       </div>
 
       {/* セクション一覧 — IA 第 2 ラウンド E 案（design.md 2026-09-03）。
