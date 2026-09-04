@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.55.0](https://github.com/kumagallium/Graphium/compare/v0.54.0...v0.55.0) - 2026-09-04
+
+- [feat] Send from your phone into a folder, and align the material peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/832
+
 ## [v0.54.0](https://github.com/kumagallium/Graphium/compare/v0.53.0...v0.54.0) - 2026-09-04
 
 - [docs] Add shared library screenshots to the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/834
