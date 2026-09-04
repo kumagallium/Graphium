@@ -114,6 +114,8 @@ export const en: Record<string, string> = {
   // ── サイドバー ──
   "sidebar.newNote": "+ Note",
   "sidebar.newNoteTooltip": "Open a new note",
+  "sidebar.intake": "Bring in files",
+  "sidebar.intakeTooltip": "Bring in Markdown, PDF, Word, images and CSV you already have",
   "sidebar.newMemo": "+ Memo",
   "sidebar.newMemoTooltip": "Capture a quick memo (⌘+⇧+M)",
   "sidebar.provTemplate": "+ PROV Template",
@@ -1834,6 +1836,8 @@ export const en: Record<string, string> = {
   // ── Onboarding / Empty note guide ──
   "onboarding.guide.aria": "Empty note tips",
   "onboarding.guide.lead": "Start writing, or try one of these:",
+  "onboarding.chip.intake.label": "Bring in files",
+  "onboarding.chip.intake.desc": "Drop a folder of Markdown, PDF or CSV. Markdown becomes notes, the rest become materials",
   "onboarding.chip.cmdk.label": "Ask AI",
   "onboarding.chip.cmdk.desc": "Ask AI about your note, or insert its answer",
   "onboarding.chip.at.label": "Link a note",
@@ -2037,6 +2041,10 @@ export const en: Record<string, string> = {
   "intake.askAi": "Ask AI",
   "intake.setupAi": "Set up AI",
   "intake.setupAiHint": "Add a model in Settings to ask questions about what came in.",
+  "intake.skipped": "{count} skipped (types Graphium doesn't take)",
+  "intake.dropOverlay": "Drop to bring in",
+  "intake.emptyNotesLead": "No notes yet. Start with what you already have.",
+  "intake.emptyMaterialsLead": "No materials yet. Drop in the PDFs, images and data you already have.",
 
   // 素材ビューア・抽出
   "asset.docxNoImages": "No image objects could be extracted from this Word file.",

@@ -114,6 +114,8 @@ export const ja: Record<string, string> = {
   // ── サイドバー ──
   "sidebar.newNote": "+ ノート",
   "sidebar.newNoteTooltip": "新規ノートを開く",
+  "sidebar.intake": "資料を入れる",
+  "sidebar.intakeTooltip": "手元の Markdown・PDF・Word・画像・CSV をまとめて入れる",
   "sidebar.newMemo": "+ メモ",
   "sidebar.newMemoTooltip": "メモをすばやく書き留める（⌘+⇧+M）",
   "sidebar.provTemplate": "+ PROV テンプレート",
@@ -1832,6 +1834,8 @@ export const ja: Record<string, string> = {
   // ── オンボーディング / 空ノート予示 ──
   "onboarding.guide.aria": "空のノートのヒント",
   "onboarding.guide.lead": "まずは普通に書いてみてください。以下でも始められます:",
+  "onboarding.chip.intake.label": "手元の資料を入れる",
+  "onboarding.chip.intake.desc": "Markdown・PDF・CSV のフォルダをまとめて。Markdown はノートに、他は素材になります",
   "onboarding.chip.cmdk.label": "AI に頼む",
   "onboarding.chip.cmdk.desc": "AI に質問して、答えをノートに挿入",
   "onboarding.chip.at.label": "ノートを繋ぐ",
@@ -2035,6 +2039,10 @@ export const ja: Record<string, string> = {
   "intake.askAi": "AI に聞く",
   "intake.setupAi": "AI を設定する",
   "intake.setupAiHint": "設定でモデルを登録すると、入れたものについて聞けます",
+  "intake.skipped": "{count} 件は対象外の種類なので入れていません",
+  "intake.dropOverlay": "ここに落として入れる",
+  "intake.emptyNotesLead": "まだノートがありません。手元の資料から始めませんか",
+  "intake.emptyMaterialsLead": "まだ素材がありません。手元の PDF・画像・データを入れてみませんか",
 
   // 素材ビューア・抽出
   "asset.docxNoImages": "この Word からは画像オブジェクトを取り出せませんでした。",
