@@ -83,3 +83,42 @@ describe("runIntake", () => {
     expect(outcome.materials).toBe(1);
   });
 });
+
+describe("runIntake の堅牢性", () => {
+  it("importMarkdown が丸ごと throw しても notes 全件を失敗にして素材登録まで進む", async () => {
+    const files = [mdFile("a.md"), mdFile("b.md"), pdfFile("c.pdf")];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const deps = makeDeps({
+      importMarkdown: vi.fn(async () => {
+        throw new Error("storage unavailable");
+      }),
+    });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(outcome.notes).toBe(0);
+    expect(outcome.failed).toEqual(["a.md", "b.md"]);
+    expect(outcome.materials).toBe(1);
+    expect(deps.uploadAsset).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("notes が 0 件なら importMarkdown を呼ばない", async () => {
+    const deps = makeDeps();
+    const outcome = await runIntake([pdfFile("c.pdf")], deps, () => {});
+    expect(deps.importMarkdown).not.toHaveBeenCalled();
+    expect(outcome.materials).toBe(1);
+  });
+
+  it("afterRun が throw しても結果は返る", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const deps = makeDeps({
+      afterRun: async () => {
+        throw new Error("refresh failed");
+      },
+    });
+    const outcome = await runIntake([mdFile("a.md")], deps, () => {});
+    expect(outcome.notes).toBe(1);
+    warn.mockRestore();
+  });
+});

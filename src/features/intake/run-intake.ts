@@ -51,10 +51,26 @@ export async function runIntake(
   const total = notes.length + materials.length;
   const failed: string[] = [];
 
-  // notes: importMarkdown 側の進捗（0..notes.length）をそのまま全体の done として流す
-  const markdownResult = await deps.importMarkdown(notes, (p) => {
-    onProgress({ done: p.done, total, current: p.current, failed: [...failed, ...p.failed] });
-  });
+  // notes: importMarkdown 側の進捗（0..notes.length）をそのまま全体の done として流す。
+  // 実装側が丸ごと throw しても（保存先が開けない等）素材の登録まで止めない。
+  // その場合は notes 全件を失敗扱いにして先へ進む
+  let markdownResult: MarkdownImportResult = {
+    created: 0,
+    linksResolved: 0,
+    linksUnresolved: 0,
+    failed: [],
+    lastNewId: null,
+  };
+  if (notes.length > 0) {
+    try {
+      markdownResult = await deps.importMarkdown(notes, (p) => {
+        onProgress({ done: p.done, total, current: p.current, failed: [...failed, ...p.failed] });
+      });
+    } catch (err) {
+      console.warn("[intake] Markdown の取り込みが途中で失敗:", err);
+      markdownResult = { ...markdownResult, failed: notes.map((n) => n.file.name) };
+    }
+  }
   failed.push(...markdownResult.failed);
 
   // materials: 1 件ずつアップロード。失敗しても続行する
@@ -73,8 +89,13 @@ export async function runIntake(
   }
   onProgress({ done: total, total, failed });
 
+  // 後処理（一覧の再読込など）が失敗しても、入ったものは入っているので結果は返す
   if (deps.afterRun) {
-    await deps.afterRun();
+    try {
+      await deps.afterRun();
+    } catch (err) {
+      console.warn("[intake] 取り込み後の処理に失敗:", err);
+    }
   }
 
   return {

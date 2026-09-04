@@ -20,6 +20,14 @@ function defaultShouldIgnore(target: EventTarget | null): boolean {
   return target.closest(DEFAULT_IGNORE_SELECTOR) !== null;
 }
 
+// モーダルの中でも受け皿の外（見出しやフッター）に落とされたファイルは、
+// 誰も受け取らないとブラウザがそのファイルを開いてしまう。取り込みはしないが
+// 既定動作だけ止める（受け皿の上は受け皿自身が処理する）
+function shouldSwallow(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return target.closest("[data-modal-portal]") !== null && target.closest("[data-intake-drop]") === null;
+}
+
 function hasFiles(dt: DataTransfer | null): boolean {
   if (!dt) return false;
   return Array.from(dt.types).includes("Files");
@@ -56,6 +64,10 @@ export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore }: UseGlobalF
 
     const onDragOver = (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer)) return;
+      if (shouldSwallow(e.target)) {
+        e.preventDefault();
+        return;
+      }
       if (shouldIgnoreRef.current(e.target)) return;
       // ここで preventDefault しないとブラウザがファイルをそのまま開いてしまう
       e.preventDefault();
@@ -70,6 +82,12 @@ export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore }: UseGlobalF
 
     const onDrop = (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer)) return;
+      if (shouldSwallow(e.target)) {
+        e.preventDefault();
+        depth = 0;
+        setDragActive(false);
+        return;
+      }
       if (shouldIgnoreRef.current(e.target)) return;
       e.preventDefault();
       depth = 0;

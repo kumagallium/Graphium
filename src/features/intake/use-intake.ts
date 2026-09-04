@@ -33,6 +33,11 @@ export function useIntake(deps: IntakeDeps & { aiAvailable: boolean }) {
       console.warn("[intake] 実行中の再入は無視しました");
       return;
     }
+    // 空のドロップ（フォルダの中身が読めなかった等）は受け皿を開くだけにする
+    if (files.length === 0) {
+      setOpen(true);
+      return;
+    }
     runningRef.current = true;
     setOpen(true);
     setState({ kind: "running", done: 0, total: files.length, failed: [] });
@@ -52,6 +57,13 @@ export function useIntake(deps: IntakeDeps & { aiAvailable: boolean }) {
         skipped: outcome.skipped,
         aiAvailable: depsRef.current.aiAvailable,
       });
+      // 進行中に × で閉じられていても、結果（復元レポート）は必ず見せる
+      setOpen(true);
+    } catch (err) {
+      // runIntake は内部で失敗を吸収するのでここには来ないはずだが、
+      // 来たときに running のまま固まらないよう受け皿に戻す
+      console.error("[intake] 取り込みが失敗しました:", err);
+      setState({ kind: "idle" });
     } finally {
       runningRef.current = false;
     }
