@@ -431,3 +431,165 @@ export const ProposedProcessEmpty: Story = {
   args: { ...baseArgs, initialTab: "process" },
   decorators: emptyProjectionDecorators,
 };
+
+// マニュアル用スクショ撮影ストーリー（英語 UI・パン作りの世界観）
+// currentIdentity は指導役 Mia Tanaka、ノートは学生役 Ken Sato / Hana Ito と Mia の混在
+
+const MANUAL_MENTOR = { name: "Mia Tanaka", email: "mia@example.org" };
+const MANUAL_STUDENT_A = { name: "Ken Sato", email: "ken@example.org" };
+const MANUAL_STUDENT_B = { name: "Hana Ito", email: "hana@example.org" };
+
+const MANUAL_NOTES: SharedEntry[] = [
+  makeEntry({
+    id: "manual-note-1",
+    type: "note",
+    author: MANUAL_STUDENT_A,
+    updated_at: daysAgo(0.1),
+    extra: { title: "Sourdough starter log — day 3", noteContexts: ["Sourdough/Starter"] },
+  }),
+  makeEntry({
+    id: "manual-note-2",
+    type: "note",
+    author: MANUAL_STUDENT_B,
+    updated_at: daysAgo(0.3),
+    version: 2,
+    extra: { title: "Oven calibration for the deck oven", noteContexts: ["Shared/Equipment"] },
+  }),
+  makeEntry({
+    id: "manual-note-3",
+    type: "note",
+    author: MANUAL_MENTOR,
+    updated_at: daysAgo(1),
+    extra: { title: "Weekend bake schedule", noteContexts: ["Baguette"] },
+  }),
+  makeEntry({
+    id: "manual-note-4",
+    type: "note",
+    author: MANUAL_STUDENT_A,
+    updated_at: daysAgo(2),
+    extra: { title: "Baguette shaping notes", noteContexts: ["Baguette"] },
+  }),
+  makeEntry({
+    id: "manual-note-5",
+    type: "note",
+    author: MANUAL_MENTOR,
+    updated_at: daysAgo(4),
+    extra: { title: "Recipe card template" },
+  }),
+];
+
+const MANUAL_KNOWLEDGE: SharedEntry[] = [
+  makeEntry({
+    id: "manual-knowledge-1",
+    type: "knowledge",
+    author: MANUAL_STUDENT_B,
+    updated_at: daysAgo(1.5),
+    extra: { title: "Hydration and crumb structure", wikiKind: "summary" },
+  }),
+  makeEntry({
+    id: "manual-knowledge-2",
+    type: "knowledge",
+    author: MANUAL_MENTOR,
+    updated_at: daysAgo(5),
+    extra: { title: "Ideal proofing temperature range", wikiKind: "atom" },
+  }),
+];
+
+const MANUAL_REFERENCES: SharedEntry[] = [
+  makeEntry({
+    id: "manual-ref-1",
+    type: "reference",
+    author: MANUAL_STUDENT_A,
+    updated_at: daysAgo(3),
+    extra: {
+      title: "The Chemistry of Sourdough Fermentation",
+      url: "https://example.org/articles/sourdough-fermentation",
+      domain: "example.org",
+      description: "Background reading on wild yeast and lactic acid bacteria",
+    },
+  }),
+  makeEntry({
+    id: "manual-ref-2",
+    type: "reference",
+    author: MANUAL_MENTOR,
+    updated_at: daysAgo(7),
+    extra: {
+      title: "Deck Oven Operating Manual",
+      url: "https://example.org/manuals/deck-oven",
+      domain: "example.org",
+    },
+  }),
+];
+
+const MANUAL_DATA_MANIFESTS: SharedEntry[] = [
+  makeEntry({
+    id: "manual-data-1",
+    type: "data-manifest",
+    author: MANUAL_STUDENT_B,
+    updated_at: daysAgo(0.4),
+    extra: {
+      title: "Crumb cross-section photo",
+      media_type: "image",
+      mime_type: "image/png",
+      original_filename: "crumb_cross_section.png",
+    },
+  }),
+  makeEntry({
+    id: "manual-data-2",
+    type: "data-manifest",
+    author: MANUAL_STUDENT_A,
+    updated_at: daysAgo(1.5),
+    extra: {
+      title: "Bake log sheet (week 1–3)",
+      media_type: "pdf",
+      mime_type: "application/pdf",
+      original_filename: "bake_log.pdf",
+    },
+  }),
+  makeEntry({
+    id: "manual-data-3",
+    type: "data-manifest",
+    author: MANUAL_MENTOR,
+    updated_at: daysAgo(8),
+    extra: {
+      title: "Oven temperature readings (CSV)",
+      media_type: "data",
+      mime_type: "text/csv",
+      original_filename: "oven_temps.csv",
+    },
+  }),
+];
+
+const MANUAL_ENTRIES = {
+  entries: {
+    note: MANUAL_NOTES,
+    knowledge: MANUAL_KNOWLEDGE,
+    reference: MANUAL_REFERENCES,
+    "data-manifest": MANUAL_DATA_MANIFESTS,
+    template: [],
+    report: [],
+  },
+  errors: {},
+};
+
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  args: {
+    ...baseArgs,
+    sharedRoot: "/Users/mia/shared-bakery",
+    currentIdentity: MANUAL_MENTOR,
+    loadEntries: async () => MANUAL_ENTRIES,
+  },
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+};
