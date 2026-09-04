@@ -22,10 +22,20 @@ import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
 import { notifySharedLibraryChanged, shareMedia, shareReference } from "../sharing";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { isWordDocxEntry } from "./media-index";
+import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
+
+/** lookup 未指定時の空表。毎回新しい Map を作らないよう共有する */
+const EMPTY_NOTE_FOLDER_LOOKUP: NoteFolderLookup = new Map();
 
 export type MaterialActionsMenuProps = {
   entry: MediaIndexEntry;
+  /**
+   * ノート id → フォルダ。共有時に「素材ギャラリーが表示している実効フォルダ」を
+   * extra.noteContexts へ載せるために使う（自分で付けた分 ∪ 貼ったノート由来）。
+   * 渡されなければフォルダ無しで共有する（表のフォルダ列が空欄になるだけ）。
+   */
+  noteFolderLookup?: NoteFolderLookup;
   onIngest?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
   /** PDF / URL を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する */
@@ -50,6 +60,7 @@ export type MaterialActionsMenuProps = {
 
 export function MaterialActionsMenu({
   entry,
+  noteFolderLookup,
   onIngest,
   onCreateProvNote,
   onTranslatePdf,
@@ -120,9 +131,11 @@ export function MaterialActionsMenu({
     setShareBusy(true);
     setShareError(null);
     try {
+      // 素材ギャラリーの「フォルダ」と同じ値を共有側にも載せる（AssetGalleryView と同じ引き方）
+      const noteContexts = assetFolderValues(entry, noteFolderLookup ?? EMPTY_NOTE_FOLDER_LOOKUP);
       const result = isUrlEntry
-        ? await shareReference(entry, { sharedRoot, author: sharedAuthor, title: entry.name, description: "" })
-        : await shareMedia(entry, { sharedRoot, blobRoot: blobRoot!, author: sharedAuthor, title: entry.name, description: "" });
+        ? await shareReference(entry, { sharedRoot, author: sharedAuthor, title: entry.name, description: "", noteContexts })
+        : await shareMedia(entry, { sharedRoot, blobRoot: blobRoot!, author: sharedAuthor, title: entry.name, description: "", noteContexts });
       if (!result.ok) {
         setShareError(result.error);
         return;
@@ -133,7 +146,7 @@ export function MaterialActionsMenu({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, onSharedRefUpdated]);
+  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, onSharedRefUpdated]);
 
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";

@@ -100,6 +100,22 @@ describe("shareNote — first share", () => {
     await shareNote(original, { root: "/tmp/shared", author });
     expect(original.sharedRef).toBeUndefined();
   });
+
+  it("共有した時点のフォルダが extra.noteContexts に載る", async () => {
+    const r = await shareNote(makeDoc({ noteContexts: ["卒論/焼結", "共通/装置"] }), {
+      root: "/tmp/shared",
+      author,
+    });
+    expect(r.ok).toBe(true);
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.noteContexts).toEqual(["卒論/焼結", "共通/装置"]);
+  });
+
+  it("フォルダ未設定のノートでも空配列が入る（列は「—」表示になる）", async () => {
+    await shareNote(makeDoc(), { root: "/tmp/shared", author });
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.noteContexts).toEqual([]);
+  });
 });
 
 describe("shareNote — re-share (update)", () => {
@@ -119,6 +135,22 @@ describe("shareNote — re-share (update)", () => {
     expect(updated.doc.sharedRef!.id).toBe(first.doc.sharedRef!.id);
     // hash は内容変更により変わる
     expect(updated.doc.sharedRef!.hash).not.toBe(first.doc.sharedRef!.hash);
+  });
+
+  it("再共有でフォルダが上書きされる", async () => {
+    const first = await shareNote(makeDoc({ noteContexts: ["旧フォルダ"] }), {
+      root: "/tmp/shared",
+      author,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const updated = await shareNote(
+      { ...first.doc, noteContexts: ["新フォルダ"] },
+      { root: "/tmp/shared", author },
+    );
+    expect(updated.ok).toBe(true);
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.noteContexts).toEqual(["新フォルダ"]);
   });
 });
 

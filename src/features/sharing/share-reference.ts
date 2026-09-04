@@ -29,6 +29,12 @@ export type ShareReferenceOptions = {
   title?: string;
   /** ユーザーが入力した説明（任意。urlMeta.description より優先） */
   description?: string;
+  /**
+   * 共有した時点の実効フォルダ（素材ギャラリーが表示しているもの ＝
+   * 自分で付けた分 ∪ 貼ったノート由来）。ノート共有の extra.noteContexts と同型で、
+   * 共有ライブラリの表でも同じ「フォルダ」列で絞り込めるようにする（鏡の原則）。
+   */
+  noteContexts?: string[];
 };
 
 export type ShareReferenceResult =
@@ -90,6 +96,8 @@ export async function shareReference(
         url: entry.url,
         domain: entry.urlMeta?.domain ?? null,
         description: description ?? null,
+        // 再共有も同じ経路を通るので、共有側のフォルダは常に上書きされる
+        noteContexts: options.noteContexts ?? [],
       },
     };
 

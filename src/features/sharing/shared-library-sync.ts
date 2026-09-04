@@ -9,6 +9,9 @@
 // - スイッチ OFF・共有ルート未設定なら desired を空にして reconcile する。
 //   索引から共有分だけが消える（旧ルートの残留もこれで掃除される）
 //
+// ラベル・プロセスの投影（shared-projection）は上のスイッチとは独立に更新する。
+// ON なら loader が本文を読んだついでに、OFF なら reconcile のあとに差分だけ読んで投影する。
+//
 // reconcile のあとに共有ナレッジの埋め込み（shared-embeddings）も同じ入口から揃える。
 // 索引も埋め込みも手元（IndexedDB）にしか作らない。共有フォルダには一切書かない。
 
@@ -29,7 +32,13 @@ import {
   refreshSharedLibrary,
   useSharedLibrary,
 } from "./shared-library-store";
-import { sharedEntryToSourceInput } from "./shared-entry-source";
+import { parseSharedBody, sharedEntryToSourceInput } from "./shared-entry-source";
+import {
+  getSharedProjection,
+  loadSharedProjection,
+  pruneSharedProjection,
+  recordSharedProjectionFromBody,
+} from "./shared-projection";
 import { syncSharedKnowledgeEmbeddings } from "./shared-embeddings";
 
 /** 共有ストアが動いてから reconcile を走らせるまでの待ち（連続した共有操作を 1 回にまとめる） */
@@ -41,6 +50,34 @@ export type SharedLibrarySyncParams = {
   /** 無効化したいとき（Storybook 等） */
   disabled?: boolean;
 };
+
+/**
+ * ラベル・プロセスの投影だけを更新する（語彙索引には入れない）。
+ *
+ * 検索/AI のスイッチが OFF でも Library のタブが埋まるようにするための経路。
+ * - 対象は type === "note" だけ（投影の対象がノートのみ）
+ * - 投影済みの hash と一致するものは読まない ＝ 差分だけ本文を取りに行く
+ * - readSharedEntryBody は LRU つきなので 1 件ずつ順に読む（共有フォルダへの
+ *   同時アクセスを増やさない）。中断されたら次の本文を取りに行かない
+ */
+async function projectSharedNotes(
+  entries: SharedEntry[],
+  isCancelled: () => boolean,
+): Promise<void> {
+  for (const entry of entries) {
+    if (isCancelled()) return;
+    if (entry.type !== "note") continue;
+    if (getSharedProjection().entries[entry.id]?.hash === entry.hash) continue;
+    try {
+      const { body, verified } = await readSharedEntryBody(entry);
+      if (isCancelled()) return;
+      if (!verified) continue;
+      recordSharedProjectionFromBody(entry, body, verified, parseSharedBody(body));
+    } catch {
+      // 読めなかった（消された・権限なし）→ 投影は前回のまま。掃除は prune に任せる
+    }
+  }
+}
 
 export function useSharedLibrarySync(params: SharedLibrarySyncParams): void {
   const { authenticated, disabled } = params;
@@ -55,6 +92,9 @@ export function useSharedLibrarySync(params: SharedLibrarySyncParams): void {
   useEffect(() => {
     if (disabled || !authenticated) return;
     void refreshSharedLibrary();
+    // ラベル・プロセスの投影も手元の控えから先に戻す。版が合わなければ捨てられ、
+    // 本文を読み直したときに投影し直される（再構築可能なキャッシュ）
+    void loadSharedProjection();
   }, [disabled, authenticated]);
 
   // 2. スナップショット / スイッチの変化に追従して索引を合わせる。
@@ -87,7 +127,16 @@ export function useSharedLibrarySync(params: SharedLibrarySyncParams): void {
         if (!entry) return null;
         try {
           const { body, verified } = await readSharedEntryBody(entry);
-          return sharedEntryToSourceInput(entry, body, verified);
+          // 本文の JSON.parse は本文が大きいほど効く。投影と語彙索引がそれぞれ
+          // 同じ body をパースしないよう、ここで 1 回だけ読んで両方に配る。
+          // 本文の中身を見ない経路（reference / data-manifest、hash 不一致）は
+          // どちらも doc を使わないのでパース自体を省く。
+          const needsDoc = verified && (entry.type === "note" || entry.type === "knowledge");
+          const parsed = needsDoc ? parseSharedBody(body) : null;
+          // 本文を読んだこの場でラベル・プロセスも投影する。新しい読み取りは足さない
+          //（hash が同じなら投影側でスキップされる）
+          recordSharedProjectionFromBody(entry, body, verified, parsed);
+          return sharedEntryToSourceInput(entry, body, verified, parsed);
         } catch {
           // 読めなかった（消された・権限なし）→ 索引から外す
           return null;
@@ -99,6 +148,19 @@ export function useSharedLibrarySync(params: SharedLibrarySyncParams): void {
       // LRU キャッシュから読めるので二度読みにならない）。OFF なら entries が
       // 空なので、消えた分の掃除だけが走る
       await syncSharedKnowledgeEmbeddings(entries, readSharedEntryBody);
+      if (cancelled) return;
+      // スイッチ OFF のときは上の reconcile が空一覧なので本文が一切読まれない。
+      // ラベル・プロセスのタブは「共有すれば自動で集まる」と案内している以上、
+      // 検索/AI のスイッチとは切り離して投影だけは更新する。
+      // ON のときは loader 側で投影済みなので、ここは通らない（本文の二度読みを避ける）
+      if (!aiEnabled) {
+        await projectSharedNotes(entriesRef.current, () => cancelled);
+        if (cancelled) return;
+      }
+      // 共有から消えた id の投影を落とす。掃除の基準は「いま共有フォルダにあるもの」
+      // なので、AI スイッチ OFF で reconcile 対象が空になっただけのときに
+      // 投影まで消さないよう、スナップショット側の一覧を使う
+      pruneSharedProjection(entriesRef.current.map((e) => e.id));
     }, SHARED_RECONCILE_DEBOUNCE_MS);
     return () => {
       cancelled = true;

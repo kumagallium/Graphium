@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2 } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext } from "../note-context/context-tags";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
@@ -478,6 +478,12 @@ export type AssetGalleryViewProps = {
    */
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: import("./media-index").MediaSharedRef) => Promise<void> | void;
   /**
+   * 選択した素材をまとめてチームに共有する（ノート一覧の一括共有と同じ動線）。
+   * デスクトップ・共有ルート・名前が揃っているときだけ親から渡される想定で、
+   * 渡されなければ一括バーにボタンを出さない（単体メニュー側の無効化理由表示と役割分担）。
+   */
+  onBulkShare?: (fileIds: string[]) => void;
+  /**
    * PDF アセットの各ページを画像化して画像アセットに登録するアクション。
    * 親側で pdf-image-extractor + handleUploadMedia を組み立てて渡す。
    */
@@ -596,6 +602,7 @@ export function AssetGalleryView({
   renderNotePeek,
   resolveKnowledgeWikiId,
   onSharedRefUpdated,
+  onBulkShare,
   onExtractPdfPages,
   onExtractDocxImages,
   getKnowledgeKind,
@@ -1456,6 +1463,26 @@ export function AssetGalleryView({
               {t("asset.deselectAll")}
             </button>
             <div className="ml-auto flex items-center gap-2">
+              {/* 一括共有は「ノート一覧と同じ導線」（並び順・文言・BulkShareModal）を約束している操作。
+                  見た目だけは同じバーの隣のボタン（塗りつぶし）に合わせる — 1 つだけ枠線にすると
+                  このバーの中で浮いて見えるため。導線の一貫性は文言と挙動で担保する */}
+              {onBulkShare && (
+                <button
+                  onClick={() => {
+                    const ids = [...selectedIds];
+                    // ノート一覧の一括共有と同じ作法。共有はモーダルに引き継ぐので
+                    // ここで選択を解いておく（戻ってきたとき選択が残っていると
+                    // 「もう一度共有される」と誤解される）
+                    setSelectedIds(new Set());
+                    onBulkShare(ids);
+                  }}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                  title={t("share.bulk.title")}
+                >
+                  <Share2 size={12} />
+                  {t("share.bulk.selected", { count: String(selectedIds.size) })}
+                </button>
+              )}
               {onSetMediaContexts && (
                 <button
                   ref={assignBtnRef}

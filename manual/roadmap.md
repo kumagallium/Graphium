@@ -1,3 +1,4 @@
+| **v0.53.0** | 2026-09-03 | [Shared notes keep their folder](/storage-and-sync#browse-and-fork) — a note shared with the team carries the folder it was filed in, so the shared library can be filtered and searched by folder, and `⌘K` finds notes by folder name too. Forking leaves that folder behind: it was the author's filing, not yours. |
 # Feature roadmap
 
 Graphium has shipped small releases since March 2026. This page is the retrospective view: the milestones that changed what you can do, in order, with links into the manual. It is deliberately selective — for every pull request in every release, see the [release history](/release-history).

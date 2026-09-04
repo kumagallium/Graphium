@@ -25,6 +25,7 @@ function entry(partial: Partial<NoteIndexEntry> & { noteId: string; title: strin
     wikiKind: partial.wikiKind,
     author: partial.author,
     model: partial.model,
+    noteContexts: partial.noteContexts,
   };
 }
 
@@ -441,5 +442,49 @@ describe("searchShared()", () => {
   it("returns empty for a missing library", () => {
     expect(searchShared("焼結", null)).toEqual([]);
     expect(searchShared("焼結", [])).toEqual([]);
+  });
+});
+
+describe("フォルダ名でのヒット（reason: folder）", () => {
+  const notes: NoteIndexEntry[] = [
+    entry({ noteId: "n1", title: "無題のメモ", noteContexts: ["卒論/焼結"] }),
+    entry({ noteId: "n2", title: "焼結の記録", noteContexts: ["共通/装置"] }),
+    entry({ noteId: "n3", title: "関係ないノート" }),
+  ];
+
+  it("ノート: タイトルに無くてもフォルダ名で当たる", () => {
+    const hits = searchNotes("卒論", notes);
+    expect(hits.map((h) => h.entry.noteId)).toEqual(["n1"]);
+    expect(hits[0].reasons).toContain("folder");
+  });
+
+  it("ノート: 大文字小文字を無視する", () => {
+    const upper = [entry({ noteId: "n4", title: "x", noteContexts: ["Thesis/Sintering"] })];
+    expect(searchNotes("thesis", upper).map((h) => h.entry.noteId)).toEqual(["n4"]);
+  });
+
+  it("ノート: タイトル一致にもフォルダ一致にも当たれば両方が理由に残る", () => {
+    const hits = searchNotes("焼結", notes);
+    const n1 = hits.find((h) => h.entry.noteId === "n1");
+    expect(n1?.reasons).toEqual(expect.arrayContaining(["folder"]));
+    const n2 = hits.find((h) => h.entry.noteId === "n2");
+    expect(n2?.reasons).toContain("title-prefix");
+    expect(n2?.reasons).not.toContain("folder");
+  });
+
+  const sharedEntries: SharedEntry[] = [
+    shared({ id: "s1", title: "無題の共有ノート" }),
+    shared({ id: "s2", title: "関係ない共有ノート" }),
+  ];
+  const noteContextsOf = (e: SharedEntry) => (e.id === "s1" ? ["卒論/焼結"] : []);
+
+  it("共有: noteContextsOf で渡したフォルダ名で当たる", () => {
+    const hits = searchShared("卒論", sharedEntries, { noteContextsOf });
+    expect(hits.map((h) => h.entry.id)).toEqual(["s1"]);
+    expect(hits[0].reasons).toContain("folder");
+  });
+
+  it("共有: noteContextsOf を渡さなければフォルダでは当たらない", () => {
+    expect(searchShared("卒論", sharedEntries)).toEqual([]);
   });
 });

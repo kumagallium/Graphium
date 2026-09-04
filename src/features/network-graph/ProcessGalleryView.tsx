@@ -28,6 +28,16 @@ export type ProcessGalleryViewProps = {
   onBack: () => void;
   onNavigateNote: (noteId: string) => void;
   onForkProcess: (noteId: string) => Promise<string | null>;
+  /**
+   * 戻るボタンを出さない。呼び出し側が別の切り替え導線を持つとき
+   * （共有ライブラリのプロセスタブ）に使う。既定は従来どおり表示する。
+   */
+  hideBack?: boolean;
+  /**
+   * fork ボタンの文言。共有ライブラリでは「自分のノートに派生」と言い方が変わるので
+   * 差し替えられるようにする。未指定なら従来どおり process.fork。
+   */
+  forkLabel?: string;
 };
 
 type SortKey = "stepCount" | "modifiedAt" | "title";
@@ -46,6 +56,8 @@ export function ProcessGalleryView({
   onBack,
   onNavigateNote,
   onForkProcess,
+  hideBack = false,
+  forkLabel,
 }: ProcessGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -139,12 +151,14 @@ export function ProcessGalleryView({
       {/* 左: 一覧 */}
       <div className="flex flex-col overflow-hidden shrink-0" style={{ width: "44%", minWidth: 340 }}>
         <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
-          <button
-            onClick={onBack}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {t("common.back")}
-          </button>
+          {!hideBack && (
+            <button
+              onClick={onBack}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {t("common.back")}
+            </button>
+          )}
           <span className="text-sm font-semibold text-foreground">{t("process.title")}</span>
           <span className="text-xs text-muted-foreground">
             {t("process.count", { n: String(filtered.length) })}
@@ -205,7 +219,9 @@ export function ProcessGalleryView({
                 className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-border text-foreground hover:bg-surface-hover disabled:opacity-50 disabled:cursor-wait transition-colors"
               >
                 <GitFork size={11} strokeWidth={2.2} />
-                {forkingNoteId === selected.noteId ? t("process.forking") : t("process.fork")}
+                {forkingNoteId === selected.noteId
+                  ? t("process.forking")
+                  : (forkLabel ?? t("process.fork"))}
               </button>
             </div>
             {forkError && (

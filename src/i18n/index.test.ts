@@ -146,6 +146,36 @@ describe("syncLocale() / getLocale()", () => {
   });
 });
 
+// ── 共有テンプレートの失敗文言（en / ja 両方に必要）──
+// 失敗のときだけ出る文言は実機で気づきにくく、片方の辞書に入れ忘れると
+// キーがそのまま画面に出る。両ロケールで訳が引けることをここで担保する。
+
+describe("共有テンプレートから新規ノートを作るときの文言", () => {
+  const keys = [
+    "library.templateNotFound",
+    "library.createFromTemplateFailed",
+    "library.createFromTemplateMediaMissing",
+  ];
+
+  it("en / ja とも訳が引ける（キーがそのまま返らない）", () => {
+    for (const key of keys) {
+      expect(t(key)).not.toBe(key);
+    }
+    syncLocale("ja");
+    for (const key of keys) {
+      expect(t(key)).not.toBe(key);
+    }
+  });
+
+  it("パラメータが置換される", () => {
+    expect(t("library.createFromTemplateFailed", { error: "boom" })).toContain("boom");
+    expect(t("library.createFromTemplateMediaMissing", { count: "2" })).toContain("2");
+    syncLocale("ja");
+    expect(t("library.createFromTemplateFailed", { error: "boom" })).toContain("boom");
+    expect(t("library.createFromTemplateMediaMissing", { count: "2" })).toContain("2");
+  });
+});
+
 // ── detectLocale() の間接テスト ──
 
 describe("detectLocale() の振る舞い（getLocale() 経由で確認）", () => {

@@ -76,6 +76,11 @@ export async function forkSharedNote(
         authorEmail: entry.author?.email ?? "",
         forkedAt: now,
       },
+      // 共有元のフォルダ（noteContexts）は引き継がない。
+      // なぜ: フォルダは共有した人の個人的な整理であって、fork した側の分類ではない。
+      //       引き継ぐと自分のフォルダ一覧に他人の分類が勝手に増える。
+      //       共有時点のフォルダは共有ライブラリの表の「フォルダ」列で参照できる。
+      noteContexts: undefined,
       // ローカル間派生関係は保持しない（ローカル ID は別空間）
       derivedFromNoteId: undefined,
       derivedFromBlockId: undefined,

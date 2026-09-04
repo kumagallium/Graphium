@@ -778,6 +778,22 @@ export type GraphiumDocument = {
     /** ISO-8601 fork 実行日時 */
     forkedAt: string;
   };
+  /**
+   * 共有テンプレートから新規作成されたノートの起源情報。
+   * forkedFrom と同型（sharedId / hash）だが意味が違う: fork は「記録のコピー」で
+   * 派生元の実験記録に紐づくのに対し、templateFrom は「雛形から作った新しい記録」で
+   * 中身の事実は引き継いでいない。PROV 上も別扱いにしたいのでフィールドを分ける。
+   */
+  templateFrom?: {
+    /** 元 SharedEntry.id（type: "template"） */
+    sharedId: string;
+    /** 使用時点の SharedEntry.hash */
+    hash: string;
+    /** 元テンプレートの表示名（extra.title） */
+    title: string;
+    /** ISO-8601 テンプレート適用日時 */
+    usedAt: string;
+  };
   /** Skill メタデータ（source === "skill" の場合のみ） */
   skillMeta?: SkillMeta;
   /**

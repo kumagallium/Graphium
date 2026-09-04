@@ -268,6 +268,7 @@ export function MaterialDetailHeader({
   const actionsMenu = (
     <MaterialActionsMenu
       entry={entry}
+      noteFolderLookup={noteFolderLookup}
       onIngest={onIngest}
       onCreateProvNote={onCreateProvNote}
       onTranslatePdf={onTranslatePdf}

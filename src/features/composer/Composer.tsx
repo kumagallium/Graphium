@@ -52,7 +52,7 @@ import {
 import { collectLexicalHits } from "./lexical-hits";
 import { useLexicalStatus } from "../lexical-search";
 // 共有ライブラリは重い SharedLibraryView を巻き込まないよう、バレルではなくストアを直接引く
-import { useSharedLibrary } from "../sharing/shared-library-store";
+import { getSharedNoteContexts, useSharedLibrary } from "../sharing/shared-library-store";
 import { getSharedRoot, getSharedAiEnabled } from "../../lib/storage/shared/config";
 import { isTauri } from "../../lib/platform";
 import type { SharedEntry } from "../../lib/storage/shared";
@@ -193,8 +193,10 @@ export function Composer(props: ComposerProps) {
     return searchShared(prompt, sharedLibrary.entries, {
       limit: MAX_SHARED_RESULTS,
       sharedHits: sharedTextHits,
+      // 共有時点のフォルダ名でも当てる（手元のノートと同じ理由 "folder"）
+      noteContextsOf: (entry) => getSharedNoteContexts(entry, sharedLibrary),
     });
-  }, [prompt, sharedEnabled, sharedLibrary.entries, sharedTextHits]);
+  }, [prompt, sharedEnabled, sharedLibrary, sharedTextHits]);
 
   // 素材（ファイル名 + OCR で読み取った画像内の文字 + 索引済みテキスト）
   const mediaHits = useMemo(() => {
@@ -691,6 +693,28 @@ type NoteRowProps = {
   onClick: () => void;
 };
 
+/**
+ * 「なぜこの行が出たか」の理由バッジ。今はフォルダ名で当たったときだけ出す
+ * （題名にも本文にも見えない場所で当たっているので、印が無いと結果が不気味になる）。
+ */
+function FolderReasonBadge() {
+  const t = useT();
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        color: "var(--ink-3)",
+        flexShrink: 0,
+        padding: "1px 5px",
+        borderRadius: "var(--r-1)",
+        border: "1px solid var(--rule-2)",
+      }}
+    >
+      {t("nav.noteContexts")}
+    </span>
+  );
+}
+
 function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
   const { entry, titleMatches, bodySnippet } = hit;
   const isWiki = entry.source === "ai";
@@ -753,6 +777,7 @@ function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
           </span>
         )}
       </span>
+      {hit.reasons.includes("folder") && <FolderReasonBadge />}
       {entry.author && (
         <span
           style={{
@@ -865,6 +890,7 @@ function SharedRow({ hit, active, onMouseEnter, onClick, onInsertCitation }: Sha
             </span>
           )}
         </span>
+        {hit.reasons.includes("folder") && <FolderReasonBadge />}
         {authorName && (
           <span
             style={{

@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.54.0](https://github.com/kumagallium/Graphium/compare/v0.53.0...v0.54.0) - 2026-09-04
+
+- [docs] Add shared library screenshots to the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/834
+- [feat] Mirror labels, processes, and note attachments in the shared library by @kumagallium in https://github.com/kumagallium/Graphium/pull/835
+- [feat] Share a page as a team template and reuse it from the library and /template by @kumagallium in https://github.com/kumagallium/Graphium/pull/837
+
+## [v0.53.0](https://github.com/kumagallium/Graphium/compare/v0.52.0...v0.53.0) - 2026-09-03
+
+- [feat] Show and filter shared notes by the folder they were shared from by @kumagallium in https://github.com/kumagallium/Graphium/pull/831
+
 ## [v0.52.0](https://github.com/kumagallium/Graphium/compare/v0.51.2...v0.52.0) - 2026-09-03
 
 - [feat] Show the shared library as a table with search, sort, and filters by @kumagallium in https://github.com/kumagallium/Graphium/pull/825

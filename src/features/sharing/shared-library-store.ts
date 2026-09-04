@@ -15,6 +15,9 @@
 //   - readSharedEntryBody は `id|hash` をキーに小さな LRU で本文を持つ。
 //     語彙索引・埋め込み・プレビューが同じ本文を続けて読むため
 //   - hash が合わなかった id は mismatched に貯める（設定の索引カードで見せる）
+//   - 本文を読んだついでに拾える値（フォルダ）は derived に貯め、localStorage に
+//     残す。一覧は本文を読まずに描くので、読めた分だけ表に出せるようにする
+//     （新しい読み取りは足さない — 語彙索引レーンが読む経路に相乗りする）
 
 import { useSyncExternalStore } from "react";
 import {
@@ -27,6 +30,10 @@ import {
 import { computeSharedEntryHash } from "../../lib/storage/shared/hash";
 import { isTauri } from "../../lib/platform";
 import { loadAllSharedEntries, type SharedLibraryLoadResult } from "./shared-library-loader";
+import { extractSharedDerivedMeta, type SharedDerivedMeta } from "./shared-entry-source";
+
+/** 本文由来のメタを id ごとに覚えたもの。hash はそれを読んだときのエントリの hash */
+export type SharedDerivedMetaMap = Record<string, SharedDerivedMeta & { hash: string }>;
 
 export type SharedLibrarySnapshot = {
   /** 読み出しに使った共有ルート（未設定 / 非デスクトップなら null） */
@@ -40,6 +47,12 @@ export type SharedLibrarySnapshot = {
   loading: boolean;
   /** 本文の hash が entry.hash と合わなかったエントリ id */
   mismatched: string[];
+  /**
+   * 本文を読んだときに拾えた派生メタ（id → 値）。
+   * `extra` に情報が無い古い共有エントリを補うための控えで、hash が変わったら
+   * 古い値は使わない（読み直せば入れ替わる）。
+   */
+  derived: SharedDerivedMetaMap;
 };
 
 export type SharedLibraryLoader = (root: string) => Promise<SharedLibraryLoadResult>;
@@ -49,6 +62,9 @@ export type SharedEntryReader = (root: string, id: string) => Promise<SharedEntr
 /** 本文キャッシュの上限（件）。プレビュー用の本文が数 MB になることもあるので小さく保つ */
 const BODY_CACHE_LIMIT = 64;
 
+/** 派生メタの保存先。本文と違って 1 件が数十バイトなので localStorage で足りる */
+const DERIVED_META_KEY = "graphium-shared-derived-meta";
+
 const EMPTY: SharedLibrarySnapshot = {
   root: null,
   entries: [],
@@ -56,7 +72,32 @@ const EMPTY: SharedLibrarySnapshot = {
   loadedAt: null,
   loading: false,
   mismatched: [],
+  derived: {},
 };
+
+/**
+ * localStorage の中身を派生メタとして読む（形が違うものは黙って捨てる）。
+ * 壊れた JSON・旧形式でも一覧が落ちてはいけないので、1 件ずつ形を確かめる。
+ * テストからも使えるよう export している。
+ */
+export function parseDerivedMetaStore(raw: string | null): SharedDerivedMetaMap {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: SharedDerivedMetaMap = {};
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!value || typeof value !== "object") continue;
+      const { hash, noteContexts } = value as { hash?: unknown; noteContexts?: unknown };
+      if (typeof hash !== "string" || !hash) continue;
+      if (!Array.isArray(noteContexts)) continue;
+      out[id] = { hash, noteContexts: noteContexts.filter((c): c is string => typeof c === "string") };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 /**
  * 全 SharedEntryType。satisfies で Record を要求しているので、type が増えたら
@@ -70,6 +111,23 @@ const ALL_ENTRY_TYPES = Object.keys({
   knowledge: 0,
   report: 0,
 } satisfies Record<SharedEntryType, number>) as SharedEntryType[];
+
+function readPersistedDerivedMeta(): SharedDerivedMetaMap {
+  try {
+    return parseDerivedMetaStore(localStorage.getItem(DERIVED_META_KEY));
+  } catch {
+    // localStorage が使えない環境（プライベートモード等）では控えを持たないだけ
+    return {};
+  }
+}
+
+function persistDerivedMeta(map: SharedDerivedMetaMap): void {
+  try {
+    localStorage.setItem(DERIVED_META_KEY, JSON.stringify(map));
+  } catch {
+    /* 容量超過・無効化。控えなので落とさない */
+  }
+}
 
 /** type ごとの配列を「note → reference → data-manifest → template → knowledge → report」の順に平坦化する */
 function flatten(result: SharedLibraryLoadResult): SharedEntry[] {
@@ -87,6 +145,11 @@ class SharedLibraryStore {
   private rootOverride: string | null | undefined = undefined;
   /** `${id}|${hash}` → 本文（LRU: Map の挿入順を使う） */
   private bodyCache = new Map<string, { body: Uint8Array; verified: boolean }>();
+
+  constructor() {
+    // 起動時に前回までに読めた派生メタを復元する（一覧を開いた直後から列が埋まる）
+    this.snapshot = { ...EMPTY, derived: readPersistedDerivedMeta() };
+  }
 
   getSnapshot = (): SharedLibrarySnapshot => this.snapshot;
 
@@ -143,6 +206,8 @@ class SharedLibraryStore {
           loading: false,
           // 消えたエントリの不一致記録は持ち越さない
           mismatched: this.snapshot.mismatched.filter((id) => alive.has(id)),
+          // 共有から消えた id の派生メタも同様に落とす（控えが無限に育たないように）
+          derived: this.pruneDerived(alive),
         });
       } catch (e) {
         // ここに来るのは load(root) 自体が落ちたとき（= どの type も読めていない）。
@@ -202,7 +267,41 @@ class SharedLibraryStore {
       this.bodyCache.delete(oldest);
     }
     this.setMismatched(entry.id, !verified);
+    // 本文を読んだこの経路にだけ相乗りして派生メタを更新する（読み取りは増やさない）
+    this.recordDerivedMeta(entry, content.body, verified);
     return value;
+  }
+
+  /** 共有から消えた id を落とした派生メタを返す（変化が無ければ同じ参照） */
+  private pruneDerived(alive: Set<string>): SharedDerivedMetaMap {
+    const current = this.snapshot.derived;
+    const ids = Object.keys(current);
+    const kept = ids.filter((id) => alive.has(id));
+    if (kept.length === ids.length) return current;
+    const next: SharedDerivedMetaMap = {};
+    for (const id of kept) next[id] = current[id];
+    persistDerivedMeta(next);
+    return next;
+  }
+
+  private recordDerivedMeta(entry: SharedEntry, body: Uint8Array, verified: boolean): void {
+    const meta = extractSharedDerivedMeta(entry, body, verified);
+    if (!meta) return;
+    const prev = this.snapshot.derived[entry.id];
+    if (
+      prev &&
+      prev.hash === entry.hash &&
+      prev.noteContexts.length === meta.noteContexts.length &&
+      prev.noteContexts.every((c, i) => c === meta.noteContexts[i])
+    ) {
+      return; // 同じ値なら再描画を起こさない
+    }
+    const next: SharedDerivedMetaMap = {
+      ...this.snapshot.derived,
+      [entry.id]: { hash: entry.hash, ...meta },
+    };
+    persistDerivedMeta(next);
+    this.emit({ derived: next });
   }
 
   private setMismatched(id: string, bad: boolean): void {
@@ -225,6 +324,12 @@ class SharedLibraryStore {
     this.bodyCache.clear();
     this.snapshot = EMPTY;
     this.listeners.clear();
+    // 派生メタの控えもテストごとに捨てる（前のテストの値が次に漏れないように）
+    try {
+      localStorage.removeItem(DERIVED_META_KEY);
+    } catch {
+      /* localStorage が無い環境 */
+    }
   }
 }
 
@@ -262,6 +367,22 @@ export function notifySharedLibraryChanged(): void {
  */
 export function readSharedEntryBody(entry: SharedEntry): Promise<{ body: Uint8Array; verified: boolean }> {
   return store.readBody(entry);
+}
+
+/**
+ * 共有エントリのフォルダ（共有した時点の noteContexts）を引く唯一のヘルパー。
+ * 表・検索・詳細のどこから見ても同じ値になるよう、優先順位をここ 1 か所に閉じる:
+ *   1. `extra.noteContexts`（共有時に書かれたもの。文字列配列のときだけ採る）
+ *   2. 本文から拾った派生メタ（hash が一致するときだけ。古い共有エントリの補完）
+ *   3. 空配列（＝未分類）
+ */
+export function getSharedNoteContexts(entry: SharedEntry, snapshot: SharedLibrarySnapshot): string[] {
+  const raw = (entry.extra as Record<string, unknown> | undefined)?.noteContexts;
+  if (Array.isArray(raw)) return raw.filter((c): c is string => typeof c === "string" && c.trim() !== "");
+  const derived = snapshot.derived[entry.id];
+  // hash が違う＝別の版を読んだときの値。表示に使うと嘘になるので捨てる
+  if (derived && derived.hash === entry.hash) return derived.noteContexts;
+  return [];
 }
 
 /** 共有ルート（デスクトップかつ設定済みのときだけ非 null） */
