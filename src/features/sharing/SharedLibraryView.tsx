@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Check,
   ExternalLink,
+  FilePlus2,
   GitFork,
   Library,
   Link2,
@@ -69,6 +70,9 @@ import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { BlockAlignmentProvider } from "../block-alignment/store";
 import { AiAssistantProvider } from "../ai-assistant/store";
 import type { GraphiumDocument } from "../../lib/document-types";
+// 直接 save.ts から取る（features/template の index はピッカーのモーダルまで引き込むため）
+import { deserializeTemplate } from "../template/save";
+import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 import {
   SharedLibraryTable,
   type SharedLibraryTab,
@@ -84,6 +88,12 @@ type Props = {
   onForkNote: (sharedId: string) => Promise<void>;
   /** Knowledge の fork 実行（呼び出し側で新規 Wiki ページを作成して開く） */
   onForkKnowledge: (sharedId: string) => Promise<void>;
+  /**
+   * 共有テンプレートから新規ノートを作る（誰の作でも実行できる）。
+   * fork と違い「記録のコピー」ではなく「雛形からの新規」なので導線を分ける。
+   * 未指定ならテンプレートの操作を出さない（デスクトップ以外・共有ルート未設定）。
+   */
+  onCreateNoteFromTemplate?: (sharedId: string) => Promise<void>;
   /** 自分作ノートの Unshare（成功時はリストを再読み込み） */
   onUnshare: (entry: SharedEntry) => Promise<void>;
   onBack: () => void;
@@ -105,7 +115,7 @@ type Props = {
 };
 
 // 共有導線（Share ボタン）が実装されている type のみ表示タブに出す。
-// template / report は SharedEntryType としては予約されており
+// report は SharedEntryType としては予約されており
 // データ層は読み書きできるが、UI に「Share」エントリポイントが整うまで非表示。
 // asset タブは reference + data-manifest を合算する（利用者からは「素材」1 種に見える）。
 const TAB_ORDER: { tab: SharedLibraryTab; labelKey: string; types: SharedEntryType[] }[] = [
@@ -117,6 +127,8 @@ const TAB_ORDER: { tab: SharedLibraryTab; labelKey: string; types: SharedEntryTy
   // 並びは個人側の左ナビ（素材 → ラベル → プロセス）の鏡にする。
   { tab: "labels", labelKey: "library.tab.labels", types: [] },
   { tab: "process", labelKey: "library.tab.process", types: [] },
+  // テンプレートは「記録」ではなく雛形なので、記録系（ノート〜プロセス）の後ろに置く
+  { tab: "template", labelKey: "library.tab.template", types: ["template"] },
 ];
 
 function typeToTab(type: SharedEntryType): SharedLibraryTab | null {
@@ -139,6 +151,7 @@ function entryTitle(entry: SharedEntry, translate: (k: string) => string): strin
 function entryTypeLabel(entry: SharedEntry, translate: (k: string, p?: Record<string, string>) => string): string {
   if (entry.type === "note") return translate("library.tab.note");
   if (entry.type === "knowledge") return translate("library.tab.knowledge");
+  if (entry.type === "template") return translate("library.tab.template");
   if (entry.type === "reference") return translate("asset.type.url");
   if (entry.type === "data-manifest") {
     const mediaType = (entry.extra as Record<string, unknown> | undefined)?.media_type;
@@ -152,6 +165,7 @@ export function SharedLibraryView({
   currentIdentity,
   onForkNote,
   onForkKnowledge,
+  onCreateNoteFromTemplate,
   onUnshare,
   onBack,
   focusEntryId,
@@ -226,7 +240,7 @@ export function SharedLibraryView({
       const hit = list.find((e) => e.id === focusEntryId);
       if (hit) {
         const tab = typeToTab(type as SharedEntryType);
-        // タブを持たない type（template / report）は一覧から辿れないので、選択せず consume だけする
+        // タブを持たない type（report）は一覧から辿れないので、選択せず consume だけする
         if (tab) {
           setActiveTab(tab);
           setSelected(hit);
@@ -337,6 +351,23 @@ export function SharedLibraryView({
       }
     },
     [onForkNote, onForkKnowledge],
+  );
+
+  // テンプレートから新規ノート。失敗の通知は呼び出し元のハンドラが出すので、
+  // ここでは握って busy 表示だけ戻す（fork と同じ作法）
+  const handleCreateFromTemplate = useCallback(
+    async (entry: SharedEntry) => {
+      if (!onCreateNoteFromTemplate) return;
+      setBusyId(entry.id);
+      try {
+        await onCreateNoteFromTemplate(entry.id);
+      } catch {
+        // 失敗表示は呼び出し元
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [onCreateNoteFromTemplate],
   );
 
   const handleUnshare = useCallback(
@@ -505,6 +536,11 @@ export function SharedLibraryView({
               ? () => handleFork(selected)
               : undefined
           }
+          onCreateFromTemplate={
+            selected.type === "template" && onCreateNoteFromTemplate
+              ? () => handleCreateFromTemplate(selected)
+              : undefined
+          }
           onUnshare={() => handleUnshare(selected)}
           onClose={() => setSelected(null)}
         />
@@ -523,6 +559,8 @@ type DetailProps = {
   sharedRoot: string;
   onVerifyHash: () => void;
   onFork?: () => void;
+  /** テンプレートのときだけ渡る（自分作・他人作を問わず出す） */
+  onCreateFromTemplate?: () => void;
   onUnshare: () => void;
   onClose: () => void;
 };
@@ -534,6 +572,7 @@ function SharedEntryDetail({
   sharedRoot,
   onVerifyHash,
   onFork,
+  onCreateFromTemplate,
   onUnshare,
   onClose,
 }: DetailProps) {
@@ -682,6 +721,15 @@ function SharedEntryDetail({
               )}
               {citationCopied ? uiT("share.copied") : uiT("share.copyCitation")}
             </button>
+            {onCreateFromTemplate && (
+              <button
+                onClick={onCreateFromTemplate}
+                className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
+              >
+                <FilePlus2 size={12} />
+                {uiT("library.createFromTemplate")}
+              </button>
+            )}
             {onFork && !isMine && (
               <button
                 onClick={onFork}
@@ -766,12 +814,25 @@ function SharedEntryBody({
     return <DataManifestPreview entry={entry} />;
   }
 
+  if (entry.type === "template") {
+    const description =
+      typeof extra.description === "string" ? extra.description : null;
+    return (
+      <div className="space-y-3">
+        {description && (
+          <p className="text-sm text-foreground/90 whitespace-pre-wrap">{description}</p>
+        )}
+        <SharedTemplatePreview body={body} />
+      </div>
+    );
+  }
+
   if (entry.type === "note" || entry.type === "knowledge") {
     // body は GraphiumDocument JSON。読み取り専用エディタでフル内容を表示する
     return <SharedNotePreview body={body} />;
   }
 
-  // template / report はテキスト系として中身をそのまま表示
+  // report はテキスト系として中身をそのまま表示
   return (
     <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 p-3 rounded">
       {body.slice(0, 8000)}
@@ -944,6 +1005,56 @@ export function SharedNotePreview({ body }: { body: string }) {
       </ProvLabelsEnabledProvider>
     </div>
   );
+}
+
+// ── template の read-only preview ──
+//
+// 本文は PageTemplate JSON（GraphiumDocument ではない）。ノートと同じ読み取り専用
+// ビューアで見せるため、擬似 GraphiumDocument に包んでから SharedNotePreview に渡す。
+// なぜ包むだけで足りるか: プレビューが読むのは pages[].blocks だけで、
+// shared-blob: の解決も doc の走査で行われるため。
+function SharedTemplatePreview({ body }: { body: string }) {
+  const pseudoBody = useMemo(() => {
+    try {
+      const template = deserializeTemplate(body);
+      if (!Array.isArray(template?.blocks)) return null;
+      const doc: GraphiumDocument = {
+        version: LATEST_DOCUMENT_VERSION,
+        title: template.name,
+        // 表示専用の擬似ドキュメント。日時はテンプレートの保存時刻で埋める
+        // （プレビューは読まないが GraphiumDocument の必須フィールド）
+        createdAt: template.savedAt,
+        modifiedAt: template.savedAt,
+        pages: [
+          {
+            id: "main",
+            title: template.pageTitle || template.name,
+            blocks: template.blocks,
+            labels: Object.fromEntries(template.labels ?? []),
+            provLinks: [],
+            knowledgeLinks: [],
+            ...(template.tableMeta ? { tableMeta: template.tableMeta } : {}),
+            ...(template.mediaInlineLabels
+              ? { mediaInlineLabels: template.mediaInlineLabels }
+              : {}),
+          },
+        ],
+      };
+      return JSON.stringify(doc);
+    } catch {
+      return null;
+    }
+  }, [body]);
+
+  // PageTemplate として読めない body は raw 表示にフォールバック（ノートと同じ扱い）
+  if (!pseudoBody) {
+    return (
+      <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/30 p-2 rounded">
+        {body.slice(0, 4000)}
+      </pre>
+    );
+  }
+  return <SharedNotePreview body={pseudoBody} />;
 }
 
 // ── data-manifest の inline preview ──
