@@ -105,6 +105,13 @@ type GraphiumDocument = {
   // ── shared storage refs (Phase 2) ───────────────────
   sharedRef?: { id; type: "note" | "knowledge"; sharedAt; hash };
   forkedFrom?: { sharedId; hash; authorName; authorEmail; forkedAt };
+  // Origin info for a note created from a shared template (§7.1, type
+  // "template"). Same shape idea as `forkedFrom` (sharedId/hash) but a
+  // different meaning: a fork is a copy of a record, while a note created
+  // from a template does not inherit any facts from the template — it just
+  // started from its blocks/labels. Kept as a separate field so PROV can
+  // treat the two differently.
+  templateFrom?: { sharedId; hash; title; usedAt };
 
   // ── skill metadata (only when source === "skill") ───
   skillMeta?: SkillMeta;
@@ -1820,6 +1827,24 @@ Key model choices:
   evolving vocabulary, so it is kept out of the shared format's folder
   structure — older builds can still list, preview, and fork an entry
   whose `wikiKind` they do not know.
+- **`"template"` body is a `PageTemplate`, not a `GraphiumDocument`** —
+  sharing a page as a template writes the (previously dormant)
+  `PageTemplate` JSON (`src/features/template/types.ts`: `name` /
+  `pageTitle` / `blocks` / `labels` / `attributes` / `tableMeta` /
+  `mediaInlineLabels`) instead of a note. A template does not carry
+  lineage, chats, or shared refs — only the page's blocks and label/table
+  behavior. `attributes` (step checked / executor / status) lives only in
+  the runtime `LabelStore`, never in `GraphiumPage`, so the share dialog
+  passes a snapshot of it explicitly; entries whose block carries no label
+  are dropped. Those attributes are restored when a shared template is
+  **inserted** via `/template`; the "new note from template" path cannot
+  restore them, because `GraphiumPage` has nowhere to store them.
+  `extra` narrows to `{ title, description, stepCount, labelCount,
+  pageTitle, blobs? }`. Embedded media follow the same auto-blob path as
+  note sharing. Re-sharing does **not** track a prior version — every
+  share of a page mints a brand-new `id` (`sharedRef` on the source note
+  is left untouched, since a template is an independent handout, not a
+  copy-of-record).
 
 ### 7.2 `BlobRef`
 
@@ -1877,6 +1902,24 @@ forkedFrom?: {
 
 The fork is treated as a separate identity from the original; PROV
 records the lineage between them.
+
+A note created from a shared **template** carries `templateFrom`
+instead:
+
+```ts
+templateFrom?: {
+  sharedId: string;  // template's SharedEntry.id
+  hash: string;       // SharedEntry.hash at the time the template was used
+  title: string;      // template's extra.title
+  usedAt: string;      // ISO 8601
+};
+```
+
+Same shape idea as `forkedFrom` (`sharedId` / `hash`) but a different
+meaning: a fork is a copy of a record and inherits its facts, while a
+note created from a template starts fresh — it only reuses the
+template's blocks/labels, not any content or claims. Kept as a separate
+field so PROV can distinguish the two relationships.
 
 ### 7.5 Citation block (`sharedCitation`)
 
@@ -1965,7 +2008,11 @@ steps — the same extraction the personal note index uses) and
 `buildProcessEntry` (the process graph). The projected `process` is the
 return value of `buildProcessEntry` unmodified, except `crossNoteLinks`
 is always cleared: those links point at the *sharer's* local note ids,
-which are meaningless on the receiving side.
+which are meaningless on the receiving side. Projection is independent of
+the "include the shared library in ⌘K and AI chat" switch: when that
+switch is off the lexical lane reads nothing, so the sync hook instead
+fetches only the bodies whose `hash` differs from the cached projection
+and updates the projection from those (nothing is added to the index).
 
 **Reconstructible cache.** A `version` or `logic` mismatch discards the
 whole file and starts empty; entries missing from a subsequent list

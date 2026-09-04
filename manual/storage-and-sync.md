@@ -93,7 +93,15 @@ Forking one brings it into your knowledge rather than your notes, so it sits wit
 
 Select notes with the checkboxes in the notes list, or knowledge pages in a Knowledge list, and a **Share** button with the count on it joins the other bulk actions. Sharing runs one item at a time and ends with a summary: how many were newly shared, how many updated entries you had shared before, and which ones failed and why. One failure does not stop the rest, and you can cancel partway — whatever was already shared stays shared.
 
+The same multi-select bar exists in the list view of the material gallery, so you can share several images or files at once instead of one at a time from each item's menu.
+
 The button appears in the desktop app once a shared folder and an identity are set. What travels is the saved version of each item, so save the note you are editing before you share it.
+
+### Share a page as a template
+
+A note's `⋯` menu also has **Share as template**, next to **Share with team**. Unlike a regular share, this hands out the page as a reusable starting point instead of a record: give it a name (defaults to the note's title) and, optionally, a description. It shares the page exactly as it stands — Graphium does not strip results or filled-in values for you, so clear anything you do not want to hand out before sharing.
+
+Each share of a page as a template creates a brand-new entry rather than updating a previous one, since a template is an independent handout, not a snapshot tied back to the note it came from.
 
 ### Browse and fork
 
@@ -107,7 +115,9 @@ A shared note also carries the folder it was in when it was shared, so the **Not
 
 The **Assets** tab also has a Folder column, and lists every image or file embedded in a shared note alongside items shared directly as a material. A note's images and files are not entries you can fork or verify on their own — you can **open the parent note** or **add the file to your own materials**, and if the same file appears in several shared notes it is shown once with a count of how many notes carry it.
 
-Two more tabs mirror your own left-hand navigation: **Labels** and **Processes**. They show labels and PROV-DM procedures found in shared notes, extracted the same way your own note list and process list are. This piggybacks on the background read that also powers shared search and AI chat (see below), so a shared note whose content Graphium has not read yet will not contribute to these tabs until it does. Forking a process into your own notes works the same way it does for your own procedures.
+Two more tabs mirror your own left-hand navigation: **Labels** and **Processes**. They show labels and PROV-DM procedures found in shared notes, extracted the same way your own note list and process list are. This piggybacks on the background read that also powers shared search and AI chat (see below), so a shared note whose content Graphium has not read yet will not contribute to these tabs until it does. Forking a process into your own notes works the same way it does for your own procedures. There is no separate action to share a label or a process — sharing the note that contains them is enough, and both tabs explain this with a link back to your own note list.
+
+The **Templates** tab lists pages shared as templates (see above), with a **Description** column in place of the folder column you see on the Notes tab. There is no **Fork** here — a template is a blank starting point, not a record to copy — but its detail panel has **New note from template**, available on any entry including your own. It reads the template, rebuilds its blocks and labels into a new note, materializes any embedded media into your own library, and opens the result. The new note records which template it came from, separately from a fork's "derived from" — a template does not hand you any facts, only a shape to start from. The same template list also appears inside the editor's `/template` picker, so you can insert a shared template into a note you already have open instead of starting a new one — see [Notes & the editor](/notes-and-editor#templates).
 
 ### Shared entries in search and AI chat <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> {#shared-entries-in-search-and-ai-chat}
 

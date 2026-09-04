@@ -28,7 +28,13 @@ import { HashBadge, type HashStatus } from "./hash-badge";
 
 // ラベル / プロセスは共有ノートの投影から描くタブで、この表は使わない。
 // タブの識別子だけ共通の型に載せる（呼び出し側のタブ状態が 1 つで済む）。
-export type SharedLibraryTab = "note" | "knowledge" | "asset" | "labels" | "process";
+export type SharedLibraryTab =
+  | "note"
+  | "knowledge"
+  | "asset"
+  | "labels"
+  | "process"
+  | "template";
 export type SharedLibrarySortKey = "updatedAt" | "title" | "author" | "version";
 export type SharedLibraryTableProps = {
   tab: SharedLibraryTab;
@@ -69,6 +75,12 @@ function entryTitle(entry: SharedEntry, t: (k: string) => string): string {
   const title = (entry.extra as Record<string, unknown> | undefined)?.title;
   if (typeof title === "string" && title.trim()) return title;
   return t("library.untitled");
+}
+
+/** 説明列の値（テンプレートのみ）。共有時に extra.description へ書かれる。 */
+function entryDescription(entry: SharedEntry): string {
+  const description = (entry.extra as Record<string, unknown> | undefined)?.description;
+  return typeof description === "string" ? description : "";
 }
 
 /** 種別列の表示値。asset タブは reference/data-manifest、knowledge タブは wikiKind。 */
@@ -157,6 +169,9 @@ export function SharedLibraryTable({
   // 素材のフォルダは共有時に書かれた extra.noteContexts（自分で付けた分 ∪ 貼ったノート由来）。
   // ノートと同じ意味の列なので、ノート一覧と同じ見せ方で出す（鏡の原則）
   const showFolderColumn = tab === "note" || tab === "asset";
+  // テンプレートは「何の雛形か」が題名だけでは伝わらないので、共有時の説明を 1 行で出す。
+  // フォルダは持たない（共有した人の整理であって雛形の属性ではない）ので列を出さない
+  const showDescriptionColumn = tab === "template";
   // 表は表示専用なので、フォルダの値はストアのスナップショットから引く
   // （共有時に書かれた extra を優先し、無ければ本文から拾った控えで補う）
   const sharedSnapshot = useSharedLibrary();
@@ -275,7 +290,10 @@ export function SharedLibraryTable({
         // フォルダ名も検索対象（列に出ている値はどれも同じ部分一致で当たる）
         const folderHit =
           showFolderColumn && contextsOf(entry).some((c) => c.toLowerCase().includes(q));
-        return title.includes(q) || authorName.includes(q) || folderHit;
+        // 「列に出ている値はどれも同じ部分一致で当たる」を説明列でも守る
+        const descriptionHit =
+          showDescriptionColumn && entryDescription(entry).toLowerCase().includes(q);
+        return title.includes(q) || authorName.includes(q) || folderHit || descriptionHit;
       });
     }
 
@@ -326,7 +344,7 @@ export function SharedLibraryTable({
     });
 
     return sorted;
-  }, [items, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, sortKey, sortDir, t]);
+  }, [items, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, showDescriptionColumn, sortKey, sortDir, t]);
 
   const handleImportBlob = useCallback(
     async (parent: SharedEntry, item: SharedAssetItem & { kind: "blob" }) => {
@@ -342,7 +360,13 @@ export function SharedLibraryTable({
   );
 
   const emptyKey =
-    tab === "note" ? "library.empty.note" : tab === "knowledge" ? "library.empty.knowledge" : "library.empty.asset";
+    tab === "note"
+      ? "library.empty.note"
+      : tab === "knowledge"
+        ? "library.empty.knowledge"
+        : tab === "template"
+          ? "library.empty.template"
+          : "library.empty.asset";
   const isFilteredEmpty = items.length > 0 && filtered.length === 0;
 
   return (
@@ -405,6 +429,9 @@ export function SharedLibraryTable({
                       )}
                     </div>
                   </th>
+                )}
+                {showDescriptionColumn && (
+                  <th className="py-2 px-3">{t("library.col.description")}</th>
                 )}
                 {showKindColumn && (
                   <th className="py-2 px-3 w-[120px]">
@@ -509,6 +536,7 @@ export function SharedLibraryTable({
                 const status = entry ? (hashStatus[entry.id] ?? "unknown") : "unknown";
                 const isBusy = entry ? busyId === entry.id : importingKey === itemKey(item);
                 const kind = showKindColumn ? itemKind(item, t) : null;
+                const description = showDescriptionColumn && entry ? entryDescription(entry) : "";
                 const contexts = showFolderColumn ? contextsOf(source) : [];
                 return (
                   <tr
@@ -547,6 +575,18 @@ export function SharedLibraryTable({
                         ) : (
                           // 空欄のダッシュはノート一覧と同じ薄さ（/30）にする
                           <span className="text-muted-foreground/30 text-xs">—</span>
+                        )}
+                      </td>
+                    )}
+                    {showDescriptionColumn && (
+                      <td className="py-2 px-3 text-xs text-muted-foreground max-w-0">
+                        {description ? (
+                          // 1 行省略で表の高さを揃える。全文は title 属性で読める
+                          <span className="block truncate" title={description}>
+                            {description}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
                         )}
                       </td>
                     )}

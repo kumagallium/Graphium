@@ -181,13 +181,58 @@ const DATA_MANIFESTS: SharedEntry[] = [
   }),
 ];
 
+// テンプレート 3 件（先生 2 + 学生 1）。一覧は本文を読まずに描くので、
+// 規模（stepCount / labelCount）と説明は extra から出る
+const TEMPLATES: SharedEntry[] = [
+  makeEntry({
+    id: "template-1",
+    type: "template",
+    author: TEACHER,
+    updated_at: daysAgo(0.8),
+    extra: {
+      title: "焼結実験ノートの雛形",
+      description: "秤量 → 成形 → 焼結 の 3 手順と、条件を書く表が入っています。数値は空にしてあります。",
+      stepCount: 3,
+      labelCount: 6,
+      pageTitle: "Cu粉末の焼結実験（第1回）",
+    },
+  }),
+  makeEntry({
+    id: "template-2",
+    type: "template",
+    author: TEACHER,
+    updated_at: daysAgo(4),
+    extra: {
+      title: "装置の前処理チェックリスト",
+      description: "洗浄・乾燥の手順。装置を使う前に必ずこの雛形からノートを作ること。",
+      stepCount: 2,
+      labelCount: 3,
+      pageTitle: "シリカ管の前処理手順",
+    },
+  }),
+  makeEntry({
+    id: "template-3",
+    type: "template",
+    author: STUDENT_B,
+    updated_at: daysAgo(7),
+    // 説明を書かずに共有した例（説明列はダッシュになる）
+    extra: {
+      title: "XRD 測定の記録用",
+      description: null,
+      stepCount: 1,
+      labelCount: 2,
+      pageTitle: "XRD 分析結果まとめ",
+    },
+  }),
+];
+
 const ALL_ENTRIES = {
   entries: {
     note: NOTES,
     knowledge: KNOWLEDGE,
     reference: REFERENCES,
     "data-manifest": DATA_MANIFESTS,
-    template: [],
+    template: TEMPLATES,
     report: [],
   },
   errors: {},
@@ -229,9 +274,12 @@ const baseArgs = {
   currentIdentity: TEACHER,
   onForkNote: NOOP_ASYNC,
   onForkKnowledge: NOOP_ASYNC,
+  onCreateNoteFromTemplate: NOOP_ASYNC,
   onUnshare: NOOP_ASYNC,
   onImportBlob: NOOP_ASYNC,
   onBack: () => console.log("back"),
+  // ラベル / プロセスタブの説明バーのボタン（実アプリではノート一覧へ移動する）
+  onOpenNoteList: () => console.log("open note list"),
   loadEntries: async () => ALL_ENTRIES,
 };
 
@@ -271,6 +319,20 @@ export const ProposedAssetsNoBlobRoot: Story = {
   // onImportBlob が無い ＝ blob root 未設定。取り込みボタンは無効のまま行だけ出る
   args: { ...baseArgs, initialTab: "asset", onImportBlob: undefined },
   decorators: Proposed.decorators,
+};
+
+export const ProposedTemplates: Story = {
+  name: "提案（テンプレートタブ）",
+  args: { ...baseArgs, initialTab: "template" },
+  decorators: Proposed.decorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "共有テンプレートの一覧。列は タイトル / 説明 / 作者 / 共有日 / 版 / 検証（フォルダ列は出さない — 雛形は共有した人の整理を持ち込まない）。行の操作に「派生（fork）」は無く、詳細パネルから「テンプレートから新規ノート」で作る。",
+      },
+    },
+  },
 };
 
 export const ProposedEmpty: Story = {
@@ -400,7 +462,7 @@ export const ProposedLabels: Story = {
     docs: {
       description: {
         story:
-          "共有ノートから投影したラベル。上のチップで種別を選び、一覧は個人側の LabelGalleryView をそのまま使う（戻るボタンだけ隠す）。件数は本文を読めたノートの分だけ増える。",
+          "上部の説明バーは「ラベルは共有ノートから自動で集まる（専用の共有操作は無い）」ことを伝える。共有ノートから投影したラベル。チップで種別を選び、一覧は個人側の LabelGalleryView をそのまま使う（戻るボタンだけ隠す）。件数は本文を読めたノートの分だけ増える。",
       },
     },
   },
@@ -414,7 +476,7 @@ export const ProposedProcess: Story = {
     docs: {
       description: {
         story:
-          "共有ノートから投影した手順。個人側の ProcessGalleryView をそのまま使い、fork の文言だけ「自分のノートに派生」に差し替える。",
+          "上部の説明バーはラベルタブと同じ（手順も共有ノートから自動で集まる）。共有ノートから投影した手順。個人側の ProcessGalleryView をそのまま使い、fork の文言だけ「自分のノートに派生」に差し替える。",
       },
     },
   },

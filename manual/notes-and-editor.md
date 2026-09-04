@@ -220,6 +220,8 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 
 ![The Insert Template modal with the Plan and Run templates](/screenshots/template-picker.png)
 
+If your team has a shared folder set up, pages your teammates have shared as templates appear as more rows in the same table, after the built-in ones, marked with a **Team** badge in the Source column — see [Storage & sync](/storage-and-sync#sharing-notes-with-your-team).
+
 ## Working with tables <Badge type="tip" text="Added in v0.48.0 (2026-08-31)" /> {#tables}
 
 Everything below applies to any table in a note, whatever it started as.

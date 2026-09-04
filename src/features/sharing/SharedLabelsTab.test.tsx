@@ -8,6 +8,8 @@
 // - チップで種別を切り替えるとギャラリーの中身も切り替わる
 // - 戻るボタンは出さない（切り替え導線はチップが担う）
 // - 投影がまだ無いノートは数にも一覧にも出ない（読めた分だけ増える）
+// - 説明バー（共有の仕組みの案内）は投影の有無によらず常に出て、
+//   「ノート一覧を開く」はコールバックを呼ぶ / 未配線なら出さない
 
 import { describe, it, expect, afterEach } from "vitest";
 import { render, fireEvent, cleanup, within } from "@testing-library/react";
@@ -85,10 +87,19 @@ function projectionOf(...pairs: [SharedEntry, GraphiumDocument][]): SharedProjec
   return projection;
 }
 
-function renderTab(projection: SharedProjection, entries: SharedEntry[] = [NOTE_A, NOTE_B]) {
+function renderTab(
+  projection: SharedProjection,
+  entries: SharedEntry[] = [NOTE_A, NOTE_B],
+  onOpenNoteList?: () => void,
+) {
   return render(
     <LocaleProvider>
-      <SharedLabelsTab projection={projection} entries={entries} onNavigateNote={() => {}} />
+      <SharedLabelsTab
+        projection={projection}
+        entries={entries}
+        onNavigateNote={() => {}}
+        onOpenNoteList={onOpenNoteList}
+      />
     </LocaleProvider>,
   );
 }
@@ -149,5 +160,29 @@ describe("SharedLabelsTab", () => {
     const { getByText, container } = renderTab(createEmptySharedProjection());
     expect(getByText(t("library.empty.labels"))).toBeTruthy();
     expect(container.querySelector("button[aria-pressed]")).toBeNull();
+  });
+
+  it("説明バーは投影の有無によらず出て、ボタンでコールバックを呼ぶ", () => {
+    const calls: string[] = [];
+    // 投影あり（一覧が出ている状態）
+    const withLabels = renderTab(projectionOf([NOTE_A, DOC_A]), [NOTE_A, NOTE_B], () =>
+      calls.push("with"),
+    );
+    expect(withLabels.getByText(t("library.labelsHint"))).toBeTruthy();
+    fireEvent.click(withLabels.getByText(t("library.openNoteList")));
+    cleanup();
+
+    // 投影なし（空表示）でも同じ案内が出る ＝ ここが一番案内の要る場面
+    const empty = renderTab(createEmptySharedProjection(), [NOTE_A], () => calls.push("empty"));
+    expect(empty.getByText(t("library.labelsHint"))).toBeTruthy();
+    fireEvent.click(empty.getByText(t("library.openNoteList")));
+
+    expect(calls).toEqual(["with", "empty"]);
+  });
+
+  it("onOpenNoteList が無いときはボタンを出さない（説明文は出す）", () => {
+    const { getByText, queryByText } = renderTab(projectionOf([NOTE_A, DOC_A]));
+    expect(getByText(t("library.labelsHint"))).toBeTruthy();
+    expect(queryByText(t("library.openNoteList"))).toBeNull();
   });
 });
