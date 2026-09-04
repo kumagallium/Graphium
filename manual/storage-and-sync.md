@@ -95,6 +95,12 @@ Select notes with the checkboxes in the notes list, or knowledge pages in a Know
 
 The button appears in the desktop app once a shared folder and an identity are set. What travels is the saved version of each item, so save the note you are editing before you share it.
 
+### Share a page as a template
+
+A note's `⋯` menu also has **Share as template**, next to **Share with team**. Unlike a regular share, this hands out the page as a reusable starting point instead of a record: give it a name (defaults to the note's title) and, optionally, a description. It shares the page exactly as it stands — Graphium does not strip results or filled-in values for you, so clear anything you do not want to hand out before sharing.
+
+Each share of a page as a template creates a brand-new entry rather than updating a previous one, since a template is an independent handout, not a snapshot tied back to the note it came from.
+
 ### Browse and fork
 
 Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
@@ -108,6 +114,8 @@ A shared note also carries the folder it was in when it was shared, so the **Not
 The **Assets** tab also has a Folder column, and lists every image or file embedded in a shared note alongside items shared directly as a material. A note's images and files are not entries you can fork or verify on their own — you can **open the parent note** or **add the file to your own materials**, and if the same file appears in several shared notes it is shown once with a count of how many notes carry it.
 
 Two more tabs mirror your own left-hand navigation: **Labels** and **Processes**. They show labels and PROV-DM procedures found in shared notes, extracted the same way your own note list and process list are. This piggybacks on the background read that also powers shared search and AI chat (see below), so a shared note whose content Graphium has not read yet will not contribute to these tabs until it does. Forking a process into your own notes works the same way it does for your own procedures.
+
+The **Templates** tab lists pages shared as templates (see above), with a **Description** column in place of the folder column you see on the Notes tab. There is no **Fork** here — a template is a blank starting point, not a record to copy — but its detail panel has **New note from template**, available on any entry including your own. It reads the template, rebuilds its blocks and labels into a new note, materializes any embedded media into your own library, and opens the result. The new note records which template it came from, separately from a fork's "derived from" — a template does not hand you any facts, only a shape to start from. The same template list also appears inside the editor's `/template` picker, so you can insert a shared template into a note you already have open instead of starting a new one — see [Notes & the editor](/notes-and-editor#templates).
 
 ### Shared entries in search and AI chat <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> {#shared-entries-in-search-and-ai-chat}
 

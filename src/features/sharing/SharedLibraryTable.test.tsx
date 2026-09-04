@@ -282,3 +282,108 @@ describe("SharedLibraryTable の素材タブ（blob 行）", () => {
     expect(headers.some((th) => th.textContent?.includes(t("library.col.origins")))).toBe(false);
   });
 });
+
+// ── テンプレートタブ ──
+// テンプレートは「記録」ではなく雛形なので、ノートタブと出し分けが変わる:
+// - 説明列が増える（題名だけでは何の雛形か分からない）
+// - フォルダ列は出さない（共有した人の整理であって雛形の属性ではない）
+// - 派生（fork）は出さない。新規ノートは詳細パネルの「テンプレートから新規ノート」から
+
+const templateEntry = (
+  id: string,
+  title: string,
+  description: string | null,
+  author = AUTHOR,
+): SharedEntry => ({
+  id,
+  type: "template",
+  author,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-04T00:00:00Z",
+  hash: `sha256:${id}`,
+  prov: { derived_from: [] },
+  version: 1,
+  extra: { title, description, stepCount: 3, labelCount: 5, pageTitle: title },
+});
+
+const OTHER = { name: "Grace", email: "grace@example.com" };
+
+const TEMPLATES = [
+  templateEntry("t1", "焼結実験ノートの雛形", "秤量→成形→焼結の 3 手順が入っています"),
+  templateEntry("t2", "前処理チェックリスト", null, OTHER),
+];
+
+function renderTemplateTable(
+  overrides: Partial<React.ComponentProps<typeof SharedLibraryTable>> = {},
+) {
+  return render(
+    <LocaleProvider>
+      <SharedLibraryTable
+        tab="template"
+        entries={TEMPLATES}
+        currentIdentity={AUTHOR}
+        hashStatus={{}}
+        selectedId={null}
+        busyId={null}
+        copiedId={null}
+        onSelect={() => {}}
+        onVerifyHash={() => {}}
+        onCopyCitation={() => {}}
+        onFork={() => {}}
+        onUnshare={() => {}}
+        {...overrides}
+      />
+    </LocaleProvider>,
+  );
+}
+
+function rowByText(container: HTMLElement, text: string): HTMLElement {
+  return Array.from(container.querySelectorAll("tbody tr")).find((tr) =>
+    tr.textContent?.includes(text),
+  ) as HTMLElement;
+}
+
+describe("SharedLibraryTable のテンプレートタブ", () => {
+  it("列は タイトル / 説明 / 作者 / 共有日 / 版 / 検証（フォルダ・種別は出さない）", () => {
+    const { container } = renderTemplateTable();
+    const headers = Array.from(container.querySelectorAll("th")).map((th) => th.textContent ?? "");
+    expect(headers.some((h) => h.includes(t("library.col.description")))).toBe(true);
+    expect(headers.some((h) => h.includes(t("nav.noteContexts")))).toBe(false);
+    expect(headers.some((h) => h.includes(t("library.col.kind")))).toBe(false);
+    for (const key of ["library.col.title", "nav.author", "library.col.sharedAt", "library.col.version", "library.col.verified"]) {
+      expect(headers.some((h) => h.includes(t(key))), key).toBe(true);
+    }
+  });
+
+  it("説明は行に出て、説明の無い行はダッシュになる", () => {
+    const { container } = renderTemplateTable();
+    const withDesc = rowByText(container, "焼結実験ノートの雛形");
+    expect(withDesc.textContent).toContain("秤量→成形→焼結の 3 手順が入っています");
+    const withoutDesc = rowByText(container, "前処理チェックリスト");
+    expect(withoutDesc.textContent).toContain("—");
+  });
+
+  it("検索は説明にも効く", () => {
+    const { container } = renderTemplateTable();
+    const search = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "秤量" } });
+    const rows = Array.from(container.querySelectorAll("tbody tr"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain("焼結実験ノートの雛形");
+  });
+
+  it("他人作でも派生（fork）は出さない。引用リンクのコピーは出る", () => {
+    const { container } = renderTemplateTable();
+    const othersRow = rowByText(container, "前処理チェックリスト");
+    expect(othersRow.querySelector(`button[title="${t("library.forkToNotes")}"]`)).toBeNull();
+    expect(othersRow.querySelector(`button[title="${t("share.copyCitation")}"]`)).toBeTruthy();
+    // 他人作なので共有解除は出ない
+    expect(othersRow.querySelector(`button[title="${t("library.unshare")}"]`)).toBeNull();
+  });
+
+  it("自分作の行にだけ共有解除が出る", () => {
+    const { container } = renderTemplateTable();
+    const mineRow = rowByText(container, "焼結実験ノートの雛形");
+    expect(mineRow.querySelector(`button[title="${t("library.unshare")}"]`)).toBeTruthy();
+  });
+});

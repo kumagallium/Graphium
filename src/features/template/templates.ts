@@ -9,6 +9,7 @@
 // path: ルートからのインデックス配列（例: [3, 0, 1] = blocks[3].children[0].children[1]）
 
 import type { CoreLabel } from "../context-label/labels";
+import type { StepAttributes } from "../context-label/label-attributes";
 import type { ColumnType } from "../../lib/document-types";
 
 export type TemplateSource = "official" | "user";
@@ -30,6 +31,13 @@ export type TemplateBuildResult = {
    * 「インデックステーブル」挿入と同じく、先頭列の名前をキーに記録される。
    */
   columnTypes?: { path: number[]; type: ColumnType }[];
+  /**
+   * 挿入後にラベル連動属性（手順の実行者・状態）を復元するブロック。
+   * 公式テンプレートは使わない。共有テンプレート（PageTemplate 由来）だけが載せる。
+   * なぜ optional で外付けか: 属性は GraphiumPage に保存されずラベルストアの実行時状態
+   * なので、ブロック JSON に混ぜられない。labels と同じく path で後から適用する。
+   */
+  attributes?: { path: number[]; attributes: StepAttributes }[];
 };
 
 export type TemplateDef = {

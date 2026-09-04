@@ -15,6 +15,12 @@ export {
   type ShareKnowledgeOptions,
 } from "./share-knowledge";
 export {
+  shareTemplate,
+  type ShareTemplateResult,
+  type ShareTemplateOptions,
+} from "./share-template";
+export { ShareTemplateDialog, type ShareTemplateDialogProps } from "./ShareTemplateDialog";
+export {
   forkSharedNote,
   type ForkSharedNoteResult,
   type ForkSharedNoteOptions,
