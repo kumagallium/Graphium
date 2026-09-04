@@ -22,7 +22,15 @@
 // スマホ単体で 接続/切断・client_id 上書きまで完結する。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StickyNote, Trash2, Search, X, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import {
+  StickyNote,
+  Trash2,
+  Search,
+  X,
+  RefreshCw,
+  Settings as SettingsIcon,
+  Folder as FolderIcon,
+} from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { MediaPreview } from "../asset-browser/media-preview";
@@ -34,6 +42,12 @@ import { MobileCaptureBar } from "./MobileCaptureBar";
 import { AudioRecorderSheet } from "./AudioRecorderSheet";
 import { isAudioRecordingSupported } from "./audio-recorder";
 import { MobileSettingsSheet } from "./MobileSettingsSheet";
+import {
+  getInboxFolder,
+  setInboxFolder,
+  getInboxFolderHistory,
+  rememberInboxFolder,
+} from "./inbox/push/config";
 import { StoragePickerSheet } from "./StoragePickerSheet";
 import { CaptureHistorySection, type LocalCaptureItem } from "./inbox/CaptureHistorySection";
 import { usePushQueue } from "./inbox/use-push-queue";
@@ -215,9 +229,13 @@ function MobileMediaPreviewModal({
   );
 }
 
+/** select の「新しいフォルダ…」を表す番兵。フォルダ名には現れない形 */
+const NEW_FOLDER_OPTION = "\u0000new";
+
 export function MobileCaptureView({
   captureIndex,
   mediaIndex,
+  vaultFolders,
   loading,
   onCreateCapture,
   onDeleteCapture,
@@ -229,6 +247,11 @@ export function MobileCaptureView({
 }: {
   captureIndex: CaptureIndex | null;
   mediaIndex?: MediaIndex | null;
+  /**
+   * この端末の vault が知っているフォルダ。送り先の候補に混ぜる。
+   * 受信箱だけ使う構成では空になるので、候補はこの端末の履歴と合わせて作る。
+   */
+  vaultFolders?: readonly string[];
   loading: boolean;
   onCreateCapture: (text: string) => Promise<void>;
   onDeleteCapture?: (captureId: string) => Promise<void>;
@@ -247,6 +270,20 @@ export function MobileCaptureView({
   const [refreshing, setRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  // 送り先のフォルダ。設定シートと同じ localStorage を見るので、どちらで変えても揃う
+  const [sendFolder, setSendFolder] = useState("");
+  const [folderHistory, setFolderHistory] = useState<string[]>([]);
+  const [addingFolder, setAddingFolder] = useState(false);
+  const [newFolder, setNewFolder] = useState("");
+  const applyFolder = useCallback((value: string) => {
+    const next = value.trim();
+    setSendFolder(next);
+    setInboxFolder(next || null);
+    if (next) {
+      rememberInboxFolder(next);
+      setFolderHistory(getInboxFolderHistory());
+    }
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef(0);
   const pulling = useRef(false);
@@ -473,6 +510,26 @@ export function MobileCaptureView({
   // 最小設定シートのストレージ操作（状態・切断・client_id 上書き）の実体。
   // ピッカー/シートが開いている間だけ push モジュールを引く。
   const pushSettings = usePushSettings(showStoragePicker || showSettingsSheet);
+  // 初回と、設定シートを閉じた直後に読み直す（シート側で変えられていても揃う）
+  useEffect(() => {
+    if (showSettingsSheet) return;
+    setSendFolder(getInboxFolder() ?? "");
+    setFolderHistory(getInboxFolderHistory());
+  }, [showSettingsSheet]);
+  // 候補は vault のフォルダとこの端末の履歴の和集合。小文字で名寄せし、
+  // 表示は先に出てきた形を残す（フォルダ名の突き合わせ規則と揃える）
+  const folderOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of [...(vaultFolders ?? []), ...folderHistory]) {
+      const value = raw.trim();
+      const key = value.toLowerCase();
+      if (!value || seen.has(key)) continue;
+      seen.add(key);
+      out.push(value);
+    }
+    return out;
+  }, [vaultFolders, folderHistory]);
 
   // ピッカーの Google 選択。**click から同期的に connect へ到達させる**（GIS 契約）。
   // 接続成功 → 残キューを即送信（connectAndDrain）。
@@ -507,6 +564,67 @@ export function MobileCaptureView({
   // 無い環境（secure context でない配信・古いブラウザ）だけ、バー側の
   // ファイル選択にフォールバックする。判定は端末固定なので 1 回でよい。
   const audioRecordingSupported = useMemo(() => isAudioRecordingSupported(), []);
+
+  // 送り先のフォルダ。設定の奥ではなく送る場所のすぐ上に出す — これから送るものが
+  // どこへ届くのかは、送る前に見えていないと意味がない。履歴が空でも出したいので
+  // 検索欄（履歴があるときだけ出る）とは別のブロックにしている
+  const folderPicker = push.configured ? (
+    <div className="mb-3 flex items-center gap-2">
+      <FolderIcon size={14} className="shrink-0 text-muted-foreground" />
+      <span className="shrink-0 text-xs text-muted-foreground">{t("mobile.sendFolder.label")}</span>
+      {addingFolder ? (
+        <input
+          autoFocus
+          type="text"
+          value={newFolder}
+          onChange={(e) => setNewFolder(e.target.value)}
+          onBlur={() => {
+            if (newFolder.trim()) applyFolder(newFolder);
+            setAddingFolder(false);
+            setNewFolder("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              applyFolder(newFolder);
+              setAddingFolder(false);
+              setNewFolder("");
+            } else if (e.key === "Escape") {
+              setAddingFolder(false);
+              setNewFolder("");
+            }
+          }}
+          placeholder={t("mobile.sendFolder.placeholder")}
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
+        />
+      ) : (
+        <select
+          value={sendFolder}
+          onChange={(e) => {
+            if (e.target.value === NEW_FOLDER_OPTION) {
+              setNewFolder("");
+              setAddingFolder(true);
+              return;
+            }
+            applyFolder(e.target.value);
+          }}
+          aria-label={t("mobile.sendFolder.label")}
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+        >
+          <option value="">{t("mobile.sendFolder.none")}</option>
+          {/* 設定シートで打たれた等、候補に無い値が入っていても選択状態を保てるように */}
+          {sendFolder && !folderOptions.includes(sendFolder) && (
+            <option value={sendFolder}>{sendFolder}</option>
+          )}
+          {folderOptions.map((folder) => (
+            <option key={folder} value={folder}>
+              {folder}
+            </option>
+          ))}
+          <option value={NEW_FOLDER_OPTION}>{t("mobile.sendFolder.new")}</option>
+        </select>
+      )}
+    </div>
+  ) : null;
 
   // 検索入力（ヘッダー固定ではなくスクロール内 = 統合リストの直上に置く）
   const searchInput = (
@@ -611,6 +729,8 @@ export function MobileCaptureView({
             未送信ありのときだけセクション内の接続ボタンが主アクションになる。
             捕獲の入口は画面下固定の捕獲バー（MobileCaptureBar）。履歴は IndexedDB
             永続なので画面を離れても、送信し終えても消えない */}
+        {folderPicker}
+
         {(timeline.length > 0 || push.items.length > 0) && (
           <div className="mb-3">
             {searchInput}

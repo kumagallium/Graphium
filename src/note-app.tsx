@@ -204,7 +204,7 @@ import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues } from "./features/note-context/folder-tree-model";
-import { buildNoteFolderLookup } from "./features/asset-browser/asset-folders";
+import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
@@ -755,6 +755,12 @@ function NoteHeaderMenu({
 type NoteEditorProps = {
   fileId: string | null;
   initialDoc: GraphiumDocument | null;
+  /**
+   * ノート id → そのノートのフォルダ。エディタ内から開く素材サイドピークで、
+   * 素材が「使われているノートのフォルダ」に属して見えるようにするために渡す
+   * （素材ギャラリー側と同じ導出を使い、見え方を揃える）。
+   */
+  noteFolderLookup?: NoteFolderLookup;
   onSave: (doc: GraphiumDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   /** `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す（ナビゲーションしない） */
@@ -1076,6 +1082,7 @@ async function applyAtomReinforcement(opts: {
 function NoteEditorInner({
   fileId,
   initialDoc,
+  noteFolderLookup,
   onSave,
   onDeriveNote,
   onCreateLinkedNote,
@@ -5563,6 +5570,7 @@ function NoteEditorInner({
           <MaterialSidePeek
             inline
             entry={materialSidePeekEntry}
+            noteFolderLookup={noteFolderLookup}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
@@ -5585,6 +5593,7 @@ function NoteEditorInner({
         {materialSidePeekEntry && !isDesktop && (
           <MaterialSidePeek
             entry={materialSidePeekEntry}
+            noteFolderLookup={noteFolderLookup}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
@@ -7919,6 +7928,10 @@ export function NoteApp() {
                 ...(payload.ogImage ? { ogImage: payload.ogImage } : {}),
               },
               capture: meta,
+              // 送信時に指定されたフォルダをそのまま素材に付ける（メディアと同じ扱い）
+              ...(payload.folder?.trim()
+                ? { noteContexts: [payload.folder.trim()] }
+                : {}),
             });
             return { fileId };
           },
@@ -9896,6 +9909,7 @@ export function NoteApp() {
           <MobileCaptureView
             captureIndex={capture.captureIndex}
             mediaIndex={fm.mediaIndex}
+            vaultFolders={noteFolderNames}
             loading={capture.captureLoading}
             onCreateCapture={capture.handleCreateCapture}
             onDeleteCapture={capture.handleDeleteCapture}
@@ -9964,6 +9978,7 @@ export function NoteApp() {
             provLabelsEnabled={provLabelsEnabled}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
+            noteFolderLookup={noteFolderLookup}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta

@@ -5,10 +5,13 @@
 //   ある現在のビルドでは、上書き無し = 同梱 ID、上書きの解除 = 同梱 ID に戻る
 // - フォルダキャッシュは壊れた JSON / 形の違う JSON を無害に null 扱いする
 // - 選択プロバイダは未保存・不正値を google-drive に倒す（v1 の唯一の実体）
+// - 送り先フォルダの履歴は新しい順・重複なし・上限あり。壊れた値は空として扱う
 
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   DEFAULT_GOOGLE_PUSH_CLIENT_ID,
+  getInboxFolderHistory,
+  rememberInboxFolder,
   getDriveFolderCache,
   getGoogleClientId,
   getGoogleClientIdOverride,
@@ -83,5 +86,43 @@ describe("選択プロバイダの永続", () => {
   it("falls back to google-drive for unknown stored values (whitelist)", () => {
     localStorage.setItem("graphium-push-provider", "dropbox");
     expect(getPushProvider()).toBe("google-drive");
+  });
+});
+
+describe("送り先フォルダの履歴", () => {
+  it("使った順に新しいものが先頭へ来る", () => {
+    rememberInboxFolder("材料X");
+    rememberInboxFolder("実験B");
+    expect(getInboxFolderHistory()).toEqual(["実験B", "材料X"]);
+  });
+
+  it("同じフォルダを使い直しても増えず、先頭へ上がる", () => {
+    rememberInboxFolder("材料X");
+    rememberInboxFolder("実験B");
+    rememberInboxFolder("材料X");
+    expect(getInboxFolderHistory()).toEqual(["材料X", "実験B"]);
+  });
+
+  it("前後の空白は落とす。空文字は覚えない", () => {
+    rememberInboxFolder("  材料X  ");
+    rememberInboxFolder("   ");
+    expect(getInboxFolderHistory()).toEqual(["材料X"]);
+  });
+
+  it("上限を超えたら古いものから落ちる", () => {
+    for (let i = 0; i < 15; i++) rememberInboxFolder(`folder${i}`);
+    const history = getInboxFolderHistory();
+    expect(history).toHaveLength(12);
+    expect(history[0]).toBe("folder14");
+    expect(history).not.toContain("folder0");
+  });
+
+  it("壊れた JSON / 形の違う JSON は空として扱う", () => {
+    localStorage.setItem("graphium-mobile-inbox-folder-history", "{");
+    expect(getInboxFolderHistory()).toEqual([]);
+    localStorage.setItem("graphium-mobile-inbox-folder-history", JSON.stringify({ a: 1 }));
+    expect(getInboxFolderHistory()).toEqual([]);
+    localStorage.setItem("graphium-mobile-inbox-folder-history", JSON.stringify(["ok", 3, null]));
+    expect(getInboxFolderHistory()).toEqual(["ok"]);
   });
 });

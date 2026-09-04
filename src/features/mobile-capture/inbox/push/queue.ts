@@ -32,6 +32,7 @@ import {
   parseGraphiumCaptureFile,
 } from "../capture-file";
 import { normalizeCaptureName } from "./naming";
+import { getInboxFolder } from "./config";
 import { createCaptureThumbnail } from "./thumbnail";
 import { PushAuthError, type InboxPusher, type PushProgress } from "./types";
 
@@ -336,6 +337,9 @@ async function attachThumbnails(records: PushQueueRecord[], files: File[]): Prom
 export async function enqueuePushFiles(files: File[]): Promise<PushQueueItemMeta[]> {
   if (files.length === 0) return [];
   const when = new Date();
+  // 送信のたびに選ばせず、設定した既定のフォルダを使う（モバイルは素早く放り込む道具で、
+  // 毎回の選択はその速さを損なう）。メディアは名前に埋め込んで運ぶ。
+  const folder = getInboxFolder() ?? undefined;
   const records: PushQueueRecord[] = await Promise.all(
     files.map(async (file, index) => {
       const mime = file.type || "application/octet-stream";
@@ -344,6 +348,7 @@ export async function enqueuePushFiles(files: File[]): Promise<PushQueueItemMeta
         originalName: file.name,
         when,
         seq: index + 1,
+        ...(folder ? { folder } : {}),
       });
       return {
         id: newId(),
