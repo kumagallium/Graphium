@@ -15,6 +15,12 @@ export {
   type ShareKnowledgeOptions,
 } from "./share-knowledge";
 export {
+  shareTemplate,
+  type ShareTemplateResult,
+  type ShareTemplateOptions,
+} from "./share-template";
+export { ShareTemplateDialog, type ShareTemplateDialogProps } from "./ShareTemplateDialog";
+export {
   forkSharedNote,
   type ForkSharedNoteResult,
   type ForkSharedNoteOptions,
@@ -65,3 +71,21 @@ export {
   SHARED_INDEXABLE_TYPES,
 } from "./shared-entry-source";
 export { useSharedLibrarySync, type SharedLibrarySyncParams } from "./shared-library-sync";
+export {
+  SHARED_PROJECTION_VERSION,
+  projectSharedNote,
+  parseStoredProjection,
+  createEmptySharedProjection,
+  loadSharedProjection,
+  getSharedProjection,
+  subscribeSharedProjection,
+  useSharedProjection,
+  recordSharedProjectionFromBody,
+  pruneSharedProjection,
+  buildSharedPseudoIndex,
+  buildSharedProcessIndex,
+  countProjectedLabelNotes,
+  countProjectedProcessNotes,
+  type SharedProjection,
+  type SharedProjectionEntry,
+} from "./shared-projection";

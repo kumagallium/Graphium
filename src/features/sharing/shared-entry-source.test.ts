@@ -4,7 +4,7 @@
 // - hash 不一致（verified=false）は chunks 空
 // - 対象外の type は null
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SharedEntry } from "../../lib/storage/shared";
 import type { GraphiumDocument } from "../../lib/document-types";
 import {
@@ -159,5 +159,29 @@ describe("extractSharedDerivedMeta", () => {
 
   it("本文が壊れていれば null", () => {
     expect(extractSharedDerivedMeta(entry({}), new TextEncoder().encode("{"), true)).toBeNull();
+  });
+});
+
+describe("パース済み本文の受け取り", () => {
+  // 語彙索引レーン（shared-library-sync）は同じ body を投影にも渡す。両方が
+  // 別々に JSON.parse すると本文の大きいノートで丸ごと 2 回走るので、
+  // 呼び出し側が 1 回だけパースして配れるようにしてある
+  it("パース済みの doc を渡されたら body を読み直さない", () => {
+    const parseSpy = vi.spyOn(JSON, "parse");
+    // body はわざと壊す。パースし直していれば chunks が空になる
+    const input = sharedEntryToSourceInput(
+      entry({}),
+      new TextEncoder().encode("{ not json"),
+      true,
+      noteDoc,
+    );
+    expect(parseSpy).not.toHaveBeenCalled();
+    expect(input?.chunks.length).toBeGreaterThan(0);
+    parseSpy.mockRestore();
+  });
+
+  it("パース済みが null（呼び出し側で壊れていた）なら chunks は空", () => {
+    const input = sharedEntryToSourceInput(entry({}), encode(noteDoc), true, null);
+    expect(input?.chunks).toEqual([]);
   });
 });

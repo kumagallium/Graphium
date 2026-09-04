@@ -44,6 +44,12 @@ export type CaptureMeta = {
   quickNote?: string;
   /** 撮影時タグ（Phase 1b）。 */
   tags?: string[];
+  /**
+   * 送信時に指定されたフォルダ。取り込み時に素材の noteContexts へ入れる。
+   * 生の写真・動画・音声にはメタを運ぶ経路が無いので、送信名に埋め込んだものを
+   * transport が取り出してここへ載せる（push/naming.ts の parseInboxFolder）。
+   */
+  folder?: string;
 };
 
 /**

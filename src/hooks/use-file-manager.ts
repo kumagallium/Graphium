@@ -2168,6 +2168,11 @@ export function useFileManager(authenticated: boolean) {
           ? { derivedFromAssets: options.derivedFromAssets }
           : {}),
         ...(options?.capture ? { capture: options.capture } : {}),
+        // 送信時に指定されたフォルダをそのまま素材に付ける。モバイルで「いまは材料X」と
+        // 決めておけば、取り込んだ時点で片付いている状態になる。
+        ...(options?.capture?.folder
+          ? { noteContexts: normalizeNoteContexts([options.capture.folder]) }
+          : {}),
       };
       const current = mediaIndexRef.current ?? createEmptyIndex();
       const updated = addMediaEntry(current, entry);
@@ -2694,8 +2699,16 @@ export function useFileManager(authenticated: boolean) {
   // 外部ファイル（Word / 将来 PowerPoint 等）からの取り込みでノートを新規作成する。
   // human_derivation として記録 — 元ファイルからの抽出はユーザー由来の派生
   const handleCreateNoteFromImport = useCallback(
-    async (doc: GraphiumDocument): Promise<string> => {
-      doc = await recordRevision(doc, null, "human_derivation");
+    async (doc: GraphiumDocument, options?: { sources?: string[] }): Promise<string> => {
+      // sources: この新規ノートが取り込んだ元（例: 共有テンプレートの `shared:<id>`）。
+      // 初回リビジョンの prov:used に残すため、ここで recordRevision へ渡す
+      // （呼び出し側で先に recordRevision すると、この行がもう 1 本リビジョンを積んで二重になる）
+      doc = await recordRevision(
+        doc,
+        null,
+        "human_derivation",
+        options?.sources?.length ? { sources: options.sources } : undefined,
+      );
       doc = normalizeTableRowIdentities(doc);
       const newFileId = await createFile(doc.title, doc);
       const now = new Date().toISOString();

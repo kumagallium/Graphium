@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
@@ -193,15 +193,20 @@ import {
   materializeSharedBlobs,
   BulkShareModal,
   notifySharedLibraryChanged,
+  readSharedEntryBody,
+  getSharedLibrarySnapshot,
   useSharedLibrarySync,
+  ShareTemplateDialog,
   type BulkShareTarget,
 } from "./features/sharing";
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
+// 共有ノート内の画像・ファイルを自分の素材に取り込むときの mime 判定（fork の materialize と同じ経路）
+import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-blobs";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues } from "./features/note-context/folder-tree-model";
-import { buildNoteFolderLookup } from "./features/asset-browser/asset-folders";
+import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
@@ -245,7 +250,7 @@ import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLangu
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
+import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates, buildDocumentFromTemplate, pageTemplateToBuildResult, deserializeTemplate, type PageTemplate } from "./features/template";
 import {
   CitePickerModal,
   getCiteSlashMenuItems,
@@ -451,6 +456,7 @@ function NoteHeaderMenu({
   isShared,
   shareBusy,
   shareDisabledReason,
+  onShareTemplate,
   onCopyLink,
   fullWidth,
   onToggleFullWidth,
@@ -499,6 +505,11 @@ function NoteHeaderMenu({
   shareBusy?: boolean;
   /** Shared が無効な理由（disabled 時のヒント表示用） */
   shareDisabledReason?: string;
+  /**
+   * 現在のページをテンプレートとして共有する（PR 3）。未設定時は項目ごと隠す。
+   * 無効理由はノート共有と同じ shareDisabledReason を使う。
+   */
+  onShareTemplate?: () => void;
   /** このノートへのリンク（URL）をクリップボードにコピーする。別ノートに貼るとメンション化される。 */
   onCopyLink?: () => void;
   /** 本文をフル幅表示しているか（Notion の Full width 相当）。ON でチェックを表示 */
@@ -628,6 +639,18 @@ function NoteHeaderMenu({
                     ? t("share.reshareToTeam")
                     : t("share.shareToTeam")}
               </button>
+              {/* 記録のコピー（上）と雛形の配布（下）は別物なので、同じ共有の区画に並べる */}
+              {onShareTemplate && (
+                <button
+                  className={itemClass}
+                  disabled={shareDisabled || shareBusy}
+                  onClick={() => { onShareTemplate(); setOpen(false); }}
+                  title={shareDisabled ? shareDisabledReason : undefined}
+                >
+                  <LayoutTemplate size={14} />
+                  {t("share.template.shareToTeam")}
+                </button>
+              )}
             </>
           )}
           {onDeriveWholeNote && (
@@ -734,6 +757,12 @@ function NoteHeaderMenu({
 type NoteEditorProps = {
   fileId: string | null;
   initialDoc: GraphiumDocument | null;
+  /**
+   * ノート id → そのノートのフォルダ。エディタ内から開く素材サイドピークで、
+   * 素材が「使われているノートのフォルダ」に属して見えるようにするために渡す
+   * （素材ギャラリー側と同じ導出を使い、見え方を揃える）。
+   */
+  noteFolderLookup?: NoteFolderLookup;
   onSave: (doc: GraphiumDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   /** `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す（ナビゲーションしない） */
@@ -1057,6 +1086,7 @@ async function applyAtomReinforcement(opts: {
 function NoteEditorInner({
   fileId,
   initialDoc,
+  noteFolderLookup,
   onSave,
   onDeriveNote,
   onCreateLinkedNote,
@@ -1608,6 +1638,130 @@ function NoteEditorInner({
     templateTriggerBlockRef.current = null;
     // insertBlocks による onChange で自動的に markDirty される
   }, [labelStore, linkStore, addFirstColumnType]);
+
+  // チームのテンプレート（共有ライブラリの type=template）をピッカーから挿入する。
+  // 公式テンプレートとの違いは「本文が共有ルートにある」ことだけなので、
+  // 読み出し → hash 照合 → shared-blob: の解決 まで済ませてから、
+  // 公式と同じ挿入経路（ブロック挿入 → 次フレームでラベル・属性・列のふるまいを適用）に流す。
+  const handleSharedTemplateSelect = useCallback(async (entry: SharedEntry) => {
+    setTemplatePickerOpen(false);
+    const editor = editorRef.current;
+    // 挿入位置は本文の読み出し（非同期）を跨ぐので先に確保する。
+    // ref は次の選択に備えてここで空に戻す
+    const triggerBlock = templateTriggerBlockRef.current ?? editor?.getTextCursorPosition()?.block;
+    templateTriggerBlockRef.current = null;
+    if (!editor || !triggerBlock) return;
+
+    let template: PageTemplate;
+    try {
+      const { body, verified } = await readSharedEntryBody(entry);
+      if (!verified) {
+        // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
+        // 本文自体は読めるので、挿すかどうかは利用者に決めさせる
+        if (!window.confirm(tStatic("template.picker.hashMismatchConfirm"))) return;
+      }
+      // バイト列を生文字列として扱うと日本語が壊れる。必ず TextDecoder で読む
+      template = deserializeTemplate(new TextDecoder().decode(body));
+    } catch (e) {
+      alert(tStatic("template.picker.loadFailed", { error: e instanceof Error ? e.message : String(e) }));
+      return;
+    }
+
+    // shared-blob: を自分のローカル素材へ置き換える（fork・テンプレートから新規ノートと
+    // 同じ materializeSharedBlobs）。doc 単位の関数なので 1 ページの擬似 doc に包む。
+    // ここでブロック id は変えない — このあとの pageTemplateToBuildResult が
+    // labels / attributes / tableMeta を「元の blockId」で引くため、
+    // 先に id が変わると注釈がまとめて落ちる
+    const extraBlobs = (entry.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
+    const blobRoot = getBlobRoot();
+    if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot && uploadFile) {
+      const blobProvider = new LocalFolderBlobProvider(blobRoot);
+      const now = new Date().toISOString();
+      const pseudoDoc: GraphiumDocument = {
+        version: LATEST_DOCUMENT_VERSION,
+        title: template.name,
+        pages: [
+          {
+            id: "main",
+            title: template.pageTitle,
+            blocks: template.blocks,
+            labels: {},
+            provLinks: [],
+            knowledgeLinks: [],
+          },
+        ],
+        createdAt: now,
+        modifiedAt: now,
+      };
+      const materialized = await materializeSharedBlobs(pseudoDoc, {
+        blobs: extraBlobs,
+        fetchBytes: (ref) => blobProvider.get(ref),
+        uploadMedia: async (file) => ({ url: await uploadFile(file) }),
+      });
+      template = { ...template, blocks: materialized.doc.pages[0]?.blocks ?? template.blocks };
+      if (materialized.missing.length > 0) {
+        alert(tStatic("template.picker.mediaMissing", { count: String(materialized.missing.length) }));
+      }
+    }
+
+    const { blocks, labels, attributes, columnTypes } = pageTemplateToBuildResult(template);
+    if (blocks.length === 0) return;
+
+    const inserted = editor.insertBlocks(blocks, triggerBlock, "after");
+
+    // スラッシュを打ったブロックが空なら削除（公式テンプレートと同じ後始末）
+    const content = (triggerBlock as any).content;
+    if (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] ||
+        (content[0].type === "text" &&
+          content[0].text.replace("/", "").trim() === ""))
+    ) {
+      editor.removeBlocks([triggerBlock]);
+    }
+
+    // パスから挿入後のブロックを取得（公式テンプレートと同じ引き当て方）
+    const resolveByPath = (path: number[]): any | null => {
+      let nodes: any[] = inserted as any[];
+      let node: any = null;
+      for (const idx of path) {
+        node = nodes?.[idx];
+        if (!node) return null;
+        nodes = node.children ?? [];
+      }
+      return node;
+    };
+
+    // エディタの状態反映後に注釈層を復元する（公式テンプレートと同じく次フレーム）
+    setTimeout(() => {
+      for (const { path, label } of labels) {
+        const block = resolveByPath(path);
+        if (block?.id) labelStore.setLabel(block.id, label);
+      }
+      // 連動属性はラベルを付けた直後にだけ入る（setAttributes は既定値が無いブロックでは
+      // 何もしない）。ラベルが復元できなかったブロックの属性は落ちるが、
+      // 属性だけ復活しても意味が無いのでそれで正しい
+      for (const { path, attributes: attrs } of attributes ?? []) {
+        const block = resolveByPath(path);
+        if (block?.id) labelStore.setAttributes(block.id, attrs);
+      }
+      for (const { path, type } of columnTypes ?? []) {
+        const block = resolveByPath(path);
+        if (block?.id) addFirstColumnType(block.id, type);
+      }
+    }, 0);
+
+    // 共有テンプレートは focusPath を持たないので、挿入した先頭ブロックにカーソルを置く
+    const firstId = (inserted as any[])[0]?.id;
+    if (firstId) {
+      try {
+        editor.setTextCursorPosition(firstId, "end");
+      } catch {
+        /* no-op */
+      }
+    }
+  }, [labelStore, addFirstColumnType, uploadFile]);
 
   // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
   const isSlashOnlyBlock = useCallback((block: any) => {
@@ -2653,6 +2807,20 @@ function NoteEditorInner({
       setShareBusy(false);
     }
   }, [sharedRoot, sharedAuthor, buildDocument, onSave, t, sharedRefState, isWikiDoc]);
+
+  // ── テンプレートとして共有（PR 3）──
+  // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
+  // 本文は「共有」を押した時点で組み立てる（ダイアログを開いたまま編集しても最新が出る）。
+  const [shareTemplateOpen, setShareTemplateOpen] = useState(false);
+  const resolveTemplateSource = useCallback(async () => {
+    const doc = await buildDocument();
+    const page = doc.pages[0];
+    if (!page) return null;
+    // 手順の連動属性（チェック・実行者・状態）はページに保存されずラベルストアにしか
+    // 無いので、ここで一緒に渡す。渡さないと共有テンプレートを挿したときに
+    // ラベルだけ戻って属性が既定値に落ちる
+    return { doc, page, attributes: labelStore.getSnapshot().attributes };
+  }, [buildDocument, labelStore]);
 
   // ── メモ挿入（メモギャラリーから） ──
   useEffect(() => {
@@ -4743,10 +4911,19 @@ function NoteEditorInner({
           allowDisplayMode
         />
       )}
+      {/* テンプレートとして共有ダイアログ（⋯ メニューから） */}
+      <ShareTemplateDialog
+        open={shareTemplateOpen}
+        defaultTitle={title}
+        resolveSource={resolveTemplateSource}
+        onClose={() => setShareTemplateOpen(false)}
+        onShared={() => window.alert(t("share.template.success"))}
+      />
       {/* テンプレートピッカーモーダル（スラッシュメニュー /template から） */}
       {templatePickerOpen && (
         <TemplatePickerModal
           onSelect={handleTemplateSelect}
+          onSelectShared={handleSharedTemplateSelect}
           onClose={() => setTemplatePickerOpen(false)}
         />
       )}
@@ -4830,6 +5007,10 @@ function NoteEditorInner({
           onDelete={onDeleteNote}
           deleteDisabled={!fileId || saving}
           onShare={!isSkillDoc ? handleShare : undefined}
+          onShareTemplate={
+            // 雛形として配るのはノートだけ（Wiki / Skill は本文の性格が違う）
+            !isSkillDoc && !isWikiDoc ? () => setShareTemplateOpen(true) : undefined
+          }
           shareDisabled={!!shareDisabledReason || saving}
           shareDisabledReason={shareDisabledReason}
           isShared={isShared}
@@ -5395,6 +5576,7 @@ function NoteEditorInner({
           <MaterialSidePeek
             inline
             entry={materialSidePeekEntry}
+            noteFolderLookup={noteFolderLookup}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
@@ -5417,6 +5599,7 @@ function NoteEditorInner({
         {materialSidePeekEntry && !isDesktop && (
           <MaterialSidePeek
             entry={materialSidePeekEntry}
+            noteFolderLookup={noteFolderLookup}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
@@ -7918,6 +8101,10 @@ export function NoteApp() {
                 ...(payload.ogImage ? { ogImage: payload.ogImage } : {}),
               },
               capture: meta,
+              // 送信時に指定されたフォルダをそのまま素材に付ける（メディアと同じ扱い）
+              ...(payload.folder?.trim()
+                ? { noteContexts: [payload.folder.trim()] }
+                : {}),
             });
             return { fileId };
           },
@@ -8850,6 +9037,13 @@ export function NoteApp() {
             noteFolders={noteFolderNames}
             noteFolderLookup={noteFolderLookup}
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
+            onBulkShare={
+              // ノート一覧の一括共有と同じ条件（デスクトップ + 共有ルート + 名前）
+              isTauri() && getSharedRoot() && loadAuthorIdentity()
+                ? (fileIds) =>
+                    setBulkShareTargets(fileIds.map((id) => ({ id, kind: "media" as const })))
+                : undefined
+            }
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
             onIntakeFiles={(files) => void intake.run(files)}
@@ -9531,12 +9725,15 @@ export function NoteApp() {
             focusEntryId={sharedLibraryFocusId}
             onFocusConsumed={() => setSharedLibraryFocusId(null)}
             onForkNote={async (sharedId) => {
+              // 失敗は throw で呼び出し側に伝える。黙って return すると、
+              // プロセスタブの派生ボタン（onForkProcess）が成否を判定できず
+              // 「何も起きていないのに成功したように見える」状態になる
               const root = getSharedRoot();
-              if (!root) return;
+              if (!root) throw new Error("Shared root is not configured.");
               const result = await forkSharedNote(sharedId, { root });
               if (!result.ok) {
                 alert(`Fork failed: ${result.error}`);
-                return;
+                throw new Error(result.error);
               }
               // Phase 2c-2: shared-blob: 参照を自分のローカルメディアに materialize
               let docToSave = result.doc;
@@ -9590,6 +9787,74 @@ export function NoteApp() {
               setShowGlobalGraph(false);
               navigateToNote(`wiki:${newWikiId}`);
             }}
+            // テンプレートから新規ノート。fork（記録のコピー）とは別物で、
+            // 雛形として本文・ラベル・表のふるまいだけを引き継ぐ。
+            // 由来は doc.templateFrom と初回リビジョンの prov:used（shared:<id>）に残す
+            onCreateNoteFromTemplate={async (sharedId) => {
+              // 失敗はすべてここで通知してから投げ直す。
+              // なぜ try で全体を包むか: 本文の読み出し（共有ルート未設定・I/O）や
+              // JSON の破損は例外で来るため、囲まないと呼び出し側の catch が
+              // busy 表示を戻すだけになり、ユーザーには「押しても何も起きない」
+              // としか見えない（挿入経路・fork と同じく必ずメッセージを出す）
+              try {
+                const entry = getSharedLibrarySnapshot().entries.find((e) => e.id === sharedId);
+                if (!entry) throw new Error(tStatic("library.templateNotFound"));
+                const { body, verified } = await readSharedEntryBody(entry);
+                if (!verified) {
+                  // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
+                  // 本文自体は読めるので、作るかどうかは利用者に決めさせる
+                  if (!window.confirm(tStatic("library.templateHashMismatchConfirm"))) return;
+                }
+                const template = deserializeTemplate(new TextDecoder().decode(body));
+                const extraTitle = (entry.extra as { title?: unknown } | undefined)?.title;
+                const title =
+                  typeof extraTitle === "string" && extraTitle.trim()
+                    ? extraTitle
+                    : template.name || tStatic("library.untitled");
+                let doc = buildDocumentFromTemplate(template, {
+                  title,
+                  templateFrom: {
+                    sharedId: entry.id,
+                    hash: entry.hash,
+                    title,
+                    usedAt: new Date().toISOString(),
+                  },
+                });
+                // shared-blob: 参照を自分のローカルメディアへ（fork と同じ経路）
+                const extraBlobs = (entry.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
+                const blobRoot = getBlobRoot();
+                if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
+                  const blobProvider = new LocalFolderBlobProvider(blobRoot);
+                  const materialized = await materializeSharedBlobs(doc, {
+                    blobs: extraBlobs,
+                    fetchBytes: (ref) => blobProvider.get(ref),
+                    uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
+                  });
+                  doc = materialized.doc;
+                  if (materialized.missing.length > 0) {
+                    alert(
+                      tStatic("library.createFromTemplateMediaMissing", {
+                        count: String(materialized.missing.length),
+                      }),
+                    );
+                  }
+                }
+                const newFileId = await fm.handleCreateNoteFromImport(doc, {
+                  sources: [`shared:${sharedId}`],
+                });
+                setShowGlobalGraph(false);
+                navigateToNote(newFileId);
+              } catch (e) {
+                alert(
+                  tStatic("library.createFromTemplateFailed", {
+                    error: e instanceof Error ? e.message : String(e),
+                  }),
+                );
+                // 投げ直して呼び出し側（表の行）にも失敗を伝える。握ると
+                // 成否で分岐したい将来の呼び出し元が誤判定する
+                throw e;
+              }
+            }}
             onUnshare={async (entry) => {
               const author = loadAuthorIdentity();
               const root = getSharedRoot();
@@ -9609,6 +9874,39 @@ export function NoteApp() {
               notifySharedLibraryChanged();
             }}
             onBack={() => { setShowSharedLibrary(false); setShowGlobalGraph(false); router.navigate({ view: "home" }); }}
+            // 共有ノート内の画像・ファイル（extra.blobs）を自分の素材として取り込む。
+            // fork の materialize と同じ経路（blob root から bytes → mime sniff → 自分の MediaProvider）。
+            // blob root 未設定なら undefined を渡し、表側で操作を無効化させる
+            onImportBlob={
+              getBlobRoot()
+                ? async (_parent, blob) => {
+                    const blobRoot = getBlobRoot();
+                    if (!blobRoot) return;
+                    try {
+                      const bytes = await new LocalFolderBlobProvider(blobRoot).get(blob);
+                      const mime = sniffMimeType(bytes);
+                      const filename =
+                        blob.filename ||
+                        `shared-${blob.hash.replace(/[^a-z0-9]/gi, "").slice(0, 12)}.${extensionForMime(mime)}`;
+                      const file = new File([bytes as BlobPart], filename, { type: mime });
+                      await fm.handleUploadMedia(file);
+                      alert(tStatic("library.importBlobDone", { name: filename }));
+                    } catch (e) {
+                      alert(tStatic("library.importBlobFailed", { error: String(e) }));
+                    }
+                  }
+                : undefined
+            }
+            // ラベル/プロセスタブの説明バーから個人のノート一覧へ戻る導線。
+            // サイドバー「すべてのノート」（onShowNoteList）と同一の遷移にする
+            onOpenNoteList={() => {
+              closeAllViews();
+              fm.setShowNoteList(true);
+              setSidebarOpen(false);
+              router.navigate({ view: "notes" });
+              setSelectedFolder(null);
+              setFolderContextFilter([]);
+            }}
           />
         ) : showTrash ? (
           <TrashView
@@ -9667,6 +9965,7 @@ export function NoteApp() {
           <MobileCaptureView
             captureIndex={capture.captureIndex}
             mediaIndex={fm.mediaIndex}
+            vaultFolders={noteFolderNames}
             loading={capture.captureLoading}
             onCreateCapture={capture.handleCreateCapture}
             onDeleteCapture={capture.handleDeleteCapture}
@@ -9735,6 +10034,7 @@ export function NoteApp() {
             provLabelsEnabled={provLabelsEnabled}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
+            noteFolderLookup={noteFolderLookup}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
@@ -10237,6 +10537,12 @@ export function NoteApp() {
                 }
               },
               saveKnowledge: (id, doc) => fm.handleSaveWikiFile(id, doc),
+              // 素材はインデックスが最新の実体（storage から読み直さない）
+              loadMedia: (fileId) =>
+                fm.mediaIndex?.media.find((m) => m.fileId === fileId) ?? null,
+              // 単体共有（MaterialActionsMenu）と同じ書き戻し関数・同じフォルダ導出表を使う
+              saveMediaSharedRef: fm.handleUpdateMediaSharedRef,
+              noteFolderLookup,
             }}
             onClose={(didShareAny) => {
               if (didShareAny) notifySharedLibraryChanged();

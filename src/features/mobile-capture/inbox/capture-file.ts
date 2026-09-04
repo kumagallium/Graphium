@@ -39,6 +39,11 @@ export type GraphiumUrlCapturePayload = {
   title?: string;
   description?: string;
   ogImage?: string;
+  /**
+   * 送信時に指定されたフォルダ。取り込み時に素材の noteContexts へ入る。
+   * メディアは名前に埋め込むが（push/naming.ts）、URL は元から JSON なのでここに置く。
+   */
+  folder?: string;
 };
 
 export type GraphiumCapturePayload = GraphiumMemoCapturePayload | GraphiumUrlCapturePayload;
@@ -83,7 +88,7 @@ export function buildMemoCaptureFile(text: string, now: Date = new Date()): File
 
 /** URL 捕獲ファイルを作る（モバイルの [URL] → キュー）。メタはあるものだけ運ぶ。 */
 export function buildUrlCaptureFile(
-  input: { url: string; title?: string; description?: string; ogImage?: string },
+  input: { url: string; title?: string; description?: string; ogImage?: string; folder?: string },
   now: Date = new Date(),
 ): File {
   const title = input.title?.trim();
@@ -96,6 +101,7 @@ export function buildUrlCaptureFile(
     ...(title ? { title } : {}),
     ...(description ? { description } : {}),
     ...(input.ogImage ? { ogImage: input.ogImage } : {}),
+    ...(input.folder?.trim() ? { folder: input.folder.trim() } : {}),
   };
   return toCaptureFile("url", payload);
 }

@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { computeBlobHash } from "../../../lib/storage/shared/hash";
 import { sniffMimeType } from "../../sharing/materialize-blobs";
 import { mimeFromExtension, kindFromMime } from "./mime";
+import { parseInboxFolder } from "./push/naming";
 import type { CaptureBundle, CaptureRef, InboxTransport } from "./types";
 
 // base64 デコード（Rust inbox_read が base64 で返す）。
@@ -59,6 +60,10 @@ export class FolderInbox implements InboxTransport {
   async fetch(ref: CaptureRef): Promise<CaptureBundle> {
     const { bytes, mime } = await this.readBytes(ref);
     const checksum = await computeBlobHash(bytes);
+    // 送信時に指定されたフォルダは名前に埋め込まれている（push/naming.ts）。
+    // ここで取り出して meta に移す — 名前に残したままだと素材名がエンコード済みの
+    // 文字列になってしまう。
+    const { folder } = parseInboxFolder(ref.name);
     return {
       blob: new Blob([bytes as BlobPart], { type: mime }),
       meta: {
@@ -67,6 +72,7 @@ export class FolderInbox implements InboxTransport {
         mime,
         bytes: bytes.length,
         kind: kindFromMime(mime),
+        ...(folder ? { folder } : {}),
       },
     };
   }

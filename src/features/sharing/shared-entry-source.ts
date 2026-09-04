@@ -33,8 +33,13 @@ function extraString(entry: SharedEntry, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-/** 本文（JSON テキスト）を GraphiumDocument として読む。壊れていれば null */
-function parseDocument(body: Uint8Array): GraphiumDocument | null {
+/**
+ * 本文（JSON テキスト）を GraphiumDocument として読む。壊れていれば null。
+ *
+ * export しているのは、同じ body を索引と投影の両方に渡す呼び出し側
+ * （shared-library-sync の loader）が 1 回だけパースして配れるようにするため。
+ */
+export function parseSharedBody(body: Uint8Array): GraphiumDocument | null {
   try {
     const doc = JSON.parse(new TextDecoder().decode(body)) as GraphiumDocument;
     return doc && typeof doc === "object" && Array.isArray(doc.pages) ? doc : null;
@@ -51,6 +56,12 @@ export function sharedEntryToSourceInput(
   entry: SharedEntry,
   body: Uint8Array,
   verified: boolean,
+  /**
+   * 既にパース済みの本文。投影（shared-projection）と同じ body を使うので、
+   * 呼び出し側が 1 回だけパースして両方に配れるようにする。
+   * undefined = 未パース（ここで読む）／null = パースしたが壊れていた。
+   */
+  parsed?: GraphiumDocument | null,
 ): LexicalSourceInput | null {
   if (!(SHARED_INDEXABLE_TYPES as readonly string[]).includes(entry.type)) return null;
 
@@ -65,7 +76,7 @@ export function sharedEntryToSourceInput(
   if (!verified) return { ...base, title: metaTitle, chunks: [] };
 
   if (entry.type === "note" || entry.type === "knowledge") {
-    const doc = parseDocument(body);
+    const doc = parsed === undefined ? parseSharedBody(body) : parsed;
     if (!doc) return { ...base, title: metaTitle, chunks: [] };
     const title = metaTitle || doc.title || "";
     const chunks =
@@ -115,7 +126,7 @@ export function extractSharedDerivedMeta(
   verified: boolean,
 ): SharedDerivedMeta | null {
   if (entry.type !== "note" || !verified) return null;
-  const doc = parseDocument(body);
+  const doc = parseSharedBody(body);
   if (!doc) return null;
   return { noteContexts: normalizeNoteContexts(doc.noteContexts) ?? [] };
 }

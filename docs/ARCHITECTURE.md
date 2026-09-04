@@ -1316,6 +1316,34 @@ Key pieces:
   media is uploaded as `shared-blob:` references; on Fork, those blobs are
   re-materialized into the personal copy
 
+The Library mirrors the personal side's left navigation: alongside
+Notes / Knowledge / Assets it has **Labels** and **Processes** tabs
+that reuse the personal `LabelGalleryView` / `ProcessGalleryView`
+components as-is. Since a shared entry is a manifest, not a body,
+these tabs are backed by a small local-only cache
+(`src/features/sharing/shared-projection.ts`, DATA_MODEL.md §7.6) built
+by riding the existing body-read path (the lexical sync lane) instead
+of fetching notes just to list them. The Assets tab similarly surfaces
+images and files embedded in shared notes (`SharedEntry.extra.blobs`)
+as read-only rows — open the parent note, or copy the file into your
+own materials.
+
+**Templates** (`SharedEntry.type === "template"`) are a separate share
+target from notes: a page is written out as a `PageTemplate` (not a
+`GraphiumDocument`), so a template carries only blocks, labels, and
+table behavior — no lineage, chats, or shared refs
+(`src/features/sharing/share-template.ts`, DATA_MODEL.md §7.1/§7.4). The
+Library's **Templates** tab lists them read-only (title / description /
+author, no fork action — a template is a blank starting point, not a
+record to copy) and offers "New note from template", which reads the
+body, converts it back into blocks
+(`src/features/template/from-page-template.ts`), re-materializes any
+`shared-blob:` media the same way Fork does, and opens the result with
+a `templateFrom` origin field instead of `forkedFrom`. The same
+conversion also powers a "Team templates" section inside the `/template`
+slash-command picker (`TemplatePickerModal`), which inserts the chosen
+template at the cursor instead of opening a new note.
+
 Today the shared backend is a local folder. Other backends (cloud
 buckets, S3, IPFS-style) can be added by implementing the same blob
 interface.
