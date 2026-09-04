@@ -76,11 +76,15 @@ async function walkEntry(entry: FileSystemEntryLike, out: IntakeFile[]): Promise
   }
 }
 
-/** ドロップされた DataTransfer からファイル一覧を（フォルダなら再帰的に）収集する */
-export async function collectDroppedFiles(dt: DataTransfer): Promise<IntakeFile[]> {
-  const items = dt.items ? Array.from(dt.items) : [];
-  const entries: FileSystemEntryLike[] = [];
-  let supportsEntries = items.length > 0;
+/**
+ * items を 1 件ずつ見て、entry が取れたものは辿り、取れなくても
+ * item.getAsFile() が使えればファイルとして拾う（混在ドロップ対応）。
+ * それぞれ 1 件も取れなかった要素だけを返し、全滅していれば呼び出し元で
+ * dt.files へフォールバックする
+ */
+async function collectViaItems(items: DataTransferItem[]): Promise<IntakeFile[] | null> {
+  const out: IntakeFile[] = [];
+  let collectedAny = false;
 
   for (const item of items) {
     // webkitGetAsEntry は型定義上 DataTransferItem に存在するが、環境によっては
@@ -88,21 +92,33 @@ export async function collectDroppedFiles(dt: DataTransfer): Promise<IntakeFile[
     const getEntry = (item as unknown as { webkitGetAsEntry?: () => FileSystemEntryLike | null })
       .webkitGetAsEntry;
     const entry = typeof getEntry === "function" ? getEntry.call(item) : null;
-    if (!entry) {
-      supportsEntries = false;
+    if (entry) {
+      collectedAny = true;
+      await walkEntry(entry, out);
       continue;
     }
-    entries.push(entry);
+    // entry が取れなくても、この項目がファイルなら getAsFile で拾う
+    if (item.kind === "file" && typeof item.getAsFile === "function") {
+      const file = item.getAsFile();
+      if (file) {
+        collectedAny = true;
+        out.push({ file, path: file.name });
+      }
+    }
   }
 
-  if (!supportsEntries || entries.length === 0) {
-    // entry が使えない、または 1 件も取れなかった場合はフォールバック
-    return toIntakeFiles(Array.from(dt.files ?? []));
+  return collectedAny ? out : null;
+}
+
+/** ドロップされた DataTransfer からファイル一覧を（フォルダなら再帰的に）収集する */
+export async function collectDroppedFiles(dt: DataTransfer): Promise<IntakeFile[]> {
+  const items = dt.items ? Array.from(dt.items) : [];
+
+  if (items.length > 0) {
+    const collected = await collectViaItems(items);
+    if (collected !== null) return collected;
   }
 
-  const out: IntakeFile[] = [];
-  for (const entry of entries) {
-    await walkEntry(entry, out);
-  }
-  return out;
+  // entry も getAsFile も 1 件も取れなかったときだけ dt.files にフォールバック
+  return toIntakeFiles(Array.from(dt.files ?? []));
 }

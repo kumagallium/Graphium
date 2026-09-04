@@ -48,6 +48,24 @@ export type IntakeOutcome = {
 };
 
 /**
+ * 2 回分の IntakeOutcome を 1 つに畳む。実行中に次のバッチが積まれたとき、
+ * バッチごとの結果を合算して最終的な done を 1 回だけ出すために使う。
+ * notes / materials / linksResolved / linksUnresolved / skipped は加算、
+ * failed は連結、lastNewId は後勝ち（新しい方が null なら前を保つ）。
+ */
+export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome {
+  return {
+    notes: a.notes + b.notes,
+    materials: a.materials + b.materials,
+    linksResolved: a.linksResolved + b.linksResolved,
+    linksUnresolved: a.linksUnresolved + b.linksUnresolved,
+    failed: [...a.failed, ...b.failed],
+    skipped: a.skipped + b.skipped,
+    lastNewId: b.lastNewId ?? a.lastNewId,
+  };
+}
+
+/**
  * 投入口の実行本体。classify → notes（importMarkdown）→ materials（uploadAsset）
  * の順で処理し、進捗を全体の done/total に写像して onProgress に流す。
  */

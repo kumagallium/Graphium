@@ -19,6 +19,37 @@ function isHiddenPath(path: string): boolean {
   return path.split("/").some((segment) => segment.startsWith("."));
 }
 
+// 拡張子 → MIME の最小限の対応表。ドロップ由来の File は環境によって
+// file.type が空文字になることがあり、その場合に mimeToMediaType へ渡す
+// フォールバックとして使う
+const EXTENSION_TO_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  heic: "image/heic",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  m4a: "audio/mp4",
+  ogg: "audio/ogg",
+};
+
+/** ファイル名の拡張子から MIME タイプを推定する。不明なら空文字を返す */
+export function guessMimeType(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex < 0) return "";
+  const ext = fileName.slice(dotIndex + 1).toLowerCase();
+  return EXTENSION_TO_MIME[ext] ?? "";
+}
+
 export function classifyIntakeFiles(files: IntakeFile[]): ClassifiedIntakeFiles {
   const notes: IntakeFile[] = [];
   const materials: IntakeFile[] = [];
@@ -33,7 +64,7 @@ export function classifyIntakeFiles(files: IntakeFile[]): ClassifiedIntakeFiles 
       notes.push(f);
       continue;
     }
-    if (mimeToMediaType(f.file.type, f.file.name) !== "other") {
+    if (mimeToMediaType(f.file.type || guessMimeType(f.file.name), f.file.name) !== "other") {
       materials.push(f);
       continue;
     }

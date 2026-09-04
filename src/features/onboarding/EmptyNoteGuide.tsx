@@ -111,6 +111,20 @@ export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true, onOp
       >
         {visibleChips.map((chip) => {
           const clickable = chip.action != null;
+          // display が文字列（⌘K / @ / /）のときだけ <kbd>。アイコン等の ReactNode は
+          // 同じ見た目の <span> で描く（<kbd> でアイコンを包まない）
+          const displayStyle = {
+            fontFamily: "ui-monospace, 'SF Mono', monospace",
+            fontSize: 11,
+            fontWeight: 600,
+            minWidth: 22,
+            textAlign: "center" as const,
+            padding: "1px 5px",
+            borderRadius: "var(--r-1)",
+            background: "var(--paper-3)",
+            color: "var(--ink)",
+            lineHeight: 1.4,
+          };
           return (
             <button
               key={chip.key}
@@ -132,22 +146,11 @@ export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true, onOp
                 fontSize: 12,
               }}
             >
-              <kbd
-                style={{
-                  fontFamily: "ui-monospace, 'SF Mono', monospace",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  minWidth: 22,
-                  textAlign: "center",
-                  padding: "1px 5px",
-                  borderRadius: "var(--r-1)",
-                  background: "var(--paper-3)",
-                  color: "var(--ink)",
-                  lineHeight: 1.4,
-                }}
-              >
-                {chip.display}
-              </kbd>
+              {typeof chip.display === "string" ? (
+                <kbd style={displayStyle}>{chip.display}</kbd>
+              ) : (
+                <span style={displayStyle}>{chip.display}</span>
+              )}
               <span style={{ whiteSpace: "nowrap" }}>{t(chip.labelI18nKey)}</span>
             </button>
           );

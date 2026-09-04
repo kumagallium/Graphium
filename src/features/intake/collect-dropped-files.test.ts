@@ -49,6 +49,19 @@ function makeDataTransfer(entries: (FakeEntry | null)[], fallbackFiles: File[] =
   } as unknown as DataTransfer;
 }
 
+// entry が取れる項目・取れない項目（getAsFile で拾う）が混在するケース用
+function makeMixedDataTransfer(
+  parts: ({ entry: FakeEntry } | { file: File })[],
+): DataTransfer {
+  const items = parts.map((part) => {
+    if ("entry" in part) {
+      return { kind: "file", webkitGetAsEntry: (): FakeEntry | null => part.entry };
+    }
+    return { kind: "file", webkitGetAsEntry: (): FakeEntry | null => null, getAsFile: () => part.file };
+  });
+  return { items, files: [] } as unknown as DataTransfer;
+}
+
 describe("collectDroppedFiles", () => {
   it("フォルダを再帰的に辿り、readEntries が空になるまで繰り返し呼ぶ", async () => {
     const a = fakeFileEntry("/vault/a.md", new File(["a"], "a.md"));
@@ -89,5 +102,16 @@ describe("collectDroppedFiles", () => {
 
     expect(files.map((f) => f.file)).toEqual([f1, f2]);
     expect(files.map((f) => f.path)).toEqual(["note.md", "photo.png"]);
+  });
+
+  it("entry あり 1 件 + entry null で getAsFile あり 1 件 → 両方入る（丸ごとフォールバックしない）", async () => {
+    const a = fakeFileEntry("/vault/a.md", new File(["a"], "a.md"));
+    const b = new File(["b"], "b.png");
+    const dt = makeMixedDataTransfer([{ entry: a }, { file: b }]);
+
+    const files = await collectDroppedFiles(dt);
+
+    const paths = files.map((f) => f.path).sort();
+    expect(paths).toEqual(["b.png", "vault/a.md"]);
   });
 });

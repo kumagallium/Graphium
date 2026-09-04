@@ -6983,6 +6983,9 @@ export function NoteApp() {
   const { dragActive: intakeDragActive } = useGlobalFileDrop({
     enabled: true,
     onFiles: (files) => void intake.run(files),
+    // Composer は自前 createPortal（role="dialog"）で data-modal-portal を持たないため、
+    // 開いている間は投入口を止めて背後で走らせない
+    suspended: composer.open,
   });
   // 一覧ビューの検索欄へフォーカスを送る合図（復元レポートの「検索する」から使う）
   const [focusSearchSignal, setFocusSearchSignal] = useState(0);

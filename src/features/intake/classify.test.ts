@@ -63,4 +63,17 @@ describe("classifyIntakeFiles", () => {
     const result = classifyIntakeFiles([f]);
     expect(result.skipped).toEqual([f]);
   });
+
+  it("type が空の PDF（ドロップ由来）は拡張子から推定して素材に分類される", () => {
+    const f = intakeFile("paper.pdf", "paper.pdf", "");
+    const result = classifyIntakeFiles([f]);
+    expect(result.materials).toEqual([f]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("type が空で拡張子も不明なファイルは対象外", () => {
+    const f = intakeFile("x.unknownext", "x.unknownext", "");
+    const result = classifyIntakeFiles([f]);
+    expect(result.skipped).toEqual([f]);
+  });
 });

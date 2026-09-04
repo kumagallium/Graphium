@@ -25,7 +25,13 @@ function defaultShouldIgnore(target: EventTarget | null): boolean {
 // 既定動作だけ止める（受け皿の上は受け皿自身が処理する）
 function shouldSwallow(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
-  return target.closest("[data-modal-portal]") !== null && target.closest("[data-intake-drop]") === null;
+  // Composer（自前 createPortal, role="dialog"）やモバイルの sheet.tsx は
+  // data-modal-portal を持たないため、role/aria-modal でも同じ扱いにする
+  const inModal =
+    target.closest("[data-modal-portal]") !== null ||
+    target.closest("[role='dialog']") !== null ||
+    target.closest("[aria-modal='true']") !== null;
+  return inModal && target.closest("[data-intake-drop]") === null;
 }
 
 function hasFiles(dt: DataTransfer | null): boolean {
@@ -38,15 +44,24 @@ type UseGlobalFileDropOptions = {
   onFiles: (files: IntakeFile[]) => void;
   /** true を返した target ではこの hook は何もしない（既定: エディタ内・受け皿・モーダル内） */
   shouldIgnore?: (target: EventTarget | null) => boolean;
+  /**
+   * true の間はどこに落とされても preventDefault するだけで何もしない
+   * （カウンタも overlay も動かさず onFiles も呼ばない）。Composer など
+   * data-modal-portal を持たない自前ダイアログが開いている間に使う。
+   * enabled=false と違いリスナー自体は付けたままにする
+   */
+  suspended?: boolean;
 };
 
-export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore }: UseGlobalFileDropOptions) {
+export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore, suspended }: UseGlobalFileDropOptions) {
   const [dragActive, setDragActive] = useState(false);
   // 最新のコールバックを ref で持ち、effect の依存を enabled のみに絞る
   const onFilesRef = useRef(onFiles);
   onFilesRef.current = onFiles;
   const shouldIgnoreRef = useRef(shouldIgnore ?? defaultShouldIgnore);
   shouldIgnoreRef.current = shouldIgnore ?? defaultShouldIgnore;
+  const suspendedRef = useRef(suspended ?? false);
+  suspendedRef.current = suspended ?? false;
 
   useEffect(() => {
     if (!enabled) return;
@@ -57,6 +72,11 @@ export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore }: UseGlobalF
 
     const onDragEnter = (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer)) return;
+      // suspended 中はどこに落とされても既定動作だけ止め、カウンタも overlay も動かさない
+      if (suspendedRef.current) {
+        e.preventDefault();
+        return;
+      }
       if (shouldIgnoreRef.current(e.target)) return;
       depth += 1;
       if (depth === 1) setDragActive(true);
@@ -64,6 +84,10 @@ export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore }: UseGlobalF
 
     const onDragOver = (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer)) return;
+      if (suspendedRef.current) {
+        e.preventDefault();
+        return;
+      }
       if (shouldSwallow(e.target)) {
         e.preventDefault();
         return;
@@ -75,6 +99,10 @@ export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore }: UseGlobalF
 
     const onDragLeave = (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer)) return;
+      if (suspendedRef.current) {
+        e.preventDefault();
+        return;
+      }
       if (shouldIgnoreRef.current(e.target)) return;
       depth = Math.max(0, depth - 1);
       if (depth === 0) setDragActive(false);
@@ -82,6 +110,10 @@ export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore }: UseGlobalF
 
     const onDrop = (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer)) return;
+      if (suspendedRef.current) {
+        e.preventDefault();
+        return;
+      }
       if (shouldSwallow(e.target)) {
         e.preventDefault();
         depth = 0;

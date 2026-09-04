@@ -7,7 +7,7 @@ export { IntakeDropOverlay } from "./IntakeDropOverlay";
 export { useIntake } from "./use-intake";
 export { useGlobalFileDrop } from "./use-global-file-drop";
 
-export { runIntake } from "./run-intake";
+export { runIntake, mergeOutcome } from "./run-intake";
 export type { IntakeDeps, IntakeOutcome, MarkdownImportResult, IntakeProgress } from "./run-intake";
 
 export { classifyIntakeFiles } from "./classify";

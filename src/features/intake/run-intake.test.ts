@@ -4,7 +4,7 @@
 // skipped の集計を確認する。
 
 import { describe, it, expect, vi } from "vitest";
-import { runIntake, type IntakeDeps, type IntakeProgress, type MarkdownImportResult } from "./run-intake";
+import { runIntake, mergeOutcome, type IntakeDeps, type IntakeOutcome, type IntakeProgress, type MarkdownImportResult } from "./run-intake";
 import type { IntakeFile } from "./types";
 
 function mdFile(name: string): IntakeFile {
@@ -124,5 +124,41 @@ describe("runIntake の堅牢性", () => {
     const outcome = await runIntake([mdFile("a.md")], deps, () => {});
     expect(outcome.notes).toBe(1);
     warn.mockRestore();
+  });
+});
+
+describe("mergeOutcome", () => {
+  it("notes/materials/links/skipped を加算し、failed を連結、lastNewId は後勝ち", () => {
+    const a: IntakeOutcome = {
+      notes: 2,
+      materials: 1,
+      linksResolved: 3,
+      linksUnresolved: 1,
+      failed: ["a.md"],
+      skipped: 1,
+      lastNewId: "note-a",
+    };
+    const b: IntakeOutcome = {
+      notes: 1,
+      materials: 2,
+      linksResolved: 0,
+      linksUnresolved: 2,
+      failed: ["b.pdf"],
+      skipped: 0,
+      lastNewId: null,
+    };
+
+    const merged = mergeOutcome(a, b);
+
+    expect(merged).toEqual({
+      notes: 3,
+      materials: 3,
+      linksResolved: 3,
+      linksUnresolved: 3,
+      failed: ["a.md", "b.pdf"],
+      skipped: 1,
+      // b の lastNewId が null なので a を保つ
+      lastNewId: "note-a",
+    });
   });
 });
