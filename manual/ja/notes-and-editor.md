@@ -219,7 +219,7 @@ Graphium は `⌘⇧N`（Windows/Linux は `Ctrl+Shift+N`）を「新規ノー�
 
 ![計画テンプレートと実施テンプレートが並んだテンプレート挿入モーダル](/screenshots/template-picker.png)
 
-チームの共有フォルダを設定していれば、組み込みテンプレートの下に **チームのテンプレート** 欄が表示され、チームメンバーがテンプレートとして共有したページが並びます — [ストレージと同期](/ja/storage-and-sync#sharing-notes-with-your-team)を参照してください。
+チームの共有フォルダを設定していれば、チームメンバーがテンプレートとして共有したページが、組み込みテンプレートの後ろに同じ表の行として並び、提供元列に **チーム** バッジが付きます — [ストレージと同期](/ja/storage-and-sync#sharing-notes-with-your-team)を参照してください。
 
 ## 表を扱う <Badge type="tip" text="v0.48.0 (2026-08-31) で追加" /> {#tables}
 

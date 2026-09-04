@@ -278,6 +278,8 @@ const baseArgs = {
   onUnshare: NOOP_ASYNC,
   onImportBlob: NOOP_ASYNC,
   onBack: () => console.log("back"),
+  // ラベル / プロセスタブの説明バーのボタン（実アプリではノート一覧へ移動する）
+  onOpenNoteList: () => console.log("open note list"),
   loadEntries: async () => ALL_ENTRIES,
 };
 
@@ -460,7 +462,7 @@ export const ProposedLabels: Story = {
     docs: {
       description: {
         story:
-          "共有ノートから投影したラベル。上のチップで種別を選び、一覧は個人側の LabelGalleryView をそのまま使う（戻るボタンだけ隠す）。件数は本文を読めたノートの分だけ増える。",
+          "上部の説明バーは「ラベルは共有ノートから自動で集まる（専用の共有操作は無い）」ことを伝える。共有ノートから投影したラベル。チップで種別を選び、一覧は個人側の LabelGalleryView をそのまま使う（戻るボタンだけ隠す）。件数は本文を読めたノートの分だけ増える。",
       },
     },
   },
@@ -474,7 +476,7 @@ export const ProposedProcess: Story = {
     docs: {
       description: {
         story:
-          "共有ノートから投影した手順。個人側の ProcessGalleryView をそのまま使い、fork の文言だけ「自分のノートに派生」に差し替える。",
+          "上部の説明バーはラベルタブと同じ（手順も共有ノートから自動で集まる）。共有ノートから投影した手順。個人側の ProcessGalleryView をそのまま使い、fork の文言だけ「自分のノートに派生」に差し替える。",
       },
     },
   },

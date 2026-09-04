@@ -8865,6 +8865,13 @@ export function NoteApp() {
             noteFolders={noteFolderNames}
             noteFolderLookup={noteFolderLookup}
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
+            onBulkShare={
+              // ノート一覧の一括共有と同じ条件（デスクトップ + 共有ルート + 名前）
+              isTauri() && getSharedRoot() && loadAuthorIdentity()
+                ? (fileIds) =>
+                    setBulkShareTargets(fileIds.map((id) => ({ id, kind: "media" as const })))
+                : undefined
+            }
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
             onExtractDocxImages={handleExtractDocxImages}
@@ -9821,6 +9828,16 @@ export function NoteApp() {
                   }
                 : undefined
             }
+            // ラベル/プロセスタブの説明バーから個人のノート一覧へ戻る導線。
+            // サイドバー「すべてのノート」（onShowNoteList）と同一の遷移にする
+            onOpenNoteList={() => {
+              closeAllViews();
+              fm.setShowNoteList(true);
+              setSidebarOpen(false);
+              router.navigate({ view: "notes" });
+              setSelectedFolder(null);
+              setFolderContextFilter([]);
+            }}
           />
         ) : showTrash ? (
           <TrashView
@@ -10448,6 +10465,12 @@ export function NoteApp() {
                 }
               },
               saveKnowledge: (id, doc) => fm.handleSaveWikiFile(id, doc),
+              // 素材はインデックスが最新の実体（storage から読み直さない）
+              loadMedia: (fileId) =>
+                fm.mediaIndex?.media.find((m) => m.fileId === fileId) ?? null,
+              // 単体共有（MaterialActionsMenu）と同じ書き戻し関数・同じフォルダ導出表を使う
+              saveMediaSharedRef: fm.handleUpdateMediaSharedRef,
+              noteFolderLookup,
             }}
             onClose={(didShareAny) => {
               if (didShareAny) notifySharedLibraryChanged();

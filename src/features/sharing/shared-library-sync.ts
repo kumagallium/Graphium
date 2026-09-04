@@ -9,6 +9,9 @@
 // - スイッチ OFF・共有ルート未設定なら desired を空にして reconcile する。
 //   索引から共有分だけが消える（旧ルートの残留もこれで掃除される）
 //
+// ラベル・プロセスの投影（shared-projection）は上のスイッチとは独立に更新する。
+// ON なら loader が本文を読んだついでに、OFF なら reconcile のあとに差分だけ読んで投影する。
+//
 // reconcile のあとに共有ナレッジの埋め込み（shared-embeddings）も同じ入口から揃える。
 // 索引も埋め込みも手元（IndexedDB）にしか作らない。共有フォルダには一切書かない。
 
@@ -31,6 +34,7 @@ import {
 } from "./shared-library-store";
 import { parseSharedBody, sharedEntryToSourceInput } from "./shared-entry-source";
 import {
+  getSharedProjection,
   loadSharedProjection,
   pruneSharedProjection,
   recordSharedProjectionFromBody,
@@ -46,6 +50,34 @@ export type SharedLibrarySyncParams = {
   /** 無効化したいとき（Storybook 等） */
   disabled?: boolean;
 };
+
+/**
+ * ラベル・プロセスの投影だけを更新する（語彙索引には入れない）。
+ *
+ * 検索/AI のスイッチが OFF でも Library のタブが埋まるようにするための経路。
+ * - 対象は type === "note" だけ（投影の対象がノートのみ）
+ * - 投影済みの hash と一致するものは読まない ＝ 差分だけ本文を取りに行く
+ * - readSharedEntryBody は LRU つきなので 1 件ずつ順に読む（共有フォルダへの
+ *   同時アクセスを増やさない）。中断されたら次の本文を取りに行かない
+ */
+async function projectSharedNotes(
+  entries: SharedEntry[],
+  isCancelled: () => boolean,
+): Promise<void> {
+  for (const entry of entries) {
+    if (isCancelled()) return;
+    if (entry.type !== "note") continue;
+    if (getSharedProjection().entries[entry.id]?.hash === entry.hash) continue;
+    try {
+      const { body, verified } = await readSharedEntryBody(entry);
+      if (isCancelled()) return;
+      if (!verified) continue;
+      recordSharedProjectionFromBody(entry, body, verified, parseSharedBody(body));
+    } catch {
+      // 読めなかった（消された・権限なし）→ 投影は前回のまま。掃除は prune に任せる
+    }
+  }
+}
 
 export function useSharedLibrarySync(params: SharedLibrarySyncParams): void {
   const { authenticated, disabled } = params;
@@ -116,6 +148,15 @@ export function useSharedLibrarySync(params: SharedLibrarySyncParams): void {
       // LRU キャッシュから読めるので二度読みにならない）。OFF なら entries が
       // 空なので、消えた分の掃除だけが走る
       await syncSharedKnowledgeEmbeddings(entries, readSharedEntryBody);
+      if (cancelled) return;
+      // スイッチ OFF のときは上の reconcile が空一覧なので本文が一切読まれない。
+      // ラベル・プロセスのタブは「共有すれば自動で集まる」と案内している以上、
+      // 検索/AI のスイッチとは切り離して投影だけは更新する。
+      // ON のときは loader 側で投影済みなので、ここは通らない（本文の二度読みを避ける）
+      if (!aiEnabled) {
+        await projectSharedNotes(entriesRef.current, () => cancelled);
+        if (cancelled) return;
+      }
       // 共有から消えた id の投影を落とす。掃除の基準は「いま共有フォルダにあるもの」
       // なので、AI スイッチ OFF で reconcile 対象が空になっただけのときに
       // 投影まで消さないよう、スナップショット側の一覧を使う
