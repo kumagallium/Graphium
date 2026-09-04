@@ -105,6 +105,10 @@ A shared note also carries the folder it was in when it was shared, so the **Not
 
 ![Filtering the shared library by folder](/screenshots/shared-library-folder-filter.png)
 
+The **Assets** tab also has a Folder column, and lists every image or file embedded in a shared note alongside items shared directly as a material. A note's images and files are not entries you can fork or verify on their own — you can **open the parent note** or **add the file to your own materials**, and if the same file appears in several shared notes it is shown once with a count of how many notes carry it.
+
+Two more tabs mirror your own left-hand navigation: **Labels** and **Processes**. They show labels and PROV-DM procedures found in shared notes, extracted the same way your own note list and process list are. This piggybacks on the background read that also powers shared search and AI chat (see below), so a shared note whose content Graphium has not read yet will not contribute to these tabs until it does. Forking a process into your own notes works the same way it does for your own procedures.
+
 ### Shared entries in search and AI chat <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> {#shared-entries-in-search-and-ai-chat}
 
 Shared notes, knowledge pages, references, and data files also show up without forking them: the `⌘K` search palette gets a **Shared** section, and AI chat can cross-search them the same way it cross-searches your own notes (Internal grounding scope). Graphium builds a search index and, for shared knowledge pages, an embedding — both on your own device only. Nothing is written back to the shared folder, and the AI never records a shared entry as a source in provenance unless you insert a citation card yourself.

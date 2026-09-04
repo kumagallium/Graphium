@@ -3,6 +3,8 @@
 // 研究室の「先生と学生」の場面を想定したモックデータ:
 // - currentIdentity は先生（山田先生）
 // - ノート 4 件（学生 2 人 + 先生 1 人、うち 1 件は version 2）。3 件は共有時点のフォルダ付き、1 件は無し
+//   うち 2 件はノート内に貼られた画像・ファイル（extra.blobs）を持つ。素材タブに仮想行として並ぶ
+//   （1 つは 2 件のノートに貼られた同じ画像＝ hash が同じなので 1 行に畳まれる）
 // - ナレッジ 2 件（wikiKind "summary" / "atom"）
 // - reference 2 件（URL ブックマーク）
 // - data-manifest 3 件（image / pdf / data）
@@ -14,6 +16,11 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { SharedLibraryView } from "./SharedLibraryView";
+import {
+  __resetSharedProjectionForTest,
+  recordSharedProjectionFromBody,
+} from "./shared-projection";
+import type { GraphiumDocument } from "../../lib/document-types";
 import "../../app.css";
 
 const now = new Date();
@@ -34,13 +41,34 @@ function makeEntry(partial: Partial<SharedEntry> & Pick<SharedEntry, "id" | "typ
   };
 }
 
+/** ノート本文に貼られた画像・ファイル（共有時に extra.blobs へ書かれる BlobRef） */
+const blob = (hash: string, filename: string | undefined, size: number) => ({
+  provider: "local-folder",
+  uri: `file:///Users/yamada/shared-blobs/${hash}`,
+  hash: `sha256:${hash}`,
+  size,
+  ...(filename ? { filename } : {}),
+});
+
+// note-1 と note-3 に同じ SEM 画像が貼られている（同じ hash ＝ 素材タブでは 1 行）
+const SEM_BLOB = blob("b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8", "sem_grain.png", 842_000);
+
 const NOTES: SharedEntry[] = [
   makeEntry({
     id: "note-1",
     type: "note",
     author: STUDENT_A,
     updated_at: daysAgo(0.2),
-    extra: { title: "Cu粉末の焼結実験（第1回）", noteContexts: ["卒論/焼結"] },
+    extra: {
+      title: "Cu粉末の焼結実験（第1回）",
+      noteContexts: ["卒論/焼結"],
+      // 画像 + 表計算 + 題名を持たない古い共有（hash 先頭 12 桁で出る）
+      blobs: [
+        SEM_BLOB,
+        blob("0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b", "焼結条件.xlsx", 21_000),
+        blob("ff00112233445566778899aabbccddeeff00112233445566778899aa", undefined, 5_400),
+      ],
+    },
   }),
   makeEntry({
     id: "note-2",
@@ -55,7 +83,12 @@ const NOTES: SharedEntry[] = [
     type: "note",
     author: STUDENT_B,
     updated_at: daysAgo(3),
-    extra: { title: "XRD 分析結果まとめ", noteContexts: ["卒論/焼結", "共通/装置"] },
+    extra: {
+      title: "XRD 分析結果まとめ",
+      noteContexts: ["卒論/焼結", "共通/装置"],
+      // note-1 と同じ画像（出どころ列が「2 件のノート」になる）+ 音声メモ
+      blobs: [SEM_BLOB, blob("aabbccddeeff00112233445566778899aabbccddeeff001122334455", "討議メモ.m4a", 1_200_000)],
+    },
   }),
   makeEntry({
     id: "note-4",
@@ -197,6 +230,7 @@ const baseArgs = {
   onForkNote: NOOP_ASYNC,
   onForkKnowledge: NOOP_ASYNC,
   onUnshare: NOOP_ASYNC,
+  onImportBlob: NOOP_ASYNC,
   onBack: () => console.log("back"),
   loadEntries: async () => ALL_ENTRIES,
 };
@@ -222,6 +256,21 @@ export const ProposedAssets: Story = {
   name: "提案（素材タブ）",
   args: { ...baseArgs, initialTab: "asset" },
   decorators: Proposed.decorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "共有した素材（reference / data-manifest）に加えて、共有ノートに貼られた画像・ファイルが 📎 付きの仮想行として並ぶ。blob 行は SharedEntry ではないので版・検証・fork が無く、操作は「ノートを開く」と「自分の素材に取り込む」だけ。同じ hash の画像は 1 行に畳まれ、出どころ列が「2 件のノート」になる。",
+      },
+    },
+  },
+};
+
+export const ProposedAssetsNoBlobRoot: Story = {
+  name: "素材タブ（blob 保管先 未設定）",
+  // onImportBlob が無い ＝ blob root 未設定。取り込みボタンは無効のまま行だけ出る
+  args: { ...baseArgs, initialTab: "asset", onImportBlob: undefined },
+  decorators: Proposed.decorators,
 };
 
 export const ProposedEmpty: Story = {
@@ -245,6 +294,142 @@ export const ProposedEnglish: Story = {
       );
     },
   ],
+};
+
+// ── ラベル / プロセスタブ ──
+//
+// この 2 つのタブは共有エントリの一覧ではなく、共有ノートの本文から投影した結果を見る。
+// 投影はモジュールスコープのストアに載るので、ストーリーでは実際の投影経路
+// （語彙索引レーンが本文を読んだときに呼ぶ関数）に本文を流し込んで作る。
+// 別経路でストアを組み立てると、実物と違う形のデータで見た目を確認することになる。
+
+const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
+  type: "text",
+  text,
+  styles,
+});
+const para = (id: string, content: any[]) => ({ id, type: "paragraph", content, children: [] });
+const stepBlock = (id: string, title: string, children: any[] = []) => ({
+  id,
+  type: "step",
+  content: [styled(title)],
+  children,
+});
+const makeDoc = (title: string, blocks: any[]): GraphiumDocument =>
+  ({
+    version: 6,
+    title,
+    pages: [{ id: "p1", title, blocks, labels: {}, provLinks: [], knowledgeLinks: [] }],
+  }) as any;
+
+const SINTERING_DOC = makeDoc("Cu粉末の焼結実験（第1回）", [
+  stepBlock("s1", "秤量", [
+    para("b1", [styled("Cu 粉末", { inlineMaterial: "mat-cu" })]),
+    para("b2", [styled("電子天秤", { inlineTool: "tool-balance" })]),
+  ]),
+  stepBlock("s2", "成形", [
+    para("b3", [styled("一軸プレス", { inlineTool: "tool-press" })]),
+    para("b4", [styled("圧粉体", { inlineOutput: "out-green" })]),
+  ]),
+  stepBlock("s3", "焼結", [
+    para("b5", [styled("管状炉", { inlineTool: "tool-furnace" })]),
+    para("b6", [styled("焼結体", { inlineOutput: "out-sintered" })]),
+  ]),
+]);
+
+const PRETREAT_DOC = makeDoc("シリカ管の前処理手順", [
+  stepBlock("s1", "洗浄", [
+    para("b1", [styled("シリカ管", { inlineMaterial: "mat-silica" })]),
+    para("b2", [styled("超音波洗浄機", { inlineTool: "tool-sonic" })]),
+  ]),
+  stepBlock("s2", "乾燥", [para("b3", [styled("乾燥管", { inlineOutput: "out-dry" })])]),
+]);
+
+const XRD_DOC = makeDoc("XRD 分析結果まとめ", [
+  stepBlock("s1", "XRD 測定", [
+    para("b1", [styled("焼結体", { inlineMaterial: "mat-sintered" })]),
+    para("b2", [styled("X 線回折装置", { inlineTool: "tool-xrd" })]),
+    para("b3", [styled("回折パターン", { inlineOutput: "out-pattern" })]),
+  ]),
+]);
+
+const encodeDoc = (doc: GraphiumDocument) => new TextEncoder().encode(JSON.stringify(doc));
+
+/** 3 件のノートを投影済みにする（残り 1 件は「まだ本文を読めていない」状態のまま） */
+function seedProjection() {
+  __resetSharedProjectionForTest();
+  recordSharedProjectionFromBody(NOTES[0], encodeDoc(SINTERING_DOC), true);
+  recordSharedProjectionFromBody(NOTES[1], encodeDoc(PRETREAT_DOC), true);
+  recordSharedProjectionFromBody(NOTES[2], encodeDoc(XRD_DOC), true);
+}
+
+const projectionDecorators = [
+  (Story: () => React.JSX.Element) => {
+    syncLocale("ja");
+    seedProjection();
+    return (
+      <LocaleProvider>
+        <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+          <Story />
+        </div>
+      </LocaleProvider>
+    );
+  },
+];
+
+const emptyProjectionDecorators = [
+  (Story: () => React.JSX.Element) => {
+    syncLocale("ja");
+    // 起動直後 = まだどのノートの本文も読めていない状態
+    __resetSharedProjectionForTest();
+    return (
+      <LocaleProvider>
+        <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+          <Story />
+        </div>
+      </LocaleProvider>
+    );
+  },
+];
+
+export const ProposedLabels: Story = {
+  name: "提案（ラベルタブ）",
+  args: { ...baseArgs, initialTab: "labels" },
+  decorators: projectionDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "共有ノートから投影したラベル。上のチップで種別を選び、一覧は個人側の LabelGalleryView をそのまま使う（戻るボタンだけ隠す）。件数は本文を読めたノートの分だけ増える。",
+      },
+    },
+  },
+};
+
+export const ProposedProcess: Story = {
+  name: "提案（プロセスタブ）",
+  args: { ...baseArgs, initialTab: "process" },
+  decorators: projectionDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "共有ノートから投影した手順。個人側の ProcessGalleryView をそのまま使い、fork の文言だけ「自分のノートに派生」に差し替える。",
+      },
+    },
+  },
+};
+
+export const ProposedLabelsEmpty: Story = {
+  name: "ラベルタブ（投影前）",
+  args: { ...baseArgs, initialTab: "labels" },
+  decorators: emptyProjectionDecorators,
+};
+
+export const ProposedProcessEmpty: Story = {
+  name: "プロセスタブ（投影前）",
+  args: { ...baseArgs, initialTab: "process" },
+  decorators: emptyProjectionDecorators,
 };
 
 // マニュアル用スクショ撮影ストーリー（英語 UI・パン作りの世界観）

@@ -94,6 +94,23 @@ describe("shareReference — first share", () => {
     expect(body.description).toBe("User description");
   });
 
+  it("共有時のフォルダ（noteContexts）が extra に入る", async () => {
+    // 一覧は本文を読まずに描くので、フォルダはメタデータ側にも要る（鏡の原則）
+    await shareReference(makeUrlEntry(), {
+      sharedRoot: "/tmp/shared",
+      author,
+      noteContexts: ["調査/先行研究"],
+    });
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.noteContexts).toEqual(["調査/先行研究"]);
+  });
+
+  it("noteContexts 未指定なら空配列（未分類）になる", async () => {
+    await shareReference(makeUrlEntry(), { sharedRoot: "/tmp/shared", author });
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.noteContexts).toEqual([]);
+  });
+
   it("og:image の remote URL は共有 body に載せない", async () => {
     // 載せると、受け取った側がカードを描くたびに publisher（多くは CDN・計測
     // ドメイン）へ GET が飛ぶ ——「チームの誰がいつ見たか」を配信元に配る経路になる

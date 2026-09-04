@@ -117,6 +117,30 @@ describe("shareMedia — first share", () => {
     expect(stored.entry.extra.blobs[0].hash).toMatch(/^sha256:/);
   });
 
+  it("共有時のフォルダ（noteContexts）が extra に入る", async () => {
+    // 一覧は本文を読まずに描くので、フォルダはメタデータ側にも要る（鏡の原則）
+    fs.mediaFiles.set("media-1", btoa("data"));
+    await shareMedia(makeEntry(), {
+      sharedRoot: "/tmp/shared",
+      blobRoot: "/tmp/blobs",
+      author,
+      noteContexts: ["材料X", "測定/XRD"],
+    });
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.noteContexts).toEqual(["材料X", "測定/XRD"]);
+  });
+
+  it("noteContexts 未指定なら空配列（未分類）になる", async () => {
+    fs.mediaFiles.set("media-1", btoa("data"));
+    await shareMedia(makeEntry(), {
+      sharedRoot: "/tmp/shared",
+      blobRoot: "/tmp/blobs",
+      author,
+    });
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.noteContexts).toEqual([]);
+  });
+
   it("title 未指定なら entry.name がデフォルトで使われる", async () => {
     fs.mediaFiles.set("media-1", btoa("d"));
     const result = await shareMedia(makeEntry({ name: "default.jpg" }), {

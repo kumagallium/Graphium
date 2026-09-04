@@ -65,3 +65,21 @@ export {
   SHARED_INDEXABLE_TYPES,
 } from "./shared-entry-source";
 export { useSharedLibrarySync, type SharedLibrarySyncParams } from "./shared-library-sync";
+export {
+  SHARED_PROJECTION_VERSION,
+  projectSharedNote,
+  parseStoredProjection,
+  createEmptySharedProjection,
+  loadSharedProjection,
+  getSharedProjection,
+  subscribeSharedProjection,
+  useSharedProjection,
+  recordSharedProjectionFromBody,
+  pruneSharedProjection,
+  buildSharedPseudoIndex,
+  buildSharedProcessIndex,
+  countProjectedLabelNotes,
+  countProjectedProcessNotes,
+  type SharedProjection,
+  type SharedProjectionEntry,
+} from "./shared-projection";

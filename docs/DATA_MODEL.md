@@ -1700,7 +1700,8 @@ Graphium/
 └── appdata/
     ├── note-index.json             # the GraphiumIndex
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
-    └── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
+    ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
+    └── shared-projection.json      # labels/process extracted from shared notes (§7.6)
 ```
 
 Media binaries keep their original file extension (derived from the
@@ -1922,6 +1923,54 @@ source (the `shared:` prefix is registered in
 PROV-JSON-LD export resolves to a typed external entity. SidePeek saves
 bypass revision recording by design, so citations inserted there are
 not attributed to an edit activity.
+
+### 7.6 Shared projection cache (`SharedProjection`)
+
+The Library's **Labels** and **Processes** tabs mirror the personal
+side's navigation, but a shared entry only carries a manifest — the
+body is fetched on demand and kept in an LRU (§7.3). To list labels and
+processes without opening every shared note, `src/features/sharing/shared-projection.ts`
+keeps a small side cache, written only to the local appdata channel
+(`shared-projection.json`, desktop only — never to the shared root):
+
+```ts
+const SHARED_PROJECTION_VERSION = 1;
+
+type SharedProjectionEntry = {
+  hash: string;              // SharedEntry.hash when projected; skips re-projection if unchanged
+  title: string;
+  updatedAt: string;
+  createdAt: string;
+  author: string;
+  headings: NoteIndexEntry["headings"];
+  steps?: NoteIndexEntry["steps"];
+  labels: NoteIndexEntry["labels"];
+  inlineLabels?: NoteIndexEntry["inlineLabels"];
+  process: ProcessIndexEntry | null;  // null for notes without steps
+};
+
+type SharedProjection = {
+  version: number;
+  logic: { index: number; process: number };  // INDEX_SCHEMA_VERSION / PROCESS_INDEX_VERSION
+  updatedAt: string;
+  entries: Record<string, SharedProjectionEntry>;  // keyed by SharedEntry.id
+};
+```
+
+**No new reads.** Projection rides the lexical sync lane (§17 of the
+internal shared-storage design) that already fetches shared note bodies
+for the vocabulary index; when that lane reads a body it also calls
+`projectSharedNote`, which reuses `buildIndexEntry` (labels/headings/
+steps — the same extraction the personal note index uses) and
+`buildProcessEntry` (the process graph). The projected `process` is the
+return value of `buildProcessEntry` unmodified, except `crossNoteLinks`
+is always cleared: those links point at the *sharer's* local note ids,
+which are meaningless on the receiving side.
+
+**Reconstructible cache.** A `version` or `logic` mismatch discards the
+whole file and starts empty; entries missing from a subsequent list
+refresh are pruned. Losing this file costs nothing but a few
+re-projections next time the affected notes are read.
 
 ## 8. Compatibility rules
 

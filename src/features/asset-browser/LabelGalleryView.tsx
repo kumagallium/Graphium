@@ -58,6 +58,11 @@ export type LabelGalleryViewProps = {
   label: string;
   onBack: () => void;
   onNavigateNote: (noteId: string) => void;
+  /**
+   * 戻るボタンを出さない。呼び出し側が種別の切り替え導線を自前で持つとき
+   * （共有ライブラリのラベルタブ）に使う。既定は従来どおり表示する。
+   */
+  hideBack?: boolean;
 };
 
 // ── ネットワークモーダル ──
@@ -282,6 +287,7 @@ export function LabelGalleryView({
   label,
   onBack,
   onNavigateNote,
+  hideBack = false,
 }: LabelGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -414,12 +420,14 @@ export function LabelGalleryView({
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
-        <button
-          onClick={onBack}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t("common.back")}
-        </button>
+        {!hideBack && (
+          <button
+            onClick={onBack}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t("common.back")}
+          </button>
+        )}
         <span
           className="inline-block text-sm font-semibold rounded-full px-2.5 py-0.5"
           style={{
