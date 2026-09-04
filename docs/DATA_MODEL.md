@@ -2008,7 +2008,11 @@ steps — the same extraction the personal note index uses) and
 `buildProcessEntry` (the process graph). The projected `process` is the
 return value of `buildProcessEntry` unmodified, except `crossNoteLinks`
 is always cleared: those links point at the *sharer's* local note ids,
-which are meaningless on the receiving side.
+which are meaningless on the receiving side. Projection is independent of
+the "include the shared library in ⌘K and AI chat" switch: when that
+switch is off the lexical lane reads nothing, so the sync hook instead
+fetches only the bodies whose `hash` differs from the cached projection
+and updates the projection from those (nothing is added to the index).
 
 **Reconstructible cache.** A `version` or `logic` mismatch discards the
 whole file and starts empty; entries missing from a subsequent list

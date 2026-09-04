@@ -49,7 +49,7 @@ import {
   countProjectedProcessNotes,
   useSharedProjection,
 } from "./shared-projection";
-import { SharedLabelsTab } from "./SharedLabelsTab";
+import { SharedLabelsTab, SharedProjectionHint } from "./SharedLabelsTab";
 import { ProcessGalleryView } from "../network-graph/ProcessGalleryView";
 import {
   collectSharedBlobHashes,
@@ -112,6 +112,13 @@ type Props = {
    * blob root 未設定などで取り込めない環境では未指定にする（操作を出さない）。
    */
   onImportBlob?: (parent: SharedEntry, blob: BlobRef) => Promise<void>;
+  /**
+   * ラベル / プロセスタブの説明バーから個人のノート一覧へ移動する。
+   * これらのタブは共有ノートの本文からの投影で、専用の共有操作を持たない
+   * （ノートを共有すれば増える）。その導線がここしか無いので案内を出す。
+   * 未指定なら説明バーのボタンを出さない。
+   */
+  onOpenNoteList?: () => void;
 };
 
 // 共有導線（Share ボタン）が実装されている type のみ表示タブに出す。
@@ -173,6 +180,7 @@ export function SharedLibraryView({
   loadEntries,
   initialTab = "note",
   onImportBlob,
+  onOpenNoteList,
 }: Props) {
   const uiT = useT();
   const [activeTab, setActiveTab] = useState<SharedLibraryTab>(initialTab);
@@ -471,6 +479,7 @@ export function SharedLibraryView({
               projection={projection}
               entries={entriesByTab.note}
               onNavigateNote={openSharedNote}
+              onOpenNoteList={onOpenNoteList}
             />
           </div>
         ) : activeTab === "process" ? (
@@ -478,6 +487,11 @@ export function SharedLibraryView({
             className="flex-1 min-h-0 flex flex-col overflow-hidden"
             data-testid="shared-library-tab-process"
           >
+            {/* ラベルタブと同じ説明バー（共有操作が無いことの説明はここでも同じ） */}
+            <SharedProjectionHint
+              text={uiT("library.processHint")}
+              onOpenNoteList={onOpenNoteList}
+            />
             {sharedProcessIndex.processes.length === 0 ? (
               // 本文をまだ読めていない間もここに来る（読めた分から増えていく）ので、
               // 個人側の process.empty ではなく共有側の言い方にする

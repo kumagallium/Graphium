@@ -12,6 +12,7 @@
 // 設計詳細: docs/internal/team-shared-storage-design.md §19
 
 import { useMemo, useState } from "react";
+import { Info } from "lucide-react";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { getDisplayLabelName, useT } from "../../i18n";
 import { LabelGalleryView } from "../asset-browser/LabelGalleryView";
@@ -30,6 +31,42 @@ const LABEL_HEX: Record<string, string> = {
   result: "#c26356",
 };
 
+/**
+ * ラベル / プロセスタブの上部に常時出す説明バー。
+ *
+ * なぜ必要か:
+ *   このタブには「共有する」操作が無い（ラベル・手順は共有ノートの本文から自動で
+ *   集めた投影であり、共有の単位ではない）。導線を探しても見つからない、という
+ *   実機レビューの指摘に対して、専用の共有操作を作らずに「ノートを共有すれば出る」
+ *   という仕組みそのものを画面で伝える。
+ *
+ *   プロセスタブ（SharedLibraryView 側）でも同じ見た目を使うため export する。
+ */
+export function SharedProjectionHint({
+  text,
+  onOpenNoteList,
+}: {
+  text: string;
+  /** 未指定ならボタンを出さない（配線されていない環境で押せないボタンを出さないため） */
+  onOpenNoteList?: () => void;
+}) {
+  const uiT = useT();
+  return (
+    <div className="px-6 py-2 border-b border-border bg-muted/30 flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+      <Info size={12} className="shrink-0" />
+      <span className="flex-1 min-w-0">{text}</span>
+      {onOpenNoteList && (
+        <button
+          onClick={onOpenNoteList}
+          className="shrink-0 px-2 py-0.5 rounded border border-border text-foreground hover:bg-muted transition-colors"
+        >
+          {uiT("library.openNoteList")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export type SharedLabelsTabProps = {
   /** 共有ノートの投影キャッシュ */
   projection: SharedProjection;
@@ -37,9 +74,16 @@ export type SharedLabelsTabProps = {
   entries: SharedEntry[];
   /** ラベルの行から辿ったノートを開く（共有 id を渡す） */
   onNavigateNote: (sharedId: string) => void;
+  /** 説明バーの「ノート一覧を開く」。未指定ならボタンを出さない */
+  onOpenNoteList?: () => void;
 };
 
-export function SharedLabelsTab({ projection, entries, onNavigateNote }: SharedLabelsTabProps) {
+export function SharedLabelsTab({
+  projection,
+  entries,
+  onNavigateNote,
+  onOpenNoteList,
+}: SharedLabelsTabProps) {
   const uiT = useT();
   const [pickedLabel, setPickedLabel] = useState<string | null>(null);
 
@@ -78,15 +122,22 @@ export function SharedLabelsTab({ projection, entries, onNavigateNote }: SharedL
     labelCounts.find((c) => c.label === pickedLabel)?.label ?? labelCounts[0]?.label ?? null;
 
   if (!activeLabel) {
+    // 説明バーは空のときこそ効く（何をすれば増えるのかをここで伝える）ので、
+    // 空表示でも同じバーを出す
     return (
-      <div className="flex-1 overflow-auto px-6 py-10 text-center text-xs text-muted-foreground">
-        {uiT("library.empty.labels")}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <SharedProjectionHint text={uiT("library.labelsHint")} onOpenNoteList={onOpenNoteList} />
+        <div className="flex-1 overflow-auto px-6 py-10 text-center text-xs text-muted-foreground">
+          {uiT("library.empty.labels")}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      <SharedProjectionHint text={uiT("library.labelsHint")} onOpenNoteList={onOpenNoteList} />
+
       {/* 種別チップ（個人側の左ナビ「ラベル」セクションに相当する） */}
       <div className="px-6 py-2 border-b border-border flex items-center gap-2 flex-wrap shrink-0">
         {labelCounts.map(({ label, count }) => {

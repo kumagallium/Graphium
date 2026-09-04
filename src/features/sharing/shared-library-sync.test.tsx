@@ -6,6 +6,7 @@
 //   （空一覧で走ると前回セッションの shared 索引が消え、直後に全件読み直しになる）
 // - 読み終わったら、その一覧で 1 回だけ reconcile する
 // - スイッチ OFF のときは読み込みを待たずに空一覧で reconcile する（掃除が目的）
+// - ラベル・プロセスの投影はスイッチに依らず更新される（索引には入れない・差分だけ読む）
 //
 // lexicalSearch と埋め込みはモック（IndexedDB には触れない）。
 
@@ -43,7 +44,11 @@ vi.mock("../../lib/storage/shared", async (importOriginal) => ({
 }));
 
 import { useSharedLibrarySync } from "./shared-library-sync";
-import { __setSharedLibraryLoaderForTest, groupSharedEntriesByType } from "./shared-library-store";
+import {
+  __setSharedLibraryLoaderForTest,
+  groupSharedEntriesByType,
+  refreshSharedLibrary,
+} from "./shared-library-store";
 import {
   __resetSharedProjectionForTest,
   getSharedProjection,
@@ -67,6 +72,25 @@ const result = (entries: SharedEntry[]): SharedLibraryLoadResult => ({
   entries: groupSharedEntriesByType(entries),
   errors: {},
 });
+
+/** step ブロックを 1 つ持つ最小のノート（投影の対象になる形） */
+const noteDocFor = (title: string): GraphiumDocument =>
+  ({
+    version: 6,
+    title,
+    pages: [
+      {
+        id: "p1",
+        title,
+        blocks: [
+          { id: "s1", type: "step", content: [{ type: "text", text: "焼成", styles: {} }], children: [] },
+        ],
+        labels: {},
+        provLinks: [],
+        knowledgeLinks: [],
+      },
+    ],
+  }) as any;
 
 /** タイマーを進めてから、その中で走る非同期処理（await 連鎖）を流し切る */
 async function advance(ms: number): Promise<void> {
@@ -185,6 +209,34 @@ describe("useSharedLibrarySync", () => {
     parseSpy.mockRestore();
     h.reconcile.mockReset();
     h.reconcile.mockImplementation(async () => {});
+  });
+
+  it("スイッチ OFF でも note の投影は更新される（hash が同じものは読まない）", async () => {
+    h.aiEnabled = false;
+    h.readBody.mockResolvedValue({
+      body: new TextEncoder().encode(JSON.stringify(noteDocFor("焼成の記録"))),
+      verified: true,
+    });
+    __setSharedLibraryLoaderForTest(async () => result([entry("a"), entry("b")]), { root: ROOT });
+
+    renderHook(() => useSharedLibrarySync({ authenticated: true }));
+    // 1 回目: ルート読み込み前（空一覧で reconcile）／2 回目: 一覧が届いてから投影が走る
+    await advance(2000);
+    await advance(2000);
+
+    expect(Object.keys(getSharedProjection().entries).sort()).toEqual(["a", "b"]);
+    expect(h.readBody).toHaveBeenCalledTimes(2);
+    // 語彙索引には入れない（reconcile はどの回も desired 空）
+    for (const call of h.reconcile.mock.calls) expect(call[0]).toEqual([]);
+
+
+    // 投影済み（hash 一致）のエントリは、次の一覧更新で読み直さない ＝ 差分だけ読む
+    h.readBody.mockClear();
+    await act(async () => {
+      await refreshSharedLibrary();
+    });
+    await advance(2000);
+    expect(h.readBody).not.toHaveBeenCalled();
   });
 
   it("共有ルート未設定なら空一覧で reconcile する（旧ルートの残留を消す）", async () => {
