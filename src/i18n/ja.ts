@@ -2015,6 +2015,27 @@ export const ja: Record<string, string> = {
   "import.importedCount": "{count} 件のノートを取り込みました。",
   "import.unresolvedLinksNote": "解決できなかった [[リンク]] はテキストとして残しています。",
 
+  // 投入口モーダル（既存資料の一括取り込み）
+  "intake.title": "手元の資料を入れる",
+  "intake.dropHere": "フォルダやファイルをここに落とす",
+  "intake.rule": "Markdown はノートに、PDF・Word・画像・CSV は素材になります",
+  "intake.obsidianHint": "Obsidian の vault はそのままで大丈夫です。[[リンク]] と画像も一緒に入ります",
+  "intake.chooseFolder": "フォルダを選ぶ",
+  "intake.chooseFiles": "ファイルを選ぶ",
+  "intake.running": "入れています {done} / {total}",
+  "intake.doneTitle": "入りました",
+  "intake.statNotes": "ノート",
+  "intake.statMaterials": "素材",
+  "intake.statLinks": "引き継いだつながり",
+  "intake.statUnresolved": "{count} 件は未解決",
+  "intake.statFailed": "失敗",
+  "intake.next": "次に、どれか試してみてください",
+  "intake.search": "ノートを検索する",
+  "intake.graph": "つながりを見る",
+  "intake.askAi": "AI に聞く",
+  "intake.setupAi": "AI を設定する",
+  "intake.setupAiHint": "設定でモデルを登録すると、入れたものについて聞けます",
+
   // 素材ビューア・抽出
   "asset.docxNoImages": "この Word からは画像オブジェクトを取り出せませんでした。",
   "asset.docxUnsupportedImages": "対応形式の画像が含まれていませんでした（EMF/WMF など）。",
