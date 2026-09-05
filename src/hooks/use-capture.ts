@@ -2,6 +2,7 @@
 // .graphium-captures.json の読み書きを行い、MobileCaptureView に状態を提供する
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { normalizeNoteContexts } from "../features/note-context/context-tags";
 import {
   readCaptureIndex,
   saveCaptureIndex,
@@ -18,6 +19,8 @@ import {
   sendCaptureArchiveToTrash,
   generateCaptureId,
   clearCaptureCache,
+  setCaptureContexts,
+  remapCaptureContexts,
   type CaptureIndex,
   type CaptureEntry,
   type MemoSourceAsset,
@@ -104,12 +107,15 @@ export function useCapture(authenticated: boolean) {
   //   _imported/ へ動かさないので、次回の取り込みで再試行できる — データを落とさない）
   // 作成したメモの id を返す（取り込み結果レポート用）。
   const handleImportCapture = useCallback(
-    async (text: string, createdAt?: string): Promise<string> => {
+    async (text: string, createdAt?: string, folder?: string): Promise<string> => {
       const current = indexRef.current ?? createEmptyCaptureIndex();
+      // モバイルで選んだ「送り先」。届いた時点でそのフォルダに入っている状態にする
+      const contexts = normalizeNoteContexts(folder ? [folder] : []);
       const entry: CaptureEntry = {
         id: generateCaptureId(),
         text,
         createdAt: createdAt ?? new Date().toISOString(),
+        ...(contexts ? { noteContexts: contexts } : {}),
       };
       const updated = addCapture(current, entry);
       indexRef.current = updated;
@@ -132,6 +138,38 @@ export function useCapture(authenticated: boolean) {
       } catch (err) {
         console.error(errLabel, err);
       }
+    },
+    [],
+  );
+
+  /** メモのフォルダを差し替える */
+  const handleSetCaptureContexts = useCallback(
+    (captureId: string, contexts: string[]) =>
+      applyCaptureMutation(
+        (i) => setCaptureContexts(i, captureId, contexts),
+        "メモのフォルダ保存に失敗:",
+      ),
+    [applyCaptureMutation],
+  );
+
+  /**
+   * フォルダの改名 / 削除をメモにも波及させる（`to` が null なら取り除く）。
+   * ノートだけ直してメモを取り残すと、同じフォルダのはずのメモが行方不明になる。
+   * 直した件数を返す。
+   */
+  const remapCaptureContextsEverywhere = useCallback(
+    async (from: string, to: string | null): Promise<number> => {
+      const current = indexRef.current ?? createEmptyCaptureIndex();
+      const { index: updated, changed } = remapCaptureContexts(current, from, to);
+      if (changed === 0) return 0;
+      indexRef.current = updated;
+      setCaptureIndex(updated);
+      try {
+        await saveCaptureIndex(updated);
+      } catch (err) {
+        console.error("メモのフォルダ一括更新の保存に失敗:", err);
+      }
+      return changed;
     },
     [],
   );
@@ -241,6 +279,8 @@ export function useCapture(authenticated: boolean) {
     capturing,
     handleCreateCapture,
     handleImportCapture,
+    handleSetCaptureContexts,
+    remapCaptureContextsEverywhere,
     handleDeleteCapture,
     handlePermanentDeleteCapture,
     handleArchiveCapture,

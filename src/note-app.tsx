@@ -7902,7 +7902,11 @@ export function NoteApp() {
           // 保存失敗は handleImportCapture が throw → importer が failed に数え、
           // Inbox に残る（再試行可能）。
           memo: async (payload) => {
-            const id = await capture.handleImportCapture(payload.text, payload.createdAt);
+            const id = await capture.handleImportCapture(
+              payload.text,
+              payload.createdAt,
+              payload.folder,
+            );
             return { fileId: id };
           },
           // URL → URL ブックマーク素材（media-index の url エントリ）。メタは
@@ -9546,6 +9550,8 @@ export function NoteApp() {
             }}
             onDeleteMemo={capture.handleDeleteCapture}
             onArchiveMemo={capture.handleArchiveCapture}
+            onSetMemoContexts={capture.handleSetCaptureContexts}
+            noteFolders={noteFolderNames}
             onEditMemo={capture.handleEditCapture}
             onNavigateNote={(noteId) => {
               // knowledgedInto は直接 ingest 化後は wiki:<id> を記録する（ノートではなく
@@ -10392,8 +10398,12 @@ export function NoteApp() {
           onClose={() => setFolderMenu(null)}
           onRename={(from, to) => {
             void (async () => {
-              // ノートのタグと、まだノートが無いフォルダの定義。どちらも子を連れて動く
+              // ノートのタグ、メモ、素材、まだノートが無いフォルダの定義。
+              // どれも子を連れて動く。ひとつでも取り残すと、同じフォルダのはずのものが
+              // 古い名前に取り残されて行方不明になる
               await fm.renameNoteContextEverywhere(from, to);
+              await capture.remapCaptureContextsEverywhere(from, to);
+              await fm.remapMediaContextsEverywhere(from, to);
               setEmptyFolders(await renameFolderDefinition(from, to));
               // 開いていたフォルダの名前が変わったら選択も新しい名前へ移す
               if (selectedFolder === from) {
@@ -10405,6 +10415,8 @@ export function NoteApp() {
           onDelete={(path) => {
             void (async () => {
               await fm.deleteNoteContextEverywhere(path);
+              await capture.remapCaptureContextsEverywhere(path, null);
+              await fm.remapMediaContextsEverywhere(path, null);
               setEmptyFolders(await removeFolderDefinition(path));
               // 開いていたフォルダを消したら、全ノート表示に戻す
               if (selectedFolder === path) {

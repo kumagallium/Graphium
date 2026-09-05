@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { setMediaEntryContexts, type MediaIndex, type MediaIndexEntry } from "./media-index";
+import {
+  setMediaEntryContexts,
+  remapMediaContexts,
+  type MediaIndex,
+  type MediaIndexEntry,
+} from "./media-index";
 
 const entry = (fileId: string, extra: Partial<MediaIndexEntry> = {}): MediaIndexEntry => ({
   fileId,
@@ -54,5 +59,50 @@ describe("setMediaEntryContexts", () => {
     const next = setMediaEntryContexts(before, "a", ["材料X"]);
     expect(next.media[0].ocrText).toBe("読み取り済み");
     expect(next.media[0].usedIn).toHaveLength(1);
+  });
+});
+
+// ── フォルダの改名・削除への追従 ──
+// 素材が自前で持つフォルダ（手で入れた分）は、フォルダの名前が変わったときに
+// 一緒に直さないと、その素材だけ古い名前に取り残されてフォルダから消える。
+
+describe("remapMediaContexts", () => {
+  const base = () =>
+    index([
+      entry("a", { noteContexts: ["材料X"] }),
+      entry("b", { noteContexts: ["材料X/粉体", "実験B"] }),
+      entry("c", { noteContexts: ["材料Xたち"] }),
+      entry("d"),
+    ]);
+
+  it("改名すると子フォルダも連れて動く", () => {
+    const { index: next, changed } = remapMediaContexts(base(), "材料X", "原料X");
+    expect(changed).toBe(2);
+    const byId = Object.fromEntries(next.media.map((m) => [m.fileId, m.noteContexts]));
+    expect(byId.a).toEqual(["原料X"]);
+    expect(byId.b).toEqual(["原料X/粉体", "実験B"]);
+  });
+
+  it("前方一致でも別フォルダは巻き込まない", () => {
+    const { index: next } = remapMediaContexts(base(), "材料X", "原料X");
+    expect(next.media.find((m) => m.fileId === "c")?.noteContexts).toEqual(["材料Xたち"]);
+  });
+
+  it("削除すると子ごと外れ、他のフォルダは残る", () => {
+    const { index: next, changed } = remapMediaContexts(base(), "材料X", null);
+    expect(changed).toBe(2);
+    const byId = Object.fromEntries(next.media.map((m) => [m.fileId, m.noteContexts]));
+    expect(byId.a).toBeUndefined();
+    expect(byId.b).toEqual(["実験B"]);
+  });
+
+  it("大文字小文字の違いでも同じフォルダとして直す", () => {
+    expect(remapMediaContexts(base(), "材料x", "原料X").changed).toBe(2);
+  });
+
+  it("該当が無ければ index ごと据え置く", () => {
+    const i = base();
+    expect(remapMediaContexts(i, "無い", "何か").index).toBe(i);
+    expect(remapMediaContexts(i, "  ", "何か").changed).toBe(0);
   });
 });

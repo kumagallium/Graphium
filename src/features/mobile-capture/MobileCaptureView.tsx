@@ -442,7 +442,11 @@ export function MobileCaptureView({
   const enqueueForSend = push.enqueueForSend;
   const handleSubmit = useCallback(
     async (text: string) => {
-      const queued = await enqueueForSend([buildMemoCaptureFile(text)]);
+      // 画面上部で選んだ送り先。メディアは queue が名前に埋めるが、捕獲ファイルは
+      // JSON の中に入れる（normalizeCaptureName は .graphium.json を別分岐で扱う）
+      const queued = await enqueueForSend([
+        buildMemoCaptureFile(text, new Date(), getInboxFolder() ?? undefined),
+      ]);
       if (queued) {
         setShowCaptureDialog(false);
         return;
@@ -464,6 +468,7 @@ export function MobileCaptureView({
           title: entry.name,
           description: entry.urlMeta?.description,
           ogImage: entry.urlMeta?.ogImage,
+          folder: getInboxFolder() ?? undefined,
         }),
       ]).then((queued) => {
         if (!queued) onAddUrlBookmark?.(entry);
