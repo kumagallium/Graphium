@@ -93,7 +93,11 @@ import {
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
 import { primeAssetText } from "./features/data-import/asset-text";
-import { serializeDataTableSource, setDataTableReimportCallback } from "./blocks/data-table";
+import {
+  serializeDataTableSource,
+  setDataTableReimportCallback,
+  subscribeDataTableData,
+} from "./blocks/data-table";
 import {
   chartSlashItem,
   ChartAssetSourceFlow,
@@ -4794,10 +4798,16 @@ function NoteEditorInner({
       if (timer) clearTimeout(timer);
       timer = setTimeout(publish, 250);
     });
+    // データ表の素材は本文の変更なしに後から届くので、到着でも配り直す
+    const offData = subscribeDataTableData(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(publish, 250);
+    });
     publish(); // 初期配布（ノートを開いた直後の計算にも効かせる）
     return () => {
       if (timer) clearTimeout(timer);
       if (typeof off === "function") off();
+      offData();
     };
     // metas も依存に含める: キャプション変更（表の改名）は本文編集ではないため
     // onEditorContentChange が発火しない。表示名の変化はこの再実行で配り直す

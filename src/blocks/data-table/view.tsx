@@ -12,44 +12,35 @@
 // 設計メモ:
 // - props は source（TableSource の JSON。取り込み設定と出所。tableMeta.source と
 //   同じ形）と caption だけ。行は持たない
-// - 描くのは見えている行だけ（仮想スクロール）。行の高さを固定にして位置を計算で出す
+// - 描くのは見えている行だけ（grid.tsx。行の高さを固定にして位置を計算で出す）
 // - 並べ替えは表示だけ（拡大ビューと同じ）。データは変えない
 // - 素材が無い・読めないときはエラーにせず、出所を示す枠だけ残す（参照切れ）
 // - 取り込み設定の見直しはホストのダイアログに任せる（callbacks.ts）
+// - 計算ブロック・チャートは表示名（caption）で参照する（読み取りのみ。書き戻しは
+//   本文の表だけ）。列の配布は calc/table-scope が peekDataTable で読む
 
 import { createReactBlockSpec } from "@blocknote/react";
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { TriangleAlert, ArrowDown, ArrowUp, Database } from "lucide-react";
+import { Database, Maximize2, TriangleAlert } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { t, useLocaleSubscription } from "../../i18n";
 import type { TableSource } from "../../lib/document-types";
-import type { SortState } from "../../features/table-meta/sort-table";
-import { defaultCaption } from "../../features/data-import/to-table-block";
 import {
   hasDataTableReimportCallback,
   requestDataTableReimport,
   subscribeDataTableReimport,
 } from "./callbacks";
 import { loadDataTable, peekDataTable, type DataTableData } from "./data";
-import {
-  HEADER_HEIGHT,
-  INDEX_COLUMN_WIDTH,
-  ROW_HEIGHT,
-  buildColumnModels,
-  orderRows,
-  parseDataTableSource,
-  tableWidth,
-  viewportHeightFor,
-  visibleRowRange,
-} from "./model";
+import { DataTableExpandModal } from "./expand-modal";
+import { DataGrid } from "./grid";
+import { dataTableDisplayName, parseDataTableSource } from "./source";
 
 export const DataTableBlock = createReactBlockSpec(
   {
@@ -125,6 +116,9 @@ function DataTableBlockView({ block, editor }: { block: any; editor: any }) {
     () => hasDataTableReimportCallback(editor),
   );
 
+  const [expanded, setExpanded] = useState(false);
+  const closeExpanded = useCallback(() => setExpanded(false), []);
+
   return (
     <div style={styles.root} data-data-table-block>
       <CaptionLine caption={caption} editable={editable} onCommit={commitCaption} />
@@ -138,7 +132,15 @@ function DataTableBlockView({ block, editor }: { block: any; editor: any }) {
         data={state.kind === "ready" ? state.data : null}
         canReimport={editable && !!source?.fileId && hostAcceptsReimport}
         onReimport={reimport}
+        onExpand={state.kind === "ready" ? () => setExpanded(true) : undefined}
       />
+      {expanded && state.kind === "ready" && (
+        <DataTableExpandModal
+          caption={dataTableDisplayName(caption, source)}
+          data={state.data}
+          onClose={closeExpanded}
+        />
+      )}
     </div>
   );
 }
@@ -182,113 +184,6 @@ function CaptionLine({
   );
 }
 
-/** 見えている行だけを描く表。見出しは上に固定 */
-function DataGrid({ data }: { data: DataTableData }) {
-  const { headers, rows } = data;
-  const columns = useMemo(() => buildColumnModels(headers, rows), [headers, rows]);
-  const [sort, setSort] = useState<SortState>(null);
-  const order = useMemo(() => orderRows(rows, sort), [rows, sort]);
-  const [scrollTop, setScrollTop] = useState(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const height = viewportHeightFor(rows.length);
-  const bodyHeight = height - HEADER_HEIGHT;
-  const { start, end } = visibleRowRange(scrollTop, bodyHeight, rows.length);
-  const width = tableWidth(columns);
-
-  const onScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (el) setScrollTop(el.scrollTop);
-  }, []);
-
-  const toggleSort = (col: number) => {
-    setSort((cur) => {
-      if (!cur || cur.col !== col) return { col, dir: "asc" };
-      if (cur.dir === "asc") return { col, dir: "desc" };
-      return null;
-    });
-  };
-
-  return (
-    <div
-      ref={scrollRef}
-      onScroll={onScroll}
-      style={{ ...styles.scroller, height }}
-      role="table"
-      aria-rowcount={rows.length + 1}
-      aria-colcount={headers.length + 1}
-      // 表の中はブロックの編集対象ではない（テキスト選択はできる）
-      contentEditable={false}
-    >
-      <div style={{ ...styles.header, width }} role="row">
-        <div style={{ ...styles.headerCell, ...styles.indexCell, width: INDEX_COLUMN_WIDTH }} role="columnheader">
-          {t("dataTable.rowNumber")}
-        </div>
-        {headers.map((h, col) => {
-          const active = sort?.col === col;
-          return (
-            <button
-              key={col}
-              type="button"
-              role="columnheader"
-              aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
-              onClick={() => toggleSort(col)}
-              title={t("dataTable.sortHint")}
-              style={{
-                ...styles.headerCell,
-                ...styles.headerButton,
-                width: columns[col].width,
-                justifyContent: columns[col].numeric ? "flex-end" : "flex-start",
-                color: active ? "var(--color-foreground)" : "var(--color-text-secondary)",
-              }}
-            >
-              <span style={styles.ellipsis}>{h}</span>
-              {active &&
-                (sort!.dir === "asc" ? (
-                  <ArrowUp size={11} style={{ flexShrink: 0 }} />
-                ) : (
-                  <ArrowDown size={11} style={{ flexShrink: 0 }} />
-                ))}
-            </button>
-          );
-        })}
-      </div>
-      <div style={{ position: "relative", height: rows.length * ROW_HEIGHT, width }}>
-        {order.slice(start, end).map((rowIndex, i) => {
-          const row = rows[rowIndex];
-          const top = (start + i) * ROW_HEIGHT;
-          return (
-            <div
-              key={rowIndex}
-              role="row"
-              aria-rowindex={rowIndex + 2}
-              style={{ ...styles.row, top }}
-            >
-              <div style={{ ...styles.cell, ...styles.indexCell, width: INDEX_COLUMN_WIDTH }} role="cell">
-                {rowIndex + 1}
-              </div>
-              {columns.map((c, col) => (
-                <div
-                  key={col}
-                  role="cell"
-                  style={{
-                    ...styles.cell,
-                    width: c.width,
-                    textAlign: c.numeric ? "right" : "left",
-                    fontVariantNumeric: c.numeric ? "tabular-nums" : undefined,
-                  }}
-                >
-                  {row[col] ?? ""}
-                </div>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function Placeholder({ state, source }: { state: "loading" | "missing"; source: TableSource | null }) {
   return (
     <div style={styles.placeholder}>
@@ -315,11 +210,13 @@ function FooterLine({
   data,
   canReimport,
   onReimport,
+  onExpand,
 }: {
   source: TableSource | null;
   data: DataTableData | null;
   canReimport: boolean;
   onReimport: () => void;
+  onExpand?: () => void;
 }) {
   if (!source) return null;
   return (
@@ -342,15 +239,19 @@ function FooterLine({
         <Database size={11} style={{ flexShrink: 0 }} />
         <span style={styles.ellipsis}>{t("dataImport.sourceBadge", { fileName: source.fileName })}</span>
       </button>
+      {onExpand && (
+        <button
+          type="button"
+          onClick={onExpand}
+          title={t("tableMeta.expand")}
+          aria-label={t("tableMeta.expand")}
+          style={styles.iconButton}
+        >
+          <Maximize2 size={12} />
+        </button>
+      )}
     </div>
   );
-}
-
-// キャプションの既定表示名（取り込み時に caption が空のまま入ったときの保険）
-export function dataTableDisplayName(caption: string, source: TableSource | null): string {
-  const trimmed = caption.trim();
-  if (trimmed) return trimmed;
-  return source ? defaultCaption(source.fileName) : "";
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -374,71 +275,6 @@ const styles: Record<string, CSSProperties> = {
     outline: "none",
     padding: "0 2px",
     width: "100%",
-  },
-  scroller: {
-    overflow: "auto",
-    border: "1px solid var(--color-border-subtle)",
-    borderRadius: 8,
-    background: "var(--color-surface)",
-    fontSize: 13,
-    lineHeight: `${ROW_HEIGHT}px`,
-    userSelect: "text",
-  },
-  header: {
-    position: "sticky",
-    top: 0,
-    zIndex: 1,
-    display: "flex",
-    height: HEADER_HEIGHT,
-    background: "var(--color-muted)",
-    borderBottom: "1px solid var(--color-border-subtle)",
-  },
-  headerCell: {
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    height: HEADER_HEIGHT,
-    padding: "0 10px",
-    fontSize: 12,
-    fontWeight: 500,
-    boxSizing: "border-box",
-    flexShrink: 0,
-    borderRight: "1px solid var(--color-border-subtle)",
-    overflow: "hidden",
-  },
-  headerButton: {
-    background: "transparent",
-    border: "none",
-    borderRight: "1px solid var(--color-border-subtle)",
-    cursor: "pointer",
-    textAlign: "left",
-    font: "inherit",
-  },
-  row: {
-    position: "absolute",
-    left: 0,
-    display: "flex",
-    height: ROW_HEIGHT,
-    borderBottom: "1px solid var(--color-border-subtle)",
-    boxSizing: "border-box",
-  },
-  cell: {
-    height: ROW_HEIGHT,
-    padding: "0 10px",
-    boxSizing: "border-box",
-    flexShrink: 0,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    borderRight: "1px solid var(--color-border-subtle)",
-    color: "var(--color-foreground)",
-  },
-  indexCell: {
-    color: "var(--color-text-tertiary)",
-    fontSize: 11,
-    textAlign: "right",
-    fontVariantNumeric: "tabular-nums",
-    justifyContent: "flex-end",
   },
   ellipsis: {
     overflow: "hidden",
@@ -484,5 +320,18 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     font: "inherit",
     lineHeight: "16px",
+  },
+  iconButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 22,
+    height: 20,
+    padding: 0,
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-text-tertiary)",
+    cursor: "pointer",
   },
 };

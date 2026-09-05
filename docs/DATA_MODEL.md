@@ -307,7 +307,9 @@ type TableSource = {
   or switching it back to a note table through the same dialog. The media
   index counts `source.fileId` in `usedIn` (media index version 8), so the
   asset is protected from deletion while a data table refers to it. Without
-  the asset the block renders a placeholder naming the source file.
+  the asset the block renders a placeholder naming the source file. Calc
+  blocks and charts resolve a data table by its caption, the same way they
+  resolve a note table.
 
 ### 2.3 PROV-DM label model
 

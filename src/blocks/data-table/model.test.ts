@@ -247,4 +247,12 @@ describe("viewportHeightFor", () => {
   it("0 行でも最低 1 行分の高さを確保する", () => {
     expect(viewportHeightFor(0)).toBe(HEADER_HEIGHT + ROW_HEIGHT);
   });
+
+  it("visibleRows を渡すとそちらでクランプされる（拡大表示）", () => {
+    expect(viewportHeightFor(2000, 30)).toBe(HEADER_HEIGHT + 30 * ROW_HEIGHT);
+  });
+
+  it("visibleRows に 0 を渡しても最低 1 行分は確保する", () => {
+    expect(viewportHeightFor(2000, 0)).toBe(HEADER_HEIGHT + ROW_HEIGHT);
+  });
 });

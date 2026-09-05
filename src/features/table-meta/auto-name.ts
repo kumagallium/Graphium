@@ -9,6 +9,7 @@
 // できないのは発見性を損なうため、全テーブルに広げた。
 
 import { t } from "../../i18n";
+import { dataTableDisplayNameOf } from "../../blocks/data-table/source";
 
 /** 文書順にテーブルを走査し、blockId → 表示名（キャプション or 自動名「表 N」）を返す */
 export function computeTableDisplayNames(
@@ -20,12 +21,21 @@ export function computeTableDisplayNames(
   // 自動名を振ると参照が乗っ取られてしまう。採番はキャプションを避けて進める
   const captions = new Set<string>();
   const tables: any[] = [];
+  // データ表（素材を参照する表）は常に名前を持つ（キャプション or 元ファイル名）ので
+  // 自動名は振らない。ただし同じ名前を自動名に使わないよう captions には入れる
+  const dataTables: Array<[string, string]> = [];
   const visit = (list: any[]) => {
     for (const b of list ?? []) {
       if (b?.type === "table") {
         tables.push(b);
         const caption = getCaption(b.id);
         if (caption) captions.add(caption);
+      } else if (b?.type === "dataTable" && typeof b.id === "string") {
+        const name = dataTableDisplayNameOf(b);
+        if (name) {
+          dataTables.push([b.id, name]);
+          captions.add(name);
+        }
       }
       if (Array.isArray(b?.children)) visit(b.children);
     }
@@ -33,6 +43,7 @@ export function computeTableDisplayNames(
   visit(blocks ?? []);
 
   const names = new Map<string, string>();
+  for (const [id, name] of dataTables) names.set(id, name);
   let n = 0;
   for (const b of tables) {
     const caption = getCaption(b.id);

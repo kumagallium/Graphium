@@ -34,26 +34,8 @@ const CELL_PADDING = 20;
 // 取り込みの既定の行き先（features/data-import/target）。ホスト向けにここからも出す
 export { DOC_TABLE_DEFAULT_MAX_ROWS, defaultImportTarget } from "../../features/data-import/target";
 
-/** props.source（JSON 文字列）→ TableSource。壊れていれば null */
-export function parseDataTableSource(raw: unknown): TableSource | null {
-  if (typeof raw !== "string" || raw.trim() === "") return null;
-  try {
-    const value = JSON.parse(raw);
-    if (!value || typeof value !== "object") return null;
-    if (typeof value.fileName !== "string") return null;
-    if (!value.options || typeof value.options !== "object") return null;
-    const options = value.options;
-    if (typeof options.headerRow !== "number" || typeof options.endRow !== "number") return null;
-    return value as TableSource;
-  } catch {
-    return null;
-  }
-}
-
-/** TableSource → props.source（JSON 文字列） */
-export function serializeDataTableSource(source: TableSource): string {
-  return JSON.stringify(source);
-}
+// props.source の読み書きは葉モジュール source.ts（features 側からも読む）
+export { parseDataTableSource, serializeDataTableSource } from "./source";
 
 /** 読み方から見積もる行数（見出し行を除く）。素材を読む前の表示用 */
 export function estimateRowCount(source: TableSource): number | null {
@@ -114,7 +96,7 @@ export function orderRows(rows: string[][], sort: SortState): number[] {
   return sortRowOrder(rows, sort);
 }
 
-/** 表の高さ（px）。見出し + 見えている行数ぶん */
-export function viewportHeightFor(rowCount: number): number {
-  return HEADER_HEIGHT + Math.min(Math.max(rowCount, 1), VISIBLE_ROWS) * ROW_HEIGHT;
+/** 表の高さ（px）。見出し + 見えている行数ぶん（visibleRows は拡大表示で増やす） */
+export function viewportHeightFor(rowCount: number, visibleRows: number = VISIBLE_ROWS): number {
+  return HEADER_HEIGHT + Math.min(Math.max(rowCount, 1), Math.max(1, visibleRows)) * ROW_HEIGHT;
 }

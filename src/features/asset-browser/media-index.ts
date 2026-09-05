@@ -7,7 +7,7 @@ import { normalizeNoteContexts } from "../note-context/context-tags";
 // チャートが直接参照する素材（config.assetSources）を利用ノートに数えるため。
 // chart-config は純関数の葉モジュールで、こちらへ戻る import は無い
 import { collectChartAssetFileIds, parseChartBlockConfig } from "../../blocks/chart/chart-config";
-import { parseDataTableSource } from "../../blocks/data-table/model";
+import { parseDataTableSource } from "../../blocks/data-table/source";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";

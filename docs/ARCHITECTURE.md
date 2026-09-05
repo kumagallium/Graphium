@@ -141,7 +141,9 @@ talks to LLM and embedding backends.
   editor; the import dialog therefore defaults to a data table above
   `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and lets the writer choose the
   other form. Re-importing from the source badge converts between the two
-  forms.
+  forms. Calc blocks and charts read a data table by its caption exactly
+  like a note table (read-only: calc write-back never targets one), and the
+  expand button opens the same full-height view with virtual scrolling.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the

@@ -15,4 +15,12 @@ export {
   parseDataTableSource,
   serializeDataTableSource,
 } from "./model";
-export { clearDataTableCache, loadDataTable, peekDataTable, type DataTableData } from "./data";
+export {
+  clearDataTableCache,
+  loadDataTable,
+  peekDataTable,
+  peekDataTableFromBlock,
+  subscribeDataTableData,
+  type DataTableData,
+} from "./data";
+export { dataTableDisplayName, dataTableDisplayNameOf } from "./source";

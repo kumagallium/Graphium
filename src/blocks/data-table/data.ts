@@ -12,6 +12,7 @@ import { loadAssetText, peekAssetText } from "../../features/data-import/asset-t
 import { parseDelimited } from "../../features/data-import/parse";
 import type { DelimitedImportOptions } from "../../features/data-import/types";
 import type { TableSource } from "../../lib/document-types";
+import { parseDataTableSource } from "./source";
 
 export type DataTableData = {
   headers: string[];
@@ -19,6 +20,25 @@ export type DataTableData = {
 };
 
 const parsedCache = new Map<string, DataTableData>();
+
+// 表が新しく読めたことを知りたい側（計算列の配布・チャートの再描画）。
+// 通知は非同期にする — peekDataTable は描画中にも呼ばれるので、その場で他の
+// コンポーネントの setState を走らせると React が警告する
+const listeners = new Set<() => void>();
+function notifyArrived(): void {
+  if (listeners.size === 0) return;
+  setTimeout(() => {
+    for (const listener of listeners) listener();
+  }, 0);
+}
+
+/** 素材の表が新しく読めたときに呼ばれる。戻り値で解除 */
+export function subscribeDataTableData(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 function cacheKey(fileId: string, options: DelimitedImportOptions): string {
   return `${fileId}\n${JSON.stringify(options)}`;
@@ -28,7 +48,15 @@ function parseInto(fileId: string, options: DelimitedImportOptions, text: string
   const parsed = parseDelimited(text, options);
   const data = { headers: parsed.headers, rows: parsed.rows };
   parsedCache.set(cacheKey(fileId, options), data);
+  notifyArrived();
   return data;
+}
+
+/** ブロック（BlockNote の JSON）から同期で表を引く。dataTable でない・未読なら null */
+export function peekDataTableFromBlock(block: any): DataTableData | null {
+  if (!block || block.type !== "dataTable") return null;
+  const source = parseDataTableSource(block.props?.source);
+  return source ? peekDataTable(source) : null;
 }
 
 /** 本文が読めていれば同期で表を返す。まだなら null */
