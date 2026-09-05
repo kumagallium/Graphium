@@ -6266,13 +6266,22 @@ export function NoteApp() {
     () => buildNoteFolderLookup(fm.noteIndex?.notes ?? []),
     [fm.noteIndex],
   );
-  const noteFolderNames = useMemo(
-    () => [
+  const noteFolderNames = useMemo(() => {
+    // 使われている名前と空フォルダの定義は同じ名前を両方に持ちうる。小文字で名寄せし、
+    // 表示は先に出てきた形を残す（フォルダ名の突き合わせ規則と同じ）
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const value of [
       ...collectFolderSource(fm.noteIndex?.notes ?? []).folders.map((f) => f.value),
       ...emptyFolders,
-    ],
-    [fm.noteIndex, emptyFolders],
-  );
+    ]) {
+      const key = value.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(value.trim());
+    }
+    return out;
+  }, [fm.noteIndex, emptyFolders]);
   // 展開するためのツリー。集計規則はサイドバーと共通（collectFolderSource）
   const folderTreeForNav = useMemo(
     () => buildFolderTree(collectFolderSource(fm.noteIndex?.notes ?? []).folders, emptyFolders),
