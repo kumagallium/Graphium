@@ -1131,3 +1131,44 @@ export const IaRound2Applied: Story = {
     </div>
   ),
 };
+
+// ── 「ファイルを入れる」の置き方（以前 vs 採用、2026-09-06 確定） ─────────────
+//
+// 指摘: 「+ メモ」「+ ノート」「資料を入れる」の 3 本が同じ見た目で縦に並び、場所を取りすぎる。
+// 4 案（縦並び / 軽い 1 行 / ノート行に同居 / 双子横並び）を実物で比べ、双子を横並びにして
+// 投入口を枠線なしの軽い 1 行にする案を採用した。⌘⇧M の keycap は横並びでも残す。
+// 言葉は「資料」が「素材」と紛れるため「ファイルを入れる」に改めた。旧配置は比較のために残す。
+
+const INTAKE_COMPARISON_CASES: {
+  key: string;
+  label: string;
+  placement: "stacked" | "twins";
+}[] = [
+  { key: "current", label: "以前: 3 本縦並び", placement: "stacked" },
+  { key: "twins", label: "採用: 双子を横並び + 軽い 1 行", placement: "twins" },
+];
+
+export const IntakePlacementComparison: Story = {
+  name: "「ファイルを入れる」の置き方（以前 vs 採用）",
+  render: () => (
+    <div className="flex gap-4 p-4 overflow-x-auto" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {INTAKE_COMPARISON_CASES.map(({ key, label, placement }) => (
+        <div key={key} className="shrink-0">
+          <div className="text-xs text-muted-foreground mb-1">{label}</div>
+          <div
+            data-variant={key}
+            className="border border-sidebar-border rounded-lg overflow-hidden flex"
+            style={{ width: 256, height: 640 }}
+          >
+            <FileSidebar
+              {...COMMON_PROPS}
+              onNewMemo={() => {}}
+              onOpenIntake={() => {}}
+              intakePlacement={placement}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  ),
+};

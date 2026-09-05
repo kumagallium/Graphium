@@ -143,11 +143,22 @@ export const Default: Story = {
     noteIndex: MOCK_INDEX,
     onOpenNote: (id: string) => console.log("open:", id),
     onBack: () => console.log("back"),
+    onOpenIntake: () => console.log("open intake"),
   },
 };
 
 export const Empty: Story = {
-  name: "ノートなし",
+  name: "ノートなし（投入口の受け皿）",
+  args: {
+    noteIndex: { version: 1, updatedAt: now.toISOString(), notes: [] },
+    onOpenNote: () => {},
+    onBack: () => console.log("back"),
+    onIntakeFiles: () => {},
+  },
+};
+
+export const EmptyWithoutIntake: Story = {
+  name: "ノートなし（従来の文言のみ）",
   args: {
     noteIndex: { version: 1, updatedAt: now.toISOString(), notes: [] },
     onOpenNote: () => {},

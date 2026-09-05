@@ -114,6 +114,8 @@ export const en: Record<string, string> = {
   // ── サイドバー ──
   "sidebar.newNote": "+ Note",
   "sidebar.newNoteTooltip": "Open a new note",
+  "sidebar.intake": "Bring in files",
+  "sidebar.intakeTooltip": "Bring in Markdown, PDF, Word, images and CSV you already have",
   "sidebar.newMemo": "+ Memo",
   "sidebar.newMemoTooltip": "Capture a quick memo (⌘+⇧+M)",
   "sidebar.provTemplate": "+ PROV Template",
@@ -1853,6 +1855,8 @@ export const en: Record<string, string> = {
   // ── Onboarding / Empty note guide ──
   "onboarding.guide.aria": "Empty note tips",
   "onboarding.guide.lead": "Start writing, or try one of these:",
+  "onboarding.chip.intake.label": "Bring in files",
+  "onboarding.chip.intake.desc": "Drop a folder of Markdown, PDF or CSV. Markdown becomes notes, the rest become materials",
   "onboarding.chip.cmdk.label": "Ask AI",
   "onboarding.chip.cmdk.desc": "Ask AI about your note, or insert its answer",
   "onboarding.chip.at.label": "Link a note",
@@ -1942,12 +1946,8 @@ export const en: Record<string, string> = {
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化
-  "noteList.importFiles": "Import files",
-  "noteList.importMarkdown": "Import Markdown (.md)",
-  "noteList.importObsidianVault": "Import Obsidian Vault folder",
   "noteList.ingestTooltip": "Extract summaries and claims from the selected notes and add them to Knowledge",
   "noteList.ingestSelected": "Add {count} to Knowledge",
-  "noteList.importProgress": "Importing Markdown: {done} / {total}",
   "noteList.importFailedCount": "({count} failed)",
   "noteList.importProcessing": "Processing: {name}",
   "noteList.importFailedFiles": "Failed files: {names}",
@@ -2032,9 +2032,32 @@ export const en: Record<string, string> = {
   "ingest.noSources": "No sources available",
 
   // Markdown インポート
-  "import.noMarkdownFiles": "No Markdown files found.",
-  "import.importedCount": "Imported {count} note(s).",
   "import.unresolvedLinksNote": "Unresolved [[links]] were kept as plain text.",
+
+  // 投入口モーダル（既存資料の一括取り込み）
+  "intake.title": "Bring in what you already have",
+  "intake.dropHere": "Drop a folder or files here",
+  "intake.rule": "Markdown becomes notes. PDF, Word, images and CSV become materials.",
+  "intake.obsidianHint": "Obsidian vaults work as they are. [[links]] and images come along.",
+  "intake.chooseFolder": "Choose a folder",
+  "intake.chooseFiles": "Choose files",
+  "intake.running": "Bringing in {done} / {total}",
+  "intake.doneTitle": "Brought in",
+  "intake.statNotes": "Notes",
+  "intake.statMaterials": "Materials",
+  "intake.statLinks": "Links kept",
+  "intake.statUnresolved": "{count} unresolved",
+  "intake.statFailed": "Failed",
+  "intake.next": "Next, try one of these:",
+  "intake.search": "Search your notes",
+  "intake.graph": "See connections",
+  "intake.askAi": "Ask AI",
+  "intake.setupAi": "Set up AI",
+  "intake.setupAiHint": "Add a model in Settings to ask questions about what came in.",
+  "intake.skipped": "{count} skipped (types Graphium doesn't take)",
+  "intake.dropOverlay": "Drop to bring in",
+  "intake.emptyNotesLead": "No notes yet. Start with what you already have.",
+  "intake.emptyMaterialsLead": "No materials yet. Drop in the PDFs, images and data you already have.",
 
   // 素材ビューア・抽出
   "asset.docxNoImages": "No image objects could be extracted from this Word file.",

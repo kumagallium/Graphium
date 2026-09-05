@@ -114,6 +114,8 @@ export const ja: Record<string, string> = {
   // ── サイドバー ──
   "sidebar.newNote": "+ ノート",
   "sidebar.newNoteTooltip": "新規ノートを開く",
+  "sidebar.intake": "ファイルを取り込む",
+  "sidebar.intakeTooltip": "手元の Markdown・PDF・Word・画像・CSV をまとめて取り込む",
   "sidebar.newMemo": "+ メモ",
   "sidebar.newMemoTooltip": "メモをすばやく書き留める（⌘+⇧+M）",
   "sidebar.provTemplate": "+ PROV テンプレート",
@@ -1851,6 +1853,8 @@ export const ja: Record<string, string> = {
   // ── オンボーディング / 空ノート予示 ──
   "onboarding.guide.aria": "空のノートのヒント",
   "onboarding.guide.lead": "まずは普通に書いてみてください。以下でも始められます:",
+  "onboarding.chip.intake.label": "手元のファイルを取り込む",
+  "onboarding.chip.intake.desc": "Markdown・PDF・CSV のフォルダをまとめて。Markdown はノートに、他は素材になります",
   "onboarding.chip.cmdk.label": "AI に頼む",
   "onboarding.chip.cmdk.desc": "AI に質問して、答えをノートに挿入",
   "onboarding.chip.at.label": "ノートを繋ぐ",
@@ -1940,12 +1944,8 @@ export const ja: Record<string, string> = {
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括ナレッジ化
-  "noteList.importFiles": "ファイルを取り込む",
-  "noteList.importMarkdown": "Markdown (.md) を取り込む",
-  "noteList.importObsidianVault": "Obsidian Vault フォルダを取り込む",
   "noteList.ingestTooltip": "選択したノートから要約と知見を抽出してナレッジに追加します",
   "noteList.ingestSelected": "{count} 件をナレッジ化",
-  "noteList.importProgress": "Markdown 取り込み: {done} / {total}",
   "noteList.importFailedCount": "（失敗: {count}）",
   "noteList.importProcessing": "処理中: {name}",
   "noteList.importFailedFiles": "失敗したファイル: {names}",
@@ -2030,9 +2030,32 @@ export const ja: Record<string, string> = {
   "ingest.noSources": "ソースが 1 件もありません",
 
   // Markdown インポート
-  "import.noMarkdownFiles": "Markdown ファイルが見つかりませんでした。",
-  "import.importedCount": "{count} 件のノートを取り込みました。",
   "import.unresolvedLinksNote": "解決できなかった [[リンク]] はテキストとして残しています。",
+
+  // 投入口モーダル（既存資料の一括取り込み）
+  "intake.title": "手元のファイルを取り込む",
+  "intake.dropHere": "フォルダやファイルをここに落とす",
+  "intake.rule": "Markdown はノートに、PDF・Word・画像・CSV は素材になります",
+  "intake.obsidianHint": "Obsidian の vault はそのままで大丈夫です。[[リンク]] と画像も一緒に取り込まれます",
+  "intake.chooseFolder": "フォルダを選ぶ",
+  "intake.chooseFiles": "ファイルを選ぶ",
+  "intake.running": "取り込んでいます {done} / {total}",
+  "intake.doneTitle": "取り込みました",
+  "intake.statNotes": "ノート",
+  "intake.statMaterials": "素材",
+  "intake.statLinks": "引き継いだつながり",
+  "intake.statUnresolved": "{count} 件は未解決",
+  "intake.statFailed": "失敗",
+  "intake.next": "次に、どれか試してみてください",
+  "intake.search": "ノートを検索する",
+  "intake.graph": "つながりを見る",
+  "intake.askAi": "AI に聞く",
+  "intake.setupAi": "AI を設定する",
+  "intake.setupAiHint": "設定でモデルを登録すると、取り込んだものについて聞けます",
+  "intake.skipped": "{count} 件は対象外の種類なので取り込んでいません",
+  "intake.dropOverlay": "ここに落として取り込む",
+  "intake.emptyNotesLead": "まだノートがありません。手元のファイルを取り込んで始めませんか",
+  "intake.emptyMaterialsLead": "まだ素材がありません。手元の PDF・画像・データを取り込んでみませんか",
 
   // 素材ビューア・抽出
   "asset.docxNoImages": "この Word からは画像オブジェクトを取り出せませんでした。",

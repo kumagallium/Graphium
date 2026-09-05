@@ -98,6 +98,8 @@ import {
   type ChartAssetSourceResult,
 } from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
+import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop } from "./features/intake";
+import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
 import { syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
@@ -859,6 +861,8 @@ type NoteEditorProps = {
   skillPrompts?: string;
   /** Cmd+K Composer を開くコールバック（空ノート予示の ⌘K チップから呼ばれる） */
   onOpenComposer?: () => void;
+  /** 投入口（既存資料の一括持ち込み）を開くコールバック（空ノート予示のチップから呼ばれる） */
+  onOpenIntake?: () => void;
   /** Composer 送信をノートスコープで受けるための imperative ref。
    *  NoteApp 側で ref を作り、NoteEditorInner が useEffect でハンドラを登録する。
    *  ノート未開時は null のままになり、NoteApp はそれを検知して no-op 扱いする。 */
@@ -1127,6 +1131,7 @@ function NoteEditorInner({
   agentConfigured = true,
   skillPrompts,
   onOpenComposer,
+  onOpenIntake,
   composerSubmitRef,
   archived = false,
   onRestoreFromArchive,
@@ -5462,6 +5467,7 @@ function NoteEditorInner({
                 visible={showEmptyNoteGuide}
                 onOpenComposer={onOpenComposer}
                 aiEnabled={!!aiAvailable && agentConfigured}
+                onOpenIntake={onOpenIntake}
               />
             </div>
             {/* D2 配置: WikiContextDrawer（関連・文脈）を本文の下に展開する。
@@ -6855,6 +6861,135 @@ export function NoteApp() {
     [closeAllViews, fm, router],
   );
 
+  // 投入口（既存資料の一括持ち込み）の Markdown インポート実装。
+  // pass 1 で各 MD を doc に変換してノート作成、pass 2 で [[リンク]] を解決する。
+  // ctx.allFiles は classify 前の全ファイル（notes + materials）で、画像参照
+  // （![[img.png]] 等）を同じフォルダの他ファイルから解決するために使う。
+  const importMarkdownFiles = useCallback(
+    async (
+      notes: IntakeFile[],
+      onProgress: (p: IntakeProgress) => void,
+      ctx: { allFiles: IntakeFile[] },
+    ): Promise<MarkdownImportResult> => {
+      const {
+        importMarkdownToGraphiumDoc,
+        buildWikiLinkResolver,
+        applyWikiLinkResolution,
+      } = await import("./features/markdown-import/import");
+
+      // 画像参照を相対パスで解決するため、フォルダ内の全ファイルからルックアップを作る。
+      // path は "/" を含むかどうかで vault モード（フォルダ選択・vault ドロップ）か
+      // 単体ファイルかを判定する（単体選択時は path = file.name のみ）。
+      const isVaultMode = ctx.allFiles.some((f) => f.path.includes("/"));
+      const allByPath = new Map<string, File>();
+      if (isVaultMode) {
+        for (const f of ctx.allFiles) {
+          allByPath.set(f.path.toLowerCase(), f.file);
+          // 末尾のファイル名のみのキーでも引けるように
+          const baseName = f.path.split("/").pop()?.toLowerCase();
+          if (baseName && !allByPath.has(baseName)) allByPath.set(baseName, f.file);
+        }
+      }
+
+      const resolveImage = isVaultMode
+        ? async (relativePath: string): Promise<File | null> => {
+            const lc = relativePath.toLowerCase();
+            const direct = allByPath.get(lc);
+            if (direct) return direct;
+            const baseName = lc.split("/").pop();
+            if (baseName) {
+              const byName = allByPath.get(baseName);
+              if (byName) return byName;
+            }
+            return null;
+          }
+        : undefined;
+
+      // pass 1: 各 MD を doc に変換 → ノート作成
+      const baseNameToNoteId = new Map<string, string>();
+      const docsByNoteId = new Map<
+        string,
+        { doc: import("./lib/document-types").GraphiumDocument; wikilinks: { target: string; display: string }[] }
+      >();
+      const failed: string[] = [];
+      let lastNewId: string | null = null;
+
+      for (let i = 0; i < notes.length; i++) {
+        const file = notes[i];
+        onProgress({ done: i, total: notes.length, current: file.file.name, failed: [...failed] });
+        try {
+          const { doc, wikilinks } = await importMarkdownToGraphiumDoc(file.file, {
+            resolveImage,
+            uploadImage: fm.handleUploadMedia,
+          });
+          const newId = await fm.handleCreateNoteFromImport(doc);
+          const baseName = file.file.name.replace(/\.(md|markdown)$/i, "");
+          baseNameToNoteId.set(baseName.toLowerCase(), newId);
+          docsByNoteId.set(newId, { doc, wikilinks });
+          lastNewId = newId;
+        } catch (err) {
+          console.error("Markdown インポート失敗:", file.file.name, err);
+          failed.push(file.file.name);
+        }
+        onProgress({ done: i + 1, total: notes.length, failed: [...failed] });
+      }
+
+      // pass 2: wikilinks を解決して保存。
+      // 解決先は「今回のインポートで作成したノート」→「既存ノート（タイトル一致）」。
+      // 全件未解決のノートも必ず保存し直す: pass 1 で保存した本文には
+      // プレースホルダ（{{GWLINK_n}}）が残っており、[[リンク]] テキストへ
+      // 復元した姿で上書きする必要がある。
+      let unresolvedLinkCount = 0;
+      let resolvedLinkCount = 0;
+      if (docsByNoteId.size > 0) {
+        // 既存ノートの解決先は noteIndex（タイトルを持ち、アーカイブ除外済み。
+        // wiki も含むので、エクスポートした wiki への @リンクも復元できる）
+        const resolver = buildWikiLinkResolver(baseNameToNoteId, fm.noteIndex?.notes ?? []);
+        const resolution = applyWikiLinkResolution(docsByNoteId, resolver);
+        unresolvedLinkCount = resolution.unresolvedCount;
+        resolvedLinkCount = resolution.resolvedCount;
+        for (const [noteId, updated] of resolution.updates) {
+          try {
+            await fm.handleSaveImportedDoc(noteId, updated);
+          } catch (err) {
+            console.warn("Markdown リンク解決の保存失敗:", noteId, err);
+          }
+        }
+        console.info(`[markdown-import] リンク解決: ${resolution.resolvedCount} / ${resolution.resolvedCount + resolution.unresolvedCount}`);
+      }
+
+      const successCount = notes.length - failed.length;
+      return {
+        created: successCount,
+        linksResolved: resolvedLinkCount,
+        linksUnresolved: unresolvedLinkCount,
+        failed,
+        lastNewId,
+      };
+    },
+    [fm],
+  );
+
+  // 投入口（既存資料の一括持ち込み）: サイドバー・空ノートのチップ・一覧と
+  // 素材の空状態・どこでもドロップの 4 面すべてがこの 1 つの state を開閉する。
+  const intake = useIntake({
+    importMarkdown: importMarkdownFiles,
+    uploadAsset: (file) => fm.handleUploadAsset(file),
+    afterRun: () => fm.refreshFiles(),
+    aiAvailable: aiUiEnabled,
+  });
+  // ウィンドウのどこにファイルをドロップしても投入口が拾う（エディタ内・
+  // モーダル内・受け皿の上は useGlobalFileDrop 側の既定 ignore で除外される）
+  const { dragActive: intakeDragActive } = useGlobalFileDrop({
+    enabled: true,
+    onFiles: (files) => void intake.run(files),
+    // Composer は自前 createPortal（role="dialog"）で data-modal-portal を持たないため、
+    // 開いている間は投入口を止めて背後で走らせない
+    suspended: composer.open,
+  });
+  // 一覧ビューの検索欄へフォーカスを送る合図（復元レポートの「検索する」から使う）
+  const [focusSearchSignal, setFocusSearchSignal] = useState(0);
+
   // ─── サイドピークを開く／閉じる唯一の入口 ───
   // ビューは変えず URL の peek だけを差し替えて履歴を 1 段積む。これで
   // 「ピーク① → ピーク②」と辿ってから戻ると ① に帰り、もう一度戻るとピーク前に戻る。
@@ -6886,6 +7021,47 @@ export function NoteApp() {
     if (!current.peek) return;
     router.replace({ ...current, peek: undefined });
   }, [router]);
+
+  // ノート一覧を表示する。サイドバーの「ノート」見出しと、投入口の復元レポート
+  // （取り込んだノートが見える場所へ）の両方から使う共通関数。
+  const showNoteList = useCallback(() => {
+    closeAllViews();
+    fm.setShowNoteList(true);
+    setSidebarOpen(false);
+    router.navigate({ view: "notes" });
+    // 「ノート」見出し = 全ノート一覧なので、フォルダ絞り込みは解除する
+    setSelectedFolder(null);
+    setFolderContextFilter([]);
+  }, [closeAllViews, fm, router]);
+  // 全体グラフを表示する。サイドバーと、投入口の復元レポート（「グラフを見る」）の
+  // 両方から使う共通関数。state 変数 showGlobalGraph と名前が衝突するため
+  // showGlobalGraphView とする。
+  const showGlobalGraphView = useCallback(() => {
+    // 他の排他ビューを全部畳んでから全体グラフを表示する（他の onShow* と同じ作法）。
+    closeAllViews();
+    setShowGlobalGraph(true);
+    setListSidePeekNoteId(null);
+    dropPeekFromUrl();
+    setSidebarOpen(false);
+  }, [closeAllViews, dropPeekFromUrl]);
+
+  // 投入口モーダルを閉じる。取り込みが完了していた（done）場合は、結果に応じて
+  // 続きの遷移を行う: ノート 1 件だけならそのまま開く（従来の単体インポートの動作を
+  // 維持）。複数件 or 素材込みなら、まだ一覧が見えていなければ一覧を開いて見える場所へ
+  // 導く。素材だけ入ったとき（notes === 0）は遷移しない — 素材ギャラリーから開いた
+  // ときにギャラリーごと畳んでしまわないため。
+  const handleIntakeClose = useCallback(() => {
+    const wasDone = intake.state.kind === "done";
+    const outcome = intake.lastOutcome;
+    intake.closeIntake();
+    if (wasDone && outcome) {
+      if (outcome.notes === 1 && outcome.materials === 0 && outcome.lastNewId) {
+        navigateToNote(outcome.lastNewId);
+      } else if (outcome.notes > 0 && !fm.showNoteList) {
+        showNoteList();
+      }
+    }
+  }, [intake, navigateToNote, fm.showNoteList, showNoteList]);
 
   // 新規ノートは保存されて初めて fileId が決まる。決まった時点で URL を差し替える。
   // これが無いと、書いたノートがリロードで開かず（URL が home のまま）、
@@ -8641,21 +8817,14 @@ export function NoteApp() {
     // 下の useEffect が URL を差し替える。ここで home を積んでおくことで
     // 「新規ノートを開いた直後に戻る」が直前のノートへ帰る。
     onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); router.navigate({ view: "home" }); },
+    onOpenIntake: () => { intake.openIntake(); setSidebarOpen(false); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
-    onShowNoteList: () => {
-      closeAllViews();
-      fm.setShowNoteList(true);
-      setSidebarOpen(false);
-      router.navigate({ view: "notes" });
-      // 「ノート」見出し = 全ノート一覧なので、フォルダ絞り込みは解除する
-      setSelectedFolder(null);
-      setFolderContextFilter([]);
-    },
+    onShowNoteList: showNoteList,
     noteListActive: fm.showNoteList,
     selectedFolder,
     onSelectFolder: (path: string, contextValues: string[]) => {
@@ -8708,14 +8877,7 @@ export function NoteApp() {
     mediaIndex: fm.mediaIndex,
     onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { closeAllViews(); fm.setActiveAssetType(type); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
-    onShowGlobalGraph: () => {
-      // 他の排他ビューを全部畳んでから全体グラフを表示する（他の onShow* と同じ作法）。
-      closeAllViews();
-      setShowGlobalGraph(true);
-      setListSidePeekNoteId(null);
-      dropPeekFromUrl();
-      setSidebarOpen(false);
-    },
+    onShowGlobalGraph: showGlobalGraphView,
     globalGraphActive: showGlobalGraph,
     onShowLabelGallery: (label: string) => { closeAllViews(); fm.setActiveLabel(label); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
     activeAssetType: fm.activeAssetType,
@@ -8887,6 +9049,7 @@ export function NoteApp() {
             }
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
+            onIntakeFiles={(files) => void intake.run(files)}
             onExtractDocxImages={handleExtractDocxImages}
             resolveKnowledgeWikiId={(entry) => {
               if (entry.type === "url" && entry.url) {
@@ -9427,113 +9590,9 @@ export function NoteApp() {
                 enqueueIngest(id, title, doc);
               }
             } : undefined}
-            onImportMarkdown={async (files, onProgress) => {
-              const {
-                importMarkdownToGraphiumDoc,
-                buildWikiLinkResolver,
-                applyWikiLinkResolution,
-                isMarkdownFile,
-              } = await import("./features/markdown-import/import");
-
-              const mdFiles = files.filter(isMarkdownFile);
-              if (mdFiles.length === 0) {
-                window.alert(tStatic("import.noMarkdownFiles"));
-                return;
-              }
-
-              // 画像参照を相対パスで解決するため、フォルダ内の全ファイルからルックアップを作る。
-              // webkitdirectory 経由の File は webkitRelativePath を持つ（"vault/foo.md" 等）。
-              // 単体選択時は path = name のみなので vault モードかどうかで分岐する。
-              const isVaultMode = mdFiles.some((f) => (f as any).webkitRelativePath);
-              const allByPath = new Map<string, File>();
-              if (isVaultMode) {
-                for (const f of files) {
-                  const rel: string = (f as any).webkitRelativePath || f.name;
-                  allByPath.set(rel.toLowerCase(), f);
-                  // 末尾のファイル名のみのキーでも引けるように
-                  const baseName = rel.split("/").pop()?.toLowerCase();
-                  if (baseName && !allByPath.has(baseName)) allByPath.set(baseName, f);
-                }
-              }
-
-              const resolveImage = isVaultMode
-                ? async (relativePath: string): Promise<File | null> => {
-                    const lc = relativePath.toLowerCase();
-                    const direct = allByPath.get(lc);
-                    if (direct) return direct;
-                    const baseName = lc.split("/").pop();
-                    if (baseName) {
-                      const byName = allByPath.get(baseName);
-                      if (byName) return byName;
-                    }
-                    return null;
-                  }
-                : undefined;
-
-              // pass 1: 各 MD を doc に変換 → ノート作成
-              const baseNameToNoteId = new Map<string, string>();
-              const docsByNoteId = new Map<
-                string,
-                { doc: import("./lib/document-types").GraphiumDocument; wikilinks: { target: string; display: string }[] }
-              >();
-              const failed: string[] = [];
-              let lastNewId: string | null = null;
-
-              for (let i = 0; i < mdFiles.length; i++) {
-                const file = mdFiles[i];
-                onProgress({ done: i, total: mdFiles.length, current: file.name, failed: [...failed] });
-                try {
-                  const { doc, wikilinks } = await importMarkdownToGraphiumDoc(file, {
-                    resolveImage,
-                    uploadImage: fm.handleUploadMedia,
-                  });
-                  const newId = await fm.handleCreateNoteFromImport(doc);
-                  const baseName = file.name.replace(/\.(md|markdown)$/i, "");
-                  baseNameToNoteId.set(baseName.toLowerCase(), newId);
-                  docsByNoteId.set(newId, { doc, wikilinks });
-                  lastNewId = newId;
-                } catch (err) {
-                  console.error("Markdown インポート失敗:", file.name, err);
-                  failed.push(file.name);
-                }
-                onProgress({ done: i + 1, total: mdFiles.length, failed: [...failed] });
-              }
-
-              // pass 2: wikilinks を解決して保存。
-              // 解決先は「今回のインポートで作成したノート」→「既存ノート（タイトル一致）」。
-              // 全件未解決のノートも必ず保存し直す: pass 1 で保存した本文には
-              // プレースホルダ（{{GWLINK_n}}）が残っており、[[リンク]] テキストへ
-              // 復元した姿で上書きする必要がある。
-              let unresolvedLinkCount = 0;
-              if (docsByNoteId.size > 0) {
-                // 既存ノートの解決先は noteIndex（タイトルを持ち、アーカイブ除外済み。
-                // wiki も含むので、エクスポートした wiki への @リンクも復元できる）
-                const resolver = buildWikiLinkResolver(baseNameToNoteId, fm.noteIndex?.notes ?? []);
-                const resolution = applyWikiLinkResolution(docsByNoteId, resolver);
-                unresolvedLinkCount = resolution.unresolvedCount;
-                for (const [noteId, updated] of resolution.updates) {
-                  try {
-                    await fm.handleSaveImportedDoc(noteId, updated);
-                  } catch (err) {
-                    console.warn("Markdown リンク解決の保存失敗:", noteId, err);
-                  }
-                }
-                console.info(`[markdown-import] リンク解決: ${resolution.resolvedCount} / ${resolution.resolvedCount + resolution.unresolvedCount}`);
-              }
-
-              await fm.refreshFiles();
-
-              const successCount = mdFiles.length - failed.length;
-              if (successCount > 0) {
-                const msg = [tStatic("import.importedCount", { count: String(successCount) })];
-                if (unresolvedLinkCount > 0) {
-                  msg.push("", tStatic("import.unresolvedLinksNote"));
-                }
-                window.alert(msg.join("\n"));
-              }
-
-              if (lastNewId && mdFiles.length === 1) navigateToNote(lastNewId);
-            }}
+            onOpenIntake={intake.openIntake}
+            onIntakeFiles={(files) => void intake.run(files)}
+            focusSearchSignal={focusSearchSignal}
           />
         ) : showMemos ? (
           <MemoGalleryView
@@ -10183,6 +10242,7 @@ export function NoteApp() {
             aiAvailable={aiAvailable ?? false}
             agentConfigured={agentConfigured}
             onOpenComposer={composer.openComposer}
+            onOpenIntake={intake.openIntake}
             composerSubmitRef={composerSubmitRef}
             onPeekSaved={fm.reindexNoteFromDoc}
             onPropagateMentionRename={fm.propagateMentionRename}
@@ -10536,6 +10596,22 @@ export function NoteApp() {
             onProgress(i + 1, total);
           }
           console.log(`Re-embed complete: ${successCount} success / ${failCount} failed / ${total} total`);
+        }}
+      />
+      {/* 投入口: 既存資料の一括持ち込み。4 面（サイドバー・空ノートのチップ・一覧と素材の空状態・どこでもドロップ）がすべてここを開く */}
+      <IntakeDropOverlay visible={intakeDragActive} />
+      <IntakeModal
+        open={intake.open}
+        state={intake.state}
+        dragActive={intakeDragActive}
+        onClose={handleIntakeClose}
+        onFilesSelected={(files) => void intake.run(files)}
+        onSearch={() => { intake.closeIntake(); showNoteList(); setFocusSearchSignal((n) => n + 1); }}
+        onShowGraph={() => { intake.closeIntake(); showGlobalGraphView(); }}
+        onAskAi={() => { intake.closeIntake(); composer.openComposer(); }}
+        onSetupAi={() => {
+          intake.closeIntake();
+          window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
         }}
       />
       <Composer

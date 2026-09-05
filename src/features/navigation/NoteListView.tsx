@@ -2,9 +2,7 @@
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Download, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus } from "lucide-react";
-import { Dropdown } from "@/ui/dropdown";
-import { MenuItem } from "@/ui/menu-item";
+import { BookOpen, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus, FolderInput } from "lucide-react";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import {
   IndexFileNoteListSource,
@@ -12,6 +10,7 @@ import {
 } from "./note-list-source";
 import type { GraphiumIndex } from "./index-file";
 import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
+import { IntakeReceptacle, type IntakeFile, type IntakeSource } from "../intake";
 import { useT, getDisplayLabelName } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { bestHitsBySource, useLexicalStatus } from "../lexical-search";
@@ -103,7 +102,6 @@ export function NoteListView({
   onDeleteNotes,
   onArchiveNotes,
   onOpenWikiPeek,
-  onImportMarkdown,
   onIngestNotes,
   onSetNoteContexts,
   onDeleteContextEverywhere,
@@ -116,6 +114,9 @@ export function NoteListView({
   onNewNoteInFolder,
   onDragNotesToFolder,
   onDraggingNotesChange,
+  onOpenIntake,
+  onIntakeFiles,
+  focusSearchSignal,
 }: {
   noteIndex: GraphiumIndex | null;
   /** クリック時のコールバック（サイドピーク表示用） */
@@ -128,15 +129,6 @@ export function NoteListView({
   onArchiveNotes?: (noteIds: string[]) => Promise<void>;
   /** Knowledge アイコン押下で対応 wiki エントリをサイドピークで開くコールバック */
   onOpenWikiPeek?: (wikiNoteId: string) => void;
-  /**
-   * Markdown ファイル / Obsidian Vault フォルダのインポート。
-   * webkitdirectory のフォルダ選択時は files に複数の MD と画像が混在し、
-   * 単体選択時は 1 つの .md のみが渡る。
-   */
-  onImportMarkdown?: (
-    files: File[],
-    onProgress: (p: { done: number; total: number; current?: string; failed: string[] }) => void,
-  ) => Promise<void>;
   /** 選択中ノートを Knowledge 化（既存トーストキューに登録） */
   onIngestNotes?: (noteIds: string[]) => Promise<void>;
   /**
@@ -180,6 +172,15 @@ export function NoteListView({
    * デスクトップ + shared root + identity が揃っている場合にのみ渡される。
    */
   onShareSelected?: (noteIds: string[]) => void;
+  /** 投入口（既存資料の一括持ち込み）を開く。ヘッダのアイコンボタンは渡されたときだけ表示。 */
+  onOpenIntake?: () => void;
+  /**
+   * 投入口の受け皿から直接渡されたファイル群を取り込む（一覧が空のときの受け皿用）。
+   * 渡されたときだけ、空状態を受け皿に差し替える。
+   */
+  onIntakeFiles?: (files: IntakeFile[], source: IntakeSource) => void;
+  /** これが変化するたびに検索欄へフォーカスを当てる（復元レポートの「ノートを検索する」用） */
+  focusSearchSignal?: number;
 }) {
   const [entries, setEntries] = useState<NoteListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,19 +227,13 @@ export function NoteListView({
   // 削除確認ダイアログ
   const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // インポート（Markdown / Obsidian Vault のみ。Word は素材ライブラリ経由に統一）
-  const importMdInputRef = useRef<HTMLInputElement>(null);
-  const importMdFolderInputRef = useRef<HTMLInputElement>(null);
-  const importButtonRef = useRef<HTMLButtonElement>(null);
-  const [importing, setImporting] = useState(false);
-  const [importMenuPos, setImportMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const [importProgress, setImportProgress] = useState<{
-    done: number;
-    total: number;
-    current?: string;
-    failed: string[];
-  } | null>(null);
+  // 検索欄への外部フォーカス（復元レポートの「ノートを検索する」から使う）
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const t = useT();
+
+  useEffect(() => {
+    if (focusSearchSignal) searchInputRef.current?.focus();
+  }, [focusSearchSignal]);
 
   // インデックスからノート一覧を構築
   useEffect(() => {
@@ -536,115 +531,19 @@ export function NoteListView({
             <span>{t("nav.newNoteInFolder")}</span>
           </button>
         )}
-        {/* インポートボタン（選択中でなければ表示） */}
-        {!someSelected && onImportMarkdown && (
+        {/* 投入口ボタン（選択中でなければ表示） */}
+        {!someSelected && onOpenIntake && (
           <button
-            ref={importButtonRef}
-            onClick={() => {
-              if (importMenuPos) {
-                setImportMenuPos(null);
-                return;
-              }
-              const rect = importButtonRef.current?.getBoundingClientRect();
-              if (rect) {
-                setImportMenuPos({ top: rect.bottom + 4, left: rect.right - 220 });
-              }
-            }}
-            disabled={importing}
+            onClick={onOpenIntake}
             // 右端寄せは「この行で最初に現れる右側ボタン」が担う。フォルダを開いていると
             // その役は新規ノートボタンなので、ここでは付けない（2 つ付くと間が空く）
             className={`${showNewNoteInFolder ? "" : "ml-auto "}inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50`}
-            title={t("noteList.importFiles")}
-            aria-label={t("noteList.importFiles")}
+            title={t("sidebar.intake")}
+            aria-label={t("sidebar.intake")}
           >
-            <Download size={14} />
+            <FolderInput size={14} />
           </button>
         )}
-        {importMenuPos && (
-          <Dropdown
-            position={importMenuPos}
-            onClose={() => setImportMenuPos(null)}
-            minWidth={220}
-          >
-            <div className="py-1">
-              {onImportMarkdown && (
-                <>
-                  <MenuItem
-                    onClick={() => {
-                      setImportMenuPos(null);
-                      importMdInputRef.current?.click();
-                    }}
-                  >
-                    {t("noteList.importMarkdown")}
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setImportMenuPos(null);
-                      importMdFolderInputRef.current?.click();
-                    }}
-                  >
-                    {t("noteList.importObsidianVault")}
-                  </MenuItem>
-                </>
-              )}
-            </div>
-          </Dropdown>
-        )}
-        <input
-          ref={importMdInputRef}
-          type="file"
-          accept=".md,.markdown"
-          multiple
-          className="hidden"
-          onChange={async (e) => {
-            const files = Array.from(e.target.files ?? []);
-            e.target.value = "";
-            if (files.length === 0 || !onImportMarkdown) return;
-            setImporting(true);
-            setImportProgress({ done: 0, total: files.length, failed: [] });
-            try {
-              await onImportMarkdown(files, (p) => setImportProgress(p));
-            } finally {
-              setImporting(false);
-              setImportProgress((prev) => {
-                if (!prev) return null;
-                if (prev.failed.length === 0) {
-                  setTimeout(() => setImportProgress(null), 2500);
-                }
-                return prev;
-              });
-            }
-          }}
-        />
-        <input
-          ref={importMdFolderInputRef}
-          type="file"
-          // webkitdirectory はフォルダ全体を渡す（型に存在しないので型上は ignore）
-          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
-          multiple
-          className="hidden"
-          onChange={async (e) => {
-            const files = Array.from(e.target.files ?? []);
-            e.target.value = "";
-            if (files.length === 0 || !onImportMarkdown) return;
-            setImporting(true);
-            // 進捗 total は MD ファイル数。画像は副次なので別カウントしない
-            const mdCount = files.filter((f) => /\.(md|markdown)$/i.test(f.name)).length;
-            setImportProgress({ done: 0, total: Math.max(mdCount, 1), failed: [] });
-            try {
-              await onImportMarkdown(files, (p) => setImportProgress(p));
-            } finally {
-              setImporting(false);
-              setImportProgress((prev) => {
-                if (!prev) return null;
-                if (prev.failed.length === 0) {
-                  setTimeout(() => setImportProgress(null), 2500);
-                }
-                return prev;
-              });
-            }
-          }}
-        />
         {/* 一括アクション（複数選択時） */}
         {someSelected && (
           <div className="ml-auto flex items-center gap-2">
@@ -717,46 +616,6 @@ export function NoteListView({
         )}
       </div>
 
-      {/* インポート進捗 */}
-      {importProgress && (
-        <div className="px-6 py-2 border-b border-border bg-muted/30 space-y-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium text-foreground">
-              {t("noteList.importProgress", { done: String(importProgress.done), total: String(importProgress.total) })}
-              {importProgress.failed.length > 0 && (
-                <span className="text-destructive ml-2">
-                  {t("noteList.importFailedCount", { count: String(importProgress.failed.length) })}
-                </span>
-              )}
-            </span>
-            {!importing && (
-              <button
-                onClick={() => setImportProgress(null)}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                {t("common.close")}
-              </button>
-            )}
-          </div>
-          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${(importProgress.done / Math.max(1, importProgress.total)) * 100}%` }}
-            />
-          </div>
-          {importProgress.current && importing && (
-            <div className="text-[11px] text-muted-foreground truncate">
-              {t("noteList.importProcessing", { name: importProgress.current })}
-            </div>
-          )}
-          {importProgress.failed.length > 0 && !importing && (
-            <div className="text-[11px] text-destructive">
-              {t("noteList.importFailedFiles", { names: importProgress.failed.join(", ") })}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ツールバー */}
       <NoteListToolbar
         sortKey={sortKey}
@@ -764,6 +623,7 @@ export function NoteListView({
         onSort={handleSort}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        searchInputRef={searchInputRef}
       />
 
       {/* テーブル */}
@@ -773,11 +633,17 @@ export function NoteListView({
             <p className="text-sm text-muted-foreground">{t("nav.loadingNotes")}</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-muted-foreground">
-              {entries.length === 0 ? t("nav.noNotes") : t("nav.noMatchingNotes")}
-            </p>
-          </div>
+          !loading && entries.length === 0 && onIntakeFiles ? (
+            <div className="py-10 max-w-[560px] mx-auto">
+              <IntakeReceptacle lead={t("intake.emptyNotesLead")} onFilesSelected={onIntakeFiles} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-16">
+              <p className="text-sm text-muted-foreground">
+                {entries.length === 0 ? t("nav.noNotes") : t("nav.noMatchingNotes")}
+              </p>
+            </div>
+          )
         ) : (
           <table className="w-full min-w-[960px] text-sm">
             <thead>
