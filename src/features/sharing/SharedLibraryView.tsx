@@ -10,7 +10,7 @@
 //
 // 設計詳細: docs/internal/team-shared-storage-design.md §3 Library / §8 共有 Concept
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -113,6 +113,14 @@ type Props = {
    * 指定するとストアを使わずこちらから読む（Storybook のモック用 DI）。
    */
   loadEntries?: (root: string) => Promise<SharedLibraryLoadResult>;
+  /**
+   * 詳細パネルが読む本文（ノート本文とコメント本文の両方）。既定は共有ストア
+   * （readSharedEntryBody）。共有フォルダを読めない場所（Storybook / テスト）で
+   * 差し替える。entry.type で中身を出し分ける想定。
+   */
+  readEntryBody?: (
+    entry: SharedEntry,
+  ) => Promise<{ body: Uint8Array; verified: boolean }>;
   /** 初期表示タブ（既定 "note"） */
   initialTab?: SharedLibraryTab;
   /**
@@ -186,6 +194,7 @@ export function SharedLibraryView({
   focusEntryId,
   onFocusConsumed,
   loadEntries,
+  readEntryBody,
   initialTab = "note",
   onImportBlob,
   onOpenNoteList,
@@ -595,6 +604,7 @@ export function SharedLibraryView({
           sharedRoot={sharedRoot}
           currentIdentity={currentIdentity}
           commentEntries={entriesByType.comment}
+          readEntryBody={readEntryBody}
           reverseLinks={reverseLinks.get(selected.id)}
           entryTitleById={(id) => {
             const hit = entryById.get(id);
@@ -633,6 +643,10 @@ type DetailProps = {
   currentIdentity: AuthorIdentity | null;
   /** 読み出し済みのコメント封筒（DI 経路でも同じものを見せる） */
   commentEntries?: readonly SharedEntry[];
+  /** DI: 本文の取り寄せ（既定は共有ストア経由） */
+  readEntryBody?: (
+    entry: SharedEntry,
+  ) => Promise<{ body: Uint8Array; verified: boolean }>;
   /** このエントリを指している共有ノート（引用・派生・テンプレート利用）。無ければ 0 件 */
   reverseLinks?: SharedReverseLinks;
   /** 逆引きの行に出す題名（読めていない / 消えた id は null） */
@@ -656,6 +670,7 @@ function SharedEntryDetail({
   sharedRoot,
   currentIdentity,
   commentEntries,
+  readEntryBody,
   reverseLinks,
   entryTitleById,
   onOpenEntry,
@@ -675,6 +690,11 @@ function SharedEntryDetail({
   const previewEditorRef = useRef<any>(null);
   const highlightTimerRef = useRef<number | null>(null);
   const [pendingAnchor, setPendingAnchor] = useState<SharedCommentAnchor | null>(null);
+  // 動的 <style> をこのパネルのプレビューだけに効かせるための目印。
+  // ノート編集画面と同じ id 選択子を使うので、スコープを付けないと本文側の
+  // 同じ id のブロックまで塗ってしまう
+  const previewScopeId = useId();
+  const previewStyleRef = useRef<HTMLStyleElement | null>(null);
   // 「引用リンクをコピー」の完了フィードバック（コンポーネントは entry ごとに
   // key remount されるため、ローカル state で持って問題ない）
   const [citationCopied, setCitationCopied] = useState(false);
@@ -694,9 +714,9 @@ function SharedEntryDetail({
     let cancelled = false;
     (async () => {
       try {
-        // 共有ストア経由（本文は id|hash で LRU キャッシュされる。語彙索引が
-        // 直前に読んでいれば I/O ゼロ）
-        const { body: bytes } = await readSharedEntryBody(entry);
+        // 既定は共有ストア経由（本文は id|hash で LRU キャッシュされる。語彙索引が
+        // 直前に読んでいれば I/O ゼロ）。DI 指定時はそちらから読む
+        const { body: bytes } = await (readEntryBody ?? readSharedEntryBody)(entry);
         if (cancelled) return;
         const text = new TextDecoder().decode(bytes);
         setBody(text);
@@ -708,7 +728,7 @@ function SharedEntryDetail({
     return () => {
       cancelled = true;
     };
-  }, [entry]);
+  }, [entry, readEntryBody]);
 
   const title = entryTitle(entry, uiT);
 
@@ -760,7 +780,10 @@ function SharedEntryDetail({
       } catch {
         // 抜粋が取れなくてもブロックの指定自体は成立する
       }
-      setPendingAnchor({ blockId, blockText: label });
+      // 同じ段落をもう一度クリックしたら指定を外す（付け外しを同じ操作で行う）
+      setPendingAnchor((prev) =>
+        prev?.blockId === blockId ? null : { blockId, blockText: label },
+      );
     },
     [entry.type],
   );
@@ -787,6 +810,61 @@ function SharedEntryDetail({
   useEffect(
     () => () => {
       if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+    },
+    [],
+  );
+
+  /**
+   * 選んでいる段落の常時ハイライト（+ 段落が押せることを示す cursor / hover）。
+   *
+   * ノート編集画面の highlightBlockIds と同じ方式・同じ見た目にする
+   * （動的 <style> でブロックの外枠に当てる）。エディタの DOM を直接いじると
+   * BlockNote が持ち主の内容を描き直したときに消えるため、CSS 側で持つ。
+   */
+  const anchoredBlockId = pendingAnchor?.blockId ?? null;
+  const previewClickable = entry.type === "note" || entry.type === "knowledge";
+  useEffect(() => {
+    const scope = `[data-preview-scope="${previewScopeId}"]`;
+    const rules: string[] = [];
+    if (previewClickable) {
+      rules.push(
+        `${scope} [data-node-type="blockOuter"] { cursor: pointer; }`,
+        `${scope} [data-node-type="blockOuter"]:hover { background: rgba(59, 130, 246, 0.04); }`,
+      );
+    }
+    if (anchoredBlockId) {
+      const escaped =
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+          ? CSS.escape(anchoredBlockId)
+          : anchoredBlockId;
+      rules.push(
+        `${scope} [data-id="${escaped}"][data-node-type="blockOuter"] {
+  background: rgba(59, 130, 246, 0.08);
+  border-left: 2px solid rgba(59, 130, 246, 0.5);
+  transition: background 0.2s ease;
+}`,
+      );
+    }
+    if (rules.length === 0) {
+      previewStyleRef.current?.remove();
+      previewStyleRef.current = null;
+      return;
+    }
+    let styleEl = previewStyleRef.current;
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.dataset.sharedPreviewHighlight = previewScopeId;
+      document.head.appendChild(styleEl);
+      previewStyleRef.current = styleEl;
+    }
+    styleEl.textContent = rules.join("\n");
+  }, [previewScopeId, previewClickable, anchoredBlockId]);
+
+  // パネルを閉じたら <style> も片付ける（他のエントリを開くと key remount される）
+  useEffect(
+    () => () => {
+      previewStyleRef.current?.remove();
+      previewStyleRef.current = null;
     },
     [],
   );
@@ -872,7 +950,11 @@ function SharedEntryDetail({
         {/* type 別 read-only コンテンツ + 往復（履歴・逆引き・コメント） */}
         <div className="flex-1 overflow-auto px-5 py-4 space-y-4">
           {/* プレビューのクリックで「この段落に」付ける指定を作る */}
-          <div ref={previewRef} onClick={handlePreviewClick}>
+          <div
+            ref={previewRef}
+            data-preview-scope={previewScopeId}
+            onClick={handlePreviewClick}
+          >
             <SharedEntryBody
               entry={entry}
               body={body}
@@ -912,22 +994,24 @@ function SharedEntryDetail({
             entryTitleById={entryTitleById}
             onOpenEntry={onOpenEntry}
           />
-
-          <section>
-            <SharedEntryComments
-              targetId={entry.id}
-              targetHash={entry.hash}
-              sharedRoot={sharedRoot}
-              currentIdentity={currentIdentity}
-              entries={commentEntries}
-              anchorLabel={anchorLabel}
-              onJumpToBlock={jumpToBlock}
-              pendingAnchor={pendingAnchor}
-              onClearAnchor={() => setPendingAnchor(null)}
-              onSeenRecorded={onSeenRecorded}
-            />
-          </section>
         </div>
+
+        {/* コメントのドック（スクロール領域の外・フッターの上）。
+            上の方の段落を選んでから下まで戻らなくても書けるよう、常に手元に置く */}
+        <SharedEntryComments
+          targetId={entry.id}
+          targetHash={entry.hash}
+          sharedRoot={sharedRoot}
+          currentIdentity={currentIdentity}
+          entries={commentEntries}
+          readBody={readEntryBody}
+          anchorLabel={anchorLabel}
+          onJumpToBlock={jumpToBlock}
+          pendingAnchor={pendingAnchor}
+          onClearAnchor={() => setPendingAnchor(null)}
+          onSeenRecorded={onSeenRecorded}
+          layout="docked"
+        />
 
         {/* フッターアクション */}
         <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-2">

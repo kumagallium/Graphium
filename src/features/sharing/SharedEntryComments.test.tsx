@@ -206,6 +206,49 @@ describe("SharedEntryComments", () => {
     ).toBeTruthy();
   });
 
+  // ── ドック（Library 詳細パネル下部に固定した形） ──
+
+  it("ドックの一覧を畳んでも入力欄は残る", async () => {
+    renderComments({ layout: "docked" });
+    await screen.findByText("この条件の根拠は？");
+
+    fireEvent.click(screen.getByTitle(t("comment.collapseList")));
+
+    // 一覧は消えるが、そのまま書き始められるよう入力欄は残す
+    expect(screen.queryByText("この条件の根拠は？")).toBeNull();
+    expect(screen.getAllByPlaceholderText(t("comment.composerPlaceholder")).length).toBe(1);
+  });
+
+  it("段落を選ぶ（pendingAnchor が立つ）と、畳んだままで入力欄に段落の抜粋が出る", async () => {
+    const { rerender } = renderComments({ layout: "docked" });
+    await screen.findByText("この条件の根拠は？");
+
+    fireEvent.click(screen.getByTitle(t("comment.collapseList")));
+    expect(screen.queryByText("この条件の根拠は？")).toBeNull();
+
+    rerender(
+      <LocaleProvider>
+        <SharedEntryComments
+          targetId={TARGET_ID}
+          targetHash={CURRENT_HASH}
+          sharedRoot="/tmp/shared-root"
+          currentIdentity={TEACHER}
+          entries={ENTRIES}
+          readBody={readBody}
+          layout="docked"
+          pendingAnchor={{ blockId: "b9", blockText: "測定条件" }}
+        />
+      </LocaleProvider>,
+    );
+
+    // 一覧は畳んだまま（開くとプレビューが縮んで選んだ段落が見えなくなる）。
+    // 入力欄には「この段落に ¶ 抜粋」が出て、そのまま書き始められる
+    expect(await screen.findByText(/測定条件/)).toBeTruthy();
+    expect(screen.getByText(t("comment.anchorPrefix"))).toBeTruthy();
+    expect(screen.queryByText("この条件の根拠は？")).toBeNull();
+    expect(screen.getByTitle(t("comment.expandList"))).toBeTruthy();
+  });
+
   it("見たら既読の控えに版と件数が残る", async () => {
     renderComments();
     await screen.findByText("この条件の根拠は？");

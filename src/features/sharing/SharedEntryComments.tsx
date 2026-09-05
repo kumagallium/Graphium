@@ -17,6 +17,7 @@
 // 設計詳細: docs/internal/team-shared-storage-design.md §21 A / D / E
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { AuthorIdentity } from "../document-provenance/types";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { useT } from "../../i18n";
@@ -72,6 +73,14 @@ export type SharedEntryCommentsProps = {
    * これを合図にしないと「新着」の印が次の再描画まで消えない。
    */
   onSeenRecorded?: () => void;
+  /**
+   * 並べ方。既定の "stacked" は従来どおり（ノート右パネル・スクロールに流す節）。
+   * "docked" は Library 詳細パネルの下部に固定する形で、見出し行で一覧を開閉でき、
+   * 一覧は自前の高さ上限内でスクロールする。
+   */
+  layout?: "stacked" | "docked";
+  /** docked のときの一覧の最大高さ（既定 40vh） */
+  threadsMaxHeight?: string;
 };
 
 export function SharedEntryComments({
@@ -87,8 +96,28 @@ export function SharedEntryComments({
   readBody,
   provider,
   onSeenRecorded,
+  layout = "stacked",
+  threadsMaxHeight,
 }: SharedEntryCommentsProps) {
   const uiT = useT();
+  const docked = layout === "docked";
+  // ドックの開閉。既定は開。画面を閉じたら忘れる（永続化しない）
+  const [threadsOpen, setThreadsOpen] = useState(true);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  // 段落を選んだら、そのまま書き始められる状態にする（ドックを開いて入力欄へ移す）。
+  // blockId で見る: 抜粋の文字列だけが変わったときに開き直さないため
+  const pendingBlockId = pendingAnchor?.blockId ?? null;
+  // 段落を選んだら入力欄へフォーカスを移す。一覧の開閉は触らない —
+  // 入力欄は畳んでいても見えているし、ここで一覧を開くとプレビューが縮んで
+  // 選んだ段落（強調表示）が視界から消える。
+  useEffect(() => {
+    if (!docked || !pendingBlockId) return;
+    // フォーカス移動は commit の外へ逃がす。effect の中で同期的に focus() を呼ぶと、
+    // BlockNote 側の focus ハンドラが React の描画を再入させ
+    // 「Should not already be working」で落ちる（Storybook で実測）
+    const timer = window.setTimeout(() => composerRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [docked, pendingBlockId]);
   const snapshot = useSharedLibrary();
   const allEntries = entries ?? snapshot.entries;
 
@@ -229,11 +258,33 @@ export function SharedEntryComments({
       ? uiT("comment.noSharedRoot")
       : undefined;
 
+  const countLabel = uiT("comment.countLabel", { count: String(total) });
+
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold text-foreground">
-        {uiT("comment.countLabel", { count: String(total) })}
-      </div>
+    <div
+      className={
+        docked
+          ? "flex flex-col min-h-0 shrink-0 border-t border-border bg-background"
+          : "border border-border rounded-lg overflow-hidden"
+      }
+    >
+      {docked ? (
+        // ドックの見出し行は一覧の開閉ボタンを兼ねる（入力欄は畳んでも残る）
+        <button
+          type="button"
+          onClick={() => setThreadsOpen((v) => !v)}
+          aria-expanded={threadsOpen}
+          title={threadsOpen ? uiT("comment.collapseList") : uiT("comment.expandList")}
+          className="w-full px-3 py-2 flex items-center justify-between gap-2 bg-muted/20 text-xs font-semibold text-foreground hover:bg-muted/40 transition-colors"
+        >
+          <span>{countLabel}</span>
+          {threadsOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+        </button>
+      ) : (
+        <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold text-foreground">
+          {countLabel}
+        </div>
+      )}
       {actionError && (
         <div className="px-3 py-2 border-b border-border text-[11px] text-destructive">
           {uiT("comment.actionFailed", { error: actionError })}
@@ -252,6 +303,10 @@ export function SharedEntryComments({
         pendingAnchor={pendingAnchor}
         onClearAnchor={onClearAnchor}
         composerDisabledReason={disabledReason}
+        layout={layout}
+        threadsOpen={threadsOpen}
+        composerRef={composerRef}
+        {...(threadsMaxHeight ? { threadsMaxHeight } : {})}
       />
     </div>
   );

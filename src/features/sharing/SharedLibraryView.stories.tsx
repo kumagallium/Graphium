@@ -793,3 +793,42 @@ export const DetailComments: Story = {
     );
   },
 };
+
+// ── 詳細パネル（プレビュー + コメントのドック） ──
+//
+// 実アプリの本文は Tauri の invoke 越しなので、Storybook では readEntryBody を
+// 差し替えて擬似 GraphiumDocument を返す（loadEntries と同じ DI の流儀）。
+// プレビューの段落をクリックすると ¶ の指定が付き、その段落が常時ハイライトされる。
+
+const DETAIL_DOC = makeDoc("Cu粉末の焼結実験（第1回）", [
+  para("b-weigh", [styled("Cu 粉末を 5.00 g 秤量した（電子天秤 0.01 g 読み）。")]),
+  para("b-press", [styled("一軸プレスで 200 MPa・60 秒 保持して圧粉体を作製した。")]),
+  para("b-sinter", [styled("1050 ℃ で 2 時間保持した")]),
+  para("b-cool", [styled("炉冷（自然冷却）。翌朝に取り出した。")]),
+  para("b-xrd", [styled("焼結体を XRD で測定し、Cu2O のピークを確認した。")]),
+]);
+
+export const ProposedDetailWithComments: Story = {
+  name: "提案（詳細パネル・コメントのドック）",
+  args: {
+    ...baseArgs,
+    // 一覧から選んだのと同じ状態（note-1 の詳細パネルを開いた状態）で始める
+    focusEntryId: "note-1",
+    readEntryBody: async (entry) => ({
+      body:
+        entry.type === "comment"
+          ? new TextEncoder().encode(COMMENT_TEXTS[entry.id] ?? "")
+          : encodeDoc(DETAIL_DOC),
+      verified: true,
+    }),
+  },
+  decorators: Proposed.decorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "コメントはパネル下部に固定（ドック）する。見出し行で一覧を畳めるが、入力欄は畳んでも残るので、上の方の段落を選んでから下まで戻る必要がない。プレビューの段落をクリックすると ¶ の指定が付き、その段落がノート編集画面の履歴ハイライトと同じ見た目で強調される（もう一度クリックで解除）。",
+      },
+    },
+  },
+};

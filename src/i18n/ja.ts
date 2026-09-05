@@ -2483,4 +2483,6 @@ export const ja: Record<string, string> = {
   "comment.failed": "コメントを保存できませんでした",
   "comment.updatedBadgeHint": "前に開いたときから中身が変わっています",
   "comment.newBadgeHint": "前に開いたときから増えたコメントの数",
+  "comment.collapseList": "コメント一覧を畳む",
+  "comment.expandList": "コメント一覧を開く",
 };

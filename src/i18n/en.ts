@@ -2486,4 +2486,6 @@ export const en: Record<string, string> = {
   "comment.failed": "Could not save the comment",
   "comment.updatedBadgeHint": "Changed since you last opened it",
   "comment.newBadgeHint": "Comments added since you last opened it",
+  "comment.collapseList": "Hide the comment list",
+  "comment.expandList": "Show the comment list",
 };

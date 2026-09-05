@@ -13,7 +13,7 @@
 //     「カード → ブロック」の向きだけ（onJumpToBlock）
 //   - 見た目はノートのメモタブ（NoteMemosSection / MemoComposer）に合わせる
 
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useMemo, useState, type KeyboardEvent, type MutableRefObject } from "react";
 import { CornerDownRight, MessageSquare, Pilcrow, X } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { formatDateTime } from "../../lib/format-datetime";
@@ -54,6 +54,19 @@ export type SharedCommentsThreadProps = {
    * この文言を出す。文言は呼び出し側で訳しておく（画面ごとに導線が違うため）。
    */
   composerDisabledReason?: string;
+  /**
+   * 並べ方。
+   * - "stacked"（既定）: 節としてそのまま縦に積む（ノート右パネル・従来の見え方）
+   * - "docked": パネル下部に固定する前提。スレッド一覧が自前の高さ内でスクロールし、
+   *   threadsOpen=false のときは入力欄だけを残して一覧を畳む
+   */
+  layout?: "stacked" | "docked";
+  /** docked のときの一覧の開閉（既定は開） */
+  threadsOpen?: boolean;
+  /** docked のときの一覧の最大高さ（既定 40vh）。パネルの高さを食い潰さないための上限 */
+  threadsMaxHeight?: string;
+  /** 新規入力欄の textarea。段落を選んだときに親からフォーカスを移すために渡す */
+  composerRef?: MutableRefObject<HTMLTextAreaElement | null>;
 };
 
 const chipStyle: React.CSSProperties = {
@@ -89,6 +102,7 @@ function CommentInput({
   submitLabel,
   onSubmit,
   onCancel,
+  textareaRef,
 }: {
   placeholder: string;
   initialText?: string;
@@ -96,6 +110,8 @@ function CommentInput({
   submitLabel?: string;
   onSubmit: (text: string) => Promise<void>;
   onCancel?: () => void;
+  /** 外からフォーカスを当てるための ref（ドック時の段落クリック） */
+  textareaRef?: MutableRefObject<HTMLTextAreaElement | null>;
 }) {
   const t = useT();
   const [text, setText] = useState(initialText);
@@ -128,6 +144,7 @@ function CommentInput({
   return (
     <div onClick={(e) => e.stopPropagation()}>
       <textarea
+        ref={textareaRef}
         value={text}
         autoFocus={autoFocus}
         onChange={(e) => setText(e.target.value)}
@@ -354,6 +371,10 @@ export function SharedCommentsThread({
   pendingAnchor,
   onClearAnchor,
   composerDisabledReason,
+  layout = "stacked",
+  threadsOpen = true,
+  threadsMaxHeight = "40vh",
+  composerRef,
 }: SharedCommentsThreadProps) {
   const t = useT();
   const { current, older } = useMemo(
@@ -426,56 +447,11 @@ export function SharedCommentsThread({
     </div>
   );
 
-  return (
-    // 2 か所（詳細パネル / 右パネルのタブ）に埋め込まれるので、見出しの文言を
-    // 読み上げ用に持たせる（画面には別途タブ名・節見出しが出るため文字は増やさない）
-    <div role="region" aria-label={t("comment.title")} style={{ display: "flex", flexDirection: "column" }}>
-      {/* 新規コメント欄。段落を選んでいれば「¶ 抜粋」を上に出す */}
-      <div
-        style={{
-          padding: "12px",
-          borderBottom: "1px solid var(--color-border-subtle)",
-          backgroundColor: "var(--color-surface)",
-        }}
-      >
-        {composerDisabledReason ? (
-          <p style={{ margin: 0, fontSize: 11, lineHeight: 1.6, color: "var(--color-text-tertiary)" }}>
-            {composerDisabledReason}
-          </p>
-        ) : (
-          <>
-            {pendingAnchor && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>
-                  {t("comment.anchorPrefix")}
-                </span>
-                <AnchorChip
-                  label={pendingAnchor.blockText || t("comment.anchoredBlock")}
-                  onJump={onJumpToBlock ? () => onJumpToBlock(pendingAnchor.blockId) : undefined}
-                />
-                {onClearAnchor && (
-                  <button
-                    type="button"
-                    onClick={onClearAnchor}
-                    title={t("comment.clearAnchor")}
-                    aria-label={t("comment.clearAnchor")}
-                    style={{ ...linkButtonStyle, display: "inline-flex", alignItems: "center" }}
-                  >
-                    <X size={11} />
-                  </button>
-                )}
-              </div>
-            )}
-            <CommentInput
-              placeholder={t("comment.composerPlaceholder")}
-              onSubmit={async (text) => {
-                await onCreate(text, pendingAnchor ?? undefined);
-              }}
-            />
-          </>
-        )}
-      </div>
+  const docked = layout === "docked";
 
+  // 一覧（現在の版 → 古い版）。docked ではこの塊だけを高さ上限つきでスクロールさせる
+  const list = (
+    <>
       {current.length === 0 && older.length === 0 ? (
         <div
           style={{
@@ -532,6 +508,78 @@ export function SharedCommentsThread({
             </>
           )}
         </div>
+      )}
+    </>
+  );
+
+  return (
+    // 2 か所（詳細パネル / 右パネルのタブ）に埋め込まれるので、見出しの文言を
+    // 読み上げ用に持たせる（画面には別途タブ名・節見出しが出るため文字は増やさない）
+    <div
+      role="region"
+      aria-label={t("comment.title")}
+      style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
+    >
+      {/* 新規コメント欄。段落を選んでいれば「¶ 抜粋」を上に出す */}
+      <div
+        style={{
+          padding: "12px",
+          borderBottom: "1px solid var(--color-border-subtle)",
+          backgroundColor: "var(--color-surface)",
+        }}
+      >
+        {composerDisabledReason ? (
+          <p style={{ margin: 0, fontSize: 11, lineHeight: 1.6, color: "var(--color-text-tertiary)" }}>
+            {composerDisabledReason}
+          </p>
+        ) : (
+          <>
+            {pendingAnchor && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>
+                  {t("comment.anchorPrefix")}
+                </span>
+                <AnchorChip
+                  label={pendingAnchor.blockText || t("comment.anchoredBlock")}
+                  onJump={onJumpToBlock ? () => onJumpToBlock(pendingAnchor.blockId) : undefined}
+                />
+                {onClearAnchor && (
+                  <button
+                    type="button"
+                    onClick={onClearAnchor}
+                    title={t("comment.clearAnchor")}
+                    aria-label={t("comment.clearAnchor")}
+                    style={{ ...linkButtonStyle, display: "inline-flex", alignItems: "center" }}
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+            )}
+            <CommentInput
+              placeholder={t("comment.composerPlaceholder")}
+              textareaRef={composerRef}
+              onSubmit={async (text) => {
+                await onCreate(text, pendingAnchor ?? undefined);
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {/* docked では一覧だけを畳める。入力欄は畳んでも残す
+          （上の段落を選んですぐ書けることがドックの目的なので、入力欄を隠さない） */}
+      {docked ? (
+        threadsOpen && (
+          <div
+            data-testid="shared-comments-list"
+            style={{ overflowY: "auto", maxHeight: threadsMaxHeight, minHeight: 0 }}
+          >
+            {list}
+          </div>
+        )
+      ) : (
+        list
       )}
     </div>
   );
