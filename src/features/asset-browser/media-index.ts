@@ -7,6 +7,7 @@ import { normalizeNoteContexts } from "../note-context/context-tags";
 // チャートが直接参照する素材（config.assetSources）を利用ノートに数えるため。
 // chart-config は純関数の葉モジュールで、こちらへ戻る import は無い
 import { collectChartAssetFileIds, parseChartBlockConfig } from "../../blocks/chart/chart-config";
+import { parseDataTableSource } from "../../blocks/data-table/model";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -282,13 +283,17 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       usedIn に含める。ブロックの url ではなく inline props の参照なので、これを
  *       入れないと「セルにだけ貼った画像」が未使用扱いになり、削除前の参照チェックを
  *       すり抜ける。bump により既存ノートの参照を一度の再構築で回収する
+ *  - 8: データ表ブロック（dataTable — 素材を本文に展開せず参照して見せる表）の
+ *       props.source.fileId を usedIn に含める。表のセルも url も持たない参照なので、
+ *       これを入れないと素材が未使用扱いになり、削除前の参照チェックをすり抜けて
+ *       表が参照切れになる。bump により既存ノートの参照を一度の再構築で回収する
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 7 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 8 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -730,6 +735,9 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
     // セル・本文の行内に埋めたインライン画像（inlineImage）。ブロックの url ではなく
     // inline props の参照なので、ブロック走査（url 抽出）では拾えない
     for (const fileId of collectInlineImageFileIdsFromBlocks(page?.blocks ?? [])) ids.add(fileId);
+    // データ表ブロック（素材を本文に展開せず参照する表）。セルも url も持たないので、
+    // これを入れないと元データが未使用扱いになり、削除前の参照チェックをすり抜ける
+    for (const fileId of collectDataTableAssetFileIdsFromBlocks(page?.blocks ?? [])) ids.add(fileId);
   }
   return ids;
 }
@@ -766,6 +774,23 @@ export function collectInlineImageFileIdsFromBlocks(blocks: any[]): Set<string> 
 }
 
 /** ブロック木（子ブロック・カラム内も含む）から chart ブロックの素材参照を集める */
+/** ブロック木（子ブロック・カラム内も含む）からデータ表ブロックが参照する素材の fileId を集める */
+export function collectDataTableAssetFileIdsFromBlocks(blocks: any[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (list: any[]) => {
+    for (const b of list ?? []) {
+      if (!b || typeof b !== "object") continue;
+      if (b.type === "dataTable") {
+        const fileId = parseDataTableSource(b.props?.source)?.fileId;
+        if (fileId) ids.add(fileId);
+      }
+      if (Array.isArray(b.children)) visit(b.children);
+    }
+  };
+  visit(blocks);
+  return ids;
+}
+
 export function collectChartAssetFileIdsFromBlocks(blocks: any[]): Set<string> {
   const ids = new Set<string>();
   const visit = (list: any[]) => {

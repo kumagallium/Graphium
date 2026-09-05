@@ -133,6 +133,8 @@ export function ChartAssetSourceFlow({
         text={stage.text}
         // 表を作らないので行数の上限は要らない（スペクトルを途中で切らない）
         rowLimit={null}
+        // 表もデータ表も作らない（チャートが素材を直接読む）ので、挿入形式の選択は出さない
+        showTargetChoice={false}
         confirmLabel={t("chart.useForChart")}
         // 前置きの条件はどこにも写さない（素材の本文に残るだけ）ので、表の文言を使わない
         headerMetaLabel={t("chart.headerMeta")}

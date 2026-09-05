@@ -92,8 +92,8 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`, `calc`,
-  `callout`, `chart`, `columnList` / `column`, `math`, `pdf-viewer`,
-  `sharedCitation`, `step`). Inline content (entity /
+  `callout`, `chart`, `columnList` / `column`, `dataTable`, `math`,
+  `pdf-viewer`, `sharedCitation`, `step`). Inline content (entity /
   agent highlights) lives under `src/features/inline-label/`; inline math lives
   under `src/features/inline-math/`.
 - `calc` is a Numi-style live calculation block: each line of `props.source` is
@@ -128,6 +128,20 @@ talks to LLM and embedding backends.
   levels: steps first, then — for a step that has outputs — that step's
   individual outputs, so the writer states *which* output is being
   received rather than only that one step followed another.
+- `dataTable` shows a delimited data asset (the same instrument `.txt` /
+  `.dat` / `.csv` that data import turns into a table) *without* expanding it
+  into the note. The block stores only a reference — the asset id plus the
+  read settings, the same shape as `tableMeta.source` — and a caption; the
+  rows stay in the asset and are parsed on display through the shared asset
+  text cache (`src/features/data-import/asset-text.ts`, also used by charts).
+  Only the visible rows are rendered (fixed-height virtual scrolling), sorting
+  is view-only, and the table is read-only. This exists because a note table
+  is one ProseMirror node per cell and every edit re-serializes the whole
+  document, so a 2,000-row measurement pasted as a note table stalls the
+  editor; the import dialog therefore defaults to a data table above
+  `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and lets the writer choose the
+  other form. Re-importing from the source badge converts between the two
+  forms.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the

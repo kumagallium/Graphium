@@ -91,6 +91,9 @@ import {
   type DataImportResult,
   type DelimitedImportOptions,
 } from "./features/data-import";
+import type { ImportTarget } from "./features/data-import/types";
+import { primeAssetText } from "./features/data-import/asset-text";
+import { serializeDataTableSource, setDataTableReimportCallback } from "./blocks/data-table";
 import {
   chartSlashItem,
   ChartAssetSourceFlow,
@@ -1429,6 +1432,8 @@ function NoteEditorInner({
       replaceBlockId?: string;
       /** 再取り込み時に復元する前回の設定 */
       initialOptions?: DelimitedImportOptions;
+      /** 挿入形式の初期値（再取り込み時に元のブロック種別を渡す） */
+      initialTarget?: ImportTarget;
     } | null
   >(null);
 
@@ -1450,6 +1455,10 @@ function NoteEditorInner({
     setChartAssetSourceCallback(mainEditor, (onDone) => {
       setChartAssetRequest({ onDone });
     });
+    // データ表の「元: ファイル名」バッジ → 同じ取り込みダイアログを、データ表を既定にして開く
+    setDataTableReimportCallback(mainEditor, (blockId, source) =>
+      handleTableReimport(blockId, source, "dataTable")
+    );
     setMemoPickerCallback(mainEditor, () => {
       pickerEditorRef.current = mainEditor;
       setMemoPickerOpen(true);
@@ -1469,6 +1478,7 @@ function NoteEditorInner({
     return () => {
       setMediaPickerCallback(mainEditor, null);
       setChartAssetSourceCallback(mainEditor, null);
+      setDataTableReimportCallback(mainEditor, null);
       setMemoPickerCallback(mainEditor, null);
       setBookmarkPickerCallback(mainEditor, null);
       setCitePickerCallback(mainEditor, null);
@@ -1871,6 +1881,78 @@ function NoteEditorInner({
     // onChange が自動的にトリガーされるので markDirty() は不要
   }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore]);
 
+  // データ表として取り込む → 素材を正として、ノートには参照（dataTable ブロック）だけを置く。
+  //
+  // 文書の表と違い、行の実体は素材にある。素材未登録のファイル（スラッシュ・ドロップ
+  // 経由）は先に素材にしてから挿す — 素材が無いデータ表は参照切れでしか描けない。
+  // 登録は数秒かかることがあるが、その間に表を仮置きするより「無い」ほうが正直。
+  const insertDataTable = useCallback(
+    async (
+      file: {
+        fileName: string;
+        fileId?: string;
+        replaceBlockId?: string;
+        file?: File;
+        text?: string;
+      },
+      result: DataImportResult
+    ) => {
+      let fileId = file.fileId;
+      if (!fileId) {
+        const rawFile = file.file;
+        if (!rawFile || !uploadAsset) return;
+        try {
+          ({ fileId } = await uploadAsset(rawFile));
+        } catch (err) {
+          console.warn("データ表の素材登録に失敗:", err);
+          return;
+        }
+      }
+      if (!fileId) return;
+      // 取り込みダイアログで読んだ本文をそのまま使う（描画のために読み直さない）
+      if (file.text !== undefined) primeAssetText(fileId, file.text);
+      // 登録を待つ間にノートを切り替えていることがあるので、挿す先は今生きているエディタ
+      const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
+      if (!editor) return;
+      const source = buildTableSource({
+        fileName: file.fileName,
+        fileId,
+        options: result.options,
+        parsed: result.parsed,
+      });
+      const props = {
+        source: serializeDataTableSource(source),
+        caption: defaultCaption(file.fileName),
+      };
+      const existing = file.replaceBlockId ? editor.getBlock(file.replaceBlockId) : null;
+      if (existing && existing.type === "dataTable") {
+        // 再取り込み: 読み方だけ差し替える（名前は人が付けたものを保つ）
+        editor.updateBlock(existing, { props: { source: props.source } });
+      } else if (existing) {
+        // 文書の表 → データ表への変換。表の名前（注釈）はブロックへ引き継ぐ。
+        // 表を参照していたチャートは参照切れになる（素材を直接指すよう付け替えられる）
+        const caption = tableMetaStore.getCaption(existing.id) || props.caption;
+        removeBlockMetadata([existing.id]);
+        tableMetaStore.setCaption(existing.id, "");
+        tableMetaStore.setSource(existing.id, undefined);
+        editor.replaceBlocks([existing], [{ type: "dataTable", props: { ...props, caption } }]);
+      } else {
+        const currentBlock = editor.getTextCursorPosition()?.block;
+        const anchor = currentBlock ?? editor.document[editor.document.length - 1];
+        if (!anchor) return;
+        editor.insertBlocks([{ type: "dataTable", props }], anchor, "after");
+        if (currentBlock && isSlashOnlyBlock(currentBlock)) {
+          removeBlockMetadata([currentBlock.id]);
+          editor.removeBlocks([currentBlock]);
+        }
+      }
+      // 取り込みは失うと痛い量が一度に入るので、自動保存の待ち時間を挟まず保存する
+      markDirtyRef.current();
+      setTimeout(() => saveNowRef.current?.(), 0);
+    },
+    [uploadAsset, tableMetaStore, isSlashOnlyBlock, removeBlockMetadata]
+  );
+
   // データ取り込みダイアログの確定 → テーブルブロックを挿入し、出所を注釈に残す。
   //
   // 表そのものは素の Markdown テーブルのまま（tableMeta の方針どおり）。
@@ -1885,10 +1967,16 @@ function NoteEditorInner({
         replaceBlockId?: string;
         /** 素材未登録のファイル実体（スラッシュメニュー・ドロップ経由） */
         file?: File;
+        /** ダイアログで読んだ本文（データ表はこれを描画に使い回す） */
+        text?: string;
       },
       result: DataImportResult
     ) => {
       setDataImportFile(null);
+      if (result.target === "dataTable") {
+        void insertDataTable(file, result);
+        return;
+      }
       // ダイアログを開いてから確定するまでの間にノートを切り替えると、
       // pickerEditorRef はアンマウント済みのエディタを指したままになる。そこへ
       // 挿入すると「取り込んだのに何も出ない」（ブロックは死んだエディタに入り、
@@ -1902,7 +1990,15 @@ function NoteEditorInner({
       // 参照しているチャート（sourceBlockId）の参照が切れない）
       let blockId: string | undefined;
       let currentBlock: any = null;
-      if (file.replaceBlockId && editor.getBlock(file.replaceBlockId)) {
+      const existing = file.replaceBlockId ? editor.getBlock(file.replaceBlockId) : null;
+      if (existing && existing.type === "dataTable") {
+        // データ表 → 文書の表への展開。content の形が違うのでブロックは作り直す。
+        // 表の名前はブロックの caption から注釈へ引き継ぐ
+        const caption = String(existing.props?.caption ?? "");
+        const { insertedBlocks } = editor.replaceBlocks([existing], [block]);
+        blockId = insertedBlocks?.[0]?.id;
+        if (blockId && caption) tableMetaStore.setCaption(blockId, caption);
+      } else if (existing) {
         editor.updateBlock(file.replaceBlockId, { content: block.content });
         blockId = file.replaceBlockId;
       } else {
@@ -1975,14 +2071,14 @@ function NoteEditorInner({
         })();
       }
     },
-    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, uploadAsset]
+    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, uploadAsset, insertDataTable]
   );
 
   // 取り込み元バッジ → 元ファイルを読み直し、保存済みの設定でダイアログを開く。
   // 確定すると新しい表を足すのではなく、その場のテーブルを置き換える
   // （範囲や区切りを間違えたときに作り直す動線。表の位置とキャプションは保つ）。
   const handleTableReimport = useCallback(
-    (blockId: string, source: TableSource) => {
+    (blockId: string, source: TableSource, target: ImportTarget = "table") => {
       if (!source.fileId) return;
       void (async () => {
         try {
@@ -1999,6 +2095,8 @@ function NoteEditorInner({
               ...source.options,
               customDelimiter: source.options.customDelimiter,
             },
+            // 既定は元のブロック種別。ダイアログで切り替えれば相互に変換できる
+            initialTarget: target,
           });
         } catch {
           alert(tStatic("dataImport.readError"));
@@ -4833,6 +4931,7 @@ function NoteEditorInner({
           fileName={dataImportFile.fileName}
           text={dataImportFile.text}
           initialOptions={dataImportFile.initialOptions}
+          initialTarget={dataImportFile.initialTarget}
           onCancel={() => setDataImportFile(null)}
           onConfirm={(result) => handleDataImportConfirm(dataImportFile, result)}
         />

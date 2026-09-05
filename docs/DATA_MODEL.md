@@ -297,6 +297,17 @@ type TableSource = {
   `meta`, because for a lab note those lines *are* the measurement conditions.
   When the file was also registered as an asset, `fileId` links the table back to
   it and the import can be re-run with the stored settings.
+- **Large imports become a `dataTable` block instead of a table.** The block
+  keeps no rows: `props.source` is the same object as `tableMeta.source`
+  serialized as a JSON string (so the read settings and the preamble `meta`
+  travel with the block), and `props.caption` is the display name. Rows are
+  parsed from the asset at display time and never written into the note, which
+  keeps a 2,000-row measurement from inflating every save, revision and index
+  pass. The block is read-only; editing means re-importing (the source badge)
+  or switching it back to a note table through the same dialog. The media
+  index counts `source.fileId` in `usedIn` (media index version 8), so the
+  asset is protected from deletion while a data table refers to it. Without
+  the asset the block renders a placeholder naming the source file.
 
 ### 2.3 PROV-DM label model
 
