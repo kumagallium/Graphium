@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -22,8 +22,13 @@ export type FileSidebarProps = {
   onNewNote: () => void;
   /** Quick Memo ダイアログを開く（思いつきを 1 行で書き留める入口） */
   onNewMemo?: () => void;
-  /** 投入口（既存資料の一括持ち込み）を開く。手元の資料をそのまま入れる入口。 */
+  /** 投入口（手元のファイルの一括取り込み）を開く */
   onOpenIntake?: () => void;
+  /**
+   * 動詞列の配置。"twins"（採用）= メモとノートを横並び + 投入口は軽い 1 行。
+   * "stacked" = 旧配置（3 本を同じ見た目で縦並び）。比較ストーリー用に残す
+   */
+  intakePlacement?: "twins" | "stacked";
   /** ヘッダーの「戻る」操作（履歴を 1 段戻す）。canGoBack が false のときは非表示。 */
   onBack?: () => void;
   /** 戻れる履歴があるか。 */
@@ -188,6 +193,7 @@ export function FileSidebar({
   onNewNote,
   onNewMemo,
   onOpenIntake,
+  intakePlacement = "twins",
   onBack,
   canGoBack,
   onRefresh,
@@ -360,52 +366,105 @@ export function FileSidebar({
             )}
           </div>
         </div>
-        {/* 入口は縦並びの対等な雙子ボタン:
-            メモは「思いつきの原料」、ノートは「構造を持つ脳の中身」。
+        {/* 入口の動詞列（design.md 決定事項ログ 2026-09-05）:
+            1 行目は「作る」の双子ボタン。メモは「思いつきの原料」、ノートは「構造を持つ脳の中身」。
             ショートカットはメモ（⌘⇧M）のみ。実動作は metaKey/ctrlKey 両対応で Win/Linux でも反応する。
             ノートに ⌘⇧N を割り当てないのは、ブラウザの「新規シークレットウィンドウ」と衝突して
             preventDefault が効かないため。期待を裏切るより、サイドバーボタン経由に一本化する。
             「メモ=即速度、ノート=じっくり」の非対称さを UI でも素直に表現する。
-            パディングは py-1.5 で抑えて、ロゴが視覚的なトップにくるようにヒエラルキーを保つ。
-            3 本目（投入口）だけは「作る」ではなく「手元の資料を入れる」動詞。ゼロから書くのでは
-            なく過去資産の再利用から始めるのが初回の推奨導線なので、常設のボタンとして見せる。 */}
-        {onNewMemo && (
-          <button
-            onClick={onNewMemo}
-            title={t("sidebar.newMemoTooltip")}
-            className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-          >
-            <span>{t("sidebar.newMemo")}</span>
-            {/* ⌘ ⇧ M を1つの塊で出すと ⇧ が埋もれて見落とされる（実際に「⌘M で効かない」と
-                誤解された）。キーごとに keycap 化して分離し、Shift が要ることを一目で示す。
-                背景は foreground tint なので、ボタン hover の sidebar-accent 上でも沈まない。 */}
-            <span className="flex items-center gap-0.5 font-normal tabular-nums">
-              {["⌘", "⇧", "M"].map((k) => (
-                <kbd
-                  key={k}
-                  className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
-                >
-                  {k}
-                </kbd>
-              ))}
-            </span>
-          </button>
+            2 行目は「持ち込む」の投入口。手元のファイルを入れる動詞で、ゼロから書くのではなく
+            過去資産の再利用から始めるのが初回の推奨導線なので常設にする。ただし「作る」とは種類が
+            違うので、枠線を外した軽い 1 行にしてアイコンで区別する。
+            以前は 3 本を同じ見た目で縦に並べていたが場所を取りすぎるため、双子を横並びにした
+            （比較は FileSidebar.ia.stories.tsx の IntakePlacementComparison。旧配置は
+            intakePlacement="stacked" で比較用に残す）。
+            パディングは py-1.5 で抑えて、ロゴが視覚的なトップにくるようにヒエラルキーを保つ。 */}
+        {intakePlacement === "twins" ? (
+          // ⌘⇧M の keycap は消さない（「⌘M で効かない」と誤解された経緯があるため）。
+          // ノートは文字幅ぶんだけ（shrink-0）、残りをメモに渡して keycap の場所を確保する。
+          <div className="flex gap-1 mb-1">
+            {onNewMemo && (
+              <button
+                onClick={onNewMemo}
+                title={t("sidebar.newMemoTooltip")}
+                className="flex-1 min-w-0 flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+              >
+                <span className="truncate">{t("sidebar.newMemo")}</span>
+                {/* ⌘ ⇧ M を1つの塊で出すと ⇧ が埋もれて見落とされる（実際に「⌘M で効かない」と
+                    誤解された）。キーごとに keycap 化して分離し、Shift が要ることを一目で示す。
+                    背景は foreground tint なので、ボタン hover の sidebar-accent 上でも沈まない。 */}
+                <span className="flex shrink-0 items-center gap-0.5 font-normal tabular-nums">
+                  {["⌘", "⇧", "M"].map((k) => (
+                    <kbd
+                      key={k}
+                      className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
+                    >
+                      {k}
+                    </kbd>
+                  ))}
+                </span>
+              </button>
+            )}
+            <button
+              onClick={onNewNote}
+              title={t("sidebar.newNoteTooltip")}
+              className="shrink-0 whitespace-nowrap text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            >
+              {t("sidebar.newNote")}
+            </button>
+          </div>
+        ) : (
+          // 旧配置（比較用）: 双子を縦に並べる
+          <>
+            {onNewMemo && (
+              <button
+                onClick={onNewMemo}
+                title={t("sidebar.newMemoTooltip")}
+                className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+              >
+                <span>{t("sidebar.newMemo")}</span>
+                <span className="flex shrink-0 items-center gap-0.5 font-normal tabular-nums">
+                  {["⌘", "⇧", "M"].map((k) => (
+                    <kbd
+                      key={k}
+                      className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
+                    >
+                      {k}
+                    </kbd>
+                  ))}
+                </span>
+              </button>
+            )}
+            <button
+              onClick={onNewNote}
+              title={t("sidebar.newNoteTooltip")}
+              className="w-full text-left rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            >
+              {t("sidebar.newNote")}
+            </button>
+          </>
         )}
-        <button
-          onClick={onNewNote}
-          title={t("sidebar.newNoteTooltip")}
-          className="w-full text-left rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-        >
-          {t("sidebar.newNote")}
-        </button>
         {onOpenIntake && (
-          <button
-            onClick={onOpenIntake}
-            title={t("sidebar.intakeTooltip")}
-            className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-          >
-            {t("sidebar.intake")}
-          </button>
+          intakePlacement === "twins" ? (
+            // 枠線を外した軽い 1 行。存在は保ちつつ、視覚的な主張を「作る」より下げる
+            <button
+              onClick={onOpenIntake}
+              title={t("sidebar.intakeTooltip")}
+              className="w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            >
+              <FolderInput size={14} />
+              <span>{t("sidebar.intake")}</span>
+            </button>
+          ) : (
+            // 旧配置（比較用）: 3 本目として同じ見た目のボタン
+            <button
+              onClick={onOpenIntake}
+              title={t("sidebar.intakeTooltip")}
+              className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            >
+              {t("sidebar.intake")}
+            </button>
+          )
         )}
       </div>
 
