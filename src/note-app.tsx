@@ -824,6 +824,7 @@ type NoteEditorProps = {
   onCreateNoteMemo?: (
     text: string,
     block?: { blockId: string; blockText: string },
+    folder?: string,
   ) => void | Promise<void>;
   /** 右パネル「Memos」タブからメモを削除する */
   onDeleteNoteMemo?: (memoId: string) => void;
@@ -4803,10 +4804,13 @@ function NoteEditorInner({
           variant={isDesktop ? "centered" : "fullscreen"}
           contextLabel={blockMemoTarget.blockText || undefined}
           submitting={blockMemoSubmitting}
-          onSubmit={async (text) => {
+          // このノートについてのメモなので、候補も既定値もこのノートのフォルダ
+          folderOptions={noteContexts}
+          defaultFolder={noteContexts[0]}
+          onSubmit={async (text, folder) => {
             setBlockMemoSubmitting(true);
             try {
-              await onCreateNoteMemo(text, blockMemoTarget);
+              await onCreateNoteMemo(text, blockMemoTarget, folder);
               setBlockMemoTarget(null);
             } finally {
               setBlockMemoSubmitting(false);
@@ -10170,7 +10174,7 @@ export function NoteApp() {
               setPendingMemoInsert(null);
             }}
             captureIndex={capture.captureIndex}
-            onCreateNoteMemo={async (text, block) => {
+            onCreateNoteMemo={async (text, block, folder) => {
               // 右パネル「Memos」タブ / ブロックメニュー「メモ」からの新規メモ。
               // sourceNote にノートの fileId とタイトルスナップショットを付与する。
               // block があればブロック紐付け（blockId + テキスト抜粋）も記録する。
@@ -10181,7 +10185,7 @@ export function NoteApp() {
                 ...(block
                   ? { blockId: block.blockId, blockText: block.blockText }
                   : {}),
-              });
+              }, folder);
             }}
             onDeleteNoteMemo={capture.handleDeleteCapture}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
@@ -10607,8 +10611,11 @@ export function NoteApp() {
       {showQuickMemoDialog && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}
-          onSubmit={async (text) => {
-            await capture.handleCreateCapture(text);
+          // 既定値は開いているフォルダ。ノートの「このフォルダに新規」と同じ規則
+          folderOptions={noteFolderNames}
+          defaultFolder={selectedFolder ?? undefined}
+          onSubmit={async (text, folder) => {
+            await capture.handleCreateCapture(text, undefined, undefined, folder);
             setShowQuickMemoDialog(false);
           }}
           onClose={() => setShowQuickMemoDialog(false)}

@@ -598,7 +598,7 @@ export function MobileCaptureView({
               setNewFolder("");
             }
           }}
-          placeholder={t("mobile.sendFolder.placeholder")}
+          placeholder={t("folderPicker.placeholder")}
           className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
         />
       ) : (
@@ -615,7 +615,7 @@ export function MobileCaptureView({
           aria-label={t("mobile.sendFolder.label")}
           className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
         >
-          <option value="">{t("mobile.sendFolder.none")}</option>
+          <option value="">{t("folderPicker.none")}</option>
           {/* 設定シートで打たれた等、候補に無い値が入っていても選択状態を保てるように */}
           {sendFolder && !folderOptions.includes(sendFolder) && (
             <option value={sendFolder}>{sendFolder}</option>
@@ -625,7 +625,7 @@ export function MobileCaptureView({
               {folder}
             </option>
           ))}
-          <option value={NEW_FOLDER_OPTION}>{t("mobile.sendFolder.new")}</option>
+          <option value={NEW_FOLDER_OPTION}>{t("folderPicker.new")}</option>
         </select>
       )}
     </div>

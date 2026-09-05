@@ -54,7 +54,7 @@ Select several memos at once — drag across cards or shift-click — and act on
 | Delete | Removes them permanently (memos already inserted into notes leave the note text untouched) |
 | **Turn into Knowledge** (shows the selected count) | Extracts knowledge entries from the selected memos directly into the [Knowledge layer](/knowledge-layer) — no notes are created |
 
-A memo you filed shows its folder on the card, and the folder icon in the header filters the gallery down to it. Renaming or deleting a folder carries memos along, exactly as it does notes and materials.
+When you write a memo, a folder picker sits to the left of the **New memo** button. It starts on the folder of whatever you are looking at — the note's folder when you write from inside a note, the open folder when one is selected in the sidebar, and nothing otherwise (the same rule as **New in folder** for notes) — so most of the time ⌘+Enter is all it takes. A memo you filed shows its folder on the card, and the folder icon in the header filters the gallery down to it. Renaming or deleting a folder carries memos along, exactly as it does notes and materials.
 
 Click a single memo to open its detail: edit the text (an **Edit history** is kept), and switch between the **Network** tab — a small graph of which notes this memo has been inserted into — and the **History** tab.
 

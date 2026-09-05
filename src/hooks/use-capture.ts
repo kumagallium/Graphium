@@ -77,16 +77,20 @@ export function useCapture(authenticated: boolean) {
     text: string,
     sourceAsset?: MemoSourceAsset,
     sourceNote?: MemoSourceNote,
+    folder?: string,
   ) => {
     setCapturing(true);
     try {
       const current = indexRef.current ?? createEmptyCaptureIndex();
+      // 作成ダイアログで選んだフォルダ。最初からそのフォルダに入った状態にする
+      const contexts = normalizeNoteContexts(folder ? [folder] : []);
       const entry: CaptureEntry = {
         id: generateCaptureId(),
         text,
         createdAt: new Date().toISOString(),
         ...(sourceAsset ? { sourceAsset } : {}),
         ...(sourceNote ? { sourceNote } : {}),
+        ...(contexts ? { noteContexts: contexts } : {}),
       };
       const updated = addCapture(current, entry);
       indexRef.current = updated;
