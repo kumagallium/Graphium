@@ -197,6 +197,14 @@ import {
   ShareTemplateDialog,
   type BulkShareTarget,
 } from "./features/sharing";
+// 共有コメント（右パネル「コメント」タブ・ヘッダのバッジ・レールのアイコン）。
+// バレル（./features/sharing）ではなくファイル直 import なのは、共有ストアを
+// 購読するのがこの 3 つの部品だけで、ノート本体を巻き込みたくないため。
+import {
+  NoteSharedCommentsPanel,
+  NoteSharedCommentsBadge,
+  NoteSharedCommentsRailIcon,
+} from "./features/sharing/NoteSharedCommentsPanel";
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 // 共有ノート内の画像・ファイルを自分の素材に取り込むときの mime 判定（fork の materialize と同じ経路）
 import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-blobs";
@@ -1385,12 +1393,12 @@ function NoteEditorInner({
   // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
   const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
-  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | null>(null);
+  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | null>(null);
   // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
   const [blockMemoTarget, setBlockMemoTarget] = useState<{ blockId: string; blockText: string } | null>(null);
   const [blockMemoSubmitting, setBlockMemoSubmitting] = useState(false);
   // アイコンレールのトグル: 同じタブクリックで閉じる
-  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos") => {
+  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments") => {
     setRightTab((prev) => prev === tab ? null : tab);
     if (tab !== "history") setHighlightBlockIds([]);
   }, []);
@@ -4968,6 +4976,13 @@ function NoteEditorInner({
             {t("share.badge")}
           </span>
         )}
+        {/* 共有済みバッジの横に「コメント N」。押すと右パネルのコメントタブが開く */}
+        {isShared && isTauri() && sharedRoot && sharedRefState && (
+          <NoteSharedCommentsBadge
+            targetId={sharedRefState.id}
+            onClick={() => setRightTab("comments")}
+          />
+        )}
         <NoteHeaderMenu
           onSave={saveNow}
           onTakeSnapshot={
@@ -5637,6 +5652,7 @@ function NoteEditorInner({
                   : rightTab === "chat" ? t("panel.chat")
                   : rightTab === "history" ? t("panel.history")
                   : rightTab === "memos" ? t("panel.memos")
+                  : rightTab === "comments" ? t("panel.comments")
                   : t("panel.source")}
               </span>
               {rightTab === "history" && fileId && initialDoc?.source !== "ai" && (
@@ -5744,6 +5760,24 @@ function NoteEditorInner({
                   }}
                 />
               )}
+              {rightTab === "comments" && sharedRoot && sharedRefState && (
+                <NoteSharedCommentsPanel
+                  targetId={sharedRefState.id}
+                  // 「共有コピーを更新」で hash が変われば、古い版へのコメントは
+                  // スレッド部品側が自動で畳む
+                  targetHash={sharedRefState.hash}
+                  root={sharedRoot}
+                  author={sharedAuthor}
+                  // メモタブと同じ機構でブロックをハイライト（パネル → エディタの向き）
+                  onHighlightBlock={(blockId) =>
+                    setHighlightBlockIds(blockId ? [blockId] : [])
+                  }
+                  resolveBlockLabel={(blockId) => {
+                    const block = editorRef.current?.getBlock(blockId);
+                    return block ? resolveMemoBlockLabel(block) || null : null;
+                  }}
+                />
+              )}
             </div>
           </div>
         )}
@@ -5770,6 +5804,14 @@ function NoteEditorInner({
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
+            // Comments: 共有した記録に対する先生からの指摘を読む場所。共有していない
+            // ノートには存在しない話なので、共有済み（sharedRefState あり）のときだけ出す
+            {
+              tab: "comments" as const,
+              icon: <NoteSharedCommentsRailIcon targetId={sharedRefState?.id} />,
+              label: t("panel.comments"),
+              show: isTauri() && !!sharedRoot && !!sharedRefState,
+            },
             ...(sourceDoc ? [{ tab: "source" as const, icon: <FileText size={18} />, label: t("panel.source"), show: true }] : []),
           ] as const).filter((item) => item.show).map((item) => (
             <button

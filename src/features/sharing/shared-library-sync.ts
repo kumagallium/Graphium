@@ -44,6 +44,17 @@ import { syncSharedKnowledgeEmbeddings } from "./shared-embeddings";
 /** 共有ストアが動いてから reconcile を走らせるまでの待ち（連続した共有操作を 1 回にまとめる） */
 const SHARED_RECONCILE_DEBOUNCE_MS = 1500;
 
+/**
+ * 画面に戻ってきたときの自動再読込のスロットル。
+ *
+ * 共有フォルダは他の人が書き換える場所なので、手元の操作だけを見ていると
+ * 「先生がコメントしたのに気づかない」が起きる。画面に戻った合図
+ *（visibilitychange / focus）で読み直す。ただし別ウィンドウとの行き来で
+ * 何度も飛ぶイベントなので、30 秒に 1 回までに抑える（共有フォルダは
+ * NAS・同期フォルダのこともあり、全件 list は安くない）。
+ */
+export const SHARED_AUTO_REFRESH_THROTTLE_MS = 30_000;
+
 export type SharedLibrarySyncParams = {
   /** サインイン済みか。false の間は何もしない（索引のスコープが決まらない） */
   authenticated: boolean;
@@ -88,13 +99,39 @@ export function useSharedLibrarySync(params: SharedLibrarySyncParams): void {
   const entriesRef = useRef<SharedEntry[]>(snapshot.entries);
   entriesRef.current = snapshot.entries;
 
+  /** 最後に自動再読込した時刻（スロットルの基準）。起動時の読み込みも 1 回に数える */
+  const lastAutoRefreshRef = useRef(0);
+
   // 1. 起動時に 1 回だけ共有ルートを読む（以後は notifySharedLibraryChanged 経由）
   useEffect(() => {
     if (disabled || !authenticated) return;
+    lastAutoRefreshRef.current = Date.now();
     void refreshSharedLibrary();
     // ラベル・プロセスの投影も手元の控えから先に戻す。版が合わなければ捨てられ、
     // 本文を読み直したときに投影し直される（再構築可能なキャッシュ）
     void loadSharedProjection();
+  }, [disabled, authenticated]);
+
+  // 1b. 画面に戻ってきたら読み直す（他の人の更新・コメントを取りに行く）。
+  //     読み直すと loadedAt が動き、下の reconcile も同じ経路で追従する
+  useEffect(() => {
+    if (disabled || !authenticated) return;
+    const maybeRefresh = () => {
+      const now = Date.now();
+      if (now - lastAutoRefreshRef.current < SHARED_AUTO_REFRESH_THROTTLE_MS) return;
+      lastAutoRefreshRef.current = now;
+      void refreshSharedLibrary();
+    };
+    const onVisibility = () => {
+      // 隠れたとき（hidden）は読まない。戻ってきた合図だけを拾う
+      if (document.visibilityState === "visible") maybeRefresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", maybeRefresh);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", maybeRefresh);
+    };
   }, [disabled, authenticated]);
 
   // 2. スナップショット / スイッチの変化に追従して索引を合わせる。

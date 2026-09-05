@@ -10,7 +10,7 @@
 //
 // 設計詳細: docs/internal/team-shared-storage-design.md §3 Library / §8 共有 Concept
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -44,17 +44,25 @@ import {
 } from "./shared-library-store";
 import { buildSharedCitationLink } from "./citation-link";
 import {
+  buildReverseLinks,
   buildSharedProcessIndex,
   countProjectedLabelNotes,
   countProjectedProcessNotes,
   useSharedProjection,
+  type SharedReverseLinks,
 } from "./shared-projection";
+import { SharedEntryComments } from "./SharedEntryComments";
+import type { SharedCommentAnchor } from "./SharedCommentsThread";
+// メモの ¶ チップと同じ関数で抜粋を作る（作成時と表示時の見え方を揃える）。
+// features/mobile-capture の index はモバイル取り込みの UI まで引き込むため直接参照する
+import { resolveMemoBlockLabel } from "../mobile-capture/block-label";
 import { SharedLabelsTab, SharedProjectionHint } from "./SharedLabelsTab";
 import { ProcessGalleryView } from "../network-graph/ProcessGalleryView";
 import {
   collectSharedBlobHashes,
   rewriteSharedBlobUrls,
 } from "./materialize-blobs";
+import { readSeenStore } from "./shared-seen";
 import { formatDate } from "../../lib/format-datetime";
 import { t, useT } from "../../i18n";
 import { SandboxEditor } from "../../base/editor";
@@ -196,6 +204,7 @@ export function SharedLibraryView({
     template: [],
     knowledge: [],
     report: [],
+    comment: [],
   });
   const [diLoadErrors, setDiLoadErrors] = useState<
     Partial<Record<SharedEntryType, string>>
@@ -207,6 +216,9 @@ export function SharedLibraryView({
   const loadErrors = loadEntries ? diLoadErrors : shared.errors;
   const loading = loadEntries ? diLoading : shared.loading;
   const [selected, setSelected] = useState<SharedEntry | null>(null);
+  // 既読の控え（localStorage）を読み直す合図。詳細パネルが記録したら進める
+  // —— これが無いと、開いた行の「新着」の印が次の再描画まで残る
+  const [seenTick, setSeenTick] = useState(0);
   const [hashStatus, setHashStatus] = useState<Record<string, HashStatus>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   // 「引用リンクをコピー」の完了フィードバック（1.5 秒だけチェック表示）
@@ -281,6 +293,39 @@ export function SharedLibraryView({
   // プロセスタブに渡す ProcessIndex。毎レンダーで作り直すと ProcessGalleryView 内の
   // フローが作り直されて重いので、投影が変わったときだけ組み立てる
   const sharedProcessIndex = useMemo(() => buildSharedProcessIndex(projection), [projection]);
+
+  // 「更新あり」「新着コメント N」の判定に使う控え。localStorage 読み出しなので
+  // 行ごとではなくここで 1 回だけ取り、記録されたら取り直す
+  const seenSnapshot = useMemo(
+    () => readSeenStore(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seenTick, entriesByType],
+  );
+
+  // 引用・派生・テンプレート利用の逆引き（投影から作る純関数の結果）。
+  // 投影は本文を読めた共有ノートの分だけなので、読み込み前は少なく見える
+  const reverseLinks = useMemo(() => buildReverseLinks(projection), [projection]);
+
+  // 逆引きの行から相手のエントリを開く / 題名を出すための id 索引。
+  // タブをまたいで探す（引用元がノートとは限らない）
+  const entryById = useMemo(() => {
+    const map = new Map<string, SharedEntry>();
+    for (const list of Object.values(entriesByType)) {
+      for (const e of list) map.set(e.id, e);
+    }
+    return map;
+  }, [entriesByType]);
+
+  const openEntryById = useCallback(
+    (id: string) => {
+      const hit = entryById.get(id);
+      if (!hit) return;
+      const tab = typeToTab(hit.type);
+      if (tab) setActiveTab(tab);
+      setSelected(hit);
+    },
+    [entryById],
+  );
 
   // ラベル / プロセスの行から「ノートを開く」= 一覧の詳細パネルで開く。
   // 共有ノートは個人のノートとして開けないので、遷移先はここになる
@@ -527,6 +572,10 @@ export function SharedLibraryView({
             onUnshare={handleUnshare}
             blobParents={activeTab === "asset" ? blobParents : undefined}
             onImportBlob={onImportBlob}
+            // コメントは一覧タブに出さないが、行の「新着コメント N」には数が要る。
+            // DI（Storybook）でも同じ経路で渡るよう、読み出し済みの封筒をそのまま渡す
+            commentEntries={entriesByType.comment}
+            seenStore={seenSnapshot}
           />
         )}
       </div>
@@ -544,6 +593,15 @@ export function SharedLibraryView({
           }
           hashStatus={hashStatus[selected.id] ?? "unknown"}
           sharedRoot={sharedRoot}
+          currentIdentity={currentIdentity}
+          commentEntries={entriesByType.comment}
+          reverseLinks={reverseLinks.get(selected.id)}
+          entryTitleById={(id) => {
+            const hit = entryById.get(id);
+            return hit ? entryTitle(hit, uiT) : null;
+          }}
+          onOpenEntry={openEntryById}
+          onSeenRecorded={() => setSeenTick((v) => v + 1)}
           onVerifyHash={() => verifyHash(selected)}
           onFork={
             isForkable(selected.type)
@@ -571,6 +629,18 @@ type DetailProps = {
   isMine: boolean;
   hashStatus: HashStatus;
   sharedRoot: string;
+  /** コメントの投稿者。未登録（null）ならコメント欄は案内文だけになる */
+  currentIdentity: AuthorIdentity | null;
+  /** 読み出し済みのコメント封筒（DI 経路でも同じものを見せる） */
+  commentEntries?: readonly SharedEntry[];
+  /** このエントリを指している共有ノート（引用・派生・テンプレート利用）。無ければ 0 件 */
+  reverseLinks?: SharedReverseLinks;
+  /** 逆引きの行に出す題名（読めていない / 消えた id は null） */
+  entryTitleById?: (id: string) => string | null;
+  /** 逆引きの行のクリックでそのエントリを開く */
+  onOpenEntry?: (id: string) => void;
+  /** コメント節が既読を記録したことの通知（一覧の印を消すため） */
+  onSeenRecorded?: () => void;
   onVerifyHash: () => void;
   onFork?: () => void;
   /** テンプレートのときだけ渡る（自分作・他人作を問わず出す） */
@@ -584,6 +654,12 @@ function SharedEntryDetail({
   isMine,
   hashStatus,
   sharedRoot,
+  currentIdentity,
+  commentEntries,
+  reverseLinks,
+  entryTitleById,
+  onOpenEntry,
+  onSeenRecorded,
   onVerifyHash,
   onFork,
   onCreateFromTemplate,
@@ -593,6 +669,12 @@ function SharedEntryDetail({
   const uiT = useT();
   const [body, setBody] = useState<string | null>(null);
   const [bodyError, setBodyError] = useState<string | null>(null);
+  // プレビュー（read-only エディタ）の DOM とエディタ実体。
+  // 「段落に付ける」「該当ブロックへ飛ぶ」の両方でここを起点にする
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const previewEditorRef = useRef<any>(null);
+  const highlightTimerRef = useRef<number | null>(null);
+  const [pendingAnchor, setPendingAnchor] = useState<SharedCommentAnchor | null>(null);
   // 「引用リンクをコピー」の完了フィードバック（コンポーネントは entry ごとに
   // key remount されるため、ローカル state で持って問題ない）
   const [citationCopied, setCitationCopied] = useState(false);
@@ -629,6 +711,87 @@ function SharedEntryDetail({
   }, [entry]);
 
   const title = entryTitle(entry, uiT);
+
+  /** プレビュー内のブロック要素（詳細パネルの中だけを探す。本文側の同 id を掴まない） */
+  const findBlockEl = useCallback((blockId: string): HTMLElement | null => {
+    const root = previewRef.current;
+    if (!root || !blockId) return null;
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(blockId)
+        : blockId;
+    return root.querySelector(
+      `[data-id="${escaped}"][data-node-type="blockOuter"]`,
+    ) as HTMLElement | null;
+  }, []);
+
+  /** 現在の本文からブロックの抜粋を出す（消えていれば付けた時点の控えに戻す） */
+  const anchorLabel = useCallback((blockId: string, fallback: string): string => {
+    try {
+      const block = previewEditorRef.current?.getBlock?.(blockId);
+      return resolveMemoBlockLabel(block) || fallback;
+    } catch {
+      // ブロックが消えている / エディタがまだ無い → 墓標（付けた時点の抜粋）
+      return fallback;
+    }
+  }, []);
+
+  /**
+   * プレビューで段落を選ぶ = その段落にコメントを付ける指定。
+   *
+   * read-only のエディタではキャレットが立たない環境があるため、
+   * まず DOM（blockOuter の data-id）から拾い、取れないときだけ
+   * エディタのカーソル位置に頼る。
+   */
+  const handlePreviewClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // 段落を持つのはノート / ナレッジのプレビューだけ（素材・URL には付けない）
+      if (entry.type !== "note" && entry.type !== "knowledge") return;
+      const target = e.target as HTMLElement | null;
+      const el = target?.closest?.('[data-node-type="blockOuter"]') as HTMLElement | null;
+      const blockId =
+        el?.getAttribute("data-id") ??
+        previewEditorRef.current?.getTextCursorPosition?.()?.block?.id ??
+        null;
+      if (!blockId) return;
+      let label = "";
+      try {
+        label = resolveMemoBlockLabel(previewEditorRef.current?.getBlock?.(blockId));
+      } catch {
+        // 抜粋が取れなくてもブロックの指定自体は成立する
+      }
+      setPendingAnchor({ blockId, blockText: label });
+    },
+    [entry.type],
+  );
+
+  /** コメントのカード / ¶ チップ → プレビューの該当ブロックへスクロール + 一時ハイライト */
+  const jumpToBlock = useCallback(
+    (blockId: string) => {
+      const el = findBlockEl(blockId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // ノート編集画面の highlightBlockIds と違い、ここは一時的な目印だけで足りる
+      // （常時の印はエディタに出さない ＝ #587 の決定）
+      el.style.transition = "background-color 0.2s ease";
+      el.style.backgroundColor = "rgba(59, 130, 246, 0.12)";
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = window.setTimeout(() => {
+        el.style.backgroundColor = "";
+        highlightTimerRef.current = null;
+      }, 1600);
+    },
+    [findBlockEl],
+  );
+
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+    },
+    [],
+  );
+
+  const history = entry.history ?? [];
 
   return (
     <div
@@ -706,9 +869,64 @@ function SharedEntryDetail({
           )}
         </div>
 
-        {/* type 別 read-only コンテンツ */}
-        <div className="flex-1 overflow-auto px-5 py-4">
-          <SharedEntryBody entry={entry} body={body} bodyError={bodyError} />
+        {/* type 別 read-only コンテンツ + 往復（履歴・逆引き・コメント） */}
+        <div className="flex-1 overflow-auto px-5 py-4 space-y-4">
+          {/* プレビューのクリックで「この段落に」付ける指定を作る */}
+          <div ref={previewRef} onClick={handlePreviewClick}>
+            <SharedEntryBody
+              entry={entry}
+              body={body}
+              bodyError={bodyError}
+              onEditorReady={(editor) => {
+                previewEditorRef.current = editor;
+              }}
+            />
+          </div>
+
+          {history.length > 0 && (
+            <section>
+              <h3 className="text-xs font-semibold text-foreground mb-1.5">
+                {uiT("library.detail.history")}
+              </h3>
+              <ul className="text-[11px] text-muted-foreground space-y-1">
+                {/* 新しい順に見せる（メタ情報の「更新」の隣に続く読み方） */}
+                {[...history].reverse().map((h, i) => (
+                  <li key={`${h.hash}-${i}`} className="flex items-center gap-2">
+                    <span className="tabular-nums whitespace-nowrap">
+                      {formatDate(h.updated_at)}
+                    </span>
+                    <span className="truncate">
+                      {h.updated_by?.name ?? uiT("library.unknownAuthor")}
+                    </span>
+                    <span className="font-mono text-[10px] shrink-0" title={h.hash}>
+                      {h.hash.replace(/^sha256:/, "").slice(0, 8)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <ReverseLinksSection
+            links={reverseLinks}
+            entryTitleById={entryTitleById}
+            onOpenEntry={onOpenEntry}
+          />
+
+          <section>
+            <SharedEntryComments
+              targetId={entry.id}
+              targetHash={entry.hash}
+              sharedRoot={sharedRoot}
+              currentIdentity={currentIdentity}
+              entries={commentEntries}
+              anchorLabel={anchorLabel}
+              onJumpToBlock={jumpToBlock}
+              pendingAnchor={pendingAnchor}
+              onClearAnchor={() => setPendingAnchor(null)}
+              onSeenRecorded={onSeenRecorded}
+            />
+          </section>
         </div>
 
         {/* フッターアクション */}
@@ -768,6 +986,61 @@ function SharedEntryDetail({
   );
 }
 
+/**
+ * 逆引き（このエントリを指している共有ノート）。
+ *
+ * 元になるのは本文を読めた共有ノートの投影だけなので、読み込み前は少なく見える。
+ * 0 件のときは何も出さない（「無い」と「まだ読めていない」を言い分けられないため、
+ * 空の見出しを出して 0 件だと断言しない）。
+ */
+function ReverseLinksSection({
+  links,
+  entryTitleById,
+  onOpenEntry,
+}: {
+  links?: SharedReverseLinks;
+  entryTitleById?: (id: string) => string | null;
+  onOpenEntry?: (id: string) => void;
+}) {
+  const uiT = useT();
+  const groups: { labelKey: string; ids: string[] }[] = [
+    { labelKey: "library.detail.citedBy", ids: links?.cites ?? [] },
+    { labelKey: "library.detail.forkedBy", ids: links?.forks ?? [] },
+    { labelKey: "library.detail.templateUsedBy", ids: links?.templates ?? [] },
+  ].filter((g) => g.ids.length > 0);
+  if (groups.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      {groups.map(({ labelKey, ids }) => (
+        <section key={labelKey}>
+          <h3 className="text-xs font-semibold text-foreground mb-1.5">
+            {uiT(labelKey, { count: String(ids.length) })}
+          </h3>
+          <ul className="space-y-0.5">
+            {ids.map((id) => {
+              const title = entryTitleById?.(id) ?? null;
+              return (
+                <li key={id}>
+                  <button
+                    onClick={() => onOpenEntry?.(id)}
+                    // 相手のエントリが一覧に無い（未読込・共有解除）ときは押せない
+                    disabled={!title || !onOpenEntry}
+                    className="text-[11px] text-left text-primary hover:underline disabled:text-muted-foreground disabled:no-underline truncate max-w-full"
+                    title={id}
+                  >
+                    {title ?? id}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-3">
@@ -781,10 +1054,13 @@ function SharedEntryBody({
   entry,
   body,
   bodyError,
+  onEditorReady,
 }: {
   entry: SharedEntry;
   body: string | null;
   bodyError: string | null;
+  /** ノート / ナレッジのプレビューのエディタ実体（段落の指定・抜粋の解決に使う） */
+  onEditorReady?: (editor: any) => void;
 }) {
   if (bodyError) {
     return (
@@ -843,7 +1119,7 @@ function SharedEntryBody({
 
   if (entry.type === "note" || entry.type === "knowledge") {
     // body は GraphiumDocument JSON。読み取り専用エディタでフル内容を表示する
-    return <SharedNotePreview body={body} />;
+    return <SharedNotePreview body={body} onEditorReady={onEditorReady} />;
   }
 
   // report はテキスト系として中身をそのまま表示
@@ -911,7 +1187,14 @@ function replaceUnresolvableMedia(blocks: any[]): any[] {
   });
 }
 
-export function SharedNotePreview({ body }: { body: string }) {
+export function SharedNotePreview({
+  body,
+  onEditorReady,
+}: {
+  body: string;
+  /** 読み取り専用エディタの実体を親へ渡す（段落の指定・¶ 抜粋のライブ解決に使う） */
+  onEditorReady?: (editor: any) => void;
+}) {
   const [state, setState] = useState<NotePreviewState>({ phase: "loading" });
   // 共有ライブラリのプレビューも本文を描くので、外部メディアのゲートが要る。
   // scope を渡さないと editorRemoteScope() が "" になり、ブロックはされるものの
@@ -1009,6 +1292,7 @@ export function SharedNotePreview({ body }: { body: string }) {
                       initialContent={state.blocks as any[]}
                       editable={false}
                       remoteContentScope={remoteScope}
+                      onEditorReady={onEditorReady}
                     />
                   </AiAssistantProvider>
                 </BlockAlignmentProvider>
