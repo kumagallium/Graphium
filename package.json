@@ -1,7 +1,7 @@
 {
   "name": "graphium",
   "private": true,
-  "version": "0.56.0",
+  "version": "0.57.0",
   "description": "Block-based note editor with PROV-DM provenance tracking — built on BlockNote.js",
   "type": "module",
   "license": "Apache-2.0",
