@@ -144,6 +144,26 @@ You can also start from the other end. In **Library** → **Shared**, press **Co
 
 Pasting is what makes this worth having: the library takes over the screen, so while you are browsing it you cannot see the note you are aiming at. Copying the link lets you find the entry first and decide where it lands afterwards. The link is plain text, so it can travel in a chat message as well; a teammate on the same shared folder gets the same card by pasting it into a note of their own.
 
+### Reply with a comment
+
+Any entry in the shared library — a note, a knowledge page, a reference, anything — can carry a comment thread. Open its detail panel and scroll to **Comments**: write a note, or click a paragraph in the preview first to attach the comment to that specific spot (a small "¶" chip shows what it's attached to; there's a button to remove the attachment before posting). Comments support one level of replies — a reply to a reply is just added to the same thread — which is enough for a back-and-forth without turning into a nested discussion.
+
+You need your identity saved (see [Your author identity](#your-author-identity)) before you can write a comment; without it, the panel explains why and points you at Settings.
+
+Comments have no "resolved" checkbox. Instead, when the note's author fixes something and presses **Update shared copy**, the note's fingerprint changes, and any comment written against the old version automatically moves into a collapsed **Comments on older versions** section — the thread doesn't disappear, but it steps out of the way once the point has been addressed. You can edit or delete your own comments; you cannot edit someone else's.
+
+If you have a note of your own shared and someone comments on it, the same thread appears in a **Comments** tab in that note's own right-hand panel while you're editing it — clicking a comment there jumps to and briefly highlights the paragraph it was written against.
+
+### Update history and the updated / new-comment marks
+
+Every time a shared entry is re-shared under **Update shared copy**, Graphium keeps a short log of that: the version column in the shared library shows how many times an entry has been updated (for example "v1 · 3 updates"), and the detail panel lists each update's date, author, and the first eight characters of its fingerprint.
+
+To help you notice what changed since you last looked, the shared library also marks rows **Updated** (the entry's fingerprint changed since you opened it) or with a new-comment count (comments added since you opened it). These marks come from a small record kept only on your own device — nothing is written back to the shared folder, and an entry you authored never shows "Updated" for your own edits. The shared library also refreshes itself automatically when you switch back to the Graphium tab or window, so these marks stay current without a manual reload.
+
+### Reverse links: who cited or forked this
+
+When a note cites a shared entry, forks it, or is created from a shared template, the shared library can now show that relationship from the other side too. A shared entry's detail panel lists the shared notes that cite it, the shared notes forked from it, and — for templates — the shared notes made from it, each one clickable to jump straight to it. This depends on Graphium having already read the citing/forking note's content at least once, so a very recently shared note may take a moment to show up in another entry's reverse links.
+
 ## Exports
 
 Everything can leave Graphium in open formats, per note or in bulk.

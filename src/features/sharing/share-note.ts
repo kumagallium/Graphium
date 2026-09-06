@@ -29,6 +29,7 @@ import {
   collectMediaRefs,
   type FetchMediaBytes,
 } from "./auto-blob";
+import { historyForUpdate } from "./share-history";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -140,6 +141,10 @@ export async function shareGraphiumDocument(
     const bodyJson = JSON.stringify(entryDoc);
     const body = new TextEncoder().encode(bodyJson);
 
+    // 再共有なら旧版の hash を history に積む（上書き前に読む）。
+    // hash 計算の対象外なので、履歴が増えても内容が同じなら hash は変わらない
+    const history = await historyForUpdate(provider, id, isUpdate);
+
     const baseEntry: SharedEntry = {
       id,
       type: entryType,
@@ -148,6 +153,7 @@ export async function shareGraphiumDocument(
       updated_at: now,
       hash: "", // provider.write が再計算する
       prov: { derived_from: [] },
+      ...(history ? { history } : {}),
       extra: {
         title: doc.title,
         ...extraFields,

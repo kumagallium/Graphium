@@ -70,7 +70,52 @@ export {
   sharedEntryFingerprint,
   SHARED_INDEXABLE_TYPES,
 } from "./shared-entry-source";
-export { useSharedLibrarySync, type SharedLibrarySyncParams } from "./shared-library-sync";
+export {
+  useSharedLibrarySync,
+  SHARED_AUTO_REFRESH_THROTTLE_MS,
+  type SharedLibrarySyncParams,
+} from "./shared-library-sync";
+export {
+  createComment,
+  editComment,
+  deleteComment,
+  commentsFor,
+  commentEntriesFor,
+  countCommentsFor,
+  countCommentsByTarget,
+  loadCommentTexts,
+  splitByTargetVersion,
+  commentSummary,
+  type SharedComment,
+  type SharedCommentExtra,
+  type CommentThread,
+  type SharedCommentResult,
+  type SharedCommentProvider,
+  type CreateCommentOptions,
+  type EditCommentOptions,
+  type DeleteCommentOptions,
+} from "./shared-comments";
+export {
+  SharedCommentsThread,
+  type SharedCommentsThreadProps,
+  type SharedCommentAnchor,
+} from "./SharedCommentsThread";
+export {
+  SHARED_SEEN_KEY,
+  readSeenStore,
+  parseSeenStore,
+  getSeen,
+  markSeen,
+  isUpdatedSince,
+  newCommentCount,
+  type SharedSeenRecord,
+  type SharedSeenStore,
+} from "./shared-seen";
+export {
+  appendHistory,
+  historyForUpdate,
+  SHARED_HISTORY_LIMIT,
+} from "./share-history";
 export {
   SHARED_PROJECTION_VERSION,
   projectSharedNote,
@@ -86,6 +131,8 @@ export {
   buildSharedProcessIndex,
   countProjectedLabelNotes,
   countProjectedProcessNotes,
+  buildReverseLinks,
+  type SharedReverseLinks,
   type SharedProjection,
   type SharedProjectionEntry,
 } from "./shared-projection";
