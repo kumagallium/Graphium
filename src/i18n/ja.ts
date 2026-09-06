@@ -2420,6 +2420,7 @@ export const ja: Record<string, string> = {
   "library.col.origins": "出どころ",
   "library.blobOrigins": "{count} 件のノート",
   "library.openParentNote": "ノートを開く",
+  "library.openFull": "全画面で開く",
   "library.importBlob": "自分の素材に取り込む",
   "library.importBlobDone": "「{name}」を素材に取り込みました。素材ギャラリーで確認できます。",
   "library.importBlobFailed": "取り込みに失敗しました: {error}",
@@ -2455,6 +2456,12 @@ export const ja: Record<string, string> = {
   "library.detail.citedBy": "これを引用している共有ノート（{count}）",
   "library.detail.forkedBy": "これから派生した共有ノート（{count}）",
   "library.detail.templateUsedBy": "この雛形から作られた共有ノート（{count}）",
+  // 共有ノートの全画面表示（右レールのパネル名と空状態）
+  "sharedNote.rail.version": "版",
+  "sharedNote.rail.process": "手順",
+  "sharedNote.rail.links": "逆引き",
+  "sharedNote.processEmpty": "このノートに手順はありません。",
+  "sharedNote.backlinksEmpty": "このエントリを指している共有ノートは、まだ見つかっていません。本文を読めた共有ノートだけが対象です。",
   // 共有コメント（先生 ⇄ 学生の往復）
   "comment.title": "コメント",
   "comment.countLabel": "コメント {count}",

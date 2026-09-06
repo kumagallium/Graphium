@@ -77,8 +77,10 @@ export type SharedEntryCommentsProps = {
    * 並べ方。既定の "stacked" は従来どおり（ノート右パネル・スクロールに流す節）。
    * "docked" は Library 詳細パネルの下部に固定する形で、見出し行で一覧を開閉でき、
    * 一覧は自前の高さ上限内でスクロールする。
+   * "panel" は全画面表示の右レール 1 枚を占める形で、一覧がパネルの高さいっぱいに
+   * スクロールし、入力欄は下端に固定される（畳む操作は持たない）。
    */
-  layout?: "stacked" | "docked";
+  layout?: "stacked" | "docked" | "panel";
   /** docked のときの一覧の最大高さ（既定 40vh） */
   threadsMaxHeight?: string;
 };
@@ -101,6 +103,7 @@ export function SharedEntryComments({
 }: SharedEntryCommentsProps) {
   const uiT = useT();
   const docked = layout === "docked";
+  const panel = layout === "panel";
   // ドックの開閉。既定は開。画面を閉じたら忘れる（永続化しない）
   const [threadsOpen, setThreadsOpen] = useState(true);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -111,13 +114,15 @@ export function SharedEntryComments({
   // 入力欄は畳んでいても見えているし、ここで一覧を開くとプレビューが縮んで
   // 選んだ段落（強調表示）が視界から消える。
   useEffect(() => {
-    if (!docked || !pendingBlockId) return;
+    // stacked（ノートの右パネル）は段落の指定を持たないので対象外。
+    // docked / panel は本文の隣に居るので、選んだらそのまま書き始められるようにする
+    if ((!docked && !panel) || !pendingBlockId) return;
     // フォーカス移動は commit の外へ逃がす。effect の中で同期的に focus() を呼ぶと、
     // BlockNote 側の focus ハンドラが React の描画を再入させ
     // 「Should not already be working」で落ちる（Storybook で実測）
     const timer = window.setTimeout(() => composerRef.current?.focus(), 0);
     return () => window.clearTimeout(timer);
-  }, [docked, pendingBlockId]);
+  }, [docked, panel, pendingBlockId]);
   const snapshot = useSharedLibrary();
   const allEntries = entries ?? snapshot.entries;
 
@@ -265,7 +270,10 @@ export function SharedEntryComments({
       className={
         docked
           ? "flex flex-col min-h-0 shrink-0 border-t border-border bg-background"
-          : "border border-border rounded-lg overflow-hidden"
+          : panel
+            // 縦並びのパネルの中で残り高さを全部使う（一覧が伸び、入力欄が下端に残る）
+            ? "flex flex-col min-h-0 flex-1 bg-background"
+            : "border border-border rounded-lg overflow-hidden"
       }
     >
       {docked ? (
@@ -281,12 +289,12 @@ export function SharedEntryComments({
           {threadsOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
         </button>
       ) : (
-        <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold text-foreground">
+        <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold text-foreground shrink-0">
           {countLabel}
         </div>
       )}
       {actionError && (
-        <div className="px-3 py-2 border-b border-border text-[11px] text-destructive">
+        <div className="px-3 py-2 border-b border-border text-[11px] text-destructive shrink-0">
           {uiT("comment.actionFailed", { error: actionError })}
         </div>
       )}

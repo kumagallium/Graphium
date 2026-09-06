@@ -107,6 +107,8 @@ Each share of a page as a template creates a brand-new entry rather than updatin
 
 Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
 
+Clicking a row opens it in the detail panel beside the table, the same as a click in your own note list. Double-click a row — or press **Open in full view** at the top of the detail panel — to read it full-page instead, in the same place and at the same width as your own notes. A right-hand rail lets you switch between **Comments**, **History**, **Process**, and **Backlinks** without leaving the page; **Comments** is open by default. The breadcrumb at the top (**Library › Shared › title**) takes you back to the table.
+
 ![The shared library as a table: notes with folder, author, shared date, and version columns](/screenshots/shared-library.png)
 
 A shared note also carries the folder it was in when it was shared, so the **Notes** tab has a **Folder** column you can filter and search on. Forking does not bring that folder along: it is the author's own filing, so your copy starts unfiled. <Badge type="tip" text="Added in v0.53.0 (2026-09-03)" />
@@ -153,6 +155,8 @@ You need your identity saved (see [Your author identity](#your-author-identity))
 Comments have no "resolved" checkbox. Instead, when the note's author fixes something and presses **Update shared copy**, the note's fingerprint changes, and any comment written against the old version automatically moves into a collapsed **Comments on older versions** section — the thread doesn't disappear, but it steps out of the way once the point has been addressed. You can edit or delete your own comments; you cannot edit someone else's.
 
 If you have a note of your own shared and someone comments on it, the same thread appears in a **Comments** tab in that note's own right-hand panel while you're editing it — clicking a comment there jumps to and briefly highlights the paragraph it was written against.
+
+The full-view page (above) keeps the same **Comments** panel in its own right-hand rail, so you can read and reply without opening the detail panel first. Clicking a paragraph in the body attaches a "¶" chip to your comment the same way it does in the detail panel.
 
 ### Update history and the updated / new-comment marks
 

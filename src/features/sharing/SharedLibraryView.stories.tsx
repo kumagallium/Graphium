@@ -336,6 +336,8 @@ const baseArgs = {
   onUnshare: NOOP_ASYNC,
   onImportBlob: NOOP_ASYNC,
   onBack: () => console.log("back"),
+  // 行のダブルクリック・詳細パネルの「開く」から全画面表示へ（実アプリでは SharedNoteView）
+  onOpenFull: (entry: SharedEntry) => console.log("open full", entry.id),
   // ラベル / プロセスタブの説明バーのボタン（実アプリではノート一覧へ移動する）
   onOpenNoteList: () => console.log("open note list"),
   loadEntries: async () => ALL_ENTRIES,
@@ -827,7 +829,7 @@ export const ProposedDetailWithComments: Story = {
     docs: {
       description: {
         story:
-          "コメントはパネル下部に固定（ドック）する。見出し行で一覧を畳めるが、入力欄は畳んでも残るので、上の方の段落を選んでから下まで戻る必要がない。プレビューの段落をクリックすると ¶ の指定が付き、その段落がノート編集画面の履歴ハイライトと同じ見た目で強調される（もう一度クリックで解除）。",
+          "コメントはパネル下部に固定（ドック）する。見出し行で一覧を畳めるが、入力欄は畳んでも残るので、上の方の段落を選んでから下まで戻る必要がない。プレビューの段落をクリックすると ¶ の指定が付き、その段落がノート編集画面の履歴ハイライトと同じ見た目で強調される（もう一度クリックで解除）。見出し右の「開く」（⤢）で全画面表示に移る（一覧の行をダブルクリックしても同じ）。",
       },
     },
   },

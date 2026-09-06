@@ -43,6 +43,25 @@ export {
 } from "./materialize-blobs";
 export { loadAllSharedEntries, type SharedLibraryLoadResult } from "./shared-library-loader";
 export { SharedLibraryView } from "./SharedLibraryView";
+export { SharedNoteView, type SharedNoteViewProps } from "./SharedNoteView";
+export {
+  SharedEntryBody,
+  SharedNotePreview,
+  useSharedEntryBodyText,
+  type SharedEntryBodyReader,
+} from "./SharedEntryBody";
+export {
+  SharedEntryActions,
+  SharedEntryHistory,
+  SharedEntryMeta,
+  ReverseLinksSection,
+  sharedEntryTitle,
+  sharedEntryTypeLabel,
+} from "./shared-entry-parts";
+export {
+  useSharedPreviewAnchor,
+  type SharedPreviewAnchor,
+} from "./use-shared-preview-anchor";
 export {
   bulkShare,
   type BulkShareTarget,

@@ -53,6 +53,13 @@ export type SharedLibraryTableProps = {
   busyId: string | null;
   copiedId: string | null;
   onSelect: (entry: SharedEntry) => void;
+  /**
+   * 行のダブルクリックで全画面表示を開く。個人のノート一覧の鏡
+   * （クリック = サイドピーク、ダブルクリック = 全画面）。
+   * blob 行はそれ自体が共有エントリではないので、親ノートを渡す。
+   * 未指定ならダブルクリックしても選択のままにする（全画面を持たない環境）。
+   */
+  onOpenFull?: (entry: SharedEntry) => void;
   onVerifyHash: (entry: SharedEntry) => void;
   onCopyCitation: (entry: SharedEntry) => void;
   /** 他人作かつ fork 可能（note / knowledge）な行だけに出す */
@@ -171,6 +178,7 @@ export function SharedLibraryTable({
   busyId,
   copiedId,
   onSelect,
+  onOpenFull,
   onVerifyHash,
   onCopyCitation,
   onFork,
@@ -587,6 +595,9 @@ export function SharedLibraryTable({
                       entry && selectedId === entry.id ? "bg-primary/5" : "",
                     )}
                     onClick={() => onSelect(source)}
+                    // 1 度目のクリックで選択（サイドピーク）が開いた上に全画面が重なる形。
+                    // 個人のノート一覧と同じ挙動なので、選択を打ち消す小細工はしない
+                    onDoubleClick={() => onOpenFull?.(source)}
                   >
                     <td className="py-2 px-3">
                       <span className="inline-flex items-center gap-1.5 text-foreground">

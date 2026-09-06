@@ -3,7 +3,7 @@
 // blob 解決が不要なサンプル（shared-blob: 参照なし）で見た目を確認する。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { SharedNotePreview } from "./SharedLibraryView";
+import { SharedNotePreview } from "./SharedEntryBody";
 
 const meta: Meta<typeof SharedNotePreview> = {
   title: "Sharing/SharedNotePreview",
