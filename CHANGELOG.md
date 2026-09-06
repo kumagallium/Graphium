@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.56.0](https://github.com/kumagallium/Graphium/compare/v0.55.0...v0.56.0) - 2026-09-06
+
+- [feat] Let memos take folders, and carry every folder rename through by @kumagallium in https://github.com/kumagallium/Graphium/pull/841
+
 ## [v0.55.0](https://github.com/kumagallium/Graphium/compare/v0.54.0...v0.55.0) - 2026-09-04
 
 - [feat] Send from your phone into a folder, and align the material peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/832

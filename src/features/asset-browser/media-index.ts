@@ -899,6 +899,41 @@ export function setMediaEntryContexts(
   );
   return { ...index, updatedAt: new Date().toISOString(), media };
 }
+/**
+ * フォルダの名前を変える / 消すときに、そのフォルダを持つ素材をまとめて直す。
+ * `to` が null なら取り除く。親を動かしたときは子（"親/子"）も連れて動く。
+ * 直した件数も返すので、呼び出し側が「変化なしなら保存しない」を判断できる。
+ */
+export function remapMediaContexts(
+  index: MediaIndex,
+  from: string,
+  to: string | null,
+): { index: MediaIndex; changed: number } {
+  const fromValue = from.trim();
+  const fromKey = fromValue.toLowerCase();
+  if (!fromKey) return { index, changed: 0 };
+  const matches = (c: string): boolean => {
+    const k = c.trim().toLowerCase();
+    return k === fromKey || k.startsWith(`${fromKey}/`);
+  };
+  const nextValue = to?.trim();
+  let changed = 0;
+  const media = index.media.map((m) => {
+    const contexts = m.noteContexts ?? [];
+    if (!contexts.some(matches)) return m;
+    const remapped = contexts.flatMap((value) => {
+      if (!matches(value)) return [value];
+      if (!nextValue) return [];
+      // "親" → "新しい親" のとき、"親/子" は "新しい親/子" になる
+      return [nextValue + value.slice(fromValue.length)];
+    });
+    changed += 1;
+    return { ...m, noteContexts: normalizeNoteContexts(remapped) };
+  });
+  if (changed === 0) return { index, changed: 0 };
+  return { index: { ...index, updatedAt: new Date().toISOString(), media }, changed };
+}
+
 /** メディアファイルを削除 */
 export async function deleteMediaFile(fileId: string): Promise<void> {
   const provider = getActiveProvider();

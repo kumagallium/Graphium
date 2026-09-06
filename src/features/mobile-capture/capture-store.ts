@@ -2,6 +2,7 @@
 // メディアインデックスと同じパターンで、Google Drive / Local / Filesystem に対応
 
 import { getActiveProvider } from "../../lib/storage/registry";
+import { normalizeNoteContexts } from "../note-context/context-tags";
 import type { MediaType } from "../asset-browser/media-index";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -108,6 +109,11 @@ export type CaptureEntry = {
   archivedAt?: string;
   /** ゴミ箱送り日時（ISO 文字列）。存在すれば一覧・アーカイブから除外。完全削除は removeCapture */
   deletedAt?: string;
+  /**
+   * メモが入っているフォルダ。ノート・素材と同じ noteContexts の体系を共有する。
+   * 素材と違って導出は無い — メモは特定のノートに属さないので、手で入れた分だけが値になる。
+   */
+  noteContexts?: string[];
 };
 
 /** キャプチャインデックス全体 */
@@ -255,6 +261,68 @@ export function editCapture(index: CaptureIndex, captureId: string, newText: str
       };
     }),
   };
+}
+
+/**
+ * メモのフォルダを差し替える。ノート側の updateNoteContexts / 素材側の
+ * setMediaEntryContexts に相当する。
+ */
+export function setCaptureContexts(
+  index: CaptureIndex,
+  captureId: string,
+  contexts: string[],
+): CaptureIndex {
+  // 空になったら欄ごと落とす — ノート・素材と共通の規約（normalizeNoteContexts が undefined を返す）
+  const next = normalizeNoteContexts(contexts);
+  const target = index.captures.find((c) => c.id === captureId);
+  if (!target) return index;
+  // 中身が同じなら updatedAt も動かさない（無駄な保存と再描画を避ける）
+  const key = (v?: string[]) => (v ?? []).join("\u0000");
+  if (key(target.noteContexts) === key(next)) return index;
+  const now = new Date().toISOString();
+  return {
+    ...index,
+    updatedAt: now,
+    captures: index.captures.map((c) =>
+      c.id === captureId ? { ...c, noteContexts: next, modifiedAt: now } : c,
+    ),
+  };
+}
+
+/**
+ * フォルダの名前を変える / 消すときに、そのフォルダを持つメモをまとめて直す。
+ * `to` が null なら取り除く。親を動かしたときは子（"親/子"）も連れて動く —
+ * ツリー上は親の下にぶら下がって見えているので、取り残すと別フォルダに割れる。
+ *
+ * 直した件数も返す。呼び出し側が「何も変わっていないなら保存しない」を判断できる。
+ */
+export function remapCaptureContexts(
+  index: CaptureIndex,
+  from: string,
+  to: string | null,
+): { index: CaptureIndex; changed: number } {
+  const fromKey = from.trim().toLowerCase();
+  if (!fromKey) return { index, changed: 0 };
+  const matches = (c: string): boolean => {
+    const k = c.trim().toLowerCase();
+    return k === fromKey || k.startsWith(`${fromKey}/`);
+  };
+  const nextValue = to?.trim();
+  let changed = 0;
+  const captures = index.captures.map((c) => {
+    const contexts = c.noteContexts ?? [];
+    if (!contexts.some(matches)) return c;
+    const remapped = contexts.flatMap((value) => {
+      if (!matches(value)) return [value];
+      if (!nextValue) return [];
+      // "親" → "新しい親" のとき、"親/子" は "新しい親/子" になる
+      return [nextValue + value.slice(from.trim().length)];
+    });
+    changed += 1;
+    return { ...c, noteContexts: normalizeNoteContexts(remapped) };
+  });
+  if (changed === 0) return { index, changed: 0 };
+  return { index: { ...index, updatedAt: new Date().toISOString(), captures }, changed };
 }
 
 /** メモの usedIn に挿入記録を追加 */
