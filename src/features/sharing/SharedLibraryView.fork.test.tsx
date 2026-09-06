@@ -87,6 +87,7 @@ const loadEntries = async (): Promise<SharedLibraryLoadResult> => ({
     "data-manifest": [],
     template: [],
     report: [],
+    comment: [],
   },
   errors: {},
 });

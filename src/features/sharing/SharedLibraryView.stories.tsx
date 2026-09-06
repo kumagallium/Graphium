@@ -20,6 +20,8 @@ import {
   __resetSharedProjectionForTest,
   recordSharedProjectionFromBody,
 } from "./shared-projection";
+import { SharedEntryComments } from "./SharedEntryComments";
+import { markSeen } from "./shared-seen";
 import type { GraphiumDocument } from "../../lib/document-types";
 import "../../app.css";
 
@@ -226,6 +228,60 @@ const TEMPLATES: SharedEntry[] = [
   }),
 ];
 
+// 先生 → 学生のコメント（note-1 に付いた 1 スレッド + 段落付きの指摘 1 件）。
+// 一覧タブには出ない（対象に付くもの）。詳細パネルの「コメント」節と行の印に効く
+const COMMENTS: SharedEntry[] = [
+  makeEntry({
+    id: "comment-1",
+    type: "comment",
+    author: TEACHER,
+    created_at: daysAgo(0.5),
+    updated_at: daysAgo(0.5),
+    prov: { derived_from: ["note-1"] },
+    extra: { target: "note-1", targetHash: NOTES[0].hash },
+  }),
+  makeEntry({
+    id: "comment-2",
+    type: "comment",
+    author: STUDENT_A,
+    created_at: daysAgo(0.4),
+    updated_at: daysAgo(0.4),
+    prov: { derived_from: ["note-1"] },
+    extra: { target: "note-1", targetHash: NOTES[0].hash, parentId: "comment-1" },
+  }),
+  makeEntry({
+    id: "comment-3",
+    type: "comment",
+    author: TEACHER,
+    created_at: daysAgo(0.3),
+    updated_at: daysAgo(0.3),
+    prov: { derived_from: ["note-1"] },
+    extra: {
+      target: "note-1",
+      targetHash: NOTES[0].hash,
+      blockId: "b-sinter",
+      blockText: "1050 ℃ で 2 時間保持した",
+    },
+  }),
+  // 対象が更新される前に書かれた指摘（「古い版へのコメント」に畳まれる）
+  makeEntry({
+    id: "comment-4",
+    type: "comment",
+    author: TEACHER,
+    created_at: daysAgo(6),
+    updated_at: daysAgo(6),
+    prov: { derived_from: ["note-1"] },
+    extra: { target: "note-1", targetHash: "sha256:before-the-update" },
+  }),
+];
+
+const COMMENT_TEXTS: Record<string, string> = {
+  "comment-1": "昇温速度が書かれていません。次回から記録してください。",
+  "comment-2": "すみません、追記しました。5 ℃/min です。",
+  "comment-3": "保持時間の根拠になった文献を引用で足しておくと良いです。",
+  "comment-4": "図 2 の軸ラベルが読めません。",
+};
+
 const ALL_ENTRIES = {
   entries: {
     note: NOTES,
@@ -234,6 +290,7 @@ const ALL_ENTRIES = {
     "data-manifest": DATA_MANIFESTS,
     template: TEMPLATES,
     report: [],
+    comment: COMMENTS,
   },
   errors: {},
 };
@@ -246,6 +303,7 @@ const EMPTY_ENTRIES = {
     "data-manifest": [],
     template: [],
     report: [],
+    comment: [],
   },
   errors: {},
 };
@@ -630,6 +688,7 @@ const MANUAL_ENTRIES = {
     "data-manifest": MANUAL_DATA_MANIFESTS,
     template: [],
     report: [],
+    comment: [],
   },
   errors: {},
 };
@@ -654,4 +713,122 @@ export const ManualEnglish: Story = {
       );
     },
   ],
+};
+
+// ── 先生 ⇄ 学生の往復（コメント・更新あり・新着の印） ──
+// 共有フォルダは Tauri の invoke 越しなので、Storybook では封筒も本文もモックで渡す。
+
+/** 「最後に見た」控えを仕込む（前に見たのは古い版・コメントは 1 件だけ見ていた） */
+function seedSeen() {
+  markSeen("note-1", "sha256:the-version-i-saw-before", 1);
+}
+
+export const ProposedUpdateMarks: Story = {
+  name: "提案（更新あり・新着コメントの印）",
+  args: baseArgs,
+  decorators: [
+    (Story) => {
+      syncLocale("ja");
+      seedSeen();
+      return (
+        <LocaleProvider>
+          <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "前に見たときから hash が変わった他人のノートに「更新あり」、控えより増えたコメントに「新着 N」を出す。自分作のノートと、まだ一度も開いていないノートには印を出さない（全部に印が付くとノイズになる）。版列は同じ id を上書きした回数を「v1 · 更新 N 回」で見せる。",
+      },
+    },
+  },
+};
+
+/** 詳細パネルの「コメント」節だけを切り出したストーリー（本文は DI で渡す） */
+export const DetailComments: Story = {
+  name: "提案（詳細パネルのコメント節）",
+  parameters: {
+    layout: "centered",
+    docs: {
+      description: {
+        story:
+          "対象 1 件に付いたコメント。返信は 1 段まで。段落に付いた指摘は ¶ チップで出し、押すとプレビューの該当ブロックへ飛ぶ。共有コピーが更新される前に書かれた指摘は「古い版へのコメント」に畳まれる（解決フラグを持たない代わり）。",
+      },
+    },
+  },
+  render: () => {
+    syncLocale("ja");
+    return (
+      <LocaleProvider>
+        <div style={{ width: 420, fontFamily: "'Inter', system-ui, sans-serif" }}>
+          <SharedEntryComments
+            targetId="note-1"
+            targetHash={NOTES[0].hash}
+            sharedRoot="/Users/yamada/shared-lab"
+            currentIdentity={TEACHER}
+            entries={COMMENTS}
+            readBody={async (entry) => ({
+              body: new TextEncoder().encode(COMMENT_TEXTS[entry.id] ?? ""),
+              verified: true,
+            })}
+            pendingAnchor={{ blockId: "b-sinter", blockText: "1050 ℃ で 2 時間保持した" }}
+            onClearAnchor={() => console.log("clear anchor")}
+            onJumpToBlock={(blockId) => console.log("jump to", blockId)}
+            provider={{
+              read: async () => {
+                throw new Error("storybook mock");
+              },
+              write: async (entry, content) =>
+                console.log("write", entry.id, new TextDecoder().decode(content)),
+              delete: async (id) => console.log("delete", id),
+            }}
+          />
+        </div>
+      </LocaleProvider>
+    );
+  },
+};
+
+// ── 詳細パネル（プレビュー + コメントのドック） ──
+//
+// 実アプリの本文は Tauri の invoke 越しなので、Storybook では readEntryBody を
+// 差し替えて擬似 GraphiumDocument を返す（loadEntries と同じ DI の流儀）。
+// プレビューの段落をクリックすると ¶ の指定が付き、その段落が常時ハイライトされる。
+
+const DETAIL_DOC = makeDoc("Cu粉末の焼結実験（第1回）", [
+  para("b-weigh", [styled("Cu 粉末を 5.00 g 秤量した（電子天秤 0.01 g 読み）。")]),
+  para("b-press", [styled("一軸プレスで 200 MPa・60 秒 保持して圧粉体を作製した。")]),
+  para("b-sinter", [styled("1050 ℃ で 2 時間保持した")]),
+  para("b-cool", [styled("炉冷（自然冷却）。翌朝に取り出した。")]),
+  para("b-xrd", [styled("焼結体を XRD で測定し、Cu2O のピークを確認した。")]),
+]);
+
+export const ProposedDetailWithComments: Story = {
+  name: "提案（詳細パネル・コメントのドック）",
+  args: {
+    ...baseArgs,
+    // 一覧から選んだのと同じ状態（note-1 の詳細パネルを開いた状態）で始める
+    focusEntryId: "note-1",
+    readEntryBody: async (entry) => ({
+      body:
+        entry.type === "comment"
+          ? new TextEncoder().encode(COMMENT_TEXTS[entry.id] ?? "")
+          : encodeDoc(DETAIL_DOC),
+      verified: true,
+    }),
+  },
+  decorators: Proposed.decorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "コメントはパネル下部に固定（ドック）する。見出し行で一覧を畳めるが、入力欄は畳んでも残るので、上の方の段落を選んでから下まで戻る必要がない。プレビューの段落をクリックすると ¶ の指定が付き、その段落がノート編集画面の履歴ハイライトと同じ見た目で強調される（もう一度クリックで解除）。",
+      },
+    },
+  },
 };

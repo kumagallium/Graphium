@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.57.0](https://github.com/kumagallium/Graphium/compare/v0.56.0...v0.57.0) - 2026-09-06
+
+- [feat] Comment on shared entries and keep the teacher-student loop visible by @kumagallium in https://github.com/kumagallium/Graphium/pull/842
+
 ## [v0.56.0](https://github.com/kumagallium/Graphium/compare/v0.55.0...v0.56.0) - 2026-09-06
 
 - [feat] Let memos take folders, and carry every folder rename through by @kumagallium in https://github.com/kumagallium/Graphium/pull/841

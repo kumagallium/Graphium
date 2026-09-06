@@ -23,6 +23,7 @@ import {
   type SharedEntry,
   type BlobRef,
 } from "../../lib/storage/shared";
+import { historyForUpdate } from "./share-history";
 
 export type ShareMediaOptions = {
   /** Settings の shared root（manifest を置く先） */
@@ -91,6 +92,12 @@ export async function shareMedia(
     const now = new Date().toISOString();
     const title = options.title?.trim() || entry.name;
 
+    const provider = new LocalFolderSharedProvider(options.sharedRoot, {
+      email: options.author.email,
+    });
+    // 再共有なら旧版の hash を history に積む（上書き前に読む）
+    const history = await historyForUpdate(provider, id, isUpdate);
+
     const baseSharedEntry: SharedEntry = {
       id,
       type: "data-manifest",
@@ -99,6 +106,7 @@ export async function shareMedia(
       updated_at: now,
       hash: "", // provider.write が再計算する
       prov: { derived_from: [] },
+      ...(history ? { history } : {}),
       extra: {
         title,
         description: options.description ?? null,
@@ -120,9 +128,6 @@ export async function shareMedia(
     // hash を予め計算して sharedRef に持たせる（provider.write 内でも再計算される）
     const hash = await computeSharedEntryHash(baseSharedEntry, body);
 
-    const provider = new LocalFolderSharedProvider(options.sharedRoot, {
-      email: options.author.email,
-    });
     await provider.write(baseSharedEntry, body);
 
     const sharedRef: MediaSharedRef = {

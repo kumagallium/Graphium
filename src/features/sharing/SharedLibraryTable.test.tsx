@@ -387,3 +387,121 @@ describe("SharedLibraryTable のテンプレートタブ", () => {
     expect(mineRow.querySelector(`button[title="${t("library.unshare")}"]`)).toBeTruthy();
   });
 });
+
+// ── 行の印（更新あり・新着コメント）と版列（v1 · 更新 N 回） ──
+// 「最後に見た」控えは手元だけの値。控えを持っていない行には印を出さない
+// （全部に印が付くとノイズにしかならない）。自分作の更新にも出さない。
+
+const seenEntry = (
+  id: string,
+  title: string,
+  author: typeof AUTHOR,
+  hash: string,
+  history?: { hash: string; updated_at: string; updated_by: typeof AUTHOR; change_kind: "minor" }[],
+): SharedEntry => ({
+  id,
+  type: "note",
+  author,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-02T00:00:00Z",
+  hash,
+  prov: { derived_from: [] },
+  version: 1,
+  ...(history ? { history } : {}),
+  extra: { title },
+});
+
+const commentEntry = (id: string, target: string): SharedEntry => ({
+  id,
+  type: "comment",
+  author: OTHER,
+  created_at: "2026-01-03T00:00:00Z",
+  updated_at: "2026-01-03T00:00:00Z",
+  hash: `sha256:${id}`,
+  prov: { derived_from: [target] },
+  extra: { target, targetHash: "sha256:x" },
+});
+
+const SEEN_ENTRIES = [
+  // 他人作で、控えの hash と違う ＝ 更新あり
+  seenEntry("s1", "他人の更新済みノート", OTHER, "sha256:new", [
+    { hash: "sha256:old", updated_at: "2026-01-01T00:00:00Z", updated_by: OTHER, change_kind: "minor" },
+    { hash: "sha256:older", updated_at: "2026-01-01T12:00:00Z", updated_by: OTHER, change_kind: "minor" },
+  ]),
+  // 自分作。hash が変わっていても印は出さない（自分の更新は自分で知っている）
+  seenEntry("s2", "自分の更新済みノート", AUTHOR, "sha256:new"),
+  // まだ一度も開いていない（控えが無い）
+  seenEntry("s3", "まだ見ていないノート", OTHER, "sha256:fresh"),
+];
+
+const SEEN_STORE = {
+  s1: { hash: "sha256:seen", comments: 1, at: "2026-01-02T00:00:00Z" },
+  s2: { hash: "sha256:seen", comments: 0, at: "2026-01-02T00:00:00Z" },
+};
+
+function renderSeenTable() {
+  return render(
+    <LocaleProvider>
+      <SharedLibraryTable
+        tab="note"
+        entries={SEEN_ENTRIES}
+        currentIdentity={AUTHOR}
+        hashStatus={{}}
+        selectedId={null}
+        busyId={null}
+        copiedId={null}
+        onSelect={() => {}}
+        onVerifyHash={() => {}}
+        onCopyCitation={() => {}}
+        onUnshare={() => {}}
+        commentEntries={[
+          commentEntry("c1", "s1"),
+          commentEntry("c2", "s1"),
+          commentEntry("c3", "s1"),
+          // 控えの無い行にはコメントがあっても新着として出さない
+          commentEntry("c4", "s3"),
+        ]}
+        seenStore={SEEN_STORE}
+      />
+    </LocaleProvider>,
+  );
+}
+
+describe("SharedLibraryTable の更新・新着の印", () => {
+  it("控えと hash が違う他人作の行にだけ「更新あり」が出る", () => {
+    const { container } = renderSeenTable();
+    expect(rowByText(container, "他人の更新済みノート").textContent).toContain(
+      t("comment.updatedBadge"),
+    );
+    // 自分作 / 控えの無い行には出さない
+    expect(rowByText(container, "自分の更新済みノート").textContent).not.toContain(
+      t("comment.updatedBadge"),
+    );
+    expect(rowByText(container, "まだ見ていないノート").textContent).not.toContain(
+      t("comment.updatedBadge"),
+    );
+  });
+
+  it("控えからの増分だけを「新着コメント N」に出す", () => {
+    const { container } = renderSeenTable();
+    // コメント 3 件 − 控え 1 件 = 2 件
+    expect(rowByText(container, "他人の更新済みノート").textContent).toContain(
+      t("comment.newBadge", { count: "2" }),
+    );
+    // 控えが無い行は 0（まだ開いていないものを全部新着にしない）
+    expect(rowByText(container, "まだ見ていないノート").textContent).not.toContain(
+      t("comment.newBadge", { count: "1" }),
+    );
+  });
+
+  it("版列は history のある行で「v1 · 更新 N 回」になる", () => {
+    const { container } = renderSeenTable();
+    const row = rowByText(container, "他人の更新済みノート");
+    expect(row.textContent).toContain("v1");
+    expect(row.textContent).toContain(t("library.updateCount", { count: "2" }));
+    // history の無い行は版だけ
+    expect(rowByText(container, "まだ見ていないノート").textContent).not.toContain(
+      t("library.updateCount", { count: "2" }),
+    );
+  });
+});

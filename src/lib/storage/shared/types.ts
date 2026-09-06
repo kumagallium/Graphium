@@ -20,6 +20,9 @@ import type { AuthorIdentity } from "../../../features/document-provenance/types
  * WikiKind は今後も増減しうる流動的な分類なので、共有フォーマットの語彙
  * （= フォルダ構造 = 旧バージョンの Graphium も読む永続層）には焼き込まない。
  * 未知の wikiKind でも「Knowledge エントリ」として表示・fork できる前方互換を保つ。
+ *
+ * "comment" は共有ストレージだけに存在する種別（手元のノートには対応物が無い）。
+ * 対象エントリへの指摘を封筒 1 通として置き、extra.target で対象に結び付ける。
  */
 export type SharedEntryType =
   | "note"
@@ -27,7 +30,8 @@ export type SharedEntryType =
   | "data-manifest"
   | "template"
   | "knowledge"
-  | "report";
+  | "report"
+  | "comment";
 
 /** 同一 ID 上書き時の hash 履歴（軽量、本文は持たない）。 */
 export type HistoryEntry = {

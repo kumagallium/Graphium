@@ -1344,6 +1344,47 @@ conversion also powers a "Team templates" section inside the `/template`
 slash-command picker (`TemplatePickerModal`), which inserts the chosen
 template at the cursor instead of opening a new note.
 
+### 5.1 Teacher ⇄ student round trips
+
+Feedback on a shared entry can flow back through three independent
+paths, all built on the primitives above — there is no dedicated
+"review" workflow:
+
+```mermaid
+flowchart LR
+    T["Teacher"] -->|"comment (comments/)"| S["Shared entry"]
+    U["Student"] -->|"re-share (same id)<br/>appends history[]"| S
+    U -->|"fork / new note from<br/>template + sharedCitation"| N["New shared entry"]
+    N -.->|"projection v2:<br/>citedSharedIds /<br/>forkedFromSharedId /<br/>templateFromSharedId"| S
+```
+
+- **Comments** (`SharedEntryType: "comment"`, DATA_MODEL.md §7.1.1) —
+  a lightweight, author-owned envelope attached to a target id (and
+  optionally a paragraph). One reply level, no "resolved" flag: editing
+  the target and re-sharing changes its `hash`, which automatically
+  folds prior comments into "comments on an older version"
+  (`splitByTargetVersion`). Comments never enter the vocabulary index,
+  the projection cache, or blob GC — they are feedback, not shared
+  material, and are not reflected in PROV in v1.
+- **Re-sharing** (same id, new content) appends to `history[]`
+  (DATA_MODEL.md §7.1) so a viewer can see *that* something changed and
+  *how many times*, without diffing bodies. Library rows read the local
+  `graphium-shared-seen` store (§7.7) to flag rows whose `hash` moved
+  since last opened, and new comments since last opened, without either
+  signal touching the shared folder itself.
+- **Reply notes and forks** ("write a reply note with a citation card"
+  and "fork/redo and re-share") are the pre-existing citation and fork
+  mechanisms — nothing new here. What is new is that projection v2
+  (DATA_MODEL.md §7.6) now carries `citedSharedIds` /
+  `forkedFromSharedId` / `templateFromSharedId` in shared-id space, so
+  `buildReverseLinks()` can answer "who points back at this entry" and
+  the Library detail panel can render it, closing the loop without a
+  round trip through the original author.
+
+The Library's automatic refresh (`useSharedLibrarySync`, throttled to
+once per 30s) picks up comments and re-shares from other users when the
+tab regains focus or visibility, without a manual reload.
+
 Today the shared backend is a local folder. Other backends (cloud
 buckets, S3, IPFS-style) can be added by implementing the same blob
 interface.
