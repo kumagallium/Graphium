@@ -82,6 +82,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.54.0** | 2026-09-04 | [The shared library mirrors your own sidebar](/storage-and-sync#browse-and-fork) — Labels and Processes tabs collect what is inside the notes your team shared, images and files embedded in shared notes appear under Assets, and a page can be [shared as a template](/storage-and-sync#share-a-page-as-a-template) and dropped into any note from `/template`. Materials can be shared several at a time. |
 | **v0.55.0** | 2026-09-04 | [See where a capture lands before you send it](/mobile#sending-captures-to-your-desktop) — **Send into** now sits at the very top of the phone screen. Pick a folder there and the photos and notes you send arrive already filed, with nothing to sort out on the desktop afterwards. The list holds the folders you have used before on that phone. |
 | **v0.56.0** | 2026-09-06 | [Memos take folders too](/mobile#the-memo-gallery) — memos file into the same folders as notes and materials. A picker to the left of **New memo** starts on the folder of whatever you are looking at. Renaming or deleting a folder now carries notes, memos and materials along, subfolders included. |
+| **v0.57.0** | 2026-09-06 | [Reply with a comment](/storage-and-sync#reply-with-a-comment) — comment on a shared entry, or on one paragraph of it, and reply in a thread; the author sees the thread beside their own note. Re-sharing keeps a history, rows show what changed since you last looked, and each entry lists who cited or forked it. |
 
 ## Requests welcome
 
