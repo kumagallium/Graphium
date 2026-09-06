@@ -824,6 +824,7 @@ type NoteEditorProps = {
   onCreateNoteMemo?: (
     text: string,
     block?: { blockId: string; blockText: string },
+    folder?: string,
   ) => void | Promise<void>;
   /** 右パネル「Memos」タブからメモを削除する */
   onDeleteNoteMemo?: (memoId: string) => void;
@@ -4803,10 +4804,13 @@ function NoteEditorInner({
           variant={isDesktop ? "centered" : "fullscreen"}
           contextLabel={blockMemoTarget.blockText || undefined}
           submitting={blockMemoSubmitting}
-          onSubmit={async (text) => {
+          // このノートについてのメモなので、候補も既定値もこのノートのフォルダ
+          folderOptions={noteContexts}
+          defaultFolder={noteContexts[0]}
+          onSubmit={async (text, folder) => {
             setBlockMemoSubmitting(true);
             try {
-              await onCreateNoteMemo(text, blockMemoTarget);
+              await onCreateNoteMemo(text, blockMemoTarget, folder);
               setBlockMemoTarget(null);
             } finally {
               setBlockMemoSubmitting(false);
@@ -6262,13 +6266,22 @@ export function NoteApp() {
     () => buildNoteFolderLookup(fm.noteIndex?.notes ?? []),
     [fm.noteIndex],
   );
-  const noteFolderNames = useMemo(
-    () => [
+  const noteFolderNames = useMemo(() => {
+    // 使われている名前と空フォルダの定義は同じ名前を両方に持ちうる。小文字で名寄せし、
+    // 表示は先に出てきた形を残す（フォルダ名の突き合わせ規則と同じ）
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const value of [
       ...collectFolderSource(fm.noteIndex?.notes ?? []).folders.map((f) => f.value),
       ...emptyFolders,
-    ],
-    [fm.noteIndex, emptyFolders],
-  );
+    ]) {
+      const key = value.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(value.trim());
+    }
+    return out;
+  }, [fm.noteIndex, emptyFolders]);
   // 展開するためのツリー。集計規則はサイドバーと共通（collectFolderSource）
   const folderTreeForNav = useMemo(
     () => buildFolderTree(collectFolderSource(fm.noteIndex?.notes ?? []).folders, emptyFolders),
@@ -7902,7 +7915,11 @@ export function NoteApp() {
           // 保存失敗は handleImportCapture が throw → importer が failed に数え、
           // Inbox に残る（再試行可能）。
           memo: async (payload) => {
-            const id = await capture.handleImportCapture(payload.text, payload.createdAt);
+            const id = await capture.handleImportCapture(
+              payload.text,
+              payload.createdAt,
+              payload.folder,
+            );
             return { fileId: id };
           },
           // URL → URL ブックマーク素材（media-index の url エントリ）。メタは
@@ -9546,6 +9563,8 @@ export function NoteApp() {
             }}
             onDeleteMemo={capture.handleDeleteCapture}
             onArchiveMemo={capture.handleArchiveCapture}
+            onSetMemoContexts={capture.handleSetCaptureContexts}
+            noteFolders={noteFolderNames}
             onEditMemo={capture.handleEditCapture}
             onNavigateNote={(noteId) => {
               // knowledgedInto は直接 ingest 化後は wiki:<id> を記録する（ノートではなく
@@ -10164,7 +10183,7 @@ export function NoteApp() {
               setPendingMemoInsert(null);
             }}
             captureIndex={capture.captureIndex}
-            onCreateNoteMemo={async (text, block) => {
+            onCreateNoteMemo={async (text, block, folder) => {
               // 右パネル「Memos」タブ / ブロックメニュー「メモ」からの新規メモ。
               // sourceNote にノートの fileId とタイトルスナップショットを付与する。
               // block があればブロック紐付け（blockId + テキスト抜粋）も記録する。
@@ -10175,7 +10194,7 @@ export function NoteApp() {
                 ...(block
                   ? { blockId: block.blockId, blockText: block.blockText }
                   : {}),
-              });
+              }, folder);
             }}
             onDeleteNoteMemo={capture.handleDeleteCapture}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
@@ -10392,8 +10411,12 @@ export function NoteApp() {
           onClose={() => setFolderMenu(null)}
           onRename={(from, to) => {
             void (async () => {
-              // ノートのタグと、まだノートが無いフォルダの定義。どちらも子を連れて動く
+              // ノートのタグ、メモ、素材、まだノートが無いフォルダの定義。
+              // どれも子を連れて動く。ひとつでも取り残すと、同じフォルダのはずのものが
+              // 古い名前に取り残されて行方不明になる
               await fm.renameNoteContextEverywhere(from, to);
+              await capture.remapCaptureContextsEverywhere(from, to);
+              await fm.remapMediaContextsEverywhere(from, to);
               setEmptyFolders(await renameFolderDefinition(from, to));
               // 開いていたフォルダの名前が変わったら選択も新しい名前へ移す
               if (selectedFolder === from) {
@@ -10405,6 +10428,8 @@ export function NoteApp() {
           onDelete={(path) => {
             void (async () => {
               await fm.deleteNoteContextEverywhere(path);
+              await capture.remapCaptureContextsEverywhere(path, null);
+              await fm.remapMediaContextsEverywhere(path, null);
               setEmptyFolders(await removeFolderDefinition(path));
               // 開いていたフォルダを消したら、全ノート表示に戻す
               if (selectedFolder === path) {
@@ -10595,8 +10620,11 @@ export function NoteApp() {
       {showQuickMemoDialog && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}
-          onSubmit={async (text) => {
-            await capture.handleCreateCapture(text);
+          // 既定値は開いているフォルダ。ノートの「このフォルダに新規」と同じ規則
+          folderOptions={noteFolderNames}
+          defaultFolder={selectedFolder ?? undefined}
+          onSubmit={async (text, folder) => {
+            await capture.handleCreateCapture(text, undefined, undefined, folder);
             setShowQuickMemoDialog(false);
           }}
           onClose={() => setShowQuickMemoDialog(false)}

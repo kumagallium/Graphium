@@ -13,6 +13,8 @@ import {
   trashCapture,
   restoreCaptureFromTrash,
   sendCaptureArchiveToTrash,
+  setCaptureContexts,
+  remapCaptureContexts,
   getActiveCaptures,
   getArchivedCaptures,
   getTrashedCaptures,
@@ -168,5 +170,91 @@ describe("archive / trash のライフサイクル", () => {
     expect(getActiveCaptures(index).some((c) => c.id === "a")).toBe(false);
     expect(getTrashedCaptures(index).some((c) => c.id === "a")).toBe(false);
     expect(getArchivedCaptures(index).some((c) => c.id === "a")).toBe(true);
+  });
+});
+
+// ── フォルダ（noteContexts）──
+// メモはノート・素材と同じ noteContexts の体系を共有する。素材と違って導出は無く、
+// 手で入れた分だけが値になる。親フォルダを動かしたら子も連れて動くのが不変条件。
+
+function withFolders(id: string, folders?: string[]): CaptureEntry {
+  return {
+    id,
+    text: id,
+    createdAt: "2026-09-05T00:00:00.000Z",
+    ...(folders ? { noteContexts: folders } : {}),
+  };
+}
+
+describe("setCaptureContexts", () => {
+  it("フォルダを入れると modifiedAt も更新される", () => {
+    const index = addCapture(createEmptyCaptureIndex(), withFolders("m1"));
+    const next = setCaptureContexts(index, "m1", ["材料X"]);
+    expect(next.captures[0]?.noteContexts).toEqual(["材料X"]);
+    expect(next.captures[0]?.modifiedAt).toBeTruthy();
+  });
+
+  it("空白と重複は落とす（大文字小文字は同じフォルダ扱い）", () => {
+    const index = addCapture(createEmptyCaptureIndex(), withFolders("m1"));
+    const next = setCaptureContexts(index, "m1", ["  材料X  ", "材料x", "", "実験B"]);
+    expect(next.captures[0]?.noteContexts).toEqual(["材料X", "実験B"]);
+  });
+
+  it("中身が同じなら index ごと据え置く（無駄な保存を避ける）", () => {
+    const index = addCapture(createEmptyCaptureIndex(), withFolders("m1", ["材料X"]));
+    expect(setCaptureContexts(index, "m1", ["材料X"])).toBe(index);
+  });
+
+  it("知らない ID は何も変えない", () => {
+    const index = addCapture(createEmptyCaptureIndex(), withFolders("m1"));
+    expect(setCaptureContexts(index, "nope", ["材料X"])).toBe(index);
+  });
+
+  it("空配列を渡すと欄ごと落ちる（ノート・素材と同じ規約）", () => {
+    const index = addCapture(createEmptyCaptureIndex(), withFolders("m1", ["材料X"]));
+    expect(setCaptureContexts(index, "m1", []).captures[0]?.noteContexts).toBeUndefined();
+  });
+});
+
+describe("remapCaptureContexts", () => {
+  const base = () => {
+    let index = createEmptyCaptureIndex();
+    index = addCapture(index, withFolders("m1", ["材料X"]));
+    index = addCapture(index, withFolders("m2", ["材料X/粉体", "実験B"]));
+    index = addCapture(index, withFolders("m3", ["材料Xたち"]));
+    index = addCapture(index, withFolders("m4"));
+    return index;
+  };
+
+  it("改名すると子フォルダも連れて動く", () => {
+    const { index, changed } = remapCaptureContexts(base(), "材料X", "原料X");
+    expect(changed).toBe(2);
+    const byId = Object.fromEntries(index.captures.map((c) => [c.id, c.noteContexts]));
+    expect(byId.m1).toEqual(["原料X"]);
+    expect(byId.m2).toEqual(["原料X/粉体", "実験B"]);
+  });
+
+  it("前方一致でも別フォルダは巻き込まない", () => {
+    const { index } = remapCaptureContexts(base(), "材料X", "原料X");
+    expect(index.captures.find((c) => c.id === "m3")?.noteContexts).toEqual(["材料Xたち"]);
+  });
+
+  it("削除すると子ごと外れ、他のフォルダは残る", () => {
+    const { index, changed } = remapCaptureContexts(base(), "材料X", null);
+    expect(changed).toBe(2);
+    const byId = Object.fromEntries(index.captures.map((c) => [c.id, c.noteContexts]));
+    expect(byId.m1).toBeUndefined();
+    expect(byId.m2).toEqual(["実験B"]);
+  });
+
+  it("大文字小文字の違いでも同じフォルダとして直す", () => {
+    const { changed } = remapCaptureContexts(base(), "材料x", "原料X");
+    expect(changed).toBe(2);
+  });
+
+  it("該当が無ければ index ごと据え置く", () => {
+    const index = base();
+    expect(remapCaptureContexts(index, "無い", "何か").index).toBe(index);
+    expect(remapCaptureContexts(index, "  ", "何か").changed).toBe(0);
   });
 });

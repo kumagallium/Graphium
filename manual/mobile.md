@@ -49,9 +49,12 @@ Select several memos at once — drag across cards or shift-click — and act on
 
 | Action | What it does |
 |---|---|
+| **Folder** | Files the selected memos into a folder — the same folders your notes and materials use |
 | **Archive** | Moves memos out of the gallery without deleting them |
 | Delete | Removes them permanently (memos already inserted into notes leave the note text untouched) |
 | **Turn into Knowledge** (shows the selected count) | Extracts knowledge entries from the selected memos directly into the [Knowledge layer](/knowledge-layer) — no notes are created |
+
+When you write a memo, a folder picker sits to the left of the **New memo** button. It starts on the folder of whatever you are looking at — the note's folder when you write from inside a note, the open folder when one is selected in the sidebar, and nothing otherwise (the same rule as **New in folder** for notes) — so most of the time ⌘+Enter is all it takes. A memo you filed shows its folder on the card, and the folder icon in the header filters the gallery down to it. Renaming or deleting a folder carries memos along, exactly as it does notes and materials.
 
 Click a single memo to open its detail: edit the text (an **Edit history** is kept), and switch between the **Network** tab — a small graph of which notes this memo has been inserted into — and the **History** tab.
 
@@ -88,7 +91,7 @@ The pipeline, end to end:
 2. **Capture and send.** Tap **Send** on the queue and it drains into the `Graphium/Inbox` folder of your own Drive. Transfers use TLS, and the files sit as ordinary files in storage *you* control.
 3. **Sync the folder to your desktop.** Run your cloud client (for example Google Drive for desktop) so that folder exists on the desktop's disk.
 4. **Point Graphium at it.** In the desktop's [Settings → Storage](/settings), the **Mobile upload** section has the **Inbox folder** picker — choose the folder your cloud storage syncs to, and Graphium reads the `Inbox` subfolder inside it. The same section shows the QR code under **Connect on your phone** (with **Copy URL**) that opens Graphium on the phone in the first place.
-5. **Import.** When files arrive, a **Mobile** entry in the desktop sidebar shows a pending count. Open it to preview each item, then **Import all** or **Import selected**. Photos, videos, and voice notes become [materials](/materials-and-citations); written captures become regular memos and URL bookmarks. Pick a folder under **Send into** at the top of the phone screen and what arrives is already in that folder. The list holds the folders you have used before on that phone, plus the ones in your library if the phone is connected to the same storage; **+ New folder…** creates one on the spot. Your choice is remembered until you change it, so there is nothing to pick each time you send. Duplicates are skipped automatically, a toast summarizes **Imported · skipped · failed**, and an empty inbox simply says **Nothing new**.
+5. **Import.** When files arrive, a **Mobile** entry in the desktop sidebar shows a pending count. Open it to preview each item, then **Import all** or **Import selected**. Photos, videos, and voice notes become [materials](/materials-and-citations); written captures become regular memos and URL bookmarks. Pick a folder under **Send into** at the top of the phone screen and what arrives is already in that folder — photos, videos, audio and URLs as materials, and anything you wrote as a memo. The list holds the folders you have used before on that phone, plus the ones in your library if the phone is connected to the same storage; **+ New folder…** creates one on the spot. Your choice is remembered until you change it, so there is nothing to pick each time you send. Duplicates are skipped automatically, a toast summarizes **Imported · skipped · failed**, and an empty inbox simply says **Nothing new**.
 
 By default, imported files are deleted from the inbox — their content is already in your library. Check **Keep processed files in _imported/** (in the inbox's folder settings or in Settings → Storage) if you prefer an archive.
 
