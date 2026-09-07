@@ -13,11 +13,13 @@ import type { ComponentType } from "react";
 // タブごと出ない」という既定の見え方そのもの。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { userEvent, within } from "storybook/test";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import type { SharedEntry } from "../../lib/storage/shared";
-import type { GraphiumDocument } from "../../lib/document-types";
+import type { GraphiumDocument, ScopeChat } from "../../lib/document-types";
 import { SharedNoteView } from "./SharedNoteView";
 import type { SharedNoteChatDeps } from "./SharedNoteChatPanel";
+import { sharedChatsKey } from "./shared-chat";
 import type { StorageProvider } from "../../lib/storage/types";
 import type { AgentRunResponse } from "../ai-assistant/api";
 import {
@@ -594,4 +596,104 @@ export const ManualEnglish: Story = {
       );
     },
   ],
+};
+
+// ── マニュアル用スクショ「AI に質問」（英語・パン作りの世界観） ──
+//
+// 撮影時に会話が写っている必要がある。手元の appData（`shared-chats:<id>`）に
+// 既存の会話を 1 本入れておき、play で履歴から開く。
+//
+// なぜ「入れておくだけ」では写らないか: 読み込み（useAppDataChatPersistence）は
+// restoreChats で会話一覧（chats）を埋めるだけで、表示中の会話（messages）には
+// しない。AiAssistantPanel の「一覧を出すか」は初回レンダーで一度だけ決まり、
+// そのときの chats はまだ空なので、放っておくと空の新規会話が出る。実アプリで
+// 過去の会話を開くときと同じ手順（履歴 → その会話を選ぶ）を play でなぞる。
+
+const MANUAL_ASK_QUESTION = "What temperature did the starter need to double?";
+
+const MANUAL_ASK_ANSWER = [
+  "From the shared log: the starter was fed 1:1:1 at 8:00 and doubled in four hours at 28 °C — that 28 °C is the proofing box, not the room. The kitchen itself stayed around 21 °C.",
+  "",
+  "One thing the log does not say is the flour brand, so that is worth asking Ken.",
+].join("\n");
+
+/** 撮影時に写っている「前に聞いた会話」。実アプリの手元の appData と同じ形 */
+const MANUAL_SEEDED_CHAT: ScopeChat = {
+  id: "manual-shared-chat-1",
+  scopeBlockId: "",
+  scopeType: "page",
+  messages: [
+    { role: "user", content: MANUAL_ASK_QUESTION, timestamp: daysAgo(0.05) },
+    { role: "assistant", content: MANUAL_ASK_ANSWER, timestamp: daysAgo(0.04) },
+  ],
+  createdAt: daysAgo(0.05),
+  modifiedAt: daysAgo(0.04),
+};
+
+/**
+ * このストーリー専用の実行環境。会話の保存先（Map）を他のストーリーと共有しない
+ * ——共有すると、先に開いたストーリーの送信結果が撮影に混ざる。
+ */
+function createManualChatDeps(): SharedNoteChatDeps {
+  const appData = new Map<string, unknown>([
+    [sharedChatsKey(MANUAL_NOTE.id), [MANUAL_SEEDED_CHAT]],
+  ]);
+  return {
+    ...CHAT_DEPS,
+    provider: {
+      readAppData: async (key: string) => appData.get(key) ?? null,
+      writeAppData: async (key: string, value: unknown) => {
+        appData.set(key, value);
+      },
+    } as unknown as StorageProvider,
+    // Storybook で実際に送ったときの返事も英語にする（撮影には使わない）
+    runAgent: async () => ({
+      session_id: "manual-story-session",
+      message: MANUAL_ASK_ANSWER,
+      tool_calls: [],
+      provenance_id: null,
+      token_usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+      model: "story-model",
+    }),
+  };
+}
+
+export const ManualEnglishAskAi: Story = {
+  name: "Manual (English, bread world) — ask AI",
+  args: {
+    ...baseArgs,
+    entry: MANUAL_NOTE,
+    currentIdentity: MANUAL_MENTOR,
+    sharedRoot: "/Users/mia/shared-bakery",
+    entries: MANUAL_COMMENTS,
+    projection: projectionOf([[MANUAL_NOTE, MANUAL_DOC]]),
+    readEntryBody: manualReader,
+    initialRailTab: "chat" as const,
+    aiAvailable: true,
+    chatDeps: createManualChatDeps(),
+    onIngestChat: (messages: unknown[]) => console.log("ingest chat", messages.length),
+  },
+  decorators: [
+    withSeededModel,
+    (Story) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // 履歴は appData の読み込み（非同期）が終わってから出る
+    const history = await canvas.findByTitle("Chat history");
+    await userEvent.click(history);
+    // 一覧の行（先頭の質問がそのまま見出しになる）
+    await userEvent.click(await canvas.findByText(MANUAL_ASK_QUESTION));
+    // 回答まで描かれてから撮る
+    await canvas.findByText(/From the shared log/);
+  },
 };
