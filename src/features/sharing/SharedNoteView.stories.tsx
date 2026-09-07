@@ -1,17 +1,25 @@
 // 共有ノートの全画面表示のストーリー。
+import type { ComponentType } from "react";
 //
 // 実アプリの本文・コメントは Tauri の invoke 越しに読むので、ここでは DI
 // （entries / readEntryBody / projection）で差し替えて描く。研究室の場面は
 // SharedLibraryView のストーリーと同じ（先生が学生のノートを読んで返す）。
 //
-// 右レールの 4 パネル（コメント / 版 / プロセス / 逆引き）をそれぞれ開いた状態で
-// 1 本ずつ用意する。パネルは幅を変えられる（左端をドラッグ）。
+// 右レールの各パネル（コメント / AI に質問 / 版 / プロセス / 逆引き）をそれぞれ
+// 開いた状態で 1 本ずつ用意する。パネルは幅を変えられる（左端をドラッグ）。
+//
+// 「AI に質問」だけは aiAvailable を渡したストーリー（Chat）でしか出ない。
+// 他のストーリーが渡していないのは手抜きではなく、「AI が使えない環境では
+// タブごと出ない」という既定の見え方そのもの。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import type { SharedEntry } from "../../lib/storage/shared";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { SharedNoteView } from "./SharedNoteView";
+import type { SharedNoteChatDeps } from "./SharedNoteChatPanel";
+import type { StorageProvider } from "../../lib/storage/types";
+import type { AgentRunResponse } from "../ai-assistant/api";
 import {
   createEmptySharedProjection,
   projectSharedNote,
@@ -246,6 +254,56 @@ const baseArgs = {
   readEntryBody: readerFor(DOC),
 };
 
+// ── 「AI に質問」ストーリーの偽の実行環境 ──
+//
+// Storybook にはバックエンドもストレージも無いので、DI（chatDeps）で差し替える。
+// 会話の保存先はメモリ上の Map（実アプリでは手元の appData `shared-chats:<id>`）。
+
+const memoryAppData = new Map<string, unknown>();
+const memoryProvider = {
+  readAppData: async (key: string) => memoryAppData.get(key) ?? null,
+  writeAppData: async (key: string, value: unknown) => {
+    memoryAppData.set(key, value);
+  },
+} as unknown as StorageProvider;
+
+const CHAT_DEPS: SharedNoteChatDeps = {
+  provider: memoryProvider,
+  // 実物は共有本文（GraphiumDocument）を Markdown に起こす。ここでは段落だけ拾う
+  toMarkdown: async (doc) =>
+    (doc.pages ?? [])
+      .flatMap((page) => page.blocks ?? [])
+      .map((b: any) => (b.content ?? []).map((c: any) => c.text ?? "").join(""))
+      .filter(Boolean)
+      .join("\n\n"),
+  // 横断検索は行わない（Storybook には索引が無い）
+  retrieveWikiContext: async () => null,
+  runAgent: async (req) =>
+    new Promise<AgentRunResponse>((resolve) =>
+      setTimeout(
+        () =>
+          resolve({
+            session_id: "story-session",
+            message: [
+              "共有された本文からは次のことが読み取れます。",
+              "",
+              "- 圧粉は 200 MPa・60 秒",
+              "- 焼結は 1050 ℃ で 2 時間保持",
+              "",
+              "昇温速度が本文に見当たらないので、そこは共有した人に確かめてください。",
+              "",
+              `（受け取った文字数: ${req.message.length}）`,
+            ].join("\n"),
+            tool_calls: [],
+            provenance_id: null,
+            token_usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+            model: "story-model",
+          }),
+        600,
+      ),
+    ),
+};
+
 const meta: Meta<typeof SharedNoteView> = {
   title: "Sharing/SharedNoteView",
   component: SharedNoteView,
@@ -254,7 +312,7 @@ const meta: Meta<typeof SharedNoteView> = {
     docs: {
       description: {
         component:
-          "共有エントリの全画面表示。個人のノートと同じ本文カラム幅で読み、右レール（コメント / 版 / プロセス / 逆引き）を必要なときだけ開く。本文の段落をクリックすると、その段落へのコメントとして書き始められる。",
+          "共有エントリの全画面表示。個人のノートと同じ本文カラム幅で読み、右レール（コメント / AI に質問 / 版 / プロセス / 逆引き）を必要なときだけ開く。本文の段落をクリックすると、その段落へのコメントとして書き始められる（「AI に質問」を開いているときは、その段落を引用した会話が始まる）。",
       },
     },
   },
@@ -340,6 +398,43 @@ export const Backlinks: Story = {
       description: {
         story:
           "このエントリを指している共有ノート（引用・派生・テンプレート利用）。行を押すと相手のエントリへ移る。0 件のときは「まだ見つかっていない」と書く —— 元になるのは本文を読めた共有ノートの投影だけなので、0 件だと断言しない。",
+      },
+    },
+  },
+};
+
+/**
+ * web モードの AiAssistantPanel はモデル一覧を localStorage（graphium-llm-models）から
+ * 読み、空だと「モデルが登録されていません」の案内だけを出して送信できない。
+ * Storybook にバックエンドは無いので、ダミーのモデルを 1 件 seed して
+ * 「使える状態」の見た目と、偽 runAgent の定型回答までを再現する。
+ * （settings/modal.stories.tsx と同じ手口。API キーはダミーで呼び出しには使わない）
+ */
+const withSeededModel = (Story: ComponentType) => {
+  localStorage.setItem(
+    "graphium-llm-models",
+    JSON.stringify([
+      { id: "story-m1", name: "Story model", provider: "openai-compatible", modelId: "story-model", apiKey: "dummy", apiBase: "http://127.0.0.1:9999/v1" },
+    ]),
+  );
+  return <Story />;
+};
+
+export const Chat: Story = {
+  name: "AI に質問",
+  args: {
+    ...baseArgs,
+    initialRailTab: "chat" as const,
+    aiAvailable: true,
+    chatDeps: CHAT_DEPS,
+    onIngestChat: (messages: unknown[]) => console.log("ingest chat", messages.length),
+  },
+  decorators: [withSeededModel, ...jaDecorators],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "共有された本文を根拠に AI へ聞くパネル。送信のたびに本文（Markdown・上限 20,000 字）が質問と一緒に渡り、会話は共有フォルダではなく手元にだけ残る。本文の段落をクリックすると、その段落を引用した新しい会話が始まる（コメントの付け先指定にはならない）。AI が使えない環境ではこのタブ自体が出ない。",
       },
     },
   },

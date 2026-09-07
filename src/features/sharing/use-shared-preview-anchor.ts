@@ -25,6 +25,11 @@ import type { SharedCommentAnchor } from "./SharedCommentsThread";
 export type SharedPreviewAnchor = {
   /** プレビューの外枠に付ける ref（この中だけを段落の探索範囲にする） */
   previewRef: React.MutableRefObject<HTMLDivElement | null>;
+  /**
+   * 読み取り専用エディタの実体。段落を Markdown に起こす（AI への引用）用の口。
+   * 本文が届く前・別 type のエントリでは null。
+   */
+  previewEditorRef: React.MutableRefObject<any>;
   /** 動的 <style> を効かせる目印。`data-preview-scope` に入れる */
   previewScopeId: string;
   /** プレビューのクリック（段落の指定を付け外しする） */
@@ -39,6 +44,31 @@ export type SharedPreviewAnchor = {
   /** コメントのカード / ¶ チップ → 該当ブロックへスクロール + 一時ハイライト */
   jumpToBlock: (blockId: string) => void;
 };
+
+/** 段落（ブロック）を持つプレビューか。ノート / ナレッジだけがクリックに反応する */
+export function previewHasBlocks(entryType: SharedEntryType): boolean {
+  return entryType === "note" || entryType === "knowledge";
+}
+
+/**
+ * プレビューのクリック位置 → ブロック id。
+ *
+ * コメントの付け先指定と AI への段落引用が同じ拾い方を使うための共通部分。
+ * read-only のエディタではキャレットが立たない環境があるため、まず DOM
+ * （blockOuter の data-id）から拾い、取れないときだけカーソル位置に頼る。
+ */
+export function resolveClickedBlockId(
+  e: React.MouseEvent<HTMLDivElement>,
+  editor: any,
+): string | null {
+  const target = e.target as HTMLElement | null;
+  const el = target?.closest?.('[data-node-type="blockOuter"]') as HTMLElement | null;
+  return (
+    el?.getAttribute("data-id") ??
+    editor?.getTextCursorPosition?.()?.block?.id ??
+    null
+  );
+}
 
 export function useSharedPreviewAnchor(entryType: SharedEntryType): SharedPreviewAnchor {
   // プレビュー（read-only エディタ）の DOM とエディタ実体。
@@ -88,13 +118,8 @@ export function useSharedPreviewAnchor(entryType: SharedEntryType): SharedPrevie
   const handlePreviewClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       // 段落を持つのはノート / ナレッジのプレビューだけ（素材・URL には付けない）
-      if (entryType !== "note" && entryType !== "knowledge") return;
-      const target = e.target as HTMLElement | null;
-      const el = target?.closest?.('[data-node-type="blockOuter"]') as HTMLElement | null;
-      const blockId =
-        el?.getAttribute("data-id") ??
-        previewEditorRef.current?.getTextCursorPosition?.()?.block?.id ??
-        null;
+      if (!previewHasBlocks(entryType)) return;
+      const blockId = resolveClickedBlockId(e, previewEditorRef.current);
       if (!blockId) return;
       let label = "";
       try {
@@ -143,7 +168,7 @@ export function useSharedPreviewAnchor(entryType: SharedEntryType): SharedPrevie
    * （動的 <style> でブロックの外枠に当てる）。
    */
   const anchoredBlockId = pendingAnchor?.blockId ?? null;
-  const previewClickable = entryType === "note" || entryType === "knowledge";
+  const previewClickable = previewHasBlocks(entryType);
   useEffect(() => {
     const scope = `[data-preview-scope="${previewScopeId}"]`;
     const rules: string[] = [];
@@ -194,6 +219,7 @@ export function useSharedPreviewAnchor(entryType: SharedEntryType): SharedPrevie
 
   return {
     previewRef,
+    previewEditorRef,
     previewScopeId,
     handlePreviewClick,
     handleEditorReady,

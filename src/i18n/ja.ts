@@ -2457,11 +2457,14 @@ export const ja: Record<string, string> = {
   "library.detail.forkedBy": "これから派生した共有ノート（{count}）",
   "library.detail.templateUsedBy": "この雛形から作られた共有ノート（{count}）",
   // 共有ノートの全画面表示（右レールのパネル名と空状態）
+  "sharedNote.rail.chat": "AI に質問",
   "sharedNote.rail.version": "版",
   "sharedNote.rail.process": "手順",
   "sharedNote.rail.links": "逆引き",
   "sharedNote.processEmpty": "このノートに手順はありません。",
   "sharedNote.backlinksEmpty": "このエントリを指している共有ノートは、まだ見つかっていません。本文を読めた共有ノートだけが対象です。",
+  "sharedNote.chat.unverified": "この本文は共有ストレージの記録（hash）と一致していません。内容を確かめてから使ってください。",
+  "sharedNote.chat.bodyNotReady": "本文を読み込んでいます。少し待ってからもう一度送ってください。",
   // 共有コメント（先生 ⇄ 学生の往復）
   "comment.title": "コメント",
   "comment.countLabel": "コメント {count}",

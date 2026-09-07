@@ -8333,6 +8333,41 @@ export function NoteApp() {
     [fm],
   );
 
+  // AI との会話を手元の Knowledge に取り込む。
+  // ノートのチャットパネルと共有エントリの全画面チャットの両方から呼ばれるので
+  // JSX にインラインで書かず、1 つの関数にしてある（片方だけ挙動がずれないように）。
+  const handleIngestChat = useCallback((chatMessages: import("./lib/document-types").ChatMessage[]) => {
+    // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
+    if (!ensureAgentConfigured()) return;
+    const jobId = `chat:${Date.now()}`;
+    const chatTitle = chatMessages[0]?.content.slice(0, 30) ?? "Chat";
+    const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: `Chat: ${chatTitle}` };
+    setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+    (async () => {
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Extracting knowledge..." } : i),
+      }));
+      try {
+        const existingWikis = (fm.noteIndex?.notes ?? [])
+          .filter((n) => n.source === "ai" && n.wikiKind)
+          .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+        const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale());
+        if (result.wikis.length === 0) {
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+          return;
+        }
+        for (const wiki of result.wikis) {
+          const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+          const newId = await fm.handleCreateWikiFile(wikiDoc);
+          embedWikiSections(newId, wikiDoc).catch(() => {});
+        }
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
+      } catch (err) {
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+      }
+    })();
+  }, [fm]);
+
   // Wiki 単体の再生成（WikiBanner / Settings の Maintenance タブ両方から呼ばれる）
   // openAfter=true で再生成後にエディタで開く（バナー経由のとき）
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
@@ -9991,6 +10026,9 @@ export function NoteApp() {
             onCreateNoteFromTemplate={handleSharedCreateNoteFromTemplate}
             onUnshare={handleSharedUnshare}
             onImportBlob={getBlobRoot() ? handleSharedImportBlob : undefined}
+            // AI が使えないときは「AI に質問」のタブごと出さない（素材ビューと同じ扱い）
+            aiAvailable={aiUiEnabled}
+            onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView
@@ -10408,37 +10446,7 @@ export function NoteApp() {
                 ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
               })();
             } : undefined}
-            onIngestChat={aiUiEnabled ? (chatMessages) => {
-              // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
-              if (!ensureAgentConfigured()) return;
-              const jobId = `chat:${Date.now()}`;
-              const chatTitle = chatMessages[0]?.content.slice(0, 30) ?? "Chat";
-              const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: `Chat: ${chatTitle}` };
-              setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-              (async () => {
-                setIngestToast((prev) => ({
-                  items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Extracting knowledge..." } : i),
-                }));
-                try {
-                  const existingWikis = (fm.noteIndex?.notes ?? [])
-                    .filter((n) => n.source === "ai" && n.wikiKind)
-                    .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
-                  const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale());
-                  if (result.wikis.length === 0) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-                    return;
-                  }
-                  for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-                    const newId = await fm.handleCreateWikiFile(wikiDoc);
-                    embedWikiSections(newId, wikiDoc).catch(() => {});
-                  }
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
-                } catch (err) {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-                }
-              })();
-            } : undefined}
+            onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
             provWikiEntities={provWikiEntities}
           />
           </>

@@ -2460,11 +2460,14 @@ export const en: Record<string, string> = {
   "library.detail.forkedBy": "Shared notes derived from this ({count})",
   "library.detail.templateUsedBy": "Shared notes made from this template ({count})",
   // 共有ノートの全画面表示（右レールのパネル名と空状態）
+  "sharedNote.rail.chat": "Ask AI",
   "sharedNote.rail.version": "Version",
   "sharedNote.rail.process": "Steps",
   "sharedNote.rail.links": "Backlinks",
   "sharedNote.processEmpty": "This shared note has no steps.",
   "sharedNote.backlinksEmpty": "No shared notes pointing here have been found yet. Only shared notes whose content has been read are counted.",
+  "sharedNote.chat.unverified": "This copy does not match the hash recorded in shared storage. Check the content before relying on it.",
+  "sharedNote.chat.bodyNotReady": "Still loading the shared copy. Try again in a moment.",
   // 共有コメント（先生 ⇄ 学生の往復）
   "comment.title": "Comments",
   "comment.countLabel": "Comments {count}",

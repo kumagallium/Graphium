@@ -15,8 +15,9 @@
 // 設計詳細: docs/internal/team-shared-storage-design.md §22 B
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { History, Link2, MessageSquare, Waypoints, X } from "lucide-react";
+import { Bot, History, Link2, MessageSquare, Waypoints, X } from "lucide-react";
 import type { AuthorIdentity } from "../document-provenance/types";
+import type { ChatMessage, GraphiumDocument, TableMeta } from "../../lib/document-types";
 import {
   LocalFolderSharedProvider,
   type BlobRef,
@@ -42,7 +43,16 @@ import {
   sharedEntryTitle,
   sharedEntryTypeLabel,
 } from "./shared-entry-parts";
-import { useSharedPreviewAnchor } from "./use-shared-preview-anchor";
+import {
+  previewHasBlocks,
+  resolveClickedBlockId,
+  useSharedPreviewAnchor,
+} from "./use-shared-preview-anchor";
+// barrel（../ai-assistant）は循環するので実ファイルを指す
+import { AiAssistantProvider, useAiAssistant } from "../ai-assistant/store";
+import { blocksToMarkdown } from "../markdown-export/blocks-to-markdown";
+import { SharedNoteChatPanel, type SharedNoteChatDeps } from "./SharedNoteChatPanel";
+import { supportsSharedChat } from "./shared-chat";
 import { useSharedLibrary } from "./shared-library-store";
 import {
   buildReverseLinks,
@@ -59,7 +69,7 @@ import {
 import { type HashStatus } from "./hash-badge";
 
 /** 右レールに出すパネル。既定はコメント（読んですぐ返せる状態で開く） */
-export type SharedNoteRailTab = "comments" | "version" | "process" | "links";
+export type SharedNoteRailTab = "comments" | "chat" | "version" | "process" | "links";
 type RailTab = SharedNoteRailTab;
 
 // 全画面の右パネルは本文を読みながら使うので、サイドピーク（共有の幅記憶）とは
@@ -104,9 +114,36 @@ export type SharedNoteViewProps = {
    * —— Storybook / テストで各パネルを直接描くための入口。
    */
   initialRailTab?: RailTab;
+  /**
+   * AI バックエンドが使えるか（バックエンド到達 + モデル登録済み）。
+   * false なら「AI に質問」のタブ自体を出さない。押せるのに動かない口を作らない
+   * ——素材ビュー（AssetGalleryView の同名 prop）と同じ扱い。
+   */
+  aiAvailable?: boolean;
+  /** AI との会話を手元の Knowledge に取り込む（未指定なら取り込みボタンを出さない） */
+  onIngestChat?: (messages: ChatMessage[]) => void;
+  /** DI: チャットの実行環境（Storybook / テスト用。既定は実物） */
+  chatDeps?: SharedNoteChatDeps;
 };
 
-export function SharedNoteView({
+/**
+ * 共有エントリの全画面。
+ *
+ * AiAssistantProvider をビュー全体に張るのは、タブを切り替えても会話が消えない
+ * ようにするため（パネルだけを包むと chat タブを閉じた瞬間に store ごと消える）。
+ * entry.id を key にして、別のエントリへ移ったら会話も作り直す。
+ * SharedEntryBody 内側の読み取り専用 Provider（aiAvailable=false）はそのまま残す
+ * ——入れ子でよい。外側がこのビューの会話、内側はプレビューのエディタ用。
+ */
+export function SharedNoteView(props: SharedNoteViewProps) {
+  return (
+    <AiAssistantProvider key={props.entry.id} aiAvailable={!!props.aiAvailable}>
+      <SharedNoteViewInner {...props} />
+    </AiAssistantProvider>
+  );
+}
+
+function SharedNoteViewInner({
   entry,
   currentIdentity,
   sharedRoot,
@@ -121,8 +158,12 @@ export function SharedNoteView({
   projection,
   onSeenRecorded,
   initialRailTab = "comments",
+  aiAvailable,
+  onIngestChat,
+  chatDeps,
 }: SharedNoteViewProps) {
   const uiT = useT();
+  const aiAssistant = useAiAssistant();
   const [railTab, setRailTab] = useState<RailTab | null>(initialRailTab);
   const [hashStatus, setHashStatus] = useState<HashStatus>("unknown");
   const [busy, setBusy] = useState(false);
@@ -238,13 +279,84 @@ export function SharedNoteView({
   // 投影は元にした hash を持っているので、それが変われば作り直す
   const processKey = `${entry.id}:${processProjection?.hash ?? entry.hash}`;
 
+  // 「AI に質問」を出す条件。AI が使えないとき・中身を持たない type
+  // （素材の manifest / 指摘の封筒）では、タブごと出さない
+  const chatAvailable = !!aiAvailable && supportsSharedChat(entry.type);
+
+  // AI が使えなくなった（モデルの登録が外れた等）ときに、見出しも中身も無い
+  // パネルが開いたままにならないようコメントへ戻す（素材ビューの graph と同じ手当て）
+  useEffect(() => {
+    if (railTab === "chat" && !chatAvailable) setRailTab("comments");
+  }, [railTab, chatAvailable]);
+
+  // 段落を AI への引用にするときの表の名前解決。プレビューは全ページを 1 本に
+  // 連結して描くので、表の名前もページ横断で 1 つにまとめる
+  const tableMeta = useMemo<Record<string, TableMeta>>(() => {
+    if (!body) return {};
+    try {
+      const doc = JSON.parse(body) as GraphiumDocument;
+      const merged: Record<string, TableMeta> = {};
+      for (const page of doc.pages ?? []) Object.assign(merged, page.tableMeta ?? {});
+      return merged;
+    } catch {
+      return {};
+    }
+  }, [body]);
+
+  /**
+   * chat タブを開いているときの段落クリック = その段落について AI に聞く。
+   *
+   * 個人のノートの引用チャットと同じ semantics: 進行中の会話は退避され、
+   * 引用付きの新しい会話が始まる（パネルは store の quotedMarkdown を自動で出す）。
+   */
+  const quoteBlockToChat = useCallback(
+    async (e: React.MouseEvent<HTMLDivElement>) => {
+      const editor = preview.previewEditorRef.current;
+      if (!editor) return;
+      const blockId = resolveClickedBlockId(e, editor);
+      if (!blockId) return;
+      let quoted = "";
+      try {
+        const block = editor.getBlock?.(blockId);
+        if (!block) return;
+        quoted = await blocksToMarkdown(editor, [block], {
+          tableMeta,
+          // 「表 N」の自動名は文書順で決まる。選択範囲だけで数えると画面と番号がずれる
+          documentBlocks: editor.document,
+        });
+      } catch {
+        // 変換できない段落（未知のブロック等）は引用にしない
+        return;
+      }
+      if (!quoted.trim()) return;
+      aiAssistant.openChat({ sourceBlockIds: [blockId], quotedMarkdown: quoted.trim() });
+    },
+    [aiAssistant, preview, tableMeta],
+  );
+
+  const handleBodyClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // chat タブを開いている間だけ、段落クリックの行き先が AI への引用に変わる。
+      // それ以外は従来どおりコメントの付け先指定
+      if (railTab === "chat" && chatAvailable && previewHasBlocks(entry.type)) {
+        void quoteBlockToChat(e);
+        return;
+      }
+      preview.handlePreviewClick(e);
+    },
+    [railTab, chatAvailable, entry.type, quoteBlockToChat, preview],
+  );
+
   const updateCount = entry.history?.length ?? 0;
-  const railItems: { tab: RailTab; icon: React.ReactNode; label: string }[] = [
-    { tab: "comments", icon: <MessageSquare size={18} />, label: uiT("panel.comments") },
-    { tab: "version", icon: <History size={18} />, label: uiT("sharedNote.rail.version") },
-    { tab: "process", icon: <Waypoints size={18} />, label: uiT("sharedNote.rail.process") },
-    { tab: "links", icon: <Link2 size={18} />, label: uiT("sharedNote.rail.links") },
-  ];
+  const railItems = (
+    [
+      { tab: "comments", icon: <MessageSquare size={18} />, label: uiT("panel.comments") },
+      { tab: "chat", icon: <Bot size={18} />, label: uiT("sharedNote.rail.chat"), show: chatAvailable },
+      { tab: "version", icon: <History size={18} />, label: uiT("sharedNote.rail.version") },
+      { tab: "process", icon: <Waypoints size={18} />, label: uiT("sharedNote.rail.process") },
+      { tab: "links", icon: <Link2 size={18} />, label: uiT("sharedNote.rail.links") },
+    ] satisfies { tab: RailTab; icon: React.ReactNode; label: string; show?: boolean }[]
+  ).filter((i) => ("show" in i ? i.show : true));
   const railTitle = railItems.find((i) => i.tab === railTab)?.label ?? "";
 
   return (
@@ -331,7 +443,7 @@ export function SharedNoteView({
             ref={preview.previewRef}
             data-preview-scope={preview.previewScopeId}
             data-testid="shared-note-body"
-            onClick={preview.handlePreviewClick}
+            onClick={handleBodyClick}
           >
             <SharedEntryBody
               entry={entry}
@@ -385,6 +497,18 @@ export function SharedNoteView({
               onClearAnchor={preview.clearAnchor}
               onSeenRecorded={onSeenRecorded}
               layout="panel"
+            />
+          )}
+
+          {railTab === "chat" && chatAvailable && (
+            <SharedNoteChatPanel
+              entry={entry}
+              body={body}
+              // ハッシュ照合は「版」タブで押したときだけ走る。まだ確かめていない
+              // （unknown）を「改変されている」とは言わない
+              verified={hashStatus !== "mismatch"}
+              onIngestChat={onIngestChat}
+              deps={chatDeps}
             />
           )}
 
