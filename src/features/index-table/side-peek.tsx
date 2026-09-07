@@ -143,6 +143,7 @@ import { setEditorSidePeekCallback } from "./context";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
+import { subscribeDataTableData } from "../../blocks/data-table/data";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "../../blocks/calc/writeback";
 
 type SidePeekProps = {
@@ -855,6 +856,11 @@ function SidePeekInner({
             publishTimer = setTimeout(publish, 250);
           })
         : undefined;
+    // データ表の素材は本文の変更なしに後から届くので、到着でも配り直す
+    const offDataArrived = subscribeDataTableData(() => {
+      if (publishTimer) clearTimeout(publishTimer);
+      publishTimer = setTimeout(publish, 250);
+    });
     publish();
     setEditorSidePeekCallback(sidePeekEditor, (targetNoteId) => {
       // 外部ソース ID（pdf:/document:/data:/url: — グラフのパラメータ ↗ 等）は
@@ -876,6 +882,7 @@ function SidePeekInner({
       setEditorSidePeekCallback(sidePeekEditor, null);
       if (publishTimer) clearTimeout(publishTimer);
       if (typeof offContentChange === "function") offContentChange();
+      offDataArrived();
     };
   }, [sidePeekEditor, tableMetaStore]);
 

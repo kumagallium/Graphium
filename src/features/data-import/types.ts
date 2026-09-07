@@ -39,3 +39,10 @@ export type ParsedDelimited = {
   /** endRow より後の生テキスト行 */
   footerLines: string[];
 };
+
+/**
+ * 取り込んだデータの行き先。
+ * - table: ノート本文の表（セルを直接編集できる。行が多いと編集が重い）
+ * - dataTable: データ表ブロック（素材を参照して見せるだけ。行数に強く、読み取り専用）
+ */
+export type ImportTarget = "table" | "dataTable";

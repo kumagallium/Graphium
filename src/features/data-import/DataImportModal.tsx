@@ -13,7 +13,8 @@ import { t, useLocaleSubscription } from "../../i18n";
 import { detectImportOptions } from "./detect";
 import { extractHeaderMeta } from "./header-meta";
 import { parseDelimited, splitLines } from "./parse";
-import type { DelimitedImportOptions, DelimiterKind, ParsedDelimited } from "./types";
+import { DOC_TABLE_DEFAULT_MAX_ROWS, defaultImportTarget } from "./target";
+import type { DelimitedImportOptions, DelimiterKind, ImportTarget, ParsedDelimited } from "./types";
 
 /** プレビューで描く生テキストの最大行数（巨大ファイルで DOM を作りすぎない） */
 const PREVIEW_LINE_LIMIT = 300;
@@ -32,6 +33,8 @@ const DEFAULT_ROW_LIMIT = 2000;
 export type DataImportResult = {
   options: DelimitedImportOptions;
   parsed: ParsedDelimited;
+  /** 行き先（文書の表 / データ表）。ブロックを作るのはホスト側 */
+  target: ImportTarget;
 };
 
 export function DataImportModal({
@@ -41,6 +44,8 @@ export function DataImportModal({
   rowLimit = DEFAULT_ROW_LIMIT,
   confirmLabel,
   headerMetaLabel,
+  showTargetChoice = true,
+  initialTarget,
   onCancel,
   onConfirm,
 }: {
@@ -64,6 +69,13 @@ export function DataImportModal({
    * 約束しない文言に差し替える
    */
   headerMetaLabel?: string;
+  /**
+   * 「挿入形式」（文書の表 / データ表）を出すか。表を作らない行き先（チャートが素材から
+   * 直接読む）では意味が無いので隠す。隠したときの result.target は "table"
+   */
+  showTargetChoice?: boolean;
+  /** 挿入形式の初期値。未指定なら行数から決める（多ければデータ表） */
+  initialTarget?: ImportTarget;
   onCancel: () => void;
   onConfirm: (result: DataImportResult) => void;
 }) {
@@ -75,16 +87,27 @@ export function DataImportModal({
     () => (initialOptions ? null : detectImportOptions(lines)),
     [lines, initialOptions]
   );
+  // 挿入形式の初期値。行数は上限で丸める前の推定値で見る（丸めた後の行数で決めると
+  // 「2,000 行に丸めたから文書の表でよい」と逆の判断になる）
+  const detectedRowCount = detected
+    ? Math.max(0, detected.endRow - detected.headerRow)
+    : initialOptions
+      ? Math.max(0, initialOptions.endRow - initialOptions.headerRow)
+      : 0;
+  const initialTargetValue: ImportTarget =
+    initialTarget ?? (showTargetChoice ? defaultImportTarget(detectedRowCount) : "table");
+  const [target, setTarget] = useState<ImportTarget>(initialTargetValue);
   const [options, setOptions] = useState<DelimitedImportOptions>(() => {
     if (initialOptions) return initialOptions;
     const d = detected!;
-    if (rowLimit === null) return d;
+    // データ表は本文に表を作らないので、行数の上限で丸めない
+    if (rowLimit === null || initialTargetValue === "dataTable") return d;
     const limited = Math.min(d.endRow, d.headerRow + rowLimit);
     return { ...d, endRow: limited };
   });
   // 丸めが起きたときだけ、元が何行あったかを覚えておいて画面に出す
   const [truncatedTotal] = useState<number | null>(() => {
-    if (!detected || rowLimit === null) return null;
+    if (!detected || rowLimit === null || initialTargetValue === "dataTable") return null;
     const total = detected.endRow - detected.headerRow;
     return total > rowLimit ? total : null;
   });
@@ -101,6 +124,15 @@ export function DataImportModal({
   const parsed = useMemo(() => parseDelimited(text, options), [text, options]);
   const meta = useMemo(() => extractHeaderMeta(parsed.headerLines), [parsed.headerLines]);
   const canImport = parsed.headers.length > 0;
+  // データ表は本文に表を作らないので行数の上限は要らない
+  const effectiveRowLimit = target === "dataTable" ? null : rowLimit;
+  const switchTarget = (next: ImportTarget) => {
+    setTarget(next);
+    // 文書の表向けに丸めていた終了行は、データ表なら全部読める
+    if (next === "dataTable" && detected && truncatedTotal !== null && options.endRow < detected.endRow) {
+      setOptions((cur) => ({ ...cur, endRow: detected.endRow }));
+    }
+  };
 
   const patch = (next: Partial<DelimitedImportOptions>) =>
     setOptions((cur) => ({ ...cur, ...next }));
@@ -145,6 +177,41 @@ export function DataImportModal({
           </span>
         </div>
 
+        {/* 挿入形式。行が多いデータは本文の表に展開せず、素材を参照するデータ表にする */}
+        {showTargetChoice && canImport && (
+          <div className="px-4 py-2 border-b border-border flex flex-wrap items-center gap-3">
+            <span className="text-[11px] font-medium text-foreground">{t("dataImport.target")}</span>
+            <div className="flex items-center gap-1.5">
+              {(["table", "dataTable"] as ImportTarget[]).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => switchTarget(kind)}
+                  className={`px-2.5 py-1 text-[11px] rounded border transition-colors ${
+                    target === kind
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {t(`dataImport.target.${kind}`)}
+                </button>
+              ))}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              {target === "dataTable"
+                ? t("dataImport.target.dataTableHint")
+                : t("dataImport.target.tableHint")}
+            </span>
+          </div>
+        )}
+        {showTargetChoice && canImport && target === "table" && parsed.rows.length > DOC_TABLE_DEFAULT_MAX_ROWS && (
+          <div className="px-4 py-2 border-b border-border bg-amber-500/10">
+            <p className="text-[11px] text-foreground">
+              {t("dataImport.target.recommendedDataTable", { count: String(parsed.rows.length) })}
+            </p>
+          </div>
+        )}
+
         {/* 見出しより列の多い行がある = 値の中に区切り文字が入っている可能性。
             データは切らずに出しているので、気づいて区切りを直せるようにする */}
         {canImport && parsed.headers[parsed.headers.length - 1] === "" && (
@@ -155,14 +222,14 @@ export function DataImportModal({
 
         {/* 行数が多いときの注意。丸めた場合はその旨、伸ばした場合は重さの警告。
             上限を外した行き先（チャート）ではどちらも出ない */}
-        {rowLimit !== null &&
-          (truncatedTotal !== null || parsed.rows.length > rowLimit) && (
+        {effectiveRowLimit !== null &&
+          (truncatedTotal !== null || parsed.rows.length > effectiveRowLimit) && (
             <div className="px-4 py-2 border-b border-border bg-amber-500/10">
               <p className="text-[11px] text-foreground">
-                {parsed.rows.length > rowLimit
+                {parsed.rows.length > effectiveRowLimit
                   ? t("dataImport.rowLimitWarning", { count: String(parsed.rows.length) })
                   : t("dataImport.rowLimitNotice", {
-                      limit: String(rowLimit),
+                      limit: String(effectiveRowLimit),
                       total: String(truncatedTotal),
                     })}
               </p>
@@ -347,7 +414,7 @@ export function DataImportModal({
           <button
             type="button"
             disabled={!canImport}
-            onClick={() => onConfirm({ options, parsed })}
+            onClick={() => onConfirm({ options, parsed, target })}
             className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {confirmLabel ?? t("dataImport.confirm")}
