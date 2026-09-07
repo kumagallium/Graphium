@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.58.1](https://github.com/kumagallium/Graphium/compare/v0.58.0...v0.58.1) - 2026-09-07
+
 ## [v0.58.0](https://github.com/kumagallium/Graphium/compare/v0.57.0...v0.58.0) - 2026-09-07
 
 - [docs] Add v0.55.0 and v0.56.0 to the manual and repair the roadmap table by @kumagallium in https://github.com/kumagallium/Graphium/pull/839
