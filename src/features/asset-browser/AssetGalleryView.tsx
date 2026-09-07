@@ -1,7 +1,7 @@
 // アセットギャラリービュー（メインエリアに表示）
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2 } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext } from "../note-context/context-tags";
@@ -354,10 +354,24 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
 // メディアカードコンポーネント
 function MediaCard({
   entry,
+  index,
+  selected,
+  showCheckbox,
+  onCheckboxMouseDown,
+  onMouseEnter,
   onDelete,
   onOpenDetail,
 }: {
   entry: MediaIndexEntry;
+  /** filtered 内での位置。範囲選択（useRangeSelect）が行番号として使う */
+  index: number;
+  /** このタイルが選択中か */
+  selected: boolean;
+  /** 何か 1 件でも選択中か。選択中は全タイルのチェックボックスを出しっぱなしにする */
+  showCheckbox: boolean;
+  onCheckboxMouseDown: (e: ReactMouseEvent, index: number) => void;
+  /** ドラッグ範囲選択の伸長。list 行の onRowMouseEnter と同じ役割 */
+  onMouseEnter: (index: number) => void;
   onDelete: (entry: MediaIndexEntry) => void;
   onOpenDetail: (entry: MediaIndexEntry) => void;
 }) {
@@ -373,7 +387,33 @@ function MediaCard({
     (entry.type === "url" && isLocalPreviewRef(entry.urlMeta?.previewImage));
 
   return (
-    <div className="border border-border rounded-md bg-background hover:border-primary/40 transition-colors group relative overflow-hidden">
+    <div
+      className={`border rounded-md bg-background hover:border-primary/40 transition-colors group relative overflow-hidden ${
+        selected ? "border-primary" : "border-border"
+      }`}
+      onMouseEnter={() => onMouseEnter(index)}
+    >
+      {/* 左上チェックボックス（list 行の td と同じ作法）。
+          未選択かつ非ホバーのときだけ消してサムネを邪魔しない。
+          input 自体は pointer-events-none にして、mousedown を包む要素で拾う
+          （距離ゼロでも即トグル + そのままドラッグで範囲選択に入るため） */}
+      <div
+        className={`absolute top-1.5 left-1.5 z-10 cursor-pointer transition-opacity ${
+          selected || showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        }`}
+        title={t("asset.dragToRangeSelect")}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => onCheckboxMouseDown(e, index)}
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          readOnly
+          tabIndex={-1}
+          className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none"
+        />
+      </div>
+
       {/* 右上アクション群（ホバーで表示） */}
       <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {entry.type === "url" && (
@@ -718,7 +758,7 @@ export function AssetGalleryView({
     },
     [mediaType],
   );
-  // 複数選択（list モードのみで利用）
+  // 複数選択（gallery / list 共通）
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -986,8 +1026,10 @@ export function AssetGalleryView({
     setDeleteTarget(null);
   }, [deleteTarget, onArchiveMedia]);
 
-  // ── 複数選択（list モード）──
-  // タイプ／検索／ソートが変わったら選択をクリア
+  // ── 複数選択（gallery / list 共通）──
+  // タイプ／検索／ソートが変わったら選択をクリア。
+  // 表示モード（viewMode）は入れない — 見せ方を変えただけで選んだものが消えるのは
+  // 「同じ一覧を別の見せ方で見ている」という前提に反する
   useEffect(() => {
     setSelectedIds(new Set());
   }, [mediaType, searchQuery, sortKey, sortAsc]);
@@ -1395,6 +1437,16 @@ export function AssetGalleryView({
             </button>
           )}
           <div className="flex items-center gap-1 ml-auto">
+            {/* gallery モードの「すべて選択」。list は列ヘッダのチェックボックスが担う */}
+            {viewMode === "gallery" && filtered.length > 0 && (
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+                className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+                title={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
+              />
+            )}
             {/* ソートボタンは gallery モード専用（list モードは列ヘッダのクリックで揃える） */}
             {viewMode === "gallery" && (
               <>
@@ -1450,8 +1502,10 @@ export function AssetGalleryView({
           </div>
         </div>
 
-        {/* 一括アクションバー（list モードで選択時のみ） */}
-        {viewMode === "list" && someSelected && (
+        {/* 一括アクションバー（gallery / list 共通。選択が 1 件でもあれば出す）。
+            ギャラリー表示でしか素材を見ないユーザーが「チームに共有」等の一括操作に
+            辿り着けない状態を解消するため、表示モードでは出し分けない */}
+        {someSelected && (
           <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
             <span className="text-xs text-foreground font-medium">
               {selectedIds.size} / {filtered.length}
@@ -1585,12 +1639,21 @@ export function AssetGalleryView({
             // 列数はコンテナ幅に追従（サイドピークが inline で並ぶと自動で減る）。
             // モバイル（overlay 表示）はリフロー不要なので従来どおり 2 列固定
             <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-              {filtered.map((entry) => (
+              {filtered.map((entry, index) => (
                 <MediaCard
                   key={entry.fileId}
                   entry={entry}
+                  index={index}
+                  selected={selectedIds.has(entry.fileId)}
+                  showCheckbox={someSelected}
+                  onCheckboxMouseDown={range.onCheckboxMouseDown}
+                  onMouseEnter={range.onRowMouseEnter}
                   onDelete={setDeleteTarget}
-                  onOpenDetail={setDetailEntry}
+                  onOpenDetail={(e) => {
+                    // ドラッグ範囲選択の直後の click は開く操作にしない（list 行と同じ）
+                    if (range.shouldSuppressClick()) return;
+                    setDetailEntry(e);
+                  }}
                 />
               ))}
             </div>
