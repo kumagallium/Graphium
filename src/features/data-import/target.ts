@@ -6,15 +6,22 @@
 import type { ImportTarget } from "./types";
 
 /**
- * 文書の表として入れる既定の上限行数。これを超えると取り込みの既定はデータ表になる。
+ * 文書の表として入れたときに「重くなる」と注意を出す行数。
  *
  * 根拠: ノート本文の表は編集のたびに文書全体を直列化するので、行数にそのまま比例して
  * 重くなる。2,000 行の表を入れた直後に編集が止まった実測（2026-09-04）から、余裕を
- * 見て 1 桁下に置く。上限ではなく「既定の振り分け」なので、越えても文書の表は選べる。
+ * 見て 1 桁下に置く。上限ではなく注意の目安なので、越えても文書の表は選べる。
  */
 export const DOC_TABLE_DEFAULT_MAX_ROWS = 200;
 
-/** 取り込みの既定の行き先。行数だけで決める（列数は編集の重さにほとんど効かない） */
-export function defaultImportTarget(rowCount: number): ImportTarget {
-  return rowCount > DOC_TABLE_DEFAULT_MAX_ROWS ? "dataTable" : "table";
+/**
+ * 取り込みの既定の行き先。
+ *
+ * 区切りテキスト（装置の出力）は行数に関係なくデータ表にする。装置データは「読む・
+ * 図にする」もので、セルを手で書き換えるものではない。行数で既定を切り替えると
+ * 同じ操作で違う形の表ができて一貫しない（2026-09-08 のユーザー判断）。手で直したい
+ * 表はダイアログで「文書の表」を選ぶ。行数が多いときはそこで注意が出る。
+ */
+export function defaultImportTarget(_rowCount: number): ImportTarget {
+  return "dataTable";
 }

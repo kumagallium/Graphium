@@ -31,7 +31,7 @@ const CHAR_WIDTH = 7.4;
 /** セル左右の余白の合計（px） */
 const CELL_PADDING = 20;
 
-// 取り込みの既定の行き先（features/data-import/target）。ホスト向けにここからも出す
+// 取り込みの既定の行き先と、文書の表の注意目安（features/data-import/target）。ホスト向けにここからも出す
 export { DOC_TABLE_DEFAULT_MAX_ROWS, defaultImportTarget } from "../../features/data-import/target";
 
 // props.source の読み書きは葉モジュール source.ts（features 側からも読む）
