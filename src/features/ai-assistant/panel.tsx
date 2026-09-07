@@ -391,7 +391,7 @@ export function AiAssistantPanel({
           {messages.length > 0 && onIngestChat && (
             <button
               onClick={() => onIngestChat(messages)}
-              title="Add to Knowledge"
+              title={t("knowledge.addToKnowledge")}
               className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
             >
               <BookPlus size={12} />

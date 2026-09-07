@@ -678,11 +678,16 @@ from a note lives in that note's `chats` field (§1). A chat opened from
 the **material full view**'s "Ask AI" panel has no note to belong to, so
 it is stored per material under the `asset-chats:<fileId>` app-data key
 (§6.1), as the same `ScopeChat[]` shape with `scopeType: "page"` and an
-empty `scopeBlockId`. Notes persist their chats as part of saving the
-note; the material view has no explicit save action, so it writes on a
-short debounce whenever the conversation changes and flushes once more
-when the view closes. Deleting the last chat writes `null`, the same
-logical delete used for snapshots.
+empty `scopeBlockId`. A chat opened from the **shared entry full
+view**'s "Ask AI" panel (ARCHITECTURE.md §5) is stored the same way
+under `shared-chats:<sharedId>`, and deliberately **stays on your own
+device** — nothing about the conversation is written to the shared
+folder, so a reader's questions never reach the person who shared the
+entry. Notes persist their chats as part of saving the note; neither of
+those two views has an explicit save action, so both write on a short
+debounce whenever the conversation changes and flush once more when the
+view closes (`useAppDataChatPersistence`). Deleting the last chat writes
+`null`, the same logical delete used for snapshots.
 
 A chat can be **forked**: the messages up to a chosen point are copied
 into a new `ScopeChat` (new `id`, `forkedFrom` pointing at the parent)
@@ -1623,7 +1628,9 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the
   index file, manual version snapshots (`snapshot-index:<noteId>` /
   `snapshot:<snapshotId>`, see §2.4), material-scoped AI chats
-  (`asset-chats:<fileId>`, see §2.5), and other internal metadata.
+  (`asset-chats:<fileId>`) and shared-entry AI chats
+  (`shared-chats:<sharedId>`, both see §2.5), and other internal
+  metadata.
 - **Knowledge / Skill CRUD** (optional) — separate listings for Knowledge and
   Skill documents so backends can store them in dedicated namespaces.
 
@@ -1708,6 +1715,7 @@ Graphium/
     ├── note-index.json             # the GraphiumIndex
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
+    ├── shared-chats:<sharedId>.json # AI chats about a shared entry, local only (§2.5)
     └── shared-projection.json      # labels/process extracted from shared notes (§7.6)
 ```
 

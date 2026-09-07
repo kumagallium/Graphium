@@ -109,6 +109,8 @@ Once a shared folder is configured, a **Library** section with a **Shared** entr
 
 Clicking a row opens it in the detail panel beside the table, the same as a click in your own note list. Double-click a row — or press **Open in full view** at the top of the detail panel — to read it full-page instead, in the same place and at the same width as your own notes. A right-hand rail lets you switch between **Comments**, **History**, **Process**, and **Backlinks** without leaving the page; **Comments** is open by default. The breadcrumb at the top (**Library › Shared › title**) takes you back to the table. <Badge type="tip" text="Added in v0.58.0 (2026-09-07)" />
 
+When an AI model is set up, the rail carries one more tab — **Ask AI** — for asking about the entry you are reading, with the shared text itself as the grounding. The conversation stays on your own device; nothing about it is written to the shared folder. See [Asking about a shared note](/ai-chat-and-ask#asking-about-a-shared-note).
+
 ![The shared library as a table: notes with folder, author, shared date, and version columns](/screenshots/shared-library.png)
 
 A shared note also carries the folder it was in when it was shared, so the **Notes** tab has a **Folder** column you can filter and search on. Forking does not bring that folder along: it is the author's own filing, so your copy starts unfiled. <Badge type="tip" text="Added in v0.53.0 (2026-09-03)" />

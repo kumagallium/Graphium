@@ -45,6 +45,11 @@ export { loadAllSharedEntries, type SharedLibraryLoadResult } from "./shared-lib
 export { SharedLibraryView } from "./SharedLibraryView";
 export { SharedNoteView, type SharedNoteViewProps } from "./SharedNoteView";
 export {
+  SharedNoteChatPanel,
+  type SharedNoteChatPanelProps,
+  type SharedNoteChatDeps,
+} from "./SharedNoteChatPanel";
+export {
   SharedEntryBody,
   SharedNotePreview,
   useSharedEntryBodyText,
@@ -89,6 +94,24 @@ export {
   sharedEntryFingerprint,
   SHARED_INDEXABLE_TYPES,
 } from "./shared-entry-source";
+export {
+  templateToPseudoDocument,
+  parseSharedTemplateBody,
+} from "./shared-template-doc";
+export {
+  supportsSharedChat,
+  buildSharedSubject,
+  buildSharedChatMessage,
+  buildSharedRetrievalQuery,
+  toAgentHistory,
+  sharedChatsKey,
+  SHARED_CHATS_KEY_PREFIX,
+  SHARED_UNVERIFIED_NOTICE,
+  DEFAULT_SHARED_BUDGET_CHARS,
+  type SharedChatSubject,
+  type BuildSharedSubjectOptions,
+  type BuildSharedChatMessageParams,
+} from "./shared-chat";
 export {
   useSharedLibrarySync,
   SHARED_AUTO_REFRESH_THROTTLE_MS,

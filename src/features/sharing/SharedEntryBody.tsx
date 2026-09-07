@@ -34,9 +34,7 @@ import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { BlockAlignmentProvider } from "../block-alignment/store";
 import { AiAssistantProvider } from "../ai-assistant/store";
 import type { GraphiumDocument } from "../../lib/document-types";
-// 直接 save.ts から取る（features/template の index はピッカーのモーダルまで引き込むため）
-import { deserializeTemplate } from "../template/save";
-import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
+import { parseSharedTemplateBody } from "./shared-template-doc";
 import { readSharedEntryBody } from "./shared-library-store";
 
 /** 本文の取り寄せ（DI 用の型。既定は共有ストア経由） */
@@ -340,35 +338,10 @@ export function SharedNotePreview({
 // shared-blob: の解決も doc の走査で行われるため。
 function SharedTemplatePreview({ body }: { body: string }) {
   const pseudoBody = useMemo(() => {
-    try {
-      const template = deserializeTemplate(body);
-      if (!Array.isArray(template?.blocks)) return null;
-      const doc: GraphiumDocument = {
-        version: LATEST_DOCUMENT_VERSION,
-        title: template.name,
-        // 表示専用の擬似ドキュメント。日時はテンプレートの保存時刻で埋める
-        // （プレビューは読まないが GraphiumDocument の必須フィールド）
-        createdAt: template.savedAt,
-        modifiedAt: template.savedAt,
-        pages: [
-          {
-            id: "main",
-            title: template.pageTitle || template.name,
-            blocks: template.blocks,
-            labels: Object.fromEntries(template.labels ?? []),
-            provLinks: [],
-            knowledgeLinks: [],
-            ...(template.tableMeta ? { tableMeta: template.tableMeta } : {}),
-            ...(template.mediaInlineLabels
-              ? { mediaInlineLabels: template.mediaInlineLabels }
-              : {}),
-          },
-        ],
-      };
-      return JSON.stringify(doc);
-    } catch {
-      return null;
-    }
+    // 擬似ドキュメントへの包み方は shared-template-doc.ts に置き、AI へ渡す
+    // Markdown 化（shared-chat.ts）と同じ形を見せる
+    const doc = parseSharedTemplateBody(body);
+    return doc ? JSON.stringify(doc) : null;
   }, [body]);
 
   // PageTemplate として読めない body は raw 表示にフォールバック（ノートと同じ扱い）

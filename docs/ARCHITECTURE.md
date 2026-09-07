@@ -1349,11 +1349,37 @@ opens a note: a click opens it in the **detail panel** (side peek, next to
 the table — `SharedEntryDetail` in `SharedLibraryView.tsx`), a double-click
 or the panel's "Open in full view" button opens `SharedNoteView.tsx`, a
 full-page read-only view at `#shared-entry/<id>` with the same header
-(breadcrumb, title, actions) and a right rail (Comments / History /
-Process / Backlinks, same icon column as the personal note view). Both
-views share the same body renderer (`SharedEntryBody.tsx`) and the same
-meta/action/history building blocks (`shared-entry-parts.tsx`) so there is
-one place that knows how to render a shared entry, not two.
+(breadcrumb, title, actions) and a right rail (Comments / Ask AI /
+History / Process / Backlinks, same icon column as the personal note
+view). Both views share the same body renderer (`SharedEntryBody.tsx`)
+and the same meta/action/history building blocks
+(`shared-entry-parts.tsx`) so there is one place that knows how to render
+a shared entry, not two.
+
+**Ask AI** (`SharedNoteChatPanel.tsx`, full view only — the detail panel
+does not offer it) asks about the entry you are reading. It takes the
+light path the material full view uses — `runAgent` called directly, not
+the note editor's `chat-run-manager` — because there is no note to write
+an answer back into, and adds conversation history, `session_id`, cross
+search and Stop on top of it, so a shared entry can be discussed the way
+a note can. The consequence of the light path is that **leaving the page
+loses an answer still being generated**; background continuation is
+addressed by chat id, which shared entries do not have. What the model
+sees is two layers, the same shape `quoted-context.ts` uses for notes:
+the shared body as Markdown (capped at 20,000 characters, re-sent with
+every turn rather than accumulated in history) as background, and a
+clicked paragraph, if any, as the subject. Only `pages[].blocks` is read
+— a shared note's own `chats` and `documentProvenance` never reach the
+model. Conversations are **never written to the shared folder**: they
+live in local app data under `shared-chats:<sharedId>`
+(DATA_MODEL.md §2.5), the same `ScopeChat[]` shape and the same
+persistence hook the material view uses. Nothing is recorded in
+provenance, and the answer offers no "insert" / "replace" / "derive a
+note" actions — this is reading someone else's material, not editing
+your own. The tab appears only when an AI model is configured and the
+entry has a body to discuss (not for material manifests or comments);
+whether the cross search reaches other shared entries follows the
+existing Settings → Storage switch.
 
 ### 5.1 Teacher ⇄ student round trips
 

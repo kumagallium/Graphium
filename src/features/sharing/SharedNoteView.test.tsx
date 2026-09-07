@@ -8,6 +8,9 @@
 //   コメントの入力欄に「この段落に」が出る（部品を共有していることの確認）
 // - パンくずの「ライブラリ」で一覧へ戻れる
 // - 開いた時点で既読（graphium-shared-seen）を記録する ＝ 一覧の印が消える
+// - 「AI に質問」は AI が使えるときだけ・中身を持つ type にだけ出る
+// - chat タブを開いている間の段落クリックは、コメントの付け先ではなく
+//   その段落を引用した AI の会話になる
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 
@@ -35,19 +38,60 @@ vi.mock("../network-graph/step-flow-view", async () => {
     },
   };
 });
-vi.mock("../../base/editor", () => ({
-  SandboxEditor: ({ initialContent }: { initialContent: any[] }) => (
-    <div>
-      {initialContent.map((b) => (
-        <div key={b.id} data-id={b.id} data-node-type="blockOuter">
-          {b.content?.[0]?.text ?? ""}
+vi.mock("../../base/editor", async () => {
+  const { useEffect } = await import("react");
+  return {
+    SandboxEditor: ({
+      initialContent,
+      onEditorReady,
+    }: {
+      initialContent: any[];
+      onEditorReady?: (editor: any) => void;
+    }) => {
+      // 段落の指定（コメント）と段落の引用（AI）はどちらもエディタ実体を通るので、
+      // 偽エディタも getBlock / Markdown 変換の口を持たせる
+      useEffect(() => {
+        onEditorReady?.({
+          document: initialContent,
+          getBlock: (id: string) => initialContent.find((b) => b.id === id) ?? null,
+          blocksToMarkdownLossy: async (blocks: any[]) =>
+            blocks.map((b) => b?.content?.[0]?.text ?? "").join("\n\n"),
+        });
+      }, [initialContent, onEditorReady]);
+      return (
+        <div>
+          {initialContent.map((b) => (
+            <div key={b.id} data-id={b.id} data-node-type="blockOuter">
+              {b.content?.[0]?.text ?? ""}
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
-  ),
-}));
+      );
+    },
+  };
+});
 
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+// AI パネル実体は Markdown レンダラ・sidecar 監視まで抱えるので、
+// 会話の中身と送信の口だけを持つ偽物に差し替える
+vi.mock("../ai-assistant/panel", async () => {
+  const { useAiAssistant } = await import("../ai-assistant/store");
+  return {
+    AiAssistantPanel: ({ onSubmit }: { onSubmit: (q: string) => void }) => {
+      const { messages, quotedMarkdown } = useAiAssistant();
+      return (
+        <div data-testid="ai-panel-mock">
+          <div data-testid="ai-panel-quoted">{quotedMarkdown}</div>
+          <div data-testid="ai-panel-count">{messages.length}</div>
+          <button data-testid="ai-panel-send" onClick={() => onSubmit("質問")}>
+            send
+          </button>
+        </div>
+      );
+    },
+  };
+});
+
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { LocaleProvider, t } from "../../i18n";
 import { SharedNoteView } from "./SharedNoteView";
 import { createEmptySharedProjection, projectSharedNote } from "./shared-projection";
@@ -65,6 +109,22 @@ class NoopResizeObserver {
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= NoopResizeObserver;
 
 const TEACHER = { name: "山田 先生", email: "yamada@example.ac.jp" };
+
+/** 会話の保存先（appData）。実プロバイダは未設定なので DI で渡す */
+function memoryChatDeps() {
+  const store = new Map<string, unknown>();
+  return {
+    store,
+    deps: {
+      provider: {
+        readAppData: async (k: string) => (store.has(k) ? store.get(k) : null),
+        writeAppData: async (k: string, v: unknown) => {
+          store.set(k, v);
+        },
+      } as any,
+    },
+  };
+}
 
 const NOTE: SharedEntry = {
   id: "note-1",
@@ -228,6 +288,84 @@ describe("SharedNoteView の段落コメント", () => {
     fireEvent.click(block);
     expect(highlightCss()).not.toContain('data-id="b-sinter"');
     expect(screen.queryByText(t("comment.anchorPrefix"))).toBeNull();
+  });
+});
+
+describe("SharedNoteView の「AI に質問」タブ", () => {
+  it("AI が使えないときはタブ自体を出さない", async () => {
+    renderView();
+    await screen.findByText("1050 ℃ で 2 時間保持した");
+
+    expect(screen.queryByTestId("shared-note-rail-chat")).toBeNull();
+    // 他のタブは変わらず出ている
+    expect(screen.getByTestId("shared-note-rail-comments")).toBeTruthy();
+  });
+
+  it("AI が使えるノートではコメントの隣に出る", async () => {
+    renderView({ aiAvailable: true, chatDeps: memoryChatDeps().deps });
+    await screen.findByText("1050 ℃ で 2 時間保持した");
+
+    expect(screen.getByTestId("shared-note-rail-chat")).toBeTruthy();
+    // レールの並びは コメント / AI に質問 / 版 / プロセス / 逆引き
+    const rail = screen
+      .getAllByTestId(/^shared-note-rail-/)
+      .map((el) => el.getAttribute("data-testid"));
+    expect(rail).toEqual([
+      "shared-note-rail-comments",
+      "shared-note-rail-chat",
+      "shared-note-rail-version",
+      "shared-note-rail-process",
+      "shared-note-rail-links",
+    ]);
+  });
+
+  it("中身を持たない type（素材の manifest）には出さない", async () => {
+    const manifest = {
+      ...NOTE,
+      id: "asset-1",
+      type: "data-manifest",
+      extra: { title: "XRD.csv", media_type: "other" },
+    } as SharedEntry;
+    renderView({
+      entry: manifest,
+      aiAvailable: true,
+      chatDeps: memoryChatDeps().deps,
+      readEntryBody: async () => ({ body: new TextEncoder().encode(""), verified: true }),
+    });
+    await screen.findByTestId("shared-note-rail-comments");
+
+    expect(screen.queryByTestId("shared-note-rail-chat")).toBeNull();
+  });
+});
+
+describe("SharedNoteView の段落引用（chat タブ）", () => {
+  it("chat タブ中の段落クリックは引用付きの会話になり、コメントの付け先にはならない", async () => {
+    renderView({
+      aiAvailable: true,
+      chatDeps: memoryChatDeps().deps,
+      initialRailTab: "chat",
+    });
+    const block = await screen.findByText("1050 ℃ で 2 時間保持した");
+    await screen.findByTestId("ai-panel-mock");
+
+    await act(async () => {
+      fireEvent.click(block);
+    });
+
+    // 引用は AI パネルに渡る（store の quotedMarkdown 経由）
+    expect(screen.getByTestId("ai-panel-quoted").textContent).toBe("1050 ℃ で 2 時間保持した");
+    // コメントの付け先（常時ハイライト）にはならない
+    expect(highlightCss()).not.toContain('data-id="b-sinter"');
+  });
+
+  it("chat タブを閉じれば段落クリックはコメントの付け先に戻る", async () => {
+    renderView({ aiAvailable: true, chatDeps: memoryChatDeps().deps });
+    const block = await screen.findByText("1050 ℃ で 2 時間保持した");
+
+    fireEvent.click(block);
+
+    expect(highlightCss()).toContain('[data-id="b-sinter"][data-node-type="blockOuter"]');
+    expect(screen.getByText(t("comment.anchorPrefix"))).toBeTruthy();
   });
 });
 

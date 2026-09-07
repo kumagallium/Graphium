@@ -1,21 +1,20 @@
 // 素材（PDF / URL 等）に紐づく AI チャット履歴の永続化。
 //
-// ノートのチャットは GraphiumDocument.chats としてノート JSON に同梱されるが、
-// 素材ビュー（MaterialFullView の「AI に質問」）の会話には受け皿が無く、ビューを
-// 閉じた時点で消えていた。ここでは版スナップショット（version-snapshots/
-// snapshot-store.ts）と同じく StorageProvider.readAppData / writeAppData
-// （3 プロバイダ全実装済みの内部チャネル）を使い、
-//   asset-chats:<fileId> → ScopeChat[]
-// の 1 素材 1 ファイルで持つ。
+// 実体は ai-assistant/app-data-chat-store.ts（appData の <key> → ScopeChat[]）で、
+// ここは素材用のキー `asset-chats:<fileId>` を与えるだけの薄い入口。
+// 共有ライブラリの全画面チャット（shared-chats:<sharedId>）と同じ仕組みを使う。
 //
-// media-index に相乗りさせないのは、あちらが全素材の一覧として頻繁に再構築される
-// ため（会話本文を毎回運ばせたくない）。素材ごとに分けておけば、会話の寿命は
-// その素材の寿命に自然と一致する。
+// キー書式は保存済みデータの所在そのものなので変更しない。
 
 import type { ScopeChat } from "../../lib/document-types";
 import type { StorageProvider } from "../../lib/storage/types";
+import { loadAppDataChats, saveAppDataChats } from "../ai-assistant/app-data-chat-store";
 
-const chatsKey = (fileId: string) => `asset-chats:${fileId}`;
+/** 素材チャットの appData キー接頭辞 */
+export const ASSET_CHATS_KEY_PREFIX = "asset-chats:";
+
+/** 素材チャットの appData キー */
+export const assetChatsKey = (fileId: string) => `${ASSET_CHATS_KEY_PREFIX}${fileId}`;
 
 /**
  * 素材のチャット履歴を返す。
@@ -26,9 +25,7 @@ export async function loadAssetChats(
   provider: StorageProvider,
   fileId: string,
 ): Promise<ScopeChat[]> {
-  const raw = await provider.readAppData?.(chatsKey(fileId));
-  if (!Array.isArray(raw)) return [];
-  return raw as ScopeChat[];
+  return loadAppDataChats(provider, assetChatsKey(fileId));
 }
 
 /**
@@ -42,6 +39,5 @@ export async function saveAssetChats(
   fileId: string,
   chats: ScopeChat[],
 ): Promise<void> {
-  if (!provider.writeAppData) return;
-  await provider.writeAppData(chatsKey(fileId), chats.length > 0 ? chats : null);
+  return saveAppDataChats(provider, assetChatsKey(fileId), chats);
 }

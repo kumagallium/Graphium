@@ -5,8 +5,12 @@
 // - コメントのパネルには「解決済みの一覧」を渡す。生の DI prop（未指定なら undefined）を
 //   そのまま渡すと SharedEntryComments の中でもう一度 useSharedLibrary が走り、
 //   同じストアを 2 本購読して更新のたびに二重で再計算することになる
+// - note-app が全画面へ aiAvailable と onIngestChat を渡す。渡し忘れると
+//   「AI に質問」のタブが永久に出ない（コンポーネント側のテストでは気づけない）
 
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // 本文は SharedEntryBody 経由でブロック registry を読み込む。pdf ビューアは
 // jsdom に無い API（DOMMatrix）を要求するので、他のテストと同じく差し替える
@@ -120,5 +124,34 @@ describe("SharedNoteView からコメントパネルへの配線", () => {
       // 解決済み ＝ ストアのスナップショット（封筒も含む）が届いている
       expect(entries?.map((e) => e.id).sort()).toEqual(["comment-1", "note-1"]);
     });
+  });
+});
+
+describe("note-app から全画面への配線", () => {
+  // ここだけソースを読む: note-app は NoteApp 全体を起こさないと描けないので、
+  // 「渡しているか」を確かめるのに実レンダリングは割に合わない。
+  // 見ているのは SharedEntryFullView の JSX 1 か所だけ（識別子の有無ではなく、
+  // その要素に付いている属性の形）。
+  const noteAppSource = readFileSync(
+    join(import.meta.dirname, "..", "..", "note-app.tsx"),
+    "utf-8",
+  );
+  const fullViewJsx = (() => {
+    const start = noteAppSource.indexOf("<SharedEntryFullView");
+    expect(start).toBeGreaterThan(-1);
+    const end = noteAppSource.indexOf("/>", start);
+    expect(end).toBeGreaterThan(start);
+    return noteAppSource.slice(start, end);
+  })();
+
+  it("AI の可否（aiUiEnabled）を渡す", () => {
+    expect(fullViewJsx).toContain("aiAvailable={aiUiEnabled}");
+  });
+
+  it("会話をナレッジに取り込むハンドラを渡す（AI が使えるときだけ）", () => {
+    expect(fullViewJsx).toContain("onIngestChat={aiUiEnabled ? handleIngestChat : undefined}");
+    // ノート側のチャットパネルと同じ関数を使う（片方だけ挙動がずれないように）
+    expect(noteAppSource).toContain("onIngestChat={aiUiEnabled ? handleIngestChat : undefined}");
+    expect(noteAppSource).toContain("const handleIngestChat = useCallback(");
   });
 });
