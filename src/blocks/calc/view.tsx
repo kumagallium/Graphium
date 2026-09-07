@@ -21,7 +21,7 @@
 // - 配色は design.md のトークン（--color-*）のみを使う
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { ArrowRightToLine, Calculator, Check, ChevronRight } from "lucide-react";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
 import {
@@ -178,6 +178,16 @@ export const CalcBlock = createReactBlockSpec(
       // データ表へは既存の列に書けない（素材が正）ので、新しい列の名前を入れて足す。
       // 既定は変数名（`d = …` なら列「d」）
       const [newColumnName, setNewColumnName] = useState("");
+      // ピッカーの置き場所。結果列の下に開くのが基本だが、画面の下端に近いと
+      // 画面外にはみ出すので、そのときは上へ開く。開いた瞬間の位置で決める
+      const pickerAnchorRef = useRef<HTMLDivElement>(null);
+      const [pickerPlacement, setPickerPlacement] = useState<"below" | "above">("below");
+      useLayoutEffect(() => {
+        if (!picker) return;
+        const rect = pickerAnchorRef.current?.getBoundingClientRect();
+        const room = rect ? window.innerHeight - rect.bottom : Infinity;
+        setPickerPlacement(room < 300 && (rect?.top ?? 0) > 300 ? "above" : "below");
+      }, [picker]);
       useEffect(() => {
         if (picker) setNewColumnName(picker.varName);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -355,7 +365,7 @@ export const CalcBlock = createReactBlockSpec(
 
             {/* 右: 行ごとの評価結果。クリックでコピーできる */}
             {!empty && (
-              <div data-calc-results style={styles.resultsColWrap}>
+              <div data-calc-results ref={pickerAnchorRef} style={styles.resultsColWrap}>
               <div style={styles.resultsCol} aria-hidden={false}>
                 {lines.map((line, i) => {
                   const r = results[i];
@@ -424,7 +434,14 @@ export const CalcBlock = createReactBlockSpec(
                 })}
               </div>
               {picker && (
-                <div style={styles.writebackBox} data-test="calc-writeback-picker">
+                <div
+                  style={{
+                    ...styles.writebackBox,
+                    ...(pickerPlacement === "above" ? styles.writebackBoxAbove : {}),
+                  }}
+                  data-test="calc-writeback-picker"
+                  data-placement={pickerPlacement}
+                >
                   {/* 左パネル: 表の一覧。選ぶと右に列のパネルが展開する
                       （step の前手順ピッカーと同じカスケードの流儀） */}
                   <div style={styles.writebackPanel}>
@@ -711,6 +728,11 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--color-border)",
     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
   },
+  // 画面の下端に近いときは上へ開く（下に開くと画面外にはみ出す）
+  writebackBoxAbove: {
+    top: "auto",
+    bottom: "calc(100% + 4px)",
+  },
   writebackLabel: {
     fontSize: 11,
     color: "var(--color-muted-foreground)",
@@ -769,10 +791,12 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 6,
     marginTop: 4,
+    alignSelf: "stretch",
   },
   writebackNewColumnInput: {
     flex: 1,
-    minWidth: 0,
+    // 列パネルは中身に合わせて縮むので、入力欄には最低幅を持たせる（無いと数 px に潰れる）
+    minWidth: 140,
     fontSize: 12,
     padding: "3px 8px",
     borderRadius: 6,
