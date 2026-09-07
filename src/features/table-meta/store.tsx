@@ -61,6 +61,12 @@ type TableMetaStoreValue = {
   tableBlockIds: Record<string, string> | null;
   setTableBlockIds: (ids: Record<string, string>) => void;
   /**
+   * そのうちデータ表（素材を参照する表）のブロック ID。calc の書き戻し先として選ぶと
+   * セルに書く代わりに新しい列として見せるので、ピッカーが挙動を切り替えるために持つ
+   */
+  dataTableBlockIds: string[] | null;
+  setDataTableBlockIds: (ids: string[]) => void;
+  /**
    * calc ブロックからの書き戻し宣言（calcBlockId → 書きたい内容）。
    * 実際の書き込みはホストが行う（applyCalcWritebacks）。null で宣言を消す
    */
@@ -93,6 +99,12 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
   const [tableBlockIds, setTableBlockIdsState] = useState<Record<string, string> | null>(null);
   const setTableBlockIds = useCallback((ids: Record<string, string>) => {
     setTableBlockIdsState((prev) =>
+      prev && JSON.stringify(prev) === JSON.stringify(ids) ? prev : ids
+    );
+  }, []);
+  const [dataTableBlockIds, setDataTableBlockIdsState] = useState<string[] | null>(null);
+  const setDataTableBlockIds = useCallback((ids: string[]) => {
+    setDataTableBlockIdsState((prev) =>
       prev && JSON.stringify(prev) === JSON.stringify(ids) ? prev : ids
     );
   }, []);
@@ -239,6 +251,7 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     // ノートをまたいで前のノートの配布・宣言を残さない（誤書き込み防止）
     setTableColumnsState(null);
     setTableBlockIdsState(null);
+    setDataTableBlockIdsState(null);
     setCalcWritebacksState({});
   }, []);
 
@@ -268,6 +281,8 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         setTableColumns,
         tableBlockIds,
         setTableBlockIds,
+        dataTableBlockIds,
+        setDataTableBlockIds,
         calcWritebacks,
         setCalcWriteback,
         getSnapshot,

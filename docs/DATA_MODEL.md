@@ -309,7 +309,10 @@ type TableSource = {
   asset is protected from deletion while a data table refers to it. Without
   the asset the block renders a placeholder naming the source file. Calc
   blocks and charts resolve a data table by its caption, the same way they
-  resolve a note table.
+  resolve a note table. A calc write-back target on a data table (a
+  `CalcTarget` whose `tableBlockId` is the block) adds a computed column at
+  display time from the calc block's declaration; nothing is written to the
+  asset or to the note.
 
 ### 2.3 PROV-DM label model
 

@@ -142,8 +142,12 @@ talks to LLM and embedding backends.
   `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and lets the writer choose the
   other form. Re-importing from the source badge converts between the two
   forms. Calc blocks and charts read a data table by its caption exactly
-  like a note table (read-only: calc write-back never targets one), and the
-  expand button opens the same full-height view with virtual scrolling.
+  like a note table, and the expand button opens the same full-height view
+  with virtual scrolling. Calc write-back (⇥) onto a data table does not
+  touch the asset: the declared values are shown as an extra *computed
+  column* on the right, marked with a calculator badge, so the formula stays
+  visible in the calc block and the note still stores no rows. Charts and
+  other calc blocks read computed columns like any other column.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the

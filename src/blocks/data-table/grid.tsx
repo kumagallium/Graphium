@@ -4,10 +4,11 @@
 // 描くべき行を計算で出す（仮想スクロール）。並べ替えは表示だけで、データは変えない。
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Calculator } from "lucide-react";
 import { t } from "../../i18n";
 import type { SortState } from "../../features/table-meta/sort-table";
 import type { DataTableData } from "./data";
+import type { LinkedColumn } from "./linked";
 import {
   HEADER_HEIGHT,
   INDEX_COLUMN_WIDTH,
@@ -23,12 +24,16 @@ import {
 export function DataGrid({
   data,
   visibleRows = VISIBLE_ROWS,
+  linked = [],
 }: {
   data: DataTableData;
   /** 一度に見せる行数。これを超えると表の中でスクロールする */
   visibleRows?: number;
+  /** 末尾に足した計算列（calc の書き戻し）。見出しにバッジを出す */
+  linked?: LinkedColumn[];
 }) {
   const { headers, rows } = data;
+  const linkedStart = headers.length - linked.length;
   const columns = useMemo(() => buildColumnModels(headers, rows), [headers, rows]);
   const [sort, setSort] = useState<SortState>(null);
   const order = useMemo(() => orderRows(rows, sort), [rows, sort]);
@@ -73,6 +78,7 @@ export function DataGrid({
         </div>
         {headers.map((h, col) => {
           const active = sort?.col === col;
+          const linkedColumn = col >= linkedStart ? linked[col - linkedStart] : undefined;
           return (
             <button
               key={col}
@@ -80,7 +86,12 @@ export function DataGrid({
               role="columnheader"
               aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
               onClick={() => toggleSort(col)}
-              title={t("dataTable.sortHint")}
+              title={
+                linkedColumn
+                  ? t("dataTable.linkedColumn", { calc: linkedColumn.calcName || t("calc.label") })
+                  : t("dataTable.sortHint")
+              }
+              data-linked-column={linkedColumn ? "true" : undefined}
               style={{
                 ...styles.headerCell,
                 ...styles.headerButton,
@@ -89,6 +100,7 @@ export function DataGrid({
                 color: active ? "var(--color-foreground)" : "var(--color-text-secondary)",
               }}
             >
+              {linkedColumn && <Calculator size={11} strokeWidth={2} style={{ flexShrink: 0 }} />}
               <span style={styles.ellipsis}>{h}</span>
               {active &&
                 (sort!.dir === "asc" ? (

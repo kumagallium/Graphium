@@ -41,6 +41,9 @@ import { loadDataTable, peekDataTable, type DataTableData } from "./data";
 import { DataTableExpandModal } from "./expand-modal";
 import { DataGrid } from "./grid";
 import { dataTableDisplayName, parseDataTableSource } from "./source";
+import { linkedColumnsFor, mergeLinkedColumns } from "./linked";
+// calc の書き戻し宣言（計算列）を読む。Provider が無い場所（Storybook 等）でも動く optional 版
+import { useTableMetaStoreOptional } from "../../features/table-meta/store";
 
 export const DataTableBlock = createReactBlockSpec(
   {
@@ -119,25 +122,35 @@ function DataTableBlockView({ block, editor }: { block: any; editor: any }) {
   const [expanded, setExpanded] = useState(false);
   const closeExpanded = useCallback(() => setExpanded(false), []);
 
+  // calc が ⇥ でこのデータ表へ宣言した列を、素材の列の右に足して見せる（セルには書かない）
+  const tableStore = useTableMetaStoreOptional();
+  const calcWritebacks = tableStore?.calcWritebacks;
+  const linked = useMemo(() => linkedColumnsFor(block.id, calcWritebacks), [block.id, calcWritebacks]);
+  const merged = useMemo(
+    () => (state.kind === "ready" ? mergeLinkedColumns(state.data, linked) : null),
+    [state, linked],
+  );
+
   return (
     <div style={styles.root} data-data-table-block>
       <CaptionLine caption={caption} editable={editable} onCommit={commitCaption} />
-      {state.kind === "ready" ? (
-        <DataGrid data={state.data} />
+      {merged ? (
+        <DataGrid data={merged.data} linked={merged.linked} />
       ) : (
-        <Placeholder state={state.kind} source={source} />
+        <Placeholder state={state.kind === "ready" ? "loading" : state.kind} source={source} />
       )}
       <FooterLine
         source={source}
-        data={state.kind === "ready" ? state.data : null}
+        data={merged ? merged.data : null}
         canReimport={editable && !!source?.fileId && hostAcceptsReimport}
         onReimport={reimport}
-        onExpand={state.kind === "ready" ? () => setExpanded(true) : undefined}
+        onExpand={merged ? () => setExpanded(true) : undefined}
       />
-      {expanded && state.kind === "ready" && (
+      {expanded && merged && (
         <DataTableExpandModal
           caption={dataTableDisplayName(caption, source)}
-          data={state.data}
+          data={merged.data}
+          linked={merged.linked}
           onClose={closeExpanded}
         />
       )}
