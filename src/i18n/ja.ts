@@ -424,6 +424,7 @@ export const ja: Record<string, string> = {
   "calc.copied": "コピーしました",
   "calc.errorMark": "?",
   "calc.writeToTable": "表へ書き戻す",
+  "calc.writeToTableAutoName": "表へ書き戻す（この行に変数名を自動で付けます）",
   "calc.writebackPickTable": "書き込む表",
   "calc.writebackPickColumn": "書き込む列",
   "calc.writebackClear": "書き戻しを解除",

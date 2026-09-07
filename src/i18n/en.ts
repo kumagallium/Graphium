@@ -424,6 +424,7 @@ export const en: Record<string, string> = {
   "calc.copied": "Copied",
   "calc.errorMark": "?",
   "calc.writeToTable": "Write back to a table",
+  "calc.writeToTableAutoName": "Write to a table (a variable name is added to this line)",
   "calc.writebackPickTable": "target table",
   "calc.writebackPickColumn": "target column",
   "calc.writebackClear": "Stop writing back",

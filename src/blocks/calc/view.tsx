@@ -29,8 +29,7 @@ import {
   extractReadColumns,
   parseCalcTargets,
   type CalcTargets,
-  type CalcWritebackRequest,
-} from "./writeback";
+  type CalcWritebackRequest, autoVariableName } from "./writeback";
 import { applyCalcSuggestion, computeCalcSuggestion, type CalcSuggestion } from "./suggest";
 import { buildTableIndex, collectTableColumns } from "./table-scope";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
@@ -384,16 +383,31 @@ export const CalcBlock = createReactBlockSpec(
                       >
                         {copiedLine === i ? t("calc.copied") : r.text || " "}
                       </span>
-                      {varName && (
+                      {editable && (
                         <button
                           type="button"
                           data-test="calc-writeback-btn"
-                          title={targetLabel ?? t("calc.writeToTable")}
-                          onClick={() =>
-                            setPicker((cur) =>
-                              cur?.varName === varName ? null : { varName, tableName: null }
-                            )
+                          title={
+                            targetLabel ??
+                            (varName ? t("calc.writeToTable") : t("calc.writeToTableAutoName"))
                           }
+                          onClick={() => {
+                            if (varName) {
+                              setPicker((cur) =>
+                                cur?.varName === varName ? null : { varName, tableName: null }
+                              );
+                              return;
+                            }
+                            // 変数の無い式: 書き戻し先は変数名で紐付けるので、押した瞬間に
+                            // 名付けて（v1 = 式）からピッカーを開く。名前は後から書き換えられる
+                            const name = autoVariableName(draft);
+                            const next = lines
+                              .map((l, j) => (j === i ? `${name} = ${l.trim()}` : l))
+                              .join("\n");
+                            setDraft(next);
+                            commit(next);
+                            setPicker({ varName: name, tableName: null });
+                          }}
                           style={{
                             ...styles.writebackBtn,
                             ...(target ? styles.writebackBtnActive : {}),
