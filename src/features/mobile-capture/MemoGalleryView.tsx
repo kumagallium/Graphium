@@ -529,11 +529,11 @@ function MemoCard({
     >
       {/* 左上チェックボックス（list 行の td と同じ作法）。
           未選択かつ非ホバーのときだけ消して本文を邪魔しない。
-          カードの余白（p-4）に収まる位置に置き、本文の 1 行目とは重ねない。
+          8pt 格子の --space-2（8px）で角から離す（素材のタイルと同じ）。下地（bg-card）で本文と重なっても読める。
           input 自体は pointer-events-none にして、mousedown を包む要素で拾う
           （距離ゼロでも即トグル + そのままドラッグで範囲選択に入るため） */}
       <div
-        className={`absolute top-1 left-1 z-10 rounded bg-card cursor-pointer transition-opacity ${
+        className={`absolute top-2 left-2 z-10 rounded bg-card cursor-pointer transition-opacity ${
           selected || showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
         }`}
         title={t("memo.dragToRangeSelect")}
@@ -875,7 +875,7 @@ export function MemoGalleryView({
         <span className="text-xs text-muted-foreground">
           {loading ? t("common.loading") : t("memo.count", { count: String(captures.length) })}
         </span>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {/* gallery モードの「すべて選択」。list は列ヘッダのチェックボックスが担う */}
           {viewMode === "gallery" && captures.length > 0 && (
             <input
@@ -955,7 +955,7 @@ export function MemoGalleryView({
           ギャラリー表示でしかメモを見ないユーザーが「ナレッジ化」等の一括操作に
           辿り着けない状態を解消するため、表示モードでは出し分けない */}
       {someSelected && (
-        <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
+        <div className="px-6 py-2 border-b border-border bg-primary/5 flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-xs text-foreground font-medium">
             {selectedIds.size} / {captures.length}
           </span>
@@ -965,7 +965,7 @@ export function MemoGalleryView({
           >
             {t("memo.deselectAll")}
           </button>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             {onSetMemoContexts && (
               <button
                 onClick={(e) => {
@@ -983,7 +983,7 @@ export function MemoGalleryView({
                   setAssignApplied(common);
                   setAssignOpen(true);
                 }}
-                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1"
+                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1 whitespace-nowrap"
               >
                 <Folder size={12} />
                 {t("nav.folders")}
