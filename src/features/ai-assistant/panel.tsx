@@ -16,6 +16,7 @@ import { hasSharedEntryOpenCallback, openSharedEntry } from "../../blocks/shared
 import { fetchModels } from "./api";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "../../lib/sidecar";
 import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
+import { formatDateTime } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
 import { GroundingScopeChip } from "../composer/GroundingScopeChip";
 import { WebSearchMissingHint } from "../composer/WebSearchMissingHint";
@@ -681,9 +682,9 @@ function ChatListView({
             : chat.scopeBlockId ? chat.scopeBlockId.slice(0, 8) : "";
           const firstUserMsg = chat.messages.find((m) => m.role === "user");
           const preview = firstUserMsg?.content.slice(0, 60) || t("aiChat.emptyChat");
-          const date = new Date(chat.modifiedAt).toLocaleDateString("ja-JP", {
-            month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-          });
+          // 一覧（ノート・ナレッジ・素材）と同じ `YYYY-MM-DD HH:MM`。
+          // 以前は "ja-JP" 固定で、英語 UI でも日本語の日付表記になっていた
+          const date = formatDateTime(chat.modifiedAt);
           return (
             <button
               key={chat.id}
