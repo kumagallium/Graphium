@@ -995,7 +995,7 @@ export function MemoGalleryView({
                   onKnowledgeMemos([...selectedIds]);
                   setSelectedIds(new Set());
                 }}
-                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
+                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors whitespace-nowrap"
                 title={t("memo.knowledgeHint")}
               >
                 {t("memo.knowledgeSelected", { count: String(selectedIds.size) })}
@@ -1007,7 +1007,7 @@ export function MemoGalleryView({
                   for (const id of selectedIds) onArchiveMemo(id);
                   setSelectedIds(new Set());
                 }}
-                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors"
+                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors whitespace-nowrap"
               >
                 {t("memo.archiveSelected", { count: String(selectedIds.size) })}
               </button>
@@ -1015,7 +1015,7 @@ export function MemoGalleryView({
             {onDeleteMemo && (
               <button
                 onClick={() => setBulkDeleteOpen(true)}
-                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors whitespace-nowrap"
               >
                 {t("memo.deleteSelected", { count: String(selectedIds.size) })}
               </button>
