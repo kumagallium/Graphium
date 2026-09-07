@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.58.0](https://github.com/kumagallium/Graphium/compare/v0.57.0...v0.58.0) - 2026-09-07
+
+- [docs] Add v0.55.0 and v0.56.0 to the manual and repair the roadmap table by @kumagallium in https://github.com/kumagallium/Graphium/pull/839
+- [feat] Open a shared entry in a full view with comments, history, steps, and backlinks by @kumagallium in https://github.com/kumagallium/Graphium/pull/847
+
 ## [v0.57.0](https://github.com/kumagallium/Graphium/compare/v0.56.0...v0.57.0) - 2026-09-06
 
 - [feat] Comment on shared entries and keep the teacher-student loop visible by @kumagallium in https://github.com/kumagallium/Graphium/pull/842
