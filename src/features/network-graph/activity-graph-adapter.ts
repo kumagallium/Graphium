@@ -28,6 +28,8 @@ export type ActivityParam = {
   label: string;
   /** インライン attribute 由来のときの entityId（同上） */
   entityId?: string;
+  /** 段階（stage）行由来のときの段階番号（1 始まり）。表示専用で保存はしない */
+  stage?: number;
 };
 
 export type ActivityNode = {
@@ -67,7 +69,80 @@ const RESERVED_KEYS = new Set([
   // 行の永続 identity は FlowEntity.rowIdentity として別に拾う。
   // パラメータ扱いすると「tableRowId: row_...」がノードや列コピーに混入する
   "graphium:tableRowId",
+  // 段階（stage）行の構造メタ。親への畳み込みでしか使わず、パラメータ表示には出さない
+  "graphium:partOf",
+  "graphium:activityKind",
+  "graphium:stageIndex",
 ]);
+
+/** 段階（stage）として親 Activity に畳み込む子 Activity か */
+export function isStageActivity(n: ProvJsonLdNode): boolean {
+  return n["graphium:activityKind"] === "stage";
+}
+
+/** stage 子の graphium:partOf が指す親の @id（先頭 1 件のみ想定） */
+function stagePartOfId(n: ProvJsonLdNode): string | undefined {
+  const refs = n["graphium:partOf"] as { "@id": string }[] | undefined;
+  return Array.isArray(refs) && refs.length > 0 ? refs[0]["@id"] : undefined;
+}
+
+function stageIndexOf(n: ProvJsonLdNode): number {
+  const v = n["graphium:stageIndex"];
+  return typeof v === "number" ? v : 0;
+}
+
+/** グラフ全体から stage 子を親 Activity の @id ごとに集める */
+function collectStageChildrenByParent(graph: ProvJsonLdNode[]): Map<string, ProvJsonLdNode[]> {
+  const map = new Map<string, ProvJsonLdNode[]>();
+  for (const n of graph) {
+    if (n["@type"] !== "prov:Activity" || !isStageActivity(n)) continue;
+    const parentId = stagePartOfId(n);
+    if (!parentId) continue;
+    const list = map.get(parentId) ?? [];
+    list.push(n);
+    map.set(parentId, list);
+  }
+  return map;
+}
+
+/**
+ * 親 Activity（raw @id）に畳み込む stage 子のパラメータを、graphium:stageIndex
+ * 昇順に並べて連結する。各行は元の extractAttrs と同じ変換に stage 番号を添える。
+ */
+function mergeStageParams(
+  parentRawId: string,
+  stageChildrenByParent: Map<string, ProvJsonLdNode[]>,
+): { params: ActivityParam[]; stageCount?: number } {
+  const children = stageChildrenByParent.get(parentRawId);
+  if (!children || children.length === 0) return { params: [] };
+
+  // 1 つの Activity に段階を持つ [パラメータ] 表が複数あるケース（契約書
+  // 「1 つの Activity に attribute 表が複数ある場合は、表ごとに上の規則を独立に
+  // 適用する」）に対応するため、まず元の表（graphium:blockId）ごとにグルーピング
+  // してから、表の出現順 → 各表内の stageIndex 昇順の順に連結する。
+  // stageIndex だけでソートすると、表をまたいで同じ番号の行が交互に混ざる
+  // （表 A 段階 1・表 B 段階 1・表 A 段階 2・表 B 段階 2…）ため、意味の異なる
+  // 表の行が同じ「段階 N」として合成表示されてしまう。
+  const byTable = new Map<string, ProvJsonLdNode[]>();
+  for (const child of children) {
+    const tableId = child["graphium:blockId"] ?? "";
+    const list = byTable.get(tableId) ?? [];
+    list.push(child);
+    byTable.set(tableId, list);
+  }
+
+  const params: ActivityParam[] = [];
+  let stageCount = 0;
+  for (const group of byTable.values()) {
+    const sorted = [...group].sort((a, b) => stageIndexOf(a) - stageIndexOf(b));
+    for (const child of sorted) {
+      const stage = stageIndexOf(child);
+      for (const p of extractAttrs(child)) params.push({ ...p, stage });
+    }
+    stageCount += sorted.length;
+  }
+  return { params, stageCount };
+}
 
 /** informed_by desugar が立てる合成 output（「〜の結果」プレースホルダ）か */
 const isSyntheticResult = (id: string) => id.startsWith("result_synthetic_");
@@ -132,17 +207,22 @@ export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
   const graph = doc["@graph"];
   const nodeById = new Map(graph.map((n) => [n["@id"], n]));
 
+  // 段階（stage）子は独立カードにせず、親の @id ごとに集めておいて後で params へ畳む
+  const stageChildrenByParent = collectStageChildrenByParent(graph);
+
   // Activity ノード（id は blockId に正規化＝リンク書き込みでそのまま使える）
   const activityBlockId = new Map<string, string>(); // @id → blockId
   const activities: ActivityNode[] = [];
   const activityByBlockId = new Map<string, ActivityNode>();
   for (const n of graph) {
     if (n["@type"] !== "prov:Activity") continue;
+    if (isStageActivity(n)) continue; // 段階は独立カードにしない（親へ畳む）
     const blockId = n["graphium:blockId"] ?? n["@id"];
     activityBlockId.set(n["@id"], blockId);
 
-    // パラメータ: graphium:* の文字列値 + graphium:attributes 配列
-    const params = extractAttrs(n);
+    // パラメータ: graphium:* の文字列値 + graphium:attributes 配列 + 段階の畳み込み
+    const { params: stageParams } = mergeStageParams(n["@id"], stageChildrenByParent);
+    const params = [...extractAttrs(n), ...stageParams];
 
     const node: ActivityNode = {
       id: blockId,
@@ -227,6 +307,8 @@ export type FlowStep = {
   id: string; // blockId
   name: string;
   params: ActivityParam[];
+  /** 段階（stage）子が 2 つ以上あるときだけ立つ件数。カードの件数表示・小見出しに使う */
+  stageCount?: number;
   /** 別ノートの output 参照から投影した、読み取り専用の上流 step */
   externalOrigin?: ExternalFlowOrigin;
 };
@@ -288,14 +370,24 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
   const graph = doc["@graph"];
   const nodeById = new Map(graph.map((n) => [n["@id"], n]));
 
+  // 段階（stage）子は独立カードにせず、親の @id ごとに集めておいて後で params へ畳む
+  const stageChildrenByParent = collectStageChildrenByParent(graph);
+
   // Activity → FlowStep（@id → blockId 正規化）
   const activityBlockId = new Map<string, string>();
   const steps: FlowStep[] = [];
   for (const n of graph) {
     if (n["@type"] !== "prov:Activity") continue;
+    if (isStageActivity(n)) continue; // 段階は独立カードにしない（親へ畳む）
     const blockId = n["graphium:blockId"] ?? n["@id"];
     activityBlockId.set(n["@id"], blockId);
-    steps.push({ id: blockId, name: n["rdfs:label"] || t("nav.untitled"), params: extractAttrs(n) });
+    const { params: stageParams, stageCount } = mergeStageParams(n["@id"], stageChildrenByParent);
+    steps.push({
+      id: blockId,
+      name: n["rdfs:label"] || t("nav.untitled"),
+      params: [...extractAttrs(n), ...stageParams],
+      ...(stageCount && stageCount >= 2 ? { stageCount } : {}),
+    });
   }
 
   const relations = extractRelations(doc);
@@ -454,7 +546,10 @@ export function computeStepDistinguishers(
       for (const p of s.params) {
         const { key } = splitAttrLabel(p.label);
         if (!key) continue;
-        const k = key.toLowerCase();
+        // 段階（stage）付きパラメータは段階ごとに別キー扱いにする。
+        // stage を無視すると同じ key の 2 番目以降の段階が map 上書きされず消え、
+        // 段階違いの兄弟（1 段階目は同じ値・2 段階目だけ違う等）を見分けられなくなる
+        const k = p.stage !== undefined ? `${p.stage}:${key.toLowerCase()}` : key.toLowerCase();
         if (!map.has(k)) map.set(k, p.label);
         if (!keyOrder.includes(k)) keyOrder.push(k);
       }

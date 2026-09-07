@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { generateProvDocument, extractRelations, parseStructuredTable, parseParameterTable } from "./generator";
+import { generateProvDocument, extractRelations, parseStructuredTable, parseParameterTable, parseParameterTableRows } from "./generator";
+import { t } from "../../i18n";
 
 // ── ヘルパー: ProvJsonLd から関係をフラットに取得 ──
 function getRelations(doc: ReturnType<typeof generateProvDocument>) {
@@ -771,6 +772,336 @@ describe("Phase 3: テーブル構造化属性", () => {
     // パラメータテーブル自体は独立ノードにならない（id だけのノードを作らない）
     expect(doc["@graph"].find((n) => n["@id"] === "entity_param-table")).toBeUndefined();
     expect(doc["@graph"].some((n) => n["@id"]?.includes("param-table") && n["@type"] === "prov:Entity")).toBe(false);
+  });
+});
+
+// ──────────────────────────────────
+// feat/step-stage-rows: 段階（stage）行の投影
+// ──────────────────────────────────
+
+describe("段階（stage）: [パラメータ] 表の行 ≥2 から子 Activity を生成", () => {
+  const cell = (text: string, styles: Record<string, string | boolean> = {}) => [
+    { type: "text", text, styles },
+  ];
+
+  /** ヘッダー行 + データ行群からなる [パラメータ] テーブルブロックを作る。
+   *  rowIdentities[i] を指定した行だけ先頭セルに tableRowIdentity を付ける。 */
+  const paramTable = (
+    id: string,
+    headers: string[],
+    rows: string[][],
+    rowIdentities: (string | undefined)[] = [],
+  ) => ({
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: headers.map((h) => cell(h)) },
+        ...rows.map((r, i) => ({
+          cells: r.map((v, j) => (j === 0 && rowIdentities[i] ? cell(v, { tableRowIdentity: rowIdentities[i]! }) : cell(v))),
+        })),
+      ],
+    },
+    children: [],
+  });
+
+  const heading = (id: string, text: string) => ({
+    id,
+    type: "heading",
+    props: { level: 2 },
+    content: [{ type: "text", text }],
+    children: [],
+  });
+
+  describe("有効行 1（従来どおり。子は作らない）", () => {
+    it("親 Activity に params がマージされ、子・wasInformedBy・partOf が一切出ない", () => {
+      const doc = generateProvDocument({
+        blocks: [
+          heading("h2-sinter", "焼成する"),
+          paramTable("param-1row", ["温度", "時間"], [["800℃", "2h"]]),
+        ],
+        labels: new Map([
+          ["h2-sinter", "procedure"],
+          ["param-1row", "attribute"],
+        ]),
+        links: [],
+      });
+
+      const act = doc["@graph"].find((n) => n["@id"] === "activity_h2-sinter");
+      expect(act!["graphium:温度"]).toBe("800℃");
+      expect(act!["graphium:時間"]).toBe("2h");
+
+      // 子 Activity は作られない
+      expect(doc["@graph"].some((n) => n["@id"].startsWith("activity_param-1row"))).toBe(false);
+      expect(doc["@graph"].some((n) => n["graphium:activityKind"] === "stage")).toBe(false);
+
+      // wasInformedBy / partOf も一切出ない
+      const relations = getRelations(doc);
+      expect(relations.some((r) => r["@type"] === "prov:wasInformedBy")).toBe(false);
+      expect(relations.some((r) => r["@type"] === "graphium:partOf")).toBe(false);
+    });
+
+    it("2 行目が全セル空の表は 1 行扱い（子を作らない）", () => {
+      const doc = generateProvDocument({
+        blocks: [
+          heading("h2-sinter", "焼成する"),
+          paramTable("param-blank2nd", ["温度", "時間"], [["800℃", "2h"], ["", ""]]),
+        ],
+        labels: new Map([
+          ["h2-sinter", "procedure"],
+          ["param-blank2nd", "attribute"],
+        ]),
+        links: [],
+      });
+
+      const act = doc["@graph"].find((n) => n["@id"] === "activity_h2-sinter");
+      expect(act!["graphium:温度"]).toBe("800℃");
+      expect(doc["@graph"].some((n) => n["graphium:activityKind"] === "stage")).toBe(false);
+    });
+
+    it("1 行目が全セル空・2 行目に値がある表は、旧 parseParameterTable と同じく何もマージしない（後方互換）", () => {
+      // parseParameterTableRows は空セル行を読み飛ばして走査するため「有効行 1」と
+      // 判定されるが、旧 parseParameterTable は物理的な rows[1]（1 行目）しか見ず
+      // 全セル空なら null を返す。既存ノートの PROV 出力を変えないよう、この
+      // ケースでは 2 行目の値も一切マージされないことを固定する。
+      const doc = generateProvDocument({
+        blocks: [
+          heading("h2-sinter", "焼成する"),
+          paramTable("param-blank1st", ["温度", "時間"], [["", ""], ["800℃", "2h"]]),
+        ],
+        labels: new Map([
+          ["h2-sinter", "procedure"],
+          ["param-blank1st", "attribute"],
+        ]),
+        links: [],
+      });
+
+      const act = doc["@graph"].find((n) => n["@id"] === "activity_h2-sinter");
+      expect(act!["graphium:温度"]).toBeUndefined();
+      expect(act!["graphium:時間"]).toBeUndefined();
+      expect(doc["@graph"].some((n) => n["graphium:activityKind"] === "stage")).toBe(false);
+    });
+  });
+
+  describe("有効行 ≥2（段階化する）", () => {
+    it("親 Activity の params にはマージされず、行数分の子 Activity が生成される", () => {
+      const doc = generateProvDocument({
+        blocks: [
+          heading("h2-sinter", "焼成する"),
+          paramTable("param-3row", ["温度", "時間"], [
+            ["600℃", "1h"],
+            ["800℃", "2h"],
+            ["1000℃", "3h"],
+          ]),
+        ],
+        labels: new Map([
+          ["h2-sinter", "procedure"],
+          ["param-3row", "attribute"],
+        ]),
+        links: [],
+      });
+
+      const act = doc["@graph"].find((n) => n["@id"] === "activity_h2-sinter") as any;
+      // 親には一切マージされない
+      expect(act["graphium:温度"]).toBeUndefined();
+      expect(act["graphium:時間"]).toBeUndefined();
+
+      const children = doc["@graph"].filter((n) => n["graphium:activityKind"] === "stage");
+      expect(children).toHaveLength(3);
+
+      // label は「<親名> 段階 N」（連番フォールバック @id）
+      const parentLabel = act["rdfs:label"];
+      const c1 = doc["@graph"].find((n) => n["@id"] === "activity_param-3row_1") as any;
+      const c2 = doc["@graph"].find((n) => n["@id"] === "activity_param-3row_2") as any;
+      const c3 = doc["@graph"].find((n) => n["@id"] === "activity_param-3row_3") as any;
+      expect(c1).toBeDefined();
+      expect(c2).toBeDefined();
+      expect(c3).toBeDefined();
+      expect(c1["rdfs:label"]).toBe(t("prov.stageLabel", { parent: parentLabel, n: "1" }));
+      expect(c2["rdfs:label"]).toBe(t("prov.stageLabel", { parent: parentLabel, n: "2" }));
+      expect(c3["rdfs:label"]).toBe(t("prov.stageLabel", { parent: parentLabel, n: "3" }));
+
+      // params は行ごと
+      expect(c1["graphium:温度"]).toBe("600℃");
+      expect(c1["graphium:時間"]).toBe("1h");
+      expect(c2["graphium:温度"]).toBe("800℃");
+      expect(c3["graphium:温度"]).toBe("1000℃");
+
+      // stageIndex（表示専用の連番）
+      expect(c1["graphium:stageIndex"]).toBe(1);
+      expect(c2["graphium:stageIndex"]).toBe(2);
+      expect(c3["graphium:stageIndex"]).toBe(3);
+
+      // partOf: 子 → 親（@graph の JSON-LD ノード上に実際に出ている）
+      expect(c1["graphium:partOf"]).toEqual([{ "@id": "activity_h2-sinter" }]);
+      expect(c2["graphium:partOf"]).toEqual([{ "@id": "activity_h2-sinter" }]);
+      expect(c3["graphium:partOf"]).toEqual([{ "@id": "activity_h2-sinter" }]);
+
+      // wasInformedBy: 後 → 先の鎖（1 段目は無し）
+      expect(c1["prov:wasInformedBy"]).toBeUndefined();
+      expect(c2["prov:wasInformedBy"]).toEqual([{ "@id": "activity_param-3row_1" }]);
+      expect(c3["prov:wasInformedBy"]).toEqual([{ "@id": "activity_param-3row_2" }]);
+
+      // extractRelations で両方取れる
+      const relations = getRelations(doc);
+      expect(relations).toContainEqual({ "@type": "graphium:partOf", from: "activity_param-3row_1", to: "activity_h2-sinter" });
+      expect(relations).toContainEqual({ "@type": "graphium:partOf", from: "activity_param-3row_2", to: "activity_h2-sinter" });
+      expect(relations).toContainEqual({ "@type": "graphium:partOf", from: "activity_param-3row_3", to: "activity_h2-sinter" });
+      expect(relations).toContainEqual({ "@type": "prov:wasInformedBy", from: "activity_param-3row_2", to: "activity_param-3row_1" });
+      expect(relations).toContainEqual({ "@type": "prov:wasInformedBy", from: "activity_param-3row_3", to: "activity_param-3row_2" });
+    });
+
+    it("子 @id は tableRowIdentity 由来（付いている行）を優先し、無い行は連番フォールバックにする", () => {
+      const doc = generateProvDocument({
+        blocks: [
+          heading("h2-sinter", "焼成する"),
+          paramTable(
+            "param-mixed",
+            ["温度", "時間"],
+            [["600℃", "1h"], ["800℃", "2h"]],
+            ["row_stage_a"], // 1 行目だけ rowIdentity 付き
+          ),
+        ],
+        labels: new Map([
+          ["h2-sinter", "procedure"],
+          ["param-mixed", "attribute"],
+        ]),
+        links: [],
+      });
+
+      // rowIdentity 付きの行は identity 由来の @id
+      const byIdentity = doc["@graph"].find((n) => n["@id"] === "activity_param-mixed_row_stage_a") as any;
+      expect(byIdentity).toBeDefined();
+      expect(byIdentity["graphium:tableRowId"]).toBe("row_stage_a");
+      expect(byIdentity["graphium:stageIndex"]).toBe(1);
+
+      // rowIdentity の無い行は連番フォールバック（n=2）
+      const byFallback = doc["@graph"].find((n) => n["@id"] === "activity_param-mixed_2") as any;
+      expect(byFallback).toBeDefined();
+      expect(byFallback["graphium:stageIndex"]).toBe(2);
+    });
+
+    it("全セル空の行はスキップされ、有効行だけが段階になる", () => {
+      const doc = generateProvDocument({
+        blocks: [
+          heading("h2-sinter", "焼成する"),
+          paramTable("param-with-blank", ["温度", "時間"], [
+            ["600℃", "1h"],
+            ["", ""],
+            ["800℃", "2h"],
+          ]),
+        ],
+        labels: new Map([
+          ["h2-sinter", "procedure"],
+          ["param-with-blank", "attribute"],
+        ]),
+        links: [],
+      });
+
+      const children = doc["@graph"].filter((n) => n["graphium:activityKind"] === "stage");
+      expect(children).toHaveLength(2);
+      expect(children.map((c: any) => c["graphium:stageIndex"])).toEqual([1, 2]);
+      expect((children[1] as any)["graphium:温度"]).toBe("800℃");
+    });
+
+    it("Entity 親（material ブロックの子の attribute 表）は複数行でも従来どおり 1 行目だけマージする", () => {
+      const doc = generateProvDocument({
+        blocks: [
+          heading("h2-mix", "混合する"),
+          {
+            id: "mat-para",
+            type: "paragraph",
+            content: [{ type: "text", text: "Cu粉末" }],
+            children: [
+              paramTable("attr-under-material", ["粒径", "純度"], [
+                ["10um", "99.9%"],
+                ["20um", "99.5%"],
+              ]),
+            ],
+          },
+        ],
+        labels: new Map([
+          ["h2-mix", "procedure"],
+          ["mat-para", "material"],
+          ["attr-under-material", "attribute"],
+        ]),
+        links: [],
+      });
+
+      const entity = doc["@graph"].find((n) => n["@id"] === "entity_mat-para") as any;
+      expect(entity).toBeDefined();
+      // 1 行目のみマージ（段階化しない）
+      expect(entity["graphium:粒径"]).toBe("10um");
+      expect(entity["graphium:純度"]).toBe("99.9%");
+      // 子 Activity は作られない
+      expect(doc["@graph"].some((n) => n["graphium:activityKind"] === "stage")).toBe(false);
+    });
+
+    it("1 つの Activity に attribute 表が 2 つ（1 行の表と 3 行の表）— 表ごとに独立して規則を適用する", () => {
+      const doc = generateProvDocument({
+        blocks: [
+          heading("h2-multi", "複数の表を持つ手順"),
+          paramTable("param-single", ["圧力"], [["1atm"]]),
+          paramTable("param-triple", ["温度"], [["600℃"], ["800℃"], ["1000℃"]]),
+        ],
+        labels: new Map([
+          ["h2-multi", "procedure"],
+          ["param-single", "attribute"],
+          ["param-triple", "attribute"],
+        ]),
+        links: [],
+      });
+
+      const act = doc["@graph"].find((n) => n["@id"] === "activity_h2-multi") as any;
+      // 1 行の表は従来どおり親にマージ
+      expect(act["graphium:圧力"]).toBe("1atm");
+      // 3 行の表は段階化し、親にはマージされない
+      expect(act["graphium:温度"]).toBeUndefined();
+
+      const children = doc["@graph"].filter((n) => n["graphium:activityKind"] === "stage");
+      expect(children).toHaveLength(3);
+      expect(children.every((c: any) => c["@id"].startsWith("activity_param-triple_"))).toBe(true);
+    });
+  });
+});
+
+describe("parseParameterTableRows", () => {
+  it("rows[1..] を全行構造化し、rowIdentity を転写する", () => {
+    const block = {
+      type: "table",
+      content: {
+        type: "tableContent",
+        rows: [
+          { cells: [[{ type: "text", text: "温度" }], [{ type: "text", text: "時間" }]] },
+          { cells: [[{ type: "text", text: "600℃", styles: { tableRowIdentity: "row_a" } }], [{ type: "text", text: "1h" }]] },
+          { cells: [[{ type: "text", text: "800℃" }], [{ type: "text", text: "2h" }]] },
+        ],
+      },
+    };
+    expect(parseParameterTableRows(block)).toEqual([
+      { params: { 温度: "600℃", 時間: "1h" }, rowIdentity: "row_a" },
+      { params: { 温度: "800℃", 時間: "2h" } },
+    ]);
+  });
+
+  it("全セル空の行はスキップし、有効行が 0 なら null", () => {
+    const block = {
+      type: "table",
+      content: {
+        type: "tableContent",
+        rows: [
+          { cells: [[{ type: "text", text: "温度" }]] },
+          { cells: [[{ type: "text", text: "" }]] },
+        ],
+      },
+    };
+    expect(parseParameterTableRows(block)).toBeNull();
+  });
+
+  it("テーブル以外・行不足は null", () => {
+    expect(parseParameterTableRows({ type: "paragraph" })).toBeNull();
+    expect(parseParameterTableRows({ type: "table", content: { rows: [{ cells: [[{ type: "text", text: "温度" }]] }] } })).toBeNull();
   });
 });
 

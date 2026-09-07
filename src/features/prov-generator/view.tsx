@@ -77,12 +77,21 @@ function resolveThumbUrl(url: string, type?: string): string | undefined {
  */
 export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefinition[] {
   const elements: cytoscape.ElementDefinition[] = [];
-  const nodeIdSet = new Set(doc["@graph"].map((n) => n["@id"]));
+
+  // 段階（stage）子 Activity は畳んで親カードに集約表示するため、
+  // フロービュー / PDF 書き出しの Cytoscape グラフには描かない（親だけ描く）。
+  const stageNodeIds = new Set(
+    doc["@graph"].filter((n) => n["graphium:activityKind"] === "stage").map((n) => n["@id"]),
+  );
+  const nodeIdSet = new Set(
+    doc["@graph"].filter((n) => !stageNodeIds.has(n["@id"])).map((n) => n["@id"]),
+  );
 
   // 予約済み graphium: キー（ビュー表示対象外）
   const RESERVED_KEYS = new Set([
     "graphium:blockId", "graphium:attributes", "graphium:warnings", "graphium:entityType",
-    "graphium:mediaType", "graphium:mediaUrl",
+    "graphium:mediaType", "graphium:mediaUrl", "graphium:tableRowId",
+    "graphium:partOf", "graphium:activityKind", "graphium:stageIndex",
     // Phase D-2: graphium:phase はメタ情報なのでノードとして描画しない
     "graphium:phase",
   ]);
@@ -100,6 +109,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
 
   // ノード
   for (const node of doc["@graph"]) {
+    if (stageNodeIds.has(node["@id"])) continue;
     let label = node["rdfs:label"];
 
     // メディア Entity の場合はサムネイル URL をノードデータに付与

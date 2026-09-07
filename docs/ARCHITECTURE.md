@@ -211,13 +211,15 @@ talks to LLM and embedding backends.
   into the note's table block (`network-graph/table-row-edit.ts`).
   Selecting an entity shows the same panel with its row highlighted and
   its section scrolled into view, so there is exactly one place where
-  things are added: "add row" / "add column" on the section's table, and
+  things are added: "add <kind>" (or "add stage" on the parameter table) /
+  "add column" on the section's table, and
   the empty first cell of a kind that has no table yet — sections always
   render as a table (dashed while it is only a placeholder), and typing
   into that cell creates the labeled table in the note carrying what was
   typed, so nothing is written until there is something to write. The
-  parameter table's header row holds the keys and its single data row the
-  values. Entities highlighted in prose
+  parameter table's header row holds the keys and each data row one set of
+  values; from the second data row on, rows are stages of the step (§3.2) and
+  the panel numbers them for display only. Entities highlighted in prose
   remain readable and keep span-based editing — renaming rewrites the
   span text (keeping its `entityId`), removing deletes a dedicated row or
   strips the mark inside prose (DATA_MODEL §2.3) — and the panel lists
@@ -301,9 +303,11 @@ Labels come in two passes that operate on the same blocks:
    block** may be tagged `[Input]` / `[Tool]` / `[Output]` to mark
    it as a *structured table* (header row = attribute keys, each data row =
    one Entity), or `[Parameter]` to mark it as a *parameter table* (header
-   row = keys, first data row = values) whose `key=value` pairs are merged
-   into the enclosing Step's `params` (see [DATA_MODEL.md §2.3](./DATA_MODEL.md)).
-   Implemented in `src/features/context-label/`.
+   row = keys, each data row = one stage). A single data row's
+   `key=value` pairs merge into the enclosing Step's `params` as before;
+   two or more rows instead become chained stage child Activities, one
+   per row (see [DATA_MODEL.md §2.3](./DATA_MODEL.md)). Implemented in
+   `src/features/context-label/`.
 2. **Inline labels.** Highlights spans inside block text as `[Input]` /
    `[Tool]` / `[Parameter]` / `[Output]` (internal keys `material` /
    `tool` / `attribute` / `output`). Offered **only inside a step**, for
