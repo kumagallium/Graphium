@@ -176,7 +176,13 @@ import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
-import { getSharedRoot, getBlobRoot, pickInboxRoot, type SharedEntry } from "./lib/storage/shared";
+import {
+  getSharedRoot,
+  getBlobRoot,
+  getShareIncludesPrivateHistory,
+  pickInboxRoot,
+  type SharedEntry,
+} from "./lib/storage/shared";
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
 import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
@@ -465,6 +471,7 @@ function NoteHeaderMenu({
   isShared,
   shareBusy,
   shareDisabledReason,
+  shareHint,
   onShareTemplate,
   onCopyLink,
   fullWidth,
@@ -514,6 +521,11 @@ function NoteHeaderMenu({
   shareBusy?: boolean;
   /** Shared が無効な理由（disabled 時のヒント表示用） */
   shareDisabledReason?: string;
+  /**
+   * 共有できるときに出す補足（共有コピーに AI チャットと編集来歴が入るかどうか）。
+   * disabled のときは無効理由が優先される。
+   */
+  shareHint?: string;
   /**
    * 現在のページをテンプレートとして共有する（PR 3）。未設定時は項目ごと隠す。
    * 無効理由はノート共有と同じ shareDisabledReason を使う。
@@ -639,7 +651,7 @@ function NoteHeaderMenu({
                 className={itemClass}
                 disabled={shareDisabled || shareBusy}
                 onClick={() => { onShare(); setOpen(false); }}
-                title={shareDisabled ? shareDisabledReason : undefined}
+                title={shareDisabled ? shareDisabledReason : shareHint}
               >
                 <Share2 size={14} />
                 {shareBusy
@@ -2776,6 +2788,11 @@ function NoteEditorInner({
         : !fileId
           ? t("share.disabled.unsavedNote")
           : undefined;
+  // メニューの「チームと共有」に出す補足。設定は別画面で変えられるので、
+  // 描画のたびに読む（getSharedRoot と同じ扱い）
+  const sharePrivateHistoryHint = getShareIncludesPrivateHistory()
+    ? t("share.privateHistoryIncludedHint")
+    : t("share.privateHistoryExcludedHint");
   const handleShare = useCallback(async () => {
     if (!sharedRoot || !sharedAuthor) return;
     setShareBusy(true);
@@ -2794,6 +2811,8 @@ function NoteEditorInner({
         root: sharedRoot,
         author: sharedAuthor,
         blobRoot: getBlobRoot() ?? undefined,
+        // 単発共有はダイアログを出さないので、設定のスイッチがそのまま効く（§24）
+        includePrivateHistory: getShareIncludesPrivateHistory(),
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -5030,6 +5049,7 @@ function NoteEditorInner({
           }
           shareDisabled={!!shareDisabledReason || saving}
           shareDisabledReason={shareDisabledReason}
+          shareHint={sharePrivateHistoryHint}
           isShared={isShared}
           shareBusy={shareBusy}
           onCopyLink={

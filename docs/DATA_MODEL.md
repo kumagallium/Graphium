@@ -1847,6 +1847,24 @@ Key model choices:
   evolving vocabulary, so it is kept out of the shared format's folder
   structure — older builds can still list, preview, and fork an entry
   whose `wikiKind` they do not know.
+- **A `"note"` / `"knowledge"` body is a `GraphiumDocument` JSON, minus
+  the private history** — by default `chats` (§2.5) and
+  `documentProvenance` (§2.4) are dropped from the shared copy
+  (`stripPrivateHistory` in `src/features/sharing/share-note.ts`, applied
+  after blob substitution and before the hash is computed, so `hash`
+  covers what the reader actually gets). Sharing publishes the record,
+  not the trial and error behind it. The Settings → Storage switch
+  "Include AI chats and edit history when sharing"
+  (`graphium-share-include-private-history`, default off) and the bulk
+  share dialog's checkbox turn it back on per share. Everything else
+  travels unchanged — `pages` (blocks, `labels`, `provLinks`),
+  `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
+  because the shared projection (§7.6) and the reverse links read them. The shared
+  format version is unchanged: both fields were already optional, so an
+  older build reading a newer shared copy simply finds them absent.
+  Version snapshots (`snapshot:<snapshotId>`, §2.4) and memos are stored
+  outside the document altogether, so they have never travelled with a
+  share either.
 - **`"template"` body is a `PageTemplate`, not a `GraphiumDocument`** —
   sharing a page as a template writes the (previously dormant)
   `PageTemplate` JSON (`src/features/template/types.ts`: `name` /

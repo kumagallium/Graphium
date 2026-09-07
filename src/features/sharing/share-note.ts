@@ -12,7 +12,15 @@
 // - extra.blobs に BlobRef[] を載せる（後の resolver / GC が引ける）
 // - personal 側 doc は無変更
 //
-// 設計: docs/internal/team-shared-storage-design.md §3 / §12 Phase 2c
+// 共有コピーの中身（§24）:
+// - 既定では AI チャット（chats）と編集来歴（documentProvenance）を共有コピーに
+//   載せない。共有は本文を見せる操作であって、作業の過程を見せる操作ではない
+// - 含めたい人は options.includePrivateHistory（設定のスイッチ）で残せる
+// - 剥がすのはこの 2 つだけ。provLinks / labels / noteContexts / forkedFrom /
+//   templateFrom / sharedRef / wikiMeta は共有側の投影・逆引きが使うので残す
+// - 共有フォーマットの版は変えない（フィールドが無いだけ。読む側は optional）
+//
+// 設計: docs/internal/team-shared-storage-design.md §3 / §12 Phase 2c / §24
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { AuthorIdentity } from "../document-provenance/types";
@@ -54,6 +62,11 @@ export type ShareNoteOptions = {
    */
   blobRoot?: string | null;
   /**
+   * true のときだけ chats と documentProvenance を共有コピーに残す。既定 false。
+   * 設定（Settings → 共有ストレージ）の値を呼び出し側が渡す。
+   */
+  includePrivateHistory?: boolean;
+  /**
    * テスト用フック（本番では未指定）。
    * - extractFileId: 既定で active StorageProvider のものを使う
    * - fetchBytes: 既定で Tauri の `read_media_file` を使う
@@ -71,6 +84,21 @@ const defaultFetchBytes: FetchMediaBytes = async (fileId: string) => {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 };
+
+/**
+ * 共有コピー用に、AI チャット（`chats`）と編集来歴（`documentProvenance`）を
+ * 落とした浅いコピーを返す。元の doc は変更しない。
+ *
+ * 浅いコピーで足りるのは、剥がす 2 つがどちらもトップレベルの独立したフィールドで、
+ * pages / labels などの他の枝から参照されていないため。
+ */
+export function stripPrivateHistory(doc: GraphiumDocument): GraphiumDocument {
+  if (doc.chats === undefined && doc.documentProvenance === undefined) return doc;
+  const stripped = { ...doc };
+  delete stripped.chats;
+  delete stripped.documentProvenance;
+  return stripped;
+}
 
 /**
  * ノートを shared に書き出し、`sharedRef` 付きの新しい GraphiumDocument を返す。
@@ -130,6 +158,13 @@ export async function shareGraphiumDocument(
       blobs = result.blobs;
     }
 
+    // ── §24: 共有コピーから AI チャットと編集来歴を落とす（既定） ──
+    // blob 置換の後・hash 計算の前に通す。hash は共有コピーの本文から計算するので、
+    // 剥がした状態が正になる（受け手が読む JSON と hash が一致する）
+    if (!options.includePrivateHistory) {
+      entryDoc = stripPrivateHistory(entryDoc);
+    }
+
     const provider = new LocalFolderSharedProvider(options.root, {
       email: options.author.email,
     });
@@ -166,6 +201,8 @@ export async function shareGraphiumDocument(
     const hash = await computeSharedEntryHash(baseEntry, body);
     await provider.write(baseEntry, body);
 
+    // 手元に保存し直す doc は「剥がしていない元の doc」がベース。
+    // ここで entryDoc を使うと、共有した瞬間に手元のチャットと編集来歴が消える
     const updatedDoc: GraphiumDocument = {
       ...doc,
       sharedRef: {
