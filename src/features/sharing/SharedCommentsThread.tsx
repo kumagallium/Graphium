@@ -59,8 +59,10 @@ export type SharedCommentsThreadProps = {
    * - "stacked"（既定）: 節としてそのまま縦に積む（ノート右パネル・従来の見え方）
    * - "docked": パネル下部に固定する前提。スレッド一覧が自前の高さ内でスクロールし、
    *   threadsOpen=false のときは入力欄だけを残して一覧を畳む
+   * - "panel": 右レールのパネル 1 枚を占める前提（全画面表示）。一覧が高さいっぱいに
+   *   伸びてスクロールし、入力欄は下端に固定される（読みながら書く形）
    */
-  layout?: "stacked" | "docked";
+  layout?: "stacked" | "docked" | "panel";
   /** docked のときの一覧の開閉（既定は開） */
   threadsOpen?: boolean;
   /** docked のときの一覧の最大高さ（既定 40vh）。パネルの高さを食い潰さないための上限 */
@@ -448,6 +450,7 @@ export function SharedCommentsThread({
   );
 
   const docked = layout === "docked";
+  const panel = layout === "panel";
 
   // 一覧（現在の版 → 古い版）。docked ではこの塊だけを高さ上限つきでスクロールさせる
   const list = (
@@ -512,23 +515,20 @@ export function SharedCommentsThread({
     </>
   );
 
-  return (
-    // 2 か所（詳細パネル / 右パネルのタブ）に埋め込まれるので、見出しの文言を
-    // 読み上げ用に持たせる（画面には別途タブ名・節見出しが出るため文字は増やさない）
+  // 新規コメント欄。段落を選んでいれば「¶ 抜粋」を上に出す。
+  // panel では一覧の下（＝パネル下端）に置くので、境界線の向きだけ入れ替える
+  const composer = (
     <div
-      role="region"
-      aria-label={t("comment.title")}
-      style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
+      style={{
+        padding: "12px",
+        ...(panel
+          ? { borderTop: "1px solid var(--color-border-subtle)" }
+          : { borderBottom: "1px solid var(--color-border-subtle)" }),
+        backgroundColor: "var(--color-surface)",
+        ...(panel ? { flexShrink: 0 } : {}),
+      }}
     >
-      {/* 新規コメント欄。段落を選んでいれば「¶ 抜粋」を上に出す */}
-      <div
-        style={{
-          padding: "12px",
-          borderBottom: "1px solid var(--color-border-subtle)",
-          backgroundColor: "var(--color-surface)",
-        }}
-      >
-        {composerDisabledReason ? (
+      {composerDisabledReason ? (
           <p style={{ margin: 0, fontSize: 11, lineHeight: 1.6, color: "var(--color-text-tertiary)" }}>
             {composerDisabledReason}
           </p>
@@ -566,20 +566,51 @@ export function SharedCommentsThread({
           </>
         )}
       </div>
+  );
 
-      {/* docked では一覧だけを畳める。入力欄は畳んでも残す
-          （上の段落を選んですぐ書けることがドックの目的なので、入力欄を隠さない） */}
-      {docked ? (
-        threadsOpen && (
+  return (
+    // 3 か所（詳細パネル / ノートの右パネル / 全画面の右レール）に埋め込まれるので、
+    // 見出しの文言を読み上げ用に持たせる（画面には別途タブ名・節見出しが出るため
+    // 文字は増やさない）
+    <div
+      role="region"
+      aria-label={t("comment.title")}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        // panel はレールの残り高さを全部使う（一覧が伸び、入力欄が下端に残る）
+        ...(panel ? { flex: "1 1 auto" } : {}),
+      }}
+    >
+      {panel ? (
+        <>
           <div
             data-testid="shared-comments-list"
-            style={{ overflowY: "auto", maxHeight: threadsMaxHeight, minHeight: 0 }}
+            style={{ flex: 1, overflowY: "auto", minHeight: 0 }}
           >
             {list}
           </div>
-        )
+          {composer}
+        </>
       ) : (
-        list
+        <>
+          {composer}
+          {/* docked では一覧だけを畳める。入力欄は畳んでも残す
+              （上の段落を選んですぐ書けることがドックの目的なので、入力欄を隠さない） */}
+          {docked ? (
+            threadsOpen && (
+              <div
+                data-testid="shared-comments-list"
+                style={{ overflowY: "auto", maxHeight: threadsMaxHeight, minHeight: 0 }}
+              >
+                {list}
+              </div>
+            )
+          ) : (
+            list
+          )}
+        </>
       )}
     </div>
   );

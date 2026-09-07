@@ -36,7 +36,9 @@ const ENTRIES = [
   entry("n3", "フォルダ無し"),
 ];
 
-function renderTable() {
+function renderTable(
+  overrides: Partial<React.ComponentProps<typeof SharedLibraryTable>> = {},
+) {
   return render(
     <LocaleProvider>
       <SharedLibraryTable
@@ -51,6 +53,7 @@ function renderTable() {
         onVerifyHash={() => {}}
         onCopyCitation={() => {}}
         onUnshare={() => {}}
+        {...overrides}
       />
     </LocaleProvider>,
   );
@@ -503,5 +506,29 @@ describe("SharedLibraryTable の更新・新着の印", () => {
     expect(rowByText(container, "まだ見ていないノート").textContent).not.toContain(
       t("library.updateCount", { count: "2" }),
     );
+  });
+});
+
+// ── 一覧からの入り方（個人のノート一覧の鏡） ──
+// クリック = サイドピーク（onSelect）、ダブルクリック = 全画面（onOpenFull）。
+// blob 行は共有エントリではないので、全画面には親ノートを渡す。
+describe("SharedLibraryTable のダブルクリック（全画面表示）", () => {
+  it("行のダブルクリックで onOpenFull にその共有エントリを渡す", () => {
+    const opened: string[] = [];
+    const { container } = renderTable({ onOpenFull: (entry) => opened.push(entry.id) });
+    fireEvent.doubleClick(rowByText(container, "装置メモ"));
+    expect(opened).toEqual(["n2"]);
+  });
+
+  it("blob 行のダブルクリックは親ノートを開く", () => {
+    const opened: string[] = [];
+    const { container } = renderAssetTable({ onOpenFull: (entry) => opened.push(entry.id) });
+    fireEvent.doubleClick(rowByText(container, "paper.pdf"));
+    expect(opened).toEqual(["p1"]);
+  });
+
+  it("onOpenFull 未指定なら選択のまま（ダブルクリックで壊れない）", () => {
+    const { container } = renderTable();
+    expect(() => fireEvent.doubleClick(rowByText(container, "装置メモ"))).not.toThrow();
   });
 });

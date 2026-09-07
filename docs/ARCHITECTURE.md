@@ -1344,6 +1344,17 @@ conversion also powers a "Team templates" section inside the `/template`
 slash-command picker (`TemplatePickerModal`), which inserts the chosen
 template at the cursor instead of opening a new note.
 
+Each shared entry can be read two ways, mirroring how the personal side
+opens a note: a click opens it in the **detail panel** (side peek, next to
+the table — `SharedEntryDetail` in `SharedLibraryView.tsx`), a double-click
+or the panel's "Open in full view" button opens `SharedNoteView.tsx`, a
+full-page read-only view at `#shared-entry/<id>` with the same header
+(breadcrumb, title, actions) and a right rail (Comments / History /
+Process / Backlinks, same icon column as the personal note view). Both
+views share the same body renderer (`SharedEntryBody.tsx`) and the same
+meta/action/history building blocks (`shared-entry-parts.tsx`) so there is
+one place that knows how to render a shared entry, not two.
+
 ### 5.1 Teacher ⇄ student round trips
 
 Feedback on a shared entry can flow back through three independent

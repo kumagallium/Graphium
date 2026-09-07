@@ -188,6 +188,9 @@ import {
   forkSharedKnowledge,
   unshareEntry,
   SharedLibraryView,
+  SharedNoteView,
+  useSharedLibrary,
+  type SharedNoteViewProps,
   materializeSharedBlobs,
   BulkShareModal,
   notifySharedLibraryChanged,
@@ -5952,6 +5955,40 @@ function StartupInitFailureScreen({ failure }: { failure: StorageInitFailure | n
   );
 }
 
+/**
+ * 共有エントリの全画面表示（`#shared-entry/<id>`）の器。
+ *
+ * なぜ NoteApp から切り出すか: id → エントリの解決に共有ストアの購読
+ * （useSharedLibrary）が要る。NoteApp 本体で購読すると、共有フォルダを読み直す
+ * たびにアプリ全体が再描画される。購読をこの小さな器に閉じ込める。
+ */
+type SharedEntryFullViewProps = Omit<SharedNoteViewProps, "entry"> & {
+  entryId: string;
+  /** 読み込みが終わってもエントリが無かったとき（Library へ落とす） */
+  onMissing: () => void;
+};
+
+function SharedEntryFullView({ entryId, onMissing, ...rest }: SharedEntryFullViewProps) {
+  const t = useT();
+  const { entries, loading, loadedAt } = useSharedLibrary();
+  const entry = useMemo(() => entries.find((e) => e.id === entryId) ?? null, [entries, entryId]);
+  // まだ一度も読み終えていない間は「無い」と判断しない。起動直後に URL から
+  // 復元する経路では共有フォルダの読み出しが終わっておらず、ここで早合点すると
+  // 開いた瞬間に Library へ弾き返される
+  const settled = !loading && loadedAt !== null;
+  useEffect(() => {
+    if (!entry && settled) onMissing();
+  }, [entry, settled, onMissing]);
+  if (!entry) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        {t("common.loading")}
+      </div>
+    );
+  }
+  return <SharedNoteView entry={entry} {...rest} />;
+}
+
 export function NoteApp() {
   const { authenticated, loading: authLoading, initFailure } = useStorage();
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
@@ -6102,8 +6139,13 @@ export function NoteApp() {
   }, [inboxSource]);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
-  // 引用カードの「開く」から Library の特定エントリへ飛ぶための一時 state。
+  // 共有エントリの全画面表示（Library と並ぶビュー）。開いているエントリ id を持つ。
+  // Library（showSharedLibrary）とは排他 — closeAllViews が両方を畳む。
+  const [sharedEntryViewId, setSharedEntryViewId] = useState<string | null>(null);
+  // Library の特定エントリを選択表示で開くための一時 state。
   // SharedLibraryView が consume したら onFocusConsumed で null に戻す。
+  // 引用カードの「開く」はこれではなく全画面（openSharedEntryFull）に変わったため、
+  // 今は値を立てる呼び出し元が無い（Library 側の口だけ残してある）。
   const [sharedLibraryFocusId, setSharedLibraryFocusId] = useState<string | null>(null);
   // 一括チーム共有の対象（null 以外で BulkShareModal を表示）
   const [bulkShareTargets, setBulkShareTargets] = useState<BulkShareTarget[] | null>(null);
@@ -6499,7 +6541,7 @@ export function NoteApp() {
   // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
   // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
   // activeLabel → showNoteList → showMemos → showMobile → activeWikiView → activeWikiKind →
-  // showSharedLibrary → showTrash → showSkillList → 本文エディタ）で本文より
+  // sharedEntryViewId → showSharedLibrary → showTrash → showSkillList → 本文エディタ）で本文より
   // 優先表示される。ビュー切替・SidePeek 最大化など「本文へ遷移する経路」は
   // これらを **全て** 畳まないと、別のビューが残って表示される（例: スキル一覧を
   // 開いた後にノートを最大化するとスキル一覧が出続けるバグ）。
@@ -6519,6 +6561,9 @@ export function NoteApp() {
     setShowMobile(false);
     setShowTrash(false);
     setShowSharedLibrary(false);
+    // 共有の全画面も同じ排他グループ。ここに入れ忘れると、別ビューへ移っても
+    // 共有ノートが本文より優先表示されたまま残る（他のビューで繰り返した消し忘れ）
+    setSharedEntryViewId(null);
     setShowGlobalGraph(false);
     setShowSkillList(false);
     setActiveWikiView(null);
@@ -6855,6 +6900,11 @@ export function NoteApp() {
     //（サイドバーにも出さない）。
     setShowMobile: (show: boolean) => setShowMobile(show && isTauri()),
     setShowSharedLibrary: (show: boolean) => setShowSharedLibrary(show),
+    // URL（#shared-entry/<id>）からの復元。ここで router.navigate してはいけない
+    // —— applyRoute は「戻る/初回復元」からも呼ばれるので、着地した先をもう一段
+    // 積んでしまい「戻るが効かない」になる。state を立てるだけにする。
+    // エントリが共有ストアに無い場合の Library への落としどころは表示側が持つ。
+    openSharedEntryView: (id: string) => setSharedEntryViewId(id),
     // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
     // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
     clearViews: closeAllViews,
@@ -6968,19 +7018,210 @@ export function NoteApp() {
     [composer, fm, navigateToNote],
   );
 
-  // 引用カードの「開く」→ Library の該当エントリを選択表示で開く。
-  // Library はアプリレベルのビューなのでコールバックもアプリ単位で 1 個登録する。
-  useEffect(() => {
-    setSharedEntryOpenCallback((sharedId) => {
+  // ─── 共有エントリを全画面で開く唯一の入口 ───
+  // navigateToNote（個人ノート）の共有版。ここを通さず state だけ立てると URL も
+  // 履歴も動かず、リロードや「戻る」で別の画面に着地する。
+  // 例外は use-hash-router の applyRoute（popstate / 初回復元）だけ —— あそこは
+  // routeActions.openSharedEntryView で state だけ立てる。
+  const openSharedEntryFull = useCallback(
+    (sharedId: string) => {
       if (!getSharedRoot()) return;
       closeAllViews();
-      setSharedLibraryFocusId(sharedId);
-      setShowSharedLibrary(true);
+      // 全画面へ移るので、開いたままのサイドピーク類は畳む（navigateToNote と同じ扱い）
+      setListSidePeekNoteId(null);
+      setAssetSidePeekNoteId(null);
+      setListMaterialPeekEntry(null);
+      setSharedEntryViewId(sharedId);
       setSidebarOpen(false);
-      router.navigate({ view: "shared-library" });
+      router.navigate({ view: "shared-entry", id: sharedId });
+    },
+    [closeAllViews, router],
+  );
+
+  // ─── 共有エントリへの操作（Library / 全画面の両方から使う） ───
+  // 以前は SharedLibraryView の JSX に直接書いていたが、全画面（SharedNoteView）でも
+  // 同じ操作を出すため関数に切り出した。挙動を 2 箇所に持つと、片方だけ直したときに
+  // 「一覧では成功するが全画面では黙って失敗する」ようなズレが生まれる。
+
+  const handleSharedForkNote = useCallback(async (sharedId: string) => {
+    // 失敗は throw で呼び出し側に伝える。黙って return すると、
+    // プロセスタブの派生ボタン（onForkProcess）が成否を判定できず
+    // 「何も起きていないのに成功したように見える」状態になる
+    const root = getSharedRoot();
+    if (!root) throw new Error("Shared root is not configured.");
+    const result = await forkSharedNote(sharedId, { root });
+    if (!result.ok) {
+      alert(`Fork failed: ${result.error}`);
+      throw new Error(result.error);
+    }
+    // Phase 2c-2: shared-blob: 参照を自分のローカルメディアに materialize
+    let docToSave = result.doc;
+    const extraBlobs = (result.original.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
+    const blobRoot = getBlobRoot();
+    if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
+      const blobProvider = new LocalFolderBlobProvider(blobRoot);
+      const materialized = await materializeSharedBlobs(result.doc, {
+        blobs: extraBlobs,
+        fetchBytes: (ref) => blobProvider.get(ref),
+        uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
+      });
+      docToSave = materialized.doc;
+      if (materialized.missing.length > 0) {
+        alert(
+          `Forked, but ${materialized.missing.length} embedded media could not be restored from blob root. They appear as broken references in the new note.`,
+        );
+      }
+    }
+    const newFileId = await fm.handleCreateNoteFromImport(docToSave);
+    setShowGlobalGraph(false);
+    navigateToNote(newFileId);
+  }, [fm, navigateToNote]);
+
+  const handleSharedForkKnowledge = useCallback(async (sharedId: string) => {
+    const root = getSharedRoot();
+    if (!root) return;
+    const result = await forkSharedKnowledge(sharedId, { root });
+    if (!result.ok) {
+      alert(`Fork failed: ${result.error}`);
+      return;
+    }
+    // ノート fork と同様、埋め込みメディアの shared-blob: 参照を materialize
+    let docToSave = result.doc;
+    const extraBlobs = (result.original.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
+    const blobRoot = getBlobRoot();
+    if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
+      const blobProvider = new LocalFolderBlobProvider(blobRoot);
+      const materialized = await materializeSharedBlobs(result.doc, {
+        blobs: extraBlobs,
+        fetchBytes: (ref) => blobProvider.get(ref),
+        uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
+      });
+      docToSave = materialized.doc;
+      if (materialized.missing.length > 0) {
+        alert(
+          `Forked, but ${materialized.missing.length} embedded media could not be restored from blob root. They appear as broken references in the new page.`,
+        );
+      }
+    }
+    const newWikiId = await fm.handleCreateWikiFile(docToSave);
+    setShowGlobalGraph(false);
+    navigateToNote(`wiki:${newWikiId}`);
+  }, [fm, navigateToNote]);
+
+  // テンプレートから新規ノート。fork（記録のコピー）とは別物で、
+  // 雛形として本文・ラベル・表のふるまいだけを引き継ぐ。
+  // 由来は doc.templateFrom と初回リビジョンの prov:used（shared:<id>）に残す
+  const handleSharedCreateNoteFromTemplate = useCallback(async (sharedId: string) => {
+    // 失敗はすべてここで通知してから投げ直す。
+    // なぜ try で全体を包むか: 本文の読み出し（共有ルート未設定・I/O）や
+    // JSON の破損は例外で来るため、囲まないと呼び出し側の catch が
+    // busy 表示を戻すだけになり、ユーザーには「押しても何も起きない」
+    // としか見えない（挿入経路・fork と同じく必ずメッセージを出す）
+    try {
+      const entry = getSharedLibrarySnapshot().entries.find((e) => e.id === sharedId);
+      if (!entry) throw new Error(tStatic("library.templateNotFound"));
+      const { body, verified } = await readSharedEntryBody(entry);
+      if (!verified) {
+        // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
+        // 本文自体は読めるので、作るかどうかは利用者に決めさせる
+        if (!window.confirm(tStatic("library.templateHashMismatchConfirm"))) return;
+      }
+      const template = deserializeTemplate(new TextDecoder().decode(body));
+      const extraTitle = (entry.extra as { title?: unknown } | undefined)?.title;
+      const title =
+        typeof extraTitle === "string" && extraTitle.trim()
+          ? extraTitle
+          : template.name || tStatic("library.untitled");
+      let doc = buildDocumentFromTemplate(template, {
+        title,
+        templateFrom: {
+          sharedId: entry.id,
+          hash: entry.hash,
+          title,
+          usedAt: new Date().toISOString(),
+        },
+      });
+      // shared-blob: 参照を自分のローカルメディアへ（fork と同じ経路）
+      const extraBlobs = (entry.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
+      const blobRoot = getBlobRoot();
+      if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
+        const blobProvider = new LocalFolderBlobProvider(blobRoot);
+        const materialized = await materializeSharedBlobs(doc, {
+          blobs: extraBlobs,
+          fetchBytes: (ref) => blobProvider.get(ref),
+          uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
+        });
+        doc = materialized.doc;
+        if (materialized.missing.length > 0) {
+          alert(
+            tStatic("library.createFromTemplateMediaMissing", {
+              count: String(materialized.missing.length),
+            }),
+          );
+        }
+      }
+      const newFileId = await fm.handleCreateNoteFromImport(doc, {
+        sources: [`shared:${sharedId}`],
+      });
+      setShowGlobalGraph(false);
+      navigateToNote(newFileId);
+    } catch (e) {
+      alert(
+        tStatic("library.createFromTemplateFailed", {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
+      // 投げ直して呼び出し側（表の行）にも失敗を伝える。握ると
+      // 成否で分岐したい将来の呼び出し元が誤判定する
+      throw e;
+    }
+  }, [fm, navigateToNote]);
+
+  const handleSharedUnshare = useCallback(async (entry: SharedEntry) => {
+    const author = loadAuthorIdentity();
+    const root = getSharedRoot();
+    if (!author || !root) {
+      alert("Identity not registered or shared root not configured.");
+      return;
+    }
+    const result = await unshareEntry(entry.id, {
+      root,
+      author,
+      blobRoot: getBlobRoot() ?? undefined,
     });
+    if (!result.ok) {
+      alert(`Unshare failed: ${result.error}`);
+      return;
+    }
+    notifySharedLibraryChanged();
+  }, []);
+
+  // 共有ノート内の画像・ファイル（extra.blobs）を自分の素材として取り込む。
+  // fork の materialize と同じ経路（blob root から bytes → mime sniff → 自分の MediaProvider）。
+  // blob root 未設定なら呼び出し側で undefined を渡し、表側で操作を無効化させる
+  const handleSharedImportBlob = useCallback(async (_parent: SharedEntry, blob: BlobRef) => {
+    const blobRoot = getBlobRoot();
+    if (!blobRoot) return;
+    try {
+      const bytes = await new LocalFolderBlobProvider(blobRoot).get(blob);
+      const mime = sniffMimeType(bytes);
+      const filename =
+        blob.filename ||
+        `shared-${blob.hash.replace(/[^a-z0-9]/gi, "").slice(0, 12)}.${extensionForMime(mime)}`;
+      const file = new File([bytes as BlobPart], filename, { type: mime });
+      await fm.handleUploadMedia(file);
+      alert(tStatic("library.importBlobDone", { name: filename }));
+    } catch (e) {
+      alert(tStatic("library.importBlobFailed", { error: String(e) }));
+    }
+  }, [fm]);
+
+  // 引用カードの「開く」→ 該当エントリを全画面で開く。
+  // 共有ビューはアプリレベルなのでコールバックもアプリ単位で 1 個登録する。
+  useEffect(() => {
+    setSharedEntryOpenCallback((sharedId) => openSharedEntryFull(sharedId));
     return () => setSharedEntryOpenCallback(null);
-  }, [closeAllViews, router]);
+  }, [openSharedEntryFull]);
 
   // Cmd+K の検索結果から画像行を選んだときのハンドラ。
   // ノートへ飛ばさず素材の一覧（画像タブ）へ移り、その画像をサイドピークで開いた状態にする。
@@ -7001,7 +7242,7 @@ export function NoteApp() {
   );
 
   // Cmd+K の共有欄から共有エントリを選んだとき。
-  // fork はせず、引用カードの「開く」と同じ経路で Library の該当エントリを表示する
+  // fork はせず、引用カードの「開く」と同じ経路で該当エントリを全画面表示する
   // （中身を確かめてから fork するか引用するかを決められる）。
   const handleComposerSharedSelect = useCallback(
     (entry: SharedEntry) => {
@@ -8838,7 +9079,8 @@ export function NoteApp() {
           router.navigate({ view: "shared-library" });
         }
       : undefined,
-    sharedLibraryActive: showSharedLibrary,
+    // 全画面（SharedNoteView）も Library 配下の画面なので「共有」を点灯させ続ける
+    sharedLibraryActive: showSharedLibrary || sharedEntryViewId !== null,
   };
 
   return (
@@ -9723,185 +9965,48 @@ export function NoteApp() {
                 : undefined
             }
           />
+        ) : sharedEntryViewId && getSharedRoot() ? (
+          // 共有エントリの全画面。Library と同じハンドラをそのまま渡す
+          //（操作の実体は handleShared* に集約済み）
+          <SharedEntryFullView
+            key={sharedEntryViewId}
+            entryId={sharedEntryViewId}
+            onMissing={() => {
+              // 共有フォルダから消えた / 別端末の URL を開いた等。空画面で止めず
+              // 共有の入口に着地させる（URL も Library に置き換える）
+              closeAllViews();
+              setShowSharedLibrary(true);
+              router.navigate({ view: "shared-library" });
+            }}
+            sharedRoot={getSharedRoot()!}
+            currentIdentity={loadAuthorIdentity()}
+            onBack={() => {
+              closeAllViews();
+              setShowSharedLibrary(true);
+              router.navigate({ view: "shared-library" });
+            }}
+            onOpenEntry={(id) => openSharedEntryFull(id)}
+            onForkNote={handleSharedForkNote}
+            onForkKnowledge={handleSharedForkKnowledge}
+            onCreateNoteFromTemplate={handleSharedCreateNoteFromTemplate}
+            onUnshare={handleSharedUnshare}
+            onImportBlob={getBlobRoot() ? handleSharedImportBlob : undefined}
+          />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView
             sharedRoot={getSharedRoot()!}
             currentIdentity={loadAuthorIdentity()}
             focusEntryId={sharedLibraryFocusId}
             onFocusConsumed={() => setSharedLibraryFocusId(null)}
-            onForkNote={async (sharedId) => {
-              // 失敗は throw で呼び出し側に伝える。黙って return すると、
-              // プロセスタブの派生ボタン（onForkProcess）が成否を判定できず
-              // 「何も起きていないのに成功したように見える」状態になる
-              const root = getSharedRoot();
-              if (!root) throw new Error("Shared root is not configured.");
-              const result = await forkSharedNote(sharedId, { root });
-              if (!result.ok) {
-                alert(`Fork failed: ${result.error}`);
-                throw new Error(result.error);
-              }
-              // Phase 2c-2: shared-blob: 参照を自分のローカルメディアに materialize
-              let docToSave = result.doc;
-              const extraBlobs = (result.original.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-              const blobRoot = getBlobRoot();
-              if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
-                const blobProvider = new LocalFolderBlobProvider(blobRoot);
-                const materialized = await materializeSharedBlobs(result.doc, {
-                  blobs: extraBlobs,
-                  fetchBytes: (ref) => blobProvider.get(ref),
-                  uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
-                });
-                docToSave = materialized.doc;
-                if (materialized.missing.length > 0) {
-                  alert(
-                    `Forked, but ${materialized.missing.length} embedded media could not be restored from blob root. They appear as broken references in the new note.`,
-                  );
-                }
-              }
-              const newFileId = await fm.handleCreateNoteFromImport(docToSave);
-              setShowGlobalGraph(false);
-              navigateToNote(newFileId);
-            }}
-            onForkKnowledge={async (sharedId) => {
-              const root = getSharedRoot();
-              if (!root) return;
-              const result = await forkSharedKnowledge(sharedId, { root });
-              if (!result.ok) {
-                alert(`Fork failed: ${result.error}`);
-                return;
-              }
-              // ノート fork と同様、埋め込みメディアの shared-blob: 参照を materialize
-              let docToSave = result.doc;
-              const extraBlobs = (result.original.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-              const blobRoot = getBlobRoot();
-              if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
-                const blobProvider = new LocalFolderBlobProvider(blobRoot);
-                const materialized = await materializeSharedBlobs(result.doc, {
-                  blobs: extraBlobs,
-                  fetchBytes: (ref) => blobProvider.get(ref),
-                  uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
-                });
-                docToSave = materialized.doc;
-                if (materialized.missing.length > 0) {
-                  alert(
-                    `Forked, but ${materialized.missing.length} embedded media could not be restored from blob root. They appear as broken references in the new page.`,
-                  );
-                }
-              }
-              const newWikiId = await fm.handleCreateWikiFile(docToSave);
-              setShowGlobalGraph(false);
-              navigateToNote(`wiki:${newWikiId}`);
-            }}
-            // テンプレートから新規ノート。fork（記録のコピー）とは別物で、
-            // 雛形として本文・ラベル・表のふるまいだけを引き継ぐ。
-            // 由来は doc.templateFrom と初回リビジョンの prov:used（shared:<id>）に残す
-            onCreateNoteFromTemplate={async (sharedId) => {
-              // 失敗はすべてここで通知してから投げ直す。
-              // なぜ try で全体を包むか: 本文の読み出し（共有ルート未設定・I/O）や
-              // JSON の破損は例外で来るため、囲まないと呼び出し側の catch が
-              // busy 表示を戻すだけになり、ユーザーには「押しても何も起きない」
-              // としか見えない（挿入経路・fork と同じく必ずメッセージを出す）
-              try {
-                const entry = getSharedLibrarySnapshot().entries.find((e) => e.id === sharedId);
-                if (!entry) throw new Error(tStatic("library.templateNotFound"));
-                const { body, verified } = await readSharedEntryBody(entry);
-                if (!verified) {
-                  // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
-                  // 本文自体は読めるので、作るかどうかは利用者に決めさせる
-                  if (!window.confirm(tStatic("library.templateHashMismatchConfirm"))) return;
-                }
-                const template = deserializeTemplate(new TextDecoder().decode(body));
-                const extraTitle = (entry.extra as { title?: unknown } | undefined)?.title;
-                const title =
-                  typeof extraTitle === "string" && extraTitle.trim()
-                    ? extraTitle
-                    : template.name || tStatic("library.untitled");
-                let doc = buildDocumentFromTemplate(template, {
-                  title,
-                  templateFrom: {
-                    sharedId: entry.id,
-                    hash: entry.hash,
-                    title,
-                    usedAt: new Date().toISOString(),
-                  },
-                });
-                // shared-blob: 参照を自分のローカルメディアへ（fork と同じ経路）
-                const extraBlobs = (entry.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-                const blobRoot = getBlobRoot();
-                if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
-                  const blobProvider = new LocalFolderBlobProvider(blobRoot);
-                  const materialized = await materializeSharedBlobs(doc, {
-                    blobs: extraBlobs,
-                    fetchBytes: (ref) => blobProvider.get(ref),
-                    uploadMedia: async (file) => ({ url: await fm.handleUploadMedia(file) }),
-                  });
-                  doc = materialized.doc;
-                  if (materialized.missing.length > 0) {
-                    alert(
-                      tStatic("library.createFromTemplateMediaMissing", {
-                        count: String(materialized.missing.length),
-                      }),
-                    );
-                  }
-                }
-                const newFileId = await fm.handleCreateNoteFromImport(doc, {
-                  sources: [`shared:${sharedId}`],
-                });
-                setShowGlobalGraph(false);
-                navigateToNote(newFileId);
-              } catch (e) {
-                alert(
-                  tStatic("library.createFromTemplateFailed", {
-                    error: e instanceof Error ? e.message : String(e),
-                  }),
-                );
-                // 投げ直して呼び出し側（表の行）にも失敗を伝える。握ると
-                // 成否で分岐したい将来の呼び出し元が誤判定する
-                throw e;
-              }
-            }}
-            onUnshare={async (entry) => {
-              const author = loadAuthorIdentity();
-              const root = getSharedRoot();
-              if (!author || !root) {
-                alert("Identity not registered or shared root not configured.");
-                return;
-              }
-              const result = await unshareEntry(entry.id, {
-                root,
-                author,
-                blobRoot: getBlobRoot() ?? undefined,
-              });
-              if (!result.ok) {
-                alert(`Unshare failed: ${result.error}`);
-                return;
-              }
-              notifySharedLibraryChanged();
-            }}
+            // 表のダブルクリック・詳細パネルの「開く」から全画面へ
+            onOpenFull={(entry) => openSharedEntryFull(entry.id)}
+            onForkNote={handleSharedForkNote}
+            onForkKnowledge={handleSharedForkKnowledge}
+            onCreateNoteFromTemplate={handleSharedCreateNoteFromTemplate}
+            onUnshare={handleSharedUnshare}
             onBack={() => { setShowSharedLibrary(false); setShowGlobalGraph(false); router.navigate({ view: "home" }); }}
-            // 共有ノート内の画像・ファイル（extra.blobs）を自分の素材として取り込む。
-            // fork の materialize と同じ経路（blob root から bytes → mime sniff → 自分の MediaProvider）。
             // blob root 未設定なら undefined を渡し、表側で操作を無効化させる
-            onImportBlob={
-              getBlobRoot()
-                ? async (_parent, blob) => {
-                    const blobRoot = getBlobRoot();
-                    if (!blobRoot) return;
-                    try {
-                      const bytes = await new LocalFolderBlobProvider(blobRoot).get(blob);
-                      const mime = sniffMimeType(bytes);
-                      const filename =
-                        blob.filename ||
-                        `shared-${blob.hash.replace(/[^a-z0-9]/gi, "").slice(0, 12)}.${extensionForMime(mime)}`;
-                      const file = new File([bytes as BlobPart], filename, { type: mime });
-                      await fm.handleUploadMedia(file);
-                      alert(tStatic("library.importBlobDone", { name: filename }));
-                    } catch (e) {
-                      alert(tStatic("library.importBlobFailed", { error: String(e) }));
-                    }
-                  }
-                : undefined
-            }
+            onImportBlob={getBlobRoot() ? handleSharedImportBlob : undefined}
             // ラベル/プロセスタブの説明バーから個人のノート一覧へ戻る導線。
             // サイドバー「すべてのノート」（onShowNoteList）と同一の遷移にする
             onOpenNoteList={() => {

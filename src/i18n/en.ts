@@ -2423,6 +2423,7 @@ export const en: Record<string, string> = {
   "library.col.origins": "Source notes",
   "library.blobOrigins": "{count} notes",
   "library.openParentNote": "Open note",
+  "library.openFull": "Open in full view",
   "library.importBlob": "Add to my materials",
   "library.importBlobDone": "Added \"{name}\" to your materials. You can find it in the Materials gallery.",
   "library.importBlobFailed": "Import failed: {error}",
@@ -2458,6 +2459,12 @@ export const en: Record<string, string> = {
   "library.detail.citedBy": "Shared notes citing this ({count})",
   "library.detail.forkedBy": "Shared notes derived from this ({count})",
   "library.detail.templateUsedBy": "Shared notes made from this template ({count})",
+  // 共有ノートの全画面表示（右レールのパネル名と空状態）
+  "sharedNote.rail.version": "Version",
+  "sharedNote.rail.process": "Steps",
+  "sharedNote.rail.links": "Backlinks",
+  "sharedNote.processEmpty": "This shared note has no steps.",
+  "sharedNote.backlinksEmpty": "No shared notes pointing here have been found yet. Only shared notes whose content has been read are counted.",
   // 共有コメント（先生 ⇄ 学生の往復）
   "comment.title": "Comments",
   "comment.countLabel": "Comments {count}",
