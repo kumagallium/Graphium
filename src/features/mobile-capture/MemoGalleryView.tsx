@@ -1,7 +1,7 @@
 // PC 向けメモギャラリービュー
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon , Folder } from "lucide-react";
 import { CaptureDialog } from "./CaptureDialog";
 import cytoscape from "cytoscape";
@@ -485,6 +485,11 @@ function MemoDetailModal({
 
 function MemoCard({
   entry,
+  index,
+  selected,
+  showCheckbox,
+  onCheckboxMouseDown,
+  onMouseEnter,
   onOpenDetail,
   onInsert,
   onDelete,
@@ -493,6 +498,15 @@ function MemoCard({
   insertDisabled,
 }: {
   entry: CaptureEntry;
+  /** captures 内での位置。範囲選択（useRangeSelect）が行番号として使う */
+  index: number;
+  /** このタイルが選択中か */
+  selected: boolean;
+  /** 何か 1 件でも選択中か。選択中は全タイルのチェックボックスを出しっぱなしにする */
+  showCheckbox: boolean;
+  onCheckboxMouseDown: (e: ReactMouseEvent, index: number) => void;
+  /** ドラッグ範囲選択の伸長。list 行の onRowMouseEnter と同じ役割 */
+  onMouseEnter: (index: number) => void;
   onOpenDetail: () => void;
   onInsert?: () => void;
   onDelete?: () => void;
@@ -507,9 +521,33 @@ function MemoCard({
 
   return (
     <div
-      className="bg-card border border-border rounded-lg p-4 group hover:border-primary/30 transition-colors cursor-pointer"
+      className={`bg-card border rounded-lg p-4 group relative hover:border-primary/30 transition-colors cursor-pointer ${
+        selected ? "border-primary" : "border-border"
+      }`}
+      onMouseEnter={() => onMouseEnter(index)}
       onClick={onOpenDetail}
     >
+      {/* 左上チェックボックス（list 行の td と同じ作法）。
+          未選択かつ非ホバーのときだけ消して本文を邪魔しない。
+          カードの余白（p-4）に収まる位置に置き、本文の 1 行目とは重ねない。
+          input 自体は pointer-events-none にして、mousedown を包む要素で拾う
+          （距離ゼロでも即トグル + そのままドラッグで範囲選択に入るため） */}
+      <div
+        className={`absolute top-1 left-1 z-10 rounded bg-card cursor-pointer transition-opacity ${
+          selected || showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        }`}
+        title={t("memo.dragToRangeSelect")}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => onCheckboxMouseDown(e, index)}
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          readOnly
+          tabIndex={-1}
+          className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none block"
+        />
+      </div>
       <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-4 mb-2">
         {entry.text}
       </p>
@@ -747,15 +785,11 @@ export function MemoGalleryView({
     }
   }, [viewMode]);
 
-  // 複数選択（list モードのみで利用）
+  // 複数選択（gallery / list 共通）。表示モードを切り替えても選択は保つ
+  // — 同じメモを見る角度が変わるだけで、選んだものが変わるわけではない
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
-
-  // ビューモード切替時に選択をクリア
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [viewMode]);
 
   // captures が変わったら、もう存在しない id を選択から除外（個別削除との整合）
   useEffect(() => {
@@ -842,6 +876,16 @@ export function MemoGalleryView({
           {loading ? t("common.loading") : t("memo.count", { count: String(captures.length) })}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {/* gallery モードの「すべて選択」。list は列ヘッダのチェックボックスが担う */}
+          {viewMode === "gallery" && captures.length > 0 && (
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+              className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+              title={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
+            />
+          )}
           {/* フォルダで絞る。素材ギャラリーと同じ FilterPopup */}
           <button
             ref={folderFilterBtnRef}
@@ -907,8 +951,10 @@ export function MemoGalleryView({
         </div>
       )}
 
-      {/* 一括アクションバー（list モードで選択時のみ） */}
-      {viewMode === "list" && someSelected && (
+      {/* 一括アクションバー（gallery / list 共通。選択が 1 件でもあれば出す）。
+          ギャラリー表示でしかメモを見ないユーザーが「ナレッジ化」等の一括操作に
+          辿り着けない状態を解消するため、表示モードでは出し分けない */}
+      {someSelected && (
         <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
           <span className="text-xs text-foreground font-medium">
             {selectedIds.size} / {captures.length}
@@ -991,11 +1037,20 @@ export function MemoGalleryView({
           </div>
         ) : viewMode === "gallery" ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {captures.map((entry) => (
+            {captures.map((entry, index) => (
               <MemoCard
                 key={entry.id}
                 entry={entry}
-                onOpenDetail={() => setDetailEntry(entry)}
+                index={index}
+                selected={selectedIds.has(entry.id)}
+                showCheckbox={someSelected}
+                onCheckboxMouseDown={range.onCheckboxMouseDown}
+                onMouseEnter={range.onRowMouseEnter}
+                onOpenDetail={() => {
+                  // ドラッグ範囲選択の直後の click は開く操作にしない（list 行と同じ）
+                  if (range.shouldSuppressClick()) return;
+                  setDetailEntry(entry);
+                }}
                 onInsert={onInsertMemo ? () => setPendingInsert({ id: entry.id, text: entry.text }) : undefined}
                 onDelete={onDeleteMemo ? () => onDeleteMemo(entry.id) : undefined}
                 onArchive={onArchiveMemo ? () => onArchiveMemo(entry.id) : undefined}
