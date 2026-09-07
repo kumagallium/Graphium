@@ -6142,11 +6142,6 @@ export function NoteApp() {
   // 共有エントリの全画面表示（Library と並ぶビュー）。開いているエントリ id を持つ。
   // Library（showSharedLibrary）とは排他 — closeAllViews が両方を畳む。
   const [sharedEntryViewId, setSharedEntryViewId] = useState<string | null>(null);
-  // Library の特定エントリを選択表示で開くための一時 state。
-  // SharedLibraryView が consume したら onFocusConsumed で null に戻す。
-  // 引用カードの「開く」はこれではなく全画面（openSharedEntryFull）に変わったため、
-  // 今は値を立てる呼び出し元が無い（Library 側の口だけ残してある）。
-  const [sharedLibraryFocusId, setSharedLibraryFocusId] = useState<string | null>(null);
   // 一括チーム共有の対象（null 以外で BulkShareModal を表示）
   const [bulkShareTargets, setBulkShareTargets] = useState<BulkShareTarget[] | null>(null);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
@@ -10034,8 +10029,6 @@ export function NoteApp() {
           <SharedLibraryView
             sharedRoot={getSharedRoot()!}
             currentIdentity={loadAuthorIdentity()}
-            focusEntryId={sharedLibraryFocusId}
-            onFocusConsumed={() => setSharedLibraryFocusId(null)}
             // 表のダブルクリック・詳細パネルの「開く」から全画面へ
             onOpenFull={(entry) => openSharedEntryFull(entry.id)}
             onForkNote={handleSharedForkNote}
