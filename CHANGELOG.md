@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.59.0](https://github.com/kumagallium/Graphium/compare/v0.58.0...v0.59.0) - 2026-09-07
+
+- [feat] Select materials in the gallery view and show the bulk bar in both views by @kumagallium in https://github.com/kumagallium/Graphium/pull/850
+- [feat] Ask AI about a shared entry from the full view's right rail by @kumagallium in https://github.com/kumagallium/Graphium/pull/851
+- [docs] Add manual screenshots for the shared library tabs, comments, and full view by @kumagallium in https://github.com/kumagallium/Graphium/pull/852
+
 ## [v0.58.0](https://github.com/kumagallium/Graphium/compare/v0.57.0...v0.58.0) - 2026-09-07
 
 - [docs] Add v0.55.0 and v0.56.0 to the manual and repair the roadmap table by @kumagallium in https://github.com/kumagallium/Graphium/pull/839
