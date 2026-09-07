@@ -829,6 +829,12 @@ function SidePeekInner({
     return () => root.removeEventListener("click", onClick, true);
   }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor, tableMetaStore]);
 
+  // データ表への計算列は本文を変えないので、宣言の変化でも列を配り直す（note-app と同じ）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    publishTableColumns(sidePeekEditor, tableMetaStore);
+  }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
+
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
   // どちらのエディタからクリックされたかを WeakMap で識別する。

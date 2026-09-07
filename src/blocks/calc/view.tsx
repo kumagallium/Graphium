@@ -176,6 +176,26 @@ export const CalcBlock = createReactBlockSpec(
         commit(draft, undefined, next);
         setPicker(null);
       };
+      // データ表へは既存の列に書けない（素材が正）ので、新しい列の名前を入れて足す。
+      // 既定は変数名（`d = …` なら列「d」）
+      const [newColumnName, setNewColumnName] = useState("");
+      useEffect(() => {
+        if (picker) setNewColumnName(picker.varName);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [picker?.varName]);
+      const pickedBlockId = picker?.tableName ? tableStore?.tableBlockIds?.[picker.tableName] : undefined;
+      const pickedIsDataTable =
+        !!pickedBlockId && !!tableStore?.dataTableBlockIds?.includes(pickedBlockId);
+      const pickedColumns = picker?.tableName
+        ? Object.keys(tableStore?.tableColumns?.[picker.tableName] ?? {})
+        : [];
+      const newColumnTrimmed = newColumnName.trim();
+      const canAddNewColumn =
+        pickedIsDataTable && newColumnTrimmed !== "" && !pickedColumns.includes(newColumnTrimmed);
+      const addNewColumn = () => {
+        if (!picker || !pickedBlockId || !canAddNewColumn) return;
+        setTarget(picker.varName, { tableBlockId: pickedBlockId, column: newColumnTrimmed });
+      };
       // 表示用: blockId → 表示名（ストア配布の逆引き）
       const tableNameOfId = (blockId: string): string | undefined => {
         for (const [name, id] of Object.entries(tableStore?.tableBlockIds ?? {})) {
@@ -447,15 +467,23 @@ export const CalcBlock = createReactBlockSpec(
                         const current = targets[picker.varName];
                         const isCurrent =
                           !!current && current.tableBlockId === blockId && current.column === column;
+                        // データ表の既存列は書き換えられない（自分が足した列だけは選び直せる）
+                        const locked = pickedIsDataTable && !isCurrent;
                         return (
                           <button
                             key={column}
                             type="button"
-                            disabled={reads || !blockId}
-                            title={reads ? t("calc.writebackReadColumn") : undefined}
+                            disabled={reads || !blockId || locked}
+                            title={
+                              reads
+                                ? t("calc.writebackReadColumn")
+                                : locked
+                                  ? t("calc.writebackDataTableColumn")
+                                  : undefined
+                            }
                             style={{
                               ...styles.writebackItem,
-                              ...(reads || !blockId ? styles.writebackDisabled : {}),
+                              ...(reads || !blockId || locked ? styles.writebackDisabled : {}),
                             }}
                             onClick={() =>
                               blockId && setTarget(picker.varName, { tableBlockId: blockId, column })
@@ -466,6 +494,34 @@ export const CalcBlock = createReactBlockSpec(
                           </button>
                         );
                       })}
+                      {pickedIsDataTable && (
+                        <div style={styles.writebackNewColumn}>
+                          <input
+                            value={newColumnName}
+                            placeholder={t("calc.writebackNewColumn")}
+                            aria-label={t("calc.writebackNewColumn")}
+                            onChange={(e) => setNewColumnName(e.target.value)}
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === "Enter" && !(e.nativeEvent as { isComposing?: boolean }).isComposing) {
+                                addNewColumn();
+                              }
+                            }}
+                            style={styles.writebackNewColumnInput}
+                          />
+                          <button
+                            type="button"
+                            disabled={!canAddNewColumn}
+                            onClick={addNewColumn}
+                            style={{
+                              ...styles.writebackItem,
+                              ...(canAddNewColumn ? {} : styles.writebackDisabled),
+                            }}
+                          >
+                            {t("calc.writebackAddColumn")}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -693,6 +749,23 @@ const styles: Record<string, React.CSSProperties> = {
   },
   writebackClear: {
     color: "var(--color-error)",
+  },
+  writebackNewColumn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  writebackNewColumnInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 12,
+    padding: "3px 8px",
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    background: "var(--color-surface)",
+    color: "var(--color-foreground)",
+    outline: "none",
   },
   writebackDisabled: {
     opacity: 0.4,

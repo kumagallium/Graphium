@@ -4813,6 +4813,14 @@ function NoteEditorInner({
     // onEditorContentChange が発火しない。表示名の変化はこの再実行で配り直す
   }, [mainEditor, tableMetaStore.metas]);
 
+  // データ表への計算列は本文を変えない（セルに書かない）ので、宣言の変化でも列を配り直す。
+  // 配り直しはストア側の同値スキップで収束する（同じ列なら参照が変わらない）
+  useEffect(() => {
+    const editor: any = mainEditor;
+    if (!editor) return;
+    publishTableColumns(editor, tableMetaStoreRef.current);
+  }, [mainEditor, tableMetaStore.calcWritebacks]);
+
   // 書き戻しの宣言が変わった瞬間にも適用する（本文編集を伴わない、
   // 式の評価完了や ⇥ の設定直後のため）。applyCalcWritebacks は冪等
   useEffect(() => {

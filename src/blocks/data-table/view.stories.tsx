@@ -19,6 +19,9 @@ import { MediaInlineLabelProvider } from "../../features/inline-label/media-stor
 import { BlockAlignmentProvider } from "../../features/block-alignment/store";
 import { AiAssistantProvider } from "../../features/ai-assistant/store";
 import { primeAssetText } from "../../features/data-import/asset-text";
+import { DataGrid } from "./grid";
+import { mergeLinkedColumns } from "./linked";
+import { peekDataTable } from "./data";
 import type { TableSource } from "../../lib/document-types";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -147,6 +150,41 @@ export const Small: StoryObj = {
     return (
       <ErrorBoundary>
         <DataTableDemo content={dataTableContent(source, "オーブン温度ログ（先頭 5 分）")} />
+      </ErrorBoundary>
+    );
+  },
+};
+
+// calc の書き戻し（⇥）を計算列として見せる: 見出しの Calculator バッジを確認
+// （Provider を経由せず DataGrid に data/linked を直接渡すだけの単純な確認）
+export const WithCalcColumns: StoryObj = {
+  name: "計算列あり（calc の書き戻し）",
+  render: () => {
+    const fileId = "story-oven-log-calc";
+    primeAssetText(fileId, ovenLogCsv(2000));
+    const source = ovenLogSource(fileId, 2000);
+    const data = peekDataTable(source);
+    if (!data) return <div>素材が読めませんでした</div>;
+    // temp_c（℃）を華氏に換算した列と、humidity / temp_c の比を計算列として足す
+    const tempF = data.rows.map((r) => {
+      const c = Number(r[1]);
+      return Number.isFinite(c) ? (c * 9) / 5 + 32 : "";
+    });
+    const ratio = data.rows.map((r) => {
+      const c = Number(r[1]);
+      const h = Number(r[2]);
+      return Number.isFinite(c) && Number.isFinite(h) && c !== 0 ? (h / c).toFixed(3) : "";
+    });
+    const merged = mergeLinkedColumns(data, [
+      { name: "temp_f", texts: tempF.map(String), calcName: "華氏換算" },
+      { name: "ratio", texts: ratio, calcName: "湿度比" },
+    ]);
+    if (!merged) return <div>計算列を足せませんでした</div>;
+    return (
+      <ErrorBoundary>
+        <div style={{ maxWidth: 680, border: "1px solid #e5e7eb", borderRadius: 12, padding: 8 }}>
+          <DataGrid data={merged.data} linked={merged.linked} />
+        </div>
       </ErrorBoundary>
     );
   },

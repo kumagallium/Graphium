@@ -8,16 +8,19 @@ import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
 import type { DataTableData } from "./data";
+import type { LinkedColumn } from "./linked";
 import { DataGrid } from "./grid";
 import { ROW_HEIGHT } from "./model";
 
 export function DataTableExpandModal({
   caption,
   data,
+  linked = [],
   onClose,
 }: {
   caption: string;
   data: DataTableData;
+  linked?: LinkedColumn[];
   onClose: () => void;
 }) {
   useLocaleSubscription();
@@ -67,7 +70,7 @@ export function DataTableExpandModal({
           </button>
         </div>
         <div className="p-3 overflow-hidden">
-          <DataGrid data={data} visibleRows={visibleRows} />
+          <DataGrid data={data} visibleRows={visibleRows} linked={linked} />
         </div>
       </div>
     </div>,
