@@ -138,10 +138,11 @@ talks to LLM and embedding backends.
   is view-only, and the table is read-only. This exists because a note table
   is one ProseMirror node per cell and every edit re-serializes the whole
   document, so a 2,000-row measurement pasted as a note table stalls the
-  editor; the import dialog therefore defaults to a data table above
-  `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and lets the writer choose the
-  other form. Re-importing from the source badge converts between the two
-  forms. Calc blocks and charts read a data table by its caption exactly
+  editor; the import dialog therefore defaults to a data table for every
+  delimited import (instrument data is read and plotted, not edited by hand)
+  and lets the writer pick the note-table form instead, warning above
+  `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows. Re-importing from the source
+  badge converts between the two forms. Calc blocks and charts read a data table by its caption exactly
   like a note table (read-only: calc write-back never targets one), and the
   expand button opens the same full-height view with virtual scrolling.
 - `chart` renders a table from the same note as a line / bar / scatter /

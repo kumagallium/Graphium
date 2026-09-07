@@ -297,7 +297,7 @@ type TableSource = {
   `meta`, because for a lab note those lines *are* the measurement conditions.
   When the file was also registered as an asset, `fileId` links the table back to
   it and the import can be re-run with the stored settings.
-- **Large imports become a `dataTable` block instead of a table.** The block
+- **Delimited imports become a `dataTable` block by default.** The block
   keeps no rows: `props.source` is the same object as `tableMeta.source`
   serialized as a JSON string (so the read settings and the preamble `meta`
   travel with the block), and `props.caption` is the display name. Rows are
