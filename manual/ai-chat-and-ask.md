@@ -73,7 +73,7 @@ Each note keeps its own chat history, saved with the note. In the panel header, 
 
 Switching notes does not kill a running answer. The request keeps going in the background, the result is written back to the correct note's chat, and when you return to that note the **Chat** tab reopens on the conversation.
 
-## Asking about a shared note {#asking-about-a-shared-note}
+## Asking about a shared note <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" /> {#asking-about-a-shared-note}
 
 Entries in the shared library can be discussed the same way, without forking them first. Open one in full view (double-click its row, or **Open in full view** in the detail panel) and pick **Ask AI** from the right-hand rail. The tab is there once an AI model is set up, and for entries that have something to read — not for files shared as materials, or for comments.
 
