@@ -456,3 +456,142 @@ export const English: Story = {
     },
   ],
 };
+
+// ── マニュアル用スクショ（英語・パン作りの世界観） ──
+//
+// 撮影は scripts/manual-screenshots-shared.mjs。登場人物・共有フォルダは
+// SharedLibraryView の ManualEnglish と揃える（指導役 Mia Tanaka が学生役
+// Ken Sato のノートを読んで返す）。右レールは既定のコメントを開いたまま撮る。
+
+const MANUAL_MENTOR = { name: "Mia Tanaka", email: "mia@example.org" };
+const MANUAL_STUDENT = { name: "Ken Sato", email: "ken@example.org" };
+
+const MANUAL_NOTE: SharedEntry = {
+  id: "manual-note-1",
+  type: "note",
+  author: MANUAL_STUDENT,
+  created_at: daysAgo(6),
+  updated_at: daysAgo(0.1),
+  hash: "sha256:9f2c41ab",
+  prov: { derived_from: [] },
+  version: 2,
+  extra: { title: "Sourdough starter log — day 3", noteContexts: ["Sourdough/Starter"] },
+  history: [
+    {
+      updated_at: daysAgo(2),
+      updated_by: MANUAL_STUDENT,
+      hash: "sha256:41c7be08",
+      change_kind: "minor" as const,
+    },
+  ],
+} as SharedEntry;
+
+const MANUAL_COMMENTS: SharedEntry[] = [
+  {
+    id: "manual-comment-1",
+    type: "comment",
+    author: MANUAL_MENTOR,
+    created_at: daysAgo(0.35),
+    updated_at: daysAgo(0.35),
+    hash: "sha256:dddd0001",
+    prov: { derived_from: ["manual-note-1"] },
+    version: 1,
+    extra: { target: "manual-note-1", targetHash: MANUAL_NOTE.hash },
+  },
+  {
+    id: "manual-comment-2",
+    type: "comment",
+    author: MANUAL_STUDENT,
+    created_at: daysAgo(0.3),
+    updated_at: daysAgo(0.3),
+    hash: "sha256:dddd0002",
+    prov: { derived_from: ["manual-note-1"] },
+    version: 1,
+    extra: {
+      target: "manual-note-1",
+      targetHash: MANUAL_NOTE.hash,
+      parentId: "manual-comment-1",
+    },
+  },
+  {
+    id: "manual-comment-3",
+    type: "comment",
+    author: MANUAL_MENTOR,
+    created_at: daysAgo(0.2),
+    updated_at: daysAgo(0.2),
+    hash: "sha256:dddd0003",
+    prov: { derived_from: ["manual-note-1"] },
+    version: 1,
+    extra: {
+      target: "manual-note-1",
+      targetHash: MANUAL_NOTE.hash,
+      blockId: "mb-rise",
+      blockText: "The starter doubled in four hours at 28 °C.",
+    },
+  },
+] as SharedEntry[];
+
+const MANUAL_COMMENT_TEXTS: Record<string, string> = {
+  "manual-comment-1":
+    "Good rise. Could you also write down the room temperature at every feeding?",
+  "manual-comment-2": "Added it — 21 °C in the kitchen, 28 °C in the proofing box.",
+  "manual-comment-3":
+    "Worth linking the hydration page here: day 2 rose much more slowly at the same temperature.",
+};
+
+const MANUAL_DOC: GraphiumDocument = {
+  version: 6,
+  title: "Sourdough starter log — day 3",
+  createdAt: daysAgo(6),
+  modifiedAt: daysAgo(0.1),
+  pages: [
+    {
+      id: "p1",
+      title: "Sourdough starter log — day 3",
+      blocks: [
+        para("mb-feed", "Fed the starter at 8:00 with 50 g of bread flour and 50 g of water (1:1:1)."),
+        para("mb-box", "Kept it in the proofing box at 28 °C; the kitchen itself stayed around 21 °C."),
+        para("mb-rise", "The starter doubled in four hours at 28 °C."),
+        para("mb-smell", "The smell has moved from sharp vinegar to something closer to yogurt."),
+        para("mb-next", "Day 4: feed twice, and save the discard for the weekend baguettes."),
+      ],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
+    },
+  ],
+} as any;
+
+/** 本文とコメント本文の両方を返す DI リーダ（英語版の COMMENT_TEXTS を引く） */
+const manualReader = async (entry: SharedEntry) => ({
+  body:
+    entry.type === "comment"
+      ? new TextEncoder().encode(MANUAL_COMMENT_TEXTS[entry.id] ?? "")
+      : encode(MANUAL_DOC),
+  verified: true,
+});
+
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  args: {
+    ...baseArgs,
+    entry: MANUAL_NOTE,
+    currentIdentity: MANUAL_MENTOR,
+    sharedRoot: "/Users/mia/shared-bakery",
+    entries: MANUAL_COMMENTS,
+    projection: projectionOf([[MANUAL_NOTE, MANUAL_DOC]]),
+    readEntryBody: manualReader,
+  },
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+};
