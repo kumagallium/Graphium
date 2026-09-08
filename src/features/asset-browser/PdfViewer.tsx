@@ -551,7 +551,12 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
       >
         {/* ピンチズーム中はこの wrapper を CSS transform でスケールする（即時プレビュー）。
             確定時に transform を外し zoom（= Page の width）へ反映して再ラスタライズ。 */}
-        <div ref={pagesWrapperRef}>
+        {/* lang="": pdf.js の text-layer は generic font（sans-serif 等）で文字を並べ、
+            lang 無しの canvas で測った幅に scaleX で合わせている。<html lang="ja"> を
+            継承すると Chromium が sans-serif を日本語フォントに解決し、欧文が約 13% 広く
+            並んで選択範囲や検索ハイライトが右にずれる。計測 canvas と同じ「言語不明」に
+            揃える（字間の継承は app.css の .textLayer で戻す）。 */}
+        <div ref={pagesWrapperRef} lang="">
           <Document
             file={blobUrl}
             options={PDFJS_DOC_OPTIONS}

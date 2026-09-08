@@ -88,7 +88,9 @@ Select text in a PDF, Word preview, or URL reader and a small pill appears: **Sa
 
 `⌘F` (`Ctrl+F` on Windows/Linux) searches inside the PDF while your pointer is over the viewer — or click the magnifier in the viewer's toolbar. Every match in the document is highlighted, with the current one in orange and a counter beside the box ("2/37"); `Enter` jumps to the next match, `Shift+Enter` to the previous, **Match case** toggles case sensitivity, and `Esc` closes the bar. Matches that run across a line break are found as written, so searching for `thin film` still finds it where the line broke after `thin`. When your pointer is somewhere else, `⌘F` opens [Find in note](/notes-and-editor#finding-text-in-a-note) as usual — the two never open at the same time.
 
-The highlight is painted on the text layer pdf.js builds, and that layer is laid out with a substitute font — only the width of each run is matched to the original. In a PDF whose font is far from the substitute (documents exported from a word processor, most often), the highlight can sit a few characters away from the word it marks. The count, the jumps and the text you select are not affected.
+![Find in PDF: the search bar over a material PDF, with every match highlighted and the current one in orange](/screenshots/pdf-find.png)
+
+The highlight follows the PDF's text layer, which pdf.js lays out with a substitute font and stretches to the width of each run. Where the substitute's letter shapes differ from the PDF's own font, a highlight can sit a fraction of a character off; the count, the jumps and the text you select are exact.
 
 ## Per-material memos, chat, and graph
 

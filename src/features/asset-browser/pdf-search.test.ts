@@ -51,6 +51,37 @@ describe("buildPageTextIndex", () => {
   });
 });
 
+describe("buildPageTextIndex (CJK)", () => {
+  it("CJK の span 境界には空白を補わない（1〜2 文字ずつ割れた text-layer を繋ぐ）", () => {
+    const index = buildPageTextIndex(makePage(["サ", "ワー", "ド", "ウ・", "ス", "ター", "ター"]));
+    expect(index.text).toBe("サワードウ・スターター");
+    expect(findMatchOffsets(index, "スターター", false)).toEqual([6]);
+  });
+
+  it("欧文と CJK が隣り合う境界にも空白は補わない", () => {
+    const index = buildPageTextIndex(makePage(["24", "時間で"]));
+    expect(index.text).toBe("24時間で");
+  });
+
+  it("欧文どうしの境界には引き続き空白を補う", () => {
+    const index = buildPageTextIndex(makePage(["end of", "line"]));
+    expect(index.text).toBe("end of line");
+  });
+});
+
+describe("findMatchOffsets (互換文字)", () => {
+  it("康熙部首で書かれた本文を通常の漢字で探せる", () => {
+    const index = buildPageTextIndex(makePage(["⽔に住みついた"]));
+    expect(findMatchOffsets(index, "水", false)).toEqual([0]);
+    expect(rangeForOffsets(index, 0, 1)?.toString()).toBe("⽔");
+  });
+
+  it("全角英数を半角で探せる", () => {
+    const index = buildPageTextIndex(makePage(["ＰＤＦ ｖ１"]));
+    expect(findMatchOffsets(index, "pdf", false)).toEqual([0]);
+  });
+});
+
 describe("findMatchOffsets", () => {
   const index = buildPageTextIndex(makePage(["Cu2O thin film", "grown on Cu2O seed"]));
 
