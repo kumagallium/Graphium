@@ -314,7 +314,7 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--color-text-tertiary)",
     fontSize: 10,
     lineHeight: "16px",
-    font: "inherit",
+    fontFamily: "inherit",
     fontVariantNumeric: "tabular-nums",
     whiteSpace: "nowrap",
     maxWidth: "50%",

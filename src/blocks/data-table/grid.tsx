@@ -181,13 +181,17 @@ const styles: Record<string, CSSProperties> = {
     borderRight: "1px solid var(--color-border)",
     overflow: "hidden",
   },
+  // shorthand（border / font）を longhand と混ぜると React が再描画時に警告するので、
+  // 消す辺と継承する書体は個別に書く
   headerButton: {
     background: "transparent",
-    border: "none",
+    borderTop: "none",
+    borderBottom: "none",
+    borderLeft: "none",
     borderRight: "1px solid var(--color-border)",
     cursor: "pointer",
     textAlign: "left",
-    font: "inherit",
+    fontFamily: "inherit",
   },
   row: {
     position: "absolute",
