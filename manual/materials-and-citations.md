@@ -58,7 +58,7 @@ When it finishes, a **Brought in** report breaks down what happened: notes, mate
 
 ![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
 
-Materials follow the same dedupe check as any other route (see below): the same file's contents do not create a second material. Notes are not checked yet, so bringing in the same vault twice creates two separate sets of notes — worth knowing before you re-run an intake over a folder you already brought in.
+Notes follow the same idea as materials (see below): a Markdown file whose contents match one you already brought in is not re-imported, and the report shows **N already in your notes** next to the notes count. The check reads the contents, not the name, so a renamed copy still counts as the same file. If the contents changed, it comes in as a new note. A note you have since edited in Graphium is never touched: re-importing the unchanged original is simply recognized as already brought in, and a changed original arrives as a new note beside your edited one.
 
 ## Bringing the same file in twice <Badge type="tip" text="Added in v0.37.0 (2026-08-14)" /> {#bringing-the-same-file-in-twice}
 
