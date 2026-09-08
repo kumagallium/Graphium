@@ -20,7 +20,7 @@ import { Link2, Plus, Trash2, X } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { ParamLinkButton, ParamValueField, resolveParamLinkTarget } from "./param-link";
 import { getActiveProvider } from "../../lib/storage/registry";
-import { t, getDisplayLabel } from "../../i18n";
+import { t, getDisplayLabel, getDisplayLabelName } from "../../i18n";
 import {
   splitAttrLabel,
   type ActivityIoKind,
@@ -694,7 +694,7 @@ export function FlowStepPanel({
                     onClick={() => setAdding({ what: "row", blockId: table.blockId, draft: "" })}
                     style={{ ...addBtnStyle, margin: "2px 4px 4px" }}
                   >
-                    <Plus size={11} /> {t("flowTable.addRow")}
+                    <Plus size={11} /> {t("flowTable.addRowOf", { label: getDisplayLabelName(kind) })}
                   </button>
                 )}
               </td>
@@ -713,10 +713,13 @@ export function FlowStepPanel({
 
     const ghostCols = ghosts.map((g) => ({ item: g, ...splitAttrLabel(g.label) }));
     const trailing = !!onAddColumn && !!table;
+    // 段階が 2 つ以上のときだけ、行の先頭に表示専用の番号を出す（保存はしない）
+    const showStageNumbers = rows.length >= 2;
     return (
       <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
         <thead>
           <tr>
+            {showStageNumbers && <th style={{ ...th, width: "1%" }} />}
             {headers.map((h, col) => {
               const key = `h:${blockId}:${col}`;
               return (
@@ -799,6 +802,9 @@ export function FlowStepPanel({
           )}
           {rows.map((row, r) => (
             <tr key={r}>
+              {showStageNumbers && (
+                <td style={{ ...td, ...ghostText, textAlign: "center" }}>{r + 1}</td>
+              )}
               {headers.map((_, col) => {
                 const key = `c:${blockId}:${r}:${col}`;
                 return (
@@ -839,6 +845,24 @@ export function FlowStepPanel({
               {trailing && <td style={{ ...td, borderRight: "none" }} />}
             </tr>
           ))}
+          {/* 段階（[パラメータ] 表のデータ行）を増やす。空行を足してセル編集に任せる */}
+          {table && onAddRow && (
+            <tr>
+              <td
+                colSpan={
+                  (showStageNumbers ? 1 : 0) + headers.length + ghostCols.length + (trailing ? 1 : 0)
+                }
+                style={{ border: "none", padding: 0 }}
+              >
+                <button
+                  onClick={() => onAddRow(table.blockId, "")}
+                  style={{ ...addBtnStyle, margin: "2px 4px 4px" }}
+                >
+                  <Plus size={11} /> {t("flowTable.addStage")}
+                </button>
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     );

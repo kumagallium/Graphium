@@ -26,6 +26,8 @@ type IncomingProvSummary = {
     tools?: string[];
     parameters?: Array<{ key?: string; value?: string; raw?: string }>;
     outputs?: string[];
+    /** 段階（stage）行を持つ手順の、段階ごとのパラメータ */
+    stages?: Array<{ index?: number; params?: Record<string, string> }>;
   }>;
   results?: Array<{
     property?: string;
@@ -86,6 +88,16 @@ export function formatProvSummaryForPrompt(raw: unknown): string | null {
           .filter((x) => x.length > 0);
         if (params.length > 0) {
           lines.push(`  - parameters: ${params.join(", ")}`);
+        }
+      }
+      if (a.stages && a.stages.length > 0) {
+        for (const stage of a.stages) {
+          const kv = stage.params
+            ? Object.entries(stage.params)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(", ")
+            : "";
+          lines.push(`  - stage ${stage.index ?? "?"}: ${kv}`);
         }
       }
       if (a.outputs && a.outputs.length > 0) {

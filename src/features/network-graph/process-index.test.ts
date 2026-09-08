@@ -5,7 +5,19 @@
 //   - 鮮度判定が modifiedTime で正しく効くこと
 //   - step 再利用のパラメータ集計が「key だけ・件数順・正規化なし」であること
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { ProvJsonLd } from "../prov-generator/generator";
+
+// 段階（stage）行のテストは generator.ts（別ワークストリームが並行改修中）の出力形に
+// 依存せず、手組みの ProvJsonLd フィクスチャで検証する。既定では実装へ委譲し
+// （既存テストは今まで通り本物の生成器を通る）、段階のテストだけ 1 回だけ差し込む。
+const generateProvDocumentMock = vi.hoisted(() => vi.fn());
+vi.mock("../prov-generator/generator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../prov-generator/generator")>();
+  generateProvDocumentMock.mockImplementation(actual.generateProvDocument);
+  return { ...actual, generateProvDocument: generateProvDocumentMock };
+});
+
 import {
   addForkedProcess,
   buildProcessEntry,
@@ -175,6 +187,85 @@ describe("buildProcessEntry", () => {
     } as ProcessIndexEntry;
     const entry = buildProcessEntry("n1", doc([step("s1", "焼成")]), file(NOW), prior);
     expect(entry!.forkedFrom).toEqual({ noteId: "n0", title: "元プロセス", forkedAt: NOW });
+  });
+});
+
+// generator.ts は別ワークストリームが並行改修中のため、段階（stage）行のテストは
+// generateProvDocument をモックし、契約書の JSON-LD 形を手組みしたフィクスチャで検証する。
+describe("buildProcessEntry: 段階（stage）行", () => {
+  const stageProvDoc = (): ProvJsonLd =>
+    ({
+      "@context": {},
+      "@graph": [
+        {
+          "@id": "activity_parent",
+          "@type": "prov:Activity",
+          "rdfs:label": "撹拌",
+          "graphium:blockId": "blkParent",
+        },
+        {
+          "@id": "activity_tbl_1",
+          "@type": "prov:Activity",
+          "rdfs:label": "撹拌 段階 1",
+          "graphium:blockId": "tbl",
+          "graphium:activityKind": "stage",
+          "graphium:stageIndex": 1,
+          "graphium:partOf": [{ "@id": "activity_parent" }],
+          "graphium:temperature": "100C",
+        },
+        {
+          "@id": "activity_tbl_2",
+          "@type": "prov:Activity",
+          "rdfs:label": "撹拌 段階 2",
+          "graphium:blockId": "tbl",
+          "graphium:activityKind": "stage",
+          "graphium:stageIndex": 2,
+          "graphium:partOf": [{ "@id": "activity_parent" }],
+          "prov:wasInformedBy": [{ "@id": "activity_tbl_1" }],
+          "graphium:temperature": "200C",
+        },
+      ],
+    }) as any;
+
+  it("段階だけの手順は branching にならず、stepCount は親の数だけ数える", () => {
+    generateProvDocumentMock.mockReturnValueOnce(stageProvDoc());
+    const entry = buildProcessEntry("n1", doc([step("s1", "撹拌")]), file(NOW));
+    expect(entry!.summary.stepCount).toBe(1);
+    expect(entry!.summary.branching).toBe(false);
+    expect(entry!.graph.steps).toHaveLength(1);
+    expect(entry!.graph.steps[0]).toMatchObject({ id: "blkParent", stageCount: 2 });
+  });
+});
+
+// 上の describe はモック経由の単体検証。ここでは generateProvDocument をモックせず、
+// 「生成器 → アダプタ → ProcessIndex」を実データで最後まで通す e2e として固定する。
+describe("buildProcessEntry: 段階（stage）行の e2e（生成器→アダプタ→ProcessIndex）", () => {
+  it("step 内の 3 行パラメータ表が 1 step・stageCount=3・branching なしに投影される", () => {
+    const withStages = doc([
+      step("s1", "撹拌", [{
+        id: "tbl-param",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[styled("温度")]] },
+            { cells: [[styled("100C")]] },
+            { cells: [[styled("150C")]] },
+            { cells: [[styled("200C")]] },
+          ],
+        },
+        children: [],
+      }]),
+    ]);
+    withStages.pages[0].labels = { "tbl-param": "attribute" };
+
+    const entry = buildProcessEntry("n1", withStages, file(NOW));
+
+    expect(entry).not.toBeNull();
+    expect(entry!.graph.steps).toHaveLength(1);
+    expect(entry!.graph.steps[0]).toMatchObject({ id: "s1", stageCount: 3 });
+    expect(entry!.summary.stepCount).toBe(1);
+    expect(entry!.summary.branching).toBe(false);
   });
 });
 
@@ -864,5 +955,39 @@ describe("パラメータ辞書", () => {
       { name: "焼成", noteCount: 2, paramCount: 0 },
       { name: "粉砕", noteCount: 1, paramCount: 0 },
     ]);
+  });
+
+  // 段階（stage）を畳んだ手順は、同じ key の params が段階数だけ並ぶ
+  // （adapter が「own params → 段階1 → 段階2 …」と連結するため）。
+  // 1 step 内で同じ key を何度も record すると、由来（origin）の多数決が段階数で歪む。
+  it("段階の畳み込みで同じ key が複数回並んでも、1 step からは 1 回だけ record する（origin が歪まない）", () => {
+    // n1: 素材由来の「温度」1 件だけ。n2: 段階 3 つぶんの「温度」が並ぶ step 直結パラメータ。
+    // dedup が無いと step 由来の件数（3）が素材由来（1）を上回り、多数決の origin が
+    // 入れ替わってしまう。
+    const materialEntry = withEntityAttrs("n1", "焼結", { kind: "material", labels: ["温度: 500 K"] });
+    const stageEntry = withParams("n2", "焼結", ["温度: 500 K", "温度: 600 K", "温度: 700 K"]);
+
+    const stats = collectParamKeysForStep(index([materialEntry, stageEntry]), "焼結", splitAttrLabel);
+    const stat = stats.find((s) => s.key === "温度")!;
+    expect(stat.noteCount).toBe(2);
+    expect(stat.origin).toBe("material");
+  });
+
+  it("collectStepInheritance でも同じ step 内の段階重複を 1 回だけ record する", () => {
+    const materialEntry = withEntityAttrs("n1", "焼結", { kind: "material", labels: ["温度: 500 K"] });
+    const stageEntry = withParams("n2", "焼結", ["温度: 500 K", "温度: 600 K", "温度: 700 K"]);
+
+    const result = collectStepInheritance(index([materialEntry, stageEntry]), "焼結", splitAttrLabel);
+    // step 直結の候補には出るが、由来の多数決は素材側に残る
+    expect(result.stepParams.map((p) => p.key)).toContain("温度");
+    const materialCandidate = result.entities.find((e) => e.kind === "material");
+    expect(materialCandidate?.attrs.map((a) => a.key)).toContain("温度");
+  });
+
+  // adapter（provDocToFlowGraph）は段階子を steps に出さないので、ここでは
+  // 「親だけの steps」を素直に渡せば自然に満たされることを固定するだけでよい。
+  it("段階子は steps に含まれない前提のもとで、step 名は親の名前だけ拾う", () => {
+    const i = index([withParams("n1", "撹拌", ["温度: 100C", "温度: 200C"])]);
+    expect(collectStepNames(i).map((s) => s.name)).toEqual(["撹拌"]);
   });
 });

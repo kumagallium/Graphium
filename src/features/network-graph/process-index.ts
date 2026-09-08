@@ -36,7 +36,7 @@ import { isProvLink, type BlockLink } from "../block-link/link-types";
  * 出力の形が変わったら上げる → 読み込み時に全再投影される。
  * note-index の INDEX_SCHEMA_VERSION とは独立に上げてよい（別ファイルにした理由）。
  */
-export const PROCESS_INDEX_VERSION = 3;
+export const PROCESS_INDEX_VERSION = 4;
 
 const APP_DATA_KEY = "process-index";
 const DRIVE_FILE_NAME = ".graphium-process-index.json";
@@ -690,7 +690,15 @@ export function collectParamKeysForStep(
 
     for (const step of process.graph.steps) {
       if (!matchedStepIds.has(step.id)) continue;
-      for (const param of step.params ?? []) record(param.label, process.noteId, "step");
+      // 段階（stage）を畳んだ手順は同じ key が複数回並ぶ（例: 段階ごとの温度）。
+      // 同じ step 内では key ごとに 1 回だけ record する（段階数の多いノートが多重投票しない）
+      const recordedKeys = new Set<string>();
+      for (const param of step.params ?? []) {
+        const { key } = splitLabel(param.label);
+        if (!key || recordedKeys.has(key)) continue;
+        recordedKeys.add(key);
+        record(param.label, process.noteId, "step");
+      }
     }
 
     // この手順に繋がる Entity の属性も、その手順で記録した項目として扱う
@@ -805,7 +813,15 @@ export function collectStepInheritance(
 
     for (const step of process.graph.steps) {
       if (!matched.has(step.id)) continue;
-      for (const param of step.params ?? []) record(stepAcc, param.label, process.noteId, "step");
+      // collectParamKeysForStep と同じ理由: 段階の畳み込みで同じ key が複数回
+      // 並んでも、この step からは 1 回だけ record する
+      const recordedKeys = new Set<string>();
+      for (const param of step.params ?? []) {
+        const { key } = splitLabel(param.label);
+        if (!key || recordedKeys.has(key)) continue;
+        recordedKeys.add(key);
+        record(stepAcc, param.label, process.noteId, "step");
+      }
     }
 
     const entityById = new Map(process.graph.entities.map((e) => [e.id, e]));

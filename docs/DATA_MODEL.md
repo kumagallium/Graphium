@@ -320,12 +320,23 @@ table needs at least a header row plus one data row; otherwise it falls
 back to a single Entity for the whole table.
 
 A table labelled `attribute` is read as a **parameter table** instead: the
-**header row supplies parameter keys** and the **first data row supplies
-the values**, and the resulting `key=value` map is merged into the
-`params` of the enclosing Step (Activity) — or of the parent Entity, when
-the table is nested under one. This is the structured counterpart of an
-inline `attribute` highlight, which attaches a single property to its
-parent.
+**header row supplies parameter keys**, and each **data row is one
+stage** — row order is stage order. A parameter table with a single data
+row behaves as before: its `key=value` map is merged into the `params` of
+the enclosing Step (Activity), or of the parent Entity, when the table is
+nested under one (only the first row is ever read for an Entity parent).
+A parameter table nested under an Activity with **two or more data
+rows** does *not* merge into the parent's `params`; instead each row
+becomes a child *Activity* (`graphium:activityKind: "stage"`,
+`graphium:stageIndex` holding its 1-based position, labelled "*parent
+label* stage *n*") linked to the parent via `graphium:partOf`, with
+`prov:wasInformedBy` chaining consecutive stages in row order (stage *n*
+is informed by stage *n − 1*). The child's node id is
+`activity_<tableBlockId>_<rowIdentity>` when the row carries a durable
+row identity (see below), or `activity_<tableBlockId>_<n>` (1-based,
+counting only non-empty rows) otherwise. This is the structured
+counterpart of an inline `attribute` highlight, which attaches a single
+property to its parent.
 
 ```ts
 type InlineHighlight = {
@@ -382,12 +393,14 @@ Duplicate row names resolve to the first matching row, and a column that
 is not in the header is a no-op.
 
 A step's **parameters** are a table too: the columns of a table labelled
-`attribute` inside the step, where the header row holds the keys and the
-first data row the values (`ensureParameterTable`). Only the first data
-row is read, which is why the flow view offers new columns rather than
-new rows there. The label is what makes the generator read the table at
-all, so it is applied automatically whenever the table is created from
-the graph.
+`attribute` inside the step, where the header row holds the keys
+(`ensureParameterTable`). A single data row's values are read straight
+into the step's `params`, as above; adding data rows from the flow
+view's **Add stage** button instead records additional stages (§2.3),
+which is why the panel now offers both new columns and new stage rows
+there. The label is what makes the generator read the table at all, so
+it is applied automatically whenever the table is created from the
+graph.
 
 An entity that only exists as a prose highlight can be **moved into the
 table** in one step: the row is appended and the span loses its mark, so
@@ -1469,7 +1482,7 @@ right-hand panel. It powers the process list and lets a step being
 written pull in what past runs of that step recorded.
 
 ```ts
-const PROCESS_INDEX_VERSION = 3;
+const PROCESS_INDEX_VERSION = 4;
 
 type ProcessIndex = {
   version: number;
@@ -1554,6 +1567,7 @@ longer resolves is shown as broken instead of being silently re-matched.
 | --- | --- |
 | 1 | Initial format |
 | 2–3 | Cross-note output references: `crossNoteLinks` on entries; projected graphs carry output identity (`graphium:tableRowId`) and external-origin overlay data |
+| 4 | Stage rows: a multi-row `[パラメータ]` table folds into per-row stage child Activities, changing the projected `graph`; `collectParamKeysForStep` / `collectStepInheritance` dedupe by key per step so a step with many stages doesn't multiply-count the same key |
 
 Bump it whenever the shape of `graph` or `summary` changes, or when the
 projection itself starts producing different output. A mismatch triggers

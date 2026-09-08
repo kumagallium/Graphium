@@ -925,7 +925,8 @@ export const ja: Record<string, string> = {
   "flowTable.addColumn": "列",
   "flowTable.removeCellImage": "画像を外す",
   "flowTable.removeColumn": "列を削除",
-  "flowTable.addRow": "行を追加",
+  "flowTable.addRowOf": "{label}を追加",
+  "flowTable.addStage": "段階を追加",
   "flowTable.resizeHandle": "ドラッグでサイズを変更 / ダブルクリックで既定に戻す",
   "flowTable.ghostHint": "本文のハイライトです。クリックで表に移ります",
   "flowTable.shared": "共有",
@@ -2291,6 +2292,9 @@ export const ja: Record<string, string> = {
   "graph.growthSummary": "成長 {count} 回 · 最終: {op}",
   "prov.prevStepFallback": "前手順",
   "prov.resultOf": "{label} の結果",
+  "prov.stageLabel": "{parent} 段階 {n}",
+  "prov.stageCount": "段階 {n}",
+  "prov.stageHeading": "段階 {n}",
   "prov.untitledBlock": "無題のブロック",
 
   // 設定

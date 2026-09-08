@@ -924,7 +924,8 @@ export const en: Record<string, string> = {
   "flowTable.addColumn": "Column",
   "flowTable.removeCellImage": "Remove image",
   "flowTable.removeColumn": "Remove column",
-  "flowTable.addRow": "Add row",
+  "flowTable.addRowOf": "Add {label}",
+  "flowTable.addStage": "Add stage",
   "flowTable.resizeHandle": "Drag to resize / double-click to reset",
   "flowTable.ghostHint": "Highlighted in the prose — click to move it into the table",
   "flowTable.shared": "Shared",
@@ -2294,6 +2295,9 @@ export const en: Record<string, string> = {
   "graph.growthSummary": "Grew {count}× · last: {op}",
   "prov.prevStepFallback": "Previous step",
   "prov.resultOf": "Result of {label}",
+  "prov.stageLabel": "{parent} stage {n}",
+  "prov.stageCount": "{n} stages",
+  "prov.stageHeading": "Stage {n}",
   "prov.untitledBlock": "Untitled block",
 
   // 設定
