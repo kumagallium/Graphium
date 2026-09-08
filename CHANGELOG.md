@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.62.2](https://github.com/kumagallium/Graphium/compare/v0.62.1...v0.62.2) - 2026-09-08
+
+- fix: キャプション付きの表があるノートが固まる回帰（属性の往復ループ）を直す by @kumagallium in https://github.com/kumagallium/Graphium/pull/871
+
 ## [v0.62.1](https://github.com/kumagallium/Graphium/compare/v0.62.0...v0.62.1) - 2026-09-08
 
 - [fix] Give computed-column headers room for the calculator badge by @kumagallium in https://github.com/kumagallium/Graphium/pull/868
