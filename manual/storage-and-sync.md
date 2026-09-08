@@ -184,7 +184,7 @@ To help you notice what changed since you last looked, the shared library also m
 
 When a note cites a shared entry, forks it, or is created from a shared template, the shared library can now show that relationship from the other side too. A shared entry's detail panel lists the shared notes that cite it, the shared notes forked from it, and — for templates — the shared notes made from it, each one clickable to jump straight to it. This depends on Graphium having already read the citing/forking note's content at least once, so a very recently shared note may take a moment to show up in another entry's reverse links.
 
-### Propose changes to someone else's note {#propose-changes}
+### Propose changes to someone else's note <Badge type="tip" text="Added in v0.66.0 (2026-09-08)" /> {#propose-changes}
 
 A note you forked from the shared library can be offered back as a **proposal**: your version of the note, shared as a suggestion. The original is not rewritten — its author decides whether to take anything in.
 
@@ -216,7 +216,7 @@ You can still propose when the original has moved on. The changes are then shown
 
 The full view of a proposal is a place to **read**. Taking changes in happens on the author's side, in their own note.
 
-#### Adopting a proposal (the original's author) {#adopt-a-proposal}
+#### Adopting a proposal (the original's author) <Badge type="tip" text="Added in v0.67.0 (2026-09-08)" /> {#adopt-a-proposal}
 
 When a proposal arrives for a note you shared, opening that note adds a **Proposals** tab to the right-hand rail (notes with no proposals don't get one). A **Proposals N** badge next to the shared badge in the header opens the same tab.
 

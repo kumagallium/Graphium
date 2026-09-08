@@ -93,6 +93,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.64.0** | 2026-09-08 | [Tables move between the note and the library](/notes-and-editor#moving-between-the-two-forms) — a note table becomes a data table from the ⠿ menu, or from a badge once it is long enough to slow the note down, and a data table comes back into the note while it stays under 1,000 rows, keeping its name and its link to the asset. A computed column can also be written out, with every other column, as a new asset that records where it came from. |
 | **v0.65.0** | 2026-09-08 | Bring in what you already have: PowerPoint and Excel become materials (slide text, images, sheets as tables), re-imported files no longer duplicate notes, and text in imported images is read in the background. |
 | **v0.66.0** | 2026-09-08 | Extract slides and sheets from Office files that are already in your library. |
+| **v0.67.0** | 2026-09-08 | [Propose changes to a shared note, and take them in](/storage-and-sync#propose-changes) — fork someone's shared note, edit it, and share it back as a proposal. The author reads a three-way diff (what you changed, what they changed, what both touched), ticks what to keep, and takes it into their own note; adopting saves a version first and becomes a new shared version on the next update. |
 
 ## Requests welcome
 
