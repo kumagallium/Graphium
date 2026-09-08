@@ -1405,6 +1405,7 @@ export const ja: Record<string, string> = {
   "asset.quoteToMemoSaved": "メモに保存しました",
   "asset.quoteDismiss": "選択を解除",
   "asset.pdf.zoomIn": "拡大",
+  "asset.pdf.find": "PDF 内を検索",
   "asset.pdf.zoomOut": "縮小",
   "asset.pdf.zoomReset": "等倍に戻す",
   "asset.pdf.pageOf": "{current} / {total} ページ",

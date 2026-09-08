@@ -10,7 +10,7 @@
 // もっとも viewport に出ているページから決定する。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, Search } from "lucide-react";
 import { Document, Page } from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
@@ -21,6 +21,8 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource } from "./SelectionPill";
 import { normalizePdfSelectionText } from "./pdf-selection-text";
+import { usePdfSearch } from "./use-pdf-search";
+import { SearchBar } from "../document-search/SearchBar";
 
 export type PdfViewerProps = {
   entry: MediaIndexEntry;
@@ -51,13 +53,23 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
   // ピンチズーム中の即時プレビュー用。ジェスチャ中はこの要素を CSS transform で
   // スケールし、確定時に zoom state へ反映して再ラスタライズする。
   const pagesWrapperRef = useRef<HTMLDivElement | null>(null);
-  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [pill, setPill] = useState<PillState | null>(null);
+  // text-layer が作り直された回数。ページ描画完了とズーム確定で増え、
+  // 検索インデックスの作り直し契機になる。
+  const [renderRevision, setRenderRevision] = useState(0);
+
+  const search = usePdfSearch({
+    containerRef,
+    scrollAreaRef,
+    pageRefs,
+    revision: `${blobUrl ?? ""}:${zoom}:${renderRevision}`,
+  });
 
   // 1 回しか変わらないストレージプロバイダ依存の解決を memo
   const fileIdResolved = useMemo(
@@ -234,6 +246,12 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
 
     return () => observer.disconnect();
   }, [numPages, currentPage]);
+
+  // ページ描画完了 = その text-layer が DOM に出た合図。検索インデックスを
+  // 作り直す契機にする（連続で来るので、購読側で debounce している）。
+  const handlePageRendered = useCallback(() => {
+    setRenderRevision((n) => n + 1);
+  }, []);
 
   const registerPage = useCallback((pageNumber: number, el: HTMLDivElement | null) => {
     if (el) {
@@ -426,6 +444,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
         height: "100%",
         display: "flex",
         flexDirection: "column",
+        position: "relative",
         minHeight: 0,
       }}
     >
@@ -450,6 +469,19 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
             : "…"}
         </span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+          <button
+            type="button"
+            onClick={() => (search.state.open ? search.close() : search.open())}
+            title={t("asset.pdf.find")}
+            aria-label={t("asset.pdf.find")}
+            aria-pressed={search.state.open}
+            style={{
+              ...toolBtnStyle,
+              background: search.state.open ? "var(--color-accent)" : "transparent",
+            }}
+          >
+            <Search size={14} />
+          </button>
           <button
             type="button"
             onClick={handleZoomOut}
@@ -542,6 +574,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
                     pageNumber={pageNumber}
                     width={pageWidth}
                     renderTextLayer
+                    onRenderSuccess={handlePageRendered}
                     renderAnnotationLayer={false}
                   />
                 </div>
@@ -549,6 +582,25 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
           </Document>
         </div>
       </div>
+
+      {/* PDF 内検索バー（Cmd+F / ツールバーの虫めがね）。
+          ノート本文の検索バーと違い、ビューアの中に収める（サイドピークで
+          画面右上に出すと本文側の検索バーと重なるため）。 */}
+      {search.state.open && (
+        <SearchBar
+          query={search.state.query}
+          total={search.state.total}
+          current={search.state.current}
+          caseSensitive={search.state.caseSensitive}
+          onQueryChange={search.setQuery}
+          onToggleCaseSensitive={search.toggleCaseSensitive}
+          onNext={search.next}
+          onPrev={search.prev}
+          onClose={search.close}
+          placeholder={t("asset.pdf.find")}
+          className="absolute top-12 right-4 z-30"
+        />
+      )}
 
       {/* SelectionPill — メモ保存ハンドラがない場合は出さない */}
       {pill && onSaveSelectionAsMemo && (

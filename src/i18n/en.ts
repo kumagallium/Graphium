@@ -1405,6 +1405,7 @@ export const en: Record<string, string> = {
   "asset.quoteToMemoSaved": "Saved to memos",
   "asset.quoteDismiss": "Dismiss",
   "asset.pdf.zoomIn": "Zoom in",
+  "asset.pdf.find": "Find in PDF",
   "asset.pdf.zoomOut": "Zoom out",
   "asset.pdf.zoomReset": "Reset zoom",
   "asset.pdf.pageOf": "Page {current} / {total}",

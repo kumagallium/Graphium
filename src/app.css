@@ -722,6 +722,20 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   color: #1a2e1d;
 }
 
+/* PDF ビューア内検索（Cmd+F）のハイライト。
+   text-layer は pdf.js が管理する DOM なので decoration 用の span を差し込めない。
+   CSS Custom Highlight API で Range に直接色を当てる（features/asset-browser/pdf-search.ts）。
+   本文検索と同じ慣習色（全ヒット=黄、現在ヒット=橙）で揃える。
+   非対応ブラウザでは何も描かれないが、件数表示とヒット間移動は効く。 */
+::highlight(gph-pdf-match) {
+  /* text-layer の文字は透明（下のラスタ画像が本体）。color を指定すると
+     透明文字が可視化されて二重に見えるので、半透明の地色だけを当てる。 */
+  background-color: rgba(253, 230, 138, 0.55); /* amber-200 */
+}
+::highlight(gph-pdf-match-active) {
+  background-color: rgba(251, 146, 60, 0.6); /* orange-400 */
+}
+
 /* ── Step コンテナブロック ──────────────────────────────
    「手順（Activity）」を children を持つコンテナブロックとして第一級化した
    step ブロックの体裁。設計は docs/internal/step-container-block-design-2026-07.md。

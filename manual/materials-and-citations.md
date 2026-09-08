@@ -84,6 +84,10 @@ Select text in a PDF, Word preview, or URL reader and a small pill appears: **Sa
 
 ![Selecting text in the PDF reader to save a quote memo](/screenshots/pdf-reader-quote.png)
 
+### Finding text in a PDF {#finding-text-in-a-pdf}
+
+`⌘F` (`Ctrl+F` on Windows/Linux) searches inside the PDF while your pointer is over the viewer — or click the magnifier in the viewer's toolbar. Every match in the document is highlighted, with the current one in orange and a counter beside the box ("2/37"); `Enter` jumps to the next match, `Shift+Enter` to the previous, **Match case** toggles case sensitivity, and `Esc` closes the bar. Matches that run across a line break are found as written, so searching for `thin film` still finds it where the line broke after `thin`. When your pointer is somewhere else, `⌘F` opens [Find in note](/notes-and-editor#finding-text-in-a-note) as usual — the two never open at the same time.
+
 ## Per-material memos, chat, and graph
 
 Every material carries its own workspace. In full view, the right panel has four tabs:
