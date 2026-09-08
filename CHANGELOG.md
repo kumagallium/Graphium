@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.67.1](https://github.com/kumagallium/Graphium/compare/v0.67.0...v0.67.1) - 2026-09-08
+
+- [feat] Find text inside the PDF viewer with Cmd+F by @kumagallium in https://github.com/kumagallium/Graphium/pull/889
+
 ## [v0.67.0](https://github.com/kumagallium/Graphium/compare/v0.66.0...v0.67.0) - 2026-09-08
 
 - [feat] Adopt proposed changes into your note and show where a fork came from by @kumagallium in https://github.com/kumagallium/Graphium/pull/874
