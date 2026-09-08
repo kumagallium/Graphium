@@ -77,6 +77,8 @@ Switching notes does not kill a running answer. The request keeps going in the b
 
 Entries in the shared library can be discussed the same way, without forking them first. Open one in full view (double-click its row, or **Open in full view** in the detail panel) and pick **Ask AI** from the right-hand rail. The tab is there once an AI model is set up, and for entries that have something to read — not for files shared as materials, or for comments.
 
+![Asking about a shared note from the Ask AI rail of the full view](/screenshots/shared-note-ask-ai.png)
+
 Three things are worth knowing about it:
 
 - **Click a paragraph to ask about that paragraph.** While **Ask AI** is the open tab, clicking a paragraph in the body starts a new conversation quoting it, instead of marking it as the place for a comment. Close the tab, or switch back to **Comments**, and paragraph clicks go back to picking a comment target.

@@ -42,6 +42,9 @@ const SB = `http://localhost:${port}/iframe.html`;
  * clip の種類:
  *   "table" — パンくずの上端から表の下端 + 余白まで（既存の shared-library.png と同じ切り方）
  *   "view"  — ビュー全体（ビューポートそのまま）。全画面表示・ギャラリー系はこちら
+ *
+ * settleMs — 描画後に待つ時間（既定 2500ms）。ストーリーの play が非同期の
+ *   読み込みを待つ場合など、既定では終わり切らないものだけ延ばす
  */
 const SHOTS = [
   {
@@ -81,6 +84,16 @@ const SHOTS = [
     clip: "view",
     // 本文もコメントのレールも短いので、既定の高さだと下半分が余白になる
     viewport: { width: 1280, height: 620 },
+  },
+  {
+    id: "sharing-sharednoteview--manual-english-ask-ai",
+    name: "shared-note-ask-ai",
+    clip: "view",
+    // 全画面のコメント版と同じ切り方に揃える（並べたときに高さが揃う）
+    viewport: { width: 1280, height: 620 },
+    // 会話を出すのはストーリーの play（履歴 → その会話を選ぶ）。
+    // 既定の 2500ms では読み込み待ちを含む play が終わり切らないことがある
+    settleMs: 4000,
   },
 ];
 
@@ -132,7 +145,7 @@ for (const shot of targets) {
   });
   // ストーリーが描かれるまで待つ（loadEntries は Promise なので描画は 1 tick 遅れる）
   await page.waitForSelector("#storybook-root *", { timeout: 15000 });
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(shot.settleMs ?? 2500);
 
   if (shot.click) {
     await page.getByRole("button", { name: shot.click }).first().click();
