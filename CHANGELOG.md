@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.65.0](https://github.com/kumagallium/Graphium/compare/v0.64.1...v0.65.0) - 2026-09-08
+
+- [docs] Add screenshots for the intake and in-place folder rename by @kumagallium in https://github.com/kumagallium/Graphium/pull/881
+- [feat] Skip notes whose imported file has not changed by @kumagallium in https://github.com/kumagallium/Graphium/pull/882
+- [feat] Read text from imported images in the background after intake by @kumagallium in https://github.com/kumagallium/Graphium/pull/883
+- [feat] Bring PowerPoint and Excel files in: slide text, images and sheets as tables by @kumagallium in https://github.com/kumagallium/Graphium/pull/884
+
 ## [v0.64.1](https://github.com/kumagallium/Graphium/compare/v0.64.0...v0.64.1) - 2026-09-08
 
 - docs: v0.64.0 の表とデータ表の行き来をマニュアルに追記 by @kumagallium in https://github.com/kumagallium/Graphium/pull/879
