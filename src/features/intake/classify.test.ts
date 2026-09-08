@@ -77,21 +77,21 @@ describe("classifyIntakeFiles", () => {
     expect(result.skipped).toEqual([f]);
   });
 
-  it("PowerPoint（type 空）は対象外（拡張子から推定して弾く）", () => {
+  it("PowerPoint（type 空）は素材に分類される（拡張子から推定）", () => {
     const f = intakeFile("paper.pptx", "paper.pptx", "");
     const result = classifyIntakeFiles([f]);
-    expect(result.skipped).toEqual([f]);
-    expect(result.materials).toEqual([]);
+    expect(result.materials).toEqual([f]);
+    expect(result.skipped).toEqual([]);
   });
 
-  it("Excel は対象外", () => {
+  it("Excel は素材に分類される", () => {
     const f = intakeFile(
       "sheet.xlsx",
       "sheet.xlsx",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     const result = classifyIntakeFiles([f]);
-    expect(result.skipped).toEqual([f]);
+    expect(result.materials).toEqual([f]);
   });
 
   it("Word (.docx) は素材に分類される", () => {
@@ -106,6 +106,18 @@ describe("classifyIntakeFiles", () => {
 
   it("旧形式の Word (.doc) は対象外（docx のみ素材扱い）", () => {
     const f = intakeFile("old.doc", "old.doc", "application/msword");
+    const result = classifyIntakeFiles([f]);
+    expect(result.skipped).toEqual([f]);
+  });
+
+  it("旧形式の Excel (.xls) は対象外", () => {
+    const f = intakeFile("old.xls", "old.xls", "application/vnd.ms-excel");
+    const result = classifyIntakeFiles([f]);
+    expect(result.skipped).toEqual([f]);
+  });
+
+  it("旧形式の PowerPoint (.ppt) は対象外", () => {
+    const f = intakeFile("old.ppt", "old.ppt", "application/vnd.ms-powerpoint");
     const result = classifyIntakeFiles([f]);
     expect(result.skipped).toEqual([f]);
   });

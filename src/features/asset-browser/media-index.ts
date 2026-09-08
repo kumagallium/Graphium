@@ -39,10 +39,32 @@ export function isDocumentMime(mimeType: string): boolean {
 
 /** Word (.docx) の MIME。埋め込み画像抽出は .docx のみ対応（.doc/.xls/.ppt は非対応）。 */
 const WORD_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+/** PowerPoint (.pptx) の MIME */
+const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+/** Excel (.xlsx) の MIME */
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /** Word (.docx) 素材かどうか */
 export function isWordDocxEntry(entry: { type: MediaType; mimeType: string }): boolean {
   return entry.type === "document" && entry.mimeType === WORD_DOCX_MIME;
+}
+
+/** PowerPoint (.pptx) 素材かどうか */
+export function isPptxEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "document" && entry.mimeType === PPTX_MIME;
+}
+
+/** Excel (.xlsx) 素材かどうか */
+export function isXlsxEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "document" && entry.mimeType === XLSX_MIME;
+}
+
+/**
+ * ちゃんと展開できる Office 形式（.docx / .pptx / .xlsx）の素材かどうか。
+ * 旧バイナリ形式（.doc / .xls / .ppt）はここに含まない。
+ */
+export function isModernOfficeEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return isWordDocxEntry(entry) || isPptxEntry(entry) || isXlsxEntry(entry);
 }
 
 /**
@@ -592,10 +614,12 @@ export async function persistUrlMetaPatch(
 /**
  * 画像の OCR テキストを media-index に書き戻す。
  *
- * 呼び出し元は 2 つ:
+ * 呼び出し元は 3 つ:
  *   - 素材ギャラリー / 素材ピークからの読み取り（そこが唯一の保存先）
  *   - ノートに貼った画像の読み取り（正は `page.mediaOcr`。ここへは
  *     `mirrorOcrToMediaIndex` 経由で写しを置き、素材横断で探せるようにする）
+ *   - PowerPoint 展開時のスライド文字の書き込み（`note-app.tsx` の
+ *     `handleExpandOffice`。ここが唯一の保存先で、後から OCR で上書きされうる）
  */
 export async function persistOcrTextPatch(
   fileId: string,

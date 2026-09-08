@@ -63,7 +63,9 @@ export function desiredAssetSources(
   const includePdf = options.includePdf ?? true;
   for (const m of media) {
     if (m.archivedAt) continue;
-    if (m.type === "image") {
+    if (m.type === "image" || m.type === "document") {
+      // document の ocrText は PowerPoint のスライド文字（pptx.ts + persistOcrTextPatch）。
+      // 画像の OCR テキストと同じ場所に書かれるので、同じ経路で索引に載せる
       const text = m.ocrText?.trim();
       if (!text) continue;
       desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `ocr:${fnv1a(text)}` });

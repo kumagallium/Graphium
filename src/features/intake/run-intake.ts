@@ -63,6 +63,12 @@ export type IntakeDeps = {
    * 既存のフォルダを尊重して呼ばない。失敗しても取り込み自体は続行する
    */
   setAssetFolder?: (fileId: string, folder: string) => Promise<void> | void;
+  /**
+   * PowerPoint (.pptx) / Excel (.xlsx) を展開して派生素材（画像・CSV）を登録する。
+   * 素材登録後、新規登録（!duplicate）の pptx / xlsx にだけ呼ぶ。失敗しても
+   * 取り込み自体は続行する（warn するだけ）
+   */
+  expandOffice?: (file: File, fileId: string) => Promise<{ derived: number; skipped: number }>;
   /** 全件終了後に 1 回だけ呼ぶ（インデックス再構築など） */
   afterRun?: () => Promise<void> | void;
 };
@@ -93,6 +99,10 @@ export type IntakeOutcome = {
    * 取り込み完了後、裏で順に OCR を回すための対象リスト
    */
   ocrTargets: BulkOcrTarget[];
+  /** PowerPoint / Excel の展開で追加登録された派生素材（画像・CSV）の合計件数 */
+  officeDerived: number;
+  /** PowerPoint の展開で変換できずに捨てられた画像（EMF/WMF/TIFF 変換失敗等）の合計件数 */
+  officeSkipped: number;
 };
 
 /**
@@ -123,7 +133,15 @@ export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome 
     lastNewId: b.lastNewId ?? a.lastNewId,
     folders: a.folders + b.folders,
     ocrTargets: [...a.ocrTargets, ...b.ocrTargets],
+    officeDerived: a.officeDerived + b.officeDerived,
+    officeSkipped: a.officeSkipped + b.officeSkipped,
   };
+}
+
+/** PowerPoint (.pptx) / Excel (.xlsx) か（拡張子判定。旧形式 .ppt/.xls は対象外） */
+function isExpandableOfficeFile(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return lower.endsWith(".pptx") || lower.endsWith(".xlsx");
 }
 
 /**
@@ -180,6 +198,8 @@ export async function runIntake(
   let materialsUploaded = 0;
   let materialsExisting = 0;
   const ocrTargets: BulkOcrTarget[] = [];
+  let officeDerived = 0;
+  let officeSkipped = 0;
   const notesDone = notes.length;
   for (let i = 0; i < materials.length; i++) {
     const m = materials[i];
@@ -199,12 +219,12 @@ export async function runIntake(
       if (entry && entry.type === "image" && (!duplicate || !entry.ocrText)) {
         ocrTargets.push({ fileId: entry.fileId, url: entry.url, name: entry.name });
       }
+      const fileId = result && typeof result === "object" ? (result as { fileId?: string }).fileId : undefined;
       const folder = folderOfFile(m);
       if (folder) {
         foldersSeen.add(folder);
         // 登録済みの素材（duplicate）は既存のフォルダを尊重して触らない
         if (!duplicate && deps.setAssetFolder) {
-          const fileId = result && typeof result === "object" ? (result as { fileId?: string }).fileId : undefined;
           if (fileId) {
             try {
               await deps.setAssetFolder(fileId, folder);
@@ -212,6 +232,16 @@ export async function runIntake(
               console.warn(`[intake] 素材のフォルダ設定に失敗: ${m.file.name}`, err);
             }
           }
+        }
+      }
+      // PowerPoint / Excel の展開: 新規登録のときだけ（重複はすでに展開済みのはず）
+      if (!duplicate && fileId && deps.expandOffice && isExpandableOfficeFile(m.file.name)) {
+        try {
+          const { derived, skipped: officeSkippedCount } = await deps.expandOffice(m.file, fileId);
+          officeDerived += derived;
+          officeSkipped += officeSkippedCount;
+        } catch (err) {
+          console.warn(`[intake] Office ファイルの展開に失敗: ${m.file.name}`, err);
         }
       }
     } catch (err) {
@@ -250,5 +280,7 @@ export async function runIntake(
     lastNewId: markdownResult.lastNewId,
     folders: foldersSeen.size,
     ocrTargets,
+    officeDerived,
+    officeSkipped,
   };
 }
