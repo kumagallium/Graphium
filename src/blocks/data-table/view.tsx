@@ -28,12 +28,14 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { Database, Maximize2, TriangleAlert } from "lucide-react";
+import { Database, Download, Maximize2, TriangleAlert } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { t, useLocaleSubscription } from "../../i18n";
 import type { TableSource } from "../../lib/document-types";
 import {
+  hasDataTableExportCallback,
   hasDataTableReimportCallback,
+  requestDataTableExport,
   requestDataTableReimport,
   subscribeDataTableReimport,
 } from "./callbacks";
@@ -121,6 +123,12 @@ function DataTableBlockView({ block, editor }: { block: any; editor: any }) {
 
   const [expanded, setExpanded] = useState(false);
   const closeExpanded = useCallback(() => setExpanded(false), []);
+  // 計算列込みで素材に書き出す。結果（素材名）を数秒だけキャプション行に出す
+  const [exportedName, setExportedName] = useState<string | null>(null);
+  const hostAcceptsExport = useSyncExternalStore(
+    subscribeDataTableReimport,
+    () => hasDataTableExportCallback(editor),
+  );
 
   // calc が ⇥ でこのデータ表へ宣言した列を、素材の列の右に足して見せる（セルには書かない）
   const tableStore = useTableMetaStoreOptional();
@@ -143,6 +151,26 @@ function DataTableBlockView({ block, editor }: { block: any; editor: any }) {
         canReimport={editable && !!source?.fileId && hostAcceptsReimport}
         onReimport={reimport}
         onExpand={merged ? () => setExpanded(true) : undefined}
+        onExport={
+          merged && source && hostAcceptsExport
+            ? () => {
+                const p = requestDataTableExport(editor, {
+                  blockId: block.id,
+                  source,
+                  caption: dataTableDisplayName(caption, source),
+                  headers: merged.data.headers,
+                  rows: merged.data.rows,
+                });
+                if (!p) return;
+                void p.then((name) => {
+                  if (!name) return;
+                  setExportedName(name);
+                  setTimeout(() => setExportedName(null), 4000);
+                });
+              }
+            : undefined
+        }
+        exportedName={exportedName}
       />
       {merged ? (
         <DataGrid data={merged.data} linked={merged.linked} />
@@ -171,6 +199,8 @@ function CaptionRow({
   canReimport,
   onReimport,
   onExpand,
+  onExport,
+  exportedName,
 }: {
   caption: string;
   editable: boolean;
@@ -180,6 +210,8 @@ function CaptionRow({
   canReimport: boolean;
   onReimport: () => void;
   onExpand?: () => void;
+  onExport?: () => void;
+  exportedName?: string | null;
 }) {
   const [draft, setDraft] = useState(caption);
   useEffect(() => setDraft(caption), [caption]);
@@ -242,6 +274,20 @@ function CaptionRow({
         >
           <Maximize2 size={10} strokeWidth={2} />
         </button>
+      )}
+      {onExport && (
+        <button
+          type="button"
+          onClick={onExport}
+          title={t("dataTable.exportAsset")}
+          aria-label={t("dataTable.exportAsset")}
+          style={{ ...styles.badge, ...styles.iconBadge }}
+        >
+          <Download size={10} strokeWidth={2} />
+        </button>
+      )}
+      {exportedName && (
+        <span style={styles.exported}>{t("dataTable.exported", { name: exportedName })}</span>
       )}
     </div>
   );
@@ -323,6 +369,11 @@ const styles: Record<string, CSSProperties> = {
   iconBadge: {
     padding: "0 5px",
     cursor: "pointer",
+  },
+  exported: {
+    fontSize: 10,
+    color: "var(--color-text-tertiary)",
+    whiteSpace: "nowrap",
   },
   ellipsis: {
     overflow: "hidden",

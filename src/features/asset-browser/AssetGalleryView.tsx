@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2 } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext } from "../note-context/context-tags";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
@@ -36,6 +36,7 @@ import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
+import { IntakeReceptacle, type IntakeFile, type IntakeSource } from "../intake";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
@@ -502,6 +503,8 @@ export type AssetGalleryViewProps = {
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
+  /** 投入口の受け皿から直接渡されたファイル群を取り込む（素材が 1 件も無いときの初回受け皿用） */
+  onIntakeFiles?: (files: IntakeFile[], source: IntakeSource) => void;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
@@ -584,6 +587,23 @@ export type AssetGalleryViewProps = {
    * 親側で sourceAsset の付与・トースト等を行う。
    */
   onCreateMemoForAsset?: (entry: MediaIndexEntry, text: string) => void | Promise<void>;
+  /**
+   * フォルダ絞り込みポップアップの行を右クリック、または鉛筆アイコンで改名入口を開く。
+   * 未指定なら両方とも出さない（従来どおりチェックボックスのみの絞り込み行）。
+   * opts.initialMode が "rename" のときはメニューを経ずに直接入力欄を出す。
+   */
+  onFolderMenu?: (
+    path: string,
+    position: { top: number; left: number },
+    opts?: { initialMode?: "menu" | "rename" },
+  ) => void;
+  /**
+   * フォルダの改名が起きたことを親から知らせる。folderFilter に含まれていれば
+   * 新しい名前へ差し替える（mediaIndex の変化からは自動追従しないため、
+   * 改名の実行元である親が明示的に伝える最小実装）。
+   * seq は同じ from/to の組み合わせでも変更を検知させたいときのキー。
+   */
+  renamedFolder?: { from: string; to: string; seq: number };
 };
 
 // 素材タイプごとの表示モード（gallery / list）。
@@ -641,6 +661,7 @@ export function AssetGalleryView({
   noteFolderLookup,
   onAddUrlBookmark,
   onUploadMedia,
+  onIntakeFiles,
   onIngestMedia,
   onCreateProvNote,
   onTranslatePdf,
@@ -662,6 +683,8 @@ export function AssetGalleryView({
   captureIndex,
   onDeleteMemo,
   onCreateMemoForAsset,
+  onFolderMenu,
+  renamedFolder,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -671,6 +694,15 @@ export function AssetGalleryView({
   const [docFilter, setDocFilter] = useState<"all" | "pdf" | "word">("all");
   // フォルダでの絞り込み（ノートと同じ体系。UNFILED_PATH は「フォルダに入っていない素材」）
   const [folderFilter, setFolderFilter] = useState<string[]>([]);
+  // 改名されたフォルダが絞り込み中に入っていたら、新しい名前へ追従させる。
+  // mediaIndex の書き換えは非同期のため、renamedFolder を明示的に受け取って置換する。
+  useEffect(() => {
+    if (!renamedFolder) return;
+    // 本人だけでなく子（from/ で始まるもの）も改名されるので、同じ規則で置き換える
+    const { from, to } = renamedFolder;
+    const rewrite = (v: string) => (v === from ? to : v.startsWith(from + "/") ? to + v.slice(from.length) : v);
+    setFolderFilter((prev) => (prev.some((v) => rewrite(v) !== v) ? prev.map(rewrite) : prev));
+  }, [renamedFolder]);
   // 素材が属するフォルダ（自分で付けたもの + 使われているノートのフォルダ）を求める。
   // 参照表が渡らない文脈（Storybook など）では自分で付けた分だけになる。
   const emptyLookup = useMemo(() => new Map<string, readonly string[]>(), []);
@@ -1641,9 +1673,15 @@ export function AssetGalleryView({
               <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-16">
-              <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
-            </div>
+            onIntakeFiles && mediaIndex && mediaIndex.media.length === 0 ? (
+              <div className="py-10 max-w-[560px] mx-auto">
+                <IntakeReceptacle lead={t("intake.emptyMaterialsLead")} onFilesSelected={onIntakeFiles} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-16">
+                <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
+              </div>
+            )
           ) : viewMode === "gallery" ? (
             // 列数はコンテナ幅に追従（サイドピークが inline で並ぶと自動で減る）。
             // モバイル（overlay 表示）はリフロー不要なので従来どおり 2 列固定
@@ -1923,6 +1961,29 @@ export function AssetGalleryView({
           clearLabel={t("nav.clearFilter")}
           noMatchText={t("nav.contextEmpty")}
           minWidth={220}
+          // 未分類（UNFILED_PATH）は実体を持たない疑似フォルダなので、右クリック・改名の対象外
+          onOptionContextMenu={
+            onFolderMenu
+              ? (value, pos) => {
+                  if (value === UNFILED_PATH) return;
+                  onFolderMenu(value, pos);
+                }
+              : undefined
+          }
+          optionAction={
+            onFolderMenu
+              ? {
+                  title: t("nav.renameFolder"),
+                  icon: <Pencil size={12} />,
+                  // 「未分類」は疑似フォルダなので改名の対象にしない（鉛筆も出さない）
+                  appliesTo: (value) => value !== UNFILED_PATH,
+                  onClick: (value, pos) => {
+                    if (value === UNFILED_PATH) return;
+                    onFolderMenu(value, pos, { initialMode: "rename" });
+                  },
+                }
+              : undefined
+          }
         />
       )}
     </div>

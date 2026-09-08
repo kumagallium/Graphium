@@ -48,6 +48,33 @@ export const Visible: Story = {
   ),
 };
 
+export const WithIntake: Story = {
+  name: "投入口チップあり（onOpenIntake 指定）",
+  render: () => (
+    <LocaleProvider>
+      <div style={{ background: "var(--paper)", padding: 32, borderRadius: 8 }}>
+        <div
+          style={{
+            fontFamily: "'Inter', system-ui, sans-serif",
+            color: "var(--ink-4)",
+            fontStyle: "italic",
+            fontSize: 14,
+            marginBottom: 4,
+          }}
+        >
+          （上の領域は本来 BlockNote タイトル + 空の本文）
+        </div>
+        <hr style={{ border: "none", borderTop: "1px dashed var(--rule-2)", margin: "12px 0" }} />
+        <EmptyNoteGuide
+          visible
+          onOpenComposer={() => console.info("[Story] Open composer")}
+          onOpenIntake={() => console.info("[Story] Open intake")}
+        />
+      </div>
+    </LocaleProvider>
+  ),
+};
+
 export const Hidden: Story = {
   name: "非表示（編集が始まっている）",
   render: () => (
