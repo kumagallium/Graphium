@@ -128,6 +128,12 @@ talks to LLM and embedding backends.
   levels: steps first, then — for a step that has outputs — that step's
   individual outputs, so the writer states *which* output is being
   received rather than only that one step followed another.
+- Pasting a table (HTML `<table>` or tab-separated text from a spreadsheet)
+  with more than `DOC_TABLE_DEFAULT_MAX_ROWS` (200) data rows is intercepted
+  in the paste handler and routed into the same data-import dialog as a
+  dropped file, so the note-table stall cannot be reached from the clipboard
+  either (`src/features/data-import/paste.ts`). Smaller pastes stay ordinary
+  BlockNote tables.
 - `dataTable` shows a delimited data asset (the same instrument `.txt` /
   `.dat` / `.csv` that data import turns into a table) *without* expanding it
   into the note. The block stores only a reference — the asset id plus the

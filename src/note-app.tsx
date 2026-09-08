@@ -88,6 +88,8 @@ import {
   defaultCaption,
   isDelimitedDataFile,
   readDataFileText,
+  detectPastedTable,
+  DOC_TABLE_DEFAULT_MAX_ROWS,
   type DataImportResult,
   type DelimitedImportOptions,
 } from "./features/data-import";
@@ -2513,6 +2515,23 @@ function NoteEditorInner({
 
     // paste: Graphium ペイロードを最優先で処理し、なければ既存の URL 検知に流す
     const pasteListener = (e: ClipboardEvent) => {
+      // 表の貼り付け（Excel / スプレッドシート / HTML の表）。行が多いものは本文の表に
+      // せず、ファイルのドロップと同じ取り込みダイアログへ回す（既定はデータ表）。
+      // 本文の表にすると固まる量を、貼り付け経路からも入れないため。小さな表は
+      // 従来どおり BlockNote が本文の表にする
+      const pastedTable = detectPastedTable({
+        text: e.clipboardData?.getData("text/plain"),
+        html: e.clipboardData?.getData("text/html"),
+      });
+      if (pastedTable && pastedTable.rows - 1 > DOC_TABLE_DEFAULT_MAX_ROWS) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const fileName = `${tStatic("dataImport.pastedTableFileName")}.tsv`;
+        const file = new File([pastedTable.tsv], fileName, { type: "text/tab-separated-values" });
+        pickerEditorRef.current = editor;
+        setDataImportFile({ fileName, text: pastedTable.tsv, file });
+        return;
+      }
       // 空のリスト系ブロック（checkListItem / bulletListItem / numberedListItem）に
       // テキストを paste すると BlockNote (prosemirror) がブロック自体を paragraph に
       // 置換してしまう。ユーザー視点では「リスト項目が消える」現象。

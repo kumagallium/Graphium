@@ -2382,6 +2382,7 @@ export const en: Record<string, string> = {
   "dataImport.target.dataTableHint": "Shows the asset's data as it is. Stays light with many rows; read-only",
   "dataImport.target.recommendedDataTable": "{count} rows — a data table is recommended",
   "dataImport.target.tableTooLarge": "A note table can hold up to {limit} rows (this one has {count}). Import larger tables as a data table",
+  "dataImport.pastedTableFileName": "pasted-table",
 
   // ── Data table block (a table that shows an asset) ──
   "dataTable.captionPlaceholder": "Table name",
