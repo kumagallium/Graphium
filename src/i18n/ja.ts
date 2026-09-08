@@ -2055,6 +2055,7 @@ export const ja: Record<string, string> = {
   "intake.running": "取り込んでいます {done} / {total}",
   "intake.doneTitle": "取り込みました",
   "intake.statNotes": "ノート",
+  "intake.statNotesExisting": "{count} 件は既にあります",
   "intake.statMaterials": "素材",
   "intake.statMaterialsExisting": "{count} 件は登録済み",
   "intake.statLinks": "引き継いだつながり",

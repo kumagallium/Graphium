@@ -77,6 +77,7 @@ export const Done: Story = {
     state: {
       kind: "done",
       notes: 38,
+      notesExisting: 0,
       materials: 17,
       linksResolved: 120,
       linksUnresolved: 0,
@@ -102,6 +103,7 @@ export const DoneWithIssues: Story = {
     state: {
       kind: "done",
       notes: 36,
+      notesExisting: 2,
       materials: 17,
       linksResolved: 117,
       linksUnresolved: 3,
@@ -127,6 +129,7 @@ export const DoneNoAi: Story = {
     state: {
       kind: "done",
       notes: 38,
+      notesExisting: 0,
       materials: 17,
       linksResolved: 120,
       linksUnresolved: 0,

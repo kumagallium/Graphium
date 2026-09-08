@@ -34,6 +34,8 @@ export type IntakeState =
   | {
       kind: "done";
       notes: number;
+      /** notes とは別カウント: 中身が同じファイルが既にノートとして存在し、新規作成しなかった件数 */
+      notesExisting: number;
       materials: number;
       /** materials のうち、新規登録ではなく既に登録済みだった件数 */
       materialsExisting: number;
@@ -131,7 +133,14 @@ export function IntakeModal({
                 <dl className="rounded-lg border border-border divide-y divide-border text-sm">
                   <div className="flex items-baseline justify-between px-4 py-2">
                     <dt className="text-muted-foreground">{t("intake.statNotes")}</dt>
-                    <dd className="font-medium tabular-nums text-foreground">{state.notes}</dd>
+                    <dd className="font-medium tabular-nums text-foreground">
+                      {state.notes}
+                      {state.notesExisting > 0 && (
+                        <span className="text-xs text-muted-foreground font-normal ml-2">
+                          {t("intake.statNotesExisting", { count: String(state.notesExisting) })}
+                        </span>
+                      )}
+                    </dd>
                   </div>
                   <div className="flex items-baseline justify-between px-4 py-2">
                     <dt className="text-muted-foreground">{t("intake.statMaterials")}</dt>
