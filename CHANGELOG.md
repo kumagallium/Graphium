@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.62.1](https://github.com/kumagallium/Graphium/compare/v0.62.0...v0.62.1) - 2026-09-08
+
+- [fix] Give computed-column headers room for the calculator badge by @kumagallium in https://github.com/kumagallium/Graphium/pull/868
+
 ## [v0.62.0](https://github.com/kumagallium/Graphium/compare/v0.61.2...v0.62.0) - 2026-09-08
 
 - [feat] Add a data table block for large delimited imports by @kumagallium in https://github.com/kumagallium/Graphium/pull/846
