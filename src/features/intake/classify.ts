@@ -4,15 +4,14 @@
 // 「対象外（隠しファイル・未対応形式）」の 3 群に分ける。判定ロジック自体は
 // markdown-import / asset-browser の既存関数を再利用し、ここでは並び替えのみ行う。
 //
-// 受け皿の約束は「Markdown はノートに、PDF・Word・画像・CSV は素材になります」の
-// 1 文だけ。ここで約束していない種類（PowerPoint・Excel 等）は入れない。
-// PowerPoint (.pptx/.ppt) と Excel (.xlsx/.xls) は素材として登録しても
-// 中身を開ける手段が無い（ドキュメントで中身を読めるのは PDF と Word .docx だけ）。
-// スライドの文字・画像を抜く、シートを表にする、といったちゃんとした取り込みが
-// 入るまでは対象外として件数だけ見せるに留める。
+// 受け皿の約束は「Markdown はノートに、PDF・Office・画像・CSV は素材になります」の
+// 1 文。PowerPoint (.pptx) と Excel (.xlsx) は Word (.docx) と同じく素材として
+// 登録し、run-intake 側で office-import（pptx.ts / xlsx.ts）による展開まで行う。
+// 旧形式（.doc / .xls / .ppt）はバイナリ形式で展開が効かないため引き続き対象外
+// （件数だけ見せる）。
 
 import { isMarkdownFile } from "../markdown-import/import";
-import { mimeToMediaType, isWordDocxEntry } from "../asset-browser/media-index";
+import { mimeToMediaType, isModernOfficeEntry } from "../asset-browser/media-index";
 import type { IntakeFile } from "./types";
 
 export type ClassifiedIntakeFiles = {
@@ -77,15 +76,15 @@ export function classifyIntakeFiles(files: IntakeFile[]): ClassifiedIntakeFiles 
     }
     const mime = f.file.type || guessMimeType(f.file.name);
     const mediaType = mimeToMediaType(mime, f.file.name);
-    // "document" は Word/Excel/PowerPoint をまとめた型だが、受け皿が約束したのは
-    // Word（.docx）まで。PowerPoint・Excel・.doc はここで弾く
+    // "document" は Word/Excel/PowerPoint をまとめた型だが、ちゃんと展開できるのは
+    // .docx / .pptx / .xlsx まで。旧バイナリ形式（.doc / .xls / .ppt）はここで弾く
     if (
       mediaType === "pdf" ||
       mediaType === "image" ||
       mediaType === "audio" ||
       mediaType === "video" ||
       mediaType === "data" ||
-      (mediaType === "document" && isWordDocxEntry({ type: mediaType, mimeType: mime }))
+      (mediaType === "document" && isModernOfficeEntry({ type: mediaType, mimeType: mime }))
     ) {
       materials.push(f);
       continue;
