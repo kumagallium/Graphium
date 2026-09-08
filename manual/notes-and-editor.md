@@ -26,7 +26,7 @@ Graphium deliberately does not bind `⌘⇧N` (`Ctrl+Shift+N` on Windows/Linux) 
 | **Filter by folder** | Filter by [folder](#folders). |
 | **Clear filter** | Back to everything. |
 
-Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. To select several rows, drag down the list or click one row's checkbox and shift-click another — the range between them joins the selection. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving.
+Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. To select several rows, drag down the list or click one row's checkbox and shift-click another — the range between them joins the selection. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving. <Badge type="tip" text="Added in v0.61.1 (2026-09-08)" />
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
