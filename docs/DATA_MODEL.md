@@ -312,7 +312,14 @@ type TableSource = {
   resolve a note table. A calc write-back target on a data table (a
   `CalcTarget` whose `tableBlockId` is the block) adds a computed column at
   display time from the calc block's declaration; nothing is written to the
-  asset or to the note.
+  asset or to the note. A note table can be turned into a data table from
+  the ⠿ menu or from the caption badge that appears above long tables: its
+  rows are written out as a CSV data asset and the block becomes a
+  reference. The move is reversible from the same menu while the table has at
+  most 1,000 rows: the rows come back into the note and the caption and the
+  asset link (`tableMeta.source`) are kept, so nothing is lost either way. A
+  data table can also be written out again, computed columns included, as a
+  new asset whose `derivedFromAssets` points at the original.
 
 ### 2.3 PROV-DM label model
 

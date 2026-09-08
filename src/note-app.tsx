@@ -95,10 +95,18 @@ import {
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
 import { primeAssetText } from "./features/data-import/asset-text";
+import { csvFileNameFor, noteTableToRows, rowsToCsv } from "./features/table-meta/table-to-csv";
+import { setDataTableToNoteTableFn, setTableToDataTableFn } from "./components/side-menu";
+import { DOC_TABLE_HARD_MAX_ROWS } from "./features/data-import/target";
+import { computeTableDisplayNames } from "./features/table-meta/auto-name";
 import {
+  loadDataTable,
+  parseDataTableSource,
   serializeDataTableSource,
+  setDataTableExportCallback,
   setDataTableReimportCallback,
   subscribeDataTableData,
+  type ExportPayload,
 } from "./blocks/data-table";
 import {
   chartSlashItem,
@@ -844,6 +852,7 @@ type NoteEditorProps = {
    */
   uploadAsset?: (
     file: File,
+    options?: { derivedFromAssets?: string[] },
   ) => Promise<{ url: string; fileId: string; entry: MediaIndexEntry }>;
   /** メディアインデックス（メディアピッカー用） */
   mediaIndex?: import("./features/asset-browser").MediaIndex | null;
@@ -1495,6 +1504,7 @@ function NoteEditorInner({
     setDataTableReimportCallback(mainEditor, (blockId, source) =>
       handleTableReimport(blockId, source, "dataTable")
     );
+    setDataTableExportCallback(mainEditor, (payload) => dataTableExportRef.current(payload));
     setMemoPickerCallback(mainEditor, () => {
       pickerEditorRef.current = mainEditor;
       setMemoPickerOpen(true);
@@ -1515,6 +1525,7 @@ function NoteEditorInner({
       setMediaPickerCallback(mainEditor, null);
       setChartAssetSourceCallback(mainEditor, null);
       setDataTableReimportCallback(mainEditor, null);
+      setDataTableExportCallback(mainEditor, null);
       setMemoPickerCallback(mainEditor, null);
       setBookmarkPickerCallback(mainEditor, null);
       setCitePickerCallback(mainEditor, null);
@@ -2184,6 +2195,125 @@ function NoteEditorInner({
   const [tableExpandData, setTableExpandData] = useState<TableExpandData | null>(null);
   const [tableExpandSort, setTableExpandSort] = useState<SortState>(null);
   const tableExpandBlockIdRef = useRef<string | null>(null);
+  // 本文の表 → データ表。表の中身を CSV の素材として登録し、ブロックをその素材を参照する
+  // データ表に置き換える。行が多い表（貼り付け由来など）を、取り込み直さずに軽くする。
+  // 素材が正なので、登録が済むまでブロックは触らない（失敗したら表はそのまま残る）
+  const handleTableToDataTable = useCallback(
+    (blockId: string) => {
+      const editor = editorRef.current;
+      const block = editor?.getBlock?.(blockId);
+      const parsed = noteTableToRows(block);
+      if (!editor || !block || !parsed || parsed.headers.length === 0 || !uploadAsset) return;
+      const caption =
+        tableMetaStore.getCaption(blockId) ||
+        computeTableDisplayNames(editor.document ?? [], tableMetaStore.getCaption).get(blockId) ||
+        "";
+      const fileName = csvFileNameFor(caption, "table");
+      const csv = rowsToCsv(parsed.headers, parsed.rows);
+      void (async () => {
+        try {
+          const { fileId } = await uploadAsset(new File([csv], fileName, { type: "text/csv" }));
+          primeAssetText(fileId, csv);
+          // 登録を待つ間にノートを切り替えていることがあるので、差し替え先は今生きているエディタ
+          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          const current = live?.getBlock?.(blockId);
+          if (!live || !current || current.type !== "table") return;
+          const source = buildTableSource({
+            fileName,
+            fileId,
+            options: {
+              headerRow: 1,
+              endRow: parsed.rows.length + 1,
+              delimiter: "comma",
+              collapseConsecutive: false,
+            },
+            parsed: { headers: parsed.headers, rows: parsed.rows, headerLines: [], footerLines: [] },
+          });
+          removeBlockMetadata([blockId]);
+          tableMetaStore.setCaption(blockId, "");
+          tableMetaStore.setSource(blockId, undefined);
+          live.replaceBlocks(
+            [current],
+            [{ type: "dataTable", props: { source: serializeDataTableSource(source), caption } }],
+          );
+          markDirtyRef.current();
+          setTimeout(() => saveNowRef.current?.(), 0);
+        } catch (err) {
+          console.warn("表の素材化に失敗:", err);
+        }
+      })();
+    },
+    [uploadAsset, tableMetaStore, removeBlockMetadata],
+  );
+  useEffect(() => {
+    setTableToDataTableFn(handleTableToDataTable);
+    return () => setTableToDataTableFn(null);
+  }, [handleTableToDataTable]);
+
+  // データ表 → 本文の表（逆向き）。素材の行を本文に書き戻す。キャプションと素材への参照
+  // （tableMeta.source。再取り込みの入口）は引き継ぐので、往復しても何も失われない。
+  // 素材は消さない。上限（本文の表の上限と同じ）を超える表は戻さない — フリーズの再現になる
+  const handleDataTableToNoteTable = useCallback(
+    (blockId: string) => {
+      const editor = editorRef.current;
+      const block = editor?.getBlock?.(blockId);
+      if (!editor || !block || block.type !== "dataTable") return;
+      const source = parseDataTableSource(block.props?.source);
+      if (!source) return;
+      const caption = String(block.props?.caption ?? "");
+      void (async () => {
+        try {
+          const data = await loadDataTable(source);
+          if (data.rows.length > DOC_TABLE_HARD_MAX_ROWS) return;
+          const spec = toTableBlock({ headers: data.headers, rows: data.rows, headerLines: [], footerLines: [] });
+          if (!spec) return;
+          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          const current = live?.getBlock?.(blockId);
+          if (!live || !current || current.type !== "dataTable") return;
+          const { insertedBlocks } = live.replaceBlocks([current], [spec]);
+          const newId = insertedBlocks?.[0]?.id;
+          if (newId) {
+            if (caption) tableMetaStore.setCaption(newId, caption);
+            tableMetaStore.setSource(newId, source);
+          }
+          markDirtyRef.current();
+          setTimeout(() => saveNowRef.current?.(), 0);
+        } catch (err) {
+          console.warn("データ表を本文の表に戻せませんでした:", err);
+        }
+      })();
+    },
+    [tableMetaStore],
+  );
+  useEffect(() => {
+    setDataTableToNoteTableFn(handleDataTableToNoteTable);
+    return () => setDataTableToNoteTableFn(null);
+  }, [handleDataTableToNoteTable]);
+
+  // データ表 → 計算列込みで新しい素材に書き出す。元の素材を派生元（derivedFromAssets）に
+  // 持たせるので、素材の系譜が辿れる。ブロックは変えない（元の素材を見せたまま）
+  const handleDataTableExport = useCallback(
+    async ({ source, caption, headers, rows }: ExportPayload): Promise<string | null> => {
+      if (!uploadAsset) return null;
+      const fileName = csvFileNameFor(caption, "data-table");
+      const csv = rowsToCsv(headers, rows);
+      try {
+        const { fileId, entry } = await uploadAsset(
+          new File([csv], fileName, { type: "text/csv" }),
+          source.fileId ? { derivedFromAssets: [source.fileId] } : undefined,
+        );
+        primeAssetText(fileId, csv);
+        return entry?.name ?? fileName;
+      } catch (err) {
+        console.warn("データ表の書き出しに失敗:", err);
+        return null;
+      }
+    },
+    [uploadAsset],
+  );
+  const dataTableExportRef = useRef(handleDataTableExport);
+  dataTableExportRef.current = handleDataTableExport;
+
   const handleTableExpand = useCallback((blockId: string, displayName: string) => {
     const editor = editorRef.current;
     const data = readTableData(editor?.getBlock?.(blockId));
@@ -4960,7 +5090,12 @@ function NoteEditorInner({
         hidden={!isDesktop && rightTab !== null}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <TableCaptionLayer editorRef={editorRef} onReimport={handleTableReimport} onExpand={handleTableExpand} />
+      <TableCaptionLayer
+          editorRef={editorRef}
+          onReimport={handleTableReimport}
+          onExpand={handleTableExpand}
+          onConvertToDataTable={handleTableToDataTable}
+        />
       <TableExpandModal
         data={tableExpandData}
         onClose={() => setTableExpandData(null)}

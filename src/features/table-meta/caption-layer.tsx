@@ -29,6 +29,7 @@ function setCaptionedBlockIds(ids: string[]): void {
 import { collectTableBlocks } from "./table-cells";
 import { useTableMetaStore } from "./store";
 import type { TableSource } from "./types";
+import { DOC_TABLE_DEFAULT_MAX_ROWS } from "../data-import/target";
 
 type CaptionPos = {
   blockId: string;
@@ -85,6 +86,7 @@ export function TableCaptionLayer({
   editorRef,
   onReimport,
   onExpand,
+  onConvertToDataTable,
   wrapperEl,
 }: {
   editorRef: React.RefObject<any>;
@@ -99,6 +101,11 @@ export function TableCaptionLayer({
    * 渡されない場合はボタン自体を出さない（Storybook の単体表示など）。
    */
   onExpand?: (blockId: string, displayName: string) => void;
+  /**
+   * 行が多い表に出す「データ表にする」を押したときのハンドラ。ホストが表を CSV の素材に
+   * 書き出し、ブロックをデータ表に置き換える（本文から行が消えて軽くなる）
+   */
+  onConvertToDataTable?: (blockId: string) => void;
   /**
    * この層が見るエディタの外枠（ProvIndicatorLayer と同じ流儀）。
    * SidePeek は自分の wrapper を渡す。省略時は最初の [data-label-wrapper]＝
@@ -605,6 +612,38 @@ export function TableCaptionLayer({
               </button>
             );
           })()}
+          {/* 行が多い表は編集のたびに文書全体が直列化されて重い。素材にしてデータ表へ
+              置き換える入口を、重さの目安（200 行）を超えた表にだけ出す */}
+          {onConvertToDataTable && pos.rowCount > DOC_TABLE_DEFAULT_MAX_ROWS && (
+            <button
+              type="button"
+              onClick={() => onConvertToDataTable(blockId)}
+              title={t("tableMeta.toDataTableHint")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                height: 18,
+                padding: "0 6px",
+                margin: 0,
+                borderRadius: 9,
+                border: "1px solid var(--color-border)",
+                background: "transparent",
+                color: "var(--color-text-tertiary)",
+                fontSize: 10,
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "transparent";
+              }}
+            >
+              {t("tableMeta.toDataTable")}
+            </button>
+          )}
           {/* 長い取り込み表は既定で高さを抑え、ここから全体を出せるようにする。
               数百行の装置ログがそのまま伸びると、本文がデータで埋まってしまう */}
           {source && pos.rowCount > COLLAPSE_ROW_THRESHOLD && (
