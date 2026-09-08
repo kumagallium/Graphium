@@ -133,19 +133,22 @@ function DataTableBlockView({ block, editor }: { block: any; editor: any }) {
 
   return (
     <div style={styles.root} data-data-table-block>
-      <CaptionLine caption={caption} editable={editable} onCommit={commitCaption} />
-      {merged ? (
-        <DataGrid data={merged.data} linked={merged.linked} />
-      ) : (
-        <Placeholder state={state.kind === "ready" ? "loading" : state.kind} source={source} />
-      )}
-      <FooterLine
+      {/* 本文の表と同じく、名前・出所・行数・拡大は表の上の 1 行にまとめる */}
+      <CaptionRow
+        caption={caption}
+        editable={editable}
+        onCommit={commitCaption}
         source={source}
         data={merged ? merged.data : null}
         canReimport={editable && !!source?.fileId && hostAcceptsReimport}
         onReimport={reimport}
         onExpand={merged ? () => setExpanded(true) : undefined}
       />
+      {merged ? (
+        <DataGrid data={merged.data} linked={merged.linked} />
+      ) : (
+        <Placeholder state={state.kind === "ready" ? "loading" : state.kind} source={source} />
+      )}
       {expanded && merged && (
         <DataTableExpandModal
           caption={dataTableDisplayName(caption, source)}
@@ -158,21 +161,29 @@ function DataTableBlockView({ block, editor }: { block: any; editor: any }) {
   );
 }
 
-function CaptionLine({
+/** 表の上の 1 行: 名前（編集可）+ 出所バッジ + 行数 + 拡大。本文の表のキャプション層と同じ並び */
+function CaptionRow({
   caption,
   editable,
   onCommit,
+  source,
+  data,
+  canReimport,
+  onReimport,
+  onExpand,
 }: {
   caption: string;
   editable: boolean;
   onCommit: (next: string) => void;
+  source: TableSource | null;
+  data: DataTableData | null;
+  canReimport: boolean;
+  onReimport: () => void;
+  onExpand?: () => void;
 }) {
   const [draft, setDraft] = useState(caption);
   useEffect(() => setDraft(caption), [caption]);
-  if (!editable) {
-    return caption.trim() === "" ? null : <div style={styles.caption}>{caption}</div>;
-  }
-  return (
+  const name = editable ? (
     <input
       type="text"
       value={draft}
@@ -191,9 +202,48 @@ function CaptionLine({
         // BlockNote にキー操作を取られない（ブロック削除・移動が走る）
         e.stopPropagation();
       }}
-      style={styles.captionInput}
+      // 名前の長さに合わせて幅を取る（バッジを右に押し出さない）
+      style={{ ...styles.captionInput, width: `${Math.max(6, draft.length + 1)}ch` }}
       aria-label={t("dataTable.captionPlaceholder")}
     />
+  ) : caption.trim() === "" ? null : (
+    <span style={styles.caption}>{caption}</span>
+  );
+  return (
+    <div style={styles.captionRow}>
+      {name}
+      {source && (
+        <button
+          type="button"
+          onClick={canReimport ? onReimport : undefined}
+          disabled={!canReimport}
+          title={canReimport ? t("dataImport.sourceClickHint") : undefined}
+          style={{ ...styles.badge, cursor: canReimport ? "pointer" : "default" }}
+        >
+          <Database size={10} strokeWidth={2} style={{ flexShrink: 0 }} />
+          <span style={styles.ellipsis}>{t("dataImport.sourceBadge", { fileName: source.fileName })}</span>
+        </button>
+      )}
+      {data && (
+        <span style={styles.badge}>
+          {t("dataTable.rowsCols", {
+            rows: data.rows.length.toLocaleString(),
+            cols: String(data.headers.length),
+          })}
+        </span>
+      )}
+      {onExpand && (
+        <button
+          type="button"
+          onClick={onExpand}
+          title={t("tableMeta.expand")}
+          aria-label={t("tableMeta.expand")}
+          style={{ ...styles.badge, ...styles.iconBadge }}
+        >
+          <Maximize2 size={10} strokeWidth={2} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -218,55 +268,6 @@ function Placeholder({ state, source }: { state: "loading" | "missing"; source: 
   );
 }
 
-function FooterLine({
-  source,
-  data,
-  canReimport,
-  onReimport,
-  onExpand,
-}: {
-  source: TableSource | null;
-  data: DataTableData | null;
-  canReimport: boolean;
-  onReimport: () => void;
-  onExpand?: () => void;
-}) {
-  if (!source) return null;
-  return (
-    <div style={styles.footer}>
-      {data && (
-        <span>
-          {t("dataTable.rowsCols", {
-            rows: data.rows.length.toLocaleString(),
-            cols: String(data.headers.length),
-          })}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={canReimport ? onReimport : undefined}
-        disabled={!canReimport}
-        title={canReimport ? t("dataImport.sourceClickHint") : undefined}
-        style={{ ...styles.sourceBadge, cursor: canReimport ? "pointer" : "default" }}
-      >
-        <Database size={11} style={{ flexShrink: 0 }} />
-        <span style={styles.ellipsis}>{t("dataImport.sourceBadge", { fileName: source.fileName })}</span>
-      </button>
-      {onExpand && (
-        <button
-          type="button"
-          onClick={onExpand}
-          title={t("tableMeta.expand")}
-          aria-label={t("tableMeta.expand")}
-          style={styles.iconButton}
-        >
-          <Maximize2 size={12} />
-        </button>
-      )}
-    </div>
-  );
-}
-
 const styles: Record<string, CSSProperties> = {
   root: {
     display: "flex",
@@ -275,10 +276,20 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     margin: "4px 0",
   },
+  captionRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 22,
+    padding: "0 2px",
+    minWidth: 0,
+  },
   caption: {
     fontSize: 13,
     color: "var(--color-foreground)",
-    padding: "0 2px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   captionInput: {
     fontSize: 13,
@@ -286,8 +297,32 @@ const styles: Record<string, CSSProperties> = {
     background: "transparent",
     border: "none",
     outline: "none",
-    padding: "0 2px",
-    width: "100%",
+    padding: 0,
+    minWidth: 48,
+    maxWidth: "60%",
+  },
+  // 本文の表のキャプション層のバッジ（features/table-meta/caption-layer）と同じ寸法
+  badge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    height: 18,
+    padding: "0 6px",
+    borderRadius: 9,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-text-tertiary)",
+    fontSize: 10,
+    lineHeight: "16px",
+    font: "inherit",
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap",
+    maxWidth: "50%",
+    minWidth: 0,
+  },
+  iconBadge: {
+    padding: "0 5px",
+    cursor: "pointer",
   },
   ellipsis: {
     overflow: "hidden",
@@ -310,41 +345,5 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 2,
     color: "var(--color-text-tertiary)",
     fontSize: 11,
-  },
-  footer: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 11,
-    color: "var(--color-text-tertiary)",
-    padding: "0 2px",
-    minWidth: 0,
-  },
-  sourceBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    maxWidth: "60%",
-    padding: "1px 8px",
-    borderRadius: 999,
-    border: "1px solid var(--color-border-subtle)",
-    background: "transparent",
-    color: "var(--color-text-tertiary)",
-    fontSize: 10,
-    font: "inherit",
-    lineHeight: "16px",
-  },
-  iconButton: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 22,
-    height: 20,
-    padding: 0,
-    borderRadius: 6,
-    border: "1px solid var(--color-border-subtle)",
-    background: "transparent",
-    color: "var(--color-text-tertiary)",
-    cursor: "pointer",
   },
 };

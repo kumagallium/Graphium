@@ -511,7 +511,50 @@ body[data-prov-labels-off="true"] [data-inline-label] {
    選ぶと画面に青が出る。design.md の「高彩度の既定色を避け自然色で統一」に合わせる。 */
 .bn-block-content.ProseMirror-selectednode > *,
 .ProseMirror-selectednode > .bn-block-content > * {
-  outline: color-mix(in oklab, var(--color-primary) 55%, transparent) solid 3px;
+  /* 存在が分かる程度の細い枠。太く濃い枠は中身より枠が目立ってしまう */
+  outline: color-mix(in oklab, var(--color-primary) 35%, transparent) solid 2px;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* 表のセル選択の塗り。prosemirror-tables の既定は内容の上に半透明の青を重ねる
+   （::after, z-index 2）ので、選んだ範囲の文字や罫線が暗く濁る。塗りはセル自身の
+   背景（内容の下）に置き、色は選択枠と同じブランドグリーンをごく薄く。
+   ヘッダー行の背景は !important で付いているので、選択中はこちらも !important で勝つ */
+.bn-editor .ProseMirror .selectedCell::after {
+  background: transparent;
+}
+.bn-editor .ProseMirror td.selectedCell,
+.bn-editor .ProseMirror th.selectedCell {
+  background-color: color-mix(in oklab, var(--color-primary) 8%, transparent) !important;
+}
+
+/* 名前付きの表を選んだときは、表の上のキャプション行（features/table-meta/caption-layer が
+   ブロックの上余白 26px に浮かべている）まで枠に含める。上余白はブロックの箱の外なので、
+   ::before を上に伸ばして枠を描く。data-caption-space はキャプション層が付ける */
+.bn-editor .bn-block-outer[data-caption-space]:has(
+    > .bn-block > .bn-block-content[data-content-type="table"].ProseMirror-selectednode
+  ) {
+  position: relative;
+}
+.bn-editor .bn-block-outer[data-caption-space]:has(
+    > .bn-block > .bn-block-content[data-content-type="table"].ProseMirror-selectednode
+  )::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: -26px;
+  bottom: -2px;
+  border: 2px solid color-mix(in oklab, var(--color-primary) 35%, transparent);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.bn-editor .bn-block-outer[data-caption-space]
+  > .bn-block
+  > .bn-block-content[data-content-type="table"].ProseMirror-selectednode
+  > * {
+  outline: none;
 }
 
 /* BlockNote 本文 — タイプスケール base (16px) を採用、行間は読み物用に 1.7
@@ -807,8 +850,9 @@ body.gph-col-resizing * {
    BlockNote 既定の高彩度ブルーが露出する。同じブランドグリーンに揃える。 */
 .bn-editor .gph-column-list.ProseMirror-selectednode,
 .bn-editor .gph-column.ProseMirror-selectednode {
-  outline: color-mix(in oklab, var(--color-primary) 55%, transparent) solid 3px;
-  border-radius: 4px;
+  outline: color-mix(in oklab, var(--color-primary) 35%, transparent) solid 2px;
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 /* ラベル付きテーブルのメタデータ領域。
