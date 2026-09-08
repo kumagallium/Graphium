@@ -10,6 +10,7 @@ export { useGlobalFileDrop } from "./use-global-file-drop";
 export { runIntake, mergeOutcome } from "./run-intake";
 export type { IntakeDeps, IntakeOutcome, MarkdownImportResult, IntakeProgress } from "./run-intake";
 
+export { findExistingImportId } from "./note-dedupe";
 export { classifyIntakeFiles } from "./classify";
 export { commonRootOf, folderOf } from "./folders";
 export { collectDroppedFiles } from "./collect-dropped-files";

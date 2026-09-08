@@ -24,6 +24,8 @@ function extOf(path: string): string {
 /** Markdown インポート（importMarkdown 実装）が返す結果 */
 export type MarkdownImportResult = {
   created: number;
+  /** 中身が同じファイルが既にノートとして存在し、新規作成せず既存ノートを使い回した件数 */
+  existing: number;
   linksResolved: number;
   linksUnresolved: number;
   failed: string[];
@@ -61,6 +63,13 @@ export type IntakeDeps = {
 
 export type IntakeOutcome = {
   notes: number;
+  /**
+   * notes とは別カウント: 中身が同じファイルが既に取り込み済みのノートとして
+   * 存在し、新規作成せず既存ノートを使い回した件数（notes には含まれない。
+   * 素材の materialsExisting は「アップロード扱いにした件数の内数」だが、
+   * こちらはそもそも作成しないので notes の外側になる）
+   */
+  notesExisting: number;
   materials: number;
   /** materials のうち、新規登録ではなく既に登録済みだった件数（materials ⊇ materialsExisting） */
   materialsExisting: number;
@@ -92,6 +101,7 @@ export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome 
   }
   return {
     notes: a.notes + b.notes,
+    notesExisting: a.notesExisting + b.notesExisting,
     materials: a.materials + b.materials,
     materialsExisting: a.materialsExisting + b.materialsExisting,
     linksResolved: a.linksResolved + b.linksResolved,
@@ -128,6 +138,7 @@ export async function runIntake(
   // その場合は notes 全件を失敗扱いにして先へ進む
   let markdownResult: MarkdownImportResult = {
     created: 0,
+    existing: 0,
     linksResolved: 0,
     linksUnresolved: 0,
     failed: [],
@@ -208,6 +219,7 @@ export async function runIntake(
 
   return {
     notes: markdownResult.created,
+    notesExisting: markdownResult.existing,
     materials: materialsUploaded,
     materialsExisting,
     linksResolved: markdownResult.linksResolved,

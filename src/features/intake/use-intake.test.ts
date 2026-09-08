@@ -24,6 +24,7 @@ function makeDeps(overrides: Partial<IntakeDeps> = {}): IntakeDeps & { aiAvailab
       onProgress({ done: files.length, total: files.length, failed: [] });
       return {
         created: files.length,
+        existing: 0,
         linksResolved: 0,
         linksUnresolved: 0,
         failed: [],

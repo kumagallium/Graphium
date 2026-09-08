@@ -115,8 +115,9 @@ import {
   type ChartAssetSourceResult,
 } from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
-import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop } from "./features/intake";
+import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, findExistingImportId } from "./features/intake";
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
+import { computeBlobHash } from "./lib/storage/shared/hash";
 import { normalizeNoteContexts } from "./features/note-context/context-tags";
 import { syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
@@ -329,6 +330,7 @@ import {
   type AssetDisplayMode,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
+import { MAX_HASH_BYTES } from "./features/asset-browser/dedupe";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
@@ -2922,6 +2924,10 @@ function NoteEditorInner({
       sourceFetchedAt: initialDoc?.sourceFetchedAt,
       sourcePdfFileId: initialDoc?.sourcePdfFileId,
       sourcePdfName: initialDoc?.sourcePdfName,
+      // 投入口（intake）の取り込み元情報（note-dedupe が参照する）。
+      // buildDocument は doc をフィールドごとに組み立て直すため、ここに含めないと
+      // ノートを開くだけの自動保存で importSource が消え、以後の重複判定が効かなくなる。
+      importSource: initialDoc?.importSource,
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
@@ -7305,19 +7311,55 @@ export function NoteApp() {
           }
         : undefined;
 
-      // pass 1: 各 MD を doc に変換 → ノート作成
+      // pass 1: 各 MD を doc に変換 → ノート作成。
+      // ただし「中身が同じファイルを入れ直した」場合は作らず、既存ノートを使い回す
+      // （note-dedupe: NoteIndexEntry.importSourceHash が一致するノートを index
+      // だけを見て探す。ファイル名が変わっていても中身が同じなら重複と判定する。
+      // Graphium 側で編集したノートも importSource は残るので、編集後は中身の
+      // ハッシュが変わって「新しいノート」判定に回る＝上書きしない）
+      //
+      // fm.noteIndex はこの import 実行を作った時点のレンダーで固定された
+      // スナップショットで、ループの途中で作成したノートを拾えない。そのため
+      // 同一バッチ内の重複（同じ中身のファイルが複数含まれる場合）はこの
+      // ローカルな hash→noteId で別途追跡する。
       const baseNameToNoteId = new Map<string, string>();
+      const hashToNoteIdInThisRun = new Map<string, string>();
       const docsByNoteId = new Map<
         string,
         { doc: import("./lib/document-types").GraphiumDocument; wikilinks: { target: string; display: string }[] }
       >();
       const failed: string[] = [];
       let lastNewId: string | null = null;
+      let existingCount = 0;
 
       for (let i = 0; i < notes.length; i++) {
         const file = notes[i];
         onProgress({ done: i, total: notes.length, current: file.file.name, failed: [...failed] });
         try {
+          const baseName = file.file.name.replace(/\.(md|markdown)$/i, "");
+          // 素材側（asset-browser/dedupe.ts）と同じ上限。極端に大きいファイルを
+          // メインスレッドで丸ごと読んでハッシュ計算することを避ける
+          // （md は通常小さいが、エクスポートされた大規模ノート等の想定外入力向け）。
+          // 上限超過時は重複判定を諦めて常に新規ノートとして扱う（importSource は付けない）。
+          const tooLargeToHash = file.file.size > MAX_HASH_BYTES;
+          const contentHash = tooLargeToHash
+            ? undefined
+            : await computeBlobHash(new Uint8Array(await file.file.arrayBuffer()));
+
+          // 1) 同一バッチ内で直前に作成/使い回したノート → 2) 既存の index、の順で探す
+          const existingId = contentHash
+            ? (hashToNoteIdInThisRun.get(contentHash) ?? findExistingImportId(fm.noteIndex?.notes ?? [], contentHash))
+            : null;
+
+          if (existingId) {
+            // 既存ノートを使い回す: 作らず、リンク解決の解決先だけ差し替える
+            baseNameToNoteId.set(baseName.toLowerCase(), existingId);
+            hashToNoteIdInThisRun.set(contentHash!, existingId);
+            existingCount += 1;
+            onProgress({ done: i + 1, total: notes.length, failed: [...failed] });
+            continue;
+          }
+
           let { doc, wikilinks } = await importMarkdownToGraphiumDoc(file.file, {
             resolveImage,
             uploadImage: fm.handleUploadMedia,
@@ -7327,9 +7369,12 @@ export function NoteApp() {
           if (folder) {
             doc = { ...doc, noteContexts: normalizeNoteContexts([...(doc.noteContexts ?? []), folder]) };
           }
+          if (contentHash) {
+            doc = { ...doc, importSource: { path: file.path, contentHash, importedAt: new Date().toISOString() } };
+          }
           const newId = await fm.handleCreateNoteFromImport(doc);
-          const baseName = file.file.name.replace(/\.(md|markdown)$/i, "");
           baseNameToNoteId.set(baseName.toLowerCase(), newId);
+          if (contentHash) hashToNoteIdInThisRun.set(contentHash, newId);
           docsByNoteId.set(newId, { doc, wikilinks });
           lastNewId = newId;
         } catch (err) {
@@ -7363,9 +7408,10 @@ export function NoteApp() {
         console.info(`[markdown-import] リンク解決: ${resolution.resolvedCount} / ${resolution.resolvedCount + resolution.unresolvedCount}`);
       }
 
-      const successCount = notes.length - failed.length;
+      const successCount = notes.length - failed.length - existingCount;
       return {
         created: successCount,
+        existing: existingCount,
         linksResolved: resolvedLinkCount,
         linksUnresolved: unresolvedLinkCount,
         failed,

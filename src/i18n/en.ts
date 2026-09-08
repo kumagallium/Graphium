@@ -2057,6 +2057,7 @@ export const en: Record<string, string> = {
   "intake.running": "Bringing in {done} / {total}",
   "intake.doneTitle": "Brought in",
   "intake.statNotes": "Notes",
+  "intake.statNotesExisting": "{count} already in your notes",
   "intake.statMaterials": "Materials",
   "intake.statMaterialsExisting": "{count} already in your library",
   "intake.statLinks": "Links kept",
