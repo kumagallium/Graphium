@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { csvEscape, csvFileNameFor, noteTableToRows, rowsToCsv } from "./table-to-csv";
+import {
+  csvEscape,
+  csvFileNameFor,
+  noteTableToRows,
+  rowsToCsv,
+  sameTableContent,
+} from "./table-to-csv";
 
 const cell = (text: string) => [{ type: "text", text, styles: {} }];
 
@@ -45,5 +51,29 @@ describe("本文の表 ⇄ データ表の往復", () => {
     const block = toTableBlock({ headers, rows, headerLines: [], footerLines: [] });
     expect(block).not.toBeNull();
     expect(noteTableToRows(block)).toEqual({ headers, rows });
+  });
+});
+
+describe("sameTableContent", () => {
+  const base = { headers: ["a", "b"], rows: [["1", "2"], ["3", "4"]] };
+
+  it("同じ中身なら true（素材を作り直さない）", () => {
+    expect(sameTableContent(base, { headers: ["a", "b"], rows: [["1", "2"], ["3", "4"]] })).toBe(true);
+  });
+
+  it("末尾の空セルの有無は同じ中身とみなす", () => {
+    expect(sameTableContent(base, { headers: ["a", "b"], rows: [["1", "2"], ["3", "4", ""]] })).toBe(true);
+    expect(sameTableContent({ headers: ["a", "b", ""], rows: base.rows }, base)).toBe(true);
+  });
+
+  it("セル・見出し・行数のどれかが違えば false（作り直す側に倒す）", () => {
+    expect(sameTableContent(base, { headers: ["a", "b"], rows: [["1", "9"], ["3", "4"]] })).toBe(false);
+    expect(sameTableContent(base, { headers: ["a", "c"], rows: base.rows })).toBe(false);
+    expect(sameTableContent(base, { headers: ["a", "b"], rows: [["1", "2"]] })).toBe(false);
+  });
+
+  it("片方が無ければ false", () => {
+    expect(sameTableContent(base, null)).toBe(false);
+    expect(sameTableContent(undefined, base)).toBe(false);
   });
 });

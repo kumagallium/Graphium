@@ -95,7 +95,12 @@ import {
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
 import { primeAssetText } from "./features/data-import/asset-text";
-import { csvFileNameFor, noteTableToRows, rowsToCsv } from "./features/table-meta/table-to-csv";
+import {
+  csvFileNameFor,
+  noteTableToRows,
+  rowsToCsv,
+  sameTableContent,
+} from "./features/table-meta/table-to-csv";
 import { setDataTableToNoteTableFn, setTableToDataTableFn } from "./components/side-menu";
 import { DOC_TABLE_HARD_MAX_ROWS } from "./features/data-import/target";
 import { computeTableDisplayNames } from "./features/table-meta/auto-name";
@@ -2197,6 +2202,7 @@ function NoteEditorInner({
   const tableExpandBlockIdRef = useRef<string | null>(null);
   // 本文の表 → データ表。表の中身を CSV の素材として登録し、ブロックをその素材を参照する
   // データ表に置き換える。行が多い表（貼り付け由来など）を、取り込み直さずに軽くする。
+  // すでに素材につながっていて中身も同じなら、その素材をそのまま使う（往復で増やさない）。
   // 素材が正なので、登録が済むまでブロックは触らない（失敗したら表はそのまま残る）
   const handleTableToDataTable = useCallback(
     (blockId: string) => {
@@ -2208,27 +2214,41 @@ function NoteEditorInner({
         tableMetaStore.getCaption(blockId) ||
         computeTableDisplayNames(editor.document ?? [], tableMetaStore.getCaption).get(blockId) ||
         "";
-      const fileName = csvFileNameFor(caption, "table");
-      const csv = rowsToCsv(parsed.headers, parsed.rows);
+      // 取り込んだ表や、データ表から本文に戻した表は、まだ元の素材につながっている
+      const linked = tableMetaStore.getSource(blockId);
       void (async () => {
         try {
-          const { fileId } = await uploadAsset(new File([csv], fileName, { type: "text/csv" }));
-          primeAssetText(fileId, csv);
+          // 中身が元の素材のままなら、素材は作り直さない。往復のたびに同じ内容の
+          // CSV が積み上がるのを防ぐ。セルを直していたら中身が違うので新しく作る
+          let source: TableSource | null = null;
+          if (linked?.fileId) {
+            try {
+              if (sameTableContent(await loadDataTable(linked), parsed)) source = linked;
+            } catch {
+              // 素材が読めない（消された・壊れた）なら作り直す
+            }
+          }
+          if (!source) {
+            const fileName = csvFileNameFor(caption, "table");
+            const csv = rowsToCsv(parsed.headers, parsed.rows);
+            const { fileId } = await uploadAsset(new File([csv], fileName, { type: "text/csv" }));
+            primeAssetText(fileId, csv);
+            source = buildTableSource({
+              fileName,
+              fileId,
+              options: {
+                headerRow: 1,
+                endRow: parsed.rows.length + 1,
+                delimiter: "comma",
+                collapseConsecutive: false,
+              },
+              parsed: { headers: parsed.headers, rows: parsed.rows, headerLines: [], footerLines: [] },
+            });
+          }
           // 登録を待つ間にノートを切り替えていることがあるので、差し替え先は今生きているエディタ
           const live = liveEditor(editorRef.current) ?? editorRef.current;
           const current = live?.getBlock?.(blockId);
           if (!live || !current || current.type !== "table") return;
-          const source = buildTableSource({
-            fileName,
-            fileId,
-            options: {
-              headerRow: 1,
-              endRow: parsed.rows.length + 1,
-              delimiter: "comma",
-              collapseConsecutive: false,
-            },
-            parsed: { headers: parsed.headers, rows: parsed.rows, headerLines: [], footerLines: [] },
-          });
           removeBlockMetadata([blockId]);
           tableMetaStore.setCaption(blockId, "");
           tableMetaStore.setSource(blockId, undefined);
