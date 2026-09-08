@@ -38,6 +38,16 @@ type FilterPopupProps = {
   noMatchText?: string;
   /** popup の min-width。default 220 */
   minWidth?: number;
+  /** 行の右クリック（例: フォルダの改名・削除メニューを開く）。未指定なら何もしない */
+  onOptionContextMenu?: (value: string, position: { top: number; left: number }) => void;
+  /** 行の右端に hover 時だけ出す小さなアイコンボタン（例: フォルダの改名入口）。未指定なら描画しない */
+  optionAction?: {
+    title: string;
+    icon: ReactNode;
+    onClick: (value: string, position: { top: number; left: number }) => void;
+    /** この行に出すか。未指定なら全行に出す（例: 「未分類」の疑似フォルダには出さない） */
+    appliesTo?: (value: string) => boolean;
+  };
 };
 
 export function FilterPopup({
@@ -53,6 +63,8 @@ export function FilterPopup({
   emptyText = "No options",
   noMatchText = "No match",
   minWidth = 220,
+  onOptionContextMenu,
+  optionAction,
 }: FilterPopupProps) {
   const id = useId();
   const [query, setQuery] = useState("");
@@ -113,37 +125,61 @@ export function FilterPopup({
             {filteredOptions.map((opt) => {
               const isSelected = selected.includes(opt.value);
               return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={isSelected}
-                  onClick={() => toggle(opt.value)}
-                  className="w-full text-left text-xs px-3 py-1.5 hover:bg-muted transition-colors flex items-center gap-2"
-                >
-                  <span
-                    className={cn(
-                      "w-3.5 h-3.5 shrink-0 rounded border flex items-center justify-center text-[8px] leading-none",
-                      isSelected
-                        ? "bg-primary border-primary text-primary-foreground"
-                        : "border-border",
-                    )}
-                    aria-hidden
+                <div key={opt.value} className="relative group">
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={isSelected}
+                    onClick={() => toggle(opt.value)}
+                    onContextMenu={
+                      onOptionContextMenu
+                        ? (e) => {
+                            e.preventDefault();
+                            onOptionContextMenu(opt.value, { top: e.clientY, left: e.clientX });
+                          }
+                        : undefined
+                    }
+                    className="w-full text-left text-xs px-3 py-1.5 hover:bg-muted transition-colors flex items-center gap-2"
                   >
-                    {isSelected && "✓"}
-                  </span>
-                  {opt.icon && (
-                    <span className="shrink-0 inline-flex items-center" aria-hidden>
-                      {opt.icon}
+                    <span
+                      className={cn(
+                        "w-3.5 h-3.5 shrink-0 rounded border flex items-center justify-center text-[8px] leading-none",
+                        isSelected
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-border",
+                      )}
+                      aria-hidden
+                    >
+                      {isSelected && "✓"}
                     </span>
+                    {opt.icon && (
+                      <span className="shrink-0 inline-flex items-center" aria-hidden>
+                        {opt.icon}
+                      </span>
+                    )}
+                    <span className="flex-1 truncate text-foreground">{opt.label}</span>
+                    {typeof opt.count === "number" && (
+                      <span className="shrink-0 tabular-nums text-text-tertiary">
+                        {opt.count}
+                      </span>
+                    )}
+                  </button>
+                  {optionAction && (!optionAction.appliesTo || optionAction.appliesTo(opt.value)) && (
+                    <button
+                      type="button"
+                      title={optionAction.title}
+                      aria-label={optionAction.title}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        optionAction.onClick(opt.value, { top: rect.bottom + 4, left: rect.left });
+                      }}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                    >
+                      {optionAction.icon}
+                    </button>
                   )}
-                  <span className="flex-1 truncate text-foreground">{opt.label}</span>
-                  {typeof opt.count === "number" && (
-                    <span className="shrink-0 tabular-nums text-text-tertiary">
-                      {opt.count}
-                    </span>
-                  )}
-                </button>
+                </div>
               );
             })}
           </div>

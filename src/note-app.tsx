@@ -232,7 +232,7 @@ import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
-import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues } from "./features/note-context/folder-tree-model";
+import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
@@ -6390,6 +6390,14 @@ export function NoteApp() {
     name: string;
     noteCount: number;
     position: { top: number; left: number };
+    initialMode?: "menu" | "rename";
+  } | null>(null);
+  // ギャラリーのフォルダ絞り込みへ改名を追従させるための通知。mediaIndex の変化からは
+  // 自動で追従しないため、renameFolderEverywhere から明示的に発火する（AssetGalleryView へ渡す）。
+  const [renamedFolderSignal, setRenamedFolderSignal] = useState<{
+    from: string;
+    to: string;
+    seq: number;
   } | null>(null);
   // 一覧・全体グラフ用の素材サイドピーク。ノートピークと同時に開くと右端で重なるため
   // 片方を開くとき他方を閉じる（切替式）。
@@ -7296,6 +7304,46 @@ export function NoteApp() {
     setSelectedFolder(null);
     setFolderContextFilter([]);
   }, [closeAllViews, fm, router]);
+
+  // フォルダの改名（タグ付け替え）。実体は noteContexts のタグ + appdata の空フォルダ定義
+  // なので、どちらも書き換える。サイドバーの FolderMenu とギャラリーの改名入口の両方から
+  // 呼ばれる共通関数。
+  const renameFolderEverywhere = useCallback(
+    async (from: string, to: string) => {
+      // ノートのタグ、メモ、素材、まだノートが無いフォルダの定義。
+      // どれも子を連れて動く。ひとつでも取り残すと、同じフォルダのはずのものが
+      // 古い名前に取り残されて行方不明になる
+      await fm.renameNoteContextEverywhere(from, to);
+      await capture.remapCaptureContextsEverywhere(from, to);
+      await fm.remapMediaContextsEverywhere(from, to);
+      setEmptyFolders(await renameFolderDefinition(from, to));
+      // 開いていたフォルダの名前が変わったら選択も新しい名前へ移す
+      if (selectedFolder === from) {
+        setSelectedFolder(to);
+        setFolderContextFilter([to]);
+      }
+      // ギャラリーのフォルダ絞り込みにも追従させる（AssetGalleryView 側の effect が拾う）
+      setRenamedFolderSignal((prev) => ({ from, to, seq: (prev?.seq ?? 0) + 1 }));
+    },
+    [fm, capture, selectedFolder],
+  );
+
+  // フォルダの削除（タグ剥がし）。中のノートは消さない。
+  const deleteFolderEverywhere = useCallback(
+    async (path: string) => {
+      await fm.deleteNoteContextEverywhere(path);
+      await capture.remapCaptureContextsEverywhere(path, null);
+      await fm.remapMediaContextsEverywhere(path, null);
+      setEmptyFolders(await removeFolderDefinition(path));
+      // 開いていたフォルダを消したら、全ノート表示に戻す
+      if (selectedFolder === path) {
+        setSelectedFolder(null);
+        setFolderContextFilter([]);
+      }
+    },
+    [fm, capture, selectedFolder],
+  );
+
   // 全体グラフを表示する。サイドバーと、投入口の復元レポート（「グラフを見る」）の
   // 両方から使う共通関数。state 変数 showGlobalGraph と名前が衝突するため
   // showGlobalGraphView とする。
@@ -9345,6 +9393,7 @@ export function NoteApp() {
       folder: { path: string; name: string; noteCount: number },
       position: { top: number; left: number },
     ) => setFolderMenu({ ...folder, position }),
+    onRenameFolder: (from: string, to: string) => void renameFolderEverywhere(from, to),
     onDropNotesToFolder: (folderPath: string, noteIds: string[], copy: boolean) => {
       // 移動（既定）は「今開いていたフォルダから出て、落とし先に入る」。
       // すべてのノート・未分類から動かしたときは出る場所が無いので入るだけになる。
@@ -9533,6 +9582,22 @@ export function NoteApp() {
             onSetMediaContexts={fm.updateMediaContexts}
             noteFolders={noteFolderNames}
             noteFolderLookup={noteFolderLookup}
+            onFolderMenu={(path, position, opts) => {
+              // ギャラリーの絞り込み行から開く改名入口。noteCount はサイドバーの
+              // フォルダツリーと同じ集計（folderTreeForNav の totalCount）を使う
+              const { leaf } = splitFolderPath(path);
+              const node = folderTreeForNav
+                .flatMap((n) => [n, ...n.children])
+                .find((n) => n.path === path);
+              setFolderMenu({
+                path,
+                name: leaf,
+                noteCount: node?.totalCount ?? 0,
+                position,
+                initialMode: opts?.initialMode,
+              });
+            }}
+            renamedFolder={renamedFolderSignal ?? undefined}
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
             onBulkShare={
               // ノート一覧の一括共有と同じ条件（デスクトップ + 共有ルート + 名前）
@@ -10779,36 +10844,10 @@ export function NoteApp() {
           name={folderMenu.name}
           noteCount={folderMenu.noteCount}
           position={folderMenu.position}
+          initialMode={folderMenu.initialMode}
           onClose={() => setFolderMenu(null)}
-          onRename={(from, to) => {
-            void (async () => {
-              // ノートのタグ、メモ、素材、まだノートが無いフォルダの定義。
-              // どれも子を連れて動く。ひとつでも取り残すと、同じフォルダのはずのものが
-              // 古い名前に取り残されて行方不明になる
-              await fm.renameNoteContextEverywhere(from, to);
-              await capture.remapCaptureContextsEverywhere(from, to);
-              await fm.remapMediaContextsEverywhere(from, to);
-              setEmptyFolders(await renameFolderDefinition(from, to));
-              // 開いていたフォルダの名前が変わったら選択も新しい名前へ移す
-              if (selectedFolder === from) {
-                setSelectedFolder(to);
-                setFolderContextFilter([to]);
-              }
-            })();
-          }}
-          onDelete={(path) => {
-            void (async () => {
-              await fm.deleteNoteContextEverywhere(path);
-              await capture.remapCaptureContextsEverywhere(path, null);
-              await fm.remapMediaContextsEverywhere(path, null);
-              setEmptyFolders(await removeFolderDefinition(path));
-              // 開いていたフォルダを消したら、全ノート表示に戻す
-              if (selectedFolder === path) {
-                setSelectedFolder(null);
-                setFolderContextFilter([]);
-              }
-            })();
-          }}
+          onRename={(from, to) => void renameFolderEverywhere(from, to)}
+          onDelete={(path) => void deleteFolderEverywhere(path)}
         />
       )}
       {listMaterialPeekEntry && (

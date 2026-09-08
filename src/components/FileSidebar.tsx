@@ -63,6 +63,8 @@ export type FileSidebarProps = {
     folder: { path: string; name: string; noteCount: number },
     position: { top: number; left: number },
   ) => void;
+  /** フォルダのその場での名前変更（鉛筆・ダブルクリック・Enter で確定） */
+  onRenameFolder?: (from: string, to: string) => void;
   /** ノートがフォルダへドロップされたとき（copy=true は Ctrl / Cmd 押下） */
   onDropNotesToFolder?: (folderPath: string, noteIds: string[], copy: boolean) => void;
   mediaIndex: MediaIndex | null;
@@ -209,6 +211,7 @@ export function FileSidebar({
   emptyFolders,
   onCreateFolder,
   onFolderContextMenu,
+  onRenameFolder,
   onDropNotesToFolder,
   mediaIndex,
   onShowAssetGallery,
@@ -503,6 +506,7 @@ export function FileSidebar({
               onSelectUnfiled={onSelectUnfiledFolder}
               onCreateFolder={onCreateFolder}
               onFolderContextMenu={onFolderContextMenu}
+              onRenameFolder={onRenameFolder}
               onDropNotes={onDropNotesToFolder}
             />
           </CollapsibleSection>
