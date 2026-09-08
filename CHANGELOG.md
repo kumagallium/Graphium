@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.68.1](https://github.com/kumagallium/Graphium/compare/v0.68.0...v0.68.1) - 2026-09-08
+
+- [docs] Document find-in-PDF in the manual, with its highlight caveat by @kumagallium in https://github.com/kumagallium/Graphium/pull/892
+- [fix] Keep folders on images a note references, and on extracted materials by @kumagallium in https://github.com/kumagallium/Graphium/pull/895
+- [fix] Align the PDF text layer with the page, and find CJK text by @kumagallium in https://github.com/kumagallium/Graphium/pull/896
+
 ## [v0.68.0](https://github.com/kumagallium/Graphium/compare/v0.67.0...v0.68.0) - 2026-09-08
 
 - [feat] Find text inside the PDF viewer with Cmd+F by @kumagallium in https://github.com/kumagallium/Graphium/pull/889
