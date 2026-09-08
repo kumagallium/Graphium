@@ -1207,7 +1207,13 @@ export function useFileManager(authenticated: boolean) {
             // PROV ノートはトップレベル `sourcePdfFileId` で PDF を参照するので
             // document-level の PDF 参照も渡して usedIn に反映する。
             const docPdfRefs = collectSourceAssetFileIdsFromDoc(doc);
-            const updated = syncUsedIn(mediaIndexRef.current, savedFileId, doc.title, mediaMap, docPdfRefs);
+            // mediaIndexRef.current（フックが控えている古いスナップショット）を
+            // そのまま土台にすると、投入口後追い OCR のように裏で長時間 latestIndex/
+            // ディスクへ直接書き込む処理と競合し、片方の更新を丸ごと消してしまう。
+            // readMediaIndex() で「ディスクと latestIndex のうち新しい方」を取り直して
+            // から usedIn を組み立てる（persistOcrTextPatch 等と同じ read-modify-write）。
+            const latest = (await readMediaIndex()) ?? mediaIndexRef.current;
+            const updated = syncUsedIn(latest, savedFileId, doc.title, mediaMap, docPdfRefs);
             mediaIndexRef.current = updated;
             setMediaIndex(updated);
             saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));

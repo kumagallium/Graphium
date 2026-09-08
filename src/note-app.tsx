@@ -11178,8 +11178,10 @@ export function NoteApp() {
           window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
         }}
       />
-      {/* 投入口が持ち込んだ画像の文字読み取り。取り込み完了後に裏で走る分の進行表示 */}
-      <OcrToast state={intakeOcr.toast} />
+      {/* 投入口が持ち込んだ画像の文字読み取り。取り込み完了後に裏で走る分の進行表示。
+          ノート内自動 OCR のトースト（autoOcr.toast）と同時に出ることがあるため、
+          重ならないよう一段上にずらす */}
+      <OcrToast state={intakeOcr.toast} stacked />
       <Composer
         open={composer.open}
         mode={composer.mode}
