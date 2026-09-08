@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.64.0](https://github.com/kumagallium/Graphium/compare/v0.63.0...v0.64.0) - 2026-09-08
+
+- feat: 本文の表をデータ表にする／データ表を計算列込みで素材に書き出す by @kumagallium in https://github.com/kumagallium/Graphium/pull/872
+
 ## [v0.63.0](https://github.com/kumagallium/Graphium/compare/v0.62.2...v0.63.0) - 2026-09-08
 
 - [feat] Bring existing files in through one intake: sidebar, empty states, drop anywhere by @kumagallium in https://github.com/kumagallium/Graphium/pull/840
