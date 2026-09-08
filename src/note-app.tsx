@@ -9588,7 +9588,8 @@ export function NoteApp() {
               const { leaf } = splitFolderPath(path);
               const node = folderTreeForNav
                 .flatMap((n) => [n, ...n.children])
-                .find((n) => n.path === path);
+                // 素材側の代表表記と大文字小文字がずれることがあるので、小文字で突き合わせる
+                .find((n) => n.path.toLowerCase() === path.toLowerCase());
               setFolderMenu({
                 path,
                 name: leaf,

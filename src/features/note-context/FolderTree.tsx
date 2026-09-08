@@ -14,7 +14,7 @@
 //   フォルダ削除＝タグ剥がし等のデータ操作は呼び出し側の責務にする
 
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Pencil, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { buildFolderTree, splitFolderPath, validateFolderPath, UNFILED_PATH, type FolderNode } from "./folder-tree-model";
@@ -192,6 +192,8 @@ export function FolderTree({
   // その場での名前変更。editingPath = null なら編集していない。
   // defaultEditingPath/defaultEditingDraft はストーリー用の初期状態フックで、
   // 実運用（note-app 配線）では渡さない前提
+  // 直前にクリックした行と時刻（ダブルクリックの 2 回目の click を見分ける）
+  const lastClickRef = useRef<{ key: string; at: number } | null>(null);
   const [editingPath, setEditingPath] = useState<string | null>(defaultEditingPath ?? null);
   const [editDraft, setEditDraft] = useState<string>(() => {
     if (!defaultEditingPath) return "";
@@ -358,6 +360,13 @@ export function FolderTree({
             type="button"
             title={node.path}
             onClick={() => {
+              // ダブルクリック（編集の入口）は click が 2 回先に発火する。2 回目は
+              // 同じ行への連打なので、遷移（一覧の切替・モバイルのサイドバー閉じ）を
+              // 繰り返さない。1 回目の遷移は従来どおり
+              const now = performance.now();
+              const last = lastClickRef.current;
+              lastClickRef.current = { key, at: now };
+              if (last && last.key === key && now - last.at < 400) return;
               onSelectFolder?.(node.path);
               // 開く操作と選択を一体にする（エクスプローラーの「フォルダを開く」感覚）
               if (hasChildren && !isOpen) toggleExpand(key);

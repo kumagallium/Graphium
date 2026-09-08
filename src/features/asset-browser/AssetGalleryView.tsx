@@ -691,11 +691,10 @@ export function AssetGalleryView({
   // mediaIndex の書き換えは非同期のため、renamedFolder を明示的に受け取って置換する。
   useEffect(() => {
     if (!renamedFolder) return;
-    setFolderFilter((prev) =>
-      prev.includes(renamedFolder.from)
-        ? prev.map((v) => (v === renamedFolder.from ? renamedFolder.to : v))
-        : prev,
-    );
+    // 本人だけでなく子（from/ で始まるもの）も改名されるので、同じ規則で置き換える
+    const { from, to } = renamedFolder;
+    const rewrite = (v: string) => (v === from ? to : v.startsWith(from + "/") ? to + v.slice(from.length) : v);
+    setFolderFilter((prev) => (prev.some((v) => rewrite(v) !== v) ? prev.map(rewrite) : prev));
   }, [renamedFolder]);
   // 素材が属するフォルダ（自分で付けたもの + 使われているノートのフォルダ）を求める。
   // 参照表が渡らない文脈（Storybook など）では自分で付けた分だけになる。
