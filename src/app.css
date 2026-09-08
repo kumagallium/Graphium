@@ -722,6 +722,14 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   color: #1a2e1d;
 }
 
+/* pdf.js の text-layer は generic font で組まれ、幅は pdf.js が lang 無しの canvas で
+   測った値に scaleX で合わせている。body の letter-spacing（0.01em）を継承すると
+   その分だけ文字が右に流れ、選択範囲や検索ハイライトが実際の文字からずれる。
+   generic font の解決は PdfViewer 側の lang="" で揃え、字間はここで戻す。 */
+.textLayer {
+  letter-spacing: 0;
+}
+
 /* PDF ビューア内検索（Cmd+F）のハイライト。
    text-layer は pdf.js が管理する DOM なので decoration 用の span を差し込めない。
    CSS Custom Highlight API で Range に直接色を当てる（features/asset-browser/pdf-search.ts）。

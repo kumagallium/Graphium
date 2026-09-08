@@ -32,6 +32,11 @@ export type PdfSearchMatch = {
 };
 
 const WHITESPACE = /\s/;
+// span 境界に空白を補うかの判定に使う。CJK（漢字・かな・ハングル・全角形）は
+// 単語を空白で区切らないので、境界の両側がこれなら繋げたまま扱う。
+// pdf.js は日本語 PDF の text-layer を 1〜2 文字ずつの span に割ることが多く、
+// 一律に空白を挟むと「ス タ ー タ ー」になって検索が当たらない。
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef\u2e80-\u2fdf\u31f0-\u31ff]/u;
 
 /**
  * text-layer 要素（1 ページ分）から検索用インデックスを作る。
@@ -47,6 +52,8 @@ export function buildPageTextIndex(pageEl: Element): PageTextIndex {
   const sources: CharSource[] = [];
   // 直前に出力した文字が空白か。先頭の空白は捨てたいので true 始まり。
   let prevWasSpace = true;
+  // 直前に出力した非空白文字（境界の両側が CJK かの判定に使う）。
+  let prevChar = "";
   // ノード境界をまたいだ直後か（次の非空白の前に空白を 1 つ入れる）。
   let pendingBoundary = false;
 
@@ -65,8 +72,8 @@ export function buildPageTextIndex(pageEl: Element): PageTextIndex {
         pendingBoundary = false;
         continue;
       }
-      if (pendingBoundary && !prevWasSpace) {
-        // ノード境界の暗黙の区切り。位置は「次の文字の直前」に寄せる。
+      if (pendingBoundary && !prevWasSpace && !(CJK.test(prevChar) || CJK.test(ch))) {
+        // ノード境界の暗黙の区切り（欧文どうしのときだけ）。位置は「次の文字の直前」に寄せる。
         chars += " ";
         sources.push({ node: text, offset: i });
       }
@@ -74,6 +81,7 @@ export function buildPageTextIndex(pageEl: Element): PageTextIndex {
       chars += ch;
       sources.push({ node: text, offset: i });
       prevWasSpace = false;
+      prevChar = ch;
     }
     pendingBoundary = true;
   }
@@ -83,15 +91,20 @@ export function buildPageTextIndex(pageEl: Element): PageTextIndex {
 
 /**
  * 検索用に文字列を畳む。
- * 大文字小文字を無視する場合でも、1 文字が 2 文字になる変換（"ß" → "ss" 等）で
+ *
+ * - NFKC: PDF のフォントが「⽔」（康熙部首 U+2F54）のような互換文字で本文を
+ *   持っていることがあり、そのままでは「水」で当たらない。全角英数も半角に寄る。
+ * - 大文字小文字（caseSensitive でないとき）。
+ *
+ * どちらも 1 文字が複数文字になる変換（"ß" → "ss"、"㍿" → "株式会社" 等）で
  * インデックスがずれると Range が壊れるため、長さが変わる文字は元のまま残す。
  */
 function foldForSearch(text: string, caseSensitive: boolean): string {
-  if (caseSensitive) return text;
   let out = "";
   for (const ch of text) {
-    const lower = ch.toLowerCase();
-    out += lower.length === ch.length ? lower : ch;
+    let folded = ch.normalize("NFKC");
+    if (!caseSensitive) folded = folded.toLowerCase();
+    out += folded.length === ch.length ? folded : ch;
   }
   return out;
 }
