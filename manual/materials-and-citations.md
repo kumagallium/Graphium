@@ -37,10 +37,24 @@ There are several routes, all ending in the same library:
 | Links already in a note | Clicking a link that is not registered yet — for example one written into the note by an AI chat answer — opens the side peek with an **Add to materials** button in the header. Review the page first, then register it: the URL joins the **URLs** gallery and appears in graphs. Nothing is registered automatically |
 | Slash menu **Bookmark** / **PDF** | Insert a URL card or an embedded PDF viewer directly as a block |
 | Gallery buttons | **Upload**, **Add URL**, **Add PDF**, **Add Word** — add materials without touching any note |
-| Bring in what you already have | **Bring in files** in the sidebar (also the first chip on an empty note, the empty note list and materials gallery, or simply dropping a folder anywhere in the window) opens one intake sheet. Markdown becomes notes; PDF, Word, images, audio, video and delimited data become materials; anything else is counted as skipped, never dropped silently. PowerPoint and Excel files are not taken in yet; the report lists them by extension. Subfolders become Graphium folders as they are. Obsidian vaults work as they are: `[[wikilinks]]` are resolved to note links — first against files in the same batch, then against your existing notes and knowledge entries by title — and referenced images come along. Unresolved links stay as plain `[[...]]` text. When it finishes, a report shows what came in and offers **Search your notes**, **See connections** and **Ask AI**. Markdown export writes note links back as `[[wikilinks]]`, so exported notes re-import with their links intact |
+| Bring in what you already have | One intake sheet takes in files and folders you already have on disk — see [Bring in what you already have](#bring-in-what-you-already-have) below |
 | Mobile capture | Photos and memos captured on your phone land in an inbox — see [Mobile](/mobile) |
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.
+
+## Bring in what you already have <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
+
+There are four ways in: **Bring in files** in the sidebar, the **Bring in files** chip at the top of an empty note, the empty-state receptacle in the note list and material gallery, or dropping a folder or files anywhere in the window (a banner appears while you drag).
+
+The rule is one sentence: **Markdown becomes notes. PDF, Word, images and CSV become materials.** Audio, video, and delimited data (`.csv` / `.tsv` / `.txt` / `.dat`) are materials too. PowerPoint, Excel, and old-style `.doc` files are not taken in yet — the report lists them by extension and count instead of dropping them silently.
+
+Whatever order files sit in inside a dropped folder carries over as Graphium folders, for both notes and materials. The name of the folder you dropped is not used as a folder itself.
+
+Obsidian vaults work as they are. `[[wikilinks]]` are resolved first against files in the same batch, then against your existing notes and knowledge entries by title, and images they reference come along too. Links that cannot be resolved stay as plain text.
+
+When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files. From there you can **Search your notes**, **See connections**, or **Ask AI** — or **Set up AI** first if no model is configured yet.
+
+Materials follow the same dedupe check as any other route (see below): the same file's contents do not create a second material. Notes are not checked yet, so bringing in the same vault twice creates two separate sets of notes — worth knowing before you re-run an intake over a folder you already brought in.
 
 ## Bringing the same file in twice <Badge type="tip" text="Added in v0.37.0 (2026-08-14)" /> {#bringing-the-same-file-in-twice}
 

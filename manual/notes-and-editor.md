@@ -412,6 +412,10 @@ Under the title of every note sits a **Folder** button. Folder names are free-fo
 
 <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> Drag a note by its title in the list and drop it on a folder in the sidebar. Dropping while a folder is open **moves** the note — it leaves the folder you are looking at and joins the one you dropped on; from **All Notes** there is nothing to leave, so it simply joins. Hold `Cmd` (`Ctrl` on Windows) while dropping to keep it where it is and add the new folder as well. Notes you have selected move together.
 
+### Rename a folder in place <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
+
+Hover a folder in the sidebar (or select it) and a pencil appears. Click it and the name becomes an input field — `Enter` confirms, `Esc` cancels. Double-clicking the name, or pressing `Enter` while the folder is selected, does the same thing. The right-click **Rename** entry still works as before. Renaming a folder brings its subfolders along, and reaches every note, memo, and material filed under it. Folders that only hold materials (the ones that don't show up in the notes tree) get the same treatment from the pencil (or right-click) on their row in the material gallery's **Folders** filter.
+
 ::: warning Deleting a folder never deletes notes
 Renaming or deleting a folder takes its subfolders with it — a folder and what sits under it move together. The notes themselves are never deleted: any note that is not in another folder becomes **Unfiled**. To throw notes away, open the folder and delete them from the list.
 :::
