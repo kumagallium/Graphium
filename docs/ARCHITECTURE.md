@@ -1311,7 +1311,11 @@ Key pieces:
 - **Share targets** — notes and Knowledge (wiki) pages share as full
   documents (a Knowledge page forks back into the wiki, with
   environment-bound lineage fields reset); single media files and
-  references share as manifests
+  references share as manifests. The shared copy leaves out the note's
+  AI chats and edit history by default — sharing publishes the record,
+  not the working process — and a Settings → Storage switch (mirrored as
+  a checkbox in the bulk share dialog) puts them back for people who
+  want the process shared too (DATA_MODEL.md §7.1)
 - **`src/features/sharing/`** — Library view, Share / Unshare actions, Fork
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in

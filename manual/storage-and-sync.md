@@ -83,6 +83,8 @@ Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appe
 
 The shared copy is a snapshot. To update it, edit your local note and choose **Update shared copy** from the same menu. To withdraw it, use **Unshare** in the shared library; Graphium warns that other members may have already viewed, cached, or forked it, so it cannot be fully erased.
 
+What travels with the note: the text, its labels and procedures, the folder it sits in, and any embedded images or files. What does not: the AI chats you had inside the note, its edit history, saved versions, and memos. Sharing hands over the record, not the working process behind it. If you want the chats and the edit history to travel too, turn on **Include AI chats and edit history when sharing** in **Settings** → **Storage** → **Shared storage**, or tick the same box in the bulk share dialog. Either way it applies from the next share onward — notes you shared before are updated the next time you choose **Update shared copy**.
+
 ### Share knowledge pages too <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
 
 Knowledge pages — summaries, claims, and insights — share the same way. Open a page's `⋯` menu, choose **Share with team**, and it appears under **Knowledge** in the shared library, next to the shared notes. **Update shared copy** and **Unshare** work as they do for notes.

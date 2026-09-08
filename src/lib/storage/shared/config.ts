@@ -7,6 +7,7 @@
 const SHARED_ROOT_KEY = "graphium-shared-root";
 const BLOB_ROOT_KEY = "graphium-shared-blob-root";
 const SHARED_AI_ENABLED_KEY = "graphium-shared-ai-enabled";
+const SHARE_INCLUDE_PRIVATE_HISTORY_KEY = "graphium-share-include-private-history";
 
 /** Shared ストレージのルートパス（未設定なら null）。 */
 export function getSharedRoot(): string | null {
@@ -67,5 +68,31 @@ export function setSharedAiEnabled(enabled: boolean): void {
     localStorage.setItem(SHARED_AI_ENABLED_KEY, enabled ? "1" : "0");
   } catch {
     /* localStorage が使えない環境では既定 ON のまま */
+  }
+}
+
+/**
+ * 共有コピーに AI チャット（`chats`）と編集来歴（`documentProvenance`）を
+ * 含めるか（既定 false）。
+ *
+ * 既定を OFF にしているのは、共有が「本文を見せる」操作であって
+ * 「作業の過程を見せる」操作ではないから。学生が先生に共有する場面で、
+ * 試行錯誤のチャットや編集の記録まで一緒に渡るのは意図と違う。
+ * 過程も見せたい人は設定でオンにできる。
+ */
+export function getShareIncludesPrivateHistory(): boolean {
+  try {
+    // 未設定（null）は既定 OFF。明示的に "1" を書いたときだけ ON
+    return localStorage.getItem(SHARE_INCLUDE_PRIVATE_HISTORY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setShareIncludesPrivateHistory(include: boolean): void {
+  try {
+    localStorage.setItem(SHARE_INCLUDE_PRIVATE_HISTORY_KEY, include ? "1" : "0");
+  } catch {
+    /* localStorage が使えない環境では既定 OFF のまま */
   }
 }

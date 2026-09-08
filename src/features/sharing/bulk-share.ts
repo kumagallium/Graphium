@@ -58,6 +58,11 @@ export type BulkShareDeps = {
   root: string;
   author: AuthorIdentity;
   blobRoot?: string | null;
+  /**
+   * true のときだけ chats と documentProvenance を共有コピーに残す（既定 false）。
+   * ノート / Knowledge にのみ効く（素材は元から本文を持たない）。
+   */
+  includePrivateHistory?: boolean;
   /** 保存済みノートを読む（見つからなければ null） */
   loadNote: (id: string) => Promise<GraphiumDocument | null>;
   /** sharedRef 付き doc の書き戻し（docCache / activeDoc 追従込み） */
@@ -206,6 +211,7 @@ export async function bulkShare(
         root: deps.root,
         author: deps.author,
         blobRoot: deps.blobRoot,
+        includePrivateHistory: deps.includePrivateHistory,
       });
       if (!result.ok) {
         results.push({ ...target, title, ok: false, error: result.error });
