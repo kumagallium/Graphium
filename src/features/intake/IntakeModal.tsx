@@ -52,6 +52,8 @@ export type IntakeState =
       ocrPending: number;
       /** PowerPoint / Excel の展開で追加登録された派生素材（画像・CSV）の合計件数 */
       officeDerived: number;
+      /** PowerPoint の展開で変換できずに捨てられた画像（EMF/WMF/TIFF 変換失敗等）の合計件数 */
+      officeSkipped: number;
       aiAvailable: boolean;
     };
 
@@ -192,6 +194,11 @@ export function IntakeModal({
                 {state.officeDerived > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {t("intake.officeDerived", { count: String(state.officeDerived) })}
+                  </p>
+                )}
+                {state.officeSkipped > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("intake.officeSkipped", { count: String(state.officeSkipped) })}
                   </p>
                 )}
                 {state.skipped > 0 && (

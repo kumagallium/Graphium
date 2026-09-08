@@ -101,6 +101,8 @@ export type IntakeOutcome = {
   ocrTargets: BulkOcrTarget[];
   /** PowerPoint / Excel の展開で追加登録された派生素材（画像・CSV）の合計件数 */
   officeDerived: number;
+  /** PowerPoint の展開で変換できずに捨てられた画像（EMF/WMF/TIFF 変換失敗等）の合計件数 */
+  officeSkipped: number;
 };
 
 /**
@@ -132,6 +134,7 @@ export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome 
     folders: a.folders + b.folders,
     ocrTargets: [...a.ocrTargets, ...b.ocrTargets],
     officeDerived: a.officeDerived + b.officeDerived,
+    officeSkipped: a.officeSkipped + b.officeSkipped,
   };
 }
 
@@ -196,6 +199,7 @@ export async function runIntake(
   let materialsExisting = 0;
   const ocrTargets: BulkOcrTarget[] = [];
   let officeDerived = 0;
+  let officeSkipped = 0;
   const notesDone = notes.length;
   for (let i = 0; i < materials.length; i++) {
     const m = materials[i];
@@ -233,8 +237,9 @@ export async function runIntake(
       // PowerPoint / Excel の展開: 新規登録のときだけ（重複はすでに展開済みのはず）
       if (!duplicate && fileId && deps.expandOffice && isExpandableOfficeFile(m.file.name)) {
         try {
-          const { derived } = await deps.expandOffice(m.file, fileId);
+          const { derived, skipped: officeSkippedCount } = await deps.expandOffice(m.file, fileId);
           officeDerived += derived;
+          officeSkipped += officeSkippedCount;
         } catch (err) {
           console.warn(`[intake] Office ファイルの展開に失敗: ${m.file.name}`, err);
         }
@@ -276,5 +281,6 @@ export async function runIntake(
     folders: foldersSeen.size,
     ocrTargets,
     officeDerived,
+    officeSkipped,
   };
 }

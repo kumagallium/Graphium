@@ -177,6 +177,23 @@ describe("runIntake", () => {
     expect(outcome.officeDerived).toBe(5);
   });
 
+  it("expandOffice の skipped（変換できなかった画像件数）は officeSkipped に合算される", async () => {
+    function officeFile(name: string): IntakeFile {
+      return { file: new File(["dummy"], name, { type: "" }), path: name };
+    }
+    const files = [officeFile("slides.pptx"), officeFile("sheet.xlsx")];
+    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: false }));
+    const expandOffice = vi.fn(async (_file: File, fileId: string) => ({
+      derived: fileId === "id-slides.pptx" ? 2 : 3,
+      skipped: fileId === "id-slides.pptx" ? 1 : 0,
+    }));
+    const deps = makeDeps({ uploadAsset, expandOffice });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(outcome.officeSkipped).toBe(1);
+  });
+
   it("重複登録（duplicate）の pptx/xlsx には expandOffice を呼ばない", async () => {
     function officeFile(name: string): IntakeFile {
       return { file: new File(["dummy"], name, { type: "" }), path: name };
@@ -338,6 +355,7 @@ describe("mergeOutcome", () => {
       folders: 2,
       ocrTargets: [{ fileId: "img-a", url: "url-a", name: "a.png" }],
       officeDerived: 4,
+      officeSkipped: 1,
     };
     const b: IntakeOutcome = {
       notes: 1,
@@ -353,6 +371,7 @@ describe("mergeOutcome", () => {
       folders: 1,
       ocrTargets: [{ fileId: "img-b", url: "url-b", name: "b.png" }],
       officeDerived: 2,
+      officeSkipped: 2,
     };
 
     const merged = mergeOutcome(a, b);
@@ -377,6 +396,7 @@ describe("mergeOutcome", () => {
         { fileId: "img-b", url: "url-b", name: "b.png" },
       ],
       officeDerived: 6,
+      officeSkipped: 3,
     });
   });
 });

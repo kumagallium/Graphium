@@ -2069,6 +2069,7 @@ export const ja: Record<string, string> = {
   "intake.setupAi": "AI を設定する",
   "intake.setupAiHint": "設定でモデルを登録すると、取り込んだものについて聞けます",
   "intake.officeDerived": "{count} 件は PowerPoint・Excel から取り出したもの",
+  "intake.officeSkipped": "PowerPoint 内の画像 {count} 件は形式を変換できず、取り込みから外れました",
   "intake.skipped": "{count} 件は対象外の種類なので取り込んでいません",
   "intake.ocrPending": "画像 {count} 件の文字はこのあと読み取ります",
   "intake.dropOverlay": "ここに落として取り込む",
