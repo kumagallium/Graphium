@@ -187,7 +187,13 @@ talks to LLM and embedding backends.
   since the save are placed automatically, which is what keeps adding one
   material from scrambling a graph someone arranged deliberately. A reset
   control (the step flow reuses its existing "arrange" button) drops the
-  arrangement and hands the graph back to fcose / ELK. Both graph
+  arrangement and hands the graph back to fcose / ELK. The step flow's
+  ELK pass can only run once React Flow has measured every card, so a
+  layout that has been asked for is held until it can run rather than
+  dropped by an unrelated re-render; applying it, grabbing a node, or
+  adopting a saved arrangement are the only things that clear it, and
+  while it waits it re-checks for a bounded number of frames instead of
+  relying on a resize notification that may never come. Both graph
   libraries share one store and one set of gestures on purpose: the two
   panels sit next to each other, and a graph that behaves differently
   depending on which tab it is in reads as two unrelated tools.
