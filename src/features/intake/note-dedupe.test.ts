@@ -1,7 +1,7 @@
 // note-dedupe.ts のテスト（「同じ中身のファイルを入れ直してもノートを増やさない」規則）
 
 import { describe, it, expect } from "vitest";
-import { candidateNoteIds, findExistingImport } from "./note-dedupe";
+import { findExistingImportId } from "./note-dedupe";
 import type { NoteIndexEntry } from "../navigation/index-file";
 
 function entry(overrides: Partial<NoteIndexEntry> & { noteId: string; title: string }): NoteIndexEntry {
@@ -15,58 +15,44 @@ function entry(overrides: Partial<NoteIndexEntry> & { noteId: string; title: str
   };
 }
 
-describe("candidateNoteIds", () => {
-  it("タイトルが一致するノートを候補にする", () => {
-    const index = [entry({ noteId: "a", title: "実験メモ" }), entry({ noteId: "b", title: "別のメモ" })];
-    expect(candidateNoteIds(index, "実験メモ")).toEqual(["a"]);
-  });
-
-  it("大文字小文字を無視する", () => {
-    const index = [entry({ noteId: "a", title: "Note Title" })];
-    expect(candidateNoteIds(index, "note title")).toEqual(["a"]);
-  });
-
-  it("NFC/NFD の差を無視する（macOS のファイル名は NFD になり得る）", () => {
-    // "が" を NFD（か + 濁点結合文字）で表現したタイトル
-    const nfdTitle = "実験メモ".normalize("NFD");
-    const index = [entry({ noteId: "a", title: nfdTitle })];
-    expect(candidateNoteIds(index, "実験メモ".normalize("NFC"))).toEqual(["a"]);
-  });
-
-  it("削除済み・アーカイブ済みのノートは候補にしない", () => {
+describe("findExistingImportId", () => {
+  it("ハッシュが一致するノートがあれば noteId を返す", () => {
     const index = [
-      entry({ noteId: "a", title: "メモ", deletedAt: "2026-01-02T00:00:00.000Z" }),
-      entry({ noteId: "b", title: "メモ", archivedAt: "2026-01-02T00:00:00.000Z" }),
-      entry({ noteId: "c", title: "メモ" }),
+      entry({ noteId: "a", title: "実験メモ", importSourceHash: "sha256:aaa" }),
+      entry({ noteId: "b", title: "別のメモ", importSourceHash: "sha256:bbb" }),
     ];
-    expect(candidateNoteIds(index, "メモ")).toEqual(["c"]);
+    expect(findExistingImportId(index, "sha256:bbb")).toBe("b");
   });
 
-  it("一致するノートが無ければ空配列", () => {
-    expect(candidateNoteIds([entry({ noteId: "a", title: "メモ" })], "別の名前")).toEqual([]);
+  it("ファイル名が変わっていても中身のハッシュが一致すれば重複と判定する（リネーム耐性）", () => {
+    // タイトルは元のファイル名由来だが、リネーム後は一致しない想定
+    const index = [entry({ noteId: "a", title: "Meeting Notes", importSourceHash: "sha256:aaa" })];
+    expect(findExistingImportId(index, "sha256:aaa")).toBe("a");
   });
-});
 
-describe("findExistingImport", () => {
-  it("ハッシュが一致する候補があれば noteId を返す", () => {
-    const candidates = [
-      { noteId: "a", importSource: { path: "a.md", contentHash: "sha256:aaa", importedAt: "2026-01-01T00:00:00.000Z" } },
-      { noteId: "b", importSource: { path: "b.md", contentHash: "sha256:bbb", importedAt: "2026-01-01T00:00:00.000Z" } },
+  it("importSourceHash を持たないノート（手で作った・投入口以外の経路）は無視する", () => {
+    const index = [
+      entry({ noteId: "a", title: "手書きメモ" }),
+      entry({ noteId: "b", title: "投入口メモ", importSourceHash: "sha256:bbb" }),
     ];
-    expect(findExistingImport(candidates, "sha256:bbb")).toBe("b");
+    expect(findExistingImportId(index, "sha256:bbb")).toBe("b");
   });
 
-  it("importSource を持たない候補（手で作ったノート）は無視する", () => {
-    const candidates = [{ noteId: "a" }, { noteId: "b", importSource: { path: "b.md", contentHash: "sha256:bbb", importedAt: "x" } }];
-    expect(findExistingImport(candidates, "sha256:bbb")).toBe("b");
+  it("削除済み・アーカイブ済みのノートは対象にしない", () => {
+    const index = [
+      entry({ noteId: "a", title: "メモ", importSourceHash: "sha256:aaa", deletedAt: "2026-01-02T00:00:00.000Z" }),
+      entry({ noteId: "b", title: "メモ", importSourceHash: "sha256:aaa", archivedAt: "2026-01-02T00:00:00.000Z" }),
+      entry({ noteId: "c", title: "メモ", importSourceHash: "sha256:aaa" }),
+    ];
+    expect(findExistingImportId(index, "sha256:aaa")).toBe("c");
   });
 
-  it("一致するものが無ければ null", () => {
-    const candidates = [{ noteId: "a", importSource: { path: "a.md", contentHash: "sha256:aaa", importedAt: "x" } }];
-    expect(findExistingImport(candidates, "sha256:zzz")).toBeNull();
+  it("一致するハッシュが無ければ null", () => {
+    const index = [entry({ noteId: "a", title: "メモ", importSourceHash: "sha256:aaa" })];
+    expect(findExistingImportId(index, "sha256:zzz")).toBeNull();
   });
 
-  it("候補が空でも null", () => {
-    expect(findExistingImport([], "sha256:aaa")).toBeNull();
+  it("index が空でも null", () => {
+    expect(findExistingImportId([], "sha256:aaa")).toBeNull();
   });
 });
