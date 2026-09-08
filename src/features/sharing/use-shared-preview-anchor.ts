@@ -45,9 +45,13 @@ export type SharedPreviewAnchor = {
   jumpToBlock: (blockId: string) => void;
 };
 
-/** 段落（ブロック）を持つプレビューか。ノート / ナレッジだけがクリックに反応する */
+/**
+ * 段落（ブロック）を持つプレビューか。ノート / ナレッジ / 提案がクリックに反応する。
+ * 提案（proposal）の本文はノートと同じ GraphiumDocument なので、段落への
+ * コメント・引用もノートと同じように付けられる。
+ */
 export function previewHasBlocks(entryType: SharedEntryType): boolean {
-  return entryType === "note" || entryType === "knowledge";
+  return entryType === "note" || entryType === "knowledge" || entryType === "proposal";
 }
 
 /**

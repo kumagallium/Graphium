@@ -84,6 +84,7 @@ const REFERENCE_LABELS = { url: "URL", domain: "ドメイン", description: "説
  * 素材（data-manifest。実体は blob）と指摘（comment。本文はコメント文そのもの）は
  * 「その中身について聞く」対象にしない。UI はこの判定でタブを出すかどうかを決め、
  * buildSharedSubject も同じ判定で null を返す（片方だけ増える type を作らない）。
+ * 提案（proposal）は本文がノートと同じなので対象に入れる（提案の中身を AI に聞ける）。
  */
 export function supportsSharedChat(type: SharedEntryType): boolean {
   return type !== "data-manifest" && type !== "comment";
@@ -184,7 +185,8 @@ export async function buildSharedSubject(
   const author = entry.author?.name?.trim() || opts.uiT("library.unknownAuthor");
 
   let raw = "";
-  if (entry.type === "note" || entry.type === "knowledge") {
+  // 提案（proposal）の本文はノートと同じ GraphiumDocument なので同じ経路で読む
+  if (entry.type === "note" || entry.type === "knowledge" || entry.type === "proposal") {
     const doc = parseSharedBody(
       typeof body === "string" ? new TextEncoder().encode(body) : body,
     );

@@ -25,6 +25,13 @@ export type ForkSharedNoteResult =
       ok: true;
       doc: GraphiumDocument;
       original: SharedEntry;
+      /**
+       * 読み出した共有本文の JSON そのまま（作り直していない文字列）。
+       * 「変更の提案」の基準版（fork-base.ts）に控えるために返す。
+       * 読んだままのバイト列で blob に置けるよう、パースし直した値ではなく
+       * 元の文字列を渡す（同じ基準版の提案が 1 個の blob に畳まれる）。
+       */
+      body: string;
     }
   | { ok: false; error: string };
 
@@ -48,10 +55,10 @@ export async function forkSharedNote(
       };
     }
 
+    const bodyJson = new TextDecoder().decode(body);
     let parsed: GraphiumDocument;
     try {
-      const json = new TextDecoder().decode(body);
-      parsed = JSON.parse(json) as GraphiumDocument;
+      parsed = JSON.parse(bodyJson) as GraphiumDocument;
     } catch (e) {
       return {
         ok: false,
@@ -90,7 +97,7 @@ export async function forkSharedNote(
       documentProvenance: undefined,
     };
 
-    return { ok: true, doc: forked, original: entry };
+    return { ok: true, doc: forked, original: entry, body: bodyJson };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

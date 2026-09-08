@@ -120,16 +120,30 @@ export async function shareNote(
 }
 
 /**
- * ノート / Knowledge 共通の Share コア。GraphiumDocument を JSON 化して
+ * ノート / Knowledge / 提案 共通の Share コア。GraphiumDocument を JSON 化して
  * shared に書き出すフローは entry type と extra フィールド以外同一。
- * share-knowledge.ts からも使う（features/sharing 内部専用）。
+ * share-knowledge.ts / share-proposal.ts からも使う（features/sharing 内部専用）。
+ *
+ * @param derivedFrom `prov.derived_from` に入れる共有エントリ id。既定は空
+ *   （ノート / Knowledge は共有側に親を持たない）。提案は元エントリを入れる。
  */
 export async function shareGraphiumDocument(
   doc: GraphiumDocument,
-  entryType: "note" | "knowledge",
+  entryType: "note" | "knowledge" | "proposal",
   extraFields: Record<string, unknown>,
   options: ShareNoteOptions,
+  derivedFrom: string[] = [],
 ): Promise<ShareNoteResult> {
+  // 提案として共有中のノートを、通常の共有で上書きしない。同じ id に別種別で書くと
+  // proposals/ と notes/ に同じ id が並び、受け取り側の一覧から提案が消える。
+  // 1 つの手元ノートが指せる封筒は 1 通（§25）。
+  if (doc.sharedRef?.type === "proposal" && entryType !== "proposal") {
+    return {
+      ok: false,
+      error:
+        "This note is currently shared as a proposal. Withdraw the proposal before sharing it as your own copy.",
+    };
+  }
   try {
     // ── Phase 2c-1: 自動 blob 化 ──
     const extractFileId =
@@ -187,7 +201,7 @@ export async function shareGraphiumDocument(
       created_at: doc.sharedRef?.sharedAt ?? now,
       updated_at: now,
       hash: "", // provider.write が再計算する
-      prov: { derived_from: [] },
+      prov: { derived_from: derivedFrom },
       ...(history ? { history } : {}),
       extra: {
         title: doc.title,

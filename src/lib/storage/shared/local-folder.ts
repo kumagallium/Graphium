@@ -37,6 +37,7 @@ export const TYPE_TO_FOLDER: Record<SharedEntryType, string> = {
   knowledge: "knowledge",
   report: "reports",
   comment: "comments",
+  proposal: "proposals",
 };
 
 /** ディスクに書き込む JSON のラッパー型。 */

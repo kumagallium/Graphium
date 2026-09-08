@@ -697,3 +697,270 @@ export const ManualEnglishAskAi: Story = {
     await canvas.findByText(/From the shared log/);
   },
 };
+
+// ── 変更の提案（§25）──
+//
+// 学生が先生のノートを派生して値を入れ直し、「元のノートへの変更の提案」として
+// 共有した状態。全画面で開くと右レールに「差分」タブが出る（提案のときだけ）。
+//
+// 3 者比較の材料は proposalDiff（DI）で渡す。実アプリでは
+//   theirs = 提案の本文 / mine = 元エントリの現在の共有本文 / base = extra.baseRef の blob
+// を共有フォルダから取り寄せる。
+
+const PROPOSAL: SharedEntry = {
+  id: "proposal-1",
+  type: "proposal",
+  author: STUDENT_A,
+  created_at: daysAgo(0.5),
+  updated_at: daysAgo(0.5),
+  hash: "sha256:dddd1111",
+  prov: { derived_from: ["note-1"] },
+  version: 1,
+  extra: {
+    title: "Cu粉末の焼結実験（第1回）（測定値入り）",
+    target: "note-1",
+    targetHash: NOTE.hash,
+    targetTitle: "Cu粉末の焼結実験（第1回）",
+    message: "実際に測った値に直しました。保持時間も 3 時間です。",
+    baseRef: { provider: "local-folder", uri: "file:///blobs/base", hash: "sha256:base1111", size: 512 },
+  },
+} as SharedEntry;
+
+const cell = (text: string) => ({
+  type: "tableCell",
+  props: {},
+  content: text ? [{ type: "text", text, styles: {} }] : [],
+});
+const table = (id: string, rows: string[][]) =>
+  ({
+    id,
+    type: "table",
+    props: {},
+    content: { type: "tableContent", rows: rows.map((cells) => ({ cells: cells.map(cell) })) },
+    children: [],
+  }) as any;
+
+const sinteringDoc = (
+  title: string,
+  weigh: string,
+  hold: string,
+  measured: string,
+  extra: unknown[] = [],
+): GraphiumDocument =>
+  ({
+    version: 6,
+    title,
+    pages: [
+      {
+        id: "p1",
+        title,
+        blocks: [
+          para("b-weigh", weigh),
+          para("b-press", "一軸プレスで 200 MPa・60 秒 保持して圧粉体を作製した。"),
+          para("b-sinter", hold),
+          table("b-table", [
+            ["試料", "焼結温度 (℃)", "相対密度 (%)"],
+            ["A", "1050", measured],
+          ]),
+          para("b-cool", "炉冷（自然冷却）。翌朝に取り出した。"),
+          ...extra,
+        ],
+        labels: {},
+        provLinks: [],
+        knowledgeLinks: [],
+      },
+    ],
+  }) as any;
+
+/** 派生した時点の元のノート */
+const PROPOSAL_BASE_DOC = sinteringDoc(
+  "Cu粉末の焼結実験（第1回）",
+  "Cu 粉末を 5.00 g 秤量した（電子天秤 0.01 g 読み）。",
+  "1050 ℃ で 2 時間保持した",
+  "（未測定）",
+);
+
+/** 元の作者がその後に足した 1 行（by: 作者） */
+const PROPOSAL_MINE_DOC = sinteringDoc(
+  "Cu粉末の焼結実験（第1回）",
+  "Cu 粉末を 5.00 g 秤量した（電子天秤 0.01 g 読み）。",
+  "1050 ℃ で 2 時間保持した",
+  "（未測定）",
+  [para("b-rate", "昇温速度は 5 ℃/min。")],
+);
+
+/** 提案者が直したところ（by: 提案者 ＝ 取り込みの候補） */
+const PROPOSAL_THEIRS_DOC = sinteringDoc(
+  "Cu粉末の焼結実験（第1回）（測定値入り）",
+  "Cu 粉末を 4.98 g 秤量した（電子天秤 0.01 g 読み）。",
+  "1050 ℃ で 3 時間保持した",
+  "94.2",
+);
+
+const proposalArgs = {
+  ...baseArgs,
+  entry: PROPOSAL,
+  currentIdentity: TEACHER,
+  entries: [NOTE, PROPOSAL],
+  projection: createEmptySharedProjection(),
+  readEntryBody: readerFor(PROPOSAL_THEIRS_DOC),
+};
+
+export const ProposalDiff: Story = {
+  name: "変更の提案 — 差分（3 者）",
+  args: {
+    ...proposalArgs,
+    proposalDiff: {
+      base: PROPOSAL_BASE_DOC,
+      mine: PROPOSAL_MINE_DOC,
+      theirs: PROPOSAL_THEIRS_DOC,
+    },
+  },
+  decorators: jaDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "派生した時点の版（基準版）を挟んだ 3 者比較。「提案者」の印が付いた項目が取り込みの候補で、「作者」の印は元の作者がその後に入れた変更（表示のみ）。表はセル単位まで降りる。読むだけの画面で、取り込みは元の作者が自分のノート側で行う。",
+      },
+    },
+  },
+};
+
+export const ProposalDiffNoBase: Story = {
+  name: "変更の提案 — 差分（基準版なし）",
+  args: {
+    ...proposalArgs,
+    entry: { ...PROPOSAL, extra: { ...(PROPOSAL.extra as object), baseRef: undefined } } as SharedEntry,
+    proposalDiff: { mine: PROPOSAL_MINE_DOC, theirs: PROPOSAL_THEIRS_DOC },
+  },
+  decorators: jaDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "基準版の控えが無いとき（blob の保管先が未設定 / 古い派生）。元のノートの現在の版と 2 者で比べるだけになり、「誰が変えたか」の印は出さない —— 分けられないものを分かったように見せない。",
+      },
+    },
+  },
+};
+
+// ── マニュアル図用（English・パン作りの世界観）──
+// 研究室の題材は用語が固いので、マニュアルの図はパン作りで撮る。
+// 見せたいのは「基準版・元のノート・提案の 3 行が並ぶ」ことだけなので、
+// 中身は誰でも読める範囲にする。
+
+const BREAD_NOTE: SharedEntry = {
+  id: "bread-note",
+  type: "note",
+  author: { name: "Mia", email: "mia@example.com" },
+  created_at: daysAgo(12),
+  updated_at: daysAgo(2),
+  hash: "sha256:bread0001",
+  prov: { derived_from: [] },
+  version: 1,
+  extra: { title: "Sourdough loaf — Saturday bake" },
+} as SharedEntry;
+
+const BREAD_PROPOSAL: SharedEntry = {
+  id: "bread-proposal",
+  type: "proposal",
+  author: { name: "Tom", email: "tom@example.com" },
+  created_at: daysAgo(0.3),
+  updated_at: daysAgo(0.3),
+  hash: "sha256:bread0002",
+  prov: { derived_from: ["bread-note"] },
+  version: 1,
+  extra: {
+    title: "Sourdough loaf — Saturday bake (forked)",
+    target: "bread-note",
+    targetHash: BREAD_NOTE.hash,
+    targetTitle: "Sourdough loaf — Saturday bake",
+    message: "Longer bulk and a hotter oven worked better in my kitchen.",
+    baseRef: { provider: "local-folder", uri: "file:///blobs/bread", hash: "sha256:bread-base", size: 480 },
+  },
+} as SharedEntry;
+
+const breadDoc = (
+  title: string,
+  bulk: string,
+  oven: string,
+  crumb: string,
+  extra: unknown[] = [],
+): GraphiumDocument =>
+  ({
+    version: 6,
+    title,
+    pages: [
+      {
+        id: "p1",
+        title,
+        blocks: [
+          para("b-mix", "Mixed 500 g flour, 350 g water, 100 g starter and 10 g salt."),
+          para("b-bulk", bulk),
+          table("b-table", [
+            ["Stage", "Time", "Temperature"],
+            ["Bake", "40 min", oven],
+          ]),
+          para("b-crumb", crumb),
+          ...extra,
+        ],
+        labels: {},
+        provLinks: [],
+        knowledgeLinks: [],
+      },
+    ],
+  }) as any;
+
+const BREAD_BASE_DOC = breadDoc(
+  "Sourdough loaf — Saturday bake",
+  "Bulk fermentation: 4 hours at room temperature.",
+  "230 °C",
+  "Crumb was a little tight near the base.",
+);
+const BREAD_MINE_DOC = breadDoc(
+  "Sourdough loaf — Saturday bake",
+  "Bulk fermentation: 4 hours at room temperature.",
+  "230 °C",
+  "Crumb was a little tight near the base.",
+  [para("b-note", "Note: the kitchen was 19 °C that morning.")],
+);
+const BREAD_THEIRS_DOC = breadDoc(
+  "Sourdough loaf — Saturday bake (forked)",
+  "Bulk fermentation: 5 hours at room temperature.",
+  "250 °C",
+  "Crumb was open all the way through.",
+);
+
+export const ProposalDiffEnglish: Story = {
+  name: "変更の提案 — 差分（English / bread）",
+  args: {
+    ...baseArgs,
+    entry: BREAD_PROPOSAL,
+    currentIdentity: { name: "Mia", email: "mia@example.com" },
+    entries: [BREAD_NOTE, BREAD_PROPOSAL],
+    projection: createEmptySharedProjection(),
+    readEntryBody: readerFor(BREAD_THEIRS_DOC),
+    proposalDiff: { base: BREAD_BASE_DOC, mine: BREAD_MINE_DOC, theirs: BREAD_THEIRS_DOC },
+  },
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The figure used in the manual. Someone forked a bread recipe, changed the bulk time and the oven temperature, and proposed the changes back. The baseline (the version they forked) tells the proposer's changes apart from the author's own later note.",
+      },
+    },
+  },
+};

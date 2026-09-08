@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
@@ -191,6 +191,7 @@ import {
   shareNote,
   shareKnowledge,
   forkSharedNote,
+  saveForkBase,
   forkSharedKnowledge,
   unshareEntry,
   SharedLibraryView,
@@ -204,6 +205,9 @@ import {
   getSharedLibrarySnapshot,
   useSharedLibrarySync,
   ShareTemplateDialog,
+  ProposeChangesDialog,
+  withdrawProposal,
+  resolveProposalBase,
   type BulkShareTarget,
 } from "./features/sharing";
 // 共有コメント（右パネル「コメント」タブ・ヘッダのバッジ・レールのアイコン）。
@@ -214,6 +218,9 @@ import {
   NoteSharedCommentsBadge,
   NoteSharedCommentsRailIcon,
 } from "./features/sharing/NoteSharedCommentsPanel";
+// 「変更の提案」の状態バッジ。コメントのバッジと同じ理由でファイル直 import
+// （共有ストアを購読するのはこの部品の中だけに閉じる）
+import { NoteProposalStatusBadge } from "./features/sharing/NoteProposalStatusBadge";
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 // 共有ノート内の画像・ファイルを自分の素材に取り込むときの mime 判定（fork の materialize と同じ経路）
 import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-blobs";
@@ -473,6 +480,9 @@ function NoteHeaderMenu({
   shareDisabledReason,
   shareHint,
   onShareTemplate,
+  onProposeToSource,
+  onWithdrawProposal,
+  isProposalShared,
   onCopyLink,
   fullWidth,
   onToggleFullWidth,
@@ -531,6 +541,15 @@ function NoteHeaderMenu({
    * 無効理由はノート共有と同じ shareDisabledReason を使う。
    */
   onShareTemplate?: () => void;
+  /**
+   * 派生（fork）したノートの変更を、元のノートへの「変更の提案」として共有する（§25）。
+   * 未設定時は項目ごと隠す（派生していない・元の作者が自分・デスクトップ以外）。
+   */
+  onProposeToSource?: () => void;
+  /** 提案として共有済みのときだけ渡る「提案を取り下げる」 */
+  onWithdrawProposal?: () => void;
+  /** このノートが提案として共有済みか（項目の文言が「提案を更新」になる） */
+  isProposalShared?: boolean;
   /** このノートへのリンク（URL）をクリップボードにコピーする。別ノートに貼るとメンション化される。 */
   onCopyLink?: () => void;
   /** 本文をフル幅表示しているか（Notion の Full width 相当）。ON でチェックを表示 */
@@ -644,22 +663,26 @@ function NoteHeaderMenu({
               </button>
             </>
           )}
-          {onShare && (
+          {(onShare || onProposeToSource) && (
             <>
               <div className="my-1 border-t border-border" />
-              <button
-                className={itemClass}
-                disabled={shareDisabled || shareBusy}
-                onClick={() => { onShare(); setOpen(false); }}
-                title={shareDisabled ? shareDisabledReason : shareHint}
-              >
-                <Share2 size={14} />
-                {shareBusy
-                  ? t("share.sharing")
-                  : isShared
-                    ? t("share.reshareToTeam")
-                    : t("share.shareToTeam")}
-              </button>
+              {/* 提案として共有している間は「チームと共有」を出さない。
+                  1 つの手元ノートが 2 通の封筒を指せないため（呼び出し側で undefined にする） */}
+              {onShare && (
+                <button
+                  className={itemClass}
+                  disabled={shareDisabled || shareBusy}
+                  onClick={() => { onShare(); setOpen(false); }}
+                  title={shareDisabled ? shareDisabledReason : shareHint}
+                >
+                  <Share2 size={14} />
+                  {shareBusy
+                    ? t("share.sharing")
+                    : isShared
+                      ? t("share.reshareToTeam")
+                      : t("share.shareToTeam")}
+                </button>
+              )}
               {/* 記録のコピー（上）と雛形の配布（下）は別物なので、同じ共有の区画に並べる */}
               {onShareTemplate && (
                 <button
@@ -670,6 +693,28 @@ function NoteHeaderMenu({
                 >
                   <LayoutTemplate size={14} />
                   {t("share.template.shareToTeam")}
+                </button>
+              )}
+              {/* 3 項目目: 派生元のノートへ変更を提案する（元のノートは書き換えない） */}
+              {onProposeToSource && (
+                <button
+                  className={itemClass}
+                  disabled={shareDisabled || shareBusy}
+                  onClick={() => { onProposeToSource(); setOpen(false); }}
+                  title={shareDisabled ? shareDisabledReason : undefined}
+                >
+                  <GitPullRequestArrow size={14} />
+                  {isProposalShared ? t("share.propose.update") : t("share.propose.menu")}
+                </button>
+              )}
+              {onWithdrawProposal && (
+                <button
+                  className={itemClass}
+                  disabled={shareDisabled || shareBusy}
+                  onClick={() => { onWithdrawProposal(); setOpen(false); }}
+                >
+                  <Trash2 size={14} />
+                  {t("share.propose.withdraw")}
                 </button>
               )}
             </>
@@ -2848,6 +2893,83 @@ function NoteEditorInner({
     return { doc, page, attributes: labelStore.getSnapshot().attributes };
   }, [buildDocument, labelStore]);
 
+  // ── 元のノートへ変更を提案（§25 C）──
+  // 派生（fork）したノートの変更を、元のノートへの提案として共有する。
+  // 元のノートには一切書かない（提案は自分名義の別の封筒）。取り込むかは元の作者が決める。
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const forkedFrom = initialDoc?.forkedFrom;
+  const isProposalShared = sharedRefState?.type === "proposal";
+  // 出す条件: 派生元がある / 元の作者が自分でない / 通常の共有をしていない。
+  // 「派生元が共有ライブラリに現存するか」はダイアログ側で見る —— ここで共有ストアを
+  // 購読すると、共有フォルダが更新されるたびにノート本体まで描き直すことになる
+  const canPropose =
+    !isWikiDoc &&
+    // skill ノートは派生元を持たないので forkedFrom で自然に外れる（isSkillDoc は
+    // ここより後で宣言されるため参照しない）
+    !!forkedFrom?.sharedId &&
+    (!sharedAuthor || forkedFrom.authorEmail !== sharedAuthor.email) &&
+    (!sharedRefState || isProposalShared);
+
+  // 提案する本文は「提案する」を押した時点で組み立てる（テンプレート共有と同じ約束）。
+  // buildDocument は state からスクラッチで組むので sharedRef が落ちる。更新経路
+  // （同じ封筒への上書き）で id を保つため、ここで再注入する
+  const resolveProposalSource = useCallback(async () => {
+    const baseDoc = await buildDocument();
+    return sharedRefState ? { ...baseDoc, sharedRef: sharedRefState } : baseDoc;
+  }, [buildDocument, sharedRefState]);
+
+  // 3 者比較の土台。派生した時点の控え（fork-base）→ 元が派生時点から変わって
+  // いなければ現在の本文 → どちらも無ければ基準版なし（2 者比較）
+  const resolveProposalBaseForNote = useCallback(
+    (target: SharedEntry) =>
+      resolveProposalBase({
+        noteId: fileId ?? "",
+        target,
+        forkedFrom,
+        readTargetBody: async (entry) => {
+          const { body } = await readSharedEntryBody(entry);
+          return new TextDecoder().decode(body);
+        },
+      }),
+    [fileId, forkedFrom],
+  );
+
+  const handleProposalShared = useCallback(
+    (doc: GraphiumDocument) => {
+      // sharedRef 付きの doc を保存（手元ノートが提案の封筒を指す）
+      onSave(doc);
+      setSharedRefState(doc.sharedRef);
+      window.alert(
+        isProposalShared ? t("share.propose.updateSuccess") : t("share.propose.success"),
+      );
+    },
+    [onSave, isProposalShared, t],
+  );
+
+  const handleWithdrawProposal = useCallback(async () => {
+    if (!sharedRoot || !sharedAuthor || sharedRefState?.type !== "proposal") return;
+    if (!window.confirm(t("share.propose.withdrawConfirm"))) return;
+    setShareBusy(true);
+    try {
+      const result = await withdrawProposal(sharedRefState.id, {
+        root: sharedRoot,
+        author: sharedAuthor,
+        blobRoot: getBlobRoot() ?? undefined,
+      });
+      if (!result.ok) {
+        window.alert(t("share.propose.withdrawFailed", { error: result.error }));
+        return;
+      }
+      // 手元ノートの sharedRef を外す（buildDocument は sharedRef を持たない）
+      onSave(await buildDocument());
+      setSharedRefState(undefined);
+      notifySharedLibraryChanged();
+      window.alert(t("share.propose.withdrawn"));
+    } finally {
+      setShareBusy(false);
+    }
+  }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, onSave, t]);
+
   // ── メモ挿入（メモギャラリーから） ──
   useEffect(() => {
     if (!pendingMemoInsert || !editorRef.current) return;
@@ -4948,6 +5070,19 @@ function NoteEditorInner({
         onClose={() => setShareTemplateOpen(false)}
         onShared={() => window.alert(t("share.template.success"))}
       />
+      {/* 元のノートへ変更を提案するダイアログ（⋯ メニューから） */}
+      {canPropose && forkedFrom?.sharedId && (
+        <ProposeChangesDialog
+          open={proposeOpen}
+          targetId={forkedFrom.sharedId}
+          forkedFrom={forkedFrom}
+          isUpdate={isProposalShared}
+          resolveSource={resolveProposalSource}
+          resolveBase={resolveProposalBaseForNote}
+          onClose={() => setProposeOpen(false)}
+          onShared={handleProposalShared}
+        />
+      )}
       {/* テンプレートピッカーモーダル（スラッシュメニュー /template から） */}
       {templatePickerOpen && (
         <TemplatePickerModal
@@ -4993,7 +5128,9 @@ function NoteEditorInner({
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
         </span>
-        {isShared && (
+        {/* 提案として共有しているノートは「共有」ではなく提案の状態を出す
+            （このノート自身が共有されているわけではない） */}
+        {isShared && !isProposalShared && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary shrink-0 inline-flex items-center gap-1"
             title={t("share.badgeTooltip")}
@@ -5001,6 +5138,10 @@ function NoteEditorInner({
             <Share2 size={10} />
             {t("share.badge")}
           </span>
+        )}
+        {/* 提案として共有しているノートは、共有済みバッジの代わりに提案の状態を出す */}
+        {isProposalShared && isTauri() && sharedRoot && sharedRefState && (
+          <NoteProposalStatusBadge proposalId={sharedRefState.id} />
         )}
         {/* 共有済みバッジの横に「コメント N」。押すと右パネルのコメントタブが開く */}
         {isShared && isTauri() && sharedRoot && sharedRefState && (
@@ -5042,11 +5183,20 @@ function NoteEditorInner({
           onRestoreFromTrash={onRestoreFromTrash}
           onDelete={onDeleteNote}
           deleteDisabled={!fileId || saving}
-          onShare={!isSkillDoc ? handleShare : undefined}
+          onShare={
+            // 提案として共有している間は通常の「チームと共有」を出さない
+            // （1 つの手元ノートが 2 通の封筒を指せない）
+            !isSkillDoc && !isProposalShared ? handleShare : undefined
+          }
           onShareTemplate={
             // 雛形として配るのはノートだけ（Wiki / Skill は本文の性格が違う）
             !isSkillDoc && !isWikiDoc ? () => setShareTemplateOpen(true) : undefined
           }
+          onProposeToSource={canPropose ? () => setProposeOpen(true) : undefined}
+          onWithdrawProposal={
+            isProposalShared ? () => void handleWithdrawProposal() : undefined
+          }
+          isProposalShared={isProposalShared}
           shareDisabled={!!shareDisabledReason || saving}
           shareDisabledReason={shareDisabledReason}
           shareHint={sharePrivateHistoryHint}
@@ -7087,7 +7237,18 @@ export function NoteApp() {
         );
       }
     }
-    const newFileId = await fm.handleCreateNoteFromImport(docToSave);
+    // fork の初回リビジョンの prov:used に元の共有エントリを残す
+    // （テンプレートからの新規ノートと同じ作法。fork だけ来歴が繋がらない状態を解消する）
+    const newFileId = await fm.handleCreateNoteFromImport(docToSave, {
+      sources: [`shared:${sharedId}`],
+    });
+    // 「変更の提案」の 3 者比較の土台として、fork した時点の本文を手元に控える。
+    // 失敗しても fork は成立している（控えが無ければ 2 者比較に落ちるだけ）
+    await saveForkBase(newFileId, {
+      sharedId: result.original.id,
+      hash: result.original.hash,
+      body: result.body,
+    });
     setShowGlobalGraph(false);
     navigateToNote(newFileId);
   }, [fm, navigateToNote]);

@@ -142,8 +142,9 @@ export function SharedEntryBody({
     );
   }
 
-  if (entry.type === "note" || entry.type === "knowledge") {
+  if (entry.type === "note" || entry.type === "knowledge" || entry.type === "proposal") {
     // body は GraphiumDocument JSON。読み取り専用エディタでフル内容を表示する
+    // （提案 = 提案者が書き換えたあとのノート本文そのものなので、描き方はノートと同じ）
     return <SharedNotePreview body={body} onEditorReady={onEditorReady} />;
   }
 

@@ -21,6 +21,51 @@ export {
 } from "./share-template";
 export { ShareTemplateDialog, type ShareTemplateDialogProps } from "./ShareTemplateDialog";
 export {
+  shareProposal,
+  updateProposal,
+  withdrawProposal,
+  readProposalExtra,
+  proposalEntriesFor,
+  countProposalsByTarget,
+  proposalStatus,
+  type SharedProposalExtra,
+  type ProposalInput,
+  type ProposalStatus,
+  type ShareProposalOptions,
+  type ShareProposalResult,
+  type WithdrawProposalOptions,
+} from "./share-proposal";
+export {
+  saveForkBase,
+  loadForkBase,
+  type ForkBase,
+} from "./fork-base";
+export {
+  resolveProposalBase,
+  isTargetUpdatedSinceFork,
+  type ProposalBaseOrigin,
+  type ResolvedProposalBase,
+} from "./proposal-base";
+export {
+  ProposeChangesDialog,
+  type ProposeChangesDialogProps,
+} from "./ProposeChangesDialog";
+export { NoteProposalStatusBadge } from "./NoteProposalStatusBadge";
+export { ProposalDiffPanel, type ProposalDiffPanelProps } from "./ProposalDiffPanel";
+export { useProposalDiff, type ProposalDiffState } from "./use-proposal-diff";
+export {
+  computeProposalDiff,
+  summarizeProposalDiff,
+  stripForkSuffix,
+  type ProposalDiff,
+  type ProposalDiffInput,
+  type ProposalDiffSummary,
+  type ProposalChangeBy,
+  type BlockChange,
+  type BlockChangeKind,
+  type TableCellChange,
+} from "./proposal-diff";
+export {
   forkSharedNote,
   type ForkSharedNoteResult,
   type ForkSharedNoteOptions,

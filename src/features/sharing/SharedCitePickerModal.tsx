@@ -78,6 +78,9 @@ export function SharedCitePickerModal({
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return entries
+      // 提案とコメントは「引用する記録」ではない（提案は取り込まれて初めて元の版になる。
+      // コメントは指摘の封筒）ので、引用の候補には出さない
+      .filter((e) => e.type !== "proposal" && e.type !== "comment")
       .filter((e) =>
         q
           ? entryTitle(e).toLowerCase().includes(q) ||

@@ -23,6 +23,12 @@ import type { AuthorIdentity } from "../../../features/document-provenance/types
  *
  * "comment" は共有ストレージだけに存在する種別（手元のノートには対応物が無い）。
  * 対象エントリへの指摘を封筒 1 通として置き、extra.target で対象に結び付ける。
+ *
+ * "proposal" は「変更の提案」（§25）。fork したノートを、元のノートへの提案として
+ * 1 通の封筒に置く。comment と同じく extra.target で元エントリに結び付けるが、
+ * body はノートと同じ GraphiumDocument JSON（提案する本文そのもの）。
+ * 共有側で他人の封筒を書き換えずに往復を成立させるための、もう 1 つの
+ * author-owned な種別。
  */
 export type SharedEntryType =
   | "note"
@@ -31,7 +37,8 @@ export type SharedEntryType =
   | "template"
   | "knowledge"
   | "report"
-  | "comment";
+  | "comment"
+  | "proposal";
 
 /** 同一 ID 上書き時の hash 履歴（軽量、本文は持たない）。 */
 export type HistoryEntry = {

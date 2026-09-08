@@ -19,6 +19,7 @@ import { formatDate } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
 import { HashBadge, type HashStatus } from "./hash-badge";
 import type { SharedReverseLinks } from "./shared-projection";
+import { proposalStatus, readProposalExtra } from "./share-proposal";
 
 /** 題名（extra.title）。無ければ「無題」 */
 export function sharedEntryTitle(
@@ -30,7 +31,7 @@ export function sharedEntryTitle(
   return translate("library.untitled");
 }
 
-/** type ラベル（note/knowledge はタブ名、reference/data-manifest は素材種別名） */
+/** type ラベル（note/knowledge/proposal はタブ名、reference/data-manifest は素材種別名） */
 export function sharedEntryTypeLabel(
   entry: SharedEntry,
   translate: (k: string, p?: Record<string, string>) => string,
@@ -38,6 +39,7 @@ export function sharedEntryTypeLabel(
   if (entry.type === "note") return translate("library.tab.note");
   if (entry.type === "knowledge") return translate("library.tab.knowledge");
   if (entry.type === "template") return translate("library.tab.template");
+  if (entry.type === "proposal") return translate("library.tab.proposal");
   if (entry.type === "reference") return translate("asset.type.url");
   if (entry.type === "data-manifest") {
     const mediaType = (entry.extra as Record<string, unknown> | undefined)?.media_type;
@@ -95,6 +97,68 @@ export function SharedEntryMeta({
               ))}
             </ul>
           }
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * 変更の提案だけが持つメタ（元のノート・基準版・状態・説明）。
+ *
+ * 状態は封筒に書かず、元エントリの hash と取り込み記録から毎回導出する
+ * （proposalStatus）。書けるのは提案者だけなのに「取り込んだ」と言えるのは
+ * 元の作者だけ、という食い違いを起こさないため。
+ */
+export function ProposalMeta({
+  entry,
+  target,
+  onOpenTarget,
+}: {
+  entry: SharedEntry;
+  /** 元エントリ（共有ライブラリから解決済み）。読めていなければ null */
+  target: SharedEntry | null;
+  /** 「元のノート」のクリックでそちらを開く */
+  onOpenTarget?: (id: string) => void;
+}) {
+  const uiT = useT();
+  const extra = readProposalExtra(entry);
+  if (!extra) return null;
+  const status = proposalStatus(entry, target);
+  const targetLabel = extra.targetTitle || (target ? sharedEntryTitle(target, uiT) : extra.target);
+  return (
+    <>
+      <DetailRow
+        label={uiT("library.detail.proposalTarget")}
+        value={
+          <button
+            type="button"
+            onClick={() => onOpenTarget?.(extra.target)}
+            // 元が一覧に無い（共有解除・未読込）ときは押せない
+            disabled={!target || !onOpenTarget}
+            className="text-left text-primary hover:underline disabled:text-foreground disabled:no-underline truncate max-w-full"
+            title={extra.target}
+          >
+            {targetLabel}
+          </button>
+        }
+      />
+      <DetailRow
+        label={uiT("library.detail.proposalStatus")}
+        value={<span title={uiT(`proposal.status.${status}Hint`)}>{uiT(`proposal.status.${status}`)}</span>}
+      />
+      <DetailRow
+        label={uiT("library.detail.proposalBase")}
+        value={
+          extra.baseRef
+            ? uiT("library.detail.proposalBaseFork")
+            : uiT("library.detail.proposalBaseNone")
+        }
+      />
+      {extra.message && (
+        <DetailRow
+          label={uiT("library.detail.proposalMessage")}
+          value={<span className="break-words">{extra.message}</span>}
         />
       )}
     </>
@@ -175,7 +239,8 @@ export function SharedEntryActions({
           className="px-3 py-1.5 text-xs rounded border border-border hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive transition-colors flex items-center gap-1"
         >
           <Trash2 size={12} />
-          {uiT("library.unshare")}
+          {/* 提案の解除は「取り下げる」。共有解除と同じ経路だが、言い方は場面に合わせる */}
+          {entry.type === "proposal" ? uiT("library.withdrawProposal") : uiT("library.unshare")}
         </button>
       )}
     </div>
@@ -221,15 +286,23 @@ export function SharedEntryHistory({ entry }: { entry: SharedEntry }) {
  */
 export function ReverseLinksSection({
   links,
+  proposalIds,
   entryTitleById,
   onOpenEntry,
 }: {
   links?: SharedReverseLinks;
+  /**
+   * このエントリへの「変更の提案」の id。投影ではなく封筒（extra.target）から
+   * 数えたものを受け取る —— 投影は本文を読めた分しか埋まらないが、提案は
+   * 封筒だけで分かるので、読めていなくても件数が正しく出る。
+   */
+  proposalIds?: string[];
   entryTitleById?: (id: string) => string | null;
   onOpenEntry?: (id: string) => void;
 }) {
   const uiT = useT();
   const groups: { labelKey: string; ids: string[] }[] = [
+    { labelKey: "library.detail.proposals", ids: proposalIds ?? [] },
     { labelKey: "library.detail.citedBy", ids: links?.cites ?? [] },
     { labelKey: "library.detail.forkedBy", ids: links?.forks ?? [] },
     { labelKey: "library.detail.templateUsedBy", ids: links?.templates ?? [] },

@@ -1804,7 +1804,7 @@ in `src/lib/storage/shared/types.ts`.
 ```ts
 type SharedEntryType =
   | "note" | "reference" | "data-manifest"
-  | "template" | "knowledge" | "report" | "comment";
+  | "template" | "knowledge" | "report" | "comment" | "proposal";
 
 type SharedEntry = {
   id: string;                  // uuidv7
@@ -1933,6 +1933,70 @@ blob GC (`SHARED_INDEXABLE_TYPES` / `BLOB_REFERENCING_TYPES` in
 `src/features/sharing/`): they do not appear in the Library's tab list,
 only inline against the entry they target.
 
+### 7.1.2 Proposal entries (`SharedEntryType: "proposal"`)
+
+A reader who forked a shared note can offer their edits back as a
+**proposal** — the round trip Git calls a pull request. Like a comment,
+a proposal is its own author-owned envelope (under `proposals/`;
+`TYPE_TO_FOLDER.proposal`, mirrored in Rust's `SHARED_ENTRY_TYPES`
+allow-list), because the shared folder never lets one author rewrite
+another author's entry. Unlike a comment, its `body` is a full
+`GraphiumDocument` JSON — the forked note as the proposer would have it
+— written through the same `shareGraphiumDocument` path as a note share
+(auto-blob → `stripPrivateHistory` → hash → write), so previews, media,
+and hashing behave identically.
+
+`prov.derived_from = [target]`, and `extra` narrows to:
+
+```ts
+type SharedProposalExtra = {
+  title: string;        // the proposing note's title
+  target: string;       // the original SharedEntry's id
+  targetHash: string;   // that entry's hash the proposal was built against
+  targetTitle: string;  // the original's title (kept for the list, even if
+                        // the original is later unshared)
+  message?: string;     // short note from the proposer
+  baseRef?: BlobRef;    // the *base* version's body JSON, stored as a blob
+  blobs?: BlobRef[];    // embedded media, same auto-blob path as a note
+};
+```
+
+- **The base version** (`baseRef`) is what makes a three-way diff
+  possible: `base` (the version that was forked) vs `mine` (the
+  original's current shared body) vs `theirs` (the proposal). Without
+  it the diff degrades to two-way and cannot say whether the proposer
+  changed a block or the original's author did. On fork, the shared
+  body is stashed locally (§7.4, `fork-base-<noteId>` in app data) and
+  uploaded to the blob store at proposal time. Blobs are
+  content-addressed, so several proposals built on the same base share
+  one blob. If no blob root is configured, the proposal is still made —
+  just without `baseRef`.
+- **Status is derived, never stored.** Only the proposer can write the
+  proposal envelope, but only the original's author can say whether it
+  was adopted, so a status field would always be written by the wrong
+  person. `proposalStatus()`
+  (`src/features/sharing/share-proposal.ts`) reads it back out of what
+  both sides can see: original missing or tombstoned → `missing`;
+  proposal id listed in the original's `extra.adoptedProposals` →
+  `adopted`; `targetHash` no longer equal to the original's `hash` →
+  `stale` (the original moved on); otherwise `open`.
+- **Reverse counting comes from the envelopes**, not the shared
+  projection (§7.6): `proposalEntriesFor` / `countProposalsByTarget`
+  read `extra.target` directly, so "N proposals" is right even for
+  entries whose body has never been read. `SHARED_PROJECTION_VERSION`
+  is unchanged.
+- **One local note points at one envelope.** After proposing, the local
+  note carries `sharedRef.type === "proposal"` (§7.4); re-proposing
+  overwrites the same id (a minor revision with a `history` line), and
+  withdrawing is the ordinary unshare tombstone. Sharing that same note
+  as a plain copy is refused while it is a proposal.
+- Proposals are **excluded** from the vocabulary index and the shared
+  projection (`SHARED_INDEXABLE_TYPES`), and are **not** forkable — a
+  proposal is a diff in flight, not a record to derive from. They *are*
+  included in blob GC (`BLOB_REFERENCING_TYPES`, counting both `blobs`
+  and `baseRef`), in previews (rendered like a note), and in the
+  per-entry AI chat and comment threads.
+
 ### 7.2 `BlobRef`
 
 Large binary content (images, datasets) is referenced, not embedded.
@@ -1969,11 +2033,15 @@ A personal note that has been shared carries `sharedRef`:
 ```ts
 sharedRef?: {
   id: string;       // SharedEntry.id
-  type: "note" | "knowledge";
+  type: "note" | "knowledge" | "proposal";
   sharedAt: string; // ISO 8601
   hash: string;     // SharedEntry.hash at share time
 };
 ```
+
+`type: "proposal"` means the note is shared as a *proposal against
+another note* (§7.1.2) rather than as a copy of itself. A note can
+point at only one envelope, so the two are mutually exclusive.
 
 A note created by forking a shared entry carries `forkedFrom`:
 
@@ -1988,7 +2056,24 @@ forkedFrom?: {
 ```
 
 The fork is treated as a separate identity from the original; PROV
-records the lineage between them.
+records the lineage between them (the fork's first revision lists
+`shared:<sharedId>` in `prov:used`, the same way a note created from a
+shared template does).
+
+Forking also stashes the shared body it just read, so a later proposal
+can diff against the version that was forked:
+
+```
+app data key:   fork-base-<noteId>       (Drive: .graphium-fork-base-<noteId>.json)
+value:          { sharedId, hash, body, savedAt }
+```
+
+`body` is the shared body **verbatim**, not re-serialized — proposals
+put those exact bytes in a content-addressed blob, so several proposals
+from the same base collapse to one. The stash is local only (never
+written to the shared folder), and losing it is harmless: the proposal
+falls back to a two-way diff. `:` is deliberately not used in the key
+because the key becomes a filename, and Windows forbids it.
 
 A note created from a shared **template** carries `templateFrom`
 instead:

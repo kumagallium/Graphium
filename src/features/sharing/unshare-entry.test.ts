@@ -4,6 +4,8 @@
 //   1. blob を持つ entry は type を問わず GC される（テンプレートの blob が孤立しない）
 //   2. 他の entry がまだ参照している hash は消さない（content-addressed なので
 //      ノートとテンプレートで同じ画像の hash が一致しうる）
+//   3. 提案（proposal）の基準版 extra.baseRef も同じ数え方に含める（同じ基準版から
+//      出た提案が他にあれば消さない）
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -26,6 +28,8 @@ const TYPE_TO_FOLDER: Record<string, string> = {
   template: "templates",
   knowledge: "knowledge",
   report: "reports",
+  comment: "comments",
+  proposal: "proposals",
 };
 
 function blobRef(hash: string): BlobRef {
@@ -39,7 +43,8 @@ class FakeFs {
   /** list を失敗させたい folder（読み出し不能の再現用） */
   failListFolders = new Set<string>();
 
-  add(type: string, blobHashes: string[]): SharedEntry {
+  /** @param baseHash 提案の基準版（extra.baseRef）。blobs とは別の参照フィールド */
+  add(type: string, blobHashes: string[], baseHash?: string): SharedEntry {
     const id = newSharedId();
     const entry: SharedEntry = {
       id,
@@ -49,10 +54,14 @@ class FakeFs {
       updated_at: "2026-09-01T00:00:00Z",
       hash: "sha256:" + "0".repeat(64),
       prov: { derived_from: [] },
-      extra: blobHashes.length > 0 ? { blobs: blobHashes.map(blobRef) } : {},
+      extra: {
+        ...(blobHashes.length > 0 ? { blobs: blobHashes.map(blobRef) } : {}),
+        ...(baseHash ? { baseRef: blobRef(baseHash) } : {}),
+      },
     };
     this.entries.set(`${TYPE_TO_FOLDER[type]}/${id}`, JSON.stringify({ entry, body_base64: "" }));
     for (const h of blobHashes) this.blobs.add(h);
+    if (baseHash) this.blobs.add(baseHash);
     return entry;
   }
 
@@ -141,6 +150,26 @@ describe("unshareEntry — blob GC", () => {
     expect(r.deletedBlobs).toEqual([]);
     expect(r.retainedBlobs).toEqual(["sha256:ddd"]);
     expect(fs.blobs.has("sha256:ddd")).toBe(true);
+  });
+
+  it("提案の基準版（extra.baseRef）も GC される", async () => {
+    const proposal = fs.add("proposal", [], "sha256:base1");
+    const r = await unshareEntry(proposal.id, opts);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.deletedBlobs).toEqual(["sha256:base1"]);
+    expect(fs.blobs.has("sha256:base1")).toBe(false);
+  });
+
+  it("同じ基準版を指す提案が他にあれば baseRef は消さない", async () => {
+    fs.add("proposal", [], "sha256:base2");
+    const mine = fs.add("proposal", ["sha256:only-mine"], "sha256:base2");
+    const r = await unshareEntry(mine.id, opts);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.deletedBlobs).toEqual(["sha256:only-mine"]);
+    expect(r.retainedBlobs).toEqual(["sha256:base2"]);
+    expect(fs.blobs.has("sha256:base2")).toBe(true);
   });
 
   it("blobRoot 未設定なら GC しない（tombstone 化だけ行う）", async () => {

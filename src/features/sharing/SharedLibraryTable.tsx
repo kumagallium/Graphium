@@ -22,6 +22,12 @@ import {
 } from "./shared-blob-rows";
 import { countCommentsByTarget } from "./shared-comments";
 import {
+  countProposalsByTarget,
+  proposalStatus,
+  readProposalExtra,
+  type ProposalStatus,
+} from "./share-proposal";
+import {
   isUpdatedSince,
   newCommentCount,
   readSeenStore,
@@ -41,7 +47,8 @@ export type SharedLibraryTab =
   | "asset"
   | "labels"
   | "process"
-  | "template";
+  | "template"
+  | "proposal";
 export type SharedLibrarySortKey = "updatedAt" | "title" | "author" | "version";
 export type SharedLibraryTableProps = {
   tab: SharedLibraryTab;
@@ -83,6 +90,19 @@ export type SharedLibraryTableProps = {
   commentEntries?: readonly SharedEntry[];
   /** DI: 既読の控え。既定は localStorage（graphium-shared-seen） */
   seenStore?: SharedSeenStore;
+  /**
+   * DI: 提案封筒を含む共有エントリ一覧（行の「提案 N」の数え上げに使う）。
+   * コメントと同じ扱い —— 提案は一覧タブでは別扱いだが、元のノートの行には
+   * 「いくつ提案が来ているか」が要る。
+   */
+  proposalEntries?: readonly SharedEntry[];
+  /**
+   * 提案タブの「元のノート」列・「状態」列を描くための元エントリの解決。
+   * 未指定なら元が引けない扱い（状態は「元のノートが見つかりません」になる）。
+   */
+  resolveTargetEntry?: (id: string) => SharedEntry | null;
+  /** 提案タブの「元のノート」列のクリック（元エントリを開く） */
+  onOpenTarget?: (id: string) => void;
 };
 
 const SORT_OPTIONS: { key: SharedLibrarySortKey; labelKey: string }[] = [
@@ -138,6 +158,14 @@ function isForkable(type: SharedEntry["type"]): boolean {
   return type === "note" || type === "knowledge";
 }
 
+/** 提案の状態の色。ヘッダのバッジ（NoteProposalStatusBadge）と揃える */
+const PROPOSAL_STATUS_CLASS: Record<ProposalStatus, string> = {
+  open: "text-primary",
+  adopted: "text-emerald-700 dark:text-emerald-400",
+  stale: "text-amber-700 dark:text-amber-400",
+  missing: "text-muted-foreground/70",
+};
+
 // ── 行（SharedAssetItem）へのアクセサ ──
 // blob 行は SharedEntry ではないので、作者・共有日・フォルダは親ノートから引く。
 // 検索 / 絞り込み / 並び替えを 1 本の経路で回すために、値の取り出しをここに集める。
@@ -187,6 +215,9 @@ export function SharedLibraryTable({
   onImportBlob,
   commentEntries,
   seenStore,
+  proposalEntries,
+  resolveTargetEntry,
+  onOpenTarget,
 }: SharedLibraryTableProps) {
   const t = useT();
   const showKindColumn = tab === "asset" || tab === "knowledge";
@@ -196,6 +227,9 @@ export function SharedLibraryTable({
   // テンプレートは「何の雛形か」が題名だけでは伝わらないので、共有時の説明を 1 行で出す。
   // フォルダは持たない（共有した人の整理であって雛形の属性ではない）ので列を出さない
   const showDescriptionColumn = tab === "template";
+  // 提案は「何への提案か」と「取り込まれたか」が一覧の要。この 2 列は提案タブだけ
+  const showTargetColumn = tab === "proposal";
+  const showStatusColumn = tab === "proposal";
   // 表は表示専用なので、フォルダの値はストアのスナップショットから引く
   // （共有時に書かれた extra を優先し、無ければ本文から拾った控えで補う）
   const sharedSnapshot = useSharedLibrary();
@@ -214,6 +248,13 @@ export function SharedLibraryTable({
   // なるので、コメント側を 1 回だけ走らせて対応表にする（行はそこから引くだけ）。
   // 自動再読込・コメント投稿のたびに作り直されるため、ここの計算量が効いてくる
   const commentCounts = useMemo(() => countCommentsByTarget(commentSource), [commentSource]);
+  // 元のノートの行に出す「提案 N」。コメント件数と同じく、行ごとに数え直さず
+  // 提案側を 1 回だけ走らせて対応表にする
+  const proposalSource = proposalEntries ?? sharedSnapshot.entries;
+  const proposalCounts = useMemo(
+    () => countProposalsByTarget(proposalSource),
+    [proposalSource],
+  );
 
   const [sortKey, setSortKey] = useState<SharedLibrarySortKey>("updatedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -332,7 +373,13 @@ export function SharedLibraryTable({
         // 「列に出ている値はどれも同じ部分一致で当たる」を説明列でも守る
         const descriptionHit =
           showDescriptionColumn && entryDescription(entry).toLowerCase().includes(q);
-        return title.includes(q) || authorName.includes(q) || folderHit || descriptionHit;
+        // 提案タブの「元のノート」列も同じ扱い（元の題名で提案を探せる）
+        const targetHit =
+          showTargetColumn &&
+          (readProposalExtra(entry)?.targetTitle ?? "").toLowerCase().includes(q);
+        return (
+          title.includes(q) || authorName.includes(q) || folderHit || descriptionHit || targetHit
+        );
       });
     }
 
@@ -383,7 +430,7 @@ export function SharedLibraryTable({
     });
 
     return sorted;
-  }, [items, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, showDescriptionColumn, sortKey, sortDir, t]);
+  }, [items, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, showDescriptionColumn, showTargetColumn, sortKey, sortDir, t]);
 
   const handleImportBlob = useCallback(
     async (parent: SharedEntry, item: SharedAssetItem & { kind: "blob" }) => {
@@ -405,7 +452,9 @@ export function SharedLibraryTable({
         ? "library.empty.knowledge"
         : tab === "template"
           ? "library.empty.template"
-          : "library.empty.asset";
+          : tab === "proposal"
+            ? "library.empty.proposal"
+            : "library.empty.asset";
   const isFilteredEmpty = items.length > 0 && filtered.length === 0;
 
   return (
@@ -471,6 +520,10 @@ export function SharedLibraryTable({
                 )}
                 {showDescriptionColumn && (
                   <th className="py-2 px-3">{t("library.col.description")}</th>
+                )}
+                {/* 提案タブ: 何への提案か。共有時に控えた題名を出す（元が消えても分かる） */}
+                {showTargetColumn && (
+                  <th className="py-2 px-3 w-[200px]">{t("library.col.target")}</th>
                 )}
                 {showKindColumn && (
                   <th className="py-2 px-3 w-[120px]">
@@ -563,6 +616,10 @@ export function SharedLibraryTable({
                   {t("library.col.version")}
                   {sortKey === "version" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
+                {/* 提案タブ: 受け付け中 / 取り込み済み / 元が更新された（封筒からの導出） */}
+                {showStatusColumn && (
+                  <th className="py-2 px-3 w-[190px]">{t("library.col.status")}</th>
+                )}
                 <th className="py-2 px-3 w-[72px]">{t("library.col.verified")}</th>
                 <th className="py-2 px-3 w-[110px]" />
               </tr>
@@ -587,6 +644,17 @@ export function SharedLibraryTable({
                   ? newCommentCount(entry.id, commentCounts.get(entry.id) ?? 0, seen)
                   : 0;
                 const updateCount = entry?.history?.length ?? 0;
+                // 提案タブの 2 列（元のノート / 状態）。封筒だけで解けるので本文は読まない
+                const proposalExtra =
+                  showTargetColumn && entry ? readProposalExtra(entry) : null;
+                const proposalTarget = proposalExtra
+                  ? resolveTargetEntry?.(proposalExtra.target) ?? null
+                  : null;
+                const proposalState: ProposalStatus | null =
+                  entry && proposalExtra ? proposalStatus(entry, proposalTarget) : null;
+                // 元のノートの行に出す「提案 N」（提案タブ自身では出さない — 提案への提案は無い）
+                const proposalCount =
+                  entry && !showTargetColumn ? (proposalCounts.get(entry.id) ?? 0) : 0;
                 return (
                   <tr
                     key={itemKey(item)}
@@ -622,6 +690,14 @@ export function SharedLibraryTable({
                             {t("comment.newBadge", { count: String(newComments) })}
                           </span>
                         )}
+                        {proposalCount > 0 && (
+                          <span
+                            className="px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[9px] tabular-nums shrink-0"
+                            title={t("library.detail.proposals", { count: String(proposalCount) })}
+                          >
+                            {t("library.proposalCount", { count: String(proposalCount) })}
+                          </span>
+                        )}
                       </span>
                     </td>
                     {showFolderColumn && (
@@ -653,6 +729,27 @@ export function SharedLibraryTable({
                           <span className="block truncate" title={description}>
                             {description}
                           </span>
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
+                        )}
+                      </td>
+                    )}
+                    {showTargetColumn && (
+                      <td
+                        className="py-2 px-3 text-xs max-w-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {proposalExtra ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenTarget?.(proposalExtra.target)}
+                            // 元が一覧に無い（共有解除・未読込）ときは押せない
+                            disabled={!proposalTarget || !onOpenTarget}
+                            className="block truncate text-left text-primary hover:underline disabled:text-muted-foreground disabled:no-underline max-w-full"
+                            title={proposalExtra.targetTitle || proposalExtra.target}
+                          >
+                            {proposalExtra.targetTitle || proposalExtra.target}
+                          </button>
                         ) : (
                           <span className="text-muted-foreground/30">—</span>
                         )}
@@ -705,6 +802,21 @@ export function SharedLibraryTable({
                         <span className="text-muted-foreground/30">—</span>
                       )}
                     </td>
+                    {showStatusColumn && (
+                      <td className="py-2 px-3 text-xs max-w-0">
+                        {proposalState ? (
+                          <span
+                            className={cn("block truncate", PROPOSAL_STATUS_CLASS[proposalState])}
+                            title={t(`proposal.status.${proposalState}Hint`)}
+                            data-testid={`proposal-status-${proposalState}`}
+                          >
+                            {t(`proposal.status.${proposalState}`)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
                       {entry ? (
                         <HashBadge
@@ -773,7 +885,11 @@ export function SharedLibraryTable({
                                 onClick={() => onUnshare(entry)}
                                 disabled={isBusy}
                                 className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                                title={t("library.unshare")}
+                                title={
+                                  entry.type === "proposal"
+                                    ? t("library.withdrawProposal")
+                                    : t("library.unshare")
+                                }
                               >
                                 <Trash2 size={13} />
                               </button>
