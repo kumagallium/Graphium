@@ -265,6 +265,10 @@ describe("SharedNoteView の右レール", () => {
     // 同じアイコンをもう一度 = 閉じる（本文を広く読む）
     fireEvent.click(screen.getByTestId("shared-note-rail-links"));
     expect(screen.queryByTestId("shared-note-panel-links")).toBeNull();
+
+    // グラフ: 隣接が無ければ図は出さず、逆引きと同じ言い方で案内する
+    fireEvent.click(screen.getByTestId("shared-note-rail-graph"));
+    expect(screen.getByText(t("sharedNote.graphEmpty"))).toBeTruthy();
   });
 });
 
@@ -306,7 +310,7 @@ describe("SharedNoteView の「AI に質問」タブ", () => {
     await screen.findByText("1050 ℃ で 2 時間保持した");
 
     expect(screen.getByTestId("shared-note-rail-chat")).toBeTruthy();
-    // レールの並びは コメント / AI に質問 / 版 / プロセス / 逆引き
+    // レールの並びは コメント / AI に質問 / 版 / プロセス / 逆引き / グラフ
     const rail = screen
       .getAllByTestId(/^shared-note-rail-/)
       .map((el) => el.getAttribute("data-testid"));
@@ -316,6 +320,7 @@ describe("SharedNoteView の「AI に質問」タブ", () => {
       "shared-note-rail-version",
       "shared-note-rail-process",
       "shared-note-rail-links",
+      "shared-note-rail-graph",
     ]);
   });
 

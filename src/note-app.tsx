@@ -235,6 +235,8 @@ import {
   ProposeChangesDialog,
   withdrawProposal,
   resolveProposalBase,
+  saveSharedNoteLink,
+  resolveSharedNoteId,
   type BulkShareTarget,
 } from "./features/sharing";
 // 共有コメント（右パネル「コメント」タブ・ヘッダのバッジ・レールのアイコン）。
@@ -248,6 +250,22 @@ import {
 // 「変更の提案」の状態バッジ。コメントのバッジと同じ理由でファイル直 import
 // （共有ストアを購読するのはこの部品の中だけに閉じる）
 import { NoteProposalStatusBadge } from "./features/sharing/NoteProposalStatusBadge";
+// 提案を取り込む側（§25b B）。右パネルの「提案」タブ・ヘッダのバッジ・レールの
+// アイコン。useNoteProposalCount だけは件数（数値）を返すのでノート本体から呼べる
+// —— 件数が変わらない限り再描画が起きない
+import {
+  NoteProposalsPanel,
+  NoteProposalsBadge,
+  NoteProposalsRailIcon,
+  useNoteProposalCount,
+  type AdoptProposalRequest,
+} from "./features/sharing/NoteProposalsPanel";
+// 派生元チップ（§25b F）。同じ理由でファイル直 import
+import { NoteForkedFromChip } from "./features/sharing/NoteForkedFromChip";
+import { applyProposalChanges, collectAdoptedProposals } from "./features/sharing/proposal-apply";
+import { applyAdoptedPageAnnotations } from "./features/sharing/proposal-adopt-stores";
+import { buildNoteSharedGraph } from "./features/sharing/note-shared-graph";
+import { clearForkBase } from "./features/sharing/fork-base";
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 // 共有ノート内の画像・ファイルを自分の素材に取り込むときの mime 判定（fork の materialize と同じ経路）
 import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-blobs";
@@ -1035,6 +1053,17 @@ type NoteEditorProps = {
    */
   subHeaderSlot?: React.ReactNode;
   /**
+   * 共有ライブラリの全画面「このノートに取り込む」から来た要求（§25b B-6）。
+   * このノートが宛先のときだけ NoteApp が渡す。受け取ったら右レールの「提案」を開き、
+   * その提案を選んだ状態にする。
+   *
+   * seq を持つのは、同じ提案をもう一度指名されたときにも開き直すため
+   * （id だけだと値が変わらず effect が動かない）。
+   */
+  openProposalRequest?: { proposalId: string; seq: number };
+  /** 上の要求を処理し終えたことの通知。NoteApp は受け取ったら要求を落とす */
+  onProposalRequestHandled?: () => void;
+  /**
    * 本文「下」に展開する関連・文脈 UI（WikiContextDrawer 用、D2 配置）。
    * identity は subHeaderSlot / 本文上に残し、relational なセクションは本文の後ろに
    * 置くことで縦の圧迫を抑える。空のときは呼び出し側が null を渡す。
@@ -1179,6 +1208,37 @@ async function applyAtomReinforcement(opts: {
   return reinforced;
 }
 
+/**
+ * 右パネル「グラフ」タブ。ノート周辺グラフに、共有ライブラリ由来のノード
+ * （派生元・このノートへの提案）を足してから描く（§25b F）。
+ *
+ * なぜ note-app 側に薄い部品を置くか:
+ *   共有ストアを購読する場所をここに閉じるため。ノート本体（NoteEditorInner）で
+ *   購読すると、共有フォルダが更新されるたびにエディタごと描き直しになる。
+ *   この部品はグラフタブを開いている間しかマウントされない。
+ */
+function NoteGraphTabPanel({
+  data,
+  noteId,
+  forkedFrom,
+  sharedRef,
+  ...rest
+}: React.ComponentProps<typeof GraphLinksPanel> & {
+  /** このノートの ID。null なら共有由来のノードを足さない（Web 版・未保存） */
+  noteId: string | null;
+  forkedFrom?: GraphiumDocument["forkedFrom"];
+  sharedRef?: GraphiumDocument["sharedRef"];
+}) {
+  const shared = useSharedLibrary();
+  const merged = useMemo(() => {
+    if (!noteId) return data;
+    const extra = buildNoteSharedGraph({ forkedFrom, sharedRef }, noteId, shared.entries);
+    if (extra.nodes.length === 0) return data;
+    return { nodes: [...data.nodes, ...extra.nodes], edges: [...data.edges, ...extra.edges] };
+  }, [data, noteId, forkedFrom, sharedRef, shared.entries]);
+  return <GraphLinksPanel data={merged} {...rest} />;
+}
+
 function NoteEditorInner({
   fileId,
   initialDoc,
@@ -1245,6 +1305,8 @@ function NoteEditorInner({
   composerCitationRef,
   composerInsertSharedRef,
   chatRunApplyRef,
+  openProposalRequest,
+  onProposalRequestHandled,
   subHeaderSlot,
   contextDrawerSlot,
 }: NoteEditorProps) {
@@ -1486,12 +1548,12 @@ function NoteEditorInner({
   // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
   const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
-  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | null>(null);
+  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | null>(null);
   // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
   const [blockMemoTarget, setBlockMemoTarget] = useState<{ blockId: string; blockText: string } | null>(null);
   const [blockMemoSubmitting, setBlockMemoSubmitting] = useState(false);
   // アイコンレールのトグル: 同じタブクリックで閉じる
-  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments") => {
+  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals") => {
     setRightTab((prev) => prev === tab ? null : tab);
     if (tab !== "history") setHighlightBlockIds([]);
   }, []);
@@ -3131,6 +3193,12 @@ function NoteEditorInner({
           : undefined;
   // メニューの「チームと共有」に出す補足。設定は別画面で変えられるので、
   // 描画のたびに読む（getSharedRoot と同じ扱い）
+  // 取り込んだ提案の件数（§25b B-6）。次に「共有コピーを更新」を押すと、この分が
+  // 新版に載る（＝提案者側の状態が「取り込み済み」になる）ことを補足に出す
+  const adoptedProposalCount = useMemo(
+    () => collectAdoptedProposals({ documentProvenance: currentProvenance } as GraphiumDocument).length,
+    [currentProvenance],
+  );
   const sharePrivateHistoryHint = getShareIncludesPrivateHistory()
     ? t("share.privateHistoryIncludedHint")
     : t("share.privateHistoryExcludedHint");
@@ -3165,6 +3233,12 @@ function NoteEditorInner({
       notifySharedLibraryChanged();
       // バッジを即時更新（initialDoc は親側で書き替えるまで変わらないので、ローカル state で先に反映）
       setSharedRefState(result.doc.sharedRef);
+      // 「この共有エントリは手元のこのノート」を控える（§25b B-6）。共有した
+      // この場所だけが両方の id を知っている。控えがあると、あとで共有ライブラリの
+      // 提案から「このノートに取り込む」を押したときに手元のノートを走査せず引ける
+      if (fileId && result.doc.sharedRef) {
+        void saveSharedNoteLink(result.doc.sharedRef.id, fileId);
+      }
       window.alert(
         result.isUpdate
           ? t("share.successReshare")
@@ -3173,7 +3247,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, onSave, t, sharedRefState, isWikiDoc]);
+  }, [sharedRoot, sharedAuthor, buildDocument, onSave, t, sharedRefState, isWikiDoc, fileId]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -3195,6 +3269,28 @@ function NoteEditorInner({
   const [proposeOpen, setProposeOpen] = useState(false);
   const forkedFrom = initialDoc?.forkedFrom;
   const isProposalShared = sharedRefState?.type === "proposal";
+  // このノートの共有コピーに来ている提案の件数（§25b B-1）。返るのは**数**なので、
+  // 共有フォルダが更新されても件数が変わらない限りノート本体は描き直されない
+  const proposalCount = useNoteProposalCount(
+    !isProposalShared ? sharedRefState?.id : undefined,
+  );
+
+  // ── 共有ライブラリの全画面「このノートに取り込む」からの着地（§25b B-6）──
+  // 右レールの「提案」を開き、指名された提案を選んだ状態にする。実処理（版を残す →
+  // 適用 → エディタ反映 → 来歴 → 保存）はこれまでどおり下の handleAdoptProposal。
+  // 処理したら要求を落としてもらう（残ると「一覧へ戻る」の直後に開き直す）。
+  const [pendingProposalId, setPendingProposalId] = useState<string | null>(null);
+  const handledProposalSeqRef = useRef<number | null>(null);
+  const onProposalRequestHandledRef = useRef(onProposalRequestHandled);
+  onProposalRequestHandledRef.current = onProposalRequestHandled;
+  useEffect(() => {
+    if (!openProposalRequest) return;
+    if (handledProposalSeqRef.current === openProposalRequest.seq) return;
+    handledProposalSeqRef.current = openProposalRequest.seq;
+    setPendingProposalId(openProposalRequest.proposalId);
+    setRightTab("proposals");
+    onProposalRequestHandledRef.current?.();
+  }, [openProposalRequest]);
   // 出す条件: 派生元がある / 元の作者が自分でない / 通常の共有をしていない。
   // 「派生元が共有ライブラリに現存するか」はダイアログ側で見る —— ここで共有ストアを
   // 購読すると、共有フォルダが更新されるたびにノート本体まで描き直すことになる
@@ -3260,12 +3356,14 @@ function NoteEditorInner({
       // 手元ノートの sharedRef を外す（buildDocument は sharedRef を持たない）
       onSave(await buildDocument());
       setSharedRefState(undefined);
+      // 提案をやめたので、基準版の控えはもう使わない（§25b C-3）
+      if (fileId) await clearForkBase(fileId);
       notifySharedLibraryChanged();
       window.alert(t("share.propose.withdrawn"));
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, onSave, t]);
+  }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, onSave, fileId, t]);
 
   // ── メモ挿入（メモギャラリーから） ──
   useEffect(() => {
@@ -5051,6 +5149,79 @@ function NoteEditorInner({
     }
   }, [fileId, snapshotBusy, isWikiDoc, initialDoc, handleSave, showVersionToast, t]);
 
+  // ── 「変更の提案」を取り込む（§25b B-3）──
+  // 提案パネルが選んだ項目を、いまのノートへ適用する唯一の入口。
+  // 順序に意味がある: 版を残す → 適用 → エディタ反映 → 注釈の反映 → 来歴 → 保存。
+  // 版を先に残すのは、取り込みが気に入らなかったときに戻る場所を作るため。
+  const handleAdoptProposal = useCallback(
+    async (request: AdoptProposalRequest) => {
+      const editor = editorRef.current;
+      if (!editor) return { applied: 0, skipped: [] };
+      // 1) 取り込む前の版を自動で 1 つ残す（版が作れない種類のノートでは no-op）
+      await handleTakeSnapshot();
+
+      // 2) 選んだ項目だけを適用する（純関数。mine は変更されない）
+      const result = applyProposalChanges({
+        mine: request.mine,
+        theirs: request.theirs,
+        diff: request.diff,
+        selected: request.selected,
+      });
+      if (result.applied === 0) {
+        showVersionToast(t("proposal.adopt.failedToast"));
+        return { applied: 0, skipped: result.skipped };
+      }
+      const page = result.doc.pages[0];
+      if (!page) return { applied: 0, skipped: result.skipped };
+
+      // 3) 本文をエディタへ。document 全体を 1 回で差し替えると undo も 1 回で戻る
+      editor.replaceBlocks(editor.document, page.blocks as any);
+      // 4) ラベル / PROV リンクは確定値で反映（保存経路はストアを読むため）
+      applyAdoptedPageAnnotations({ labelStore, linkStore, page });
+      // 5) 題名（提案側の題名を選んでいたときだけ変わる）
+      if (result.doc.title && result.doc.title !== title) setTitle(result.doc.title);
+
+      // 6) 来歴に proposal_adopt を 1 行。差分が空でも残す（force）
+      try {
+        const email = (await getActiveProvider().getUserEmail()) ?? undefined;
+        const recorded = await recordRevision(
+          { ...result.doc, documentProvenance: currentProvenance },
+          prevPageRef.current,
+          "proposal_adopt",
+          {
+            force: true,
+            email,
+            author: sharedAuthor ?? undefined,
+            sources: [`shared:${request.proposalId}`],
+          },
+        );
+        if (recorded.documentProvenance) setCurrentProvenance(recorded.documentProvenance);
+        // 次の保存が取り込みぶんをもう一度数えないよう、基準を取り込み後に進める
+        prevPageRef.current = structuredClone(recorded.pages[0] ?? page);
+      } catch (e) {
+        console.error("提案の取り込みを来歴に記録できませんでした:", e);
+      }
+
+      // 7) 保存（オートセーブに乗せる。共有コピーは「更新」を押すまで変わらない）
+      markDirty();
+      showVersionToast(
+        t("proposal.adopt.doneToast", { count: String(result.applied) }),
+      );
+      return { applied: result.applied, skipped: result.skipped };
+    },
+    [
+      handleTakeSnapshot,
+      labelStore,
+      linkStore,
+      title,
+      currentProvenance,
+      sharedAuthor,
+      markDirty,
+      showVersionToast,
+      t,
+    ],
+  );
+
   // ⌘⇧S / ⌘⌥S: 版を残す。NoteEditorInner マウント中のみ購読（編集面があるときだけ効く）。
   // capture フェーズで購読する: エディタ（ProseMirror）内にフォーカスがあると、
   // バブリング段階の keydown はエディタ側で消費されて document まで届かないため、
@@ -5445,6 +5616,14 @@ function NoteEditorInner({
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
         </span>
+        {/* 派生元（§25b F）。提案中は状態バッジと並べる（派生元 → 提案の状態の順）。
+            クリックで元の共有エントリを全画面で開く */}
+        {forkedFrom?.sharedId && isTauri() && sharedRoot && (
+          <NoteForkedFromChip
+            forkedFrom={forkedFrom}
+            onOpen={(sharedId) => openSharedEntry(sharedId)}
+          />
+        )}
         {/* 提案として共有しているノートは「共有」ではなく提案の状態を出す
             （このノート自身が共有されているわけではない） */}
         {isShared && !isProposalShared && (
@@ -5458,7 +5637,18 @@ function NoteEditorInner({
         )}
         {/* 提案として共有しているノートは、共有済みバッジの代わりに提案の状態を出す */}
         {isProposalShared && isTauri() && sharedRoot && sharedRefState && (
-          <NoteProposalStatusBadge proposalId={sharedRefState.id} />
+          <NoteProposalStatusBadge
+            proposalId={sharedRefState.id}
+            // 取り込まれた提案の基準版の控えは、もう使い道が無いので片付ける（§25b C-3）
+            onAdopted={fileId ? () => void clearForkBase(fileId) : undefined}
+          />
+        )}
+        {/* 共有済みバッジの横に「提案 N」。押すと右パネルの提案タブが開く */}
+        {isShared && !isProposalShared && isTauri() && sharedRoot && sharedRefState && (
+          <NoteProposalsBadge
+            targetId={sharedRefState.id}
+            onClick={() => setRightTab("proposals")}
+          />
         )}
         {/* 共有済みバッジの横に「コメント N」。押すと右パネルのコメントタブが開く */}
         {isShared && isTauri() && sharedRoot && sharedRefState && (
@@ -5516,7 +5706,11 @@ function NoteEditorInner({
           isProposalShared={isProposalShared}
           shareDisabled={!!shareDisabledReason || saving}
           shareDisabledReason={shareDisabledReason}
-          shareHint={sharePrivateHistoryHint}
+          shareHint={
+            adoptedProposalCount > 0
+              ? `${sharePrivateHistoryHint}\n${t("proposal.adopt.shareHint", { count: String(adoptedProposalCount) })}`
+              : sharePrivateHistoryHint
+          }
           isShared={isShared}
           shareBusy={shareBusy}
           onCopyLink={
@@ -6148,6 +6342,7 @@ function NoteEditorInner({
                   : rightTab === "history" ? t("panel.history")
                   : rightTab === "memos" ? t("panel.memos")
                   : rightTab === "comments" ? t("panel.comments")
+                  : rightTab === "proposals" ? t("panel.proposals")
                   : t("panel.source")}
               </span>
               {rightTab === "history" && fileId && initialDoc?.source !== "ai" && (
@@ -6163,8 +6358,17 @@ function NoteEditorInner({
             </div>
             <div className="flex-1 overflow-auto">
               {rightTab === "graph" && (
-                <GraphLinksPanel
+                <NoteGraphTabPanel
                   data={noteGraphData}
+                  // 派生元・このノートへの提案（§25b F）。共有ストアを購読するのは
+                  // この部品の中だけ（グラフタブを開いている間だけの購読になる）
+                  noteId={isTauri() && sharedRoot ? fileId ?? null : null}
+                  forkedFrom={forkedFrom}
+                  sharedRef={sharedRefState}
+                  onOpenSharedEntry={(sharedId) => {
+                    if (!isDesktop) setRightTab(null);
+                    openSharedEntry(sharedId);
+                  }}
                   lineageTree={lineageTree}
                   onNavigate={onNavigateNote}
                   onPeek={(noteId) => setSidePeekNoteId(noteId)}
@@ -6273,6 +6477,27 @@ function NoteEditorInner({
                   }}
                 />
               )}
+              {rightTab === "proposals" && sharedRoot && sharedRefState && (
+                <NoteProposalsPanel
+                  targetId={sharedRefState.id}
+                  targetHash={sharedRefState.hash}
+                  // 比べる相手は共有コピーではなく、いま開いているノートの最新本文
+                  resolveMine={resolveProposalSource}
+                  onAdopt={handleAdoptProposal}
+                  // メモ・コメントと同じ機構でブロックをハイライト（パネル → エディタ）
+                  onHighlightBlock={(blockId) =>
+                    setHighlightBlockIds(blockId ? [blockId] : [])
+                  }
+                  onOpenProposalFull={(sharedId) => {
+                    // モバイルではこのパネルが全画面（z-200）なので畳んでから移る
+                    if (!isDesktop) setRightTab(null);
+                    openSharedEntry(sharedId);
+                  }}
+                  // 共有ライブラリの全画面から指名されて来たときだけ入る
+                  initialProposalId={pendingProposalId ?? undefined}
+                  onInitialProposalOpened={() => setPendingProposalId(null)}
+                />
+              )}
             </div>
           </div>
         )}
@@ -6290,7 +6515,7 @@ function NoteEditorInner({
             // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
             // 見せられるようにするため。Web 版では従来通り非表示。
             { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable ? agentConfigured : isTauri() },
-            { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
+            { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 || !!forkedFrom?.sharedId || proposalCount > 0 },
             // 旧: labels.size でゲートしていたが、v6 以降の工程は step ブロックで
             // block ラベルを持たないため、グラフに中身がある限り出す（auto-open と同じシグナル）
             // 手順ゼロでもタブは出す — フロービューの「+ 手順を追加」が
@@ -6306,6 +6531,15 @@ function NoteEditorInner({
               icon: <NoteSharedCommentsRailIcon targetId={sharedRefState?.id} />,
               label: t("panel.comments"),
               show: isTauri() && !!sharedRoot && !!sharedRefState,
+            },
+            // Proposals: 自分が共有したノートに来ている「変更の提案」を取り込む場所。
+            // コメントと違い、1 件も来ていないうちは出さない（提案が無いノートに
+            // 「提案」タブがあっても、そこで何ができるのかが伝わらない）
+            {
+              tab: "proposals" as const,
+              icon: <NoteProposalsRailIcon targetId={sharedRefState?.id} />,
+              label: t("panel.proposals"),
+              show: isTauri() && !!sharedRoot && !!sharedRefState && proposalCount > 0,
             },
             ...(sourceDoc ? [{ tab: "source" as const, icon: <FileText size={18} />, label: t("panel.source"), show: true }] : []),
           ] as const).filter((item) => item.show).map((item) => (
@@ -7854,6 +8088,59 @@ export function NoteApp() {
       router.navigate({ view: "shared-entry", id: sharedId });
     },
     [closeAllViews, router],
+  );
+
+  // ─── 共有ライブラリの提案から「このノートに取り込む」（§25b B-6）───
+  //
+  // 取り込みの実処理は編集画面に置いたままにする（エディタが無いと ⌘Z で戻せず、
+  // ラベル / リンクのストアにも反映できない）。ここがやるのは「どこから始めるか」だけ:
+  //   宛先の共有エントリ id → 手元のノート id を引き、そのノートへ移って
+  //   右レールの「提案」を指名された提案で開く。
+  //
+  // id の解決は押したときだけ走らせる（描画のたびに手元のノートを走査しない）。
+  const [proposalOpenRequest, setProposalOpenRequest] = useState<
+    { noteId: string; proposalId: string; seq: number } | null
+  >(null);
+  const proposalRequestSeqRef = useRef(0);
+  // 手元にノートが無かったときの短い案内（版トーストと同じ見え方・置き場所）
+  const [sharedNotice, setSharedNotice] = useState<string | null>(null);
+  const sharedNoticeTimerRef = useRef<number | null>(null);
+  const showSharedNotice = useCallback((message: string) => {
+    setSharedNotice(message);
+    if (sharedNoticeTimerRef.current) window.clearTimeout(sharedNoticeTimerRef.current);
+    sharedNoticeTimerRef.current = window.setTimeout(() => setSharedNotice(null), 4000);
+  }, []);
+
+  const handleAdoptProposalInNote = useCallback(
+    (input: { proposalId: string; targetId: string }) => {
+      void (async () => {
+        // 走査は最近さわった順（当たりが早い）。ゴミ箱のノートは対象にしない
+        const noteIds = [...fm.files]
+          .filter((f) => !fm.trashedIdSet.has(f.id))
+          .sort((a, b) => (b.modifiedTime ?? "").localeCompare(a.modifiedTime ?? ""))
+          .map((f) => f.id);
+        const noteId = await resolveSharedNoteId(input.targetId, {
+          noteIds,
+          loadNote: fm.loadDoc,
+          hasNote: (id) => fm.files.some((f) => f.id === id),
+        });
+        if (!noteId) {
+          // 別の端末で共有したノート / 共有だけ受け取った他人のノート。
+          // 移動はせず、その場で短く伝える
+          showSharedNotice(tStatic("proposal.adopt.noteMissingToast"));
+          return;
+        }
+        proposalRequestSeqRef.current += 1;
+        setProposalOpenRequest({
+          noteId,
+          proposalId: input.proposalId,
+          seq: proposalRequestSeqRef.current,
+        });
+        // ノート遷移は navigateToNote が唯一の入口（URL と履歴もここで動く）
+        navigateToNote(noteId);
+      })();
+    },
+    [fm, navigateToNote, showSharedNotice],
   );
 
   // ─── 共有エントリへの操作（Library / 全画面の両方から使う） ───
@@ -10759,6 +11046,9 @@ export function NoteApp() {
             // AI が使えないときは「AI に質問」のタブごと出さない（素材ビューと同じ扱い）
             aiAvailable={aiUiEnabled}
             onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
+            // 提案を読んだその場から取り込みを始める（§25b B-6）。ボタンの出し分け
+            // （宛先のノートの作者が自分か）はビュー側が決める
+            onAdoptInNote={handleAdoptProposalInNote}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView
@@ -10908,6 +11198,14 @@ export function NoteApp() {
           <NoteEditor
             key={fm.editorKey}
             provLabelsEnabled={provLabelsEnabled}
+            // 共有ライブラリの提案から来た「このノートに取り込む」の着地指示。
+            // 宛先のノートを開いている間だけ渡す（別のノートには届かせない）
+            openProposalRequest={
+              proposalOpenRequest && proposalOpenRequest.noteId === fm.activeFileId
+                ? { proposalId: proposalOpenRequest.proposalId, seq: proposalOpenRequest.seq }
+                : undefined
+            }
+            onProposalRequestHandled={() => setProposalOpenRequest(null)}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
             noteFolderLookup={noteFolderLookup}
@@ -11181,6 +11479,17 @@ export function NoteApp() {
           </>
         )}
         {/* Ingest トースト通知 */}
+        {/* 共有まわりの短い案内（取り込みの宛先ノートが手元に無かった等）。
+            版トーストと同じ見え方・置き場所にする */}
+        {sharedNotice && (
+          <div
+            className="pointer-events-none fixed bottom-6 right-6 z-[300] flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground shadow-md"
+            role="status"
+            data-testid="shared-notice"
+          >
+            {sharedNotice}
+          </div>
+        )}
         <IngestToast
           state={ingestToast}
           onDismiss={() => setIngestToast(null)}

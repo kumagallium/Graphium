@@ -12,7 +12,7 @@
 // 設計詳細: docs/internal/team-shared-storage-design.md §3 Library / §22
 
 import { useState } from "react";
-import { Check, FilePlus2, GitFork, Link2, Trash2 } from "lucide-react";
+import { Check, FilePlus2, GitFork, GitPullRequestArrow, Link2, Trash2 } from "lucide-react";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { buildSharedCitationLink } from "./citation-link";
 import { formatDate } from "../../lib/format-datetime";
@@ -181,6 +181,7 @@ export function SharedEntryActions({
   isMine,
   onFork,
   onCreateFromTemplate,
+  onAdoptInNote,
   onUnshare,
 }: {
   entry: SharedEntry;
@@ -189,6 +190,11 @@ export function SharedEntryActions({
   onFork?: () => void;
   /** テンプレートのときだけ渡る（自分作・他人作を問わず出す） */
   onCreateFromTemplate?: () => void;
+  /**
+   * 変更の提案で、かつ宛先のノートの作者が自分のときだけ渡る（§25b B-6）。
+   * ここでは取り込まない —— 押すと宛先の手元ノートへ移る（取り込みは編集画面の仕事）。
+   */
+  onAdoptInNote?: () => void;
   onUnshare: () => void;
 }) {
   const uiT = useT();
@@ -220,6 +226,17 @@ export function SharedEntryActions({
         >
           <FilePlus2 size={12} />
           {uiT("library.createFromTemplate")}
+        </button>
+      )}
+      {onAdoptInNote && (
+        <button
+          onClick={onAdoptInNote}
+          data-testid="shared-entry-adopt-in-note"
+          className="px-3 py-1.5 text-xs rounded border border-primary/50 bg-primary/10 hover:bg-primary/20 text-primary transition-colors flex items-center gap-1"
+          title={uiT("proposal.adopt.openInNoteHint")}
+        >
+          <GitPullRequestArrow size={12} />
+          {uiT("proposal.adopt.openInNote")}
         </button>
       )}
       {onFork && !isMine && (

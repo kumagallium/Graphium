@@ -45,6 +45,17 @@ export const GRAPH_BG_COLOR = "#fafdf7";
 /** ブランドグリーン。選択・ハイライトに使う */
 export const GRAPH_ACCENT_COLOR = "#4B7A52";
 
+/**
+ * 共有ライブラリ由来ノード（派生元の共有エントリ・このノートへの提案）の色。
+ * 既存の色相（現在=緑・hop1=青・hop2=グレー緑・Knowledge=紫/青緑/紅葉/紫紺・
+ * 外部=グレー）と重ならない色相を割り当てる。縁は破線にして、手元のノートと
+ * ひと目で区別できるようにする（見た目は view.tsx の border-style: dashed）。
+ */
+export const GRAPH_SHARED_NODE_COLOR = "#c99b3f"; // 金（派生元の共有エントリ）
+export const GRAPH_SHARED_NODE_BORDER = "#a17c2f";
+export const GRAPH_PROPOSAL_NODE_COLOR = "#c15b8f"; // 紅（このノートへの提案）
+export const GRAPH_PROPOSAL_NODE_BORDER = "#9c4672";
+
 /** アニメーションの長さと曲線（design.md 明記） */
 export const GRAPH_TRANSITION_MS = 200;
 export const GRAPH_TRANSITION_EASING = "ease-in-out-sine";

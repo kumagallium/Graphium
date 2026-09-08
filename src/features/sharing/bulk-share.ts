@@ -22,6 +22,7 @@ import {
 } from "../asset-browser/asset-folders";
 import { t } from "../../i18n";
 import { shareNote } from "./share-note";
+import { saveSharedNoteLink } from "./shared-note-link";
 import { shareKnowledge } from "./share-knowledge";
 import { shareMedia } from "./share-media";
 import { shareReference } from "./share-reference";
@@ -221,6 +222,11 @@ export async function bulkShare(
       const saved = isKnowledge
         ? await deps.saveKnowledge(target.id, result.doc)
         : await deps.saveNote(target.id, result.doc).then(() => true);
+      // 共有エントリ → 手元のノートの控え。ここは両方の id を知っている数少ない場所で、
+      // 控えが無いと「このノートに取り込む」がノートの走査に落ちる（単発の共有と同じ扱い）
+      if (result.doc.sharedRef) {
+        void saveSharedNoteLink(result.doc.sharedRef.id, target.id).catch(() => {});
+      }
       if (!saved) {
         // shared 側には書けたがローカルの sharedRef 書き戻しに失敗。
         // 次回 Share で同 id に繋がらなくなるので失敗として報告する

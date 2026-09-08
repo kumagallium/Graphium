@@ -26,6 +26,11 @@ export type SharedSeenRecord = {
   hash: string;
   /** 最後に見たときのコメント件数 */
   comments: number;
+  /**
+   * 最後に見たときの提案の件数（§25b B-1）。
+   * 古い控えには無いので省略可（無ければ 0 として扱う ＝ 印を出さない）。
+   */
+  proposals?: number;
   /** 記録した時刻（ISO-8601）。上限を超えたときの間引きに使う */
   at: string;
 };
@@ -46,6 +51,9 @@ export function parseSeenStore(raw: string | null): SharedSeenStore {
       out[id] = {
         hash: v.hash,
         comments: typeof v.comments === "number" && v.comments >= 0 ? v.comments : 0,
+        ...(typeof v.proposals === "number" && v.proposals >= 0
+          ? { proposals: v.proposals }
+          : {}),
         at: typeof v.at === "string" ? v.at : "",
       };
     }
@@ -94,8 +102,47 @@ export function getSeen(id: string): SharedSeenRecord | null {
 export function markSeen(id: string, hash: string, comments: number): void {
   if (!id) return;
   const store = readSeenStore();
-  store[id] = { hash, comments: Math.max(0, comments), at: new Date().toISOString() };
+  // 提案の控え（別のタブが書く）を巻き込まない。1 エントリの控えは 1 レコードなので、
+  // どちらか片方だけを書くときは残りをそのまま持ち越す
+  const previous = store[id];
+  store[id] = {
+    hash,
+    comments: Math.max(0, comments),
+    ...(previous?.proposals !== undefined ? { proposals: previous.proposals } : {}),
+    at: new Date().toISOString(),
+  };
   writeSeenStore(prune(store));
+}
+
+/**
+ * 提案をどこまで見たかを記録する（ノート編集画面の「提案」タブを開いたとき）。
+ * コメントの控えは持ち越す（markSeen と対で 1 レコードを分け合う）。
+ */
+export function markProposalsSeen(id: string, hash: string, proposals: number): void {
+  if (!id) return;
+  const store = readSeenStore();
+  const previous = store[id];
+  store[id] = {
+    hash,
+    comments: previous?.comments ?? 0,
+    proposals: Math.max(0, proposals),
+    at: new Date().toISOString(),
+  };
+  writeSeenStore(prune(store));
+}
+
+/**
+ * 前回見たときからの提案の増分。控えが無ければ 0
+ * （まだ開いていないものを「全部新着」にすると印だらけになる）。
+ */
+export function newProposalCount(
+  id: string,
+  currentCount: number,
+  store?: SharedSeenStore,
+): number {
+  const seen = (store ?? readSeenStore())[id];
+  if (!seen || seen.proposals === undefined) return 0;
+  return Math.max(0, currentCount - seen.proposals);
 }
 
 /**

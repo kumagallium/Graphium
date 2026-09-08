@@ -84,6 +84,33 @@ export async function saveForkBase(
   }
 }
 
+/**
+ * 控えを片付ける（§25b C-3）。
+ *
+ * いつ呼ぶか: 提案を取り下げた／提案が取り込まれた／派生したノートを消したとき。
+ * 控えは「これから提案を出すため」だけの材料なので、その予定が無くなったら
+ * 手元に残す理由が無い（ノート 1 件ぶんの本文をずっと抱えることになる）。
+ *
+ * 消す代わりに空の値を書くのは、app-data の口に削除が無いため。読み側
+ * （loadForkBase）は形が合わない値を null として扱うので、結果は同じ。
+ */
+export async function clearForkBase(
+  noteId: string,
+  provider?: StorageProvider,
+): Promise<void> {
+  if (!noteId) return;
+  try {
+    await writeAppDataFile(
+      appDataKey(noteId),
+      driveFileName(noteId),
+      { cleared: true, clearedAt: new Date().toISOString() },
+      provider,
+    );
+  } catch {
+    // 片付けられなくても害は無い（次の提案で古い基準版が使われるだけ）
+  }
+}
+
 /** 控えを読む。無い / 壊れている場合は null（base 無しの 2 者比較に落ちる）。 */
 export async function loadForkBase(
   noteId: string,

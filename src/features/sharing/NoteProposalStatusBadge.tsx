@@ -6,7 +6,7 @@
 //   元の作者だけ、という食い違いが起きる。元エントリの hash と取り込み記録
 //   （8b で作者が書く extra.adoptedProposals）から毎回導出する（proposalStatus）。
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { GitPullRequestArrow } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
@@ -33,11 +33,19 @@ export function proposalStatusHintKey(status: ProposalStatus): string {
 export function NoteProposalStatusBadge({
   proposalId,
   onClick,
+  onAdopted,
   entries,
 }: {
   /** 手元ノートの sharedRef.id（type === "proposal" のときだけ渡す） */
   proposalId: string;
   onClick?: () => void;
+  /**
+   * 状態が「取り込み済み」になったことに最初に気づいたときに 1 度だけ呼ばれる（§25b C-3）。
+   * 提案が取り込まれると、手元に残した基準版の控え（fork-base）は使い道が無くなる。
+   * 状態を知っているのはここ（共有ストアを購読している）だけなので、片付けの合図も
+   * ここから出す。表示そのものは変えない。
+   */
+  onAdopted?: () => void;
   /** DI: 共有エントリ一覧（既定は共有ストア）。Storybook / テスト用 */
   entries?: readonly SharedEntry[];
 }) {
@@ -50,6 +58,18 @@ export function NoteProposalStatusBadge({
     if (!proposal) return null;
     return proposalStatus(proposal, null, all);
   }, [all, proposalId]);
+
+  // 「取り込み済み」に変わった最初の 1 回だけ知らせる（毎レンダー呼ばない）
+  const notifiedRef = useRef<string | null>(null);
+  const onAdoptedRef = useRef(onAdopted);
+  onAdoptedRef.current = onAdopted;
+  useEffect(() => {
+    if (status !== "adopted") return;
+    if (notifiedRef.current === proposalId) return;
+    notifiedRef.current = proposalId;
+    onAdoptedRef.current?.();
+  }, [status, proposalId]);
+
   if (!status) return null;
 
   const label = t(proposalStatusLabelKey(status));

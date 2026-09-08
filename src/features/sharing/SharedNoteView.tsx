@@ -15,7 +15,7 @@
 // 設計詳細: docs/internal/team-shared-storage-design.md §22 B
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, GitCompareArrows, History, Link2, MessageSquare, Waypoints, X } from "lucide-react";
+import { Bot, GitCompareArrows, History, Link2, MessageSquare, Network, Waypoints, X } from "lucide-react";
 import type { AuthorIdentity } from "../document-provenance/types";
 import type { ChatMessage, GraphiumDocument, TableMeta } from "../../lib/document-types";
 import {
@@ -29,6 +29,8 @@ import { useResizableWidth } from "../../hooks/use-resizable-width";
 import { formatDate } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
 import { StepFlowView } from "../network-graph/step-flow-view";
+import { NetworkGraphPanel } from "../network-graph";
+import { buildSharedEntryGraph } from "./shared-entry-graph";
 import { SharedEntryComments } from "./SharedEntryComments";
 import {
   SharedEntryBody,
@@ -77,8 +79,16 @@ import type { ProposalDiffInput } from "./proposal-diff";
  * 右レールに出すパネル。既定はコメント（読んですぐ返せる状態で開く）。
  * 「差分」は変更の提案（type === "proposal"）のときだけ出る —— 提案は
  * 「元のノートとの違い」が中身そのものなので、提案では差分を先に開く。
+ * 「逆引き」と「グラフ」は同じ材料の別の見方（題名の一覧 / 隣接の図）。
  */
-export type SharedNoteRailTab = "comments" | "chat" | "version" | "process" | "links" | "diff";
+export type SharedNoteRailTab =
+  | "comments"
+  | "chat"
+  | "version"
+  | "process"
+  | "links"
+  | "graph"
+  | "diff";
 type RailTab = SharedNoteRailTab;
 
 // 全画面の右パネルは本文を読みながら使うので、サイドピーク（共有の幅記憶）とは
@@ -138,6 +148,16 @@ export type SharedNoteViewProps = {
    * 渡された時点で共有フォルダにも blob にも触らない（Storybook / テスト用）。
    */
   proposalDiff?: ProposalDiffInput;
+  /**
+   * 「このノートに取り込む」（§25b B-6）。提案を読んだその場から取り込みを
+   * 始めるための入口。**ここでは取り込まない** —— 呼び出し側が宛先の手元ノートを
+   * 解決してそこへ移り、右レールの「提案」タブを開く。
+   *
+   * このビューが共有フォルダに書かない、という不変条件はこれで保たれる
+   * （取り込みの実処理はエディタのある編集画面にしか置けない）。
+   * 未指定なら取り込みのボタンを出さない（読むだけの画面のまま）。
+   */
+  onAdoptInNote?: (input: { proposalId: string; targetId: string }) => void;
 };
 
 /**
@@ -176,6 +196,7 @@ function SharedNoteViewInner({
   onIngestChat,
   chatDeps,
   proposalDiff,
+  onAdoptInNote,
 }: SharedNoteViewProps) {
   const uiT = useT();
   const aiAssistant = useAiAssistant();
@@ -295,6 +316,27 @@ function SharedNoteViewInner({
       (reverseLinks?.templates.length ?? 0) +
       proposalIds.length >
     0;
+  // 逆引きの行と隣接グラフのノードで同じ題名を出す（一覧に無い相手は null）
+  const entryTitleById = useCallback(
+    (id: string) => {
+      const hit = entryById.get(id);
+      return hit ? sharedEntryTitle(hit, uiT) : null;
+    },
+    [entryById, uiT],
+  );
+  // 逆引きと同じ材料を図で見る。中心はこのエントリ、隣接は 提案 / 引用 /
+  // 派生版 / テンプレート由来。組み立ては純関数（shared-entry-graph.ts）
+  const entryGraph = useMemo(
+    () =>
+      buildSharedEntryGraph({
+        entryId: entry.id,
+        entryTitle: title,
+        links: reverseLinks,
+        entries: allEntries,
+        titleOf: entryTitleById,
+      }),
+    [entry.id, title, reverseLinks, allEntries, entryTitleById],
+  );
 
   // 手順は投影から引く（本文を読めた共有ノートにだけ載る）
   const processProjection = activeProjection.entries[entry.id] ?? null;
@@ -318,6 +360,31 @@ function SharedNoteViewInner({
     readEntryBody,
     override: proposalDiff,
   });
+
+  // 提案の宛先エントリ（共有ライブラリから解決）。一覧に無ければ null
+  const proposalTarget = useMemo(
+    () => (isProposal ? (entryById.get(readProposalExtra(entry)?.target ?? "") ?? null) : null),
+    [isProposal, entryById, entry],
+  );
+  /**
+   * 「このノートに取り込む」を出す条件（§25b B-6）。
+   *
+   * 変更の提案で、かつ **宛先のノートの作者が自分** のときだけ。他人の提案を横から
+   * 取り込む導線は作らない（取り込めるのは自分のノートだけ）。宛先が一覧に無い
+   * ときは作者が分からないので出さない —— 押せるのに何も起きない口を作らない。
+   */
+  const canAdoptInNote =
+    !!onAdoptInNote &&
+    isProposal &&
+    !!currentIdentity?.email &&
+    proposalTarget?.author?.email === currentIdentity.email;
+
+  // 押すだけ。宛先の手元ノートの解決も遷移も呼び出し側（note-app）の仕事
+  const handleAdoptInNote = useCallback(() => {
+    const targetId = readProposalExtra(entry)?.target;
+    if (!targetId) return;
+    onAdoptInNote?.({ proposalId: entry.id, targetId });
+  }, [entry, onAdoptInNote]);
 
   // 提案でないエントリへ移ったのに差分タブが開いたままにならないようコメントへ戻す
   // （AI が使えなくなったときの手当てと同じ）
@@ -404,6 +471,7 @@ function SharedNoteViewInner({
       { tab: "version", icon: <History size={18} />, label: uiT("sharedNote.rail.version") },
       { tab: "process", icon: <Waypoints size={18} />, label: uiT("sharedNote.rail.process") },
       { tab: "links", icon: <Link2 size={18} />, label: uiT("sharedNote.rail.links") },
+      { tab: "graph", icon: <Network size={18} />, label: uiT("sharedNote.rail.graph") },
     ] satisfies { tab: RailTab; icon: React.ReactNode; label: string; show?: boolean }[]
   ).filter((i) => ("show" in i ? i.show : true));
   const railTitle = railItems.find((i) => i.tab === railTab)?.label ?? "";
@@ -475,6 +543,7 @@ function SharedNoteViewInner({
                     ? () => void handleCreateFromTemplate()
                     : undefined
                 }
+                onAdoptInNote={canAdoptInNote ? handleAdoptInNote : undefined}
                 onUnshare={() => void handleUnshare()}
               />
             </div>
@@ -537,6 +606,9 @@ function SharedNoteViewInner({
               loading={diffState.loading}
               error={diffState.error}
               targetMissing={diffState.targetMissing}
+              // 入口があるときは「ここは読むだけです」で終わらせず、どこから
+              // 取り込めるのかを言う
+              hasAdoptEntry={canAdoptInNote}
               // 本文プレビューの該当ブロックへ飛ぶ（コメントの ¶ チップと同じ仕掛け）
               onJumpToBlock={preview.jumpToBlock}
             />
@@ -585,9 +657,7 @@ function SharedNoteViewInner({
                 {isProposal && (
                   <ProposalMeta
                     entry={entry}
-                    target={
-                      entryById.get(readProposalExtra(entry)?.target ?? "") ?? null
-                    }
+                    target={proposalTarget}
                     onOpenTarget={onOpenEntry}
                   />
                 )}
@@ -618,10 +688,7 @@ function SharedNoteViewInner({
                 <ReverseLinksSection
                   links={reverseLinks}
                   proposalIds={proposalIds}
-                  entryTitleById={(id) => {
-                    const hit = entryById.get(id);
-                    return hit ? sharedEntryTitle(hit, uiT) : null;
-                  }}
+                  entryTitleById={entryTitleById}
                   onOpenEntry={onOpenEntry}
                 />
               ) : (
@@ -629,6 +696,28 @@ function SharedNoteViewInner({
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   {uiT("sharedNote.backlinksEmpty")}
                 </p>
+              )}
+            </div>
+          )}
+
+          {railTab === "graph" && (
+            <div className="flex-1 min-h-0 flex flex-col">
+              {entryGraph.neighborCount > 0 ? (
+                <div className="flex-1 min-h-0">
+                  <NetworkGraphPanel
+                    data={entryGraph}
+                    // 中心以外はすべて shared: / proposal: のノードなので、
+                    // 開き先は onOpenSharedEntry だけを通る（onNavigate は
+                    // 手元のノート ID 用で、このグラフからは呼ばれない）
+                    onNavigate={() => {}}
+                    onOpenSharedEntry={onOpenEntry}
+                  />
+                </div>
+              ) : (
+                // 逆引きと同じ言い方: 元になるのは本文を読めた共有ノートの投影だけ
+                <div className="px-4 py-8 text-xs text-muted-foreground leading-relaxed">
+                  {uiT("sharedNote.graphEmpty")}
+                </div>
               )}
             </div>
           )}

@@ -7,11 +7,21 @@
 //   - 「誰が変えたか」（by）を色で出す。提案者だけが変えたもの＝取り込みの候補が
 //     いちばん目に入るようにする。両方が変えたもの（競合）は注意の色にする
 //   - 基準版が無いときは色を付けない（分けられないものを分かったように見せない）
-//   - 読むだけであることを明記する。取り込みは 8b で作者のノート側に付く
 //   - 項目をクリックすると本文プレビューの該当ブロックへ飛ぶ（一時ハイライト）
+//
+// 2 つのモード（§25b B-2）:
+//   - 読み取り専用（既定）… 全画面の「差分」レール。提案者・第三者が読む場所
+//   - 選択可能（selectable）… 元の作者のノート編集画面の「提案」タブ。各項目に
+//     チェックが付き、選んだものだけを取り込む。取り込みそのものは呼び出し側の仕事
+//
+// 向きの約束（§25b B-5）:
+//   差分は提案側から見た向き（提案に無いものが「削除」）で作られている。
+//   `by: "mine"`（元の作者だけが変えた）の項目をその向きのまま出すと、元の作者が
+//   足した行が「削除」と読めてしまう。作者側の項目だけ、作者から見た動詞に直す。
 
 import { useT } from "../../i18n";
 import { cn } from "../../lib/utils";
+import { isChangeSelectable } from "./proposal-selection";
 import type {
   BlockChange,
   ProposalChangeBy,
@@ -40,6 +50,21 @@ export type ProposalDiffPanelProps = {
   targetMissing?: boolean;
   /** 項目のクリックで本文プレビューの該当ブロックへ飛ぶ */
   onJumpToBlock?: (blockId: string) => void;
+  /**
+   * 取り込みの選択を出すモード（元の作者のノート編集画面）。
+   * false / 未指定なら 8a と同じ読み取り専用（全画面の「差分」レール）。
+   */
+  selectable?: boolean;
+  /** 選ばれている項目 id（selectable のときだけ見る） */
+  selected?: ReadonlySet<string>;
+  /** チェックの入れ外し。親子の排他は呼び出し側（proposal-selection）が決める */
+  onToggleSelect?: (id: string) => void;
+  /**
+   * この画面のどこかに取り込みの入口（「このノートに取り込む」）が出ているか。
+   * 読み取り専用でも入口があるなら「ここは読むだけです」で終わらせず、
+   * どこから取り込めるのかを言う（§25b B-6）。
+   */
+  hasAdoptEntry?: boolean;
 };
 
 export function ProposalDiffPanel({
@@ -50,6 +75,10 @@ export function ProposalDiffPanel({
   error,
   targetMissing,
   onJumpToBlock,
+  selectable,
+  selected,
+  onToggleSelect,
+  hasAdoptEntry,
 }: ProposalDiffPanelProps) {
   const t = useT();
 
@@ -77,7 +106,11 @@ export function ProposalDiffPanel({
         {hasBase ? t("proposal.diff.withBase") : t("proposal.diff.noBase")}
       </p>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
-        {t("proposal.diff.readOnly")}
+        {selectable
+          ? t("proposal.adopt.selectHint")
+          : hasAdoptEntry
+            ? t("proposal.diff.adoptFromHere")
+            : t("proposal.diff.readOnly")}
       </p>
 
       {diff.unsupported.length > 0 && (
@@ -99,6 +132,13 @@ export function ProposalDiffPanel({
           {diff.title && (
             <section className="rounded-md border border-border bg-background px-3 py-2 space-y-1">
               <div className="flex items-center gap-1.5">
+                {selectable && isChangeSelectable(diff.title.by) && (
+                  <SelectBox
+                    id={diff.title.id}
+                    checked={!!selected?.has(diff.title.id)}
+                    onToggle={onToggleSelect}
+                  />
+                )}
                 <KindBadge label={t("proposal.diff.titleChanged")} />
                 <ByBadge by={diff.title.by} hasBase={hasBase} />
               </div>
@@ -112,11 +152,14 @@ export function ProposalDiffPanel({
 
           <ul className="space-y-1.5">
             {diff.blocks.map((change) => (
-              <li key={`${change.kind}-${change.blockId}`}>
+              <li key={change.id}>
                 <BlockChangeCard
                   change={change}
                   hasBase={hasBase}
                   onJumpToBlock={onJumpToBlock}
+                  selectable={selectable}
+                  selected={selected}
+                  onToggleSelect={onToggleSelect}
                 />
               </li>
             ))}
@@ -161,19 +204,71 @@ function ByBadge({ by, hasBase }: { by: ProposalChangeBy; hasBase: boolean }) {
   );
 }
 
+/**
+ * 取り込みのチェックボックス。カード全体のクリック（本文へ飛ぶ）と競合するので
+ * ここで伝播を止める。
+ */
+function SelectBox({
+  id,
+  checked,
+  disabled,
+  onToggle,
+  title,
+}: {
+  id: string;
+  checked: boolean;
+  disabled?: boolean;
+  onToggle?: (id: string) => void;
+  title?: string;
+}) {
+  return (
+    <input
+      type="checkbox"
+      className="shrink-0 accent-primary cursor-pointer disabled:cursor-default"
+      checked={checked}
+      disabled={disabled}
+      title={title}
+      aria-label={id}
+      data-testid={`proposal-select-${id}`}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        e.stopPropagation();
+        onToggle?.(id);
+      }}
+    />
+  );
+}
+
+/** 作者側（by: "mine"）の項目だけ、元の作者から見た向きの文言に差し替える */
+function kindLabelKey(kind: string, by: ProposalChangeBy): string {
+  return by === "mine" ? `proposal.diff.kindMine.${kind}` : `proposal.diff.kind.${kind}`;
+}
+
+function cellLabelKey(kind: string, by: ProposalChangeBy): string {
+  return by === "mine" ? `proposal.diff.cellMine.${kind}` : `proposal.diff.cell.${kind}`;
+}
+
 function BlockChangeCard({
   change,
   hasBase,
   onJumpToBlock,
+  selectable,
+  selected,
+  onToggleSelect,
 }: {
   change: BlockChange;
   hasBase: boolean;
   onJumpToBlock?: (blockId: string) => void;
+  selectable?: boolean;
+  selected?: ReadonlySet<string>;
+  onToggleSelect?: (id: string) => void;
 }) {
   const t = useT();
   const jumpId = change.kind === "removed" ? change.mineBlockId ?? change.blockId : change.blockId;
   const hasCells = !!change.cells && change.cells.length > 0;
   const clickable = !!onJumpToBlock && change.kind !== "removed";
+  const wholeSelected = !!selected?.has(change.id);
+  const showSelect = !!selectable && isChangeSelectable(change.by);
   return (
     <div
       className={cn(
@@ -185,7 +280,15 @@ function BlockChangeCard({
       data-testid={`proposal-diff-block-${change.blockId}`}
     >
       <div className="flex items-center gap-1.5 flex-wrap">
-        <KindBadge label={t(`proposal.diff.kind.${change.kind}`)} />
+        {showSelect && (
+          <SelectBox
+            id={change.id}
+            checked={wholeSelected}
+            onToggle={onToggleSelect}
+            title={hasCells ? t("proposal.adopt.wholeTableHint") : undefined}
+          />
+        )}
+        <KindBadge label={t(kindLabelKey(change.kind, change.by))} />
         <ByBadge by={change.by} hasBase={hasBase} />
         {change.moved && (
           <span className="text-[9px] text-muted-foreground">
@@ -214,9 +317,18 @@ function BlockChangeCard({
 
       {hasCells && (
         <ul className="space-y-1 pt-0.5">
-          {change.cells!.map((cell, i) => (
-            <li key={`${cell.kind}-${i}`}>
-              <TableCellRow cell={cell} hasBase={hasBase} />
+          {change.cells!.map((cell) => (
+            <li key={cell.id}>
+              <TableCellRow
+                cell={cell}
+                hasBase={hasBase}
+                selectable={selectable}
+                // 丸ごと置き換えを選んでいる間は、セル項目はそれに飲み込まれている。
+                // チェック済み・操作不可で出して「選んだつもりの取りこぼし」を作らない
+                checked={wholeSelected || !!selected?.has(cell.id)}
+                disabled={wholeSelected}
+                onToggleSelect={onToggleSelect}
+              />
             </li>
           ))}
         </ul>
@@ -225,7 +337,21 @@ function BlockChangeCard({
   );
 }
 
-function TableCellRow({ cell, hasBase }: { cell: TableCellChange; hasBase: boolean }) {
+function TableCellRow({
+  cell,
+  hasBase,
+  selectable,
+  checked,
+  disabled,
+  onToggleSelect,
+}: {
+  cell: TableCellChange;
+  hasBase: boolean;
+  selectable?: boolean;
+  checked?: boolean;
+  disabled?: boolean;
+  onToggleSelect?: (id: string) => void;
+}) {
   const t = useT();
   const row =
     "rowLabel" in cell
@@ -238,8 +364,17 @@ function TableCellRow({ cell, hasBase }: { cell: TableCellChange; hasBase: boole
   return (
     <div className="pl-2 border-l border-border/70 space-y-0.5">
       <div className="flex items-center gap-1.5">
+        {selectable && isChangeSelectable(cell.by) && (
+          <SelectBox
+            id={cell.id}
+            checked={!!checked}
+            disabled={disabled}
+            onToggle={onToggleSelect}
+            title={disabled ? t("proposal.adopt.coveredByWholeHint") : undefined}
+          />
+        )}
         <span className="text-[10px] text-muted-foreground truncate">
-          {t(`proposal.diff.cell.${cell.kind}`, { row, column })}
+          {t(cellLabelKey(cell.kind, cell.by), { row, column })}
         </span>
         <ByBadge by={cell.by} hasBase={hasBase} />
       </div>
