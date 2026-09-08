@@ -4,7 +4,7 @@ Research rarely starts from a blank page — it starts from a paper, a web page,
 
 ## The material gallery
 
-The sidebar has a **Materials** section with one entry per type: **Memos**, **Images**, **Documents** (PDFs and Word files), **Data** (the `.csv` / `.txt` / `.dat` files instruments write, [imported as tables](/notes-and-editor#importing-measurement-data)), **Videos**, **Audio**, and **URLs**. Click any of them to open the gallery.
+The sidebar has a **Materials** section with one entry per type: **Memos**, **Images**, **Documents** (PDFs, Word, PowerPoint, and Excel files), **Data** (the `.csv` / `.txt` / `.dat` files instruments write, [imported as tables](/notes-and-editor#importing-measurement-data)), **Videos**, **Audio**, and **URLs**. Click any of them to open the gallery.
 
 <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> Materials can go in folders too — the same folders your notes use. Select some in the list view and choose **Add to a folder**, then use the **Folders** button above the list to show only what is in one. A material keeps its folder whether or not any note uses it yet, so you can file a PDF the day you download it. It also picks up the folders of the notes it is used in — put a photo in a note that lives in **Material X** and the photo shows up under **Material X** as well, shown in a lighter chip. Those follow the note: move the note out and the photo stops appearing there, while folders you set by hand always stay.
 
@@ -42,19 +42,21 @@ There are several routes, all ending in the same library:
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.
 
+PowerPoint and Excel files brought in through the intake sheet (below) get their own treatment too: a `.pptx` keeps its slide text searchable and pulls its embedded pictures out as image materials, and a `.xlsx` turns each sheet into its own CSV data material (named `<workbook> / <sheet>.csv`) so it flows through the same table import as any other delimited data.
+
 ## Bring in what you already have <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
 
 There are four ways in: **Bring in files** in the sidebar, the **Bring in files** chip at the top of an empty note, the empty-state receptacle in the note list and material gallery, or dropping a folder or files anywhere in the window (a banner appears while you drag).
 
 ![The intake receptacle, with buttons to choose a folder or files](/screenshots/intake-receptacle.png)
 
-The rule is one sentence: **Markdown becomes notes. PDF, Word, images and CSV become materials.** Audio, video, and delimited data (`.csv` / `.tsv` / `.txt` / `.dat`) are materials too. PowerPoint, Excel, and old-style `.doc` files are not taken in yet — the report lists them by extension and count instead of dropping them silently.
+The rule is one sentence: **Markdown becomes notes. PDF, Office files, images and CSV become materials.** Audio, video, and delimited data (`.csv` / `.tsv` / `.txt` / `.dat`) are materials too. A `.pptx` or `.xlsx` is expanded on the way in — see above. Old-style `.doc` / `.xls` / `.ppt` files are not taken in yet — the report lists them by extension and count instead of dropping them silently.
 
 Whatever order files sit in inside a dropped folder carries over as Graphium folders, for both notes and materials. The name of the folder you dropped is not used as a folder itself.
 
 Obsidian vaults work as they are. `[[wikilinks]]` are resolved first against files in the same batch, then against your existing notes and knowledge entries by title, and images they reference come along too. Links that cannot be resolved stay as plain text.
 
-When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files. From there you can **Search your notes**, **See connections**, or **Ask AI** — or **Set up AI** first if no model is configured yet.
+When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files — plus a note of how many materials were extracted from PowerPoint / Excel files, when any were. From there you can **Search your notes**, **See connections**, or **Ask AI** — or **Set up AI** first if no model is configured yet.
 
 ![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
 
