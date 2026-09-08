@@ -1,17 +1,44 @@
 // 計算ブロックから参照する「表の列」の読み取り
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import {
   buildTableIndex,
+  collectDataTableBlockIds,
   collectTableColumns,
+  columnsFromText,
+  publishTableColumns,
   readTableColumns,
 } from "./table-scope";
+import { primeAssetText, clearAssetTextCache } from "../../features/data-import/asset-text";
+import { clearDataTableCache } from "../data-table/data";
+import { serializeDataTableSource } from "../data-table/source";
 import type { TableColumnData } from "../../features/table-meta/types";
+import type { TableSource } from "../../lib/document-types";
 
 const cell = (text: string) => [{ type: "text", text, styles: {} }];
 const table = (id: string, rows: string[][]) => ({
   id,
   type: "table",
   content: { type: "tableContent", rows: rows.map((r) => ({ cells: r.map(cell) })) },
+});
+
+const dtSource: TableSource = {
+  kind: "delimited-file",
+  fileName: "oven-log.csv",
+  fileId: "asset-1",
+  importedAt: "2026-09-05T00:00:00.000Z",
+  options: { headerRow: 1, endRow: 4, delimiter: "comma", collapseConsecutive: false },
+};
+const dataTable = (id: string, caption: string, children: any[] = []) => ({
+  id,
+  type: "dataTable",
+  props: { caption, source: serializeDataTableSource(dtSource) },
+  children,
+});
+const CSV = "time,temp_c\n00:00,180.0\n00:01,181.5\n00:02,183.0";
+
+beforeEach(() => {
+  clearAssetTextCache();
+  clearDataTableCache();
 });
 
 describe("readTableColumns", () => {
@@ -79,6 +106,85 @@ describe("collectTableColumns", () => {
     const blocks = [table("a", [["v"], ["1"]]), table("b", [["v"], ["2"]])];
     const tables = collectTableColumns(blocks as any, new Map([["a", "表"], ["b", "表"]]));
     expect(tables.get("表")?.get("v")).toEqual({ values: [1] });
+  });
+
+  it("dataTable は素材が prime 済みなら列を出す", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt", "oven-log")];
+    const tables = collectTableColumns(blocks as any, new Map([["dt", "oven-log"]]));
+    expect(tables.get("oven-log")?.get("temp_c")).toEqual({ values: [180.0, 181.5, 183.0] });
+  });
+
+  it("dataTable が未 prime なら列は出ない", () => {
+    const blocks = [dataTable("dt", "oven-log")];
+    const tables = collectTableColumns(blocks as any, new Map([["dt", "oven-log"]]));
+    expect(tables.has("oven-log")).toBe(false);
+  });
+});
+
+describe("columnsFromText", () => {
+  it("数値列の values と unit を判定する", () => {
+    const columns = columnsFromText(["質量"], [["1 g"], ["2 g"]]);
+    expect(columns.get("質量")).toEqual({ values: [1, 2], unit: "g" });
+  });
+
+  it("読めないセルは飛ばす", () => {
+    const columns = columnsFromText(["値"], [["1 g"], ["不明"], ["3 g"]]);
+    expect(columns.get("値")).toEqual({ values: [1, 3], unit: "g" });
+  });
+
+  it("単位が揃っていなければ unit を付けない", () => {
+    const columns = columnsFromText(["値"], [["1 g"], ["2 kg"]]);
+    expect(columns.get("値")).toEqual({ values: [1, 2] });
+  });
+});
+
+describe("collectDataTableBlockIds", () => {
+  it("トップレベルの dataTable の id を集める", () => {
+    const blocks = [dataTable("dt1", "a"), table("t1", [["v"], ["1"]])];
+    expect(collectDataTableBlockIds(blocks as any)).toEqual(new Set(["dt1"]));
+  });
+
+  it("children（カラム内）の dataTable も拾う", () => {
+    const nested = dataTable("dt2", "b");
+    const blocks = [
+      { id: "col1", type: "column", children: [nested] },
+      dataTable("dt1", "a"),
+    ];
+    expect(collectDataTableBlockIds(blocks as any)).toEqual(new Set(["dt1", "dt2"]));
+  });
+});
+
+describe("publishTableColumns", () => {
+  it("setTableColumns / setTableBlockIds を呼び、dataTable の id は setTableBlockIds に含めない", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt1", "oven-log"), table("t1", [["v"], ["1"]])];
+    const editor = { document: blocks };
+    const setTableColumns = (columns: any) => {
+      calledColumns = columns;
+    };
+    const setTableBlockIds = (ids: any) => {
+      calledIds = ids;
+    };
+    let calledColumns: any;
+    let calledIds: any;
+    const store = { getCaption: () => "", setTableColumns, setTableBlockIds };
+    publishTableColumns(editor, store);
+    expect(calledColumns["oven-log"]["temp_c"]).toEqual({ values: [180.0, 181.5, 183.0] });
+    expect(calledIds).not.toHaveProperty("oven-log");
+    // 無名の table は自動名で登録される
+    expect(Object.values(calledIds)).toContain("t1");
+  });
+
+  it("editor.document が無ければ何もしない", () => {
+    let called = false;
+    publishTableColumns({}, {
+      getCaption: () => "",
+      setTableColumns: () => {
+        called = true;
+      },
+    });
+    expect(called).toBe(false);
   });
 });
 

@@ -22,6 +22,7 @@
 
 import { normalizeNumericText, parseNumeric } from "../chart/chart-data";
 import { readCellText } from "../../features/table-meta/table-cells";
+import { peekDataTableFromBlock } from "../data-table/data";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 import type {
   TableColumnData,
@@ -44,18 +45,27 @@ function unitTextOf(raw: string): string {
  * 1 行目をヘッダとして扱い、同名の列は最初の 1 つを採る。
  */
 export function readTableColumns(block: any): Map<string, TableColumnData> {
-  const columns = new Map<string, TableColumnData>();
   const rows: any[] = block?.content?.rows ?? [];
-  if (rows.length < 2) return columns;
-  const headers = (rows[0].cells ?? []).map((c: any) => readCellText(c));
+  if (rows.length < 2) return new Map();
+  const headers: string[] = (rows[0].cells ?? []).map((c: any) => readCellText(c));
+  const body: string[][] = rows.slice(1).map((r: any) => (r.cells ?? []).map((c: any) => readCellText(c)));
+  return columnsFromText(headers, body);
+}
+
+/**
+ * 見出しと本文（セルのテキスト）を「列名 → 列データ」に読む。
+ * 本文の表（readTableColumns）とデータ表（素材の parse 結果）の共通部分。
+ */
+export function columnsFromText(headers: string[], body: string[][]): Map<string, TableColumnData> {
+  const columns = new Map<string, TableColumnData>();
   headers.forEach((header: string, col: number) => {
     const name = header.trim();
     if (!name || columns.has(name)) return;
     const values: number[] = [];
     let unit: string | undefined;
     let unitConsistent = true;
-    for (let r = 1; r < rows.length; r++) {
-      const raw = readCellText(rows[r].cells?.[col]);
+    for (const row of body) {
+      const raw = row[col] ?? "";
       const value = parseNumeric(raw);
       if (value === null) continue;
       values.push(value);
@@ -84,12 +94,31 @@ export function collectTableColumns(blocks: any[], displayNames: Map<string, str
         const name = displayNames.get(b.id);
         // 同じ名前の表が 2 つあるときは先に出てきた方を採る（文書順で安定させる）
         if (name && !tables.has(name)) tables.set(name, readTableColumns(b));
+      } else if (b?.type === "dataTable" && typeof b.id === "string") {
+        // データ表は素材が読めてから配る（読めるまでは無いものとして扱う。
+        // 届いたら subscribeDataTableData 経由でホストが配り直す）
+        const name = displayNames.get(b.id);
+        const data = name && !tables.has(name) ? peekDataTableFromBlock(b) : null;
+        if (name && data) tables.set(name, columnsFromText(data.headers, data.rows));
       }
       if (Array.isArray(b?.children)) visit(b.children);
     }
   };
   visit(blocks ?? []);
   return tables;
+}
+
+/** 文書中のデータ表ブロックの id（子ブロック・カラム内も含む） */
+export function collectDataTableBlockIds(blocks: any[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (list: any[]) => {
+    for (const b of list ?? []) {
+      if (b?.type === "dataTable" && typeof b.id === "string") ids.add(b.id);
+      if (Array.isArray(b?.children)) visit(b.children);
+    }
+  };
+  visit(blocks ?? []);
+  return ids;
 }
 
 /** ストア配布・評価に使う素の入れ子オブジェクトにする */
@@ -121,8 +150,11 @@ export function publishTableColumns(
   store.setTableColumns(buildTableIndex(collectTableColumns(doc, displayNames)));
   // 書き戻し先の選択・実行は blockId で行うため、表示名 → blockId も一緒に配る
   if (store.setTableBlockIds) {
+    // データ表は書き戻し先にしない（素材が正で、表は見せているだけ）
+    const dataTableIds = collectDataTableBlockIds(doc);
     const ids: Record<string, string> = {};
     for (const [blockId, name] of displayNames) {
+      if (dataTableIds.has(blockId)) continue;
       if (!(name in ids)) ids[name] = blockId; // 同名は文書順で先の表（読み取りと同じ規則）
     }
     store.setTableBlockIds(ids);
