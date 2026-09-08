@@ -208,7 +208,10 @@ describe("note-app からの配線", () => {
       "onProposeToSource={canPropose ? () => setProposeOpen(true) : undefined}",
     );
     // 元の作者が自分のときは出さない（自分のノートには「共有コピーを更新」がある）
-    expect(noteAppSource).toContain("forkedFrom.authorEmail !== sharedAuthor.email");
+    // 派生元の作者が自分でも出す（1 人で流れを確かめる・別端末から自分のノートへ提案する）。
+    // 作者一致で隠すゲートを戻さないよう、無いことを固定する
+    expect(noteAppSource).not.toContain("forkedFrom.authorEmail !== sharedAuthor.email");
+    expect(noteAppSource).toContain("(!sharedRefState || isProposalShared)");
   });
 
   it("取り下げは提案として共有済みのときだけ渡す", () => {
