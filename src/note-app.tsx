@@ -2710,6 +2710,18 @@ function NoteEditorInner({
       sourceFetchedAt: initialDoc?.sourceFetchedAt,
       sourcePdfFileId: initialDoc?.sourcePdfFileId,
       sourcePdfName: initialDoc?.sourcePdfName,
+      sourceTextFileId: initialDoc?.sourceTextFileId,
+      sourceDocumentFileId: initialDoc?.sourceDocumentFileId,
+      sourceDocumentName: initialDoc?.sourceDocumentName,
+      // 出どころの記録。buildDocument は state からスクラッチで組むので、
+      // ここに書かないフィールドは保存のたびに黙って消える（sharedRef と同じ罠）。
+      // これらは編集で変わらないので initialDoc から素通しする
+      //  - forkedFrom: 共有ライブラリから派生した元（逆引きの「派生版」、変更の提案）
+      //  - templateFrom: どのテンプレートから作ったか（逆引きの「テンプレート由来」）
+      //  - partOfPlanNoteId: 計画ノートとの結び付き
+      forkedFrom: initialDoc?.forkedFrom,
+      templateFrom: initialDoc?.templateFrom,
+      partOfPlanNoteId: initialDoc?.partOfPlanNoteId,
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
