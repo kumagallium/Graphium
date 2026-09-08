@@ -22,7 +22,19 @@ export type OcrToastState = {
   failed?: number;
 } | null;
 
-export function OcrToast({ state }: { state: OcrToastState }) {
+export function OcrToast({
+  state,
+  stacked = false,
+}: {
+  state: OcrToastState;
+  /**
+   * true なら通常位置より上にずらして表示する。
+   * ノート内自動 OCR（貼り付け直後）と投入口後追い OCR は同じコンポーネントを
+   * 使うため、両方が同時に active になると既定位置のまま重なって片方が完全に
+   * 隠れる。呼び出し側のうち一方をここで上にずらして重なりを避ける。
+   */
+  stacked?: boolean;
+}) {
   const t = useT();
   const [visible, setVisible] = useState(false);
 
@@ -54,7 +66,7 @@ export function OcrToast({ state }: { state: OcrToastState }) {
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-[9999] flex items-center gap-1.5 rounded-full border shadow-lg pl-3 pr-3.5 py-1.5 text-xs transition-all duration-300 ${tone}`}
+      className={`fixed ${stacked ? "bottom-16" : "bottom-4"} right-4 z-[9999] flex items-center gap-1.5 rounded-full border shadow-lg pl-3 pr-3.5 py-1.5 text-xs transition-all duration-300 ${tone}`}
       role="status"
     >
       {active ? (

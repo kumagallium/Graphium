@@ -108,7 +108,14 @@ import { collectOcrText } from "../media-ocr/collect";
 //      bump を必ず実地確認する: Graphium 起動時に v23 インデックスが v24 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
 // 25: sharedCitation ブロックのタイトル・ファイル名を検索テキストに含める
-export const INDEX_SCHEMA_VERSION = 25;
+// v26: importSource.contentHash を importSourceHash として mirror。
+//      投入口（note-dedupe）の重複判定を「タイトル一致で絞ってから doc を読んで
+//      ハッシュを見る」2 段構えから、index だけを見るハッシュ直接照合に変更した
+//      （リネームされたファイルでも中身が同じなら重複と判定できるように）。
+//      旧ノートは importSourceHash=undefined のまま読める（後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v25 インデックスが v26 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 26;
 
 export type GraphiumIndex = {
   version: number;
@@ -196,6 +203,14 @@ export type NoteIndexEntry = {
    * 完全削除はゴミ箱に戻してから行う。
    */
   archivedAt?: string;
+  /**
+   * 投入口（intake）で取り込んだ元ファイルの中身の SHA-256（v26）。
+   * doc.importSource.contentHash を mirror する。投入口の重複判定
+   * （note-dedupe）が doc を読まずに index だけで「中身が同じファイルの
+   * 再取り込みか」を判定できるようにするためのフィールド。
+   * 投入口以外で作ったノート・importSource を持たない旧ノートは undefined。
+   */
+  importSourceHash?: string;
   /**
    * Concept の研究プロセス役割（提案 v4 Phase 1.1）。
    * wikiMeta.claimRole を mirror する。複数値可。
@@ -529,6 +544,7 @@ export function buildIndexEntry(
     author,
     model,
     derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
+    importSourceHash: doc.importSource?.contentHash,
     inlineLabels: inlineLabels.length > 0 ? inlineLabels : undefined,
     claimRole: doc.wikiMeta?.claimRole,
     atomType: doc.wikiMeta?.atomType,

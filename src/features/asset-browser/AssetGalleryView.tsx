@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2 } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext } from "../note-context/context-tags";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
@@ -15,16 +15,13 @@ import {
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
-import { runOcrForImage, OcrToast, type OcrToastState } from "../media-ocr";
-import { OcrTimeoutError } from "../../lib/ocr";
-
-/** 一括 OCR を打ち切る連続タイムアウト回数 */
-const BULK_OCR_MAX_CONSECUTIVE_TIMEOUTS = 2;
+import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
 import { Favicon } from "./favicon";
 import { MaterialSidePeek } from "./MaterialSidePeek";
@@ -35,6 +32,7 @@ import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
+import { IntakeReceptacle, type IntakeFile, type IntakeSource } from "../intake";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
@@ -173,8 +171,11 @@ function BulkDeleteConfirmDialog({
 // 画像サムネイル: local-media:// URL を Blob URL に変換して表示
 function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
+  // 画面に入ってから読む。縮小版があればそれを使う（原寸の往復で WebView を膨らませない）
+  const [ref, inView] = useInView<HTMLDivElement>();
 
   useEffect(() => {
+    if (!inView) return;
     const provider = getActiveProvider();
     const fileId = provider.extractFileId(entry.thumbnailUrl);
     if (!fileId) {
@@ -182,9 +183,12 @@ function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
       setSrc(entry.thumbnailUrl);
       return;
     }
-    // ローカル: Blob URL に変換
-    provider.getMediaBlobUrl(fileId).then(setSrc).catch(() => {});
-  }, [entry.thumbnailUrl]);
+    let cancelled = false;
+    thumbnailUrlFor(provider, fileId, entry.mimeType)
+      .then((url) => { if (!cancelled) setSrc(url); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [entry.thumbnailUrl, entry.mimeType, inView]);
 
   const wrapperCls = compact
     ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
@@ -195,7 +199,7 @@ function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
   const iconSize = compact ? 16 : 32;
 
   return (
-    <div className={wrapperCls}>
+    <div ref={ref} className={wrapperCls}>
       {src ? (
         <img src={src} alt={entry.name} className={imgCls} loading="lazy" />
       ) : (
@@ -495,6 +499,8 @@ export type AssetGalleryViewProps = {
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
+  /** 投入口の受け皿から直接渡されたファイル群を取り込む（素材が 1 件も無いときの初回受け皿用） */
+  onIntakeFiles?: (files: IntakeFile[], source: IntakeSource) => void;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
@@ -577,6 +583,23 @@ export type AssetGalleryViewProps = {
    * 親側で sourceAsset の付与・トースト等を行う。
    */
   onCreateMemoForAsset?: (entry: MediaIndexEntry, text: string) => void | Promise<void>;
+  /**
+   * フォルダ絞り込みポップアップの行を右クリック、または鉛筆アイコンで改名入口を開く。
+   * 未指定なら両方とも出さない（従来どおりチェックボックスのみの絞り込み行）。
+   * opts.initialMode が "rename" のときはメニューを経ずに直接入力欄を出す。
+   */
+  onFolderMenu?: (
+    path: string,
+    position: { top: number; left: number },
+    opts?: { initialMode?: "menu" | "rename" },
+  ) => void;
+  /**
+   * フォルダの改名が起きたことを親から知らせる。folderFilter に含まれていれば
+   * 新しい名前へ差し替える（mediaIndex の変化からは自動追従しないため、
+   * 改名の実行元である親が明示的に伝える最小実装）。
+   * seq は同じ from/to の組み合わせでも変更を検知させたいときのキー。
+   */
+  renamedFolder?: { from: string; to: string; seq: number };
 };
 
 // 素材タイプごとの表示モード（gallery / list）。
@@ -634,6 +657,7 @@ export function AssetGalleryView({
   noteFolderLookup,
   onAddUrlBookmark,
   onUploadMedia,
+  onIntakeFiles,
   onIngestMedia,
   onCreateProvNote,
   onTranslatePdf,
@@ -655,6 +679,8 @@ export function AssetGalleryView({
   captureIndex,
   onDeleteMemo,
   onCreateMemoForAsset,
+  onFolderMenu,
+  renamedFolder,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -664,6 +690,15 @@ export function AssetGalleryView({
   const [docFilter, setDocFilter] = useState<"all" | "pdf" | "word">("all");
   // フォルダでの絞り込み（ノートと同じ体系。UNFILED_PATH は「フォルダに入っていない素材」）
   const [folderFilter, setFolderFilter] = useState<string[]>([]);
+  // 改名されたフォルダが絞り込み中に入っていたら、新しい名前へ追従させる。
+  // mediaIndex の書き換えは非同期のため、renamedFolder を明示的に受け取って置換する。
+  useEffect(() => {
+    if (!renamedFolder) return;
+    // 本人だけでなく子（from/ で始まるもの）も改名されるので、同じ規則で置き換える
+    const { from, to } = renamedFolder;
+    const rewrite = (v: string) => (v === from ? to : v.startsWith(from + "/") ? to + v.slice(from.length) : v);
+    setFolderFilter((prev) => (prev.some((v) => rewrite(v) !== v) ? prev.map(rewrite) : prev));
+  }, [renamedFolder]);
   // 素材が属するフォルダ（自分で付けたもの + 使われているノートのフォルダ）を求める。
   // 参照表が渡らない文脈（Storybook など）では自分で付けた分だけになる。
   const emptyLookup = useMemo(() => new Map<string, readonly string[]>(), []);
@@ -1167,38 +1202,21 @@ export function AssetGalleryView({
     if (ocrableSelected.length === 0) return;
     const total = ocrableSelected.length;
     setBulkOcr({ done: 0, total });
-    setBulkOcrToast({ running: total, chars: 0, empty: 0, failed: 0 });
-    let chars = 0;
-    let empty = 0;
-    let failed = 0;
-    // 連続でタイムアウト（宙吊り）したら、残りを 1 件ずつ 120s 待つのは無意味なので
-    // 打ち切る。recognizeImage が 1 回目のタイムアウトで worker を作り直しているので、
-    // 2 回続けば「作り直しても動かない」＝この環境では今は読めない、と判断する。
-    let consecutiveTimeouts = 0;
     let aborted = false;
     try {
-      for (const [i, entry] of ocrableSelected.entries()) {
-        try {
-          const result = await runOcrForImage(entry.url);
-          await persistOcrTextPatch(entry.fileId, result.text);
-          consecutiveTimeouts = 0;
-          if (result.text) chars += result.text.replace(/\s/g, "").length;
-          else empty += 1;
-        } catch (err) {
-          console.error("[asset-gallery] OCR 失敗:", entry.name, err);
-          failed += 1;
-          if (err instanceof OcrTimeoutError && ++consecutiveTimeouts >= BULK_OCR_MAX_CONSECUTIVE_TIMEOUTS) {
-            aborted = true;
-          }
-        }
-        setBulkOcr({ done: i + 1, total });
-        setBulkOcrToast({ running: total - (i + 1), chars, empty, failed });
-        if (aborted) break;
-      }
+      const result = await runBulkOcr(
+        ocrableSelected.map((e) => ({ fileId: e.fileId, url: e.url, name: e.name })),
+        {
+          onProgress: (p) => {
+            setBulkOcr({ done: total - p.running, total });
+            setBulkOcrToast({ running: p.running, chars: p.chars, empty: p.empty, failed: p.failed });
+          },
+        },
+      );
+      aborted = result.aborted;
       if (!aborted) setSelectedIds(new Set());
     } finally {
       setBulkOcr(null);
-      setBulkOcrToast({ running: 0, chars, empty, failed });
     }
   }, [ocrableSelected]);
 
@@ -1634,9 +1652,15 @@ export function AssetGalleryView({
               <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-16">
-              <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
-            </div>
+            onIntakeFiles && mediaIndex && mediaIndex.media.length === 0 ? (
+              <div className="py-10 max-w-[560px] mx-auto">
+                <IntakeReceptacle lead={t("intake.emptyMaterialsLead")} onFilesSelected={onIntakeFiles} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-16">
+                <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
+              </div>
+            )
           ) : viewMode === "gallery" ? (
             // 列数はコンテナ幅に追従（サイドピークが inline で並ぶと自動で減る）。
             // モバイル（overlay 表示）はリフロー不要なので従来どおり 2 列固定
@@ -1916,6 +1940,29 @@ export function AssetGalleryView({
           clearLabel={t("nav.clearFilter")}
           noMatchText={t("nav.contextEmpty")}
           minWidth={220}
+          // 未分類（UNFILED_PATH）は実体を持たない疑似フォルダなので、右クリック・改名の対象外
+          onOptionContextMenu={
+            onFolderMenu
+              ? (value, pos) => {
+                  if (value === UNFILED_PATH) return;
+                  onFolderMenu(value, pos);
+                }
+              : undefined
+          }
+          optionAction={
+            onFolderMenu
+              ? {
+                  title: t("nav.renameFolder"),
+                  icon: <Pencil size={12} />,
+                  // 「未分類」は疑似フォルダなので改名の対象にしない（鉛筆も出さない）
+                  appliesTo: (value) => value !== UNFILED_PATH,
+                  onClick: (value, pos) => {
+                    if (value === UNFILED_PATH) return;
+                    onFolderMenu(value, pos, { initialMode: "rename" });
+                  },
+                }
+              : undefined
+          }
         />
       )}
     </div>

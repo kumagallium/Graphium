@@ -1232,6 +1232,54 @@ async fn read_media_file(file_id: String) -> Result<String, String> {
     .map_err(|e| format!("メディア読み取りタスク失敗: {e}"))?
 }
 
+/// 素材のサムネイル（長辺 max_edge px の JPEG）を Base64 で返す。
+///
+/// ピッカーやギャラリーが原寸を read_media_file で受け取ると、数 MB の Base64 を
+/// 1 枚ごとに往復して WebView のメモリが数百 MB 膨らみ、本体の CPU も食う
+/// （2026-09-04 の実測: 60 枚で Rust +10 秒・WebView +700MB）。縮小はこちらで行い、
+/// 結果は <media>/.thumbs/<id>-<edge>.jpg に置いて次回はそれを返す。
+/// 元ファイルより古いキャッシュは作り直す。画像として読めないものは Err
+/// （呼び出し側は原寸にフォールバックする）。
+#[tauri::command]
+async fn read_media_thumbnail(file_id: String, max_edge: u32) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use base64::Engine;
+        let edge = max_edge.clamp(32, 1024);
+        let dir = media_dir()?;
+        let src = find_media_data_file(&dir, &file_id)
+            .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
+        let thumbs = dir.join(".thumbs");
+        fs::create_dir_all(&thumbs).map_err(|e| format!("サムネイル用ディレクトリ作成失敗: {e}"))?;
+        let cache = thumbs.join(format!("{file_id}-{edge}.jpg"));
+        let fresh = match (fs::metadata(&cache), fs::metadata(&src)) {
+            (Ok(c), Ok(s)) => match (c.modified(), s.modified()) {
+                (Ok(cm), Ok(sm)) => cm >= sm,
+                _ => true,
+            },
+            _ => false,
+        };
+        if fresh {
+            let bytes = fs::read(&cache).map_err(|e| format!("サムネイル読み取り失敗: {e}"))?;
+            return Ok(base64::engine::general_purpose::STANDARD.encode(&bytes));
+        }
+        let img = image::open(&src).map_err(|e| format!("画像として読めません: {e}"))?;
+        // thumbnail() は近傍法の高速縮小。サムネイル用途では十分で、resize より桁違いに速い
+        let small = img.thumbnail(edge, edge).to_rgb8();
+        let mut out = Vec::new();
+        let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 82);
+        enc
+            .encode(small.as_raw(), small.width(), small.height(), image::ExtendedColorType::Rgb8)
+            .map_err(|e| format!("サムネイル生成失敗: {e}"))?;
+        // キャッシュ書き込みの失敗は致命ではない（次回また作る）
+        if let Err(e) = fs::write(&cache, &out) {
+            eprintln!("サムネイルのキャッシュ書き込み失敗: {e}");
+        }
+        Ok(base64::engine::general_purpose::STANDARD.encode(&out))
+    })
+    .await
+    .map_err(|e| format!("サムネイル生成タスク失敗: {e}"))?
+}
+
 /// URL の Reader 原文などのプレーンテキストを保存（B-persist）。
 /// バイナリメディア（save_media_file）とは別に <media_dir>/<id>.txt に置く。
 #[tauri::command]
@@ -1321,6 +1369,15 @@ fn delete_media_file(file_id: String) -> Result<(), String> {
         if let Err(e) = trash::delete(&data_path) {
             eprintln!("trash::delete 失敗（フォールバックで unlink）: {e}");
             fs::remove_file(&data_path).map_err(|e| format!("メディア削除失敗: {e}"))?;
+        }
+    }
+    // サムネイルのキャッシュも道連れにする（残しても害は無いが、消した素材の名残になる）
+    if let Ok(entries) = fs::read_dir(dir.join(".thumbs")) {
+        let prefix = format!("{file_id}-");
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with(&prefix) {
+                let _ = fs::remove_file(entry.path());
+            }
         }
     }
     let meta_path = dir.join(format!("{file_id}.meta.json"));
@@ -1970,6 +2027,7 @@ pub fn run() {
             delete_skill_file,
             save_media_file,
             read_media_file,
+            read_media_thumbnail,
             save_media_text,
             read_media_text,
             delete_media_text,

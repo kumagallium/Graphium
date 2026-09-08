@@ -34,6 +34,7 @@ describe("buildDocument が保存で落としてはいけないもの", () => {
     ["sourceTextFileId", "取り込み元のテキスト"],
     ["sourceDocumentFileId", "取り込み元の文書（文書ノートの判定に使う）"],
     ["sourceDocumentName", "取り込み元の文書名"],
+    ["importSource", "投入口からの取り込み元（重複判定に使う）"],
   ])("%s を initialDoc から引き継ぐ（%s）", (field) => {
     expect(body).toContain(`${field}: initialDoc?.${field},`);
   });

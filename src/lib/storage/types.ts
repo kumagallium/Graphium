@@ -40,8 +40,17 @@ export interface StorageProvider {
 
   // --- メディア ---
   uploadMedia(file: File): Promise<MediaUploadResult>;
-  /** メディアファイルの表示用 URL を取得（動画・音声は Blob URL を返す場合あり） */
-  getMediaBlobUrl(fileId: string): Promise<string>;
+  /**
+   * メディアファイルの表示用 URL を取得（動画・音声は Blob URL を返す場合あり）。
+   * `mimeTypeHint` は MIME を引くための往復を省くための任意のヒント（索引の mimeType）
+   */
+  getMediaBlobUrl(fileId: string, mimeTypeHint?: string): Promise<string>;
+  /**
+   * 画像の縮小版（長辺 maxEdge px）の表示用 URL。一覧やピッカーのサムネイル用。
+   * 原寸を WebView に渡さずに済むプロバイダだけが実装する。未実装・失敗なら
+   * 呼び出し側は getMediaBlobUrl に落とす
+   */
+  getMediaThumbnailUrl?(fileId: string, maxEdge: number): Promise<string>;
   /**
    * メディアの実体バイト列を読む（表示用の URL を作らない）。
    *

@@ -39,10 +39,32 @@ export function isDocumentMime(mimeType: string): boolean {
 
 /** Word (.docx) の MIME。埋め込み画像抽出は .docx のみ対応（.doc/.xls/.ppt は非対応）。 */
 const WORD_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+/** PowerPoint (.pptx) の MIME */
+const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+/** Excel (.xlsx) の MIME */
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /** Word (.docx) 素材かどうか */
 export function isWordDocxEntry(entry: { type: MediaType; mimeType: string }): boolean {
   return entry.type === "document" && entry.mimeType === WORD_DOCX_MIME;
+}
+
+/** PowerPoint (.pptx) 素材かどうか */
+export function isPptxEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "document" && entry.mimeType === PPTX_MIME;
+}
+
+/** Excel (.xlsx) 素材かどうか */
+export function isXlsxEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "document" && entry.mimeType === XLSX_MIME;
+}
+
+/**
+ * ちゃんと展開できる Office 形式（.docx / .pptx / .xlsx）の素材かどうか。
+ * 旧バイナリ形式（.doc / .xls / .ppt）はここに含まない。
+ */
+export function isModernOfficeEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return isWordDocxEntry(entry) || isPptxEntry(entry) || isXlsxEntry(entry);
 }
 
 /**
@@ -441,11 +463,28 @@ export async function readMediaIndex(): Promise<MediaIndex | null> {
  * 非ローカルの previewImage は消費者に渡らない。書き換えるところが無ければ
  * normalizeMediaIndex は引数のオブジェクトをそのまま返す（同一性は保たれる）。
  */
+/**
+ * 書き込みの直列化。保存はほぼ全ての呼び出し元で fire-and-forget なので、
+ * 「素材を登録した保存（A）」と「その素材にフォルダを付けた保存（B）」が同時に
+ * 飛ぶことがある。別々の要求として投げると到着順は保証されず、A が B の後に
+ * 着くとフォルダ無しの版で上書きされる（取り込み直後の素材のフォルダが消える
+ * 事故として実機で観測）。ここで前の書き込みを待ってから次を投げ、しかも
+ * 投げる時点の最新（latestIndex）を書くことで、後勝ちの内容が必ず残るようにする。
+ */
+let writeChain: Promise<void> = Promise.resolve();
+
 export async function saveMediaIndex(index: MediaIndex): Promise<void> {
   const normalized = normalizeMediaIndex(index);
   // 書き込みを投げる前に同期的に控える。ここを await の後ろに置くと、
   // 保存を待っている間に読んだ相手が古い土台の上で更新を組み立ててしまう。
   latestIndex = normalized;
+  const run = writeChain.then(() => writeMediaIndexNow(latestIndex ?? normalized));
+  // 失敗しても鎖は切らない（次の保存が永久に待たされないように）
+  writeChain = run.catch(() => {});
+  return run;
+}
+
+async function writeMediaIndexNow(normalized: MediaIndex): Promise<void> {
   const provider = getActiveProvider();
   if (provider.writeAppData) {
     await provider.writeAppData("media-index", normalized);
@@ -575,10 +614,12 @@ export async function persistUrlMetaPatch(
 /**
  * 画像の OCR テキストを media-index に書き戻す。
  *
- * 呼び出し元は 2 つ:
+ * 呼び出し元は 3 つ:
  *   - 素材ギャラリー / 素材ピークからの読み取り（そこが唯一の保存先）
  *   - ノートに貼った画像の読み取り（正は `page.mediaOcr`。ここへは
  *     `mirrorOcrToMediaIndex` 経由で写しを置き、素材横断で探せるようにする）
+ *   - PowerPoint 展開時のスライド文字の書き込み（`note-app.tsx` の
+ *     `handleExpandOffice`。ここが唯一の保存先で、後から OCR で上書きされうる）
  */
 export async function persistOcrTextPatch(
   fileId: string,

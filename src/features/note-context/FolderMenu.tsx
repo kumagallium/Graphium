@@ -25,6 +25,9 @@ export type FolderMenuProps = {
   onRename?: (path: string, nextPath: string) => void;
   /** 削除（タグ剥がし）。中のノートは消さない */
   onDelete?: (path: string) => void;
+  /** 開いた瞬間のモード。既定は "menu"。"rename" なら最初から入力欄を出す
+   *（ギャラリーの鉛筆アイコンなど、メニューを経ずに直接改名したい呼び出し用） */
+  initialMode?: "menu" | "rename";
 };
 
 export function FolderMenu({
@@ -35,10 +38,11 @@ export function FolderMenu({
   onClose,
   onRename,
   onDelete,
+  initialMode = "menu",
 }: FolderMenuProps) {
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
-  const [mode, setMode] = useState<"menu" | "rename" | "confirmDelete">("menu");
+  const [mode, setMode] = useState<"menu" | "rename" | "confirmDelete">(initialMode);
   const [draft, setDraft] = useState(name);
   const [error, setError] = useState(false);
 

@@ -334,6 +334,17 @@ What a data table can do:
 
 A data table is read-only by design: the numbers are the instrument's, and editing them by hand is exactly what a lab record should not do. To correct the data, correct the file and re-import.
 
+### Moving between the two forms <Badge type="tip" text="Added in v0.64.0 (2026-09-08)" /> {#moving-between-the-two-forms}
+
+A table can change form after it is already in the note, in both directions. Open the ⠿ menu beside the block and choose:
+
+- **Turn into a data table** — the rows are written out as a CSV **Data** asset and the block becomes a reference to it, so the note gets light again without importing anything a second time. Above 200 rows the same action also appears as a badge on the table's caption row, which is how a long table pasted from a spreadsheet gets rescued.
+- **Turn into a note table** — the rows come back into the body, and the table's name and its link to the asset come back with them, so nothing is lost by going either way. Only tables of at most 1,000 rows can return: putting a longer one back would bring in the very weight a data table exists to avoid, so the entry is greyed out and says so.
+
+Turning a table into a data table never removes anything from your library. The asset stays there, just as an image does when you delete it from a note. Going back and forth does not pile up copies either: as long as the rows still match, the same asset is used again, and a new one is written only once you have actually changed something.
+
+![The block menu of a data table, with the entry that turns it back into a table in the note](/screenshots/table-form-switch.png)
+
 ### Adding a computed column
 
 To add a column to a data table, write the formula in a **Calculation** block and send its result to the table:
@@ -342,6 +353,8 @@ To add a column to a data table, write the formula in a **Calculation** block an
 2. Press the **⇥** button next to the line's result and pick the data table. Its own columns cannot be overwritten; type a name for the new column — it starts as the variable name — and press **Add column**.
 
 The column appears at the right of the data table with a calculator badge; hover it to see which calculation produced it. Nothing is written to the asset or to the note's rows: the formula lives in the calculation block, and clearing the target removes the column. Charts and other calculation blocks read the new column like any other, so a converted unit or a normalized intensity is one line away.
+
+Because a computed column is a formula rather than data, it is only visible inside the note that holds the calculation, and it goes away with it. When the result deserves to be data in its own right, press **⤓** above the table: every column, the computed ones included, is written out as a new CSV asset that records the original as the asset it came from. <Badge type="tip" text="Added in v0.64.0 (2026-09-08)" />
 
 ![A data table with a computed column sent from a calculation block; the badges above show the source file, the size, and the expand button](/screenshots/data-table.png)
 
@@ -411,6 +424,12 @@ Under the title of every note sits a **Folder** button. Folder names are free-fo
 <Badge type="tip" text="Added in v0.51.0 (2026-09-01)" /> While a folder is open, the breadcrumb above the list reads **All Notes › Sourdough › Day 7** — click any step to go back to it, or **All Notes** to drop the filter. **New in folder** starts a note already inside the folder you are looking at, and right-clicking a folder offers **Rename** and **Delete folder**.
 
 <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> Drag a note by its title in the list and drop it on a folder in the sidebar. Dropping while a folder is open **moves** the note — it leaves the folder you are looking at and joins the one you dropped on; from **All Notes** there is nothing to leave, so it simply joins. Hold `Cmd` (`Ctrl` on Windows) while dropping to keep it where it is and add the new folder as well. Notes you have selected move together.
+
+### Rename a folder in place <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
+
+Hover a folder in the sidebar (or select it) and a pencil appears. Click it and the name becomes an input field — `Enter` confirms, `Esc` cancels. Double-clicking the name, or pressing `Enter` while the folder is selected, does the same thing. The right-click **Rename** entry still works as before. Renaming a folder brings its subfolders along, and reaches every note, memo, and material filed under it. Folders that only hold materials (the ones that don't show up in the notes tree) get the same treatment from the pencil (or right-click) on their row in the material gallery's **Folders** filter.
+
+![A folder row in the sidebar, hovered to reveal the rename pencil](/screenshots/folder-rename-inline.png)
 
 ::: warning Deleting a folder never deletes notes
 Renaming or deleting a folder takes its subfolders with it — a folder and what sits under it move together. The notes themselves are never deleted: any note that is not in another folder becomes **Unfiled**. To throw notes away, open the folder and delete them from the list.

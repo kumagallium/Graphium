@@ -143,6 +143,20 @@ type GraphiumDocument = {
   // (ARCHITECTURE.md §3.2 "URL / PDF → PROV ingestion").
   partOfPlanNoteId?: string;
 
+  // ── intake origin (note-dedupe) ─────────────────────
+  // Set only for notes created through the intake feature
+  // (`features/intake`). Used to recognize "the same file dropped again":
+  // if a re-imported file's content hash matches an existing note's
+  // importSource.contentHash (mirrored on the index as importSourceHash,
+  // §5, v26 — matched by content, independent of filename/title), intake
+  // reuses that note instead of creating a duplicate. A hand-authored note,
+  // or one created any other way, has no `importSource`.
+  importSource?: {
+    path: string;         // relative path at import time (filename only for a single-file drop)
+    contentHash: string;  // sha256 of the imported file's bytes, same format as computeBlobHash
+    importedAt: string;   // ISO 8601
+  };
+
   createdAt: string;   // ISO 8601
   modifiedAt: string;  // ISO 8601
 };
@@ -312,7 +326,16 @@ type TableSource = {
   resolve a note table. A calc write-back target on a data table (a
   `CalcTarget` whose `tableBlockId` is the block) adds a computed column at
   display time from the calc block's declaration; nothing is written to the
-  asset or to the note.
+  asset or to the note. A note table can be turned into a data table from
+  the ⠿ menu or from the caption badge that appears above long tables: its
+  rows are written out as a CSV data asset and the block becomes a
+  reference. The move is reversible from the same menu while the table has at
+  most 1,000 rows: the rows come back into the note and the caption and the
+  asset link (`tableMeta.source`) are kept, so nothing is lost either way.
+  Converting again reuses that same asset when the rows still match it, so
+  going back and forth does not pile up copies of the same CSV. A
+  data table can also be written out again, computed columns included, as a
+  new asset whose `derivedFromAssets` points at the original.
 
 ### 2.3 PROV-DM label model
 
@@ -1348,6 +1371,13 @@ type NoteIndexEntry = {
   model?: string;
   derivedFromNotes?: string[];      // for source === "ai" only
 
+  // v26: mirrors GraphiumDocument.importSource.contentHash. Lets intake's
+  //   note-dedupe recognize "the same file re-imported" by scanning the
+  //   index alone (no per-candidate doc read), and by content rather than
+  //   by filename — a renamed file still matches. Absent on notes not
+  //   created through intake, or on pre-v26 notes until reindexed.
+  importSourceHash?: string;
+
   inlineLabels?: {
     blockId: string;
     label: "material" | "tool" | "attribute" | "output";
@@ -1413,7 +1443,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **25**.
+Defined in `src/features/navigation/index-file.ts`. Currently **26**.
 Bumping rules:
 
 | Version | Change |
@@ -1439,6 +1469,7 @@ Bumping rules:
 | **23** | Added `steps` on `NoteIndexEntry` — the titles of `step` container blocks, collected in document order (including steps nested inside another step). `headings` is typed `level: 2 \| 3` and cannot carry a step, so steps get their own field. Headings written *inside* a step are still collected into `headings` so the outline does not lose them. Notes that use no step keep `steps: undefined`, and `ensureIndex` rebuilds on the bump without touching note JSON. |
 | **24** | Outline collection treats multi-column blocks (`columnList` / `column`) as transparent layout wrappers — headings and steps placed inside a column are collected as if they were top-level, so they appear in the outline and in search. No `NoteIndexEntry` field changed; the bump exists because the collection logic changed and column-using notes need a rebuild to be indexed correctly. Notes without columns produce identical entries. |
 | **25** | `extractBlockText` now yields the `cachedTitle` / `fileName` snapshot of `sharedCitation` blocks (§7.5), so a note is findable by the title of the shared entry it cites. No `NoteIndexEntry` field changed; citation-using notes need a rebuild to pick up the searchable text. |
+| **26** | Added `importSourceHash` — mirrors `GraphiumDocument.importSource.contentHash`. Intake's note-dedupe (`src/features/intake/note-dedupe.ts`) used to narrow candidates by filename-derived title before reading each candidate's doc to compare hashes; a renamed-but-unchanged file could not be recognized as the same file re-imported. It now scans the index for a matching `importSourceHash` directly (no per-candidate doc read, and rename-proof). Pre-v26 notes keep `importSourceHash: undefined` until `ensureIndex` rebuilds on the bump. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the
@@ -1642,7 +1673,11 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   `onAuthChange`.
 - **File CRUD** — `listFiles`, `loadFile`, `createFile`, `saveFile`,
   `deleteFile`. Files are `GraphiumDocument` blobs.
-- **Media** — `uploadMedia`, `getMediaBlobUrl`, `extractFileId`.
+- **Media** — `uploadMedia`, `getMediaBlobUrl` (with an optional MIME hint so
+  the provider need not list the library to label a blob), optional
+  `getMediaThumbnailUrl` (a downscaled image for galleries and pickers —
+  the Tauri provider has Rust render it and cache it under `media/.thumbs/`,
+  other providers fall back to the full file), `extractFileId`.
   Optional `readMediaBytes?(fileId, maxBytes?)` returns the raw bytes
   without minting a display URL. `getMediaBlobUrl` caches every blob URL it
   creates for the session, so reading a whole library through it would pin

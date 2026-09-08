@@ -8,7 +8,11 @@ export const dataTableBlock: CustomBlockEntry = {
 };
 
 // ホスト（note-app）が使う配線と純ロジック
-export { setDataTableReimportCallback } from "./callbacks";
+export {
+  setDataTableExportCallback,
+  setDataTableReimportCallback,
+  type ExportPayload,
+} from "./callbacks";
 export {
   DOC_TABLE_DEFAULT_MAX_ROWS,
   defaultImportTarget,

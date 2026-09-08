@@ -1,5 +1,34 @@
 # Changelog
 
+## [v0.65.1](https://github.com/kumagallium/Graphium/compare/v0.65.0...v0.65.1) - 2026-09-08
+
+- fix: 表の中身が同じなら素材を作り直さない（往復で CSV が増えるのを止める） by @kumagallium in https://github.com/kumagallium/Graphium/pull/880
+
+## [v0.65.0](https://github.com/kumagallium/Graphium/compare/v0.64.1...v0.65.0) - 2026-09-08
+
+- [docs] Add screenshots for the intake and in-place folder rename by @kumagallium in https://github.com/kumagallium/Graphium/pull/881
+- [feat] Skip notes whose imported file has not changed by @kumagallium in https://github.com/kumagallium/Graphium/pull/882
+- [feat] Read text from imported images in the background after intake by @kumagallium in https://github.com/kumagallium/Graphium/pull/883
+- [feat] Bring PowerPoint and Excel files in: slide text, images and sheets as tables by @kumagallium in https://github.com/kumagallium/Graphium/pull/884
+
+## [v0.64.1](https://github.com/kumagallium/Graphium/compare/v0.64.0...v0.64.1) - 2026-09-08
+
+- docs: v0.64.0 の表とデータ表の行き来をマニュアルに追記 by @kumagallium in https://github.com/kumagallium/Graphium/pull/879
+- [perf] Render gallery and picker thumbnails in Rust instead of shipping originals by @kumagallium in https://github.com/kumagallium/Graphium/pull/870
+
+## [v0.64.0](https://github.com/kumagallium/Graphium/compare/v0.63.0...v0.64.0) - 2026-09-08
+
+- feat: 本文の表をデータ表にする／データ表を計算列込みで素材に書き出す by @kumagallium in https://github.com/kumagallium/Graphium/pull/872
+
+## [v0.63.0](https://github.com/kumagallium/Graphium/compare/v0.62.2...v0.63.0) - 2026-09-08
+
+- [feat] Bring existing files in through one intake: sidebar, empty states, drop anywhere by @kumagallium in https://github.com/kumagallium/Graphium/pull/840
+- [feat] Rename folders in place, and keep materials in step when folders change by @kumagallium in https://github.com/kumagallium/Graphium/pull/875
+
+## [v0.62.2](https://github.com/kumagallium/Graphium/compare/v0.62.1...v0.62.2) - 2026-09-08
+
+- fix: キャプション付きの表があるノートが固まる回帰（属性の往復ループ）を直す by @kumagallium in https://github.com/kumagallium/Graphium/pull/871
+
 ## [v0.62.1](https://github.com/kumagallium/Graphium/compare/v0.62.0...v0.62.1) - 2026-09-08
 
 - [fix] Give computed-column headers room for the calculator badge by @kumagallium in https://github.com/kumagallium/Graphium/pull/868

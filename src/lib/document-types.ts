@@ -856,6 +856,19 @@ export type GraphiumDocument = {
    * 計画ノートに逆参照できるようにする。derivedFromNoteId とは別軸（所属 vs 派生）。
    */
   partOfPlanNoteId?: string;
+  /**
+   * 投入口（`features/intake`）で取り込んだ元ファイルの情報。
+   * 同じファイルを入れ直したときにノートを増やさない判定（note-dedupe）に使う。
+   * 手で作ったノート・投入口以外の経路で作ったノートには無い。
+   */
+  importSource?: {
+    /** 取り込み時の相対パス（vault ドロップ時。単体ファイルはファイル名のみ） */
+    path: string;
+    /** 取り込んだファイルの中身の SHA-256（"sha256:<hex>" 形式。computeBlobHash と同じ） */
+    contentHash: string;
+    /** 取り込み日時（ISO 8601） */
+    importedAt: string;
+  };
   createdAt: string;
   modifiedAt: string;
 };

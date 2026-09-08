@@ -25,6 +25,8 @@ serde_json = "1"
 dirs = "6"
 humantime = "2"
 base64 = "0.22"
+# 素材サムネイル（read_media_thumbnail）。原寸を WebView に渡さず Rust 側で縮小する
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp"] }
 trash = "5"
 
 # ウィンドウのサイズ・位置の記憶はデスクトップ専用プラグイン。
