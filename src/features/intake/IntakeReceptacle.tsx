@@ -83,7 +83,7 @@ export function IntakeReceptacle({ lead, emphasized = false, onFilesSelected }: 
         ref={filesInputRef}
         type="file"
         multiple
-        accept=".md,.markdown,.pdf,.docx,.doc,.txt,.csv,.tsv,.dat,image/*,audio/*,video/*"
+        accept=".md,.markdown,.pdf,.docx,.doc,.pptx,.xlsx,.txt,.csv,.tsv,.dat,image/*,audio/*,video/*"
         className="hidden"
         onChange={(e) => {
           const files = toIntakeFiles(e.target.files ?? []);

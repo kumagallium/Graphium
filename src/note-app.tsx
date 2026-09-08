@@ -7424,12 +7424,77 @@ export function NoteApp() {
 
   // 取り込んだ画像の文字読み取りを後追いで直列に回す（取り込み自体は先に終わらせる）
   const intakeOcr = useQueuedBulkOcr();
+
+  // 投入口から入ってきた PowerPoint (.pptx) / Excel (.xlsx) を展開する。
+  // pptx: スライドの文字を素材の ocrText に（persistOcrTextPatch）、埋め込み画像を
+  //       派生素材として登録する（Word の埋め込み画像抽出と同じ関係）。
+  // xlsx: シートごとに CSV の File を作り、区切りテキスト取り込みと同じ経路
+  //       （derivedFromAssets 付きの "data" 素材）で登録する。
+  const handleExpandOffice = useCallback(
+    async (file: File, fileId: string): Promise<{ derived: number; skipped: number }> => {
+      const lower = file.name.toLowerCase();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+
+      if (lower.endsWith(".pptx")) {
+        const { readPptx } = await import("./features/office-import/pptx");
+        const { slides, images, skippedImages } = await readPptx(bytes);
+
+        const text = slides
+          .map((s) => `--- slide ${s.index} ---\n${s.text}`.trimEnd())
+          .join("\n\n")
+          .trim();
+        if (text) {
+          const { persistOcrTextPatch } = await import("./features/asset-browser/media-index");
+          try {
+            await persistOcrTextPatch(fileId, text);
+          } catch (err) {
+            console.warn("[note-app] pptx スライド文字の保存に失敗:", err);
+          }
+        }
+
+        let derived = 0;
+        for (const image of images) {
+          try {
+            const imageFile = new File([image.bytes as BlobPart], image.name, { type: image.mimeType });
+            await fm.handleUploadAsset(imageFile, { derivedFromAssets: [fileId] });
+            derived++;
+          } catch (err) {
+            console.warn(`[note-app] pptx 画像登録失敗: ${image.name}`, err);
+          }
+        }
+        return { derived, skipped: skippedImages };
+      }
+
+      if (lower.endsWith(".xlsx")) {
+        const { readXlsx } = await import("./features/office-import/xlsx");
+        const { sheets } = readXlsx(bytes);
+        const bookName = file.name.replace(/\.xlsx$/i, "");
+
+        let derived = 0;
+        for (const sheet of sheets) {
+          try {
+            const csvFile = new File([sheet.csv], `${bookName} / ${sheet.name}.csv`, { type: "text/csv" });
+            await fm.handleUploadAsset(csvFile, { derivedFromAssets: [fileId] });
+            derived++;
+          } catch (err) {
+            console.warn(`[note-app] xlsx シート登録失敗: ${sheet.name}`, err);
+          }
+        }
+        return { derived, skipped: 0 };
+      }
+
+      return { derived: 0, skipped: 0 };
+    },
+    [fm],
+  );
+
   // 投入口（既存資料の一括持ち込み）: サイドバー・空ノートのチップ・一覧と
   // 素材の空状態・どこでもドロップの 4 面すべてがこの 1 つの state を開閉する。
   const intake = useIntake({
     importMarkdown: importMarkdownFiles,
     uploadAsset: (file) => fm.handleUploadAsset(file),
     setAssetFolder: (fileId, folder) => fm.updateMediaContexts(fileId, [folder]),
+    expandOffice: handleExpandOffice,
     afterRun: () => fm.refreshFiles(),
     aiAvailable: aiUiEnabled,
     // 取り込みが終わった画像のうち、まだ文字が読めていないものを裏で読み取り始める

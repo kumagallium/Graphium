@@ -84,6 +84,7 @@ export function useIntake(
           skippedByExt: combined.skippedByExt,
           folders: combined.folders,
           ocrPending: combined.ocrTargets.length,
+          officeDerived: combined.officeDerived,
           aiAvailable: depsRef.current.aiAvailable,
         });
         // 進行中に × で閉じられていても、結果（復元レポート）は必ず見せる

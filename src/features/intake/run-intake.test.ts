@@ -92,18 +92,18 @@ describe("runIntake", () => {
     expect(outcome.materials).toBe(1);
   });
 
-  it("skippedByExt が拡張子ごとに数えられる", async () => {
+  it("skippedByExt が拡張子ごとに数えられる（旧形式 .ppt/.xls は対象外のまま）", async () => {
     const files = [
-      otherFile("a.pptx"),
-      otherFile("b.pptx"),
-      otherFile("c.xlsx"),
+      otherFile("a.ppt"),
+      otherFile("b.ppt"),
+      otherFile("c.xls"),
       otherFile("d.bak"),
     ];
     const deps = makeDeps();
 
     const outcome = await runIntake(files, deps, () => {});
 
-    expect(outcome.skippedByExt).toEqual({ ".pptx": 2, ".xlsx": 1, ".bak": 1 });
+    expect(outcome.skippedByExt).toEqual({ ".ppt": 2, ".xls": 1, ".bak": 1 });
   });
 
   it("materialsExisting が uploadAsset の duplicate:true 件数を数える", async () => {
@@ -157,6 +157,59 @@ describe("runIntake", () => {
     expect(outcome.folders).toBe(2);
     expect(setAssetFolder).toHaveBeenCalledTimes(1);
     expect(setAssetFolder).toHaveBeenCalledWith("id-fig.png", "研究");
+  });
+
+  it("pptx/xlsx の新規登録には expandOffice が呼ばれ、officeDerived に合算される", async () => {
+    function officeFile(name: string): IntakeFile {
+      return { file: new File(["dummy"], name, { type: "" }), path: name };
+    }
+    const files = [officeFile("slides.pptx"), officeFile("sheet.xlsx")];
+    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: false }));
+    const expandOffice = vi.fn(async (_file: File, fileId: string) => ({
+      derived: fileId === "id-slides.pptx" ? 2 : 3,
+      skipped: 0,
+    }));
+    const deps = makeDeps({ uploadAsset, expandOffice });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(expandOffice).toHaveBeenCalledTimes(2);
+    expect(outcome.officeDerived).toBe(5);
+  });
+
+  it("重複登録（duplicate）の pptx/xlsx には expandOffice を呼ばない", async () => {
+    function officeFile(name: string): IntakeFile {
+      return { file: new File(["dummy"], name, { type: "" }), path: name };
+    }
+    const files = [officeFile("slides.pptx")];
+    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
+    const expandOffice = vi.fn(async () => ({ derived: 2, skipped: 0 }));
+    const deps = makeDeps({ uploadAsset, expandOffice });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(expandOffice).not.toHaveBeenCalled();
+    expect(outcome.officeDerived).toBe(0);
+  });
+
+  it("expandOffice が throw しても取り込みは継続する", async () => {
+    function officeFile(name: string): IntakeFile {
+      return { file: new File(["dummy"], name, { type: "" }), path: name };
+    }
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const files = [officeFile("slides.pptx")];
+    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: false }));
+    const expandOffice = vi.fn(async () => {
+      throw new Error("展開失敗");
+    });
+    const deps = makeDeps({ uploadAsset, expandOffice });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(outcome.materials).toBe(1);
+    expect(outcome.officeDerived).toBe(0);
+    expect(outcome.failed).toEqual([]);
+    warn.mockRestore();
   });
 
   it("フォルダの引き継ぎ: 登録済み（duplicate）の素材には setAssetFolder を呼ばない", async () => {
@@ -284,6 +337,7 @@ describe("mergeOutcome", () => {
       lastNewId: "note-a",
       folders: 2,
       ocrTargets: [{ fileId: "img-a", url: "url-a", name: "a.png" }],
+      officeDerived: 4,
     };
     const b: IntakeOutcome = {
       notes: 1,
@@ -298,6 +352,7 @@ describe("mergeOutcome", () => {
       lastNewId: null,
       folders: 1,
       ocrTargets: [{ fileId: "img-b", url: "url-b", name: "b.png" }],
+      officeDerived: 2,
     };
 
     const merged = mergeOutcome(a, b);
@@ -321,6 +376,7 @@ describe("mergeOutcome", () => {
         { fileId: "img-a", url: "url-a", name: "a.png" },
         { fileId: "img-b", url: "url-b", name: "b.png" },
       ],
+      officeDerived: 6,
     });
   });
 });
