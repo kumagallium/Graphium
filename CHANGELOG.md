@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.63.0](https://github.com/kumagallium/Graphium/compare/v0.62.2...v0.63.0) - 2026-09-08
+
+- [feat] Bring existing files in through one intake: sidebar, empty states, drop anywhere by @kumagallium in https://github.com/kumagallium/Graphium/pull/840
+- [feat] Rename folders in place, and keep materials in step when folders change by @kumagallium in https://github.com/kumagallium/Graphium/pull/875
+
 ## [v0.62.2](https://github.com/kumagallium/Graphium/compare/v0.62.1...v0.62.2) - 2026-09-08
 
 - fix: キャプション付きの表があるノートが固まる回帰（属性の往復ループ）を直す by @kumagallium in https://github.com/kumagallium/Graphium/pull/871
