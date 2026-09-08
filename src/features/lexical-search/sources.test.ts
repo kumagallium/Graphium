@@ -52,6 +52,14 @@ describe("desiredAssetSources", () => {
     expect(names.get("pdf1")).toBe("paper.pdf");
     expect(desired.find((d) => d.sourceId === "pdf1")?.fingerprint).toBe("pdf:2026-02-02");
   });
+  it("document（pptx のスライド文字）は OCR ありのものだけ索引に載る", () => {
+    const { desired, plans } = desiredAssetSources([
+      media({ fileId: "doc1", type: "document", name: "slides.pptx", ocrText: "--- slide 1 ---\nこんにちは" }),
+      media({ fileId: "doc2", type: "document", name: "sheet.xlsx" }),
+    ]);
+    expect(desired.map((d) => d.sourceId)).toEqual(["doc1"]);
+    expect(plans.get("doc1")).toEqual({ mode: "inline", text: "--- slide 1 ---\nこんにちは" });
+  });
   it("includePdf=false で PDF を外せる", () => {
     const { desired } = desiredAssetSources([media({ fileId: "pdf1", type: "pdf" })], { includePdf: false });
     expect(desired).toEqual([]);
