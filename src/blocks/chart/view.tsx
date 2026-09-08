@@ -73,6 +73,8 @@ import {
   type SeriesType,
 } from "./chart-config";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
+import { peekDataTableFromBlock, subscribeDataTableData } from "../data-table/data";
+import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
 import {
   canPickChartAssetSource,
   requestChartAssetSource,
@@ -111,6 +113,14 @@ function collectTables(
           const data = readTableData(b);
           label = (data?.headers ?? []).filter(Boolean).join(" | ");
         }
+        result.push({
+          id: b.id,
+          label: label.length > 48 ? `${label.slice(0, 48)}…` : label || t("chart.table"),
+          kind: "table",
+        });
+      } else if (b?.type === "dataTable") {
+        // データ表（素材を参照する表）。表示名は本文の表と同じ規則（auto-name）で付く
+        const label = displayNames.get(b.id) ?? "";
         result.push({
           id: b.id,
           label: label.length > 48 ? `${label.slice(0, 48)}…` : label || t("chart.table"),
@@ -263,9 +273,12 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
       if (timer.id) window.clearTimeout(timer.id);
       timer.id = window.setTimeout(() => setDocVersion((v) => v + 1), 300);
     });
+    // データ表の素材は非同期に届く（本文は変わらない）ので、到着でも読み直す
+    const unsubData = subscribeDataTableData(() => setDocVersion((v) => v + 1));
     return () => {
       if (timer.id) window.clearTimeout(timer.id);
       if (typeof unsub === "function") unsub();
+      unsubData();
     };
   }, [editor]);
 
@@ -303,12 +316,18 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     return (key: string): TableData | null => {
       if (isAssetSourceKey(key)) return assetTables.resolve(key);
       if (!cache.has(key)) {
-        cache.set(key, readTableData((editor as any).getBlock?.(key)));
+        const block = (editor as any).getBlock?.(key);
+        // データ表は calc の計算列も含めて読む（表示と同じ列が描ける）
+        const dataTable = mergeLinkedColumns(
+          peekDataTableFromBlock(block),
+          linkedColumnsFor(key, tableMetaStore?.calcWritebacks),
+        );
+        cache.set(key, readTableData(block) ?? dataTable?.data ?? null);
       }
       return cache.get(key) ?? null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, docVersion, assetTables.resolve]);
+  }, [editor, docVersion, assetTables.resolve, tableMetaStore?.calcWritebacks]);
 
   const updateConfig = (patch: Partial<ChartBlockConfig>) => {
     (editor as any).updateBlock(block, {

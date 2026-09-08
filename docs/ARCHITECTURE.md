@@ -92,8 +92,8 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`, `calc`,
-  `callout`, `chart`, `columnList` / `column`, `math`, `pdf-viewer`,
-  `sharedCitation`, `step`). Inline content (entity /
+  `callout`, `chart`, `columnList` / `column`, `dataTable`, `math`,
+  `pdf-viewer`, `sharedCitation`, `step`). Inline content (entity /
   agent highlights) lives under `src/features/inline-label/`; inline math lives
   under `src/features/inline-math/`.
 - `calc` is a Numi-style live calculation block: each line of `props.source` is
@@ -128,6 +128,39 @@ talks to LLM and embedding backends.
   levels: steps first, then — for a step that has outputs — that step's
   individual outputs, so the writer states *which* output is being
   received rather than only that one step followed another.
+- Pasting a table (HTML `<table>` or tab-separated text from a spreadsheet)
+  with more than `DOC_TABLE_DEFAULT_MAX_ROWS` (200) data rows is intercepted
+  in the paste handler and routed into the same data-import dialog as a
+  dropped file, so the note-table stall cannot be reached from the clipboard
+  either (`src/features/data-import/paste.ts`). Smaller pastes stay ordinary
+  BlockNote tables.
+- `dataTable` shows a delimited data asset (the same instrument `.txt` /
+  `.dat` / `.csv` that data import turns into a table) *without* expanding it
+  into the note. The block stores only a reference — the asset id plus the
+  read settings, the same shape as `tableMeta.source` — and a caption; the
+  rows stay in the asset and are parsed on display through the shared asset
+  text cache (`src/features/data-import/asset-text.ts`, also used by charts).
+  Only the visible rows are rendered (fixed-height virtual scrolling), sorting
+  is view-only, and the table is read-only. This exists because a note table
+  is one ProseMirror node per cell and every edit re-serializes the whole
+  document, so a 2,000-row measurement pasted as a note table stalls the
+  editor; the import dialog therefore defaults to a data table for every
+  delimited import (instrument data is read and plotted, not edited by hand)
+  and lets the writer pick the note-table form instead, warning above
+  editor; the import dialog therefore defaults to a data table for every
+  delimited import (instrument data is read and plotted, not edited by hand)
+  and lets the writer pick the note-table form instead, warning above
+  `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and refusing above
+  `DOC_TABLE_HARD_MAX_ROWS` (1,000), because a 2,000-row note table stalls
+  the editor until it is force-quit. Re-importing from the source badge
+  converts between the two forms. Calc blocks and charts read a data table
+  by its caption exactly like a note table, and the expand button opens the
+  same full-height view with virtual scrolling. Calc write-back (⇥) onto a
+  data table does not touch the asset: the declared values are shown as an
+  extra *computed column* on the right, marked with a calculator badge, so
+  the formula stays visible in the calc block and the note still stores no
+  rows. Charts and other calc blocks read computed columns like any other
+  column.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the

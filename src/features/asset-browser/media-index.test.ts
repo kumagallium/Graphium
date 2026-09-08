@@ -6,6 +6,7 @@ import {
   updateBlockNameByUrl,
   collectPdfFileIdsFromDoc,
   collectSourceAssetFileIdsFromDoc,
+  collectDataTableAssetFileIdsFromBlocks,
   extractMediaFromBlocks,
   syncUsedIn,
   ensureMediaIndex,
@@ -431,6 +432,64 @@ describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
       ],
     };
     expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set(["dat-a", "dat-b"]));
+  });
+});
+
+describe("collectDataTableAssetFileIdsFromBlocks", () => {
+  const options = { headerRow: 1, endRow: 201, delimiter: "comma", collapseConsecutive: false };
+  const dataTableBlock = (fileId: string | undefined) => ({
+    type: "dataTable",
+    props: {
+      source: JSON.stringify({
+        kind: "delimited-file",
+        fileName: "log.csv",
+        fileId,
+        importedAt: "2026-09-05T00:00:00.000Z",
+        options,
+      }),
+    },
+  });
+
+  it("トップレベルの dataTable ブロックから fileId を集める", () => {
+    const blocks = [{ type: "paragraph", content: [] }, dataTableBlock("dat-1")];
+    expect(collectDataTableAssetFileIdsFromBlocks(blocks)).toEqual(new Set(["dat-1"]));
+  });
+
+  it("columnList > column の children に入った dataTable も辿る", () => {
+    const blocks = [
+      {
+        type: "columnList",
+        children: [{ type: "column", children: [dataTableBlock("dat-2")] }],
+      },
+    ];
+    expect(collectDataTableAssetFileIdsFromBlocks(blocks)).toEqual(new Set(["dat-2"]));
+  });
+
+  it("fileId が無い（素材未登録）dataTable は無視する", () => {
+    const blocks = [dataTableBlock(undefined)];
+    expect(collectDataTableAssetFileIdsFromBlocks(blocks)).toEqual(new Set());
+  });
+
+  it("dataTable 以外のブロックは無視する", () => {
+    const blocks = [{ type: "paragraph", content: [] }, { type: "table", content: {} }];
+    expect(collectDataTableAssetFileIdsFromBlocks(blocks)).toEqual(new Set());
+  });
+
+  it("collectSourceAssetFileIdsFromDoc の pages 経由でも dataTable の fileId を拾う", () => {
+    const doc = {
+      pages: [
+        { blocks: [dataTableBlock("dat-3")] },
+        {
+          blocks: [
+            {
+              type: "columnList",
+              children: [{ type: "column", children: [dataTableBlock("dat-4")] }],
+            },
+          ],
+        },
+      ],
+    };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set(["dat-3", "dat-4"]));
   });
 });
 

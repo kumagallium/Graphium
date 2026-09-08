@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.62.1](https://github.com/kumagallium/Graphium/compare/v0.62.0...v0.62.1) - 2026-09-08
+
+- [fix] Give computed-column headers room for the calculator badge by @kumagallium in https://github.com/kumagallium/Graphium/pull/868
+
+## [v0.62.0](https://github.com/kumagallium/Graphium/compare/v0.61.2...v0.62.0) - 2026-09-08
+
+- [feat] Add a data table block for large delimited imports by @kumagallium in https://github.com/kumagallium/Graphium/pull/846
+- [feat] Show calc write-back on data tables as computed columns by @kumagallium in https://github.com/kumagallium/Graphium/pull/866
+
+## [v0.61.2](https://github.com/kumagallium/Graphium/compare/v0.61.1...v0.61.2) - 2026-09-08
+
+- [fix] Stop SidePeek reload loop when peeking a saved version by @kumagallium in https://github.com/kumagallium/Graphium/pull/864
+
 ## [v0.61.1](https://github.com/kumagallium/Graphium/compare/v0.61.0...v0.61.1) - 2026-09-08
 
 - [fix] Keep the pending step-flow auto-layout request when the sync effect re-runs by @kumagallium in https://github.com/kumagallium/Graphium/pull/862

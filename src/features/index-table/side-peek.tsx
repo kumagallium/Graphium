@@ -143,6 +143,7 @@ import { setEditorSidePeekCallback } from "./context";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
+import { subscribeDataTableData } from "../../blocks/data-table/data";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "../../blocks/calc/writeback";
 
 type SidePeekProps = {
@@ -466,7 +467,12 @@ function SidePeekInner({
         autoSaveTimerRef.current = null;
       }
     };
-  }, [noteId, tableMetaStore]);
+    // 依存は noteId のみ。tableMetaStore を入れてはいけない — Provider の value は
+    // 毎レンダリング新オブジェクトなので、読み込み完了 → restore（setMetas）→
+    // Provider 再レンダー → この effect 再発火 → setLoading(true) で再読み込み…と
+    // 無限ループになり、cachedDoc を持たない版（snapshot:）や wiki のピークで
+    // 「読み込み中」と本文が高速に切り替わり続ける。store は ref 経由で参照する。
+  }, [noteId]);
 
   // ドキュメント読み込み後にラベル・リンクを復元
   // setLabel / restoreLinks は useCallback で安定な参照
@@ -828,6 +834,12 @@ function SidePeekInner({
     return () => root.removeEventListener("click", onClick, true);
   }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor, tableMetaStore]);
 
+  // データ表への計算列は本文を変えないので、宣言の変化でも列を配り直す（note-app と同じ）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    publishTableColumns(sidePeekEditor, tableMetaStore);
+  }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
+
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
   // どちらのエディタからクリックされたかを WeakMap で識別する。
@@ -855,6 +867,11 @@ function SidePeekInner({
             publishTimer = setTimeout(publish, 250);
           })
         : undefined;
+    // データ表の素材は本文の変更なしに後から届くので、到着でも配り直す
+    const offDataArrived = subscribeDataTableData(() => {
+      if (publishTimer) clearTimeout(publishTimer);
+      publishTimer = setTimeout(publish, 250);
+    });
     publish();
     setEditorSidePeekCallback(sidePeekEditor, (targetNoteId) => {
       // 外部ソース ID（pdf:/document:/data:/url: — グラフのパラメータ ↗ 等）は
@@ -876,6 +893,7 @@ function SidePeekInner({
       setEditorSidePeekCallback(sidePeekEditor, null);
       if (publishTimer) clearTimeout(publishTimer);
       if (typeof offContentChange === "function") offContentChange();
+      offDataArrived();
     };
   }, [sidePeekEditor, tableMetaStore]);
 

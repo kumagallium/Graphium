@@ -13,6 +13,8 @@ export { DataImportModal } from "./DataImportModal";
 export type { DataImportResult } from "./DataImportModal";
 export { readDataFileText } from "./read-file";
 export { isDelimitedDataFile, DELIMITED_FILE_ACCEPT } from "./file-kind";
+export { detectPastedTable } from "./paste";
+export { DOC_TABLE_DEFAULT_MAX_ROWS, DOC_TABLE_HARD_MAX_ROWS, defaultImportTarget } from "./target";
 export type {
   DelimiterKind,
   DelimitedImportOptions,
