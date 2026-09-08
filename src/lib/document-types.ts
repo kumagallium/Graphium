@@ -753,10 +753,15 @@ export type GraphiumDocument = {
     /** SharedEntry.id（uuidv7） */
     id: string;
     /**
-     * SharedEntry.type。ノートは "note"、Knowledge（Wiki）ページは "knowledge"。
+     * SharedEntry.type。ノートは "note"、Knowledge（Wiki）ページは "knowledge"、
+     * 元のノートへの「変更の提案」として共有したノートは "proposal"（§25）。
      * 旧データは "note" のみ（knowledge 共有導入前に Wiki へ sharedRef が付くことはない）。
+     *
+     * 1 つの手元ノートが指せる封筒は 1 通だけ。提案として共有している間は
+     * 通常の共有（"note"）に切り替えない（切り替えると、どちらの封筒を
+     * 更新したのか分からなくなる）。
      */
-    type: "note" | "knowledge";
+    type: "note" | "knowledge" | "proposal";
     /** ISO-8601 最終共有日時 */
     sharedAt: string;
     /** 共有時の SharedEntry.hash（変更検知用） */

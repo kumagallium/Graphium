@@ -1433,9 +1433,13 @@ existing Settings → Storage switch.
 
 ### 5.1 Teacher ⇄ student round trips
 
-Feedback on a shared entry can flow back through three independent
-paths, all built on the primitives above — there is no dedicated
-"review" workflow:
+Feedback on a shared entry flows back through four independent paths,
+all built on the primitives above. Three of them (comments, re-sharing,
+reply notes) are ordinary shared entries used in a particular way; the
+fourth, **proposals**, is a review round trip in the shape of a pull
+request — an author-owned envelope that carries a whole body, plus a
+diff view for reading it. No path ever lets one author write another
+author's entry.
 
 ```mermaid
 flowchart LR
@@ -1443,6 +1447,8 @@ flowchart LR
     U["Student"] -->|"re-share (same id)<br/>appends history[]"| S
     U -->|"fork / new note from<br/>template + sharedCitation"| N["New shared entry"]
     N -.->|"projection v2:<br/>citedSharedIds /<br/>forkedFromSharedId /<br/>templateFromSharedId"| S
+    U -->|"propose changes<br/>(proposals/, body = forked note)"| P["Proposal"]
+    P -.->|"extra.target /<br/>three-way diff"| S
 ```
 
 - **Comments** (`SharedEntryType: "comment"`, DATA_MODEL.md §7.1.1) —
@@ -1467,10 +1473,68 @@ flowchart LR
   `buildReverseLinks()` can answer "who points back at this entry" and
   the Library detail panel can render it, closing the loop without a
   round trip through the original author.
+- **Proposals** (`SharedEntryType: "proposal"`, DATA_MODEL.md §7.1.2) —
+  a reader who forked a note, filled it in, and wants the changes to
+  land back in the original. The proposal is a full body written to
+  `proposals/` under the proposer's own name, tied to the original by
+  `extra.target`; the original is untouched, and its author decides
+  whether to take anything in. Status (`open` / `adopted` / `stale` /
+  `missing`) is derived from what both sides can see, never stored, and
+  the "N proposals" count on the original comes from the envelopes
+  themselves (`countProposalsByTarget`), so it is right even for entries
+  whose body has not been read yet. Proposals stay out of the vocabulary
+  index and the projection, and are not forkable.
+
+#### Reading a proposal: the diff
+
+The change list is computed by a pure function
+(`src/features/sharing/proposal-diff.ts`, no React, no I/O) from three
+documents: `base` (the version that was forked, fetched from
+`extra.baseRef`), `mine` (the original's current shared body), and
+`theirs` (the proposal). With a base, each item is attributed —
+`theirs` (only the proposer changed it, so it is a candidate to take
+in), `mine` (only the author did, shown for context), or `both`
+(a conflict). Without a base every item is `unknown` and the UI says so
+rather than guessing; showing a colour there would be a claim the data
+cannot support.
+
+Blocks are matched by id first, then by `type` + normalized text (so a
+paragraph that was split and re-keyed still matches), and whatever is
+left is an addition or a removal; a block whose content is unchanged
+but whose position moved is reported as `moved`. Table blocks descend
+one level further, to cells: rows are keyed by `tableRowIdentity` when
+present and by their first cell otherwise, columns by their header
+text, yielding `cellModified` / `rowAdded` / `rowRemoved` /
+`columnAdded` / `columnRemoved` entries with the same attribution.
+Display text comes from the same lightweight Markdown rendering the MCP
+server uses (`src/mcp/note-text.ts`), so no DOM is needed.
+
+What the diff deliberately does **not** compare:
+
+| Not compared | Why |
+|---|---|
+| `sharedRef` / `forkedFrom` / `templateFrom` / `documentProvenance` / `chats` / `noteContexts` / `createdAt` / `modifiedAt` | Bookkeeping that differs by construction between a fork and its original; comparing it would report a change on every proposal. |
+| The `url` of media blocks | A shared body carries `shared-blob:` references while a local one carries local URLs, so they never match. Other media props (`alt`, `caption`, `name`) *are* compared. |
+| Pages after the first | Reported through `unsupported` instead, so the reader knows something was skipped. |
+| Page-level annotations (`labels`, `provLinks`, `knowledgeLinks`, `tableMeta`) and column widths | Not part of the block comparison in this version; a proposal that only re-labels a step shows up as no change. |
+| Inline link targets and character styling on their own | `blockToReadableText` reads text, not marks. |
+
+The `" (forked)"` suffix a fork adds to the title is stripped once
+before titles are compared, so the default fork name is not itself a
+change.
+
+The Library shows proposals on their own tab, and the full-page view of
+a proposal gains a **Changes** rail tab holding this list, with each
+item clickable to highlight the matching block in the body preview.
+Everything here is read-only: 8a covers making a proposal and reading
+its diff. Taking selected changes into the author's own note is a
+separate step and is not implemented yet — until it lands, an author
+adopts a proposal by editing their note themselves and pressing
+**Update shared copy**.
 
 The Library's automatic refresh (`useSharedLibrarySync`, throttled to
-once per 30s) picks up comments and re-shares from other users when the
-tab regains focus or visibility, without a manual reload.
+once per 30s) picks up comments, proposals, and re-shares from other
+users when the tab regains focus or visibility, without a manual reload.
 
 Today the shared backend is a local folder. Other backends (cloud
 buckets, S3, IPFS-style) can be added by implementing the same blob

@@ -56,6 +56,7 @@ const LOAD_RESULT: SharedLibraryLoadResult = {
     template: [],
     report: [],
     comment: [],
+    proposal: [],
   },
   errors: {},
 };

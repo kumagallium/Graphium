@@ -88,6 +88,7 @@ const loadEntries = async (): Promise<SharedLibraryLoadResult> => ({
     template: [],
     report: [],
     comment: [],
+    proposal: [],
   },
   errors: {},
 });

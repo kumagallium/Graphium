@@ -282,6 +282,49 @@ const COMMENT_TEXTS: Record<string, string> = {
   "comment-4": "図 2 の軸ラベルが読めません。",
 };
 
+// 変更の提案 2 件（§25）。どちらも先生のノート（note-4）への提案。
+// 1 件は元の現在の版を土台にしたもの（受け付け中）、1 件は出したあとに元が
+// 更新されたもの（元のノートがその後更新されました）。
+const PROPOSALS: SharedEntry[] = [
+  makeEntry({
+    id: "proposal-1",
+    type: "proposal",
+    author: STUDENT_A,
+    created_at: daysAgo(0.4),
+    updated_at: daysAgo(0.4),
+    prov: { derived_from: ["note-4"] },
+    extra: {
+      title: "実験ノートの書き方（測定値の欄を追加）",
+      target: "note-4",
+      targetHash: NOTES[3].hash,
+      targetTitle: "実験ノートの書き方（テンプレート）",
+      message: "測定値を書く欄が無かったので、表を 1 つ足しました。",
+      baseRef: {
+        provider: "local-folder",
+        uri: "file:///Users/yamada/shared-blobs/base",
+        hash: "sha256:base00001",
+        size: 1_200,
+      },
+    },
+  }),
+  makeEntry({
+    id: "proposal-2",
+    type: "proposal",
+    author: STUDENT_B,
+    created_at: daysAgo(3),
+    updated_at: daysAgo(3),
+    prov: { derived_from: ["note-4"] },
+    extra: {
+      title: "実験ノートの書き方（用語をそろえた版）",
+      target: "note-4",
+      // 出したあとに元が更新された（元エントリの現在の hash と違う）
+      targetHash: "sha256:before-the-update",
+      targetTitle: "実験ノートの書き方（テンプレート）",
+      message: "「試料」と「サンプル」が混ざっていたのでそろえました。",
+    },
+  }),
+];
+
 const ALL_ENTRIES = {
   entries: {
     note: NOTES,
@@ -291,6 +334,7 @@ const ALL_ENTRIES = {
     template: TEMPLATES,
     report: [],
     comment: COMMENTS,
+    proposal: PROPOSALS,
   },
   errors: {},
 };
@@ -304,6 +348,7 @@ const EMPTY_ENTRIES = {
     template: [],
     report: [],
     comment: [],
+    proposal: [],
   },
   errors: {},
 };
@@ -390,6 +435,20 @@ export const ProposedTemplates: Story = {
       description: {
         story:
           "共有テンプレートの一覧。列は タイトル / 説明 / 作者 / 共有日 / 版 / 検証（フォルダ列は出さない — 雛形は共有した人の整理を持ち込まない）。行の操作に「派生（fork）」は無く、詳細パネルから「テンプレートから新規ノート」で作る。",
+      },
+    },
+  },
+};
+
+export const ProposedProposals: Story = {
+  name: "変更の提案 — 一覧",
+  args: { ...baseArgs, initialTab: "proposal" as const },
+  decorators: Proposed.decorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "誰かのノートへの「変更の提案」の一覧。列は タイトル / 元のノート（押すと元へ移る）/ 作者 / 共有日 / 版 / 状態。状態は封筒から毎回導き出す —— 提案が土台にした版と元の現在の版が違えば「元のノートがその後更新されました」になる。派生（fork）の操作は出さない（提案は元のノートへの差分であって、そこからさらに派生するものではない）。ノートタブの元のノートの行には「提案 2」が付く。",
       },
     },
   },
@@ -701,6 +760,7 @@ const MANUAL_ENTRIES = {
     template: [],
     report: [],
     comment: [],
+    proposal: [],
   },
   errors: {},
 };
@@ -942,6 +1002,7 @@ const MANUAL_ENTRIES_WITH_REPLIES = {
     template: MANUAL_TEMPLATES,
     report: [],
     comment: MANUAL_COMMENTS,
+    proposal: [],
   },
   errors: {},
 };

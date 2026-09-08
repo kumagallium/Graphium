@@ -184,6 +184,38 @@ To help you notice what changed since you last looked, the shared library also m
 
 When a note cites a shared entry, forks it, or is created from a shared template, the shared library can now show that relationship from the other side too. A shared entry's detail panel lists the shared notes that cite it, the shared notes forked from it, and — for templates — the shared notes made from it, each one clickable to jump straight to it. This depends on Graphium having already read the citing/forking note's content at least once, so a very recently shared note may take a moment to show up in another entry's reverse links.
 
+### Propose changes to someone else's note {#propose-changes}
+
+A note you forked from the shared library can be offered back as a **proposal**: your version of the note, shared as a suggestion. The original is not rewritten — its author decides whether to take anything in.
+
+Proposing takes three steps:
+
+1. In the shared library, open the note and press **Fork** to get your own copy
+2. Edit the copy as usual — fill in values, fix a step, add a table
+3. From the note's `⋯` menu, choose **Propose changes to the original**
+
+The dialog shows which note you are proposing to, and whether the version you forked is still the latest one. Add a one-line description if you like and press **Propose**; a proposal under your own name appears in the shared folder. You can send an updated version later with **Update proposal**, or take it back with **Withdraw proposal**. While a note is shared as a proposal it is not shared as a copy of its own — one note points at one shared entry.
+
+The library gains a **Proposals** tab listing title, the original note (click it to jump there), author, shared date, version, and state. The state is worked out on the spot rather than stored:
+
+| State | Meaning |
+|---|---|
+| Open | The original's author has not taken this in yet |
+| Adopted | The original's author took this proposal in |
+| Original updated since | The original changed after the proposal was made |
+
+Open a proposal in full view and a **Changes** tab appears in the right-hand rail, listing the differences from the original block by block — and, for tables, cell by cell. Click an item and the matching spot in the body preview lights up.
+
+If the version you forked was kept, each change is attributed and coloured: **Proposer** (only you changed it — a candidate for the author to take in), **Author** (the original's author changed it afterwards), or **Both** (you both changed it and disagree). Without that baseline — no blob store configured, or an older fork — the view falls back to comparing the proposal with the original's current version, and cannot tell the two apart. The list says so at the top.
+
+Some things are deliberately not compared: the link target of images and files (shared and local copies always spell those differently — captions and file names *are* compared), pages after the first, and annotations such as labels and step links.
+
+Seen from the original, a note that has proposals shows **N proposals** on its row, and its detail panel lists them under reverse links; click one to open it.
+
+You can still propose when the original has moved on. The changes are then shown against the original's current version, so your edits and the author's edits sit side by side.
+
+In this version the change list is **read-only**. To take a proposal in, the original's author edits their own note and presses **Update shared copy**. Taking selected changes across in one step is coming.
+
 ## Exports
 
 Everything can leave Graphium in open formats, per note or in bulk.

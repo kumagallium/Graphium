@@ -15,7 +15,7 @@
 // 設計詳細: docs/internal/team-shared-storage-design.md §22 B
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, History, Link2, MessageSquare, Waypoints, X } from "lucide-react";
+import { Bot, GitCompareArrows, History, Link2, MessageSquare, Waypoints, X } from "lucide-react";
 import type { AuthorIdentity } from "../document-provenance/types";
 import type { ChatMessage, GraphiumDocument, TableMeta } from "../../lib/document-types";
 import {
@@ -36,6 +36,7 @@ import {
   type SharedEntryBodyReader,
 } from "./SharedEntryBody";
 import {
+  ProposalMeta,
   ReverseLinksSection,
   SharedEntryActions,
   SharedEntryHistory,
@@ -43,6 +44,7 @@ import {
   sharedEntryTitle,
   sharedEntryTypeLabel,
 } from "./shared-entry-parts";
+import { proposalEntriesFor, readProposalExtra } from "./share-proposal";
 import {
   previewHasBlocks,
   resolveClickedBlockId,
@@ -67,9 +69,16 @@ import {
   readSeenStore,
 } from "./shared-seen";
 import { type HashStatus } from "./hash-badge";
+import { ProposalDiffPanel } from "./ProposalDiffPanel";
+import { useProposalDiff } from "./use-proposal-diff";
+import type { ProposalDiffInput } from "./proposal-diff";
 
-/** 右レールに出すパネル。既定はコメント（読んですぐ返せる状態で開く） */
-export type SharedNoteRailTab = "comments" | "chat" | "version" | "process" | "links";
+/**
+ * 右レールに出すパネル。既定はコメント（読んですぐ返せる状態で開く）。
+ * 「差分」は変更の提案（type === "proposal"）のときだけ出る —— 提案は
+ * 「元のノートとの違い」が中身そのものなので、提案では差分を先に開く。
+ */
+export type SharedNoteRailTab = "comments" | "chat" | "version" | "process" | "links" | "diff";
 type RailTab = SharedNoteRailTab;
 
 // 全画面の右パネルは本文を読みながら使うので、サイドピーク（共有の幅記憶）とは
@@ -124,6 +133,11 @@ export type SharedNoteViewProps = {
   onIngestChat?: (messages: ChatMessage[]) => void;
   /** DI: チャットの実行環境（Storybook / テスト用。既定は実物） */
   chatDeps?: SharedNoteChatDeps;
+  /**
+   * DI: 差分タブの材料（base / mine / theirs）をまるごと差し替える。
+   * 渡された時点で共有フォルダにも blob にも触らない（Storybook / テスト用）。
+   */
+  proposalDiff?: ProposalDiffInput;
 };
 
 /**
@@ -157,14 +171,19 @@ function SharedNoteViewInner({
   entries,
   projection,
   onSeenRecorded,
-  initialRailTab = "comments",
+  initialRailTab,
   aiAvailable,
   onIngestChat,
   chatDeps,
+  proposalDiff,
 }: SharedNoteViewProps) {
   const uiT = useT();
   const aiAssistant = useAiAssistant();
-  const [railTab, setRailTab] = useState<RailTab | null>(initialRailTab);
+  // 提案は「元のノートとの違い」が中身そのものなので、既定で差分を開く。
+  // 他の種別はこれまでどおりコメント（読んですぐ返せる状態で開く）
+  const [railTab, setRailTab] = useState<RailTab | null>(
+    initialRailTab ?? (entry.type === "proposal" ? "diff" : "comments"),
+  );
   const [hashStatus, setHashStatus] = useState<HashStatus>("unknown");
   const [busy, setBusy] = useState(false);
 
@@ -264,10 +283,17 @@ function SharedNoteViewInner({
     for (const e of allEntries) map.set(e.id, e);
     return map;
   }, [allEntries]);
+  // このエントリへの「変更の提案」は投影ではなく封筒から数える（A-7）。
+  // 投影は本文を読めた分しか埋まらないが、提案は extra.target だけで分かる
+  const proposalIds = useMemo(
+    () => proposalEntriesFor(entry.id, allEntries).map((e) => e.id),
+    [entry.id, allEntries],
+  );
   const hasReverseLinks =
     (reverseLinks?.cites.length ?? 0) +
       (reverseLinks?.forks.length ?? 0) +
-      (reverseLinks?.templates.length ?? 0) >
+      (reverseLinks?.templates.length ?? 0) +
+      proposalIds.length >
     0;
 
   // 手順は投影から引く（本文を読めた共有ノートにだけ載る）
@@ -282,6 +308,22 @@ function SharedNoteViewInner({
   // 「AI に質問」を出す条件。AI が使えないとき・中身を持たない type
   // （素材の manifest / 指摘の封筒）では、タブごと出さない
   const chatAvailable = !!aiAvailable && supportsSharedChat(entry.type);
+
+  // 「差分」を出す条件。変更の提案のときだけ（他の種別には比べる相手がいない）
+  const isProposal = entry.type === "proposal";
+  const diffState = useProposalDiff({
+    entry,
+    body,
+    entries: allEntries,
+    readEntryBody,
+    override: proposalDiff,
+  });
+
+  // 提案でないエントリへ移ったのに差分タブが開いたままにならないようコメントへ戻す
+  // （AI が使えなくなったときの手当てと同じ）
+  useEffect(() => {
+    if (railTab === "diff" && !isProposal) setRailTab("comments");
+  }, [railTab, isProposal]);
 
   // AI が使えなくなった（モデルの登録が外れた等）ときに、見出しも中身も無い
   // パネルが開いたままにならないようコメントへ戻す（素材ビューの graph と同じ手当て）
@@ -350,6 +392,13 @@ function SharedNoteViewInner({
   const updateCount = entry.history?.length ?? 0;
   const railItems = (
     [
+      // 提案は差分から読み始める。並びも「まず違いを見て、それからコメントで返す」の順
+      {
+        tab: "diff",
+        icon: <GitCompareArrows size={18} />,
+        label: uiT("sharedNote.rail.diff"),
+        show: isProposal,
+      },
       { tab: "comments", icon: <MessageSquare size={18} />, label: uiT("panel.comments") },
       { tab: "chat", icon: <Bot size={18} />, label: uiT("sharedNote.rail.chat"), show: chatAvailable },
       { tab: "version", icon: <History size={18} />, label: uiT("sharedNote.rail.version") },
@@ -480,6 +529,19 @@ function SharedNoteViewInner({
             </button>
           </div>
 
+          {railTab === "diff" && isProposal && (
+            <ProposalDiffPanel
+              diff={diffState.diff}
+              summary={diffState.summary}
+              hasBase={diffState.hasBase}
+              loading={diffState.loading}
+              error={diffState.error}
+              targetMissing={diffState.targetMissing}
+              // 本文プレビューの該当ブロックへ飛ぶ（コメントの ¶ チップと同じ仕掛け）
+              onJumpToBlock={preview.jumpToBlock}
+            />
+          )}
+
           {railTab === "comments" && (
             <SharedEntryComments
               targetId={entry.id}
@@ -520,6 +582,15 @@ function SharedNoteViewInner({
                   hashStatus={hashStatus}
                   onVerifyHash={() => void verifyHash()}
                 />
+                {isProposal && (
+                  <ProposalMeta
+                    entry={entry}
+                    target={
+                      entryById.get(readProposalExtra(entry)?.target ?? "") ?? null
+                    }
+                    onOpenTarget={onOpenEntry}
+                  />
+                )}
               </div>
               <SharedEntryHistory entry={entry} />
             </div>
@@ -546,6 +617,7 @@ function SharedNoteViewInner({
               {hasReverseLinks ? (
                 <ReverseLinksSection
                   links={reverseLinks}
+                  proposalIds={proposalIds}
                   entryTitleById={(id) => {
                     const hit = entryById.get(id);
                     return hit ? sharedEntryTitle(hit, uiT) : null;

@@ -50,6 +50,7 @@ import { type HashStatus } from "./hash-badge";
 // 全画面表示（SharedNoteView）と共用する部品。見た目・条件を二重に持たない
 import { SharedEntryBody, useSharedEntryBodyText } from "./SharedEntryBody";
 import {
+  ProposalMeta,
   ReverseLinksSection,
   SharedEntryActions,
   SharedEntryHistory,
@@ -57,6 +58,7 @@ import {
   sharedEntryTitle as entryTitle,
   sharedEntryTypeLabel as entryTypeLabel,
 } from "./shared-entry-parts";
+import { proposalEntriesFor, readProposalExtra } from "./share-proposal";
 import { useSharedPreviewAnchor } from "./use-shared-preview-anchor";
 
 type Props = {
@@ -131,6 +133,9 @@ const TAB_ORDER: { tab: SharedLibraryTab; labelKey: string; types: SharedEntryTy
   { tab: "process", labelKey: "library.tab.process", types: [] },
   // テンプレートは「記録」ではなく雛形なので、記録系（ノート〜プロセス）の後ろに置く
   { tab: "template", labelKey: "library.tab.template", types: ["template"] },
+  // 変更の提案（§25）。誰かのノートに対する提案は「記録」でも「雛形」でもなく
+  // 往復の途中にあるものなので、一覧の末尾に独立したタブとして置く
+  { tab: "proposal", labelKey: "library.tab.proposal", types: ["proposal"] },
 ];
 
 function typeToTab(type: SharedEntryType): SharedLibraryTab | null {
@@ -138,7 +143,11 @@ function typeToTab(type: SharedEntryType): SharedLibraryTab | null {
   return hit?.tab ?? null;
 }
 
-/** fork 導線を持つ type（fork 先: note → notes、knowledge → wiki） */
+/**
+ * fork 導線を持つ type（fork 先: note → notes、knowledge → wiki）。
+ * 提案（proposal）は fork しない —— 提案は誰かのノートへの差分であって、
+ * そこからさらに派生を作る対象ではない（元のノートを fork する）。
+ */
 function isForkable(type: SharedEntryType): boolean {
   return type === "note" || type === "knowledge";
 }
@@ -175,6 +184,7 @@ export function SharedLibraryView({
     knowledge: [],
     report: [],
     comment: [],
+    proposal: [],
   });
   const [diLoadErrors, setDiLoadErrors] = useState<
     Partial<Record<SharedEntryType, string>>
@@ -396,9 +406,11 @@ export function SharedLibraryView({
   const handleUnshare = useCallback(
     async (entry: SharedEntry) => {
       const confirmed = window.confirm(
-        uiT("library.unshareConfirm", { title: entryTitle(entry, uiT) }) +
-          "\n\n" +
-          uiT("share.unshareConfirmBody"),
+        entry.type === "proposal"
+          ? uiT("share.propose.withdrawConfirm")
+          : uiT("library.unshareConfirm", { title: entryTitle(entry, uiT) }) +
+              "\n\n" +
+              uiT("share.unshareConfirmBody"),
       );
       if (!confirmed) return;
       setBusyId(entry.id);
@@ -547,6 +559,10 @@ export function SharedLibraryView({
             // DI（Storybook）でも同じ経路で渡るよう、読み出し済みの封筒をそのまま渡す
             commentEntries={entriesByType.comment}
             seenStore={seenSnapshot}
+            // 提案は投影ではなく封筒から数える（本文を読めていなくても件数が出る）
+            proposalEntries={entriesByType.proposal}
+            resolveTargetEntry={(id) => entryById.get(id) ?? null}
+            onOpenTarget={openEntryById}
           />
         )}
       </div>
@@ -568,6 +584,13 @@ export function SharedLibraryView({
           commentEntries={entriesByType.comment}
           readEntryBody={readEntryBody}
           reverseLinks={reverseLinks.get(selected.id)}
+          // 逆引きの「提案 N」と、提案自身のメタ（元のノート）は封筒から解く
+          proposalIds={proposalEntriesFor(selected.id, entriesByType.proposal).map((e) => e.id)}
+          proposalTarget={
+            selected.type === "proposal"
+              ? entryById.get(readProposalExtra(selected)?.target ?? "") ?? null
+              : null
+          }
           entryTitleById={(id) => {
             const hit = entryById.get(id);
             return hit ? entryTitle(hit, uiT) : null;
@@ -612,6 +635,10 @@ type DetailProps = {
   ) => Promise<{ body: Uint8Array; verified: boolean }>;
   /** このエントリを指している共有ノート（引用・派生・テンプレート利用）。無ければ 0 件 */
   reverseLinks?: SharedReverseLinks;
+  /** このエントリへの「変更の提案」の id（封筒から数えたもの） */
+  proposalIds?: string[];
+  /** このエントリが提案のときの元エントリ（読めていなければ null） */
+  proposalTarget?: SharedEntry | null;
   /** 逆引きの行に出す題名（読めていない / 消えた id は null） */
   entryTitleById?: (id: string) => string | null;
   /** 逆引きの行のクリックでそのエントリを開く */
@@ -637,6 +664,8 @@ function SharedEntryDetail({
   commentEntries,
   readEntryBody,
   reverseLinks,
+  proposalIds,
+  proposalTarget,
   entryTitleById,
   onOpenEntry,
   onSeenRecorded,
@@ -720,6 +749,13 @@ function SharedEntryDetail({
         {/* メタ情報 */}
         <div className="px-5 py-3 border-b border-border text-xs space-y-1.5 bg-muted/20">
           <SharedEntryMeta entry={entry} hashStatus={hashStatus} onVerifyHash={onVerifyHash} />
+          {entry.type === "proposal" && (
+            <ProposalMeta
+              entry={entry}
+              target={proposalTarget ?? null}
+              onOpenTarget={onOpenEntry}
+            />
+          )}
         </div>
 
         {/* type 別 read-only コンテンツ + 往復（履歴・逆引き・コメント） */}
@@ -742,6 +778,7 @@ function SharedEntryDetail({
 
           <ReverseLinksSection
             links={reverseLinks}
+            proposalIds={proposalIds}
             entryTitleById={entryTitleById}
             onOpenEntry={onOpenEntry}
           />

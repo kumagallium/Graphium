@@ -28,10 +28,17 @@ import {
  * - data-manifest: 素材共有（share-media）
  * - note: ノート共有の auto-blob（share-note）
  * - template: テンプレート共有の auto-blob（share-template）
+ * - proposal: 変更の提案（share-proposal）。auto-blob の extra.blobs に加えて
+ *   基準版の本文を置いた extra.baseRef も blob を指す
  * 他の type（reference / knowledge / report）は現状 extra.blobs を書かない。
  * 書くようになったらここに足すこと（漏れると参照中の blob を消す事故になる）。
  */
-const BLOB_REFERENCING_TYPES: SharedEntryType[] = ["data-manifest", "note", "template"];
+const BLOB_REFERENCING_TYPES: SharedEntryType[] = [
+  "data-manifest",
+  "note",
+  "template",
+  "proposal",
+];
 
 export type UnshareEntryOptions = {
   /** Settings の shared root */
@@ -52,16 +59,33 @@ export type UnshareEntryResult =
     }
   | { ok: false; error: string };
 
+function blobHashOf(value: unknown): string | null {
+  if (value && typeof value === "object" && typeof (value as BlobRef).hash === "string") {
+    return (value as BlobRef).hash;
+  }
+  return null;
+}
+
+/**
+ * entry が指している blob の hash を全部集める。
+ *
+ * 数える側と消す側で同じ関数を使うのが要点。片方だけに新しい参照フィールドを
+ * 足すと「まだ使われている blob を消す」事故になるので、参照は必ずここに集約する。
+ * - extra.blobs: 素材共有と auto-blob（ノート / テンプレート / 提案）
+ * - extra.baseRef: 提案の基準版本文（content-addressed なので、同じ基準版から
+ *   出た複数の提案が同じ hash を指す。数え漏らすと他人の提案の基準版が消える）
+ */
 function extractBlobHashes(entry: SharedEntry): string[] {
   const extra = (entry.extra ?? {}) as Record<string, unknown>;
-  const blobs = extra.blobs;
-  if (!Array.isArray(blobs)) return [];
   const hashes: string[] = [];
-  for (const b of blobs) {
-    if (b && typeof b === "object" && typeof (b as BlobRef).hash === "string") {
-      hashes.push((b as BlobRef).hash);
+  if (Array.isArray(extra.blobs)) {
+    for (const b of extra.blobs) {
+      const hash = blobHashOf(b);
+      if (hash) hashes.push(hash);
     }
   }
+  const baseHash = blobHashOf(extra.baseRef);
+  if (baseHash) hashes.push(baseHash);
   return hashes;
 }
 
@@ -82,7 +106,8 @@ export async function unshareEntry(
     let blobHashesToCheck: string[] = [];
     try {
       const { entry } = await provider.read(sharedId);
-      blobHashesToCheck = extractBlobHashes(entry);
+      // 同じ hash を 2 通り（blobs と baseRef）で指していることがあるので畳む
+      blobHashesToCheck = [...new Set(extractBlobHashes(entry))];
     } catch {
       // 読み出せない（既に消えている等）場合は GC せず削除のみ試行
     }
