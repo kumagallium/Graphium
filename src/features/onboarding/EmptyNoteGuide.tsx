@@ -8,6 +8,8 @@
 // Wiki / Skill / AI 派生ドキュメントなど「システム生成で空のはずがない」場合は
 // 呼び出し側で `visible={false}` を渡す。
 
+import type { ReactNode } from "react";
+import { FolderInput } from "lucide-react";
 import { useT } from "@/i18n";
 
 type EmptyNoteGuideProps = {
@@ -16,19 +18,28 @@ type EmptyNoteGuideProps = {
   onOpenComposer?: () => void;
   /** AI が使えるか（バックエンド到達 + モデル登録済み）。false なら ⌘K チップを予示しない */
   aiEnabled?: boolean;
+  /** 投入口（既存資料の一括持ち込み）チップを押したときのハンドラ。未指定なら intake チップ自体を出さない */
+  onOpenIntake?: () => void;
 };
 
 type Chip = {
   key: string;
   /** 表示キー。Cmd/Ctrl の分岐は呼び出し側で UA 検出しない（後続 PR で対応） */
-  display: string;
+  display: ReactNode;
   labelI18nKey: string;
   descI18nKey: string;
   /** クリック時に action がある場合だけ pointer カーソル + onClick を有効化 */
-  action?: "composer";
+  action?: "composer" | "intake";
 };
 
 const chips: Chip[] = [
+  {
+    key: "intake",
+    display: <FolderInput size={14} />,
+    labelI18nKey: "onboarding.chip.intake.label",
+    descI18nKey: "onboarding.chip.intake.desc",
+    action: "intake",
+  },
   {
     key: "cmdk",
     display: "⌘K",
@@ -52,16 +63,18 @@ const chips: Chip[] = [
   },
 ];
 
-export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true }: EmptyNoteGuideProps) {
+export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true, onOpenIntake }: EmptyNoteGuideProps) {
   const t = useT();
 
   if (!visible) return null;
 
   // AI が使えない（モデル未登録等）なら ⌘K チップは予示しない（押しても Composer を開けないため）。
-  const visibleChips = chips.filter((c) => aiEnabled || c.key !== "cmdk");
+  // onOpenIntake が無ければ intake チップも出さない（押せない chip を出さない）。
+  const visibleChips = chips.filter((c) => (aiEnabled || c.key !== "cmdk") && (onOpenIntake || c.key !== "intake"));
 
   const handleClick = (action?: Chip["action"]) => {
     if (action === "composer") onOpenComposer?.();
+    if (action === "intake") onOpenIntake?.();
   };
 
   return (
@@ -98,6 +111,20 @@ export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true }: Em
       >
         {visibleChips.map((chip) => {
           const clickable = chip.action != null;
+          // display が文字列（⌘K / @ / /）のときだけ <kbd>。アイコン等の ReactNode は
+          // 同じ見た目の <span> で描く（<kbd> でアイコンを包まない）
+          const displayStyle = {
+            fontFamily: "ui-monospace, 'SF Mono', monospace",
+            fontSize: 11,
+            fontWeight: 600,
+            minWidth: 22,
+            textAlign: "center" as const,
+            padding: "1px 5px",
+            borderRadius: "var(--r-1)",
+            background: "var(--paper-3)",
+            color: "var(--ink)",
+            lineHeight: 1.4,
+          };
           return (
             <button
               key={chip.key}
@@ -119,22 +146,11 @@ export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true }: Em
                 fontSize: 12,
               }}
             >
-              <kbd
-                style={{
-                  fontFamily: "ui-monospace, 'SF Mono', monospace",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  minWidth: 22,
-                  textAlign: "center",
-                  padding: "1px 5px",
-                  borderRadius: "var(--r-1)",
-                  background: "var(--paper-3)",
-                  color: "var(--ink)",
-                  lineHeight: 1.4,
-                }}
-              >
-                {chip.display}
-              </kbd>
+              {typeof chip.display === "string" ? (
+                <kbd style={displayStyle}>{chip.display}</kbd>
+              ) : (
+                <span style={displayStyle}>{chip.display}</span>
+              )}
               <span style={{ whiteSpace: "nowrap" }}>{t(chip.labelI18nKey)}</span>
             </button>
           );

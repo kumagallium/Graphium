@@ -441,11 +441,28 @@ export async function readMediaIndex(): Promise<MediaIndex | null> {
  * 非ローカルの previewImage は消費者に渡らない。書き換えるところが無ければ
  * normalizeMediaIndex は引数のオブジェクトをそのまま返す（同一性は保たれる）。
  */
+/**
+ * 書き込みの直列化。保存はほぼ全ての呼び出し元で fire-and-forget なので、
+ * 「素材を登録した保存（A）」と「その素材にフォルダを付けた保存（B）」が同時に
+ * 飛ぶことがある。別々の要求として投げると到着順は保証されず、A が B の後に
+ * 着くとフォルダ無しの版で上書きされる（取り込み直後の素材のフォルダが消える
+ * 事故として実機で観測）。ここで前の書き込みを待ってから次を投げ、しかも
+ * 投げる時点の最新（latestIndex）を書くことで、後勝ちの内容が必ず残るようにする。
+ */
+let writeChain: Promise<void> = Promise.resolve();
+
 export async function saveMediaIndex(index: MediaIndex): Promise<void> {
   const normalized = normalizeMediaIndex(index);
   // 書き込みを投げる前に同期的に控える。ここを await の後ろに置くと、
   // 保存を待っている間に読んだ相手が古い土台の上で更新を組み立ててしまう。
   latestIndex = normalized;
+  const run = writeChain.then(() => writeMediaIndexNow(latestIndex ?? normalized));
+  // 失敗しても鎖は切らない（次の保存が永久に待たされないように）
+  writeChain = run.catch(() => {});
+  return run;
+}
+
+async function writeMediaIndexNow(normalized: MediaIndex): Promise<void> {
   const provider = getActiveProvider();
   if (provider.writeAppData) {
     await provider.writeAppData("media-index", normalized);
