@@ -1389,7 +1389,7 @@ export const en: Record<string, string> = {
   "asset.expandPptx.help": "Pull slide text and embedded images out of this PowerPoint file and register them as searchable assets.",
   "asset.expandXlsx.button": "Turn sheets into tables",
   "asset.expandXlsx.help": "Turn each sheet in this Excel file into a data table asset.",
-  "asset.expandOffice.running": "Extracting...",
+  "asset.expandOffice.running": "Extracting…",
   "asset.saveImageToGraphium": "Save image",
   "asset.saveImageToGraphiumTooltip": "Save this image into Graphium as an image asset",
   "asset.imageSaving": "Saving…",

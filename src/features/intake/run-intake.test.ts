@@ -432,3 +432,48 @@ describe("mergeOutcome", () => {
     });
   });
 });
+
+describe("runIntake の Office 展開（同じ取り込みの中に同じファイルが 2 つ）", () => {
+  function officeFile(name: string): IntakeFile {
+    return {
+      file: new File(["PK"], name, {
+        type: name.endsWith(".pptx")
+          ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+          : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+      path: name,
+    };
+  }
+
+  it("1 つ目の展開が済んだら 2 つ目は展開しない（判定は毎回最新を読む前提）", async () => {
+    // 同じ中身なので 2 つ目は duplicate。isOfficeExpanded は「1 度展開されたら true」を返す
+    let expanded = false;
+    const deps = makeDeps({
+      uploadAsset: vi.fn(async () => ({ fileId: "deck", duplicate: expanded })),
+      expandOffice: vi.fn(async () => {
+        expanded = true;
+        return { derived: 2, skipped: 0 };
+      }),
+      isOfficeExpanded: () => expanded,
+    });
+
+    const outcome = await runIntake([officeFile("a.pptx"), officeFile("a.pptx")], deps, () => {});
+
+    expect(deps.expandOffice).toHaveBeenCalledTimes(1);
+    expect(outcome.officeDerived).toBe(2);
+  });
+
+  it("既存（duplicate）でも未展開なら展開する", async () => {
+    const deps = makeDeps({
+      uploadAsset: vi.fn(async () => ({ fileId: "book", duplicate: true })),
+      expandOffice: vi.fn(async () => ({ derived: 3, skipped: 1 })),
+      isOfficeExpanded: () => false,
+    });
+
+    const outcome = await runIntake([officeFile("b.xlsx")], deps, () => {});
+
+    expect(deps.expandOffice).toHaveBeenCalledTimes(1);
+    expect(outcome.officeDerived).toBe(3);
+    expect(outcome.officeSkipped).toBe(1);
+  });
+});

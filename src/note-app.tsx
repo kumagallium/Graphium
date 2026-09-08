@@ -335,6 +335,7 @@ import {
   type MediaIndexEntry,
   type AssetDisplayMode,
   hasExpandedOffice,
+  getLatestMediaIndex,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { MAX_HASH_BYTES } from "./features/asset-browser/dedupe";
@@ -7545,9 +7546,13 @@ export function NoteApp() {
     setAssetFolder: (fileId, folder) => fm.updateMediaContexts(fileId, [folder]),
     expandOffice: handleExpandOffice,
     isOfficeExpanded: (fileId) => {
-      const entry = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
-      if (!entry || !fm.mediaIndex) return false;
-      return hasExpandedOffice(entry, fm.mediaIndex);
+      // 取り込みのループ中に増えた派生素材まで見たいので、React state（レンダー時点で
+      // 固定される）ではなく、保存のたびに同期的に差し替わる最新の索引を読む。
+      // 同じ取り込みの中に同じ Office ファイルが 2 つあっても、2 つ目は展開済みと判定できる
+      const index = getLatestMediaIndex() ?? fm.mediaIndex;
+      const entry = index?.media.find((m) => m.fileId === fileId);
+      if (!entry || !index) return false;
+      return hasExpandedOffice(entry, index);
     },
     afterRun: () => fm.refreshFiles(),
     aiAvailable: aiUiEnabled,

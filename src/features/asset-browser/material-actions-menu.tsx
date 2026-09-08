@@ -332,7 +332,7 @@ export function MaterialActionsMenu({
                 title={t(`${expandLabelKey}.help`)}
               >
                 {expandingOffice ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />}
-                {t(`${expandLabelKey}.button`)}
+                {expandingOffice ? t("asset.expandOffice.running") : t(`${expandLabelKey}.button`)}
               </button>
             </>
           )}
@@ -374,11 +374,11 @@ export function MaterialActionsMenu({
           )}
         </div>
       )}
-      {(extractError || shareError || downloadError) && (
+      {(extractError || expandOfficeError || shareError || downloadError) && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-destructive/40 rounded-lg shadow-md p-2 z-50 text-[11px] text-destructive">
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span className="break-all">{extractError ?? shareError ?? downloadError}</span>
+            <span className="break-all">{extractError ?? expandOfficeError ?? shareError ?? downloadError}</span>
           </div>
         </div>
       )}

@@ -1389,7 +1389,7 @@ export const ja: Record<string, string> = {
   "asset.expandPptx.help": "この PowerPoint からスライドの文字と埋め込み画像を取り出し、検索できる素材として登録します。",
   "asset.expandXlsx.button": "シートを表にする",
   "asset.expandXlsx.help": "この Excel の各シートをデータ表の素材にします。",
-  "asset.expandOffice.running": "抽出中...",
+  "asset.expandOffice.running": "取り出しています…",
   "asset.saveImageToGraphium": "画像を保存",
   "asset.saveImageToGraphiumTooltip": "この画像を Graphium に画像アセットとして保存します",
   "asset.imageSaving": "保存中…",
