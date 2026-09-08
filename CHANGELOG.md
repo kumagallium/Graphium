@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.61.1](https://github.com/kumagallium/Graphium/compare/v0.61.0...v0.61.1) - 2026-09-08
+
+- [fix] Keep the pending step-flow auto-layout request when the sync effect re-runs by @kumagallium in https://github.com/kumagallium/Graphium/pull/862
+- [feat] Shift-click to select a range in every list by @kumagallium in https://github.com/kumagallium/Graphium/pull/861
+
 ## [v0.61.0](https://github.com/kumagallium/Graphium/compare/v0.60.0...v0.61.0) - 2026-09-08
 
 - [docs] Add the Ask AI figure for shared notes to the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/854
