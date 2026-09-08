@@ -331,7 +331,9 @@ type TableSource = {
   rows are written out as a CSV data asset and the block becomes a
   reference. The move is reversible from the same menu while the table has at
   most 1,000 rows: the rows come back into the note and the caption and the
-  asset link (`tableMeta.source`) are kept, so nothing is lost either way. A
+  asset link (`tableMeta.source`) are kept, so nothing is lost either way.
+  Converting again reuses that same asset when the rows still match it, so
+  going back and forth does not pile up copies of the same CSV. A
   data table can also be written out again, computed columns included, as a
   new asset whose `derivedFromAssets` points at the original.
 

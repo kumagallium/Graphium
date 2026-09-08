@@ -35,3 +35,29 @@ export function csvFileNameFor(caption: string, fallback: string): string {
   const base = (caption.trim() || fallback).replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
   return `${base || fallback}.csv`;
 }
+
+/**
+ * 見出しと行が同じ中身かどうか。素材を作り直さずに済むかの判定に使う。
+ *
+ * 行の長さの違いは空セルの有無として扱う（素材の CSV は末尾の空セルを落とすことが
+ * あり、本文の表は見出しの数だけセルを持つ）。中身が違えば false を返し、
+ * 呼び出し側は新しい素材を作る — 迷ったら作り直す側に倒す。
+ */
+export function sameTableContent(
+  a: { headers: string[]; rows: string[][] } | null | undefined,
+  b: { headers: string[]; rows: string[][] } | null | undefined,
+): boolean {
+  if (!a || !b) return false;
+  const width = Math.max(a.headers.length, b.headers.length);
+  const cell = (row: string[] | undefined, i: number) => row?.[i] ?? "";
+  for (let i = 0; i < width; i++) {
+    if (cell(a.headers, i) !== cell(b.headers, i)) return false;
+  }
+  if (a.rows.length !== b.rows.length) return false;
+  for (let r = 0; r < a.rows.length; r++) {
+    for (let i = 0; i < width; i++) {
+      if (cell(a.rows[r], i) !== cell(b.rows[r], i)) return false;
+    }
+  }
+  return true;
+}

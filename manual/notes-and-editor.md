@@ -341,7 +341,7 @@ A table can change form after it is already in the note, in both directions. Ope
 - **Turn into a data table** — the rows are written out as a CSV **Data** asset and the block becomes a reference to it, so the note gets light again without importing anything a second time. Above 200 rows the same action also appears as a badge on the table's caption row, which is how a long table pasted from a spreadsheet gets rescued.
 - **Turn into a note table** — the rows come back into the body, and the table's name and its link to the asset come back with them, so nothing is lost by going either way. Only tables of at most 1,000 rows can return: putting a longer one back would bring in the very weight a data table exists to avoid, so the entry is greyed out and says so.
 
-Turning a table into a data table never removes anything from your library. The asset stays there, just as an image does when you delete it from a note.
+Turning a table into a data table never removes anything from your library. The asset stays there, just as an image does when you delete it from a note. Going back and forth does not pile up copies either: as long as the rows still match, the same asset is used again, and a new one is written only once you have actually changed something.
 
 ![The block menu of a data table, with the entry that turns it back into a table in the note](/screenshots/table-form-switch.png)
 
