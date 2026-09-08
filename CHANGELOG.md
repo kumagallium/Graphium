@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.60.0](https://github.com/kumagallium/Graphium/compare/v0.59.0...v0.60.0) - 2026-09-08
+
+- [feat] ステップのパラメータ表を複数行にして「段階」として記録できるようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/858
+
 ## [v0.59.0](https://github.com/kumagallium/Graphium/compare/v0.58.0...v0.59.0) - 2026-09-07
 
 - [feat] Select materials in the gallery view and show the bulk bar in both views by @kumagallium in https://github.com/kumagallium/Graphium/pull/850
