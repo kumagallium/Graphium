@@ -20,6 +20,8 @@ export interface SearchBarProps {
   /** 現在ヒットの 1-based 表示位置（ヒット 0 件のときは 0）。 */
   current: number;
   caseSensitive: boolean;
+  /** ヒットを上限で打ち切ったか。件数を "2000+" と出す。 */
+  capped?: boolean;
   onQueryChange: (q: string) => void;
   onToggleCaseSensitive: () => void;
   onNext: () => void;
@@ -36,6 +38,7 @@ export function SearchBar({
   total,
   current,
   caseSensitive,
+  capped = false,
   onQueryChange,
   onToggleCaseSensitive,
   onNext,
@@ -118,7 +121,7 @@ export function SearchBar({
           ? ""
           : noHits
             ? t("docSearch.noResults")
-            : t("docSearch.count", {
+            : t(capped ? "docSearch.countCapped" : "docSearch.count", {
                 current: String(current),
                 total: String(total),
               })}

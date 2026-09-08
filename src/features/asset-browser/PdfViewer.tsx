@@ -592,6 +592,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
           total={search.state.total}
           current={search.state.current}
           caseSensitive={search.state.caseSensitive}
+          capped={search.state.capped}
           onQueryChange={search.setQuery}
           onToggleCaseSensitive={search.toggleCaseSensitive}
           onNext={search.next}

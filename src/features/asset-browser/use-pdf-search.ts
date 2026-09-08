@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applyHighlights,
   clearHighlights,
+  MAX_MATCHES,
   searchPages,
   type PdfSearchMatch,
 } from "./pdf-search";
@@ -25,6 +26,8 @@ export interface PdfSearchState {
   total: number;
   /** 現在ヒットの 1-based 表示位置（ヒット 0 件のときは 0）。 */
   current: number;
+  /** 上限で打ち切ったか（件数を "2000+" と出すため）。 */
+  capped: boolean;
 }
 
 export interface PdfSearchControls {
@@ -62,6 +65,7 @@ export function usePdfSearch({
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [total, setTotal] = useState(0);
   const [current, setCurrent] = useState(0); // 1-based 表示
+  const [capped, setCapped] = useState(false);
 
   // activeIndex は ref で持つ（連打しても state 更新のタイミングに依存しない）。
   const activeIndexRef = useRef(-1);
@@ -91,11 +95,22 @@ export function usePdfSearch({
       pageRefs.current.forEach((el, pageNumber) => {
         if (el) pages.push([pageNumber, el]);
       });
-      const matches = q.trim() ? searchPages(pages, q, cs) : [];
+      // 検索は DOM 依存の処理なので、想定外の形の text-layer で投げられても
+      // アプリごと落とさない（0 件として扱い、バーは開いたままにする）。
+      let matches: PdfSearchMatch[] = [];
+      if (q.trim()) {
+        try {
+          matches = searchPages(pages, q, cs);
+        } catch (e) {
+          console.error("[pdf-search] search failed", e);
+          matches = [];
+        }
+      }
       matchesRef.current = matches;
       const index = matches.length === 0 ? -1 : Math.min(Math.max(desiredIndex, 0), matches.length - 1);
       activeIndexRef.current = index;
       setTotal(matches.length);
+      setCapped(matches.length >= MAX_MATCHES);
       setCurrent(index < 0 ? 0 : index + 1);
       applyHighlights(matches, index);
       if (scroll) requestAnimationFrame(scrollActiveIntoView);
@@ -160,6 +175,7 @@ export function usePdfSearch({
     matchesRef.current = [];
     activeIndexRef.current = -1;
     setTotal(0);
+    setCapped(false);
     setCurrent(0);
     clearHighlights();
   }, []);
@@ -203,7 +219,7 @@ export function usePdfSearch({
   useEffect(() => clearHighlights, []);
 
   return {
-    state: { open: isOpen, query, caseSensitive, total, current },
+    state: { open: isOpen, query, caseSensitive, total, current, capped },
     open,
     close,
     setQuery,

@@ -151,8 +151,16 @@ export function rangeForOffsets(
 }
 
 /**
+ * 集めるマッチ数の上限。
+ * 1 文字だけ打った瞬間に長い PDF 全体が当たると、Range を数万個作って
+ * それを全部塗ることになり、UI が固まる。件数がここまで来たら、それ以上は
+ * 数えても読む役に立たないので打ち切る（バーは "2000+" と表示する）。
+ */
+export const MAX_MATCHES = 2000;
+
+/**
  * ページ要素の集合（data-page-number 付き）を走査して、全マッチを
- * ページ順・ページ内出現順に並べて返す。
+ * ページ順・ページ内出現順に並べて返す。MAX_MATCHES で打ち切る。
  */
 export function searchPages(
   pageEls: Iterable<[number, Element]>,
@@ -169,6 +177,7 @@ export function searchPages(
     for (const start of findMatchOffsets(index, q, caseSensitive)) {
       const range = rangeForOffsets(index, start, start + q.length);
       if (range) matches.push({ pageNumber, start, range });
+      if (matches.length >= MAX_MATCHES) return matches;
     }
   }
   return matches;
@@ -200,13 +209,28 @@ function highlightRegistry(): HighlightRegistryLike | null {
 export function applyHighlights(matches: PdfSearchMatch[], activeIndex: number): void {
   const registry = highlightRegistry();
   if (!registry) return;
-  const Ctor = (globalThis as unknown as { Highlight: new (...r: Range[]) => unknown }).Highlight;
-  const others = matches.filter((_, i) => i !== activeIndex).map((m) => m.range);
-  const active = matches[activeIndex]?.range;
-  if (others.length > 0) registry.set(PDF_HIGHLIGHT_NAME, new Ctor(...others));
+  // Range は spread ではなく add で入れる。`new Highlight(...ranges)` は
+  // ヒット数がそのまま引数の数になるので、多いとスタックを溢れさせる。
+  const Ctor = (globalThis as unknown as {
+    Highlight: new () => { add: (r: Range) => void };
+  }).Highlight;
+  const others = new Ctor();
+  let otherCount = 0;
+  for (let i = 0; i < matches.length; i++) {
+    if (i === activeIndex) continue;
+    others.add(matches[i].range);
+    otherCount++;
+  }
+  if (otherCount > 0) registry.set(PDF_HIGHLIGHT_NAME, others);
   else registry.delete(PDF_HIGHLIGHT_NAME);
-  if (active) registry.set(PDF_HIGHLIGHT_ACTIVE_NAME, new Ctor(active));
-  else registry.delete(PDF_HIGHLIGHT_ACTIVE_NAME);
+  const active = matches[activeIndex]?.range;
+  if (active) {
+    const activeHl = new Ctor();
+    activeHl.add(active);
+    registry.set(PDF_HIGHLIGHT_ACTIVE_NAME, activeHl);
+  } else {
+    registry.delete(PDF_HIGHLIGHT_ACTIVE_NAME);
+  }
 }
 
 /** ハイライトを全部消す（検索バーを閉じたとき・アンマウント時）。 */

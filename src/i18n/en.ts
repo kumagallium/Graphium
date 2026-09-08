@@ -156,6 +156,7 @@ export const en: Record<string, string> = {
   // ── ドキュメント内検索（Cmd+F） ──
   "docSearch.placeholder": "Find in note",
   "docSearch.count": "{current}/{total}",
+  "docSearch.countCapped": "{current}/{total}+",
   "docSearch.noResults": "No results",
   "docSearch.caseSensitive": "Match case",
   "docSearch.prev": "Previous match (Shift+Enter)",

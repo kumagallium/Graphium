@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPageTextIndex,
+  MAX_MATCHES,
   findMatchOffsets,
   normalizeQuery,
   rangeForOffsets,
@@ -133,5 +134,18 @@ describe("searchPages", () => {
 describe("normalizeQuery", () => {
   it("連続空白を 1 つに畳む", () => {
     expect(normalizeQuery("a \n b")).toBe("a b");
+  });
+});
+
+describe("MAX_MATCHES", () => {
+  it("上限に達したら打ち切る（大量ヒットで UI を固めない）", () => {
+    // "a" だけのページを大量に作り、1 文字クエリで上限を超えさせる
+    const lines = Array.from({ length: 300 }, () => "a a a a a a a a a a");
+    const pages: Array<[number, Element]> = [
+      [1, makePage(lines)],
+      [2, makePage(lines)],
+    ];
+    const matches = searchPages(pages, "a", false);
+    expect(matches).toHaveLength(MAX_MATCHES);
   });
 });
