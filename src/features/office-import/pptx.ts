@@ -125,12 +125,14 @@ export async function readPptx(bytes: Uint8Array): Promise<PptxReadResult> {
       .sort((a, b) => (slideNumberOf(a) ?? 0) - (slideNumberOf(b) ?? 0));
   }
 
+  // 欠落パス（rels が指すスライドの実体が zip に無い等）はスキップするが、
+  // 連番は「実際に出力するスライドの数」で振る（元の配列位置だと歯抜けになる）
   const slides: PptxSlide[] = [];
-  slidePaths.forEach((path, i) => {
+  for (const path of slidePaths) {
     const xml = entries[path];
-    if (!xml) return;
-    slides.push({ index: i + 1, text: extractSlideText(xml, parser) });
-  });
+    if (!xml) continue;
+    slides.push({ index: slides.length + 1, text: extractSlideText(xml, parser) });
+  }
 
   // 埋め込み画像: ppt/media/* を列挙
   const images: PptxImage[] = [];

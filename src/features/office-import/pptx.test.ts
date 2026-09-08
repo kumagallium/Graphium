@@ -81,4 +81,36 @@ describe("readPptx", () => {
       { index: 2, text: "Second" },
     ]);
   });
+
+  it("rels が指すスライドの実体が zip に無くても、残りのスライド番号を連番のまま詰める", async () => {
+    // 3 枚中 2 枚目の実体が欠落（削除済みスライドを指す古い rels 等を想定）
+    const presentationXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation ${NS_P} ${NS_R}>
+  <p:sldIdLst>
+    <p:sldId id="256" r:id="rId1"/>
+    <p:sldId id="257" r:id="rId2"/>
+    <p:sldId id="258" r:id="rId3"/>
+  </p:sldIdLst>
+</p:presentation>`;
+    const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide2.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide3.xml"/>
+</Relationships>`;
+    const bytes = zipSync({
+      "ppt/presentation.xml": strToU8(presentationXml),
+      "ppt/_rels/presentation.xml.rels": strToU8(relsXml),
+      "ppt/slides/slide1.xml": strToU8(slideXml("First")),
+      // slide2.xml は意図的に含めない（欠落）
+      "ppt/slides/slide3.xml": strToU8(slideXml("Third")),
+    });
+
+    const result = await readPptx(bytes);
+    // 歯抜け（1, 3）にならず、実際に出力した 2 枚が 1, 2 の連番になる
+    expect(result.slides).toEqual([
+      { index: 1, text: "First" },
+      { index: 2, text: "Third" },
+    ]);
+  });
 });
