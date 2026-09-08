@@ -97,7 +97,7 @@ export function DataGrid({
                 ...styles.headerButton,
                 width: columns[col].width,
                 justifyContent: columns[col].numeric ? "flex-end" : "flex-start",
-                color: active ? "var(--color-foreground)" : "var(--color-text-secondary)",
+                ...(active ? { color: "var(--color-foreground)" } : {}),
               }}
             >
               {linkedColumn && <Calculator size={11} strokeWidth={2} style={{ flexShrink: 0 }} />}
@@ -147,11 +147,13 @@ export function DataGrid({
 }
 
 const styles: Record<string, CSSProperties> = {
+  // 本文の表（BlockNote の table）と同じ見え方に寄せる: 本文は白、見出し行と行番号列だけ
+  // 紙色を一段濃くして区切る。塗りの強いカードにすると本文の中で浮いてノート感が薄れる
   scroller: {
     overflow: "auto",
-    border: "1px solid var(--color-border-subtle)",
-    borderRadius: 8,
-    background: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    borderRadius: 6,
+    background: "var(--color-card)",
     fontSize: 13,
     lineHeight: `${ROW_HEIGHT}px`,
     userSelect: "text",
@@ -162,8 +164,8 @@ const styles: Record<string, CSSProperties> = {
     zIndex: 1,
     display: "flex",
     height: HEADER_HEIGHT,
-    background: "var(--color-muted)",
-    borderBottom: "1px solid var(--color-border-subtle)",
+    background: "var(--paper-3)",
+    borderBottom: "1px solid var(--color-border)",
   },
   headerCell: {
     display: "flex",
@@ -172,16 +174,17 @@ const styles: Record<string, CSSProperties> = {
     height: HEADER_HEIGHT,
     padding: "0 10px",
     fontSize: 12,
-    fontWeight: 500,
+    fontWeight: 600,
+    color: "var(--ink-2)",
     boxSizing: "border-box",
     flexShrink: 0,
-    borderRight: "1px solid var(--color-border-subtle)",
+    borderRight: "1px solid var(--color-border)",
     overflow: "hidden",
   },
   headerButton: {
     background: "transparent",
     border: "none",
-    borderRight: "1px solid var(--color-border-subtle)",
+    borderRight: "1px solid var(--color-border)",
     cursor: "pointer",
     textAlign: "left",
     font: "inherit",
@@ -206,6 +209,7 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--color-foreground)",
   },
   indexCell: {
+    background: "var(--paper-2)",
     color: "var(--color-text-tertiary)",
     fontSize: 11,
     textAlign: "right",

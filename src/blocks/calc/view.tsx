@@ -580,8 +580,10 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     padding: "10px 12px",
     borderRadius: 8,
-    background: "var(--color-muted)",
-    border: "1px solid var(--color-border)",
+    // 塗りの強いカードにすると本文の中で浮いてノート感が薄れる。枠だけにして、
+    // 入力欄と結果欄の白が本文の紙色から浮く程度に留める
+    background: "transparent",
+    border: "1px solid var(--color-border-subtle)",
   },
   header: {
     display: "flex",
