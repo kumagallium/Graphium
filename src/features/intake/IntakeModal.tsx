@@ -15,6 +15,19 @@ import { Button } from "@/ui/button";
 import { IntakeReceptacle } from "./IntakeReceptacle";
 import type { IntakeFile, IntakeSource } from "./types";
 
+/**
+ * 対象外ファイルの内訳を「（.pptx 3・.xlsx 1・.bak 1）」の形にする。
+ * 件数の多い順に上位 3 種まで表示し、4 種以上あれば末尾に「…」を足す。
+ * 拡張子は言語に依存しない機械的な表記なので i18n キーは使わない
+ */
+function formatSkippedByExt(skippedByExt: Record<string, number>): string {
+  const entries = Object.entries(skippedByExt).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) return "";
+  const top = entries.slice(0, 3).map(([ext, count]) => `${ext} ${count}`);
+  const suffix = entries.length > 3 ? "…" : "";
+  return `（${top.join("・")}${suffix}）`;
+}
+
 export type IntakeState =
   | { kind: "idle" }
   | { kind: "running"; done: number; total: number; current?: string; failed: string[] }
@@ -22,11 +35,15 @@ export type IntakeState =
       kind: "done";
       notes: number;
       materials: number;
+      /** materials のうち、新規登録ではなく既に登録済みだった件数 */
+      materialsExisting: number;
       linksResolved: number;
       linksUnresolved: number;
       failed: string[];
       /** 対象外で入れなかった件数 */
       skipped: number;
+      /** 対象外ファイルの内訳（拡張子ごと。キーはドット付き小文字、無ければ "(none)"） */
+      skippedByExt: Record<string, number>;
       aiAvailable: boolean;
     };
 
@@ -116,7 +133,14 @@ export function IntakeModal({
                   </div>
                   <div className="flex items-baseline justify-between px-4 py-2">
                     <dt className="text-muted-foreground">{t("intake.statMaterials")}</dt>
-                    <dd className="font-medium tabular-nums text-foreground">{state.materials}</dd>
+                    <dd className="font-medium tabular-nums text-foreground">
+                      {state.materials}
+                      {state.materialsExisting > 0 && (
+                        <span className="text-xs text-muted-foreground font-normal ml-2">
+                          {t("intake.statMaterialsExisting", { count: String(state.materialsExisting) })}
+                        </span>
+                      )}
+                    </dd>
                   </div>
                   <div className="flex items-baseline justify-between px-4 py-2">
                     <dt className="text-muted-foreground">{t("intake.statLinks")}</dt>
@@ -147,6 +171,11 @@ export function IntakeModal({
                 {state.skipped > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {t("intake.skipped", { count: String(state.skipped) })}
+                    {Object.keys(state.skippedByExt).length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {formatSkippedByExt(state.skippedByExt)}
+                      </span>
+                    )}
                   </p>
                 )}
                 {state.failed.length > 0 && (

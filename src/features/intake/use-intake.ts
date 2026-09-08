@@ -69,10 +69,12 @@ export function useIntake(deps: IntakeDeps & { aiAvailable: boolean }) {
           kind: "done",
           notes: combined.notes,
           materials: combined.materials,
+          materialsExisting: combined.materialsExisting,
           linksResolved: combined.linksResolved,
           linksUnresolved: combined.linksUnresolved,
           failed: combined.failed,
           skipped: combined.skipped,
+          skippedByExt: combined.skippedByExt,
           aiAvailable: depsRef.current.aiAvailable,
         });
         // 進行中に × で閉じられていても、結果（復元レポート）は必ず見せる

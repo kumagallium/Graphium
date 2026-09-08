@@ -86,6 +86,33 @@ describe("runIntake", () => {
     expect(outcome.notes).toBe(1);
     expect(outcome.materials).toBe(1);
   });
+
+  it("skippedByExt が拡張子ごとに数えられる", async () => {
+    const files = [
+      otherFile("a.pptx"),
+      otherFile("b.pptx"),
+      otherFile("c.xlsx"),
+      otherFile("d.bak"),
+    ];
+    const deps = makeDeps();
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(outcome.skippedByExt).toEqual({ ".pptx": 2, ".xlsx": 1, ".bak": 1 });
+  });
+
+  it("materialsExisting が uploadAsset の duplicate:true 件数を数える", async () => {
+    const files = [pdfFile("new.pdf"), pdfFile("existing.pdf")];
+    const uploadAsset = vi.fn(async (file: File) => ({
+      duplicate: file.name === "existing.pdf",
+    }));
+    const deps = makeDeps({ uploadAsset });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(outcome.materials).toBe(2);
+    expect(outcome.materialsExisting).toBe(1);
+  });
 });
 
 describe("runIntake の堅牢性", () => {
@@ -128,23 +155,27 @@ describe("runIntake の堅牢性", () => {
 });
 
 describe("mergeOutcome", () => {
-  it("notes/materials/links/skipped を加算し、failed を連結、lastNewId は後勝ち", () => {
+  it("notes/materials/materialsExisting/links/skipped を加算し、skippedByExt はキーごとに加算、failed は連結、lastNewId は後勝ち", () => {
     const a: IntakeOutcome = {
       notes: 2,
       materials: 1,
+      materialsExisting: 1,
       linksResolved: 3,
       linksUnresolved: 1,
       failed: ["a.md"],
       skipped: 1,
+      skippedByExt: { ".pptx": 1 },
       lastNewId: "note-a",
     };
     const b: IntakeOutcome = {
       notes: 1,
       materials: 2,
+      materialsExisting: 0,
       linksResolved: 0,
       linksUnresolved: 2,
       failed: ["b.pdf"],
       skipped: 0,
+      skippedByExt: { ".pptx": 1, ".xlsx": 1 },
       lastNewId: null,
     };
 
@@ -153,10 +184,12 @@ describe("mergeOutcome", () => {
     expect(merged).toEqual({
       notes: 3,
       materials: 3,
+      materialsExisting: 1,
       linksResolved: 3,
       linksUnresolved: 3,
       failed: ["a.md", "b.pdf"],
       skipped: 1,
+      skippedByExt: { ".pptx": 2, ".xlsx": 1 },
       // b の lastNewId が null なので a を保つ
       lastNewId: "note-a",
     });

@@ -3,9 +3,16 @@
 // 「ノートになるもの（Markdown）」「素材になるもの（PDF/画像/CSV 等）」
 // 「対象外（隠しファイル・未対応形式）」の 3 群に分ける。判定ロジック自体は
 // markdown-import / asset-browser の既存関数を再利用し、ここでは並び替えのみ行う。
+//
+// 受け皿の約束は「Markdown はノートに、PDF・Word・画像・CSV は素材になります」の
+// 1 文だけ。ここで約束していない種類（PowerPoint・Excel 等）は入れない。
+// PowerPoint (.pptx/.ppt) と Excel (.xlsx/.xls) は素材として登録しても
+// 中身を開ける手段が無い（ドキュメントで中身を読めるのは PDF と Word .docx だけ）。
+// スライドの文字・画像を抜く、シートを表にする、といったちゃんとした取り込みが
+// 入るまでは対象外として件数だけ見せるに留める。
 
 import { isMarkdownFile } from "../markdown-import/import";
-import { mimeToMediaType } from "../asset-browser/media-index";
+import { mimeToMediaType, isWordDocxEntry } from "../asset-browser/media-index";
 import type { IntakeFile } from "./types";
 
 export type ClassifiedIntakeFiles = {
@@ -40,6 +47,10 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   wav: "audio/wav",
   m4a: "audio/mp4",
   ogg: "audio/ogg",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ppt: "application/vnd.ms-powerpoint",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel",
 };
 
 /** ファイル名の拡張子から MIME タイプを推定する。不明なら空文字を返す */
@@ -64,7 +75,18 @@ export function classifyIntakeFiles(files: IntakeFile[]): ClassifiedIntakeFiles 
       notes.push(f);
       continue;
     }
-    if (mimeToMediaType(f.file.type || guessMimeType(f.file.name), f.file.name) !== "other") {
+    const mime = f.file.type || guessMimeType(f.file.name);
+    const mediaType = mimeToMediaType(mime, f.file.name);
+    // "document" は Word/Excel/PowerPoint をまとめた型だが、受け皿が約束したのは
+    // Word（.docx）まで。PowerPoint・Excel・.doc はここで弾く
+    if (
+      mediaType === "pdf" ||
+      mediaType === "image" ||
+      mediaType === "audio" ||
+      mediaType === "video" ||
+      mediaType === "data" ||
+      (mediaType === "document" && isWordDocxEntry({ type: mediaType, mimeType: mime }))
+    ) {
       materials.push(f);
       continue;
     }

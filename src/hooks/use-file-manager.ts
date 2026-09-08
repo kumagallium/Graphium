@@ -2122,7 +2122,7 @@ export function useFileManager(authenticated: boolean) {
         derivedFromAssets?: string[];
         capture?: import("../features/mobile-capture/inbox/types").CaptureMeta;
       },
-    ): Promise<{ url: string; fileId: string; entry: MediaIndexEntry }> => {
+    ): Promise<{ url: string; fileId: string; entry: MediaIndexEntry; duplicate: boolean }> => {
       // 判定はアップロードの前に済ませる。後でやると実体だけ増える。
       const contentHash = await computeAssetContentHash(file);
       const duplicate = findSameAsset(mediaIndexRef.current, contentHash);
@@ -2150,7 +2150,7 @@ export function useFileManager(authenticated: boolean) {
         }
         // capture（受信箱から来た来歴）は上書きしない。最初に取り込んだ出どころを残す。
         registerPendingOcrFile(entry.url, file);
-        return { url: entry.url, fileId: entry.fileId, entry };
+        return { url: entry.url, fileId: entry.fileId, entry, duplicate: true };
       }
 
       const result = await uploadMediaFileWithMeta(file);
@@ -2181,7 +2181,7 @@ export function useFileManager(authenticated: boolean) {
       saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
       // 貼付直後の自動 OCR がプロバイダから読み戻さずに済むよう File 実体を預ける
       registerPendingOcrFile(result.url, file);
-      return { url: result.url, fileId: result.fileId, entry };
+      return { url: result.url, fileId: result.fileId, entry, duplicate: false };
     },
     [],
   );

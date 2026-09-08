@@ -2043,6 +2043,7 @@ export const ja: Record<string, string> = {
   "intake.doneTitle": "取り込みました",
   "intake.statNotes": "ノート",
   "intake.statMaterials": "素材",
+  "intake.statMaterialsExisting": "{count} 件は登録済み",
   "intake.statLinks": "引き継いだつながり",
   "intake.statUnresolved": "{count} 件は未解決",
   "intake.statFailed": "失敗",

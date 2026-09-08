@@ -76,4 +76,37 @@ describe("classifyIntakeFiles", () => {
     const result = classifyIntakeFiles([f]);
     expect(result.skipped).toEqual([f]);
   });
+
+  it("PowerPoint（type 空）は対象外（拡張子から推定して弾く）", () => {
+    const f = intakeFile("paper.pptx", "paper.pptx", "");
+    const result = classifyIntakeFiles([f]);
+    expect(result.skipped).toEqual([f]);
+    expect(result.materials).toEqual([]);
+  });
+
+  it("Excel は対象外", () => {
+    const f = intakeFile(
+      "sheet.xlsx",
+      "sheet.xlsx",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    const result = classifyIntakeFiles([f]);
+    expect(result.skipped).toEqual([f]);
+  });
+
+  it("Word (.docx) は素材に分類される", () => {
+    const f = intakeFile(
+      "report.docx",
+      "report.docx",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    const result = classifyIntakeFiles([f]);
+    expect(result.materials).toEqual([f]);
+  });
+
+  it("旧形式の Word (.doc) は対象外（docx のみ素材扱い）", () => {
+    const f = intakeFile("old.doc", "old.doc", "application/msword");
+    const result = classifyIntakeFiles([f]);
+    expect(result.skipped).toEqual([f]);
+  });
 });

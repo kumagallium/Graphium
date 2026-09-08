@@ -7,6 +7,19 @@
 import { classifyIntakeFiles } from "./classify";
 import type { IntakeFile } from "./types";
 
+/**
+ * path から拡張子を取り出す（小文字・ドット付き。例: ".pptx"）。
+ * ドット始まりのパス（.obsidian/app.json 等）は先頭のドットではなく、
+ * 中のファイル名（app.json）の拡張子を数える。拡張子が無ければ "(none)"
+ */
+function extOf(path: string): string {
+  const base = path.split("/").pop() ?? path;
+  const dotIndex = base.lastIndexOf(".");
+  // dotIndex <= 0 は「拡張子が無い」（隠しファイル自体の . は拡張子ではない）
+  if (dotIndex <= 0) return "(none)";
+  return base.slice(dotIndex).toLowerCase();
+}
+
 /** Markdown インポート（importMarkdown 実装）が返す結果 */
 export type MarkdownImportResult = {
   created: number;
@@ -31,8 +44,11 @@ export type IntakeDeps = {
     onProgress: (p: IntakeProgress) => void,
     ctx: { allFiles: IntakeFile[] },
   ) => Promise<MarkdownImportResult>;
-  /** 素材を 1 件アップロードする */
-  uploadAsset: (file: File) => Promise<unknown>;
+  /**
+   * 素材を 1 件アップロードする。戻り値の duplicate が true なら
+   * 「新規登録ではなく既存の素材を返した」ことを表す（materialsExisting の集計に使う）
+   */
+  uploadAsset: (file: File) => Promise<{ duplicate?: boolean } | void | unknown>;
   /** 全件終了後に 1 回だけ呼ぶ（インデックス再構築など） */
   afterRun?: () => Promise<void> | void;
 };
@@ -40,27 +56,38 @@ export type IntakeDeps = {
 export type IntakeOutcome = {
   notes: number;
   materials: number;
+  /** materials のうち、新規登録ではなく既に登録済みだった件数（materials ⊇ materialsExisting） */
+  materialsExisting: number;
   linksResolved: number;
   linksUnresolved: number;
   failed: string[];
   skipped: number;
+  /** 対象外ファイルの内訳。キーは拡張子（小文字・ドット付き、無ければ "(none)"） */
+  skippedByExt: Record<string, number>;
   lastNewId: string | null;
 };
 
 /**
  * 2 回分の IntakeOutcome を 1 つに畳む。実行中に次のバッチが積まれたとき、
  * バッチごとの結果を合算して最終的な done を 1 回だけ出すために使う。
- * notes / materials / linksResolved / linksUnresolved / skipped は加算、
- * failed は連結、lastNewId は後勝ち（新しい方が null なら前を保つ）。
+ * notes / materials / materialsExisting / linksResolved / linksUnresolved / skipped は
+ * 加算、skippedByExt はキーごとに加算、failed は連結、lastNewId は後勝ち
+ * （新しい方が null なら前を保つ）。
  */
 export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome {
+  const skippedByExt: Record<string, number> = { ...a.skippedByExt };
+  for (const [ext, count] of Object.entries(b.skippedByExt)) {
+    skippedByExt[ext] = (skippedByExt[ext] ?? 0) + count;
+  }
   return {
     notes: a.notes + b.notes,
     materials: a.materials + b.materials,
+    materialsExisting: a.materialsExisting + b.materialsExisting,
     linksResolved: a.linksResolved + b.linksResolved,
     linksUnresolved: a.linksUnresolved + b.linksUnresolved,
     failed: [...a.failed, ...b.failed],
     skipped: a.skipped + b.skipped,
+    skippedByExt,
     lastNewId: b.lastNewId ?? a.lastNewId,
   };
 }
@@ -106,19 +133,30 @@ export async function runIntake(
 
   // materials: 1 件ずつアップロード。失敗しても続行する
   let materialsUploaded = 0;
+  let materialsExisting = 0;
   const notesDone = notes.length;
   for (let i = 0; i < materials.length; i++) {
     const m = materials[i];
     onProgress({ done: notesDone + i, total, current: m.file.name, failed });
     try {
-      await deps.uploadAsset(m.file);
+      const result = await deps.uploadAsset(m.file);
       materialsUploaded += 1;
+      if (result && typeof result === "object" && (result as { duplicate?: boolean }).duplicate === true) {
+        materialsExisting += 1;
+      }
     } catch (err) {
       console.warn(`[intake] 素材のアップロードに失敗: ${m.file.name}`, err);
       failed.push(m.file.name);
     }
   }
   onProgress({ done: total, total, failed });
+
+  // 対象外ファイルの内訳を拡張子ごとに数える
+  const skippedByExt: Record<string, number> = {};
+  for (const s of skipped) {
+    const ext = extOf(s.path);
+    skippedByExt[ext] = (skippedByExt[ext] ?? 0) + 1;
+  }
 
   // 後処理（一覧の再読込など）が失敗しても、入ったものは入っているので結果は返す
   if (deps.afterRun) {
@@ -132,10 +170,12 @@ export async function runIntake(
   return {
     notes: markdownResult.created,
     materials: materialsUploaded,
+    materialsExisting,
     linksResolved: markdownResult.linksResolved,
     linksUnresolved: markdownResult.linksUnresolved,
     failed,
     skipped: skipped.length,
+    skippedByExt,
     lastNewId: markdownResult.lastNewId,
   };
 }
