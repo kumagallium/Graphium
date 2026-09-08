@@ -120,6 +120,23 @@ describe("collectTableColumns", () => {
     const tables = collectTableColumns(blocks as any, new Map([["dt", "oven-log"]]));
     expect(tables.has("oven-log")).toBe(false);
   });
+
+  it("calcWritebacks にこのデータ表宛ての宣言があれば計算列も列として含める", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt", "oven-log")];
+    const calcWritebacks = { calc1: [{ tableBlockId: "dt", column: "d", texts: ["1", "2", "3"] }] };
+    const tables = collectTableColumns(blocks as any, new Map([["dt", "oven-log"]]), calcWritebacks);
+    expect(tables.get("oven-log")?.get("d")).toEqual({ values: [1, 2, 3] });
+  });
+
+  it("素材と同名の計算列は無視する（素材が勝つ）", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt", "oven-log")];
+    // temp_c は素材側に既にある列名。書き戻し宣言があっても素材の値のまま
+    const calcWritebacks = { calc1: [{ tableBlockId: "dt", column: "temp_c", texts: ["999", "999", "999"] }] };
+    const tables = collectTableColumns(blocks as any, new Map([["dt", "oven-log"]]), calcWritebacks);
+    expect(tables.get("oven-log")?.get("temp_c")).toEqual({ values: [180.0, 181.5, 183.0] });
+  });
 });
 
 describe("columnsFromText", () => {
@@ -156,7 +173,7 @@ describe("collectDataTableBlockIds", () => {
 });
 
 describe("publishTableColumns", () => {
-  it("setTableColumns / setTableBlockIds を呼び、dataTable の id は setTableBlockIds に含めない", () => {
+  it("setTableColumns / setTableBlockIds を呼び、dataTable の id も setTableBlockIds に含める（計算列の受け皿）", () => {
     primeAssetText("asset-1", CSV);
     const blocks = [dataTable("dt1", "oven-log"), table("t1", [["v"], ["1"]])];
     const editor = { document: blocks };
@@ -171,7 +188,7 @@ describe("publishTableColumns", () => {
     const store = { getCaption: () => "", setTableColumns, setTableBlockIds };
     publishTableColumns(editor, store);
     expect(calledColumns["oven-log"]["temp_c"]).toEqual({ values: [180.0, 181.5, 183.0] });
-    expect(calledIds).not.toHaveProperty("oven-log");
+    expect(calledIds["oven-log"]).toBe("dt1");
     // 無名の table は自動名で登録される
     expect(Object.values(calledIds)).toContain("t1");
   });
@@ -185,6 +202,37 @@ describe("publishTableColumns", () => {
       },
     });
     expect(called).toBe(false);
+  });
+
+  it("store.calcWritebacks を読んで計算列を含めて配り、setDataTableBlockIds に dataTable の id だけ渡す", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt1", "oven-log"), table("t1", [["v"], ["1"]])];
+    const editor = { document: blocks };
+    let calledColumns: any;
+    let calledDataTableIds: any;
+    const store = {
+      getCaption: () => "",
+      setTableColumns: (columns: any) => {
+        calledColumns = columns;
+      },
+      setDataTableBlockIds: (ids: string[]) => {
+        calledDataTableIds = ids;
+      },
+      calcWritebacks: { calc1: [{ tableBlockId: "dt1", column: "d", texts: ["1", "2", "3"] }] },
+    };
+    publishTableColumns(editor, store);
+    expect(calledColumns["oven-log"]["d"]).toEqual({ values: [1, 2, 3] });
+    // table（t1）の id は含めない。dataTable（dt1）だけ
+    expect(calledDataTableIds).toEqual(["dt1"]);
+  });
+
+  it("setDataTableBlockIds が無い store でも落ちない", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt1", "oven-log")];
+    const editor = { document: blocks };
+    expect(() =>
+      publishTableColumns(editor, { getCaption: () => "", setTableColumns: () => {} })
+    ).not.toThrow();
   });
 });
 

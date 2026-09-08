@@ -5,8 +5,7 @@ import {
   assignedVariableOf,
   extractReadColumns,
   parseCalcTargets,
-  type CalcWritebackRequest,
-} from "./writeback";
+  type CalcWritebackRequest, autoVariableName } from "./writeback";
 
 describe("parseCalcTargets", () => {
   it("正しい形だけを残す（壊れた JSON・欠けたフィールドは捨てる）", () => {
@@ -112,5 +111,13 @@ describe("applyCalcWritebacks", () => {
       calc1: [{ tableBlockId: "missing", column: "秤量値", texts: ["1"] }],
     });
     expect(updates).toHaveLength(0);
+  });
+});
+
+describe("autoVariableName", () => {
+  it("どの行にも無い最初の v<n> を返す", () => {
+    expect(autoVariableName("")).toBe("v1");
+    expect(autoVariableName("v1 = 1\nx = 2")).toBe("v2");
+    expect(autoVariableName("v2 = 1\nv1 = 2\n5 * 3")).toBe("v3");
   });
 });

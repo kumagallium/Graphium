@@ -23,6 +23,7 @@
 import { normalizeNumericText, parseNumeric } from "../chart/chart-data";
 import { readCellText } from "../../features/table-meta/table-cells";
 import { peekDataTableFromBlock } from "../data-table/data";
+import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 import type {
   TableColumnData,
@@ -86,7 +87,12 @@ export function columnsFromText(headers: string[], body: string[][]): Map<string
  * 文書中の表を表示名付きで集める。displayNames は
  * computeTableDisplayNames の結果（blockId → 表示名）。
  */
-export function collectTableColumns(blocks: any[], displayNames: Map<string, string>): TableColumns {
+export function collectTableColumns(
+  blocks: any[],
+  displayNames: Map<string, string>,
+  /** calc の書き戻し宣言。データ表の計算列を列として含めるために読む */
+  calcWritebacks?: Record<string, unknown[]> | null,
+): TableColumns {
   const tables: TableColumns = new Map();
   const visit = (list: any[]) => {
     for (const b of list ?? []) {
@@ -98,8 +104,10 @@ export function collectTableColumns(blocks: any[], displayNames: Map<string, str
         // データ表は素材が読めてから配る（読めるまでは無いものとして扱う。
         // 届いたら subscribeDataTableData 経由でホストが配り直す）
         const name = displayNames.get(b.id);
-        const data = name && !tables.has(name) ? peekDataTableFromBlock(b) : null;
-        if (name && data) tables.set(name, columnsFromText(data.headers, data.rows));
+        const raw = name && !tables.has(name) ? peekDataTableFromBlock(b) : null;
+        // calc が足した計算列も、他の calc やチャートからは普通の列に見える
+        const merged = raw ? mergeLinkedColumns(raw, linkedColumnsFor(b.id, calcWritebacks)) : null;
+        if (name && merged) tables.set(name, columnsFromText(merged.data.headers, merged.data.rows));
       }
       if (Array.isArray(b?.children)) visit(b.children);
     }
@@ -142,21 +150,23 @@ export function publishTableColumns(
     getCaption: (blockId: string) => string;
     setTableColumns: (columns: TableColumnsIndex) => void;
     setTableBlockIds?: (ids: Record<string, string>) => void;
+    setDataTableBlockIds?: (ids: string[]) => void;
+    calcWritebacks?: Record<string, unknown[]> | null;
   } | null | undefined,
 ): void {
   const doc = editor?.document;
   if (!Array.isArray(doc) || !store) return;
   const displayNames = computeTableDisplayNames(doc, store.getCaption);
-  store.setTableColumns(buildTableIndex(collectTableColumns(doc, displayNames)));
+  store.setTableColumns(buildTableIndex(collectTableColumns(doc, displayNames, store.calcWritebacks)));
   // 書き戻し先の選択・実行は blockId で行うため、表示名 → blockId も一緒に配る
   if (store.setTableBlockIds) {
-    // データ表は書き戻し先にしない（素材が正で、表は見せているだけ）
-    const dataTableIds = collectDataTableBlockIds(doc);
     const ids: Record<string, string> = {};
     for (const [blockId, name] of displayNames) {
-      if (dataTableIds.has(blockId)) continue;
       if (!(name in ids)) ids[name] = blockId; // 同名は文書順で先の表（読み取りと同じ規則）
     }
     store.setTableBlockIds(ids);
   }
+  // データ表はセルに書けない。書き戻し先に選ばれたら「新しい列として見せる」に
+  // 切り替えるため、どれがデータ表かをピッカーに教える
+  store.setDataTableBlockIds?.([...collectDataTableBlockIds(doc)]);
 }

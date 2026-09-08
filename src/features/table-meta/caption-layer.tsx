@@ -198,6 +198,18 @@ export function TableCaptionLayer({
       });
     });
 
+    // 名前付きの表のブロックに印を付ける。選択枠（app.css）がこの印を見て、上余白に
+    // 浮かぶキャプション行まで枠を伸ばす。監視は属性を見ていない（childList / characterData）
+    // ので、ここで属性を触っても compute は再発火しない
+    const captioned = new Set(next.map((pos) => pos.blockId));
+    root.querySelectorAll("[data-caption-space]").forEach((el) => {
+      if (!captioned.has(el.getAttribute("data-id") ?? "")) el.removeAttribute("data-caption-space");
+    });
+    captioned.forEach((blockId) => {
+      const el = root.querySelector(`[data-id="${blockId}"][data-node-type="blockOuter"]`);
+      if (el && !el.hasAttribute("data-caption-space")) el.setAttribute("data-caption-space", "");
+    });
+
     setCaptions(next);
 
     if (domMissing && retryRef.current === null) {

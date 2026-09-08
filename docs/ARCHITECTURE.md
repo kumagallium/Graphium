@@ -147,12 +147,20 @@ talks to LLM and embedding backends.
   editor; the import dialog therefore defaults to a data table for every
   delimited import (instrument data is read and plotted, not edited by hand)
   and lets the writer pick the note-table form instead, warning above
+  editor; the import dialog therefore defaults to a data table for every
+  delimited import (instrument data is read and plotted, not edited by hand)
+  and lets the writer pick the note-table form instead, warning above
   `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and refusing above
   `DOC_TABLE_HARD_MAX_ROWS` (1,000), because a 2,000-row note table stalls
-  the editor until it is force-quit. Re-importing from the source
-  badge converts between the two forms. Calc blocks and charts read a data table by its caption exactly
-  like a note table (read-only: calc write-back never targets one), and the
-  expand button opens the same full-height view with virtual scrolling.
+  the editor until it is force-quit. Re-importing from the source badge
+  converts between the two forms. Calc blocks and charts read a data table
+  by its caption exactly like a note table, and the expand button opens the
+  same full-height view with virtual scrolling. Calc write-back (⇥) onto a
+  data table does not touch the asset: the declared values are shown as an
+  extra *computed column* on the right, marked with a calculator badge, so
+  the formula stays visible in the calc block and the note still stores no
+  rows. Charts and other calc blocks read computed columns like any other
+  column.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the

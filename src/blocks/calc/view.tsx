@@ -21,7 +21,7 @@
 // - 配色は design.md のトークン（--color-*）のみを使う
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { ArrowRightToLine, Calculator, Check, ChevronRight } from "lucide-react";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
 import {
@@ -29,8 +29,7 @@ import {
   extractReadColumns,
   parseCalcTargets,
   type CalcTargets,
-  type CalcWritebackRequest,
-} from "./writeback";
+  type CalcWritebackRequest, autoVariableName } from "./writeback";
 import { applyCalcSuggestion, computeCalcSuggestion, type CalcSuggestion } from "./suggest";
 import { buildTableIndex, collectTableColumns } from "./table-scope";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
@@ -175,6 +174,36 @@ export const CalcBlock = createReactBlockSpec(
         else delete next[varName];
         commit(draft, undefined, next);
         setPicker(null);
+      };
+      // データ表へは既存の列に書けない（素材が正）ので、新しい列の名前を入れて足す。
+      // 既定は変数名（`d = …` なら列「d」）
+      const [newColumnName, setNewColumnName] = useState("");
+      // ピッカーの置き場所。結果列の下に開くのが基本だが、画面の下端に近いと
+      // 画面外にはみ出すので、そのときは上へ開く。開いた瞬間の位置で決める
+      const pickerAnchorRef = useRef<HTMLDivElement>(null);
+      const [pickerPlacement, setPickerPlacement] = useState<"below" | "above">("below");
+      useLayoutEffect(() => {
+        if (!picker) return;
+        const rect = pickerAnchorRef.current?.getBoundingClientRect();
+        const room = rect ? window.innerHeight - rect.bottom : Infinity;
+        setPickerPlacement(room < 300 && (rect?.top ?? 0) > 300 ? "above" : "below");
+      }, [picker]);
+      useEffect(() => {
+        if (picker) setNewColumnName(picker.varName);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [picker?.varName]);
+      const pickedBlockId = picker?.tableName ? tableStore?.tableBlockIds?.[picker.tableName] : undefined;
+      const pickedIsDataTable =
+        !!pickedBlockId && !!tableStore?.dataTableBlockIds?.includes(pickedBlockId);
+      const pickedColumns = picker?.tableName
+        ? Object.keys(tableStore?.tableColumns?.[picker.tableName] ?? {})
+        : [];
+      const newColumnTrimmed = newColumnName.trim();
+      const canAddNewColumn =
+        pickedIsDataTable && newColumnTrimmed !== "" && !pickedColumns.includes(newColumnTrimmed);
+      const addNewColumn = () => {
+        if (!picker || !pickedBlockId || !canAddNewColumn) return;
+        setTarget(picker.varName, { tableBlockId: pickedBlockId, column: newColumnTrimmed });
       };
       // 表示用: blockId → 表示名（ストア配布の逆引き）
       const tableNameOfId = (blockId: string): string | undefined => {
@@ -336,7 +365,7 @@ export const CalcBlock = createReactBlockSpec(
 
             {/* 右: 行ごとの評価結果。クリックでコピーできる */}
             {!empty && (
-              <div data-calc-results style={styles.resultsColWrap}>
+              <div data-calc-results ref={pickerAnchorRef} style={styles.resultsColWrap}>
               <div style={styles.resultsCol} aria-hidden={false}>
                 {lines.map((line, i) => {
                   const r = results[i];
@@ -364,16 +393,31 @@ export const CalcBlock = createReactBlockSpec(
                       >
                         {copiedLine === i ? t("calc.copied") : r.text || " "}
                       </span>
-                      {varName && (
+                      {editable && (
                         <button
                           type="button"
                           data-test="calc-writeback-btn"
-                          title={targetLabel ?? t("calc.writeToTable")}
-                          onClick={() =>
-                            setPicker((cur) =>
-                              cur?.varName === varName ? null : { varName, tableName: null }
-                            )
+                          title={
+                            targetLabel ??
+                            (varName ? t("calc.writeToTable") : t("calc.writeToTableAutoName"))
                           }
+                          onClick={() => {
+                            if (varName) {
+                              setPicker((cur) =>
+                                cur?.varName === varName ? null : { varName, tableName: null }
+                              );
+                              return;
+                            }
+                            // 変数の無い式: 書き戻し先は変数名で紐付けるので、押した瞬間に
+                            // 名付けて（v1 = 式）からピッカーを開く。名前は後から書き換えられる
+                            const name = autoVariableName(draft);
+                            const next = lines
+                              .map((l, j) => (j === i ? `${name} = ${l.trim()}` : l))
+                              .join("\n");
+                            setDraft(next);
+                            commit(next);
+                            setPicker({ varName: name, tableName: null });
+                          }}
                           style={{
                             ...styles.writebackBtn,
                             ...(target ? styles.writebackBtnActive : {}),
@@ -390,7 +434,14 @@ export const CalcBlock = createReactBlockSpec(
                 })}
               </div>
               {picker && (
-                <div style={styles.writebackBox} data-test="calc-writeback-picker">
+                <div
+                  style={{
+                    ...styles.writebackBox,
+                    ...(pickerPlacement === "above" ? styles.writebackBoxAbove : {}),
+                  }}
+                  data-test="calc-writeback-picker"
+                  data-placement={pickerPlacement}
+                >
                   {/* 左パネル: 表の一覧。選ぶと右に列のパネルが展開する
                       （step の前手順ピッカーと同じカスケードの流儀） */}
                   <div style={styles.writebackPanel}>
@@ -447,15 +498,23 @@ export const CalcBlock = createReactBlockSpec(
                         const current = targets[picker.varName];
                         const isCurrent =
                           !!current && current.tableBlockId === blockId && current.column === column;
+                        // データ表の既存列は書き換えられない（自分が足した列だけは選び直せる）
+                        const locked = pickedIsDataTable && !isCurrent;
                         return (
                           <button
                             key={column}
                             type="button"
-                            disabled={reads || !blockId}
-                            title={reads ? t("calc.writebackReadColumn") : undefined}
+                            disabled={reads || !blockId || locked}
+                            title={
+                              reads
+                                ? t("calc.writebackReadColumn")
+                                : locked
+                                  ? t("calc.writebackDataTableColumn")
+                                  : undefined
+                            }
                             style={{
                               ...styles.writebackItem,
-                              ...(reads || !blockId ? styles.writebackDisabled : {}),
+                              ...(reads || !blockId || locked ? styles.writebackDisabled : {}),
                             }}
                             onClick={() =>
                               blockId && setTarget(picker.varName, { tableBlockId: blockId, column })
@@ -466,6 +525,34 @@ export const CalcBlock = createReactBlockSpec(
                           </button>
                         );
                       })}
+                      {pickedIsDataTable && (
+                        <div style={styles.writebackNewColumn}>
+                          <input
+                            value={newColumnName}
+                            placeholder={t("calc.writebackNewColumn")}
+                            aria-label={t("calc.writebackNewColumn")}
+                            onChange={(e) => setNewColumnName(e.target.value)}
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === "Enter" && !(e.nativeEvent as { isComposing?: boolean }).isComposing) {
+                                addNewColumn();
+                              }
+                            }}
+                            style={styles.writebackNewColumnInput}
+                          />
+                          <button
+                            type="button"
+                            disabled={!canAddNewColumn}
+                            onClick={addNewColumn}
+                            style={{
+                              ...styles.writebackItem,
+                              ...(canAddNewColumn ? {} : styles.writebackDisabled),
+                            }}
+                          >
+                            {t("calc.writebackAddColumn")}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -493,8 +580,10 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     padding: "10px 12px",
     borderRadius: 8,
-    background: "var(--color-muted)",
-    border: "1px solid var(--color-border)",
+    // 塗りの強いカードにすると本文の中で浮いてノート感が薄れる。枠だけにして、
+    // 入力欄と結果欄の白が本文の紙色から浮く程度に留める
+    background: "transparent",
+    border: "1px solid var(--color-border-subtle)",
   },
   header: {
     display: "flex",
@@ -641,6 +730,11 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--color-border)",
     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
   },
+  // 画面の下端に近いときは上へ開く（下に開くと画面外にはみ出す）
+  writebackBoxAbove: {
+    top: "auto",
+    bottom: "calc(100% + 4px)",
+  },
   writebackLabel: {
     fontSize: 11,
     color: "var(--color-muted-foreground)",
@@ -693,6 +787,25 @@ const styles: Record<string, React.CSSProperties> = {
   },
   writebackClear: {
     color: "var(--color-error)",
+  },
+  writebackNewColumn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    alignSelf: "stretch",
+  },
+  writebackNewColumnInput: {
+    flex: 1,
+    // 列パネルは中身に合わせて縮むので、入力欄には最低幅を持たせる（無いと数 px に潰れる）
+    minWidth: 140,
+    fontSize: 12,
+    padding: "3px 8px",
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    background: "var(--color-surface)",
+    color: "var(--color-foreground)",
+    outline: "none",
   },
   writebackDisabled: {
     opacity: 0.4,

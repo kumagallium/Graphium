@@ -74,6 +74,7 @@ import {
 } from "./chart-config";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
 import { peekDataTableFromBlock, subscribeDataTableData } from "../data-table/data";
+import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
 import {
   canPickChartAssetSource,
   requestChartAssetSource,
@@ -316,12 +317,17 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
       if (isAssetSourceKey(key)) return assetTables.resolve(key);
       if (!cache.has(key)) {
         const block = (editor as any).getBlock?.(key);
-        cache.set(key, readTableData(block) ?? peekDataTableFromBlock(block));
+        // データ表は calc の計算列も含めて読む（表示と同じ列が描ける）
+        const dataTable = mergeLinkedColumns(
+          peekDataTableFromBlock(block),
+          linkedColumnsFor(key, tableMetaStore?.calcWritebacks),
+        );
+        cache.set(key, readTableData(block) ?? dataTable?.data ?? null);
       }
       return cache.get(key) ?? null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, docVersion, assetTables.resolve]);
+  }, [editor, docVersion, assetTables.resolve, tableMetaStore?.calcWritebacks]);
 
   const updateConfig = (patch: Partial<ChartBlockConfig>) => {
     (editor as any).updateBlock(block, {

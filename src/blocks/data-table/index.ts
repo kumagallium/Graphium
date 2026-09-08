@@ -24,3 +24,4 @@ export {
   type DataTableData,
 } from "./data";
 export { dataTableDisplayName, dataTableDisplayNameOf } from "./source";
+export { linkedColumnsFor, mergeLinkedColumns, type LinkedColumn } from "./linked";

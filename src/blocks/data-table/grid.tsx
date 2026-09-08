@@ -4,10 +4,11 @@
 // 描くべき行を計算で出す（仮想スクロール）。並べ替えは表示だけで、データは変えない。
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Calculator } from "lucide-react";
 import { t } from "../../i18n";
 import type { SortState } from "../../features/table-meta/sort-table";
 import type { DataTableData } from "./data";
+import type { LinkedColumn } from "./linked";
 import {
   HEADER_HEIGHT,
   INDEX_COLUMN_WIDTH,
@@ -23,12 +24,16 @@ import {
 export function DataGrid({
   data,
   visibleRows = VISIBLE_ROWS,
+  linked = [],
 }: {
   data: DataTableData;
   /** 一度に見せる行数。これを超えると表の中でスクロールする */
   visibleRows?: number;
+  /** 末尾に足した計算列（calc の書き戻し）。見出しにバッジを出す */
+  linked?: LinkedColumn[];
 }) {
   const { headers, rows } = data;
+  const linkedStart = headers.length - linked.length;
   const columns = useMemo(() => buildColumnModels(headers, rows), [headers, rows]);
   const [sort, setSort] = useState<SortState>(null);
   const order = useMemo(() => orderRows(rows, sort), [rows, sort]);
@@ -73,6 +78,7 @@ export function DataGrid({
         </div>
         {headers.map((h, col) => {
           const active = sort?.col === col;
+          const linkedColumn = col >= linkedStart ? linked[col - linkedStart] : undefined;
           return (
             <button
               key={col}
@@ -80,15 +86,21 @@ export function DataGrid({
               role="columnheader"
               aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
               onClick={() => toggleSort(col)}
-              title={t("dataTable.sortHint")}
+              title={
+                linkedColumn
+                  ? t("dataTable.linkedColumn", { calc: linkedColumn.calcName || t("calc.label") })
+                  : t("dataTable.sortHint")
+              }
+              data-linked-column={linkedColumn ? "true" : undefined}
               style={{
                 ...styles.headerCell,
                 ...styles.headerButton,
                 width: columns[col].width,
                 justifyContent: columns[col].numeric ? "flex-end" : "flex-start",
-                color: active ? "var(--color-foreground)" : "var(--color-text-secondary)",
+                ...(active ? { color: "var(--color-foreground)" } : {}),
               }}
             >
+              {linkedColumn && <Calculator size={11} strokeWidth={2} style={{ flexShrink: 0 }} />}
               <span style={styles.ellipsis}>{h}</span>
               {active &&
                 (sort!.dir === "asc" ? (
@@ -135,11 +147,13 @@ export function DataGrid({
 }
 
 const styles: Record<string, CSSProperties> = {
+  // 本文の表（BlockNote の table）と同じ見え方に寄せる: 本文は白、見出し行と行番号列だけ
+  // 紙色を一段濃くして区切る。塗りの強いカードにすると本文の中で浮いてノート感が薄れる
   scroller: {
     overflow: "auto",
-    border: "1px solid var(--color-border-subtle)",
-    borderRadius: 8,
-    background: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    borderRadius: 6,
+    background: "var(--color-card)",
     fontSize: 13,
     lineHeight: `${ROW_HEIGHT}px`,
     userSelect: "text",
@@ -150,8 +164,8 @@ const styles: Record<string, CSSProperties> = {
     zIndex: 1,
     display: "flex",
     height: HEADER_HEIGHT,
-    background: "var(--color-muted)",
-    borderBottom: "1px solid var(--color-border-subtle)",
+    background: "var(--paper-3)",
+    borderBottom: "1px solid var(--color-border)",
   },
   headerCell: {
     display: "flex",
@@ -160,19 +174,24 @@ const styles: Record<string, CSSProperties> = {
     height: HEADER_HEIGHT,
     padding: "0 10px",
     fontSize: 12,
-    fontWeight: 500,
+    fontWeight: 600,
+    color: "var(--ink-2)",
     boxSizing: "border-box",
     flexShrink: 0,
-    borderRight: "1px solid var(--color-border-subtle)",
+    borderRight: "1px solid var(--color-border)",
     overflow: "hidden",
   },
+  // shorthand（border / font）を longhand と混ぜると React が再描画時に警告するので、
+  // 消す辺と継承する書体は個別に書く
   headerButton: {
     background: "transparent",
-    border: "none",
-    borderRight: "1px solid var(--color-border-subtle)",
+    borderTop: "none",
+    borderBottom: "none",
+    borderLeft: "none",
+    borderRight: "1px solid var(--color-border)",
     cursor: "pointer",
     textAlign: "left",
-    font: "inherit",
+    fontFamily: "inherit",
   },
   row: {
     position: "absolute",
@@ -194,6 +213,7 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--color-foreground)",
   },
   indexCell: {
+    background: "var(--paper-2)",
     color: "var(--color-text-tertiary)",
     fontSize: 11,
     textAlign: "right",

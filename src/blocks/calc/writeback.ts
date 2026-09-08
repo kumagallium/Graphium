@@ -51,6 +51,23 @@ export function parseCalcTargets(raw: string): CalcTargets {
   }
 }
 
+/**
+ * 変数の無い式の行に ⇥ を押したときに付ける変数名。v1, v2, … のうち、
+ * どの行にもまだ代入されていない最初の名前。書き戻し先は変数名で紐付けるので、
+ * 名前の無い行は書き戻せない — ならば押した瞬間に名付ければよい
+ */
+export function autoVariableName(source: string): string {
+  const used = new Set<string>();
+  for (const line of source.split("\n")) {
+    const name = assignedVariableOf(line);
+    if (name) used.add(name);
+  }
+  for (let n = 1; ; n += 1) {
+    const candidate = `v${n}`;
+    if (!used.has(candidate)) return candidate;
+  }
+}
+
 /** 行が変数代入（`名前 = 式`）なら変数名を返す。mathjs の識別子は ASCII 限定 */
 export function assignedVariableOf(line: string): string | null {
   const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/);
