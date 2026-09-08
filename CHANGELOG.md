@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.67.0](https://github.com/kumagallium/Graphium/compare/v0.66.0...v0.67.0) - 2026-09-08
+
+- [feat] Adopt proposed changes into your note and show where a fork came from by @kumagallium in https://github.com/kumagallium/Graphium/pull/874
+
 ## [v0.66.0](https://github.com/kumagallium/Graphium/compare/v0.65.1...v0.66.0) - 2026-09-08
 
 - [feat] Propose changes to a shared note and review the three-way diff in the library by @kumagallium in https://github.com/kumagallium/Graphium/pull/867
