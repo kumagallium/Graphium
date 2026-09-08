@@ -1649,7 +1649,11 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   `onAuthChange`.
 - **File CRUD** — `listFiles`, `loadFile`, `createFile`, `saveFile`,
   `deleteFile`. Files are `GraphiumDocument` blobs.
-- **Media** — `uploadMedia`, `getMediaBlobUrl`, `extractFileId`.
+- **Media** — `uploadMedia`, `getMediaBlobUrl` (with an optional MIME hint so
+  the provider need not list the library to label a blob), optional
+  `getMediaThumbnailUrl` (a downscaled image for galleries and pickers —
+  the Tauri provider has Rust render it and cache it under `media/.thumbs/`,
+  other providers fall back to the full file), `extractFileId`.
   Optional `readMediaBytes?(fileId, maxBytes?)` returns the raw bytes
   without minting a display URL. `getMediaBlobUrl` caches every blob URL it
   creates for the session, so reading a whole library through it would pin
