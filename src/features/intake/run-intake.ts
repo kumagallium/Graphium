@@ -7,6 +7,8 @@
 import { classifyIntakeFiles } from "./classify";
 import { commonRootOf, folderOf } from "./folders";
 import type { IntakeFile } from "./types";
+import type { BulkOcrTarget } from "../media-ocr";
+import type { MediaIndexEntry } from "../asset-browser/media-index";
 
 /**
  * path から拡張子を取り出す（小文字・ドット付き。例: ".pptx"）。
@@ -49,9 +51,13 @@ export type IntakeDeps = {
   ) => Promise<MarkdownImportResult>;
   /**
    * 素材を 1 件アップロードする。戻り値の duplicate が true なら
-   * 「新規登録ではなく既存の素材を返した」ことを表す（materialsExisting の集計に使う）
+   * 「新規登録ではなく既存の素材を返した」ことを表す（materialsExisting の集計に使う）。
+   * entry は登録された（または既存の）素材そのもの — OCR 対象の判定（画像かどうか・
+   * 既に読み取り済みか）に使う
    */
-  uploadAsset: (file: File) => Promise<{ fileId?: string; duplicate?: boolean } | void | unknown>;
+  uploadAsset: (
+    file: File,
+  ) => Promise<{ fileId?: string; entry?: MediaIndexEntry; duplicate?: boolean } | void | unknown>;
   /**
    * 素材のフォルダ（noteContexts）を差し替える。登録済みの素材（duplicate）は
    * 既存のフォルダを尊重して呼ばない。失敗しても取り込み自体は続行する
@@ -82,6 +88,11 @@ export type IntakeOutcome = {
   lastNewId: string | null;
   /** フォルダを付けたファイルの「異なるフォルダ数」（ノート・素材あわせて重複なし） */
   folders: number;
+  /**
+   * 文字がまだ読めていない画像素材（新規登録、または既存でも ocrText が無いもの）。
+   * 取り込み完了後、裏で順に OCR を回すための対象リスト
+   */
+  ocrTargets: BulkOcrTarget[];
 };
 
 /**
@@ -111,6 +122,7 @@ export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome 
     skippedByExt,
     lastNewId: b.lastNewId ?? a.lastNewId,
     folders: a.folders + b.folders,
+    ocrTargets: [...a.ocrTargets, ...b.ocrTargets],
   };
 }
 
@@ -167,6 +179,7 @@ export async function runIntake(
   // materials: 1 件ずつアップロード。失敗しても続行する
   let materialsUploaded = 0;
   let materialsExisting = 0;
+  const ocrTargets: BulkOcrTarget[] = [];
   const notesDone = notes.length;
   for (let i = 0; i < materials.length; i++) {
     const m = materials[i];
@@ -178,6 +191,13 @@ export async function runIntake(
         result && typeof result === "object" && (result as { duplicate?: boolean }).duplicate === true;
       if (duplicate) {
         materialsExisting += 1;
+      }
+      // 文字がまだ読めていない画像だけを裏読み対象にする。新規登録した画像は
+      // 常に対象、既存（duplicate）は ocrText が無いものだけ（読み済みを読み直さない）
+      const entry =
+        result && typeof result === "object" ? (result as { entry?: MediaIndexEntry }).entry : undefined;
+      if (entry && entry.type === "image" && (!duplicate || !entry.ocrText)) {
+        ocrTargets.push({ fileId: entry.fileId, url: entry.url, name: entry.name });
       }
       const folder = folderOfFile(m);
       if (folder) {
@@ -229,5 +249,6 @@ export async function runIntake(
     skippedByExt,
     lastNewId: markdownResult.lastNewId,
     folders: foldersSeen.size,
+    ocrTargets,
   };
 }

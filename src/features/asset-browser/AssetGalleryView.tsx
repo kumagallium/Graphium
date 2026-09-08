@@ -21,11 +21,7 @@ import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
-import { runOcrForImage, OcrToast, type OcrToastState } from "../media-ocr";
-import { OcrTimeoutError } from "../../lib/ocr";
-
-/** 一括 OCR を打ち切る連続タイムアウト回数 */
-const BULK_OCR_MAX_CONSECUTIVE_TIMEOUTS = 2;
+import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
 import { Favicon } from "./favicon";
 import { MaterialSidePeek } from "./MaterialSidePeek";
@@ -1206,38 +1202,21 @@ export function AssetGalleryView({
     if (ocrableSelected.length === 0) return;
     const total = ocrableSelected.length;
     setBulkOcr({ done: 0, total });
-    setBulkOcrToast({ running: total, chars: 0, empty: 0, failed: 0 });
-    let chars = 0;
-    let empty = 0;
-    let failed = 0;
-    // 連続でタイムアウト（宙吊り）したら、残りを 1 件ずつ 120s 待つのは無意味なので
-    // 打ち切る。recognizeImage が 1 回目のタイムアウトで worker を作り直しているので、
-    // 2 回続けば「作り直しても動かない」＝この環境では今は読めない、と判断する。
-    let consecutiveTimeouts = 0;
     let aborted = false;
     try {
-      for (const [i, entry] of ocrableSelected.entries()) {
-        try {
-          const result = await runOcrForImage(entry.url);
-          await persistOcrTextPatch(entry.fileId, result.text);
-          consecutiveTimeouts = 0;
-          if (result.text) chars += result.text.replace(/\s/g, "").length;
-          else empty += 1;
-        } catch (err) {
-          console.error("[asset-gallery] OCR 失敗:", entry.name, err);
-          failed += 1;
-          if (err instanceof OcrTimeoutError && ++consecutiveTimeouts >= BULK_OCR_MAX_CONSECUTIVE_TIMEOUTS) {
-            aborted = true;
-          }
-        }
-        setBulkOcr({ done: i + 1, total });
-        setBulkOcrToast({ running: total - (i + 1), chars, empty, failed });
-        if (aborted) break;
-      }
+      const result = await runBulkOcr(
+        ocrableSelected.map((e) => ({ fileId: e.fileId, url: e.url, name: e.name })),
+        {
+          onProgress: (p) => {
+            setBulkOcr({ done: total - p.running, total });
+            setBulkOcrToast({ running: p.running, chars: p.chars, empty: p.empty, failed: p.failed });
+          },
+        },
+      );
+      aborted = result.aborted;
       if (!aborted) setSelectedIds(new Set());
     } finally {
       setBulkOcr(null);
-      setBulkOcrToast({ running: 0, chars, empty, failed });
     }
   }, [ocrableSelected]);
 

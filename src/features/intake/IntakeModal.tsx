@@ -48,6 +48,8 @@ export type IntakeState =
       skippedByExt: Record<string, number>;
       /** フォルダを付けたファイルの「異なるフォルダ数」（ノート・素材あわせて重複なし） */
       folders: number;
+      /** 文字がまだ読めていない画像素材の件数（このあと裏で順に読み取る） */
+      ocrPending: number;
       aiAvailable: boolean;
     };
 
@@ -193,6 +195,11 @@ export function IntakeModal({
                         {formatSkippedByExt(state.skippedByExt)}
                       </span>
                     )}
+                  </p>
+                )}
+                {state.ocrPending > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("intake.ocrPending", { count: String(state.ocrPending) })}
                   </p>
                 )}
                 {state.failed.length > 0 && (

@@ -172,6 +172,62 @@ describe("runIntake", () => {
 
     expect(setAssetFolder).not.toHaveBeenCalled();
   });
+
+  it("ocrTargets: 新規登録した画像は積み、PDF は積まない", async () => {
+    const files = [pdfFile("doc.pdf")];
+    function imageFile(name: string): IntakeFile {
+      return { file: new File(["dummy"], name, { type: "image/png" }), path: name };
+    }
+    const uploadAsset = vi.fn(async (file: File) => ({
+      fileId: `id-${file.name}`,
+      duplicate: false,
+      entry: {
+        fileId: `id-${file.name}`,
+        name: file.name,
+        type: file.type.startsWith("image/") ? "image" : "pdf",
+        mimeType: file.type,
+        url: `url-${file.name}`,
+        thumbnailUrl: "",
+        uploadedAt: new Date().toISOString(),
+        usedIn: [],
+      },
+    }));
+    const deps = makeDeps({ uploadAsset });
+
+    const outcome = await runIntake([...files, imageFile("pic.png")], deps, () => {});
+
+    expect(outcome.ocrTargets).toEqual([{ fileId: "id-pic.png", url: "url-pic.png", name: "pic.png" }]);
+  });
+
+  it("ocrTargets: 既存（duplicate）でも ocrText が無ければ積む。あれば積まない", async () => {
+    function imageFile(name: string): IntakeFile {
+      return { file: new File(["dummy"], name, { type: "image/png" }), path: name };
+    }
+    const uploadAsset = vi.fn(async (file: File) => ({
+      fileId: `id-${file.name}`,
+      duplicate: true,
+      entry: {
+        fileId: `id-${file.name}`,
+        name: file.name,
+        type: "image",
+        mimeType: "image/png",
+        url: `url-${file.name}`,
+        thumbnailUrl: "",
+        uploadedAt: new Date().toISOString(),
+        usedIn: [],
+        ...(file.name === "already-read.png" ? { ocrText: "既に読めている" } : {}),
+      },
+    }));
+    const deps = makeDeps({ uploadAsset });
+
+    const outcome = await runIntake(
+      [imageFile("not-yet.png"), imageFile("already-read.png")],
+      deps,
+      () => {},
+    );
+
+    expect(outcome.ocrTargets).toEqual([{ fileId: "id-not-yet.png", url: "url-not-yet.png", name: "not-yet.png" }]);
+  });
 });
 
 describe("runIntake の堅牢性", () => {
@@ -227,6 +283,7 @@ describe("mergeOutcome", () => {
       skippedByExt: { ".pptx": 1 },
       lastNewId: "note-a",
       folders: 2,
+      ocrTargets: [{ fileId: "img-a", url: "url-a", name: "a.png" }],
     };
     const b: IntakeOutcome = {
       notes: 1,
@@ -240,6 +297,7 @@ describe("mergeOutcome", () => {
       skippedByExt: { ".pptx": 1, ".xlsx": 1 },
       lastNewId: null,
       folders: 1,
+      ocrTargets: [{ fileId: "img-b", url: "url-b", name: "b.png" }],
     };
 
     const merged = mergeOutcome(a, b);
@@ -258,6 +316,11 @@ describe("mergeOutcome", () => {
       lastNewId: "note-a",
       // folders は集合を持たないので加算で近似する
       folders: 3,
+      // ocrTargets は連結
+      ocrTargets: [
+        { fileId: "img-a", url: "url-a", name: "a.png" },
+        { fileId: "img-b", url: "url-b", name: "b.png" },
+      ],
     });
   });
 });

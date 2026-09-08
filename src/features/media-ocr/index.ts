@@ -11,8 +11,15 @@ export {
   type MediaOcrStore,
 } from "./store";
 export { runOcrForImage, resolveMediaUrl } from "./run-ocr";
+export {
+  runBulkOcr,
+  BULK_OCR_MAX_CONSECUTIVE_TIMEOUTS,
+  type BulkOcrTarget,
+  type BulkOcrProgress,
+} from "./bulk-ocr";
 export { registerPendingOcrFile } from "./pending-files";
 export { collectOcrText, OCR_CAPABLE_BLOCK_TYPES } from "./collect";
 export { ImageOcrToolbarButton } from "./ImageOcrToolbarButton";
 export { OcrToast, type OcrToastState } from "./OcrToast";
 export { useAutoImageOcr } from "./use-auto-ocr";
+export { useQueuedBulkOcr } from "./use-queued-bulk-ocr";

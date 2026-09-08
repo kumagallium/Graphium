@@ -38,6 +38,7 @@ import {
   MediaOcrProvider,
   useMediaOcrStore,
   useAutoImageOcr,
+  useQueuedBulkOcr,
   OcrToast,
 } from "./features/media-ocr";
 import {
@@ -7421,6 +7422,8 @@ export function NoteApp() {
     [fm],
   );
 
+  // 取り込んだ画像の文字読み取りを後追いで直列に回す（取り込み自体は先に終わらせる）
+  const intakeOcr = useQueuedBulkOcr();
   // 投入口（既存資料の一括持ち込み）: サイドバー・空ノートのチップ・一覧と
   // 素材の空状態・どこでもドロップの 4 面すべてがこの 1 つの state を開閉する。
   const intake = useIntake({
@@ -7429,6 +7432,10 @@ export function NoteApp() {
     setAssetFolder: (fileId, folder) => fm.updateMediaContexts(fileId, [folder]),
     afterRun: () => fm.refreshFiles(),
     aiAvailable: aiUiEnabled,
+    // 取り込みが終わった画像のうち、まだ文字が読めていないものを裏で読み取り始める
+    onDone: (outcome) => {
+      if (outcome.ocrTargets.length > 0) intakeOcr.enqueue(outcome.ocrTargets);
+    },
   });
   // ウィンドウのどこにファイルをドロップしても投入口が拾う（エディタ内・
   // モーダル内・受け皿の上は useGlobalFileDrop 側の既定 ignore で除外される）
@@ -11171,6 +11178,10 @@ export function NoteApp() {
           window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
         }}
       />
+      {/* 投入口が持ち込んだ画像の文字読み取り。取り込み完了後に裏で走る分の進行表示。
+          ノート内自動 OCR のトースト（autoOcr.toast）と同時に出ることがあるため、
+          重ならないよう一段上にずらす */}
+      <OcrToast state={intakeOcr.toast} stacked />
       <Composer
         open={composer.open}
         mode={composer.mode}
