@@ -46,6 +46,8 @@ Word files get extra care: the built-in preview converts formats browsers cannot
 
 There are four ways in: **Bring in files** in the sidebar, the **Bring in files** chip at the top of an empty note, the empty-state receptacle in the note list and material gallery, or dropping a folder or files anywhere in the window (a banner appears while you drag).
 
+![The intake receptacle, with buttons to choose a folder or files](/screenshots/intake-receptacle.png)
+
 The rule is one sentence: **Markdown becomes notes. PDF, Word, images and CSV become materials.** Audio, video, and delimited data (`.csv` / `.tsv` / `.txt` / `.dat`) are materials too. PowerPoint, Excel, and old-style `.doc` files are not taken in yet — the report lists them by extension and count instead of dropping them silently.
 
 Whatever order files sit in inside a dropped folder carries over as Graphium folders, for both notes and materials. The name of the folder you dropped is not used as a folder itself.
@@ -53,6 +55,8 @@ Whatever order files sit in inside a dropped folder carries over as Graphium fol
 Obsidian vaults work as they are. `[[wikilinks]]` are resolved first against files in the same batch, then against your existing notes and knowledge entries by title, and images they reference come along too. Links that cannot be resolved stay as plain text.
 
 When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files. From there you can **Search your notes**, **See connections**, or **Ask AI** — or **Set up AI** first if no model is configured yet.
+
+![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
 
 Materials follow the same dedupe check as any other route (see below): the same file's contents do not create a second material. Notes are not checked yet, so bringing in the same vault twice creates two separate sets of notes — worth knowing before you re-run an intake over a folder you already brought in.
 
