@@ -429,8 +429,22 @@ export function SharedLibraryTable({
       return sortDir === "desc" ? -cmp : cmp;
     });
 
-    return sorted;
-  }, [items, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, showDescriptionColumn, showTargetColumn, sortKey, sortDir, t]);
+    // 提案タブでは、取り込み済みのものを下へ落とす（§25b C-2）。
+    // 受け付け中＝これから見るもの、取り込み済み＝もう済んだもの。並びの中で
+    // 混ざると「まだ見ていないもの」を探す手間が増える。並び替えの指定は保つ
+    // （同じ状態どうしは選ばれた列で並ぶ）
+    if (!showTargetColumn) return sorted;
+    const adoptedRank = (item: SharedAssetItem): number => {
+      const entry = item.kind === "entry" ? item.entry : null;
+      if (!entry) return 0;
+      const extra = readProposalExtra(entry);
+      if (!extra) return 0;
+      return proposalStatus(entry, resolveTargetEntry?.(extra.target) ?? null) === "adopted"
+        ? 1
+        : 0;
+    };
+    return sorted.sort((x, y) => adoptedRank(x) - adoptedRank(y));
+  }, [items, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, showDescriptionColumn, showTargetColumn, sortKey, sortDir, resolveTargetEntry, t]);
 
   const handleImportBlob = useCallback(
     async (parent: SharedEntry, item: SharedAssetItem & { kind: "blob" }) => {
@@ -661,6 +675,8 @@ export function SharedLibraryTable({
                     className={cn(
                       "border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group",
                       entry && selectedId === entry.id ? "bg-primary/5" : "",
+                      // 取り込み済みの提案は済んだ話なので薄く出す（§25b C-2）
+                      proposalState === "adopted" ? "opacity-60" : "",
                     )}
                     onClick={() => onSelect(source)}
                     // 1 度目のクリックで選択（サイドピーク）が開いた上に全画面が重なる形。

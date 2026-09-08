@@ -335,6 +335,7 @@ describe("computeProposalDiff — 題名", () => {
     const theirs = makeDoc("反応条件の検討 v2 (forked)", [para("b1", "本文")]);
 
     expect(computeProposalDiff({ mine, theirs }).title).toEqual({
+      id: "title",
       by: "unknown",
       before: "反応条件の検討",
       after: "反応条件の検討 v2 (forked)",
@@ -368,11 +369,19 @@ describe("computeProposalDiff — 表", () => {
     expect(change.kind).toBe("table");
 
     expect(cell(change.cells, "columnAdded")).toEqual([
-      { kind: "columnAdded", by: "unknown", column: "備考", columnIndex: 3, cells: ["再測定", ""] },
+      {
+        kind: "columnAdded",
+        id: "col:t1:name:備考",
+        by: "unknown",
+        column: "備考",
+        columnIndex: 3,
+        cells: ["再測定", ""],
+      },
     ]);
     expect(cell(change.cells, "cellModified")).toEqual([
       {
         kind: "cellModified",
+        id: "cell:t1:text:A:name:温度",
         by: "unknown",
         rowLabel: "A",
         rowIndex: 0,
@@ -552,5 +561,73 @@ describe("stripForkSuffix", () => {
     expect(stripForkSuffix("計画 (forked)")).toBe("計画");
     expect(stripForkSuffix("計画 (forked) (forked)")).toBe("計画 (forked)");
     expect(stripForkSuffix("(forked) 計画")).toBe("(forked) 計画");
+  });
+});
+
+// ──────────────────────────────────────────────
+// 項目 ID（取り込みの選択に使う。仕様 §25b A-1）
+// ──────────────────────────────────────────────
+
+describe("項目 ID", () => {
+  it("ブロックの項目は block:<ブロック id>、題名は title", () => {
+    const mine = makeDoc("もとの題名", [para("a", "残す"), para("b", "消す")]);
+    const theirs = makeDoc("新しい題名", [para("a", "書き換えた"), para("c", "足した")]);
+    const diff = computeProposalDiff({ mine, theirs });
+
+    expect(diff.title?.id).toBe("title");
+    expect(find(diff.blocks, "a")?.id).toBe("block:a");
+    expect(find(diff.blocks, "b")?.id).toBe("block:b");
+    expect(find(diff.blocks, "c")?.id).toBe("block:c");
+  });
+
+  it("id の無いブロックは平坦化した並び順で一意にする", () => {
+    const noId = { type: "paragraph", props: {}, content: [], children: [] };
+    const mine = makeDoc("実験", [para("a", "あ")]);
+    const theirs = makeDoc("実験", [para("a", "あ"), noId]);
+    const diff = computeProposalDiff({ mine, theirs });
+
+    const added = diff.blocks.find((b) => b.kind === "added");
+    expect(added?.id).toBe("block:@t1");
+  });
+
+  it("表の項目はセル / 行 / 列で接頭辞が分かれ、すべて一意", () => {
+    const mine = makeDoc("実験", [
+      table("t1", [["試料", "量", "備考"], ["A", "1", "旧"], ["B", "2", "旧"]], ["r1", "r2"]),
+    ]);
+    const theirs = makeDoc("実験", [
+      table("t1", [["試料", "量"], ["A", "9"], ["C", "3"]], ["r1", "r3"]),
+    ]);
+    const diff = computeProposalDiff({ mine, theirs });
+    const cells = diff.blocks[0].cells ?? [];
+
+    expect(cell(cells, "cellModified")[0].id).toBe("cell:t1:id:r1:name:量");
+    expect(cell(cells, "rowAdded")[0].id).toBe("row:t1:id:r3");
+    expect(cell(cells, "rowRemoved")[0].id).toBe("row:t1:id:r2");
+    expect(cell(cells, "columnRemoved")[0].id).toBe("col:t1:name:備考");
+
+    const all = [diff.blocks[0].id, ...cells.map((c) => c.id)];
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("同じ入力からは同じ ID になる", () => {
+    const mine = makeDoc("もとの題名", [
+      para("a", "残す"),
+      table("t1", [["試料", "量"], ["A", "1"]], ["r1"]),
+    ]);
+    const theirs = makeDoc("新しい題名", [
+      para("a", "書き換えた"),
+      table("t1", [["試料", "量"], ["A", "9"], ["B", "2"]], ["r1", "r2"]),
+      para("c", "足した"),
+    ]);
+
+    const collect = () => {
+      const diff = computeProposalDiff({ mine, theirs });
+      return [
+        diff.title?.id,
+        ...diff.blocks.flatMap((b) => [b.id, ...(b.cells ?? []).map((c) => c.id)]),
+      ];
+    };
+
+    expect(collect()).toEqual(collect());
   });
 });

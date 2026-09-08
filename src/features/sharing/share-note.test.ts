@@ -413,3 +413,49 @@ describe("stripPrivateHistory", () => {
     expect(stripPrivateHistory(doc)).toBe(doc);
   });
 });
+
+describe("shareNote — 取り込んだ提案（§25b C-1）", () => {
+  /** proposal_adopt を 2 件持つ来歴（1 件は同じ提案の 2 度目の取り込み） */
+  const provenanceWithAdopts = {
+    revisions: [],
+    agents: [],
+    activities: [
+      { id: "edit-1", type: "human_edit", startedAt: "", endedAt: "", wasAssociatedWith: "a1" },
+      {
+        id: "edit-2",
+        type: "proposal_adopt",
+        startedAt: "",
+        endedAt: "",
+        wasAssociatedWith: "a1",
+        used: ["shared:prop-1"],
+      },
+      {
+        id: "edit-3",
+        type: "proposal_adopt",
+        startedAt: "",
+        endedAt: "",
+        wasAssociatedWith: "a1",
+        used: ["shared:prop-2", "shared:prop-1"],
+      },
+    ],
+  } as unknown as GraphiumDocument["documentProvenance"];
+
+  it("extra.adoptedProposals に取り込んだ提案の id が載る（共有コピーから来歴を落とす前に読む）", async () => {
+    const result = await shareNote(makeDoc({ documentProvenance: provenanceWithAdopts }), {
+      root: "/tmp/shared",
+      author,
+    });
+    expect(result.ok).toBe(true);
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.adoptedProposals).toEqual(["prop-1", "prop-2"]);
+    // 既定では共有コピーの本文から来歴そのものは落ちる（§24）
+    const bytes = Uint8Array.from(atob(stored.body_base64), (c) => c.charCodeAt(0));
+    expect(JSON.parse(new TextDecoder().decode(bytes)).documentProvenance).toBeUndefined();
+  });
+
+  it("取り込みが無ければフィールドごと出さない（既存の封筒と同じ形のまま）", async () => {
+    await shareNote(makeDoc(), { root: "/tmp/shared", author });
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    expect(stored.entry.extra.adoptedProposals).toBeUndefined();
+  });
+});

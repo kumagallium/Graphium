@@ -39,6 +39,8 @@ export type ProposalChangeBy = "theirs" | "mine" | "both" | "unknown";
 
 /** 1 項目の変更（題名など、before / after が 1 対で足りるもの）。 */
 export type Change<T> = {
+  /** 取り込みの選択に使う安定した項目 ID（題名は "title" 固定） */
+  id: string;
   by: ProposalChangeBy;
   /** 元のノート（作者）側の値 */
   before?: T;
@@ -57,6 +59,8 @@ export type BlockChangeKind = "added" | "removed" | "modified" | "moved" | "tabl
 export type TableCellChange =
   | {
       kind: "cellModified";
+      /** 安定した項目 ID: `cell:<ブロック参照>:<行キー>:<列キー>` */
+      id: string;
       by: ProposalChangeBy;
       /** 行の見出し（先頭セルの文字列。空なら UI 側で行番号を出す） */
       rowLabel: string;
@@ -70,6 +74,8 @@ export type TableCellChange =
     }
   | {
       kind: "rowAdded" | "rowRemoved";
+      /** 安定した項目 ID: `row:<ブロック参照>:<行キー>` */
+      id: string;
       by: ProposalChangeBy;
       rowLabel: string;
       rowIndex: number;
@@ -78,6 +84,8 @@ export type TableCellChange =
     }
   | {
       kind: "columnAdded" | "columnRemoved";
+      /** 安定した項目 ID: `col:<ブロック参照>:<列キー>` */
+      id: string;
       by: ProposalChangeBy;
       column: string;
       columnIndex: number;
@@ -87,6 +95,12 @@ export type TableCellChange =
 
 /** ブロック 1 個ぶんの変更。 */
 export type BlockChange = {
+  /**
+   * 取り込みの選択に使う安定した項目 ID: `block:<ブロック参照>`。
+   * ブロック参照は id があればその id、無ければ平坦化した並び順から作る
+   * （提案側は `@t<順>`、元側だけの項目は `@m<順>`）。同じ入力からは必ず同じ値になる。
+   */
+  id: string;
   kind: BlockChangeKind;
   by: ProposalChangeBy;
   /** 提案側のブロック id（削除は元側の id） */
@@ -254,6 +268,14 @@ function flattenBlocks(blocks: any[]): FlatBlock[] {
   return out;
 }
 
+/**
+ * 項目 ID の元にするブロック参照。id があればその id、無ければ平坦化した並び順から作る。
+ * 提案側の項目は "@t<順>"、元側だけの項目は "@m<順>" として名前空間を分ける。
+ */
+function blockRefOf(flat: FlatBlock, side: "t" | "m"): string {
+  return flat.id || `@${side}${flat.order}`;
+}
+
 function firstPageBlocks(doc: GraphiumDocument | null | undefined): any[] {
   return doc?.pages?.[0]?.blocks ?? [];
 }
@@ -385,9 +407,9 @@ function classifyChange(
 // 表（セル単位）
 // ──────────────────────────────────────────────
 
-type TableColumn = { key: string; name: string; index: number };
-type TableRow = { key: string; label: string; index: number; cells: Map<string, string> };
-type TableSnapshot = {
+export type TableColumn = { key: string; name: string; index: number };
+export type TableRow = { key: string; label: string; index: number; cells: Map<string, string> };
+export type TableSnapshot = {
   columns: TableColumn[];
   rows: TableRow[];
   columnByKey: Map<string, TableColumn>;
@@ -424,7 +446,7 @@ function uniqueKey(used: Map<string, number>, base: string): string {
  * 表ブロックを「列（ヘッダ文字列）× 行（identity → 先頭セル文字列 → 並び）」で読む。
  * ヘッダが空の列と、identity も先頭セルも空の行は並びで対応付ける。
  */
-function readTableSnapshot(block: Record<string, any>): TableSnapshot | null {
+export function readTableSnapshot(block: Record<string, any>): TableSnapshot | null {
   const data = readTableData(block);
   if (!data) return null;
   const rawRows: any[] = block.content?.rows ?? [];
@@ -483,6 +505,7 @@ function rowSignature(
 }
 
 function diffTable(
+  blockRef: string,
   hasBase: boolean,
   base: TableSnapshot | null,
   mine: TableSnapshot,
@@ -509,6 +532,7 @@ function diffTable(
     if (inTheirs) {
       changes.push({
         kind: "columnAdded",
+        id: `col:${blockRef}:${key}`,
         by,
         column: inTheirs.name,
         columnIndex: inTheirs.index,
@@ -517,6 +541,7 @@ function diffTable(
     } else if (inMine) {
       changes.push({
         kind: "columnRemoved",
+        id: `col:${blockRef}:${key}`,
         by,
         column: inMine.name,
         columnIndex: inMine.index,
@@ -537,6 +562,7 @@ function diffTable(
     if (inTheirs && !inMine) {
       changes.push({
         kind: "rowAdded",
+        id: `row:${blockRef}:${key}`,
         by: classifyChange(hasBase, rowSignature(base, key), undefined, rowSignature(theirs, key)),
         rowLabel: inTheirs.label,
         rowIndex: inTheirs.index,
@@ -547,6 +573,7 @@ function diffTable(
     if (inMine && !inTheirs) {
       changes.push({
         kind: "rowRemoved",
+        id: `row:${blockRef}:${key}`,
         by: classifyChange(hasBase, rowSignature(base, key), rowSignature(mine, key), undefined),
         rowLabel: inMine.label,
         rowIndex: inMine.index,
@@ -564,6 +591,7 @@ function diffTable(
       if (before === after) continue;
       changes.push({
         kind: "cellModified",
+        id: `cell:${blockRef}:${key}:${columnKey}`,
         by: classifyChange(hasBase, cellValue(base, key, columnKey), before, after),
         rowLabel: inTheirs.label,
         rowIndex: inTheirs.index,
@@ -641,7 +669,9 @@ export function computeProposalDiff(input: ProposalDiffInput): ProposalDiff {
       const before = blockToReadableText(m.block);
       const after = blockToReadableText(t.block);
       const isTable = m.type === "table" && t.type === "table";
+      const blockRef = blockRefOf(t, "t");
       const change: BlockChange = {
+        id: `block:${blockRef}`,
         kind: changed ? (isTable ? "table" : "modified") : "moved",
         // 中身が同じで位置だけ動いたものは、直前のブロックがどちら側で変わったかで見る
         by: changed ? by : classifyChange(hasBase, b?.prevKey, m.prevKey, t.prevKey),
@@ -659,7 +689,13 @@ export function computeProposalDiff(input: ProposalDiffInput): ProposalDiff {
         const theirsSnap = readTableSnapshot(t.block);
         change.cells =
           mineSnap && theirsSnap
-            ? diffTable(hasBase, b ? readTableSnapshot(b.block) : null, mineSnap, theirsSnap)
+            ? diffTable(
+                blockRef,
+                hasBase,
+                b ? readTableSnapshot(b.block) : null,
+                mineSnap,
+                theirsSnap,
+              )
             : [];
       }
       items.push({ key: t.order, change });
@@ -668,6 +704,7 @@ export function computeProposalDiff(input: ProposalDiffInput): ProposalDiff {
 
     if (t) {
       const change: BlockChange = {
+        id: `block:${blockRefOf(t, "t")}`,
         kind: "added",
         by,
         blockId: t.id,
@@ -682,6 +719,7 @@ export function computeProposalDiff(input: ProposalDiffInput): ProposalDiff {
 
     if (m) {
       const change: BlockChange = {
+        id: `block:${blockRefOf(m, "m")}`,
         kind: "removed",
         by,
         blockId: m.id,
@@ -701,6 +739,7 @@ export function computeProposalDiff(input: ProposalDiffInput): ProposalDiff {
   const theirsTitle = stripForkSuffix(theirs.title ?? "");
   if (mineTitle !== theirsTitle) {
     diff.title = {
+      id: "title",
       by: classifyChange(
         hasBase,
         base ? stripForkSuffix(base.title ?? "") : undefined,

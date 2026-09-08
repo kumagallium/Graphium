@@ -2,7 +2,7 @@
 // Cytoscape.js + fcose で派生関係をヌルヌル可視化
 // design.md テーマカラー準拠
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, RotateCcw, X } from "lucide-react";
 import cytoscape from "cytoscape";
@@ -25,6 +25,10 @@ import {
   GRAPH_ACCENT_COLOR,
   GRAPH_BG_COLOR,
   GRAPH_INIT_OPTIONS,
+  GRAPH_PROPOSAL_NODE_BORDER,
+  GRAPH_PROPOSAL_NODE_COLOR,
+  GRAPH_SHARED_NODE_BORDER,
+  GRAPH_SHARED_NODE_COLOR,
   baseEdgeStyle,
   baseNodeStyle,
   hoverFullLabelStyle,
@@ -56,6 +60,7 @@ const NODE_COLORS = {
 const EDGE_COLOR = "#b8d4bb"; // 淡いグリーン
 
 type ExternalKind = "pdf" | "url" | "document" | "chat" | "memo" | "media";
+type SharedKind = "shared" | "proposal";
 
 function getNodeColor(
   hop: number,
@@ -63,8 +68,11 @@ function getNodeColor(
   isWiki?: boolean,
   external?: ExternalKind,
   wikiKind?: WikiKind,
+  sharedKind?: SharedKind,
 ): string {
   if (isCurrent) return NODE_COLORS.current;
+  if (sharedKind === "shared") return GRAPH_SHARED_NODE_COLOR;
+  if (sharedKind === "proposal") return GRAPH_PROPOSAL_NODE_COLOR;
   if (external) return NODE_COLORS.external;
   if (isWiki) return knowledgeKindColor(wikiKind);
   if (hop === 1) return NODE_COLORS.hop1;
@@ -77,8 +85,11 @@ function getBorderColor(
   isWiki?: boolean,
   external?: ExternalKind,
   wikiKind?: WikiKind,
+  sharedKind?: SharedKind,
 ): string {
   if (isCurrent) return "#3d6844";
+  if (sharedKind === "shared") return GRAPH_SHARED_NODE_BORDER;
+  if (sharedKind === "proposal") return GRAPH_PROPOSAL_NODE_BORDER;
   if (external) return "#6e7378";
   if (isWiki) return knowledgeKindBorder(wikiKind);
   if (hop === 1) return "#4a7da6";
@@ -107,6 +118,9 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
       width: "data(size)",
       height: "data(size)",
       "border-color": "data(borderColor)",
+      // shared / proposal ノードだけ破線縁（既定は solid）。手元のノートと
+      // 見分けが付くようにする（design.md「共通スタイルの正は graph-theme.ts」）。
+      "border-style": "data(borderStyle)" as any,
     },
   },
   ...interactionStyles,
@@ -117,6 +131,8 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
       ...baseEdgeStyle,
       "line-color": EDGE_COLOR,
       "target-arrow-color": EDGE_COLOR,
+      // shared / proposal との辺だけ破線（既定は solid）
+      "line-style": "data(lineStyle)" as any,
     },
   },
   // ホバーノードに接続するエッジ
@@ -154,6 +170,7 @@ export function NetworkGraphPanel({
   onOpenMedia,
   onOpenUrl,
   onOpenMemo,
+  onOpenSharedEntry,
 }: {
   data: NoteGraphData;
   onNavigate: (noteId: string) => void;
@@ -162,6 +179,13 @@ export function NetworkGraphPanel({
   onOpenUrl?: (url: string) => void;
   /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
   onOpenMemo?: (captureId: string) => void;
+  /**
+   * shared / proposal ノード（sharedKind 付き）をクリックしたときに呼ばれる。
+   * 渡す id は node.id から prefix（"shared:" / "proposal:"）を除いた
+   * SharedEntry.id。未指定ならクリックしても何もせず、カーソルも変えない
+   * （このノート周辺グラフだけの仮想ノードで、開き先は呼び出し側にしかない）。
+   */
+  onOpenSharedEntry?: (sharedId: string) => void;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -281,7 +305,14 @@ export function NetworkGraphPanel({
       [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
 
     for (const node of data.nodes) {
-      const color = getNodeColor(node.hop, node.isCurrent, node.isWiki, node.external, node.wikiKind);
+      const color = getNodeColor(
+        node.hop,
+        node.isCurrent,
+        node.isWiki,
+        node.external,
+        node.wikiKind,
+        node.sharedKind,
+      );
       const mediaIcon =
         node.external === "media"
           ? node.mediaType === "video"
@@ -304,6 +335,10 @@ export function NetworkGraphPanel({
         ? `${mediaIcon} ${node.title}`
         : node.isWiki
         ? `🤖 ${node.title}`
+        : node.sharedKind === "shared"
+        ? `🔗 ${node.title}`
+        : node.sharedKind === "proposal"
+        ? `💡 ${node.title}`
         : node.title;
       // wiki ノードの成長サマリ（hover 時のフルラベルにのみ出す。通常表示は不変）
       const growthLine = node.growth
@@ -327,12 +362,23 @@ export function NetworkGraphPanel({
           label: truncate(baseTitle, 18),
           fullLabel: baseTitle + growthLine,
           color,
-          borderColor: getBorderColor(node.hop, node.isCurrent, node.isWiki, node.external, node.wikiKind),
+          borderColor: getBorderColor(
+            node.hop,
+            node.isCurrent,
+            node.isWiki,
+            node.external,
+            node.wikiKind,
+            node.sharedKind,
+          ),
+          // shared / proposal ノードだけ破線縁。手元のノートと見分けが付くように
+          // する（design.md「共通スタイルの正は graph-theme.ts」）。
+          borderStyle: node.sharedKind ? "dashed" : "solid",
           size: getNodeSize(node.isCurrent),
           shape: hasThumb ? "round-rectangle" : getNodeShape(node.isCurrent, node.isWiki, node.external),
           hop: node.hop,
           isCurrent: node.isCurrent,
           isWiki: !!node.isWiki,
+          sharedKind: node.sharedKind,
           externalUrl: node.externalUrl,
           ...(hasThumb ? { thumbUrl } : {}),
         },
@@ -347,6 +393,8 @@ export function NetworkGraphPanel({
           source: edge.source,
           target: edge.target,
           label: edge.sourceBlockLabel ?? "",
+          // shared / proposal との辺だけ破線（既定は実線）
+          lineStyle: edge.dashed ? "dashed" : "solid",
         },
       });
     }
@@ -479,9 +527,12 @@ export function NetworkGraphPanel({
       neighborhood.nodes().addClass("hover-neighbor");
       neighborhood.edges().addClass("hover-connected");
 
-      // カーソル変更（他ノートならポインター）
+      // カーソル変更（他ノートならポインター）。
+      // shared / proposal ノードは onOpenSharedEntry が無ければクリックしても
+      // 何も起きないので、カーソルも変えない（未配線の文脈で押せそうに見せない）。
       const isCurrent = node.data("isCurrent");
-      if (!isCurrent) {
+      const sharedKind = node.data("sharedKind") as "shared" | "proposal" | undefined;
+      if (!isCurrent && !(sharedKind && !onOpenSharedEntry)) {
         containerRef.current!.style.cursor = "pointer";
       }
     });
@@ -509,6 +560,16 @@ export function NetworkGraphPanel({
       }
       if (nodeId.startsWith("chat:")) {
         // AI チャット由来ソースは開けるアセットが無いので何もしない
+        return;
+      }
+      if (nodeId.startsWith("shared:")) {
+        // 派生元の共有エントリ。未配線なら何もしない（カーソルも変えていない）
+        onOpenSharedEntry?.(nodeId.slice("shared:".length));
+        return;
+      }
+      if (nodeId.startsWith("proposal:")) {
+        // このノートへの提案。未配線なら何もしない（カーソルも変えていない）
+        onOpenSharedEntry?.(nodeId.slice("proposal:".length));
         return;
       }
       if (nodeId.startsWith("memo:")) {
@@ -552,6 +613,7 @@ export function NetworkGraphPanel({
     onOpenMedia,
     onOpenUrl,
     onOpenMemo,
+    onOpenSharedEntry,
     expanded,
     mediaThumbs,
     layoutReady,
@@ -567,21 +629,60 @@ export function NetworkGraphPanel({
     );
   }
 
+  // 凡例はこのグラフに実際に出ているものだけを並べる。共有エントリの隣接グラフの
+  // ように「1 ホップ」「知見」が 1 つも無い画面で全種類を並べると、出ていないものを
+  // 探させることになる
+  const shownKinds = useMemo(() => {
+    const hops = new Set<number>();
+    const knowledge = new Set<string>();
+    let shared = false;
+    let proposal = false;
+    for (const node of data.nodes) {
+      if (node.sharedKind === "shared") shared = true;
+      else if (node.sharedKind === "proposal") proposal = true;
+      else if (node.wikiKind) knowledge.add(node.wikiKind);
+      else if (typeof node.hop === "number") hops.add(node.hop);
+    }
+    return { hops, knowledge, shared, proposal };
+  }, [data.nodes]);
+
   const legendBar = (
     <div className="px-3 py-2 border-b border-border flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
       <span className="flex items-center gap-1">
         <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.current }} />
         {t("panel.graph.legend.current")}
       </span>
-      <span className="flex items-center gap-1">
-        <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.hop1 }} />
-        {t("panel.graph.legend.hop1")}
-      </span>
-      <span className="flex items-center gap-1">
-        <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.hop2 }} />
-        {t("panel.graph.legend.hop2")}
-      </span>
-      {KNOWLEDGE_KIND_LEGEND_ORDER.map((kind) => (
+      {shownKinds.hops.has(1) && (
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.hop1 }} />
+          {t("panel.graph.legend.hop1")}
+        </span>
+      )}
+      {shownKinds.hops.has(2) && (
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.hop2 }} />
+          {t("panel.graph.legend.hop2")}
+        </span>
+      )}
+      {shownKinds.shared && (
+        <span className="flex items-center gap-1">
+          <span
+            className="inline-block w-2.5 h-2.5 rounded-full border border-dashed"
+            style={{ backgroundColor: GRAPH_SHARED_NODE_COLOR, borderColor: GRAPH_SHARED_NODE_BORDER }}
+          />
+          {t("panel.graph.legend.shared")}
+        </span>
+      )}
+      {shownKinds.proposal && (
+        <span className="flex items-center gap-1">
+          <span
+            className="inline-block w-2.5 h-2.5 rounded-full border border-dashed"
+            style={{ backgroundColor: GRAPH_PROPOSAL_NODE_COLOR, borderColor: GRAPH_PROPOSAL_NODE_BORDER }}
+          />
+          {t("panel.graph.legend.proposal")}
+        </span>
+      )}
+      {KNOWLEDGE_KIND_LEGEND_ORDER.filter((kind) => shownKinds.knowledge.has(kind)).map((kind) => (
         <span key={kind} className="flex items-center gap-1">
           <span
             className="inline-block rotate-45"

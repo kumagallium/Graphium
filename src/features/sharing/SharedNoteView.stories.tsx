@@ -5,8 +5,8 @@ import type { ComponentType } from "react";
 // （entries / readEntryBody / projection）で差し替えて描く。研究室の場面は
 // SharedLibraryView のストーリーと同じ（先生が学生のノートを読んで返す）。
 //
-// 右レールの各パネル（コメント / AI に質問 / 版 / プロセス / 逆引き）をそれぞれ
-// 開いた状態で 1 本ずつ用意する。パネルは幅を変えられる（左端をドラッグ）。
+// 右レールの各パネル（コメント / AI に質問 / 版 / プロセス / 逆引き / グラフ）を
+// それぞれ開いた状態で 1 本ずつ用意する。パネルは幅を変えられる（左端をドラッグ）。
 //
 // 「AI に質問」だけは aiAvailable を渡したストーリー（Chat）でしか出ない。
 // 他のストーリーが渡していないのは手抜きではなく、「AI が使えない環境では
@@ -66,6 +66,53 @@ const CITING_NOTE: SharedEntry = {
   prov: { derived_from: [] },
   version: 1,
   extra: { title: "焼結条件の比較メモ" },
+} as SharedEntry;
+
+/** note-1 を fork して作られた共有ノート 2 件（グラフの「派生版」） */
+const FORK_A: SharedEntry = {
+  id: "note-3",
+  type: "note",
+  author: TEACHER,
+  created_at: daysAgo(4),
+  updated_at: daysAgo(4),
+  hash: "sha256:dddd3333",
+  prov: { derived_from: [] },
+  version: 1,
+  extra: { title: "Cu粉末の焼結実験（第2回）" },
+} as SharedEntry;
+
+const FORK_B: SharedEntry = {
+  id: "note-4",
+  type: "note",
+  author: STUDENT_A,
+  created_at: daysAgo(2),
+  updated_at: daysAgo(2),
+  hash: "sha256:eeee4444",
+  prov: { derived_from: [] },
+  version: 1,
+  extra: { title: "Cu粉末の焼結実験（第3回・条件振り）" },
+} as SharedEntry;
+
+/**
+ * note-1 に来ている「変更の提案」の封筒（本文は読まないので extra だけで足りる）。
+ * 差分ストーリーの PROPOSAL とは別物 —— あちらは提案そのものを開いた場面で、
+ * こちらは元のノート側から見た「来ている提案」。
+ */
+const INCOMING_PROPOSAL: SharedEntry = {
+  id: "proposal-incoming",
+  type: "proposal",
+  author: TEACHER,
+  created_at: daysAgo(1),
+  updated_at: daysAgo(1),
+  hash: "sha256:ffff5555",
+  prov: { derived_from: ["note-1"] },
+  version: 1,
+  extra: {
+    title: "昇温速度を追記した版",
+    target: "note-1",
+    targetHash: NOTE.hash,
+    targetTitle: "Cu粉末の焼結実験（第1回）",
+  },
 } as SharedEntry;
 
 const COMMENTS: SharedEntry[] = [
@@ -220,6 +267,32 @@ const CITING_DOC: GraphiumDocument = {
     },
   ],
 } as any;
+
+/** note-1 から派生したことが分かる本文（投影が forkedFromSharedId を拾う） */
+const forkedDoc = (title: string): GraphiumDocument =>
+  ({
+    version: 6,
+    title,
+    createdAt: daysAgo(4),
+    modifiedAt: daysAgo(4),
+    forkedFrom: {
+      sharedId: "note-1",
+      hash: NOTE.hash,
+      authorName: STUDENT_A.name,
+      authorEmail: STUDENT_A.email,
+      forkedAt: daysAgo(4),
+    },
+    pages: [
+      {
+        id: "p1",
+        title,
+        blocks: [para("f1", "第1回の条件を引き継いで、保持時間だけ変えた。")],
+        labels: {},
+        provLinks: [],
+        knowledgeLinks: [],
+      },
+    ],
+  }) as any;
 
 function projectionOf(pairs: [SharedEntry, GraphiumDocument][]): SharedProjection {
   const base = createEmptySharedProjection();
@@ -400,6 +473,30 @@ export const Backlinks: Story = {
       description: {
         story:
           "このエントリを指している共有ノート（引用・派生・テンプレート利用）。行を押すと相手のエントリへ移る。0 件のときは「まだ見つかっていない」と書く —— 元になるのは本文を読めた共有ノートの投影だけなので、0 件だと断言しない。",
+      },
+    },
+  },
+};
+
+export const Graph: Story = {
+  name: "グラフ",
+  args: {
+    ...baseArgs,
+    initialRailTab: "graph" as const,
+    entries: [...COMMENTS, CITING_NOTE, FORK_A, FORK_B, INCOMING_PROPOSAL],
+    projection: projectionOf([
+      [NOTE, DOC],
+      [CITING_NOTE, CITING_DOC],
+      [FORK_A, forkedDoc(FORK_A.extra!.title as string)],
+      [FORK_B, forkedDoc(FORK_B.extra!.title as string)],
+    ]),
+  },
+  decorators: jaDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "逆引きと同じ材料を図で見る。中心がこのエントリ、周りが 派生版 2 件・提案 1 件・引用 1 件。共有側のノードは破線の縁で手元のノートと見分ける。ノードを押すとその共有エントリへ移る。隣接が無いときは図を出さず、逆引きと同じ言い方で案内する。",
       },
     },
   },
@@ -840,6 +937,70 @@ export const ProposalDiffNoBase: Story = {
       description: {
         story:
           "基準版の控えが無いとき（blob の保管先が未設定 / 古い派生）。元のノートの現在の版と 2 者で比べるだけになり、「誰が変えたか」の印は出さない —— 分けられないものを分かったように見せない。",
+      },
+    },
+  },
+};
+
+// ── 提案から取り込みを始める入口（§25b B-6）──
+//
+// 「差分」で中身を読むところまでは誰でも同じ。取り込むかどうかを決めるのはこの画面
+// なので、宛先のノートの作者本人にだけ「このノートに取り込む」を出す。押しても
+// ここでは取り込まない —— 宛先の手元ノートへ移り、右レールの「提案」タブが
+// その提案を開いた状態で着地する（取り込みはエディタのある編集画面の仕事）。
+
+/** 先生（TEACHER）から学生のノート（note-1）へ来ている提案 */
+const PROPOSAL_FROM_TEACHER = { ...PROPOSAL, author: TEACHER } as SharedEntry;
+
+export const ProposalAdoptEntry: Story = {
+  name: "変更の提案 — 取り込みの入口（宛先の作者）",
+  args: {
+    ...proposalArgs,
+    entry: PROPOSAL_FROM_TEACHER,
+    // 宛先 note-1 の作者は学生。その本人が読んでいる場面
+    currentIdentity: STUDENT_A,
+    entries: [NOTE, PROPOSAL_FROM_TEACHER],
+    proposalDiff: {
+      base: PROPOSAL_BASE_DOC,
+      mine: PROPOSAL_MINE_DOC,
+      theirs: PROPOSAL_THEIRS_DOC,
+    },
+    onAdoptInNote: (input: { proposalId: string; targetId: string }) =>
+      console.log("adopt in note", input),
+  },
+  decorators: jaDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "宛先のノートの作者が読んでいる場面。操作の並びに「このノートに取り込む」が出て、差分パネルの案内も「どこから取り込めるか」に変わる。押すと手元のノートへ移り、そこで取り込むものを選ぶ。",
+      },
+    },
+  },
+};
+
+export const ProposalAdoptEntryHidden: Story = {
+  name: "変更の提案 — 取り込みの入口なし（宛先の作者でない）",
+  args: {
+    ...proposalArgs,
+    entry: PROPOSAL_FROM_TEACHER,
+    // 提案を出した先生自身が読んでいる場面（宛先のノートは学生のもの）
+    currentIdentity: TEACHER,
+    entries: [NOTE, PROPOSAL_FROM_TEACHER],
+    proposalDiff: {
+      base: PROPOSAL_BASE_DOC,
+      mine: PROPOSAL_MINE_DOC,
+      theirs: PROPOSAL_THEIRS_DOC,
+    },
+    onAdoptInNote: (input: { proposalId: string; targetId: string }) =>
+      console.log("adopt in note", input),
+  },
+  decorators: jaDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "宛先のノートの作者でない人（ここでは提案を出した本人）が読んでいる場面。取り込めるのは宛先の作者だけなので、ボタンは出さず、これまでどおり「ここは読むだけです」と言う。",
       },
     },
   },

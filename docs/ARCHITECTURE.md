@@ -1526,11 +1526,64 @@ change.
 The Library shows proposals on their own tab, and the full-page view of
 a proposal gains a **Changes** rail tab holding this list, with each
 item clickable to highlight the matching block in the body preview.
-Everything here is read-only: 8a covers making a proposal and reading
-its diff. Taking selected changes into the author's own note is a
-separate step and is not implemented yet — until it lands, an author
-adopts a proposal by editing their note themselves and pressing
-**Update shared copy**.
+That view is read-only — it is where a proposer or a third party reads
+a proposal. Taking changes in happens somewhere else.
+
+#### Adopting a proposal
+
+Adoption happens **only in the original author's own note editor**, and
+only through their own editing pipeline; there is no path that writes
+another author's shared body. The note editor grows a **Proposals** rail
+tab (`NoteProposalsPanel`) whenever the note is shared and at least one
+proposal points at it. Picking a proposal shows the same
+`ProposalDiffPanel` in *selectable* mode: `by: "theirs"` items are
+checked by default, `both` and `unknown` are left for the human to
+decide, and `mine` items are shown for context with no checkbox and
+with the verbs flipped to the author's direction (what the diff engine
+calls a removal is something the author *added*).
+
+Two details matter for correctness:
+
+- **`mine` is the live note, not the shared copy.** The shared copy is
+  whatever was published last; diffing against it would re-offer changes
+  the author already took in. The panel calls back into the editor
+  (`buildDocument()`) for the current body.
+- **Table changes have two granularities.** Selecting the block change
+  replaces the whole table; selecting cell changes edits cells in place
+  and preserves `tableRowIdentity`. Picking both would be ambiguous, so
+  the checkboxes are mutually exclusive (`proposal-selection.ts`), and
+  the per-cell form is the default — a wholesale replace would drop rows
+  the author added.
+
+Applying is a pure function
+(`applyProposalChanges` in `src/features/sharing/proposal-apply.ts`):
+it takes `mine`, `theirs`, the diff and the selected ids, and returns a
+new `GraphiumDocument` plus counts of what was applied and skipped
+(`multiple-pages`, `not-found:<id>`, `table-unreadable:<id>`). It never
+mutates `mine`. Labels and `provLinks` for adopted blocks are carried
+over; `knowledgeLinks`, `noteLinks` (proposer-local ids) and
+`highlights` (ranges that no longer line up) are not.
+
+The editor-side sequence is fixed, and the order is the point:
+
+1. take a version snapshot (so the author can get back)
+2. `applyProposalChanges`
+3. `editor.replaceBlocks(editor.document, next.pages[0].blocks)` — one
+   call, so one undo step, and block ids survive
+4. push `next.pages[0].labels` / `.provLinks` into the label and link
+   stores (the save path reads the stores, not the document, so skipping
+   this would silently revert the annotations on the next autosave)
+5. `recordRevision(..., "proposal_adopt", { sources: ["shared:<id>"],
+   force: true })`
+6. `markDirty()` — the shared copy only changes when the author presses
+   **Update shared copy**
+
+That last step is what closes the loop: on the next share,
+`shareGraphiumDocument` reads the adopted ids back out of the
+provenance log (`collectAdoptedProposals`, before `stripPrivateHistory`
+removes it) and writes them to `extra.adoptedProposals`, which is
+exactly what `proposalStatus()` reads to show the proposer
+"adopted". No new document field is introduced for this.
 
 The Library's automatic refresh (`useSharedLibrarySync`, throttled to
 once per 30s) picks up comments, proposals, and re-shares from other

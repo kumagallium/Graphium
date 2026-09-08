@@ -38,8 +38,20 @@ export {
 export {
   saveForkBase,
   loadForkBase,
+  clearForkBase,
   type ForkBase,
 } from "./fork-base";
+// 共有エントリ id → 手元のノート id（§25b B-6）。共有ライブラリの提案から
+// 取り込みを始めるときに、宛先の手元ノートを引くために使う
+export {
+  saveSharedNoteLink,
+  loadSharedNoteLink,
+  findNoteBySharedId,
+  resolveSharedNoteId,
+  type SharedNoteLink,
+  type LoadNoteDoc,
+  type ResolveSharedNoteDeps,
+} from "./shared-note-link";
 export {
   resolveProposalBase,
   isTargetUpdatedSinceFork,
@@ -64,7 +76,37 @@ export {
   type BlockChange,
   type BlockChangeKind,
   type TableCellChange,
+  type Change,
 } from "./proposal-diff";
+export {
+  applyProposalChanges,
+  collectAdoptedProposals,
+  type ApplyProposalChangesInput,
+  type ApplyProposalChangesResult,
+} from "./proposal-apply";
+export {
+  defaultProposalSelection,
+  toggleProposalSelection,
+  isChangeSelectable,
+  countSelected,
+  cellIdsOf,
+} from "./proposal-selection";
+export {
+  applyAdoptedPageAnnotations,
+  type AdoptLabelStore,
+  type AdoptLinkStore,
+} from "./proposal-adopt-stores";
+export {
+  NoteProposalsPanel,
+  NoteProposalsBadge,
+  NoteProposalsRailIcon,
+  useNoteProposalCount,
+  type NoteProposalsPanelProps,
+  type AdoptProposalRequest,
+  type AdoptProposalOutcome,
+} from "./NoteProposalsPanel";
+export { NoteForkedFromChip, type NoteForkedFrom } from "./NoteForkedFromChip";
+export { buildNoteSharedGraph, type NoteSharedGraphData } from "./note-shared-graph";
 export {
   forkSharedNote,
   type ForkSharedNoteResult,
@@ -195,6 +237,8 @@ export {
   markSeen,
   isUpdatedSince,
   newCommentCount,
+  markProposalsSeen,
+  newProposalCount,
   type SharedSeenRecord,
   type SharedSeenStore,
 } from "./shared-seen";

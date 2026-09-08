@@ -48,6 +48,13 @@ export type UseProposalDiffOptions = {
   body: string | null;
   /** 解決済みの共有エントリ一覧（元エントリを id で引く） */
   entries: readonly SharedEntry[];
+  /**
+   * 比べる元（mine）を呼び出し側が持っているときに渡す（§25b B-2）。
+   * 元の作者のノート編集画面では、比べる相手は共有コピーではなく
+   * **いま開いているノートの最新本文**なので、共有ストアから読まずにこれを使う。
+   * 未指定なら 8a と同じく元エントリの共有本文を読む。
+   */
+  mine?: GraphiumDocument | null;
   /** DI: 本文の取り寄せ（既定は共有ストア） */
   readEntryBody?: (
     entry: SharedEntry,
@@ -79,6 +86,11 @@ async function defaultReadBlob(ref: BlobRef): Promise<Uint8Array> {
 
 export function useProposalDiff(options: UseProposalDiffOptions): ProposalDiffState {
   const { entry, body, entries, readEntryBody, readBlob, override } = options;
+  // mine の鍵を渡してきた呼び出し側は「比べる元は自分が持つ」と宣言している。
+  // まだ組み上がっていない（null）間も元エントリの共有本文を読みに行かない
+  // —— 読むと一瞬だけ共有コピーとの差分が出て、既定の選択がそれで決まってしまう
+  const callerSuppliesMine = "mine" in options;
+  const mineOverride = options.mine ?? null;
   const [loaded, setLoaded] = useState<{
     mine: GraphiumDocument | null;
     base: GraphiumDocument | null;
@@ -102,7 +114,8 @@ export function useProposalDiff(options: UseProposalDiffOptions): ProposalDiffSt
 
   useEffect(() => {
     if (override) return;
-    if (!targetId || !target) {
+    // mine を渡されているときは、元エントリが一覧に無くても比べられる
+    if (callerSuppliesMine ? !mineOverride : !targetId || !target) {
       setLoaded(null);
       return;
     }
@@ -111,15 +124,17 @@ export function useProposalDiff(options: UseProposalDiffOptions): ProposalDiffSt
     setError(null);
     void (async () => {
       const readBody = readersRef.current.readEntryBody ?? readSharedEntryBody;
-      let mine: GraphiumDocument | null = null;
+      let mine: GraphiumDocument | null = mineOverride;
       let baseDoc: GraphiumDocument | null = null;
       let failure: string | null = null;
-      try {
-        const { body: bytes } = await readBody(target);
-        mine = parseDoc(new TextDecoder().decode(bytes));
-        if (!mine) failure = "Could not read the original note's body.";
-      } catch (e) {
-        failure = e instanceof Error ? e.message : String(e);
+      if (!mine && target && !callerSuppliesMine) {
+        try {
+          const { body: bytes } = await readBody(target);
+          mine = parseDoc(new TextDecoder().decode(bytes));
+          if (!mine) failure = "Could not read the original note's body.";
+        } catch (e) {
+          failure = e instanceof Error ? e.message : String(e);
+        }
       }
       // 基準版は「あれば良くなる」もの。読めなくても 2 者比較で先へ進む
       if (extra?.baseRef) {
@@ -140,7 +155,7 @@ export function useProposalDiff(options: UseProposalDiffOptions): ProposalDiffSt
     };
     // target は id + hash が同じなら同じ版。配列の同一性ではなく版で読み直す
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [override, targetId, targetHash, baseHash]);
+  }, [override, targetId, targetHash, baseHash, mineOverride, callerSuppliesMine]);
 
   const theirs = useMemo(() => (body ? parseDoc(body) : null), [body]);
 
@@ -160,10 +175,10 @@ export function useProposalDiff(options: UseProposalDiffOptions): ProposalDiffSt
     // 本文がまだ届いていない間も「読み込み中」。空の差分に見せない
     loading: override
       ? false
-      : loading || body === null || (!!targetId && !loaded && !error),
+      : loading || body === null || ((!!targetId || callerSuppliesMine) && !loaded && !error),
     error: override ? null : error,
     // 元エントリが一覧に無い（共有解除・まだ読めていない）。比べる相手がいないので
-    // 「差分なし」ではなく状態の説明に倒す
-    targetMissing: !override && !!extra && !targetId,
+    // 「差分なし」ではなく状態の説明に倒す。mine を渡されているときは比べられる
+    targetMissing: !override && !callerSuppliesMine && !!extra && !targetId,
   };
 }

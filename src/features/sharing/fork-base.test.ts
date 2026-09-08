@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { saveForkBase, loadForkBase } from "./fork-base";
+import { saveForkBase, loadForkBase, clearForkBase } from "./fork-base";
 import type { StorageProvider } from "../../lib/storage/types";
 
 /** readAppData / writeAppData だけを持つ最小のプロバイダ（他は使わない） */
@@ -87,5 +87,33 @@ describe("saveForkBase / loadForkBase", () => {
       },
     } as unknown as StorageProvider;
     expect(await loadForkBase("note-1", provider)).toBeNull();
+  });
+});
+
+describe("clearForkBase", () => {
+  it("片付けたあとは控えが無いのと同じ（2 者比較に落ちる）", async () => {
+    const { provider } = fakeProvider();
+    await saveForkBase("note-1", { sharedId: "s1", hash: "h1", body: BODY }, provider);
+    await clearForkBase("note-1", provider);
+    expect(await loadForkBase("note-1", provider)).toBeNull();
+  });
+
+  it("他のノートの控えは巻き込まない", async () => {
+    const { provider } = fakeProvider();
+    await saveForkBase("note-1", { sharedId: "s1", hash: "h1", body: "a" }, provider);
+    await saveForkBase("note-2", { sharedId: "s2", hash: "h2", body: "b" }, provider);
+    await clearForkBase("note-1", provider);
+    expect((await loadForkBase("note-2", provider))?.body).toBe("b");
+    expect(await loadForkBase("note-1", provider)).toBeNull();
+  });
+
+  it("書けなくても投げない（片付けは失敗させない）", async () => {
+    const provider = {
+      async writeAppData() {
+        throw new Error("disk full");
+      },
+    } as unknown as StorageProvider;
+    await expect(clearForkBase("note-1", provider)).resolves.toBeUndefined();
+    await expect(clearForkBase("", provider)).resolves.toBeUndefined();
   });
 });

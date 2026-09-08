@@ -104,6 +104,41 @@ const hubGraph: NoteGraphData = {
   ],
 };
 
+// 派生元 1 件 + 提案 2 件（共有ライブラリ由来の shared / proposal ノード）
+const sharedProposalGraph: NoteGraphData = {
+  nodes: [
+    { id: "note-1", title: "Cu粉末のアニール実験（fork）", isCurrent: true, hop: 0 },
+    { id: "note-2", title: "アニール温度の最適化", isCurrent: false, hop: 1 },
+    {
+      id: "shared:origin-1",
+      title: "Cu粉末のアニール実験",
+      isCurrent: false,
+      hop: 1,
+      sharedKind: "shared",
+    },
+    {
+      id: "proposal:proposal-1",
+      title: "誤字修正の提案",
+      isCurrent: false,
+      hop: 1,
+      sharedKind: "proposal",
+    },
+    {
+      id: "proposal:proposal-2",
+      title: "手順3の追記提案",
+      isCurrent: false,
+      hop: 1,
+      sharedKind: "proposal",
+    },
+  ],
+  edges: [
+    { source: "note-1", target: "note-2" },
+    { source: "note-1", target: "shared:origin-1", relation: "derived", dashed: true },
+    { source: "proposal:proposal-1", target: "note-1", relation: "derived", dashed: true },
+    { source: "proposal:proposal-2", target: "note-1", relation: "derived", dashed: true },
+  ],
+};
+
 // 空状態
 const emptyGraph: NoteGraphData = { nodes: [], edges: [] };
 
@@ -154,6 +189,15 @@ export const Hub: StoryObj = {
   render: () => (
     <Container height={500}>
       <NetworkGraphPanel data={hubGraph} onNavigate={noop} />
+    </Container>
+  ),
+};
+
+export const SharedAndProposals: StoryObj = {
+  name: "派生元 + 提案（shared / proposal ノード）",
+  render: () => (
+    <Container height={500}>
+      <NetworkGraphPanel data={sharedProposalGraph} onNavigate={noop} onOpenSharedEntry={noop} />
     </Container>
   ),
 };

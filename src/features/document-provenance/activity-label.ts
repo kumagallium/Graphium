@@ -20,6 +20,7 @@ export function activityTypeLabelKey(type: string): string | null {
     case "wiki_reinforce": return "history.type.wikiReinforce";
     case "skill_default_update": return "history.type.skillDefaultUpdate";
     case "snapshot_restore": return "history.type.snapshotRestore";
+    case "proposal_adopt": return "history.type.proposalAdopt";
     default: return null;
   }
 }

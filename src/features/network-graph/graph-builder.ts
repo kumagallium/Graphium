@@ -34,6 +34,15 @@ export type NoteNode = {
    *  全ノードグラフの「文脈で色分け」モードと文脈絞り込みに使う。
    *  index 駆動の buildGlobalGraph でのみ付与（2ホップグラフでは未設定）。 */
   noteContexts?: string[];
+  /**
+   * 共有ライブラリ由来の仮想ノード種別。
+   *  - "shared"   : このノートの派生元（forkedFrom）にあたる共有エントリ
+   *  - "proposal" : このノートの共有コピーに来ている「変更の提案」
+   * 手元のノート ID 空間に無いため、ノート周辺グラフ（buildNoteGraph）にだけ
+   * 出す想定（buildGlobalGraph には出さない）。src/features/sharing/note-shared-graph.ts
+   * が組み立てて buildNoteGraph の結果に足す。
+   */
+  sharedKind?: "shared" | "proposal";
 };
 
 /** エッジが表す関係種別（将来、線種・色を分けるために使う想定）。
@@ -52,6 +61,8 @@ export type NoteEdge = {
   sourceBlockLabel?: string;
   /** 関係種別（derived / used / reference）。 */
   relation?: EdgeRelation;
+  /** true なら破線で描く。shared / proposal ノードとの辺のみ（既定は実線）。 */
+  dashed?: boolean;
 };
 
 export type NoteGraphData = {

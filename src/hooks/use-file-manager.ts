@@ -29,6 +29,8 @@ import {
 import { loadSnapshot } from "../features/version-snapshots/snapshot-store";
 import { findSnapshotsReferencingAsset } from "../features/version-snapshots/snapshot-refs";
 import { registerPendingOcrFile } from "../features/media-ocr";
+// 提案の基準版の控えの片付け（§25b C-3）。fork したノートを完全削除したときに消す
+import { clearForkBase } from "../features/sharing/fork-base";
 import {
   addForkedProcess,
   buildNoteGraph,
@@ -1772,6 +1774,12 @@ export function useFileManager(authenticated: boolean) {
               }
             }
           }
+        }
+
+        // 派生（fork）ノートを消すなら、提案の基準版の控えも片付ける（§25b C-3）。
+        // 控えはこのノートのためだけに取った本文なので、ノートが無くなれば行き場が無い
+        if (targetDoc?.forkedFrom) {
+          await clearForkBase(fileId);
         }
 
         // キャッシュから削除

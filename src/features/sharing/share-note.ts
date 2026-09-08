@@ -38,6 +38,7 @@ import {
   type FetchMediaBytes,
 } from "./auto-blob";
 import { historyForUpdate } from "./share-history";
+import { collectAdoptedProposals } from "./proposal-apply";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -145,6 +146,14 @@ export async function shareGraphiumDocument(
     };
   }
   try {
+    // ── §25b C-1: 取り込み済みの提案を封筒に載せる ──
+    // 手元の来歴（proposal_adopt）から組む。stripPrivateHistory は共有コピーから
+    // 来歴を落とすので、**落とす前の doc** から読む。doc には新しいフィールドを
+    // 足さない（封筒の extra だけで足りる）。
+    // 提案の封筒には載せない（提案への提案は無い）。
+    const adoptedProposals =
+      entryType === "proposal" ? [] : collectAdoptedProposals(doc);
+
     // ── Phase 2c-1: 自動 blob 化 ──
     const extractFileId =
       options.__test?.extractFileId ??
@@ -206,6 +215,8 @@ export async function shareGraphiumDocument(
       extra: {
         title: doc.title,
         ...extraFields,
+        // §25b C-1: 取り込んだ提案の id（提案側の状態バッジが "adopted" になる）
+        ...(adoptedProposals.length > 0 ? { adoptedProposals } : {}),
         // Phase 2c-1: 埋め込まれた媒体の BlobRef 一覧（dedup 済み）
         ...(blobs.length > 0 ? { blobs } : {}),
       },

@@ -214,7 +214,28 @@ Seen from the original, a note that has proposals shows **N proposals** on its r
 
 You can still propose when the original has moved on. The changes are then shown against the original's current version, so your edits and the author's edits sit side by side.
 
-In this version the change list is **read-only**. To take a proposal in, the original's author edits their own note and presses **Update shared copy**. Taking selected changes across in one step is coming.
+The full view of a proposal is a place to **read**. Taking changes in happens on the author's side, in their own note.
+
+#### Adopting a proposal (the original's author) {#adopt-a-proposal}
+
+When a proposal arrives for a note you shared, opening that note adds a **Proposals** tab to the right-hand rail (notes with no proposals don't get one). A **Proposals N** badge next to the shared badge in the header opens the same tab.
+
+1. Open **Proposals** in the right rail. Incoming proposals are listed with author, date, state and description
+2. Pick one and you get the differences against your note. The comparison is against **what you are writing right now**, not against the shared copy — edits you have not published yet are already taken into account
+3. Tick the changes you want. Ticked by default are the ones only the **proposer** changed. **Both** (you disagree) is left for you to judge. **Author** (what you changed) has no checkbox — there is nothing to take in
+4. Press **Adopt selected changes**
+
+Pressing it first saves a version ("before adopting") automatically, then applies only what you ticked. If you change your mind, restore that version from the `⋯` menu — or just undo (⌘Z / Ctrl+Z), which reverses the whole thing in one step.
+
+Tables can be picked at two levels. Tick individual cells, rows or columns and only those change. Tick the table itself and the whole table is replaced with the proposed one. You cannot do both — a wholesale replace would also drop rows you added yourself.
+
+Adopting does not change the shared side yet. It becomes a new version when you press **Update shared copy**, and only then does the proposer's badge turn to **Adopted**. The `⋯` menu says "N adopted proposal(s) will be part of the new version", so you can tell when you have forgotten to press it.
+
+From the proposer's side, the state badge changes to **Adopted**. Their note stays where it is, so they can keep working and propose again, or clean up with **Withdraw proposal** in the `⋯` menu.
+
+#### Seeing where a note came from {#forked-from}
+
+A note you created by forking shows a **Forked from: …** chip in its header; click it to open the original shared entry. The **Graph** panel on the right shows the same relationship as a dashed link, alongside any proposals aimed at your note (clickable too).
 
 ## Exports
 

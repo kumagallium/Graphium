@@ -83,7 +83,10 @@ export type EditActivityType =
   /** システムスキルのデフォルト内容への同期（未編集スキルの自動更新 / Reset to default） */
   | "skill_default_update"
   /** 手動で残した版（スナップショット）への復元。ユーザー操作なので human agent に紐づく */
-  | "snapshot_restore";
+  | "snapshot_restore"
+  /** 共有された「変更の提案」の取り込み。ユーザー操作なので human agent に紐づく。
+   *  used に `shared:<提案の共有エントリ id>` が入る（collectAdoptedProposals が読む）。 */
+  | "proposal_adopt";
 
 /** prov:Activity — 編集操作 */
 export type EditActivity = {
