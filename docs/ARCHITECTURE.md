@@ -161,8 +161,9 @@ talks to LLM and embedding backends.
   the formula stays visible in the calc block and the note still stores no
   rows. Charts and other calc blocks read computed columns like any other
   column. The reverse moves exist too: a note table can be turned into a
-  data table (its rows leave the note as a CSV asset), and a data table can be
-  written out with its computed columns as a new, derived asset.
+  data table (its rows leave the note as a CSV asset) and back again while it
+  stays under the note-table row cap, and a data table can be written out with
+  its computed columns as a new, derived asset.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the

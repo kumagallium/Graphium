@@ -1,6 +1,8 @@
 // サイドメニュー関連コンポーネント
 // NoteSideMenu, DeriveNoteMenuItem, AiAssistantMenuItem
 
+import { peekDataTableFromBlock } from "../blocks/data-table/data";
+import { DOC_TABLE_HARD_MAX_ROWS } from "../features/data-import/target";
 import { useState } from "react";
 import {
   AddBlockButton,
@@ -79,6 +81,15 @@ let tableToDataTableFn: ((blockId: string) => void) | null = null;
 
 export function setTableToDataTableFn(fn: typeof tableToDataTableFn) {
   tableToDataTableFn = fn;
+}
+
+// データ表 → 本文の表（逆向き）。素材の行を本文に書き戻す。行が多い表を戻すと
+// フリーズの原因（本文に大きな表）をそのまま再現するので、本文の表の上限
+// （DOC_TABLE_HARD_MAX_ROWS）を超える表には入口を出さない
+let dataTableToNoteTableFn: ((blockId: string) => void) | null = null;
+
+export function setDataTableToNoteTableFn(fn: typeof dataTableToNoteTableFn) {
+  dataTableToNoteTableFn = fn;
 }
 
 // ブロックの「配下」を収集する（スコープ選択）
@@ -747,6 +758,41 @@ function TableToDataTableMenuItem() {
 }
 
 /**
+ * データ表を「本文の表にする」。素材の行を本文の表ブロックに書き戻し、キャプションと
+ * 素材への参照（再取り込み）は引き継ぐ。上限を超える表は理由を添えて押せなくする
+ */
+function DataTableToNoteTableMenuItem() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+  if (!block || !dataTableToNoteTableFn) return null;
+  if ((block.type as string) !== "dataTable") return null;
+  const data = peekDataTableFromBlock(block);
+  const tooMany = !!data && data.rows.length > DOC_TABLE_HARD_MAX_ROWS;
+  if (tooMany) {
+    return (
+      <Components.Generic.Menu.Item className="bn-menu-item" onClick={() => {}}>
+        <span style={{ opacity: 0.5 }} title={t("dataTable.toNoteTableTooMany", { max: String(DOC_TABLE_HARD_MAX_ROWS) })}>
+          {t("dataTable.toNoteTable")}
+        </span>
+      </Components.Generic.Menu.Item>
+    );
+  }
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => dataTableToNoteTableFn?.(block.id)}
+    >
+      {t("dataTable.toNoteTable")}
+    </Components.Generic.Menu.Item>
+  );
+}
+
+/**
  * テーブルブロックの「時系列テーブル」トグル。
  * 時系列テーブルは独立したブロック型ではなく、標準テーブルに後から付け外し
  * できる「ふるまい」（行を足すと日時が入る）— テーブルの種類を増やさないための
@@ -861,6 +907,7 @@ export function NoteSideMenu() {
         <LogTableToggleMenuItem />
         <IndexTableToggleMenuItem />
         <TableToDataTableMenuItem />
+        <DataTableToNoteTableMenuItem />
         <ReadImageTextMenuItem />
         <AddMemoMenuItem />
         <DeriveNoteMenuItem />

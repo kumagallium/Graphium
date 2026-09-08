@@ -36,3 +36,14 @@ describe("csvFileNameFor", () => {
     expect(csvFileNameFor("   ", "table")).toBe("table.csv");
   });
 });
+
+describe("本文の表 ⇄ データ表の往復", () => {
+  it("toTableBlock で本文に戻した表を noteTableToRows で読むと、同じ見出しと行に戻る", async () => {
+    const { toTableBlock } = await import("../data-import/to-table-block");
+    const headers = ["温度", "収率"];
+    const rows = [["180", "0.82"], ["", "0.9"], ["a,b", "\"q\""]];
+    const block = toTableBlock({ headers, rows, headerLines: [], footerLines: [] });
+    expect(block).not.toBeNull();
+    expect(noteTableToRows(block)).toEqual({ headers, rows });
+  });
+});

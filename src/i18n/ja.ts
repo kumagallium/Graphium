@@ -2409,6 +2409,8 @@ export const ja: Record<string, string> = {
   "dataTable.rowNumber": "#",
   "dataTable.exportAsset": "計算列込みで素材に書き出す",
   "dataTable.exported": "素材に書き出しました: {name}",
+  "dataTable.toNoteTable": "本文の表にする",
+  "dataTable.toNoteTableTooMany": "{max} 行を超える表は本文には戻せません（ノートが重くなるため）",
   "dataTable.linkedColumn": "{calc} が計算した列（式は calc ブロックにあります）",
   "dataTable.exportHeading": "データ表「{caption}」（元ファイル: {fileName}）",
   "dataTable.exportMore": "…ほか {count} 行は元ファイル {fileName} を参照",

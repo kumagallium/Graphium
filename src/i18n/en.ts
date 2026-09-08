@@ -2412,6 +2412,8 @@ export const en: Record<string, string> = {
   "dataTable.rowNumber": "#",
   "dataTable.exportAsset": "Write out as an asset, computed columns included",
   "dataTable.exported": "Written out as an asset: {name}",
+  "dataTable.toNoteTable": "Turn into a note table",
+  "dataTable.toNoteTableTooMany": "Tables over {max} rows cannot go back into the note (it would get heavy again)",
   "dataTable.linkedColumn": "Computed by {calc} (the formula lives in the calc block)",
   "dataTable.exportHeading": "Data table \"{caption}\" (source file: {fileName})",
   "dataTable.exportMore": "…{count} more rows — see the source file {fileName}",

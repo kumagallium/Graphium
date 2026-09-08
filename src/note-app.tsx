@@ -96,9 +96,12 @@ import {
 import type { ImportTarget } from "./features/data-import/types";
 import { primeAssetText } from "./features/data-import/asset-text";
 import { csvFileNameFor, noteTableToRows, rowsToCsv } from "./features/table-meta/table-to-csv";
-import { setTableToDataTableFn } from "./components/side-menu";
+import { setDataTableToNoteTableFn, setTableToDataTableFn } from "./components/side-menu";
+import { DOC_TABLE_HARD_MAX_ROWS } from "./features/data-import/target";
 import { computeTableDisplayNames } from "./features/table-meta/auto-name";
 import {
+  loadDataTable,
+  parseDataTableSource,
   serializeDataTableSource,
   setDataTableExportCallback,
   setDataTableReimportCallback,
@@ -2240,6 +2243,46 @@ function NoteEditorInner({
     setTableToDataTableFn(handleTableToDataTable);
     return () => setTableToDataTableFn(null);
   }, [handleTableToDataTable]);
+
+  // データ表 → 本文の表（逆向き）。素材の行を本文に書き戻す。キャプションと素材への参照
+  // （tableMeta.source。再取り込みの入口）は引き継ぐので、往復しても何も失われない。
+  // 素材は消さない。上限（本文の表の上限と同じ）を超える表は戻さない — フリーズの再現になる
+  const handleDataTableToNoteTable = useCallback(
+    (blockId: string) => {
+      const editor = editorRef.current;
+      const block = editor?.getBlock?.(blockId);
+      if (!editor || !block || block.type !== "dataTable") return;
+      const source = parseDataTableSource(block.props?.source);
+      if (!source) return;
+      const caption = String(block.props?.caption ?? "");
+      void (async () => {
+        try {
+          const data = await loadDataTable(source);
+          if (data.rows.length > DOC_TABLE_HARD_MAX_ROWS) return;
+          const spec = toTableBlock({ headers: data.headers, rows: data.rows, headerLines: [], footerLines: [] });
+          if (!spec) return;
+          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          const current = live?.getBlock?.(blockId);
+          if (!live || !current || current.type !== "dataTable") return;
+          const { insertedBlocks } = live.replaceBlocks([current], [spec]);
+          const newId = insertedBlocks?.[0]?.id;
+          if (newId) {
+            if (caption) tableMetaStore.setCaption(newId, caption);
+            tableMetaStore.setSource(newId, source);
+          }
+          markDirtyRef.current();
+          setTimeout(() => saveNowRef.current?.(), 0);
+        } catch (err) {
+          console.warn("データ表を本文の表に戻せませんでした:", err);
+        }
+      })();
+    },
+    [tableMetaStore],
+  );
+  useEffect(() => {
+    setDataTableToNoteTableFn(handleDataTableToNoteTable);
+    return () => setDataTableToNoteTableFn(null);
+  }, [handleDataTableToNoteTable]);
 
   // データ表 → 計算列込みで新しい素材に書き出す。元の素材を派生元（derivedFromAssets）に
   // 持たせるので、素材の系譜が辿れる。ブロックは変えない（元の素材を見せたまま）
