@@ -124,11 +124,11 @@ The panel is a place to write, not just a picture to read. Everything you do her
 | Section | Shape | To add |
 |---|---|---|
 | **Parameter** | one column per key, one row per **stage** | **Column** adds a key, **Add stage** adds a row |
-| **Input** / **Tool** / **Output** | one row per entity, one column per attribute | **Add row** adds an entity |
+| **Input** / **Tool** / **Output** | one row per entity, one column per attribute | **Add Input** (or **Add Tool**, **Add Output**) adds an entity |
 
 A kind the step doesn't have yet still shows as a table — a dashed card with one empty row. Type into that first cell and the labeled table appears in the note with what you typed already in it (the key for a parameter table, the name for the others). Leave it alone and nothing is written, so a step never fills up with empty tables you didn't ask for.
 
-A parameter table's rows are **stages**, and row order is stage order: leave it at one row and everything works exactly as before, but click **Add stage** to record a second set of conditions without leaving the step — a stirring step that ramps through three temperatures is one step with three stages, not three separate steps. The line to draw: split into separate **steps** when something is taken out of or put into the process between them (a sample pulled out for weighing, say); stay with **stages** when only the conditions change and the same material carries through.
+A parameter table's rows are **stages** <Badge type="tip" text="Added in v0.60.0 (2026-09-08)" />, and row order is stage order: leave it at one row and everything works exactly as before, but click **Add stage** to record a second set of conditions without leaving the step — a stirring step that ramps through three temperatures is one step with three stages, not three separate steps. The line to draw: split into separate **steps** when something is taken out of or put into the process between them (a sample pulled out for weighing, say); stay with **stages** when only the conditions change and the same material carries through.
 
 ![A step card showing 3 stages, with the parameter table below it: numbered stage rows and the Add stage button](/screenshots/step-stages.png)
 
