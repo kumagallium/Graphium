@@ -2907,7 +2907,8 @@ function NoteEditorInner({
     // skill ノートは派生元を持たないので forkedFrom で自然に外れる（isSkillDoc は
     // ここより後で宣言されるため参照しない）
     !!forkedFrom?.sharedId &&
-    (!sharedAuthor || forkedFrom.authorEmail !== sharedAuthor.email) &&
+    // 派生元の作者が自分でも出す。1 人で流れを確かめるときや、別の端末から自分の
+    // ノートへ提案するときに使えるため（取り込みは自分のノートで行うので害は無い）
     (!sharedRefState || isProposalShared);
 
   // 提案する本文は「提案する」を押した時点で組み立てる（テンプレート共有と同じ約束）。
