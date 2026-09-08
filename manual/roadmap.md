@@ -94,6 +94,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.65.0** | 2026-09-08 | Bring in what you already have: PowerPoint and Excel become materials (slide text, images, sheets as tables), re-imported files no longer duplicate notes, and text in imported images is read in the background. |
 | **v0.66.0** | 2026-09-08 | Extract slides and sheets from Office files that are already in your library. |
 | **v0.67.0** | 2026-09-08 | [Propose changes to a shared note, and take them in](/storage-and-sync#propose-changes) — fork someone's shared note, edit it, and share it back as a proposal. The author reads a three-way diff (what you changed, what they changed, what both touched), ticks what to keep, and takes it into their own note; adopting saves a version first and becomes a new shared version on the next update. |
+| **v0.68.0** | 2026-09-08 | [Find text inside a PDF](/materials-and-citations#finding-text-in-a-pdf) (`⌘F`) — search the PDF you are reading, with every match highlighted across pages and `Enter` walking through them. |
 
 ## Requests welcome
 
