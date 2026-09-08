@@ -256,3 +256,14 @@ describe("viewportHeightFor", () => {
     expect(viewportHeightFor(2000, 0)).toBe(HEADER_HEIGHT + ROW_HEIGHT);
   });
 });
+
+describe("buildColumnModels の badgeFrom", () => {
+  it("計算列（badgeFrom 以降）は見出しのアイコン分だけ幅が広い", () => {
+    const headers = ["temp_c", "temp_f"];
+    const rows = [["180.0", "356"], ["180.8", "357.44"]];
+    const plain = buildColumnModels(headers, rows);
+    const withBadge = buildColumnModels(headers, rows, { badgeFrom: 1 });
+    expect(withBadge[0].width).toBe(plain[0].width);
+    expect(withBadge[1].width).toBeGreaterThan(plain[1].width);
+  });
+});

@@ -51,8 +51,18 @@ export type ColumnModel = {
   numeric: boolean;
 };
 
-/** 列ごとの見た目（幅・数値列か）を決める */
-export function buildColumnModels(headers: string[], rows: string[][]): ColumnModel[] {
+/** 計算列の見出しに付く電卓アイコンの幅（アイコン + 隙間、px） */
+const BADGE_WIDTH = 18;
+
+/**
+ * 列ごとの見た目（幅・数値列か）を決める。
+ * badgeFrom 以降の列は見出しにアイコンが付くので、その分だけ幅を足す（見出しが詰まらないように）
+ */
+export function buildColumnModels(
+  headers: string[],
+  rows: string[][],
+  options?: { badgeFrom?: number },
+): ColumnModel[] {
   const sample = rows.length > WIDTH_SAMPLE_ROWS ? rows.slice(0, WIDTH_SAMPLE_ROWS) : rows;
   return headers.map((header, col) => {
     let maxChars = header.length;
@@ -60,9 +70,10 @@ export function buildColumnModels(headers: string[], rows: string[][]): ColumnMo
       const len = (row[col] ?? "").length;
       if (len > maxChars) maxChars = len;
     }
+    const badge = options?.badgeFrom !== undefined && col >= options.badgeFrom ? BADGE_WIDTH : 0;
     const width = Math.min(
       MAX_COLUMN_WIDTH,
-      Math.max(MIN_COLUMN_WIDTH, Math.ceil(maxChars * CHAR_WIDTH + CELL_PADDING)),
+      Math.max(MIN_COLUMN_WIDTH, Math.ceil(maxChars * CHAR_WIDTH + CELL_PADDING + badge)),
     );
     return { width, numeric: isNumericColumn(sample, col) };
   });

@@ -34,7 +34,10 @@ export function DataGrid({
 }) {
   const { headers, rows } = data;
   const linkedStart = headers.length - linked.length;
-  const columns = useMemo(() => buildColumnModels(headers, rows), [headers, rows]);
+  const columns = useMemo(
+    () => buildColumnModels(headers, rows, { badgeFrom: linkedStart }),
+    [headers, rows, linkedStart],
+  );
   const [sort, setSort] = useState<SortState>(null);
   const order = useMemo(() => orderRows(rows, sort), [rows, sort]);
   const [scrollTop, setScrollTop] = useState(0);
