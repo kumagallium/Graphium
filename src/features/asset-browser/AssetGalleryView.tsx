@@ -398,7 +398,7 @@ function MediaCard({
           input 自体は pointer-events-none にして、mousedown を包む要素で拾う
           （距離ゼロでも即トグル + そのままドラッグで範囲選択に入るため） */}
       <div
-        className={`absolute top-1.5 left-1.5 z-10 cursor-pointer transition-opacity ${
+        className={`absolute top-2 left-2 z-10 cursor-pointer transition-opacity ${
           selected || showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
         }`}
         title={t("asset.dragToRangeSelect")}
@@ -415,7 +415,7 @@ function MediaCard({
       </div>
 
       {/* 右上アクション群（ホバーで表示） */}
-      <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {entry.type === "url" && (
           <a
             href={entry.url}
@@ -1503,10 +1503,12 @@ export function AssetGalleryView({
         </div>
 
         {/* 一括アクションバー（gallery / list 共通。選択が 1 件でもあれば出す）。
+            サイドピークが inline で並ぶと幅が半分になるので、折り返しを許す
+            （折り返せないとボタンの文字が縦に潰れる）。
             ギャラリー表示でしか素材を見ないユーザーが「チームに共有」等の一括操作に
             辿り着けない状態を解消するため、表示モードでは出し分けない */}
         {someSelected && (
-          <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
+          <div className="px-6 py-2 border-b border-border bg-primary/5 flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="text-xs text-foreground font-medium">
               {selectedIds.size} / {filtered.length}
             </span>
@@ -1516,7 +1518,7 @@ export function AssetGalleryView({
             >
               {t("asset.deselectAll")}
             </button>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               {/* 一括共有は「ノート一覧と同じ導線」（並び順・文言・BulkShareModal）を約束している操作。
                   見た目だけは同じバーの隣のボタン（塗りつぶし）に合わせる — 1 つだけ枠線にすると
                   このバーの中で浮いて見えるため。導線の一貫性は文言と挙動で担保する */}
@@ -1530,7 +1532,7 @@ export function AssetGalleryView({
                     setSelectedIds(new Set());
                     onBulkShare(ids);
                   }}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
                   title={t("share.bulk.title")}
                 >
                   <Share2 size={12} />
@@ -1546,7 +1548,7 @@ export function AssetGalleryView({
                     setAssignApplied([]);
                     setAssignOpen(true);
                   }}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
                   title={t("nav.applyContextsTooltip")}
                 >
                   <Folder size={12} />
@@ -1556,7 +1558,7 @@ export function AssetGalleryView({
               {bulkActionable && onIngestMedia && (
                 <button
                   onClick={handleBulkIngest}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
                   title={t("asset.bulkIngestTitle")}
                 >
                   <Bot size={12} />
@@ -1566,7 +1568,7 @@ export function AssetGalleryView({
               {bulkActionable && onCreateProvNote && (
                 <button
                   onClick={handleBulkCreateProvNote}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
                   title={t("asset.bulkCreateProvNoteTitle")}
                 >
                   <Bot size={12} />
@@ -1577,7 +1579,7 @@ export function AssetGalleryView({
                 <button
                   onClick={() => void handleBulkOcr()}
                   disabled={!!bulkOcr}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
                   title={t("asset.bulkOcrTitle")}
                 >
                   {bulkOcr ? <Loader2 size={12} className="animate-spin" /> : <ScanText size={12} />}
@@ -1593,7 +1595,7 @@ export function AssetGalleryView({
                 <button
                   onClick={() => void handleBulkExtractImages()}
                   disabled={bulkExtracting}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
                   title={t("asset.bulkExtractImagesTitle")}
                 >
                   {bulkExtracting ? <Loader2 size={12} className="animate-spin" /> : <Images size={12} />}
@@ -1606,7 +1608,7 @@ export function AssetGalleryView({
                 <button
                   onClick={() => void handleBulkDownload()}
                   disabled={bulkDownloading}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
                   title={t("asset.downloadHint")}
                 >
                   <Download size={12} />
