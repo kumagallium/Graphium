@@ -45,7 +45,7 @@ On the desktop, click **Memos** in the sidebar (the count next to it shows how m
 
 ![The memo gallery as a wall of sticky-note cards](/screenshots/memo-gallery.png)
 
-In **Gallery** view every card has its own checkbox: it appears in the top-left corner when you hover the card, and stays visible while anything is selected. The checkbox in the header selects every memo at once, and your selection survives switching between **Gallery** and **List**.
+In **Gallery** view every card has its own checkbox: it appears in the top-left corner when you hover the card, and stays visible while anything is selected. The checkbox in the header selects every memo at once, and your selection survives switching between **Gallery** and **List**. <Badge type="tip" text="Added in v0.61.0 (2026-09-08)" />
 
 Select several memos at once — drag across cards or shift-click — and act on the batch:
 
