@@ -47,6 +47,7 @@ import { FlowStepPanel, type FlowSelection, type StepPanelData } from "./flow-at
 import { KIND_PALETTE } from "./flow-palette";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
+import { nextLayoutRequest } from "./step-flow-layout-gate";
 import { seedUnplacedFlowNodes, useGraphLayout } from "./use-graph-layout";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useResizableWidth } from "../../hooks/use-resizable-width";
@@ -151,6 +152,11 @@ const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
 
 /** プレビューで先頭に寄せるときの上余白 */
 const PREVIEW_TOP_PADDING = 24;
+
+// 実測待ちで ELK を流せなかったときに、次フレームで様子を見る上限。
+// dimensions change が来ない経路（非表示でマウント → 表示など）でも自力で
+// 追いつけるようにするためのもので、無限に回さないための上限でもある
+const LAYOUT_RETRY_FRAMES = 60;
 /** パラメータ展開の記憶キー（端末ごと・ノート横断） */
 const SHOW_PARAMS_KEY = "graphium:stepFlowShowParams";
 
@@ -238,7 +244,14 @@ function StepFlowCanvas({
   // グラフが変わったら次に全ノードの実測サイズが揃った時点で ELK を流す。
   // useNodesInitialized は「後からノードを流し込む」経路で true にならない
   // ことがある（実測）ため、dimensions change 駆動 + 即時チェックの二段構えにする。
+  //
+  // この旗は「まだ ELK を適用できていない要求」を表す。下ろしていいのは
+  // 適用できたとき・ドラッグで人の意思が勝ったとき・手動配置を採用したときだけ。
+  // 「形が変わっていない」だけで下ろすと、実測待ちの要求が消えて二度と並ばない
   const needsLayoutRef = useRef(false);
+  // 実測待ちで見送った回数と、予約中の再試行フレーム
+  const layoutRetryRef = useRef(0);
+  const layoutRetryRafRef = useRef<number | null>(null);
   // orderOnly エッジの削除メニュー（クリックで開く。即削除しないことで誤操作を防ぐ）
   const [edgeMenu, setEdgeMenu] = useState<{ source: string; target: string; x: number; y: number } | null>(null);
   // 循環でドラッグ接続を拒否したときの警告。0 = 非表示
@@ -426,19 +439,23 @@ function StepFlowCanvas({
       ? [...graph.steps, ...graph.entities].filter((n) => savedNow[n.id]).length
       : 0;
     usingSavedLayoutRef.current = placedCount > 0;
-    // 形が前回と同じなら、位置は prevPos で引き継がれている。並べ直す理由が無い
+    // 形が前回と同じなら、位置は prevPos で引き継がれている。新しく並べ直す
+    // 理由は無いが、実測待ちで積んだままの要求は消さずに持ち越す
+    // （この effect はコールバックの参照が変わっただけでも走る）
     const structureChanged = lastStructureRef.current !== structureKey;
     lastStructureRef.current = structureKey;
+    if (structureChanged) layoutRetryRef.current = 0;
+    needsLayoutRef.current = nextLayoutRequest({
+      pending: needsLayoutRef.current,
+      usingSavedLayout: usingSavedLayoutRef.current && !!savedNow,
+      structureChanged,
+    });
     if (usingSavedLayoutRef.current && savedNow) {
-      needsLayoutRef.current = false;
       setNodes((nds: Node[]) => seedUnplacedFlowNodes(nds, savedNow));
-    } else if (structureChanged) {
-      needsLayoutRef.current = true;
+    } else if (needsLayoutRef.current) {
       // 既存ノードの position 更新だけで dimensions change が来ないケースに備えて、
       // 次フレームで「全ノード実測済みなら即レイアウト」も試す
       requestAnimationFrame(() => tryLayout());
-    } else {
-      needsLayoutRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -466,6 +483,9 @@ function StepFlowCanvas({
   // 実行中フラグ。ELK は非同期なので、完了前に graph が変わったときは
   // 完了後にもう一周して「最後の要求が必ず勝つ」ようにする
   const layoutRunningRef = useRef(false);
+  // tryLayout は自分自身を次フレームに予約する。useCallback の中から直接
+  // 自分を参照すると依存が循環するので、ref 経由で最新の実体を呼ぶ
+  const tryLayoutRef = useRef<() => void>(() => {});
   const tryLayout = useCallback(() => {
     if (!needsLayoutRef.current || layoutRunningRef.current) return;
     const current = getNodes();
@@ -477,9 +497,20 @@ function StepFlowCanvas({
     if (
       current.length === 0 ||
       current.length !== expected.size ||
+      // 実測幅 0（非表示のコンテナ等）は「まだ測れていない」と同じ扱い
       !current.every((n) => expected.has(n.id) && n.measured?.width)
-    )
+    ) {
+      // 実測が揃うのを dimensions change だけに頼らない。ノードが隠れている・
+      // React Flow が変化を出さない経路でも、上限つきで次フレームに試し直す
+      if (layoutRetryRef.current < LAYOUT_RETRY_FRAMES && layoutRetryRafRef.current === null) {
+        layoutRetryRef.current += 1;
+        layoutRetryRafRef.current = requestAnimationFrame(() => {
+          layoutRetryRafRef.current = null;
+          tryLayoutRef.current();
+        });
+      }
       return;
+    }
     layoutRunningRef.current = true;
     const sized = current.map((n) => ({
       id: n.id,
@@ -532,6 +563,15 @@ function StepFlowCanvas({
       if (needsLayoutRef.current) requestAnimationFrame(() => tryLayout());
     });
   }, [getNodes, setNodes, fitView, getViewport, setViewport, variant]);
+  tryLayoutRef.current = tryLayout;
+
+  // 予約したままアンマウントされても後始末する
+  useEffect(
+    () => () => {
+      if (layoutRetryRafRef.current !== null) cancelAnimationFrame(layoutRetryRafRef.current);
+    },
+    [],
+  );
 
   // ノードが measure された（dimensions change が流れた）タイミングでレイアウトを試す
   const handleNodesChange = useCallback(
@@ -549,6 +589,8 @@ function StepFlowCanvas({
         needsLayoutRef.current = true;
       }
       if (needsLayoutRef.current) {
+        // 実測が新しく届いた = 前進した。見送り回数の持ち分を戻す
+        layoutRetryRef.current = 0;
         requestAnimationFrame(() => tryLayout());
       }
     },
@@ -764,6 +806,7 @@ function StepFlowCanvas({
                 // 形が変わっていなくても、押されたら並べ直す
                 lastStructureRef.current = null;
                 needsLayoutRef.current = true;
+                layoutRetryRef.current = 0;
                 requestAnimationFrame(() => tryLayout());
               }}
               title={hasSavedLayout ? t("graph.layout.resetHint") : t("activityGraph.relayout")}
@@ -786,6 +829,7 @@ function StepFlowCanvas({
                 }
                 needsLayoutRef.current = true;
                 relayoutAfterResizeRef.current = true;
+                layoutRetryRef.current = 0;
               }}
               title={t("activityGraph.toggleParams")}
               aria-pressed={showParams}
