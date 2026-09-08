@@ -42,7 +42,7 @@ There are several routes, all ending in the same library:
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.
 
-PowerPoint and Excel files brought in through the intake sheet (below) get their own treatment too: a `.pptx` keeps its slide text searchable and pulls its embedded pictures out as image materials, and a `.xlsx` turns each sheet into its own CSV data material (named `<workbook> / <sheet>.csv`) so it flows through the same table import as any other delimited data. A `.pptx` or `.xlsx` already sitting in your library that hasn't been expanded yet — for example, one added through **Upload** in the gallery — can still be expanded later from the material menu (**Extract slides and images** / **Turn sheets into tables**).
+PowerPoint and Excel files brought in through the intake sheet (below) get their own treatment too: a `.pptx` keeps its slide text searchable and pulls its embedded pictures out as image materials, and a `.xlsx` turns each sheet into its own CSV data material (named `<workbook> / <sheet>.csv`) so it flows through the same table import as any other delimited data. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" /> A `.pptx` or `.xlsx` already sitting in your library that hasn't been expanded yet — for example, one added through **Upload** in the gallery — can still be expanded later from the material menu (**Extract slides and images** / **Turn sheets into tables**). <Badge type="tip" text="Added in v0.66.0 (2026-09-08)" />
 
 ## Bring in what you already have <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
 
@@ -60,9 +60,9 @@ When it finishes, a **Brought in** report breaks down what happened: notes, mate
 
 ![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
 
-Any images among the materials are not read on the spot — the report says the text will be read afterward, and reading happens in the background, one image at a time, right after intake finishes. Once it is done the text counts toward search and Cmd+K, same as [reading text from images](#reading-text-from-images-ocr) started any other way.
+Any images among the materials are not read on the spot — the report says the text will be read afterward, and reading happens in the background, one image at a time, right after intake finishes. Once it is done the text counts toward search and Cmd+K, same as [reading text from images](#reading-text-from-images-ocr) started any other way. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
 
-Notes follow the same idea as materials (see below): a Markdown file whose contents match one you already brought in is not re-imported, and the report shows **N already in your notes** next to the notes count. The check reads the contents, not the name, so a renamed copy still counts as the same file. If the contents changed, it comes in as a new note. A note you have since edited in Graphium is never touched: re-importing the unchanged original is simply recognized as already brought in, and a changed original arrives as a new note beside your edited one.
+Notes follow the same idea as materials (see below): a Markdown file whose contents match one you already brought in is not re-imported, and the report shows **N already in your notes** next to the notes count. The check reads the contents, not the name, so a renamed copy still counts as the same file. If the contents changed, it comes in as a new note. A note you have since edited in Graphium is never touched: re-importing the unchanged original is simply recognized as already brought in, and a changed original arrives as a new note beside your edited one. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
 
 ## Bringing the same file in twice <Badge type="tip" text="Added in v0.37.0 (2026-08-14)" /> {#bringing-the-same-file-in-twice}
 
