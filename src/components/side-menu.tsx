@@ -73,6 +73,14 @@ export function setOpenBlockMemoFn(fn: typeof openBlockMemoFn) {
   openBlockMemoFn = fn;
 }
 
+// 本文の表 → データ表（素材化）。実体の書き出しとブロックの差し替えはホスト（note-app）が
+// 行うので、同じ流儀でグローバルコールバックにする
+let tableToDataTableFn: ((blockId: string) => void) | null = null;
+
+export function setTableToDataTableFn(fn: typeof tableToDataTableFn) {
+  tableToDataTableFn = fn;
+}
+
 // ブロックの「配下」を収集する（スコープ選択）
 // - 見出し: 同じレベル以上の見出しが出てきたら終了（後続の兄弟が範囲）
 // - step コンテナ: 子ブロックがそのまま範囲（containment）
@@ -714,6 +722,31 @@ function ReadImageTextMenuItem() {
 }
 
 /**
+ * 本文の表を「データ表にする」。表の中身を CSV の素材として書き出し、ブロックを
+ * その素材を参照するデータ表に置き換える。行が多い表（貼り付け由来など）を、
+ * 取り込み直さずに軽くするための入口。
+ */
+function TableToDataTableMenuItem() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+  if (!block || !tableToDataTableFn) return null;
+  if ((block.type as string) !== "table") return null;
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => tableToDataTableFn?.(block.id)}
+    >
+      {t("tableMeta.toDataTable")}
+    </Components.Generic.Menu.Item>
+  );
+}
+
+/**
  * テーブルブロックの「時系列テーブル」トグル。
  * 時系列テーブルは独立したブロック型ではなく、標準テーブルに後から付け外し
  * できる「ふるまい」（行を足すと日時が入る）— テーブルの種類を増やさないための
@@ -827,6 +860,7 @@ export function NoteSideMenu() {
         <TableCaptionMenuItem />
         <LogTableToggleMenuItem />
         <IndexTableToggleMenuItem />
+        <TableToDataTableMenuItem />
         <ReadImageTextMenuItem />
         <AddMemoMenuItem />
         <DeriveNoteMenuItem />

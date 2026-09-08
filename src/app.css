@@ -529,33 +529,9 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   background-color: color-mix(in oklab, var(--color-primary) 8%, transparent) !important;
 }
 
-/* 名前付きの表を選んだときは、表の上のキャプション行（features/table-meta/caption-layer が
-   ブロックの上余白 26px に浮かべている）まで枠に含める。上余白はブロックの箱の外なので、
-   ::before を上に伸ばして枠を描く。data-caption-space はキャプション層が付ける */
-.bn-editor .bn-block-outer[data-caption-space]:has(
-    > .bn-block > .bn-block-content[data-content-type="table"].ProseMirror-selectednode
-  ) {
-  position: relative;
-}
-.bn-editor .bn-block-outer[data-caption-space]:has(
-    > .bn-block > .bn-block-content[data-content-type="table"].ProseMirror-selectednode
-  )::before {
-  content: "";
-  position: absolute;
-  left: -2px;
-  right: -2px;
-  top: -26px;
-  bottom: -2px;
-  border: 2px solid color-mix(in oklab, var(--color-primary) 35%, transparent);
-  border-radius: 6px;
-  pointer-events: none;
-}
-.bn-editor .bn-block-outer[data-caption-space]
-  > .bn-block
-  > .bn-block-content[data-content-type="table"].ProseMirror-selectednode
-  > * {
-  outline: none;
-}
+/* 名前付きの表を選んだときにキャプション行まで枠を伸ばす CSS は、
+   features/table-meta/caption-layer が <style> で注入する（ブロック id ごと）。
+   DOM 属性で印を付ける方式は ProseMirror の再描画と往復して固まるので使わない */
 
 /* BlockNote 本文 — タイプスケール base (16px) を採用、行間は読み物用に 1.7
    UI 部分（sidebar 等）の text-base が 1.6 なのに対し、エディタ本文は読み心地優先で広めに取る */
