@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useBlockNoteEditor } from "@blocknote/react";
 import { useBlockSelection } from "./use-block-selection";
 import { SelectionToolbar } from "./selection-toolbar";
+import { getCaptionedBlockIds } from "../table-meta/caption-layer";
 
 const STYLE_ID = "block-selection-highlight";
 
@@ -31,9 +32,12 @@ export function BlockSelectionManager() {
       .join(",\n");
 
     // Crucible テーマに合わせたグリーン系ハイライト。存在が分かる程度に薄く（内容を暗くしない）。
-    // 名前付きの表（data-caption-space）は上余白に浮かぶキャプション行まで塗る
+    // 名前付きの表は上余白に浮かぶキャプション行まで塗る（判定は caption-layer の共有 Set）
+    // 名前付きの表は上余白のキャプション行まで塗る。判定は DOM 属性ではなく caption-layer の共有 Set
+    const captioned = getCaptionedBlockIds();
     const captionedSelectors = selectedBlockIds
-      .map((id) => `[data-id="${id}"][data-node-type="blockOuter"][data-caption-space]`)
+      .filter((id) => captioned.has(id))
+      .map((id) => `[data-id="${id}"][data-node-type="blockOuter"]`)
       .join(",\n");
     styleEl.textContent = `
 ${selectors} {
@@ -45,7 +49,7 @@ ${selectors} {
 ${selectors} > .bn-block > .bn-block-content {
   outline: none !important;
 }
-${captionedSelectors}::before {
+${captionedSelectors ? captionedSelectors + "::before" : ".gph-no-captioned-selection"} {
   content: "";
   position: absolute;
   left: 0;
