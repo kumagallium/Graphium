@@ -466,7 +466,12 @@ function SidePeekInner({
         autoSaveTimerRef.current = null;
       }
     };
-  }, [noteId, tableMetaStore]);
+    // 依存は noteId のみ。tableMetaStore を入れてはいけない — Provider の value は
+    // 毎レンダリング新オブジェクトなので、読み込み完了 → restore（setMetas）→
+    // Provider 再レンダー → この effect 再発火 → setLoading(true) で再読み込み…と
+    // 無限ループになり、cachedDoc を持たない版（snapshot:）や wiki のピークで
+    // 「読み込み中」と本文が高速に切り替わり続ける。store は ref 経由で参照する。
+  }, [noteId]);
 
   // ドキュメント読み込み後にラベル・リンクを復元
   // setLabel / restoreLinks は useCallback で安定な参照
