@@ -194,7 +194,7 @@ describe("runIntake", () => {
     expect(outcome.officeSkipped).toBe(1);
   });
 
-  it("重複登録（duplicate）の pptx/xlsx には expandOffice を呼ばない", async () => {
+  it("重複登録（duplicate）の pptx/xlsx には isOfficeExpanded 未指定なら expandOffice を呼ばない", async () => {
     function officeFile(name: string): IntakeFile {
       return { file: new File(["dummy"], name, { type: "" }), path: name };
     }
@@ -202,6 +202,38 @@ describe("runIntake", () => {
     const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
     const expandOffice = vi.fn(async () => ({ derived: 2, skipped: 0 }));
     const deps = makeDeps({ uploadAsset, expandOffice });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(expandOffice).not.toHaveBeenCalled();
+    expect(outcome.officeDerived).toBe(0);
+  });
+
+  it("重複登録（duplicate）でも isOfficeExpanded が false（未展開）なら expandOffice を呼ぶ", async () => {
+    function officeFile(name: string): IntakeFile {
+      return { file: new File(["dummy"], name, { type: "" }), path: name };
+    }
+    const files = [officeFile("slides.pptx")];
+    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
+    const expandOffice = vi.fn(async () => ({ derived: 2, skipped: 0 }));
+    const isOfficeExpanded = vi.fn(() => false);
+    const deps = makeDeps({ uploadAsset, expandOffice, isOfficeExpanded });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(expandOffice).toHaveBeenCalledTimes(1);
+    expect(outcome.officeDerived).toBe(2);
+  });
+
+  it("重複登録（duplicate）で isOfficeExpanded が true（展開済み）なら expandOffice を呼ばない", async () => {
+    function officeFile(name: string): IntakeFile {
+      return { file: new File(["dummy"], name, { type: "" }), path: name };
+    }
+    const files = [officeFile("slides.pptx")];
+    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
+    const expandOffice = vi.fn(async () => ({ derived: 2, skipped: 0 }));
+    const isOfficeExpanded = vi.fn(() => true);
+    const deps = makeDeps({ uploadAsset, expandOffice, isOfficeExpanded });
 
     const outcome = await runIntake(files, deps, () => {});
 

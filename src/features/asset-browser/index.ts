@@ -43,6 +43,8 @@ export {
   previewImageKey,
   isLocalPreviewRef,
   MEDIA_INDEX_CHANGED_EVENT,
+  canExpandOffice,
+  hasExpandedOffice,
 } from "./media-index";
 export { findSameAsset, computeAssetContentHash, backfillContentHashes } from "./dedupe";
 export type {

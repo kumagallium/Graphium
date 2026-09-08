@@ -543,6 +543,14 @@ export type AssetGalleryViewProps = {
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
   /**
+   * PowerPoint (.pptx) / Excel (.xlsx) 素材を展開する（投入口の展開と同じ中身）。
+   * まだ展開していない（`hasExpandedOffice` が false の）ときだけ素材の詳細に出す。
+   */
+  onExpandOffice?: (
+    entry: MediaIndexEntry,
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<{ derived: number; skipped: number }>;
+  /**
    * Knowledge ノートの kind 別色を出すためのルックアップ。
    * 渡されない場合はフォールバック色で描画。
    */
@@ -669,6 +677,7 @@ export function AssetGalleryView({
   onBulkShare,
   onExtractPdfPages,
   onExtractDocxImages,
+  onExpandOffice,
   getKnowledgeKind,
   focusFileId,
   focusFullMode,
@@ -1261,6 +1270,7 @@ export function AssetGalleryView({
         }}
         onExtractPdfPages={onExtractPdfPages}
         onExtractDocxImages={onExtractDocxImages}
+        onExpandOffice={onExpandOffice}
         mediaIndex={mediaIndex}
         getKnowledgeKind={getKnowledgeKind}
         onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
@@ -1890,6 +1900,7 @@ export function AssetGalleryView({
           }}
           onExtractPdfPages={onExtractPdfPages}
           onExtractDocxImages={onExtractDocxImages}
+          onExpandOffice={onExpandOffice}
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}

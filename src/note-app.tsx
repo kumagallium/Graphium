@@ -334,6 +334,7 @@ import {
   findBlockIdsByMediaUrl,
   type MediaIndexEntry,
   type AssetDisplayMode,
+  hasExpandedOffice,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { MAX_HASH_BYTES } from "./features/asset-browser/dedupe";
@@ -7445,15 +7446,20 @@ export function NoteApp() {
   // 取り込んだ画像の文字読み取りを後追いで直列に回す（取り込み自体は先に終わらせる）
   const intakeOcr = useQueuedBulkOcr();
 
-  // 投入口から入ってきた PowerPoint (.pptx) / Excel (.xlsx) を展開する。
+  // PowerPoint (.pptx) / Excel (.xlsx) の実体（バイト列）を展開する共通処理。
+  // 投入口からの新規取り込み（handleExpandOffice）と、素材の詳細からの手動展開
+  // （handleExpandOfficeEntry）の両方がここを通る。
   // pptx: スライドの文字を素材の ocrText に（persistOcrTextPatch）、埋め込み画像を
   //       派生素材として登録する（Word の埋め込み画像抽出と同じ関係）。
   // xlsx: シートごとに CSV の File を作り、区切りテキスト取り込みと同じ経路
   //       （derivedFromAssets 付きの "data" 素材）で登録する。
-  const handleExpandOffice = useCallback(
-    async (file: File, fileId: string): Promise<{ derived: number; skipped: number }> => {
-      const lower = file.name.toLowerCase();
-      const bytes = new Uint8Array(await file.arrayBuffer());
+  const expandOfficeBytes = useCallback(
+    async (
+      bytes: Uint8Array,
+      name: string,
+      fileId: string,
+    ): Promise<{ derived: number; skipped: number }> => {
+      const lower = name.toLowerCase();
 
       if (lower.endsWith(".pptx")) {
         const { readPptx } = await import("./features/office-import/pptx");
@@ -7488,7 +7494,7 @@ export function NoteApp() {
       if (lower.endsWith(".xlsx")) {
         const { readXlsx } = await import("./features/office-import/xlsx");
         const { sheets } = readXlsx(bytes);
-        const bookName = file.name.replace(/\.xlsx$/i, "");
+        const bookName = name.replace(/\.xlsx$/i, "");
 
         let derived = 0;
         for (const sheet of sheets) {
@@ -7508,6 +7514,29 @@ export function NoteApp() {
     [fm],
   );
 
+  // 投入口から入ってきた File を展開する
+  const handleExpandOffice = useCallback(
+    async (file: File, fileId: string): Promise<{ derived: number; skipped: number }> => {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      return expandOfficeBytes(bytes, file.name, fileId);
+    },
+    [expandOfficeBytes],
+  );
+
+  // 素材の詳細（3-dot メニュー）から既存の pptx / xlsx 素材を手動で展開する。
+  // handleExtractDocxImages と同じ流儀（provider.getMediaBlobUrl → fetch）で実体を読む。
+  const handleExpandOfficeEntry = useCallback(
+    async (entry: MediaIndexEntry): Promise<{ derived: number; skipped: number }> => {
+      const provider = getActiveProvider();
+      const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+      const blobUrl = await provider.getMediaBlobUrl(fileId);
+      const res = await fetch(blobUrl);
+      const arrayBuffer = await res.arrayBuffer();
+      return expandOfficeBytes(new Uint8Array(arrayBuffer), entry.name, entry.fileId);
+    },
+    [expandOfficeBytes],
+  );
+
   // 投入口（既存資料の一括持ち込み）: サイドバー・空ノートのチップ・一覧と
   // 素材の空状態・どこでもドロップの 4 面すべてがこの 1 つの state を開閉する。
   const intake = useIntake({
@@ -7515,6 +7544,11 @@ export function NoteApp() {
     uploadAsset: (file) => fm.handleUploadAsset(file),
     setAssetFolder: (fileId, folder) => fm.updateMediaContexts(fileId, [folder]),
     expandOffice: handleExpandOffice,
+    isOfficeExpanded: (fileId) => {
+      const entry = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+      if (!entry || !fm.mediaIndex) return false;
+      return hasExpandedOffice(entry, fm.mediaIndex);
+    },
     afterRun: () => fm.refreshFiles(),
     aiAvailable: aiUiEnabled,
     // 取り込みが終わった画像のうち、まだ文字が読めていないものを裏で読み取り始める
@@ -9884,6 +9918,7 @@ export function NoteApp() {
             onUploadMedia={fm.handleUploadMedia}
             onIntakeFiles={(files) => void intake.run(files)}
             onExtractDocxImages={handleExtractDocxImages}
+            onExpandOffice={handleExpandOfficeEntry}
             resolveKnowledgeWikiId={(entry) => {
               if (entry.type === "url" && entry.url) {
                 return appKnowledgeMap.get(`url:${entry.url}`)?.[0]?.noteId;

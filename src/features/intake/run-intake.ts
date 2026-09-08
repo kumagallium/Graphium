@@ -64,11 +64,19 @@ export type IntakeDeps = {
    */
   setAssetFolder?: (fileId: string, folder: string) => Promise<void> | void;
   /**
-   * PowerPoint (.pptx) / Excel (.xlsx) を展開して派生素材（画像・CSV）を登録する。
-   * 素材登録後、新規登録（!duplicate）の pptx / xlsx にだけ呼ぶ。失敗しても
-   * 取り込み自体は続行する（warn するだけ）
+   * まだ展開していない PowerPoint (.pptx) / Excel (.xlsx) を展開して
+   * 派生素材（画像・CSV）を登録する。素材登録後、新規登録の pptx / xlsx には
+   * 常に呼ぶ。既存（duplicate）は `isOfficeExpanded` が false のときだけ呼ぶ
+   * （裏 OCR が「既存でも ocrText が無ければ対象にする」のと同じ考え方で、
+   * 「まだ取り出していないものは、取り込みからでも素材の詳細からでも取り出せる」
+   * という規則をここでも満たす）。失敗しても取り込み自体は続行する（warn するだけ）
    */
   expandOffice?: (file: File, fileId: string) => Promise<{ derived: number; skipped: number }>;
+  /**
+   * 既存（duplicate）の素材が既に展開済みかどうかを判定する。
+   * 渡されない場合は従来どおり新規登録のときだけ expandOffice を呼ぶ。
+   */
+  isOfficeExpanded?: (fileId: string) => boolean;
   /** 全件終了後に 1 回だけ呼ぶ（インデックス再構築など） */
   afterRun?: () => Promise<void> | void;
 };
@@ -234,8 +242,10 @@ export async function runIntake(
           }
         }
       }
-      // PowerPoint / Excel の展開: 新規登録のときだけ（重複はすでに展開済みのはず）
-      if (!duplicate && fileId && deps.expandOffice && isExpandableOfficeFile(m.file.name)) {
+      // PowerPoint / Excel の展開: 新規登録は常に対象。既存（duplicate）は
+      // isOfficeExpanded で未展開と分かったときだけ対象にする（未指定なら従来どおり新規のみ）
+      const needsExpand = !duplicate || (deps.isOfficeExpanded ? !deps.isOfficeExpanded(fileId ?? "") : false);
+      if (needsExpand && fileId && deps.expandOffice && isExpandableOfficeFile(m.file.name)) {
         try {
           const { derived, skipped: officeSkippedCount } = await deps.expandOffice(m.file, fileId);
           officeDerived += derived;

@@ -42,7 +42,7 @@ There are several routes, all ending in the same library:
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.
 
-PowerPoint and Excel files brought in through the intake sheet (below) get their own treatment too: a `.pptx` keeps its slide text searchable and pulls its embedded pictures out as image materials, and a `.xlsx` turns each sheet into its own CSV data material (named `<workbook> / <sheet>.csv`) so it flows through the same table import as any other delimited data.
+PowerPoint and Excel files brought in through the intake sheet (below) get their own treatment too: a `.pptx` keeps its slide text searchable and pulls its embedded pictures out as image materials, and a `.xlsx` turns each sheet into its own CSV data material (named `<workbook> / <sheet>.csv`) so it flows through the same table import as any other delimited data. A `.pptx` or `.xlsx` already sitting in your library that hasn't been expanded yet — for example, one added through **Upload** in the gallery — can still be expanded later from the material menu (**Extract slides and images** / **Turn sheets into tables**).
 
 ## Bring in what you already have <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
 

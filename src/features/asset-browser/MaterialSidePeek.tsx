@@ -128,6 +128,11 @@ export type MaterialSidePeekProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /** PowerPoint (.pptx) / Excel (.xlsx) 素材を展開する（未展開のときだけメニューに出す） */
+  onExpandOffice?: (
+    entry: MediaIndexEntry,
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<{ derived: number; skipped: number }>;
   /** team-shared storage 共有成功時 */
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   /** 既存 Knowledge wiki の ID（あれば「In Knowledge」表示） */
@@ -179,6 +184,7 @@ export function MaterialSidePeek({
   onOpenNoteInSidePeek,
   onExtractPdfPages,
   onExtractDocxImages,
+  onExpandOffice,
   onSharedRefUpdated,
   knowledgeWikiNoteId,
   mediaIndex,
@@ -261,6 +267,8 @@ export function MaterialSidePeek({
         onTranslatePdf={isMemoEntry ? undefined : onTranslatePdf}
         onExtractPdfPages={isMemoEntry ? undefined : onExtractPdfPages}
         onExtractDocxImages={isMemoEntry ? undefined : onExtractDocxImages}
+        onExpandOffice={isMemoEntry ? undefined : onExpandOffice}
+        mediaIndex={mediaIndex}
         onSharedRefUpdated={isMemoEntry ? undefined : onSharedRefUpdated}
         onNavigateNote={onNavigateNote}
         knowledgeWikiNoteId={knowledgeWikiNoteId}
