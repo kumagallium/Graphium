@@ -15,6 +15,7 @@ import {
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
@@ -173,8 +174,11 @@ function BulkDeleteConfirmDialog({
 // 画像サムネイル: local-media:// URL を Blob URL に変換して表示
 function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
+  // 画面に入ってから読む。縮小版があればそれを使う（原寸の往復で WebView を膨らませない）
+  const [ref, inView] = useInView<HTMLDivElement>();
 
   useEffect(() => {
+    if (!inView) return;
     const provider = getActiveProvider();
     const fileId = provider.extractFileId(entry.thumbnailUrl);
     if (!fileId) {
@@ -182,9 +186,12 @@ function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
       setSrc(entry.thumbnailUrl);
       return;
     }
-    // ローカル: Blob URL に変換
-    provider.getMediaBlobUrl(fileId).then(setSrc).catch(() => {});
-  }, [entry.thumbnailUrl]);
+    let cancelled = false;
+    thumbnailUrlFor(provider, fileId, entry.mimeType)
+      .then((url) => { if (!cancelled) setSrc(url); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [entry.thumbnailUrl, entry.mimeType, inView]);
 
   const wrapperCls = compact
     ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
@@ -195,7 +202,7 @@ function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
   const iconSize = compact ? 16 : 32;
 
   return (
-    <div className={wrapperCls}>
+    <div ref={ref} className={wrapperCls}>
       {src ? (
         <img src={src} alt={entry.name} className={imgCls} loading="lazy" />
       ) : (

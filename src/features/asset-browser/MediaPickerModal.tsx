@@ -17,14 +17,18 @@ import {
   mimeToMediaType,
 } from "./media-index";
 import { ensureCachedPreviewImage } from "./preview-image";
+import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { Favicon } from "./favicon";
 
 // 画像サムネイル: local-media:// URL を Blob URL に変換して表示
 // AssetGalleryView.ImageThumbnail と同じパターン
 function ImageThumb({ entry }: { entry: MediaIndexEntry }) {
   const [src, setSrc] = useState<string | null>(null);
+  // 画面に入ってから読む。縮小版があればそれを使う（原寸の往復で WebView を膨らませない）
+  const [ref, inView] = useInView<HTMLDivElement>();
 
   useEffect(() => {
+    if (!inView) return;
     const provider = getActiveProvider();
     const fileId = provider.extractFileId(entry.thumbnailUrl);
     if (!fileId) {
@@ -32,22 +36,23 @@ function ImageThumb({ entry }: { entry: MediaIndexEntry }) {
       return;
     }
     let cancelled = false;
-    provider.getMediaBlobUrl(fileId)
+    thumbnailUrlFor(provider, fileId, entry.mimeType)
       .then((url) => { if (!cancelled) setSrc(url); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [entry.thumbnailUrl]);
+  }, [entry.thumbnailUrl, entry.mimeType, inView]);
 
-  if (!src) {
-    return <div className="w-full h-20 rounded bg-muted" />;
-  }
   return (
-    <img
-      src={src}
-      alt={entry.name}
-      className="w-full h-20 object-cover rounded bg-muted"
-      loading="lazy"
-    />
+    <div ref={ref} className="w-full h-20 rounded bg-muted overflow-hidden">
+      {src && (
+        <img
+          src={src}
+          alt={entry.name}
+          className="w-full h-20 object-cover rounded bg-muted"
+          loading="lazy"
+        />
+      )}
+    </div>
   );
 }
 

@@ -28,6 +28,22 @@ let authListeners: Array<(state: AuthState) => void> = [];
 let signedIn = false;
 // Blob URL キャッシュ（file-media:// → blob: の変換結果を再利用）
 const mediaBlobCache = new Map<string, string>();
+// サムネイル（fileId@edge → blob URL）。原寸とは別に持つ
+const thumbBlobCache = new Map<string, string>();
+// list_media_files_cmd は .meta.json を全件読むので、MIME を引くためだけに毎回呼ばない。
+// 短時間だけ結果を使い回す（登録直後に古い一覧を掴まないよう寿命は数秒）
+let mediaListingCache: { at: number; promise: Promise<RustMediaFileInfo[]> } | null = null;
+const MEDIA_LISTING_TTL_MS = 5000;
+function listMediaFilesCached(): Promise<RustMediaFileInfo[]> {
+  const now = Date.now();
+  if (mediaListingCache && now - mediaListingCache.at < MEDIA_LISTING_TTL_MS) return mediaListingCache.promise;
+  const promise = invoke<RustMediaFileInfo[]>("list_media_files_cmd");
+  mediaListingCache = { at: now, promise };
+  promise.catch(() => {
+    if (mediaListingCache?.promise === promise) mediaListingCache = null;
+  });
+  return promise;
+}
 
 export class LocalFilesystemProvider implements StorageProvider {
   readonly id = "filesystem";
@@ -116,7 +132,7 @@ export class LocalFilesystemProvider implements StorageProvider {
     return { fileId: id, url, name: file.name, mimeType: file.type };
   }
 
-  async getMediaBlobUrl(fileId: string): Promise<string> {
+  async getMediaBlobUrl(fileId: string, mimeTypeHint?: string): Promise<string> {
     // キャッシュ確認
     const cached = mediaBlobCache.get(fileId);
     if (cached) return cached;
@@ -131,14 +147,30 @@ export class LocalFilesystemProvider implements StorageProvider {
       bytes[i] = binary.charCodeAt(i);
     }
 
-    // メタデータから MIME タイプを取得（list_media_files_cmd を使う）
-    const allMedia = await invoke<RustMediaFileInfo[]>("list_media_files_cmd");
-    const meta = allMedia.find((m) => m.id === fileId);
-    const mimeType = meta?.mime_type ?? "application/octet-stream";
+    // MIME は索引のヒントがあればそれを、無ければ一覧（短時間キャッシュ）から引く
+    let mimeType = mimeTypeHint ?? "";
+    if (!mimeType) {
+      const allMedia = await listMediaFilesCached();
+      mimeType = allMedia.find((m) => m.id === fileId)?.mime_type ?? "application/octet-stream";
+    }
 
     const blob = new Blob([bytes], { type: mimeType });
     const blobUrl = URL.createObjectURL(blob);
     mediaBlobCache.set(fileId, blobUrl);
+    return blobUrl;
+  }
+
+  async getMediaThumbnailUrl(fileId: string, maxEdge: number): Promise<string> {
+    const key = `${fileId}@${maxEdge}`;
+    const cached = thumbBlobCache.get(key);
+    if (cached) return cached;
+    // Rust 側で縮小した JPEG（数十 KB）。画像として読めない素材は原寸に落とす
+    const base64Data = await invoke<string>("read_media_thumbnail", { fileId, maxEdge });
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+    thumbBlobCache.set(key, blobUrl);
     return blobUrl;
   }
 
@@ -210,6 +242,13 @@ export class LocalFilesystemProvider implements StorageProvider {
       URL.revokeObjectURL(cached);
       mediaBlobCache.delete(fileId);
     }
+    for (const [key, url] of [...thumbBlobCache]) {
+      if (key.startsWith(`${fileId}@`)) {
+        URL.revokeObjectURL(url);
+        thumbBlobCache.delete(key);
+      }
+    }
+    mediaListingCache = null;
   }
 
   async listMediaFiles(): Promise<
@@ -253,6 +292,11 @@ export class LocalFilesystemProvider implements StorageProvider {
       URL.revokeObjectURL(url);
     }
     mediaBlobCache.clear();
+    for (const url of thumbBlobCache.values()) {
+      URL.revokeObjectURL(url);
+    }
+    thumbBlobCache.clear();
+    mediaListingCache = null;
   }
 
   // --- Wiki ドキュメント CRUD ---
