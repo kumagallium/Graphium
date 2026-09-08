@@ -13,7 +13,7 @@ import { t, useLocaleSubscription } from "../../i18n";
 import { detectImportOptions } from "./detect";
 import { extractHeaderMeta } from "./header-meta";
 import { parseDelimited, splitLines } from "./parse";
-import { DOC_TABLE_DEFAULT_MAX_ROWS, defaultImportTarget } from "./target";
+import { DOC_TABLE_DEFAULT_MAX_ROWS, DOC_TABLE_HARD_MAX_ROWS, defaultImportTarget } from "./target";
 import type { DelimitedImportOptions, DelimiterKind, ImportTarget, ParsedDelimited } from "./types";
 
 /** プレビューで描く生テキストの最大行数（巨大ファイルで DOM を作りすぎない） */
@@ -126,6 +126,8 @@ export function DataImportModal({
   const canImport = parsed.headers.length > 0;
   // データ表は本文に表を作らないので行数の上限は要らない
   const effectiveRowLimit = target === "dataTable" ? null : rowLimit;
+  // 文書の表にすると固まる量は入口で止める（データ表なら制限なし）
+  const overHardLimit = target === "table" && parsed.rows.length > DOC_TABLE_HARD_MAX_ROWS;
   const switchTarget = (next: ImportTarget) => {
     setTarget(next);
     // 文書の表向けに丸めていた終了行は、データ表なら全部読める
@@ -204,7 +206,17 @@ export function DataImportModal({
             </span>
           </div>
         )}
-        {showTargetChoice && canImport && target === "table" && parsed.rows.length > DOC_TABLE_DEFAULT_MAX_ROWS && (
+        {overHardLimit && (
+          <div className="px-4 py-2 border-b border-border bg-destructive/10">
+            <p className="text-[11px] text-foreground">
+              {t("dataImport.target.tableTooLarge", {
+                limit: String(DOC_TABLE_HARD_MAX_ROWS),
+                count: String(parsed.rows.length),
+              })}
+            </p>
+          </div>
+        )}
+        {!overHardLimit && showTargetChoice && canImport && target === "table" && parsed.rows.length > DOC_TABLE_DEFAULT_MAX_ROWS && (
           <div className="px-4 py-2 border-b border-border bg-amber-500/10">
             <p className="text-[11px] text-foreground">
               {t("dataImport.target.recommendedDataTable", { count: String(parsed.rows.length) })}
@@ -413,7 +425,7 @@ export function DataImportModal({
           </button>
           <button
             type="button"
-            disabled={!canImport}
+            disabled={!canImport || overHardLimit}
             onClick={() => onConfirm({ options, parsed, target })}
             className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >

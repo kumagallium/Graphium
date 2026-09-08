@@ -2378,6 +2378,7 @@ export const ja: Record<string, string> = {
   "dataImport.target.dataTable": "データ表",
   "dataImport.target.dataTableHint": "素材のデータをそのまま見せます。行数が多くても軽く、読み取り専用です",
   "dataImport.target.recommendedDataTable": "{count} 行あるのでデータ表をおすすめします",
+  "dataImport.target.tableTooLarge": "文書の表にできるのは {limit} 行までです（この表は {count} 行）。これより多い表はデータ表として取り込んでください",
 
   // ── データ表ブロック（素材を参照して見せる表） ──
   "dataTable.captionPlaceholder": "表の名前",

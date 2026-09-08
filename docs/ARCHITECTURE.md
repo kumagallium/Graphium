@@ -141,7 +141,9 @@ talks to LLM and embedding backends.
   editor; the import dialog therefore defaults to a data table for every
   delimited import (instrument data is read and plotted, not edited by hand)
   and lets the writer pick the note-table form instead, warning above
-  `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows. Re-importing from the source
+  `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and refusing above
+  `DOC_TABLE_HARD_MAX_ROWS` (1,000), because a 2,000-row note table stalls
+  the editor until it is force-quit. Re-importing from the source
   badge converts between the two forms. Calc blocks and charts read a data table by its caption exactly
   like a note table (read-only: calc write-back never targets one), and the
   expand button opens the same full-height view with virtual scrolling.
