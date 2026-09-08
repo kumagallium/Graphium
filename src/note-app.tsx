@@ -115,8 +115,9 @@ import {
   type ChartAssetSourceResult,
 } from "./blocks/chart";
 import { buildSavedPageFields } from "./features/note-save";
-import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop } from "./features/intake";
+import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, candidateNoteIds, findExistingImport } from "./features/intake";
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
+import { computeBlobHash } from "./lib/storage/shared/hash";
 import { normalizeNoteContexts } from "./features/note-context/context-tags";
 import { syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
@@ -7305,7 +7306,11 @@ export function NoteApp() {
           }
         : undefined;
 
-      // pass 1: 各 MD を doc に変換 → ノート作成
+      // pass 1: 各 MD を doc に変換 → ノート作成。
+      // ただし「中身が同じファイルを入れ直した」場合は作らず、既存ノートを使い回す
+      // （note-dedupe: importSource.contentHash が一致するノートをタイトル一致の
+      // 候補から探す。Graphium 側で編集したノートも importSource は残るので、
+      // 編集後は中身のハッシュが変わって「新しいノート」判定に回る＝上書きしない）
       const baseNameToNoteId = new Map<string, string>();
       const docsByNoteId = new Map<
         string,
@@ -7313,11 +7318,32 @@ export function NoteApp() {
       >();
       const failed: string[] = [];
       let lastNewId: string | null = null;
+      let existingCount = 0;
 
       for (let i = 0; i < notes.length; i++) {
         const file = notes[i];
         onProgress({ done: i, total: notes.length, current: file.file.name, failed: [...failed] });
         try {
+          const baseName = file.file.name.replace(/\.(md|markdown)$/i, "");
+          const contentHash = await computeBlobHash(new Uint8Array(await file.file.arrayBuffer()));
+
+          // タイトルが一致する候補ノートだけ doc を読み、ハッシュが一致するものを探す
+          const candidateIds = candidateNoteIds(fm.noteIndex?.notes ?? [], baseName);
+          const candidates: { noteId: string; importSource?: import("./lib/document-types").GraphiumDocument["importSource"] }[] = [];
+          for (const candidateId of candidateIds) {
+            const candidateDoc = await fm.loadDoc(candidateId);
+            if (candidateDoc) candidates.push({ noteId: candidateId, importSource: candidateDoc.importSource });
+          }
+          const existingId = findExistingImport(candidates, contentHash);
+
+          if (existingId) {
+            // 既存ノートを使い回す: 作らず、リンク解決の解決先だけ差し替える
+            baseNameToNoteId.set(baseName.toLowerCase(), existingId);
+            existingCount += 1;
+            onProgress({ done: i + 1, total: notes.length, failed: [...failed] });
+            continue;
+          }
+
           let { doc, wikilinks } = await importMarkdownToGraphiumDoc(file.file, {
             resolveImage,
             uploadImage: fm.handleUploadMedia,
@@ -7327,8 +7353,8 @@ export function NoteApp() {
           if (folder) {
             doc = { ...doc, noteContexts: normalizeNoteContexts([...(doc.noteContexts ?? []), folder]) };
           }
+          doc = { ...doc, importSource: { path: file.path, contentHash, importedAt: new Date().toISOString() } };
           const newId = await fm.handleCreateNoteFromImport(doc);
-          const baseName = file.file.name.replace(/\.(md|markdown)$/i, "");
           baseNameToNoteId.set(baseName.toLowerCase(), newId);
           docsByNoteId.set(newId, { doc, wikilinks });
           lastNewId = newId;
@@ -7363,9 +7389,10 @@ export function NoteApp() {
         console.info(`[markdown-import] リンク解決: ${resolution.resolvedCount} / ${resolution.resolvedCount + resolution.unresolvedCount}`);
       }
 
-      const successCount = notes.length - failed.length;
+      const successCount = notes.length - failed.length - existingCount;
       return {
         created: successCount,
+        existing: existingCount,
         linksResolved: resolvedLinkCount,
         linksUnresolved: unresolvedLinkCount,
         failed,
