@@ -21,6 +21,7 @@ import {
   type ProvJsonLdNode,
 } from "../prov-generator/generator";
 import { pageToGeneratorInput } from "../prov-generator/page-input";
+import { isStageActivity } from "../network-graph/activity-graph-adapter";
 
 /** 単一の手順（Activity）に対応するサマリ */
 export interface ActivitySummary {
@@ -40,6 +41,11 @@ export interface ActivitySummary {
   parameters: ParameterEntry[];
   /** このActivity が wasGeneratedBy で生み出した output のテキスト */
   outputs: string[];
+  /**
+   * 段階（stage）行を持つ場合の、段階ごとのパラメータ。
+   * 段階子 Activity は独立した ActivitySummary にはせず、ここへ畳む（親のみ activities に載る）。
+   */
+  stages?: { index: number; params: Record<string, string> }[];
 }
 
 export interface ParameterEntry {
@@ -139,8 +145,21 @@ export function summarizeNoteProv(
       }
     }
 
+    // 段階（stage）子は独立した ActivitySummary にせず、親の @id ごとに集めて後で畳む
+    const stageChildrenByParent = new Map<string, ProvJsonLdNode[]>();
+    for (const node of graph) {
+      if (node["@type"] !== "prov:Activity" || !isStageActivity(node)) continue;
+      const partOf = node["graphium:partOf"] as { "@id": string }[] | undefined;
+      const parentId = Array.isArray(partOf) && partOf.length > 0 ? partOf[0]["@id"] : undefined;
+      if (!parentId) continue;
+      const list = stageChildrenByParent.get(parentId) ?? [];
+      list.push(node);
+      stageChildrenByParent.set(parentId, list);
+    }
+
     for (const node of graph) {
       if (node["@type"] !== "prov:Activity") continue;
+      if (isStageActivity(node)) continue; // 親へ畳むので単独では出さない
 
       const used = usedByActivity.get(node["@id"]) ?? [];
       const generated = generatedByActivity.get(node["@id"]) ?? [];
@@ -166,6 +185,7 @@ export function summarizeNoteProv(
       }
 
       const parameters = extractParameters(node);
+      const stages = buildStageSummaries(node["@id"], stageChildrenByParent);
 
       summary.activities.push({
         type: "step",
@@ -174,6 +194,7 @@ export function summarizeNoteProv(
         tools: dedupe(tools),
         parameters,
         outputs: dedupe(outputs),
+        ...(stages ? { stages } : {}),
       });
     }
 
@@ -213,6 +234,24 @@ export function summarizeNoteProv(
 function entityLabelText(node: ProvJsonLdNode): string {
   const label = node["rdfs:label"];
   return typeof label === "string" ? label.trim() : "";
+}
+
+/** 段階子の graphium:stageIndex（数値以外は 0 扱い） */
+function stageIndexOf(n: ProvJsonLdNode): number {
+  const v = n["graphium:stageIndex"];
+  return typeof v === "number" ? v : 0;
+}
+
+/** 親 Activity（raw @id）に紐づく段階子を、段階順の { index, params } 配列にする */
+function buildStageSummaries(
+  parentRawId: string,
+  stageChildrenByParent: Map<string, ProvJsonLdNode[]>,
+): { index: number; params: Record<string, string> }[] | undefined {
+  const children = stageChildrenByParent.get(parentRawId);
+  if (!children || children.length === 0) return undefined;
+  return [...children]
+    .sort((a, b) => stageIndexOf(a) - stageIndexOf(b))
+    .map((c) => ({ index: stageIndexOf(c), params: extractStructuredAttributes(c) }));
 }
 
 function extractParameters(activityNode: ProvJsonLdNode): ParameterEntry[] {
@@ -270,6 +309,11 @@ function extractStructuredAttributes(node: ProvJsonLdNode): Record<string, strin
     "graphium:attributes",
     "graphium:warnings",
     "graphium:documentProvenance",
+    // 段階（stage）行の構造メタ。stages[].params には出さない
+    "graphium:tableRowId",
+    "graphium:activityKind",
+    "graphium:stageIndex",
+    "graphium:partOf",
   ]);
   for (const [k, v] of Object.entries(node)) {
     if (!k.startsWith("graphium:")) continue;

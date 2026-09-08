@@ -43,7 +43,10 @@ vi.mock("../../lib/storage/shared", async (importOriginal) => ({
   getSharedAiEnabled: () => h.aiEnabled,
 }));
 
-import { useSharedLibrarySync } from "./shared-library-sync";
+import {
+  useSharedLibrarySync,
+  SHARED_AUTO_REFRESH_THROTTLE_MS,
+} from "./shared-library-sync";
 import {
   __setSharedLibraryLoaderForTest,
   groupSharedEntriesByType,
@@ -245,5 +248,75 @@ describe("useSharedLibrarySync", () => {
     await advance(2000);
     expect(h.reconcile).toHaveBeenCalledTimes(1);
     expect(h.reconcile.mock.calls[0][0]).toEqual([]);
+  });
+
+  // 画面に戻ってきたら読み直す（他の人の更新・コメントに気づけるようにする）
+  it("focus / visibilitychange で読み直す（30 秒スロットル）", async () => {
+    const load = vi.fn(async () => result([entry("a")]));
+    __setSharedLibraryLoaderForTest(load, { root: ROOT });
+
+    renderHook(() => useSharedLibrarySync({ authenticated: true }));
+    await advance(100);
+    // 起動時の 1 回
+    expect(load).toHaveBeenCalledTimes(1);
+
+    // 直後の focus はスロットルに当たって読み直さない
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+
+    // 30 秒過ぎれば読み直す
+    await advance(SHARED_AUTO_REFRESH_THROTTLE_MS);
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+
+    // 続けて visibilitychange が来てもスロットル中は読まない
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+
+    // 30 秒後の visibilitychange（visible）では読み直す
+    await advance(SHARED_AUTO_REFRESH_THROTTLE_MS);
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it("隠れたとき（hidden）は読み直さない", async () => {
+    const load = vi.fn(async () => result([entry("a")]));
+    __setSharedLibraryLoaderForTest(load, { root: ROOT });
+    renderHook(() => useSharedLibrarySync({ authenticated: true }));
+    await advance(100);
+    expect(load).toHaveBeenCalledTimes(1);
+
+    const spy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await advance(SHARED_AUTO_REFRESH_THROTTLE_MS);
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("未サインイン・無効化のときは自動再読込を仕掛けない", async () => {
+    const load = vi.fn(async () => result([entry("a")]));
+    __setSharedLibraryLoaderForTest(load, { root: ROOT });
+    renderHook(() => useSharedLibrarySync({ authenticated: false }));
+    await advance(SHARED_AUTO_REFRESH_THROTTLE_MS + 1000);
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+    expect(load).not.toHaveBeenCalled();
   });
 });

@@ -83,6 +83,8 @@ Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appe
 
 The shared copy is a snapshot. To update it, edit your local note and choose **Update shared copy** from the same menu. To withdraw it, use **Unshare** in the shared library; Graphium warns that other members may have already viewed, cached, or forked it, so it cannot be fully erased.
 
+What travels with the note: the text, its labels and procedures, the folder it sits in, and any embedded images or files. What does not: the AI chats you had inside the note, its edit history, saved versions, and memos. Sharing hands over the record, not the working process behind it. If you want the chats and the edit history to travel too, turn on **Include AI chats and edit history when sharing** in **Settings** → **Storage** → **Shared storage**, or tick the same box in the bulk share dialog. Either way it applies from the next share onward — notes you shared before are updated the next time you choose **Update shared copy**. <Badge type="tip" text="Added in v0.61.0 (2026-09-08)" />
+
 ### Share knowledge pages too <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
 
 Knowledge pages — summaries, claims, and insights — share the same way. Open a page's `⋯` menu, choose **Share with team**, and it appears under **Knowledge** in the shared library, next to the shared notes. **Update shared copy** and **Unshare** work as they do for notes.
@@ -107,7 +109,13 @@ Each share of a page as a template creates a brand-new entry rather than updatin
 
 Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
 
+Clicking a row opens it in the detail panel beside the table, the same as a click in your own note list. Double-click a row — or press **Open in full view** at the top of the detail panel — to read it full-page instead, in the same place and at the same width as your own notes. A right-hand rail lets you switch between **Comments**, **History**, **Process**, and **Backlinks** without leaving the page; **Comments** is open by default. The breadcrumb at the top (**Library › Shared › title**) takes you back to the table. <Badge type="tip" text="Added in v0.58.0 (2026-09-07)" />
+
+When an AI model is set up, the rail carries one more tab — **Ask AI** — for asking about the entry you are reading, with the shared text itself as the grounding. The conversation stays on your own device; nothing about it is written to the shared folder. See [Asking about a shared note](/ai-chat-and-ask#asking-about-a-shared-note). <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" />
+
 ![The shared library as a table: notes with folder, author, shared date, and version columns](/screenshots/shared-library.png)
+
+![The full view of a shared note, with the comments rail open on the right](/screenshots/shared-note-full-view.png)
 
 A shared note also carries the folder it was in when it was shared, so the **Notes** tab has a **Folder** column you can filter and search on. Forking does not bring that folder along: it is the author's own filing, so your copy starts unfiled. <Badge type="tip" text="Added in v0.53.0 (2026-09-03)" />
 
@@ -117,7 +125,13 @@ The **Assets** tab also has a Folder column, and lists every image or file embed
 
 Two more tabs mirror your own left-hand navigation: **Labels** and **Processes**. They show labels and PROV-DM procedures found in shared notes, extracted the same way your own note list and process list are. This piggybacks on the background read that also powers shared search and AI chat (see below), so a shared note whose content Graphium has not read yet will not contribute to these tabs until it does. Forking a process into your own notes works the same way it does for your own procedures. There is no separate action to share a label or a process — sharing the note that contains them is enough, and both tabs explain this with a link back to your own note list. <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
+![The Labels tab of the shared library, listing the inputs collected from shared notes](/screenshots/shared-library-labels.png)
+
+![The Processes tab of the shared library, with a shared procedure and its flow](/screenshots/shared-library-process.png)
+
 The **Templates** tab lists pages shared as templates (see above), with a **Description** column in place of the folder column you see on the Notes tab. There is no **Fork** here — a template is a blank starting point, not a record to copy — but its detail panel has **New note from template**, available on any entry including your own. It reads the template, rebuilds its blocks and labels into a new note, materializes any embedded media into your own library, and opens the result. The new note records which template it came from, separately from a fork's "derived from" — a template does not hand you any facts, only a shape to start from. The same template list also appears inside the editor's `/template` picker, so you can insert a shared template into a note you already have open instead of starting a new one — see [Notes & the editor](/notes-and-editor#templates). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
+
+![The Templates tab of the shared library, with a Description column in place of Folder](/screenshots/shared-library-templates.png)
 
 ### Shared entries in search and AI chat <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> {#shared-entries-in-search-and-ai-chat}
 
@@ -143,6 +157,32 @@ When the author updates the entry in place, your card follows automatically. Whe
 You can also start from the other end. In **Library** → **Shared**, press **Copy citation link** on an entry — on its card or in its detail panel — and paste the link into any note. It becomes the same citation card, with the same badges and the same behaviour.
 
 Pasting is what makes this worth having: the library takes over the screen, so while you are browsing it you cannot see the note you are aiming at. Copying the link lets you find the entry first and decide where it lands afterwards. The link is plain text, so it can travel in a chat message as well; a teammate on the same shared folder gets the same card by pasting it into a note of their own.
+
+### Reply with a comment <Badge type="tip" text="Added in v0.57.0 (2026-09-06)" />
+
+Any entry in the shared library — a note, a knowledge page, a reference, anything — can carry a comment thread. Open its detail panel and scroll to **Comments**: write a note, or click a paragraph in the preview first to attach the comment to that specific spot (a small "¶" chip shows what it's attached to; there's a button to remove the attachment before posting). Comments support one level of replies — a reply to a reply is just added to the same thread — which is enough for a back-and-forth without turning into a nested discussion.
+
+![A shared note's detail panel with its comment thread docked below the preview](/screenshots/shared-library-detail-comments.png)
+
+You need your identity saved (see [Your author identity](#your-author-identity)) before you can write a comment; without it, the panel explains why and points you at Settings.
+
+Comments have no "resolved" checkbox. Instead, when the note's author fixes something and presses **Update shared copy**, the note's fingerprint changes, and any comment written against the old version automatically moves into a collapsed **Comments on older versions** section — the thread doesn't disappear, but it steps out of the way once the point has been addressed. You can edit or delete your own comments; you cannot edit someone else's.
+
+If you have a note of your own shared and someone comments on it, the same thread appears in a **Comments** tab in that note's own right-hand panel while you're editing it — clicking a comment there jumps to and briefly highlights the paragraph it was written against.
+
+The full-view page (above) keeps the same **Comments** panel in its own right-hand rail, so you can read and reply without opening the detail panel first. Clicking a paragraph in the body attaches a "¶" chip to your comment the same way it does in the detail panel.
+
+### Update history and the updated / new-comment marks <Badge type="tip" text="Added in v0.57.0 (2026-09-06)" />
+
+Every time a shared entry is re-shared under **Update shared copy**, Graphium keeps a short log of that: the version column in the shared library shows how many times an entry has been updated (for example "v1 · 3 updates"), and the detail panel lists each update's date, author, and the first eight characters of its fingerprint.
+
+To help you notice what changed since you last looked, the shared library also marks rows **Updated** (the entry's fingerprint changed since you opened it) or with a new-comment count (comments added since you opened it). These marks come from a small record kept only on your own device — nothing is written back to the shared folder, and an entry you authored never shows "Updated" for your own edits. The shared library also refreshes itself automatically when you switch back to the Graphium tab or window, so these marks stay current without a manual reload.
+
+![Rows in the shared library marked Updated and with a new-comment count](/screenshots/shared-library-update-marks.png)
+
+### Reverse links: who cited or forked this <Badge type="tip" text="Added in v0.57.0 (2026-09-06)" />
+
+When a note cites a shared entry, forks it, or is created from a shared template, the shared library can now show that relationship from the other side too. A shared entry's detail panel lists the shared notes that cite it, the shared notes forked from it, and — for templates — the shared notes made from it, each one clickable to jump straight to it. This depends on Graphium having already read the citing/forking note's content at least once, so a very recently shared note may take a moment to show up in another entry's reverse links.
 
 ## Exports
 

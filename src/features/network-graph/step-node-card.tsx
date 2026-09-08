@@ -13,13 +13,26 @@ import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyfl
 import { ExternalLink, FileText, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t } from "../../i18n";
-import type { ActivityNode, FlowStep } from "./activity-graph-adapter";
+import type { ActivityNode, ActivityParam, FlowStep } from "./activity-graph-adapter";
 import { KIND_PALETTE, selectionRing } from "./flow-palette";
+
+/** 段階（stage）を持つパラメータ列を、段階ごとの連続した塊にまとめる。
+ *  params は「own params → 段階 1 → 段階 2 …」の順で連結済み（adapter 側）なので、
+ *  隣接する stage が同じ間だけまとめれば元の並びを崩さない。 */
+export function groupParamsByStage(params: ActivityParam[]): { stage?: number; items: ActivityParam[] }[] {
+  const groups: { stage?: number; items: ActivityParam[] }[] = [];
+  for (const p of params) {
+    const last = groups[groups.length - 1];
+    if (last && last.stage === p.stage) last.items.push(p);
+    else groups.push({ stage: p.stage, items: [p] });
+  }
+  return groups;
+}
 
 export type StepNodeData = {
   /** F 案では FlowStep（id/name/params）を渡す。旧 ActivityNode も型互換
    *  （inputs/outputs はもう表示しない — Entity は独立ノードになった） */
-  activity: Pick<FlowStep, "id" | "name" | "params" | "externalOrigin"> &
+  activity: Pick<FlowStep, "id" | "name" | "params" | "stageCount" | "externalOrigin"> &
     Partial<Pick<ActivityNode, "inputs" | "outputs">>;
   onRename?: (blockId: string, title: string) => void;
   onDelete?: (blockId: string) => void;
@@ -124,6 +137,21 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   // 展開中は全件が並ぶので、見分け用の抜粋は重複になる
   const showParams = !!data.showParams;
   const distinguishers = showParams ? [] : (data.distinguishers ?? []);
+  const stageCount = activity.stageCount ?? 0;
+  const hasStages = stageCount >= 2;
+
+  // 値が @参照ならその場から飛べるようにする（表パネルと同じ ↗）
+  const renderParamLine = (p: ActivityParam, key: number) => {
+    const target = data.onOpenExternalNote
+      ? resolveParamLinkTarget(splitAttrLabel(p.label).value)
+      : null;
+    return (
+      <span key={key} style={{ display: "block" }}>
+        {p.label}
+        {target && <ParamLinkButton targetId={target} onOpen={data.onOpenExternalNote!} />}
+      </span>
+    );
+  };
 
   return (
     <div
@@ -365,21 +393,27 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
           <SlidersHorizontal size={10} style={{ flexShrink: 0, marginTop: showParams ? 2 : 0 }} />
           {showParams ? (
             <span style={{ overflowWrap: "anywhere" }}>
-              {activity.params.map((p, i) => {
-                // 値が @参照ならその場から飛べるようにする（表パネルと同じ ↗）
-                const target = data.onOpenExternalNote
-                  ? resolveParamLinkTarget(splitAttrLabel(p.label).value)
-                  : null;
-                return (
-                  <span key={i} style={{ display: "block" }}>
-                    {p.label}
-                    {target && (
-                      <ParamLinkButton targetId={target} onOpen={data.onOpenExternalNote!} />
-                    )}
-                  </span>
-                );
-              })}
+              {hasStages
+                ? groupParamsByStage(activity.params).map((group, gi) => (
+                    <span key={gi} style={{ display: "block" }}>
+                      {group.stage !== undefined && (
+                        <span
+                          style={{
+                            display: "block",
+                            fontWeight: 700,
+                            marginTop: gi > 0 ? 4 : 0,
+                          }}
+                        >
+                          {t("prov.stageHeading", { n: String(group.stage) })}
+                        </span>
+                      )}
+                      {group.items.map((p, i) => renderParamLine(p, i))}
+                    </span>
+                  ))
+                : activity.params.map((p, i) => renderParamLine(p, i))}
             </span>
+          ) : hasStages ? (
+            t("prov.stageCount", { n: String(stageCount) })
           ) : (
             activity.params.length
           )}

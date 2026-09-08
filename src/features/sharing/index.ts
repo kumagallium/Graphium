@@ -43,6 +43,30 @@ export {
 } from "./materialize-blobs";
 export { loadAllSharedEntries, type SharedLibraryLoadResult } from "./shared-library-loader";
 export { SharedLibraryView } from "./SharedLibraryView";
+export { SharedNoteView, type SharedNoteViewProps } from "./SharedNoteView";
+export {
+  SharedNoteChatPanel,
+  type SharedNoteChatPanelProps,
+  type SharedNoteChatDeps,
+} from "./SharedNoteChatPanel";
+export {
+  SharedEntryBody,
+  SharedNotePreview,
+  useSharedEntryBodyText,
+  type SharedEntryBodyReader,
+} from "./SharedEntryBody";
+export {
+  SharedEntryActions,
+  SharedEntryHistory,
+  SharedEntryMeta,
+  ReverseLinksSection,
+  sharedEntryTitle,
+  sharedEntryTypeLabel,
+} from "./shared-entry-parts";
+export {
+  useSharedPreviewAnchor,
+  type SharedPreviewAnchor,
+} from "./use-shared-preview-anchor";
 export {
   bulkShare,
   type BulkShareTarget,
@@ -70,7 +94,70 @@ export {
   sharedEntryFingerprint,
   SHARED_INDEXABLE_TYPES,
 } from "./shared-entry-source";
-export { useSharedLibrarySync, type SharedLibrarySyncParams } from "./shared-library-sync";
+export {
+  templateToPseudoDocument,
+  parseSharedTemplateBody,
+} from "./shared-template-doc";
+export {
+  supportsSharedChat,
+  buildSharedSubject,
+  buildSharedChatMessage,
+  buildSharedRetrievalQuery,
+  toAgentHistory,
+  sharedChatsKey,
+  SHARED_CHATS_KEY_PREFIX,
+  SHARED_UNVERIFIED_NOTICE,
+  DEFAULT_SHARED_BUDGET_CHARS,
+  type SharedChatSubject,
+  type BuildSharedSubjectOptions,
+  type BuildSharedChatMessageParams,
+} from "./shared-chat";
+export {
+  useSharedLibrarySync,
+  SHARED_AUTO_REFRESH_THROTTLE_MS,
+  type SharedLibrarySyncParams,
+} from "./shared-library-sync";
+export {
+  createComment,
+  editComment,
+  deleteComment,
+  commentsFor,
+  commentEntriesFor,
+  countCommentsFor,
+  countCommentsByTarget,
+  loadCommentTexts,
+  splitByTargetVersion,
+  commentSummary,
+  type SharedComment,
+  type SharedCommentExtra,
+  type CommentThread,
+  type SharedCommentResult,
+  type SharedCommentProvider,
+  type CreateCommentOptions,
+  type EditCommentOptions,
+  type DeleteCommentOptions,
+} from "./shared-comments";
+export {
+  SharedCommentsThread,
+  type SharedCommentsThreadProps,
+  type SharedCommentAnchor,
+} from "./SharedCommentsThread";
+export {
+  SHARED_SEEN_KEY,
+  readSeenStore,
+  parseSeenStore,
+  getSeen,
+  markSeen,
+  isUpdatedSince,
+  newCommentCount,
+  type SharedSeenRecord,
+  type SharedSeenStore,
+} from "./shared-seen";
+export {
+  appendHistory,
+  historyForUpdate,
+  SHARED_HISTORY_LIMIT,
+} from "./share-history";
 export {
   SHARED_PROJECTION_VERSION,
   projectSharedNote,
@@ -86,6 +173,8 @@ export {
   buildSharedProcessIndex,
   countProjectedLabelNotes,
   countProjectedProcessNotes,
+  buildReverseLinks,
+  type SharedReverseLinks,
   type SharedProjection,
   type SharedProjectionEntry,
 } from "./shared-projection";

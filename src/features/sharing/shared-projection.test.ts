@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   SHARED_PROJECTION_VERSION,
   __resetSharedProjectionForTest,
+  buildReverseLinks,
   buildSharedProcessIndex,
   buildSharedPseudoIndex,
   countProjectedLabelNotes,
@@ -340,5 +341,74 @@ describe("parseStoredProjection", () => {
   it("null / 非オブジェクトは捨てる", () => {
     expect(parseStoredProjection(null)).toBeNull();
     expect(parseStoredProjection("x")).toBeNull();
+  });
+});
+
+describe("投影 v2（逆引きのもと）", () => {
+  const citation = (id: string, sharedId: string) => ({
+    id,
+    type: "sharedCitation",
+    props: { sharedId },
+    children: [],
+  });
+
+  it("本文の共有引用・fork 元・テンプレート元を投影に持ち帰る", () => {
+    const d = doc([para("b1", [styled("本文")]), citation("c1", "src-1"), citation("c2", "src-2")]);
+    d.forkedFrom = {
+      sharedId: "origin-1",
+      hash: "sha256:o",
+      authorName: "Ada",
+      authorEmail: "a@b.co",
+      forkedAt: "2026-08-01T00:00:00.000Z",
+    };
+    d.templateFrom = {
+      sharedId: "tmpl-1",
+      hash: "sha256:t",
+      title: "実験テンプレート",
+      usedAt: "2026-08-01T00:00:00.000Z",
+    };
+    const projected = projectSharedNote(sharedEntry(), d);
+    expect(projected.citedSharedIds.sort()).toEqual(["src-1", "src-2"]);
+    expect(projected.forkedFromSharedId).toBe("origin-1");
+    expect(projected.templateFromSharedId).toBe("tmpl-1");
+  });
+
+  it("引用も派生も無ければ配列は空・任意フィールドは付けない", () => {
+    const projected = projectSharedNote(sharedEntry(), doc([para("b1", [styled("本文")])]));
+    expect(projected.citedSharedIds).toEqual([]);
+    expect(projected).not.toHaveProperty("forkedFromSharedId");
+    expect(projected).not.toHaveProperty("templateFromSharedId");
+  });
+
+  it("buildReverseLinks: 引用・派生・テンプレートを対象 id ごとに束ねる", () => {
+    const projection: SharedProjection = {
+      version: SHARED_PROJECTION_VERSION,
+      logic: { index: INDEX_SCHEMA_VERSION, process: PROCESS_INDEX_VERSION },
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      entries: {
+        a: { citedSharedIds: ["target"], forkedFromSharedId: "target" } as any,
+        b: { citedSharedIds: ["target", "other"] } as any,
+        c: { citedSharedIds: [], templateFromSharedId: "tmpl" } as any,
+        // 自分自身への参照は逆引きに出さない
+        d: { citedSharedIds: ["d"], forkedFromSharedId: "d" } as any,
+        // 壊れた控え（配列が無い）でも落ちない
+        e: {} as any,
+      },
+    };
+    const links = buildReverseLinks(projection);
+    expect(links.get("target")).toEqual({ cites: ["a", "b"], forks: ["a"], templates: [] });
+    expect(links.get("other")).toEqual({ cites: ["b"], forks: [], templates: [] });
+    expect(links.get("tmpl")).toEqual({ cites: [], forks: [], templates: ["c"] });
+    expect(links.get("d")).toBeUndefined();
+  });
+
+  it("控えに citedSharedIds が無くても空配列で読める", () => {
+    const parsed = parseStoredProjection({
+      version: SHARED_PROJECTION_VERSION,
+      logic: { index: INDEX_SCHEMA_VERSION, process: PROCESS_INDEX_VERSION },
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      entries: { a: { hash: "sha256:a" } },
+    });
+    expect(parsed?.entries.a.citedSharedIds).toEqual([]);
   });
 });

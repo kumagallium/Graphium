@@ -606,4 +606,207 @@ describe("computeStepDistinguishers — 同名ステップの見分け", () => {
     ]);
     expect(d.size).toBe(0);
   });
+
+  it("段階（stage）付きパラメータは段階ごとに比較し、後の段階の違いも見分けに使う", () => {
+    const stageStep = (id: string, name: string, temps: number[]) => ({
+      id,
+      name,
+      params: temps.map((v, i) => ({ label: `temperature: ${v}`, stage: i + 1 })),
+    });
+    // 段階 1 は両者とも同じ値。段階 2 だけ違う — stage を無視すると
+    // key の 2 回目以降の出現が map に上書きされず消え、この違いを見分けられない。
+    const d = computeStepDistinguishers([
+      stageStep("a", "撹拌", [100, 200]),
+      stageStep("b", "撹拌", [100, 150]),
+    ]);
+    expect(d.get("a")).toEqual(["temperature: 200"]);
+    expect(d.get("b")).toEqual(["temperature: 150"]);
+  });
+});
+
+describe("段階（stage）行 — provDocToStepGraph", () => {
+  it("段階子は独立した activities にならず、段階順に親 1 件へ畳まれる", () => {
+    const doc = makeDoc([
+      { "@id": "activity_parent", "@type": "prov:Activity", "rdfs:label": "撹拌", "graphium:blockId": "blkParent" },
+      {
+        "@id": "activity_tbl_1",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 1",
+        "graphium:blockId": "tbl",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 1,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "graphium:temperature": "100C",
+      },
+      {
+        "@id": "activity_tbl_2",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 2",
+        "graphium:blockId": "tbl",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 2,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "prov:wasInformedBy": [{ "@id": "activity_tbl_1" }],
+        "graphium:temperature": "200C",
+      },
+    ]);
+    const { activities } = provDocToStepGraph(doc);
+    expect(activities).toHaveLength(1);
+    expect(activities[0].id).toBe("blkParent");
+    expect(activities[0].params).toEqual([
+      { label: "temperature: 100C", stage: 1 },
+      { label: "temperature: 200C", stage: 2 },
+    ]);
+  });
+});
+
+describe("段階（stage）行 — provDocToFlowGraph", () => {
+  const stageDoc = () =>
+    makeDoc([
+      { "@id": "activity_parent", "@type": "prov:Activity", "rdfs:label": "撹拌", "graphium:blockId": "blkParent" },
+      {
+        "@id": "activity_tbl_1",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 1",
+        "graphium:blockId": "tbl",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 1,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "graphium:temperature": "100C",
+      },
+      {
+        "@id": "activity_tbl_2",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 2",
+        "graphium:blockId": "tbl",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 2,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "prov:wasInformedBy": [{ "@id": "activity_tbl_1" }],
+        "graphium:temperature": "200C",
+      },
+    ]);
+
+  it("段階子は独立カードにならず、同じ blockId の step が 2 件以上出ない", () => {
+    const { steps } = provDocToFlowGraph(stageDoc());
+    expect(steps).toHaveLength(1);
+    expect(steps[0].id).toBe("blkParent");
+  });
+
+  it("edges に段階子の @id が一切現れない（partOf・段階間 wasInformedBy を出さない）", () => {
+    const { edges } = provDocToFlowGraph(stageDoc());
+    const childIds = ["activity_tbl_1", "activity_tbl_2"];
+    for (const e of edges) {
+      expect(childIds).not.toContain(e.source);
+      expect(childIds).not.toContain(e.target);
+    }
+  });
+
+  it("親の params は段階順に並び、段階番号が付き、stageCount が立つ", () => {
+    const { steps } = provDocToFlowGraph(stageDoc());
+    expect(steps[0].stageCount).toBe(2);
+    expect(steps[0].params).toEqual([
+      { label: "temperature: 100C", stage: 1 },
+      { label: "temperature: 200C", stage: 2 },
+    ]);
+  });
+
+  it("段階を持たない通常の Activity は stage・stageCount を一切持たない", () => {
+    const doc = makeDoc([
+      {
+        "@id": "activity_A",
+        "@type": "prov:Activity",
+        "rdfs:label": "計量",
+        "graphium:blockId": "blkA",
+        "graphium:mass": "5g",
+      },
+    ]);
+    const { steps } = provDocToFlowGraph(doc);
+    expect(steps).toEqual([{ id: "blkA", name: "計量", params: [{ label: "mass: 5g" }] }]);
+  });
+
+  it("入れ子 step（partOf はあるが activityKind 無し）は段階扱いされず、従来どおり独立カード", () => {
+    const doc = makeDoc([
+      { "@id": "activity_outer", "@type": "prov:Activity", "rdfs:label": "外側", "graphium:blockId": "blkOuter" },
+      {
+        "@id": "activity_inner",
+        "@type": "prov:Activity",
+        "rdfs:label": "内側",
+        "graphium:blockId": "blkInner",
+        "graphium:partOf": [{ "@id": "activity_outer" }],
+      },
+    ]);
+    const { steps } = provDocToFlowGraph(doc);
+    expect(steps.map((s) => s.id).sort()).toEqual(["blkInner", "blkOuter"]);
+    expect(steps.every((s) => s.stageCount === undefined)).toBe(true);
+  });
+
+  it("1 つの Activity に複数行の [パラメータ] 表が 2 つあるとき、表を跨いで段階が混ざらない（表ごとにまとまって連結される）", () => {
+    // 表 A（温度、3 段階）と 表 B（時間、2 段階）が独立に子を生成するケース。
+    // stageIndex だけで並べ替えると温度1・時間1・温度2・時間2… と表を跨いで混ざる。
+    const doc = makeDoc([
+      { "@id": "activity_parent", "@type": "prov:Activity", "rdfs:label": "撹拌", "graphium:blockId": "blkParent" },
+      {
+        "@id": "activity_tblA_1",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 1",
+        "graphium:blockId": "tblA",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 1,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "graphium:温度": "100C",
+      },
+      {
+        "@id": "activity_tblA_2",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 2",
+        "graphium:blockId": "tblA",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 2,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "graphium:温度": "200C",
+      },
+      {
+        "@id": "activity_tblA_3",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 3",
+        "graphium:blockId": "tblA",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 3,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "graphium:温度": "300C",
+      },
+      {
+        "@id": "activity_tblB_1",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 1",
+        "graphium:blockId": "tblB",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 1,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "graphium:時間": "1h",
+      },
+      {
+        "@id": "activity_tblB_2",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 2",
+        "graphium:blockId": "tblB",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 2,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "graphium:時間": "2h",
+      },
+    ]);
+    const { steps } = provDocToFlowGraph(doc);
+    expect(steps).toHaveLength(1);
+    // 表 A の段階群がまとまり、続けて表 B の段階群がまとまる（表を跨いで交互にならない）
+    expect(steps[0].params).toEqual([
+      { label: "温度: 100C", stage: 1 },
+      { label: "温度: 200C", stage: 2 },
+      { label: "温度: 300C", stage: 3 },
+      { label: "時間: 1h", stage: 1 },
+      { label: "時間: 2h", stage: 2 },
+    ]);
+    expect(steps[0].stageCount).toBe(5);
+  });
 });

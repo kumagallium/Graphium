@@ -8,7 +8,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
 
-import { shareNote } from "./share-note";
+import { shareNote, stripPrivateHistory } from "./share-note";
+import { computeSharedEntryHash } from "../../lib/storage/shared";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { AuthorIdentity } from "../document-provenance/types";
 
@@ -257,5 +258,158 @@ describe("shareNote — Phase 2c-1 自動 blob 化", () => {
     if (!r.ok) return;
     const stored = JSON.parse([...fs.entries.values()][0]);
     expect(stored.entry.extra.blobs).toBeUndefined();
+  });
+});
+
+// --- §24: 共有コピーの AI チャット / 編集来歴 ---
+// 共有は本文を見せる操作なので、既定では作業の過程（チャット・編集来歴）を
+// 共有コピーに載せない。手元の doc は無傷、hash は共有コピーの本文から計算する。
+
+describe("shareNote — 共有コピーに含めない情報", () => {
+  const chats: NonNullable<GraphiumDocument["chats"]> = [
+    {
+      id: "chat-1",
+      scopeBlockId: "b1",
+      scopeType: "block",
+      messages: [
+        { role: "user", content: "これで合ってる？", timestamp: "2026-05-04T00:00:00Z" },
+        { role: "assistant", content: "合っています", timestamp: "2026-05-04T00:00:01Z" },
+      ],
+      createdAt: "2026-05-04T00:00:00Z",
+      modifiedAt: "2026-05-04T00:00:01Z",
+    },
+  ];
+  const documentProvenance: NonNullable<GraphiumDocument["documentProvenance"]> = {
+    revisions: [],
+    activities: [],
+    agents: [],
+  };
+
+  const docWithHistory = () =>
+    makeDoc({ chats, documentProvenance, noteContexts: ["卒論"] });
+
+  /**
+   * shared 側に書かれた body（GraphiumDocument JSON）を読む。
+   * atob はバイト列を返すだけなので、日本語が化けないよう TextDecoder を通す。
+   */
+  function storedBody(): GraphiumDocument {
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    const bytes = Uint8Array.from(atob(stored.body_base64), (c) => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  it("既定では共有 body に chats / documentProvenance が無い", async () => {
+    const r = await shareNote(docWithHistory(), { root: "/tmp/shared", author });
+    expect(r.ok).toBe(true);
+    const body = storedBody();
+    expect(body.chats).toBeUndefined();
+    expect(body.documentProvenance).toBeUndefined();
+    // 剥がすのはこの 2 つだけ。本文・タイトル・フォルダは残る
+    expect(body.title).toBe("Test note");
+    expect(body.noteContexts).toEqual(["卒論"]);
+    expect(body.pages[0].blocks).toHaveLength(1);
+  });
+
+  it("includePrivateHistory: true なら共有 body に残る", async () => {
+    const r = await shareNote(docWithHistory(), {
+      root: "/tmp/shared",
+      author,
+      includePrivateHistory: true,
+    });
+    expect(r.ok).toBe(true);
+    const body = storedBody();
+    expect(body.chats).toHaveLength(1);
+    expect(body.chats![0].messages[0].content).toBe("これで合ってる？");
+    expect(body.documentProvenance).toEqual(documentProvenance);
+  });
+
+  it("戻り値の doc には手元の chats / documentProvenance が残る", async () => {
+    const r = await shareNote(docWithHistory(), { root: "/tmp/shared", author });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.doc.chats).toEqual(chats);
+    expect(r.doc.documentProvenance).toEqual(documentProvenance);
+    expect(r.doc.sharedRef).toBeDefined();
+  });
+
+  it("渡した doc 自体も変更されない（immutable）", async () => {
+    const original = docWithHistory();
+    await shareNote(original, { root: "/tmp/shared", author });
+    expect(original.chats).toEqual(chats);
+    expect(original.documentProvenance).toEqual(documentProvenance);
+  });
+
+  it("hash は剥がした後の本文から計算される", async () => {
+    const input = docWithHistory();
+    const r = await shareNote(input, { root: "/tmp/shared", author });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    const bodyBytes = Uint8Array.from(atob(stored.body_base64), (c) => c.charCodeAt(0));
+    // 実際に書かれた本文で計算し直すと sharedRef の hash と一致する
+    await expect(computeSharedEntryHash(stored.entry, bodyBytes)).resolves.toBe(
+      r.doc.sharedRef!.hash,
+    );
+    // チャット込みの本文から計算した値とは一致しない（＝剥がした本文が hash の対象）
+    const withHistoryBytes = new TextEncoder().encode(JSON.stringify(input));
+    await expect(
+      computeSharedEntryHash(stored.entry, withHistoryBytes),
+    ).resolves.not.toBe(r.doc.sharedRef!.hash);
+  });
+
+  it("自動 blob 化の後に剥がす（url 置換と両立する）", async () => {
+    const docWithBoth = makeDoc({
+      chats,
+      documentProvenance,
+      pages: [
+        {
+          id: "p1",
+          title: "Test note",
+          blocks: [{ id: "b1", type: "image", props: { url: "file-media://A" } }],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+        },
+      ],
+    });
+    const r = await shareNote(docWithBoth, {
+      root: "/tmp/shared",
+      author,
+      blobRoot: "/tmp/blob",
+      __test: {
+        extractFileId: (url) => url.match(/^file-media:\/\/(.+)$/)?.[1] ?? null,
+        fetchBytes: async () => new Uint8Array([1, 2, 3]),
+      },
+    });
+    expect(r.ok).toBe(true);
+    const body = storedBody();
+    expect(body.chats).toBeUndefined();
+    expect(body.pages[0].blocks[0].props!.url).toMatch(/^shared-blob:sha256:/);
+  });
+});
+
+describe("stripPrivateHistory", () => {
+  it("chats と documentProvenance だけを落とし、他は同じ参照で残す", () => {
+    const doc = makeDoc({
+      chats: [],
+      documentProvenance: { revisions: [], activities: [], agents: [] },
+      noteContexts: ["卒論"],
+      sharedRef: { id: "x", type: "note", sharedAt: "2026-05-04T00:00:00Z", hash: "sha256:0" },
+    });
+    const stripped = stripPrivateHistory(doc);
+    expect(stripped.chats).toBeUndefined();
+    expect(stripped.documentProvenance).toBeUndefined();
+    expect(stripped.pages).toBe(doc.pages);
+    expect(stripped.noteContexts).toBe(doc.noteContexts);
+    expect(stripped.sharedRef).toBe(doc.sharedRef);
+    // 元は無傷
+    expect(doc.chats).toBeDefined();
+    expect(doc.documentProvenance).toBeDefined();
+  });
+
+  it("どちらも持たない doc はそのまま返す", () => {
+    const doc = makeDoc();
+    expect(stripPrivateHistory(doc)).toBe(doc);
   });
 });

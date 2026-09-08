@@ -199,3 +199,43 @@ describe("captureFilePreview", () => {
     ).toBe("https://example.com/a");
   });
 });
+
+// ── 送り先フォルダの往復 ──
+// モバイルで選んだフォルダは、生のメディアと違って名前ではなく JSON の中を通る
+// （normalizeCaptureName は .graphium.json を別分岐で正規化するので、名前に埋めても届かない）。
+// 書き手と読み手が揃っていないと、届いた側は未分類のままになる。
+
+describe("捕獲ファイルのフォルダ", () => {
+  it("メモのフォルダが往復する", async () => {
+    const file = buildMemoCaptureFile("こんにちは", new Date("2026-09-05T01:00:00Z"), "材料X");
+    const parsed = parseGraphiumCaptureFile(file.name, await file.text());
+    expect(parsed).toMatchObject({ kind: "memo", text: "こんにちは", folder: "材料X" });
+  });
+
+  it("URL のフォルダが往復する", async () => {
+    const file = buildUrlCaptureFile(
+      { url: "https://example.com", title: "例", folder: "実験B/一次" },
+      new Date("2026-09-05T01:00:00Z"),
+    );
+    const parsed = parseGraphiumCaptureFile(file.name, await file.text());
+    expect(parsed).toMatchObject({ kind: "url", folder: "実験B/一次" });
+  });
+
+  it("フォルダ未指定なら欄ごと出さない（旧バージョンのファイルもそのまま読める）", async () => {
+    const memo = buildMemoCaptureFile("素の記録");
+    const payload = JSON.parse(await memo.text());
+    expect(payload).not.toHaveProperty("folder");
+    expect(parseGraphiumCaptureFile(memo.name, await memo.text())).not.toHaveProperty("folder");
+  });
+
+  it("空白だけのフォルダは無指定として扱う", async () => {
+    const file = buildMemoCaptureFile("記録", new Date(), "   ");
+    expect(JSON.parse(await file.text())).not.toHaveProperty("folder");
+  });
+
+  it("前後の空白は落として運ぶ", async () => {
+    const file = buildMemoCaptureFile("記録", new Date(), "  材料X  ");
+    const parsed = parseGraphiumCaptureFile(file.name, await file.text());
+    expect(parsed).toMatchObject({ folder: "材料X" });
+  });
+});

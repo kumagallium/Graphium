@@ -25,6 +25,7 @@ import {
   type GraphiumIndex,
   type NoteIndexEntry,
 } from "../navigation/index-file";
+import { collectSharedCitationIds } from "../../blocks/shared-citation/collect";
 import {
   buildProcessEntry,
   PROCESS_INDEX_VERSION,
@@ -34,8 +35,11 @@ import {
 import { readAppDataFile, writeAppDataFile } from "../../lib/storage/app-data-file";
 import { isTauri } from "../../lib/platform";
 
-/** 投影ファイルの形の版。形を変えたら上げる → 読み込み時に捨てて作り直す */
-export const SHARED_PROJECTION_VERSION = 1;
+/**
+ * 投影ファイルの形の版。形を変えたら上げる → 読み込み時に捨てて作り直す。
+ * v2: 逆引き用の citedSharedIds / forkedFromSharedId / templateFromSharedId を追加。
+ */
+export const SHARED_PROJECTION_VERSION = 2;
 
 const APP_DATA_KEY = "shared-projection";
 const DRIVE_FILE_NAME = ".graphium-shared-projection.json";
@@ -69,6 +73,15 @@ export type SharedProjectionEntry = {
   inlineLabels?: NoteIndexEntry["inlineLabels"];
   /** 手順を持たないノートは null（プロセス一覧に出さない） */
   process: ProcessIndexEntry | null;
+  /**
+   * このノートが引用している共有エントリ id（sharedCitation ブロック）。
+   * 「このエントリを引用している共有ノート」の逆引きに使う。
+   */
+  citedSharedIds: string[];
+  /** fork 元の共有エントリ id（doc.forkedFrom.sharedId） */
+  forkedFromSharedId?: string;
+  /** 元にした共有テンプレートの id（doc.templateFrom.sharedId） */
+  templateFromSharedId?: string;
 };
 
 export type SharedProjection = {
@@ -111,6 +124,12 @@ export function projectSharedNote(
   doc: GraphiumDocument,
 ): SharedProjectionEntry {
   const indexEntry = buildIndexEntry(entry.id, doc);
+  // 引用・派生・テンプレートは共有 id で書かれている ＝ 受け取った側でも解決できる
+  //（crossNoteLinks / outgoingLinks を落とすのと逆の理由でこちらは持ち帰る）
+  const cited = new Set<string>();
+  for (const page of doc.pages ?? []) {
+    for (const id of collectSharedCitationIds((page as { blocks?: unknown }).blocks)) cited.add(id);
+  }
   // 鮮度の基準はノートの modifiedTime に相当するもの ＝ 共有エントリの更新時刻
   const process = buildProcessEntry(entry.id, doc, { modifiedTime: entry.updated_at });
   return {
@@ -126,6 +145,9 @@ export function projectSharedNote(
       ? { inlineLabels: indexEntry.inlineLabels }
       : {}),
     process: process ? { ...process, crossNoteLinks: [] } : null,
+    citedSharedIds: [...cited],
+    ...(doc.forkedFrom?.sharedId ? { forkedFromSharedId: doc.forkedFrom.sharedId } : {}),
+    ...(doc.templateFrom?.sharedId ? { templateFromSharedId: doc.templateFrom.sharedId } : {}),
   };
 }
 
@@ -155,7 +177,12 @@ export function parseStoredProjection(raw: unknown): SharedProjection | null {
   for (const [id, value] of Object.entries(candidate.entries)) {
     // hash が無いものは差分投影の判定に使えないので採らない
     if (value && typeof value === "object" && typeof (value as SharedProjectionEntry).hash === "string") {
-      entries[id] = value as SharedProjectionEntry;
+      const projected = value as SharedProjectionEntry;
+      // 逆引きの配列は無くても読めるようにする（壊れた控えで一覧を落とさない）
+      entries[id] = {
+        ...projected,
+        citedSharedIds: Array.isArray(projected.citedSharedIds) ? projected.citedSharedIds : [],
+      };
     }
   }
   return {
@@ -388,6 +415,55 @@ export function countProjectedProcessNotes(
     if (projection.entries[id]?.process) count++;
   }
   return count;
+}
+
+/** 逆引きの並び（引用・派生・テンプレート） */
+export type SharedReverseLinks = {
+  /** この id を引用している共有ノートの id */
+  cites: string[];
+  /** この id を fork して作られた共有ノートの id */
+  forks: string[];
+  /** この id（テンプレート）から作られた共有ノートの id */
+  templates: string[];
+};
+
+/**
+ * 投影から逆引き表を作る（純関数）。
+ *
+ * 元になるのは「本文を読めた共有ノート」の投影だけなので、読み込み前は
+ * 少なく見える —— これは仕様（読めていないものについて嘘を言わない）。
+ */
+export function buildReverseLinks(
+  projection: SharedProjection,
+): Map<string, SharedReverseLinks> {
+  const out = new Map<string, SharedReverseLinks>();
+  const bucket = (targetId: string): SharedReverseLinks => {
+    let v = out.get(targetId);
+    if (!v) {
+      v = { cites: [], forks: [], templates: [] };
+      out.set(targetId, v);
+    }
+    return v;
+  };
+  for (const [sourceId, projected] of Object.entries(projection.entries)) {
+    for (const targetId of projected.citedSharedIds ?? []) {
+      // 自分自身への引用は逆引きに出さない（自己ループを作らない）
+      if (targetId === sourceId) continue;
+      const list = bucket(targetId).cites;
+      if (!list.includes(sourceId)) list.push(sourceId);
+    }
+    const forkedFrom = projected.forkedFromSharedId;
+    if (forkedFrom && forkedFrom !== sourceId) {
+      const list = bucket(forkedFrom).forks;
+      if (!list.includes(sourceId)) list.push(sourceId);
+    }
+    const templateFrom = projected.templateFromSharedId;
+    if (templateFrom && templateFrom !== sourceId) {
+      const list = bucket(templateFrom).templates;
+      if (!list.includes(sourceId)) list.push(sourceId);
+    }
+  }
+  return out;
 }
 
 /** テスト用。モジュールスコープのストアを初期状態に戻す */

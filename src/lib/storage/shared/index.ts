@@ -31,6 +31,8 @@ export {
   setBlobRoot,
   getSharedAiEnabled,
   setSharedAiEnabled,
+  getShareIncludesPrivateHistory,
+  setShareIncludesPrivateHistory,
 } from "./config";
 export { pickSharedRoot, pickBlobRoot, pickInboxRoot } from "./picker";
 export {

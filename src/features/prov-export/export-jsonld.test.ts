@@ -786,3 +786,105 @@ describe("buildW3CProvJsonLd — cross-note output references", () => {
     expect(derivs).toHaveLength(1);
   });
 });
+
+// ── feat/step-stage-rows: 段階（stage）の W3C 書き出し ──
+describe("buildW3CProvJsonLd — stage rows (feat/step-stage-rows)", () => {
+  const heading = (id: string, text: string) => ({
+    id,
+    type: "heading",
+    props: { level: 2 },
+    content: [{ type: "text", text }],
+    children: [],
+  });
+
+  const paramTable = (id: string, headers: string[], rows: string[][]) => ({
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: headers.map((h) => [{ type: "text", text: h }]) },
+        ...rows.map((r) => ({ cells: r.map((v) => [{ type: "text", text: v }]) })),
+      ],
+    },
+    children: [],
+  });
+
+  function buildStageDoc(): ProvJsonLd {
+    return generateProvDocument({
+      blocks: [
+        heading("h2-sinter", "焼成する"),
+        paramTable("param-3row", ["温度", "時間"], [
+          ["600℃", "1h"],
+          ["800℃", "2h"],
+          ["1000℃", "3h"],
+        ]),
+      ],
+      labels: new Map([
+        ["h2-sinter", "procedure"],
+        ["param-3row", "attribute"],
+      ]),
+      links: [],
+    });
+  }
+
+  it("emits prov:wasInformedBy as a direct property on the stage node (no Communication reification)", () => {
+    const provDoc = buildStageDoc();
+    const doc = buildW3CProvJsonLd(provDoc, "note-title");
+
+    const stage2 = doc["@graph"].find((n: any) => n["@id"] === "activity_param-3row_2") as any;
+    expect(stage2).toBeDefined();
+    expect(stage2["prov:wasInformedBy"]).toEqual([{ "@id": "activity_param-3row_1" }]);
+
+    // Communication ノードへの reify はしない
+    expect(doc["@graph"].some((n: any) => n["@type"] === "Communication")).toBe(false);
+
+    const stage1 = doc["@graph"].find((n: any) => n["@id"] === "activity_param-3row_1") as any;
+    expect(stage1["prov:wasInformedBy"]).toBeUndefined();
+  });
+
+  it("emits graphium:partOf / graphium:activityKind / graphium:stageIndex via extractExtensionProps", () => {
+    const provDoc = buildStageDoc();
+    const doc = buildW3CProvJsonLd(provDoc, "note-title");
+
+    const stage1 = doc["@graph"].find((n: any) => n["@id"] === "activity_param-3row_1") as any;
+    expect(stage1).toBeDefined();
+    expect(stage1["graphium:partOf"]).toEqual([{ "@id": "activity_h2-sinter" }]);
+    expect(stage1["graphium:activityKind"]).toBe("stage");
+    expect(stage1["graphium:stageIndex"]).toBe(1);
+    // params もそのまま拡張プロパティとして出る
+    expect(stage1["graphium:温度"]).toBe("600℃");
+  });
+
+  it("does not affect the parent Activity node (no params merged, no stage-only fields)", () => {
+    const provDoc = buildStageDoc();
+    const doc = buildW3CProvJsonLd(provDoc, "note-title");
+
+    const parent = doc["@graph"].find((n: any) => n["@id"] === "activity_h2-sinter") as any;
+    expect(parent).toBeDefined();
+    expect(parent["graphium:温度"]).toBeUndefined();
+    expect(parent["graphium:activityKind"]).toBeUndefined();
+    expect(parent["graphium:partOf"]).toBeUndefined();
+  });
+
+  it("a single-row [パラメータ] table keeps existing behavior unchanged (no wasInformedBy/partOf anywhere)", () => {
+    const provDoc = generateProvDocument({
+      blocks: [
+        heading("h2-sinter", "焼成する"),
+        paramTable("param-1row", ["温度", "時間"], [["800℃", "2h"]]),
+      ],
+      labels: new Map([
+        ["h2-sinter", "procedure"],
+        ["param-1row", "attribute"],
+      ]),
+      links: [],
+    });
+    const doc = buildW3CProvJsonLd(provDoc, "note-title");
+
+    const parent = doc["@graph"].find((n: any) => n["@id"] === "activity_h2-sinter") as any;
+    expect(parent["graphium:温度"]).toBe("800℃");
+    expect(doc["@graph"].some((n: any) => n["@type"] === "Activity" && n["@id"]?.startsWith("activity_param-1row"))).toBe(false);
+    expect(doc["@graph"].every((n: any) => n["prov:wasInformedBy"] === undefined)).toBe(true);
+    expect(doc["@graph"].every((n: any) => n["graphium:partOf"] === undefined)).toBe(true);
+  });
+});

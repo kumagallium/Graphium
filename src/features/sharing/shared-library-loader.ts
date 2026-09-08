@@ -19,6 +19,7 @@ const ALL_TYPES: SharedEntryType[] = [
   "template",
   "knowledge",
   "report",
+  "comment",
 ];
 
 export type SharedLibraryLoadResult = {
@@ -39,6 +40,7 @@ export async function loadAllSharedEntries(
     template: [],
     knowledge: [],
     report: [],
+    comment: [],
   };
   const errors: Partial<Record<SharedEntryType, string>> = {};
 

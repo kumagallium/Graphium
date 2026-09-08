@@ -98,7 +98,7 @@ What you're looking at:
 
 | Element | Meaning |
 |---|---|
-| Card with a blue band | A step (a PROV *Activity*). The card shows its name and how many parameters it has. When several steps share a name (parallel runs of one operation), the card also carries the parameters whose values differ between them |
+| Card with a blue band | A step (a PROV *Activity*). The card shows its name and how many parameters it has. When several steps share a name (parallel runs of one operation), the card also carries the parameters whose values differ between them. When its parameter table holds more than one row, the card shows a stage count instead (**3 stages**), and expanding it lists each one under a **Stage 1**, **Stage 2**, … heading |
 | Colored node | An entity — **Input** (green), **Tool** (amber), **Output** (terracotta) |
 | Panel below the graph | The selected step's tables — parameters, inputs, tools, outputs — editable here |
 | Green edge (`used`) | The step consumed this entity |
@@ -123,10 +123,14 @@ The panel is a place to write, not just a picture to read. Everything you do her
 
 | Section | Shape | To add |
 |---|---|---|
-| **Parameter** | one column per key, one row of values | **Column** adds a key |
-| **Input** / **Tool** / **Output** | one row per entity, one column per attribute | **Add row** adds an entity |
+| **Parameter** | one column per key, one row per **stage** | **Column** adds a key, **Add stage** adds a row |
+| **Input** / **Tool** / **Output** | one row per entity, one column per attribute | **Add Input** (or **Add Tool**, **Add Output**) adds an entity |
 
 A kind the step doesn't have yet still shows as a table — a dashed card with one empty row. Type into that first cell and the labeled table appears in the note with what you typed already in it (the key for a parameter table, the name for the others). Leave it alone and nothing is written, so a step never fills up with empty tables you didn't ask for.
+
+A parameter table's rows are **stages** <Badge type="tip" text="Added in v0.60.0 (2026-09-08)" />, and row order is stage order: leave it at one row and everything works exactly as before, but click **Add stage** to record a second set of conditions without leaving the step — a stirring step that ramps through three temperatures is one step with three stages, not three separate steps. The line to draw: split into separate **steps** when something is taken out of or put into the process between them (a sample pulled out for weighing, say); stay with **stages** when only the conditions change and the same material carries through.
+
+![A step card showing 3 stages, with the parameter table below it: numbered stage rows and the Add stage button](/screenshots/step-stages.png)
 
 **Entities you highlighted in a sentence** keep working as they are, and appear right inside their kind's table as grayed rows — highlighted parameters as grayed columns. Renaming one edits the text in place. **Add to the table** (or clicking its grayed cells) takes it in for real. The sentence is left exactly as it was, highlight and all — adding only adds. Its bound attributes come along as columns (they are values, and keeping them in both places would count the same fact twice), and the grayed row disappears because the highlight and the new row are the same entity. Highlighting and tables are the same data seen two ways, so you can move over at your own pace.
 

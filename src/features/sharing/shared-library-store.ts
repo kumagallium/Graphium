@@ -110,6 +110,7 @@ const ALL_ENTRY_TYPES = Object.keys({
   template: 0,
   knowledge: 0,
   report: 0,
+  comment: 0,
 } satisfies Record<SharedEntryType, number>) as SharedEntryType[];
 
 function readPersistedDerivedMeta(): SharedDerivedMetaMap {
@@ -404,6 +405,7 @@ export function groupSharedEntriesByType(entries: SharedEntry[]): Record<SharedE
     template: [],
     knowledge: [],
     report: [],
+    comment: [],
   };
   for (const e of entries) out[e.type]?.push(e);
   return out;

@@ -131,6 +131,12 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
       w3cNode["graphium:sampleId"] = node["graphium:sampleId"];
     }
 
+    // prov:wasInformedBy（段階チェーン専用）→ 直接プロパティとして出す
+    // （Communication への reify はしない。W3C PROV-JSON-LD は shorthand として許容）。
+    if (node["prov:wasInformedBy"] && node["prov:wasInformedBy"].length > 0) {
+      w3cNode["prov:wasInformedBy"] = node["prov:wasInformedBy"].map((ref) => ({ "@id": ref["@id"] }));
+    }
+
     // graphium:attributes → 拡張プロパティとして保持
     if (node["graphium:attributes"] && node["graphium:attributes"].length > 0) {
       w3cNode["graphium:attributes"] = node["graphium:attributes"].map((attr) => ({

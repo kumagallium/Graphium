@@ -106,6 +106,7 @@ describe("refreshSharedLibrary", () => {
       template: "boom",
       knowledge: "boom",
       report: "boom",
+      comment: "boom",
     });
     expect(snap.loading).toBe(false);
     // 読めていないので「読み終えた時刻」は付かない（索引側が空一覧で走らないため）

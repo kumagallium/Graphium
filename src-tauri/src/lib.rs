@@ -1405,6 +1405,7 @@ const SHARED_ENTRY_TYPES: &[&str] = &[
     "templates",
     "knowledge",
     "reports",
+    "comments",
 ];
 
 fn validate_entry_type(t: &str) -> Result<(), String> {

@@ -228,3 +228,97 @@ describe("provToCytoscapeElements: ローカル参照は従来どおり描く", 
     expect(node?.data.label).toBe("♫ 録音");
   });
 });
+
+describe("provToCytoscapeElements: 段階（stage）子 Activity は畳んで親だけ描く", () => {
+  // 親 Activity + stage 子 2 つ（partOf で親に属し、子2 は子1 に wasInformedBy）+
+  // 親が prov:used する Entity 1 つ、という構成のフィクスチャ。
+  const stageDoc = (): ProvJsonLd => doc([
+    {
+      "@id": "activity_p",
+      "@type": "prov:Activity",
+      "rdfs:label": "親手順",
+      "prov:used": [{ "@id": "entity_1" }],
+    },
+    {
+      "@id": "activity_p_stage_1",
+      "@type": "prov:Activity",
+      "rdfs:label": "段階1",
+      "graphium:activityKind": "stage",
+      "graphium:stageIndex": 1,
+      "graphium:partOf": [{ "@id": "activity_p" }],
+    },
+    {
+      "@id": "activity_p_stage_2",
+      "@type": "prov:Activity",
+      "rdfs:label": "段階2",
+      "graphium:activityKind": "stage",
+      "graphium:stageIndex": 2,
+      "graphium:partOf": [{ "@id": "activity_p" }],
+      "prov:wasInformedBy": [{ "@id": "activity_p_stage_1" }],
+    },
+    {
+      "@id": "entity_1",
+      "@type": "prov:Entity",
+      "rdfs:label": "材料",
+    },
+  ]);
+
+  it("stage 子ノードは出力に含まれない", () => {
+    const elements = provToCytoscapeElements(stageDoc());
+    const ids = elements.map((e) => e.data.id);
+    expect(ids).not.toContain("activity_p_stage_1");
+    expect(ids).not.toContain("activity_p_stage_2");
+  });
+
+  it("stage 子に触れるエッジ（partOf・wasInformedBy）は出力に含まれない", () => {
+    const elements = provToCytoscapeElements(stageDoc());
+    const stageIds = new Set(["activity_p_stage_1", "activity_p_stage_2"]);
+    const edgesTouchingStage = elements.filter(
+      (e) =>
+        e.data.source !== undefined &&
+        (stageIds.has(e.data.source as string) || stageIds.has(e.data.target as string)),
+    );
+    expect(edgesTouchingStage).toEqual([]);
+  });
+
+  it("親ノード・Entity・親→Entity の used エッジは残る", () => {
+    const elements = provToCytoscapeElements(stageDoc());
+    const ids = elements.map((e) => e.data.id);
+    expect(ids).toContain("activity_p");
+    expect(ids).toContain("entity_1");
+
+    // 反転方向（rel.to → rel.from = Entity → Activity）で張られる
+    const usedEdge = elements.find(
+      (e) => e.data.source === "entity_1" && e.data.target === "activity_p",
+    );
+    expect(usedEdge).toBeDefined();
+    expect(usedEdge?.data.label).toBe("used");
+  });
+
+  it("stage の無い従来形ドキュメントでは出力が変わらない", () => {
+    const legacyDoc = doc([
+      {
+        "@id": "activity_p",
+        "@type": "prov:Activity",
+        "rdfs:label": "親手順",
+        "prov:used": [{ "@id": "entity_1" }],
+      },
+      {
+        "@id": "entity_1",
+        "@type": "prov:Entity",
+        "rdfs:label": "材料",
+      },
+    ]);
+
+    const elements = provToCytoscapeElements(legacyDoc);
+    const ids = elements.map((e) => e.data.id);
+    expect(ids).toContain("activity_p");
+    expect(ids).toContain("entity_1");
+
+    const usedEdge = elements.find(
+      (e) => e.data.source === "entity_1" && e.data.target === "activity_p",
+    );
+    expect(usedEdge).toBeDefined();
+    expect(usedEdge?.data.label).toBe("used");
+  });
+});

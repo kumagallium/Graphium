@@ -20,6 +20,8 @@ export {
   getTrashedCaptures,
   generateCaptureId,
   clearCaptureCache,
+  setCaptureContexts,
+  remapCaptureContexts,
 } from "./capture-store";
 export type {
   CaptureIndex,

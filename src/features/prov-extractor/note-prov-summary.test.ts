@@ -1,6 +1,19 @@
-import { describe, it, expect } from "vitest";
-import { summarizeNoteProv, parseParameterText } from "./note-prov-summary";
+import { describe, it, expect, vi } from "vitest";
 import type { GraphiumDocument, GraphiumPage } from "../../lib/document-types";
+import type { ProvJsonLd } from "../prov-generator/generator";
+
+// 段階（stage）子は generator.ts（別ワークストリームが並行改修中）の出力形に依存せず、
+// 手組みの ProvJsonLd フィクスチャで検証する。generateProvDocument をモックし、
+// 既定では実装へ委譲（既存テストは今まで通り本物の生成器を通る）、段階のテストだけ
+// mockReturnValueOnce で 1 回だけフィクスチャを差し込む。
+const generateProvDocumentMock = vi.hoisted(() => vi.fn());
+vi.mock("../prov-generator/generator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../prov-generator/generator")>();
+  generateProvDocumentMock.mockImplementation(actual.generateProvDocument);
+  return { ...actual, generateProvDocument: generateProvDocumentMock };
+});
+
+import { summarizeNoteProv, parseParameterText } from "./note-prov-summary";
 
 // ──────────────────────────────────────────────
 // テスト用ドキュメント組み立てヘルパー
@@ -282,5 +295,63 @@ describe("parseParameterText", () => {
   it("空キー / 空値は失敗扱い", () => {
     expect(parseParameterText(": 300rpm")).toEqual({ value: ": 300rpm", raw: ": 300rpm" });
     expect(parseParameterText("回転数:")).toEqual({ value: "回転数:", raw: "回転数:" });
+  });
+});
+
+// ──────────────────────────────────────────────
+// 段階（stage）行: generator.ts は別ワークストリームが並行改修中のため、
+// 生成器の出力形には依存せず、契約書の JSON-LD 形を手組みしたフィクスチャで検証する。
+// ──────────────────────────────────────────────
+
+function stageProvDoc(): ProvJsonLd {
+  return {
+    "@context": {} as any,
+    "@graph": [
+      {
+        "@id": "activity_parent",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌",
+        "graphium:blockId": "blkParent",
+      },
+      {
+        "@id": "activity_tbl_1",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 1",
+        "graphium:blockId": "tbl",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 1,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "graphium:temperature": "100C",
+      } as any,
+      {
+        "@id": "activity_tbl_2",
+        "@type": "prov:Activity",
+        "rdfs:label": "撹拌 段階 2",
+        "graphium:blockId": "tbl",
+        "graphium:activityKind": "stage",
+        "graphium:stageIndex": 2,
+        "graphium:partOf": [{ "@id": "activity_parent" }],
+        "prov:wasInformedBy": [{ "@id": "activity_tbl_1" }],
+        "graphium:temperature": "200C",
+      } as any,
+    ],
+  } as ProvJsonLd;
+}
+
+describe("summarizeNoteProv: 段階（stage）行", () => {
+  it("stage 子は activities に載せず、段階順に親の stages へ畳む", () => {
+    generateProvDocumentMock.mockReturnValueOnce(stageProvDoc());
+    const doc = makeDoc([{ blocks: [], labels: {} }]);
+    const summary = summarizeNoteProv(doc);
+
+    expect(summary.activities).toHaveLength(1);
+    const parent = summary.activities[0];
+    expect(parent.label).toBe("撹拌");
+    expect(parent.stages).toEqual([
+      { index: 1, params: { temperature: "100C" } },
+      { index: 2, params: { temperature: "200C" } },
+    ]);
+    // stage 子（activityKind: "stage"）が独立した ActivitySummary として紛れ込んでいない
+    expect(summary.activities.some((a) => a.label.includes("段階"))).toBe(false);
   });
 });
