@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.61.0](https://github.com/kumagallium/Graphium/compare/v0.60.0...v0.61.0) - 2026-09-08
+
+- [docs] Add the Ask AI figure for shared notes to the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/854
+- [fix] Let the materials bulk bar wrap beside the side peek and align tile overlays to the 8px grid by @kumagallium in https://github.com/kumagallium/Graphium/pull/856
+- [feat] Select memos in the gallery view and show the bulk bar in both views by @kumagallium in https://github.com/kumagallium/Graphium/pull/855
+- [feat] Leave AI chats and edit history out of shared copies by default by @kumagallium in https://github.com/kumagallium/Graphium/pull/857
+
 ## [v0.60.0](https://github.com/kumagallium/Graphium/compare/v0.59.0...v0.60.0) - 2026-09-08
 
 - [feat] ステップのパラメータ表を複数行にして「段階」として記録できるようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/858
