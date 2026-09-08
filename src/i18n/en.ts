@@ -2047,6 +2047,7 @@ export const en: Record<string, string> = {
   "intake.statMaterials": "Materials",
   "intake.statMaterialsExisting": "{count} already in your library",
   "intake.statLinks": "Links kept",
+  "intake.statFolders": "Folders kept",
   "intake.statUnresolved": "{count} unresolved",
   "intake.statFailed": "Failed",
   "intake.next": "Next, try one of these:",

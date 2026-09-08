@@ -5,6 +5,7 @@
 // 同じロジックを呼べるようにする。
 
 import { classifyIntakeFiles } from "./classify";
+import { commonRootOf, folderOf } from "./folders";
 import type { IntakeFile } from "./types";
 
 /**
@@ -42,13 +43,18 @@ export type IntakeDeps = {
   importMarkdown: (
     files: IntakeFile[],
     onProgress: (p: IntakeProgress) => void,
-    ctx: { allFiles: IntakeFile[] },
+    ctx: { allFiles: IntakeFile[]; folderOf: (file: IntakeFile) => string | undefined },
   ) => Promise<MarkdownImportResult>;
   /**
    * 素材を 1 件アップロードする。戻り値の duplicate が true なら
    * 「新規登録ではなく既存の素材を返した」ことを表す（materialsExisting の集計に使う）
    */
-  uploadAsset: (file: File) => Promise<{ duplicate?: boolean } | void | unknown>;
+  uploadAsset: (file: File) => Promise<{ fileId?: string; duplicate?: boolean } | void | unknown>;
+  /**
+   * 素材のフォルダ（noteContexts）を差し替える。登録済みの素材（duplicate）は
+   * 既存のフォルダを尊重して呼ばない。失敗しても取り込み自体は続行する
+   */
+  setAssetFolder?: (fileId: string, folder: string) => Promise<void> | void;
   /** 全件終了後に 1 回だけ呼ぶ（インデックス再構築など） */
   afterRun?: () => Promise<void> | void;
 };
@@ -65,6 +71,8 @@ export type IntakeOutcome = {
   /** 対象外ファイルの内訳。キーは拡張子（小文字・ドット付き、無ければ "(none)"） */
   skippedByExt: Record<string, number>;
   lastNewId: string | null;
+  /** フォルダを付けたファイルの「異なるフォルダ数」（ノート・素材あわせて重複なし） */
+  folders: number;
 };
 
 /**
@@ -73,6 +81,9 @@ export type IntakeOutcome = {
  * notes / materials / materialsExisting / linksResolved / linksUnresolved / skipped は
  * 加算、skippedByExt はキーごとに加算、failed は連結、lastNewId は後勝ち
  * （新しい方が null なら前を保つ）。
+ * folders は本来「異なるフォルダ数」の集合和だが、この関数は集合を持たず件数しか
+ * 持たないため、加算で近似する（バッチをまたいで同じフォルダ名が使われていても
+ * 別カウントとして足してしまう）。復元レポートの目安表示なので許容する
  */
 export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome {
   const skippedByExt: Record<string, number> = { ...a.skippedByExt };
@@ -89,6 +100,7 @@ export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome 
     skipped: a.skipped + b.skipped,
     skippedByExt,
     lastNewId: b.lastNewId ?? a.lastNewId,
+    folders: a.folders + b.folders,
   };
 }
 
@@ -104,6 +116,12 @@ export async function runIntake(
   const { notes, materials, skipped } = classifyIntakeFiles(files);
   const total = notes.length + materials.length;
   const failed: string[] = [];
+
+  // フォルダの引き継ぎ: 落としたファイル群に共通の根があれば 1 回だけ計算し、
+  // 以降は folderOfFile(file) で「親/子」文字列（無ければ undefined=未分類）を引く
+  const root = commonRootOf(files);
+  const folderOfFile = (file: IntakeFile) => folderOf(file.path, root);
+  const foldersSeen = new Set<string>();
 
   // notes: importMarkdown 側の進捗（0..notes.length）をそのまま全体の done として流す。
   // 実装側が丸ごと throw しても（保存先が開けない等）素材の登録まで止めない。
@@ -122,7 +140,7 @@ export async function runIntake(
         (p) => {
           onProgress({ done: p.done, total, current: p.current, failed: [...failed, ...p.failed] });
         },
-        { allFiles: files },
+        { allFiles: files, folderOf: folderOfFile },
       );
     } catch (err) {
       console.warn("[intake] Markdown の取り込みが途中で失敗:", err);
@@ -130,6 +148,10 @@ export async function runIntake(
     }
   }
   failed.push(...markdownResult.failed);
+  for (const n of notes) {
+    const folder = folderOfFile(n);
+    if (folder) foldersSeen.add(folder);
+  }
 
   // materials: 1 件ずつアップロード。失敗しても続行する
   let materialsUploaded = 0;
@@ -141,8 +163,25 @@ export async function runIntake(
     try {
       const result = await deps.uploadAsset(m.file);
       materialsUploaded += 1;
-      if (result && typeof result === "object" && (result as { duplicate?: boolean }).duplicate === true) {
+      const duplicate =
+        result && typeof result === "object" && (result as { duplicate?: boolean }).duplicate === true;
+      if (duplicate) {
         materialsExisting += 1;
+      }
+      const folder = folderOfFile(m);
+      if (folder) {
+        foldersSeen.add(folder);
+        // 登録済みの素材（duplicate）は既存のフォルダを尊重して触らない
+        if (!duplicate && deps.setAssetFolder) {
+          const fileId = result && typeof result === "object" ? (result as { fileId?: string }).fileId : undefined;
+          if (fileId) {
+            try {
+              await deps.setAssetFolder(fileId, folder);
+            } catch (err) {
+              console.warn(`[intake] 素材のフォルダ設定に失敗: ${m.file.name}`, err);
+            }
+          }
+        }
       }
     } catch (err) {
       console.warn(`[intake] 素材のアップロードに失敗: ${m.file.name}`, err);
@@ -177,5 +216,6 @@ export async function runIntake(
     skipped: skipped.length,
     skippedByExt,
     lastNewId: markdownResult.lastNewId,
+    folders: foldersSeen.size,
   };
 }

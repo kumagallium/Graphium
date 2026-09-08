@@ -59,7 +59,11 @@ describe("runIntake", () => {
 
     // importMarkdown には classify 前の全ファイル（notes + materials）が
     // ctx.allFiles として渡る（画像参照の解決に使うため）
-    expect(deps.importMarkdown).toHaveBeenCalledWith(expect.any(Array), expect.any(Function), { allFiles: files });
+    expect(deps.importMarkdown).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.any(Function),
+      { allFiles: files, folderOf: expect.any(Function) },
+    );
   });
 
   it("uploadAsset が 1 件 throw しても止まらず failed に入る", async () => {
@@ -112,6 +116,40 @@ describe("runIntake", () => {
 
     expect(outcome.materials).toBe(2);
     expect(outcome.materialsExisting).toBe(1);
+  });
+
+  it("フォルダの引き継ぎ: 根配下の md 2（別フォルダ）+ png 1（同フォルダ）で folders が 2、setAssetFolder が新規素材にだけ呼ばれる", async () => {
+    function file(path: string): IntakeFile {
+      return { file: new File(["dummy"], path.split("/").pop()!), path };
+    }
+    const files = [
+      file("Vault/研究/a.md"),
+      file("Vault/日記/b.md"),
+      file("Vault/研究/fig.png"),
+    ];
+    const setAssetFolder = vi.fn();
+    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: false }));
+    const deps = makeDeps({ uploadAsset, setAssetFolder });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(outcome.folders).toBe(2);
+    expect(setAssetFolder).toHaveBeenCalledTimes(1);
+    expect(setAssetFolder).toHaveBeenCalledWith("id-fig.png", "研究");
+  });
+
+  it("フォルダの引き継ぎ: 登録済み（duplicate）の素材には setAssetFolder を呼ばない", async () => {
+    function file(path: string): IntakeFile {
+      return { file: new File(["dummy"], path.split("/").pop()!), path };
+    }
+    const files = [file("Vault/研究/fig.png")];
+    const setAssetFolder = vi.fn();
+    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
+    const deps = makeDeps({ uploadAsset, setAssetFolder });
+
+    await runIntake(files, deps, () => {});
+
+    expect(setAssetFolder).not.toHaveBeenCalled();
   });
 });
 
@@ -166,6 +204,7 @@ describe("mergeOutcome", () => {
       skipped: 1,
       skippedByExt: { ".pptx": 1 },
       lastNewId: "note-a",
+      folders: 2,
     };
     const b: IntakeOutcome = {
       notes: 1,
@@ -177,6 +216,7 @@ describe("mergeOutcome", () => {
       skipped: 0,
       skippedByExt: { ".pptx": 1, ".xlsx": 1 },
       lastNewId: null,
+      folders: 1,
     };
 
     const merged = mergeOutcome(a, b);
@@ -192,6 +232,8 @@ describe("mergeOutcome", () => {
       skippedByExt: { ".pptx": 2, ".xlsx": 1 },
       // b の lastNewId が null なので a を保つ
       lastNewId: "note-a",
+      // folders は集合を持たないので加算で近似する
+      folders: 3,
     });
   });
 });

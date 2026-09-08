@@ -2045,6 +2045,7 @@ export const ja: Record<string, string> = {
   "intake.statMaterials": "素材",
   "intake.statMaterialsExisting": "{count} 件は登録済み",
   "intake.statLinks": "引き継いだつながり",
+  "intake.statFolders": "引き継いだフォルダ",
   "intake.statUnresolved": "{count} 件は未解決",
   "intake.statFailed": "失敗",
   "intake.next": "次に、どれか試してみてください",

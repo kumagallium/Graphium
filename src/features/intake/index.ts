@@ -11,6 +11,7 @@ export { runIntake, mergeOutcome } from "./run-intake";
 export type { IntakeDeps, IntakeOutcome, MarkdownImportResult, IntakeProgress } from "./run-intake";
 
 export { classifyIntakeFiles } from "./classify";
+export { commonRootOf, folderOf } from "./folders";
 export { collectDroppedFiles } from "./collect-dropped-files";
 export { toIntakeFiles } from "./types";
 export type { IntakeFile, IntakeSource } from "./types";

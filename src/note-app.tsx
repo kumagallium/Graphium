@@ -100,6 +100,7 @@ import {
 import { buildSavedPageFields } from "./features/note-save";
 import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop } from "./features/intake";
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
+import { normalizeNoteContexts } from "./features/note-context/context-tags";
 import { syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
@@ -6869,7 +6870,7 @@ export function NoteApp() {
     async (
       notes: IntakeFile[],
       onProgress: (p: IntakeProgress) => void,
-      ctx: { allFiles: IntakeFile[] },
+      ctx: { allFiles: IntakeFile[]; folderOf: (file: IntakeFile) => string | undefined },
     ): Promise<MarkdownImportResult> => {
       const {
         importMarkdownToGraphiumDoc,
@@ -6918,10 +6919,15 @@ export function NoteApp() {
         const file = notes[i];
         onProgress({ done: i, total: notes.length, current: file.file.name, failed: [...failed] });
         try {
-          const { doc, wikilinks } = await importMarkdownToGraphiumDoc(file.file, {
+          let { doc, wikilinks } = await importMarkdownToGraphiumDoc(file.file, {
             resolveImage,
             uploadImage: fm.handleUploadMedia,
           });
+          // フォルダの引き継ぎ: 落としたフォルダ内の並びをそのまま noteContexts にする
+          const folder = ctx.folderOf(file);
+          if (folder) {
+            doc = { ...doc, noteContexts: normalizeNoteContexts([...(doc.noteContexts ?? []), folder]) };
+          }
           const newId = await fm.handleCreateNoteFromImport(doc);
           const baseName = file.file.name.replace(/\.(md|markdown)$/i, "");
           baseNameToNoteId.set(baseName.toLowerCase(), newId);
@@ -6975,6 +6981,7 @@ export function NoteApp() {
   const intake = useIntake({
     importMarkdown: importMarkdownFiles,
     uploadAsset: (file) => fm.handleUploadAsset(file),
+    setAssetFolder: (fileId, folder) => fm.updateMediaContexts(fileId, [folder]),
     afterRun: () => fm.refreshFiles(),
     aiAvailable: aiUiEnabled,
   });

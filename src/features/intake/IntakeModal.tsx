@@ -44,6 +44,8 @@ export type IntakeState =
       skipped: number;
       /** 対象外ファイルの内訳（拡張子ごと。キーはドット付き小文字、無ければ "(none)"） */
       skippedByExt: Record<string, number>;
+      /** フォルダを付けたファイルの「異なるフォルダ数」（ノート・素材あわせて重複なし） */
+      folders: number;
       aiAvailable: boolean;
     };
 
@@ -153,6 +155,12 @@ export function IntakeModal({
                       )}
                     </dd>
                   </div>
+                  {state.folders > 0 && (
+                    <div className="flex items-baseline justify-between px-4 py-2">
+                      <dt className="text-muted-foreground">{t("intake.statFolders")}</dt>
+                      <dd className="font-medium tabular-nums text-foreground">{state.folders}</dd>
+                    </div>
+                  )}
                   <div className="flex items-baseline justify-between px-4 py-2">
                     <dt className="text-muted-foreground">{t("intake.statFailed")}</dt>
                     <dd

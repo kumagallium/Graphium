@@ -75,6 +75,7 @@ export function useIntake(deps: IntakeDeps & { aiAvailable: boolean }) {
           failed: combined.failed,
           skipped: combined.skipped,
           skippedByExt: combined.skippedByExt,
+          folders: combined.folders,
           aiAvailable: depsRef.current.aiAvailable,
         });
         // 進行中に × で閉じられていても、結果（復元レポート）は必ず見せる
