@@ -171,6 +171,8 @@ The note stores both the expressions and the values they produced. That matters 
 
 ![A calculation block: expressions on the left, live results on the right](/screenshots/calc-block.png)
 
+A result can also become a column of a data table — see [adding a computed column](#adding-a-computed-column).
+
 ## Duplicating a block <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />
 
 **Duplicate** in the drag-handle (⠿) menu, or `⌘D` (`Ctrl+D` on Windows/Linux) with the cursor in the block, copies a block directly below itself. It is the fastest way to repeat a filled-in table, a step, or a calculation you want to vary.
@@ -309,11 +311,39 @@ Lines like `Device Model: ENV-MONITOR-X9` from the preamble are **kept alongside
 
 An imported table carries its **source** next to its name. Press it to reopen the same screen and rebuild the table with a corrected range or delimiter — the table keeps its place and its name. The file itself stays as a **Data** asset, so the numbers lead back to the raw output. Importing the same file twice does not add a second asset.
 
-A long table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. Very long files (more than 2000 data rows) open with the range limited to the beginning — raise the end row to bring in the rest.
+A long note table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. By default, though, a file becomes a [data table](#data-tables), which has no such limit — choose **Table in the note** on the import screen when you want an editable table instead (warned above 200 rows, refused above 1,000).
 
 A file does not have to become a table to be plotted — a chart can read a data asset directly (see [charts](#the-time-series-table-and-charts) above), which keeps a note free of tables that exist only to be drawn.
 
 ![An imported table with its source shown next to the name, trimmed at the foot](/screenshots/imported-table.png)
+
+## Data tables <Badge type="tip" text="Added in v0.62.0 (2026-09-08)" /> {#data-tables}
+
+A measurement file with thousands of rows does not belong in the body of a note as an ordinary table: every edit would re-serialize all of it, and the editor stalls. A **data table** keeps the file where it is — as a **Data** asset — and shows it in the note through a reference. The note stores only which asset, how to read it, and the table's name. The rows are read from the asset when the note opens, and only the rows on screen are drawn, so a 2,000-row log scrolls as lightly as a short one.
+
+The import screen asks how to insert the data: **Data table** (the default) or **Table in the note**. A note table can be edited cell by cell but gets heavy as it grows, so the screen warns above 200 rows and refuses above 1,000. Pasting a large table from a spreadsheet opens the same screen instead of dropping the rows straight into the note.
+
+![The import screen asks whether to insert a data table or a table in the note](/screenshots/data-import-insert-as.png)
+
+What a data table can do:
+
+- **Sort by a column** — click a header. Only what you see changes; the asset never does.
+- **Expand** — the ⤢ button above the table opens it at full height, still drawing only the visible rows.
+- **Feed charts and calculations** — refer to it by its name, exactly like a note table.
+- **Switch forms** — press the **source** badge above the table to reopen the import screen and choose the other form. A note table that came from a file can become a data table the same way.
+
+A data table is read-only by design: the numbers are the instrument's, and editing them by hand is exactly what a lab record should not do. To correct the data, correct the file and re-import.
+
+### Adding a computed column
+
+To add a column to a data table, write the formula in a **Calculation** block and send its result to the table:
+
+1. Write a line that reads the table, for example `temp_f = table["Oven log"]["temp_c"] * 9 / 5 + 32`. The name is optional — a bare expression gets one (`v1 = …`) the moment you press the arrow.
+2. Press the **⇥** button next to the line's result and pick the data table. Its own columns cannot be overwritten; type a name for the new column — it starts as the variable name — and press **Add column**.
+
+The column appears at the right of the data table with a calculator badge; hover it to see which calculation produced it. Nothing is written to the asset or to the note's rows: the formula lives in the calculation block, and clearing the target removes the column. Charts and other calculation blocks read the new column like any other, so a converted unit or a normalized intensity is one line away.
+
+![A data table with a computed column sent from a calculation block; the badges above show the source file, the size, and the expand button](/screenshots/data-table.png)
 
 ## Linking notes with @
 
