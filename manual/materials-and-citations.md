@@ -17,7 +17,7 @@ Inside the gallery you can:
 | **Upload** | Upload a file of the current type |
 | **Add URL** | Register a web page as a URL bookmark |
 | **Add PDF** / **Add Word** | Add a PDF or Word file as a material — no note is created |
-| Checkboxes | Multi-select for bulk download, delete, or bulk AI actions — in either view |
+| Checkboxes | Multi-select for bulk download, delete, or bulk AI actions — in either view. Drag across items, or shift-click, to select a range |
 
 Checkboxes work in both views: in **Gallery** they sit in the top-left corner of each tile (hover a tile to reveal one; once anything is selected they stay visible on every tile), and the checkbox next to the sort buttons selects or clears everything currently listed. Either way the same selection bar appears above the materials, carrying the bulk actions — folder, download, delete, the AI actions, and **Share with team** where a [shared library](/storage-and-sync) is set up. <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" />
 
