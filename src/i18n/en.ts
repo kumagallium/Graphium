@@ -2071,6 +2071,7 @@ export const en: Record<string, string> = {
   "intake.setupAi": "Set up AI",
   "intake.setupAiHint": "Add a model in Settings to ask questions about what came in.",
   "intake.skipped": "{count} skipped (types Graphium doesn't take)",
+  "intake.ocrPending": "Reading text from {count} image(s) in the background",
   "intake.dropOverlay": "Drop to bring in",
   "intake.emptyNotesLead": "No notes yet. Start with what you already have.",
   "intake.emptyMaterialsLead": "No materials yet. Drop in the PDFs, images and data you already have.",

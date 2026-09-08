@@ -9,7 +9,13 @@ import type { IntakeState } from "./IntakeModal";
 import { runIntake, mergeOutcome, type IntakeDeps, type IntakeOutcome } from "./run-intake";
 import type { IntakeFile } from "./types";
 
-export function useIntake(deps: IntakeDeps & { aiAvailable: boolean }) {
+export function useIntake(
+  deps: IntakeDeps & {
+    aiAvailable: boolean;
+    /** 1 回分の取り込み（待ち行列分も畳んだ最終結果）が終わるたびに呼ぶ。OCR の後追い起動に使う */
+    onDone?: (outcome: IntakeOutcome) => void;
+  },
+) {
   const depsRef = useRef(deps);
   depsRef.current = deps;
 
@@ -77,10 +83,12 @@ export function useIntake(deps: IntakeDeps & { aiAvailable: boolean }) {
           skipped: combined.skipped,
           skippedByExt: combined.skippedByExt,
           folders: combined.folders,
+          ocrPending: combined.ocrTargets.length,
           aiAvailable: depsRef.current.aiAvailable,
         });
         // 進行中に × で閉じられていても、結果（復元レポート）は必ず見せる
         setOpen(true);
+        depsRef.current.onDone?.(combined);
       }
     } catch (err) {
       // runIntake は内部で失敗を吸収するのでここには来ないはずだが、

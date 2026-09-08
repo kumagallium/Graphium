@@ -2069,6 +2069,7 @@ export const ja: Record<string, string> = {
   "intake.setupAi": "AI を設定する",
   "intake.setupAiHint": "設定でモデルを登録すると、取り込んだものについて聞けます",
   "intake.skipped": "{count} 件は対象外の種類なので取り込んでいません",
+  "intake.ocrPending": "画像 {count} 件の文字はこのあと読み取ります",
   "intake.dropOverlay": "ここに落として取り込む",
   "intake.emptyNotesLead": "まだノートがありません。手元のファイルを取り込んで始めませんか",
   "intake.emptyMaterialsLead": "まだ素材がありません。手元の PDF・画像・データを取り込んでみませんか",
