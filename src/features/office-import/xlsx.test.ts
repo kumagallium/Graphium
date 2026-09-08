@@ -87,4 +87,36 @@ describe("readXlsx", () => {
     const notes = result.sheets.find((s) => s.name === "Notes");
     expect(notes?.csv).toBe('"Hello, ""world"""');
   });
+
+  it("<row> に r 属性（行番号）が無くても行を落とさない（簡易な xlsx ライタ対策）", () => {
+    // r 属性は OOXML 仕様上オプション。Excel/LibreOffice は必ず書くが、
+    // 手組みの XML 生成コードなどが省略する場合がある
+    const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook ${NS_MAIN} ${NS_R}>
+  <sheets>
+    <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+    const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships ${NS_RELS}>
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+    const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet ${NS_MAIN}>
+  <sheetData>
+    <row><c t="inlineStr"><is><t>no-r-row</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>second</t></is></c></row>
+  </sheetData>
+</worksheet>`;
+    const bytes = zipSync({
+      "xl/workbook.xml": strToU8(workbookXml),
+      "xl/_rels/workbook.xml.rels": strToU8(relsXml),
+      "xl/worksheets/sheet1.xml": strToU8(sheetXml),
+    });
+
+    const result = readXlsx(bytes);
+    const sheet = result.sheets.find((s) => s.name === "Sheet1");
+    expect(sheet?.csv).toBe("no-r-row\r\nsecond");
+    expect(sheet?.rows).toBe(2);
+  });
 });

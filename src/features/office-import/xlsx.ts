@@ -106,10 +106,14 @@ function worksheetToCsv(xml: string, parser: DOMParser, sharedStrings: string[])
   // 行データ本体を { row: { col: value } } の疎な表に読む
   const cells = new Map<number, Map<number, string>>();
   const rowEls = Array.from(doc.getElementsByTagName("row"));
+  // r 属性は OOXML 仕様上オプション（Excel/LibreOffice は必ず書くが、簡易な xlsx ライタは省略しうる）。
+  // 省略された行は直前の行番号 + 1 をフォールバックとして採番し、黙って読み飛ばさない
+  let nextRowFallback = 1;
   for (const rowEl of rowEls) {
     const rAttr = rowEl.getAttribute("r");
-    const rowNum = rAttr ? Number(rAttr) : 0;
-    if (!rowNum) continue;
+    const parsedRowNum = rAttr ? Number(rAttr) : NaN;
+    const rowNum = Number.isFinite(parsedRowNum) && parsedRowNum > 0 ? parsedRowNum : nextRowFallback;
+    nextRowFallback = rowNum + 1;
     maxRow = Math.max(maxRow, rowNum);
     const rowCells = cells.get(rowNum) ?? new Map<number, string>();
 
