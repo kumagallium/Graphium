@@ -110,6 +110,77 @@ export const CreateFolder: Story = {
   },
 };
 
+// ── その場での名前変更 ──────────────────────────────────
+export const RenameHover: Story = {
+  name: "名前変更の入口（選択中: ＋ と鉛筆が並ぶ）",
+  render: () => {
+    const [selected, setSelected] = useState<string | null>("プロジェクトA");
+    return (
+      <div className="p-4 bg-background max-w-[240px]">
+        <FolderTree
+          folders={DEMO_FOLDERS}
+          unfiledCount={24}
+          selected={selected}
+          onSelectFolder={setSelected}
+          onSelectUnfiled={() => setSelected(UNFILED_PATH)}
+          onCreateFolder={() => {}}
+          onRenameFolder={() => {}}
+        />
+        <p className="text-[11px] text-muted-foreground mt-4 leading-relaxed">
+          選択中の「プロジェクトA」行にマウスを載せると、＋（この中に作る）と鉛筆（名前を変更）が
+          並んで出る。他の行はホバーしたときだけ出る。
+          入口はほかに: 名前のダブルクリック／行が選択中でフォーカスがあるときの Enter。
+        </p>
+      </div>
+    );
+  },
+};
+
+export const Renaming: Story = {
+  name: "編集中（子フォルダの名前を差し替え中）",
+  render: () => (
+    <div className="p-4 bg-background max-w-[240px]">
+      <FolderTree
+        folders={DEMO_FOLDERS}
+        unfiledCount={24}
+        selected="プロジェクトA/実験シリーズ1"
+        onSelectFolder={() => {}}
+        onSelectUnfiled={() => {}}
+        onRenameFolder={() => {}}
+        defaultEditingPath="プロジェクトA/実験シリーズ1"
+      />
+      <p className="text-[11px] text-muted-foreground mt-4 leading-relaxed">
+        入力欄が名前の位置に差し替わり、＋・鉛筆・件数は隠れて幅を確保する。
+        Enter で確定（親はそのまま、葉だけ差し替え）／Escape で取り消し／
+        blur は変わっていて有効なら確定、そうでなければ黙って取り消す。
+      </p>
+    </div>
+  ),
+};
+
+export const RenamingInvalid: Story = {
+  name: "編集中（無効な名前 = エラー表示）",
+  render: () => (
+    <div className="p-4 bg-background max-w-[240px]">
+      <FolderTree
+        folders={DEMO_FOLDERS}
+        unfiledCount={24}
+        selected="プロジェクトA"
+        onSelectFolder={() => {}}
+        onSelectUnfiled={() => {}}
+        onRenameFolder={() => {}}
+        defaultEditingPath="プロジェクトA"
+        defaultEditingDraft="実験/シリーズ"
+      />
+      <p className="text-[11px] text-muted-foreground mt-4 leading-relaxed">
+        "/" を含む・空などの無効な名前で Enter を押した直後の状態
+        （defaultEditingDraft はエラー表示を見せるためのストーリー専用 prop）。
+        入力欄の下に検証エラー文言が出る。blur では同じ入力でも黙って取り消す挙動になる。
+      </p>
+    </div>
+  ),
+};
+
 // ── 空の状態 ────────────────────────────────────────────
 export const EmptyStates: Story = {
   name: "空の状態（フォルダなし / 空フォルダのみ）",

@@ -6,13 +6,15 @@
 // - 「＋ 新しいフォルダ」= インライン入力。"親/子" 記法で 2 階層まで（validateFolderPath）
 // - 親フォルダのホバー時の「＋」= そのフォルダの中に子を作る（スラッシュを手で打たせない）。
 //   2 階層制約により子フォルダには出さない
+// - その場での名前変更（鉛筆アイコン / 名前のダブルクリック / 選択中に Enter）。
+//   確定規則は右クリックメニュー（FolderMenu）の名前変更と同じ — 階層は動かさず葉だけ差し替える
 // - 右クリック = 名前の変更・削除（メニュー本体は FolderMenu、ここは入口だけ）
 // - ノートのドロップを受け付ける（一覧のタイトルからドラッグ）。Ctrl / Cmd で「出ずに入る」
 //   このコンポーネントはツリーの見た目とナビゲーションだけを担い、
 //   フォルダ削除＝タグ剥がし等のデータ操作は呼び出し側の責務にする
 
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Pencil, Plus } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { buildFolderTree, splitFolderPath, validateFolderPath, UNFILED_PATH, type FolderNode } from "./folder-tree-model";
@@ -33,6 +35,21 @@ export type FolderTreeProps = {
   onSelectUnfiled?: () => void;
   /** 指定すると「＋ 新しいフォルダ」行を出す（作成の永続化は呼び出し側） */
   onCreateFolder?: (path: string) => void;
+  /**
+   * その場での名前変更を確定したとき。渡されたときだけ編集 UI（鉛筆・ダブルクリック・
+   * 選択中の Enter）を出す。right-click メニュー（FolderMenu）の名前変更とは別経路。
+   */
+  onRenameFolder?: (from: string, to: string) => void;
+  /**
+   * ストーリー用: 初期状態から指定パスを編集中にする。実運用では渡さない
+   * （note-app 側の配線では使わない想定）。
+   */
+  defaultEditingPath?: string;
+  /**
+   * ストーリー用: 編集中の初期入力値を上書きする（無効な値を見せるデモ用）。
+   * defaultEditingPath とあわせてのみ意味を持つ。実運用では渡さない。
+   */
+  defaultEditingDraft?: string;
   /**
    * フォルダを右クリックしたとき（名前の変更・削除メニュー用）。
    * メニュー自体は呼び出し側が出す — ツリーは入口だけを持つ。
@@ -65,6 +82,9 @@ export function FolderTree({
   onSelectFolder,
   onSelectUnfiled,
   onCreateFolder,
+  onRenameFolder,
+  defaultEditingPath,
+  defaultEditingDraft,
   onFolderContextMenu,
   onDropNotes,
 }: FolderTreeProps) {
@@ -169,6 +189,73 @@ export function FolderTree({
 
   const selectedKey = selected && selected !== UNFILED_PATH ? selected.toLowerCase() : null;
 
+  // その場での名前変更。editingPath = null なら編集していない。
+  // defaultEditingPath/defaultEditingDraft はストーリー用の初期状態フックで、
+  // 実運用（note-app 配線）では渡さない前提
+  // 直前にクリックした行と時刻（ダブルクリックの 2 回目の click を見分ける）
+  const lastClickRef = useRef<{ key: string; at: number } | null>(null);
+  const [editingPath, setEditingPath] = useState<string | null>(defaultEditingPath ?? null);
+  const [editDraft, setEditDraft] = useState<string>(() => {
+    if (!defaultEditingPath) return "";
+    if (defaultEditingDraft !== undefined) return defaultEditingDraft;
+    return splitFolderPath(defaultEditingPath).leaf;
+  });
+  // defaultEditingDraft が最初から無効な値なら、ストーリーで「不正な名前を入れた直後」を
+  // 再現するためエラー表示も初期状態に含める（実運用では defaultEditingDraft 自体を渡さない）
+  const [editError, setEditError] = useState<boolean>(() => {
+    if (!defaultEditingPath || defaultEditingDraft === undefined) return false;
+    return defaultEditingDraft.includes("/") || validateFolderPath(defaultEditingDraft) !== "ok";
+  });
+  const editingKey = editingPath ? editingPath.toLowerCase() : null;
+
+  const findNode = (path: string): FolderNode | null => {
+    const key = path.toLowerCase();
+    for (const n of tree) {
+      if (n.path.toLowerCase() === key) return n;
+      for (const c of n.children) {
+        if (c.path.toLowerCase() === key) return c;
+      }
+    }
+    return null;
+  };
+
+  const startEditing = (node: FolderNode) => {
+    setEditingPath(node.path);
+    setEditDraft(node.name);
+    setEditError(false);
+  };
+  const closeEditing = () => {
+    setEditingPath(null);
+    setEditDraft("");
+    setEditError(false);
+  };
+  /**
+   * 編集を確定する。FolderMenu の commitRename と同じ規則 — 親はそのまま、葉だけ差し替える。
+   * silent=true（blur 由来）のときは、無効な値でもエラーを出さず黙って取り消す。
+   */
+  const commitEditing = (opts?: { silent?: boolean }) => {
+    if (editingPath === null) return;
+    const node = findNode(editingPath);
+    const next = editDraft.trim();
+    if (!node || !next || next === node.name) {
+      closeEditing();
+      return;
+    }
+    // 末尾セグメントに "/" を書かれると階層が動いてしまうので弾く
+    if (next.includes("/") || validateFolderPath(next) !== "ok") {
+      if (opts?.silent) {
+        closeEditing();
+      } else {
+        setEditError(true);
+      }
+      return;
+    }
+    const slash = editingPath.lastIndexOf("/");
+    const nextPath = slash < 0 ? next : `${editingPath.slice(0, slash)}/${next}`;
+    onRenameFolder?.(editingPath, nextPath);
+    closeEditing();
+  };
+
   const renderFolderRow = (node: FolderNode, isChild: boolean) => {
     const key = node.path.toLowerCase();
     const hasChildren = node.children.length > 0;
@@ -176,7 +263,11 @@ export function FolderTree({
     const isActive = selectedKey === key;
     // 子フォルダを作れるのは root だけ（2 階層制約）
     const canAddChild = !isChild && !!onCreateFolder;
+    const canRename = !!onRenameFolder;
+    const isEditing = editingKey === key;
     const isDropTarget = dropTarget === key;
+    // 行右端の絶対配置アクション数（＋ と 鉛筆）。件数を左へ逃がす幅の計算に使う
+    const actionCount = (canAddChild ? 1 : 0) + (canRename ? 1 : 0);
     return (
       <div
         key={node.path}
@@ -233,40 +324,99 @@ export function FolderTree({
         ) : (
           <span className={`w-4 shrink-0 ${isChild ? "ml-7" : "ml-2"}`} aria-hidden />
         )}
-        <button
-          type="button"
-          title={node.path}
-          onClick={() => {
-            onSelectFolder?.(node.path);
-            // 開く操作と選択を一体にする（エクスプローラーの「フォルダを開く」感覚）
-            if (hasChildren && !isOpen) toggleExpand(key);
-          }}
-          className={`flex-1 min-w-0 flex items-center gap-1.5 py-1 pr-2 pl-1.5 text-sm text-left ${
-            isActive ? "font-semibold" : ""
-          }`}
-        >
-          <span className="text-muted-foreground shrink-0" aria-hidden>
-            {!isChild && hasChildren && isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
-          </span>
-          <span className="flex-1 truncate">{node.name}</span>
-          {node.totalCount > 0 && (
-            // ＋ が出ている間は件数をその左に逃がす（重ねて隠さない）。
-            // 位置が動くのは ＋ が出ている行だけなので、他セクションとの縦揃えは保たれる。
-            <span
-              className={`text-xs text-muted-foreground tabular-nums transition-[margin] ${
-                canAddChild ? (isActive ? "mr-6" : "group-hover:mr-6") : ""
-              }`}
-            >
-              {node.totalCount}
+        {isEditing ? (
+          // 編集中は名前欄をその場で入力欄に差し替える。＋・鉛筆・件数は隠して幅を確保する
+          <div className="flex-1 min-w-0 flex items-center gap-1.5 py-1 pr-2 pl-1.5 text-sm text-left">
+            <span className="text-muted-foreground shrink-0" aria-hidden>
+              {!isChild && hasChildren && isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
             </span>
-          )}
-        </button>
+            <div className="flex-1 min-w-0">
+              <input
+                autoFocus
+                value={editDraft}
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => {
+                  setEditDraft(e.target.value);
+                  setEditError(false);
+                }}
+                onKeyDown={(e) => {
+                  // IME 変換確定の Enter では確定しない（WKWebView の確定順対策も含む）
+                  if (isImeKey(e)) return;
+                  if (e.key === "Enter") commitEditing();
+                  else if (e.key === "Escape") closeEditing();
+                }}
+                // blur は「変わっていて有効なら確定、そうでなければ黙って取り消す」
+                onBlur={() => commitEditing({ silent: true })}
+                className="w-full text-sm px-1.5 py-0.5 rounded border border-sidebar-border bg-background outline-none focus:border-primary/50"
+                {...compositionHandlers}
+              />
+              {editError && (
+                <p className="text-xs text-destructive mt-0.5">{t("nav.folderNameInvalid")}</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            title={node.path}
+            onClick={() => {
+              // ダブルクリック（編集の入口）は click が 2 回先に発火する。2 回目は
+              // 同じ行への連打なので、遷移（一覧の切替・モバイルのサイドバー閉じ）を
+              // 繰り返さない。1 回目の遷移は従来どおり
+              const now = performance.now();
+              const last = lastClickRef.current;
+              lastClickRef.current = { key, at: now };
+              if (last && last.key === key && now - last.at < 400) return;
+              onSelectFolder?.(node.path);
+              // 開く操作と選択を一体にする（エクスプローラーの「フォルダを開く」感覚）
+              if (hasChildren && !isOpen) toggleExpand(key);
+            }}
+            onDoubleClick={() => {
+              if (canRename) startEditing(node);
+            }}
+            onKeyDown={(e) => {
+              // 選択中の行にフォーカスがあるときの Enter は編集に割り当てる
+              // （ボタンの既定動作＝クリック発火を止めないと、開く/選択と競合する）
+              if (e.key === "Enter" && isActive && canRename) {
+                e.preventDefault();
+                startEditing(node);
+              }
+            }}
+            className={`flex-1 min-w-0 flex items-center gap-1.5 py-1 pr-2 pl-1.5 text-sm text-left ${
+              isActive ? "font-semibold" : ""
+            }`}
+          >
+            <span className="text-muted-foreground shrink-0" aria-hidden>
+              {!isChild && hasChildren && isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
+            </span>
+            <span className="flex-1 truncate">{node.name}</span>
+            {node.totalCount > 0 && (
+              // ＋・鉛筆が出ている間は件数をその左に逃がす（重ねて隠さない）。
+              // 位置が動くのはアクションが出ている行だけなので、他セクションとの縦揃えは保たれる。
+              <span
+                className={`text-xs text-muted-foreground tabular-nums transition-[margin] ${
+                  actionCount === 0
+                    ? ""
+                    : actionCount === 1
+                      ? isActive
+                        ? "mr-6"
+                        : "group-hover:mr-6"
+                      : isActive
+                        ? "mr-12"
+                        : "group-hover:mr-12"
+                }`}
+              >
+                {node.totalCount}
+              </span>
+            )}
+          </button>
+        )}
         {/* このフォルダの中に子を作る。スラッシュを手で打たせないための入口。
             件数の「右」に絶対配置で重ねる — 行の流れに置くと件数が押し出されて、
             他セクション（素材・ラベル）の件数の右端と縦に揃わなくなる。
             hover に加えて選択中も出す（選択したフォルダで次にやることが「中に作る」なので、
             マウスを載せ直さずに続けられる）。 */}
-        {canAddChild && (
+        {!isEditing && canAddChild && (
           <button
             type="button"
             title={t("nav.newSubfolderIn", { value: node.name })}
@@ -280,6 +430,25 @@ export function FolderTree({
             }`}
           >
             <Plus size={12} />
+          </button>
+        )}
+        {/* その場での名前変更。＋ と同じ絶対配置の列に並べる（＋ がある行は＋の左）。
+            hover に加えて選択中も出す（＋ と同じ理由） */}
+        {!isEditing && canRename && (
+          <button
+            type="button"
+            title={t("nav.renameFolder")}
+            aria-label={t("nav.renameFolder")}
+            onClick={() => startEditing(node)}
+            className={`absolute ${
+              canAddChild ? "right-7" : "right-1.5"
+            } w-5 h-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-opacity ${
+              isActive
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            }`}
+          >
+            <Pencil size={12} />
           </button>
         )}
       </div>
