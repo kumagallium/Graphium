@@ -212,7 +212,13 @@ talks to LLM and embedding backends.
   since the save are placed automatically, which is what keeps adding one
   material from scrambling a graph someone arranged deliberately. A reset
   control (the step flow reuses its existing "arrange" button) drops the
-  arrangement and hands the graph back to fcose / ELK. Both graph
+  arrangement and hands the graph back to fcose / ELK. The step flow's
+  ELK pass can only run once React Flow has measured every card, so a
+  layout that has been asked for is held until it can run rather than
+  dropped by an unrelated re-render; applying it, grabbing a node, or
+  adopting a saved arrangement are the only things that clear it, and
+  while it waits it re-checks for a bounded number of frames instead of
+  relying on a resize notification that may never come. Both graph
   libraries share one store and one set of gestures on purpose: the two
   panels sit next to each other, and a graph that behaves differently
   depending on which tab it is in reads as two unrelated tools.
@@ -236,13 +242,15 @@ talks to LLM and embedding backends.
   into the note's table block (`network-graph/table-row-edit.ts`).
   Selecting an entity shows the same panel with its row highlighted and
   its section scrolled into view, so there is exactly one place where
-  things are added: "add row" / "add column" on the section's table, and
+  things are added: "add <kind>" (or "add stage" on the parameter table) /
+  "add column" on the section's table, and
   the empty first cell of a kind that has no table yet — sections always
   render as a table (dashed while it is only a placeholder), and typing
   into that cell creates the labeled table in the note carrying what was
   typed, so nothing is written until there is something to write. The
-  parameter table's header row holds the keys and its single data row the
-  values. Entities highlighted in prose
+  parameter table's header row holds the keys and each data row one set of
+  values; from the second data row on, rows are stages of the step (§3.2) and
+  the panel numbers them for display only. Entities highlighted in prose
   remain readable and keep span-based editing — renaming rewrites the
   span text (keeping its `entityId`), removing deletes a dedicated row or
   strips the mark inside prose (DATA_MODEL §2.3) — and the panel lists
@@ -326,9 +334,11 @@ Labels come in two passes that operate on the same blocks:
    block** may be tagged `[Input]` / `[Tool]` / `[Output]` to mark
    it as a *structured table* (header row = attribute keys, each data row =
    one Entity), or `[Parameter]` to mark it as a *parameter table* (header
-   row = keys, first data row = values) whose `key=value` pairs are merged
-   into the enclosing Step's `params` (see [DATA_MODEL.md §2.3](./DATA_MODEL.md)).
-   Implemented in `src/features/context-label/`.
+   row = keys, each data row = one stage). A single data row's
+   `key=value` pairs merge into the enclosing Step's `params` as before;
+   two or more rows instead become chained stage child Activities, one
+   per row (see [DATA_MODEL.md §2.3](./DATA_MODEL.md)). Implemented in
+   `src/features/context-label/`.
 2. **Inline labels.** Highlights spans inside block text as `[Input]` /
    `[Tool]` / `[Parameter]` / `[Output]` (internal keys `material` /
    `tool` / `attribute` / `output`). Offered **only inside a step**, for
@@ -1332,7 +1342,11 @@ Key pieces:
 - **Share targets** — notes and Knowledge (wiki) pages share as full
   documents (a Knowledge page forks back into the wiki, with
   environment-bound lineage fields reset); single media files and
-  references share as manifests
+  references share as manifests. The shared copy leaves out the note's
+  AI chats and edit history by default — sharing publishes the record,
+  not the working process — and a Settings → Storage switch (mirrored as
+  a checkbox in the bulk share dialog) puts them back for people who
+  want the process shared too (DATA_MODEL.md §7.1)
 - **`src/features/sharing/`** — Library view, Share / Unshare actions, Fork
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
@@ -1368,6 +1382,84 @@ a `templateFrom` origin field instead of `forkedFrom`. The same
 conversion also powers a "Team templates" section inside the `/template`
 slash-command picker (`TemplatePickerModal`), which inserts the chosen
 template at the cursor instead of opening a new note.
+
+Each shared entry can be read two ways, mirroring how the personal side
+opens a note: a click opens it in the **detail panel** (side peek, next to
+the table — `SharedEntryDetail` in `SharedLibraryView.tsx`), a double-click
+or the panel's "Open in full view" button opens `SharedNoteView.tsx`, a
+full-page read-only view at `#shared-entry/<id>` with the same header
+(breadcrumb, title, actions) and a right rail (Comments / Ask AI /
+History / Process / Backlinks, same icon column as the personal note
+view). Both views share the same body renderer (`SharedEntryBody.tsx`)
+and the same meta/action/history building blocks
+(`shared-entry-parts.tsx`) so there is one place that knows how to render
+a shared entry, not two.
+
+**Ask AI** (`SharedNoteChatPanel.tsx`, full view only — the detail panel
+does not offer it) asks about the entry you are reading. It takes the
+light path the material full view uses — `runAgent` called directly, not
+the note editor's `chat-run-manager` — because there is no note to write
+an answer back into, and adds conversation history, `session_id`, cross
+search and Stop on top of it, so a shared entry can be discussed the way
+a note can. The consequence of the light path is that **leaving the page
+loses an answer still being generated**; background continuation is
+addressed by chat id, which shared entries do not have. What the model
+sees is two layers, the same shape `quoted-context.ts` uses for notes:
+the shared body as Markdown (capped at 20,000 characters, re-sent with
+every turn rather than accumulated in history) as background, and a
+clicked paragraph, if any, as the subject. Only `pages[].blocks` is read
+— a shared note's own `chats` and `documentProvenance` never reach the
+model. Conversations are **never written to the shared folder**: they
+live in local app data under `shared-chats:<sharedId>`
+(DATA_MODEL.md §2.5), the same `ScopeChat[]` shape and the same
+persistence hook the material view uses. Nothing is recorded in
+provenance, and the answer offers no "insert" / "replace" / "derive a
+note" actions — this is reading someone else's material, not editing
+your own. The tab appears only when an AI model is configured and the
+entry has a body to discuss (not for material manifests or comments);
+whether the cross search reaches other shared entries follows the
+existing Settings → Storage switch.
+
+### 5.1 Teacher ⇄ student round trips
+
+Feedback on a shared entry can flow back through three independent
+paths, all built on the primitives above — there is no dedicated
+"review" workflow:
+
+```mermaid
+flowchart LR
+    T["Teacher"] -->|"comment (comments/)"| S["Shared entry"]
+    U["Student"] -->|"re-share (same id)<br/>appends history[]"| S
+    U -->|"fork / new note from<br/>template + sharedCitation"| N["New shared entry"]
+    N -.->|"projection v2:<br/>citedSharedIds /<br/>forkedFromSharedId /<br/>templateFromSharedId"| S
+```
+
+- **Comments** (`SharedEntryType: "comment"`, DATA_MODEL.md §7.1.1) —
+  a lightweight, author-owned envelope attached to a target id (and
+  optionally a paragraph). One reply level, no "resolved" flag: editing
+  the target and re-sharing changes its `hash`, which automatically
+  folds prior comments into "comments on an older version"
+  (`splitByTargetVersion`). Comments never enter the vocabulary index,
+  the projection cache, or blob GC — they are feedback, not shared
+  material, and are not reflected in PROV in v1.
+- **Re-sharing** (same id, new content) appends to `history[]`
+  (DATA_MODEL.md §7.1) so a viewer can see *that* something changed and
+  *how many times*, without diffing bodies. Library rows read the local
+  `graphium-shared-seen` store (§7.7) to flag rows whose `hash` moved
+  since last opened, and new comments since last opened, without either
+  signal touching the shared folder itself.
+- **Reply notes and forks** ("write a reply note with a citation card"
+  and "fork/redo and re-share") are the pre-existing citation and fork
+  mechanisms — nothing new here. What is new is that projection v2
+  (DATA_MODEL.md §7.6) now carries `citedSharedIds` /
+  `forkedFromSharedId` / `templateFromSharedId` in shared-id space, so
+  `buildReverseLinks()` can answer "who points back at this entry" and
+  the Library detail panel can render it, closing the loop without a
+  round trip through the original author.
+
+The Library's automatic refresh (`useSharedLibrarySync`, throttled to
+once per 30s) picks up comments and re-shares from other users when the
+tab regains focus or visibility, without a manual reload.
 
 Today the shared backend is a local folder. Other backends (cloud
 buckets, S3, IPFS-style) can be added by implementing the same blob

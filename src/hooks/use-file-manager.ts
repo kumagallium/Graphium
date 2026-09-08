@@ -65,6 +65,7 @@ import {
 import {
   saveMediaIndex,
   setMediaEntryContexts,
+  remapMediaContexts,
   createEmptyIndex,
   addMediaEntry,
   removeMediaEntry,
@@ -2240,6 +2241,28 @@ export function useFileManager(authenticated: boolean) {
       console.warn("素材のフォルダ保存に失敗:", err);
     }
   }, []);
+  /**
+   * フォルダの改名 / 削除を素材にも波及させる（`to` が null なら取り除く）。
+   * ノート由来の導出フォルダはノート側が直れば自然に追従するので、ここで直すのは
+   * 素材が自前で持っている分（手で入れたフォルダ）。
+   */
+  const remapMediaContextsEverywhere = useCallback(
+    async (from: string, to: string | null): Promise<number> => {
+      const current = mediaIndexRef.current;
+      if (!current) return 0;
+      const { index: updated, changed } = remapMediaContexts(current, from, to);
+      if (changed === 0) return 0;
+      mediaIndexRef.current = updated;
+      setMediaIndex(updated);
+      try {
+        await saveMediaIndex(updated);
+      } catch (err) {
+        console.error("素材のフォルダ一括更新の保存に失敗:", err);
+      }
+      return changed;
+    },
+    [],
+  );
   const handleRenameMedia = useCallback(async (entry: MediaIndexEntry, newName: string) => {
     // URL ブックマークは Drive ファイルがないのでインデックスのみ更新
     if (entry.type !== "url") {
@@ -3133,6 +3156,7 @@ export function useFileManager(authenticated: boolean) {
     countSnapshotRefsForAsset,
     handleRenameMedia,
     updateMediaContexts,
+    remapMediaContextsEverywhere,
     handleUpdateMediaSharedRef,
     handleAddUrlBookmark,
     handleCreateNoteFromDocument,

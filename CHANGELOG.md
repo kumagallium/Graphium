@@ -1,5 +1,44 @@
 # Changelog
 
+## [v0.61.2](https://github.com/kumagallium/Graphium/compare/v0.61.1...v0.61.2) - 2026-09-08
+
+- [fix] Stop SidePeek reload loop when peeking a saved version by @kumagallium in https://github.com/kumagallium/Graphium/pull/864
+
+## [v0.61.1](https://github.com/kumagallium/Graphium/compare/v0.61.0...v0.61.1) - 2026-09-08
+
+- [fix] Keep the pending step-flow auto-layout request when the sync effect re-runs by @kumagallium in https://github.com/kumagallium/Graphium/pull/862
+- [feat] Shift-click to select a range in every list by @kumagallium in https://github.com/kumagallium/Graphium/pull/861
+
+## [v0.61.0](https://github.com/kumagallium/Graphium/compare/v0.60.0...v0.61.0) - 2026-09-08
+
+- [docs] Add the Ask AI figure for shared notes to the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/854
+- [fix] Let the materials bulk bar wrap beside the side peek and align tile overlays to the 8px grid by @kumagallium in https://github.com/kumagallium/Graphium/pull/856
+- [feat] Select memos in the gallery view and show the bulk bar in both views by @kumagallium in https://github.com/kumagallium/Graphium/pull/855
+- [feat] Leave AI chats and edit history out of shared copies by default by @kumagallium in https://github.com/kumagallium/Graphium/pull/857
+
+## [v0.60.0](https://github.com/kumagallium/Graphium/compare/v0.59.0...v0.60.0) - 2026-09-08
+
+- [feat] ステップのパラメータ表を複数行にして「段階」として記録できるようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/858
+
+## [v0.59.0](https://github.com/kumagallium/Graphium/compare/v0.58.0...v0.59.0) - 2026-09-07
+
+- [feat] Select materials in the gallery view and show the bulk bar in both views by @kumagallium in https://github.com/kumagallium/Graphium/pull/850
+- [feat] Ask AI about a shared entry from the full view's right rail by @kumagallium in https://github.com/kumagallium/Graphium/pull/851
+- [docs] Add manual screenshots for the shared library tabs, comments, and full view by @kumagallium in https://github.com/kumagallium/Graphium/pull/852
+
+## [v0.58.0](https://github.com/kumagallium/Graphium/compare/v0.57.0...v0.58.0) - 2026-09-07
+
+- [docs] Add v0.55.0 and v0.56.0 to the manual and repair the roadmap table by @kumagallium in https://github.com/kumagallium/Graphium/pull/839
+- [feat] Open a shared entry in a full view with comments, history, steps, and backlinks by @kumagallium in https://github.com/kumagallium/Graphium/pull/847
+
+## [v0.57.0](https://github.com/kumagallium/Graphium/compare/v0.56.0...v0.57.0) - 2026-09-06
+
+- [feat] Comment on shared entries and keep the teacher-student loop visible by @kumagallium in https://github.com/kumagallium/Graphium/pull/842
+
+## [v0.56.0](https://github.com/kumagallium/Graphium/compare/v0.55.0...v0.56.0) - 2026-09-06
+
+- [feat] Let memos take folders, and carry every folder rename through by @kumagallium in https://github.com/kumagallium/Graphium/pull/841
+
 ## [v0.55.0](https://github.com/kumagallium/Graphium/compare/v0.54.0...v0.55.0) - 2026-09-04
 
 - [feat] Send from your phone into a folder, and align the material peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/832

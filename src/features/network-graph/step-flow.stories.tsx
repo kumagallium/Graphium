@@ -223,9 +223,15 @@ const INITIAL_TABLES: Record<string, TableData> = {
   },
 };
 
-function Playground() {
-  const [graph, setGraph] = useState<FlowGraphData>(RICH_GRAPH);
-  const [tables, setTables] = useState<Record<string, TableData>>(INITIAL_TABLES);
+function Playground({
+  initialGraph = RICH_GRAPH,
+  initialTables = INITIAL_TABLES,
+}: {
+  initialGraph?: FlowGraphData;
+  initialTables?: Record<string, TableData>;
+} = {}) {
+  const [graph, setGraph] = useState<FlowGraphData>(initialGraph);
+  const [tables, setTables] = useState<Record<string, TableData>>(initialTables);
   const counter = useRef(0);
 
   const patchTable = (blockId: string, fn: (t: TableData) => TableData) =>
@@ -564,4 +570,32 @@ function Playground() {
 export const InteractivePlayground: Story = {
   name: "Playground / 全操作",
   render: () => <Playground />,
+};
+
+// ── 段階（stage）行: [パラメータ] 表のデータ行が複数あるケース ──
+// 段階＝表のデータ行 1 つ・行順＝段階順（stage-rows-contract.md）。
+// Playground をそのまま流用するので、「段階を追加」ボタンは
+// InteractivePlayground と同じ onAddRow で表の行を増やす
+
+const MULTI_STAGE_GRAPH: FlowGraphData = {
+  steps: [{ id: "s-heat", name: "焼成プロファイル", params: [] }],
+  entities: [],
+  edges: [],
+};
+
+const MULTI_STAGE_TABLES: Record<string, TableData> = {
+  "param-s-heat": {
+    blockId: "param-s-heat",
+    headers: ["温度", "保持時間"],
+    rows: [
+      ["200C", "10min"],
+      ["500C", "30min"],
+      ["900C", "2h"],
+    ],
+  },
+};
+
+export const MultiStageParams: Story = {
+  name: "段階（stage）行 / パラメータ表の複数行",
+  render: () => <Playground initialGraph={MULTI_STAGE_GRAPH} initialTables={MULTI_STAGE_TABLES} />,
 };

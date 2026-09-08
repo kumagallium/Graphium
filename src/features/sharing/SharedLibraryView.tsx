@@ -11,23 +11,10 @@
 // 設計詳細: docs/internal/team-shared-storage-design.md §3 Library / §8 共有 Concept
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  Check,
-  ExternalLink,
-  FilePlus2,
-  GitFork,
-  Library,
-  Link2,
-  RefreshCw,
-  Trash2,
-  X,
-} from "lucide-react";
+import { AlertTriangle, Library, Maximize2, RefreshCw, X } from "lucide-react";
 import type { AuthorIdentity } from "../document-provenance/types";
 import {
   LocalFolderSharedProvider,
-  LocalFolderBlobProvider,
-  getBlobRoot,
   type BlobRef,
   type SharedEntry,
   type SharedEntryType,
@@ -38,46 +25,39 @@ import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { type SharedLibraryLoadResult } from "./shared-library-loader";
 import {
   groupSharedEntriesByType,
-  readSharedEntryBody,
   refreshSharedLibrary,
   useSharedLibrary,
 } from "./shared-library-store";
 import { buildSharedCitationLink } from "./citation-link";
 import {
+  buildReverseLinks,
   buildSharedProcessIndex,
   countProjectedLabelNotes,
   countProjectedProcessNotes,
   useSharedProjection,
+  type SharedReverseLinks,
 } from "./shared-projection";
+import { SharedEntryComments } from "./SharedEntryComments";
 import { SharedLabelsTab, SharedProjectionHint } from "./SharedLabelsTab";
 import { ProcessGalleryView } from "../network-graph/ProcessGalleryView";
-import {
-  collectSharedBlobHashes,
-  rewriteSharedBlobUrls,
-} from "./materialize-blobs";
-import { formatDate } from "../../lib/format-datetime";
-import { t, useT } from "../../i18n";
-import { SandboxEditor } from "../../base/editor";
-import { customBlockEntries, sanitizeBlocksForLoad } from "../../blocks/registry";
-import { useRemoteContentScope } from "../../blocks/remote-content";
-import {
-  LabelStoreProvider,
-  ProvLabelsEnabledProvider,
-} from "../context-label/store";
-import { LinkStoreProvider } from "../block-link/store";
-import { TableMetaStoreProvider } from "../table-meta/store";
-import { MediaInlineLabelProvider } from "../inline-label/media-store";
-import { BlockAlignmentProvider } from "../block-alignment/store";
-import { AiAssistantProvider } from "../ai-assistant/store";
-import type { GraphiumDocument } from "../../lib/document-types";
-// 直接 save.ts から取る（features/template の index はピッカーのモーダルまで引き込むため）
-import { deserializeTemplate } from "../template/save";
-import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
+import { readSeenStore } from "./shared-seen";
+import { useT } from "../../i18n";
 import {
   SharedLibraryTable,
   type SharedLibraryTab,
 } from "./SharedLibraryTable";
-import { HashBadge, type HashStatus } from "./hash-badge";
+import { type HashStatus } from "./hash-badge";
+// 全画面表示（SharedNoteView）と共用する部品。見た目・条件を二重に持たない
+import { SharedEntryBody, useSharedEntryBodyText } from "./SharedEntryBody";
+import {
+  ReverseLinksSection,
+  SharedEntryActions,
+  SharedEntryHistory,
+  SharedEntryMeta,
+  sharedEntryTitle as entryTitle,
+  sharedEntryTypeLabel as entryTypeLabel,
+} from "./shared-entry-parts";
+import { useSharedPreviewAnchor } from "./use-shared-preview-anchor";
 
 type Props = {
   /** Settings の shared root path */
@@ -97,6 +77,13 @@ type Props = {
   /** 自分作ノートの Unshare（成功時はリストを再読み込み） */
   onUnshare: (entry: SharedEntry) => Promise<void>;
   onBack: () => void;
+  /**
+   * 共有エントリを全画面（SharedNoteView）で開く。入り方は個人のノートの鏡で、
+   * 表のダブルクリックと詳細パネル見出しの「開く」の 2 つ。
+   * 未指定なら「開く」を出さない（全画面を持たない環境・Storybook の既定）。
+   * ラベル / プロセスタブからの「ノートを開く」は従来どおりサイドピークのまま。
+   */
+  onOpenFull?: (entry: SharedEntry) => void;
   /** 引用カードの「開く」から特定エントリを選択表示で開く（consume 後に onFocusConsumed） */
   focusEntryId?: string | null;
   onFocusConsumed?: () => void;
@@ -105,6 +92,14 @@ type Props = {
    * 指定するとストアを使わずこちらから読む（Storybook のモック用 DI）。
    */
   loadEntries?: (root: string) => Promise<SharedLibraryLoadResult>;
+  /**
+   * 詳細パネルが読む本文（ノート本文とコメント本文の両方）。既定は共有ストア
+   * （readSharedEntryBody）。共有フォルダを読めない場所（Storybook / テスト）で
+   * 差し替える。entry.type で中身を出し分ける想定。
+   */
+  readEntryBody?: (
+    entry: SharedEntry,
+  ) => Promise<{ body: Uint8Array; verified: boolean }>;
   /** 初期表示タブ（既定 "note"） */
   initialTab?: SharedLibraryTab;
   /**
@@ -148,25 +143,6 @@ function isForkable(type: SharedEntryType): boolean {
   return type === "note" || type === "knowledge";
 }
 
-function entryTitle(entry: SharedEntry, translate: (k: string) => string): string {
-  const title = (entry.extra as Record<string, unknown> | undefined)?.title;
-  if (typeof title === "string" && title.trim()) return title;
-  return translate("library.untitled");
-}
-
-/** 詳細パネルの type ラベル（note/knowledge はタブ名、reference/data-manifest は素材種別名） */
-function entryTypeLabel(entry: SharedEntry, translate: (k: string, p?: Record<string, string>) => string): string {
-  if (entry.type === "note") return translate("library.tab.note");
-  if (entry.type === "knowledge") return translate("library.tab.knowledge");
-  if (entry.type === "template") return translate("library.tab.template");
-  if (entry.type === "reference") return translate("asset.type.url");
-  if (entry.type === "data-manifest") {
-    const mediaType = (entry.extra as Record<string, unknown> | undefined)?.media_type;
-    return translate(`asset.type.${typeof mediaType === "string" ? mediaType : "other"}`);
-  }
-  return entry.type;
-}
-
 export function SharedLibraryView({
   sharedRoot,
   currentIdentity,
@@ -175,9 +151,11 @@ export function SharedLibraryView({
   onCreateNoteFromTemplate,
   onUnshare,
   onBack,
+  onOpenFull,
   focusEntryId,
   onFocusConsumed,
   loadEntries,
+  readEntryBody,
   initialTab = "note",
   onImportBlob,
   onOpenNoteList,
@@ -196,6 +174,7 @@ export function SharedLibraryView({
     template: [],
     knowledge: [],
     report: [],
+    comment: [],
   });
   const [diLoadErrors, setDiLoadErrors] = useState<
     Partial<Record<SharedEntryType, string>>
@@ -207,6 +186,9 @@ export function SharedLibraryView({
   const loadErrors = loadEntries ? diLoadErrors : shared.errors;
   const loading = loadEntries ? diLoading : shared.loading;
   const [selected, setSelected] = useState<SharedEntry | null>(null);
+  // 既読の控え（localStorage）を読み直す合図。詳細パネルが記録したら進める
+  // —— これが無いと、開いた行の「新着」の印が次の再描画まで残る
+  const [seenTick, setSeenTick] = useState(0);
   const [hashStatus, setHashStatus] = useState<Record<string, HashStatus>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   // 「引用リンクをコピー」の完了フィードバック（1.5 秒だけチェック表示）
@@ -281,6 +263,39 @@ export function SharedLibraryView({
   // プロセスタブに渡す ProcessIndex。毎レンダーで作り直すと ProcessGalleryView 内の
   // フローが作り直されて重いので、投影が変わったときだけ組み立てる
   const sharedProcessIndex = useMemo(() => buildSharedProcessIndex(projection), [projection]);
+
+  // 「更新あり」「新着コメント N」の判定に使う控え。localStorage 読み出しなので
+  // 行ごとではなくここで 1 回だけ取り、記録されたら取り直す
+  const seenSnapshot = useMemo(
+    () => readSeenStore(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seenTick, entriesByType],
+  );
+
+  // 引用・派生・テンプレート利用の逆引き（投影から作る純関数の結果）。
+  // 投影は本文を読めた共有ノートの分だけなので、読み込み前は少なく見える
+  const reverseLinks = useMemo(() => buildReverseLinks(projection), [projection]);
+
+  // 逆引きの行から相手のエントリを開く / 題名を出すための id 索引。
+  // タブをまたいで探す（引用元がノートとは限らない）
+  const entryById = useMemo(() => {
+    const map = new Map<string, SharedEntry>();
+    for (const list of Object.values(entriesByType)) {
+      for (const e of list) map.set(e.id, e);
+    }
+    return map;
+  }, [entriesByType]);
+
+  const openEntryById = useCallback(
+    (id: string) => {
+      const hit = entryById.get(id);
+      if (!hit) return;
+      const tab = typeToTab(hit.type);
+      if (tab) setActiveTab(tab);
+      setSelected(hit);
+    },
+    [entryById],
+  );
 
   // ラベル / プロセスの行から「ノートを開く」= 一覧の詳細パネルで開く。
   // 共有ノートは個人のノートとして開けないので、遷移先はここになる
@@ -521,12 +536,17 @@ export function SharedLibraryView({
             busyId={busyId}
             copiedId={copiedId}
             onSelect={setSelected}
+            onOpenFull={onOpenFull}
             onVerifyHash={verifyHash}
             onCopyCitation={copyCitationLink}
             onFork={handleFork}
             onUnshare={handleUnshare}
             blobParents={activeTab === "asset" ? blobParents : undefined}
             onImportBlob={onImportBlob}
+            // コメントは一覧タブに出さないが、行の「新着コメント N」には数が要る。
+            // DI（Storybook）でも同じ経路で渡るよう、読み出し済みの封筒をそのまま渡す
+            commentEntries={entriesByType.comment}
+            seenStore={seenSnapshot}
           />
         )}
       </div>
@@ -544,6 +564,16 @@ export function SharedLibraryView({
           }
           hashStatus={hashStatus[selected.id] ?? "unknown"}
           sharedRoot={sharedRoot}
+          currentIdentity={currentIdentity}
+          commentEntries={entriesByType.comment}
+          readEntryBody={readEntryBody}
+          reverseLinks={reverseLinks.get(selected.id)}
+          entryTitleById={(id) => {
+            const hit = entryById.get(id);
+            return hit ? entryTitle(hit, uiT) : null;
+          }}
+          onOpenEntry={openEntryById}
+          onSeenRecorded={() => setSeenTick((v) => v + 1)}
           onVerifyHash={() => verifyHash(selected)}
           onFork={
             isForkable(selected.type)
@@ -556,6 +586,7 @@ export function SharedLibraryView({
               : undefined
           }
           onUnshare={() => handleUnshare(selected)}
+          onOpenFull={onOpenFull ? () => onOpenFull(selected) : undefined}
           onClose={() => setSelected(null)}
         />
       )}
@@ -571,11 +602,29 @@ type DetailProps = {
   isMine: boolean;
   hashStatus: HashStatus;
   sharedRoot: string;
+  /** コメントの投稿者。未登録（null）ならコメント欄は案内文だけになる */
+  currentIdentity: AuthorIdentity | null;
+  /** 読み出し済みのコメント封筒（DI 経路でも同じものを見せる） */
+  commentEntries?: readonly SharedEntry[];
+  /** DI: 本文の取り寄せ（既定は共有ストア経由） */
+  readEntryBody?: (
+    entry: SharedEntry,
+  ) => Promise<{ body: Uint8Array; verified: boolean }>;
+  /** このエントリを指している共有ノート（引用・派生・テンプレート利用）。無ければ 0 件 */
+  reverseLinks?: SharedReverseLinks;
+  /** 逆引きの行に出す題名（読めていない / 消えた id は null） */
+  entryTitleById?: (id: string) => string | null;
+  /** 逆引きの行のクリックでそのエントリを開く */
+  onOpenEntry?: (id: string) => void;
+  /** コメント節が既読を記録したことの通知（一覧の印を消すため） */
+  onSeenRecorded?: () => void;
   onVerifyHash: () => void;
   onFork?: () => void;
   /** テンプレートのときだけ渡る（自分作・他人作を問わず出す） */
   onCreateFromTemplate?: () => void;
   onUnshare: () => void;
+  /** 全画面（SharedNoteView）へ昇格。渡されたときだけ見出しに「開く」を出す */
+  onOpenFull?: () => void;
   onClose: () => void;
 };
 
@@ -584,18 +633,24 @@ function SharedEntryDetail({
   isMine,
   hashStatus,
   sharedRoot,
+  currentIdentity,
+  commentEntries,
+  readEntryBody,
+  reverseLinks,
+  entryTitleById,
+  onOpenEntry,
+  onSeenRecorded,
   onVerifyHash,
   onFork,
   onCreateFromTemplate,
   onUnshare,
+  onOpenFull,
   onClose,
 }: DetailProps) {
   const uiT = useT();
-  const [body, setBody] = useState<string | null>(null);
-  const [bodyError, setBodyError] = useState<string | null>(null);
-  // 「引用リンクをコピー」の完了フィードバック（コンポーネントは entry ごとに
-  // key remount されるため、ローカル state で持って問題ない）
-  const [citationCopied, setCitationCopied] = useState(false);
+  // 本文の取り寄せ・段落の指定は全画面表示（SharedNoteView）と同じ実装を使う
+  const { body, bodyError } = useSharedEntryBodyText(entry, readEntryBody);
+  const preview = useSharedPreviewAnchor(entry.type);
   // 既存ノートのサイドピークと同じ幅設定を共有する（storage key 共通 = 幅の記憶も共通）
   const peekResize = useSidePeekWidth();
 
@@ -607,26 +662,6 @@ function SharedEntryDetail({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // 共有ストア経由（本文は id|hash で LRU キャッシュされる。語彙索引が
-        // 直前に読んでいれば I/O ゼロ）
-        const { body: bytes } = await readSharedEntryBody(entry);
-        if (cancelled) return;
-        const text = new TextDecoder().decode(bytes);
-        setBody(text);
-      } catch (e) {
-        if (cancelled) return;
-        setBodyError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [entry]);
 
   const title = entryTitle(entry, uiT);
 
@@ -659,57 +694,75 @@ function SharedEntryDetail({
               {entry.author?.name ?? uiT("library.unknownAuthor")} · {entry.author?.email ?? ""}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-            aria-label={uiT("common.close")}
-          >
-            <X size={16} />
-          </button>
+          {/* ナビゲーション（全画面 / 閉じる）は素材のサイドピークと同じく見出しの右に並べる */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            {onOpenFull && (
+              <button
+                onClick={onOpenFull}
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                title={uiT("library.openFull")}
+                aria-label={uiT("library.openFull")}
+                data-testid="shared-detail-open-full"
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              aria-label={uiT("common.close")}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* メタ情報 */}
         <div className="px-5 py-3 border-b border-border text-xs space-y-1.5 bg-muted/20">
-          <DetailRow label={uiT("library.detail.id")} value={<span className="font-mono break-all">{entry.id}</span>} />
-          <DetailRow label={uiT("library.detail.created")} value={formatDate(entry.created_at)} />
-          <DetailRow label={uiT("library.detail.updated")} value={formatDate(entry.updated_at)} />
-          <DetailRow
-            label={uiT("library.detail.hash")}
-            value={
-              <span className="flex items-center gap-2">
-                <span className="font-mono text-[10px] truncate max-w-[260px]" title={entry.hash}>
-                  {entry.hash.slice(0, 16)}…
-                </span>
-                <HashBadge
-                  status={hashStatus}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onVerifyHash();
-                  }}
-                />
-              </span>
-            }
-          />
-          {entry.prov.derived_from.length > 0 && (
-            <DetailRow
-              label={uiT("library.detail.derivedFrom")}
-              value={
-                <ul className="list-disc list-inside">
-                  {entry.prov.derived_from.map((id) => (
-                    <li key={id} className="font-mono text-[10px] truncate">
-                      {id}
-                    </li>
-                  ))}
-                </ul>
-              }
-            />
-          )}
+          <SharedEntryMeta entry={entry} hashStatus={hashStatus} onVerifyHash={onVerifyHash} />
         </div>
 
-        {/* type 別 read-only コンテンツ */}
-        <div className="flex-1 overflow-auto px-5 py-4">
-          <SharedEntryBody entry={entry} body={body} bodyError={bodyError} />
+        {/* type 別 read-only コンテンツ + 往復（履歴・逆引き・コメント） */}
+        <div className="flex-1 overflow-auto px-5 py-4 space-y-4">
+          {/* プレビューのクリックで「この段落に」付ける指定を作る */}
+          <div
+            ref={preview.previewRef}
+            data-preview-scope={preview.previewScopeId}
+            onClick={preview.handlePreviewClick}
+          >
+            <SharedEntryBody
+              entry={entry}
+              body={body}
+              bodyError={bodyError}
+              onEditorReady={preview.handleEditorReady}
+            />
+          </div>
+
+          <SharedEntryHistory entry={entry} />
+
+          <ReverseLinksSection
+            links={reverseLinks}
+            entryTitleById={entryTitleById}
+            onOpenEntry={onOpenEntry}
+          />
         </div>
+
+        {/* コメントのドック（スクロール領域の外・フッターの上）。
+            上の方の段落を選んでから下まで戻らなくても書けるよう、常に手元に置く */}
+        <SharedEntryComments
+          targetId={entry.id}
+          targetHash={entry.hash}
+          sharedRoot={sharedRoot}
+          currentIdentity={currentIdentity}
+          entries={commentEntries}
+          readBody={readEntryBody}
+          anchorLabel={preview.anchorLabel}
+          onJumpToBlock={preview.jumpToBlock}
+          pendingAnchor={preview.pendingAnchor}
+          onClearAnchor={preview.clearAnchor}
+          onSeenRecorded={onSeenRecorded}
+          layout="docked"
+        />
 
         {/* フッターアクション */}
         <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-2">
@@ -718,517 +771,14 @@ function SharedEntryDetail({
               ? uiT("share.updateHint")
               : uiT("share.readOnlyOthers")}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                void navigator.clipboard?.writeText(buildSharedCitationLink(entry.id));
-                setCitationCopied(true);
-                window.setTimeout(() => setCitationCopied(false), 1500);
-              }}
-              className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
-              title={uiT("share.copyCitationHint")}
-            >
-              {citationCopied ? (
-                <Check size={12} className="text-emerald-600" />
-              ) : (
-                <Link2 size={12} />
-              )}
-              {citationCopied ? uiT("share.copied") : uiT("share.copyCitation")}
-            </button>
-            {onCreateFromTemplate && (
-              <button
-                onClick={onCreateFromTemplate}
-                className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
-              >
-                <FilePlus2 size={12} />
-                {uiT("library.createFromTemplate")}
-              </button>
-            )}
-            {onFork && !isMine && (
-              <button
-                onClick={onFork}
-                className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
-              >
-                <GitFork size={12} />
-                {entry.type === "knowledge" ? uiT("library.forkToKnowledge") : uiT("library.forkToNotes")}
-              </button>
-            )}
-            {isMine && (
-              <button
-                onClick={onUnshare}
-                className="px-3 py-1.5 text-xs rounded border border-border hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive transition-colors flex items-center gap-1"
-              >
-                <Trash2 size={12} />
-                {uiT("library.unshare")}
-              </button>
-            )}
-          </div>
-        </div>
-    </div>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="text-muted-foreground w-20 shrink-0">{label}</span>
-      <div className="flex-1 min-w-0 text-foreground">{value}</div>
-    </div>
-  );
-}
-
-function SharedEntryBody({
-  entry,
-  body,
-  bodyError,
-}: {
-  entry: SharedEntry;
-  body: string | null;
-  bodyError: string | null;
-}) {
-  if (bodyError) {
-    return (
-      <div className="text-xs text-destructive flex items-center gap-2">
-        <AlertTriangle size={14} />
-        {t("library.detail.bodyLoadFailed", { error: bodyError })}
-      </div>
-    );
-  }
-  if (body === null) {
-    return <div className="text-xs text-muted-foreground">{t("common.loading")}</div>;
-  }
-
-  const extra = (entry.extra ?? {}) as Record<string, unknown>;
-
-  if (entry.type === "reference") {
-    const url = typeof extra.url === "string" ? extra.url : null;
-    const description =
-      typeof extra.description === "string" ? extra.description : null;
-    return (
-      <div className="space-y-2 text-sm">
-        {url && (
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-primary hover:underline break-all"
-          >
-            <ExternalLink size={12} />
-            {url}
-          </a>
-        )}
-        {description && (
-          <p className="text-foreground/90 whitespace-pre-wrap">{description}</p>
-        )}
-      </div>
-    );
-  }
-
-  if (entry.type === "data-manifest") {
-    return <DataManifestPreview entry={entry} />;
-  }
-
-  if (entry.type === "template") {
-    const description =
-      typeof extra.description === "string" ? extra.description : null;
-    return (
-      <div className="space-y-3">
-        {description && (
-          <p className="text-sm text-foreground/90 whitespace-pre-wrap">{description}</p>
-        )}
-        <SharedTemplatePreview body={body} />
-      </div>
-    );
-  }
-
-  if (entry.type === "note" || entry.type === "knowledge") {
-    // body は GraphiumDocument JSON。読み取り専用エディタでフル内容を表示する
-    return <SharedNotePreview body={body} />;
-  }
-
-  // report はテキスト系として中身をそのまま表示
-  return (
-    <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 p-3 rounded">
-      {body.slice(0, 8000)}
-    </pre>
-  );
-}
-
-// ── note の read-only preview ──
-//
-// shared 側の body（GraphiumDocument JSON）を読み取り専用エディタで描画する。
-// ノート内メディアは Share 時に `shared-blob:sha256:<hex>` へ置換されている
-// （auto-blob）ため、表示前に blob root から Blob URL を作って差し戻す。
-// 解決できない blob はそのまま残す（該当メディアだけ壊れ表示、本文は読める）。
-
-type NotePreviewState =
-  | { phase: "loading" }
-  | { phase: "ready"; blocks: unknown[] }
-  | { phase: "error" };
-
-// 共有側では解決できないメディア参照。
-// - shared-blob: … blob root 未設定 / blob 欠落で解決できなかったもの
-// - file-media: / local-media: … auto-blob 導入前に共有されたノートに残る、
-//   共有した本人のマシン専用の参照（実体が共有フォルダに無い）
-// これらを壊れ画像アイコンのまま出すと「リンク切れ？」と不安にさせるので、
-// ファイル名入りの案内テキストに置き換える。
-const UNRESOLVABLE_MEDIA_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
-
-function isUnresolvableMediaUrl(url: string): boolean {
-  return (
-    url.startsWith("shared-blob:") ||
-    url.startsWith("file-media://") ||
-    url.startsWith("local-media://")
-  );
-}
-
-function replaceUnresolvableMedia(blocks: any[]): any[] {
-  return blocks.map((b) => {
-    if (
-      UNRESOLVABLE_MEDIA_TYPES.has(b?.type) &&
-      typeof b?.props?.url === "string" &&
-      isUnresolvableMediaUrl(b.props.url)
-    ) {
-      const name =
-        typeof b.props.name === "string" && b.props.name ? b.props.name : b.type;
-      return {
-        type: "paragraph",
-        props: {},
-        content: [
-          {
-            type: "text",
-            text: `📎 ${name} — ${t("share.preview.mediaNotIncluded")}`,
-            styles: { italic: true },
-          },
-        ],
-        children: b.children ?? [],
-      };
-    }
-    if (b?.children?.length) {
-      return { ...b, children: replaceUnresolvableMedia(b.children) };
-    }
-    return b;
-  });
-}
-
-export function SharedNotePreview({ body }: { body: string }) {
-  const [state, setState] = useState<NotePreviewState>({ phase: "loading" });
-  // 共有ライブラリのプレビューも本文を描くので、外部メディアのゲートが要る。
-  // scope を渡さないと editorRemoteScope() が "" になり、ブロックはされるものの
-  // プレースホルダの「読み込む」が何も起こさない（allowRemoteContentFor("") は
-  // 早期 return する）。押しても無反応のボタンを出さないため、ここで scope を採る。
-  const remoteScope = useRemoteContentScope();
-
-  useEffect(() => {
-    let cancelled = false;
-    const createdUrls: string[] = [];
-    (async () => {
-      let doc: GraphiumDocument;
-      try {
-        doc = JSON.parse(body) as GraphiumDocument;
-        if (!Array.isArray(doc.pages)) throw new Error("not a GraphiumDocument");
-      } catch {
-        if (!cancelled) setState({ phase: "error" });
-        return;
-      }
-      // ノート内メディア（shared-blob:）→ Blob URL
-      const blobRoot = getBlobRoot();
-      const hashes = collectSharedBlobHashes(doc);
-      const mapping = new Map<string, string>();
-      if (blobRoot && hashes.length > 0) {
-        const provider = new LocalFolderBlobProvider(blobRoot);
-        for (const hash of hashes) {
-          try {
-            // get() は hash のみ参照するため、他フィールドはプレースホルダで足りる
-            const u = await provider.url({ provider: "local-folder", uri: "", hash, size: 0 });
-            mapping.set(hash, u);
-            createdUrls.push(u);
-          } catch {
-            // 未解決 blob は shared-blob: のまま残す
-          }
-        }
-      }
-      if (cancelled) return;
-      const resolved = rewriteSharedBlobUrls(doc, mapping);
-      // 全ページを「ページタイトル見出し + 本文」で連結（2 ページ目以降のみ見出しを挟む）
-      const blocks: unknown[] = [];
-      resolved.pages.forEach((page, i) => {
-        if (i > 0) {
-          blocks.push({
-            type: "heading",
-            props: { level: 2 },
-            content: [{ type: "text", text: page.title || t("library.detail.pageN", { n: String(i + 1) }), styles: {} }],
-            children: [],
-          });
-        }
-        blocks.push(
-          ...replaceUnresolvableMedia(sanitizeBlocksForLoad(page.blocks ?? [])),
-        );
-      });
-      setState({ phase: "ready", blocks });
-    })();
-    return () => {
-      cancelled = true;
-      for (const u of createdUrls) {
-        if (u.startsWith("blob:")) URL.revokeObjectURL(u);
-      }
-    };
-  }, [body]);
-
-  if (state.phase === "loading") {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-4">
-        <RefreshCw size={12} className="animate-spin" />
-        {t("share.preview.loading")}
-      </div>
-    );
-  }
-  if (state.phase === "error") {
-    // GraphiumDocument として読めない body は raw 表示にフォールバック
-    return (
-      <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/30 p-2 rounded">
-        {body.slice(0, 4000)}
-      </pre>
-    );
-  }
-  return (
-    <div className="shared-note-preview -mx-2 text-sm">
-      {/* SandboxEditor は SelectionToolbar / InlineAnchorController が常時
-          mount するため note-app と同じ Context 群を要求する（step ストーリーと
-          同じスタック）。Library パネルは Provider ツリーの外なのでここで
-          完結させる — ラベル・AI は無効の読み取り表示 */}
-      <ProvLabelsEnabledProvider enabled={false}>
-        <LabelStoreProvider>
-          <LinkStoreProvider>
-            <TableMetaStoreProvider>
-              <MediaInlineLabelProvider>
-                <BlockAlignmentProvider>
-                  <AiAssistantProvider aiAvailable={false}>
-                    <SandboxEditor
-                      blocks={customBlockEntries}
-                      initialContent={state.blocks as any[]}
-                      editable={false}
-                      remoteContentScope={remoteScope}
-                    />
-                  </AiAssistantProvider>
-                </BlockAlignmentProvider>
-              </MediaInlineLabelProvider>
-            </TableMetaStoreProvider>
-          </LinkStoreProvider>
-        </LabelStoreProvider>
-      </ProvLabelsEnabledProvider>
-    </div>
-  );
-}
-
-// ── template の read-only preview ──
-//
-// 本文は PageTemplate JSON（GraphiumDocument ではない）。ノートと同じ読み取り専用
-// ビューアで見せるため、擬似 GraphiumDocument に包んでから SharedNotePreview に渡す。
-// なぜ包むだけで足りるか: プレビューが読むのは pages[].blocks だけで、
-// shared-blob: の解決も doc の走査で行われるため。
-function SharedTemplatePreview({ body }: { body: string }) {
-  const pseudoBody = useMemo(() => {
-    try {
-      const template = deserializeTemplate(body);
-      if (!Array.isArray(template?.blocks)) return null;
-      const doc: GraphiumDocument = {
-        version: LATEST_DOCUMENT_VERSION,
-        title: template.name,
-        // 表示専用の擬似ドキュメント。日時はテンプレートの保存時刻で埋める
-        // （プレビューは読まないが GraphiumDocument の必須フィールド）
-        createdAt: template.savedAt,
-        modifiedAt: template.savedAt,
-        pages: [
-          {
-            id: "main",
-            title: template.pageTitle || template.name,
-            blocks: template.blocks,
-            labels: Object.fromEntries(template.labels ?? []),
-            provLinks: [],
-            knowledgeLinks: [],
-            ...(template.tableMeta ? { tableMeta: template.tableMeta } : {}),
-            ...(template.mediaInlineLabels
-              ? { mediaInlineLabels: template.mediaInlineLabels }
-              : {}),
-          },
-        ],
-      };
-      return JSON.stringify(doc);
-    } catch {
-      return null;
-    }
-  }, [body]);
-
-  // PageTemplate として読めない body は raw 表示にフォールバック（ノートと同じ扱い）
-  if (!pseudoBody) {
-    return (
-      <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/30 p-2 rounded">
-        {body.slice(0, 4000)}
-      </pre>
-    );
-  }
-  return <SharedNotePreview body={pseudoBody} />;
-}
-
-// ── data-manifest の inline preview ──
-
-function DataManifestPreview({ entry }: { entry: SharedEntry }) {
-  const extra = (entry.extra ?? {}) as Record<string, unknown>;
-  const blobs: BlobRef[] = Array.isArray(extra.blobs)
-    ? (extra.blobs as BlobRef[]).filter(
-        (b) => b && typeof b.hash === "string" && typeof b.uri === "string",
-      )
-    : [];
-  const mime = typeof extra.mime_type === "string" ? extra.mime_type : null;
-  const mediaType = typeof extra.media_type === "string" ? extra.media_type : null;
-  const original =
-    typeof extra.original_filename === "string"
-      ? extra.original_filename
-      : null;
-
-  return (
-    <div className="space-y-3 text-sm">
-      {mime && (
-        <div className="text-xs text-muted-foreground">{t("library.detail.mime", { mime })}</div>
-      )}
-      {original && (
-        <div className="text-xs text-muted-foreground">
-          {t("library.detail.originalFilename", { name: original })}
-        </div>
-      )}
-      {blobs.map((b) => (
-        <BlobPreviewCard key={b.hash} blob={b} mime={mime} mediaType={mediaType} />
-      ))}
-    </div>
-  );
-}
-
-function BlobPreviewCard({
-  blob,
-  mime,
-  mediaType,
-}: {
-  blob: BlobRef;
-  mime: string | null;
-  mediaType: string | null;
-}) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const blobRoot = getBlobRoot();
-
-  // 画像は自動ロード（軽量）。PDF / 動画 / 音声はクリックでロード
-  const isImage = (mime ?? "").startsWith("image/") || mediaType === "image";
-  const isPdf = mime === "application/pdf" || mediaType === "pdf";
-  const isVideo = (mime ?? "").startsWith("video/") || mediaType === "video";
-  const isAudio = (mime ?? "").startsWith("audio/") || mediaType === "audio";
-
-  const loadUrl = useCallback(async () => {
-    if (!blobRoot || url) return;
-    setLoading(true);
-    try {
-      const provider = new LocalFolderBlobProvider(blobRoot);
-      const u = await provider.url(blob);
-      setUrl(u);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [blobRoot, blob, url]);
-
-  // 画像は自動で blob URL を取りに行く
-  useEffect(() => {
-    if (isImage) void loadUrl();
-    return () => {
-      if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isImage]);
-
-  return (
-    <div className="rounded border border-border bg-muted/30 overflow-hidden">
-      {/* preview slot */}
-      {!blobRoot ? (
-        <div className="p-3 text-xs text-muted-foreground">
-          {t("share.noBlobRootPreview")}
-        </div>
-      ) : error ? (
-        <div className="p-3 text-xs text-destructive flex items-center gap-2">
-          <AlertTriangle size={12} />
-          {error}
-        </div>
-      ) : isImage ? (
-        url ? (
-          <img
-            src={url}
-            alt={blob.filename ?? blob.hash}
-            className="w-full max-h-[480px] object-contain bg-checkerboard"
+          <SharedEntryActions
+            entry={entry}
+            isMine={isMine}
+            onFork={onFork}
+            onCreateFromTemplate={onCreateFromTemplate}
+            onUnshare={onUnshare}
           />
-        ) : (
-          <div className="p-6 text-xs text-muted-foreground text-center">
-            {loading ? t("library.detail.loading") : t("library.detail.preparing")}
-          </div>
-        )
-      ) : isPdf ? (
-        url ? (
-          <embed
-            src={url}
-            type="application/pdf"
-            className="w-full h-[640px] block"
-          />
-        ) : (
-          <button
-            onClick={() => void loadUrl()}
-            disabled={loading}
-            className="w-full p-6 text-xs text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
-          >
-            {loading ? t("library.detail.loading") : t("library.detail.loadPdf")}
-          </button>
-        )
-      ) : isVideo ? (
-        url ? (
-          <video
-            src={url}
-            controls
-            className="w-full max-h-[480px] block bg-black"
-          />
-        ) : (
-          <button
-            onClick={() => void loadUrl()}
-            disabled={loading}
-            className="w-full p-6 text-xs text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
-          >
-            {loading ? t("library.detail.loading") : t("library.detail.loadVideo")}
-          </button>
-        )
-      ) : isAudio ? (
-        url ? (
-          <audio src={url} controls className="w-full p-3" />
-        ) : (
-          <button
-            onClick={() => void loadUrl()}
-            disabled={loading}
-            className="w-full p-6 text-xs text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
-          >
-            {loading ? t("library.detail.loading") : t("library.detail.loadAudio")}
-          </button>
-        )
-      ) : (
-        <div className="p-3 text-xs text-muted-foreground">
-          {t("library.detail.noPreview")}
         </div>
-      )}
-
-      {/* meta */}
-      <div className="p-2 text-xs space-y-0.5 border-t border-border">
-        <div className="font-mono break-all">{blob.uri}</div>
-        <div className="text-muted-foreground">
-          {t("library.detail.bytes", { size: String(blob.size) })} ·{" "}
-          <span className="font-mono">{blob.hash.slice(0, 16)}…</span>
-        </div>
-      </div>
     </div>
   );
 }

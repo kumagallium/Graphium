@@ -42,6 +42,20 @@ describe("formatProvSummaryForPrompt", () => {
     expect(md).toContain("outputs: Al5Co2前駆体");
   });
 
+  it("stages があれば段階ごとに key=value を列挙する", () => {
+    const md = formatProvSummaryForPrompt({
+      activities: [{
+        label: "撹拌",
+        stages: [
+          { index: 1, params: { 温度: "100C", 時間: "10min" } },
+          { index: 2, params: { 温度: "200C" } },
+        ],
+      }],
+    });
+    expect(md).toContain("stage 1: 温度=100C, 時間=10min");
+    expect(md).toContain("stage 2: 温度=200C");
+  });
+
   it("key 無しの parameter は raw（または value）を採用する", () => {
     const md = formatProvSummaryForPrompt({
       activities: [{

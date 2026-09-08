@@ -91,6 +91,8 @@ import {
   setBlobRoot,
   getSharedAiEnabled,
   setSharedAiEnabled,
+  getShareIncludesPrivateHistory,
+  setShareIncludesPrivateHistory,
   pickSharedRoot,
   pickBlobRoot,
   pickInboxRoot,
@@ -368,6 +370,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [blobTestRunning, setBlobTestRunning] = useState(false);
   // 共有ライブラリを ⌘K / AI チャットの対象にするか（既定 ON）
   const [sharedAiEnabled, setSharedAiEnabledState] = useState<boolean>(() => getSharedAiEnabled());
+  // 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF）
+  const [shareIncludesPrivateHistory, setShareIncludesPrivateHistoryState] = useState<boolean>(() =>
+    getShareIncludesPrivateHistory(),
+  );
 
   // モバイル送信（デスクトップ = 受け取り側）— ストレージタブ。
   // 受信フォルダと「処理済みを _imported/ に残す」は受信箱ビューのフォルダ設定メニューと
@@ -675,6 +681,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setSharedAiEnabledState(next);
     // OFF にした瞬間に索引から共有分を外したいので、ここでも同じ通知を使う
     notifySharedLibraryChanged();
+  }, []);
+
+  // 共有コピーに AI チャットと編集来歴を含めるか。
+  // 次に共有・更新したときの中身が変わるだけで、既に置いてある共有コピーには
+  // 触らない（索引にも影響しないので notifySharedLibraryChanged は呼ばない）
+  const handleToggleSharePrivateHistory = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.checked;
+    setShareIncludesPrivateHistory(next);
+    setShareIncludesPrivateHistoryState(next);
   }, []);
 
   const handleTestSharedConnection = useCallback(async () => {
@@ -1987,6 +2002,24 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <span>{t("settings.shared.aiEnabled.title")}</span>
                       <span className="block text-[11px] text-muted-foreground mt-0.5">
                         {t("settings.shared.aiEnabled.help")}
+                      </span>
+                    </span>
+                  </label>
+                )}
+
+                {/* 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF・§24） */}
+                {sharedRoot && (
+                  <label className="rounded-md border border-border bg-background px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={shareIncludesPrivateHistory}
+                      onChange={handleToggleSharePrivateHistory}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <span className="text-xs text-foreground">
+                      <span>{t("settings.shared.includePrivateHistory.title")}</span>
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        {t("settings.shared.includePrivateHistory.help")}
                       </span>
                     </span>
                   </label>

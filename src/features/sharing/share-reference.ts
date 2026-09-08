@@ -19,6 +19,7 @@ import {
   computeSharedEntryHash,
   type SharedEntry,
 } from "../../lib/storage/shared";
+import { historyForUpdate } from "./share-history";
 
 export type ShareReferenceOptions = {
   /** Settings の shared root */
@@ -83,6 +84,12 @@ export async function shareReference(
     };
     const body = new TextEncoder().encode(JSON.stringify(referenceBody));
 
+    const provider = new LocalFolderSharedProvider(options.sharedRoot, {
+      email: options.author.email,
+    });
+    // 再共有なら旧版の hash を history に積む（上書き前に読む）
+    const history = await historyForUpdate(provider, id, isUpdate);
+
     const baseSharedEntry: SharedEntry = {
       id,
       type: "reference",
@@ -91,6 +98,7 @@ export async function shareReference(
       updated_at: now,
       hash: "", // provider.write が再計算する
       prov: { derived_from: [] },
+      ...(history ? { history } : {}),
       extra: {
         title,
         url: entry.url,
@@ -102,9 +110,6 @@ export async function shareReference(
     };
 
     const hash = await computeSharedEntryHash(baseSharedEntry, body);
-    const provider = new LocalFolderSharedProvider(options.sharedRoot, {
-      email: options.author.email,
-    });
     await provider.write(baseSharedEntry, body);
 
     const sharedRef: MediaSharedRef = {

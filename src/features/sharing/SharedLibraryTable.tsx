@@ -20,6 +20,13 @@ import {
   buildSharedBlobRows,
   type SharedAssetItem,
 } from "./shared-blob-rows";
+import { countCommentsByTarget } from "./shared-comments";
+import {
+  isUpdatedSince,
+  newCommentCount,
+  readSeenStore,
+  type SharedSeenStore,
+} from "./shared-seen";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { formatDate } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
@@ -46,6 +53,13 @@ export type SharedLibraryTableProps = {
   busyId: string | null;
   copiedId: string | null;
   onSelect: (entry: SharedEntry) => void;
+  /**
+   * 行のダブルクリックで全画面表示を開く。個人のノート一覧の鏡
+   * （クリック = サイドピーク、ダブルクリック = 全画面）。
+   * blob 行はそれ自体が共有エントリではないので、親ノートを渡す。
+   * 未指定ならダブルクリックしても選択のままにする（全画面を持たない環境）。
+   */
+  onOpenFull?: (entry: SharedEntry) => void;
   onVerifyHash: (entry: SharedEntry) => void;
   onCopyCitation: (entry: SharedEntry) => void;
   /** 他人作かつ fork 可能（note / knowledge）な行だけに出す */
@@ -62,6 +76,13 @@ export type SharedLibraryTableProps = {
    * 未指定にする（操作は無効化して理由をツールチップで出す）。
    */
   onImportBlob?: (parent: SharedEntry, blob: BlobRef) => Promise<void>;
+  /**
+   * DI: コメント封筒を含む共有エントリ一覧（新着コメントの数え上げに使う）。
+   * 既定は共有ストアのスナップショット。Storybook / テストで差し替える。
+   */
+  commentEntries?: readonly SharedEntry[];
+  /** DI: 既読の控え。既定は localStorage（graphium-shared-seen） */
+  seenStore?: SharedSeenStore;
 };
 
 const SORT_OPTIONS: { key: SharedLibrarySortKey; labelKey: string }[] = [
@@ -157,12 +178,15 @@ export function SharedLibraryTable({
   busyId,
   copiedId,
   onSelect,
+  onOpenFull,
   onVerifyHash,
   onCopyCitation,
   onFork,
   onUnshare,
   blobParents,
   onImportBlob,
+  commentEntries,
+  seenStore,
 }: SharedLibraryTableProps) {
   const t = useT();
   const showKindColumn = tab === "asset" || tab === "knowledge";
@@ -175,6 +199,21 @@ export function SharedLibraryTable({
   // 表は表示専用なので、フォルダの値はストアのスナップショットから引く
   // （共有時に書かれた extra を優先し、無ければ本文から拾った控えで補う）
   const sharedSnapshot = useSharedLibrary();
+
+  // ── 「更新あり」「新着コメント N」の印（手元の控えとの差分） ──
+  // コメント自体は一覧タブに出さない（対象に付くもの）が、行の印には数が要る。
+  const commentSource = commentEntries ?? sharedSnapshot.entries;
+  // 控えは localStorage 読み出しなので、行ごとではなく 1 回だけ取る。
+  // 詳細パネルを開くと控えが書き換わるため、選択が変わったら取り直す
+  const seen = useMemo(
+    () => seenStore ?? readSeenStore(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seenStore, selectedId, entries],
+  );
+  // 対象ごとのコメント件数。行ごとに数え直すと「表示行数 × コメント総数」の走査に
+  // なるので、コメント側を 1 回だけ走らせて対応表にする（行はそこから引くだけ）。
+  // 自動再読込・コメント投稿のたびに作り直されるため、ここの計算量が効いてくる
+  const commentCounts = useMemo(() => countCommentsByTarget(commentSource), [commentSource]);
 
   const [sortKey, setSortKey] = useState<SharedLibrarySortKey>("updatedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -516,8 +555,9 @@ export function SharedLibraryTable({
                   {t("library.col.sharedAt")}
                   {sortKey === "updatedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
+                {/* 「v1 · 更新 N 回」が入るので blob 行だけの頃より広く取る */}
                 <th
-                  className="py-2 px-3 w-[56px] cursor-pointer hover:text-foreground"
+                  className="py-2 px-3 w-[110px] cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("version")}
                 >
                   {t("library.col.version")}
@@ -538,6 +578,15 @@ export function SharedLibraryTable({
                 const kind = showKindColumn ? itemKind(item, t) : null;
                 const description = showDescriptionColumn && entry ? entryDescription(entry) : "";
                 const contexts = showFolderColumn ? contextsOf(source) : [];
+                // 印は共有エントリの行だけ（blob 行は共有エントリではない）。
+                // 「更新あり」は控えを持っていて hash が変わったとき・自分作には出さない
+                const isUpdated = entry
+                  ? isUpdatedSince(entry, currentIdentity?.email ?? null, seen)
+                  : false;
+                const newComments = entry
+                  ? newCommentCount(entry.id, commentCounts.get(entry.id) ?? 0, seen)
+                  : 0;
+                const updateCount = entry?.history?.length ?? 0;
                 return (
                   <tr
                     key={itemKey(item)}
@@ -546,6 +595,9 @@ export function SharedLibraryTable({
                       entry && selectedId === entry.id ? "bg-primary/5" : "",
                     )}
                     onClick={() => onSelect(source)}
+                    // 1 度目のクリックで選択（サイドピーク）が開いた上に全画面が重なる形。
+                    // 個人のノート一覧と同じ挙動なので、選択を打ち消す小細工はしない
+                    onDoubleClick={() => onOpenFull?.(source)}
                   >
                     <td className="py-2 px-3">
                       <span className="inline-flex items-center gap-1.5 text-foreground">
@@ -554,6 +606,22 @@ export function SharedLibraryTable({
                           <Paperclip size={12} className="text-muted-foreground shrink-0" />
                         )}
                         {itemTitle(item, t)}
+                        {isUpdated && (
+                          <span
+                            className="px-1 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[9px] shrink-0"
+                            title={t("comment.updatedBadgeHint")}
+                          >
+                            {t("comment.updatedBadge")}
+                          </span>
+                        )}
+                        {newComments > 0 && (
+                          <span
+                            className="px-1 py-0.5 rounded bg-primary/10 text-primary text-[9px] tabular-nums shrink-0"
+                            title={t("comment.newBadgeHint")}
+                          >
+                            {t("comment.newBadge", { count: String(newComments) })}
+                          </span>
+                        )}
                       </span>
                     </td>
                     {showFolderColumn && (
@@ -622,8 +690,20 @@ export function SharedLibraryTable({
                       {formatDate(source.updated_at)}
                     </td>
                     {/* blob は共有エントリではないので版も検証（hash 照合）も持たない。空欄にする */}
-                    <td className="py-2 px-3 text-xs text-muted-foreground tabular-nums">
-                      {entry ? `v${entry.version ?? 1}` : <span className="text-muted-foreground/30">—</span>}
+                    <td className="py-2 px-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                      {entry ? (
+                        <>
+                          {`v${entry.version ?? 1}`}
+                          {/* 同じ id を上書きした回数。版は変わらないので、ここでしか見えない */}
+                          {updateCount > 0 && (
+                            <span className="ml-1 text-[10px] text-muted-foreground/80">
+                              · {t("library.updateCount", { count: String(updateCount) })}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground/30">—</span>
+                      )}
                     </td>
                     <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
                       {entry ? (

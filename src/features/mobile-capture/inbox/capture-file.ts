@@ -28,6 +28,12 @@ export type GraphiumMemoCapturePayload = {
   /** モバイルで書いた時刻（ISO8601）。デスクトップのメモ createdAt に引き継ぐ。 */
   createdAt: string;
   text: string;
+  /**
+   * 送信時に指定されたフォルダ。取り込み時にメモの noteContexts へ入る。
+   * 生のメディアは名前に埋め込むが（push/naming.ts）、捕獲ファイルは元から
+   * JSON なのでここに置く。
+   */
+  folder?: string;
 };
 
 /** URL 捕獲のペイロード。メタデータはモバイル側で取得済みのものを運ぶ（デスクトップは再取得しない）。 */
@@ -76,12 +82,17 @@ function toCaptureFile(kind: GraphiumCaptureKind, payload: GraphiumCapturePayloa
 }
 
 /** メモ捕獲ファイルを作る（モバイルの [書く] → キュー）。 */
-export function buildMemoCaptureFile(text: string, now: Date = new Date()): File {
+export function buildMemoCaptureFile(
+  text: string,
+  now: Date = new Date(),
+  folder?: string,
+): File {
   const payload: GraphiumMemoCapturePayload = {
     graphium: GRAPHIUM_CAPTURE_FILE_VERSION,
     kind: "memo",
     createdAt: now.toISOString(),
     text,
+    ...(folder?.trim() ? { folder: folder.trim() } : {}),
   };
   return toCaptureFile("memo", payload);
 }
@@ -136,7 +147,13 @@ export function parseGraphiumCaptureFile(
 
   if (obj.kind === "memo") {
     if (!isNonEmptyString(obj.text)) return null;
-    return { graphium: GRAPHIUM_CAPTURE_FILE_VERSION, kind: "memo", createdAt, text: obj.text };
+    return {
+      graphium: GRAPHIUM_CAPTURE_FILE_VERSION,
+      kind: "memo",
+      createdAt,
+      text: obj.text,
+      ...(isNonEmptyString(obj.folder) ? { folder: obj.folder.trim() } : {}),
+    };
   }
   if (obj.kind === "url") {
     if (!isNonEmptyString(obj.url)) return null;
@@ -148,6 +165,7 @@ export function parseGraphiumCaptureFile(
       ...(isNonEmptyString(obj.title) ? { title: obj.title } : {}),
       ...(isNonEmptyString(obj.description) ? { description: obj.description } : {}),
       ...(isNonEmptyString(obj.ogImage) ? { ogImage: obj.ogImage } : {}),
+      ...(isNonEmptyString(obj.folder) ? { folder: obj.folder.trim() } : {}),
     };
   }
   return null;

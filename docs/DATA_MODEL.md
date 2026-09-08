@@ -333,12 +333,23 @@ table needs at least a header row plus one data row; otherwise it falls
 back to a single Entity for the whole table.
 
 A table labelled `attribute` is read as a **parameter table** instead: the
-**header row supplies parameter keys** and the **first data row supplies
-the values**, and the resulting `key=value` map is merged into the
-`params` of the enclosing Step (Activity) — or of the parent Entity, when
-the table is nested under one. This is the structured counterpart of an
-inline `attribute` highlight, which attaches a single property to its
-parent.
+**header row supplies parameter keys**, and each **data row is one
+stage** — row order is stage order. A parameter table with a single data
+row behaves as before: its `key=value` map is merged into the `params` of
+the enclosing Step (Activity), or of the parent Entity, when the table is
+nested under one (only the first row is ever read for an Entity parent).
+A parameter table nested under an Activity with **two or more data
+rows** does *not* merge into the parent's `params`; instead each row
+becomes a child *Activity* (`graphium:activityKind: "stage"`,
+`graphium:stageIndex` holding its 1-based position, labelled "*parent
+label* stage *n*") linked to the parent via `graphium:partOf`, with
+`prov:wasInformedBy` chaining consecutive stages in row order (stage *n*
+is informed by stage *n − 1*). The child's node id is
+`activity_<tableBlockId>_<rowIdentity>` when the row carries a durable
+row identity (see below), or `activity_<tableBlockId>_<n>` (1-based,
+counting only non-empty rows) otherwise. This is the structured
+counterpart of an inline `attribute` highlight, which attaches a single
+property to its parent.
 
 ```ts
 type InlineHighlight = {
@@ -395,12 +406,14 @@ Duplicate row names resolve to the first matching row, and a column that
 is not in the header is a no-op.
 
 A step's **parameters** are a table too: the columns of a table labelled
-`attribute` inside the step, where the header row holds the keys and the
-first data row the values (`ensureParameterTable`). Only the first data
-row is read, which is why the flow view offers new columns rather than
-new rows there. The label is what makes the generator read the table at
-all, so it is applied automatically whenever the table is created from
-the graph.
+`attribute` inside the step, where the header row holds the keys
+(`ensureParameterTable`). A single data row's values are read straight
+into the step's `params`, as above; adding data rows from the flow
+view's **Add stage** button instead records additional stages (§2.3),
+which is why the panel now offers both new columns and new stage rows
+there. The label is what makes the generator read the table at all, so
+it is applied automatically whenever the table is created from the
+graph.
 
 An entity that only exists as a prose highlight can be **moved into the
 table** in one step: the row is appended and the span loses its mark, so
@@ -691,11 +704,16 @@ from a note lives in that note's `chats` field (§1). A chat opened from
 the **material full view**'s "Ask AI" panel has no note to belong to, so
 it is stored per material under the `asset-chats:<fileId>` app-data key
 (§6.1), as the same `ScopeChat[]` shape with `scopeType: "page"` and an
-empty `scopeBlockId`. Notes persist their chats as part of saving the
-note; the material view has no explicit save action, so it writes on a
-short debounce whenever the conversation changes and flushes once more
-when the view closes. Deleting the last chat writes `null`, the same
-logical delete used for snapshots.
+empty `scopeBlockId`. A chat opened from the **shared entry full
+view**'s "Ask AI" panel (ARCHITECTURE.md §5) is stored the same way
+under `shared-chats:<sharedId>`, and deliberately **stays on your own
+device** — nothing about the conversation is written to the shared
+folder, so a reader's questions never reach the person who shared the
+entry. Notes persist their chats as part of saving the note; neither of
+those two views has an explicit save action, so both write on a short
+debounce whenever the conversation changes and flush once more when the
+view closes (`useAppDataChatPersistence`). Deleting the last chat writes
+`null`, the same logical delete used for snapshots.
 
 A chat can be **forked**: the messages up to a chosen point are copied
 into a new `ScopeChat` (new `id`, `forkedFrom` pointing at the parent)
@@ -1477,7 +1495,7 @@ right-hand panel. It powers the process list and lets a step being
 written pull in what past runs of that step recorded.
 
 ```ts
-const PROCESS_INDEX_VERSION = 3;
+const PROCESS_INDEX_VERSION = 4;
 
 type ProcessIndex = {
   version: number;
@@ -1562,6 +1580,7 @@ longer resolves is shown as broken instead of being silently re-matched.
 | --- | --- |
 | 1 | Initial format |
 | 2–3 | Cross-note output references: `crossNoteLinks` on entries; projected graphs carry output identity (`graphium:tableRowId`) and external-origin overlay data |
+| 4 | Stage rows: a multi-row `[パラメータ]` table folds into per-row stage child Activities, changing the projected `graph`; `collectParamKeysForStep` / `collectStepInheritance` dedupe by key per step so a step with many stages doesn't multiply-count the same key |
 
 Bump it whenever the shape of `graph` or `summary` changes, or when the
 projection itself starts producing different output. A mismatch triggers
@@ -1636,7 +1655,9 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the
   index file, manual version snapshots (`snapshot-index:<noteId>` /
   `snapshot:<snapshotId>`, see §2.4), material-scoped AI chats
-  (`asset-chats:<fileId>`, see §2.5), and other internal metadata.
+  (`asset-chats:<fileId>`) and shared-entry AI chats
+  (`shared-chats:<sharedId>`, both see §2.5), and other internal
+  metadata.
 - **Knowledge / Skill CRUD** (optional) — separate listings for Knowledge and
   Skill documents so backends can store them in dedicated namespaces.
 
@@ -1721,6 +1742,7 @@ Graphium/
     ├── note-index.json             # the GraphiumIndex
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
+    ├── shared-chats:<sharedId>.json # AI chats about a shared entry, local only (§2.5)
     └── shared-projection.json      # labels/process extracted from shared notes (§7.6)
 ```
 
@@ -1795,7 +1817,7 @@ in `src/lib/storage/shared/types.ts`.
 ```ts
 type SharedEntryType =
   | "note" | "reference" | "data-manifest"
-  | "template" | "knowledge" | "report";
+  | "template" | "knowledge" | "report" | "comment";
 
 type SharedEntry = {
   id: string;                  // uuidv7
@@ -1831,7 +1853,19 @@ Key model choices:
 - **`hash` is content-addressed** over body + metadata (excluding hash,
   history, and `superseded_by` to avoid self-reference).
 - **Minor vs major revision** — same-`id` writes append to `history`;
-  major changes mint a new id and link back via `supersedes`.
+  major changes mint a new id and link back via `supersedes`. A
+  `HistoryEntry` is `{ hash, updated_at, updated_by, change_kind: "minor"
+  | "major", note? }` — the *previous* `hash`/`updated_at`/`updated_by`,
+  pushed just before the overwrite. `share-note.ts` / `share-media.ts` /
+  `share-reference.ts` all append one on their "isUpdate" path via the
+  shared `appendHistory` helper (`src/features/sharing/share-history.ts`);
+  entries capped at 50, oldest dropped first. `history` is excluded from
+  the hash computation (`HASH_EXCLUDED_KEYS`), so appending a history
+  entry never changes `hash` on its own. If the prior entry cannot be
+  read (first share, deleted, no permission), the write proceeds without
+  history rather than failing the share. The Library's version column
+  reads `history.length` as an update counter (`library.updateCount`);
+  the detail panel lists the entries newest-first (`library.detail.history`).
 - **Tombstones, not deletes** — `status: "unshared"` is the recovery
   path for accidental sharing. Hard delete is provider-optional.
 - **Knowledge is one type** — Knowledge (wiki) pages share as a single
@@ -1840,6 +1874,24 @@ Key model choices:
   evolving vocabulary, so it is kept out of the shared format's folder
   structure — older builds can still list, preview, and fork an entry
   whose `wikiKind` they do not know.
+- **A `"note"` / `"knowledge"` body is a `GraphiumDocument` JSON, minus
+  the private history** — by default `chats` (§2.5) and
+  `documentProvenance` (§2.4) are dropped from the shared copy
+  (`stripPrivateHistory` in `src/features/sharing/share-note.ts`, applied
+  after blob substitution and before the hash is computed, so `hash`
+  covers what the reader actually gets). Sharing publishes the record,
+  not the trial and error behind it. The Settings → Storage switch
+  "Include AI chats and edit history when sharing"
+  (`graphium-share-include-private-history`, default off) and the bulk
+  share dialog's checkbox turn it back on per share. Everything else
+  travels unchanged — `pages` (blocks, `labels`, `provLinks`),
+  `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
+  because the shared projection (§7.6) and the reverse links read them. The shared
+  format version is unchanged: both fields were already optional, so an
+  older build reading a newer shared copy simply finds them absent.
+  Version snapshots (`snapshot:<snapshotId>`, §2.4) and memos are stored
+  outside the document altogether, so they have never travelled with a
+  share either.
 - **`"template"` body is a `PageTemplate`, not a `GraphiumDocument`** —
   sharing a page as a template writes the (previously dormant)
   `PageTemplate` JSON (`src/features/template/types.ts`: `name` /
@@ -1858,6 +1910,41 @@ Key model choices:
   share of a page mints a brand-new `id` (`sharedRef` on the source note
   is left untouched, since a template is an independent handout, not a
   copy-of-record).
+
+### 7.1.1 Comment entries (`SharedEntryType: "comment"`)
+
+Teacher ⇄ student feedback rides as its own `SharedEntry`, stored under
+`comments/` (`TYPE_TO_FOLDER.comment`; Rust's `SHARED_ENTRY_TYPES`
+allow-list carries the same folder name). A comment is written by the
+commenter, not the target's owner — putting it in a separate,
+author-owned envelope avoids rewriting someone else's entry. `body` is
+plain UTF-8 text (the comment itself); `extra` narrows to:
+
+```ts
+type SharedCommentExtra = {
+  target: string;       // the commented-on SharedEntry's id
+  targetHash: string;   // that entry's hash at comment time
+  blockId?: string;     // attached-to-a-paragraph case
+  blockText?: string;   // paragraph excerpt at comment time (max 80 chars,
+                         // a tombstone label if the block is later deleted)
+  parentId?: string;    // reply target's comment id (one level only —
+                         // a reply to a reply is re-parented to the root)
+};
+```
+
+`prov.derived_from = [target]` records the lineage; comments are **not**
+otherwise reflected in PROV (v1 decision — a comment is feedback, not
+provenance material). There is no "resolved" flag: when the student
+fixes the note and re-shares it, `target`'s `hash` changes, and
+`splitByTargetVersion` (`src/features/sharing/shared-comments.ts`)
+buckets any comment whose `targetHash` no longer matches into "comments
+on an older version" — the fold-away happens automatically, without a
+status field to keep in sync.
+
+Comments are excluded from the vocabulary index, shared projection, and
+blob GC (`SHARED_INDEXABLE_TYPES` / `BLOB_REFERENCING_TYPES` in
+`src/features/sharing/`): they do not appear in the Library's tab list,
+only inline against the entry they target.
 
 ### 7.2 `BlobRef`
 
@@ -1990,7 +2077,7 @@ keeps a small side cache, written only to the local appdata channel
 (`shared-projection.json`, desktop only — never to the shared root):
 
 ```ts
-const SHARED_PROJECTION_VERSION = 1;
+const SHARED_PROJECTION_VERSION = 2;
 
 type SharedProjectionEntry = {
   hash: string;              // SharedEntry.hash when projected; skips re-projection if unchanged
@@ -2003,6 +2090,9 @@ type SharedProjectionEntry = {
   labels: NoteIndexEntry["labels"];
   inlineLabels?: NoteIndexEntry["inlineLabels"];
   process: ProcessIndexEntry | null;  // null for notes without steps
+  citedSharedIds: string[];       // shared ids cited via a sharedCitation block
+  forkedFromSharedId?: string;    // doc.forkedFrom.sharedId
+  templateFromSharedId?: string;  // doc.templateFrom.sharedId
 };
 
 type SharedProjection = {
@@ -2012,6 +2102,27 @@ type SharedProjection = {
   entries: Record<string, SharedProjectionEntry>;  // keyed by SharedEntry.id
 };
 ```
+
+**v2 adds reverse links.** `citedSharedIds` / `forkedFromSharedId` /
+`templateFromSharedId` travel in shared-id space (unlike `crossNoteLinks`,
+which is dropped because it points at the sharer's local note ids), so
+the receiving side can resolve them too. `buildReverseLinks(projection)`
+(pure function) folds every entry's forward links into a
+`Map<targetId, { cites, forks, templates }>` — the Library detail panel
+renders it as "shared notes citing this" / "derived from this" /
+"made from this template" (`library.detail.citedBy` /
+`library.detail.forkedBy` / `library.detail.templateUsedBy`), each
+clickable to open that entry. Self-references are dropped (a note citing
+itself, or `forkedFromSharedId === ` its own id, cannot happen normally
+but is filtered defensively). A target with an empty list omits the
+section entirely rather than asserting "not cited by anyone" — the
+projection only reflects shared notes whose body has been read, so an
+empty list may just mean "not read yet."
+
+Bumping `SHARED_PROJECTION_VERSION` discards any existing
+`.graphium-shared-projection.json` on load; it is rebuilt lazily as
+shared note bodies are re-read (a pure cache — no data loss, just a
+cold start for the Labels/Processes tabs and reverse links).
 
 **No new reads.** Projection rides the lexical sync lane (§17 of the
 internal shared-storage design) that already fetches shared note bodies
@@ -2031,6 +2142,44 @@ and updates the projection from those (nothing is added to the index).
 whole file and starts empty; entries missing from a subsequent list
 refresh are pruned. Losing this file costs nothing but a few
 re-projections next time the affected notes are read.
+
+### 7.7 Last-seen store (`graphium-shared-seen`)
+
+To show "updated since you last looked" and "N new comments" on Library
+rows without writing anyone's read history into the shared folder
+itself, `src/features/sharing/shared-seen.ts` keeps a small record in
+**`localStorage`, local to the device — never synced to the shared
+root**:
+
+```ts
+const SHARED_SEEN_KEY = "graphium-shared-seen";
+
+type SharedSeenRecord = {
+  hash: string;      // entry.hash the last time this id was opened
+  comments: number;  // comment count (all threads, replies included) at that time
+  at: string;        // ISO-8601, used to prune the oldest entries past the cap
+};
+
+type SharedSeenStore = Record<string, SharedSeenRecord>;  // keyed by SharedEntry.id
+```
+
+`markSeen(id, hash, comments)` is called when the Library detail panel
+or a note's own Comments tab is opened. Capped at 500 ids, oldest
+`at` dropped first. Two guards keep the badges meaningful rather than
+noisy:
+
+- **No record → no badge.** An entry never opened shows neither "updated"
+  nor "new comments" — marking everything on first sight would make the
+  badge meaningless.
+- **Self-authored entries never show "updated."** `isUpdatedSince` takes
+  the viewer's own email and skips entries they authored — you already
+  know about your own edits.
+
+`newCommentCount` returns the increase in comment count since the last
+seen record (never negative — a comment being deleted does not produce
+a "negative new comments" reading). Neither function is exposed as a
+library-wide total (tab headers and the sidebar do not carry a shared
+badge count — a v1 decision to keep this per-row only).
 
 ## 8. Compatibility rules
 

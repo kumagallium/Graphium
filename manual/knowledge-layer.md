@@ -52,7 +52,7 @@ Prompts take trial and error, so skills support the same manual version snapshot
 The sidebar has a **Knowledge** section (collapsed by default) listing **Summaries**, **Claims**, and **Insights** with counts. Click a kind to open its list view, which offers:
 
 - Columns: **Title**, **Type**, **Sources** (how many source notes), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
-- Search, per-column type filters, sorting, and drag-to-range multi-select
+- Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
 - Bulk actions on selected rows: **Regenerate 3**, **Move 3 to trash**, **Check world (3)**
 
 Claims also show an evidence status: **?candidate** (used in only 1 note) or **✓verified** (used in 2+ notes). A claim that gets corroborated by a second independent note is promoted automatically, and its page shows a **Corroborated** badge.

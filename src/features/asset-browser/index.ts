@@ -18,6 +18,7 @@ export {
   renameMediaFile,
   renameMediaEntry,
   setMediaEntryContexts,
+  remapMediaContexts,
   extractFileIdFromUrl,
   extractMediaFromBlocks,
   collectPdfFileIdsFromDoc,

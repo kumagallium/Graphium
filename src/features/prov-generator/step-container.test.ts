@@ -6,7 +6,7 @@
 // という同じ不変量を表す。ここではその containment 束縛を検証する。
 
 import { describe, it, expect } from "vitest";
-import { generateProvDocument } from "./generator";
+import { generateProvDocument, extractRelations } from "./generator";
 
 const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
   type: "text",
@@ -130,6 +130,77 @@ describe("入れ子の step", () => {
   });
 });
 
+// ── 入れ子 step の graphium:partOf（feat/step-stage-rows） ──
+describe("入れ子 step の graphium:partOf", () => {
+  const partOfIds = (doc: any, actId: string) => {
+    const act = doc["@graph"].find((n: any) => n["@id"] === actId);
+    return ((act as any)?.["graphium:partOf"] ?? []).map((p: any) => p["@id"]);
+  };
+
+  it("内側 → 外側に graphium:partOf が張られる", () => {
+    const doc = gen([
+      step("outer", "外側", [
+        step("inner", "内側", []),
+      ]),
+    ]);
+    expect(partOfIds(doc, "activity_inner")).toEqual(["activity_outer"]);
+  });
+
+  it("入れ子 step には activityKind は付かない（従来どおり独立した Activity）", () => {
+    const doc = gen([
+      step("outer", "外側", [
+        step("inner", "内側", []),
+      ]),
+    ]);
+    const inner = doc["@graph"].find((n: any) => n["@id"] === "activity_inner");
+    const outer = doc["@graph"].find((n: any) => n["@id"] === "activity_outer");
+    expect((inner as any)?.["graphium:activityKind"]).toBeUndefined();
+    expect((outer as any)?.["graphium:activityKind"]).toBeUndefined();
+  });
+
+  it("3 階層のとき partOf は直近の親だけを指す（祖父を跳び越さない）", () => {
+    const doc = gen([
+      step("a", "1階層目", [
+        step("b", "2階層目", [
+          step("c", "3階層目", []),
+        ]),
+      ]),
+    ]);
+    expect(partOfIds(doc, "activity_c")).toEqual(["activity_b"]);
+    expect(partOfIds(doc, "activity_b")).toEqual(["activity_a"]);
+    // トップレベル step には partOf 自体が無い
+    const top = doc["@graph"].find((n: any) => n["@id"] === "activity_a");
+    expect((top as any)?.["graphium:partOf"]).toBeUndefined();
+  });
+
+  it("兄弟 step は互いを指さない", () => {
+    const doc = gen([
+      step("outer", "外側", [
+        step("child1", "子1", []),
+        step("child2", "子2", []),
+      ]),
+    ]);
+    expect(partOfIds(doc, "activity_child1")).toEqual(["activity_outer"]);
+    expect(partOfIds(doc, "activity_child2")).toEqual(["activity_outer"]);
+  });
+
+  it("トップレベルの step（入れ子でない）には partOf が無い", () => {
+    const doc = gen([step("s1", "単独の step", [])]);
+    const act = doc["@graph"].find((n: any) => n["@id"] === "activity_s1");
+    expect((act as any)?.["graphium:partOf"]).toBeUndefined();
+  });
+
+  it("extractRelations で graphium:partOf を読み戻せる", () => {
+    const doc = gen([
+      step("outer", "外側", [
+        step("inner", "内側", []),
+      ]),
+    ]);
+    const relations = extractRelations(doc);
+    expect(relations).toContainEqual({ "@type": "graphium:partOf", from: "activity_inner", to: "activity_outer" });
+  });
+});
+
 describe("見出しパスとの共存（二重束縛の回避）", () => {
   it("step 内の procedure 見出しからは Activity を作らない", () => {
     const doc = gen(
@@ -182,6 +253,8 @@ describe("step を跨ぐ工程の連鎖", () => {
   // PROV-DM の wasInformedBy(B, A) は ∃E. wasGeneratedBy(E, A) ∧ used(B, E) を意味する。
   // generator は明示的な wasInformedBy エッジを張らず、共有 Entity（同名の output と
   // material を 1 ノードに統合）でこの構造を表現する（generator.ts L1040 / L1096）。
+  // 同一 step 内の段階（[パラメータ] 表 ≥2 行から生成した子 Activity）間の鎖だけは
+  // 例外で、明示的に prov:wasInformedBy を張る（feat/step-stage-rows）。
   // step 間でも同じ導出が成り立つことを確認する。
   it("step1 の output と step2 の material が同名なら 1 Entity に統合され連鎖が立つ", () => {
     const doc = gen(

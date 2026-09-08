@@ -313,3 +313,86 @@ describe("bulkShare — media", () => {
     expect(savedRefs.has("media-1")).toBe(true);
   });
 });
+
+// --- §24: 共有コピーの AI チャット / 編集来歴 ---
+// 剥がし自体は share-note のテストが押さえているので、ここでは deps の値が
+// ノート / Knowledge の共有呼び出しまで届いているかだけを見る。
+
+describe("bulkShare — includePrivateHistory の受け渡し", () => {
+  const chats: NonNullable<GraphiumDocument["chats"]> = [
+    {
+      id: "chat-1",
+      scopeBlockId: "b1",
+      scopeType: "block",
+      messages: [{ role: "user", content: "秘密のメモ", timestamp: "2026-05-04T00:00:00Z" }],
+      createdAt: "2026-05-04T00:00:00Z",
+      modifiedAt: "2026-05-04T00:00:00Z",
+    },
+  ];
+
+  function withChats(doc: GraphiumDocument): GraphiumDocument {
+    return { ...doc, chats, documentProvenance: { revisions: [], activities: [], agents: [] } };
+  }
+
+  /**
+   * shared 側に書かれた body（GraphiumDocument JSON）を全件読む。
+   * atob はバイト列を返すだけなので、日本語が化けないよう TextDecoder を通す。
+   */
+  function storedBodies(): GraphiumDocument[] {
+    return [...fs.entries.values()].map((raw) => {
+      const bytes = Uint8Array.from(atob(JSON.parse(raw).body_base64), (c) =>
+        c.charCodeAt(0),
+      );
+      return JSON.parse(new TextDecoder().decode(bytes));
+    });
+  }
+
+  it("未指定なら note / knowledge のどちらの共有 body にも残らない", async () => {
+    const { deps } = makeDeps({
+      loadNote: async () => withChats(makeNote("Note one")),
+      loadKnowledge: async () => withChats(makeWiki("Claim one")),
+    });
+    const summary = await bulkShare(
+      [
+        { id: "n1", kind: "note" },
+        { id: "w1", kind: "knowledge" },
+      ],
+      deps,
+    );
+    expect(summary.shared).toBe(2);
+    for (const body of storedBodies()) {
+      expect(body.chats).toBeUndefined();
+      expect(body.documentProvenance).toBeUndefined();
+    }
+  });
+
+  it("true を渡すと note / knowledge の共有 body に残る", async () => {
+    const { deps } = makeDeps({
+      includePrivateHistory: true,
+      loadNote: async () => withChats(makeNote("Note one")),
+      loadKnowledge: async () => withChats(makeWiki("Claim one")),
+    });
+    const summary = await bulkShare(
+      [
+        { id: "n1", kind: "note" },
+        { id: "w1", kind: "knowledge" },
+      ],
+      deps,
+    );
+    expect(summary.shared).toBe(2);
+    const bodies = storedBodies();
+    expect(bodies).toHaveLength(2);
+    for (const body of bodies) {
+      expect(body.chats).toEqual(chats);
+      expect(body.documentProvenance).toBeDefined();
+    }
+  });
+
+  it("手元に書き戻す doc には chats が残る（true / false どちらでも）", async () => {
+    const { deps, savedNotes } = makeDeps({
+      loadNote: async () => withChats(makeNote("Note one")),
+    });
+    await bulkShare([{ id: "n1", kind: "note" }], deps);
+    expect(savedNotes.get("n1")?.chats).toEqual(chats);
+  });
+});

@@ -38,8 +38,17 @@ export type ProvJsonLdNode = {
   /** Phase D-2: execution Entity から plan Entity への derivation 関係。
    *  ブロック間リンク由来（derived_from/reproduction_of/フォールバック射影）も同じ配列に入る。 */
   "prov:wasDerivedFrom"?: { "@id": string; "graphium:linkType"?: string }[];
+  /** 段階（stage）チェーン専用。同一 [パラメータ] 表内の直前の段階 Activity への
+   *  明示的な wasInformedBy（generator の他の informed_by は構造から導出し明示 edge を張らない — 例外）。 */
+  "prov:wasInformedBy"?: { "@id": string }[];
   "graphium:attributes"?: ProvAttribute[];
   "graphium:blockId"?: string;
+  /** 段階子 Activity → 親（入れ子 step の場合は inner → outer）の包含関係 */
+  "graphium:partOf"?: { "@id": string }[];
+  /** "stage": [パラメータ] 表の行 ≥2 から生成した子 Activity であることを示す */
+  "graphium:activityKind"?: "stage";
+  /** 段階の 1 始まり連番（表示専用） */
+  "graphium:stageIndex"?: number;
   [key: `graphium:${string}`]: any;
 };
 
@@ -77,6 +86,10 @@ type InternalNode = {
   mediaUrl?: string;
   /** 構造化テーブル行の永続 identity */
   tableRowIdentity?: string;
+  /** 段階（stage）子 Activity であることを示す（[パラメータ] 表の行 ≥2 から生成） */
+  activityKind?: "stage";
+  /** 段階の 1 始まり連番（表示専用。identity ではない） */
+  stageIndex?: number;
 };
 
 type InternalRelation = {
@@ -190,6 +203,41 @@ export function parseParameterTable(block: any): Record<string, string> | null {
   return Object.keys(params).length > 0 ? params : null;
 }
 
+/**
+ * [パラメータ] ラベルのテーブルを **行ごと** に構造化する（段階 stage 対応）。
+ * parseParameterTable と異なり rows[1..] の全データ行を対象にする。
+ * key または value が空のセルは除外し、params が空になる行（全セル空）はスキップする。
+ * 有効行が 0 なら null。
+ */
+export function parseParameterTableRows(
+  block: any,
+): { params: Record<string, string>; rowIdentity?: string }[] | null {
+  if (block.type !== "table") return null;
+
+  const rows = block.content?.rows;
+  if (!rows || rows.length < 2) return null;
+
+  const headers = rows[0].cells.map((cell: any) => extractCellText(cell));
+
+  const result: { params: Record<string, string>; rowIdentity?: string }[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const cells = rows[i].cells;
+    const params: Record<string, string> = {};
+    for (let j = 0; j < headers.length && j < cells.length; j++) {
+      const key = headers[j];
+      const value = extractCellText(cells[j]);
+      if (key && value) {
+        params[key] = value;
+      }
+    }
+    if (Object.keys(params).length === 0) continue; // 全セル空の行はスキップ
+    const rowIdentity = extractTableRowIdentity(cells[0]);
+    result.push({ params, ...(rowIdentity ? { rowIdentity } : {}) });
+  }
+
+  return result.length > 0 ? result : null;
+}
+
 // ── メイン生成関数 ──
 
 export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
@@ -222,12 +270,21 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   // 撤回した（消費者のいないメタデータと引き換えに、書くたびの判断を増やすため）。
   const stepOwner = new Map<string, string>();
   const stepBlocks: any[] = [];
+  // 入れ子 step の直近の外側 step（activity_<inner> → activity_<outer>）。
+  // stepOwner とは別に持つ理由: stepOwner は「内側が勝つ」束縛用（Entity がどの
+  // Activity のものか）で、こちらは「step 自身の入れ子構造」を表す包含関係。
+  const stepParent = new Map<string, string>();
   const collectSteps = (list: any[], inherited: string | null) => {
     for (const b of list) {
       if (!b || typeof b !== "object") continue;
       // 入れ子の step は内側が勝つ（＝最も近い祖先 step に束縛される）
       const owner = b.type === "step" ? `activity_${b.id}` : inherited;
-      if (b.type === "step") stepBlocks.push(b);
+      if (b.type === "step") {
+        stepBlocks.push(b);
+        // inherited は「この step に入る直前の束縛先」＝最も近い祖先 step の
+        // Activity id（step でないブロックは owner をそのまま引き継ぐため）。
+        if (inherited) stepParent.set(`activity_${b.id}`, inherited);
+      }
       if (owner && b.id) stepOwner.set(b.id, owner);
       if (Array.isArray(b.children)) collectSteps(b.children, owner);
     }
@@ -332,6 +389,12 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       label: deriveActivityName(getBlockText(step)),
       blockId: step.id,
     });
+  }
+
+  // 入れ子 step: 内側 → 直近の外側 step へ graphium:partOf。activityKind は付けない
+  // （入れ子 step は従来どおり独立した Activity・独立カードのまま）。
+  for (const [innerActId, outerActId] of stepParent) {
+    relations.push({ "@type": "graphium:partOf", from: innerActId, to: outerActId });
   }
 
   // ── スコープ解決 ──
@@ -559,21 +622,75 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     if (lb.coreLabel === "attribute") {
       // テーブルの [パラメータ] は key=value の構造化パラメータとして展開し、
       // 親 Entity または手順（Activity）の params にマージする（案B: 列名=key）。
+      //
+      // 段階（stage）の投影規則（feat/step-stage-rows）:
+      //   - 親が Entity（findParentLabeledNodeId が entity_ / result_ を返す）→
+      //     従来どおり parseParameterTable の結果（1 行目）をマージ。段階化しない。
+      //   - 親が Activity（parentNodeId が null になる procedure 見出し／step
+      //     コンテナのどちらも、labels 経由で material/tool/output に解決できない
+      //     ため null になる。findParentLabeledNodeId 参照）:
+      //     - 有効行 1 → 従来どおり親 Activity の params にマージ（子は作らない）
+      //     - 有効行 ≥2 → 親には何もマージせず、行ごとに子 Activity（段階）を生成する
       if (lb.block.type === "table") {
-        const params = parseParameterTable(lb.block);
-        if (params) {
-          const mergeParams = (node: InternalNode | undefined) => {
-            if (!node) return;
-            node.params = { ...(node.params ?? {}), ...params };
-          };
-          const parentNodeId = findParentLabeledNodeId(lb.block.id, blocks, labels, labeledBlocks);
-          if (parentNodeId) {
-            mergeParams(nodes.find((n) => n["@id"] === parentNodeId));
-          } else {
-            for (const actId of getActivityIdsForScope(lb.block.id)) {
-              mergeParams(nodes.find((n) => n["@id"] === actId));
-            }
+        const parentNodeId = findParentLabeledNodeId(lb.block.id, blocks, labels, labeledBlocks);
+
+        if (parentNodeId) {
+          // 親が Entity。段階化しない（従来どおり）。
+          const params = parseParameterTable(lb.block);
+          if (params) {
+            const node = nodes.find((n) => n["@id"] === parentNodeId);
+            if (node) node.params = { ...(node.params ?? {}), ...params };
           }
+          continue;
+        }
+
+        // 親が Activity（procedure 見出し／step コンテナのスコープに帰属）
+        const rows = parseParameterTableRows(lb.block);
+        if (!rows) continue;
+
+        for (const actId of getActivityIdsForScope(lb.block.id)) {
+          const parentActNode = nodes.find((n) => n["@id"] === actId);
+          if (!parentActNode) continue;
+
+          if (rows.length === 1) {
+            // 有効行 1 → 従来どおり親 Activity にマージ（子は作らない）。
+            // parseParameterTableRows は空セル行を読み飛ばして走査するため、
+            // 「1 行目が全セル空・2 行目に値がある」ような表では rows[0] が
+            // 物理的な rows[1] と一致しないことがある。旧 parseParameterTable
+            // （物理的な rows[1] だけを見る）と結果を完全に一致させ、既存ノートの
+            // PROV 出力を変えないよう、ここでは旧関数の結果をそのままマージする。
+            const legacyParams = parseParameterTable(lb.block);
+            if (legacyParams) {
+              parentActNode.params = { ...(parentActNode.params ?? {}), ...legacyParams };
+            }
+            continue;
+          }
+
+          // 有効行 ≥2 → 行ごとに子 Activity（段階）を生成。
+          // 段階間は明示的に prov:wasInformedBy を張る（下記「informed_by」節の
+          // 例外 — 段階には出力 Entity が無く unification で表現できないため）。
+          let prevChildId: string | null = null;
+          rows.forEach((row, idx) => {
+            const n = idx + 1;
+            const childId = row.rowIdentity
+              ? `activity_${lb.block.id}_${row.rowIdentity}`
+              : `activity_${lb.block.id}_${n}`;
+            nodes.push({
+              "@id": childId,
+              "@type": "prov:Activity",
+              label: t("prov.stageLabel", { parent: parentActNode.label, n: String(n) }),
+              blockId: lb.block.id,
+              params: row.params,
+              tableRowIdentity: row.rowIdentity,
+              activityKind: "stage",
+              stageIndex: n,
+            });
+            relations.push({ "@type": "graphium:partOf", from: childId, to: actId });
+            if (prevChildId) {
+              relations.push({ "@type": "prov:wasInformedBy", from: childId, to: prevChildId });
+            }
+            prevChildId = childId;
+          });
         }
         continue;
       }
@@ -1139,6 +1256,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   // PROV-DM の wasInformedBy(B, A) は ∃E. wasGeneratedBy(E, A) ∧ used(B, E) を意味する。
   // すなわち「B が A の出力 Entity E を使った」というチェーン。
   //
+  // 例外（feat/step-stage-rows）: 同一 [パラメータ] 表内の段階（stage）Activity 間だけは、
+  // この構造的導出に頼らず prov:wasInformedBy を明示的に張る（段階には出力 Entity が
+  // 無く、下の unification では表現できないため）。上の「attribute → 親ノードへの
+  // マージ」節を参照。
+  //
   // 二つの正規化を行う:
   //
   //   (1) **Entity の unification（同一実体の 2 ノード化を回避）**:
@@ -1199,6 +1321,8 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         if (unifiedFromIds.has(nodes[i]["@id"])) nodes.splice(i, 1);
       }
       // wasInformedBy は (b) の merged Entity を介してすでに表現済み。追加 edge は不要。
+      // （例外: 同一表内の段階間 wasInformedBy はここでは扱わない。上の
+      //  attribute → 親ノードへのマージ節で生成時に直接張られる）
       continue;
     }
 
@@ -1551,6 +1675,13 @@ function buildProvJsonLd(
     if (n.tableRowIdentity) {
       jsonLdNode["graphium:tableRowId"] = n.tableRowIdentity;
     }
+    // 段階（stage）子 Activity のメタ情報
+    if (n.activityKind) {
+      jsonLdNode["graphium:activityKind"] = n.activityKind;
+    }
+    if (n.stageIndex !== undefined) {
+      jsonLdNode["graphium:stageIndex"] = n.stageIndex;
+    }
     // メディア Entity のプロパティ
     if (n.mediaType) {
       jsonLdNode["graphium:mediaType"] = n.mediaType;
@@ -1602,12 +1733,34 @@ function buildProvJsonLd(
       case "prov:wasGeneratedBy": {
         // wasGeneratedBy: Entity → Activity（from=Entity, to=Activity）
         // 配列に push（同一 Entity が複数 Activity に生成され得る。単一値で上書きすると
-        // 生成エッジが欠落し、wasInformedBy の構造導出にも波及する）。重複は抑制。
+        // 生成エッジが欠落し、wasInformedBy の構造導出にも波及する。ただし段階
+        // Activity 間の wasInformedBy は例外で明示的に張るため、この構造導出の
+        // 対象外— 下記 case "prov:wasInformedBy" 参照）。重複は抑制。
         if (!sourceNode["prov:wasGeneratedBy"]) {
           sourceNode["prov:wasGeneratedBy"] = [];
         }
         if (!sourceNode["prov:wasGeneratedBy"]!.some((g) => g["@id"] === rel.to)) {
           sourceNode["prov:wasGeneratedBy"]!.push({ "@id": rel.to });
+        }
+        break;
+      }
+      case "prov:wasInformedBy": {
+        // 段階（stage）チェーン専用の明示的な wasInformedBy（from=後の段階, to=先の段階）。
+        if (!sourceNode["prov:wasInformedBy"]) {
+          sourceNode["prov:wasInformedBy"] = [];
+        }
+        if (!sourceNode["prov:wasInformedBy"]!.some((g) => g["@id"] === rel.to)) {
+          sourceNode["prov:wasInformedBy"]!.push({ "@id": rel.to });
+        }
+        break;
+      }
+      case "graphium:partOf": {
+        // 段階子 Activity → 親 Activity、または入れ子 step の内側 → 外側。
+        if (!sourceNode["graphium:partOf"]) {
+          sourceNode["graphium:partOf"] = [];
+        }
+        if (!sourceNode["graphium:partOf"]!.some((g) => g["@id"] === rel.to)) {
+          sourceNode["graphium:partOf"]!.push({ "@id": rel.to });
         }
         break;
       }
@@ -1853,6 +2006,16 @@ export function extractRelations(doc: ProvJsonLd): FlatRelation[] {
           to: ref["@id"],
           linkType: ref["graphium:linkType"],
         });
+      }
+    }
+    if (node["prov:wasInformedBy"]) {
+      for (const ref of node["prov:wasInformedBy"]) {
+        relations.push({ "@type": "prov:wasInformedBy", from: node["@id"], to: ref["@id"] });
+      }
+    }
+    if (node["graphium:partOf"]) {
+      for (const ref of node["graphium:partOf"]) {
+        relations.push({ "@type": "graphium:partOf", from: node["@id"], to: ref["@id"] });
       }
     }
     // graphium:attributes はプロパティ埋め込み — extractRelations には含めない

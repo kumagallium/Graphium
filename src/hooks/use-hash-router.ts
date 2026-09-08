@@ -20,6 +20,9 @@ export type ViewRoute =
   | { view: "memos" }
   | { view: "mobile" }
   | { view: "shared-library" }
+  // 共有エントリの全画面表示。引用カードの `#shared/<id>`（router に登録しない
+  // 別の口）と混ざらないよう、専用のパスを持つ
+  | { view: "shared-entry"; id: string }
   | { view: "home" }; // デフォルト（何も開いていない状態）
 
 /** ビュー + サイドピーク。ピークはどのビューの上にも開くので、view とは直交させる。
@@ -42,6 +45,7 @@ function viewToHash(route: ViewRoute): string {
     case "memos": return "#memos";
     case "mobile": return "#mobile";
     case "shared-library": return "#shared-library";
+    case "shared-entry": return `#shared-entry/${route.id}`;
     case "home": return "";
   }
 }
@@ -105,6 +109,15 @@ function parseHash(hash: string): AppRoute {
       return withPeek({ view: "mobile" });
     case "shared-library":
       return withPeek({ view: "shared-library" });
+    case "shared-entry":
+      // id は uuid だが、将来 `/` を含む値が来ても落とさないよう残りを全部使う
+      if (parts[1]) {
+        return withPeek({
+          view: "shared-entry",
+          id: decodeURIComponent(parts.slice(1).join("/")),
+        });
+      }
+      break;
   }
   return withPeek({ view: "home" });
 }
@@ -128,6 +141,8 @@ export type RouteActions = {
   setShowMemos: (show: boolean) => void;
   setShowMobile: (show: boolean) => void;
   setShowSharedLibrary?: (show: boolean) => void;
+  /** 共有エントリの全画面表示を開く（未指定なら Library にフォールバックする） */
+  openSharedEntryView?: (id: string) => void;
   clearViews: () => void;
   /** サイドピークの適用（null で閉じる）。ビューを立て終えたあとに呼ばれる。
    *  ビュー切り替え側がピークを畳む実装なので、順序が逆だと開いた直後に消える。
@@ -204,6 +219,13 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
       case "shared-library":
         actions.clearViews();
         actions.setShowSharedLibrary?.(true);
+        break;
+      case "shared-entry":
+        actions.clearViews();
+        // 全画面を開けない環境（ハンドラ未接続）では Library に落とす。
+        // 何も起きずに空画面になるより、共有の入口に着地させる
+        if (actions.openSharedEntryView) actions.openSharedEntryView(route.id);
+        else actions.setShowSharedLibrary?.(true);
         break;
       case "home":
         actions.clearViews();

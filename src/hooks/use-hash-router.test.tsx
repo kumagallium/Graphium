@@ -142,6 +142,42 @@ describe("useHashRouter のハッシュ解決", () => {
     window.location.hash = "#wiki/claim/k9";
     expect(result.current.parseHash()).toEqual({ view: "wiki-editor", kind: "claim", wikiId: "k9" });
   });
+
+  it("共有エントリの全画面を #shared-entry/<id> として往復できる", async () => {
+    const actions = { ...noopActions(), openSharedEntryView: vi.fn() };
+    const { result } = renderHook(() => useHashRouter(actions, true));
+
+    act(() => result.current.navigate({ view: "shared-entry", id: "e-1" }));
+    expect(window.location.hash).toBe("#shared-entry/e-1");
+    expect(result.current.parseHash()).toEqual({ view: "shared-entry", id: "e-1" });
+
+    await flushNavigate();
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 1 } }));
+    });
+    expect(actions.clearViews).toHaveBeenCalled();
+    expect(actions.openSharedEntryView).toHaveBeenCalledWith("e-1");
+  });
+
+  // 引用カードの #shared/<id> は router に登録しない口。全画面のパスと混ざらないこと
+  it("#shared/<id> は shared-entry として解決しない", () => {
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+    window.location.hash = "#shared/e-1";
+    expect(result.current.parseHash()).toEqual({ view: "home" });
+  });
+
+  // 全画面のハンドラを持たない環境（デスクトップ以外など）で空画面にしない
+  it("openSharedEntryView が無ければ Library にフォールバックする", async () => {
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+
+    act(() => result.current.navigate({ view: "shared-entry", id: "e-1" }));
+    await flushNavigate();
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 1 } }));
+    });
+    expect(actions.setShowSharedLibrary).toHaveBeenCalledWith(true);
+  });
 });
 
 describe("サイドピークの履歴", () => {

@@ -20,6 +20,8 @@ import {
   __resetSharedProjectionForTest,
   recordSharedProjectionFromBody,
 } from "./shared-projection";
+import { SharedEntryComments } from "./SharedEntryComments";
+import { markSeen } from "./shared-seen";
 import type { GraphiumDocument } from "../../lib/document-types";
 import "../../app.css";
 
@@ -226,6 +228,60 @@ const TEMPLATES: SharedEntry[] = [
   }),
 ];
 
+// 先生 → 学生のコメント（note-1 に付いた 1 スレッド + 段落付きの指摘 1 件）。
+// 一覧タブには出ない（対象に付くもの）。詳細パネルの「コメント」節と行の印に効く
+const COMMENTS: SharedEntry[] = [
+  makeEntry({
+    id: "comment-1",
+    type: "comment",
+    author: TEACHER,
+    created_at: daysAgo(0.5),
+    updated_at: daysAgo(0.5),
+    prov: { derived_from: ["note-1"] },
+    extra: { target: "note-1", targetHash: NOTES[0].hash },
+  }),
+  makeEntry({
+    id: "comment-2",
+    type: "comment",
+    author: STUDENT_A,
+    created_at: daysAgo(0.4),
+    updated_at: daysAgo(0.4),
+    prov: { derived_from: ["note-1"] },
+    extra: { target: "note-1", targetHash: NOTES[0].hash, parentId: "comment-1" },
+  }),
+  makeEntry({
+    id: "comment-3",
+    type: "comment",
+    author: TEACHER,
+    created_at: daysAgo(0.3),
+    updated_at: daysAgo(0.3),
+    prov: { derived_from: ["note-1"] },
+    extra: {
+      target: "note-1",
+      targetHash: NOTES[0].hash,
+      blockId: "b-sinter",
+      blockText: "1050 ℃ で 2 時間保持した",
+    },
+  }),
+  // 対象が更新される前に書かれた指摘（「古い版へのコメント」に畳まれる）
+  makeEntry({
+    id: "comment-4",
+    type: "comment",
+    author: TEACHER,
+    created_at: daysAgo(6),
+    updated_at: daysAgo(6),
+    prov: { derived_from: ["note-1"] },
+    extra: { target: "note-1", targetHash: "sha256:before-the-update" },
+  }),
+];
+
+const COMMENT_TEXTS: Record<string, string> = {
+  "comment-1": "昇温速度が書かれていません。次回から記録してください。",
+  "comment-2": "すみません、追記しました。5 ℃/min です。",
+  "comment-3": "保持時間の根拠になった文献を引用で足しておくと良いです。",
+  "comment-4": "図 2 の軸ラベルが読めません。",
+};
+
 const ALL_ENTRIES = {
   entries: {
     note: NOTES,
@@ -234,6 +290,7 @@ const ALL_ENTRIES = {
     "data-manifest": DATA_MANIFESTS,
     template: TEMPLATES,
     report: [],
+    comment: COMMENTS,
   },
   errors: {},
 };
@@ -246,6 +303,7 @@ const EMPTY_ENTRIES = {
     "data-manifest": [],
     template: [],
     report: [],
+    comment: [],
   },
   errors: {},
 };
@@ -278,6 +336,8 @@ const baseArgs = {
   onUnshare: NOOP_ASYNC,
   onImportBlob: NOOP_ASYNC,
   onBack: () => console.log("back"),
+  // 行のダブルクリック・詳細パネルの「開く」から全画面表示へ（実アプリでは SharedNoteView）
+  onOpenFull: (entry: SharedEntry) => console.log("open full", entry.id),
   // ラベル / プロセスタブの説明バーのボタン（実アプリではノート一覧へ移動する）
   onOpenNoteList: () => console.log("open note list"),
   loadEntries: async () => ALL_ENTRIES,
@@ -377,12 +437,22 @@ const stepBlock = (id: string, title: string, children: any[] = []) => ({
   content: [styled(title)],
   children,
 });
-const makeDoc = (title: string, blocks: any[]): GraphiumDocument =>
+const makeDoc = (title: string, blocks: any[], provLinks: any[] = []): GraphiumDocument =>
   ({
     version: 6,
     title,
-    pages: [{ id: "p1", title, blocks, labels: {}, provLinks: [], knowledgeLinks: [] }],
+    pages: [{ id: "p1", title, blocks, labels: {}, provLinks, knowledgeLinks: [] }],
   }) as any;
+
+/** 前手順リンク（informed_by）。これが無いと手順フローが 1 本に繋がらない */
+const informedBy = (step: string, prevStep: string) => ({
+  id: `link-${step}-${prevStep}`,
+  sourceBlockId: step,
+  targetBlockId: prevStep,
+  type: "informed_by" as const,
+  layer: "prov" as const,
+  createdBy: "system" as const,
+});
 
 const SINTERING_DOC = makeDoc("Cu粉末の焼結実験（第1回）", [
   stepBlock("s1", "秤量", [
@@ -630,6 +700,7 @@ const MANUAL_ENTRIES = {
     "data-manifest": MANUAL_DATA_MANIFESTS,
     template: [],
     report: [],
+    comment: [],
   },
   errors: {},
 };
@@ -654,4 +725,436 @@ export const ManualEnglish: Story = {
       );
     },
   ],
+};
+
+// ── 先生 ⇄ 学生の往復（コメント・更新あり・新着の印） ──
+// 共有フォルダは Tauri の invoke 越しなので、Storybook では封筒も本文もモックで渡す。
+
+/** 「最後に見た」控えを仕込む（前に見たのは古い版・コメントは 1 件だけ見ていた） */
+function seedSeen() {
+  markSeen("note-1", "sha256:the-version-i-saw-before", 1);
+}
+
+export const ProposedUpdateMarks: Story = {
+  name: "提案（更新あり・新着コメントの印）",
+  args: baseArgs,
+  decorators: [
+    (Story) => {
+      syncLocale("ja");
+      seedSeen();
+      return (
+        <LocaleProvider>
+          <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "前に見たときから hash が変わった他人のノートに「更新あり」、控えより増えたコメントに「新着 N」を出す。自分作のノートと、まだ一度も開いていないノートには印を出さない（全部に印が付くとノイズになる）。版列は同じ id を上書きした回数を「v1 · 更新 N 回」で見せる。",
+      },
+    },
+  },
+};
+
+/** 詳細パネルの「コメント」節だけを切り出したストーリー（本文は DI で渡す） */
+export const DetailComments: Story = {
+  name: "提案（詳細パネルのコメント節）",
+  parameters: {
+    layout: "centered",
+    docs: {
+      description: {
+        story:
+          "対象 1 件に付いたコメント。返信は 1 段まで。段落に付いた指摘は ¶ チップで出し、押すとプレビューの該当ブロックへ飛ぶ。共有コピーが更新される前に書かれた指摘は「古い版へのコメント」に畳まれる（解決フラグを持たない代わり）。",
+      },
+    },
+  },
+  render: () => {
+    syncLocale("ja");
+    return (
+      <LocaleProvider>
+        <div style={{ width: 420, fontFamily: "'Inter', system-ui, sans-serif" }}>
+          <SharedEntryComments
+            targetId="note-1"
+            targetHash={NOTES[0].hash}
+            sharedRoot="/Users/yamada/shared-lab"
+            currentIdentity={TEACHER}
+            entries={COMMENTS}
+            readBody={async (entry) => ({
+              body: new TextEncoder().encode(COMMENT_TEXTS[entry.id] ?? ""),
+              verified: true,
+            })}
+            pendingAnchor={{ blockId: "b-sinter", blockText: "1050 ℃ で 2 時間保持した" }}
+            onClearAnchor={() => console.log("clear anchor")}
+            onJumpToBlock={(blockId) => console.log("jump to", blockId)}
+            provider={{
+              read: async () => {
+                throw new Error("storybook mock");
+              },
+              write: async (entry, content) =>
+                console.log("write", entry.id, new TextDecoder().decode(content)),
+              delete: async (id) => console.log("delete", id),
+            }}
+          />
+        </div>
+      </LocaleProvider>
+    );
+  },
+};
+
+// ── 詳細パネル（プレビュー + コメントのドック） ──
+//
+// 実アプリの本文は Tauri の invoke 越しなので、Storybook では readEntryBody を
+// 差し替えて擬似 GraphiumDocument を返す（loadEntries と同じ DI の流儀）。
+// プレビューの段落をクリックすると ¶ の指定が付き、その段落が常時ハイライトされる。
+
+const DETAIL_DOC = makeDoc("Cu粉末の焼結実験（第1回）", [
+  para("b-weigh", [styled("Cu 粉末を 5.00 g 秤量した（電子天秤 0.01 g 読み）。")]),
+  para("b-press", [styled("一軸プレスで 200 MPa・60 秒 保持して圧粉体を作製した。")]),
+  para("b-sinter", [styled("1050 ℃ で 2 時間保持した")]),
+  para("b-cool", [styled("炉冷（自然冷却）。翌朝に取り出した。")]),
+  para("b-xrd", [styled("焼結体を XRD で測定し、Cu2O のピークを確認した。")]),
+]);
+
+export const ProposedDetailWithComments: Story = {
+  name: "提案（詳細パネル・コメントのドック）",
+  args: {
+    ...baseArgs,
+    // 一覧から選んだのと同じ状態（note-1 の詳細パネルを開いた状態）で始める
+    focusEntryId: "note-1",
+    readEntryBody: async (entry) => ({
+      body:
+        entry.type === "comment"
+          ? new TextEncoder().encode(COMMENT_TEXTS[entry.id] ?? "")
+          : encodeDoc(DETAIL_DOC),
+      verified: true,
+    }),
+  },
+  decorators: Proposed.decorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "コメントはパネル下部に固定（ドック）する。見出し行で一覧を畳めるが、入力欄は畳んでも残るので、上の方の段落を選んでから下まで戻る必要がない。プレビューの段落をクリックすると ¶ の指定が付き、その段落がノート編集画面の履歴ハイライトと同じ見た目で強調される（もう一度クリックで解除）。見出し右の「開く」（⤢）で全画面表示に移る（一覧の行をダブルクリックしても同じ）。",
+      },
+    },
+  },
+};
+
+// ── マニュアル用スクショ（英語・パン作りの世界観）: ラベル / プロセス / テンプレート / 印 / コメント ──
+//
+// 撮影は scripts/manual-screenshots-shared.mjs（Storybook の iframe.html を Playwright で開く）。
+// 上の ManualEnglish と同じ登場人物・同じフォルダを使い、DI の組み方は日本語ストーリー
+// （ProposedLabels / ProposedProcess / ProposedTemplates / ProposedUpdateMarks /
+// ProposedDetailWithComments）と同じにする。中身だけをパン作りに置き換えたもの。
+
+/** テンプレートタブ用。説明列が埋まる 2 件（片方は指導役、片方は学生役） */
+const MANUAL_TEMPLATES: SharedEntry[] = [
+  makeEntry({
+    id: "manual-template-1",
+    type: "template",
+    author: MANUAL_MENTOR,
+    updated_at: daysAgo(0.6),
+    extra: {
+      title: "Bake log template",
+      description:
+        "Mix → Ferment → Bake, with a table for dough temperature and timings. The numbers are left blank.",
+      stepCount: 3,
+      labelCount: 6,
+      pageTitle: "Weekend bake schedule",
+    },
+  }),
+  makeEntry({
+    id: "manual-template-2",
+    type: "template",
+    author: MANUAL_STUDENT_B,
+    updated_at: daysAgo(2.5),
+    extra: {
+      title: "Starter feeding sheet",
+      description:
+        "One row per feeding: flour, water, room temperature, and how far the starter rose.",
+      stepCount: 2,
+      labelCount: 4,
+      pageTitle: "Sourdough starter log — day 3",
+    },
+  }),
+];
+
+/** manual-note-1 に付いたコメント（返信 1 件 + 段落付きの指摘 1 件） */
+const MANUAL_COMMENTS: SharedEntry[] = [
+  makeEntry({
+    id: "manual-comment-1",
+    type: "comment",
+    author: MANUAL_MENTOR,
+    created_at: daysAgo(0.35),
+    updated_at: daysAgo(0.35),
+    prov: { derived_from: ["manual-note-1"] },
+    extra: { target: "manual-note-1", targetHash: MANUAL_NOTES[0].hash },
+  }),
+  makeEntry({
+    id: "manual-comment-2",
+    type: "comment",
+    author: MANUAL_STUDENT_A,
+    created_at: daysAgo(0.3),
+    updated_at: daysAgo(0.3),
+    prov: { derived_from: ["manual-note-1"] },
+    extra: {
+      target: "manual-note-1",
+      targetHash: MANUAL_NOTES[0].hash,
+      parentId: "manual-comment-1",
+    },
+  }),
+  makeEntry({
+    id: "manual-comment-3",
+    type: "comment",
+    author: MANUAL_MENTOR,
+    created_at: daysAgo(0.2),
+    updated_at: daysAgo(0.2),
+    prov: { derived_from: ["manual-note-1"] },
+    extra: {
+      target: "manual-note-1",
+      targetHash: MANUAL_NOTES[0].hash,
+      blockId: "mb-rise",
+      blockText: "The starter doubled in four hours at 28 °C.",
+    },
+  }),
+];
+
+const MANUAL_COMMENT_TEXTS: Record<string, string> = {
+  "manual-comment-1":
+    "Good rise. Could you also write down the room temperature at every feeding?",
+  "manual-comment-2": "Added it — 21 °C in the kitchen, 28 °C in the proofing box.",
+  "manual-comment-3":
+    "Worth linking the hydration page here: day 2 rose much more slowly at the same temperature.",
+};
+
+/** ManualEnglish の一覧にテンプレートとコメントを足したもの（既存の MANUAL_ENTRIES は触らない） */
+const MANUAL_ENTRIES_WITH_REPLIES = {
+  entries: {
+    note: MANUAL_NOTES,
+    knowledge: MANUAL_KNOWLEDGE,
+    reference: MANUAL_REFERENCES,
+    "data-manifest": MANUAL_DATA_MANIFESTS,
+    template: MANUAL_TEMPLATES,
+    report: [],
+    comment: MANUAL_COMMENTS,
+  },
+  errors: {},
+};
+
+// 投影に流し込む本文。ラベルタブは inline ハイライトから、プロセスタブは step ブロックから出る
+const MANUAL_STARTER_DOC = makeDoc("Sourdough starter log — day 3", [
+  para("mb-flour", [styled("bread flour 500 g", { inlineMaterial: "mat-bread-flour" })]),
+  para("mb-rye", [styled("rye flour 50 g", { inlineMaterial: "mat-rye-flour" })]),
+  para("mb-whole", [styled("whole wheat flour 100 g", { inlineMaterial: "mat-whole-wheat" })]),
+  para("mb-water", [styled("water 350 g", { inlineMaterial: "mat-water" })]),
+  para("mb-levain", [styled("levain 100 g", { inlineMaterial: "mat-levain" })]),
+  para("mb-poolish", [styled("poolish 200 g", { inlineMaterial: "mat-poolish" })]),
+  para("mb-scale", [styled("kitchen scale", { inlineTool: "tool-scale" })]),
+  para("mb-proof", [styled("28 °C, 4 h", { inlineAttribute: "attr-proof" })]),
+]);
+
+// 各手順の出力を 1 つにして前手順リンクを張ると、次の手順が前の出力を「使った」形に
+// 繋がる（generator.ts の informed_by 経路）。Mix → Ferment → Bake が 1 本の流れになる。
+// 先頭の手順に入力を並べすぎると、フロー最上段が右上の「Tidy up / Parameters」の
+// ツールバーに潜り込んで図が読めなくなるので、Mix の入力は 1 つに絞ってある
+const MANUAL_SCHEDULE_DOC = makeDoc(
+  "Weekend bake schedule",
+  [
+    stepBlock("ms1", "Mix", [
+      para("ms1-b1", [styled("bread flour 500 g", { inlineMaterial: "mat-bread-flour" })]),
+      para("ms1-b2", [styled("mixed dough", { inlineOutput: "out-mixed" })]),
+    ]),
+    stepBlock("ms2", "Ferment", [
+      para("ms2-b1", [styled("28 °C, 4 h", { inlineAttribute: "attr-proof" })]),
+      para("ms2-b2", [styled("bulk dough", { inlineOutput: "out-bulk" })]),
+    ]),
+    stepBlock("ms3", "Bake", [
+      para("ms3-b1", [styled("deck oven", { inlineTool: "tool-deck-oven" })]),
+      para("ms3-b2", [styled("240 °C", { inlineAttribute: "attr-bake-temp" })]),
+      para("ms3-b3", [styled("loaf volume 1.8 L", { inlineOutput: "out-loaf" })]),
+    ]),
+  ],
+  [informedBy("ms2", "ms1"), informedBy("ms3", "ms2")],
+);
+
+const MANUAL_SHAPING_DOC = makeDoc(
+  "Baguette shaping notes",
+  [
+    stepBlock("mp1", "Divide", [
+      para("mp1-b1", [styled("bulk dough", { inlineMaterial: "mat-bulk" })]),
+      para("mp1-b2", [styled("bench scraper", { inlineTool: "tool-scraper" })]),
+      para("mp1-b3", [styled("divided dough", { inlineOutput: "out-divided" })]),
+    ]),
+    stepBlock("mp2", "Shape", [
+      para("mp2-b1", [styled("couche linen", { inlineTool: "tool-couche" })]),
+      para("mp2-b2", [styled("shaped baguette", { inlineOutput: "out-shaped" })]),
+    ]),
+    stepBlock("mp3", "Proof", [
+      para("mp3-b1", [styled("75 % humidity", { inlineAttribute: "attr-humidity" })]),
+      para("mp3-b2", [styled("proofed baguette", { inlineOutput: "out-proofed" })]),
+    ]),
+  ],
+  [informedBy("mp2", "mp1"), informedBy("mp3", "mp2")],
+);
+
+/** 3 件のノートを投影済みにする（残り 2 件は「まだ本文を読めていない」状態のまま） */
+function seedManualProjection() {
+  __resetSharedProjectionForTest();
+  recordSharedProjectionFromBody(MANUAL_NOTES[0], encodeDoc(MANUAL_STARTER_DOC), true);
+  recordSharedProjectionFromBody(MANUAL_NOTES[2], encodeDoc(MANUAL_SCHEDULE_DOC), true);
+  recordSharedProjectionFromBody(MANUAL_NOTES[3], encodeDoc(MANUAL_SHAPING_DOC), true);
+}
+
+const manualDecorators = [
+  (Story: () => React.JSX.Element) => {
+    syncLocale("en");
+    // どの図でもタブの件数（ラベル / プロセス）が同じに見えるよう、投影は常に仕込む
+    seedManualProjection();
+    return (
+      <LocaleProvider>
+        <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+          <Story />
+        </div>
+      </LocaleProvider>
+    );
+  },
+];
+
+const manualProjectionDecorators = [
+  (Story: () => React.JSX.Element) => {
+    syncLocale("en");
+    seedManualProjection();
+    return (
+      <LocaleProvider>
+        <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+          <Story />
+        </div>
+      </LocaleProvider>
+    );
+  },
+];
+
+const manualArgs = {
+  ...baseArgs,
+  sharedRoot: "/Users/mia/shared-bakery",
+  currentIdentity: MANUAL_MENTOR,
+  loadEntries: async () => MANUAL_ENTRIES_WITH_REPLIES,
+};
+
+export const ManualEnglishLabels: Story = {
+  name: "Manual (English, bread world) — labels",
+  args: { ...manualArgs, initialTab: "labels" },
+  decorators: manualProjectionDecorators,
+};
+
+export const ManualEnglishProcess: Story = {
+  name: "Manual (English, bread world) — process",
+  args: { ...manualArgs, initialTab: "process" },
+  decorators: manualProjectionDecorators,
+};
+
+export const ManualEnglishTemplates: Story = {
+  name: "Manual (English, bread world) — templates",
+  args: { ...manualArgs, initialTab: "template" },
+  decorators: manualDecorators,
+};
+
+/**
+ * 「最後に見た」控えを仕込む（ProposedUpdateMarks の seedSeen と同じ組み方）。
+ * - manual-note-1: 同じ hash・コメント 1 件だけ見ていた → 「2 new」だけが出る
+ * - manual-note-2: 古い hash を見ていた → 「Updated」だけが出る
+ */
+function seedManualSeen() {
+  markSeen("manual-note-1", MANUAL_NOTES[0].hash, 1);
+  markSeen("manual-note-2", "sha256:the-version-i-saw-before", 0);
+}
+
+/**
+ * 版列に「v2 · 2 updates」を出すための更新履歴。既存の MANUAL_NOTES は触らず、
+ * この図のためだけに 1 件を複製して履歴を足す（ManualEnglish の図と食い違わせない）
+ */
+const MANUAL_NOTES_WITH_HISTORY: SharedEntry[] = MANUAL_NOTES.map((note) =>
+  note.id === "manual-note-2"
+    ? {
+        ...note,
+        history: [
+          {
+            hash: "sha256:41c7be08",
+            updated_at: daysAgo(1.4),
+            updated_by: MANUAL_STUDENT_B,
+            change_kind: "minor" as const,
+          },
+          {
+            hash: note.hash,
+            updated_at: daysAgo(0.3),
+            updated_by: MANUAL_STUDENT_B,
+            change_kind: "minor" as const,
+          },
+        ],
+      }
+    : note,
+);
+
+export const ManualEnglishUpdateMarks: Story = {
+  name: "Manual (English, bread world) — update marks",
+  args: {
+    ...manualArgs,
+    loadEntries: async () => ({
+      ...MANUAL_ENTRIES_WITH_REPLIES,
+      entries: { ...MANUAL_ENTRIES_WITH_REPLIES.entries, note: MANUAL_NOTES_WITH_HISTORY },
+    }),
+  },
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      seedManualProjection();
+      seedManualSeen();
+      return (
+        <LocaleProvider>
+          <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+};
+
+/** 詳細パネルのプレビューに出す本文（段落 mb-rise に ¶ 付きのコメントが刺さる） */
+const MANUAL_DETAIL_DOC = makeDoc("Sourdough starter log — day 3", [
+  para("mb-feed", [
+    styled("Fed the starter at 8:00 with 50 g of bread flour and 50 g of water (1:1:1)."),
+  ]),
+  para("mb-box", [
+    styled("Kept it in the proofing box at 28 °C; the kitchen itself stayed around 21 °C."),
+  ]),
+  para("mb-rise", [styled("The starter doubled in four hours at 28 °C.")]),
+  para("mb-smell", [
+    styled("The smell has moved from sharp vinegar to something closer to yogurt."),
+  ]),
+  para("mb-next", [
+    styled("Day 4: feed twice, and save the discard for the weekend baguettes."),
+  ]),
+]);
+
+export const ManualEnglishDetailComments: Story = {
+  name: "Manual (English, bread world) — detail comments",
+  args: {
+    ...manualArgs,
+    // 一覧から行を選んだのと同じ状態（manual-note-1 の詳細パネルを開いた状態）で始める
+    focusEntryId: "manual-note-1",
+    readEntryBody: async (entry) => ({
+      body:
+        entry.type === "comment"
+          ? new TextEncoder().encode(MANUAL_COMMENT_TEXTS[entry.id] ?? "")
+          : encodeDoc(MANUAL_DETAIL_DOC),
+      verified: true,
+    }),
+  },
+  decorators: manualDecorators,
 };

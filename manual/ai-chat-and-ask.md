@@ -73,6 +73,20 @@ Each note keeps its own chat history, saved with the note. In the panel header, 
 
 Switching notes does not kill a running answer. The request keeps going in the background, the result is written back to the correct note's chat, and when you return to that note the **Chat** tab reopens on the conversation.
 
+## Asking about a shared note <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" /> {#asking-about-a-shared-note}
+
+Entries in the shared library can be discussed the same way, without forking them first. Open one in full view (double-click its row, or **Open in full view** in the detail panel) and pick **Ask AI** from the right-hand rail. The tab is there once an AI model is set up, and for entries that have something to read — not for files shared as materials, or for comments.
+
+![Asking about a shared note from the Ask AI rail of the full view](/screenshots/shared-note-ask-ai.png)
+
+Three things are worth knowing about it:
+
+- **Click a paragraph to ask about that paragraph.** While **Ask AI** is the open tab, clicking a paragraph in the body starts a new conversation quoting it, instead of marking it as the place for a comment. Close the tab, or switch back to **Comments**, and paragraph clicks go back to picking a comment target.
+- **The conversation stays on your side.** Questions and answers are saved on your own device, never in the shared folder — the person who shared the entry does not see that you asked, or what you asked. Nothing is written into provenance either, so the buttons under an answer — **Insert into note**, **Derive as note**, **Make Knowledge** — are not offered here; it is someone else's material you are reading, not your own note you are writing. To keep something from the conversation, use **Add to Knowledge** in the panel header (the book icon, which appears once the conversation has a message): it hands the whole conversation to your own [Knowledge layer](/knowledge-layer) and reports what it wrote in a toast.
+- **The shared text is what grounds the answer.** The entry's content travels with every question (long entries are cut off, with a line saying so), so the model answers from what is actually shared rather than from the title. Whether the answer may also draw on *other* shared entries follows the search setting described in [Storage & sync](/storage-and-sync#shared-entries-in-search-and-ai-chat); your own notes and Knowledge are reached the usual way, by choosing Internal or External as the grounding scope.
+
+One limitation to keep in mind: leaving the page cancels an answer still being written. Unlike a note's chat, this conversation does not keep running in the background — wait for the reply before you navigate away.
+
 ## Using an answer
 
 Every AI reply has action buttons underneath:

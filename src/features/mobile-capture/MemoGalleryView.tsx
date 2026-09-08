@@ -1,8 +1,8 @@
 // PC 向けメモギャラリービュー
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon , Folder } from "lucide-react";
 import { CaptureDialog } from "./CaptureDialog";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
@@ -14,6 +14,16 @@ import {
   interactionStyles,
 } from "../network-graph/graph-theme";
 import { getActiveCaptures, type CaptureIndex, type CaptureEntry } from "./capture-store";
+import { UNFILED_PATH } from "../note-context/folder-tree-model";
+import {
+  aggregateNoteContexts,
+  noteContextHue,
+  addNoteContext,
+  removeNoteContext,
+} from "../note-context/context-tags";
+import { ContextTagPicker } from "../note-context/ContextTagPicker";
+import { ContextBadge } from "../note-context/ContextBadge";
+import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -475,6 +485,11 @@ function MemoDetailModal({
 
 function MemoCard({
   entry,
+  index,
+  selected,
+  showCheckbox,
+  onCheckboxMouseDown,
+  onMouseEnter,
   onOpenDetail,
   onInsert,
   onDelete,
@@ -483,6 +498,15 @@ function MemoCard({
   insertDisabled,
 }: {
   entry: CaptureEntry;
+  /** captures 内での位置。範囲選択（useRangeSelect）が行番号として使う */
+  index: number;
+  /** このタイルが選択中か */
+  selected: boolean;
+  /** 何か 1 件でも選択中か。選択中は全タイルのチェックボックスを出しっぱなしにする */
+  showCheckbox: boolean;
+  onCheckboxMouseDown: (e: ReactMouseEvent, index: number) => void;
+  /** ドラッグ範囲選択の伸長。list 行の onRowMouseEnter と同じ役割 */
+  onMouseEnter: (index: number) => void;
   onOpenDetail: () => void;
   onInsert?: () => void;
   onDelete?: () => void;
@@ -497,12 +521,44 @@ function MemoCard({
 
   return (
     <div
-      className="bg-card border border-border rounded-lg p-4 group hover:border-primary/30 transition-colors cursor-pointer"
+      className={`bg-card border rounded-lg p-4 group relative hover:border-primary/30 transition-colors cursor-pointer ${
+        selected ? "border-primary" : "border-border"
+      }`}
+      onMouseEnter={() => onMouseEnter(index)}
       onClick={onOpenDetail}
     >
+      {/* 左上チェックボックス（list 行の td と同じ作法）。
+          未選択かつ非ホバーのときだけ消して本文を邪魔しない。
+          8pt 格子の --space-2（8px）で角から離す（素材のタイルと同じ）。下地（bg-card）で本文と重なっても読める。
+          input 自体は pointer-events-none にして、mousedown を包む要素で拾う
+          （距離ゼロでも即トグル + そのままドラッグで範囲選択に入るため） */}
+      <div
+        className={`absolute top-2 left-2 z-10 rounded bg-card cursor-pointer transition-opacity ${
+          selected || showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        }`}
+        title={t("memo.dragToRangeSelect")}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => onCheckboxMouseDown(e, index)}
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          readOnly
+          tabIndex={-1}
+          className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none block"
+        />
+      </div>
       <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-4 mb-2">
         {entry.text}
       </p>
+      {/* 入っているフォルダ。素材と違って導出は無いので、全部が手で入れた分 */}
+      {(entry.noteContexts?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {entry.noteContexts?.map((value) => (
+            <ContextBadge key={value} value={value} />
+          ))}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground">
@@ -628,6 +684,8 @@ export function MemoGalleryView({
   creating,
   onKnowledgeMemos,
   onArchiveMemo,
+  onSetMemoContexts,
+  noteFolders,
 }: {
   captureIndex: CaptureIndex | null;
   loading: boolean;
@@ -649,10 +707,63 @@ export function MemoGalleryView({
   onKnowledgeMemos?: (captureIds: string[]) => void;
   /** メモをアーカイブする（gallery / list / 詳細 / 一括バーから呼ぶ） */
   onArchiveMemo?: (captureId: string) => void;
+  /** メモのフォルダを保存する。渡されたときだけ付与 UI を出す */
+  onSetMemoContexts?: (captureId: string, contexts: string[]) => Promise<void> | void;
+  /** フォルダの候補（ノート側で使われている名前 + 空フォルダ） */
+  noteFolders?: readonly string[];
 }) {
   const t = useT();
   // アーカイブ・ゴミ箱を除いた active なメモのみ一覧に表示する
-  const captures = useMemo(() => (captureIndex ? getActiveCaptures(captureIndex) : []), [captureIndex]);
+  const [folderFilter, setFolderFilter] = useState<string[]>([]);
+  const [folderFilterOpen, setFolderFilterOpen] = useState(false);
+  const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
+  const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignPos, setAssignPos] = useState({ top: 0, left: 0 });
+  const [assignApplied, setAssignApplied] = useState<string[]>([]);
+  const allCaptures = useMemo(
+    () => (captureIndex ? getActiveCaptures(captureIndex) : []),
+    [captureIndex],
+  );
+  // フォルダで絞る。UNFILED_PATH は「どのフォルダにも入っていない」を表す特別な値
+  const captures = useMemo(() => {
+    if (folderFilter.length === 0) return allCaptures;
+    const wantsUnfiled = folderFilter.includes(UNFILED_PATH);
+    const wanted = new Set(
+      folderFilter.filter((v) => v !== UNFILED_PATH).map((v) => v.toLowerCase()),
+    );
+    return allCaptures.filter((c) => {
+      const folders = c.noteContexts ?? [];
+      if (wantsUnfiled && folders.length === 0) return true;
+      return folders.some((v) => wanted.has(v.trim().toLowerCase()));
+    });
+  }, [allCaptures, folderFilter]);
+  // 絞り込みの選択肢は、絞る前の全件から数える（絞った後だと自分以外が消える）
+  const folderFilterOptions = useMemo<FilterOption[]>(() => {
+    const options: FilterOption[] = aggregateNoteContexts(allCaptures).map(({ value, count }) => ({
+      value,
+      label: value,
+      count,
+      icon: (
+        <span
+          className="block w-2.5 h-2.5 rounded-full"
+          style={{ backgroundColor: `hsl(${noteContextHue(value)} 45% 45%)` }}
+        />
+      ),
+    }));
+    const unfiled = allCaptures.filter((c) => (c.noteContexts?.length ?? 0) === 0).length;
+    if (unfiled > 0) options.push({ value: UNFILED_PATH, label: t("nav.unfiled"), count: unfiled });
+    return options;
+  }, [allCaptures, t]);
+  // 付与ピッカーの候補。メモが既に使っている分と、ノート側のフォルダを混ぜる
+  const assignSuggestions = useMemo(
+    () =>
+      aggregateNoteContexts([
+        ...allCaptures,
+        ...(noteFolders ?? []).map((value) => ({ noteContexts: [value] })),
+      ]),
+    [allCaptures, noteFolders],
+  );
   const [pendingInsert, setPendingInsert] = useState<{ id: string; text: string } | null>(null);
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
@@ -674,15 +785,11 @@ export function MemoGalleryView({
     }
   }, [viewMode]);
 
-  // 複数選択（list モードのみで利用）
+  // 複数選択（gallery / list 共通）。表示モードを切り替えても選択は保つ
+  // — 同じメモを見る角度が変わるだけで、選んだものが変わるわけではない
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
-
-  // ビューモード切替時に選択をクリア
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [viewMode]);
 
   // captures が変わったら、もう存在しない id を選択から除外（個別削除との整合）
   useEffect(() => {
@@ -768,7 +875,35 @@ export function MemoGalleryView({
         <span className="text-xs text-muted-foreground">
           {loading ? t("common.loading") : t("memo.count", { count: String(captures.length) })}
         </span>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* gallery モードの「すべて選択」。list は列ヘッダのチェックボックスが担う */}
+          {viewMode === "gallery" && captures.length > 0 && (
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+              className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+              title={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
+            />
+          )}
+          {/* フォルダで絞る。素材ギャラリーと同じ FilterPopup */}
+          <button
+            ref={folderFilterBtnRef}
+            onClick={() => {
+              const rect = folderFilterBtnRef.current?.getBoundingClientRect();
+              if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left });
+              setFolderFilterOpen((v) => !v);
+            }}
+            className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
+              folderFilter.length > 0
+                ? "border-primary/40 text-primary bg-primary/10"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+            title={t("nav.folders")}
+          >
+            <Folder size={12} />
+            {folderFilter.length > 0 && <span>{folderFilter.length}</span>}
+          </button>
           {/* ビュー切替 */}
           <div className="inline-flex rounded border border-border overflow-hidden">
             <button
@@ -816,9 +951,11 @@ export function MemoGalleryView({
         </div>
       )}
 
-      {/* 一括アクションバー（list モードで選択時のみ） */}
-      {viewMode === "list" && someSelected && (
-        <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
+      {/* 一括アクションバー（gallery / list 共通。選択が 1 件でもあれば出す）。
+          ギャラリー表示でしかメモを見ないユーザーが「ナレッジ化」等の一括操作に
+          辿り着けない状態を解消するため、表示モードでは出し分けない */}
+      {someSelected && (
+        <div className="px-6 py-2 border-b border-border bg-primary/5 flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-xs text-foreground font-medium">
             {selectedIds.size} / {captures.length}
           </span>
@@ -828,14 +965,37 @@ export function MemoGalleryView({
           >
             {t("memo.deselectAll")}
           </button>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {onSetMemoContexts && (
+              <button
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setAssignPos({ top: rect.bottom + 4, left: rect.left });
+                  // 開いた時点で「選択した全部に入っている」フォルダだけを既に付いた印にする
+                  const lists = [...selectedIds].map(
+                    (id) => allCaptures.find((c) => c.id === id)?.noteContexts ?? [],
+                  );
+                  const common = lists.length
+                    ? (lists[0] ?? []).filter((v) =>
+                        lists.every((l) => l.some((x) => x.toLowerCase() === v.toLowerCase())),
+                      )
+                    : [];
+                  setAssignApplied(common);
+                  setAssignOpen(true);
+                }}
+                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1 whitespace-nowrap"
+              >
+                <Folder size={12} />
+                {t("nav.folders")}
+              </button>
+            )}
             {onKnowledgeMemos && (
               <button
                 onClick={() => {
                   onKnowledgeMemos([...selectedIds]);
                   setSelectedIds(new Set());
                 }}
-                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
+                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors whitespace-nowrap"
                 title={t("memo.knowledgeHint")}
               >
                 {t("memo.knowledgeSelected", { count: String(selectedIds.size) })}
@@ -847,7 +1007,7 @@ export function MemoGalleryView({
                   for (const id of selectedIds) onArchiveMemo(id);
                   setSelectedIds(new Set());
                 }}
-                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors"
+                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors whitespace-nowrap"
               >
                 {t("memo.archiveSelected", { count: String(selectedIds.size) })}
               </button>
@@ -855,7 +1015,7 @@ export function MemoGalleryView({
             {onDeleteMemo && (
               <button
                 onClick={() => setBulkDeleteOpen(true)}
-                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors whitespace-nowrap"
               >
                 {t("memo.deleteSelected", { count: String(selectedIds.size) })}
               </button>
@@ -877,11 +1037,20 @@ export function MemoGalleryView({
           </div>
         ) : viewMode === "gallery" ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {captures.map((entry) => (
+            {captures.map((entry, index) => (
               <MemoCard
                 key={entry.id}
                 entry={entry}
-                onOpenDetail={() => setDetailEntry(entry)}
+                index={index}
+                selected={selectedIds.has(entry.id)}
+                showCheckbox={someSelected}
+                onCheckboxMouseDown={range.onCheckboxMouseDown}
+                onMouseEnter={range.onRowMouseEnter}
+                onOpenDetail={() => {
+                  // ドラッグ範囲選択の直後の click は開く操作にしない（list 行と同じ）
+                  if (range.shouldSuppressClick()) return;
+                  setDetailEntry(entry);
+                }}
                 onInsert={onInsertMemo ? () => setPendingInsert({ id: entry.id, text: entry.text }) : undefined}
                 onDelete={onDeleteMemo ? () => onDeleteMemo(entry.id) : undefined}
                 onArchive={onArchiveMemo ? () => onArchiveMemo(entry.id) : undefined}
@@ -1047,6 +1216,47 @@ export function MemoGalleryView({
       )}
 
       {/* 一括削除確認ダイアログ */}
+      {folderFilterOpen && (
+        <FilterPopup
+          position={folderFilterPos}
+          onClose={() => setFolderFilterOpen(false)}
+          title={t("nav.folders")}
+          options={folderFilterOptions}
+          selected={folderFilter}
+          onChange={setFolderFilter}
+          searchPlaceholder={t("common.search")}
+          clearLabel={t("nav.clearFilter")}
+        />
+      )}
+      {assignOpen && onSetMemoContexts && (
+        <ContextTagPicker
+          position={assignPos}
+          onClose={() => setAssignOpen(false)}
+          suggestions={assignSuggestions}
+          selected={assignApplied}
+          onAdd={(value) => {
+            // 選択中のメモすべてに足す（既に入っているものはそのまま）
+            void (async () => {
+              for (const id of selectedIds) {
+                const entry = allCaptures.find((c) => c.id === id);
+                if (!entry) continue;
+                await onSetMemoContexts(id, addNoteContext(entry.noteContexts, value) ?? []);
+              }
+              setAssignApplied((prev) => (prev.includes(value) ? prev : [...prev, value]));
+            })();
+          }}
+          onRemove={(value) => {
+            void (async () => {
+              for (const id of selectedIds) {
+                const entry = allCaptures.find((c) => c.id === id);
+                if (!entry) continue;
+                await onSetMemoContexts(id, removeNoteContext(entry.noteContexts, value) ?? []);
+              }
+              setAssignApplied((prev) => prev.filter((v) => v !== value));
+            })();
+          }}
+        />
+      )}
       {bulkDeleteOpen && (
         <BulkDeleteConfirmDialog
           count={selectedIds.size}

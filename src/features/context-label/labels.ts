@@ -58,7 +58,10 @@ export const CORE_LABEL_PROV: Record<CoreLabel, string> = {
   result: "prov:Activity",       // Phase=result は Activity 実行記録の文脈（独立ノードは生成しない）
   material: "prov:used",          // Entity subtype: material
   tool: "prov:used",              // Entity subtype: tool
-  attribute: "prov:Entity",       // 親ノードの属性（prov:Entity として出力）
+  attribute: "prov:Entity",       // 親ノードの属性（prov:Entity として出力）。
+                                   // ただし親が Activity の [パラメータ] 表で行が複数
+                                   // ある場合（段階 stage）は prov:Activity（子）に投影する
+                                   // — generator.ts の attribute → 親ノード節を参照。
   output: "prov:wasGeneratedBy",  // Activity から生成される Entity
 };
 
