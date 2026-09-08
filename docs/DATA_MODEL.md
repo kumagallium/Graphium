@@ -143,6 +143,19 @@ type GraphiumDocument = {
   // (ARCHITECTURE.md §3.2 "URL / PDF → PROV ingestion").
   partOfPlanNoteId?: string;
 
+  // ── intake origin (note-dedupe) ─────────────────────
+  // Set only for notes created through the intake feature
+  // (`features/intake`). Used to recognize "the same file dropped again":
+  // if a re-imported file's content hash matches an existing note's
+  // importSource.contentHash (candidates narrowed by title), intake reuses
+  // that note instead of creating a duplicate. A hand-authored note, or one
+  // created any other way, has no `importSource`.
+  importSource?: {
+    path: string;         // relative path at import time (filename only for a single-file drop)
+    contentHash: string;  // sha256 of the imported file's bytes, same format as computeBlobHash
+    importedAt: string;   // ISO 8601
+  };
+
   createdAt: string;   // ISO 8601
   modifiedAt: string;  // ISO 8601
 };
