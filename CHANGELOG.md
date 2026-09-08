@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.65.1](https://github.com/kumagallium/Graphium/compare/v0.65.0...v0.65.1) - 2026-09-08
+
+- fix: 表の中身が同じなら素材を作り直さない（往復で CSV が増えるのを止める） by @kumagallium in https://github.com/kumagallium/Graphium/pull/880
+
 ## [v0.65.0](https://github.com/kumagallium/Graphium/compare/v0.64.1...v0.65.0) - 2026-09-08
 
 - [docs] Add screenshots for the intake and in-place folder rename by @kumagallium in https://github.com/kumagallium/Graphium/pull/881
