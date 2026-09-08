@@ -429,6 +429,8 @@ Under the title of every note sits a **Folder** button. Folder names are free-fo
 
 Hover a folder in the sidebar (or select it) and a pencil appears. Click it and the name becomes an input field — `Enter` confirms, `Esc` cancels. Double-clicking the name, or pressing `Enter` while the folder is selected, does the same thing. The right-click **Rename** entry still works as before. Renaming a folder brings its subfolders along, and reaches every note, memo, and material filed under it. Folders that only hold materials (the ones that don't show up in the notes tree) get the same treatment from the pencil (or right-click) on their row in the material gallery's **Folders** filter.
 
+![A folder row in the sidebar, hovered to reveal the rename pencil](/screenshots/folder-rename-inline.png)
+
 ::: warning Deleting a folder never deletes notes
 Renaming or deleting a folder takes its subfolders with it — a folder and what sits under it move together. The notes themselves are never deleted: any note that is not in another folder becomes **Unfiled**. To throw notes away, open the folder and delete them from the list.
 :::
