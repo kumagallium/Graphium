@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.66.0](https://github.com/kumagallium/Graphium/compare/v0.65.1...v0.66.0) - 2026-09-08
+
+- [feat] Propose changes to a shared note and review the three-way diff in the library by @kumagallium in https://github.com/kumagallium/Graphium/pull/867
+- [feat] Extract slides and sheets from Office files already in the library by @kumagallium in https://github.com/kumagallium/Graphium/pull/887
+
 ## [v0.65.1](https://github.com/kumagallium/Graphium/compare/v0.65.0...v0.65.1) - 2026-09-08
 
 - fix: 表の中身が同じなら素材を作り直さない（往復で CSV が増えるのを止める） by @kumagallium in https://github.com/kumagallium/Graphium/pull/880
