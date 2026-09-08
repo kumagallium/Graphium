@@ -261,13 +261,17 @@ describe("runIntake", () => {
     warn.mockRestore();
   });
 
-  it("フォルダの引き継ぎ: 登録済み（duplicate）の素材には setAssetFolder を呼ばない", async () => {
+  it("フォルダの引き継ぎ: 既にフォルダを持つ登録済みの素材には setAssetFolder を呼ばない", async () => {
     function file(path: string): IntakeFile {
       return { file: new File(["dummy"], path.split("/").pop()!), path };
     }
     const files = [file("Vault/研究/fig.png")];
     const setAssetFolder = vi.fn();
-    const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
+    const uploadAsset = vi.fn(async (file: File) => ({
+      fileId: `id-${file.name}`,
+      duplicate: true,
+      entry: { fileId: `id-${file.name}`, type: "image", url: "u", name: file.name, noteContexts: ["別の棚"] },
+    }));
     const deps = makeDeps({ uploadAsset, setAssetFolder });
 
     await runIntake(files, deps, () => {});
@@ -475,5 +479,45 @@ describe("runIntake の Office 展開（同じ取り込みの中に同じファ�
     expect(deps.expandOffice).toHaveBeenCalledTimes(1);
     expect(outcome.officeDerived).toBe(3);
     expect(outcome.officeSkipped).toBe(1);
+  });
+});
+
+describe("runIntake の素材フォルダ（登録済みの扱い）", () => {
+  function imgFile(path: string): IntakeFile {
+    return { file: new File(["x"], path.split("/").pop() ?? path, { type: "image/png" }), path };
+  }
+
+  it("登録済みでもフォルダが無ければ付ける（ノートが参照する画像が先に登録されるケース）", async () => {
+    const setAssetFolder = vi.fn(async () => {});
+    const deps = makeDeps({
+      // Markdown の取り込みが先に登録した画像: duplicate だがフォルダ無し
+      uploadAsset: vi.fn(async () => ({
+        fileId: "img",
+        duplicate: true,
+        entry: { fileId: "img", type: "image", url: "u", name: "fig.png" },
+      })),
+      setAssetFolder,
+    });
+
+    await runIntake([imgFile("Vault/photos/fig.png"), imgFile("Vault/notes/memo.png")], deps, () => {});
+
+    expect(setAssetFolder).toHaveBeenCalledWith("img", "photos");
+    expect(setAssetFolder).toHaveBeenCalledWith("img", "notes");
+  });
+
+  it("既にフォルダを持つ登録済みの素材は触らない", async () => {
+    const setAssetFolder = vi.fn(async () => {});
+    const deps = makeDeps({
+      uploadAsset: vi.fn(async () => ({
+        fileId: "img",
+        duplicate: true,
+        entry: { fileId: "img", type: "image", url: "u", name: "fig.png", noteContexts: ["別の棚"] },
+      })),
+      setAssetFolder,
+    });
+
+    await runIntake([imgFile("Vault/photos/fig.png")], deps, () => {});
+
+    expect(setAssetFolder).not.toHaveBeenCalled();
   });
 });
