@@ -15,6 +15,17 @@ import { createPortal } from "react-dom";
 import { Calculator, Maximize2 } from "lucide-react";
 import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
+
+// 名前付きの表（キャプション行を持つブロック）の id。複数ブロック選択の塗りが、
+// 上余白に浮かぶキャプション行まで塗るために読む。DOM に印を付けない代わりの共有
+const captionedBlockIds = new Set<string>();
+export function getCaptionedBlockIds(): ReadonlySet<string> {
+  return captionedBlockIds;
+}
+function setCaptionedBlockIds(ids: string[]): void {
+  captionedBlockIds.clear();
+  for (const id of ids) captionedBlockIds.add(id);
+}
 import { collectTableBlocks } from "./table-cells";
 import { useTableMetaStore } from "./store";
 import type { TableSource } from "./types";
@@ -198,17 +209,11 @@ export function TableCaptionLayer({
       });
     });
 
-    // 名前付きの表のブロックに印を付ける。選択枠（app.css）がこの印を見て、上余白に
-    // 浮かぶキャプション行まで枠を伸ばす。監視は属性を見ていない（childList / characterData）
-    // ので、ここで属性を触っても compute は再発火しない
-    const captioned = new Set(next.map((pos) => pos.blockId));
-    root.querySelectorAll("[data-caption-space]").forEach((el) => {
-      if (!captioned.has(el.getAttribute("data-id") ?? "")) el.removeAttribute("data-caption-space");
-    });
-    captioned.forEach((blockId) => {
-      const el = root.querySelector(`[data-id="${blockId}"][data-node-type="blockOuter"]`);
-      if (el && !el.hasAttribute("data-caption-space")) el.setAttribute("data-caption-space", "");
-    });
+    // 名前付きの表の id を共有する（選択枠を伸ばす CSS と、複数ブロック選択の塗りが読む）。
+    // DOM に属性を書いてはいけない: .bn-block-outer は ProseMirror が管理する DOM で、
+    // 外から付けた属性は再描画で剥がされ、その変更を拾ってまた付ける無限ループになる
+    // （v0.62.0 の回帰。キャプション付きの表があるノートが固まった）
+    setCaptionedBlockIds(next.map((pos) => pos.blockId));
 
     setCaptions(next);
 
@@ -346,10 +351,24 @@ export function TableCaptionLayer({
         `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"][data-node-type="blockOuter"]{margin-top:26px;}`
     )
     .join("");
+  // 名前付きの表を選んだときの枠。キャプション行はブロックの上余白（26px）に浮かんでいるので、
+  // 本文の枠（.bn-block-content の outline）では覆えない。::before を上に伸ばして描く
+  const ringCss = captions
+    .map((pos) => {
+      const outer = `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"][data-node-type="blockOuter"]`;
+      const selected = `${outer}:has(> .bn-block > .bn-block-content[data-content-type="table"].ProseMirror-selectednode)`;
+      return (
+        `${selected}{position:relative;}` +
+        `${selected}::before{content:"";position:absolute;left:-2px;right:-2px;top:-26px;bottom:-2px;` +
+        `border:2px solid color-mix(in oklab, var(--color-primary) 35%, transparent);border-radius:6px;pointer-events:none;}` +
+        `${outer} > .bn-block > .bn-block-content[data-content-type="table"].ProseMirror-selectednode > *{outline:none;}`
+      );
+    })
+    .join("");
 
   return createPortal(
     <>
-      <style>{marginCss + collapsedCss}</style>
+      <style>{marginCss + ringCss + collapsedCss}</style>
       {/* 折りたたみ中の表の裾。下に向かって背景へ溶かし、その上に残りの行数を出す。
           「表がここで終わっている」のではなく「まだ続く」と読めるようにするための表現 */}
       {visibleCaptions.filter(isCollapsed).map((pos) => (
