@@ -65,6 +65,11 @@ export type MaterialFullViewProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /** PowerPoint (.pptx) / Excel (.xlsx) 素材を展開する（未展開のときだけメニューに出す） */
+  onExpandOffice?: (
+    entry: MediaIndexEntry,
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<{ derived: number; skipped: number }>;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   knowledgeWikiNoteId?: string;
   mediaIndex?: MediaIndex | null;
@@ -100,6 +105,7 @@ export function MaterialFullView({
   onTranslatePdf,
   onExtractPdfPages,
   onExtractDocxImages,
+  onExpandOffice,
   onSharedRefUpdated,
   knowledgeWikiNoteId,
   mediaIndex,
@@ -252,6 +258,8 @@ export function MaterialFullView({
         onTranslatePdf={onTranslatePdf}
         onExtractPdfPages={onExtractPdfPages}
         onExtractDocxImages={onExtractDocxImages}
+        onExpandOffice={onExpandOffice}
+        mediaIndex={mediaIndex}
         onSharedRefUpdated={onSharedRefUpdated}
         onNavigateNote={onNavigateNote}
         knowledgeWikiNoteId={knowledgeWikiNoteId}

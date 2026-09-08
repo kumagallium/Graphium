@@ -40,7 +40,7 @@ import { resolveAssetFolders, type NoteFolderLookup } from "./asset-folders";
 /** 参照表が渡らない文脈用（自分で付けたフォルダだけになる） */
 const EMPTY_LOOKUP: NoteFolderLookup = new Map();
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
-import type { MediaIndexEntry, MediaSharedRef, MediaType } from "./media-index";
+import type { MediaIndex, MediaIndexEntry, MediaSharedRef, MediaType } from "./media-index";
 import { SharedBadge } from "./share-media-dialog";
 import { MaterialActionsMenu } from "./material-actions-menu";
 
@@ -97,6 +97,13 @@ export type MaterialDetailHeaderProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /** PowerPoint (.pptx) / Excel (.xlsx) 素材を展開する（未展開のときだけメニューに出す） */
+  onExpandOffice?: (
+    entry: MediaIndexEntry,
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<{ derived: number; skipped: number }>;
+  /** onExpandOffice の展開済み判定に使う */
+  mediaIndex?: MediaIndex | null;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   onNavigateNote?: (noteId: string) => void;
   knowledgeWikiNoteId?: string;
@@ -123,6 +130,8 @@ export function MaterialDetailHeader({
   onTranslatePdf,
   onExtractPdfPages,
   onExtractDocxImages,
+  onExpandOffice,
+  mediaIndex,
   onSharedRefUpdated,
   onNavigateNote,
   knowledgeWikiNoteId,
@@ -274,6 +283,8 @@ export function MaterialDetailHeader({
       onTranslatePdf={onTranslatePdf}
       onExtractPdfPages={onExtractPdfPages}
       onExtractDocxImages={onExtractDocxImages}
+      onExpandOffice={onExpandOffice}
+      mediaIndex={mediaIndex}
       onSharedRefUpdated={onSharedRefUpdated}
       onNavigateNote={onNavigateNote}
       knowledgeWikiNoteId={knowledgeWikiNoteId}

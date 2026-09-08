@@ -88,6 +88,30 @@ export function hasExtractedImages(
   return index.media.some((m) => m.derivedFromAssets?.includes(entry.fileId));
 }
 
+/**
+ * PowerPoint (.pptx) / Excel (.xlsx) 素材を展開できるか。
+ * 「まだ取り出していないものは、取り込みからでも素材の詳細からでも取り出せる」
+ * の判定に使う（run-intake.ts / AssetGalleryView 両方から参照）。
+ */
+export function canExpandOffice(entry: { type: MediaType; mimeType: string }): boolean {
+  return isPptxEntry(entry) || isXlsxEntry(entry);
+}
+
+/**
+ * この Office 素材を既に展開済みか。
+ * - pptx: 派生画像が 1 件でもある、または `ocrText`（スライド文字）が入っていれば展開済み
+ *   （画像が 1 枚も無いスライドだけの pptx でも、文字が入っていれば展開済みとみなす）
+ * - xlsx: 派生 CSV（derivedFromAssets）の有無だけで判定
+ */
+export function hasExpandedOffice(
+  entry: { fileId: string; type: MediaType; mimeType: string; ocrText?: string },
+  index: { media: Array<{ derivedFromAssets?: string[] }> },
+): boolean {
+  if (hasExtractedImages(entry, index)) return true;
+  if (isPptxEntry(entry) && !!entry.ocrText) return true;
+  return false;
+}
+
 /** メディアが使用されているノートの情報 */
 export type MediaUsage = {
   noteId: string;

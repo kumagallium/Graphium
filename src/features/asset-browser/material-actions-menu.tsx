@@ -21,9 +21,9 @@ import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
 import { notifySharedLibraryChanged, shareMedia, shareReference } from "../sharing";
 import { getActiveProvider } from "../../lib/storage/registry";
-import { isWordDocxEntry } from "./media-index";
+import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
-import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
+import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 
 /** lookup 未指定時の空表。毎回新しい Map を作らないよう共有する */
 const EMPTY_NOTE_FOLDER_LOOKUP: NoteFolderLookup = new Map();
@@ -52,6 +52,17 @@ export type MaterialActionsMenuProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /**
+   * PowerPoint (.pptx) / Excel (.xlsx) 素材を展開する（投入口の展開と同じ中身）。
+   * まだ展開していないときだけメニューに出す（`hasExpandedOffice` 判定に
+   * `mediaIndex` が要るため、渡されていないと出さない）。
+   */
+  onExpandOffice?: (
+    entry: MediaIndexEntry,
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<{ derived: number; skipped: number }>;
+  /** onExpandOffice の展開済み判定に使う */
+  mediaIndex?: MediaIndex | null;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   onNavigateNote?: (noteId: string) => void;
   knowledgeWikiNoteId?: string;
@@ -66,6 +77,8 @@ export function MaterialActionsMenu({
   onTranslatePdf,
   onExtractPdfPages,
   onExtractDocxImages,
+  onExpandOffice,
+  mediaIndex,
   onSharedRefUpdated,
   onNavigateNote,
   knowledgeWikiNoteId,
@@ -106,6 +119,22 @@ export function MaterialActionsMenu({
       setExtracting(false);
     }
   }, [entry, extracting, onExtractPdfPages, onExtractDocxImages]);
+
+  // Office 展開（PowerPoint / Excel）。投入口の展開と同じ中身を素材の詳細からも呼べるようにする
+  const [expandingOffice, setExpandingOffice] = useState(false);
+  const [expandOfficeError, setExpandOfficeError] = useState<string | null>(null);
+  const handleExpandOffice = useCallback(async () => {
+    if (expandingOffice || !onExpandOffice) return;
+    setExpandingOffice(true);
+    setExpandOfficeError(null);
+    try {
+      await onExpandOffice(entry, () => {});
+    } catch (err) {
+      setExpandOfficeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExpandingOffice(false);
+    }
+  }, [entry, expandingOffice, onExpandOffice]);
 
   // 共有関連
   const sharedRoot = getSharedRoot();
@@ -161,6 +190,11 @@ export function MaterialActionsMenu({
   const canExtract =
     (!!onExtractPdfPages && entry.type === "pdf")
     || (!!onExtractDocxImages && isDocxEntry);
+  // Office 展開（PowerPoint / Excel）: まだ展開していないときだけ出す
+  // （PDF/Word の再抽出ボタンと違い、展開済みなら消える＝再実行の動線は無い）
+  const canExpand =
+    !!onExpandOffice && !!mediaIndex && canExpandOffice(entry) && !hasExpandedOffice(entry, mediaIndex);
+  const expandLabelKey = isPptxEntry(entry) ? "asset.expandPptx" : "asset.expandXlsx";
   // 原本ダウンロード: URL ブックマーク以外（バイト実体があるもの）が対象
   const canDownload = entry.type !== "url";
   // AI 系アクション（Knowledge 化 / PROV ノート化 / 翻訳）が 1 つでも出ているか。
@@ -288,9 +322,23 @@ export function MaterialActionsMenu({
               </button>
             </>
           )}
+          {canExpand && (
+            <>
+              {hasAiActions && <div className="my-1 border-t border-border" />}
+              <button
+                className={itemClass}
+                disabled={expandingOffice}
+                onClick={() => { void handleExpandOffice(); setOpen(false); }}
+                title={t(`${expandLabelKey}.help`)}
+              >
+                {expandingOffice ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />}
+                {expandingOffice ? t("asset.expandOffice.running") : t(`${expandLabelKey}.button`)}
+              </button>
+            </>
+          )}
           {canDownload && (
             <>
-              {(hasAiActions || canExtract) && <div className="my-1 border-t border-border" />}
+              {(hasAiActions || canExtract || canExpand) && <div className="my-1 border-t border-border" />}
               <button
                 className={itemClass}
                 disabled={downloading}
@@ -326,11 +374,11 @@ export function MaterialActionsMenu({
           )}
         </div>
       )}
-      {(extractError || shareError || downloadError) && (
+      {(extractError || expandOfficeError || shareError || downloadError) && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-destructive/40 rounded-lg shadow-md p-2 z-50 text-[11px] text-destructive">
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span className="break-all">{extractError ?? shareError ?? downloadError}</span>
+            <span className="break-all">{extractError ?? expandOfficeError ?? shareError ?? downloadError}</span>
           </div>
         </div>
       )}
