@@ -25,6 +25,7 @@ function makeDeps(overrides: Partial<IntakeDeps> = {}): IntakeDeps {
       }
       return {
         created: files.length,
+        existing: 0,
         linksResolved: 0,
         linksUnresolved: 0,
         failed: [],
@@ -118,6 +119,26 @@ describe("runIntake", () => {
     expect(outcome.materialsExisting).toBe(1);
   });
 
+  it("notesExisting が importMarkdown の existing をそのまま反映する（同じファイルを入れ直したノート数）", async () => {
+    const files = [mdFile("a.md"), mdFile("b.md")];
+    const importMarkdown = vi.fn(
+      async (fs: IntakeFile[]): Promise<MarkdownImportResult> => ({
+        created: 1,
+        existing: 1,
+        linksResolved: 0,
+        linksUnresolved: 0,
+        failed: [],
+        lastNewId: "note-a",
+      }),
+    );
+    const deps = makeDeps({ importMarkdown });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(outcome.notes).toBe(1);
+    expect(outcome.notesExisting).toBe(1);
+  });
+
   it("フォルダの引き継ぎ: 根配下の md 2（別フォルダ）+ png 1（同フォルダ）で folders が 2、setAssetFolder が新規素材にだけ呼ばれる", async () => {
     function file(path: string): IntakeFile {
       return { file: new File(["dummy"], path.split("/").pop()!), path };
@@ -196,6 +217,7 @@ describe("mergeOutcome", () => {
   it("notes/materials/materialsExisting/links/skipped を加算し、skippedByExt はキーごとに加算、failed は連結、lastNewId は後勝ち", () => {
     const a: IntakeOutcome = {
       notes: 2,
+      notesExisting: 1,
       materials: 1,
       materialsExisting: 1,
       linksResolved: 3,
@@ -208,6 +230,7 @@ describe("mergeOutcome", () => {
     };
     const b: IntakeOutcome = {
       notes: 1,
+      notesExisting: 0,
       materials: 2,
       materialsExisting: 0,
       linksResolved: 0,
@@ -223,6 +246,7 @@ describe("mergeOutcome", () => {
 
     expect(merged).toEqual({
       notes: 3,
+      notesExisting: 1,
       materials: 3,
       materialsExisting: 1,
       linksResolved: 3,

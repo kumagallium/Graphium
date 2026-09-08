@@ -68,6 +68,7 @@ export function useIntake(deps: IntakeDeps & { aiAvailable: boolean }) {
         setState({
           kind: "done",
           notes: combined.notes,
+          notesExisting: combined.notesExisting,
           materials: combined.materials,
           materialsExisting: combined.materialsExisting,
           linksResolved: combined.linksResolved,
