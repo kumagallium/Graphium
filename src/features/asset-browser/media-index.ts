@@ -614,10 +614,12 @@ export async function persistUrlMetaPatch(
 /**
  * 画像の OCR テキストを media-index に書き戻す。
  *
- * 呼び出し元は 2 つ:
+ * 呼び出し元は 3 つ:
  *   - 素材ギャラリー / 素材ピークからの読み取り（そこが唯一の保存先）
  *   - ノートに貼った画像の読み取り（正は `page.mediaOcr`。ここへは
  *     `mirrorOcrToMediaIndex` 経由で写しを置き、素材横断で探せるようにする）
+ *   - PowerPoint 展開時のスライド文字の書き込み（`note-app.tsx` の
+ *     `handleExpandOffice`。ここが唯一の保存先で、後から OCR で上書きされうる）
  */
 export async function persistOcrTextPatch(
   fileId: string,
