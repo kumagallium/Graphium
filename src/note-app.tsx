@@ -7844,6 +7844,29 @@ export function NoteApp() {
   // 取り込んだ画像の文字読み取りを後追いで直列に回す（取り込み自体は先に終わらせる）
   const intakeOcr = useQueuedBulkOcr();
 
+  // 派生素材（pptx の画像・xlsx のシート CSV）に、元ファイルのフォルダを継がせる。
+  // 元が「実験/2026」にあるなら取り出したものも同じ棚に置く方が探しやすい。
+  // 既にフォルダを持っている素材（他の資料から取り出し済みで同じ中身だった等）は
+  // 尊重して触らない。元にフォルダが無ければ何もしない
+  const inheritFolderFromParent = useCallback(
+    async (parentFileId: string, derivedFileId: string | undefined, derivedIsDuplicate: boolean) => {
+      if (!derivedFileId) return;
+      const index = getLatestMediaIndex() ?? fm.mediaIndex;
+      const parentFolders = index?.media.find((m) => m.fileId === parentFileId)?.noteContexts ?? [];
+      if (parentFolders.length === 0) return;
+      if (derivedIsDuplicate) {
+        const existing = index?.media.find((m) => m.fileId === derivedFileId)?.noteContexts ?? [];
+        if (existing.length > 0) return;
+      }
+      try {
+        await fm.updateMediaContexts(derivedFileId, parentFolders);
+      } catch (err) {
+        console.warn("[note-app] 派生素材のフォルダ継承に失敗:", derivedFileId, err);
+      }
+    },
+    [fm],
+  );
+
   // PowerPoint (.pptx) / Excel (.xlsx) の実体（バイト列）を展開する共通処理。
   // 投入口からの新規取り込み（handleExpandOffice）と、素材の詳細からの手動展開
   // （handleExpandOfficeEntry）の両方がここを通る。
@@ -7880,7 +7903,8 @@ export function NoteApp() {
         for (const image of images) {
           try {
             const imageFile = new File([image.bytes as BlobPart], image.name, { type: image.mimeType });
-            await fm.handleUploadAsset(imageFile, { derivedFromAssets: [fileId] });
+            const { fileId: derivedId, duplicate } = await fm.handleUploadAsset(imageFile, { derivedFromAssets: [fileId] });
+            await inheritFolderFromParent(fileId, derivedId, duplicate);
             derived++;
           } catch (err) {
             console.warn(`[note-app] pptx 画像登録失敗: ${image.name}`, err);
@@ -7898,7 +7922,8 @@ export function NoteApp() {
         for (const sheet of sheets) {
           try {
             const csvFile = new File([sheet.csv], `${bookName} / ${sheet.name}.csv`, { type: "text/csv" });
-            await fm.handleUploadAsset(csvFile, { derivedFromAssets: [fileId] });
+            const { fileId: derivedId, duplicate } = await fm.handleUploadAsset(csvFile, { derivedFromAssets: [fileId] });
+            await inheritFolderFromParent(fileId, derivedId, duplicate);
             derived++;
           } catch (err) {
             console.warn(`[note-app] xlsx シート登録失敗: ${sheet.name}`, err);

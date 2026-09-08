@@ -59,8 +59,9 @@ export type IntakeDeps = {
     file: File,
   ) => Promise<{ fileId?: string; entry?: MediaIndexEntry; duplicate?: boolean } | void | unknown>;
   /**
-   * 素材のフォルダ（noteContexts）を差し替える。登録済みの素材（duplicate）は
-   * 既存のフォルダを尊重して呼ばない。失敗しても取り込み自体は続行する
+   * 素材のフォルダ（noteContexts）を差し替える。既にフォルダを持つ素材には
+   * 呼ばない（尊重する）が、登録済みでもフォルダが無い素材には呼ぶ。
+   * 失敗しても取り込み自体は続行する
    */
   setAssetFolder?: (fileId: string, folder: string) => Promise<void> | void;
   /**
@@ -231,8 +232,12 @@ export async function runIntake(
       const folder = folderOfFile(m);
       if (folder) {
         foldersSeen.add(folder);
-        // 登録済みの素材（duplicate）は既存のフォルダを尊重して触らない
-        if (!duplicate && deps.setAssetFolder) {
+        // 既にフォルダを持っている素材は尊重して触らない。ただし「登録済み」でも
+        // フォルダが無いものには付ける — ノートが参照している画像（![[fig.png]]）は
+        // Markdown の取り込みが先に登録するので、素材のループに来たときには
+        // 「フォルダ無しの登録済み」になっており、ここで弾くと画像だけ未分類に落ちる
+        const alreadyFiled = duplicate && (entry?.noteContexts?.length ?? 0) > 0;
+        if (!alreadyFiled && deps.setAssetFolder) {
           if (fileId) {
             try {
               await deps.setAssetFolder(fileId, folder);
