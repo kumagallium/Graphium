@@ -107,7 +107,7 @@ function renderGallery(onBulkShare?: (fileIds: string[]) => void) {
 
 /** タイル／行のチェックボックス（包む要素）を上から順に返す */
 function checkboxCells(): HTMLElement[] {
-  return screen.getAllByTitle("Drag to select a range");
+  return screen.getAllByTitle("Drag or shift-click to select a range");
 }
 
 /** チェックボックスを 1 つトグルする（mousedown で即トグル → mouseup で確定） */
