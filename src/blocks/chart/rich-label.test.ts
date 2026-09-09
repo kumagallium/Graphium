@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   hasRichMarkup,
+  isRich,
   parseRichSegments,
+  plainOf,
   richTextOption,
   stripRichMarkup,
+  textOf,
   toEchartsRichText,
 } from "./rich-label";
 
@@ -70,33 +73,71 @@ describe("ギリシャ文字・記号のコマンド", () => {
   });
 });
 
-describe("既存の列名を巻き込まない", () => {
-  // 凡例はユーザーが名前を付けていなければ列名がそのまま出るため、
-  // 中括弧の無い `_` `^` を記法として解釈すると過去のノートの図が変わる
-  it.each(["temp_c", "x_1", "a^b", "2^10", "rate_per_s", "Intensity (a.u.)"])(
-    "%s は素のまま",
+describe("中括弧は LaTeX と同じく省略できる", () => {
+  it("1 文字なら中括弧が要らない", () => {
+    expect(toEchartsRichText("H_2O")).toBe("H{sub|2}O");
+    expect(toEchartsRichText("cm^3")).toBe("cm{sup|3}");
+    // 中括弧つきと同じ結果になる
+    expect(toEchartsRichText("H_2O")).toBe(toEchartsRichText("H_{2}O"));
+  });
+
+  it("引数はコマンド 1 つでもよい", () => {
+    expect(toEchartsRichText("x_\\alpha")).toBe("x{sub|α}");
+  });
+
+  it("2 文字以上は中括弧が要る（LaTeX と同じ）", () => {
+    expect(toEchartsRichText("x_12")).toBe("x{sub|1}2");
+    expect(toEchartsRichText("x_{12}")).toBe("x{sub|12}");
+  });
+
+  it("引数が無い末尾の記号は字として出す", () => {
+    expect(hasRichMarkup("100^")).toBe(false);
+    expect(stripRichMarkup("100^")).toBe("100^");
+  });
+
+  it("閉じ括弧が無いときは残りを中身として読む（打っている途中に追従する）", () => {
+    expect(toEchartsRichText("H_{2")).toBe("H{sub|2}");
+    expect(toEchartsRichText("\\it{T")).toBe("{it|T}");
+  });
+});
+
+describe("記法を読むのは人が書いた文字列だけ", () => {
+  // 凡例と軸名はユーザーが名前を付けていなければ列名がそのまま出る。列名は
+  // 生データの識別子なので、記法として読むと過去のノートの図が黙って変わる
+  it.each(["temp_c", "x_1", "H_2O", "a^b", "2^10", "rate_per_s"])(
+    "列名 %s は素通しになる",
     (name) => {
-      expect(hasRichMarkup(name)).toBe(false);
-      expect(stripRichMarkup(name)).toBe(name);
-      expect(richTextOption(name, 16)).toEqual({ text: name });
+      const label = { text: name, authored: false };
+      expect(isRich(label)).toBe(false);
+      expect(textOf(label)).toBe(name);
+      expect(plainOf(label)).toBe(name);
     },
   );
 
-  it("閉じていない中括弧も記法にしない", () => {
-    expect(hasRichMarkup("H_{2")).toBe(false);
-    expect(stripRichMarkup("H_{2")).toBe("H_{2");
+  it("同じ文字列でも、人が入力欄に書いたものは記法として読む", () => {
+    const label = { text: "H_2O", authored: true };
+    expect(isRich(label)).toBe(true);
+    expect(textOf(label)).toBe("H{sub|2}O");
+    expect(plainOf(label)).toBe("H2O");
   });
 
-  it("閉じていない \\it{ も記法にしない", () => {
-    expect(hasRichMarkup("\\it{T")).toBe(false);
-    expect(stripRichMarkup("\\it{T")).toBe("\\it{T");
+  it("記法を含まない入力は、書いたままの文字になる", () => {
+    const label = { text: "Intensity (a.u.)", authored: true };
+    expect(isRich(label)).toBe(false);
+    expect(textOf(label)).toBe("Intensity (a.u.)");
+  });
+
+  it("スタイルを伴わない記号だけの入力も文字に置き換える", () => {
+    const label = { text: "2\\theta", authored: true };
+    expect(isRich(label)).toBe(false);
+    expect(textOf(label)).toBe("2θ");
   });
 });
 
 describe("エスケープ", () => {
   it("記号そのものを書ける", () => {
-    expect(stripRichMarkup("a\\_{b}")).toBe("a_{b}");
-    expect(hasRichMarkup("a\\_{b}")).toBe(false);
+    expect(stripRichMarkup("a\\_b")).toBe("a_b");
+    expect(hasRichMarkup("a\\_b")).toBe(false);
     expect(stripRichMarkup("50 \\% \\{x\\}")).toBe("50 % {x}");
   });
 
@@ -131,6 +172,7 @@ describe("toEchartsRichText", () => {
 describe("richTextOption", () => {
   it("記法が無ければ rich を付けない", () => {
     expect(richTextOption("Intensity (a.u.)", 16)).toEqual({ text: "Intensity (a.u.)" });
+    expect(richTextOption("Temperature (K)", 16)).toEqual({ text: "Temperature (K)" });
   });
 
   it("記法があれば rich 定義を添える", () => {

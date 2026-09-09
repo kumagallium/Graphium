@@ -774,7 +774,7 @@ export const RichTextLabels: StoryObj = {
               sourceBlockId: "diary-table-1",
               xColumn: "日時",
               yColumn: "痛み",
-              label: "\\it{C}_{p} (H_{2}O)",
+              label: "\\it{C}_p (H_2O)",
             },
             {
               sourceBlockId: "diary-table-1",
@@ -784,10 +784,58 @@ export const RichTextLabels: StoryObj = {
               label: "10^{-3} \\it{P}",
             },
           ]),
-          xAxisName: "2\\it{\\theta} (^{o})",
+          xAxisName: "2\\it{\\theta} (^o)",
           yAxisName: "\\it{C}_{p} (J g^{-1} K^{-1})",
           yRightAxisName: "\\it{P} (10^{5} Pa)",
           caption: "軸名と凡例に斜体・上付き・下付きを使った図",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+/** 列名に `_` `^` を含むテーブル（記法として読まれないことを見るため） */
+function markupLikeColumnTable(id: string) {
+  return {
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: [cell("t_s"), cell("temp_c"), cell("H_2O")] },
+        { cells: [cell("0"), cell("21.4"), cell("0.12")] },
+        { cells: [cell("10"), cell("34.8"), cell("0.31")] },
+        { cells: [cell("20"), cell("48.2"), cell("0.55")] },
+        { cells: [cell("30"), cell("55.6"), cell("0.74")] },
+        { cells: [cell("40"), cell("58.1"), cell("0.81")] },
+      ],
+    },
+  };
+}
+
+// 記法を読むのは人が入力欄に打った文字列だけ、という線引きの目視確認。
+// 同じ `H_2O` でも、列名から来たものは字のまま、表示名に書いたものは組まれる
+export const ColumnNamesAreNotMarkup: StoryObj = {
+  name: "列名は記法として読まない（同じ H_2O の対比）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        extraTables={[markupLikeColumnTable("markup-cols-1")]}
+        config={{
+          chartType: "line",
+          series: series([
+            // 表示名を空にすると列名がそのまま凡例に出る（添字にならない）
+            { sourceBlockId: "markup-cols-1", xColumn: "t_s", yColumn: "temp_c" },
+            // 同じ形の文字列でも、表示名に書けば記法として読まれる
+            {
+              sourceBlockId: "markup-cols-1",
+              xColumn: "t_s",
+              yColumn: "H_2O",
+              label: "H_2O",
+              axis: "right",
+            },
+          ]),
+          caption: "凡例の左は列名のまま、右は表示名に書いたので組まれる",
         }}
       />
     </ErrorBoundary>

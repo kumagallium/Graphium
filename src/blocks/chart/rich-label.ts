@@ -16,12 +16,45 @@
 // ためで、いつか軸名を KaTeX で組むところまで進めても、ユーザーが覚えた
 // 書き方がそのまま通る。matplotlib の mathtext とも同じ体系になる。
 //
-// 上下付きで中括弧を必須にしたのは（LaTeX は 1 文字なら省略できる）、既存
-// ノートの図を変えないため。凡例はユーザーが名前を付けていなければ列名が
-// そのまま出るので、`temp_c` や `x_1` のような列名を勝手に下付きにすると、
-// 過去のノートの見た目が黙って変わってしまう。
+// 上下付きの引数は LaTeX と同じで、中括弧・1 文字・コマンド 1 つのどれでも
+// 取れる（`H_2O` も `H_{2}O` も同じ）。
+//
+// 記法を読むのは「ユーザーが軸名・表示名の欄に自分で打った文字列」だけで、
+// 欄が空のときに入る列名やテーブル名は素通しにする（呼び出し側の責任）。
+// 列名は表示のために書かれた文字ではなく生データの識別子なので、`temp_c` や
+// `x_1` を勝手に添字にすると、過去のノートの図が黙って変わってしまう。
 //
 // 記法が 1 つも無いテキストは変換せず、素の文字列のまま扱う（従来どおり）。
+
+/**
+ * 図に出す名前と、その出どころ。
+ *
+ * `authored` が真なのは、ユーザーが軸名・表示名の欄に自分で打った文字列だけ。
+ * 欄が空のときに入る列名やテーブル名は偽で、記法として読まない。
+ */
+export interface DisplayLabel {
+  text: string;
+  authored: boolean;
+}
+
+/** 記法を読む対象か（人が書いた文字列で、実際にスタイルの記法が入っている） */
+export function isRich(label: DisplayLabel): boolean {
+  return label.authored && hasRichMarkup(label.text);
+}
+
+/** ECharts に渡す文字列。人が書いたものだけ記法を解釈する */
+export function textOf(label: DisplayLabel): string {
+  if (!label.authored) return label.text;
+  return hasRichMarkup(label.text)
+    ? toEchartsRichText(label.text)
+    : // スタイルは無くても `\theta` のような記号は文字に置き換える
+      stripRichMarkup(label.text);
+}
+
+/** 系列の内部名・書き出しに使う素のテキスト */
+export function plainOf(label: DisplayLabel): string {
+  return label.authored ? stripRichMarkup(label.text) : label.text;
+}
 
 /** 変換後のセグメント種別。ECharts の rich に定義するタグ名と一対一 */
 export type RichSegmentStyle = "plain" | "it" | "sup" | "sub" | "isup" | "isub";
@@ -116,16 +149,15 @@ function parseInto(out: RichSegment[], input: string, ctx: ParseContext): void {
     }
 
     if ((ch === "^" || ch === "_") && ctx.script === "none") {
-      const inner = readBraced(input, i + 1);
-      // `{` が続かない、または閉じていない場合は記法として扱わない。
-      // `x_1` のような既存の列名を巻き込まないための分岐
-      if (inner === null) {
+      const argument = readScriptArgument(input, i + 1);
+      // 引数が無い（末尾の `^` など）ときは記法として扱わず、字として出す
+      if (argument === null) {
         buffer += ch;
         continue;
       }
       flush();
-      parseInto(out, inner.text, { ...ctx, script: ch === "^" ? "sup" : "sub" });
-      i = inner.end;
+      parseInto(out, argument.text, { ...ctx, script: ch === "^" ? "sup" : "sub" });
+      i = argument.end;
       continue;
     }
 
@@ -135,8 +167,35 @@ function parseInto(out: RichSegment[], input: string, ctx: ParseContext): void {
 }
 
 /**
- * `start` が `{` なら、対応する `}` までの中身を返す。
- * 入れ子の `{}` とエスケープ（`\}`）を数え、閉じていなければ null。
+ * 上下付きの引数を読む。LaTeX と同じく `{...}` のグループ、コマンド 1 つ
+ * (`x_\alpha`)、文字 1 つ (`H_2O`) のどれでも取れる。
+ */
+function readScriptArgument(input: string, start: number): { text: string; end: number } | null {
+  if (start >= input.length) return null;
+
+  const braced = readBraced(input, start);
+  if (braced !== null) return braced;
+
+  if (input[start] === "\\") {
+    const command = /^[A-Za-z]+/.exec(input.slice(start + 1))?.[0];
+    // `\alpha` はコマンドごと、`\_` はエスケープされた 1 文字ごと引数にする
+    const length = command !== undefined ? 1 + command.length : 2;
+    if (start + length > input.length) return null;
+    return { text: input.slice(start, start + length), end: start + length - 1 };
+  }
+
+  // 絵文字などのサロゲートペアを半分に割らない
+  const codePoint = input.codePointAt(start);
+  const length = codePoint !== undefined && codePoint > 0xffff ? 2 : 1;
+  return { text: input.slice(start, start + length), end: start + length - 1 };
+}
+
+/**
+ * `start` が `{` なら、対応する `}` までの中身を返す。入れ子の `{}` と
+ * エスケープ（`\}`）を数える。
+ *
+ * 閉じ括弧が無いまま終わったら、残り全部を中身として返す。打っている途中の
+ * `H_{2` が「2 が下付き」に見えるほうが、書き手の意図に沿うため。
  */
 function readBraced(input: string, start: number): { text: string; end: number } | null {
   if (input[start] !== "{") return null;
@@ -156,7 +215,7 @@ function readBraced(input: string, start: number): { text: string; end: number }
     }
     text += ch;
   }
-  return null;
+  return { text, end: input.length - 1 };
 }
 
 /** 同じスタイルが続いたセグメントはまとめる（rich タグを無駄に増やさない） */

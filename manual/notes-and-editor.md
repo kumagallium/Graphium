@@ -298,9 +298,11 @@ Insert it, pick a table, and open **Settings** in the top-right corner. The pane
 
 Axis labels and series display labels are written in **LaTeX markup**. `\it{C}` is italic, `H_{2}O` is a subscript, `cm^{3}` is a superscript, and commands like `\theta`, `\lambda`, `\Delta`, `\pm` and `\deg` become Greek letters and symbols. Escape a character with a backslash (`\{`) to write it literally. A command that isn't recognized is left as you typed it, so a misspelling stays visible instead of vanishing.
 
-One thing differs from LaTeX: the braces around a super- or subscript **cannot be omitted** (LaTeX allows `H_2O` for a single character). That rule keeps a column named `temp_c` or `x_1` from being silently turned into a subscript — a label without markup renders exactly as it did before.
+Braces work as they do in LaTeX: a single character needs none (`H_2O` and `H_{2}O` give the same figure), and anything longer is grouped, as in `10^{-3}`.
 
-The markup only applies inside the figure: axis labels, the legend, and offset row names. Tooltips and the Markdown export show the plain text. For the usual typesetting, where a quantity is italic but its subscript is upright, close the italics before the subscript — `\it{C}_{p}` — while `\it{C_{p}}` italicizes the subscript too.
+**Only what you type into a field is read as markup.** When an axis label or display label is left empty, the column or table name that fills in appears exactly as written. Measure a column named `temp_c` and the legend still says `temp_c` — a column name is a heading for the data, not text written to be displayed. To typeset a column name, copy it into the display label field.
+
+The markup only applies inside the figure: axis labels, the legend, and offset row names. Tooltips and the Markdown export show the plain text. For the usual typesetting, where a quantity is italic but its subscript is upright, close the italics before the subscript — `\it{C}_p` — while `\it{C_p}` italicizes the subscript too.
 
 The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one. If a series draws from a data asset that no longer exists, the block says "The referenced data asset was not found" instead.
 
