@@ -192,7 +192,7 @@ Two things deliberately do not come along:
 - **What you can grab** — every block can be grabbed by its handle (⠿). Images, videos, and files can also be dragged **by the content itself**, without hunting for the handle. <Badge type="tip" text="Added in v0.69.0 (2026-09-09)" />
 - **Blocks narrower than the text column** — for images, charts, and PDFs, the landing area starts **right beside the content**, so you do not have to carry the block out to the edge of the text column. <Badge type="tip" text="Improved in v0.69.0 (2026-09-09)" />
 - **Resize** — drag the gap between two columns to change their widths.
-- **Move blocks in and out** — drag a block by its handle (⠿) into a column, or use Backspace / Delete at a column edge to merge content across the boundary. Dragging the last block out of a column dissolves the column.
+- **Move blocks in and out** — drag a block by its handle (⠿) into a column, or use Backspace / Delete at a column edge to merge content across the boundary. Dragging the last block out of a column dissolves the column, and once a single column is left its content goes back to being ordinary blocks.
 - **Narrow layouts stack** — when the note is too narrow to fit the columns side by side (the side peek, a phone), they stack vertically on their own. Nothing is hidden.
 
 ![Dragging the "Poke test" line onto the right edge of the paragraph above it; a green band and a vertical line mark where it would land](/screenshots/column-drop-guide.png)
