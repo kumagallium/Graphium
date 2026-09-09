@@ -2260,6 +2260,7 @@ export const en: Record<string, string> = {
   "chart.yAxis": "Y axis",
   "chart.column": "Column",
   "chart.axisName": "Label",
+  "chart.richTextHint": "Supports *italic*, H_{2}O (subscript), cm^{3} (superscript)",
   "chart.minMax": "Range",
   "chart.autoPlaceholder": "Auto",
   "chart.axisKind": "Scale",

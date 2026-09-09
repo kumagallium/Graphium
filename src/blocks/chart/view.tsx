@@ -73,6 +73,7 @@ import {
   type SeriesType,
 } from "./chart-config";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
+import { hasRichMarkup, richStyleDefs, richTextOption, stripRichMarkup, toEchartsRichText } from "./rich-label";
 import { peekDataTableFromBlock, subscribeDataTableData } from "../data-table/data";
 import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
 import {
@@ -550,13 +551,25 @@ function buildOption(
 
   // 段の名前は「別の列」ではなく「別の試料・別の文献」なので、既定はテーブル名
   const tableLabelOf = (blockId: string) => tables.find((tb) => tb.id === blockId)?.label;
-  const seriesName = (i: number): string => {
+  // 系列名はユーザーが軽量記法（*斜体* / ^{上付き} / _{下付き}）で書ける。
+  // 記法つきの生テキストと、記法を落とした素のテキストを使い分ける:
+  //   生   → 凡例・段ラベル（ECharts の rich text に変換して描く）
+  //   素   → 系列の内部名。ツールチップ・書き出しに出るので記法は見せない
+  const rawSeriesName = (i: number): string => {
     const sc = config.series[i];
     if (!sc) return "";
     return stackActive
       ? stackSeriesDisplayName(sc, tableLabelOf(sc.sourceBlockId))
       : seriesConfigDisplayName(sc);
   };
+  const seriesName = (i: number): string => stripRichMarkup(rawSeriesName(i));
+  // 凡例は素の名前（＝系列名）で引かれるので、そこから描画用の文字列へ戻す
+  const legendRichText = new Map<string, string>();
+  view.series.forEach((_, i) => {
+    const raw = rawSeriesName(i);
+    if (hasRichMarkup(raw)) legendRichText.set(stripRichMarkup(raw), toEchartsRichText(raw));
+  });
+  const legendHasRich = legendRichText.size > 0;
 
   // X 軸名の自動値: histogram は対象列、それ以外は全系列で共通の X 列名
   const xColumns = [...new Set(config.series.map((s) => (isHistogram ? s.yColumn : s.xColumn)))];
@@ -595,7 +608,11 @@ function buildOption(
     typeof window !== "undefined" ? getComputedStyle(document.body).fontFamily : "sans-serif";
 
   // 軸の詳細設定（表示トグル・ラベル回転・目盛りの向き・グリッド）を ECharts に写す
-  const axisFromDetail = (detail: typeof config.xAxisDetail) => ({
+  // axisName を渡すと、軽量記法（*斜体* / ^{上付き} / _{下付き}）を ECharts の
+  // rich text に変換して name に載せる。記法が無ければ rich を足さないので、
+  // 従来のノートの図はまったく同じ option で描かれる
+  const axisFromDetail = (detail: typeof config.xAxisDetail, axisName?: string) => ({
+    ...(axisName === undefined ? {} : { name: richTextOption(axisName, CHART_FONT_SIZE).text }),
     show: detail.show,
     axisLine: {
       show: detail.showLine,
@@ -617,7 +634,13 @@ function buildOption(
       ? { show: true, lineStyle: { ...CHART_GRID_LINE, color: "#cccccc" } }
       : { show: false },
     nameLocation: "middle" as const,
-    nameTextStyle: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
+    nameTextStyle: {
+      fontSize: CHART_FONT_SIZE,
+      color: CHART_INK,
+      ...(axisName !== undefined && hasRichMarkup(axisName)
+        ? { rich: richStyleDefs(CHART_FONT_SIZE) }
+        : {}),
+    },
     z: 3,
   });
 
@@ -642,7 +665,7 @@ function buildOption(
   })();
 
   const locale = getLocale();
-  const xAxisDetail = axisFromDetail(config.xAxisDetail);
+  const xAxisDetail = axisFromDetail(config.xAxisDetail, xName);
 
   const yMin = parseNumeric(config.yMin);
   const yMax = parseNumeric(config.yMax);
@@ -697,12 +720,11 @@ function buildOption(
 
   const leftAxis = {
     type: "value" as const,
-    name: yName,
     nameGap: 52,
     scale: fitAxis,
     ...(yMin !== null ? { min: yMin } : {}),
     ...(yMax !== null ? { max: yMax } : {}),
-    ...axisFromDetail(config.yAxisDetail),
+    ...axisFromDetail(config.yAxisDetail, yName),
     // 段の高さは a.u.（規格化とオフセットで元の尺度を失う）なので目盛りを出さない。
     // 範囲はユーザーが明示していればそちらを優先する
     ...(stackActive
@@ -717,12 +739,11 @@ function buildOption(
   };
   const rightAxis = {
     type: "value" as const,
-    name: yRightName,
     nameGap: 52,
     scale: fitAxis,
     ...(yRightMin !== null ? { min: yRightMin } : {}),
     ...(yRightMax !== null ? { max: yRightMax } : {}),
-    ...axisFromDetail(config.yRightAxisDetail),
+    ...axisFromDetail(config.yRightAxisDetail, yRightName),
   };
 
   // 系列の option。オフセット表示中の棒は土台の系列を挟むので、view.series と
@@ -824,7 +845,10 @@ function buildOption(
               label: {
                 show: true,
                 // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
-                formatter: () => name,
+                formatter: () => richTextOption(rawSeriesName(i), CHART_FONT_SIZE).text,
+                ...(hasRichMarkup(rawSeriesName(i))
+                  ? { rich: richStyleDefs(CHART_FONT_SIZE) }
+                  : {}),
                 // 枠の内側へ入れ、縦は段の内側へ落とし込む（上端の下・下端の上）
                 position: inlineLabelAtLeft ? "right" : "left",
                 offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? 12 : -12],
@@ -883,16 +907,24 @@ function buildOption(
           ...legendLayout,
           itemWidth: CHART_LEGEND_ITEM.width,
           itemHeight: CHART_LEGEND_ITEM.height,
-          textStyle: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
+          textStyle: {
+            fontSize: CHART_FONT_SIZE,
+            color: CHART_INK,
+            ...(legendHasRich ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
+          },
+          // 凡例は系列名（記法を落とした素のテキスト）で引かれる。記法を書いた
+          // 系列だけ、描画用の rich text に戻す
+          ...(legendHasRich
+            ? { formatter: (name: string) => legendRichText.get(name) ?? name }
+            : {}),
           z: 12,
         }
       : { show: false },
     xAxis:
       result.xAxis === "category"
-        ? { type: "category", data: result.categories, name: xName, nameGap: 34, ...axisFromDetail(config.xAxisDetail) }
+        ? { type: "category", data: result.categories, nameGap: 34, ...xAxisDetail }
         : {
             type: result.xAxis,
-            name: xName,
             nameGap: 34,
             // 数値 X 軸はデータ範囲にフィットさせる。既定（0 を含む）だと気圧
             // 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。

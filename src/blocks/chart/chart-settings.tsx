@@ -877,6 +877,9 @@ export function ChartSettingsPanel({
                           style={{ ...styles.input, flex: 1 }}
                         />
                       </label>
+                      <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
+                        {t("chart.richTextHint")}
+                      </div>
 
                       <div style={styles.assignLabel}>{t("chart.assignData")}</div>
                       <label style={styles.fieldRow}>
@@ -1065,6 +1068,8 @@ export function ChartSettingsPanel({
 
       {tab === "axes" && (
         <div style={styles.body}>
+          {/* 軸名は 3 つあるので、記法の案内はタブの頭で 1 回だけ出す */}
+          <div style={styles.fieldHint}>{t("chart.richTextHint")}</div>
           {!isHistogram && (
             <>
               <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>

@@ -759,3 +759,37 @@ export const AssetSourceGone: StoryObj = {
     </ErrorBoundary>
   ),
 };
+
+// 軸名・凡例の軽量リッチテキスト（*斜体* / ^{上付き} / _{下付き}）。
+// 論文図の組版（物理量は斜体、添字は立体、単位は上付き）を目視で確かめる
+export const RichTextLabels: StoryObj = {
+  name: "リッチテキストの軸名・凡例（斜体・上下付き）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        config={{
+          chartType: "line",
+          series: series([
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "痛み",
+              label: "*C*_{p} (H_{2}O)",
+            },
+            {
+              sourceBlockId: "diary-table-1",
+              xColumn: "日時",
+              yColumn: "気圧",
+              axis: "right",
+              label: "10^{-3} *P*",
+            },
+          ]),
+          xAxisName: "2*θ* (^{o})",
+          yAxisName: "*C*_{p} (J g^{-1} K^{-1})",
+          yRightAxisName: "*P* (10^{5} Pa)",
+          caption: "軸名と凡例に斜体・上付き・下付きを使った図",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};

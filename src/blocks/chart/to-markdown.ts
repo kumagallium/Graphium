@@ -18,6 +18,7 @@ import {
   stackSeriesDisplayName,
   type ChartBlockConfig,
 } from "./chart-config";
+import { stripRichMarkup } from "./rich-label";
 import { textParagraph, type BlockToMarkdown, type MarkdownBlockContext } from "../markdown-block";
 
 /** 系列の表示名。view.tsx の凡例と同じ解決順にする */
@@ -32,10 +33,14 @@ function seriesNames(config: ChartBlockConfig, ctx: MarkdownBlockContext): strin
     const source = config.assetSources.find((a) => a.fileId === fileId);
     return source ? assetSourceLabel(source) : undefined;
   };
+  // 名前に書かれた軽量記法（*斜体* / ^{上付き} / _{下付き}）は図の中でしか
+  // 意味を持たない。Markdown には素のテキストで出す
   return config.series.map((series) =>
-    stacked
-      ? stackSeriesDisplayName(series, sourceLabel(series.sourceBlockId))
-      : seriesConfigDisplayName(series),
+    stripRichMarkup(
+      stacked
+        ? stackSeriesDisplayName(series, sourceLabel(series.sourceBlockId))
+        : seriesConfigDisplayName(series),
+    ),
   );
 }
 

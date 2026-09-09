@@ -2258,6 +2258,7 @@ export const ja: Record<string, string> = {
   "chart.yAxis": "Y 軸",
   "chart.column": "列",
   "chart.axisName": "軸名",
+  "chart.richTextHint": "*斜体*、H_{2}O（下付き）、cm^{3}（上付き）が使えます",
   "chart.minMax": "範囲",
   "chart.autoPlaceholder": "自動",
   "chart.axisKind": "種類",
