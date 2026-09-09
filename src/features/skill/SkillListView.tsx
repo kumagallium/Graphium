@@ -7,6 +7,7 @@ import type { GraphiumFile, SkillMeta } from "../../lib/document-types";
 import type { SkillMetaSummary } from "./skill-service";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
+import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 /** 日付を YYYY-MM-DD 形式でフォーマット */
 function formatDate(isoDate: string): string {
@@ -134,6 +135,7 @@ export function SkillListView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            {...listSearchInputProps}
             placeholder={t("common.search")}
             className="pl-7 pr-3 py-1 text-xs rounded border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary w-48"
           />

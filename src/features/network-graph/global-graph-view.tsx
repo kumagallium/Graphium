@@ -39,6 +39,7 @@ import {
   stopLayoutOnGrab,
   useGraphLayout,
 } from "./use-graph-layout";
+import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 // fcose レイアウト登録（重複防止）
 ensureCytoscapePlugins();
@@ -1143,6 +1144,7 @@ export function GlobalGraphView({
                   setSearchInput("");
                 }
               }}
+              {...listSearchInputProps}
               placeholder={t("common.search")}
               className="text-xs pl-7 pr-8 py-1 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 w-44 focus:outline-none focus:ring-1 focus:ring-primary/40"
             />

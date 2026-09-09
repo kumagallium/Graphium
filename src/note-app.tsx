@@ -394,6 +394,7 @@ import { MissingApiKeyBanner } from "./components/MissingApiKeyBanner";
 import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
 import { useIsDesktop } from "./hooks/use-media-query";
+import { useListSearchHotkey } from "./hooks/use-list-search-hotkey";
 import { Composer, useComposer, type ComposerSubmission, type DiscoveryCard } from "./features/composer";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./features/composer/discovery-cards";
 import { cleanSuggestionText, type KnowledgeCandidate } from "./features/composer/verb-suggestion-doc";
@@ -7994,6 +7995,9 @@ export function NoteApp() {
   });
   // 一覧ビューの検索欄へフォーカスを送る合図（復元レポートの「検索する」から使う）
   const [focusSearchSignal, setFocusSearchSignal] = useState(0);
+  // 一覧ビュー表示中の Cmd/Ctrl+F を、その一覧の検索欄へのフォーカスに割り当てる。
+  // 本文・PDF の検索が先に取ったときは何もしない（use-list-search-hotkey 参照）。
+  useListSearchHotkey();
 
   // ─── サイドピークを開く／閉じる唯一の入口 ───
   // ビューは変えず URL の peek だけを差し替えて履歴を 1 段積む。これで
