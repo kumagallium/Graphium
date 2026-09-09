@@ -699,6 +699,14 @@ export function buildOption(
     panels.push({ indices, view, stack, stackActive, useRight, xName, yName, yRightName, stackRange, xExtent, axis });
   }
 
+  // 全枠の縦軸名が同じなら、枠ごとに出さず図の左に 1 つだけ置く（N×1 に同じ
+  // "Intensity" が縦に並ぶのを避ける）。判定は文字列の一致という離散な条件なので、
+  // なぜ 1 つになったのかをユーザーが説明できる。設定は増やさない
+  const sharedYName =
+    panels.length > 1 && panels[0].yName !== "" && panels.every((p) => p.yName === panels[0].yName)
+      ? panels[0].yName
+      : null;
+
   const anyStackActive = panels.some((p) => p.stackActive);
   const anyInlineStackLabels = panels.some((p) => p.stackActive && p.stack.labels === "inline");
 
@@ -723,7 +731,7 @@ export function buildOption(
   // プロット領域の余白。凡例の座標計算にも同じ値を使う。
   // 分割時は「どれかの枠が名前を持つか」で外周を決める（枠ごとに余白を変えると
   // 枠の大きさが揃わず、図が読み比べにならない）
-  const anyYName = panels.some((p) => p.yName !== "");
+  const anyYName = sharedYName !== null || panels.some((p) => p.yName !== "");
   const anyXName = panels.some((p) => p.xName !== "");
   const anyUseRight = panels.some((p) => p.useRight);
   const anyYRightName = panels.some((p) => p.yRightName !== "");
@@ -744,6 +752,10 @@ export function buildOption(
   const extraLegendRows = Math.max(0, legendRows - 1) * LEGEND_LINE_HEIGHT;
   const gridTop = legendTop ? 48 + extraLegendRows : 20;
   const gridBottom = (anyXName ? 64 : 40) + (legendBottom ? 32 + extraLegendRows : 0);
+
+  // 縦につないだ列だけが X を共有する。横のつなぎ（Y の共有）は x とは関係ない
+  const crossPanelTooltip =
+    split && config.panels.joinVertical && config.panels.rows > 1 && result.xAxis !== "category";
 
   const layout = split
     ? computePanelLayout({
@@ -848,6 +860,18 @@ export function buildOption(
   const tooltipSeries: Array<ChartSeriesData | null> = [];
   const xAxes: any[] = [];
   const yAxes: any[] = [];
+  // 枠をまたいで 1 つのツールチップに出すための一覧。
+  // まとめてよいのは X を共有している枠 = 縦につないだ同じ列の枠だけ。
+  // つないでいない枠は別の図なので、同じ x に並べて見せると嘘になる
+  const crossPanelRows: Array<{
+    column: number;
+    name: string;
+    color: string;
+    points: Array<[number, number]>;
+    source: ChartSeriesData;
+  }> = [];
+  // 本文を出す係（各列の最上段の枠に属する系列）の、option 上の添字 → 列
+  const reporterColumnOf = new Map<number, number>();
 
   panels.forEach((panel, p) => {
     const col = split ? p % config.panels.cols : 0;
@@ -879,7 +903,8 @@ export function buildOption(
 
     const leftAxis = {
       type: "value" as const,
-      name: panel.yName,
+      // 共有した縦軸名は図の左に 1 つだけ置くので、枠の軸は名乗らない
+      name: sharedYName !== null ? "" : panel.yName,
       nameGap: 52,
       scale: fitAxis,
       ...(yMin !== null ? { min: yMin } : {}),
@@ -951,6 +976,7 @@ export function buildOption(
         ? { ...trimmedXAxis, ...(split ? { gridIndex: p } : {}) }
         : { ...hideAxisText(trimmedXAxis), ...(split ? { gridIndex: p } : {}) }
     );
+
 
     panel.view.series.forEach((s, k) => {
       const i = panel.indices[k];
@@ -1070,9 +1096,59 @@ export function buildOption(
         color,
       });
       // 土台を敷いた系列は描画値から段オフセットを抜いてあるので、戻す量も 0
+      if (crossPanelTooltip) {
+        if (row === 0) reporterColumnOf.set(optionSeries.length - 1, col);
+        crossPanelRows.push({ column: col, name, color, points, source: s });
+      }
       tooltipSeries.push(stackBase !== 0 ? { ...s, offset: 0 } : s);
     });
   });
+
+  // パネル記号 (a)(b)(c)(d)。枠の左上の内側に置く。外に出すと、つなげたときに
+  // 上の枠へ食い込む（枠の間に余白が無い）
+  const panelLabelAtLeft = config.panels.labelPosition.endsWith("left");
+  const panelLabelAtTop = config.panels.labelPosition.startsWith("top");
+  const panelTitles =
+    layout && config.panels.showPanelLabels
+      ? layout.grids.map((g, i) => ({
+          text: `(${String.fromCharCode(97 + (i % 26))})`,
+          left: panelLabelAtLeft ? g.left + 8 : g.left + g.width - 8,
+          top: panelLabelAtTop ? g.top + 6 : g.top + g.height - 6,
+          textStyle: {
+            fontSize: CHART_FONT_SIZE,
+            fontWeight: "bold" as const,
+            color: CHART_INK,
+            align: panelLabelAtLeft ? ("left" as const) : ("right" as const),
+            verticalAlign: panelLabelAtTop ? ("top" as const) : ("bottom" as const),
+          },
+          z: 11,
+        }))
+      : [];
+
+  // 共有した縦軸名。枠をまたぐので軸には載せられず、図全体の座標に回転テキストで置く。
+  // 縦位置は全枠の上端〜下端の中央
+  const sharedYNameGraphic = (() => {
+    if (sharedYName === null || !layout) return [];
+    const top = Math.min(...layout.grids.map((g) => g.top));
+    const bottom = Math.max(...layout.grids.map((g) => g.top + g.height));
+    return [
+      {
+        type: "text" as const,
+        left: 18,
+        top: (top + bottom) / 2,
+        rotation: Math.PI / 2,
+        style: {
+          text: sharedYName,
+          fontSize: CHART_FONT_SIZE,
+          fill: CHART_INK,
+          align: "center" as const,
+          verticalAlign: "middle" as const,
+        },
+        z: 11,
+        silent: true,
+      },
+    ];
+  })();
 
   const frame = {
     show: config.showFrame,
@@ -1084,6 +1160,9 @@ export function buildOption(
   return {
     animation: false,
     textStyle: { fontFamily, fontSize: CHART_FONT_SIZE, color: CHART_INK },
+    // 記号も共有縦軸名も分割時だけのものなので、1×1 の option には現れない
+    ...(panelTitles.length > 0 ? { title: panelTitles } : {}),
+    ...(sharedYNameGraphic.length > 0 ? { graphic: sharedYNameGraphic } : {}),
     grid: layout
       ? layout.grids.map((g) => ({ ...frame, ...g }))
       : {
@@ -1106,11 +1185,22 @@ export function buildOption(
       // 時間軸の値は epoch ms なので、既定のままだと散布図で生の数値が出る。
       // 見出しに完全な日時を出して 1 点を同定できるようにする。
       // スタック中は描画値が規格化済みなので、元の値に戻して出す
-      ...(anyStackActive
-        ? { formatter: stackTooltipFormatter(locale, result.xAxis, tooltipSeries) }
-        : result.xAxis === "time"
-          ? { formatter: timeTooltipFormatter(locale) }
-          : {}),
+      // つないだ枠は同じ x を見ているので、ECharts は枠の数だけツールチップを開く。
+      // 先頭の枠のぶんだけが本文を出し、そこに全枠の値をまとめて並べる
+      ...(crossPanelTooltip && crossPanelRows.length > 0
+        ? {
+            formatter: crossPanelTooltipFormatter(
+              locale,
+              result.xAxis,
+              crossPanelRows,
+              reporterColumnOf
+            ),
+          }
+        : anyStackActive
+          ? { formatter: stackTooltipFormatter(locale, result.xAxis, tooltipSeries) }
+          : result.xAxis === "time"
+            ? { formatter: timeTooltipFormatter(locale) }
+            : {}),
     },
     legend: showLegend
       ? {
@@ -1128,6 +1218,17 @@ export function buildOption(
           z: 12,
         }
       : { show: false },
+    // 十字カーソルは列の中だけで連動させる。列をまたいで連動させると、
+    // 別の X を持つ隣の列にも同じ位置の線が出て、合っていない値を指す
+    ...(crossPanelTooltip
+      ? {
+          axisPointer: {
+            link: Array.from({ length: config.panels.cols }, (_, c) => ({
+              xAxisIndex: Array.from({ length: config.panels.rows }, (_, r) => r * config.panels.cols + c),
+            })),
+          },
+        }
+      : {}),
     xAxis: split ? xAxes : xAxes[0],
     yAxis: split ? yAxes : panels[0]?.useRight ? yAxes : yAxes[0],
     series: optionSeries,
@@ -1141,6 +1242,62 @@ export function buildOption(
  * 「2 段目の 1.45」のような読めない数字になる。各系列に残した
  * offset / scale から元の測定値へ戻して出す。
  */
+/**
+ * 枠をまたいだツールチップ。
+ *
+ * 枠をつなぐと十字カーソルが全枠を貫くが、ECharts のツールチップは grid ごとに
+ * 開くので、そのままだと同じ x の箱が枠の数だけ重なる。先頭の枠のぶんだけを
+ * 本文つきにし（他は空文字を返して消す）、そこに全枠の値を並べる。
+ * 「同じ 2θ で各段がいくつか」を 1 か所で読める形にするのが、枠を分けて
+ * 並べる目的そのものなので、値を集めるのはこの形が素直。
+ */
+function crossPanelTooltipFormatter(
+  locale: ReturnType<typeof getLocale>,
+  xKind: XAxisKind,
+  rows: Array<{
+    column: number;
+    name: string;
+    color: string;
+    points: Array<[number, number]>;
+    source: ChartSeriesData;
+  }>,
+  reporterColumnOf: Map<number, number>
+) {
+  // その x に最も近い点の値。段ごとに測定間隔が違っても隣の点を拾えるようにする
+  const valueAt = (points: Array<[number, number]>, x: number): number | null => {
+    let best: number | null = null;
+    let bestGap = Infinity;
+    for (const [px, py] of points) {
+      const gap = Math.abs(px - x);
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = py;
+      }
+    }
+    return best;
+  };
+  return (params: any) => {
+    const list = Array.isArray(params) ? params : [params];
+    if (list.length === 0) return "";
+    // 本文を出すのは、その列の最上段の枠に属する係だけ。
+    // 下の段のぶんは空文字を返して箱ごと消す（同じ内容が段の数だけ開くため）
+    const reporter = list.find((p: any) => reporterColumnOf.has(p.seriesIndex));
+    if (!reporter) return "";
+    const column = reporterColumnOf.get(reporter.seriesIndex)!;
+    const first = list[0];
+    const x = Number(Array.isArray(first.value) ? first.value[0] : first.axisValue);
+    const head = xKind === "time" ? formatFullDateTime(x, locale) : String(first.axisValue ?? x);
+    const body = rows.filter((row) => row.column === column).map((row) => {
+      const drawn = valueAt(row.points, x);
+      if (drawn === null) return "";
+      const raw = unstackValue(drawn, row.source);
+      const marker = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${row.color};margin-right:4px"></span>`;
+      return `${marker}${row.name}: ${Number.isFinite(raw) ? raw : ""}`;
+    });
+    return [head, ...body.filter(Boolean)].join("<br/>");
+  };
+}
+
 function stackTooltipFormatter(
   locale: ReturnType<typeof getLocale>,
   xKind: XAxisKind,

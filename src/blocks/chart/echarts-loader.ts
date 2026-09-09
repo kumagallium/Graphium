@@ -28,6 +28,10 @@ export function loadECharts(): Promise<typeof import("echarts/core")> {
         components.LegendComponent,
         // スタック表示の段ラベル（各段の右端に置く名前）に使う
         components.MarkPointComponent,
+        // 枠のパネル記号 (a)(b)(c)(d) に使う（登録しないと無言で消える）
+        components.TitleComponent,
+        // 枠をまたいで 1 つだけ置く縦軸名（回転テキスト）に使う
+        components.GraphicComponent,
         renderers.SVGRenderer,
       ]);
       return core;

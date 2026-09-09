@@ -149,9 +149,8 @@ describe("buildOption（枠の分割）", () => {
     // 共有した向きは範囲も実際に揃える（目盛りだけ下に出て縮尺が違う、を防ぐ）
     expect(option.xAxis[0].min).toBe(option.xAxis[1].min);
     expect(option.xAxis[0].max).toBe(option.xAxis[1].max);
-    // 枠をまたぐ十字カーソル（axisPointer.link）はまだ入れない。
-    // 入れると枠の数だけツールチップが開いて重なるため、1 つにまとめる算段が要る
-    expect(option.axisPointer).toBeUndefined();
+    // つないだ列は十字カーソルも連動する（詳細は別のテストで）
+    expect(option.axisPointer.link).toEqual([{ xAxisIndex: [0, 1] }]);
   });
 
   it("つなげた横分割は左端の枠だけが Y 軸を名乗る", () => {
@@ -226,5 +225,71 @@ describe("buildOption（枠の分割）", () => {
     });
     expect(option.xAxis.map((a: any) => a.min)).toEqual([12, 0]);
     expect(option.xAxis.map((a: any) => a.max)).toEqual([58, 100]);
+  });
+
+  it("枠の記号は分割して、明示的に入れたときだけ出る", () => {
+    expect(split().title).toBeUndefined();
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, showPanelLabels: true },
+    });
+    expect(option.title.map((tt: any) => tt.text)).toEqual(["(a)", "(b)"]);
+    // 記号は枠の内側（左上）に置く。外に出すとつなげた上の枠へ食い込む
+    expect(option.title[0].left).toBeGreaterThanOrEqual(option.grid[0].left);
+    expect(option.title[1].top).toBeGreaterThanOrEqual(option.grid[1].top);
+  });
+
+  it("全枠の縦軸名が同じなら、図の左に 1 つだけ置く", () => {
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: true },
+      yAxisName: "Intensity",
+    });
+    // 枠の軸は名乗らない
+    expect(option.yAxis.map((a: any) => a.name)).toEqual(["", ""]);
+    expect(option.graphic).toHaveLength(1);
+    expect(option.graphic[0].style.text).toBe("Intensity");
+    // 縦は全枠の中央
+    const top = Math.min(...option.grid.map((g: any) => g.top));
+    const bottom = Math.max(...option.grid.map((g: any) => g.top + g.height));
+    expect(option.graphic[0].top).toBeCloseTo((top + bottom) / 2, 6);
+  });
+
+  it("縦軸名が枠ごとに違えば、統合せず枠ごとに出す", () => {
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+      yAxisName: "σ (S/cm)",
+      panelAxes: [{ yAxisName: "κ (W/mK)" }],
+    });
+    expect(option.graphic).toBeUndefined();
+    expect(option.yAxis.map((a: any) => a.name)).toEqual(["σ (S/cm)", "κ (W/mK)"]);
+  });
+
+  it("十字カーソルの連動は、縦につないだ列の中だけ", () => {
+    // つないでいなければ枠は別の図なので連動させない
+    expect(split().axisPointer).toBeUndefined();
+    // 横につないだだけ（Y の共有）も X とは関係ないので連動させない
+    expect(
+      split({ panels: { ...DEFAULT_PANELS_CONFIG, rows: 1, cols: 2, joinHorizontal: true } })
+        .axisPointer
+    ).toBeUndefined();
+
+    const joined = split({ panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: true } });
+    expect(joined.axisPointer.link).toEqual([{ xAxisIndex: [0, 1] }]);
+    // 2 列あるときは列ごとに別のグループ（隣の列は別の X を持ちうる）
+    const twoCols = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, cols: 2, joinVertical: true },
+    });
+    expect(twoCols.axisPointer.link).toEqual([{ xAxisIndex: [0, 2] }, { xAxisIndex: [1, 3] }]);
+  });
+
+  it("つないだ列のツールチップは 1 つにまとまる", () => {
+    const joined = split({ panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: true } });
+    const formatter = joined.tooltip.formatter;
+    expect(typeof formatter).toBe("function");
+    // 最上段の枠の系列（option 上の添字 0）が本文を出す係
+    const body = formatter([{ seriesIndex: 0, axisValue: 20, value: [20, 5] }]);
+    expect(body).toContain("sigma");
+    expect(body).toContain("kappa");
+    // 下の段のぶんは空にして、同じ内容の箱が段の数だけ開くのを防ぐ
+    expect(formatter([{ seriesIndex: 1, axisValue: 20, value: [20, 5] }])).toBe("");
   });
 });

@@ -1515,6 +1515,40 @@ export function ChartSettingsPanel({
             />
             {t("chart.show")}
           </label>
+
+          {/* 記号は分割してはじめて意味を持つ（1 枚の図に (a) だけ振っても指す先が無い） */}
+          {panels > 1 && (
+            <>
+              <div style={styles.sectionLabel}>{t("chart.panelLabels")}</div>
+              <label style={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={config.panels.showPanelLabels}
+                  onChange={(e) => updatePanels({ showPanelLabels: e.target.checked })}
+                />
+                {t("chart.show")}
+              </label>
+              <div style={styles.fieldHint}>{t("chart.panelLabelsHint")}</div>
+              {/* 左上にデータが通っていると記号が線に重なるので、段名と同じく四隅から選ぶ */}
+              {config.panels.showPanelLabels && (
+                <label style={styles.fieldRow}>
+                  <span style={styles.fieldLabel}>{t("chart.panelLabelPosition")}</span>
+                  <select
+                    value={config.panels.labelPosition}
+                    onChange={(e) =>
+                      updatePanels({ labelPosition: e.target.value as StackLabelPosition })
+                    }
+                    style={{ ...styles.select, flex: 1 }}
+                  >
+                    <option value="top-left">{t("chart.panelPosTopLeft")}</option>
+                    <option value="top-right">{t("chart.panelPosTopRight")}</option>
+                    <option value="bottom-left">{t("chart.panelPosBottomLeft")}</option>
+                    <option value="bottom-right">{t("chart.panelPosBottomRight")}</option>
+                  </select>
+                </label>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

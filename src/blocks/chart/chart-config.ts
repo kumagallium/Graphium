@@ -275,6 +275,16 @@ export type PanelsConfig = {
   joinVertical: boolean;
   /** 横に並ぶ枠をつなげる（Y 軸を共有し、目盛りは左端の列だけに出す） */
   joinHorizontal: boolean;
+  /**
+   * パネル記号 (a)(b)(c)(d) を各枠に振る。論文の図で枠を本文から指すための印。
+   * 採番は枠の並び順（左上から行優先）で、枠数を変えれば自動で振り直る
+   */
+  showPanelLabels: boolean;
+  /**
+   * 記号を枠のどの隅に置くか。既定は左上（論文の作法）だが、そこにデータが
+   * 通っていると重なるので、段名（StackLabelPosition）と同じく四隅から選べる
+   */
+  labelPosition: StackLabelPosition;
 };
 
 export const DEFAULT_PANELS_CONFIG: PanelsConfig = {
@@ -282,6 +292,8 @@ export const DEFAULT_PANELS_CONFIG: PanelsConfig = {
   cols: 1,
   joinVertical: false,
   joinHorizontal: false,
+  showPanelLabels: false,
+  labelPosition: "top-left",
 };
 
 /**
@@ -579,6 +591,10 @@ function parsePanels(raw: unknown): PanelsConfig {
     cols: count(v.cols, DEFAULT_PANELS_CONFIG.cols),
     joinVertical: typeof v.joinVertical === "boolean" ? v.joinVertical : false,
     joinHorizontal: typeof v.joinHorizontal === "boolean" ? v.joinHorizontal : false,
+    showPanelLabels: typeof v.showPanelLabels === "boolean" ? v.showPanelLabels : false,
+    labelPosition: STACK_LABEL_POSITIONS.includes(v.labelPosition)
+      ? v.labelPosition
+      : DEFAULT_PANELS_CONFIG.labelPosition,
   };
 }
 
