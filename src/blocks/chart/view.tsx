@@ -74,7 +74,7 @@ import {
   type ChartSourceOption,
   type SeriesType,
 } from "./chart-config";
-import { computePanelLayout } from "./chart-layout";
+import { computePanelLayout, estimateLegendRows, LEGEND_LINE_HEIGHT } from "./chart-layout";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
 import { peekDataTableFromBlock, subscribeDataTableData } from "../data-table/data";
 import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
@@ -525,6 +525,22 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
 }
 
 /**
+ * 凡例の文字幅の実測。ECharts に描かせる前に何行になるかを知りたいので、
+ * 同じフォント設定の canvas で測る。canvas が使えない環境（テストの jsdom）では
+ * 0 を返して、呼び先の近似に任せる
+ */
+let legendMeasureCtx: CanvasRenderingContext2D | null | undefined;
+function measureLegendText(text: string, font: string): number {
+  if (legendMeasureCtx === undefined) {
+    legendMeasureCtx =
+      typeof document !== "undefined" ? document.createElement("canvas").getContext("2d") : null;
+  }
+  if (!legendMeasureCtx) return 0;
+  legendMeasureCtx.font = font;
+  return legendMeasureCtx.measureText(text).width;
+}
+
+/**
  * ECharts の option を組み立てる（eureco の学術スタイル、chart-theme.ts の実測値）。
  * 描画状態を持たない純粋な変換。
  * プロット背景は敷かない（eureco 同様）。塗ると系列より前に描かれて点を隠すし、
@@ -670,6 +686,17 @@ export function buildOption(
   const anyStackActive = panels.some((p) => p.stackActive);
   const anyInlineStackLabels = panels.some((p) => p.stackActive && p.stack.labels === "inline");
 
+  // 凡例に並ぶ名前。プロット領域の余白を決める前に要る（凡例が何行になるかで
+  // 上端・下端が動くため）。段オフセット中はテーブル名を名乗るので枠ごとに解決する
+  const seriesNameOf = (panelIndex: number, i: number): string => {
+    const sc = config.series[i];
+    if (!sc) return "";
+    return panels[panelIndex]?.stackActive
+      ? stackSeriesDisplayName(sc, tableLabelOf(sc.sourceBlockId))
+      : seriesConfigDisplayName(sc);
+  };
+  const legendNames = panels.flatMap((panel, p) => panel.indices.map((i) => seriesNameOf(p, i)));
+
   // ── レイアウト ──────────────────────────────────────────────────
   // 段ラベルを図に直接置くときは、凡例は同じ情報の二重表示になるので出さない
   const showLegend = config.showLegend && !anyInlineStackLabels;
@@ -686,8 +713,21 @@ export function buildOption(
   const anyYRightName = panels.some((p) => p.yRightName !== "");
   const gridLeft = anyYName ? 84 : 60;
   const gridRight = anyUseRight ? (anyYRightName ? 84 : 60) : 32;
-  const gridTop = legendTop ? 48 : 20;
-  const gridBottom = (anyXName ? 64 : 40) + (legendBottom ? 32 : 0);
+  // 凡例は折り返すと 2 行目以降がプロット枠に重なるので、行数ぶんの高さを先に空ける。
+  // 1 行に収まるときは従来と同じ値（48 / 32）になるので既存の図は動かない。
+  // 凡例の幅は右上の設定ボタンに掛からないところまでに絞り、見積もりと実際の
+  // 折り返し位置を合わせる
+  const chartWidth = size?.width && size.width > 0 ? size.width : 0;
+  const legendWidth = chartWidth > 0 ? Math.max(0, chartWidth - gridLeft - Math.max(gridRight, 72)) : 0;
+  const legendRows =
+    showLegend && (legendTop || legendBottom)
+      ? estimateLegendRows(legendNames, legendWidth, config.legendOrient, CHART_FONT_SIZE, (text) =>
+          measureLegendText(text, `${CHART_FONT_SIZE}px ${fontFamily}`)
+        )
+      : 1;
+  const extraLegendRows = Math.max(0, legendRows - 1) * LEGEND_LINE_HEIGHT;
+  const gridTop = legendTop ? 48 + extraLegendRows : 20;
+  const gridBottom = (anyXName ? 64 : 40) + (legendBottom ? 32 + extraLegendRows : 0);
 
   const layout = split
     ? computePanelLayout({
@@ -792,7 +832,6 @@ export function buildOption(
   const tooltipSeries: Array<ChartSeriesData | null> = [];
   const xAxes: any[] = [];
   const yAxes: any[] = [];
-  const legendNames: string[] = [];
 
   panels.forEach((panel, p) => {
     const col = split ? p % config.panels.cols : 0;
@@ -802,14 +841,6 @@ export function buildOption(
     const shared = sharedXExtent(col);
     // 枠の Y 軸は yAxes の何番目か（第 2 軸を持つ枠があるので枠番号とは一致しない）
     const yAxisBase = yAxes.length;
-
-    const seriesName = (i: number): string => {
-      const sc = config.series[i];
-      if (!sc) return "";
-      return panel.stackActive
-        ? stackSeriesDisplayName(sc, tableLabelOf(sc.sourceBlockId))
-        : seriesConfigDisplayName(sc);
-    };
 
     // 段名を段のどの隅に置くか（凡例と同じ選び方で四隅から選ぶ）
     const inlineLabelAtLeft = panel.stack.labelPosition.endsWith("left");
@@ -912,7 +943,7 @@ export function buildOption(
         : ((sc?.type ?? config.chartType) as SeriesType);
       // 色は枠をまたいで通し番号で振る（同じ色が別の枠に出ると別物と読めない）
       const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
-      const name = seriesName(i);
+      const name = seriesNameOf(p, i);
       const points = s.points as Array<[number, number]>;
       // 段の名前は枠の左右どちらかの端に寄せ、縦はその段が占める範囲の内側に収める。
       // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
@@ -1023,7 +1054,6 @@ export function buildOption(
       });
       // 土台を敷いた系列は描画値から段オフセットを抜いてあるので、戻す量も 0
       tooltipSeries.push(stackBase !== 0 ? { ...s, offset: 0 } : s);
-      legendNames.push(name);
     });
   });
 
@@ -1071,6 +1101,9 @@ export function buildOption(
           // 土台の系列（オフセット表示の棒）は凡例に出さない
           data: legendNames,
           orient: config.legendOrient,
+          // 実寸が分かっているときだけ幅を絞る（見積もりと同じ位置で折り返させ、
+          // 右上の設定ボタンに潜り込ませない）
+          ...(legendWidth > 0 && config.legendOrient === "horizontal" ? { width: legendWidth } : {}),
           ...legendLayout,
           itemWidth: CHART_LEGEND_ITEM.width,
           itemHeight: CHART_LEGEND_ITEM.height,

@@ -80,3 +80,56 @@ export function computePanelLayout(input: PanelLayoutInput): PanelLayout {
 
   return { grids, showXAxis, showYAxis };
 }
+
+/** 凡例 1 行の高さ(px)。ECharts の既定の行送りに合わせた実測値 */
+export const LEGEND_LINE_HEIGHT = 17;
+
+/**
+ * 凡例が何行になるかの見積もり。
+ *
+ * ECharts は凡例を描いてから折り返すが、こちらは描く前にプロット領域の
+ * 上端（または下端）を決めないといけないので、文字幅を見積もって先回りする。
+ * 行数を読み違えると、折り返した 2 行目がプロット枠に重なる（系列が 4 本を
+ * 超えると実際に起きる）。
+ *
+ * 幅は measure（呼び出し側が渡す実測）を使う。実測できない環境（テストの jsdom）
+ * では「全角は 1em、それ以外は 0.62em」の近似に落ちる。近似だけに頼ると 15% ほど
+ * 短く出て、実際には折り返しているのに 1 行と判定して枠に重なった。
+ */
+export function estimateLegendRows(
+  names: string[],
+  availableWidth: number,
+  orient: "horizontal" | "vertical",
+  fontSize: number,
+  /** 実測の文字幅(px)。測れないときは 0 以下を返す */
+  measure?: (text: string) => number
+): number {
+  if (names.length === 0) return 0;
+  // 縦並びは 1 項目 1 行
+  if (orient === "vertical") return names.length;
+  if (availableWidth <= 0) return 1;
+  const textWidth = (text: string) => {
+    const measured = measure?.(text) ?? 0;
+    if (measured > 0) return measured;
+    let w = 0;
+    for (const ch of text) {
+      // CJK・全角記号はおおむね正方形、それ以外は半角より少し広い程度
+      w += ch.codePointAt(0)! > 0x2e80 ? fontSize : fontSize * 0.62;
+    }
+    return w;
+  };
+  // 記号の幅 + 記号と文字の間 + 項目どうしの間（ECharts の既定 itemGap = 10）
+  const itemExtra = 50 + 5 + 10;
+  let rows = 1;
+  let used = 0;
+  for (const name of names) {
+    const w = textWidth(name) + itemExtra;
+    if (used > 0 && used + w > availableWidth) {
+      rows += 1;
+      used = w;
+    } else {
+      used += w;
+    }
+  }
+  return rows;
+}

@@ -1,7 +1,7 @@
 // chart-layout.ts（サブプロットのレイアウト計算純関数）のテスト
 
 import { describe, it, expect } from "vitest";
-import { computePanelLayout, PANEL_GAP, type PanelLayoutInput } from "./chart-layout";
+import { computePanelLayout, estimateLegendRows, PANEL_GAP, type PanelLayoutInput } from "./chart-layout";
 
 const baseInput: PanelLayoutInput = {
   rows: 1,
@@ -103,5 +103,38 @@ describe("computePanelLayout", () => {
     const fractional = computePanelLayout({ ...baseInput, rows: 2.9, cols: 1.1 });
     // floor(2.9)=2, floor(1.1)=1 → 2 枠
     expect(fractional.grids).toHaveLength(2);
+  });
+});
+
+describe("estimateLegendRows", () => {
+  it("項目が無ければ 0 行", () => {
+    expect(estimateLegendRows([], 600, "horizontal", 12)).toBe(0);
+  });
+
+  it("収まるうちは 1 行", () => {
+    expect(estimateLegendRows(["A", "B"], 600, "horizontal", 12)).toBe(1);
+  });
+
+  it("幅を超えたら折り返す", () => {
+    const names = ["σ (S/cm)", "S (µV/K)", "PF (mW/mK²)", "κ (W/mK)"];
+    expect(estimateLegendRows(names, 300, "horizontal", 12)).toBeGreaterThan(1);
+    // 広ければ 1 行に収まる
+    expect(estimateLegendRows(names, 2000, "horizontal", 12)).toBe(1);
+  });
+
+  it("実測が渡されればそちらを使う（近似より優先）", () => {
+    const names = ["A", "B"];
+    // 1 項目 400px 相当に測れたことにすると、600px には収まらない
+    expect(estimateLegendRows(names, 600, "horizontal", 12, () => 400)).toBe(2);
+    // 測れなければ近似に落ちる（0 以下を返す実装を想定）
+    expect(estimateLegendRows(names, 600, "horizontal", 12, () => 0)).toBe(1);
+  });
+
+  it("縦並びは項目数がそのまま行数", () => {
+    expect(estimateLegendRows(["A", "B", "C"], 600, "vertical", 12)).toBe(3);
+  });
+
+  it("幅が取れていないときも 1 行として扱う（0 除算・無限ループを作らない）", () => {
+    expect(estimateLegendRows(["A", "B"], 0, "horizontal", 12)).toBe(1);
   });
 });
