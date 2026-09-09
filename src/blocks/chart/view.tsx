@@ -725,7 +725,7 @@ function buildOption(
     ...axisFromDetail(config.yRightAxisDetail),
   };
 
-  // 系列の option。積み重ね中の棒は土台の系列を挟むので、view.series と
+  // 系列の option。オフセット表示中の棒は土台の系列を挟むので、view.series と
   // option の series は 1 対 1 にならない。ツールチップが元の値へ戻せるよう、
   // option と同じ並びの元データ（土台は null）を tooltipSeries に持つ
   const optionSeries: any[] = [];
@@ -745,7 +745,7 @@ function buildOption(
     // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
     // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
     const baseStyle = resolveSeriesStyle(sc, seriesType);
-    // 積み重ね中だけ既定をマーカー無し・細線・小さめの点に寄せる。スペクトルは
+    // オフセット表示中だけ既定をマーカー無し・細線・小さめの点に寄せる。スペクトルは
     // 連続曲線として読むもので、数千点にマーカーを打つと線が潰れるため。
     // 明示的に設定されているものはそのまま尊重する
     const style = stackActive
@@ -877,7 +877,7 @@ function buildOption(
     legend: showLegend
       ? {
           show: true,
-          // 土台の系列（積み重ねの棒）は凡例に出さない
+          // 土台の系列（オフセット表示の棒）は凡例に出さない
           data: view.series.map((_, i) => seriesName(i)),
           orient: config.legendOrient,
           ...legendLayout,

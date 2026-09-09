@@ -2239,7 +2239,7 @@ export const en: Record<string, string> = {
   "chart.comboHint": "Change a series' type to combine marks — a line over bars, for example",
   "chart.stackLabelPosition": "Name position",
   "chart.stackLabelPositionHint":
-    "Stacked rows are named on the plot itself, so the legend is not used",
+    "Offset rows are named on the plot itself, so the legend is not used",
   "chart.stackPosTopLeft": "Top left of row",
   "chart.stackPosTopRight": "Top right of row",
   "chart.stackPosBottomLeft": "Bottom left of row",
@@ -2345,8 +2345,8 @@ export const en: Record<string, string> = {
   "chart.typeScatter": "Scatter",
   "chart.typeHistogram": "Histogram",
   "chart.loading": "Loading chart…",
-  "chart.sectionStack": "Stacking",
-  "chart.stackHint": "Stacks spectra such as XRD patterns in one frame for comparison. The y-axis ticks are hidden",
+  "chart.sectionStack": "Offset",
+  "chart.stackHint": "Offsets spectra such as XRD patterns vertically in one frame for comparison. The y-axis ticks are hidden",
   "chart.stackNormalize": "Height scaling",
   "chart.stackNormalizeMax": "Max = 1",
   "chart.stackNormalizeNone": "Raw values",
@@ -2357,7 +2357,7 @@ export const en: Record<string, string> = {
   "chart.stackLabels": "Row labels",
   "chart.stackLabelsInline": "On the plot",
   "chart.stackLabelsLegend": "In the legend",
-  "chart.stackSeriesSection": "Stacking adjustments",
+  "chart.stackSeriesSection": "Offset adjustments",
   "chart.seriesScale": "Multiplier",
   "chart.seriesOffsetAdjust": "Row offset",
 

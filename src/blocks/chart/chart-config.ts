@@ -209,7 +209,7 @@ export type StackOrder = "first-bottom" | "first-top";
 /**
  * 段名を段のどの隅に置くか。凡例の位置と同じ選び方で、段の中の四隅から選ぶ
  *（段名は凡例の代わりに図の中へ直接出るものなので、位置の決め方もそろえる）。
- * 既定が右上なのは、積み重ねスペクトルの段名を右肩に置く紙面の作法に合わせたもの。
+ * 既定が右上なのは、オフセット表示したスペクトルの段名を右肩に置く紙面の作法に合わせたもの。
  */
 export type StackLabelPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
