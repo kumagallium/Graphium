@@ -149,8 +149,33 @@ describe("NoteProposalsPanel — 差分と選択", () => {
   it("提案者だけが変えた項目は既定でチェックが入る", async () => {
     renderPanel({ onAdopt: async () => ({ applied: 1, skipped: [] }) });
     fireEvent.click(screen.getByTestId("note-proposal-row-prop-1"));
-    const box = await screen.findByTestId("proposal-select-block:b1");
-    expect((box as HTMLInputElement).checked).toBe(true);
+    // findByTestId は「出てきたこと」しか待たない。checked は本文と差分が
+    // 揃ってから決まるので、値そのものが決まるまで待つ
+    await waitFor(() => {
+      const box = screen.getByTestId("proposal-select-block:b1") as HTMLInputElement;
+      expect(box.checked).toBe(true);
+    });
+  });
+
+  it("チェックは描かれた最初の瞬間から入っている（一瞬だけ外れて見えない）", async () => {
+    // 既定の選択をコミット後（useEffect）に入れると、チェックボックスが
+    // 「全部外れた状態」で一度描かれてから入る。その一瞬を拾うと CI で落ちる。
+    // DOM に現れた最初のコミットの checked を記録して、待ち方に頼らず押さえる
+    let firstChecked: boolean | null = null;
+    const observer = new MutationObserver(() => {
+      if (firstChecked !== null) return;
+      const el = document.querySelector('[data-testid="proposal-select-block:b1"]');
+      if (el) firstChecked = (el as HTMLInputElement).checked;
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    try {
+      renderPanel({ onAdopt: async () => ({ applied: 1, skipped: [] }) });
+      fireEvent.click(screen.getByTestId("note-proposal-row-prop-1"));
+      await screen.findByTestId("proposal-select-block:b1");
+    } finally {
+      observer.disconnect();
+    }
+    expect(firstChecked).toBe(true);
   });
 
   it("元の作者だけが変えた項目にはチェックボックスを出さない", async () => {
