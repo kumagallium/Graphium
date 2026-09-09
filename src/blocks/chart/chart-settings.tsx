@@ -14,11 +14,14 @@ import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
   isAssetSourceKey,
+  axisOwnerPanel,
   isPanelStackActive,
   isStackActive,
+  panelAxis,
   panelCount,
   seriesPanelIndex,
   stackConfigForPanel,
+  withPanelAxis,
   withStackConfigForPanel,
   PANEL_SPLIT_RANGE,
   resolveSeriesStyle,
@@ -30,6 +33,7 @@ import {
   type ChartBlockConfig,
   type ChartSeriesConfig,
   type ChartSourceOption,
+  type PanelAxisConfig,
   type PanelsConfig,
   type LegendPosition,
   type SeriesBarWidth,
@@ -818,6 +822,23 @@ export function ChartSettingsPanel({
     onChange(editingPanel === 0 ? { stack: next.stack } : { panelStacks: next.panelStacks });
   };
 
+  // 軸設定を編集している枠。分割を減らして枠が消えたら先頭に戻す
+  const [axisPanelRaw, setAxisPanel] = useState(0);
+  const axisPanel = axisPanelRaw < panels ? axisPanelRaw : 0;
+  // 表示する値は「その軸を実際に持っている枠」のもの。つなげた向きでは
+  // 枠 2 を選んでも枠 1 と同じ値が出る（共有していることが値で分かる）
+  const xAxisValues = panelAxis(config, axisOwnerPanel(config.panels, axisPanel, "x"));
+  const yAxisValues = panelAxis(config, axisOwnerPanel(config.panels, axisPanel, "y"));
+  const updateAxis = (axis: "x" | "y", patch: PanelAxisConfig) => {
+    const owner = axisOwnerPanel(config.panels, axisPanel, axis);
+    // 枠 0 の保存先は既存のトップレベルのキーなので、patch をそのまま渡せる
+    if (owner === 0) {
+      onChange(patch as Partial<ChartBlockConfig>);
+      return;
+    }
+    onChange({ panelAxes: withPanelAxis(config, owner, patch).panelAxes });
+  };
+
   const updatePanels = (patch: Partial<PanelsConfig>) => {
     onChange({ panels: { ...config.panels, ...patch } });
   };
@@ -1216,6 +1237,27 @@ export function ChartSettingsPanel({
 
       {tab === "axes" && (
         <div style={styles.body}>
+          {/* 軸の名前・範囲は枠ごとなので、どの枠のことかを先に選ぶ。
+              目盛りの体裁（線・ラベル・グリッド）は図全体で揃えるものなので枠に紐づけない */}
+          {panels > 1 && (
+            <>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.panelTarget")}</span>
+                <select
+                  value={axisPanel}
+                  onChange={(e) => setAxisPanel(Number(e.target.value))}
+                  style={{ ...styles.select, flex: 1 }}
+                >
+                  {Array.from({ length: panels }, (_, p) => (
+                    <option key={p} value={p}>
+                      {t("chart.panelName", { n: String(p + 1) })}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={styles.fieldHint}>{t("chart.axisPanelHint")}</div>
+            </>
+          )}
           {!isHistogram && (
             <>
               <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
@@ -1223,9 +1265,9 @@ export function ChartSettingsPanel({
                 <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
                 <input
                   type="text"
-                  value={config.xAxisName}
+                  value={xAxisValues.xAxisName}
                   placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => onChange({ xAxisName: e.target.value })}
+                  onChange={(e) => updateAxis("x", { xAxisName: e.target.value })}
                   style={{ ...styles.input, flex: 1 }}
                 />
               </label>
@@ -1246,19 +1288,19 @@ export function ChartSettingsPanel({
                 <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
                 <input
                   type="text"
-                  value={config.xMin}
+                  value={xAxisValues.xMin}
                   placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
                   disabled={effectiveXKind === "category"}
-                  onChange={(e) => onChange({ xMin: e.target.value })}
+                  onChange={(e) => updateAxis("x", { xMin: e.target.value })}
                   style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
                 />
                 <span style={styles.rangeDash}>–</span>
                 <input
                   type="text"
-                  value={config.xMax}
+                  value={xAxisValues.xMax}
                   placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
                   disabled={effectiveXKind === "category"}
-                  onChange={(e) => onChange({ xMax: e.target.value })}
+                  onChange={(e) => updateAxis("x", { xMax: e.target.value })}
                   style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
                 />
               </label>
@@ -1283,9 +1325,9 @@ export function ChartSettingsPanel({
             <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
             <input
               type="text"
-              value={config.yAxisName}
+              value={yAxisValues.yAxisName}
               placeholder={isHistogram ? t("chart.frequency") : t("chart.autoPlaceholder")}
-              onChange={(e) => onChange({ yAxisName: e.target.value })}
+              onChange={(e) => updateAxis("y", { yAxisName: e.target.value })}
               style={{ ...styles.input, flex: 1 }}
             />
           </label>
@@ -1294,18 +1336,18 @@ export function ChartSettingsPanel({
             <input
               type="text"
               inputMode="decimal"
-              value={config.yMin}
+              value={yAxisValues.yMin}
               placeholder={t("chart.autoPlaceholder")}
-              onChange={(e) => onChange({ yMin: e.target.value })}
+              onChange={(e) => updateAxis("y", { yMin: e.target.value })}
               style={{ ...styles.input, width: 72 }}
             />
             <span style={styles.rangeDash}>–</span>
             <input
               type="text"
               inputMode="decimal"
-              value={config.yMax}
+              value={yAxisValues.yMax}
               placeholder={t("chart.autoPlaceholder")}
-              onChange={(e) => onChange({ yMax: e.target.value })}
+              onChange={(e) => updateAxis("y", { yMax: e.target.value })}
               style={{ ...styles.input, width: 72 }}
             />
           </label>
@@ -1313,7 +1355,7 @@ export function ChartSettingsPanel({
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
             // オフセット表示中の縦軸は目盛りを描画側が消すので、ここの指定は効かない
-            ticksLocked={!isHistogram && config.stack.enabled}
+            ticksLocked={!isHistogram && stackConfigForPanel(config, axisPanel).enabled}
             {...axisDetailProps("y")}
           />
 
@@ -1324,9 +1366,9 @@ export function ChartSettingsPanel({
                 <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
                 <input
                   type="text"
-                  value={config.yRightAxisName}
+                  value={yAxisValues.yRightAxisName}
                   placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => onChange({ yRightAxisName: e.target.value })}
+                  onChange={(e) => updateAxis("y", { yRightAxisName: e.target.value })}
                   style={{ ...styles.input, flex: 1 }}
                 />
               </label>
@@ -1335,18 +1377,18 @@ export function ChartSettingsPanel({
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={config.yRightMin}
+                  value={yAxisValues.yRightMin}
                   placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => onChange({ yRightMin: e.target.value })}
+                  onChange={(e) => updateAxis("y", { yRightMin: e.target.value })}
                   style={{ ...styles.input, width: 72 }}
                 />
                 <span style={styles.rangeDash}>–</span>
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={config.yRightMax}
+                  value={yAxisValues.yRightMax}
                   placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => onChange({ yRightMax: e.target.value })}
+                  onChange={(e) => updateAxis("y", { yRightMax: e.target.value })}
                   style={{ ...styles.input, width: 72 }}
                 />
               </label>

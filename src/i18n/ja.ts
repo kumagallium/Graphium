@@ -2351,6 +2351,7 @@ export const ja: Record<string, string> = {
   "chart.panelJoinHorizontal": "横に並ぶ枠をつなげる",
   "chart.panelJoinHint": "つなげた向きは軸を共有し、目盛りは端の枠にだけ出ます",
   "chart.panelTarget": "枠",
+  "chart.axisPanelHint": "軸の名前と範囲は枠ごとです。つなげた向きの軸は枠をまたいで共通になります",
   "chart.panelName": "枠 {n}",
   "chart.seriesPanel": "枠",
   "chart.sectionStack": "オフセット表示",

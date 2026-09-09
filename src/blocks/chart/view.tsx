@@ -56,7 +56,9 @@ import {
   assetSourceKey,
   assetSourceLabel,
   isAssetSourceKey,
+  axisOwnerPanel,
   isPanelStackActive,
+  panelAxis,
   panelCount,
   parseChartBlockConfig,
   pruneAssetSources,
@@ -567,14 +569,25 @@ export function buildOption(
   // 段の名前は「別の列」ではなく「別の試料・別の文献」なので、既定はテーブル名
   const tableLabelOf = (blockId: string) => tables.find((tb) => tb.id === blockId)?.label;
 
-  const yMin = parseNumeric(config.yMin);
-  const yMax = parseNumeric(config.yMax);
-  const yRightMin = parseNumeric(config.yRightMin);
-  const yRightMax = parseNumeric(config.yRightMax);
   // X 軸の min/max。時間軸は日時文字列、数値軸は数値として読む（カテゴリ軸は対象外）
   const parseX = result.xAxis === "time" ? parseDateTime : parseNumeric;
-  const xMin = result.xAxis !== "category" ? parseX(config.xMin) : null;
-  const xMax = result.xAxis !== "category" ? parseX(config.xMax) : null;
+  const parseXBound = (raw: string) => (result.xAxis !== "category" ? parseX(raw) : null);
+  // 軸の名前と範囲は枠ごと。つなげた向きは端の枠が持ち主なので、同じ値に解決される
+  const axisOf = (panelIndex: number) => {
+    const x = panelAxis(config, axisOwnerPanel(config.panels, panelIndex, "x"));
+    const y = panelAxis(config, axisOwnerPanel(config.panels, panelIndex, "y"));
+    return {
+      xAxisName: x.xAxisName,
+      xMin: parseXBound(x.xMin),
+      xMax: parseXBound(x.xMax),
+      yAxisName: y.yAxisName,
+      yMin: parseNumeric(y.yMin),
+      yMax: parseNumeric(y.yMax),
+      yRightAxisName: y.yRightAxisName,
+      yRightMin: parseNumeric(y.yRightMin),
+      yRightMax: parseNumeric(y.yRightMax),
+    };
+  };
 
   // 折れ線・散布図の値軸はデータ範囲にフィットさせる（scale: true = 0 を含む強制を
   // 外す）。気圧 ~1000 hPa のような系列が 0 起点で上に張り付くのを防ぐ。
@@ -598,6 +611,8 @@ export function buildOption(
     stackRange: { min: number; max: number } | null;
     /** この枠のデータが占める X の範囲（つなげたときの共有範囲の計算に使う） */
     xExtent: { min: number; max: number } | null;
+    /** 明示された名前・範囲（つなげた向きは持ち主の枠のもの） */
+    axis: ReturnType<typeof axisOf>;
   };
 
   const panels: PanelBuild[] = [];
@@ -626,8 +641,9 @@ export function buildOption(
       : sub;
 
     // X 軸名の自動値: histogram は対象列、それ以外は枠の中で共通の X 列名
+    const axis = axisOf(p);
     const xColumns = [...new Set(panelSeries.map((s) => (isHistogram ? s?.yColumn : s?.xColumn)))];
-    const xName = config.xAxisName.trim() || (xColumns.length === 1 ? (xColumns[0] ?? "") : "");
+    const xName = axis.xAxisName.trim() || (xColumns.length === 1 ? (xColumns[0] ?? "") : "");
 
     const leftSeries = panelSeries.filter((s) => s?.axis !== "right");
     const rightSeries = panelSeries.filter((s) => s?.axis === "right");
@@ -636,7 +652,7 @@ export function buildOption(
     // 枠を分けた図では軸名も枠ごとに決まる（σ・S・PF・κ を並べるとき、
     // 明示していなければ各枠が自分の系列名を名乗る）
     const yName =
-      config.yAxisName.trim() ||
+      axis.yAxisName.trim() ||
       (stackActive
         ? ""
         : isHistogram
@@ -645,7 +661,7 @@ export function buildOption(
             ? seriesConfigDisplayName(leftSeries[0])
             : "");
     const yRightName =
-      config.yRightAxisName.trim() ||
+      axis.yRightAxisName.trim() ||
       (rightSeries.length === 1 && rightSeries[0] ? seriesConfigDisplayName(rightSeries[0]) : "");
 
     // スタック時の縦範囲。段の実データから決める（規格化後の値を ECharts の
@@ -680,7 +696,7 @@ export function buildOption(
       return Number.isFinite(lo) && Number.isFinite(hi) ? { min: lo, max: hi } : null;
     })();
 
-    panels.push({ indices, view, stack, stackActive, useRight, xName, yName, yRightName, stackRange, xExtent });
+    panels.push({ indices, view, stack, stackActive, useRight, xName, yName, yRightName, stackRange, xExtent, axis });
   }
 
   const anyStackActive = panels.some((p) => p.stackActive);
@@ -839,6 +855,7 @@ export function buildOption(
     const showX = layout ? layout.showXAxis[p] : true;
     const showY = layout ? layout.showYAxis[p] : true;
     const shared = sharedXExtent(col);
+    const { xMin, xMax, yMin, yMax, yRightMin, yRightMax } = panel.axis;
     // 枠の Y 軸は yAxes の何番目か（第 2 軸を持つ枠があるので枠番号とは一致しない）
     const yAxisBase = yAxes.length;
 

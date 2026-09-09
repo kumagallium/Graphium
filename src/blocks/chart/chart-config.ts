@@ -290,6 +290,32 @@ export const DEFAULT_PANELS_CONFIG: PanelsConfig = {
  */
 export const PANEL_SPLIT_RANGE = { min: 1, max: 4 } as const;
 
+/**
+ * 枠ごとの軸の名前と範囲。
+ *
+ * 目盛りの体裁（線・目盛り・ラベル・グリッド）は図全体で揃えるべきものなので
+ * ここには持たない。枠ごとに違ってよいのは「何の量か」と「どこからどこまでか」
+ * の 2 つだけ — σ・S・PF・κ を並べる図で、名前も範囲も同じでは図にならない。
+ *
+ * つなげた向きは軸を共有するので、その向きに並ぶ枠は同じ設定を見る
+ *（持ち主は axisOwnerPanel が決める）。共有しているのに枠ごとに別々の
+ * 名前・範囲を持てると、どちらが効いているのか説明できなくなる。
+ *
+ * 未指定（undefined）はチャート側の既定に落ちる。空文字は「自動」の意味を持つ
+ * 既存の規約に合わせるため、区別して保持する
+ */
+export type PanelAxisConfig = {
+  xAxisName?: string;
+  xMin?: string;
+  xMax?: string;
+  yAxisName?: string;
+  yMin?: string;
+  yMax?: string;
+  yRightAxisName?: string;
+  yRightMin?: string;
+  yRightMax?: string;
+};
+
 /** 未指定を種類なりの既定で埋めた、描画・UI が使う実効スタイル */
 export type ResolvedSeriesStyle = {
   lineType: SeriesLineType;
@@ -361,6 +387,12 @@ export type ChartBlockConfig = {
    */
   stack: StackConfig;
   /**
+   * 枠 1 以降の軸の名前・範囲（要素 i が枠 i+1）。枠 0 は既存の xAxisName /
+   * yMin などをそのまま使うので、分割していないノートの JSON は変わらない。
+   * 参照は panelAxis() を通す
+   */
+  panelAxes: PanelAxisConfig[];
+  /**
    * 枠 1 以降のオフセット表示（要素 i が枠 i+1 に対応）。
    * 枠 0 を stack に残したまま追加できるので、旧ノートの意味が変わらない。
    * 参照は stackConfigForPanel() を通す
@@ -397,6 +429,7 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   yAxisDetail: DEFAULT_AXIS_DETAIL,
   yRightAxisDetail: DEFAULT_AXIS_DETAIL,
   panels: DEFAULT_PANELS_CONFIG,
+  panelAxes: [],
   stack: DEFAULT_STACK_CONFIG,
   panelStacks: [],
   assetSources: [],
@@ -549,6 +582,26 @@ function parsePanels(raw: unknown): PanelsConfig {
   };
 }
 
+function parsePanelAxis(raw: unknown): PanelAxisConfig {
+  const v = (typeof raw === "object" && raw !== null ? raw : {}) as any;
+  const out: PanelAxisConfig = {};
+  // 文字列だけを拾う。空文字は「自動」を意味する有効な値なので落とさない
+  for (const key of [
+    "xAxisName",
+    "xMin",
+    "xMax",
+    "yAxisName",
+    "yMin",
+    "yMax",
+    "yRightAxisName",
+    "yRightMin",
+    "yRightMax",
+  ] as const) {
+    if (typeof v[key] === "string") out[key] = v[key];
+  }
+  return out;
+}
+
 function parseStack(raw: unknown): StackConfig {
   const v = (typeof raw === "object" && raw !== null ? raw : {}) as any;
   const gap =
@@ -659,6 +712,7 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
     ),
     yRightAxisDetail: parseAxisDetail(parsed.yRightAxisDetail, false),
     panels: parsePanels(parsed.panels),
+    panelAxes: Array.isArray(parsed.panelAxes) ? parsed.panelAxes.map(parsePanelAxis) : [],
     stack: parseStack(parsed.stack),
     panelStacks: Array.isArray(parsed.panelStacks) ? parsed.panelStacks.map(parseStack) : [],
     assetSources: parseAssetSources(parsed.assetSources),
@@ -681,6 +735,57 @@ export function panelCount(config: Pick<ChartBlockConfig, "panels">): number {
 export function seriesPanelIndex(series: ChartSeriesConfig | undefined, count: number): number {
   const i = series?.panelIndex ?? 0;
   return i >= 0 && i < count ? i : 0;
+}
+
+/**
+ * その枠の軸設定を実際に持っている枠。
+ *
+ * つなげた向きは軸を共有するので、設定の持ち主は端の枠に寄せる
+ *（縦につなげた列の X は最上段、横につなげた行の Y は左端）。
+ * 枠 2 の X を触ると枠 1 の X も動くのは、その 2 つが同じ軸を見ているため
+ */
+export function axisOwnerPanel(
+  panels: PanelsConfig,
+  panelIndex: number,
+  axis: "x" | "y"
+): number {
+  const cols = Math.max(1, panels.cols);
+  if (axis === "x") return panels.joinVertical ? panelIndex % cols : panelIndex;
+  return panels.joinHorizontal ? Math.floor(panelIndex / cols) * cols : panelIndex;
+}
+
+/**
+ * 枠 n の軸の名前・範囲。枠 0 はチャート側の既存フィールド、枠 1 以降は
+ * panelAxes[n - 1]。未設定の項目はチャート側の値に落ちるので、分割した直後は
+ * どの枠も今までと同じ設定から始まる
+ */
+export function panelAxis(config: ChartBlockConfig, panelIndex: number): Required<PanelAxisConfig> {
+  const stored = panelIndex <= 0 ? {} : (config.panelAxes[panelIndex - 1] ?? {});
+  const pick = (key: keyof PanelAxisConfig) => stored[key] ?? config[key];
+  return {
+    xAxisName: pick("xAxisName"),
+    xMin: pick("xMin"),
+    xMax: pick("xMax"),
+    yAxisName: pick("yAxisName"),
+    yMin: pick("yMin"),
+    yMax: pick("yMax"),
+    yRightAxisName: pick("yRightAxisName"),
+    yRightMin: pick("yRightMin"),
+    yRightMax: pick("yRightMax"),
+  };
+}
+
+/** 枠 n の軸設定を書き換えた設定を返す（保存先の振り分けを隠す） */
+export function withPanelAxis(
+  config: ChartBlockConfig,
+  panelIndex: number,
+  patch: PanelAxisConfig
+): ChartBlockConfig {
+  if (panelIndex <= 0) return { ...config, ...patch };
+  const panelAxes = [...config.panelAxes];
+  while (panelAxes.length < panelIndex) panelAxes.push({});
+  panelAxes[panelIndex - 1] = { ...panelAxes[panelIndex - 1], ...patch };
+  return { ...config, panelAxes };
 }
 
 /**

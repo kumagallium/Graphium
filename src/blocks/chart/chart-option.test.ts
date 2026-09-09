@@ -190,4 +190,41 @@ describe("buildOption（枠の分割）", () => {
     expect(option.series).toHaveLength(2);
     expect(option.grid).not.toBeInstanceOf(Array);
   });
+
+  it("枠ごとに軸名と範囲を持てる", () => {
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+      // 枠 0 はチャート側のキー、枠 1 は panelAxes
+      yAxisName: "σ (S/cm)",
+      yMin: "0",
+      yMax: "1000",
+      panelAxes: [{ yAxisName: "κ (W/mK)", yMin: "1", yMax: "4" }],
+    });
+    expect(option.yAxis.map((a: any) => a.name)).toEqual(["σ (S/cm)", "κ (W/mK)"]);
+    expect(option.yAxis.map((a: any) => a.min)).toEqual([0, 1]);
+    expect(option.yAxis.map((a: any) => a.max)).toEqual([1000, 4]);
+  });
+
+  it("縦につなげた列は、最上段の枠が持つ X の範囲を全段が使う", () => {
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: true },
+      xMin: "12",
+      xMax: "58",
+      // 下段が別の範囲を持っていても、つないでいる間は持ち主（最上段）が勝つ
+      panelAxes: [{ xMin: "0", xMax: "100" }],
+    });
+    expect(option.xAxis.map((a: any) => a.min)).toEqual([12, 12]);
+    expect(option.xAxis.map((a: any) => a.max)).toEqual([58, 58]);
+  });
+
+  it("つなげていなければ、枠ごとの X の範囲がそのまま効く", () => {
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+      xMin: "12",
+      xMax: "58",
+      panelAxes: [{ xMin: "0", xMax: "100" }],
+    });
+    expect(option.xAxis.map((a: any) => a.min)).toEqual([12, 0]);
+    expect(option.xAxis.map((a: any) => a.max)).toEqual([58, 100]);
+  });
 });
