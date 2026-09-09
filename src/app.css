@@ -478,6 +478,18 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 @keyframes cell-drop-pending {
   50% { opacity: 0.25; }
 }
+
+/* カラム化ゾーンの受け皿。ドラッグ中「ここに新しい列ができる」を面で示す。
+   縦のドロップカーソル（core が描く線）はこの帯の内側の端に重なる。
+   セルドロップと同じく body 直下のオーバーレイで、PM の DOM には触らない */
+[data-column-drop-zone] {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 9998; /* ドロップカーソル（エディタ内 z-index: 50）より前、セルドロップより後ろ */
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--color-primary) 12%, transparent);
+}
 @media (prefers-reduced-motion: reduce) {
   [data-cell-drop-box][data-pending] { animation: none; }
 }

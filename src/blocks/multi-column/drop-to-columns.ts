@@ -21,6 +21,7 @@ import type { Slice } from "prosemirror-model";
 import { createExtension, getNodeById } from "@blocknote/core";
 import type { DropCursorOptions } from "@blocknote/core";
 import { COLUMN_MIN_WIDTH_PX, COLUMN_GAP_PX } from "./nodes";
+import { showColumnDropZone, hideColumnDropZone } from "./drop-zone-overlay";
 
 // DropCursorPosition / ComputeDropPositionContext はパッケージルートから
 // export されていないため、公開されている DropCursorOptions から型導出する
@@ -38,6 +39,16 @@ function edgeZoneWidth(rectWidth: number): number {
   return Math.max(24, Math.min(80, rectWidth * 0.2));
 }
 
+/** 受け皿オーバーレイ用の矩形（ビューポート座標）。
+ *  縦カーソル 1 本だけだと「線の左右どちらに入るのか」「何が起きるのか」が
+ *  読み取れないので、判定に使ったヒットゾーンそのものを面で描く */
+export type ColumnDropZoneRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export type ColumnDropZone =
   | {
       /** 通常ブロックの左右端 → そのブロックとドラッグ中ブロックを 2 カラム化 */
@@ -46,6 +57,7 @@ export type ColumnDropZone =
       side: "left" | "right";
       /** DropCursor 用: 対象ノード直前の PM 位置 */
       cursorPos: number;
+      zoneRect: ColumnDropZoneRect;
     }
   | {
       /** カラムの左右端 / カラム間 gap → 隣に新しいカラムを追加 */
@@ -53,7 +65,51 @@ export type ColumnDropZone =
       refColumnId: string;
       side: "left" | "right";
       cursorPos: number;
+      zoneRect: ColumnDropZoneRect;
     };
+
+/** カラム化ゾーンを削ってでも残す「ふつうの並べ替え」用の中立帯の幅 */
+const MIN_NEUTRAL_WIDTH_PX = 80;
+
+/**
+ * ブロックの「中身が実際に描かれている」左右端を返す。
+ *
+ * 判定をブロック矩形（本文欄の全幅）の端だけで行うと、中身が本文欄より狭い
+ * ブロック — 画像・チャート・PDF — で「狙う場所」と「当たる場所」が食い違う。
+ * 320px の画像が 720px のブロックにあると、画像のすぐ右はブロックの中央扱いで、
+ * ゾーンは 320px 離れた何も描かれていない余白の中にある。
+ * 中身の端からブロックの端までの余白もゾーンに含めて、この食い違いを消す。
+ *
+ * 段落・見出し・表は中身（.bn-inline-content / .tableWrapper）が width:100% な
+ * ので、ここは何も変えない。
+ */
+function contentEdges(blockOuter: HTMLElement): { left: number; right: number } | null {
+  // 文書順で最初の .bn-block-content = このブロック自身の中身
+  // （入れ子の子ブロックは blockOuter の後ろ側に来る）
+  const content = blockOuter.querySelector<HTMLElement>(".bn-block-content");
+  const children = content ? Array.from(content.children) : [];
+  if (children.length === 0) return null;
+  let left = Infinity;
+  let right = -Infinity;
+  for (const child of children) {
+    const r = child.getBoundingClientRect();
+    if (r.width === 0) continue; // 非表示の付帯要素は無視
+    left = Math.min(left, r.left);
+    right = Math.max(right, r.right);
+  }
+  return Number.isFinite(left) && Number.isFinite(right) ? { left, right } : null;
+}
+
+/** ゾーンの境界（leftEdge / rightEdge）から、bounds の縦幅いっぱいの帯を作る */
+function edgeBand(
+  bounds: DOMRect,
+  side: "left" | "right",
+  edge: number,
+): ColumnDropZoneRect {
+  return side === "left"
+    ? { left: bounds.left, top: bounds.top, width: Math.max(0, edge - bounds.left), height: bounds.height }
+    : { left: edge, top: bounds.top, width: Math.max(0, bounds.right - edge), height: bounds.height };
+}
 
 /** ドラッグ中ブロックの id 一覧を PM slice（blocknote/html 由来）から得る */
 function draggedIdsFromSlice(slice: Slice): string[] {
@@ -153,10 +209,24 @@ export function computeColumnDropZone(
   if (blockOuter) {
     const rect = blockOuter.getBoundingClientRect();
     const zone = edgeZoneWidth(rect.width);
+    // 既定は端 20% の帯。中身がそれより内側で終わっているなら、中身の端まで
+    // ゾーンを広げる（画像の「すぐ右」が当たるようにする）。
+    // ただし中立帯（ふつうの並べ替え用）が潰れるほどは広げない
+    const edges = contentEdges(blockOuter);
+    let leftEdge = rect.left + zone;
+    let rightEdge = rect.right - zone;
+    if (edges) {
+      const wantLeft = Math.max(leftEdge, edges.left);
+      const wantRight = Math.min(rightEdge, edges.right);
+      if (wantRight - wantLeft >= MIN_NEUTRAL_WIDTH_PX) {
+        leftEdge = wantLeft;
+        rightEdge = wantRight;
+      }
+    }
     const side =
-      event.clientX <= rect.left + zone
+      event.clientX <= leftEdge
         ? ("left" as const)
-        : event.clientX >= rect.right - zone
+        : event.clientX >= rightEdge
           ? ("right" as const)
           : null;
     if (!side) return null;
@@ -170,7 +240,15 @@ export function computeColumnDropZone(
       if (!refColumnId) return null;
       const posInfo = getNodeById(refColumnId, view.state.doc);
       if (!posInfo) return null;
-      return { kind: "add-column", refColumnId, side, cursorPos: posInfo.posBeforeNode };
+      // 帯は「ブロックの端」ではなく「カラムの端」に出す — 増えるのはカラムなので
+      const colRect = columnEl.getBoundingClientRect();
+      return {
+        kind: "add-column",
+        refColumnId,
+        side,
+        cursorPos: posInfo.posBeforeNode,
+        zoneRect: edgeBand(colRect, side, side === "left" ? leftEdge : rightEdge),
+      };
     }
 
     // 2 カラムを表示できない幅では wrap しても即縦積みになるだけ
@@ -179,7 +257,13 @@ export function computeColumnDropZone(
     if (!targetId || draggedIds.has(targetId)) return null;
     const posInfo = getNodeById(targetId, view.state.doc);
     if (!posInfo) return null;
-    return { kind: "wrap", targetId, side, cursorPos: posInfo.posBeforeNode };
+    return {
+      kind: "wrap",
+      targetId,
+      side,
+      cursorPos: posInfo.posBeforeNode,
+      zoneRect: edgeBand(rect, side, side === "left" ? leftEdge : rightEdge),
+    };
   }
 
   // ブロック外だが columnList の上（カラム間の gap）→ その境界にカラム追加
@@ -199,7 +283,19 @@ export function computeColumnDropZone(
         if (!refColumnId) return null;
         const posInfo = getNodeById(refColumnId, view.state.doc);
         if (!posInfo) return null;
-        return { kind: "add-column", refColumnId, side: "right", cursorPos: posInfo.posBeforeNode };
+        return {
+          kind: "add-column",
+          refColumnId,
+          side: "right",
+          cursorPos: posInfo.posBeforeNode,
+          // gap そのものが受け皿。狭すぎると見えないので最低 24px 確保する
+          zoneRect: {
+            left: leftRect.right,
+            top: leftRect.top,
+            width: Math.max(24, rightRect.left - leftRect.right),
+            height: leftRect.height,
+          },
+        };
       }
     }
   }
@@ -215,7 +311,13 @@ export function columnDropCursorPosition(
   ctx: ComputeDropPositionContext,
 ): DropCursorPosition | null {
   const zone = computeColumnDropZone(ctx.view, ctx.event);
-  if (!zone) return ctx.defaultPosition;
+  // 受け皿の表示/非表示はこのフックに同期させる。カーソルとゾーン表示が
+  // 別条件で出ると「帯は出たのにカラム化されない」不一致になる
+  if (!zone) {
+    hideColumnDropZone();
+    return ctx.defaultPosition;
+  }
+  showColumnDropZone(zone.zoneRect);
   return {
     pos: zone.cursorPos,
     orientation: zone.side === "left" ? "block-vertical-left" : "block-vertical-right",
@@ -350,6 +452,7 @@ export const dropToColumnsExtension = createExtension(({ editor }) => ({
       key: pluginKey,
       props: {
         handleDrop(view, event, slice, moved) {
+          hideColumnDropZone();
           // コピー修飾ドラッグ（moved=false）は PM 既定に委ねる
           // （元を残して複製し、UniqueID が重複 id を再採番する既存挙動）
           if (!moved) return false;
