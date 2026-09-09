@@ -22,6 +22,7 @@ import { useT } from "../../i18n";
 import type { ProcessIndex, ProcessIndexEntry } from "./process-index";
 import { StepFlowView } from "./step-flow-view";
 import { addCrossNoteOriginsToFlowGraph } from "./cross-note-flow";
+import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 export type ProcessGalleryViewProps = {
   processIndex: ProcessIndex | null;
@@ -170,6 +171,7 @@ export function ProcessGalleryView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            {...listSearchInputProps}
             placeholder={t("process.search")}
             className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
           />

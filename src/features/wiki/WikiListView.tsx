@@ -20,6 +20,7 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
+import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 type SortKey =
   | "title"
@@ -561,6 +562,7 @@ export function WikiListView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            {...listSearchInputProps}
             placeholder={t("wikiList.search")}
             className="pl-7 pr-2.5 py-1 text-xs rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 w-48 focus:outline-none focus:ring-1 focus:ring-primary/40"
           />

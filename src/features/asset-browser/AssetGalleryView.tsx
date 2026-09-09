@@ -33,6 +33,7 @@ import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { IntakeReceptacle, type IntakeFile, type IntakeSource } from "../intake";
+import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
@@ -1415,6 +1416,7 @@ export function AssetGalleryView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            {...listSearchInputProps}
             placeholder={t("asset.search")}
             className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
           />

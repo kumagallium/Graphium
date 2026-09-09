@@ -13,6 +13,7 @@ import {
 import { useT, getDisplayLabelName } from "../../i18n";
 import { Modal, ModalHeader, ModalBody } from "../../ui/modal";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 // fcose レイアウト登録（重複防止）
 ensureCytoscapePlugins();
@@ -449,6 +450,7 @@ export function LabelGalleryView({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          {...listSearchInputProps}
           placeholder={t("label.search")}
           className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
         />

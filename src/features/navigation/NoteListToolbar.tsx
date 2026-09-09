@@ -4,6 +4,7 @@
 
 import { useRef, useState, type Ref } from "react";
 import { useT } from "../../i18n";
+import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 export type SortKey =
   | "outgoingLinkCount"
@@ -96,6 +97,7 @@ export function NoteListToolbar<K extends string = SortKey>({
         type="text"
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
+        {...listSearchInputProps}
         placeholder={t("common.search")}
         className="text-xs px-2.5 py-1 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 w-48 focus:outline-none focus:ring-1 focus:ring-primary/40"
       />
