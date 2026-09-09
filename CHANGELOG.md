@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.69.1](https://github.com/kumagallium/Graphium/compare/v0.69.0...v0.69.1) - 2026-09-09
+
+- Widen the column drop zone and collapse columns emptied by a drop by @kumagallium in https://github.com/kumagallium/Graphium/pull/901
+
 ## [v0.69.0](https://github.com/kumagallium/Graphium/compare/v0.68.1...v0.69.0) - 2026-09-09
 
 - Focus the list search box with Cmd/Ctrl+F by @kumagallium in https://github.com/kumagallium/Graphium/pull/897
