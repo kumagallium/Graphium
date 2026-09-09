@@ -1,20 +1,25 @@
-// 軸名・凡例の軽量リッチテキスト記法（斜体・上付き・下付き）
+// 軸名・凡例の LaTeX 風記法（斜体・上付き・下付き・ギリシャ文字）
 //
 // 論文の図では `Cp`（比熱）の C は斜体、p は下付き、`cm^3` の 3 は上付き、
 // `H2O` の 2 は下付き……という組版が当たり前で、プレーンテキストの軸名では
 // 「それらしく見えない」。ECharts の rich text 機能（`{tag|文字}`）に載せれば
-// 表現できるので、入力欄には軽い記法で書かせ、ここで rich へ変換する。
+// 表現できるので、入力欄には記法で書かせ、ここで rich へ変換する。
 //
-// 記法（中括弧を必須にしてある）:
-//   *斜体*      → 斜体
-//   ^{上付き}    → 上付き
-//   _{下付き}    → 下付き
-//   \* \^ \_ \\ → その文字そのもの
+// 記法は LaTeX に揃えてある:
+//   \it{斜体}    → 斜体
+//   ^{上付き}     → 上付き
+//   _{下付き}     → 下付き
+//   \theta \mu … → ギリシャ文字・よく使う記号
+//   \\ \_ \^ \{  → その文字そのもの
 //
-// 上下付きで中括弧を必須にしたのは、既存ノートの図を変えないため。凡例は
-// ユーザーが名前を付けていなければ列名がそのまま出るので、`temp_c` や
-// `x_1` のような列名を勝手に下付きにすると、過去のノートの見た目が黙って
-// 変わってしまう。`_{...}` の形は偶然一致しない。
+// LaTeX に寄せたのは、Graphium の本文が既に数式ブロック（KaTeX）を持っている
+// ためで、いつか軸名を KaTeX で組むところまで進めても、ユーザーが覚えた
+// 書き方がそのまま通る。matplotlib の mathtext とも同じ体系になる。
+//
+// 上下付きで中括弧を必須にしたのは（LaTeX は 1 文字なら省略できる）、既存
+// ノートの図を変えないため。凡例はユーザーが名前を付けていなければ列名が
+// そのまま出るので、`temp_c` や `x_1` のような列名を勝手に下付きにすると、
+// 過去のノートの見た目が黙って変わってしまう。
 //
 // 記法が 1 つも無いテキストは変換せず、素の文字列のまま扱う（従来どおり）。
 
@@ -27,40 +32,90 @@ export interface RichSegment {
 }
 
 /**
- * 軽量記法をセグメントに分解する。
+ * LaTeX のコマンドで書けるギリシャ文字と記号。
  *
- * 斜体は領域（`*...*`）、上下付きはその場の囲み（`^{...}`）なので、
- * 斜体の中に置かれた上下付きは isup / isub という合成スタイルになる。
+ * 軸名で実際に要るもの（2θ、λ、μ、Δ、°、×、±）に絞ってある。ここに無い
+ * コマンドは変換せずそのまま残す — 黙って消すと、書いた本人が気づけない。
+ */
+const SYMBOLS: Record<string, string> = {
+  alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", zeta: "ζ",
+  eta: "η", theta: "θ", iota: "ι", kappa: "κ", lambda: "λ", mu: "μ",
+  nu: "ν", xi: "ξ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ",
+  upsilon: "υ", phi: "φ", chi: "χ", psi: "ψ", omega: "ω",
+  Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π",
+  Sigma: "Σ", Upsilon: "Υ", Phi: "Φ", Psi: "Ψ", Omega: "Ω",
+  times: "×", pm: "±", mp: "∓", cdot: "·", deg: "°", infty: "∞",
+  approx: "≈", neq: "≠", leq: "≤", geq: "≥", sim: "∼",
+  AA: "Å", angstrom: "Å", perp: "⊥", parallel: "∥",
+};
+
+/** 上下付きの入れ子は 1 段まで。二重添字は軸名では使わない */
+interface ParseContext {
+  italic: boolean;
+  script: "none" | "sup" | "sub";
+}
+
+function styleFor(ctx: ParseContext): RichSegmentStyle {
+  if (ctx.script === "sup") return ctx.italic ? "isup" : "sup";
+  if (ctx.script === "sub") return ctx.italic ? "isub" : "sub";
+  return ctx.italic ? "it" : "plain";
+}
+
+/**
+ * 記法をセグメントに分解する。
+ *
+ * `\it{...}` は領域、上下付きはその場の囲みなので、斜体の中に置かれた
+ * 上下付きは isup / isub という合成スタイルになる。
  */
 export function parseRichSegments(input: string): RichSegment[] {
   const segments: RichSegment[] = [];
-  let buffer = "";
-  let italic = false;
+  parseInto(segments, input, { italic: false, script: "none" });
+  return mergeAdjacent(segments);
+}
 
-  // 直前までの平文を、その時点の斜体状態で確定する
+function parseInto(out: RichSegment[], input: string, ctx: ParseContext): void {
+  let buffer = "";
   const flush = () => {
     if (buffer === "") return;
-    segments.push({ text: buffer, style: italic ? "it" : "plain" });
+    out.push({ text: buffer, style: styleFor(ctx) });
     buffer = "";
   };
 
   for (let i = 0; i < input.length; i++) {
     const ch = input[i];
 
-    // エスケープ: 次の 1 文字をそのまま平文として扱う
-    if (ch === "\\" && i + 1 < input.length) {
-      buffer += input[i + 1];
-      i++;
+    if (ch === "\\") {
+      const command = /^[A-Za-z]+/.exec(input.slice(i + 1))?.[0];
+
+      // \it{...}: 中身を斜体として読み直す
+      if (command === "it") {
+        const inner = readBraced(input, i + 1 + command.length);
+        if (inner !== null) {
+          flush();
+          parseInto(out, inner.text, { ...ctx, italic: true });
+          i = inner.end;
+          continue;
+        }
+      }
+
+      if (command !== undefined) {
+        // 既知のコマンドは文字に、未知のコマンドは書かれたまま残す
+        buffer += SYMBOLS[command] ?? `\\${command}`;
+        i += command.length;
+        continue;
+      }
+
+      // 記号のエスケープ（\\ \_ \^ \{ \} など）
+      if (i + 1 < input.length) {
+        buffer += input[i + 1];
+        i++;
+        continue;
+      }
+      buffer += ch;
       continue;
     }
 
-    if (ch === "*") {
-      flush();
-      italic = !italic;
-      continue;
-    }
-
-    if (ch === "^" || ch === "_") {
+    if ((ch === "^" || ch === "_") && ctx.script === "none") {
       const inner = readBraced(input, i + 1);
       // `{` が続かない、または閉じていない場合は記法として扱わない。
       // `x_1` のような既存の列名を巻き込まないための分岐
@@ -69,11 +124,7 @@ export function parseRichSegments(input: string): RichSegment[] {
         continue;
       }
       flush();
-      const sup = ch === "^";
-      segments.push({
-        text: inner.text,
-        style: italic ? (sup ? "isup" : "isub") : sup ? "sup" : "sub",
-      });
+      parseInto(out, inner.text, { ...ctx, script: ch === "^" ? "sup" : "sub" });
       i = inner.end;
       continue;
     }
@@ -81,32 +132,47 @@ export function parseRichSegments(input: string): RichSegment[] {
     buffer += ch;
   }
   flush();
-
-  return segments;
 }
 
 /**
  * `start` が `{` なら、対応する `}` までの中身を返す。
- * 中身のエスケープ（`\}`）は解除する。閉じていなければ null。
+ * 入れ子の `{}` とエスケープ（`\}`）を数え、閉じていなければ null。
  */
 function readBraced(input: string, start: number): { text: string; end: number } | null {
   if (input[start] !== "{") return null;
+  let depth = 1;
   let text = "";
   for (let i = start + 1; i < input.length; i++) {
     const ch = input[i];
     if (ch === "\\" && i + 1 < input.length) {
-      text += input[i + 1];
+      text += ch + input[i + 1];
       i++;
       continue;
     }
-    if (ch === "}") return { text, end: i };
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return { text, end: i };
+    }
     text += ch;
   }
   return null;
 }
 
+/** 同じスタイルが続いたセグメントはまとめる（rich タグを無駄に増やさない） */
+function mergeAdjacent(segments: RichSegment[]): RichSegment[] {
+  const merged: RichSegment[] = [];
+  for (const segment of segments) {
+    const last = merged[merged.length - 1];
+    if (last && last.style === segment.style) last.text += segment.text;
+    else merged.push({ ...segment });
+  }
+  return merged;
+}
+
 /** 記法が使われているか（使われていなければ rich に載せない） */
 export function hasRichMarkup(input: string): boolean {
+  if (!/[\\^_]/.test(input)) return false;
   return parseRichSegments(input).some((s) => s.style !== "plain");
 }
 
@@ -158,12 +224,14 @@ export function richStyleDefs(baseFontSize: number): Record<string, Record<strin
 /**
  * ECharts のテキスト系オプションに載せる形へ変換する。
  *
- * 記法が無ければ `rich` を付けない（既存の描画とバイト単位で同じ結果になる）。
+ * スタイルを伴わない記法（`\theta` のような記号だけ）は、文字に置き換えた
+ * 素のテキストで足りるので `rich` を付けない。記法をまったく含まないテキストは
+ * 素通しになり、既存の描画とまったく同じ option になる。
  */
 export function richTextOption(
   input: string,
   baseFontSize: number,
 ): { text: string; rich?: Record<string, Record<string, unknown>> } {
-  if (!hasRichMarkup(input)) return { text: input };
+  if (!hasRichMarkup(input)) return { text: stripRichMarkup(input) };
   return { text: toEchartsRichText(input), rich: richStyleDefs(baseFontSize) };
 }

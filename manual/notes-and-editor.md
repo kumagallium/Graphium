@@ -296,7 +296,11 @@ Insert it, pick a table, and open **Settings** in the top-right corner. The pane
 
 ![The chart settings panel on the Type & Series tab, assigning a series to another table and the right axis](/screenshots/chart-settings.png)
 
-Axis labels and series display labels take a light markup for italics, superscripts and subscripts: `*C*` is italic, `H_{2}O` is a subscript, `cm^{3}` is a superscript. The braces are required, so a column named `temp_c` or `x_1` is never turned into a subscript behind your back. To write one of these characters literally, escape it with a backslash (`\*`). The markup only applies inside the figure — axis labels, the legend, and offset row names — while tooltips and Markdown export show the plain text. For the usual typesetting, where a quantity is italic but its subscript is upright, close the italics before the subscript: `*C*_{p}`.
+Axis labels and series display labels are written in **LaTeX markup**. `\it{C}` is italic, `H_{2}O` is a subscript, `cm^{3}` is a superscript, and commands like `\theta`, `\lambda`, `\Delta`, `\pm` and `\deg` become Greek letters and symbols. Escape a character with a backslash (`\{`) to write it literally. A command that isn't recognized is left as you typed it, so a misspelling stays visible instead of vanishing.
+
+One thing differs from LaTeX: the braces around a super- or subscript **cannot be omitted** (LaTeX allows `H_2O` for a single character). That rule keeps a column named `temp_c` or `x_1` from being silently turned into a subscript — a label without markup renders exactly as it did before.
+
+The markup only applies inside the figure: axis labels, the legend, and offset row names. Tooltips and the Markdown export show the plain text. For the usual typesetting, where a quantity is italic but its subscript is upright, close the italics before the subscript — `\it{C}_{p}` — while `\it{C_{p}}` italicizes the subscript too.
 
 The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one. If a series draws from a data asset that no longer exists, the block says "The referenced data asset was not found" instead.
 
