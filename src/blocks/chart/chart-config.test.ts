@@ -13,6 +13,12 @@ import {
   stackSeriesDisplayName,
   DEFAULT_STACK_CONFIG,
   STACK_GAP_RANGE,
+  DEFAULT_PANELS_CONFIG,
+  PANEL_SPLIT_RANGE,
+  panelCount,
+  seriesPanelIndex,
+  stackConfigForPanel,
+  withStackConfigForPanel,
   assetSourceKey,
   isAssetSourceKey,
   assetFileIdFromKey,
@@ -423,5 +429,69 @@ describe("素材ソース（assetSources / asset: キー）", () => {
     expect(suggestSeries(table, "asset:f1")).toEqual([
       { sourceBlockId: "asset:f1", xColumn: "2theta", yColumn: "I" },
     ]);
+  });
+
+  it("panels は既定で 1×1・つなげない", () => {
+    const config = parseChartBlockConfig("{}");
+    expect(config.panels).toEqual(DEFAULT_PANELS_CONFIG);
+    expect(panelCount(config)).toBe(1);
+    // 旧ノート（panels を知らない JSON）も同じ既定で読める
+    expect(parseChartBlockConfig('{"chartType":"line"}').panels).toEqual(DEFAULT_PANELS_CONFIG);
+  });
+
+  it("panels の分割数は範囲に丸め、壊れた値は既定に戻す", () => {
+    const parsed = parseChartBlockConfig(
+      JSON.stringify({ panels: { rows: 99, cols: 0, joinVertical: true, joinHorizontal: "yes" } })
+    );
+    expect(parsed.panels.rows).toBe(PANEL_SPLIT_RANGE.max);
+    expect(parsed.panels.cols).toBe(PANEL_SPLIT_RANGE.min);
+    expect(parsed.panels.joinVertical).toBe(true);
+    expect(parsed.panels.joinHorizontal).toBe(false);
+    expect(parseChartBlockConfig('{"panels":{"rows":2.7,"cols":3}}').panels.rows).toBe(2);
+  });
+
+  it("系列の panelIndex は整数のみ拾い、枠数の範囲外は 0 に落ちる", () => {
+    const parsed = parseChartBlockConfig(
+      JSON.stringify({
+        series: [
+          { sourceBlockId: "t", xColumn: "x", yColumn: "a", panelIndex: 2 },
+          { sourceBlockId: "t", xColumn: "x", yColumn: "b", panelIndex: -1 },
+          { sourceBlockId: "t", xColumn: "x", yColumn: "c" },
+        ],
+      })
+    );
+    expect(parsed.series.map((s) => s.panelIndex)).toEqual([2, undefined, undefined]);
+    // 分割を減らして枠が消えても、系列は枠 0 に出るだけで消えない
+    expect(seriesPanelIndex(parsed.series[0], 4)).toBe(2);
+    expect(seriesPanelIndex(parsed.series[0], 2)).toBe(0);
+    expect(seriesPanelIndex(undefined, 4)).toBe(0);
+  });
+
+  it("枠ごとのオフセット設定は枠 0 が stack、枠 1 以降が panelStacks", () => {
+    const base = { ...DEFAULT_CHART_CONFIG, panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 } };
+    expect(stackConfigForPanel(base, 0)).toBe(base.stack);
+    // 未設定の枠は既定（オフ）
+    expect(stackConfigForPanel(base, 1)).toEqual(DEFAULT_STACK_CONFIG);
+
+    const enabled = { ...DEFAULT_STACK_CONFIG, enabled: true, gap: 2 };
+    const updated = withStackConfigForPanel(base, 1, enabled);
+    expect(stackConfigForPanel(updated, 1)).toEqual(enabled);
+    // 枠 0 は元のキーのまま動かない
+    expect(updated.stack).toEqual(DEFAULT_STACK_CONFIG);
+    expect(stackConfigForPanel(withStackConfigForPanel(base, 0, enabled), 0)).toEqual(enabled);
+  });
+
+  it("panels を足しても分割なしの設定は往復で意味が変わらない", () => {
+    const legacy = JSON.stringify({
+      chartType: "line",
+      series: [{ sourceBlockId: "t", xColumn: "x", yColumn: "y" }],
+      stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline", labelPosition: "top-right" },
+    });
+    const parsed = parseChartBlockConfig(legacy);
+    const round = parseChartBlockConfig(serializeChartBlockConfig(parsed));
+    expect(round).toEqual(parsed);
+    expect(round.panels).toEqual(DEFAULT_PANELS_CONFIG);
+    expect(round.panelStacks).toEqual([]);
+    expect(stackConfigForPanel(round, 0).enabled).toBe(true);
   });
 });

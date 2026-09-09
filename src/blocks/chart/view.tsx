@@ -527,7 +527,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
  * プロット背景は敷かない（eureco 同様）。塗ると系列より前に描かれて点を隠すし、
  * ノートの紙色から図だけ浮く。
  */
-function buildOption(
+export function buildOption(
   result: Extract<ChartDataResult, { kind: "ok" }>,
   config: ChartBlockConfig,
   tables: ChartSourceOption[] = []

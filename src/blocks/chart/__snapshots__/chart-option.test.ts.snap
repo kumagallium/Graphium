@@ -1,0 +1,953 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildOption（分割なしの回帰） > オフセット表示 1`] = `
+{
+  "animation": false,
+  "grid": {
+    "borderColor": "#000000",
+    "borderWidth": 2,
+    "bottom": 64,
+    "left": 60,
+    "right": 32,
+    "show": true,
+    "top": 20,
+    "z": 10,
+  },
+  "legend": {
+    "show": false,
+  },
+  "series": [
+    {
+      "color": "#DC2626",
+      "connectNulls": false,
+      "data": [
+        [
+          10,
+          0.2,
+        ],
+        [
+          20,
+          1,
+        ],
+        [
+          30,
+          0.4,
+        ],
+      ],
+      "lineStyle": {
+        "type": "solid",
+        "width": 1,
+      },
+      "markPoint": {
+        "animation": false,
+        "data": [
+          {
+            "coord": [
+              30,
+              1,
+            ],
+          },
+        ],
+        "label": {
+          "color": "#DC2626",
+          "fontSize": 16,
+          "formatter": [Function],
+          "offset": [
+            -4,
+            12,
+          ],
+          "position": "left",
+          "show": true,
+        },
+        "silent": true,
+        "symbol": "circle",
+        "symbolSize": 0,
+      },
+      "name": "Intensity",
+      "showSymbol": false,
+      "symbol": "emptyCircle",
+      "symbolSize": 5,
+      "type": "line",
+    },
+    {
+      "color": "#2563EB",
+      "connectNulls": false,
+      "data": [
+        [
+          10,
+          1.9,
+        ],
+        [
+          20,
+          1.4,
+        ],
+        [
+          30,
+          2.15,
+        ],
+      ],
+      "lineStyle": {
+        "type": "solid",
+        "width": 1,
+      },
+      "markPoint": {
+        "animation": false,
+        "data": [
+          {
+            "coord": [
+              30,
+              2.15,
+            ],
+          },
+        ],
+        "label": {
+          "color": "#2563EB",
+          "fontSize": 16,
+          "formatter": [Function],
+          "offset": [
+            -4,
+            12,
+          ],
+          "position": "left",
+          "show": true,
+        },
+        "silent": true,
+        "symbol": "circle",
+        "symbolSize": 0,
+      },
+      "name": "Reference",
+      "showSymbol": false,
+      "symbol": "emptyCircle",
+      "symbolSize": 5,
+      "type": "line",
+    },
+  ],
+  "textStyle": {
+    "color": "#3F3F3F",
+    "fontFamily": "sans-serif",
+    "fontSize": 16,
+  },
+  "tooltip": {
+    "axisPointer": {
+      "lineStyle": {
+        "type": "dashed",
+        "width": 0.8,
+      },
+      "type": "line",
+      "z": 2,
+    },
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "formatter": [Function],
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 13,
+    },
+    "trigger": "axis",
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+      "show": true,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "inside": true,
+      "length": 8,
+      "lineStyle": {
+        "color": "#000000",
+      },
+      "show": true,
+    },
+    "name": "2theta",
+    "nameGap": 34,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "scale": true,
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "value",
+    "z": 3,
+  },
+  "yAxis": {
+    "axisLabel": {
+      "show": false,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "show": false,
+    },
+    "max": 2.3449999999999998,
+    "min": 0.10250000000000001,
+    "name": "",
+    "nameGap": 52,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "scale": true,
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "value",
+    "z": 3,
+  },
+}
+`;
+
+exports[`buildOption（分割なしの回帰） > 折れ線（既定） 1`] = `
+{
+  "animation": false,
+  "grid": {
+    "borderColor": "#000000",
+    "borderWidth": 2,
+    "bottom": 64,
+    "left": 60,
+    "right": 32,
+    "show": true,
+    "top": 48,
+    "z": 10,
+  },
+  "legend": {
+    "data": [
+      "Intensity",
+      "Reference",
+    ],
+    "itemHeight": 14,
+    "itemWidth": 50,
+    "left": 60,
+    "orient": "horizontal",
+    "show": true,
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "top": 6,
+    "z": 12,
+  },
+  "series": [
+    {
+      "color": "#DC2626",
+      "connectNulls": false,
+      "data": [
+        [
+          10,
+          1,
+        ],
+        [
+          20,
+          5,
+        ],
+        [
+          30,
+          2,
+        ],
+      ],
+      "lineStyle": {
+        "type": "solid",
+        "width": 2,
+      },
+      "name": "Intensity",
+      "showSymbol": true,
+      "symbol": "emptyCircle",
+      "symbolSize": 7,
+      "type": "line",
+    },
+    {
+      "color": "#2563EB",
+      "connectNulls": false,
+      "data": [
+        [
+          10,
+          3,
+        ],
+        [
+          20,
+          1,
+        ],
+        [
+          30,
+          4,
+        ],
+      ],
+      "lineStyle": {
+        "type": "solid",
+        "width": 2,
+      },
+      "name": "Reference",
+      "showSymbol": true,
+      "symbol": "emptyCircle",
+      "symbolSize": 7,
+      "type": "line",
+    },
+  ],
+  "textStyle": {
+    "color": "#3F3F3F",
+    "fontFamily": "sans-serif",
+    "fontSize": 16,
+  },
+  "tooltip": {
+    "axisPointer": {
+      "lineStyle": {
+        "type": "dashed",
+        "width": 0.8,
+      },
+      "type": "line",
+      "z": 2,
+    },
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 13,
+    },
+    "trigger": "axis",
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+      "show": true,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "inside": true,
+      "length": 8,
+      "lineStyle": {
+        "color": "#000000",
+      },
+      "show": true,
+    },
+    "name": "2theta",
+    "nameGap": 34,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "scale": true,
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "value",
+    "z": 3,
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+      "show": true,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "inside": true,
+      "length": 8,
+      "lineStyle": {
+        "color": "#000000",
+      },
+      "show": true,
+    },
+    "name": "",
+    "nameGap": 52,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "scale": true,
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "value",
+    "z": 3,
+  },
+}
+`;
+
+exports[`buildOption（分割なしの回帰） > 棒・カテゴリ軸 1`] = `
+{
+  "animation": false,
+  "grid": {
+    "borderColor": "#000000",
+    "borderWidth": 2,
+    "bottom": 64,
+    "left": 84,
+    "right": 32,
+    "show": true,
+    "top": 48,
+    "z": 10,
+  },
+  "legend": {
+    "data": [
+      "count",
+    ],
+    "itemHeight": 14,
+    "itemWidth": 50,
+    "left": 84,
+    "orient": "horizontal",
+    "show": true,
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "top": 6,
+    "z": 12,
+  },
+  "series": [
+    {
+      "color": "#DC2626",
+      "connectNulls": false,
+      "data": [
+        1,
+        2,
+        null,
+      ],
+      "name": "count",
+      "type": "bar",
+    },
+  ],
+  "textStyle": {
+    "color": "#3F3F3F",
+    "fontFamily": "sans-serif",
+    "fontSize": 16,
+  },
+  "tooltip": {
+    "axisPointer": {
+      "lineStyle": {
+        "type": "dashed",
+        "width": 0.8,
+      },
+      "type": "line",
+      "z": 2,
+    },
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 13,
+    },
+    "trigger": "axis",
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+      "show": true,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "inside": true,
+      "length": 8,
+      "lineStyle": {
+        "color": "#000000",
+      },
+      "show": true,
+    },
+    "data": [
+      "A",
+      "B",
+      "C",
+    ],
+    "name": "name",
+    "nameGap": 34,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "category",
+    "z": 3,
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+      "show": true,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "inside": true,
+      "length": 8,
+      "lineStyle": {
+        "color": "#000000",
+      },
+      "show": true,
+    },
+    "name": "count",
+    "nameGap": 52,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "scale": false,
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "value",
+    "z": 3,
+  },
+}
+`;
+
+exports[`buildOption（分割なしの回帰） > 第 2 軸 1`] = `
+{
+  "animation": false,
+  "grid": {
+    "borderColor": "#000000",
+    "borderWidth": 2,
+    "bottom": 64,
+    "left": 84,
+    "right": 84,
+    "show": true,
+    "top": 48,
+    "z": 10,
+  },
+  "legend": {
+    "data": [
+      "sigma",
+      "S",
+    ],
+    "itemHeight": 14,
+    "itemWidth": 50,
+    "left": 84,
+    "orient": "horizontal",
+    "show": true,
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "top": 6,
+    "z": 12,
+  },
+  "series": [
+    {
+      "color": "#DC2626",
+      "connectNulls": false,
+      "data": [
+        [
+          10,
+          1,
+        ],
+        [
+          20,
+          5,
+        ],
+        [
+          30,
+          2,
+        ],
+      ],
+      "lineStyle": {
+        "type": "solid",
+        "width": 2,
+      },
+      "name": "sigma",
+      "showSymbol": true,
+      "symbol": "emptyCircle",
+      "symbolSize": 7,
+      "type": "line",
+      "yAxisIndex": 0,
+    },
+    {
+      "color": "#2563EB",
+      "connectNulls": false,
+      "data": [
+        [
+          10,
+          3,
+        ],
+        [
+          20,
+          1,
+        ],
+        [
+          30,
+          4,
+        ],
+      ],
+      "lineStyle": {
+        "type": "solid",
+        "width": 2,
+      },
+      "name": "S",
+      "showSymbol": true,
+      "symbol": "emptyCircle",
+      "symbolSize": 7,
+      "type": "line",
+      "yAxisIndex": 1,
+    },
+  ],
+  "textStyle": {
+    "color": "#3F3F3F",
+    "fontFamily": "sans-serif",
+    "fontSize": 16,
+  },
+  "tooltip": {
+    "axisPointer": {
+      "lineStyle": {
+        "type": "dashed",
+        "width": 0.8,
+      },
+      "type": "line",
+      "z": 2,
+    },
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 13,
+    },
+    "trigger": "axis",
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+      "show": true,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "inside": true,
+      "length": 8,
+      "lineStyle": {
+        "color": "#000000",
+      },
+      "show": true,
+    },
+    "name": "T",
+    "nameGap": 34,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "scale": true,
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "value",
+    "z": 3,
+  },
+  "yAxis": [
+    {
+      "axisLabel": {
+        "color": "#3F3F3F",
+        "fontSize": 16,
+        "show": true,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#000000",
+          "width": 1.5,
+        },
+        "show": true,
+      },
+      "axisTick": {
+        "inside": true,
+        "length": 8,
+        "lineStyle": {
+          "color": "#000000",
+        },
+        "show": true,
+      },
+      "name": "sigma",
+      "nameGap": 52,
+      "nameLocation": "middle",
+      "nameTextStyle": {
+        "color": "#3F3F3F",
+        "fontSize": 16,
+      },
+      "scale": true,
+      "show": true,
+      "splitLine": {
+        "show": false,
+      },
+      "type": "value",
+      "z": 3,
+    },
+    {
+      "axisLabel": {
+        "color": "#3F3F3F",
+        "fontSize": 16,
+        "show": true,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#000000",
+          "width": 1.5,
+        },
+        "show": true,
+      },
+      "axisTick": {
+        "inside": true,
+        "length": 8,
+        "lineStyle": {
+          "color": "#000000",
+        },
+        "show": true,
+      },
+      "name": "S",
+      "nameGap": 52,
+      "nameLocation": "middle",
+      "nameTextStyle": {
+        "color": "#3F3F3F",
+        "fontSize": 16,
+      },
+      "scale": true,
+      "show": true,
+      "splitLine": {
+        "show": false,
+      },
+      "type": "value",
+      "z": 3,
+    },
+  ],
+}
+`;
+
+exports[`buildOption（分割なしの回帰） > 軸名・範囲・凡例の位置を指定 1`] = `
+{
+  "animation": false,
+  "grid": {
+    "borderColor": "#000000",
+    "borderWidth": 2,
+    "bottom": 64,
+    "left": 84,
+    "right": 32,
+    "show": true,
+    "top": 20,
+    "z": 10,
+  },
+  "legend": {
+    "backgroundColor": "rgba(255,255,255,0.75)",
+    "borderRadius": 3,
+    "data": [
+      "Intensity",
+      "Reference",
+    ],
+    "itemHeight": 14,
+    "itemWidth": 50,
+    "orient": "vertical",
+    "padding": 6,
+    "right": 44,
+    "show": true,
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "top": 30,
+    "z": 12,
+  },
+  "series": [
+    {
+      "color": "#DC2626",
+      "connectNulls": false,
+      "data": [
+        [
+          10,
+          1,
+        ],
+        [
+          20,
+          5,
+        ],
+        [
+          30,
+          2,
+        ],
+      ],
+      "lineStyle": {
+        "type": "solid",
+        "width": 2,
+      },
+      "name": "Intensity",
+      "showSymbol": true,
+      "symbol": "emptyCircle",
+      "symbolSize": 7,
+      "type": "line",
+    },
+    {
+      "color": "#2563EB",
+      "connectNulls": false,
+      "data": [
+        [
+          10,
+          3,
+        ],
+        [
+          20,
+          1,
+        ],
+        [
+          30,
+          4,
+        ],
+      ],
+      "lineStyle": {
+        "type": "solid",
+        "width": 2,
+      },
+      "name": "Reference",
+      "showSymbol": true,
+      "symbol": "emptyCircle",
+      "symbolSize": 7,
+      "type": "line",
+    },
+  ],
+  "textStyle": {
+    "color": "#3F3F3F",
+    "fontFamily": "sans-serif",
+    "fontSize": 16,
+  },
+  "tooltip": {
+    "axisPointer": {
+      "lineStyle": {
+        "type": "dashed",
+        "width": 0.8,
+      },
+      "type": "line",
+      "z": 2,
+    },
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "textStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 13,
+    },
+    "trigger": "axis",
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+      "show": true,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "inside": true,
+      "length": 8,
+      "lineStyle": {
+        "color": "#000000",
+      },
+      "show": true,
+    },
+    "max": 30,
+    "min": 10,
+    "name": "2θ (deg)",
+    "nameGap": 34,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "scale": true,
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "value",
+    "z": 3,
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+      "show": true,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#000000",
+        "width": 1.5,
+      },
+      "show": true,
+    },
+    "axisTick": {
+      "inside": true,
+      "length": 8,
+      "lineStyle": {
+        "color": "#000000",
+      },
+      "show": true,
+    },
+    "name": "Intensity",
+    "nameGap": 52,
+    "nameLocation": "middle",
+    "nameTextStyle": {
+      "color": "#3F3F3F",
+      "fontSize": 16,
+    },
+    "scale": true,
+    "show": true,
+    "splitLine": {
+      "show": false,
+    },
+    "type": "value",
+    "z": 3,
+  },
+}
+`;
