@@ -501,10 +501,10 @@ export const BarValueAxis: StoryObj = {
   ),
 };
 
-// 複合 × 積み重ね: 測定パターン（折れ線）と参考文献の回折線（棒）を積む。
+// 複合 × オフセット表示: 測定パターン（折れ線）と参考文献の回折線（棒）を積む。
 // XRD で文献をスティックで描く定番の形
 export const XrdStackWithSticks: StoryObj = {
-  name: "積み重ね × 複合（測定は折れ線・文献は棒）",
+  name: "オフセット表示 × 複合（測定は折れ線・文献は棒）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
@@ -542,10 +542,10 @@ export const XrdStackWithSticks: StoryObj = {
 
 // 並ぶ向きを逆にした形。棒は 0 起点でしか描けないので、段の土台を敷かないと
 // 上段に来た棒が枠の下端まで伸びてしまう（回帰の見張り）
-// 複合 × 積み重ね: 測定パターン（折れ線）と参考文献の回折線（棒）を積む。
+// 複合 × オフセット表示: 測定パターン（折れ線）と参考文献の回折線（棒）を積む。
 // XRD で文献をスティックで描く定番の形
 export const XrdStackWithSticksFirstBottom: StoryObj = {
-  name: "積み重ね × 複合（1 番目を下に）",
+  name: "オフセット表示 × 複合（1 番目を下に）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
@@ -584,7 +584,7 @@ export const XrdStackWithSticksFirstBottom: StoryObj = {
 // 未設定: テーブル選択プレースホルダ（スラッシュメニュー挿入直後の状態）
 // スタック: XRD の測定 + 文献 2 件。強度の桁が違っても規格化で段の高さが揃う
 export const XrdStack: StoryObj = {
-  name: "積み重ね（XRD の測定 × 文献 2 件）",
+  name: "オフセット表示（XRD の測定 × 文献 2 件）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
@@ -613,7 +613,7 @@ export const XrdStack: StoryObj = {
 
 // 系列ごとの倍率・段位置調整: 弱いパターンを ×3 して読めるようにする
 export const XrdStackAdjusted: StoryObj = {
-  name: "積み重ね（倍率 ×3 と段位置の調整）",
+  name: "オフセット表示（倍率 ×3 と段位置の調整）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo
@@ -655,7 +655,7 @@ export const XrdStackAdjusted: StoryObj = {
 
 // 段ラベルを凡例に出す版（既定の inline との比較用）
 export const XrdStackLegendLabels: StoryObj = {
-  name: "積み重ね（段の名前を凡例に）",
+  name: "オフセット表示（段の名前を凡例に）",
   render: () => (
     <ErrorBoundary>
       <ChartDemo

@@ -47,7 +47,7 @@ function Toggle({
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
-  /** 他の設定に上書きされて効かない状態（積み重ね中の目盛り表示など） */
+  /** 他の設定に上書きされて効かない状態（オフセット表示中の目盛り表示など） */
   disabled?: boolean;
 }) {
   return (
@@ -121,7 +121,7 @@ function AxisDetailEditor({
   onChange: (patch: Partial<AxisDetail>) => void;
   open: boolean;
   onToggle: () => void;
-  /** 積み重ね中は縦軸の目盛りを描画側が強制的に消すため、ここの指定は効かない */
+  /** オフセット表示中は縦軸の目盛りを描画側が強制的に消すため、ここの指定は効かない */
   ticksLocked?: boolean;
 }) {
   return (
@@ -205,10 +205,10 @@ function AxisDetailEditor({
 }
 
 /**
- * 積み重ね（スペクトル比較）の設定。「種類・系列」タブの種類の直下に置く。
+ * オフセット表示（スペクトル比較）の設定。「種類・系列」タブの種類の直下に置く。
  *
  * 段に分けるのは軸の目盛りの設定ではなく描き方そのもので、段ごとの倍率・
- * 段の位置も各系列が持つ。種類 → 積み重ね → 系列 と並べると、同じ図の
+ * 段の位置も各系列が持つ。種類 → オフセット表示 → 系列 と並べると、同じ図の
  * 描き方を決めるものが一箇所にそろう。使う場面は限られるので折りたたむ。
  */
 function StackFields({
@@ -782,7 +782,7 @@ export function ChartSettingsPanel({
             <div style={styles.fieldHint}>{t("chart.comboHint")}</div>
           )}
 
-          {/* 積み重ね（スペクトル比較）は軸の設定ではなく描き方。種類のすぐ下に置き、
+          {/* オフセット表示（スペクトル比較）は軸の設定ではなく描き方。種類のすぐ下に置き、
               段ごとの倍率・段の位置は各系列が持つ（分布は段に分けられないので出さない） */}
           {!isHistogram && (
             <div style={detailStyles.shell}>
@@ -1161,7 +1161,7 @@ export function ChartSettingsPanel({
           <AxisDetailEditor
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
-            // 積み重ね中の縦軸は目盛りを描画側が消すので、ここの指定は効かない
+            // オフセット表示中の縦軸は目盛りを描画側が消すので、ここの指定は効かない
             ticksLocked={!isHistogram && config.stack.enabled}
             {...axisDetailProps("y")}
           />
@@ -1238,7 +1238,7 @@ export function ChartSettingsPanel({
           </select>
 
           <div style={styles.sectionLabel}>{t("chart.legend")}</div>
-          {/* 積み重ねの段名は通常の凡例の代わりに図の中へ出る。凡例の表示・位置は
+          {/* オフセット表示の段名は通常の凡例の代わりに図の中へ出る。凡例の表示・位置は
               効かなくなるので、代わりに段名の置き場所を同じ並びで選ばせる
               （縦は段ごとに決まるぶん、選択肢は段の四隅） */}
           {inlineStackLabels ? (
