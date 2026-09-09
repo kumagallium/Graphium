@@ -74,6 +74,7 @@ import { BlockSelectionManager } from "@features/block-selection";
 import { DuplicateShortcut } from "@features/block-duplicate";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
+import { mediaBodyDragExtension } from "./media-body-drag";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
 import { documentSearchExtension } from "@/features/document-search/search-plugin";
@@ -971,7 +972,16 @@ export function SandboxEditor({
     resolveFileUrl,
     // ブロック左右端へのドラッグで縦のドロップカーソルを出す
     // （カラム化ゾーンの判定は multi-column/drop-to-columns.ts）
-    dropCursor: { hooks: { computeDropPosition: columnDropCursorPosition } },
+    // 色と太さは既定（width: 5 / color: "#ddeeff"）を上書きする。既定の
+    // 水色は白い紙の上でほぼ見えず、「どこに落ちるか」が伝わらない
+    // （セル内画像のドロップ表示 [data-cell-drop-box] は forest 緑ではっきり
+    //  出しているので、ブロック側だけ既定が残っている不整合でもあった）。
+    // 値は要素の inline style に入るので CSS 変数で書ける（背景色として解決される）
+    dropCursor: {
+      width: 4,
+      color: "var(--color-primary)",
+      hooks: { computeDropPosition: columnDropCursorPosition },
+    },
     // Tab / Shift-Tab を常にインデント操作に振る。
     // デフォルトの "prefer-navigate-ui" は FormattingToolbar / FilePanel が
     // 開いている時に Tab/Shift-Tab を非処理にして UI 側にフォーカスを移すが、
@@ -1006,6 +1016,8 @@ export function SandboxEditor({
       columnResizeExtension,
       // ブロックの左右端へのドロップでカラム生成（multi-column/drop-to-columns.ts 参照）
       dropToColumnsExtension(),
+      // 画像・動画・ファイルを本体で掴めるようにする（media-body-drag.ts 参照）
+      mediaBodyDragExtension(),
     ],
   }, [locale]);
 
