@@ -18,7 +18,7 @@
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import type { Slice } from "prosemirror-model";
-import { createExtension, getNodeById } from "@blocknote/core";
+import { createExtension, getNodeById, fixColumnList } from "@blocknote/core";
 import type { DropCursorOptions } from "@blocknote/core";
 import { COLUMN_MIN_WIDTH_PX, COLUMN_GAP_PX } from "./nodes";
 import { showColumnDropZone, hideColumnDropZone } from "./drop-zone-overlay";
@@ -33,10 +33,14 @@ type DropCursorPosition = NonNullable<ReturnType<ComputeDropPosition>>;
 
 const pluginKey = new PluginKey("dropToColumns");
 
-// ブロック左右端の「カラム化ゾーン」の幅。狭いブロックでは狭く、広い
-// ブロックでも大きくなりすぎないようにクランプする
+// ブロック左右端の「カラム化ゾーン」の幅。左右で 1/3 ずつを取り、中央の
+// 1/3 は「ふつうの上下並べ替え」に残す。
+//
+// 上限のクランプは置かない。ゾーンは縦位置を見ないので、左右で半分ずつ
+// 取ると中立帯が消え、ブロックの本体に落とす操作がすべてカラム化になって
+// 上下の並べ替えができなくなる。1/3 はそこまで行かない最大幅として選んだ。
 function edgeZoneWidth(rectWidth: number): number {
-  return Math.max(24, Math.min(80, rectWidth * 0.2));
+  return Math.max(24, rectWidth / 3);
 }
 
 /** 受け皿オーバーレイ用の矩形（ビューポート座標）。
@@ -74,7 +78,7 @@ const MIN_NEUTRAL_WIDTH_PX = 80;
 /**
  * ブロックの「中身が実際に描かれている」左右端を返す。
  *
- * 判定をブロック矩形（本文欄の全幅）の端だけで行うと、中身が本文欄より狭い
+ * 判定をブロック矩形（本文欄の全幅）だけで行うと、中身が本文欄より狭い
  * ブロック — 画像・チャート・PDF — で「狙う場所」と「当たる場所」が食い違う。
  * 320px の画像が 720px のブロックにあると、画像のすぐ右はブロックの中央扱いで、
  * ゾーンは 320px 離れた何も描かれていない余白の中にある。
@@ -109,6 +113,28 @@ function edgeBand(
   return side === "left"
     ? { left: bounds.left, top: bounds.top, width: Math.max(0, edge - bounds.left), height: bounds.height }
     : { left: edge, top: bounds.top, width: Math.max(0, bounds.right - edge), height: bounds.height };
+}
+
+/** 直前のドロップで「ドラッグ元がいた」columnList の id。
+ *  handleDrop が控えて appendTransaction が消費する（1 回きり） */
+let pendingFixListIds: Set<string> | null = null;
+
+/** 与えたブロック id 群それぞれについて、それを含む columnList の id を集める */
+function sourceColumnListIds(view: EditorView, blockIds: string[]): Set<string> {
+  const ids = new Set<string>();
+  for (const blockId of blockIds) {
+    const info = getNodeById(blockId, view.state.doc);
+    if (!info) continue;
+    const $pos = view.state.doc.resolve(info.posBeforeNode);
+    for (let d = $pos.depth; d > 0; d--) {
+      const node = $pos.node(d);
+      if (node.type.name === "columnList" && typeof node.attrs?.id === "string") {
+        ids.add(node.attrs.id);
+        break;
+      }
+    }
+  }
+  return ids;
 }
 
 /** ドラッグ中ブロックの id 一覧を PM slice（blocknote/html 由来）から得る */
@@ -208,21 +234,24 @@ export function computeColumnDropZone(
 
   if (blockOuter) {
     const rect = blockOuter.getBoundingClientRect();
-    const zone = edgeZoneWidth(rect.width);
-    // 既定は端 20% の帯。中身がそれより内側で終わっているなら、中身の端まで
-    // ゾーンを広げる（画像の「すぐ右」が当たるようにする）。
-    // ただし中立帯（ふつうの並べ替え用）が潰れるほどは広げない
+    // 1/3 ずつのゾーンは「中身」を基準に取る。中身が本文欄より狭いブロック
+    // （画像・チャート・PDF）では、中身の外に余った余白もゾーンに含める。
+    // ブロック矩形で割ると、左寄せの画像では中立帯が中身の右端に寄って
+    // 「画像の左 3/4 がカラム化」という直感に合わない配分になる。
     const edges = contentEdges(blockOuter);
-    let leftEdge = rect.left + zone;
-    let rightEdge = rect.right - zone;
-    if (edges) {
-      const wantLeft = Math.max(leftEdge, edges.left);
-      const wantRight = Math.min(rightEdge, edges.right);
-      if (wantRight - wantLeft >= MIN_NEUTRAL_WIDTH_PX) {
-        leftEdge = wantLeft;
-        rightEdge = wantRight;
-      }
+    const inner = edges ?? { left: rect.left, right: rect.right };
+    const zone = edgeZoneWidth(inner.right - inner.left || rect.width);
+    let leftEdge = inner.left + zone;
+    let rightEdge = inner.right - zone;
+    // 中身が極端に狭いと中立帯が潰れる。中身の中央に最低幅を確保する
+    if (rightEdge - leftEdge < MIN_NEUTRAL_WIDTH_PX) {
+      const mid = (inner.left + inner.right) / 2;
+      leftEdge = mid - MIN_NEUTRAL_WIDTH_PX / 2;
+      rightEdge = mid + MIN_NEUTRAL_WIDTH_PX / 2;
     }
+    // 帯はブロック矩形の中に収める
+    leftEdge = Math.max(rect.left, Math.min(leftEdge, rect.right));
+    rightEdge = Math.min(rect.right, Math.max(rightEdge, rect.left));
     const side =
       event.clientX <= leftEdge
         ? ("left" as const)
@@ -450,9 +479,52 @@ export const dropToColumnsExtension = createExtension(({ editor }) => ({
   prosemirrorPlugins: [
     new Plugin({
       key: pluginKey,
+      // ドロップで空になったカラムを畳む。
+      //
+      // 左右端ゾーン以外へのドロップは下の handleDrop を通らず ProseMirror の
+      // 既定処理に落ちる。core の fixColumnList（空カラムの除去・1 列に
+      // なった columnList の解消）は replaceBlocks 系からしか呼ばれないため、
+      // この経路だけ正規化が抜けていた。2 列目の最後のブロックを 1 列目へ
+      // 動かしても、空の 2 列目が残ったままになる。
+      //
+      // 直すのは「ドラッグ元がいた columnList」だけ（handleDrop が控える）。
+      // 文書中の columnList を無条件に直すと 2 つ壊れる:
+      //   - スラッシュメニューで入れた直後の 2 カラム（両方とも空段落 1 つ ＝
+      //     core の定義では「空」）が、無関係なドロップのついでに畳まれる
+      //   - その空カラムの片方にブロックを落とすと、もう片方が空のままなので
+      //     カラムごと解消され、2 列に置きたかった意図が消える
+      //
+      // カラムの id では追えない: ドロップで空になったカラムは PM が作り直し、
+      // UniqueID が別の id を振る（実測。旧 id との突き合わせは必ず外れる）。
+      // 一方 columnList 自身の id は残るので、そちらを目印にする。
+      appendTransaction(trs, _oldState, newState) {
+        // 控えを消すのは「ドロップのトランザクション」を見たときだけ。
+        // 先に消すと、ドロップ前後に流れる無関係なトランザクション
+        // （選択の移動など）が控えを持って行ってしまう
+        if (!trs.some((tr) => tr.docChanged && tr.getMeta("uiEvent") === "drop")) {
+          return undefined;
+        }
+        const listIds = pendingFixListIds;
+        pendingFixListIds = null;
+        if (!listIds?.size) return undefined;
+        const targets: number[] = [];
+        newState.doc.descendants((node, pos) => {
+          if (node.type.name !== "columnList") return true;
+          if (typeof node.attrs?.id === "string" && listIds.has(node.attrs.id)) targets.push(pos);
+          return false; // columnList は入れ子にできない
+        });
+        if (targets.length === 0) return undefined;
+
+        const tr = newState.tr;
+        // 後ろから直せば、前にある columnList の位置がずれない
+        for (const pos of targets.reverse()) fixColumnList(tr, pos);
+        return tr.steps.length > 0 ? tr : undefined;
+      },
       props: {
         handleDrop(view, event, slice, moved) {
           hideColumnDropZone();
+          // 既定処理に落ちた場合の後始末用に、ドラッグ元がいた columnList を控える
+          pendingFixListIds = sourceColumnListIds(view, draggedIdsFromSlice(slice));
           // コピー修飾ドラッグ（moved=false）は PM 既定に委ねる
           // （元を残して複製し、UniqueID が重複 id を再採番する既存挙動）
           if (!moved) return false;
