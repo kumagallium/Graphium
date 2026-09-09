@@ -444,12 +444,17 @@ function ProposalDetail({
     readBlob,
   });
 
-  // 選択は差分が作り直されるたびに既定へ戻す（残った項目の既定選択になる）
+  // 選択は差分が作り直されるたびに既定へ戻す（残った項目の既定選択になる）。
+  // useEffect（コミット後）ではなくレンダー中に戻すこと —— 差分が出た最初のコミットで
+  // チェックボックスが「全部外れた状態」で一瞬描かれ、そのあと既定が入る、という
+  // ちらつきになる。取り込みボタンも同じ一瞬だけ disabled のままになる
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set<string>());
   const diff = state.diff;
-  useEffect(() => {
+  const [selectionFor, setSelectionFor] = useState<typeof diff>(null);
+  if (selectionFor !== diff) {
+    setSelectionFor(diff);
     setSelected(defaultProposalSelection(diff));
-  }, [diff]);
+  }
 
   const handleToggle = useCallback(
     (id: string) => {
