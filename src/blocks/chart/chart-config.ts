@@ -736,10 +736,23 @@ export function stackSeriesDisplayName(
  * データを読んで初めて決まるので、呼び出し側から渡してもらう）。
  */
 export function isStackActive(config: ChartBlockConfig, xAxisKind?: XAxisKind): boolean {
-  if (!config.stack.enabled) return false;
+  return isPanelStackActive(config, 0, xAxisKind, config.series.length);
+}
+
+/**
+ * 枠 n でオフセット表示が効くか。枠に系列が 1 本も無ければ効かない
+ *（分割した直後の空の枠で段の計算を走らせない）
+ */
+export function isPanelStackActive(
+  config: ChartBlockConfig,
+  panelIndex: number,
+  xAxisKind: XAxisKind | undefined,
+  panelSeriesCount: number
+): boolean {
+  if (!stackConfigForPanel(config, panelIndex).enabled) return false;
   if (config.chartType === "histogram") return false;
   if (xAxisKind === "category") return false;
-  return config.series.length > 0;
+  return panelSeriesCount > 0;
 }
 
 /** right 軸に割り当てられた系列があるか */

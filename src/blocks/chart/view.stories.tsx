@@ -233,6 +233,32 @@ function xrdStickTable(id: string) {
   };
 }
 
+/**
+ * 熱電材料の温度依存性（σ・S・PF・κ）。物理量が違うので 1 枠に重ねられず、
+ * 枠を分けて縦軸を保ったまま並べる図の例
+ */
+function thermoTable(id: string, header: string, at: (t: number) => number) {
+  const rows = [];
+  for (let temp = 300; temp <= 800; temp += 50) {
+    rows.push({ cells: [cell(String(temp)), cell(at(temp).toFixed(2))] });
+  }
+  return {
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [{ cells: [cell("T (K)"), cell(header)] }, ...rows],
+    },
+  };
+}
+
+const THERMO_TABLES = [
+  thermoTable("te-sigma", "sigma", (t) => 900 - 0.8 * (t - 300)),
+  thermoTable("te-seebeck", "S", (t) => 90 + 0.22 * (t - 300)),
+  thermoTable("te-pf", "PF", (t) => 0.6 + 0.0035 * (t - 300) - 0.0000045 * (t - 300) ** 2),
+  thermoTable("te-kappa", "kappa", (t) => 3.2 - 0.0026 * (t - 300)),
+];
+
 const series = (list: ChartSeriesConfig[]) => list;
 
 const meta: Meta = {
@@ -754,6 +780,113 @@ export const AssetSourceGone: StoryObj = {
           assetSources: [
             { fileId: "story-asset-missing", fileName: "deleted.dat", options: REF_ASSET_OPTIONS },
           ],
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+// ── 枠の分割（サブプロット）─────────────────────────────────────────
+// つなげた縦分割: XRD の測定と文献を別々の枠に置き、隙間なく縦に連結する。
+// オフセット表示（1 枠に重ねる）と違い、枠ごとに縦軸の絶対値を保てる
+export const PanelsJoinedVertical: StoryObj = {
+  name: "枠の分割（2×1・縦につなげる）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={XRD_TABLES}
+        lead="測定パターンと参考文献を別々の枠に置き、X 軸を共有して縦につなげる。"
+        chartFirst
+        config={{
+          chartType: "line",
+          panels: { rows: 2, cols: 1, joinVertical: true, joinHorizontal: false },
+          series: series([
+            { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料", panelIndex: 0 },
+            { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A", panelIndex: 1 },
+          ]),
+          xMin: "10",
+          xMax: "60",
+          aspect: "wide",
+          xAxisName: "2θ (deg)",
+          caption: "枠を分けても X 軸は 1 つ",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// つなげない縦分割: 枠ごとに X 軸を持ち、離して置く
+export const PanelsSeparate: StoryObj = {
+  name: "枠の分割（2×1・つなげない）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={XRD_TABLES}
+        lead="つなげないと枠ごとに X 軸が出て、間隔が空く。"
+        chartFirst
+        config={{
+          chartType: "line",
+          panels: { rows: 2, cols: 1, joinVertical: false, joinHorizontal: false },
+          series: series([
+            { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料", panelIndex: 0 },
+            { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A", panelIndex: 1 },
+          ]),
+          aspect: "wide",
+          xAxisName: "2θ (deg)",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 2×2: 物理量の違う 4 枚。縦軸を捨てられないのでオフセット表示では作れない図
+export const PanelsMatrix: StoryObj = {
+  name: "枠の分割（2×2・4 つの物理量）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={THERMO_TABLES}
+        lead="熱電特性の温度依存性を 4 枚並べる。X（温度）は共有し、Y は枠ごとに別の量。"
+        chartFirst
+        config={{
+          chartType: "line",
+          panels: { rows: 2, cols: 2, joinVertical: true, joinHorizontal: false },
+          series: series([
+            { sourceBlockId: "te-sigma", xColumn: "T (K)", yColumn: "sigma", label: "σ (S/cm)", panelIndex: 0 },
+            { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "S (µV/K)", panelIndex: 1 },
+            { sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF (mW/mK²)", panelIndex: 2 },
+            { sourceBlockId: "te-kappa", xColumn: "T (K)", yColumn: "kappa", label: "κ (W/mK)", panelIndex: 3 },
+          ]),
+          aspect: "standard",
+          xAxisName: "T (K)",
+          caption: "熱電特性の温度依存性",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 枠ごとのオフセット表示: 上の枠だけ複数スペクトルを積み、下の枠は素の 1 本
+export const PanelsPartialStack: StoryObj = {
+  name: "枠の分割（上の枠だけオフセット表示）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={XRD_TABLES}
+        lead="上の枠は文献 2 件を積み、下の枠は測定パターンを絶対値のまま置く。"
+        chartFirst
+        config={{
+          chartType: "line",
+          panels: { rows: 2, cols: 1, joinVertical: true, joinHorizontal: false },
+          series: series([
+            { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A", panelIndex: 0 },
+            { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B", panelIndex: 0 },
+            { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料", panelIndex: 1 },
+          ]),
+          stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
+          xMin: "10",
+          xMax: "60",
+          aspect: "wide",
+          xAxisName: "2θ (deg)",
         }}
       />
     </ErrorBoundary>
