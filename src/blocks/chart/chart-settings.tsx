@@ -6,7 +6,7 @@
 // 系列は行を開くと個別設定（名前・データの割り当て・種類・色・軸）になる。
 // UI ニュートラル色は design.md のトークン、寸法は 8pt 格子から。
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { X, ChevronUp, ChevronDown, ChevronRight, Palette, Plus } from "lucide-react";
 import { t } from "../../i18n";
 import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
@@ -37,6 +37,7 @@ import {
   type StackOrder,
   type XAxisKindSetting,
 } from "./chart-config";
+import { toggleItalic } from "./rich-label";
 import type { ChartAspect } from "./chart-theme";
 
 /** 設定パネル内のトグルスイッチ（settings/modal.tsx の switch と同じ見た目） */
@@ -599,6 +600,38 @@ type Tab = "typeSeries" | "axes" | "appearance";
 
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "histogram"];
 
+/**
+ * 軸名・表示名の入力欄で ⌘I（Windows は Ctrl+I）を押したら、選択部分を
+ * `\it{...}` で囲む。囲まれた範囲を選んで押すと外れる。
+ *
+ * 判定に `e.code` を使うのは、macOS では修飾キー併用時に `e.key` が化ける
+ * ため。入力欄にフォーカスがある間のイベントなので、エディタ本体（ProseMirror）
+ * や既存の ⌘S ハンドラとは競合しない。
+ *
+ * 選択範囲の復元を useLayoutEffect でやるのは、値が React 経由で戻ってくる
+ * ため。入力欄は制御コンポーネントで、再レンダーで value が入れ替わると
+ * キャレットが末尾へ飛ぶ。requestAnimationFrame では間に合わない。
+ */
+function useItalicShortcut() {
+  const pending = useRef<{ input: HTMLInputElement; start: number; end: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const restore = pending.current;
+    if (!restore) return;
+    pending.current = null;
+    restore.input.setSelectionRange(restore.start, restore.end);
+  });
+
+  return (e: React.KeyboardEvent<HTMLInputElement>, apply: (value: string) => void): void => {
+    if (e.code !== "KeyI" || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    const input = e.currentTarget;
+    const next = toggleItalic(input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0);
+    pending.current = { input, start: next.start, end: next.end };
+    apply(next.value);
+  };
+}
+
 export function chartTypeLabel(type: ChartType): string {
   switch (type) {
     case "line":
@@ -657,6 +690,7 @@ export function ChartSettingsPanel({
   placement?: "outside" | "overlay";
   onClose: () => void;
 }) {
+  const italicShortcut = useItalicShortcut();
   const [tab, setTab] = useState<Tab>("typeSeries");
   const [expandedSeries, setExpandedSeries] = useState<number | null>(null);
   // 開いている軸の詳細設定。同時に 1 つだけ開くことで、軸タブが 1 画面に収まる
@@ -874,6 +908,7 @@ export function ChartSettingsPanel({
                           value={series.label ?? ""}
                           placeholder={series.yColumn}
                           onChange={(e) => updateSeries(i, { label: e.target.value })}
+                          onKeyDown={(e) => italicShortcut(e, (v) => updateSeries(i, { label: v }))}
                           style={{ ...styles.input, flex: 1 }}
                         />
                       </label>
@@ -1080,6 +1115,7 @@ export function ChartSettingsPanel({
                   value={config.xAxisName}
                   placeholder={t("chart.autoPlaceholder")}
                   onChange={(e) => onChange({ xAxisName: e.target.value })}
+                  onKeyDown={(e) => italicShortcut(e, (v) => onChange({ xAxisName: v }))}
                   style={{ ...styles.input, flex: 1 }}
                 />
               </label>
@@ -1140,6 +1176,7 @@ export function ChartSettingsPanel({
               value={config.yAxisName}
               placeholder={isHistogram ? t("chart.frequency") : t("chart.autoPlaceholder")}
               onChange={(e) => onChange({ yAxisName: e.target.value })}
+              onKeyDown={(e) => italicShortcut(e, (v) => onChange({ yAxisName: v }))}
               style={{ ...styles.input, flex: 1 }}
             />
           </label>
@@ -1181,6 +1218,7 @@ export function ChartSettingsPanel({
                   value={config.yRightAxisName}
                   placeholder={t("chart.autoPlaceholder")}
                   onChange={(e) => onChange({ yRightAxisName: e.target.value })}
+                  onKeyDown={(e) => italicShortcut(e, (v) => onChange({ yRightAxisName: v }))}
                   style={{ ...styles.input, flex: 1 }}
                 />
               </label>

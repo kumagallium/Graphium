@@ -8,6 +8,7 @@ import {
   stripRichMarkup,
   textOf,
   toEchartsRichText,
+  toggleItalic,
 } from "./rich-label";
 
 describe("parseRichSegments", () => {
@@ -185,5 +186,43 @@ describe("richTextOption", () => {
   it("基準サイズに応じて上下付きの字を小さくする", () => {
     expect(richTextOption("x^{2}", 16).rich?.sup?.fontSize).toBe(11);
     expect(richTextOption("x^{2}", 12).rich?.sup?.fontSize).toBe(8);
+  });
+});
+
+describe("toggleItalic（入力欄の ⌘I）", () => {
+  it("選択部分を \\it{} で囲み、中身を選び直す", () => {
+    // "2theta (deg)" の "theta" を選んだ状態
+    const out = toggleItalic("2theta (deg)", 1, 6);
+    expect(out.value).toBe("2\\it{theta} (deg)");
+    expect(out.value.slice(out.start, out.end)).toBe("theta");
+  });
+
+  it("選択が無ければ空の \\it{} を入れ、中にカーソルを置く", () => {
+    const out = toggleItalic("2 (deg)", 1, 1);
+    expect(out.value).toBe("2\\it{} (deg)");
+    expect(out.start).toBe(out.end);
+    expect(out.value.slice(0, out.start)).toBe("2\\it{");
+  });
+
+  it("囲まれた範囲を選び直して押すと外れる（押すたびに入れ子にならない）", () => {
+    const wrapped = toggleItalic("2theta (deg)", 1, 6);
+    const unwrapped = toggleItalic(wrapped.value, wrapped.start, wrapped.end);
+    expect(unwrapped.value).toBe("2theta (deg)");
+    expect(unwrapped.value.slice(unwrapped.start, unwrapped.end)).toBe("theta");
+  });
+
+  it("コマンドごと選んで押しても外れる", () => {
+    const out = toggleItalic("2\\it{theta} (deg)", 1, 11);
+    expect(out.value).toBe("2theta (deg)");
+  });
+
+  it("\\textit{} で書かれていても外せる", () => {
+    const out = toggleItalic("\\textit{T}", 0, 10);
+    expect(out.value).toBe("T");
+  });
+
+  it("となりあう別々の斜体をまとめて選んでも外さない", () => {
+    const out = toggleItalic("\\it{a}b\\it{c}", 0, 13);
+    expect(out.value).toBe("\\it{\\it{a}b\\it{c}}");
   });
 });

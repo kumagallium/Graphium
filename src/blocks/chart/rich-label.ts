@@ -6,7 +6,7 @@
 // 表現できるので、入力欄には記法で書かせ、ここで rich へ変換する。
 //
 // 記法は LaTeX に揃えてある:
-//   \it{斜体}    → 斜体
+//   \it{斜体}    → 斜体（LaTeX どおりの \textit{} も同じ）
 //   ^{上付き}     → 上付き
 //   _{下付き}     → 下付き
 //   \theta \mu … → ギリシャ文字・よく使う記号
@@ -120,8 +120,9 @@ function parseInto(out: RichSegment[], input: string, ctx: ParseContext): void {
     if (ch === "\\") {
       const command = /^[A-Za-z]+/.exec(input.slice(i + 1))?.[0];
 
-      // \it{...}: 中身を斜体として読み直す
-      if (command === "it") {
+      // \it{...} / \textit{...}: 中身を斜体として読み直す。
+      // 短く書きたい人と LaTeX どおり書きたい人のどちらも通す
+      if (command === "it" || command === "textit") {
         const inner = readBraced(input, i + 1 + command.length);
         if (inner !== null) {
           flush();
@@ -258,6 +259,55 @@ export function toEchartsRichText(input: string): string {
       return style === "plain" ? safe : `{${style}|${safe}}`;
     })
     .join("");
+}
+
+/** 斜体コマンド。⌘I が挿入する形でもあるので、記法の実装と同じ場所に置く */
+export const ITALIC_COMMAND = "\\it{";
+
+/**
+ * 選択範囲を斜体にした結果を返す（入力欄の ⌘I 用）。
+ *
+ * 既に `\it{...}` で囲まれた範囲を選び直して押したときは外す。押すたびに
+ * 入れ子が深くなると、書いた本人にも読めない文字列になるため。
+ */
+export function toggleItalic(
+  value: string,
+  start: number,
+  end: number,
+): { value: string; start: number; end: number } {
+  const selected = value.slice(start, end);
+  const before = value.slice(0, start);
+  const after = value.slice(end);
+
+  // 選択の内側が丸ごと斜体なら外す
+  const unwrapped = unwrapItalic(selected);
+  if (unwrapped !== null) {
+    return { value: before + unwrapped + after, start, end: start + unwrapped.length };
+  }
+  // 選択の外側が斜体で、その中身をちょうど選んでいるときも外す
+  const opener = ITALIC_COMMAND;
+  if (before.endsWith(opener) && after.startsWith("}")) {
+    const head = before.slice(0, before.length - opener.length);
+    return { value: head + selected + after.slice(1), start: head.length, end: head.length + selected.length };
+  }
+
+  const wrapped = `${opener}${selected}}`;
+  return {
+    value: before + wrapped + after,
+    start: start + opener.length,
+    end: start + opener.length + selected.length,
+  };
+}
+
+/** `\it{...}` / `\textit{...}` がちょうど全体を包んでいれば中身を返す */
+function unwrapItalic(text: string): string | null {
+  for (const opener of [ITALIC_COMMAND, "\\textit{"]) {
+    if (!text.startsWith(opener) || !text.endsWith("}")) continue;
+    const inner = text.slice(opener.length, -1);
+    // 閉じ括弧が最後まで対応していること（`\it{a}b\it{c}` を外さない）
+    if (readBraced(text, opener.length - 1)?.end === text.length - 1) return inner;
+  }
+  return null;
 }
 
 /** 上下付きの文字サイズ比。論文の組版に寄せた値 */
