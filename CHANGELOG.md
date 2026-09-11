@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.72.0](https://github.com/kumagallium/Graphium/compare/v0.71.0...v0.72.0) - 2026-09-11
+
+- [feat] 計算ブロックに多項式フィッティングを足す by @kumagallium in https://github.com/kumagallium/Graphium/pull/910
+
 ## [v0.71.0](https://github.com/kumagallium/Graphium/compare/v0.70.0...v0.71.0) - 2026-09-11
 
 - Split a chart block into an N×M grid of panels by @kumagallium in https://github.com/kumagallium/Graphium/pull/905
