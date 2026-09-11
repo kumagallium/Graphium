@@ -296,7 +296,7 @@ Insert it, pick a table, and open **Settings** in the top-right corner. The pane
 
 ![The chart settings panel on the Type & Series tab, assigning a series to another table and the right axis](/screenshots/chart-settings.png)
 
-Axis labels and series display labels are written in **LaTeX markup**. `\it{C}` is italic (LaTeX's own `\textit{C}` works too), `H_2O` is a subscript, `cm^3` is a superscript, and commands like `\theta`, `\lambda`, `\Delta`, `\pm` and `\deg` become Greek letters and symbols. Escape a character with a backslash (`\{`) to write it literally. A command that isn't recognized is left as you typed it, so a misspelling stays visible instead of vanishing.
+Axis labels and series display labels are written in **LaTeX markup** <Badge type="tip" text="Added in v0.70.0 (2026-09-11)" />. `\it{C}` is italic (LaTeX's own `\textit{C}` works too), `H_2O` is a subscript, `cm^3` is a superscript, and commands like `\theta`, `\lambda`, `\Delta`, `\pm` and `\deg` become Greek letters and symbols. Escape a character with a backslash (`\{`) to write it literally. A command that isn't recognized is left as you typed it, so a misspelling stays visible instead of vanishing.
 
 Italics also have a shortcut: select the text in the field and press **⌘I** (Ctrl+I on Windows). Selecting a wrapped range and pressing it again removes the wrapping.
 
