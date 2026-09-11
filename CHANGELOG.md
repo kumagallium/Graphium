@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.70.0](https://github.com/kumagallium/Graphium/compare/v0.69.1...v0.70.0) - 2026-09-11
+
+- [fix] Apply the default proposal selection during render, not after commit by @kumagallium in https://github.com/kumagallium/Graphium/pull/902
+- Rename the chart stacking feature to "offset" by @kumagallium in https://github.com/kumagallium/Graphium/pull/904
+- Write chart axis and legend labels in LaTeX markup by @kumagallium in https://github.com/kumagallium/Graphium/pull/907
+
 ## [v0.69.1](https://github.com/kumagallium/Graphium/compare/v0.69.0...v0.69.1) - 2026-09-09
 
 - Widen the column drop zone and collapse columns emptied by a drop by @kumagallium in https://github.com/kumagallium/Graphium/pull/901
