@@ -1062,7 +1062,8 @@ export function ChartSettingsPanel({
                           placeholder={series.yColumn}
                           onChange={(e) => updateSeries(i, { label: e.target.value })}
                           onKeyDown={(e) => italicShortcut(e, (v) => updateSeries(i, { label: v }))}
-                          style={{ ...styles.input, flex: 1 }}
+                          className="gph-settings-input"
+              style={{ ...styles.input, flex: 1 }}
                         />
                       </label>
                       <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
@@ -1220,7 +1221,8 @@ export function ChartSettingsPanel({
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") e.currentTarget.blur();
                               }}
-                              style={{ ...styles.input, width: 72 }}
+                              className="gph-settings-input"
+              style={{ ...styles.input, width: 72 }}
                             />
                           </label>
                           <label style={styles.fieldRow}>
@@ -1239,7 +1241,8 @@ export function ChartSettingsPanel({
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") e.currentTarget.blur();
                               }}
-                              style={{ ...styles.input, width: 72 }}
+                              className="gph-settings-input"
+              style={{ ...styles.input, width: 72 }}
                             />
                           </label>
                         </>
@@ -1309,7 +1312,8 @@ export function ChartSettingsPanel({
                   placeholder={t("chart.autoPlaceholder")}
                   onChange={(e) => updateAxis("x", { xAxisName: e.target.value })}
                   onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("x", { xAxisName: v }))}
-                  style={{ ...styles.input, flex: 1 }}
+                  className="gph-settings-input"
+              style={{ ...styles.input, flex: 1 }}
                 />
               </label>
               <label style={styles.fieldRow}>
@@ -1333,7 +1337,8 @@ export function ChartSettingsPanel({
                   placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
                   disabled={effectiveXKind === "category"}
                   onChange={(e) => updateAxis("x", { xMin: e.target.value })}
-                  style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+                  className="gph-settings-input"
+              style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
                 />
                 <span style={styles.rangeDash}>–</span>
                 <input
@@ -1342,7 +1347,8 @@ export function ChartSettingsPanel({
                   placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
                   disabled={effectiveXKind === "category"}
                   onChange={(e) => updateAxis("x", { xMax: e.target.value })}
-                  style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+                  className="gph-settings-input"
+              style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
                 />
               </label>
               {/* なぜ入力できないのかを、その場で理由と抜け道つきで見せる */}
@@ -1370,6 +1376,7 @@ export function ChartSettingsPanel({
               placeholder={isHistogram ? t("chart.frequency") : t("chart.autoPlaceholder")}
               onChange={(e) => updateAxis("y", { yAxisName: e.target.value })}
               onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("y", { yAxisName: v }))}
+              className="gph-settings-input"
               style={{ ...styles.input, flex: 1 }}
             />
           </label>
@@ -1381,6 +1388,7 @@ export function ChartSettingsPanel({
               value={yAxisValues.yMin}
               placeholder={t("chart.autoPlaceholder")}
               onChange={(e) => updateAxis("y", { yMin: e.target.value })}
+              className="gph-settings-input"
               style={{ ...styles.input, width: 72 }}
             />
             <span style={styles.rangeDash}>–</span>
@@ -1390,6 +1398,7 @@ export function ChartSettingsPanel({
               value={yAxisValues.yMax}
               placeholder={t("chart.autoPlaceholder")}
               onChange={(e) => updateAxis("y", { yMax: e.target.value })}
+              className="gph-settings-input"
               style={{ ...styles.input, width: 72 }}
             />
           </label>
@@ -1412,7 +1421,8 @@ export function ChartSettingsPanel({
                   placeholder={t("chart.autoPlaceholder")}
                   onChange={(e) => updateAxis("y", { yRightAxisName: e.target.value })}
                   onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("y", { yRightAxisName: v }))}
-                  style={{ ...styles.input, flex: 1 }}
+                  className="gph-settings-input"
+              style={{ ...styles.input, flex: 1 }}
                 />
               </label>
               <label style={styles.fieldRow}>
@@ -1423,7 +1433,8 @@ export function ChartSettingsPanel({
                   value={yAxisValues.yRightMin}
                   placeholder={t("chart.autoPlaceholder")}
                   onChange={(e) => updateAxis("y", { yRightMin: e.target.value })}
-                  style={{ ...styles.input, width: 72 }}
+                  className="gph-settings-input"
+              style={{ ...styles.input, width: 72 }}
                 />
                 <span style={styles.rangeDash}>–</span>
                 <input
@@ -1432,7 +1443,8 @@ export function ChartSettingsPanel({
                   value={yAxisValues.yRightMax}
                   placeholder={t("chart.autoPlaceholder")}
                   onChange={(e) => updateAxis("y", { yRightMax: e.target.value })}
-                  style={{ ...styles.input, width: 72 }}
+                  className="gph-settings-input"
+              style={{ ...styles.input, width: 72 }}
                 />
               </label>
               <AxisDetailEditor
@@ -1455,6 +1467,7 @@ export function ChartSettingsPanel({
             value={config.caption}
             placeholder={t("chart.captionPlaceholder")}
             onChange={(e) => onChange({ caption: e.target.value })}
+            className="gph-settings-input"
             style={styles.input}
           />
 

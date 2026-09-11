@@ -968,13 +968,15 @@ export function buildOption(
 
     const leftAxis = {
       type: "value" as const,
-      // 共有した縦軸名は図の左に 1 つだけ置くので、枠の軸は名乗らない
-      name: sharedYName !== null ? "" : panel.yName,
       nameGap: 52,
       scale: fitAxis,
       ...(yMin !== null ? { min: yMin } : {}),
       ...(yMax !== null ? { max: yMax } : {}),
-      ...axisFromDetail(config.yAxisDetail),
+      // 軸名は axisFromDetail が載せる。名前を渡さずに name だけ自前で置くと、
+      // 記法の解釈（LaTeX → rich text）と rich のスタイル定義が両方とも抜けて、
+      // \it{T} の {T} が ECharts の rich 構文として読まれ、前の字に重なって出る。
+      // 共有した縦軸名は図の左に 1 つだけ置くので、そのときだけ枠の軸は名乗らない
+      ...axisFromDetail(config.yAxisDetail, sharedYName !== null ? derived("") : panel.yLabel),
       // 段の高さは a.u.（規格化とオフセットで元の尺度を失う）なので目盛りを出さない。
       // 範囲はユーザーが明示していればそちらを優先する
       ...(panel.stackActive
@@ -990,12 +992,11 @@ export function buildOption(
     };
     const rightAxis = {
       type: "value" as const,
-      name: panel.yRightName,
       nameGap: 52,
       scale: fitAxis,
       ...(yRightMin !== null ? { min: yRightMin } : {}),
       ...(yRightMax !== null ? { max: yRightMax } : {}),
-      ...axisFromDetail(config.yRightAxisDetail),
+      ...axisFromDetail(config.yRightAxisDetail, panel.yRightLabel),
       ...(split ? { gridIndex: p } : {}),
     };
     // 軸名を載せるので、X 軸の詳細はこの枠ぶんを作る

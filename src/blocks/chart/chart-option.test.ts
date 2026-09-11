@@ -332,4 +332,60 @@ describe("buildOption（枠の分割）", () => {
     // 下の段のぶんは空にして、同じ内容の箱が段の数だけ開くのを防ぐ
     expect(formatter([{ seriesIndex: 1, axisValue: 20, value: [20, 5] }])).toBe("");
   });
+
+  it("軸名の LaTeX 記法は、枠を分けても rich text とスタイル定義の両方が載る", () => {
+    // name だけ自前で置いて axisFromDetail に名前を渡さないと、記法が解釈されず
+    // スタイル定義も落ちる。ECharts は素の "\\it{T}" の {T} を rich の構文として
+    // 読むので、斜体にならないうえ前の字に重なって描かれる（v0.71.0 で実際に出た）
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+      yAxisName: "Adfasdf\\it{T}",
+      panelAxes: [{ yAxisName: "\\it{C}_{p}" }],
+    });
+    expect(option.yAxis[0].name).toBe("Adfasdf{it|T}");
+    expect(option.yAxis[0].nameTextStyle.rich).toBeDefined();
+    expect(option.yAxis[1].name).toBe("{it|C}{sub|p}");
+    expect(option.yAxis[1].nameTextStyle.rich).toBeDefined();
+  });
+
+  it("記法を書いていない軸名には rich を足さない（既存の図の option を変えない）", () => {
+    // 全枠が同じ名前だと図の左に 1 つへまとめられるので、枠ごとに別の名前にする
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+      yAxisName: "Intensity",
+      panelAxes: [{ yAxisName: "Counts" }],
+    });
+    expect(option.yAxis[0].name).toBe("Intensity");
+    expect(option.yAxis[0].nameTextStyle.rich).toBeUndefined();
+  });
+
+  it("右軸の名前にも記法が効く", () => {
+    const option = buildOption(
+      numericResult,
+      config({
+        panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+        series: [
+          { sourceBlockId: "t1", xColumn: "T", yColumn: "a", panelIndex: 0 },
+          { sourceBlockId: "t1", xColumn: "T", yColumn: "b", axis: "right", panelIndex: 0 },
+        ],
+        yRightAxisName: "\\it{P} (10^{5} Pa)",
+      }),
+      [],
+      { width: 720, height: 400 }
+    );
+    const right = option.yAxis.find((a: any) => a.name?.includes("{it|P}"));
+    expect(right).toBeDefined();
+    expect(right.nameTextStyle.rich).toBeDefined();
+  });
+
+  it("枠をまたいで 1 つにした縦軸名にも記法が効く", () => {
+    const option = split({
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: true },
+      yAxisName: "\\it{I} (a.u.)",
+    });
+    // 枠の軸は名乗らず、図の左の 1 つに寄せる
+    expect(option.yAxis.map((a: any) => a.name)).toEqual(["", ""]);
+    expect(option.graphic[0].style.text).toBe("{it|I} (a.u.)");
+    expect(option.graphic[0].style.rich).toBeDefined();
+  });
 });
