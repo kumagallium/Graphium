@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.72.2](https://github.com/kumagallium/Graphium/compare/v0.72.1...v0.72.2) - 2026-09-11
+
+- [fix] フィット結果の要約が結果カラムで切れないようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/912
+
 ## [v0.72.1](https://github.com/kumagallium/Graphium/compare/v0.72.0...v0.72.1) - 2026-09-11
 
 - Fix italic axis names, and show where the focus is in the settings panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/913
