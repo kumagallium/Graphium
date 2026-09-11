@@ -14,10 +14,11 @@ import {
   assetSourceLabel,
   isStackActive,
   parseChartBlockConfig,
-  seriesConfigDisplayName,
-  stackSeriesDisplayName,
+  seriesConfigDisplayLabel,
+  stackSeriesDisplayLabel,
   type ChartBlockConfig,
 } from "./chart-config";
+import { plainOf } from "./rich-label";
 import { textParagraph, type BlockToMarkdown, type MarkdownBlockContext } from "../markdown-block";
 
 /** 系列の表示名。view.tsx の凡例と同じ解決順にする */
@@ -32,10 +33,15 @@ function seriesNames(config: ChartBlockConfig, ctx: MarkdownBlockContext): strin
     const source = config.assetSources.find((a) => a.fileId === fileId);
     return source ? assetSourceLabel(source) : undefined;
   };
+  // 表示名に書かれた LaTeX 記法は図の中でしか意味を持たないので、Markdown には
+  // 素のテキストで出す。列名から来た名前は記法として読まない（`H_2O` という
+  // 列名を勝手に組んでしまわないため）
   return config.series.map((series) =>
-    stacked
-      ? stackSeriesDisplayName(series, sourceLabel(series.sourceBlockId))
-      : seriesConfigDisplayName(series),
+    plainOf(
+      stacked
+        ? stackSeriesDisplayLabel(series, sourceLabel(series.sourceBlockId))
+        : seriesConfigDisplayLabel(series),
+    ),
   );
 }
 
