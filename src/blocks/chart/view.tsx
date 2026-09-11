@@ -66,19 +66,29 @@ import {
   resolveSeriesStyle,
   retargetSeries,
   serializeChartBlockConfig,
-  seriesConfigDisplayName,
+  seriesConfigDisplayLabel,
   seriesPanelIndex,
   stackConfigForPanel,
-  stackSeriesDisplayName,
+  stackSeriesDisplayLabel,
   suggestSeries,
   type ChartAssetSource,
   type ChartBlockConfig,
   type ChartSeriesConfig,
   type ChartSourceOption,
+  type DisplayLabel,
   type SeriesType,
 } from "./chart-config";
 import { computePanelLayout, estimateLegendRows, LEGEND_LINE_HEIGHT } from "./chart-layout";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
+import {
+  hasRichMarkup,
+  isRich,
+  plainOf,
+  richStyleDefs,
+  stripRichMarkup,
+  textOf,
+  toEchartsRichText,
+} from "./rich-label";
 import { peekDataTableFromBlock, subscribeDataTableData } from "../data-table/data";
 import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
 import {
@@ -570,6 +580,12 @@ export function buildOption(
   // 段の名前は「別の列」ではなく「別の試料・別の文献」なので、既定はテーブル名
   const tableLabelOf = (blockId: string) => tables.find((tb) => tb.id === blockId)?.label;
 
+  // 図に出す名前は「人が書いたもの」と「データから拾ったもの」で扱いが違う。
+  // 前者だけが LaTeX 記法（\it{斜体} / ^{上付き} / _{下付き}）の対象で、後者
+  //（列名・テーブル名）は生データの識別子なので字のまま出す。
+  const derived = (text: string): DisplayLabel => ({ text, authored: false });
+  const authored = (text: string): DisplayLabel => ({ text, authored: true });
+
   // X 軸の min/max。時間軸は日時文字列、数値軸は数値として読む（カテゴリ軸は対象外）
   const parseX = result.xAxis === "time" ? parseDateTime : parseNumeric;
   const parseXBound = (raw: string) => (result.xAxis !== "category" ? parseX(raw) : null);
@@ -605,6 +621,11 @@ export function buildOption(
     stack: ReturnType<typeof stackConfigForPanel>;
     stackActive: boolean;
     useRight: boolean;
+    /** 軸名。記法を解釈してよいのは人が書いたものだけなので、出どころごと持つ */
+    xLabel: DisplayLabel;
+    yLabel: DisplayLabel;
+    yRightLabel: DisplayLabel;
+    /** 記法を落とした素の軸名。余白の計算と、枠をまたいだ一致判定に使う */
     xName: string;
     yName: string;
     yRightName: string;
@@ -644,7 +665,9 @@ export function buildOption(
     // X 軸名の自動値: histogram は対象列、それ以外は枠の中で共通の X 列名
     const axis = axisOf(p);
     const xColumns = [...new Set(panelSeries.map((s) => (isHistogram ? s?.yColumn : s?.xColumn)))];
-    const xName = axis.xAxisName.trim() || (xColumns.length === 1 ? (xColumns[0] ?? "") : "");
+    const xLabel: DisplayLabel = axis.xAxisName.trim()
+      ? authored(axis.xAxisName.trim())
+      : derived(xColumns.length === 1 ? (xColumns[0] ?? "") : "");
 
     const leftSeries = panelSeries.filter((s) => s?.axis !== "right");
     const rightSeries = panelSeries.filter((s) => s?.axis === "right");
@@ -652,18 +675,21 @@ export function buildOption(
     // 系列名を軸名に流用しない。名前を出すならユーザーが明示する。
     // 枠を分けた図では軸名も枠ごとに決まる（σ・S・PF・κ を並べるとき、
     // 明示していなければ各枠が自分の系列名を名乗る）
-    const yName =
-      axis.yAxisName.trim() ||
-      (stackActive
-        ? ""
+    const yLabel: DisplayLabel = axis.yAxisName.trim()
+      ? authored(axis.yAxisName.trim())
+      : stackActive
+        ? derived("")
         : isHistogram
-          ? t("chart.frequency")
+          ? derived(t("chart.frequency"))
           : leftSeries.length === 1 && leftSeries[0]
-            ? seriesConfigDisplayName(leftSeries[0])
-            : "");
-    const yRightName =
-      axis.yRightAxisName.trim() ||
-      (rightSeries.length === 1 && rightSeries[0] ? seriesConfigDisplayName(rightSeries[0]) : "");
+            ? // 系列の表示名を軸名に流用するときは、その名前の出どころごと引き継ぐ
+              seriesConfigDisplayLabel(leftSeries[0])
+            : derived("");
+    const yRightLabel: DisplayLabel = axis.yRightAxisName.trim()
+      ? authored(axis.yRightAxisName.trim())
+      : rightSeries.length === 1 && rightSeries[0]
+        ? seriesConfigDisplayLabel(rightSeries[0])
+        : derived("");
 
     // スタック時の縦範囲。段の実データから決める（規格化後の値を ECharts の
     // 自動計算に任せると、キリのいい目盛りに丸められて上下に余白が出る）。
@@ -697,7 +723,22 @@ export function buildOption(
       return Number.isFinite(lo) && Number.isFinite(hi) ? { min: lo, max: hi } : null;
     })();
 
-    panels.push({ indices, view, stack, stackActive, useRight, xName, yName, yRightName, stackRange, xExtent, axis });
+    panels.push({
+      indices,
+      view,
+      stack,
+      stackActive,
+      useRight,
+      xLabel,
+      yLabel,
+      yRightLabel,
+      xName: xLabel.text,
+      yName: yLabel.text,
+      yRightName: yRightLabel.text,
+      stackRange,
+      xExtent,
+      axis,
+    });
   }
 
   // 全枠の縦軸名が同じなら、枠ごとに出さず図の左に 1 つだけ置く（N×1 に同じ
@@ -713,14 +754,28 @@ export function buildOption(
 
   // 凡例に並ぶ名前。プロット領域の余白を決める前に要る（凡例が何行になるかで
   // 上端・下端が動くため）。段オフセット中はテーブル名を名乗るので枠ごとに解決する
-  const seriesNameOf = (panelIndex: number, i: number): string => {
+  const seriesLabelOf = (panelIndex: number, i: number): DisplayLabel => {
     const sc = config.series[i];
-    if (!sc) return "";
+    if (!sc) return derived("");
     return panels[panelIndex]?.stackActive
-      ? stackSeriesDisplayName(sc, tableLabelOf(sc.sourceBlockId))
-      : seriesConfigDisplayName(sc);
+      ? stackSeriesDisplayLabel(sc, tableLabelOf(sc.sourceBlockId))
+      : seriesConfigDisplayLabel(sc);
   };
+  // 系列の内部名。ツールチップと書き出しに出るので、記法は落として渡す
+  const seriesNameOf = (panelIndex: number, i: number): string => plainOf(seriesLabelOf(panelIndex, i));
   const legendNames = panels.flatMap((panel, p) => panel.indices.map((i) => seriesNameOf(p, i)));
+  // 凡例は系列名（＝記法を落とした素のテキスト）で引かれるので、記法を書いた
+  // 系列だけ、そこから描画用の rich text に戻せるようにしておく
+  const legendRichText = new Map<string, string>();
+  panels.forEach((panel, p) => {
+    for (const i of panel.indices) {
+      const label = seriesLabelOf(p, i);
+      if (label.authored && hasRichMarkup(label.text)) {
+        legendRichText.set(stripRichMarkup(label.text), toEchartsRichText(label.text));
+      }
+    }
+  });
+  const legendHasRich = legendRichText.size > 0;
 
   // ── レイアウト ──────────────────────────────────────────────────
   // 段ラベルを図に直接置くときは、凡例は同じ情報の二重表示になるので出さない
@@ -789,7 +844,11 @@ export function buildOption(
   };
 
   // 軸の詳細設定（表示トグル・ラベル回転・目盛りの向き・グリッド）を ECharts に写す
-  const axisFromDetail = (detail: typeof config.xAxisDetail) => ({
+  // axisLabel を渡すと、人が書いた軸名なら LaTeX 記法を ECharts の rich text に
+  // 変換して name に載せる。記法が無ければ rich を足さないので、従来のノートの
+  // 図はまったく同じ option で描かれる
+  const axisFromDetail = (detail: typeof config.xAxisDetail, axisLabel?: DisplayLabel) => ({
+    ...(axisLabel === undefined ? {} : { name: textOf(axisLabel) }),
     show: detail.show,
     axisLine: {
       show: detail.showLine,
@@ -811,7 +870,13 @@ export function buildOption(
       ? { show: true, lineStyle: { ...CHART_GRID_LINE, color: "#cccccc" } }
       : { show: false },
     nameLocation: "middle" as const,
-    nameTextStyle: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
+    nameTextStyle: {
+      fontSize: CHART_FONT_SIZE,
+      color: CHART_INK,
+      ...(axisLabel !== undefined && isRich(axisLabel)
+        ? { rich: richStyleDefs(CHART_FONT_SIZE) }
+        : {}),
+    },
     z: 3,
   });
 
@@ -850,8 +915,6 @@ export function buildOption(
         return { right: gridRight + 12, bottom: gridBottom + 10, ...INSIDE_LEGEND_STYLE };
     }
   })();
-
-  const xAxisDetail = axisFromDetail(config.xAxisDetail);
 
   // ── 枠ごとに軸と系列を組む ──────────────────────────────────────
   // 系列の option。オフセット表示中の棒は土台の系列を挟むので、view.series と
@@ -934,6 +997,8 @@ export function buildOption(
       ...axisFromDetail(config.yRightAxisDetail),
       ...(split ? { gridIndex: p } : {}),
     };
+    // 軸名を載せるので、X 軸の詳細はこの枠ぶんを作る
+    const xAxisDetail = axisFromDetail(config.xAxisDetail, panel.xLabel);
     const trimmedLeftAxis =
       split && config.panels.joinVertical && row > 0
         ? trimEdgeLabel(leftAxis, "showMaxLabel")
@@ -1082,7 +1147,8 @@ export function buildOption(
                 label: {
                   show: true,
                   // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
-                  formatter: () => name,
+                  formatter: () => textOf(seriesLabelOf(p, i)),
+                  ...(isRich(seriesLabelOf(p, i)) ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
                   // 枠の内側へ入れ、縦は段の内側へ落とし込む（上端の下・下端の上）
                   position: inlineLabelAtLeft ? "right" : "left",
                   offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? 12 : -12],
@@ -1222,7 +1288,16 @@ export function buildOption(
           ...legendLayout,
           itemWidth: CHART_LEGEND_ITEM.width,
           itemHeight: CHART_LEGEND_ITEM.height,
-          textStyle: { fontSize: CHART_FONT_SIZE, color: CHART_INK },
+          textStyle: {
+            fontSize: CHART_FONT_SIZE,
+            color: CHART_INK,
+            ...(legendHasRich ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
+          },
+          // 凡例は系列名（記法を落とした素のテキスト）で引かれる。記法を書いた
+          // 系列だけ、描画用の rich text に戻す
+          ...(legendHasRich
+            ? { formatter: (name: string) => legendRichText.get(name) ?? name }
+            : {}),
           z: 12,
         }
       : { show: false },

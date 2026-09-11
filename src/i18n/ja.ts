@@ -2258,6 +2258,7 @@ export const ja: Record<string, string> = {
   "chart.yAxis": "Y 軸",
   "chart.column": "列",
   "chart.axisName": "軸名",
+  "chart.richTextHint": "LaTeX 記法が使えます: \\it{斜体}（⌘I）、H_2O（下付き）、cm^3（上付き）、\\theta",
   "chart.minMax": "範囲",
   "chart.autoPlaceholder": "自動",
   "chart.axisKind": "種類",

@@ -206,6 +206,10 @@ export type ChartSeriesConfig = {
 };
 
 /** 段の名前をどこに出すか。inline = 各段の右端に直接（論文図の作法） */
+import type { DisplayLabel } from "./rich-label";
+
+export type { DisplayLabel } from "./rich-label";
+
 export type StackLabelMode = "inline" | "legend";
 
 /** 段を積む向き。first-bottom = 系列 1 が最下段（測定データを下に置く慣習） */
@@ -832,7 +836,19 @@ export function withStackConfigForPanel(
 
 /** 系列の表示名（label 優先、無ければ Y 列名） */
 export function seriesConfigDisplayName(series: ChartSeriesConfig): string {
-  return series.label?.trim() || series.yColumn;
+  return seriesConfigDisplayLabel(series).text;
+}
+
+/**
+ * 表示名と、それを人が書いたかどうか。
+ *
+ * `authored` が真なのは、系列の表示名の欄にユーザーが自分で打った文字列だけ。
+ * 欄が空のときに入る列名は生データの識別子であって表示のための文字ではないので、
+ * LaTeX 記法として読んではいけない（`temp_c` が勝手に添字になってしまう）。
+ */
+export function seriesConfigDisplayLabel(series: ChartSeriesConfig): DisplayLabel {
+  const label = series.label?.trim();
+  return label ? { text: label, authored: true } : { text: series.yColumn, authored: false };
 }
 
 /**
@@ -846,7 +862,17 @@ export function stackSeriesDisplayName(
   series: ChartSeriesConfig,
   tableLabel: string | undefined
 ): string {
-  return series.label?.trim() || tableLabel?.trim() || series.yColumn;
+  return stackSeriesDisplayLabel(series, tableLabel).text;
+}
+
+/** スタック時の段名と、その出どころ。テーブル名は本文側の文字なので素通しにする */
+export function stackSeriesDisplayLabel(
+  series: ChartSeriesConfig,
+  tableLabel: string | undefined
+): DisplayLabel {
+  const label = series.label?.trim();
+  if (label) return { text: label, authored: true };
+  return { text: tableLabel?.trim() || series.yColumn, authored: false };
 }
 
 /**

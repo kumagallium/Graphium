@@ -298,6 +298,16 @@ Insert it, pick a table, and open **Settings** in the top-right corner. The pane
 
 ![The chart settings panel on the Type & Series tab, assigning a series to another table and the right axis](/screenshots/chart-settings.png)
 
+Axis labels and series display labels are written in **LaTeX markup** <Badge type="tip" text="Added in v0.70.0 (2026-09-11)" />. `\it{C}` is italic (LaTeX's own `\textit{C}` works too), `H_2O` is a subscript, `cm^3` is a superscript, and commands like `\theta`, `\lambda`, `\Delta`, `\pm` and `\deg` become Greek letters and symbols. Escape a character with a backslash (`\{`) to write it literally. A command that isn't recognized is left as you typed it, so a misspelling stays visible instead of vanishing.
+
+Italics also have a shortcut: select the text in the field and press **⌘I** (Ctrl+I on Windows). Selecting a wrapped range and pressing it again removes the wrapping.
+
+Braces work as they do in LaTeX: a single character needs none (`H_2O` and `H_{2}O` give the same figure), and anything longer is grouped, as in `10^{-3}`.
+
+**Only what you type into a field is read as markup.** When an axis label or display label is left empty, the column or table name that fills in appears exactly as written. Measure a column named `temp_c` and the legend still says `temp_c` — a column name is a heading for the data, not text written to be displayed. To typeset a column name, copy it into the display label field.
+
+The markup only applies inside the figure: axis labels, the legend, and offset row names. Tooltips and the Markdown export show the plain text. For the usual typesetting, where a quantity is italic but its subscript is upright, close the italics before the subscript — `\it{C}_p` — while `\it{C_p}` italicizes the subscript too.
+
 The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one. If a series draws from a data asset that no longer exists, the block says "The referenced data asset was not found" instead.
 
 ## Importing measurement data <Badge type="tip" text="Added in v0.36.0 (2026-08-14)" /> {#importing-measurement-data}
