@@ -14,7 +14,13 @@ import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
 import {
   isAssetSourceKey,
+  isPanelStackActive,
   isStackActive,
+  panelCount,
+  seriesPanelIndex,
+  stackConfigForPanel,
+  withStackConfigForPanel,
+  PANEL_SPLIT_RANGE,
   resolveSeriesStyle,
   retargetSeries,
   seriesConfigDisplayName,
@@ -24,6 +30,7 @@ import {
   type ChartBlockConfig,
   type ChartSeriesConfig,
   type ChartSourceOption,
+  type PanelsConfig,
   type LegendPosition,
   type SeriesBarWidth,
   type SeriesLineType,
@@ -206,6 +213,79 @@ function AxisDetailEditor({
 }
 
 /**
+ * 枠の分割（サブプロット）の設定。「種類・系列」タブの種類の直下、オフセット表示の上に置く。
+ *
+ * 「分ける → 分けた枠ごとにどう描くか」の順に並べたいので、オフセット表示より先。
+ * つなげるチェックは分割しているときだけ出す（1×1 では意味を持たない）。
+ * 縦・横それぞれ 2 枠以上あるときにだけ出すのは、1 枠しかない向きを
+ * 「つなげる」と言っても何も起きないため。
+ */
+function PanelFields({
+  panels,
+  onChange,
+}: {
+  panels: PanelsConfig;
+  onChange: (patch: Partial<PanelsConfig>) => void;
+}) {
+  const split = panels.rows * panels.cols > 1;
+  const [open, setOpen] = useState(split);
+  const countSelect = (key: "rows" | "cols", value: number) => (
+    <select
+      value={value}
+      onChange={(e) => onChange({ [key]: Number(e.target.value) } as Partial<PanelsConfig>)}
+      style={detailStyles.smallSelect}
+    >
+      {Array.from({ length: PANEL_SPLIT_RANGE.max }, (_, i) => i + PANEL_SPLIT_RANGE.min).map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </select>
+  );
+  return (
+    <div style={detailStyles.subGroup}>
+      <div style={detailStyles.subHeader}>
+        <button type="button" onClick={() => setOpen(!open)} style={detailStyles.subHeaderButton}>
+          <span>{t("chart.sectionPanels")}</span>
+          {open ? <ChevronUp size={12} strokeWidth={2} /> : <ChevronDown size={12} strokeWidth={2} />}
+        </button>
+      </div>
+      {open && (
+        <>
+          <div style={detailStyles.hint}>{t("chart.panelsHint")}</div>
+          <div style={detailStyles.row}>
+            <span style={detailStyles.label}>{t("chart.panelRows")}</span>
+            {countSelect("rows", panels.rows)}
+            <span style={detailStyles.label}>{t("chart.panelCols")}</span>
+            {countSelect("cols", panels.cols)}
+          </div>
+          {/* つなげる = 余白を 0 にする、ではなく軸の共有まで含む。効果を説明文で言う */}
+          {panels.rows > 1 && (
+            <div style={detailStyles.row}>
+              <span style={detailStyles.label}>{t("chart.panelJoinVertical")}</span>
+              <Toggle
+                checked={panels.joinVertical}
+                onChange={(v) => onChange({ joinVertical: v })}
+              />
+            </div>
+          )}
+          {panels.cols > 1 && (
+            <div style={detailStyles.row}>
+              <span style={detailStyles.label}>{t("chart.panelJoinHorizontal")}</span>
+              <Toggle
+                checked={panels.joinHorizontal}
+                onChange={(v) => onChange({ joinHorizontal: v })}
+              />
+            </div>
+          )}
+          {split && <div style={detailStyles.hint}>{t("chart.panelJoinHint")}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * オフセット表示（スペクトル比較）の設定。「種類・系列」タブの種類の直下に置く。
  *
  * 段に分けるのは軸の目盛りの設定ではなく描き方そのもので、段ごとの倍率・
@@ -215,9 +295,16 @@ function AxisDetailEditor({
 function StackFields({
   stack,
   onChange,
+  panelCount: panels = 1,
+  panelIndex = 0,
+  onPanelIndexChange,
 }: {
   stack: StackConfig;
   onChange: (patch: Partial<StackConfig>) => void;
+  /** 枠の総数。2 以上なら、どの枠の設定を触っているかを選ばせる */
+  panelCount?: number;
+  panelIndex?: number;
+  onPanelIndexChange?: (index: number) => void;
 }) {
   const [open, setOpen] = useState(stack.enabled);
   return (
@@ -227,6 +314,22 @@ function StackFields({
           <span>{t("chart.sectionStack")}</span>
           {open ? <ChevronUp size={12} strokeWidth={2} /> : <ChevronDown size={12} strokeWidth={2} />}
         </button>
+        {/* オフセット表示は枠ごとに効くので、分割時はどの枠のことかを先に選ぶ。
+            入り切りのトグルも選んだ枠のもの */}
+        {panels > 1 && (
+          <select
+            value={panelIndex}
+            onChange={(e) => onPanelIndexChange?.(Number(e.target.value))}
+            style={detailStyles.smallSelect}
+            aria-label={t("chart.panelTarget")}
+          >
+            {Array.from({ length: panels }, (_, i) => (
+              <option key={i} value={i}>
+                {t("chart.panelName", { n: String(i + 1) })}
+              </option>
+            ))}
+          </select>
+        )}
         {/* 入り切りは畳んだままでも触れる。入れたら中身を出す（設定せずに閉じない） */}
         <Toggle
           checked={stack.enabled}
@@ -718,17 +821,39 @@ export function ChartSettingsPanel({
     return config.chartType === "bar" && detected === "time" ? "category" : detected;
   }, [config.chartType, config.xAxisKind, config.series, resolveTable]);
 
-  // 段名が図の中に直接出ている状態（このとき通常の凡例は描かれない）
-  const inlineStackLabels =
-    config.stack.labels === "inline" && isStackActive(config, effectiveXKind);
+  // 段名が図の中に直接出ている状態（このとき通常の凡例は描かれない）。
+  // 枠を分けているときは、どれか 1 つの枠でそうなっていれば凡例は消える
+  const inlineStackLabels = useMemo(() => {
+    const total = config.panels.rows * config.panels.cols;
+    for (let p = 0; p < total; p++) {
+      const stack = stackConfigForPanel(config, p);
+      const count = config.series.filter((s) => seriesPanelIndex(s, total) === p).length;
+      if (stack.labels === "inline" && isPanelStackActive(config, p, effectiveXKind, count)) {
+        return true;
+      }
+    }
+    return false;
+  }, [config, effectiveXKind]);
 
   const updateSeries = (index: number, patch: Partial<ChartSeriesConfig>) => {
     const next = config.series.map((s, i) => (i === index ? { ...s, ...patch } : s));
     onChange({ series: next });
   };
 
+  // オフセット表示を編集している枠。分割を減らして枠が消えたら先頭に戻す
+  const panels = panelCount(config);
+  const [stackPanel, setStackPanel] = useState(0);
+  const editingPanel = stackPanel < panels ? stackPanel : 0;
+
   const updateStack = (patch: Partial<StackConfig>) => {
-    onChange({ stack: { ...config.stack, ...patch } });
+    const current = stackConfigForPanel(config, editingPanel);
+    const next = withStackConfigForPanel(config, editingPanel, { ...current, ...patch });
+    // 保存先は枠 0 と枠 1 以降で別のキーなので、変わったほうだけ渡す
+    onChange(editingPanel === 0 ? { stack: next.stack } : { panelStacks: next.panelStacks });
+  };
+
+  const updatePanels = (patch: Partial<PanelsConfig>) => {
+    onChange({ panels: { ...config.panels, ...patch } });
   };
 
   const moveSeries = (index: number, delta: number) => {
@@ -821,7 +946,14 @@ export function ChartSettingsPanel({
           {!isHistogram && (
             <div style={detailStyles.shell}>
               <div style={detailStyles.body}>
-                <StackFields stack={config.stack} onChange={updateStack} />
+                <PanelFields panels={config.panels} onChange={updatePanels} />
+                <StackFields
+                  stack={stackConfigForPanel(config, editingPanel)}
+                  onChange={updateStack}
+                  panelCount={panels}
+                  panelIndex={editingPanel}
+                  onPanelIndexChange={setStackPanel}
+                />
               </div>
             </div>
           )}
@@ -1027,7 +1159,26 @@ export function ChartSettingsPanel({
                         </div>
                       )}
 
-                      {!isHistogram && config.stack.enabled && (
+                      {/* 分割しているときだけ出す。1×1 では選択肢が 1 つしかない */}
+                      {!isHistogram && panels > 1 && (
+                        <label style={styles.fieldRow}>
+                          <span style={styles.fieldLabel}>{t("chart.seriesPanel")}</span>
+                          <select
+                            value={seriesPanelIndex(series, panels)}
+                            onChange={(e) => updateSeries(i, { panelIndex: Number(e.target.value) })}
+                            style={styles.select}
+                          >
+                            {Array.from({ length: panels }, (_, p) => (
+                              <option key={p} value={p}>
+                                {t("chart.panelName", { n: String(p + 1) })}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {!isHistogram &&
+                        stackConfigForPanel(config, seriesPanelIndex(series, panels)).enabled && (
                         <>
                           <div style={styles.assignLabel}>{t("chart.stackSeriesSection")}</div>
                           <label style={styles.fieldRow}>

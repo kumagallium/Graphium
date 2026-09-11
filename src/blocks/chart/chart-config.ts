@@ -198,6 +198,11 @@ export type ChartSeriesConfig = {
    * スペクトル比較の StackConfig とは別物（あちらは折れ線を縦にずらす）
    */
   stacked?: boolean;
+  /**
+   * どの枠に描くか（行優先の 0 起点）。未指定・範囲外は枠 0。
+   * 枠を分割していない図には出てこない
+   */
+  panelIndex?: number;
 };
 
 /** 段の名前をどこに出すか。inline = 各段の右端に直接（論文図の作法） */
@@ -250,6 +255,44 @@ export const DEFAULT_STACK_CONFIG: StackConfig = {
 
 /** 段間隔の許容範囲（0 = 完全に重ねる。上限は段が潰れない現実的な値） */
 export const STACK_GAP_RANGE = { min: 0, max: 5 } as const;
+
+/**
+ * 枠の分割（サブプロット）。
+ *
+ * 1 つのチャートブロックの中に N×M の枠を並べ、系列を枠に振り分ける。
+ * オフセット表示（1 枠の中で系列を縦にずらす）とは階層関係にあり、
+ * 「枠を分ける → 枠ごとにオフセット表示するか決める」の順で効く。
+ * 縦軸の絶対値を保ったまま並べたいとき（物理量の違う 4 枚など）は枠を分け、
+ * 5 段以上のスペクトルを重ねたいときはオフセット表示を使う。
+ *
+ * join* は「つなげる」= 枠間の余白を 0 にし、その向きの軸を共有する。
+ * 余白だけ 0 にすると上の枠の目盛りが下の枠の天井に貼り付くので、
+ * 余白と軸共有は不可分の 1 つの選択として扱う。自動判定はしない
+ *（何が起きたかをユーザーが説明できる状態を保つため）。
+ */
+export type PanelsConfig = {
+  /** 縦分割数 */
+  rows: number;
+  /** 横分割数 */
+  cols: number;
+  /** 縦に並ぶ枠をつなげる（X 軸を共有し、目盛りは最下段だけに出す） */
+  joinVertical: boolean;
+  /** 横に並ぶ枠をつなげる（Y 軸を共有し、目盛りは左端の列だけに出す） */
+  joinHorizontal: boolean;
+};
+
+export const DEFAULT_PANELS_CONFIG: PanelsConfig = {
+  rows: 1,
+  cols: 1,
+  joinVertical: false,
+  joinHorizontal: false,
+};
+
+/**
+ * 分割数の上限。本文幅（~720px）に収める図なので、これ以上に割ると
+ * 目盛りが読めない大きさになる
+ */
+export const PANEL_SPLIT_RANGE = { min: 1, max: 4 } as const;
 
 /** 未指定を種類なりの既定で埋めた、描画・UI が使う実効スタイル */
 export type ResolvedSeriesStyle = {
@@ -314,8 +357,19 @@ export type ChartBlockConfig = {
   xAxisDetail: AxisDetail;
   yAxisDetail: AxisDetail;
   yRightAxisDetail: AxisDetail;
-  /** スタック表示（スペクトル比較） */
+  /** 枠の分割（サブプロット）。既定は 1×1 = 分割なし */
+  panels: PanelsConfig;
+  /**
+   * 枠 0 のオフセット表示（スペクトル比較）。分割していない図ではこれだけが使われる。
+   * 既存ノートとの互換のため、枠 0 のぶんはこのキーのまま置いてある
+   */
   stack: StackConfig;
+  /**
+   * 枠 1 以降のオフセット表示（要素 i が枠 i+1 に対応）。
+   * 枠 0 を stack に残したまま追加できるので、旧ノートの意味が変わらない。
+   * 参照は stackConfigForPanel() を通す
+   */
+  panelStacks: StackConfig[];
   /**
    * 系列が参照するデータ素材（ノートの外にある生データ）。
    * 系列の sourceBlockId が `asset:<fileId>` のとき、ここから読み方を引く。
@@ -346,7 +400,9 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   xAxisDetail: DEFAULT_AXIS_DETAIL,
   yAxisDetail: DEFAULT_AXIS_DETAIL,
   yRightAxisDetail: DEFAULT_AXIS_DETAIL,
+  panels: DEFAULT_PANELS_CONFIG,
   stack: DEFAULT_STACK_CONFIG,
+  panelStacks: [],
   assetSources: [],
 };
 
@@ -415,6 +471,11 @@ function parseSeries(raw: unknown): ChartSeriesConfig[] {
     if (SYMBOL_SIZES.includes(v.symbolSize)) entry.symbolSize = v.symbolSize;
     if (BAR_WIDTHS.includes(v.barWidth)) entry.barWidth = v.barWidth;
     if (typeof v.stacked === "boolean") entry.stacked = v.stacked;
+    // 枠番号は整数のみ。範囲の検査は枠数を知る seriesPanelIndex() 側で行う
+    //（設定を読む時点では分割数が確定していないため）
+    if (typeof v.panelIndex === "number" && Number.isFinite(v.panelIndex) && v.panelIndex >= 0) {
+      entry.panelIndex = Math.floor(v.panelIndex);
+    }
     out.push(entry);
   }
   return out;
@@ -478,6 +539,20 @@ export function collectChartAssetFileIds(config: ChartBlockConfig): string[] {
 }
 
 /** スタック設定を部分マージで読む（旧ノートには存在しないので全欠けが常態） */
+function parsePanels(raw: unknown): PanelsConfig {
+  const v = (typeof raw === "object" && raw !== null ? raw : {}) as any;
+  const count = (n: unknown, d: number) =>
+    typeof n === "number" && Number.isFinite(n)
+      ? Math.min(PANEL_SPLIT_RANGE.max, Math.max(PANEL_SPLIT_RANGE.min, Math.floor(n)))
+      : d;
+  return {
+    rows: count(v.rows, DEFAULT_PANELS_CONFIG.rows),
+    cols: count(v.cols, DEFAULT_PANELS_CONFIG.cols),
+    joinVertical: typeof v.joinVertical === "boolean" ? v.joinVertical : false,
+    joinHorizontal: typeof v.joinHorizontal === "boolean" ? v.joinHorizontal : false,
+  };
+}
+
 function parseStack(raw: unknown): StackConfig {
   const v = (typeof raw === "object" && raw !== null ? raw : {}) as any;
   const gap =
@@ -587,13 +662,55 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
       bool(parsed.showGridY, bool(parsed.showGrid, false))
     ),
     yRightAxisDetail: parseAxisDetail(parsed.yRightAxisDetail, false),
+    panels: parsePanels(parsed.panels),
     stack: parseStack(parsed.stack),
+    panelStacks: Array.isArray(parsed.panelStacks) ? parsed.panelStacks.map(parseStack) : [],
     assetSources: parseAssetSources(parsed.assetSources),
   };
 }
 
 export function serializeChartBlockConfig(config: ChartBlockConfig): string {
   return JSON.stringify(config);
+}
+
+/** 枠の総数（行優先で 0..count-1 が有効な枠番号） */
+export function panelCount(config: Pick<ChartBlockConfig, "panels">): number {
+  return config.panels.rows * config.panels.cols;
+}
+
+/**
+ * 系列が描かれる枠。範囲外は枠 0 に落とす — 分割数を減らしたときに
+ * 系列が消えてはいけない（設定は残るので、分割し直せば元の枠に戻る）
+ */
+export function seriesPanelIndex(series: ChartSeriesConfig | undefined, count: number): number {
+  const i = series?.panelIndex ?? 0;
+  return i >= 0 && i < count ? i : 0;
+}
+
+/**
+ * 枠 n のオフセット表示の設定。枠 0 は stack、枠 1 以降は panelStacks[n - 1]。
+ * 保存先が 2 つに分かれているのは既存ノートの stack を動かさないためで、
+ * 読む側はこの関数だけを見ればよい
+ */
+export function stackConfigForPanel(
+  config: Pick<ChartBlockConfig, "stack" | "panelStacks">,
+  panelIndex: number
+): StackConfig {
+  if (panelIndex <= 0) return config.stack;
+  return config.panelStacks[panelIndex - 1] ?? DEFAULT_STACK_CONFIG;
+}
+
+/** 枠 n のオフセット表示を差し替えた設定を返す（保存先の振り分けを隠す） */
+export function withStackConfigForPanel(
+  config: ChartBlockConfig,
+  panelIndex: number,
+  stack: StackConfig
+): ChartBlockConfig {
+  if (panelIndex <= 0) return { ...config, stack };
+  const panelStacks = [...config.panelStacks];
+  while (panelStacks.length < panelIndex) panelStacks.push(DEFAULT_STACK_CONFIG);
+  panelStacks[panelIndex - 1] = stack;
+  return { ...config, panelStacks };
 }
 
 /** 系列の表示名（label 優先、無ければ Y 列名） */
@@ -645,10 +762,23 @@ export function stackSeriesDisplayLabel(
  * データを読んで初めて決まるので、呼び出し側から渡してもらう）。
  */
 export function isStackActive(config: ChartBlockConfig, xAxisKind?: XAxisKind): boolean {
-  if (!config.stack.enabled) return false;
+  return isPanelStackActive(config, 0, xAxisKind, config.series.length);
+}
+
+/**
+ * 枠 n でオフセット表示が効くか。枠に系列が 1 本も無ければ効かない
+ *（分割した直後の空の枠で段の計算を走らせない）
+ */
+export function isPanelStackActive(
+  config: ChartBlockConfig,
+  panelIndex: number,
+  xAxisKind: XAxisKind | undefined,
+  panelSeriesCount: number
+): boolean {
+  if (!stackConfigForPanel(config, panelIndex).enabled) return false;
   if (config.chartType === "histogram") return false;
   if (xAxisKind === "category") return false;
-  return config.series.length > 0;
+  return panelSeriesCount > 0;
 }
 
 /** right 軸に割り当てられた系列があるか */

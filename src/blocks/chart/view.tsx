@@ -56,16 +56,18 @@ import {
   assetSourceKey,
   assetSourceLabel,
   isAssetSourceKey,
-  isStackActive,
+  isPanelStackActive,
+  panelCount,
   parseChartBlockConfig,
   pruneAssetSources,
   resolveSeriesStyle,
   retargetSeries,
   serializeChartBlockConfig,
   seriesConfigDisplayLabel,
+  seriesPanelIndex,
+  stackConfigForPanel,
   stackSeriesDisplayLabel,
   suggestSeries,
-  usesRightAxis,
   type ChartAssetSource,
   type ChartBlockConfig,
   type ChartSeriesConfig,
@@ -73,6 +75,7 @@ import {
   type DisplayLabel,
   type SeriesType,
 } from "./chart-config";
+import { computePanelLayout, estimateLegendRows, LEGEND_LINE_HEIGHT } from "./chart-layout";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
 import {
   hasRichMarkup,
@@ -532,105 +535,283 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
 }
 
 /**
+ * 凡例の文字幅の実測。ECharts に描かせる前に何行になるかを知りたいので、
+ * 同じフォント設定の canvas で測る。canvas が使えない環境（テストの jsdom）では
+ * 0 を返して、呼び先の近似に任せる
+ */
+let legendMeasureCtx: CanvasRenderingContext2D | null | undefined;
+function measureLegendText(text: string, font: string): number {
+  if (legendMeasureCtx === undefined) {
+    legendMeasureCtx =
+      typeof document !== "undefined" ? document.createElement("canvas").getContext("2d") : null;
+  }
+  if (!legendMeasureCtx) return 0;
+  legendMeasureCtx.font = font;
+  return legendMeasureCtx.measureText(text).width;
+}
+
+/**
  * ECharts の option を組み立てる（eureco の学術スタイル、chart-theme.ts の実測値）。
  * 描画状態を持たない純粋な変換。
  * プロット背景は敷かない（eureco 同様）。塗ると系列より前に描かれて点を隠すし、
  * ノートの紙色から図だけ浮く。
  */
-function buildOption(
+export function buildOption(
   result: Extract<ChartDataResult, { kind: "ok" }>,
   config: ChartBlockConfig,
-  tables: ChartSourceOption[] = []
+  tables: ChartSourceOption[] = [],
+  /** チャート要素の実寸。枠を分割するときだけ要る（grid を px で置くため） */
+  size?: { width: number; height: number }
 ): any {
   const isHistogram = config.chartType === "histogram";
-  // スタック中は段の縦位置がすべての意味を持つので、第 2 軸は併用させない
-  const stackActive = isStackActive(config, result.xAxis);
-  const useRight = !isHistogram && !stackActive && usesRightAxis(config);
+  const count = panelCount(config);
+  // 枠を分割していない図は従来どおり 1 枚の grid（外周からの余白指定）で描く。
+  // 分割時だけ grid を配列にして px で置く — ECharts の grid は px か % しか
+  // 取れないので、割り付けには要素の実寸が要る
+  const split = count > 1;
+  const locale = getLocale();
 
-  // 描画に使う値は規格化 + 段オフセット後のもの。元の値は各系列に残る
-  // offset / scale から復元してツールチップに出す
-  const view = stackActive
-    ? applyStack(result, {
-        normalize: config.stack.normalize,
-        gap: config.stack.gap,
-        order: config.stack.order,
-        perSeries: config.series.map((s) => ({ scale: s.scale, offsetAdjust: s.offsetAdjust })),
-      })
-    : result;
+  const fontFamily =
+    typeof window !== "undefined" ? getComputedStyle(document.body).fontFamily : "sans-serif";
 
   // 段の名前は「別の列」ではなく「別の試料・別の文献」なので、既定はテーブル名
   const tableLabelOf = (blockId: string) => tables.find((tb) => tb.id === blockId)?.label;
+
   // 図に出す名前は「人が書いたもの」と「データから拾ったもの」で扱いが違う。
   // 前者だけが LaTeX 記法（\it{斜体} / ^{上付き} / _{下付き}）の対象で、後者
   //（列名・テーブル名）は生データの識別子なので字のまま出す。
   const derived = (text: string): DisplayLabel => ({ text, authored: false });
   const authored = (text: string): DisplayLabel => ({ text, authored: true });
 
-  const seriesLabel = (i: number): DisplayLabel => {
+  const yMin = parseNumeric(config.yMin);
+  const yMax = parseNumeric(config.yMax);
+  const yRightMin = parseNumeric(config.yRightMin);
+  const yRightMax = parseNumeric(config.yRightMax);
+  // X 軸の min/max。時間軸は日時文字列、数値軸は数値として読む（カテゴリ軸は対象外）
+  const parseX = result.xAxis === "time" ? parseDateTime : parseNumeric;
+  const xMin = result.xAxis !== "category" ? parseX(config.xMin) : null;
+  const xMax = result.xAxis !== "category" ? parseX(config.xMax) : null;
+
+  // 折れ線・散布図の値軸はデータ範囲にフィットさせる（scale: true = 0 を含む強制を
+  // 外す）。気圧 ~1000 hPa のような系列が 0 起点で上に張り付くのを防ぐ。
+  // 棒・ヒストグラムは長さが量を表すので 0 基準のまま
+  const fitAxis = config.chartType === "line" || config.chartType === "scatter";
+
+  // ── 枠ごとの中身を先に組む ──────────────────────────────────────
+  // 軸の範囲を枠をまたいで揃える（つなげたとき）ので、描画は 2 周目に回す
+  type PanelBuild = {
+    /** この枠に属する系列の、config.series での添字 */
+    indices: number[];
+    /** 規格化・段オフセットを済ませた、この枠ぶんのデータ */
+    view: Extract<ChartDataResult, { kind: "ok" }>;
+    stack: ReturnType<typeof stackConfigForPanel>;
+    stackActive: boolean;
+    useRight: boolean;
+    /** 軸名。記法を解釈してよいのは人が書いたものだけなので、出どころごと持つ */
+    xLabel: DisplayLabel;
+    yLabel: DisplayLabel;
+    yRightLabel: DisplayLabel;
+    /** 記法を落とした素の軸名。余白の計算と、枠をまたいだ一致判定に使う */
+    xName: string;
+    yName: string;
+    yRightName: string;
+    /** オフセット表示の縦範囲（段の実データから決める） */
+    stackRange: { min: number; max: number } | null;
+    /** この枠のデータが占める X の範囲（つなげたときの共有範囲の計算に使う） */
+    xExtent: { min: number; max: number } | null;
+  };
+
+  const panels: PanelBuild[] = [];
+  for (let p = 0; p < count; p++) {
+    const indices = config.series.map((_, i) => i).filter((i) => seriesPanelIndex(config.series[i], count) === p);
+    const panelSeries = indices.map((i) => config.series[i]);
+    const sub: Extract<ChartDataResult, { kind: "ok" }> = {
+      ...result,
+      series: indices.map((i) => result.series[i]).filter(Boolean),
+    };
+    const stack = stackConfigForPanel(config, p);
+    // オフセット表示は枠ごとに独立して効く（片方の枠だけ積む、が成り立つ）
+    const stackActive = isPanelStackActive(config, p, result.xAxis, panelSeries.length);
+    // スタック中は段の縦位置がすべての意味を持つので、第 2 軸は併用させない
+    const useRight = !isHistogram && !stackActive && panelSeries.some((s) => s?.axis === "right");
+
+    // 描画に使う値は規格化 + 段オフセット後のもの。元の値は各系列に残る
+    // offset / scale から復元してツールチップに出す
+    const view = stackActive
+      ? applyStack(sub, {
+          normalize: stack.normalize,
+          gap: stack.gap,
+          order: stack.order,
+          perSeries: panelSeries.map((s) => ({ scale: s?.scale, offsetAdjust: s?.offsetAdjust })),
+        })
+      : sub;
+
+    // X 軸名の自動値: histogram は対象列、それ以外は枠の中で共通の X 列名
+    const xColumns = [...new Set(panelSeries.map((s) => (isHistogram ? s?.yColumn : s?.xColumn)))];
+    const xLabel: DisplayLabel = config.xAxisName.trim()
+      ? authored(config.xAxisName.trim())
+      : derived(xColumns.length === 1 ? (xColumns[0] ?? "") : "");
+
+    const leftSeries = panelSeries.filter((s) => s?.axis !== "right");
+    const rightSeries = panelSeries.filter((s) => s?.axis === "right");
+    // スタック中は縦軸が a.u.（段の高さに絶対的な意味がない）ので、
+    // 系列名を軸名に流用しない。名前を出すならユーザーが明示する。
+    // 枠を分けた図では軸名も枠ごとに決まる（σ・S・PF・κ を並べるとき、
+    // 明示していなければ各枠が自分の系列名を名乗る）
+    const yLabel: DisplayLabel = config.yAxisName.trim()
+      ? authored(config.yAxisName.trim())
+      : stackActive
+        ? derived("")
+        : isHistogram
+          ? derived(t("chart.frequency"))
+          : leftSeries.length === 1 && leftSeries[0]
+            ? // 系列の表示名を軸名に流用するときは、その名前の出どころごと引き継ぐ
+              seriesConfigDisplayLabel(leftSeries[0])
+            : derived("");
+    const yRightLabel: DisplayLabel = config.yRightAxisName.trim()
+      ? authored(config.yRightAxisName.trim())
+      : rightSeries.length === 1 && rightSeries[0]
+        ? seriesConfigDisplayLabel(rightSeries[0])
+        : derived("");
+
+    // スタック時の縦範囲。段の実データから決める（規格化後の値を ECharts の
+    // 自動計算に任せると、キリのいい目盛りに丸められて上下に余白が出る）。
+    // 上側は最上段のピークが枠にくっつかないぶんを広く取る
+    const stackRange = (() => {
+      if (!stackActive) return null;
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const s of view.series) {
+        for (const [, y] of s.points as Array<[number, number]>) {
+          if (y < lo) lo = y;
+          if (y > hi) hi = y;
+        }
+      }
+      if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+      const span = hi - lo || 1;
+      // 下は最下段が枠線に貼り付かない程度
+      return { min: lo - span * 0.05, max: hi + span * 0.1 };
+    })();
+
+    const xExtent = (() => {
+      if (result.xAxis === "category") return null;
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const s of view.series) {
+        for (const [x] of s.points as Array<[number, number]>) {
+          if (x < lo) lo = x;
+          if (x > hi) hi = x;
+        }
+      }
+      return Number.isFinite(lo) && Number.isFinite(hi) ? { min: lo, max: hi } : null;
+    })();
+
+    panels.push({
+      indices,
+      view,
+      stack,
+      stackActive,
+      useRight,
+      xLabel,
+      yLabel,
+      yRightLabel,
+      xName: xLabel.text,
+      yName: yLabel.text,
+      yRightName: yRightLabel.text,
+      stackRange,
+      xExtent,
+    });
+  }
+
+  const anyStackActive = panels.some((p) => p.stackActive);
+  const anyInlineStackLabels = panels.some((p) => p.stackActive && p.stack.labels === "inline");
+
+  // 凡例に並ぶ名前。プロット領域の余白を決める前に要る（凡例が何行になるかで
+  // 上端・下端が動くため）。段オフセット中はテーブル名を名乗るので枠ごとに解決する
+  const seriesLabelOf = (panelIndex: number, i: number): DisplayLabel => {
     const sc = config.series[i];
     if (!sc) return derived("");
-    return stackActive
+    return panels[panelIndex]?.stackActive
       ? stackSeriesDisplayLabel(sc, tableLabelOf(sc.sourceBlockId))
       : seriesConfigDisplayLabel(sc);
   };
   // 系列の内部名。ツールチップと書き出しに出るので、記法は落として渡す
-  const seriesName = (i: number): string => plainOf(seriesLabel(i));
+  const seriesNameOf = (panelIndex: number, i: number): string => plainOf(seriesLabelOf(panelIndex, i));
+  const legendNames = panels.flatMap((panel, p) => panel.indices.map((i) => seriesNameOf(p, i)));
   // 凡例は系列名（＝記法を落とした素のテキスト）で引かれるので、記法を書いた
   // 系列だけ、そこから描画用の rich text に戻せるようにしておく
   const legendRichText = new Map<string, string>();
-  view.series.forEach((_, i) => {
-    const label = seriesLabel(i);
-    if (label.authored && hasRichMarkup(label.text)) {
-      legendRichText.set(stripRichMarkup(label.text), toEchartsRichText(label.text));
+  panels.forEach((panel, p) => {
+    for (const i of panel.indices) {
+      const label = seriesLabelOf(p, i);
+      if (label.authored && hasRichMarkup(label.text)) {
+        legendRichText.set(stripRichMarkup(label.text), toEchartsRichText(label.text));
+      }
     }
   });
   const legendHasRich = legendRichText.size > 0;
 
-  // X 軸名の自動値: histogram は対象列、それ以外は全系列で共通の X 列名
-  const xColumns = [...new Set(config.series.map((s) => (isHistogram ? s.yColumn : s.xColumn)))];
-  const xLabel: DisplayLabel = config.xAxisName.trim()
-    ? authored(config.xAxisName.trim())
-    : derived(xColumns.length === 1 ? xColumns[0] : "");
-  const xName = xLabel.text;
-
-  const leftSeries = config.series.filter((s) => s.axis !== "right");
-  const rightSeries = config.series.filter((s) => s.axis === "right");
-  // スタック中は縦軸が a.u.（段の高さに絶対的な意味がない）ので、
-  // 系列名を軸名に流用しない。名前を出すならユーザーが明示する
-  const yLabel: DisplayLabel = config.yAxisName.trim()
-    ? authored(config.yAxisName.trim())
-    : stackActive
-      ? derived("")
-      : isHistogram
-        ? derived(t("chart.frequency"))
-        : leftSeries.length === 1
-          ? // 系列の表示名を軸名に流用するときは、その名前の出どころごと引き継ぐ
-            seriesConfigDisplayLabel(leftSeries[0])
-          : derived("");
-  const yRightLabel: DisplayLabel =
-    config.yRightAxisName.trim()
-      ? authored(config.yRightAxisName.trim())
-      : rightSeries.length === 1
-        ? seriesConfigDisplayLabel(rightSeries[0])
-        : derived("");
-  // 余白の計算には表示の有無だけが要る（名前が空かどうか）
-  const yName = yLabel.text;
-  const yRightName = yRightLabel.text;
-
-  // プロット領域の余白。凡例の座標計算にも同じ値を使う
-  const gridLeft = yName ? 84 : 60;
-  const gridRight = useRight ? (yRightName ? 84 : 60) : 32;
+  // ── レイアウト ──────────────────────────────────────────────────
   // 段ラベルを図に直接置くときは、凡例は同じ情報の二重表示になるので出さない
-  const showLegend = config.showLegend && !(stackActive && config.stack.labels === "inline");
+  const showLegend = config.showLegend && !anyInlineStackLabels;
   const legendTop =
     showLegend &&
     (config.legendPosition === "top-left" || config.legendPosition === "top-right");
   const legendBottom = showLegend && config.legendPosition === "bottom";
-  const gridTop = legendTop ? 48 : 20;
-  const gridBottom = (xName ? 64 : 40) + (legendBottom ? 32 : 0);
+  // プロット領域の余白。凡例の座標計算にも同じ値を使う。
+  // 分割時は「どれかの枠が名前を持つか」で外周を決める（枠ごとに余白を変えると
+  // 枠の大きさが揃わず、図が読み比べにならない）
+  const anyYName = panels.some((p) => p.yName !== "");
+  const anyXName = panels.some((p) => p.xName !== "");
+  const anyUseRight = panels.some((p) => p.useRight);
+  const anyYRightName = panels.some((p) => p.yRightName !== "");
+  const gridLeft = anyYName ? 84 : 60;
+  const gridRight = anyUseRight ? (anyYRightName ? 84 : 60) : 32;
+  // 凡例は折り返すと 2 行目以降がプロット枠に重なるので、行数ぶんの高さを先に空ける。
+  // 1 行に収まるときは従来と同じ値（48 / 32）になるので既存の図は動かない。
+  // 凡例の幅は右上の設定ボタンに掛からないところまでに絞り、見積もりと実際の
+  // 折り返し位置を合わせる
+  const chartWidth = size?.width && size.width > 0 ? size.width : 0;
+  const legendWidth = chartWidth > 0 ? Math.max(0, chartWidth - gridLeft - Math.max(gridRight, 72)) : 0;
+  const legendRows =
+    showLegend && (legendTop || legendBottom)
+      ? estimateLegendRows(legendNames, legendWidth, config.legendOrient, CHART_FONT_SIZE, (text) =>
+          measureLegendText(text, `${CHART_FONT_SIZE}px ${fontFamily}`)
+        )
+      : 1;
+  const extraLegendRows = Math.max(0, legendRows - 1) * LEGEND_LINE_HEIGHT;
+  const gridTop = legendTop ? 48 + extraLegendRows : 20;
+  const gridBottom = (anyXName ? 64 : 40) + (legendBottom ? 32 + extraLegendRows : 0);
 
-  const fontFamily =
-    typeof window !== "undefined" ? getComputedStyle(document.body).fontFamily : "sans-serif";
+  const layout = split
+    ? computePanelLayout({
+        rows: config.panels.rows,
+        cols: config.panels.cols,
+        // 実寸が来ていない初回描画では本文幅なりの値で置く（測れた時点で組み直される）
+        width: size?.width && size.width > 0 ? size.width : 720,
+        height: size?.height && size.height > 0 ? size.height : 320,
+        outer: { left: gridLeft, right: gridRight, top: gridTop, bottom: gridBottom },
+        xAxisSpace: anyXName ? 64 : 40,
+        yAxisSpace: gridLeft,
+        joinVertical: config.panels.joinVertical,
+        joinHorizontal: config.panels.joinHorizontal,
+      })
+    : null;
+
+  // つなげた向きは軸を共有する = 範囲も実際に揃える。揃えないと目盛りだけ
+  // 最下段（左端）に出るのに枠ごとの縮尺が違う、という嘘の図になる
+  const sharedXExtent = (col: number) => {
+    if (!split || !config.panels.joinVertical) return null;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let row = 0; row < config.panels.rows; row++) {
+      const e = panels[row * config.panels.cols + col]?.xExtent;
+      if (!e) continue;
+      if (e.min < lo) lo = e.min;
+      if (e.max > hi) hi = e.max;
+    }
+    return Number.isFinite(lo) && Number.isFinite(hi) ? { min: lo, max: hi } : null;
+  };
 
   // 軸の詳細設定（表示トグル・ラベル回転・目盛りの向き・グリッド）を ECharts に写す
   // axisLabel を渡すと、人が書いた軸名なら LaTeX 記法を ECharts の rich text に
@@ -669,6 +850,22 @@ function buildOption(
     z: 3,
   });
 
+  // つなげた向きの内側の枠は、目盛りラベルと軸名を落とす（軸そのものは残すので
+  // 枠線と目盛りの刻みは出る）。これをやらないと上の枠のラベルが下の枠の天井に貼り付く
+  const hideAxisText = (axis: any) => ({
+    ...axis,
+    name: "",
+    axisLabel: { ...(axis.axisLabel ?? {}), show: false },
+  });
+
+  // 継ぎ目のラベルを 1 つ落とす。枠を接して置くと、上の枠の最小値のラベルと
+  // 下の枠の最大値のラベルが同じ高さに来て重なる（"500" と "1.3" が "501.3" に見える）。
+  // 消すのは内側の枠の側 = 下の枠の最大値・右の枠の最小値
+  const trimEdgeLabel = (axis: any, key: "showMaxLabel" | "showMinLabel") => ({
+    ...axis,
+    axisLabel: { ...(axis.axisLabel ?? {}), [key]: false },
+  });
+
   // 凡例の配置。top-* は枠の左右端に揃え、inside-* は枠内の四隅に置く
   const legendLayout = (() => {
     switch (config.legendPosition) {
@@ -689,219 +886,261 @@ function buildOption(
     }
   })();
 
-  const locale = getLocale();
-  const xAxisDetail = axisFromDetail(config.xAxisDetail, xLabel);
-
-  const yMin = parseNumeric(config.yMin);
-  const yMax = parseNumeric(config.yMax);
-  const yRightMin = parseNumeric(config.yRightMin);
-  const yRightMax = parseNumeric(config.yRightMax);
-  // X 軸の min/max。時間軸は日時文字列、数値軸は数値として読む（カテゴリ軸は対象外）
-  const parseX = result.xAxis === "time" ? parseDateTime : parseNumeric;
-  const xMin = result.xAxis !== "category" ? parseX(config.xMin) : null;
-  const xMax = result.xAxis !== "category" ? parseX(config.xMax) : null;
-
-  // 折れ線・散布図の値軸はデータ範囲にフィットさせる（scale: true = 0 を含む強制を
-  // 外す）。気圧 ~1000 hPa のような系列が 0 起点で上に張り付くのを防ぐ。
-  // 棒・ヒストグラムは長さが量を表すので 0 基準のまま
-  const fitAxis = config.chartType === "line" || config.chartType === "scatter";
-
-  // 段名を段のどの隅に置くか（凡例と同じ選び方で四隅から選ぶ）
-  const inlineLabelAtLeft = config.stack.labelPosition.endsWith("left");
-  const inlineLabelAtTop = config.stack.labelPosition.startsWith("top");
-  // スタック時の縦範囲。段の実データから決める（規格化後の値を ECharts の
-  // 自動計算に任せると、キリのいい目盛りに丸められて上下に余白が出る）。
-  // 上側は最上段のピークが枠にくっつかないぶんを広く取る
-  const stackRange = (() => {
-    if (!stackActive) return null;
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const s of view.series) {
-      for (const [, y] of s.points as Array<[number, number]>) {
-        if (y < lo) lo = y;
-        if (y > hi) hi = y;
-      }
-    }
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
-    const span = hi - lo || 1;
-    // 下は最下段が枠線に貼り付かない程度
-    return { min: lo - span * 0.05, max: hi + span * 0.1 };
-  })();
-
-  // 段名を出す横位置。プロット枠の内側にそろえる（論文図の作法）。段ごとの
-  // データの終わりに置くと、段によって名前の位置がずれて図の中に散らばる
-  const inlineLabelX = (() => {
-    if (!stackActive || config.stack.labels !== "inline") return null;
-    const fixed = inlineLabelAtLeft ? xMin : xMax;
-    if (fixed !== null) return fixed;
-    let edge = inlineLabelAtLeft ? Infinity : -Infinity;
-    for (const s of view.series) {
-      for (const [x] of s.points as Array<[number, number]>) {
-        if (inlineLabelAtLeft ? x < edge : x > edge) edge = x;
-      }
-    }
-    return Number.isFinite(edge) ? edge : null;
-  })();
-
-  const leftAxis = {
-    type: "value" as const,
-    nameGap: 52,
-    scale: fitAxis,
-    ...(yMin !== null ? { min: yMin } : {}),
-    ...(yMax !== null ? { max: yMax } : {}),
-    ...axisFromDetail(config.yAxisDetail, yLabel),
-    // 段の高さは a.u.（規格化とオフセットで元の尺度を失う）なので目盛りを出さない。
-    // 範囲はユーザーが明示していればそちらを優先する
-    ...(stackActive
-      ? {
-          axisTick: { show: false },
-          axisLabel: { show: false },
-          splitLine: { show: false },
-          ...(stackRange && yMin === null ? { min: stackRange.min } : {}),
-          ...(stackRange && yMax === null ? { max: stackRange.max } : {}),
-        }
-      : {}),
-  };
-  const rightAxis = {
-    type: "value" as const,
-    nameGap: 52,
-    scale: fitAxis,
-    ...(yRightMin !== null ? { min: yRightMin } : {}),
-    ...(yRightMax !== null ? { max: yRightMax } : {}),
-    ...axisFromDetail(config.yRightAxisDetail, yRightLabel),
-  };
-
+  // ── 枠ごとに軸と系列を組む ──────────────────────────────────────
   // 系列の option。オフセット表示中の棒は土台の系列を挟むので、view.series と
   // option の series は 1 対 1 にならない。ツールチップが元の値へ戻せるよう、
   // option と同じ並びの元データ（土台は null）を tooltipSeries に持つ
   const optionSeries: any[] = [];
   const tooltipSeries: Array<ChartSeriesData | null> = [];
-  view.series.forEach((s, i) => {
-    const sc = config.series[i];
-    const seriesType: SeriesType = isHistogram
-      ? "bar"
-      : ((sc?.type ?? config.chartType) as SeriesType);
-    const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
-    const name = seriesName(i);
-    const points = s.points as Array<[number, number]>;
-    // 段の名前は枠の左右どちらかの端に寄せ、縦はその段が占める範囲の内側に収める。
-    // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
-    const rowExtent = inlineLabelX !== null ? rowExtentInRange(points, xMin, xMax) : null;
-    const inlineLabel = rowExtent !== null;
-    // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
-    // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
-    const baseStyle = resolveSeriesStyle(sc, seriesType);
-    // オフセット表示中だけ既定をマーカー無し・細線・小さめの点に寄せる。スペクトルは
-    // 連続曲線として読むもので、数千点にマーカーを打つと線が潰れるため。
-    // 明示的に設定されているものはそのまま尊重する
-    const style = stackActive
-      ? {
-          ...baseStyle,
-          showSymbol: sc?.showSymbol ?? false,
-          lineWidth: sc?.lineWidth ?? ("thin" as const),
-          symbolSize: sc?.symbolSize ?? ("small" as const),
+  const xAxes: any[] = [];
+  const yAxes: any[] = [];
+
+  panels.forEach((panel, p) => {
+    const col = split ? p % config.panels.cols : 0;
+    const row = split ? Math.floor(p / config.panels.cols) : 0;
+    const showX = layout ? layout.showXAxis[p] : true;
+    const showY = layout ? layout.showYAxis[p] : true;
+    const shared = sharedXExtent(col);
+    // 枠の Y 軸は yAxes の何番目か（第 2 軸を持つ枠があるので枠番号とは一致しない）
+    const yAxisBase = yAxes.length;
+
+    // 段名を段のどの隅に置くか（凡例と同じ選び方で四隅から選ぶ）
+    const inlineLabelAtLeft = panel.stack.labelPosition.endsWith("left");
+    const inlineLabelAtTop = panel.stack.labelPosition.startsWith("top");
+    // 段名を出す横位置。プロット枠の内側にそろえる（論文図の作法）。段ごとの
+    // データの終わりに置くと、段によって名前の位置がずれて図の中に散らばる
+    const inlineLabelX = (() => {
+      if (!panel.stackActive || panel.stack.labels !== "inline") return null;
+      const fixed = inlineLabelAtLeft ? xMin : xMax;
+      if (fixed !== null) return fixed;
+      let edge = inlineLabelAtLeft ? Infinity : -Infinity;
+      for (const s of panel.view.series) {
+        for (const [x] of s.points as Array<[number, number]>) {
+          if (inlineLabelAtLeft ? x < edge : x > edge) edge = x;
         }
-      : baseStyle;
-    // 棒は必ず 0 から立ち上がる（ECharts は系列ごとの起点を持てない）ため、
-    // 段オフセットを値に足しただけだと最下段以外の棒が枠の下端まで伸びてしまう。
-    // 段の高さぶんの透明な棒を土台として敷き、その上に実データを積んで起点をずらす
-    const stackBase = stackActive && seriesType === "bar" ? (s.offset ?? 0) : 0;
-    const stackedData =
-      stackBase !== 0
-        ? points.map(([x, y]) => [x, y - stackBase] as [number, number])
-        : s.points;
-    const baseGroup = `stack-base-${i}`;
-    if (stackBase !== 0) {
+      }
+      return Number.isFinite(edge) ? edge : null;
+    })();
+
+    const leftAxis = {
+      type: "value" as const,
+      name: panel.yName,
+      nameGap: 52,
+      scale: fitAxis,
+      ...(yMin !== null ? { min: yMin } : {}),
+      ...(yMax !== null ? { max: yMax } : {}),
+      ...axisFromDetail(config.yAxisDetail),
+      // 段の高さは a.u.（規格化とオフセットで元の尺度を失う）なので目盛りを出さない。
+      // 範囲はユーザーが明示していればそちらを優先する
+      ...(panel.stackActive
+        ? {
+            axisTick: { show: false },
+            axisLabel: { show: false },
+            splitLine: { show: false },
+            ...(panel.stackRange && yMin === null ? { min: panel.stackRange.min } : {}),
+            ...(panel.stackRange && yMax === null ? { max: panel.stackRange.max } : {}),
+          }
+        : {}),
+      ...(split ? { gridIndex: p } : {}),
+    };
+    const rightAxis = {
+      type: "value" as const,
+      name: panel.yRightName,
+      nameGap: 52,
+      scale: fitAxis,
+      ...(yRightMin !== null ? { min: yRightMin } : {}),
+      ...(yRightMax !== null ? { max: yRightMax } : {}),
+      ...axisFromDetail(config.yRightAxisDetail),
+      ...(split ? { gridIndex: p } : {}),
+    };
+    // 軸名を載せるので、X 軸の詳細はこの枠ぶんを作る
+    const xAxisDetail = axisFromDetail(config.xAxisDetail, panel.xLabel);
+    const trimmedLeftAxis =
+      split && config.panels.joinVertical && row > 0
+        ? trimEdgeLabel(leftAxis, "showMaxLabel")
+        : leftAxis;
+    yAxes.push(showY ? trimmedLeftAxis : hideAxisText(trimmedLeftAxis));
+    if (panel.useRight) yAxes.push(rightAxis);
+
+    const xAxis =
+      result.xAxis === "category"
+        ? { type: "category", data: result.categories, name: panel.xName, nameGap: 34, ...xAxisDetail }
+        : {
+            type: result.xAxis,
+            name: panel.xName,
+            nameGap: 34,
+            // 数値 X 軸はデータ範囲にフィットさせる。既定（0 を含む）だと気圧
+            // 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。
+            // 縦軸と違って棒でも 0 基準にする理由はない（棒の長さは縦方向の量）ので
+            // 種類によらず常にフィットさせる。時間軸は既定でデータ範囲に収まるので
+            // 対象外（scale は value 軸のみ有効）
+            ...(result.xAxis === "value" ? { scale: true } : {}),
+            // min/max を明示していればそちらが優先される（ECharts の既定挙動）
+            ...(xMin !== null ? { min: xMin } : shared ? { min: shared.min } : {}),
+            ...(xMax !== null ? { max: xMax } : shared ? { max: shared.max } : {}),
+            ...xAxisDetail,
+            // 時間軸は既定だと日境界が日番号だけ（"14"）になる。月日を出す
+            ...(result.xAxis === "time"
+              ? {
+                  axisLabel: {
+                    ...xAxisDetail.axisLabel,
+                    formatter: timeAxisLabelFormatter(locale),
+                  },
+                }
+              : {}),
+          };
+    const trimmedXAxis =
+      split && config.panels.joinHorizontal && col > 0
+        ? trimEdgeLabel(xAxis, "showMinLabel")
+        : xAxis;
+    xAxes.push(
+      showX
+        ? { ...trimmedXAxis, ...(split ? { gridIndex: p } : {}) }
+        : { ...hideAxisText(trimmedXAxis), ...(split ? { gridIndex: p } : {}) }
+    );
+
+    panel.view.series.forEach((s, k) => {
+      const i = panel.indices[k];
+      const sc = config.series[i];
+      const seriesType: SeriesType = isHistogram
+        ? "bar"
+        : ((sc?.type ?? config.chartType) as SeriesType);
+      // 色は枠をまたいで通し番号で振る（同じ色が別の枠に出ると別物と読めない）
+      const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
+      const name = seriesNameOf(p, i);
+      const points = s.points as Array<[number, number]>;
+      // 段の名前は枠の左右どちらかの端に寄せ、縦はその段が占める範囲の内側に収める。
+      // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
+      const rowExtent = inlineLabelX !== null ? rowExtentInRange(points, xMin, xMax) : null;
+      const inlineLabel = rowExtent !== null;
+      // 系列ごとの見た目（線種・線幅・マーカー・棒幅・積み上げ）。未設定は
+      // 従来の描画と同じ値に解決されるので、既存ノートの図は変わらない
+      const baseStyle = resolveSeriesStyle(sc, seriesType);
+      // オフセット表示中だけ既定をマーカー無し・細線・小さめの点に寄せる。スペクトルは
+      // 連続曲線として読むもので、数千点にマーカーを打つと線が潰れるため。
+      // 明示的に設定されているものはそのまま尊重する
+      const style = panel.stackActive
+        ? {
+            ...baseStyle,
+            showSymbol: sc?.showSymbol ?? false,
+            lineWidth: sc?.lineWidth ?? ("thin" as const),
+            symbolSize: sc?.symbolSize ?? ("small" as const),
+          }
+        : baseStyle;
+      // 棒は必ず 0 から立ち上がる（ECharts は系列ごとの起点を持てない）ため、
+      // 段オフセットを値に足しただけだと最下段以外の棒が枠の下端まで伸びてしまう。
+      // 段の高さぶんの透明な棒を土台として敷き、その上に実データを積んで起点をずらす
+      const stackBase = panel.stackActive && seriesType === "bar" ? (s.offset ?? 0) : 0;
+      const stackedData =
+        stackBase !== 0
+          ? points.map(([x, y]) => [x, y - stackBase] as [number, number])
+          : s.points;
+      const baseGroup = `stack-base-${i}`;
+      // 枠ごとに軸の番号が違うので、系列にも割り当て先を書く
+      const axisIndex = split
+        ? { xAxisIndex: p, yAxisIndex: yAxisBase + (panel.useRight && sc?.axis === "right" ? 1 : 0) }
+        : panel.useRight
+          ? { yAxisIndex: sc?.axis === "right" ? 1 : 0 }
+          : {};
+      if (stackBase !== 0) {
+        optionSeries.push({
+          name: `__${baseGroup}`,
+          type: "bar",
+          stack: baseGroup,
+          silent: true,
+          data: points.map(([x]) => [x, stackBase] as [number, number]),
+          itemStyle: { opacity: 0 },
+          ...axisIndex,
+          ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
+        });
+        // ツールチップでは土台の行を出さない
+        tooltipSeries.push(null);
+      }
       optionSeries.push({
-        name: `__${baseGroup}`,
-        type: "bar",
-        stack: baseGroup,
-        silent: true,
-        data: points.map(([x]) => [x, stackBase] as [number, number]),
-        itemStyle: { opacity: 0 },
-        ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
-      });
-      // ツールチップでは土台の行を出さない
-      tooltipSeries.push(null);
-    }
-    optionSeries.push({
-      name,
-      type: seriesType,
-      data: stackedData,
-      connectNulls: false,
-      ...(useRight ? { yAxisIndex: sc?.axis === "right" ? 1 : 0 } : {}),
-      ...(seriesType === "line"
-        ? {
-            showSymbol: style.showSymbol,
-            symbol: style.symbol,
-            symbolSize: CHART_SYMBOL_SIZES.line[style.symbolSize],
-            lineStyle: { width: CHART_LINE_WIDTHS[style.lineWidth], type: style.lineType },
-          }
-        : {}),
-      ...(seriesType === "scatter"
-        ? { symbol: style.symbol, symbolSize: CHART_SYMBOL_SIZES.scatter[style.symbolSize] }
-        : {}),
-      // 分布（ヒストグラム）は階級幅が棒の幅を決める図なので、幅・積み上げは持たせない
-      ...(seriesType === "bar" && !isHistogram
-        ? {
-            ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
-            // 段の土台を敷いた棒はそのグループに積む（スペクトル比較が優先。
-            // 系列どうしの積み上げは段の中で意味を持たない）。
-            // 通常の積み上げは軸ごとにグループを分ける（左右をまたぐと目盛りと合わない）
-            ...(stackBase !== 0
-              ? { stack: baseGroup }
-              : style.stacked
-                ? { stack: sc?.axis === "right" ? "right" : "left" }
-                : {}),
-          }
-        : {}),
-      ...(isHistogram
-        ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
-        : {}),
-      // 段の名前は段の四隅のどこかに置く。凡例より段との対応が一目で分かる。
-      // symbol: "none" にするとラベルごと描かれないので、大きさ 0 の点に付ける
-      ...(inlineLabel
-        ? {
-            markPoint: {
-              silent: true,
-              animation: false,
-              symbol: "circle",
-              symbolSize: 0,
-              label: {
-                show: true,
-                // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
-                formatter: () => textOf(seriesLabel(i)),
-                ...(isRich(seriesLabel(i)) ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
-                // 枠の内側へ入れ、縦は段の内側へ落とし込む（上端の下・下端の上）
-                position: inlineLabelAtLeft ? "right" : "left",
-                offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? 12 : -12],
-                fontSize: CHART_FONT_SIZE,
-                color,
+        name,
+        type: seriesType,
+        data: stackedData,
+        connectNulls: false,
+        ...axisIndex,
+        ...(seriesType === "line"
+          ? {
+              showSymbol: style.showSymbol,
+              symbol: style.symbol,
+              symbolSize: CHART_SYMBOL_SIZES.line[style.symbolSize],
+              lineStyle: { width: CHART_LINE_WIDTHS[style.lineWidth], type: style.lineType },
+            }
+          : {}),
+        ...(seriesType === "scatter"
+          ? { symbol: style.symbol, symbolSize: CHART_SYMBOL_SIZES.scatter[style.symbolSize] }
+          : {}),
+        // 分布（ヒストグラム）は階級幅が棒の幅を決める図なので、幅・積み上げは持たせない
+        ...(seriesType === "bar" && !isHistogram
+          ? {
+              ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
+              // 段の土台を敷いた棒はそのグループに積む（スペクトル比較が優先。
+              // 系列どうしの積み上げは段の中で意味を持たない）。
+              // 通常の積み上げは軸ごとにグループを分ける（左右をまたぐと目盛りと合わない）
+              ...(stackBase !== 0
+                ? { stack: baseGroup }
+                : style.stacked
+                  ? { stack: `${p}-${sc?.axis === "right" ? "right" : "left"}` }
+                  : {}),
+            }
+          : {}),
+        ...(isHistogram
+          ? { barCategoryGap: "0%", itemStyle: { borderColor: "#ffffff", borderWidth: 1 } }
+          : {}),
+        // 段の名前は段の四隅のどこかに置く。凡例より段との対応が一目で分かる。
+        // symbol: "none" にするとラベルごと描かれないので、大きさ 0 の点に付ける
+        ...(inlineLabel
+          ? {
+              markPoint: {
+                silent: true,
+                animation: false,
+                symbol: "circle",
+                symbolSize: 0,
+                label: {
+                  show: true,
+                  // 文字列を渡すと {b} 等がテンプレートとして解釈されるため関数で返す
+                  formatter: () => textOf(seriesLabelOf(p, i)),
+                  ...(isRich(seriesLabelOf(p, i)) ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
+                  // 枠の内側へ入れ、縦は段の内側へ落とし込む（上端の下・下端の上）
+                  position: inlineLabelAtLeft ? "right" : "left",
+                  offset: [inlineLabelAtLeft ? 4 : -4, inlineLabelAtTop ? 12 : -12],
+                  fontSize: CHART_FONT_SIZE,
+                  color,
+                },
+                // 横は全段で同じ（枠の左右どちらかの端）、縦はその段の上端／下端
+                data: [{ coord: [inlineLabelX, inlineLabelAtTop ? rowExtent.max : rowExtent.min] }],
               },
-              // 横は全段で同じ（枠の左右どちらかの端）、縦はその段の上端／下端
-              data: [{ coord: [inlineLabelX, inlineLabelAtTop ? rowExtent.max : rowExtent.min] }],
-            },
-          }
-        : {}),
-      color,
+            }
+          : {}),
+        color,
+      });
+      // 土台を敷いた系列は描画値から段オフセットを抜いてあるので、戻す量も 0
+      tooltipSeries.push(stackBase !== 0 ? { ...s, offset: 0 } : s);
     });
-    // 土台を敷いた系列は描画値から段オフセットを抜いてあるので、戻す量も 0
-    tooltipSeries.push(stackBase !== 0 ? { ...s, offset: 0 } : s);
   });
+
+  const frame = {
+    show: config.showFrame,
+    borderColor: CHART_FRAME,
+    borderWidth: CHART_FRAME_WIDTH,
+    z: 10,
+  };
 
   return {
     animation: false,
     textStyle: { fontFamily, fontSize: CHART_FONT_SIZE, color: CHART_INK },
-    grid: {
-      show: config.showFrame,
-      borderColor: CHART_FRAME,
-      borderWidth: CHART_FRAME_WIDTH,
-      z: 10,
-      left: gridLeft,
-      right: gridRight,
-      top: gridTop,
-      bottom: gridBottom,
-    },
+    grid: layout
+      ? layout.grids.map((g) => ({ ...frame, ...g }))
+      : {
+          ...frame,
+          left: gridLeft,
+          right: gridRight,
+          top: gridTop,
+          bottom: gridBottom,
+        },
     tooltip: {
       trigger: config.chartType === "scatter" ? "item" : "axis",
       axisPointer: {
@@ -915,7 +1154,7 @@ function buildOption(
       // 時間軸の値は epoch ms なので、既定のままだと散布図で生の数値が出る。
       // 見出しに完全な日時を出して 1 点を同定できるようにする。
       // スタック中は描画値が規格化済みなので、元の値に戻して出す
-      ...(stackActive
+      ...(anyStackActive
         ? { formatter: stackTooltipFormatter(locale, result.xAxis, tooltipSeries) }
         : result.xAxis === "time"
           ? { formatter: timeTooltipFormatter(locale) }
@@ -925,8 +1164,11 @@ function buildOption(
       ? {
           show: true,
           // 土台の系列（オフセット表示の棒）は凡例に出さない
-          data: view.series.map((_, i) => seriesName(i)),
+          data: legendNames,
           orient: config.legendOrient,
+          // 実寸が分かっているときだけ幅を絞る（見積もりと同じ位置で折り返させ、
+          // 右上の設定ボタンに潜り込ませない）
+          ...(legendWidth > 0 && config.legendOrient === "horizontal" ? { width: legendWidth } : {}),
           ...legendLayout,
           itemWidth: CHART_LEGEND_ITEM.width,
           itemHeight: CHART_LEGEND_ITEM.height,
@@ -943,33 +1185,8 @@ function buildOption(
           z: 12,
         }
       : { show: false },
-    xAxis:
-      result.xAxis === "category"
-        ? { type: "category", data: result.categories, nameGap: 34, ...xAxisDetail }
-        : {
-            type: result.xAxis,
-            nameGap: 34,
-            // 数値 X 軸はデータ範囲にフィットさせる。既定（0 を含む）だと気圧
-            // 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。
-            // 縦軸と違って棒でも 0 基準にする理由はない（棒の長さは縦方向の量）ので
-            // 種類によらず常にフィットさせる。時間軸は既定でデータ範囲に収まるので
-            // 対象外（scale は value 軸のみ有効）
-            ...(result.xAxis === "value" ? { scale: true } : {}),
-            // min/max を明示していればそちらが優先される（ECharts の既定挙動）
-            ...(xMin !== null ? { min: xMin } : {}),
-            ...(xMax !== null ? { max: xMax } : {}),
-            ...xAxisDetail,
-            // 時間軸は既定だと日境界が日番号だけ（"14"）になる。月日を出す
-            ...(result.xAxis === "time"
-              ? {
-                  axisLabel: {
-                    ...xAxisDetail.axisLabel,
-                    formatter: timeAxisLabelFormatter(locale),
-                  },
-                }
-              : {}),
-          },
-    yAxis: useRight ? [leftAxis, rightAxis] : leftAxis,
+    xAxis: split ? xAxes : xAxes[0],
+    yAxis: split ? yAxes : panels[0]?.useRight ? yAxes : yAxes[0],
     series: optionSeries,
   };
 }
@@ -1083,7 +1300,7 @@ function ChartCanvas({
 
   useEffect(() => {
     if (!chart) return;
-    chart.setOption(buildOption(result, config, tables), true);
+    chart.setOption(buildOption(result, config, tables, { width, height }), true);
     chart.resize();
   }, [chart, result, config, tables, width, height]);
 
