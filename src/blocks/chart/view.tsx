@@ -744,10 +744,11 @@ export function buildOption(
   // 全枠の縦軸名が同じなら、枠ごとに出さず図の左に 1 つだけ置く（N×1 に同じ
   // "Intensity" が縦に並ぶのを避ける）。判定は文字列の一致という離散な条件なので、
   // なぜ 1 つになったのかをユーザーが説明できる。設定は増やさない
-  const sharedYName =
+  const sharedYLabel =
     panels.length > 1 && panels[0].yName !== "" && panels.every((p) => p.yName === panels[0].yName)
-      ? panels[0].yName
+      ? panels[0].yLabel
       : null;
+  const sharedYName = sharedYLabel?.text ?? null;
 
   const anyStackActive = panels.some((p) => p.stackActive);
   const anyInlineStackLabels = panels.some((p) => p.stackActive && p.stack.labels === "inline");
@@ -1202,7 +1203,7 @@ export function buildOption(
   // 共有した縦軸名。枠をまたぐので軸には載せられず、図全体の座標に回転テキストで置く。
   // 縦位置は全枠の上端〜下端の中央
   const sharedYNameGraphic = (() => {
-    if (sharedYName === null || !layout) return [];
+    if (sharedYLabel === null || !layout) return [];
     const top = Math.min(...layout.grids.map((g) => g.top));
     const bottom = Math.max(...layout.grids.map((g) => g.top + g.height));
     return [
@@ -1212,11 +1213,13 @@ export function buildOption(
         top: (top + bottom) / 2,
         rotation: Math.PI / 2,
         style: {
-          text: sharedYName,
+          // 軸に載せる名前と同じ扱い。人が書いた名前なら LaTeX 記法を解釈する
+          text: textOf(sharedYLabel),
           fontSize: CHART_FONT_SIZE,
           fill: CHART_INK,
           align: "center" as const,
           verticalAlign: "middle" as const,
+          ...(isRich(sharedYLabel) ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
         },
         z: 11,
         silent: true,
