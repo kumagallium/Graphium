@@ -13,6 +13,7 @@ import {
   type ChartBlockConfig,
 } from "./chart-config";
 import type { ChartDataResult } from "./chart-data";
+import { PANEL_LABEL_INSET } from "./chart-theme";
 
 type OkResult = Extract<ChartDataResult, { kind: "ok" }>;
 
@@ -265,6 +266,14 @@ describe("buildOption（枠の分割）", () => {
         expect(title.left).toBeLessThanOrEqual(g.left + g.width);
         expect(title.top).toBeGreaterThanOrEqual(g.top);
         expect(title.top).toBeLessThanOrEqual(g.top + g.height);
+        // 内側への寄せ幅は隅ごとに違う。文字の墨がボックスの縁に接するかどうかが
+        // 上下左右で違うため、同じ数字だと下と右だけ詰まって見える
+        const inset = labelPosition.endsWith("left")
+          ? title.left - g.left
+          : g.left + g.width - title.left;
+        expect(inset).toBe(
+          labelPosition.endsWith("left") ? PANEL_LABEL_INSET.left : PANEL_LABEL_INSET.right
+        );
       }
     }
   });

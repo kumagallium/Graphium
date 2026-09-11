@@ -47,6 +47,7 @@ import {
   CHART_GRID_LINE,
   CHART_INK,
   CHART_LEGEND_ITEM,
+  PANEL_LABEL_INSET,
   CHART_LINE_WIDTHS,
   CHART_SERIES_COLORS,
   CHART_SYMBOL_SIZES,
@@ -1112,8 +1113,12 @@ export function buildOption(
     layout && config.panels.showPanelLabels
       ? layout.grids.map((g, i) => ({
           text: `(${String.fromCharCode(97 + (i % 26))})`,
-          left: panelLabelAtLeft ? g.left + 8 : g.left + g.width - 8,
-          top: panelLabelAtTop ? g.top + 6 : g.top + g.height - 6,
+          left: panelLabelAtLeft
+            ? g.left + PANEL_LABEL_INSET.left
+            : g.left + g.width - PANEL_LABEL_INSET.right,
+          top: panelLabelAtTop
+            ? g.top + PANEL_LABEL_INSET.top
+            : g.top + g.height - PANEL_LABEL_INSET.bottom,
           // left / top をどの角として扱うかは title の textAlign / textVerticalAlign。
           // textStyle の align は「題の中での行揃え」で、置く位置は動かない
           //（右下に指定しても文字が left/top から右下へ伸び、枠からはみ出す）
