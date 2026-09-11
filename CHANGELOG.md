@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.72.1](https://github.com/kumagallium/Graphium/compare/v0.72.0...v0.72.1) - 2026-09-11
+
+- Fix italic axis names, and show where the focus is in the settings panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/913
+
 ## [v0.72.0](https://github.com/kumagallium/Graphium/compare/v0.71.0...v0.72.0) - 2026-09-11
 
 - [feat] 計算ブロックに多項式フィッティングを足す by @kumagallium in https://github.com/kumagallium/Graphium/pull/910
