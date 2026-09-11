@@ -2354,6 +2354,7 @@ export const en: Record<string, string> = {
   "chart.panelJoinHorizontal": "Join panels horizontally",
   "chart.panelJoinHint": "Joined panels share that axis, and only the outer panel carries its ticks",
   "chart.panelTarget": "Panel",
+  "chart.axisPanelHint": "Axis names and ranges belong to each panel. A joined direction shares them across its panels",
   "chart.panelName": "Panel {n}",
   "chart.seriesPanel": "Panel",
   "chart.sectionStack": "Offset",

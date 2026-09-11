@@ -56,7 +56,9 @@ import {
   assetSourceKey,
   assetSourceLabel,
   isAssetSourceKey,
+  axisOwnerPanel,
   isPanelStackActive,
+  panelAxis,
   panelCount,
   parseChartBlockConfig,
   pruneAssetSources,
@@ -583,14 +585,25 @@ export function buildOption(
   const derived = (text: string): DisplayLabel => ({ text, authored: false });
   const authored = (text: string): DisplayLabel => ({ text, authored: true });
 
-  const yMin = parseNumeric(config.yMin);
-  const yMax = parseNumeric(config.yMax);
-  const yRightMin = parseNumeric(config.yRightMin);
-  const yRightMax = parseNumeric(config.yRightMax);
   // X 軸の min/max。時間軸は日時文字列、数値軸は数値として読む（カテゴリ軸は対象外）
   const parseX = result.xAxis === "time" ? parseDateTime : parseNumeric;
-  const xMin = result.xAxis !== "category" ? parseX(config.xMin) : null;
-  const xMax = result.xAxis !== "category" ? parseX(config.xMax) : null;
+  const parseXBound = (raw: string) => (result.xAxis !== "category" ? parseX(raw) : null);
+  // 軸の名前と範囲は枠ごと。つなげた向きは端の枠が持ち主なので、同じ値に解決される
+  const axisOf = (panelIndex: number) => {
+    const x = panelAxis(config, axisOwnerPanel(config.panels, panelIndex, "x"));
+    const y = panelAxis(config, axisOwnerPanel(config.panels, panelIndex, "y"));
+    return {
+      xAxisName: x.xAxisName,
+      xMin: parseXBound(x.xMin),
+      xMax: parseXBound(x.xMax),
+      yAxisName: y.yAxisName,
+      yMin: parseNumeric(y.yMin),
+      yMax: parseNumeric(y.yMax),
+      yRightAxisName: y.yRightAxisName,
+      yRightMin: parseNumeric(y.yRightMin),
+      yRightMax: parseNumeric(y.yRightMax),
+    };
+  };
 
   // 折れ線・散布図の値軸はデータ範囲にフィットさせる（scale: true = 0 を含む強制を
   // 外す）。気圧 ~1000 hPa のような系列が 0 起点で上に張り付くのを防ぐ。
@@ -619,6 +632,8 @@ export function buildOption(
     stackRange: { min: number; max: number } | null;
     /** この枠のデータが占める X の範囲（つなげたときの共有範囲の計算に使う） */
     xExtent: { min: number; max: number } | null;
+    /** 明示された名前・範囲（つなげた向きは持ち主の枠のもの） */
+    axis: ReturnType<typeof axisOf>;
   };
 
   const panels: PanelBuild[] = [];
@@ -647,9 +662,10 @@ export function buildOption(
       : sub;
 
     // X 軸名の自動値: histogram は対象列、それ以外は枠の中で共通の X 列名
+    const axis = axisOf(p);
     const xColumns = [...new Set(panelSeries.map((s) => (isHistogram ? s?.yColumn : s?.xColumn)))];
-    const xLabel: DisplayLabel = config.xAxisName.trim()
-      ? authored(config.xAxisName.trim())
+    const xLabel: DisplayLabel = axis.xAxisName.trim()
+      ? authored(axis.xAxisName.trim())
       : derived(xColumns.length === 1 ? (xColumns[0] ?? "") : "");
 
     const leftSeries = panelSeries.filter((s) => s?.axis !== "right");
@@ -658,8 +674,8 @@ export function buildOption(
     // 系列名を軸名に流用しない。名前を出すならユーザーが明示する。
     // 枠を分けた図では軸名も枠ごとに決まる（σ・S・PF・κ を並べるとき、
     // 明示していなければ各枠が自分の系列名を名乗る）
-    const yLabel: DisplayLabel = config.yAxisName.trim()
-      ? authored(config.yAxisName.trim())
+    const yLabel: DisplayLabel = axis.yAxisName.trim()
+      ? authored(axis.yAxisName.trim())
       : stackActive
         ? derived("")
         : isHistogram
@@ -668,8 +684,8 @@ export function buildOption(
             ? // 系列の表示名を軸名に流用するときは、その名前の出どころごと引き継ぐ
               seriesConfigDisplayLabel(leftSeries[0])
             : derived("");
-    const yRightLabel: DisplayLabel = config.yRightAxisName.trim()
-      ? authored(config.yRightAxisName.trim())
+    const yRightLabel: DisplayLabel = axis.yRightAxisName.trim()
+      ? authored(axis.yRightAxisName.trim())
       : rightSeries.length === 1 && rightSeries[0]
         ? seriesConfigDisplayLabel(rightSeries[0])
         : derived("");
@@ -720,6 +736,7 @@ export function buildOption(
       yRightName: yRightLabel.text,
       stackRange,
       xExtent,
+      axis,
     });
   }
 
@@ -901,6 +918,7 @@ export function buildOption(
     const showX = layout ? layout.showXAxis[p] : true;
     const showY = layout ? layout.showYAxis[p] : true;
     const shared = sharedXExtent(col);
+    const { xMin, xMax, yMin, yMax, yRightMin, yRightMax } = panel.axis;
     // 枠の Y 軸は yAxes の何番目か（第 2 軸を持つ枠があるので枠番号とは一致しない）
     const yAxisBase = yAxes.length;
 

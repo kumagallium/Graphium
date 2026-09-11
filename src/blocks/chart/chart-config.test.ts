@@ -19,6 +19,9 @@ import {
   seriesPanelIndex,
   stackConfigForPanel,
   withStackConfigForPanel,
+  axisOwnerPanel,
+  panelAxis,
+  withPanelAxis,
   assetSourceKey,
   isAssetSourceKey,
   assetFileIdFromKey,
@@ -493,5 +496,62 @@ describe("素材ソース（assetSources / asset: キー）", () => {
     expect(round.panels).toEqual(DEFAULT_PANELS_CONFIG);
     expect(round.panelStacks).toEqual([]);
     expect(stackConfigForPanel(round, 0).enabled).toBe(true);
+  });
+
+  it("軸設定の持ち主は、つなげた向きでは端の枠になる", () => {
+    // 2×2。枠は行優先で 0=左上 1=右上 2=左下 3=右下
+    const base = { ...DEFAULT_PANELS_CONFIG, rows: 2, cols: 2 };
+    // つなげていなければ、どの枠も自分の設定を持つ
+    expect(axisOwnerPanel(base, 3, "x")).toBe(3);
+    expect(axisOwnerPanel(base, 3, "y")).toBe(3);
+    // 縦につなげた列は X を共有する（持ち主は最上段）
+    const joinedV = { ...base, joinVertical: true };
+    expect(axisOwnerPanel(joinedV, 2, "x")).toBe(0);
+    expect(axisOwnerPanel(joinedV, 3, "x")).toBe(1);
+    // Y は共有しないので枠ごとのまま
+    expect(axisOwnerPanel(joinedV, 3, "y")).toBe(3);
+    // 横につなげた行は Y を共有する（持ち主は左端）
+    const joinedH = { ...base, joinHorizontal: true };
+    expect(axisOwnerPanel(joinedH, 3, "y")).toBe(2);
+    expect(axisOwnerPanel(joinedH, 1, "y")).toBe(0);
+  });
+
+  it("枠の軸設定は未指定ならチャート側に落ちる", () => {
+    const config = {
+      ...DEFAULT_CHART_CONFIG,
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+      yAxisName: "Intensity",
+      yMin: "0",
+    };
+    // 分割した直後は、どの枠も今までと同じ設定から始まる
+    expect(panelAxis(config, 1).yAxisName).toBe("Intensity");
+    expect(panelAxis(config, 1).yMin).toBe("0");
+
+    const updated = withPanelAxis(config, 1, { yAxisName: "κ (W/mK)", yMin: "" });
+    expect(panelAxis(updated, 1).yAxisName).toBe("κ (W/mK)");
+    // 空文字は「自動」を意味する有効な値。チャート側の "0" に落ちてはいけない
+    expect(panelAxis(updated, 1).yMin).toBe("");
+    // 枠 0 は動かない
+    expect(panelAxis(updated, 0).yAxisName).toBe("Intensity");
+    expect(updated.yAxisName).toBe("Intensity");
+  });
+
+  it("枠 0 への書き込みは既存のトップレベルのキーに入る", () => {
+    const config = { ...DEFAULT_CHART_CONFIG, panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 } };
+    const updated = withPanelAxis(config, 0, { yAxisName: "σ (S/cm)" });
+    expect(updated.yAxisName).toBe("σ (S/cm)");
+    expect(updated.panelAxes).toEqual([]);
+  });
+
+  it("panelAxes は往復しても壊れない", () => {
+    const config = {
+      ...DEFAULT_CHART_CONFIG,
+      panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+      panelAxes: [{ yAxisName: "κ", yMin: "1", yMax: "" }],
+    };
+    const round = parseChartBlockConfig(serializeChartBlockConfig(config));
+    expect(round.panelAxes).toEqual([{ yAxisName: "κ", yMin: "1", yMax: "" }]);
+    // 壊れた要素は空として読む（描けなくなるより既定で描く）
+    expect(parseChartBlockConfig('{"panelAxes":[null,{"yMin":5}]}').panelAxes).toEqual([{}, {}]);
   });
 });
