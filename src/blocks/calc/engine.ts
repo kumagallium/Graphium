@@ -23,6 +23,8 @@ export type CalcLineResult = {
   text?: string;
   /** 値は返せたが注意が要るとき（フィット範囲外の外挿など）の一言 */
   warn?: string;
+  /** 行に収まらない補足（フィットの適用範囲など）。hover で読ませる */
+  detail?: string;
 };
 
 export function isCommentLine(line: string): boolean {
@@ -48,7 +50,7 @@ function formatValue(math: Awaited<ReturnType<typeof loadMathJs>>, value: unknow
   // 関数定義（`f(x) = x^2`）などは値表示せずシグネチャだけ見せる
   if (typeof value === "function") return "ƒ";
   // フィットは係数の羅列より次数・当てはまり・適用範囲のほうが判断に効く
-  if (isPolyFit(value)) return formatFit(value, t);
+  if (isPolyFit(value)) return formatFit(value, t).text;
   if (value === undefined) return "";
   return math.format(value, { notation: "auto", precision: 8 });
 }
@@ -212,6 +214,8 @@ export async function evaluateSource(
     try {
       const value = math.evaluate(trimmed, scope);
       const result: CalcLineResult = { kind: "value", text: formatValue(math, value) };
+      // 行に収まらない適用範囲は hover に逃がす（結果カラムは左が切れるため）
+      if (isPolyFit(value)) result.detail = formatFit(value, t).detail;
       // 外挿は値を返した上で警告する。throw にすると後続の ZT 計算ごと落ちる
       const extrapolated = fit.takeExtrapolation();
       if (extrapolated) {

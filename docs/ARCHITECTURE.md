@@ -112,7 +112,10 @@ talks to LLM and embedding backends.
   computing *ZT* requires fitting one quantity and re-evaluating it at the
   other's temperatures. `polyfit` returns a fit object rather than bare
   coefficients, so the normalisation, the coefficient of determination and the
-  fitted range travel with it. Three properties matter for correctness:
+  fitted range travel with it. The result line shows the degree and R²; the
+  fitted range moves to `CalcLineResult.detail` and is read on hover, because
+  the results column is capped at 45% of the block and clips long lines from
+  the left. Three properties matter for correctness:
   - **Conditioning.** The fit is solved in a centred, scaled basis
     `u = (x - center) / scale` with `u` in `[-1, 1]`. Solving a degree-4 fit
     directly over, say, 300–800 K gives a Vandermonde system with a condition

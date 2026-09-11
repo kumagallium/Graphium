@@ -368,16 +368,25 @@ export function formatBound(v: number): string {
   return String(Math.round(v * 1000) / 1000);
 }
 
-/** フィットの結果表示。係数の羅列ではなく、次数・当てはまり・適用範囲を見せる */
+/**
+ * フィットの結果表示。係数の羅列ではなく、次数・当てはまり・適用範囲を見せる。
+ *
+ * 結果カラムは幅が 45% までで、長い行は**左が切れる**（右揃え + overflow）。
+ * 次数と当てはまりは一目で要るので行に出し、適用範囲と点数は hover の詳細に回す。
+ */
 export function formatFit(
   fit: PolyFit,
   label: (key: string, params?: Record<string, string>) => string,
-): string {
-  return label("calc.fitSummary", {
-    degree: String(fit.degree),
-    r2: Number.isFinite(fit.r2) ? fit.r2.toFixed(4) : "—",
-    min: formatBound(fit.xMin),
-    max: formatBound(fit.xMax),
-    n: String(fit.n),
-  });
+): { text: string; detail: string } {
+  return {
+    text: label("calc.fitSummary", {
+      degree: String(fit.degree),
+      r2: Number.isFinite(fit.r2) ? fit.r2.toFixed(4) : "—",
+    }),
+    detail: label("calc.fitDetail", {
+      min: formatBound(fit.xMin),
+      max: formatBound(fit.xMax),
+      n: String(fit.n),
+    }),
+  };
 }

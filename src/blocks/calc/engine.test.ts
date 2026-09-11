@@ -160,14 +160,22 @@ describe("多項式フィットで測定温度をそろえる", () => {
     ].join("\n");
     const { lines, exports } = await evaluateSource(source, tables, ["kappaE", "ZT"]);
     expect(lines.map((r) => r.kind)).toEqual(["value", "value", "value"]);
-    // フィット行は係数の羅列ではなく、次数・当てはまり・範囲を見せる
+    // フィット行は係数の羅列ではなく、次数と当てはまりを見せる
     expect(lines[0].text).toContain("4");
-    expect(lines[0].text).toContain("300");
-    expect(lines[0].text).toContain("800");
+    expect(lines[0].text).toContain("R²");
+    // 適用範囲は行に収まらないので hover 用の補足に回す
+    expect(lines[0].detail).toContain("300");
+    expect(lines[0].detail).toContain("800");
+    expect(lines[0].detail).toContain("11");
     // 電気特性側の温度点の数だけ値が並び、そのまま列に書き戻せる
     expect(exports.kappaE).toHaveLength(elecT.length);
     expect(exports.ZT).toHaveLength(elecT.length);
     expect(Number(exports.kappaE[0])).toBeCloseTo(kappaModel(323), 6);
+  });
+
+  it("フィット以外の行には補足を付けない", async () => {
+    const { lines } = await evaluateSource("1 + 1");
+    expect(lines[0].detail).toBeUndefined();
   });
 
   it("フィット範囲の外で評価した行には警告が付く（値は返す）", async () => {

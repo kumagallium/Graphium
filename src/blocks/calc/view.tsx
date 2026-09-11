@@ -388,7 +388,7 @@ export const CalcBlock = createReactBlockSpec(
                     <div key={i} style={{ ...styles.resultLine, ...styles.resultRow }}>
                       <span
                         style={styles.resultValue}
-                        title={t("calc.clickToCopy")}
+                        title={r.detail ?? t("calc.clickToCopy")}
                         onClick={() => copyResult(i, r.text ?? "")}
                       >
                         {copiedLine === i ? t("calc.copied") : r.text || " "}
