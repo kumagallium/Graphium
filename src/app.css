@@ -1128,3 +1128,14 @@ body.gph-col-resizing * {
     display: none;
   }
 }
+
+/* 設定パネルの入力欄のフォーカス。
+   パネルはインラインスタイルで組んでいて :focus を書けないので、ここだけ CSS に置く。
+   outline を消したままなのは、角丸からはみ出さずに済むため。代わりに枠線と淡い環で
+   「いまここに入力できる」を見せる。これが無いと、空欄（表示名や軸名は既定が空で
+   プレースホルダだけ）では変化がキャレットの色だけになり、触れるのかが分からない。 */
+.gph-settings-input:focus {
+  /* 枠線の色はここからは変えられない（パネル側の inline style が勝つ）ので、
+     手応えは環だけで出す */
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-ring) 30%, transparent);
+}
