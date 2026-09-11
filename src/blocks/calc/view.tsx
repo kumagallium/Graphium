@@ -22,7 +22,7 @@
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
-import { ArrowRightToLine, Calculator, Check, ChevronRight } from "lucide-react";
+import { AlertTriangle, ArrowRightToLine, Calculator, Check, ChevronRight } from "lucide-react";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
 import {
   assignedVariableOf,
@@ -393,6 +393,12 @@ export const CalcBlock = createReactBlockSpec(
                       >
                         {copiedLine === i ? t("calc.copied") : r.text || " "}
                       </span>
+                      {/* 値は出せたが鵜呑みにできない行（フィット範囲外の外挿など） */}
+                      {r.warn && (
+                        <span style={styles.resultWarn} title={r.warn} role="img" aria-label={t("calc.warnMark")}>
+                          <AlertTriangle size={12} strokeWidth={2} />
+                        </span>
+                      )}
                       {editable && (
                         <button
                           type="button"
@@ -696,6 +702,12 @@ const styles: Record<string, React.CSSProperties> = {
   resultValue: {
     color: "var(--color-primary)",
     cursor: "pointer",
+  },
+  resultWarn: {
+    display: "inline-flex",
+    alignItems: "center",
+    color: "var(--color-warning)",
+    cursor: "help",
   },
   writebackBtn: {
     display: "inline-flex",

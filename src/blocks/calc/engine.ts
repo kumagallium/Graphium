@@ -8,6 +8,9 @@
 // - エラーは行単位で表示し、他の行の評価は止めない
 
 import { loadMathJs } from "./mathjs-loader";
+import { createFitFunctions, formatBound, formatFit, isPolyFit } from "./fit";
+import type { UnitAdapter } from "./fit";
+import { t } from "../../i18n";
 import type {
   TableColumnData,
   TableColumnsIndex,
@@ -18,6 +21,8 @@ export type CalcLineResult = {
   kind: "empty" | "comment" | "value" | "error";
   /** kind === "value" のときの整形済み結果 */
   text?: string;
+  /** 値は返せたが注意が要るとき（フィット範囲外の外挿など）の一言 */
+  warn?: string;
 };
 
 export function isCommentLine(line: string): boolean {
@@ -42,6 +47,8 @@ export function parseCalcResults(raw: string): CalcLineResult[] {
 function formatValue(math: Awaited<ReturnType<typeof loadMathJs>>, value: unknown): string {
   // 関数定義（`f(x) = x^2`）などは値表示せずシグネチャだけ見せる
   if (typeof value === "function") return "ƒ";
+  // フィットは係数の羅列より次数・当てはまり・適用範囲のほうが判断に効く
+  if (isPolyFit(value)) return formatFit(value, t);
   if (value === undefined) return "";
   return math.format(value, { notation: "auto", precision: 8 });
 }
@@ -58,6 +65,50 @@ function toMathColumn(math: Awaited<ReturnType<typeof loadMathJs>>, data: TableC
     }
   }
   return data.values;
+}
+
+/**
+ * mathjs の素のエラーのうち、列（配列）を扱うときに必ず踏むものだけ言い換える。
+ * `S^2` は mathjs では行列冪なので 1 次元の列に使うと "A must be 2 dimensional" で
+ * 落ちる。列ごとの計算には `.^` / `.*` / `./` が要る、と言えないと自力で抜けられない。
+ */
+function explainError(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  if (/For A\^b, A must be 2 dimensional/.test(message)) return t("calc.errorElementwisePow");
+  if (/Dimension mismatch in multiplication/.test(message)) return t("calc.errorElementwiseMul");
+  return message;
+}
+
+/**
+ * フィット関数に渡す単位の窓口。mathjs の Unit をここだけで扱い、fit.ts は
+ * mathjs に依存しないでおく（テストが軽くなり、単位の扱いも 1 か所に閉じる）。
+ */
+function unitAdapterFor(math: Awaited<ReturnType<typeof loadMathJs>>): UnitAdapter {
+  const asUnit = (v: unknown): { toNumber: (u: string) => number; formatUnits: () => string } | null => {
+    if (!v || typeof v !== "object") return null;
+    const u = v as { toNumber?: unknown; formatUnits?: unknown };
+    return typeof u.toNumber === "function" && typeof u.formatUnits === "function"
+      ? (v as { toNumber: (u: string) => number; formatUnits: () => string })
+      : null;
+  };
+  return {
+    unitOf: (v) => {
+      const u = asUnit(v);
+      if (!u) return null;
+      try {
+        return u.formatUnits() || null;
+      } catch {
+        return null;
+      }
+    },
+    toNumberIn: (v, unit) => {
+      const u = asUnit(v);
+      if (!u) return typeof v === "number" ? v : NaN;
+      // 換算できない単位同士（K と g など）はここで throw し、行のエラーになる
+      return u.toNumber(unit);
+    },
+    make: (value, unit) => math.unit(value, unit),
+  };
 }
 
 export type EvaluateOutcome = {
@@ -144,15 +195,37 @@ export async function evaluateSource(
     scope.set("col", lookup);
     scope.set("column", lookup);
   }
+  // 測定点の違う物性値を揃えるための多項式フィット。mathjs には無いので自前で足す
+  // （詳細と設計の決め事は fit.ts）。表があってもなくても使えるようスコープ外に置く
+  const fit = createFitFunctions(unitAdapterFor(math));
+  scope.set("polyfit", fit.polyfit);
+  scope.set("polyval", fit.polyval);
+  scope.set("coeffs", fit.coeffs);
+  scope.set("r2", fit.r2);
+  scope.set("linspace", fit.linspace);
+
   const lines = source.split("\n").map((line): CalcLineResult => {
     const trimmed = line.trim();
     if (trimmed === "") return { kind: "empty" };
     if (isCommentLine(line)) return { kind: "comment" };
+    fit.resetExtrapolation();
     try {
       const value = math.evaluate(trimmed, scope);
-      return { kind: "value", text: formatValue(math, value) };
+      const result: CalcLineResult = { kind: "value", text: formatValue(math, value) };
+      // 外挿は値を返した上で警告する。throw にすると後続の ZT 計算ごと落ちる
+      const extrapolated = fit.takeExtrapolation();
+      if (extrapolated) {
+        result.warn =
+          extrapolated.lo === extrapolated.hi
+            ? t("calc.fitExtrapolatedAt", { at: formatBound(extrapolated.lo) })
+            : t("calc.fitExtrapolated", {
+                lo: formatBound(extrapolated.lo),
+                hi: formatBound(extrapolated.hi),
+              });
+      }
+      return result;
     } catch (e) {
-      return { kind: "error", text: e instanceof Error ? e.message : String(e) };
+      return { kind: "error", text: explainError(e) };
     }
   });
 
