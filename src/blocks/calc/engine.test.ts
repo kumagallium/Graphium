@@ -132,6 +132,138 @@ describe("evaluateSource", () => {
   });
 });
 
+describe("多項式フィットで測定温度をそろえる", () => {
+  // 熱電材料: κ は laser flash、S・σ は ZEM で測るので温度点がそろわない。
+  // κ を 4 次で当てて電気特性側の温度で評価し直す、という現場の手順をそのまま書けるか
+  const kappaT = [300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800];
+  const kappaModel = (T: number) => 1e-9 * T ** 4 - 2e-6 * T ** 3 + 1.5e-3 * T ** 2 - 0.5 * T + 100;
+  const elecT = [323, 373, 423, 473, 523];
+
+  const tables = {
+    熱伝導率: {
+      T: { values: kappaT, unit: "K" },
+      κ: { values: kappaT.map(kappaModel) },
+    },
+    電気特性: {
+      T: { values: elecT, unit: "K" },
+      S: { values: [120, 140, 160, 180, 200] },
+      σ: { values: [900, 850, 800, 750, 700] },
+    },
+  };
+
+  it("κ をフィットして電気特性の温度で ZT まで計算できる", async () => {
+    const source = [
+      'c = polyfit(col("熱伝導率","T"), col("熱伝導率","κ"), 4)',
+      'kappaE = polyval(c, col("電気特性","T"))',
+      // 列ごとの計算なので .^ / .* / ./（^ と * は mathjs では行列演算）
+      'ZT = col("電気特性","S") .^ 2 .* col("電気特性","σ") .* col("電気特性","T") ./ kappaE',
+    ].join("\n");
+    const { lines, exports } = await evaluateSource(source, tables, ["kappaE", "ZT"]);
+    expect(lines.map((r) => r.kind)).toEqual(["value", "value", "value"]);
+    // フィット行は係数の羅列ではなく、次数・当てはまり・範囲を見せる
+    expect(lines[0].text).toContain("4");
+    expect(lines[0].text).toContain("300");
+    expect(lines[0].text).toContain("800");
+    // 電気特性側の温度点の数だけ値が並び、そのまま列に書き戻せる
+    expect(exports.kappaE).toHaveLength(elecT.length);
+    expect(exports.ZT).toHaveLength(elecT.length);
+    expect(Number(exports.kappaE[0])).toBeCloseTo(kappaModel(323), 6);
+  });
+
+  it("フィット範囲の外で評価した行には警告が付く（値は返す）", async () => {
+    const narrow = {
+      熱伝導率: { T: { values: [400, 450, 500, 550] }, κ: { values: [3, 2.8, 2.6, 2.4] } },
+      電気特性: { T: { values: [300, 450, 700] } },
+    };
+    const source = [
+      'c = polyfit(col("熱伝導率","T"), col("熱伝導率","κ"), 1)',
+      'kappaE = polyval(c, col("電気特性","T"))',
+    ].join("\n");
+    const { lines, exports } = await evaluateSource(source, narrow, ["kappaE"]);
+    expect(lines[0].warn).toBeUndefined();
+    expect(lines[1].kind).toBe("value");
+    expect(lines[1].warn).toBeTruthy();
+    expect(lines[1].warn).toContain("300");
+    expect(lines[1].warn).toContain("700");
+    // フィット範囲（400〜550）ではなく、はみ出した値の側を出す
+    expect(lines[1].warn).not.toContain("400");
+    // 警告が出ても値は揃っている
+    expect(exports.kappaE).toHaveLength(3);
+  });
+
+  it("警告は行をまたいで持ち越さない", async () => {
+    const source = [
+      "c = polyfit([1, 2, 3], [1, 2, 3], 1)",
+      "outside = polyval(c, 100)",
+      "inside = polyval(c, 2)",
+    ].join("\n");
+    const { lines } = await evaluateSource(source);
+    expect(lines[1].warn).toBeTruthy();
+    // 1 点だけなら範囲ではなくその値を出す
+    expect(lines[1].warn).toContain("100");
+    expect(lines[2].warn).toBeUndefined();
+  });
+
+  it("点数不足などはその行だけエラーになり、他の行は動く", async () => {
+    const source = ["bad = polyfit([1, 2], [1, 2], 4)", "1 + 1"].join("\n");
+    const { lines } = await evaluateSource(source);
+    expect(lines[0].kind).toBe("error");
+    expect(lines[1]).toEqual({ kind: "value", text: "2" });
+  });
+
+  it("y の単位はフィットを通り抜けて結果に戻る（ZT が無次元になる）", async () => {
+    const withUnits = {
+      熱伝導率: {
+        T: { values: [300, 400, 500, 600], unit: "K" },
+        κ: { values: [4, 3, 2.5, 2.2], unit: "W / (m K)" },
+      },
+      電気特性: { T: { values: [350, 450], unit: "K" } },
+    };
+    const source = [
+      'c = polyfit(col("熱伝導率","T"), col("熱伝導率","κ"), 2)',
+      'kappaE = polyval(c, col("電気特性","T"))',
+      "kappaE[1] * (1 m * 1 K / 1 W)",
+    ].join("\n");
+    const { lines } = await evaluateSource(source, withUnits);
+    expect(lines[1].kind).toBe("value");
+    // 単位が保たれていれば W/(m K) と m·K/W が打ち消えて無次元になる
+    expect(lines[2].kind).toBe("value");
+    expect(lines[2].text).not.toMatch(/[A-Za-z]/);
+  });
+
+  it("x の単位が違っても換算してから当てる（℃ と K の取り違えを潰す）", async () => {
+    const mixed = {
+      熱伝導率: {
+        T: { values: [300, 400, 500], unit: "K" },
+        κ: { values: [3, 2, 1] },
+      },
+      // 相手の表は摂氏で記録されている
+      電気特性: { T: { values: [26.85], unit: "degC" } },
+    };
+    const source = [
+      'c = polyfit(col("熱伝導率","T"), col("熱伝導率","κ"), 1)',
+      'kappaE = polyval(c, col("電気特性","T"))',
+    ].join("\n");
+    const { exports } = await evaluateSource(source, mixed, ["kappaE"]);
+    // 26.85 ℃ = 300 K → κ = 3。単位を無視すると 26.85 K として評価され桁が違う
+    expect(Number(exports.kappaE[0])).toBeCloseTo(3, 3);
+  });
+
+  it("列に ^ を使ったら .^ を使うよう言い換える", async () => {
+    const tables = { 電気特性: { S: { values: [1, 2, 3] } } };
+    const { lines } = await evaluateSource('col("電気特性","S")^2', tables);
+    expect(lines[0].kind).toBe("error");
+    expect(lines[0].text).toContain(".^");
+  });
+
+  it("linspace でフィット曲線を描くための等間隔の温度を作れる", async () => {
+    const source = ["xs = linspace(300, 800, 6)", "sum(xs)"].join("\n");
+    const { lines, exports } = await evaluateSource(source, undefined, ["xs"]);
+    expect(exports.xs).toEqual(["300", "400", "500", "600", "700", "800"]);
+    expect(lines[1].text).toBe("3300");
+  });
+});
+
 describe("isCommentLine", () => {
   it("# と // をコメントと判定する", () => {
     expect(isCommentLine("# メモ")).toBe(true);

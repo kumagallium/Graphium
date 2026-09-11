@@ -104,6 +104,33 @@ talks to LLM and embedding backends.
   `props.results` so the values a note recorded stay reproducible even if the
   evaluator changes. mathjs is dynamically imported on first evaluation
   (`src/blocks/calc/mathjs-loader.ts`).
+- On top of mathjs, `src/blocks/calc/fit.ts` adds `polyfit` / `polyval` /
+  `coeffs` / `r2` / `linspace` to the block's scope. The motivating case is
+  instruments that sample the same sample at different points of an independent
+  variable: in thermoelectrics, thermal conductivity is measured by laser flash
+  and the Seebeck coefficient and electrical conductivity by a separate rig, so
+  computing *ZT* requires fitting one quantity and re-evaluating it at the
+  other's temperatures. `polyfit` returns a fit object rather than bare
+  coefficients, so the normalisation, the coefficient of determination and the
+  fitted range travel with it. Three properties matter for correctness:
+  - **Conditioning.** The fit is solved in a centred, scaled basis
+    `u = (x - center) / scale` with `u` in `[-1, 1]`. Solving a degree-4 fit
+    directly over, say, 300–800 K gives a Vandermonde system with a condition
+    number around 10^12 and unusable coefficients. `coeffs()` expands the
+    normalised coefficients back to powers of `x` (highest power first, matching
+    `numpy.polyfit`) for reporting.
+  - **Units.** The fit records the common unit of `x` and of `y`. `polyval`
+    converts its argument into the fitted `x` unit — so a column in °C and a fit
+    made in K agree instead of silently disagreeing — and re-attaches the `y`
+    unit to its results, which is what keeps a derived *ZT* dimensionless.
+    Columns whose units are mixed or absent are treated as plain numbers.
+  - **Extrapolation.** Evaluating outside the fitted range returns values and
+    flags the line with a warning (`CalcLineResult.warn`, rendered as a
+    hoverable marker) rather than throwing, because throwing would take down
+    every dependent line. Ranges rarely line up exactly at the ends, so this is
+    the common case, not an edge case.
+  Results flow into tables through the existing write-back path, so a fitted
+  column behaves like any other computed column.
 - `math` holds a LaTeX source string in `props.latex` and renders it with KaTeX.
   `inlineMath` is the same idea as a custom inline content spec, for formulas
   that sit inside a sentence. Clicking either one opens an editor: by default a
