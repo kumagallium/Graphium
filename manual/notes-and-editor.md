@@ -173,6 +173,35 @@ The note stores both the expressions and the values they produced. That matters 
 
 A result can also become a column of a data table — see [adding a computed column](#adding-a-computed-column).
 
+### Lining up measurements taken at different points <Badge type="tip" text="Added in v0.72.0 (2026-09-11)" /> {#fitting-a-curve}
+
+Two instruments rarely sample a specimen at the same points. In thermoelectrics, thermal conductivity comes from a laser flash rig and the Seebeck coefficient and electrical conductivity from another, so their temperatures do not line up — and *ZT* needs all three at the same temperature. The usual answer is to fit one quantity as a polynomial and read it back at the other's temperatures.
+
+The block does that in three lines:
+
+```
+c  = polyfit(col("Thermal conductivity","T"), col("Thermal conductivity","kappa"), 4)
+ke = polyval(c, col("Electrical","T"))
+ZT = col("Electrical","S") .^ 2 .* col("Electrical","sigma") .* col("Electrical","T") ./ ke
+```
+
+| Function | What it does |
+|---|---|
+| `polyfit(x, y, degree)` | Fits a polynomial by least squares. The result line reads `degree 4 fit  R²=0.9999  range 300–800 (11 points)` — the degree you chose, how well it fits, and the range it is good for. |
+| `polyval(fit, x)` | Reads the fit back at `x`. Give it a whole column and you get a whole column, ready to write back into the other table. |
+| `coeffs(fit)` | The coefficients in the original scale, highest power first — the form a paper wants. |
+| `r2(fit)` | The coefficient of determination on its own. |
+| `linspace(start, stop, count)` | Evenly spaced numbers, for drawing a fitted curve more finely than the measured points. |
+
+Two things the block does on your behalf:
+
+- **Units survive the fit.** If the temperature column of one table is in °C and the other in K, the fit converts rather than quietly disagreeing, and the unit of the fitted quantity comes back attached — which is what lets a derived *ZT* come out dimensionless.
+- **Extrapolation is flagged, not hidden.** Evaluating outside the fitted range still gives you a number, with a ⚠ beside it naming where you went outside. Ranges rarely line up at the ends, so this is the common case rather than a mistake — but a fourth-order polynomial misbehaves quickly past its data, and the marker is there so you decide rather than find out later.
+
+Arithmetic on whole columns needs the element-wise operators `.^`, `.*` and `./` — plain `^` and `*` are matrix operations. The block says so if you forget.
+
+![A calculation block fitting thermal conductivity: the fit line reads "degree 4 fit R²=0.9988", and the line evaluated at 900 carries a warning marker](/screenshots/calc-polyfit.png)
+
 ## Duplicating a block <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />
 
 **Duplicate** in the drag-handle (⠿) menu, or `⌘D` (`Ctrl+D` on Windows/Linux) with the cursor in the block, copies a block directly below itself. It is the fastest way to repeat a filled-in table, a step, or a calculation you want to vary.
