@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.71.0](https://github.com/kumagallium/Graphium/compare/v0.70.0...v0.71.0) - 2026-09-11
+
+- Split a chart block into an N×M grid of panels by @kumagallium in https://github.com/kumagallium/Graphium/pull/905
+- Give each panel its own axis names and ranges by @kumagallium in https://github.com/kumagallium/Graphium/pull/906
+- Label the panels, share one y-axis name, link the crosshair by @kumagallium in https://github.com/kumagallium/Graphium/pull/908
+
 ## [v0.70.0](https://github.com/kumagallium/Graphium/compare/v0.69.1...v0.70.0) - 2026-09-11
 
 - [fix] Apply the default proposal selection during render, not after commit by @kumagallium in https://github.com/kumagallium/Graphium/pull/902
