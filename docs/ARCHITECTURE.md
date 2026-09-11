@@ -188,7 +188,17 @@ talks to LLM and embedding backends.
   x-axis and one y-axis name instead of one per figure; the y ticks are
   hidden because the vertical position is arbitrary units by then, each
   row is named on the plot itself, and the tooltip converts the drawn
-  value back to the measured one. **Time-series tables** complement it on the input
+  value back to the measured one. Where that trades the y axis away, a
+  block can instead be **split into a grid of panels** (up to 4 × 4), each
+  series assigned to one, each panel keeping its own axes — the shape four
+  different quantities against one variable need. Joining a direction
+  presses those panels flush and shares that axis for real: the range is
+  unified and only the outer panel carries ticks and a name. Nothing is
+  inferred from the data; panels are independent until joined, which is
+  also what decides whether an axis setting is per panel or shared. Panel
+  rectangles are computed by a pure function (`chart-layout.ts`) rather
+  than by ECharts' `containLabel`, which resolves per grid and would leave
+  the plot areas misaligned. **Time-series tables** complement it on the input
   side: any standard table can be given a `datetime-auto` column (from
   the drag-handle menu, or ready-made from the slash menu), after which
   adding a row with the ordinary table controls stamps its first column
