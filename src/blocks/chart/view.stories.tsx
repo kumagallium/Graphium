@@ -884,7 +884,7 @@ export const PanelsPartialStack: StoryObj = {
         chartFirst
         config={{
           chartType: "line",
-          panels: { rows: 2, cols: 1, joinVertical: true, joinHorizontal: false },
+          panels: { rows: 2, cols: 1, joinVertical: true, joinHorizontal: false, showPanelLabels: true },
           series: series([
             { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A", panelIndex: 0 },
             { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B", panelIndex: 0 },
@@ -926,6 +926,47 @@ export const PanelsSharedYName: StoryObj = {
           caption: "縦軸名は 3 段で 1 つ",
         }}
       />
+    </ErrorBoundary>
+  ),
+};
+
+// 記号の四隅。どの隅を選んでも枠の内側に収まることを一度に見る
+// （left/top をどの角として扱うかは title の textAlign / textVerticalAlign）
+export const PanelLabelCorners: StoryObj = {
+  name: "枠の記号（四隅・2×2 でまとめて確認）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {(["top-left", "top-right", "bottom-left", "bottom-right"] as const).map((pos) => (
+          <div key={pos}>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 2 }}>{pos}</div>
+            <ChartDemo
+              baseTables={THERMO_TABLES}
+              chartFirst
+              config={{
+                chartType: "line",
+                panels: {
+                  rows: 2,
+                  cols: 2,
+                  joinVertical: true,
+                  joinHorizontal: false,
+                  showPanelLabels: true,
+                  labelPosition: pos,
+                },
+                series: series([
+                  { sourceBlockId: "te-sigma", xColumn: "T (K)", yColumn: "sigma", label: "σ", panelIndex: 0 },
+                  { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "S", panelIndex: 1 },
+                  { sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF", panelIndex: 2 },
+                  { sourceBlockId: "te-kappa", xColumn: "T (K)", yColumn: "kappa", label: "κ", panelIndex: 3 },
+                ]),
+                aspect: "standard",
+                xAxisName: "T (K)",
+                showLegend: false,
+              }}
+            />
+          </div>
+        ))}
+      </div>
     </ErrorBoundary>
   ),
 };

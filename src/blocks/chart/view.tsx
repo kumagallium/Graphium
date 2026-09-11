@@ -1114,12 +1114,15 @@ export function buildOption(
           text: `(${String.fromCharCode(97 + (i % 26))})`,
           left: panelLabelAtLeft ? g.left + 8 : g.left + g.width - 8,
           top: panelLabelAtTop ? g.top + 6 : g.top + g.height - 6,
+          // left / top をどの角として扱うかは title の textAlign / textVerticalAlign。
+          // textStyle の align は「題の中での行揃え」で、置く位置は動かない
+          //（右下に指定しても文字が left/top から右下へ伸び、枠からはみ出す）
+          textAlign: panelLabelAtLeft ? ("left" as const) : ("right" as const),
+          textVerticalAlign: panelLabelAtTop ? ("top" as const) : ("bottom" as const),
           textStyle: {
             fontSize: CHART_FONT_SIZE,
             fontWeight: "bold" as const,
             color: CHART_INK,
-            align: panelLabelAtLeft ? ("left" as const) : ("right" as const),
-            verticalAlign: panelLabelAtTop ? ("top" as const) : ("bottom" as const),
           },
           z: 11,
         }))

@@ -238,6 +238,37 @@ describe("buildOption（枠の分割）", () => {
     expect(option.title[1].top).toBeGreaterThanOrEqual(option.grid[1].top);
   });
 
+  it("記号は指定した隅を基準に置く（座標だけ動かすと枠からはみ出す）", () => {
+    // left / top をどの角として扱うかは title の textAlign / textVerticalAlign。
+    // ここが left/top のままだと、右下を選んでも文字が右下へ伸びて枠の外に出る
+    const corners = {
+      "top-left": { textAlign: "left", textVerticalAlign: "top" },
+      "top-right": { textAlign: "right", textVerticalAlign: "top" },
+      "bottom-left": { textAlign: "left", textVerticalAlign: "bottom" },
+      "bottom-right": { textAlign: "right", textVerticalAlign: "bottom" },
+    } as const;
+    for (const [labelPosition, expected] of Object.entries(corners)) {
+      const option = split({
+        panels: {
+          ...DEFAULT_PANELS_CONFIG,
+          rows: 2,
+          showPanelLabels: true,
+          labelPosition: labelPosition as keyof typeof corners,
+        },
+      });
+      for (const [i, title] of option.title.entries()) {
+        expect(title.textAlign).toBe(expected.textAlign);
+        expect(title.textVerticalAlign).toBe(expected.textVerticalAlign);
+        // 基準点そのものも枠の矩形の内側にある
+        const g = option.grid[i];
+        expect(title.left).toBeGreaterThanOrEqual(g.left);
+        expect(title.left).toBeLessThanOrEqual(g.left + g.width);
+        expect(title.top).toBeGreaterThanOrEqual(g.top);
+        expect(title.top).toBeLessThanOrEqual(g.top + g.height);
+      }
+    }
+  });
+
   it("全枠の縦軸名が同じなら、図の左に 1 つだけ置く", () => {
     const option = split({
       panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: true },
