@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.72.3](https://github.com/kumagallium/Graphium/compare/v0.72.2...v0.72.3) - 2026-09-14
+
+- Show Ctrl instead of ⌘ in shortcut hints on Windows and Linux by @kumagallium in https://github.com/kumagallium/Graphium/pull/919
+- [fix] Keep transparent thumbnails readable, and stop the asset graph from re-laying out by @kumagallium in https://github.com/kumagallium/Graphium/pull/920
+- Keep intake running while the desktop window is hidden, and show progress while a folder is being listed by @kumagallium in https://github.com/kumagallium/Graphium/pull/921
+
 ## [v0.72.2](https://github.com/kumagallium/Graphium/compare/v0.72.1...v0.72.2) - 2026-09-11
 
 - [fix] フィット結果の要約が結果カラムで切れないようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/912
