@@ -99,6 +99,8 @@ export type StepFlowViewProps = {
   onCreateStepFromEntity?: (entityNodeId: string) => void;
   /** ツールバーの「+ 手順」。省略時はボタンを出さない */
   onAddActivity?: () => void;
+  /** 「+ 手順を追加」の文言差し替え（計画ノートの工程フローでは「+ 工程を追加」）。省略時は既定文言 */
+  addActivityLabel?: string;
   /** step カードのリネーム確定 */
   onRenameActivity?: (blockId: string, title: string) => void;
   /** step カードからの削除（step の中身ごと消える） */
@@ -214,6 +216,7 @@ function StepFlowCanvas({
   onConnectEntityToStep,
   onCreateStepFromEntity,
   onAddActivity,
+  addActivityLabel,
   onRenameActivity,
   onDeleteActivity,
   onJumpToBlock,
@@ -849,12 +852,12 @@ function StepFlowCanvas({
             {onAddActivity && (
               <button
                 onClick={onAddActivity}
-                title={t("activityGraph.addStep")}
+                title={addActivityLabel ?? t("activityGraph.addStep")}
                 style={toolbarBtnStyle(ACTIVITY_BLUE)}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-card)")}
               >
-                <Plus size={13} /> {t("activityGraph.addStep")}
+                <Plus size={13} /> {addActivityLabel ?? t("activityGraph.addStep")}
               </button>
             )}
           </div>
