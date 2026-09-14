@@ -377,6 +377,11 @@ export type FlowEdge = {
   /** derived のみ: 元のブロック間リンク種別（derived_from / reproduction_of / used / generated）。
    *  無指定は derived_from 由来 — 表示側の色・ラベルの出し分けに使う */
   linkType?: string;
+  /**
+   * 工程フロー（plan-flow.ts）専用: cross-note 参照が解決できなかった used エッジ。
+   * true のときは点線で描画する（entity ノードは targetEntityLabel 等のスナップショットから仮に作る）。
+   */
+  broken?: boolean;
 };
 
 export type FlowGraphData = {
