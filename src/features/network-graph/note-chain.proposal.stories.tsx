@@ -9,7 +9,7 @@
 //   計画ノート = 「計画」フォルダに入っているノート。テンプレートの有無は問わない
 //   工程ノート = 計画ノートのインデックステーブルの行から参照されているノート。
 //                工程タグは付けない。紐づいていれば工程
-//   ステップ   = 工程ノートの中の step ブロック
+//   ステップ   = 工程ノートの中の step ブロック（これもグラフ。3 層は同じ形の入れ子）
 //   段階       = step のパラメータ表の行（この提案の図には出さない）
 //
 // 見るべきところ:
@@ -25,7 +25,10 @@
 
 import type { ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ArrowRight, GitBranch, Layers, Table, Folder, Network, FileText } from "lucide-react";
+import { GitBranch, Layers, Table, Folder, Network, FileText, Bot, History, StickyNote } from "lucide-react";
+import { StepFlowView } from "./step-flow-view";
+import type { FlowGraphData } from "./activity-graph-adapter";
+import { LocaleProvider } from "../../i18n";
 import "../../app.css";
 
 // ── 共通部品 ─────────────────────────────────────────
@@ -105,7 +108,7 @@ type Node = {
 };
 type Edge = { from: string; to: string; kind: "handoff" | "partOf" };
 
-const LANE_Y: Record<Lane, number> = { plan: 40, note: 130, step: 270 };
+const LANE_Y: Record<Lane, number> = { plan: 40, note: 130, step: 260 };
 const LANE_LABEL: Record<Lane, string> = { plan: "計画", note: "工程ノート", step: "ステップ" };
 const W = 760;
 const LEFT = 100;
@@ -122,7 +125,7 @@ function y(n: Node) {
 
 function Swimlane({ nodes, edges, ticks }: { nodes: Node[]; edges: Edge[]; ticks: string[] }) {
   const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
-  const H = 370;
+  const H = 420;
   return (
     <svg width={W} height={H} className="block max-w-full" style={{ fontSize: 12 }}>
       <defs>
@@ -234,6 +237,7 @@ const BRANCH_NODES: Node[] = [
   { id: "s1", lane: "step", label: "秤量", t: 0 },
   { id: "s2", lane: "step", label: "挽く", t: 0.12 },
   { id: "s3", lane: "step", label: "ふるう", t: 0.24 },
+  { id: "s4", lane: "step", label: "粗挽きを取り分け", t: 0.24, row: 1 },
 ];
 const BRANCH_EDGES: Edge[] = [
   { from: "mill", to: "doughA", kind: "handoff" },
@@ -243,6 +247,7 @@ const BRANCH_EDGES: Edge[] = [
   { from: "bake", to: "taste", kind: "handoff" },
   { from: "s1", to: "s2", kind: "handoff" },
   { from: "s2", to: "s3", kind: "handoff" },
+  { from: "s2", to: "s4", kind: "handoff" },
   { from: "plan", to: "mill", kind: "partOf" },
   { from: "plan", to: "doughA", kind: "partOf" },
   { from: "plan", to: "bake", kind: "partOf" },
@@ -250,121 +255,115 @@ const BRANCH_EDGES: Edge[] = [
   { from: "mill", to: "s1", kind: "partOf" },
 ];
 
-// ── 右パネル（計画ノートの工程タブ）────────────────
+// ── 右パネル（計画ノートで開いた「ステップ」タブ）──────
+//
+// 新しいタブは足さない。既存の右パネル（note-app.tsx の rightTab）の
+// 「ステップ」タブをそのまま使い、ノートが「計画」フォルダにあるときは
+// 中身が step ではなく工程ノートの流れになる。描画は実物の StepFlowView。
+
+/** 工程ノートを step、受け渡される物を entity として StepFlowView に流す */
+const PLAN_FLOW: FlowGraphData = {
+  steps: [
+    { id: "n-mill", name: "製粉", params: [] },
+    { id: "n-doughA", name: "仕込み A", params: [{ label: "加水: 65%" }] },
+    { id: "n-doughB", name: "仕込み B", params: [{ label: "加水: 72%" }] },
+    { id: "n-bake", name: "焼成", params: [] },
+    { id: "n-taste", name: "試食", params: [] },
+  ],
+  entities: [
+    { id: "e-wheat", label: "小麦（春よ恋）", kind: "material", attrs: [] },
+    { id: "e-flour", label: "全粒粉 #12", kind: "output", attrs: [] },
+    { id: "e-doughA", label: "生地 A", kind: "output", attrs: [] },
+    { id: "e-doughB", label: "生地 B", kind: "output", attrs: [] },
+    { id: "e-bread", label: "焼き上がり", kind: "output", attrs: [] },
+    { id: "e-note", label: "試食記録", kind: "output", attrs: [] },
+  ],
+  edges: [
+    { id: "u0", kind: "used", source: "e-wheat", target: "n-mill" },
+    { id: "g1", kind: "generates", source: "n-mill", target: "e-flour" },
+    { id: "u1", kind: "used", source: "e-flour", target: "n-doughA" },
+    { id: "u2", kind: "used", source: "e-flour", target: "n-doughB" },
+    { id: "g2", kind: "generates", source: "n-doughA", target: "e-doughA" },
+    { id: "g3", kind: "generates", source: "n-doughB", target: "e-doughB" },
+    { id: "u3", kind: "used", source: "e-doughA", target: "n-bake" },
+    { id: "u4", kind: "used", source: "e-doughB", target: "n-bake" },
+    { id: "g4", kind: "generates", source: "n-bake", target: "e-bread" },
+    { id: "u5", kind: "used", source: "e-bread", target: "n-taste" },
+    { id: "g5", kind: "generates", source: "n-taste", target: "e-note" },
+  ],
+};
 
 function RightPanelMock() {
   const rows = [
-    { name: "製粉", from: "—", out: "全粒粉 #12", date: "4/03" },
-    { name: "仕込み A", from: "製粉 › 全粒粉 #12", out: "生地 A", date: "4/05" },
-    { name: "仕込み B", from: "製粉 › 全粒粉 #12", out: "生地 B", date: "4/05" },
-    { name: "焼成", from: "仕込み A › 生地 A ＋ 仕込み B › 生地 B", out: "焼き上がり", date: "4/08" },
-    { name: "試食", from: "焼成 › 焼き上がり", out: "試食記録", date: "4/12" },
+    { name: "製粉", memo: "春よ恋を粗めに", date: "4/03" },
+    { name: "仕込み A", memo: "加水 65%", date: "4/05" },
+    { name: "仕込み B", memo: "加水 72%", date: "4/05" },
+    { name: "焼成", memo: "A / B を同じ窯で", date: "4/08" },
+    { name: "試食", memo: "気泡と食感を比べる", date: "4/12" },
+  ];
+  const rail = [
+    { icon: <Bot size={18} />, label: "チャット" },
+    { icon: <Network size={18} />, label: "グラフ" },
+    { icon: <GitBranch size={18} />, label: "ステップ", on: true },
+    { icon: <History size={18} />, label: "履歴" },
+    { icon: <StickyNote size={18} />, label: "メモ" },
   ];
   return (
-    <div className="flex gap-4">
+    <div className="flex h-[640px] rounded-lg border border-border overflow-hidden">
       {/* 本文（計画ノート） */}
-      <div className="flex-1 rounded-lg border border-border bg-card p-5 min-h-[420px]">
+      <div className="flex-1 bg-background p-6 overflow-auto">
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-lg font-semibold">春のカンパーニュ試作</p>
+          <p className="text-2xl font-semibold">春のカンパーニュ試作</p>
           <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">
             <Folder size={10} /> 計画
           </span>
         </div>
-        <p className="text-xs text-muted-foreground mb-4">工程 5 ・ 分岐 1</p>
-        <p className="text-sm mb-3">目的: 加水率の違いがクラムの気泡に与える影響を見る。</p>
-        <div className="rounded-md border border-border overflow-hidden text-xs">
-          <div className="grid grid-cols-[1fr_2fr_1.2fr_60px] bg-secondary text-muted-foreground">
-            {["工程", "入力元", "出力", "日付"].map((h) => (
+        <p className="text-sm mb-4 mt-3">目的: 加水率の違いがクラムの気泡に与える影響を見る。</p>
+        <p className="text-xs text-muted-foreground mb-1">インデックステーブル（今のまま。行 = 工程ノート）</p>
+        <div className="rounded-md border border-border overflow-hidden text-xs max-w-[520px]">
+          <div className="grid grid-cols-[1fr_2fr_60px] bg-secondary text-muted-foreground">
+            {["工程", "メモ", "日付"].map((h) => (
               <div key={h} className="px-2 py-1 border-r border-border last:border-r-0">{h}</div>
             ))}
           </div>
           {rows.map((r) => (
-            <div key={r.name} className="grid grid-cols-[1fr_2fr_1.2fr_60px] border-t border-border">
+            <div key={r.name} className="grid grid-cols-[1fr_2fr_60px] border-t border-border">
               <div className="px-2 py-1.5 border-r border-border text-primary underline decoration-dotted">{r.name}</div>
-              <div className="px-2 py-1.5 border-r border-border text-muted-foreground">{r.from}</div>
-              <div className="px-2 py-1.5 border-r border-border">{r.out}</div>
+              <div className="px-2 py-1.5 border-r border-border">{r.memo}</div>
               <div className="px-2 py-1.5 text-muted-foreground">{r.date}</div>
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-muted-foreground mt-2">
-          「工程」列 = 行から作った工程ノート（既存機能）。「入力元」「出力」列は工程ノートの step から導出した読み取り専用。
-          分岐は同じ入力元を持つ行が 2 つあるだけで表せる。
+        <p className="text-[11px] text-muted-foreground mt-2 max-w-[520px]">
+          表には受け渡しの列を足さない。つながりは各工程ノートの step が持ち、右のフローに投影される。
+          右で「+ 手順を追加」すると表に行が増え、工程ノートが作られる（ノート内の表 ⇄ フローと同じ往復）。
         </p>
       </div>
-      {/* 右パネル */}
-      <div className="w-[300px] shrink-0 rounded-lg border border-border bg-sidebar-background">
-        <div className="flex text-xs border-b border-border">
-          {[
-            { l: "工程", icon: <GitBranch size={12} />, on: true },
-            { l: "表", icon: <Table size={12} /> },
-            { l: "来歴", icon: <Layers size={12} /> },
-          ].map((tab) => (
-            <div
-              key={tab.l}
-              className={
-                "flex items-center gap-1 px-3 py-2 " +
-                (tab.on ? "border-b-2 text-foreground" : "text-muted-foreground")
-              }
-              style={tab.on ? { borderBottomColor: "var(--forest)" } : undefined}
-            >
-              {tab.icon}
-              {tab.l}
-            </div>
-          ))}
+      {/* 右パネル本体（note-app.tsx と同じ枠: w-[480px] bg-muted border-l） */}
+      <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden">
+        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+          <span className="text-xs font-bold tracking-wide text-foreground">ステップ</span>
+          <span className="text-[11px] text-muted-foreground">計画ノート: 工程ノートの流れ</span>
         </div>
-        <div className="p-3">
-          <p className="text-[11px] text-muted-foreground mb-2">この計画の工程ノートの流れ</p>
-          <MiniChain />
-          <p className="text-[11px] text-muted-foreground mt-3 mb-1">選択中: 仕込み B</p>
-          <div className="rounded-md border border-border bg-card p-2 text-xs space-y-1.5">
-            <Row k="入力元" v="製粉 › 全粒粉 #12" action="変更" />
-            <Row k="出力" v="生地 B" />
-            <Row k="次の工程" v="焼成" action="追加" />
-            <Row k="計画" v="春のカンパーニュ試作" />
+        <div className="flex-1 min-h-0">
+          <StepFlowView graph={PLAN_FLOW} onAddActivity={() => {}} onJumpToBlock={() => {}} />
+        </div>
+      </div>
+      {/* アイコンレール（w-10 border-l bg-muted/50） */}
+      <div className="w-10 shrink-0 border-l border-border bg-muted/50 flex flex-col items-center gap-1 py-2">
+        {rail.map((r) => (
+          <div
+            key={r.label}
+            title={r.label}
+            className={
+              "w-8 h-8 flex items-center justify-center rounded-md " +
+              (r.on ? "bg-background text-foreground shadow-sm" : "text-muted-foreground")
+            }
+          >
+            {r.icon}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-3">
-            入力元を変えると、工程ノート側の step の input に書き戻る（1 か所で持つ）。
-            「計画」は表の行から導出するので編集項目にしない。
-          </p>
-        </div>
+        ))}
       </div>
-    </div>
-  );
-}
-
-function Row({ k, v, action }: { k: string; v: string; action?: string }) {
-  return (
-    <div className="flex items-baseline gap-2">
-      <span className="w-14 shrink-0 text-muted-foreground">{k}</span>
-      <span className="flex-1">{v}</span>
-      {action && <span className="text-[11px] text-primary">{action}</span>}
-    </div>
-  );
-}
-
-function MiniChain() {
-  const box = (label: string, hi?: boolean) => (
-    <div
-      className={"rounded border px-2 py-1 text-[11px] bg-card " + (hi ? "font-semibold" : "")}
-      style={hi ? { borderColor: "var(--forest)", background: "var(--forest-soft)" } : undefined}
-    >
-      {label}
-    </div>
-  );
-  const arrow = <ArrowRight size={12} className="text-muted-foreground shrink-0" />;
-  return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {box("製粉")}
-      {arrow}
-      <div className="flex flex-col gap-1">
-        {box("仕込み A")}
-        {box("仕込み B", true)}
-      </div>
-      {arrow}
-      {box("焼成")}
-      {arrow}
-      {box("試食")}
     </div>
   );
 }
@@ -510,6 +509,13 @@ const meta: Meta = {
     },
   },
 };
+meta.decorators = [
+  (Story) => (
+    <LocaleProvider>
+      <Story />
+    </LocaleProvider>
+  ),
+];
 export default meta;
 
 type Story = StoryObj;
@@ -524,7 +530,8 @@ export const LocalView: Story = {
           points={[
             "縦 = 深さ（計画 → 工程ノート → ステップ）。横 = 時間。ツリーと時系列を 1 画面に載せる。",
             "工程ノート間の矢印 = 出力 → 次の工程の入力（cross-note 参照）。点線 = 計画の表に載っている。",
-            "ステップレーンは起点ノートの中の step ブロック。段階（表の行）はさらに 1 段下なので、ここには出さない。",
+            "ステップレーンは起点ノートの中の step ブロック。step もグラフなので、分岐があれば工程ノートと同じく縦にずらす。段階（表の行）はさらに 1 段下なので出さない。",
+            "3 層（計画 → 工程ノート → ステップ）は同じ形の入れ子。どの層も「活動のノードと、受け渡される物の線」で描く。",
             "入口: 全体グラフの SidePeek に「この周辺を時系列で見る」。ノート右パネルの来歴タブからも。",
             "データ変更なし。noteLinks・process-index・cross-note-flow の 1 ホップ表示を両方向に辿るだけ。",
           ]}
@@ -548,7 +555,8 @@ export const LocalViewBranch: Story = {
             "同じ出力（全粒粉 #12）を 2 つの工程ノートが入力にすれば、それが分岐。表に分岐用の列は要らない。",
             "合流も同じ: 焼成が A と B の両方を入力にする。",
             "インデックステーブルは「行 = 工程ノート」の一覧に徹し、つながりは step の input/output に任せる。表が真ではなく、投影。",
-            "分岐した工程ノートは同じレーンの中で縦にずらす。ステップレーンは起点（製粉）の中身。",
+            "分岐した工程ノートは同じレーンの中で縦にずらす。ステップレーンは起点（製粉）の中身で、こちらも「挽く」から分岐している。",
+            "横 = 時間なので左から右。右パネルのフロー（上から下）と向きが違うのは、時間軸を持つのがこの画面だけだから。",
           ]}
         />
       }
@@ -560,19 +568,19 @@ export const LocalViewBranch: Story = {
 };
 
 export const RightPanel: Story = {
-  name: "3. 計画ノートの右パネル（工程タブ）",
+  name: "3. 計画ノートで開いた「ステップ」タブ",
   render: () => (
     <Frame
       note={
         <CaseNote
-          title="鎖の編集は計画ノートの右パネルに集める"
+          title="新しいパネルは作らない。既存の「ステップ」タブの中身が変わる"
           points={[
-            "計画ノート = 「計画」フォルダに入っているノート。テンプレートの有無は問わない。",
-            "工程ノート = 計画ノートの表の行から参照されているノート。工程タグは付けない。紐づいていれば工程。",
-            "右パネルの「工程」タブに、工程ノートの流れと、選択中の工程の入力元・出力・次の工程。",
-            "「入力元を変更」はピッカーで他ノートの出力を選ぶ。既存の cross-note 参照ピッカーを流用。",
-            "書き戻し先は工程ノートの step。計画ノート側には持たない（二重管理を避ける）。",
-            "本文側の表は行から工程ノートを作る既存機能のまま。「入力元」「出力」列は step から導出した読み取り専用。",
+            "計画ノート = 「計画」フォルダに入っているノート。工程ノート = その表の行から参照されているノート。どちらもタグは増やさない。",
+            "計画ノートで右パネルの「ステップ」を開くと、step ではなく工程ノートがノードになる。描画は今のフロービュー（StepFlowView）そのもの。上から下。",
+            "工程ノートが step、受け渡される物（全粒粉・生地）が entity。ノート内のフローと同じ 3 層構造なので、同じ部品で描ける。",
+            "分岐は「同じ entity を 2 つの工程ノートが使う」。表に分岐の列は要らない。",
+            "インデックステーブルは今のまま。行 = 工程ノート、フローのノード = 行、フローで追加 = 行を append。ノート内の「表 ⇄ フロー」と同じ往復。工程テーブルは作らない。",
+            "つながりの実体は工程ノート側の step の input（cross-note 参照）。フローで線を引く = その step に書き戻す。計画ノートには持たない。",
           ]}
         />
       }
