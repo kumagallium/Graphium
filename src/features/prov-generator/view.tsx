@@ -371,6 +371,7 @@ export function ProvGraphPanel({
       editorRef={editorRef}
       noteId={noteId}
       addActivityLabel={isPlan ? t("planFlow.addWorkStep") : undefined}
+      emptyHint={isPlan ? t("planFlow.workStepsEmptyHint") : undefined}
     />
   );
 
@@ -391,6 +392,7 @@ export function ProvGraphPanel({
       noteId={noteId}
       tableLayout="side"
       addActivityLabel={isPlan ? t("planFlow.addWorkStep") : undefined}
+      emptyHint={isPlan ? t("planFlow.workStepsEmptyHint") : undefined}
     />
   );
 

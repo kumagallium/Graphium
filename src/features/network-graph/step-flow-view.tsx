@@ -118,6 +118,8 @@ export type StepFlowViewProps = {
   onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
   /** step が 1 つも無いときの案内文。省略時は activityGraph.emptyHint */
   emptyHint?: string;
+  /** 同じく空状態の見出し。省略時は activityGraph.emptyTitle */
+  emptyTitle?: string;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
   /** 共有行の「表に追加」: その step の kind 表に行を書く（表が無ければ作る） */
@@ -234,6 +236,7 @@ function StepFlowCanvas({
   onOpenExternalNote,
   onOpenNoteRef,
   emptyHint,
+  emptyTitle,
   getStepContentCount,
   onAddEntity,
   onRenameEntity,
@@ -972,7 +975,7 @@ function StepFlowCanvas({
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-foreground)" }}>
-            {t("activityGraph.emptyTitle")}
+            {emptyTitle ?? t("activityGraph.emptyTitle")}
           </div>
           <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
             {emptyHint ?? t("activityGraph.emptyHint")}
@@ -980,8 +983,8 @@ function StepFlowCanvas({
         </div>
       )}
 
-      {/* 使い方ヒント（エッジが 1 本でもあれば隠す） */}
-      {variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0 && (
+      {/* 使い方ヒント（エッジが 1 本でもあれば隠す。接続できないフロー＝工程フローでは出さない） */}
+      {variant !== "preview" && (onConnectSteps || onConnectEntityToStep) && graph.steps.length > 0 && graph.edges.length === 0 && (
         <div
           style={{
             position: "absolute",

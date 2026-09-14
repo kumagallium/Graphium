@@ -215,6 +215,7 @@ export function PlanFlowEditor({
       layoutScope={noteId ? planFlowScope(noteId) : null}
       onAddActivity={onAddActivity}
       addActivityLabel={t("planFlow.addOperation")}
+      emptyTitle={t("planFlow.emptyTitle")}
       emptyHint={t("planFlow.emptyHint")}
       onOpenNoteRef={onOpenNoteRef}
     />

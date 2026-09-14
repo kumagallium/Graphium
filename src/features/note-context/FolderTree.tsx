@@ -264,7 +264,8 @@ export function FolderTree({
     const isActive = selectedKey === key;
     // 子フォルダを作れるのは root だけ（2 階層制約）
     const canAddChild = !isChild && !!onCreateFolder;
-    const canRename = !!onRenameFolder;
+    // 予約フォルダ「計画」は改名させない（FolderMenu 側と同じ。ここは行の鉛筆・ダブルクリック・Enter の入口）
+    const canRename = !!onRenameFolder && !isPlanFolderPath(node.path);
     const isEditing = editingKey === key;
     const isDropTarget = dropTarget === key;
     // 行右端の絶対配置アクション数（＋ と 鉛筆）。件数を左へ逃がす幅の計算に使う
