@@ -153,6 +153,60 @@ export function captureCytoscapePositions(cy: cytoscape.Core): GraphLayoutPositi
   return positions;
 }
 
+/** 組み直しをまたいで次のグラフに渡す、直前のグラフの座標と視点 */
+export type GraphCarryOver = {
+  positions: GraphLayoutPositions;
+  viewport: { zoom: number; pan: { x: number; y: number }; w: number; h: number };
+};
+
+/**
+ * 組み直し（Cytoscape の破棄 → 再生成）をまたいで座標と視点を引き継ぐ。
+ *
+ * 控えるのは描画 effect の **cleanup** で行う（`keep`）。React は次の effect より先に
+ * 前回の cleanup を必ず走らせるので、effect 本体で「既存インスタンスがあれば控える」
+ * 形にすると、cleanup が破棄して ref を空にした後なので一度も控えられない。
+ * 引き継ぎが空のまま組み直すと毎回ランダム配置から並べ直すことになり、
+ * 素材インデックスの更新などで組み直しが続くとグラフが動き続けて見える。
+ *
+ * 自動配置に戻した（reset で resetSeq が変わった）直後の組み直しでは引き継ぎを捨てる。
+ * cleanup は reset の**後**にも走って控え直すので、ボタン側で消しても間に合わない。
+ *
+ * 自動レイアウトの途中で破棄されたときも引き継がない（次のグラフは最初から並べる）。
+ * 走り出した直後の座標は全ノードがほぼ一点に重なっていて、そこから randomize なしで
+ * 続きを並べると一直線に潰れる（fcose で実測: 8 ノード中 6 組が重なった）。
+ * 開いた直後にサムネイルが解決して組み直される、StrictMode の二重マウント、で起きる。
+ */
+export function useGraphCarryOver(resetSeq: number): {
+  /** effect 本体の最初に呼ぶ。引き継ぐものが無い・自動配置に戻した直後なら null */
+  take: () => GraphCarryOver | null;
+  /** cleanup で、破棄する直前に呼ぶ。settled: 自動レイアウトが走っていない（並べ終わった） */
+  keep: (cy: cytoscape.Core, settled: boolean) => void;
+} {
+  const carryRef = useRef<GraphCarryOver | null>(null);
+  const latestResetSeqRef = useRef(resetSeq);
+  latestResetSeqRef.current = resetSeq;
+  const takenResetSeqRef = useRef(resetSeq);
+
+  const take = useCallback(() => {
+    if (takenResetSeqRef.current !== latestResetSeqRef.current) {
+      takenResetSeqRef.current = latestResetSeqRef.current;
+      carryRef.current = null;
+    }
+    return carryRef.current;
+  }, []);
+
+  const keep = useCallback((cy: cytoscape.Core, settled: boolean) => {
+    carryRef.current = settled
+      ? {
+          positions: captureCytoscapePositions(cy),
+          viewport: { zoom: cy.zoom(), pan: { ...cy.pan() }, w: cy.width(), h: cy.height() },
+        }
+      : null;
+  }, []);
+
+  return { take, keep };
+}
+
 export function attachCytoscapeLayoutPersistence(
   cy: cytoscape.Core,
   save: (positions: GraphLayoutPositions, movedMultiple: boolean) => void,
