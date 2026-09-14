@@ -2101,6 +2101,8 @@ export const en: Record<string, string> = {
   "intake.obsidianHint": "Obsidian vaults work as they are. [[links]] and images come along.",
   "intake.chooseFolder": "Choose a folder",
   "intake.chooseFiles": "Choose files",
+  "intake.checking": "Looking through the folder…",
+  "intake.checkingHint": "A folder on a network drive can take a few minutes",
   "intake.running": "Bringing in {done} / {total}",
   "intake.doneTitle": "Brought in",
   "intake.statNotes": "Notes",

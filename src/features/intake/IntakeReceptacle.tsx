@@ -5,8 +5,8 @@
 // 別に「モーダルを開かず直接この受け皿を置きたい」場面（例: ノート一覧の空状態）
 // でも同じものを使い回せるようにする。
 
-import { useRef, useState, type DragEvent } from "react";
-import { FolderInput } from "lucide-react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { FolderInput, Loader2 } from "lucide-react";
 import { useT } from "@/i18n";
 import { Button } from "@/ui/button";
 import { collectDroppedFiles } from "./collect-dropped-files";
@@ -17,18 +17,36 @@ type IntakeReceptacleProps = {
   lead?: string;
   /** 外側からの強調（ウィンドウのどこかでドラッグ中） */
   emphasized?: boolean;
+  /** 「中身を確認しています」の表示を外から固定する（Storybook 用） */
+  checking?: boolean;
   onFilesSelected: (files: IntakeFile[], source: IntakeSource) => void;
 };
 
-export function IntakeReceptacle({ lead, emphasized = false, onFilesSelected }: IntakeReceptacleProps) {
+export function IntakeReceptacle({ lead, emphasized = false, checking = false, onFilesSelected }: IntakeReceptacleProps) {
   const t = useT();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const filesInputRef = useRef<HTMLInputElement>(null);
   // 受け皿の中に入っているかどうか（外側の emphasized とは独立に、
   // 部品内のドラッグ判定でも強調できるようにする）
   const [internalOver, setInternalOver] = useState(false);
+  // 選択画面を開いてから change が来るまで。フォルダを選ぶと、ブラウザが中身を全部
+  // たどってから change を起こすので、NAS のような遅い場所では選んだ後に数十秒〜
+  // 数分の空白ができる。その間「動いていない」と見えないよう表示を切り替える。
+  // ユーザーがキャンセルすると input の cancel イベントで戻す
+  const [picking, setPicking] = useState(false);
+
+  // input の cancel イベントは React 18 の型に無いので、直接購読する
+  useEffect(() => {
+    const inputs = [folderInputRef.current, filesInputRef.current];
+    const onCancel = () => setPicking(false);
+    for (const el of inputs) el?.addEventListener("cancel", onCancel);
+    return () => {
+      for (const el of inputs) el?.removeEventListener("cancel", onCancel);
+    };
+  }, []);
 
   const emphasize = emphasized || internalOver;
+  const showChecking = checking || picking;
 
   const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -50,19 +68,43 @@ export function IntakeReceptacle({ lead, emphasized = false, onFilesSelected }: 
         emphasize ? "border-primary bg-accent" : "border-border bg-muted/30"
       }`}
     >
-      <div className="h-12 w-12 rounded-full bg-secondary text-primary flex items-center justify-center">
-        <FolderInput size={24} />
-      </div>
-      <p className="text-sm font-medium text-foreground">{lead ?? t("intake.dropHere")}</p>
-      <p className="text-xs text-muted-foreground">{t("intake.rule")}</p>
-      <div className="flex gap-3 mt-1">
-        <Button variant="primary" onClick={() => folderInputRef.current?.click()}>
-          {t("intake.chooseFolder")}
-        </Button>
-        <Button variant="outline" onClick={() => filesInputRef.current?.click()}>
-          {t("intake.chooseFiles")}
-        </Button>
-      </div>
+      {showChecking ? (
+        <>
+          <div className="h-12 w-12 rounded-full bg-secondary text-primary flex items-center justify-center">
+            <Loader2 size={24} className="animate-spin" />
+          </div>
+          <p className="text-sm font-medium text-foreground">{t("intake.checking")}</p>
+          <p className="text-xs text-muted-foreground">{t("intake.checkingHint")}</p>
+        </>
+      ) : (
+        <>
+          <div className="h-12 w-12 rounded-full bg-secondary text-primary flex items-center justify-center">
+            <FolderInput size={24} />
+          </div>
+          <p className="text-sm font-medium text-foreground">{lead ?? t("intake.dropHere")}</p>
+          <p className="text-xs text-muted-foreground">{t("intake.rule")}</p>
+          <div className="flex gap-3 mt-1">
+            <Button
+              variant="primary"
+              onClick={() => {
+                setPicking(true);
+                folderInputRef.current?.click();
+              }}
+            >
+              {t("intake.chooseFolder")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPicking(true);
+                filesInputRef.current?.click();
+              }}
+            >
+              {t("intake.chooseFiles")}
+            </Button>
+          </div>
+        </>
+      )}
 
       {/* フォルダ選択用（Markdown インポートの既存実装と同じ書き方） */}
       <input
@@ -75,6 +117,7 @@ export function IntakeReceptacle({ lead, emphasized = false, onFilesSelected }: 
         onChange={(e) => {
           const files = toIntakeFiles(e.target.files ?? []);
           e.target.value = "";
+          setPicking(false);
           if (files.length > 0) onFilesSelected(files, "folder");
         }}
       />
@@ -88,6 +131,7 @@ export function IntakeReceptacle({ lead, emphasized = false, onFilesSelected }: 
         onChange={(e) => {
           const files = toIntakeFiles(e.target.files ?? []);
           e.target.value = "";
+          setPicking(false);
           if (files.length > 0) onFilesSelected(files, "files");
         }}
       />

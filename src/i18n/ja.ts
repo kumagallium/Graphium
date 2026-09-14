@@ -2100,6 +2100,8 @@ export const ja: Record<string, string> = {
   "intake.obsidianHint": "Obsidian の vault はそのままで大丈夫です。[[リンク]] と画像も一緒に取り込まれます",
   "intake.chooseFolder": "フォルダを選ぶ",
   "intake.chooseFiles": "ファイルを選ぶ",
+  "intake.checking": "中身を確認しています…",
+  "intake.checkingHint": "ネットワーク上のフォルダは数分かかることがあります",
   "intake.running": "取り込んでいます {done} / {total}",
   "intake.doneTitle": "取り込みました",
   "intake.statNotes": "ノート",
