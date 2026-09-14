@@ -1130,6 +1130,25 @@ The same `src/` tree is built four different ways.
   raises no event the frontend can see, so `printAndWait` resolves as soon
   as the panel is open and the print tree is left in the DOM — it sits
   off-screen and is discarded at the start of the next print
+- Long jobs that run inside the webview — the intake's import loop and the
+  OCR queue that follows it — hold the `set_background_work_active` command
+  on for as long as they run (`src/lib/background-work.ts`, reference
+  counted, so overlapping jobs switch it on once and off once). On macOS,
+  WKWebView treats a window that sits on another Space or behind another
+  app as not visible: it drops the WebContent process to background
+  priority (a single imported file then takes tens of seconds) and
+  suspends it about ten minutes later, so an import started just before
+  switching away stalls until the window is shown again. While the command
+  is on, the webview's occlusion detection (`_windowOcclusionDetectionEnabled`,
+  a private WKWebView setting that is skipped if a future macOS drops it)
+  is turned off and an occlusion-change notification is posted so the
+  visibility is re-evaluated at once rather than at the next occlusion
+  change; the process also opts out of App Nap, still allowing idle system
+  sleep. It is not left on permanently because a hidden window would keep
+  running animations and timers at full speed. A minimized window is
+  outside occlusion detection and is still throttled. The command is a
+  no-op on other platforms. The Objective-C calls use `objc2` /
+  `objc2-foundation` at the versions wry already pulls in
 - Relaunching after an update goes through the `relaunch_via_launchd`
   command rather than the process plugin's `relaunch()`. `relaunch()`
   spawns the new binary from the current process, and on macOS a child

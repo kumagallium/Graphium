@@ -5,6 +5,7 @@
 // 変わらないようにする（useEffect の依存等で意図せず再実行されるのを防ぐ）。
 
 import { useCallback, useRef, useState } from "react";
+import { holdBackgroundWork } from "@/lib/background-work";
 import type { IntakeState } from "./IntakeModal";
 import { runIntake, mergeOutcome, type IntakeDeps, type IntakeOutcome } from "./run-intake";
 import type { IntakeFile } from "./types";
@@ -54,6 +55,9 @@ export function useIntake(
     }
     runningRef.current = true;
     setOpen(true);
+    // 大きなフォルダは数分かかり、その間にユーザーは別のアプリへ移る。
+    // デスクトップ版でウィンドウが隠れても止まらないよう、終わるまで保持する
+    const releaseBackgroundWork = holdBackgroundWork();
 
     let combined: IntakeOutcome | null = null;
     let batch = files;
@@ -99,6 +103,7 @@ export function useIntake(
       setState({ kind: "idle" });
     } finally {
       runningRef.current = false;
+      releaseBackgroundWork();
     }
   }, []);
 

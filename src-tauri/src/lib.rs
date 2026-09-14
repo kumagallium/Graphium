@@ -1869,6 +1869,95 @@ fn print_webview(window: tauri::WebviewWindow) -> Result<(), String> {
         .map_err(|e| format!("印刷パネルを開けません: {e}"));
 }
 
+/// 取り込みなど長い処理の間、ウィンドウが隠れても WebView を止めさせない（macOS）。
+///
+/// WKWebView はウィンドウが別のスペースや他のアプリの裏に隠れると「見えていない」と
+/// 判定し、WebContent プロセスをバックグラウンド優先度に落とす（1 件の処理に数十秒
+/// かかるようになる）。約 10 分後にはプロセスごと一時停止させるので、処理は表示し直す
+/// まで止まる。WebView の中で回っている取り込みや OCR のループがまるごと巻き込まれる。
+///
+/// `active` の間は覆い隠しの判定（`_windowOcclusionDetectionEnabled`）を切って、隠れて
+/// いても「見えている」扱いのままにする。設定しただけでは次に覆い隠しが変わるまで判定
+/// がやり直されないので、occlusion の変更通知を投げてその場でやり直させる。あわせて
+/// App Nap の対象から外す（アイドルスリープは妨げない）。
+///
+/// 常時オンにしないのは、隠れている間もアニメーションやタイマーが全速で回り続けて
+/// 電池を食うため。呼び出し側（`src/lib/background-work.ts`）が参照カウントで持つ。
+/// 最小化されたウィンドウは覆い隠しとは別扱いで、これでは止められない。
+/// macOS 以外では何もしない。
+#[tauri::command]
+fn set_background_work_active(window: tauri::WebviewWindow, active: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return window
+        .with_webview(move |webview| {
+            // with_webview の中身はメインスレッドで走る
+            macos_background_work::apply(webview.inner(), webview.ns_window(), active);
+        })
+        .map_err(|e| format!("WebView の状態を切り替えられません: {e}"));
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, active);
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod macos_background_work {
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyObject, NSObjectProtocol, ProtocolObject};
+    use objc2::{msg_send, sel};
+    use objc2_foundation::{ns_string, NSActivityOptions, NSNotificationCenter, NSProcessInfo};
+    use std::cell::RefCell;
+    use std::ffi::c_void;
+
+    thread_local! {
+        // App Nap を外している間の activity。メインスレッドからしか触らない
+        static ACTIVITY: RefCell<Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>> =
+            const { RefCell::new(None) };
+    }
+
+    /// `webview` は WKWebView、`ns_window` はそれを載せた NSWindow。メインスレッドで呼ぶこと。
+    pub fn apply(webview: *mut c_void, ns_window: *mut c_void, active: bool) {
+        if webview.is_null() {
+            return;
+        }
+        // SAFETY: wry が渡す生きた WKWebView / NSWindow で、メインスレッドから触っている
+        unsafe {
+            let view = &*(webview as *const AnyObject);
+            let setter = sel!(_setWindowOcclusionDetectionEnabled:);
+            // 非公開 API なので、将来の macOS で消えていたら何もしない（遅くなるだけ）
+            let responds: bool = msg_send![view, respondsToSelector: setter];
+            if responds {
+                let _: () = msg_send![view, _setWindowOcclusionDetectionEnabled: !active];
+                if !ns_window.is_null() {
+                    let window = &*(ns_window as *const AnyObject);
+                    NSNotificationCenter::defaultCenter().postNotificationName_object(
+                        ns_string!("NSWindowDidChangeOcclusionStateNotification"),
+                        Some(window),
+                    );
+                }
+            }
+        }
+
+        ACTIVITY.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let info = NSProcessInfo::processInfo();
+            if active {
+                if slot.is_none() {
+                    *slot = Some(info.beginActivityWithOptions_reason(
+                        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+                        ns_string!("Graphium background work"),
+                    ));
+                }
+            } else if let Some(activity) = slot.take() {
+                // SAFETY: beginActivityWithOptions_reason が返した activity をそのまま返す
+                unsafe { info.endActivity(&activity) };
+            }
+        });
+    }
+}
+
 /// 実行中の `.app` バンドルのパスを返す（macOS）。
 /// `cargo run` のようにバンドル化されていない起動では解決できないので Err を返す。
 #[cfg(target_os = "macos")]
@@ -2059,6 +2148,7 @@ pub fn run() {
             kill_pid,
             save_bytes_with_dialog,
             print_webview,
+            set_background_work_active,
             relaunch_via_launchd,
             start_native_sidecar,
             stop_native_sidecar,
