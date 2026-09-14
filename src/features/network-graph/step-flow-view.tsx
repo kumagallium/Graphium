@@ -57,6 +57,8 @@ const ACTIVITY_BLUE = KIND_PALETTE.activity.main;
 const MATERIAL_GREEN = KIND_PALETTE.material.main;
 const OUTPUT_TERRACOTTA = KIND_PALETTE.output.main;
 const DANGER = "var(--color-destructive)";
+/** 工程フローの broken エッジ（cross-note 参照が解決できない）用の薄い色 */
+const BROKEN_COLOR = "var(--color-text-tertiary)";
 
 /**
  * derived エッジ（prov:wasDerivedFrom）の色とラベルを、元のブロック間リンク種別で
@@ -213,7 +215,9 @@ const EDGE_STYLES: Record<string, Partial<Edge>> = {
 };
 
 function isEditableStep(graph: FlowGraphData, id: string): boolean {
-  return graph.steps.some((step) => step.id === id && !step.externalOrigin);
+  // 別ノート由来（externalOrigin）と工程ノート（noteRef）は、このノートの本文に
+  // 書き込む対象ではないので接続の端点にしない
+  return graph.steps.some((step) => step.id === id && !step.externalOrigin && !step.noteRef);
 }
 
 function StepFlowCanvas({
@@ -228,6 +232,8 @@ function StepFlowCanvas({
   onDeleteActivity,
   onJumpToBlock,
   onOpenExternalNote,
+  onOpenNoteRef,
+  emptyHint,
   getStepContentCount,
   onAddEntity,
   onRenameEntity,
@@ -375,11 +381,12 @@ function StepFlowCanvas({
         position: saved?.[s.id] ?? prevPos.get(s.id) ?? { x: 0, y: 0 },
         data: {
           activity: s,
-          onRename: s.externalOrigin ? undefined : onRenameActivity,
-          onDelete: s.externalOrigin ? undefined : onDeleteActivity,
-          onJump: s.externalOrigin ? undefined : onJumpToBlock,
+          onRename: s.externalOrigin || s.noteRef ? undefined : onRenameActivity,
+          onDelete: s.externalOrigin || s.noteRef ? undefined : onDeleteActivity,
+          onJump: s.externalOrigin || s.noteRef ? undefined : onJumpToBlock,
           onOpenExternalNote,
-          getContentCount: s.externalOrigin ? undefined : getStepContentCount,
+          onOpenNoteRef,
+          getContentCount: s.externalOrigin || s.noteRef ? undefined : getStepContentCount,
           distinguishers: distinguishers.get(s.id),
           showParams,
         },
@@ -409,35 +416,48 @@ function StepFlowCanvas({
         // derived は linkType で色分けが変わるため、他の kind と違い静的な
         // EDGE_STYLES を引かず、その場で色・ラベルを組み立てる
         const derived = e.kind === "derived" ? derivedEdgeVisual(e.linkType) : null;
+        // 工程フロー（plan-flow.ts）の cross-note 参照が解決できなかった used エッジ。
+        // 種別ごとの色分けより優先して、点線 + 薄い色 + ラベルで「切れている」ことを示す
         return {
           id: e.id,
           source: e.source,
           target: e.target,
-          ...(derived
+          ...(e.broken
             ? {
-                style: { stroke: derived.color, strokeWidth: 1.5 },
-                markerEnd: { type: MarkerType.ArrowClosed, color: derived.color, width: 16, height: 16 },
+                style: { stroke: BROKEN_COLOR, strokeWidth: 1.5, strokeDasharray: "4 3", opacity: 0.7 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: BROKEN_COLOR, width: 16, height: 16 },
               }
-            : EDGE_STYLES[e.kind]),
-          ...(e.kind === "orderOnly"
+            : derived
+              ? {
+                  style: { stroke: derived.color, strokeWidth: 1.5 },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: derived.color, width: 16, height: 16 },
+                }
+              : EDGE_STYLES[e.kind]),
+          ...(e.broken
             ? {
-                label: t("activityGraph.orderOnly"),
-                labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
+                label: t("planFlow.brokenRef"),
+                labelStyle: { fontSize: 9, fill: BROKEN_COLOR, fontWeight: 700 },
                 labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
               }
-            : e.kind === "external"
+            : e.kind === "orderOnly"
               ? {
-                  label: t("activityGraph.externalProcess"),
-                  labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
+                  label: t("activityGraph.orderOnly"),
+                  labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
                   labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
                 }
-              : derived
+              : e.kind === "external"
                 ? {
-                    label: derived.label,
-                    labelStyle: { fontSize: 9, fill: derived.color, fontWeight: 700 },
+                    label: t("activityGraph.externalProcess"),
+                    labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
                     labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
                   }
-                : {}),
+                : derived
+                  ? {
+                      label: derived.label,
+                      labelStyle: { fontSize: 9, fill: derived.color, fontWeight: 700 },
+                      labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
+                    }
+                  : {}),
           data: { kind: e.kind, deletable: e.deletable ?? false },
         };
       }),
@@ -474,6 +494,7 @@ function StepFlowCanvas({
     onDeleteActivity,
     onJumpToBlock,
     onOpenExternalNote,
+    onOpenNoteRef,
     getStepContentCount,
     onRenameEntity,
     onRemoveEntity,
@@ -953,7 +974,9 @@ function StepFlowCanvas({
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-foreground)" }}>
             {t("activityGraph.emptyTitle")}
           </div>
-          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{t("activityGraph.emptyHint")}</div>
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+            {emptyHint ?? t("activityGraph.emptyHint")}
+          </div>
         </div>
       )}
 

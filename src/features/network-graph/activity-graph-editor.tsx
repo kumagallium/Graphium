@@ -125,6 +125,7 @@ export function ActivityGraphEditor({
   editorRef,
   tableLayout,
   noteId,
+  addActivityLabel,
 }: {
   doc: ProvJsonLd | null;
   /** メインエディタ（BlockNote）への参照。無ければノード操作は出さない（接続のみ） */
@@ -133,6 +134,8 @@ export function ActivityGraphEditor({
   noteId?: string | null;
   /** 属性テーブルの置き場所（全画面では右横） */
   tableLayout?: "below" | "side";
+  /** 「+ 手順を追加」ボタンの文言。省略時は StepFlowView の既定 */
+  addActivityLabel?: string;
 }) {
   const linkStore = useLinkStore();
   const labelStore = useLabelStore();
@@ -781,6 +784,7 @@ export function ActivityGraphEditor({
       onConnectEntityToStep={hasEditor ? onConnectEntityToStep : undefined}
       onCreateStepFromEntity={hasEditor ? onCreateStepFromEntity : undefined}
       onAddActivity={hasEditor ? onAddActivity : undefined}
+      addActivityLabel={addActivityLabel}
       onRenameActivity={hasEditor ? onRenameActivity : undefined}
       onDeleteActivity={hasEditor ? onDeleteActivity : undefined}
       onJumpToBlock={hasEditor ? onJumpToBlock : undefined}
