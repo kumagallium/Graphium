@@ -9,6 +9,8 @@
 import { describe, expect, it } from "vitest";
 import {
   collectOperationRows,
+  collectOperationRowsFromBlocks,
+  nextDefaultOperationName,
   collectOperationNoteIds,
   findPlanNotesOf,
   collectCrossNoteReferencesTo,
@@ -21,6 +23,7 @@ import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { ProcessIndex, ProcessIndexEntry } from "./process-index";
 import type { FlowGraphData } from "./activity-graph-adapter";
 import type { BlockLink } from "../../lib/block-link-types";
+import { t } from "../../i18n";
 
 // ── フィクスチャ用ヘルパー ──
 
@@ -622,5 +625,48 @@ describe("buildPlanFlowGraph", () => {
     const rows = linearRows([["起点", "note-0"]]);
     const result = buildPlanFlowGraph({ rows, index, processIndex: null });
     expect(result.truncated).toBe(true);
+  });
+});
+
+describe("collectOperationRowsFromBlocks", () => {
+  it("collectOperationRows と同じ結果になる（doc から取り出した blocks/tableMeta を渡すだけ）", () => {
+    const blocks = [
+      tableBlock("t1", [
+        ["工程", "条件"],
+        ["合成", "800C"],
+      ]),
+    ];
+    const tableMeta = { t1: { noteLinks: { 合成: "note-a" }, columns: { 工程: ["note-link"] } } } as any;
+
+    const fromBlocks = collectOperationRowsFromBlocks(blocks, tableMeta);
+    const fromDoc = collectOperationRows(makeDoc({ blocks, tableMeta }));
+    expect(fromBlocks).toEqual(fromDoc);
+  });
+
+  it("tableMeta が undefined でも落ちない（空扱い）", () => {
+    const blocks = [tableBlock("t1", [["工程"], ["合成"]])];
+    expect(collectOperationRowsFromBlocks(blocks, undefined)).toEqual([]);
+  });
+});
+
+describe("nextDefaultOperationName", () => {
+  // t() は現在のロケール（既定は英語）に依存するため、期待値も t() で作る
+  const name = (n: number) => t("planFlow.defaultOperationName", { n: String(n) });
+
+  it("空の表なら 1 番から", () => {
+    expect(nextDefaultOperationName([])).toBe(name(1));
+  });
+
+  it("既存の行数 + 1 番から", () => {
+    expect(nextDefaultOperationName([name(1), name(2)])).toBe(name(3));
+  });
+
+  it("同名が既にあれば番号を進める（デフォルト名の行が既に使われている場合）", () => {
+    // 行数 + 1 = 2 番だが、既に「n 番」の行があるので衝突を避けて 3 番へ進む
+    expect(nextDefaultOperationName(["合成", name(2)])).toBe(name(3));
+  });
+
+  it("@ 付き・大文字小文字混在でも正規化して同名判定する", () => {
+    expect(nextDefaultOperationName([`@${name(1)}`])).toBe(name(2));
   });
 });

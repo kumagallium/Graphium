@@ -37,6 +37,7 @@ import type { GraphiumDocument, TableMeta } from "../../lib/document-types";
 import { readCellText, collectTableBlocks } from "../table-meta/table-cells";
 import { hasColumnType } from "../table-meta/types";
 import { isPlanNote } from "../note-context/reserved-folders";
+import { t } from "../../i18n";
 
 // ── 表の行 ──
 
@@ -71,22 +72,38 @@ function resolveRowNoteId(noteLinks: Record<string, string> | undefined, name: s
 }
 
 /**
- * 計画ノートの本文から工程行を集める（先頭ページの表のみ。複数表可、出現順・行順）。
- * ヘッダ行は除く。1 列目が空の行はスキップする。
+ * 「+ 工程を追加」で足す新しい行のデフォルト名を決める。
+ * n = 既存の行数 + 1 から始め、同名（正規化して比較）が既にあれば n を進める。
+ * 表がまだ 1 つも無いときは existingNames に [] を渡す（n = 1 から）。
  */
-export function collectOperationRows(
-  doc: GraphiumDocument,
+export function nextDefaultOperationName(existingNames: string[]): string {
+  const normalized = new Set(existingNames.map(normalizeOperationName));
+  let n = existingNames.length + 1;
+  while (normalized.has(normalizeOperationName(t("planFlow.defaultOperationName", { n: String(n) })))) {
+    n++;
+  }
+  return t("planFlow.defaultOperationName", { n: String(n) });
+}
+
+/**
+ * 計画ノートの本文（ブロック列 + tableMeta）から工程行を集める（複数表可、出現順・行順）。
+ * ヘッダ行は除く。1 列目が空の行はスキップする。
+ *
+ * ライブエディタの editor.document（BlockNote の生ブロック）+
+ * useTableMetaStore().getSnapshot() の組にもそのまま使える形に切り出した
+ * （collectOperationRows は保存済み doc からこれを呼ぶ薄いラッパー）。
+ */
+export function collectOperationRowsFromBlocks(
+  blocks: any[],
+  tableMeta: Record<string, TableMeta> | undefined,
   index?: GraphiumIndex | null,
 ): OperationRow[] {
-  const page = doc.pages?.[0];
-  if (!page) return [];
-
-  const tableBlocks = collectTableBlocks(page.blocks ?? []);
+  const tableBlocks = collectTableBlocks(blocks ?? []);
   const rows: OperationRow[] = [];
   const seenNames = new Set<string>();
 
   for (const [blockId, block] of tableBlocks) {
-    const meta: TableMeta | undefined = page.tableMeta?.[blockId];
+    const meta: TableMeta | undefined = tableMeta?.[blockId];
     if (!hasColumnType(meta, "note-link")) continue;
 
     const tableRows: any[] = block?.content?.rows ?? [];
@@ -129,6 +146,19 @@ export function collectOperationRows(
   }
 
   return rows;
+}
+
+/**
+ * 計画ノートの本文から工程行を集める（先頭ページの表のみ）。
+ * 保存済み doc（page.blocks + page.tableMeta）向けの薄いラッパー。
+ */
+export function collectOperationRows(
+  doc: GraphiumDocument,
+  index?: GraphiumIndex | null,
+): OperationRow[] {
+  const page = doc.pages?.[0];
+  if (!page) return [];
+  return collectOperationRowsFromBlocks(page.blocks ?? [], page.tableMeta, index);
 }
 
 // ── index から取れる工程集合 ──
