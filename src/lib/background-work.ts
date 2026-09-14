@@ -26,7 +26,9 @@ function setActive(active: boolean): void {
     try {
       await invoke("set_background_work_active", { active });
     } catch (e) {
-      // 切り替えに失敗しても処理自体は続ける（遅くなるだけで壊れはしない）
+      // 失敗しても処理自体は止めない。オンに失敗したら、隠れたときに遅くなるだけ。
+      // オフに失敗したら判定を切ったまま残り、隠れていても全速で回る（電池を食う）が、
+      // 次に長い処理が終わるときにもう一度オフを送るので、そこで戻る
       console.warn("[background-work] 切り替えに失敗しました:", e);
     }
   });

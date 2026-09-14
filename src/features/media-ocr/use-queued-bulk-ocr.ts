@@ -28,9 +28,11 @@ export function useQueuedBulkOcr() {
       });
     } finally {
       runningRef.current = false;
-      releaseBackgroundWork();
-      // 実行中にさらに取り込みが来てキューに積まれていたら、続けて次のバッチを回す
+      // 実行中にさらに取り込みが来てキューに積まれていたら、続けて次のバッチを回す。
+      // runNext は最初の await までに保持を取るので、解放はその後にする
+      // （先に解放するとオフ→オンの往復が挟まり、その瞬間だけ隠れたウィンドウで減速する）
       if (queueRef.current.length > 0) void runNext();
+      releaseBackgroundWork();
     }
   }, []);
 
