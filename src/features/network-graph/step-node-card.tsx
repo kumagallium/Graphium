@@ -491,11 +491,14 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         </div>
       )}
 
-      {/* 上=入力（受け側・白抜き）、下=出力（掴んで接続・青塗り） */}
-      {!external && !noteRef && (
+      {/* 上=入力（受け側・白抜き）、下=出力（掴んで接続・青塗り）。
+          工程ノード（noteRef）は used エッジの受け側になるので上ハンドルは残し、
+          ドラッグ接続だけ不可にする（外部 step は受け側にならないので出さない） */}
+      {!external && (
         <Handle
           type="target"
           position={Position.Top}
+          isConnectable={!noteRef}
           style={{
             width: 9,
             height: 9,
@@ -507,7 +510,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
       <Handle
         type="source"
         position={Position.Bottom}
-        isConnectable={!external}
+        isConnectable={!external && !noteRef}
         style={{
           width: 11,
           height: 11,
