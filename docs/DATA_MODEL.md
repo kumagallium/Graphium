@@ -1431,6 +1431,12 @@ type NoteIndexEntry = {
   //   by hand; used by the note list for the "Context" column display and the
   //   column-header filter. Orthogonal to PROV labels and to `theme`.
   //   Absent → undefined (treated as "uncategorised").
+  //   A reserved value, "計画" / "plan" (case-insensitive, sub-folders too,
+  //   see `src/features/note-context/reserved-folders.ts`), marks a note as
+  //   a *plan note*: rows in its index table (the note-link column) become
+  //   *operation notes* feeding the plan/operation flow
+  //   (`src/features/network-graph/plan-flow.ts`). This reservation lives entirely
+  //   inside `noteContexts` — no new field or index bump is added for it.
   noteContexts?: string[];
 
   // v22: concatenated text read on-device out of the note's images
@@ -1608,6 +1614,20 @@ The index is also what **cross-note output references** resolve against
 row identity — or, for pre-identity fallback references, by position
 pinned to the projected `sourceModifiedAt` — and a reference that no
 longer resolves is shown as broken instead of being silently re-matched.
+
+**Reverse lookup is a scan, not a stored field.** "Who references this
+note's output?" is not cached anywhere — `ProcessIndexEntry.crossNoteLinks`
+only records the outgoing direction. Callers that need the reverse (e.g.
+the plan/operation flow in `src/features/network-graph/plan-flow.ts`)
+walk every entry's `crossNoteLinks` at read time; this keeps the stored
+shape simple at the cost of an O(n) scan per lookup.
+
+The same "read-only derivation" rule covers the plan/operation flow,
+local view and process overview projections
+(`src/features/network-graph/plan-flow.ts` /
+`local-view-model.ts` / `process-overview.ts`): they build their graphs from the
+existing `ProcessIndex` and navigation index in memory and never add
+fields to either or write anything back.
 
 #### `PROCESS_INDEX_VERSION`
 
