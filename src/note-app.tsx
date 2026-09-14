@@ -10923,6 +10923,7 @@ export function NoteApp() {
               if (newNoteId) navigateToNote(newNoteId);
               return newNoteId;
             }}
+            overview
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView
