@@ -1,21 +1,31 @@
 // ノート間プロセス（工程ノートの鎖）の可視化提案ストーリー
 //
-// 背景: ノート内は step ブロックでフローが描けるが、「合成」「配合」といった
-// ノート自体の並びは一望できない。インデックステーブルは分岐を表せず、
-// 計画ノートの所属は手で付けられない。これらをどう見せ、どこで編集するかの案。
+// 背景: ノート内は step ブロックでフローが描けるが、ノート自体の並び
+// （製粉 → 仕込み → 焼成 → 試食 のような工程ノートの鎖）は一望できない。
+// インデックステーブルは分岐を表せず、計画ノートへの所属を手で付ける UI もない。
+// これらをどう見せ、どこで編集するかの案。
+//
+// 用語（この提案での定義）:
+//   計画ノート = 「計画」フォルダに入っているノート。テンプレートの有無は問わない
+//   工程ノート = 計画ノートのインデックステーブルの行から参照されているノート。
+//                工程タグは付けない。紐づいていれば工程
+//   ステップ   = 工程ノートの中の step ブロック
+//   段階       = step のパラメータ表の行（この提案の図には出さない）
 //
 // 見るべきところ:
 //   - ローカルビュー: 起点ノートから「深さ × 時間」で近傍が読めるか
-//   - 分岐: 表（行 = 子ノート）で持たず、受け渡し（Entity）で持てば分岐が自然に出るか
+//   - 分岐: 表（行 = 工程ノート）で持たず、受け渡し（Entity）で持てば分岐が自然に出るか
 //   - 右パネル: 計画ノートを開いたときに鎖の編集がここで済むか
-//   - 全体ビュー: 組織として「どんな工程を何回やってきたか」が工程名の集約で読めるか
+//   - 全体ビュー: 「どんな工程を何回やってきたか」がステップ名の集約で読めるか
+//   - UI 上の位置: 全体グラフと同じ枠に入るか
 //
 // 本ストーリーは Storybook 上での視覚合意用。データ配線はしていない。
-// 確定したら process-index / cross-note-flow を土台に実装へ移す。
+// 確定したら process-index / cross-note-flow / noteLinks を土台に実装へ移す。
+// デモデータはマニュアルと同じパン作りの世界観にそろえる。
 
 import type { ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ArrowRight, GitBranch, Layers, Table } from "lucide-react";
+import { ArrowRight, GitBranch, Layers, Table, Folder, Network, FileText } from "lucide-react";
 import "../../app.css";
 
 // ── 共通部品 ─────────────────────────────────────────
@@ -79,7 +89,7 @@ function Segment({ items, active }: { items: string[]; active: number }) {
 
 // ── スイムレーン（ローカルビュー）────────────────────
 
-type Lane = "plan" | "step" | "stage";
+type Lane = "plan" | "note" | "step";
 type Node = {
   id: string;
   lane: Lane;
@@ -87,26 +97,32 @@ type Node = {
   sub?: string;
   /** 時間軸上の位置（0..1） */
   t: number;
+  /** レーン内の段（分岐で縦にずらす） */
+  row?: number;
   /** 横幅（0..1）。計画ノートは全体に伸ばす */
   w?: number;
   origin?: boolean;
 };
 type Edge = { from: string; to: string; kind: "handoff" | "partOf" };
 
-const LANE_Y: Record<Lane, number> = { plan: 40, step: 130, stage: 220 };
-const LANE_LABEL: Record<Lane, string> = { plan: "計画", step: "工程", stage: "段階" };
+const LANE_Y: Record<Lane, number> = { plan: 40, note: 130, step: 270 };
+const LANE_LABEL: Record<Lane, string> = { plan: "計画", note: "工程ノート", step: "ステップ" };
 const W = 760;
-const LEFT = 90;
+const LEFT = 100;
 const NODE_W = 120;
 const NODE_H = 44;
+const ROW_GAP = 12;
 
 function x(t: number) {
   return LEFT + t * (W - LEFT - NODE_W - 20);
 }
+function y(n: Node) {
+  return LANE_Y[n.lane] + (n.row ?? 0) * (NODE_H + ROW_GAP);
+}
 
 function Swimlane({ nodes, edges, ticks }: { nodes: Node[]; edges: Edge[]; ticks: string[] }) {
   const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
-  const H = 320;
+  const H = 370;
   return (
     <svg width={W} height={H} className="block max-w-full" style={{ fontSize: 12 }}>
       <defs>
@@ -139,40 +155,40 @@ function Swimlane({ nodes, edges, ticks }: { nodes: Node[]; edges: Edge[]; ticks
             <line
               key={i}
               x1={x(b.t) + NODE_W / 2}
-              y1={LANE_Y[a.lane] + NODE_H}
+              y1={y(a) + NODE_H}
               x2={x(b.t) + NODE_W / 2}
-              y2={LANE_Y[b.lane]}
+              y2={y(b)}
               stroke="var(--color-muted-foreground)"
               strokeDasharray="4 3"
             />
           );
         }
-        const sameLane = a.lane === b.lane;
         const x1 = x(a.t) + NODE_W;
-        const y1 = LANE_Y[a.lane] + NODE_H / 2;
+        const y1 = y(a) + NODE_H / 2;
         const x2 = x(b.t);
-        const y2 = LANE_Y[b.lane] + NODE_H / 2;
-        const d = sameLane
-          ? `M${x1} ${y1} L${x2 - 2} ${y2}`
-          : `M${x1} ${y1} C${x1 + 30} ${y1} ${x2 - 30} ${y2} ${x2 - 2} ${y2}`;
+        const y2 = y(b) + NODE_H / 2;
+        const d =
+          y1 === y2
+            ? `M${x1} ${y1} L${x2 - 2} ${y2}`
+            : `M${x1} ${y1} C${x1 + 30} ${y1} ${x2 - 30} ${y2} ${x2 - 2} ${y2}`;
         return <path key={i} d={d} fill="none" stroke="var(--forest)" strokeWidth={1.5} markerEnd="url(#nc-arrow)" />;
       })}
       {/* ノード */}
       {nodes.map((n) => {
         const w = n.w ? n.w * (W - LEFT - 20) : NODE_W;
         const nx = n.lane === "plan" ? LEFT : x(n.t);
-        const y = LANE_Y[n.lane];
+        const ny = y(n);
         const fill =
           n.lane === "plan" ? "var(--color-secondary)" : n.origin ? "var(--forest-soft)" : "var(--color-card)";
         const stroke = n.origin ? "var(--forest)" : "var(--color-border)";
         return (
           <g key={n.id}>
-            <rect x={nx} y={y} width={w} height={NODE_H} rx={6} fill={fill} stroke={stroke} strokeWidth={n.origin ? 1.5 : 1} />
-            <text x={nx + 10} y={y + 18} fill="var(--color-foreground)" fontWeight={n.origin ? 600 : 500}>
+            <rect x={nx} y={ny} width={w} height={NODE_H} rx={6} fill={fill} stroke={stroke} strokeWidth={n.origin ? 1.5 : 1} />
+            <text x={nx + 10} y={ny + 18} fill="var(--color-foreground)" fontWeight={n.origin ? 600 : 500}>
               {n.label}
             </text>
             {n.sub && (
-              <text x={nx + 10} y={y + 34} fill="var(--color-muted-foreground)" fontSize={11}>
+              <text x={nx + 10} y={ny + 34} fill="var(--color-muted-foreground)" fontSize={11}>
                 {n.sub}
               </text>
             )}
@@ -183,64 +199,79 @@ function Swimlane({ nodes, edges, ticks }: { nodes: Node[]; edges: Edge[]; ticks
   );
 }
 
+const TICKS = ["4/03", "4/05", "4/08", "4/12"];
+
 const LINEAR_NODES: Node[] = [
-  { id: "plan", lane: "plan", label: "正極 A ロット", sub: "計画ノート", t: 0, w: 1 },
-  { id: "syn", lane: "step", label: "合成", sub: "→ 前駆体粉末 #12", t: 0 },
-  { id: "mix", lane: "step", label: "配合", sub: "→ スラリー", t: 0.33, origin: true },
-  { id: "coat", lane: "step", label: "サンプル作製", sub: "→ 電極シート", t: 0.66 },
-  { id: "eval", lane: "step", label: "評価", sub: "→ 充放電データ", t: 1 },
-  { id: "st1", lane: "stage", label: "混練", t: 0.33 },
-  { id: "st2", lane: "stage", label: "脱泡", t: 0.45 },
-  { id: "st3", lane: "stage", label: "粘度調整", t: 0.57 },
+  { id: "plan", lane: "plan", label: "春のカンパーニュ試作", sub: "「計画」フォルダのノート", t: 0, w: 1 },
+  { id: "mill", lane: "note", label: "製粉", sub: "→ 全粒粉 #12", t: 0 },
+  { id: "dough", lane: "note", label: "仕込み", sub: "→ 生地", t: 0.33, origin: true },
+  { id: "bake", lane: "note", label: "焼成", sub: "→ 焼き上がり", t: 0.66 },
+  { id: "taste", lane: "note", label: "試食", sub: "→ 試食記録", t: 1 },
+  { id: "s1", lane: "step", label: "こねる", t: 0.33 },
+  { id: "s2", lane: "step", label: "一次発酵", t: 0.45 },
+  { id: "s3", lane: "step", label: "分割", t: 0.57 },
 ];
 const LINEAR_EDGES: Edge[] = [
-  { from: "syn", to: "mix", kind: "handoff" },
-  { from: "mix", to: "coat", kind: "handoff" },
-  { from: "coat", to: "eval", kind: "handoff" },
-  { from: "plan", to: "syn", kind: "partOf" },
-  { from: "plan", to: "mix", kind: "partOf" },
-  { from: "plan", to: "coat", kind: "partOf" },
-  { from: "plan", to: "eval", kind: "partOf" },
-  { from: "mix", to: "st1", kind: "partOf" },
+  { from: "mill", to: "dough", kind: "handoff" },
+  { from: "dough", to: "bake", kind: "handoff" },
+  { from: "bake", to: "taste", kind: "handoff" },
+  { from: "s1", to: "s2", kind: "handoff" },
+  { from: "s2", to: "s3", kind: "handoff" },
+  { from: "plan", to: "mill", kind: "partOf" },
+  { from: "plan", to: "dough", kind: "partOf" },
+  { from: "plan", to: "bake", kind: "partOf" },
+  { from: "plan", to: "taste", kind: "partOf" },
+  { from: "dough", to: "s1", kind: "partOf" },
 ];
 
 const BRANCH_NODES: Node[] = [
-  { id: "plan", lane: "plan", label: "正極 A ロット", sub: "計画ノート", t: 0, w: 1 },
-  { id: "syn", lane: "step", label: "合成", sub: "→ 前駆体粉末 #12", t: 0, origin: true },
-  { id: "mixA", lane: "step", label: "配合 A", sub: "バインダ 3%", t: 0.33 },
-  { id: "mixB", lane: "stage", label: "配合 B", sub: "バインダ 5%", t: 0.4 },
-  { id: "coat", lane: "step", label: "サンプル作製", sub: "A / B を並行", t: 0.66 },
-  { id: "eval", lane: "step", label: "評価", sub: "A vs B", t: 1 },
+  { id: "plan", lane: "plan", label: "春のカンパーニュ試作", sub: "「計画」フォルダのノート", t: 0, w: 1 },
+  { id: "mill", lane: "note", label: "製粉", sub: "→ 全粒粉 #12", t: 0, origin: true },
+  { id: "doughA", lane: "note", label: "仕込み A", sub: "加水 65%", t: 0.33 },
+  { id: "doughB", lane: "note", label: "仕込み B", sub: "加水 72%", t: 0.36, row: 1 },
+  { id: "bake", lane: "note", label: "焼成", sub: "A / B を同じ窯で", t: 0.66 },
+  { id: "taste", lane: "note", label: "試食", sub: "A vs B", t: 1 },
+  { id: "s1", lane: "step", label: "秤量", t: 0 },
+  { id: "s2", lane: "step", label: "挽く", t: 0.12 },
+  { id: "s3", lane: "step", label: "ふるう", t: 0.24 },
 ];
 const BRANCH_EDGES: Edge[] = [
-  { from: "syn", to: "mixA", kind: "handoff" },
-  { from: "syn", to: "mixB", kind: "handoff" },
-  { from: "mixA", to: "coat", kind: "handoff" },
-  { from: "mixB", to: "coat", kind: "handoff" },
-  { from: "coat", to: "eval", kind: "handoff" },
-  { from: "plan", to: "syn", kind: "partOf" },
-  { from: "plan", to: "mixA", kind: "partOf" },
-  { from: "plan", to: "coat", kind: "partOf" },
-  { from: "plan", to: "eval", kind: "partOf" },
+  { from: "mill", to: "doughA", kind: "handoff" },
+  { from: "mill", to: "doughB", kind: "handoff" },
+  { from: "doughA", to: "bake", kind: "handoff" },
+  { from: "doughB", to: "bake", kind: "handoff" },
+  { from: "bake", to: "taste", kind: "handoff" },
+  { from: "s1", to: "s2", kind: "handoff" },
+  { from: "s2", to: "s3", kind: "handoff" },
+  { from: "plan", to: "mill", kind: "partOf" },
+  { from: "plan", to: "doughA", kind: "partOf" },
+  { from: "plan", to: "bake", kind: "partOf" },
+  { from: "plan", to: "taste", kind: "partOf" },
+  { from: "mill", to: "s1", kind: "partOf" },
 ];
 
 // ── 右パネル（計画ノートの工程タブ）────────────────
 
 function RightPanelMock() {
   const rows = [
-    { name: "合成", from: "—", out: "前駆体粉末 #12", date: "8/20" },
-    { name: "配合 A", from: "合成 › 前駆体粉末 #12", out: "スラリー A", date: "8/22" },
-    { name: "配合 B", from: "合成 › 前駆体粉末 #12", out: "スラリー B", date: "8/22" },
-    { name: "サンプル作製", from: "配合 A › スラリー A ＋ 配合 B › スラリー B", out: "電極シート", date: "8/25" },
-    { name: "評価", from: "サンプル作製 › 電極シート", out: "充放電データ", date: "9/01" },
+    { name: "製粉", from: "—", out: "全粒粉 #12", date: "4/03" },
+    { name: "仕込み A", from: "製粉 › 全粒粉 #12", out: "生地 A", date: "4/05" },
+    { name: "仕込み B", from: "製粉 › 全粒粉 #12", out: "生地 B", date: "4/05" },
+    { name: "焼成", from: "仕込み A › 生地 A ＋ 仕込み B › 生地 B", out: "焼き上がり", date: "4/08" },
+    { name: "試食", from: "焼成 › 焼き上がり", out: "試食記録", date: "4/12" },
   ];
   return (
     <div className="flex gap-4">
       {/* 本文（計画ノート） */}
       <div className="flex-1 rounded-lg border border-border bg-card p-5 min-h-[420px]">
-        <p className="text-lg font-semibold mb-1">正極 A ロット</p>
-        <p className="text-xs text-muted-foreground mb-4">計画ノート ・ 工程 5 ・ 分岐 1</p>
-        <p className="text-sm mb-3">目的: バインダ量の違いが初回充放電効率に与える影響を見る。</p>
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-lg font-semibold">春のカンパーニュ試作</p>
+          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">
+            <Folder size={10} /> 計画
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">工程 5 ・ 分岐 1</p>
+        <p className="text-sm mb-3">目的: 加水率の違いがクラムの気泡に与える影響を見る。</p>
         <div className="rounded-md border border-border overflow-hidden text-xs">
           <div className="grid grid-cols-[1fr_2fr_1.2fr_60px] bg-secondary text-muted-foreground">
             {["工程", "入力元", "出力", "日付"].map((h) => (
@@ -257,7 +288,7 @@ function RightPanelMock() {
           ))}
         </div>
         <p className="text-[11px] text-muted-foreground mt-2">
-          「工程」列 = 子ノート（行から作成）。「入力元」列 = 他の工程ノートの出力を選ぶ（cross-note 参照）。
+          「工程」列 = 行から作った工程ノート（既存機能）。「入力元」「出力」列は工程ノートの step から導出した読み取り専用。
           分岐は同じ入力元を持つ行が 2 つあるだけで表せる。
         </p>
       </div>
@@ -273,7 +304,7 @@ function RightPanelMock() {
               key={tab.l}
               className={
                 "flex items-center gap-1 px-3 py-2 " +
-                (tab.on ? "border-b-2 border-forest text-foreground" : "text-muted-foreground")
+                (tab.on ? "border-b-2 text-foreground" : "text-muted-foreground")
               }
               style={tab.on ? { borderBottomColor: "var(--forest)" } : undefined}
             >
@@ -283,17 +314,18 @@ function RightPanelMock() {
           ))}
         </div>
         <div className="p-3">
-          <p className="text-[11px] text-muted-foreground mb-2">この計画に属する工程の流れ</p>
+          <p className="text-[11px] text-muted-foreground mb-2">この計画の工程ノートの流れ</p>
           <MiniChain />
-          <p className="text-[11px] text-muted-foreground mt-3 mb-1">選択中: 配合 B</p>
+          <p className="text-[11px] text-muted-foreground mt-3 mb-1">選択中: 仕込み B</p>
           <div className="rounded-md border border-border bg-card p-2 text-xs space-y-1.5">
-            <Row k="入力元" v="合成 › 前駆体粉末 #12" action="変更" />
-            <Row k="出力" v="スラリー B" />
-            <Row k="次の工程" v="サンプル作製" action="追加" />
-            <Row k="所属" v="正極 A ロット" action="外す" />
+            <Row k="入力元" v="製粉 › 全粒粉 #12" action="変更" />
+            <Row k="出力" v="生地 B" />
+            <Row k="次の工程" v="焼成" action="追加" />
+            <Row k="計画" v="春のカンパーニュ試作" />
           </div>
           <p className="text-[11px] text-muted-foreground mt-3">
-            ここで変えた入力元は、子ノート側の step の input に書き戻る（1 か所で持つ）。
+            入力元を変えると、工程ノート側の step の input に書き戻る（1 か所で持つ）。
+            「計画」は表の行から導出するので編集項目にしない。
           </p>
         </div>
       </div>
@@ -314,10 +346,7 @@ function Row({ k, v, action }: { k: string; v: string; action?: string }) {
 function MiniChain() {
   const box = (label: string, hi?: boolean) => (
     <div
-      className={
-        "rounded border px-2 py-1 text-[11px] bg-card " +
-        (hi ? "font-semibold" : "")
-      }
+      className={"rounded border px-2 py-1 text-[11px] bg-card " + (hi ? "font-semibold" : "")}
       style={hi ? { borderColor: "var(--forest)", background: "var(--forest-soft)" } : undefined}
     >
       {label}
@@ -326,40 +355,40 @@ function MiniChain() {
   const arrow = <ArrowRight size={12} className="text-muted-foreground shrink-0" />;
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {box("合成")}
+      {box("製粉")}
       {arrow}
       <div className="flex flex-col gap-1">
-        {box("配合 A")}
-        {box("配合 B", true)}
+        {box("仕込み A")}
+        {box("仕込み B", true)}
       </div>
       {arrow}
-      {box("サンプル作製")}
+      {box("焼成")}
       {arrow}
-      {box("評価")}
+      {box("試食")}
     </div>
   );
 }
 
-// ── 工程の全体ビュー（組織レベル）────────────────────
+// ── 工程の全体ビュー（ステップ名で集約）─────────────
 
 function ProcessOverviewMock() {
-  // 工程名で集約した有向グラフ。線の太さ = 何回その受け渡しが起きたか
+  // ステップ名で集約した有向グラフ。線の太さ = 何回その受け渡しが起きたか
   const nodes = [
-    { id: "syn", label: "合成", n: 38, x: 40, y: 100 },
-    { id: "mix", label: "配合", n: 31, x: 240, y: 100 },
-    { id: "coat", label: "サンプル作製", n: 29, x: 440, y: 100 },
-    { id: "eval", label: "評価", n: 44, x: 640, y: 100 },
-    { id: "xrd", label: "XRD 測定", n: 17, x: 110, y: 220 },
-    { id: "sem", label: "SEM 観察", n: 9, x: 520, y: 220 },
+    { id: "mill", label: "製粉", n: 38, x: 40, y: 100 },
+    { id: "knead", label: "こねる", n: 31, x: 240, y: 100 },
+    { id: "bake", label: "焼成", n: 29, x: 440, y: 100 },
+    { id: "taste", label: "試食", n: 44, x: 640, y: 100 },
+    { id: "ferment", label: "一次発酵", n: 17, x: 110, y: 220 },
+    { id: "cut", label: "断面観察", n: 9, x: 520, y: 220 },
   ];
   const edges = [
-    { a: "syn", b: "mix", n: 31 },
-    { a: "mix", b: "coat", n: 29 },
-    { a: "coat", b: "eval", n: 27 },
-    { a: "syn", b: "xrd", n: 17 },
-    { a: "xrd", b: "mix", n: 6 },
-    { a: "coat", b: "sem", n: 9 },
-    { a: "sem", b: "eval", n: 4 },
+    { a: "mill", b: "knead", n: 31 },
+    { a: "knead", b: "bake", n: 29 },
+    { a: "bake", b: "taste", n: 27 },
+    { a: "mill", b: "ferment", n: 17 },
+    { a: "ferment", b: "knead", n: 6 },
+    { a: "bake", b: "cut", n: 9 },
+    { a: "cut", b: "taste", n: 4 },
   ];
   const by = Object.fromEntries(nodes.map((n) => [n.id, n]));
   const NW = 120;
@@ -371,7 +400,7 @@ function ProcessOverviewMock() {
         <Segment items={["3 か月", "1 年", "すべて"]} active={1} />
         <span className="ml-3 text-muted-foreground">範囲</span>
         <Segment items={["自分", "共有フォルダ"]} active={1} />
-        <span className="ml-auto text-xs text-muted-foreground">工程名で集約 ・ 線の太さ = 受け渡しの回数</span>
+        <span className="ml-auto text-xs text-muted-foreground">ステップ名で集約 ・ 線の太さ = 受け渡しの回数</span>
       </div>
       <svg width={780} height={300} className="block max-w-full rounded-lg border border-border bg-card" style={{ fontSize: 12 }}>
         <defs>
@@ -416,8 +445,53 @@ function ProcessOverviewMock() {
         ))}
       </svg>
       <p className="text-xs text-muted-foreground mt-2">
-        ノードをクリック → その工程名を持つノート一覧（プロセス一覧の絞り込み）。線をクリック → その受け渡しを含む計画ノート一覧。
+        ノードをクリック → そのステップ名を持つノート一覧（プロセス一覧の絞り込み）。線をクリック → その受け渡しを含む計画ノート一覧。
       </p>
+    </div>
+  );
+}
+
+// ── UI 上の位置（アプリの枠に入れたところ）──────────
+
+function AppShellMock() {
+  const item = (icon: ReactNode, label: string, on?: boolean, indent?: boolean) => (
+    <div
+      className={
+        "flex items-center gap-2 px-2 py-1 rounded text-xs " +
+        (indent ? "ml-4 " : "") +
+        (on ? "bg-sidebar-accent text-foreground" : "text-sidebar-foreground/80")
+      }
+    >
+      {icon}
+      {label}
+    </div>
+  );
+  const group = (label: string) => (
+    <p className="px-2 pt-3 pb-1 text-[10px] text-muted-foreground tracking-wide">{label}</p>
+  );
+  return (
+    <div className="flex h-[560px] rounded-lg border border-border overflow-hidden">
+      <aside className="w-52 shrink-0 border-r border-sidebar-border bg-sidebar-background p-2">
+        <div className="rounded-md border border-sidebar-border px-2 py-1 text-xs mb-1">+ ノート</div>
+        {group("記録と知識")}
+        {item(<FileText size={12} />, "すべてのノート")}
+        {item(<Folder size={12} />, "計画", false, true)}
+        {item(<Folder size={12} />, "試作", false, true)}
+        {item(<Layers size={12} />, "ナレッジ")}
+        {group("保管庫")}
+        {item(<Table size={12} />, "素材")}
+        {item(<GitBranch size={12} />, "プロセス")}
+        {item(<Network size={12} />, "全体グラフ", true)}
+      </aside>
+      <main className="flex-1 p-5 bg-background overflow-auto">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+          <span>全体グラフ</span>
+          <span>›</span>
+          <span className="text-foreground">周辺を時系列で見る（起点: 仕込み）</span>
+        </div>
+        <ViewHeader origin="仕込み" />
+        <Swimlane nodes={LINEAR_NODES} edges={LINEAR_EDGES} ticks={TICKS} />
+      </main>
     </div>
   );
 }
@@ -431,7 +505,7 @@ const meta: Meta = {
     docs: {
       description: {
         component:
-          "工程ノート（合成・配合…）の鎖を可視化・編集する提案。ローカルビュー / 分岐 / 右パネル / 全体ビューの 4 案。",
+          "工程ノート（製粉・仕込み・焼成・試食…）の鎖を可視化・編集する提案。ローカルビュー / 分岐 / 右パネル / 全体ビュー / UI 上の位置 の 5 案。",
       },
     },
   },
@@ -448,17 +522,17 @@ export const LocalView: Story = {
         <CaseNote
           title="起点ノートの近傍を「深さ × 時間」で並べる"
           points={[
-            "縦 = 深さ（計画 → 工程 → 段階）。横 = 時間。ツリーと時系列を 1 画面に載せる。",
-            "工程間の矢印 = 出力 → 次の工程の入力（cross-note 参照）。点線 = 所属。",
-            "段階レーンは起点ノートの中身（パラメータ表の行）。孫はここで受ける。",
+            "縦 = 深さ（計画 → 工程ノート → ステップ）。横 = 時間。ツリーと時系列を 1 画面に載せる。",
+            "工程ノート間の矢印 = 出力 → 次の工程の入力（cross-note 参照）。点線 = 計画の表に載っている。",
+            "ステップレーンは起点ノートの中の step ブロック。段階（表の行）はさらに 1 段下なので、ここには出さない。",
             "入口: 全体グラフの SidePeek に「この周辺を時系列で見る」。ノート右パネルの来歴タブからも。",
-            "データ変更なし。process-index と cross-note-flow の 1 ホップ表示を両方向に辿るだけ。",
+            "データ変更なし。noteLinks・process-index・cross-note-flow の 1 ホップ表示を両方向に辿るだけ。",
           ]}
         />
       }
     >
-      <ViewHeader origin="配合" />
-      <Swimlane nodes={LINEAR_NODES} edges={LINEAR_EDGES} ticks={["8/20", "8/22", "8/25", "9/01"]} />
+      <ViewHeader origin="仕込み" />
+      <Swimlane nodes={LINEAR_NODES} edges={LINEAR_EDGES} ticks={TICKS} />
     </Frame>
   ),
 };
@@ -471,16 +545,16 @@ export const LocalViewBranch: Story = {
         <CaseNote
           title="分岐は表ではなく受け渡しで持つ"
           points={[
-            "同じ出力（前駆体粉末 #12）を 2 つの工程ノートが入力にすれば、それが分岐。表に分岐用の列は要らない。",
-            "合流も同じ: サンプル作製が A と B の両方を入力にする。",
-            "インデックステーブルは「行 = 子ノート」の一覧に徹し、つながりは step の input/output に任せる。表が真ではなく、投影。",
-            "段階レーンに配合 B を置いているのは描画の都合。実装では工程レーン内で縦にずらす。",
+            "同じ出力（全粒粉 #12）を 2 つの工程ノートが入力にすれば、それが分岐。表に分岐用の列は要らない。",
+            "合流も同じ: 焼成が A と B の両方を入力にする。",
+            "インデックステーブルは「行 = 工程ノート」の一覧に徹し、つながりは step の input/output に任せる。表が真ではなく、投影。",
+            "分岐した工程ノートは同じレーンの中で縦にずらす。ステップレーンは起点（製粉）の中身。",
           ]}
         />
       }
     >
-      <ViewHeader origin="合成" />
-      <Swimlane nodes={BRANCH_NODES} edges={BRANCH_EDGES} ticks={["8/20", "8/22", "8/25", "9/01"]} />
+      <ViewHeader origin="製粉" />
+      <Swimlane nodes={BRANCH_NODES} edges={BRANCH_EDGES} ticks={TICKS} />
     </Frame>
   ),
 };
@@ -493,11 +567,12 @@ export const RightPanel: Story = {
         <CaseNote
           title="鎖の編集は計画ノートの右パネルに集める"
           points={[
-            "計画ノートを開くと右パネルに「工程」タブ。所属する工程ノートの流れと、選択中の工程の入力元・出力・次の工程。",
+            "計画ノート = 「計画」フォルダに入っているノート。テンプレートの有無は問わない。",
+            "工程ノート = 計画ノートの表の行から参照されているノート。工程タグは付けない。紐づいていれば工程。",
+            "右パネルの「工程」タブに、工程ノートの流れと、選択中の工程の入力元・出力・次の工程。",
             "「入力元を変更」はピッカーで他ノートの出力を選ぶ。既存の cross-note 参照ピッカーを流用。",
-            "書き戻し先は子ノートの step。計画ノート側には持たない（二重管理を避ける）。",
-            "所属（partOf）はここで付け外しできる。今は論文抽出でしか付かないので、この UI が空白を埋める。",
-            "本文側の表は行から子ノートを作る既存機能のまま。「入力元」列は step から導出した読み取り専用。",
+            "書き戻し先は工程ノートの step。計画ノート側には持たない（二重管理を避ける）。",
+            "本文側の表は行から工程ノートを作る既存機能のまま。「入力元」「出力」列は step から導出した読み取り専用。",
           ]}
         />
       }
@@ -508,23 +583,44 @@ export const RightPanel: Story = {
 };
 
 export const ProcessOverview: Story = {
-  name: "4. 工程の全体ビュー（組織レベル）",
+  name: "4. 工程の全体ビュー（ステップ名で集約）",
   render: () => (
     <Frame
       note={
         <CaseNote
-          title="工程より上の層: 名前で集約した全体像"
+          title="工程より上の層: ステップ名で集約した全体像"
           points={[
-            "個々のノートではなく工程名で束ね、受け渡しの回数を線の太さにする。「自分（組織）がどんな工程をやってきたか」に答える。",
+            "個々のノートではなくステップ名で束ね、受け渡しの回数を線の太さにする。「自分（組織）がどんな工程をやってきたか」に答える。",
+            "集約キーはノート名ではなくステップ名。ノート名は「仕込み A」「4/05 仕込み」と揺れるが、step 名は継承（同名集計）で既にそろう。",
             "データは ProcessIndex の同名集計（step 継承と同じ源）。PROV エッジは張らない。統計は統計のまま。",
             "範囲を共有フォルダにすると、Library 経由の他メンバーの記録も混ざる。",
             "既存のプロセス一覧（ProcessGalleryView）の上に置く 1 段抽象の画面。ノードから一覧へドリルダウン。",
-            "孫ノートまでの階層はこの層には出さない。深さはローカルビューの役目。",
           ]}
         />
       }
     >
       <ProcessOverviewMock />
+    </Frame>
+  ),
+};
+
+export const Placement: Story = {
+  name: "5. UI 上の位置",
+  render: () => (
+    <Frame
+      note={
+        <CaseNote
+          title="全体グラフと同じ枠に入る"
+          points={[
+            "全体グラフ・プロセス一覧と同じ、<main> 内の排他ビュー。左ナビは残る。全画面のポータルにはしない。",
+            "左ナビに項目は増やさない。全体グラフの中の 1 モード（周辺を時系列で見る）として入り、パンくずで戻る。",
+            "入口は 2 つ。全体グラフでノードを選んだ SidePeek のボタンと、ノートの右パネル（来歴タブ）のボタン。",
+            "全体ビュー（4）はプロセス一覧の上部に置く。こちらも左ナビの項目は増やさない。",
+          ]}
+        />
+      }
+    >
+      <AppShellMock />
     </Frame>
   ),
 };
