@@ -2753,7 +2753,7 @@ export const ja: Record<string, string> = {
   "processOverview.period.3m": "3 か月",
   "processOverview.period.1y": "1 年",
   "processOverview.period.all": "すべて",
-  "processOverview.droppedRefs": "{n} 件の切れた参照を除外",
+  "processOverview.droppedRefs": "{n} 件の参照を除外（切れた・期間外）",
   "processOverview.noteCount": "{n} ノート",
   "nav.reservedPlanFolderHint": "「計画」は予約されたフォルダです。ここに入れたノートは工程の親（計画ノート）として扱われます",
 };

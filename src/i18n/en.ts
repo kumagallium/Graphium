@@ -2755,7 +2755,7 @@ export const en: Record<string, string> = {
   "processOverview.period.3m": "3 months",
   "processOverview.period.1y": "1 year",
   "processOverview.period.all": "All",
-  "processOverview.droppedRefs": "{n} broken references hidden",
+  "processOverview.droppedRefs": "{n} references hidden (broken or outside the period)",
   "processOverview.noteCount": "{n} notes",
   "nav.reservedPlanFolderHint": "\"Plan\" is a reserved folder. Notes placed here are treated as plan notes (parents of operations)",
 };
