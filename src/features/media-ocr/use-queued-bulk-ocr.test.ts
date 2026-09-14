@@ -8,13 +8,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 
-const h = vi.hoisted(() => ({ runBulkOcr: vi.fn() }));
+const h = vi.hoisted(() => ({ runBulkOcr: vi.fn(), events: [] as string[] }));
 vi.mock("./bulk-ocr", () => ({ runBulkOcr: h.runBulkOcr }));
+// 隠れたウィンドウでも止めないための保持。取った/離した順だけを記録する
+vi.mock("@/lib/background-work", () => ({
+  holdBackgroundWork: () => {
+    h.events.push("hold");
+    return () => h.events.push("release");
+  },
+}));
 
 import { useQueuedBulkOcr } from "./use-queued-bulk-ocr";
 
 beforeEach(() => {
   h.runBulkOcr.mockReset();
+  h.events.length = 0;
 });
 
 describe("useQueuedBulkOcr", () => {
@@ -66,6 +74,9 @@ describe("useQueuedBulkOcr", () => {
       [{ fileId: "b", url: "u-b", name: "b.png" }],
       expect.objectContaining({ onProgress: expect.any(Function) }),
     );
+    // 2 本目の保持を取ってから 1 本目を離す（間に「誰も持っていない」瞬間を作らない。
+    // 作るとオフ→オンの往復が挟まり、その瞬間だけ隠れたウィンドウで減速する）
+    await waitFor(() => expect(h.events).toEqual(["hold", "hold", "release", "release"]));
   });
 
   it("0 件の enqueue は何もしない", () => {
