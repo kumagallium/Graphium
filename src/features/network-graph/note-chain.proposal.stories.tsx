@@ -25,7 +25,7 @@
 
 import type { ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { GitBranch, Layers, Table, Folder, Network, FileText, Bot, History, StickyNote } from "lucide-react";
+import { GitBranch, Layers, Table, Folder, Network, FileText, Bot, History, StickyNote, ListOrdered, Workflow } from "lucide-react";
 import { StepFlowView } from "./step-flow-view";
 import type { FlowGraphData } from "./activity-graph-adapter";
 import { LocaleProvider } from "../../i18n";
@@ -278,11 +278,12 @@ const BRANCH_EDGES: Edge[] = [
 /** 工程ノートを step、受け渡される物を entity として StepFlowView に流す */
 const PLAN_FLOW: FlowGraphData = {
   steps: [
-    { id: "n-mill", name: "製粉", params: [] },
-    { id: "n-doughA", name: "仕込み A", params: [{ label: "加水: 65%" }] },
-    { id: "n-doughB", name: "仕込み B", params: [{ label: "加水: 72%" }] },
-    { id: "n-bake", name: "焼成", params: [] },
-    { id: "n-taste", name: "試食", params: [] },
+    // 表の 2 列目以降がそのまま属性になる。空セルは出さない
+    { id: "n-mill", name: "製粉", params: [{ label: "日付: 4/03" }] },
+    { id: "n-doughA", name: "仕込み A", params: [{ label: "加水: 65%" }, { label: "日付: 4/05" }] },
+    { id: "n-doughB", name: "仕込み B", params: [{ label: "加水: 72%" }, { label: "日付: 4/05" }] },
+    { id: "n-bake", name: "焼成", params: [{ label: "日付: 4/08" }] },
+    { id: "n-taste", name: "試食", params: [{ label: "日付: 4/12" }] },
   ],
   entities: [
     { id: "e-wheat", label: "小麦（春よ恋）", kind: "material", attrs: [] },
@@ -309,11 +310,11 @@ const PLAN_FLOW: FlowGraphData = {
 
 function RightPanelMock() {
   const rows = [
-    { name: "製粉", memo: "春よ恋を粗めに", date: "4/03" },
-    { name: "仕込み A", memo: "加水 65%", date: "4/05" },
-    { name: "仕込み B", memo: "加水 72%", date: "4/05" },
-    { name: "焼成", memo: "A / B を同じ窯で", date: "4/08" },
-    { name: "試食", memo: "気泡と食感を比べる", date: "4/12" },
+    { name: "製粉", water: "", date: "4/03" },
+    { name: "仕込み A", water: "65%", date: "4/05" },
+    { name: "仕込み B", water: "72%", date: "4/05" },
+    { name: "焼成", water: "", date: "4/08" },
+    { name: "試食", water: "", date: "4/12" },
   ];
   const rail = [
     { icon: <Bot size={18} />, label: "チャット" },
@@ -335,33 +336,50 @@ function RightPanelMock() {
         <p className="text-sm mb-4 mt-3">目的: 加水率の違いがクラムの気泡に与える影響を見る。</p>
         <p className="text-xs text-muted-foreground mb-1">インデックステーブル（今のまま。行 = 工程ノート）</p>
         <div className="rounded-md border border-border overflow-hidden text-xs max-w-[520px]">
-          <div className="grid grid-cols-[1fr_2fr_60px] bg-secondary text-muted-foreground">
-            {["工程", "メモ", "日付"].map((h) => (
+          <div className="grid grid-cols-[1fr_1fr_60px] bg-secondary text-muted-foreground">
+            {["工程", "加水", "日付"].map((h) => (
               <div key={h} className="px-2 py-1 border-r border-border last:border-r-0">{h}</div>
             ))}
           </div>
           {rows.map((r) => (
-            <div key={r.name} className="grid grid-cols-[1fr_2fr_60px] border-t border-border">
+            <div key={r.name} className="grid grid-cols-[1fr_1fr_60px] border-t border-border">
               <div className="px-2 py-1.5 border-r border-border text-primary underline decoration-dotted">{r.name}</div>
-              <div className="px-2 py-1.5 border-r border-border">{r.memo}</div>
+              <div className="px-2 py-1.5 border-r border-border">{r.water}</div>
               <div className="px-2 py-1.5 text-muted-foreground">{r.date}</div>
             </div>
           ))}
         </div>
         <p className="text-[11px] text-muted-foreground mt-2 max-w-[520px]">
           表には受け渡しの列を足さない。つながりは各工程ノートの step が持ち、右のフローに投影される。
-          表の列（メモ・日付）はそのままノードの属性になる（ノート内の表 ⇄ フローと同じ往復）。
+          1 列目 = ノード名、2 列目以降 = ノードの属性（加水・日付）。空セルは属性にしない（ノート内の表 ⇄ フローと同じ往復）。
         </p>
         <p className="text-[11px] text-muted-foreground mt-1 max-w-[520px]">
-          右のボタン文言は実装時に「+ 工程を追加」に出し分ける（モックは部品そのままなので「+ 手順を追加」）。
+          右のボタン文言は実装時に「+ 工程を追加」に出し分ける（モックは部品そのままなので「+ 手順を追加」）。作業手順側は「+ 作業手順を追加」。
         </p>
       </div>
       {/* 右パネル本体（note-app.tsx と同じ枠: w-[480px] bg-muted border-l） */}
       <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden">
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
           <span className="text-xs font-bold tracking-wide text-foreground">ステップ</span>
-          <span className="ml-auto" />
-          <Segment items={["このノートの手順 (0)", "工程ノート (5)"]} active={1} />
+        </div>
+        {/* サブタブ（graph-links-panel の 近傍 / 来歴 と同じ作り） */}
+        <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
+          {[
+            { icon: <ListOrdered size={14} />, label: "作業手順", count: 0 },
+            { icon: <Workflow size={14} />, label: "工程", count: 5, on: true },
+          ].map((tab) => (
+            <div
+              key={tab.label}
+              className={
+                "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md " +
+                (tab.on ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground")
+              }
+            >
+              {tab.icon}
+              {tab.label}
+              <span className="text-[10px] text-muted-foreground">{tab.count}</span>
+            </div>
+          ))}
         </div>
         <div className="flex-1 min-h-0">
           <StepFlowView graph={PLAN_FLOW} onAddActivity={() => {}} onJumpToBlock={() => {}} />
@@ -601,8 +619,9 @@ export const RightPanel: Story = {
             "つながりの実体は工程ノート側の step の input（cross-note 参照）。フローで線を引く = その step に書き戻す。計画ノートには持たない。",
             "工程ノードの出力 = そのノートから外へ出る output。ノート内で次の step に消費されない output（末端）は全部出す。2 つあれば 2 つ。途中の output でも他ノートから参照されていれば出す（参照が線になる）。",
             "「+ 工程を追加」= 表に行を足して工程ノートを作る（既存の「行からノートを作成」）。パラメータ = 表の列。新しい表は作らない。",
-            "用語: タブ名は「ステップ」のまま。ヘッダの切替とノードの見た目（ノートのアイコン）で層を示し、ボタンは「+ 工程を追加」に出し分ける。",
-            "計画ノートに step ブロックもある場合: ヘッダの切替で「このノートの手順 / 工程ノート」を選ぶ。既定は工程ノートが 1 つでもあればそちら。混ぜて描かない。",
+            "用語: 「作業手順」（このノートの step ブロック）と「工程」（表の行 = 工程ノート）で分ける。ボタンも「+ 作業手順を追加」「+ 工程を追加」に揃える。",
+            "切替はグラフパネルの「近傍 / 来歴」と同じサブタブ。計画ノート以外ではサブタブを出さず今のまま。",
+            "計画ノートに step ブロックもある場合: サブタブで選ぶ。既定は工程が 1 つでもあれば工程。混ぜて描かない。件数を両方に出すので隠れた側が分かる。",
           ]}
         />
       }
