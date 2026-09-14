@@ -102,6 +102,8 @@ type Node = {
   t: number;
   /** レーン内の段（分岐で縦にずらす） */
   row?: number;
+  /** ステップレーン用: 起点ノートの位置から何列目か（step は時刻を持たないので順序で並べる） */
+  col?: number;
   /** 横幅（0..1）。計画ノートは全体に伸ばす */
   w?: number;
   origin?: boolean;
@@ -109,15 +111,27 @@ type Node = {
 type Edge = { from: string; to: string; kind: "handoff" | "partOf" };
 
 const LANE_Y: Record<Lane, number> = { plan: 40, note: 130, step: 260 };
-const LANE_LABEL: Record<Lane, string> = { plan: "計画", note: "工程ノート", step: "ステップ" };
+const LANE_LABEL: Record<Lane, string> = { plan: "計画", note: "工程ノート", step: "ステップ（順序）" };
 const W = 760;
 const LEFT = 100;
 const NODE_W = 120;
 const NODE_H = 44;
 const ROW_GAP = 12;
+const STEP_W = 96;
+const STEP_GAP = 36;
 
 function x(t: number) {
   return LEFT + t * (W - LEFT - NODE_W - 20);
+}
+/** ノードの左端。step は起点の t から col 分だけ右へ等間隔 */
+function nx(n: Node) {
+  if (n.lane === "plan") return LEFT;
+  if (n.lane === "step") return x(n.t) + (n.col ?? 0) * (STEP_W + STEP_GAP);
+  return x(n.t);
+}
+function nw(n: Node) {
+  if (n.w) return n.w * (W - LEFT - 20);
+  return n.lane === "step" ? STEP_W : NODE_W;
 }
 function y(n: Node) {
   return LANE_Y[n.lane] + (n.row ?? 0) * (NODE_H + ROW_GAP);
@@ -157,18 +171,18 @@ function Swimlane({ nodes, edges, ticks }: { nodes: Node[]; edges: Edge[]; ticks
           return (
             <line
               key={i}
-              x1={x(b.t) + NODE_W / 2}
+              x1={nx(b) + nw(b) / 2}
               y1={y(a) + NODE_H}
-              x2={x(b.t) + NODE_W / 2}
+              x2={nx(b) + nw(b) / 2}
               y2={y(b)}
               stroke="var(--color-muted-foreground)"
               strokeDasharray="4 3"
             />
           );
         }
-        const x1 = x(a.t) + NODE_W;
+        const x1 = nx(a) + nw(a);
         const y1 = y(a) + NODE_H / 2;
-        const x2 = x(b.t);
+        const x2 = nx(b);
         const y2 = y(b) + NODE_H / 2;
         const d =
           y1 === y2
@@ -178,20 +192,20 @@ function Swimlane({ nodes, edges, ticks }: { nodes: Node[]; edges: Edge[]; ticks
       })}
       {/* ノード */}
       {nodes.map((n) => {
-        const w = n.w ? n.w * (W - LEFT - 20) : NODE_W;
-        const nx = n.lane === "plan" ? LEFT : x(n.t);
+        const w = nw(n);
+        const left = nx(n);
         const ny = y(n);
         const fill =
           n.lane === "plan" ? "var(--color-secondary)" : n.origin ? "var(--forest-soft)" : "var(--color-card)";
         const stroke = n.origin ? "var(--forest)" : "var(--color-border)";
         return (
           <g key={n.id}>
-            <rect x={nx} y={ny} width={w} height={NODE_H} rx={6} fill={fill} stroke={stroke} strokeWidth={n.origin ? 1.5 : 1} />
-            <text x={nx + 10} y={ny + 18} fill="var(--color-foreground)" fontWeight={n.origin ? 600 : 500}>
+            <rect x={left} y={ny} width={w} height={NODE_H} rx={6} fill={fill} stroke={stroke} strokeWidth={n.origin ? 1.5 : 1} />
+            <text x={left + 10} y={ny + 18} fill="var(--color-foreground)" fontWeight={n.origin ? 600 : 500}>
               {n.label}
             </text>
             {n.sub && (
-              <text x={nx + 10} y={ny + 34} fill="var(--color-muted-foreground)" fontSize={11}>
+              <text x={left + 10} y={ny + 34} fill="var(--color-muted-foreground)" fontSize={11}>
                 {n.sub}
               </text>
             )}
@@ -210,9 +224,9 @@ const LINEAR_NODES: Node[] = [
   { id: "dough", lane: "note", label: "仕込み", sub: "→ 生地", t: 0.33, origin: true },
   { id: "bake", lane: "note", label: "焼成", sub: "→ 焼き上がり", t: 0.66 },
   { id: "taste", lane: "note", label: "試食", sub: "→ 試食記録", t: 1 },
-  { id: "s1", lane: "step", label: "こねる", t: 0.33 },
-  { id: "s2", lane: "step", label: "一次発酵", t: 0.45 },
-  { id: "s3", lane: "step", label: "分割", t: 0.57 },
+  { id: "s1", lane: "step", label: "こねる", t: 0.33, col: 0 },
+  { id: "s2", lane: "step", label: "一次発酵", t: 0.33, col: 1 },
+  { id: "s3", lane: "step", label: "分割", t: 0.33, col: 2 },
 ];
 const LINEAR_EDGES: Edge[] = [
   { from: "mill", to: "dough", kind: "handoff" },
@@ -234,10 +248,10 @@ const BRANCH_NODES: Node[] = [
   { id: "doughB", lane: "note", label: "仕込み B", sub: "加水 72%", t: 0.36, row: 1 },
   { id: "bake", lane: "note", label: "焼成", sub: "A / B を同じ窯で", t: 0.66 },
   { id: "taste", lane: "note", label: "試食", sub: "A vs B", t: 1 },
-  { id: "s1", lane: "step", label: "秤量", t: 0 },
-  { id: "s2", lane: "step", label: "挽く", t: 0.12 },
-  { id: "s3", lane: "step", label: "ふるう", t: 0.24 },
-  { id: "s4", lane: "step", label: "粗挽きを取り分け", t: 0.24, row: 1 },
+  { id: "s1", lane: "step", label: "秤量", t: 0, col: 0 },
+  { id: "s2", lane: "step", label: "挽く", t: 0, col: 1 },
+  { id: "s3", lane: "step", label: "ふるう", t: 0, col: 2 },
+  { id: "s4", lane: "step", label: "粗挽き分け", t: 0, col: 2, row: 1 },
 ];
 const BRANCH_EDGES: Edge[] = [
   { from: "mill", to: "doughA", kind: "handoff" },
@@ -336,14 +350,18 @@ function RightPanelMock() {
         </div>
         <p className="text-[11px] text-muted-foreground mt-2 max-w-[520px]">
           表には受け渡しの列を足さない。つながりは各工程ノートの step が持ち、右のフローに投影される。
-          右で「+ 手順を追加」すると表に行が増え、工程ノートが作られる（ノート内の表 ⇄ フローと同じ往復）。
+          表の列（メモ・日付）はそのままノードの属性になる（ノート内の表 ⇄ フローと同じ往復）。
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-1 max-w-[520px]">
+          右のボタン文言は実装時に「+ 工程を追加」に出し分ける（モックは部品そのままなので「+ 手順を追加」）。
         </p>
       </div>
       {/* 右パネル本体（note-app.tsx と同じ枠: w-[480px] bg-muted border-l） */}
       <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden">
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
           <span className="text-xs font-bold tracking-wide text-foreground">ステップ</span>
-          <span className="text-[11px] text-muted-foreground">計画ノート: 工程ノートの流れ</span>
+          <span className="ml-auto" />
+          <Segment items={["このノートの手順 (0)", "工程ノート (5)"]} active={1} />
         </div>
         <div className="flex-1 min-h-0">
           <StepFlowView graph={PLAN_FLOW} onAddActivity={() => {}} onJumpToBlock={() => {}} />
@@ -581,6 +599,10 @@ export const RightPanel: Story = {
             "分岐は「同じ entity を 2 つの工程ノートが使う」。表に分岐の列は要らない。",
             "インデックステーブルは今のまま。行 = 工程ノート、フローのノード = 行、フローで追加 = 行を append。ノート内の「表 ⇄ フロー」と同じ往復。工程テーブルは作らない。",
             "つながりの実体は工程ノート側の step の input（cross-note 参照）。フローで線を引く = その step に書き戻す。計画ノートには持たない。",
+            "工程ノードの出力 = そのノートから外へ出る output。ノート内で次の step に消費されない output（末端）は全部出す。2 つあれば 2 つ。途中の output でも他ノートから参照されていれば出す（参照が線になる）。",
+            "「+ 工程を追加」= 表に行を足して工程ノートを作る（既存の「行からノートを作成」）。パラメータ = 表の列。新しい表は作らない。",
+            "用語: タブ名は「ステップ」のまま。ヘッダの切替とノードの見た目（ノートのアイコン）で層を示し、ボタンは「+ 工程を追加」に出し分ける。",
+            "計画ノートに step ブロックもある場合: ヘッダの切替で「このノートの手順 / 工程ノート」を選ぶ。既定は工程ノートが 1 つでもあればそちら。混ぜて描かない。",
           ]}
         />
       }
