@@ -385,6 +385,7 @@ import { useCapture } from "./hooks/use-capture";
 // components
 import { WelcomeDialog } from "./components/WelcomeDialog";
 import { FileSidebar } from "./components/FileSidebar";
+import { formatShortcut, sidebarToggleShortcutParams } from "./lib/shortcut-label";
 import { NoteSideMenu, collectBlockScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
 import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
@@ -648,7 +649,7 @@ function NoteHeaderMenu({
           {onTakeSnapshot && (
             <button
               className={itemClass}
-              title={`${t("version.take")} (⌘⇧S / ⌘⌥S)`}
+              title={`${t("version.take")} (${formatShortcut(["mod", "shift", "S"])} / ${formatShortcut(["mod", "alt", "S"])})`}
               onClick={() => { onTakeSnapshot(); setOpen(false); }}
             >
               <Pin size={14} />
@@ -10311,7 +10312,7 @@ export function NoteApp() {
           <div className="w-9 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col items-center py-3">
             <button
               onClick={() => setDesktopSidebarCollapsed(false)}
-              title={t("sidebar.expand")}
+              title={t("sidebar.expand", sidebarToggleShortcutParams())}
               className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-sidebar-accent"
             >
               <PanelLeftOpen size={16} />

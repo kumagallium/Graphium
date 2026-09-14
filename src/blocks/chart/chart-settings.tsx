@@ -9,6 +9,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { X, ChevronUp, ChevronDown, ChevronRight, Palette, Plus } from "lucide-react";
 import { t } from "../../i18n";
+import { formatShortcut } from "../../lib/shortcut-label";
 import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
@@ -1067,7 +1068,7 @@ export function ChartSettingsPanel({
                         />
                       </label>
                       <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
-                        {t("chart.richTextHint")}
+                        {t("chart.richTextHint", { shortcut: formatShortcut(["mod", "I"]) })}
                       </div>
 
                       <div style={styles.assignLabel}>{t("chart.assignData")}</div>
@@ -1300,7 +1301,7 @@ export function ChartSettingsPanel({
             </>
           )}
           {/* 軸名は 3 つあるので、記法の案内はタブの頭で 1 回だけ出す */}
-          <div style={styles.fieldHint}>{t("chart.richTextHint")}</div>
+          <div style={styles.fieldHint}>{t("chart.richTextHint", { shortcut: formatShortcut(["mod", "I"]) })}</div>
           {!isHistogram && (
             <>
               <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
