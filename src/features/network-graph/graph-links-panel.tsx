@@ -3,7 +3,7 @@
 // 旧「リスト表示」(LinkedNotesPanel) は実装は残しつつ UI から非表示。
 
 import { useState } from "react";
-import { Network, GitBranch } from "lucide-react";
+import { Network, GitBranch, Waypoints } from "lucide-react";
 import { NetworkGraphPanel } from "./view";
 import { LineagePanel } from "./lineage-panel";
 import { useT } from "../../i18n";
@@ -22,6 +22,7 @@ export function GraphLinksPanel({
   onOpenUrl,
   onOpenMemo,
   onOpenSharedEntry,
+  onOpenLocalView,
 }: {
   data: NoteGraphData;
   lineageTree: LineageNode | null;
@@ -41,6 +42,8 @@ export function GraphLinksPanel({
    * クリックしても何も起きない（グラフ側でカーソルも変わらない）。
    */
   onOpenSharedEntry?: (sharedId: string) => void;
+  /** ローカルビュー（起点ノート周辺の時系列表示）を開く。未指定ならボタンを出さない。 */
+  onOpenLocalView?: () => void;
 }) {
   const [subTab, setSubTab] = useState<SubTab>("graph");
   const t = useT();
@@ -67,6 +70,15 @@ export function GraphLinksPanel({
             {tab.label}
           </button>
         ))}
+        {onOpenLocalView ? (
+          <button
+            onClick={onOpenLocalView}
+            className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50"
+          >
+            <Waypoints size={14} />
+            {t("localView.title")}
+          </button>
+        ) : null}
       </div>
       {/* パネル本体 */}
       <div className="flex-1 overflow-hidden">
