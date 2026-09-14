@@ -216,6 +216,9 @@ export const ja: Record<string, string> = {
 
   // ── 右パネルタブ ──
   "panel.prov": "ステップ",
+  // 計画ノート（「計画」フォルダ）だけに出るサブタブ。作業手順 = このノートの step、工程 = 表の行の工程ノート
+  "panel.prov.workSteps": "作業手順",
+  "panel.prov.operations": "工程",
   "panel.history": "履歴",
   "panel.links": "リンク",
   "panel.graph.neighbors": "近傍",
@@ -2723,4 +2726,34 @@ export const ja: Record<string, string> = {
   "comment.newBadgeHint": "前に開いたときから増えたコメントの数",
   "comment.collapseList": "コメント一覧を畳む",
   "comment.expandList": "コメント一覧を開く",
+
+  // ── ノート間プロセス（計画ノート / 工程ノート） ──
+  // 「工程」= 計画ノートのインデックステーブルの行から参照されるノート。step（手順）とは別の語で統一する
+  "planFlow.addOperation": "工程を追加",
+  "planFlow.addWorkStep": "作業手順を追加",
+  "planFlow.openNote": "ノートを開く",
+  "planFlow.unlinkedRow": "未作成",
+  "planFlow.unlinkedRowHint": "表で名前を付けてから、このノードを押すとノートを作ります",
+  "planFlow.duplicateNameHint": "同名の行があります。名前を変えてください",
+  "planFlow.trashedNote": "ゴミ箱にあります",
+  "planFlow.archivedNote": "アーカイブにあります",
+  "planFlow.brokenRef": "参照先が見つかりません",
+  "planFlow.truncated": "入れ子が深すぎるため、これ以上は開けません",
+  "planFlow.emptyHint": "『工程を追加』で表に行を足すと、ここに工程が並びます",
+  "localView.title": "周辺を時系列で見る",
+  "localView.origin": "起点",
+  "localView.depth": "深さ",
+  "localView.lane.parent": "計画",
+  "localView.lane.siblings": "工程ノート",
+  "localView.lane.children": "ステップ",
+  "localView.otherPlans": "他の計画: {names}",
+  "localView.backToGlobal": "全体グラフへ戻る",
+  "processOverview.title": "工程の全体像",
+  "processOverview.hint": "ステップ名で集約 ・ 線の太さ = 受け渡しの回数",
+  "processOverview.period.3m": "3 か月",
+  "processOverview.period.1y": "1 年",
+  "processOverview.period.all": "すべて",
+  "processOverview.droppedRefs": "{n} 件の切れた参照を除外",
+  "processOverview.noteCount": "{n} ノート",
+  "nav.reservedPlanFolderHint": "「計画」は予約されたフォルダです。ここに入れたノートは工程の親（計画ノート）として扱われます",
 };

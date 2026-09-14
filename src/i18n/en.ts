@@ -216,6 +216,9 @@ export const en: Record<string, string> = {
 
   // ── 右パネルタブ ──
   "panel.prov": "Steps",
+  // Sub-tabs shown only on plan notes (the reserved "Plan" folder). Steps = this note's step blocks, Operations = the operation notes listed in the index table
+  "panel.prov.workSteps": "Steps",
+  "panel.prov.operations": "Operations",
   "panel.history": "History",
   "panel.links": "Links",
   "panel.graph.neighbors": "Neighbors",
@@ -2725,4 +2728,34 @@ export const en: Record<string, string> = {
   "comment.newBadgeHint": "Comments added since you last opened it",
   "comment.collapseList": "Hide the comment list",
   "comment.expandList": "Show the comment list",
+
+  // ── Cross-note processes (plan notes / operation notes) ──
+  // "Operation" = a note referenced from a row of a plan note's index table. Kept distinct from "step" (a step block inside a note)
+  "planFlow.addOperation": "Add operation",
+  "planFlow.addWorkStep": "Add step",
+  "planFlow.openNote": "Open note",
+  "planFlow.unlinkedRow": "Not created yet",
+  "planFlow.unlinkedRowHint": "Name the row in the table, then press this node to create the note",
+  "planFlow.duplicateNameHint": "Another row has the same name. Rename one of them",
+  "planFlow.trashedNote": "In the trash",
+  "planFlow.archivedNote": "Archived",
+  "planFlow.brokenRef": "Referenced output not found",
+  "planFlow.truncated": "Nesting is too deep to expand further",
+  "planFlow.emptyHint": "Use \"Add operation\" to add a row to the table; operations appear here",
+  "localView.title": "Timeline around this note",
+  "localView.origin": "Origin",
+  "localView.depth": "Depth",
+  "localView.lane.parent": "Plan",
+  "localView.lane.siblings": "Operations",
+  "localView.lane.children": "Steps",
+  "localView.otherPlans": "Other plans: {names}",
+  "localView.backToGlobal": "Back to the global graph",
+  "processOverview.title": "Operation overview",
+  "processOverview.hint": "Grouped by step name · line width = number of hand-offs",
+  "processOverview.period.3m": "3 months",
+  "processOverview.period.1y": "1 year",
+  "processOverview.period.all": "All",
+  "processOverview.droppedRefs": "{n} broken references hidden",
+  "processOverview.noteCount": "{n} notes",
+  "nav.reservedPlanFolderHint": "\"Plan\" is a reserved folder. Notes placed here are treated as plan notes (parents of operations)",
 };

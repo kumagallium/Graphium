@@ -311,6 +311,26 @@ export type FlowStep = {
   stageCount?: number;
   /** 別ノートの output 参照から投影した、読み取り専用の上流 step */
   externalOrigin?: ExternalFlowOrigin;
+  /**
+   * 工程ノート由来のノード（計画ノートの「工程」フロー）。step ではなくノートを指す。
+   * externalOrigin とは別物: externalOrigin は選択時の属性パネルを止めるが、
+   * noteRef は属性（表の列）を表示したい。rename / delete / jump は出さず、
+   * クリックはノートを開く。
+   */
+  noteRef?: FlowNoteRef;
+};
+
+export type FlowNoteRef = {
+  /** 参照先の工程ノート。行にまだノートが無い（未作成）ときは null */
+  noteId: string | null;
+  /** 計画ノートのインデックステーブルでの位置 */
+  tableBlockId: string;
+  rowIndex: number;
+  /**
+   * 表示上の状態。unlinked = 行にノートが無い / duplicateName = 同名の行が先にあり
+   * noteLinks のキー衝突で解決できない / trashed・archived = ノートはあるが一覧に出ない
+   */
+  state?: "unlinked" | "duplicateName" | "trashed" | "archived";
 };
 
 export type ExternalFlowOrigin = {
