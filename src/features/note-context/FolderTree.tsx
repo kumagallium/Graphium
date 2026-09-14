@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { buildFolderTree, splitFolderPath, validateFolderPath, UNFILED_PATH, type FolderNode } from "./folder-tree-model";
+import { isPlanFolderPath } from "./reserved-folders";
 import { FOLDER_DRAG_MIME, readDraggedNoteIds } from "./folder-drop";
 
 export { UNFILED_PATH };
@@ -358,7 +359,7 @@ export function FolderTree({
         ) : (
           <button
             type="button"
-            title={node.path}
+            title={isPlanFolderPath(node.path) ? t("nav.reservedPlanFolderHint") : node.path}
             onClick={() => {
               // ダブルクリック（編集の入口）は click が 2 回先に発火する。2 回目は
               // 同じ行への連打なので、遷移（一覧の切替・モバイルのサイドバー閉じ）を

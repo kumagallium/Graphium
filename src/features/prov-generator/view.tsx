@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
+import { ListOrdered, Workflow } from "lucide-react";
 import type { ProvJsonLd, ProvJsonLdNode, ProvAttribute } from "./generator";
 import { extractRelations } from "./generator";
 import { ActivityGraphEditor } from "../network-graph/activity-graph-editor";
@@ -20,15 +21,25 @@ import {
   getLatestProcessIndex,
   subscribeLatestProcessIndex,
 } from "../network-graph/process-index";
+import { PlanFlowEditor } from "../network-graph/plan-flow-editor";
+import { isPlanNote } from "../note-context/reserved-folders";
 import { useLinkStore } from "../block-link/store";
 import { t, getDisplayLabelName } from "../../i18n";
 import { normalizeFaviconUrl } from "../asset-browser/media-index";
 import { isLocalMediaRef } from "../asset-browser/local-media-ref";
 import { THEME } from "./cy-graph";
+import { cn } from "../../lib/utils";
+import type { GraphiumIndex } from "../navigation/index-file";
+import type { FlowGraphData } from "../network-graph/activity-graph-adapter";
 
 
 // 後方互換
 type ProvDocument = ProvJsonLd;
+
+// PlanFlowEditor の統計がまだ届いていないとき（マウント直後）用の空グラフ
+const EMPTY_FLOW_GRAPH: FlowGraphData = { steps: [], entities: [], edges: [] };
+// editorRef が渡されていない呼び出し元（プレビュー用途）向けの安定した空 ref
+const EMPTY_EDITOR_REF: { current: any } = { current: null };
 
 /**
  * ノードのサブタイプを判定（Entity を材料・ツール・結果に分離）
@@ -246,14 +257,23 @@ export function ProvGraphPanel({
   doc,
   noteId,
   editorRef,
+  noteContexts,
+  index,
 }: {
   doc: ProvJsonLd | null;
   /** 手動配置の保存スコープに使う、いま開いているノートの id */
   noteId?: string | null;
   /** メインエディタへの参照。フロービューのノード操作（追加・リネーム・削除）に使う */
   editorRef?: { current: any };
+  /** 計画ノート判定（「計画」フォルダ）に使う。計画ノートだけサブタブ「作業手順 / 工程」を出す */
+  noteContexts?: string[];
+  index?: GraphiumIndex | null;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const isPlan = isPlanNote(noteContexts);
+  const [subTab, setSubTab] = useState<"workSteps" | "operations">("operations");
+  // 「工程」タブの統計は PlanFlowEditor から onGraphChange で受け取る
+  const [planFlowInfo, setPlanFlowInfo] = useState<{ graph: FlowGraphData } | null>(null);
 
   useEffect(() => {
     if (!expanded) return;
@@ -279,6 +299,39 @@ export function ProvGraphPanel({
     [doc, linkStore.links, processIndex],
   );
 
+  // 「工程」タブの統計は PlanFlowEditor から onGraphChange で受け取ったものを数える
+  const showOperationsTab = isPlan && subTab === "operations";
+  const activeGraph: FlowGraphData = showOperationsTab
+    ? planFlowInfo?.graph ?? EMPTY_FLOW_GRAPH
+    : flow;
+
+  // 計画ノートだけ出すサブタブ行（graph-links-panel.tsx の「近傍 / 来歴」と同じ作り）
+  const subTabRow = isPlan && (
+    <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
+      {(
+        [
+          { key: "workSteps" as const, icon: <ListOrdered size={14} />, label: t("panel.prov.workSteps"), count: flow.steps.length },
+          { key: "operations" as const, icon: <Workflow size={14} />, label: t("panel.prov.operations"), count: planFlowInfo?.graph.steps.length ?? 0 },
+        ]
+      ).map((tab) => (
+        <button
+          key={tab.key}
+          onClick={() => setSubTab(tab.key)}
+          className={cn(
+            "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer",
+            subTab === tab.key
+              ? "bg-background text-foreground shadow-sm font-medium"
+              : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+          )}
+        >
+          {tab.icon}
+          {tab.label}
+          <span className="text-[10px] text-muted-foreground">{tab.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+
   const legendBar = (
     <div style={legendBarStyle}>
       <LegendDot color={THEME.activity.bg} shape="circle" label={getDisplayLabelName("procedure")} />
@@ -289,8 +342,8 @@ export function ProvGraphPanel({
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
         <span style={{ color: "var(--color-text-tertiary)" }}>
           {t("provPanel.graphStats", {
-            nodes: String(flow.steps.length + flow.entities.length),
-            relations: String(flow.edges.length),
+            nodes: String(activeGraph.steps.length + activeGraph.entities.length),
+            relations: String(activeGraph.edges.length),
           })}
         </span>
         <button
@@ -304,16 +357,54 @@ export function ProvGraphPanel({
     </div>
   );
 
+  const stepsBody = showOperationsTab ? (
+    <PlanFlowEditor
+      noteId={noteId ?? null}
+      editorRef={editorRef ?? EMPTY_EDITOR_REF}
+      docVersion={doc}
+      index={index ?? null}
+      onGraphChange={setPlanFlowInfo}
+    />
+  ) : (
+    <ActivityGraphEditor
+      doc={doc}
+      editorRef={editorRef}
+      noteId={noteId}
+      addActivityLabel={isPlan ? t("planFlow.addWorkStep") : undefined}
+    />
+  );
+
+  const stepsBodyExpanded = showOperationsTab ? (
+    <PlanFlowEditor
+      noteId={noteId ?? null}
+      editorRef={editorRef ?? EMPTY_EDITOR_REF}
+      docVersion={doc}
+      index={index ?? null}
+      variant="editor"
+      tableLayout="side"
+      onGraphChange={setPlanFlowInfo}
+    />
+  ) : (
+    <ActivityGraphEditor
+      doc={doc}
+      editorRef={editorRef}
+      noteId={noteId}
+      tableLayout="side"
+      addActivityLabel={isPlan ? t("planFlow.addWorkStep") : undefined}
+    />
+  );
+
   return (
     <>
       <div style={panelStyle}>
+        {subTabRow}
         {legendBar}
         {/* 拡大中はモーダル側だけを描く（React Flow を二重に走らせない）。
             高さは画面いっぱい — 見るだけのプレビューだった頃は 620px で
             蓋をしていたが、書く場所になった今は余白を残す理由がない */}
         {!expanded && (
           <div style={{ height: "calc(100vh - 122px)", minHeight: 380 }}>
-            <ActivityGraphEditor doc={doc} editorRef={editorRef} noteId={noteId} />
+            {stepsBody}
           </div>
         )}
       </div>
@@ -322,9 +413,10 @@ export function ProvGraphPanel({
       {expanded && createPortal(
         <div style={modalOverlayStyle} onClick={() => setExpanded(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+            {subTabRow}
             {legendBar}
             <div style={{ height: window.innerHeight - 120 }}>
-              <ActivityGraphEditor doc={doc} editorRef={editorRef} noteId={noteId} tableLayout="side" />
+              {stepsBodyExpanded}
             </div>
           </div>
         </div>,

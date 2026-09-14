@@ -280,6 +280,7 @@ import { computeFolderDrop } from "./features/note-context/folder-drop";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
+import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner, WikiContextDrawer,
@@ -6387,7 +6388,15 @@ function NoteEditorInner({
                 />
               )}
               {rightTab === "prov" && provLabelsEnabled && (
-                <ProvGraphPanel doc={provDoc} editorRef={editorRef} noteId={fileId} />
+                <ProvGraphPanel
+                  doc={provDoc}
+                  editorRef={editorRef}
+                  noteId={fileId}
+                  noteContexts={noteContexts}
+                  // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
+                  // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
+                  index={rawNoteIndex ?? null}
+                />
               )}
               {rightTab === "chat" && (
                 <AiAssistantPanel
@@ -8048,6 +8057,10 @@ export function NoteApp() {
   // 呼ばれる共通関数。
   const renameFolderEverywhere = useCallback(
     async (from: string, to: string) => {
+      // 予約フォルダ「計画」（またはその子）は改名しない（FolderMenu 側で項目自体も
+      // 出さないが、他の呼び出し口（ギャラリーの改名入口）向けの保険として実体側にも
+      // ガードを入れる）
+      if (isPlanFolderPath(from)) return;
       // ノートのタグ、メモ、素材、まだノートが無いフォルダの定義。
       // どれも子を連れて動く。ひとつでも取り残すと、同じフォルダのはずのものが
       // 古い名前に取り残されて行方不明になる
@@ -8069,6 +8082,8 @@ export function NoteApp() {
   // フォルダの削除（タグ剥がし）。中のノートは消さない。
   const deleteFolderEverywhere = useCallback(
     async (path: string) => {
+      // 予約フォルダ「計画」は削除しない（所属を戻せないため。空にすれば自然に消える）
+      if (isPlanFolderPath(path)) return;
       await fm.deleteNoteContextEverywhere(path);
       await capture.remapCaptureContextsEverywhere(path, null);
       await fm.remapMediaContextsEverywhere(path, null);
@@ -11672,8 +11687,10 @@ export function NoteApp() {
           position={folderMenu.position}
           initialMode={folderMenu.initialMode}
           onClose={() => setFolderMenu(null)}
-          onRename={(from, to) => void renameFolderEverywhere(from, to)}
-          onDelete={(path) => void deleteFolderEverywhere(path)}
+          // 予約フォルダ「計画」（またはその子）は改名・削除の項目自体を出さない
+          // （復元できない「所属」を戻す仕組みを作るより軽い。§2.1）
+          onRename={isPlanFolderPath(folderMenu.path) ? undefined : (from, to) => void renameFolderEverywhere(from, to)}
+          onDelete={isPlanFolderPath(folderMenu.path) ? undefined : (path) => void deleteFolderEverywhere(path)}
         />
       )}
       {listMaterialPeekEntry && (
