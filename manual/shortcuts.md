@@ -64,7 +64,7 @@ An empty note shows a small guide card with exactly these three entry points —
 
 **There is deliberately no shortcut for a new note.** `⌘⇧N` is reserved by browsers for a new private window and can't be reliably overridden, so a shortcut there would misfire for some users. Use the **+ Note** button in the sidebar instead. Memos get a shortcut and notes don't, and that asymmetry is intentional: memos are for instant capture, notes are where you sit down and write.
 
-**The app reminds you as you go.** You don't need to memorize this page — the shortcuts appear right where you'd use them:
+**The app reminds you as you go.** You don't need to memorize this page — the shortcuts appear right where you'd use them. The examples below are how they look on a mac; on Windows and Linux the app shows `Ctrl` in place of `⌘` (for example, **Capture a quick memo (Ctrl+Shift+M)**).
 
 - The floating toolbar's label buttons show keycap hints (`⌘` `⇧` `I`) and tooltips.
 - The sidebar's **+ Memo** button tooltip reads **Capture a quick memo (⌘+⇧+M)**, and the sidebar toggle reads **Collapse sidebar (⌘+\\)**.
