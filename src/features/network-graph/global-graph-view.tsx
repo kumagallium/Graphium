@@ -34,9 +34,9 @@ import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
   attachSelectionBoundsOverlay,
-  captureCytoscapePositions,
   seedUnplacedNodes,
   stopLayoutOnGrab,
+  useGraphCarryOver,
   useGraphLayout,
 } from "./use-graph-layout";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
@@ -414,8 +414,7 @@ export function GlobalGraphCanvas({
   // ドラッグ中と読み込み中の連続変化は、組み直しを待たせて 1 回にする
   const { renderKey, beginDrag, endDrag } = useGraphRenderKey(shownKey, structureKey);
   // 組み直す直前の座標と視点。次のグラフが引き継ぐ
-  const prevPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
-  const prevViewportRef = useRef<{ zoom: number; pan: { x: number; y: number }; w: number; h: number } | null>(null);
+  const carryOver = useGraphCarryOver(layoutResetSeq);
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
@@ -504,29 +503,23 @@ export function GlobalGraphCanvas({
 
     // 前回の座標を常に引き継ぎ、手動保存があればそれを上に重ねる。
     // ただし「文脈で寄せる」の切り替え直後は、並べ直しが目的なのでどちらも無視する
-    const carried = clusterChanged ? null : prevPositionsRef.current;
+    // take() は寄せ方の切り替え直後でも呼ぶ（自動配置に戻した直後かの判定もここで進む）
+    const taken = carryOver.take();
+    const carry = clusterChanged ? null : taken;
+    const carried = carry?.positions ?? null;
     const persisted = clusterChanged ? null : savedPositionsRef.current;
     const basePositions = carried || persisted ? { ...(carried ?? {}), ...(persisted ?? {}) } : null;
-    const { unplacedIds } = applySavedPositions(elements, basePositions);
+    const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
     // 手で整えた並び（保存）を持つノードが 1 つでもあれば fcose は流さない
     const persistedCount = persisted ? shownNodes.filter((n) => persisted[n.id]).length : 0;
     const useSavedLayout = persistedCount > 0;
     // ノードが増えていない組み直し（中身の変化・削除・フィルタで減っただけ）も並べ直さない
-    const contentOnlyRebuild = !!carried && unplacedIds.length === 0;
+    const contentOnlyRebuild = !!carry && unplacedIds.length === 0;
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
-
-    if (cyRef.current) {
-      prevPositionsRef.current = captureCytoscapePositions(cyRef.current);
-      prevViewportRef.current = {
-        zoom: cyRef.current.zoom(),
-        pan: { ...cyRef.current.pan() },
-        w: cyRef.current.width(),
-        h: cyRef.current.height(),
-      };
-      cyRef.current.destroy();
-    }
+    // 自動レイアウトが走っている最中か（途中で組み直されたら引き継がず、次は最初から並べる）
+    let layoutRunning = false;
 
     const cy = cytoscape({
       container: containerRef.current,
@@ -548,7 +541,7 @@ export function GlobalGraphCanvas({
     if (useSavedLayout || contentOnlyRebuild) {
       // 並べ直さない。新しく増えたノードだけ外周に仮置きし、視点は直前のまま保つ
       seedUnplacedNodes(cy, unplacedIds);
-      const vp = prevViewportRef.current;
+      const vp = carry?.viewport;
       if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
         cy.viewport({ zoom: vp.zoom, pan: vp.pan });
       } else {
@@ -557,7 +550,9 @@ export function GlobalGraphCanvas({
     } else {
     // 前回の座標があれば、そこから続きを計算する（読み込み中にノードが増える
     // たび全体を並べ直すと、配置替えが何度も走って見える）
-    const gentle = !clusterChanged && !!carried;
+    // 引き継いだ座標を持つノードが 1 つも無いときは最初から並べる（原点に重なったまま
+    // 続きを並べると一直線に潰れる）
+    const gentle = !clusterChanged && !!carried && placedCount > 0;
     if (gentle) seedUnplacedNodes(cy, unplacedIds);
     const lay = cy.layout({
       name: "fcose",
@@ -575,9 +570,11 @@ export function GlobalGraphCanvas({
       padding: 50,
     } as any);
     lay.on("layoutstop", () => {
+      layoutRunning = false;
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) cy.fit(undefined, 30);
     });
+    layoutRunning = true;
     lay.run();
     detachGrabStop = stopLayoutOnGrab(cy, {
       stop: () => {
@@ -650,6 +647,8 @@ export function GlobalGraphCanvas({
       detachSelectionBounds();
       detachGrabStop?.();
       detachPersistence();
+      // 次のグラフ（この cleanup の直後に組まれる）へ座標と視点を渡してから破棄する
+      carryOver.keep(cy, !layoutRunning || layoutStoppedByUser);
       cy.destroy();
       cyRef.current = null;
     };
@@ -718,9 +717,7 @@ export function GlobalGraphCanvas({
       {hasSavedLayout && (
         <button
           onClick={() => {
-            // 引き継ぎも捨てて、次の構築で最初から並べ直させる
-            prevPositionsRef.current = null;
-            prevViewportRef.current = null;
+            // 引き継ぎは次の構築で捨てられる（useGraphCarryOver が resetSeq の変化を見る）
             resetLayout();
           }}
           title={t("graph.layout.resetHint")}
