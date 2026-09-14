@@ -39,7 +39,7 @@ import "@xyflow/react/dist/style.css";
 import { LayoutGrid, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
 import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
-import { computeStepDistinguishers, type FlowGraphData } from "./activity-graph-adapter";
+import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
@@ -109,6 +109,13 @@ export type StepFlowViewProps = {
   onJumpToBlock?: (blockId: string) => void;
   /** 別ノート由来の step / input から参照元ノートを開く */
   onOpenExternalNote?: (noteId: string) => void;
+  /**
+   * 工程ノード（FlowStep.noteRef 付き）の「ノートを開く / 作る」ボタン。noteId が
+   * あれば開く、無ければ（未作成行）作る、の判断は呼び出し側が行う。
+   */
+  onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
+  /** step が 1 つも無いときの案内文。省略時は activityGraph.emptyHint */
+  emptyHint?: string;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
   /** 共有行の「表に追加」: その step の kind 表に行を書く（表が無ければ作る） */
