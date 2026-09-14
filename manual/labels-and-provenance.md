@@ -172,6 +172,12 @@ Labels and links also feed graphs that span your whole workspace:
 - **Activity graph editor** — the **Steps (only)** view described [above](#the-provenance-graph-panel), where the step order itself can be rewired by dragging.
 - **Process list** — in the sidebar under **Processes**: the flow each note describes, listed side by side (see [Process list](#process-list) below).
 
+### Timeline around this note
+
+- **What it shows** — three lanes running left to right along a time axis, seen from the note you opened it on: **Plan**, **Operations**, and **Steps**. Lines between operation notes in the same lane are hand-offs — cross-note references between their steps. If the note you started from is a plan note, the child lane holds its Operation notes; otherwise it holds that note's own steps.
+- **Where to open it from** — the button in the side peek (the preview that opens from the note list or from a node in the Global Graph), or the button in the note's right panel **Graph** tab. A breadcrumb leads back to the Global Graph.
+- **Depth** — only matters for a note with no plan: how many hops of references to follow when collecting the same-layer lane (1 to 3).
+
 ## Arranging graphs by hand <Badge type="tip" text="Added in v0.43.0 (2026-08-25)" /> {#arranging-graphs-by-hand}
 
 Every graph lays itself out automatically — and until this version, kept doing so. Now the arrangement is yours to keep. This works the same way in every graph in the app: the **Steps** panel, the **Graph** tab, the **Global Graph**, and a material's graph.
