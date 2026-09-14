@@ -92,6 +92,8 @@ If "Input / Tool / Parameter / Output" doesn't match your field's vocabulary, re
 
 Once a note has at least one step or label, a **Steps** tab appears in the right-hand panel. Open it and you'll see the provenance graph, which regenerates automatically about half a second after every edit — there is no "generate" button to press.
 
+In a Plan note (see [Folders](/notes-and-editor#folders)), the Steps tab carries two sub-tabs, **Steps** and **Operations**. Steps is the graph described below, for the plan note's own step blocks. Operations draws the plan's [Operation notes](/notes-and-editor#the-index-table) as steps and whatever they hand to each other as entities. **Add operation** only adds a row to the index table — name it, then click the row's node ("Create note") to actually create the operation note, the same way the index table itself does. Clicking an existing operation node opens that note; drawing a connection between operations is done from inside the operation note's own steps, not from this view.
+
 ![A note with its provenance graph in the right panel](/screenshots/editor-with-graph_en.png)
 
 What you're looking at:
