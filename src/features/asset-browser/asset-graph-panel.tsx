@@ -21,9 +21,9 @@ import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
   attachSelectionBoundsOverlay,
-  captureCytoscapePositions,
   seedUnplacedNodes,
   stopLayoutOnGrab,
+  useGraphCarryOver,
   useGraphLayout,
 } from "../network-graph/use-graph-layout";
 import { useT } from "../../i18n";
@@ -298,6 +298,14 @@ export function AssetGraphPanel({
   savedPositionsRef.current = savedPositions;
   const saveLayoutRef = useRef(saveLayout);
   saveLayoutRef.current = saveLayout;
+  // 組み直す直前の座標と視点。次のグラフが引き継ぐ
+  const carryOver = useGraphCarryOver(layoutResetSeq);
+
+  // クリック時の処理と素材インデックスはグラフの形に関係しないので、ref 経由で読む。
+  // 描画 effect の依存に入れると、呼び出し側の再描画（インライン関数は毎回別物）や
+  // 素材インデックスの更新（OCR の書き戻し等）のたびにグラフが作り直される
+  const handlersRef = useRef({ onNavigateNote, onOpenNoteSidePeek, onSwitchAsset, mediaIndex });
+  handlersRef.current = { onNavigateNote, onOpenNoteSidePeek, onSwitchAsset, mediaIndex };
 
   // ESC で拡大解除（ノート graph と同じ挙動）
   useEffect(() => {
@@ -359,9 +367,6 @@ export function AssetGraphPanel({
   );
   // ドラッグ中と読み込み中の連続変化は、組み直しを待たせて 1 回にする
   const { renderKey, beginDrag, endDrag } = useGraphRenderKey(graphKey, structureKey);
-  // 組み直す直前の座標と視点。次のグラフが引き継ぐ
-  const prevPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
-  const prevViewportRef = useRef<{ zoom: number; pan: { x: number; y: number }; w: number; h: number } | null>(null);
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
@@ -375,31 +380,23 @@ export function AssetGraphPanel({
 
     // 前回の座標を常に引き継ぎ、手動保存があればそれを上に重ねる
     const persisted = savedPositionsRef.current;
-    const carried = prevPositionsRef.current;
+    const carry = carryOver.take();
+    const carried = carry?.positions ?? null;
     const basePositions =
       carried || persisted ? { ...(carried ?? {}), ...(persisted ?? {}) } : null;
-    const { unplacedIds } = applySavedPositions(elements, basePositions);
+    const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
     // 手で整えた並び（保存）を持つノードが 1 つでもあれば fcose は流さない
     const persistedCount = persisted
       ? elements.filter((el) => !el.data.source && persisted[String(el.data.id)]).length
       : 0;
     const useSavedLayout = persistedCount > 0;
     // ノードが増えていない組み直しも並べ直さない
-    const contentOnlyRebuild = !!carried && unplacedIds.length === 0;
+    const contentOnlyRebuild = !!carry && unplacedIds.length === 0;
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
-
-    if (cyRef.current) {
-      prevPositionsRef.current = captureCytoscapePositions(cyRef.current);
-      prevViewportRef.current = {
-        zoom: cyRef.current.zoom(),
-        pan: { ...cyRef.current.pan() },
-        w: cyRef.current.width(),
-        h: cyRef.current.height(),
-      };
-      cyRef.current.destroy();
-    }
+    // 自動レイアウトが走っている最中か（途中で組み直されたら引き継がず、次は最初から並べる）
+    let layoutRunning = false;
 
     const cy = cytoscape({
       container: graphContainerRef.current,
@@ -415,7 +412,7 @@ export function AssetGraphPanel({
     if (useSavedLayout || contentOnlyRebuild) {
       // 並べ直さない。新しく増えたノードだけ外周に仮置きし、視点は直前のまま保つ
       seedUnplacedNodes(cy, unplacedIds);
-      const vp = prevViewportRef.current;
+      const vp = carry?.viewport;
       if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
         cy.viewport({ zoom: vp.zoom, pan: vp.pan });
       } else {
@@ -423,7 +420,9 @@ export function AssetGraphPanel({
       }
     } else {
     // 前回の座標があれば、そこから続きを計算する（配置替えの繰り返しを見せない）
-    const gentle = !!carried;
+    // 引き継いだ座標を持つノードが 1 つも無い（別の素材・別のノートに切り替えた）ときは
+    // 最初から並べる。全ノードが原点に重なったまま続きを並べると一直線に潰れる
+    const gentle = !!carried && placedCount > 0;
     if (gentle) seedUnplacedNodes(cy, unplacedIds);
     const layout = cy.layout({
       name: "fcose",
@@ -441,9 +440,11 @@ export function AssetGraphPanel({
       padding: 30,
     } as any);
     layout.on("layoutstop", () => {
+      layoutRunning = false;
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) cy.fit(undefined, 20);
     });
+    layoutRunning = true;
     layout.run();
     detachGrabStop = stopLayoutOnGrab(cy, {
       stop: () => {
@@ -473,13 +474,15 @@ export function AssetGraphPanel({
     });
 
     cy.on("tap", "node.note-node", (evt) => {
-      (onOpenNoteSidePeek ?? onNavigateNote)(evt.target.id());
+      const h = handlersRef.current;
+      (h.onOpenNoteSidePeek ?? h.onNavigateNote)(evt.target.id());
     });
     cy.on("tap", "node.asset-node", (evt) => {
+      const h = handlersRef.current;
       const nodeId = evt.target.id();
       const fileId = nodeId.replace(/^media-/, "");
-      const next = mediaIndex?.media.find((m) => m.fileId === fileId);
-      if (next) onSwitchAsset?.(next);
+      const next = h.mediaIndex?.media.find((m) => m.fileId === fileId);
+      if (next) h.onSwitchAsset?.(next);
     });
 
     cyRef.current = cy;
@@ -489,18 +492,17 @@ export function AssetGraphPanel({
       detachSelectionBounds();
       detachGrabStop?.();
       detachPersistence();
+      // 次のグラフ（この cleanup の直後に組まれる）へ座標と視点を渡してから破棄する
+      carryOver.keep(cy, !layoutRunning || layoutStoppedByUser);
       cy.destroy();
       cyRef.current = null;
     };
-    // savedPositions / saveLayout は ref 経由で読む（依存に入れると
-    // ドラッグ → 保存 → 再構築のループになる）
+    // savedPositions / saveLayout / クリック時の処理 / 素材インデックスは ref 経由で読む
+    // （依存に入れると、ドラッグ → 保存 → 再構築のループや、呼び出し側の再描画のたびの
+    // 作り直しになる）。getKnowledgeKind の変化は graphElements → renderKey に表れる
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     renderKey,
-    getKnowledgeKind,
-    onNavigateNote,
-    onOpenNoteSidePeek,
-    onSwitchAsset,
     expanded,
     layoutReady,
     layoutResetSeq,
@@ -550,9 +552,7 @@ export function AssetGraphPanel({
         {hasSavedLayout && (
           <button
             onClick={() => {
-              // 引き継ぎも捨てて、次の構築で最初から並べ直させる
-              prevPositionsRef.current = null;
-              prevViewportRef.current = null;
+              // 引き継ぎは次の構築で捨てられる（useGraphCarryOver が resetSeq の変化を見る）
               resetLayout();
             }}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

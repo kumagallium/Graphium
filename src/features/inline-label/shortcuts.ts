@@ -7,6 +7,7 @@
 
 import { LABEL_TO_STYLE, makeEntityId, type InlineLabelKey } from "./styles";
 import { isSelectionInsideStep, isSelectionInStepTitle } from "../../blocks/step/view";
+import { formatShortcut, shortcutKeycaps } from "../../lib/shortcut-label";
 
 // 互換 re-export（定義は styles.ts へ移動 — UI に依存しないモジュールからも使えるように）
 export { makeEntityId };
@@ -80,13 +81,9 @@ const LABEL_TO_KEY_CHAR: Record<InlineLabelKey, string> = {
   output: "O",
 };
 
-const isMacLike = () =>
-  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-
 /** tooltip 表示用のショートカット表記（mac: ⌘⇧I / それ以外: Ctrl+Shift+I） */
 export function getInlineLabelShortcutHint(label: InlineLabelKey): string {
-  const ch = LABEL_TO_KEY_CHAR[label];
-  return isMacLike() ? `⌘⇧${ch}` : `Ctrl+Shift+${ch}`;
+  return formatShortcut(["mod", "shift", LABEL_TO_KEY_CHAR[label]]);
 }
 
 /**
@@ -96,8 +93,7 @@ export function getInlineLabelShortcutHint(label: InlineLabelKey): string {
  * 1 キャップに畳む。
  */
 export function getInlineLabelShortcutKeys(label: InlineLabelKey): string[] {
-  const ch = LABEL_TO_KEY_CHAR[label];
-  return isMacLike() ? ["⌘", "⇧", ch] : [`Ctrl+Shift+${ch}`];
+  return shortcutKeycaps(["mod", "shift", LABEL_TO_KEY_CHAR[label]]);
 }
 
 /**

@@ -275,12 +275,13 @@ import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
+import type { EditMediaContexts } from "./features/asset-browser/media-index";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
-import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
+import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
 import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
@@ -387,6 +388,7 @@ import { useCapture } from "./hooks/use-capture";
 // components
 import { WelcomeDialog } from "./components/WelcomeDialog";
 import { FileSidebar } from "./components/FileSidebar";
+import { formatShortcut, sidebarToggleShortcutParams } from "./lib/shortcut-label";
 import { NoteSideMenu, collectBlockScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
 import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
@@ -650,7 +652,7 @@ function NoteHeaderMenu({
           {onTakeSnapshot && (
             <button
               className={itemClass}
-              title={`${t("version.take")} (⌘⇧S / ⌘⌥S)`}
+              title={`${t("version.take")} (${formatShortcut(["mod", "shift", "S"])} / ${formatShortcut(["mod", "alt", "S"])})`}
               onClick={() => { onTakeSnapshot(); setOpen(false); }}
             >
               <Pin size={14} />
@@ -880,6 +882,8 @@ type NoteEditorProps = {
    * （素材ギャラリー側と同じ導出を使い、見え方を揃える）。
    */
   noteFolderLookup?: NoteFolderLookup;
+  /** エディタ内から開く素材サイドピークで、素材のフォルダを付け外しする */
+  onEditMediaContexts?: EditMediaContexts;
   onSave: (doc: GraphiumDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   /** `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す（ナビゲーションしない） */
@@ -922,8 +926,6 @@ type NoteEditorProps = {
   rawNoteIndex?: GraphiumIndex | null;
   /** 来歴ラベル機能（手順の PROV 化）が有効か。false なら全ラベル UI を描画しない。 */
   provLabelsEnabled?: boolean;
-  /** 文脈候補（タグ）を全ノートから削除する（ヘッダ文脈ピッカーのゴミ箱）。削除したら true を返す。 */
-  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
   uploadFile?: (file: File) => Promise<string>;
   /**
@@ -1258,6 +1260,7 @@ function NoteEditorInner({
   fileId,
   initialDoc,
   noteFolderLookup,
+  onEditMediaContexts,
   onSave,
   onDeriveNote,
   onCreateLinkedNote,
@@ -1279,7 +1282,6 @@ function NoteEditorInner({
   getCachedDoc,
   noteIndex,
   rawNoteIndex,
-  onDeleteContextEverywhere,
   uploadFile,
   uploadAsset,
   mediaIndex,
@@ -5961,7 +5963,6 @@ function NoteEditorInner({
                     createLabel={(v) => t("nav.createContext", { value: v })}
                     clearLabel={t("nav.clearContexts")}
                     emptyText={t("nav.contextEmpty")}
-                    onDeleteCandidate={onDeleteContextEverywhere}
                     onAdd={(v) => {
                       const next = addNoteContext(noteContextsRef.current, v) ?? [];
                       noteContextsRef.current = next;
@@ -5970,6 +5971,12 @@ function NoteEditorInner({
                     }}
                     onRemove={(v) => {
                       const next = removeNoteContext(noteContextsRef.current, v) ?? [];
+                      noteContextsRef.current = next;
+                      setNoteContexts(next);
+                      markDirty();
+                    }}
+                    onReplace={(from, to) => {
+                      const next = replaceNoteContext(noteContextsRef.current, from, to) ?? [];
                       noteContextsRef.current = next;
                       setNoteContexts(next);
                       markDirty();
@@ -6302,6 +6309,7 @@ function NoteEditorInner({
             inline
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
+            onEditFolders={onEditMediaContexts}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
@@ -6325,6 +6333,7 @@ function NoteEditorInner({
           <MaterialSidePeek
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
+            onEditFolders={onEditMediaContexts}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
@@ -9361,21 +9370,6 @@ export function NoteApp() {
 
   const t = useT();
 
-  // 文脈候補（タグ）を全ノートから削除する。ピッカーのゴミ箱から呼ばれる。
-  // 使用中の件数を数え、1 件以上なら確認ダイアログを出す。実際に削除したら true を返す
-  // （ピッカー側がセッション表示から即座に消すのに使う）。
-  const handleDeleteContextEverywhere = async (value: string): Promise<boolean> => {
-    const key = value.trim().toLowerCase();
-    const count = (fm.noteIndex?.notes ?? []).filter((n) =>
-      (n.noteContexts ?? []).some((c) => c.trim().toLowerCase() === key),
-    ).length;
-    if (count >= 1 && !window.confirm(t("nav.deleteContextConfirm", { value, count: String(count) }))) {
-      return false;
-    }
-    await fm.deleteNoteContextEverywhere(value);
-    return true;
-  };
-
   // エディタ参照（メディアリネーム時のブロック同期用）
   const noteEditorRef = useRef<any>(null);
 
@@ -10386,7 +10380,7 @@ export function NoteApp() {
           <div className="w-9 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col items-center py-3">
             <button
               onClick={() => setDesktopSidebarCollapsed(false)}
-              title={t("sidebar.expand")}
+              title={t("sidebar.expand", sidebarToggleShortcutParams())}
               className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-sidebar-accent"
             >
               <PanelLeftOpen size={16} />
@@ -10475,7 +10469,7 @@ export function NoteApp() {
             onArchiveMedia={fm.handleArchiveMedia}
             countSnapshotRefs={fm.countSnapshotRefsForAsset}
             onRenameMedia={handleRenameMediaWithBlockSync}
-            onSetMediaContexts={fm.updateMediaContexts}
+            onEditMediaContexts={fm.editMediaContexts}
             noteFolders={noteFolderNames}
             noteFolderLookup={noteFolderLookup}
             onFolderMenu={(path, position, opts) => {
@@ -11012,7 +11006,6 @@ export function NoteApp() {
             }}
             onOpenWikiPeek={(wikiNoteId) => openListPeek(wikiNoteId)}
             onSetNoteContexts={fm.updateNoteContexts}
-            onDeleteContextEverywhere={handleDeleteContextEverywhere}
             onShareSelected={
               isTauri() && getSharedRoot() && loadAuthorIdentity()
                 ? (ids) =>
@@ -11372,7 +11365,7 @@ export function NoteApp() {
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
             noteFolderLookup={noteFolderLookup}
-            onDeleteContextEverywhere={handleDeleteContextEverywhere}
+            onEditMediaContexts={fm.editMediaContexts}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
                 ? (() => {
@@ -11729,7 +11722,6 @@ export function NoteApp() {
                 navigateToNote(noteId, savedDoc);
               }}
               onNoteContextsChange={(id, doc) => fm.reindexNoteFromDoc(id, doc)}
-              onDeleteContextEverywhere={handleDeleteContextEverywhere}
               wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
               onAddToKnowledge={
                 aiUiEnabled && !listSidePeekNoteId.startsWith("wiki:")
@@ -11778,6 +11770,7 @@ export function NoteApp() {
       {listMaterialPeekEntry && (
         <MaterialSidePeek
           noteFolderLookup={noteFolderLookup}
+          onEditFolders={fm.editMediaContexts}
           entry={listMaterialPeekEntry}
           onClose={() => setListMaterialPeekEntry(null)}
           mediaIndex={fm.mediaIndex ?? null}

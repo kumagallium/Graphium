@@ -6,6 +6,7 @@
 // 進行状況は素材ギャラリーの一括読み取りと同じ OcrToast で見せる。
 
 import { useCallback, useRef, useState } from "react";
+import { holdBackgroundWork } from "@/lib/background-work";
 import { runBulkOcr, type BulkOcrTarget } from "./bulk-ocr";
 import type { OcrToastState } from "./OcrToast";
 
@@ -19,14 +20,19 @@ export function useQueuedBulkOcr() {
     const targets = queueRef.current.splice(0, queueRef.current.length);
     if (targets.length === 0) return;
     runningRef.current = true;
+    // 取り込みの続きとして裏で回るので、ウィンドウが隠れても止まらないよう保持する
+    const releaseBackgroundWork = holdBackgroundWork();
     try {
       await runBulkOcr(targets, {
         onProgress: (p) => setToast({ running: p.running, chars: p.chars, empty: p.empty, failed: p.failed }),
       });
     } finally {
       runningRef.current = false;
-      // 実行中にさらに取り込みが来てキューに積まれていたら、続けて次のバッチを回す
+      // 実行中にさらに取り込みが来てキューに積まれていたら、続けて次のバッチを回す。
+      // runNext は最初の await までに保持を取るので、解放はその後にする
+      // （先に解放するとオフ→オンの往復が挟まり、その瞬間だけ隠れたウィンドウで減速する）
       if (queueRef.current.length > 0) void runNext();
+      releaseBackgroundWork();
     }
   }, []);
 

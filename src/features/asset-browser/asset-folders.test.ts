@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildNoteFolderLookup, resolveAssetFolders, assetFolderValues } from "./asset-folders";
+import {
+  buildNoteFolderLookup,
+  resolveAssetFolders,
+  assetFolderValues,
+  commonOwnFolders,
+} from "./asset-folders";
 
 const lookup = buildNoteFolderLookup([
   { noteId: "n1", noteContexts: ["材料X"] },
@@ -64,5 +69,32 @@ describe("assetFolderValues", () => {
     expect(
       assetFolderValues({ noteContexts: ["下書き"], usedIn: [usage("n2")] }, lookup),
     ).toEqual(["下書き", "材料X", "実験A"]);
+  });
+});
+
+describe("commonOwnFolders", () => {
+  it("全部の素材に付いているフォルダだけ返す", () => {
+    expect(
+      commonOwnFolders([
+        { noteContexts: ["材料X", "実験A"] },
+        { noteContexts: ["実験A", "材料X", "写真"] },
+      ]),
+    ).toEqual(["材料X", "実験A"]);
+  });
+
+  it("一部にしか付いていないものは含めない", () => {
+    expect(commonOwnFolders([{ noteContexts: ["材料X"] }, { noteContexts: ["実験A"] }])).toEqual([]);
+    expect(commonOwnFolders([{ noteContexts: ["材料X"] }, {}])).toEqual([]);
+  });
+
+  it("大文字小文字は区別しない（表示は先頭の素材の表記）", () => {
+    expect(
+      commonOwnFolders([{ noteContexts: ["Sourdough"] }, { noteContexts: ["sourdough"] }]),
+    ).toEqual(["Sourdough"]);
+  });
+
+  it("1 件ならその素材のフォルダ、0 件なら空", () => {
+    expect(commonOwnFolders([{ noteContexts: ["材料X"] }])).toEqual(["材料X"]);
+    expect(commonOwnFolders([])).toEqual([]);
   });
 });

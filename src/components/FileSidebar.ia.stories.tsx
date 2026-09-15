@@ -19,6 +19,7 @@ import type { GraphiumIndex } from "../features/navigation/index-file";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { useT, getDisplayLabelName, LocaleProvider } from "../i18n";
 import "../app.css";
+import { shortcutKeycaps } from "../lib/shortcut-label";
 
 // ── モックデータ ─────────────────────────────────────────
 
@@ -201,7 +202,7 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
           <span>{t("sidebar.newMemo")}</span>
           {/* 実コンポーネント (FileSidebar.tsx) と揃える: ⌘ ⇧ M を keycap 分離して Shift を明示 */}
           <span className="flex items-center gap-0.5 font-normal tabular-nums">
-            {["⌘", "⇧", "M"].map((k) => (
+            {shortcutKeycaps(["mod", "shift", "M"]).map((k) => (
               <kbd
                 key={k}
                 className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Send, Pilcrow, Folder as FolderIcon } from "lucide-react";
 import { useT } from "../../i18n";
+import { formatShortcut } from "../../lib/shortcut-label";
 
 export type CaptureDialogVariant = "fullscreen" | "centered";
 
@@ -124,7 +125,7 @@ export function CaptureDialog({
 
           <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-muted/30">
             <p className="text-xs text-muted-foreground">
-              {submitting ? t("memo.saving") : t("memo.hintDesktop")}
+              {submitting ? t("memo.saving") : t("memo.hintDesktop", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}
             </p>
             <div className="flex items-center gap-2">
               {/* どこへ入るかは、押す前にボタンの隣で見えているのが筋。

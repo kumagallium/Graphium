@@ -5,6 +5,7 @@
 //           React の UI ごと消えるため、dialog.save() + 自前の Rust コマンドで
 //           ネイティブ保存する。
 import { isTauri } from "./platform";
+import { bytesToBase64 } from "@/lib/base64";
 
 export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
   if (isTauri()) {
@@ -15,13 +16,7 @@ export async function downloadBlob(blob: Blob, filename: string): Promise<void> 
     const { invoke } = await import("@tauri-apps/api/core");
     const buf = await blob.arrayBuffer();
     const bytes = new Uint8Array(buf);
-    // バイト→base64（btoa は引数長が大きいと RangeError になるのでチャンク化）
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-    }
-    const content_base64 = btoa(binary);
+    const content_base64 = bytesToBase64(bytes);
     // 戻り値 false はユーザーがダイアログをキャンセルした場合（従来と同じ挙動）。
     await invoke<boolean>("save_bytes_with_dialog", {
       suggestedName: filename,
