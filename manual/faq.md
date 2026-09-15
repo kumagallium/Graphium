@@ -29,6 +29,7 @@ The numbers that *do* exist fall into three categories, and each has a reason yo
 | 0–8 candidates per call, up to 3 relations per Insight | Prompt-side ranges | **Anti-runaway guards** on LLM output verbosity, not caps on your knowledge — repeated scans keep adding what they find |
 | At least 2 Claims before scanning | Run precondition | Cross-Claim patterns need something to cross; with a single Claim there is nothing to scan against yet |
 | Unknown source IDs dropped | Parser guard | **Hallucination defense** — a candidate citing a Claim that doesn't exist is discarded rather than saved with a broken reference |
+| Health check has no day-count or overlap-percentage threshold | [Knowledge Health Check](/knowledge-layer)'s **Stale** and **Redundant** issues | **Judged, not thresholded.** Stale requires the AI to name a specific newer page or note that supersedes the old one — elapsed time alone never triggers it. Redundant requires the two pages to assert the same specific claim, wording and granularity aside — topic overlap alone never triggers it |
 
 If you ever see behavior that looks like a hidden filter and isn't explained by this table, that's a bug worth [reporting](https://github.com/kumagallium/Graphium/issues).
 

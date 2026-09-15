@@ -1325,7 +1325,7 @@ export const ja: Record<string, string> = {
   "wikiLint.analyzingShort": "解析中...",
   "wikiLint.emptyHint": "ナレッジの問題を検出するためにヘルスチェックを実行してください",
   "wikiLint.quickButton": "クイック（ローカルのみ）",
-  "wikiLint.quickHint": "古い／孤立など、LLM を使わずに検出できる問題を即座にチェック",
+  "wikiLint.quickHint": "孤立／重複するトピックなど、LLM を使わずに検出できる問題を即座にチェック",
   "wikiLint.fullButton": "フル（AI 解析）",
   "wikiLint.fullHint": "矛盾・冗長・穴・引用の弱さなどを AI で意味的にチェック（LLM 利用、数秒〜十数秒）",
   "wikiLint.analyzingLong": "ナレッジの整合性を解析しています...",

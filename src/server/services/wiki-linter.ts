@@ -3,7 +3,7 @@
 // - 矛盾検出（Contradiction）: 異なる Wiki 間の矛盾する主張
 // - 孤立ページ（Orphan）: 他の Wiki や元ノートとの接続がないページ
 // - 知識ギャップ（Gap）: カバーされていないトピック・発展可能な領域
-// - 陳腐化（Stale）: 長期間更新されていないページ
+// - 陳腐化（Stale）: 後から作られた知見に内容を追い越されたページ
 // - 重複（Redundant）: 内容が大幅に重なる Claim 同士
 
 export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant";
@@ -104,8 +104,10 @@ If you can only name the missing topic by ID (no human-readable title is inferab
 Severity: "info".
 
 ### stale
-A Wiki page that hasn't been updated in a long time while related pages have been updated.
-Or a page whose source notes may have changed since the Wiki was generated.
+A Wiki page whose claim has been superseded — a genuine conflict or overwrite by knowledge
+written later, not merely the passage of time. Flag only when you can point to a specific
+other page (or newer source note) that supersedes it. "It hasn't changed in a while" alone
+is NOT a reason to flag — most pages are correctly stable.
 Severity: "warning"
 
 ### redundant
@@ -178,8 +180,8 @@ If two pages have very similar titles, disambiguate with a short distinguishing 
 - Prioritize actionable issues: each issue should have a concrete suggestion
 - For gaps: suggest what kind of Claim page could be created
 - For contradictions: quote the conflicting claims
-- For stale: compare lastIngestedAt dates with related pages
-- For redundant: compare section headings and content themes between Claim pages. If two Claims cover >70% of the same ground, flag them. **Also apply this to Topic pages** — two Topics whose titles name the same concept despite surface differences (wording variants, presence/absence of particles, word order, or one being a needlessly narrow per-sample/per-composition slice of the other) are redundant even if you haven't read their member Claims; the fix is to merge them via "Organize topics" in Settings, not to edit content. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality (for Topics, prefer the more general/reusable title). The suggestion should clearly state which page absorbs which
+- For stale: identify the specific newer page or note that supersedes it, and name it in the description — do not flag based on elapsed time alone
+- For redundant: compare section headings and content themes between Claim pages. Flag when the pages are about the same concept and assert the same specific claim (allowing for differences in wording or level of detail). **Also apply this to Topic pages** — two Topics whose titles name the same concept despite surface differences (wording variants, presence/absence of particles, word order, or one being a needlessly narrow per-sample/per-composition slice of the other) are redundant even if you haven't read their member Claims; the fix is to merge them via "Organize topics" in Settings, not to edit content. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality (for Topics, prefer the more general/reusable title). The suggestion should clearly state which page absorbs which
 - Return an empty issues array if no issues are found
 
 ## Language
@@ -290,15 +292,11 @@ function validateSeverity(severity: string): LintSeverity {
 }
 
 /**
- * ローカルで検出可能な Stale/Orphan 問題をチェックする（LLM 不要）
+ * ローカルで検出可能な Orphan/Redundant 問題をチェックする（LLM 不要）。
+ * Stale（後から来た知見に追い越されたか）は日数で機械判定できないため、LLM lint 側でのみ扱う。
  */
-export function detectLocalIssues(
-  wikis: WikiSnapshot[],
-  staleDays: number = 30,
-): LintIssue[] {
+export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
   const issues: LintIssue[] = [];
-  const now = Date.now();
-  const staleThreshold = staleDays * 24 * 60 * 60 * 1000;
 
   // Wiki ID → Wiki のマップ
   const wikiById = new Map(wikis.map((w) => [w.id, w]));
@@ -318,20 +316,6 @@ export function detectLocalIssues(
   }
 
   for (const w of wikis) {
-    // Stale チェック: 最終更新から staleDays 日以上経過
-    const lastUpdate = new Date(w.lastIngestedAt ?? w.modifiedAt).getTime();
-    if (now - lastUpdate > staleThreshold) {
-      const daysSince = Math.floor((now - lastUpdate) / (24 * 60 * 60 * 1000));
-      issues.push({
-        type: "stale",
-        severity: "warning",
-        title: `"${w.title}" has not been updated for ${daysSince} days`,
-        description: `This ${w.kind} was last updated on ${new Date(lastUpdate).toISOString().slice(0, 10)}. It may contain outdated information.`,
-        affectedWikiIds: [w.id],
-        suggestion: `Review and re-ingest the source notes, or mark as still valid.`,
-      });
-    }
-
     // Orphan チェック: Claim で他から参照されておらず、自身も他を参照していない
     if (w.kind === "claim") {
       const isReferenced = referenced.has(w.id);

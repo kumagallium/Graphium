@@ -12,7 +12,6 @@ const base = (overrides: Partial<WikiSnapshot>): WikiSnapshot => ({
   derivedFromNotes: [],
   relatedClaims: [],
   bodyPreview: "",
-  // stale 判定に引っかからないよう十分新しい日時にしておく
   modifiedAt: new Date().toISOString(),
   ...overrides,
 });

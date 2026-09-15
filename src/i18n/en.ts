@@ -1325,7 +1325,7 @@ export const en: Record<string, string> = {
   "wikiLint.analyzingShort": "Analyzing...",
   "wikiLint.emptyHint": "Run a health check to analyze your Knowledge for issues",
   "wikiLint.quickButton": "Quick (local only)",
-  "wikiLint.quickHint": "Detect stale / orphan issues without using the LLM",
+  "wikiLint.quickHint": "Detect orphan / duplicate-topic issues without using the LLM",
   "wikiLint.fullButton": "Full (AI analysis)",
   "wikiLint.fullHint": "Find contradictions, redundancy, gaps, weak citations via LLM analysis (a few seconds to tens of seconds)",
   "wikiLint.analyzingLong": "Analyzing Knowledge health...",

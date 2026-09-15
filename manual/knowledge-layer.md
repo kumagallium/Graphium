@@ -90,7 +90,7 @@ The first three don't call a model — you've already made the decision by picki
 Two buttons at the bottom of the sidebar's **Knowledge** section open maintenance views:
 
 - **Log** — an activity log of every knowledge operation (ingest, merge, cross-update, regenerate, delete), grouped by day, each entry linking to the affected page.
-- **Health** — the **Knowledge Health Check**. Press **Run Check** and choose **Quick (local only)**, which finds stale and orphaned entries without any LLM call, or **Full (AI analysis)**, which also finds **Contradiction**, **Gap**, and **Redundant** issues. Each issue offers one-click fixes: **Regenerate**, **Archive**, or **Open**.
+- **Health** — the **Knowledge Health Check**. Press **Run Check** and choose **Quick (local only)**, which finds orphaned and duplicate-topic entries without any LLM call, or **Full (AI analysis)**, which also finds **Contradiction**, **Gap**, **Stale**, and **Redundant** issues. There's no threshold behind these — Stale means the AI found a specific newer page or note that supersedes it (not "hasn't changed in a while"), and Redundant means two pages assert the same specific claim. Each issue offers one-click fixes: **Regenerate**, **Archive**, or **Open**.
 
 ## Discovering insights from claims
 
