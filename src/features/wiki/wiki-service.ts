@@ -7,7 +7,7 @@ import { embeddingStore } from "../../lib/embedding-store";
 import { extractWikiSections, flattenColumns } from "./section-extract";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { summarizeNoteProv } from "../prov-extractor";
-import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName } from "../settings/store";
+import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { t } from "../../i18n";
@@ -35,7 +35,8 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
  * resolveModelConfig (server) はヘッダーを最優先するため、別モデルを使いたい工程では
  * モード別に適切な認証情報を送る必要がある。
  * - "default":       Default モデル（ingest / lint / rewrite / cross-update）
- * - "chatSynthesis": Chat & Synthesis 用モデル（未設定なら default）
+ * - "chatSynthesis": Chat 用モデル（未設定なら default）
+ * - "insight":       洞察（atomize / transfer 判定 / relift）用モデル（未設定なら chatSynthesis → default）
  * - "embedding":     Embedding 用モデル（未設定なら default）
  */
 /**
@@ -44,20 +45,25 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
  * （Web モードはヘッダー優先のため body.model は無視されるが、付けても害は無い）。
  *
  * - "default":       Default モデル（ingest / lint / rewrite / cross-update / URL→PROV）
- * - "chatSynthesis": Chat & Synthesis モデル（未設定時は Default）
+ * - "chatSynthesis": Chat モデル（未設定時は Default）
+ * - "insight":       洞察用モデル（未設定時は Chat → Default）
  * - "embedding":     Embedding 用途は body.embedding_model を別途使うので空
  */
-function wikiBodyModel(mode: "default" | "chatSynthesis" | "embedding" = "default"): { model?: string } {
+function wikiBodyModel(mode: "default" | "chatSynthesis" | "insight" | "embedding" = "default"): { model?: string } {
   if (mode === "embedding") return {};
-  const name = mode === "chatSynthesis" ? getChatSynthesisModelName() : getSelectedModel();
+  const name =
+    mode === "chatSynthesis" ? getChatSynthesisModelName()
+    : mode === "insight" ? getInsightModelName()
+    : getSelectedModel();
   return name ? { model: name } : {};
 }
 
-function wikiHeaders(mode: "default" | "chatSynthesis" | "embedding" = "default"): Record<string, string> {
+function wikiHeaders(mode: "default" | "chatSynthesis" | "insight" | "embedding" = "default"): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
     const model =
       mode === "chatSynthesis" ? getChatSynthesisLLMModel()
+      : mode === "insight" ? getInsightLLMModel()
       : mode === "embedding" ? getEmbeddingLLMModel()
       : getDefaultLLMModel();
     if (model) {
@@ -1926,12 +1932,12 @@ export async function atomizeConcepts(
   if (concepts.length < 1) return { atoms: [] };
   const res = await fetch(`${API_BASE}/atomize`, {
     method: "POST",
-    headers: wikiHeaders("chatSynthesis"),
+    headers: wikiHeaders("insight"),
     body: JSON.stringify({
       concepts,
       ...(options?.existingAtomTitles ? { existingAtomTitles: options.existingAtomTitles } : {}),
       language,
-      ...(options?.model ? { model: options.model } : {}),
+      ...(options?.model ? { model: options.model } : wikiBodyModel("insight")),
     }),
     // 中断シグナル。fetch を切るとサーバー側の c.req.raw.signal も発火し、
     // LLM 呼び出しごと止まる（wiki.ts の /atomize が abortSignal を配線済み）。

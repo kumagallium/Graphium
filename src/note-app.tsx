@@ -194,7 +194,7 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -3751,7 +3751,7 @@ function NoteEditorInner({
           }
         }
 
-        // チャット送信は「チャット・洞察モデル」設定を使う（未設定ならデフォルトモデルにフォールバック）。
+        // チャット送信は「チャットモデル」設定を使う（未設定ならデフォルトモデルにフォールバック）。
         // getSelectedModel() はデフォルトモデルを返すため、設定 UI の「AIチャットで使われます」の
         // 約束と食い違っていた（#316 で chatSynthesis を追加した際にこの経路の結線が漏れていた）。
         const selectedModel = getChatSynthesisModelName();
@@ -3971,7 +3971,7 @@ function NoteEditorInner({
   // Composer 用の軽量 AI 呼び出し。Chat パネルには入らず、結果文字列だけを返す。
   // systemHint を与えるとプロンプトに前置する（Insert PROV で手順化を促す等）。
   const runComposerAgent = useCallback(async (prompt: string, systemHint?: string): Promise<string> => {
-    // Composer の Ask もチャット・洞察モデルを使う（未設定ならデフォルトモデルにフォールバック）。
+    // Composer の Ask もチャットモデルを使う（未設定ならデフォルトモデルにフォールバック）。
     const selectedModel = getChatSynthesisModelName();
     const disabledTools = getDisabledTools();
     const message = systemHint ? `${systemHint}\n\n${prompt}` : prompt;
@@ -4307,7 +4307,7 @@ function NoteEditorInner({
           atomType: undefined,
         }));
         const atomRes = await atomizeConcepts(snapshots, getLocale(), {
-          model: model ?? getChatSynthesisModelName() ?? undefined,
+          model: model ?? getInsightModelName() ?? undefined,
         });
         atomCandidates = atomRes.atoms.map((a) => {
           // 中間 claim は揮発（保存しない）ため、ephemeral id を指す derivedFromClaims は捨てる
@@ -8893,7 +8893,7 @@ export function NoteApp() {
             const atomResult = await atomizeConcepts(
               slice,
               getLocale(),
-              { existingAtomTitles, model: getChatSynthesisModelName() || undefined, signal },
+              { existingAtomTitles, model: getInsightModelName() || undefined, signal },
             );
             // 既存 Atom との embedding 類似で「新規」と「重複」に分割し、
             // 重複候補は捨てずに一致先 Atom への支持追加（reinforcement）に回す。
@@ -9734,7 +9734,7 @@ export function NoteApp() {
         const atomResult = await atomizeConcepts(snapshots, getLocale(), {
           // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
           // re-lift では旧タイトルと別の抽象になってよい。
-          model: selectedModel ?? getChatSynthesisModelName() ?? undefined,
+          model: selectedModel ?? getInsightModelName() ?? undefined,
           ...(options?.signal ? { signal: options.signal } : {}),
         });
         // 旧タイトル一致で選ぶと元のドメイン語 Atom を再現してしまい re-lift にならない。
@@ -10199,7 +10199,7 @@ export function NoteApp() {
         const result = await atomizeConcepts(
           slice,
           getLocale(),
-          { existingAtomTitles, model: getChatSynthesisModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
+          { existingAtomTitles, model: getInsightModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
         );
         // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
         if (result.atoms.length === 0) continue;
