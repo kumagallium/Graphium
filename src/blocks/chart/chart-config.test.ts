@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  legendPositionInsidePanel,
   DEFAULT_CHART_CONFIG,
   parseChartBlockConfig,
   resolveSeriesStyle,
@@ -191,6 +192,21 @@ describe("parseChartBlockConfig", () => {
       yRightAxisName: "睡眠時間",
     };
     expect(parseChartBlockConfig(serializeChartBlockConfig(config))).toEqual(config);
+  });
+
+  it("凡例の範囲: 旧ノートは図全体、panel は往復で保たれ、未知の値は図全体に落ちる", () => {
+    expect(parseChartBlockConfig("{}").legendScope).toBe("figure");
+    expect(parseChartBlockConfig(JSON.stringify({ legendScope: "panel" })).legendScope).toBe("panel");
+    expect(parseChartBlockConfig(JSON.stringify({ legendScope: "nope" })).legendScope).toBe("figure");
+    const config = { ...DEFAULT_CHART_CONFIG, legendScope: "panel" as const };
+    expect(parseChartBlockConfig(serializeChartBlockConfig(config)).legendScope).toBe("panel");
+  });
+
+  it("枠ごとの凡例の位置は枠の中に読み替える（保存値は変えない）", () => {
+    expect(legendPositionInsidePanel("top-left")).toBe("inside-top-left");
+    expect(legendPositionInsidePanel("top-right")).toBe("inside-top-right");
+    expect(legendPositionInsidePanel("bottom")).toBe("inside-bottom-left");
+    expect(legendPositionInsidePanel("inside-bottom-right")).toBe("inside-bottom-right");
   });
 });
 

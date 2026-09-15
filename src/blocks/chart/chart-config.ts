@@ -35,6 +35,36 @@ export type LegendPosition =
 
 export type LegendOrient = "horizontal" | "vertical";
 
+/**
+ * 凡例の範囲。枠を分割した図でだけ意味を持つ（分割していない図では同じ）。
+ *
+ * figure: 図全体で 1 つ。同じ名前の系列は枠をまたいで 1 項目にまとめ、色も揃える
+ *   （4 枠に試料 A・B・C を描く図で、A が 4 回・4 色で並ぶのを防ぐ）。
+ * panel: 枠ごとに、その枠の系列だけの凡例を枠の中に置く（枠ごとに中身が
+ *   違う図。位置は枠内の四隅から選ぶ）。
+ */
+export type LegendScope = "figure" | "panel";
+
+/**
+ * 枠ごとの凡例は枠の中にしか置けないので、図全体用の位置（枠の上・図の下）を
+ * 枠内の隅に読み替える。保存値は legendPosition 1 つのままにして、範囲を
+ * 切り替えても位置の好みが失われないようにする
+ */
+export function legendPositionInsidePanel(
+  position: LegendPosition
+): Extract<LegendPosition, `inside-${string}`> {
+  switch (position) {
+    case "top-left":
+      return "inside-top-left";
+    case "top-right":
+      return "inside-top-right";
+    case "bottom":
+      return "inside-bottom-left";
+    default:
+      return position;
+  }
+}
+
 export type SeriesAxis = "left" | "right";
 
 /** 系列ごとの種類（未指定はチャート全体の種類に従う）。histogram は全体専用 */
@@ -389,6 +419,8 @@ export type ChartBlockConfig = {
   showLegend: boolean;
   legendPosition: LegendPosition;
   legendOrient: LegendOrient;
+  /** 凡例の範囲（図全体で 1 つ / 枠ごと）。分割していない図では効かない */
+  legendScope: LegendScope;
   /** プロット領域の全周枠（黒 box） */
   showFrame: boolean;
   /** 軸ごとの詳細設定 */
@@ -440,6 +472,7 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   showLegend: true,
   legendPosition: "top-left",
   legendOrient: "horizontal",
+  legendScope: "figure",
   showFrame: true,
   xAxisDetail: DEFAULT_AXIS_DETAIL,
   yAxisDetail: DEFAULT_AXIS_DETAIL,
@@ -720,6 +753,7 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
       ? parsed.legendPosition
       : DEFAULT_CHART_CONFIG.legendPosition,
     legendOrient: parsed.legendOrient === "vertical" ? "vertical" : "horizontal",
+    legendScope: parsed.legendScope === "panel" ? "panel" : "figure",
     showFrame: bool(parsed.showFrame, DEFAULT_CHART_CONFIG.showFrame),
     // 旧フィールド showGrid（一括）/ showGridX / showGridY は軸詳細のグリッドに引き継ぐ
     xAxisDetail: parseAxisDetail(

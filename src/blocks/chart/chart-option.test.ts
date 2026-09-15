@@ -388,4 +388,82 @@ describe("buildOption（枠の分割）", () => {
     expect(option.graphic[0].style.text).toBe("{it|I} (a.u.)");
     expect(option.graphic[0].style.rich).toBeDefined();
   });
+
+  describe("凡例の範囲（legendScope）", () => {
+    // 2 枠にそれぞれ同名の系列 "A" を置く（枠 0: A/B, 枠 1: A）。系列 3 本なので
+    // 3 系列ぶんの点を持つ result を自前で用意する（split ヘルパーの numericResult は 2 本分）
+    const threeSeriesResult: OkResult = {
+      kind: "ok",
+      xAxis: "value",
+      categories: [],
+      series: [
+        { points: [[10, 1], [20, 5], [30, 2]] },
+        { points: [[10, 3], [20, 1], [30, 4]] },
+        { points: [[10, 2], [20, 4], [30, 1]] },
+      ],
+    };
+    const sameNameSplit = (over: Partial<ChartBlockConfig> = {}) =>
+      buildOption(
+        threeSeriesResult,
+        config({
+          panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+          series: [
+            { sourceBlockId: "t1", xColumn: "T", yColumn: "A", panelIndex: 0 },
+            { sourceBlockId: "t1", xColumn: "T", yColumn: "B", panelIndex: 0 },
+            { sourceBlockId: "t1", xColumn: "T", yColumn: "A", panelIndex: 1 },
+          ],
+          ...over,
+        }),
+        [],
+        { width: 720, height: 400 }
+      );
+
+    it("figure（既定）: 同じ名前の系列は枠をまたいで凡例 1 項目・同じ色にまとまる", () => {
+      const option = sameNameSplit();
+      expect(option.legend.data).toEqual(["A", "B"]);
+      const aSeries = option.series.filter((s: any) => s.name === "A");
+      expect(aSeries).toHaveLength(2);
+      expect(aSeries[0].color).toBe(aSeries[1].color);
+    });
+
+    it("figure: 名前が違う系列は今までどおり別色", () => {
+      const option = sameNameSplit();
+      const a = option.series.find((s: any) => s.name === "A");
+      const b = option.series.find((s: any) => s.name === "B");
+      expect(a.color).not.toBe(b.color);
+    });
+
+    it("panel: legend が枠ごとの配列になり、data はその枠の系列名だけ", () => {
+      const option = sameNameSplit({ legendScope: "panel" });
+      expect(Array.isArray(option.legend)).toBe(true);
+      expect(option.legend).toHaveLength(2);
+      expect(option.legend[0].data).toEqual(["A", "B"]);
+      expect(option.legend[1].data).toEqual(["A"]);
+    });
+
+    it("panel: 凡例の位置は枠の矩形の内側にある", () => {
+      const option = sameNameSplit({ legendScope: "panel" });
+      const [g0, g1] = option.grid;
+      // 既定の legendPosition は top-left → inside-top-left に読み替わる
+      expect(option.legend[0].left).toBeGreaterThanOrEqual(g0.left);
+      expect(option.legend[0].top).toBeGreaterThanOrEqual(g0.top);
+      expect(option.legend[1].left).toBeGreaterThanOrEqual(g1.left);
+      expect(option.legend[1].top).toBeGreaterThanOrEqual(g1.top);
+    });
+
+    it("panel: 同じ名前の系列は枠をまたいで同じ色（凡例は系列名で色を引くため）", () => {
+      const option = sameNameSplit({ legendScope: "panel" });
+      const aSeries = option.series.filter((s: any) => s.name === "A");
+      expect(aSeries).toHaveLength(2);
+      expect(aSeries[0].color).toBe(aSeries[1].color);
+    });
+
+    it("panel: 凡例が図の上端の余白を取らない", () => {
+      const figureOption = sameNameSplit({ legendScope: "figure" });
+      const panelOption = sameNameSplit({ legendScope: "panel" });
+      // figure スコープの top-left 凡例は上の余白を広げるが、panel スコープは
+      // 枠内に収まるので gridTop（= grid[0].top）が figure より小さい
+      expect(panelOption.grid[0].top).toBeLessThan(figureOption.grid[0].top);
+    });
+  });
 });

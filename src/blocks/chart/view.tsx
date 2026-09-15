@@ -59,6 +59,7 @@ import {
   isAssetSourceKey,
   axisOwnerPanel,
   isPanelStackActive,
+  legendPositionInsidePanel,
   panelAxis,
   panelCount,
   parseChartBlockConfig,
@@ -764,7 +765,13 @@ export function buildOption(
   };
   // 系列の内部名。ツールチップと書き出しに出るので、記法は落として渡す
   const seriesNameOf = (panelIndex: number, i: number): string => plainOf(seriesLabelOf(panelIndex, i));
-  const legendNames = panels.flatMap((panel, p) => panel.indices.map((i) => seriesNameOf(p, i)));
+  // 凡例の範囲（figure/panel）。分割していない図では常に figure と同じ扱いになる
+  const legendScopePanel = split && config.legendScope === "panel";
+  const legendScopeFigure = split && config.legendScope === "figure";
+  const legendNamesAll = panels.flatMap((panel, p) => panel.indices.map((i) => seriesNameOf(p, i)));
+  // figure スコープは同じ名前の系列が複数の枠に出ても凡例は 1 項目にまとめる
+  // （初出順を保つ）。分割していない図・panel スコープでは従来どおり
+  const legendNames = legendScopeFigure ? Array.from(new Set(legendNamesAll)) : legendNamesAll;
   // 凡例は系列名（＝記法を落とした素のテキスト）で引かれるので、記法を書いた
   // 系列だけ、そこから描画用の rich text に戻せるようにしておく
   const legendRichText = new Map<string, string>();
@@ -781,10 +788,13 @@ export function buildOption(
   // ── レイアウト ──────────────────────────────────────────────────
   // 段ラベルを図に直接置くときは、凡例は同じ情報の二重表示になるので出さない
   const showLegend = config.showLegend && !anyInlineStackLabels;
+  // panel スコープの凡例は枠の中に収まるので、図の外周（プロット領域の余白）を
+  // 割かない — legendTop/legendBottom は false 扱いにする
   const legendTop =
     showLegend &&
+    !legendScopePanel &&
     (config.legendPosition === "top-left" || config.legendPosition === "top-right");
-  const legendBottom = showLegend && config.legendPosition === "bottom";
+  const legendBottom = showLegend && !legendScopePanel && config.legendPosition === "bottom";
   // プロット領域の余白。凡例の座標計算にも同じ値を使う。
   // 分割時は「どれかの枠が名前を持つか」で外周を決める（枠ごとに余白を変えると
   // 枠の大きさが揃わず、図が読み比べにならない）
@@ -814,13 +824,17 @@ export function buildOption(
   const crossPanelTooltip =
     split && config.panels.joinVertical && config.panels.rows > 1 && result.xAxis !== "category";
 
+  // 実寸が来ていない初回描画では本文幅なりの値で置く（測れた時点で組み直される）。
+  // 枠内凡例の右端・下端の位置計算にも同じ値を使う
+  const layoutWidth = size?.width && size.width > 0 ? size.width : 720;
+  const layoutHeight = size?.height && size.height > 0 ? size.height : 320;
+
   const layout = split
     ? computePanelLayout({
         rows: config.panels.rows,
         cols: config.panels.cols,
-        // 実寸が来ていない初回描画では本文幅なりの値で置く（測れた時点で組み直される）
-        width: size?.width && size.width > 0 ? size.width : 720,
-        height: size?.height && size.height > 0 ? size.height : 320,
+        width: layoutWidth,
+        height: layoutHeight,
         outer: { left: gridLeft, right: gridRight, top: gridTop, bottom: gridBottom },
         xAxisSpace: anyXName ? 64 : 40,
         yAxisSpace: gridLeft,
@@ -916,6 +930,68 @@ export function buildOption(
         return { right: gridRight + 12, bottom: gridBottom + 10, ...INSIDE_LEGEND_STYLE };
     }
   })();
+
+  // panel スコープの凡例: 枠ごとに 1 つ、その枠の系列名だけを持つ凡例を
+  // 枠の矩形の内側（四隅のいずれか）に置く。top-*/bottom は inside-* に読み替える
+  // （枠の外に凡例の余白を取らない方針のため）
+  const panelLegends: any[] | null =
+    legendScopePanel && layout
+      ? panels.map((panel, p) => {
+          const names = Array.from(new Set(panel.indices.map((i) => seriesNameOf(p, i))));
+          const g = layout.grids[p];
+          const insidePosition = legendPositionInsidePanel(config.legendPosition);
+          const position = (() => {
+            switch (insidePosition) {
+              case "inside-top-left":
+                return { left: g.left + 12, top: g.top + 10 };
+              case "inside-top-right":
+                return { right: layoutWidth - (g.left + g.width) + 12, top: g.top + 10 };
+              case "inside-bottom-left":
+                return { left: g.left + 12, bottom: layoutHeight - (g.top + g.height) + 10 };
+              case "inside-bottom-right":
+                return {
+                  right: layoutWidth - (g.left + g.width) + 12,
+                  bottom: layoutHeight - (g.top + g.height) + 10,
+                };
+            }
+          })();
+          return {
+            show: true,
+            data: names,
+            orient: config.legendOrient,
+            ...position,
+            ...INSIDE_LEGEND_STYLE,
+            itemWidth: CHART_LEGEND_ITEM.width,
+            itemHeight: CHART_LEGEND_ITEM.height,
+            textStyle: {
+              fontSize: CHART_FONT_SIZE,
+              color: CHART_INK,
+              ...(legendHasRich ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
+            },
+            ...(legendHasRich
+              ? { formatter: (name: string) => legendRichText.get(name) ?? name }
+              : {}),
+            z: 12,
+          };
+        })
+      : null;
+
+  // 枠を分けた図では、同じ名前の系列は枠をまたいでも同じ色にする。図全体の凡例は
+  // 同名を 1 項目にまとめるし、枠ごとの凡例でも ECharts は系列名で色を引くので、
+  // 名前が同じで色が違うと 2 枠目の凡例が 1 枠目の色を出す（同名は同じ物、が前提）。
+  // config.series の順に名前を見て、初出の名前にその通し番号のパレット色を
+  // 割り当て、以降の同名系列はそれに従う。分割なしは従来どおり通し番号で振る
+  const seriesColorByName = new Map<string, string>();
+  if (split) {
+    config.series.forEach((sc, i) => {
+      if (!sc) return;
+      const p = seriesPanelIndex(sc, count);
+      const name = seriesNameOf(p, i);
+      if (!seriesColorByName.has(name)) {
+        seriesColorByName.set(name, CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length]);
+      }
+    });
+  }
 
   // ── 枠ごとに軸と系列を組む ──────────────────────────────────────
   // 系列の option。オフセット表示中の棒は土台の系列を挟むので、view.series と
@@ -1052,9 +1128,11 @@ export function buildOption(
       const seriesType: SeriesType = isHistogram
         ? "bar"
         : ((sc?.type ?? config.chartType) as SeriesType);
-      // 色は枠をまたいで通し番号で振る（同じ色が別の枠に出ると別物と読めない）
-      const color = sc?.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
       const name = seriesNameOf(p, i);
+      // 色は通し番号で振るのが既定。figure スコープでは同名の系列は同じ物として
+      // 同じ色にする（seriesColorByName、名前の初出系列の色を使う）
+      const color =
+        sc?.color || seriesColorByName.get(name) || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
       const points = s.points as Array<[number, number]>;
       // 段の名前は枠の左右どちらかの端に寄せ、縦はその段が占める範囲の内側に収める。
       // 範囲内に 1 点も無い段は図に何も描かれないので名前も出さない
@@ -1280,31 +1358,36 @@ export function buildOption(
             ? { formatter: timeTooltipFormatter(locale) }
             : {}),
     },
-    legend: showLegend
-      ? {
-          show: true,
-          // 土台の系列（オフセット表示の棒）は凡例に出さない
-          data: legendNames,
-          orient: config.legendOrient,
-          // 実寸が分かっているときだけ幅を絞る（見積もりと同じ位置で折り返させ、
-          // 右上の設定ボタンに潜り込ませない）
-          ...(legendWidth > 0 && config.legendOrient === "horizontal" ? { width: legendWidth } : {}),
-          ...legendLayout,
-          itemWidth: CHART_LEGEND_ITEM.width,
-          itemHeight: CHART_LEGEND_ITEM.height,
-          textStyle: {
-            fontSize: CHART_FONT_SIZE,
-            color: CHART_INK,
-            ...(legendHasRich ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
-          },
-          // 凡例は系列名（記法を落とした素のテキスト）で引かれる。記法を書いた
-          // 系列だけ、描画用の rich text に戻す
-          ...(legendHasRich
-            ? { formatter: (name: string) => legendRichText.get(name) ?? name }
-            : {}),
-          z: 12,
-        }
-      : { show: false },
+    // panel スコープでは凡例は枠ごとの配列（showLegend が false なら単一の非表示に戻す）
+    legend: legendScopePanel
+      ? showLegend
+        ? panelLegends
+        : { show: false }
+      : showLegend
+        ? {
+            show: true,
+            // 土台の系列（オフセット表示の棒）は凡例に出さない
+            data: legendNames,
+            orient: config.legendOrient,
+            // 実寸が分かっているときだけ幅を絞る（見積もりと同じ位置で折り返させ、
+            // 右上の設定ボタンに潜り込ませない）
+            ...(legendWidth > 0 && config.legendOrient === "horizontal" ? { width: legendWidth } : {}),
+            ...legendLayout,
+            itemWidth: CHART_LEGEND_ITEM.width,
+            itemHeight: CHART_LEGEND_ITEM.height,
+            textStyle: {
+              fontSize: CHART_FONT_SIZE,
+              color: CHART_INK,
+              ...(legendHasRich ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
+            },
+            // 凡例は系列名（記法を落とした素のテキスト）で引かれる。記法を書いた
+            // 系列だけ、描画用の rich text に戻す
+            ...(legendHasRich
+              ? { formatter: (name: string) => legendRichText.get(name) ?? name }
+              : {}),
+            z: 12,
+          }
+        : { show: false },
     // 十字カーソルは列の中だけで連動させる。列をまたいで連動させると、
     // 別の X を持つ隣の列にも同じ位置の線が出て、合っていない値を指す
     ...(crossPanelTooltip

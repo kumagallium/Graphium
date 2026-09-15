@@ -225,7 +225,11 @@ talks to LLM and embedding backends.
   presses those panels flush and shares that axis for real: the range is
   unified and only the outer panel carries ticks and a name. Nothing is
   inferred from the data; panels are independent until joined, which is
-  also what decides whether an axis setting is per panel or shared. Panel
+  also what decides whether an axis setting is per panel or shared. Axis
+  names and ranges belong to a panel; the tick kind and styling belong to
+  the figure, and so does the legend by default — series with the same
+  name are one entry in one color across panels, or each panel can carry
+  a legend of its own inside its frame (`legendScope`). Panel
   rectangles are computed by a pure function (`chart-layout.ts`) rather
   than by ECharts' `containLabel`, which resolves per grid and would leave
   the plot areas misaligned. **Time-series tables** complement it on the input
