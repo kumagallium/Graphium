@@ -20,7 +20,7 @@
 //   `秤量表.質量` のようなドット記法は日本語名だと構文エラーになる（実測）。
 //   そのため `表["秤量表"]["質量"]` と `col("秤量表", "質量")` の 2 つを入口にする
 
-import { normalizeNumericText, parseNumeric } from "../chart/chart-data";
+import { matchNumericPrefix, normalizeNumericText, parseNumeric } from "../chart/chart-data";
 import { readCellText } from "../../features/table-meta/table-cells";
 import { peekDataTableFromBlock } from "../data-table/data";
 import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
@@ -36,9 +36,9 @@ export type TableColumns = Map<string, Map<string, TableColumnData>>;
 /** 正規化済みセルテキストから、数値部分を除いた残り（単位表記）を返す */
 function unitTextOf(raw: string): string {
   const s = normalizeNumericText(raw);
-  const m = s.match(/^[+-]?\d+(\.\d+)?/);
-  if (!m) return "";
-  return s.slice(m[0].length).trim();
+  const m = matchNumericPrefix(s);
+  if (m === null) return "";
+  return s.slice(m.length).trim();
 }
 
 /**
