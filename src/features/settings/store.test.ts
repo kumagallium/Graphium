@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, loadSettings } from "./store";
+import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isWorldGroundingEnabled, isAutoGroundingEnabled } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -92,5 +92,60 @@ describe("colorMode — 読みやすさ（色）設定", () => {
     expect(document.body.getAttribute("data-color-mode")).toBeNull();
     applyColorMode("");
     expect(document.documentElement.getAttribute("data-color-mode")).toBeNull();
+  });
+});
+
+describe("features — AI 機能の表示切り替え（既定 ON）", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("未保存（旧バージョンの settings JSON）は両方 true になる", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ latinFont: "" }));
+    expect(loadSettings().features).toEqual({ insights: true, worldGrounding: true });
+    expect(isAtomLayerEnabled()).toBe(true);
+    expect(isWorldGroundingEnabled()).toBe(true);
+  });
+
+  it("features が無い（キーごと欠落）場合も既定 ON に倒れる", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({}));
+    expect(loadSettings().features).toEqual({ insights: true, worldGrounding: true });
+  });
+
+  it("明示的に false を保存すればそれぞれ独立に反映される", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ features: { insights: false, worldGrounding: true } }),
+    );
+    expect(isAtomLayerEnabled()).toBe(false);
+    expect(isWorldGroundingEnabled()).toBe(true);
+  });
+
+  it("壊れた値（boolean 以外）は既定 ON にフォールバックする", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ features: { insights: "yes", worldGrounding: null } }),
+    );
+    expect(isAtomLayerEnabled()).toBe(true);
+    expect(isWorldGroundingEnabled()).toBe(true);
+  });
+
+  it("旧 experimental.atomLayer は features.insights に影響しない（死んだフィールド）", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ experimental: { atomLayer: false, synthesis: false, autoGrounding: false } }),
+    );
+    expect(isAtomLayerEnabled()).toBe(true);
+  });
+
+  it("worldGrounding OFF のときは自動照合トグルが ON でも isAutoGroundingEnabled は false", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({
+        features: { insights: true, worldGrounding: false },
+        experimental: { atomLayer: false, synthesis: false, autoGrounding: true },
+      }),
+    );
+    expect(isAutoGroundingEnabled()).toBe(false);
   });
 });

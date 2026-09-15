@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { SettingsModal, type WikiSummaryForSettings } from "./modal";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
+const SETTINGS_KEY = "graphium-settings";
 
 /** 表示確認用のダミーモデル。API キーはダミーで、実際の呼び出しには使わない。 */
 const SAMPLE_MODELS = [
@@ -57,10 +58,13 @@ function installApiStub(): () => void {
  */
 function SettingsModalHarness({
   seedModels = false,
+  seedFeaturesOff = false,
   initialTab,
   wikiSummaries,
 }: {
   seedModels?: boolean;
+  /** features.insights / features.worldGrounding を両方 OFF にして開く（マスタースイッチの畳み確認用） */
+  seedFeaturesOff?: boolean;
   initialTab?: string;
   wikiSummaries?: WikiSummaryForSettings[];
 }) {
@@ -74,12 +78,21 @@ function SettingsModalHarness({
     } else {
       localStorage.removeItem(LLM_MODELS_KEY);
     }
+    if (seedFeaturesOff) {
+      localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify({ features: { insights: false, worldGrounding: false } }),
+      );
+    } else {
+      localStorage.removeItem(SETTINGS_KEY);
+    }
     setReady(true);
     return () => {
       localStorage.removeItem(LLM_MODELS_KEY);
+      localStorage.removeItem(SETTINGS_KEY);
       restoreFetch?.();
     };
-  }, [seedModels]);
+  }, [seedModels, seedFeaturesOff]);
 
   // localStorage を整えてからマウントする（SettingsModal は初回描画で読むため）
   if (!ready) return null;
@@ -115,6 +128,14 @@ export const Default: Story = {
 /** モデル登録済みの AI タブ。行の密度と長い表示名の折り返しを確認する。 */
 export const AiWithModels: Story = {
   args: { seedModels: true, initialTab: "ai" },
+};
+
+/**
+ * 洞察・世界照合の両マスタースイッチを OFF にした状態。
+ * 自動照合トグル・専用モデル・スキャン予算が畳まれ、照合データタブも消えることを確認する。
+ */
+export const AiFeaturesOff: Story = {
+  args: { seedModels: true, initialTab: "ai", seedFeaturesOff: true },
 };
 
 /** ストレージタブ。見出し → 説明文 → コントロールの縦リズムを確認する。 */

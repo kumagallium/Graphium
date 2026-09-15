@@ -194,7 +194,7 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -6721,6 +6721,9 @@ export function NoteApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
+  // AI 機能ごとの表示切り替え（既定 ON）。設定モーダルを閉じた時に再読み込みして反映する
+  // （experimentalFlags と同じ伝搬パターン）。loadSettings() は常に両方 boolean を返す。
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadSettings().features ?? { insights: true, worldGrounding: true });
   // 来歴ラベル機能は常時有効。付与 UI が step の中に構造的に畳まれた
   // （ステップを使う人にだけ現れる）ため、設定トグルでの段階的開示は撤去した。
   const provLabelsEnabled = true;
@@ -7476,7 +7479,7 @@ export function NoteApp() {
   // 自動 world-grounding（opt-in / 既定 OFF）。設定 ON のとき、洞察・知見が追加された
   // タイミング（wikiMetas の変化）に反応して未照合を 1 件ずつ照合する（直列 + デバウンス）。
   useAutoGrounding({
-    enabled: experimentalFlags.autoGrounding ?? false,
+    enabled: (featureFlags.worldGrounding ?? true) && (experimentalFlags.autoGrounding ?? false),
     wikiMetas: fm.wikiMetas,
     busy: worldCheckingWikiId !== null,
     groundOne: (wikiId) => handleWorldCheckWiki(wikiId, "background"),
@@ -10257,9 +10260,9 @@ export function NoteApp() {
       return { summary, claim, atom, synthesis };
     })(),
     // Atom（洞察）レイヤは default 昇格済み（design revision 2026-05-27）。
-    // experimental.atomLayer に関わらず常にサイドバーに表示する。
+    // 表示可否は features.insights（設定の「洞察を使う」）が握る。
     // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
-    showAtomLayer: true,
+    showAtomLayer: featureFlags.insights ?? true,
     onShowWikiList: (kind: WikiKind) => { closeAllViews(); fm.setActiveWikiKind(kind); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     // null（判定中）のまま渡す。false に潰すと、デスクトップ版の起動直後に
@@ -10329,6 +10332,7 @@ export function NoteApp() {
         {showGlobalGraph ? (
           <GlobalGraphView
             data={globalGraphData}
+            insightsEnabled={featureFlags.insights ?? true}
             onSelectNote={(noteId) => {
               // ノード単クリック → 共有 SidePeek で中身プレビュー（本開きは SidePeek 内から）。
               // noteId は wiki ノードに `wiki:` prefix 付き（SidePeek の規約に合わせる）。
@@ -11078,8 +11082,9 @@ export function NoteApp() {
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
             onRegenerateWiki={aiUiEnabled ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
-            onWorldCheckWiki={aiUiEnabled ? (wikiId) => handleWorldCheckWiki(wikiId, "bulk") : undefined}
-            onClearWorldValidity={(wikiId) => handleClearWorldValidity(wikiId)}
+            onWorldCheckWiki={aiUiEnabled && featureFlags.worldGrounding ? (wikiId) => handleWorldCheckWiki(wikiId, "bulk") : undefined}
+            onClearWorldValidity={featureFlags.worldGrounding ? (wikiId) => handleClearWorldValidity(wikiId) : undefined}
+            worldGroundingEnabled={featureFlags.worldGrounding ?? true}
             onShareSelected={
               isTauri() && getSharedRoot() && loadAuthorIdentity()
                 ? (ids) =>
@@ -11255,13 +11260,14 @@ export function NoteApp() {
                   wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
                 }}
                 onCheckWorldValidity={
-                  fm.activeDoc.wikiMeta.kind === "summary" || !wikiIdForBanner
+                  fm.activeDoc.wikiMeta.kind === "summary" || !wikiIdForBanner || !featureFlags.worldGrounding
                     ? undefined
                     : () => void handleWorldCheckWiki(wikiIdForBanner, "manual")
                 }
                 worldCheckLoading={
                   wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
                 }
+                worldGroundingEnabled={featureFlags.worldGrounding ?? true}
               />
             );
           })()}
@@ -11304,12 +11310,13 @@ export function NoteApp() {
                         }}
                         onOpenMemo={handleOpenMemoSource}
                         onClearWorldValidity={
-                          wikiIdForDrawer
+                          featureFlags.worldGrounding && wikiIdForDrawer
                             ? () => void handleClearWorldValidity(wikiIdForDrawer)
                             : undefined
                         }
                         wikiId={wikiIdForDrawer ?? undefined}
                         allWikiMetas={fm.wikiMetas}
+                        worldGroundingEnabled={featureFlags.worldGrounding ?? true}
                       />
                     );
                   })()
@@ -11765,6 +11772,7 @@ export function NoteApp() {
           setSettingsInitialTab(undefined);
           void checkAiReadiness();
           setExperimentalFlags(loadSettings().experimental);
+          setFeatureFlags(loadSettings().features ?? { insights: true, worldGrounding: true });
         }}
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}

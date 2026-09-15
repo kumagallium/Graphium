@@ -51,7 +51,9 @@ Everything AI-related, ordered as a setup flow: register models first, then assi
 |---|---|
 | **Registered Models** | Add and manage models — Anthropic, OpenAI, Google Gemini, OpenAI-compatible endpoints, or a GitHub Copilot subscription — with optional per-model pricing. |
 | **Model assignment** | Choose which registered model plays each role: **Default model**, **Chat & Insight model** (with a **Test insight model** check <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />), and **Embedding model** (with a **Test embedding** check). |
+| **Use world grounding** | Master switch for world grounding, on by default. Turning it off hides grounding buttons and columns everywhere; results already saved on notes are kept. |
 | **World grounding** | Turn on **Auto-ground new knowledge** and optionally set a dedicated grounding model; see [World grounding](/ai-grounding). |
+| **Use insights** | Master switch for insights, on by default. Turning it off hides insights from the sidebar and lists; insights already created are kept. |
 | **Insight discovery** <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" /> | **Scans per ingest (max)** — how many LLM calls Insight scanning may spend each time a note is added to Knowledge (default 3; 0 skips scanning at ingest). See [Knowledge layer](/knowledge-layer). |
 | **MCP Servers** <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" /> | Connect external tool servers directly — **Paste JSON** from a server's README, configure one by hand with **Manual**, or pull candidates **From registry**. |
 

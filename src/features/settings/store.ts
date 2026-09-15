@@ -275,8 +275,9 @@ export function toMcpServersJson(entry: McpServerEntry): string {
 
 /**
  * 実験的機能のオン/オフ。
- * - atomLayer: Concept をさらに抽象化した Atom 層を有効にする。
- *              Concept が新規に作成・更新された後、追加で Atom を自動生成する。
+ * - atomLayer: 死んだフィールド。2026-05-27 の design revision で Atom 層は default
+ *              昇格し、以後の可視性は features.insights（下記 FeatureFlags）が担う。
+ *              旧バージョンで保存された値は互換のため型に残すが loadSettings では読まない。
  * - synthesis: Atom を組み合わせた "結晶化" 知識（Synthesis）を有効にする。
  *              Atom 層に依存するため atomLayer が ON の時のみ意味を持つ。
  * 既定はどちらも OFF（デフォルトのフローは Note → Summary → Concept のみ）。
@@ -292,6 +293,19 @@ export type ExperimentalSettings = {
    * 既定 OFF。コストはユーザーの新規性レートに収束する（使うほど KB ヒットが増える）。
    */
   autoGrounding: boolean;
+};
+
+/**
+ * AI 機能ごとの表示切り替え（既定 ON）。
+ * OFF は「無効化」ではなく「UI から隠す」— 作成済みのデータ（洞察 / 照合結果）は
+ * 消さず、再度 ON にすれば復帰する。両方とも省略可: 旧 JSON に無ければ true 扱い
+ * （loadSettings のマージで解決する）。
+ * - insights: 洞察（Atom）層。サイドバー・一覧・全体グラフから隠す。
+ * - worldGrounding: 世界照合。ボタン・列・自動照合トグルを隠す。
+ */
+export type FeatureFlags = {
+  insights?: boolean;
+  worldGrounding?: boolean;
 };
 
 export type Settings = {
@@ -328,6 +342,8 @@ export type Settings = {
   colorMode: ColorMode;
   /** 実験的機能のオン/オフ */
   experimental: ExperimentalSettings;
+  /** AI 機能ごとの表示切り替え（既定 ON）。省略 = 旧バージョンの設定 JSON */
+  features?: FeatureFlags;
   /**
    * ノート取り込み時の洞察スキャン予算（= LLM 呼び出し回数の上限）。
    * 取り込みのたびに、知見全体からクラスタを最大この回数だけ選んで洞察を探す。
@@ -389,6 +405,10 @@ const DEFAULT_SETTINGS: Settings = {
     atomLayer: false,
     synthesis: false,
     autoGrounding: false,
+  },
+  features: {
+    insights: true,
+    worldGrounding: true,
   },
   displayCurrency: "usd",
   usdJpyRate: 150,
@@ -551,6 +571,7 @@ export function loadSettings(): Settings {
     const migratedColorMode: ColorMode =
       parsed.colorMode !== undefined && COLOR_MODES.includes(parsed.colorMode) ? parsed.colorMode : "";
     const exp = (parsed as { experimental?: Partial<ExperimentalSettings> }).experimental;
+    const feat = (parsed as { features?: Partial<FeatureFlags> }).features;
     // 旧来の専用 registryUrl 設定を、記憶レジストリ（savedRegistries）へマイグレーションする。
     // これは接続先ではなく「候補をブラウズする元」。同 URL が無ければ追加し registryUrl は空に倒す。
     const savedRegistries = normalizeSavedRegistries(parsed.savedRegistries);
@@ -574,6 +595,12 @@ export function loadSettings(): Settings {
         // Synthesis は Atom 依存のため、atomLayer OFF なら強制的に OFF とする
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
         autoGrounding: typeof exp?.autoGrounding === "boolean" ? exp.autoGrounding : false,
+      },
+      // 既定 ON。旧 JSON に features が無い（キー自体が無い）場合も両方 true にする —
+      // typeof ガードなので undefined は true 側に倒れる（autoUpdateCheck と同じパターン）。
+      features: {
+        insights: typeof feat?.insights === "boolean" ? feat.insights : true,
+        worldGrounding: typeof feat?.worldGrounding === "boolean" ? feat.worldGrounding : true,
       },
       atomizeIngestBudget: normalizeAtomizeIngestBudget(parsed.atomizeIngestBudget),
       // boolean 以外（壊れた値）は undefined（未確定）に倒す。起動時に判定して確定する。
@@ -717,12 +744,22 @@ export function isAgentConfigured(): boolean {
 }
 
 /**
- * Atom レイヤ（洞察）が有効かどうか。
- * 2026-05-27 の design revision で experimental から default に昇格したため常に true を返す。
- * 関数自体は呼び出し側互換のため残す（将来 disable する余地も残しておく）。
+ * Atom レイヤ（洞察）が有効かどうか（既定 ON）。
+ * 2026-05-27 の design revision で experimental から default に昇格し、以後は
+ * features.insights が可視性を持つ（OFF は無効化ではなく UI から隠すだけ）。
+ * experimental.atomLayer は死んだフィールドで、ここでは読まない。
  */
 export function isAtomLayerEnabled(): boolean {
-  return true;
+  return loadSettings().features?.insights ?? true;
+}
+
+/**
+ * 世界照合が有効かどうか（既定 ON）。
+ * OFF のときは照合ボタン・列・自動照合トグルを UI から隠す。既に照合済みの
+ * ノートの結果（grounding.validity）は消さない。
+ */
+export function isWorldGroundingEnabled(): boolean {
+  return loadSettings().features?.worldGrounding ?? true;
 }
 
 /**
@@ -734,11 +771,14 @@ export function getAtomizeIngestBudget(): number {
 
 /**
  * 自動 world-grounding が有効かどうか（opt-in / 既定 OFF）。
+ * features.worldGrounding が OFF のときは、experimental.autoGrounding の値に
+ * 関わらず常に false（マスタースイッチが優先）。
  * 反応的に使いたい箇所では loadSettings().experimental.autoGrounding を state に
  * 載せること（既存の experimentalFlags パターン）。これは即時判定用。
  */
 export function isAutoGroundingEnabled(): boolean {
-  return loadSettings().experimental?.autoGrounding ?? false;
+  const settings = loadSettings();
+  return (settings.features?.worldGrounding ?? true) && (settings.experimental?.autoGrounding ?? false);
 }
 
 /**
