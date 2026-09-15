@@ -5,6 +5,7 @@
 import mammoth from "mammoth";
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import type { GraphiumDocument } from "../../lib/document-types";
+import { bytesToBase64 } from "@/lib/base64";
 import {
   RENDERABLE_IMAGE_EXTS,
   convertNonRenderableImage,
@@ -208,9 +209,7 @@ export async function importDocxToGraphiumDoc(
         try {
           const buf = await slot.file.arrayBuffer();
           const u8 = new Uint8Array(buf);
-          let bin = "";
-          for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
-          uploadedUrls.set(idx, `data:${slot.file.type};base64,${btoa(bin)}`);
+          uploadedUrls.set(idx, `data:${slot.file.type};base64,${bytesToBase64(u8)}`);
         } catch (e2) {
           console.error(`[docx-import] #${idx} base64 フォールバックも失敗:`, e2);
         }
