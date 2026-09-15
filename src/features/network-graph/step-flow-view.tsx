@@ -372,6 +372,11 @@ function StepFlowCanvas({
     prevNodeIdsRef.current = currentIds;
     setNodes((prev: Node[]) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
+      // 実測サイズも引き継ぐ。ノードを新しいオブジェクトに作り直すと React Flow は
+      // measured の無いノードを「未計測」として visibility: hidden にし、再計測 →
+      // dimensions change → ELK → fitView が一周するまで見えない。コールバックの
+      // 参照が変わっただけの再構築でその一周を毎回やると、ノードが消えたままになる
+      const prevMeasured = new Map(prev.map((n) => [n.id, n.measured]));
       // 保存済みの座標。スコープが無い文脈（プレビュー等）では常に null
       const saved = savedPositionsRef.current;
       const nodesAreDraggable = !!layoutScope;
@@ -382,6 +387,7 @@ function StepFlowCanvas({
         id: s.id,
         type: "step" as const,
         position: saved?.[s.id] ?? prevPos.get(s.id) ?? { x: 0, y: 0 },
+        ...(prevMeasured.get(s.id) ? { measured: prevMeasured.get(s.id) } : {}),
         data: {
           activity: s,
           onRename: s.externalOrigin || s.noteRef ? undefined : onRenameActivity,
@@ -400,6 +406,7 @@ function StepFlowCanvas({
         id: e.id,
         type: "entity" as const,
         position: saved?.[e.id] ?? prevPos.get(e.id) ?? { x: 0, y: 0 },
+        ...(prevMeasured.get(e.id) ? { measured: prevMeasured.get(e.id) } : {}),
         data: {
           entity: e,
           onRenameEntity,
@@ -551,6 +558,15 @@ function StepFlowCanvas({
       width: n.measured?.width ?? 180,
       height: n.measured?.height ?? 48,
     }));
+    // ELK は非同期。完了までに graph の中身（ノード id の集合）が変わっていたら、
+    // その結果は古い id の座標でしかなく、今のノードには当たらない。適用も
+    // 「要求を消す」こともせず、finally で並べ直しに回す。
+    // 実例: 計画ノートの工程フローは、表のメタ情報（noteLinks）が復元される前は
+    // "row:<表>:<行>"、復元後は "note:<id>" の id になる。その切り替わりの最中に
+    // 古い ELK が完了すると、座標は当たらないのに needsLayout だけ下りて、以後
+    // 誰も並べ直さず、ノードが (0,0) や非表示のまま固定された
+    const idsOf = (ids: string[]) => [...ids].sort().join("\n");
+    const startedIds = idsOf(sized.map((n) => n.id));
     void layoutStepFlow(
       sized,
       g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
@@ -558,6 +574,13 @@ function StepFlowCanvas({
       // ドラッグが始まっていたら、この結果はもう古い
       if (layoutAbandonedRef.current) {
         needsLayoutRef.current = false;
+        return;
+      }
+      const latest = graphRef.current;
+      const latestIds = idsOf([...latest.steps.map((n) => n.id), ...latest.entities.map((n) => n.id)]);
+      if (latestIds !== startedIds) {
+        // 古い結果。要求は残したまま（finally が最新の graph で並べ直す）
+        needsLayoutRef.current = true;
         return;
       }
       // 適用できたときだけ要求を消す。ELK が失敗した場合（下の catch）は
