@@ -85,7 +85,12 @@ function SettingsModalHarness({
         JSON.stringify({ features: { insights: false, worldGrounding: false } }),
       );
     } else {
-      localStorage.removeItem(SETTINGS_KEY);
+      // 初回起動（保存済み設定なし）は features が既定 OFF になったため、
+      // 「行の密度」を確認したいストーリーでは既存ユーザー相当（features ON）を明示的に seed する。
+      localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify({ features: { insights: true, worldGrounding: true } }),
+      );
     }
     setReady(true);
     return () => {

@@ -38,6 +38,13 @@ type Props = {
    * 解決できなければ ID 接頭辞にフォールバック。
    */
   wikiTitleById?: Map<string, string>;
+  /** wikiId → kind の解決マップ。redundant の merge ワンクリック手当てを topic 同士だけに絞るために使う */
+  wikiKindById?: Map<string, string>;
+  /**
+   * redundant の recommendedAction（type: "merge"）が topic 同士のときだけ出る
+   * 「統合」ワンクリック手当て。keepId に absorbId を吸収させる（モデルは呼ばない）。
+   */
+  onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
 };
 
 const ISSUE_ICONS: Record<LintIssueType, typeof AlertTriangle> = {
@@ -86,6 +93,8 @@ export function WikiLintView({
   onRegenerateWiki,
   onArchiveWiki,
   wikiTitleById,
+  wikiKindById,
+  onMergeTopics,
 }: Props) {
   const t = useT();
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -219,6 +228,8 @@ export function WikiLintView({
                   onRegenerateWiki={onRegenerateWiki}
                   onArchiveWiki={onArchiveWiki}
                   wikiTitleById={wikiTitleById}
+                  wikiKindById={wikiKindById}
+                  onMergeTopics={onMergeTopics}
                 />
               ))}
             </div>
@@ -237,6 +248,8 @@ function IssueCard({
   onRegenerateWiki,
   onArchiveWiki,
   wikiTitleById,
+  wikiKindById,
+  onMergeTopics,
 }: {
   issue: LintIssue;
   expanded: boolean;
@@ -245,6 +258,8 @@ function IssueCard({
   onRegenerateWiki?: (wikiId: string) => Promise<void> | void;
   onArchiveWiki?: (wikiId: string) => Promise<void> | void;
   wikiTitleById?: Map<string, string>;
+  wikiKindById?: Map<string, string>;
+  onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
 }) {
   const t = useT();
   const Icon = ISSUE_ICONS[issue.type];
@@ -252,6 +267,8 @@ function IssueCard({
   const style = SEVERITY_STYLES[issue.severity];
   // 各 wiki ごとに「実行中アクション」を持つ（同時並行で同じ wiki に別アクションが走らないように）
   const [pendingByWiki, setPendingByWiki] = useState<Record<string, "regenerate" | "archive" | null>>({});
+  const [merging, setMerging] = useState(false);
+  const [merged, setMerged] = useState(false);
   // 本セッションで archive 済みの wiki を覚えておく。redundant では「全部消す」のを防ぐためのガード。
   const [archivedThisSession, setArchivedThisSession] = useState<Set<string>>(new Set());
 
@@ -304,6 +321,28 @@ function IssueCard({
     return `${id.slice(0, 8)}…`;
   };
 
+  // 統合のワンクリック手当ては、推奨の keep/absorb が両方 topic のときだけ出す
+  // （mergeTopicsExplicit は topic ページの統合専用）。モデルは呼ばない。
+  const canMergeTopics =
+    recommended?.type === "merge" &&
+    Boolean(onMergeTopics) &&
+    wikiKindById?.get(recommended.keepId) === "topic" &&
+    wikiKindById?.get(recommended.absorbId) === "topic";
+
+  const runMerge = async () => {
+    if (!canMergeTopics || !recommended || merging || merged) return;
+    setMerging(true);
+    try {
+      await onMergeTopics!(recommended.keepId, recommended.absorbId);
+      setMerged(true);
+      setArchivedThisSession((prev) => new Set(prev).add(recommended.absorbId));
+    } catch (err) {
+      console.error("Lint merge action failed:", err);
+    } finally {
+      setMerging(false);
+    }
+  };
+
   return (
     <div className="px-4 py-3">
       <button onClick={onToggle} className="w-full text-left">
@@ -330,6 +369,26 @@ function IssueCard({
             <div className="text-xs text-primary/90 bg-primary/5 rounded px-2 py-1.5 border border-primary/20">
               <span className="font-medium">{t("wikiLint.action.recommendedPrefix")}</span>
               {recommended.reason}
+            </div>
+          )}
+          {canMergeTopics && (
+            <div>
+              <button
+                onClick={runMerge}
+                disabled={merging || merged}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+              >
+                {merging ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    {t("wikiLint.action.running")}
+                  </>
+                ) : merged ? (
+                  t("wikiLint.action.mergeDone")
+                ) : (
+                  t("wikiLint.action.mergeTopics")
+                )}
+              </button>
             </div>
           )}
           {issue.affectedWikiIds.length > 0 && (

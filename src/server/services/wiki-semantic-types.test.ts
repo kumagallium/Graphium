@@ -109,7 +109,7 @@ describe("parseIngesterOutput: claimRole", () => {
     expect(out[0]?.claimRole).toBeUndefined();
   });
 
-  it("summary kind では claimRole を無視する", () => {
+  it("summary kind は要素ごと捨てられる（PR3: 新規生成停止）ので claimRole も残らない", () => {
     const out = parseIngesterOutput(JSON.stringify({
       wikis: [{
         kind: "summary",
@@ -120,7 +120,7 @@ describe("parseIngesterOutput: claimRole", () => {
         confidence: 0.9,
       }],
     }));
-    expect(out[0]?.claimRole).toBeUndefined();
+    expect(out).toHaveLength(0);
   });
 
   it("重複した役割は dedupe される", () => {
@@ -238,7 +238,7 @@ describe("parseIngesterOutput: epistemicStatus (Phase η)", () => {
     expect(out[0]?.epistemicStatus).toBeUndefined();
   });
 
-  it("summary kind では epistemicStatus は undefined（claim のみ）", () => {
+  it("summary kind は要素ごと捨てられる（PR3: 新規生成停止。epistemicStatus 云々ではなく丸ごと消える）", () => {
     const out = parseIngesterOutput(JSON.stringify({
       wikis: [{
         kind: "summary",
@@ -248,11 +248,10 @@ describe("parseIngesterOutput: epistemicStatus (Phase η)", () => {
         confidence: 0.9,
         relatedClaims: [],
         externalReferences: [],
-        epistemicStatus: "speculation", // 無視されるはず
+        epistemicStatus: "speculation",
       }],
     }));
-    expect(out[0]?.kind).toBe("summary");
-    expect(out[0]?.epistemicStatus).toBeUndefined();
+    expect(out).toHaveLength(0);
   });
 });
 
@@ -387,7 +386,7 @@ describe("parseIngesterOutput: rebuttalConditions (Phase γ)", () => {
     expect(out[0]?.rebuttalConditions).toEqual(["limit A", "limit B"]);
   });
 
-  it("summary には rebuttalConditions を載せない（Claim 専用）", () => {
+  it("summary は要素ごと捨てられる（PR3: 新規生成停止）ので rebuttalConditions も残らない", () => {
     const out = parseIngesterOutput(
       JSON.stringify({
         wikis: [
@@ -400,7 +399,7 @@ describe("parseIngesterOutput: rebuttalConditions (Phase γ)", () => {
         ],
       }),
     );
-    expect(out[0]?.rebuttalConditions).toBeUndefined();
+    expect(out).toHaveLength(0);
   });
 });
 
@@ -522,7 +521,7 @@ describe("parseIngesterOutput: modalQualifier (Phase γ)", () => {
     expect(out[0]?.modalQualifier).toBeUndefined();
   });
 
-  it("summary には modalQualifier を載せない", () => {
+  it("summary は要素ごと捨てられる（PR3: 新規生成停止）ので modalQualifier も残らない", () => {
     const out = parseIngesterOutput(
       JSON.stringify({
         wikis: [
@@ -535,7 +534,7 @@ describe("parseIngesterOutput: modalQualifier (Phase γ)", () => {
         ],
       }),
     );
-    expect(out[0]?.modalQualifier).toBeUndefined();
+    expect(out).toHaveLength(0);
   });
 });
 

@@ -701,12 +701,12 @@ six stages:
 
 | Stage | File | What it does |
 |---|---|---|
-| **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch; also proposes 1-3 *Topic* names per Claim |
+| **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch; also proposes *Topic* name(s) per Claim after being shown an index of existing topics (title + one-line definition), the same "index + judgment" approach it already uses for merge-vs-create decisions on other Wiki pages |
 | **Topic assignment** | `src/features/wiki/wiki-service.ts` (client) | Resolves each Claim's proposed topic names against existing Topic pages (title match → embedding similarity > 0.9 → create new) and rewrites the affected Topic bodies |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, and Topics with zero member Claims |
-| **Topic writer** | `src/server/services/wiki-topic-writer.ts` | Composes a Topic page's body from its current member Claims only (pure function — the previous body is never fed back in) |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims and Topics (including near-duplicate Topic titles), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim |
+| **Topic writer** | `src/server/services/wiki-topic-writer.ts` | Composes a Topic page's body from its current member Claims only (pure function — the previous body is never fed back in). Cites member Claims by id (`[[claim:<id>]]`, resolved to the Claim's current title before rendering) rather than by title, and the caller always appends a References section listing every member Claim. The same file also holds the **Topic Consolidator** — a separate LLM call (`POST /api/wiki/consolidate-topics`) used only by "Organize topics" (Settings → Maintenance) and by the Linter's redundant-Topic check, never by ingest itself — that maps a set of topic names to canonical titles (no count caps) |
 
 Trigger flow (client-pushed, not server-polled):
 
@@ -753,24 +753,59 @@ Notes:
   which posts to the server. There is no server-side file watcher.
 - **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
   note is ingest-worthy at all (e.g., empty drafts are skipped).
-- **Topics.** Alongside each Claim, the ingester also proposes 1-3 topic names
-  (noun phrases, in the note's language) grouping it by concept. Topics never
-  participate in the hourglass — the Atomizer only ever sees Claims.
+- **Topics.** Alongside each Claim, the ingester also proposes topic name(s)
+  (noun phrases, in the note's language, usually just one) grouping it by
+  concept — shown the same existing-topic index (title + one-line
+  definition) it already sees for other Wiki pages, so it can reuse an
+  existing topic or decide a new one is warranted, the same way it decides
+  merge-vs-create elsewhere. There is no count cap on Topics per Claim and no
+  target member-count per Topic — those are thresholds nobody could justify;
+  see [DATA_MODEL.md §3.1a](DATA_MODEL.md) for how near-duplicate Topics get
+  cleaned up later instead (Organize topics / Linter, not ingest). Topics
+  never participate in the hourglass — the Atomizer only ever sees Claims.
+- **Merging Topics has four entry points**, all funneling into the same
+  pure execution function `applyTopicMerges` (`src/features/wiki/topic-stage.ts`),
+  which retargets member Claims (`retargetClaimTopicId` + `linkClaimAndTopic`),
+  rewrites the kept Topic's body, and soft-deletes the absorbed Topic(s):
+  (1) **Topic banner** — a "similar topics" chip appears only when a local
+  check finds a candidate (normalized-title match, or embedding similarity
+  > 0.9 when an embedding model is configured); no LLM call. (2) **Topics
+  list** — select 2+ Topics and pick which one to keep; also no LLM call
+  (`mergeTopicsExplicit`, a thin wrapper around `applyTopicMerges` that
+  takes an explicit keep/merge id pair instead of computing one). (3)
+  **Lint** — the Linter's redundant-Topic finding (near-duplicate titles,
+  local or LLM-detected) gets a one-click "Merge" button that calls the
+  same explicit-pair path. (4) **Settings → Organize topics** — the only
+  entry point that judges *which* existing Topics are the same concept via
+  an LLM call (`consolidateExistingTopics` → `POST /api/wiki/consolidate-topics`,
+  the Topic Consolidator). In short: **deciding whether two Topics are the
+  same concept** is a chat-model judgment (Organize topics, and the Lint /
+  full-analysis redundant check); **moving members once the pair is known**
+  is mechanical and model-free (banner, list, and the per-issue Merge
+  button). The chat model (Settings → AI → Chat model, falls back to the
+  default model when unset) is used — not the default model — for both
+  the full Lint analysis (`POST /api/wiki/lint`) and Topic consolidation
+  (`POST /api/wiki/consolidate-topics`); ingest-time Topic naming
+  (`POST /api/wiki/name-topics`) and body composition
+  (`POST /api/wiki/compose-topic`) keep using the default model.
 - **Note mode vs document mode.** For a short personal note the ingester emits
-  a Summary plus 0-3 Claims (the "1 note ≈ 1 idea" assumption). When the source
-  is an **imported external document** — its `noteId` carries a `pdf:` /
-  `document:` / `url:` / `chat:` prefix (the external-source convention) — the
-  ingester switches to *document mode*: it harvests every distinct transferable
-  insight the document argues as its own Claim, with no fixed cap, so a dense
-  article is not collapsed into a single headline Claim. Memo-derived sources
-  (`memo:` prefix) get a third mode, *memo mode*: a memo is a short captured
-  fragment that usually carries exactly one spark, so the ingester is told to
-  extract that one insight as a Claim even from a quote or anecdote (instead
-  of falling back to Summary-only, which the conservative note-mode guidance
-  tends to do on short fragments) — while still emitting zero Claims when the
-  memo genuinely carries nothing transferable. Both switches are decided in
-  `src/server/routes/wiki.ts` and change only the Claim guidance inside
-  `buildIngesterSystemPrompt`.
+  0-3 Claims, each tagged with proposed Topics (the "1 note ≈ 1 idea"
+  assumption). When the source is an **imported external document** — its
+  `noteId` carries a `pdf:` / `document:` / `url:` / `chat:` prefix (the
+  external-source convention) — the ingester switches to *document mode*: it
+  harvests every distinct transferable insight the document argues as its own
+  Claim, with no fixed cap, so a dense article is not collapsed into a single
+  headline Claim. Memo-derived sources (`memo:` prefix) get a third mode,
+  *memo mode*: a memo is a short captured fragment that usually carries
+  exactly one spark, so the ingester is told to extract that one insight as a
+  Claim even from a quote or anecdote — while still emitting zero Claims when
+  the memo genuinely carries nothing transferable. All three modes are decided
+  in `src/server/routes/wiki.ts` and change only the Claim guidance inside
+  `buildIngesterSystemPrompt`. (A fourth wiki kind, Summary, used to be generated
+  as a private per-note recap; generation stopped when Topics arrived, since
+  Topics now carry that grouping role — existing Summary files remain
+  readable, listed, searchable, and deletable, see
+  [DATA_MODEL.md §3.1](./DATA_MODEL.md#31-kind-semantics) (kind semantics).)
 - **Failure handling:** retries are not centralized today. Each stage
   surfaces its own errors back through the response. AI-setup and
   authentication failures additionally carry a machine-readable `code`

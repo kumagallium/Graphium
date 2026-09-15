@@ -105,6 +105,14 @@ type Props = {
   /** 照合中。ボタンを disable してスピナー的に表示する。 */
   worldCheckLoading?: boolean;
   /**
+   * 似たテーマの候補（wikiMeta.kind === "topic" のときだけ意味を持つ）。
+   * ローカル判定（正規化タイトル一致・埋め込み類似度 0.9）のみ、LLM は呼ばない。
+   * 候補が無ければ渡さない／空配列にして常設バナーにしない。
+   */
+  similarTopics?: { id: string; title: string }[];
+  /** 「統合」ボタン押下時。押されたページを残す側として統合する */
+  onMergeTopicInto?: (mergeId: string) => void;
+  /**
    * 世界照合機能のマスタースイッチ（設定の features.worldGrounding、既定 true）。
    * false のときは verdict バッジも隠す — onCheckWorldValidity は undefined で
    * ボタン側は既に隠れるが、バッジは wikiMeta.grounding の有無だけで出ていたため
@@ -136,6 +144,8 @@ export function WikiBanner({
   onCheckWorldValidity,
   worldCheckLoading = false,
   worldGroundingEnabled = true,
+  similarTopics,
+  onMergeTopicInto,
 }: Props) {
   const t = useT();
   const kindLabel =
@@ -371,28 +381,42 @@ export function WikiBanner({
             </button>
           )}
 
-          {/* Regenerate — モデルは設定（Default / Chat & Synthesis）に従う */}
-          <button
-            onClick={onRegenerate}
-            disabled={loading}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "4px 8px",
-              borderRadius: "var(--r-1)",
-              border: "1px solid var(--rule)",
-              background: "var(--paper)",
-              color: "var(--ink-2)",
-              fontSize: 11,
-              cursor: "pointer",
-              opacity: loading ? 0.5 : 1,
-            }}
-            title={t("wikiBanner.regenerateHint")}
-          >
-            <RefreshCw size={12} />
-            {t("wikiBanner.regenerate")}
-          </button>
+          {/* Regenerate — モデルは設定（Default / Chat & Synthesis）に従う。
+              summary は新規生成パイプラインが撤退済み（PR3）なので再生成ボタンは出さず、
+              話題(topic)に置き換わったことを伝える 1 行の案内に差し替える。 */}
+          {wikiMeta.kind === "summary" ? (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--ink-3)",
+                padding: "4px 2px",
+              }}
+            >
+              {t("wiki.summaryRetiredHint")}
+            </span>
+          ) : (
+            <button
+              onClick={onRegenerate}
+              disabled={loading}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 8px",
+                borderRadius: "var(--r-1)",
+                border: "1px solid var(--rule)",
+                background: "var(--paper)",
+                color: "var(--ink-2)",
+                fontSize: 11,
+                cursor: "pointer",
+                opacity: loading ? 0.5 : 1,
+              }}
+              title={t("wikiBanner.regenerateHint")}
+            >
+              <RefreshCw size={12} />
+              {t("wikiBanner.regenerate")}
+            </button>
+          )}
 
           {/* Delete */}
           <button
@@ -417,6 +441,52 @@ export function WikiBanner({
           )}
         </div>
       </div>
+
+      {/* 似たテーマの候補（ローカル判定のみ・LLM は呼ばない）。候補が無ければ何も出さない
+          （常設にしない）。統合を押すと現在のページを残す側として統合する。 */}
+      {wikiMeta.kind === "topic" && !archived && similarTopics && similarTopics.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+          <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+            {t("wikiBanner.similarTopics")}:
+          </span>
+          {similarTopics.map((candidate) => (
+            <span
+              key={candidate.id}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "1px 8px",
+                borderRadius: "var(--pill)",
+                border: "1px solid var(--rule)",
+                background: "var(--paper)",
+                fontSize: 11,
+                color: "var(--ink-2)",
+              }}
+            >
+              『{candidate.title}』
+              {onMergeTopicInto && (
+                <button
+                  onClick={() => onMergeTopicInto(candidate.id)}
+                  disabled={loading}
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: "var(--r-1)",
+                    border: "1px solid var(--rule)",
+                    background: "var(--paper-2)",
+                    color: "var(--ink-2)",
+                    fontSize: 10,
+                    cursor: "pointer",
+                    opacity: loading ? 0.5 : 1,
+                  }}
+                >
+                  {t("wikiBanner.mergeTopic")}
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* 関連・文脈セクション（手順条件 / 派生元 / 世界照合詳細 / 同じ世界事実に接続した洞察 /
           Backing / Rebuttal）は D2 配置で本文下の WikiContextDrawer に移動した。

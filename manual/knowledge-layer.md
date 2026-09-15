@@ -1,6 +1,6 @@
 # Knowledge layer
 
-Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the four kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
+Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the three kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
 
 ::: info Needs AI
 The Knowledge layer runs only with an AI backend, which ships inside the [desktop app](/desktop-app), with at least one model registered. See [AI setup](/ai-setup). In the browser preview the **Knowledge** section shows an upgrade notice instead.
@@ -12,22 +12,23 @@ A lab note answers "what happened on Tuesday". A knowledge page answers "what do
 
 Because knowledge is *derived*, regeneration is normal. When your notes change, the pages built from them can be rebuilt — knowledge follows your notes, not the other way around.
 
-## The four kinds
+## The three kinds
 
 Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics sit alongside this hourglass rather than inside it: they group claims by concept and are never fed into insight discovery.
 
 | Kind | What it is |
 |---|---|
 | **Topics** | A page that groups related claims by concept, with two-hop provenance (topic → claim → note) |
-| **Summaries** | A short AI summary of a single note |
 | **Claims** | A grounded assertion extracted from your notes |
 | **Insights** | A pattern that recurs across two or more claims |
 
 Each kind carries a semantic type badge. Claims have a role (**Finding**, **Decision**, **Anomaly**, **Question**, **Setup**, **Interpretation**, **Issue**); insights have a pattern type (**Causal**, **Mechanistic**, **Conditional**, and so on).
 
+Graphium used to generate a fourth kind, **Summaries** — a short AI recap of a single note — but generation has stopped in favor of Topics, which now carry that grouping role. If you made some before this change, they haven't gone anywhere: a **Previous Summaries** row appears at the end of the sidebar's Knowledge list whenever you have any. They can still be viewed and deleted, but not regenerated.
+
 ## Adding a note to knowledge
 
-The main entry point is the **Add to Knowledge** chip in the note editor header (it also appears in the side peek and in the note's header menu). Click it and the AI reads the note, then writes a summary and extracts claims from it.
+The main entry point is the **Add to Knowledge** chip in the note editor header (it also appears in the side peek and in the note's header menu). Click it and the AI reads the note, extracts claims from it, and groups them into topics.
 
 Progress appears in a toast at the corner of the screen — **Generating Knowledge (1/3)** — which you can collapse with **Minimize** and reopen with **Show details**. While it runs, the toast header also has a **Stop** button (■): it interrupts the in-flight AI call, keeps whatever already finished, and marks the rest **Stopped** — useful when a slow model turns out to be slower than you expected. When it finishes you'll see **Done: 2 generated**, and the chip flips to **In Knowledge**; clicking it now jumps to the generated entry. Running it again on an updated note regenerates the existing entries rather than duplicating them.
 
@@ -50,11 +51,11 @@ Prompts take trial and error, so skills support the same manual version snapshot
 
 ## Browsing knowledge
 
-The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Summaries**, **Claims**, and **Insights** with counts. Click a kind to open its list view, which offers:
+The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Claims**, and **Insights** with counts (plus **Previous Summaries** if any legacy summaries remain). Click a kind to open its list view, which offers:
 
-- Columns: **Title**, **Type**, **Sources** (how many source notes), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
+- Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many member claims it groups instead), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
-- Bulk actions on selected rows: **Regenerate 3**, **Move 3 to trash**, **Check world (3)**
+- Bulk actions on selected rows: **Regenerate 3**, **Move 3 to trash**, **Check world (3)**, and for Topics (select 2 or more) **Merge**, which asks which topic to keep and moves the other(s) into it
 
 Claims also show an evidence status: **?candidate** (used in only 1 note) or **✓verified** (used in 2+ notes). A claim that gets corroborated by a second independent note is promoted automatically, and its page shows a **Corroborated** badge.
 
@@ -73,12 +74,23 @@ The body ends with a **References** section linking back to sources. Keep in min
 
 ![A knowledge page with the banner showing Derived from and Regenerate](/screenshots/knowledge-page-banner.png)
 
+## Merging topics
+
+Topics can drift apart over wording, particles, or an overly narrow per-sample title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
+
+- **Topics list** — select 2 or more Topics and press **Merge**; pick which one to keep and the rest move their member claims into it, then go to trash.
+- **A topic's own banner** — shows a **Similar topics** chip when a candidate is found nearby (same normalized title, or embedding similarity when an embedding model is set); press **Merge** to absorb it into the page you're viewing.
+- **Health check** — a **Redundant** issue for two Topics gets a one-click **Merge** button alongside the usual Regenerate/Archive/Open actions.
+- **Settings → Knowledge → Organize topics** — the only entry point that has the AI scan every existing Topic and decide which ones are the same concept, in one pass.
+
+The first three don't call a model — you've already made the decision by picking the topics. Organize topics and the AI-analysis Health check use your **Chat model** (Settings → AI) to judge whether topics are the same concept.
+
 ## Log and Health
 
 Two buttons at the bottom of the sidebar's **Knowledge** section open maintenance views:
 
 - **Log** — an activity log of every knowledge operation (ingest, merge, cross-update, regenerate, delete), grouped by day, each entry linking to the affected page.
-- **Health** — the **Knowledge Health Check**. Press **Run Check** and choose **Quick (local only)**, which finds stale and orphaned entries without any LLM call, or **Full (AI analysis)**, which also finds **Contradiction**, **Gap**, and **Redundant** issues. Each issue offers one-click fixes: **Regenerate**, **Archive**, or **Open**.
+- **Health** — the **Knowledge Health Check**. Press **Run Check** and choose **Quick (local only)**, which finds orphaned and duplicate-topic entries without any LLM call, or **Full (AI analysis)**, which also finds **Contradiction**, **Gap**, **Stale**, and **Redundant** issues. There's no threshold behind these — Stale means the AI found a specific newer page or note that supersedes it (not "hasn't changed in a while"), and Redundant means two pages assert the same specific claim. Each issue offers one-click fixes: **Regenerate**, **Archive**, or **Open**.
 
 ## Discovering insights from claims
 

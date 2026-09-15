@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isWorldGroundingEnabled, isAutoGroundingEnabled } from "./store";
+import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isWorldGroundingEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -95,12 +95,18 @@ describe("colorMode — 読みやすさ（色）設定", () => {
   });
 });
 
-describe("features — AI 機能の表示切り替え（既定 ON）", () => {
+describe("features — AI 機能の表示切り替え（初回起動は OFF、既存ユーザーは ON）", () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it("未保存（旧バージョンの settings JSON）は両方 true になる", () => {
+  it("保存済み設定が無い（初回起動）場合は両方 false になる", () => {
+    expect(loadSettings().features).toEqual({ insights: false, worldGrounding: false });
+    expect(isAtomLayerEnabled()).toBe(false);
+    expect(isWorldGroundingEnabled()).toBe(false);
+  });
+
+  it("保存済み設定はあるが features キーが無い（この版より前から使っているユーザー）場合は両方 true になる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ latinFont: "" }));
     expect(loadSettings().features).toEqual({ insights: true, worldGrounding: true });
     expect(isAtomLayerEnabled()).toBe(true);
@@ -109,6 +115,19 @@ describe("features — AI 機能の表示切り替え（既定 ON）", () => {
 
   it("features が無い（キーごと欠落）場合も既定 ON に倒れる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({}));
+    expect(loadSettings().features).toEqual({ insights: true, worldGrounding: true });
+  });
+
+  it("features があればその値に従う", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ features: { insights: false, worldGrounding: false } }),
+    );
+    expect(loadSettings().features).toEqual({ insights: false, worldGrounding: false });
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ features: { insights: true, worldGrounding: true } }),
+    );
     expect(loadSettings().features).toEqual({ insights: true, worldGrounding: true });
   });
 
@@ -147,5 +166,32 @@ describe("features — AI 機能の表示切り替え（既定 ON）", () => {
       }),
     );
     expect(isAutoGroundingEnabled()).toBe(false);
+  });
+});
+
+describe("insightModel — 洞察専用モデルの代替順（insightModel → chatSynthesisModel → default）", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("insightModel も chatSynthesisModel も未設定なら空文字（default にフォールバック）", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({}));
+    expect(getInsightModel()).toBe("");
+    expect(getInsightModelName()).toBe("");
+  });
+
+  it("insightModel が空でも chatSynthesisModel があればそれを使う（既存ユーザーの挙動を変えない）", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ chatSynthesisModel: "gpt-5" }));
+    expect(getInsightModel()).toBe("");
+    expect(getInsightModelName()).toBe("gpt-5");
+  });
+
+  it("insightModel が設定されていれば chatSynthesisModel より優先する", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ chatSynthesisModel: "gpt-5", insightModel: "claude-opus-5" }),
+    );
+    expect(getInsightModel()).toBe("claude-opus-5");
+    expect(getInsightModelName()).toBe("claude-opus-5");
   });
 });

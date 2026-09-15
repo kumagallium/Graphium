@@ -175,6 +175,18 @@ export type WikiSummaryForSettings = {
   title: string;
   kind: WikiKind;
   model?: string;
+  /** kind === "claim" のとき、話題（topic）に紐づいているか（「話題を整理」の対象判定に使う） */
+  hasTopics?: boolean;
+};
+
+/** 「話題を整理」の実行結果（件数のみ。詳細は wikiLog に記録される） */
+export type OrganizeTopicsResult = {
+  created: number;
+  updated: number;
+  failed: number;
+  withoutTopic: number;
+  /** 既存話題どうしの統合で、別名側をゴミ箱へ送った件数 */
+  merged: number;
 };
 
 export type RegenerateWikiHandler = (
@@ -251,9 +263,12 @@ type SettingsModalProps = {
   onPlanAtomizeDiscovery?: PlanDiscoveryHandler;
   /** 全 Wiki の embedding を再生成する。AI チャットでの引用検索（Retriever）の精度を回復させたい時に使う。 */
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
+  /** topicIds が空の知見に話題を割り当て直す（話題の段を一括実行）。ingest 経路を通らずに
+   *  作られた古い知見や、name-topics 補完前に作られた知見の救済に使う。 */
+  onOrganizeTopics?: (onProgress: (done: number, total: number) => void) => Promise<OrganizeTopicsResult>;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -272,6 +287,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     dimensions?: number;
   }>({ status: "idle" });
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
+  // 洞察（Atom）の抽象化・転移判定用モデル。空ならチャットモデルにフォールバック
+  const [insightModel, setInsightModel] = useState("");
   // 取り込み時の洞察スキャン予算（LLM 呼び出し回数上限、0 = 取り込み時は探さない）
   const [atomizeIngestBudget, setAtomizeIngestBudget] = useState(3);
   // 洞察モデルの能力テスト。同梱のテスト用知見（パン作り・3 件）で 1 回だけ atomize し、
@@ -402,8 +419,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
   // ツール
 
-  // Maintenance タブ — Wiki 一括 Regenerate
-  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["topic", "claim", "summary", "atom"]));
+  // Maintenance タブ — Wiki 一括 Regenerate（summary は対象外。PR3 で新規生成パイプライン撤退）
+  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["topic", "claim", "atom"]));
   const [bulkModelOverride, setBulkModelOverride] = useState("");
   const [bulkSynthesisModelOverride, setBulkSynthesisModelOverride] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -568,6 +585,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setModel(settings.model);
     setEmbeddingModel(settings.embeddingModel ?? "");
     setChatSynthesisModel(settings.chatSynthesisModel ?? "");
+    setInsightModel(settings.insightModel ?? "");
     setGroundingModelStored(settings.groundingModel ?? "");
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
@@ -841,7 +859,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     try {
       const result = await runInsightModelTest(
         locale,
-        chatSynthesisModel || model || undefined,
+        insightModel || chatSynthesisModel || model || undefined,
         controller.signal,
       );
       setInsightTestState({ status: "done", result });
@@ -854,7 +872,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     } finally {
       insightTestAbortRef.current = null;
     }
-  }, [insightTestState.status, locale, chatSynthesisModel, model]);
+  }, [insightTestState.status, locale, insightModel, chatSynthesisModel, model]);
 
   const handleTestEmbedding = useCallback(async () => {
     setEmbTestState({ status: "running" });
@@ -1193,6 +1211,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       model,
       embeddingModel,
       chatSynthesisModel,
+      insightModel,
       groundingModel: groundingModelStored,
       disabledTools,
       registryUrl: registryUrl.trim().replace(/\/+$/, ""),
@@ -1210,7 +1229,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -2794,161 +2813,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   <p className="text-xs text-muted-foreground mt-2">
                     {t("settings.chatSynthesisModelHelp")}
                   </p>
-
-                  {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
-                      入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleRunInsightTest}
-                      disabled={insightTestState.status === "running" || models.length === 0}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {insightTestState.status === "running"
-                        ? t("settings.insightTest.runningFor", { sec: String(insightTestElapsed) })
-                        : t("settings.insightTest.button")}
-                    </button>
-                    {insightTestState.status === "running" && (
-                      <button
-                        type="button"
-                        onClick={() => insightTestAbortRef.current?.abort()}
-                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {t("common.cancel")}
-                      </button>
-                    )}
-                  </div>
-                  {/* 常時表示は 1 行だけ（design.md: 常設の長文説明は置かない）。
-                      知見の中身・期待される答え・所要時間はトグルの中へ。 */}
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("settings.insightTest.help")}
-                  </p>
-                  <details className="mt-1 text-xs text-muted-foreground">
-                    <summary className="cursor-pointer select-none">
-                      {t("settings.insightTest.detailsTitle")}
-                    </summary>
-                    {/* 中身は 1 つの箱に束ねて ml-4 でインデントする（既存 DiscoveryCard の
-                        details と同じ量）。トグルに属することを字下げで示す。 */}
-                    <div className="mt-1 ml-4 space-y-2">
-                      <ol className="space-y-1.5">
-                        {getInsightTestClaims(locale).map((c, i) => (
-                          <li key={c.id} className="break-words">
-                            <span className="text-foreground">{i + 1}. {c.title}</span>
-                            <span className="block ml-4 opacity-80">{c.body}</span>
-                          </li>
-                        ))}
-                      </ol>
-                      {/* 期待される答えの実体（参考洞察）。モデルには知見しか送らないので、
-                          実行前にここで見せてもテストは汚れない。答え合わせもこの 1 箇所に集約。 */}
-                      <div>
-                        <div className="font-medium text-foreground mb-1">
-                          {t("settings.insightTest.expectedTitle")}
-                        </div>
-                        <ul className="space-y-2">
-                          {getInsightTestReference(locale).map((r, i) => (
-                            <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
-                              <div className="text-foreground break-words">{r.title}</div>
-                              <div className="break-words">{r.body}</div>
-                              <div className="mt-0.5">
-                                <span className="px-1.5 py-0.5 rounded bg-muted">
-                                  {t("settings.insightTest.referenceFolds", { nums: r.foldsClaimNumbers.join(" · ") })}
-                                </span>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <p>{t("settings.insightTest.referenceNote")}</p>
-                    </div>
-                  </details>
-                  {insightTestState.status === "error" && (
-                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
-                      ⚠ {insightTestState.error}
-                    </p>
-                  )}
-                  {insightTestState.status === "done" && insightTestState.result && (
-                    <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="font-medium text-foreground flex-1 min-w-0">
-                            {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
-                            {insightTestState.result.model && (
-                              <span className="ml-2 text-muted-foreground opacity-70">
-                                ({insightTestState.result.model})
-                              </span>
-                            )}
-                          </div>
-                          {/* 結果はモーダルを閉じても残る（メモリキャッシュ）ので、明示的に消す導線を置く */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLastInsightTestResult(null);
-                              setInsightTestState({ status: "idle" });
-                            }}
-                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            {t("settings.insightTest.clear")}
-                          </button>
-                        </div>
-                        {/* 1 行サマリ — 候補が多くても全体像を先に掴めるようにする（目視検証の負担軽減）。
-                            数えられる量だけで、合否判定はしない。 */}
-                        {insightTestState.result.candidates.length > 0 && (() => {
-                          const s = summarizeInsightTest(insightTestState.result.candidates);
-                          return (
-                            <p className="text-muted-foreground mb-1.5">
-                              {t("settings.insightTest.summary", {
-                                folds: String(s.foldCount),
-                                restates: String(s.restatementCount),
-                                covered: String(s.coveredNumbers.length),
-                                total: String(getInsightTestClaims(locale).length),
-                              })}
-                              {/* 一回性知見の引用は中立情報（持ち上げて拾うのは仕様上許容 — #459）。
-                                  警告色は「言い換えのまま拾った」ときだけ。 */}
-                              {s.oneOffRestated ? (
-                                <span className="ml-2 text-amber-700 dark:text-amber-400">
-                                  {t("settings.insightTest.oneOffRestated")}
-                                </span>
-                              ) : s.citesOneOffFact ? (
-                                <span className="ml-2">{t("settings.insightTest.oneOffCited")}</span>
-                              ) : null}
-                            </p>
-                          );
-                        })()}
-                        {insightTestState.result.candidates.length === 0 ? (
-                          <p className="text-muted-foreground">{t("settings.insightTest.empty")}</p>
-                        ) : (
-                          <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                            {insightTestState.result.candidates.map((cand, i) => (
-                              <li key={`${i}-${cand.title}`} className="border-l-2 border-border pl-2">
-                                <div className="text-foreground break-words">{cand.title}</div>
-                                <div className="text-muted-foreground break-words">{cand.body}</div>
-                                <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
-                                  {/* 引用番号チップ — 参考例の「折り畳む知見: 1 · 2」と直接突き合わせられる */}
-                                  <span
-                                    className={`px-1.5 py-0.5 rounded ${
-                                      cand.sourceNumbers.length >= 2
-                                        ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
-                                        : "bg-muted text-muted-foreground"
-                                    }`}
-                                  >
-                                    {cand.sourceNumbers.length > 0
-                                      ? t("settings.insightTest.sourcesNums", { nums: cand.sourceNumbers.join(" · ") })
-                                      : t("settings.insightTest.sources", { count: String(cand.sourceTitles.length) })}
-                                  </span>
-                                  {cand.restatement >= RESTATEMENT_BADGE_THRESHOLD && (
-                                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                                      {t("settings.insightTest.restatement")}
-                                    </span>
-                                  )}
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                    </div>
-                  )}
                 </div>
 
                 {/* Embedding モデル選択 */}
@@ -3073,7 +2937,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       </p>
                     </div>
 
-                    {/* 世界照合専用モデル（任意）。空ならチャット・洞察モデル → default にフォールバック。
+                    {/* 世界照合専用モデル（任意）。空ならチャットモデル → default にフォールバック。
                         手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
                     <div>
                       <label className="text-xs font-medium text-foreground mb-2 block">
@@ -3142,30 +3006,215 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </div>
 
                 {features.insights && (
-                  <div>
-                    <label className="text-xs font-medium text-foreground mb-2 block" htmlFor="atomize-ingest-budget">
-                      {t("settings.atomizeIngestBudget")}
-                    </label>
-                    <input
-                      id="atomize-ingest-budget"
-                      type="number"
-                      min={0}
-                      max={ATOMIZE_INGEST_BUDGET_MAX}
-                      step={1}
-                      value={atomizeIngestBudget}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        setAtomizeIngestBudget(
-                          Number.isFinite(v) ? Math.min(ATOMIZE_INGEST_BUDGET_MAX, Math.max(0, Math.round(v))) : 3,
-                        );
-                        setSaved(false);
-                      }}
-                      className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                    />
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {t("settings.atomizeIngestBudget.help")}
-                    </p>
-                  </div>
+                  <>
+                    {/* 洞察専用モデル（任意）。空ならチャットモデル → default にフォールバック。
+                        atomize / transfer 判定 / relift など洞察の発見・整理に使う。 */}
+                    <div>
+                      <label className="text-xs font-medium text-foreground mb-2 block">
+                        {t("settings.insightModel")}
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={insightModel}
+                          onChange={(e) => { setInsightModel(e.target.value); setSaved(false); }}
+                          disabled={modelsLoading || models.length === 0}
+                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                        >
+                          <option value="">
+                            {models.length === 0 ? t("settings.modelNone") : t("settings.insightModelSameAsChat")}
+                          </option>
+                          {models.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {t("settings.insightModelHelp")}
+                      </p>
+
+                      {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
+                          入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={handleRunInsightTest}
+                          disabled={insightTestState.status === "running" || models.length === 0}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {insightTestState.status === "running"
+                            ? t("settings.insightTest.runningFor", { sec: String(insightTestElapsed) })
+                            : t("settings.insightTest.button")}
+                        </button>
+                        {insightTestState.status === "running" && (
+                          <button
+                            type="button"
+                            onClick={() => insightTestAbortRef.current?.abort()}
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {t("common.cancel")}
+                          </button>
+                        )}
+                      </div>
+                      {/* 常時表示は 1 行だけ（design.md: 常設の長文説明は置かない）。
+                          知見の中身・期待される答え・所要時間はトグルの中へ。 */}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {t("settings.insightTest.help")}
+                      </p>
+                      <details className="mt-1 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer select-none">
+                          {t("settings.insightTest.detailsTitle")}
+                        </summary>
+                        {/* 中身は 1 つの箱に束ねて ml-4 でインデントする（既存 DiscoveryCard の
+                            details と同じ量）。トグルに属することを字下げで示す。 */}
+                        <div className="mt-1 ml-4 space-y-2">
+                          <ol className="space-y-1.5">
+                            {getInsightTestClaims(locale).map((c, i) => (
+                              <li key={c.id} className="break-words">
+                                <span className="text-foreground">{i + 1}. {c.title}</span>
+                                <span className="block ml-4 opacity-80">{c.body}</span>
+                              </li>
+                            ))}
+                          </ol>
+                          {/* 期待される答えの実体（参考洞察）。モデルには知見しか送らないので、
+                              実行前にここで見せてもテストは汚れない。答え合わせもこの 1 箇所に集約。 */}
+                          <div>
+                            <div className="font-medium text-foreground mb-1">
+                              {t("settings.insightTest.expectedTitle")}
+                            </div>
+                            <ul className="space-y-2">
+                              {getInsightTestReference(locale).map((r, i) => (
+                                <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
+                                  <div className="text-foreground break-words">{r.title}</div>
+                                  <div className="break-words">{r.body}</div>
+                                  <div className="mt-0.5">
+                                    <span className="px-1.5 py-0.5 rounded bg-muted">
+                                      {t("settings.insightTest.referenceFolds", { nums: r.foldsClaimNumbers.join(" · ") })}
+                                    </span>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <p>{t("settings.insightTest.referenceNote")}</p>
+                        </div>
+                      </details>
+                      {insightTestState.status === "error" && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
+                          ⚠ {insightTestState.error}
+                        </p>
+                      )}
+                      {insightTestState.status === "done" && insightTestState.result && (
+                        <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="font-medium text-foreground flex-1 min-w-0">
+                                {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
+                                {insightTestState.result.model && (
+                                  <span className="ml-2 text-muted-foreground opacity-70">
+                                    ({insightTestState.result.model})
+                                  </span>
+                                )}
+                              </div>
+                              {/* 結果はモーダルを閉じても残る（メモリキャッシュ）ので、明示的に消す導線を置く */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLastInsightTestResult(null);
+                                  setInsightTestState({ status: "idle" });
+                                }}
+                                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                {t("settings.insightTest.clear")}
+                              </button>
+                            </div>
+                            {/* 1 行サマリ — 候補が多くても全体像を先に掴めるようにする（目視検証の負担軽減）。
+                                数えられる量だけで、合否判定はしない。 */}
+                            {insightTestState.result.candidates.length > 0 && (() => {
+                              const s = summarizeInsightTest(insightTestState.result.candidates);
+                              return (
+                                <p className="text-muted-foreground mb-1.5">
+                                  {t("settings.insightTest.summary", {
+                                    folds: String(s.foldCount),
+                                    restates: String(s.restatementCount),
+                                    covered: String(s.coveredNumbers.length),
+                                    total: String(getInsightTestClaims(locale).length),
+                                  })}
+                                  {/* 一回性知見の引用は中立情報（持ち上げて拾うのは仕様上許容 — #459）。
+                                      警告色は「言い換えのまま拾った」ときだけ。 */}
+                                  {s.oneOffRestated ? (
+                                    <span className="ml-2 text-amber-700 dark:text-amber-400">
+                                      {t("settings.insightTest.oneOffRestated")}
+                                    </span>
+                                  ) : s.citesOneOffFact ? (
+                                    <span className="ml-2">{t("settings.insightTest.oneOffCited")}</span>
+                                  ) : null}
+                                </p>
+                              );
+                            })()}
+                            {insightTestState.result.candidates.length === 0 ? (
+                              <p className="text-muted-foreground">{t("settings.insightTest.empty")}</p>
+                            ) : (
+                              <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                {insightTestState.result.candidates.map((cand, i) => (
+                                  <li key={`${i}-${cand.title}`} className="border-l-2 border-border pl-2">
+                                    <div className="text-foreground break-words">{cand.title}</div>
+                                    <div className="text-muted-foreground break-words">{cand.body}</div>
+                                    <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                      {/* 引用番号チップ — 参考例の「折り畳む知見: 1 · 2」と直接突き合わせられる */}
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded ${
+                                          cand.sourceNumbers.length >= 2
+                                            ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
+                                            : "bg-muted text-muted-foreground"
+                                        }`}
+                                      >
+                                        {cand.sourceNumbers.length > 0
+                                          ? t("settings.insightTest.sourcesNums", { nums: cand.sourceNumbers.join(" · ") })
+                                          : t("settings.insightTest.sources", { count: String(cand.sourceTitles.length) })}
+                                      </span>
+                                      {cand.restatement >= RESTATEMENT_BADGE_THRESHOLD && (
+                                        <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                          {t("settings.insightTest.restatement")}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-foreground mb-2 block" htmlFor="atomize-ingest-budget">
+                        {t("settings.atomizeIngestBudget")}
+                      </label>
+                      <input
+                        id="atomize-ingest-budget"
+                        type="number"
+                        min={0}
+                        max={ATOMIZE_INGEST_BUDGET_MAX}
+                        step={1}
+                        value={atomizeIngestBudget}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setAtomizeIngestBudget(
+                            Number.isFinite(v) ? Math.min(ATOMIZE_INGEST_BUDGET_MAX, Math.max(0, Math.round(v))) : 3,
+                          );
+                          setSaved(false);
+                        }}
+                        className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {t("settings.atomizeIngestBudget.help")}
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -3628,6 +3677,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               atomizeProgress={atomizeProgress}
               setAtomizeProgress={setAtomizeProgress}
               onReembedAllWikis={onReembedAllWikis}
+              onOrganizeTopics={onOrganizeTopics}
             />
           </div>
         )}
@@ -3698,6 +3748,7 @@ type MaintenanceTabProps = {
   atomizeProgress: DiscoveryRunState | null;
   setAtomizeProgress: (p: DiscoveryRunState | null) => void;
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
+  onOrganizeTopics?: (onProgress: (done: number, total: number) => void) => Promise<OrganizeTopicsResult>;
 };
 
 function MaintenanceTab({
@@ -3726,10 +3777,12 @@ function MaintenanceTab({
   atomizeProgress,
   setAtomizeProgress,
   onReembedAllWikis,
+  onOrganizeTopics,
 }: MaintenanceTabProps) {
   // synthesis（発想）は UI 動線から非表示（design revision 2026-05-27）。
-  // 既存 synthesis ファイルの物理データは保持するが、一括 Regenerate の対象には出さない。
-  const KINDS: WikiKind[] = ["topic", "claim", "summary", "atom"];
+  // summary（要約）は新規生成パイプラインが撤退済み（PR3、話題(topic)が役割を引き継ぐ）。
+  // どちらも既存ファイルの物理データは保持するが、一括 Regenerate の対象には出さない。
+  const KINDS: WikiKind[] = ["topic", "claim", "atom"];
   const [cancelling, setCancelling] = useState(false);
   // 一括再生成 / 洞察発見の進行中 fetch を切るためのハンドル。キャンセルで abort() する。
   const bulkAbortRef = useRef<AbortController | null>(null);
@@ -3737,6 +3790,19 @@ function MaintenanceTab({
   const [reembedRunning, setReembedRunning] = useState(false);
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
   const [reembedError, setReembedError] = useState<string | null>(null);
+  const [organizeTopicsRunning, setOrganizeTopicsRunning] = useState(false);
+  const [organizeTopicsProgress, setOrganizeTopicsProgress] = useState<{ done: number; total: number } | null>(null);
+  const [organizeTopicsResult, setOrganizeTopicsResult] = useState<OrganizeTopicsResult | null>(null);
+  const [organizeTopicsError, setOrganizeTopicsError] = useState<string | null>(null);
+  const claimsWithoutTopicCount = useMemo(
+    () => wikiSummaries.filter((w) => w.kind === "claim" && !w.hasTopics).length,
+    [wikiSummaries],
+  );
+  // 既存話題どうしの統合対象になり得るか（2 件以上あれば意味がある）
+  const topicsCount = useMemo(
+    () => wikiSummaries.filter((w) => w.kind === "topic").length,
+    [wikiSummaries],
+  );
 
   // 表示値: 明示的に指定されていなければ設定の現在値をライブで反映する
   const effectiveDefaultModel = bulkModelOverride || defaultModel;
@@ -3959,6 +4025,83 @@ function MaintenanceTab({
         </div>
       )}
 
+      {/* topicIds が空の知見に話題を割り当て直す（話題の段の一括実行）。
+          ingest 経路を通らずに作られた古い知見や、name-topics 補完導入前の知見を救済する。 */}
+      {onOrganizeTopics && (claimsWithoutTopicCount > 0 || topicsCount > 1) && (
+        <div className="rounded-lg border border-border p-3 space-y-3">
+          <div>
+            <h3 className="text-xs font-semibold text-foreground mb-1">
+              {t("settings.maintenance.organizeTopics.title")}
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t("settings.maintenance.organizeTopics.help")}
+            </p>
+          </div>
+          {organizeTopicsProgress && organizeTopicsRunning && (
+            <div className="text-xs text-muted-foreground">
+              {t("settings.maintenance.organizeTopics.progress", {
+                done: String(organizeTopicsProgress.done),
+                total: String(organizeTopicsProgress.total),
+              })}
+            </div>
+          )}
+          {organizeTopicsResult && !organizeTopicsRunning && !organizeTopicsError && (
+            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+              {t("settings.maintenance.organizeTopics.done", {
+                created: String(organizeTopicsResult.created),
+                updated: String(organizeTopicsResult.updated),
+              })}
+              {organizeTopicsResult.withoutTopic > 0
+                ? ` · ${t("ingest.claimsWithoutTopic", { count: String(organizeTopicsResult.withoutTopic) })}`
+                : ""}
+              {organizeTopicsResult.failed > 0
+                ? ` · ${t("ingest.topicsFailed", { count: String(organizeTopicsResult.failed) })}`
+                : ""}
+              {organizeTopicsResult.merged > 0
+                ? ` · ${t("settings.maintenance.organizeTopics.merged", { count: String(organizeTopicsResult.merged) })}`
+                : ""}
+            </div>
+          )}
+          {organizeTopicsError && (
+            <div className="text-xs text-red-600 dark:text-red-400">
+              {organizeTopicsError}
+            </div>
+          )}
+          <Button
+            size="sm"
+            disabled={organizeTopicsRunning}
+            onClick={async () => {
+              const confirmed = window.confirm(
+                claimsWithoutTopicCount > 0
+                  ? t("settings.maintenance.organizeTopics.confirm", { count: String(claimsWithoutTopicCount) })
+                  : t("settings.maintenance.organizeTopics.confirmConsolidateOnly"),
+              );
+              if (!confirmed) return;
+              setOrganizeTopicsRunning(true);
+              setOrganizeTopicsError(null);
+              setOrganizeTopicsResult(null);
+              setOrganizeTopicsProgress({ done: 0, total: claimsWithoutTopicCount });
+              try {
+                const result = await onOrganizeTopics((done, total) => setOrganizeTopicsProgress({ done, total }));
+                setOrganizeTopicsResult(result);
+              } catch (e) {
+                setOrganizeTopicsError(e instanceof Error ? e.message : String(e));
+              } finally {
+                setOrganizeTopicsRunning(false);
+              }
+            }}
+          >
+            {organizeTopicsRunning ? (
+              <><Loader2 size={12} className="animate-spin mr-1.5" />{t("settings.maintenance.organizeTopics.running")}</>
+            ) : (
+              claimsWithoutTopicCount > 0
+                ? t("settings.maintenance.organizeTopics.run", { count: String(claimsWithoutTopicCount) })
+                : t("settings.maintenance.organizeTopics.runConsolidateOnly")
+            )}
+          </Button>
+        </div>
+      )}
+
       {/* Wiki 一括 Regenerate（Atomize と視覚的に揃えるためカード化） */}
       <div className="rounded-lg border border-border p-3 space-y-4">
         <div>
@@ -4000,7 +4143,7 @@ function MaintenanceTab({
 
       {/* モデル指定（kind 別） */}
       <div className="space-y-3">
-        {/* Concept / Summary（Ingest モデル） */}
+        {/* Concept / Topic（Ingest モデル。要約は生成停止済みなのでラベルから外した） */}
         <div>
           <h3 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.conceptSummaryModel")}

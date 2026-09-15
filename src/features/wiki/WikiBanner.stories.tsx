@@ -95,6 +95,7 @@ function Wrapper({
   mockTitle = "Wiki ドキュメントのタイトル",
   allWikiMetas,
   wikiId,
+  similarTopics,
 }: {
   wikiMeta: WikiMeta;
   loading?: boolean;
@@ -107,6 +108,8 @@ function Wrapper({
   allWikiMetas?: Map<string, WikiMetaSummary>;
   /** 表示中 wiki 自身の ID（grounding edge で自分を除外）。 */
   wikiId?: string;
+  /** 似たテーマの候補（topic のときだけ意味を持つ）。 */
+  similarTopics?: { id: string; title: string }[];
 }) {
   return (
     <div style={{ background: "var(--paper-2)", minWidth: 640 }}>
@@ -120,6 +123,12 @@ function Wrapper({
         onCheckWorldValidity={
           withWorldCheck
             ? () => console.info("[story] onCheckWorldValidity")
+            : undefined
+        }
+        similarTopics={similarTopics}
+        onMergeTopicInto={
+          similarTopics && similarTopics.length > 0
+            ? (mergeId) => console.info("[story] onMergeTopicInto", mergeId)
             : undefined
         }
       />
@@ -213,7 +222,15 @@ const sampleNoteIndex: GraphiumIndex = {
 };
 
 export const Summary: StoryObj = {
-  name: "Summary — 基本",
+  name: "以前の要約（再生成なし・案内あり）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "要約(summary)の新規生成は撤退済み（PR3、話題(topic)が役割を引き継ぐ）。既存の要約ページはそのまま閲覧・削除できるが、Regenerate ボタンは出さず「要約は話題に置き換わりました。このページはそのまま残ります」の案内テキストに差し替える。",
+      },
+    },
+  },
   render: () => <Wrapper wikiMeta={baseMeta} />,
 };
 
@@ -248,6 +265,25 @@ export const Topic: StoryObj = {
         derivedFromClaims: ["note-abc123", "note-def456"],
         generatedBy: { model: "claude-haiku-4-5", version: "" },
       }}
+    />
+  ),
+};
+
+export const TopicWithSimilarCandidates: StoryObj = {
+  name: "Topic — 似たテーマの候補あり",
+  render: () => (
+    <Wrapper
+      wikiMeta={{
+        ...baseMeta,
+        kind: "topic",
+        derivedFromNotes: [],
+        derivedFromClaims: ["note-abc123", "note-def456"],
+        generatedBy: { model: "claude-haiku-4-5", version: "" },
+      }}
+      similarTopics={[
+        { id: "topic-sinter-grain", title: "焼結条件と粒成長" },
+        { id: "topic-sinter-grain2", title: "SPS 焼結の粒成長抑制" },
+      ]}
     />
   ),
 };

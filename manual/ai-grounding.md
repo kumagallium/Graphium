@@ -5,7 +5,7 @@ Your notes produce claims and insights — but how do they relate to what the re
 Treat the verdict as a positioning aid, not a truth oracle. It tells you where a claim sits relative to a knowledge base — the final call on whether your claim holds always stays with you.
 
 ::: info Requirements
-World grounding is part of Graphium's AI features, so you need the [desktop app](/desktop-app) and at least one registered model — see [AI setup](/ai-setup). Evidence from Wikipedia and OpenAlex works out of the box with no API keys; adding a web-search MCP server (for example Tavily) broadens the evidence to the general web.
+World grounding is part of Graphium's AI features, so you need the [desktop app](/desktop-app) and at least one registered model — see [AI setup](/ai-setup). Evidence from Wikipedia and OpenAlex works out of the box with no API keys; adding a web-search MCP server (for example Tavily) broadens the evidence to the general web. It's also gated by the **Use world grounding** switch in **Settings** → **AI** — off the first time you use Graphium, on if you've used it before — so turn it on if the **Check world** button described below is missing.
 :::
 
 ## Checking a claim against the world <Badge type="tip" text="Added in v0.8.0 (2026-05-21)" />
@@ -14,7 +14,7 @@ Open a knowledge item — **Claims** or **Insights** under **Knowledge** in the 
 
 ![A claim open in the editor, with the Check world button and a verdict chip in the banner](/screenshots/world-grounding-verdict.png)
 
-Clicking it runs the check and stores the result on that knowledge item: a verdict, a rationale, and sources. A progress toast keeps you posted while it runs. **Summaries** cannot be grounded — they describe one of your notes rather than assert something about the world.
+Clicking it runs the check and stores the result on that knowledge item: a verdict, a rationale, and sources. A progress toast keeps you posted while it runs. **Summaries** (a legacy page type, no longer generated — see [Knowledge layer](/knowledge-layer)) cannot be grounded — they describe one of your notes rather than assert something about the world.
 
 You can also ground several items at once. In the Claims or Insights list, a **World** column shows the latest verdict for each row (sortable by verdict strength). Select rows with the checkboxes and click **Check world** with the selection count — running it again overwrites the previous verdict, so the same button doubles as a re-check.
 
@@ -53,7 +53,7 @@ With the toggle on, newly created claims and insights are checked one at a time 
 
 ## The world-grounding model
 
-In the same **World grounding** section of **Settings** → **AI** you can pick a dedicated **World-grounding model**. Left empty (**Same as Chat & Insight model**), grounding uses your Chat & Insight model and then falls back to the default model — you usually don't need to set this separately.
+In the same **World grounding** section of **Settings** → **AI** you can pick a dedicated **World-grounding model**. Left empty (**Same as chat model**), grounding uses your chat model and then falls back to the default model — you usually don't need to set this separately.
 
 See [AI setup](/ai-setup) for registering models and the other model assignments.
 

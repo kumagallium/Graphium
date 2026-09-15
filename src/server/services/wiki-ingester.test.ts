@@ -1,11 +1,11 @@
 // wiki-ingester の Tier 1 unit test（LLM 呼び出しなし）
 //
 // 話題（topic）関連の 2 点を中心に検証する:
-//   1. parseTopics: 非文字列 / 空文字 / 重複を落とし、最大 3 件に切り詰める
-//   2. parseIngesterOutput: claim のみ topics を残し、summary では剥がす
+//   1. parseTopics: 非文字列 / 空文字 / 重複を落とす（件数の上限は無い）
+//   2. parseIngesterOutput: claim のみ topics を残し、summary は要素ごと捨てる（PR3）
 //   3. buildIngesterSystemPrompt: 既存話題一覧がプロンプトに反映される
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   parseTopics,
   parseIngesterOutput,
@@ -35,8 +35,8 @@ describe("parseTopics", () => {
     expect(parseTopics(["SPS Sintering", "sps sintering"])).toEqual(["SPS Sintering"]);
   });
 
-  it("最大 3 件に切り詰める", () => {
-    expect(parseTopics(["a", "b", "c", "d", "e"])).toEqual(["a", "b", "c"]);
+  it("件数の上限は設けない（切り詰めない）", () => {
+    expect(parseTopics(["a", "b", "c", "d", "e"])).toEqual(["a", "b", "c", "d", "e"]);
   });
 
   it("結果が 0 件なら undefined（空配列を保存しない）", () => {
@@ -66,7 +66,8 @@ describe("parseIngesterOutput - topics", () => {
     expect(out.topics).toEqual(["還元の反応速度", "pH 依存性"]);
   });
 
-  it("summary では topics を剥がす（LLM が誤って出しても無視）", () => {
+  it("summary は要素ごと捨てる（PR3: 新規生成停止。LLM が指示に反して出しても無視）", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const text = wrap([
       {
         kind: "summary",
@@ -78,10 +79,25 @@ describe("parseIngesterOutput - topics", () => {
         relatedClaims: [],
         externalReferences: [],
       },
+      {
+        kind: "claim",
+        title: "同時に出た知見",
+        sections: [{ heading: "", content: "本文" }],
+        suggestedAction: "create",
+        confidence: 0.8,
+        relatedClaims: [],
+        externalReferences: [],
+      },
     ]);
-    const [out] = parseIngesterOutput(text);
-    expect(out.kind).toBe("summary");
-    expect(out.topics).toBeUndefined();
+    const out = parseIngesterOutput(text);
+    // summary は捨てられ、claim だけが残る
+    expect(out).toHaveLength(1);
+    expect(out[0].kind).toBe("claim");
+    expect(out.some((w) => w.kind === "summary")).toBe(false);
+    // 捨てた件数（1件）を警告として出す
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("1"));
+    warnSpy.mockRestore();
   });
 
   it("topics 未出力の claim では undefined のまま（従来通り動作）", () => {

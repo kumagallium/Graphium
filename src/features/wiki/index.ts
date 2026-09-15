@@ -19,6 +19,7 @@ export {
   embedWikiSections, markEditedSections,
   // 横断更新
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail, extractBodyPreview,
+  extractTopicOneLiner, formatTopicRefForIndex, consolidateTopics, retargetClaimTopicId,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
   // 構造化インデックス
@@ -49,3 +50,8 @@ export {
 } from "./sampling";
 export { wikiLog } from "./wiki-log";
 export type { WikiLogEntry, WikiLogEventType } from "./wiki-log";
+export { runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit } from "./topic-stage";
+export type {
+  TopicStageClaimInput, TopicStageResult, TopicStageDeps,
+  ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
+} from "./topic-stage";

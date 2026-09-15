@@ -12,7 +12,6 @@ const base = (overrides: Partial<WikiSnapshot>): WikiSnapshot => ({
   derivedFromNotes: [],
   relatedClaims: [],
   bodyPreview: "",
-  // stale 判定に引っかからないよう十分新しい日時にしておく
   modifiedAt: new Date().toISOString(),
   ...overrides,
 });
@@ -53,5 +52,43 @@ describe("detectLocalIssues - orphan topic", () => {
       }),
     ]);
     expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("claim-1"))).toBe(true);
+  });
+});
+
+describe("detectLocalIssues - redundant topic（正規化タイトル完全一致）", () => {
+  it("空白差だけの同名話題を redundant として検出する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "AI3V 格子熱伝導率", derivedFromClaims: ["c1", "c2"] }),
+      base({ id: "topic-b", title: "AI3V格子熱伝導率", derivedFromClaims: ["c3"] }),
+    ]);
+    const redundant = issues.find((i) => i.type === "redundant");
+    expect(redundant).toBeDefined();
+    expect(redundant?.affectedWikiIds).toEqual(["topic-a", "topic-b"]);
+    expect(redundant?.recommendedAction).toMatchObject({ type: "merge", keepId: "topic-a", absorbId: "topic-b" });
+  });
+
+  it("メンバー数が多い方を keep に選ぶ", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "話題X", derivedFromClaims: ["c1"] }),
+      base({ id: "topic-b", title: "話題X", derivedFromClaims: ["c1", "c2", "c3"] }),
+    ]);
+    const redundant = issues.find((i) => i.type === "redundant");
+    expect(redundant?.recommendedAction).toMatchObject({ keepId: "topic-b", absorbId: "topic-a" });
+  });
+
+  it("タイトルが異なる話題は redundant にしない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "話題A", derivedFromClaims: ["c1"] }),
+      base({ id: "topic-b", title: "話題B", derivedFromClaims: ["c2"] }),
+    ]);
+    expect(issues.some((i) => i.type === "redundant")).toBe(false);
+  });
+
+  it("claim には適用しない（同名 claim が redundant にならない）", () => {
+    const issues = detectLocalIssues([
+      base({ id: "claim-a", title: "同じ知見", kind: "claim", derivedFromClaims: undefined }),
+      base({ id: "claim-b", title: "同じ知見", kind: "claim", derivedFromClaims: undefined }),
+    ]);
+    expect(issues.some((i) => i.type === "redundant")).toBe(false);
   });
 });

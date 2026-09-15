@@ -194,7 +194,7 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -308,9 +308,11 @@ import {
   // 操作ログ
   wikiLog,
   // Topic（話題）
-  resolveTopicsForClaim, linkClaimAndTopic, unlinkClaimFromTopic,
-  composeTopicBody, buildTopicDocument, rebuildTopicDocument,
-  type ExistingTopicRef, type TopicComposeClaim,
+  composeTopicBody, rebuildTopicDocument, extractTopicOneLiner,
+  type TopicComposeClaim,
+  runTopicStage, type TopicStageClaimInput, type TopicStageResult, type ExistingTopicRef,
+  consolidateExistingTopics, type ExistingTopicForMerge,
+  mergeTopicsExplicit, normalizeTopicTitle,
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
@@ -453,6 +455,86 @@ async function loadMediaText(fileId: string): Promise<string | undefined> {
  * @param text メモ本文（trim 済みを想定）
  * @param fallbackTitle 先頭が空のときのタイトル
  */
+/**
+ * runTopicStage の実行結果をトースト用の 1 行にまとめる。
+ * 作成・更新は常に表示、未割り当て・失敗は 0 件なら出さない
+ * （既存話題どうしの統合は ingest の隠れた段にはしない — 「話題を整理」の専用結果表示に任せる）。
+ */
+function formatTopicStageDetail(
+  topicResult: TopicStageResult,
+  // この実行の直前時点の既存テーマ一覧（id/title）。渡すと、今回作ったテーマに
+  // ローカル判定（正規化タイトル一致）で候補が見つかったときだけヒントを 1 行足す。
+  // LLM は呼ばない（4 と同じ判定のうち同期で完結する部分のみ）。
+  existingTopicsSnapshot?: { id: string; title: string }[],
+): string {
+  let detail = `${tStatic("ingest.topicsDone", { created: String(topicResult.created), updated: String(topicResult.updated) })}`
+    + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+    + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+
+  if (topicResult.createdTopics.length > 0 && existingTopicsSnapshot) {
+    const countByNormalizedTitle = new Map<string, number>();
+    for (const topic of existingTopicsSnapshot) {
+      const key = normalizeTopicTitle(topic.title);
+      countByNormalizedTitle.set(key, (countByNormalizedTitle.get(key) ?? 0) + 1);
+    }
+    for (const created of topicResult.createdTopics) {
+      const key = normalizeTopicTitle(created.title);
+      countByNormalizedTitle.set(key, (countByNormalizedTitle.get(key) ?? 0) + 1);
+    }
+    const hasCandidate = topicResult.createdTopics.some(
+      (created) => (countByNormalizedTitle.get(normalizeTopicTitle(created.title)) ?? 0) >= 2,
+    );
+    if (hasCandidate) {
+      detail += ` · ${tStatic("ingest.similarTopicsHint")}`;
+    }
+  }
+  return detail;
+}
+
+/** ingest 系 API に渡す既存 Wiki 参照 1 件分（kind === "topic" のとき oneLiner を持ちうる） */
+type ExistingWikiRefForIngest = { id: string; title: string; kind: WikiKind; oneLiner?: string };
+
+/**
+ * noteIndex から「既存 Wiki 一覧」の素の参照配列（id/title/kind）を作る。
+ * ingest 系 API（ingestNote/ingestFromChat/ingestFromUrl/ingestFromPdf/ingestFromDocx）
+ * 5 経路すべてで共通の下ごしらえ。
+ */
+function buildExistingWikiRefs(notes: NoteIndexEntry[] | undefined): { id: string; title: string; kind: WikiKind }[] {
+  return (notes ?? [])
+    .filter((n) => n.source === "ai" && n.wikiKind)
+    .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+}
+
+/**
+ * kind === "topic" の参照に oneLiner（定義節の先頭文）を添える。キャッシュ済みドキュメントから
+ * のみ拾う（未ロードの話題は強制ロードしない — 件数が多いと重くなるため oneLiner 無し＝
+ * タイトルのみで LLM に判断させる）。Karpathy の index.md と同じ「タイトル + 1 行」のための下ごしらえ。
+ */
+function withTopicOneLiners<T extends { id: string; kind: WikiKind }>(
+  refs: T[],
+  getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined,
+): (T & { oneLiner?: string })[] {
+  return refs.map((w) => {
+    if (w.kind !== "topic") return w;
+    const doc = getCachedDoc(`wiki:${w.id}`);
+    const oneLiner = doc ? extractTopicOneLiner(doc) : "";
+    return oneLiner ? { ...w, oneLiner } : w;
+  });
+}
+
+/**
+ * 既存 Wiki 一覧（id/title/kind + 話題は oneLiner 付き）を ingest 系 API に渡す形で構築する。
+ * ノート取り込み・チャットのナレッジ化・素材 URL/PDF/Word・URL 貼付の 5 経路すべてが
+ * この関数を通す（主 ingest 経路のみ関連度順リオーダー + 上限キャップを追加で行うため、
+ * その経路は buildExistingWikiRefs / withTopicOneLiners を個別に呼ぶ）。
+ */
+function buildExistingWikisForIngest(
+  notes: NoteIndexEntry[] | undefined,
+  getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined,
+): ExistingWikiRefForIngest[] {
+  return withTopicOneLiners(buildExistingWikiRefs(notes), getCachedDoc);
+}
+
 function buildMemoNoteDoc(text: string, fallbackTitle: string): GraphiumDocument {
   const baseProps = { textColor: "default", backgroundColor: "default", textAlignment: "left" };
   // 行ごとに段落ブロック化（空行は空 paragraph = BlockNote 上の改行）
@@ -3751,7 +3833,7 @@ function NoteEditorInner({
           }
         }
 
-        // チャット送信は「チャット・洞察モデル」設定を使う（未設定ならデフォルトモデルにフォールバック）。
+        // チャット送信は「チャットモデル」設定を使う（未設定ならデフォルトモデルにフォールバック）。
         // getSelectedModel() はデフォルトモデルを返すため、設定 UI の「AIチャットで使われます」の
         // 約束と食い違っていた（#316 で chatSynthesis を追加した際にこの経路の結線が漏れていた）。
         const selectedModel = getChatSynthesisModelName();
@@ -3971,7 +4053,7 @@ function NoteEditorInner({
   // Composer 用の軽量 AI 呼び出し。Chat パネルには入らず、結果文字列だけを返す。
   // systemHint を与えるとプロンプトに前置する（Insert PROV で手順化を促す等）。
   const runComposerAgent = useCallback(async (prompt: string, systemHint?: string): Promise<string> => {
-    // Composer の Ask もチャット・洞察モデルを使う（未設定ならデフォルトモデルにフォールバック）。
+    // Composer の Ask もチャットモデルを使う（未設定ならデフォルトモデルにフォールバック）。
     const selectedModel = getChatSynthesisModelName();
     const disabledTools = getDisabledTools();
     const message = systemHint ? `${systemHint}\n\n${prompt}` : prompt;
@@ -4252,9 +4334,7 @@ function NoteEditorInner({
       const model = getSelectedModel() || null;
       const noteTitle = initialDoc?.title || "Chat";
       // 既存 Wiki タイトル一覧（重複タイトルの抑制 + インライン引用解決用）。
-      const existingWikis = (noteIndex?.notes ?? [])
-        .filter((n) => n.source === "ai" && n.wikiKind)
-        .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+      const existingWikis = buildExistingWikisForIngest(noteIndex?.notes, (id) => getCachedDoc?.(id) ?? null);
       const existingWikiTitles = existingWikis.map((w) => ({ id: w.id, title: w.title }));
       // verb が精査した引用知見（現ノートの reference リンク先）を PROV の素地として温存する。
       const citedIds = collectCitedNotes().map((n) => n.id);
@@ -4271,6 +4351,7 @@ function NoteEditorInner({
 
       // 知見候補を組み立てて即コールバック（プログレッシブ表示）。
       const claimCandidates: KnowledgeCandidate[] = claimOutputs.map((w) => {
+        // claimOutputs は kind === "claim" のみなので buildWikiDocument が null を返すことはない
         const baseDoc = buildWikiDocument(
           w,
           fileId ?? "",
@@ -4278,7 +4359,7 @@ function NoteEditorInner({
           noteTitle,
           existingWikiTitles,
           getLocale(),
-        );
+        )!;
         const doc: GraphiumDocument = citedIds.length
           ? { ...baseDoc, wikiMeta: { ...baseDoc.wikiMeta!, citedKnowledgeIds: citedIds } }
           : baseDoc;
@@ -4306,7 +4387,7 @@ function NoteEditorInner({
           atomType: undefined,
         }));
         const atomRes = await atomizeConcepts(snapshots, getLocale(), {
-          model: model ?? getChatSynthesisModelName() ?? undefined,
+          model: model ?? getInsightModelName() ?? undefined,
         });
         atomCandidates = atomRes.atoms.map((a) => {
           // 中間 claim は揮発（保存しない）ため、ephemeral id を指す derivedFromClaims は捨てる
@@ -6975,6 +7056,9 @@ export function NoteApp() {
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
+  // 話題（topic）の段の直列化キューと、直前の実行が作った話題の控え（runTopicStageForNoteApp 参照）
+  const topicStageQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const knownTopicRefsRef = useRef<Map<string, string>>(new Map());
   // 取り込みパイプライン（ingest → cross-update → atomize → lint）の中断ハンドル。
   // キュー処理の開始時に 1 本作り、各 LLM 呼び出しの fetch に signal として渡す。
   // トーストの「停止」で abort() + キューを空にする。fetch が切れるとサーバー側の
@@ -8483,6 +8567,68 @@ export function NoteApp() {
     }
   }, [capture.captureIndex, closeAllViews, router]);
 
+  // 話題（topic）の段（runTopicStage）を note-app のファイル操作・ログに配線する共通ラッパー。
+  // 5 つの知見保存経路（ノート取り込み・チャットのナレッジ化・素材 URL/PDF/Word・URL 貼付）と
+  // 設定の「話題を整理」から同じ形で呼べるようにする。
+  const runTopicStageForNoteApp = useCallback(
+    (claims: TopicStageClaimInput[]) => {
+      // 素材の一括ナレッジ化は 1 件ごとに独立した async で走るため、話題の段が並行すると
+      // 「既存話題」のスナップショットが古いまま同名の話題を二重に作る（実測: 格子熱伝導率 ×2）。
+      // ここで直列化し、前の実行が作った話題を次の実行の既存一覧に引き継ぐ。
+      const run = topicStageQueueRef.current.then(async () => {
+        // 既存話題は「タイトル + 定義の先頭文」（index）として渡す — Karpathy の index.md と
+        // 同じ考え方で、LLM が表記ゆれだけで別話題に倒れず既存へ寄せられるようにする。
+        // 一覧はキャッシュ済みドキュメントからのみ拾う（未ロードの話題は強制ロードしない —
+        // 件数が多いと重くなるため oneLiner 無し＝タイトルのみで判断させる）。
+        const existingTopicRefs: ExistingTopicRef[] = (fm.noteIndex?.notes ?? [])
+          .filter((n) => n.source === "ai" && n.wikiKind === "topic")
+          .map((n) => {
+            const doc = fm.getCachedDoc(`wiki:${n.noteId}`);
+            const oneLiner = doc ? extractTopicOneLiner(doc) : "";
+            return { id: n.noteId, title: n.title, ...(oneLiner ? { oneLiner } : {}) };
+          });
+        // noteIndex への反映が追いつく前でも、直前の実行が作った話題を見落とさない
+        const seen = new Set(existingTopicRefs.map((r) => r.id));
+        for (const [id, title] of knownTopicRefsRef.current) {
+          if (!seen.has(id)) existingTopicRefs.push({ id, title });
+        }
+        const result = await runTopicStageInner(claims, existingTopicRefs);
+        for (const r of result.createdTopics) knownTopicRefsRef.current.set(r.id, r.title);
+        return result;
+      });
+      topicStageQueueRef.current = run.then(() => undefined, () => undefined);
+      return run;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fm]
+  );
+
+  const runTopicStageInner = useCallback(
+    async (claims: TopicStageClaimInput[], existingTopicRefs: ExistingTopicRef[]) => {
+      const claimTitleById = new Map(claims.map((c) => [c.id, c.title]));
+      return runTopicStage(claims, {
+        loadDoc: fm.loadDoc,
+        getCachedDoc: fm.getCachedDoc,
+        handleSaveWikiFile: fm.handleSaveWikiFile,
+        handleCreateWikiFile: fm.handleCreateWikiFile,
+        existingTopicRefs,
+        noteIndex: buildNoteIndex(fm.noteIndex),
+        locale: getLocale(),
+        onTopicSaved: (topicId, doc, triggerClaimId, _memberClaimIds, mode) => {
+          embedWikiSections(topicId, doc).catch(() => {});
+          const claimTitle = claimTitleById.get(triggerClaimId) ?? triggerClaimId;
+          if (mode === "create") {
+            wikiLog.append("ingest", [topicId], `Created topic "${doc.title}" from claim "${claimTitle}"`).catch(() => {});
+          } else {
+            wikiLog.append("cross-update", [topicId], `Updated topic "${doc.title}" with claim "${claimTitle}"`).catch(() => {});
+          }
+        },
+        log: (...args: unknown[]) => console.warn(...args),
+      });
+    },
+    [fm]
+  );
+
   // Ingest キューを処理する関数
   const processIngestQueue = useCallback(async () => {
     if (ingestRunningRef.current) return;
@@ -8491,12 +8637,10 @@ export function NoteApp() {
     ingestAbortRef.current = abortController;
     const signal = abortController.signal;
 
-    // このバッチで新規作成・更新された claim のうち、ingester が topics を出したものを
-    // 集めておき、パイプライン後半の「話題（topic）」段でまとめて割り当てる。
-    const claimsForTopicAssignment: { id: string; title: string; body: string; topics: string[]; model?: string }[] = [];
-    // ingester が topics を全く出さなかった claim の件数（claimsForTopicAssignment には積まれないため別カウント）。
-    // 「話題なし N 件」トーストに合算する。
-    let claimsWithoutTopicsFromIngesterCount = 0;
+    // このバッチで新規作成・更新された claim を集めておき、パイプライン後半の
+    // 「話題（topic）」段（runTopicStage）でまとめて割り当てる。topics が空でも積む
+    // — 空の場合は runTopicStage 内で name-topics による補完を試みる。
+    const claimsForTopicAssignment: TopicStageClaimInput[] = [];
 
     while (ingestQueueRef.current.length > 0) {
       // 停止済みなら残りのキューを「中断」で畳んで抜ける
@@ -8511,23 +8655,23 @@ export function NoteApp() {
       }));
 
       try {
-        const allExistingWikis = (fm.noteIndex?.notes ?? [])
-          .filter((n) => n.source === "ai" && n.wikiKind)
-          .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+        const allExistingWikis = buildExistingWikiRefs(fm.noteIndex?.notes);
 
-        // Ingest 時のマージ判定: LLM に渡す既存 Wiki タイトル一覧を関連度順にする。
-        // タイトルだけなのでトークンコストは軽いが、Wiki 数が増えると LLM の attention が
-        // 散ってマージ候補を見落とすため、(a) 関連度順にリオーダー (b) 上限 200 件でキャップ。
-        // 母集団が 200 未満なら全件残し、並べ替えだけ行う（既存挙動とほぼ同じ）。
-        const INGEST_TITLE_CAP = 200;
+        // Ingest 時のマージ判定: LLM に渡す既存 Wiki の一覧（index）を関連度順に並べる。
+        // 件数は切らない — LLM Wiki の ingest は「index を全部読む」のが原則で、
+        // 以前あった上限 200 件には根拠が無かった（2026-09-16 撤去）。並べ替えだけ残し、
+        // 関連の強いものが先頭に来るようにする。
         const queryText = `${job.noteTitle ?? job.doc.title ?? ""}`;
-        const existingWikis = allExistingWikis.length === 0
+        const rankedWikis = allExistingWikis.length === 0
           ? allExistingWikis
           : rankCandidatesByRelevance(
               { embedding: null, similarityText: queryText },
               allExistingWikis.map((w) => ({ ...w, embedding: null, similarityText: w.title })),
-              INGEST_TITLE_CAP,
+              allExistingWikis.length,
             ).map(({ id, title, kind }) => ({ id, title, kind }));
+        // 既存話題は「タイトル + 定義の先頭文」の index として渡す（他 4 経路と同じ下ごしらえ。
+        // ここだけランキング + 上限キャップを先に済ませてから付与する）。
+        const existingWikis = withTopicOneLiners(rankedWikis, fm.getCachedDoc);
 
         // Ingest 自動適用の Skill を取得（生成言語 = ja に絞る）
         const ingestSkills = pickActiveSkills(
@@ -8582,17 +8726,13 @@ export function NoteApp() {
                   void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${wiki.mergeTargetId}`, wiki.title);
                 }
                 if (wiki.kind === "claim") {
-                  if (wiki.topics && wiki.topics.length > 0) {
-                    claimsForTopicAssignment.push({
-                      id: wiki.mergeTargetId,
-                      title: mergedDoc.title,
-                      body: extractBodyPreview(mergedDoc, 2000),
-                      topics: wiki.topics,
-                      model: result.model ?? undefined,
-                    });
-                  } else {
-                    claimsWithoutTopicsFromIngesterCount++;
-                  }
+                  claimsForTopicAssignment.push({
+                    id: wiki.mergeTargetId,
+                    title: mergedDoc.title,
+                    body: extractBodyPreview(mergedDoc, 2000),
+                    topics: wiki.topics ?? [],
+                    model: result.model ?? undefined,
+                  });
                 }
                 continue;
               }
@@ -8600,6 +8740,9 @@ export function NoteApp() {
           }
           const wikiTitleMap = existingWikis.map((w) => ({ id: w.id, title: w.title }));
           const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, getLocale(), buildNoteIndex(fm.noteIndex));
+          // summary は新規生成を停止済み（サーバー側の parseIngesterOutput で既に弾かれる想定だが、
+          // buildWikiDocument も null を返す二重防御になっているのでここで自然にスキップする）
+          if (!wikiDoc) continue;
           // 使用した Skill を記録
           if (ingestSkills.length > 0 && wikiDoc.wikiMeta) {
             wikiDoc.wikiMeta.skillsUsed = ingestSkills.map((s) => s.title);
@@ -8615,17 +8758,13 @@ export function NoteApp() {
             void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${newId}`, wiki.title);
           }
           if (wiki.kind === "claim") {
-            if (wiki.topics && wiki.topics.length > 0) {
-              claimsForTopicAssignment.push({
-                id: newId,
-                title: wikiDoc.title,
-                body: extractBodyPreview(wikiDoc, 2000),
-                topics: wiki.topics,
-                model: result.model ?? undefined,
-              });
-            } else {
-              claimsWithoutTopicsFromIngesterCount++;
-            }
+            claimsForTopicAssignment.push({
+              id: newId,
+              title: wikiDoc.title,
+              body: extractBodyPreview(wikiDoc, 2000),
+              topics: wiki.topics ?? [],
+              model: result.model ?? undefined,
+            });
           }
         }
 
@@ -8793,127 +8932,16 @@ export function NoteApp() {
       }));
     };
 
-    // 話題（topic）段: このバッチで ingester が topics を出した claim を、既存の話題への
+    // 話題（topic）段: このバッチで作成・更新した claim を、既存の話題への
     // マッチ（タイトル一致 → embedding 類似度）または新規作成で割り当てる。
+    // topics が空の claim は runTopicStage 内で name-topics による補完を試みる。
     // 砂時計（ノート→知見→洞察）には参加しない — atomize には渡さない。
-    if (claimsForTopicAssignment.length === 0 && claimsWithoutTopicsFromIngesterCount === 0) {
+    if (claimsForTopicAssignment.length === 0) {
       updateStage("topics", "skipped");
     } else {
       updateStage("topics", "running", tStatic("ingest.topicsUpdating", { count: String(claimsForTopicAssignment.length) }));
-      let topicsCreated = 0;
-      let topicsUpdated = 0;
-      // 本文の生成や保存に失敗して今回は書き直せなかった話題の件数。黙って落とさずトーストに出す
-      // （compose 失敗は composeTopicBody が null を返すだけで例外にならない経路がある）。
-      let topicsFailed = 0;
-      // ingester が topics を全く出さなかった claim も「話題なし」に含める
-      let claimsWithoutTopicCount = claimsWithoutTopicsFromIngesterCount;
-      const existingTopicRefs: ExistingTopicRef[] = (fm.noteIndex?.notes ?? [])
-        .filter((n) => n.source === "ai" && n.wikiKind === "topic")
-        .map((n) => ({ id: n.noteId, title: n.title }));
-
-      for (const claimInfo of claimsForTopicAssignment) {
-        const claimDoc = fm.getCachedDoc(`wiki:${claimInfo.id}`) ?? (await fm.loadDoc(`wiki:${claimInfo.id}`));
-        if (!claimDoc?.wikiMeta) {
-          console.warn("話題割り当てをスキップ: claim ドキュメントが見つからない", claimInfo.id);
-          claimsWithoutTopicCount++;
-          continue;
-        }
-
-        const matches = await resolveTopicsForClaim(claimInfo.topics, existingTopicRefs);
-        if (matches.length === 0) {
-          claimsWithoutTopicCount++;
-          continue;
-        }
-
-        // claim ⇔ topic の双方向リンクは linkClaimAndTopic の戻り値経由でのみ更新する（入口 1 本）。
-        // topic 側の derivedFromClaims も claimMeta と同様にここで確定させ、compose の
-        // メンバー一覧はその確定値から作る。matches ごとに try/catch を分け、1 件失敗しても
-        // 残りの topics は処理を続ける。claimsWithoutTopicCount は claim 単位で 1 度だけ数える。
-        let currentClaimMeta = claimDoc.wikiMeta;
-        let matchedAnyTopic = false;
-
-        for (const match of matches) {
-          try {
-            let topicId: string;
-            let topicDoc: GraphiumDocument | null = null;
-
-            if (match.status === "matched") {
-              topicId = match.topicId;
-              topicDoc = fm.getCachedDoc(`wiki:${topicId}`) ?? (await fm.loadDoc(`wiki:${topicId}`));
-              if (!topicDoc?.wikiMeta || topicDoc.wikiMeta.kind !== "topic") continue;
-
-              const linked = linkClaimAndTopic(currentClaimMeta, claimInfo.id, topicDoc.wikiMeta, topicId);
-              if (linked.topicMeta !== topicDoc.wikiMeta) {
-                const nextMemberIds = linked.topicMeta.derivedFromClaims ?? [];
-                const memberClaims: TopicComposeClaim[] = [];
-                for (const cId of nextMemberIds) {
-                  if (cId === claimInfo.id) {
-                    memberClaims.push({ id: cId, title: claimInfo.title, body: claimInfo.body });
-                    continue;
-                  }
-                  const cDoc = fm.getCachedDoc(`wiki:${cId}`) ?? (await fm.loadDoc(`wiki:${cId}`));
-                  if (cDoc) memberClaims.push({ id: cId, title: cDoc.title, body: extractBodyPreview(cDoc, 2000) });
-                }
-                const body = await composeTopicBody(topicDoc.title, getLocale(), memberClaims, claimInfo.model);
-                if (!body) {
-                  // compose 失敗: topic 側の derivedFromClaims 更新を保存できないので、
-                  // この match は claim 側もリンクせずスキップする（非対称なリンクを避ける）。
-                  topicsFailed++;
-                  continue;
-                }
-                const rewritten = rebuildTopicDocument(topicDoc, body, nextMemberIds, claimInfo.model ?? null, buildNoteIndex(fm.noteIndex));
-                await fm.handleSaveWikiFile(topicId, rewritten, {
-                  activityType: "wiki_cross_update",
-                  sources: nextMemberIds,
-                });
-                embedWikiSections(topicId, rewritten).catch(() => {});
-                topicsUpdated++;
-                wikiLog.append("cross-update", [topicId], `Updated topic "${rewritten.title}" with claim "${claimInfo.title}"`).catch(() => {});
-              }
-              currentClaimMeta = linked.claimMeta;
-              matchedAnyTopic = true;
-            } else {
-              // 新規話題: メンバー 1 件（今回の claim）で本文を作ってから作成する。
-              const memberClaims: TopicComposeClaim[] = [{ id: claimInfo.id, title: claimInfo.title, body: claimInfo.body }];
-              const body = await composeTopicBody(match.title, getLocale(), memberClaims, claimInfo.model);
-              if (!body) {
-                // 本文が作れなかった話題は作成しない（次の取り込みで同じ名前が出れば再挑戦になる）
-                topicsFailed++;
-                continue;
-              }
-              const newTopicDoc = buildTopicDocument(match.title, body, [claimInfo.id], claimInfo.model ?? null, getLocale(), buildNoteIndex(fm.noteIndex));
-              topicId = await fm.handleCreateWikiFile(newTopicDoc, { activityType: "wiki_ingest", sources: [claimInfo.id] });
-              embedWikiSections(topicId, newTopicDoc).catch(() => {});
-              existingTopicRefs.push({ id: topicId, title: match.title });
-              topicsCreated++;
-              topicDoc = fm.getCachedDoc(`wiki:${topicId}`) ?? newTopicDoc;
-              wikiLog.append("ingest", [topicId], `Created topic "${match.title}" from claim "${claimInfo.title}"`).catch(() => {});
-
-              // 新規 topic は derivedFromClaims: [claimInfo.id] を持った状態で既に作成済みなので、
-              // ここでは claim 側の topicIds だけ linkClaimAndTopic で確定させる（冪等）。
-              if (topicDoc?.wikiMeta) {
-                const linked = linkClaimAndTopic(currentClaimMeta, claimInfo.id, topicDoc.wikiMeta, topicId);
-                currentClaimMeta = linked.claimMeta;
-              }
-              matchedAnyTopic = true;
-            }
-          } catch (err) {
-            topicsFailed++;
-            console.warn("話題割り当てに失敗:", claimInfo.id, match, err);
-          }
-        }
-
-        if (currentClaimMeta !== claimDoc.wikiMeta) {
-          await fm.handleSaveWikiFile(claimInfo.id, { ...claimDoc, wikiMeta: currentClaimMeta });
-        }
-        if (!matchedAnyTopic) {
-          claimsWithoutTopicCount++;
-        }
-      }
-
-      const doneDetail = `${tStatic("ingest.topicsDone", { created: String(topicsCreated), updated: String(topicsUpdated) })}`
-        + (claimsWithoutTopicCount > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(claimsWithoutTopicCount) })}` : "")
-        + (topicsFailed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicsFailed) })}` : "");
+      const topicResult = await runTopicStageForNoteApp(claimsForTopicAssignment);
+      const doneDetail = formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })));
       updateStage("topics", "done", doneDetail);
     }
 
@@ -8976,7 +9004,7 @@ export function NoteApp() {
             const atomResult = await atomizeConcepts(
               slice,
               getLocale(),
-              { existingAtomTitles, model: getChatSynthesisModelName() || undefined, signal },
+              { existingAtomTitles, model: getInsightModelName() || undefined, signal },
             );
             // 既存 Atom との embedding 類似で「新規」と「重複」に分割し、
             // 重複候補は捨てずに一致先 Atom への支持追加（reinforcement）に回す。
@@ -9267,7 +9295,7 @@ export function NoteApp() {
 
     ingestAbortRef.current = null;
     ingestRunningRef.current = false;
-  }, [fm, capture.handleRecordKnowledged]);
+  }, [fm, capture.handleRecordKnowledged, runTopicStageForNoteApp]);
 
   const enqueueIngest = useCallback((noteId: string, noteTitle: string, doc: import("./lib/document-types").GraphiumDocument) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
@@ -9699,25 +9727,42 @@ export function NoteApp() {
         items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Extracting knowledge..." } : i),
       }));
       try {
-        const existingWikis = (fm.noteIndex?.notes ?? [])
-          .filter((n) => n.source === "ai" && n.wikiKind)
-          .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+        const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
         const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale());
         if (result.wikis.length === 0) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
           return;
         }
+        const claimsForTopicStage: TopicStageClaimInput[] = [];
         for (const wiki of result.wikis) {
           const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+          if (!wikiDoc) continue; // summary は新規生成を停止済み
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
+          if (wiki.kind === "claim") {
+            claimsForTopicStage.push({
+              id: newId,
+              title: wikiDoc.title,
+              body: extractBodyPreview(wikiDoc, 2000),
+              topics: wiki.topics ?? [],
+              model: result.model ?? undefined,
+            });
+          }
         }
-        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
+        // 話題（topic）段: このバッチで作成した claim を既存の話題へ割り当てる。
+        let topicDetail = "";
+        if (claimsForTopicStage.length > 0) {
+          const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
+          topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
+            + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+            + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+        }
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
       } catch (err) {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
       }
     })();
-  }, [fm]);
+  }, [fm, runTopicStageForNoteApp]);
 
   // Wiki 単体の再生成（WikiBanner / Settings の Maintenance タブ両方から呼ばれる）
   // openAfter=true で再生成後にエディタで開く（バナー経由のとき）
@@ -9744,6 +9789,7 @@ export function NoteApp() {
     const isSynthesis = wikiKind === "synthesis";
     const isAtom = wikiKind === "atom";
     const isTopic = wikiKind === "topic";
+    const isSummary = wikiKind === "summary";
 
     setIngestToast((prev) => ({
       items: [
@@ -9797,7 +9843,7 @@ export function NoteApp() {
         const atomResult = await atomizeConcepts(snapshots, getLocale(), {
           // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
           // re-lift では旧タイトルと別の抽象になってよい。
-          model: selectedModel ?? getChatSynthesisModelName() ?? undefined,
+          model: selectedModel ?? getInsightModelName() ?? undefined,
           ...(options?.signal ? { signal: options.signal } : {}),
         });
         // 旧タイトル一致で選ぶと元のドメイン語 Atom を再現してしまい re-lift にならない。
@@ -9887,7 +9933,7 @@ export function NoteApp() {
           }));
           return { ok: false, error: errMsg };
         }
-        const rewritten = rebuildTopicDocument(doc, body, memberClaims.map((c) => c.id), selectedModel ?? null, buildNoteIndex(fm.noteIndex));
+        const rewritten = rebuildTopicDocument(doc, body, memberClaims, selectedModel ?? null, buildNoteIndex(fm.noteIndex));
         await fm.handleSaveWikiFile(wikiId, rewritten, {
           activityType: "wiki_regenerate",
           sources: memberClaims.map((c) => c.id),
@@ -9901,6 +9947,16 @@ export function NoteApp() {
           ),
         }));
         return { ok: true };
+      } else if (isSummary) {
+        // 要約(summary)の新規生成パイプラインは撤退（PR3）。話題(topic)が役割を引き継ぐ。
+        // 既存 summary ファイルは閲覧・削除できるが regenerate は不可。
+        const errMsg = tStatic("wiki.summaryRetiredHint");
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+          ),
+        }));
+        return { ok: false, error: errMsg };
       } else if (isSynthesis) {
         // Synthesis 自動生成パイプラインは撤退（2026-05-27、design revision）。
         // 既存 synthesis ファイルは閲覧・編集できるが regenerate は不可。
@@ -10042,6 +10098,8 @@ export function NoteApp() {
           null;
 
         if (matched) {
+          // このブランチに来る時点で targetKind は summary ではない（isSummary は専用ブランチで
+          // 先に return 済み）ので buildWikiDocument が null を返すことはない
           const newDoc = buildWikiDocument(
             matched,
             // sourceNoteTitle 表示用に primary を 1 件渡す。実際の derivedFromNotes は
@@ -10053,7 +10111,7 @@ export function NoteApp() {
             getLocale(),
             buildNoteIndex(fm.noteIndex),
             wikiId,
-          );
+          )!;
           // derivedFromNotes は **元の配列をそのまま保持** する。
           // 自己参照（wikiId）と取得失敗ソースだけ落として保存する設計。
           const preservedDerivedFromNotes = (doc.wikiMeta?.derivedFromNotes ?? []).filter(
@@ -10133,6 +10191,123 @@ export function NoteApp() {
       return { ok: false, error: localizeAiError(err) };
     }
   }, [fm, capture.captureIndex]);
+
+  // テーマ一覧の選択統合（バナー・一覧・点検が共通して使う）。
+  // ユーザーが明示的に選んだ組を渡すだけなのでモデルは呼ばない
+  // （mergeTopicsExplicit → applyTopicMerges）。
+  const mergeTopicsFromSelection = useCallback(async (
+    keepId: string,
+    mergeIds: string[],
+  ): Promise<{ merged: number } | void> => {
+    const targetIds = new Set([keepId, ...mergeIds]);
+    const existingTopics: ExistingTopicForMerge[] = fm.wikiFiles
+      .filter((wf) => targetIds.has(wf.id) && fm.wikiMetas.get(wf.id)?.kind === "topic")
+      .map((wf) => ({
+        id: wf.id,
+        title: fm.wikiMetas.get(wf.id)?.title ?? wf.id,
+        memberClaimIds: fm.wikiMetas.get(wf.id)?.derivedFromClaims ?? [],
+      }));
+    const keepTitle = fm.wikiMetas.get(keepId)?.title ?? keepId;
+    const toastId = `merge-topics:${keepId}:${Date.now()}`;
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        { id: toastId, status: "generating" as const, noteTitle: tStatic("wikiList.merging") },
+      ],
+    }));
+    try {
+      const result = await mergeTopicsExplicit(keepId, mergeIds, existingTopics, {
+        loadDoc: fm.loadDoc,
+        getCachedDoc: fm.getCachedDoc,
+        handleSaveWikiFile: fm.handleSaveWikiFile,
+        handleDeleteWikiFile: fm.handleDeleteWikiFile,
+        noteIndex: buildNoteIndex(fm.noteIndex),
+        locale: getLocale(),
+        log: (...args: unknown[]) => console.warn(...args),
+      });
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId
+            ? {
+                ...i,
+                status: "success" as const,
+                detail: undefined,
+                result: tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) }),
+              }
+            : i
+        ),
+      }));
+      return { merged: result.merged };
+    } catch (err) {
+      console.error("テーマの統合に失敗:", err);
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
+        ),
+      }));
+    }
+  }, [fm]);
+
+  // テーマバナー用: 似たテーマ候補。LLM は呼ばない — ローカル判定のみ
+  // (a) 正規化タイトル一致（同期）、(b) 埋め込みが使えるときは既存の重複判定 0.9 を流用（非同期）。
+  const currentTopicId =
+    fm.activeDoc?.wikiMeta?.kind === "topic" ? (fm.activeFileId?.replace(/^wiki:/, "") ?? null) : null;
+
+  const similarTopicsLocal = useMemo(() => {
+    if (!currentTopicId || !fm.activeDoc) return [];
+    const selfKey = normalizeTopicTitle(fm.activeDoc.title);
+    const matches: { id: string; title: string }[] = [];
+    for (const wf of fm.wikiFiles) {
+      if (wf.id === currentTopicId) continue;
+      const meta = fm.wikiMetas.get(wf.id);
+      if (meta?.kind !== "topic") continue;
+      if (normalizeTopicTitle(meta.title) === selfKey) {
+        matches.push({ id: wf.id, title: meta.title });
+      }
+    }
+    return matches;
+  }, [currentTopicId, fm.activeDoc, fm.wikiFiles, fm.wikiMetas]);
+
+  const [similarTopicsEmbeddingMatch, setSimilarTopicsEmbeddingMatch] = useState<{ id: string; title: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSimilarTopicsEmbeddingMatch(null);
+    // 正規化タイトルで既に見つかっているなら埋め込みは呼ばない（無駄な API 呼び出しを避ける）
+    if (!currentTopicId || !fm.activeDoc || similarTopicsLocal.length > 0) return;
+    const existingTopicIds = new Set(
+      fm.wikiFiles
+        .filter((wf) => wf.id !== currentTopicId && fm.wikiMetas.get(wf.id)?.kind === "topic")
+        .map((wf) => wf.id)
+    );
+    if (existingTopicIds.size === 0) return;
+    const doc = fm.activeDoc;
+    (async () => {
+      try {
+        const { duplicates } = await partitionCandidatesByEmbedding(
+          [{ title: doc.title, body: extractBodyPreview(doc, 2000) }],
+          existingTopicIds,
+        );
+        if (cancelled) return;
+        const match = duplicates[0];
+        if (match) {
+          const title = fm.wikiMetas.get(match.matchedDocId)?.title ?? match.matchedDocId;
+          setSimilarTopicsEmbeddingMatch({ id: match.matchedDocId, title });
+        }
+      } catch {
+        // fail-open: 候補なしのまま何も出さない
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentTopicId, fm.activeDoc, similarTopicsLocal.length, fm.wikiFiles, fm.wikiMetas]);
+
+  const similarTopicsForBanner = useMemo(() => {
+    const combined = [...similarTopicsLocal];
+    if (similarTopicsEmbeddingMatch && !combined.some((c) => c.id === similarTopicsEmbeddingMatch!.id)) {
+      combined.push(similarTopicsEmbeddingMatch);
+    }
+    return combined;
+  }, [similarTopicsLocal, similarTopicsEmbeddingMatch]);
 
   // Maintenance の「洞察を発見」用: 全 Claim を AtomCandidate（snapshot + embedding +
   // modifiedTime）に組み立てる。プラン（実行前の見積もり表示）と実行の両方が使う。
@@ -10250,7 +10425,7 @@ export function NoteApp() {
         const result = await atomizeConcepts(
           slice,
           getLocale(),
-          { existingAtomTitles, model: getChatSynthesisModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
+          { existingAtomTitles, model: getInsightModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
         );
         // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
         if (result.atoms.length === 0) continue;
@@ -10338,6 +10513,7 @@ export function NoteApp() {
         title: cached?.title ?? wf.name ?? wf.id,
         kind: (meta?.kind ?? "claim") as WikiKind,
         model: meta?.model,
+        hasTopics: (meta?.topicIds?.length ?? 0) > 0,
       };
     });
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
@@ -10656,18 +10832,33 @@ export function NoteApp() {
                 (async () => {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
                   try {
-                    const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+                    const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
                     const result = await ingestFromUrl(entry.url, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
+                    const claimsForTopicStage: TopicStageClaimInput[] = [];
                     for (const wiki of result.wikis) {
                       const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                      if (!wikiDoc) continue; // summary は新規生成を停止済み
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
+                      if (wiki.kind === "claim") {
+                        claimsForTopicStage.push({
+                          id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
+                          topics: wiki.topics ?? [], model: result.model ?? undefined,
+                        });
+                      }
                     }
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
+                    let topicDetail = "";
+                    if (claimsForTopicStage.length > 0) {
+                      const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
+                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
+                        + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+                        + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+                    }
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
                   } catch (err) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
@@ -10683,18 +10874,33 @@ export function NoteApp() {
                     const provider = getActiveProvider();
                     const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
                     const blob = await (await fetch(blobUrl)).blob();
-                    const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+                    const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
                     const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
+                    const claimsForTopicStage: TopicStageClaimInput[] = [];
                     for (const wiki of result.wikis) {
                       const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                      if (!wikiDoc) continue; // summary は新規生成を停止済み
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
+                      if (wiki.kind === "claim") {
+                        claimsForTopicStage.push({
+                          id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
+                          topics: wiki.topics ?? [], model: result.model ?? undefined,
+                        });
+                      }
                     }
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
+                    let topicDetail = "";
+                    if (claimsForTopicStage.length > 0) {
+                      const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
+                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
+                        + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+                        + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+                    }
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
                   } catch (err) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
@@ -10713,18 +10919,33 @@ export function NoteApp() {
                     const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
                     const blobUrl = await provider.getMediaBlobUrl(fileId);
                     const blob = await (await fetch(blobUrl)).blob();
-                    const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+                    const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
                     const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
+                    const claimsForTopicStage: TopicStageClaimInput[] = [];
                     for (const wiki of result.wikis) {
                       const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                      if (!wikiDoc) continue; // summary は新規生成を停止済み
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
+                      if (wiki.kind === "claim") {
+                        claimsForTopicStage.push({
+                          id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
+                          topics: wiki.topics ?? [], model: result.model ?? undefined,
+                        });
+                      }
                     }
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
+                    let topicDetail = "";
+                    if (claimsForTopicStage.length > 0) {
+                      const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
+                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
+                        + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+                        + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+                    }
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
                   } catch (err) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
@@ -11279,6 +11500,15 @@ export function NoteApp() {
               }
               return map;
             })()}
+            wikiKindById={(() => {
+              // wikiId → kind マップ。redundant の統合ワンクリック手当てを topic 同士だけに絞る。
+              const map = new Map<string, string>();
+              for (const [id, meta] of fm.wikiMetas.entries()) {
+                if (meta?.kind) map.set(id, meta.kind);
+              }
+              return map;
+            })()}
+            onMergeTopics={async (keepId, absorbId) => { await mergeTopicsFromSelection(keepId, [absorbId]); }}
           />
         ) : fm.activeWikiKind ? (
           <WikiListView
@@ -11302,6 +11532,7 @@ export function NoteApp() {
                     setBulkShareTargets(ids.map((id) => ({ id, kind: "knowledge" as const })))
                 : undefined
             }
+            onMergeTopics={fm.activeWikiKind === "topic" ? mergeTopicsFromSelection : undefined}
           />
         ) : sharedEntryViewId && getSharedRoot() ? (
           // 共有エントリの全画面。Library と同じハンドラをそのまま渡す
@@ -11479,6 +11710,16 @@ export function NoteApp() {
                   wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
                 }
                 worldGroundingEnabled={featureFlags.worldGrounding ?? true}
+                similarTopics={
+                  fm.activeDoc.wikiMeta.kind === "topic" && currentTopicId === wikiIdForBanner
+                    ? similarTopicsForBanner
+                    : undefined
+                }
+                onMergeTopicInto={
+                  fm.activeDoc.wikiMeta.kind === "topic" && wikiIdForBanner
+                    ? (mergeId) => { void mergeTopicsFromSelection(wikiIdForBanner, [mergeId]); }
+                    : undefined
+                }
               />
             );
           })()}
@@ -11739,9 +11980,7 @@ export function NoteApp() {
                   items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i),
                 }));
                 try {
-                  const existingWikis = (fm.noteIndex?.notes ?? [])
-                    .filter((n) => n.source === "ai" && n.wikiKind)
-                    .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+                  const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
                   const result = await ingestFromUrl(url, existingWikis, getLocale());
                   if (result.wikis.length === 0) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
@@ -11749,12 +11988,27 @@ export function NoteApp() {
                     return;
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
+                  const claimsForTopicStage: TopicStageClaimInput[] = [];
                   for (const wiki of result.wikis) {
                     const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                    if (!wikiDoc) continue; // summary は新規生成を停止済み
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
+                    if (wiki.kind === "claim") {
+                      claimsForTopicStage.push({
+                        id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
+                        topics: wiki.topics ?? [], model: result.model ?? undefined,
+                      });
+                    }
                   }
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)` } : i) }));
+                  let topicDetail = "";
+                  if (claimsForTopicStage.length > 0) {
+                    const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
+                    topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
+                      + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+                      + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+                  }
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
                 } catch (err) {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                 }
@@ -12017,6 +12271,61 @@ export function NoteApp() {
             onProgress(i + 1, total);
           }
           console.log(`Re-embed complete: ${successCount} success / ${failCount} failed / ${total} total`);
+        }}
+        onOrganizeTopics={async (onProgress) => {
+          // (a) topicIds が空の claim を集め、話題の段（runTopicStage）を一括で回す
+          // （ingest 経路を通らずに作られた古い知見・name-topics 導入前の知見の救済）。
+          const targets = fm.wikiFiles.filter((wf) => {
+            const meta = fm.wikiMetas.get(wf.id);
+            return meta?.kind === "claim" && !(meta?.topicIds?.length);
+          });
+          const total = targets.length;
+          const claims: TopicStageClaimInput[] = [];
+          for (let i = 0; i < total; i++) {
+            const wf = targets[i];
+            onProgress(i, total);
+            const doc = fm.getCachedDoc(`wiki:${wf.id}`) ?? (await fm.loadDoc(`wiki:${wf.id}`));
+            if (!doc) continue;
+            claims.push({
+              id: wf.id,
+              title: doc.title,
+              body: extractBodyPreview(doc, 2000),
+              topics: [],
+            });
+          }
+          onProgress(total, total);
+          const assignResult = claims.length > 0
+            ? await runTopicStageForNoteApp(claims)
+            : { created: 0, updated: 0, failed: 0, withoutTopic: 0, createdTopics: [] };
+
+          // (b) 既存話題どうしの統合（表記ゆれ・粒度違いで増えてしまった話題を後から寄せる）。
+          // wiki-linter の redundant 検出と同じ考え方を、まとめて一括で実行するのがこのボタン。
+          const existingTopics: ExistingTopicForMerge[] = fm.wikiFiles
+            .filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic")
+            .map((wf) => ({
+              id: wf.id,
+              title: fm.wikiMetas.get(wf.id)?.title ?? wf.id,
+              memberClaimIds: fm.wikiMetas.get(wf.id)?.derivedFromClaims ?? [],
+            }));
+          const mergeResult = await consolidateExistingTopics(existingTopics, {
+            loadDoc: fm.loadDoc,
+            getCachedDoc: fm.getCachedDoc,
+            handleSaveWikiFile: fm.handleSaveWikiFile,
+            handleDeleteWikiFile: fm.handleDeleteWikiFile,
+            noteIndex: buildNoteIndex(fm.noteIndex),
+            locale: getLocale(),
+            // テーマどうしの統合可否はチャットモデルで判断する
+            model: getChatSynthesisModelName() || undefined,
+            log: (...args: unknown[]) => console.warn(...args),
+          });
+
+          return {
+            created: assignResult.created,
+            updated: assignResult.updated,
+            failed: assignResult.failed + mergeResult.failed,
+            withoutTopic: assignResult.withoutTopic,
+            merged: mergeResult.merged,
+          };
         }}
       />
       {/* 投入口: 既存資料の一括持ち込み。4 面（サイドバー・空ノートのチップ・一覧と素材の空状態・どこでもドロップ）がすべてここを開く */}
