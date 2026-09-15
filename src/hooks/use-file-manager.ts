@@ -9,7 +9,7 @@ import { PROV_TEMPLATE } from "../lib/prov-template";
 import { recordRevision } from "../features/document-provenance/tracker";
 import type { EditActivityType } from "../features/document-provenance/types";
 import type { SkillMetaSummary } from "../features/skill/skill-service";
-import { promoteClaimStatusIfCorroborated } from "../features/wiki/wiki-service";
+import { promoteClaimStatusIfCorroborated, unlinkClaimFromTopic } from "../features/wiki/wiki-service";
 
 /** Wiki 保存・新規作成時のリビジョン記録オプション */
 export type WikiSaveOptions = {
@@ -441,6 +441,11 @@ export function useFileManager(authenticated: boolean) {
                 atomType: doc.wikiMeta?.atomType,
                 synthesisMode: doc.wikiMeta?.synthesisMode,
                 hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+                // topic のメンバー知見 / claim の所属話題。保存時の mirror（handleSaveWikiFile /
+                // handleCreateWikiFile）と同じ値を起動時にも積む — 無いと再起動後に一覧の
+                // 知見数列と知見削除時のリンク解除が効かなくなる。
+                derivedFromClaims: doc.wikiMeta?.derivedFromClaims,
+                topicIds: doc.wikiMeta?.topicIds,
                 theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
                 groundingValidity: validity
                   ? {
@@ -2538,6 +2543,12 @@ export function useFileManager(authenticated: boolean) {
             atomType: doc.wikiMeta?.atomType ?? existing?.atomType,
             synthesisMode: doc.wikiMeta?.synthesisMode ?? existing?.synthesisMode,
             hypothesisStatus: doc.wikiMeta?.hypothesisStatus ?? existing?.hypothesisStatus,
+            // topic のメンバー知見 / claim の所属話題（一覧の知見数列・孤立話題判定・
+            // サイドバー導線に使う mirror）。doc.wikiMeta があるならその値が source of truth。
+            derivedFromClaims: doc.wikiMeta
+              ? doc.wikiMeta.derivedFromClaims
+              : existing?.derivedFromClaims,
+            topicIds: doc.wikiMeta ? doc.wikiMeta.topicIds : existing?.topicIds,
             theme:
               doc.wikiMeta?.kind === "synthesis"
                 ? (doc.wikiMeta?.theme ?? existing?.theme)
@@ -2602,6 +2613,24 @@ export function useFileManager(authenticated: boolean) {
   const handleDeleteWikiFile = useCallback(
     async (wikiId: string) => {
       try {
+        // knowledge(claim) がゴミ箱送りになる場合、所属していた話題(topic)の
+        // derivedFromClaims から外す（unlinkClaimFromTopic）。本文は書き直さない
+        // — 次の compose / 手動再生成で追従する（0 件になった話題は残し、
+        // wiki-linter の orphan 検出が拾う）。
+        const deletedMeta = wikiMetas.get(wikiId);
+        if (deletedMeta?.kind === "claim" && deletedMeta.topicIds && deletedMeta.topicIds.length > 0) {
+          for (const topicId of deletedMeta.topicIds) {
+            try {
+              const topicDoc = docCacheRef.current.get(`wiki:${topicId}`) ?? (await loadDoc(`wiki:${topicId}`));
+              if (!topicDoc?.wikiMeta || topicDoc.wikiMeta.kind !== "topic") continue;
+              const nextMeta = unlinkClaimFromTopic(topicDoc.wikiMeta, wikiId);
+              if (nextMeta === topicDoc.wikiMeta) continue;
+              await handleSaveWikiFile(topicId, { ...topicDoc, wikiMeta: nextMeta });
+            } catch (err) {
+              console.warn(`話題 ${topicId} からのリンク解除に失敗:`, err);
+            }
+          }
+        }
         if (noteIndexRef.current) {
           const updated = softDeleteIndexEntry(noteIndexRef.current, wikiId);
           noteIndexRef.current = updated;
@@ -2617,7 +2646,7 @@ export function useFileManager(authenticated: boolean) {
         console.error("Wiki のゴミ箱への移動に失敗:", err);
       }
     },
-    [activeFileId, setActiveFileId]
+    [activeFileId, setActiveFileId, handleSaveWikiFile, loadDoc, wikiMetas]
   );
 
   // Wiki をアーカイブする（ファイル本体は残し、archivedAt をセットするだけ）
@@ -2861,6 +2890,8 @@ export function useFileManager(authenticated: boolean) {
           atomType: doc.wikiMeta?.atomType,
           synthesisMode: doc.wikiMeta?.synthesisMode,
           hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+          derivedFromClaims: doc.wikiMeta?.derivedFromClaims,
+          topicIds: doc.wikiMeta?.topicIds,
           theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
           groundingValidity: validity
             ? {

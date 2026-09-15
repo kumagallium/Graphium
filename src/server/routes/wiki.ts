@@ -49,6 +49,12 @@ import {
   parseRewriterOutput,
   type RewriteSection,
 } from "../services/wiki-rewriter.js";
+import {
+  buildTopicWriterSystemPrompt,
+  buildTopicWriterUserMessage,
+  parseTopicWriterOutput,
+  type TopicMemberClaim,
+} from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 import type { ClaimSnapshot } from "../services/wiki-types.js";
@@ -394,6 +400,60 @@ app.post("/cross-update", async (c) => {
     console.error("Wiki cross-update error:", err);
     // degrade（200 + 空 proposals）だが code は添えておく
     return c.json({ proposals: [], ...errorBody(err) });
+  }
+});
+
+// 話題（topic）ページの本文を生成する。
+//   前の本文は受け取らない — メンバー知見（claims）だけから毎回作り直す純関数。
+//   新規話題の初回生成・既存話題へのメンバー変化後の書き直し・手動再生成のいずれも
+//   この 1 本のエンドポイントを通す（呼び出し側で activityType を使い分ける）。
+app.post("/compose-topic", async (c) => {
+  const body = await c.req.json<{
+    title: string;
+    language: string;
+    claims: TopicMemberClaim[];
+    model?: string;
+  }>();
+
+  if (!body.title || !Array.isArray(body.claims) || body.claims.length === 0) {
+    return c.json({ error: "title and claims are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicWriterSystemPrompt(body.language || "en");
+  const userMessage = buildTopicWriterUserMessage(body.title, body.claims);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.compose-topic",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicWriterOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse topic writer output" }, 500);
+    }
+
+    return c.json({
+      body: parsed.body,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki compose-topic error:", err);
+    return c.json(errorBody(err), 500);
   }
 });
 

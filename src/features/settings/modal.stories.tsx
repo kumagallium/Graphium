@@ -25,6 +25,7 @@ const SAMPLE_WIKIS: WikiSummaryForSettings[] = [
   { id: "w1", title: "析出強化のメカニズム", kind: "claim" },
   { id: "w2", title: "時効処理の温度依存性", kind: "summary" },
   { id: "w3", title: "転位と粒界の相互作用", kind: "atom" },
+  { id: "w4", title: "析出強化", kind: "topic" },
 ];
 
 /**

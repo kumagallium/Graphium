@@ -596,7 +596,7 @@ export function AiAssistantPanel({
                       <AtSign size={11} className="shrink-0 text-muted-foreground" />
                     )}
                     <span className="truncate">
-                      {s.isWiki ? `${s.kind === "summary" ? "Summary" : "Concept"}: ${s.title}` : s.title}
+                      {s.isWiki ? `${s.kind === "summary" ? "Summary" : s.kind === "topic" ? "Topic" : "Concept"}: ${s.title}` : s.title}
                     </span>
                   </button>
                 ))}

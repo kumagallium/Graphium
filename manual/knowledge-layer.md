@@ -1,6 +1,6 @@
 # Knowledge layer
 
-Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the three kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
+Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the four kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
 
 ::: info Needs AI
 The Knowledge layer runs only with an AI backend, which ships inside the [desktop app](/desktop-app), with at least one model registered. See [AI setup](/ai-setup). In the browser preview the **Knowledge** section shows an upgrade notice instead.
@@ -12,12 +12,13 @@ A lab note answers "what happened on Tuesday". A knowledge page answers "what do
 
 Because knowledge is *derived*, regeneration is normal. When your notes change, the pages built from them can be rebuilt — knowledge follows your notes, not the other way around.
 
-## The three kinds
+## The four kinds
 
-Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md).
+Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics sit alongside this hourglass rather than inside it: they group claims by concept and are never fed into insight discovery.
 
 | Kind | What it is |
 |---|---|
+| **Topics** | A page that groups related claims by concept, with two-hop provenance (topic → claim → note) |
 | **Summaries** | A short AI summary of a single note |
 | **Claims** | A grounded assertion extracted from your notes |
 | **Insights** | A pattern that recurs across two or more claims |
@@ -49,7 +50,7 @@ Prompts take trial and error, so skills support the same manual version snapshot
 
 ## Browsing knowledge
 
-The sidebar has a **Knowledge** section (collapsed by default) listing **Summaries**, **Claims**, and **Insights** with counts. Click a kind to open its list view, which offers:
+The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Summaries**, **Claims**, and **Insights** with counts. Click a kind to open its list view, which offers:
 
 - Columns: **Title**, **Type**, **Sources** (how many source notes), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range

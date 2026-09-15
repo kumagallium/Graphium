@@ -46,7 +46,7 @@ ensureCytoscapePlugins();
 
 // ── kind / 層 ──
 
-type GraphKind = "external" | "note" | "summary" | "claim" | "atom" | "synthesis";
+type GraphKind = "external" | "note" | "summary" | "claim" | "atom" | "synthesis" | "topic";
 type LayerId = "source" | "note" | "crystal" | "synth";
 
 /** NoteNode から kind を判定する。 */
@@ -54,7 +54,7 @@ function kindOf(n: NoteNode): GraphKind {
   if (n.external) return "external";
   if (n.isWiki) {
     const k = n.wikiKind;
-    if (k === "claim" || k === "atom" || k === "synthesis") return k;
+    if (k === "claim" || k === "atom" || k === "synthesis" || k === "topic") return k;
     // 撤退済み / 未知の wikiKind（旧 meta-atom 等）は synthesis（統合）扱いにフォールバック。
     // ここで GraphKind 外の値を返すと KIND_LAYER 引きが undefined になり、層フィルタで
     // 常に弾かれて silent に消える（meta-atom が見えなかった原因）。
@@ -69,6 +69,7 @@ const KIND_LAYER: Record<GraphKind, LayerId> = {
   note: "note",
   claim: "crystal",
   atom: "crystal",
+  topic: "crystal",
   summary: "synth",
   synthesis: "synth",
 };
@@ -220,6 +221,9 @@ const KIND_SHAPE: Record<GraphKind, string> = {
   claim: "round-rectangle",
   atom: "diamond",
   synthesis: "hexagon",
+  // 話題は知見を束ねるページ。claim（角丸四角）と atom（ダイヤ）の中間として
+  // 角丸四角のまま据え置き、サイズで claim / atom との中間感を出す。
+  topic: "round-rectangle",
 };
 
 const KIND_SIZE: Record<GraphKind, number> = {
@@ -229,6 +233,7 @@ const KIND_SIZE: Record<GraphKind, number> = {
   claim: 30,
   atom: 36,
   synthesis: 38,
+  topic: 33,
 };
 
 const REL_COLOR: Record<EdgeRelation, string> = {
@@ -803,6 +808,7 @@ function Legend({ data }: { data: NoteGraphData }) {
   const kindItems = ([
     { kind: "external", label: t("globalGraph.kind.external") },
     { kind: "note", label: t("globalGraph.kind.note") },
+    { kind: "topic", label: t("knowledge.kind.topic") },
     { kind: "claim", label: t("knowledge.kind.claim") },
     { kind: "atom", label: t("knowledge.kind.atom") },
     { kind: "summary", label: t("knowledge.kind.summary") },

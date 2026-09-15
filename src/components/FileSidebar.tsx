@@ -101,7 +101,7 @@ export type FileSidebarProps = {
   /** モバイル受信箱ビューがアクティブか */
   mobileActive?: boolean;
   /** Wiki カテゴリ別カウント */
-  wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number };
+  wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number; topic?: number };
   /**
    * Atom（洞察）レイヤをサイドバーに表示するか（既定 true）。
    * 設定の features.insights（「洞察を使う」トグル）に従う。OFF のときは
@@ -306,7 +306,7 @@ export function FileSidebar({
   const aiTotalCount = useMemo(() => {
     const w = wikiCounts;
     return (
-      (w?.summary ?? 0) + (w?.claim ?? 0) + (showAtomLayer ? (w?.atom ?? 0) : 0)
+      (w?.topic ?? 0) + (w?.summary ?? 0) + (w?.claim ?? 0) + (showAtomLayer ? (w?.atom ?? 0) : 0)
     );
   }, [wikiCounts, showAtomLayer]);
 
@@ -596,21 +596,27 @@ export function FileSidebar({
             count={aiTotalCount}
           >
             {(() => {
-                // 要約 / 知見 / 洞察（Atom）の 3 種類を default 表示する。
+                // 話題 / 要約 / 知見 / 洞察（Atom）の 4 種類を default 表示する。
                 // 2026-05-27 の design revision で synthesis（発想）レイヤはサイドバーから
                 // 非表示化（Cmd-K Composer 経由で再構築する想定）。既存 synthesis ファイルの
                 // 物理データは保持されるが、ここからの動線は提供しない。
                 // showAtomLayer が false（features.insights OFF）のときは atom 行も隠す。
-                const kinds: WikiKind[] = showAtomLayer ? ["summary", "claim", "atom"] : ["summary", "claim"];
+                // 要約（summary）の生成停止は別 PR（PR3）で行う。ここでは並び・ラベル・
+                // 表示位置を変更しない — summary は今まで通り default 表示のまま。
+                const kinds: WikiKind[] = showAtomLayer
+                  ? ["topic", "summary", "claim", "atom"]
+                  : ["topic", "summary", "claim"];
                 return kinds.map((kind) => {
                   const count = wikiCounts?.[kind] ?? 0;
                   const label =
-                    kind === "summary" ? t("wikiList.kindSummary")
+                    kind === "topic" ? t("wikiList.kindTopic")
+                    : kind === "summary" ? t("wikiList.kindSummary")
                     : kind === "claim" ? t("wikiList.kindClaim")
                     : t("wikiList.kindAtom");
                   // 各 kind の意味を title ツールチップで補足する（初見ユーザー向け）。
                   const hint =
-                    kind === "summary" ? t("wikiList.kindSummaryHint")
+                    kind === "topic" ? t("wikiList.kindTopicHint")
+                    : kind === "summary" ? t("wikiList.kindSummaryHint")
                     : kind === "claim" ? t("wikiList.kindClaimHint")
                     : t("wikiList.kindAtomHint");
                   // Atom は default 昇格したので "exp" バッジは不要。

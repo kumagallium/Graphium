@@ -20,12 +20,13 @@ describe("buildMentionPatterns", () => {
     expect(buildMentionPatterns("旧", "新")).toEqual([{ from: "@旧", to: "@新", prefix: "@" }]);
   });
 
-  it("wiki は装飾付きラベル（Summary / Concept）も含む 3 パターン", () => {
+  it("wiki は装飾付きラベル（Summary / Concept / Topic）も含む 4 パターン", () => {
     const patterns = buildMentionPatterns("旧", "新", { includeWikiLabels: true });
     expect(patterns).toEqual([
       { from: "@旧", to: "@新", prefix: "@" },
       { from: "@🤖 Summary: 旧", to: "@🤖 Summary: 新", prefix: "@🤖 Summary: " },
       { from: "@🤖 Concept: 旧", to: "@🤖 Concept: 新", prefix: "@🤖 Concept: " },
+      { from: "@🤖 Topic: 旧", to: "@🤖 Topic: 新", prefix: "@🤖 Topic: " },
     ]);
   });
 });

@@ -237,6 +237,21 @@ export const ClaimCorroborated: StoryObj = {
   ),
 };
 
+export const Topic: StoryObj = {
+  name: "Topic — 話題（メンバー知見への派生元表示込み）",
+  render: () => (
+    <Wrapper
+      wikiMeta={{
+        ...baseMeta,
+        kind: "topic",
+        derivedFromNotes: [],
+        derivedFromClaims: ["note-abc123", "note-def456"],
+        generatedBy: { model: "claude-haiku-4-5", version: "" },
+      }}
+    />
+  ),
+};
+
 export const Synthesis: StoryObj = {
   name: "Synthesis",
   render: () => <Wrapper wikiMeta={{ ...baseMeta, kind: "synthesis", generatedBy: { model: "claude-sonnet-4-6", version: "" } }} />,

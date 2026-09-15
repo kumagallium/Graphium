@@ -98,6 +98,8 @@ export async function forkSharedKnowledge(
         derivedFromNotes: [],
         derivedFromChats: [],
         derivedFromClaims: undefined,
+        // topic の所属先も共有元環境のローカル ID 空間なのでリセット
+        topicIds: undefined,
         citedKnowledgeIds: undefined,
         relatedAtoms: undefined,
         // ローカル埋め込み索引・世界照合はこの環境で作り直させる

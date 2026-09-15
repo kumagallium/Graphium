@@ -211,6 +211,16 @@ function TypeBadge({
     );
   }
 
+  // topic は claimRole/atomType/synthesisMode のような細目分類を持たない
+  // （知見を束ねるページなので、種別自体が kindLabel で示される）。
+  if (kind === "topic") {
+    return (
+      <span className="inline-block px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[11px] font-medium">
+        {t("wikiList.kindTopic")}
+      </span>
+    );
+  }
+
   return null;
 }
 
@@ -308,7 +318,12 @@ export function WikiListView({
         atomType: wikiMetas.get(f.id)!.atomType,
         synthesisMode: wikiMetas.get(f.id)!.synthesisMode,
         hypothesisStatus: wikiMetas.get(f.id)!.hypothesisStatus,
-        sources: sourcesCountById.get(f.id) ?? 0,
+        // topic の「生成元」列はメンバー知見数（derivedFromClaims）を出す —
+        // 他 kind の「派生元ノート数」とは意味が違うが、同じ列を流用する（新規列を増やさない）。
+        sources:
+          wikiKind === "topic"
+            ? (wikiMetas.get(f.id)!.derivedFromClaims?.length ?? 0)
+            : (sourcesCountById.get(f.id) ?? 0),
         incoming: incomingRefCount.get(f.id) ?? 0,
         outgoing: outgoingRefCountById.get(f.id) ?? 0,
         // 世界モデル照合 verdict（Phase 2 / PR 2A） — summary 以外で意味を持つ
@@ -469,6 +484,7 @@ export function WikiListView({
     wikiKind === "summary" ? t("wikiList.kindSummary")
     : wikiKind === "synthesis" ? t("wikiList.kindSynthesis")
     : wikiKind === "atom" ? t("wikiList.kindAtom")
+    : wikiKind === "topic" ? t("wikiList.kindTopic")
     : t("wikiList.kindClaim");
 
   return (
@@ -499,7 +515,7 @@ export function WikiListView({
                 {t("share.bulk.selected", { count: String(selectedIds.size) })}
               </button>
             )}
-            {onWorldCheckWiki && wikiKind !== "summary" && (
+            {onWorldCheckWiki && wikiKind !== "summary" && wikiKind !== "topic" && (
               <button
                 onClick={() => {
                   // 一括世界照合（Phase 2 / PR 2A）— 蒸留 KB のみで照合するため fire-and-forget OK
@@ -515,7 +531,7 @@ export function WikiListView({
                 {t("wikiList.worldCheckSelected", { count: String(selectedIds.size) })}
               </button>
             )}
-            {onClearWorldValidity && wikiKind !== "summary" && (
+            {onClearWorldValidity && wikiKind !== "summary" && wikiKind !== "topic" && (
               <button
                 onClick={async () => {
                   // 選択した Wiki の照合結果（verdict / 出典）を一括クリア。
@@ -651,7 +667,7 @@ export function WikiListView({
                 <th
                   className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground tabular-nums"
                   onClick={() => handleSort("sources")}
-                  title={t("wikiList.colSourcesTooltip")}
+                  title={wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic") : t("wikiList.colSourcesTooltip")}
                 >
                   {t("wikiList.colSources")}{sortKey === "sources" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
@@ -669,7 +685,7 @@ export function WikiListView({
                 >
                   {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                {wikiKind !== "summary" && worldGroundingEnabled && (
+                {wikiKind !== "summary" && wikiKind !== "topic" && worldGroundingEnabled && (
                   <th
                     className="py-2 pl-3 w-[110px] cursor-pointer hover:text-foreground"
                     onClick={() => handleSort("verdict")}
@@ -753,7 +769,7 @@ export function WikiListView({
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
                     {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
                   </td>
-                  {wikiKind !== "summary" && worldGroundingEnabled && (
+                  {wikiKind !== "summary" && wikiKind !== "topic" && worldGroundingEnabled && (
                     <td className="py-2 pl-3 text-xs">
                       <WorldVerdictCell grounding={entry.worldGrounding} />
                     </td>

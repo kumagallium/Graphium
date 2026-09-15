@@ -32,6 +32,11 @@ export {
   dedupCandidatesByEmbedding, partitionCandidatesByEmbedding,
   // インライン引用リンク
   buildNoteIndex,
+  // Topic（話題）
+  normalizeTopicTitle, matchTopicsByTitle, resolveTopicsForClaim,
+  linkClaimAndTopic, unlinkClaimFromTopic,
+  composeTopicBody, buildTopicDocument, rebuildTopicDocument,
+  type ExistingTopicRef, type TopicMatch, type TopicComposeClaim,
 } from "./wiki-service";
 export type { ClaimSnapshot } from "../../server/services/wiki-types";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";

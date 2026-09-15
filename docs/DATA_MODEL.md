@@ -1,7 +1,7 @@
 # Graphium — Data Model
 
 This document describes the on-disk shapes Graphium uses: notes,
-Knowledge layer documents (Summaries / Claims / Insights / Ideas), the
+Knowledge layer documents (Topics / Summaries / Claims / Insights / Ideas), the
 navigation index, shared storage entries, and the IndexedDB layout of
 the browser provider. It is the reference for anyone who wants to read,
 write, migrate, or interoperate with Graphium files.
@@ -12,6 +12,7 @@ write, migrate, or interoperate with Graphium files.
 >
 > | UI label (EN / JA) | On-disk `WikiKind` |
 > |---|---|
+> | Topics / 話題 | `topic` |
 > | Summaries / 要約 | `summary` |
 > | Claims / 知見 | `claim` |
 > | Insights / 洞察 | `atom` |
@@ -755,7 +756,7 @@ A Wiki document is a regular `GraphiumDocument` with `source: "ai"` and
 a populated `wikiMeta`. It opens in the same editor as a human note.
 
 ```ts
-type WikiKind = "summary" | "claim" | "atom" | "synthesis";
+type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic";
 
 type WikiMeta = {
   kind: WikiKind;
@@ -785,8 +786,16 @@ type WikiMeta = {
   status?: "candidate" | "verified";
   evidenceSpan?: string;
 
-  // Atom-only
+  // Atom / Topic. Meaning differs by kind:
+  //   - Atom:  IDs of the source Claims the atom abstracted from.
+  //   - Topic: IDs of the member Claims this topic page groups. The topic body
+  //            is a pure function of this set (the previous body is never fed
+  //            back in — see the Topic section below).
   derivedFromClaims?: string[];
+
+  // Claim-only. IDs of the topic (`kind: "topic"`) pages this Claim belongs to
+  // (0–3). Paired bidirectionally with the topic's `derivedFromClaims` above.
+  topicIds?: string[];
 
   // Knowledge cited/examined when this note was created from a Cmd-K verb
   // answer ("Make a Claim/Insight"). Distinct from derivedFromClaims (Atom
@@ -875,10 +884,31 @@ type ProcedureContext = {
 
 | Kind | Role | Carries context? |
 |---|---|---|
+| `topic` | Groups related Claims by concept. Two-hop provenance (topic → claim → note). Does **not** participate in the hourglass — it is never fed to the atomizer. | n/a (derived from member Claims) |
 | `summary` | Internal-facing summary of one note. | yes |
 | `claim` | Cross-note claim extracted from notes (fact-based; the hourglass widens here). | yes |
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |
+
+### 3.1a `topic` — grouping Claims by concept
+
+A `topic` document groups Claims (`kind: "claim"`) by concept. Its
+`wikiMeta.derivedFromClaims` holds the member Claim IDs, and each
+member Claim's `wikiMeta.topicIds` points back (bidirectional link,
+capped at 3 topics per Claim).
+
+The topic body is regenerated as a **pure function of its current
+member set** — the previous body is never fed back into the writer.
+This is a deliberate answer to the "errors propagate" failure mode of
+LLM-authored wikis: a topic page cannot accumulate drift across
+regenerations, because each regeneration starts from the member Claims
+only.
+
+Topics are assigned during ingest: the ingester proposes 1–3 topic
+names (noun phrases) per Claim, which are then resolved against
+existing topics by (1) normalized title match, then (2) embedding
+similarity > 0.9 (falls back to title-match-only when no embedding
+model is configured), and only then created as new.
 
 `synthesis` documents are authored through the Cmd-K Composer flow
 rather than an automatic pipeline: the user selects Insights, builds a

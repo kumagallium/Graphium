@@ -51,7 +51,7 @@ export function buildMentionPatterns(
     { from: `@${oldTitle}`, to: `@${newTitle}`, prefix: "@" },
   ];
   if (opts?.includeWikiLabels) {
-    for (const kind of ["summary", "concept"]) {
+    for (const kind of ["summary", "concept", "topic"]) {
       const prefix = `@${formatWikiMentionLabel(kind, "")}`;
       patterns.push({
         from: `@${formatWikiMentionLabel(kind, oldTitle)}`,

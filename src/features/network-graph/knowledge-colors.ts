@@ -4,7 +4,7 @@
 // 設計方針（design.md 準拠）:
 //  - ブランドグリーン（#4B7A52）と落ち着いた青（#5b8fb9 通常ノート色）の周辺で
 //    色相を分散させ、彩度・明度を揃えて凡例の識別性とリストでの落ち着きを両立。
-//  - 4 種の kind（summary / atom / claim / synthesis）は実装上の最小単位なので
+//  - 5 種の kind（summary / atom / claim / synthesis / topic）は実装上の最小単位なので
 //    ここで完結させる。atomType / synthesisMode はサブ分類のため色には反映しない。
 //  - border はベース色を 15〜20% 暗くしたもの。
 
@@ -17,11 +17,13 @@ import type { WikiKind } from "../../lib/document-types";
  *  - claim    : 紅葉色（主張＝注目）— メディアのゴールド/オレンジと衝突しない色相
  *  - synthesis: 紫紺（統合＝重み）
  */
+// TODO(design): "topic" の配色は暫定値。design.md の合意を経て確定させる（段 B）。
 const KNOWLEDGE_KIND_COLORS: Record<WikiKind, string> = {
   summary: "#9b6dcc",
   atom: "#6ba89e",
   claim: "#c46d56",
   synthesis: "#6c5ca8",
+  topic: "#5b8fb9",
 } as const;
 
 /** Knowledge kind 別の border 色（塗りより 15〜20% 暗い） */
@@ -30,6 +32,7 @@ const KNOWLEDGE_KIND_BORDERS: Record<WikiKind, string> = {
   atom: "#4f8a80",
   claim: "#9b5644",
   synthesis: "#544591",
+  topic: "#43749c",
 } as const;
 
 /** kind 未指定 / 不明なときのフォールバック（既存紫色を維持） */
@@ -49,12 +52,15 @@ export function knowledgeKindBorder(kind: WikiKind | undefined): string {
 }
 
 /**
- * 凡例に並べる順序（要約 → 主張 → 原子）。
+ * 凡例に並べる順序（話題 → 要約 → 知見 → 洞察）。
+ * topic は知見を束ねる上位ページなので先頭に置く。
+ * FileSidebar のナレッジ種別タブと同じ並びに揃えている。
  * synthesis（発想）レイヤは撤退済みのため凡例には出さない。
  * ただし旧ノートに残る synthesis ノードのグラフ描画用に
  * KNOWLEDGE_KIND_COLORS / KNOWLEDGE_KIND_BORDERS の色定義は保持する。
  */
 export const KNOWLEDGE_KIND_LEGEND_ORDER: WikiKind[] = [
+  "topic",
   "summary",
   "claim",
   "atom",

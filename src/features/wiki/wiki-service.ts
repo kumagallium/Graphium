@@ -1598,6 +1598,8 @@ export function buildWikiSnapshots(
       relatedClaims: extractRelatedClaims(doc),
       bodyPreview: doc ? extractBodyPreview(doc, 240) : "",
       level: meta.kind === "claim" ? meta.level : undefined,
+      // topic のメンバー知見数（orphan＝0 件判定用）。topic 以外では意味を持たないので省略。
+      derivedFromClaims: meta.kind === "topic" ? (wikiMeta?.derivedFromClaims ?? []) : undefined,
       lastIngestedAt: wikiMeta?.lastIngestedAt,
       modifiedAt: file.modifiedTime,
     });
@@ -1680,8 +1682,19 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   const concepts = entries.filter((e) => e.kind === "claim");
   const syntheses = entries.filter((e) => e.kind === "synthesis");
   const atoms = entries.filter((e) => e.kind === "atom");
+  const topics = entries.filter((e) => e.kind === "topic");
 
   let text = `## Wiki Index (${entries.length} pages)\n\n`;
+
+  // 話題（topic）は知見を概念ごとに束ねたページ。Concepts より先に出すことで、
+  // LLM が「まずどの話題群があるか」を把握してから個々の Claim を見られるようにする。
+  if (topics.length > 0) {
+    text += `### Topics (${topics.length})\n`;
+    for (const t of topics) {
+      text += `- **${t.title}**: ${t.bodyPreview}\n`;
+    }
+    text += "\n";
+  }
 
   if (concepts.length > 0) {
     text += `### Concepts (${concepts.length})\n`;
@@ -2064,6 +2077,300 @@ export function reinforceAtomWithClaims(
       modifiedAt: now,
     },
     addedClaimIds: fresh,
+  };
+}
+
+// ── Topic（話題）──
+// 話題 = 知見(claim)を概念ごとに束ねたページ。出典は 話題 → 知見 → ノート の 2 ホップ。
+// 砂時計（ノート→知見→洞察）には参加しない。本文はメンバー知見の集合から作られる
+// 純関数（前の本文は入力に渡さない）— composeTopicBody / buildTopicDocument を参照。
+
+/** 話題の割り当て判定に使う既存話題の最小情報 */
+export type ExistingTopicRef = {
+  id: string;
+  title: string;
+};
+
+/** 1 つの話題名（claim.topics の要素）に対する解決結果 */
+export type TopicMatch =
+  | { status: "matched"; title: string; topicId: string; via: "title" | "embedding"; score?: number }
+  | { status: "new"; title: string };
+
+/**
+ * 話題名の正規化（一致判定専用）。NFC 正規化・前後空白除去・小文字化。
+ * 表示用タイトルは常に元の文字列を使う（正規化結果を保存しない）。
+ */
+export function normalizeTopicTitle(title: string): string {
+  return title.normalize("NFC").trim().toLowerCase();
+}
+
+/**
+ * タイトル正規化一致だけで既存話題を解決する（embedding 抜きの同期版）。
+ * resolveTopicsForClaim の第 1 段階として使う。同期処理のみなのでテストしやすい。
+ */
+export function matchTopicsByTitle(
+  topicTitles: string[],
+  existingTopics: ExistingTopicRef[],
+): TopicMatch[] {
+  const byNormalizedTitle = new Map<string, ExistingTopicRef>();
+  for (const t of existingTopics) {
+    const key = normalizeTopicTitle(t.title);
+    if (!byNormalizedTitle.has(key)) byNormalizedTitle.set(key, t);
+  }
+  return topicTitles.map((title) => {
+    const hit = byNormalizedTitle.get(normalizeTopicTitle(title));
+    return hit
+      ? { status: "matched" as const, title, topicId: hit.id, via: "title" as const }
+      : { status: "new" as const, title };
+  });
+}
+
+/**
+ * 知見(claim)が出した話題名（1〜3件、ingester の `topics` 出力）を既存の話題に解決する。
+ *
+ * 1. タイトル正規化一致（NFC・大小・前後空白）を最優先
+ * 2. 残りは embedding 類似度 > 0.9（partitionCandidatesByEmbedding を流用。
+ *    しきい値は同関数の既定値をそのまま使い、新しい隠れ定数は作らない。埋め込み未設定 /
+ *    API 失敗時は fail-open で「新規」判定に倒れる — partitionCandidatesByEmbedding の
+ *    既存の安全側デフォルトに委ねる）
+ * 3. どちらでもなければ新規作成が必要と判定
+ *
+ * 同一呼び出し内で同じ話題名が重複しても 1 件の TopicMatch に畳む
+ * （呼び出し側の topicTitles 自体は parseTopics で既に重複排除済みの想定だが、
+ * 大小・NFC 違いの重複はここで畳む）。
+ */
+export async function resolveTopicsForClaim(
+  topicTitles: string[],
+  existingTopics: ExistingTopicRef[],
+): Promise<TopicMatch[]> {
+  if (topicTitles.length === 0) return [];
+
+  // 呼び出し内重複の畳み込み（正規化タイトルで dedupe。表示は最初に出た表記を使う）
+  const dedupedTitles: string[] = [];
+  const seen = new Set<string>();
+  for (const title of topicTitles) {
+    const key = normalizeTopicTitle(title);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedupedTitles.push(title);
+  }
+
+  const byTitle = matchTopicsByTitle(dedupedTitles, existingTopics);
+  const unmatched = byTitle.filter((m) => m.status === "new");
+  if (unmatched.length === 0 || existingTopics.length === 0) return byTitle;
+
+  // embedding 段: 未マッチの話題名だけを候補として既存話題との類似度を見る。
+  // partitionCandidatesByEmbedding は { title, body } を要求するが、話題名しか無いので
+  // body にも同じ文字列を渡す（短い名詞句同士の類似度判定なので十分）。
+  const existingTopicIds = new Set(existingTopics.map((t) => t.id));
+  const partition = await partitionCandidatesByEmbedding(
+    unmatched.map((m) => ({ title: m.title, body: m.title })),
+    existingTopicIds,
+  );
+  const matchedByEmbedding = new Map(
+    partition.duplicates.map((d) => [normalizeTopicTitle(d.candidate.title), d] as const),
+  );
+
+  return byTitle.map((m) => {
+    if (m.status === "matched") return m;
+    const hit = matchedByEmbedding.get(normalizeTopicTitle(m.title));
+    if (!hit) return m;
+    return {
+      status: "matched" as const,
+      title: m.title,
+      topicId: hit.matchedDocId,
+      via: "embedding" as const,
+      score: hit.score,
+    };
+  });
+}
+
+/**
+ * claim ⇔ topic の双方向リンクを 1 本にまとめる（入口 1 本）。
+ * claim.topicIds への追加と topic.derivedFromClaims への追加は必ずセットで行う —
+ * 個別に呼ぶ経路を増やすと、どちらか片方だけ更新されて非対称なリンクが生まれる。
+ *
+ * 冪等: 既にリンク済みなら何もしない（同じ配列を保つ）。
+ * claim.topicIds は最大 3 件（ingester の topics 上限と揃える）。意図的な上限であり、
+ * 既に 3 件埋まっている claim に 4 件目以降の topicId を足そうとした場合は黙って切り捨てる
+ * （複数回の ingest/merge を経ると起こり得る）。呼び出し元が気づけるよう警告を出す。
+ */
+export function linkClaimAndTopic(
+  claimMeta: WikiMeta,
+  claimId: string,
+  topicMeta: WikiMeta,
+  topicId: string,
+): { claimMeta: WikiMeta; topicMeta: WikiMeta } {
+  const topicIds = claimMeta.topicIds ?? [];
+  const nextTopicIds = topicIds.includes(topicId)
+    ? topicIds
+    : [...topicIds, topicId].slice(0, 3);
+  if (!topicIds.includes(topicId) && topicIds.length >= 3) {
+    console.warn(`claim "${claimId}" の topicIds は既に上限 3 件のため topic "${topicId}" へのリンクを切り捨てました`);
+  }
+
+  const memberIds = topicMeta.derivedFromClaims ?? [];
+  const nextMemberIds = memberIds.includes(claimId)
+    ? memberIds
+    : [...memberIds, claimId];
+
+  return {
+    claimMeta: nextTopicIds === topicIds ? claimMeta : { ...claimMeta, topicIds: nextTopicIds },
+    topicMeta: nextMemberIds === memberIds ? topicMeta : { ...topicMeta, derivedFromClaims: nextMemberIds },
+  };
+}
+
+/**
+ * 知見の削除時、所属していた話題群の derivedFromClaims から外す。
+ * 本文は書き直さない（次の compose / 手動再生成で追従する）。0 件になった話題は
+ * そのまま残す（wiki-linter の orphan topic 検出が拾う）。
+ */
+export function unlinkClaimFromTopic(topicMeta: WikiMeta, claimId: string): WikiMeta {
+  const memberIds = topicMeta.derivedFromClaims ?? [];
+  if (!memberIds.includes(claimId)) return topicMeta;
+  return { ...topicMeta, derivedFromClaims: memberIds.filter((id) => id !== claimId) };
+}
+
+/** compose-topic API に渡すメンバー知見 1 件分（サーバー側 TopicMemberClaim と同形） */
+export type TopicComposeClaim = {
+  id: string;
+  title: string;
+  body: string;
+};
+
+/**
+ * 話題ページの本文をサーバー（/api/wiki/compose-topic）で生成する。
+ * 前の本文は渡さない — 毎回メンバー知見だけから作り直す（純関数）。
+ * 失敗時（パース不能・LLM エラー）は null を返す。呼び出し側は「今回は書き直さない」
+ * を選べる（既存本文を温存できる）。
+ */
+export async function composeTopicBody(
+  title: string,
+  language: string,
+  claims: TopicComposeClaim[],
+  model?: string,
+): Promise<string | null> {
+  if (claims.length === 0) return null;
+  try {
+    const res = await fetch(`${API_BASE}/compose-topic`, {
+      method: "POST",
+      headers: wikiHeaders(),
+      body: JSON.stringify({ title, language, claims, ...(model ? { model } : {}) }),
+    });
+    if (!res.ok) {
+      // 埋め込み失敗のトースト（notifyEmbeddingFailure）は文言が「Embedding の生成に失敗」で
+      // 固定なので流用しない。失敗は呼び出し側が件数としてトーストに出す。
+      console.warn("composeTopicBody failed:", await aiErrorFromResponse(res, `compose-topic failed (${res.status})`));
+      return null;
+    }
+    const data = await res.json() as { body?: string };
+    return typeof data.body === "string" && data.body.trim() ? data.body : null;
+  } catch (err) {
+    console.warn("composeTopicBody failed:", err);
+    return null;
+  }
+}
+
+/**
+ * 話題ページ本文（markdown）から GraphiumDocument を構築する。
+ * サーバーの compose-topic 出力は 1 つの markdown 文字列（`## 見出し` を含みうる）
+ * なので、単一セクション {heading: "", content: body} として convertSectionsToBlocks
+ * に通す — 埋め込み `## ...` 見出しと `[[Claim title]]` 引用（parseInlineCitations）は
+ * 既存の変換ロジックがそのまま解釈する。
+ *
+ * `derivedFromClaims` にメンバー知見の ID を必ず積む（保存で落ちないことをテストで固定）。
+ */
+export function buildTopicDocument(
+  title: string,
+  body: string,
+  memberClaimIds: string[],
+  model: string | null,
+  language?: string,
+  noteIndex?: NoteIndex,
+): GraphiumDocument {
+  const now = new Date().toISOString();
+  const converted = convertSectionsToBlocks([{ heading: "", content: body }], noteIndex, title);
+
+  const wikiMeta: WikiMeta = {
+    kind: "topic",
+    derivedFromNotes: [],
+    derivedFromChats: [],
+    derivedFromClaims: [...memberClaimIds],
+    generatedAt: now,
+    generatedBy: {
+      model: model ?? "unknown",
+      version: "1.0.0",
+    },
+    lastIngestedAt: now,
+    language: language ?? undefined,
+  };
+
+  return {
+    version: 2,
+    title,
+    pages: [{
+      id: "main",
+      title,
+      blocks: converted.blocks,
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: converted.knowledgeLinks,
+    }],
+    source: "ai",
+    wikiMeta,
+    generatedBy: {
+      agent: "ai",
+      sessionId: `wiki-topic-${now}`,
+      model: model ?? undefined,
+    },
+    createdAt: now,
+    modifiedAt: now,
+  };
+}
+
+/**
+ * 既存の話題ドキュメントの本文を書き直して更新する（メンバー変化後の再構成 / 手動再生成
+ * 共通）。`derivedFromClaims`（メンバー ID）は呼び出し側が確定済みのものをそのまま渡す
+ * — この関数は本文とブロックだけを作り直す。
+ */
+export function rebuildTopicDocument(
+  existingDoc: GraphiumDocument,
+  body: string,
+  memberClaimIds: string[],
+  model: string | null,
+  noteIndex?: NoteIndex,
+): GraphiumDocument {
+  const now = new Date().toISOString();
+  const converted = convertSectionsToBlocks(
+    [{ heading: "", content: body }],
+    noteIndex,
+    existingDoc.title,
+  );
+  const page = existingDoc.pages[0];
+
+  return {
+    ...existingDoc,
+    pages: [{
+      ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
+      blocks: converted.blocks,
+      knowledgeLinks: converted.knowledgeLinks,
+    }],
+    wikiMeta: {
+      ...existingDoc.wikiMeta!,
+      kind: "topic",
+      derivedFromClaims: [...memberClaimIds],
+      lastIngestedAt: now,
+      generatedBy: {
+        model: model ?? existingDoc.wikiMeta?.generatedBy?.model ?? "unknown",
+        version: "1.0.0",
+      },
+    },
+    generatedBy: {
+      agent: "ai",
+      sessionId: existingDoc.generatedBy?.sessionId ?? `wiki-topic-${now}`,
+      model: model ?? existingDoc.generatedBy?.model ?? undefined,
+    },
+    modifiedAt: now,
   };
 }
 
