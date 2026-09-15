@@ -14,6 +14,9 @@
 //   - 表の「入力元」列と、フローの点線が同じものだと分かるか
 //
 // 本ストーリーは視覚合意用。データ配線はしていない。
+// 表とフローを縦に並べているのは「入力元列 = 点線」を見比べるための描き方で、
+// 実装ではフローはノート本文に置かず、今と同じ右パネル「ステップ」タブの「工程」
+// サブタブ（と拡大表示）に出す。本文に増えるのは表の「入力元」列だけ。
 // 決定したら FlowEdge に planned フラグを足し、plan-flow.ts が入力元列から予定の線を作る。
 
 import type { ReactNode } from "react";
@@ -58,7 +61,7 @@ function Flow({ ops, edges, title }: { ops: Op[]; edges: E[]; title: string }) {
   const H = Math.max(...ops.map((o) => o.y)) + NH + 60;
   return (
     <div className="rounded-lg border border-border bg-card p-3">
-      <p className="text-xs text-muted-foreground mb-2">{title}</p>
+      <p className="text-xs text-muted-foreground mb-2">{title}<span className="ml-2 text-[10px]">（実装では右パネル「工程」サブタブに出る。本文には出ない）</span></p>
       <svg width={720} height={H} className="block max-w-full" style={{ fontSize: 12 }}>
         <defs>
           <marker id="pe-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
