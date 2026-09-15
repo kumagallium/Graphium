@@ -5,12 +5,13 @@
 // このファイルは Proposal の Swimlane（note-chain.proposal.stories.tsx）を
 // 実データで描く SVG レイアウトだけを担当する。
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Undo2 } from "lucide-react";
 import { useT } from "../../i18n";
-import { Breadcrumb } from "../../components/Breadcrumb";
 import { buildLocalView } from "./local-view-model";
 import type { LocalViewModel, LocalViewNode, LocalViewStep } from "./local-view-model";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { NoteOriginPicker } from "./note-origin-picker";
 import {
   getLatestProcessIndex,
   requestLatestProcessIndexRefresh,
@@ -36,9 +37,6 @@ const LANE_WIDTH = VIEW_W - LEFT - RIGHT_PAD;
 
 // ── 時間軸 ──
 
-function dayKey(iso: string): string {
-  return iso.slice(0, 10);
-}
 
 function dateLabel(iso: string): string {
   const d = new Date(iso);
@@ -183,27 +181,70 @@ export type LocalGraphViewProps = {
   depth: number;
   onDepthChange: (depth: number) => void;
   onOpenNote: (noteId: string) => void;
-  onBack: () => void;
+  /** 起点の選び直し（ヘッダーの検索付きセレクト）。Container から NoteOriginPicker を渡す */
+  originPicker?: ReactNode;
+  /** ノートから来たときだけ渡す。ヘッダー右端に t("localView.backToNote") */
+  onBackToNote?: () => void;
 };
 
-export function LocalGraphView({ model, depth, onDepthChange, onOpenNote, onBack }: LocalGraphViewProps) {
+type ChildStepGroup = {
+  note: LocalViewNode;
+  items: { step: LocalViewStep; x: number; y: number }[];
+  edges: { x1: number; y1: number; x2: number; y2: number }[];
+};
+
+export function LocalGraphView({
+  model,
+  depth,
+  onDepthChange,
+  onOpenNote,
+  originPicker,
+  onBackToNote,
+}: LocalGraphViewProps) {
   const t = useT();
+
+  // ヘッダー（起点セレクト・深さ・ノートに戻る）は起点未選択・データ無しでも常に出す
+  const header = (
+    <div className="px-4 pt-3 pb-2 border-b border-border shrink-0 space-y-2">
+      <div className="flex items-center gap-3 text-sm flex-wrap">
+        <span className="text-muted-foreground">{t("localView.origin")}</span>
+        {originPicker}
+        <span className="ml-2 text-muted-foreground">{t("localView.depth")}</span>
+        <DepthSegment depth={depth} onChange={onDepthChange} />
+        {model && model.plans.length > 1 && (
+          <span className="text-xs text-muted-foreground">
+            {t("localView.otherPlans", { names: model.plans.slice(1).map((p) => p.title).join(", ") })}
+          </span>
+        )}
+        {onBackToNote && (
+          <button
+            type="button"
+            onClick={onBackToNote}
+            className="ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border bg-card text-xs text-foreground"
+          >
+            <Undo2 size={12} strokeWidth={2} />
+            {t("localView.backToNote")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   if (!model) {
     return (
-      <div className="p-6 text-sm text-muted-foreground">
-        <Breadcrumb items={[{ label: t("globalGraph.title"), onClick: onBack }]} />
-        <p className="mt-4">{t("nav.noNotes")}</p>
+      <div className="flex flex-col h-full min-h-0">
+        {header}
+        <div className="flex-1 flex items-center justify-center p-6 text-sm text-muted-foreground text-center">
+          {t("localView.originPlaceholder")}
+        </div>
       </div>
     );
   }
 
-  const originLabel = `${t("localView.title")}（${t("localView.origin")}: ${model.origin.title}）`;
-  const otherPlanNames = model.plans.slice(1).map((p) => p.title);
-
   // ── レイアウト計算 ──
   const siblingsRows = rowCountOf(model.siblings);
   const childNotes = model.children.kind === "notes" ? model.children.notes : [];
+  const stepsByNote = model.children.kind === "notes" ? model.children.stepsByNote : {};
   const childRows =
     model.children.kind === "notes"
       ? rowCountOf(childNotes)
@@ -217,7 +258,6 @@ export function LocalGraphView({ model, depth, onDepthChange, onOpenNote, onBack
   const siblingsHeight = laneHeight(siblingsRows);
   const childrenY = siblingsY + siblingsHeight + LANE_GAP;
   const childrenHeight = laneHeight(childRows === 0 ? 1 : childRows);
-  const totalHeight = childrenY + childrenHeight + AXIS_H + BOTTOM_PAD;
 
   const timeScale = buildTimeScale([...model.siblings, ...childNotes]);
   const ticks = buildTicks(timeScale);
@@ -242,24 +282,45 @@ export function LocalGraphView({ model, depth, onDepthChange, onOpenNote, onBack
     return childrenY + step.row * (NODE_H + ROW_GAP);
   }
 
+  // ── 3 段目のレーン: 各工程の手順（起点が計画ノートのときだけ）──
+  // 工程ごとに縦に並べる: 各工程ノートの手順は、その工程の x を基準に
+  // col を右へ、row を下へ配置し、工程の並び順で積み上げる。
+  const childStepsY = childrenY + childrenHeight + LANE_GAP;
+  const childStepGroups: ChildStepGroup[] = [];
+  let childStepsRows = 0;
+  if (model.children.kind === "notes") {
+    for (const note of childNotes) {
+      const data = stepsByNote[note.noteId];
+      if (!data || data.steps.length === 0) continue;
+      const posById = new Map<string, { x: number; y: number }>();
+      const items = data.steps.map((step) => {
+        const x = xOfNote(note) + step.col * (STEP_W + STEP_GAP);
+        const y = childStepsY + (childStepsRows + step.row) * (NODE_H + ROW_GAP);
+        posById.set(step.id, { x, y });
+        return { step, x, y };
+      });
+      const edges = data.edges
+        .map((e) => {
+          const from = posById.get(e.from);
+          const to = posById.get(e.to);
+          if (!from || !to) return null;
+          return { x1: from.x + STEP_W, y1: from.y + NODE_H / 2, x2: to.x, y2: to.y + NODE_H / 2 };
+        })
+        .filter((e): e is { x1: number; y1: number; x2: number; y2: number } => e !== null);
+      childStepGroups.push({ note, items, edges });
+      childStepsRows += Math.max(...data.steps.map((s) => s.row)) + 1;
+    }
+  }
+  const hasChildSteps = childStepGroups.length > 0;
+  const childStepsHeight = laneHeight(childStepsRows);
+  const totalHeight =
+    (hasChildSteps ? childStepsY + childStepsHeight + LANE_GAP : childrenY + childrenHeight) +
+    AXIS_H +
+    BOTTOM_PAD;
+
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="px-4 pt-3 pb-2 border-b border-border shrink-0 space-y-2">
-        <Breadcrumb
-          items={[{ label: t("globalGraph.title"), onClick: onBack }, { label: originLabel }]}
-        />
-        <div className="flex items-center gap-3 text-sm flex-wrap">
-          <span className="text-muted-foreground">{t("localView.origin")}</span>
-          <span className="px-2 py-0.5 rounded-md border border-border bg-card">{model.origin.title}</span>
-          <span className="ml-2 text-muted-foreground">{t("localView.depth")}</span>
-          <DepthSegment depth={depth} onChange={onDepthChange} />
-          {otherPlanNames.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {t("localView.otherPlans", { names: otherPlanNames.join(", ") })}
-            </span>
-          )}
-        </div>
-      </div>
+      {header}
       <div className="flex-1 overflow-auto p-4">
         <svg
           viewBox={`0 0 ${VIEW_W} ${totalHeight}`}
@@ -289,6 +350,7 @@ export function LocalGraphView({ model, depth, onDepthChange, onOpenNote, onBack
             y={childrenY - 14}
             label={model.children.kind === "notes" ? t("localView.lane.siblings") : t("localView.lane.children")}
           />
+          {hasChildSteps && <LaneHeader y={childStepsY - 14} label={t("localView.lane.childSteps")} />}
 
           {/* 親 → 同じ層（partOf、点線） */}
           {model.parent &&
@@ -325,6 +387,22 @@ export function LocalGraphView({ model, depth, onDepthChange, onOpenNote, onBack
                       strokeDasharray="4 3"
                     />
                   )))}
+
+          {/* 子（工程ノート） → その手順（partOf、点線） */}
+          {hasChildSteps &&
+            childStepGroups.map((group) => {
+              const first = group.items[0];
+              if (!first) return null;
+              return (
+                <path
+                  key={`childstep-${group.note.noteId}`}
+                  d={`M${xOfNote(group.note) + NODE_W / 2} ${yOfChildNote(group.note) + NODE_H} L${first.x + STEP_W / 2} ${first.y}`}
+                  fill="none"
+                  stroke="var(--color-muted-foreground)"
+                  strokeDasharray="4 3"
+                />
+              );
+            })}
 
           {/* handoffs（同じ層の受け渡し） */}
           {model.handoffs.map((h, i) => {
@@ -373,6 +451,27 @@ export function LocalGraphView({ model, depth, onDepthChange, onOpenNote, onBack
               );
             })}
 
+          {/* 各工程の手順（3 段目のレーン）の内部エッジ */}
+          {hasChildSteps &&
+            childStepGroups.flatMap((group, gi) =>
+              group.edges.map((e, i) => {
+                const d =
+                  e.y1 === e.y2
+                    ? `M${e.x1} ${e.y1} L${e.x2 - 2} ${e.y2}`
+                    : `M${e.x1} ${e.y1} C${e.x1 + 20} ${e.y1} ${e.x2 - 20} ${e.y2} ${e.x2 - 2} ${e.y2}`;
+                return (
+                  <path
+                    key={`cse-${gi}-${i}`}
+                    d={d}
+                    fill="none"
+                    stroke="var(--forest)"
+                    strokeWidth={1.5}
+                    markerEnd="url(#lv-arrow)"
+                  />
+                );
+              }),
+            )}
+
           {/* 親ノード */}
           {model.parent && (
             <NoteNodeCard
@@ -417,6 +516,14 @@ export function LocalGraphView({ model, depth, onDepthChange, onOpenNote, onBack
             : model.children.steps.map((s) => (
                 <StepNodeCard key={s.id} step={s} x={xOfStep(s)} y={yOfStep(s)} />
               ))}
+
+          {/* 各工程の手順（3 段目のレーン）のノード */}
+          {hasChildSteps &&
+            childStepGroups.flatMap((group) =>
+              group.items.map(({ step, x, y }) => (
+                <StepNodeCard key={`${group.note.noteId}:${step.id}`} step={step} x={x} y={y} />
+              )),
+            )}
 
           {/* 時間軸 */}
           <line
@@ -470,13 +577,22 @@ function DepthSegment({ depth, onChange }: { depth: number; onChange: (d: number
 // ── データ配線（buildLocalView + ProcessIndex 購読） ──
 
 export type LocalGraphViewContainerProps = {
-  originNoteId: string;
+  /** null = 起点未選択（案内文 + ピッカーだけ出す） */
+  originNoteId: string | null;
   index: GraphiumIndex | null;
+  onChangeOrigin: (noteId: string) => void;
   onOpenNote: (noteId: string) => void;
-  onBack: () => void;
+  /** ノートから来たときだけ渡す */
+  onBackToNote?: () => void;
 };
 
-export function LocalGraphViewContainer({ originNoteId, index, onOpenNote, onBack }: LocalGraphViewContainerProps) {
+export function LocalGraphViewContainer({
+  originNoteId,
+  index,
+  onChangeOrigin,
+  onOpenNote,
+  onBackToNote,
+}: LocalGraphViewContainerProps) {
   const [depth, setDepth] = useState(1);
   const processIndex = useSyncExternalStore(
     subscribeLatestProcessIndex,
@@ -488,12 +604,24 @@ export function LocalGraphViewContainer({ originNoteId, index, onOpenNote, onBac
     requestLatestProcessIndexRefresh();
   }, []);
 
+  // 起点が変わったら深さを既定値に戻す
+  useEffect(() => {
+    setDepth(1);
+  }, [originNoteId]);
+
   const model = useMemo(
-    () => buildLocalView({ originNoteId, index, processIndex, depth }),
+    () => (originNoteId ? buildLocalView({ originNoteId, index, processIndex, depth }) : null),
     [originNoteId, index, processIndex, depth],
   );
 
   return (
-    <LocalGraphView model={model} depth={depth} onDepthChange={setDepth} onOpenNote={onOpenNote} onBack={onBack} />
+    <LocalGraphView
+      model={model}
+      depth={depth}
+      onDepthChange={setDepth}
+      onOpenNote={onOpenNote}
+      originPicker={<NoteOriginPicker index={index} value={originNoteId} onChange={onChangeOrigin} />}
+      onBackToNote={onBackToNote}
+    />
   );
 }
