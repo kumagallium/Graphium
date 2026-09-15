@@ -854,6 +854,10 @@ export type GraphiumDocument = {
    * 1 つの論文が複数 procedure を含む場合に、論文単位の計画ノート（navigation note）と
    * 実施ノート（PROV を持つ）を分けて出力する。実施ノートにこのフィールドを付け、
    * 計画ノートに逆参照できるようにする。derivedFromNoteId とは別軸（所属 vs 派生）。
+   * 注意: ここでの「計画ノート」は、予約フォルダ「計画」（noteContexts、
+   * `src/features/note-context/reserved-folders.ts`）が定義する「計画ノート」とは
+   * 別概念。前者は論文抽出パイプラインが出力する構造、後者はユーザーが手で作る
+   * 工程の親フォルダ。現時点では独立（将来統合の可能性はある）。
    */
   partOfPlanNoteId?: string;
   /**

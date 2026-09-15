@@ -653,6 +653,13 @@ prepared for a multi-procedure prompt that I later shelved. Neither is
 wired into the ingestion path today: the builder has no caller and the
 field is never written.
 
+Note the naming collision: this "plan note" (an ingestion output linked
+to execution notes via `partOfPlanNoteId`) is a different concept from
+the "plan note" defined by the reserved "計画"/"plan" folder
+(`src/features/note-context/reserved-folders.ts`) — the latter is something a user
+creates by hand as the parent of a set of operation notes. They may
+converge in the future, but today they are independent.
+
 Quality is tracked by a benchmark harness at
 `tests/benchmark/material-science/`. It loads `(input.txt, gold.json)`
 fixture pairs (gold is in MatPROV PROV-DM JSON-LD format), normalizes
@@ -1809,6 +1816,10 @@ people most often need to find.
 | Index file (note list, schema version) | `src/features/navigation/index-file.ts` |
 | Process index (cross-note step graphs, step reuse) | `src/features/network-graph/process-index.ts` |
 | Cross-note output references (durable row ids, upstream overlay) | `src/lib/table-row-identity.ts`, `src/features/network-graph/cross-note-flow.ts` |
+| Reserved "plan" folder detection | `src/features/note-context/reserved-folders.ts` |
+| Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` |
+| Local view data (origin note's parent/peer/child lanes) | `src/features/network-graph/local-view-model.ts` |
+| Process overview aggregation (step-name graph across notes) | `src/features/network-graph/process-overview.ts` |
 | Sharing / Library / Fork | `src/features/sharing/`, `src/lib/storage/shared/` |
 | Settings UI (model, profile, fonts) | `src/features/settings/` |
 | Slash-template commands (Plan / Run) | `src/features/template/` |

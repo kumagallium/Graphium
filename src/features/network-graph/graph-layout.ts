@@ -56,6 +56,13 @@ export const noteGraphScope = (noteId: string): string => `note:${noteId}`;
 /** 手順フロー（右パネル prov タブ / 拡大表示 / 手順ギャラリーのプレビュー） */
 export const provFlowScope = (noteId: string): string => `prov:${noteId}`;
 
+/**
+ * 計画ノートの工程フロー（右パネル prov タブの「工程」サブタブ）。同じノートの
+ * 手順フロー（provFlowScope）とは別のグラフなので、キーを分けないと手動配置を
+ * 互いに上書きする。
+ */
+export const planFlowScope = (noteId: string): string => `plan:${noteId}`;
+
 /** ノート間の全体グラフ（1 つしかないので固定キー） */
 export const globalGraphScope = (): string => "global";
 
