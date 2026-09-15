@@ -818,11 +818,18 @@ export function useFileManager(authenticated: boolean) {
         // snapshot ソースは noteIndexRef.current を優先する。`index` は ensureIndex の
         // 結果で prefetched (起動時スナップショット) ベースなので、セッション中に
         // archiveIndexEntry 等で更新された archivedAt を含まない。
-        const flagSource = noteIndexRef.current ?? index;
+        //
+        // 加えて prefetched（起動時に読んだ永続インデックス）も見る。ノートが 0 件の書庫
+        // （素材だけを取り込んだ直後など）では ensureIndex を通らず `index` が空で始まるため、
+        // ここを見ないとゴミ箱に送った Wiki がリロードのたびに一覧へ戻ってしまう（実測）。
+        const flagSources = [noteIndexRef.current, index, prefetched ?? null]
+          .filter((s): s is GraphiumIndex => !!s);
         const wikiFlagSnapshot = new Map<string, { archivedAt?: string; deletedAt?: string }>();
-        for (const n of flagSource.notes) {
-          if (n.source === "ai" && (n.archivedAt || n.deletedAt)) {
-            wikiFlagSnapshot.set(n.noteId, { archivedAt: n.archivedAt, deletedAt: n.deletedAt });
+        for (const src of flagSources) {
+          for (const n of src.notes) {
+            if (n.source === "ai" && (n.archivedAt || n.deletedAt) && !wikiFlagSnapshot.has(n.noteId)) {
+              wikiFlagSnapshot.set(n.noteId, { archivedAt: n.archivedAt, deletedAt: n.deletedAt });
+            }
           }
         }
 
