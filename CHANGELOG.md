@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.74.0](https://github.com/kumagallium/Graphium/compare/v0.73.0...v0.74.0) - 2026-09-15
+
+- Design proposal for cross-note processes (plan notes and operation notes) by @kumagallium in https://github.com/kumagallium/Graphium/pull/917
+- Add the model layer for plan notes and operation notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/918
+- Show the Operations flow for plan notes in the Steps panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/922
+- Add a Timeline mode to the Global Graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/923
+- Add the operation overview above the process list by @kumagallium in https://github.com/kumagallium/Graphium/pull/924
+- Declare planned hand-offs in the plan note and compare them with the actual ones by @kumagallium in https://github.com/kumagallium/Graphium/pull/933
+- Read exponent notation in numeric cells so computed columns chart correctly by @kumagallium in https://github.com/kumagallium/Graphium/pull/934
+
 ## [v0.73.0](https://github.com/kumagallium/Graphium/compare/v0.72.4...v0.73.0) - 2026-09-15
 
 - Sort chart settings into figure and panel, and scope the legend by @kumagallium in https://github.com/kumagallium/Graphium/pull/930
