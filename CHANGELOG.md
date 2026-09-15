@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.72.4](https://github.com/kumagallium/Graphium/compare/v0.72.3...v0.72.4) - 2026-09-15
+
+- Encode media uploads to base64 in chunks instead of one byte at a time by @kumagallium in https://github.com/kumagallium/Graphium/pull/925
+
 ## [v0.72.3](https://github.com/kumagallium/Graphium/compare/v0.72.2...v0.72.3) - 2026-09-14
 
 - Show Ctrl instead of ⌘ in shortcut hints on Windows and Linux by @kumagallium in https://github.com/kumagallium/Graphium/pull/919
