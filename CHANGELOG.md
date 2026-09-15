@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.74.1](https://github.com/kumagallium/Graphium/compare/v0.74.0...v0.74.1) - 2026-09-15
+
 ## [v0.74.0](https://github.com/kumagallium/Graphium/compare/v0.73.0...v0.74.0) - 2026-09-15
 
 - Design proposal for cross-note processes (plan notes and operation notes) by @kumagallium in https://github.com/kumagallium/Graphium/pull/917
