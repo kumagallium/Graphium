@@ -2749,6 +2749,7 @@ export const ja: Record<string, string> = {
   "localView.title": "周辺を時系列で見る",
   "localView.origin": "起点",
   "localView.depth": "深さ",
+  "localView.depthHint": "計画に属さないノートが起点のときだけ。参照を何ホップ辿って同じ層に並べるか",
   "localView.lane.parent": "計画",
   "localView.lane.siblings": "工程ノート",
   "localView.lane.children": "ステップ",

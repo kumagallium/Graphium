@@ -209,8 +209,17 @@ export function LocalGraphView({
       <div className="flex items-center gap-3 text-sm flex-wrap">
         <span className="text-muted-foreground">{t("localView.origin")}</span>
         {originPicker}
-        <span className="ml-2 text-muted-foreground">{t("localView.depth")}</span>
-        <DepthSegment depth={depth} onChange={onDepthChange} />
+        {/* 深さは「計画に属さないノート」を起点にしたときだけ効く（参照を何ホップ辿って
+            同じ層に並べるか）。計画や計画の工程ノートが起点なら同じ層は計画で決まるので、
+            効かない場面では出さない（押しても何も起きない操作を見せない） */}
+        {model && !model.parent && model.children.kind === "steps" && (
+          <>
+            <span className="ml-2 text-muted-foreground" title={t("localView.depthHint")}>
+              {t("localView.depth")}
+            </span>
+            <DepthSegment depth={depth} onChange={onDepthChange} />
+          </>
+        )}
         {model && model.plans.length > 1 && (
           <span className="text-xs text-muted-foreground">
             {t("localView.otherPlans", { names: model.plans.slice(1).map((p) => p.title).join(", ") })}
