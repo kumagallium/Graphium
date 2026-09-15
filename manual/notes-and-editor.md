@@ -296,7 +296,7 @@ A table brought in from a measurement file shows its first rows with the rest fo
 
 Like the time-series table, an index table is not a separate kind of table — it is an ordinary table with the row-to-note behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into index table**". Turning it off removes the row-to-note links (the notes themselves are untouched).
 
-In a [Plan note](#folders), the notes created from an index table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input.
+In a [Plan note](#folders), the notes created from an index table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input. A plan's index table can also carry an **Input from** column: writing other rows' names into a row's cell (comma-separated) declares planned lines in that Operations graph — see [The provenance graph panel](/labels-and-provenance#the-provenance-graph-panel).
 
 ![An index table with Name and condition columns](/screenshots/index-table.png)
 

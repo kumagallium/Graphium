@@ -364,7 +364,9 @@ export type FlowEntity = {
   externalOrigin?: ExternalFlowOrigin;
 };
 
-export type FlowEdgeKind = "used" | "generates" | "orderOnly" | "external" | "derived";
+export type FlowEdgeKind = "used" | "generates" | "orderOnly" | "external" | "derived" | "planned";
+// planned: 計画ノートの工程フロー専用。表の「入力元」列（planned-input）から作る予定の線。
+//          step → step（工程ノード → 工程ノード）。実績（used）が無いときだけ描く
 
 export type FlowEdge = {
   id: string;
@@ -374,6 +376,12 @@ export type FlowEdge = {
   target: string;
   /** orderOnly のみ: 裏に informed_by リンクがあり削除できるか（editor 側で判定して付与） */
   deletable?: boolean;
+  /**
+   * 工程フロー専用: 実績の線（used）と計画（入力元列）の突き合わせ。
+   * asPlanned = 予定どおりの受け渡し / unplanned = 予定に無かった受け渡し。
+   * 計画に予定の線が 1 本も無いときは付けない（印を出さない）
+   */
+  plan?: "asPlanned" | "unplanned";
   /** derived のみ: 元のブロック間リンク種別（derived_from / reproduction_of / used / generated）。
    *  無指定は derived_from 由来 — 表示側の色・ラベルの出し分けに使う */
   linkType?: string;

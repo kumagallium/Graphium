@@ -666,3 +666,45 @@ export const PlanFlowNodes: Story = {
     />
   ),
 };
+
+// ── 予定の線（planned edges）── 4 状態を 1 画面で確認する ──
+//
+// 灰色の点線「予定」（配合 → 測定A、焼成 → 保管。まだ実績が無い/計画だけの状態）、
+// forest 実線「計画どおり」（配合 → 焼成）、amber 実線「計画外」（測定A → 保管、
+// 予定に無かった受け渡し）。connectNoteRefs を有効にして、工程ノード同士のドラッグ
+// 接続（onConnectSteps）と予定の線の削除（onRemovePlannedEdge）も確認できる。
+
+const PLAN_FLOW_PLANNED_EDGES_GRAPH: FlowGraphData = {
+  steps: [
+    { id: "note:note-1", name: "配合", params: [], noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0 } },
+    { id: "note:note-2", name: "焼成", params: [], noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1 } },
+    { id: "note:note-3", name: "測定A", params: [], noteRef: { noteId: "note-3", tableBlockId: "tbl-plan", rowIndex: 2 } },
+    { id: "note:note-4", name: "保管", params: [], noteRef: { noteId: "note-4", tableBlockId: "tbl-plan", rowIndex: 3 } },
+  ],
+  entities: [],
+  edges: [
+    // 予定の線（まだ実績が無い計画）
+    { id: "pl1", kind: "planned", source: "note:note-1", target: "note:note-3", deletable: true },
+    { id: "pl2", kind: "planned", source: "note:note-2", target: "note:note-4", deletable: true },
+    // 計画どおり（予定と実績が一致した受け渡し）
+    { id: "u1", kind: "used", source: "note:note-1", target: "note:note-2", plan: "asPlanned" },
+    // 計画外（実績はあるが予定に無かった受け渡し）
+    { id: "u2", kind: "used", source: "note:note-3", target: "note:note-4", plan: "unplanned" },
+  ],
+};
+
+export const PlanFlowPlannedEdges: Story = {
+  name: "予定の線（planned edges）",
+  render: () => (
+    <StepFlowView
+      graph={PLAN_FLOW_PLANNED_EDGES_GRAPH}
+      connectNoteRefs
+      onConnectSteps={(producer, consumer) => {
+        console.log("onConnectSteps", producer, consumer);
+        return { error: null };
+      }}
+      onRemovePlannedEdge={(producer, consumer) => console.log("onRemovePlannedEdge", producer, consumer)}
+      onOpenNoteRef={(ref: FlowNoteRef, step: FlowStep) => console.log("onOpenNoteRef", ref, step)}
+    />
+  ),
+};

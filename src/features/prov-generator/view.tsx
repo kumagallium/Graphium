@@ -276,7 +276,7 @@ export function ProvGraphPanel({
   const isPlan = isPlanNote(noteContexts);
   const [subTab, setSubTab] = useState<"workSteps" | "operations">("operations");
   // 「工程」タブの統計は PlanFlowEditor から onGraphChange で受け取る
-  const [planFlowInfo, setPlanFlowInfo] = useState<{ graph: FlowGraphData } | null>(null);
+  const [planFlowInfo, setPlanFlowInfo] = useState<{ graph: FlowGraphData; unresolvedPlanned?: number } | null>(null);
 
   useEffect(() => {
     if (!expanded) return;
@@ -353,6 +353,11 @@ export function ProvGraphPanel({
       <LegendDot color={THEME.result.bg} shape="square" label={getDisplayLabelName("output")} />
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+        {showOperationsTab && (planFlowInfo?.unresolvedPlanned ?? 0) > 0 && (
+          <span style={{ color: "var(--amber-ink)" }} title={t("planFlow.unresolvedPlannedHint")}>
+            {t("planFlow.unresolvedPlanned", { n: String(planFlowInfo!.unresolvedPlanned) })}
+          </span>
+        )}
         <span style={{ color: "var(--color-text-tertiary)" }}>
           {t("provPanel.graphStats", {
             nodes: String(activeGraph.steps.length + activeGraph.entities.length),

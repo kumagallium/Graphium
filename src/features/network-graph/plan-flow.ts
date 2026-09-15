@@ -35,7 +35,7 @@ import type {
 import type { BlockLink } from "../../lib/block-link-types";
 import type { GraphiumDocument, TableMeta } from "../../lib/document-types";
 import { readCellText, collectTableBlocks } from "../table-meta/table-cells";
-import { hasColumnType } from "../table-meta/types";
+import { hasColumnType, findColumnNameByType } from "../table-meta/types";
 import { isPlanNote } from "../note-context/reserved-folders";
 import { t } from "../../i18n";
 
@@ -49,10 +49,44 @@ export type OperationRow = {
   /** 1 列目セルの表示テキスト（"@名前" 形式のこともある） */
   name: string;
   noteId: string | null;
-  /** 2 列目以降。ヘッダ名があれば "ヘッダ: 値"、空セルは出さない */
+  /** 2 列目以降。ヘッダ名があれば "ヘッダ: 値"、空セルは出さない（planned-input 列は含まない） */
   attrs: ActivityParam[];
   state?: OperationRowState;
+  /** ColumnType "planned-input" の列セルを parsePlannedInputs したもの。列が無ければ [] */
+  plannedFrom: string[];
 };
+
+// ── 予定の線（入力元セル） ──
+
+/** 入力元セルで名前を区切る既定の区切り文字（書き出し用） */
+export const PLANNED_INPUT_SEPARATOR = "、";
+
+/**
+ * 入力元セルの文字列を行名の配列に分解する。
+ * 区切りは「、」「,」「，」「;」「\n」のいずれか。各名前は trim し、先頭 "@" を外し、
+ * 大文字小文字を区別せず重複を除く（先に出た表記を残す）。
+ */
+export function parsePlannedInputs(cell: string): string[] {
+  const parts = cell.split(/[、,，;\n]+/);
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of parts) {
+    let name = raw.trim();
+    if (!name) continue;
+    if (name.startsWith("@")) name = name.slice(1).trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(name);
+  }
+  return result;
+}
+
+/** 行名の配列を入力元セルの文字列に書き出す */
+export function formatPlannedInputs(names: string[]): string {
+  return names.join(PLANNED_INPUT_SEPARATOR);
+}
 
 /** 表示名を正規化する（同名判定・noteLinks フォールバック用）。trim・小文字・先頭 "@" を除く */
 function normalizeOperationName(name: string): string {
@@ -110,6 +144,19 @@ export function collectOperationRowsFromBlocks(
     if (tableRows.length === 0) continue;
     const headerRow = tableRows[0];
 
+    // "planned-input" 列（既定名「入力元」）の列番号をヘッダから探す。無ければ -1（plannedFrom は常に []）
+    const plannedInputColumnName = findColumnNameByType(meta, "planned-input");
+    let plannedInputColIndex = -1;
+    if (plannedInputColumnName && headerRow) {
+      const headerCells: any[] = headerRow.cells ?? [];
+      for (let c = 0; c < headerCells.length; c++) {
+        if (readCellText(headerCells[c]) === plannedInputColumnName) {
+          plannedInputColIndex = c;
+          break;
+        }
+      }
+    }
+
     for (let i = 1; i < tableRows.length; i++) {
       const row = tableRows[i];
       const cells: any[] = row?.cells ?? [];
@@ -134,14 +181,19 @@ export function collectOperationRowsFromBlocks(
       }
 
       const attrs: ActivityParam[] = [];
+      let plannedFrom: string[] = [];
       for (let c = 1; c < cells.length; c++) {
+        if (c === plannedInputColIndex) {
+          plannedFrom = parsePlannedInputs(readCellText(cells[c]));
+          continue;
+        }
         const value = readCellText(cells[c]);
         if (!value) continue;
         const headerName = headerRow ? readCellText(headerRow.cells?.[c]) : "";
         attrs.push({ label: headerName ? `${headerName}: ${value}` : value });
       }
 
-      rows.push({ rowIndex: i, tableBlockId: blockId, name: rawName, noteId, attrs, state });
+      rows.push({ rowIndex: i, tableBlockId: blockId, name: rawName, noteId, attrs, state, plannedFrom });
     }
   }
 
@@ -159,6 +211,55 @@ export function collectOperationRows(
   const page = doc.pages?.[0];
   if (!page) return [];
   return collectOperationRowsFromBlocks(page.blocks ?? [], page.tableMeta, index);
+}
+
+/**
+ * 入力元セルの 1 名前を工程行に解決する。先頭 "@" を外し trim・小文字で行名と照合する。
+ * 同名の行が複数あれば先に出た行を採る（duplicateName の扱いと揃える）。解決できなければ null
+ */
+export function resolvePlannedRow(rows: OperationRow[], name: string): OperationRow | null {
+  const target = normalizeOperationName(name);
+  for (const row of rows) {
+    if (normalizeOperationName(row.name) === target) return row;
+  }
+  return null;
+}
+
+/**
+ * fromName → toName という予定の線を足すと循環になるか判定する（行名ベース、純関数）。
+ * rows が既に持つ plannedFrom を「入力元 → 行」の辺として、to から from に到達できれば
+ * 循環になる。fromName と toName が同じ行（自己参照）も常に true。
+ */
+export function wouldCreatePlannedCycle(
+  rows: OperationRow[],
+  fromName: string,
+  toName: string,
+): boolean {
+  const from = normalizeOperationName(fromName);
+  const to = normalizeOperationName(toName);
+  if (from === to) return true;
+
+  const adjacency = new Map<string, string[]>();
+  for (const row of rows) {
+    const rowKey = normalizeOperationName(row.name);
+    for (const inputName of row.plannedFrom) {
+      const inputKey = normalizeOperationName(inputName);
+      const list = adjacency.get(inputKey);
+      if (list) list.push(rowKey);
+      else adjacency.set(inputKey, [rowKey]);
+    }
+  }
+
+  const visited = new Set<string>();
+  const stack = [to];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (current === from) return true;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    for (const next of adjacency.get(current) ?? []) stack.push(next);
+  }
+  return false;
 }
 
 // ── index から取れる工程集合 ──
@@ -225,7 +326,14 @@ export type PlanFlowResult = {
   graph: FlowGraphData;
   truncated: boolean;
   brokenCount: number;
+  /** 入力元セルに書かれたが行名として解決できなかった名前（存在しない行名など） */
+  unresolvedPlanned: { rowName: string; name: string }[];
 };
+
+/** 行の FlowStep id（steps 配列の id と同じ規則。行が未作成なら表の位置で仮の id にする） */
+function stepIdOfRow(row: OperationRow): string {
+  return row.noteId ? `note:${row.noteId}` : `row:${row.tableBlockId}:${row.rowIndex}`;
+}
 
 /** entity の同一性キー（process-index.ts の outputIdentity と同じ規則） */
 function outputIdentityOf(entity: FlowEntity): string {
@@ -253,7 +361,7 @@ export function buildPlanFlowGraph(input: {
   const { rows, index, processIndex } = input;
 
   const steps: FlowStep[] = rows.map((row) => ({
-    id: row.noteId ? `note:${row.noteId}` : `row:${row.tableBlockId}:${row.rowIndex}`,
+    id: stepIdOfRow(row),
     name: stripLeadingAt(row.name),
     params: row.attrs,
     noteRef: {
@@ -466,5 +574,65 @@ export function buildPlanFlowGraph(input: {
     }
   }
 
-  return { graph: { steps, entities, edges }, truncated, brokenCount };
+  // ── 予定の線（planned-input 列）──
+  // rows.plannedFrom を行名解決し、(fromStepId, toStepId) の予定ペアを集める。
+  // 解決できない名前は unresolvedPlanned に積んで無視する。
+  const unresolvedPlanned: { rowName: string; name: string }[] = [];
+  const plannedPairs: { fromStepId: string; toStepId: string }[] = [];
+  const plannedPairKeys = new Set<string>();
+
+  for (const row of rows) {
+    if (row.plannedFrom.length === 0) continue;
+    const toStepId = stepIdOfRow(row);
+    for (const inputName of row.plannedFrom) {
+      const fromRow = resolvePlannedRow(rows, inputName);
+      if (!fromRow) {
+        unresolvedPlanned.push({ rowName: stripLeadingAt(row.name), name: inputName });
+        continue;
+      }
+      const fromStepId = stepIdOfRow(fromRow);
+      const key = `${fromStepId}->${toStepId}`;
+      if (plannedPairKeys.has(key)) continue;
+      plannedPairKeys.add(key);
+      plannedPairs.push({ fromStepId, toStepId });
+    }
+  }
+
+  // 計画に予定の線が 1 本もなければ、実績の used エッジに plan フラグを一切付けない
+  const hasAnyPlanned = plannedPairs.length > 0;
+  const matchedPlannedKeys = new Set<string>();
+
+  if (hasAnyPlanned) {
+    // entity id → それを generates した step id（実績の突き合わせ用）
+    const producerByEntity = new Map<string, string>();
+    for (const edge of edges) {
+      if (edge.kind === "generates") producerByEntity.set(edge.target, edge.source);
+    }
+    for (const edge of edges) {
+      if (edge.kind !== "used") continue;
+      const producerStepId = producerByEntity.get(edge.source);
+      if (!producerStepId) continue; // broken 等、生産元が特定できない used は突き合わせない
+      const key = `${producerStepId}->${edge.target}`;
+      if (plannedPairKeys.has(key)) {
+        edge.plan = "asPlanned";
+        matchedPlannedKeys.add(key);
+      } else {
+        edge.plan = "unplanned";
+      }
+    }
+  }
+
+  // 実績（asPlanned で突き合わせ済み）が無い予定ペアだけ、予定の線として描く
+  for (const { fromStepId, toStepId } of plannedPairs) {
+    const key = `${fromStepId}->${toStepId}`;
+    if (matchedPlannedKeys.has(key)) continue;
+    ensureEdge({
+      id: `planned:${fromStepId}:${toStepId}`,
+      kind: "planned",
+      source: fromStepId,
+      target: toStepId,
+    });
+  }
+
+  return { graph: { steps, entities, edges }, truncated, brokenCount, unresolvedPlanned };
 }
