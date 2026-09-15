@@ -23,7 +23,7 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson } from "./store";
 import {
   fetchModels,
   type ModelInfo,
@@ -334,6 +334,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [jpFont, setJpFont] = useState<JpFont>("");
   const [colorMode, setColorMode] = useState<ColorMode>("");
   const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false });
+  // AI 機能ごとの表示切り替え（既定 ON）。loadSettings() は常に両方 boolean で返すので undefined は来ない
+  const [features, setFeatures] = useState<FeatureFlags>({ insights: true, worldGrounding: true });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
 
   // サーバーデータ
@@ -593,6 +595,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setJpFont(settings.jpFont ?? "");
     setColorMode(settings.colorMode ?? "");
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false });
+    setFeatures(settings.features ?? { insights: true, worldGrounding: true });
     setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
     setSaved(false);
     setShowAddForm(false);
@@ -1200,13 +1203,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       jpFont,
       colorMode,
       experimental,
+      features,
       atomizeIngestBudget,
     });
     applyFontMode(latinFont, jpFont);
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -1492,7 +1496,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
        *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
       <div className="flex border-b border-border px-6 max-w-3xl overflow-x-auto">
-        {(["display", "storage", "ai", "grounding", "maintenance", "usage", "about"] as Tab[]).map((tabId) => {
+        {(["display", "storage", "ai", "grounding", "maintenance", "usage", "about"] as Tab[])
+          // 照合データタブは世界照合のマスタースイッチが OFF のとき隠す
+          .filter((tabId) => tabId !== "grounding" || features.worldGrounding)
+          .map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
@@ -3002,98 +3009,164 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             </div>
 
-            {/* 世界照合 — 自動照合トグルと専用モデル */}
+            {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
             <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
               <div className="space-y-4">
-                {/* 自動 world-grounding（opt-in / 既定 OFF）。
-                    既存の "user-triggered only" を覆すので明示トグル。 */}
+                {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ — 照合済みの
+                    結果（grounding.validity）は消えず、再度 ON にすれば見える。 */}
                 <div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
-                        setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
+                        setFeatures({ ...features, worldGrounding: !features.worldGrounding });
                         setSaved(false);
                       }}
                       role="switch"
-                      aria-checked={experimental.autoGrounding}
-                      aria-label={t("settings.autoGrounding.title")}
-                      className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${experimental.autoGrounding ? "bg-primary" : "bg-input"}`}
+                      aria-checked={features.worldGrounding}
+                      aria-label={t("settings.features.worldGrounding.title")}
+                      className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${features.worldGrounding ? "bg-primary" : "bg-input"}`}
                     >
                       <span
                         className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                        style={{ transform: experimental.autoGrounding ? "translateX(15px)" : "translateX(1px)" }}
+                        style={{ transform: features.worldGrounding ? "translateX(15px)" : "translateX(1px)" }}
                       />
                     </button>
                     <label className="text-sm font-medium text-foreground">
-                      {t("settings.autoGrounding.title")}
+                      {t("settings.features.worldGrounding.title")}
                     </label>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.autoGrounding.help")}
+                    {t("settings.features.worldGrounding.help")}
                   </p>
                 </div>
 
-                {/* 世界照合専用モデル（任意）。空ならチャット・洞察モデル → default にフォールバック。
-                    手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.groundingModel")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={groundingModelStored}
-                      onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
-                      </option>
-                      {models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.groundingModelHelp")}
-                  </p>
-                </div>
+                {features.worldGrounding && (
+                  <>
+                    {/* 自動 world-grounding（opt-in / 既定 OFF）。
+                        既存の "user-triggered only" を覆すので明示トグル。 */}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
+                            setSaved(false);
+                          }}
+                          role="switch"
+                          aria-checked={experimental.autoGrounding}
+                          aria-label={t("settings.autoGrounding.title")}
+                          className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${experimental.autoGrounding ? "bg-primary" : "bg-input"}`}
+                        >
+                          <span
+                            className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                            style={{ transform: experimental.autoGrounding ? "translateX(15px)" : "translateX(1px)" }}
+                          />
+                        </button>
+                        <label className="text-sm font-medium text-foreground">
+                          {t("settings.autoGrounding.title")}
+                        </label>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {t("settings.autoGrounding.help")}
+                      </p>
+                    </div>
+
+                    {/* 世界照合専用モデル（任意）。空ならチャット・洞察モデル → default にフォールバック。
+                        手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
+                    <div>
+                      <label className="text-xs font-medium text-foreground mb-2 block">
+                        {t("settings.groundingModel")}
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={groundingModelStored}
+                          onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
+                          disabled={modelsLoading || models.length === 0}
+                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                        >
+                          <option value="">
+                            {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
+                          </option>
+                          {models.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {t("settings.groundingModelHelp")}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* 洞察の発見 — 取り込み時のスキャン予算（LLM 呼び出し回数上限）。
+            {/* 洞察の発見 — マスタースイッチ + 取り込み時のスキャン予算（LLM 呼び出し回数上限）。
                 「1 クラスタで何件拾えるか」の見積もり係数は置かず、ユーザーが決めるのは
                 コスト（回数）だけ。実際に視野へ入った件数は結果に実測値で表示される。 */}
             <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionDiscovery")}</h3>
-              <div>
-                <label className="text-xs font-medium text-foreground mb-2 block" htmlFor="atomize-ingest-budget">
-                  {t("settings.atomizeIngestBudget")}
-                </label>
-                <input
-                  id="atomize-ingest-budget"
-                  type="number"
-                  min={0}
-                  max={ATOMIZE_INGEST_BUDGET_MAX}
-                  step={1}
-                  value={atomizeIngestBudget}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setAtomizeIngestBudget(
-                      Number.isFinite(v) ? Math.min(ATOMIZE_INGEST_BUDGET_MAX, Math.max(0, Math.round(v))) : 3,
-                    );
-                    setSaved(false);
-                  }}
-                  className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                />
-                <p className="text-xs text-muted-foreground mt-2">
-                  {t("settings.atomizeIngestBudget.help")}
-                </p>
+              <div className="space-y-4">
+                {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ —
+                    作成済みの洞察（atom）は消えず、再度 ON にすれば見える。 */}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFeatures({ ...features, insights: !features.insights });
+                        setSaved(false);
+                      }}
+                      role="switch"
+                      aria-checked={features.insights}
+                      aria-label={t("settings.features.insights.title")}
+                      className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${features.insights ? "bg-primary" : "bg-input"}`}
+                    >
+                      <span
+                        className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                        style={{ transform: features.insights ? "translateX(15px)" : "translateX(1px)" }}
+                      />
+                    </button>
+                    <label className="text-sm font-medium text-foreground">
+                      {t("settings.features.insights.title")}
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t("settings.features.insights.help")}
+                  </p>
+                </div>
+
+                {features.insights && (
+                  <div>
+                    <label className="text-xs font-medium text-foreground mb-2 block" htmlFor="atomize-ingest-budget">
+                      {t("settings.atomizeIngestBudget")}
+                    </label>
+                    <input
+                      id="atomize-ingest-budget"
+                      type="number"
+                      min={0}
+                      max={ATOMIZE_INGEST_BUDGET_MAX}
+                      step={1}
+                      value={atomizeIngestBudget}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setAtomizeIngestBudget(
+                          Number.isFinite(v) ? Math.min(ATOMIZE_INGEST_BUDGET_MAX, Math.max(0, Math.round(v))) : 3,
+                        );
+                        setSaved(false);
+                      }}
+                      className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {t("settings.atomizeIngestBudget.help")}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3459,7 +3532,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         )}
 
         {/* ── Grounding KB タブ（world-model-grounding Phase 2 / PR 2A） ── */}
-        {tab === "grounding" && <GroundingKbTab />}
+        {tab === "grounding" && features.worldGrounding && <GroundingKbTab />}
 
         {/* ── Maintenance タブ ── */}
         {tab === "maintenance" && (

@@ -497,6 +497,28 @@ export const NoAiConfigured: Story = {
   ),
 };
 
+export const InsightsHidden: Story = {
+  name: "洞察を隠した状態（features.insights OFF）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <FileSidebar
+        {...COMMON_PROPS}
+        showAtomLayer={false}
+      />
+      <div className="flex-1 p-8 text-sm text-muted-foreground">
+        <h2 className="text-base font-semibold mb-2">設定「洞察を使う」OFF</h2>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>ナレッジの Atom 行が消え、合計件数からも除かれる</li>
+          <li>作成済みの Atom ファイル自体は削除されない（再度 ON で復帰）</li>
+        </ol>
+        <p className="mt-4 text-xs">
+          COMMON_PROPS の wikiCounts.atom は 3 のまま渡しているが、行としては出ない。
+        </p>
+      </div>
+    </div>
+  ),
+};
+
 // サイドバーの「起動中」表示はデスクトップ版だけのもので、判定は platform.ts の
 // isTauri() がモジュール直呼びで行う。Storybook で見るには Tauri の注入ポイントを
 // 差し込むしかないので、描画前に立てて、ストーリーを離れたら必ず戻す。
