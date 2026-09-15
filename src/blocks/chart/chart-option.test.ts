@@ -13,7 +13,8 @@ import {
   type ChartBlockConfig,
 } from "./chart-config";
 import type { ChartDataResult } from "./chart-data";
-import { PANEL_LABEL_INSET } from "./chart-theme";
+import { CHART_LEGEND_ITEM, PANEL_LABEL_INSET } from "./chart-theme";
+import { scatterLegendIcon } from "./legend-icon";
 
 type OkResult = Extract<ChartDataResult, { kind: "ok" }>;
 
@@ -387,6 +388,67 @@ describe("buildOption（枠の分割）", () => {
     expect(option.yAxis.map((a: any) => a.name)).toEqual(["", ""]);
     expect(option.graphic[0].style.text).toBe("{it|I} (a.u.)");
     expect(option.graphic[0].style.rich).toBeDefined();
+  });
+
+  describe("散布図系列の凡例（横並びでマーカーが前の項目に寄らない）", () => {
+    it("散布図 2 系列: 記号枠を正方形に詰め、アイコンは既定のまま", () => {
+      const option = buildOption(numericResult, config({ chartType: "scatter" }));
+      expect(option.legend.itemWidth).toBe(CHART_LEGEND_ITEM.height);
+      expect(option.legend.itemHeight).toBe(CHART_LEGEND_ITEM.height);
+      expect(option.legend.data).toEqual(["Intensity", "Reference"]);
+    });
+
+    it("折れ線 + 散布図: 枠 50 のまま、散布図の項目だけマーカーを右端に寄せたアイコン", () => {
+      const option = buildOption(
+        numericResult,
+        config({
+          chartType: "line",
+          series: [
+            { sourceBlockId: "t1", xColumn: "2theta", yColumn: "Intensity" },
+            { sourceBlockId: "t1", xColumn: "2theta", yColumn: "Reference", type: "scatter", symbol: "emptyRect" },
+          ],
+        })
+      );
+      expect(option.legend.itemWidth).toBe(CHART_LEGEND_ITEM.width);
+      expect(option.legend.data).toEqual([
+        "Intensity",
+        { name: "Reference", icon: scatterLegendIcon("emptyRect") },
+      ]);
+    });
+
+    it("縦並びの凡例は変えない", () => {
+      const option = buildOption(
+        numericResult,
+        config({ chartType: "scatter", legendPosition: "inside-top-right", legendOrient: "vertical" })
+      );
+      expect(option.legend.itemWidth).toBe(CHART_LEGEND_ITEM.width);
+      expect(option.legend.data).toEqual(["Intensity", "Reference"]);
+    });
+
+    it("折れ線だけの凡例は変えない", () => {
+      const option = buildOption(numericResult, config());
+      expect(option.legend.itemWidth).toBe(CHART_LEGEND_ITEM.width);
+      expect(option.legend.data).toEqual(["Intensity", "Reference"]);
+    });
+
+    it("panel スコープは枠ごとの凡例の中身で決める", () => {
+      const option = buildOption(
+        numericResult,
+        config({
+          chartType: "line",
+          panels: { ...DEFAULT_PANELS_CONFIG, rows: 2 },
+          legendScope: "panel",
+          series: [
+            { sourceBlockId: "t1", xColumn: "2theta", yColumn: "Intensity", panelIndex: 0 },
+            { sourceBlockId: "t1", xColumn: "2theta", yColumn: "Reference", type: "scatter", panelIndex: 1 },
+          ],
+        }),
+        [],
+        { width: 720, height: 400 }
+      );
+      expect(option.legend[0]).toMatchObject({ itemWidth: CHART_LEGEND_ITEM.width, data: ["Intensity"] });
+      expect(option.legend[1]).toMatchObject({ itemWidth: CHART_LEGEND_ITEM.height, data: ["Reference"] });
+    });
   });
 
   describe("凡例の範囲（legendScope）", () => {
