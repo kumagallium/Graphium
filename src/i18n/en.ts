@@ -2752,6 +2752,8 @@ export const en: Record<string, string> = {
   "planFlow.unplanned": "Unplanned",
   "planFlow.inputSourceColumn": "Input from",
   "planFlow.removePlanned": "Remove planned line",
+  "planFlow.unresolvedPlanned": "{n} unknown names in Input from",
+  "planFlow.unresolvedPlannedHint": "Some names in the Input from column do not match any operation row. Fix them to match the row names",
   "planFlow.plannedCycle": "This would make the plan circular (a line back to an earlier operation is not allowed)",
   "planFlow.workStepsEmptyHint": "Use \"Add step\" to build the steps here",
   "localView.title": "Timeline around this note",

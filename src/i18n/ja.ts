@@ -2750,6 +2750,8 @@ export const ja: Record<string, string> = {
   "planFlow.unplanned": "計画外",
   "planFlow.inputSourceColumn": "入力元",
   "planFlow.removePlanned": "予定を外す",
+  "planFlow.unresolvedPlanned": "入力元に無い名前 {n} 件",
+  "planFlow.unresolvedPlannedHint": "表の「入力元」に、工程の行名と一致しない名前があります。行名に合わせて直してください",
   "planFlow.plannedCycle": "予定が循環します（元の工程に戻る線は引けません）",
   "planFlow.workStepsEmptyHint": "『作業手順を追加』から、ここで手順を組み立てられます",
   "localView.title": "周辺を時系列で見る",

@@ -59,6 +59,12 @@ const OUTPUT_TERRACOTTA = KIND_PALETTE.output.main;
 const DANGER = "var(--color-destructive)";
 /** 工程フローの broken エッジ（cross-note 参照が解決できない）用の薄い色 */
 const BROKEN_COLOR = "var(--color-text-tertiary)";
+/** 計画ノートの工程フロー専用: 予定の線（灰色の点線） */
+const PLANNED_COLOR = "var(--color-muted-foreground)";
+/** 実績が予定どおりだった線（緑の実線） */
+const PLAN_AS_PLANNED_COLOR = "var(--forest)";
+/** 実績はあるが予定に無かった線（琥珀の実線） */
+const PLAN_UNPLANNED_COLOR = "var(--amber)";
 
 /**
  * derived エッジ（prov:wasDerivedFrom）の色とラベルを、元のブロック間リンク種別で
@@ -80,7 +86,12 @@ function derivedEdgeVisual(linkType?: string): { color: string; label: string } 
   }
 }
 
-/** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */
+/**
+ * onConnectSteps の戻り値。error があれば画面上部にバナーで表示する。
+ * "cycle_detected" は固定文言（t("step.cycleBlocked")）、それ以外の文字列は
+ * そのまま表示する（plan-flow-editor.tsx の循環メッセージ等、呼び出し側が
+ * 文脈に応じた文言を組み立てられるようにするため）
+ */
 export type ConnectResult = { error: string | null };
 
 /**
@@ -216,6 +227,10 @@ const EDGE_STYLES: Record<string, Partial<Edge>> = {
     style: { stroke: ACTIVITY_BLUE, strokeWidth: 1.5, strokeDasharray: "6 4" },
     markerEnd: { type: MarkerType.ArrowClosed, color: ACTIVITY_BLUE, width: 16, height: 16 },
   },
+  planned: {
+    style: { stroke: PLANNED_COLOR, strokeWidth: 1.5, strokeDasharray: "5 4" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: PLANNED_COLOR, width: 16, height: 16 },
+  },
   external: {
     style: { stroke: OUTPUT_TERRACOTTA, strokeWidth: 1.5, strokeDasharray: "5 4" },
     markerEnd: {
@@ -229,10 +244,20 @@ const EDGE_STYLES: Record<string, Partial<Edge>> = {
   // setEdges 内で derivedEdgeVisual() から動的に組み立てる
 };
 
-function isEditableStep(graph: FlowGraphData, id: string): boolean {
-  // 別ノート由来（externalOrigin）と工程ノート（noteRef）は、このノートの本文に
-  // 書き込む対象ではないので接続の端点にしない
-  return graph.steps.some((step) => step.id === id && !step.externalOrigin && !step.noteRef);
+/**
+ * 接続の端点として使える step か。別ノート由来（externalOrigin）は常に不可
+ * （このノートの本文に書き込む対象ではない）。工程ノート（noteRef）は、
+ * connectNoteRefs が有効な工程フロー（予定の線を引く画面）でだけ許す
+ */
+function isEditableStep(graph: FlowGraphData, id: string, connectNoteRefs = false): boolean {
+  return graph.steps.some(
+    (step) =>
+      step.id === id &&
+      !step.externalOrigin &&
+      // 工程ノードは connectNoteRefs のときだけ。同名の行（duplicateName）は予定が行名で
+      // 保存されるため、引いても 1 番目の同名行に付け替わってしまう。端点にしない
+      (!step.noteRef || (connectNoteRefs && step.noteRef.state !== "duplicateName")),
+  );
 }
 
 function StepFlowCanvas({
@@ -250,6 +275,8 @@ function StepFlowCanvas({
   onOpenNoteRef,
   emptyHint,
   emptyTitle,
+  connectNoteRefs = false,
+  onRemovePlannedEdge,
   staticHint,
   getStepContentCount,
   onAddEntity,
@@ -285,10 +312,17 @@ function StepFlowCanvas({
   // 実測待ちで見送った回数と、予約中の再試行フレーム
   const layoutRetryRef = useRef(0);
   const layoutRetryRafRef = useRef<number | null>(null);
-  // orderOnly エッジの削除メニュー（クリックで開く。即削除しないことで誤操作を防ぐ）
-  const [edgeMenu, setEdgeMenu] = useState<{ source: string; target: string; x: number; y: number } | null>(null);
-  // 循環でドラッグ接続を拒否したときの警告。0 = 非表示
-  const [cycleWarnAt, setCycleWarnAt] = useState(0);
+  // orderOnly / planned エッジの削除メニュー（クリックで開く。即削除しないことで誤操作を防ぐ）
+  const [edgeMenu, setEdgeMenu] = useState<{
+    source: string;
+    target: string;
+    x: number;
+    y: number;
+    kind: "orderOnly" | "planned";
+  } | null>(null);
+  // ドラッグ接続を拒否したときの警告。message は onConnectSteps の error をそのまま
+  // 出す（"cycle_detected" だけは固定文言に差し替える）。null = 非表示
+  const [connectWarn, setConnectWarn] = useState<{ at: number; message: string } | null>(null);
   // 属性テーブルに出す選択中ノード。グラフ再生成でノードが作り直されても
   // 選択は保つ（属性を足した直後にテーブルが空へ戻らないように）
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -358,10 +392,16 @@ function StepFlowCanvas({
   const lastStructureRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!cycleWarnAt) return;
-    const id = setTimeout(() => setCycleWarnAt(0), 3000);
+    if (!connectWarn) return;
+    const id = setTimeout(() => setConnectWarn(null), 3000);
     return () => clearTimeout(id);
-  }, [cycleWarnAt]);
+  }, [connectWarn]);
+
+  // onConnectSteps の error をバナー文言へ変換。"cycle_detected" だけ固定文言、
+  // それ以外（plan-flow-editor.tsx の循環メッセージ等）はそのまま表示する
+  const showConnectError = useCallback((error: string) => {
+    setConnectWarn({ at: Date.now(), message: error === "cycle_detected" ? t("step.cycleBlocked") : error });
+  }, []);
 
   // ── FlowGraphData → React Flow の nodes / edges 同期 ──
   useEffect(() => {
@@ -412,6 +452,7 @@ function StepFlowCanvas({
           getContentCount: s.externalOrigin || s.noteRef ? undefined : getStepContentCount,
           distinguishers: distinguishers.get(s.id),
           showParams,
+          connectNoteRefs,
         },
         draggable: nodesAreDraggable,
         selected: s.id === selectedIdRef.current,
@@ -440,6 +481,14 @@ function StepFlowCanvas({
         // derived は linkType で色分けが変わるため、他の kind と違い静的な
         // EDGE_STYLES を引かず、その場で色・ラベルを組み立てる
         const derived = e.kind === "derived" ? derivedEdgeVisual(e.linkType) : null;
+        // 工程フロー（plan-flow.ts）専用: used エッジは予定（入力元列）との突き合わせで
+        // 「計画どおり」「計画外」の色分けが乗ることがある（plan 未設定なら従来どおり）
+        const planVisual =
+          e.kind === "used" && e.plan === "asPlanned"
+            ? { color: PLAN_AS_PLANNED_COLOR, label: t("planFlow.asPlanned") }
+            : e.kind === "used" && e.plan === "unplanned"
+              ? { color: PLAN_UNPLANNED_COLOR, label: t("planFlow.unplanned") }
+              : null;
         // 工程フロー（plan-flow.ts）の cross-note 参照が解決できなかった used エッジ。
         // 種別ごとの色分けより優先して、点線 + 薄い色 + ラベルで「切れている」ことを示す
         return {
@@ -451,38 +500,57 @@ function StepFlowCanvas({
                 style: { stroke: BROKEN_COLOR, strokeWidth: 1.5, strokeDasharray: "4 3", opacity: 0.7 },
                 markerEnd: { type: MarkerType.ArrowClosed, color: BROKEN_COLOR, width: 16, height: 16 },
               }
-            : derived
+            : planVisual
               ? {
-                  style: { stroke: derived.color, strokeWidth: 1.5 },
-                  markerEnd: { type: MarkerType.ArrowClosed, color: derived.color, width: 16, height: 16 },
+                  style: { stroke: planVisual.color, strokeWidth: 2 },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: planVisual.color, width: 16, height: 16 },
                 }
-              : EDGE_STYLES[e.kind]),
+              : derived
+                ? {
+                    style: { stroke: derived.color, strokeWidth: 1.5 },
+                    markerEnd: { type: MarkerType.ArrowClosed, color: derived.color, width: 16, height: 16 },
+                  }
+                : EDGE_STYLES[e.kind]),
           ...(e.broken
             ? {
                 label: t("planFlow.brokenRef"),
                 labelStyle: { fontSize: 9, fill: BROKEN_COLOR, fontWeight: 700 },
                 labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
               }
-            : e.kind === "orderOnly"
+            : planVisual
               ? {
-                  label: t("activityGraph.orderOnly"),
-                  labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
+                  label: planVisual.label,
+                  labelStyle: { fontSize: 9, fill: planVisual.color, fontWeight: 700 },
                   labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
                 }
-              : e.kind === "external"
+              : e.kind === "planned"
                 ? {
-                    label: t("activityGraph.externalProcess"),
-                    labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
+                    label: t("planFlow.planned"),
+                    labelStyle: { fontSize: 9, fill: PLANNED_COLOR, fontWeight: 700 },
                     labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
                   }
-                : derived
+                : e.kind === "orderOnly"
                   ? {
-                      label: derived.label,
-                      labelStyle: { fontSize: 9, fill: derived.color, fontWeight: 700 },
+                      label: t("activityGraph.orderOnly"),
+                      labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
                       labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
                     }
-                  : {}),
-          data: { kind: e.kind, deletable: e.deletable ?? false },
+                  : e.kind === "external"
+                    ? {
+                        label: t("activityGraph.externalProcess"),
+                        labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
+                        labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
+                      }
+                    : derived
+                      ? {
+                          label: derived.label,
+                          labelStyle: { fontSize: 9, fill: derived.color, fontWeight: 700 },
+                          labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
+                        }
+                      : {}),
+          // planned（予定の線）は表の 1 セルを書き戻すだけで消せるので、削除口が
+          // 渡されていれば常に deletable。orderOnly は裏の informed_by の有無で editor が決める
+          data: { kind: e.kind, deletable: e.kind === "planned" ? !!onRemovePlannedEdge : (e.deletable ?? false) },
         };
       }),
     );
@@ -525,6 +593,7 @@ function StepFlowCanvas({
     onRenameTableRow,
     onRemoveTableRow,
     showParams,
+    connectNoteRefs,
     setNodes,
     setEdges,
     // 保存済み配置の読み込み完了とリセットで組み直す。savedPositions / saveLayout
@@ -674,8 +743,17 @@ function StepFlowCanvas({
       if (!conn.source || !conn.target || conn.source === conn.target) return;
       const g = graphRef.current;
       const sourceEntity = g.entities.find((e) => e.id === conn.source);
-      const targetIsStep = g.steps.some((s) => s.id === conn.target);
-      if (!targetIsStep || !isEditableStep(g, conn.target)) return;
+      const targetStep = g.steps.find((s) => s.id === conn.target);
+      if (!targetStep || targetStep.externalOrigin) return;
+      if (targetStep.noteRef) {
+        // 予定の線: connectNoteRefs が有効な工程フローの step → step だけ許す。
+        // entity → noteRef（材料を工程ノートに渡す）は意味を持たないため不可
+        if (!connectNoteRefs || sourceEntity) return;
+        if (!isEditableStep(g, conn.source, true)) return;
+        const res = onConnectSteps?.(conn.source, conn.target);
+        if (res && res.error) showConnectError(res.error);
+        return;
+      }
       if (sourceEntity) {
         // Entity → step: その Entity を対象手順の入力にする（本文に同名 span 合成）
         onConnectEntityToStep?.(sourceEntity.id, conn.target);
@@ -684,10 +762,10 @@ function StepFlowCanvas({
       if (isEditableStep(g, conn.source)) {
         // step → step: 順序のみの依存（informed_by）
         const res = onConnectSteps?.(conn.source, conn.target);
-        if (res && res.error === "cycle_detected") setCycleWarnAt(Date.now());
+        if (res && res.error) showConnectError(res.error);
       }
     },
-    [onConnectSteps, onConnectEntityToStep],
+    [onConnectSteps, onConnectEntityToStep, connectNoteRefs, showConnectError],
   );
 
   // Entity の下ポートを空白へドロップ → その Entity を入力に持つ新しい手順を作る。
@@ -708,11 +786,19 @@ function StepFlowCanvas({
       if (!conn.source || !conn.target || conn.source === conn.target) return false;
       const g = graphRef.current;
       // 受け側は step のみ（entity への接続 = 生成関係はドキュメント側で書く）
-      if (!isEditableStep(g, conn.target)) return false;
-      if (g.steps.some((step) => step.id === conn.source && step.externalOrigin)) return false;
+      const targetStep = g.steps.find((s) => s.id === conn.target);
+      if (!targetStep || targetStep.externalOrigin) return false;
+      const sourceIsEntity = g.entities.some((e) => e.id === conn.source);
+      if (targetStep.noteRef) {
+        // 予定の線: connectNoteRefs が有効な工程フローの step → step だけ許す
+        if (!connectNoteRefs || sourceIsEntity) return false;
+        if (!isEditableStep(g, conn.source, true)) return false;
+      } else if (!sourceIsEntity && !isEditableStep(g, conn.source)) {
+        return false;
+      }
       return !edges.some((e) => e.source === conn.source && e.target === conn.target);
     },
-    [edges],
+    [edges, connectNoteRefs],
   );
 
   // 選択中ノードを属性テーブルへ渡す（step / entity のどちらか）
@@ -787,7 +873,9 @@ function StepFlowCanvas({
         onConnectEnd={onCreateStepFromEntity ? (handleConnectEnd as any) : undefined}
         isValidConnection={isValidConnection}
         onEdgeClick={(e: React.MouseEvent, edge: FlowRfEdge) => {
-          if (edge.data?.kind !== "orderOnly" || !edge.data?.deletable || !onRemoveOrderEdge) return;
+          const canRemoveOrder = edge.data?.kind === "orderOnly" && !!edge.data?.deletable && !!onRemoveOrderEdge;
+          const canRemovePlanned = edge.data?.kind === "planned" && !!edge.data?.deletable && !!onRemovePlannedEdge;
+          if (!canRemoveOrder && !canRemovePlanned) return;
           const rect = wrapperRef.current?.getBoundingClientRect();
           if (!rect) return;
           setEdgeMenu({
@@ -795,6 +883,7 @@ function StepFlowCanvas({
             target: edge.target,
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
+            kind: canRemovePlanned ? "planned" : "orderOnly",
           });
         }}
         onSelectionChange={({ nodes: sel }) => {
@@ -931,7 +1020,7 @@ function StepFlowCanvas({
           </div>
         </Panel>
 
-        {cycleWarnAt !== 0 && (
+        {connectWarn && (
           <Panel position="top-center">
             <div
               style={{
@@ -945,13 +1034,13 @@ function StepFlowCanvas({
                 whiteSpace: "nowrap",
               }}
             >
-              {t("step.cycleBlocked")}
+              {connectWarn.message}
             </div>
           </Panel>
         )}
       </ReactFlow>
 
-      {/* orderOnly エッジ削除メニュー */}
+      {/* orderOnly / planned エッジ削除メニュー */}
       {edgeMenu && (
         <div
           style={{
@@ -970,7 +1059,11 @@ function StepFlowCanvas({
         >
           <button
             onClick={() => {
-              onRemoveOrderEdge?.(edgeMenu.source, edgeMenu.target);
+              if (edgeMenu.kind === "planned") {
+                onRemovePlannedEdge?.(edgeMenu.source, edgeMenu.target);
+              } else {
+                onRemoveOrderEdge?.(edgeMenu.source, edgeMenu.target);
+              }
               setEdgeMenu(null);
             }}
             style={{
@@ -990,7 +1083,8 @@ function StepFlowCanvas({
             onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-error-bg)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
-            <Trash2 size={14} /> {t("activityGraph.deleteStep")}
+            <Trash2 size={14} />{" "}
+            {edgeMenu.kind === "planned" ? t("planFlow.removePlanned") : t("activityGraph.deleteStep")}
           </button>
         </div>
       )}

@@ -50,6 +50,12 @@ export type StepNodeData = {
   distinguishers?: string[];
   /** ツールバーの「パラメータを表示」。オンならカードに全件を並べる */
   showParams?: boolean;
+  /**
+   * 工程ノード（noteRef）同士の接続を許す（計画ノートの工程フローで予定の線を
+   * 引く）。true のとき noteRef のハンドルも通常どおり掴める見た目・
+   * isConnectable にする
+   */
+  connectNoteRefs?: boolean;
 };
 
 export type StepFlowNode = Node<StepNodeData, "step">;
@@ -101,6 +107,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   } = data;
   const external = activity.externalOrigin;
   const noteRef = activity.noteRef;
+  // 工程ノート同士の接続を許す画面（計画ノートの工程フロー、予定の線）では、
+  // noteRef のハンドルも通常の step と同じに掴める見た目・isConnectable にする
+  const noteRefConnectable = !!noteRef && !!data.connectNoteRefs;
   // 工程ノート由来のノードは rename / delete / 本文へ を出さない（表側で名前を変える運用）
   const onRename = noteRef ? undefined : onRenameProp;
   const onDelete = noteRef ? undefined : onDeleteProp;
@@ -510,9 +519,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         <Handle
           type="target"
           position={Position.Top}
-          isConnectable={!noteRef}
+          isConnectable={!noteRef || noteRefConnectable}
           style={
-            noteRef
+            noteRef && !noteRefConnectable
               ? INERT_HANDLE_STYLE
               : {
                   width: 9,
@@ -526,9 +535,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
       <Handle
         type="source"
         position={Position.Bottom}
-        isConnectable={!external && !noteRef}
+        isConnectable={!external && (!noteRef || noteRefConnectable)}
         style={
-          noteRef
+          noteRef && !noteRefConnectable
             ? INERT_HANDLE_STYLE
             : {
                 width: 11,
