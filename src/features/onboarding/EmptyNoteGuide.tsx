@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 import { FolderInput } from "lucide-react";
 import { useT } from "@/i18n";
+import { formatShortcut } from "@/lib/shortcut-label";
 
 type EmptyNoteGuideProps = {
   visible: boolean;
@@ -24,7 +25,7 @@ type EmptyNoteGuideProps = {
 
 type Chip = {
   key: string;
-  /** 表示キー。Cmd/Ctrl の分岐は呼び出し側で UA 検出しない（後続 PR で対応） */
+  /** 表示キー。⌘K は OS に合わせて Ctrl+K に変わるので、チップ一覧は描画時に組み立てる */
   display: ReactNode;
   labelI18nKey: string;
   descI18nKey: string;
@@ -32,7 +33,7 @@ type Chip = {
   action?: "composer" | "intake";
 };
 
-const chips: Chip[] = [
+const buildChips = (): Chip[] => [
   {
     key: "intake",
     display: <FolderInput size={14} />,
@@ -42,7 +43,7 @@ const chips: Chip[] = [
   },
   {
     key: "cmdk",
-    display: "⌘K",
+    display: formatShortcut(["mod", "K"]),
     labelI18nKey: "onboarding.chip.cmdk.label",
     descI18nKey: "onboarding.chip.cmdk.desc",
     action: "composer",
@@ -70,7 +71,7 @@ export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true, onOp
 
   // AI が使えない（モデル未登録等）なら ⌘K チップは予示しない（押しても Composer を開けないため）。
   // onOpenIntake が無ければ intake チップも出さない（押せない chip を出さない）。
-  const visibleChips = chips.filter((c) => (aiEnabled || c.key !== "cmdk") && (onOpenIntake || c.key !== "intake"));
+  const visibleChips = buildChips().filter((c) => (aiEnabled || c.key !== "cmdk") && (onOpenIntake || c.key !== "intake"));
 
   const handleClick = (action?: Chip["action"]) => {
     if (action === "composer") onOpenComposer?.();

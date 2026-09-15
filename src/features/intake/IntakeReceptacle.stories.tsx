@@ -39,6 +39,14 @@ export const Emphasized: Story = {
   },
 };
 
+/** フォルダを選んだ直後、中身をたどり終えて change が来るまでの表示 */
+export const Checking: Story = {
+  args: {
+    checking: true,
+    onFilesSelected: noop,
+  },
+};
+
 /** lead を差し替えたケース（例: 素材が空のとき） */
 export const WithLead: Story = {
   args: {

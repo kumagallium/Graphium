@@ -54,6 +54,7 @@ import {
   type GraphiumRootInfo,
 } from "../../lib/graphium-root";
 import { useLocale, type Locale } from "../../i18n";
+import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 // 共有ライブラリの読み直し通知（共有ルート・スイッチを変えたとき）。
 // バレルではなくストア本体を直接読む（Library ビューを設定画面に持ち込まないため）
@@ -1999,7 +2000,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       className="mt-0.5 accent-primary"
                     />
                     <span className="text-xs text-foreground">
-                      <span>{t("settings.shared.aiEnabled.title")}</span>
+                      <span>{t("settings.shared.aiEnabled.title", { shortcut: formatShortcut(["mod", "K"]) })}</span>
                       <span className="block text-[11px] text-muted-foreground mt-0.5">
                         {t("settings.shared.aiEnabled.help")}
                       </span>

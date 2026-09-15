@@ -18,6 +18,7 @@ import { ensureSidecar, getSidecarState, subscribeSidecarState } from "../../lib
 import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { formatDateTime } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
+import { formatShortcut } from "../../lib/shortcut-label";
 import { GroundingScopeChip } from "../composer/GroundingScopeChip";
 import { WebSearchMissingHint } from "../composer/WebSearchMissingHint";
 import { useWebSearchAvailability } from "../composer/use-web-search-availability";
@@ -477,7 +478,7 @@ export function AiAssistantPanel({
           <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
             {messages.length === 0 && !loading && (
               <div className="text-xs text-muted-foreground text-center py-8">
-                {t("aiChat.helpText").split("\n").map((line, i) => <span key={i}>{line}<br /></span>)}
+                {t("aiChat.helpText", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) }).split("\n").map((line, i) => <span key={i}>{line}<br /></span>)}
               </div>
             )}
             {messages.map((msg, i) => (
@@ -643,7 +644,7 @@ export function AiAssistantPanel({
             </div>
             {/* 3 セグメントのチップは縮まないため、320px 級の狭幅では 2 行目に折り返す */}
             <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
-              <span>{t("aiChat.sendHint")}</span>
+              <span>{t("aiChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}</span>
               <span className="ml-auto">
                 <GroundingScopeChip value={scope} onChange={setScope} />
               </span>

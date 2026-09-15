@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { StorageProvider, AuthState, MediaUploadResult } from "../types";
 import type { GraphiumDocument, GraphiumFile } from "../../document-types";
 import { migrateToLatest } from "../../document-migration";
+import { bytesToBase64 } from "@/lib/base64";
 
 /** Rust 側 FileInfo の型 */
 type RustFileInfo = {
@@ -113,12 +114,8 @@ export class LocalFilesystemProvider implements StorageProvider {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
-    // Base64 エンコード
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const data = btoa(binary);
+    // 1 バイトずつ += で組み立てると数十 MB で数分止まる（src/lib/base64.ts 参照）
+    const data = bytesToBase64(bytes);
 
     await invoke("save_media_file", {
       fileId: id,
@@ -164,12 +161,14 @@ export class LocalFilesystemProvider implements StorageProvider {
     const key = `${fileId}@${maxEdge}`;
     const cached = thumbBlobCache.get(key);
     if (cached) return cached;
-    // Rust 側で縮小した JPEG（数十 KB）。画像として読めない素材は原寸に落とす
+    // Rust 側で縮小した画像（数十 KB）。透過のある画像は PNG、それ以外は JPEG で来る。
+    // 画像として読めない素材は原寸に落とす
     const base64Data = await invoke<string>("read_media_thumbnail", { fileId, maxEdge });
     const binary = atob(base64Data);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+    const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+    const blobUrl = URL.createObjectURL(new Blob([bytes], { type: isPng ? "image/png" : "image/jpeg" }));
     thumbBlobCache.set(key, blobUrl);
     return blobUrl;
   }

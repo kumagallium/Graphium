@@ -6,7 +6,7 @@ import { useMemo, useRef, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ContextBadge } from "./ContextBadge";
 import { ContextTagPicker } from "./ContextTagPicker";
-import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./context-tags";
+import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./context-tags";
 
 const meta: Meta = {
   title: "Molecules/NoteContext",
@@ -104,6 +104,7 @@ export const Picker: Story = {
             suggestions={suggestions}
             onAdd={(v) => setSelected((s) => addNoteContext(s, v) ?? [])}
             onRemove={(v) => setSelected((s) => removeNoteContext(s, v) ?? [])}
+            onReplace={(from, to) => setSelected((s) => replaceNoteContext(s, from, to) ?? [])}
             onClear={() => setSelected([])}
           />
         )}
@@ -195,6 +196,9 @@ export const ListColumnCell: Story = {
             onRemove={(v) =>
               setRowContexts(openRow, removeNoteContext(notes[openRow].noteContexts, v) ?? [])
             }
+            onReplace={(from, to) =>
+              setRowContexts(openRow, replaceNoteContext(notes[openRow].noteContexts, from, to) ?? [])
+            }
             onClear={() => setRowContexts(openRow, [])}
           />
         )}
@@ -225,6 +229,7 @@ export const BulkAssign: Story = {
             suggestions={suggestions}
             onAdd={(v) => setApplied((s) => addNoteContext(s, v) ?? [])}
             onRemove={(v) => setApplied((s) => removeNoteContext(s, v) ?? [])}
+            onReplace={(from, to) => setApplied((s) => replaceNoteContext(s, from, to) ?? [])}
           />
         )}
         <div className="mt-4 text-xs text-muted-foreground">

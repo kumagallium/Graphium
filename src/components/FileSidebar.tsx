@@ -15,6 +15,7 @@ import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { countByType } from "../features/asset-browser";
 import type { GraphiumIndex } from "../features/navigation/index-file";
 import { NavBackButton } from "./NavBackButton";
+import { formatShortcut, isMacLike, shortcutKeycaps, sidebarToggleShortcutParams } from "../lib/shortcut-label";
 
 export type FileSidebarProps = {
   activeFileId: string | null;
@@ -189,6 +190,9 @@ const MEDIA_NAV_ITEMS: { type: MediaType; icon: ReactNode }[] = [
   { type: "url", icon: <Link size={14} /> },
 ];
 
+/** クイックメモのショートカット（判定は note-app.tsx の ⌘⇧M ハンドラ） */
+const MEMO_SHORTCUT = ["mod", "shift", "M"];
+
 export function FileSidebar({
   activeFileId,
   onSelect,
@@ -252,6 +256,8 @@ export function FileSidebar({
   sharedLibraryActive = false,
 }: FileSidebarProps) {
   const t = useT();
+  // mac は ⌘ ⇧ M に分離、Windows / Linux は Ctrl+Shift+M を 1 キャップ（横並び配置では出さない）
+  const memoShortcutKeycaps = shortcutKeycaps(MEMO_SHORTCUT);
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
 
   // セクション右上に出す件数バッジの集計（メモは独立セクションに移したので含めない）
@@ -361,7 +367,7 @@ export function FileSidebar({
             {onCollapse && (
               <button
                 onClick={onCollapse}
-                title={t("sidebar.collapse")}
+                title={t("sidebar.collapse", sidebarToggleShortcutParams())}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 <PanelLeftClose size={14} />
@@ -385,27 +391,31 @@ export function FileSidebar({
         {intakePlacement === "twins" ? (
           // ⌘⇧M の keycap は消さない（「⌘M で効かない」と誤解された経緯があるため）。
           // ノートは文字幅ぶんだけ（shrink-0）、残りをメモに渡して keycap の場所を確保する。
+          // ただし Windows / Linux では keycap を出さない — Ctrl+Shift+M のキャップは 84px あり、
+          // 横並びの幅だと「メモ」の文字が「+…」まで削られる。案内はツールチップに任せる。
           <div className="flex gap-1 mb-1">
             {onNewMemo && (
               <button
                 onClick={onNewMemo}
-                title={t("sidebar.newMemoTooltip")}
+                title={t("sidebar.newMemoTooltip", { shortcut: formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" }) })}
                 className="flex-1 min-w-0 flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
               >
                 <span className="truncate">{t("sidebar.newMemo")}</span>
                 {/* ⌘ ⇧ M を1つの塊で出すと ⇧ が埋もれて見落とされる（実際に「⌘M で効かない」と
                     誤解された）。キーごとに keycap 化して分離し、Shift が要ることを一目で示す。
                     背景は foreground tint なので、ボタン hover の sidebar-accent 上でも沈まない。 */}
-                <span className="flex shrink-0 items-center gap-0.5 font-normal tabular-nums">
-                  {["⌘", "⇧", "M"].map((k) => (
-                    <kbd
-                      key={k}
-                      className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
-                    >
-                      {k}
-                    </kbd>
-                  ))}
-                </span>
+                {isMacLike() && (
+                  <span className="flex shrink-0 items-center gap-0.5 font-normal tabular-nums">
+                    {memoShortcutKeycaps.map((k) => (
+                      <kbd
+                        key={k}
+                        className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
+                      >
+                        {k}
+                      </kbd>
+                    ))}
+                  </span>
+                )}
               </button>
             )}
             <button
@@ -422,12 +432,12 @@ export function FileSidebar({
             {onNewMemo && (
               <button
                 onClick={onNewMemo}
-                title={t("sidebar.newMemoTooltip")}
+                title={t("sidebar.newMemoTooltip", { shortcut: formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" }) })}
                 className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
               >
                 <span>{t("sidebar.newMemo")}</span>
                 <span className="flex shrink-0 items-center gap-0.5 font-normal tabular-nums">
-                  {["⌘", "⇧", "M"].map((k) => (
+                  {memoShortcutKeycaps.map((k) => (
                     <kbd
                       key={k}
                       className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
