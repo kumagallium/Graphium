@@ -80,6 +80,7 @@ import {
   type SeriesType,
 } from "./chart-config";
 import { computePanelLayout, estimateLegendRows, LEGEND_LINE_HEIGHT } from "./chart-layout";
+import { legendItems, type LegendItemSeries } from "./legend-icon";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
 import {
   hasRichMarkup,
@@ -768,10 +769,35 @@ export function buildOption(
   // 凡例の範囲（figure/panel）。分割していない図では常に figure と同じ扱いになる
   const legendScopePanel = split && config.legendScope === "panel";
   const legendScopeFigure = split && config.legendScope === "figure";
-  const legendNamesAll = panels.flatMap((panel, p) => panel.indices.map((i) => seriesNameOf(p, i)));
+  const legendEntriesAll = panels.flatMap((panel, p) =>
+    panel.indices.map((i) => ({ name: seriesNameOf(p, i), i }))
+  );
+  // 同じ名前は 1 項目にまとめる（初出順を保ち、アイコンも初出の系列に従う —
+  // ECharts も凡例の色を名前で最初に見つかった系列から引く）
+  const uniqueByName = <T extends { name: string }>(entries: T[]): T[] => {
+    const seen = new Set<string>();
+    return entries.filter((e) => (seen.has(e.name) ? false : (seen.add(e.name), true)));
+  };
   // figure スコープは同じ名前の系列が複数の枠に出ても凡例は 1 項目にまとめる
   // （初出順を保つ）。分割していない図・panel スコープでは従来どおり
-  const legendNames = legendScopeFigure ? Array.from(new Set(legendNamesAll)) : legendNamesAll;
+  const legendEntries = legendScopeFigure ? uniqueByName(legendEntriesAll) : legendEntriesAll;
+  const legendNames = legendEntries.map((e) => e.name);
+  // 凡例の項目と記号枠の幅。横並びに散布図系列が入ると、既定のアイコンでは
+  // マーカーが前の項目に寄って見えるので、記号枠を詰めるかアイコンを差し替える
+  //（理由と規則は legend-icon.ts）
+  const legendSpecOf = (entries: Array<{ name: string; i: number }>) =>
+    legendItems(
+      entries.map(({ name, i }): LegendItemSeries => {
+        const sc = config.series[i];
+        const seriesType = isHistogram ? "bar" : (sc?.type ?? config.chartType);
+        return {
+          name,
+          scatterSymbol: seriesType === "scatter" ? resolveSeriesStyle(sc, "scatter").symbol : null,
+        };
+      }),
+      config.legendOrient
+    );
+  const legendSpec = legendSpecOf(legendEntries);
   // 凡例は系列名（＝記法を落とした素のテキスト）で引かれるので、記法を書いた
   // 系列だけ、そこから描画用の rich text に戻せるようにしておく
   const legendRichText = new Map<string, string>();
@@ -812,8 +838,13 @@ export function buildOption(
   const legendWidth = chartWidth > 0 ? Math.max(0, chartWidth - gridLeft - Math.max(gridRight, 72)) : 0;
   const legendRows =
     showLegend && (legendTop || legendBottom)
-      ? estimateLegendRows(legendNames, legendWidth, config.legendOrient, CHART_FONT_SIZE, (text) =>
-          measureLegendText(text, `${CHART_FONT_SIZE}px ${fontFamily}`)
+      ? estimateLegendRows(
+          legendNames,
+          legendWidth,
+          config.legendOrient,
+          CHART_FONT_SIZE,
+          (text) => measureLegendText(text, `${CHART_FONT_SIZE}px ${fontFamily}`),
+          legendSpec.itemWidth
         )
       : 1;
   const extraLegendRows = Math.max(0, legendRows - 1) * LEGEND_LINE_HEIGHT;
@@ -937,7 +968,9 @@ export function buildOption(
   const panelLegends: any[] | null =
     legendScopePanel && layout
       ? panels.map((panel, p) => {
-          const names = Array.from(new Set(panel.indices.map((i) => seriesNameOf(p, i))));
+          const spec = legendSpecOf(
+            uniqueByName(panel.indices.map((i) => ({ name: seriesNameOf(p, i), i })))
+          );
           const g = layout.grids[p];
           const insidePosition = panelLegendPosition(config, p);
           const position = (() => {
@@ -957,11 +990,11 @@ export function buildOption(
           })();
           return {
             show: true,
-            data: names,
+            data: spec.data,
             orient: config.legendOrient,
             ...position,
             ...INSIDE_LEGEND_STYLE,
-            itemWidth: CHART_LEGEND_ITEM.width,
+            itemWidth: spec.itemWidth,
             itemHeight: CHART_LEGEND_ITEM.height,
             textStyle: {
               fontSize: CHART_FONT_SIZE,
@@ -1367,13 +1400,13 @@ export function buildOption(
         ? {
             show: true,
             // 土台の系列（オフセット表示の棒）は凡例に出さない
-            data: legendNames,
+            data: legendSpec.data,
             orient: config.legendOrient,
             // 実寸が分かっているときだけ幅を絞る（見積もりと同じ位置で折り返させ、
             // 右上の設定ボタンに潜り込ませない）
             ...(legendWidth > 0 && config.legendOrient === "horizontal" ? { width: legendWidth } : {}),
             ...legendLayout,
-            itemWidth: CHART_LEGEND_ITEM.width,
+            itemWidth: legendSpec.itemWidth,
             itemHeight: CHART_LEGEND_ITEM.height,
             textStyle: {
               fontSize: CHART_FONT_SIZE,

@@ -122,6 +122,13 @@ describe("estimateLegendRows", () => {
     expect(estimateLegendRows(names, 2000, "horizontal", 12)).toBe(1);
   });
 
+  it("記号枠の幅を詰めると、同じ幅により多く並ぶ（散布図だけの凡例）", () => {
+    // 1 項目 = 文字 100 + 記号 + 5 + 10。記号 50 なら 165×2 = 330 > 300、記号 14 なら 129×2 = 258
+    const names = ["A", "B"];
+    expect(estimateLegendRows(names, 300, "horizontal", 12, () => 100)).toBe(2);
+    expect(estimateLegendRows(names, 300, "horizontal", 12, () => 100, 14)).toBe(1);
+  });
+
   it("実測が渡されればそちらを使う（近似より優先）", () => {
     const names = ["A", "B"];
     // 1 項目 400px 相当に測れたことにすると、600px には収まらない
