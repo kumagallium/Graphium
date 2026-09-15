@@ -9,7 +9,7 @@
 // のは「計画ノート自身の表」だけ（+ 工程を追加 / 未作成行からのノート作成）。
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { StepFlowView } from "./step-flow-view";
 import type { FlowGraphData, FlowNoteRef, FlowStep } from "./activity-graph-adapter";
 import {
@@ -146,6 +146,13 @@ export function PlanFlowEditor({
   onGraphChange?: (info: { graph: FlowGraphData; truncated: boolean; brokenCount: number }) => void;
 }) {
   const tableMetaStore = useTableMetaStore();
+  // TableMetaStoreProvider の value は毎レンダーで新しいオブジェクトになる。コールバックの
+  // 依存に入れると参照が毎回変わり、StepFlowView がノードを作り直し続けて（React Flow が
+  // 未計測扱いで隠す）工程ノードが消える。store と index は ref で読み、コールバックは固定する
+  const storeRef = useRef(tableMetaStore);
+  storeRef.current = tableMetaStore;
+  const indexRef = useRef(index);
+  indexRef.current = index;
   const processIndex = useSyncExternalStore(
     subscribeLatestProcessIndex,
     getLatestProcessIndex,
@@ -179,16 +186,17 @@ export function PlanFlowEditor({
   const onAddActivity = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    const tableBlockId = ensureOperationsTable(editor, tableMetaStore);
+    const store = storeRef.current;
+    const tableBlockId = ensureOperationsTable(editor, store);
     if (!tableBlockId) return;
 
     const blocks: any[] = editor.document ?? [];
-    const currentRows = collectOperationRowsFromBlocks(blocks, tableMetaStore.getSnapshot(), index).filter(
+    const currentRows = collectOperationRowsFromBlocks(blocks, store.getSnapshot(), indexRef.current).filter(
       (r) => r.tableBlockId === tableBlockId,
     );
     const name = nextDefaultOperationName(currentRows.map((r) => r.name));
     addTableRow(editor, tableBlockId, name);
-  }, [editorRef, tableMetaStore, index]);
+  }, [editorRef]);
 
   const onOpenNoteRef = useCallback(
     (ref: FlowNoteRef, _step: FlowStep) => {
@@ -202,9 +210,9 @@ export function PlanFlowEditor({
         return;
       }
       if (ref.state !== "unlinked") return; // duplicateName 等は何もしない
-      void createOperationNoteFromRef(editor, ref, tableMetaStore);
+      void createOperationNoteFromRef(editor, ref, storeRef.current);
     },
-    [editorRef, tableMetaStore],
+    [editorRef],
   );
 
   return (
