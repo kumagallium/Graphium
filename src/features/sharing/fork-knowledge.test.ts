@@ -64,6 +64,7 @@ function makeWikiDoc(overrides: Partial<GraphiumDocument> = {}): GraphiumDocumen
       derivedFromNotes: ["peer-note-1", "peer-note-2"],
       derivedFromChats: ["peer-chat-1"],
       derivedFromClaims: ["peer-claim-1"],
+      topicIds: ["peer-topic-1", "peer-topic-2"],
       citedKnowledgeIds: ["peer-wiki-1"],
       relatedAtoms: [
         { atomId: "peer-atom-1", relationType: "similar" as never, citation: "…" },
@@ -109,6 +110,7 @@ describe("forkSharedKnowledge", () => {
     expect(meta.derivedFromNotes).toEqual([]);
     expect(meta.derivedFromChats).toEqual([]);
     expect(meta.derivedFromClaims).toBeUndefined();
+    expect(meta.topicIds).toBeUndefined();
     expect(meta.citedKnowledgeIds).toBeUndefined();
     expect(meta.relatedAtoms).toBeUndefined();
     expect(meta.sectionEmbeddings).toBeUndefined();

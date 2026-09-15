@@ -37,7 +37,7 @@ export type LineageRelation =
   | "derivedFrom" // 子側 derivedFromNoteId
   | "noteLink" // 親側 noteLinks(derived_from)
   | "wiki" // wikiMeta.derivedFromNotes (wiki ← 通常ノート)
-  | "wikiConcept" // wikiMeta.derivedFromClaims (atom ← concept)
+  | "wikiConcept" // wikiMeta.derivedFromClaims (atom ← concept / topic ← claim)
   | "external"; // pdf:/url: 外部ソース
 
 const MAX_DEPTH = 10;
@@ -97,7 +97,7 @@ function buildReverseParentIndex(
     }
     if (
       doc.source === "ai" &&
-      doc.wikiMeta?.kind === "atom" &&
+      (doc.wikiMeta?.kind === "atom" || doc.wikiMeta?.kind === "topic") &&
       doc.wikiMeta?.derivedFromClaims
     ) {
       for (const conceptId of doc.wikiMeta.derivedFromClaims) {

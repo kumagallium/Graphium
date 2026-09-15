@@ -53,13 +53,15 @@ export type LintReport = {
 export type WikiSnapshot = {
   id: string;
   title: string;
-  kind: "summary" | "claim" | "atom" | "synthesis";
+  kind: "summary" | "claim" | "atom" | "synthesis" | "topic";
   derivedFromNotes: string[];
   relatedClaims: string[];
   /** 本文先頭のプレビュー（1ノート1知見前提で sections は廃止） */
   bodyPreview: string;
   /** Claim のときのみ意味を持つ（principle / finding / bridge） */
   level?: "principle" | "finding" | "bridge";
+  /** メンバー知見（Claim）の ID リスト。topic のときのみ意味を持つ（orphan topic 判定に使う） */
+  derivedFromClaims?: string[];
   lastIngestedAt?: string;
   modifiedAt: string;
 };
@@ -345,6 +347,20 @@ export function detectLocalIssues(
           suggestion: `Consider linking it to related Claims, or delete if no longer relevant.`,
         });
       }
+    }
+
+    // Orphan チェック（topic）: メンバー知見が 0 件の話題ページ。
+    // 知見の削除で 0 件になった話題はそのまま残す設計（本文は書き直さない）ので、
+    // ここで検出して点検結果に出す。LLM 不要でローカルに判定できる。
+    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0) {
+      issues.push({
+        type: "orphan",
+        severity: "warning",
+        title: `"${w.title}" is a topic with no member claims`,
+        description: `This topic page has no Claims linked to it (derivedFromClaims is empty), likely because all member Claims were deleted.`,
+        affectedWikiIds: [w.id],
+        suggestion: `Delete this topic page, or link existing Claims to it.`,
+      });
     }
   }
 

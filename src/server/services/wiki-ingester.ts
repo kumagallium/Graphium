@@ -97,6 +97,13 @@ export type IngesterOutput = {
    * 不明時は "probably" にフォールバックする保守的デフォルト。
    */
   modalQualifier?: ModalQualifier;
+  /**
+   * この Claim が属する話題（topic）の名前（名詞句、ノートの言語）。claim のみ。1〜3 件。
+   * 話題ページは複数 Claim を概念ごとに束ねるページで、既存の話題と同じ概念なら
+   * 既存タイトルをそのまま再利用する（下の "Topics (existing)" 参照）。
+   * 非文字列・空文字・重複は下流でフィルタし、最大 3 件に切り詰める。
+   */
+  topics?: string[];
   /** 関連する既存 Claim（引用付き） */
   relatedClaims: RelatedClaimRef[];
   /** 根拠となる外部参照 URL（引用付き） */
@@ -132,6 +139,13 @@ export function buildIngesterSystemPrompt(
     : "(none yet)";
 
   const hasExistingConcepts = existingWikis.some((w) => w.kind === "claim");
+
+  // 既存の話題（topic）一覧。同じ概念には既存タイトルをそのまま使わせることで、
+  // 表記ゆれによる同じ話題の重複作成を防ぐ。
+  const existingTopics = existingWikis.filter((w) => w.kind === "topic");
+  const topicListText = existingTopics.length > 0
+    ? existingTopics.map((w) => `- ${w.title}`).join("\n")
+    : "(none yet)";
 
   const ja = language === "ja";
 
@@ -232,6 +246,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
         { "source": "textbook" | "external-paper" | "internal-claim", "citation": "one-sentence", "url": "https://... (optional)", "internalClaimId": "id (optional)" }
       ],
       "modalQualifier": "necessarily" | "probably" | "possibly" | "rarely", // claim のみ。Toulmin Modal qualifier。下の "Modal qualifier" 参照
+      "topics": ["string"],                                              // claim のみ。1〜3 件の名詞句。下の "Topics" 参照
       "procedureContext": {                                              // claim のみ。手順依存の主張のときだけ。下の Procedure context 参照
         "derivedFromNotes": ["sourceNoteId"],
         "protocolFingerprint": "step1 → step2 → step3",                // 主要ステップを自然言語で短く
@@ -278,6 +293,18 @@ Guidance:
 - A flagged risk or limitation: \`["issue"]\`.
 - Hardware/protocol pre-conditions: \`["setup"]\`.
 - If none of these clearly fit, omit the field (do **not** pick \`finding\` as a default just to fill the slot).
+
+## Topics
+
+Tag every Claim with 1-3 \`topics\`: short noun phrases naming the **concept(s)** this Claim belongs to, in the note's own language. A topic groups multiple Claims about the same concept into one page (e.g. "pH-dependent reduction kinetics", "SPS sintering conditions"). Topics are orthogonal to \`claimRole\` / \`level\` / \`epistemicStatus\` — they answer "what is this Claim *about*", not what kind of move it makes or how certain it is.
+
+- **Reuse an existing topic name exactly** when the Claim belongs to the same concept as one already listed below — do not create a near-duplicate with different wording (e.g. don't emit "還元反応速度" if "還元の反応速度" already exists for the same concept).
+- Keep phrases short (a few words), not full sentences.
+- 1-3 per Claim; most Claims need only 1. Omit the field entirely if no meaningful topic emerges (rare).
+
+### Topics (existing)
+
+${topicListText}
 
 ## Epistemic status (Phase η — REQUIRED for every Claim)
 
@@ -613,6 +640,7 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
         const rebuttalConditions = kind === "claim" ? parseRebuttalConditions(w.rebuttalConditions) : undefined;
         const backing = kind === "claim" ? parseBacking(w.backing) : undefined;
         const modalQualifier = kind === "claim" ? parseModalQualifier(w.modalQualifier) : undefined;
+        const topics = kind === "claim" ? parseTopics(w.topics) : undefined;
         // Phase η: epistemicStatus を fixed vocabulary でフィルタする。
         // LLM が不明な値を入れたら undefined にして下流で "interpretation" 扱いに倒す。
         const rawEpistemic =
@@ -633,6 +661,7 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
           rebuttalConditions,
           backing,
           modalQualifier,
+          topics,
           title: String(w.title),
           sections: w.sections.map((s: any) => ({
             heading: String(s.heading ?? ""),
@@ -794,6 +823,31 @@ export function parseModalQualifier(raw: unknown): ModalQualifier | undefined {
   const trimmed = raw.trim();
   if (!(MODAL_QUALIFIER_VALUES as string[]).includes(trimmed)) return undefined;
   return trimmed as ModalQualifier;
+}
+
+/**
+ * LLM が返した topics（話題名リスト）をサニタイズする。
+ *
+ * - 非文字列・空文字（trim 後）は落とす
+ * - 正規化（NFC・小文字化・前後空白除去）後の重複は落とす（表示用の元の表記は保持）
+ * - 最大 3 件に切り詰める
+ * - 結果が 0 件なら undefined（空配列を保存しない — 他の optional フィールドと揃える）
+ */
+export function parseTopics(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of raw) {
+    if (typeof t !== "string") continue;
+    const trimmed = t.trim();
+    if (!trimmed) continue;
+    const key = trimmed.normalize("NFC").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+    if (out.length >= 3) break;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /**

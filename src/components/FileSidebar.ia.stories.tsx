@@ -519,6 +519,25 @@ export const InsightsHidden: Story = {
   ),
 };
 
+export const WithTopics: Story = {
+  name: "話題あり（話題 / 要約 / 知見 / 洞察の 4 種類）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <FileSidebar
+        {...COMMON_PROPS}
+        wikiCounts={{ summary: 9, claim: 14, atom: 3, synthesis: 4, topic: 6 }}
+      />
+      <div className="flex-1 p-8 text-sm text-muted-foreground">
+        <h2 className="text-base font-semibold mb-2">話題（topic）導入後</h2>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>ナレッジ行の先頭に 話題 が追加される（話題 → 要約 → 知見 → 洞察）</li>
+          <li>要約（summary）の並び・ラベル・表示位置はこの PR では変更しない（生成停止は別 PR）</li>
+        </ol>
+      </div>
+    </div>
+  ),
+};
+
 // サイドバーの「起動中」表示はデスクトップ版だけのもので、判定は platform.ts の
 // isTauri() がモジュール直呼びで行う。Storybook で見るには Tauri の注入ポイントを
 // 差し込むしかないので、描画前に立てて、ストーリーを離れたら必ず戻す。

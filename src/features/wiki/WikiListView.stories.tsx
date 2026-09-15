@@ -84,6 +84,58 @@ const SYNTHESIS_METAS = new Map<string, WikiMetaSummary>([
   ],
 ]);
 
+// topic（話題）3 件。うち 1 件はメンバー 0 件（orphan）を含めて表示を確認する。
+const TOPIC_FILES: GraphiumFile[] = [
+  {
+    id: "t1",
+    name: "焼結温度とゼーベック係数の関係",
+    modifiedTime: hoursAgo(1),
+    createdTime: daysAgo(4),
+  },
+  {
+    id: "t2",
+    name: "微量置換の効果",
+    modifiedTime: daysAgo(2),
+    createdTime: daysAgo(6),
+  },
+  {
+    id: "t3",
+    name: "孤立した話題（メンバー 0 件）",
+    modifiedTime: daysAgo(3),
+    createdTime: daysAgo(3),
+  },
+];
+
+const TOPIC_METAS = new Map<string, WikiMetaSummary>([
+  [
+    "t1",
+    {
+      title: TOPIC_FILES[0].name,
+      kind: "topic",
+      model: "claude-haiku-4-5",
+      derivedFromClaims: ["c1", "c2", "c3"],
+    },
+  ],
+  [
+    "t2",
+    {
+      title: TOPIC_FILES[1].name,
+      kind: "topic",
+      model: "gpt-oss-120b",
+      derivedFromClaims: ["c4"],
+    },
+  ],
+  [
+    "t3",
+    {
+      title: TOPIC_FILES[2].name,
+      kind: "topic",
+      model: "claude-haiku-4-5",
+      derivedFromClaims: [],
+    },
+  ],
+]);
+
 const NOOP = () => {};
 const ASYNC_NOOP = async () => {};
 
@@ -129,4 +181,14 @@ const baseArgs = {
 export const SynthesisList: Story = {
   name: "発想一覧",
   args: baseArgs,
+};
+
+export const TopicList: Story = {
+  name: "話題一覧（知見数列・孤立話題を含む）",
+  args: {
+    ...baseArgs,
+    wikiKind: "topic",
+    wikiFiles: TOPIC_FILES,
+    wikiMetas: TOPIC_METAS,
+  },
 };

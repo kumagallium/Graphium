@@ -215,7 +215,9 @@ export function getHeadingSuggestions(currentBlockId?: string): ReferenceSuggest
  * 組むため、フォーマットはここで一元管理する。変更時は両方に効く。
  */
 export function formatWikiMentionLabel(wikiKind: string | undefined, title: string): string {
-  const kindPrefix = wikiKind === "summary" ? "Summary" : "Concept";
+  // 既存 kind（"Summary" / "Concept"）のラベルは変えない — 既存ノート内のメンション
+  // 文字列と rename パターン（mention-rename.ts）を壊さないため。topic のみ新規追加。
+  const kindPrefix = wikiKind === "summary" ? "Summary" : wikiKind === "topic" ? "Topic" : "Concept";
   return `🤖 ${kindPrefix}: ${title}`;
 }
 
