@@ -120,6 +120,11 @@ export type StepFlowViewProps = {
   emptyHint?: string;
   /** 同じく空状態の見出し。省略時は activityGraph.emptyTitle */
   emptyTitle?: string;
+  /**
+   * 接続できないフロー（計画ノートの工程フロー）で、線が 1 本も無いときに下中央へ
+   * 薄く出す案内。「線はどこで引くか」を伝える。dragHint と同じ場所・同じ条件
+   */
+  staticHint?: string;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
   /** 共有行の「表に追加」: その step の kind 表に行を書く（表が無ければ作る） */
@@ -237,6 +242,7 @@ function StepFlowCanvas({
   onOpenNoteRef,
   emptyHint,
   emptyTitle,
+  staticHint,
   getStepContentCount,
   onAddEntity,
   onRenameEntity,
@@ -1006,8 +1012,9 @@ function StepFlowCanvas({
         </div>
       )}
 
-      {/* 使い方ヒント（エッジが 1 本でもあれば隠す。接続できないフロー＝工程フローでは出さない） */}
-      {variant !== "preview" && (onConnectSteps || onConnectEntityToStep) && graph.steps.length > 0 && graph.edges.length === 0 && (
+      {/* 使い方ヒント（エッジが 1 本でもあれば隠す）。接続できるフローはつなぎ方、
+          接続できないフロー（工程フロー）は staticHint（線をどこで引くか） */}
+      {variant !== "preview" && (onConnectSteps || onConnectEntityToStep || staticHint) && graph.steps.length > 0 && graph.edges.length === 0 && (
         <div
           style={{
             position: "absolute",
@@ -1020,7 +1027,7 @@ function StepFlowCanvas({
             pointerEvents: "none",
           }}
         >
-          {t("activityGraph.dragHint")}
+          {onConnectSteps || onConnectEntityToStep ? t("activityGraph.dragHint") : staticHint}
         </div>
       )}
     </div>
