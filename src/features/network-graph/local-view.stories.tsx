@@ -25,6 +25,20 @@ export default meta;
 
 type Story = StoryObj<typeof LocalGraphView>;
 
+// ストーリーでは NoteOriginPicker の実データ依存を避け、選択中の起点名を
+// 表示するだけの静的なボタンで代替する（originPicker は ReactNode を渡せる）
+function staticOriginPicker(title: string) {
+  return (
+    <button
+      type="button"
+      className="px-2 py-0.5 rounded-md border border-border bg-card text-sm"
+      disabled
+    >
+      {title}
+    </button>
+  );
+}
+
 // ── 直線 3 工程（親あり） ──
 
 const LINEAR_MODEL: LocalViewModel = {
@@ -60,7 +74,13 @@ const LINEAR_MODEL: LocalViewModel = {
 export const LinearThreeSteps: Story = {
   name: "直線 3 工程",
   render: () => (
-    <LocalGraphView model={LINEAR_MODEL} depth={1} onDepthChange={() => {}} onOpenNote={() => {}} onBack={() => {}} />
+    <LocalGraphView
+      model={LINEAR_MODEL}
+      depth={1}
+      onDepthChange={() => {}}
+      onOpenNote={() => {}}
+      originPicker={staticOriginPicker(LINEAR_MODEL.origin.title)}
+    />
   ),
 };
 
@@ -111,7 +131,13 @@ const BRANCH_MODEL: LocalViewModel = {
 export const BranchWithBroken: Story = {
   name: "分岐 + broken",
   render: () => (
-    <LocalGraphView model={BRANCH_MODEL} depth={1} onDepthChange={() => {}} onOpenNote={() => {}} onBack={() => {}} />
+    <LocalGraphView
+      model={BRANCH_MODEL}
+      depth={1}
+      onDepthChange={() => {}}
+      onOpenNote={() => {}}
+      originPicker={staticOriginPicker(BRANCH_MODEL.origin.title)}
+    />
   ),
 };
 
@@ -129,6 +155,7 @@ const PLAN_ORIGIN_MODEL: LocalViewModel = {
       { noteId: "dough", title: "仕込み", t: "2026-04-05T09:00:00.000Z", row: 0, isOrigin: false },
       { noteId: "bake", title: "焼成", t: "2026-04-08T09:00:00.000Z", row: 0, isOrigin: false, state: "trashed" },
     ],
+    stepsByNote: {},
   },
   handoffs: [],
   truncated: false,
@@ -142,7 +169,49 @@ export const PlanOriginWithNoteChildren: Story = {
       depth={1}
       onDepthChange={() => {}}
       onOpenNote={() => {}}
-      onBack={() => {}}
+      originPicker={staticOriginPicker(PLAN_ORIGIN_MODEL.origin.title)}
+    />
+  ),
+};
+
+// ── 計画起点で各工程の手順が 3 段目のレーンに出る ──
+
+const PLAN_ORIGIN_WITH_STEPS_MODEL: LocalViewModel = {
+  origin: { noteId: "plan", title: "春のカンパーニュ試作" },
+  plans: [],
+  parent: null,
+  siblings: [{ noteId: "plan", title: "春のカンパーニュ試作", t: "2026-04-01T09:00:00.000Z", row: 0, isOrigin: true }],
+  children: {
+    kind: "notes",
+    notes: [
+      { noteId: "mill", title: "製粉", t: "2026-04-03T09:00:00.000Z", row: 0, isOrigin: false },
+      { noteId: "dough", title: "仕込み", t: "2026-04-05T09:00:00.000Z", row: 0, isOrigin: false },
+    ],
+    stepsByNote: {
+      mill: {
+        steps: [
+          { id: "m1", name: "秤量", col: 0, row: 0 },
+          { id: "m2", name: "挽く", col: 1, row: 0 },
+        ],
+        edges: [{ from: "m1", to: "m2" }],
+      },
+      // 仕込みは手順が無い（未記入）想定。レーンには何も出ない
+      dough: { steps: [], edges: [] },
+    },
+  },
+  handoffs: [{ from: "mill", to: "dough", broken: false }],
+  truncated: false,
+};
+
+export const PlanOriginWithChildSteps: Story = {
+  name: "計画起点で各工程の手順が出る",
+  render: () => (
+    <LocalGraphView
+      model={PLAN_ORIGIN_WITH_STEPS_MODEL}
+      depth={1}
+      onDepthChange={() => {}}
+      onOpenNote={() => {}}
+      originPicker={staticOriginPicker(PLAN_ORIGIN_WITH_STEPS_MODEL.origin.title)}
     />
   ),
 };
@@ -178,7 +247,7 @@ export const NoPlanDepth2: Story = {
       depth={2}
       onDepthChange={() => {}}
       onOpenNote={() => {}}
-      onBack={() => {}}
+      originPicker={staticOriginPicker(NO_PLAN_DEPTH2_MODEL.origin.title)}
     />
   ),
 };
@@ -209,6 +278,7 @@ const NESTED_MODEL: LocalViewModel = {
       { noteId: "bake-low", title: "低温長時間焼成", t: "2026-04-06T09:00:00.000Z", row: 0, isOrigin: false },
       { noteId: "bake-high", title: "高温短時間焼成", t: "2026-04-06T09:00:00.000Z", row: 1, isOrigin: false },
     ],
+    stepsByNote: {},
   },
   handoffs: [
     { from: "mill", to: "sub-plan", broken: false },
@@ -220,15 +290,40 @@ const NESTED_MODEL: LocalViewModel = {
 export const NestedMiddle: Story = {
   name: "入れ子の途中（親・同層・子 = 工程ノート）",
   render: () => (
-    <LocalGraphView model={NESTED_MODEL} depth={1} onDepthChange={() => {}} onOpenNote={() => {}} onBack={() => {}} />
+    <LocalGraphView
+      model={NESTED_MODEL}
+      depth={1}
+      onDepthChange={() => {}}
+      onOpenNote={() => {}}
+      originPicker={staticOriginPicker(NESTED_MODEL.origin.title)}
+    />
   ),
 };
 
-// ── model null（起点が index に無い） ──
+// ── model null（起点が index に無い / 起点未選択） ──
 
 export const OriginMissing: Story = {
   name: "起点が index に無い（model null）",
   render: () => (
-    <LocalGraphView model={null} depth={1} onDepthChange={() => {}} onOpenNote={() => {}} onBack={() => {}} />
+    <LocalGraphView
+      model={null}
+      depth={1}
+      onDepthChange={() => {}}
+      onOpenNote={() => {}}
+      originPicker={staticOriginPicker("（見つかりません）")}
+    />
+  ),
+};
+
+export const OriginNotSelected: Story = {
+  name: "起点が未選択",
+  render: () => (
+    <LocalGraphView
+      model={null}
+      depth={1}
+      onDepthChange={() => {}}
+      onOpenNote={() => {}}
+      originPicker={staticOriginPicker("起点のノートを検索…")}
+    />
   ),
 };

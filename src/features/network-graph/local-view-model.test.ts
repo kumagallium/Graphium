@@ -149,6 +149,7 @@ describe("buildLocalView: 起点が最上位の計画", () => {
       notes: [
         { noteId: "op-a", title: "合成", t: "2026-09-01T00:00:00.000Z", row: 0, isOrigin: false, state: undefined },
       ],
+      stepsByNote: { "op-a": { steps: [], edges: [] } },
     });
   });
 });
@@ -187,6 +188,7 @@ describe("buildLocalView: 起点が入れ子の途中", () => {
       notes: [
         { noteId: "op-child", title: "子工程", t: "2026-09-01T00:00:00.000Z", row: 0, isOrigin: false, state: undefined },
       ],
+      stepsByNote: { "op-child": { steps: [], edges: [] } },
     });
   });
 });
@@ -324,6 +326,52 @@ describe("buildLocalView: step の分岐", () => {
       expect(byId["step-2a"].col).toBe(1);
       expect(byId["step-2b"].col).toBe(1);
       expect(new Set([byId["step-2a"].row, byId["step-2b"].row])).toEqual(new Set([0, 1]));
+    }
+  });
+});
+
+// ── 計画起点で各工程の手順が stepsByNote に入る ──
+
+describe("buildLocalView: 計画起点の stepsByNote", () => {
+  it("工程ごとの手順を整列して持ち、step の無い工程は空", () => {
+    const index = makeIndex([
+      noteEntry({
+        noteId: "plan-1",
+        title: "製造計画",
+        noteContexts: ["計画"],
+        outgoingLinks: [
+          { targetNoteId: "op-a", layer: "knowledge" },
+          { targetNoteId: "op-b", layer: "knowledge" },
+        ],
+      }),
+      noteEntry({ noteId: "op-a", title: "合成" }),
+      noteEntry({ noteId: "op-b", title: "焼成" }), // step 無し
+    ]);
+    const processIndex = makeProcessIndex([
+      processEntry({
+        noteId: "op-a",
+        graph: {
+          steps: [
+            { id: "step-1", name: "秤量", params: [] },
+            { id: "step-2", name: "混合", params: [] },
+          ],
+          entities: [{ id: "mid-1", label: "混合物", kind: "output", attrs: [] }],
+          edges: [
+            { id: "g1", kind: "generates", source: "step-1", target: "mid-1" },
+            { id: "u1", kind: "used", source: "mid-1", target: "step-2" },
+          ],
+        },
+      }),
+    ]);
+
+    const view = buildLocalView({ originNoteId: "plan-1", index, processIndex });
+    expect(view!.children.kind).toBe("notes");
+    if (view!.children.kind === "notes") {
+      const opASteps = view!.children.stepsByNote["op-a"];
+      expect(opASteps.steps.map((s) => s.id).sort()).toEqual(["step-1", "step-2"]);
+      expect(opASteps.edges).toEqual([{ from: "step-1", to: "step-2" }]);
+      const opBSteps = view!.children.stepsByNote["op-b"];
+      expect(opBSteps).toEqual({ steps: [], edges: [] });
     }
   });
 });
