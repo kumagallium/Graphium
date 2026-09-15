@@ -6420,6 +6420,7 @@ function NoteEditorInner({
                   // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
                   // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
                   index={rawNoteIndex ?? null}
+                  onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
                 />
               )}
               {rightTab === "chat" && (

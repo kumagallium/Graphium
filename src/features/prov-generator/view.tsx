@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
-import { ListOrdered, Workflow } from "lucide-react";
+import { ListOrdered, Workflow, Waypoints } from "lucide-react";
 import type { ProvJsonLd, ProvJsonLdNode, ProvAttribute } from "./generator";
 import { extractRelations } from "./generator";
 import { ActivityGraphEditor } from "../network-graph/activity-graph-editor";
@@ -259,6 +259,7 @@ export function ProvGraphPanel({
   editorRef,
   noteContexts,
   index,
+  onOpenLocalView,
 }: {
   doc: ProvJsonLd | null;
   /** 手動配置の保存スコープに使う、いま開いているノートの id */
@@ -268,6 +269,8 @@ export function ProvGraphPanel({
   /** 計画ノート判定（「計画」フォルダ）に使う。計画ノートだけサブタブ「作業手順 / 工程」を出す */
   noteContexts?: string[];
   index?: GraphiumIndex | null;
+  /** 「周辺を時系列で見る」（ローカルビュー）を開く。渡さなければボタンを出さない */
+  onOpenLocalView?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isPlan = isPlanNote(noteContexts);
@@ -329,6 +332,16 @@ export function ProvGraphPanel({
           <span className="text-[10px] text-muted-foreground">{tab.count}</span>
         </button>
       ))}
+      {onOpenLocalView && (
+        <button
+          onClick={onOpenLocalView}
+          title={t("localView.title")}
+          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50"
+        >
+          <Waypoints size={14} />
+          {t("localView.title")}
+        </button>
+      )}
     </div>
   );
 

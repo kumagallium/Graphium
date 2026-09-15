@@ -175,7 +175,7 @@ Labels and links also feed graphs that span your whole workspace:
 ### Timeline around this note
 
 - **What it shows** — three lanes running left to right along a time axis, seen from the note you opened it on: **Plan**, **Operations**, and **Steps**. Lines between operation notes in the same lane are hand-offs — cross-note references between their steps. If the note you started from is a plan note, the child lane holds its Operation notes; otherwise it holds that note's own steps.
-- **Where to open it from** — the button in the side peek (the preview that opens from the note list or from a node in the Global Graph), or the button in the note's right panel **Graph** tab. A breadcrumb leads back to the Global Graph.
+- **Where to open it from** — the **Timeline around this note** button in the side peek (the preview that opens from the note list or from a node in the Global Graph), in the note's right panel **Graph** tab, or, on a plan note, in the **Operations** row of the **Steps** panel. A breadcrumb leads back to the Global Graph.
 - **Depth** — only matters for a note with no plan: how many hops of references to follow when collecting the same-layer lane (1 to 3).
 
 ## Arranging graphs by hand <Badge type="tip" text="Added in v0.43.0 (2026-08-25)" /> {#arranging-graphs-by-hand}
