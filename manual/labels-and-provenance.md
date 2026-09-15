@@ -168,9 +168,15 @@ Labels and links also feed graphs that span your whole workspace:
 
 - **Neighbors** — in the right panel's **Graph** tab: the current note and everything linked within two hops.
 - **Lineage** — the second sub-tab of **Graph**: a tree of the current note's upstream sources — the notes, materials, and versions it was derived from.
-- **Global Graph** <Badge type="tip" text="Added in v0.16.5 (2026-06-29)" /> — in the sidebar: every note at once, layered as **Sources**, **Notes**, and **Claim · Insight** ([Knowledge layer](/knowledge-layer) entries), with edges for **Derived**, **Used**, and **Reference** relations. Toggle **Hide references** or **Show isolated**, color nodes by type or folder, and **Group by folder** to pull related notes into clusters.
+- **Global Graph** <Badge type="tip" text="Added in v0.16.5 (2026-06-29)" /> — in the sidebar: every note at once, layered as **Sources**, **Notes**, and **Claim · Insight** ([Knowledge layer](/knowledge-layer) entries), with edges for **Derived**, **Used**, and **Reference** relations. Toggle **Hide references** or **Show isolated**, color nodes by type or folder, and **Group by folder** to pull related notes into clusters. Toggle **Overview / Timeline** in the header to switch between the layered view and the timeline described below.
 - **Activity graph editor** — the **Steps (only)** view described [above](#the-provenance-graph-panel), where the step order itself can be rewired by dragging.
 - **Process list** — in the sidebar under **Processes**: the flow each note describes, listed side by side (see [Process list](#process-list) below).
+
+### Timeline around this note
+
+- **What it shows** — the Global Graph switched to **Timeline** mode: three lanes running left to right along a time axis, seen from the origin note: **Plan**, **Operations**, and **Steps**. Lines between operation notes in the same lane are hand-offs — cross-note references between their steps. If the origin note is a plan note, the **Steps** lane holds the steps of every one of its Operation notes, stacked one operation below the other; otherwise it holds that note's own steps.
+- **Where to open it from** — switch to **Timeline** in the Global Graph header and pick an origin note from the search box, or jump in already anchored to a note: the note's right panel **Graph** tab, on a plan note the **Operations** row of the **Steps** panel, or the side peek's **Timeline around this note** button (the preview that opens from the note list or from a node in the Global Graph). When you arrive from a note, a **Back to the note** button appears in the header so you can return to it.
+- **Origin and depth** — the header's **Origin** field is a search-as-you-type select over note titles. **Depth** (1 to 3) only matters for a note with no plan: how many hops of references to follow when collecting the same-layer lane.
 
 ## Arranging graphs by hand <Badge type="tip" text="Added in v0.43.0 (2026-08-25)" /> {#arranging-graphs-by-hand}
 

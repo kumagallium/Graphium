@@ -52,7 +52,15 @@ export type LocalViewModel = {
   /** 同じ層。起点を含む */
   siblings: LocalViewNode[];
   children:
-    | { kind: "notes"; notes: LocalViewNode[] }
+    | {
+        kind: "notes";
+        notes: LocalViewNode[];
+        /** 各工程ノートの手順（3 段目のレーン）。step が無い・未投影のノートは空配列 */
+        stepsByNote: Record<
+          string,
+          { steps: LocalViewStep[]; edges: { from: string; to: string }[] }
+        >;
+      }
     | { kind: "steps"; steps: LocalViewStep[]; edges: { from: string; to: string }[] };
   /** siblings 間。from/to は noteId */
   handoffs: { from: string; to: string; broken: boolean }[];
@@ -306,6 +314,18 @@ function layerSteps(
   return result;
 }
 
+/** 指定ノートの ProcessIndex graph を step 整列した結果（steps/edges）を返す */
+function computeStepsForNote(
+  processIndex: ProcessIndex | null,
+  noteId: string,
+): { steps: LocalViewStep[]; edges: { from: string; to: string }[] } {
+  const process = processIndex?.processes.find((p) => p.noteId === noteId);
+  const graph = process?.graph ?? { steps: [], entities: [], edges: [] };
+  const stepEdges = collectStepEdges(graph);
+  const steps = layerSteps(graph, stepEdges);
+  return { steps, edges: stepEdges };
+}
+
 // ── 本体 ──
 
 /**
@@ -358,13 +378,17 @@ export function buildLocalView(input: {
         .map((id) => toLocalViewNode(index, id, false))
         .filter((n): n is LocalViewNode => n !== null),
     );
-    children = { kind: "notes", notes };
+    // 各工程ノートの手順を 3 段目のレーンとして併せ持つ（計画起点でも作業手順が見えるように）
+    const stepsByNote: Record<
+      string,
+      { steps: LocalViewStep[]; edges: { from: string; to: string }[] }
+    > = {};
+    for (const note of notes) {
+      stepsByNote[note.noteId] = computeStepsForNote(processIndex, note.noteId);
+    }
+    children = { kind: "notes", notes, stepsByNote };
   } else {
-    const process = processIndex?.processes.find((p) => p.noteId === originNoteId);
-    const graph = process?.graph ?? { steps: [], entities: [], edges: [] };
-    const stepEdges = collectStepEdges(graph);
-    const steps = layerSteps(graph, stepEdges);
-    children = { kind: "steps", steps, edges: stepEdges };
+    children = { kind: "steps", ...computeStepsForNote(processIndex, originNoteId) };
   }
 
   const handoffs = buildHandoffs(index, processIndex, new Set(siblings.map((s) => s.noteId)));
