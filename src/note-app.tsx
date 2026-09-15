@@ -9824,7 +9824,7 @@ export function NoteApp() {
           }));
           return { ok: false, error: errMsg };
         }
-        const rewritten = rebuildTopicDocument(doc, body, memberClaims.map((c) => c.id), selectedModel ?? null, buildNoteIndex(fm.noteIndex));
+        const rewritten = rebuildTopicDocument(doc, body, memberClaims, selectedModel ?? null, buildNoteIndex(fm.noteIndex));
         await fm.handleSaveWikiFile(wikiId, rewritten, {
           activityType: "wiki_regenerate",
           sources: memberClaims.map((c) => c.id),

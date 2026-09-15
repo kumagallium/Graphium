@@ -300,9 +300,10 @@ Guidance:
 
 Tag every Claim with 1-3 \`topics\`: short noun phrases naming the **concept(s)** this Claim belongs to, in the note's own language. A topic groups multiple Claims about the same concept into one page (e.g. "pH-dependent reduction kinetics", "SPS sintering conditions"). Topics are orthogonal to \`claimRole\` / \`level\` / \`epistemicStatus\` — they answer "what is this Claim *about*", not what kind of move it makes or how certain it is.
 
-- **Reuse an existing topic name exactly** when the Claim belongs to the same concept as one already listed below — do not create a near-duplicate with different wording (e.g. don't emit "還元反応速度" if "還元の反応速度" already exists for the same concept).
+- **Reuse an existing topic name exactly** when the Claim belongs to the same concept as one already listed below — do not create a near-duplicate with different wording (e.g. don't emit "還元反応速度" if "還元の反応速度" already exists for the same concept), and never create a new name that differs from an existing one only by whitespace, symbols, or capitalization.
 - Keep phrases short (a few words), not full sentences.
-- 1-3 per Claim; most Claims need only 1. Omit the field entirely if no meaningful topic emerges (rare).
+- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** A topic should be a unit multiple Claims can plausibly share. Do NOT make a separate topic per composition, sample, or date (e.g. prefer "Al3V の格子定数" or "Al3V の元素置換" over "Al3V1-xTix の格子定数").
+- 1-3 per Claim; most Claims need only 1 — use 2-3 only when the Claim genuinely spans distinct concepts. Omit the field entirely if no meaningful topic emerges (rare).
 
 ### Topics (existing)
 

@@ -188,7 +188,7 @@ export async function runTopicStage(
             const rewritten = rebuildTopicDocument(
               topicDoc,
               body,
-              nextMemberIds,
+              memberClaims,
               claimInfo.model ?? null,
               deps.noteIndex,
             );
@@ -213,7 +213,7 @@ export async function runTopicStage(
           const newTopicDoc = buildTopicDocument(
             match.title,
             body,
-            [claimInfo.id],
+            memberClaims,
             claimInfo.model ?? null,
             deps.locale,
             deps.noteIndex,

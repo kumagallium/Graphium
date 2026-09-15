@@ -692,6 +692,18 @@ function parseMarkdownHeading(line: string): { level: number; text: string } | n
   return { level: Math.min(m[1].length, 3), text: m[2].trim() };
 }
 
+/** 1 行が markdown の箇条書き（`- ` / `* `）かを判定し、中身のテキストを返す。 */
+function parseMarkdownBullet(line: string): string | null {
+  const m = /^[-*]\s+(.+)$/.exec(line);
+  return m ? m[1].trim() : null;
+}
+
+/** 1 行が markdown の番号付きリスト（`1. ` など）かを判定し、中身のテキストを返す。 */
+function parseMarkdownNumbered(line: string): string | null {
+  const m = /^\d+\.\s+(.+)$/.exec(line);
+  return m ? m[1].trim() : null;
+}
+
 function convertSectionsToBlocks(
   sections: { heading: string; content: string }[],
   noteIndex: NoteIndex = [],
@@ -747,6 +759,29 @@ function convertSectionsToBlocks(
         });
         continue;
       }
+      // 箇条書き / 番号付きリストは bulletListItem / numberedListItem ブロックに変換する
+      // （素のテキストとして表示されるのを防ぐ）。inline は通常の段落と同じく
+      // parseInlineCitations を通す。
+      const bullet = parseMarkdownBullet(para);
+      const numbered = bullet === null ? parseMarkdownNumbered(para) : null;
+      if (bullet !== null || numbered !== null) {
+        const itemText = bullet !== null ? bullet : (numbered as string);
+        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle);
+        blocks.push({
+          id: parsedItem.blockId,
+          type: bullet !== null ? "bulletListItem" : "numberedListItem",
+          props: {
+            textColor: "default",
+            backgroundColor: "default",
+            textAlignment: "left",
+          },
+          content: parsedItem.inlineContent,
+          children: [],
+        });
+        knowledgeLinks.push(...parsedItem.knowledgeLinks);
+        continue;
+      }
+
       const parsed = parseInlineCitations(para, noteIndex, selfTitle);
       blocks.push({
         id: parsed.blockId,
@@ -2103,11 +2138,12 @@ export type TopicMatch =
   | { status: "new"; title: string };
 
 /**
- * 話題名の正規化（一致判定専用）。NFC 正規化・前後空白除去・小文字化。
+ * 話題名の正規化（一致判定専用）。NFKC 正規化・空白（全角含む）全除去・小文字化。
+ * 「AI3V合金」と「AI3V 合金」のような内部の空白差だけの表記ゆれも同一視する。
  * 表示用タイトルは常に元の文字列を使う（正規化結果を保存しない）。
  */
 export function normalizeTopicTitle(title: string): string {
-  return title.normalize("NFC").trim().toLowerCase();
+  return title.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
 }
 
 /**
@@ -2309,31 +2345,104 @@ export async function nameTopicsForClaims(
   return data.topics ?? {};
 }
 
+/** 話題ページの本文・References 構築に渡すメンバー知見の最小情報 */
+export type TopicMemberRef = { id: string; title: string };
+
+/** `[[claim:<id>]]` を検出する正規表現（id は空白・`]` を含まない） */
+const CLAIM_CITATION_RE = /\[\[claim:([^\]]+?)\]\]/g;
+
+/**
+ * Topic Writer が `[[claim:<id>]]` 形式で出した引用を、メンバー知見の現在のタイトルへ
+ * 解決してから `[[<title>]]`（既存の parseInlineCitations が解釈する形式）に書き換える。
+ * LLM がタイトルを転記ミスする問題を、id ベースの引用にすることで避ける。
+ *
+ * id が memberClaims に無い（LLM の幻覚・削除後の残骸）場合でも引用ごと落とさない —
+ * id を含む文字列として残し、目に見える形にする（プレーンテキストとして表示される）。
+ * 旧形式 `[[title]]`（Topic Writer の旧プロンプト出力・過去の保存済み本文）はこの関数の
+ * 対象外で、そのまま parseInlineCitations に渡り従来どおりタイトル一致で解決される。
+ */
+export function resolveTopicClaimCitations(body: string, memberClaims: TopicMemberRef[]): string {
+  if (!body) return body;
+  const titleById = new Map(memberClaims.map((c) => [c.id, c.title]));
+  return body.replace(CLAIM_CITATION_RE, (_match, rawId: string) => {
+    const id = rawId.trim();
+    const title = titleById.get(id);
+    if (title) return `[[${title}]]`;
+    // 未知の id: タイトルは分からないが、引用が存在したこと自体を消さずに残す。
+    return `[[claim:${id}]]`;
+  });
+}
+
+/**
+ * 話題ページ末尾の References ブロックを構築する。メンバー知見 1 件につき 1 行、
+ * claim ページの References（buildRelationBlocks の「Related:」行）と同じ見た目の
+ * @リンクにする。メンバー知見は常に AI 生成の wiki（claim）ページなので 🤖 プレフィックスを
+ * 固定で付ける（buildRelationBlocks 側の isWiki 判定と同じ表現）。
+ */
+function buildTopicReferenceBlocks(memberClaims: TopicMemberRef[]): RelationBlocksResult {
+  const blocks: any[] = [];
+  const knowledgeLinks: any[] = [];
+  if (memberClaims.length === 0) return { blocks, knowledgeLinks };
+
+  blocks.push({
+    id: crypto.randomUUID(),
+    type: "heading",
+    props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
+    content: [{ type: "text", text: "References", styles: {} }],
+    children: [],
+  });
+
+  for (const claim of memberClaims) {
+    const blockId = crypto.randomUUID();
+    blocks.push({
+      id: blockId,
+      type: "bulletListItem",
+      props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+      content: [{ type: "text", text: `@🤖 ${claim.title}`, styles: { textColor: "blue" } }],
+      children: [],
+    });
+    knowledgeLinks.push({
+      id: crypto.randomUUID(),
+      sourceBlockId: blockId,
+      targetBlockId: "",
+      targetNoteId: claim.id,
+      type: "reference",
+      layer: "knowledge",
+      createdBy: "ai",
+    });
+  }
+
+  return { blocks, knowledgeLinks };
+}
+
 /**
  * 話題ページ本文（markdown）から GraphiumDocument を構築する。
  * サーバーの compose-topic 出力は 1 つの markdown 文字列（`## 見出し` を含みうる）
  * なので、単一セクション {heading: "", content: body} として convertSectionsToBlocks
- * に通す — 埋め込み `## ...` 見出しと `[[Claim title]]` 引用（parseInlineCitations）は
- * 既存の変換ロジックがそのまま解釈する。
+ * に通す — 埋め込み `## ...` 見出しと `[[claim:<id>]]` 引用（resolveTopicClaimCitations
+ * でタイトルに解決してから parseInlineCitations）は既存の変換ロジックがそのまま解釈する。
+ * 末尾に References（メンバー知見一覧）を buildTopicReferenceBlocks で付ける。
  *
  * `derivedFromClaims` にメンバー知見の ID を必ず積む（保存で落ちないことをテストで固定）。
  */
 export function buildTopicDocument(
   title: string,
   body: string,
-  memberClaimIds: string[],
+  memberClaims: TopicMemberRef[],
   model: string | null,
   language?: string,
   noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
-  const converted = convertSectionsToBlocks([{ heading: "", content: body }], noteIndex, title);
+  const resolvedBody = resolveTopicClaimCitations(body, memberClaims);
+  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title);
+  const refs = buildTopicReferenceBlocks(memberClaims);
 
   const wikiMeta: WikiMeta = {
     kind: "topic",
     derivedFromNotes: [],
     derivedFromChats: [],
-    derivedFromClaims: [...memberClaimIds],
+    derivedFromClaims: memberClaims.map((c) => c.id),
     generatedAt: now,
     generatedBy: {
       model: model ?? "unknown",
@@ -2349,10 +2458,10 @@ export function buildTopicDocument(
     pages: [{
       id: "main",
       title,
-      blocks: converted.blocks,
+      blocks: [...converted.blocks, ...refs.blocks],
       labels: {},
       provLinks: [],
-      knowledgeLinks: converted.knowledgeLinks,
+      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks],
     }],
     source: "ai",
     wikiMeta,
@@ -2369,34 +2478,38 @@ export function buildTopicDocument(
 /**
  * 既存の話題ドキュメントの本文を書き直して更新する（メンバー変化後の再構成 / 手動再生成
  * 共通）。`derivedFromClaims`（メンバー ID）は呼び出し側が確定済みのものをそのまま渡す
- * — この関数は本文とブロックだけを作り直す。
+ * — この関数は本文とブロック（References 含む）を作り直す。書き直しのたびに
+ * buildTopicReferenceBlocks を呼び直すので、References が重複して積み重なることはない
+ * （page.blocks を丸ごと差し替えるため）。
  */
 export function rebuildTopicDocument(
   existingDoc: GraphiumDocument,
   body: string,
-  memberClaimIds: string[],
+  memberClaims: TopicMemberRef[],
   model: string | null,
   noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
+  const resolvedBody = resolveTopicClaimCitations(body, memberClaims);
   const converted = convertSectionsToBlocks(
-    [{ heading: "", content: body }],
+    [{ heading: "", content: resolvedBody }],
     noteIndex,
     existingDoc.title,
   );
+  const refs = buildTopicReferenceBlocks(memberClaims);
   const page = existingDoc.pages[0];
 
   return {
     ...existingDoc,
     pages: [{
       ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
-      blocks: converted.blocks,
-      knowledgeLinks: converted.knowledgeLinks,
+      blocks: [...converted.blocks, ...refs.blocks],
+      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks],
     }],
     wikiMeta: {
       ...existingDoc.wikiMeta!,
       kind: "topic",
-      derivedFromClaims: [...memberClaimIds],
+      derivedFromClaims: memberClaims.map((c) => c.id),
       lastIngestedAt: now,
       generatedBy: {
         model: model ?? existingDoc.wikiMeta?.generatedBy?.model ?? "unknown",

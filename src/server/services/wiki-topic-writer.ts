@@ -4,9 +4,12 @@
 // 設計の意図:
 //   話題ページは「メンバー知見の集合から作られる純関数」（LLM Wiki が誤りを積み重ねて
 //   伝播させる弱点への回答）。前の本文は入力に渡さない — 触れるたびに member claims から
-//   作り直す。本文は短く: 定義 / 要点（知見を [[知見タイトル]] で引用） / 食い違い・未解決。
-//   References は呼び出し元（wiki-service.ts）が既存の仕組み（parseInlineCitations /
-//   buildRelationBlocks 相当）で付けるため、ここでは生成しない。
+//   作り直す。本文は短く: 定義 / 要点（知見を [[claim:<id>]] で引用） / 食い違い・未解決。
+//   引用はタイトルの転記ミス（LLM が組成名などを書き間違える）を避けるため、タイトル文字列
+//   ではなくユーザーメッセージに与えた id をそのまま使わせる。呼び出し元
+//   （wiki-service.ts の buildTopicDocument / rebuildTopicDocument）が [[claim:<id>]] を
+//   その時点のメンバー知見タイトルへ解決してから parseInlineCitations に渡し、
+//   本文末尾に References（メンバー知見一覧）を付ける。
 //
 // Topic Namer（話題名の保険）:
 //   ingester は知見ごとに 1〜3 件の topics を出す想定だが、LLM が項目を無視して空にする
@@ -38,7 +41,7 @@ A **Topic** page groups multiple Claims (knowledge pages) that share the same co
 Write the body as Markdown with these sections (use \`##\` headings so they parse as proper headings downstream):
 
 - **定義 / Definition**: 1-3 sentences stating what this topic is, grounded in the member Claims.
-- **要点 / Key points**: The load-bearing points from the member Claims, each citing its source with \`[[Claim title]]\` (use the exact title string given below — this becomes a clickable link downstream, so it MUST match exactly). Do not just restate every Claim — synthesize into a short list of points.
+- **要点 / Key points**: The load-bearing points from the member Claims, each citing its source with \`[[claim:<id>]]\` — use the exact \`id\` given in the "(id: ...)" annotation below each Claim, NOT the title (this avoids transcription errors in titles). Place the citation at the END of the sentence, never mid-sentence. Do not just restate every Claim — synthesize into a short list of points.
 - **食い違い・未解決 / Disagreements & open questions**: Only include this section if the member Claims genuinely disagree or leave something unresolved. Omit the section entirely if there is nothing genuine to report — do not pad it.
 
 Do NOT add a References / 関連 section — the caller appends that separately.
@@ -48,7 +51,7 @@ Do NOT add a References / 関連 section — the caller appends that separately.
 Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 {
-  "body": "## 定義\\n...\\n\\n## 要点\\n...[[Claim title]]...\\n\\n## 食い違い・未解決\\n..."
+  "body": "## 定義\\n...\\n\\n## 要点\\n...[[claim:abc123]]\\n\\n## 食い違い・未解決\\n..."
 }
 
 ## Voice
@@ -125,9 +128,10 @@ Each Claim below is missing \`topics\` — short noun phrases naming the concept
 ## Rules
 
 - Tag each Claim with 1-3 \`topics\`, short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
-- **Reuse an existing topic name exactly** when the Claim belongs to the same concept as one already listed below — do not create a near-duplicate with different wording.
+- **Reuse an existing topic name exactly** when the Claim belongs to the same concept as one already listed below — do not create a near-duplicate with different wording, and never create a new name that differs from an existing one only by whitespace, symbols, or capitalization.
 - Keep phrases short (a few words), not full sentences.
-- Every Claim listed must get at least 1 topic — pick the best available concept even if the fit isn't perfect.
+- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** A topic should be a unit multiple Claims can plausibly share. Do NOT make a separate topic per composition, sample, or date.
+- Every Claim listed must get at least 1 topic — pick the best available concept even if the fit isn't perfect. Use 2-3 only when the Claim genuinely spans distinct concepts.
 
 ## Output Format
 

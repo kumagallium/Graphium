@@ -430,8 +430,9 @@ describe("filterSelfFromDerivedFromClaims - note-app.tsx の Atom re-lift 経路
 });
 
 describe("normalizeTopicTitle - 話題名の一致判定用正規化", () => {
-  it("前後空白と大小文字を無視する", () => {
-    expect(normalizeTopicTitle("  Reduction Kinetics  ")).toBe("reduction kinetics");
+  it("前後・内部の空白と大小文字を無視する（D: 空白差の名寄せ）", () => {
+    expect(normalizeTopicTitle("  Reduction Kinetics  ")).toBe("reductionkinetics");
+    expect(normalizeTopicTitle("Reduction  Kinetics")).toBe("reductionkinetics");
   });
 
   it("NFC 正規化で結合文字の表記ゆれを吸収する", () => {
@@ -468,6 +469,11 @@ describe("matchTopicsByTitle - タイトル正規化一致（同期版）", () =
   it("既存話題が空なら全件 new", () => {
     const result = matchTopicsByTitle(["a", "b"], []);
     expect(result.every((m) => m.status === "new")).toBe(true);
+  });
+
+  it("内部の空白差だけの表記ゆれも一致させる（D）", () => {
+    const result = matchTopicsByTitle(["SPS焼結条件"], existing);
+    expect(result[0]).toMatchObject({ status: "matched", topicId: "topic-2" });
   });
 });
 
@@ -606,7 +612,7 @@ describe("buildTopicDocument / rebuildTopicDocument - 保存経路で topicIds/d
     const doc = buildTopicDocument(
       "話題タイトル",
       "## 定義\n本文です。",
-      ["claim-a", "claim-b"],
+      [{ id: "claim-a", title: "知見A" }, { id: "claim-b", title: "知見B" }],
       "test-model",
       "ja",
     );
@@ -615,7 +621,7 @@ describe("buildTopicDocument / rebuildTopicDocument - 保存経路で topicIds/d
   });
 
   it("本文の `## 見出し` はブロック化され、段落テキストも保持される", () => {
-    const doc = buildTopicDocument("t", "## 定義\n本文です。", ["claim-a"], null);
+    const doc = buildTopicDocument("t", "## 定義\n本文です。", [{ id: "claim-a", title: "知見A" }], null);
     const blocks = doc.pages[0].blocks as any[];
     expect(blocks.some((b) => b.type === "heading")).toBe(true);
     expect(blocks.some((b) => b.type === "paragraph")).toBe(true);
@@ -638,8 +644,119 @@ describe("buildTopicDocument / rebuildTopicDocument - 保存経路で topicIds/d
       createdAt: "2026-07-01T00:00:00Z",
       modifiedAt: "2026-07-01T00:00:00Z",
     };
-    const next = rebuildTopicDocument(existing, "## 定義\n更新後の本文。", ["claim-a", "claim-b"], "m2");
+    const next = rebuildTopicDocument(
+      existing,
+      "## 定義\n更新後の本文。",
+      [{ id: "claim-a", title: "知見A" }, { id: "claim-b", title: "知見B" }],
+      "m2",
+    );
     expect(next.wikiMeta?.derivedFromClaims).toEqual(["claim-a", "claim-b"]);
     expect(next.documentProvenance).toBe(existing.documentProvenance);
+  });
+
+  it("[[claim:<id>]] 引用をメンバー知見の現在のタイトルへ解決し @リンク化する（タイトル転記ミスを避ける）", () => {
+    const memberClaims = [
+      { id: "claim-a", title: "Al3V の格子定数" },
+      { id: "claim-b", title: "Al3V の元素置換" },
+    ];
+    const doc = buildTopicDocument(
+      "Al3V 合金",
+      "## 要点\nXRD パターンが取得された。[[claim:claim-a]]",
+      memberClaims,
+      "test-model",
+      "ja",
+      [
+        { id: "claim-a", title: "Al3V の格子定数", isWiki: true },
+        { id: "claim-b", title: "Al3V の元素置換", isWiki: true },
+      ],
+    );
+    const blocks = doc.pages[0].blocks as any[];
+    const para = blocks.find((b) => b.type === "paragraph");
+    const linkText = para.content.find((c: any) => c.text?.includes("Al3V の格子定数"));
+    expect(linkText).toBeDefined();
+    expect(linkText.text).toBe("@🤖 Al3V の格子定数");
+    expect(doc.pages[0].knowledgeLinks.some((l: any) => l.targetNoteId === "claim-a")).toBe(true);
+  });
+
+  it("未知の id は引用ごと落とさず、id が分かる文字列として残す", () => {
+    const doc = buildTopicDocument(
+      "話題タイトル",
+      "## 要点\n何らかの知見。[[claim:unknown-id]]",
+      [{ id: "claim-a", title: "知見A" }],
+      null,
+    );
+    const blocks = doc.pages[0].blocks as any[];
+    const para = blocks.find((b) => b.type === "paragraph");
+    const text = para.content.map((c: any) => c.text).join("");
+    expect(text).toContain("unknown-id");
+  });
+
+  it("末尾に References（メンバー知見一覧の @リンク）を必ず付ける", () => {
+    const memberClaims = [
+      { id: "claim-a", title: "知見A" },
+      { id: "claim-b", title: "知見B" },
+    ];
+    const doc = buildTopicDocument("話題タイトル", "## 定義\n本文です。", memberClaims, null);
+    const blocks = doc.pages[0].blocks as any[];
+    const headingIdx = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "References");
+    expect(headingIdx).toBeGreaterThan(-1);
+    const refItems = blocks.slice(headingIdx + 1).filter((b) => b.type === "bulletListItem");
+    expect(refItems).toHaveLength(2);
+    expect(doc.pages[0].knowledgeLinks.filter((l: any) => l.targetNoteId === "claim-a" || l.targetNoteId === "claim-b")).toHaveLength(2);
+  });
+
+  it("rebuildTopicDocument で書き直しても References は 1 つだけ（重複しない）", () => {
+    const memberClaims = [{ id: "claim-a", title: "知見A" }];
+    const first = buildTopicDocument("話題タイトル", "## 定義\n本文です。", memberClaims, null);
+    const rewritten = rebuildTopicDocument(first, "## 定義\n更新後の本文。", memberClaims, null);
+    const blocks = rewritten.pages[0].blocks as any[];
+    const headings = blocks.filter((b) => b.type === "heading" && b.content[0].text === "References");
+    expect(headings).toHaveLength(1);
+  });
+});
+
+describe("convertSectionsToBlocks（buildTopicDocument 経由）- 箇条書き / 番号付きリストの変換", () => {
+  it("`- ` 始まりの行を bulletListItem ブロックに変換する", () => {
+    const doc = buildTopicDocument(
+      "話題タイトル",
+      "## 要点\n- 1 つ目の要点\n- 2 つ目の要点",
+      [{ id: "claim-a", title: "知見A" }],
+      null,
+    );
+    const blocks = doc.pages[0].blocks as any[];
+    const items = blocks.filter((b) => b.type === "bulletListItem");
+    // References の @リンク行と紛れないよう本文由来だけを見る
+    const bodyItems = items.filter((b) => !b.content.some((c: any) => c.text?.startsWith("@")));
+    expect(bodyItems).toHaveLength(2);
+    expect(bodyItems[0].content[0].text).toBe("1 つ目の要点");
+  });
+
+  it("`1. ` 始まりの行を numberedListItem ブロックに変換する", () => {
+    const doc = buildTopicDocument(
+      "話題タイトル",
+      "## 要点\n1. 最初の手順\n2. 次の手順",
+      [{ id: "claim-a", title: "知見A" }],
+      null,
+    );
+    const blocks = doc.pages[0].blocks as any[];
+    const items = blocks.filter((b) => b.type === "numberedListItem");
+    expect(items).toHaveLength(2);
+    expect(items[0].content[0].text).toBe("最初の手順");
+    expect(items[1].content[0].text).toBe("次の手順");
+  });
+});
+
+describe("normalizeTopicTitle - 空白差・NFKC の吸収（D）", () => {
+  it("半角スペースの有無を同一視する", () => {
+    expect(normalizeTopicTitle("Al3V合金")).toBe(normalizeTopicTitle("Al3V 合金"));
+  });
+
+  it("全角スペースも同一視する", () => {
+    expect(normalizeTopicTitle("Al3V　合金")).toBe(normalizeTopicTitle("Al3V合金"));
+  });
+
+  it("大文字小文字を同一視する", () => {
+    expect(normalizeTopicTitle("AI3V")).not.toBe(normalizeTopicTitle("Al3V")); // 別文字（I と l）は区別する
+    expect(normalizeTopicTitle("ABC")).toBe(normalizeTopicTitle("abc"));
   });
 });

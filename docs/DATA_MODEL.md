@@ -910,6 +910,13 @@ existing topics by (1) normalized title match, then (2) embedding
 similarity > 0.9 (falls back to title-match-only when no embedding
 model is configured), and only then created as new.
 
+In the topic body, citations to member Claims are written as
+`[[claim:<id>]]` (the Claim's id, not its title — this avoids the
+writer LLM mistranscribing a title) and resolved to the Claim's
+current title before rendering. The body always ends with a
+References section listing every member Claim as an `@` link,
+built the same way regardless of what the writer LLM produced.
+
 `synthesis` documents are authored through the Cmd-K Composer flow
 rather than an automatic pipeline: the user selects Insights, builds a
 citation note, and invokes the LLM with that as the search-space

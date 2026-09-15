@@ -74,6 +74,12 @@ describe("buildTopicWriterSystemPrompt", () => {
     expect(buildTopicWriterSystemPrompt("ja")).toContain("Japanese");
     expect(buildTopicWriterSystemPrompt("en")).toContain("English");
   });
+
+  it("引用はタイトルの転記ではなく id で書かせる（[[claim:<id>]] 形式）", () => {
+    const prompt = buildTopicWriterSystemPrompt("ja");
+    expect(prompt).toContain("[[claim:");
+    expect(prompt).not.toContain("[[Claim title]]");
+  });
 });
 
 describe("parseTopicNamerOutput", () => {
