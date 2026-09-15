@@ -8657,18 +8657,17 @@ export function NoteApp() {
       try {
         const allExistingWikis = buildExistingWikiRefs(fm.noteIndex?.notes);
 
-        // Ingest 時のマージ判定: LLM に渡す既存 Wiki タイトル一覧を関連度順にする。
-        // タイトルだけなのでトークンコストは軽いが、Wiki 数が増えると LLM の attention が
-        // 散ってマージ候補を見落とすため、(a) 関連度順にリオーダー (b) 上限 200 件でキャップ。
-        // 母集団が 200 未満なら全件残し、並べ替えだけ行う（既存挙動とほぼ同じ）。
-        const INGEST_TITLE_CAP = 200;
+        // Ingest 時のマージ判定: LLM に渡す既存 Wiki の一覧（index）を関連度順に並べる。
+        // 件数は切らない — LLM Wiki の ingest は「index を全部読む」のが原則で、
+        // 以前あった上限 200 件には根拠が無かった（2026-09-16 撤去）。並べ替えだけ残し、
+        // 関連の強いものが先頭に来るようにする。
         const queryText = `${job.noteTitle ?? job.doc.title ?? ""}`;
         const rankedWikis = allExistingWikis.length === 0
           ? allExistingWikis
           : rankCandidatesByRelevance(
               { embedding: null, similarityText: queryText },
               allExistingWikis.map((w) => ({ ...w, embedding: null, similarityText: w.title })),
-              INGEST_TITLE_CAP,
+              allExistingWikis.length,
             ).map(({ id, title, kind }) => ({ id, title, kind }));
         // 既存話題は「タイトル + 定義の先頭文」の index として渡す（他 4 経路と同じ下ごしらえ。
         // ここだけランキング + 上限キャップを先に済ませてから付与する）。
