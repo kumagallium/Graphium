@@ -1015,12 +1015,14 @@ export type InlineHighlight = {
  *
  * - datetime-auto: 行が増えたら空セルに現在日時が入る（旧・記録テーブルの実体）
  * - note-link: 行の値からノートを作成・参照できる（旧・インデックステーブルの実体）
+ * - planned-input: 計画ノートの工程表で「この行の入力元になる予定の工程」を行名で書く列
+ *   （複数は「、」区切り）。予定の線（計画）の実体。実績の線は工程ノート側の cross-note 参照
  *
  * テーブルの種類を減らすために統合したのに列の種類が乱立すると同じ問題が列レベルで
  * 再演されるため、最小セットから始める。number / text のような「値の型」は必要が
  * 立証されてから足す（追加は additive なので後から安全にできる）。
  */
-export type ColumnType = "datetime-auto" | "note-link";
+export type ColumnType = "datetime-auto" | "note-link" | "planned-input";
 
 /**
  * テーブル注釈（2026-08 で導入）。

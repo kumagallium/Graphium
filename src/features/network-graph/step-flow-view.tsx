@@ -121,6 +121,14 @@ export type StepFlowViewProps = {
   /** 同じく空状態の見出し。省略時は activityGraph.emptyTitle */
   emptyTitle?: string;
   /**
+   * 工程ノード（noteRef）同士の接続を許す（計画ノートの工程フローで予定の線を引く）。
+   * true のとき noteRef ノードのハンドルが掴めるようになり、step → step の接続は
+   * onConnectSteps に渡る。entity → noteRef の接続は許さない
+   */
+  connectNoteRefs?: boolean;
+  /** planned エッジの削除（線を選んで「予定を外す」） */
+  onRemovePlannedEdge?: (producer: string, consumer: string) => void;
+  /**
    * 接続できないフロー（計画ノートの工程フロー）で、線が 1 本も無いときに下中央へ
    * 薄く出す案内。「線はどこで引くか」を伝える。dragHint と同じ場所・同じ条件
    */
