@@ -1793,7 +1793,7 @@ people most often need to find.
 | Process index (cross-note step graphs, step reuse) | `src/features/network-graph/process-index.ts` |
 | Cross-note output references (durable row ids, upstream overlay) | `src/lib/table-row-identity.ts`, `src/features/network-graph/cross-note-flow.ts` |
 | Reserved "plan" folder detection | `src/features/note-context/reserved-folders.ts` |
-| Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` |
+| Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` — planned edges come from the `planned-input` column of the plan note's index table; executed edges come from cross-note references |
 | Local view data (origin note's parent/peer/child lanes) | `src/features/network-graph/local-view-model.ts` |
 | Process overview aggregation (step-name graph across notes) | `src/features/network-graph/process-overview.ts` |
 | Sharing / Library / Fork | `src/features/sharing/`, `src/lib/storage/shared/` |

@@ -259,8 +259,15 @@ and a table can carry both at once.
 
 ```ts
 type ColumnType =
-  | "datetime-auto"   // adding a row stamps this column's empty cell with the current time
-  | "note-link";      // a row's value can create / open a note of its own
+  | "datetime-auto"    // adding a row stamps this column's empty cell with the current time
+  | "note-link"        // a row's value can create / open a note of its own
+  | "planned-input";   // plan note only: cell value lists this index table's own row
+                        // names (separated by "、" or commas), declaring planned (not
+                        // yet executed) edges in the plan's Operations graph; not
+                        // projected into PROV-DM. Known limitation shared with
+                        // note-link: columnTypes is keyed by header text, so renaming
+                        // the header in the table detaches the type until the column
+                        // is re-tagged
 
 type TableMeta = {
   caption?: string;                        // any table can be named; empty means no caption

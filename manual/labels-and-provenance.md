@@ -94,6 +94,8 @@ Once a note has at least one step or label, a **Steps** tab appears in the right
 
 In a Plan note (see [Folders](/notes-and-editor#folders)), the Steps tab carries two sub-tabs, **Steps** and **Operations**. Steps is the graph described below, for the plan note's own step blocks. Operations draws the plan's [Operation notes](/notes-and-editor#the-index-table) as steps and whatever they hand to each other as entities. **Add operation** only adds a row to the index table — name it, then click the row's node ("Create note") to actually create the operation note, the same way the index table itself does. Clicking an existing operation node opens that note; drawing a connection between operations is done from inside the operation note's own steps, not from this view.
 
+The Operations graph can also carry **Planned** connections: a gray dotted line drawn from the plan's **Input from** column (see [The index table](/notes-and-editor#the-index-table)), independent of whether any operation note actually references the other's output yet. Drag a port between two operation nodes to write the source operation's row name into the target row's **Input from** cell; select a planned line and choose **Remove planned line** to clear it. When an actual cross-note reference matches a planned one, the line is shown **As planned** (solid green); an actual reference that has no matching plan is **Unplanned** (solid amber). A plan with no planned lines at all shows no marks. Planned lines are a planning aid only — they never appear in the PROV-DM output.
+
 ![A note with its provenance graph in the right panel](/screenshots/editor-with-graph_en.png)
 
 What you're looking at:
