@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.73.0](https://github.com/kumagallium/Graphium/compare/v0.72.4...v0.73.0) - 2026-09-15
+
+- Sort chart settings into figure and panel, and scope the legend by @kumagallium in https://github.com/kumagallium/Graphium/pull/930
+
 ## [v0.72.4](https://github.com/kumagallium/Graphium/compare/v0.72.3...v0.72.4) - 2026-09-15
 
 - Encode media uploads to base64 in chunks instead of one byte at a time by @kumagallium in https://github.com/kumagallium/Graphium/pull/925
