@@ -5,11 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { isPlanFolderPath } from "../note-context/reserved-folders";
-import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext } from "../note-context/context-tags";
+import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext, replaceNoteContext } from "../note-context/context-tags";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
 import { ContextBadge } from "../note-context/ContextBadge";
 import {
   assetFolderValues,
+  commonOwnFolders,
   resolveAssetFolders,
   type NoteFolderLookup,
 } from "./asset-folders";
@@ -19,7 +20,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
-import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
+import type { EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
@@ -486,10 +487,11 @@ export type AssetGalleryViewProps = {
   countSnapshotRefs?: (entry: MediaIndexEntry) => Promise<number>;
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /**
-   * 素材のフォルダ（noteContexts）を保存する。渡されたときだけ付与 UI を出す。
-   * ノートと同じフォルダ体系を共有する。
+   * 素材のフォルダ（noteContexts）を付け外しする。渡されたときだけ付与 UI を出す
+   * （詳細のフォルダ行・一覧の行・一括）。ノートと同じフォルダ体系を共有する。
+   * 値ではなく編集を渡すのは、続けて操作したときに古い値で上書きしないため。
    */
-  onSetMediaContexts?: (fileId: string, contexts: string[]) => Promise<void> | void;
+  onEditMediaContexts?: EditMediaContexts;
   /** ノート側で使われているフォルダ名（付与ピッカーの候補に混ぜる。体系を共有するため） */
   noteFolders?: readonly string[];
   /**
@@ -662,7 +664,7 @@ export function AssetGalleryView({
   onArchiveMedia,
   countSnapshotRefs,
   onRenameMedia,
-  onSetMediaContexts,
+  onEditMediaContexts,
   noteFolders,
   noteFolderLookup,
   onAddUrlBookmark,
@@ -721,7 +723,11 @@ export function AssetGalleryView({
   // 選択した素材へのフォルダ付与（ノート一覧の一括付与と同じ ContextTagPicker）
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignPos, setAssignPos] = useState({ top: 0, left: 0 });
-  const [assignApplied, setAssignApplied] = useState<string[]>([]);
+  // 一覧の行から 1 件だけフォルダを付け外しするピッカー（ノート一覧のフォルダ列と同じ）
+  const [rowFolderPicker, setRowFolderPicker] = useState<{
+    fileId: string;
+    pos: { top: number; left: number };
+  } | null>(null);
   const assignBtnRef = useRef<HTMLButtonElement>(null);
   const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
   const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
@@ -1245,6 +1251,8 @@ export function AssetGalleryView({
       <AiAssistantProvider key={detailEntry.fileId} aiAvailable={aiAvailable}>
       <MaterialFullView
         noteFolderLookup={noteFolderLookup}
+        onEditFolders={onEditMediaContexts}
+        folderSuggestions={assignSuggestions}
         entry={detailEntry}
         onClose={() => {
           setDetailEntry(null);
@@ -1570,17 +1578,16 @@ export function AssetGalleryView({
                   {t("share.bulk.selected", { count: String(selectedIds.size) })}
                 </button>
               )}
-              {onSetMediaContexts && (
+              {onEditMediaContexts && (
                 <button
                   ref={assignBtnRef}
                   onClick={() => {
                     const rect = assignBtnRef.current?.getBoundingClientRect();
                     if (rect) setAssignPos({ top: rect.bottom + 4, left: rect.left - 120 });
-                    setAssignApplied([]);
                     setAssignOpen(true);
                   }}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  title={t("nav.applyContextsTooltip")}
+                  title={t("asset.applyFoldersTooltip")}
                 >
                   <Folder size={12} />
                   {t("nav.applyContexts", { count: String(selectedIds.size) })}
@@ -1782,21 +1789,64 @@ export function AssetGalleryView({
                               <ExternalLink size={12} />
                             </a>
                           )}
+                          {/* まだどのフォルダにも入っていない行は、ホバーで「＋ フォルダ」
+                              （ノート一覧のフォルダ列と同じ）。名前の行に置き、行の高さを変えない */}
+                          {onEditMediaContexts && foldersOf(entry).length === 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setRowFolderPicker({
+                                  fileId: entry.fileId,
+                                  pos: { top: rect.bottom + 4, left: rect.left },
+                                });
+                              }}
+                              className="ml-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 inline-flex items-center gap-1 text-xs px-2 py-px rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"
+                              title={t("asset.foldersTooltip")}
+                            >
+                              ＋ {t("nav.noteContexts")}
+                            </button>
+                          )}
                         </div>
                         {/* この素材が入っているフォルダ。ノートと同じ体系なので、
-                            ノート一覧のフォルダ列と同じ ContextBadge で見せる */}
-                        {foldersOf(entry).length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {foldersOf(entry).map((f) => (
-                              <ContextBadge
-                                key={f.value}
-                                value={f.value}
-                                // ノート由来は薄く出す。外すならノート側、という違いを見せる
-                                className={f.derived ? "opacity-60" : undefined}
-                              />
-                            ))}
-                          </div>
-                        )}
+                            ノート一覧のフォルダ列と同じ ContextBadge で見せる。
+                            付け外しできるときは、押すとその素材だけのピッカーが開く */}
+                        {foldersOf(entry).length > 0 &&
+                          (onEditMediaContexts ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setRowFolderPicker({
+                                  fileId: entry.fileId,
+                                  pos: { top: rect.bottom + 4, left: rect.left },
+                                });
+                              }}
+                              className="flex flex-wrap items-center gap-1 mt-1 text-left"
+                              title={t("nav.editContexts")}
+                            >
+                              {foldersOf(entry).map((f) => (
+                                <ContextBadge
+                                  key={f.value}
+                                  value={f.value}
+                                  // ノート由来は薄く出す。外すならノート側、という違いを見せる
+                                  className={f.derived ? "opacity-60" : undefined}
+                                />
+                              ))}
+                            </button>
+                          ) : (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {foldersOf(entry).map((f) => (
+                                <ContextBadge
+                                  key={f.value}
+                                  value={f.value}
+                                  className={f.derived ? "opacity-60" : undefined}
+                                />
+                              ))}
+                            </div>
+                          ))}
                         {entry.type === "url" && entry.urlMeta?.domain && (
                           <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                             {entry.urlMeta.domain}
@@ -1876,6 +1926,8 @@ export function AssetGalleryView({
       {detailEntry && (
         <MaterialSidePeek
           noteFolderLookup={noteFolderLookup}
+          onEditFolders={onEditMediaContexts}
+          folderSuggestions={assignSuggestions}
           inline={isDesktop}
           entry={detailEntry}
           onClose={() => {
@@ -1911,37 +1963,53 @@ export function AssetGalleryView({
           onSaveImageAsAsset={onSaveImageAsAsset}
         />
       )}
-      {assignOpen && onSetMediaContexts && (
+      {assignOpen && onEditMediaContexts && (
         <ContextTagPicker
           position={assignPos}
           onClose={() => setAssignOpen(false)}
+          title={t("nav.applyContexts", { count: String(selectedIds.size) })}
           suggestions={assignSuggestions}
-          selected={assignApplied}
-          onAdd={(value) => {
-            // 選択中の素材すべてに足す（既に入っているものはそのまま）
-            void (async () => {
-              for (const fileId of selectedIds) {
-                const entry = mediaIndex?.media.find((m) => m.fileId === fileId);
-                if (!entry) continue;
-                const next = addNoteContext(entry.noteContexts, value);
-                await onSetMediaContexts(fileId, next ?? []);
-              }
-              setAssignApplied((prev) => (prev.includes(value) ? prev : [...prev, value]));
-            })();
-          }}
-          onRemove={(value) => {
-            void (async () => {
-              for (const fileId of selectedIds) {
-                const entry = mediaIndex?.media.find((m) => m.fileId === fileId);
-                if (!entry) continue;
-                const next = removeNoteContext(entry.noteContexts, value);
-                await onSetMediaContexts(fileId, next ?? []);
-              }
-              setAssignApplied((prev) => prev.filter((v) => v !== value));
-            })();
-          }}
+          // 選んだ全部に（自分で）入っているフォルダをチェック済みにする（メモ一覧の一括と同じ）。
+          // 外すと全件から出る。一部にしか入っていないものは未チェックで、付けると全件に入る
+          selected={commonOwnFolders(
+            (mediaIndex?.media ?? []).filter((m) => selectedIds.has(m.fileId)),
+          )}
+          onAdd={(value) =>
+            void onEditMediaContexts([...selectedIds], (prev) => addNoteContext(prev, value))
+          }
+          onRemove={(value) =>
+            void onEditMediaContexts([...selectedIds], (prev) => removeNoteContext(prev, value))
+          }
+          onReplace={(from, to) =>
+            void onEditMediaContexts([...selectedIds], (prev) => replaceNoteContext(prev, from, to))
+          }
         />
       )}
+      {rowFolderPicker && onEditMediaContexts && (() => {
+        const { fileId } = rowFolderPicker;
+        const target = mediaIndex?.media.find((m) => m.fileId === fileId);
+        if (!target) return null;
+        return (
+          <ContextTagPicker
+            position={rowFolderPicker.pos}
+            onClose={() => setRowFolderPicker(null)}
+            title={t("nav.noteContexts")}
+            suggestions={assignSuggestions}
+            // 付け外しできるのは自分で付けた分だけ（ノート由来はノートのほうで変える）
+            selected={foldersOf(target).filter((f) => !f.derived).map((f) => f.value)}
+            onAdd={(value) =>
+              void onEditMediaContexts([fileId], (prev) => addNoteContext(prev, value))
+            }
+            onRemove={(value) =>
+              void onEditMediaContexts([fileId], (prev) => removeNoteContext(prev, value))
+            }
+            onReplace={(from, to) =>
+              void onEditMediaContexts([fileId], (prev) => replaceNoteContext(prev, from, to))
+            }
+            onClear={() => void onEditMediaContexts([fileId], () => undefined)}
+          />
+        );
+      })()}
       {folderFilterOpen && (
         <FilterPopup
           position={folderFilterPos}

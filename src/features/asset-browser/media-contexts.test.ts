@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   setMediaEntryContexts,
+  editMediaEntriesContexts,
   remapMediaContexts,
   type MediaIndex,
   type MediaIndexEntry,
@@ -104,5 +105,54 @@ describe("remapMediaContexts", () => {
     const i = base();
     expect(remapMediaContexts(i, "無い", "何か").index).toBe(i);
     expect(remapMediaContexts(i, "  ", "何か").changed).toBe(0);
+  });
+});
+
+describe("editMediaEntriesContexts", () => {
+  it("それぞれの素材のいまの値に編集を当てる", () => {
+    const before = index([
+      entry("a", { noteContexts: ["材料X"] }),
+      entry("b", { noteContexts: ["実験A"] }),
+      entry("c"),
+    ]);
+    const { index: next, changed } = editMediaEntriesContexts(before, ["a", "b"], (prev) => [
+      ...(prev ?? []),
+      "写真",
+    ]);
+    expect(changed).toBe(2);
+    expect(next.media.map((m) => m.noteContexts)).toEqual([
+      ["材料X", "写真"],
+      ["実験A", "写真"],
+      undefined,
+    ]);
+  });
+
+  it("続けて編集しても前の変更を落とさない（最新の値に重ねる）", () => {
+    const first = editMediaEntriesContexts(index([entry("a")]), ["a"], (prev) => [
+      ...(prev ?? []),
+      "材料X",
+    ]);
+    const second = editMediaEntriesContexts(first.index, ["a"], (prev) => [...(prev ?? []), "実験A"]);
+    expect(second.index.media[0].noteContexts).toEqual(["材料X", "実験A"]);
+  });
+
+  it("ノートと同じ規則で正規化し、空なら欄ごと落とす", () => {
+    const before = index([entry("a", { noteContexts: ["材料X"] })]);
+    expect(
+      editMediaEntriesContexts(before, ["a"], () => [" 実験A ", "実験a"]).index.media[0].noteContexts,
+    ).toEqual(["実験A"]);
+    expect(
+      editMediaEntriesContexts(before, ["a"], () => undefined).index.media[0].noteContexts,
+    ).toBeUndefined();
+  });
+
+  it("何も変わらなければ同じインデックスを返し、件数は 0", () => {
+    const before = index([entry("a", { noteContexts: ["材料X"] }), entry("b")]);
+    const r1 = editMediaEntriesContexts(before, ["a"], (prev) => prev?.slice());
+    expect(r1.changed).toBe(0);
+    expect(r1.index).toBe(before);
+    const r2 = editMediaEntriesContexts(before, ["b", "zzz"], () => undefined);
+    expect(r2.changed).toBe(0);
+    expect(r2.index).toBe(before);
   });
 });

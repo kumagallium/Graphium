@@ -1232,12 +1232,48 @@ async fn read_media_file(file_id: String) -> Result<String, String> {
     .map_err(|e| format!("メディア読み取りタスク失敗: {e}"))?
 }
 
-/// 素材のサムネイル（長辺 max_edge px の JPEG）を Base64 で返す。
+/// サムネイルのキャッシュの世代。作り方を変えたら上げる — ファイル名が変わるので、
+/// 前の作り方で焼いたキャッシュ（元ファイルより新しいので fresh 判定を通ってしまう）を読まない。
+/// v2: 透過画像を PNG で残す（v1 は JPEG 化で透明部分が黒になっていた）
+const THUMB_CACHE_VERSION: u32 = 2;
+
+/// 画像を長辺 edge px に縮めてエンコードする。
+///
+/// 透明な画素がある画像は PNG で透過を残し、それ以外は JPEG にする。JPEG は透過を
+/// 持てず、RGB へ落とすと透明部分は画素に入っている色（多くは黒）がそのまま出る。
+/// 黒い文字の透過 PNG（スライドや文書から取り出した図）だと一覧で真っ黒に見えていた。
+/// 原寸表示は透過のまま描かれるので、サムネイルもそれに揃える。
+fn encode_thumbnail(img: &image::DynamicImage, edge: u32) -> Result<Vec<u8>, String> {
+    use image::ImageEncoder;
+    // thumbnail() は近傍法の高速縮小。サムネイル用途では十分で、resize より桁違いに速い
+    let small = img.thumbnail(edge, edge);
+    let mut out = Vec::new();
+    // アルファチャンネルを持っていても全面不透明なら JPEG で足りる（写真の PNG 等）
+    let translucent = small
+        .color()
+        .has_alpha()
+        .then(|| small.to_rgba8())
+        .filter(|rgba| rgba.pixels().any(|p| p.0[3] < 255));
+    if let Some(rgba) = translucent {
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(rgba.as_raw(), rgba.width(), rgba.height(), image::ExtendedColorType::Rgba8)
+            .map_err(|e| format!("サムネイル生成失敗: {e}"))?;
+    } else {
+        let rgb = small.to_rgb8();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 82)
+            .encode(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
+            .map_err(|e| format!("サムネイル生成失敗: {e}"))?;
+    }
+    Ok(out)
+}
+
+/// 素材のサムネイル（長辺 max_edge px。透過があれば PNG、無ければ JPEG）を Base64 で返す。
 ///
 /// ピッカーやギャラリーが原寸を read_media_file で受け取ると、数 MB の Base64 を
 /// 1 枚ごとに往復して WebView のメモリが数百 MB 膨らみ、本体の CPU も食う
 /// （2026-09-04 の実測: 60 枚で Rust +10 秒・WebView +700MB）。縮小はこちらで行い、
-/// 結果は <media>/.thumbs/<id>-<edge>.jpg に置いて次回はそれを返す。
+/// 結果は <media>/.thumbs/<id>-<edge>-v<世代> に置いて次回はそれを返す
+/// （中身が PNG か JPEG かは先頭のバイトで分かるので、拡張子は付けない）。
 /// 元ファイルより古いキャッシュは作り直す。画像として読めないものは Err
 /// （呼び出し側は原寸にフォールバックする）。
 #[tauri::command]
@@ -1250,7 +1286,7 @@ async fn read_media_thumbnail(file_id: String, max_edge: u32) -> Result<String, 
             .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
         let thumbs = dir.join(".thumbs");
         fs::create_dir_all(&thumbs).map_err(|e| format!("サムネイル用ディレクトリ作成失敗: {e}"))?;
-        let cache = thumbs.join(format!("{file_id}-{edge}.jpg"));
+        let cache = thumbs.join(format!("{file_id}-{edge}-v{THUMB_CACHE_VERSION}"));
         let fresh = match (fs::metadata(&cache), fs::metadata(&src)) {
             (Ok(c), Ok(s)) => match (c.modified(), s.modified()) {
                 (Ok(cm), Ok(sm)) => cm >= sm,
@@ -1263,17 +1299,13 @@ async fn read_media_thumbnail(file_id: String, max_edge: u32) -> Result<String, 
             return Ok(base64::engine::general_purpose::STANDARD.encode(&bytes));
         }
         let img = image::open(&src).map_err(|e| format!("画像として読めません: {e}"))?;
-        // thumbnail() は近傍法の高速縮小。サムネイル用途では十分で、resize より桁違いに速い
-        let small = img.thumbnail(edge, edge).to_rgb8();
-        let mut out = Vec::new();
-        let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 82);
-        enc
-            .encode(small.as_raw(), small.width(), small.height(), image::ExtendedColorType::Rgb8)
-            .map_err(|e| format!("サムネイル生成失敗: {e}"))?;
+        let out = encode_thumbnail(&img, edge)?;
         // キャッシュ書き込みの失敗は致命ではない（次回また作る）
         if let Err(e) = fs::write(&cache, &out) {
             eprintln!("サムネイルのキャッシュ書き込み失敗: {e}");
         }
+        // v1 のキャッシュ（<id>-<edge>.jpg）はもう読まないので片付ける
+        let _ = fs::remove_file(thumbs.join(format!("{file_id}-{edge}.jpg")));
         Ok(base64::engine::general_purpose::STANDARD.encode(&out))
     })
     .await
@@ -1869,6 +1901,95 @@ fn print_webview(window: tauri::WebviewWindow) -> Result<(), String> {
         .map_err(|e| format!("印刷パネルを開けません: {e}"));
 }
 
+/// 取り込みなど長い処理の間、ウィンドウが隠れても WebView を止めさせない（macOS）。
+///
+/// WKWebView はウィンドウが別のスペースや他のアプリの裏に隠れると「見えていない」と
+/// 判定し、WebContent プロセスをバックグラウンド優先度に落とす（1 件の処理に数十秒
+/// かかるようになる）。約 10 分後にはプロセスごと一時停止させるので、処理は表示し直す
+/// まで止まる。WebView の中で回っている取り込みや OCR のループがまるごと巻き込まれる。
+///
+/// `active` の間は覆い隠しの判定（`_windowOcclusionDetectionEnabled`）を切って、隠れて
+/// いても「見えている」扱いのままにする。設定しただけでは次に覆い隠しが変わるまで判定
+/// がやり直されないので、occlusion の変更通知を投げてその場でやり直させる。あわせて
+/// App Nap の対象から外す（アイドルスリープは妨げない）。
+///
+/// 常時オンにしないのは、隠れている間もアニメーションやタイマーが全速で回り続けて
+/// 電池を食うため。呼び出し側（`src/lib/background-work.ts`）が参照カウントで持つ。
+/// 最小化されたウィンドウは覆い隠しとは別扱いで、これでは止められない。
+/// macOS 以外では何もしない。
+#[tauri::command]
+fn set_background_work_active(window: tauri::WebviewWindow, active: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return window
+        .with_webview(move |webview| {
+            // with_webview の中身はメインスレッドで走る
+            macos_background_work::apply(webview.inner(), webview.ns_window(), active);
+        })
+        .map_err(|e| format!("WebView の状態を切り替えられません: {e}"));
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, active);
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod macos_background_work {
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyObject, NSObjectProtocol, ProtocolObject};
+    use objc2::{msg_send, sel};
+    use objc2_foundation::{ns_string, NSActivityOptions, NSNotificationCenter, NSProcessInfo};
+    use std::cell::RefCell;
+    use std::ffi::c_void;
+
+    thread_local! {
+        // App Nap を外している間の activity。メインスレッドからしか触らない
+        static ACTIVITY: RefCell<Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>> =
+            const { RefCell::new(None) };
+    }
+
+    /// `webview` は WKWebView、`ns_window` はそれを載せた NSWindow。メインスレッドで呼ぶこと。
+    pub fn apply(webview: *mut c_void, ns_window: *mut c_void, active: bool) {
+        if webview.is_null() {
+            return;
+        }
+        // SAFETY: wry が渡す生きた WKWebView / NSWindow で、メインスレッドから触っている
+        unsafe {
+            let view = &*(webview as *const AnyObject);
+            let setter = sel!(_setWindowOcclusionDetectionEnabled:);
+            // 非公開 API なので、将来の macOS で消えていたら何もしない（遅くなるだけ）
+            let responds: bool = msg_send![view, respondsToSelector: setter];
+            if responds {
+                let _: () = msg_send![view, _setWindowOcclusionDetectionEnabled: !active];
+                if !ns_window.is_null() {
+                    let window = &*(ns_window as *const AnyObject);
+                    NSNotificationCenter::defaultCenter().postNotificationName_object(
+                        ns_string!("NSWindowDidChangeOcclusionStateNotification"),
+                        Some(window),
+                    );
+                }
+            }
+        }
+
+        ACTIVITY.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let info = NSProcessInfo::processInfo();
+            if active {
+                if slot.is_none() {
+                    *slot = Some(info.beginActivityWithOptions_reason(
+                        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+                        ns_string!("Graphium background work"),
+                    ));
+                }
+            } else if let Some(activity) = slot.take() {
+                // SAFETY: beginActivityWithOptions_reason が返した activity をそのまま返す
+                unsafe { info.endActivity(&activity) };
+            }
+        });
+    }
+}
+
 /// 実行中の `.app` バンドルのパスを返す（macOS）。
 /// `cargo run` のようにバンドル化されていない起動では解決できないので Err を返す。
 #[cfg(target_os = "macos")]
@@ -2059,6 +2180,7 @@ pub fn run() {
             kill_pid,
             save_bytes_with_dialog,
             print_webview,
+            set_background_work_active,
             relaunch_via_launchd,
             start_native_sidecar,
             stop_native_sidecar,
@@ -2364,5 +2486,42 @@ mod tests {
         // 既存の新形式を上書きしない（衝突ガード）
         assert_eq!(fs::read(dir.join("dup-1.png")).unwrap(), b"already-migrated");
         assert!(dir.join("dup-1").is_file());
+    }
+
+    /// 透明地に黒い文字、という図（スライドや文書から取り出した PNG）を作る
+    fn transparent_figure() -> image::DynamicImage {
+        let mut img = image::RgbaImage::from_pixel(400, 200, image::Rgba([0, 0, 0, 0]));
+        for x in 50..350 {
+            for y in 90..110 {
+                img.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+        image::DynamicImage::ImageRgba8(img)
+    }
+
+    #[test]
+    fn thumbnail_keeps_transparency_as_png() {
+        let out = encode_thumbnail(&transparent_figure(), 320).unwrap();
+        assert!(out.starts_with(b"\x89PNG"), "透過のある画像は PNG で返す");
+        let decoded = image::load_from_memory(&out).unwrap().to_rgba8();
+        assert_eq!(decoded.width(), 320);
+        // 地の部分は透明のまま（JPEG 化で黒く塗られていない）
+        assert_eq!(decoded.get_pixel(5, 5).0[3], 0);
+        // 文字の部分は残っている
+        assert_eq!(decoded.get_pixel(160, 80).0, [0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn thumbnail_of_opaque_image_is_jpeg() {
+        // アルファチャンネルがあっても全面不透明なら JPEG（写真の PNG で容量を膨らませない）
+        let opaque = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            400,
+            200,
+            image::Rgba([200, 180, 160, 255]),
+        ));
+        let out = encode_thumbnail(&opaque, 320).unwrap();
+        assert!(out.starts_with(&[0xFF, 0xD8]), "不透明な画像は JPEG で返す");
+        let rgb = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(64, 64, image::Rgb([1, 2, 3])));
+        assert!(encode_thumbnail(&rgb, 320).unwrap().starts_with(&[0xFF, 0xD8]));
     }
 }

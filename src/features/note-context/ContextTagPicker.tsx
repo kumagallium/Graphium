@@ -7,9 +7,15 @@
 //  - ノート一覧「文脈」セルの「＋文脈」/ ピルクリック
 //  - ノートヘッダの「文脈」ピル型ボタン
 //  - 複数選択時の一括バー「N件に文脈を付ける」（selected は空で開き、追加のみ行う）
+//
+// このピッカーでできるのは「いま操作している対象に付ける・外す」だけ。フォルダそのものの
+// 名前の変更・削除（ほかのノートや素材にも効く操作）はここに置かず、サイドバーのフォルダ行と
+// 素材ギャラリーの絞り込みに任せる。例外は**このピッカーで作ったばかりのフォルダ**:
+// まだ操作中の対象にしか付いていないので、打ち間違いを直す（onReplace）・チェックを外して
+// 作らなかったことにする、はどちらも対象への付け外しで済み、ほかに波及しない。
 
 import { useMemo, useRef, useState } from "react";
-import { Search, Plus, Trash2 } from "lucide-react";
+import { Search, Plus, Pencil } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
 import { cn } from "@/lib/utils";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
@@ -30,14 +36,13 @@ type ContextTagPickerProps = {
   onAdd: (value: string) => void;
   /** 文脈を 1 つ除去 */
   onRemove: (value: string) => void;
+  /**
+   * 付いている文脈を別の名前に差し替える（操作中の対象だけ。replaceNoteContext で 1 回に）。
+   * 指定すると、このピッカーで作ったばかりの行に「名前を直す」鉛筆を出す。
+   */
+  onReplace?: (from: string, to: string) => void;
   /** すべてクリア（未指定なら「クリア」行を出さない = 一括付与モード等） */
   onClear?: () => void;
-  /**
-   * 候補（文脈タグ）自体を削除する。指定すると各候補行のホバーでゴミ箱を出す。
-   * その文脈を全ノートから外す想定。確認は呼び出し側で行い、実際に削除したら true を返す
-   * （true のときだけ、このピッカーのセッション表示からも即座に消す）。
-   */
-  onDeleteCandidate?: (value: string) => boolean | Promise<boolean>;
   title?: string;
   placeholder?: string;
   /** 新規作成行のラベル生成（例: (v) => `「${v}」を新規作成`） */
@@ -47,6 +52,8 @@ type ContextTagPickerProps = {
   minWidth?: number;
 };
 
+const keyOf = (value: string) => value.trim().toLowerCase();
+
 export function ContextTagPicker({
   position,
   onClose,
@@ -54,8 +61,8 @@ export function ContextTagPicker({
   suggestions,
   onAdd,
   onRemove,
+  onReplace,
   onClear,
-  onDeleteCandidate,
   title,
   placeholder,
   createLabel,
@@ -70,20 +77,24 @@ export function ContextTagPicker({
   const clearLabelText = clearLabel ?? t("nav.clearContexts");
   const emptyTextText = emptyText ?? t("nav.contextEmpty");
   const [query, setQuery] = useState("");
-  // seenValuesRef を変えたときに再描画させるためのカウンタ（ref はそれ自体では再描画しない）
+  // ref を変えたときに再描画させるためのカウンタ（ref はそれ自体では再描画しない）
   const [, bumpRender] = useState(0);
   // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
+  // 名前を直す入力欄の IME 判定（検索欄と組成状態を混ぜない）
+  const fixIme = useImeEnterGuard();
 
-  const selectedKeys = useMemo(
-    () => new Set(selected.map((s) => s.trim().toLowerCase())),
-    [selected],
-  );
+  const selectedKeys = useMemo(() => new Set(selected.map(keyOf)), [selected]);
 
   // このピッカーを開いている間に一度でも表示した値を覚えておく（キー=小文字, 値=表示名）。
   // チェックを外した瞬間に行が消えると「外す＝消える」と紐づいて怖いので、開いている間は
   // 外しても行を残す（チェックが外れるだけに見せる）。閉じて開き直すと自然に消える。
   const seenValuesRef = useRef<Map<string, string>>(new Map());
+  // このピッカーで作ったフォルダ（キー）。名前を直す鉛筆を出す対象
+  const createdKeysRef = useRef<Set<string>>(new Set());
+  // 作ったあとに外した・直した元の名前（キー）。どこにも残っていないので行ごと消す。
+  // 親の集計が追いつく前の古い候補で行が戻ってこないよう、選択されない限り出さない
+  const discardedKeysRef = useRef<Set<string>>(new Set());
 
   // 候補・現在の選択・セッション中に見た値を統合する。
   // 選択済みだが候補に無い（この場で作った/このノート固有の）値や、外したばかりの値も出す。
@@ -95,54 +106,105 @@ export function ContextTagPicker({
     }
     // (2) 最新の集計候補で上書き（件数を反映）
     for (const s of suggestions) {
-      const key = s.value.trim().toLowerCase();
+      const key = keyOf(s.value);
       if (key) map.set(key, s);
     }
     // (3) 現在の選択で補完
     for (const v of selected) {
-      const key = v.trim().toLowerCase();
+      const key = keyOf(v);
       if (key && !map.has(key)) map.set(key, { value: v, count: 0 });
     }
     // 見た値として記録（次回以降のレンダーで消えないように）
     for (const opt of map.values()) {
-      const key = opt.value.trim().toLowerCase();
+      const key = keyOf(opt.value);
       if (key && !seenValuesRef.current.has(key)) seenValuesRef.current.set(key, opt.value);
     }
     return Array.from(map.values());
   }, [suggestions, selected]);
 
+  // 作らなかったことにした値は、選び直されない限り出さない（毎描画で判定する。ref は memo の依存にできない）
+  const visible = merged.filter((o) => {
+    const key = keyOf(o.value);
+    return !discardedKeysRef.current.has(key) || selectedKeys.has(key);
+  });
+
   const q = query.trim();
   const qLower = q.toLowerCase();
-  const filtered = useMemo(
-    () => (q ? merged.filter((o) => o.value.toLowerCase().includes(qLower)) : merged),
-    [merged, q, qLower],
-  );
-  const exactExists = merged.some((o) => o.value.toLowerCase() === qLower);
+  const filtered = q ? visible.filter((o) => o.value.toLowerCase().includes(qLower)) : visible;
+  const exactExists = visible.some((o) => o.value.toLowerCase() === qLower);
   const canCreate = q.length > 0 && !exactExists;
 
+  // ── 作ったばかりのフォルダの名前を直す ──
+  const [fixing, setFixing] = useState<{ from: string; value: string } | null>(null);
+  // blur と Enter / Esc が続けて来ても 1 回だけ処理する
+  const fixingRef = useRef<string | null>(null);
+
+  const startFix = (value: string) => {
+    fixingRef.current = value;
+    setFixing({ from: value, value });
+  };
+  const cancelFix = () => {
+    fixingRef.current = null;
+    setFixing(null);
+  };
+  const commitFix = (nextValue: string) => {
+    const from = fixingRef.current;
+    fixingRef.current = null;
+    setFixing(null);
+    const to = nextValue.trim();
+    if (!from || !onReplace || !to || to === from) return;
+    const fromKey = keyOf(from);
+    const toKey = keyOf(to);
+    // 直した先が既にあるフォルダなら、そちらに合流する（作ったばかりの扱いは引き継がない）
+    const joinsExisting = toKey !== fromKey && visible.some((o) => keyOf(o.value) === toKey);
+    onReplace(from, to);
+    createdKeysRef.current.delete(fromKey);
+    seenValuesRef.current.delete(fromKey);
+    if (toKey !== fromKey) discardedKeysRef.current.add(fromKey);
+    discardedKeysRef.current.delete(toKey);
+    seenValuesRef.current.set(toKey, joinsExisting ? (seenValuesRef.current.get(toKey) ?? to) : to);
+    if (!joinsExisting) createdKeysRef.current.add(toKey);
+    bumpRender((x) => x + 1);
+  };
+
   const toggle = (value: string) => {
-    if (selectedKeys.has(value.trim().toLowerCase())) {
+    const key = keyOf(value);
+    if (selectedKeys.has(key)) {
       onRemove(value);
+      // 作ったばかりのフォルダは、外せばどこにも残らない。行ごと消して「作らなかった」に戻す
+      if (createdKeysRef.current.has(key)) {
+        createdKeysRef.current.delete(key);
+        seenValuesRef.current.delete(key);
+        discardedKeysRef.current.add(key);
+        bumpRender((x) => x + 1);
+      }
     } else {
       onAdd(value);
     }
   };
 
-  // 候補ごと削除（全ノートから外す）。確認は呼び出し側。実際に削除されたら
-  // セッション表示（seenValuesRef）からも消してこの場で行を消す。
-  const handleDeleteCandidate = async (value: string) => {
-    if (!onDeleteCandidate) return;
-    const deleted = await onDeleteCandidate(value);
-    if (deleted) {
-      seenValuesRef.current.delete(value.trim().toLowerCase());
+  // すべて外したら、作ったばかりのフォルダも作らなかったことにする（toggle と同じ）
+  const clearAll = () => {
+    if (!onClear) return;
+    onClear();
+    if (createdKeysRef.current.size > 0) {
+      for (const key of createdKeysRef.current) {
+        seenValuesRef.current.delete(key);
+        discardedKeysRef.current.add(key);
+      }
+      createdKeysRef.current.clear();
       bumpRender((x) => x + 1);
     }
   };
 
-  const commitTyped = () => {
+  // Enter / 作成行は「付ける」意味に固定（既存に一致すれば選択、無ければ新規作成）。
+  // onAdd は呼び出し側で正規化・重複除去されるので、既に付いていれば実質 no-op。
+  const addTyped = () => {
     if (!q) return;
-    // Enter は「付ける」意味に固定（既存に一致すれば選択、無ければ新規作成）。
-    // onAdd は呼び出し側で正規化・重複除去されるので、既に付いていれば実質 no-op。
+    if (!exactExists) {
+      createdKeysRef.current.add(qLower);
+      discardedKeysRef.current.delete(qLower);
+    }
     onAdd(q);
     setQuery("");
   };
@@ -174,7 +236,7 @@ export function ContextTagPicker({
                 // 取りこぼすため、共通ガードで判定する。
                 if (e.key === "Enter" && !isImeKey(e)) {
                   e.preventDefault();
-                  commitTyped();
+                  addTyped();
                 }
               }}
               placeholder={placeholderText}
@@ -188,10 +250,7 @@ export function ContextTagPicker({
         {canCreate && (
           <button
             type="button"
-            onClick={() => {
-              onAdd(q);
-              setQuery("");
-            }}
+            onClick={addTyped}
             className="w-full text-left text-xs px-3 py-1.5 hover:bg-muted transition-colors flex items-center gap-2 text-primary"
           >
             <Plus size={13} className="shrink-0" aria-hidden />
@@ -200,15 +259,69 @@ export function ContextTagPicker({
         )}
 
         {/* 候補リスト */}
-        {merged.length === 0 && !canCreate ? (
+        {visible.length === 0 && !canCreate ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">{emptyTextText}</div>
         ) : (
           <div className="max-h-[240px] overflow-y-auto">
             {filtered.map((opt) => {
-              const isSelected = selectedKeys.has(opt.value.toLowerCase());
+              const key = keyOf(opt.value);
+              const isSelected = selectedKeys.has(key);
               const h = noteContextHue(opt.value);
+              const checkbox = (
+                <span
+                  className={cn(
+                    "w-3.5 h-3.5 shrink-0 rounded border flex items-center justify-center text-[8px] leading-none",
+                    isSelected
+                      ? "bg-primary border-primary text-primary-foreground"
+                      : "border-border",
+                  )}
+                  aria-hidden
+                >
+                  {isSelected && "✓"}
+                </span>
+              );
+              const dot = (
+                <span
+                  className="w-2.5 h-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: `hsl(${h} 45% 45%)` }}
+                  aria-hidden
+                />
+              );
+
+              if (fixing && keyOf(fixing.from) === key) {
+                return (
+                  <div key={key} className="flex items-center gap-2 px-3 py-1 text-xs">
+                    {checkbox}
+                    {dot}
+                    <input
+                      type="text"
+                      value={fixing.value}
+                      onChange={(e) => setFixing({ from: fixing.from, value: e.target.value })}
+                      {...fixIme.compositionHandlers}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !fixIme.isImeKey(e)) {
+                          e.preventDefault();
+                          commitFix(fixing.value);
+                        } else if (e.key === "Escape") {
+                          // ピッカーごと閉じず、直すのだけやめる
+                          e.preventDefault();
+                          e.stopPropagation();
+                          cancelFix();
+                        }
+                      }}
+                      // 外をクリックしたら、有効な変更だけ確定する（サイドバーの改名と同じ）
+                      onBlur={() => commitFix(fixing.value)}
+                      aria-label={t("nav.fixNewFolderAria", { value: fixing.from })}
+                      className="flex-1 min-w-0 px-1.5 py-0.5 rounded border border-primary/50 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      autoFocus
+                    />
+                  </div>
+                );
+              }
+
+              const canFix = !!onReplace && createdKeysRef.current.has(key);
               return (
-                <div key={opt.value.toLowerCase()} className="relative group">
+                <div key={key} className="relative">
                   <button
                     type="button"
                     role="menuitemcheckbox"
@@ -216,45 +329,30 @@ export function ContextTagPicker({
                     onClick={() => toggle(opt.value)}
                     className={cn(
                       "w-full text-left text-xs px-3 py-1.5 hover:bg-muted transition-colors flex items-center gap-2",
-                      onDeleteCandidate && "pr-8",
+                      canFix && "pr-8",
                     )}
                   >
-                    <span
-                      className={cn(
-                        "w-3.5 h-3.5 shrink-0 rounded border flex items-center justify-center text-[8px] leading-none",
-                        isSelected
-                          ? "bg-primary border-primary text-primary-foreground"
-                          : "border-border",
-                      )}
-                      aria-hidden
-                    >
-                      {isSelected && "✓"}
-                    </span>
-                    <span
-                      className="w-2.5 h-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: `hsl(${h} 45% 45%)` }}
-                      aria-hidden
-                    />
+                    {checkbox}
+                    {dot}
                     <span className="flex-1 truncate text-foreground">{opt.value}</span>
-                    {opt.count > 0 && (
-                      <span className="shrink-0 tabular-nums text-text-tertiary group-hover:opacity-0 transition-opacity">
-                        {opt.count}
-                      </span>
+                    {/* 作ったばかりのフォルダの件数は「いま付けた分」なので出さず、鉛筆に場所を譲る */}
+                    {!canFix && opt.count > 0 && (
+                      <span className="shrink-0 tabular-nums text-text-tertiary">{opt.count}</span>
                     )}
                   </button>
-                  {/* 候補ごと削除（全ノートから外す）。行のトグルとは別の操作。 */}
-                  {onDeleteCandidate && (
+                  {/* 作ったばかりのフォルダだけ、名前を直せる。気づいてすぐ押せるよう常に出す */}
+                  {canFix && (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        void handleDeleteCandidate(opt.value);
+                        startFix(opt.value);
                       }}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 inline-flex items-center justify-center w-5 h-5 rounded text-text-tertiary hover:text-destructive hover:bg-destructive/10 transition-all"
-                      aria-label={t("nav.deleteContextOptionAria", { value: opt.value })}
-                      title={t("nav.deleteContextOptionTooltip")}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded text-text-tertiary hover:text-foreground hover:bg-muted transition-colors"
+                      aria-label={t("nav.fixNewFolderAria", { value: opt.value })}
+                      title={t("nav.fixNewFolder")}
                     >
-                      <Trash2 size={12} />
+                      <Pencil size={12} />
                     </button>
                   )}
                 </div>
@@ -269,7 +367,7 @@ export function ContextTagPicker({
             <div className="border-t border-border my-1" />
             <button
               type="button"
-              onClick={onClear}
+              onClick={clearAll}
               className="w-full text-left text-xs px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               aria-label={`${clearLabelText} (${selected.length})`}
             >

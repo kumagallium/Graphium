@@ -13,8 +13,9 @@ import { useT } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
-import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
+import type { EditMediaContexts, MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 import type { NoteFolderLookup } from "./asset-folders";
+import type { ContextSuggestion } from "../note-context/ContextTagPicker";
 import { MediaPreview } from "./media-preview";
 import type { CitationSource } from "./SelectionPill";
 import {
@@ -167,11 +168,17 @@ export type MaterialSidePeekProps = {
   footer?: React.ReactNode;
   /** ノート id → フォルダ。素材のフォルダ導出に使う（詳細ヘッダへそのまま渡す） */
   noteFolderLookup?: NoteFolderLookup;
+  /** 素材のフォルダを付け外しする（詳細ヘッダのフォルダ行へそのまま渡す） */
+  onEditFolders?: EditMediaContexts;
+  /** フォルダ付け外しのピッカー候補（省略時は詳細ヘッダが素材とノートから集める） */
+  folderSuggestions?: ContextSuggestion[];
 };
 
 export function MaterialSidePeek({
   entry,
   noteFolderLookup,
+  onEditFolders,
+  folderSuggestions,
   onClose,
   onToggleFull,
   onDelete,
@@ -257,6 +264,9 @@ export function MaterialSidePeek({
       <MaterialDetailHeader
         entry={entry}
         noteFolderLookup={noteFolderLookup}
+        // 素材として実体の無いもの（メモのピーク・未登録 URL）はフォルダを付けられない
+        onEditFolders={isMemoEntry || onRegisterAsset ? undefined : onEditFolders}
+        folderSuggestions={folderSuggestions}
         onClose={onClose}
         // メモピーク（transient エントリ）は素材ではないため、素材系の操作
         // （リネーム・Knowledge 化・PROV・抽出・共有・削除・Full 昇格）を出さない。

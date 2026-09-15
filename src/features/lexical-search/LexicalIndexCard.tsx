@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Image as ImageIcon, Loader2, Search, BookOpen, Users } from "lucide-react";
 import { Button } from "@ui/button";
 import { useLocale } from "../../i18n";
+import { formatShortcut } from "../../lib/shortcut-label";
 import { lexicalSearch } from "./service";
 import { useLexicalStatus } from "./use-lexical-sync";
 import { bestHitsBySource } from "./best-hits";
@@ -149,7 +150,7 @@ export function LexicalIndexCard() {
         <Search size={14} className="text-muted-foreground" />
         <h3 className="text-xs font-semibold text-foreground">{t("settings.searchIndex.title")}</h3>
       </div>
-      <p className="text-xs text-muted-foreground mb-2">{t("settings.searchIndex.help")}</p>
+      <p className="text-xs text-muted-foreground mb-2">{t("settings.searchIndex.help", { shortcut: formatShortcut(["mod", "K"]) })}</p>
       <div className="flex items-center gap-3 flex-wrap">
         <Button
           size="sm"

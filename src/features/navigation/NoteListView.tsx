@@ -25,6 +25,7 @@ import {
   aggregateNoteContexts,
   addNoteContext,
   removeNoteContext,
+  replaceNoteContext,
   noteContextHue,
 } from "../note-context/context-tags";
 
@@ -104,7 +105,6 @@ export function NoteListView({
   onOpenWikiPeek,
   onIngestNotes,
   onSetNoteContexts,
-  onDeleteContextEverywhere,
   onShareSelected,
   contextFilter: controlledContextFilter,
   onContextFilterChange,
@@ -136,8 +136,6 @@ export function NoteListView({
    * 一覧の行内付与・一括付与から呼ぶ。渡されなければ文脈列は読み取り専用になる。
    */
   onSetNoteContexts?: (noteId: string, contexts: string[]) => Promise<void> | void;
-  /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
-  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /**
    * 文脈フィルタの外部制御（サイドバーのフォルダ選択と連動させる用）。
    * 渡されたら内部 state ではなくこちらを使い、列ヘッダのフィルタ操作は
@@ -1147,7 +1145,6 @@ export function NoteListView({
             createLabel={(v) => t("nav.createContext", { value: v })}
             clearLabel={t("nav.clearContexts")}
             emptyText={t("nav.contextEmpty")}
-            onDeleteCandidate={onDeleteContextEverywhere}
             onAdd={(v) => {
               if (contextPicker.mode === "bulk") {
                 for (const id of contextPicker.ids) {
@@ -1166,6 +1163,16 @@ export function NoteListView({
                 setBulkApplied((s) => removeNoteContext(s, v) ?? []);
               } else if (singleId) {
                 setNoteContexts(singleId, removeNoteContext(contextsOf(singleId), v) ?? []);
+              }
+            }}
+            onReplace={(from, to) => {
+              if (contextPicker.mode === "bulk") {
+                for (const id of contextPicker.ids) {
+                  setNoteContexts(id, replaceNoteContext(contextsOf(id), from, to) ?? []);
+                }
+                setBulkApplied((s) => replaceNoteContext(s, from, to) ?? []);
+              } else if (singleId) {
+                setNoteContexts(singleId, replaceNoteContext(contextsOf(singleId), from, to) ?? []);
               }
             }}
             onClear={

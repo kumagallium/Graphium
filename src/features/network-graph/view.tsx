@@ -38,9 +38,9 @@ import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
   attachSelectionBoundsOverlay,
-  captureCytoscapePositions,
   seedUnplacedNodes,
   stopLayoutOnGrab,
+  useGraphCarryOver,
   useGraphLayout,
 } from "./use-graph-layout";
 
@@ -203,9 +203,6 @@ export function NetworkGraphPanel({
   );
   // ドラッグ中と読み込み中の連続変化は、組み直しを待たせて 1 回にする
   const { renderKey, beginDrag, endDrag } = useGraphRenderKey(dataKey, structureKey);
-  // 組み直す直前の座標と視点。次のグラフが引き継ぐ
-  const prevPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
-  const prevViewportRef = useRef<{ zoom: number; pan: { x: number; y: number }; w: number; h: number } | null>(null);
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
@@ -265,6 +262,8 @@ export function NetworkGraphPanel({
   savedPositionsRef.current = savedPositions;
   const saveLayoutRef = useRef(saveLayout);
   saveLayoutRef.current = saveLayout;
+  // 組み直す直前の座標と視点。次のグラフが引き継ぐ
+  const carryOver = useGraphCarryOver(layoutResetSeq);
 
   const handleNavigate = useCallback(
     (noteId: string) => onNavigate(noteId),
@@ -402,30 +401,21 @@ export function NetworkGraphPanel({
     // 前回の座標を常に引き継ぎ、手動保存があればそれを上に重ねる。
     // 「並べ直すか」はこの後の分岐で決める — 引き継ぎと並べ直しは別の話
     const persisted = savedPositionsRef.current;
-    const carried = prevPositionsRef.current;
+    const carry = carryOver.take();
+    const carried = carry?.positions ?? null;
     const basePositions =
       carried || persisted ? { ...(carried ?? {}), ...(persisted ?? {}) } : null;
-    const { unplacedIds } = applySavedPositions(elements, basePositions);
+    const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
     // 手で整えた並び（保存）を持つノードが 1 つでもあれば自動レイアウトは流さない
     const persistedCount = persisted ? data.nodes.filter((n) => persisted[n.id]).length : 0;
     const useSavedLayout = persistedCount > 0;
     // ノードが増えていない組み直し（中身の変化・削除だけ）も並べ直す理由が無い
-    const contentOnlyRebuild = !!carried && unplacedIds.length === 0;
+    const contentOnlyRebuild = !!carry && unplacedIds.length === 0;
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
-
-    // 既存インスタンスがあれば、座標と視点を控えてから破棄
-    if (cyRef.current) {
-      prevPositionsRef.current = captureCytoscapePositions(cyRef.current);
-      prevViewportRef.current = {
-        zoom: cyRef.current.zoom(),
-        pan: { ...cyRef.current.pan() },
-        w: cyRef.current.width(),
-        h: cyRef.current.height(),
-      };
-      cyRef.current.destroy();
-    }
+    // 自動レイアウトが走っている最中か（途中で組み直されたら引き継がず、次は最初から並べる）
+    let layoutRunning = false;
 
     const cy = cytoscape({
       container: containerRef.current,
@@ -448,7 +438,7 @@ export function NetworkGraphPanel({
       // 新しく増えたノードだけ外周に仮置きし、視点は直前のまま保つ
       // （fit し直すと、ノートを保存するたびに視点が飛ぶ）
       seedUnplacedNodes(cy, unplacedIds);
-      const vp = prevViewportRef.current;
+      const vp = carry?.viewport;
       // コンテナの大きさが変わっていたら（パネル ⇄ 全画面）視点は引き継げない
       if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
         cy.viewport({ zoom: vp.zoom, pan: vp.pan });
@@ -459,7 +449,9 @@ export function NetworkGraphPanel({
     // 前回の座標があれば、そこから続きを計算する（randomize しない）。
     // 読み込み中にノードが増えるたび全体を並べ直すと、配置替えが何度も
     // 走って見える。続きから動かせば「育っていく」見え方になる
-    const gentle = !!carried;
+    // 引き継いだ座標を持つノードが 1 つも無い（別の素材・別のノートに切り替えた）ときは
+    // 最初から並べる。全ノードが原点に重なったまま続きを並べると一直線に潰れる
+    const gentle = !!carried && placedCount > 0;
     if (gentle) seedUnplacedNodes(cy, unplacedIds);
     const layout = cy.layout({
       name: "fcose",
@@ -490,9 +482,11 @@ export function NetworkGraphPanel({
       padding: 60,
     } as any);
     layout.on("layoutstop", () => {
+      layoutRunning = false;
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) cy.fit(undefined, 20);
     });
+    layoutRunning = true;
     layout.run();
     detachGrabStop = stopLayoutOnGrab(cy, {
       stop: () => {
@@ -602,6 +596,8 @@ export function NetworkGraphPanel({
       detachSelectionBounds();
       detachGrabStop?.();
       detachPersistence();
+      // 次のグラフ（この cleanup の直後に組まれる）へ座標と視点を渡してから破棄する
+      carryOver.keep(cy, !layoutRunning || layoutStoppedByUser);
       cy.destroy();
       cyRef.current = null;
     };
@@ -695,9 +691,7 @@ export function NetworkGraphPanel({
         {hasSavedLayout && (
           <button
             onClick={() => {
-              // 引き継ぎも捨てて、次の構築で最初から並べ直させる
-              prevPositionsRef.current = null;
-              prevViewportRef.current = null;
+              // 引き継ぎは次の構築で捨てられる（useGraphCarryOver が resetSeq の変化を見る）
               resetLayout();
             }}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

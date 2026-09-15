@@ -31,6 +31,7 @@ import {
   aggregateNoteContexts,
   addNoteContext,
   removeNoteContext,
+  replaceNoteContext,
   normalizeNoteContexts,
 } from "../note-context/context-tags";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, sanitizeBlocksForLoad } from "../../blocks/registry";
@@ -226,8 +227,6 @@ type SidePeekProps = {
     | ((rawRenamedId: string, oldTitle: string, newTitle: string, includeWikiLabels: boolean) => void)
     | null
   >;
-  /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
-  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /**
    * `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す。
    * sourceNoteId にはこのピークが表示中のノート ID を渡して派生元を記録する。
@@ -295,7 +294,7 @@ function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
-  onNoteContextsChange, onSaved, applyMentionRenameRef, onDeleteContextEverywhere,
+  onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
   onOpenLocalView,
 }: SidePeekProps) {
@@ -1874,9 +1873,11 @@ function SidePeekInner({
                         createLabel={(v) => t("nav.createContext", { value: v })}
                         clearLabel={t("nav.clearContexts")}
                         emptyText={t("nav.contextEmpty")}
-                        onDeleteCandidate={onDeleteContextEverywhere}
                         onAdd={(v) => applyPeekContexts(addNoteContext(peekContexts, v) ?? [])}
                         onRemove={(v) => applyPeekContexts(removeNoteContext(peekContexts, v) ?? [])}
+                        onReplace={(from, to) =>
+                          applyPeekContexts(replaceNoteContext(peekContexts, from, to) ?? [])
+                        }
                         onClear={() => applyPeekContexts([])}
                       />
                     )}

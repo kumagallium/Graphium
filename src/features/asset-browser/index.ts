@@ -18,6 +18,7 @@ export {
   renameMediaFile,
   renameMediaEntry,
   setMediaEntryContexts,
+  editMediaEntriesContexts,
   remapMediaContexts,
   extractFileIdFromUrl,
   extractMediaFromBlocks,
@@ -50,6 +51,8 @@ export { findSameAsset, computeAssetContentHash, backfillContentHashes } from ".
 export type {
   MediaIndex,
   MediaIndexEntry,
+  MediaContextsEdit,
+  EditMediaContexts,
   MediaType,
   MediaUsage,
   UrlMeta,
