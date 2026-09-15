@@ -1285,11 +1285,18 @@ export function ChartSettingsPanel({
 
       {tab === "axes" && (() => {
         // 軸の設定は 2 種類ある。名前と範囲は枠ごと（PanelAxisConfig）、目盛りの種類と
-        // 体裁（線・目盛り・ラベル・グリッド線）は図全体で 1 つ。分割した図では、
-        // 枠の選択の下に図全体の項目を並べると「枠 2 のグリッド線」に見えて嘘になるので、
-        // 図全体の項目を先に、枠ごとの項目を枠の選択の下に置く。
-        // 分割していない図ではその区別を見せる理由が無いので、軸ごとに一続きで並べる
+        // 体裁（線・目盛り・ラベル・グリッド線）は図全体で 1 つ。分割した図では枠の
+        // 選択の下に全部並ぶので、共通のものには項目名に「（全枠共通）」を添えて所属を
+        // 示す。「図全体 / 枠ごと」の段に分ける案は、項目が増えて見え複雑に感じる
+        // というユーザー指摘で取り下げた（2026-09-15）
         const split = panels > 1;
+        const shared = split ? t("chart.sharedAcrossPanels") : "";
+        // 記法の案内は最初の軸名の直下に 1 回だけ（タブの頭に置くと何の話か分からない）
+        const richHint = (
+          <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
+            {t("chart.axisNameRichHint", { shortcut: formatShortcut(["mod", "I"]) })}
+          </div>
+        );
         const xKindField = !isHistogram && (
           <label style={styles.fieldRow}>
             <span style={styles.fieldLabel}>{t("chart.axisKind")}</span>
@@ -1303,13 +1310,15 @@ export function ChartSettingsPanel({
               <option value="value">{t("chart.kindValue")}</option>
               <option value="category">{t("chart.kindCategory")}</option>
             </select>
+            {/* ラベル欄は 54px なので、所属の注記は欄に入れず右に添える */}
+            {split && <span style={styles.fieldNote}>{shared.trim()}</span>}
           </label>
         );
         const xDetail = !isHistogram && (
           <AxisDetailEditor
             detail={config.xAxisDetail}
             onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
-            label={split ? t("chart.advancedX") : undefined}
+            label={split ? t("chart.advanced") + shared : undefined}
             {...axisDetailProps("x")}
           />
         );
@@ -1325,7 +1334,7 @@ export function ChartSettingsPanel({
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
             ticksLocked={yTicksLocked}
-            label={split ? t("chart.advancedY") : undefined}
+            label={split ? t("chart.advanced") + shared : undefined}
             {...axisDetailProps("y")}
           />
         );
@@ -1335,7 +1344,7 @@ export function ChartSettingsPanel({
             onChange={(patch) =>
               onChange({ yRightAxisDetail: { ...config.yRightAxisDetail, ...patch } })
             }
-            label={split ? t("chart.advancedYRight") : undefined}
+            label={split ? t("chart.advanced") + shared : undefined}
             {...axisDetailProps("yRight")}
           />
         );
@@ -1353,7 +1362,8 @@ export function ChartSettingsPanel({
                 style={{ ...styles.input, flex: 1 }}
               />
             </label>
-            {!split && xKindField}
+            {richHint}
+            {xKindField}
             <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
               <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
               <input
@@ -1398,6 +1408,8 @@ export function ChartSettingsPanel({
                 style={{ ...styles.input, flex: 1 }}
               />
             </label>
+            {/* X 軸が無い分布図では、案内は最初の軸名（Y）の下に出す */}
+            {isHistogram && richHint}
             <label style={styles.fieldRow}>
               <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
               <input
@@ -1461,15 +1473,28 @@ export function ChartSettingsPanel({
           </>
         );
         const yLabel = rightAxisInUse ? t("chart.yAxisLeft") : t("chart.yAxis");
-        const richHint = (
-          /* 軸名は 3 つあるので、記法の案内は 1 回だけ出す */
-          <div style={styles.fieldHint}>{t("chart.richTextHint", { shortcut: formatShortcut(["mod", "I"]) })}</div>
-        );
 
-        if (!split) {
-          return (
+        return (
             <div style={styles.body}>
-              {richHint}
+              {split && (
+                <>
+                  <label style={styles.fieldRow}>
+                    <span style={styles.fieldLabel}>{t("chart.panelTarget")}</span>
+                    <select
+                      value={editingPanel}
+                      onChange={(e) => setEditingPanel(Number(e.target.value))}
+                      style={{ ...styles.select, flex: 1 }}
+                    >
+                      {Array.from({ length: panels }, (_, p) => (
+                        <option key={p} value={p}>
+                          {t("chart.panelName", { n: String(p + 1) })}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div style={styles.fieldHint}>{t("chart.axisPanelHint")}</div>
+                </>
+              )}
               {!isHistogram && (
                 <>
                   <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
@@ -1488,64 +1513,17 @@ export function ChartSettingsPanel({
                 </>
               )}
             </div>
-          );
-        }
-
-        return (
-          <div style={styles.body}>
-            <div style={styles.groupLabel}>{t("chart.sectionFigure")}</div>
-            <div style={styles.fieldHint}>{t("chart.figureAxesHint")}</div>
-            {xKindField}
-            {xDetail}
-            {yDetail}
-            {yRightDetail}
-
-            <div style={styles.groupLabel}>{t("chart.sectionPanelAxes")}</div>
-            <label style={styles.fieldRow}>
-              <span style={styles.fieldLabel}>{t("chart.panelTarget")}</span>
-              <select
-                value={editingPanel}
-                onChange={(e) => setEditingPanel(Number(e.target.value))}
-                style={{ ...styles.select, flex: 1 }}
-              >
-                {Array.from({ length: panels }, (_, p) => (
-                  <option key={p} value={p}>
-                    {t("chart.panelName", { n: String(p + 1) })}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div style={styles.fieldHint}>{t("chart.axisPanelHint")}</div>
-            {richHint}
-            {!isHistogram && (
-              <>
-                <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
-                {xNameRange}
-              </>
-            )}
-            <div style={styles.sectionLabel}>{yLabel}</div>
-            {yNameRange}
-            {rightAxisInUse && (
-              <>
-                <div style={styles.sectionLabel}>{t("chart.yAxisRight")}</div>
-                {yRightNameRange}
-              </>
-            )}
-          </div>
         );
       })()}
 
       {tab === "appearance" && (() => {
-        // 軸設定タブと同じ 2 段。分割した図では、図全体の項目（キャプション・凡例・
-        // 枠線・記号）の下に「枠ごと」を置き、枠ごとの凡例の位置だけをそこで決める。
-        // 枠ごとの項目が無いとき（凡例が図全体で 1 つ）はその段を出さない
-        const split = panels > 1;
+        // 枠ごとの凡例の隅は凡例セクションの中（位置の直下）に置く。凡例の設定が
+        // 見出しから離れた別の段に散るのは読みにくい、というユーザー指摘（2026-09-15）
         const perPanelLegend =
-          split && config.showLegend && !inlineStackLabels && config.legendScope === "panel";
+          panels > 1 && config.showLegend && !inlineStackLabels && config.legendScope === "panel";
         const override = config.panelLegendPositions[editingPanel] ?? null;
         return (
         <div style={styles.body}>
-          {split && <div style={styles.groupLabel}>{t("chart.sectionFigure")}</div>}
           <div style={styles.sectionLabel}>{t("chart.caption")}</div>
           <input
             type="text"
@@ -1670,6 +1648,48 @@ export function ChartSettingsPanel({
                   })}
                 </span>
               </label>
+              {perPanelLegend && (
+                <>
+                  <label style={styles.fieldRow}>
+                    <span style={styles.fieldLabel}>{t("chart.panelLegendCorner")}</span>
+                    <select
+                      value={editingPanel}
+                      onChange={(e) => setEditingPanel(Number(e.target.value))}
+                      style={{ ...styles.select, width: 76 }}
+                      aria-label={t("chart.panelTarget")}
+                    >
+                      {Array.from({ length: panels }, (_, p) => (
+                        <option key={p} value={p}>
+                          {t("chart.panelName", { n: String(p + 1) })}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={override ?? ""}
+                      onChange={(e) =>
+                        onChange({
+                          panelLegendPositions: withPanelLegendPosition(
+                            config,
+                            editingPanel,
+                            e.target.value === "" ? null : (e.target.value as LegendPosition)
+                          ).panelLegendPositions,
+                        })
+                      }
+                      style={{ ...styles.select, flex: 1 }}
+                    >
+                      <option value="">{t("chart.followFigure")}</option>
+                      {LEGEND_POSITION_KEYS.filter(([value]) => value.startsWith("inside-")).map(
+                        ([value, key]) => (
+                          <option key={value} value={value}>
+                            {t(key as any)}
+                          </option>
+                        )
+                      )}
+                    </select>
+                  </label>
+                  <div style={styles.fieldHint}>{t("chart.panelLegendPositionHint")}</div>
+                </>
+              )}
             </>
           )}
 
@@ -1717,51 +1737,6 @@ export function ChartSettingsPanel({
             </>
           )}
 
-          {perPanelLegend && (
-            <>
-              <div style={styles.groupLabel}>{t("chart.sectionPanelAppearance")}</div>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.panelTarget")}</span>
-                <select
-                  value={editingPanel}
-                  onChange={(e) => setEditingPanel(Number(e.target.value))}
-                  style={{ ...styles.select, flex: 1 }}
-                >
-                  {Array.from({ length: panels }, (_, p) => (
-                    <option key={p} value={p}>
-                      {t("chart.panelName", { n: String(p + 1) })}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.legendPosition")}</span>
-                <select
-                  value={override ?? ""}
-                  onChange={(e) =>
-                    onChange({
-                      panelLegendPositions: withPanelLegendPosition(
-                        config,
-                        editingPanel,
-                        e.target.value === "" ? null : (e.target.value as LegendPosition)
-                      ).panelLegendPositions,
-                    })
-                  }
-                  style={{ ...styles.select, flex: 1 }}
-                >
-                  <option value="">{t("chart.followFigure")}</option>
-                  {LEGEND_POSITION_KEYS.filter(([value]) => value.startsWith("inside-")).map(
-                    ([value, key]) => (
-                      <option key={value} value={value}>
-                        {t(key as any)}
-                      </option>
-                    )
-                  )}
-                </select>
-              </label>
-              <div style={styles.fieldHint}>{t("chart.panelLegendPositionHint")}</div>
-            </>
-          )}
         </div>
         );
       })()}
@@ -1842,18 +1817,16 @@ const styles: Record<string, React.CSSProperties> = {
     overflowY: "auto",
     minHeight: 0,
   },
-  sectionLabel: {
-    marginTop: 6,
+  fieldNote: {
     fontSize: 11,
     color: "var(--color-text-tertiary)",
+    whiteSpace: "nowrap" as const,
   },
-  // 軸設定タブの「図全体 / 枠ごと」。軸ごとの見出し（sectionLabel）より 1 段上の括り
-  groupLabel: {
-    marginTop: 10,
-    paddingBottom: 4,
-    borderBottom: "1px solid var(--color-border)",
-    fontSize: 12,
-    fontWeight: 500,
+  // 見出しはヒント文（tertiary）より濃く。同じ薄さだと見出しとして読めない
+  sectionLabel: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: 600,
     color: "var(--color-text-secondary)",
   },
   assignLabel: {
