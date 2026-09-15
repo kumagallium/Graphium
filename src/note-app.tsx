@@ -312,6 +312,7 @@ import {
   type TopicComposeClaim,
   runTopicStage, type TopicStageClaimInput, type TopicStageResult, type ExistingTopicRef,
   consolidateExistingTopics, type ExistingTopicForMerge,
+  mergeTopicsExplicit, normalizeTopicTitle,
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
@@ -459,10 +460,35 @@ async function loadMediaText(fileId: string): Promise<string | undefined> {
  * 作成・更新は常に表示、未割り当て・失敗は 0 件なら出さない
  * （既存話題どうしの統合は ingest の隠れた段にはしない — 「話題を整理」の専用結果表示に任せる）。
  */
-function formatTopicStageDetail(topicResult: TopicStageResult): string {
-  return `${tStatic("ingest.topicsDone", { created: String(topicResult.created), updated: String(topicResult.updated) })}`
+function formatTopicStageDetail(
+  topicResult: TopicStageResult,
+  // この実行の直前時点の既存テーマ一覧（id/title）。渡すと、今回作ったテーマに
+  // ローカル判定（正規化タイトル一致）で候補が見つかったときだけヒントを 1 行足す。
+  // LLM は呼ばない（4 と同じ判定のうち同期で完結する部分のみ）。
+  existingTopicsSnapshot?: { id: string; title: string }[],
+): string {
+  let detail = `${tStatic("ingest.topicsDone", { created: String(topicResult.created), updated: String(topicResult.updated) })}`
     + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
     + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+
+  if (topicResult.createdTopics.length > 0 && existingTopicsSnapshot) {
+    const countByNormalizedTitle = new Map<string, number>();
+    for (const topic of existingTopicsSnapshot) {
+      const key = normalizeTopicTitle(topic.title);
+      countByNormalizedTitle.set(key, (countByNormalizedTitle.get(key) ?? 0) + 1);
+    }
+    for (const created of topicResult.createdTopics) {
+      const key = normalizeTopicTitle(created.title);
+      countByNormalizedTitle.set(key, (countByNormalizedTitle.get(key) ?? 0) + 1);
+    }
+    const hasCandidate = topicResult.createdTopics.some(
+      (created) => (countByNormalizedTitle.get(normalizeTopicTitle(created.title)) ?? 0) >= 2,
+    );
+    if (hasCandidate) {
+      detail += ` · ${tStatic("ingest.similarTopicsHint")}`;
+    }
+  }
+  return detail;
 }
 
 /** ingest 系 API に渡す既存 Wiki 参照 1 件分（kind === "topic" のとき oneLiner を持ちうる） */
@@ -8916,7 +8942,7 @@ export function NoteApp() {
     } else {
       updateStage("topics", "running", tStatic("ingest.topicsUpdating", { count: String(claimsForTopicAssignment.length) }));
       const topicResult = await runTopicStageForNoteApp(claimsForTopicAssignment);
-      const doneDetail = formatTopicStageDetail(topicResult);
+      const doneDetail = formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })));
       updateStage("topics", "done", doneDetail);
     }
 
@@ -9728,7 +9754,7 @@ export function NoteApp() {
         let topicDetail = "";
         if (claimsForTopicStage.length > 0) {
           const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-          topicDetail = ` · ${formatTopicStageDetail(topicResult)}`
+          topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
             + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
             + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
         }
@@ -10166,6 +10192,123 @@ export function NoteApp() {
       return { ok: false, error: localizeAiError(err) };
     }
   }, [fm, capture.captureIndex]);
+
+  // テーマ一覧の選択統合（バナー・一覧・点検が共通して使う）。
+  // ユーザーが明示的に選んだ組を渡すだけなのでモデルは呼ばない
+  // （mergeTopicsExplicit → applyTopicMerges）。
+  const mergeTopicsFromSelection = useCallback(async (
+    keepId: string,
+    mergeIds: string[],
+  ): Promise<{ merged: number } | void> => {
+    const targetIds = new Set([keepId, ...mergeIds]);
+    const existingTopics: ExistingTopicForMerge[] = fm.wikiFiles
+      .filter((wf) => targetIds.has(wf.id) && fm.wikiMetas.get(wf.id)?.kind === "topic")
+      .map((wf) => ({
+        id: wf.id,
+        title: fm.wikiMetas.get(wf.id)?.title ?? wf.id,
+        memberClaimIds: fm.wikiMetas.get(wf.id)?.derivedFromClaims ?? [],
+      }));
+    const keepTitle = fm.wikiMetas.get(keepId)?.title ?? keepId;
+    const toastId = `merge-topics:${keepId}:${Date.now()}`;
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        { id: toastId, status: "generating" as const, noteTitle: tStatic("wikiList.merging") },
+      ],
+    }));
+    try {
+      const result = await mergeTopicsExplicit(keepId, mergeIds, existingTopics, {
+        loadDoc: fm.loadDoc,
+        getCachedDoc: fm.getCachedDoc,
+        handleSaveWikiFile: fm.handleSaveWikiFile,
+        handleDeleteWikiFile: fm.handleDeleteWikiFile,
+        noteIndex: buildNoteIndex(fm.noteIndex),
+        locale: getLocale(),
+        log: (...args: unknown[]) => console.warn(...args),
+      });
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId
+            ? {
+                ...i,
+                status: "success" as const,
+                detail: undefined,
+                result: tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) }),
+              }
+            : i
+        ),
+      }));
+      return { merged: result.merged };
+    } catch (err) {
+      console.error("テーマの統合に失敗:", err);
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
+        ),
+      }));
+    }
+  }, [fm]);
+
+  // テーマバナー用: 似たテーマ候補。LLM は呼ばない — ローカル判定のみ
+  // (a) 正規化タイトル一致（同期）、(b) 埋め込みが使えるときは既存の重複判定 0.9 を流用（非同期）。
+  const currentTopicId =
+    fm.activeDoc?.wikiMeta?.kind === "topic" ? (fm.activeFileId?.replace(/^wiki:/, "") ?? null) : null;
+
+  const similarTopicsLocal = useMemo(() => {
+    if (!currentTopicId || !fm.activeDoc) return [];
+    const selfKey = normalizeTopicTitle(fm.activeDoc.title);
+    const matches: { id: string; title: string }[] = [];
+    for (const wf of fm.wikiFiles) {
+      if (wf.id === currentTopicId) continue;
+      const meta = fm.wikiMetas.get(wf.id);
+      if (meta?.kind !== "topic") continue;
+      if (normalizeTopicTitle(meta.title) === selfKey) {
+        matches.push({ id: wf.id, title: meta.title });
+      }
+    }
+    return matches;
+  }, [currentTopicId, fm.activeDoc, fm.wikiFiles, fm.wikiMetas]);
+
+  const [similarTopicsEmbeddingMatch, setSimilarTopicsEmbeddingMatch] = useState<{ id: string; title: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSimilarTopicsEmbeddingMatch(null);
+    // 正規化タイトルで既に見つかっているなら埋め込みは呼ばない（無駄な API 呼び出しを避ける）
+    if (!currentTopicId || !fm.activeDoc || similarTopicsLocal.length > 0) return;
+    const existingTopicIds = new Set(
+      fm.wikiFiles
+        .filter((wf) => wf.id !== currentTopicId && fm.wikiMetas.get(wf.id)?.kind === "topic")
+        .map((wf) => wf.id)
+    );
+    if (existingTopicIds.size === 0) return;
+    const doc = fm.activeDoc;
+    (async () => {
+      try {
+        const { duplicates } = await partitionCandidatesByEmbedding(
+          [{ title: doc.title, body: extractBodyPreview(doc, 2000) }],
+          existingTopicIds,
+        );
+        if (cancelled) return;
+        const match = duplicates[0];
+        if (match) {
+          const title = fm.wikiMetas.get(match.matchedDocId)?.title ?? match.matchedDocId;
+          setSimilarTopicsEmbeddingMatch({ id: match.matchedDocId, title });
+        }
+      } catch {
+        // fail-open: 候補なしのまま何も出さない
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentTopicId, fm.activeDoc, similarTopicsLocal.length, fm.wikiFiles, fm.wikiMetas]);
+
+  const similarTopicsForBanner = useMemo(() => {
+    const combined = [...similarTopicsLocal];
+    if (similarTopicsEmbeddingMatch && !combined.some((c) => c.id === similarTopicsEmbeddingMatch!.id)) {
+      combined.push(similarTopicsEmbeddingMatch);
+    }
+    return combined;
+  }, [similarTopicsLocal, similarTopicsEmbeddingMatch]);
 
   // Maintenance の「洞察を発見」用: 全 Claim を AtomCandidate（snapshot + embedding +
   // modifiedTime）に組み立てる。プラン（実行前の見積もり表示）と実行の両方が使う。
@@ -10712,7 +10855,7 @@ export function NoteApp() {
                     let topicDetail = "";
                     if (claimsForTopicStage.length > 0) {
                       const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-                      topicDetail = ` · ${formatTopicStageDetail(topicResult)}`
+                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
                         + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
                         + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
                     }
@@ -10754,7 +10897,7 @@ export function NoteApp() {
                     let topicDetail = "";
                     if (claimsForTopicStage.length > 0) {
                       const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-                      topicDetail = ` · ${formatTopicStageDetail(topicResult)}`
+                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
                         + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
                         + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
                     }
@@ -10799,7 +10942,7 @@ export function NoteApp() {
                     let topicDetail = "";
                     if (claimsForTopicStage.length > 0) {
                       const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-                      topicDetail = ` · ${formatTopicStageDetail(topicResult)}`
+                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
                         + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
                         + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
                     }
@@ -11358,6 +11501,15 @@ export function NoteApp() {
               }
               return map;
             })()}
+            wikiKindById={(() => {
+              // wikiId → kind マップ。redundant の統合ワンクリック手当てを topic 同士だけに絞る。
+              const map = new Map<string, string>();
+              for (const [id, meta] of fm.wikiMetas.entries()) {
+                if (meta?.kind) map.set(id, meta.kind);
+              }
+              return map;
+            })()}
+            onMergeTopics={async (keepId, absorbId) => { await mergeTopicsFromSelection(keepId, [absorbId]); }}
           />
         ) : fm.activeWikiKind ? (
           <WikiListView
@@ -11381,6 +11533,7 @@ export function NoteApp() {
                     setBulkShareTargets(ids.map((id) => ({ id, kind: "knowledge" as const })))
                 : undefined
             }
+            onMergeTopics={fm.activeWikiKind === "topic" ? mergeTopicsFromSelection : undefined}
           />
         ) : sharedEntryViewId && getSharedRoot() ? (
           // 共有エントリの全画面。Library と同じハンドラをそのまま渡す
@@ -11558,6 +11711,16 @@ export function NoteApp() {
                   wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
                 }
                 worldGroundingEnabled={featureFlags.worldGrounding ?? true}
+                similarTopics={
+                  fm.activeDoc.wikiMeta.kind === "topic" && currentTopicId === wikiIdForBanner
+                    ? similarTopicsForBanner
+                    : undefined
+                }
+                onMergeTopicInto={
+                  fm.activeDoc.wikiMeta.kind === "topic" && wikiIdForBanner
+                    ? (mergeId) => { void mergeTopicsFromSelection(wikiIdForBanner, [mergeId]); }
+                    : undefined
+                }
               />
             );
           })()}
@@ -11842,7 +12005,7 @@ export function NoteApp() {
                   let topicDetail = "";
                   if (claimsForTopicStage.length > 0) {
                     const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-                    topicDetail = ` · ${formatTopicStageDetail(topicResult)}`
+                    topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
                       + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
                       + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
                   }
@@ -12152,7 +12315,8 @@ export function NoteApp() {
             handleDeleteWikiFile: fm.handleDeleteWikiFile,
             noteIndex: buildNoteIndex(fm.noteIndex),
             locale: getLocale(),
-            model: getSelectedModel() || undefined,
+            // テーマどうしの統合可否はチャットモデルで判断する
+            model: getChatSynthesisModelName() || undefined,
             log: (...args: unknown[]) => console.warn(...args),
           });
 

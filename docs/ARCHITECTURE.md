@@ -763,6 +763,31 @@ Notes:
   see [DATA_MODEL.md §3.1a](DATA_MODEL.md) for how near-duplicate Topics get
   cleaned up later instead (Organize topics / Linter, not ingest). Topics
   never participate in the hourglass — the Atomizer only ever sees Claims.
+- **Merging Topics has four entry points**, all funneling into the same
+  pure execution function `applyTopicMerges` (`src/features/wiki/topic-stage.ts`),
+  which retargets member Claims (`retargetClaimTopicId` + `linkClaimAndTopic`),
+  rewrites the kept Topic's body, and soft-deletes the absorbed Topic(s):
+  (1) **Topic banner** — a "similar topics" chip appears only when a local
+  check finds a candidate (normalized-title match, or embedding similarity
+  > 0.9 when an embedding model is configured); no LLM call. (2) **Topics
+  list** — select 2+ Topics and pick which one to keep; also no LLM call
+  (`mergeTopicsExplicit`, a thin wrapper around `applyTopicMerges` that
+  takes an explicit keep/merge id pair instead of computing one). (3)
+  **Lint** — the Linter's redundant-Topic finding (near-duplicate titles,
+  local or LLM-detected) gets a one-click "Merge" button that calls the
+  same explicit-pair path. (4) **Settings → Organize topics** — the only
+  entry point that judges *which* existing Topics are the same concept via
+  an LLM call (`consolidateExistingTopics` → `POST /api/wiki/consolidate-topics`,
+  the Topic Consolidator). In short: **deciding whether two Topics are the
+  same concept** is a chat-model judgment (Organize topics, and the Lint /
+  full-analysis redundant check); **moving members once the pair is known**
+  is mechanical and model-free (banner, list, and the per-issue Merge
+  button). The chat model (Settings → AI → Chat model, falls back to the
+  default model when unset) is used — not the default model — for both
+  the full Lint analysis (`POST /api/wiki/lint`) and Topic consolidation
+  (`POST /api/wiki/consolidate-topics`); ingest-time Topic naming
+  (`POST /api/wiki/name-topics`) and body composition
+  (`POST /api/wiki/compose-topic`) keep using the default model.
 - **Note mode vs document mode.** For a short personal note the ingester emits
   0-3 Claims, each tagged with proposed Topics (the "1 note ≈ 1 idea"
   assumption). When the source is an **imported external document** — its

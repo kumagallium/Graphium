@@ -55,7 +55,7 @@ The sidebar has a **Knowledge** section (collapsed by default) listing **Topics*
 
 - Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many member claims it groups instead), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
-- Bulk actions on selected rows: **Regenerate 3**, **Move 3 to trash**, **Check world (3)**
+- Bulk actions on selected rows: **Regenerate 3**, **Move 3 to trash**, **Check world (3)**, and for Topics (select 2 or more) **Merge**, which asks which topic to keep and moves the other(s) into it
 
 Claims also show an evidence status: **?candidate** (used in only 1 note) or **✓verified** (used in 2+ notes). A claim that gets corroborated by a second independent note is promoted automatically, and its page shows a **Corroborated** badge.
 
@@ -73,6 +73,17 @@ A knowledge page opens like any other note, and you can edit it like one. What m
 The body ends with a **References** section linking back to sources. Keep in mind that **Regenerate** rewrites the body from the sources — so make lasting corrections in the source notes where you can, and treat hand-edits to knowledge pages as provisional.
 
 ![A knowledge page with the banner showing Derived from and Regenerate](/screenshots/knowledge-page-banner.png)
+
+## Merging topics
+
+Topics can drift apart over wording, particles, or an overly narrow per-sample title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
+
+- **Topics list** — select 2 or more Topics and press **Merge**; pick which one to keep and the rest move their member claims into it, then go to trash.
+- **A topic's own banner** — shows a **Similar topics** chip when a candidate is found nearby (same normalized title, or embedding similarity when an embedding model is set); press **Merge** to absorb it into the page you're viewing.
+- **Health check** — a **Redundant** issue for two Topics gets a one-click **Merge** button alongside the usual Regenerate/Archive/Open actions.
+- **Settings → Knowledge → Organize topics** — the only entry point that has the AI scan every existing Topic and decide which ones are the same concept, in one pass.
+
+The first three don't call a model — you've already made the decision by picking the topics. Organize topics and the AI-analysis Health check use your **Chat model** (Settings → AI) to judge whether topics are the same concept.
 
 ## Log and Health
 

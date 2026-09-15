@@ -1608,8 +1608,9 @@ export async function lintWikis(
 ): Promise<LintReport> {
   const res = await fetch(`${API_BASE}/lint`, {
     method: "POST",
-    headers: wikiHeaders(),
-    body: JSON.stringify({ wikis, language, localOnly, ...wikiBodyModel() }),
+    // フル点検（LLM 解析）はチャットモデルで判断する（localOnly のときは未使用なので害は無い）
+    headers: wikiHeaders("chatSynthesis"),
+    body: JSON.stringify({ wikis, language, localOnly, ...wikiBodyModel("chatSynthesis") }),
     ...(signal ? { signal } : {}),
   });
 
@@ -2421,12 +2422,13 @@ export async function consolidateTopics(
   try {
     const res = await fetch(`${API_BASE}/consolidate-topics`, {
       method: "POST",
-      headers: wikiHeaders(),
+      // テーマの統合可否はチャットモデルで判断する
+      headers: wikiHeaders("chatSynthesis"),
       body: JSON.stringify({
         language,
         existingTopics: existingTopics.map((t) => ({ id: t.id, title: t.title, oneLiner: t.oneLiner })),
         proposedTitles,
-        ...(model ? { model } : {}),
+        ...(model ? { model } : wikiBodyModel("chatSynthesis")),
       }),
     });
     if (!res.ok) {

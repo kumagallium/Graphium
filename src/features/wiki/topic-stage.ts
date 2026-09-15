@@ -341,37 +341,21 @@ export type ConsolidateExistingTopicsDeps = {
 };
 
 /**
- * 既存話題どうしを consolidate-topics で統合する。
- * 1. 全既存話題タイトルを consolidate-topics に渡し対応表を得る（失敗時は何もしない）。
- * 2. planExistingTopicMerges で統合先を決める。
- * 3. 統合先ごとに、吸収される話題のメンバー知見を統合先へ付け替え（claim.topicIds の
+ * 明示の対応表（吸収される話題 id → 統合先の話題 id）に従って話題どうしを統合する、
+ * 副作用ありの実行部分。consolidateExistingTopics（LLM の consolidate-topics 経由）と、
+ * 一覧・バナー・点検からの明示選択マージ（mergeTopics）が共通して使う。
+ * 1. 統合先ごとに、吸収される話題のメンバー知見を統合先へ付け替え（claim.topicIds の
  *    retarget + topic.derivedFromClaims への合流）、本文を書き直す。
- * 4. 吸収された話題をゴミ箱へ送る（物理削除しない）。
+ * 2. 吸収された話題をゴミ箱へ送る（物理削除しない）。
  */
-export async function consolidateExistingTopics(
+export async function applyTopicMerges(
   existingTopics: ExistingTopicForMerge[],
+  targetByTopicId: Map<string, string>,
   deps: ConsolidateExistingTopicsDeps,
 ): Promise<ConsolidateExistingTopicsResult> {
   const result: ConsolidateExistingTopicsResult = { merged: 0, rebuilt: 0, failed: 0 };
-  if (existingTopics.length < 2) return result;
-  const log = deps.log ?? (() => {});
-
-  let mapping: Record<string, string> = {};
-  try {
-    mapping = await consolidateTopics(
-      existingTopics.map((t) => t.title),
-      [],
-      deps.locale,
-      deps.model,
-    );
-  } catch (err) {
-    log("既存話題の統合(consolidate-topics)に失敗:", err);
-    return result;
-  }
-  if (Object.keys(mapping).length === 0) return result;
-
-  const targetByTopicId = planExistingTopicMerges(existingTopics, mapping);
   if (targetByTopicId.size === 0) return result;
+  const log = deps.log ?? (() => {});
 
   const sourcesByTarget = new Map<string, string[]>();
   for (const [sourceId, targetId] of targetByTopicId) {
@@ -444,4 +428,55 @@ export async function consolidateExistingTopics(
   }
 
   return result;
+}
+
+/**
+ * 既存話題どうしを consolidate-topics（LLM）で判断して統合する（設定「話題を整理」から呼ばれる）。
+ * 1. 全既存話題タイトルを consolidate-topics に渡し対応表を得る（失敗時は何もしない）。
+ * 2. planExistingTopicMerges で統合先を決める。
+ * 3. applyTopicMerges で実際の付け替え・本文書き直し・ゴミ箱送りを行う。
+ */
+export async function consolidateExistingTopics(
+  existingTopics: ExistingTopicForMerge[],
+  deps: ConsolidateExistingTopicsDeps,
+): Promise<ConsolidateExistingTopicsResult> {
+  const result: ConsolidateExistingTopicsResult = { merged: 0, rebuilt: 0, failed: 0 };
+  if (existingTopics.length < 2) return result;
+  const log = deps.log ?? (() => {});
+
+  let mapping: Record<string, string> = {};
+  try {
+    mapping = await consolidateTopics(
+      existingTopics.map((t) => t.title),
+      [],
+      deps.locale,
+      deps.model,
+    );
+  } catch (err) {
+    log("既存話題の統合(consolidate-topics)に失敗:", err);
+    return result;
+  }
+  if (Object.keys(mapping).length === 0) return result;
+
+  const targetByTopicId = planExistingTopicMerges(existingTopics, mapping);
+  return applyTopicMerges(existingTopics, targetByTopicId, deps);
+}
+
+/**
+ * ユーザーが明示的に選んだ「残すテーマ」「まとめるテーマ」からモデルを介さず統合する。
+ * バナーの類似テーマ候補・一覧の選択統合・点検の redundant 手当てが共通して使う入口。
+ * LLM は呼ばない（判断済みの組をそのまま applyTopicMerges に渡すだけ）。
+ */
+export async function mergeTopicsExplicit(
+  keepId: string,
+  mergeIds: string[],
+  existingTopics: ExistingTopicForMerge[],
+  deps: ConsolidateExistingTopicsDeps,
+): Promise<ConsolidateExistingTopicsResult> {
+  const targetByTopicId = new Map<string, string>();
+  for (const id of mergeIds) {
+    if (id === keepId) continue;
+    targetByTopicId.set(id, keepId);
+  }
+  return applyTopicMerges(existingTopics, targetByTopicId, deps);
 }

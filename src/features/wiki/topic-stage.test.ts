@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   runTopicStage, type TopicStageDeps, type TopicStageClaimInput,
-  planExistingTopicMerges, consolidateExistingTopics,
+  planExistingTopicMerges, consolidateExistingTopics, mergeTopicsExplicit,
   type ExistingTopicForMerge, type ConsolidateExistingTopicsDeps,
 } from "./topic-stage";
 import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
@@ -384,5 +384,83 @@ describe("consolidateExistingTopics", () => {
     const result = await consolidateExistingTopics(existingTopics, deps);
 
     expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 0 });
+  });
+});
+
+describe("mergeTopicsExplicit", () => {
+  // バナー・一覧・点検からの明示選択マージ。LLM（consolidate-topics）は呼ばない。
+  const originalFetch = global.fetch;
+  beforeEach(() => { global.fetch = vi.fn(); });
+  afterEach(() => { global.fetch = originalFetch; vi.restoreAllMocks(); });
+
+  function makeMergeDeps(
+    docs: Map<string, GraphiumDocument>,
+    overrides: Partial<ConsolidateExistingTopicsDeps> = {},
+  ): ConsolidateExistingTopicsDeps {
+    return {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+        docs.set(`wiki:${wikiId}`, doc);
+        return true;
+      }),
+      handleDeleteWikiFile: vi.fn(async () => {}),
+      locale: "ja",
+      log: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it("consolidate-topics（LLM）を呼ばずに、指定した keepId へ吸収する", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeTopicDoc("t1", "焼結条件と粒成長", ["c1"]));
+    docs.set("wiki:t2", makeTopicDoc("t2", "SPS 焼結の粒成長抑制", ["c2"]));
+    docs.set("wiki:c1", makeClaimDoc("c1", "知見1", ["t1"]));
+    docs.set("wiki:c2", makeClaimDoc("c2", "知見2", ["t2"]));
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/compose-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n統合後の本文" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: ["c1"] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: ["c2"] },
+    ];
+    const deps = makeMergeDeps(docs);
+    const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 1, rebuilt: 1, failed: 0 });
+    // consolidate-topics は呼ばれない（明示選択のみ・モデル不要）
+    expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining("/consolidate-topics"), expect.anything());
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
+    const c2 = docs.get("wiki:c2");
+    expect(c2?.wikiMeta?.topicIds).toEqual(["t1"]);
+  });
+
+  it("keepId のみ渡す（mergeIds が空）なら何もしない", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    const deps = makeMergeDeps(docs);
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "話題A", memberClaimIds: [] },
+    ];
+    const result = await mergeTopicsExplicit("t1", [], existingTopics, deps);
+    expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 0 });
+    expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
+  });
+
+  it("keepId 自身が mergeIds に混じっていても無視する（自己統合ガード）", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeTopicDoc("t1", "話題A", ["c1"]));
+    docs.set("wiki:c1", makeClaimDoc("c1", "知見1", ["t1"]));
+    const deps = makeMergeDeps(docs);
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "話題A", memberClaimIds: ["c1"] },
+    ];
+    const result = await mergeTopicsExplicit("t1", ["t1"], existingTopics, deps);
+    expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 0 });
+    expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
   });
 });

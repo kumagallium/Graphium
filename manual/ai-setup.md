@@ -65,7 +65,7 @@ Under **Model assignment**, you decide which registered model handles which job.
 | Assignment | Used for |
 |---|---|
 | **Default model** | Fallback for everything, and directly for background tasks (ingest, lint, rewrite, cross-update) |
-| **Chat model** | [AI Chat](/ai-chat-and-ask). Falls back to the default model when empty |
+| **Chat model** | [AI Chat](/ai-chat-and-ask), lint (AI analysis), and topic merging. Falls back to the default model when empty |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving |
 
 Below **Model assignment**, two more sections each have their own on/off switch — **Use world grounding** and **Use insights** — off the first time you use Graphium, on if you've used it before (turning either off just hides its buttons and results; nothing already saved is lost):

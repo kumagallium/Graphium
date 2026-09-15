@@ -3,7 +3,7 @@
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser } from "lucide-react";
+import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge } from "lucide-react";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { cn } from "../../lib/utils";
 import type {
@@ -89,7 +89,74 @@ type Props = {
    * デスクトップ + shared root + identity が揃っている場合にのみ渡される。
    */
   onShareSelected?: (wikiIds: string[]) => void;
+  /**
+   * テーマの選択統合（任意, wikiKind === "topic" のときだけ意味を持つ）— 提供時のみ
+   * 一括操作バーに「統合」ボタンが出る（2 件以上選択時）。keepId に他を吸収させて
+   * ゴミ箱へ送り、本文を書き直す。モデルは呼ばない（明示選択のみ）。
+   */
+  onMergeTopics?: (keepId: string, mergeIds: string[]) => Promise<{ merged: number } | void>;
 };
+
+// テーマ統合の確認ダイアログ — 残すテーマをラジオで選ぶ（既定は知見数が最も多いもの）
+function MergeTopicsDialog({
+  candidates,
+  defaultKeepId,
+  onConfirm,
+  onCancel,
+  merging,
+}: {
+  candidates: { id: string; title: string; sources: number }[];
+  defaultKeepId: string;
+  onConfirm: (keepId: string) => void;
+  onCancel: () => void;
+  merging: boolean;
+}) {
+  const t = useT();
+  const [keepId, setKeepId] = useState(defaultKeepId);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+        <h3 className="text-sm font-semibold text-foreground mb-2">
+          {t("wikiList.mergeConfirmTitle")}
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          {t("wikiList.mergeConfirmMessage")}
+        </p>
+        <div className="flex flex-col gap-1.5 mb-4 max-h-60 overflow-y-auto">
+          {candidates.map((c) => (
+            <label key={c.id} className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+              <input
+                type="radio"
+                name="merge-topic-keep"
+                checked={keepId === c.id}
+                onChange={() => setKeepId(c.id)}
+                disabled={merging}
+              />
+              <span className="truncate">{c.title}</span>
+              <span className="text-muted-foreground/60 shrink-0">({c.sources})</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={merging}
+            className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {t("wikiList.mergeConfirmCancel")}
+          </button>
+          <button
+            onClick={() => onConfirm(keepId)}
+            disabled={merging}
+            className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {merging ? t("wikiList.merging") : t("wikiList.mergeConfirmOk")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // 削除確認ダイアログ
 function DeleteConfirmDialog({
@@ -238,6 +305,7 @@ export function WikiListView({
   onClearWorldValidity,
   worldGroundingEnabled = true,
   onShareSelected,
+  onMergeTopics,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -247,6 +315,8 @@ export function WikiListView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [mergeTarget, setMergeTarget] = useState<string[] | null>(null);
+  const [merging, setMerging] = useState(false);
   // 列フィルタ。Type 列は wikiKind ごとに claimRole / atomType / synthesisMode を対象にする。
   // wikiKind が切り替わると意味が変わるので、別 kind の選択は引きずらない。
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
@@ -480,6 +550,41 @@ export function WikiListView({
     }
   }, [deleteTarget, onDeleteWiki]);
 
+  const mergeCandidates = useMemo(() => {
+    if (!mergeTarget) return [];
+    return mergeTarget
+      .map((id) => wikiEntries.find((e) => e.id === id))
+      .filter((e): e is (typeof wikiEntries)[number] => !!e)
+      .map((e) => ({ id: e.id, title: e.title, sources: e.sources }));
+  }, [mergeTarget, wikiEntries]);
+
+  const mergeDefaultKeepId = useMemo(() => {
+    if (mergeCandidates.length === 0) return "";
+    // 既定は最も知見数（sources）が多いもの。同数なら最初の候補。
+    return mergeCandidates.reduce((best, c) => (c.sources > best.sources ? c : best), mergeCandidates[0]).id;
+  }, [mergeCandidates]);
+
+  const handleMergeConfirm = useCallback(async (keepId: string) => {
+    if (!mergeTarget || !onMergeTopics) return;
+    const mergeIds = mergeTarget.filter((id) => id !== keepId);
+    if (mergeIds.length === 0) {
+      setMergeTarget(null);
+      return;
+    }
+    setMerging(true);
+    try {
+      await onMergeTopics(keepId, mergeIds);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of mergeTarget) next.delete(id);
+        return next;
+      });
+    } finally {
+      setMerging(false);
+      setMergeTarget(null);
+    }
+  }, [mergeTarget, onMergeTopics]);
+
   const kindLabel =
     wikiKind === "summary" ? t("wikiList.kindSummary")
     : wikiKind === "synthesis" ? t("wikiList.kindSynthesis")
@@ -567,6 +672,16 @@ export function WikiListView({
               >
                 <RefreshCw size={12} />
                 {t("wikiList.regenerateSelected", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            {onMergeTopics && wikiKind === "topic" && selectedIds.size >= 2 && (
+              <button
+                onClick={() => setMergeTarget([...selectedIds])}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                title={t("wikiList.mergeTopicsTitle")}
+              >
+                <Merge size={12} />
+                {t("wikiList.mergeTopics")}
               </button>
             )}
             <button
@@ -830,6 +945,16 @@ export function WikiListView({
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteTarget(null)}
           deleting={deleting}
+        />
+      )}
+
+      {mergeTarget && mergeCandidates.length >= 2 && (
+        <MergeTopicsDialog
+          candidates={mergeCandidates}
+          defaultKeepId={mergeDefaultKeepId}
+          onConfirm={handleMergeConfirm}
+          onCancel={() => setMergeTarget(null)}
+          merging={merging}
         />
       )}
     </div>

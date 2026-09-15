@@ -50,7 +50,7 @@ export {
 } from "./sampling";
 export { wikiLog } from "./wiki-log";
 export type { WikiLogEntry, WikiLogEventType } from "./wiki-log";
-export { runTopicStage, consolidateExistingTopics, planExistingTopicMerges } from "./topic-stage";
+export { runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit } from "./topic-stage";
 export type {
   TopicStageClaimInput, TopicStageResult, TopicStageDeps,
   ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
