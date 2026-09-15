@@ -134,7 +134,7 @@ export const en: Record<string, string> = {
   "sidebar.shared": "Shared",
   "sidebar.skill": "Skill",
   "sidebar.knowledge": "Knowledge",
-  "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (summaries, claims, insights)",
+  "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (topics, claims, insights)",
   // Log / Health buttons inside Knowledge
   "sidebar.wikiLog": "Log",
   "sidebar.wikiLogHint": "Change history and sources of your knowledge",
@@ -566,7 +566,7 @@ export const en: Record<string, string> = {
   "settings.maintenance.atomize.coverage": "Claims in view: {covered}/{total}",
   "settings.maintenance.atomize.reinforcedLine": "Reinforced existing Insights: {count}",
 
-  "settings.maintenance.conceptSummaryModel": "Claims / Summaries model",
+  "settings.maintenance.conceptSummaryModel": "Claims / Topics model",
   "settings.maintenance.synthesisAtomModel": "Insight model (used when generating Insights from Claims)",
   "settings.maintenance.modelOverride": "Model override (optional)",
   "settings.maintenance.modelOverrideDefault": "Use configured model",
@@ -1691,7 +1691,7 @@ export const en: Record<string, string> = {
   "memo.deselectAll": "Clear selection",
   "memo.deleteSelected": "Delete {count}",
   "memo.knowledgeSelected": "Turn {count} into Knowledge",
-  "memo.knowledgeHint": "Extract summaries and claims from the selected memos into Knowledge (no notes are created)",
+  "memo.knowledgeHint": "Extract claims from the selected memos, group them into topics, and add them to Knowledge (no notes are created)",
   "memo.archive": "Archive",
   "memo.archiveSelected": "Archive {count}",
   "memo.knowledgedInto": "Turned into Knowledge",
@@ -2018,7 +2018,7 @@ export const en: Record<string, string> = {
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化
-  "noteList.ingestTooltip": "Extract summaries and claims from the selected notes and add them to Knowledge",
+  "noteList.ingestTooltip": "Extract claims from the selected notes, group them into topics, and add them to Knowledge",
   "noteList.ingestSelected": "Add {count} to Knowledge",
   "noteList.importFailedCount": "({count} failed)",
   "noteList.importProcessing": "Processing: {name}",
@@ -2459,7 +2459,7 @@ export const en: Record<string, string> = {
   "composer.discovery.timeHoursAgo": "{hours}h ago",
   "composer.discovery.timeDaysAgo": "{days}d ago",
   "composer.discovery.ingestTitle": "Add this note to Knowledge",
-  "composer.discovery.ingestHint": "AI summarizes and abstracts it into Knowledge entries",
+  "composer.discovery.ingestHint": "AI extracts claims and groups them into topics as Knowledge entries",
   "composer.discovery.promptSummarize": "Summarize this note in 3 lines per heading.",
   "composer.discovery.promptContinue": "Building on the previous paragraph, write the next 1-2 paragraphs.",
   "composer.discovery.promptVisualizeProv": "Visualize this note's provenance graph (PROV-DM).",

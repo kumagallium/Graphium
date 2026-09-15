@@ -134,7 +134,7 @@ export const ja: Record<string, string> = {
   "sidebar.shared": "共有",
   "sidebar.skill": "スキル",
   "sidebar.knowledge": "ナレッジ",
-  "sidebar.knowledgeHint": "AI がノートから抽出したナレッジ層（要約・知見・洞察）",
+  "sidebar.knowledgeHint": "AI がノートから抽出したナレッジ層（話題・知見・洞察）",
   // ナレッジ内の Log / 点検 ボタン
   "sidebar.wikiLog": "ログ",
   "sidebar.wikiLogHint": "ナレッジの変更履歴と生成元",
@@ -566,7 +566,7 @@ export const ja: Record<string, string> = {
   "settings.maintenance.atomize.coverage": "視野に入れた知見: {covered}/{total} 件",
   "settings.maintenance.atomize.reinforcedLine": "既存の洞察への支持追加: {count} 件",
 
-  "settings.maintenance.conceptSummaryModel": "知見 / 要約モデル",
+  "settings.maintenance.conceptSummaryModel": "知見 / 話題モデル",
   "settings.maintenance.synthesisAtomModel": "洞察モデル（知見 → 洞察の生成に使われます）",
   "settings.maintenance.modelOverride": "モデル指定（任意）",
   "settings.maintenance.modelOverrideDefault": "設定中のモデルを使用",
@@ -1690,7 +1690,7 @@ export const ja: Record<string, string> = {
   "memo.deselectAll": "選択解除",
   "memo.deleteSelected": "{count} 件削除",
   "memo.knowledgeSelected": "{count} 件をナレッジ化",
-  "memo.knowledgeHint": "選択したメモから要約と知見を抽出してナレッジに追加します（ノートは作られません）",
+  "memo.knowledgeHint": "選択したメモから知見を抽出し、話題に束ねてナレッジに追加します（ノートは作られません）",
   "memo.archive": "アーカイブ",
   "memo.archiveSelected": "{count} 件をアーカイブ",
   "memo.knowledgedInto": "ナレッジ化先",
@@ -2017,7 +2017,7 @@ export const ja: Record<string, string> = {
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括ナレッジ化
-  "noteList.ingestTooltip": "選択したノートから要約と知見を抽出してナレッジに追加します",
+  "noteList.ingestTooltip": "選択したノートから知見を抽出し、話題に束ねてナレッジに追加します",
   "noteList.ingestSelected": "{count} 件をナレッジ化",
   "noteList.importFailedCount": "（失敗: {count}）",
   "noteList.importProcessing": "処理中: {name}",
@@ -2457,7 +2457,7 @@ export const ja: Record<string, string> = {
   "composer.discovery.timeHoursAgo": "{hours}h 前",
   "composer.discovery.timeDaysAgo": "{days}d 前",
   "composer.discovery.ingestTitle": "このノートをナレッジに追加",
-  "composer.discovery.ingestHint": "AI が要約・抽象化してナレッジを作成",
+  "composer.discovery.ingestHint": "AI が知見を抽出し、話題に束ねてナレッジを作成",
   "composer.discovery.promptSummarize": "このノートを見出し単位で 3 行にまとめてください。",
   "composer.discovery.promptContinue": "直前の段落を踏まえて、続きを 1〜2 段落書いてください。",
   "composer.discovery.promptVisualizeProv": "このノートの来歴グラフ（PROV-DM）を可視化してください。",

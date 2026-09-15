@@ -4001,7 +4001,7 @@ function MaintenanceTab({
 
       {/* モデル指定（kind 別） */}
       <div className="space-y-3">
-        {/* Concept / Summary（Ingest モデル） */}
+        {/* Concept / Topic（Ingest モデル。要約は生成停止済みなのでラベルから外した） */}
         <div>
           <h3 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.conceptSummaryModel")}
