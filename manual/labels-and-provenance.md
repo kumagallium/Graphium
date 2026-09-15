@@ -92,9 +92,9 @@ If "Input / Tool / Parameter / Output" doesn't match your field's vocabulary, re
 
 Once a note has at least one step or label, a **Steps** tab appears in the right-hand panel. Open it and you'll see the provenance graph, which regenerates automatically about half a second after every edit — there is no "generate" button to press.
 
-In a Plan note (see [Folders](/notes-and-editor#folders)), the Steps tab carries two sub-tabs, **Steps** and **Operations**. Steps is the graph described below, for the plan note's own step blocks. Operations draws the plan's [Operation notes](/notes-and-editor#the-index-table) as steps and whatever they hand to each other as entities. **Add operation** only adds a row to the index table — name it, then click the row's node ("Create note") to actually create the operation note, the same way the index table itself does. Clicking an existing operation node opens that note; drawing a connection between operations is done from inside the operation note's own steps, not from this view.
+In a Plan note (see [Folders](/notes-and-editor#folders)) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />, the Steps tab carries two sub-tabs, **Steps** and **Operations**. Steps is the graph described below, for the plan note's own step blocks. Operations draws the plan's [Operation notes](/notes-and-editor#the-index-table) as steps and whatever they hand to each other as entities. **Add operation** only adds a row to the index table — name it, then click the row's node ("Create note") to actually create the operation note, the same way the index table itself does. Clicking an existing operation node opens that note; drawing a connection between operations is done from inside the operation note's own steps, not from this view.
 
-The Operations graph can also carry **Planned** connections: a gray dotted line drawn from the plan's **Input from** column (see [The index table](/notes-and-editor#the-index-table)), independent of whether any operation note actually references the other's output yet. Drag a port between two operation nodes to write the source operation's row name into the target row's **Input from** cell; select a planned line and choose **Remove planned line** to clear it. When an actual cross-note reference matches a planned one, the line is shown **As planned** (solid green); an actual reference that has no matching plan is **Unplanned** (solid amber). A plan with no planned lines at all shows no marks. Planned lines are a planning aid only — they never appear in the PROV-DM output.
+The Operations graph can also carry **Planned** connections <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a gray dotted line drawn from the plan's **Input from** column (see [The index table](/notes-and-editor#the-index-table)), independent of whether any operation note actually references the other's output yet. Drag a port between two operation nodes to write the source operation's row name into the target row's **Input from** cell; select a planned line and choose **Remove planned line** to clear it. When an actual cross-note reference matches a planned one, the line is shown **As planned** (solid green); an actual reference that has no matching plan is **Unplanned** (solid amber). A plan with no planned lines at all shows no marks. Planned lines are a planning aid only — they never appear in the PROV-DM output.
 
 ![A note with its provenance graph in the right panel](/screenshots/editor-with-graph_en.png)
 
@@ -174,7 +174,7 @@ Labels and links also feed graphs that span your whole workspace:
 - **Activity graph editor** — the **Steps (only)** view described [above](#the-provenance-graph-panel), where the step order itself can be rewired by dragging.
 - **Process list** — in the sidebar under **Processes**: the flow each note describes, listed side by side (see [Process list](#process-list) below).
 
-### Timeline around this note
+### Timeline around this note <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />
 
 - **What it shows** — the Global Graph switched to **Timeline** mode: three lanes running left to right along a time axis, seen from the origin note: **Plan**, **Operations**, and **Steps**. Lines between operation notes in the same lane are hand-offs — cross-note references between their steps. If the origin note is a plan note, the **Steps** lane holds the steps of every one of its Operation notes, stacked one operation below the other; otherwise it holds that note's own steps.
 - **Where to open it from** — switch to **Timeline** in the Global Graph header and pick an origin note from the search box, or jump in already anchored to a note: the note's right panel **Graph** tab, on a plan note the **Operations** row of the **Steps** panel, or the side peek's **Timeline around this note** button (the preview that opens from the note list or from a node in the Global Graph). When you arrive from a note, a **Back to the note** button appears in the header so you can return to it.
@@ -205,7 +205,7 @@ In the Steps view, grabbing the middle of a card moves it; the small ports at th
 - To use an existing process as the starting point for another run, select it and choose **Copy this process and open a note** <Badge type="tip" text="Added in v0.41.0 (2026-08-21)" />. Graphium copies the whole note, opens the copy, and records which note it came from. The original stays unchanged.
 - A process **cannot be edited directly here**. It is derived from the note's text, so use **Open note** to change the original.
 
-### Operation overview
+### Operation overview <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />
 
 Above the process list sits a graph grouped by **step** name across every process — not the flow of a single note, but the shape of the whole set.
 
