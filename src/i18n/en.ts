@@ -2751,6 +2751,7 @@ export const en: Record<string, string> = {
   "localView.title": "Timeline around this note",
   "localView.origin": "Origin",
   "localView.depth": "Depth",
+  "localView.depthHint": "Only when the origin belongs to no plan: how many reference hops to gather as peers",
   "localView.lane.parent": "Plan",
   "localView.lane.siblings": "Operations",
   "localView.lane.children": "Steps",
