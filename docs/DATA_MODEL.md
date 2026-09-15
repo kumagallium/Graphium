@@ -794,7 +794,8 @@ type WikiMeta = {
   derivedFromClaims?: string[];
 
   // Claim-only. IDs of the topic (`kind: "topic"`) pages this Claim belongs to
-  // (0–3). Paired bidirectionally with the topic's `derivedFromClaims` above.
+  // (no count limit — usually 1). Paired bidirectionally with the topic's
+  // `derivedFromClaims` above.
   topicIds?: string[];
 
   // Knowledge cited/examined when this note was created from a Cmd-K verb
@@ -895,7 +896,8 @@ type ProcedureContext = {
 A `topic` document groups Claims (`kind: "claim"`) by concept. Its
 `wikiMeta.derivedFromClaims` holds the member Claim IDs, and each
 member Claim's `wikiMeta.topicIds` points back (bidirectional link,
-capped at 3 topics per Claim).
+no count limit — usually one topic per Claim, more only when a Claim
+genuinely spans distinct concepts).
 
 The topic body is regenerated as a **pure function of its current
 member set** — the previous body is never fed back into the writer.
@@ -904,11 +906,37 @@ LLM-authored wikis: a topic page cannot accumulate drift across
 regenerations, because each regeneration starts from the member Claims
 only.
 
-Topics are assigned during ingest: the ingester proposes 1–3 topic
-names (noun phrases) per Claim, which are then resolved against
+Topics are assigned during ingest, following the same "index +
+judgment" approach as the ingester itself (see [ARCHITECTURE.md
+§3.3](ARCHITECTURE.md)): the ingester proposes topic names (noun
+phrases) per Claim after being shown an index of existing topics
+(title + one-line definition, like the existing-Wiki index it already
+sees), so it can decide itself whether a Claim belongs to an existing
+topic or needs a new one. The proposed names are then resolved against
 existing topics by (1) normalized title match, then (2) embedding
-similarity > 0.9 (falls back to title-match-only when no embedding
-model is configured), and only then created as new.
+similarity > 0.9 (the one numeric threshold in this pipeline — shared
+with the general duplicate-detection use of the same function; falls
+back to title-match-only when no embedding model is configured), and
+only then created as new.
+
+There is no separate ingest-time "consolidation" step and no target
+member-count per topic — those would be thresholds nobody could
+justify. Instead, near-duplicate or over-fragmented topics (wording
+variants, particle differences, per-sample slices that should share a
+page) are caught later by two Karpathy-style *lint* mechanisms that
+look at the whole topic corpus at once, rather than one Claim at a
+time:
+
+- **"Organize topics"** (Settings → Maintenance): assigns topics to
+  Claims that still have none, then consolidates existing topics that
+  name the same concept (`POST /api/wiki/consolidate-topics` — an LLM
+  call that returns a proposed-name → canonical-title mapping, no
+  count caps), merging members into the canonical topic and moving the
+  absorbed topic to Trash.
+- **Wiki Linter** (`wiki-linter.ts`): the `redundant` issue type now
+  also considers Topic pages, both in the LLM lint pass and in a local
+  (no-LLM) check that flags topics whose normalized titles collide
+  exactly.
 
 In the topic body, citations to member Claims are written as
 `[[claim:<id>]]` (the Claim's id, not its title — this avoids the

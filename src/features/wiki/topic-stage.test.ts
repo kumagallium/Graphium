@@ -3,7 +3,11 @@
 // このテストでは global.fetch をモックし、依存（fm 相当）もすべてスタブする。
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { runTopicStage, type TopicStageDeps, type TopicStageClaimInput } from "./topic-stage";
+import {
+  runTopicStage, type TopicStageDeps, type TopicStageClaimInput,
+  planExistingTopicMerges, consolidateExistingTopics,
+  type ExistingTopicForMerge, type ConsolidateExistingTopicsDeps,
+} from "./topic-stage";
 import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
 
 function makeClaimDoc(id: string, title: string, topicIds: string[] = []): GraphiumDocument {
@@ -194,6 +198,29 @@ describe("runTopicStage", () => {
     expect(result).toMatchObject({ created: 0, updated: 1, failed: 0, withoutTopic: 0 });
   });
 
+  it("name-topics には既存話題を「タイトル + 定義の先頭文」の index として渡す", async () => {
+    const { deps, docs } = makeDeps({
+      existingTopicRefs: [{ id: "topic-1", title: "既存話題", oneLiner: "既存話題の定義。" }],
+    });
+    docs.set("wiki:claim-1", makeClaimDoc("claim-1", "知見1"));
+
+    let sentBody: any;
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
+      if (String(url).includes("/name-topics")) {
+        sentBody = JSON.parse(init.body);
+        return { ok: true, json: async () => ({ topics: {} }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const claims: TopicStageClaimInput[] = [
+      { id: "claim-1", title: "知見1", body: "本文プレビュー", topics: [] },
+    ];
+    await runTopicStage(claims, deps);
+
+    expect(sentBody.existingTopics).toEqual(["既存話題: 既存話題の定義。"]);
+  });
+
   it("name-topics 呼び出し自体が失敗したら failed に数え、withoutTopic にはしない", async () => {
     const { deps, docs } = makeDeps();
     docs.set("wiki:claim-1", makeClaimDoc("claim-1", "知見1"));
@@ -241,5 +268,121 @@ describe("runTopicStage", () => {
     const result = await runTopicStage(claims, deps);
     expect(result).toMatchObject({ created: 0, updated: 0, failed: 0, withoutTopic: 1 });
     expect(deps.log).toHaveBeenCalled();
+  });
+});
+
+describe("planExistingTopicMerges", () => {
+  // 空白差は normalizeTopicTitle 自体が同一視するため、ここでは助詞の有無のように
+  // 正規化だけでは同一と判定されない表記ゆれを例にする（consolidate-topics が本領を発揮する対象）。
+  const topics: ExistingTopicForMerge[] = [
+    { id: "t1", title: "還元反応速度", memberClaimIds: ["c1"] },
+    { id: "t2", title: "還元の反応速度", memberClaimIds: ["c2"] },
+    { id: "t3", title: "Ti 置換の影響", memberClaimIds: ["c3"] },
+  ];
+
+  it("正式名に自己一致する話題を target に選ぶ", () => {
+    const mapping = { "還元反応速度": "還元反応速度", "還元の反応速度": "還元反応速度" };
+    const plan = planExistingTopicMerges(topics, mapping);
+    expect(plan.get("t2")).toBe("t1");
+    expect(plan.has("t1")).toBe(false);
+    expect(plan.has("t3")).toBe(false);
+  });
+
+  it("mapping に無い話題（自身にしか一致しない）は統合対象にしない", () => {
+    const mapping = { "還元反応速度": "還元反応速度" };
+    const plan = planExistingTopicMerges(topics, mapping);
+    expect(plan.size).toBe(0);
+  });
+
+  it("自己一致する話題が無ければ先頭を target に選ぶ", () => {
+    const mapping = { "還元反応速度": "統合名", "還元の反応速度": "統合名" };
+    const plan = planExistingTopicMerges(topics, mapping);
+    expect(plan.get("t2")).toBe("t1");
+  });
+});
+
+describe("consolidateExistingTopics", () => {
+  const originalFetch = global.fetch;
+  beforeEach(() => { global.fetch = vi.fn(); });
+  afterEach(() => { global.fetch = originalFetch; vi.restoreAllMocks(); });
+
+  function makeMergeDeps(
+    docs: Map<string, GraphiumDocument>,
+    overrides: Partial<ConsolidateExistingTopicsDeps> = {},
+  ): ConsolidateExistingTopicsDeps {
+    return {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+        docs.set(`wiki:${wikiId}`, doc);
+        return true;
+      }),
+      handleDeleteWikiFile: vi.fn(async () => {}),
+      locale: "ja",
+      log: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it("既存話題が 2 件未満なら何もしない", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    const deps = makeMergeDeps(docs);
+    const result = await consolidateExistingTopics([{ id: "t1", title: "話題", memberClaimIds: [] }], deps);
+    expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 0 });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("対応表に沿って吸収元のメンバーを統合先へ移し、ゴミ箱へ送る", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeTopicDoc("t1", "AI3V格子熱伝導率", ["c1"]));
+    docs.set("wiki:t2", makeTopicDoc("t2", "AI3V 格子熱伝導率", ["c2"]));
+    docs.set("wiki:c1", makeClaimDoc("c1", "知見1", ["t1"]));
+    docs.set("wiki:c2", makeClaimDoc("c2", "知見2", ["t2"]));
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/consolidate-topics")) {
+        return {
+          ok: true,
+          json: async () => ({ mapping: { "AI3V格子熱伝導率": "AI3V格子熱伝導率", "AI3V 格子熱伝導率": "AI3V格子熱伝導率" } }),
+        };
+      }
+      if (String(url).includes("/compose-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n統合後の本文" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "AI3V格子熱伝導率", memberClaimIds: ["c1"] },
+      { id: "t2", title: "AI3V 格子熱伝導率", memberClaimIds: ["c2"] },
+    ];
+    const deps = makeMergeDeps(docs);
+    const result = await consolidateExistingTopics(existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 1, rebuilt: 1, failed: 0 });
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
+    // 吸収元(c2)の claim 側 topicIds が統合先(t1)へ retarget されている
+    const c2 = docs.get("wiki:c2");
+    expect(c2?.wikiMeta?.topicIds).toEqual(["t1"]);
+    // 統合先(t1)の本文が書き直されている
+    const t1 = docs.get("wiki:t1");
+    expect(t1?.pages?.[0]?.title).toBe("AI3V格子熱伝導率");
+  });
+
+  it("consolidate-topics が失敗したら何もしない（統合は最適化であって必須ではない）", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeTopicDoc("t1", "話題A", ["c1"]));
+    docs.set("wiki:t2", makeTopicDoc("t2", "話題B", ["c2"]));
+
+    (global.fetch as any).mockImplementation(async () => ({ ok: false, status: 500, text: async () => "{}" }));
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "話題A", memberClaimIds: ["c1"] },
+      { id: "t2", title: "話題B", memberClaimIds: ["c2"] },
+    ];
+    const deps = makeMergeDeps(docs);
+    const result = await consolidateExistingTopics(existingTopics, deps);
+
+    expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 0 });
   });
 });

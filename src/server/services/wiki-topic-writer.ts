@@ -12,10 +12,10 @@
 //   本文末尾に References（メンバー知見一覧）を付ける。
 //
 // Topic Namer（話題名の保険）:
-//   ingester は知見ごとに 1〜3 件の topics を出す想定だが、LLM が項目を無視して空にする
+//   ingester は知見ごとに topics を出す想定だが、LLM が項目を無視して空にする
 //   ケースがある。そのときはこの Topic Namer で後から話題名だけを推測して埋める
 //   （本文は書かない・話題名の命名のみ）。parseTopics（wiki-ingester）と同じサニタイズ規則
-//   （非文字列・空・重複を落とし最大 3 件）を再利用する。
+//   （非文字列・空・重複を落とす。件数の上限は無い）を再利用する。
 
 import { parseTopics } from "./wiki-ingester.js";
 
@@ -127,11 +127,11 @@ Each Claim below is missing \`topics\` — short noun phrases naming the concept
 
 ## Rules
 
-- Tag each Claim with 1-3 \`topics\`, short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
-- **Reuse an existing topic name exactly** when the Claim belongs to the same concept as one already listed below — do not create a near-duplicate with different wording, and never create a new name that differs from an existing one only by whitespace, symbols, or capitalization.
+- Tag each Claim with \`topics\`, short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
+- **Look at the existing topics listed below (each shown with its title and a one-line definition) and decide whether this Claim belongs to one of them, or needs a new topic.** Reuse an existing topic name exactly when the Claim belongs to the same concept — do not create a near-duplicate with different wording, and never create a new name that differs from an existing one only by whitespace, symbols, or capitalization.
 - Keep phrases short (a few words), not full sentences.
-- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** A topic should be a unit multiple Claims can plausibly share. Do NOT make a separate topic per composition, sample, or date.
-- Every Claim listed must get at least 1 topic — pick the best available concept even if the fit isn't perfect. Use 2-3 only when the Claim genuinely spans distinct concepts.
+${TOPIC_GRANULARITY_RULES}
+- Every Claim listed must get at least 1 topic — pick the best available concept even if the fit isn't perfect. Add more than one only when the Claim genuinely spans distinct concepts.
 
 ## Output Format
 
@@ -171,7 +171,7 @@ ${claimsText}`;
 /**
  * LLM の出力をパースして claimId → topics のマップを取り出す。
  * 各エントリのサニタイズは parseTopics（wiki-ingester）を再利用する（非文字列・空・重複を
- * 落とし最大 3 件）。壊れた JSON / 形が違う場合は undefined を返す（無理な復旧はしない）。
+ * 落とす。件数の上限は無い）。壊れた JSON / 形が違う場合は undefined を返す（無理な復旧はしない）。
  */
 export function parseTopicNamerOutput(text: string): Record<string, string[]> | undefined {
   try {
@@ -200,6 +200,113 @@ export function parseTopicNamerOutput(text: string): Record<string, string[]> | 
     return out;
   } catch (err) {
     console.error("Topic namer 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+// ── Topic Consolidator（既存話題どうしの統合）──
+// resolveTopicsForClaim のタイトル正規化一致・embedding 類似度だけでは、語順違い・助詞の
+// 有無・試料×測定のような細かすぎる名前を同一概念にまとめられない。取り込み（ingest）の
+// 隠れた段にはしない — 設定の「話題を整理」（consolidateExistingTopics）と点検（wiki-linter の
+// redundant 検出）からだけ呼ばれる、点検・整理の一部という位置づけ。渡された話題名を
+// まとめて 1 回 LLM に渡し、「どの名前をどの正式名に寄せるか」の対応表だけを作る。
+// 本文は書かない・話題ページの統合（メンバー移動・ゴミ箱送り）は呼び出し側が行う。
+// 件数の上限は設けない（大きすぎて LLM が失敗したら、そのまま失敗として呼び出し側に返す）。
+
+/** 話題名の粒度の目安（Namer / Ingester の Topics 節と文面を揃えること） */
+export const TOPIC_GRANULARITY_RULES = `- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** Prefer "material × property", "method", "phenomenon", or "model/theory" level names.
+- Do NOT make a separate topic per composition, sample, processing condition, or measurement run (e.g. prefer "Al3V の格子定数" over "Al3V1-xTix の格子定数"). The same concept should live on one page.`;
+
+/**
+ * Topic Consolidator 用のシステムプロンプトを構築する
+ */
+export function buildTopicConsolidatorSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a topic consolidator for Graphium, a provenance-tracking note editor.
+
+You will be given a list of proposed topic names (just named for Claims that need a topic) and a list of already-existing topic titles. Your job is to decide, for every proposed name, which single **canonical title** it should be merged into — including names that are already fine as-is (map them to themselves).
+
+## Rules
+
+- Merge proposed names that name the same concept despite surface differences: wording variants, presence/absence of particles (助詞), word order, abbreviations vs. spelled-out forms.
+- Prefer an existing topic title as the canonical title when one matches the same concept. Only pick a canonical title from among the proposed names themselves when no existing topic fits — in that case pick the most general/common phrasing among the candidates that name the same concept.
+${TOPIC_GRANULARITY_RULES}
+- Every proposed name MUST appear as a key in the mapping, even if it maps to itself (no consolidation needed).
+- Do not invent a canonical title that isn't either one of the existing topic titles or one of the proposed names.
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "mapping": {
+    "<proposed name>": "<canonical title>",
+    ...
+  }
+}
+
+## Language
+
+Canonical titles must stay in: ${ja ? "Japanese" : "English"} (do not translate).`;
+}
+
+/** Consolidator に渡す既存話題の最小情報（index: タイトル + 定義の先頭文） */
+export type TopicConsolidatorExistingRef = { id: string; title: string; oneLiner?: string };
+
+/**
+ * Topic Consolidator 用のユーザーメッセージを構築する
+ */
+export function buildTopicConsolidatorUserMessage(
+  existingTopics: TopicConsolidatorExistingRef[],
+  proposedTitles: string[],
+): string {
+  const existingText = existingTopics.length > 0
+    ? existingTopics.map((t) => `- ${t.oneLiner ? `${t.title}: ${t.oneLiner}` : t.title}`).join("\n")
+    : "(none yet)";
+  const proposedText = proposedTitles.map((t) => `- ${t}`).join("\n");
+
+  return `## Existing topics
+
+${existingText}
+
+## Proposed topic names (${proposedTitles.length})
+
+${proposedText}`;
+}
+
+/**
+ * LLM の出力をパースして「提案名 → 正式名」の対応表を取り出す。
+ * 壊れた JSON / 形が違う場合は undefined を返す（呼び出し側は「統合なし」で続行する —
+ * 統合は最適化であって必須ではない）。
+ */
+export function parseTopicConsolidatorOutput(text: string): Record<string, string> | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
+    const parsed = JSON.parse(jsonText);
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !parsed.mapping ||
+      typeof parsed.mapping !== "object" ||
+      Array.isArray(parsed.mapping)
+    ) {
+      return undefined;
+    }
+
+    const out: Record<string, string> = {};
+    for (const [proposed, canonical] of Object.entries(parsed.mapping as Record<string, unknown>)) {
+      if (typeof proposed === "string" && proposed.trim() && typeof canonical === "string" && canonical.trim()) {
+        out[proposed] = canonical.trim();
+      }
+    }
+    return out;
+  } catch (err) {
+    console.error("Topic consolidator 出力のパース失敗:", err);
     return undefined;
   }
 }

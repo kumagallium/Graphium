@@ -11,6 +11,9 @@ import {
   buildTopicNamerSystemPrompt,
   buildTopicNamerUserMessage,
   parseTopicNamerOutput,
+  buildTopicConsolidatorSystemPrompt,
+  buildTopicConsolidatorUserMessage,
+  parseTopicConsolidatorOutput,
 } from "./wiki-topic-writer.ts";
 
 describe("parseTopicWriterOutput", () => {
@@ -93,14 +96,14 @@ describe("parseTopicNamerOutput", () => {
     expect(parseTopicNamerOutput(text)).toEqual({ "claim-1": ["A"] });
   });
 
-  it("各エントリは parseTopics と同じルールでサニタイズされる（非文字列・空・重複を落とし最大 3 件）", () => {
+  it("各エントリは parseTopics と同じルールでサニタイズされる（非文字列・空・重複を落とす。件数上限は無い）", () => {
     const text = JSON.stringify({
       topics: {
         "claim-1": ["A", "", "a", 123, "B", "C", "D"],
       },
     });
-    // "a" は "A" の正規化重複として落ちる。4 件目以降（"D"）は切り詰められる。
-    expect(parseTopicNamerOutput(text)).toEqual({ "claim-1": ["A", "B", "C"] });
+    // "a" は "A" の正規化重複として落ちる。それ以外は件数を切り詰めずに残す。
+    expect(parseTopicNamerOutput(text)).toEqual({ "claim-1": ["A", "B", "C", "D"] });
   });
 
   it("トピックが 0 件になった claim は結果に含めない", () => {
@@ -149,5 +152,67 @@ describe("buildTopicNamerSystemPrompt", () => {
   it("本文を書かず話題名のみを命名する指示を含む", () => {
     const prompt = buildTopicNamerSystemPrompt("en");
     expect(prompt).toMatch(/do not write any page body/i);
+  });
+});
+
+describe("parseTopicConsolidatorOutput", () => {
+  it("提案名 → 正式名 の対応表をパースする", () => {
+    const text = JSON.stringify({ mapping: { "AI3V 格子熱伝導率": "AI3V格子熱伝導率", "AI3V格子熱伝導率": "AI3V格子熱伝導率" } });
+    expect(parseTopicConsolidatorOutput(text)).toEqual({
+      "AI3V 格子熱伝導率": "AI3V格子熱伝導率",
+      "AI3V格子熱伝導率": "AI3V格子熱伝導率",
+    });
+  });
+
+  it("```json コードフェンス付きでもパースできる", () => {
+    const text = "```json\n" + JSON.stringify({ mapping: { A: "A" } }) + "\n```";
+    expect(parseTopicConsolidatorOutput(text)).toEqual({ A: "A" });
+  });
+
+  it("非文字列・空文字のエントリは落とす", () => {
+    const text = JSON.stringify({ mapping: { A: "A", B: 123, "": "X", C: "" } });
+    expect(parseTopicConsolidatorOutput(text)).toEqual({ A: "A" });
+  });
+
+  it("mapping フィールドが無ければ undefined", () => {
+    expect(parseTopicConsolidatorOutput(JSON.stringify({ notMapping: {} }))).toBeUndefined();
+  });
+
+  it("壊れた JSON（途中切断）は undefined を返す", () => {
+    const truncated = '{"mapping": {"A": "A"';
+    expect(parseTopicConsolidatorOutput(truncated)).toBeUndefined();
+  });
+});
+
+describe("buildTopicConsolidatorUserMessage", () => {
+  it("既存話題を「タイトル: 定義の先頭文」形式で列挙する", () => {
+    const msg = buildTopicConsolidatorUserMessage(
+      [{ id: "t1", title: "話題A", oneLiner: "話題Aの定義。" }],
+      ["話題A", "話題A "],
+    );
+    expect(msg).toContain("話題A: 話題Aの定義。");
+    expect(msg).toContain("Proposed topic names (2)");
+  });
+
+  it("oneLiner が無ければタイトルのみ", () => {
+    const msg = buildTopicConsolidatorUserMessage([{ id: "t1", title: "話題A" }], ["話題A"]);
+    expect(msg).toContain("- 話題A\n");
+  });
+
+  it("既存話題が無ければ (none yet)", () => {
+    const msg = buildTopicConsolidatorUserMessage([], ["話題A"]);
+    expect(msg).toContain("(none yet)");
+  });
+});
+
+describe("buildTopicConsolidatorSystemPrompt", () => {
+  it("言語指定が出力言語に反映される", () => {
+    expect(buildTopicConsolidatorSystemPrompt("ja")).toContain("Japanese");
+    expect(buildTopicConsolidatorSystemPrompt("en")).toContain("English");
+  });
+
+  it("件数の上限に関する数値を含まない（Karpathy 方針: 数値しきい値を置かない）", () => {
+    const prompt = buildTopicConsolidatorSystemPrompt("en");
+    expect(prompt).not.toMatch(/\d+-\d+\s*claims?/i);
   });
 });

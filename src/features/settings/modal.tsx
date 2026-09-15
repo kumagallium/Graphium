@@ -185,6 +185,8 @@ export type OrganizeTopicsResult = {
   updated: number;
   failed: number;
   withoutTopic: number;
+  /** 既存話題どうしの統合で、別名側をゴミ箱へ送った件数 */
+  merged: number;
 };
 
 export type RegenerateWikiHandler = (
@@ -3796,6 +3798,11 @@ function MaintenanceTab({
     () => wikiSummaries.filter((w) => w.kind === "claim" && !w.hasTopics).length,
     [wikiSummaries],
   );
+  // 既存話題どうしの統合対象になり得るか（2 件以上あれば意味がある）
+  const topicsCount = useMemo(
+    () => wikiSummaries.filter((w) => w.kind === "topic").length,
+    [wikiSummaries],
+  );
 
   // 表示値: 明示的に指定されていなければ設定の現在値をライブで反映する
   const effectiveDefaultModel = bulkModelOverride || defaultModel;
@@ -4020,7 +4027,7 @@ function MaintenanceTab({
 
       {/* topicIds が空の知見に話題を割り当て直す（話題の段の一括実行）。
           ingest 経路を通らずに作られた古い知見や、name-topics 補完導入前の知見を救済する。 */}
-      {onOrganizeTopics && claimsWithoutTopicCount > 0 && (
+      {onOrganizeTopics && (claimsWithoutTopicCount > 0 || topicsCount > 1) && (
         <div className="rounded-lg border border-border p-3 space-y-3">
           <div>
             <h3 className="text-xs font-semibold text-foreground mb-1">
@@ -4050,6 +4057,9 @@ function MaintenanceTab({
               {organizeTopicsResult.failed > 0
                 ? ` · ${t("ingest.topicsFailed", { count: String(organizeTopicsResult.failed) })}`
                 : ""}
+              {organizeTopicsResult.merged > 0
+                ? ` · ${t("settings.maintenance.organizeTopics.merged", { count: String(organizeTopicsResult.merged) })}`
+                : ""}
             </div>
           )}
           {organizeTopicsError && (
@@ -4062,7 +4072,9 @@ function MaintenanceTab({
             disabled={organizeTopicsRunning}
             onClick={async () => {
               const confirmed = window.confirm(
-                t("settings.maintenance.organizeTopics.confirm", { count: String(claimsWithoutTopicCount) }),
+                claimsWithoutTopicCount > 0
+                  ? t("settings.maintenance.organizeTopics.confirm", { count: String(claimsWithoutTopicCount) })
+                  : t("settings.maintenance.organizeTopics.confirmConsolidateOnly"),
               );
               if (!confirmed) return;
               setOrganizeTopicsRunning(true);
@@ -4082,7 +4094,9 @@ function MaintenanceTab({
             {organizeTopicsRunning ? (
               <><Loader2 size={12} className="animate-spin mr-1.5" />{t("settings.maintenance.organizeTopics.running")}</>
             ) : (
-              t("settings.maintenance.organizeTopics.run", { count: String(claimsWithoutTopicCount) })
+              claimsWithoutTopicCount > 0
+                ? t("settings.maintenance.organizeTopics.run", { count: String(claimsWithoutTopicCount) })
+                : t("settings.maintenance.organizeTopics.runConsolidateOnly")
             )}
           </Button>
         </div>

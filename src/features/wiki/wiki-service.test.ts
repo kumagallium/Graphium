@@ -557,14 +557,14 @@ describe("linkClaimAndTopic - claim ⇔ topic の双方向リンク", () => {
     expect(topicMeta).toBe(topicMeta0);
   });
 
-  it("claim.topicIds は最大 3 件に切り詰める", () => {
+  it("claim.topicIds の件数に上限は無い", () => {
     const { claimMeta } = linkClaimAndTopic(
       baseClaimMeta(["t1", "t2", "t3"]),
       "claim-1",
       baseTopicMeta([]),
       "t4",
     );
-    expect(claimMeta.topicIds).toEqual(["t1", "t2", "t3"]);
+    expect(claimMeta.topicIds).toEqual(["t1", "t2", "t3", "t4"]);
   });
 });
 

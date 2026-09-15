@@ -2136,7 +2136,52 @@ export function reinforceAtomWithClaims(
 export type ExistingTopicRef = {
   id: string;
   title: string;
+  /** 定義節の先頭文（Karpathy の index.md と同じ「タイトル + 1 行」のための情報。無ければ空） */
+  oneLiner?: string;
 };
+
+/**
+ * Wiki ドキュメントから「1 行」の概要を取り出す（index 用）。
+ * 話題ページの "## 定義 / Definition" 節の先頭文を優先し、無ければ本文最初の非空段落の
+ * 先頭文を使う。見つからなければ空文字列（数値上限は設けない — 文の区切りまでをそのまま返す）。
+ */
+export function extractTopicOneLiner(doc: GraphiumDocument): string {
+  const page = doc.pages[0];
+  if (!page) return "";
+  const blocks = flattenColumns(page.blocks);
+
+  const firstSentence = (text: string): string => {
+    const idx = text.search(/[。.!?！？]/);
+    return idx === -1 ? text : text.slice(0, idx + 1);
+  };
+
+  // "定義" / "Definition" 見出し直後の最初の段落を優先する
+  let inDefinition = false;
+  for (const block of blocks) {
+    if (block.type === "heading") {
+      const headingText = extractInlineText(block.content).trim();
+      if (inDefinition) break; // 定義節の終わり（次の見出しに入った）
+      if (/^(定義|Definition)$/i.test(headingText)) inDefinition = true;
+      continue;
+    }
+    if (!inDefinition) continue;
+    const t = extractInlineText(block.content).trim();
+    if (t) return firstSentence(t);
+  }
+
+  // 定義節が見つからなければ、見出しを除いた最初の非空段落を使う
+  for (const block of blocks) {
+    if (block.type === "heading") continue;
+    const t = extractInlineText(block.content).trim();
+    if (t) return firstSentence(t);
+  }
+  return "";
+}
+
+/** ExistingTopicRef を index の 1 行表記（タイトル + 定義の先頭文）にする。無ければタイトルのみ */
+export function formatTopicRefForIndex(ref: ExistingTopicRef): string {
+  return ref.oneLiner ? `${ref.title}: ${ref.oneLiner}` : ref.title;
+}
 
 /** 1 つの話題名（claim.topics の要素）に対する解決結果 */
 export type TopicMatch =
@@ -2239,9 +2284,7 @@ export async function resolveTopicsForClaim(
  * 個別に呼ぶ経路を増やすと、どちらか片方だけ更新されて非対称なリンクが生まれる。
  *
  * 冪等: 既にリンク済みなら何もしない（同じ配列を保つ）。
- * claim.topicIds は最大 3 件（ingester の topics 上限と揃える）。意図的な上限であり、
- * 既に 3 件埋まっている claim に 4 件目以降の topicId を足そうとした場合は黙って切り捨てる
- * （複数回の ingest/merge を経ると起こり得る）。呼び出し元が気づけるよう警告を出す。
+ * claim.topicIds の件数に上限は設けない（ingester の topics も件数上限なし）。
  */
 export function linkClaimAndTopic(
   claimMeta: WikiMeta,
@@ -2252,10 +2295,7 @@ export function linkClaimAndTopic(
   const topicIds = claimMeta.topicIds ?? [];
   const nextTopicIds = topicIds.includes(topicId)
     ? topicIds
-    : [...topicIds, topicId].slice(0, 3);
-  if (!topicIds.includes(topicId) && topicIds.length >= 3) {
-    console.warn(`claim "${claimId}" の topicIds は既に上限 3 件のため topic "${topicId}" へのリンクを切り捨てました`);
-  }
+    : [...topicIds, topicId];
 
   const memberIds = topicMeta.derivedFromClaims ?? [];
   const nextMemberIds = memberIds.includes(claimId)
@@ -2277,6 +2317,19 @@ export function unlinkClaimFromTopic(topicMeta: WikiMeta, claimId: string): Wiki
   const memberIds = topicMeta.derivedFromClaims ?? [];
   if (!memberIds.includes(claimId)) return topicMeta;
   return { ...topicMeta, derivedFromClaims: memberIds.filter((id) => id !== claimId) };
+}
+
+/**
+ * 話題どうしの統合（既存話題の吸収合併）で、claim 側の topicIds を
+ * 旧話題 ID → 新話題 ID に付け替える。旧 ID が無ければ何もしない（冪等）。
+ * 新 ID が既に含まれていれば旧 ID を外すだけ（重複させない）。件数に上限は無い。
+ */
+export function retargetClaimTopicId(claimMeta: WikiMeta, oldTopicId: string, newTopicId: string): WikiMeta {
+  const topicIds = claimMeta.topicIds ?? [];
+  if (!topicIds.includes(oldTopicId)) return claimMeta;
+  const withoutOld = topicIds.filter((id) => id !== oldTopicId);
+  const nextTopicIds = withoutOld.includes(newTopicId) ? withoutOld : [...withoutOld, newTopicId];
+  return { ...claimMeta, topicIds: nextTopicIds };
 }
 
 /** compose-topic API に渡すメンバー知見 1 件分（サーバー側 TopicMemberClaim と同形） */
@@ -2349,6 +2402,43 @@ export async function nameTopicsForClaims(
   }
   const data = await res.json() as { topics?: Record<string, string[]> };
   return data.topics ?? {};
+}
+
+/**
+ * 提案された話題名（と既存話題タイトル）をサーバー（/api/wiki/consolidate-topics）へ渡し、
+ * 「提案名 → 正式名」の対応表を得る（名寄せ＝タイトル一致・embedding 類似度の後段）。
+ * 統合は最適化であって必須ではない — 失敗時（パース不能・LLM/ネットワークエラー）は
+ * 例外を投げず空の対応表を返し、呼び出し側は「統合なし」で続行できるようにする
+ * （composeTopicBody と同じ fail-open の方針。nameTopicsForClaims と違い throw しない）。
+ */
+export async function consolidateTopics(
+  proposedTitles: string[],
+  existingTopics: ExistingTopicRef[],
+  language: string,
+  model?: string,
+): Promise<Record<string, string>> {
+  if (proposedTitles.length === 0) return {};
+  try {
+    const res = await fetch(`${API_BASE}/consolidate-topics`, {
+      method: "POST",
+      headers: wikiHeaders(),
+      body: JSON.stringify({
+        language,
+        existingTopics: existingTopics.map((t) => ({ id: t.id, title: t.title, oneLiner: t.oneLiner })),
+        proposedTitles,
+        ...(model ? { model } : {}),
+      }),
+    });
+    if (!res.ok) {
+      console.warn("consolidateTopics failed:", await aiErrorFromResponse(res, `consolidate-topics failed (${res.status})`));
+      return {};
+    }
+    const data = await res.json() as { mapping?: Record<string, string> };
+    return data.mapping ?? {};
+  } catch (err) {
+    console.warn("consolidateTopics failed:", err);
+    return {};
+  }
 }
 
 /** 話題ページの本文・References 構築に渡すメンバー知見の最小情報 */

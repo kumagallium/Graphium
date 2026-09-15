@@ -1,7 +1,7 @@
 // wiki-ingester の Tier 1 unit test（LLM 呼び出しなし）
 //
 // 話題（topic）関連の 2 点を中心に検証する:
-//   1. parseTopics: 非文字列 / 空文字 / 重複を落とし、最大 3 件に切り詰める
+//   1. parseTopics: 非文字列 / 空文字 / 重複を落とす（件数の上限は無い）
 //   2. parseIngesterOutput: claim のみ topics を残し、summary は要素ごと捨てる（PR3）
 //   3. buildIngesterSystemPrompt: 既存話題一覧がプロンプトに反映される
 
@@ -35,8 +35,8 @@ describe("parseTopics", () => {
     expect(parseTopics(["SPS Sintering", "sps sintering"])).toEqual(["SPS Sintering"]);
   });
 
-  it("最大 3 件に切り詰める", () => {
-    expect(parseTopics(["a", "b", "c", "d", "e"])).toEqual(["a", "b", "c"]);
+  it("件数の上限は設けない（切り詰めない）", () => {
+    expect(parseTopics(["a", "b", "c", "d", "e"])).toEqual(["a", "b", "c", "d", "e"]);
   });
 
   it("結果が 0 件なら undefined（空配列を保存しない）", () => {

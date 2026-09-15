@@ -81,7 +81,7 @@ Maintenance jobs for the [Knowledge layer](/knowledge-layer). These run LLM call
 |---|---|
 | **Connection Status** | Shows the health of each backend component, with a **Restart backend** button on the desktop app. |
 | **Re-embed all Knowledge** | Rebuilds the embeddings behind AI chat citation search — use it if citation lookup stops working. |
-| **Organize topics** | Assigns topics to Claims that have none and rewrites the topic pages — use it to catch up Claims created before topic assignment existed, or Claims the model tagged with no topic. |
+| **Organize topics** | Assigns topics to Claims that have none, consolidates existing topics that name the same concept (wording variants, particle differences, over-fragmented per-sample topics), and rewrites the affected topic pages. Consolidated topics are sent to Trash, not deleted outright. |
 | **Bulk regenerate Knowledge** | Rebuilds existing Knowledge pages after you change prompts or models, with **Target kinds** filters (**Topics** / **Claims** / **Insights** — Summaries are no longer generated and are not a regenerate target), an optional model override, cancel support, and **Retry failed only**. |
 | **Discover Insights from Claims** | Scans your Claims cluster by cluster until every one has been in view at least once, factoring out shared insights that recur across two or more of them. The number of LLM calls needed is measured from your corpus and shown before running; you can stop anytime. |
 

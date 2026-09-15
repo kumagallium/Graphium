@@ -98,10 +98,10 @@ export type IngesterOutput = {
    */
   modalQualifier?: ModalQualifier;
   /**
-   * この Claim が属する話題（topic）の名前（名詞句、ノートの言語）。claim のみ。1〜3 件。
+   * この Claim が属する話題（topic）の名前（名詞句、ノートの言語）。claim のみ。
    * 話題ページは複数 Claim を概念ごとに束ねるページで、既存の話題と同じ概念なら
    * 既存タイトルをそのまま再利用する（下の "Topics (existing)" 参照）。
-   * 非文字列・空文字・重複は下流でフィルタし、最大 3 件に切り詰める。
+   * 非文字列・空文字・重複は下流でフィルタする（件数の上限は無い）。
    */
   topics?: string[];
   /** 関連する既存 Claim（引用付き） */
@@ -114,6 +114,8 @@ export type ExistingWikiInfo = {
   id: string;
   title: string;
   kind: WikiKind;
+  /** kind === "topic" のとき、定義節の先頭文（index 用。無ければ空） */
+  oneLiner?: string;
 };
 
 /** Ingest 時に適用する Skill の情報 */
@@ -144,7 +146,7 @@ export function buildIngesterSystemPrompt(
   // 表記ゆれによる同じ話題の重複作成を防ぐ。
   const existingTopics = existingWikis.filter((w) => w.kind === "topic");
   const topicListText = existingTopics.length > 0
-    ? existingTopics.map((w) => `- ${w.title}`).join("\n")
+    ? existingTopics.map((w) => `- ${w.oneLiner ? `${w.title}: ${w.oneLiner}` : w.title}`).join("\n")
     : "(none yet)";
 
   const ja = language === "ja";
@@ -248,7 +250,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
         { "source": "textbook" | "external-paper" | "internal-claim", "citation": "one-sentence", "url": "https://... (optional)", "internalClaimId": "id (optional)" }
       ],
       "modalQualifier": "necessarily" | "probably" | "possibly" | "rarely", // Toulmin Modal qualifier。下の "Modal qualifier" 参照
-      "topics": ["string"],                                              // 1〜3 件の名詞句。下の "Topics" 参照
+      "topics": ["string"],                                              // 名詞句。下の "Topics" 参照
       "procedureContext": {                                              // 手順依存の主張のときだけ。下の Procedure context 参照
         "derivedFromNotes": ["sourceNoteId"],
         "protocolFingerprint": "step1 → step2 → step3",                // 主要ステップを自然言語で短く
@@ -298,12 +300,12 @@ Guidance:
 
 ## Topics
 
-Tag every Claim with 1-3 \`topics\`: short noun phrases naming the **concept(s)** this Claim belongs to, in the note's own language. A topic groups multiple Claims about the same concept into one page (e.g. "pH-dependent reduction kinetics", "SPS sintering conditions"). Topics are orthogonal to \`claimRole\` / \`level\` / \`epistemicStatus\` — they answer "what is this Claim *about*", not what kind of move it makes or how certain it is.
+Tag every Claim with \`topics\`: short noun phrases naming the **concept(s)** this Claim belongs to, in the note's own language. A topic groups multiple Claims about the same concept into one page (e.g. "pH-dependent reduction kinetics", "SPS sintering conditions"). Topics are orthogonal to \`claimRole\` / \`level\` / \`epistemicStatus\` — they answer "what is this Claim *about*", not what kind of move it makes or how certain it is.
 
-- **Reuse an existing topic name exactly** when the Claim belongs to the same concept as one already listed below — do not create a near-duplicate with different wording (e.g. don't emit "還元反応速度" if "還元の反応速度" already exists for the same concept), and never create a new name that differs from an existing one only by whitespace, symbols, or capitalization.
+- **Look at the existing topics listed below (each shown with its title and a one-line definition) and decide, like you would for existing Wiki pages above: does this Claim belong to one of them, or does it need a new topic?** Reuse an existing topic name exactly when the Claim belongs to the same concept — do not create a near-duplicate with different wording (e.g. don't emit "還元反応速度" if "還元の反応速度" already exists for the same concept), and never create a new name that differs from an existing one only by whitespace, symbols, or capitalization.
 - Keep phrases short (a few words), not full sentences.
-- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** A topic should be a unit multiple Claims can plausibly share. Do NOT make a separate topic per composition, sample, or date (e.g. prefer "Al3V の格子定数" or "Al3V の元素置換" over "Al3V1-xTix の格子定数").
-- 1-3 per Claim; most Claims need only 1 — use 2-3 only when the Claim genuinely spans distinct concepts. Omit the field entirely if no meaningful topic emerges (rare).
+- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** Prefer "material × property", "method", "phenomenon", or "model/theory" level names. Do NOT make a separate topic per composition, sample, processing condition, or measurement run (e.g. prefer "Al3V の格子定数" or "Al3V の元素置換" over "Al3V1-xTix の格子定数"). The same concept belongs on one page.
+- Usually one topic is enough; add more only when the Claim genuinely spans distinct concepts. Omit the field entirely if no meaningful topic emerges (rare).
 
 ### Topics (existing)
 
@@ -806,7 +808,8 @@ export function parseModalQualifier(raw: unknown): ModalQualifier | undefined {
  *
  * - 非文字列・空文字（trim 後）は落とす
  * - 正規化（NFC・小文字化・前後空白除去）後の重複は落とす（表示用の元の表記は保持）
- * - 最大 3 件に切り詰める
+ * - 件数の上限は設けない（LLM が「材料×物性 / 手法 / 現象 / モデル・理論」レベルの粒度で
+ *   出す前提。ほとんどの Claim は 1 件で済むはずだが、切り詰めない）
  * - 結果が 0 件なら undefined（空配列を保存しない — 他の optional フィールドと揃える）
  */
 export function parseTopics(raw: unknown): string[] | undefined {
@@ -821,7 +824,6 @@ export function parseTopics(raw: unknown): string[] | undefined {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(trimmed);
-    if (out.length >= 3) break;
   }
   return out.length > 0 ? out : undefined;
 }

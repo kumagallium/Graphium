@@ -4,14 +4,22 @@
 // URL 貼付・設定の「話題を整理」）から同じロジックを呼べるよう、依存を引数で注入する形で
 // 切り出している。挙動は元の実装（ingest 実行ループに埋め込まれていたもの）と同一。
 //
-// 処理の流れ:
-//   1. topics が空の知見を name-topics API で 20 件ずつ補う（LLM が Topics 項目を無視した
-//      場合の保険）。API 呼び出し自体が失敗したチャンクは "failed" に数える。
+// 処理の流れ（Karpathy の LLM Wiki と同じ方針: LLM が「資料 + index」を見て自分で決める。
+// 数値のしきい値は置かない — 唯一の例外は resolveTopicsForClaim が使う embedding 重複判定
+// 0.9 で、これは既存の重複判定と共通の定数）:
+//   1. topics が空の知見を name-topics で補う（LLM が Topics 項目を無視した場合の保険）。
+//      既存話題は「タイトル + 定義の先頭文」の index として渡し、LLM が同じ概念かどうかを
+//      自分で判断できるようにする。API 呼び出し自体が失敗した知見は "failed" に数える。
 //   2. topics が（補完後も）空の知見は "withoutTopic" に数えて割り当てをスキップする。
 //   3. resolveTopicsForClaim でタイトル一致 → embedding 類似度の順に既存話題へ解決し、
 //      一致すれば追記・マージ、無ければ新規話題ページを作る。
 //   4. compose-topic の本文生成に失敗した match は "failed" に数え、その match だけ
 //      スキップする（他の match・他の claim には影響しない）。
+//
+// 話題どうしの統合（表記ゆれ・粒度違いの近縁話題を 1 つに寄せる）は ingest の隠れた段には
+// しない — 設定の「話題を整理」（consolidateExistingTopics）と点検（wiki-linter）の
+// redundant 検出に任せる。ingest 時にできるのは、LLM に既存話題の index を見せて
+// 「既存に寄せるか新規を作るか」を判断させることだけ。
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { EditActivityType } from "../document-provenance/types";
@@ -22,7 +30,11 @@ import {
   buildTopicDocument,
   rebuildTopicDocument,
   nameTopicsForClaims,
+  consolidateTopics,
+  normalizeTopicTitle,
+  retargetClaimTopicId,
   extractBodyPreview,
+  formatTopicRefForIndex,
   type ExistingTopicRef,
   type TopicComposeClaim,
   type NoteIndex,
@@ -52,9 +64,6 @@ export type TopicStageResult = {
   /** この実行で新規作成した話題（呼び出し側が並行実行の既存一覧に引き継ぐ） */
   createdTopics: { id: string; title: string }[];
 };
-
-/** name-topics 呼び出し 1 回あたりの最大件数 */
-const NAME_TOPICS_CHUNK_SIZE = 20;
 
 export type TopicStageDeps = {
   loadDoc: (noteId: string) => Promise<GraphiumDocument | null>;
@@ -96,33 +105,38 @@ export async function runTopicStage(
   claims: TopicStageClaimInput[],
   deps: TopicStageDeps,
 ): Promise<TopicStageResult> {
-  const result: TopicStageResult = { created: 0, updated: 0, failed: 0, withoutTopic: 0, createdTopics: [] };
+  const result: TopicStageResult = {
+    created: 0,
+    updated: 0,
+    failed: 0,
+    withoutTopic: 0,
+    createdTopics: [],
+  };
   if (claims.length === 0) return result;
 
   const log = deps.log ?? (() => {});
 
   // 1. topics が空の知見を name-topics で補完する（LLM が Topics 項目を無視した場合の保険）。
+  // 既存話題は「タイトル + 定義の先頭文」（index）として渡し、表記ゆれだけで別話題に
+  // 倒れないよう LLM 自身に既存へ寄せる判断をさせる（Karpathy の index.md と同じ考え方）。
   const emptyTopicClaims = claims.filter((c) => c.topics.length === 0);
   const nameTopicsFailedIds = new Set<string>();
   if (emptyTopicClaims.length > 0) {
-    const existingTopicTitles = deps.existingTopicRefs.map((t) => t.title);
-    for (let i = 0; i < emptyTopicClaims.length; i += NAME_TOPICS_CHUNK_SIZE) {
-      const chunk = emptyTopicClaims.slice(i, i + NAME_TOPICS_CHUNK_SIZE);
-      try {
-        const named = await nameTopicsForClaims(
-          chunk.map((c) => ({ id: c.id, title: c.title, body: c.body })),
-          existingTopicTitles,
-          deps.locale,
-          chunk[0]?.model,
-        );
-        for (const c of chunk) {
-          const topics = named[c.id];
-          if (topics && topics.length > 0) c.topics = topics;
-        }
-      } catch (err) {
-        log("話題名の補完(name-topics)に失敗:", err);
-        for (const c of chunk) nameTopicsFailedIds.add(c.id);
+    const existingTopicLines = deps.existingTopicRefs.map(formatTopicRefForIndex);
+    try {
+      const named = await nameTopicsForClaims(
+        emptyTopicClaims.map((c) => ({ id: c.id, title: c.title, body: c.body })),
+        existingTopicLines,
+        deps.locale,
+        emptyTopicClaims[0]?.model,
+      );
+      for (const c of emptyTopicClaims) {
+        const topics = named[c.id];
+        if (topics && topics.length > 0) c.topics = topics;
       }
+    } catch (err) {
+      log("話題名の補完(name-topics)に失敗:", err);
+      for (const c of emptyTopicClaims) nameTopicsFailedIds.add(c.id);
     }
   }
 
@@ -249,6 +263,183 @@ export async function runTopicStage(
     }
     if (!matchedAnyTopic) {
       result.withoutTopic++;
+    }
+  }
+
+  return result;
+}
+
+// ── 既存話題どうしの統合（設定「話題を整理」から呼ばれる）──
+// runTopicStage の統合ステップは「今回の実行で出た提案名」を対象にするのに対し、
+// こちらは既にページとして存在する話題タイトル全体を対象にする（表記ゆれ・粒度違いで
+// 増えてしまった話題を、後からまとめて 1 つに寄せる救済）。
+
+/** 既存話題どうしの統合の入力（統合先を決める純粋関数に渡す最小情報） */
+export type ExistingTopicForMerge = {
+  id: string;
+  title: string;
+  memberClaimIds: string[];
+};
+
+/**
+ * consolidate-topics の対応表（提案名 → 正式名）から、既存話題どうしの統合先を決める。
+ * 副作用を持たない純粋関数（テストしやすいようここだけ切り出す）。
+ *
+ * 同じ正式名（正規化タイトル）に複数の既存話題がぶら下がったグループについて、
+ * タイトルが正式名そのものと一致する話題を統合先（target）に選ぶ（無ければ先頭を選ぶ —
+ * 呼び出し側で existingTopics の並び順を安定させておくこと）。
+ * 戻り値は「吸収される側の話題 id → 統合先の話題 id」のマップ（吸収される話題のみ含む）。
+ */
+export function planExistingTopicMerges(
+  existingTopics: ExistingTopicForMerge[],
+  mapping: Record<string, string>,
+): Map<string, string> {
+  const groups = new Map<string, ExistingTopicForMerge[]>();
+  for (const topic of existingTopics) {
+    const canonical = mapping[topic.title] ?? topic.title;
+    const key = normalizeTopicTitle(canonical);
+    const list = groups.get(key) ?? [];
+    list.push(topic);
+    groups.set(key, list);
+  }
+
+  const targetByTopicId = new Map<string, string>();
+  for (const [canonicalKey, group] of groups) {
+    if (group.length < 2) continue;
+    const target = group.find((t) => normalizeTopicTitle(t.title) === canonicalKey) ?? group[0];
+    for (const t of group) {
+      if (t.id !== target.id) targetByTopicId.set(t.id, target.id);
+    }
+  }
+  return targetByTopicId;
+}
+
+/** 既存話題どうしの統合の実行結果 */
+export type ConsolidateExistingTopicsResult = {
+  /** 吸収され、ゴミ箱へ送った話題数 */
+  merged: number;
+  /** 本文を書き直した統合先の話題数 */
+  rebuilt: number;
+  /** compose 失敗・保存失敗などで処理できなかった件数 */
+  failed: number;
+};
+
+export type ConsolidateExistingTopicsDeps = {
+  loadDoc: (noteId: string) => Promise<GraphiumDocument | null>;
+  getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined;
+  handleSaveWikiFile: (
+    wikiId: string,
+    doc: GraphiumDocument,
+    options?: { activityType?: EditActivityType; agentLabel?: string; sources?: string[] },
+  ) => Promise<boolean | void>;
+  /** 吸収された話題をゴミ箱へ送る（ソフトデリート）。既存の handleDeleteWikiFile をそのまま渡す想定 */
+  handleDeleteWikiFile: (wikiId: string) => Promise<void>;
+  noteIndex?: NoteIndex;
+  locale: string;
+  model?: string;
+  log?: (...args: unknown[]) => void;
+};
+
+/**
+ * 既存話題どうしを consolidate-topics で統合する。
+ * 1. 全既存話題タイトルを consolidate-topics に渡し対応表を得る（失敗時は何もしない）。
+ * 2. planExistingTopicMerges で統合先を決める。
+ * 3. 統合先ごとに、吸収される話題のメンバー知見を統合先へ付け替え（claim.topicIds の
+ *    retarget + topic.derivedFromClaims への合流）、本文を書き直す。
+ * 4. 吸収された話題をゴミ箱へ送る（物理削除しない）。
+ */
+export async function consolidateExistingTopics(
+  existingTopics: ExistingTopicForMerge[],
+  deps: ConsolidateExistingTopicsDeps,
+): Promise<ConsolidateExistingTopicsResult> {
+  const result: ConsolidateExistingTopicsResult = { merged: 0, rebuilt: 0, failed: 0 };
+  if (existingTopics.length < 2) return result;
+  const log = deps.log ?? (() => {});
+
+  let mapping: Record<string, string> = {};
+  try {
+    mapping = await consolidateTopics(
+      existingTopics.map((t) => t.title),
+      [],
+      deps.locale,
+      deps.model,
+    );
+  } catch (err) {
+    log("既存話題の統合(consolidate-topics)に失敗:", err);
+    return result;
+  }
+  if (Object.keys(mapping).length === 0) return result;
+
+  const targetByTopicId = planExistingTopicMerges(existingTopics, mapping);
+  if (targetByTopicId.size === 0) return result;
+
+  const sourcesByTarget = new Map<string, string[]>();
+  for (const [sourceId, targetId] of targetByTopicId) {
+    const list = sourcesByTarget.get(targetId) ?? [];
+    list.push(sourceId);
+    sourcesByTarget.set(targetId, list);
+  }
+  const topicById = new Map(existingTopics.map((t) => [t.id, t]));
+
+  for (const [targetId, sourceIds] of sourcesByTarget) {
+    try {
+      const targetDoc = deps.getCachedDoc(`wiki:${targetId}`) ?? (await deps.loadDoc(`wiki:${targetId}`));
+      if (!targetDoc?.wikiMeta || targetDoc.wikiMeta.kind !== "topic") {
+        result.failed++;
+        continue;
+      }
+
+      const mergedMemberIds = new Set(targetDoc.wikiMeta.derivedFromClaims ?? []);
+      for (const sourceId of sourceIds) {
+        const source = topicById.get(sourceId);
+        if (!source) continue;
+        for (const claimId of source.memberClaimIds) {
+          mergedMemberIds.add(claimId);
+          try {
+            const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
+            if (claimDoc?.wikiMeta && claimDoc.wikiMeta.kind === "claim") {
+              const nextMeta = retargetClaimTopicId(claimDoc.wikiMeta, sourceId, targetId);
+              if (nextMeta !== claimDoc.wikiMeta) {
+                await deps.handleSaveWikiFile(claimId, { ...claimDoc, wikiMeta: nextMeta });
+              }
+            }
+          } catch (err) {
+            log("知見の話題リンク付け替えに失敗:", claimId, err);
+          }
+        }
+      }
+
+      const memberIds = [...mergedMemberIds];
+      const memberClaims: TopicComposeClaim[] = [];
+      for (const cId of memberIds) {
+        const cDoc = deps.getCachedDoc(`wiki:${cId}`) ?? (await deps.loadDoc(`wiki:${cId}`));
+        if (cDoc) memberClaims.push({ id: cId, title: cDoc.title, body: extractBodyPreview(cDoc, 2000) });
+      }
+      if (memberClaims.length > 0) {
+        const body = await composeTopicBody(targetDoc.title, deps.locale, memberClaims, deps.model);
+        if (body) {
+          const rewritten = rebuildTopicDocument(targetDoc, body, memberClaims, deps.model ?? null, deps.noteIndex);
+          await deps.handleSaveWikiFile(targetId, rewritten, { activityType: "wiki_cross_update", sources: memberIds });
+          result.rebuilt++;
+        } else {
+          // 本文が作れなくても、メンバーの合流とゴミ箱送りは続行する
+          // （次の手動再生成 / 整理の再実行で本文は追従できる）。
+          result.failed++;
+        }
+      }
+
+      for (const sourceId of sourceIds) {
+        try {
+          await deps.handleDeleteWikiFile(sourceId);
+          result.merged++;
+        } catch (err) {
+          log("統合された話題のゴミ箱送りに失敗:", sourceId, err);
+          result.failed++;
+        }
+      }
+    } catch (err) {
+      log("既存話題の統合処理に失敗:", targetId, err);
+      result.failed++;
     }
   }
 

@@ -179,7 +179,7 @@ If two pages have very similar titles, disambiguate with a short distinguishing 
 - For gaps: suggest what kind of Claim page could be created
 - For contradictions: quote the conflicting claims
 - For stale: compare lastIngestedAt dates with related pages
-- For redundant: compare section headings and content themes between Claim pages. If two Claims cover >70% of the same ground, flag them. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality. The suggestion should clearly state which page absorbs which
+- For redundant: compare section headings and content themes between Claim pages. If two Claims cover >70% of the same ground, flag them. **Also apply this to Topic pages** — two Topics whose titles name the same concept despite surface differences (wording variants, presence/absence of particles, word order, or one being a needlessly narrow per-sample/per-composition slice of the other) are redundant even if you haven't read their member Claims; the fix is to merge them via "Organize topics" in Settings, not to edit content. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality (for Topics, prefer the more general/reusable title). The suggestion should clearly state which page absorbs which
 - Return an empty issues array if no issues are found
 
 ## Language
@@ -364,5 +364,44 @@ export function detectLocalIssues(
     }
   }
 
+  // Redundant チェック（topic）: 正規化タイトルが完全一致する話題（表記ゆれの明確なケースのみ。
+  // LLM 不要でローカルに判定できる）。語順違い・助詞違いなどの近縁話題は LLM lint 側で拾う —
+  // ここでは「同じ文字列としか言えない」ケースだけを機械的に検出する。
+  const topicsByNormalizedTitle = new Map<string, WikiSnapshot[]>();
+  for (const w of wikis) {
+    if (w.kind !== "topic") continue;
+    const key = normalizeForDuplicateCheck(w.title);
+    const list = topicsByNormalizedTitle.get(key) ?? [];
+    list.push(w);
+    topicsByNormalizedTitle.set(key, list);
+  }
+  for (const group of topicsByNormalizedTitle.values()) {
+    if (group.length < 2) continue;
+    // メンバー数が多い方を残す（同点ならより新しい方）
+    const sorted = [...group].sort((a, b) => {
+      const memberDiff = (b.derivedFromClaims ?? []).length - (a.derivedFromClaims ?? []).length;
+      if (memberDiff !== 0) return memberDiff;
+      return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
+    });
+    const keep = sorted[0];
+    for (const absorb of sorted.slice(1)) {
+      issues.push({
+        type: "redundant",
+        severity: "warning",
+        title: `"${keep.title}" and "${absorb.title}" name the same topic`,
+        description: `These two Topic pages have the same normalized title (only whitespace/casing differ), so they should be a single page.`,
+        affectedWikiIds: [keep.id, absorb.id],
+        suggestion: `Merge "${absorb.title}" into "${keep.title}" via "Organize topics" in Settings.`,
+        recommendedAction: { type: "merge", keepId: keep.id, absorbId: absorb.id, reason: `Same normalized title; keeping the one with more members / more recently updated.` },
+      });
+    }
+  }
+
   return issues;
+}
+
+/** 話題の重複判定専用の正規化（NFKC・空白除去・小文字化）。wiki-service.normalizeTopicTitle と同じ規則を
+ *  サーバー側で複製する（client/server のバンドル境界をまたがないため）。 */
+function normalizeForDuplicateCheck(title: string): string {
+  return title.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
 }
