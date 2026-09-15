@@ -85,7 +85,7 @@ describe("runTopicStage", () => {
   it("claims が 0 件なら何もしない", async () => {
     const { deps } = makeDeps();
     const result = await runTopicStage([], deps);
-    expect(result).toEqual({ created: 0, updated: 0, failed: 0, withoutTopic: 0 });
+    expect(result).toMatchObject({ created: 0, updated: 0, failed: 0, withoutTopic: 0 });
     expect(deps.loadDoc).not.toHaveBeenCalled();
   });
 
@@ -108,7 +108,7 @@ describe("runTopicStage", () => {
     ];
     const result = await runTopicStage(claims, deps);
 
-    expect(result).toEqual({ created: 0, updated: 1, failed: 0, withoutTopic: 0 });
+    expect(result).toMatchObject({ created: 0, updated: 1, failed: 0, withoutTopic: 0 });
     expect(deps.handleSaveWikiFile).toHaveBeenCalledWith(
       "topic-1",
       expect.objectContaining({ wikiMeta: expect.objectContaining({ derivedFromClaims: ["claim-1"] }) }),
@@ -135,7 +135,9 @@ describe("runTopicStage", () => {
     ];
     const result = await runTopicStage(claims, deps);
 
-    expect(result).toEqual({ created: 1, updated: 0, failed: 0, withoutTopic: 0 });
+    expect(result).toMatchObject({ created: 1, updated: 0, failed: 0, withoutTopic: 0 });
+    // 並行実行の引き継ぎ用に、作った話題の id とタイトルが返る
+    expect(result.createdTopics).toEqual([expect.objectContaining({ title: expect.any(String) })]);
     expect(deps.handleCreateWikiFile).toHaveBeenCalledTimes(1);
   });
 
@@ -189,7 +191,7 @@ describe("runTopicStage", () => {
     ];
     const result = await runTopicStage(claims, deps);
 
-    expect(result).toEqual({ created: 0, updated: 1, failed: 0, withoutTopic: 0 });
+    expect(result).toMatchObject({ created: 0, updated: 1, failed: 0, withoutTopic: 0 });
   });
 
   it("name-topics 呼び出し自体が失敗したら failed に数え、withoutTopic にはしない", async () => {
@@ -208,7 +210,7 @@ describe("runTopicStage", () => {
     ];
     const result = await runTopicStage(claims, deps);
 
-    expect(result).toEqual({ created: 0, updated: 0, failed: 1, withoutTopic: 0 });
+    expect(result).toMatchObject({ created: 0, updated: 0, failed: 1, withoutTopic: 0 });
     expect(deps.log).toHaveBeenCalled();
   });
 
@@ -228,7 +230,7 @@ describe("runTopicStage", () => {
     ];
     const result = await runTopicStage(claims, deps);
 
-    expect(result).toEqual({ created: 0, updated: 0, failed: 0, withoutTopic: 1 });
+    expect(result).toMatchObject({ created: 0, updated: 0, failed: 0, withoutTopic: 1 });
   });
 
   it("claim ドキュメントが見つからない場合は withoutTopic に数えログを出す", async () => {
@@ -237,7 +239,7 @@ describe("runTopicStage", () => {
       { id: "missing-claim", title: "知見1", body: "本文プレビュー", topics: ["話題A"] },
     ];
     const result = await runTopicStage(claims, deps);
-    expect(result).toEqual({ created: 0, updated: 0, failed: 0, withoutTopic: 1 });
+    expect(result).toMatchObject({ created: 0, updated: 0, failed: 0, withoutTopic: 1 });
     expect(deps.log).toHaveBeenCalled();
   });
 });

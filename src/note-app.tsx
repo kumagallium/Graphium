@@ -310,7 +310,7 @@ import {
   // Topic（話題）
   composeTopicBody, rebuildTopicDocument,
   type TopicComposeClaim,
-  runTopicStage, type TopicStageClaimInput,
+  runTopicStage, type TopicStageClaimInput, type ExistingTopicRef,
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
@@ -6976,6 +6976,9 @@ export function NoteApp() {
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
+  // 話題（topic）の段の直列化キューと、直前の実行が作った話題の控え（runTopicStageForNoteApp 参照）
+  const topicStageQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const knownTopicRefsRef = useRef<Map<string, string>>(new Map());
   // 取り込みパイプライン（ingest → cross-update → atomize → lint）の中断ハンドル。
   // キュー処理の開始時に 1 本作り、各 LLM 呼び出しの fetch に signal として渡す。
   // トーストの「停止」で abort() + キューを空にする。fetch が切れるとサーバー側の
@@ -8488,10 +8491,32 @@ export function NoteApp() {
   // 5 つの知見保存経路（ノート取り込み・チャットのナレッジ化・素材 URL/PDF/Word・URL 貼付）と
   // 設定の「話題を整理」から同じ形で呼べるようにする。
   const runTopicStageForNoteApp = useCallback(
-    async (claims: TopicStageClaimInput[]) => {
-      const existingTopicRefs = (fm.noteIndex?.notes ?? [])
-        .filter((n) => n.source === "ai" && n.wikiKind === "topic")
-        .map((n) => ({ id: n.noteId, title: n.title }));
+    (claims: TopicStageClaimInput[]) => {
+      // 素材の一括ナレッジ化は 1 件ごとに独立した async で走るため、話題の段が並行すると
+      // 「既存話題」のスナップショットが古いまま同名の話題を二重に作る（実測: 格子熱伝導率 ×2）。
+      // ここで直列化し、前の実行が作った話題を次の実行の既存一覧に引き継ぐ。
+      const run = topicStageQueueRef.current.then(async () => {
+        const existingTopicRefs = (fm.noteIndex?.notes ?? [])
+          .filter((n) => n.source === "ai" && n.wikiKind === "topic")
+          .map((n) => ({ id: n.noteId, title: n.title }));
+        // noteIndex への反映が追いつく前でも、直前の実行が作った話題を見落とさない
+        const seen = new Set(existingTopicRefs.map((r) => r.id));
+        for (const [id, title] of knownTopicRefsRef.current) {
+          if (!seen.has(id)) existingTopicRefs.push({ id, title });
+        }
+        const result = await runTopicStageInner(claims, existingTopicRefs);
+        for (const r of result.createdTopics) knownTopicRefsRef.current.set(r.id, r.title);
+        return result;
+      });
+      topicStageQueueRef.current = run.then(() => undefined, () => undefined);
+      return run;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fm]
+  );
+
+  const runTopicStageInner = useCallback(
+    async (claims: TopicStageClaimInput[], existingTopicRefs: ExistingTopicRef[]) => {
       const claimTitleById = new Map(claims.map((c) => [c.id, c.title]));
       return runTopicStage(claims, {
         loadDoc: fm.loadDoc,

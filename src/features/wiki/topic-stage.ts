@@ -49,6 +49,8 @@ export type TopicStageResult = {
   failed: number;
   /** 話題を割り当てられなかった知見の件数（補完後も topics が空、または解決 0 件） */
   withoutTopic: number;
+  /** この実行で新規作成した話題（呼び出し側が並行実行の既存一覧に引き継ぐ） */
+  createdTopics: { id: string; title: string }[];
 };
 
 /** name-topics 呼び出し 1 回あたりの最大件数 */
@@ -94,7 +96,7 @@ export async function runTopicStage(
   claims: TopicStageClaimInput[],
   deps: TopicStageDeps,
 ): Promise<TopicStageResult> {
-  const result: TopicStageResult = { created: 0, updated: 0, failed: 0, withoutTopic: 0 };
+  const result: TopicStageResult = { created: 0, updated: 0, failed: 0, withoutTopic: 0, createdTopics: [] };
   if (claims.length === 0) return result;
 
   const log = deps.log ?? (() => {});
@@ -224,6 +226,7 @@ export async function runTopicStage(
           });
           deps.onTopicSaved?.(topicId, newTopicDoc, claimInfo.id, [claimInfo.id], "create");
           existingTopicRefs.push({ id: topicId, title: match.title });
+          result.createdTopics.push({ id: topicId, title: match.title });
           result.created++;
           topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? newTopicDoc;
 
