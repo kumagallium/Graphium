@@ -1053,3 +1053,73 @@ export const PanelLabelCorners: StoryObj = {
     </ErrorBoundary>
   ),
 };
+
+// 凡例の範囲。同じ試料 A・B を 4 つの量で比べる図では、凡例は図全体で 1 つ
+// （A と B が 4 回ずつ・別の色で並ばない）。試料 B は同じ量を別テーブルに持つ
+const THERMO_TABLES_B = [
+  thermoTable("te-sigma-b", "sigma", (t) => 700 - 0.6 * (t - 300)),
+  thermoTable("te-seebeck-b", "S", (t) => 110 + 0.2 * (t - 300)),
+  thermoTable("te-pf-b", "PF", (t) => 0.5 + 0.003 * (t - 300) - 0.000004 * (t - 300) ** 2),
+  thermoTable("te-kappa-b", "kappa", (t) => 2.6 - 0.002 * (t - 300)),
+];
+const TWO_SAMPLE_SERIES = series([
+  { sourceBlockId: "te-sigma", xColumn: "T (K)", yColumn: "sigma", label: "試料 A", panelIndex: 0 },
+  { sourceBlockId: "te-sigma-b", xColumn: "T (K)", yColumn: "sigma", label: "試料 B", panelIndex: 0 },
+  { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "試料 A", panelIndex: 1 },
+  { sourceBlockId: "te-seebeck-b", xColumn: "T (K)", yColumn: "S", label: "試料 B", panelIndex: 1 },
+  { sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "試料 A", panelIndex: 2 },
+  { sourceBlockId: "te-pf-b", xColumn: "T (K)", yColumn: "PF", label: "試料 B", panelIndex: 2 },
+  { sourceBlockId: "te-kappa", xColumn: "T (K)", yColumn: "kappa", label: "試料 A", panelIndex: 3 },
+  { sourceBlockId: "te-kappa-b", xColumn: "T (K)", yColumn: "kappa", label: "試料 B", panelIndex: 3 },
+]);
+
+export const PanelsLegendFigure: StoryObj = {
+  name: "凡例の範囲（図全体で 1 つ）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={[...THERMO_TABLES, ...THERMO_TABLES_B]}
+        lead="4 つの枠に同じ試料 A・B を描く。凡例は図全体で 1 つにまとまり、同じ名前は枠をまたいで同じ色。"
+        chartFirst
+        config={{
+          chartType: "line",
+          panels: { rows: 2, cols: 2, joinVertical: true, joinHorizontal: false, showPanelLabels: true, labelPosition: "bottom-right" },
+          series: TWO_SAMPLE_SERIES,
+          panelAxes: [{ yAxisName: "S (µV/K)" }, { yAxisName: "PF (mW/mK²)" }, { yAxisName: "κ (W/mK)" }],
+          legendScope: "figure",
+          aspect: "standard",
+          xAxisName: "T (K)",
+          yAxisName: "σ (S/cm)",
+          caption: "試料 A・B の熱電特性",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 枠ごとに中身が違う図では、凡例も枠ごとにその枠の中へ置く
+export const PanelsLegendPerPanel: StoryObj = {
+  name: "凡例の範囲（枠ごと）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={[...THERMO_TABLES, ...THERMO_TABLES_B]}
+        lead="凡例を枠ごとに置く。位置は枠内の四隅から選び、図の上の余白は取らない。(b) は線が右上へ抜けるので、その枠だけ左上に上書き。"
+        chartFirst
+        config={{
+          chartType: "line",
+          panels: { rows: 2, cols: 2, joinVertical: true, joinHorizontal: false, showPanelLabels: true, labelPosition: "bottom-right" },
+          series: TWO_SAMPLE_SERIES,
+          panelAxes: [{ yAxisName: "S (µV/K)" }, { yAxisName: "PF (mW/mK²)" }, { yAxisName: "κ (W/mK)" }],
+          legendScope: "panel",
+          legendPosition: "inside-top-right",
+          panelLegendPositions: [null, "inside-top-left"],
+          aspect: "standard",
+          xAxisName: "T (K)",
+          yAxisName: "σ (S/cm)",
+          caption: "試料 A・B の熱電特性",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};

@@ -9,6 +9,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { X, ChevronUp, ChevronDown, ChevronRight, Palette, Plus } from "lucide-react";
 import { t } from "../../i18n";
+import { formatShortcut } from "../../lib/shortcut-label";
 import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
 import type { ChartType } from "./chart-data";
 import { CHART_SERIES_COLORS } from "./chart-theme";
@@ -23,6 +24,8 @@ import {
   stackConfigForPanel,
   withPanelAxis,
   withStackConfigForPanel,
+  legendPositionInsidePanel,
+  withPanelLegendPosition,
   PANEL_SPLIT_RANGE,
   resolveSeriesStyle,
   retargetSeries,
@@ -33,6 +36,7 @@ import {
   type ChartBlockConfig,
   type ChartSeriesConfig,
   type ChartSourceOption,
+  type LegendScope,
   type PanelAxisConfig,
   type PanelsConfig,
   type LegendPosition,
@@ -128,6 +132,7 @@ function AxisDetailEditor({
   open,
   onToggle,
   ticksLocked = false,
+  label,
 }: {
   detail: AxisDetail;
   onChange: (patch: Partial<AxisDetail>) => void;
@@ -135,11 +140,13 @@ function AxisDetailEditor({
   onToggle: () => void;
   /** オフセット表示中は縦軸の目盛りを描画側が強制的に消すため、ここの指定は効かない */
   ticksLocked?: boolean;
+  /** 見出し。枠を分けた図では軸ごとの名前・範囲から離れて並ぶので、どの軸かを名乗る */
+  label?: string;
 }) {
   return (
     <div style={detailStyles.shell}>
       <button type="button" onClick={onToggle} style={detailStyles.header}>
-        <span>{t("chart.advanced")}</span>
+        <span>{label ?? t("chart.advanced")}</span>
         {open ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
       </button>
       {open && (
@@ -844,10 +851,12 @@ export function ChartSettingsPanel({
     onChange({ series: next });
   };
 
-  // オフセット表示を編集している枠。分割を減らして枠が消えたら先頭に戻す
+  // 編集している枠。オフセット表示（種類・系列タブ）と軸の名前・範囲（軸設定タブ）は
+  // どちらも枠ごとの設定なので、選んだ枠は 1 つを共有する — タブを移ったら別の枠を
+  // 指している、という状態を作らない。分割を減らして枠が消えたら先頭に戻す
   const panels = panelCount(config);
-  const [stackPanel, setStackPanel] = useState(0);
-  const editingPanel = stackPanel < panels ? stackPanel : 0;
+  const [editingPanelRaw, setEditingPanel] = useState(0);
+  const editingPanel = editingPanelRaw < panels ? editingPanelRaw : 0;
 
   const updateStack = (patch: Partial<StackConfig>) => {
     const current = stackConfigForPanel(config, editingPanel);
@@ -856,9 +865,7 @@ export function ChartSettingsPanel({
     onChange(editingPanel === 0 ? { stack: next.stack } : { panelStacks: next.panelStacks });
   };
 
-  // 軸設定を編集している枠。分割を減らして枠が消えたら先頭に戻す
-  const [axisPanelRaw, setAxisPanel] = useState(0);
-  const axisPanel = axisPanelRaw < panels ? axisPanelRaw : 0;
+  const axisPanel = editingPanel;
   // 表示する値は「その軸を実際に持っている枠」のもの。つなげた向きでは
   // 枠 2 を選んでも枠 1 と同じ値が出る（共有していることが値で分かる）
   const xAxisValues = panelAxis(config, axisOwnerPanel(config.panels, axisPanel, "x"));
@@ -973,7 +980,7 @@ export function ChartSettingsPanel({
                   onChange={updateStack}
                   panelCount={panels}
                   panelIndex={editingPanel}
-                  onPanelIndexChange={setStackPanel}
+                  onPanelIndexChange={setEditingPanel}
                 />
               </div>
             </div>
@@ -1067,7 +1074,7 @@ export function ChartSettingsPanel({
                         />
                       </label>
                       <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
-                        {t("chart.richTextHint")}
+                        {t("chart.richTextHint", { shortcut: formatShortcut(["mod", "I"]) })}
                       </div>
 
                       <div style={styles.assignLabel}>{t("chart.assignData")}</div>
@@ -1276,190 +1283,246 @@ export function ChartSettingsPanel({
         </div>
       )}
 
-      {tab === "axes" && (
-        <div style={styles.body}>
-          {/* 軸の名前・範囲は枠ごとなので、どの枠のことかを先に選ぶ。
-              目盛りの体裁（線・ラベル・グリッド）は図全体で揃えるものなので枠に紐づけない */}
-          {panels > 1 && (
-            <>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.panelTarget")}</span>
-                <select
-                  value={axisPanel}
-                  onChange={(e) => setAxisPanel(Number(e.target.value))}
-                  style={{ ...styles.select, flex: 1 }}
-                >
-                  {Array.from({ length: panels }, (_, p) => (
-                    <option key={p} value={p}>
-                      {t("chart.panelName", { n: String(p + 1) })}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div style={styles.fieldHint}>{t("chart.axisPanelHint")}</div>
-            </>
-          )}
-          {/* 軸名は 3 つあるので、記法の案内はタブの頭で 1 回だけ出す */}
-          <div style={styles.fieldHint}>{t("chart.richTextHint")}</div>
-          {!isHistogram && (
-            <>
-              <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
-                <input
-                  type="text"
-                  value={xAxisValues.xAxisName}
-                  placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => updateAxis("x", { xAxisName: e.target.value })}
-                  onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("x", { xAxisName: v }))}
-                  className="gph-settings-input"
-              style={{ ...styles.input, flex: 1 }}
-                />
-              </label>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.axisKind")}</span>
-                <select
-                  value={config.xAxisKind}
-                  onChange={(e) => onChange({ xAxisKind: e.target.value as XAxisKindSetting })}
-                  style={{ ...styles.select, flex: 1 }}
-                >
-                  <option value="auto">{t("chart.kindAuto")}</option>
-                  <option value="time">{t("chart.kindTime")}</option>
-                  <option value="value">{t("chart.kindValue")}</option>
-                  <option value="category">{t("chart.kindCategory")}</option>
-                </select>
-              </label>
-              <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
-                <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
-                <input
-                  type="text"
-                  value={xAxisValues.xMin}
-                  placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
-                  disabled={effectiveXKind === "category"}
-                  onChange={(e) => updateAxis("x", { xMin: e.target.value })}
-                  className="gph-settings-input"
-              style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
-                />
-                <span style={styles.rangeDash}>–</span>
-                <input
-                  type="text"
-                  value={xAxisValues.xMax}
-                  placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
-                  disabled={effectiveXKind === "category"}
-                  onChange={(e) => updateAxis("x", { xMax: e.target.value })}
-                  className="gph-settings-input"
-              style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
-                />
-              </label>
-              {/* なぜ入力できないのかを、その場で理由と抜け道つきで見せる */}
-              {effectiveXKind === "category" && (
-                <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
-                  {t("chart.minMaxCategoryHint")}
-                </div>
-              )}
-              <AxisDetailEditor
-                detail={config.xAxisDetail}
-                onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
-                {...axisDetailProps("x")}
-              />
-            </>
-          )}
-
-          <div style={styles.sectionLabel}>
-            {rightAxisInUse ? t("chart.yAxisLeft") : t("chart.yAxis")}
+      {tab === "axes" && (() => {
+        // 軸の設定は 2 種類ある。名前と範囲は枠ごと（PanelAxisConfig）、目盛りの種類と
+        // 体裁（線・目盛り・ラベル・グリッド線）は図全体で 1 つ。分割した図では枠の
+        // 選択の下に全部並ぶので、共通のものには項目名に「（全枠共通）」を添えて所属を
+        // 示す。「図全体 / 枠ごと」の段に分ける案は、項目が増えて見え複雑に感じる
+        // というユーザー指摘で取り下げた（2026-09-15）
+        const split = panels > 1;
+        const shared = split ? t("chart.sharedAcrossPanels") : "";
+        // 記法の案内は最初の軸名の直下に 1 回だけ（タブの頭に置くと何の話か分からない）
+        const richHint = (
+          <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
+            {t("chart.axisNameRichHint", { shortcut: formatShortcut(["mod", "I"]) })}
           </div>
+        );
+        const xKindField = !isHistogram && (
           <label style={styles.fieldRow}>
-            <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
-            <input
-              type="text"
-              value={yAxisValues.yAxisName}
-              placeholder={isHistogram ? t("chart.frequency") : t("chart.autoPlaceholder")}
-              onChange={(e) => updateAxis("y", { yAxisName: e.target.value })}
-              onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("y", { yAxisName: v }))}
-              className="gph-settings-input"
-              style={{ ...styles.input, flex: 1 }}
-            />
+            <span style={styles.fieldLabel}>{t("chart.axisKind")}</span>
+            <select
+              value={config.xAxisKind}
+              onChange={(e) => onChange({ xAxisKind: e.target.value as XAxisKindSetting })}
+              style={{ ...styles.select, flex: 1 }}
+            >
+              <option value="auto">{t("chart.kindAuto")}</option>
+              <option value="time">{t("chart.kindTime")}</option>
+              <option value="value">{t("chart.kindValue")}</option>
+              <option value="category">{t("chart.kindCategory")}</option>
+            </select>
+            {/* ラベル欄は 54px なので、所属の注記は欄に入れず右に添える */}
+            {split && <span style={styles.fieldNote}>{shared.trim()}</span>}
           </label>
-          <label style={styles.fieldRow}>
-            <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={yAxisValues.yMin}
-              placeholder={t("chart.autoPlaceholder")}
-              onChange={(e) => updateAxis("y", { yMin: e.target.value })}
-              className="gph-settings-input"
-              style={{ ...styles.input, width: 72 }}
-            />
-            <span style={styles.rangeDash}>–</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={yAxisValues.yMax}
-              placeholder={t("chart.autoPlaceholder")}
-              onChange={(e) => updateAxis("y", { yMax: e.target.value })}
-              className="gph-settings-input"
-              style={{ ...styles.input, width: 72 }}
-            />
-          </label>
+        );
+        const xDetail = !isHistogram && (
+          <AxisDetailEditor
+            detail={config.xAxisDetail}
+            onChange={(patch) => onChange({ xAxisDetail: { ...config.xAxisDetail, ...patch } })}
+            label={split ? t("chart.advanced") + shared : undefined}
+            {...axisDetailProps("x")}
+          />
+        );
+        // オフセット表示中の縦軸は目盛りを描画側が消すので、ここの指定は効かない。
+        // 図全体の設定なので、分割時は「全枠がオフセット表示」のときだけ効かないと言える
+        const yTicksLocked =
+          !isHistogram &&
+          (split
+            ? Array.from({ length: panels }, (_, p) => stackConfigForPanel(config, p).enabled).every(Boolean)
+            : stackConfigForPanel(config, 0).enabled);
+        const yDetail = (
           <AxisDetailEditor
             detail={config.yAxisDetail}
             onChange={(patch) => onChange({ yAxisDetail: { ...config.yAxisDetail, ...patch } })}
-            // オフセット表示中の縦軸は目盛りを描画側が消すので、ここの指定は効かない
-            ticksLocked={!isHistogram && stackConfigForPanel(config, axisPanel).enabled}
+            ticksLocked={yTicksLocked}
+            label={split ? t("chart.advanced") + shared : undefined}
             {...axisDetailProps("y")}
           />
-
-          {rightAxisInUse && (
-            <>
-              <div style={styles.sectionLabel}>{t("chart.yAxisRight")}</div>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
-                <input
-                  type="text"
-                  value={yAxisValues.yRightAxisName}
-                  placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => updateAxis("y", { yRightAxisName: e.target.value })}
-                  onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("y", { yRightAxisName: v }))}
-                  className="gph-settings-input"
-              style={{ ...styles.input, flex: 1 }}
-                />
-              </label>
-              <label style={styles.fieldRow}>
-                <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={yAxisValues.yRightMin}
-                  placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => updateAxis("y", { yRightMin: e.target.value })}
-                  className="gph-settings-input"
-              style={{ ...styles.input, width: 72 }}
-                />
-                <span style={styles.rangeDash}>–</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={yAxisValues.yRightMax}
-                  placeholder={t("chart.autoPlaceholder")}
-                  onChange={(e) => updateAxis("y", { yRightMax: e.target.value })}
-                  className="gph-settings-input"
-              style={{ ...styles.input, width: 72 }}
-                />
-              </label>
-              <AxisDetailEditor
-                detail={config.yRightAxisDetail}
-                onChange={(patch) =>
-                  onChange({ yRightAxisDetail: { ...config.yRightAxisDetail, ...patch } })
-                }
-                {...axisDetailProps("yRight")}
+        );
+        const yRightDetail = rightAxisInUse && (
+          <AxisDetailEditor
+            detail={config.yRightAxisDetail}
+            onChange={(patch) =>
+              onChange({ yRightAxisDetail: { ...config.yRightAxisDetail, ...patch } })
+            }
+            label={split ? t("chart.advanced") + shared : undefined}
+            {...axisDetailProps("yRight")}
+          />
+        );
+        const xNameRange = !isHistogram && (
+          <>
+            <label style={styles.fieldRow}>
+              <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
+              <input
+                type="text"
+                value={xAxisValues.xAxisName}
+                placeholder={t("chart.autoPlaceholder")}
+                onChange={(e) => updateAxis("x", { xAxisName: e.target.value })}
+                onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("x", { xAxisName: v }))}
+                className="gph-settings-input"
+                style={{ ...styles.input, flex: 1 }}
               />
-            </>
-          )}
-        </div>
-      )}
+            </label>
+            {richHint}
+            {xKindField}
+            <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
+              <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
+              <input
+                type="text"
+                value={xAxisValues.xMin}
+                placeholder={effectiveXKind === "time" ? "2026-08-01" : t("chart.autoPlaceholder")}
+                disabled={effectiveXKind === "category"}
+                onChange={(e) => updateAxis("x", { xMin: e.target.value })}
+                className="gph-settings-input"
+                style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+              />
+              <span style={styles.rangeDash}>–</span>
+              <input
+                type="text"
+                value={xAxisValues.xMax}
+                placeholder={effectiveXKind === "time" ? "2026-08-31" : t("chart.autoPlaceholder")}
+                disabled={effectiveXKind === "category"}
+                onChange={(e) => updateAxis("x", { xMax: e.target.value })}
+                className="gph-settings-input"
+                style={{ ...styles.input, width: 88, opacity: effectiveXKind === "category" ? 0.5 : 1 }}
+              />
+            </label>
+            {/* なぜ入力できないのかを、その場で理由と抜け道つきで見せる */}
+            {effectiveXKind === "category" && (
+              <div style={{ ...styles.fieldHint, marginLeft: 54 }}>
+                {t("chart.minMaxCategoryHint")}
+              </div>
+            )}
+          </>
+        );
+        const yNameRange = (
+          <>
+            <label style={styles.fieldRow}>
+              <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
+              <input
+                type="text"
+                value={yAxisValues.yAxisName}
+                placeholder={isHistogram ? t("chart.frequency") : t("chart.autoPlaceholder")}
+                onChange={(e) => updateAxis("y", { yAxisName: e.target.value })}
+                onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("y", { yAxisName: v }))}
+                className="gph-settings-input"
+                style={{ ...styles.input, flex: 1 }}
+              />
+            </label>
+            {/* X 軸が無い分布図では、案内は最初の軸名（Y）の下に出す */}
+            {isHistogram && richHint}
+            <label style={styles.fieldRow}>
+              <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={yAxisValues.yMin}
+                placeholder={t("chart.autoPlaceholder")}
+                onChange={(e) => updateAxis("y", { yMin: e.target.value })}
+                className="gph-settings-input"
+                style={{ ...styles.input, width: 72 }}
+              />
+              <span style={styles.rangeDash}>–</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={yAxisValues.yMax}
+                placeholder={t("chart.autoPlaceholder")}
+                onChange={(e) => updateAxis("y", { yMax: e.target.value })}
+                className="gph-settings-input"
+                style={{ ...styles.input, width: 72 }}
+              />
+            </label>
+          </>
+        );
+        const yRightNameRange = rightAxisInUse && (
+          <>
+            <label style={styles.fieldRow}>
+              <span style={styles.fieldLabel}>{t("chart.axisName")}</span>
+              <input
+                type="text"
+                value={yAxisValues.yRightAxisName}
+                placeholder={t("chart.autoPlaceholder")}
+                onChange={(e) => updateAxis("y", { yRightAxisName: e.target.value })}
+                onKeyDown={(e) => italicShortcut(e, (v) => updateAxis("y", { yRightAxisName: v }))}
+                className="gph-settings-input"
+                style={{ ...styles.input, flex: 1 }}
+              />
+            </label>
+            <label style={styles.fieldRow}>
+              <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={yAxisValues.yRightMin}
+                placeholder={t("chart.autoPlaceholder")}
+                onChange={(e) => updateAxis("y", { yRightMin: e.target.value })}
+                className="gph-settings-input"
+                style={{ ...styles.input, width: 72 }}
+              />
+              <span style={styles.rangeDash}>–</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={yAxisValues.yRightMax}
+                placeholder={t("chart.autoPlaceholder")}
+                onChange={(e) => updateAxis("y", { yRightMax: e.target.value })}
+                className="gph-settings-input"
+                style={{ ...styles.input, width: 72 }}
+              />
+            </label>
+          </>
+        );
+        const yLabel = rightAxisInUse ? t("chart.yAxisLeft") : t("chart.yAxis");
 
-      {tab === "appearance" && (
+        return (
+            <div style={styles.body}>
+              {split && (
+                <>
+                  <label style={styles.fieldRow}>
+                    <span style={styles.fieldLabel}>{t("chart.panelTarget")}</span>
+                    <select
+                      value={editingPanel}
+                      onChange={(e) => setEditingPanel(Number(e.target.value))}
+                      style={{ ...styles.select, flex: 1 }}
+                    >
+                      {Array.from({ length: panels }, (_, p) => (
+                        <option key={p} value={p}>
+                          {t("chart.panelName", { n: String(p + 1) })}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div style={styles.fieldHint}>{t("chart.axisPanelHint")}</div>
+                </>
+              )}
+              {!isHistogram && (
+                <>
+                  <div style={styles.sectionLabel}>{t("chart.xAxis")}</div>
+                  {xNameRange}
+                  {xDetail}
+                </>
+              )}
+              <div style={styles.sectionLabel}>{yLabel}</div>
+              {yNameRange}
+              {yDetail}
+              {rightAxisInUse && (
+                <>
+                  <div style={styles.sectionLabel}>{t("chart.yAxisRight")}</div>
+                  {yRightNameRange}
+                  {yRightDetail}
+                </>
+              )}
+            </div>
+        );
+      })()}
+
+      {tab === "appearance" && (() => {
+        // 枠ごとの凡例の隅は凡例セクションの中（位置の直下）に置く。凡例の設定が
+        // 見出しから離れた別の段に散るのは読みにくい、というユーザー指摘（2026-09-15）
+        const perPanelLegend =
+          panels > 1 && config.showLegend && !inlineStackLabels && config.legendScope === "panel";
+        const override = config.panelLegendPositions[editingPanel] ?? null;
+        return (
         <div style={styles.body}>
           <div style={styles.sectionLabel}>{t("chart.caption")}</div>
           <input
@@ -1522,14 +1585,40 @@ export function ChartSettingsPanel({
           )}
           {config.showLegend && !inlineStackLabels && (
             <>
+              {/* 凡例の範囲は枠を分けた図でだけ意味を持つ。枠ごとの凡例は枠の中にしか
+                  置けないので、そのときは位置の選択肢を枠内の四隅に絞る（保存値は
+                  1 つのまま。図全体に戻せば元の位置に戻る） */}
+              {panels > 1 && (
+                <>
+                  <label style={styles.fieldRow}>
+                    <span style={styles.fieldLabel}>{t("chart.legendScope")}</span>
+                    <select
+                      value={config.legendScope}
+                      onChange={(e) => onChange({ legendScope: e.target.value as LegendScope })}
+                      style={{ ...styles.select, flex: 1 }}
+                    >
+                      <option value="figure">{t("chart.legendScopeFigure")}</option>
+                      <option value="panel">{t("chart.legendScopePanel")}</option>
+                    </select>
+                  </label>
+                  <div style={styles.fieldHint}>{t("chart.legendScopeHint")}</div>
+                </>
+              )}
               <label style={styles.fieldRow}>
                 <span style={styles.fieldLabel}>{t("chart.legendPosition")}</span>
                 <select
-                  value={config.legendPosition}
+                  value={
+                    panels > 1 && config.legendScope === "panel"
+                      ? legendPositionInsidePanel(config.legendPosition)
+                      : config.legendPosition
+                  }
                   onChange={(e) => onChange({ legendPosition: e.target.value as LegendPosition })}
                   style={{ ...styles.select, flex: 1 }}
                 >
-                  {LEGEND_POSITION_KEYS.map(([value, key]) => (
+                  {LEGEND_POSITION_KEYS.filter(
+                    ([value]) =>
+                      !(panels > 1 && config.legendScope === "panel") || value.startsWith("inside-")
+                  ).map(([value, key]) => (
                     <option key={value} value={value}>
                       {t(key as any)}
                     </option>
@@ -1559,6 +1648,48 @@ export function ChartSettingsPanel({
                   })}
                 </span>
               </label>
+              {perPanelLegend && (
+                <>
+                  <label style={styles.fieldRow}>
+                    <span style={styles.fieldLabel}>{t("chart.panelLegendCorner")}</span>
+                    <select
+                      value={editingPanel}
+                      onChange={(e) => setEditingPanel(Number(e.target.value))}
+                      style={{ ...styles.select, width: 76 }}
+                      aria-label={t("chart.panelTarget")}
+                    >
+                      {Array.from({ length: panels }, (_, p) => (
+                        <option key={p} value={p}>
+                          {t("chart.panelName", { n: String(p + 1) })}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={override ?? ""}
+                      onChange={(e) =>
+                        onChange({
+                          panelLegendPositions: withPanelLegendPosition(
+                            config,
+                            editingPanel,
+                            e.target.value === "" ? null : (e.target.value as LegendPosition)
+                          ).panelLegendPositions,
+                        })
+                      }
+                      style={{ ...styles.select, flex: 1 }}
+                    >
+                      <option value="">{t("chart.followFigure")}</option>
+                      {LEGEND_POSITION_KEYS.filter(([value]) => value.startsWith("inside-")).map(
+                        ([value, key]) => (
+                          <option key={value} value={value}>
+                            {t(key as any)}
+                          </option>
+                        )
+                      )}
+                    </select>
+                  </label>
+                  <div style={styles.fieldHint}>{t("chart.panelLegendPositionHint")}</div>
+                </>
+              )}
             </>
           )}
 
@@ -1605,8 +1736,10 @@ export function ChartSettingsPanel({
               )}
             </>
           )}
+
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -1684,10 +1817,17 @@ const styles: Record<string, React.CSSProperties> = {
     overflowY: "auto",
     minHeight: 0,
   },
-  sectionLabel: {
-    marginTop: 6,
+  fieldNote: {
     fontSize: 11,
     color: "var(--color-text-tertiary)",
+    whiteSpace: "nowrap" as const,
+  },
+  // 見出しはヒント文（tertiary）より濃く。同じ薄さだと見出しとして読めない
+  sectionLabel: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--color-text-secondary)",
   },
   assignLabel: {
     marginTop: 4,

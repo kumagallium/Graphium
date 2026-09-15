@@ -16,6 +16,7 @@
 
 import type { BlockLink } from "../block-link/link-types";
 import type { StepAttributes } from "../context-label/label-attributes";
+import { bytesToBase64 } from "@/lib/base64";
 
 export const GRAPHIUM_CLIPBOARD_MIME = "application/x-graphium-clipboard";
 export const GRAPHIUM_CLIPBOARD_VERSION = 1;
@@ -31,10 +32,7 @@ const HTML_PAYLOAD_REGEX = /<!--graphium-clipboard:([A-Za-z0-9+/=]+)-->/;
 /** UTF-8 を含む文字列を base64 にエンコード（btoa は ASCII しか扱えないため） */
 function encodeBase64Utf8(str: string): string {
   // TextEncoder で UTF-8 バイト列に変換 → base64
-  const bytes = new TextEncoder().encode(str);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
+  return bytesToBase64(new TextEncoder().encode(str));
 }
 
 /** base64 → UTF-8 文字列 */

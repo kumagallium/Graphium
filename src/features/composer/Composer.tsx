@@ -58,6 +58,7 @@ import { isTauri } from "../../lib/platform";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
+import { formatShortcut } from "../../lib/shortcut-label";
 
 type ComposerProps = {
   open: boolean;
@@ -467,7 +468,7 @@ export function Composer(props: ComposerProps) {
             }}
           >
             ↑↓ {t("composer.search.hintFilters")}
-            {canAskAi && <> · ⌘+Enter {t("composer.kbd.submit")}</>} · Esc {t("composer.kbd.close")}
+            {canAskAi && <> · {formatShortcut(["mod", "Enter"], { macSeparator: "+" })} {t("composer.kbd.submit")}</>} · Esc {t("composer.kbd.close")}
           </span>
           {/* 折返しで 2 行目に落ちたときも右寄せを保つ。
               grounding は AI 送信時に何を根拠にするかの設定なので検索専用では出さない */}

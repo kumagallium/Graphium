@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeNoteContexts, noteContextHue } from "./context-tags";
+import { normalizeNoteContexts, noteContextHue, replaceNoteContext } from "./context-tags";
 
 describe("normalizeNoteContexts", () => {
   it("trim・空除去・小文字比較の重複除去（表示は初出の形）", () => {
@@ -40,5 +40,34 @@ describe("noteContextHue", () => {
         expect(circular).toBeGreaterThanOrEqual(30);
       }
     }
+  });
+});
+
+describe("replaceNoteContext", () => {
+  it("並び順を保ったまま名前を差し替える", () => {
+    expect(replaceNoteContext(["Rye", "Sordough", "Starter"], "Sordough", "Sourdough")).toEqual([
+      "Rye",
+      "Sourdough",
+      "Starter",
+    ]);
+  });
+
+  it("大文字小文字を区別せずに探し、表記だけの直しもできる", () => {
+    expect(replaceNoteContext(["sourdough"], "SOURDOUGH", "Sourdough")).toEqual(["Sourdough"]);
+  });
+
+  it("差し替え先が既に付いていれば 1 つに畳む", () => {
+    expect(replaceNoteContext(["Sourdough", "Sordough"], "Sordough", "sourdough")).toEqual([
+      "Sourdough",
+    ]);
+  });
+
+  it("差し替え元が付いていなければ新しい名前を足さない", () => {
+    expect(replaceNoteContext(["Rye"], "Sordough", "Sourdough")).toEqual(["Rye"]);
+    expect(replaceNoteContext(undefined, "Sordough", "Sourdough")).toBeUndefined();
+  });
+
+  it("空の名前にすると外れる", () => {
+    expect(replaceNoteContext(["Sordough"], "Sordough", "  ")).toBeUndefined();
   });
 });
