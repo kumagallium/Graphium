@@ -510,7 +510,7 @@ function extractSectionsFromBlocks(
 /**
  * ノート/Wiki のタイトル → ID を解決するための情報
  */
-type NoteIndex = { id: string; title: string; isWiki?: boolean }[];
+export type NoteIndex = { id: string; title: string; isWiki?: boolean }[];
 
 type ConvertResult = {
   blocks: any[];
@@ -2275,6 +2275,38 @@ export async function composeTopicBody(
     console.warn("composeTopicBody failed:", err);
     return null;
   }
+}
+
+/** name-topics API に渡す知見（Claim）1 件分 */
+export type TopicNamerClaim = {
+  id: string;
+  title: string;
+  body: string;
+};
+
+/**
+ * topics が空の知見に対し、話題名だけをサーバー（/api/wiki/name-topics）で補う保険。
+ * ingester が Topics 項目を無視した場合に、話題の段（topic-stage）の冒頭で呼ばれる。
+ * 失敗時は例外を投げる — 呼び出し側が件数（failed）として数えられるよう、
+ * composeTopicBody と違い null に丸めない。
+ */
+export async function nameTopicsForClaims(
+  claims: TopicNamerClaim[],
+  existingTopics: string[],
+  language: string,
+  model?: string,
+): Promise<Record<string, string[]>> {
+  if (claims.length === 0) return {};
+  const res = await fetch(`${API_BASE}/name-topics`, {
+    method: "POST",
+    headers: wikiHeaders(),
+    body: JSON.stringify({ language, existingTopics, claims, ...(model ? { model } : {}) }),
+  });
+  if (!res.ok) {
+    throw await aiErrorFromResponse(res, `name-topics failed (${res.status})`);
+  }
+  const data = await res.json() as { topics?: Record<string, string[]> };
+  return data.topics ?? {};
 }
 
 /**

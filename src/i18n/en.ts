@@ -2437,6 +2437,13 @@ export const en: Record<string, string> = {
   "settings.maintenance.reembedConfirm": "Re-embed all {count} Knowledge pages? This may take a while and consumes embedding API tokens.",
   "settings.maintenance.reembedRunning": "Re-embedding…",
   "settings.maintenance.reembedRun": "Re-embed {count} Knowledge page(s)",
+  "settings.maintenance.organizeTopics.title": "Organize topics",
+  "settings.maintenance.organizeTopics.help": "Assigns topics to claims that have none and rewrites the topic pages.",
+  "settings.maintenance.organizeTopics.progress": "Assigning… {done} / {total}",
+  "settings.maintenance.organizeTopics.done": "Done. Topics: {created} created, {updated} updated",
+  "settings.maintenance.organizeTopics.confirm": "Assign topics to {count} claim(s) without a topic? This may take a while and consumes LLM tokens.",
+  "settings.maintenance.organizeTopics.running": "Organizing…",
+  "settings.maintenance.organizeTopics.run": "Organize {count} claim(s)",
   "settings.health.exitDetail": " (the process already exited: {info})",
   "settings.health.timeoutError": "Health check timed out (no response within 10 seconds){detail}",
 

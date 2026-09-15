@@ -7,6 +7,14 @@
 //   作り直す。本文は短く: 定義 / 要点（知見を [[知見タイトル]] で引用） / 食い違い・未解決。
 //   References は呼び出し元（wiki-service.ts）が既存の仕組み（parseInlineCitations /
 //   buildRelationBlocks 相当）で付けるため、ここでは生成しない。
+//
+// Topic Namer（話題名の保険）:
+//   ingester は知見ごとに 1〜3 件の topics を出す想定だが、LLM が項目を無視して空にする
+//   ケースがある。そのときはこの Topic Namer で後から話題名だけを推測して埋める
+//   （本文は書かない・話題名の命名のみ）。parseTopics（wiki-ingester）と同じサニタイズ規則
+//   （非文字列・空・重複を落とし最大 3 件）を再利用する。
+
+import { parseTopics } from "./wiki-ingester.js";
 
 /** 話題ページ生成に渡すメンバー知見（Claim）1 件分 */
 export type TopicMemberClaim = {
@@ -90,6 +98,104 @@ export function parseTopicWriterOutput(text: string): { body: string } | undefin
     return { body };
   } catch (err) {
     console.error("Topic writer 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+// ── Topic Namer（話題名の保険）──
+// topics が空の知見に対し、話題名だけを後から推測して埋める。本文生成（compose-topic）とは
+// 別のエンドポイント / プロンプトにする — 命名だけなので compose-topic より軽い出力形式。
+
+/** Topic Namer に渡す知見（Claim）1 件分（本文はプレビュー程度でよい） */
+export type TopicNamerClaim = {
+  id: string;
+  title: string;
+  body: string;
+};
+
+/**
+ * Topic Namer 用のシステムプロンプトを構築する
+ */
+export function buildTopicNamerSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a topic namer for Graphium, a provenance-tracking note editor.
+
+Each Claim below is missing \`topics\` — short noun phrases naming the concept(s) it belongs to. A topic groups multiple Claims about the same concept into one page (e.g. "pH-dependent reduction kinetics", "SPS sintering conditions"). Your job is only to name the topic(s) for each Claim — do not write any page body.
+
+## Rules
+
+- Tag each Claim with 1-3 \`topics\`, short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
+- **Reuse an existing topic name exactly** when the Claim belongs to the same concept as one already listed below — do not create a near-duplicate with different wording.
+- Keep phrases short (a few words), not full sentences.
+- Every Claim listed must get at least 1 topic — pick the best available concept even if the fit isn't perfect.
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "topics": {
+    "<claim id>": ["topic name", ...],
+    ...
+  }
+}`;
+}
+
+/**
+ * Topic Namer 用のユーザーメッセージを構築する
+ */
+export function buildTopicNamerUserMessage(
+  existingTopics: string[],
+  claims: TopicNamerClaim[],
+): string {
+  const topicListText = existingTopics.length > 0
+    ? existingTopics.map((t) => `- ${t}`).join("\n")
+    : "(none yet)";
+  const claimsText = claims
+    .map((c) => `### ${c.title} (id: ${c.id})\n\n${c.body}`)
+    .join("\n\n---\n\n");
+
+  return `## Existing topics
+
+${topicListText}
+
+## Claims needing topics (${claims.length})
+
+${claimsText}`;
+}
+
+/**
+ * LLM の出力をパースして claimId → topics のマップを取り出す。
+ * 各エントリのサニタイズは parseTopics（wiki-ingester）を再利用する（非文字列・空・重複を
+ * 落とし最大 3 件）。壊れた JSON / 形が違う場合は undefined を返す（無理な復旧はしない）。
+ */
+export function parseTopicNamerOutput(text: string): Record<string, string[]> | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
+    const parsed = JSON.parse(jsonText);
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !parsed.topics ||
+      typeof parsed.topics !== "object" ||
+      Array.isArray(parsed.topics)
+    ) {
+      return undefined;
+    }
+
+    const out: Record<string, string[]> = {};
+    for (const [claimId, raw] of Object.entries(parsed.topics as Record<string, unknown>)) {
+      const topics = parseTopics(raw);
+      if (topics) out[claimId] = topics;
+    }
+    return out;
+  } catch (err) {
+    console.error("Topic namer 出力のパース失敗:", err);
     return undefined;
   }
 }

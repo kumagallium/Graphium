@@ -49,3 +49,5 @@ export {
 } from "./sampling";
 export { wikiLog } from "./wiki-log";
 export type { WikiLogEntry, WikiLogEventType } from "./wiki-log";
+export { runTopicStage } from "./topic-stage";
+export type { TopicStageClaimInput, TopicStageResult, TopicStageDeps } from "./topic-stage";

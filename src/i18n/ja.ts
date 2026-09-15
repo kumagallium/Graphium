@@ -2435,6 +2435,13 @@ export const ja: Record<string, string> = {
   "settings.maintenance.reembedConfirm": "全 {count} 件のナレッジの埋め込みを作り直しますか？ 時間がかかり、埋め込み API のトークンを消費します。",
   "settings.maintenance.reembedRunning": "作り直し中…",
   "settings.maintenance.reembedRun": "{count} 件のナレッジを作り直す",
+  "settings.maintenance.organizeTopics.title": "話題を整理",
+  "settings.maintenance.organizeTopics.help": "話題のない知見に話題を割り当て、話題ページを書き直します。",
+  "settings.maintenance.organizeTopics.progress": "割り当て中… {done} / {total}",
+  "settings.maintenance.organizeTopics.done": "完了。話題: 作成 {created} 件・更新 {updated} 件",
+  "settings.maintenance.organizeTopics.confirm": "話題のない知見 {count} 件に話題を割り当てますか？ 時間がかかり、LLM のトークンを消費します。",
+  "settings.maintenance.organizeTopics.running": "整理中…",
+  "settings.maintenance.organizeTopics.run": "{count} 件の知見を整理する",
   "settings.health.exitDetail": "（プロセスは既に {info} で終了）",
   "settings.health.timeoutError": "ヘルスチェックがタイムアウトしました（10 秒以内に応答なし）{detail}",
 

@@ -53,7 +53,11 @@ import {
   buildTopicWriterSystemPrompt,
   buildTopicWriterUserMessage,
   parseTopicWriterOutput,
+  buildTopicNamerSystemPrompt,
+  buildTopicNamerUserMessage,
+  parseTopicNamerOutput,
   type TopicMemberClaim,
+  type TopicNamerClaim,
 } from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -453,6 +457,63 @@ app.post("/compose-topic", async (c) => {
     });
   } catch (err) {
     console.error("Wiki compose-topic error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 話題（topic）名の保険生成。
+//   ingester が topics を出さなかった知見（claim）に対し、話題名だけを後から推測して埋める。
+//   本文（compose-topic）とは別エンドポイント — 命名のみで軽量。呼び出し側（topic-stage）が
+//   最大 20 件/回にチャンク分割する。
+app.post("/name-topics", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    existingTopics?: string[];
+    claims: TopicNamerClaim[];
+    model?: string;
+  }>();
+
+  if (!Array.isArray(body.claims) || body.claims.length === 0) {
+    return c.json({ error: "claims are required" }, 400);
+  }
+  if (body.claims.length > 20) {
+    return c.json({ error: "claims must be 20 or fewer per request" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicNamerSystemPrompt(body.language || "en");
+  const userMessage = buildTopicNamerUserMessage(body.existingTopics ?? [], body.claims);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.name-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicNamerOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse topic namer output" }, 500);
+    }
+
+    return c.json({
+      topics: parsed,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki name-topics error:", err);
     return c.json(errorBody(err), 500);
   }
 });
