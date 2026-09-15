@@ -79,6 +79,16 @@ const miniBtnStyle: CSSProperties = {
   height: 18,
 };
 
+/** 工程ノード（noteRef）のハンドル: 線の端点にはなるが掴めない点 */
+const INERT_HANDLE_STYLE: React.CSSProperties = {
+  width: 7,
+  height: 7,
+  background: "var(--color-border)",
+  border: "none",
+  cursor: "default",
+  pointerEvents: "none",
+};
+
 export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   const {
     activity,
@@ -492,31 +502,41 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
       )}
 
       {/* 上=入力（受け側・白抜き）、下=出力（掴んで接続・青塗り）。
-          工程ノード（noteRef）は used エッジの受け側になるので上ハンドルは残し、
-          ドラッグ接続だけ不可にする（外部 step は受け側にならないので出さない） */}
+          工程ノード（noteRef）は線の端点としてハンドルを残すが、線はこの画面では
+          引けない（線の実体は工程ノート側の手順が前の工程の出力を入力に選ぶ参照）。
+          掴めそうに見えないよう、小さな灰色の点にしてポインタも受けない
+          （外部 step は受け側にならないので上ハンドルを出さない） */}
       {!external && (
         <Handle
           type="target"
           position={Position.Top}
           isConnectable={!noteRef}
-          style={{
-            width: 9,
-            height: 9,
-            background: "var(--color-card)",
-            border: `2px solid ${ACTIVITY_BLUE}`,
-          }}
+          style={
+            noteRef
+              ? INERT_HANDLE_STYLE
+              : {
+                  width: 9,
+                  height: 9,
+                  background: "var(--color-card)",
+                  border: `2px solid ${ACTIVITY_BLUE}`,
+                }
+          }
         />
       )}
       <Handle
         type="source"
         position={Position.Bottom}
         isConnectable={!external && !noteRef}
-        style={{
-          width: 11,
-          height: 11,
-          background: ACTIVITY_BLUE,
-          border: `2px solid ${ACTIVITY_BLUE}`,
-        }}
+        style={
+          noteRef
+            ? INERT_HANDLE_STYLE
+            : {
+                width: 11,
+                height: 11,
+                background: ACTIVITY_BLUE,
+                border: `2px solid ${ACTIVITY_BLUE}`,
+              }
+        }
       />
     </div>
   );

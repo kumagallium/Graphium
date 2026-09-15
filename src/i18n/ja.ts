@@ -2744,6 +2744,7 @@ export const ja: Record<string, string> = {
   "planFlow.truncated": "入れ子が深すぎるため、これ以上は開けません",
   "planFlow.emptyTitle": "工程はまだありません",
   "planFlow.emptyHint": "『工程を追加』で表に行を足すと、ここに工程が並びます",
+  "planFlow.connectHint": "工程どうしの線は、後の工程ノートの手順で前の工程の出力を入力に選ぶと引かれます",
   "planFlow.workStepsEmptyHint": "『作業手順を追加』から、ここで手順を組み立てられます",
   "localView.title": "周辺を時系列で見る",
   "localView.origin": "起点",

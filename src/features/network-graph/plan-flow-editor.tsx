@@ -225,6 +225,7 @@ export function PlanFlowEditor({
       addActivityLabel={t("planFlow.addOperation")}
       emptyTitle={t("planFlow.emptyTitle")}
       emptyHint={t("planFlow.emptyHint")}
+      staticHint={t("planFlow.connectHint")}
       onOpenNoteRef={onOpenNoteRef}
     />
   );
