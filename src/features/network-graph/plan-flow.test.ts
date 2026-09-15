@@ -16,6 +16,11 @@ import {
   collectCrossNoteReferencesTo,
   buildPlanFlowGraph,
   PLAN_FLOW_MAX_DEPTH,
+  PLANNED_INPUT_SEPARATOR,
+  parsePlannedInputs,
+  formatPlannedInputs,
+  resolvePlannedRow,
+  wouldCreatePlannedCycle,
   type OperationRow,
 } from "./plan-flow";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -128,6 +133,35 @@ describe("collectOperationRows", () => {
     expect(rows.map((r) => r.name)).toEqual(["合成", "洗浄"]);
     expect(rows[0]).toMatchObject({ noteId: "note-a", attrs: [{ label: "条件: 800C" }] });
     expect(rows[1]).toMatchObject({ noteId: "note-b", attrs: [] }); // 空セルは出さない
+  });
+
+  it("planned-input 列は plannedFrom に読み、attrs には混ざらない", () => {
+    const doc = makeDoc({
+      blocks: [
+        tableBlock("t1", [
+          ["工程", "入力元", "条件"],
+          ["焼成", "合成、洗浄", "800C"],
+        ]),
+      ],
+      tableMeta: {
+        t1: {
+          noteLinks: { 焼成: "note-b" },
+          columns: { 工程: ["note-link"], 入力元: ["planned-input"] },
+        },
+      },
+    });
+    const rows = collectOperationRows(doc);
+    expect(rows[0].plannedFrom).toEqual(["合成", "洗浄"]);
+    expect(rows[0].attrs).toEqual([{ label: "条件: 800C" }]); // 入力元列は attrs に出ない
+  });
+
+  it("planned-input 列が無い表は plannedFrom が空配列", () => {
+    const doc = makeDoc({
+      blocks: [tableBlock("t1", [["工程"], ["合成"]])],
+      tableMeta: { t1: { noteLinks: { 合成: "note-a" }, columns: { 工程: ["note-link"] } } },
+    });
+    const rows = collectOperationRows(doc);
+    expect(rows[0].plannedFrom).toEqual([]);
   });
 
   it("note-link 列が無い表は無視する", () => {
@@ -283,6 +317,7 @@ function linearRows(names: [string, string][]): OperationRow[] {
     name,
     noteId,
     attrs: [],
+    plannedFrom: [],
   }));
 }
 
@@ -424,7 +459,7 @@ describe("buildPlanFlowGraph", () => {
 
   it("未作成行は entity 無しの step だけ出す", () => {
     const rows: OperationRow[] = [
-      { rowIndex: 1, tableBlockId: "t1", name: "未作成", noteId: null, attrs: [], state: "unlinked" },
+      { rowIndex: 1, tableBlockId: "t1", name: "未作成", noteId: null, attrs: [], state: "unlinked", plannedFrom: [] },
     ];
     const result = buildPlanFlowGraph({ rows, index: makeIndex([]), processIndex: null });
     expect(result.graph.steps).toEqual([
@@ -494,8 +529,8 @@ describe("buildPlanFlowGraph", () => {
 
   it("trashed/archived の工程ノートは工程チェーンを辿らない（entity 無しの step だけ）", () => {
     const rows: OperationRow[] = [
-      { rowIndex: 1, tableBlockId: "t1", name: "合成", noteId: "note-a", attrs: [], state: "trashed" },
-      { rowIndex: 2, tableBlockId: "t1", name: "焼成", noteId: "note-b", attrs: [], state: "archived" },
+      { rowIndex: 1, tableBlockId: "t1", name: "合成", noteId: "note-a", attrs: [], state: "trashed", plannedFrom: [] },
+      { rowIndex: 2, tableBlockId: "t1", name: "焼成", noteId: "note-b", attrs: [], state: "archived", plannedFrom: [] },
     ];
     const processIndex = makeProcessIndex([
       processEntry({ noteId: "note-a", graph: emptyGraph() }),
@@ -625,6 +660,251 @@ describe("buildPlanFlowGraph", () => {
     const rows = linearRows([["起点", "note-0"]]);
     const result = buildPlanFlowGraph({ rows, index, processIndex: null });
     expect(result.truncated).toBe(true);
+  });
+});
+
+// ── parsePlannedInputs / formatPlannedInputs ──
+
+describe("parsePlannedInputs", () => {
+  it("「、」「,」「，」「;」「\\n」のいずれでも分割する", () => {
+    expect(parsePlannedInputs("合成、焼成,洗浄，乾燥;検品\n出荷")).toEqual([
+      "合成",
+      "焼成",
+      "洗浄",
+      "乾燥",
+      "検品",
+      "出荷",
+    ]);
+  });
+
+  it("各名前を trim し、先頭 @ を外す", () => {
+    expect(parsePlannedInputs("@合成、 焼成 ")).toEqual(["合成", "焼成"]);
+  });
+
+  it("大文字小文字を区別せず重複を除く（先に出た表記を残す）", () => {
+    expect(parsePlannedInputs("合成、GO、go、合成")).toEqual(["合成", "GO"]);
+  });
+
+  it("空セルは空配列", () => {
+    expect(parsePlannedInputs("")).toEqual([]);
+    expect(parsePlannedInputs("   ")).toEqual([]);
+  });
+});
+
+describe("formatPlannedInputs", () => {
+  it("PLANNED_INPUT_SEPARATOR で結合する", () => {
+    expect(formatPlannedInputs(["合成", "焼成"])).toBe(`合成${PLANNED_INPUT_SEPARATOR}焼成`);
+  });
+
+  it("空配列は空文字", () => {
+    expect(formatPlannedInputs([])).toBe("");
+  });
+});
+
+// ── resolvePlannedRow ──
+
+function planRow(overrides: Partial<OperationRow> & { name: string; noteId: string | null; rowIndex: number }): OperationRow {
+  return {
+    tableBlockId: "t1",
+    attrs: [],
+    plannedFrom: [],
+    ...overrides,
+  };
+}
+
+describe("resolvePlannedRow", () => {
+  const rows: OperationRow[] = [
+    planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+    planRow({ rowIndex: 2, name: "@焼成", noteId: "note-b" }),
+  ];
+
+  it("先頭 @ を外し trim・小文字で行名と一致させる", () => {
+    expect(resolvePlannedRow(rows, "合成")?.noteId).toBe("note-a");
+    expect(resolvePlannedRow(rows, "@合成")?.noteId).toBe("note-a");
+    expect(resolvePlannedRow(rows, "焼成")?.noteId).toBe("note-b"); // 行側が @ 付きでも一致
+    expect(resolvePlannedRow(rows, "ゴウセイ")).toBeNull();
+  });
+
+  it("同名の行は先勝ち", () => {
+    const dup: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-first" }),
+      planRow({ rowIndex: 2, name: "合成", noteId: "note-second" }),
+    ];
+    expect(resolvePlannedRow(dup, "合成")?.noteId).toBe("note-first");
+  });
+});
+
+// ── wouldCreatePlannedCycle ──
+
+describe("wouldCreatePlannedCycle", () => {
+  it("自己参照は常に true", () => {
+    const rows: OperationRow[] = [planRow({ rowIndex: 1, name: "合成", noteId: "note-a" })];
+    expect(wouldCreatePlannedCycle(rows, "合成", "合成")).toBe(true);
+  });
+
+  it("直接循環（B の入力元が A、A の入力元に B を足そうとする）は true", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "A", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "B", noteId: "note-b", plannedFrom: ["A"] }),
+    ];
+    expect(wouldCreatePlannedCycle(rows, "B", "A")).toBe(true);
+  });
+
+  it("間接循環（A→B→C のとき C→A を足そうとする）は true", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "A", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "B", noteId: "note-b", plannedFrom: ["A"] }),
+      planRow({ rowIndex: 3, name: "C", noteId: "note-c", plannedFrom: ["B"] }),
+    ];
+    expect(wouldCreatePlannedCycle(rows, "C", "A")).toBe(true);
+  });
+
+  it("循環にならない組み合わせは false", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "A", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "B", noteId: "note-b", plannedFrom: ["A"] }),
+      planRow({ rowIndex: 3, name: "C", noteId: "note-c" }),
+    ];
+    expect(wouldCreatePlannedCycle(rows, "A", "C")).toBe(false);
+  });
+});
+
+// ── buildPlanFlowGraph: 予定の線（planned-input） ──
+
+describe("buildPlanFlowGraph 予定の線", () => {
+  it("予定だけ（実績が無い計画）: 予定の線が引かれる", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b", plannedFrom: ["合成"] }),
+    ];
+    const result = buildPlanFlowGraph({ rows, index: makeIndex([]), processIndex: null });
+    expect(result.unresolvedPlanned).toEqual([]);
+    const plannedEdges = result.graph.edges.filter((e) => e.kind === "planned");
+    expect(plannedEdges).toHaveLength(1);
+    expect(plannedEdges[0]).toMatchObject({
+      id: "planned:note:note-a:note:note-b",
+      source: "note:note-a",
+      target: "note:note-b",
+    });
+  });
+
+  it("予定と実績が一致 → used エッジが asPlanned になり、予定の線は出ない", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b", plannedFrom: ["合成"] }),
+    ];
+    const processIndex = makeProcessIndex([
+      processEntry({
+        noteId: "note-a",
+        graph: {
+          steps: [{ id: "step-a", name: "合成", params: [] }],
+          entities: [{ id: "out-a", label: "粉末", kind: "output", rowIdentity: "row-a", attrs: [] }],
+          edges: [{ id: "g1", kind: "generates", source: "step-a", target: "out-a" }],
+        },
+      }),
+      processEntry({
+        noteId: "note-b",
+        graph: { steps: [{ id: "step-b", name: "焼成", params: [] }], entities: [], edges: [] },
+        crossNoteLinks: [
+          crossLink({ id: "l-ab", targetNoteId: "note-a", targetBlockId: "step-a", targetEntityId: "row-a" }),
+        ],
+      }),
+    ]);
+    const index = makeIndex([noteEntry({ noteId: "note-a" }), noteEntry({ noteId: "note-b" })]);
+    const result = buildPlanFlowGraph({ rows, index, processIndex });
+    const usedEdge = result.graph.edges.find((e) => e.kind === "used")!;
+    expect(usedEdge.plan).toBe("asPlanned");
+    expect(result.graph.edges.filter((e) => e.kind === "planned")).toHaveLength(0);
+  });
+
+  it("予定あり計画で予定に無い実績 → unplanned が付く", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b" }), // 入力元は書いていない（計画外の実績）
+      planRow({ rowIndex: 3, name: "別工程", noteId: "note-d" }),
+      planRow({ rowIndex: 4, name: "検品", noteId: "note-c", plannedFrom: ["別工程"] }), // 計画自体は存在する
+    ];
+    const processIndex = makeProcessIndex([
+      processEntry({
+        noteId: "note-a",
+        graph: {
+          steps: [{ id: "step-a", name: "合成", params: [] }],
+          entities: [{ id: "out-a", label: "粉末", kind: "output", rowIdentity: "row-a", attrs: [] }],
+          edges: [{ id: "g1", kind: "generates", source: "step-a", target: "out-a" }],
+        },
+      }),
+      processEntry({
+        noteId: "note-b",
+        graph: { steps: [{ id: "step-b", name: "焼成", params: [] }], entities: [], edges: [] },
+        crossNoteLinks: [
+          crossLink({ id: "l-ab", targetNoteId: "note-a", targetBlockId: "step-a", targetEntityId: "row-a" }),
+        ],
+      }),
+    ]);
+    const index = makeIndex([
+      noteEntry({ noteId: "note-a" }),
+      noteEntry({ noteId: "note-b" }),
+      noteEntry({ noteId: "note-c" }),
+      noteEntry({ noteId: "note-d" }),
+    ]);
+    const result = buildPlanFlowGraph({ rows, index, processIndex });
+    const usedEdgeAB = result.graph.edges.find((e) => e.kind === "used" && e.target === "note:note-b")!;
+    expect(usedEdgeAB.plan).toBe("unplanned");
+    // 予定はあったが実績が無い（別工程→検品）は planned の線として残る
+    expect(
+      result.graph.edges.some(
+        (e) => e.kind === "planned" && e.source === "note:note-d" && e.target === "note:note-c",
+      ),
+    ).toBe(true);
+  });
+
+  it("予定 0 本なら used エッジに plan を一切付けない", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b" }),
+    ];
+    const processIndex = makeProcessIndex([
+      processEntry({
+        noteId: "note-a",
+        graph: {
+          steps: [{ id: "step-a", name: "合成", params: [] }],
+          entities: [{ id: "out-a", label: "粉末", kind: "output", rowIdentity: "row-a", attrs: [] }],
+          edges: [{ id: "g1", kind: "generates", source: "step-a", target: "out-a" }],
+        },
+      }),
+      processEntry({
+        noteId: "note-b",
+        graph: { steps: [{ id: "step-b", name: "焼成", params: [] }], entities: [], edges: [] },
+        crossNoteLinks: [
+          crossLink({ id: "l-ab", targetNoteId: "note-a", targetBlockId: "step-a", targetEntityId: "row-a" }),
+        ],
+      }),
+    ]);
+    const index = makeIndex([noteEntry({ noteId: "note-a" }), noteEntry({ noteId: "note-b" })]);
+    const result = buildPlanFlowGraph({ rows, index, processIndex });
+    const usedEdge = result.graph.edges.find((e) => e.kind === "used")!;
+    expect(usedEdge.plan).toBeUndefined();
+    expect(result.graph.edges.filter((e) => e.kind === "planned")).toHaveLength(0);
+  });
+
+  it("解決できない入力元名は unresolvedPlanned に積んで無視する", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "確認", noteId: "note-c", plannedFrom: ["存在しない工程"] }),
+    ];
+    const result = buildPlanFlowGraph({ rows, index: makeIndex([]), processIndex: null });
+    expect(result.unresolvedPlanned).toEqual([{ rowName: "確認", name: "存在しない工程" }]);
+    expect(result.graph.edges.filter((e) => e.kind === "planned")).toHaveLength(0);
+  });
+
+  it("未作成行（noteId null）も予定の線の端点になれる", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: null }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b", plannedFrom: ["合成"] }),
+    ];
+    const result = buildPlanFlowGraph({ rows, index: makeIndex([]), processIndex: null });
+    const plannedEdges = result.graph.edges.filter((e) => e.kind === "planned");
+    expect(plannedEdges).toHaveLength(1);
+    expect(plannedEdges[0]).toMatchObject({ source: "row:t1:1", target: "note:note-b" });
   });
 });
 
