@@ -1039,6 +1039,8 @@ export const en: Record<string, string> = {
   "nav.applyContextsTooltip": "Add all selected notes to a folder at once",
   "nav.contextPlaceholder": "Search folders, or type to create…",
   "nav.createContext": "Create folder \"{value}\"",
+  "nav.fixNewFolder": "Fix the name (only for a folder you just created)",
+  "nav.fixNewFolderAria": "Fix the name of the folder \"{value}\"",
   "nav.clearContexts": "Remove from all folders",
   "nav.contextEmpty": "No folders yet",
   "nav.removeContext": "Remove from folder",
@@ -1390,6 +1392,9 @@ export const en: Record<string, string> = {
   "asset.archivedSection": "Archived media",
   "asset.restore": "Restore to library",
   "asset.usedInCount": "Used in {count} notes",
+  "asset.foldersTooltip": "Folders this material is in (a material can be in more than one)",
+  "asset.folderFromNote": "Comes from a note that uses this material. Change it on the note to take it out",
+  "asset.applyFoldersTooltip": "Put the selected materials into a folder, or take them out, all at once",
   "asset.pdfExtractImages.button": "Extract embedded images",
   "asset.pdfExtractImages.help": "Pull image objects embedded in the PDF and register them as image assets (vector figures and tables are not supported).",
   "asset.pdfExtractImages.running": "Extracting...",
@@ -2014,8 +2019,6 @@ export const en: Record<string, string> = {
   "nav.outgoingTooltip": "Outgoing links (notes this note references)",
   "nav.incomingTooltip": "Incoming links (times this note is referenced by others)",
   "nav.removeContextValue": "Remove from \"{value}\"",
-  "nav.deleteContextOptionAria": "Delete the folder \"{value}\" (notes inside become Unfiled)",
-  "nav.deleteContextOptionTooltip": "Delete this folder. The notes inside are not deleted — they become Unfiled.",
   "nav.contextSaveFailed": "Failed to save folders. Please try again.",
 
   // Skill 一覧・ダイアログ

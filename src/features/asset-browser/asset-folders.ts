@@ -67,3 +67,22 @@ export function assetFolderValues(
 ): string[] {
   return resolveAssetFolders(entry, lookup).map((f) => f.value);
 }
+
+/**
+ * 選んだ素材の**全部に自分で付いている**フォルダ（一括の付け外し用）。
+ * 一括ピッカーでチェック済みに見せ、外すと全件から外れるようにする。
+ * 一部にしか付いていないものは含めない（チェックを入れると全件に付く）。
+ * ノート由来は外せないので数えない。表示は先頭の素材の表記を使う。
+ */
+export function commonOwnFolders(
+  entries: readonly Pick<MediaIndexEntry, "noteContexts">[],
+): string[] {
+  if (entries.length === 0) return [];
+  const [first, ...rest] = entries;
+  const restKeys = rest.map(
+    (e) => new Set((normalizeNoteContexts(e.noteContexts) ?? []).map((c) => c.toLowerCase())),
+  );
+  return (normalizeNoteContexts(first.noteContexts) ?? []).filter((c) =>
+    restKeys.every((keys) => keys.has(c.toLowerCase())),
+  );
+}

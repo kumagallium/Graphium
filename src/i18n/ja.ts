@@ -1040,6 +1040,8 @@ export const ja: Record<string, string> = {
   "nav.applyContextsTooltip": "選択したノートをまとめてフォルダに入れます",
   "nav.contextPlaceholder": "フォルダを検索、なければ入力して作成…",
   "nav.createContext": "フォルダ「{value}」を作る",
+  "nav.fixNewFolder": "名前を直す（作ったばかりのフォルダだけ直せます）",
+  "nav.fixNewFolderAria": "フォルダ「{value}」の名前を直す",
   "nav.clearContexts": "すべてのフォルダから出す",
   "nav.contextEmpty": "まだフォルダがありません",
   "nav.removeContext": "フォルダから出す",
@@ -1390,6 +1392,9 @@ export const ja: Record<string, string> = {
   "asset.archivedSection": "アーカイブした素材",
   "asset.restore": "一覧に戻す",
   "asset.usedInCount": "{count} 件のノートで使用",
+  "asset.foldersTooltip": "素材を入れるフォルダ（1 つの素材を複数のフォルダに入れられます）",
+  "asset.folderFromNote": "使っているノートのフォルダです。出すときはノートのほうで変えてください",
+  "asset.applyFoldersTooltip": "選択した素材をまとめてフォルダに入れたり、出したりします",
   "asset.pdfExtractImages.button": "埋め込み画像を抽出",
   "asset.pdfExtractImages.help": "PDF に埋め込まれている画像オブジェクトを取り出し、画像アセットとして登録します（ベクター figure や表は対象外）。",
   "asset.pdfExtractImages.running": "抽出中...",
@@ -2013,8 +2018,6 @@ export const ja: Record<string, string> = {
   "nav.outgoingTooltip": "参照先（このノートが参照しているノート数）",
   "nav.incomingTooltip": "被参照（他ノートから参照されている数）",
   "nav.removeContextValue": "「{value}」から出す",
-  "nav.deleteContextOptionAria": "フォルダ「{value}」を削除（中のノートは未分類になります）",
-  "nav.deleteContextOptionTooltip": "このフォルダを削除します。中のノートは削除されず未分類になります",
   "nav.contextSaveFailed": "フォルダの保存に失敗しました。再度お試しください。",
 
   // Skill 一覧・ダイアログ
