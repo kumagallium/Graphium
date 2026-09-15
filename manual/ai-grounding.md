@@ -5,7 +5,7 @@ Your notes produce claims and insights — but how do they relate to what the re
 Treat the verdict as a positioning aid, not a truth oracle. It tells you where a claim sits relative to a knowledge base — the final call on whether your claim holds always stays with you.
 
 ::: info Requirements
-World grounding is part of Graphium's AI features, so you need the [desktop app](/desktop-app) and at least one registered model — see [AI setup](/ai-setup). Evidence from Wikipedia and OpenAlex works out of the box with no API keys; adding a web-search MCP server (for example Tavily) broadens the evidence to the general web.
+World grounding is part of Graphium's AI features, so you need the [desktop app](/desktop-app) and at least one registered model — see [AI setup](/ai-setup). Evidence from Wikipedia and OpenAlex works out of the box with no API keys; adding a web-search MCP server (for example Tavily) broadens the evidence to the general web. It's also gated by the **Use world grounding** switch in **Settings** → **AI** — off the first time you use Graphium, on if you've used it before — so turn it on if the **Check world** button described below is missing.
 :::
 
 ## Checking a claim against the world <Badge type="tip" text="Added in v0.8.0 (2026-05-21)" />
@@ -53,7 +53,7 @@ With the toggle on, newly created claims and insights are checked one at a time 
 
 ## The world-grounding model
 
-In the same **World grounding** section of **Settings** → **AI** you can pick a dedicated **World-grounding model**. Left empty (**Same as Chat & Insight model**), grounding uses your Chat & Insight model and then falls back to the default model — you usually don't need to set this separately.
+In the same **World grounding** section of **Settings** → **AI** you can pick a dedicated **World-grounding model**. Left empty (**Same as chat model**), grounding uses your chat model and then falls back to the default model — you usually don't need to set this separately.
 
 See [AI setup](/ai-setup) for registering models and the other model assignments.
 

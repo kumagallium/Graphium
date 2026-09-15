@@ -65,11 +65,13 @@ Under **Model assignment**, you decide which registered model handles which job.
 | Assignment | Used for |
 |---|---|
 | **Default model** | Fallback for everything, and directly for background tasks (ingest, lint, rewrite, cross-update) |
-| **Chat & Insight model** | [AI Chat](/ai-chat-and-ask) and Insight generation. Falls back to the default model when empty |
+| **Chat model** | [AI Chat](/ai-chat-and-ask). Falls back to the default model when empty |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving |
-| **World-grounding model** | Judging claims against world knowledge on [world grounding](/ai-grounding) checks. Falls back to the Chat & Insight model, then the default — you usually don't need to set it |
 
-The **World grounding** section also has an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
+Below **Model assignment**, two more sections each have their own on/off switch — **Use world grounding** and **Use insights** — off the first time you use Graphium, on if you've used it before (turning either off just hides its buttons and results; nothing already saved is lost):
+
+- **World grounding**: a **World-grounding model** (optional, falls back to the chat model, then the default — you usually don't need to set it) and an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
+- **Insight discovery**: an **Insight model** (optional, falls back to the chat model, then the default) plus **Test insight model**, covered below.
 
 ### How capable a model does each job need?
 
@@ -78,15 +80,15 @@ Graphium is model-agnostic, but the jobs are not equally demanding. A rough guid
 | Job | What it demands | Works well with |
 |---|---|---|
 | Claim extraction, topic grouping, chat | Careful reading and faithful extraction | Most mid-size and larger models, including good local ones |
-| **Insight generation** (abstraction across Claims) | The hardest step in the pipeline: lifting domain findings into transferable rules without diluting them into platitudes | **A frontier-tier model** — for example Claude Opus or Claude Sonnet, or another vendor's flagship. Assign it as the **Chat & Insight model**. "Reasoning-capable" or merely large is not enough by itself: in our testing, a 120B-class open reasoning model produced only restatements of the Claims where a frontier model found real cross-Claim patterns |
+| **Insight generation** (abstraction across Claims) | The hardest step in the pipeline: lifting domain findings into transferable rules without diluting them into platitudes | **A frontier-tier model** — for example Claude Opus or Claude Sonnet, or another vendor's flagship. Assign it as the **Insight model** in the **Insight discovery** section. "Reasoning-capable" or merely large is not enough by itself: in our testing, a 120B-class open reasoning model produced only restatements of the Claims where a frontier model found real cross-Claim patterns |
 | Procedure structuring (PROV extraction) | Strict structured output over long documents | Frontier-tier models are the most reliable here too |
 | Embeddings | An embeddings endpoint (not chat) | An embedding-capable model — use **Test embedding** to verify before saving |
 
-If Insights seem rare or read like restatements of your Claims, switch only the **Chat & Insight model** to a stronger one and run discovery again — the [FAQ](/faq) walks through this one-variable experiment.
+If Insights seem rare or read like restatements of your Claims, switch only the **Insight model** to a stronger one and run discovery again — the [FAQ](/faq) walks through this one-variable experiment.
 
 ### Test insight model <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />
 
-Rather than trusting a recommendation, you can measure the model you picked. **Test insight model**, next to the Chat & Insight model selector, runs the selected model once over three bundled test Claims about bread-making and shows the Insights it produced right there.
+Rather than trusting a recommendation, you can measure the model you picked. In the **Insight discovery** section (turn on **Use insights** to reveal it), **Test insight model** next to the Insight model selector runs the selected model once over three bundled test Claims about bread-making and shows the Insights it produced right there.
 
 ![Test insight model, with the bundled Claims and the expected answer expanded](/screenshots/settings-insight-test.png)
 
