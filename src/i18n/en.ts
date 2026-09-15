@@ -2746,6 +2746,7 @@ export const en: Record<string, string> = {
   "planFlow.truncated": "Nesting is too deep to expand further",
   "planFlow.emptyTitle": "No operations yet",
   "planFlow.emptyHint": "Use \"Add operation\" to add a row to the table; operations appear here",
+  "planFlow.connectHint": "Lines between operations appear when a step in the later operation note picks the earlier operation's output as an input",
   "planFlow.workStepsEmptyHint": "Use \"Add step\" to build the steps here",
   "localView.title": "Timeline around this note",
   "localView.origin": "Origin",

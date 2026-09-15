@@ -1543,13 +1543,16 @@ function SidePeekInner({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 28,
+              gap: 4,
               height: 28,
+              padding: "0 8px",
               borderRadius: 4,
               border: "none",
               background: "transparent",
               cursor: "pointer",
               color: "var(--color-text-tertiary)",
+              fontSize: 11,
+              whiteSpace: "nowrap",
               transition: "background 0.15s",
             }}
             onMouseEnter={(e) => {
@@ -1559,7 +1562,8 @@ function SidePeekInner({
               (e.currentTarget as HTMLElement).style.background = "transparent";
             }}
           >
-            <Waypoints size={16} strokeWidth={2} />
+            <Waypoints size={14} strokeWidth={2} />
+            {t("localView.title")}
           </button>
         )}
 
