@@ -402,8 +402,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
   // ツール
 
-  // Maintenance タブ — Wiki 一括 Regenerate
-  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["topic", "claim", "summary", "atom"]));
+  // Maintenance タブ — Wiki 一括 Regenerate（summary は対象外。PR3 で新規生成パイプライン撤退）
+  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["topic", "claim", "atom"]));
   const [bulkModelOverride, setBulkModelOverride] = useState("");
   const [bulkSynthesisModelOverride, setBulkSynthesisModelOverride] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -3728,8 +3728,9 @@ function MaintenanceTab({
   onReembedAllWikis,
 }: MaintenanceTabProps) {
   // synthesis（発想）は UI 動線から非表示（design revision 2026-05-27）。
-  // 既存 synthesis ファイルの物理データは保持するが、一括 Regenerate の対象には出さない。
-  const KINDS: WikiKind[] = ["topic", "claim", "summary", "atom"];
+  // summary（要約）は新規生成パイプラインが撤退済み（PR3、話題(topic)が役割を引き継ぐ）。
+  // どちらも既存ファイルの物理データは保持するが、一括 Regenerate の対象には出さない。
+  const KINDS: WikiKind[] = ["topic", "claim", "atom"];
   const [cancelling, setCancelling] = useState(false);
   // 一括再生成 / 洞察発見の進行中 fetch を切るためのハンドル。キャンセルで abort() する。
   const bulkAbortRef = useRef<AbortController | null>(null);

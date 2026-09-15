@@ -1088,6 +1088,8 @@ export const en: Record<string, string> = {
   // Wiki list
   "wikiList.crumbWiki": "Knowledge",
   "wikiList.kindSummary": "Summaries",
+  // Sidebar label for the trailing "Previous Summaries" row (PR3: generation stopped, existing files only)
+  "wikiList.kindSummaryLegacy": "Earlier summaries",
   "wikiList.kindClaim": "Claims",
   "wikiList.kindAtom": "Insights",
   "wikiList.kindSynthesis": "Ideas",
@@ -1170,6 +1172,7 @@ export const en: Record<string, string> = {
   // procedureContext — Phase 2.3
   "wikiBanner.regenerate": "Regenerate",
   "wikiBanner.regenerateHint": "Regenerate with the model configured in Settings (Insights use the Chat & Insight model; others use the Default model)",
+  "wiki.summaryRetiredHint": "Summaries have been replaced by Topics. This page stays as it is.",
   "wikiBanner.procedureContextTitle": "Procedure this claim depends on",
   "wikiBanner.procedureContextHint": "LLM-inferred procedure, parameters, and tools the claim relies on",
   "wikiBanner.procedureProtocol": "Protocol",

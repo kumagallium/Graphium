@@ -14,7 +14,7 @@ Open a knowledge item — **Claims** or **Insights** under **Knowledge** in the 
 
 ![A claim open in the editor, with the Check world button and a verdict chip in the banner](/screenshots/world-grounding-verdict.png)
 
-Clicking it runs the check and stores the result on that knowledge item: a verdict, a rationale, and sources. A progress toast keeps you posted while it runs. **Summaries** cannot be grounded — they describe one of your notes rather than assert something about the world.
+Clicking it runs the check and stores the result on that knowledge item: a verdict, a rationale, and sources. A progress toast keeps you posted while it runs. **Summaries** (a legacy page type, no longer generated — see [Knowledge layer](/knowledge-layer)) cannot be grounded — they describe one of your notes rather than assert something about the world.
 
 You can also ground several items at once. In the Claims or Insights list, a **World** column shows the latest verdict for each row (sortable by verdict strength). Select rows with the checkboxes and click **Check world** with the selection count — running it again overwrites the previous verdict, so the same button doubles as a re-check.
 

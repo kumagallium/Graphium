@@ -213,7 +213,15 @@ const sampleNoteIndex: GraphiumIndex = {
 };
 
 export const Summary: StoryObj = {
-  name: "Summary — 基本",
+  name: "以前の要約（再生成なし・案内あり）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "要約(summary)の新規生成は撤退済み（PR3、話題(topic)が役割を引き継ぐ）。既存の要約ページはそのまま閲覧・削除できるが、Regenerate ボタンは出さず「要約は話題に置き換わりました。このページはそのまま残ります」の案内テキストに差し替える。",
+      },
+    },
+  },
   render: () => <Wrapper wikiMeta={baseMeta} />,
 };
 

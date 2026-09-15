@@ -757,20 +757,23 @@ Notes:
   (noun phrases, in the note's language) grouping it by concept. Topics never
   participate in the hourglass — the Atomizer only ever sees Claims.
 - **Note mode vs document mode.** For a short personal note the ingester emits
-  a Summary plus 0-3 Claims (the "1 note ≈ 1 idea" assumption). When the source
-  is an **imported external document** — its `noteId` carries a `pdf:` /
-  `document:` / `url:` / `chat:` prefix (the external-source convention) — the
-  ingester switches to *document mode*: it harvests every distinct transferable
-  insight the document argues as its own Claim, with no fixed cap, so a dense
-  article is not collapsed into a single headline Claim. Memo-derived sources
-  (`memo:` prefix) get a third mode, *memo mode*: a memo is a short captured
-  fragment that usually carries exactly one spark, so the ingester is told to
-  extract that one insight as a Claim even from a quote or anecdote (instead
-  of falling back to Summary-only, which the conservative note-mode guidance
-  tends to do on short fragments) — while still emitting zero Claims when the
-  memo genuinely carries nothing transferable. Both switches are decided in
-  `src/server/routes/wiki.ts` and change only the Claim guidance inside
-  `buildIngesterSystemPrompt`.
+  0-3 Claims, each tagged with 1-3 proposed Topics (the "1 note ≈ 1 idea"
+  assumption). When the source is an **imported external document** — its
+  `noteId` carries a `pdf:` / `document:` / `url:` / `chat:` prefix (the
+  external-source convention) — the ingester switches to *document mode*: it
+  harvests every distinct transferable insight the document argues as its own
+  Claim, with no fixed cap, so a dense article is not collapsed into a single
+  headline Claim. Memo-derived sources (`memo:` prefix) get a third mode,
+  *memo mode*: a memo is a short captured fragment that usually carries
+  exactly one spark, so the ingester is told to extract that one insight as a
+  Claim even from a quote or anecdote — while still emitting zero Claims when
+  the memo genuinely carries nothing transferable. All three modes are decided
+  in `src/server/routes/wiki.ts` and change only the Claim guidance inside
+  `buildIngesterSystemPrompt`. (A fourth wiki kind, Summary, used to be generated
+  as a private per-note recap; generation stopped when Topics arrived, since
+  Topics now carry that grouping role — existing Summary files remain
+  readable, listed, searchable, and deletable, see
+  [DATA_MODEL.md §3.1](./DATA_MODEL.md#31-kind-semantics) (kind semantics).)
 - **Failure handling:** retries are not centralized today. Each stage
   surfaces its own errors back through the response. AI-setup and
   authentication failures additionally carry a machine-readable `code`

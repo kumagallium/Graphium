@@ -365,7 +365,7 @@ describe("buildWikiDocument - relatedClaims の自己参照抑止", () => {
       "ja",
       undefined,
       "self-id",
-    );
+    )!;
     const links = doc.pages[0].knowledgeLinks as any[];
     expect(links.some((l) => l.targetNoteId === "self-id")).toBe(false);
   });
@@ -376,7 +376,7 @@ describe("buildWikiDocument - relatedClaims の自己参照抑止", () => {
     const selfTitle = "同名の知見";
     const output = ingesterOutput(selfTitle, [{ title: selfTitle, citation: "根拠" }]);
     const existingWikiTitles = [{ id: "other-id", title: selfTitle }];
-    const doc = buildWikiDocument(output, "source-note", null, "Source Note", existingWikiTitles, "ja");
+    const doc = buildWikiDocument(output, "source-note", null, "Source Note", existingWikiTitles, "ja")!;
     const links = doc.pages[0].knowledgeLinks as any[];
     expect(links.some((l) => l.targetNoteId === "other-id")).toBe(false);
   });
@@ -393,9 +393,25 @@ describe("buildWikiDocument - relatedClaims の自己参照抑止", () => {
       "ja",
       undefined,
       "self-id",
-    );
+    )!;
     const links = doc.pages[0].knowledgeLinks as any[];
     expect(links.some((l) => l.targetNoteId === "other-id")).toBe(true);
+  });
+});
+
+describe("buildWikiDocument - summary の新規生成停止（PR3）", () => {
+  it("kind が summary の場合は null を返し、保存対象を作らない", () => {
+    const output: IngesterOutput = {
+      kind: "summary",
+      title: "旧要約タイトル",
+      sections: [{ heading: "", content: "本文" }],
+      suggestedAction: "create",
+      confidence: 0.7,
+      relatedClaims: [],
+      externalReferences: [],
+    };
+    const doc = buildWikiDocument(output, "source-note", null, "Source Note", [], "ja");
+    expect(doc).toBeNull();
   });
 });
 

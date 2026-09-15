@@ -371,28 +371,42 @@ export function WikiBanner({
             </button>
           )}
 
-          {/* Regenerate — モデルは設定（Default / Chat & Synthesis）に従う */}
-          <button
-            onClick={onRegenerate}
-            disabled={loading}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "4px 8px",
-              borderRadius: "var(--r-1)",
-              border: "1px solid var(--rule)",
-              background: "var(--paper)",
-              color: "var(--ink-2)",
-              fontSize: 11,
-              cursor: "pointer",
-              opacity: loading ? 0.5 : 1,
-            }}
-            title={t("wikiBanner.regenerateHint")}
-          >
-            <RefreshCw size={12} />
-            {t("wikiBanner.regenerate")}
-          </button>
+          {/* Regenerate — モデルは設定（Default / Chat & Synthesis）に従う。
+              summary は新規生成パイプラインが撤退済み（PR3）なので再生成ボタンは出さず、
+              話題(topic)に置き換わったことを伝える 1 行の案内に差し替える。 */}
+          {wikiMeta.kind === "summary" ? (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--ink-3)",
+                padding: "4px 2px",
+              }}
+            >
+              {t("wiki.summaryRetiredHint")}
+            </span>
+          ) : (
+            <button
+              onClick={onRegenerate}
+              disabled={loading}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 8px",
+                borderRadius: "var(--r-1)",
+                border: "1px solid var(--rule)",
+                background: "var(--paper)",
+                color: "var(--ink-2)",
+                fontSize: 11,
+                cursor: "pointer",
+                opacity: loading ? 0.5 : 1,
+              }}
+              title={t("wikiBanner.regenerateHint")}
+            >
+              <RefreshCw size={12} />
+              {t("wikiBanner.regenerate")}
+            </button>
+          )}
 
           {/* Delete */}
           <button

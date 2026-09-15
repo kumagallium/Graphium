@@ -1089,6 +1089,8 @@ export const ja: Record<string, string> = {
   // Wiki 一覧
   "wikiList.crumbWiki": "ナレッジ",
   "wikiList.kindSummary": "要約",
+  // サイドバー末尾に出す「以前の要約」ラベル（PR3。新規生成は停止済みで既存ファイルのみ残る）
+  "wikiList.kindSummaryLegacy": "以前の要約",
   "wikiList.kindClaim": "知見",
   "wikiList.kindAtom": "洞察",
   "wikiList.kindSynthesis": "発想",
@@ -1171,6 +1173,7 @@ export const ja: Record<string, string> = {
   // 手順条件（procedureContext）— Phase 2.3
   "wikiBanner.regenerate": "再生成",
   "wikiBanner.regenerateHint": "設定で選んだモデルで再生成（洞察は Chat & Insight モデル、それ以外は Default モデル）",
+  "wiki.summaryRetiredHint": "要約は話題に置き換わりました。このページはそのまま残ります",
   "wikiBanner.procedureContextTitle": "この主張の手順条件",
   "wikiBanner.procedureContextHint": "この知見の妥当性が依存する手順・パラメータ・ツールを LLM が推定したもの",
   "wikiBanner.procedureProtocol": "関連手順",

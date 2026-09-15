@@ -1,6 +1,6 @@
 # Knowledge layer
 
-Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the four kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
+Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the three kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
 
 ::: info Needs AI
 The Knowledge layer runs only with an AI backend, which ships inside the [desktop app](/desktop-app), with at least one model registered. See [AI setup](/ai-setup). In the browser preview the **Knowledge** section shows an upgrade notice instead.
@@ -12,22 +12,23 @@ A lab note answers "what happened on Tuesday". A knowledge page answers "what do
 
 Because knowledge is *derived*, regeneration is normal. When your notes change, the pages built from them can be rebuilt — knowledge follows your notes, not the other way around.
 
-## The four kinds
+## The three kinds
 
 Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics sit alongside this hourglass rather than inside it: they group claims by concept and are never fed into insight discovery.
 
 | Kind | What it is |
 |---|---|
 | **Topics** | A page that groups related claims by concept, with two-hop provenance (topic → claim → note) |
-| **Summaries** | A short AI summary of a single note |
 | **Claims** | A grounded assertion extracted from your notes |
 | **Insights** | A pattern that recurs across two or more claims |
 
 Each kind carries a semantic type badge. Claims have a role (**Finding**, **Decision**, **Anomaly**, **Question**, **Setup**, **Interpretation**, **Issue**); insights have a pattern type (**Causal**, **Mechanistic**, **Conditional**, and so on).
 
+Graphium used to generate a fourth kind, **Summaries** — a short AI recap of a single note — but generation has stopped in favor of Topics, which now carry that grouping role. If you made some before this change, they haven't gone anywhere: a **Previous Summaries** row appears at the end of the sidebar's Knowledge list whenever you have any. They can still be viewed and deleted, but not regenerated.
+
 ## Adding a note to knowledge
 
-The main entry point is the **Add to Knowledge** chip in the note editor header (it also appears in the side peek and in the note's header menu). Click it and the AI reads the note, then writes a summary and extracts claims from it.
+The main entry point is the **Add to Knowledge** chip in the note editor header (it also appears in the side peek and in the note's header menu). Click it and the AI reads the note, extracts claims from it, and groups them into topics.
 
 Progress appears in a toast at the corner of the screen — **Generating Knowledge (1/3)** — which you can collapse with **Minimize** and reopen with **Show details**. While it runs, the toast header also has a **Stop** button (■): it interrupts the in-flight AI call, keeps whatever already finished, and marks the rest **Stopped** — useful when a slow model turns out to be slower than you expected. When it finishes you'll see **Done: 2 generated**, and the chip flips to **In Knowledge**; clicking it now jumps to the generated entry. Running it again on an updated note regenerates the existing entries rather than duplicating them.
 
@@ -50,9 +51,9 @@ Prompts take trial and error, so skills support the same manual version snapshot
 
 ## Browsing knowledge
 
-The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Summaries**, **Claims**, and **Insights** with counts. Click a kind to open its list view, which offers:
+The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Claims**, and **Insights** with counts (plus **Previous Summaries** if any legacy summaries remain). Click a kind to open its list view, which offers:
 
-- Columns: **Title**, **Type**, **Sources** (how many source notes), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
+- Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many member claims it groups instead), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
 - Bulk actions on selected rows: **Regenerate 3**, **Move 3 to trash**, **Check world (3)**
 

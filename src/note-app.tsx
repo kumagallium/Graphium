@@ -4271,6 +4271,7 @@ function NoteEditorInner({
 
       // 知見候補を組み立てて即コールバック（プログレッシブ表示）。
       const claimCandidates: KnowledgeCandidate[] = claimOutputs.map((w) => {
+        // claimOutputs は kind === "claim" のみなので buildWikiDocument が null を返すことはない
         const baseDoc = buildWikiDocument(
           w,
           fileId ?? "",
@@ -4278,7 +4279,7 @@ function NoteEditorInner({
           noteTitle,
           existingWikiTitles,
           getLocale(),
-        );
+        )!;
         const doc: GraphiumDocument = citedIds.length
           ? { ...baseDoc, wikiMeta: { ...baseDoc.wikiMeta!, citedKnowledgeIds: citedIds } }
           : baseDoc;
@@ -8600,6 +8601,9 @@ export function NoteApp() {
           }
           const wikiTitleMap = existingWikis.map((w) => ({ id: w.id, title: w.title }));
           const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, getLocale(), buildNoteIndex(fm.noteIndex));
+          // summary は新規生成を停止済み（サーバー側の parseIngesterOutput で既に弾かれる想定だが、
+          // buildWikiDocument も null を返す二重防御になっているのでここで自然にスキップする）
+          if (!wikiDoc) continue;
           // 使用した Skill を記録
           if (ingestSkills.length > 0 && wikiDoc.wikiMeta) {
             wikiDoc.wikiMeta.skillsUsed = ingestSkills.map((s) => s.title);
@@ -9709,6 +9713,7 @@ export function NoteApp() {
         }
         for (const wiki of result.wikis) {
           const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+          if (!wikiDoc) continue; // summary は新規生成を停止済み
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
         }
@@ -9744,6 +9749,7 @@ export function NoteApp() {
     const isSynthesis = wikiKind === "synthesis";
     const isAtom = wikiKind === "atom";
     const isTopic = wikiKind === "topic";
+    const isSummary = wikiKind === "summary";
 
     setIngestToast((prev) => ({
       items: [
@@ -9901,6 +9907,16 @@ export function NoteApp() {
           ),
         }));
         return { ok: true };
+      } else if (isSummary) {
+        // 要約(summary)の新規生成パイプラインは撤退（PR3）。話題(topic)が役割を引き継ぐ。
+        // 既存 summary ファイルは閲覧・削除できるが regenerate は不可。
+        const errMsg = tStatic("wiki.summaryRetiredHint");
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+          ),
+        }));
+        return { ok: false, error: errMsg };
       } else if (isSynthesis) {
         // Synthesis 自動生成パイプラインは撤退（2026-05-27、design revision）。
         // 既存 synthesis ファイルは閲覧・編集できるが regenerate は不可。
@@ -10042,6 +10058,8 @@ export function NoteApp() {
           null;
 
         if (matched) {
+          // このブランチに来る時点で targetKind は summary ではない（isSummary は専用ブランチで
+          // 先に return 済み）ので buildWikiDocument が null を返すことはない
           const newDoc = buildWikiDocument(
             matched,
             // sourceNoteTitle 表示用に primary を 1 件渡す。実際の derivedFromNotes は
@@ -10053,7 +10071,7 @@ export function NoteApp() {
             getLocale(),
             buildNoteIndex(fm.noteIndex),
             wikiId,
-          );
+          )!;
           // derivedFromNotes は **元の配列をそのまま保持** する。
           // 自己参照（wikiId）と取得失敗ソースだけ落として保存する設計。
           const preservedDerivedFromNotes = (doc.wikiMeta?.derivedFromNotes ?? []).filter(
@@ -10664,6 +10682,7 @@ export function NoteApp() {
                     }
                     for (const wiki of result.wikis) {
                       const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                      if (!wikiDoc) continue; // summary は新規生成を停止済み
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
@@ -10691,6 +10710,7 @@ export function NoteApp() {
                     }
                     for (const wiki of result.wikis) {
                       const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                      if (!wikiDoc) continue; // summary は新規生成を停止済み
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
@@ -10721,6 +10741,7 @@ export function NoteApp() {
                     }
                     for (const wiki of result.wikis) {
                       const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                      if (!wikiDoc) continue; // summary は新規生成を停止済み
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
@@ -11751,6 +11772,7 @@ export function NoteApp() {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
                   for (const wiki of result.wikis) {
                     const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                    if (!wikiDoc) continue; // summary は新規生成を停止済み
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                   }

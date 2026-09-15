@@ -151,31 +151,33 @@ export function buildIngesterSystemPrompt(
 
   // 取り込んだ外部文書（PDF / Word / URL / チャット）は通常、複数の転用可能な知見を主張する。
   // 短い個人ノート前提の「0-3 件」「ユーザー自身の経験」枠のままだと、文書を読み切ってリッチな
-  // Summary を作っても見出し級の 1 件だけを Claim に昇格させ、残りを Summary に埋もれさせる過少
-  // 抽出が起きる（ALCOA 資料で実観測）。文書モードでは以下のブロックでその既定を上書きする。
+  // 旧 Summary が存在した頃は、文書を読み切ってリッチな Summary を作っても見出し級の
+  // 1 件だけを Claim に昇格させ、残りを Summary に埋もれさせる過少抽出が起きていた
+  // （ALCOA 資料で実観測）。Summary は撤退済み（PR3）だが、この過少抽出そのものは
+  // Claim 単体でも起き得るため、文書モードでは以下のブロックで既定の抽出件数を上書きする。
   const isDocument = opts?.isDocument === true;
   // メモ（capture）は「1 断片 ≈ 1 着想」の走り書き。通常ノート前提の保守的な
   // 0-3 件ガイダンスのままだと、引用・エピソード型の短い断片が「主張ではない」
-  // として Claim 0 件（Summary のみ）に倒れやすい（実観測）。memo モードでは
+  // として Claim 0 件に倒れやすい（実観測）。memo モードでは
   // 「短さを理由に落とさず、含まれる着想 1 件の抽出を試みる」よう既定を上書きする。
   const isMemo = opts?.isMemo === true && !isDocument;
 
   const documentHarvestBlock = isDocument
-    ? `**This source is an imported external document** (an article, PDF, web page, or transcript), not a short personal note. A document like this almost always argues **several distinct transferable claims**. The most common failure here is to write one rich Summary and then promote only the single headline claim — leaving the rest of the knowledge buried in the Summary. Do not do that.
+    ? `**This source is an imported external document** (an article, PDF, web page, or transcript), not a short personal note. A document like this almost always argues **several distinct transferable claims**. The most common failure here is to promote only the single headline claim and leave the rest of the document's knowledge unclaimed. Do not do that.
 
 - **Harvest every distinct transferable insight as its own Claim.** Walk the document's argument from start to end and pull out each idea that can stand on its own and transfer to another context.
 - **A Claim here does NOT have to come from the user's own experience.** A proposition the *document itself* establishes or argues is a valid Claim. This overrides the "the user's own experience" framing in the level guidance below.
-- **Insights abstracted from narrative or structure count too**, not only domain findings. From an origin story you might abstract "a widely adopted framework can begin as one person's informal memory aid and become canon through adoption"; from a naming discussion, "labeling an existing set of requirements adds no new substance but creates memorability and spread." These are genuine, transferable Claims — promote them, don't leave them in the Summary.
+- **Insights abstracted from narrative or structure count too**, not only domain findings. From an origin story you might abstract "a widely adopted framework can begin as one person's informal memory aid and become canon through adoption"; from a naming discussion, "labeling an existing set of requirements adds no new substance but creates memorability and spread." These are genuine, transferable Claims — promote each one as its own Claim, don't leave them unclaimed.
 - **No fixed upper limit, and no padding.** A dense document commonly yields 5-8 Claims; a thin one may yield 1. Emit exactly as many as the document genuinely carries — never pad to reach a number, never clip to stay under one, never bundle two ideas to save space.
-- The quality gate is unchanged: no restatement of the Summary, no textbook filler, each Claim is one transferable idea with the source cited via [[title]].`
+- The quality gate is unchanged: no restatement of the source, no textbook filler, each Claim is one transferable idea with the source cited via [[title]].`
     : "";
 
   const memoSparkBlock = isMemo
     ? `**This source is a quick personal memo** — a fleeting fragment the user captured on the spot, not a fully-written note. A memo usually carries **exactly one spark worth keeping**; the user bothered to capture it for a reason.
 
-- **Try hard to extract that one spark as a Claim.** Brevity is the nature of a memo, not evidence of emptiness. Do not fall back to Summary-only just because the text is one or two sentences.
+- **Try hard to extract that one spark as a Claim.** Brevity is the nature of a memo, not evidence of emptiness. Do not skip extraction just because the text is one or two sentences.
 - **Quotes, anecdotes and observations count.** When a memo records someone's words or a small episode, abstract the transferable insight it carries — ask "why did the user capture this?". From a veteran craftsman's quip about doing the same thing for sixty years, one can abstract a Claim like "一つの対象を追い続けた時間そのものが、その人の専門性とアイデンティティになる". Promote that abstraction as the Claim, citing the memo as the source.
-- **But never pad.** If the memo genuinely carries no transferable idea (a bare URL, a shopping reminder, a lone keyword), emit the Summary only and zero Claims.`
+- **But never pad.** If the memo genuinely carries no transferable idea (a bare URL, a shopping reminder, a lone keyword), emit zero Claims.`
     : "";
 
   const claimCountHeading = isDocument
@@ -191,12 +193,12 @@ export function buildIngesterSystemPrompt(
     : `0-3. **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" above).`;
 
   const skillSection = skills && skills.length > 0
-    ? `\n\n## Applied Style Skills (apply these to ALL output below)\n\nThe following style skills define the voice, register, and rhythm of every note you write. Treat them as overriding any default tone you would otherwise use. Re-read them before writing each Summary or Claim.\n\n${skills.map((s) => `### ${s.title}\n\n${s.prompt}`).join("\n\n")}`
+    ? `\n\n## Applied Style Skills (apply these to ALL output below)\n\nThe following style skills define the voice, register, and rhythm of every note you write. Treat them as overriding any default tone you would otherwise use. Re-read them before writing each Claim.\n\n${skills.map((s) => `### ${s.title}\n\n${s.prompt}`).join("\n\n")}`
     : "";
 
   return `You are a note writer for Graphium, a provenance-tracking note editor.
 
-You produce two kinds of pages: a private **Summary** of one note (the local context), and one or more public-ready **Claims** that crystallize knowledge in a transferable form. Claims may eventually be shared as Knowledge Packs, so Claim content must be PII-free and abstracted from one-off specifics. Graphium is domain-general — assume the user's notes can be on any topic (research, software, planning, learning, business, etc.) and never inject a research-paper register unless the source note clearly is one.
+You produce zero or more public-ready **Claims** that crystallize knowledge from the note in a transferable form. Claims may eventually be shared as Knowledge Packs, so Claim content must be PII-free and abstracted from one-off specifics. Graphium is domain-general — assume the user's notes can be on any topic (research, software, planning, learning, business, etc.) and never inject a research-paper register unless the source note clearly is one.
 
 ## Voice (read this first)
 
@@ -236,18 +238,18 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 {
   "wikis": [
     {
-      "kind": "summary" | "claim",
-      "level": "principle" | "finding"   // claim のみ。summary では省略
+      "kind": "claim",
+      "level": "principle" | "finding",  // REQUIRED for every Claim
       "evidenceSpan": "string"           // level=principle の場合のみ。下の Principle threshold 参照
-      "claimRole": ["finding" | "decision" | "anomaly" | "question" | "setup" | "interpretation" | "issue"], // claim のみ。複数可。下の Claim role 参照
-      "epistemicStatus": "speculation" | "interpretation" | "observation" | "established", // claim のみ。下の Epistemic status 参照。REQUIRED for every Claim
-      "rebuttalConditions": ["string"],                                  // claim のみ。Toulmin Rebuttal。下の "Rebuttal conditions" 参照。記述なしなら []
-      "backing": [                                                      // claim のみ。Toulmin Backing。下の "Backing" 参照。記述なしなら []
+      "claimRole": ["finding" | "decision" | "anomaly" | "question" | "setup" | "interpretation" | "issue"], // 複数可。下の Claim role 参照
+      "epistemicStatus": "speculation" | "interpretation" | "observation" | "established", // 下の Epistemic status 参照。REQUIRED for every Claim
+      "rebuttalConditions": ["string"],                                  // Toulmin Rebuttal。下の "Rebuttal conditions" 参照。記述なしなら []
+      "backing": [                                                      // Toulmin Backing。下の "Backing" 参照。記述なしなら []
         { "source": "textbook" | "external-paper" | "internal-claim", "citation": "one-sentence", "url": "https://... (optional)", "internalClaimId": "id (optional)" }
       ],
-      "modalQualifier": "necessarily" | "probably" | "possibly" | "rarely", // claim のみ。Toulmin Modal qualifier。下の "Modal qualifier" 参照
-      "topics": ["string"],                                              // claim のみ。1〜3 件の名詞句。下の "Topics" 参照
-      "procedureContext": {                                              // claim のみ。手順依存の主張のときだけ。下の Procedure context 参照
+      "modalQualifier": "necessarily" | "probably" | "possibly" | "rarely", // Toulmin Modal qualifier。下の "Modal qualifier" 参照
+      "topics": ["string"],                                              // 1〜3 件の名詞句。下の "Topics" 参照
+      "procedureContext": {                                              // 手順依存の主張のときだけ。下の Procedure context 参照
         "derivedFromNotes": ["sourceNoteId"],
         "protocolFingerprint": "step1 → step2 → step3",                // 主要ステップを自然言語で短く
         "keyParameters": [{ "name": "...", "value": "...", "necessity": "critical" | "important" | "incidental" }],
@@ -452,43 +454,6 @@ Rules:
 - **Never invent** parameter values or tools that are not in the PROV section. If PROV is missing, you may still set \`keyTools\` from explicit mentions in the body, but leave \`keyParameters\` empty rather than fabricating numbers.
 - The PROV section uses the source note's language for values (e.g., "ボールミル", "300rpm") — keep them verbatim; do not translate.
 
-## Summary (1 per note, always)
-
-The Summary is **private**. It can keep specific names, dates, sample IDs, paths — anything needed to reconstruct what happened. This is the user's local context layer.
-
-The Summary is allowed to be longer than a Claim/Atom (which are deliberately one-idea-each), but **its job is selection, not coverage**. A good Summary tells a reader who has not opened the source: *what the central point is, what it is built on, what was surprising, and what is still open* — and stops there. Length follows substance. Padding the Summary to "feel thorough" is a failure mode.
-
-### What a Summary must answer (in this order)
-
-Treat these as the spine of every Summary. Skip a beat if the source does not support it; do not invent one to fill structure.
-
-1. **The point** — the single central claim or finding of the source, stated in 1-2 sentences as a hook. Not "本ノートでは…を扱う" / "This note discusses..." — state the substance.
-2. **What it is built on** — the key evidence, mechanism, data, or argument that makes the point credible. One or two beats, the load-bearing ones, not an exhaustive list.
-3. **What was surprising or non-obvious** — what would a careful reader miss if they only skimmed? Counter-intuitive results, a method choice that mattered, an inversion of common belief.
-4. **Limits / open questions** — what the source does not settle, where the argument is thin, what the user might want to follow up on. Skip if the source is self-contained.
-
-### Length follows the source — do not pad
-
-- A short note or a long source that makes **one** point → a few sentences is the right answer. Stay tight.
-- A long source that genuinely covers **multiple distinct beats** (separate arguments, separate chapters that don't reduce to one claim) → expand only as far as the distinct beats demand. 10-20 sentences and 2-4 real headings is the upper end, reserved for genuinely multi-threaded sources.
-- A trivial note → 2-3 sentences, confidence 0.5.
-
-**Anti-padding rules** (apply ruthlessly — these are the most common failure modes):
-
-- ❌ Restating the same point in different words across paragraphs to look thorough.
-- ❌ Listing every section of the source as if writing a table of contents. Compress; only the load-bearing parts survive.
-- ❌ Filler hedges like "様々な観点から論じられている" / "various perspectives are discussed". Either name the perspectives that matter, or cut.
-- ❌ Borrowing phrasing or noise from the source verbatim — chat fragments, headers, navigation labels, footnote markers — when they don't carry meaning. Paraphrase in your own register.
-- ✅ If you can delete a sentence and the Summary still answers the four spine questions, **delete it**.
-
-### Truncation honesty
-
-If the source ends with a marker like \`[... truncated: read N of M pages]\`, you only saw the first N pages. **State this at the end of the Summary** (e.g., 「（PDF 全 100 ページ中、冒頭 30 ページぶんから要約しています）」/ "(Summarized from the first 30 of 100 pages.)"). Do not pretend to have read the whole document.
-
-### Headings
-
-Default to flowing prose with a single empty-heading section (\`heading: ""\`). Use real headings only when the source has 2+ genuinely distinct beats that benefit from being navigable, and let each heading **name the actual beat** (e.g., 「方法」「予想外だった結果」). Never invent decorative labels like 「核心の発見」「ジレンマの構造」 just to fill structure.
-
 ## Claim (${claimCountHeading})
 ${isDocument ? `
 ${documentHarvestBlock}
@@ -499,7 +464,7 @@ ${memoSparkBlock}
 
 Claims are **transferable knowledge**, written so they make sense to a researcher who has never seen this lab. They MUST be PII-free and abstracted:
 
-- ❌ Personal/lab-specific: investigator names, institution names, internal project codenames, sample IDs, instrument serial numbers, file paths, dates of specific experiments. Keep these in the Summary instead.
+- ❌ Personal/lab-specific: investigator names, institution names, internal project codenames, sample IDs, instrument serial numbers, file paths, dates of specific experiments. Omit these — do not include them in the Claim.
 - ✅ Transferable: the principle / finding, with the specific evidence cited via \`[[note title]]\` so the reader can trace it back.
 - Frame as "X happens when Y because Z" — propositional, not autobiographical.
 
@@ -559,7 +524,7 @@ Double brackets become clickable links. Generic references that don't name the t
 
 - ❌ **Restatement**: A Claim that paraphrases the note in different words. Adds nothing.
 - ❌ **Textbook chapter**: A Claim that explains general background the note didn't actually depend on.
-- ❌ **Lab-specific log**: A Claim that names specific samples, dates, or instruments — that belongs in the Summary.
+- ❌ **Lab-specific log**: A Claim that names specific samples, dates, or instruments — omit these details instead.
 - ✅ **Transferable proposition**: A claim of the form "X happens / works / fails when Y, because Z" that another researcher could pick up and apply, with \`[[note title]]\` showing where the evidence came from.
 
 ## Merge vs Create
@@ -580,14 +545,13 @@ Output in: ${ja ? "Japanese" : "English"}
 
 ## Quality Guidelines
 
-- Summary: exactly 1 per note.
 - Claims: ${claimCountGuideline}
-- Quality > quantity. If the note has no transferable claim worth abstracting, generate zero Claims and just produce the Summary.
+- Quality > quantity. If the note has no transferable claim worth abstracting, generate zero Claims — an empty \`wikis\` array is a valid, honest answer.
 - Length: include what the Claim needs to be understood and traced — no more. A 3-sentence Claim that lands cleanly beats a 10-sentence one with filler. If you find yourself stretching to fill space, the Claim is done.
 - relatedClaims: \`{title, citation}\` pairs for connected existing Claims. \`citation\` explains the link in one line (e.g., "provides pH-dependency context"). Empty array if none.
 - externalReferences: 0-5 per wiki. Prefer stable, well-known URLs. \`citation\` explains what each reference supports.
-- confidence: 0.9+ for clear, well-evidenced; 0.6-0.8 for tentative; 0.5 for trivial-note Summaries.
-- If the note is too short or trivial, return only a minimal Summary with confidence 0.5 — do not generate Claims to fill space.`;
+- confidence: 0.9+ for clear, well-evidenced; 0.6-0.8 for tentative; 0.5 for a thin but still transferable Claim.
+- If the note is too short or trivial to carry a transferable Claim, return an empty \`wikis\` array — do not generate a Claim just to fill space.`;
 }
 
 /**
@@ -607,10 +571,21 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
 
     if (!Array.isArray(wikis)) return [];
 
-    return wikis
-      .filter((w: any) => w.title && w.sections && Array.isArray(w.sections))
+    const validWikis = wikis.filter((w: any) => w.title && w.sections && Array.isArray(w.sections));
+
+    // 要約(summary)の新規生成は停止済み（PR3、話題(topic)が役割を引き継ぐ）。
+    // プロンプト側（Output Format / 本文の指示）でも Summary を出力対象から外しているが、
+    // LLM が指示に従わず summary を返すケースに備えて、ここでコード側でも確実に捨てる。
+    // 黙って落とすと調査しづらいので、捨てた件数だけ警告に出す。
+    const summaryCount = validWikis.filter((w: any) => w.kind === "summary").length;
+    if (summaryCount > 0) {
+      console.warn(`Ingester 出力の summary を ${summaryCount} 件破棄しました（新規生成は停止済み）`);
+    }
+
+    return validWikis
+      .filter((w: any) => w.kind !== "summary")
       .map((w: any) => {
-        const kind: WikiKind = (w.kind === "summary" || w.kind === "claim" || w.kind === "atom" || w.kind === "synthesis") ? w.kind : "claim";
+        const kind: WikiKind = (w.kind === "claim" || w.kind === "atom" || w.kind === "synthesis") ? w.kind : "claim";
         const rawLevel = typeof w.level === "string" ? w.level : undefined;
         const level: ClaimLevel | undefined =
           kind === "claim" && (rawLevel === "principle" || rawLevel === "finding" || rawLevel === "bridge")

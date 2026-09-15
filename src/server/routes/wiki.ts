@@ -96,7 +96,7 @@ app.post("/ingest", async (c) => {
   // 転用可能な知見を持つので ingester を「文書モード」に切り替え、過少抽出を防ぐ。
   const isDocument = /^(pdf|document|url|chat):/.test(body.noteId ?? "");
   // メモ（memo: prefix）は逆に「1 断片 ≈ 1 着想」の走り書き。通常ノートの保守的な
-  // Claim 基準だと引用・エピソード型の断片が Summary のみに倒れるため、
+  // Claim 基準だと引用・エピソード型の断片が Claim 0 件に倒れやすいため、
   // 「短くても着想 1 件の抽出を試みる」memo モードに切り替える。
   const isMemo = /^memo:/.test(body.noteId ?? "");
 

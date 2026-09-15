@@ -885,7 +885,7 @@ type ProcedureContext = {
 | Kind | Role | Carries context? |
 |---|---|---|
 | `topic` | Groups related Claims by concept. Two-hop provenance (topic → claim → note). Does **not** participate in the hourglass — it is never fed to the atomizer. | n/a (derived from member Claims) |
-| `summary` | Internal-facing summary of one note. | yes |
+| `summary` | Legacy — no longer generated (superseded by `topic`). Existing files remain readable, listed, searchable, and deletable. | yes |
 | `claim` | Cross-note claim extracted from notes (fact-based; the hourglass widens here). | yes |
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |
@@ -1501,6 +1501,14 @@ Bumping rules:
 | **24** | Outline collection treats multi-column blocks (`columnList` / `column`) as transparent layout wrappers — headings and steps placed inside a column are collected as if they were top-level, so they appear in the outline and in search. No `NoteIndexEntry` field changed; the bump exists because the collection logic changed and column-using notes need a rebuild to be indexed correctly. Notes without columns produce identical entries. |
 | **25** | `extractBlockText` now yields the `cachedTitle` / `fileName` snapshot of `sharedCitation` blocks (§7.5), so a note is findable by the title of the shared entry it cites. No `NoteIndexEntry` field changed; citation-using notes need a rebuild to pick up the searchable text. |
 | **26** | Added `importSourceHash` — mirrors `GraphiumDocument.importSource.contentHash`. Intake's note-dedupe (`src/features/intake/note-dedupe.ts`) used to narrow candidates by filename-derived title before reading each candidate's doc to compare hashes; a renamed-but-unchanged file could not be recognized as the same file re-imported. It now scans the index for a matching `importSourceHash` directly (no per-candidate doc read, and rename-proof). Pre-v26 notes keep `importSourceHash: undefined` until `ensureIndex` rebuilds on the bump. |
+
+`INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
+generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
+change removes nothing from the `WikiKind` union — `"summary"` stays a
+valid kind because existing summary files on disk must remain readable,
+listed, and searchable. Only the Ingester's output contract changed (it
+no longer emits `kind: "summary"`), which is not something the persisted
+index schema tracks.
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

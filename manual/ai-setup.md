@@ -77,7 +77,7 @@ Graphium is model-agnostic, but the jobs are not equally demanding. A rough guid
 
 | Job | What it demands | Works well with |
 |---|---|---|
-| Summaries, Claim extraction, chat | Careful reading and faithful extraction | Most mid-size and larger models, including good local ones |
+| Claim extraction, topic grouping, chat | Careful reading and faithful extraction | Most mid-size and larger models, including good local ones |
 | **Insight generation** (abstraction across Claims) | The hardest step in the pipeline: lifting domain findings into transferable rules without diluting them into platitudes | **A frontier-tier model** — for example Claude Opus or Claude Sonnet, or another vendor's flagship. Assign it as the **Chat & Insight model**. "Reasoning-capable" or merely large is not enough by itself: in our testing, a 120B-class open reasoning model produced only restatements of the Claims where a frontier model found real cross-Claim patterns |
 | Procedure structuring (PROV extraction) | Strict structured output over long documents | Frontier-tier models are the most reliable here too |
 | Embeddings | An embeddings endpoint (not chat) | An embedding-capable model — use **Test embedding** to verify before saving |

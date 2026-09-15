@@ -411,7 +411,7 @@ Type `@` anywhere in the text to open the link menu. Candidates are grouped:
 |---|---|
 | **This note** | Headings inside the current note. |
 | **Other notes** | Your other notes, most recent first. |
-| **AI Knowledge** | Knowledge-layer notes, labeled like "🤖 Summary: …". |
+| **AI Knowledge** | Knowledge-layer notes, labeled like "🤖 Concept: …". |
 | **Document materials** | Materials from your library — PDF and Word for citing sources, and (inside a table cell) data files and images. |
 | **New** | **Create a new note…** — name it in a dialog, and it is created and linked in one step. |
 

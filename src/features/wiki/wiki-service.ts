@@ -148,7 +148,13 @@ export function buildWikiDocument(
   /** 再生成（regenerate）時、この Wiki 自身のファイル ID。relatedClaims が自 ID に
    *  解決されても knowledgeLink 化しない（自己参照の生成抑止） */
   selfId?: string,
-): GraphiumDocument {
+): GraphiumDocument | null {
+  // 要約(summary)の新規生成は停止済み（PR3）。話題(topic)が役割を引き継ぐ。
+  // サーバー側の parseIngesterOutput で summary は既に除去される想定だが、
+  // 直接呼び出す経路（テスト・将来の呼び出し元）に備えてここでも二重に防ぐ。
+  // 呼び出し側は null を自然に無視する（保存をスキップする）。
+  if (ingesterOutput.kind === "summary") return null;
+
   const now = new Date().toISOString();
   const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex, ingesterOutput.title);
 

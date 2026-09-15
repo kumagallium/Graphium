@@ -550,7 +550,9 @@ export function WikiListView({
                 {t("wikiList.clearWorldSelected", { count: String(selectedIds.size) })}
               </button>
             )}
-            {onRegenerateWiki && (
+            {/* summary は新規生成パイプラインが撤退済み（PR3）。一括再生成は出さない
+                （削除は下の deleteSelected ボタンでそのまま可能） */}
+            {onRegenerateWiki && wikiKind !== "summary" && (
               <button
                 onClick={() => {
                   // regenerate は内部で toast キューに積む fire-and-forget を許容
