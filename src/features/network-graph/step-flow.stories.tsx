@@ -10,7 +10,7 @@ import { useRef, useState } from "react";
 import { StepFlowView } from "./step-flow-view";
 import type { FlowSelection } from "./flow-attribute-table";
 import type { TableData } from "./table-row-edit";
-import type { FlowGraphData } from "./activity-graph-adapter";
+import type { FlowGraphData, FlowNoteRef, FlowStep } from "./activity-graph-adapter";
 import { LocaleProvider } from "../../i18n";
 
 const meta: Meta = {
@@ -598,4 +598,71 @@ const MULTI_STAGE_TABLES: Record<string, TableData> = {
 export const MultiStageParams: Story = {
   name: "段階（stage）行 / パラメータ表の複数行",
   render: () => <Playground initialGraph={MULTI_STAGE_GRAPH} initialTables={MULTI_STAGE_TABLES} />,
+};
+
+// ── 工程ノード（計画ノートの工程フロー）──
+//
+// plan-flow.ts が組む FlowStep.noteRef 付きノード。直線 3 工程（配合 → 焼成 → 保管）
+// + 測定への分岐。noteRef の状態を 4 種（linked=state 無し / unlinked / duplicateName /
+// trashed）で見せ、焼成の途中出力を「保管」が参照するが解決できない broken エッジも 1 本足す。
+
+const PLAN_FLOW_GRAPH: FlowGraphData = {
+  steps: [
+    {
+      id: "note:note-1",
+      name: "配合",
+      params: [{ label: "担当: 田中" }],
+      noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0 },
+    },
+    {
+      id: "note:note-2",
+      name: "焼成",
+      params: [{ label: "温度: 900C" }],
+      noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1 },
+    },
+    {
+      id: "row:tbl-plan:2",
+      name: "測定A",
+      params: [],
+      noteRef: { noteId: null, tableBlockId: "tbl-plan", rowIndex: 2, state: "unlinked" },
+    },
+    {
+      id: "row:tbl-plan:3",
+      name: "測定B",
+      params: [],
+      noteRef: { noteId: null, tableBlockId: "tbl-plan", rowIndex: 3, state: "duplicateName" },
+    },
+    {
+      id: "note:note-5",
+      name: "保管",
+      params: [],
+      noteRef: { noteId: "note-5", tableBlockId: "tbl-plan", rowIndex: 4, state: "trashed" },
+    },
+  ],
+  entities: [
+    { id: "note:note-1#out1", label: "配合粉末", kind: "output", attrs: [] },
+    { id: "note:note-2#broken:log", label: "焼成温度ログ", kind: "output", attrs: [] },
+  ],
+  edges: [
+    { id: "g1", kind: "generates", source: "note:note-1", target: "note:note-1#out1" },
+    { id: "u1", kind: "used", source: "note:note-1#out1", target: "note:note-2" },
+    { id: "u2", kind: "used", source: "note:note-1#out1", target: "row:tbl-plan:2" },
+    {
+      id: "u3-broken",
+      kind: "used",
+      source: "note:note-2#broken:log",
+      target: "note:note-5",
+      broken: true,
+    },
+  ],
+};
+
+export const PlanFlowNodes: Story = {
+  name: "工程ノード（計画ノートの工程フロー）",
+  render: () => (
+    <StepFlowView
+      graph={PLAN_FLOW_GRAPH}
+      onOpenNoteRef={(ref: FlowNoteRef, step: FlowStep) => console.log("onOpenNoteRef", ref, step)}
+    />
+  ),
 };

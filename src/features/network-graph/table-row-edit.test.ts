@@ -4,6 +4,7 @@ import {
   setTableCell,
   removeTableRow,
   appendEntityRowToTable,
+  addTableRow,
 } from "./table-row-edit";
 
 const cell = (text: string) => ({ type: "tableCell", content: [{ type: "text", text, styles: {} }] });
@@ -220,5 +221,55 @@ describe("appendEntityRowToTable の冪等性", () => {
       created: false,
     });
     expect(ed.updates).toHaveLength(before);
+  });
+});
+
+describe("addTableRow", () => {
+  function makeHeaderOnlyEditor() {
+    const table = {
+      id: "tbl-1",
+      type: "table",
+      content: {
+        type: "tableContent",
+        rows: [{ cells: [cell("名前"), cell("質量"), cell("メモ")] }],
+      },
+    };
+    const updates: { id: string; content: any }[] = [];
+    return {
+      document: [{ id: "step-1", type: "step", content: [], children: [table] }],
+      updates,
+      updateBlock(id: string, patch: { content: any }) {
+        updates.push({ id, content: patch.content });
+        if (id === table.id && patch.content) table.content = patch.content;
+      },
+    };
+  }
+
+  it("ヘッダのみの表でも、ヘッダ文字列を引き継がず空セルの行を足す", () => {
+    const ed = makeHeaderOnlyEditor();
+    expect(addTableRow(ed, "tbl-1", "行1")).toBe(true);
+    expect(rowTexts(ed.updates[0].content)).toEqual([
+      ["名前", "質量", "メモ"],
+      ["行1", "", ""],
+    ]);
+  });
+
+  it("データ行がある表では、既存データ行の列数・セル形をテンプレートにする（従来どおり）", () => {
+    const ed = makeEditor();
+    expect(addTableRow(ed, "tbl-1", "バッチC")).toBe(true);
+    expect(rowTexts(ed.updates[0].content)).toEqual([
+      ["名前", "質量", "メモ"],
+      ["バッチA", "5g", "焼成用"],
+      ["バッチB", "5g", "対照"],
+      ["バッチC", "", ""],
+    ]);
+  });
+
+  it("空のテーブル（ヘッダも無い）は no-op で false", () => {
+    const ed = makeHeaderOnlyEditor();
+    const table = (ed.document[0].children[0] as any);
+    table.content.rows = [];
+    expect(addTableRow(ed, "tbl-1", "行1")).toBe(false);
+    expect(ed.updates.length).toBe(0);
   });
 });

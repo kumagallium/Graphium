@@ -296,6 +296,8 @@ A table brought in from a measurement file shows its first rows with the rest fo
 
 Like the time-series table, an index table is not a separate kind of table — it is an ordinary table with the row-to-note behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into index table**". Turning it off removes the row-to-note links (the notes themselves are untouched).
 
+In a [Plan note](#folders), the notes created from an index table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input.
+
 ![An index table with Name and condition columns](/screenshots/index-table.png)
 
 ## The time-series table and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" />
@@ -463,6 +465,8 @@ Forking is how you explore a different direction without losing the original: th
 ## Folders
 
 Under the title of every note sits a **Folder** button. Folder names are free-form ("battery project", "reading notes") — type to create one, or pick from folders you have used before. Made a typo? While the list is still open, a folder you just created has a pencil to fix its name, and unchecking it undoes the folder altogether. To rename or delete a folder that is already in use, use the sidebar (see below). Folders are the fastest way to slice the notes list (**Filter by folder**) and to color the global graph by project.
+
+One name is reserved: a folder named **Plan** (or its Japanese equivalent, "計画" — matching is not case-sensitive, and it applies to subfolders of Plan too) turns any note filed there into a **Plan note**, and the rows of its [index table](#the-index-table) into **Operation notes**. Plan and Plan/anything folders don't offer Rename or Delete in the folder menu — emptying the folder (moving its notes elsewhere) removes it the same way any folder with nothing left in it does.
 
 <Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar lists your **Folders** too. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
 

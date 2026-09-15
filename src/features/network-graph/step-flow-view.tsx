@@ -39,7 +39,7 @@ import "@xyflow/react/dist/style.css";
 import { LayoutGrid, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
 import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
-import { computeStepDistinguishers, type FlowGraphData } from "./activity-graph-adapter";
+import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
@@ -57,6 +57,8 @@ const ACTIVITY_BLUE = KIND_PALETTE.activity.main;
 const MATERIAL_GREEN = KIND_PALETTE.material.main;
 const OUTPUT_TERRACOTTA = KIND_PALETTE.output.main;
 const DANGER = "var(--color-destructive)";
+/** 工程フローの broken エッジ（cross-note 参照が解決できない）用の薄い色 */
+const BROKEN_COLOR = "var(--color-text-tertiary)";
 
 /**
  * derived エッジ（prov:wasDerivedFrom）の色とラベルを、元のブロック間リンク種別で
@@ -109,6 +111,20 @@ export type StepFlowViewProps = {
   onJumpToBlock?: (blockId: string) => void;
   /** 別ノート由来の step / input から参照元ノートを開く */
   onOpenExternalNote?: (noteId: string) => void;
+  /**
+   * 工程ノード（FlowStep.noteRef 付き）の「ノートを開く / 作る」ボタン。noteId が
+   * あれば開く、無ければ（未作成行）作る、の判断は呼び出し側が行う。
+   */
+  onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
+  /** step が 1 つも無いときの案内文。省略時は activityGraph.emptyHint */
+  emptyHint?: string;
+  /** 同じく空状態の見出し。省略時は activityGraph.emptyTitle */
+  emptyTitle?: string;
+  /**
+   * 接続できないフロー（計画ノートの工程フロー）で、線が 1 本も無いときに下中央へ
+   * 薄く出す案内。「線はどこで引くか」を伝える。dragHint と同じ場所・同じ条件
+   */
+  staticHint?: string;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
   /** 共有行の「表に追加」: その step の kind 表に行を書く（表が無ければ作る） */
@@ -206,7 +222,9 @@ const EDGE_STYLES: Record<string, Partial<Edge>> = {
 };
 
 function isEditableStep(graph: FlowGraphData, id: string): boolean {
-  return graph.steps.some((step) => step.id === id && !step.externalOrigin);
+  // 別ノート由来（externalOrigin）と工程ノート（noteRef）は、このノートの本文に
+  // 書き込む対象ではないので接続の端点にしない
+  return graph.steps.some((step) => step.id === id && !step.externalOrigin && !step.noteRef);
 }
 
 function StepFlowCanvas({
@@ -221,6 +239,10 @@ function StepFlowCanvas({
   onDeleteActivity,
   onJumpToBlock,
   onOpenExternalNote,
+  onOpenNoteRef,
+  emptyHint,
+  emptyTitle,
+  staticHint,
   getStepContentCount,
   onAddEntity,
   onRenameEntity,
@@ -356,6 +378,11 @@ function StepFlowCanvas({
     prevNodeIdsRef.current = currentIds;
     setNodes((prev: Node[]) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
+      // 実測サイズも引き継ぐ。ノードを新しいオブジェクトに作り直すと React Flow は
+      // measured の無いノードを「未計測」として visibility: hidden にし、再計測 →
+      // dimensions change → ELK → fitView が一周するまで見えない。コールバックの
+      // 参照が変わっただけの再構築でその一周を毎回やると、ノードが消えたままになる
+      const prevMeasured = new Map(prev.map((n) => [n.id, n.measured]));
       // 保存済みの座標。スコープが無い文脈（プレビュー等）では常に null
       const saved = savedPositionsRef.current;
       const nodesAreDraggable = !!layoutScope;
@@ -366,13 +393,15 @@ function StepFlowCanvas({
         id: s.id,
         type: "step" as const,
         position: saved?.[s.id] ?? prevPos.get(s.id) ?? { x: 0, y: 0 },
+        ...(prevMeasured.get(s.id) ? { measured: prevMeasured.get(s.id) } : {}),
         data: {
           activity: s,
-          onRename: s.externalOrigin ? undefined : onRenameActivity,
-          onDelete: s.externalOrigin ? undefined : onDeleteActivity,
-          onJump: s.externalOrigin ? undefined : onJumpToBlock,
+          onRename: s.externalOrigin || s.noteRef ? undefined : onRenameActivity,
+          onDelete: s.externalOrigin || s.noteRef ? undefined : onDeleteActivity,
+          onJump: s.externalOrigin || s.noteRef ? undefined : onJumpToBlock,
           onOpenExternalNote,
-          getContentCount: s.externalOrigin ? undefined : getStepContentCount,
+          onOpenNoteRef,
+          getContentCount: s.externalOrigin || s.noteRef ? undefined : getStepContentCount,
           distinguishers: distinguishers.get(s.id),
           showParams,
         },
@@ -383,6 +412,7 @@ function StepFlowCanvas({
         id: e.id,
         type: "entity" as const,
         position: saved?.[e.id] ?? prevPos.get(e.id) ?? { x: 0, y: 0 },
+        ...(prevMeasured.get(e.id) ? { measured: prevMeasured.get(e.id) } : {}),
         data: {
           entity: e,
           onRenameEntity,
@@ -402,35 +432,48 @@ function StepFlowCanvas({
         // derived は linkType で色分けが変わるため、他の kind と違い静的な
         // EDGE_STYLES を引かず、その場で色・ラベルを組み立てる
         const derived = e.kind === "derived" ? derivedEdgeVisual(e.linkType) : null;
+        // 工程フロー（plan-flow.ts）の cross-note 参照が解決できなかった used エッジ。
+        // 種別ごとの色分けより優先して、点線 + 薄い色 + ラベルで「切れている」ことを示す
         return {
           id: e.id,
           source: e.source,
           target: e.target,
-          ...(derived
+          ...(e.broken
             ? {
-                style: { stroke: derived.color, strokeWidth: 1.5 },
-                markerEnd: { type: MarkerType.ArrowClosed, color: derived.color, width: 16, height: 16 },
+                style: { stroke: BROKEN_COLOR, strokeWidth: 1.5, strokeDasharray: "4 3", opacity: 0.7 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: BROKEN_COLOR, width: 16, height: 16 },
               }
-            : EDGE_STYLES[e.kind]),
-          ...(e.kind === "orderOnly"
+            : derived
+              ? {
+                  style: { stroke: derived.color, strokeWidth: 1.5 },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: derived.color, width: 16, height: 16 },
+                }
+              : EDGE_STYLES[e.kind]),
+          ...(e.broken
             ? {
-                label: t("activityGraph.orderOnly"),
-                labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
+                label: t("planFlow.brokenRef"),
+                labelStyle: { fontSize: 9, fill: BROKEN_COLOR, fontWeight: 700 },
                 labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
               }
-            : e.kind === "external"
+            : e.kind === "orderOnly"
               ? {
-                  label: t("activityGraph.externalProcess"),
-                  labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
+                  label: t("activityGraph.orderOnly"),
+                  labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
                   labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
                 }
-              : derived
+              : e.kind === "external"
                 ? {
-                    label: derived.label,
-                    labelStyle: { fontSize: 9, fill: derived.color, fontWeight: 700 },
+                    label: t("activityGraph.externalProcess"),
+                    labelStyle: { fontSize: 9, fill: OUTPUT_TERRACOTTA, fontWeight: 700 },
                     labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
                   }
-                : {}),
+                : derived
+                  ? {
+                      label: derived.label,
+                      labelStyle: { fontSize: 9, fill: derived.color, fontWeight: 700 },
+                      labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
+                    }
+                  : {}),
           data: { kind: e.kind, deletable: e.deletable ?? false },
         };
       }),
@@ -467,6 +510,7 @@ function StepFlowCanvas({
     onDeleteActivity,
     onJumpToBlock,
     onOpenExternalNote,
+    onOpenNoteRef,
     getStepContentCount,
     onRenameEntity,
     onRemoveEntity,
@@ -520,6 +564,15 @@ function StepFlowCanvas({
       width: n.measured?.width ?? 180,
       height: n.measured?.height ?? 48,
     }));
+    // ELK は非同期。完了までに graph の中身（ノード id の集合）が変わっていたら、
+    // その結果は古い id の座標でしかなく、今のノードには当たらない。適用も
+    // 「要求を消す」こともせず、finally で並べ直しに回す。
+    // 実例: 計画ノートの工程フローは、表のメタ情報（noteLinks）が復元される前は
+    // "row:<表>:<行>"、復元後は "note:<id>" の id になる。その切り替わりの最中に
+    // 古い ELK が完了すると、座標は当たらないのに needsLayout だけ下りて、以後
+    // 誰も並べ直さず、ノードが (0,0) や非表示のまま固定された
+    const idsOf = (ids: string[]) => [...ids].sort().join("\n");
+    const startedIds = idsOf(sized.map((n) => n.id));
     void layoutStepFlow(
       sized,
       g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
@@ -527,6 +580,13 @@ function StepFlowCanvas({
       // ドラッグが始まっていたら、この結果はもう古い
       if (layoutAbandonedRef.current) {
         needsLayoutRef.current = false;
+        return;
+      }
+      const latest = graphRef.current;
+      const latestIds = idsOf([...latest.steps.map((n) => n.id), ...latest.entities.map((n) => n.id)]);
+      if (latestIds !== startedIds) {
+        // 古い結果。要求は残したまま（finally が最新の graph で並べ直す）
+        needsLayoutRef.current = true;
         return;
       }
       // 適用できたときだけ要求を消す。ELK が失敗した場合（下の catch）は
@@ -944,14 +1004,17 @@ function StepFlowCanvas({
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-foreground)" }}>
-            {t("activityGraph.emptyTitle")}
+            {emptyTitle ?? t("activityGraph.emptyTitle")}
           </div>
-          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{t("activityGraph.emptyHint")}</div>
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+            {emptyHint ?? t("activityGraph.emptyHint")}
+          </div>
         </div>
       )}
 
-      {/* 使い方ヒント（エッジが 1 本でもあれば隠す） */}
-      {variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0 && (
+      {/* 使い方ヒント（エッジが 1 本でもあれば隠す）。接続できるフローはつなぎ方、
+          接続できないフロー（工程フロー）は staticHint（線をどこで引くか） */}
+      {variant !== "preview" && (onConnectSteps || onConnectEntityToStep || staticHint) && graph.steps.length > 0 && graph.edges.length === 0 && (
         <div
           style={{
             position: "absolute",
@@ -964,7 +1027,7 @@ function StepFlowCanvas({
             pointerEvents: "none",
           }}
         >
-          {t("activityGraph.dragHint")}
+          {onConnectSteps || onConnectEntityToStep ? t("activityGraph.dragHint") : staticHint}
         </div>
       )}
     </div>
