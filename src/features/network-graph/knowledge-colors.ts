@@ -17,13 +17,15 @@ import type { WikiKind } from "../../lib/document-types";
  *  - claim    : 紅葉色（主張＝注目）— メディアのゴールド/オレンジと衝突しない色相
  *  - synthesis: 紫紺（統合＝重み）
  */
-// TODO(design): "topic" の配色は暫定値。design.md の合意を経て確定させる（段 B）。
+//  - topic    : 紫（要約の色を継承。要約は新規生成を止め、知見を束ねる役割を
+//               トピックが引き継いだので、「ナレッジの中心」の色も引き継ぐ。
+//               2026-09-16 決定 / Storybook `Graph/Global Graph` で確認）
 const KNOWLEDGE_KIND_COLORS: Record<WikiKind, string> = {
   summary: "#9b6dcc",
   atom: "#6ba89e",
   claim: "#c46d56",
   synthesis: "#6c5ca8",
-  topic: "#5b8fb9",
+  topic: "#9b6dcc",
 } as const;
 
 /** Knowledge kind 別の border 色（塗りより 15〜20% 暗い） */
@@ -32,7 +34,7 @@ const KNOWLEDGE_KIND_BORDERS: Record<WikiKind, string> = {
   atom: "#4f8a80",
   claim: "#9b5644",
   synthesis: "#544591",
-  topic: "#43749c",
+  topic: "#7b4fb0",
 } as const;
 
 /** kind 未指定 / 不明なときのフォールバック（既存紫色を維持） */
