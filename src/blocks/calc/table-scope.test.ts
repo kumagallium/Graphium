@@ -150,6 +150,16 @@ describe("columnsFromText", () => {
     expect(columns.get("値")).toEqual({ values: [1, 3], unit: "g" });
   });
 
+  it("指数表記の数値を読み、指数部を単位と取り違えない", () => {
+    expect(columnsFromText(["zT"], [["8e-4"], ["0.0012"]]).get("zT")).toEqual({
+      values: [0.0008, 0.0012],
+    });
+    expect(columnsFromText(["質量"], [["2e-3 g"], ["0.004 g"]]).get("質量")).toEqual({
+      values: [0.002, 0.004],
+      unit: "g",
+    });
+  });
+
   it("単位が揃っていなければ unit を付けない", () => {
     const columns = columnsFromText(["値"], [["1 g"], ["2 kg"]]);
     expect(columns.get("値")).toEqual({ values: [1, 2] });
