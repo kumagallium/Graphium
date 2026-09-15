@@ -421,6 +421,12 @@ export type ChartBlockConfig = {
   legendOrient: LegendOrient;
   /** 凡例の範囲（図全体で 1 つ / 枠ごと）。分割していない図では効かない */
   legendScope: LegendScope;
+  /**
+   * 枠ごとの凡例の位置の上書き（要素 i が枠 i）。null / 欠けは図の legendPosition に
+   * 従う。枠ごとの凡例のときだけ効く。データが通る隅は枠ごとに違う（σ は右下が
+   * 空き、S は左上が空く）ので、図で 1 つの位置では必ずどこかの枠で被る
+   */
+  panelLegendPositions: Array<LegendPosition | null>;
   /** プロット領域の全周枠（黒 box） */
   showFrame: boolean;
   /** 軸ごとの詳細設定 */
@@ -473,6 +479,7 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   legendPosition: "top-left",
   legendOrient: "horizontal",
   legendScope: "figure",
+  panelLegendPositions: [],
   showFrame: true,
   xAxisDetail: DEFAULT_AXIS_DETAIL,
   yAxisDetail: DEFAULT_AXIS_DETAIL,
@@ -754,6 +761,11 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
       : DEFAULT_CHART_CONFIG.legendPosition,
     legendOrient: parsed.legendOrient === "vertical" ? "vertical" : "horizontal",
     legendScope: parsed.legendScope === "panel" ? "panel" : "figure",
+    panelLegendPositions: Array.isArray(parsed.panelLegendPositions)
+      ? parsed.panelLegendPositions.map((v: unknown) =>
+          LEGEND_POSITIONS.includes(v as LegendPosition) ? (v as LegendPosition) : null
+        )
+      : [],
     showFrame: bool(parsed.showFrame, DEFAULT_CHART_CONFIG.showFrame),
     // 旧フィールド showGrid（一括）/ showGridX / showGridY は軸詳細のグリッドに引き継ぐ
     xAxisDetail: parseAxisDetail(
@@ -840,6 +852,30 @@ export function withPanelAxis(
   while (panelAxes.length < panelIndex) panelAxes.push({});
   panelAxes[panelIndex - 1] = { ...panelAxes[panelIndex - 1], ...patch };
   return { ...config, panelAxes };
+}
+
+/**
+ * 枠 n の凡例の実効位置（枠ごとの凡例のとき）。上書きがあればそれ、無ければ図の
+ * 位置。どちらも枠の中に読み替えて返す
+ */
+export function panelLegendPosition(
+  config: Pick<ChartBlockConfig, "legendPosition" | "panelLegendPositions">,
+  panelIndex: number
+): ReturnType<typeof legendPositionInsidePanel> {
+  return legendPositionInsidePanel(config.panelLegendPositions[panelIndex] ?? config.legendPosition);
+}
+
+/** 枠 n の凡例位置の上書きを書く（null = 図の設定に従う）。末尾の null は落とす */
+export function withPanelLegendPosition(
+  config: ChartBlockConfig,
+  panelIndex: number,
+  position: LegendPosition | null
+): ChartBlockConfig {
+  const next = [...config.panelLegendPositions];
+  while (next.length <= panelIndex) next.push(null);
+  next[panelIndex] = position;
+  while (next.length > 0 && next[next.length - 1] === null) next.pop();
+  return { ...config, panelLegendPositions: next };
 }
 
 /**

@@ -25,6 +25,7 @@ import {
   withPanelAxis,
   withStackConfigForPanel,
   legendPositionInsidePanel,
+  withPanelLegendPosition,
   PANEL_SPLIT_RANGE,
   resolveSeriesStyle,
   retargetSeries,
@@ -1534,8 +1535,17 @@ export function ChartSettingsPanel({
         );
       })()}
 
-      {tab === "appearance" && (
+      {tab === "appearance" && (() => {
+        // 軸設定タブと同じ 2 段。分割した図では、図全体の項目（キャプション・凡例・
+        // 枠線・記号）の下に「枠ごと」を置き、枠ごとの凡例の位置だけをそこで決める。
+        // 枠ごとの項目が無いとき（凡例が図全体で 1 つ）はその段を出さない
+        const split = panels > 1;
+        const perPanelLegend =
+          split && config.showLegend && !inlineStackLabels && config.legendScope === "panel";
+        const override = config.panelLegendPositions[editingPanel] ?? null;
+        return (
         <div style={styles.body}>
+          {split && <div style={styles.groupLabel}>{t("chart.sectionFigure")}</div>}
           <div style={styles.sectionLabel}>{t("chart.caption")}</div>
           <input
             type="text"
@@ -1706,8 +1716,55 @@ export function ChartSettingsPanel({
               )}
             </>
           )}
+
+          {perPanelLegend && (
+            <>
+              <div style={styles.groupLabel}>{t("chart.sectionPanelAppearance")}</div>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.panelTarget")}</span>
+                <select
+                  value={editingPanel}
+                  onChange={(e) => setEditingPanel(Number(e.target.value))}
+                  style={{ ...styles.select, flex: 1 }}
+                >
+                  {Array.from({ length: panels }, (_, p) => (
+                    <option key={p} value={p}>
+                      {t("chart.panelName", { n: String(p + 1) })}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={styles.fieldRow}>
+                <span style={styles.fieldLabel}>{t("chart.legendPosition")}</span>
+                <select
+                  value={override ?? ""}
+                  onChange={(e) =>
+                    onChange({
+                      panelLegendPositions: withPanelLegendPosition(
+                        config,
+                        editingPanel,
+                        e.target.value === "" ? null : (e.target.value as LegendPosition)
+                      ).panelLegendPositions,
+                    })
+                  }
+                  style={{ ...styles.select, flex: 1 }}
+                >
+                  <option value="">{t("chart.followFigure")}</option>
+                  {LEGEND_POSITION_KEYS.filter(([value]) => value.startsWith("inside-")).map(
+                    ([value, key]) => (
+                      <option key={value} value={value}>
+                        {t(key as any)}
+                      </option>
+                    )
+                  )}
+                </select>
+              </label>
+              <div style={styles.fieldHint}>{t("chart.panelLegendPositionHint")}</div>
+            </>
+          )}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

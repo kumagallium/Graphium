@@ -3,6 +3,8 @@
 import { describe, it, expect } from "vitest";
 import {
   legendPositionInsidePanel,
+  panelLegendPosition,
+  withPanelLegendPosition,
   DEFAULT_CHART_CONFIG,
   parseChartBlockConfig,
   resolveSeriesStyle,
@@ -200,6 +202,19 @@ describe("parseChartBlockConfig", () => {
     expect(parseChartBlockConfig(JSON.stringify({ legendScope: "nope" })).legendScope).toBe("figure");
     const config = { ...DEFAULT_CHART_CONFIG, legendScope: "panel" as const };
     expect(parseChartBlockConfig(serializeChartBlockConfig(config)).legendScope).toBe("panel");
+  });
+
+  it("枠ごとの凡例位置の上書き: 不正値は null、末尾の null は落ち、実効位置は枠の中", () => {
+    const parsed = parseChartBlockConfig(
+      JSON.stringify({ panelLegendPositions: ["inside-top-left", "nope", null] })
+    );
+    expect(parsed.panelLegendPositions).toEqual(["inside-top-left", null, null]);
+    const withOverride = withPanelLegendPosition(DEFAULT_CHART_CONFIG, 2, "inside-bottom-right");
+    expect(withOverride.panelLegendPositions).toEqual([null, null, "inside-bottom-right"]);
+    expect(withPanelLegendPosition(withOverride, 2, null).panelLegendPositions).toEqual([]);
+    // 上書きが無い枠は図の位置（枠の中に読み替え）に従う
+    expect(panelLegendPosition({ ...withOverride, legendPosition: "top-right" }, 0)).toBe("inside-top-right");
+    expect(panelLegendPosition(withOverride, 2)).toBe("inside-bottom-right");
   });
 
   it("枠ごとの凡例の位置は枠の中に読み替える（保存値は変えない）", () => {

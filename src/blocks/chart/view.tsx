@@ -59,7 +59,7 @@ import {
   isAssetSourceKey,
   axisOwnerPanel,
   isPanelStackActive,
-  legendPositionInsidePanel,
+  panelLegendPosition,
   panelAxis,
   panelCount,
   parseChartBlockConfig,
@@ -939,7 +939,7 @@ export function buildOption(
       ? panels.map((panel, p) => {
           const names = Array.from(new Set(panel.indices.map((i) => seriesNameOf(p, i))));
           const g = layout.grids[p];
-          const insidePosition = legendPositionInsidePanel(config.legendPosition);
+          const insidePosition = panelLegendPosition(config, p);
           const position = (() => {
             switch (insidePosition) {
               case "inside-top-left":

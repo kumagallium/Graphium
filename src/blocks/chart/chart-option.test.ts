@@ -458,6 +458,20 @@ describe("buildOption（枠の分割）", () => {
       expect(aSeries[0].color).toBe(aSeries[1].color);
     });
 
+    it("panel: 枠ごとに凡例の隅を上書きできる（他の枠は図の設定のまま）", () => {
+      const base = sameNameSplit({ legendScope: "panel", legendPosition: "inside-top-left" });
+      const option = sameNameSplit({
+        legendScope: "panel",
+        legendPosition: "inside-top-left",
+        panelLegendPositions: [null, "inside-bottom-right"],
+      });
+      expect(option.legend[0]).toMatchObject({ left: base.legend[0].left, top: base.legend[0].top });
+      expect(option.legend[1].left).toBeUndefined();
+      expect(option.legend[1].top).toBeUndefined();
+      expect(typeof option.legend[1].right).toBe("number");
+      expect(typeof option.legend[1].bottom).toBe("number");
+    });
+
     it("panel: 凡例が図の上端の余白を取らない", () => {
       const figureOption = sameNameSplit({ legendScope: "figure" });
       const panelOption = sameNameSplit({ legendScope: "panel" });

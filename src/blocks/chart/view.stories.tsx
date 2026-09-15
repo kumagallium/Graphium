@@ -1104,7 +1104,7 @@ export const PanelsLegendPerPanel: StoryObj = {
     <ErrorBoundary>
       <ChartDemo
         baseTables={[...THERMO_TABLES, ...THERMO_TABLES_B]}
-        lead="凡例を枠ごとに置く。位置は枠内の四隅から選び、図の上の余白は取らない。"
+        lead="凡例を枠ごとに置く。位置は枠内の四隅から選び、図の上の余白は取らない。(b) は線が右上へ抜けるので、その枠だけ左上に上書き。"
         chartFirst
         config={{
           chartType: "line",
@@ -1113,6 +1113,7 @@ export const PanelsLegendPerPanel: StoryObj = {
           panelAxes: [{ yAxisName: "S (µV/K)" }, { yAxisName: "PF (mW/mK²)" }, { yAxisName: "κ (W/mK)" }],
           legendScope: "panel",
           legendPosition: "inside-top-right",
+          panelLegendPositions: [null, "inside-top-left"],
           aspect: "standard",
           xAxisName: "T (K)",
           yAxisName: "σ (S/cm)",
