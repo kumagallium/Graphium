@@ -317,7 +317,7 @@ import {
   consolidateExistingTopics, type ExistingTopicForMerge,
   mergeTopicsExplicit, normalizeTopicTitle,
 } from "./features/wiki";
-import { setWikiIndexForRetriever, setWikiTitleMap, setNoteTitleMap } from "./features/wiki/retriever";
+import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
@@ -9526,9 +9526,26 @@ export function NoteApp() {
         if (doc) titleMap.set(wf.id, doc.title);
       }
       setWikiTitleMap(titleMap);
+      // 種別マップを Retriever に設定（<knowledge> のセクション分け・引用マーカーの種別表示用）
+      const kindMap = new Map<string, WikiKind>();
+      for (const [id, meta] of fm.wikiMetas) kindMap.set(id, meta.kind);
+      setWikiKindMap(kindMap);
+      // トピックが束ねている知見のタイトル（トピック本文だけだと「この概要の根拠は
+      // どの知見か」が消えるので、タイトルだけ 1 行添えて辿れるようにする）
+      const topicMembers = new Map<string, string[]>();
+      for (const [id, meta] of fm.wikiMetas) {
+        if (meta.kind !== "topic") continue;
+        const titles = (meta.derivedFromClaims ?? [])
+          .map((claimId) => titleMap.get(claimId) ?? fm.wikiMetas.get(claimId)?.title ?? "")
+          .filter((t) => t.length > 0);
+        if (titles.length > 0) topicMembers.set(id, titles);
+      }
+      setWikiTopicMembers(topicMembers);
     } else {
       setWikiIndexForRetriever("");
       setWikiTitleMap(new Map());
+      setWikiKindMap(new Map());
+      setWikiTopicMembers(new Map());
     }
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 

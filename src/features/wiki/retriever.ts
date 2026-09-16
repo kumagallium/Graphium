@@ -7,8 +7,9 @@
 //   無い / 失敗したときは空リストになるだけで、下の語彙側がそのまま効く
 // - 語彙（BM25・lexical-search）: Wiki セクション + ノート本文 + 素材テキスト。モデル非依存・完全ローカル
 // Wiki は両系統を融合して <knowledge> に、ノート本文・素材は語彙側だけで <notes> に入れる。
-// どちらの断片も [#N | "title"] の番号ハンドルで引用させる（citation-normalize が [#N] を
-// [Source: "title"] に正規化し、パネルがタイトル → 参照先に解決してジャンプする）。
+// 番号ハンドルは <notes> が [#N | "title"]、<knowledge> は種別名を挟んだ
+// [#N | Kind | "title"]（citation-normalize が [#N] を [Source: "title"] に正規化し、
+// パネルがタイトル → 参照先に解決してジャンプする）。
 //
 // 共有ライブラリ（第 3 レーン kind: "shared"）も設定 ON のとき同じ土俵に載せる。
 // 共有ナレッジ（type=knowledge）だけは手元に埋め込みを作ってあるので Wiki と同じく
@@ -23,17 +24,22 @@ import { lexicalSearch, reciprocalRankFusion, type LexicalHit, type LexicalSourc
 import { getSharedLibrarySnapshot } from "../sharing/shared-library-store";
 // 設定も config を直に読む（storage/shared の barrel は Tauri のダイアログまで連れてくる）
 import { getSharedAiEnabled } from "../../lib/storage/shared/config";
+import type { WikiKind } from "../../lib/document-types";
 
-const TOP_K = 5;
-const MIN_SCORE = 0.3;
 const MAX_CONTEXT_CHARS = 2000;
-/** ノート本文・素材の断片: 上位いくつまで入れるか（Wiki より少なめ） */
-const TOP_K_PASSAGES = 4;
 /** ノート本文・素材の断片の合計文字数上限（Wiki の 2000 より低い予算） */
 const MAX_PASSAGES_CHARS = 1600;
 /** 1 断片あたりの上限（チャンクは ~600 字だが、長いものは切る） */
 const MAX_PASSAGE_CHARS = 700;
-/** 語彙側から拾う候補数（融合・除外の前） */
+/**
+ * 融合（RRF）に渡す候補数。答えに入る件数の蓋ではなく、**候補配列を組み立てるコストの蓋**。
+ * dense も lexical も検索そのものは全件を見る（MiniSearch は転置索引の全マッチを返し、
+ * searchByVector は getAll() で全件と cosine を取る）ので、ここを絞っても検索自体は速く
+ * ならない。効くのはその後 — ヒットから LexicalHit / SearchResult を組み立て、RRF で
+ * 突き合わせる件数で、索引が大きいほどここが線形に効く。
+ * 最終的な採否は MAX_CONTEXT_CHARS / MAX_PASSAGES_CHARS の文字数予算が決める。
+ * dense 側にも同じ値を使う（RRF の両側で候補プールの規模を揃えるため。別の数字を足さない）。
+ */
 const LEXICAL_CANDIDATES = 20;
 /**
  * 埋め込み検索に渡すクエリの上限文字数。
@@ -101,9 +107,11 @@ async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): P
     const data = await res.json() as { embeddings: { vector: number[] }[] };
     const queryVector = data.embeddings?.[0]?.vector;
     if (!queryVector) return [];
-    // 除外分を見込んで多めに取り、@引用・派生知識と重複するものを落とす
-    const results = await embeddingStore.searchByVector(queryVector, TOP_K + LEXICAL_CANDIDATES + (excludeIds?.size ?? 0));
-    return results.filter((r) => r.score >= MIN_SCORE && !excludeIds?.has(r.documentId));
+    // 除外分を見込んで多めに取り、@引用・派生知識と重複するものを落とす。
+    // スコア下限は掛けない — RRF が順位で融合するので、語彙側に対応物の無い
+    // 非対称なフィルタは二重チェックにしかならない（文字数予算が最終的な蓋）
+    const results = await embeddingStore.searchByVector(queryVector, LEXICAL_CANDIDATES + (excludeIds?.size ?? 0));
+    return results.filter((r) => !excludeIds?.has(r.documentId));
   } catch (err) {
     notifyEmbeddingFailure(err);
     return [];
@@ -163,10 +171,12 @@ function lexicalHits(userMessage: string, kinds: LexicalSourceKind[], excludeIds
 }
 
 /**
- * Wiki セクション: 埋め込みと語彙を RRF で融合して上位 TOP_K を選ぶ。
+ * Wiki セクション: 埋め込みと語彙を RRF で融合する。
  * 同じセクションは `${documentId}:${sectionId}` で同一視する（embedding store と語彙索引で id 規約が揃っている）。
+ * 件数の上限はここでは掛けない — 入力（dense / lexical）が既に LEXICAL_CANDIDATES
+ * で頭打ちなので、融合結果も有限。採否は formatRetrievedContext の文字数予算が決める。
  */
-export function fuseWikiSections(dense: SearchResult[], lexical: LexicalHit[], topK = TOP_K): RetrievedPassage[] {
+export function fuseWikiSections(dense: SearchResult[], lexical: LexicalHit[]): RetrievedPassage[] {
   const byId = new Map<string, RetrievedPassage>();
   for (const r of dense) {
     const id = `${r.documentId}:${r.sectionId}`;
@@ -185,7 +195,6 @@ export function fuseWikiSections(dense: SearchResult[], lexical: LexicalHit[], t
     const p = byId.get(f.id);
     if (!p) continue;
     out.push({ ...p, score: f.score });
-    if (out.length >= topK) break;
   }
   return out;
 }
@@ -213,10 +222,11 @@ export async function retrieveWikiContext(
   const lexWiki = lexWikiLane.filter((h) => h.kind !== "shared" || shared.isKnowledge(h.sourceId));
   const wikiSections = fuseWikiSections(dense, lexWiki);
 
-  // 2. ノート本文・素材・共有（ナレッジ以外）: 語彙のみ。同じソースからは最大 2 断片
+  // 2. ノート本文・素材・共有（ナレッジ以外）: 語彙のみ。
+  //    同じソースからは最大 2 断片（1 つのノートが <notes> の文脈を占有しないための上限。
+  //    件数の総枠は掛けない — 採否は MAX_PASSAGES_CHARS の文字数予算が決める）
   const passages = lexicalHits(userMessage, shared.enabled ? ["note", "asset", "shared"] : ["note", "asset"], excludeIds, 2)
     .filter((h) => h.kind !== "shared" || !shared.isKnowledge(h.sourceId))
-    .slice(0, TOP_K_PASSAGES)
     .map<RetrievedPassage>((h) => ({ kind: passageKind(h.kind), sourceId: h.sourceId, chunkId: h.chunkId, title: h.title, text: h.text, score: h.score }));
 
   if (wikiSections.length > 0 || passages.length > 0) {
@@ -245,14 +255,15 @@ export async function retrieveWikiContextFallback(
     }
 
     const query = userMessage.toLowerCase();
+    // 件数の上限は掛けない（採否は formatRetrievedContext の文字数予算に任せる）。
+    // スコア降順に並べておけば、budget が切る位置も関連度の高い方から残る。
     const matched = allRecords
       .map((r) => ({
         ...r,
         score: calculateTextRelevance(query, r.text.toLowerCase()),
       }))
       .filter((r) => r.score > 0 && !excludeIds?.has(r.documentId))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, TOP_K);
+      .sort((a, b) => b.score - a.score);
 
     if (matched.length === 0) {
       // 検索結果なしでもインデックスがあれば注入
@@ -303,6 +314,72 @@ export function getWikiTitleToIdMap(): Map<string, string> {
   return reverse;
 }
 
+/**
+ * Wiki id → WikiKind のマップ（<knowledge> のセクション分けと引用マーカーの種別表示用）。
+ * setWikiTitleMap と同じ流儀（note-app.tsx の effect が fm.wikiMetas から作って渡す）。
+ */
+let _wikiKindMap: Map<string, WikiKind> = new Map();
+export function setWikiKindMap(map: Map<string, WikiKind>): void {
+  _wikiKindMap = map;
+}
+
+/** sourceId から WikiKind を引く。未登録（マップ未設定 / orphan embedding）は claim 扱い
+ *  （section-extract.ts の既定 kind と揃える） */
+function resolveWikiKind(sourceId: string): WikiKind {
+  return _wikiKindMap.get(sourceId) ?? "claim";
+}
+
+/**
+ * トピック id → メンバー知見のタイトル。
+ * トピック本文はメンバー知見から合成した要約なので、本文だけ渡すと「この概要の根拠は
+ * どの知見か」が消える。本文は増やさず、メンバーのタイトルだけを 1 行添えて、
+ * モデルが必要なら知見名で引ける（<wiki-index> や @ で開ける）ようにする。
+ * setWikiTitleMap と同じ流儀で note-app.tsx の effect が注入する。
+ */
+let _wikiTopicMembers: Map<string, string[]> = new Map();
+export function setWikiTopicMembers(map: Map<string, string[]>): void {
+  _wikiTopicMembers = map;
+}
+
+/** <knowledge> 内でセクションを並べる種別の順序（抽象度が上がる方向 + 撤退済み synthesis は末尾） */
+const WIKI_KIND_ORDER: WikiKind[] = ["topic", "claim", "atom", "summary", "synthesis"];
+
+/**
+ * 引用マーカー [#N | Label | "title"] に出す表示名。
+ * DATA_MODEL.md の UI label table（Topics/話題, Summaries/要約, Claims/知見,
+ * Insights/洞察, Ideas/発想）に揃える。on-disk identifier "synthesis" は型名・
+ * フィールド名としては歴史的識別子のまま残すが（DATA_MODEL.md の方針）、この
+ * マーカーは LLM に見せる表示名なので UI label 側（Idea）を使う。
+ */
+const WIKI_KIND_LABEL: Record<WikiKind, string> = {
+  topic: "Topic",
+  claim: "Claim",
+  atom: "Insight",
+  summary: "Summary",
+  synthesis: "Idea",
+};
+
+/**
+ * トピックの断片に添える「このトピックが束ねている知見」の 1 行。
+ * トピック以外、またはメンバーが分からないときは空文字（1st pass の予算計算と
+ * 2nd pass の出力で同じ関数を使い、見積もりと実出力をずらさない）。
+ */
+function topicMembersLine(kind: WikiKind, sourceId: string): string {
+  if (kind !== "topic") return "";
+  const members = _wikiTopicMembers.get(sourceId);
+  if (!members || members.length === 0) return "";
+  return `Groups these claims: ${members.map((t) => `"${t}"`).join(", ")}\n`;
+}
+
+/** <knowledge> 内の見出し（種別ごとのブロックを区切る） */
+const WIKI_KIND_HEADING: Record<WikiKind, string> = {
+  topic: "Topics",
+  claim: "Claims",
+  atom: "Insights",
+  summary: "Summaries",
+  synthesis: "Ideas (legacy)",
+};
+
 /** 検索結果（埋め込みのみの旧形）をシステムプロンプト注入用フォーマットに変換（フォールバック用） */
 function formatWikiContext(results: SearchResult[], wikiIndexText?: string): string {
   const sections: RetrievedPassage[] = results.map((r) => ({
@@ -322,7 +399,11 @@ const _passageTitleRefs = new Map<string, string>();
 /**
  * 検索結果をシステムプロンプト注入用フォーマットに変換する。
  * - Wiki セクションは <knowledge>、ノート本文・素材の断片は <notes> に入れる
- * - 通し番号 [#N | "title"] は両ブロックで連続させる（LLM にはこの番号で引用させる。
+ * - <knowledge> 内は WikiKind ごとにブロックを分ける（WIKI_KIND_ORDER の順、ヒット 0 件の
+ *   種別は出さない）。融合・件数・順序は変えない: 予算内に収める採否判定は wikiSections の
+ *   元の順（RRF 融合順）で行い、選ばれた断片だけを種別で束ね直して見せる（採否を
+ *   種別優先にすると、関連度の低い種別が先に予算を食って上位ランクの断片を弾いてしまう）
+ * - 通し番号 [#N | Kind | "title"] は両ブロックで連続させる（LLM にはこの番号で引用させる。
  *   番号は言い換えが効かないので、引用 → 元の突き合わせが堅牢になる）。タイトル引用も
  *   後方互換で許可し、post-processing 側で [#N] を [Source: "title"] に正規化する
  */
@@ -332,8 +413,23 @@ export function formatRetrievedContext(
   wikiIndexText?: string,
 ): string {
   let n = 0;
-  let knowledge = "";
+
+  // 1st pass: 採否は wikiSections の元の順（RRF 融合順）で決める。
+  // 種別（kind）優先で選ぶと、関連度の低い kind が先に予算を食い、RRF 最上位の
+  // 断片が丸ごと弾かれてしまう。見出し文字列は kind 初出時だけ加算する（2nd pass の
+  // 実際の出力と同じルール）。番号 n はまだ確定しない（2nd pass の表示順で振る）ので、
+  // 桁数のブレは 2 桁まで許容する固定オーバーヘッドで見込む。wikiSections の件数自体は
+  // LEXICAL_CANDIDATES を超えうる（dense 側は excludeIds の分だけ多く候補を取る）が、
+  // 採否は下の MAX_CONTEXT_CHARS 予算で頭打ちになるため通常は 3 桁に届かない。万一
+  // 届いても NUMBER_OVERHEAD は固定の見積もりなので budget 計算が実出力より大きめに
+  // 出るだけで、MAX_CONTEXT_CHARS 超過という実害は生じない（安全側）
+  type Resolved = { r: RetrievedPassage; kind: WikiKind; title: string };
+  const NUMBER_OVERHEAD = "##".length; // 番号表示の見込み幅（実際は 1〜2 桁）
+  const selected: Resolved[] = [];
+  const seenKinds = new Set<WikiKind>();
+  let budget = 0;
   for (const r of wikiSections) {
+    const kind = resolveWikiKind(r.sourceId);
     // titleMap に無い documentId は orphan embedding（削除済み wiki の残骸）。
     // UUID をそのまま title として LLM に渡すと、応答に `[Source: "uuid..."]` が
     // 残って "Knowledge referenced" に意味不明な行が出るため、ここで skip する。
@@ -341,10 +437,27 @@ export function formatRetrievedContext(
     // （dense ヒットは title が空で来るため、ここで解決できないと skip されてしまう）
     const title = _wikiTitleMap.get(r.sourceId) || _sharedTitleMap.get(r.sourceId) || r.title;
     if (!title) continue;
-    const entry = `[#${n + 1} | "${title}"]\n${r.text}\n\n`;
-    if (knowledge.length + entry.length > MAX_CONTEXT_CHARS) break;
-    n += 1;
-    knowledge += entry;
+    const heading = seenKinds.has(kind) ? "" : `--- ${WIKI_KIND_HEADING[kind]} ---\n`;
+    const entry = `[#${"#".repeat(NUMBER_OVERHEAD)} | ${WIKI_KIND_LABEL[kind]} | "${title}"]\n${r.text}\n${topicMembersLine(kind, r.sourceId)}\n`;
+    if (budget + heading.length + entry.length > MAX_CONTEXT_CHARS) break;
+    budget += heading.length + entry.length;
+    seenKinds.add(kind);
+    selected.push({ r, kind, title });
+  }
+
+  // 2nd pass: 採否済みの断片だけを WIKI_KIND_ORDER で束ねて描画する（見せ方の変更のみ。
+  // 各 kind バケット内の相対順は selected の元の順＝fuse 結果の順のまま）
+  let knowledge = "";
+  let hasSynthesisHit = false;
+  for (const kind of WIKI_KIND_ORDER) {
+    const bucket = selected.filter((s) => s.kind === kind);
+    if (bucket.length === 0) continue;
+    knowledge += `--- ${WIKI_KIND_HEADING[kind]} ---\n`;
+    for (const s of bucket) {
+      n += 1;
+      knowledge += `[#${n} | ${WIKI_KIND_LABEL[kind]} | "${s.title}"]\n${s.r.text}\n${topicMembersLine(kind, s.r.sourceId)}\n`;
+      if (kind === "synthesis") hasSynthesisHit = true;
+    }
   }
 
   let notes = "";
@@ -365,16 +478,15 @@ export function formatRetrievedContext(
 
   let output = `The following is the user's accumulated knowledge from their Wiki. Use it when relevant to provide informed responses.
 
-The Wiki contains four kinds of pages, all equally valid as citation sources:
-- **Concept**: generalized principles / findings / bridges (abstracted insight)
-- **Synthesis**: integrated insights across multiple concepts (use these when the user asks open-ended questions or wants new ideas / connections)
-- **Atom**: concrete observations / data fragments from notes (use these as primary-source evidence)
-- **Summary**: per-note summaries
-
-When the user asks an open-ended question (e.g. "what can we say from this?", "any ideas?"), actively draw on **Synthesis** and **Atom** pages in addition to Concepts — they often hold the most actionable evidence and the most generative connections.
+The Wiki sections below are grouped by kind, all equally valid as citation sources:
+- **Topic**: a page bundling related Claims around one concept.
+- **Claim**: a sourced proposition extracted from the user's notes.
+- **Insight**: a structural pattern that spans multiple Claims, more abstract than a single Claim.
+- **Summary**: a legacy per-note summary (no longer generated for new notes).${hasSynthesisHit ? `
+- **Idea (legacy)**: an older integrated-insight page kept for continuity; treat it like an Insight.` : ""}
 
 CITATION FORMAT (STRICT):
-- Each knowledge section below is prefixed with a number marker like [#1 | "title"]. When you use information from a section, immediately follow that statement with its number marker, e.g. [#1].
+- Each knowledge section below is prefixed with a number marker like [#1 | Claim | "title"]. When you use information from a section, immediately follow that statement with its number marker, e.g. [#1].
 - Numbers are stable handles — prefer them. Do NOT paraphrase, translate, or invent titles.
 - If you cite a page that only appears in the <wiki-index> (no number), use [Source: "exact title"] with ASCII brackets and straight double quotes — copy the title exactly, no @ prefix, no full-width 【】.
 - Do NOT cite a number or title that is not shown below. Do not fabricate citations.
