@@ -28,7 +28,9 @@ function parseNumberedSources(wikiContext: string): {
 } {
   const candidateTitles: string[] = [];
   const numberToTitle = new Map<number, string>();
-  const numberedPattern = /\[#(\d+)\s*\|\s*"([^"]+)"\]/g;
+  // <knowledge> 側は種別ラベルを挟んで `[#N | Kind | "title"]`、<notes> 側は従来どおり
+  // `[#N | "title"]`（末尾に (note) 等が付く）。中間セグメントは optional にして両方拾う。
+  const numberedPattern = /\[#(\d+)\s*\|\s*(?:[^|"]+\|\s*)?"([^"]+)"\]/g;
   let m: RegExpExecArray | null;
   while ((m = numberedPattern.exec(wikiContext)) !== null) {
     const num = parseInt(m[1], 10);
