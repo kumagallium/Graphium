@@ -22,6 +22,7 @@ export {
   restoreIndexEntry,
   archiveIndexEntry,
   restoreFromArchive,
+  getActiveNotes,
   findIncomingReferences,
   buildIndexEntry,
   saveIndexFile,

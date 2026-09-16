@@ -26,7 +26,15 @@ export type CrossUpdateResult = {
 export type ExistingWikiDetail = {
   id: string;
   title: string;
-  kind: "summary" | "claim";
+  /**
+   * 横断更新（追記・改稿）の対象は知見（claim）に限定する。
+   * - Topic（話題）・Atom（洞察）は本文がメンバー知見からの純関数で、触れるたびに
+   *   作り直す設計。前の本文に section を追記する cross-update とは原理が合わない
+   *   （Topic の更新は ingest の「トピックの段」が別経路で担当する）
+   * - Summary は v0.75.0 で生成を停止済み。既存ファイルは読めるが、新しい知見を
+   *   追記する先としてはもう対象にしない
+   */
+  kind: "claim";
   /** 既存セクションの見出しリスト */
   sectionHeadings: string[];
   /** セクション内容のサマリー（先頭200文字ずつ） */
@@ -94,7 +102,7 @@ Respond with valid JSON only (no markdown wrapper):
 ## Guidelines
 
 - Only propose updates with confidence >= 0.7
-- Focus on Claim pages (not Summaries — those are tied to specific notes)
+- Only Claim pages are given to you as update targets — Topic/Atom pages are regenerated from their member Claims elsewhere and are never edited by section-append here
 - Don't propose trivial updates (just adding a mention without substance)
 - Each proposal should add genuine value to the existing page
 - Write section content with enough depth to be genuinely useful

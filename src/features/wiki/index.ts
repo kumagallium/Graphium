@@ -22,6 +22,8 @@ export {
   extractTopicOneLiner, formatTopicRefForIndex, consolidateTopics, retargetClaimTopicId,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
+  // 機械的な自動アーカイブ（LLM 不要）
+  detectAutoArchivable, type AutoArchiveCandidate,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,

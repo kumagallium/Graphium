@@ -275,7 +275,8 @@ import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-blobs";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
-import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
+import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, getActiveNotes, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
+import type { WikiSnapshot } from "./server/services/wiki-linter";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
@@ -298,6 +299,8 @@ import {
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail, extractBodyPreview,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
+  // 機械的な自動アーカイブ（LLM 不要）
+  detectAutoArchivable,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   // Synthesis
@@ -534,6 +537,53 @@ function withTopicOneLiners<T extends { id: string; kind: WikiKind }>(
  * この関数を通す（主 ingest 経路のみ関連度順リオーダー + 上限キャップを追加で行うため、
  * その経路は buildExistingWikiRefs / withTopicOneLiners を個別に呼ぶ）。
  */
+/**
+ * 機械的な自動アーカイブ（LLM 不要）。空トピック・出どころ喪失知見を検出し、点検（ingest
+ * 直後 / 起動時 24h 判定）の入口で先に退避してから、残りの snapshot を通常の lint に渡す。
+ *
+ * - 冪等: 呼び出し元の `snapshots` は fm.wikiFiles（archived/trashed 除外済み）から
+ *   組み立てられている前提なので、既にアーカイブ済みのエントリはそもそも含まれない
+ * - 可逆: archiveIndexEntry は soft-delete（ファイル本体は残る）。アーカイブ画面から
+ *   復元できることをトースト文言で伝える
+ * - 黙って減らさない: 件数をトースト（見える化）と wikiLog（"archive"）の両方に残す
+ * - AI の判断（古い・冗長）はここに含めない。stale/redundant は WikiLintView 側の
+ *   一括アーカイブ操作でユーザーが選ぶ
+ */
+async function autoArchiveEmptyWiki(
+  snapshots: WikiSnapshot[],
+  validNoteIds: Set<string>,
+  handleArchiveWikiFile: (wikiId: string) => Promise<void>,
+  setIngestToast: React.Dispatch<React.SetStateAction<IngestToastState>>,
+): Promise<WikiSnapshot[]> {
+  const candidates = detectAutoArchivable(snapshots, validNoteIds);
+  if (candidates.length === 0) return snapshots;
+
+  for (const candidate of candidates) {
+    await handleArchiveWikiFile(candidate.id);
+  }
+
+  wikiLog.append(
+    "archive",
+    candidates.map((c) => c.id),
+    `Auto-archived ${candidates.length} empty page(s): ${candidates.map((c) => `"${c.title}"`).join(", ")}`,
+  ).catch(() => {});
+
+  setIngestToast((prev) => ({
+    items: [
+      ...(prev?.items ?? []),
+      {
+        id: `auto-archive:${crypto.randomUUID()}`,
+        status: "success" as const,
+        noteTitle: `\u{1F5C4} ${tStatic("ingest.autoArchived", { count: String(candidates.length) })}`,
+        result: candidates.map((c) => c.title).join(", "),
+      },
+    ],
+  }));
+
+  const archivedIds = new Set(candidates.map((c) => c.id));
+  return snapshots.filter((s) => !archivedIds.has(s.id));
+}
+
 function buildExistingWikisForIngest(
   notes: NoteIndexEntry[] | undefined,
   getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined,
@@ -9296,7 +9346,14 @@ export function NoteApp() {
 
     // 自動 Lint: ローカル検出 + LLM 分析（5ページ以上で LLM 実行）
     try {
-      const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+      let snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+      // 機械的な自動アーカイブ（LLM 不要）を lint 本体より先に実行する
+      snapshots = await autoArchiveEmptyWiki(
+        snapshots,
+        new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId)),
+        fm.handleArchiveWikiFile,
+        setIngestToast,
+      );
       if (snapshots.length < 2) {
         updateStage("lint", "skipped", tStatic("ingest.needTwoWikis", { count: String(snapshots.length) }));
       } else {
@@ -9789,7 +9846,14 @@ export function NoteApp() {
           return; // 24h 未満 → スキップ
         }
 
-        const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+        let snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+        // 機械的な自動アーカイブ（LLM 不要）を lint 本体より先に実行する
+        snapshots = await autoArchiveEmptyWiki(
+          snapshots,
+          new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId)),
+          fm.handleArchiveWikiFile,
+          setIngestToast,
+        );
         if (snapshots.length < 2) return;
 
         // LLM Lint は 5 ページ以上かつ前回から 24h 以上のときのみ
@@ -11764,6 +11828,30 @@ export function NoteApp() {
             }}
             onArchiveWiki={async (wikiId) => {
               await fm.handleArchiveWikiFile(wikiId);
+            }}
+            onBulkArchiveWikis={async (wikiIds) => {
+              // stale/redundant のまとめてアーカイブ（AI 判断は自動実行しない方針なので、
+              // ここはユーザーが選んで押した結果のみ）。件数をトーストとログの両方に残す。
+              const titles = wikiIds.map((id) => fm.wikiMetas.get(id)?.title ?? id);
+              for (const wikiId of wikiIds) {
+                await fm.handleArchiveWikiFile(wikiId);
+              }
+              wikiLog.append(
+                "archive",
+                wikiIds,
+                `Bulk-archived ${wikiIds.length} stale/redundant page(s): ${titles.map((t) => `"${t}"`).join(", ")}`,
+              ).catch(() => {});
+              setIngestToast((prev) => ({
+                items: [
+                  ...(prev?.items ?? []),
+                  {
+                    id: `bulk-archive:${crypto.randomUUID()}`,
+                    status: "success" as const,
+                    noteTitle: `\u{1F5C4} ${tStatic("wikiLint.bulk.archivedToast", { count: String(wikiIds.length) })}`,
+                    result: titles.join(", "),
+                  },
+                ],
+              }));
             }}
             wikiTitleById={(() => {
               // wikiId → title マップ。Lint カードで UUID ではなくタイトルを表示するため。

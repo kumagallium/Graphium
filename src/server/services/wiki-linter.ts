@@ -416,3 +416,59 @@ export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
 function normalizeForDuplicateCheck(title: string): string {
   return title.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
 }
+
+/** 機械的に自動アーカイブできる「空になったナレッジ」の候補 */
+export type AutoArchiveCandidate = {
+  id: string;
+  title: string;
+  kind: "topic" | "claim";
+  /** empty-topic: メンバー知見 0 件の話題 / orphaned-source: 出どころのノートが全て消失した知見 */
+  reason: "empty-topic" | "orphaned-source";
+};
+
+/**
+ * 機械的に判定できる「空になったナレッジ」を検出する（LLM 不要）。
+ *
+ * AI の判断（古い・冗長）はここに含めない — 人が点検結果から一括で選んでアーカイブする
+ * 操作（WikiLintView 側）に回す。ここで拾うのは次の 2 種類のみ:
+ *
+ * - 空トピック: derivedFromClaims が空（統合や知見の削除で残った空の入れ物）
+ * - 出どころ喪失知見: derivedFromNotes に有効なノート（ゴミ箱でも未検出でもない）が
+ *   1 つも無い。validNoteIds は既存のインデックス（getActiveNotes 相当）から作る
+ *   前提で、ここでは重いドキュメントロードを行わない。
+ *
+ * 呼び出し側は返ってきた候補を archive してから、残りの snapshot で通常の lint
+ * （detectLocalIssues / LLM lint）を走らせる。fm.wikiFiles は archived/trashed を
+ * 除外済みなので、既にアーカイブ済みのエントリはそもそも wikis に含まれず冪等になる。
+ */
+export function detectAutoArchivable(
+  wikis: WikiSnapshot[],
+  validNoteIds: Set<string>,
+): AutoArchiveCandidate[] {
+  const candidates: AutoArchiveCandidate[] = [];
+  for (const w of wikis) {
+    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0) {
+      candidates.push({ id: w.id, title: w.title, kind: "topic", reason: "empty-topic" });
+      continue;
+    }
+    if (w.kind === "claim") {
+      // 出どころが「ノートだけ」で、そのノートが 1 つも残っていないときだけ片付ける。
+      //
+      // derivedFromNotes にはノート id 以外も入る（pdf: / url: / document: / chat: /
+      // memo: の外部ソース。[[project_lineage_external_source_prefixes]]）。これらは
+      // ノート索引に載らないので validNoteIds では引けず、「消えた」とは判定できない。
+      // 素材から作った知見はすべてこの形なので、prefix 付きが 1 つでもあれば残す。
+      // 出どころが空の知見も、どのフィールドに来歴があるか（derivedFromChats など）を
+      // この関数からは見られないため、自動では片付けない（点検の orphan が拾う）。
+      const noteSources = w.derivedFromNotes.filter((id) => !id.includes(":"));
+      const hasExternalSource = w.derivedFromNotes.length > noteSources.length;
+      if (noteSources.length > 0 && !hasExternalSource) {
+        const hasValidSource = noteSources.some((noteId) => validNoteIds.has(noteId));
+        if (!hasValidSource) {
+          candidates.push({ id: w.id, title: w.title, kind: "claim", reason: "orphaned-source" });
+        }
+      }
+    }
+  }
+  return candidates;
+}

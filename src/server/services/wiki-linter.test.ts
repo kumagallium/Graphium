@@ -3,7 +3,7 @@
 // detectLocalIssues の orphan topic 検出（メンバー知見 0 件の話題ページ）を検証する。
 
 import { describe, it, expect } from "vitest";
-import { detectLocalIssues, type WikiSnapshot } from "./wiki-linter.ts";
+import { detectLocalIssues, detectAutoArchivable, type WikiSnapshot } from "./wiki-linter.ts";
 
 const base = (overrides: Partial<WikiSnapshot>): WikiSnapshot => ({
   id: "id-1",
@@ -126,5 +126,98 @@ describe("detectLocalIssues - contradiction（洞察の conflictsWith を機械�
       base({ id: "atom-a", title: "A", kind: "atom", derivedFromClaims: undefined, conflictsWith: ["missing-id"] }),
     ]);
     expect(issues.some((i) => i.type === "contradiction")).toBe(false);
+  });
+});
+
+describe("detectAutoArchivable - 機械的に判定できる空ナレッジの検出", () => {
+  it("メンバー知見が 0 件の topic を検出する", () => {
+    const candidates = detectAutoArchivable(
+      [base({ id: "topic-1", title: "空話題", kind: "topic", derivedFromClaims: [] })],
+      new Set(),
+    );
+    expect(candidates).toEqual([
+      { id: "topic-1", title: "空話題", kind: "topic", reason: "empty-topic" },
+    ]);
+  });
+
+  it("メンバー知見を持つ topic は検出しない", () => {
+    const candidates = detectAutoArchivable(
+      [base({ id: "topic-1", title: "話題", kind: "topic", derivedFromClaims: ["claim-a"] })],
+      new Set(),
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it("derivedFromNotes が空の claim は片付けない（来歴が別フィールドにあり得る）", () => {
+    const candidates = detectAutoArchivable(
+      [base({ id: "claim-1", title: "根無し知見", kind: "claim", derivedFromNotes: [] })],
+      new Set(["note-a"]),
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it("derivedFromNotes が全てゴミ箱・未検出（validNoteIds に無い）の claim を検出する", () => {
+    const candidates = detectAutoArchivable(
+      [base({ id: "claim-1", title: "知見", kind: "claim", derivedFromNotes: ["note-trashed"] })],
+      new Set(["note-a"]),
+    );
+    expect(candidates.map((c) => c.id)).toEqual(["claim-1"]);
+  });
+
+  it("derivedFromNotes に 1 件でも有効なノートがあれば検出しない", () => {
+    const candidates = detectAutoArchivable(
+      [base({ id: "claim-1", title: "知見", kind: "claim", derivedFromNotes: ["note-trashed", "note-a"] })],
+      new Set(["note-a"]),
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it("AI 判断（stale/redundant 相当）の atom/topic 重複は対象外（ここでは検出しない）", () => {
+    const candidates = detectAutoArchivable(
+      [
+        base({ id: "atom-1", title: "洞察", kind: "atom", derivedFromClaims: ["c1"] }),
+        base({ id: "topic-1", title: "話題A", kind: "topic", derivedFromClaims: ["c1"] }),
+        base({ id: "topic-2", title: "話題a", kind: "topic", derivedFromClaims: ["c2"] }),
+      ],
+      new Set(["note-a"]),
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it("冪等: 空配列を渡せば空配列を返す（既にアーカイブ済みで wikis に含まれないケースを模す）", () => {
+    expect(detectAutoArchivable([], new Set())).toEqual([]);
+  });
+});
+
+describe("detectAutoArchivable の出どころ判定", () => {
+  const claim = (id: string, derivedFromNotes: string[]) => ({
+    id, title: id, kind: "claim" as const, derivedFromNotes, relatedClaims: [],
+    bodyPreview: "", modifiedAt: "2026-09-16T00:00:00.000Z",
+  });
+
+  it("素材（pdf:/url:/chat:）から作った知見は片付けない", () => {
+    const wikis = [
+      claim("c1", ["pdf:abc"]),
+      claim("c2", ["url:https://example.com"]),
+      claim("c3", ["chat:xyz"]),
+      claim("c4", ["memo:m1"]),
+    ];
+    expect(detectAutoArchivable(wikis, new Set())).toEqual([]);
+  });
+
+  it("出どころが空の知見は片付けない（別フィールドに来歴があり得る）", () => {
+    expect(detectAutoArchivable([claim("c1", [])], new Set())).toEqual([]);
+  });
+
+  it("ノートと素材が混ざっているときは、ノートが消えていても片付けない", () => {
+    const wikis = [claim("c1", ["note-gone", "pdf:abc"])];
+    expect(detectAutoArchivable(wikis, new Set())).toEqual([]);
+  });
+
+  it("出どころがノートだけで、そのノートが全部消えていれば片付ける", () => {
+    const wikis = [claim("c1", ["note-gone"]), claim("c2", ["note-alive"])];
+    const out = detectAutoArchivable(wikis, new Set(["note-alive"]));
+    expect(out.map((c) => c.id)).toEqual(["c1"]);
+    expect(out[0].reason).toBe("orphaned-source");
   });
 });

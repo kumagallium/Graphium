@@ -89,8 +89,10 @@ The first three don't call a model — you've already made the decision by picki
 
 Two buttons at the bottom of the sidebar's **Knowledge** section open maintenance views:
 
-- **Log** — an activity log of every knowledge operation (ingest, merge, cross-update, regenerate, delete), grouped by day, each entry linking to the affected page.
+- **Log** — an activity log of every knowledge operation (ingest, merge, cross-update, regenerate, delete, archive), grouped by day, each entry linking to the affected page.
 - **Health** — the **Knowledge Health Check**. Press **Run Check** and choose **Quick (local only)**, which finds orphaned and duplicate-topic entries — plus any Insight pairs already flagged as **Contradiction** during discovery (see below) — without any LLM call, or **Full (AI analysis)**, which additionally has the AI look for **Gap**, **Stale**, **Redundant**, and any other Contradictions it can spot across the whole corpus. There's no threshold behind these — Stale means the AI found a specific newer page or note that supersedes it (not "hasn't changed in a while"), and Redundant means two pages assert the same specific claim. A Contradiction issue offers **Open** on both affected pages so you can compare them yourself — Graphium never decides which one is right.
+
+Two page-clearing operations happen at different points on that automatic/manual line. Whenever a check runs (after ingest, and on startup if it's been over 24h), Graphium **automatically archives pages that are mechanically empty** — a Topic left with no member Claims (its members were all deleted or merged elsewhere), or a Claim whose source notes are all gone (trashed or missing). No AI is involved and nothing is silently thrown away: it's the same reversible **Archive** action available from the individual Regenerate/Archive/Open buttons — the page stays fully restorable, and each run reports how many pages it archived, both as a toast and in the Log. Judgment calls — **Stale** and **Redundant** — are never archived automatically; instead, the Health Check lets you check off any number of Stale/Redundant issues and archive them together with one button, so you stay the one deciding what counts as outdated or duplicate.
 
 ## Discovering insights from claims
 
