@@ -3,7 +3,7 @@
 Once [AI is set up](/ai-setup), Graphium gives you two ways to talk to a model without leaving your work: a chat panel that knows what note (or block) you are looking at, and the Composer — a `⌘K` (`Ctrl+K` on Windows/Linux) palette that combines note search with one-shot AI questions. This page covers both, plus how answers cite sources, how to reuse an answer, and how to steer the AI with skills.
 
 ::: info Which model answers
-Chat and the Composer use the model assigned as **Chat model** in Settings → **AI** (falling back to the default model when unset). See [AI setup](/ai-setup).
+Chat and the Composer use the model assigned as **Chat model** in Settings → **AI**, inside the collapsed **Model assignment** group (falling back to the default model when unset). See [AI setup](/ai-setup).
 :::
 
 ## The AI chat panel
@@ -45,11 +45,11 @@ The **Grounding** chip next to the input controls what evidence the AI draws on.
 
 **This note** is the default: answers stay pinned to what you explicitly cited, which is what you want while writing.
 
-What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings)); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> On desktop, if a shared library is configured, its entries are cross-searched the same way unless you turn that off in [Settings → Storage](/storage-and-sync#shared-entries-in-search-and-ai-chat). <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" />
+What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings), inside the collapsed **Advanced** group); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> On desktop, if a shared library is configured, its entries are cross-searched the same way unless you turn that off in [Settings → Storage](/storage-and-sync#shared-entries-in-search-and-ai-chat), inside the collapsed **Share with other people** group. <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" />
 
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
-Choosing **External** forces a web search. To give Graphium one, register a search MCP server (such as Tavily) in Settings → **AI**.
+Choosing **External** forces a web search. To give Graphium one, register a search MCP server (such as Tavily) in Settings → **AI**, inside the collapsed **Advanced** group.
 
 So you can tell where a statement comes from, sources at the end of an answer are labeled **📓 From your notes** for internal citations and **🌐 Web sources** for pages found on the web. Clicking an internal citation opens what it points at — a knowledge page, a note in the side peek, or an asset in the material peek.
 

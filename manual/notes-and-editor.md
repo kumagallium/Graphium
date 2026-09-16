@@ -443,7 +443,7 @@ Graphium autosaves three seconds after you stop editing; the header shows **Unsa
 
 ## History and versions
 
-Every save is kept. The **History** tab in the right panel lists what changed (blocks, labels) and who changed it: human edits carry the name and email from your author profile ([Settings](/settings) → **Storage**), AI edits carry an **AI** badge and the model that made them, with entry types like **Edit**, **Derive**, **AI Generate**, and **Template**.
+Every save is kept. The **History** tab in the right panel lists what changed (blocks, labels) and who changed it: human edits carry the name and email from your author profile ([Settings](/settings) → **Storage** → **Share with other people** → **Your name**), AI edits carry an **AI** badge and the model that made them, with entry types like **Edit**, **Derive**, **AI Generate**, and **Template**.
 
 ![The history panel with a pinned version and the revision list](/screenshots/history.png)
 
