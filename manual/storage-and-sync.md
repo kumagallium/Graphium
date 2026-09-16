@@ -23,7 +23,7 @@ The desktop app writes ordinary files you can see in your file manager. Inside t
 
 ## Changing the storage folder <Badge type="tip" text="Added in v0.3.10 (2026-04-25)" />
 
-On the desktop app you can move the whole data folder: open **Settings** → **Storage** → **Local save location** and press **Change…**. The current and default paths are shown, and **Reset to default** takes you back to the Documents folder.
+On the desktop app you can move the whole data folder: open **Settings** → **Storage** → **Where your notes are saved** and press **Change…**. The current and default paths are shown, and **Reset to default** takes you back to the Documents folder.
 
 Two things to know before you switch:
 
@@ -36,7 +36,7 @@ The settings hint says it best: point the save location at a Dropbox-, Google Dr
 
 ## Your author identity
 
-Notes record who wrote them. Open **Settings** → **Storage** → **Your identity** and fill in **Display name** and **Email**, then press **Save identity**. This identity is stamped on shared notes and on PROV provenance entries (the record of who edited what — see [Labels & provenance](/labels-and-provenance)). It is self-asserted: there is no login or verification behind it.
+Notes record who wrote them. Open **Settings** → **Storage**, expand **Share with other people**, then open **Your name** and fill in **Display name** and **Email**, then press **Save your name**. This identity is stamped on shared notes and on PROV provenance entries (the record of who edited what — see [Labels & provenance](/labels-and-provenance)). It is self-asserted: there is no login or verification behind it.
 
 An identity is required before you can share notes with a team (below).
 
@@ -65,11 +65,11 @@ Media has the same protection: deleting a file from the [material library](/mate
 
 Sharing publishes a copy of a note into a folder your whole team can reach — a lab NAS, a Dropbox-synced folder, any shared drive. It is desktop-only for now; the browser version cannot read or write local folders.
 
-![Storage tab of the settings dialog with save location, identity, shared storage, and export sections](/screenshots/settings-storage.png)
+![Storage tab of the settings dialog with save location and export sections open, and the Share with other people group holding Your name and Share with your team](/screenshots/settings-storage.png)
 
 ### Set up the shared folders
 
-In **Settings** → **Storage** → **Shared storage**:
+Open **Settings** → **Storage**, expand **Share with other people**, then open **Share with your team**:
 
 1. Pick a **Shared folder** — the team-visible location where published notes go.
 2. Optionally pick a **Blob folder (large binaries)** — where media bytes are stored. Notes with embedded images, PDFs, or other media need it; URL bookmarks don't.
@@ -83,7 +83,7 @@ Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appe
 
 The shared copy is a snapshot. To update it, edit your local note and choose **Update shared copy** from the same menu. To withdraw it, use **Unshare** in the shared library; Graphium warns that other members may have already viewed, cached, or forked it, so it cannot be fully erased.
 
-What travels with the note: the text, its labels and procedures, the folder it sits in, and any embedded images or files. What does not: the AI chats you had inside the note, its edit history, saved versions, and memos. Sharing hands over the record, not the working process behind it. If you want the chats and the edit history to travel too, turn on **Include AI chats and edit history when sharing** in **Settings** → **Storage** → **Shared storage**, or tick the same box in the bulk share dialog. Either way it applies from the next share onward — notes you shared before are updated the next time you choose **Update shared copy**. <Badge type="tip" text="Added in v0.61.0 (2026-09-08)" />
+What travels with the note: the text, its labels and procedures, the folder it sits in, and any embedded images or files. What does not: the AI chats you had inside the note, its edit history, saved versions, and memos. Sharing hands over the record, not the working process behind it. If you want the chats and the edit history to travel too, turn on **Include AI chats and edit history when sharing** in **Settings** → **Storage** → **Share with other people** → **Share with your team**, or tick the same box in the bulk share dialog. Either way it applies from the next share onward — notes you shared before are updated the next time you choose **Update shared copy**. <Badge type="tip" text="Added in v0.61.0 (2026-09-08)" />
 
 ### Share knowledge pages too <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
 
@@ -137,7 +137,7 @@ The **Templates** tab lists pages shared as templates (see above), with a **Desc
 
 Shared notes, knowledge pages, references, and data files also show up without forking them: the `⌘K` search palette gets a **Shared** section, and AI chat can cross-search them the same way it cross-searches your own notes (Internal grounding scope). Graphium builds a search index and, for shared knowledge pages, an embedding — both on your own device only. Nothing is written back to the shared folder, and the AI never records a shared entry as a source in provenance unless you insert a citation card yourself.
 
-This is on by default whenever a shared folder is configured, since setting up the shared folder is itself the opt-in step. Turn it off in **Settings** → **Storage** → **Shared storage** if you would rather keep search and AI chat scoped to your own library. Note that the shared folder has no access control inside Graphium: anyone who can read it can index and search it the same way.
+This is on by default whenever a shared folder is configured, since setting up the shared folder is itself the opt-in step. Turn it off in **Settings** → **Storage** → **Share with other people** → **Share with your team** if you would rather keep search and AI chat scoped to your own library. Note that the shared folder has no access control inside Graphium: anyone who can read it can index and search it the same way.
 
 ### Cite a shared entry in your notes <Badge type="tip" text="Added in v0.31.0 (2026-08-12)" />
 
@@ -253,7 +253,7 @@ Markdown is lossy by design: what a block *means* survives, how it *looks* does 
 
 ### Export everything <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" />
 
-**Settings** → **Storage** → **Export & backup** has two bulk buttons:
+**Settings** → **Storage** → **Export and backup** has two bulk buttons:
 
 - **Export all notes (Markdown)** — a ZIP of every note as Markdown, for reading anywhere.
 - **Download backup (JSON)** — a ZIP of the raw data (`.graphium.json`) for every note, Knowledge page, and skill document, including archived and trashed ones. This is the lossless option.

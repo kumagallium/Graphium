@@ -19,7 +19,7 @@ Other ways in:
 
 ## The phone view
 
-Open [the app](https://kumagallium.github.io/Graphium/app/) in your phone's browser — the QR code in the desktop's [Settings → Storage → Mobile upload](/settings) gets you there in one scan. On a phone, Graphium shows a home built for capture: your capture history under **Captures**, and a capture bar fixed at the bottom with six ways in — **Write**, **URL**, **Photo**, **Video**, **Voice**, and **Library**.
+Open [the app](https://kumagallium.github.io/Graphium/app/) in your phone's browser — the QR code in the desktop's [Settings → Storage → Share with other people → Send from your phone](/settings) gets you there in one scan. On a phone, Graphium shows a home built for capture: your capture history under **Captures**, and a capture bar fixed at the bottom with six ways in — **Write**, **URL**, **Photo**, **Video**, **Voice**, and **Library**.
 
 ![Mobile capture view with history and the capture bar](/screenshots/mobile-capture.png)
 
@@ -92,12 +92,12 @@ The pipeline, end to end:
 1. **Connect storage on the phone — once.** Tap the gear in the phone header (or the queue's **Connect storage** button). The **Choose storage** picker offers **Google Drive** (OneDrive is listed as **Coming soon**). You sign in with your own Google account; Graphium gets access only to files it creates (`drive.file` scope) and no secret is involved. The settings sheet behind the gear also shows the connection status, lets you **Change** or **Disconnect**, and holds a folded **Advanced** client-ID override that most people never touch.
 2. **Capture and send.** Tap **Send** on the queue and it drains into the `Graphium/Inbox` folder of your own Drive. Transfers use TLS, and the files sit as ordinary files in storage *you* control.
 3. **Sync the folder to your desktop.** Run your cloud client (for example Google Drive for desktop) so that folder exists on the desktop's disk.
-4. **Point Graphium at it.** In the desktop's [Settings → Storage](/settings), the **Mobile upload** section has the **Inbox folder** picker — choose the folder your cloud storage syncs to, and Graphium reads the `Inbox` subfolder inside it. The same section shows the QR code under **Connect on your phone** (with **Copy URL**) that opens Graphium on the phone in the first place.
+4. **Point Graphium at it.** In the desktop's [Settings → Storage](/settings), expand **Share with other people** and open **Send from your phone** — it has the **Inbox folder** picker: choose the folder your cloud storage syncs to, and Graphium reads the `Inbox` subfolder inside it. The same section shows the QR code under **Connect on your phone** (with **Copy URL**) that opens Graphium on the phone in the first place.
 5. **Import.** When files arrive, a **Mobile** entry in the desktop sidebar shows a pending count. Open it to preview each item, then **Import all** or **Import selected**. Photos, videos, and voice notes become [materials](/materials-and-citations); written captures become regular memos and URL bookmarks. Pick a folder under **Send into** <Badge type="tip" text="Added in v0.55.0 (2026-09-04)" /> at the top of the phone screen and what arrives is already in that folder — photos, videos, audio and URLs as materials, and anything you wrote as a memo. The list holds the folders you have used before on that phone, plus the ones in your library if the phone is connected to the same storage; **+ New folder…** creates one on the spot. Your choice is remembered until you change it, so there is nothing to pick each time you send. Duplicates are skipped automatically, a toast summarizes **Imported · skipped · failed**, and an empty inbox simply says **Nothing new**.
 
-By default, imported files are deleted from the inbox — their content is already in your library. Check **Keep processed files in _imported/** (in the inbox's folder settings or in Settings → Storage) if you prefer an archive.
+By default, imported files are deleted from the inbox — their content is already in your library. Check **Keep processed files in _imported/** (in the inbox's folder settings, or in Settings → Storage → Share with other people → Send from your phone) if you prefer an archive.
 
-![The Mobile upload section in Settings → Storage, with the QR code that opens Graphium on your phone](/screenshots/mobile-upload-settings.png)
+![The Send from your phone section in Settings → Storage, with the QR code that opens Graphium on your phone](/screenshots/mobile-upload-settings.png)
 
 ::: tip No cloud account? No problem
 The queue is a convenience, not a requirement: your phone's share sheet can save a photo straight into the synced `Graphium/Inbox` folder by hand (Photos → share → the Files/Drive app), and the desktop inbox imports it exactly the same way.

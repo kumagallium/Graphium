@@ -86,7 +86,7 @@ Older Graphium notes marked procedure steps by labeling headings with **Step**, 
 
 ### Renaming labels
 
-If "Input / Tool / Parameter / Output" doesn't match your field's vocabulary, rename them: [Settings](/settings) → **Display & Language** → **Provenance label names**. Your custom names appear everywhere (toolbar, graph legend, badges), the underlying PROV-DM role stays standard, and **Reset to defaults** brings the originals back.
+If "Input / Tool / Parameter / Output" doesn't match your field's vocabulary, rename them: [Settings](/settings) → **Display & Language**, then open the collapsed **Provenance label names** group. Your custom names appear everywhere (toolbar, graph legend, badges), the underlying PROV-DM role stays standard, and **Reset to defaults** brings the originals back.
 
 ## The provenance graph panel
 

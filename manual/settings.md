@@ -24,38 +24,37 @@ Latin font options: **Default (Inter)**, **Atkinson Next + Inter numerals (dysle
 
 ![The Display & Language tab with language, reading font, and reading colors](/screenshots/settings-display-tab.png)
 
-Under **Provenance label names**, five labels are renameable — the defaults are **Step**, **Input**, **Tool**, **Parameter**, and **Output** — and each row shows its underlying PROV-DM role (`prov:Activity`, `prov:used`, `prov:Entity`, `prov:wasGeneratedBy`). Leave a field empty to use the default; **Reset to defaults** clears all custom names at once.
+Under **Provenance label names** — a collapsed group by default; press **Details** next to a heading to expand any long description — five labels are renameable — the defaults are **Step**, **Input**, **Tool**, **Parameter**, and **Output** — and each row shows its underlying PROV-DM role (`prov:Activity`, `prov:used`, `prov:Entity`, `prov:wasGeneratedBy`). Leave a field empty to use the default; **Reset to defaults** clears all custom names at once.
 
 ## Storage
 
-Where your notes live and how they move between devices. Full details in [Storage & sync](/storage-and-sync).
+Where your notes live and how they move between devices. Full details in [Storage & sync](/storage-and-sync). The top two groups are open by default; the rest sit inside two collapsed bundles you expand as needed.
 
 | Group | What it does |
 |---|---|
-| **Local save location** | Desktop only — change the folder where notes, media, and knowledge are stored (point it at a Dropbox/Drive/OneDrive folder to sync without OAuth). |
-| **Your identity** | Set your display name and email, used as the author on shared notes and provenance entries. |
-| **Shared storage** | Desktop only — pick a shared folder (lab NAS, synced folder) plus a blob folder for large binaries, with a **Test connection** round-trip check. |
-| **Mobile upload** <Badge type="tip" text="Added in v0.23.1 (2026-07-29)" /> | The desktop half of phone capture: a QR code that opens Graphium on your phone (storage is connected there), the **Inbox folder** picker for the synced folder that receives captures, and the **Keep processed files in `_imported/`** option. See [Mobile capture](/mobile). |
-| **Export & backup** | Download all notes as Markdown files, or a raw-data JSON backup covering every note, knowledge, and skill document. |
-| **Search index** <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> | The on-device full-text index over note bodies, knowledge pages, and asset text (image OCR, URL excerpts, PDF text) that `⌘K` search and the AI chat's cross-search use. It shows how many sources and passages are indexed, and **Rebuild index** clears and rebuilds it if results ever look wrong. **Browse contents** opens the index itself: **Passages** lists every indexed source — open one to see the passages it was cut into and the exact terms each passage was indexed under (how a Japanese sentence was segmented) — and typing a word runs a test search; **Vocabulary** lists every term in the index with the number of passages containing it, filterable. It never writes to your notes. |
+| **Where your notes are saved** | Desktop only — change the folder where notes, media, and knowledge are stored (point it at a Dropbox/Drive/OneDrive folder to sync without OAuth). |
+| **Export and backup** | Download all notes as Markdown files, or a raw-data JSON backup covering every note, knowledge, and skill document. |
+| **Share with other people** | A collapsed group holding three settings: **Your name** (display name and email, used as the author on shared notes and provenance entries), **Share with your team** (desktop only — pick a shared folder, e.g. lab NAS or synced folder, plus a blob folder for large binaries, with a **Test connection** round-trip check), and **Send from your phone** <Badge type="tip" text="Added in v0.23.1 (2026-07-29)" /> (the desktop half of phone capture: a QR code that opens Graphium on your phone, the **Inbox folder** picker for the synced folder that receives captures, and the **Keep processed files in `_imported/`** option — see [Mobile capture](/mobile)). |
+| **Advanced** | A collapsed group holding **Search index** <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — the on-device full-text index over note bodies, knowledge pages, and asset text (image OCR, URL excerpts, PDF text) that `⌘K` search and the AI chat's cross-search use. It shows how many sources and passages are indexed, and **Rebuild index** clears and rebuilds it if results ever look wrong. **Browse contents** opens the index itself: **Passages** lists every indexed source — open one to see the passages it was cut into and the exact terms each passage was indexed under (how a Japanese sentence was segmented) — and typing a word runs a test search; **Vocabulary** lists every term in the index with the number of passages containing it, filterable. It never writes to your notes. |
 
 ::: warning
-Changing the **Local save location** does not move existing notes automatically — copy the old folder's contents into the new one first, then restart Graphium.
+Changing **Where your notes are saved** does not move existing notes automatically — copy the old folder's contents into the new one first, then restart Graphium.
 :::
 
 ## AI
 
-Everything AI-related, ordered as a setup flow: register models first, then assign them to roles, then optional extras. Full walkthrough in [AI setup](/ai-setup).
+Everything AI-related, ordered as a setup flow: a status banner first, then register models, then optional extras, then two collapsed bundles for the settings you touch less often. Full walkthrough in [AI setup](/ai-setup).
 
 | Group | What it does |
 |---|---|
+| Status banner | **AI is ready** (shows the model in use) or **AI is not set up yet** with a **Register an AI** shortcut, depending on whether any model is registered yet. |
 | **Registered Models** | Add and manage models — Anthropic, OpenAI, Google Gemini, OpenAI-compatible endpoints, or a GitHub Copilot subscription — with optional per-model pricing. |
-| **Model assignment** | Choose which registered model plays each role: **Default model**, **Chat model**, and **Embedding model** (with a **Test embedding** check). |
 | **Use world grounding** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Master switch for world grounding — off the first time you use Graphium, on if you've used it before. Turning it off hides grounding buttons and columns everywhere; results already saved on notes are kept. |
 | **World grounding** | Turn on **Auto-ground new knowledge** and optionally set a dedicated grounding model; see [World grounding](/ai-grounding). |
 | **Use insights** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Master switch for insights — off the first time you use Graphium, on if you've used it before. Turning it off hides insights from the sidebar and lists; insights already created are kept. |
 | **Insight discovery** <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" /> | **Insight model** (optional, falls back to the chat model) with a **Test insight model** check, then **Scans per ingest (max)** — how many LLM calls Insight scanning may spend each time a note is added to Knowledge (default 3; 0 skips scanning at ingest). See [Knowledge layer](/knowledge-layer). |
-| **MCP Servers** <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" /> | Connect external tool servers directly — **Paste JSON** from a server's README, configure one by hand with **Manual**, or pull candidates **From registry**. |
+| **Model assignment** | A collapsed group for choosing which registered model plays each role: **Default model**, **Chat model**, and **Embedding model** (with a **Test embedding** check). |
+| **Advanced** | A collapsed group holding **MCP Servers** <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" /> — connect external tool servers directly: **Paste JSON** from a server's README, configure one by hand with **Manual**, or pull candidates **From registry**. |
 
 In the browser version, where there is no backend, this tab shows an upgrade notice instead. MCP servers come in two types — **Local** (launched and managed by Graphium; desktop app only) and **Remote** (connects to an already-running server by URL).
 

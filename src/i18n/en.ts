@@ -685,7 +685,7 @@ export const en: Record<string, string> = {
   "settings.identity.namePlaceholder": "Ada Lovelace",
   "settings.identity.email": "Email",
   "settings.identity.emailPlaceholder": "you@example.com",
-  "settings.identity.save": "Save identity",
+  "settings.identity.save": "Save your name",
   "settings.identity.saved": "Saved",
   "settings.identity.error.name": "Display name is required.",
   "settings.identity.error.email": "Email looks invalid (must contain @).",

@@ -685,7 +685,7 @@ export const ja: Record<string, string> = {
   "settings.identity.namePlaceholder": "Ada Lovelace",
   "settings.identity.email": "メール",
   "settings.identity.emailPlaceholder": "you@example.com",
-  "settings.identity.save": "identity を保存",
+  "settings.identity.save": "名前を保存",
   "settings.identity.saved": "保存しました",
   "settings.identity.error.name": "表示名は必須です。",
   "settings.identity.error.email": "メールアドレスの形式が正しくありません（@ を含めてください）。",

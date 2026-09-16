@@ -2773,6 +2773,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             )}
 
+            {/* モデルが 1 つも登録されていないうちは、機能のオンオフもモデルの
+                割り当ても効かない。「まず 1 つ登録してください」と上で言っている以上、
+                効かない設定を並べて見せない。登録すると下がまとめて現れる。 */}
+            {models.length > 0 && (
+              <>
             {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
             <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
@@ -3188,6 +3193,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </div>
               </div>
             </SettingsGroup>
+              </>
+            )}
 
             {/* ── 詳しい設定 ──
              *  MCP は外部ツールを足すための口で、使う人だけが開く。 */}

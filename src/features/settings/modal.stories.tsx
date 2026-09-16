@@ -59,11 +59,15 @@ function installApiStub(): () => void {
  */
 function SettingsModalHarness({
   seedModels = false,
+  stubApi,
   seedFeaturesOff = false,
   initialTab,
   wikiSummaries,
 }: {
   seedModels?: boolean;
+  /** バックエンドに繋がっている見た目にする（既定は seedModels に従う）。
+      モデル未登録のまま AI タブの「まだ使えません」を見たいときだけ明示する。 */
+  stubApi?: boolean;
   /** features.insights / features.worldGrounding を両方 OFF にして開く（マスタースイッチの畳み確認用） */
   seedFeaturesOff?: boolean;
   initialTab?: string;
@@ -75,10 +79,10 @@ function SettingsModalHarness({
     let restoreFetch: (() => void) | undefined;
     if (seedModels) {
       localStorage.setItem(LLM_MODELS_KEY, JSON.stringify(SAMPLE_MODELS));
-      restoreFetch = installApiStub();
     } else {
       localStorage.removeItem(LLM_MODELS_KEY);
     }
+    if (stubApi ?? seedModels) restoreFetch = installApiStub();
     if (seedFeaturesOff) {
       localStorage.setItem(
         SETTINGS_KEY,
@@ -98,7 +102,7 @@ function SettingsModalHarness({
       localStorage.removeItem(SETTINGS_KEY);
       restoreFetch?.();
     };
-  }, [seedModels, seedFeaturesOff]);
+  }, [seedModels, stubApi, seedFeaturesOff]);
 
   // localStorage を整えてからマウントする（SettingsModal は初回描画で読むため）
   if (!ready) return null;
@@ -134,6 +138,14 @@ export const Default: Story = {
 /** モデル登録済みの AI タブ。行の密度と長い表示名の折り返しを確認する。 */
 export const AiWithModels: Story = {
   args: { seedModels: true, initialTab: "ai" },
+};
+
+/**
+ * 初めて AI タブを開いた状態（モデル未登録・バックエンドは動いている）。
+ * 設定を並べる前に「まだ使えません」と次の一手が出ることを確認する。
+ */
+export const AiNotConfigured: Story = {
+  args: { initialTab: "ai", stubApi: true },
 };
 
 /**

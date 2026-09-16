@@ -60,7 +60,7 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 ## Model assignment
 
-Under **Model assignment**, you decide which registered model handles which job. Only the default matters at first — the rest are optional refinements.
+**Model assignment** is a collapsed group — open it to decide which registered model handles which job. Only the default matters at first — the rest are optional refinements.
 
 | Assignment | Used for |
 |---|---|
@@ -100,7 +100,7 @@ Nothing from the test is written to your notes or Knowledge: the test Claims liv
 
 ## MCP servers <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" />
 
-MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; under **MCP Servers**, click **Add MCP server** and pick one of three modes:
+MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; expand the collapsed **Advanced** group and, under **MCP Servers**, click **Add MCP server** and pick one of three modes:
 
 | Mode | How it works |
 |---|---|
