@@ -209,16 +209,4 @@ In the Steps view, grabbing the middle of a card moves it; the small ports at th
 - To use an existing process as the starting point for another run, select it and choose **Copy this process and open a note** <Badge type="tip" text="Added in v0.41.0 (2026-08-21)" />. Graphium copies the whole note, opens the copy, and records which note it came from. The original stays unchanged.
 - A process **cannot be edited directly here**. It is derived from the note's text, so use **Open note** to change the original.
 
-### Operation overview <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />
-
-Above the process list sits a graph grouped by **step** name across every process — not the flow of a single note, but the shape of the whole set.
-
-- **Nodes** are step names; the number on a node is how many notes carry a step with that name.
-- **Lines** are hand-offs: a step in one note choosing another note's output as one of its inputs. Line thickness is how many times that hand-off happens. Nothing is inferred from row order or from names simply matching — only an actual reference counts.
-- References that can't be resolved, or that fall outside the selected period, aren't dropped silently: their count is shown instead.
-- A **period** control (3 months / 1 year / all) narrows which hand-offs are counted.
-- Clicking a node puts that step name into the search box, so the process list below keeps only the processes whose title or step names contain it; clicking the node again clears the filter.
-
-
-![The operation overview: step names with note counts, connected by hand-off lines](/screenshots/operation-overview_en.png)
 Together these answer the question labels exist for: not just "what did I write," but "where did this come from, and what did it lead to."
