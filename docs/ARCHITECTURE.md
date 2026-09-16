@@ -1201,23 +1201,73 @@ The same `src/` tree is built four different ways.
   thread inside that one call, with the receptacle still showing "looking
   through the folder" because `change` had not fired yet — the import loop
   had not started, so `set_background_work_active` (below) was not holding
-  either. `scan_directory` instead walks the tree in Rust and returns
-  paths, names and sizes only, capped at 50,000 entries and never
-  following symlinks. The walk is breadth-first on purpose: depth-first
-  follows `read_dir`'s order, which no filesystem guarantees, so one large
-  subfolder can spend the whole cap and leave its siblings with nothing.
-  `IntakeFile.getFile()` then reads one file at a time through
+  either. `scan_directory` instead walks the tree in Rust
+  (`walk_intake_directory`) — but the first version of that walk had the
+  same shape of problem one layer down: it called `symlink_metadata`
+  (`lstat`) on every entry to tell files, directories and symlinks apart,
+  and a process sample showed that one call taking 90% of the walk's time.
+  Over the same NAS share and the same 2,000–3,000 entries, a plain
+  `readdir` took 12–32 seconds; adding the per-entry `lstat` took
+  103–192 seconds. The walk now classifies entries with
+  `DirEntry::file_type()` alone, which reuses the `d_type` `readdir`
+  already returned (macOS falls back to one `fstatat` only when the type
+  is `DT_UNKNOWN`; Windows already has the type from `FindNextFileW`, so
+  neither platform pays a second round trip per entry) — `symlink_metadata`
+  paid that trip on both platforms, and on Windows specifically it means
+  opening, querying and closing the file (two to three round trips), not
+  one. `ScannedFile` correspondingly carries no size: the only place the
+  walk-time size was ever read (`tooLargeToHash` in `note-app.tsx`) always
+  calls `getFile()` first anyway, so fetching the size up front would have
+  reintroduced the per-entry `stat` the walk just removed. The walk
+  returns paths, names and relative paths only, capped at 50,000 entries
+  and never following symlinks. It is breadth-first on purpose:
+  depth-first follows `read_dir`'s order, which no filesystem guarantees,
+  so one large subfolder can spend the whole cap and leave sibling folders
+  with nothing. Breadth-first only guarantees fairness between sibling
+  folders, though — a folder whose own direct children outnumber the cap
+  still truncates mid-folder, and folders after it at that level are left
+  with nothing just the same. Because a scan of a large or cold NAS folder
+  can run for minutes, `scan_directory` emits an `intake-scan-progress`
+  event — at most every 200ms — with the number of files found so far, and
+  a `cancel_scan` command lets the user stop a scan in progress; the walk
+  checks the cancel flag between every entry so a cancel takes effect
+  promptly rather than waiting for the current directory to finish. Both
+  carry a scan ID that the caller mints per scan (`crypto.randomUUID()`)
+  rather than sharing one flag process-wide, because `IntakeReceptacle`
+  can be mounted three times at once — the note list's empty state, the
+  asset gallery's empty state, and inside `IntakeModal`, which is an
+  overlay and so coexists with whichever empty state sits under it — and a
+  single shared flag let stopping one scan silently cancel the other, or
+  let a scan started right after a stop swallow that stop's request on
+  its own initialization. `scan_directory` and `cancel_scan` are two
+  independent invokes with no ordering guarantee between them, so the
+  per-ID cancel flag is registered before `canonicalize` runs rather than
+  after: a cancel that arrives first is kept rather than lost, and one
+  that arrives while `canonicalize` is still resolving is not overwritten
+  once it returns. Each `IntakeReceptacle` instance also cancels its own
+  scan on unmount, so a receptacle that leaves the screen mid-scan (modal
+  closed, folder re-picked) doesn't leave an unreachable scan running to
+  completion. `IntakeFile.getFile()` then reads one file at a time through
   `read_scanned_file` as the import loop reaches it, so nothing is read
   ahead of where the progress bar sits. That command returns raw bytes
   (`tauri::ipc::Response`) rather than the Base64 `read_media_file` uses:
   a folder walk can turn up a few hundred MB of video, and Base64 puts the
   original plus a ~1.33× string on both sides at once. It refuses any path
-  no `scan_directory` call has returned (both sides compare canonicalized
-  absolute paths), so it cannot be used to read arbitrary files; the
-  allowlist accumulates rather than replaces, since an import keeps
-  reading in the background after the modal is closed and picking a second
-  folder would otherwise strand the first one's unread files. The browser
-  build keeps using webkitdirectory, and
+  the matching `scan_directory` call did not return, matched by exact
+  string equality against the allowlist rather than by canonicalizing the
+  requested path first — `canonicalize` (`realpath`) measured 25–226ms per
+  file over the same NAS share, and `scan_directory` itself now
+  canonicalizes only once, at the start of the walk, not per entry. On
+  Unix the file is then opened with `O_NOFOLLOW`, so a symlink swapped in
+  after the scan but before the read (a TOCTOU race) fails to open rather
+  than silently following the link; Windows has no equivalent flag, so
+  there the exact-string allowlist match is the primary defense — the
+  allowlist only ever holds the literal absolute paths `scan_directory`
+  found, so a crafted path containing `..` never matches an entry in it to
+  begin with. The allowlist accumulates rather than replaces, since an
+  import keeps reading in the background after the modal is closed and
+  picking a second folder would otherwise strand the first one's unread
+  files. The browser build keeps using webkitdirectory, and
   `src/features/intake/native-scan.ts` falls back to it if the native path
   fails. Drag and drop is deliberately left alone: reading paths from a
   drop would need `dragDropEnabled: true`, which takes HTML5 drag events
