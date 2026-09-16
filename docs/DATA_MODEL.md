@@ -1372,6 +1372,113 @@ sedimented (model-judged) entries. Seed entries are read-only from the
 UI; editing them requires changing `public/grounding-kb/seed.v1.json`
 through a PR.
 
+### 3.8 Source check (v1)
+
+Source check adds a `sourceCheck` field on `WikiMeta` that answers a third
+question, distinct from `epistemicStatus` / `hypothesisStatus` and from
+`grounding` (§3.7): not "is this correct" or "how does this stand against
+the world", but **"does the source this claim cites actually say this?"**
+It re-reads the original text of every entry in the claim's
+`derivedFromNotes` and judges the claim against that text alone.
+
+The verdict vocabulary corresponds to FEVER (Thorne et al., 2018)'s
+SUPPORTS / REFUTES / NOT ENOUGH INFO: `supported` and `contradicted` map
+directly; `not-in-source` and `unclear` are both a form of NOT ENOUGH
+INFO, split apart because the judge can usually tell an explicit
+non-mention from a genuinely ambiguous passage. `source-missing` is a
+fifth, Graphium-only value for when the original text could not be
+retrieved at all — the judge is never invoked for it, so it never
+appears in a model's own output.
+
+```ts
+type SourceCheckVerdict =
+  | "supported"
+  | "contradicted"
+  | "not-in-source"
+  | "unclear"
+  | "source-missing";
+
+/** Why the original text could not be retrieved (verdict "source-missing" only) */
+type SourceMissingReason =
+  | "deleted"          // source note is trashed or no longer found
+  | "no-reference"      // source has no reference key back to its origin (chat:)
+  | "unreadable"        // re-fetch (url) or extraction (pdf/document) failed
+  | "unsupported-kind"  // an id kind source check does not handle
+  | "empty";             // the retrieved text was empty
+
+type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "unknown";
+
+type SourceCheckEntry = {
+  sourceId: string;                 // the derivedFromNotes entry verbatim, prefix included
+  sourceKind: SourceCheckSourceKind;
+  verdict: SourceCheckVerdict;
+  rationale: string;                // 1-2 sentences, UI language
+  quote?: string;                   // kept only when verified verbatim against the source text
+  blockId?: string;                 // set only when quote resolves to exactly one note block
+  missingReason?: SourceMissingReason;
+  sourceTextOrigin?: "stored" | "refetched" | "extracted";
+};
+
+type SourceCheckProfile = {
+  verdict: SourceCheckVerdict;      // aggregate of entries[], priority order below
+  entries: SourceCheckEntry[];
+  checkedAt: string;                // ISO 8601
+  checkedBy: string;                // model id used, or "local" when no LLM call was made
+  claimHash: string;                // hash of title+body at check time
+  dismissed?: boolean;              // user manually cleared the verdict; re-check drops the flag
+};
+```
+
+- **Separate lane, single write gate.** `attachSourceCheck()` in
+  `src/features/source-check/attach.ts` is the only path that writes
+  `wikiMeta.sourceCheck`; it spreads the existing `wikiMeta` and replaces
+  only that field, exactly like `attachValidity()` does for `grounding`.
+  The claim's `title`, body, `status`, `epistemicStatus` and `grounding`
+  are never touched by a source check run.
+- **Aggregation priority.** A claim can cite more than one source, so
+  `SourceCheckEntry[]` is reduced to one `SourceCheckProfile.verdict` by
+  `aggregateVerdict()` (`src/features/source-check/aggregate.ts`), highest
+  priority first: `contradicted` > `supported` > `not-in-source` >
+  `unclear` > `source-missing`. A single contradicting source always wins
+  even when every other source supports the claim, so a conflict is never
+  hidden; `source-missing` sits lowest because it means no judgment was
+  even attempted for that entry. An empty `entries[]` aggregates to
+  `source-missing`.
+- **Quote verification is fail-closed.** A `quote` is kept only when it
+  appears verbatim (NFKC-normalized, whitespace-collapsed) in the source
+  text that was actually shown to the model. A `supported` or
+  `contradicted` verdict that arrives without a verifiable quote is
+  downgraded to `unclear` rather than trusted on the model's word alone;
+  other verdicts simply lose the unverifiable quote and keep their verdict.
+  `blockId` is filled in only when the quote is contained by exactly one
+  block of the source note — an ambiguous or cross-block match is left
+  unset rather than guessed.
+- **`claimHash`** is a hash of the claim's `title` + body at the moment of
+  checking (`computeClaimHash`, the same SHA-256 blob-hash utility
+  team-shared-storage uses), so a later mismatch against the claim's
+  current title+body tells the UI the checked text has since changed.
+- **`dismissed`** marks a verdict the user manually cleared from the note,
+  distinguishing "never checked" (no `sourceCheck` at all) from "checked,
+  then deliberately cleared" — the same semantics as `grounding.validity.dismissed`
+  (§3.7). A re-run of source check replaces the whole profile, dropping
+  the flag.
+- **Body-rewriting operations drop it.** `mergeIntoWikiDocument`,
+  `rewriteAndMerge`, `applyCrossUpdate`, and `rebuildTopicDocument`
+  (`src/features/wiki/wiki-service.ts`) all rewrite `pages[0].blocks`, so
+  each calls `attachSourceCheck(doc, undefined)` to drop a stale
+  `sourceCheck` rather than let an outdated judgment survive a body it no
+  longer describes.
+- **`WikiMetaSummary.sourceCheckVerdict`** mirrors the minimal slice
+  (`verdict`, `dismissed`, `claimHash`) into the runtime index, the same
+  way `groundingValidity` does — `INDEX_SCHEMA_VERSION` does **not** bump,
+  since the mirror is not persisted into `NoteIndexEntry`.
+
+Chat-derived claims (`derivedFromNotes` referencing a `chat:` id) have no
+reference key back to the original conversation, so they are always
+recorded as `source-missing` / `no-reference` without an LLM call. See
+[ARCHITECTURE.md §3.3](./ARCHITECTURE.md) for how the original text is
+retrieved per source kind and how a check run is executed.
+
 ## 4. Skill documents
 
 A "Skill" is a prompt template, also stored as a `GraphiumDocument` with

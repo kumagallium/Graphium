@@ -1064,6 +1064,72 @@ sedimented entries that the model produced (seed entries are read-only
 from the UI; editing them requires changing `seed.v1.json` through a
 PR).
 
+**Source check — a separate manual verification lane.** Where world-model
+grounding asks whether a claim holds up against outside knowledge, source
+check asks a narrower question: does the *source the claim itself cites*
+(`wikiMeta.derivedFromNotes`) actually say this? It is neither part of
+ingest nor of lint — it is its own client-driven pipeline
+(`src/features/source-check/`), run over already-existing claims rather
+than at creation time.
+
+- **Retrieving the original text depends on the source kind**
+  (`resolveSourceText`, `src/features/source-check/resolve-source-text.ts`):
+  a plain-note id re-reads the note's current body, split into per-block
+  text so a verified quote can be traced back to one block; `pdf:` /
+  `document:` ids re-read the asset's bytes and re-run the **same**
+  extractor ingest uses (`pdf-text-extractor`, `mammoth.extractRawText`)
+  rather than trusting any cached extraction; `url:` ids prefer a stored
+  copy of the fetched text and otherwise re-fetch through the existing
+  `/api/wiki/fetch-url` path; `memo:` ids read the capture text directly;
+  `chat:` ids carry no reference key back to the conversation that
+  produced them, so they resolve to `source-missing` / `no-reference`
+  without attempting anything. None of these readers impose a new size
+  limit — ingest does not cap note, PDF, or Word body length either, so
+  source check re-reads exactly what ingest would have seen.
+- **One call judges one source against every claim that cites it.**
+  `planSourceCheck` (`src/features/source-check/plan.ts`) groups the
+  claims being checked by `derivedFromNotes` entry, and `runSourceCheck`
+  (`src/features/source-check/run.ts`) walks the resulting groups
+  sequentially — no concurrency constant, matching the "no new numeric
+  limits" rule above — resolving each source's text and then, if any text
+  came back, sending it once to `POST /api/wiki/check-sources` with the
+  full list of claims that depend on it. This mirrors the unit ingest
+  already uses (one source, every claim it produced, in one call).
+- **A claim's result is written only once every source it cites has been
+  processed.** If a run is interrupted — the caller aborts, or the API
+  degrades partway — claims still waiting on an unprocessed source are
+  left out of the result entirely rather than being written with a
+  partial `entries[]`; `runSourceCheck` reports whether the run was
+  `interrupted` so the caller can retry.
+- **Quote verification happens on the server before the client ever sees
+  it.** `POST /api/wiki/check-sources`
+  (`src/server/routes/wiki.ts` → `src/server/services/source-check.ts`)
+  builds one prompt per source (the closing `</source-text>` delimiter is
+  neutralized against injection from the source text itself), parses the
+  model's JSON, and runs `applyQuoteVerification` against the exact source
+  text before returning — a `quote` that cannot be found verbatim in the
+  source downgrades `supported` / `contradicted` to `unclear` server-side,
+  so the client never has to trust an unverified quote. The client then
+  separately maps a verified quote to a `blockId`
+  (`findBlockIdForQuote`, `src/features/source-check/quote-match.ts`) when
+  it lands inside exactly one note block.
+- **Model and degrade.** The route resolves a model the same way chat and
+  full lint do — the chat-synthesis model slot, not a dedicated
+  `groundingModel` slot — and responds `{ result: null, code }` when no
+  model is registered or the call fails. Unlike world-grounding, which can
+  degrade a single item to a `checkedAt`-only record, `SourceCheckVerdict`
+  has no "could not judge" value it would be safe to persist, so
+  `runSourceCheck` treats a degrade as a reason to stop the whole run
+  rather than write a wrong verdict.
+- **Body-rewriting stages drop stale results.** `mergeIntoWikiDocument`,
+  `rewriteAndMerge`, `applyCrossUpdate`, and `rebuildTopicDocument`
+  (§3.3 above, `src/features/wiki/wiki-service.ts`) all replace
+  `pages[0].blocks`, so each clears any existing `sourceCheck` rather than
+  let a judgment outlive the text it was checked against. See
+  [DATA_MODEL.md §3.8](./DATA_MODEL.md) for the `sourceCheck` schema, the
+  verdict-aggregation and quote rules, and the `WikiMetaSummary` mirror.
+- Each run logs to `wiki-log` under the `source-check` event type.
+
 **Idea authoring (Cmd-K Composer).** Ideas are produced through the
 Cmd-K Composer flow rather than a server-side pipeline. The user
 selects the Insights they want to weave, builds a citation note, and
