@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.76.1](https://github.com/kumagallium/Graphium/compare/v0.76.0...v0.76.1) - 2026-09-16
+
+- refactor: drop the operation overview above the process list by @kumagallium in https://github.com/kumagallium/Graphium/pull/945
+- Rebuild the settings screen around what people came for by @kumagallium in https://github.com/kumagallium/Graphium/pull/947
+
 ## [v0.76.0](https://github.com/kumagallium/Graphium/compare/v0.75.1...v0.76.0) - 2026-09-16
 
 - Expose the knowledge layer through MCP by @kumagallium in https://github.com/kumagallium/Graphium/pull/942
