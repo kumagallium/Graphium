@@ -324,6 +324,7 @@ import {
   runTopicStage, type TopicStageClaimInput, type TopicStageResult, type ExistingTopicRef,
   consolidateExistingTopics, type ExistingTopicForMerge,
   mergeTopicsExplicit, normalizeTopicTitle,
+  mergeAtomsExplicit,
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
@@ -9487,6 +9488,11 @@ export function NoteApp() {
               const keepDoc = fm.getCachedDoc(`wiki:${keepId}`);
               const mergeDoc = fm.getCachedDoc(`wiki:${mergeId}`);
               if (!keepDoc || !mergeDoc) continue;
+              // この自動マージは Claim（rewriteAndMerge に kind: "claim" 決め打ち）専用。
+              // Topic の redundant は「話題を整理」/ 点検の統合ボタン経由、Atom（洞察）は
+              // モデルの判断で勝手に減らしたくないため点検からの人手操作のみ — どちらも
+              // ここでは扱わない（巻き込むと claim 用の rewrite ロジックで壊れた統合になる）。
+              if (keepDoc.wikiMeta?.kind !== "claim" || mergeDoc.wikiMeta?.kind !== "claim") continue;
 
               // mergeDoc のセクションを抽出して keepDoc に rewrite で統合
               const mergeDetail = extractWikiDetail(mergeId, mergeDoc);
@@ -9924,6 +9930,8 @@ export function NoteApp() {
               const keepDoc = fm.getCachedDoc(`wiki:${keepId}`);
               const mergeDoc = fm.getCachedDoc(`wiki:${mergeId}`);
               if (!keepDoc || !mergeDoc) continue;
+              // 上の ingest 実行ループと同じ理由: Claim 専用。Topic / Atom はここでは扱わない。
+              if (keepDoc.wikiMeta?.kind !== "claim" || mergeDoc.wikiMeta?.kind !== "claim") continue;
 
               const mergeDetail = extractWikiDetail(mergeId, mergeDoc);
               if (!mergeDetail) continue;
@@ -10756,6 +10764,57 @@ export function NoteApp() {
       }));
     }
   }, [fm]);
+
+  // 洞察（Atom）の選択統合（点検が共通して使う）。
+  // ユーザーが明示的に選んだ組を渡すだけなのでモデルは呼ばない（mergeAtomsExplicit）。
+  // 本文は既存の再生成経路（regenerateWikiById の atomize re-lift）で作り直す。
+  const mergeAtomsFromSelection = useCallback(async (
+    keepId: string,
+    mergeIds: string[],
+  ): Promise<{ merged: number } | void> => {
+    const keepTitle = fm.wikiMetas.get(keepId)?.title ?? keepId;
+    const toastId = `merge-atoms:${keepId}:${Date.now()}`;
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        { id: toastId, status: "generating" as const, noteTitle: tStatic("wikiList.merging") },
+      ],
+    }));
+    try {
+      const result = await mergeAtomsExplicit(keepId, mergeIds, {
+        loadDoc: fm.loadDoc,
+        getCachedDoc: fm.getCachedDoc,
+        handleSaveWikiFile: fm.handleSaveWikiFile,
+        handleArchiveWikiFile: fm.handleArchiveWikiFile,
+        regenerateWiki: (id) => regenerateWikiById(id),
+        log: (...args: unknown[]) => console.warn(...args),
+      });
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId
+            ? {
+                ...i,
+                status: "success" as const,
+                detail: undefined,
+                result: tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) }),
+              }
+            : i
+        ),
+      }));
+      if (result.merged > 0) {
+        wikiLog.append("merge", [keepId, ...mergeIds],
+          `Merged ${result.merged} insight(s) into "${keepTitle}"`).catch(() => {});
+      }
+      return { merged: result.merged };
+    } catch (err) {
+      console.error("洞察の統合に失敗:", err);
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
+        ),
+      }));
+    }
+  }, [fm, regenerateWikiById]);
 
   // テーマバナー用: 似たテーマ候補。LLM は呼ばない — ローカル判定のみ
   // (a) 正規化タイトル一致（同期）、(b) 埋め込みが使えるときは既存の重複判定 0.9 を流用（非同期）。
@@ -11907,7 +11966,8 @@ export function NoteApp() {
               return map;
             })()}
             wikiKindById={(() => {
-              // wikiId → kind マップ。redundant の統合ワンクリック手当てを topic 同士だけに絞る。
+              // wikiId → kind マップ。redundant の統合ワンクリック手当てで topic 同士 /
+              // atom 同士のどちらの統合か（canMergeAtoms）を判定するのに使う。
               const map = new Map<string, string>();
               for (const [id, meta] of fm.wikiMetas.entries()) {
                 if (meta?.kind) map.set(id, meta.kind);
@@ -11915,6 +11975,7 @@ export function NoteApp() {
               return map;
             })()}
             onMergeTopics={async (keepId, absorbId) => { await mergeTopicsFromSelection(keepId, [absorbId]); }}
+            onMergeAtoms={async (keepId, absorbId) => { await mergeAtomsFromSelection(keepId, [absorbId]); }}
           />
         ) : fm.activeWikiKind ? (
           <WikiListView

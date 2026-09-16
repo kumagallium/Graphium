@@ -68,6 +68,12 @@ export type WikiSnapshot = {
    * これを見て "contradiction" issue を機械的に列挙する（LLM lint とは別経路）。
    */
   conflictsWith?: string[];
+  /**
+   * Atom の関係の形（構造写像の軸）。atom のみ意味を持つ。
+   * redundant 判定で「同じ構造について同じことを言っているか」を LLM に見せるための
+   * ヒント（decompose→shape→abstract の shape。数値のしきい値ではなく分類ラベル）。
+   */
+  shape?: string;
   lastIngestedAt?: string;
   modifiedAt: string;
 };
@@ -187,7 +193,7 @@ If two pages have very similar titles, disambiguate with a short distinguishing 
 - For gaps: suggest what kind of Claim page could be created
 - For contradictions: quote the conflicting claims
 - For stale: identify the specific newer page or note that supersedes it, and name it in the description — do not flag based on elapsed time alone
-- For redundant: compare section headings and content themes between Claim pages. Flag when the pages are about the same concept and assert the same specific claim (allowing for differences in wording or level of detail). **Also apply this to Topic pages** — two Topics whose titles name the same concept despite surface differences (wording variants, presence/absence of particles, word order, or one being a needlessly narrow per-sample/per-composition slice of the other) are redundant even if you haven't read their member Claims; the fix is to merge them via "Organize topics" in Settings, not to edit content. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality (for Topics, prefer the more general/reusable title). The suggestion should clearly state which page absorbs which
+- For redundant: compare section headings and content themes between Claim pages. Flag when the pages are about the same concept and assert the same specific claim (allowing for differences in wording or level of detail). **Also apply this to Topic pages** — two Topics whose titles name the same concept despite surface differences (wording variants, presence/absence of particles, word order, or one being a needlessly narrow per-sample/per-composition slice of the other) are redundant even if you haven't read their member Claims; the fix is to merge them via "Organize topics" in Settings, not to edit content. **Also apply this to Atom (Insight) pages** — two Atoms are redundant when they describe the **same structure (Shape) about the same concept**, i.e. the same shape label (see each page's "Shape:" line) AND the same underlying relationship, not merely a similar topic area. Two Atoms that share a shape but abstract a genuinely different relationship are NOT redundant. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality (for Topics, prefer the more general/reusable title). The suggestion should clearly state which page absorbs which
 - Return an empty issues array if no issues are found
 
 ## Language
@@ -213,6 +219,8 @@ export function buildLinterUserMessage(wikis: WikiSnapshot[]): string {
       w.relatedClaims.length > 0
         ? `Related concepts: ${w.relatedClaims.join(", ")}`
         : null,
+      // Atom の構造（shape）。redundant 判定で「同じ構造について同じことを言っているか」の手がかり
+      w.kind === "atom" && w.shape ? `Shape: ${w.shape}` : null,
       w.bodyPreview ? `Preview: ${w.bodyPreview}` : null,
     ].filter(Boolean);
     return lines.join("\n");

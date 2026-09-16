@@ -717,7 +717,7 @@ six stages:
 | **Topic assignment** | `src/features/wiki/wiki-service.ts` (client) | Resolves each Claim's proposed topic names against existing Topic pages (title match → embedding similarity > 0.9 → create new) and rewrites the affected Topic bodies |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, proposes section-level append/revise updates to dependent pages. Targets are Claim pages only — Topics and Insights are regenerated as a pure function of their member Claims (append-in-place would fight that), and Summaries are no longer generated |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims and Topics (including near-duplicate Topic titles), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, Topics (including near-duplicate Topic titles), and Insights (same Shape about the same underlying relationship, not just a similar topic), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim. A redundant-Insight finding gets a one-click Merge (`mergeAtomsExplicit`, `src/features/wiki/atom-merge.ts`) that unions `derivedFromClaims`/`relatedAtoms`/`conflictsWith` onto the kept page, archives the absorbed one, and rewrites the body through the same re-lift Regenerate uses — Insights are never auto-merged during ingest |
 | **Topic writer** | `src/server/services/wiki-topic-writer.ts` | Composes a Topic page's body from its current member Claims only (pure function — the previous body is never fed back in). Cites member Claims by id (`[[claim:<id>]]`, resolved to the Claim's current title before rendering) rather than by title, and the caller always appends a References section listing every member Claim. The same file also holds the **Topic Consolidator** — a separate LLM call (`POST /api/wiki/consolidate-topics`) used only by "Organize topics" (Settings → Maintenance) and by the Linter's redundant-Topic check, never by ingest itself — that maps a set of topic names to canonical titles (no count caps) |
 
 Trigger flow (client-pushed, not server-polled):
@@ -906,7 +906,12 @@ Notes:
   it) keeps resolving through `loadDoc`. The archived page is hidden
   from lists / search and is editable only after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
-  for the tri-state semantics.
+  for the tri-state semantics. Both auto-merge sites gate on
+  `wikiMeta.kind === "claim"` for **both** pages, so a redundant-Topic or
+  redundant-Insight finding never falls through to this path — Topics merge
+  via `applyTopicMerges`, Insights via `mergeAtomsExplicit`, both only from
+  an explicit user click (Health check / Organize topics), never
+  automatically.
 - **Insights are structural abstractions, not tidied Claims.** A Claim is a
   domain finding; the Insight (Atom) is the *transferable structure* behind it,
   produced by the atomizer (`buildAtomizerSystemPrompt`) in four steps:

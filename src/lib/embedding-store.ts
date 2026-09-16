@@ -7,7 +7,9 @@ import { cosineSimilarity } from "./vector";
 const DB_NAME = "graphium-embeddings";
 // v2: 旧バージョンで store が作られていない壊れた DB を救済するためにバンプ。
 // onupgradeneeded で "embeddings" store を冪等に作成する。
-const DB_VERSION = 2;
+// v3: modelVersion index を追加（埋め込みモデルを切り替えたときに旧版のベクトルを
+// 比較対象から外す / 版ずれ検知を全件走査せず count() で済ませるため）。
+const DB_VERSION = 3;
 const STORE_NAME = "embeddings";
 
 export type EmbeddingRecord = {
@@ -37,9 +39,16 @@ function openDB(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
+      let store: IDBObjectStore;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+        store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
         store.createIndex("documentId", "documentId", { unique: false });
+      } else {
+        // v2 → v3 移行: store は既にあるので upgrade transaction から同じ store を取る
+        store = req.transaction!.objectStore(STORE_NAME);
+      }
+      if (!store.indexNames.contains("modelVersion")) {
+        store.createIndex("modelVersion", "modelVersion", { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -108,17 +117,55 @@ export const embeddingStore = {
     return getAll();
   },
 
-  /** ベクトル検索（brute-force コサイン類似度） */
-  async searchByVector(queryVector: number[], topK: number): Promise<SearchResult[]> {
+  /**
+   * ベクトル検索（brute-force コサイン類似度）。
+   *
+   * `modelVersion` と一致しないレコードは比較対象から外す。埋め込みモデルを切り替えると
+   * 次元が変わって cosineSimilarity が 0 を返すケースはまだ安全だが、次元だけ同じで
+   * 意味空間が違うモデルに切り替えた場合はすり抜けて「もっともらしいが無意味な類似度」を
+   * 返してしまう（トピック・洞察の重複判定と横断検索が静かに壊れる）。呼び出し側は
+   * 現在のモデル版（embed API レスポンスの modelVersion）を渡すこと。
+   */
+  async searchByVector(queryVector: number[], topK: number, modelVersion: string): Promise<SearchResult[]> {
     const records = await getAll();
-    const scored = records.map((r) => ({
-      documentId: r.documentId,
-      sectionId: r.sectionId,
-      score: cosineSimilarity(queryVector, r.vector),
-      text: r.text,
-    }));
+    const scored = records
+      .filter((r) => r.modelVersion === modelVersion)
+      .map((r) => ({
+        documentId: r.documentId,
+        sectionId: r.sectionId,
+        score: cosineSimilarity(queryVector, r.vector),
+        text: r.text,
+      }));
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, topK);
+  },
+
+  /**
+   * 埋め込み索引が今のモデル版で作られているかを軽く判定する。
+   *
+   * 全件のベクトルは読み込まず、modelVersion index の件数（count()）だけを見る
+   * （起動のたびに重い走査をしないため）。索引が空（まだ 1 件も embed していない）の
+   * ときは「版が古い」の対象外として false を返す — 何も作っていないだけなので
+   * 作り直しを促す必要がない。
+   */
+  async isEmbeddingIndexStale(currentModelVersion: string): Promise<boolean> {
+    if (!currentModelVersion) return false;
+    const db = await openDB();
+    const total = await new Promise<number>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    if (total === 0) return false;
+    const currentCount = await new Promise<number>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const index = tx.objectStore(STORE_NAME).index("modelVersion");
+      const req = index.count(IDBKeyRange.only(currentModelVersion));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return currentCount === 0;
   },
 
   /** 特定ドキュメントの全 embedding を削除 */

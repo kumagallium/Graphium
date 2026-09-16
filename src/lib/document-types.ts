@@ -635,6 +635,11 @@ export type WikiMetaSummary = {
   /** Atom の推論的役割 */
   atomType?: AtomType;
   /**
+   * Atom の関係の形（構造写像の軸、decompose→shape→abstract）。atom のみ意味を持つ。
+   * 点検（wiki-linter）の redundant 判定に「同じ構造か」の手がかりとして渡す。
+   */
+  shape?: AtomShape;
+  /**
    * 元になった Claim の ID リスト（atom / topic）。topic では「メンバー知見」の意味。
    * 一覧 UI の孤立話題判定（メンバー 0 件）・件数バッジに使う。
    */

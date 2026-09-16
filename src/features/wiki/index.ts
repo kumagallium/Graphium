@@ -63,3 +63,5 @@ export type {
   TopicStageClaimInput, TopicStageResult, TopicStageDeps,
   ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
 } from "./topic-stage";
+export { mergeAtomsExplicit } from "./atom-merge";
+export type { MergeAtomsDeps, MergeAtomsResult } from "./atom-merge";
