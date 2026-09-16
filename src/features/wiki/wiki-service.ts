@@ -7,7 +7,7 @@ import { embeddingStore } from "../../lib/embedding-store";
 import { extractWikiSections, flattenColumns } from "./section-extract";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { summarizeNoteProv } from "../prov-extractor";
-import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName } from "../settings/store";
+import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { t } from "../../i18n";
@@ -35,7 +35,8 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
  * resolveModelConfig (server) はヘッダーを最優先するため、別モデルを使いたい工程では
  * モード別に適切な認証情報を送る必要がある。
  * - "default":       Default モデル（ingest / lint / rewrite / cross-update）
- * - "chatSynthesis": Chat & Synthesis 用モデル（未設定なら default）
+ * - "chatSynthesis": Chat 用モデル（未設定なら default）
+ * - "insight":       洞察（atomize / transfer 判定 / relift）用モデル（未設定なら chatSynthesis → default）
  * - "embedding":     Embedding 用モデル（未設定なら default）
  */
 /**
@@ -44,20 +45,25 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
  * （Web モードはヘッダー優先のため body.model は無視されるが、付けても害は無い）。
  *
  * - "default":       Default モデル（ingest / lint / rewrite / cross-update / URL→PROV）
- * - "chatSynthesis": Chat & Synthesis モデル（未設定時は Default）
+ * - "chatSynthesis": Chat モデル（未設定時は Default）
+ * - "insight":       洞察用モデル（未設定時は Chat → Default）
  * - "embedding":     Embedding 用途は body.embedding_model を別途使うので空
  */
-function wikiBodyModel(mode: "default" | "chatSynthesis" | "embedding" = "default"): { model?: string } {
+function wikiBodyModel(mode: "default" | "chatSynthesis" | "insight" | "embedding" = "default"): { model?: string } {
   if (mode === "embedding") return {};
-  const name = mode === "chatSynthesis" ? getChatSynthesisModelName() : getSelectedModel();
+  const name =
+    mode === "chatSynthesis" ? getChatSynthesisModelName()
+    : mode === "insight" ? getInsightModelName()
+    : getSelectedModel();
   return name ? { model: name } : {};
 }
 
-function wikiHeaders(mode: "default" | "chatSynthesis" | "embedding" = "default"): Record<string, string> {
+function wikiHeaders(mode: "default" | "chatSynthesis" | "insight" | "embedding" = "default"): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
     const model =
       mode === "chatSynthesis" ? getChatSynthesisLLMModel()
+      : mode === "insight" ? getInsightLLMModel()
       : mode === "embedding" ? getEmbeddingLLMModel()
       : getDefaultLLMModel();
     if (model) {
@@ -148,7 +154,13 @@ export function buildWikiDocument(
   /** 再生成（regenerate）時、この Wiki 自身のファイル ID。relatedClaims が自 ID に
    *  解決されても knowledgeLink 化しない（自己参照の生成抑止） */
   selfId?: string,
-): GraphiumDocument {
+): GraphiumDocument | null {
+  // 要約(summary)の新規生成は停止済み（PR3）。話題(topic)が役割を引き継ぐ。
+  // サーバー側の parseIngesterOutput で summary は既に除去される想定だが、
+  // 直接呼び出す経路（テスト・将来の呼び出し元）に備えてここでも二重に防ぐ。
+  // 呼び出し側は null を自然に無視する（保存をスキップする）。
+  if (ingesterOutput.kind === "summary") return null;
+
   const now = new Date().toISOString();
   const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex, ingesterOutput.title);
 
@@ -504,7 +516,7 @@ function extractSectionsFromBlocks(
 /**
  * ノート/Wiki のタイトル → ID を解決するための情報
  */
-type NoteIndex = { id: string; title: string; isWiki?: boolean }[];
+export type NoteIndex = { id: string; title: string; isWiki?: boolean }[];
 
 type ConvertResult = {
   blocks: any[];
@@ -686,6 +698,18 @@ function parseMarkdownHeading(line: string): { level: number; text: string } | n
   return { level: Math.min(m[1].length, 3), text: m[2].trim() };
 }
 
+/** 1 行が markdown の箇条書き（`- ` / `* `）かを判定し、中身のテキストを返す。 */
+function parseMarkdownBullet(line: string): string | null {
+  const m = /^[-*]\s+(.+)$/.exec(line);
+  return m ? m[1].trim() : null;
+}
+
+/** 1 行が markdown の番号付きリスト（`1. ` など）かを判定し、中身のテキストを返す。 */
+function parseMarkdownNumbered(line: string): string | null {
+  const m = /^\d+\.\s+(.+)$/.exec(line);
+  return m ? m[1].trim() : null;
+}
+
 function convertSectionsToBlocks(
   sections: { heading: string; content: string }[],
   noteIndex: NoteIndex = [],
@@ -741,6 +765,29 @@ function convertSectionsToBlocks(
         });
         continue;
       }
+      // 箇条書き / 番号付きリストは bulletListItem / numberedListItem ブロックに変換する
+      // （素のテキストとして表示されるのを防ぐ）。inline は通常の段落と同じく
+      // parseInlineCitations を通す。
+      const bullet = parseMarkdownBullet(para);
+      const numbered = bullet === null ? parseMarkdownNumbered(para) : null;
+      if (bullet !== null || numbered !== null) {
+        const itemText = bullet !== null ? bullet : (numbered as string);
+        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle);
+        blocks.push({
+          id: parsedItem.blockId,
+          type: bullet !== null ? "bulletListItem" : "numberedListItem",
+          props: {
+            textColor: "default",
+            backgroundColor: "default",
+            textAlignment: "left",
+          },
+          content: parsedItem.inlineContent,
+          children: [],
+        });
+        knowledgeLinks.push(...parsedItem.knowledgeLinks);
+        continue;
+      }
+
       const parsed = parseInlineCitations(para, noteIndex, selfTitle);
       blocks.push({
         id: parsed.blockId,
@@ -1561,8 +1608,9 @@ export async function lintWikis(
 ): Promise<LintReport> {
   const res = await fetch(`${API_BASE}/lint`, {
     method: "POST",
-    headers: wikiHeaders(),
-    body: JSON.stringify({ wikis, language, localOnly, ...wikiBodyModel() }),
+    // フル点検（LLM 解析）はチャットモデルで判断する（localOnly のときは未使用なので害は無い）
+    headers: wikiHeaders("chatSynthesis"),
+    body: JSON.stringify({ wikis, language, localOnly, ...wikiBodyModel("chatSynthesis") }),
     ...(signal ? { signal } : {}),
   });
 
@@ -1600,6 +1648,8 @@ export function buildWikiSnapshots(
       level: meta.kind === "claim" ? meta.level : undefined,
       // topic のメンバー知見数（orphan＝0 件判定用）。topic 以外では意味を持たないので省略。
       derivedFromClaims: meta.kind === "topic" ? (wikiMeta?.derivedFromClaims ?? []) : undefined,
+      // 矛盾する既存洞察（atom のみ意味を持つ）。detectLocalIssues の contradiction 判定に使う。
+      conflictsWith: meta.kind === "atom" ? wikiMeta?.conflictsWith : undefined,
       lastIngestedAt: wikiMeta?.lastIngestedAt,
       modifiedAt: file.modifiedTime,
     });
@@ -1748,13 +1798,19 @@ export type CandidatePartition<T> = {
 
 /**
  * Atom / Synthesis の discovery 候補を、既存同 kind ドキュメントとの embedding 類似度で
- * 「新規（kept）」と「既存との重複（duplicates + 一致先 ID）」に分割する。
+ * 「新規（kept）」と「重複『候補』（duplicates + 一致先 ID）」に分割する。
  * LLM プロンプトベースの "Existing titles" 重複防止に対する安全網。
+ *
+ * **これは候補探しであって、同じかどうかの判定ではない。** embedding は否定・方向の
+ * 違い（「下がる」vs「上がる」）に鈍く、閾値超えを機械的に「重複」扱いすると矛盾する
+ * 洞察が支持として統合され、矛盾が合意に見える事故が起きる。ここで拾った duplicates は
+ * 必ず judgeAtomDuplicates / resolveAtomDuplicates（LLM 判定: same / contradiction /
+ * different）を通してから振り分けること — reinforceAtomWithClaims に直接渡さない。
  *
  * 設計の意図:
  *   - embedding モデル必須にはしない。設定が無い / API が失敗したら **全て kept**（fail-open）。
  *   - 既存が空 / 候補が空のときは即返す（embedding API を叩かない）。
- *   - 類似度はセクション単位で計算され、同 kind の任意のセクションと閾値超えしたら duplicate。
+ *   - 類似度はセクション単位で計算され、同 kind の任意のセクションと閾値超えしたら候補。
  */
 export async function partitionCandidatesByEmbedding<T extends { title: string; body: string }>(
   candidates: T[],
@@ -1836,6 +1892,121 @@ export async function dedupCandidatesByEmbedding<T extends { title: string; body
   return kept;
 }
 
+/** 洞察（Atom）重複判定 1 件の判定結果（サーバー /judge-atom-duplicates と対応） */
+export type AtomDuplicateVerdict = "same" | "contradiction" | "different";
+export type AtomDuplicateJudgeVerdict = {
+  index: number;
+  existingId: string;
+  verdict: AtomDuplicateVerdict;
+  reason: string;
+};
+
+/**
+ * embedding で見つかった Atom 重複「候補」を LLM に判定させる（同じ / 矛盾 / 別物）。
+ * embedding は候補探しに過ぎない — 否定・方向の違いに鈍く、矛盾を統合してしまう
+ * 事故があったため、最終判定はここで行う（越境転移(transfer)判定と同じ流儀）。
+ *
+ * fail-closed: API 失敗・壊れた出力・判定が返らなかった対は呼び出し側で "different" 扱いに
+ * 倒す（このヘルパー自体は空配列を返すだけ — 「統合しない」判断は呼び出し側の責務）。
+ */
+export async function judgeAtomDuplicates(
+  pairs: { candidate: { title: string; body: string }; existing: { id: string; title: string; body: string } }[],
+  language: string,
+  options?: { model?: string; signal?: AbortSignal },
+): Promise<AtomDuplicateJudgeVerdict[]> {
+  if (pairs.length === 0) return [];
+  try {
+    const res = await fetch(`${API_BASE}/judge-atom-duplicates`, {
+      method: "POST",
+      headers: wikiHeaders("insight"),
+      body: JSON.stringify({
+        pairs,
+        language,
+        ...(options?.model ? { model: options.model } : wikiBodyModel("insight")),
+      }),
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+    if (!res.ok) {
+      console.warn("judgeAtomDuplicates failed (fail-closed: different 扱い):", res.status);
+      return [];
+    }
+    const data = (await res.json()) as { verdicts?: AtomDuplicateJudgeVerdict[] };
+    return data.verdicts ?? [];
+  } catch (err) {
+    console.warn("judgeAtomDuplicates failed (fail-closed: different 扱い):", err);
+    return [];
+  }
+}
+
+/** resolveAtomDuplicates の戻り値 */
+export type AtomDuplicateResolution<T> = {
+  /** "different" 判定（新規作成に回す候補） */
+  different: T[];
+  /** "same" 判定（既存 Atom への支持追加に回す） */
+  same: { candidate: T; matchedDocId: string; score: number }[];
+  /**
+   * "contradiction" 判定（新しい Atom を別に作った上で、双方の conflictsWith に
+   * 互いの ID を書く必要がある候補）。newAtomId は呼び出し側が新規作成後に埋める。
+   */
+  contradiction: { candidate: T; matchedDocId: string; score: number }[];
+};
+
+/**
+ * partitionCandidatesByEmbedding の duplicates（embedding が見つけた「候補」）を、
+ * LLM 判定（judgeAtomDuplicates）で same / contradiction / different に振り分ける
+ * 共通ヘルパー。3 箇所の discovery 呼び出しがこれを通す。
+ *
+ * loadExisting は既存 Atom の title/body を取得するコールバック（呼び出し側の
+ * loadDoc を渡す）。取得できない候補は安全側の "different" に倒す。
+ */
+export async function resolveAtomDuplicates<T extends { title: string; body: string }>(
+  duplicates: { candidate: T; matchedDocId: string; score: number }[],
+  loadExisting: (docId: string) => Promise<{ title: string; body: string } | null>,
+  language: string,
+  options?: { model?: string; signal?: AbortSignal },
+): Promise<AtomDuplicateResolution<T>> {
+  if (duplicates.length === 0) return { different: [], same: [], contradiction: [] };
+
+  // 既存 Atom の title/body を取得できた対だけをジャッジに送る。取得できない対は
+  // 判定不能として fail-closed で "different" に回す（統合しない側に倒す）。
+  const withExisting: { dup: (typeof duplicates)[number]; existing: { title: string; body: string } }[] = [];
+  const unresolvable: T[] = [];
+  for (const dup of duplicates) {
+    const existing = await loadExisting(dup.matchedDocId);
+    if (existing) {
+      withExisting.push({ dup, existing });
+    } else {
+      unresolvable.push(dup.candidate);
+    }
+  }
+
+  if (withExisting.length === 0) {
+    return { different: unresolvable, same: [], contradiction: [] };
+  }
+
+  const pairs = withExisting.map(({ dup, existing }) => ({
+    candidate: { title: dup.candidate.title, body: dup.candidate.body },
+    existing: { id: dup.matchedDocId, title: existing.title, body: existing.body },
+  }));
+  const verdicts = await judgeAtomDuplicates(pairs, language, options);
+
+  const different: T[] = [...unresolvable];
+  const same: AtomDuplicateResolution<T>["same"] = [];
+  const contradiction: AtomDuplicateResolution<T>["contradiction"] = [];
+  withExisting.forEach(({ dup }, i) => {
+    const v = verdicts.find((r) => r.index === i + 1) ?? verdicts[i];
+    // 判定が取れない対は fail-closed で "different"（黙って統合しない側に倒す）
+    if (!v || v.verdict === "different") {
+      different.push(dup.candidate);
+    } else if (v.verdict === "same") {
+      same.push(dup);
+    } else {
+      contradiction.push(dup);
+    }
+  });
+  return { different, same, contradiction };
+}
+
 // ── Atom（実験的レイヤ）──
 
 export type AtomCandidate = {
@@ -1885,12 +2056,12 @@ export async function atomizeConcepts(
   if (concepts.length < 1) return { atoms: [] };
   const res = await fetch(`${API_BASE}/atomize`, {
     method: "POST",
-    headers: wikiHeaders("chatSynthesis"),
+    headers: wikiHeaders("insight"),
     body: JSON.stringify({
       concepts,
       ...(options?.existingAtomTitles ? { existingAtomTitles: options.existingAtomTitles } : {}),
       language,
-      ...(options?.model ? { model: options.model } : {}),
+      ...(options?.model ? { model: options.model } : wikiBodyModel("insight")),
     }),
     // 中断シグナル。fetch を切るとサーバー側の c.req.raw.signal も発火し、
     // LLM 呼び出しごと止まる（wiki.ts の /atomize が abortSignal を配線済み）。
@@ -2089,7 +2260,52 @@ export function reinforceAtomWithClaims(
 export type ExistingTopicRef = {
   id: string;
   title: string;
+  /** 定義節の先頭文（Karpathy の index.md と同じ「タイトル + 1 行」のための情報。無ければ空） */
+  oneLiner?: string;
 };
+
+/**
+ * Wiki ドキュメントから「1 行」の概要を取り出す（index 用）。
+ * 話題ページの "## 定義 / Definition" 節の先頭文を優先し、無ければ本文最初の非空段落の
+ * 先頭文を使う。見つからなければ空文字列（数値上限は設けない — 文の区切りまでをそのまま返す）。
+ */
+export function extractTopicOneLiner(doc: GraphiumDocument): string {
+  const page = doc.pages[0];
+  if (!page) return "";
+  const blocks = flattenColumns(page.blocks);
+
+  const firstSentence = (text: string): string => {
+    const idx = text.search(/[。.!?！？]/);
+    return idx === -1 ? text : text.slice(0, idx + 1);
+  };
+
+  // "定義" / "Definition" 見出し直後の最初の段落を優先する
+  let inDefinition = false;
+  for (const block of blocks) {
+    if (block.type === "heading") {
+      const headingText = extractInlineText(block.content).trim();
+      if (inDefinition) break; // 定義節の終わり（次の見出しに入った）
+      if (/^(定義|Definition)$/i.test(headingText)) inDefinition = true;
+      continue;
+    }
+    if (!inDefinition) continue;
+    const t = extractInlineText(block.content).trim();
+    if (t) return firstSentence(t);
+  }
+
+  // 定義節が見つからなければ、見出しを除いた最初の非空段落を使う
+  for (const block of blocks) {
+    if (block.type === "heading") continue;
+    const t = extractInlineText(block.content).trim();
+    if (t) return firstSentence(t);
+  }
+  return "";
+}
+
+/** ExistingTopicRef を index の 1 行表記（タイトル + 定義の先頭文）にする。無ければタイトルのみ */
+export function formatTopicRefForIndex(ref: ExistingTopicRef): string {
+  return ref.oneLiner ? `${ref.title}: ${ref.oneLiner}` : ref.title;
+}
 
 /** 1 つの話題名（claim.topics の要素）に対する解決結果 */
 export type TopicMatch =
@@ -2097,11 +2313,12 @@ export type TopicMatch =
   | { status: "new"; title: string };
 
 /**
- * 話題名の正規化（一致判定専用）。NFC 正規化・前後空白除去・小文字化。
+ * 話題名の正規化（一致判定専用）。NFKC 正規化・空白（全角含む）全除去・小文字化。
+ * 「AI3V合金」と「AI3V 合金」のような内部の空白差だけの表記ゆれも同一視する。
  * 表示用タイトルは常に元の文字列を使う（正規化結果を保存しない）。
  */
 export function normalizeTopicTitle(title: string): string {
-  return title.normalize("NFC").trim().toLowerCase();
+  return title.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
 }
 
 /**
@@ -2191,9 +2408,7 @@ export async function resolveTopicsForClaim(
  * 個別に呼ぶ経路を増やすと、どちらか片方だけ更新されて非対称なリンクが生まれる。
  *
  * 冪等: 既にリンク済みなら何もしない（同じ配列を保つ）。
- * claim.topicIds は最大 3 件（ingester の topics 上限と揃える）。意図的な上限であり、
- * 既に 3 件埋まっている claim に 4 件目以降の topicId を足そうとした場合は黙って切り捨てる
- * （複数回の ingest/merge を経ると起こり得る）。呼び出し元が気づけるよう警告を出す。
+ * claim.topicIds の件数に上限は設けない（ingester の topics も件数上限なし）。
  */
 export function linkClaimAndTopic(
   claimMeta: WikiMeta,
@@ -2204,10 +2419,7 @@ export function linkClaimAndTopic(
   const topicIds = claimMeta.topicIds ?? [];
   const nextTopicIds = topicIds.includes(topicId)
     ? topicIds
-    : [...topicIds, topicId].slice(0, 3);
-  if (!topicIds.includes(topicId) && topicIds.length >= 3) {
-    console.warn(`claim "${claimId}" の topicIds は既に上限 3 件のため topic "${topicId}" へのリンクを切り捨てました`);
-  }
+    : [...topicIds, topicId];
 
   const memberIds = topicMeta.derivedFromClaims ?? [];
   const nextMemberIds = memberIds.includes(claimId)
@@ -2229,6 +2441,19 @@ export function unlinkClaimFromTopic(topicMeta: WikiMeta, claimId: string): Wiki
   const memberIds = topicMeta.derivedFromClaims ?? [];
   if (!memberIds.includes(claimId)) return topicMeta;
   return { ...topicMeta, derivedFromClaims: memberIds.filter((id) => id !== claimId) };
+}
+
+/**
+ * 話題どうしの統合（既存話題の吸収合併）で、claim 側の topicIds を
+ * 旧話題 ID → 新話題 ID に付け替える。旧 ID が無ければ何もしない（冪等）。
+ * 新 ID が既に含まれていれば旧 ID を外すだけ（重複させない）。件数に上限は無い。
+ */
+export function retargetClaimTopicId(claimMeta: WikiMeta, oldTopicId: string, newTopicId: string): WikiMeta {
+  const topicIds = claimMeta.topicIds ?? [];
+  if (!topicIds.includes(oldTopicId)) return claimMeta;
+  const withoutOld = topicIds.filter((id) => id !== oldTopicId);
+  const nextTopicIds = withoutOld.includes(newTopicId) ? withoutOld : [...withoutOld, newTopicId];
+  return { ...claimMeta, topicIds: nextTopicIds };
 }
 
 /** compose-topic API に渡すメンバー知見 1 件分（サーバー側 TopicMemberClaim と同形） */
@@ -2271,31 +2496,174 @@ export async function composeTopicBody(
   }
 }
 
+/** name-topics API に渡す知見（Claim）1 件分 */
+export type TopicNamerClaim = {
+  id: string;
+  title: string;
+  body: string;
+};
+
+/**
+ * topics が空の知見に対し、話題名だけをサーバー（/api/wiki/name-topics）で補う保険。
+ * ingester が Topics 項目を無視した場合に、話題の段（topic-stage）の冒頭で呼ばれる。
+ * 失敗時は例外を投げる — 呼び出し側が件数（failed）として数えられるよう、
+ * composeTopicBody と違い null に丸めない。
+ */
+export async function nameTopicsForClaims(
+  claims: TopicNamerClaim[],
+  existingTopics: string[],
+  language: string,
+  model?: string,
+): Promise<Record<string, string[]>> {
+  if (claims.length === 0) return {};
+  const res = await fetch(`${API_BASE}/name-topics`, {
+    method: "POST",
+    headers: wikiHeaders(),
+    body: JSON.stringify({ language, existingTopics, claims, ...(model ? { model } : {}) }),
+  });
+  if (!res.ok) {
+    throw await aiErrorFromResponse(res, `name-topics failed (${res.status})`);
+  }
+  const data = await res.json() as { topics?: Record<string, string[]> };
+  return data.topics ?? {};
+}
+
+/**
+ * 提案された話題名（と既存話題タイトル）をサーバー（/api/wiki/consolidate-topics）へ渡し、
+ * 「提案名 → 正式名」の対応表を得る（名寄せ＝タイトル一致・embedding 類似度の後段）。
+ * 統合は最適化であって必須ではない — 失敗時（パース不能・LLM/ネットワークエラー）は
+ * 例外を投げず空の対応表を返し、呼び出し側は「統合なし」で続行できるようにする
+ * （composeTopicBody と同じ fail-open の方針。nameTopicsForClaims と違い throw しない）。
+ */
+export async function consolidateTopics(
+  proposedTitles: string[],
+  existingTopics: ExistingTopicRef[],
+  language: string,
+  model?: string,
+): Promise<Record<string, string>> {
+  if (proposedTitles.length === 0) return {};
+  try {
+    const res = await fetch(`${API_BASE}/consolidate-topics`, {
+      method: "POST",
+      // テーマの統合可否はチャットモデルで判断する
+      headers: wikiHeaders("chatSynthesis"),
+      body: JSON.stringify({
+        language,
+        existingTopics: existingTopics.map((t) => ({ id: t.id, title: t.title, oneLiner: t.oneLiner })),
+        proposedTitles,
+        ...(model ? { model } : wikiBodyModel("chatSynthesis")),
+      }),
+    });
+    if (!res.ok) {
+      console.warn("consolidateTopics failed:", await aiErrorFromResponse(res, `consolidate-topics failed (${res.status})`));
+      return {};
+    }
+    const data = await res.json() as { mapping?: Record<string, string> };
+    return data.mapping ?? {};
+  } catch (err) {
+    console.warn("consolidateTopics failed:", err);
+    return {};
+  }
+}
+
+/** 話題ページの本文・References 構築に渡すメンバー知見の最小情報 */
+export type TopicMemberRef = { id: string; title: string };
+
+/** `[[claim:<id>]]` を検出する正規表現（id は空白・`]` を含まない） */
+const CLAIM_CITATION_RE = /\[\[claim:([^\]]+?)\]\]/g;
+
+/**
+ * Topic Writer が `[[claim:<id>]]` 形式で出した引用を、メンバー知見の現在のタイトルへ
+ * 解決してから `[[<title>]]`（既存の parseInlineCitations が解釈する形式）に書き換える。
+ * LLM がタイトルを転記ミスする問題を、id ベースの引用にすることで避ける。
+ *
+ * id が memberClaims に無い（LLM の幻覚・削除後の残骸）場合でも引用ごと落とさない —
+ * id を含む文字列として残し、目に見える形にする（プレーンテキストとして表示される）。
+ * 旧形式 `[[title]]`（Topic Writer の旧プロンプト出力・過去の保存済み本文）はこの関数の
+ * 対象外で、そのまま parseInlineCitations に渡り従来どおりタイトル一致で解決される。
+ */
+export function resolveTopicClaimCitations(body: string, memberClaims: TopicMemberRef[]): string {
+  if (!body) return body;
+  const titleById = new Map(memberClaims.map((c) => [c.id, c.title]));
+  return body.replace(CLAIM_CITATION_RE, (_match, rawId: string) => {
+    const id = rawId.trim();
+    const title = titleById.get(id);
+    if (title) return `[[${title}]]`;
+    // 未知の id: タイトルは分からないが、引用が存在したこと自体を消さずに残す。
+    return `[[claim:${id}]]`;
+  });
+}
+
+/**
+ * 話題ページ末尾の References ブロックを構築する。メンバー知見 1 件につき 1 行、
+ * claim ページの References（buildRelationBlocks の「Related:」行）と同じ見た目の
+ * @リンクにする。メンバー知見は常に AI 生成の wiki（claim）ページなので 🤖 プレフィックスを
+ * 固定で付ける（buildRelationBlocks 側の isWiki 判定と同じ表現）。
+ */
+function buildTopicReferenceBlocks(memberClaims: TopicMemberRef[]): RelationBlocksResult {
+  const blocks: any[] = [];
+  const knowledgeLinks: any[] = [];
+  if (memberClaims.length === 0) return { blocks, knowledgeLinks };
+
+  blocks.push({
+    id: crypto.randomUUID(),
+    type: "heading",
+    props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
+    content: [{ type: "text", text: "References", styles: {} }],
+    children: [],
+  });
+
+  for (const claim of memberClaims) {
+    const blockId = crypto.randomUUID();
+    blocks.push({
+      id: blockId,
+      type: "bulletListItem",
+      props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+      content: [{ type: "text", text: `@🤖 ${claim.title}`, styles: { textColor: "blue" } }],
+      children: [],
+    });
+    knowledgeLinks.push({
+      id: crypto.randomUUID(),
+      sourceBlockId: blockId,
+      targetBlockId: "",
+      targetNoteId: claim.id,
+      type: "reference",
+      layer: "knowledge",
+      createdBy: "ai",
+    });
+  }
+
+  return { blocks, knowledgeLinks };
+}
+
 /**
  * 話題ページ本文（markdown）から GraphiumDocument を構築する。
  * サーバーの compose-topic 出力は 1 つの markdown 文字列（`## 見出し` を含みうる）
  * なので、単一セクション {heading: "", content: body} として convertSectionsToBlocks
- * に通す — 埋め込み `## ...` 見出しと `[[Claim title]]` 引用（parseInlineCitations）は
- * 既存の変換ロジックがそのまま解釈する。
+ * に通す — 埋め込み `## ...` 見出しと `[[claim:<id>]]` 引用（resolveTopicClaimCitations
+ * でタイトルに解決してから parseInlineCitations）は既存の変換ロジックがそのまま解釈する。
+ * 末尾に References（メンバー知見一覧）を buildTopicReferenceBlocks で付ける。
  *
  * `derivedFromClaims` にメンバー知見の ID を必ず積む（保存で落ちないことをテストで固定）。
  */
 export function buildTopicDocument(
   title: string,
   body: string,
-  memberClaimIds: string[],
+  memberClaims: TopicMemberRef[],
   model: string | null,
   language?: string,
   noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
-  const converted = convertSectionsToBlocks([{ heading: "", content: body }], noteIndex, title);
+  const resolvedBody = resolveTopicClaimCitations(body, memberClaims);
+  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title);
+  const refs = buildTopicReferenceBlocks(memberClaims);
 
   const wikiMeta: WikiMeta = {
     kind: "topic",
     derivedFromNotes: [],
     derivedFromChats: [],
-    derivedFromClaims: [...memberClaimIds],
+    derivedFromClaims: memberClaims.map((c) => c.id),
     generatedAt: now,
     generatedBy: {
       model: model ?? "unknown",
@@ -2311,10 +2679,10 @@ export function buildTopicDocument(
     pages: [{
       id: "main",
       title,
-      blocks: converted.blocks,
+      blocks: [...converted.blocks, ...refs.blocks],
       labels: {},
       provLinks: [],
-      knowledgeLinks: converted.knowledgeLinks,
+      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks],
     }],
     source: "ai",
     wikiMeta,
@@ -2331,34 +2699,38 @@ export function buildTopicDocument(
 /**
  * 既存の話題ドキュメントの本文を書き直して更新する（メンバー変化後の再構成 / 手動再生成
  * 共通）。`derivedFromClaims`（メンバー ID）は呼び出し側が確定済みのものをそのまま渡す
- * — この関数は本文とブロックだけを作り直す。
+ * — この関数は本文とブロック（References 含む）を作り直す。書き直しのたびに
+ * buildTopicReferenceBlocks を呼び直すので、References が重複して積み重なることはない
+ * （page.blocks を丸ごと差し替えるため）。
  */
 export function rebuildTopicDocument(
   existingDoc: GraphiumDocument,
   body: string,
-  memberClaimIds: string[],
+  memberClaims: TopicMemberRef[],
   model: string | null,
   noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
+  const resolvedBody = resolveTopicClaimCitations(body, memberClaims);
   const converted = convertSectionsToBlocks(
-    [{ heading: "", content: body }],
+    [{ heading: "", content: resolvedBody }],
     noteIndex,
     existingDoc.title,
   );
+  const refs = buildTopicReferenceBlocks(memberClaims);
   const page = existingDoc.pages[0];
 
   return {
     ...existingDoc,
     pages: [{
       ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
-      blocks: converted.blocks,
-      knowledgeLinks: converted.knowledgeLinks,
+      blocks: [...converted.blocks, ...refs.blocks],
+      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks],
     }],
     wikiMeta: {
       ...existingDoc.wikiMeta!,
       kind: "topic",
-      derivedFromClaims: [...memberClaimIds],
+      derivedFromClaims: memberClaims.map((c) => c.id),
       lastIngestedAt: now,
       generatedBy: {
         model: model ?? existingDoc.wikiMeta?.generatedBy?.model ?? "unknown",

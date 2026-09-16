@@ -3,7 +3,7 @@
 // - 矛盾検出（Contradiction）: 異なる Wiki 間の矛盾する主張
 // - 孤立ページ（Orphan）: 他の Wiki や元ノートとの接続がないページ
 // - 知識ギャップ（Gap）: カバーされていないトピック・発展可能な領域
-// - 陳腐化（Stale）: 長期間更新されていないページ
+// - 陳腐化（Stale）: 後から作られた知見に内容を追い越されたページ
 // - 重複（Redundant）: 内容が大幅に重なる Claim 同士
 
 export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant";
@@ -62,6 +62,12 @@ export type WikiSnapshot = {
   level?: "principle" | "finding" | "bridge";
   /** メンバー知見（Claim）の ID リスト。topic のときのみ意味を持つ（orphan topic 判定に使う） */
   derivedFromClaims?: string[];
+  /**
+   * 矛盾する既存洞察（Atom）の ID リスト（atom のみ意味を持つ）。
+   * resolveAtomDuplicates の contradiction 判定が双方向に書く。detectLocalIssues が
+   * これを見て "contradiction" issue を機械的に列挙する（LLM lint とは別経路）。
+   */
+  conflictsWith?: string[];
   lastIngestedAt?: string;
   modifiedAt: string;
 };
@@ -104,8 +110,10 @@ If you can only name the missing topic by ID (no human-readable title is inferab
 Severity: "info".
 
 ### stale
-A Wiki page that hasn't been updated in a long time while related pages have been updated.
-Or a page whose source notes may have changed since the Wiki was generated.
+A Wiki page whose claim has been superseded — a genuine conflict or overwrite by knowledge
+written later, not merely the passage of time. Flag only when you can point to a specific
+other page (or newer source note) that supersedes it. "It hasn't changed in a while" alone
+is NOT a reason to flag — most pages are correctly stable.
 Severity: "warning"
 
 ### redundant
@@ -178,8 +186,8 @@ If two pages have very similar titles, disambiguate with a short distinguishing 
 - Prioritize actionable issues: each issue should have a concrete suggestion
 - For gaps: suggest what kind of Claim page could be created
 - For contradictions: quote the conflicting claims
-- For stale: compare lastIngestedAt dates with related pages
-- For redundant: compare section headings and content themes between Claim pages. If two Claims cover >70% of the same ground, flag them. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality. The suggestion should clearly state which page absorbs which
+- For stale: identify the specific newer page or note that supersedes it, and name it in the description — do not flag based on elapsed time alone
+- For redundant: compare section headings and content themes between Claim pages. Flag when the pages are about the same concept and assert the same specific claim (allowing for differences in wording or level of detail). **Also apply this to Topic pages** — two Topics whose titles name the same concept despite surface differences (wording variants, presence/absence of particles, word order, or one being a needlessly narrow per-sample/per-composition slice of the other) are redundant even if you haven't read their member Claims; the fix is to merge them via "Organize topics" in Settings, not to edit content. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality (for Topics, prefer the more general/reusable title). The suggestion should clearly state which page absorbs which
 - Return an empty issues array if no issues are found
 
 ## Language
@@ -290,15 +298,11 @@ function validateSeverity(severity: string): LintSeverity {
 }
 
 /**
- * ローカルで検出可能な Stale/Orphan 問題をチェックする（LLM 不要）
+ * ローカルで検出可能な Orphan/Redundant 問題をチェックする（LLM 不要）。
+ * Stale（後から来た知見に追い越されたか）は日数で機械判定できないため、LLM lint 側でのみ扱う。
  */
-export function detectLocalIssues(
-  wikis: WikiSnapshot[],
-  staleDays: number = 30,
-): LintIssue[] {
+export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
   const issues: LintIssue[] = [];
-  const now = Date.now();
-  const staleThreshold = staleDays * 24 * 60 * 60 * 1000;
 
   // Wiki ID → Wiki のマップ
   const wikiById = new Map(wikis.map((w) => [w.id, w]));
@@ -317,21 +321,28 @@ export function detectLocalIssues(
     }
   }
 
+  // Contradiction チェック（atom）: resolveAtomDuplicates が LLM で "contradiction" と
+  // 判定し、双方向に書いた conflictsWith を機械的に列挙する（LLM lint とは別経路。
+  // ここは判定済みの事実を表示するだけなので LLM 不要）。id ペアの重複列挙を避けるため
+  // id が小さい方を先に処理した時だけ issue を作る。
   for (const w of wikis) {
-    // Stale チェック: 最終更新から staleDays 日以上経過
-    const lastUpdate = new Date(w.lastIngestedAt ?? w.modifiedAt).getTime();
-    if (now - lastUpdate > staleThreshold) {
-      const daysSince = Math.floor((now - lastUpdate) / (24 * 60 * 60 * 1000));
+    if (w.kind !== "atom" || !w.conflictsWith || w.conflictsWith.length === 0) continue;
+    for (const otherId of w.conflictsWith) {
+      if (w.id >= otherId) continue; // 逆向きの重複を弾く（片方だけ処理）
+      const other = wikiById.get(otherId);
+      if (!other) continue;
       issues.push({
-        type: "stale",
-        severity: "warning",
-        title: `"${w.title}" has not been updated for ${daysSince} days`,
-        description: `This ${w.kind} was last updated on ${new Date(lastUpdate).toISOString().slice(0, 10)}. It may contain outdated information.`,
-        affectedWikiIds: [w.id],
-        suggestion: `Review and re-ingest the source notes, or mark as still valid.`,
+        type: "contradiction",
+        severity: "error",
+        title: `"${w.title}" and "${other.title}" contradict each other`,
+        description: `These two Insights (Atoms) were judged to conflict in direction/condition/conclusion when discovered — both were kept rather than silently merged.`,
+        affectedWikiIds: [w.id, otherId],
+        suggestion: `Open both "${w.title}" and "${other.title}" to compare and decide which (if either) still holds.`,
       });
     }
+  }
 
+  for (const w of wikis) {
     // Orphan チェック: Claim で他から参照されておらず、自身も他を参照していない
     if (w.kind === "claim") {
       const isReferenced = referenced.has(w.id);
@@ -364,5 +375,44 @@ export function detectLocalIssues(
     }
   }
 
+  // Redundant チェック（topic）: 正規化タイトルが完全一致する話題（表記ゆれの明確なケースのみ。
+  // LLM 不要でローカルに判定できる）。語順違い・助詞違いなどの近縁話題は LLM lint 側で拾う —
+  // ここでは「同じ文字列としか言えない」ケースだけを機械的に検出する。
+  const topicsByNormalizedTitle = new Map<string, WikiSnapshot[]>();
+  for (const w of wikis) {
+    if (w.kind !== "topic") continue;
+    const key = normalizeForDuplicateCheck(w.title);
+    const list = topicsByNormalizedTitle.get(key) ?? [];
+    list.push(w);
+    topicsByNormalizedTitle.set(key, list);
+  }
+  for (const group of topicsByNormalizedTitle.values()) {
+    if (group.length < 2) continue;
+    // メンバー数が多い方を残す（同点ならより新しい方）
+    const sorted = [...group].sort((a, b) => {
+      const memberDiff = (b.derivedFromClaims ?? []).length - (a.derivedFromClaims ?? []).length;
+      if (memberDiff !== 0) return memberDiff;
+      return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
+    });
+    const keep = sorted[0];
+    for (const absorb of sorted.slice(1)) {
+      issues.push({
+        type: "redundant",
+        severity: "warning",
+        title: `"${keep.title}" and "${absorb.title}" name the same topic`,
+        description: `These two Topic pages have the same normalized title (only whitespace/casing differ), so they should be a single page.`,
+        affectedWikiIds: [keep.id, absorb.id],
+        suggestion: `Merge "${absorb.title}" into "${keep.title}" via "Organize topics" in Settings.`,
+        recommendedAction: { type: "merge", keepId: keep.id, absorbId: absorb.id, reason: `Same normalized title; keeping the one with more members / more recently updated.` },
+      });
+    }
+  }
+
   return issues;
+}
+
+/** 話題の重複判定専用の正規化（NFKC・空白除去・小文字化）。wiki-service.normalizeTopicTitle と同じ規則を
+ *  サーバー側で複製する（client/server のバンドル境界をまたがないため）。 */
+function normalizeForDuplicateCheck(title: string): string {
+  return title.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
 }

@@ -87,7 +87,7 @@ What travels with the note: the text, its labels and procedures, the folder it s
 
 ### Share knowledge pages too <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
 
-Knowledge pages — summaries, claims, and insights — share the same way. Open a page's `⋯` menu, choose **Share with team**, and it appears under **Knowledge** in the shared library, next to the shared notes. **Update shared copy** and **Unshare** work as they do for notes.
+Knowledge pages — topics, claims, and insights, plus any older summaries still on disk — share the same way. Open a page's `⋯` menu, choose **Share with team**, and it appears under **Knowledge** in the shared library, next to the shared notes. **Update shared copy** and **Unshare** work as they do for notes.
 
 Forking one brings it into your knowledge rather than your notes, so it sits with your own claims and insights and joins your searches and graphs. Its lineage does not come along: a shared page's "derived from" links point at notes, chats, and claims in the author's library, and those ids mean nothing in yours. The fork starts with that lineage cleared and records where it came from instead, so nothing is left dangling or pointing at the wrong page. The text, the semantic type, and any sections edited by hand arrive intact. World-check results and search embeddings are rebuilt on your side rather than carried over.
 

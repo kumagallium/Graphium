@@ -596,27 +596,30 @@ export function FileSidebar({
             count={aiTotalCount}
           >
             {(() => {
-                // 話題 / 要約 / 知見 / 洞察（Atom）の 4 種類を default 表示する。
+                // 話題 / 知見 / 洞察（Atom）の 3 種類を default 表示する。
                 // 2026-05-27 の design revision で synthesis（発想）レイヤはサイドバーから
                 // 非表示化（Cmd-K Composer 経由で再構築する想定）。既存 synthesis ファイルの
                 // 物理データは保持されるが、ここからの動線は提供しない。
                 // showAtomLayer が false（features.insights OFF）のときは atom 行も隠す。
-                // 要約（summary）の生成停止は別 PR（PR3）で行う。ここでは並び・ラベル・
-                // 表示位置を変更しない — summary は今まで通り default 表示のまま。
+                // 要約（summary）の新規生成は停止済み（PR3。話題(topic)が役割を引き継ぐ）。
+                // 新規ユーザーの導線には出さず、既存ファイルが 1 件以上残っているときだけ
+                // 末尾に「以前の要約」として表示する（データが消えたように見えないため）。
                 const kinds: WikiKind[] = showAtomLayer
-                  ? ["topic", "summary", "claim", "atom"]
-                  : ["topic", "summary", "claim"];
+                  ? ["topic", "claim", "atom"]
+                  : ["topic", "claim"];
+                const summaryCount = wikiCounts?.summary ?? 0;
+                if (summaryCount > 0) kinds.push("summary");
                 return kinds.map((kind) => {
-                  const count = wikiCounts?.[kind] ?? 0;
+                  const count = kind === "summary" ? summaryCount : (wikiCounts?.[kind] ?? 0);
                   const label =
                     kind === "topic" ? t("wikiList.kindTopic")
-                    : kind === "summary" ? t("wikiList.kindSummary")
+                    : kind === "summary" ? t("wikiList.kindSummaryLegacy")
                     : kind === "claim" ? t("wikiList.kindClaim")
                     : t("wikiList.kindAtom");
                   // 各 kind の意味を title ツールチップで補足する（初見ユーザー向け）。
                   const hint =
                     kind === "topic" ? t("wikiList.kindTopicHint")
-                    : kind === "summary" ? t("wikiList.kindSummaryHint")
+                    : kind === "summary" ? t("wiki.summaryRetiredHint")
                     : kind === "claim" ? t("wikiList.kindClaimHint")
                     : t("wikiList.kindAtomHint");
                   // Atom は default 昇格したので "exp" バッジは不要。

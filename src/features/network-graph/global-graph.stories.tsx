@@ -38,6 +38,9 @@ const NODES: NoteNode[] = [
   { id: "a1", title: "アニール温度→相純度", isCurrent: false, hop: 0, isWiki: true, wikiKind: "atom" },
   { id: "a2", title: "ドープでキャリア型が反転", isCurrent: false, hop: 0, isWiki: true, wikiKind: "atom" },
   { id: "a3", title: "粒界散乱がκを下げる", isCurrent: false, hop: 0, isWiki: true, wikiKind: "atom" },
+  // トピック（知見を概念ごとに束ねる。砂時計の外側で横に束ねる面）
+  { id: "t1", title: "相純度とアニール", isCurrent: false, hop: 0, isWiki: true, wikiKind: "topic" },
+  { id: "t2", title: "Cu系の電気特性", isCurrent: false, hop: 0, isWiki: true, wikiKind: "topic" },
   // 統合
   { id: "s1", title: "要約: Cu系熱電材料の作製指針", isCurrent: false, hop: 0, isWiki: true, wikiKind: "summary" },
   { id: "y1", title: "統合: 高ZTへの設計方針", isCurrent: false, hop: 0, isWiki: true, wikiKind: "synthesis" },
@@ -66,6 +69,11 @@ const EDGES: NoteEdge[] = [
   { source: "n6", target: "c4", relation: "derived" },
   { source: "n7", target: "c5", relation: "derived" },
   { source: "n2", target: "c5", relation: "derived" },
+  // 派生（Claim → トピック：概念で横に束ねる）
+  { source: "c1", target: "t1", relation: "derived" },
+  { source: "c5", target: "t1", relation: "derived" },
+  { source: "c2", target: "t2", relation: "derived" },
+  { source: "c4", target: "t2", relation: "derived" },
   // 派生（Claim → Atom：砂時計の首へ収束）
   { source: "c1", target: "a1", relation: "derived" },
   { source: "c2", target: "a2", relation: "derived" },

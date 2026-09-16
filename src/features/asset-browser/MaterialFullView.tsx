@@ -179,7 +179,7 @@ export function MaterialFullView({
               "---",
             ].join("\n")
           : question;
-        // 素材ビューのチャットもチャット・洞察モデルを使う（未設定ならデフォルトモデルにフォールバック）。
+        // 素材ビューのチャットもチャットモデルを使う（未設定ならデフォルトモデルにフォールバック）。
         const selectedModel = getChatSynthesisModelName();
         const response = await runAgent({
           message,

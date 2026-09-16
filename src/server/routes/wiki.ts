@@ -42,6 +42,10 @@ import {
   buildFoldJudgeUserMessage,
   parseFoldJudgeOutput,
   resolveFoldVerdict,
+  buildAtomDuplicateJudgeSystemPrompt,
+  buildAtomDuplicateJudgeUserMessage,
+  parseAtomDuplicateJudgeOutput,
+  type AtomDuplicateJudgePair,
 } from "../services/wiki-atomizer.js";
 import {
   buildRewriterSystemPrompt,
@@ -53,7 +57,15 @@ import {
   buildTopicWriterSystemPrompt,
   buildTopicWriterUserMessage,
   parseTopicWriterOutput,
+  buildTopicNamerSystemPrompt,
+  buildTopicNamerUserMessage,
+  parseTopicNamerOutput,
   type TopicMemberClaim,
+  type TopicNamerClaim,
+  buildTopicConsolidatorSystemPrompt,
+  buildTopicConsolidatorUserMessage,
+  parseTopicConsolidatorOutput,
+  type TopicConsolidatorExistingRef,
 } from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -96,7 +108,7 @@ app.post("/ingest", async (c) => {
   // 転用可能な知見を持つので ingester を「文書モード」に切り替え、過少抽出を防ぐ。
   const isDocument = /^(pdf|document|url|chat):/.test(body.noteId ?? "");
   // メモ（memo: prefix）は逆に「1 断片 ≈ 1 着想」の走り書き。通常ノートの保守的な
-  // Claim 基準だと引用・エピソード型の断片が Summary のみに倒れるため、
+  // Claim 基準だと引用・エピソード型の断片が Claim 0 件に倒れやすいため、
   // 「短くても着想 1 件の抽出を試みる」memo モードに切り替える。
   const isMemo = /^memo:/.test(body.noteId ?? "");
 
@@ -457,6 +469,119 @@ app.post("/compose-topic", async (c) => {
   }
 });
 
+// 話題（topic）名の保険生成。
+//   ingester が topics を出さなかった知見（claim）に対し、話題名だけを後から推測して埋める。
+//   本文（compose-topic）とは別エンドポイント — 命名のみで軽量。件数の上限は設けない
+//   （入力が大きすぎて LLM が失敗したら、そのまま失敗として呼び出し側（topic-stage）に返す）。
+app.post("/name-topics", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    existingTopics?: string[];
+    claims: TopicNamerClaim[];
+    model?: string;
+  }>();
+
+  if (!Array.isArray(body.claims) || body.claims.length === 0) {
+    return c.json({ error: "claims are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicNamerSystemPrompt(body.language || "en");
+  const userMessage = buildTopicNamerUserMessage(body.existingTopics ?? [], body.claims);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.name-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicNamerOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse topic namer output" }, 500);
+    }
+
+    return c.json({
+      topics: parsed,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki name-topics error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 話題（topic）名の統合（名寄せの後段）。
+//   name-topics は 20 件ずつチャンクで呼ばれるため全体を見渡せず、表記ゆれ・助詞の有無・
+//   語順違い・粒度違いの近縁話題が別々に残る（実測: 34 話題の大半がメンバー 1 件）。
+//   このエンドポイントは今回の提案名（と既存話題タイトル）をまとめて 1 回渡し、
+//   「どの提案名をどの正式名に寄せるか」の対応表だけを返す。本文は書かない・
+//   話題ページの作成/更新/マージは呼び出し側（topic-stage / note-app）が対応表を見て行う。
+app.post("/consolidate-topics", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    existingTopics: TopicConsolidatorExistingRef[];
+    proposedTitles: string[];
+    model?: string;
+  }>();
+
+  if (!Array.isArray(body.proposedTitles) || body.proposedTitles.length === 0) {
+    return c.json({ error: "proposedTitles are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicConsolidatorSystemPrompt(body.language || "en");
+  const userMessage = buildTopicConsolidatorUserMessage(body.existingTopics ?? [], body.proposedTitles);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.consolidate-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicConsolidatorOutput(result.message);
+    if (!parsed) {
+      // 壊れた JSON: 統合は最適化であって必須ではないので、空の mapping で 200 を返す
+      // （呼び出し側は「統合なし」で続行できる）。
+      console.warn("Wiki consolidate-topics: パース失敗のため空の mapping を返します");
+      return c.json({ mapping: {}, tokenUsage: result.tokenUsage, model: result.model });
+    }
+
+    return c.json({
+      mapping: parsed,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki consolidate-topics error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
 // Atomize（複数 Concept にまたがる共通抽象を発見する discovery）
 //   experimental.atomLayer 有効時にクライアントから呼ばれる。
 //   Concept[] を入力し、可搬性テストを通った Atom 候補 0〜N 件を返す（1 件の Concept からでも可）。
@@ -679,6 +804,50 @@ app.post("/atomize", async (c) => {
     console.error("Wiki atomize error:", err);
     // degrade（200 + 空 atoms）だが code は添えておく（クライアントで i18n 変換される）
     return c.json({ atoms: [], ...errorBody(err) });
+  }
+});
+
+// 洞察（Atom）discovery の重複候補を LLM で判定する。
+// embedding（partitionCandidatesByEmbedding）は「候補探し」止まり — 同じ/矛盾/別物の
+// 最終判定はここで行う（越境転移(transfer)判定と同じ流儀）。
+app.post("/judge-atom-duplicates", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    pairs: AtomDuplicateJudgePair[];
+    model?: string;
+  }>();
+
+  if (!Array.isArray(body.pairs) || body.pairs.length === 0) {
+    return c.json({ verdicts: [] });
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    // fail-closed: モデル未設定でも「different」に倒す（route を呼ぶ側が埋める）
+    return c.json({ verdicts: [] });
+  }
+
+  const systemPrompt = buildAtomDuplicateJudgeSystemPrompt(body.language || "en");
+  const userMessage = buildAtomDuplicateJudgeUserMessage(body.pairs);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.judge-atom-duplicates",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    const verdicts = parseAtomDuplicateJudgeOutput(result.message);
+    return c.json({ verdicts, model: result.model, tokenUsage: result.tokenUsage });
+  } catch (err) {
+    console.error("Wiki judge-atom-duplicates error:", err);
+    // fail-closed（黙って統合しない側に倒す）: 呼び出し側が verdicts 欠落を "different" として扱う
+    return c.json({ verdicts: [], ...errorBody(err) });
   }
 });
 

@@ -51,7 +51,7 @@ On first launch, Graphium creates its data folder in your Documents folder — `
 |---|---|
 | `notes/` | Your notes, one JSON file each |
 | `media/` | Images, PDFs, audio, video, and other materials |
-| `wiki/` | Knowledge layer pages (summaries, claims, insights) |
+| `wiki/` | Knowledge layer pages (topics, claims, insights, plus any older summaries still on disk) |
 | `skills/` | Your saved skill documents |
 | `appdata/` | The note index and other app state |
 

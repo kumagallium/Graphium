@@ -801,7 +801,8 @@ type WikiMeta = {
   derivedFromClaims?: string[];
 
   // Claim-only. IDs of the topic (`kind: "topic"`) pages this Claim belongs to
-  // (0–3). Paired bidirectionally with the topic's `derivedFromClaims` above.
+  // (no count limit — usually 1). Paired bidirectionally with the topic's
+  // `derivedFromClaims` above.
   topicIds?: string[];
 
   // Knowledge cited/examined when this note was created from a Cmd-K verb
@@ -892,7 +893,7 @@ type ProcedureContext = {
 | Kind | Role | Carries context? |
 |---|---|---|
 | `topic` | Groups related Claims by concept. Two-hop provenance (topic → claim → note). Does **not** participate in the hourglass — it is never fed to the atomizer. | n/a (derived from member Claims) |
-| `summary` | Internal-facing summary of one note. | yes |
+| `summary` | Legacy — no longer generated (superseded by `topic`). Existing files remain readable, listed, searchable, and deletable. | yes |
 | `claim` | Cross-note claim extracted from notes (fact-based; the hourglass widens here). | yes |
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |
@@ -902,7 +903,8 @@ type ProcedureContext = {
 A `topic` document groups Claims (`kind: "claim"`) by concept. Its
 `wikiMeta.derivedFromClaims` holds the member Claim IDs, and each
 member Claim's `wikiMeta.topicIds` points back (bidirectional link,
-capped at 3 topics per Claim).
+no count limit — usually one topic per Claim, more only when a Claim
+genuinely spans distinct concepts).
 
 The topic body is regenerated as a **pure function of its current
 member set** — the previous body is never fed back into the writer.
@@ -911,11 +913,44 @@ LLM-authored wikis: a topic page cannot accumulate drift across
 regenerations, because each regeneration starts from the member Claims
 only.
 
-Topics are assigned during ingest: the ingester proposes 1–3 topic
-names (noun phrases) per Claim, which are then resolved against
+Topics are assigned during ingest, following the same "index +
+judgment" approach as the ingester itself (see [ARCHITECTURE.md
+§3.3](ARCHITECTURE.md)): the ingester proposes topic names (noun
+phrases) per Claim after being shown an index of existing topics
+(title + one-line definition, like the existing-Wiki index it already
+sees), so it can decide itself whether a Claim belongs to an existing
+topic or needs a new one. The proposed names are then resolved against
 existing topics by (1) normalized title match, then (2) embedding
-similarity > 0.9 (falls back to title-match-only when no embedding
-model is configured), and only then created as new.
+similarity > 0.9 (the one numeric threshold in this pipeline — shared
+with the general duplicate-detection use of the same function; falls
+back to title-match-only when no embedding model is configured), and
+only then created as new.
+
+There is no separate ingest-time "consolidation" step and no target
+member-count per topic — those would be thresholds nobody could
+justify. Instead, near-duplicate or over-fragmented topics (wording
+variants, particle differences, per-sample slices that should share a
+page) are caught later by two Karpathy-style *lint* mechanisms that
+look at the whole topic corpus at once, rather than one Claim at a
+time:
+
+- **"Organize topics"** (Settings → Maintenance): assigns topics to
+  Claims that still have none, then consolidates existing topics that
+  name the same concept (`POST /api/wiki/consolidate-topics` — an LLM
+  call that returns a proposed-name → canonical-title mapping, no
+  count caps), merging members into the canonical topic and moving the
+  absorbed topic to Trash.
+- **Wiki Linter** (`wiki-linter.ts`): the `redundant` issue type now
+  also considers Topic pages, both in the LLM lint pass and in a local
+  (no-LLM) check that flags topics whose normalized titles collide
+  exactly.
+
+In the topic body, citations to member Claims are written as
+`[[claim:<id>]]` (the Claim's id, not its title — this avoids the
+writer LLM mistranscribing a title) and resolved to the Claim's
+current title before rendering. The body always ends with a
+References section listing every member Claim as an `@` link,
+built the same way regardless of what the writer LLM produced.
 
 `synthesis` documents are authored through the Cmd-K Composer flow
 rather than an automatic pipeline: the user selects Insights, builds a
@@ -988,6 +1023,7 @@ versions stay valid with these fields absent.
 | `backing[]` | Claim | `{ source: "textbook" \| "external-paper" \| "internal-claim", citation, url?, internalClaimId? }` (Phase γ) |
 | `modalQualifier` | Claim | necessarily, probably, possibly, rarely (Phase γ) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
+| `conflictsWith[]` | Atom only | Array of Insight (Atom) ids this one contradicts. Written by `resolveAtomDuplicates` when the duplicate-judge LLM (`judgeAtomDuplicates`) returns `"contradiction"` for an embedding-shortlisted pair — both Insights are kept (neither is merged/reinforced) and each writes the other's id, so the link is always bidirectional. Surfaced by the Linter as a `contradiction` issue (`detectLocalIssues`, no LLM needed for this check since the judgment already happened at discovery time). Empty/undefined = no known conflict. |
 | `theme` | Synthesis | Legacy field preserved on existing synthesis docs for back-compat; new Cmd-K Composer authoring does not populate it. |
 
 These dimensions are **orthogonal to the existing context labels**
@@ -1514,6 +1550,14 @@ Bumping rules:
 | **24** | Outline collection treats multi-column blocks (`columnList` / `column`) as transparent layout wrappers — headings and steps placed inside a column are collected as if they were top-level, so they appear in the outline and in search. No `NoteIndexEntry` field changed; the bump exists because the collection logic changed and column-using notes need a rebuild to be indexed correctly. Notes without columns produce identical entries. |
 | **25** | `extractBlockText` now yields the `cachedTitle` / `fileName` snapshot of `sharedCitation` blocks (§7.5), so a note is findable by the title of the shared entry it cites. No `NoteIndexEntry` field changed; citation-using notes need a rebuild to pick up the searchable text. |
 | **26** | Added `importSourceHash` — mirrors `GraphiumDocument.importSource.contentHash`. Intake's note-dedupe (`src/features/intake/note-dedupe.ts`) used to narrow candidates by filename-derived title before reading each candidate's doc to compare hashes; a renamed-but-unchanged file could not be recognized as the same file re-imported. It now scans the index for a matching `importSourceHash` directly (no per-candidate doc read, and rename-proof). Pre-v26 notes keep `importSourceHash: undefined` until `ensureIndex` rebuilds on the bump. |
+
+`INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
+generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
+change removes nothing from the `WikiKind` union — `"summary"` stays a
+valid kind because existing summary files on disk must remain readable,
+listed, and searchable. Only the Ingester's output contract changed (it
+no longer emits `kind: "summary"`), which is not something the persisted
+index schema tracks.
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

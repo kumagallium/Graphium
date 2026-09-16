@@ -12,7 +12,6 @@ const base = (overrides: Partial<WikiSnapshot>): WikiSnapshot => ({
   derivedFromNotes: [],
   relatedClaims: [],
   bodyPreview: "",
-  // stale 判定に引っかからないよう十分新しい日時にしておく
   modifiedAt: new Date().toISOString(),
   ...overrides,
 });
@@ -53,5 +52,79 @@ describe("detectLocalIssues - orphan topic", () => {
       }),
     ]);
     expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("claim-1"))).toBe(true);
+  });
+});
+
+describe("detectLocalIssues - redundant topic（正規化タイトル完全一致）", () => {
+  it("空白差だけの同名話題を redundant として検出する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "AI3V 格子熱伝導率", derivedFromClaims: ["c1", "c2"] }),
+      base({ id: "topic-b", title: "AI3V格子熱伝導率", derivedFromClaims: ["c3"] }),
+    ]);
+    const redundant = issues.find((i) => i.type === "redundant");
+    expect(redundant).toBeDefined();
+    expect(redundant?.affectedWikiIds).toEqual(["topic-a", "topic-b"]);
+    expect(redundant?.recommendedAction).toMatchObject({ type: "merge", keepId: "topic-a", absorbId: "topic-b" });
+  });
+
+  it("メンバー数が多い方を keep に選ぶ", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "話題X", derivedFromClaims: ["c1"] }),
+      base({ id: "topic-b", title: "話題X", derivedFromClaims: ["c1", "c2", "c3"] }),
+    ]);
+    const redundant = issues.find((i) => i.type === "redundant");
+    expect(redundant?.recommendedAction).toMatchObject({ keepId: "topic-b", absorbId: "topic-a" });
+  });
+
+  it("タイトルが異なる話題は redundant にしない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "話題A", derivedFromClaims: ["c1"] }),
+      base({ id: "topic-b", title: "話題B", derivedFromClaims: ["c2"] }),
+    ]);
+    expect(issues.some((i) => i.type === "redundant")).toBe(false);
+  });
+
+  it("claim には適用しない（同名 claim が redundant にならない）", () => {
+    const issues = detectLocalIssues([
+      base({ id: "claim-a", title: "同じ知見", kind: "claim", derivedFromClaims: undefined }),
+      base({ id: "claim-b", title: "同じ知見", kind: "claim", derivedFromClaims: undefined }),
+    ]);
+    expect(issues.some((i) => i.type === "redundant")).toBe(false);
+  });
+});
+
+describe("detectLocalIssues - contradiction（洞察の conflictsWith を機械的に列挙）", () => {
+  it("双方向に conflictsWith を持つ atom ペアを contradiction として 1 件だけ検出する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "atom-a", title: "Xが増えるとYが増える", kind: "atom", derivedFromClaims: undefined, conflictsWith: ["atom-b"] }),
+      base({ id: "atom-b", title: "Xが増えるとYが減る", kind: "atom", derivedFromClaims: undefined, conflictsWith: ["atom-a"] }),
+    ]);
+    const contradictions = issues.filter((i) => i.type === "contradiction");
+    expect(contradictions).toHaveLength(1);
+    expect(contradictions[0].affectedWikiIds.sort()).toEqual(["atom-a", "atom-b"]);
+    expect(contradictions[0].severity).toBe("error");
+  });
+
+  it("conflictsWith が無い atom は contradiction にならない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "atom-a", title: "A", kind: "atom", derivedFromClaims: undefined }),
+      base({ id: "atom-b", title: "B", kind: "atom", derivedFromClaims: undefined }),
+    ]);
+    expect(issues.some((i) => i.type === "contradiction")).toBe(false);
+  });
+
+  it("atom 以外（topic/claim）の conflictsWith は無視する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "A", kind: "topic", derivedFromClaims: ["c1"], conflictsWith: ["topic-b"] }),
+      base({ id: "topic-b", title: "B", kind: "topic", derivedFromClaims: ["c2"], conflictsWith: ["topic-a"] }),
+    ]);
+    expect(issues.some((i) => i.type === "contradiction")).toBe(false);
+  });
+
+  it("相手側が見つからない conflictsWith（相互書き込み漏れ）は issue を作らない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "atom-a", title: "A", kind: "atom", derivedFromClaims: undefined, conflictsWith: ["missing-id"] }),
+    ]);
+    expect(issues.some((i) => i.type === "contradiction")).toBe(false);
   });
 });

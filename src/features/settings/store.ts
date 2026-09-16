@@ -296,10 +296,12 @@ export type ExperimentalSettings = {
 };
 
 /**
- * AI 機能ごとの表示切り替え（既定 ON）。
+ * AI 機能ごとの表示切り替え。
  * OFF は「無効化」ではなく「UI から隠す」— 作成済みのデータ（洞察 / 照合結果）は
- * 消さず、再度 ON にすれば復帰する。両方とも省略可: 旧 JSON に無ければ true 扱い
- * （loadSettings のマージで解決する）。
+ * 消さず、再度 ON にすれば復帰する。賢いモデルを要求する機能のため、初回起動
+ * （保存済み設定が無い状態）では既定 OFF で始める。一方、この版より前から
+ * 使っているユーザー（保存済み設定はあるが features キーが無い）は既定 ON のまま
+ * 維持する（loadSettings のマージで解決する）。
  * - insights: 洞察（Atom）層。サイドバー・一覧・全体グラフから隠す。
  * - worldGrounding: 世界照合。ボタン・列・自動照合トグルを隠す。
  */
@@ -323,6 +325,10 @@ export type Settings = {
    *  判定結果は appdata の grounding-kb-cache に「正規化主張 + keywords + verdict」として沈殿し、
    *  次回以降は KB ヒットで即答される（使うほど安くなる）。 */
   groundingModel: string;
+  /** 洞察の抽象化・転移判定用モデル名（空文字 = `chatSynthesisModel` と同じ、それも空なら `model`）。
+   *  atomize / transfer 判定 / relift など、洞察を発見・整理する処理はチャットより
+   *  さらに賢いモデルを当てたい場面があるため、専用スロットを持つ。 */
+  insightModel: string;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
   disabledTools: string[];
   /** Crucible Registry URL（空文字 = バックエンドの環境変数に委ねる）。
@@ -393,6 +399,7 @@ const DEFAULT_SETTINGS: Settings = {
   embeddingModel: "",
   chatSynthesisModel: "",
   groundingModel: "",
+  insightModel: "",
   disabledTools: [],
   registryUrl: "",
   mcpServers: [],
@@ -407,8 +414,8 @@ const DEFAULT_SETTINGS: Settings = {
     autoGrounding: false,
   },
   features: {
-    insights: true,
-    worldGrounding: true,
+    insights: false,
+    worldGrounding: false,
   },
   displayCurrency: "usd",
   usdJpyRate: 150,
@@ -596,8 +603,11 @@ export function loadSettings(): Settings {
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
         autoGrounding: typeof exp?.autoGrounding === "boolean" ? exp.autoGrounding : false,
       },
-      // 既定 ON。旧 JSON に features が無い（キー自体が無い）場合も両方 true にする —
-      // typeof ガードなので undefined は true 側に倒れる（autoUpdateCheck と同じパターン）。
+      // ここに来るのは保存済み設定が存在するケース（raw が無ければ関数の先頭で
+      // DEFAULT_SETTINGS を返しており、その features は false/false）。
+      // 保存済み設定はあるが features キー自体が無い場合（この版より前から使っている
+      // ユーザー）は両方 true にする — typeof ガードなので undefined は true 側に倒れる
+      // （autoUpdateCheck と同じパターン）。features があればその値に従う。
       features: {
         insights: typeof feat?.insights === "boolean" ? feat.insights : true,
         worldGrounding: typeof feat?.worldGrounding === "boolean" ? feat.worldGrounding : true,
@@ -689,17 +699,41 @@ export function getChatSynthesisModelName(): string {
   return getChatSynthesisModel() || getSelectedModel() || "";
 }
 
-/** 世界モデル照合用モデル名を取得する（空文字 = チャット・洞察モデルにフォールバック）。
+/** 洞察（Atom）用モデル名を取得する（空文字 = チャットモデルにフォールバック）。
+ *
+ * atomize / transfer 判定 / relift など、洞察の発見・整理に使う。空のときは
+ * チャットモデル（さらに空なら default）にフォールバックするので、わざわざ
+ * 設定しなくても動く。 */
+export function getInsightModel(): string {
+  return loadSettings().insightModel ?? "";
+}
+
+/** 洞察用の LLMModelConfig を取得する。
+ *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。 */
+export function getInsightLLMModel(): LLMModelConfig | undefined {
+  const name = getInsightModel();
+  if (!name) return getChatSynthesisLLMModel();
+  const found = getLLMModels().find((m) => m.name === name);
+  return found ?? getChatSynthesisLLMModel();
+}
+
+/** 洞察用モデル名（string）を取得する。専用設定が空ならチャットモデル名に
+ *  フォールバックする。 */
+export function getInsightModelName(): string {
+  return getInsightModel() || getChatSynthesisModelName();
+}
+
+/** 世界モデル照合用モデル名を取得する（空文字 = チャットモデルにフォールバック）。
  *
  * 一度 Chat & Ideas モデルへのエイリアスに畳んだが、ユーザー要望で専用スロットを
- * 再導入した。空のときは従来どおりチャット・洞察モデル（さらに空なら default）に
+ * 再導入した。空のときは従来どおりチャットモデル（さらに空なら default）に
  * フォールバックするので、わざわざ設定しなくても動く。 */
 export function getGroundingModel(): string {
   return loadSettings().groundingModel ?? "";
 }
 
 /** 世界モデル照合用の LLMModelConfig を取得する。
- *  専用設定が空ならチャット・洞察モデル（さらに空なら default）にフォールバックする。 */
+ *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。 */
 export function getGroundingLLMModel(): LLMModelConfig | undefined {
   const name = getGroundingModel();
   if (!name) return getChatSynthesisLLMModel();
@@ -708,7 +742,7 @@ export function getGroundingLLMModel(): LLMModelConfig | undefined {
 }
 
 /** 世界モデル照合モデル名（string）を取得する。専用設定が空なら
- *  チャット・洞察モデル名にフォールバックする。 */
+ *  チャットモデル名にフォールバックする。 */
 export function getGroundingModelName(): string {
   return getGroundingModel() || getChatSynthesisModelName();
 }
@@ -744,22 +778,24 @@ export function isAgentConfigured(): boolean {
 }
 
 /**
- * Atom レイヤ（洞察）が有効かどうか（既定 ON）。
+ * Atom レイヤ（洞察）が有効かどうか。
  * 2026-05-27 の design revision で experimental から default に昇格し、以後は
  * features.insights が可視性を持つ（OFF は無効化ではなく UI から隠すだけ）。
  * experimental.atomLayer は死んだフィールドで、ここでは読まない。
+ * 既定値の向きは loadSettings 側（初回起動は OFF、既存ユーザーは ON）にのみ持たせる。
  */
 export function isAtomLayerEnabled(): boolean {
-  return loadSettings().features?.insights ?? true;
+  return loadSettings().features?.insights === true;
 }
 
 /**
- * 世界照合が有効かどうか（既定 ON）。
+ * 世界照合が有効かどうか。
  * OFF のときは照合ボタン・列・自動照合トグルを UI から隠す。既に照合済みの
  * ノートの結果（grounding.validity）は消さない。
+ * 既定値の向きは loadSettings 側（初回起動は OFF、既存ユーザーは ON）にのみ持たせる。
  */
 export function isWorldGroundingEnabled(): boolean {
-  return loadSettings().features?.worldGrounding ?? true;
+  return loadSettings().features?.worldGrounding === true;
 }
 
 /**
@@ -778,7 +814,7 @@ export function getAtomizeIngestBudget(): number {
  */
 export function isAutoGroundingEnabled(): boolean {
   const settings = loadSettings();
-  return (settings.features?.worldGrounding ?? true) && (settings.experimental?.autoGrounding ?? false);
+  return settings.features?.worldGrounding === true && (settings.experimental?.autoGrounding ?? false);
 }
 
 /**
