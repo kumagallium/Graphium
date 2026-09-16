@@ -150,6 +150,52 @@ export function noteToMarkdown(doc: { pages?: { blocks?: any[] }[] }): string {
     .join("\n\n---\n\n");
 }
 
+/** columnList / column を透過し、中身のブロックだけを文書順に並べる */
+function flattenColumnsShallow(blocks: any[]): any[] {
+  return (blocks ?? []).flatMap((b) =>
+    b?.type === "columnList" || b?.type === "column" ? flattenColumnsShallow(b.children) : [b],
+  );
+}
+
+/**
+ * Wiki ドキュメントから「1 行」の概要を取り出す（list_topics などの索引用）。
+ * "## 定義 / Definition" 見出し直後の最初の段落の先頭文を優先し、無ければ本文最初の
+ * 非空段落の先頭文を使う。見つからなければ空文字列。
+ *
+ * src/features/wiki/wiki-service.ts の extractTopicOneLiner と同じ考え方の
+ * 軽量版（MCP は stdio 起動のたびに立ち上がるため、wiki-service.ts の重い依存
+ * （embedding-store / settings / platform 等）を持ち込まずここで自己完結させる）。
+ */
+export function extractOneLiner(doc: { pages?: { blocks?: any[] }[] }): string {
+  const blocks = flattenColumnsShallow(doc?.pages?.[0]?.blocks ?? []);
+
+  const firstSentence = (text: string): string => {
+    const idx = text.search(/[。.!?！？]/);
+    return idx === -1 ? text : text.slice(0, idx + 1);
+  };
+
+  let inDefinition = false;
+  for (const block of blocks) {
+    if (!block || typeof block !== "object") continue;
+    if (block.type === "heading") {
+      const headingText = extractInlineText(block.content).trim();
+      if (inDefinition) break; // 定義節の終わり（次の見出しに入った）
+      if (/^(定義|Definition)$/i.test(headingText)) inDefinition = true;
+      continue;
+    }
+    if (!inDefinition) continue;
+    const t = extractInlineText(block.content).trim();
+    if (t) return firstSentence(t);
+  }
+
+  for (const block of blocks) {
+    if (!block || typeof block !== "object" || block.type === "heading") continue;
+    const t = extractInlineText(block.content).trim();
+    if (t) return firstSentence(t);
+  }
+  return "";
+}
+
 /** ノートから step コンテナを文書順に取り出す */
 export function collectSteps(doc: { pages?: { blocks?: any[] }[] }): StepInfo[] {
   const steps: StepInfo[] = [];

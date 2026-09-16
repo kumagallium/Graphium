@@ -22,7 +22,37 @@ import {
   scanNotesWithoutIndex,
 } from "./vault";
 
-export type NoteKind = "note" | "wiki";
+/**
+ * ノートの種別。
+ * - note    : 人が書いたノート（PROV 層）
+ * - topic   : 知見(claim)を概念ごとに束ねたトピック
+ * - claim   : ノートから抽出された出典つきの知見
+ * - insight : 複数の知見にまたがる構造的パターン（WikiKind の "atom"）
+ * - summary : 生成停止済みの旧「1 ノート要約」（WikiKind の "summary" / "synthesis" を含む）
+ */
+export type DetailedKind = "note" | "topic" | "claim" | "insight" | "summary";
+
+/**
+ * search_notes / list_entities 系フィルタが受け付ける種別。
+ * "wiki" は DetailedKind のうち "note" 以外すべて（ナレッジ全種）を指す後方互換の値。
+ */
+export type NoteKind = "note" | "wiki" | "topic" | "claim" | "insight";
+
+/** NoteIndexEntry から DetailedKind を導く */
+function detailedKindOf(entry: NoteIndexEntry): DetailedKind {
+  if (entry.source !== "ai") return "note";
+  switch (entry.wikiKind) {
+    case "topic":
+      return "topic";
+    case "claim":
+      return "claim";
+    case "atom":
+      return "insight";
+    default:
+      // summary / synthesis（撤退済み） / 未設定はまとめて summary 扱い
+      return "summary";
+  }
+}
 
 type SearchDoc = {
   id: string;
@@ -33,13 +63,13 @@ type SearchDoc = {
   labels: string;
   /** 手順名を連結したもの */
   steps: string;
-  kind: NoteKind;
+  kind: DetailedKind;
 };
 
 export type SearchHit = {
   noteId: string;
   title: string;
-  kind: NoteKind;
+  kind: DetailedKind;
   score: number;
   /** ヒット箇所の周辺テキスト */
   snippet: string;
@@ -110,7 +140,7 @@ function buildIndex(root: string): IndexCache {
       text: doc ? noteToMarkdown(doc) : "",
       labels: labelsText(entry),
       steps: stepsText(entry),
-      kind: entry.source === "ai" ? "wiki" : "note",
+      kind: detailedKindOf(entry),
     });
   }
 
@@ -190,9 +220,16 @@ function makeSnippet(text: string, query: string, maxLen = 240): string {
 
 export type SearchOptions = {
   limit?: number;
-  /** "note" = 人が書いたノート / "wiki" = AI 生成ドキュメント。未指定なら両方 */
+  /** 種別で絞る。"wiki" は note 以外すべて（ナレッジ全種）。未指定なら全種別 */
   kind?: NoteKind;
 };
+
+/** kind フィルタが hit の種別を通すか */
+function matchesKindFilter(hitKind: DetailedKind, filter?: NoteKind): boolean {
+  if (!filter) return true;
+  if (filter === "wiki") return hitKind !== "note";
+  return hitKind === filter;
+}
 
 export function searchNotes(
   query: string,
@@ -207,8 +244,8 @@ export function searchNotes(
 
   const hits: SearchHit[] = [];
   for (const r of results) {
-    const stored = r as unknown as { title: string; kind: NoteKind; text: string };
-    if (kind && stored.kind !== kind) continue;
+    const stored = r as unknown as { title: string; kind: DetailedKind; text: string };
+    if (!matchesKindFilter(stored.kind, kind)) continue;
     hits.push({
       noteId: String(r.id),
       title: stored.title,

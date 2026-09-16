@@ -56,7 +56,7 @@ Whatever order files sit in inside a dropped folder carries over as Graphium fol
 
 Obsidian vaults work as they are. `[[wikilinks]]` are resolved first against files in the same batch, then against your existing notes and knowledge entries by title, and images they reference come along too. Links that cannot be resolved stay as plain text.
 
-When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files — plus a note of how many materials were extracted from PowerPoint / Excel files, when any were. From there you can **Search your notes**, **See connections**, or **Ask AI** — or **Set up AI** first if no model is configured yet.
+When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files — plus a note of how many materials were extracted from PowerPoint / Excel files, when any were. From there you can **Search your notes**, **See connections**, or **Ask AI** — or **Set up AI** first if no model is configured yet. If AI is already set up and anything new came in, **Add all to knowledge** sends everything you just brought in through the same pipeline as selecting notes or materials one by one and building knowledge from them; items already in your library before this batch are left out, same as the note and material counts above.
 
 ![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
 

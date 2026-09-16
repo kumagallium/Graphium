@@ -72,9 +72,12 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
+  findColumnIndexByName,
+  findColumnNameByType,
   hasColumnType,
   readFirstColumnName,
   readTableData,
+  withCellText,
   sortTableBlock,
   useWideTableBleed,
   type ColumnType,
@@ -317,7 +320,7 @@ import {
   consolidateExistingTopics, type ExistingTopicForMerge,
   mergeTopicsExplicit, normalizeTopicTitle,
 } from "./features/wiki";
-import { setWikiIndexForRetriever, setWikiTitleMap, setNoteTitleMap } from "./features/wiki/retriever";
+import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
@@ -1756,7 +1759,10 @@ function NoteEditorInner({
     return () => { styleEl?.remove(); };
   }, [highlightBlockIds]);
   // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
-  const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
+  // @ を打った場所がインデックステーブル（note-link 列）のセルかどうか。
+  // colIndex は note-link 列の位置 = 書き換えるセルの列。ここが -1 のままなら
+  // 本文と同じ普通のメンションとして扱う（打ったセルにそのまま入る）
+  const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number; colIndex: number }>({ tableBlockId: null, rowIndex: -1, colIndex: -1 });
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
   const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | null>(null);
   // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
@@ -6218,21 +6224,41 @@ function NoteEditorInner({
                 return blobUrl;
               }}
               getMentionSuggestions={(query) => {
-                mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                mentionContextRef.current = { tableBlockId: null, rowIndex: -1, colIndex: -1 };
                 const sel = window.getSelection();
                 const focusEl = sel?.focusNode instanceof HTMLElement
                   ? sel.focusNode
                   : sel?.focusNode?.parentElement;
                 if (focusEl) {
-                  const cell = focusEl.closest("td");
+                  const cell = focusEl.closest("td, th");
                   const row = cell?.closest("tr");
                   const table = row?.closest("table");
-                  if (row && table) {
+                  if (cell && row && table) {
                     const rowIndex = Array.from(table.querySelectorAll("tr")).indexOf(row);
+                    const cellIndex = Array.from(row.cells).indexOf(cell as HTMLTableCellElement);
                     const blockOuter = table.closest("[data-node-type='blockOuter']");
                     const tableBlockId = blockOuter?.getAttribute("data-id") ?? null;
-                    if (tableBlockId && tableMetaStore.hasColumnType(tableBlockId, "note-link")) {
-                      mentionContextRef.current = { tableBlockId, rowIndex };
+                    // 行 ↔ ノートの紐づけにするのは note-link 列のセルで打ったときだけ。
+                    // 他の列（条件・メモ等）で打った @ は、本文と同じでそのセルに入る。
+                    // 列を見ずに先頭列を書き換えていたため、2 列目で @ を打つと
+                    // 打っていない先頭列の中身が消えていた
+                    const block = tableBlockId
+                      ? editorRef.current?.getBlock(tableBlockId)
+                      : null;
+                    const noteLinkCol = block
+                      ? findColumnIndexByName(
+                          block,
+                          findColumnNameByType(tableMetaStore.metas.get(tableBlockId!), "note-link")
+                        )
+                      : -1;
+                    if (
+                      tableBlockId &&
+                      rowIndex > 0 &&
+                      cellIndex >= 0 &&
+                      cellIndex === noteLinkCol &&
+                      tableMetaStore.hasColumnType(tableBlockId, "note-link")
+                    ) {
+                      mentionContextRef.current = { tableBlockId, rowIndex, colIndex: cellIndex };
                     }
                   }
                 }
@@ -6291,6 +6317,7 @@ function NoteEditorInner({
                     const noteName = suggestion.label;
                     const tableBlockId = ctx.tableBlockId;
                     const rowIndex = ctx.rowIndex;
+                    const colIndex = ctx.colIndex >= 0 ? ctx.colIndex : 0;
                     tableMetaStore.setNoteLink(tableBlockId, `@${noteName}`, suggestion.id);
                     setTimeout(() => {
                       const block = editorRef.current?.getBlock(tableBlockId);
@@ -6299,10 +6326,13 @@ function NoteEditorInner({
                           if (i !== rowIndex) return r;
                           return {
                             ...r,
-                            cells: [
-                              [{ type: "text", text: `@${noteName}`, styles: { textColor: "blue" } }],
-                              ...r.cells.slice(1),
-                            ],
+                            // 書き換えるのは打った列だけ。他の列のセルはそのまま
+                            // （形式ごと差し替えるとセルの色・配置が落ちる）
+                            cells: r.cells.map((c: any, ci: number) =>
+                              ci === colIndex
+                                ? withCellText(c, `@${noteName}`, { textColor: "blue" })
+                                : c
+                            ),
                           };
                         });
                         editorRef.current.updateBlock(tableBlockId, {
@@ -6338,7 +6368,7 @@ function NoteEditorInner({
                     }
                     markDirty();
                   }
-                  mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                  mentionContextRef.current = { tableBlockId: null, rowIndex: -1, colIndex: -1 };
                 } else if (suggestion.type === "asset" && suggestion.assetType === "image") {
                   // 画像素材はリンク文字ではなく、その場に見えるインライン画像として埋める
                   // （セルの中に画像を置く経路。クリックで素材ピーク）。実体は fileId 参照
@@ -8092,6 +8122,7 @@ export function NoteApp() {
         linksUnresolved: unresolvedLinkCount,
         failed,
         lastNewId,
+        createdIds: Array.from(docsByNoteId.keys()),
       };
     },
     [fm],
@@ -9491,6 +9522,199 @@ export function NoteApp() {
     processIngestQueue();
   }, [processIngestQueue]);
 
+  // ノート ID 配列を Knowledge 化キューへ積む共通処理。AI 派生ノート（wiki）は
+  // Knowledge 化の入力にできないため除外し、除外件数はトーストで知らせる
+  // （黙って落とさない）。ノート一覧の複数選択・投入口の「まとめてナレッジ化」の
+  // 両方から呼ぶ（重複ロジックを持たせない）
+  const ingestNoteIds = useCallback(async (ids: string[]) => {
+    // AI 未設定なら発火させない（enqueueIngest にも同ガードがあるが、
+    // doc ロード等の無駄な前処理に入る前にここで止める）
+    if (!ensureAgentConfigured()) return;
+    const candidates: { id: string; title: string }[] = [];
+    const skippedAi: string[] = [];
+    for (const id of ids) {
+      const entry = fm.noteIndex?.notes.find((n) => n.noteId === id);
+      if (!entry) continue;
+      if (entry.source === "ai") {
+        skippedAi.push(entry.title || tStatic("nav.untitled"));
+        continue;
+      }
+      candidates.push({ id, title: entry.title || tStatic("nav.untitled") });
+    }
+    if (skippedAi.length > 0) {
+      const newItem: IngestToastItem = {
+        id: `ingest-skip:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`,
+        status: "aborted",
+        noteTitle: tStatic("ingest.skippedWikiNotes", { count: String(skippedAi.length) }),
+      };
+      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+    }
+    if (candidates.length === 0) return;
+
+    // doc 本体をロードしてキューに積む
+    for (const { id, title } of candidates) {
+      const doc = await fm.loadDoc(id);
+      if (!doc) continue;
+      enqueueIngest(id, title, doc);
+    }
+  }, [fm, enqueueIngest]);
+
+  // 素材 1 件を Knowledge 化する共通処理（URL / PDF / Word。対応外の種類は何もしない）。
+  // 素材ギャラリーの一括 Knowledge 化（AssetGalleryView の onIngestMedia）と、
+  // 投入口の「まとめてナレッジ化」の両方から呼ぶ
+  const ingestMediaEntry = useCallback((entry: MediaIndexEntry) => {
+    // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
+    if (!ensureAgentConfigured()) return;
+    if (entry.type === "url" && entry.url) {
+      // toast ID は一意にしておくが、wiki に保存する sourceNoteId は URL ベースの安定 ID
+      // にしておくことで、同じ URL を再 ingest した際に逆引き（Knowledge 化済み判定）
+      // が壊れない。
+      const toastId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+      const sourceNoteId = `url:${entry.url}`;
+      const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.url };
+      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+      (async () => {
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
+        try {
+          const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
+          const result = await ingestFromUrl(entry.url, existingWikis, getLocale());
+          if (result.wikis.length === 0) {
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            return;
+          }
+          const claimsForTopicStage: TopicStageClaimInput[] = [];
+          for (const wiki of result.wikis) {
+            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+            if (!wikiDoc) continue; // summary は新規生成を停止済み
+            const newId = await fm.handleCreateWikiFile(wikiDoc);
+            embedWikiSections(newId, wikiDoc).catch(() => {});
+            if (wiki.kind === "claim") {
+              claimsForTopicStage.push({
+                id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
+                topics: wiki.topics ?? [], model: result.model ?? undefined,
+              });
+            }
+          }
+          let topicDetail = "";
+          if (claimsForTopicStage.length > 0) {
+            const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
+            topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
+              + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+              + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+          }
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+        } catch (err) {
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+        }
+      })();
+    } else if (entry.type === "pdf" && entry.fileId) {
+      const toastId = `pdf-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+      const sourceNoteId = `pdf:${entry.fileId}`;
+      const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
+      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+      (async () => {
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Extracting PDF text..." } : i) }));
+        try {
+          const provider = getActiveProvider();
+          const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
+          const blob = await (await fetch(blobUrl)).blob();
+          const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
+          const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale());
+          if (result.wikis.length === 0) {
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            return;
+          }
+          const claimsForTopicStage: TopicStageClaimInput[] = [];
+          for (const wiki of result.wikis) {
+            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+            if (!wikiDoc) continue; // summary は新規生成を停止済み
+            const newId = await fm.handleCreateWikiFile(wikiDoc);
+            embedWikiSections(newId, wikiDoc).catch(() => {});
+            if (wiki.kind === "claim") {
+              claimsForTopicStage.push({
+                id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
+                topics: wiki.topics ?? [], model: result.model ?? undefined,
+              });
+            }
+          }
+          let topicDetail = "";
+          if (claimsForTopicStage.length > 0) {
+            const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
+            topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
+              + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+              + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+          }
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+        } catch (err) {
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+        }
+      })();
+    } else if (entry.type === "document" && entry.fileId
+      && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      // Word (.docx) を Knowledge 化: mammoth でテキスト抽出後、PDF と同じ /ingest API に流す
+      const toastId = `doc-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+      const sourceNoteId = `document:${entry.fileId}`;
+      const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
+      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+      (async () => {
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Extracting Word text..." } : i) }));
+        try {
+          const provider = getActiveProvider();
+          const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+          const blobUrl = await provider.getMediaBlobUrl(fileId);
+          const blob = await (await fetch(blobUrl)).blob();
+          const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
+          const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale());
+          if (result.wikis.length === 0) {
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            return;
+          }
+          const claimsForTopicStage: TopicStageClaimInput[] = [];
+          for (const wiki of result.wikis) {
+            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+            if (!wikiDoc) continue; // summary は新規生成を停止済み
+            const newId = await fm.handleCreateWikiFile(wikiDoc);
+            embedWikiSections(newId, wikiDoc).catch(() => {});
+            if (wiki.kind === "claim") {
+              claimsForTopicStage.push({
+                id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
+                topics: wiki.topics ?? [], model: result.model ?? undefined,
+              });
+            }
+          }
+          let topicDetail = "";
+          if (claimsForTopicStage.length > 0) {
+            const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
+            topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
+              + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
+              + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+          }
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+        } catch (err) {
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+        }
+      })();
+    }
+  }, [fm, runTopicStageForNoteApp]);
+
+  // 素材 fileId 配列から Knowledge 化する（投入口の「まとめてナレッジ化」用）。
+  // 索引（fm.mediaIndex）から MediaIndexEntry を引けたものだけを対象にする
+  // （索引の再構築前後のタイミングで引けないものは黙って外れる = 対応外種類と同じ扱い）
+  const ingestMediaFileIds = useCallback((fileIds: string[]) => {
+    const index = fm.mediaIndex;
+    for (const fileId of fileIds) {
+      const entry = index?.media.find((m) => m.fileId === fileId);
+      if (entry) ingestMediaEntry(entry);
+    }
+  }, [fm.mediaIndex, ingestMediaEntry]);
+
+  // 投入口の完了画面「まとめてナレッジ化」。ノート・素材のどちらも、ノート一覧・
+  // 素材ギャラリーの一括 Knowledge 化と同じ経路（ingestNoteIds / ingestMediaFileIds）に流す
+  const handleIntakeIngestAll = useCallback((noteIds: string[], mediaFileIds: string[]) => {
+    void ingestNoteIds(noteIds);
+    ingestMediaFileIds(mediaFileIds);
+  }, [ingestNoteIds, ingestMediaFileIds]);
+
   // カード選択時のハンドラ:
   // - "ingest-current-note" は現ノートを直接 enqueueIngest して composer を閉じる（プロンプトには流さない）
   // - それ以外は対応するプロンプト文を textarea に流し込む（自動送信はしない）
@@ -9526,9 +9750,26 @@ export function NoteApp() {
         if (doc) titleMap.set(wf.id, doc.title);
       }
       setWikiTitleMap(titleMap);
+      // 種別マップを Retriever に設定（<knowledge> のセクション分け・引用マーカーの種別表示用）
+      const kindMap = new Map<string, WikiKind>();
+      for (const [id, meta] of fm.wikiMetas) kindMap.set(id, meta.kind);
+      setWikiKindMap(kindMap);
+      // トピックが束ねている知見のタイトル（トピック本文だけだと「この概要の根拠は
+      // どの知見か」が消えるので、タイトルだけ 1 行添えて辿れるようにする）
+      const topicMembers = new Map<string, string[]>();
+      for (const [id, meta] of fm.wikiMetas) {
+        if (meta.kind !== "topic") continue;
+        const titles = (meta.derivedFromClaims ?? [])
+          .map((claimId) => titleMap.get(claimId) ?? fm.wikiMetas.get(claimId)?.title ?? "")
+          .filter((t) => t.length > 0);
+        if (titles.length > 0) topicMembers.set(id, titles);
+      }
+      setWikiTopicMembers(topicMembers);
     } else {
       setWikiIndexForRetriever("");
       setWikiTitleMap(new Map());
+      setWikiKindMap(new Map());
+      setWikiTopicMembers(new Map());
     }
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 
@@ -11011,140 +11252,7 @@ export function NoteApp() {
               }
               return undefined;
             }}
-            onIngestMedia={aiUiEnabled ? (entry) => {
-              // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
-              if (!ensureAgentConfigured()) return;
-              if (entry.type === "url" && entry.url) {
-                // toast ID は一意にしておくが、wiki に保存する sourceNoteId は URL ベースの安定 ID
-                // にしておくことで、同じ URL を再 ingest した際に逆引き（Knowledge 化済み判定）
-                // が壊れない。
-                const toastId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
-                const sourceNoteId = `url:${entry.url}`;
-                const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.url };
-                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-                (async () => {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
-                  try {
-                    const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-                    const result = await ingestFromUrl(entry.url, existingWikis, getLocale());
-                    if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-                      return;
-                    }
-                    const claimsForTopicStage: TopicStageClaimInput[] = [];
-                    for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-                      if (!wikiDoc) continue; // summary は新規生成を停止済み
-                      const newId = await fm.handleCreateWikiFile(wikiDoc);
-                      embedWikiSections(newId, wikiDoc).catch(() => {});
-                      if (wiki.kind === "claim") {
-                        claimsForTopicStage.push({
-                          id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                          topics: wiki.topics ?? [], model: result.model ?? undefined,
-                        });
-                      }
-                    }
-                    let topicDetail = "";
-                    if (claimsForTopicStage.length > 0) {
-                      const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
-                        + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-                        + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
-                    }
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
-                  } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-                  }
-                })();
-              } else if (entry.type === "pdf" && entry.fileId) {
-                const toastId = `pdf-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
-                const sourceNoteId = `pdf:${entry.fileId}`;
-                const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
-                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-                (async () => {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Extracting PDF text..." } : i) }));
-                  try {
-                    const provider = getActiveProvider();
-                    const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
-                    const blob = await (await fetch(blobUrl)).blob();
-                    const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-                    const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale());
-                    if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-                      return;
-                    }
-                    const claimsForTopicStage: TopicStageClaimInput[] = [];
-                    for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-                      if (!wikiDoc) continue; // summary は新規生成を停止済み
-                      const newId = await fm.handleCreateWikiFile(wikiDoc);
-                      embedWikiSections(newId, wikiDoc).catch(() => {});
-                      if (wiki.kind === "claim") {
-                        claimsForTopicStage.push({
-                          id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                          topics: wiki.topics ?? [], model: result.model ?? undefined,
-                        });
-                      }
-                    }
-                    let topicDetail = "";
-                    if (claimsForTopicStage.length > 0) {
-                      const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
-                        + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-                        + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
-                    }
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
-                  } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-                  }
-                })();
-              } else if (entry.type === "document" && entry.fileId
-                && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-                // Word (.docx) を Knowledge 化: mammoth でテキスト抽出後、PDF と同じ /ingest API に流す
-                const toastId = `doc-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
-                const sourceNoteId = `document:${entry.fileId}`;
-                const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
-                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-                (async () => {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Extracting Word text..." } : i) }));
-                  try {
-                    const provider = getActiveProvider();
-                    const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
-                    const blobUrl = await provider.getMediaBlobUrl(fileId);
-                    const blob = await (await fetch(blobUrl)).blob();
-                    const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-                    const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale());
-                    if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-                      return;
-                    }
-                    const claimsForTopicStage: TopicStageClaimInput[] = [];
-                    for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-                      if (!wikiDoc) continue; // summary は新規生成を停止済み
-                      const newId = await fm.handleCreateWikiFile(wikiDoc);
-                      embedWikiSections(newId, wikiDoc).catch(() => {});
-                      if (wiki.kind === "claim") {
-                        claimsForTopicStage.push({
-                          id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                          topics: wiki.topics ?? [], model: result.model ?? undefined,
-                        });
-                      }
-                    }
-                    let topicDetail = "";
-                    if (claimsForTopicStage.length > 0) {
-                      const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-                      topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
-                        + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-                        + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
-                    }
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
-                  } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-                  }
-                })();
-              }
-            } : undefined}
+            onIngestMedia={aiUiEnabled ? ingestMediaEntry : undefined}
             onCreateProvNote={aiUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
@@ -11554,34 +11662,7 @@ export function NoteApp() {
                     setBulkShareTargets(ids.map((id) => ({ id, kind: "note" as const })))
                 : undefined
             }
-            onIngestNotes={aiUiEnabled ? async (ids) => {
-              // AI 未設定なら発火させない（enqueueIngest にも同ガードがあるが、
-              // doc ロード等の無駄な前処理に入る前にここで止める）
-              if (!ensureAgentConfigured()) return;
-              // Knowledge 化候補から AI 派生（wiki）と既に処理待ちの ID を除外
-              const candidates: { id: string; title: string }[] = [];
-              const skippedAi: string[] = [];
-              for (const id of ids) {
-                const entry = fm.noteIndex?.notes.find((n) => n.noteId === id);
-                if (!entry) continue;
-                if (entry.source === "ai") {
-                  skippedAi.push(entry.title || tStatic("nav.untitled"));
-                  continue;
-                }
-                candidates.push({ id, title: entry.title || tStatic("nav.untitled") });
-              }
-              if (skippedAi.length > 0) {
-                window.alert(tStatic("ingest.skippedWikiNotes", { count: String(skippedAi.length) }));
-              }
-              if (candidates.length === 0) return;
-
-              // doc 本体をロードしてキューに積む
-              for (const { id, title } of candidates) {
-                const doc = await fm.loadDoc(id);
-                if (!doc) continue;
-                enqueueIngest(id, title, doc);
-              }
-            } : undefined}
+            onIngestNotes={aiUiEnabled ? ingestNoteIds : undefined}
             onOpenIntake={intake.openIntake}
             onIntakeFiles={(files) => void intake.run(files)}
             focusSearchSignal={focusSearchSignal}
@@ -12539,6 +12620,10 @@ export function NoteApp() {
         onSetupAi={() => {
           intake.closeIntake();
           window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
+        }}
+        onIngestAll={(noteIds, mediaFileIds) => {
+          intake.closeIntake();
+          handleIntakeIngestAll(noteIds, mediaFileIds);
         }}
       />
       {/* 投入口が持ち込んだ画像の文字読み取り。取り込み完了後に裏で走る分の進行表示。

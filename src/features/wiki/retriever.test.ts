@@ -17,7 +17,11 @@ import {
   retrieveWikiContextFallback,
   setWikiIndexForRetriever,
   setWikiTitleMap,
+  setWikiKindMap,
+  setWikiTopicMembers,
   clampEmbedQuery,
+  formatRetrievedContext,
+  type RetrievedPassage,
   MAX_EMBED_QUERY_CHARS,
 } from "./retriever";
 
@@ -33,8 +37,9 @@ function seedTextOnly(documentId: string, sectionId: string, text: string): Prom
 beforeEach(() => {
   // テストごとに素の IndexedDB
   vi.stubGlobal("indexedDB", new IDBFactory());
-  // retriever のモジュール状態（タイトルマップ / インデックス）もリセット
+  // retriever のモジュール状態（タイトルマップ / 種別マップ / インデックス）もリセット
   setWikiTitleMap(new Map());
+  setWikiKindMap(new Map());
   setWikiIndexForRetriever("");
 });
 
@@ -58,7 +63,7 @@ describe("retrieveWikiContextFallback", () => {
     // 以前はここで VersionError → catch → null になっていた
     expect(ctx).not.toBeNull();
     expect(ctx).toContain("<knowledge>");
-    expect(ctx).toContain('[#1 | "ZnO thermal transport"]');
+    expect(ctx).toContain('[#1 | Claim | "ZnO thermal transport"]');
     expect(ctx).toContain("Thermal conductivity of ZnO decreases with porosity");
     // 単語が 1 つも一致しないページは載せない
     expect(ctx).not.toContain("Pottery");
@@ -78,7 +83,7 @@ describe("retrieveWikiContextFallback", () => {
 
     // 除外した方は消え、残った方が [#1] として載る
     expect(ctx).not.toBeNull();
-    expect(ctx).toContain('[#1 | "ZnO porosity vs Seebeck"]');
+    expect(ctx).toContain('[#1 | Claim | "ZnO porosity vs Seebeck"]');
     expect(ctx).not.toContain("ZnO thermal transport");
     expect(ctx).not.toContain("Thermal conductivity of ZnO decreases with porosity");
   });
@@ -118,7 +123,7 @@ describe("retrieveWikiContext", () => {
     const ctx = await retrieveWikiContext("seebeck doping");
 
     expect(ctx).not.toBeNull();
-    expect(ctx).toContain('[#1 | "Seebeck coefficient"]');
+    expect(ctx).toContain('[#1 | Claim | "Seebeck coefficient"]');
     expect(ctx).toContain("Seebeck coefficient rises with light doping");
   });
 
@@ -148,6 +153,123 @@ describe("retrieveWikiContext", () => {
   });
 });
 
+describe("kind ごとのセクション分け（<knowledge> は WikiKind でブロックを分ける）", () => {
+  it("種別マップに登録された WikiKind でブロック見出しとマーカーの種別名を出す", async () => {
+    await seedTextOnly("wiki-topic", "sec-1", "Topic page bundling several claims about porosity");
+    await seedTextOnly("wiki-atom", "sec-1", "Insight pattern about porosity generalized across multiple claims");
+    setWikiTitleMap(
+      new Map([
+        ["wiki-topic", "Porosity topic"],
+        ["wiki-atom", "Porosity insight"],
+      ]),
+    );
+    setWikiKindMap(
+      new Map([
+        ["wiki-topic", "topic"],
+        ["wiki-atom", "atom"],
+      ]),
+    );
+
+    const ctx = await retrieveWikiContextFallback("porosity");
+
+    expect(ctx).not.toBeNull();
+    // 種別ごとの見出し（WIKI_KIND_ORDER の順 = Topics が Insights より先）
+    expect(ctx).toContain("--- Topics ---");
+    expect(ctx).toContain("--- Insights ---");
+    expect(ctx!.indexOf("--- Topics ---")).toBeLessThan(ctx!.indexOf("--- Insights ---"));
+    // マーカーにも種別名が入る
+    expect(ctx).toContain('[#1 | Topic | "Porosity topic"]');
+    expect(ctx).toContain('Insight | "Porosity insight"');
+  });
+
+  it("種別マップに未登録の sourceId は既定の claim として扱う（section-extract.ts の既定と揃える）", async () => {
+    await seedTextOnly("wiki-unknown", "sec-1", "porosity affects thermal conductivity");
+    setWikiTitleMap(new Map([["wiki-unknown", "Unlabeled page"]]));
+    // setWikiKindMap は呼ばない（beforeEach でリセット済みの空マップのまま）
+
+    const ctx = await retrieveWikiContextFallback("porosity");
+
+    expect(ctx).not.toBeNull();
+    expect(ctx).toContain("--- Claims ---");
+    expect(ctx).toContain('[#1 | Claim | "Unlabeled page"]');
+  });
+
+  it("ヒットしなかった種別のブロックは出さない", async () => {
+    await seedTextOnly("wiki-claim-only", "sec-1", "porosity lowers thermal conductivity");
+    setWikiTitleMap(new Map([["wiki-claim-only", "Claim only page"]]));
+    setWikiKindMap(new Map([["wiki-claim-only", "claim"]]));
+
+    const ctx = await retrieveWikiContextFallback("porosity");
+
+    expect(ctx).not.toBeNull();
+    expect(ctx).toContain("--- Claims ---");
+    expect(ctx).not.toContain("--- Topics ---");
+    expect(ctx).not.toContain("--- Insights ---");
+    expect(ctx).not.toContain("--- Summaries ---");
+  });
+});
+
+describe("文字数予算（MAX_CONTEXT_CHARS）が件数の蓋の代わりに効く", () => {
+  it("合計が予算を超える断片は途中で打ち切り、先頭側だけが残る", async () => {
+    // 1 件あたり ~900 字。4 件全部だと 2000（MAX_CONTEXT_CHARS）を超えるので、
+    // 件数キャップ（旧 TOP_K）が無くても文字数予算だけで打ち切られることを確認する。
+    const filler = "porosity reduces thermal conductivity via phonon scattering. ".repeat(14);
+    for (let i = 0; i < 4; i++) {
+      await seedTextOnly(`wiki-budget-${i}`, "sec-1", filler);
+    }
+    setWikiTitleMap(
+      new Map([
+        ["wiki-budget-0", "Budget page 0"],
+        ["wiki-budget-1", "Budget page 1"],
+        ["wiki-budget-2", "Budget page 2"],
+        ["wiki-budget-3", "Budget page 3"],
+      ]),
+    );
+
+    const ctx = await retrieveWikiContextFallback("porosity thermal conductivity phonon scattering");
+
+    expect(ctx).not.toBeNull();
+    expect(ctx).toContain("Budget page 0");
+    // 予算超過で末尾まで入り切らない
+    expect(ctx).not.toContain("Budget page 3");
+  });
+});
+
+describe("種別分けの表示は RRF 融合順の採否を変えない（予算はランク順で決まる）", () => {
+  it("kind 優先で予算を消費すると RRF 上位の断片が弾かれてしまう回帰: 採否は fuse 結果の元の順で決める", () => {
+    // fuse 結果の順（= 最上位ランク → 下位）で claim（高ランク）→ topic（低ランク）の順に並べる。
+    // WIKI_KIND_ORDER の表示順は topic が claim より先だが、採否はこの表示順に引きずられては
+    // いけない（引きずられると、先に処理される topic が予算を食って高ランクの claim が丸ごと
+    // 弾かれてしまう）
+    setWikiTitleMap(
+      new Map([
+        ["wiki-claim-high", "Claim high title"],
+        ["wiki-topic-low", "Topic low title"],
+      ]),
+    );
+    setWikiKindMap(
+      new Map([
+        ["wiki-claim-high", "claim"],
+        ["wiki-topic-low", "topic"],
+      ]),
+    );
+    const wikiSections: RetrievedPassage[] = [
+      { kind: "wiki", sourceId: "wiki-claim-high", chunkId: "c1", title: "", text: "x".repeat(1700), score: 2 },
+      { kind: "wiki", sourceId: "wiki-topic-low", chunkId: "c2", title: "", text: "y".repeat(400), score: 1 },
+    ];
+
+    const ctx = formatRetrievedContext(wikiSections, []);
+
+    expect(ctx).not.toBeNull();
+    // RRF 最上位の claim は残る
+    expect(ctx).toContain("--- Claims ---");
+    expect(ctx).toContain("Claim high title");
+    // 予算超過で下位の topic は丸ごと弾かれる（kind 優先で先に処理されて残ってしまってはいけない）
+    expect(ctx).not.toContain("--- Topics ---");
+    expect(ctx).not.toContain("Topic low title");
+  });
+});
+
 describe("clampEmbedQuery", () => {
   it("上限以下はそのまま（前後空白だけ落とす）", () => {
     expect(clampEmbedQuery("  short query  ")).toBe("short query");
@@ -160,5 +282,34 @@ describe("clampEmbedQuery", () => {
 
   it("空白のみは空文字（呼び出し側が検索をスキップできる）", () => {
     expect(clampEmbedQuery("   \n  ")).toBe("");
+  });
+});
+
+describe("トピックのメンバー知見", () => {
+  it("トピックの断片には束ねている知見のタイトルが 1 行付き、他の種別には付かない", () => {
+    setWikiTitleMap(new Map([["t1", "熱伝導率"], ["c1", "知見 A"]]));
+    setWikiKindMap(new Map([["t1", "topic"], ["c1", "claim"]]));
+    setWikiTopicMembers(new Map([["t1", ["知見 A", "知見 B"]]]));
+    const out = formatRetrievedContext(
+      [
+        { kind: "wiki", sourceId: "t1", chunkId: "s1", title: "熱伝導率", text: "定義。", score: 1 },
+        { kind: "wiki", sourceId: "c1", chunkId: "s1", title: "知見 A", text: "命題。", score: 0.9 },
+      ],
+      [],
+    );
+    expect(out).toContain('Groups these claims: "知見 A", "知見 B"');
+    expect(out?.split('[#2 | Claim | "知見 A"]')[1]).not.toContain("Groups these claims");
+    setWikiTopicMembers(new Map());
+  });
+
+  it("メンバーが分からないトピックには行を足さない", () => {
+    setWikiTitleMap(new Map([["t1", "熱伝導率"]]));
+    setWikiKindMap(new Map([["t1", "topic"]]));
+    setWikiTopicMembers(new Map());
+    const out = formatRetrievedContext(
+      [{ kind: "wiki", sourceId: "t1", chunkId: "s1", title: "熱伝導率", text: "定義。", score: 1 }],
+      [],
+    );
+    expect(out).not.toContain("Groups these claims");
   });
 });
