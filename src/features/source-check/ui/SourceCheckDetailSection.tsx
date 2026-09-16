@@ -85,6 +85,11 @@ function EntryVerdictChip({ verdict }: { verdict: SourceCheckEntry["verdict"] })
   );
 }
 
+// この理由の source-missing は原文どころか「開ける場所」自体が無い
+// （記録が無い／AI 回答由来で元発言が残らない／チャットは参照キーを持たない）。
+// リンクを出すと「開けるはず」という誤った期待を与えるため、出典名をリンクにしない。
+const UNOPENABLE_MISSING_REASONS = new Set(["not-recorded", "ai-answer", "no-reference"]);
+
 function EntryRow({
   entry,
   sourceTitles,
@@ -103,7 +108,11 @@ function EntryRow({
       ? t(`sourceCheck.missingReason.${entry.missingReason}` as never)
       : entry.rationale;
 
-  const canNavigate = Boolean(onOpenSource);
+  const isUnopenable =
+    entry.verdict === "source-missing" &&
+    Boolean(entry.missingReason) &&
+    UNOPENABLE_MISSING_REASONS.has(entry.missingReason as string);
+  const canNavigate = Boolean(onOpenSource) && !isUnopenable;
 
   return (
     <div
@@ -115,6 +124,21 @@ function EntryRow({
         borderTop: "1px solid var(--rule)",
       }}
     >
+      {/* トピックの照合対象（entry.statement）— 知見では付かないため knowlege では出ない。
+          statementBlockId への遷移は既存にブロック単体へスクロールする仕組みが無いため
+          対応しない（テキスト表示のみ）。 */}
+      {entry.statement && (
+        <div
+          style={{
+            color: "var(--ink-3)",
+            fontSize: 12,
+            paddingLeft: 6,
+            borderLeft: "2px solid var(--rule)",
+          }}
+        >
+          {entry.statement}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         <span style={{ color: "var(--ink-3)", display: "inline-flex", flexShrink: 0 }}>
           <SourceKindIcon kind={entry.sourceKind} />
@@ -195,6 +219,7 @@ export function SourceCheckDetailSection({
   onRecheck,
   onDismiss,
   onClear,
+  running = false,
 }: {
   profile: SourceCheckProfile;
   /** 照合後に知見の本文が変わった（呼び出し側で claimHash を比較して渡す） */
@@ -206,6 +231,8 @@ export function SourceCheckDetailSection({
   onRecheck?: () => void;
   onDismiss?: () => void;
   onClear?: () => void;
+  /** 出典照合が実行中（このドキュメント単体、または点検欄の一括実行）。「もう一度照合」を無効化する。 */
+  running?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -304,6 +331,7 @@ export function SourceCheckDetailSection({
               <button
                 type="button"
                 onClick={onRecheck}
+                disabled={running}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -315,7 +343,8 @@ export function SourceCheckDetailSection({
                   color: "var(--ink-3)",
                   font: "inherit",
                   fontSize: 12,
-                  cursor: "pointer",
+                  cursor: running ? "default" : "pointer",
+                  opacity: running ? 0.5 : 1,
                 }}
               >
                 <RefreshCw size={11} />

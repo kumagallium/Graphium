@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { LintReport, LintIssue, LintIssueType, LintSeverity } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
+import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 
 type Props = {
   report: LintReport | null;
@@ -51,6 +52,11 @@ type Props = {
    * （呼び出し元でトースト + wikiLog への記録まで行う）。
    */
   onBulkArchiveWikis?: (wikiIds: string[]) => Promise<void> | void;
+  /**
+   * 出典照合（Source check, v1.1）の点検欄（仕様 2-b）。既存の「クイック / フル」点検とは
+   * 別レーンで、自動点検にはつながない。3 つとも揃っているときだけ欄を出す。
+   */
+  sourceCheckProps?: SourceCheckLintSectionProps;
 };
 
 /** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
@@ -118,6 +124,7 @@ export function WikiLintView({
   wikiKindById,
   onMergeTopics,
   onBulkArchiveWikis,
+  sourceCheckProps,
 }: Props) {
   const t = useT();
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -184,6 +191,10 @@ export function WikiLintView({
           {loading ? t("wikiLint.analyzingShort") : t("wikiLint.runButton")}
         </button>
       </div>
+
+      {/* 出典照合（Source check, v1.1）点検欄 — 既存のクイック/フル点検とは別レーン。
+          自動点検にはつながず、ここからの実行だけを起点にする。 */}
+      {sourceCheckProps && <SourceCheckLintSection {...sourceCheckProps} />}
 
       {/* コンテンツ */}
       <div className="flex-1 overflow-y-auto">

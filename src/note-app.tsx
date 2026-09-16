@@ -395,6 +395,13 @@ import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useImeEnterGuard } from "./hooks/use-ime-enter-guard";
 import { useAutoGrounding } from "./hooks/use-auto-grounding";
+import {
+  useSourceCheck,
+  useSourceCheckStale,
+  sourceCheckLlmCallsFor,
+  resolveSourceCheckTitles,
+} from "./hooks/use-source-check";
+import { parseClaimSourceId } from "./features/source-check/claim-source-id";
 import { useProvGeneration } from "./hooks/use-prov-generation";
 import { useFileManager } from "./hooks/use-file-manager";
 import { useCapture } from "./hooks/use-capture";
@@ -7687,6 +7694,24 @@ export function NoteApp() {
     }
   }, [fm.activeFileId]);
 
+  // 出典照合（Source check, v1.1）— 実行・保存の共通フック（2-d）。
+  // WikiBanner（単発）/ WikiLintView（バッチ）の両方がこれを使う。
+  const sourceCheck = useSourceCheck({
+    noteIndex: fm.noteIndex,
+    rawNoteIndex: fm.rawNoteIndex,
+    mediaIndex: fm.mediaIndex,
+    captureIndex: capture.captureIndex ?? null,
+    wikiFiles: fm.wikiFiles,
+    wikiMetas: fm.wikiMetas,
+    getCachedDoc: fm.getCachedDoc,
+    loadDoc: fm.loadDoc,
+    saveWikiFile: fm.handleSaveWikiFile,
+    activeFileId: fm.activeFileId,
+    reopenActiveWikiFile: (wikiId) => fm.handleOpenWikiFile(wikiId),
+  });
+  // 現在開いているドキュメントの stale 判定（照合後に本文が変わったか）。
+  const activeDocSourceCheckStale = useSourceCheckStale(fm.activeDoc);
+
   // 世界モデル照合 共通ハンドラ（Phase 2 / PR 2A）。
   // 照合発火はすべて **ユーザー起動**（バナー単発 / 一覧 bulk）に統一する。
   // 開くたびの自動発火はしない（kickoff §4 + PR 2A 方針 §4: 頼んでいない判定の押し付けを避ける）。
@@ -8855,6 +8880,57 @@ export function NoteApp() {
       setListMaterialPeekEntry(entry);
     }
   }, [capture.captureIndex, closeAllViews, router]);
+
+  // 出典照合（Source check, v1.1）— 出典を開く（SourceCheckDetailSection の onOpenSource）。
+  // parseClaimSourceId を先に判定してから parseExternalSource に進む（"claim:" は
+  // network-graph/external-source.ts のプレフィックス一覧に無い、出典照合専用の合成 ID のため）。
+  // ノートは blockId が分かっても該当ブロックへスクロールする仕組みが既存に無いため、
+  // ノートを開くところまでで止める（未実装。理由は最終報告を参照）。
+  const handleOpenSourceCheckSource = useCallback(
+    (sourceId: string, _blockId?: string) => {
+      const claimId = parseClaimSourceId(sourceId);
+      if (claimId !== null) {
+        const openSidePeek = openSidePeekRef.current;
+        const target = `wiki:${claimId}`;
+        if (openSidePeek) openSidePeek(target);
+        else navigateToNote(target);
+        return;
+      }
+      const ext = parseExternalSource(sourceId);
+      if (ext) {
+        if (ext.kind === "url") {
+          window.open(ext.key, "_blank", "noopener,noreferrer");
+          return;
+        }
+        if (ext.kind === "memo") {
+          handleOpenMemoSource(ext.key);
+          return;
+        }
+        if (ext.kind === "pdf" || ext.kind === "document") {
+          const entry = fm.mediaIndex?.media.find((m) => m.fileId === ext.key);
+          if (!entry) return;
+          if (openMaterialPeekRef.current) {
+            openMaterialPeekRef.current(entry);
+          } else {
+            setListSidePeekNoteId(null);
+            dropPeekFromUrl();
+            setListMaterialPeekEntry(entry);
+          }
+          return;
+        }
+        // chat: は元チャットへの参照キーを持たないため開けない（仕様どおり no-op）。
+        return;
+      }
+      // 通常ノート。ただし Wiki ページ ID（derivedFromNotes に生 ID で入りうる）は
+      // "wiki:" を付けないと通常ノートとして誤って開いてしまう
+      // （WikiBanner.tsx の resolveDerivedEntries / resolveRelatedAtomEntries と同じ区別）。
+      const target = fm.wikiMetas.has(sourceId) ? `wiki:${sourceId}` : sourceId;
+      const openSidePeek = openSidePeekRef.current;
+      if (openSidePeek) openSidePeek(target);
+      else navigateToNote(target);
+    },
+    [fm.mediaIndex, fm.wikiMetas, handleOpenMemoSource, navigateToNote, dropPeekFromUrl],
+  );
 
   // 話題（topic）の段（runTopicStage）を note-app のファイル操作・ログに配線する共通ラッパー。
   // 5 つの知見保存経路（ノート取り込み・チャットのナレッジ化・素材 URL/PDF/Word・URL 貼付）と
@@ -11915,6 +11991,19 @@ export function NoteApp() {
               return map;
             })()}
             onMergeTopics={async (keepId, absorbId) => { await mergeTopicsFromSelection(keepId, [absorbId]); }}
+            sourceCheckProps={
+              aiUiEnabled
+                ? {
+                    onPlan: sourceCheck.planForLint,
+                    onRun: sourceCheck.runLintPlan,
+                    onCancel: sourceCheck.cancelLintRun,
+                    running: sourceCheck.batchRunning,
+                    progress: sourceCheck.batchProgress,
+                    result: sourceCheck.batchResult,
+                    onDismissResult: sourceCheck.resetBatchResult,
+                  }
+                : undefined
+            }
           />
         ) : fm.activeWikiKind ? (
           <WikiListView
@@ -12126,6 +12215,18 @@ export function NoteApp() {
                     ? (mergeId) => { void mergeTopicsFromSelection(wikiIdForBanner, [mergeId]); }
                     : undefined
                 }
+                onRunSourceCheck={
+                  aiUiEnabled &&
+                  (fm.activeDoc.wikiMeta.kind === "claim" || fm.activeDoc.wikiMeta.kind === "topic") && wikiIdForBanner
+                    ? () => void sourceCheck.runOne(wikiIdForBanner)
+                    : undefined
+                }
+                sourceCheckRunning={
+                  (wikiIdForBanner !== null && sourceCheck.runningDocId === wikiIdForBanner) ||
+                  sourceCheck.batchRunning
+                }
+                sourceCheckLlmCalls={sourceCheckLlmCallsFor(wikiIdForBanner ?? "", fm.activeDoc)}
+                sourceCheckStale={activeDocSourceCheckStale}
               />
             );
           })()}
@@ -12175,6 +12276,30 @@ export function NoteApp() {
                         wikiId={wikiIdForDrawer ?? undefined}
                         allWikiMetas={fm.wikiMetas}
                         worldGroundingEnabled={featureFlags.worldGrounding ?? true}
+                        onRunSourceCheck={
+                          aiUiEnabled && wikiIdForDrawer ? () => void sourceCheck.runOne(wikiIdForDrawer) : undefined
+                        }
+                        onDismissSourceCheck={
+                          wikiIdForDrawer ? () => void sourceCheck.dismiss(wikiIdForDrawer) : undefined
+                        }
+                        onClearSourceCheck={
+                          wikiIdForDrawer ? () => void sourceCheck.clear(wikiIdForDrawer) : undefined
+                        }
+                        onOpenSourceCheckSource={handleOpenSourceCheckSource}
+                        sourceCheckSourceTitles={
+                          fm.activeDoc.wikiMeta.sourceCheck
+                            ? resolveSourceCheckTitles(fm.activeDoc.wikiMeta.sourceCheck.entries, {
+                                noteIndex: fm.noteIndex,
+                                mediaIndex: fm.mediaIndex,
+                                wikiMetas: fm.wikiMetas,
+                              })
+                            : undefined
+                        }
+                        sourceCheckStale={activeDocSourceCheckStale}
+                        sourceCheckRunning={
+                          (wikiIdForDrawer !== null && sourceCheck.runningDocId === wikiIdForDrawer) ||
+                          sourceCheck.batchRunning
+                        }
                       />
                     );
                   })()

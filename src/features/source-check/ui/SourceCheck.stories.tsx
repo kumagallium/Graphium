@@ -220,6 +220,46 @@ export const DetailThreeSources: Story = {
   ),
 };
 
+// v1.1: トピックの照合対象（entry.statement / statementBlockId）。トピックは要点の文ごとに
+// 複数の PlanSourceCheckStatement を持つため、同じ知見を出典とする 2 つの文が別々の
+// entry として並ぶ。statementBlockId への遷移は既存にブロック単体へスクロールする仕組みが
+// 無いため対応しない（テキスト表示のみ、2-a の実装メモ参照）。
+export const DetailTopicStatements: Story = {
+  name: "詳細欄 — トピックの照合対象（entry.statement）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "トピックは知見と違い「要点の文ごと」に照合する。entry.statement にその文（本文中の該当ブロックのプレーンテキスト）が入り、詳細欄では出典行の上に薄く引用表示する。",
+      },
+    },
+  },
+  render: () => (
+    <SourceCheckDetailSection
+      profile={profile("supported", [
+        {
+          sourceId: "claim:c-1",
+          sourceKind: "claim",
+          verdict: "supported",
+          rationale: "引かれた知見の記述と一致する。",
+          statement: "低加工強度では単相化が進みやすい。",
+          statementBlockId: "block-1",
+        },
+        {
+          sourceId: "claim:c-2",
+          sourceKind: "claim",
+          verdict: "not-in-source",
+          rationale: "引かれた知見にはこの記述が見当たらない。",
+          statement: "降温速度を緩めると相変態が安定する。",
+          statementBlockId: "block-3",
+        },
+      ])}
+      sourceTitles={{ "claim:c-1": "低加工強度と単相化", "claim:c-2": "降温速度と相変態" }}
+      onOpenSource={(sourceId, blockId) => console.info("[story] onOpenSource", sourceId, blockId)}
+    />
+  ),
+};
+
 export const DetailStale: Story = {
   name: "詳細欄 — 本文変更後（stale）",
   render: () => (

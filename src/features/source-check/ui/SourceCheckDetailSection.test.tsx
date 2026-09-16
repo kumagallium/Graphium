@@ -188,4 +188,47 @@ describe("SourceCheckDetailSection", () => {
     openDetail(container);
     expect(container.textContent).toContain("実験ノート 03");
   });
+
+  // 開けない出典に「開く」導線を出さない（レビュー指摘）。
+  it.each(["not-recorded", "ai-answer", "no-reference"] as const)(
+    "missingReason が %s の行は出典名をリンクにしない",
+    (reason) => {
+      const { container, getByText } = render(
+        <LocaleProvider>
+          <SourceCheckDetailSection
+            profile={profile([entry({ verdict: "source-missing", missingReason: reason })])}
+            onOpenSource={() => {}}
+          />
+        </LocaleProvider>,
+      );
+      openDetail(container);
+      // 出典名がボタン（リンク）ではなく、ただの span で出る
+      const sourceLabelEl = getByText(entry().sourceId);
+      expect(sourceLabelEl.tagName).not.toBe("BUTTON");
+      // 開閉トグル以外にボタンが無い（下部の「該当箇所へ」も blockId が無いため出ない）
+      expect(container.querySelectorAll("button").length).toBe(1);
+    },
+  );
+
+  it("開ける出典（missingReason 以外）は onOpenSource があればリンクにする", () => {
+    const { container, getByText } = render(
+      <LocaleProvider>
+        <SourceCheckDetailSection profile={profile([entry()])} onOpenSource={() => {}} />
+      </LocaleProvider>,
+    );
+    openDetail(container);
+    const button = getByText("note-1").closest("button");
+    expect(button).toBeTruthy();
+  });
+
+  it("running のときは「もう一度照合」を無効化する", () => {
+    const { container, getByText } = render(
+      <LocaleProvider>
+        <SourceCheckDetailSection profile={profile([entry()])} onRecheck={() => {}} running />
+      </LocaleProvider>,
+    );
+    openDetail(container);
+    const button = getByText(t("sourceCheck.recheck")).closest("button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
 });
