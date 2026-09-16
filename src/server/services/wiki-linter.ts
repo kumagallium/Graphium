@@ -62,6 +62,12 @@ export type WikiSnapshot = {
   level?: "principle" | "finding" | "bridge";
   /** メンバー知見（Claim）の ID リスト。topic のときのみ意味を持つ（orphan topic 判定に使う） */
   derivedFromClaims?: string[];
+  /**
+   * 矛盾する既存洞察（Atom）の ID リスト（atom のみ意味を持つ）。
+   * resolveAtomDuplicates の contradiction 判定が双方向に書く。detectLocalIssues が
+   * これを見て "contradiction" issue を機械的に列挙する（LLM lint とは別経路）。
+   */
+  conflictsWith?: string[];
   lastIngestedAt?: string;
   modifiedAt: string;
 };
@@ -312,6 +318,27 @@ export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
     // derivedFromNotes で参照している Wiki も含む
     for (const noteId of w.derivedFromNotes) {
       if (wikiById.has(noteId)) referenced.add(noteId);
+    }
+  }
+
+  // Contradiction チェック（atom）: resolveAtomDuplicates が LLM で "contradiction" と
+  // 判定し、双方向に書いた conflictsWith を機械的に列挙する（LLM lint とは別経路。
+  // ここは判定済みの事実を表示するだけなので LLM 不要）。id ペアの重複列挙を避けるため
+  // id が小さい方を先に処理した時だけ issue を作る。
+  for (const w of wikis) {
+    if (w.kind !== "atom" || !w.conflictsWith || w.conflictsWith.length === 0) continue;
+    for (const otherId of w.conflictsWith) {
+      if (w.id >= otherId) continue; // 逆向きの重複を弾く（片方だけ処理）
+      const other = wikiById.get(otherId);
+      if (!other) continue;
+      issues.push({
+        type: "contradiction",
+        severity: "error",
+        title: `"${w.title}" and "${other.title}" contradict each other`,
+        description: `These two Insights (Atoms) were judged to conflict in direction/condition/conclusion when discovered — both were kept rather than silently merged.`,
+        affectedWikiIds: [w.id, otherId],
+        suggestion: `Open both "${w.title}" and "${other.title}" to compare and decide which (if either) still holds.`,
+      });
     }
   }
 

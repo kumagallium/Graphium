@@ -1648,6 +1648,8 @@ export function buildWikiSnapshots(
       level: meta.kind === "claim" ? meta.level : undefined,
       // topic のメンバー知見数（orphan＝0 件判定用）。topic 以外では意味を持たないので省略。
       derivedFromClaims: meta.kind === "topic" ? (wikiMeta?.derivedFromClaims ?? []) : undefined,
+      // 矛盾する既存洞察（atom のみ意味を持つ）。detectLocalIssues の contradiction 判定に使う。
+      conflictsWith: meta.kind === "atom" ? wikiMeta?.conflictsWith : undefined,
       lastIngestedAt: wikiMeta?.lastIngestedAt,
       modifiedAt: file.modifiedTime,
     });
@@ -1796,13 +1798,19 @@ export type CandidatePartition<T> = {
 
 /**
  * Atom / Synthesis の discovery 候補を、既存同 kind ドキュメントとの embedding 類似度で
- * 「新規（kept）」と「既存との重複（duplicates + 一致先 ID）」に分割する。
+ * 「新規（kept）」と「重複『候補』（duplicates + 一致先 ID）」に分割する。
  * LLM プロンプトベースの "Existing titles" 重複防止に対する安全網。
+ *
+ * **これは候補探しであって、同じかどうかの判定ではない。** embedding は否定・方向の
+ * 違い（「下がる」vs「上がる」）に鈍く、閾値超えを機械的に「重複」扱いすると矛盾する
+ * 洞察が支持として統合され、矛盾が合意に見える事故が起きる。ここで拾った duplicates は
+ * 必ず judgeAtomDuplicates / resolveAtomDuplicates（LLM 判定: same / contradiction /
+ * different）を通してから振り分けること — reinforceAtomWithClaims に直接渡さない。
  *
  * 設計の意図:
  *   - embedding モデル必須にはしない。設定が無い / API が失敗したら **全て kept**（fail-open）。
  *   - 既存が空 / 候補が空のときは即返す（embedding API を叩かない）。
- *   - 類似度はセクション単位で計算され、同 kind の任意のセクションと閾値超えしたら duplicate。
+ *   - 類似度はセクション単位で計算され、同 kind の任意のセクションと閾値超えしたら候補。
  */
 export async function partitionCandidatesByEmbedding<T extends { title: string; body: string }>(
   candidates: T[],
@@ -1882,6 +1890,121 @@ export async function dedupCandidatesByEmbedding<T extends { title: string; body
 ): Promise<T[]> {
   const { kept } = await partitionCandidatesByEmbedding(candidates, existingSameKindDocIds, threshold);
   return kept;
+}
+
+/** 洞察（Atom）重複判定 1 件の判定結果（サーバー /judge-atom-duplicates と対応） */
+export type AtomDuplicateVerdict = "same" | "contradiction" | "different";
+export type AtomDuplicateJudgeVerdict = {
+  index: number;
+  existingId: string;
+  verdict: AtomDuplicateVerdict;
+  reason: string;
+};
+
+/**
+ * embedding で見つかった Atom 重複「候補」を LLM に判定させる（同じ / 矛盾 / 別物）。
+ * embedding は候補探しに過ぎない — 否定・方向の違いに鈍く、矛盾を統合してしまう
+ * 事故があったため、最終判定はここで行う（越境転移(transfer)判定と同じ流儀）。
+ *
+ * fail-closed: API 失敗・壊れた出力・判定が返らなかった対は呼び出し側で "different" 扱いに
+ * 倒す（このヘルパー自体は空配列を返すだけ — 「統合しない」判断は呼び出し側の責務）。
+ */
+export async function judgeAtomDuplicates(
+  pairs: { candidate: { title: string; body: string }; existing: { id: string; title: string; body: string } }[],
+  language: string,
+  options?: { model?: string; signal?: AbortSignal },
+): Promise<AtomDuplicateJudgeVerdict[]> {
+  if (pairs.length === 0) return [];
+  try {
+    const res = await fetch(`${API_BASE}/judge-atom-duplicates`, {
+      method: "POST",
+      headers: wikiHeaders("insight"),
+      body: JSON.stringify({
+        pairs,
+        language,
+        ...(options?.model ? { model: options.model } : wikiBodyModel("insight")),
+      }),
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+    if (!res.ok) {
+      console.warn("judgeAtomDuplicates failed (fail-closed: different 扱い):", res.status);
+      return [];
+    }
+    const data = (await res.json()) as { verdicts?: AtomDuplicateJudgeVerdict[] };
+    return data.verdicts ?? [];
+  } catch (err) {
+    console.warn("judgeAtomDuplicates failed (fail-closed: different 扱い):", err);
+    return [];
+  }
+}
+
+/** resolveAtomDuplicates の戻り値 */
+export type AtomDuplicateResolution<T> = {
+  /** "different" 判定（新規作成に回す候補） */
+  different: T[];
+  /** "same" 判定（既存 Atom への支持追加に回す） */
+  same: { candidate: T; matchedDocId: string; score: number }[];
+  /**
+   * "contradiction" 判定（新しい Atom を別に作った上で、双方の conflictsWith に
+   * 互いの ID を書く必要がある候補）。newAtomId は呼び出し側が新規作成後に埋める。
+   */
+  contradiction: { candidate: T; matchedDocId: string; score: number }[];
+};
+
+/**
+ * partitionCandidatesByEmbedding の duplicates（embedding が見つけた「候補」）を、
+ * LLM 判定（judgeAtomDuplicates）で same / contradiction / different に振り分ける
+ * 共通ヘルパー。3 箇所の discovery 呼び出しがこれを通す。
+ *
+ * loadExisting は既存 Atom の title/body を取得するコールバック（呼び出し側の
+ * loadDoc を渡す）。取得できない候補は安全側の "different" に倒す。
+ */
+export async function resolveAtomDuplicates<T extends { title: string; body: string }>(
+  duplicates: { candidate: T; matchedDocId: string; score: number }[],
+  loadExisting: (docId: string) => Promise<{ title: string; body: string } | null>,
+  language: string,
+  options?: { model?: string; signal?: AbortSignal },
+): Promise<AtomDuplicateResolution<T>> {
+  if (duplicates.length === 0) return { different: [], same: [], contradiction: [] };
+
+  // 既存 Atom の title/body を取得できた対だけをジャッジに送る。取得できない対は
+  // 判定不能として fail-closed で "different" に回す（統合しない側に倒す）。
+  const withExisting: { dup: (typeof duplicates)[number]; existing: { title: string; body: string } }[] = [];
+  const unresolvable: T[] = [];
+  for (const dup of duplicates) {
+    const existing = await loadExisting(dup.matchedDocId);
+    if (existing) {
+      withExisting.push({ dup, existing });
+    } else {
+      unresolvable.push(dup.candidate);
+    }
+  }
+
+  if (withExisting.length === 0) {
+    return { different: unresolvable, same: [], contradiction: [] };
+  }
+
+  const pairs = withExisting.map(({ dup, existing }) => ({
+    candidate: { title: dup.candidate.title, body: dup.candidate.body },
+    existing: { id: dup.matchedDocId, title: existing.title, body: existing.body },
+  }));
+  const verdicts = await judgeAtomDuplicates(pairs, language, options);
+
+  const different: T[] = [...unresolvable];
+  const same: AtomDuplicateResolution<T>["same"] = [];
+  const contradiction: AtomDuplicateResolution<T>["contradiction"] = [];
+  withExisting.forEach(({ dup }, i) => {
+    const v = verdicts.find((r) => r.index === i + 1) ?? verdicts[i];
+    // 判定が取れない対は fail-closed で "different"（黙って統合しない側に倒す）
+    if (!v || v.verdict === "different") {
+      different.push(dup.candidate);
+    } else if (v.verdict === "same") {
+      same.push(dup);
+    } else {
+      contradiction.push(dup);
+    }
+  });
+  return { different, same, contradiction };
 }
 
 // ── Atom（実験的レイヤ）──

@@ -42,6 +42,10 @@ import {
   buildFoldJudgeUserMessage,
   parseFoldJudgeOutput,
   resolveFoldVerdict,
+  buildAtomDuplicateJudgeSystemPrompt,
+  buildAtomDuplicateJudgeUserMessage,
+  parseAtomDuplicateJudgeOutput,
+  type AtomDuplicateJudgePair,
 } from "../services/wiki-atomizer.js";
 import {
   buildRewriterSystemPrompt,
@@ -800,6 +804,50 @@ app.post("/atomize", async (c) => {
     console.error("Wiki atomize error:", err);
     // degrade（200 + 空 atoms）だが code は添えておく（クライアントで i18n 変換される）
     return c.json({ atoms: [], ...errorBody(err) });
+  }
+});
+
+// 洞察（Atom）discovery の重複候補を LLM で判定する。
+// embedding（partitionCandidatesByEmbedding）は「候補探し」止まり — 同じ/矛盾/別物の
+// 最終判定はここで行う（越境転移(transfer)判定と同じ流儀）。
+app.post("/judge-atom-duplicates", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    pairs: AtomDuplicateJudgePair[];
+    model?: string;
+  }>();
+
+  if (!Array.isArray(body.pairs) || body.pairs.length === 0) {
+    return c.json({ verdicts: [] });
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    // fail-closed: モデル未設定でも「different」に倒す（route を呼ぶ側が埋める）
+    return c.json({ verdicts: [] });
+  }
+
+  const systemPrompt = buildAtomDuplicateJudgeSystemPrompt(body.language || "en");
+  const userMessage = buildAtomDuplicateJudgeUserMessage(body.pairs);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.judge-atom-duplicates",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    const verdicts = parseAtomDuplicateJudgeOutput(result.message);
+    return c.json({ verdicts, model: result.model, tokenUsage: result.tokenUsage });
+  } catch (err) {
+    console.error("Wiki judge-atom-duplicates error:", err);
+    // fail-closed（黙って統合しない側に倒す）: 呼び出し側が verdicts 欠落を "different" として扱う
+    return c.json({ verdicts: [], ...errorBody(err) });
   }
 });
 

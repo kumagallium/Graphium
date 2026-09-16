@@ -29,8 +29,10 @@ export {
   buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
-  // Discovery 共通: embedding ベース重複検出
+  // Discovery 共通: embedding ベース重複検出（候補探し）+ LLM 判定（同じ/矛盾/別物）
   dedupCandidatesByEmbedding, partitionCandidatesByEmbedding,
+  judgeAtomDuplicates, resolveAtomDuplicates,
+  type AtomDuplicateVerdict, type AtomDuplicateJudgeVerdict, type AtomDuplicateResolution,
   // インライン引用リンク
   buildNoteIndex,
   // Topic（話題）

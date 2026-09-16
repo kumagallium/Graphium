@@ -1016,6 +1016,7 @@ versions stay valid with these fields absent.
 | `backing[]` | Claim | `{ source: "textbook" \| "external-paper" \| "internal-claim", citation, url?, internalClaimId? }` (Phase γ) |
 | `modalQualifier` | Claim | necessarily, probably, possibly, rarely (Phase γ) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
+| `conflictsWith[]` | Atom only | Array of Insight (Atom) ids this one contradicts. Written by `resolveAtomDuplicates` when the duplicate-judge LLM (`judgeAtomDuplicates`) returns `"contradiction"` for an embedding-shortlisted pair — both Insights are kept (neither is merged/reinforced) and each writes the other's id, so the link is always bidirectional. Surfaced by the Linter as a `contradiction` issue (`detectLocalIssues`, no LLM needed for this check since the judgment already happened at discovery time). Empty/undefined = no known conflict. |
 | `theme` | Synthesis | Legacy field preserved on existing synthesis docs for back-compat; new Cmd-K Composer authoring does not populate it. |
 
 These dimensions are **orthogonal to the existing context labels**

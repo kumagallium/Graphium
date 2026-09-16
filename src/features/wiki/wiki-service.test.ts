@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   parseInlineCitations,
   promoteClaimStatusIfCorroborated,
@@ -13,6 +13,7 @@ import {
   unlinkClaimFromTopic,
   buildTopicDocument,
   rebuildTopicDocument,
+  resolveAtomDuplicates,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
@@ -308,6 +309,86 @@ describe("reinforceAtomWithClaims - Atom の支持追加", () => {
     expect(
       reinforceAtomWithClaims(atomDoc(["claim-a"]), { derivedFromClaims: ["", "claim-a"] }),
     ).toBeNull();
+  });
+});
+
+describe("resolveAtomDuplicates - embedding 候補を LLM 判定（same/contradiction/different）で振り分ける", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const dup = (title: string, matchedDocId: string, score = 0.95) => ({
+    candidate: { title, body: `body of ${title}` },
+    matchedDocId,
+    score,
+  });
+
+  it("same 判定は same に、different 判定は different に振り分ける", async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        verdicts: [
+          { index: 1, existingId: "e1", verdict: "same", reason: "identical" },
+          { index: 2, existingId: "e2", verdict: "different", reason: "unrelated" },
+        ],
+      }),
+    });
+    const loadExisting = vi.fn(async (id: string) => ({ title: `existing ${id}`, body: "..." }));
+    const result = await resolveAtomDuplicates(
+      [dup("A", "e1"), dup("B", "e2")],
+      loadExisting,
+      "ja",
+    );
+    expect(result.same).toHaveLength(1);
+    expect(result.same[0].matchedDocId).toBe("e1");
+    expect(result.different).toHaveLength(1);
+    expect(result.different[0].title).toBe("B");
+    expect(result.contradiction).toHaveLength(0);
+  });
+
+  it("contradiction 判定は contradiction バケットに入る（統合しない）", async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        verdicts: [{ index: 1, existingId: "e1", verdict: "contradiction", reason: "opposite direction" }],
+      }),
+    });
+    const loadExisting = vi.fn(async () => ({ title: "existing", body: "..." }));
+    const result = await resolveAtomDuplicates([dup("A", "e1")], loadExisting, "ja");
+    expect(result.contradiction).toHaveLength(1);
+    expect(result.contradiction[0].matchedDocId).toBe("e1");
+    expect(result.same).toHaveLength(0);
+    expect(result.different).toHaveLength(0);
+  });
+
+  it("既存 doc を取得できない候補は fail-closed で different に倒す（LLM を呼ばない）", async () => {
+    const loadExisting = vi.fn(async () => null);
+    const result = await resolveAtomDuplicates([dup("A", "e1")], loadExisting, "ja");
+    expect(result.different).toHaveLength(1);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("API 失敗（judge 呼び出し失敗）は fail-closed で全て different に倒す", async () => {
+    (global.fetch as any).mockResolvedValue({ ok: false, status: 500 });
+    const loadExisting = vi.fn(async () => ({ title: "existing", body: "..." }));
+    const result = await resolveAtomDuplicates([dup("A", "e1")], loadExisting, "ja");
+    expect(result.different).toHaveLength(1);
+    expect(result.same).toHaveLength(0);
+    expect(result.contradiction).toHaveLength(0);
+  });
+
+  it("候補が 0 件なら fetch を呼ばず空の振り分けを返す", async () => {
+    const loadExisting = vi.fn(async () => null);
+    const result = await resolveAtomDuplicates([], loadExisting, "ja");
+    expect(result).toEqual({ different: [], same: [], contradiction: [] });
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 

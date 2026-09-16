@@ -92,3 +92,39 @@ describe("detectLocalIssues - redundant topic（正規化タイトル完全一�
     expect(issues.some((i) => i.type === "redundant")).toBe(false);
   });
 });
+
+describe("detectLocalIssues - contradiction（洞察の conflictsWith を機械的に列挙）", () => {
+  it("双方向に conflictsWith を持つ atom ペアを contradiction として 1 件だけ検出する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "atom-a", title: "Xが増えるとYが増える", kind: "atom", derivedFromClaims: undefined, conflictsWith: ["atom-b"] }),
+      base({ id: "atom-b", title: "Xが増えるとYが減る", kind: "atom", derivedFromClaims: undefined, conflictsWith: ["atom-a"] }),
+    ]);
+    const contradictions = issues.filter((i) => i.type === "contradiction");
+    expect(contradictions).toHaveLength(1);
+    expect(contradictions[0].affectedWikiIds.sort()).toEqual(["atom-a", "atom-b"]);
+    expect(contradictions[0].severity).toBe("error");
+  });
+
+  it("conflictsWith が無い atom は contradiction にならない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "atom-a", title: "A", kind: "atom", derivedFromClaims: undefined }),
+      base({ id: "atom-b", title: "B", kind: "atom", derivedFromClaims: undefined }),
+    ]);
+    expect(issues.some((i) => i.type === "contradiction")).toBe(false);
+  });
+
+  it("atom 以外（topic/claim）の conflictsWith は無視する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "A", kind: "topic", derivedFromClaims: ["c1"], conflictsWith: ["topic-b"] }),
+      base({ id: "topic-b", title: "B", kind: "topic", derivedFromClaims: ["c2"], conflictsWith: ["topic-a"] }),
+    ]);
+    expect(issues.some((i) => i.type === "contradiction")).toBe(false);
+  });
+
+  it("相手側が見つからない conflictsWith（相互書き込み漏れ）は issue を作らない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "atom-a", title: "A", kind: "atom", derivedFromClaims: undefined, conflictsWith: ["missing-id"] }),
+    ]);
+    expect(issues.some((i) => i.type === "contradiction")).toBe(false);
+  });
+});

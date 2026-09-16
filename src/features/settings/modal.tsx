@@ -216,7 +216,7 @@ export type DiscoveryHandler = (
    * signal: 進行中の LLM 呼び出しごと中断する（発見のキャンセル用）。
    */
   options?: { theme?: string; signal?: AbortSignal },
-) => Promise<{ ok: boolean; created: number; iterations: number; reinforced?: number; covered?: number; total?: number; error?: string; aborted?: boolean }>;
+) => Promise<{ ok: boolean; created: number; iterations: number; reinforced?: number; contradictions?: number; covered?: number; total?: number; error?: string; aborted?: boolean }>;
 
 /**
  * 実行前プラン: 「全 {total} 件を視野に入れるには LLM を {runs} 回呼ぶ」の実測値。
@@ -442,6 +442,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     coveredCount?: number;
     populationCount?: number;
     reinforced?: number;
+    contradictions?: number;
   };
   const [atomizeRunning, setAtomizeRunning] = useState(false);
   const [atomizeProgress, setAtomizeProgress] = useState<DiscoveryUiState | null>(null);
@@ -3720,6 +3721,8 @@ type DiscoveryRunState = {
   populationCount?: number;
   /** 既存への支持追加（reinforcement）件数 */
   reinforced?: number;
+  /** 矛盾（contradiction）と判定された件数 */
+  contradictions?: number;
 };
 
 type MaintenanceTabProps = {
@@ -3927,6 +3930,7 @@ function MaintenanceTab({
         created: result.created,
         iterations: result.iterations,
         reinforced: result.reinforced,
+        contradictions: result.contradictions,
         coveredCount: result.covered,
         populationCount: result.total,
       });
@@ -3957,6 +3961,7 @@ function MaintenanceTab({
           runningKey="settings.maintenance.atomize.running"
           coverageKey="settings.maintenance.atomize.coverage"
           reinforcedKey="settings.maintenance.atomize.reinforcedLine"
+          contradictionsKey="settings.maintenance.atomize.contradictionsLine"
         />
       )}
 
@@ -4332,6 +4337,8 @@ type DiscoveryCardProps = {
   coverageKey?: string;
   /** 既存への支持追加行の i18n キー（{count} プレースホルダ）。未指定なら非表示 */
   reinforcedKey?: string;
+  /** 矛盾（contradiction）判定行の i18n キー（{count} プレースホルダ）。未指定なら非表示 */
+  contradictionsKey?: string;
 };
 
 function DiscoveryCard({
@@ -4350,6 +4357,7 @@ function DiscoveryCard({
   runningKey,
   coverageKey,
   reinforcedKey,
+  contradictionsKey,
 }: DiscoveryCardProps) {
   // 実測カバレッジ行（running / done 共通）。「新規 0 件」が『見た上で無かった』のか
   // 『まだ見ていない』のかを区別できるように、視野の和集合を常に見せる。
@@ -4425,6 +4433,11 @@ function DiscoveryCard({
               {reinforcedKey && (progress.reinforced ?? 0) > 0 && (
                 <div className="text-xs text-muted-foreground">
                   {t(reinforcedKey).replace("{count}", String(progress.reinforced))}
+                </div>
+              )}
+              {contradictionsKey && (progress.contradictions ?? 0) > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  {t(contradictionsKey).replace("{count}", String(progress.contradictions))}
                 </div>
               )}
               {coverageLine && (

@@ -301,8 +301,8 @@ import {
   rankCandidatesByRelevance,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
-  // Discovery 共通: embedding ベース重複検出
-  partitionCandidatesByEmbedding,
+  // Discovery 共通: embedding ベース重複検出（候補探し）+ LLM 判定（同じ/矛盾/別物）
+  partitionCandidatesByEmbedding, resolveAtomDuplicates,
   // インライン引用リンク
   buildNoteIndex,
   // 操作ログ
@@ -1296,6 +1296,111 @@ async function applyAtomReinforcement(opts: {
     }
   }
   return reinforced;
+}
+
+/**
+ * Atom discovery の後処理を 1 本化した共通関数。
+ *
+ * embedding（partitionCandidatesByEmbedding）は「候補探し」に過ぎない — 否定・方向の違い
+ * （「下がる」vs「上がる」）に鈍く、矛盾する洞察が支持として統合され矛盾が合意に見える
+ * 事故があった。ここで重複「候補」を LLM 判定（resolveAtomDuplicates）にかけ、
+ * - same        → 既存 Atom への支持追加（applyAtomReinforcement）
+ * - contradiction → 新しい Atom を別に作り、既存 Atom と双方向に conflictsWith を書く
+ *                   （両方残す。点検の "contradiction" issue に出る）
+ * - different / embedding段階で kept → 新規作成
+ * に振り分ける。3 箇所の discovery 呼び出し（自動 Atomize / Maintenance 手動 discovery）が
+ * この関数を共通で使う。
+ */
+async function applyAtomDiscoveryResults(opts: {
+  // note-app には sampling 用の同名 AtomCandidate（クラスタ候補）があるため、
+  // wiki-service の Atom 候補は構造的型で受ける（applyAtomReinforcement と同じ回避）
+  atoms: import("./features/wiki/wiki-service").AtomCandidate[];
+  existingAtomDocIds: Set<string>;
+  language: string;
+  model: string | null;
+  atomLabel: string;
+  loadDoc: (key: string) => Promise<GraphiumDocument | null>;
+  createWikiFile: (
+    doc: GraphiumDocument,
+    options?: { activityType?: import("./features/document-provenance/types").EditActivityType },
+  ) => Promise<string>;
+  saveWikiFile: (
+    id: string,
+    doc: GraphiumDocument,
+    options?: { activityType?: import("./features/document-provenance/types").EditActivityType; sources?: string[] },
+  ) => Promise<boolean>;
+}): Promise<{ created: number; reinforced: number; contradictions: number; createdTitles: string[] }> {
+  const { kept, duplicates } = await partitionCandidatesByEmbedding(opts.atoms, opts.existingAtomDocIds);
+
+  const resolved = await resolveAtomDuplicates(
+    duplicates,
+    async (docId) => {
+      const doc = await opts.loadDoc(`wiki:${docId}`);
+      if (!doc) return null;
+      return { title: doc.title, body: extractBodyPreview(doc, 2000) };
+    },
+    opts.language,
+    { model: opts.model ?? undefined },
+  );
+
+  const reinforced = await applyAtomReinforcement({
+    duplicates: resolved.same,
+    loadDoc: opts.loadDoc,
+    saveWikiFile: opts.saveWikiFile,
+  });
+
+  let created = 0;
+  const createdTitles: string[] = [];
+
+  // 新規（embedding 未ヒット + LLM が "different" と判定した候補）
+  for (const candidate of [...kept, ...resolved.different]) {
+    const atomDoc = buildAtomDocument(candidate, opts.model, opts.language);
+    const newId = await opts.createWikiFile(atomDoc, { activityType: "wiki_atomize" });
+    embedWikiSections(newId, atomDoc).catch(() => {});
+    wikiLog.append(
+      "ingest",
+      [newId],
+      `${opts.atomLabel}: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
+    ).catch(() => {});
+    created += 1;
+    createdTitles.push(candidate.title);
+  }
+
+  // 矛盾（contradiction）— 新しい Atom を別に作り、既存 Atom と双方向に conflictsWith を書く
+  let contradictions = 0;
+  for (const dup of resolved.contradiction) {
+    try {
+      const atomDoc = buildAtomDocument(dup.candidate, opts.model, opts.language);
+      atomDoc.wikiMeta = { ...atomDoc.wikiMeta!, conflictsWith: [dup.matchedDocId] };
+      const newId = await opts.createWikiFile(atomDoc, { activityType: "wiki_atomize" });
+      embedWikiSections(newId, atomDoc).catch(() => {});
+
+      // 既存側にも相互に書く（片方向にしない）
+      const existing = await opts.loadDoc(`wiki:${dup.matchedDocId}`);
+      if (existing && existing.wikiMeta?.kind === "atom") {
+        const existingConflicts = new Set(existing.wikiMeta.conflictsWith ?? []);
+        existingConflicts.add(newId);
+        await opts.saveWikiFile(dup.matchedDocId, {
+          ...existing,
+          wikiMeta: { ...existing.wikiMeta, conflictsWith: [...existingConflicts] },
+          modifiedAt: new Date().toISOString(),
+        }, { activityType: "wiki_atomize" });
+      }
+
+      wikiLog.append(
+        "ingest",
+        [newId, dup.matchedDocId],
+        `${opts.atomLabel}: "${dup.candidate.title}" contradicts existing "${existing?.title ?? dup.matchedDocId}" (kept both)`,
+      ).catch(() => {});
+      created += 1;
+      contradictions += 1;
+      createdTitles.push(dup.candidate.title);
+    } catch {
+      // 矛盾処理の失敗は無視（従来どおり候補が捨てられるだけで、既存動作は壊れない）
+    }
+  }
+
+  return { created, reinforced, contradictions, createdTitles };
 }
 
 /**
@@ -8981,6 +9086,7 @@ export function NoteApp() {
             .map(([, m]) => m.title);
           let createdAtoms = 0;
           let reinforcedAtoms = 0;
+          let contradictedAtoms = 0;
           updateStage(
             "atomize",
             "running",
@@ -9021,27 +9127,20 @@ export function NoteApp() {
                 .filter(([id, m]) => m.kind === "atom" && !hiddenWikiIds.has(id))
                 .map(([id]) => id),
             );
-            const { kept, duplicates } = await partitionCandidatesByEmbedding(
-              atomResult.atoms,
+            const discoveryResult = await applyAtomDiscoveryResults({
+              atoms: atomResult.atoms,
               existingAtomDocIds,
-            );
-            for (const candidate of kept) {
-              const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, getLocale());
-              const newId = await fm.handleCreateWikiFile(atomDoc, { activityType: "wiki_atomize" });
-              embedWikiSections(newId, atomDoc).catch(() => {});
-              wikiLog.append(
-                "ingest",
-                [newId],
-                `${atomLabel}: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
-              ).catch(() => {});
-              createdAtoms += 1;
-              existingAtomTitles.push(candidate.title);
-            }
-            reinforcedAtoms += await applyAtomReinforcement({
-              duplicates,
+              language: getLocale(),
+              model: atomResult.model ?? null,
+              atomLabel,
               loadDoc: fm.loadDoc,
+              createWikiFile: fm.handleCreateWikiFile,
               saveWikiFile: fm.handleSaveWikiFile,
             });
+            createdAtoms += discoveryResult.created;
+            reinforcedAtoms += discoveryResult.reinforced;
+            contradictedAtoms += discoveryResult.contradictions;
+            existingAtomTitles.push(...discoveryResult.createdTitles);
           }
           // 実測カバレッジ（このスキャンで視野に入った知見の和集合）を必ず添える。
           // 「新規 0 件」が『見た上で無かった』のか『まだ見ていない』のかを区別できるようにする。
@@ -9056,6 +9155,7 @@ export function NoteApp() {
             (createdAtoms > 0 || reinforcedAtoms > 0
               ? `${createdAtoms} ${atomLabel}`
                 + (reinforcedAtoms > 0 ? ` / ${tStatic("ingest.reinforced", { count: String(reinforcedAtoms) })}` : "")
+                + (contradictedAtoms > 0 ? ` / ${tStatic("ingest.contradictions", { count: String(contradictedAtoms) })}` : "")
               : tStatic("ingest.noNewAtoms", { kind: atomLabel }))
               + ` (${coverageNote})`,
           );
@@ -9879,6 +9979,10 @@ export function NoteApp() {
           wikiMeta: {
             ...newDoc.wikiMeta!,
             derivedFromClaims: preservedDerivedFromClaims,
+            // conflictsWith は re-lift 対象ではなく、discovery が双方向に書いた矛盾関係
+            // （retire-summaries）。buildAtomDocument は素の新規 doc を返すため、
+            // ここで引き継がないと再生成のたびに矛盾フラグが消えてしまう。
+            conflictsWith: doc.wikiMeta?.conflictsWith,
             generatedBy: {
               model: atomResult.model ?? selectedModel ?? "unknown",
               version: "1.0.0",
@@ -10284,6 +10388,11 @@ export function NoteApp() {
     const doc = fm.activeDoc;
     (async () => {
       try {
+        // このバナーはローカル判定のみ（正規化タイトル一致＋embedding 候補 0.9）で、
+        // LLM は呼ばない設計 — ページを開くたびにモデルを呼ぶわけにはいかない。
+        // ここで拾う候補は「似ている」の提示であって、同じ/矛盾/別物の判定ではない
+        // （その判定は洞察discovery の resolveAtomDuplicates 側だけの役割。
+        //  矛盾の概念は Topic には持ち込まない）。
         const { duplicates } = await partitionCandidatesByEmbedding(
           [{ title: doc.title, body: extractBodyPreview(doc, 2000) }],
           existingTopicIds,
@@ -10363,7 +10472,7 @@ export function NoteApp() {
       populationTotal?: number;
     }) => void,
     options?: { signal?: AbortSignal },
-  ): Promise<{ ok: boolean; created: number; iterations: number; reinforced?: number; covered?: number; total?: number; error?: string; aborted?: boolean }> => {
+  ): Promise<{ ok: boolean; created: number; iterations: number; reinforced?: number; contradictions?: number; covered?: number; total?: number; error?: string; aborted?: boolean }> => {
     if (!isAtomLayerEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Atom layer is disabled" };
     }
@@ -10396,6 +10505,7 @@ export function NoteApp() {
 
     let totalCreated = 0;
     let totalReinforced = 0;
+    let totalContradictions = 0;
     let lastIteration = 0;
     try {
       for (let iter = 1; iter <= seeds.length; iter++) {
@@ -10442,26 +10552,21 @@ export function NoteApp() {
             .filter(([id, m]) => m.kind === "atom" && !hiddenWikiIds.has(id))
             .map(([id]) => id),
         );
-        const { kept, duplicates } = await partitionCandidatesByEmbedding(result.atoms, existingAtomDocIds);
-        totalReinforced += await applyAtomReinforcement({
-          duplicates,
+        const discoveryResult = await applyAtomDiscoveryResults({
+          atoms: result.atoms,
+          existingAtomDocIds,
+          language: getLocale(),
+          model: result.model ?? null,
+          atomLabel,
           loadDoc: fm.loadDoc,
+          createWikiFile: fm.handleCreateWikiFile,
           saveWikiFile: fm.handleSaveWikiFile,
         });
-        if (kept.length === 0) continue; // このクラスタの新規候補は既存と被り → 次のクラスタへ
-        for (const candidate of kept) {
-          const atomDoc = buildAtomDocument(candidate, result.model ?? null, getLocale());
-          const newId = await fm.handleCreateWikiFile(atomDoc, { activityType: "wiki_atomize" });
-          embedWikiSections(newId, atomDoc).catch(() => {});
-          wikiLog.append(
-            "ingest",
-            [newId],
-            `${atomLabel}: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
-          ).catch(() => {});
-          totalCreated += 1;
-          // 次イテレーションの dedup に渡す
-          existingAtomTitles.push(candidate.title);
-        }
+        totalCreated += discoveryResult.created;
+        totalReinforced += discoveryResult.reinforced;
+        totalContradictions += discoveryResult.contradictions;
+        // 次イテレーションの dedup に渡す
+        existingAtomTitles.push(...discoveryResult.createdTitles);
       }
       const coveredFinal = coveragePlan.cumulativeCovered[lastIteration - 1] ?? 0;
       setIngestToast((prev) => ({
@@ -10474,12 +10579,13 @@ export function NoteApp() {
                 result:
                   `${totalCreated} ${atomLabel}`
                   + (totalReinforced > 0 ? ` / ${tStatic("ingest.reinforced", { count: String(totalReinforced) })}` : "")
+                  + (totalContradictions > 0 ? ` / ${tStatic("ingest.contradictions", { count: String(totalContradictions) })}` : "")
                   + ` (${tStatic("ingest.atomizeCoverage", { covered: String(coveredFinal), total: String(coveragePlan.totalCount) })})`,
               }
             : i
         ),
       }));
-      return { ok: true, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, covered: coveredFinal, total: coveragePlan.totalCount };
+      return { ok: true, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, contradictions: totalContradictions, covered: coveredFinal, total: coveragePlan.totalCount };
     } catch (err) {
       // 中断・エラーでも「どこまで視野に入れたか」は実測値として返す（作成済み分は残る）
       const coveredSoFar = coveragePlan.cumulativeCovered[lastIteration - 1] ?? 0;
@@ -10490,7 +10596,7 @@ export function NoteApp() {
             i.id === toastId ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : i
           ),
         }));
-        return { ok: false, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, covered: coveredSoFar, total: coveragePlan.totalCount, aborted: true };
+        return { ok: false, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, contradictions: totalContradictions, covered: coveredSoFar, total: coveragePlan.totalCount, aborted: true };
       }
       console.error("Atomize discovery failed:", err);
       setIngestToast((prev) => ({
@@ -10498,7 +10604,7 @@ export function NoteApp() {
           i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
         ),
       }));
-      return { ok: false, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, covered: coveredSoFar, total: coveragePlan.totalCount, error: localizeAiError(err) };
+      return { ok: false, created: totalCreated, iterations: lastIteration, reinforced: totalReinforced, contradictions: totalContradictions, covered: coveredSoFar, total: coveragePlan.totalCount, error: localizeAiError(err) };
     }
   }, [fm, buildAtomizeClaimCandidates]);
 

@@ -565,6 +565,7 @@ export const ja: Record<string, string> = {
   "settings.maintenance.atomize.doneCount": "{count} 件の新規洞察を作成しました。",
   "settings.maintenance.atomize.coverage": "視野に入れた知見: {covered}/{total} 件",
   "settings.maintenance.atomize.reinforcedLine": "既存の洞察への支持追加: {count} 件",
+  "settings.maintenance.atomize.contradictionsLine": "既存の洞察と矛盾: {count} 件（両方を開いて確認できます）",
 
   "settings.maintenance.conceptSummaryModel": "知見 / トピックモデル",
   "settings.maintenance.synthesisAtomModel": "洞察モデル（知見 → 洞察の生成に使われます）",
@@ -2105,6 +2106,7 @@ export const ja: Record<string, string> = {
   "ingest.clusterProgress": "cluster {current}/{total} 「{title}」 ({count} {kind})",
   "ingest.noNewAtoms": "新規 {kind} なし",
   "ingest.reinforced": "支持追加 {count} 件",
+  "ingest.contradictions": "矛盾 {count} 件",
   // 話題（topic）段 — 知見の取り込み後、話題への割り当て・本文の書き直しを行う段階
   "ingest.topicsUpdating": "トピックを更新中 ({count})",
   "ingest.topicsDone": "トピック: 作成 {created} 件・更新 {updated} 件",

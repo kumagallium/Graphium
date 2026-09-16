@@ -565,6 +565,7 @@ export const en: Record<string, string> = {
   "settings.maintenance.atomize.doneCount": "{count} new Insight(s) created.",
   "settings.maintenance.atomize.coverage": "Claims in view: {covered}/{total}",
   "settings.maintenance.atomize.reinforcedLine": "Reinforced existing Insights: {count}",
+  "settings.maintenance.atomize.contradictionsLine": "Contradicts existing Insights: {count} (open both to compare)",
 
   "settings.maintenance.conceptSummaryModel": "Claims / Topics model",
   "settings.maintenance.synthesisAtomModel": "Insight model (used when generating Insights from Claims)",
@@ -2106,6 +2107,7 @@ export const en: Record<string, string> = {
   "ingest.clusterProgress": "cluster {current}/{total} \"{title}\" ({count} {kind})",
   "ingest.noNewAtoms": "No new {kind}",
   "ingest.reinforced": "{count} reinforced",
+  "ingest.contradictions": "{count} contradiction(s)",
   // Topic stage — after ingesting claims, assign them to topics and rewrite topic bodies
   "ingest.topicsUpdating": "Updating topics ({count})",
   "ingest.topicsDone": "Topics: {created} created, {updated} updated",

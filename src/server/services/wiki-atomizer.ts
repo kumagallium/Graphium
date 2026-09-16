@@ -848,3 +848,91 @@ export function resolveFoldVerdict(
   }
   return { confirmed, dropped: sentIds.length - confirmed.length, changed: true };
 }
+
+// ============================================================
+// 洞察（Atom）重複判定の LLM ジャッジ — embedding は候補探し止まり
+// ------------------------------------------------------------
+// partitionCandidatesByEmbedding（embedding 類似度 > 0.9）は「候補探し」に降格した。
+// 埋め込みは否定・方向の違い（「下がる」vs「上がる」）に鈍く、矛盾する洞察が
+// 支持（reinforce）として統合され、矛盾が合意に見える事故があった。
+// 同じ / 矛盾 / 別物 の最終判定はこのジャッジ（LLM）が行う — 越境転移(transfer)判定と
+// 同じ「判断の仕事は LLM に」という流儀。
+//
+// - same: 表現・粒度の違いは無視して同じ主張 → 既存 Atom への支持追加（reinforce）
+// - contradiction: 同じ対象について方向・条件・結論が食い違う → 新しい Atom を別に作り、
+//   両方を残した上で conflictsWith に互いの ID を書く（点検に "contradiction" として出る）
+// - different: それ以外 → 新規作成（従来の kept 相当）
+//
+// 壊れた JSON や判定が返らなかった対は "different" 扱いに倒す（fail-closed。
+// 黙って統合しない側に倒すほうが安全 — 未確認の重複統合は矛盾を合意に見せてしまう）。
+// ============================================================
+
+export type AtomDuplicateJudgePair = {
+  candidate: { title: string; body: string };
+  existing: { id: string; title: string; body: string };
+};
+
+export type AtomDuplicateJudgeVerdict = "same" | "contradiction" | "different";
+
+export type AtomDuplicateJudgeResult = {
+  /** 送った順の 1-based index（同じ existingId が複数対に現れても位置で対応づけられるように） */
+  index: number;
+  existingId: string;
+  verdict: AtomDuplicateJudgeVerdict;
+  reason: string;
+};
+
+export function buildAtomDuplicateJudgeSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a careful reviewer deciding whether a newly discovered Atom (a transferable structural insight for Graphium) duplicates an existing Atom. Embedding similarity already narrowed the pair down as a *candidate* — your job is the actual judgment.
+
+For each pair (a candidate Atom and one existing Atom it was matched against), decide \`verdict\`:
+- **"same"**: the candidate asserts the SAME claim as the existing Atom. Differences in wording, phrasing, or level of detail do NOT matter — if the underlying structural claim is identical, it is "same".
+- **"contradiction"**: the two are about the SAME subject/relationship but disagree on direction, condition, or conclusion (e.g. one says a quantity increases under a condition, the other says it decreases under the same or overlapping condition). This is NOT "same" — do not merge a contradiction into "same".
+- **"different"**: neither of the above — the candidate is about a different subject, a different relationship, or a different enough scope that it should stand as its own Atom.
+- When you cannot tell (ambiguous, insufficient information), prefer "different" — do not force "same" or "contradiction" without a clear textual basis.
+- \`reason\`: one short line naming the specific point of agreement/conflict/difference.
+
+Return JSON only: {"verdicts":[{"index":<the index given>,"existingId":"<the existing id given verbatim>","verdict":"same"|"contradiction"|"different","reason":"..."}]}.
+Output language: ${ja ? "Japanese" : "English"}.`;
+}
+
+export function buildAtomDuplicateJudgeUserMessage(pairs: AtomDuplicateJudgePair[]): string {
+  const blocks = pairs.map((p, i) => {
+    return `[${i + 1}] (existingId: ${p.existing.id})
+candidate: "${p.candidate.title}" — ${p.candidate.body}
+existing:  "${p.existing.title}" — ${p.existing.body}`;
+  });
+  return `Judge whether each candidate Atom duplicates, contradicts, or differs from the existing Atom it was matched against:\n\n${blocks.join("\n\n")}`;
+}
+
+export function parseAtomDuplicateJudgeOutput(text: string): AtomDuplicateJudgeResult[] {
+  try {
+    let jsonText = text.trim();
+    const m = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (m) jsonText = m[1].trim();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (err) {
+      // 壊れた JSON（途中切断など）は jsonrepair で機械修復を試みる。それでも失敗したら
+      // 呼び出し元が空配列を受け取り、全ペアが fail-closed で "different" 扱いになる。
+      parsed = JSON.parse(jsonrepair(jsonText));
+      void err;
+    }
+    const arr = (parsed as { verdicts?: unknown })?.verdicts ?? parsed;
+    if (!Array.isArray(arr)) return [];
+    const VALID: AtomDuplicateJudgeVerdict[] = ["same", "contradiction", "different"];
+    return arr
+      .filter((a: any) => a && typeof a.existingId === "string" && VALID.includes(a.verdict))
+      .map((a: any) => ({
+        index: typeof a.index === "number" ? a.index : 0,
+        existingId: a.existingId.trim(),
+        verdict: a.verdict as AtomDuplicateJudgeVerdict,
+        reason: typeof a.reason === "string" ? a.reason : "",
+      }));
+  } catch (err) {
+    console.warn("Atom duplicate judge 出力のパース失敗（fail-closed: different 扱い）:", err);
+    return [];
+  }
+}

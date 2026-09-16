@@ -24,6 +24,8 @@ import {
   parseFoldJudgeOutput,
   buildFoldJudgeUserMessage,
   resolveFoldVerdict,
+  buildAtomDuplicateJudgeUserMessage,
+  parseAtomDuplicateJudgeOutput,
 } from "./wiki-atomizer.ts";
 
 describe("detectRung1Tokens — corpus-actual failing tokens", () => {
@@ -473,5 +475,55 @@ describe("resolveFoldVerdict — subset / collapse rules", () => {
   });
   it("collapses to first when judge returns only hallucinated ids", () => {
     expect(resolveFoldVerdict(["c1", "c2"], ["zzz"])).toEqual({ confirmed: ["c1"], dropped: 1, changed: true });
+  });
+});
+
+describe("parseAtomDuplicateJudgeOutput / buildAtomDuplicateJudgeUserMessage — 洞察重複の same/contradiction/different 判定", () => {
+  it("parses verdicts for same / contradiction / different", () => {
+    const json = JSON.stringify({
+      verdicts: [
+        { index: 1, existingId: "e1", verdict: "same", reason: "identical claim" },
+        { index: 2, existingId: "e2", verdict: "contradiction", reason: "opposite direction" },
+        { index: 3, existingId: "e3", verdict: "different", reason: "different subject" },
+      ],
+    });
+    const out = parseAtomDuplicateJudgeOutput(json);
+    expect(out).toHaveLength(3);
+    expect(out[0]).toEqual({ index: 1, existingId: "e1", verdict: "same", reason: "identical claim" });
+    expect(out[1].verdict).toBe("contradiction");
+    expect(out[2].verdict).toBe("different");
+  });
+
+  it("drops entries with an unknown verdict value (fail-closed at call site, not here)", () => {
+    const json = JSON.stringify({
+      verdicts: [{ index: 1, existingId: "e1", verdict: "maybe", reason: "unsure" }],
+    });
+    expect(parseAtomDuplicateJudgeOutput(json)).toEqual([]);
+  });
+
+  it("returns [] on malformed JSON that jsonrepair cannot fix (caller falls back to 'different')", () => {
+    expect(parseAtomDuplicateJudgeOutput("not json at all {{{")).toEqual([]);
+  });
+
+  it("repairs truncated JSON via jsonrepair when possible", () => {
+    // 末尾が切れた JSON（出力上限による途中切断を模擬）。有効な最初の要素は salvage される。
+    const truncated = `{"verdicts":[{"index":1,"existingId":"e1","verdict":"same","reason":"ok"}`;
+    const out = parseAtomDuplicateJudgeOutput(truncated);
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    expect(out[0].existingId).toBe("e1");
+    expect(out[0].verdict).toBe("same");
+  });
+
+  it("builds a judge message with candidate/existing title+body per pair", () => {
+    const msg = buildAtomDuplicateJudgeUserMessage([
+      {
+        candidate: { title: "電気陰性度差が小さいと移動度が高い", body: "..." },
+        existing: { id: "e1", title: "電気陰性度差が大きいと移動度が高い", body: "..." },
+      },
+    ]);
+    expect(msg).toContain("[1]");
+    expect(msg).toContain("existingId: e1");
+    expect(msg).toContain("電気陰性度差が小さいと移動度が高い");
+    expect(msg).toContain("電気陰性度差が大きいと移動度が高い");
   });
 });

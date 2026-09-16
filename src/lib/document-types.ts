@@ -533,6 +533,18 @@ export type WikiMeta = {
    */
   relatedAtoms?: AtomRelation[];
   /**
+   * 矛盾する既存洞察（Atom）の ID リスト（retire-summaries: 埋め込み重複判定の LLM 化）。
+   *
+   * discovery が既存 Atom との重複候補を出したとき、embedding は「候補探し」にすぎず、
+   * 同じ/矛盾/別物の最終判定は LLM（judgeAtomDuplicates）が行う。矛盾（contradiction）
+   * と判定された場合は既存 Atom を書き換えず、新しい Atom を別に作った上で双方の
+   * `conflictsWith` に互いの ID を書く（片方向にしない）。点検（wiki-linter の
+   * detectLocalIssues）はこのフィールドを見て "contradiction" issue を機械的に列挙する。
+   *
+   * **atom のみ意味を持つ**。空配列 / undefined は矛盾なし。
+   */
+  conflictsWith?: string[];
+  /**
    * 世界モデル照合の結果（world-model-grounding, Phase 2）。
    *
    * 別レーン契約: epistemicStatus / hypothesisStatus は読むだけで書き換えない。
