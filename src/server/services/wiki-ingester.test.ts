@@ -10,6 +10,8 @@ import {
   parseTopics,
   parseIngesterOutput,
   buildIngesterSystemPrompt,
+  buildClaimDuplicateJudgeUserMessage,
+  parseClaimDuplicateJudgeOutput,
   type ExistingWikiInfo,
 } from "./wiki-ingester.ts";
 
@@ -133,5 +135,52 @@ describe("buildIngesterSystemPrompt - 既存話題一覧の注入", () => {
     const prompt = buildIngesterSystemPrompt("en", []);
     const topicsSection = prompt.slice(prompt.indexOf("### Topics (existing)"));
     expect(topicsSection).toContain("(none yet)");
+  });
+});
+
+describe("parseClaimDuplicateJudgeOutput / buildClaimDuplicateJudgeUserMessage — 知見(claim) 重複の same/different 判定（#950）", () => {
+  it("parses verdicts for same / different", () => {
+    const json = JSON.stringify({
+      verdicts: [
+        { index: 1, existingId: "e1", verdict: "same", reason: "identical claim" },
+        { index: 2, existingId: "e2", verdict: "different", reason: "different subject" },
+      ],
+    });
+    const out = parseClaimDuplicateJudgeOutput(json);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual({ index: 1, existingId: "e1", verdict: "same", reason: "identical claim" });
+    expect(out[1].verdict).toBe("different");
+  });
+
+  it("contradiction は認識しない（知見に矛盾の概念は持ち込まない）", () => {
+    const json = JSON.stringify({
+      verdicts: [{ index: 1, existingId: "e1", verdict: "contradiction", reason: "opposite direction" }],
+    });
+    expect(parseClaimDuplicateJudgeOutput(json)).toEqual([]);
+  });
+
+  it("returns [] on malformed JSON that jsonrepair cannot fix (caller falls back to 'different')", () => {
+    expect(parseClaimDuplicateJudgeOutput("not json at all {{{")).toEqual([]);
+  });
+
+  it("repairs truncated JSON via jsonrepair when possible", () => {
+    const truncated = `{"verdicts":[{"index":1,"existingId":"e1","verdict":"same","reason":"ok"}`;
+    const out = parseClaimDuplicateJudgeOutput(truncated);
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    expect(out[0].existingId).toBe("e1");
+    expect(out[0].verdict).toBe("same");
+  });
+
+  it("builds a judge message with candidate/existing title+body per pair", () => {
+    const msg = buildClaimDuplicateJudgeUserMessage([
+      {
+        candidate: { title: "還元反応の活性化エネルギーは 120 kJ/mol", body: "..." },
+        existing: { id: "e1", title: "還元反応の活性化エネルギーは約 120 kJ/mol", body: "..." },
+      },
+    ]);
+    expect(msg).toContain("[1]");
+    expect(msg).toContain("existingId: e1");
+    expect(msg).toContain("還元反応の活性化エネルギーは 120 kJ/mol");
+    expect(msg).toContain("還元反応の活性化エネルギーは約 120 kJ/mol");
   });
 });

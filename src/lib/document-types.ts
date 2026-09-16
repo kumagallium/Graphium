@@ -641,6 +641,17 @@ export type WikiMetaSummary = {
   derivedFromClaims?: string[];
   /** この Claim が所属する話題ページの ID リスト（claim のみ） */
   topicIds?: string[];
+  /**
+   * 生成元ノート ID リスト（claim のみ意味を持つ）。一括ナレッジ化で「ノートが既に
+   * ナレッジ化済みか」を index を読まずに判定する（latestClaimIngestedAtForNote）ため
+   * に mirror する。
+   */
+  derivedFromNotes?: string[];
+  /**
+   * 最後に Ingest を実行した日時（claim のみ意味を持つ）。ノートの更新時刻と比較して
+   * 「既にナレッジ化済みで未変更」を判定する（isNoteUnchangedSinceIngest）ために mirror する。
+   */
+  lastIngestedAt?: string;
   /** Synthesis の推論モード */
   synthesisMode?: SynthesisMode;
   /**

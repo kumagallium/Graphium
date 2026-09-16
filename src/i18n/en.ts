@@ -2162,6 +2162,8 @@ export const en: Record<string, string> = {
   "ingest.autoArchived": "Archived {count} empty page(s) (restorable from Archive)",
   "ingest.provFailed": "Could not generate a PROV structure",
   "ingest.skippedWikiNotes": "Skipped {count} Knowledge page(s)",
+  "ingest.claimsMerged": "{count} merged as duplicate",
+  "ingest.skippedUnchanged": "Skipped {count} already in knowledge and unchanged",
   "ingest.enterUrl": "Enter a URL:",
   "ingest.pdfNoText": "Could not extract enough text from the PDF (scanned PDF?)",
   "ingest.docxNoText": "Could not extract enough text from the Word file",

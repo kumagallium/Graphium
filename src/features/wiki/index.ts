@@ -38,10 +38,14 @@ export {
   // インライン引用リンク
   buildNoteIndex,
   // Topic（話題）
-  normalizeTopicTitle, matchTopicsByTitle, resolveTopicsForClaim,
+  normalizeTopicTitle, normalizeWikiTitle, matchTopicsByTitle, resolveTopicsForClaim,
   linkClaimAndTopic, unlinkClaimFromTopic,
   composeTopicBody, buildTopicDocument, rebuildTopicDocument,
   type ExistingTopicRef, type TopicMatch, type TopicComposeClaim,
+  // 知見(claim) 重複判定（create 側のコード突き合わせ）
+  judgeClaimDuplicates, resolveClaimDuplicate,
+  latestClaimIngestedAtForNote, isNoteUnchangedSinceIngest,
+  type ClaimDuplicateVerdict, type ClaimDuplicateJudgeVerdict, type ClaimDuplicateMatch,
 } from "./wiki-service";
 export type { ClaimSnapshot } from "../../server/services/wiki-types";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";

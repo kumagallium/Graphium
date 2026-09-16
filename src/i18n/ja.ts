@@ -2161,6 +2161,8 @@ export const ja: Record<string, string> = {
   "ingest.autoArchived": "{count} 件の空ページをアーカイブしました（アーカイブから戻せます）",
   "ingest.provFailed": "PROV 構造を生成できませんでした",
   "ingest.skippedWikiNotes": "ナレッジはスキップしました（{count} 件）",
+  "ingest.claimsMerged": "{count} 件は重複として既存にまとめました",
+  "ingest.skippedUnchanged": "{count} 件は取り込み済みで変更がないため外しました",
   "ingest.enterUrl": "URL を入力してください:",
   "ingest.pdfNoText": "PDF から十分なテキストを抽出できませんでした（スキャン PDF など？）",
   "ingest.docxNoText": "Word から十分なテキストを抽出できませんでした",

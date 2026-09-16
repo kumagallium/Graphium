@@ -2317,12 +2317,21 @@ export type TopicMatch =
   | { status: "new"; title: string };
 
 /**
- * 話題名の正規化（一致判定専用）。NFKC 正規化・空白（全角含む）全除去・小文字化。
- * 「AI3V合金」と「AI3V 合金」のような内部の空白差だけの表記ゆれも同一視する。
- * 表示用タイトルは常に元の文字列を使う（正規化結果を保存しない）。
+ * Wiki ドキュメントのタイトル正規化（一致判定専用）。NFKC 正規化・空白（全角含む）
+ * 全除去・小文字化。「AI3V合金」と「AI3V 合金」のような内部の空白差だけの表記ゆれも
+ * 同一視する。表示用タイトルは常に元の文字列を使う（正規化結果を保存しない）。
+ *
+ * トピックの重複判定（matchTopicsByTitle）と知見(claim)の重複判定
+ * （resolveClaimDuplicate）が共通で使う正規化規則。新しい正規化規則を増やさず、
+ * ここに一本化する。
  */
-export function normalizeTopicTitle(title: string): string {
+export function normalizeWikiTitle(title: string): string {
   return title.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+}
+
+/** @deprecated normalizeWikiTitle に統合済み。既存呼び出し元の互換のためだけに残す。 */
+export function normalizeTopicTitle(title: string): string {
+  return normalizeWikiTitle(title);
 }
 
 /**
@@ -2335,11 +2344,11 @@ export function matchTopicsByTitle(
 ): TopicMatch[] {
   const byNormalizedTitle = new Map<string, ExistingTopicRef>();
   for (const t of existingTopics) {
-    const key = normalizeTopicTitle(t.title);
+    const key = normalizeWikiTitle(t.title);
     if (!byNormalizedTitle.has(key)) byNormalizedTitle.set(key, t);
   }
   return topicTitles.map((title) => {
-    const hit = byNormalizedTitle.get(normalizeTopicTitle(title));
+    const hit = byNormalizedTitle.get(normalizeWikiTitle(title));
     return hit
       ? { status: "matched" as const, title, topicId: hit.id, via: "title" as const }
       : { status: "new" as const, title };
@@ -2370,7 +2379,7 @@ export async function resolveTopicsForClaim(
   const dedupedTitles: string[] = [];
   const seen = new Set<string>();
   for (const title of topicTitles) {
-    const key = normalizeTopicTitle(title);
+    const key = normalizeWikiTitle(title);
     if (seen.has(key)) continue;
     seen.add(key);
     dedupedTitles.push(title);
@@ -2389,12 +2398,12 @@ export async function resolveTopicsForClaim(
     existingTopicIds,
   );
   const matchedByEmbedding = new Map(
-    partition.duplicates.map((d) => [normalizeTopicTitle(d.candidate.title), d] as const),
+    partition.duplicates.map((d) => [normalizeWikiTitle(d.candidate.title), d] as const),
   );
 
   return byTitle.map((m) => {
     if (m.status === "matched") return m;
-    const hit = matchedByEmbedding.get(normalizeTopicTitle(m.title));
+    const hit = matchedByEmbedding.get(normalizeWikiTitle(m.title));
     if (!hit) return m;
     return {
       status: "matched" as const,
@@ -2404,6 +2413,193 @@ export async function resolveTopicsForClaim(
       score: hit.score,
     };
   });
+}
+
+// ── 知見(claim)の重複判定（create 側のコード突き合わせ）──
+//
+// トピック（resolveTopicsForClaim）・洞察(Atom)（partitionCandidatesByEmbedding +
+// resolveAtomDuplicates）は既にコード側の二段構え（正規化タイトル一致 → embedding
+// 候補探し → 最終判定）を持つが、知見だけ ingester の suggestedAction/mergeTargetId
+// という自己申告に頼りきりで、コード側の突き合わせが無かった（#950）。
+//
+// ingester が "merge" と申告し、対象 ID が実在するときはモデルの判断（ノート本文という
+// 一番濃い文脈を見て判断している）をそのまま尊重する — ここでは触らない。
+// 穴は "create" 側にあるため、create と判断された知見候補だけをここで突き合わせる。
+//
+// 知見は出典つきの命題であり、Atom の judgeAtomDuplicates と違って "contradiction" は
+// 持ち込まない（矛盾は点検＝wiki-linter の contradiction 検出が扱う領域）。same /
+// different の 2 値のみ。
+
+/** 知見(claim) 重複判定 1 件の判定結果（サーバー /judge-claim-duplicates と対応） */
+export type ClaimDuplicateVerdict = "same" | "different";
+export type ClaimDuplicateJudgeVerdict = {
+  index: number;
+  existingId: string;
+  verdict: ClaimDuplicateVerdict;
+  reason: string;
+};
+
+/**
+ * embedding で見つかった知見(claim)重複「候補」を LLM に判定させる（同じ / 別物）。
+ * judgeAtomDuplicates と同じ流儀 — embedding は候補探しに過ぎず、最終判定は LLM が行う。
+ *
+ * モデルは取り込み(ingest)と同じ既定モデルを使う（重複判定は分類の仕事で、ingest 本体の
+ * 抽出判断より易しいため、洞察のように insight スロットへ昇格させる必要は無い）。
+ *
+ * fail-closed: API 失敗・壊れた出力・判定が返らなかった対は呼び出し側で "different"
+ * （= 新規作成）扱いに倒す（このヘルパー自体は空配列を返すだけ）。
+ */
+export async function judgeClaimDuplicates(
+  pairs: { candidate: { title: string; body: string }; existing: { id: string; title: string; body: string } }[],
+  language: string,
+  options?: { model?: string; signal?: AbortSignal },
+): Promise<ClaimDuplicateJudgeVerdict[]> {
+  if (pairs.length === 0) return [];
+  try {
+    const res = await fetch(`${API_BASE}/judge-claim-duplicates`, {
+      method: "POST",
+      headers: wikiHeaders("default"),
+      body: JSON.stringify({
+        pairs,
+        language,
+        ...(options?.model ? { model: options.model } : wikiBodyModel("default")),
+      }),
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+    if (!res.ok) {
+      console.warn("judgeClaimDuplicates failed (fail-closed: different 扱い):", res.status);
+      return [];
+    }
+    const data = (await res.json()) as { verdicts?: ClaimDuplicateJudgeVerdict[] };
+    return data.verdicts ?? [];
+  } catch (err) {
+    console.warn("judgeClaimDuplicates failed (fail-closed: different 扱い):", err);
+    return [];
+  }
+}
+
+/** ingester が "create" と判断した知見(claim)候補 1 件を既存知見と突き合わせた結果 */
+export type ClaimDuplicateMatch =
+  | { status: "same"; matchedId: string; matchedTitle: string; via: "title" | "embedding"; score?: number }
+  | { status: "new" };
+
+/**
+ * ingester が "create" と判断した知見(claim)候補を、保存前に既存の知見と突き合わせる。
+ *
+ * 1. 正規化タイトル完全一致（normalizeWikiTitle） → 即 same（title 経路）
+ * 2. 一致しなければ embedding 類似度 > 0.9（partitionCandidatesByEmbedding、既存の
+ *    閾値をそのまま使う）で候補を絞り、LLM（judgeClaimDuplicates）に same / different を
+ *    判定させる
+ *
+ * 判定不能（embedding 未設定・API 失敗・既存本文が読めない・LLM 出力が壊れている）は
+ * すべて "new"（新規作成）に倒す — 黙って統合しない側を優先する fail-closed。
+ *
+ * loadExisting は既存 claim の title/body を取得するコールバック（呼び出し側の
+ * loadDoc を渡す。resolveAtomDuplicates と同じパターン）。
+ */
+export async function resolveClaimDuplicate(
+  candidate: { title: string; body: string },
+  existingClaims: { id: string; title: string }[],
+  loadExisting: (docId: string) => Promise<{ title: string; body: string } | null>,
+  language: string,
+  options?: { model?: string; signal?: AbortSignal },
+): Promise<ClaimDuplicateMatch> {
+  // 1段階目: 正規化タイトル完全一致
+  const key = normalizeWikiTitle(candidate.title);
+  const titleHit = existingClaims.find((c) => normalizeWikiTitle(c.title) === key);
+  if (titleHit) {
+    return { status: "same", matchedId: titleHit.id, matchedTitle: titleHit.title, via: "title" };
+  }
+  if (existingClaims.length === 0) return { status: "new" };
+
+  // 2段階目: embedding 候補探し（候補は 1 件なので配列でラップして渡す）
+  const existingClaimIds = new Set(existingClaims.map((c) => c.id));
+  const { duplicates } = await partitionCandidatesByEmbedding([candidate], existingClaimIds);
+  if (duplicates.length === 0) return { status: "new" };
+
+  return judgeEmbeddingMatchedClaimDuplicate(candidate, duplicates[0], loadExisting, language, options);
+}
+
+/**
+ * embedding 候補探し（partitionCandidatesByEmbedding）が見つけた候補 1 件について、
+ * LLM（judgeClaimDuplicates）で same / different を判定する — resolveClaimDuplicate の
+ * 2 段階目を切り出したもの。embedding 候補探し自体（fetch + embeddingStore 依存）を
+ * モックせずに same / different / 判定失敗の 3 分岐をテストできるようにするため分離した。
+ *
+ * 判定不能（既存本文が読めない・LLM 出力が壊れている・不整合）はすべて "new" に倒す
+ * （fail-closed）。
+ */
+export async function judgeEmbeddingMatchedClaimDuplicate(
+  candidate: { title: string; body: string },
+  dup: { matchedDocId: string; score: number },
+  loadExisting: (docId: string) => Promise<{ title: string; body: string } | null>,
+  language: string,
+  options?: { model?: string; signal?: AbortSignal },
+): Promise<ClaimDuplicateMatch> {
+  const existing = await loadExisting(dup.matchedDocId);
+  if (!existing) return { status: "new" }; // 本文が読めない → fail-closed
+
+  const verdicts = await judgeClaimDuplicates(
+    [{ candidate, existing: { id: dup.matchedDocId, title: existing.title, body: existing.body } }],
+    language,
+    options,
+  );
+  // resolveAtomDuplicates と同じく index/existingId の対応を確認してから採用する
+  // （1 候補 = 1 ペアの呼び出しだが、LLM が index や existingId を取り違えて返す
+  // 事故を検出できるようにしておく）。
+  const v = verdicts.find((r) => r.index === 1 && r.existingId === dup.matchedDocId) ?? verdicts[0];
+  if (!v || v.verdict !== "same" || v.existingId !== dup.matchedDocId) return { status: "new" }; // 判定不能・不整合・different → new
+
+  return { status: "same", matchedId: dup.matchedDocId, matchedTitle: existing.title, via: "embedding", score: dup.score };
+}
+
+/**
+ * ノート ID から作られた知見(claim)群のうち、最後に Ingest した日時（ISO 文字列）の
+ * 最大値を返す。1 件も無ければ undefined（= 未ナレッジ化）。
+ * 一括ナレッジ化で「既にナレッジ化済みで、かつ前回の取り込み以降変わっていない」
+ * ノートを外す判定（isNoteUnchangedSinceIngest）の入力に使う純粋関数。
+ *
+ * livingClaimIds は「生きている（ゴミ箱送り・アーカイブされていない）知見 ID」の集合。
+ * wikiMetas はゴミ箱送りになっても消えない（handleDeleteWikiFile はインデックスに
+ * deletedAt を立てるだけ）ため、これで候補から除外しないと、知見を全部ゴミ箱に送った
+ * ノートが「取り込み済みで変更なし」判定のまま一括ナレッジ化から外れ続けてしまう。
+ */
+export function latestClaimIngestedAtForNote(
+  noteId: string,
+  wikiMetas: Map<string, WikiMetaSummary>,
+  livingClaimIds: Set<string>,
+): string | undefined {
+  let latest: string | undefined;
+  for (const [claimId, meta] of wikiMetas) {
+    if (meta.kind !== "claim") continue;
+    if (!livingClaimIds.has(claimId)) continue;
+    if (!meta.derivedFromNotes?.includes(noteId)) continue;
+    if (!meta.lastIngestedAt) continue;
+    if (!latest || new Date(meta.lastIngestedAt).getTime() > new Date(latest).getTime()) {
+      latest = meta.lastIngestedAt;
+    }
+  }
+  return latest;
+}
+
+/**
+ * ノートが「既にナレッジ化済みで、かつ前回の取り込み以降変更されていない」かどうかを
+ * 判定する（一括ナレッジ化から外す対象の判定）。時刻の比較だけで決まる決定的な純関数。
+ *
+ * - knowledgedAt が無い（一度もナレッジ化されていない）→ false（通す）
+ * - ノートの更新がナレッジ化より後（編集したノートの再取り込みは正当な操作。マニュアルにも
+ *   「更新したノートでもう一度実行すると、既存の項目が重複せずに再生成される」とある）
+ *   → false（通す）
+ * - それ以外（ナレッジ化済みで未変更）→ true（外す）
+ * - 日時がパースできない場合は fail-open（false = 通す。誤って正当な再取り込みの機会を
+ *   奪わない）
+ */
+export function isNoteUnchangedSinceIngest(noteModifiedAt: string, knowledgedAt: string | undefined): boolean {
+  if (!knowledgedAt) return false;
+  const modified = new Date(noteModifiedAt).getTime();
+  const knowledged = new Date(knowledgedAt).getTime();
+  if (Number.isNaN(modified) || Number.isNaN(knowledged)) return false;
+  return modified <= knowledged;
 }
 
 /**

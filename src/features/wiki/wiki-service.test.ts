@@ -15,10 +15,15 @@ import {
   rebuildTopicDocument,
   resolveAtomDuplicates,
   extractWikiDetail,
+  judgeClaimDuplicates,
+  resolveClaimDuplicate,
+  judgeEmbeddingMatchedClaimDuplicate,
+  latestClaimIngestedAtForNote,
+  isNoteUnchangedSinceIngest,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
-import type { WikiMeta } from "../../lib/document-types";
+import type { WikiMeta, WikiMetaSummary } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 
 const emptyIndex: any[] = [];
@@ -390,6 +395,258 @@ describe("resolveAtomDuplicates - embedding 候補を LLM 判定（same/contradi
     const result = await resolveAtomDuplicates([], loadExisting, "ja");
     expect(result).toEqual({ different: [], same: [], contradiction: [] });
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("judgeClaimDuplicates - 知見(claim) 重複候補の LLM 判定（same/different、contradiction は無し）", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const pair = (candidateTitle: string, existingId: string) => ({
+    candidate: { title: candidateTitle, body: `body of ${candidateTitle}` },
+    existing: { id: existingId, title: `existing ${existingId}`, body: "..." },
+  });
+
+  it("same / different の判定をそのまま返す", async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        verdicts: [
+          { index: 1, existingId: "e1", verdict: "same", reason: "identical claim" },
+          { index: 2, existingId: "e2", verdict: "different", reason: "unrelated" },
+        ],
+      }),
+    });
+    const result = await judgeClaimDuplicates([pair("A", "e1"), pair("B", "e2")], "ja");
+    expect(result).toEqual([
+      { index: 1, existingId: "e1", verdict: "same", reason: "identical claim" },
+      { index: 2, existingId: "e2", verdict: "different", reason: "unrelated" },
+    ]);
+  });
+
+  it("API 失敗時は空配列（fail-closed: 呼び出し側が different 扱いに倒す）", async () => {
+    (global.fetch as any).mockResolvedValue({ ok: false, status: 500 });
+    const result = await judgeClaimDuplicates([pair("A", "e1")], "ja");
+    expect(result).toEqual([]);
+  });
+
+  it("fetch 自体が例外を投げても空配列（fail-closed）", async () => {
+    (global.fetch as any).mockRejectedValue(new Error("network error"));
+    const result = await judgeClaimDuplicates([pair("A", "e1")], "ja");
+    expect(result).toEqual([]);
+  });
+
+  it("ペアが 0 件なら fetch を呼ばない", async () => {
+    const result = await judgeClaimDuplicates([], "ja");
+    expect(result).toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveClaimDuplicate - create 判断の知見(claim) を既存知見と突き合わせる（#950）", () => {
+  it("正規化タイトル完全一致は embedding を経由せず same を返す", async () => {
+    const existing = [{ id: "claim-1", title: "還元反応の活性化エネルギー" }];
+    const loadExisting = vi.fn(async () => ({ title: "x", body: "y" }));
+    const result = await resolveClaimDuplicate(
+      { title: "還元反応の活性化エネルギー", body: "本文" },
+      existing,
+      loadExisting,
+      "ja",
+    );
+    expect(result).toEqual({
+      status: "same",
+      matchedId: "claim-1",
+      matchedTitle: "還元反応の活性化エネルギー",
+      via: "title",
+    });
+    expect(loadExisting).not.toHaveBeenCalled();
+  });
+
+  it("空白差・NFKC 差だけのタイトルも一致とみなす", async () => {
+    const existing = [{ id: "claim-1", title: "Al3V合金" }];
+    const loadExisting = vi.fn(async () => ({ title: "x", body: "y" }));
+    const result = await resolveClaimDuplicate(
+      { title: "Al3V 合金", body: "本文" },
+      existing,
+      loadExisting,
+      "ja",
+    );
+    expect(result.status).toBe("same");
+  });
+
+  it("既存知見が無ければ即 new（embedding API を叩かない）", async () => {
+    const loadExisting = vi.fn(async () => ({ title: "x", body: "y" }));
+    const result = await resolveClaimDuplicate(
+      { title: "新しい知見", body: "本文" },
+      [],
+      loadExisting,
+      "ja",
+    );
+    expect(result).toEqual({ status: "new" });
+    expect(loadExisting).not.toHaveBeenCalled();
+  });
+
+  it("タイトル不一致・embedding モデル未設定時は fail-open で new になる", async () => {
+    // テスト環境では embedding モデル未設定 → partitionCandidatesByEmbedding が
+    // fail-open（全件 kept）で返るため、LLM 判定まで進まず new に倒れる。
+    const existing = [{ id: "claim-1", title: "既存の知見" }];
+    const loadExisting = vi.fn(async () => ({ title: "x", body: "y" }));
+    const result = await resolveClaimDuplicate(
+      { title: "まったく別の知見", body: "本文" },
+      existing,
+      loadExisting,
+      "ja",
+    );
+    expect(result).toEqual({ status: "new" });
+    expect(loadExisting).not.toHaveBeenCalled();
+  });
+});
+
+describe("judgeEmbeddingMatchedClaimDuplicate - resolveClaimDuplicate の embedding 後段（same/different/判定失敗の3分岐）", () => {
+  // resolveClaimDuplicate 本体は partitionCandidatesByEmbedding（fetch + embeddingStore + LLM
+  // モデル設定）に依存するためテスト環境では常に fail-open で通り過ぎてしまう。埋め込み候補が
+  // 既に見つかった後の判定部分（この関数）を直接叩くことで、same/different/判定失敗の
+  // 3 分岐を通す。
+  const originalFetch = global.fetch;
+  const candidate = { title: "新候補", body: "本文" };
+  const dup = { matchedDocId: "claim-1", score: 0.95 };
+
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("same 判定は matchedId / matchedTitle / via:embedding / score を伴って same を返す", async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        verdicts: [{ index: 1, existingId: "claim-1", verdict: "same", reason: "identical" }],
+      }),
+    });
+    const loadExisting = vi.fn(async () => ({ title: "既存の知見", body: "既存本文" }));
+    const result = await judgeEmbeddingMatchedClaimDuplicate(candidate, dup, loadExisting, "ja");
+    expect(result).toEqual({
+      status: "same",
+      matchedId: "claim-1",
+      matchedTitle: "既存の知見",
+      via: "embedding",
+      score: 0.95,
+    });
+  });
+
+  it("different 判定は new に倒す", async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        verdicts: [{ index: 1, existingId: "claim-1", verdict: "different", reason: "unrelated" }],
+      }),
+    });
+    const loadExisting = vi.fn(async () => ({ title: "既存の知見", body: "既存本文" }));
+    const result = await judgeEmbeddingMatchedClaimDuplicate(candidate, dup, loadExisting, "ja");
+    expect(result).toEqual({ status: "new" });
+  });
+
+  it("LLM 呼び出し失敗（判定不能）は fail-closed で new に倒す", async () => {
+    (global.fetch as any).mockResolvedValue({ ok: false, status: 500 });
+    const loadExisting = vi.fn(async () => ({ title: "既存の知見", body: "既存本文" }));
+    const result = await judgeEmbeddingMatchedClaimDuplicate(candidate, dup, loadExisting, "ja");
+    expect(result).toEqual({ status: "new" });
+  });
+
+  it("existingId が一致しない不整合な verdict は new に倒す（LLM の取り違え検出）", async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        verdicts: [{ index: 1, existingId: "other-id", verdict: "same", reason: "identical" }],
+      }),
+    });
+    const loadExisting = vi.fn(async () => ({ title: "既存の知見", body: "既存本文" }));
+    const result = await judgeEmbeddingMatchedClaimDuplicate(candidate, dup, loadExisting, "ja");
+    expect(result).toEqual({ status: "new" });
+  });
+
+  it("既存本文が読めない（loadExisting が null）場合は LLM を呼ばず new に倒す", async () => {
+    const loadExisting = vi.fn(async () => null);
+    const result = await judgeEmbeddingMatchedClaimDuplicate(candidate, dup, loadExisting, "ja");
+    expect(result).toEqual({ status: "new" });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("latestClaimIngestedAtForNote - ノートから作られた知見の最終 Ingest 日時", () => {
+  const claimMeta = (derivedFromNotes: string[], lastIngestedAt?: string): WikiMetaSummary => ({
+    title: "知見タイトル",
+    kind: "claim",
+    derivedFromNotes,
+    lastIngestedAt,
+  });
+
+  it("ノートから作られた知見が無ければ undefined", () => {
+    const metas = new Map<string, WikiMetaSummary>([["c1", claimMeta(["other-note"], "2026-07-01T00:00:00Z")]]);
+    expect(latestClaimIngestedAtForNote("note-1", metas, new Set(["c1"]))).toBeUndefined();
+  });
+
+  it("複数の知見があれば最も新しい lastIngestedAt を返す", () => {
+    const metas = new Map<string, WikiMetaSummary>([
+      ["c1", claimMeta(["note-1"], "2026-07-01T00:00:00Z")],
+      ["c2", claimMeta(["note-1"], "2026-08-01T00:00:00Z")],
+    ]);
+    expect(latestClaimIngestedAtForNote("note-1", metas, new Set(["c1", "c2"]))).toBe("2026-08-01T00:00:00Z");
+  });
+
+  it("claim 以外の kind は無視する", () => {
+    const topicMeta: WikiMetaSummary = { ...claimMeta(["note-1"], "2026-09-01T00:00:00Z"), kind: "topic" };
+    const metas = new Map<string, WikiMetaSummary>([["t1", topicMeta]]);
+    expect(latestClaimIngestedAtForNote("note-1", metas, new Set(["t1"]))).toBeUndefined();
+  });
+
+  it("ゴミ箱送り（livingClaimIds に無い）の知見は除外する", () => {
+    // handleDeleteWikiFile はインデックスに deletedAt を立てるだけで wikiMetas からは
+    // 消さないため、ゴミ箱送りの知見 ID を livingClaimIds から外して判定できることを確認する
+    const metas = new Map<string, WikiMetaSummary>([["c1", claimMeta(["note-1"], "2026-07-01T00:00:00Z")]]);
+    expect(latestClaimIngestedAtForNote("note-1", metas, new Set())).toBeUndefined();
+  });
+
+  it("知見が全てゴミ箱送りのノートは除外しない（他の知見が生きていれば通す）", () => {
+    const metas = new Map<string, WikiMetaSummary>([
+      ["c1", claimMeta(["note-1"], "2026-07-01T00:00:00Z")], // ゴミ箱送り
+      ["c2", claimMeta(["note-1"], "2026-08-01T00:00:00Z")], // 生きている
+    ]);
+    expect(latestClaimIngestedAtForNote("note-1", metas, new Set(["c2"]))).toBe("2026-08-01T00:00:00Z");
+  });
+});
+
+describe("isNoteUnchangedSinceIngest - 一括ナレッジ化から外す判定（時刻比較のみの純関数）", () => {
+  it("未ナレッジ化（knowledgedAt 無し）は false（通す）", () => {
+    expect(isNoteUnchangedSinceIngest("2026-08-01T00:00:00Z", undefined)).toBe(false);
+  });
+
+  it("ナレッジ化済みで未変更（modifiedAt <= knowledgedAt）は true（外す）", () => {
+    expect(isNoteUnchangedSinceIngest("2026-08-01T00:00:00Z", "2026-08-02T00:00:00Z")).toBe(true);
+  });
+
+  it("ナレッジ化後に編集された（modifiedAt > knowledgedAt）は false（通す）", () => {
+    expect(isNoteUnchangedSinceIngest("2026-08-03T00:00:00Z", "2026-08-02T00:00:00Z")).toBe(false);
+  });
+
+  it("同時刻はナレッジ化済みで未変更扱い（外す）", () => {
+    expect(isNoteUnchangedSinceIngest("2026-08-02T00:00:00Z", "2026-08-02T00:00:00Z")).toBe(true);
+  });
+
+  it("日時がパースできない場合は fail-open（false = 通す）", () => {
+    expect(isNoteUnchangedSinceIngest("not-a-date", "2026-08-02T00:00:00Z")).toBe(false);
   });
 });
 

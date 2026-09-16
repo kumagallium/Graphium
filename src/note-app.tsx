@@ -324,6 +324,8 @@ import {
   runTopicStage, type TopicStageClaimInput, type TopicStageResult, type ExistingTopicRef,
   consolidateExistingTopics, type ExistingTopicForMerge,
   mergeTopicsExplicit, normalizeTopicTitle,
+  // 知見(claim) 重複判定（create 側のコード突き合わせ）
+  resolveClaimDuplicate, latestClaimIngestedAtForNote, isNoteUnchangedSinceIngest,
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
@@ -591,6 +593,64 @@ function buildExistingWikisForIngest(
   getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined,
 ): ExistingWikiRefForIngest[] {
   return withTopicOneLiners(buildExistingWikiRefs(notes), getCachedDoc);
+}
+
+/**
+ * ingest 系の各経路（ノート・チャット・URL 貼付・素材の URL/PDF/Word）が共有する、
+ * create 側の知見(claim)重複突き合わせ。ingester が "create" と判断した知見について、
+ * 保存前にコード側で既存知見と突き合わせる — トピック・洞察は既にコード側の二段構え
+ * （正規化タイトル一致 → embedding 候補探し → LLM 最終判定）を持つが、知見だけモデルの
+ * 自己申告（suggestedAction）任せだった穴を塞ぐ（#950）。
+ *
+ * ingester が "merge" と申告し、対象が実在するときはモデルの判断（各経路が見ている
+ * 一番濃い文脈）をそのまま尊重し、ここでは触らない。「実在するとき」は値の有無ではなく
+ * getCachedDoc で存在確認する — ingester が幻覚 ID や削除済み ID を返した場合まで無条件で
+ * 尊重すると、後段の merge が existingDoc なしで create に素通りし、この突き合わせを
+ * 一切経ないまま新規作成されてしまう（#950 フォローアップ）。
+ *
+ * existingClaims には、同一バッチ内で直前までに作成・マージ済みの知見も呼び出し元が
+ * 都度追記すること — 1 回の ingest 結果に意味的に重複する知見が複数含まれていた場合、
+ * ループ開始前の既存 Wiki 一覧だけでは後続の知見が直前に作った分を見落とすため
+ * （#950 フォローアップ）。
+ *
+ * 突き合わせ自体が失敗した・埋め込みが使えない等は fail-open = create のまま返す
+ * （黙って統合しない側に倒す）。
+ */
+async function resolveClaimForCreate<
+  T extends { kind: WikiKind; title: string; sections: { content: string }[]; suggestedAction: "create" | "merge"; mergeTargetId?: string },
+>(
+  wiki: T,
+  existingClaims: { id: string; title: string }[],
+  getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined,
+  locale: string,
+  model: string | undefined,
+  signal?: AbortSignal,
+): Promise<{ wiki: T; matched: boolean }> {
+  if (wiki.kind !== "claim") return { wiki, matched: false };
+  const declaredMergeTargetExists = wiki.suggestedAction === "merge" && !!wiki.mergeTargetId
+    ? !!getCachedDoc(`wiki:${wiki.mergeTargetId}`)
+    : false;
+  if (declaredMergeTargetExists) return { wiki, matched: false };
+  try {
+    const match = await resolveClaimDuplicate(
+      { title: wiki.title, body: wiki.sections.map((s) => s.content).join("\n\n").slice(0, 2000) },
+      existingClaims,
+      async (docId) => {
+        const doc = getCachedDoc(`wiki:${docId}`);
+        if (!doc) return null;
+        return { title: doc.title, body: extractBodyPreview(doc, 2000) };
+      },
+      locale,
+      { model, signal },
+    );
+    if (match.status === "same") {
+      return { wiki: { ...wiki, suggestedAction: "merge" as const, mergeTargetId: match.matchedId }, matched: true };
+    }
+  } catch (err) {
+    // 突き合わせ自体が失敗しても create を止めない（fail-open = 新規作成のまま続行）
+    console.warn("resolveClaimForCreate: resolveClaimDuplicate failed (create のまま続行):", err);
+  }
+  return { wiki, matched: false };
 }
 
 function buildMemoNoteDoc(text: string, fallbackTitle: string): GraphiumDocument {
@@ -8936,6 +8996,9 @@ export function NoteApp() {
       if (signal.aborted) break;
       const job = ingestQueueRef.current[0];
       const jobId = job.noteId;
+      // create 判断の知見(claim)が、コード側の重複突き合わせ（resolveClaimDuplicate）で
+      // 既存知見へまとめられた件数。黙って動かさず完了トーストに出す。
+      let jobClaimDedupeMerged = 0;
 
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
@@ -8993,42 +9056,59 @@ export function NoteApp() {
 
         const createdWikiIds: string[] = [];
         const createdWikiTitles: string[] = [];
+        // create 判断の知見(claim)を resolveClaimForCreate に渡す「既存知見」一覧。
+        // ループ開始前の既存 Wiki 一覧に加え、同一バッチ内で直前までに作成・マージした
+        // 知見も都度追記する（resolveClaimForCreate のコメント参照。#950 フォローアップ）。
+        const existingClaimsForBatch: { id: string; title: string }[] = existingWikis
+          .filter((w) => w.kind === "claim")
+          .map((w) => ({ id: w.id, title: w.title }));
         for (const wiki of result.wikis) {
-          if (wiki.suggestedAction === "merge" && wiki.mergeTargetId) {
+          // create 判断の知見(claim)は、保存前にコード側で既存知見と突き合わせる
+          // （resolveClaimForCreate 参照。#950）。ingester が "merge" と申告し対象が
+          // 実在するときは、resolveClaimForCreate 内でそのまま尊重されそのまま返ってくる。
+          const { wiki: effectiveWiki, matched: dedupeMatchedButNotYetCounted } = await resolveClaimForCreate(
+            wiki, existingClaimsForBatch, fm.getCachedDoc, getLocale(), result.model ?? undefined, signal,
+          );
+          if (effectiveWiki.suggestedAction === "merge" && effectiveWiki.mergeTargetId) {
             try {
-              const existingDoc = fm.getCachedDoc(`wiki:${wiki.mergeTargetId}`);
+              const existingDoc = fm.getCachedDoc(`wiki:${effectiveWiki.mergeTargetId}`);
               if (existingDoc) {
                 const nIdx = buildNoteIndex(fm.noteIndex);
-                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getLocale(), nIdx, ingestSkills);
-                await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc, {
+                const mergedDoc = await rewriteAndMerge(existingDoc, effectiveWiki, job.noteId, result.model, getLocale(), nIdx, ingestSkills);
+                await fm.handleSaveWikiFile(effectiveWiki.mergeTargetId, mergedDoc, {
                   activityType: "wiki_merge",
                   agentLabel: result.model ?? undefined,
                   sources: [job.noteId],
                 });
-                embedWikiSections(wiki.mergeTargetId, mergedDoc).catch(() => {});
-                createdWikiIds.push(wiki.mergeTargetId);
-                createdWikiTitles.push(wiki.title);
-                wikiLog.append("merge", [wiki.mergeTargetId], `Merged into "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
+                embedWikiSections(effectiveWiki.mergeTargetId, mergedDoc).catch(() => {});
+                createdWikiIds.push(effectiveWiki.mergeTargetId);
+                createdWikiTitles.push(effectiveWiki.title);
+                wikiLog.append("merge", [effectiveWiki.mergeTargetId], `Merged into "${effectiveWiki.title}" from "${job.noteTitle}"`).catch(() => {});
                 // memo: 由来ならナレッジ化先（マージ先 wiki）を元メモに逆リンク記録
                 //（一覧の In Knowledge バッジ・詳細の Knowledge 化先リンクに使う）
                 if (job.noteId.startsWith("memo:")) {
-                  void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${wiki.mergeTargetId}`, wiki.title);
+                  void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${effectiveWiki.mergeTargetId}`, effectiveWiki.title);
                 }
-                if (wiki.kind === "claim") {
+                if (effectiveWiki.kind === "claim") {
                   claimsForTopicAssignment.push({
-                    id: wiki.mergeTargetId,
+                    id: effectiveWiki.mergeTargetId,
                     title: mergedDoc.title,
                     body: extractBodyPreview(mergedDoc, 2000),
-                    topics: wiki.topics ?? [],
+                    topics: effectiveWiki.topics ?? [],
                     model: result.model ?? undefined,
                   });
+                  // 同一バッチ内の後続知見が、このマージ結果と重複していないか
+                  // 突き合わせられるようにタイトルを更新しておく
+                  existingClaimsForBatch.push({ id: effectiveWiki.mergeTargetId, title: mergedDoc.title });
                 }
+                // マージが実際に成功した時点で初めてカウントする（issue 5 対応）
+                if (dedupeMatchedButNotYetCounted) jobClaimDedupeMerged += 1;
                 continue;
               }
             } catch { /* fallback to create */ }
           }
           const wikiTitleMap = existingWikis.map((w) => ({ id: w.id, title: w.title }));
-          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, getLocale(), buildNoteIndex(fm.noteIndex));
+          const wikiDoc = buildWikiDocument(effectiveWiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, getLocale(), buildNoteIndex(fm.noteIndex));
           // summary は新規生成を停止済み（サーバー側の parseIngesterOutput で既に弾かれる想定だが、
           // buildWikiDocument も null を返す二重防御になっているのでここで自然にスキップする）
           if (!wikiDoc) continue;
@@ -9039,21 +9119,24 @@ export function NoteApp() {
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
           createdWikiIds.push(newId);
-          createdWikiTitles.push(wiki.title);
-          wikiLog.append("ingest", [newId], `Created "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
+          createdWikiTitles.push(effectiveWiki.title);
+          wikiLog.append("ingest", [newId], `Created "${effectiveWiki.title}" from "${job.noteTitle}"`).catch(() => {});
           // memo: 由来ならナレッジ化先 wiki を元メモに逆リンク記録
           //（旧フローではノート ID を記録していたが、直接 ingest 化で wiki を記録する）
           if (job.noteId.startsWith("memo:")) {
-            void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${newId}`, wiki.title);
+            void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${newId}`, effectiveWiki.title);
           }
-          if (wiki.kind === "claim") {
+          if (effectiveWiki.kind === "claim") {
             claimsForTopicAssignment.push({
               id: newId,
               title: wikiDoc.title,
               body: extractBodyPreview(wikiDoc, 2000),
-              topics: wiki.topics ?? [],
+              topics: effectiveWiki.topics ?? [],
               model: result.model ?? undefined,
             });
+            // 同一バッチ内の後続知見が、この新規作成分と重複していないか突き合わせ
+            // られるようにする（既存 Wiki 一覧だけでは同一バッチ内の重複を検出できない）
+            existingClaimsForBatch.push({ id: newId, title: wikiDoc.title });
           }
         }
 
@@ -9132,10 +9215,15 @@ export function NoteApp() {
           })();
         }
 
+        // 知見(claim) の create → 重複突き合わせで既存へまとめた件数を完了トーストに出す
+        // （黙って動かさない。#950）
+        const dedupeSuffix = jobClaimDedupeMerged > 0
+          ? ` · ${tStatic("ingest.claimsMerged", { count: String(jobClaimDedupeMerged) })}`
+          : "";
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
             i.id === jobId
-              ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)` }
+              ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)${dedupeSuffix}` }
               : i
           ),
         }));
@@ -9620,11 +9708,25 @@ export function NoteApp() {
     if (!ensureAgentConfigured()) return;
     const candidates: { id: string; title: string }[] = [];
     const skippedAi: string[] = [];
+    const skippedUnchanged: string[] = [];
+    // fm.noteIndex は deletedAt / archivedAt を除外したビュー（ノート・Wiki 知見の両方を含む）。
+    // ゴミ箱送り・アーカイブ済みの知見を latestClaimIngestedAtForNote の判定対象から
+    // 外すために「生きている知見 ID」の集合として渡す（wikiMetas 自体は消えないため）。
+    const livingClaimIds = new Set(fm.noteIndex?.notes.map((n) => n.noteId) ?? []);
     for (const id of ids) {
       const entry = fm.noteIndex?.notes.find((n) => n.noteId === id);
       if (!entry) continue;
       if (entry.source === "ai") {
         skippedAi.push(entry.title || tStatic("nav.untitled"));
+        continue;
+      }
+      // 既にナレッジ化済みで、かつ前回の取り込み以降そのノートが変わっていないものは
+      // 一括ナレッジ化の既定から外す（重複の入口を塞ぐ・#950）。
+      // 「編集したノートの再取り込み」は正当な操作なので、ノートの更新がナレッジ化より
+      // 後なら通す（isNoteUnchangedSinceIngest が時刻比較だけで判定する）。
+      const knowledgedAt = latestClaimIngestedAtForNote(id, fm.wikiMetas, livingClaimIds);
+      if (isNoteUnchangedSinceIngest(entry.modifiedAt, knowledgedAt)) {
+        skippedUnchanged.push(entry.title || tStatic("nav.untitled"));
         continue;
       }
       candidates.push({ id, title: entry.title || tStatic("nav.untitled") });
@@ -9634,6 +9736,14 @@ export function NoteApp() {
         id: `ingest-skip:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`,
         status: "aborted",
         noteTitle: tStatic("ingest.skippedWikiNotes", { count: String(skippedAi.length) }),
+      };
+      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+    }
+    if (skippedUnchanged.length > 0) {
+      const newItem: IngestToastItem = {
+        id: `ingest-skip-unchanged:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`,
+        status: "aborted",
+        noteTitle: tStatic("ingest.skippedUnchanged", { count: String(skippedUnchanged.length) }),
       };
       setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
     }
@@ -9650,6 +9760,17 @@ export function NoteApp() {
   // 素材 1 件を Knowledge 化する共通処理（URL / PDF / Word。対応外の種類は何もしない）。
   // 素材ギャラリーの一括 Knowledge 化（AssetGalleryView の onIngestMedia）と、
   // 投入口の「まとめてナレッジ化」の両方から呼ぶ
+  //
+  // #950 の「一括ナレッジ化から取り込み済み未変更を外す」判定（isNoteUnchangedSinceIngest）は
+  // ここには適用していない。ノートと違い MediaIndexEntry には内容変更を表す modifiedAt 相当の
+  // フィールドが無い（uploadedAt はアップロード日時のみ）。PDF/Word はアップロード後バイト列が
+  // 不変（同一バイト列は sha256 で重複検出され既存素材に統合される。別内容にするなら別 fileId
+  // の新規アップロードになる）ため「編集して再取り込み」に相当する状態遷移がそもそも無い。
+  // 一方 URL は ingestMediaEntry のたびに生きた URL を都度フェッチするため、同じ fileId の
+  // まま中身が変わりうるが、変更検知に使える決定的な信号（ETag 等）を持たないため今回は
+  // 据え置く。いずれも判定に使える決定的な信号が無い点は共通なので、今回は手を付けない。
+  // create 側の知見突き合わせ（resolveClaimForCreate）は URL/PDF/Word の 3 経路とも配線済み
+  // （#950 フォローアップ — 下記各 for ループ参照）。
   const ingestMediaEntry = useCallback((entry: MediaIndexEntry) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
     if (!ensureAgentConfigured()) return;
@@ -9671,16 +9792,49 @@ export function NoteApp() {
             return;
           }
           const claimsForTopicStage: TopicStageClaimInput[] = [];
+          // resolveClaimForCreate に渡す「既存知見」一覧。同一バッチ内で直前までに
+          // 作成・マージした知見も都度追記する（#950 フォローアップ）
+          const existingClaimsForBatch: { id: string; title: string }[] = existingWikis
+            .filter((w) => w.kind === "claim")
+            .map((w) => ({ id: w.id, title: w.title }));
+          let claimDedupeMerged = 0;
           for (const wiki of result.wikis) {
-            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+            // create 判断の知見(claim)は、保存前にコード側で既存知見と突き合わせる
+            // （resolveClaimForCreate 参照。#950 フォローアップ — 素材/チャット/URL貼付経路にも配線）
+            const { wiki: effectiveWiki, matched } = await resolveClaimForCreate(
+              wiki, existingClaimsForBatch, fm.getCachedDoc, getLocale(), result.model ?? undefined,
+            );
+            if (effectiveWiki.kind === "claim" && effectiveWiki.suggestedAction === "merge" && effectiveWiki.mergeTargetId) {
+              const existingDoc = fm.getCachedDoc(`wiki:${effectiveWiki.mergeTargetId}`);
+              if (existingDoc) {
+                try {
+                  const mergedDoc = await rewriteAndMerge(existingDoc, effectiveWiki, sourceNoteId, result.model, getLocale(), buildNoteIndex(fm.noteIndex));
+                  await fm.handleSaveWikiFile(effectiveWiki.mergeTargetId, mergedDoc, {
+                    activityType: "wiki_merge",
+                    agentLabel: result.model ?? undefined,
+                    sources: [sourceNoteId],
+                  });
+                  embedWikiSections(effectiveWiki.mergeTargetId, mergedDoc).catch(() => {});
+                  if (matched) claimDedupeMerged += 1;
+                  claimsForTopicStage.push({
+                    id: effectiveWiki.mergeTargetId, title: mergedDoc.title, body: extractBodyPreview(mergedDoc, 2000),
+                    topics: effectiveWiki.topics ?? [], model: result.model ?? undefined,
+                  });
+                  existingClaimsForBatch.push({ id: effectiveWiki.mergeTargetId, title: mergedDoc.title });
+                  continue;
+                } catch { /* fallback to create */ }
+              }
+            }
+            const wikiDoc = buildWikiDocument(effectiveWiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
             if (!wikiDoc) continue; // summary は新規生成を停止済み
             const newId = await fm.handleCreateWikiFile(wikiDoc);
             embedWikiSections(newId, wikiDoc).catch(() => {});
-            if (wiki.kind === "claim") {
+            if (effectiveWiki.kind === "claim") {
               claimsForTopicStage.push({
                 id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                topics: wiki.topics ?? [], model: result.model ?? undefined,
+                topics: effectiveWiki.topics ?? [], model: result.model ?? undefined,
               });
+              existingClaimsForBatch.push({ id: newId, title: wikiDoc.title });
             }
           }
           let topicDetail = "";
@@ -9690,7 +9844,8 @@ export function NoteApp() {
               + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
               + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
           }
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+          const dedupeSuffix = claimDedupeMerged > 0 ? ` · ${tStatic("ingest.claimsMerged", { count: String(claimDedupeMerged) })}` : "";
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}${dedupeSuffix}` } : i) }));
         } catch (err) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
         }
@@ -9713,16 +9868,49 @@ export function NoteApp() {
             return;
           }
           const claimsForTopicStage: TopicStageClaimInput[] = [];
+          // resolveClaimForCreate に渡す「既存知見」一覧。同一バッチ内で直前までに
+          // 作成・マージした知見も都度追記する（#950 フォローアップ）
+          const existingClaimsForBatch: { id: string; title: string }[] = existingWikis
+            .filter((w) => w.kind === "claim")
+            .map((w) => ({ id: w.id, title: w.title }));
+          let claimDedupeMerged = 0;
           for (const wiki of result.wikis) {
-            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+            // create 判断の知見(claim)は、保存前にコード側で既存知見と突き合わせる
+            // （resolveClaimForCreate 参照。#950 フォローアップ — 素材/チャット/URL貼付経路にも配線）
+            const { wiki: effectiveWiki, matched } = await resolveClaimForCreate(
+              wiki, existingClaimsForBatch, fm.getCachedDoc, getLocale(), result.model ?? undefined,
+            );
+            if (effectiveWiki.kind === "claim" && effectiveWiki.suggestedAction === "merge" && effectiveWiki.mergeTargetId) {
+              const existingDoc = fm.getCachedDoc(`wiki:${effectiveWiki.mergeTargetId}`);
+              if (existingDoc) {
+                try {
+                  const mergedDoc = await rewriteAndMerge(existingDoc, effectiveWiki, sourceNoteId, result.model, getLocale(), buildNoteIndex(fm.noteIndex));
+                  await fm.handleSaveWikiFile(effectiveWiki.mergeTargetId, mergedDoc, {
+                    activityType: "wiki_merge",
+                    agentLabel: result.model ?? undefined,
+                    sources: [sourceNoteId],
+                  });
+                  embedWikiSections(effectiveWiki.mergeTargetId, mergedDoc).catch(() => {});
+                  if (matched) claimDedupeMerged += 1;
+                  claimsForTopicStage.push({
+                    id: effectiveWiki.mergeTargetId, title: mergedDoc.title, body: extractBodyPreview(mergedDoc, 2000),
+                    topics: effectiveWiki.topics ?? [], model: result.model ?? undefined,
+                  });
+                  existingClaimsForBatch.push({ id: effectiveWiki.mergeTargetId, title: mergedDoc.title });
+                  continue;
+                } catch { /* fallback to create */ }
+              }
+            }
+            const wikiDoc = buildWikiDocument(effectiveWiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
             if (!wikiDoc) continue; // summary は新規生成を停止済み
             const newId = await fm.handleCreateWikiFile(wikiDoc);
             embedWikiSections(newId, wikiDoc).catch(() => {});
-            if (wiki.kind === "claim") {
+            if (effectiveWiki.kind === "claim") {
               claimsForTopicStage.push({
                 id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                topics: wiki.topics ?? [], model: result.model ?? undefined,
+                topics: effectiveWiki.topics ?? [], model: result.model ?? undefined,
               });
+              existingClaimsForBatch.push({ id: newId, title: wikiDoc.title });
             }
           }
           let topicDetail = "";
@@ -9732,7 +9920,8 @@ export function NoteApp() {
               + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
               + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
           }
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+          const dedupeSuffix = claimDedupeMerged > 0 ? ` · ${tStatic("ingest.claimsMerged", { count: String(claimDedupeMerged) })}` : "";
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}${dedupeSuffix}` } : i) }));
         } catch (err) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
         }
@@ -9758,16 +9947,49 @@ export function NoteApp() {
             return;
           }
           const claimsForTopicStage: TopicStageClaimInput[] = [];
+          // resolveClaimForCreate に渡す「既存知見」一覧。同一バッチ内で直前までに
+          // 作成・マージした知見も都度追記する（#950 フォローアップ）
+          const existingClaimsForBatch: { id: string; title: string }[] = existingWikis
+            .filter((w) => w.kind === "claim")
+            .map((w) => ({ id: w.id, title: w.title }));
+          let claimDedupeMerged = 0;
           for (const wiki of result.wikis) {
-            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+            // create 判断の知見(claim)は、保存前にコード側で既存知見と突き合わせる
+            // （resolveClaimForCreate 参照。#950 フォローアップ — 素材/チャット/URL貼付経路にも配線）
+            const { wiki: effectiveWiki, matched } = await resolveClaimForCreate(
+              wiki, existingClaimsForBatch, fm.getCachedDoc, getLocale(), result.model ?? undefined,
+            );
+            if (effectiveWiki.kind === "claim" && effectiveWiki.suggestedAction === "merge" && effectiveWiki.mergeTargetId) {
+              const existingDoc = fm.getCachedDoc(`wiki:${effectiveWiki.mergeTargetId}`);
+              if (existingDoc) {
+                try {
+                  const mergedDoc = await rewriteAndMerge(existingDoc, effectiveWiki, sourceNoteId, result.model, getLocale(), buildNoteIndex(fm.noteIndex));
+                  await fm.handleSaveWikiFile(effectiveWiki.mergeTargetId, mergedDoc, {
+                    activityType: "wiki_merge",
+                    agentLabel: result.model ?? undefined,
+                    sources: [sourceNoteId],
+                  });
+                  embedWikiSections(effectiveWiki.mergeTargetId, mergedDoc).catch(() => {});
+                  if (matched) claimDedupeMerged += 1;
+                  claimsForTopicStage.push({
+                    id: effectiveWiki.mergeTargetId, title: mergedDoc.title, body: extractBodyPreview(mergedDoc, 2000),
+                    topics: effectiveWiki.topics ?? [], model: result.model ?? undefined,
+                  });
+                  existingClaimsForBatch.push({ id: effectiveWiki.mergeTargetId, title: mergedDoc.title });
+                  continue;
+                } catch { /* fallback to create */ }
+              }
+            }
+            const wikiDoc = buildWikiDocument(effectiveWiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
             if (!wikiDoc) continue; // summary は新規生成を停止済み
             const newId = await fm.handleCreateWikiFile(wikiDoc);
             embedWikiSections(newId, wikiDoc).catch(() => {});
-            if (wiki.kind === "claim") {
+            if (effectiveWiki.kind === "claim") {
               claimsForTopicStage.push({
                 id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                topics: wiki.topics ?? [], model: result.model ?? undefined,
+                topics: effectiveWiki.topics ?? [], model: result.model ?? undefined,
               });
+              existingClaimsForBatch.push({ id: newId, title: wikiDoc.title });
             }
           }
           let topicDetail = "";
@@ -9777,7 +9999,8 @@ export function NoteApp() {
               + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
               + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
           }
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+          const dedupeSuffix = claimDedupeMerged > 0 ? ` · ${tStatic("ingest.claimsMerged", { count: String(claimDedupeMerged) })}` : "";
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}${dedupeSuffix}` } : i) }));
         } catch (err) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
         }
@@ -10239,19 +10462,55 @@ export function NoteApp() {
           return;
         }
         const claimsForTopicStage: TopicStageClaimInput[] = [];
+        // resolveClaimForCreate に渡す「既存知見」一覧。同一バッチ内で直前までに
+        // 作成・マージした知見も都度追記する（#950 フォローアップ）
+        const existingClaimsForBatch: { id: string; title: string }[] = existingWikis
+          .filter((w) => w.kind === "claim")
+          .map((w) => ({ id: w.id, title: w.title }));
+        let claimDedupeMerged = 0;
         for (const wiki of result.wikis) {
-          const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+          // create 判断の知見(claim)は、保存前にコード側で既存知見と突き合わせる
+          // （resolveClaimForCreate 参照。#950 フォローアップ — 素材/チャット/URL貼付経路にも配線）
+          const { wiki: effectiveWiki, matched } = await resolveClaimForCreate(
+            wiki, existingClaimsForBatch, fm.getCachedDoc, getLocale(), result.model ?? undefined,
+          );
+          if (effectiveWiki.kind === "claim" && effectiveWiki.suggestedAction === "merge" && effectiveWiki.mergeTargetId) {
+            const existingDoc = fm.getCachedDoc(`wiki:${effectiveWiki.mergeTargetId}`);
+            if (existingDoc) {
+              try {
+                const mergedDoc = await rewriteAndMerge(existingDoc, effectiveWiki, jobId, result.model, getLocale(), buildNoteIndex(fm.noteIndex));
+                await fm.handleSaveWikiFile(effectiveWiki.mergeTargetId, mergedDoc, {
+                  activityType: "wiki_merge",
+                  agentLabel: result.model ?? undefined,
+                  sources: [jobId],
+                });
+                embedWikiSections(effectiveWiki.mergeTargetId, mergedDoc).catch(() => {});
+                if (matched) claimDedupeMerged += 1;
+                claimsForTopicStage.push({
+                  id: effectiveWiki.mergeTargetId,
+                  title: mergedDoc.title,
+                  body: extractBodyPreview(mergedDoc, 2000),
+                  topics: effectiveWiki.topics ?? [],
+                  model: result.model ?? undefined,
+                });
+                existingClaimsForBatch.push({ id: effectiveWiki.mergeTargetId, title: mergedDoc.title });
+                continue;
+              } catch { /* fallback to create */ }
+            }
+          }
+          const wikiDoc = buildWikiDocument(effectiveWiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
           if (!wikiDoc) continue; // summary は新規生成を停止済み
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
-          if (wiki.kind === "claim") {
+          if (effectiveWiki.kind === "claim") {
             claimsForTopicStage.push({
               id: newId,
               title: wikiDoc.title,
               body: extractBodyPreview(wikiDoc, 2000),
-              topics: wiki.topics ?? [],
+              topics: effectiveWiki.topics ?? [],
               model: result.model ?? undefined,
             });
+            existingClaimsForBatch.push({ id: newId, title: wikiDoc.title });
           }
         }
         // 話題（topic）段: このバッチで作成した claim を既存の話題へ割り当てる。
@@ -10262,7 +10521,8 @@ export function NoteApp() {
             + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
             + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
         }
-        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+        const dedupeSuffix = claimDedupeMerged > 0 ? ` · ${tStatic("ingest.claimsMerged", { count: String(claimDedupeMerged) })}` : "";
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}${dedupeSuffix}` } : i) }));
       } catch (err) {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
       }
@@ -12397,16 +12657,49 @@ export function NoteApp() {
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
                   const claimsForTopicStage: TopicStageClaimInput[] = [];
+                  // resolveClaimForCreate に渡す「既存知見」一覧。同一バッチ内で直前までに
+                  // 作成・マージした知見も都度追記する（#950 フォローアップ）
+                  const existingClaimsForBatch: { id: string; title: string }[] = existingWikis
+                    .filter((w) => w.kind === "claim")
+                    .map((w) => ({ id: w.id, title: w.title }));
+                  let claimDedupeMerged = 0;
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+                    // create 判断の知見(claim)は、保存前にコード側で既存知見と突き合わせる
+                    // （resolveClaimForCreate 参照。#950 フォローアップ — 素材/チャット/URL貼付経路にも配線）
+                    const { wiki: effectiveWiki, matched } = await resolveClaimForCreate(
+                      wiki, existingClaimsForBatch, fm.getCachedDoc, getLocale(), result.model ?? undefined,
+                    );
+                    if (effectiveWiki.kind === "claim" && effectiveWiki.suggestedAction === "merge" && effectiveWiki.mergeTargetId) {
+                      const existingDoc = fm.getCachedDoc(`wiki:${effectiveWiki.mergeTargetId}`);
+                      if (existingDoc) {
+                        try {
+                          const mergedDoc = await rewriteAndMerge(existingDoc, effectiveWiki, sourceNoteId, result.model, getLocale(), buildNoteIndex(fm.noteIndex));
+                          await fm.handleSaveWikiFile(effectiveWiki.mergeTargetId, mergedDoc, {
+                            activityType: "wiki_merge",
+                            agentLabel: result.model ?? undefined,
+                            sources: [sourceNoteId],
+                          });
+                          embedWikiSections(effectiveWiki.mergeTargetId, mergedDoc).catch(() => {});
+                          if (matched) claimDedupeMerged += 1;
+                          claimsForTopicStage.push({
+                            id: effectiveWiki.mergeTargetId, title: mergedDoc.title, body: extractBodyPreview(mergedDoc, 2000),
+                            topics: effectiveWiki.topics ?? [], model: result.model ?? undefined,
+                          });
+                          existingClaimsForBatch.push({ id: effectiveWiki.mergeTargetId, title: mergedDoc.title });
+                          continue;
+                        } catch { /* fallback to create */ }
+                      }
+                    }
+                    const wikiDoc = buildWikiDocument(effectiveWiki, sourceNoteId, result.model, url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
                     if (!wikiDoc) continue; // summary は新規生成を停止済み
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
-                    if (wiki.kind === "claim") {
+                    if (effectiveWiki.kind === "claim") {
                       claimsForTopicStage.push({
                         id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                        topics: wiki.topics ?? [], model: result.model ?? undefined,
+                        topics: effectiveWiki.topics ?? [], model: result.model ?? undefined,
                       });
+                      existingClaimsForBatch.push({ id: newId, title: wikiDoc.title });
                     }
                   }
                   let topicDetail = "";
@@ -12416,7 +12709,8 @@ export function NoteApp() {
                       + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
                       + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
                   }
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+                  const dedupeSuffix = claimDedupeMerged > 0 ? ` · ${tStatic("ingest.claimsMerged", { count: String(claimDedupeMerged) })}` : "";
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)${topicDetail}${dedupeSuffix}` } : i) }));
                 } catch (err) {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                 }

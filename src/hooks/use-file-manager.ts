@@ -443,6 +443,10 @@ export function useFileManager(authenticated: boolean) {
                 atomType: doc.wikiMeta?.atomType,
                 synthesisMode: doc.wikiMeta?.synthesisMode,
                 hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+                // 一括ナレッジ化の「既にナレッジ化済みで未変更」判定
+                // （latestClaimIngestedAtForNote / isNoteUnchangedSinceIngest）に使う mirror
+                derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
+                lastIngestedAt: doc.wikiMeta?.lastIngestedAt,
                 // topic のメンバー知見 / claim の所属話題。保存時の mirror（handleSaveWikiFile /
                 // handleCreateWikiFile）と同じ値を起動時にも積む — 無いと再起動後に一覧の
                 // 知見数列と知見削除時のリンク解除が効かなくなる。
@@ -2574,6 +2578,10 @@ export function useFileManager(authenticated: boolean) {
             atomType: doc.wikiMeta?.atomType ?? existing?.atomType,
             synthesisMode: doc.wikiMeta?.synthesisMode ?? existing?.synthesisMode,
             hypothesisStatus: doc.wikiMeta?.hypothesisStatus ?? existing?.hypothesisStatus,
+            // 一括ナレッジ化の「既にナレッジ化済みで未変更」判定に使う mirror。
+            // doc.wikiMeta があるならその値が source of truth。
+            derivedFromNotes: doc.wikiMeta ? doc.wikiMeta.derivedFromNotes : existing?.derivedFromNotes,
+            lastIngestedAt: doc.wikiMeta ? doc.wikiMeta.lastIngestedAt : existing?.lastIngestedAt,
             // topic のメンバー知見 / claim の所属話題（一覧の知見数列・孤立話題判定・
             // サイドバー導線に使う mirror）。doc.wikiMeta があるならその値が source of truth。
             derivedFromClaims: doc.wikiMeta
@@ -2921,6 +2929,9 @@ export function useFileManager(authenticated: boolean) {
           atomType: doc.wikiMeta?.atomType,
           synthesisMode: doc.wikiMeta?.synthesisMode,
           hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+          // 一括ナレッジ化の「既にナレッジ化済みで未変更」判定に使う mirror
+          derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
+          lastIngestedAt: doc.wikiMeta?.lastIngestedAt,
           derivedFromClaims: doc.wikiMeta?.derivedFromClaims,
           topicIds: doc.wikiMeta?.topicIds,
           theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,

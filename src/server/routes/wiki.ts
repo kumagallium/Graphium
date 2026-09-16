@@ -10,6 +10,10 @@ import {
   buildIngesterSystemPrompt,
   parseIngesterOutput,
   type ExistingWikiInfo,
+  buildClaimDuplicateJudgeSystemPrompt,
+  buildClaimDuplicateJudgeUserMessage,
+  parseClaimDuplicateJudgeOutput,
+  type ClaimDuplicateJudgePair,
 } from "../services/wiki-ingester.js";
 import { formatProvSummaryForPrompt } from "../services/prov-prompt-injection.js";
 import {
@@ -846,6 +850,50 @@ app.post("/judge-atom-duplicates", async (c) => {
     return c.json({ verdicts, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     console.error("Wiki judge-atom-duplicates error:", err);
+    // fail-closed（黙って統合しない側に倒す）: 呼び出し側が verdicts 欠落を "different" として扱う
+    return c.json({ verdicts: [], ...errorBody(err) });
+  }
+});
+
+// 知見(claim) ingest の "create" 判断の重複候補を LLM で判定する（#950）。
+// embedding（partitionCandidatesByEmbedding）は「候補探し」止まり。知見は出典つきの
+// 命題であり、Atom と違い "contradiction" は持ち込まない（same/different の 2 値）。
+app.post("/judge-claim-duplicates", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    pairs: ClaimDuplicateJudgePair[];
+    model?: string;
+  }>();
+
+  if (!Array.isArray(body.pairs) || body.pairs.length === 0) {
+    return c.json({ verdicts: [] });
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    // fail-closed: モデル未設定でも「different」に倒す（route を呼ぶ側が埋める）
+    return c.json({ verdicts: [] });
+  }
+
+  const systemPrompt = buildClaimDuplicateJudgeSystemPrompt(body.language || "en");
+  const userMessage = buildClaimDuplicateJudgeUserMessage(body.pairs);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.judge-claim-duplicates",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    const verdicts = parseClaimDuplicateJudgeOutput(result.message);
+    return c.json({ verdicts, model: result.model, tokenUsage: result.tokenUsage });
+  } catch (err) {
+    console.error("Wiki judge-claim-duplicates error:", err);
     // fail-closed（黙って統合しない側に倒す）: 呼び出し側が verdicts 欠落を "different" として扱う
     return c.json({ verdicts: [], ...errorBody(err) });
   }

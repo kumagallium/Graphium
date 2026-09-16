@@ -16,6 +16,7 @@ import {
   EPISTEMIC_STATUS_ORDER,
   MODAL_QUALIFIER_VALUES,
 } from "../../lib/document-types.js";
+import { jsonrepair } from "jsonrepair";
 
 /** Claim の研究プロセス役割（提案 v4 Phase 1.1）として認める値の一覧 */
 const CLAIM_ROLE_VALUES: ClaimRole[] = [
@@ -845,6 +846,89 @@ export function extractPlainText(blocks: any[]): string {
   }
 
   return lines.join("\n");
+}
+
+// ============================================================
+// 知見(claim) 重複判定（create 側のコード突き合わせ、#950）
+//
+// ingester の suggestedAction/mergeTargetId（LLM の自己申告）は "merge" 側だけで
+// 使われ、"create" 側には既存知見との突き合わせが無かった。トピック・洞察が持つ
+// コード側の二段構え（正規化タイトル一致 → embedding 候補探し → LLM 最終判定）を
+// 知見にも揃える。embedding 候補探しは partitionCandidatesByEmbedding（wiki-service.ts）
+// をそのまま流用し、最終判定だけをここのジャッジで行う。
+//
+// judgeAtomDuplicates（same/contradiction/different）と違い、知見は出典つきの命題で
+// あって「矛盾」の概念は持ち込まない（矛盾は wiki-linter の contradiction 検出が
+// 扱う領域）。same / different の 2 値のみ判定する。
+// ============================================================
+
+export type ClaimDuplicateJudgePair = {
+  candidate: { title: string; body: string };
+  existing: { id: string; title: string; body: string };
+};
+
+export type ClaimDuplicateJudgeVerdict = "same" | "different";
+
+export type ClaimDuplicateJudgeResult = {
+  /** 送った順の 1-based index（同じ existingId が複数対に現れても位置で対応づく） */
+  index: number;
+  existingId: string;
+  verdict: ClaimDuplicateJudgeVerdict;
+  reason: string;
+};
+
+export function buildClaimDuplicateJudgeSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a careful reviewer deciding whether a newly extracted Claim (a sourced proposition for a Graphium Knowledge page) duplicates an existing Claim. Embedding similarity already narrowed the pair down as a *candidate* — your job is the actual judgment.
+
+For each pair (a candidate Claim and one existing Claim it was matched against), decide \`verdict\`:
+- **"same"**: the candidate asserts the SAME proposition as the existing Claim, about the same subject and conclusion. Differences in wording, phrasing, source note, or level of detail do NOT matter — if the underlying claim is identical, it is "same".
+- **"different"**: anything else — a different subject, a different conclusion, a meaningfully different scope or condition, or a claim that disagrees with the existing one. Do NOT merge two claims that disagree just because they are about the same topic.
+- When you cannot tell (ambiguous, insufficient information), prefer "different" — do not force "same" without a clear textual basis. Merging into "same" causes the existing Claim to be silently rewritten, so be conservative.
+- \`reason\`: one short line naming the specific point of agreement or difference.
+
+Return JSON only: {"verdicts":[{"index":<the index given>,"existingId":"<the existing id given verbatim>","verdict":"same"|"different","reason":"..."}]}.
+Output language: ${ja ? "Japanese" : "English"}.`;
+}
+
+export function buildClaimDuplicateJudgeUserMessage(pairs: ClaimDuplicateJudgePair[]): string {
+  const blocks = pairs.map((p, i) => {
+    return `[${i + 1}] (existingId: ${p.existing.id})
+candidate: "${p.candidate.title}" — ${p.candidate.body}
+existing:  "${p.existing.title}" — ${p.existing.body}`;
+  });
+  return `Judge whether each candidate Claim duplicates or differs from the existing Claim it was matched against:\n\n${blocks.join("\n\n")}`;
+}
+
+export function parseClaimDuplicateJudgeOutput(text: string): ClaimDuplicateJudgeResult[] {
+  try {
+    let jsonText = text.trim();
+    const m = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (m) jsonText = m[1].trim();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (err) {
+      // 壊れた JSON（途中切断など）は jsonrepair で機械修復を試みる。それでも失敗したら
+      // 呼び出し元が空配列を受け取り、全ペアが fail-closed で "different" 扱いになる。
+      parsed = JSON.parse(jsonrepair(jsonText));
+      void err;
+    }
+    const arr = (parsed as { verdicts?: unknown })?.verdicts ?? parsed;
+    if (!Array.isArray(arr)) return [];
+    const VALID: ClaimDuplicateJudgeVerdict[] = ["same", "different"];
+    return arr
+      .filter((a: any) => a && typeof a.existingId === "string" && VALID.includes(a.verdict))
+      .map((a: any) => ({
+        index: typeof a.index === "number" ? a.index : 0,
+        existingId: a.existingId.trim(),
+        verdict: a.verdict as ClaimDuplicateJudgeVerdict,
+        reason: typeof a.reason === "string" ? a.reason : "",
+      }));
+  } catch (err) {
+    console.warn("Claim duplicate judge 出力のパース失敗（fail-closed: different 扱い）:", err);
+    return [];
+  }
 }
 
 function extractBlockContent(block: any): string {
