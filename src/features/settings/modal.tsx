@@ -279,6 +279,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   useEffect(() => {
     if (isOpen && initialTab) setTab(initialTab as Tab);
   }, [isOpen, initialTab]);
+  // 本文はモーダル内でスクロールする。タブを替えたら先頭から読めるよう位置を戻す
+  // （前のタブのスクロール位置が残ると、短いタブで中身が見えない位置から始まる）
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+  }, [tab]);
 
   // 設定値
   const [model, setModel] = useState("");
@@ -1509,8 +1515,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   }
 
   return (
-    <Modal open={isOpen} onClose={onClose}>
-      <ModalHeader onClose={onClose}>
+    // 寸法はタブに依らず固定する。中身で大きさが決まると、タブを替えるたびに幅・高さが
+    // 変わって中央に置き直され、タブ列ごと動いて次のタブを押そうとした先から逃げる。
+    // 幅は最も広いタブに合わせた max-w-3xl（48rem）、高さは 85dvh（大画面では 48rem で頭打ち）。
+    // ヘッダー・タブ列・フッターは動かさず、本文だけが中でスクロールする。
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      className="flex flex-col w-[min(48rem,calc(100vw-2rem))] h-[min(85dvh,48rem)] overflow-hidden"
+    >
+      <ModalHeader onClose={onClose} className="shrink-0">
         <span className="flex items-center gap-2">
           <SettingsIcon size={16} className="text-muted-foreground" />
           {t("settings.title")}
@@ -1519,7 +1533,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
       {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
        *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
-      <div className="flex border-b border-border px-6 max-w-3xl overflow-x-auto">
+      <div className="flex shrink-0 border-b border-border px-6 overflow-x-auto">
         {(["display", "storage", "ai", "grounding", "maintenance", "usage", "about"] as Tab[])
           // 照合データタブは世界照合のマスタースイッチが OFF のとき隠す
           .filter((tabId) => tabId !== "grounding" || features.worldGrounding)
@@ -1548,12 +1562,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         })}
       </div>
 
-      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。
-          min-w はスマホ幅（<640px）では外す — 460px 固定だと 390px 端末で横に
-          はみ出し、ストレージタブのモバイル連携トグルなどが操作できなくなる。
-          本文は全タブとも流体レイアウトなので、min-w が無くても崩れない。 */}
+      {/* 幅はモーダル側で固定しているので、本文は残りの高さを埋めてスクロールするだけ。
+          スマホ幅（<640px）でも画面幅 - 2rem に収まる — 固定の最小幅を持たせると 390px 端末で
+          横にはみ出し、ストレージタブのモバイル連携トグルなどが操作できなくなる。 */}
       <ModalBody
-        className="w-full sm:min-w-[460px] max-w-3xl"
+        ref={bodyRef}
+        className="flex-1 min-h-0 overflow-y-auto"
         onKeyDown={handleKeyDown}
       >
         {/* ── Display タブ ── */}
@@ -3673,7 +3687,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         {tab === "about" && <AboutTab />}
       </ModalBody>
 
-      <ModalFooter className="max-w-3xl">
+      <ModalFooter className="shrink-0">
         <Button variant="ghost" size="sm" onClick={onClose}>
           {t("common.cancel")}
         </Button>
