@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.76.2](https://github.com/kumagallium/Graphium/compare/v0.76.1...v0.76.2) - 2026-09-16
+
+- Tidy up empty knowledge on its own, and scope cross-update to claims by @kumagallium in https://github.com/kumagallium/Graphium/pull/948
+
 ## [v0.76.1](https://github.com/kumagallium/Graphium/compare/v0.76.0...v0.76.1) - 2026-09-16
 
 - refactor: drop the operation overview above the process list by @kumagallium in https://github.com/kumagallium/Graphium/pull/945
