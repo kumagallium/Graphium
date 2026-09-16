@@ -708,3 +708,39 @@ export const PlanFlowPlannedEdges: Story = {
     />
   ),
 };
+
+// ── マニュアル用（英語・パン作りの世界観）──
+// manual/public/screenshots/plan-flow-planned_en.png の元。予定 / 計画どおり / 計画外 を 1 画面で
+
+const PLAN_FLOW_MANUAL_GRAPH: FlowGraphData = {
+  steps: [
+    { id: "note:m-1", name: "Milling", params: [], noteRef: { noteId: "m-1", tableBlockId: "tbl-plan", rowIndex: 0 } },
+    { id: "note:m-2", name: "Kneading", params: [], noteRef: { noteId: "m-2", tableBlockId: "tbl-plan", rowIndex: 1 } },
+    { id: "note:m-3", name: "Proofing", params: [], noteRef: { noteId: "m-3", tableBlockId: "tbl-plan", rowIndex: 2 } },
+    { id: "note:m-4", name: "Baking", params: [], noteRef: { noteId: "m-4", tableBlockId: "tbl-plan", rowIndex: 3 } },
+    { id: "note:m-5", name: "Tasting", params: [], noteRef: { noteId: "m-5", tableBlockId: "tbl-plan", rowIndex: 4 } },
+    { id: "note:m-6", name: "Levain build", params: [], noteRef: { noteId: "m-6", tableBlockId: "tbl-plan", rowIndex: 5 } },
+  ],
+  entities: [],
+  edges: [
+    { id: "u1", kind: "used", source: "note:m-1", target: "note:m-2", plan: "asPlanned" },
+    { id: "u2", kind: "used", source: "note:m-2", target: "note:m-3", plan: "asPlanned" },
+    { id: "pl1", kind: "planned", source: "note:m-3", target: "note:m-4", deletable: true },
+    { id: "pl2", kind: "planned", source: "note:m-4", target: "note:m-5", deletable: true },
+    // 予定に無かった受け渡し（ルヴァンを別途仕込んで捏ねに使った）
+    { id: "u3", kind: "used", source: "note:m-6", target: "note:m-2", plan: "unplanned" },
+  ],
+};
+
+export const PlanFlowManual: Story = {
+  name: "Manual (English, bread world)",
+  render: () => (
+    <StepFlowView
+      graph={PLAN_FLOW_MANUAL_GRAPH}
+      connectNoteRefs
+      onConnectSteps={() => ({ error: null })}
+      onRemovePlannedEdge={() => {}}
+      onOpenNoteRef={() => {}}
+    />
+  ),
+};
