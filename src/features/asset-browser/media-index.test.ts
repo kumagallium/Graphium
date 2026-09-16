@@ -21,6 +21,8 @@ import {
   normalizeFaviconUrl,
   normalizeMediaIndexEntry,
   normalizeMediaIndex,
+  isLegacyDriveMediaUrl,
+  repairLegacyMediaUrls,
   isLocalPreviewRef,
   previewImageKey,
   previewImageRef,
@@ -35,6 +37,9 @@ import { getActiveProvider } from "../../lib/storage/registry";
 
 vi.mock("../../lib/storage/registry", () => ({
   getActiveProvider: vi.fn(),
+  // 本物はプロバイダの extractFileId が受け付ける形式を選ぶ。テストでは
+  // デスクトップ（filesystem）に居るものとして file-media:// を返す
+  mediaUrlForActiveProvider: vi.fn((fileId: string) => `file-media://${fileId}`),
 }));
 
 // media-index は「保存中を含む最新」をモジュールに持つ（保存が飛んでいる最中に
@@ -1413,5 +1418,170 @@ describe("persistUrlMetaPatch（previewImage の後追い書き戻し）", () =>
     });
     expect(applied).toBe(false);
     expect(provider.writeAppData).not.toHaveBeenCalled();
+  });
+});
+
+// ── 素材 URL のプロバイダ準拠（v0.4 で撤去した Drive 形式の後始末） ──
+//
+// 索引が `https://lh3.googleusercontent.com/d/{fileId}` を持っていると、
+// デスクトップ・セルフホストでは extractFileId が効かず、一覧がその URL を
+// そのまま <img src> に流して壊れた画像になる。usedIn もノート側の
+// `file-media://` と噛み合わなくなる。
+describe("ensureMediaIndex（素材 URL はいまのプロバイダの形式で持つ）", () => {
+  const legacyEntry = (fileId: string): MediaIndexEntry => ({
+    fileId,
+    name: "photo.png",
+    type: "image",
+    mimeType: "image/png",
+    url: `https://lh3.googleusercontent.com/d/${fileId}=s0`,
+    thumbnailUrl: `https://lh3.googleusercontent.com/d/${fileId}=s200`,
+    uploadedAt: "2026-01-01T00:00:00.000Z",
+    usedIn: [],
+  });
+
+  const mediaFile = (fileId: string) => ({
+    id: fileId,
+    name: "photo.png",
+    mimeType: "image/png",
+    createdTime: "2026-01-01T00:00:00.000Z",
+  });
+
+  const run = (existing: MediaIndex | null, files: ReturnType<typeof mediaFile>[], doc: any) => {
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn().mockResolvedValue(existing),
+      writeAppData: vi.fn().mockResolvedValue(undefined),
+      listMediaFiles: vi.fn().mockResolvedValue(files),
+    } as any);
+    const docCache = new Map<string, any>([["note-1", doc]]);
+    return ensureMediaIndex([{ id: "note-1", name: "ノート1" }], docCache, async () => doc);
+  };
+
+  const emptyDoc = { title: "ノート1", pages: [{ blocks: [] }] };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("索引に無い素材は、いまのプロバイダが解決できる URL で登録する", async () => {
+    const index = await run(null, [mediaFile("img-1")], emptyDoc);
+    const entry = index.media.find((m) => m.fileId === "img-1")!;
+    expect(entry.url).toBe("file-media://img-1");
+    expect(entry.thumbnailUrl).toBe("file-media://img-1");
+  });
+
+  it("旧 Drive 形式の既存エントリは fileId から組み直す", async () => {
+    const existing: MediaIndex = {
+      version: 8,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [legacyEntry("img-1")],
+    };
+    const index = await run(existing, [mediaFile("img-1")], emptyDoc);
+    const entry = index.media.find((m) => m.fileId === "img-1")!;
+    expect(entry.url).toBe("file-media://img-1");
+    expect(entry.thumbnailUrl).toBe("file-media://img-1");
+  });
+
+  it("直した URL でノートのブロック参照と噛み合い、usedIn が埋まる", async () => {
+    const existing: MediaIndex = {
+      version: 8,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [legacyEntry("img-1")],
+    };
+    const doc = {
+      title: "ノート1",
+      pages: [{ blocks: [{ id: "block-1", type: "image", props: { url: "file-media://img-1" } }] }],
+    };
+    const index = await run(existing, [mediaFile("img-1")], doc);
+    const entry = index.media.find((m) => m.fileId === "img-1")!;
+    expect(entry.usedIn).toEqual([
+      { noteId: "note-1", noteTitle: "ノート1", blockId: "block-1" },
+    ]);
+  });
+
+  it("プロバイダ固有の URL（media-server:// など）は書き換えない", async () => {
+    const existing: MediaIndex = {
+      version: 8,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [{ ...legacyEntry("img-1"), url: "media-server://img-1", thumbnailUrl: "media-server://img-1" }],
+    };
+    const index = await run(existing, [mediaFile("img-1")], emptyDoc);
+    const entry = index.media.find((m) => m.fileId === "img-1")!;
+    expect(entry.url).toBe("media-server://img-1");
+  });
+});
+
+describe("repairLegacyMediaUrls", () => {
+  const base: MediaIndexEntry = {
+    fileId: "img-1",
+    name: "photo.png",
+    type: "image",
+    mimeType: "image/png",
+    url: "https://lh3.googleusercontent.com/d/img-1=s0",
+    thumbnailUrl: "https://drive.google.com/thumbnail?id=img-1&sz=s200",
+    uploadedAt: "2026-01-01T00:00:00.000Z",
+    usedIn: [],
+  };
+
+  it("旧 Drive 形式を判定する", () => {
+    expect(isLegacyDriveMediaUrl("https://lh3.googleusercontent.com/d/abc=s200")).toBe(true);
+    expect(isLegacyDriveMediaUrl("https://drive.google.com/thumbnail?id=abc&sz=s200")).toBe(true);
+    expect(isLegacyDriveMediaUrl("file-media://abc")).toBe(false);
+    expect(isLegacyDriveMediaUrl("https://example.com/photo.png")).toBe(false);
+  });
+
+  it("url と thumbnailUrl の両方を組み直す", () => {
+    const repaired = repairLegacyMediaUrls(base);
+    expect(repaired.url).toBe("file-media://img-1");
+    expect(repaired.thumbnailUrl).toBe("file-media://img-1");
+  });
+
+  it("URL ブックマークの外部 URL は触らない", () => {
+    const bookmark: MediaIndexEntry = {
+      ...base,
+      type: "url",
+      url: "https://lh3.googleusercontent.com/d/img-1=s0",
+    };
+    expect(repairLegacyMediaUrls(bookmark).url).toBe("https://lh3.googleusercontent.com/d/img-1=s0");
+  });
+
+  it("旧形式でなければ同じ参照をそのまま返す", () => {
+    const fine: MediaIndexEntry = { ...base, url: "file-media://img-1", thumbnailUrl: "file-media://img-1" };
+    expect(repairLegacyMediaUrls(fine)).toBe(fine);
+  });
+});
+
+describe("normalizeMediaIndexEntry（旧 Drive 形式の素材 URL）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("読み込み時の正規化で、いまのプロバイダの形式に直る", () => {
+    const entry: MediaIndexEntry = {
+      fileId: "img-1",
+      name: "photo.png",
+      type: "image",
+      mimeType: "image/png",
+      url: "https://lh3.googleusercontent.com/d/img-1=s0",
+      thumbnailUrl: "https://lh3.googleusercontent.com/d/img-1=s200",
+      uploadedAt: "2026-01-01T00:00:00.000Z",
+      usedIn: [],
+    };
+    const normalized = normalizeMediaIndexEntry(entry);
+    expect(normalized.url).toBe("file-media://img-1");
+    expect(normalized.thumbnailUrl).toBe("file-media://img-1");
+  });
+
+  it("直すところが無ければ同じ参照を返す（再レンダーを起こさない）", () => {
+    const entry: MediaIndexEntry = {
+      fileId: "img-1",
+      name: "photo.png",
+      type: "image",
+      mimeType: "image/png",
+      url: "file-media://img-1",
+      thumbnailUrl: "file-media://img-1",
+      uploadedAt: "2026-01-01T00:00:00.000Z",
+      usedIn: [],
+    };
+    expect(normalizeMediaIndexEntry(entry)).toBe(entry);
   });
 });

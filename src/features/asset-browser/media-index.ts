@@ -1,7 +1,7 @@
 // .graphium-media-index.json の型定義と Drive 読み書き
 // 全メディアファイルのメタデータを1ファイルに集約し、ギャラリー表示を高速化する
 
-import { getActiveProvider } from "../../lib/storage/registry";
+import { getActiveProvider, mediaUrlForActiveProvider } from "../../lib/storage/registry";
 import { isDelimitedDataFile } from "../data-import/file-kind";
 import { normalizeNoteContexts } from "../note-context/context-tags";
 // チャートが直接参照する素材（config.assetSources）を利用ノートに数えるため。
@@ -333,13 +333,19 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       props.source.fileId を usedIn に含める。表のセルも url も持たない参照なので、
  *       これを入れないと素材が未使用扱いになり、削除前の参照チェックをすり抜けて
  *       表が参照切れになる。bump により既存ノートの参照を一度の再構築で回収する
+ *  - 9: 素材の url/thumbnailUrl を、いまのプロバイダが解決できる形式に揃える。
+ *       v0.4 で撤去した Google Drive 時代の `https://lh3.googleusercontent.com/d/{fileId}`
+ *       形式が索引に残っていると、デスクトップ・セルフホストでは extractFileId が
+ *       効かず、一覧がその URL をそのまま <img src> に流して壊れた画像で埋まる。
+ *       ブロック走査の usedIn も URL 一致で引くため、ノート側の `file-media://` と
+ *       噛み合わず未使用扱いになっていた。bump により既存索引を一度で直す
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 8 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 9 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -1083,6 +1089,41 @@ export function extractFileIdFromUrl(url: string): string | null {
   return match ? match[1] : null;
 }
 
+/**
+ * v0.4 で撤去した Google Drive プロバイダ時代の素材 URL か。
+ *
+ * 当時の索引は素材を `https://lh3.googleusercontent.com/d/{fileId}` 形式で持っていた。
+ * Drive が無くなった今はどのプロバイダの extractFileId も受け付けず、一覧はこの URL を
+ * そのまま `<img src>` に入れてしまう。実体は手元にあるのに Google の CDN へ fileId を
+ * 送って 400 が返る（＝壊れた画像で埋まる）。fileId は生きているので、現プロバイダの
+ * スキームに組み直せば復旧する。新規に組み立てることはなく、旧データの検出だけに使う。
+ */
+export function isLegacyDriveMediaUrl(url: string): boolean {
+  return (
+    /^https:\/\/lh3\.googleusercontent\.com\/d\//.test(url) ||
+    /^https:\/\/drive\.google\.com\/thumbnail\?/.test(url)
+  );
+}
+
+/**
+ * 旧 Drive 形式の url/thumbnailUrl を、いまのプロバイダで解決できる形に直す。
+ *
+ * URL ブックマーク（type === "url"）の url は外部サイトそのものなので触らない。
+ * 直すのは素材の実体を指すはずのフィールドだけ。
+ */
+export function repairLegacyMediaUrls(entry: MediaIndexEntry): MediaIndexEntry {
+  if (entry.type === "url") return entry;
+  const urlIsLegacy = isLegacyDriveMediaUrl(entry.url);
+  const thumbIsLegacy = isLegacyDriveMediaUrl(entry.thumbnailUrl);
+  if (!urlIsLegacy && !thumbIsLegacy) return entry;
+  const resolvable = mediaUrlForActiveProvider(entry.fileId);
+  return {
+    ...entry,
+    url: urlIsLegacy ? resolvable : entry.url,
+    thumbnailUrl: thumbIsLegacy ? resolvable : entry.thumbnailUrl,
+  };
+}
+
 // ── 初期構築（既存メディアの自動登録） ──
 
 /** アップロード済みメディアファイル一覧を取得 */
@@ -1190,8 +1231,9 @@ export async function ensureMediaIndex(
   // 重複し、再構築のたびに積み上がる。
   scanned.push(...existingUrlBookmarks);
 
-  // プロバイダー固有の URL 形式を尊重するため、既存エントリの url/thumbnailUrl はそのまま保持する。
-  // 新規エントリ（disk にあるが index にまだ無い）は Drive 互換 URL でフォールバック。
+  // プロバイダー固有の URL 形式を尊重するため、既存エントリの url/thumbnailUrl はそのまま保持する
+  //（旧 Drive 形式は読み込み時の normalizeMediaIndexEntry が既に直している）。
+  // 新規エントリ（disk にあるが index にまだ無い）はいまのプロバイダのスキームで登録する。
   for (const file of driveFiles) {
     const existingEntry = existingMap.get(file.id);
     const type = existingEntry?.type ?? mimeToMediaType(file.mimeType, file.name);
@@ -1200,18 +1242,19 @@ export async function ensureMediaIndex(
       // 既存エントリの URL をそのまま保持（server-fs の media-server:// など）
       scanned.push(existingEntry);
     } else {
-      // 新規エントリ: Drive 互換でフォールバック（server-fs/local では使われないはず）
-      const thumbnailUrl = type === "image"
-        ? `https://lh3.googleusercontent.com/d/${file.id}=s200`
-        : `https://drive.google.com/thumbnail?id=${file.id}&sz=s200`;
-      const url = `https://lh3.googleusercontent.com/d/${file.id}=s0`;
+      // 新規エントリ: いまのプロバイダが extractFileId で受け付ける形式で入れる。
+      // ここを特定プロバイダの URL に決め打ちすると、別プロバイダでは fileId を取り出せず
+      // 一覧が URL をそのまま <img src> に流して壊れる（v0.4 まで Drive 互換で決め打ちしていた）。
+      const url = mediaUrlForActiveProvider(file.id);
       scanned.push({
         fileId: file.id,
         name: file.name,
         type,
         mimeType: file.mimeType,
         url,
-        thumbnailUrl,
+        // サムネイルも同じ参照でよい。縮小版を持つプロバイダかどうかは
+        // 表示側（thumbnailUrlFor）が fileId から判断する
+        thumbnailUrl: url,
         uploadedAt: file.createdTime,
         usedIn: [],
       });
@@ -1621,8 +1664,13 @@ export function previewRefKey(value: string | null | undefined): string | null {
  *  旧バージョンからの混入に備えて「ローカル参照でなければ落とす」を読み込み時に通す
  *  （描画側の最後の関門は sanitizeIconUrl と同じ思想）。
  *  ogImage / leadImage は来歴として残す — 描画に使う経路がもう無いので、
- *  ここで消さなくてもビーコンにはならない。 */
-export function normalizeMediaIndexEntry(entry: MediaIndexEntry): MediaIndexEntry {
+ *  ここで消さなくてもビーコンにはならない。
+ *
+ *  素材本体の url / thumbnailUrl に残った旧 Drive 形式もここで直す（repairLegacyMediaUrls）。
+ *  favicon と同じく「コードを直すだけでは既存データが治らない」たぐいの遺産で、
+ *  ディスクの中身がプロセスに入る経路はここ 1 箇所だから。 */
+export function normalizeMediaIndexEntry(raw: MediaIndexEntry): MediaIndexEntry {
+  const entry = repairLegacyMediaUrls(raw);
   const storedFavicon = entry.urlMeta?.faviconUrl;
   const storedPreview = entry.urlMeta?.previewImage;
   const thumbIsLegacy = isThirdPartyFaviconUrl(entry.thumbnailUrl);
