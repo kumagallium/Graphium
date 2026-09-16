@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.76.0](https://github.com/kumagallium/Graphium/compare/v0.75.1...v0.76.0) - 2026-09-16
+
+- Expose the knowledge layer through MCP by @kumagallium in https://github.com/kumagallium/Graphium/pull/942
+- Separate knowledge by kind in chat context, and fix the kind descriptions by @kumagallium in https://github.com/kumagallium/Graphium/pull/941
+- Offer to turn everything you just imported into knowledge by @kumagallium in https://github.com/kumagallium/Graphium/pull/940
+- fix: @ mentions land in the cell you typed them in, and operation nodes drag from anywhere by @kumagallium in https://github.com/kumagallium/Graphium/pull/943
+
 ## [v0.75.1](https://github.com/kumagallium/Graphium/compare/v0.75.0...v0.75.1) - 2026-09-16
 
 - fix(media): keep asset URLs in the active provider's scheme by @kumagallium in https://github.com/kumagallium/Graphium/pull/939
