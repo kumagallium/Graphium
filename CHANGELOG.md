@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.76.7](https://github.com/kumagallium/Graphium/compare/v0.76.6...v0.76.7) - 2026-09-16
+
+- fix(settings): stop the usage tab from crashing in the settings modal stories by @kumagallium in https://github.com/kumagallium/Graphium/pull/961
+- fix(desktop): scan folders natively instead of webkitdirectory by @kumagallium in https://github.com/kumagallium/Graphium/pull/954
+
+## [v0.76.6](https://github.com/kumagallium/Graphium/compare/v0.76.5...v0.76.6) - 2026-09-16
+
+- fix(settings): keep the settings modal the same size across tabs by @kumagallium in https://github.com/kumagallium/Graphium/pull/959
+
 ## [v0.76.5](https://github.com/kumagallium/Graphium/compare/v0.76.4...v0.76.5) - 2026-09-16
 
 - fix(plan-flow): show only outputs that were actually handed on by @kumagallium in https://github.com/kumagallium/Graphium/pull/957

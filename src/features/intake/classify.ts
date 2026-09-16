@@ -39,13 +39,34 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   webp: "image/webp",
   svg: "image/svg+xml",
   heic: "image/heic",
+  // ここから下の画像・音声・動画は、ブラウザなら File.type が付くので
+  // 元は要らなかったもの。デスクトップのネイティブ走査（native-scan.ts）は
+  // MIME を持たないため、ここに無いと素材と判定されず捨てられてしまう
+  bmp: "image/bmp",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  avif: "image/avif",
+  heif: "image/heif",
+  ico: "image/x-icon",
   mp4: "video/mp4",
   webm: "video/webm",
   mov: "video/quicktime",
+  m4v: "video/mp4",
+  avi: "video/x-msvideo",
+  mkv: "video/x-matroska",
+  mpg: "video/mpeg",
+  mpeg: "video/mpeg",
+  wmv: "video/x-ms-wmv",
+  "3gp": "video/3gpp",
   mp3: "audio/mpeg",
   wav: "audio/wav",
   m4a: "audio/mp4",
   ogg: "audio/ogg",
+  aac: "audio/aac",
+  flac: "audio/flac",
+  opus: "audio/opus",
+  aiff: "audio/aiff",
+  aif: "audio/aiff",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ppt: "application/vnd.ms-powerpoint",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -70,12 +91,12 @@ export function classifyIntakeFiles(files: IntakeFile[]): ClassifiedIntakeFiles 
       skipped.push(f);
       continue;
     }
-    if (isMarkdownFile(f.file)) {
+    if (isMarkdownFile(f)) {
       notes.push(f);
       continue;
     }
-    const mime = f.file.type || guessMimeType(f.file.name);
-    const mediaType = mimeToMediaType(mime, f.file.name);
+    const mime = f.type || guessMimeType(f.name);
+    const mediaType = mimeToMediaType(mime, f.name);
     // "document" は Word/Excel/PowerPoint をまとめた型だが、ちゃんと展開できるのは
     // .docx / .pptx / .xlsx まで。旧バイナリ形式（.doc / .xls / .ppt）はここで弾く
     if (

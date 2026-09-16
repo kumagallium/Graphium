@@ -11,9 +11,10 @@ import { renderHook, act } from "@testing-library/react";
 import { useIntake } from "./use-intake";
 import type { IntakeDeps, IntakeProgress, MarkdownImportResult } from "./run-intake";
 import type { IntakeFile } from "./types";
+import { intakeFileFrom } from "./test-helpers";
 
 function mdFile(name: string): IntakeFile {
-  return { file: new File(["# " + name], name, { type: "text/markdown" }), path: name };
+  return intakeFileFrom(new File(["# " + name], name, { type: "text/markdown" }), name);
 }
 
 // importMarkdown を await new Promise(setTimeout) で待たせ、実行中の再入を作れるようにする
