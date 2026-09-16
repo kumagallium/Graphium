@@ -2832,12 +2832,5 @@ export const en: Record<string, string> = {
   "localView.lane.childSteps": "Steps of each operation",
   "globalGraph.mode.overview": "Overview",
   "globalGraph.mode.timeline": "Timeline",
-  "processOverview.title": "Operation overview",
-  "processOverview.hint": "Grouped by step name · line width = number of hand-offs",
-  "processOverview.period.3m": "3 months",
-  "processOverview.period.1y": "1 year",
-  "processOverview.period.all": "All",
-  "processOverview.droppedRefs": "{n} references hidden (broken or outside the period)",
-  "processOverview.noteCount": "{n} notes",
   "nav.reservedPlanFolderHint": "\"Plan\" is a reserved folder. Notes placed here are treated as plan notes (parents of operations)",
 };

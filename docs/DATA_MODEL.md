@@ -1703,10 +1703,10 @@ the plan/operation flow in `src/features/network-graph/plan-flow.ts`)
 walk every entry's `crossNoteLinks` at read time; this keeps the stored
 shape simple at the cost of an O(n) scan per lookup.
 
-The same "read-only derivation" rule covers the plan/operation flow,
-local view and process overview projections
+The same "read-only derivation" rule covers the plan/operation flow and
+local view projections
 (`src/features/network-graph/plan-flow.ts` /
-`local-view-model.ts` / `process-overview.ts`): they build their graphs from the
+`local-view-model.ts`): they build their graphs from the
 existing `ProcessIndex` and navigation index in memory and never add
 fields to either or write anything back.
 

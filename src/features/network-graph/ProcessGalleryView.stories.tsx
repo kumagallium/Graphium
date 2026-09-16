@@ -111,7 +111,6 @@ const INDEX: ProcessIndex = {
       tools: ["管状炉"],
       forkedFrom: { noteId: "n1", title: "Cu粉末の焼結実験（第1回）", forkedAt: daysAgo(6) },
       // n1 の「焼成」の出力を、この工程の「秤量」で受け取る cross-note 参照。
-      // 全体ビュー（overview）でステップ名を結ぶ線が出るための最小データ
       crossNoteLinks: [
         {
           id: "n3-cross-1",
@@ -198,18 +197,6 @@ export const Empty: Story = {
     onBack: () => {},
     onNavigateNote: () => {},
     onForkProcess: async () => "forked",
-  },
-  render: Frame,
-};
-
-/** 全体ビュー（ステップ名で集約）を上に重ねた状態。ノードクリックで一覧を絞れる */
-export const WithOverview: Story = {
-  args: {
-    processIndex: INDEX,
-    onBack: () => {},
-    onNavigateNote: () => {},
-    onForkProcess: async () => "forked",
-    overview: true,
   },
   render: Frame,
 };

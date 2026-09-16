@@ -2830,12 +2830,5 @@ export const ja: Record<string, string> = {
   "localView.lane.childSteps": "各工程の手順",
   "globalGraph.mode.overview": "俯瞰",
   "globalGraph.mode.timeline": "時系列",
-  "processOverview.title": "工程の全体像",
-  "processOverview.hint": "ステップ名で集約 ・ 線の太さ = 受け渡しの回数",
-  "processOverview.period.3m": "3 か月",
-  "processOverview.period.1y": "1 年",
-  "processOverview.period.all": "すべて",
-  "processOverview.droppedRefs": "{n} 件の参照を除外（切れた・期間外）",
-  "processOverview.noteCount": "{n} ノート",
   "nav.reservedPlanFolderHint": "「計画」は予約されたフォルダです。ここに入れたノートは工程の親（計画ノート）として扱われます",
 };

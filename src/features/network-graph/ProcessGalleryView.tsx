@@ -23,7 +23,6 @@ import type { ProcessIndex, ProcessIndexEntry } from "./process-index";
 import { StepFlowView } from "./step-flow-view";
 import { addCrossNoteOriginsToFlowGraph } from "./cross-note-flow";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
-import { ProcessOverviewView } from "./process-overview-view";
 
 export type ProcessGalleryViewProps = {
   processIndex: ProcessIndex | null;
@@ -40,12 +39,6 @@ export type ProcessGalleryViewProps = {
    * 差し替えられるようにする。未指定なら従来どおり process.fork。
    */
   forkLabel?: string;
-  /**
-   * 一覧ヘッダの上に、ステップ名で集約した全体ビュー（ProcessOverviewView）を出す。
-   * 既定 false。共有ライブラリ（SharedLibraryView）からは渡さない
-   * （note-chain-plan.md §2.5「範囲: 共有フォルダ」は v1 では出さない）。
-   */
-  overview?: boolean;
 };
 
 type SortKey = "stepCount" | "modifiedAt" | "title";
@@ -66,7 +59,6 @@ export function ProcessGalleryView({
   onForkProcess,
   hideBack = false,
   forkLabel,
-  overview = false,
 }: ProcessGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -75,15 +67,6 @@ export function ProcessGalleryView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [forkingNoteId, setForkingNoteId] = useState<string | null>(null);
   const [forkError, setForkError] = useState(false);
-  // 全体ビューのノードクリックで一覧をステップ名で絞る。既存の検索欄（searchQuery）に
-  // 名前を入れることで絞り込みを実現する。同じ名前を再度クリックすると解除する。
-  // 強調するノードは検索欄の値から導出する（別 state に持つと、検索欄を手で書き換えた
-  // あとも強調が残り「そのステップ名で絞り込み中」に見える）
-  const overviewSelectedStepName = searchQuery.trim() || null;
-  const handleSelectStepName = (name: string) => {
-    setSearchQuery(overviewSelectedStepName === name ? "" : name);
-  };
-
   const processes = processIndex?.processes ?? [];
 
   const filtered = useMemo(() => {
@@ -165,16 +148,6 @@ export function ProcessGalleryView({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
-      {/* 全体ビュー: ステップ名で集約した有向グラフ。一覧より上に横いっぱいの帯として置く */}
-      {overview && (
-        <div className="px-6 py-4 border-b border-border shrink-0">
-          <ProcessOverviewView
-            processIndex={processIndex}
-            onSelectStepName={handleSelectStepName}
-            selectedStepName={overviewSelectedStepName}
-          />
-        </div>
-      )}
       <div className="flex-1 flex overflow-hidden">
         {/* 左: 一覧 */}
         <div className="flex flex-col overflow-hidden shrink-0" style={{ width: "44%", minWidth: 340 }}>
