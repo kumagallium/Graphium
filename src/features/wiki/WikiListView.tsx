@@ -52,12 +52,13 @@ function verdictRank(verdict?: string): number {
 }
 
 // 出典照合 verdict のソート順（aggregate.ts の優先順位と揃える）。
+// 注意が要る順（ドキュメント単位の集約 aggregateDocumentVerdict と同じ順）。
 const SOURCE_VERDICT_ORDER: Record<SourceCheckVerdict, number> = {
   contradicted: 0,
-  supported: 1,
-  "not-in-source": 2,
-  unclear: 3,
-  "source-missing": 4,
+  "not-in-source": 1,
+  unclear: 2,
+  "source-missing": 3,
+  supported: 4,
 };
 function sourceVerdictRank(verdict?: SourceCheckVerdict): number {
   if (!verdict) return 99;

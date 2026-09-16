@@ -14,6 +14,7 @@ import {
   MessageCircle,
   Pilcrow,
   Paperclip,
+  Bot,
   RefreshCw,
   Check,
   Trash2,
@@ -54,6 +55,9 @@ function SourceKindGlyph({ kind, size }: { kind: SourceCheckSourceKind; size: nu
       return <StickyNote size={size} />;
     case "chat":
       return <MessageCircle size={size} />;
+    case "claim":
+      // 知見（AI が作ったナレッジ）。一覧・サイドバーと同じ Bot アイコン
+      return <Bot size={size} />;
     default:
       return <Paperclip size={size} />;
   }

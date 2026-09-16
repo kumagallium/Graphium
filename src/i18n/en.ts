@@ -1286,7 +1286,7 @@ export const en: Record<string, string> = {
   "wikiList.colWorldVerdictTooltip": "Latest world-grounding verdict. Sort by verdict strength.",
   "wikiList.colWorldVerdictNoMatch": "no match",
   "wikiList.colSourceVerdict": "Source check",
-  "wikiList.colSourceVerdictTooltip": "Latest source-check verdict. Sort by priority (contradicted > supported > not-in-source > unclear > source-missing).",
+  "wikiList.colSourceVerdictTooltip": "Latest source check result. Sorts as Differs from source → Not in source → Couldn't tell → Source unavailable → Found in source.",
   "wikiList.worldCheckSelected": "Check world ({count})",
   "wikiList.worldCheckSelectedTitle": "Run world-grounding for selected (KB first, model only on KB misses). Overwrites any existing verdict, so it doubles as a re-check.",
   "wikiList.clearWorldSelected": "Clear result ({count})",

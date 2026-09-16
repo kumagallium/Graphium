@@ -311,4 +311,34 @@ describe("runSourceCheck", () => {
     expect(profile.entries.map((e) => e.statement).sort()).toEqual(["要点1", "要点2"]);
     expect(profile.entries.map((e) => e.statementBlockId).sort()).toEqual(["b1", "b2"]);
   });
+
+  it("トピック: 要点の 1 つでも出典に見当たらなければ、ページの判定は「見当たらない」になる（支持された要点で隠さない）", async () => {
+    const ok: PlanSourceCheckStatement = {
+      id: "topic-2#b1", docId: "topic-2", title: "トピック2", body: "支持される要点", hashBody: "全文",
+      sourceIds: ["claim:c1"], statement: "支持される要点", statementBlockId: "b1",
+    };
+    const ng: PlanSourceCheckStatement = {
+      id: "topic-2#b2", docId: "topic-2", title: "トピック2", body: "言い過ぎの要点", hashBody: "全文",
+      sourceIds: ["claim:c1"], statement: "言い過ぎの要点", statementBlockId: "b2",
+    };
+    const plan = planSourceCheck([ok, ng]);
+    const statementsById = new Map([ok, ng].map((s) => [s.id, s]));
+    const callApi = vi.fn(async (_source: CheckSourcesApiSource, claims: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => ({
+      model: "m",
+      results: claims.map((c) => ({
+        claimId: c.id,
+        verdict: c.id === "topic-2#b2" ? ("not-in-source" as const) : ("supported" as const),
+        rationale: "x",
+      })),
+    }));
+    const depsWithClaim: ResolveSourceTextDeps = {
+      ...makeDeps(),
+      findClaim: (id) => (id === "c1" ? {} : undefined),
+      loadClaimDoc: async (id) => (id === "c1" ? noteDoc("知見c1", "知見の本文") : null),
+    };
+
+    const result = await runSourceCheck(plan, { statementsById, deps: depsWithClaim, language: "ja", callApi, logger: noopLogger });
+
+    expect(result.profiles.get("topic-2")!.verdict).toBe("not-in-source");
+  });
 });

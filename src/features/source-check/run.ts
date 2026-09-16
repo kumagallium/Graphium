@@ -7,7 +7,7 @@
 // 集約して呼び出し側に返す（中断時に一部の文しか見ていないドキュメントは書かない —
 // トピックで一部の要点だけ処理済みの場合を含む）。signal は出典の境目でだけチェックする。
 
-import type { SourceCheckEntry, SourceCheckProfile, SourceCheckSourceKind } from "../../lib/document-types";
+import type { SourceCheckEntry, SourceCheckProfile, SourceCheckSourceKind, SourceCheckVerdict } from "../../lib/document-types";
 import {
   callCheckSourcesApi,
   SourceCheckDegradedError,
@@ -15,7 +15,7 @@ import {
   type CheckSourcesApiResult,
   type CheckSourcesApiSource,
 } from "./api";
-import { aggregateVerdict } from "./aggregate";
+import { aggregateDocumentVerdict, aggregateVerdict } from "./aggregate";
 import { computeClaimHash } from "./claim-hash";
 import { findBlockIdForQuote } from "./quote-match";
 import { missingResponseRationale, missingReasonRationale } from "./rationale-text";
@@ -243,6 +243,7 @@ export async function runSourceCheck(
     if (!allDone) continue;
 
     const entries: SourceCheckEntry[] = [];
+    const statementVerdicts: SourceCheckVerdict[] = [];
     const usedSourceIds = new Set<string>();
     for (const id of statementIds) {
       const statement = statementsById.get(id);
@@ -251,11 +252,12 @@ export async function runSourceCheck(
         ? stEntries.map((e) => ({ ...e, statement: statement.statement, statementBlockId: statement.statementBlockId }))
         : stEntries;
       entries.push(...stamped);
+      statementVerdicts.push(aggregateVerdict(stEntries));
       const expected = expectedSourcesByStatement.get(id);
       if (expected) for (const sid of expected) usedSourceIds.add(sid);
     }
 
-    const verdict = aggregateVerdict(entries);
+    const verdict = aggregateDocumentVerdict(statementVerdicts);
     const usedModels = [...usedSourceIds].map((sid) => modelBySource.get(sid)).filter((m): m is string => !!m);
     const checkedBy = usedModels.length > 0 ? usedModels[usedModels.length - 1] : "local";
     // ドキュメント全体のタイトル/本文はどの文でも同じ値を持つ（build-statements.ts が揃える）

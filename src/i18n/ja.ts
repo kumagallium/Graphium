@@ -1286,7 +1286,7 @@ export const ja: Record<string, string> = {
   "wikiList.colWorldVerdictTooltip": "最新の世界モデル照合 verdict。verdict の強さでソートできる。",
   "wikiList.colWorldVerdictNoMatch": "マッチなし",
   "wikiList.colSourceVerdict": "出典照合",
-  "wikiList.colSourceVerdictTooltip": "最新の出典照合 verdict。優先順位（矛盾＞支持＞見当たらない＞判定不能＞出典なし）でソートできる。",
+  "wikiList.colSourceVerdictTooltip": "最新の出典照合の結果。出典と異なる → 出典に見当たらない → 判定できなかった → 出典を開けなかった → 出典に書かれている の順に並べ替えられる。",
   "wikiList.worldCheckSelected": "世界照合 ({count})",
   "wikiList.worldCheckSelectedTitle": "選択したナレッジをまとめて世界照合する（KB を見て、未登録の主張だけモデル判定）。既存の判定があれば上書きするので「付け直し」にも使える。",
   "wikiList.clearWorldSelected": "照合を消す ({count})",

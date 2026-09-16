@@ -24,7 +24,7 @@ export {
   type SourceCheckLogger,
 } from "./run";
 export { attachSourceCheck } from "./attach";
-export { aggregateVerdict } from "./aggregate";
+export { aggregateDocumentVerdict, aggregateVerdict } from "./aggregate";
 export { computeClaimHash } from "./claim-hash";
 export { findBlockIdForQuote } from "./quote-match";
 export { extractTopicStatements, type TopicStatement } from "./topic-statements";
