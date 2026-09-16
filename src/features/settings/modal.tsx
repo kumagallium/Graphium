@@ -56,6 +56,10 @@ import {
 import { useLocale, type Locale } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
+import { SettingSection } from "./SettingSection";
+import { SettingsGroup } from "./SettingsGroup";
+import { SettingsStatus } from "./SettingsStatus";
+import { SettingToggle } from "./SettingToggle";
 // 共有ライブラリの読み直し通知（共有ルート・スイッチを変えたとき）。
 // バレルではなくストア本体を直接読む（Library ビューを設定画面に持ち込まないため）
 import { notifySharedLibraryChanged } from "../sharing/shared-library-store";
@@ -1578,10 +1582,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             </div>
 
             {/* 読みやすさ（フォント） — ラテン用と日本語用を独立に設定 */}
-            <div>
-              <h3 className="text-xs font-semibold text-foreground mb-2 block">
-                {t("settings.font")}
-              </h3>
+            <SettingSection
+              title={t("settings.font")}
+              summary={t("settings.font.summary")}
+              details={<p>{t("settings.fontHelp")}</p>}
+            >
               <div className="space-y-2">
                 {/* ラテン文字用 */}
                 <div>
@@ -1662,14 +1667,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">{t("settings.fontHelp")}</p>
-            </div>
+            </SettingSection>
 
             {/* 読みやすさ（色） — 文字と紙色のプリセット。onChange で即時プレビュー（フォントと同じ） */}
-            <div>
-              <h3 className="text-xs font-semibold text-foreground mb-2 block">
-                {t("settings.colorMode")}
-              </h3>
+            <SettingSection
+              title={t("settings.colorMode")}
+              summary={t("settings.colorMode.summary")}
+              details={<p>{t("settings.colorModeHelp")}</p>}
+            >
               <div className="relative">
                 <select
                   value={colorMode}
@@ -1696,23 +1701,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </select>
                 <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               </div>
-              <p className="text-xs text-muted-foreground mt-2">{t("settings.colorModeHelp")}</p>
-            </div>
+            </SettingSection>
 
-            {/* 来歴ラベル機能のオン/オフトグルは撤去した。付与 UI が step の中に
-                構造的に畳まれた（ステップを使う人にだけ現れる）ため、設定での
-                段階的開示は不要になった。 */}
-
-            {/* 来歴ラベルの表記 — PROV コアラベルの表示名カスタマイズ */}
-            <div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <Tag size={14} className="text-muted-foreground" />
-                <h3 className="text-xs font-semibold text-foreground">
-                  {t("settings.labels.title")}
-                </h3>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">{t("settings.labels.help")}</p>
-
+            {/* 来歴ラベルの表記 — PROV コアラベルの表示名カスタマイズ。
+                既定の呼び名のまま使う人が大半なので畳んでおく。 */}
+            <SettingsGroup
+              storageKey="display-labels"
+              title={t("settings.labels.title")}
+              summary={t("settings.labels.summary")}
+            >
+              <p className="text-xs text-muted-foreground">{t("settings.labels.help")}</p>
               <div className="space-y-2">
                 {/* plan / result は概念ごと撤廃済み（工程は step ブロック）なので
                     表示名カスタマイズからも外す。procedure(ステップ) はチップ・
@@ -1754,68 +1752,33 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   <RotateCcw size={12} /> {t("settings.labels.reset")}
                 </button>
               )}
-            </div>
+            </SettingsGroup>
           </div>
         )}
 
-        {/* ── Storage タブ ── */}
+        {/* ── ストレージタブ ──
+         *  上から「自分のノートがどこにあるか」「取り出し方」、その下に人と共有する
+         *  ための設定、一番下に索引などの道具。初めて開いた人が最初に知りたいのは
+         *  置き場所と取り出し方なので、そこだけ畳まずに出す。 */}
         {tab === "storage" && (
           <div className="space-y-6">
-            {/* サーバーストレージ（Docker / セルフホスト Web のみ） */}
-            {!isTauri() && serverCaps?.serverStorage && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <FolderOpen size={14} className="text-muted-foreground" />
-                  <h3 className="text-xs font-semibold text-foreground">
-                    {t("settings.serverStorage.title")}
-                  </h3>
-                </div>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {t("settings.serverStorage.help")}
-                </p>
-                {serverCaps.requiresAuth ? (
-                  <div className="space-y-2">
-                    <Input
-                      type="password"
-                      value={serverToken}
-                      onChange={(e) => { setServerTokenInput(e.target.value); setServerTokenSaved(false); }}
-                      placeholder={t("settings.serverStorage.tokenPlaceholder")}
-                      autoComplete="off"
-                    />
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" onClick={handleSaveServerToken} disabled={!serverToken}>
-                        {t("settings.serverStorage.save")}
-                      </Button>
-                      {serverTokenSaved && (
-                        <span className="text-xs text-muted-foreground">
-                          {t("settings.serverStorage.savedReloading")}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {t("settings.serverStorage.tokenHelp")}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {t("settings.serverStorage.noAuth")}
-                  </p>
-                )}
-              </div>
-            )}
-
             {/* ローカル保存先（デスクトップ版のみ） */}
             {isTauri() && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <FolderOpen size={14} className="text-muted-foreground" />
-                  <h3 className="text-xs font-semibold text-foreground">
-                    {t("settings.saveDir.title")}
-                  </h3>
-                </div>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {t("settings.saveDir.help")}
-                </p>
+              <SettingSection
+                icon={FolderOpen}
+                title={t("settings.saveDir.title")}
+                summary={t("settings.saveDir.summary")}
+                details={
+                  <div className="space-y-1.5">
+                    <p>{t("settings.saveDir.help")}</p>
+                    <p className="flex items-start gap-1">
+                      <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                      <span>{t("settings.saveDir.warning")}</span>
+                    </p>
+                    <p>{t("settings.saveDir.restartNote")}</p>
+                  </div>
+                }
+              >
                 {graphiumRoot ? (
                   <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -1868,357 +1831,62 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     ...
                   </div>
                 )}
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-start gap-1">
-                  <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                  <span>{t("settings.saveDir.warning")}</span>
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t("settings.saveDir.restartNote")}
-                </p>
                 {rootError && (
                   <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
                     <AlertCircle size={12} /> {rootError}
                   </p>
                 )}
-              </div>
+              </SettingSection>
             )}
 
-            {/* AuthorIdentity（team-shared-storage Phase 0）。
-                共有ノート・PROV 来歴の author 情報なので、共有ストレージの直前に置く。 */}
-            <div>
-              <h3 className="text-xs font-semibold text-foreground mb-1 block">
-                {t("settings.identity.title")}
-              </h3>
-              <p className="text-xs text-muted-foreground mb-2">
-                {t("settings.identity.help")}
-              </p>
-              <div className="space-y-2">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">
-                    {t("settings.identity.name")}
-                  </div>
-                  <Input
-                    type="text"
-                    value={authorName}
-                    onChange={(e) => {
-                      setAuthorName(e.target.value);
-                      setIdentitySaved(false);
-                      setIdentityError(null);
-                    }}
-                    placeholder={t("settings.identity.namePlaceholder")}
-                    autoComplete="name"
-                  />
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">
-                    {t("settings.identity.email")}
-                  </div>
-                  <Input
-                    type="email"
-                    value={authorEmail}
-                    onChange={(e) => {
-                      setAuthorEmail(e.target.value);
-                      setIdentitySaved(false);
-                      setIdentityError(null);
-                    }}
-                    placeholder={t("settings.identity.emailPlaceholder")}
-                    autoComplete="email"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={handleSaveIdentity}
-                    disabled={!authorName.trim() || !authorEmail.trim()}
-                  >
-                    {t("settings.identity.save")}
-                  </Button>
-                  {identitySaved && (
-                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                      <CheckCircle size={12} className="text-green-600" />
-                      {t("settings.identity.saved")}
-                    </span>
-                  )}
-                </div>
-                {identityError && (
-                  <p className="text-xs text-red-500 flex items-center gap-1">
-                    <AlertCircle size={12} /> {identityError}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Shared storage（team-shared-storage Phase 1c、Tauri 専用） */}
-            {isTauri() ? (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <FolderOpen size={14} className="text-muted-foreground" />
-                  <h3 className="text-xs font-semibold text-foreground">
-                    {t("settings.shared.title")}
-                  </h3>
-                </div>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {t("settings.shared.help")}
-                </p>
-
-                {/* Shared root */}
-                <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
-                  <div className="text-xs text-muted-foreground">
-                    {t("settings.shared.rootLabel")}
-                  </div>
-                  {sharedRoot ? (
-                    <div className="text-xs font-mono text-foreground break-all">{sharedRoot}</div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground italic">
-                      {t("settings.shared.notSet")}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Button size="sm" variant="ghost" onClick={handlePickSharedRoot}>
-                      {sharedRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                    </Button>
-                    {sharedRoot && (
-                      <>
-                        <Button
-                          size="sm"
-                          onClick={handleTestSharedConnection}
-                          disabled={sharedTestRunning}
-                        >
-                          {sharedTestRunning ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            t("settings.shared.test")
-                          )}
-                        </Button>
-                        <button
-                          onClick={handleClearSharedRoot}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                        >
-                          <RotateCcw size={12} />
-                          {t("settings.shared.clear")}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {sharedTestResult && (
-                    <div className="text-xs">
-                      {sharedTestResult.ok ? (
-                        <p className="flex items-center gap-1 text-green-600">
-                          <CheckCircle size={12} />
-                          {t("settings.shared.testOk")}
-                        </p>
-                      ) : (
-                        <p className="flex items-start gap-1 text-red-500">
-                          <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                          <span className="break-all">{sharedTestResult.error}</span>
-                        </p>
+            {/* サーバーストレージ（Docker / セルフホスト Web のみ）。
+                この構成ではこれがノートの置き場所そのものなので、保存先と同じ高さに置く。 */}
+            {!isTauri() && serverCaps?.serverStorage && (
+              <SettingSection
+                icon={FolderOpen}
+                title={t("settings.serverStorage.title")}
+                summary={t("settings.serverStorage.summary")}
+                details={<p>{t("settings.serverStorage.help")}</p>}
+              >
+                {serverCaps.requiresAuth ? (
+                  <div className="space-y-2">
+                    <Input
+                      type="password"
+                      value={serverToken}
+                      onChange={(e) => { setServerTokenInput(e.target.value); setServerTokenSaved(false); }}
+                      placeholder={t("settings.serverStorage.tokenPlaceholder")}
+                      autoComplete="off"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={handleSaveServerToken} disabled={!serverToken}>
+                        {t("settings.serverStorage.save")}
+                      </Button>
+                      {serverTokenSaved && (
+                        <span className="text-xs text-muted-foreground">
+                          {t("settings.serverStorage.savedReloading")}
+                        </span>
                       )}
                     </div>
-                  )}
-                </div>
-
-                {/* ⌘K / AI チャットの対象に含めるか（共有ルート設定時のみ） */}
-                {sharedRoot && (
-                  <label className="rounded-md border border-border bg-background px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={sharedAiEnabled}
-                      onChange={handleToggleSharedAi}
-                      className="mt-0.5 accent-primary"
-                    />
-                    <span className="text-xs text-foreground">
-                      <span>{t("settings.shared.aiEnabled.title", { shortcut: formatShortcut(["mod", "K"]) })}</span>
-                      <span className="block text-[11px] text-muted-foreground mt-0.5">
-                        {t("settings.shared.aiEnabled.help")}
-                      </span>
-                    </span>
-                  </label>
-                )}
-
-                {/* 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF・§24） */}
-                {sharedRoot && (
-                  <label className="rounded-md border border-border bg-background px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={shareIncludesPrivateHistory}
-                      onChange={handleToggleSharePrivateHistory}
-                      className="mt-0.5 accent-primary"
-                    />
-                    <span className="text-xs text-foreground">
-                      <span>{t("settings.shared.includePrivateHistory.title")}</span>
-                      <span className="block text-[11px] text-muted-foreground mt-0.5">
-                        {t("settings.shared.includePrivateHistory.help")}
-                      </span>
-                    </span>
-                  </label>
-                )}
-
-                {/* Blob root */}
-                <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mt-2">
-                  <div className="text-xs text-muted-foreground">
-                    {t("settings.shared.blobRootLabel")}
-                  </div>
-                  {blobRoot ? (
-                    <div className="text-xs font-mono text-foreground break-all">{blobRoot}</div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground italic">
-                      {t("settings.shared.notSet")}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Button size="sm" variant="ghost" onClick={handlePickBlobRoot}>
-                      {blobRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                    </Button>
-                    {blobRoot && (
-                      <>
-                        <Button
-                          size="sm"
-                          onClick={handleTestBlobConnection}
-                          disabled={blobTestRunning}
-                        >
-                          {blobTestRunning ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            t("settings.shared.test")
-                          )}
-                        </Button>
-                        <button
-                          onClick={handleClearBlobRoot}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                        >
-                          <RotateCcw size={12} />
-                          {t("settings.shared.clear")}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {blobTestResult && (
-                    <div className="text-xs">
-                      {blobTestResult.ok ? (
-                        <p className="flex items-center gap-1 text-green-600">
-                          <CheckCircle size={12} />
-                          {t("settings.shared.testOk")}
-                        </p>
-                      ) : (
-                        <p className="flex items-start gap-1 text-red-500">
-                          <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                          <span className="break-all">{blobTestResult.error}</span>
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <p className="text-xs text-muted-foreground mt-2">
-                  {t("settings.shared.note")}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <FolderOpen size={14} className="text-muted-foreground" />
-                  <h3 className="text-xs font-semibold text-foreground">
-                    {t("settings.shared.title")}
-                  </h3>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("settings.shared.desktopOnly")}
-                </p>
-              </div>
-            )}
-
-            {/* モバイル送信 — デスクトップの役割は**受け取り**（同期フォルダを
-                読む）だけ。だからここにあるのは受信フォルダの指定と、スマホで開く
-                ための QR。OAuth 接続はここに置かない: トークンは端末ごとの
-                localStorage なのでデスクトップで接続してもスマホには効かず、しかも
-                GIS の認可は window.open を使うため Tauri の WebView では必ず失敗する。 */}
-            <div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <Smartphone size={14} className="text-muted-foreground" />
-                <h3 className="text-xs font-semibold text-foreground">
-                  {t("settings.mobilePush.title")}
-                </h3>
-              </div>
-              <p className="text-xs text-muted-foreground mb-2">
-                {t("settings.mobilePush.help")}
-              </p>
-
-              {/* 受信フォルダ（<root>/Inbox/ の親）— 共有フォルダのピッカーと同じ様式。
-                  受信箱ビューのフォルダ設定メニューと同じ localStorage を読み書きする。
-                  Tauri 専用（web にはフォルダを列挙する手段が無い）。 */}
-              {isTauri() ? (
-                <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mb-2">
-                  <div className="text-xs text-muted-foreground">
-                    {t("settings.mobilePush.inboxRootLabel")}
-                  </div>
-                  {inboxRoot ? (
-                    <div className="text-xs font-mono text-foreground break-all">{inboxRoot}</div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground italic">
-                      {t("settings.shared.notSet")}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Button size="sm" variant="ghost" onClick={handlePickInboxRoot}>
-                      {inboxRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                    </Button>
-                    {inboxRoot && (
-                      <button
-                        onClick={handleClearInboxRoot}
-                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                      >
-                        <RotateCcw size={12} />
-                        {t("settings.shared.clear")}
-                      </button>
-                    )}
-                  </div>
-                  {inboxRootError && (
-                    <p className="text-xs text-red-500 flex items-start gap-1">
-                      <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                      <span className="break-all">{inboxRootError}</span>
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.serverStorage.tokenHelp")}
                     </p>
-                  )}
+                  </div>
+                ) : (
                   <p className="text-xs text-muted-foreground">
-                    {t("settings.mobilePush.inboxRootHelp")}
+                    {t("settings.serverStorage.noAuth")}
                   </p>
+                )}
+              </SettingSection>
+            )}
 
-                  {/* 取り込み後の後処理（受信箱ビューのフォルダ設定と同じ設定・同じ文言） */}
-                  <label className="pt-1 border-t border-border flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={inboxKeepArchive}
-                      onChange={handleToggleInboxKeepArchive}
-                      className="mt-0.5 accent-primary"
-                    />
-                    <span className="text-xs text-foreground">
-                      <span>{t("mobile.keepArchive")}</span>
-                      <span className="block text-[11px] text-muted-foreground mt-0.5">
-                        {t("mobile.keepArchiveHint")}
-                      </span>
-                    </span>
-                  </label>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mb-2">
-                  {t("settings.mobilePush.inboxRootDesktopOnly")}
-                </p>
-              )}
-
-              {/* 接続はスマホ側で — QR + URL（接続ボタンは意図的に置かない） */}
-              <MobileConnectQrCard url={mobileAppUrl} />
-            </div>
-
-            {/* エクスポート / バックアップ */}
-            <div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <Download size={14} className="text-muted-foreground" />
-                <h3 className="text-xs font-semibold text-foreground">
-                  {t("settings.export.title")}
-                </h3>
-              </div>
-              <p className="text-xs text-muted-foreground mb-2">
-                {t("settings.export.help")}
-              </p>
+            {/* エクスポート / バックアップ — 「自分のデータを取り出せる」は
+                置き場所とひと続きの話なので、共有より前に置く。 */}
+            <SettingSection
+              icon={Download}
+              title={t("settings.export.title")}
+              summary={t("settings.export.summary")}
+              details={<p>{t("settings.export.help")}</p>}
+            >
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   size="sm"
@@ -2260,10 +1928,335 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   <AlertCircle size={12} /> {t("settings.export.failed")}: {exportError}
                 </p>
               )}
-            </div>
+            </SettingSection>
 
-            {/* 検索インデックス（BM25）— 端末ローカルの再構築可能なキャッシュ */}
-            <LexicalIndexCard />
+            {/* ── 人と共有する ──
+             *  一人で使う限り触らない設定なので既定で畳む。畳んだ見出しの下に
+             *  中身を 1 行書いてあるので、探している人は開かずに見つけられる。 */}
+            <SettingsGroup
+              storageKey="storage-sharing"
+              title={t("settings.group.sharing.title")}
+              summary={t("settings.group.sharing.summary")}
+            >
+              {/* AuthorIdentity（team-shared-storage Phase 0）。
+                  共有ノート・PROV 来歴の author 情報なので、共有フォルダの直前に置く。 */}
+              <SettingSection
+                title={t("settings.identity.title")}
+                summary={t("settings.identity.summary")}
+                details={<p>{t("settings.identity.help")}</p>}
+              >
+                <div className="space-y-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">
+                      {t("settings.identity.name")}
+                    </div>
+                    <Input
+                      type="text"
+                      value={authorName}
+                      onChange={(e) => {
+                        setAuthorName(e.target.value);
+                        setIdentitySaved(false);
+                        setIdentityError(null);
+                      }}
+                      placeholder={t("settings.identity.namePlaceholder")}
+                      autoComplete="name"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">
+                      {t("settings.identity.email")}
+                    </div>
+                    <Input
+                      type="email"
+                      value={authorEmail}
+                      onChange={(e) => {
+                        setAuthorEmail(e.target.value);
+                        setIdentitySaved(false);
+                        setIdentityError(null);
+                      }}
+                      placeholder={t("settings.identity.emailPlaceholder")}
+                      autoComplete="email"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleSaveIdentity}
+                      disabled={!authorName.trim() || !authorEmail.trim()}
+                    >
+                      {t("settings.identity.save")}
+                    </Button>
+                    {identitySaved && (
+                      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                        <CheckCircle size={12} className="text-green-600" />
+                        {t("settings.identity.saved")}
+                      </span>
+                    )}
+                  </div>
+                  {identityError && (
+                    <p className="text-xs text-red-500 flex items-center gap-1">
+                      <AlertCircle size={12} /> {identityError}
+                    </p>
+                  )}
+                </div>
+              </SettingSection>
+
+              {/* Shared storage（team-shared-storage Phase 1c、Tauri 専用） */}
+              {isTauri() ? (
+                <SettingSection
+                  icon={FolderOpen}
+                  title={t("settings.shared.title")}
+                  summary={t("settings.shared.summary")}
+                  details={
+                    <div className="space-y-1.5">
+                      <p>{t("settings.shared.help")}</p>
+                      <p>{t("settings.shared.note")}</p>
+                    </div>
+                  }
+                >
+                  {/* Shared root */}
+                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
+                    <div className="text-xs text-muted-foreground">
+                      {t("settings.shared.rootLabel")}
+                    </div>
+                    {sharedRoot ? (
+                      <div className="text-xs font-mono text-foreground break-all">{sharedRoot}</div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground italic">
+                        {t("settings.shared.notSet")}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="ghost" onClick={handlePickSharedRoot}>
+                        {sharedRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+                      </Button>
+                      {sharedRoot && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={handleTestSharedConnection}
+                            disabled={sharedTestRunning}
+                          >
+                            {sharedTestRunning ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              t("settings.shared.test")
+                            )}
+                          </Button>
+                          <button
+                            onClick={handleClearSharedRoot}
+                            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          >
+                            <RotateCcw size={12} />
+                            {t("settings.shared.clear")}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    {sharedTestResult && (
+                      <div className="text-xs">
+                        {sharedTestResult.ok ? (
+                          <p className="flex items-center gap-1 text-green-600">
+                            <CheckCircle size={12} />
+                            {t("settings.shared.testOk")}
+                          </p>
+                        ) : (
+                          <p className="flex items-start gap-1 text-red-500">
+                            <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                            <span className="break-all">{sharedTestResult.error}</span>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ⌘K / AI チャットの対象に含めるか（共有ルート設定時のみ） */}
+                  {sharedRoot && (
+                    <label className="rounded-md border border-border bg-background px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={sharedAiEnabled}
+                        onChange={handleToggleSharedAi}
+                        className="mt-0.5 accent-primary"
+                      />
+                      <span className="text-xs text-foreground">
+                        <span>{t("settings.shared.aiEnabled.title", { shortcut: formatShortcut(["mod", "K"]) })}</span>
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">
+                          {t("settings.shared.aiEnabled.help")}
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
+                  {/* 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF・§24） */}
+                  {sharedRoot && (
+                    <label className="rounded-md border border-border bg-background px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={shareIncludesPrivateHistory}
+                        onChange={handleToggleSharePrivateHistory}
+                        className="mt-0.5 accent-primary"
+                      />
+                      <span className="text-xs text-foreground">
+                        <span>{t("settings.shared.includePrivateHistory.title")}</span>
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">
+                          {t("settings.shared.includePrivateHistory.help")}
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
+                  {/* Blob root */}
+                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mt-2">
+                    <div className="text-xs text-muted-foreground">
+                      {t("settings.shared.blobRootLabel")}
+                    </div>
+                    {blobRoot ? (
+                      <div className="text-xs font-mono text-foreground break-all">{blobRoot}</div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground italic">
+                        {t("settings.shared.notSet")}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="ghost" onClick={handlePickBlobRoot}>
+                        {blobRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+                      </Button>
+                      {blobRoot && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={handleTestBlobConnection}
+                            disabled={blobTestRunning}
+                          >
+                            {blobTestRunning ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              t("settings.shared.test")
+                            )}
+                          </Button>
+                          <button
+                            onClick={handleClearBlobRoot}
+                            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          >
+                            <RotateCcw size={12} />
+                            {t("settings.shared.clear")}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    {blobTestResult && (
+                      <div className="text-xs">
+                        {blobTestResult.ok ? (
+                          <p className="flex items-center gap-1 text-green-600">
+                            <CheckCircle size={12} />
+                            {t("settings.shared.testOk")}
+                          </p>
+                        ) : (
+                          <p className="flex items-start gap-1 text-red-500">
+                            <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                            <span className="break-all">{blobTestResult.error}</span>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </SettingSection>
+              ) : (
+                <SettingSection
+                  icon={FolderOpen}
+                  title={t("settings.shared.title")}
+                  summary={t("settings.shared.desktopOnly")}
+                />
+              )}
+
+              {/* モバイル送信 — デスクトップの役割は**受け取り**（同期フォルダを
+                  読む）だけ。だからここにあるのは受信フォルダの指定と、スマホで開く
+                  ための QR。OAuth 接続はここに置かない: トークンは端末ごとの
+                  localStorage なのでデスクトップで接続してもスマホには効かず、しかも
+                  GIS の認可は window.open を使うため Tauri の WebView では必ず失敗する。 */}
+              <SettingSection
+                icon={Smartphone}
+                title={t("settings.mobilePush.title")}
+                summary={t("settings.mobilePush.summary")}
+                details={<p>{t("settings.mobilePush.help")}</p>}
+              >
+                {/* 受信フォルダ（<root>/Inbox/ の親）— 共有フォルダのピッカーと同じ様式。
+                    受信箱ビューのフォルダ設定メニューと同じ localStorage を読み書きする。
+                    Tauri 専用（web にはフォルダを列挙する手段が無い）。 */}
+                {isTauri() ? (
+                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mb-2">
+                    <div className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.inboxRootLabel")}
+                    </div>
+                    {inboxRoot ? (
+                      <div className="text-xs font-mono text-foreground break-all">{inboxRoot}</div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground italic">
+                        {t("settings.shared.notSet")}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="ghost" onClick={handlePickInboxRoot}>
+                        {inboxRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+                      </Button>
+                      {inboxRoot && (
+                        <button
+                          onClick={handleClearInboxRoot}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          {t("settings.shared.clear")}
+                        </button>
+                      )}
+                    </div>
+                    {inboxRootError && (
+                      <p className="text-xs text-red-500 flex items-start gap-1">
+                        <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                        <span className="break-all">{inboxRootError}</span>
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.inboxRootHelp")}
+                    </p>
+
+                    {/* 取り込み後の後処理（受信箱ビューのフォルダ設定と同じ設定・同じ文言） */}
+                    <label className="pt-1 border-t border-border flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={inboxKeepArchive}
+                        onChange={handleToggleInboxKeepArchive}
+                        className="mt-0.5 accent-primary"
+                      />
+                      <span className="text-xs text-foreground">
+                        <span>{t("mobile.keepArchive")}</span>
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">
+                          {t("mobile.keepArchiveHint")}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {t("settings.mobilePush.inboxRootDesktopOnly")}
+                  </p>
+                )}
+
+                {/* 接続はスマホ側で — QR + URL（接続ボタンは意図的に置かない） */}
+                <MobileConnectQrCard url={mobileAppUrl} />
+              </SettingSection>
+            </SettingsGroup>
+
+            {/* ── 詳しい設定 ──
+             *  索引は端末ローカルの再構築可能なキャッシュで、普段は触らない。 */}
+            <SettingsGroup
+              storageKey="storage-advanced"
+              title={t("settings.group.advanced.title")}
+              summary={t("settings.group.storageAdvanced.summary")}
+            >
+              {/* 検索インデックス（BM25）— 端末ローカルの再構築可能なキャッシュ */}
+              <LexicalIndexCard />
+            </SettingsGroup>
           </div>
         )}
 
@@ -2285,6 +2278,28 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </p>
               </div>
             ) : <>
+            {/* いまの状態と、次にやること 1 つ。設定を並べる前に結論を出す。
+                モデルが 1 つも無い状態でモデル一覧・割り当て・MCP を見せても、
+                どこから始めればいいのかは画面から読み取れないため。 */}
+            {!modelsLoading && (
+              <SettingsStatus
+                state={models.length > 0 ? "ready" : "setup"}
+                title={models.length > 0 ? t("settings.aiStatus.readyTitle") : t("settings.aiStatus.setupTitle")}
+                description={
+                  models.length > 0
+                    ? t("settings.aiStatus.readyDesc", { name: model || defaultModel })
+                    : t("settings.aiStatus.setupDesc")
+                }
+                action={
+                  models.length > 0
+                    ? undefined
+                    : {
+                        label: t("settings.aiStatus.setupAction"),
+                        onClick: () => { setShowAddForm(true); setAddMode("new"); },
+                      }
+                }
+              />
+            )}
 
             {/* 登録済みモデル一覧 */}
             <div>
@@ -2758,197 +2773,51 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             )}
 
-            {/* モデルの割り当て — 登録したモデルを役割ごとに割り当てる */}
-            <div className="border-t border-border pt-6">
-              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionAssign")}</h3>
-              <div className="space-y-4">
-                {/* デフォルトモデル */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.model")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={model}
-                      onChange={(e) => { setModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
-                      </option>
-                      {models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">{t("settings.modelHelp")}</p>
-                </div>
-
-                {/* Chat & Synthesis モデル選択（対話と統合用 — default より上のモデルを当てる場面用） */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.chatSynthesisModel")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={chatSynthesisModel}
-                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
-                      </option>
-                      {models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.chatSynthesisModelHelp")}
-                  </p>
-                </div>
-
-                {/* Embedding モデル選択 */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.embeddingModel.label")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={embeddingModel}
-                      onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
-                      </option>
-                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  {/* 接続テストボタンと結果表示 */}
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleTestEmbedding}
-                      disabled={embTestState.status === "running" || (models.length === 0)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {embTestState.status === "running"
-                        ? t("settings.embeddingModel.testing")
-                        : t("settings.embeddingModel.test")}
-                    </button>
-                    {embTestState.status === "success" && (
-                      <span className="text-xs text-emerald-700 dark:text-emerald-400">
-                        ✓ {embTestState.dimensions
-                          ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
-                          : t("settings.embeddingModel.testSuccessNoDim")}
-                      </span>
-                    )}
-                    {embTestState.status === "error" && (
-                      <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
-                        ⚠ {embTestState.message ?? "Unknown error"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.embeddingModel.help")}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("settings.embeddingModel.note")}
-                  </p>
-                </div>
-              </div>
-            </div>
-
             {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
             <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
               <div className="space-y-4">
                 {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ — 照合済みの
                     結果（grounding.validity）は消えず、再度 ON にすれば見える。 */}
-                <div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFeatures({ ...features, worldGrounding: !features.worldGrounding });
-                        setSaved(false);
-                      }}
-                      role="switch"
-                      aria-checked={features.worldGrounding}
-                      aria-label={t("settings.features.worldGrounding.title")}
-                      className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${features.worldGrounding ? "bg-primary" : "bg-input"}`}
-                    >
-                      <span
-                        className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                        style={{ transform: features.worldGrounding ? "translateX(15px)" : "translateX(1px)" }}
-                      />
-                    </button>
-                    <label className="text-sm font-medium text-foreground">
-                      {t("settings.features.worldGrounding.title")}
-                    </label>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.features.worldGrounding.help")}
-                  </p>
-                </div>
+                <SettingToggle
+                  checked={!!features.worldGrounding}
+                  onChange={() => {
+                    setFeatures({ ...features, worldGrounding: !features.worldGrounding });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.worldGrounding.title")}
+                  summary={t("settings.features.worldGrounding.summary")}
+                  details={<p>{t("settings.features.worldGrounding.help")}</p>}
+                />
 
                 {features.worldGrounding && (
                   <>
                     {/* 自動 world-grounding（opt-in / 既定 OFF）。
                         既存の "user-triggered only" を覆すので明示トグル。 */}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
-                            setSaved(false);
-                          }}
-                          role="switch"
-                          aria-checked={experimental.autoGrounding}
-                          aria-label={t("settings.autoGrounding.title")}
-                          className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${experimental.autoGrounding ? "bg-primary" : "bg-input"}`}
-                        >
-                          <span
-                            className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                            style={{ transform: experimental.autoGrounding ? "translateX(15px)" : "translateX(1px)" }}
-                          />
-                        </button>
-                        <label className="text-sm font-medium text-foreground">
-                          {t("settings.autoGrounding.title")}
-                        </label>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {t("settings.autoGrounding.help")}
-                      </p>
-                    </div>
+                    <SettingToggle
+                      checked={experimental.autoGrounding}
+                      onChange={() => {
+                        setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
+                        setSaved(false);
+                      }}
+                      label={t("settings.autoGrounding.title")}
+                      summary={t("settings.autoGrounding.summary")}
+                      details={<p>{t("settings.autoGrounding.help")}</p>}
+                    />
 
                     {/* 世界照合専用モデル（任意）。空ならチャットモデル → default にフォールバック。
                         手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
-                    <div>
-                      <label className="text-xs font-medium text-foreground mb-2 block">
-                        {t("settings.groundingModel")}
-                      </label>
+                    <SettingSection
+                      title={t("settings.groundingModel")}
+                      summary={t("settings.groundingModel.summary")}
+                      details={<p>{t("settings.groundingModelHelp")}</p>}
+                    >
                       <div className="relative">
                         <select
                           value={groundingModelStored}
                           onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
                           disabled={modelsLoading || models.length === 0}
+                          aria-label={t("settings.groundingModel")}
                           className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
                         >
                           <option value="">
@@ -2962,10 +2831,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </select>
                         <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {t("settings.groundingModelHelp")}
-                      </p>
-                    </div>
+                    </SettingSection>
                   </>
                 )}
               </div>
@@ -2979,46 +2845,32 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <div className="space-y-4">
                 {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ —
                     作成済みの洞察（atom）は消えず、再度 ON にすれば見える。 */}
-                <div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFeatures({ ...features, insights: !features.insights });
-                        setSaved(false);
-                      }}
-                      role="switch"
-                      aria-checked={features.insights}
-                      aria-label={t("settings.features.insights.title")}
-                      className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${features.insights ? "bg-primary" : "bg-input"}`}
-                    >
-                      <span
-                        className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                        style={{ transform: features.insights ? "translateX(15px)" : "translateX(1px)" }}
-                      />
-                    </button>
-                    <label className="text-sm font-medium text-foreground">
-                      {t("settings.features.insights.title")}
-                    </label>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.features.insights.help")}
-                  </p>
-                </div>
+                <SettingToggle
+                  checked={!!features.insights}
+                  onChange={() => {
+                    setFeatures({ ...features, insights: !features.insights });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.insights.title")}
+                  summary={t("settings.features.insights.summary")}
+                  details={<p>{t("settings.features.insights.help")}</p>}
+                />
 
                 {features.insights && (
                   <>
                     {/* 洞察専用モデル（任意）。空ならチャットモデル → default にフォールバック。
                         atomize / transfer 判定 / relift など洞察の発見・整理に使う。 */}
-                    <div>
-                      <label className="text-xs font-medium text-foreground mb-2 block">
-                        {t("settings.insightModel")}
-                      </label>
+                    <SettingSection
+                      title={t("settings.insightModel")}
+                      summary={t("settings.insightModel.summary")}
+                      details={<p>{t("settings.insightModelHelp")}</p>}
+                    >
                       <div className="relative">
                         <select
                           value={insightModel}
                           onChange={(e) => { setInsightModel(e.target.value); setSaved(false); }}
                           disabled={modelsLoading || models.length === 0}
+                          aria-label={t("settings.insightModel")}
                           className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
                         >
                           <option value="">
@@ -3032,9 +2884,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </select>
                         <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {t("settings.insightModelHelp")}
-                      </p>
 
                       {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
                           入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
@@ -3189,12 +3038,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           </div>
                         </div>
                       )}
-                    </div>
+                    </SettingSection>
 
-                    <div>
-                      <label className="text-xs font-medium text-foreground mb-2 block" htmlFor="atomize-ingest-budget">
-                        {t("settings.atomizeIngestBudget")}
-                      </label>
+                    <SettingSection
+                      title={t("settings.atomizeIngestBudget")}
+                      summary={t("settings.atomizeIngestBudget.summary")}
+                      details={<p>{t("settings.atomizeIngestBudget.help")}</p>}
+                    >
                       <input
                         id="atomize-ingest-budget"
                         type="number"
@@ -3202,6 +3052,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         max={ATOMIZE_INGEST_BUDGET_MAX}
                         step={1}
                         value={atomizeIngestBudget}
+                        aria-label={t("settings.atomizeIngestBudget")}
                         onChange={(e) => {
                           const v = Number(e.target.value);
                           setAtomizeIngestBudget(
@@ -3211,17 +3062,142 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         }}
                         className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {t("settings.atomizeIngestBudget.help")}
-                      </p>
-                    </div>
+                    </SettingSection>
                   </>
                 )}
               </div>
             </div>
 
+            {/* ── モデルの割り当て ──
+             *  どの機能にどのモデルを当てるかは、どれか 1 つ登録すれば既定で動く。
+             *  使い分けたくなった人だけが開けばいいので畳んでおく。 */}
+            <SettingsGroup
+              storageKey="ai-assign"
+              title={t("settings.ai.sectionAssign")}
+              summary={t("settings.group.aiAssign.summary")}
+            >
+              <div className="space-y-4">
+                {/* デフォルトモデル */}
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-2 block">
+                    {t("settings.model")}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={model}
+                      onChange={(e) => { setModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">{t("settings.modelHelp")}</p>
+                </div>
+
+                {/* Chat & Synthesis モデル選択（対話と統合用 — default より上のモデルを当てる場面用） */}
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-2 block">
+                    {t("settings.chatSynthesisModel")}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={chatSynthesisModel}
+                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t("settings.chatSynthesisModelHelp")}
+                  </p>
+                </div>
+
+                {/* Embedding モデル選択 */}
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-2 block">
+                    {t("settings.embeddingModel.label")}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={embeddingModel}
+                      onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
+                      </option>
+                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  {/* 接続テストボタンと結果表示 */}
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleTestEmbedding}
+                      disabled={embTestState.status === "running" || (models.length === 0)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {embTestState.status === "running"
+                        ? t("settings.embeddingModel.testing")
+                        : t("settings.embeddingModel.test")}
+                    </button>
+                    {embTestState.status === "success" && (
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400">
+                        ✓ {embTestState.dimensions
+                          ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
+                          : t("settings.embeddingModel.testSuccessNoDim")}
+                      </span>
+                    )}
+                    {embTestState.status === "error" && (
+                      <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
+                        ⚠ {embTestState.message ?? "Unknown error"}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t("settings.embeddingModel.help")}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t("settings.embeddingModel.note")}
+                  </p>
+                </div>
+              </div>
+            </SettingsGroup>
+
+            {/* ── 詳しい設定 ──
+             *  MCP は外部ツールを足すための口で、使う人だけが開く。 */}
+            <SettingsGroup
+              storageKey="ai-advanced"
+              title={t("settings.group.advanced.title")}
+              summary={t("settings.group.aiAdvanced.summary")}
+            >
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
-            <div className="border-t border-border pt-6">
+            <div>
               <div className="flex items-center gap-1.5 mb-2">
                 <Plug size={14} className="text-muted-foreground" />
                 <h3 className="text-xs font-semibold text-foreground">{t("settings.mcp.title")}</h3>
@@ -3576,6 +3552,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
               <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
             </div>
+            </SettingsGroup>
 
             </>}
           </div>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 設定 › ストレージ の「モバイル送信」セクションのテスト。
+// 設定 › ストレージ の「スマホから送る」セクションのテスト。
 //
 // このセクションの役割はデスクトップ = **受け取り側**であることの表現:
 // - 受信フォルダ（<root>/Inbox/ の親）を共有フォルダと同じ作法で指定できる
@@ -64,11 +64,14 @@ async function renderStorageTab() {
       <SettingsModal isOpen onClose={() => {}} initialTab="storage" />
     </LocaleProvider>,
   );
-  await screen.findByText("Mobile upload");
+  // 「スマホから送る」は共有の束（Share with other people）の中にあり、既定では
+  // 畳まれている。一人で使う限り触らない設定なので開いてから中を見る。
+  fireEvent.click(await screen.findByRole("button", { name: /Share with other people/ }));
+  await screen.findByText("Send from your phone");
   return result;
 }
 
-describe("Settings › Storage — mobile upload section", () => {
+describe("Settings › Storage — send from your phone section", () => {
   it("has no connect/disconnect button (connecting is the phone's job)", async () => {
     await renderStorageTab();
     expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
