@@ -18,7 +18,7 @@ Graphium's knowledge follows an hourglass: context-rich notes narrow into short 
 
 | Kind | What it is |
 |---|---|
-| **Topics** | A page that groups related claims by concept, with two-hop provenance (topic → claim → note) |
+| **Topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | A page that groups related claims by concept, with two-hop provenance (topic → claim → note) |
 | **Claims** | A grounded assertion extracted from your notes |
 | **Insights** | A pattern that recurs across two or more claims |
 
@@ -74,7 +74,7 @@ The body ends with a **References** section linking back to sources. Keep in min
 
 ![A knowledge page with the banner showing Derived from and Regenerate](/screenshots/knowledge-page-banner.png)
 
-## Merging topics
+## Merging topics <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" />
 
 Topics can drift apart over wording, particles, or an overly narrow per-sample title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
 

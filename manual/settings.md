@@ -51,9 +51,9 @@ Everything AI-related, ordered as a setup flow: register models first, then assi
 |---|---|
 | **Registered Models** | Add and manage models — Anthropic, OpenAI, Google Gemini, OpenAI-compatible endpoints, or a GitHub Copilot subscription — with optional per-model pricing. |
 | **Model assignment** | Choose which registered model plays each role: **Default model**, **Chat model**, and **Embedding model** (with a **Test embedding** check). |
-| **Use world grounding** | Master switch for world grounding — off the first time you use Graphium, on if you've used it before. Turning it off hides grounding buttons and columns everywhere; results already saved on notes are kept. |
+| **Use world grounding** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Master switch for world grounding — off the first time you use Graphium, on if you've used it before. Turning it off hides grounding buttons and columns everywhere; results already saved on notes are kept. |
 | **World grounding** | Turn on **Auto-ground new knowledge** and optionally set a dedicated grounding model; see [World grounding](/ai-grounding). |
-| **Use insights** | Master switch for insights — off the first time you use Graphium, on if you've used it before. Turning it off hides insights from the sidebar and lists; insights already created are kept. |
+| **Use insights** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Master switch for insights — off the first time you use Graphium, on if you've used it before. Turning it off hides insights from the sidebar and lists; insights already created are kept. |
 | **Insight discovery** <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" /> | **Insight model** (optional, falls back to the chat model) with a **Test insight model** check, then **Scans per ingest (max)** — how many LLM calls Insight scanning may spend each time a note is added to Knowledge (default 3; 0 skips scanning at ingest). See [Knowledge layer](/knowledge-layer). |
 | **MCP Servers** <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" /> | Connect external tool servers directly — **Paste JSON** from a server's README, configure one by hand with **Manual**, or pull candidates **From registry**. |
 
@@ -81,7 +81,7 @@ Maintenance jobs for the [Knowledge layer](/knowledge-layer). These run LLM call
 |---|---|
 | **Connection Status** | Shows the health of each backend component, with a **Restart backend** button on the desktop app. |
 | **Re-embed all Knowledge** | Rebuilds the embeddings behind AI chat citation search — use it if citation lookup stops working. |
-| **Organize topics** | Assigns topics to Claims that have none, consolidates existing topics that name the same concept (wording variants, particle differences, over-fragmented per-sample topics), and rewrites the affected topic pages. Consolidated topics are sent to Trash, not deleted outright. |
+| **Organize topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Assigns topics to Claims that have none, consolidates existing topics that name the same concept (wording variants, particle differences, over-fragmented per-sample topics), and rewrites the affected topic pages. Consolidated topics are sent to Trash, not deleted outright. |
 | **Bulk regenerate Knowledge** | Rebuilds existing Knowledge pages after you change prompts or models, with **Target kinds** filters (**Topics** / **Claims** / **Insights** — Summaries are no longer generated and are not a regenerate target), an optional model override, cancel support, and **Retry failed only**. |
 | **Discover Insights from Claims** | Scans your Claims cluster by cluster until every one has been in view at least once, factoring out shared insights that recur across two or more of them. The number of LLM calls needed is measured from your corpus and shown before running; you can stop anytime. |
 
