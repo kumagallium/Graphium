@@ -29,10 +29,71 @@ const SAMPLE_WIKIS: WikiSummaryForSettings[] = [
 ];
 
 /**
+ * 使用量タブ用のダミー記録（GET /api/usage の応答）。
+ * バケットは「今日」から遡って切られるので日付は固定せず実行時点からの相対で作る
+ * （固定日付だと日が経つとグラフが空になる）。量は決め打ちにして、開くたびに見た目を変えない。
+ */
+function buildSampleUsage() {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  // cost を持たないもの（ローカル LLM）は内訳で「—」になる
+  const mix = [
+    { feature: "agent.chat", provider: "anthropic", modelId: "claude-sonnet-5", tokens: 42_000, cost: 0.31 },
+    { feature: "wiki.ingest", provider: "anthropic", modelId: "claude-opus-5", tokens: 18_000, cost: 0.62 },
+    { feature: "wiki.atomize", provider: "openai-compatible", modelId: "gpt-oss-120b", tokens: 26_000 },
+    { feature: "embedding", provider: "openai", modelId: "text-embedding-3-small", tokens: 9_000, cost: 0.0002 },
+  ];
+  const raw = [];
+  // raw は実サーバーの保持期間（直近 90 日）に揃える。短いと月表示でサマリとの間に空白の月が出る
+  for (let d = 0; d < 90; d++) {
+    for (const [i, m] of mix.entries()) {
+      if ((d + i) % 3 === 0) continue; // 日ごとに使う機能をばらつかせる
+      const scale = 1 + ((d * 7 + i * 3) % 5) / 2;
+      const totalTokens = Math.round(m.tokens * scale);
+      const inputTokens = Math.round(totalTokens * 0.8);
+      raw.push({
+        ts: new Date(now - d * DAY_MS).toISOString(),
+        feature: m.feature,
+        provider: m.provider,
+        modelId: m.modelId,
+        inputTokens,
+        outputTokens: totalTokens - inputTokens,
+        totalTokens,
+        ...(m.cost !== undefined ? { cost: m.cost * scale, costCurrency: "usd" } : {}),
+      });
+    }
+  }
+  // 90 日より古い期間は月次サマリで返る（月・年表示だけが通る経路）
+  const summary = [4, 5, 6].map((monthsAgo) => {
+    const d = new Date(now);
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() - monthsAgo);
+    return {
+      month: d.toISOString().slice(0, 7),
+      feature: "agent.chat",
+      provider: "anthropic",
+      modelId: "claude-sonnet-5",
+      callCount: 120,
+      inputTokens: 900_000,
+      outputTokens: 220_000,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 1_120_000,
+      costByCurrency: { usd: 6 },
+    };
+  });
+  return { raw, summary, mode: "node" };
+}
+
+/**
  * AI タブは `/api/health` が返らないとバックエンド未接続の CTA だけを出し、
  * モデル一覧や MCP を描画しない。Storybook にバックエンドは無いので、
  * 「接続できている」ときの見た目を確認したいストーリーでは fetch を差し替える。
  * 触るのは /api のみで、他はそのまま元の fetch に流す。
+ *
+ * 未知の /api には `{}` を返す。応答の形を前提に描画するタブ（使用量など）は、
+ * 汎用分岐より前に実物と同じ形の分岐を置くこと。
  */
 function installApiStub(): () => void {
   const original = window.fetch;
@@ -44,6 +105,9 @@ function installApiStub(): () => void {
     if (url.includes("/api/health")) return json({ status: "ok", components: { llm: "ok", storage: "ok" } });
     if (url.includes("/api/tools")) return json({ tools: [] });
     if (url.includes("/api/models")) return json({ models: [], default: "" });
+    // /api/usage/recalculate は "/api/usage" も含むので先に判定する
+    if (url.includes("/api/usage/recalculate")) return json({ total: 0, recalculated: 0, skipped: 0 });
+    if (url.includes("/api/usage")) return json(buildSampleUsage());
     if (url.includes("/api/")) return json({});
     return original(input as RequestInfo, init);
   }) as typeof window.fetch;
@@ -154,6 +218,14 @@ export const AiNotConfigured: Story = {
  */
 export const AiFeaturesOff: Story = {
   args: { seedModels: true, initialTab: "ai", seedFeaturesOff: true },
+};
+
+/**
+ * 使用量タブ。API スタブのダミー記録で、日/月/年の棒グラフと機能 × モデルの内訳を確認する
+ * （スタブが `{}` を返していた頃は `raw is not iterable` で描画ごと落ちていた）。
+ */
+export const Usage: Story = {
+  args: { initialTab: "usage", stubApi: true },
 };
 
 /** ストレージタブ。見出し → 説明文 → コントロールの縦リズムを確認する。 */
