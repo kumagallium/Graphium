@@ -634,5 +634,21 @@ export function buildPlanFlowGraph(input: {
     });
   }
 
-  return { graph: { steps, entities, edges }, truncated, brokenCount, unresolvedPlanned };
+  // ── 表示するアウトプットを「実際に他の工程へ渡った物」に絞る ──
+  // どの工程にも使われていないアウトプット（計画の最終成果物を含む）は出さない。
+  // 出したままだと、ポートを掴めるのに引くと生成元の工程からの予定線ができる、という
+  // ずれが生まれる。規則は 1 つにして、最後の工程の成果物も例外にしない（2026-09-16 合意）。
+  // 「計画どおり / 計画外」の突き合わせは上で used の生成元を工程まで遡って済ませてあるので、
+  // ここで generates だけの出力を落としても判定は変わらない
+  const passedOn = new Set(edges.filter((e) => e.kind === "used").map((e) => e.source));
+  const shownEntities = entities.filter((e) => passedOn.has(e.id));
+  const shownIds = new Set(shownEntities.map((e) => e.id));
+  const shownEdges = edges.filter((e) => e.kind !== "generates" || shownIds.has(e.target));
+
+  return {
+    graph: { steps, entities: shownEntities, edges: shownEdges },
+    truncated,
+    brokenCount,
+    unresolvedPlanned,
+  };
 }

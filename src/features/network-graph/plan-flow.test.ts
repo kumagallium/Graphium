@@ -546,11 +546,14 @@ describe("buildPlanFlowGraph", () => {
     expect(result.graph.steps.map((s) => s.noteRef?.state)).toEqual(["trashed", "archived"]);
   });
 
-  it("2 段入れ子: 子の計画の、さらに子の末端 output が持ち上がる", () => {
-    // plan-1（テスト対象の計画）の工程行 = note-mid。
-    // note-mid は自身も計画ノートで、工程行 = note-leaf。
-    // note-leaf が実際に output を生成する。
-    const rows = linearRows([["中間工程", "note-mid"]]);
+  it("2 段入れ子: 子の計画の、さらに子の output は、使われると入れ子の上の工程にぶら下がる", () => {
+    // plan-1 の工程行 = note-mid（自身も計画、工程行 = note-leaf）と note-next。
+    // 表示するのは実際に渡った output だけなので、note-leaf の output を note-next が
+    // 使うことで初めて出る。出るときは入れ子の上の工程（note-mid）の下に付く
+    const rows = linearRows([
+      ["中間工程", "note-mid"],
+      ["次工程", "note-next"],
+    ]);
     const index = makeIndex([
       noteEntry({
         noteId: "note-mid",
@@ -558,6 +561,7 @@ describe("buildPlanFlowGraph", () => {
         outgoingLinks: [{ targetNoteId: "note-leaf", layer: "knowledge" }],
       }),
       noteEntry({ noteId: "note-leaf" }),
+      noteEntry({ noteId: "note-next" }),
     ]);
     const processIndex = makeProcessIndex([
       processEntry({
@@ -568,26 +572,39 @@ describe("buildPlanFlowGraph", () => {
           edges: [{ id: "g-leaf", kind: "generates", source: "step-leaf", target: "out-leaf" }],
         },
       }),
+      processEntry({
+        noteId: "note-next",
+        graph: { steps: [{ id: "step-next", name: "次", params: [] }], entities: [], edges: [] },
+        crossNoteLinks: [
+          crossLink({
+            id: "l-leaf-next",
+            targetNoteId: "note-leaf",
+            targetBlockId: "step-leaf",
+            targetEntityId: "row-leaf",
+          }),
+        ],
+      }),
     ]);
     const result = buildPlanFlowGraph({ rows, index, processIndex });
-    // 可視 step は note-mid の 1 つだけ（入れ子は 1 ノードに見える）
-    expect(result.graph.steps).toHaveLength(1);
-    expect(result.graph.steps[0].id).toBe("note:note-mid");
-    // 末端 output は note-mid の下にぶら下がる
+    // 可視 step は note-mid と note-next（入れ子は 1 ノードに見える）
+    expect(result.graph.steps.map((s) => s.id)).toEqual(["note:note-mid", "note:note-next"]);
     expect(result.graph.entities).toHaveLength(1);
     const generatesEdge = result.graph.edges.find((e) => e.kind === "generates");
     expect(generatesEdge?.source).toBe("note:note-mid");
     expect(generatesEdge?.target).toBe(result.graph.entities[0].id);
+    const usedEdge = result.graph.edges.find((e) => e.kind === "used");
+    expect(usedEdge?.source).toBe(result.graph.entities[0].id);
+    expect(usedEdge?.target).toBe("note:note-next");
   });
 
-  it("ダイヤモンド入れ子: 2 つの工程行が同じ末端ノートを子に持つとき、両方に output が出る", () => {
-    // plan-1 の工程行 = mid1, mid2。どちらも自身が計画ノートで、工程行 = note-leaf。
-    // note-leaf は 1 つの末端 output を生成する。
+  it("ダイヤモンド入れ子: 2 つの工程行が同じ末端ノートを子に持つとき、使われた output は両方に出る", () => {
+    // plan-1 の工程行 = mid1, mid2（どちらも計画、工程行 = note-leaf）と note-next。
     // mid1 の expand が先に note-leaf を訪問しても、mid2 側の output が黙って消えては
-    // いけない（rows 間で visited を共有しないことの回帰テスト）。
+    // いけない（rows 間で visited を共有しないことの回帰テスト）。entity は owner ごとに別ノード
     const rows = linearRows([
       ["中間1", "note-mid1"],
       ["中間2", "note-mid2"],
+      ["次工程", "note-next"],
     ]);
     const index = makeIndex([
       noteEntry({
@@ -601,6 +618,7 @@ describe("buildPlanFlowGraph", () => {
         outgoingLinks: [{ targetNoteId: "note-leaf", layer: "knowledge" }],
       }),
       noteEntry({ noteId: "note-leaf" }),
+      noteEntry({ noteId: "note-next" }),
     ]);
     const processIndex = makeProcessIndex([
       processEntry({
@@ -611,14 +629,65 @@ describe("buildPlanFlowGraph", () => {
           edges: [{ id: "g-leaf", kind: "generates", source: "step-leaf", target: "out-leaf" }],
         },
       }),
+      processEntry({
+        noteId: "note-next",
+        graph: { steps: [{ id: "step-next", name: "次", params: [] }], entities: [], edges: [] },
+        crossNoteLinks: [
+          crossLink({
+            id: "l-leaf-next",
+            targetNoteId: "note-leaf",
+            targetBlockId: "step-leaf",
+            targetEntityId: "row-leaf",
+          }),
+        ],
+      }),
     ]);
     const result = buildPlanFlowGraph({ rows, index, processIndex });
     expect(result.truncated).toBe(false);
-    expect(result.graph.steps.map((s) => s.id)).toEqual(["note:note-mid1", "note:note-mid2"]);
+    expect(result.graph.steps.map((s) => s.id)).toEqual(["note:note-mid1", "note:note-mid2", "note:note-next"]);
     // mid1・mid2 それぞれの下に output が 1 つずつ（計 2 件）出る
     expect(result.graph.entities).toHaveLength(2);
     const generatesEdges = result.graph.edges.filter((e) => e.kind === "generates");
     expect(generatesEdges.map((e) => e.source).sort()).toEqual(["note:note-mid1", "note:note-mid2"]);
+  });
+
+  it("どの工程にも使われていない output は出さない（計画の最終成果物も例外にしない）", () => {
+    // A の output を B が使う。B の output はどこにも使われない（計画の最終成果物）。
+    // 出したままだと、ポートを掴めるのに引くと生成元の工程からの予定線ができるずれが生まれる
+    const rows = linearRows([
+      ["合成", "note-a"],
+      ["焼成", "note-b"],
+    ]);
+    const processIndex = makeProcessIndex([
+      processEntry({
+        noteId: "note-a",
+        graph: {
+          steps: [{ id: "step-a", name: "合成", params: [] }],
+          entities: [{ id: "out-a", label: "粉末", kind: "output", rowIdentity: "row-a", attrs: [] }],
+          edges: [{ id: "g-a", kind: "generates", source: "step-a", target: "out-a" }],
+        },
+      }),
+      processEntry({
+        noteId: "note-b",
+        graph: {
+          steps: [{ id: "step-b", name: "焼成", params: [] }],
+          entities: [{ id: "out-b", label: "焼成体", kind: "output", rowIdentity: "row-b", attrs: [] }],
+          edges: [{ id: "g-b", kind: "generates", source: "step-b", target: "out-b" }],
+        },
+        crossNoteLinks: [
+          crossLink({ id: "l-ab", targetNoteId: "note-a", targetBlockId: "step-a", targetEntityId: "row-a" }),
+        ],
+      }),
+    ]);
+    const index = makeIndex([noteEntry({ noteId: "note-a" }), noteEntry({ noteId: "note-b" })]);
+    const result = buildPlanFlowGraph({ rows, index, processIndex });
+    // 渡った「粉末」だけが出て、最終成果物の「焼成体」は出ない
+    expect(result.graph.entities.map((e) => e.label)).toEqual(["粉末"]);
+    const generatesEdges = result.graph.edges.filter((e) => e.kind === "generates");
+    expect(generatesEdges).toHaveLength(1);
+    expect(generatesEdges[0].source).toBe("note:note-a");
+    // 誰にも使われない output が 1 つも無い計画でも、used / planned の判定には影響しない
+    expect(result.graph.edges.filter((e) => e.kind === "used")).toHaveLength(1);
   });
 
   it("循環（A の工程 B が A を工程に持つ）で停止する", () => {
