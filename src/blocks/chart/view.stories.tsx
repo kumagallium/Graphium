@@ -390,6 +390,76 @@ export const InsideLegend: StoryObj = {
   ),
 };
 
+// 散布図の凡例（横並び）。既定の記号枠 50 だとマーカーが枠の中央に来て、
+// 前の系列のラベルに寄って見えた（"● S● PF"）。散布図だけの凡例は記号枠を
+// 正方形に詰め、マーカーを自分のラベルの手前に置く
+export const ScatterLegendTwoSeries: StoryObj = {
+  name: "凡例: 散布図 2 系列（横並び）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={THERMO_TABLES}
+        lead="散布図の系列が 2 本並ぶ凡例。各マーカーが自分のラベルの側にあること。"
+        chartFirst
+        config={{
+          chartType: "scatter",
+          series: series([
+            { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "S (µV/K)" },
+            {
+              sourceBlockId: "te-pf",
+              xColumn: "T (K)",
+              yColumn: "PF",
+              label: "PF (mW/mK²)",
+              axis: "right",
+              symbol: "emptyCircle",
+            },
+          ]),
+          xAxisName: "T (K)",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
+// 折れ線と散布図が混ざる凡例（横並び）。記号枠は折れ線のために 50 のまま、
+// 散布図の項目だけマーカーを枠の右端（自分のラベルの手前）に寄せる
+export const LegendLineScatterMixed: StoryObj = {
+  name: "凡例: 折れ線 + 散布図の混在（横並び）",
+  render: () => (
+    <ErrorBoundary>
+      <ChartDemo
+        baseTables={THERMO_TABLES}
+        lead="折れ線 1 本と散布図 2 本（塗り円・白抜きひし形）の凡例。折れ線のアイコンが潰れず、散布図のマーカーが自分のラベルの側にあること。"
+        chartFirst
+        config={{
+          chartType: "line",
+          series: series([
+            { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "S (µV/K)" },
+            {
+              sourceBlockId: "te-pf",
+              xColumn: "T (K)",
+              yColumn: "PF",
+              label: "PF (mW/mK²)",
+              type: "scatter",
+              axis: "right",
+            },
+            {
+              sourceBlockId: "te-kappa",
+              xColumn: "T (K)",
+              yColumn: "kappa",
+              label: "κ (W/mK)",
+              type: "scatter",
+              axis: "right",
+              symbol: "emptyDiamond",
+            },
+          ]),
+          xAxisName: "T (K)",
+        }}
+      />
+    </ErrorBoundary>
+  ),
+};
+
 // 系列スタイル: 線の種類・太さ・マーカーを系列ごとに変える（白黒印刷でも
 // 系列を区別できる、論文図の描き分け）
 export const SeriesStyles: StoryObj = {
