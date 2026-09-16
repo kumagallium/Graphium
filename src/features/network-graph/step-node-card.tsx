@@ -119,6 +119,10 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   const [confirmCount, setConfirmCount] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  // 「ノートを開く / 作る」ボタンを押し始めた位置。カード幅いっぱいのボタンに
+  // nodrag を付けるとカードの 3 割が掴めない場所になるので、ドラッグは通し、
+  // 押した点からほとんど動いていないときだけクリックとして扱う
+  const openPressRef = useRef<{ x: number; y: number } | null>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const { getViewport, setViewport } = useReactFlow();
 
@@ -371,7 +375,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
       {/* 工程ノート由来のノード: 状態バッジ（未作成 / 同名衝突 / ゴミ箱 / アーカイブ）と
           「ノートを開く / 作る」ボタン。同名衝突は解決できないためボタンを出さない */}
       {noteRef && (
-        <div className="nodrag" style={{ padding: "0 10px 6px" }}>
+        // nodrag はボタンだけに付ける。囲いに付けると、状態バッジや余白も含めた
+        // カードの帯ぜんぶが「掴めない場所」になり、ノードを引っ張れなくなる
+        <div style={{ padding: "0 10px 6px" }}>
           {noteRef.state === "unlinked" && (
             <div
               title={t("planFlow.unlinkedRowHint")}
@@ -398,8 +404,17 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
           {noteRef.state !== "duplicateName" && (
             <button
               type="button"
+              onPointerDown={(event) => {
+                openPressRef.current = { x: event.clientX, y: event.clientY };
+              }}
               onClick={(event) => {
                 event.stopPropagation();
+                const press = openPressRef.current;
+                openPressRef.current = null;
+                // 掴んで動かしたのならノードの移動。ノートは開かない
+                if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4) {
+                  return;
+                }
                 onOpenNoteRef?.(noteRef, activity as FlowStep);
               }}
               style={{
@@ -426,8 +441,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
 
       {/* 削除確認（中身がある step は 1 クリックで消さない） */}
       {selected && confirmCount !== null && (
-        <div className="nodrag" style={{ padding: "0 8px 6px 10px" }}>
+        <div style={{ padding: "0 8px 6px 10px" }}>
           <button
+            className="nodrag"
             onClick={() => onDelete?.(id)}
             style={{
               display: "inline-flex",

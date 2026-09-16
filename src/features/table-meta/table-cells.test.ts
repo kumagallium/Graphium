@@ -1,6 +1,6 @@
-// readTableData: 拡大表示用のスナップショット読み取り
+// テーブルセルの読み書き（読み取りスナップショット・セル差し替え・列位置の解決）
 import { describe, expect, it } from "vitest";
-import { readTableData } from "./table-cells";
+import { findColumnIndexByName, readCellText, readTableData, withCellText } from "./table-cells";
 
 const cell = (text: string) => [{ type: "text", text, styles: {} }];
 const tableBlock = (rows: string[][]) => ({
@@ -60,5 +60,46 @@ describe("readTableData", () => {
     expect(readTableData({ type: "paragraph" })).toBeNull();
     expect(readTableData(null)).toBeNull();
     expect(readTableData({ type: "table", content: { type: "tableContent", rows: [] } })).toBeNull();
+  });
+});
+
+describe("withCellText", () => {
+  it("tableCell は props（色・配置・結合）を残して中身だけ差し替える", () => {
+    const original = {
+      type: "tableCell",
+      content: cell("Sample-1"),
+      props: { colspan: 1, rowspan: 1, backgroundColor: "blue", textColor: "default", textAlignment: "center" },
+    };
+    const next = withCellText(original, "@TargetNote", { textColor: "blue" });
+    expect(next).toEqual({
+      type: "tableCell",
+      content: [{ type: "text", text: "@TargetNote", styles: { textColor: "blue" } }],
+      props: original.props,
+    });
+    // 元のセルは変えない
+    expect(readCellText(original)).toBe("Sample-1");
+  });
+
+  it("旧 inline 配列形式のセルは配列のまま返す", () => {
+    expect(withCellText(cell("old"), "@N")).toEqual([
+      { type: "text", text: "@N", styles: {} },
+    ]);
+  });
+});
+
+describe("findColumnIndexByName", () => {
+  const block = tableBlock([
+    ["Name", "Condition 1", "Input from"],
+    ["A-1", "300 rpm", ""],
+  ]);
+
+  it("ヘッダ行のテキストで列の位置を引く", () => {
+    expect(findColumnIndexByName(block, "Name")).toBe(0);
+    expect(findColumnIndexByName(block, "Input from")).toBe(2);
+  });
+
+  it("列名が無い・見つからないときは先頭列に倒す", () => {
+    expect(findColumnIndexByName(block, undefined)).toBe(0);
+    expect(findColumnIndexByName(block, "存在しない列")).toBe(0);
   });
 });

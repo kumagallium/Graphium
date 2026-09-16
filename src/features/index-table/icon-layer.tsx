@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
 import { useTableMetaStore } from "../table-meta/store";
+import { withCellText } from "../table-meta/table-cells";
 import { hasColumnType } from "../table-meta/types";
 import { getFirstCellText, createNoteFromRow } from "./create-note-from-row";
 import { getIndexTableCallbacks } from "./context";
@@ -211,10 +212,11 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
               if (i !== rowIndex) return r;
               return {
                 ...r,
-                cells: [
-                  [{ type: "text", text: `@${sampleName}`, styles: { textColor: "blue" } }],
-                  ...r.cells.slice(1),
-                ],
+                // 先頭列だけ書き換える。セルを配列で置き換えると tableCell の
+                // props（色・配置・結合）が落ちるので withCellText を通す
+                cells: r.cells.map((c: any, ci: number) =>
+                  ci === 0 ? withCellText(c, `@${sampleName}`, { textColor: "blue" }) : c
+                ),
               };
             });
             editor.updateBlock(blockId, {

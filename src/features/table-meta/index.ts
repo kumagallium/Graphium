@@ -18,7 +18,14 @@ export type { SortDir, SortState } from "./sort-table";
 export type { TableExpandData } from "./expand-modal";
 export { computeTableDisplayNames } from "./auto-name";
 export { migrateTableMeta } from "./migration";
-export { collectTableBlocks, readCellText, readFirstColumnName, readTableData } from "./table-cells";
+export {
+  collectTableBlocks,
+  findColumnIndexByName,
+  readCellText,
+  readFirstColumnName,
+  readTableData,
+  withCellText,
+} from "./table-cells";
 export {
   findColumnNameByType,
   hasColumnType,
