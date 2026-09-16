@@ -385,14 +385,18 @@ export function UsageTab() {
     try {
       const res = await fetch(`${apiBase()}/usage`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as {
+      // 応答の形は受け取り口で揃える。raw / summary が配列でないと buildBuckets などが
+      // 描画中に例外を投げ、使用量タブどころか設定モーダルごと落ちる（Storybook の API
+      // スタブが `{}` を返して発症した）。実サーバーは常に配列を返すが、スタブやプロキシ
+      // などから形の違う 200 が来ても「記録なし」として描画を続ける。
+      const data = (await res.json()) as Partial<{
         raw: AIUsageEvent[];
         summary: AIUsageMonthlySummary[];
         mode: "node" | "vercel";
-      };
-      setRaw(data.raw);
-      setSummary(data.summary);
-      setMode(data.mode);
+      }>;
+      setRaw(Array.isArray(data.raw) ? data.raw : []);
+      setSummary(Array.isArray(data.summary) ? data.summary : []);
+      setMode(data.mode === "vercel" ? "vercel" : "node");
     } catch (e) {
       setError(e instanceof Error ? e.message : "unknown error");
     } finally {
