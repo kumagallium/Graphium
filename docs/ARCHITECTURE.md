@@ -1223,14 +1223,17 @@ The same `src/` tree is built four different ways.
   and never following symlinks. It is breadth-first on purpose:
   depth-first follows `read_dir`'s order, which no filesystem guarantees,
   so one large subfolder can spend the whole cap and leave sibling folders
-  with nothing. Breadth-first only guarantees fairness between sibling
-  folders, though — a folder whose own direct children outnumber the cap
+  with nothing. Breadth-first only keeps a deep subtree from starving its
+  siblings, though — a folder whose own direct children outnumber the cap
   still truncates mid-folder, and folders after it at that level are left
   with nothing just the same. Because a scan of a large or cold NAS folder
   can run for minutes, `scan_directory` emits an `intake-scan-progress`
-  event — at most every 200ms — with the number of files found so far, and
-  a `cancel_scan` command lets the user stop a scan in progress; the walk
-  checks the cancel flag between every entry so a cancel takes effect
+  event — at most every 200ms — with the number of files and folders found
+  so far. It checks whether to send one after every entry rather than only
+  when a file is added: a deep backup can run through a long stretch of
+  folders with no files, and reporting files alone left the receptacle
+  looking frozen on a real NAS share. A `cancel_scan` command lets the
+  user stop a scan in progress; the walk checks the cancel flag between every entry so a cancel takes effect
   promptly rather than waiting for the current directory to finish. Both
   carry a scan ID that the caller mints per scan (`crypto.randomUUID()`)
   rather than sharing one flag process-wide, because `IntakeReceptacle`
