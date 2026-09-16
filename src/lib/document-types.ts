@@ -555,6 +555,69 @@ export type WikiMeta = {
    * Phase 5 で外部 retriever（ζ 統合）と一緒に解放する。
    */
   grounding?: GroundingProfile;
+  /**
+   * 出典照合（Source check, v1）の結果。
+   *
+   * 別レーン契約: 世界照合（grounding）と同じく、epistemicStatus / hypothesisStatus /
+   * status / title /本文などは読むだけで書き換えない。書き込み口は attachSourceCheck 1 本
+   * （既存 wikiMeta を spread してから sourceCheck だけ差し替える）。
+   *
+   * 「知見が正しいか」ではなく「引かれた出典に知見が書いてあるか」を判定する
+   * （llm-wiki-harness の claim-audit と同じ問い）。claim のみで主に意味を持つが、
+   * derivedFromNotes を持つ他の kind でも構造上は成立する。
+   */
+  sourceCheck?: SourceCheckProfile;
+};
+
+// ── 出典照合（Source check, v1） ──
+// 世界照合（grounding, ja「世界照合」/ en "Check world"）と対になる別レーン。
+// 命題が真かではなく、引かれた出典（derivedFromNotes の各要素）が命題を支持するかを判定する。
+
+export type SourceCheckVerdict =
+  | "supported"
+  | "contradicted"
+  | "not-in-source"
+  | "unclear"
+  | "source-missing";
+
+/** verdict が "source-missing" のときの内訳（原文を取り出せなかった理由） */
+export type SourceMissingReason =
+  | "deleted"
+  | "no-reference"
+  | "unreadable"
+  | "unsupported-kind"
+  | "empty";
+
+export type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "unknown";
+
+export type SourceCheckEntry = {
+  /** derivedFromNotes の要素そのまま（prefix 込み） */
+  sourceId: string;
+  sourceKind: SourceCheckSourceKind;
+  verdict: SourceCheckVerdict;
+  /** 1〜2 文。UI 言語 */
+  rationale: string;
+  /** 原文で照合済みの抜粋のみ（不変条件 3: 実在確認できない quote は捨てる） */
+  quote?: string;
+  /** ノート出典で quote を含むブロックが一意に分かるとき */
+  blockId?: string;
+  /** verdict が "source-missing" のときの理由 */
+  missingReason?: SourceMissingReason;
+  sourceTextOrigin?: "stored" | "refetched" | "extracted";
+};
+
+export type SourceCheckProfile = {
+  /** entries の集約（優先順位: contradicted > supported > not-in-source > unclear > source-missing） */
+  verdict: SourceCheckVerdict;
+  entries: SourceCheckEntry[];
+  /** ISO 8601 */
+  checkedAt: string;
+  /** 判定に使ったモデル名（LLM を呼ばなかった場合は "local"） */
+  checkedBy: string;
+  /** 照合時点の知見 title+本文のハッシュ。変わったら UI で「本文が変わった」と出す */
+  claimHash: string;
+  /** ユーザーが「確認した」印。再照合で消える */
+  dismissed?: boolean;
 };
 
 // ── World-model grounding (Phase 2) ──
@@ -677,6 +740,17 @@ export type WikiMetaSummary = {
     entryId?: string;
     /** ユーザーが手動でクリアした印。自動照合の対象外にするため mirror する。 */
     dismissed?: boolean;
+  };
+  /**
+   * 出典照合（Source check, v1）の最小 mirror。
+   * groundingValidity と同じ方式 — 一覧 UI の verdict 表示 / claimHash 不一致（本文変更）判定に
+   * 必要な最小限だけを持つ。`INDEX_SCHEMA_VERSION` は bump しない（`NoteIndexEntry` には mirror しない）。
+   */
+  sourceCheckVerdict?: {
+    verdict: SourceCheckVerdict;
+    dismissed?: boolean;
+    /** 照合時点の title+本文ハッシュ。現在の本文から計算した値と食い違えば「本文が変わった」判定に使う */
+    claimHash: string;
   };
 };
 

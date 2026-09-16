@@ -15,11 +15,15 @@ import {
   rebuildTopicDocument,
   resolveAtomDuplicates,
   extractWikiDetail,
+  mergeIntoWikiDocument,
+  rewriteAndMerge,
+  applyCrossUpdate,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
-import type { WikiMeta } from "../../lib/document-types";
+import type { WikiMeta, SourceCheckProfile } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
+import type { CrossUpdateProposal } from "../../server/services/wiki-cross-updater";
 
 const emptyIndex: any[] = [];
 
@@ -881,5 +885,113 @@ describe("extractWikiDetail - 横断更新（cross-update）の対象は knowled
 
   it("summary（生成停止済み）も対象外", () => {
     expect(extractWikiDetail("summary-1", docOf("summary"))).toBeNull();
+  });
+});
+
+describe("本文を作り直す merge/regenerate 系は古い sourceCheck を引き継がない", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const staleSourceCheck: SourceCheckProfile = {
+    verdict: "supported",
+    entries: [],
+    checkedAt: "2026-08-01T00:00:00Z",
+    checkedBy: "test-model",
+    claimHash: "old-hash",
+  };
+
+  const claimDocWithSourceCheck = (): any => ({
+    version: 2,
+    title: "知見タイトル",
+    pages: [{
+      id: "main",
+      title: "知見タイトル",
+      blocks: [],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
+    }],
+    wikiMeta: {
+      kind: "claim",
+      derivedFromNotes: ["note-1"],
+      derivedFromChats: [],
+      generatedAt: "2026-07-01T00:00:00Z",
+      generatedBy: { model: "m", version: "1.0.0" },
+      sourceCheck: staleSourceCheck,
+    },
+    createdAt: "2026-07-01T00:00:00Z",
+    modifiedAt: "2026-07-01T00:00:00Z",
+  });
+
+  const ingesterOutput: IngesterOutput = {
+    kind: "claim",
+    title: "知見タイトル",
+    sections: [{ heading: "節1", content: "新しい内容。" }],
+    suggestedAction: "merge",
+    confidence: 0.9,
+    relatedClaims: [],
+    externalReferences: [],
+  };
+
+  it("mergeIntoWikiDocument は本文を書き換えるので sourceCheck を落とす", () => {
+    const existing = claimDocWithSourceCheck();
+    const next = mergeIntoWikiDocument(existing, ingesterOutput, "note-2", "m2");
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
+    // 他フィールドは保持される
+    expect(next.wikiMeta?.derivedFromNotes).toContain("note-2");
+  });
+
+  it("rewriteAndMerge は rewrite API 失敗時のフォールバック（append merge）でも sourceCheck を落とす", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    const existing = claimDocWithSourceCheck();
+    existing.pages[0].blocks = [
+      { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "節1", styles: {} }], children: [] },
+    ];
+    const next = await rewriteAndMerge(existing, ingesterOutput, "note-2", "m2");
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
+  });
+
+  it("rewriteAndMerge は rewrite API 成功時（本文を再構成）でも sourceCheck を落とす", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ sections: [{ heading: "節1", content: "書き直された内容。" }] }),
+    });
+    const existing = claimDocWithSourceCheck();
+    existing.pages[0].blocks = [
+      { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "節1", styles: {} }], children: [] },
+    ];
+    const next = await rewriteAndMerge(existing, ingesterOutput, "note-2", "m2");
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
+  });
+
+  it("applyCrossUpdate は本文（参照追加）を書き換えるので sourceCheck を落とす", async () => {
+    const existing = claimDocWithSourceCheck();
+    const proposal: CrossUpdateProposal = {
+      targetWikiId: "claim-1",
+      targetWikiTitle: "知見タイトル",
+      updateType: "add_reference",
+      reference: { noteTitle: "関連ノート", noteId: "note-3" },
+      reason: "テスト",
+      confidence: 0.9,
+    };
+    const next = await applyCrossUpdate(existing, proposal, "note-2", "m2");
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
+  });
+
+  it("rebuildTopicDocument は本文を作り直すので sourceCheck を落とす", () => {
+    const existing = claimDocWithSourceCheck();
+    existing.wikiMeta.kind = "topic";
+    existing.wikiMeta.derivedFromClaims = ["claim-a"];
+    const next = rebuildTopicDocument(
+      existing,
+      "## 定義\n更新後の本文。",
+      [{ id: "claim-a", title: "知見A" }],
+      "m2",
+    );
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
   });
 });
