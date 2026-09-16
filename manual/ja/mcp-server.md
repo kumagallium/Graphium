@@ -90,8 +90,8 @@ pnpm bundle:mcp
 | `get_note_steps` | 「手順を条件込みで教えて」 |
 | `find_notes_using` | 「プラネタリーボールミルを使った実験はどれ？」 |
 | `list_entities` | 「私のノートにはどんな材料や装置が出てくる？」 |
-| `list_topics` | 「私のノートからどんなトピックがまとまっている？」 |
-| `get_topic` | 「焼結条件について分かっていることを教えて」 |
+| `list_topics` <Badge type="tip" text="v0.76.0 (2026-09-16) で追加" /> | 「私のノートからどんなトピックがまとまっている？」 |
+| `get_topic` <Badge type="tip" text="v0.76.0 (2026-09-16) で追加" /> | 「焼結条件について分かっていることを教えて」 |
 | `trace_lineage` | 「この結論はどこから来たの？」 |
 | `create_note` | 「これをノートとして保存して」 |
 

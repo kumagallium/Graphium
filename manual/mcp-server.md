@@ -90,8 +90,8 @@ Nine tools are available. You do not call them by name — you ask in plain lang
 | `get_note_steps` | "What were the steps, with the conditions?" |
 | `find_notes_using` | "Which experiments used a planetary ball mill?" |
 | `list_entities` | "What materials and instruments show up across my notes?" |
-| `list_topics` | "What topics has Graphium worked out from my notes?" |
-| `get_topic` | "Tell me what you know about sintering conditions" |
+| `list_topics` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "What topics has Graphium worked out from my notes?" |
+| `get_topic` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "Tell me what you know about sintering conditions" |
 | `trace_lineage` | "Where did this conclusion come from?" |
 | `create_note` | "Save this as a note" |
 
