@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.76.5](https://github.com/kumagallium/Graphium/compare/v0.76.4...v0.76.5) - 2026-09-16
+
+- fix(plan-flow): show only outputs that were actually handed on by @kumagallium in https://github.com/kumagallium/Graphium/pull/957
+
 ## [v0.76.4](https://github.com/kumagallium/Graphium/compare/v0.76.3...v0.76.4) - 2026-09-16
 
 - feat(plan-flow): edit the plan's index table from the operations panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/952
