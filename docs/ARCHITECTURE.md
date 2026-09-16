@@ -708,14 +708,17 @@ TypeScript types use the historical `Wiki*` prefix (`WikiKind`,
 `WikiMeta`) — UI labels and prose use "Knowledge / Claims / Insights /
 Ideas" instead.
 
-The pipeline (running on the Node server) has five stages:
+The pipeline (running on the Node server, plus one client-side step) has
+six stages:
 
 | Stage | File | What it does |
 |---|---|---|
-| **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch |
-| **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes |
+| **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch; also proposes 1-3 *Topic* names per Claim |
+| **Topic assignment** | `src/features/wiki/wiki-service.ts` (client) | Resolves each Claim's proposed topic names against existing Topic pages (title match → embedding similarity > 0.9 → create new) and rewrites the affected Topic bodies |
+| **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, and Topics with zero member Claims |
+| **Topic writer** | `src/server/services/wiki-topic-writer.ts` | Composes a Topic page's body from its current member Claims only (pure function — the previous body is never fed back in) |
 
 Trigger flow (client-pushed, not server-polled):
 
@@ -728,6 +731,7 @@ sequenceDiagram
     participant A as Atomizer
     participant X as Cross-updater
     participant L as Linter
+    participant TW as Topic writer
     participant FS as Wiki files (JSON)
 
     E->>W: note saved (worthy?)
@@ -741,7 +745,17 @@ sequenceDiagram
     X->>FS: propagate to dependents
     X->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
-    S-->>W: ingest result
+    S-->>W: ingest result (Claims + proposed topic names)
+    opt Claims came back with proposed topics
+        W->>W: resolve topics (title match / embedding > 0.9 / create new)
+        loop each touched Topic
+            W->>S: POST /api/wiki/compose-topic
+            S->>TW: run
+            TW-->>S: topic body (markdown, pure function of member Claims)
+            S-->>W: topic body
+            W->>FS: write Topic page (client-side save)
+        end
+    end
     W-->>E: status (toast)
 ```
 
@@ -751,6 +765,9 @@ Notes:
   which posts to the server. There is no server-side file watcher.
 - **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
   note is ingest-worthy at all (e.g., empty drafts are skipped).
+- **Topics.** Alongside each Claim, the ingester also proposes 1-3 topic names
+  (noun phrases, in the note's language) grouping it by concept. Topics never
+  participate in the hourglass — the Atomizer only ever sees Claims.
 - **Note mode vs document mode.** For a short personal note the ingester emits
   a Summary plus 0-3 Claims (the "1 note ≈ 1 idea" assumption). When the source
   is an **imported external document** — its `noteId` carries a `pdf:` /

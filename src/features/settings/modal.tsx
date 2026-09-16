@@ -403,7 +403,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   // ツール
 
   // Maintenance タブ — Wiki 一括 Regenerate
-  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["claim", "summary", "atom"]));
+  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["topic", "claim", "summary", "atom"]));
   const [bulkModelOverride, setBulkModelOverride] = useState("");
   const [bulkSynthesisModelOverride, setBulkSynthesisModelOverride] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -3729,7 +3729,7 @@ function MaintenanceTab({
 }: MaintenanceTabProps) {
   // synthesis（発想）は UI 動線から非表示（design revision 2026-05-27）。
   // 既存 synthesis ファイルの物理データは保持するが、一括 Regenerate の対象には出さない。
-  const KINDS: WikiKind[] = ["claim", "summary", "atom"];
+  const KINDS: WikiKind[] = ["topic", "claim", "summary", "atom"];
   const [cancelling, setCancelling] = useState(false);
   // 一括再生成 / 洞察発見の進行中 fetch を切るためのハンドル。キャンセルで abort() する。
   const bulkAbortRef = useRef<AbortController | null>(null);
@@ -3813,6 +3813,7 @@ function MaintenanceTab({
     k === "claim" ? t("settings.maintenance.kind.claim")
     : k === "summary" ? t("settings.maintenance.kind.summary")
     : k === "atom" ? t("settings.maintenance.kind.atom")
+    : k === "topic" ? t("settings.maintenance.kind.topic")
     : t("settings.maintenance.kind.synthesis");
 
   // ── Atom 候補の発見（カバレッジ 100% まで自動継続。途中キャンセル可）──

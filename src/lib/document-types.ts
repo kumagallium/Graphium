@@ -12,6 +12,9 @@ import type { BlockLink } from "./block-link-types";
 //              document-migration の migrateConceptKindToClaim で自動移行される。
 // atom     : 実験的レイヤ。Claim をさらに抽象化し、文脈を削いだ単一アイデア（Zettel atom）
 // synthesis: 実験的レイヤ。Atom 同士の結合から立ち上がる新しい洞察
+// topic    : 知見(claim)を概念ごとに束ねたページ。出典は 話題 → 知見 → ノート の 2 ホップ。
+//            砂時計（ノート→知見→洞察）には参加しない — atomize の入力は従来どおり知見のみで、
+//            話題は渡さない。メンバー知見の集合から作られる純関数（前の本文は入力に渡さない）。
 //
 // experimental.atomLayer / experimental.synthesis 設定で生成可否を制御する。
 // 既存ユーザーの synthesis ファイルは削除しないため、atom 同様に kind 文字列としては常に有効。
@@ -21,7 +24,7 @@ import type { BlockLink } from "./block-link-types";
 // 領域内に閉じる結果が続いた。代替として「テーマを人間が与えて Synthesizer がそれを
 // lens に書く」方向に舵を切る — その設計は別 PR で行う。撤退の窓が開いている
 // （v0.9.0 以降にユーザーが meta-atom データを残していない）うちに kind ごと外す。
-export type WikiKind = "summary" | "claim" | "atom" | "synthesis";
+export type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic";
 
 // Claim の抽象度レベル（claim のみで意味を持つ）
 // principle: ノートが推論ステップで依拠した一般原理（教科書知識でも、本人の研究で実際に使われたもの）
@@ -414,8 +417,20 @@ export type WikiMeta = {
   status?: ClaimStatus;
   /** principle が依拠していると判定された、ソースノート内の該当文（生成時の自己検証用） */
   evidenceSpan?: string;
-  /** Atom が抽象化した元 Claim の ID リスト（atom のみ） */
+  /**
+   * 元になった Claim の ID リスト（atom / topic）。
+   * - atom: 抽象化した元 Claim の ID リスト。
+   * - topic: メンバー知見（このページが束ねている Claim）の ID リスト。話題ページの本文は
+   *   このリストが指す Claim 群だけから作られる純関数（前の本文は入力に渡さない）。
+   *   claim 側の `topicIds` と対で管理する — 追加・削除は wiki-service の
+   *   話題リンク関数を通す（双方向リンクの入口 1 本）。
+   */
   derivedFromClaims?: string[];
+  /**
+   * この Claim が所属する話題（topic）ページの ID リスト（claim のみ、1〜3 件）。
+   * 話題側の `derivedFromClaims` と対で管理する双方向リンク。
+   */
+  topicIds?: string[];
   /**
    * Cmd-K Composer の verb 取り込み（R2 / PR3）で、このノートが引用・精査した
    * 知見/洞察（claim/atom）ノートの ID リスト。
@@ -607,6 +622,13 @@ export type WikiMetaSummary = {
   claimRole?: ClaimRole[];
   /** Atom の推論的役割 */
   atomType?: AtomType;
+  /**
+   * 元になった Claim の ID リスト（atom / topic）。topic では「メンバー知見」の意味。
+   * 一覧 UI の孤立話題判定（メンバー 0 件）・件数バッジに使う。
+   */
+  derivedFromClaims?: string[];
+  /** この Claim が所属する話題ページの ID リスト（claim のみ） */
+  topicIds?: string[];
   /** Synthesis の推論モード */
   synthesisMode?: SynthesisMode;
   /**

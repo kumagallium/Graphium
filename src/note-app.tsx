@@ -310,6 +310,10 @@ import {
   buildNoteIndex,
   // 操作ログ
   wikiLog,
+  // Topic（話題）
+  resolveTopicsForClaim, linkClaimAndTopic, unlinkClaimFromTopic,
+  composeTopicBody, buildTopicDocument, rebuildTopicDocument,
+  type ExistingTopicRef, type TopicComposeClaim,
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
@@ -7407,8 +7411,9 @@ export function NoteApp() {
       const cached = fm.getCachedDoc(`wiki:${wikiId}`);
       const doc = cached ?? (await fm.loadDoc(`wiki:${wikiId}`));
       if (!doc?.wikiMeta) return;
-      // Summary は対象外（PR 2A §1 の主張系: claim/atom/synthesis 用）
-      if (doc.wikiMeta.kind === "summary") return;
+      // Summary / Topic は対象外（PR 2A §1 の主張系: claim/atom/synthesis 用。
+      // topic は複数知見を束ねた本文で単一の主張ではないため世界照合の対象にしない）
+      if (doc.wikiMeta.kind === "summary" || doc.wikiMeta.kind === "topic") return;
       if (worldCheckingWikiId === wikiId) return;
       // 自動（background）は未照合だけを対象にする — 既に checkedAt があれば再照合しない
       const silent = trigger === "background";
@@ -8569,6 +8574,13 @@ export function NoteApp() {
     ingestAbortRef.current = abortController;
     const signal = abortController.signal;
 
+    // このバッチで新規作成・更新された claim のうち、ingester が topics を出したものを
+    // 集めておき、パイプライン後半の「話題（topic）」段でまとめて割り当てる。
+    const claimsForTopicAssignment: { id: string; title: string; body: string; topics: string[]; model?: string }[] = [];
+    // ingester が topics を全く出さなかった claim の件数（claimsForTopicAssignment には積まれないため別カウント）。
+    // 「話題なし N 件」トーストに合算する。
+    let claimsWithoutTopicsFromIngesterCount = 0;
+
     while (ingestQueueRef.current.length > 0) {
       // 停止済みなら残りのキューを「中断」で畳んで抜ける
       if (signal.aborted) break;
@@ -8652,6 +8664,19 @@ export function NoteApp() {
                 if (job.noteId.startsWith("memo:")) {
                   void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${wiki.mergeTargetId}`, wiki.title);
                 }
+                if (wiki.kind === "claim") {
+                  if (wiki.topics && wiki.topics.length > 0) {
+                    claimsForTopicAssignment.push({
+                      id: wiki.mergeTargetId,
+                      title: mergedDoc.title,
+                      body: extractBodyPreview(mergedDoc, 2000),
+                      topics: wiki.topics,
+                      model: result.model ?? undefined,
+                    });
+                  } else {
+                    claimsWithoutTopicsFromIngesterCount++;
+                  }
+                }
                 continue;
               }
             } catch { /* fallback to create */ }
@@ -8671,6 +8696,19 @@ export function NoteApp() {
           //（旧フローではノート ID を記録していたが、直接 ingest 化で wiki を記録する）
           if (job.noteId.startsWith("memo:")) {
             void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${newId}`, wiki.title);
+          }
+          if (wiki.kind === "claim") {
+            if (wiki.topics && wiki.topics.length > 0) {
+              claimsForTopicAssignment.push({
+                id: newId,
+                title: wikiDoc.title,
+                body: extractBodyPreview(wikiDoc, 2000),
+                topics: wiki.topics,
+                model: result.model ?? undefined,
+              });
+            } else {
+              claimsWithoutTopicsFromIngesterCount++;
+            }
           }
         }
 
@@ -8796,6 +8834,7 @@ export function NoteApp() {
     // 2026-05-27 の design revision で Synthesize 自動生成は撤退済み（stage 自体を削除）。
     const pipelineId = `pipeline:${Date.now()}`;
     const pipelineStages: IngestStage[] = [
+      { key: "topics", label: "Topics", status: "pending" },
       { key: "atomize", label: "Atomize", status: "pending" },
       { key: "lint", label: "Lint", status: "pending" },
     ];
@@ -8836,6 +8875,130 @@ export function NoteApp() {
         }),
       }));
     };
+
+    // 話題（topic）段: このバッチで ingester が topics を出した claim を、既存の話題への
+    // マッチ（タイトル一致 → embedding 類似度）または新規作成で割り当てる。
+    // 砂時計（ノート→知見→洞察）には参加しない — atomize には渡さない。
+    if (claimsForTopicAssignment.length === 0 && claimsWithoutTopicsFromIngesterCount === 0) {
+      updateStage("topics", "skipped");
+    } else {
+      updateStage("topics", "running", tStatic("ingest.topicsUpdating", { count: String(claimsForTopicAssignment.length) }));
+      let topicsCreated = 0;
+      let topicsUpdated = 0;
+      // 本文の生成や保存に失敗して今回は書き直せなかった話題の件数。黙って落とさずトーストに出す
+      // （compose 失敗は composeTopicBody が null を返すだけで例外にならない経路がある）。
+      let topicsFailed = 0;
+      // ingester が topics を全く出さなかった claim も「話題なし」に含める
+      let claimsWithoutTopicCount = claimsWithoutTopicsFromIngesterCount;
+      const existingTopicRefs: ExistingTopicRef[] = (fm.noteIndex?.notes ?? [])
+        .filter((n) => n.source === "ai" && n.wikiKind === "topic")
+        .map((n) => ({ id: n.noteId, title: n.title }));
+
+      for (const claimInfo of claimsForTopicAssignment) {
+        const claimDoc = fm.getCachedDoc(`wiki:${claimInfo.id}`) ?? (await fm.loadDoc(`wiki:${claimInfo.id}`));
+        if (!claimDoc?.wikiMeta) {
+          console.warn("話題割り当てをスキップ: claim ドキュメントが見つからない", claimInfo.id);
+          claimsWithoutTopicCount++;
+          continue;
+        }
+
+        const matches = await resolveTopicsForClaim(claimInfo.topics, existingTopicRefs);
+        if (matches.length === 0) {
+          claimsWithoutTopicCount++;
+          continue;
+        }
+
+        // claim ⇔ topic の双方向リンクは linkClaimAndTopic の戻り値経由でのみ更新する（入口 1 本）。
+        // topic 側の derivedFromClaims も claimMeta と同様にここで確定させ、compose の
+        // メンバー一覧はその確定値から作る。matches ごとに try/catch を分け、1 件失敗しても
+        // 残りの topics は処理を続ける。claimsWithoutTopicCount は claim 単位で 1 度だけ数える。
+        let currentClaimMeta = claimDoc.wikiMeta;
+        let matchedAnyTopic = false;
+
+        for (const match of matches) {
+          try {
+            let topicId: string;
+            let topicDoc: GraphiumDocument | null = null;
+
+            if (match.status === "matched") {
+              topicId = match.topicId;
+              topicDoc = fm.getCachedDoc(`wiki:${topicId}`) ?? (await fm.loadDoc(`wiki:${topicId}`));
+              if (!topicDoc?.wikiMeta || topicDoc.wikiMeta.kind !== "topic") continue;
+
+              const linked = linkClaimAndTopic(currentClaimMeta, claimInfo.id, topicDoc.wikiMeta, topicId);
+              if (linked.topicMeta !== topicDoc.wikiMeta) {
+                const nextMemberIds = linked.topicMeta.derivedFromClaims ?? [];
+                const memberClaims: TopicComposeClaim[] = [];
+                for (const cId of nextMemberIds) {
+                  if (cId === claimInfo.id) {
+                    memberClaims.push({ id: cId, title: claimInfo.title, body: claimInfo.body });
+                    continue;
+                  }
+                  const cDoc = fm.getCachedDoc(`wiki:${cId}`) ?? (await fm.loadDoc(`wiki:${cId}`));
+                  if (cDoc) memberClaims.push({ id: cId, title: cDoc.title, body: extractBodyPreview(cDoc, 2000) });
+                }
+                const body = await composeTopicBody(topicDoc.title, getLocale(), memberClaims, claimInfo.model);
+                if (!body) {
+                  // compose 失敗: topic 側の derivedFromClaims 更新を保存できないので、
+                  // この match は claim 側もリンクせずスキップする（非対称なリンクを避ける）。
+                  topicsFailed++;
+                  continue;
+                }
+                const rewritten = rebuildTopicDocument(topicDoc, body, nextMemberIds, claimInfo.model ?? null, buildNoteIndex(fm.noteIndex));
+                await fm.handleSaveWikiFile(topicId, rewritten, {
+                  activityType: "wiki_cross_update",
+                  sources: nextMemberIds,
+                });
+                embedWikiSections(topicId, rewritten).catch(() => {});
+                topicsUpdated++;
+                wikiLog.append("cross-update", [topicId], `Updated topic "${rewritten.title}" with claim "${claimInfo.title}"`).catch(() => {});
+              }
+              currentClaimMeta = linked.claimMeta;
+              matchedAnyTopic = true;
+            } else {
+              // 新規話題: メンバー 1 件（今回の claim）で本文を作ってから作成する。
+              const memberClaims: TopicComposeClaim[] = [{ id: claimInfo.id, title: claimInfo.title, body: claimInfo.body }];
+              const body = await composeTopicBody(match.title, getLocale(), memberClaims, claimInfo.model);
+              if (!body) {
+                // 本文が作れなかった話題は作成しない（次の取り込みで同じ名前が出れば再挑戦になる）
+                topicsFailed++;
+                continue;
+              }
+              const newTopicDoc = buildTopicDocument(match.title, body, [claimInfo.id], claimInfo.model ?? null, getLocale(), buildNoteIndex(fm.noteIndex));
+              topicId = await fm.handleCreateWikiFile(newTopicDoc, { activityType: "wiki_ingest", sources: [claimInfo.id] });
+              embedWikiSections(topicId, newTopicDoc).catch(() => {});
+              existingTopicRefs.push({ id: topicId, title: match.title });
+              topicsCreated++;
+              topicDoc = fm.getCachedDoc(`wiki:${topicId}`) ?? newTopicDoc;
+              wikiLog.append("ingest", [topicId], `Created topic "${match.title}" from claim "${claimInfo.title}"`).catch(() => {});
+
+              // 新規 topic は derivedFromClaims: [claimInfo.id] を持った状態で既に作成済みなので、
+              // ここでは claim 側の topicIds だけ linkClaimAndTopic で確定させる（冪等）。
+              if (topicDoc?.wikiMeta) {
+                const linked = linkClaimAndTopic(currentClaimMeta, claimInfo.id, topicDoc.wikiMeta, topicId);
+                currentClaimMeta = linked.claimMeta;
+              }
+              matchedAnyTopic = true;
+            }
+          } catch (err) {
+            topicsFailed++;
+            console.warn("話題割り当てに失敗:", claimInfo.id, match, err);
+          }
+        }
+
+        if (currentClaimMeta !== claimDoc.wikiMeta) {
+          await fm.handleSaveWikiFile(claimInfo.id, { ...claimDoc, wikiMeta: currentClaimMeta });
+        }
+        if (!matchedAnyTopic) {
+          claimsWithoutTopicCount++;
+        }
+      }
+
+      const doneDetail = `${tStatic("ingest.topicsDone", { created: String(topicsCreated), updated: String(topicsUpdated) })}`
+        + (claimsWithoutTopicCount > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(claimsWithoutTopicCount) })}` : "")
+        + (topicsFailed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicsFailed) })}` : "");
+      updateStage("topics", "done", doneDetail);
+    }
 
     // 自動 Atomize: atom レイヤは default 有効化済み（design revision 2026-05-27）。
     // 全 Concept を見渡して共通抽象を discover する（クラスタ集中サンプリング）。
@@ -9648,6 +9811,7 @@ export function NoteApp() {
     const wikiKind = doc.wikiMeta.kind;
     const isSynthesis = wikiKind === "synthesis";
     const isAtom = wikiKind === "atom";
+    const isTopic = wikiKind === "topic";
 
     setIngestToast((prev) => ({
       items: [
@@ -9757,6 +9921,51 @@ export function NoteApp() {
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
             i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: modelLabel } : i
+          ),
+        }));
+        return { ok: true };
+      } else if (isTopic) {
+        // 話題（topic）の手動再生成: メンバー知見（derivedFromClaims）を読み直し、
+        // composeTopicBody で本文を作り直す（前の本文は入力に渡さない純関数）。
+        const memberIds = doc.wikiMeta.derivedFromClaims ?? [];
+        const memberClaims: TopicComposeClaim[] = [];
+        for (const cId of memberIds) {
+          const cDoc = await fm.loadDoc(`wiki:${cId}`);
+          if (!cDoc) continue;
+          const cMeta = fm.wikiMetas.get(cId);
+          if (!cMeta || cMeta.kind !== "claim") continue;
+          memberClaims.push({ id: cId, title: cDoc.title, body: extractBodyPreview(cDoc, 2000) });
+        }
+        if (memberClaims.length === 0) {
+          const errMsg = "Topic has no member claims to regenerate from";
+          setIngestToast((prev) => ({
+            items: (prev?.items ?? []).map((i) =>
+              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+            ),
+          }));
+          return { ok: false, error: errMsg };
+        }
+        const body = await composeTopicBody(wikiTitle, doc.wikiMeta.language ?? getLocale(), memberClaims, selectedModel);
+        if (!body) {
+          const errMsg = "Failed to compose topic body";
+          setIngestToast((prev) => ({
+            items: (prev?.items ?? []).map((i) =>
+              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+            ),
+          }));
+          return { ok: false, error: errMsg };
+        }
+        const rewritten = rebuildTopicDocument(doc, body, memberClaims.map((c) => c.id), selectedModel ?? null, buildNoteIndex(fm.noteIndex));
+        await fm.handleSaveWikiFile(wikiId, rewritten, {
+          activityType: "wiki_regenerate",
+          sources: memberClaims.map((c) => c.id),
+        });
+        embedWikiSections(wikiId, rewritten).catch(() => {});
+        if (openAfter) navigateToNote(`wiki:${wikiId}`);
+        wikiLog.append("regenerate", [wikiId], `Regenerated topic "${wikiTitle}" from ${memberClaims.length} member claim(s)`).catch(() => {});
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: selectedModel ?? "default" } : i
           ),
         }));
         return { ok: true };
@@ -10317,6 +10526,7 @@ export function NoteApp() {
       let claim = 0;
       let atom = 0;
       let synthesis = 0;
+      let topic = 0;
       for (const wf of fm.wikiFiles) {
         const meta = fm.wikiMetas.get(wf.id);
         if (!meta) continue;
@@ -10324,8 +10534,9 @@ export function NoteApp() {
         else if (meta.kind === "claim") claim++;
         else if (meta.kind === "atom") atom++;
         else if (meta.kind === "synthesis") synthesis++;
+        else if (meta.kind === "topic") topic++;
       }
-      return { summary, claim, atom, synthesis };
+      return { summary, claim, atom, synthesis, topic };
     })(),
     // Atom（洞察）レイヤは default 昇格済み（design revision 2026-05-27）。
     // 表示可否は features.insights（設定の「洞察を使う」）が握る。
@@ -11347,7 +11558,7 @@ export function NoteApp() {
                   wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
                 }}
                 onCheckWorldValidity={
-                  fm.activeDoc.wikiMeta.kind === "summary" || !wikiIdForBanner || !featureFlags.worldGrounding
+                  fm.activeDoc.wikiMeta.kind === "summary" || fm.activeDoc.wikiMeta.kind === "topic" || !wikiIdForBanner || !featureFlags.worldGrounding
                     ? undefined
                     : () => void handleWorldCheckWiki(wikiIdForBanner, "manual")
                 }

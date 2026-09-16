@@ -6,8 +6,17 @@ import {
   buildAtomDocument,
   buildWikiDocument,
   filterSelfFromDerivedFromClaims,
+  normalizeTopicTitle,
+  matchTopicsByTitle,
+  resolveTopicsForClaim,
+  linkClaimAndTopic,
+  unlinkClaimFromTopic,
+  buildTopicDocument,
+  rebuildTopicDocument,
   type AtomCandidate,
+  type ExistingTopicRef,
 } from "./wiki-service";
+import type { WikiMeta } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 
 const emptyIndex: any[] = [];
@@ -401,5 +410,220 @@ describe("filterSelfFromDerivedFromClaims - note-app.tsx の Atom re-lift 経路
   it("自 ID が含まれていなければ元のまま返す", () => {
     const preserved = filterSelfFromDerivedFromClaims(["claim-a", "claim-b"], "wiki-self");
     expect(preserved).toEqual(["claim-a", "claim-b"]);
+  });
+});
+
+describe("normalizeTopicTitle - 話題名の一致判定用正規化", () => {
+  it("前後空白と大小文字を無視する", () => {
+    expect(normalizeTopicTitle("  Reduction Kinetics  ")).toBe("reduction kinetics");
+  });
+
+  it("NFC 正規化で結合文字の表記ゆれを吸収する", () => {
+    // "が" (U+304C) と "か" + 濁点結合文字 (U+304B U+3099) は NFC で同じコードポイント列になる
+    const composed = "が"; // が（合成済み）
+    const decomposed = "が"; // か + ゛（結合文字）
+    expect(normalizeTopicTitle(composed)).toBe(normalizeTopicTitle(decomposed));
+  });
+});
+
+describe("matchTopicsByTitle - タイトル正規化一致（同期版）", () => {
+  const existing: ExistingTopicRef[] = [
+    { id: "topic-1", title: "還元の反応速度" },
+    { id: "topic-2", title: "SPS 焼結条件" },
+  ];
+
+  it("正規化後に一致する既存話題を matched として返す", () => {
+    const result = matchTopicsByTitle(["  還元の反応速度  "], existing);
+    expect(result).toEqual([
+      { status: "matched", title: "  還元の反応速度  ", topicId: "topic-1", via: "title" },
+    ]);
+  });
+
+  it("大小文字違いでも一致する（英語話題名）", () => {
+    const result = matchTopicsByTitle(["sps 焼結条件"], existing);
+    expect(result[0]).toMatchObject({ status: "matched", topicId: "topic-2" });
+  });
+
+  it("一致しなければ new を返す", () => {
+    const result = matchTopicsByTitle(["まったく新しい話題"], existing);
+    expect(result).toEqual([{ status: "new", title: "まったく新しい話題" }]);
+  });
+
+  it("既存話題が空なら全件 new", () => {
+    const result = matchTopicsByTitle(["a", "b"], []);
+    expect(result.every((m) => m.status === "new")).toBe(true);
+  });
+});
+
+describe("resolveTopicsForClaim - 話題の割り当て（正規化一致 → embedding → 新規）", () => {
+  it("タイトル一致する話題名は embedding を経由せず matched を返す", async () => {
+    const existing: ExistingTopicRef[] = [{ id: "topic-1", title: "還元の反応速度" }];
+    const result = await resolveTopicsForClaim(["還元の反応速度"], existing);
+    expect(result).toEqual([
+      { status: "matched", title: "還元の反応速度", topicId: "topic-1", via: "title" },
+    ]);
+  });
+
+  it("既存話題が無ければ即 new（embedding API を叩かない）", async () => {
+    const result = await resolveTopicsForClaim(["新しい話題"], []);
+    expect(result).toEqual([{ status: "new", title: "新しい話題" }]);
+  });
+
+  it("一致しない話題名は embedding モデル未設定時 fail-open で new になる", async () => {
+    // テスト環境では embedding モデル未設定 → partitionCandidatesByEmbedding が
+    // fail-open（全件 kept）で返るため、タイトル一致しない話題名は new に倒れる。
+    const existing: ExistingTopicRef[] = [{ id: "topic-1", title: "既存の話題" }];
+    const result = await resolveTopicsForClaim(["未知の話題"], existing);
+    expect(result).toEqual([{ status: "new", title: "未知の話題" }]);
+  });
+
+  it("同一呼び出し内の重複話題名（正規化後に同じ）は 1 件に畳む", async () => {
+    const result = await resolveTopicsForClaim(["話題A", " 話題A "], []);
+    expect(result).toHaveLength(1);
+  });
+
+  it("入力が空なら空配列", async () => {
+    expect(await resolveTopicsForClaim([], [])).toEqual([]);
+  });
+});
+
+describe("linkClaimAndTopic - claim ⇔ topic の双方向リンク", () => {
+  const baseClaimMeta = (topicIds?: string[]): WikiMeta => ({
+    kind: "claim",
+    derivedFromNotes: ["note-1"],
+    derivedFromChats: [],
+    generatedAt: "2026-07-01T00:00:00Z",
+    generatedBy: { model: "m", version: "1.0.0" },
+    topicIds,
+  });
+  const baseTopicMeta = (derivedFromClaims?: string[]): WikiMeta => ({
+    kind: "topic",
+    derivedFromNotes: [],
+    derivedFromChats: [],
+    generatedAt: "2026-07-01T00:00:00Z",
+    generatedBy: { model: "m", version: "1.0.0" },
+    derivedFromClaims,
+  });
+
+  it("claim.topicIds と topic.derivedFromClaims の双方に追加する", () => {
+    const { claimMeta, topicMeta } = linkClaimAndTopic(
+      baseClaimMeta([]),
+      "claim-1",
+      baseTopicMeta([]),
+      "topic-1",
+    );
+    expect(claimMeta.topicIds).toEqual(["topic-1"]);
+    expect(topicMeta.derivedFromClaims).toEqual(["claim-1"]);
+  });
+
+  it("既存のリストを保持したまま追加する", () => {
+    const { claimMeta, topicMeta } = linkClaimAndTopic(
+      baseClaimMeta(["topic-0"]),
+      "claim-1",
+      baseTopicMeta(["claim-0"]),
+      "topic-1",
+    );
+    expect(claimMeta.topicIds).toEqual(["topic-0", "topic-1"]);
+    expect(topicMeta.derivedFromClaims).toEqual(["claim-0", "claim-1"]);
+  });
+
+  it("既にリンク済みなら冪等（同じ配列インスタンスを保つ）", () => {
+    const claimMeta0 = baseClaimMeta(["topic-1"]);
+    const topicMeta0 = baseTopicMeta(["claim-1"]);
+    const { claimMeta, topicMeta } = linkClaimAndTopic(claimMeta0, "claim-1", topicMeta0, "topic-1");
+    expect(claimMeta).toBe(claimMeta0);
+    expect(topicMeta).toBe(topicMeta0);
+  });
+
+  it("claim.topicIds は最大 3 件に切り詰める", () => {
+    const { claimMeta } = linkClaimAndTopic(
+      baseClaimMeta(["t1", "t2", "t3"]),
+      "claim-1",
+      baseTopicMeta([]),
+      "t4",
+    );
+    expect(claimMeta.topicIds).toEqual(["t1", "t2", "t3"]);
+  });
+});
+
+describe("unlinkClaimFromTopic - 知見削除時のメンバー除外", () => {
+  it("derivedFromClaims から対象 claim id を除く", () => {
+    const topicMeta: WikiMeta = {
+      kind: "topic",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      derivedFromClaims: ["claim-a", "claim-b"],
+      generatedAt: "2026-07-01T00:00:00Z",
+      generatedBy: { model: "m", version: "1.0.0" },
+    };
+    const next = unlinkClaimFromTopic(topicMeta, "claim-a");
+    expect(next.derivedFromClaims).toEqual(["claim-b"]);
+  });
+
+  it("対象 id が含まれていなければ元のまま返す（冪等）", () => {
+    const topicMeta: WikiMeta = {
+      kind: "topic",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      derivedFromClaims: ["claim-b"],
+      generatedAt: "2026-07-01T00:00:00Z",
+      generatedBy: { model: "m", version: "1.0.0" },
+    };
+    expect(unlinkClaimFromTopic(topicMeta, "claim-a")).toBe(topicMeta);
+  });
+
+  it("0 件になっても配列は残す（話題ページ自体は削除しない）", () => {
+    const topicMeta: WikiMeta = {
+      kind: "topic",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      derivedFromClaims: ["claim-a"],
+      generatedAt: "2026-07-01T00:00:00Z",
+      generatedBy: { model: "m", version: "1.0.0" },
+    };
+    expect(unlinkClaimFromTopic(topicMeta, "claim-a").derivedFromClaims).toEqual([]);
+  });
+});
+
+describe("buildTopicDocument / rebuildTopicDocument - 保存経路で topicIds/derivedFromClaims が落ちない", () => {
+  it("buildTopicDocument は derivedFromClaims にメンバー知見 ID をすべて積む", () => {
+    const doc = buildTopicDocument(
+      "話題タイトル",
+      "## 定義\n本文です。",
+      ["claim-a", "claim-b"],
+      "test-model",
+      "ja",
+    );
+    expect(doc.wikiMeta?.kind).toBe("topic");
+    expect(doc.wikiMeta?.derivedFromClaims).toEqual(["claim-a", "claim-b"]);
+  });
+
+  it("本文の `## 見出し` はブロック化され、段落テキストも保持される", () => {
+    const doc = buildTopicDocument("t", "## 定義\n本文です。", ["claim-a"], null);
+    const blocks = doc.pages[0].blocks as any[];
+    expect(blocks.some((b) => b.type === "heading")).toBe(true);
+    expect(blocks.some((b) => b.type === "paragraph")).toBe(true);
+  });
+
+  it("rebuildTopicDocument は既存 doc の他フィールド（documentProvenance 等）を保持しつつ derivedFromClaims を更新する", () => {
+    const existing: any = {
+      version: 2,
+      title: "話題タイトル",
+      pages: [{ id: "main", title: "話題タイトル", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+      wikiMeta: {
+        kind: "topic",
+        derivedFromNotes: [],
+        derivedFromChats: [],
+        derivedFromClaims: ["claim-a"],
+        generatedAt: "2026-07-01T00:00:00Z",
+        generatedBy: { model: "m", version: "1.0.0" },
+      },
+      documentProvenance: { revisions: [{ id: "rev-1" }], activities: [], agents: [] },
+      createdAt: "2026-07-01T00:00:00Z",
+      modifiedAt: "2026-07-01T00:00:00Z",
+    };
+    const next = rebuildTopicDocument(existing, "## 定義\n更新後の本文。", ["claim-a", "claim-b"], "m2");
+    expect(next.wikiMeta?.derivedFromClaims).toEqual(["claim-a", "claim-b"]);
+    expect(next.documentProvenance).toBe(existing.documentProvenance);
   });
 });
