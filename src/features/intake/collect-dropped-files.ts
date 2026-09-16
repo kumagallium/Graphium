@@ -13,7 +13,7 @@ import { type IntakeFile, toIntakeFiles } from "./types";
 
 /** 既に手元にある File 1 件を IntakeFile に包む（getFile は同じ参照を返すだけ） */
 function fileToIntakeFile(file: File, path: string): IntakeFile {
-  return { path, name: file.name, size: file.size, type: file.type, getFile: async () => file };
+  return { path, name: file.name, type: file.type, getFile: async () => file };
 }
 
 // lib.dom.d.ts に無い File System Entries API の最小限の型

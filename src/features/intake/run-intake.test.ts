@@ -398,7 +398,6 @@ describe("runIntake の共有ファイルキャッシュ（getFile の二重呼�
     const imageFile: IntakeFile = {
       path: "fig.png",
       name: "fig.png",
-      size: 3,
       type: "image/png",
       getFile: imageGetFile,
     };
@@ -439,7 +438,6 @@ describe("runIntake の共有ファイルキャッシュ（getFile の二重呼�
     const imageFile: IntakeFile = {
       path: "fig.png",
       name: "fig.png",
-      size: 3,
       type: "image/png",
       getFile: imageGetFile,
     };

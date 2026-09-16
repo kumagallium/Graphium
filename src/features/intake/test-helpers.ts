@@ -8,5 +8,5 @@ import type { IntakeFile } from "./types";
 
 /** 既にある File 1 件を IntakeFile に包む。path 省略時は file.name をそのまま使う */
 export function intakeFileFrom(file: File, path: string = file.name): IntakeFile {
-  return { path, name: file.name, size: file.size, type: file.type, getFile: async () => file };
+  return { path, name: file.name, type: file.type, getFile: async () => file };
 }

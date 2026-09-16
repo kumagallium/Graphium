@@ -8120,14 +8120,16 @@ export function NoteApp() {
         onProgress({ done: i, total: notes.length, current: file.name, failed: [...failed] });
         try {
           const baseName = file.name.replace(/\.(md|markdown)$/i, "");
+          // 実体は 1 回だけ読み、ハッシュ計算とインポートの両方で使い回す
+          // （ネイティブ走査では getFile() の呼び出しがファイル読み込みそのもの。
+          // IntakeFile は走査時点の size を持たないため、サイズ判定も
+          // 読み込み後の実体（rawFile.size）で行う）
+          const rawFile = await file.getFile();
           // 素材側（asset-browser/dedupe.ts）と同じ上限。極端に大きいファイルを
           // メインスレッドで丸ごと読んでハッシュ計算することを避ける
           // （md は通常小さいが、エクスポートされた大規模ノート等の想定外入力向け）。
           // 上限超過時は重複判定を諦めて常に新規ノートとして扱う（importSource は付けない）。
-          const tooLargeToHash = file.size > MAX_HASH_BYTES;
-          // 実体は 1 回だけ読み、ハッシュ計算とインポートの両方で使い回す
-          // （ネイティブ走査では getFile() の呼び出しがファイル読み込みそのもの）
-          const rawFile = await file.getFile();
+          const tooLargeToHash = rawFile.size > MAX_HASH_BYTES;
           const contentHash = tooLargeToHash
             ? undefined
             : await computeBlobHash(new Uint8Array(await rawFile.arrayBuffer()));

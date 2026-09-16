@@ -17,7 +17,6 @@ export type IntakeFile = {
   /** 取り込み元のルートからの相対パス（フォルダ引き継ぎの判定に使う） */
   path: string;
   name: string;
-  size: number;
   /** MIME。ネイティブ走査では空文字になることがあるので、利用側は拡張子推定にフォールバックすること */
   type: string;
   /** 実体を取り出す。ネイティブ走査ではこれが呼ばれた瞬間に初めてファイルを読む */
@@ -40,7 +39,6 @@ export function toIntakeFiles(files: FileList | File[]): IntakeFile[] {
     return {
       path: relativePath && relativePath.length > 0 ? relativePath : file.name,
       name: file.name,
-      size: file.size,
       type: file.type,
       // DOM 経路では既に読み込み済みの File を包むだけ。同じ File を
       // 何度返しても再読み込みは起きないので、そのまま毎回同じ参照を返す

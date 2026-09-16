@@ -1445,6 +1445,7 @@ dependencies = [
  "dirs",
  "humantime",
  "image",
+ "libc",
  "objc2",
  "objc2-foundation",
  "serde",
