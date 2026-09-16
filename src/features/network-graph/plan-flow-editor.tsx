@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { StepFlowView, type ConnectResult } from "./step-flow-view";
+import type { FlowSelection, SectionKind, StepPanelData } from "./flow-attribute-table";
 import type { FlowGraphData, FlowNoteRef, FlowStep } from "./activity-graph-adapter";
 import {
   collectOperationRowsFromBlocks,
@@ -26,7 +27,15 @@ import {
   requestLatestProcessIndexRefresh,
 } from "./process-index";
 import { planFlowScope } from "./graph-layout";
-import { addTableRow, addTableColumn, setTableCellAt, readTable } from "./table-row-edit";
+import {
+  addTableRow,
+  addTableColumn,
+  removeCellImageAt,
+  removeTableColumn,
+  renameTableColumn,
+  setTableCellAt,
+  readTable,
+} from "./table-row-edit";
 import { collectTableBlocks } from "../table-meta/table-cells";
 import { useTableMetaStore, type TableMetaStoreValue } from "../table-meta/store";
 import { getFirstCellText, createNoteFromRow } from "../index-table/create-note-from-row";
@@ -34,6 +43,9 @@ import { getIndexTableCallbacks, openEditorSidePeek } from "../index-table/conte
 import { findColumnNameByType } from "../table-meta/types";
 import { t } from "../../i18n";
 import type { GraphiumIndex } from "../navigation/index-file";
+
+/** 工程パネルに描くセクション。計画ノート自身のインデックステーブルだけを出す */
+const PLAN_PANEL_SECTIONS: SectionKind[] = ["attribute"];
 
 /** 表示名を正規化する（plan-flow.ts の normalizeOperationName と同じ規則。非公開関数なのでここで揃える） */
 function normalizePlanName(name: string): string {
@@ -325,9 +337,113 @@ export function PlanFlowEditor({
     [editorRef],
   );
 
+  /**
+   * 工程ノードを選んだときに下のパネルへ出す表。
+   *
+   * 出すのは相手ノートの中身ではなく、**計画ノート自身のインデックステーブル**。
+   * カードに並ぶ条件はこの表の列（plan-flow.ts が 2 列目以降を attrs にしている）
+   * なので、ここで直せば本文と往復する。D4（開いていないノートは書き換えない）にも
+   * 触れない — 書き換え先はいま開いているノートだから。
+   *
+   * 行とノートの紐づけを持つ列（note-link）だけは読み取り専用にする。ここを書き換えると
+   * noteLinks のキー（＝行名）から外れて、行が「未作成」に落ちてしまう。
+   */
+  const getPanelFor = useCallback(
+    (selection: FlowSelection): StepPanelData | null => {
+      const editor = editorRef.current;
+      if (!editor || !selection || selection.kind !== "step") return null;
+      const store = storeRef.current;
+      const rows = collectOperationRowsFromBlocks(
+        editor.document ?? [],
+        store.getSnapshot(),
+        indexRef.current,
+      );
+      const row = rows.find((r) => operationRowId(r) === selection.step.id);
+      if (!row) return null;
+      const table = readTable(editor, row.tableBlockId);
+      if (!table) return null;
+      const noteLinkName = findColumnNameByType(
+        store.getSnapshot()[row.tableBlockId],
+        "note-link",
+      );
+      const noteLinkCol = noteLinkName ? table.headers.indexOf(noteLinkName) : -1;
+      return {
+        stepId: selection.step.id,
+        stepName: row.name,
+        tables: {
+          attribute: { ...table, readonlyColumns: noteLinkCol >= 0 ? [noteLinkCol] : [0] },
+          // 入出力・ツールは工程ノート（相手のノート）の中の話で、ここからは書けない。
+          // panelSections で attribute だけを描くので、空セクションも出ない
+          material: null,
+          tool: null,
+          output: null,
+        },
+        // 選んだ工程の行を強調する。表そのものは全行出す（本文と同じものを見る）
+        highlight: { blockId: row.tableBlockId, rowName: row.name },
+        prose: [],
+      };
+    },
+    [editorRef],
+  );
+
+  // パネルの編集はすべて「いま開いている計画ノートの表」への書き込み。
+  // 参照が毎レンダー変わると StepFlowView がノードを作り直して工程ノードが消えるため、
+  // ファイル内の他のコールバックと同じく editorRef だけを依存にして固定する
+  const onSetCell = useCallback(
+    (blockId: string, rowIndex: number, colIndex: number, value: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      setTableCellAt(editor, blockId, rowIndex, colIndex, value);
+    },
+    [editorRef],
+  );
+
+  const onRemoveCellImage = useCallback(
+    (blockId: string, rowIndex: number, colIndex: number) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      removeCellImageAt(editor, blockId, rowIndex, colIndex);
+    },
+    [editorRef],
+  );
+
+  const onRenameColumn = useCallback(
+    (blockId: string, colIndex: number, name: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      renameTableColumn(editor, blockId, colIndex, name);
+    },
+    [editorRef],
+  );
+
+  const onAddColumn = useCallback(
+    (blockId: string, name: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      addTableColumn(editor, blockId, name);
+    },
+    [editorRef],
+  );
+
+  const onRemoveColumn = useCallback(
+    (blockId: string, colIndex: number) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      removeTableColumn(editor, blockId, colIndex);
+    },
+    [editorRef],
+  );
+
   return (
     <StepFlowView
       graph={result.graph}
+      getPanelFor={getPanelFor}
+      panelSections={PLAN_PANEL_SECTIONS}
+      onSetCell={onSetCell}
+      onRemoveCellImage={onRemoveCellImage}
+      onRenameColumn={onRenameColumn}
+      onAddColumn={onAddColumn}
+      onRemoveColumn={onRemoveColumn}
       variant={variant}
       tableLayout={tableLayout}
       layoutScope={noteId ? planFlowScope(noteId) : null}

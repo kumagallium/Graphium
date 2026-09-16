@@ -72,6 +72,12 @@ export type StepPanelData = {
 export type FlowStepPanelProps = {
   selection: FlowSelection;
   data: StepPanelData | null;
+  /**
+   * 描くセクション。既定は 4 種すべて。計画ノートの工程パネルは、計画ノート自身の
+   * インデックステーブルだけを出したいので ["attribute"] を渡す（インプット・ツール・
+   * アウトプットは相手ノートの中の話で、ここからは書けない）
+   */
+  sections?: SectionKind[];
   // ── テーブル編集（既存の表） ──
   onSetCell?: (blockId: string, rowIndex: number, colIndex: number, value: string) => void;
   onRenameColumn?: (blockId: string, colIndex: number, name: string) => void;
@@ -262,6 +268,7 @@ function CellImageThumb({
 export function FlowStepPanel({
   selection,
   data,
+  sections,
   onSetCell,
   onRenameColumn,
   onAddColumn,
@@ -367,7 +374,7 @@ export function FlowStepPanel({
     if (proseHighlight) {
       key = data.prose.find((p) => p.entityId === proseHighlight)?.kind ?? null;
     } else if (highlightBlockId) {
-      key = SECTION_ORDER.find((k) => data.tables[k]?.blockId === highlightBlockId) ?? null;
+      key = (sections ?? SECTION_ORDER).find((k) => data.tables[k]?.blockId === highlightBlockId) ?? null;
     }
     if (!key) return;
     sectionRefs.current[key]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -574,6 +581,8 @@ export function FlowStepPanel({
                       // 画像が入っているセルはクリックで編集に入らない。
                       // 入ると draft（テキスト）で確定したとき画像が消える
                       if (table?.cellImages?.[`${r}:${col}`]) return;
+                      // 読み取り専用の列（工程パネルの note-link 列など）も編集に入らない
+                      if (table?.readonlyColumns?.includes(col)) return;
                       if (onSetCell && !editing(key)) setEdit({ key, draft: row[col] ?? "" });
                     }}
                   >
@@ -715,6 +724,12 @@ export function FlowStepPanel({
     const trailing = !!onAddColumn && !!table;
     // 段階が 2 つ以上のときだけ、行の先頭に表示専用の番号を出す（保存はしない）
     const showStageNumbers = rows.length >= 2;
+    // 計画ノートの工程パネルは 1 行 = 1 工程なので、選んでいる工程の行を強調する
+    // （rowGrid と同じ規則。指定が無ければ -1 で何も強調しない）
+    const highlightRow =
+      table && highlightBlockId === table.blockId && highlightRowName != null
+        ? table.rows.findIndex((r) => r[0] === highlightRowName)
+        : -1;
     return (
       <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
         <thead>
@@ -801,7 +816,7 @@ export function FlowStepPanel({
             </tr>
           )}
           {rows.map((row, r) => (
-            <tr key={r}>
+            <tr key={r} style={highlightRow === r ? highlightBg : undefined}>
               {showStageNumbers && (
                 <td style={{ ...td, ...ghostText, textAlign: "center" }}>{r + 1}</td>
               )}
@@ -815,6 +830,8 @@ export function FlowStepPanel({
                       // 画像が入っているセルはクリックで編集に入らない。
                       // 入ると draft（テキスト）で確定したとき画像が消える
                       if (table?.cellImages?.[`${r}:${col}`]) return;
+                      // 読み取り専用の列（工程パネルの note-link 列など）も編集に入らない
+                      if (table?.readonlyColumns?.includes(col)) return;
                       if (onSetCell && !editing(key)) setEdit({ key, draft: row[col] ?? "" });
                     }}
                   >
@@ -991,7 +1008,7 @@ export function FlowStepPanel({
           background: "var(--color-surface)",
         }}
       >
-        {SECTION_ORDER.map(section)}
+        {(sections ?? SECTION_ORDER).map(section)}
       </div>
     </div>
   );
