@@ -30,6 +30,8 @@ The numbers that *do* exist fall into three categories, and each has a reason yo
 | At least 2 Claims before scanning | Run precondition | Cross-Claim patterns need something to cross; with a single Claim there is nothing to scan against yet |
 | Unknown source IDs dropped | Parser guard | **Hallucination defense** — a candidate citing a Claim that doesn't exist is discarded rather than saved with a broken reference |
 | Health check has no day-count or overlap-percentage threshold | [Knowledge Health Check](/knowledge-layer)'s **Stale** and **Redundant** issues | **Judged, not thresholded.** Stale requires the AI to name a specific newer page or note that supersedes the old one — elapsed time alone never triggers it. Redundant requires the two pages to assert the same specific claim, wording and granularity aside — topic overlap alone never triggers it |
+| [Source check](/ai-grounding#source-check-does-the-source-actually-say-it) has no numeric limit of its own | The judge-call count shown before running a check | **Measured, not configured** — it's the number of sources involved, computed the same way as the Insight-discovery call count above, and can come out lower than shown once unreadable sources are skipped |
+| No size cap on the text a source check re-reads | Re-reading a note, PDF, or Word file to check a citation | **Same as ingest** — ingest never caps note, PDF, or Word body length either, so source check reads exactly what ingest would have seen, not a truncated preview |
 
 If you ever see behavior that looks like a hidden filter and isn't explained by this table, that's a bug worth [reporting](https://github.com/kumagallium/Graphium/issues).
 

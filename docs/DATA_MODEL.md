@@ -1377,9 +1377,20 @@ through a PR.
 Source check adds a `sourceCheck` field on `WikiMeta` that answers a third
 question, distinct from `epistemicStatus` / `hypothesisStatus` and from
 `grounding` (§3.7): not "is this correct" or "how does this stand against
-the world", but **"does the source this claim cites actually say this?"**
-It re-reads the original text of every entry in the claim's
-`derivedFromNotes` and judges the claim against that text alone.
+the world", but **"does the source this claim (or topic sentence) cites
+actually say this?"** It re-reads the original text of every source cited
+and judges the statement against that text alone.
+
+Both **claims** and **topics** are checked; **insights are not** — an
+insight is a generalization drawn *across* several claims, so there is no
+single source text it could be checked against. For a claim, the
+statement is the whole claim (title + body) and its sources are
+`derivedFromNotes`. For a topic, each body block before the `References`
+heading that cites one or more member claims becomes its own statement
+(the block's plain text with the `@Title` mention stripped), and its
+sources are the claims it cites — see
+[ARCHITECTURE.md §3.3](./ARCHITECTURE.md) for how a topic is split into
+statements.
 
 The verdict vocabulary corresponds to FEVER (Thorne et al., 2018)'s
 SUPPORTS / REFUTES / NOT ENOUGH INFO: `supported` and `contradicted` map
@@ -1404,12 +1415,18 @@ type SourceMissingReason =
   | "no-reference"      // source has no reference key back to its origin (chat:)
   | "unreadable"        // re-fetch (url) or extraction (pdf/document) failed
   | "unsupported-kind"  // an id kind source check does not handle
-  | "empty";             // the retrieved text was empty
+  | "empty"              // the retrieved text was empty
+  | "ai-answer"          // claim adopted from a Cmd-K answer; the answer text is not stored
+  | "not-recorded";      // the claim/topic sentence has no source recorded at all
 
-type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "unknown";
+// "claim" is a topic-only source kind (§ below): a topic sentence's source is one of the
+// claims it cites, not a derivedFromNotes entry.
+type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "claim" | "unknown";
 
 type SourceCheckEntry = {
-  sourceId: string;                 // the derivedFromNotes entry verbatim, prefix included
+  sourceId: string;                 // the derivedFromNotes entry verbatim, prefix included; for
+                                     // "not-recorded" (no source to point at) this is the
+                                     // checked document's own wikiId instead
   sourceKind: SourceCheckSourceKind;
   verdict: SourceCheckVerdict;
   rationale: string;                // 1-2 sentences, UI language
@@ -1417,6 +1434,9 @@ type SourceCheckEntry = {
   blockId?: string;                 // set only when quote resolves to exactly one note block
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
+  statement?: string;               // the sentence checked (topics only; a claim's whole body is
+                                     // the statement, so claims never set this)
+  statementBlockId?: string;        // the topic block statement came from, when statement is set
 };
 
 type SourceCheckProfile = {
@@ -1435,15 +1455,29 @@ type SourceCheckProfile = {
   only that field, exactly like `attachValidity()` does for `grounding`.
   The claim's `title`, body, `status`, `epistemicStatus` and `grounding`
   are never touched by a source check run.
-- **Aggregation priority.** A claim can cite more than one source, so
-  `SourceCheckEntry[]` is reduced to one `SourceCheckProfile.verdict` by
-  `aggregateVerdict()` (`src/features/source-check/aggregate.ts`), highest
-  priority first: `contradicted` > `supported` > `not-in-source` >
-  `unclear` > `source-missing`. A single contradicting source always wins
-  even when every other source supports the claim, so a conflict is never
-  hidden; `source-missing` sits lowest because it means no judgment was
-  even attempted for that entry. An empty `entries[]` aggregates to
-  `source-missing`.
+- **Aggregation is two-level** (`src/features/source-check/aggregate.ts`),
+  because a document can have more than one statement (a topic) and a
+  statement can cite more than one source (a claim's `derivedFromNotes`,
+  or a topic sentence citing several member claims):
+  1. **Per statement**, `aggregateVerdict()` reduces that statement's
+     `SourceCheckEntry[]` to one verdict, highest priority first:
+     `contradicted` > `supported` > `not-in-source` > `unclear` >
+     `source-missing`. A single contradicting source always wins even
+     when every other source supports the statement, so a conflict is
+     never hidden; a single supporting source is enough to ground the
+     statement when nothing contradicts it; `source-missing` sits lowest
+     because it means no judgment was even attempted for that entry. An
+     empty `entries[]` aggregates to `source-missing`.
+  2. **Per document**, `aggregateDocumentVerdict()` reduces the
+     per-statement verdicts to the one `SourceCheckProfile.verdict`,
+     ordered by what needs attention first rather than by the per-source
+     order above: `contradicted` > `not-in-source` > `unclear` >
+     `source-missing` > `supported`. A claim has exactly one statement,
+     so this step is a no-op for claims and the profile verdict is just
+     step 1's result; a topic's statements are separate assertions, so
+     one statement being `supported` must never mask another statement
+     of the same topic being `not-in-source` or worse — a topic is only
+     `supported` overall when every one of its statements is.
 - **Quote verification is fail-closed.** A `quote` is kept only when it
   appears verbatim (NFKC-normalized, whitespace-collapsed) in the source
   text that was actually shown to the model. A `supported` or
@@ -1453,10 +1487,12 @@ type SourceCheckProfile = {
   `blockId` is filled in only when the quote is contained by exactly one
   block of the source note — an ambiguous or cross-block match is left
   unset rather than guessed.
-- **`claimHash`** is a hash of the claim's `title` + body at the moment of
-  checking (`computeClaimHash`, the same SHA-256 blob-hash utility
-  team-shared-storage uses), so a later mismatch against the claim's
-  current title+body tells the UI the checked text has since changed.
+- **`claimHash`** is a hash of the checked document's `title` + body at the
+  moment of checking (`computeClaimHash`, the same SHA-256 blob-hash
+  utility team-shared-storage uses) — for a topic this is the whole topic
+  body, not just the statements that were checked — so a later mismatch
+  against the document's current title+body tells the UI the checked text
+  has since changed.
 - **`dismissed`** marks a verdict the user manually cleared from the note,
   distinguishing "never checked" (no `sourceCheck` at all) from "checked,
   then deliberately cleared" — the same semantics as `grounding.validity.dismissed`
@@ -1475,9 +1511,16 @@ type SourceCheckProfile = {
 
 Chat-derived claims (`derivedFromNotes` referencing a `chat:` id) have no
 reference key back to the original conversation, so they are always
-recorded as `source-missing` / `no-reference` without an LLM call. See
-[ARCHITECTURE.md §3.3](./ARCHITECTURE.md) for how the original text is
-retrieved per source kind and how a check run is executed.
+recorded as `source-missing` / `no-reference` without an LLM call. Two
+more cases are recorded the same way, also without an LLM call: a claim
+adopted from a Cmd-K answer (`missingReason: "ai-answer"`) — the answer
+text itself is never stored, so comparing it against the note where it
+was shown would wrongly read as "not in source" — and a claim or topic
+sentence with no source to check at all (`missingReason: "not-recorded"`:
+an empty `derivedFromNotes`, or a topic block that cites no member
+claim). See [ARCHITECTURE.md §3.3](./ARCHITECTURE.md) for how the
+original text is retrieved per source kind, how a topic is split into
+statements, and how a check run is executed.
 
 ## 4. Skill documents
 

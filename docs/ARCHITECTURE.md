@@ -1066,40 +1066,82 @@ PR).
 
 **Source check — a separate manual verification lane.** Where world-model
 grounding asks whether a claim holds up against outside knowledge, source
-check asks a narrower question: does the *source the claim itself cites*
-(`wikiMeta.derivedFromNotes`) actually say this? It is neither part of
-ingest nor of lint — it is its own client-driven pipeline
-(`src/features/source-check/`), run over already-existing claims rather
-than at creation time.
+check asks a narrower question: does the *source the statement itself
+cites* actually say this? It is neither part of ingest nor of lint — it
+is its own client-driven pipeline (`src/features/source-check/`), run
+over already-existing claims and topics rather than at creation time.
+**Insights are never checked** — an insight generalizes across several
+claims, so there is no single source text to hold it against.
 
+- **A claim's statement is the whole claim; a topic's statements are its
+  citing blocks.** For a claim the statement is its title + body and its
+  sources are `derivedFromNotes`, unchanged from v1. For a topic
+  (`extractTopicStatements` in
+  `src/features/source-check/topic-statements.ts`), every body block
+  *before* the `References` heading (`buildTopicReferenceBlocks`, §3.3
+  above) that carries a `knowledgeLinks` entry with `type: "reference"`
+  pointing at one of the topic's `derivedFromClaims` becomes its own
+  statement — the block's plain text with the `@Title` mention stripped
+  — and its sources are the claims that block cites, addressed with a
+  synthetic `claim:<wikiId>` id
+  (`src/features/source-check/claim-source-id.ts`) that never appears in
+  `derivedFromNotes` and is not added to the shared external-source
+  prefix list, so lineage, graph, and PROV export readers are unaffected.
+  A block with no such citation is not checked at all. Two shapes of
+  "cannot be checked" are recorded without an LLM call, not silently
+  skipped: a claim adopted from a Cmd-K answer
+  (`src/features/source-check/ai-answer.ts` detects
+  `generatedBy.sessionId` starting with `verb-suggestion-`, since
+  `buildVerbSuggestionDocument` in
+  `src/features/composer/verb-suggestion-doc.ts` never stores the answer
+  text itself, so diffing against the note where it was shown would
+  wrongly read as "not in source") resolves straight to
+  `missingReason: "ai-answer"`; a claim with an empty `derivedFromNotes`
+  or a topic with no citing block resolves to `"not-recorded"`.
 - **Retrieving the original text depends on the source kind**
   (`resolveSourceText`, `src/features/source-check/resolve-source-text.ts`):
   a plain-note id re-reads the note's current body, split into per-block
   text so a verified quote can be traced back to one block; `pdf:` /
   `document:` ids re-read the asset's bytes and re-run the **same**
   extractor ingest uses (`pdf-text-extractor`, `mammoth.extractRawText`)
-  rather than trusting any cached extraction; `url:` ids prefer a stored
-  copy of the fetched text and otherwise re-fetch through the existing
-  `/api/wiki/fetch-url` path; `memo:` ids read the capture text directly;
-  `chat:` ids carry no reference key back to the conversation that
-  produced them, so they resolve to `source-missing` / `no-reference`
-  without attempting anything. None of these readers impose a new size
-  limit — ingest does not cap note, PDF, or Word body length either, so
-  source check re-reads exactly what ingest would have seen.
-- **One call judges one source against every claim that cites it.**
-  `planSourceCheck` (`src/features/source-check/plan.ts`) groups the
-  claims being checked by `derivedFromNotes` entry, and `runSourceCheck`
+  rather than trusting any cached extraction; `claim:` ids (topic sources)
+  re-read the cited claim's current title + body the same way a claim
+  checks its own text, and resolve to `deleted` if the claim is trashed,
+  archived, or gone; `memo:` ids read the capture text directly; `chat:`
+  ids carry no reference key back to the conversation that produced them,
+  so they resolve to `source-missing` / `no-reference` without attempting
+  anything. **`url:` ids always re-fetch** through the existing
+  `/api/wiki/fetch-url` path rather than reading a stored copy: the
+  `resolveSourceText` contract has a `loadStoredUrlText` slot for a
+  stored-original fast path, but the client wiring
+  (`src/features/source-check/use-source-check.ts`) has no index from a URL back to the
+  note that stored its fetched text (`sourceTextFileId` lives on the
+  individual note, not mirrored into `mediaIndex`), so that slot is left
+  unset and every `url:` source check re-fetches the URL fresh and
+  compares against whatever came back at that moment. None of these
+  readers impose a new size limit — ingest does not cap note, PDF, or
+  Word body length either, so source check re-reads exactly what ingest
+  would have seen.
+- **One call judges one source against every statement that cites it,
+  claims and topics combined.** `planSourceCheck`
+  (`src/features/source-check/plan.ts`) groups the statements being
+  checked (built by `buildSourceCheckStatements` /
+  `src/features/source-check/build-statements.ts`) by source id — a
+  claim's `derivedFromNotes` entry or a topic block's `claim:` id alike
+  — so a source shared by several claims, several topic sentences, or
+  both ends up in one group. `runSourceCheck`
   (`src/features/source-check/run.ts`) walks the resulting groups
   sequentially — no concurrency constant, matching the "no new numeric
   limits" rule above — resolving each source's text and then, if any text
   came back, sending it once to `POST /api/wiki/check-sources` with the
-  full list of claims that depend on it. This mirrors the unit ingest
-  already uses (one source, every claim it produced, in one call).
-- **A claim's result is written only once every source it cites has been
-  processed.** If a run is interrupted — the caller aborts, or the API
-  degrades partway — claims still waiting on an unprocessed source are
-  left out of the result entirely rather than being written with a
-  partial `entries[]`; `runSourceCheck` reports whether the run was
+  full list of statements that depend on it, `${docId}#${statementId}` as
+  each statement's unit id. This mirrors the unit ingest already uses
+  (one source, every claim it produced, in one call).
+- **A document's result is written only once every statement×source pair
+  it has is processed.** If a run is interrupted — the caller aborts, or
+  the API degrades partway — a claim, or a topic with even one unprocessed
+  statement, is left out of the result entirely rather than being written
+  with a partial `entries[]`; `runSourceCheck` reports whether the run was
   `interrupted` so the caller can retry.
 - **Quote verification happens on the server before the client ever sees
   it.** `POST /api/wiki/check-sources`
