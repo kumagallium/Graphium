@@ -94,6 +94,10 @@ const ALL_LAYERS: LayerId[] = ["source", "note", "crystal"];
  *   external / wiki は「文脈を持たせられない」層であって未分類とは別物なので対象外
  *   （ContextLegend の未分類カウントと同じ定義）。contextFilter の「タグ無し隣接を
  *   残す」ルールより優先される（明示的に消すと言っているため）。
+ *
+ * hideAtoms: 設定の features.insights（「洞察を使う」）が OFF のとき、Atom ノードを
+ *   結晶(crystal)層から間引く。claim と atom は同じ層（KIND_LAYER）を共有していて
+ *   層フィルタでは分離できないため、kind で個別に弾く。
  */
 export function filterGlobalGraph(
   data: NoteGraphData,
@@ -103,6 +107,7 @@ export function filterGlobalGraph(
     hideIsolated?: boolean;
     contextFilter?: Set<string>;
     hideUncategorized?: boolean;
+    hideAtoms?: boolean;
   },
 ): NoteGraphData {
   const {
@@ -111,9 +116,13 @@ export function filterGlobalGraph(
     hideIsolated = false,
     contextFilter,
     hideUncategorized = false,
+    hideAtoms = false,
   } = opts;
   const visibleIds = new Set(
-    data.nodes.filter((n) => visibleLayers.has(KIND_LAYER[kindOf(n)])).map((n) => n.id),
+    data.nodes
+      .filter((n) => visibleLayers.has(KIND_LAYER[kindOf(n)]))
+      .filter((n) => !(hideAtoms && kindOf(n) === "atom"))
+      .map((n) => n.id),
   );
   let edges = data.edges.filter(
     (e) =>
@@ -325,6 +334,7 @@ export function GlobalGraphCanvas({
   colorMode = "kind",
   contextFilter,
   hideUncategorized = false,
+  hideAtoms = false,
   clusterByContext = false,
   searchQuery = "",
   searchJumpToken = 0,
@@ -345,6 +355,8 @@ export function GlobalGraphCanvas({
   contextFilter?: Set<string>;
   /** 未分類（タグ無しの通常ノート）を隠す。filterGlobalGraph にそのまま渡す。 */
   hideUncategorized?: boolean;
+  /** Atom（洞察）ノードを隠す（features.insights OFF）。filterGlobalGraph にそのまま渡す。 */
+  hideAtoms?: boolean;
   /** 同じ文脈タグのノードを不可視エッジで引き寄せ、クラスターとして固まらせる。 */
   clusterByContext?: boolean;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
@@ -402,8 +414,9 @@ export function GlobalGraphCanvas({
         hideIsolated,
         contextFilter,
         hideUncategorized,
+        hideAtoms,
       }),
-    [data, visibleLayers, hideReferences, hideIsolated, contextFilter, hideUncategorized],
+    [data, visibleLayers, hideReferences, hideIsolated, contextFilter, hideUncategorized, hideAtoms],
   );
   // 描画し直すかは中身で決める（data の参照はノート保存のたびに変わる）
   const shownKey = useGraphDataKey(shownNodes) + "|" + useGraphDataKey(shownEdges);
@@ -979,6 +992,7 @@ export function GlobalGraphView({
   onOpenUrl,
   onOpenMemo,
   onClose,
+  insightsEnabled = true,
   mode = "overview",
   onModeChange,
   timeline,
@@ -993,6 +1007,9 @@ export function GlobalGraphView({
   onOpenMemo?: (captureId: string) => void;
   /** Esc で全体グラフ表示を閉じてエディタに戻る（通常の画面切替は左ナビから行う）。 */
   onClose: () => void;
+  /** 洞察（Atom）レイヤの表示可否（設定の features.insights、既定 true）。
+   *  false のとき Atom ノードと凡例を隠す。claim / synthesis には影響しない。 */
+  insightsEnabled?: boolean;
   /** 俯瞰 / 時系列のどちらを表示するか（未指定なら俯瞰固定でサブタブも出さない） */
   mode?: "overview" | "timeline";
   onModeChange?: (mode: "overview" | "timeline") => void;
@@ -1024,6 +1041,7 @@ export function GlobalGraphView({
       hideReferences: hideRefs,
       contextFilter: selectedContexts,
       hideUncategorized,
+      hideAtoms: !insightsEnabled,
     };
     const withIsolated = filterGlobalGraph(data, { ...base, hideIsolated: false });
     const connectedOnly = filterGlobalGraph(data, { ...base, hideIsolated: true });
@@ -1031,14 +1049,20 @@ export function GlobalGraphView({
       shown: showIsolated ? withIsolated : connectedOnly,
       isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
     };
-  }, [data, visible, hideRefs, showIsolated, selectedContexts, hideUncategorized]);
+  }, [data, visible, hideRefs, showIsolated, selectedContexts, hideUncategorized, insightsEnabled]);
 
   // 各層のノード総数（孤立含む・フィルタ前）。チップの件数表示に使う。
+  // 洞察（features.insights）OFF の Atom だけは数えない — 機能として存在しない扱いなので、
+  // 「結晶」チップの件数が描画されるノード数と食い違わないようにする（凡例と同じ扱い）。
   const layerCounts = useMemo(() => {
     const m: Record<LayerId, number> = { source: 0, note: 0, crystal: 0, synth: 0 };
-    for (const n of data.nodes) m[KIND_LAYER[kindOf(n)]]++;
+    for (const n of data.nodes) {
+      const kind = kindOf(n);
+      if (!insightsEnabled && kind === "atom") continue;
+      m[KIND_LAYER[kind]]++;
+    }
     return m;
-  }, [data]);
+  }, [data, insightsEnabled]);
 
   const toggleLayer = (id: LayerId) =>
     setVisible((prev) => {
@@ -1226,6 +1250,7 @@ export function GlobalGraphView({
                 colorMode={colorMode}
                 contextFilter={selectedContexts}
                 hideUncategorized={hideUncategorized}
+                hideAtoms={!insightsEnabled}
                 clusterByContext={clusterByContext}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}

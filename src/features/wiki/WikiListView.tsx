@@ -77,6 +77,13 @@ type Props = {
    */
   onClearWorldValidity?: (wikiId: string) => Promise<unknown> | void;
   /**
+   * 世界照合機能のマスタースイッチ（設定の features.worldGrounding、既定 true）。
+   * false のときは「世界」列と verdict ソートを出さない。一括操作は
+   * onWorldCheckWiki / onClearWorldValidity が undefined になることで隠れる
+   * （呼び出し側が既に判定して渡す）。
+   */
+  worldGroundingEnabled?: boolean;
+  /**
    * 一括チーム共有（任意）— 提供時のみアクションバーに表示。
    * 選択 id を渡すだけで、実行と進捗表示は呼び出し側（BulkShareModal）が担う。
    * デスクトップ + shared root + identity が揃っている場合にのみ渡される。
@@ -219,6 +226,7 @@ export function WikiListView({
   onRegenerateWiki,
   onWorldCheckWiki,
   onClearWorldValidity,
+  worldGroundingEnabled = true,
   onShareSelected,
 }: Props) {
   const t = useT();
@@ -661,7 +669,7 @@ export function WikiListView({
                 >
                   {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                {wikiKind !== "summary" && (
+                {wikiKind !== "summary" && worldGroundingEnabled && (
                   <th
                     className="py-2 pl-3 w-[110px] cursor-pointer hover:text-foreground"
                     onClick={() => handleSort("verdict")}
@@ -745,7 +753,7 @@ export function WikiListView({
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
                     {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
                   </td>
-                  {wikiKind !== "summary" && (
+                  {wikiKind !== "summary" && worldGroundingEnabled && (
                     <td className="py-2 pl-3 text-xs">
                       <WorldVerdictCell grounding={entry.worldGrounding} />
                     </td>

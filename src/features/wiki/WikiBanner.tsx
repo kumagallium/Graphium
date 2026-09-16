@@ -104,6 +104,13 @@ type Props = {
   onCheckWorldValidity?: () => void;
   /** 照合中。ボタンを disable してスピナー的に表示する。 */
   worldCheckLoading?: boolean;
+  /**
+   * 世界照合機能のマスタースイッチ（設定の features.worldGrounding、既定 true）。
+   * false のときは verdict バッジも隠す — onCheckWorldValidity は undefined で
+   * ボタン側は既に隠れるが、バッジは wikiMeta.grounding の有無だけで出ていたため
+   * 別途ここで塞ぐ（過去に照合済みのデータは残すが表示はしない）。
+   */
+  worldGroundingEnabled?: boolean;
   // 関連・文脈系の props（noteIndex / mediaIndex / onNavigateNote /
   // onClearWorldValidity / wikiId / allWikiMetas）は D2 配置で WikiContextDrawer
   // に移した。WikiBanner は identity（バッジ＋アクション）だけを担う。
@@ -128,6 +135,7 @@ export function WikiBanner({
   onRestoreFromArchive,
   onCheckWorldValidity,
   worldCheckLoading = false,
+  worldGroundingEnabled = true,
 }: Props) {
   const t = useT();
   const kindLabel =
@@ -259,7 +267,7 @@ export function WikiBanner({
             別レーン: epistemicStatus / hypothesisStatus には影響しない。
             checkedAt があって verdict なしのときも「照合済み / マッチなし」を薄く表示する
             （UX フィードバック: ボタン押下→何も起きないように見える事故を防ぐ）。 */}
-        {wikiMeta.grounding?.validity?.verdict ? (
+        {!worldGroundingEnabled ? null : wikiMeta.grounding?.validity?.verdict ? (
           <WorldVerdictBadge validity={wikiMeta.grounding.validity} />
         ) : wikiMeta.grounding?.validity?.checkedAt ? (
           <WorldCheckedNoMatchBadge validity={wikiMeta.grounding.validity} />
@@ -446,6 +454,7 @@ export function WikiContextDrawer({
   wikiId,
   allWikiMetas,
   archived = false,
+  worldGroundingEnabled = true,
 }: {
   wikiMeta: WikiMeta;
   noteIndex?: GraphiumIndex | null;
@@ -457,9 +466,12 @@ export function WikiContextDrawer({
   wikiId?: string;
   allWikiMetas?: Map<string, WikiMetaSummary>;
   archived?: boolean;
+  /** 世界照合マスタースイッチ（既定 ON）。OFF なら照合詳細・関連洞察導線を畳む */
+  worldGroundingEnabled?: boolean;
 }) {
   const entryId = wikiMeta.grounding?.validity?.entryId;
   const hasGroundingSiblings = (() => {
+    if (!worldGroundingEnabled) return false;
     if (!entryId || !allWikiMetas) return false;
     for (const [id, m] of allWikiMetas) {
       if (id === wikiId) continue;
@@ -473,7 +485,8 @@ export function WikiContextDrawer({
     !!wikiMeta.procedureContext &&
     hasProcedureContextContent(wikiMeta.procedureContext);
   const showDerivedFrom = hasDerivedFrom(wikiMeta);
-  const showWorldDetail = !!wikiMeta.grounding?.validity?.checkedAt;
+  const showWorldDetail =
+    worldGroundingEnabled && !!wikiMeta.grounding?.validity?.checkedAt;
   const showBacking =
     wikiMeta.kind === "claim" && !!wikiMeta.backing && wikiMeta.backing.length > 0;
   const showRebuttal =
@@ -524,7 +537,7 @@ export function WikiContextDrawer({
           onClear={onClearWorldValidity}
         />
       )}
-      {entryId && allWikiMetas && (
+      {worldGroundingEnabled && entryId && allWikiMetas && (
         <GroundingEdgesSection
           entryId={entryId}
           currentWikiId={wikiId}

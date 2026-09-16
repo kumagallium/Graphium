@@ -103,9 +103,9 @@ export type FileSidebarProps = {
   /** Wiki カテゴリ別カウント */
   wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number };
   /**
-   * Atom（洞察）レイヤをサイドバーに表示するか。
-   * 2026-05-27 の design revision で Atom は default 表示に昇格したため、
-   * このフラグは互換のために残しているが既定 true で扱われる。
+   * Atom（洞察）レイヤをサイドバーに表示するか（既定 true）。
+   * 設定の features.insights（「洞察を使う」トグル）に従う。OFF のときは
+   * サイドバーの Atom 行・件数を隠す（作成済みデータは消さない）。
    */
   showAtomLayer?: boolean;
   /** Wiki リスト表示 */
@@ -233,9 +233,9 @@ export function FileSidebar({
   onShowMobile,
   mobileActive = false,
   wikiCounts,
-  // Atom レイヤは default で表示する（design revision 2026-05-27）。
-  // 旧 showAtomLayer prop は互換のため受け取るが、内部では未使用。
-  showAtomLayer: _showAtomLayer = true,
+  // Atom（洞察）レイヤの表示可否。設定の features.insights（「洞察を使う」）に従う。
+  // 既定は表示（design revision 2026-05-27 で default 昇格済み）。
+  showAtomLayer = true,
   onShowWikiList,
   activeWikiKind,
   aiAvailable = true,
@@ -302,12 +302,13 @@ export function FileSidebar({
 
   // Skill はフッターに移したのでカウントには含めない。
   // synthesis（発想）はサイドバーに表示しないため total にも含めない（design revision 2026-05-27）。
+  // showAtomLayer が false（features.insights OFF）のときは atom 件数も除く。
   const aiTotalCount = useMemo(() => {
     const w = wikiCounts;
     return (
-      (w?.summary ?? 0) + (w?.claim ?? 0) + (w?.atom ?? 0)
+      (w?.summary ?? 0) + (w?.claim ?? 0) + (showAtomLayer ? (w?.atom ?? 0) : 0)
     );
-  }, [wikiCounts]);
+  }, [wikiCounts, showAtomLayer]);
 
   // ラベルカウント（ギャラリーの行数 = 同ラベル内のユニーク preview / text 数）
   // Phase D-3-α: インライン由来のハイライト text もユニーク集計に合流する。
@@ -599,7 +600,8 @@ export function FileSidebar({
                 // 2026-05-27 の design revision で synthesis（発想）レイヤはサイドバーから
                 // 非表示化（Cmd-K Composer 経由で再構築する想定）。既存 synthesis ファイルの
                 // 物理データは保持されるが、ここからの動線は提供しない。
-                const kinds: WikiKind[] = ["summary", "claim", "atom"];
+                // showAtomLayer が false（features.insights OFF）のときは atom 行も隠す。
+                const kinds: WikiKind[] = showAtomLayer ? ["summary", "claim", "atom"] : ["summary", "claim"];
                 return kinds.map((kind) => {
                   const count = wikiCounts?.[kind] ?? 0;
                   const label =
