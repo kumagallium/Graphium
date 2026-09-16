@@ -2884,6 +2884,8 @@ export const en: Record<string, string> = {
   "sourceCheck.missingReason.unreadable": "Could not read the source text",
   "sourceCheck.missingReason.unsupported-kind": "This source kind can't be checked",
   "sourceCheck.missingReason.empty": "The source text is empty",
+  "sourceCheck.missingReason.ai-answer": "Claim made from an AI answer (no source text)",
+  "sourceCheck.missingReason.not-recorded": "No source was recorded",
   "sourceCheck.staleNote": "edited since",
   "sourceCheck.staleHint": "The text changed after this was checked. Check again to refresh it.",
   "sourceCheck.checkedBy": "Checked with",
@@ -2902,5 +2904,6 @@ export const en: Record<string, string> = {
   "sourceCheck.sourceKind.url": "URL",
   "sourceCheck.sourceKind.memo": "Memo",
   "sourceCheck.sourceKind.chat": "AI chat",
+  "sourceCheck.sourceKind.claim": "Claim",
   "sourceCheck.sourceKind.unknown": "Unknown source",
 };

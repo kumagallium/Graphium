@@ -580,18 +580,34 @@ export type SourceCheckVerdict =
   | "unclear"
   | "source-missing";
 
-/** verdict が "source-missing" のときの内訳（原文を取り出せなかった理由） */
+/**
+ * verdict が "source-missing" のときの内訳（原文を取り出せなかった理由）。
+ * "ai-answer" / "not-recorded" は v1.1（トピック対応）で追加。原文を取り出せなかった
+ * のではなく、そもそも解決を試みる価値が無い（LLM を呼ばない）ケース。
+ */
 export type SourceMissingReason =
   | "deleted"
   | "no-reference"
   | "unreadable"
   | "unsupported-kind"
-  | "empty";
+  | "empty"
+  | "ai-answer"
+  | "not-recorded";
 
-export type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "unknown";
+/** "claim" は v1.1 で追加（トピックが引く知見を出典として扱う） */
+export type SourceCheckSourceKind =
+  | "note"
+  | "pdf"
+  | "document"
+  | "url"
+  | "memo"
+  | "chat"
+  | "claim"
+  | "unknown";
 
 export type SourceCheckEntry = {
-  /** derivedFromNotes の要素そのまま（prefix 込み） */
+  /** derivedFromNotes の要素そのまま（prefix 込み）。knownMissingReason で出典が無いとき（1-c の
+   *  "not-recorded"）は対応する出典が無いため、代わりに対象ドキュメントの wikiId を入れる。 */
   sourceId: string;
   sourceKind: SourceCheckSourceKind;
   verdict: SourceCheckVerdict;
@@ -604,6 +620,13 @@ export type SourceCheckEntry = {
   /** verdict が "source-missing" のときの理由 */
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
+  /**
+   * 照合した文（v1.1, トピックのみ）。知見は知見全体が照合対象のため付けない。
+   * トピック本文中の該当ブロックのプレーンテキスト（引用の "@タイトル" 部分は除く）。
+   */
+  statement?: string;
+  /** statement があるときの、対応するブロック ID（該当箇所へ飛ぶため） */
+  statementBlockId?: string;
 };
 
 export type SourceCheckProfile = {

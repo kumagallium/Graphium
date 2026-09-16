@@ -3,6 +3,8 @@
 // derivedFromNotes に入る ID（"pdf:<fileId>" / "url:<url>" / "document:<fileId>" /
 // "memo:<captureId>" / "chat:<timestamp>" / プレフィックス無しの通常ノート ID）を種別ごとに
 // 解決し、取り込み（ingest）が LLM に渡したときと同じ原文テキストを取り出す。
+// "claim:<wikiId>"（v1.1、derivedFromNotes には現れない合成プレフィックス）はトピックが
+// 引く知見を出典として解決するときに使う（build-statements.ts が付与する）。
 //
 // 依存（provider・media 読み込み・fetch）はすべて引数で注入する（テストでモックできるように）。
 // 先例: src/features/ai-assistant/cited-document-context.ts（引用文書の文脈組み立て）が
@@ -10,7 +12,8 @@
 
 import type { GraphiumDocument, SourceCheckSourceKind, SourceMissingReason } from "../../lib/document-types";
 import { parseExternalSource } from "../network-graph/external-source";
-import { extractBlockText } from "../wiki/wiki-service";
+import { parseClaimSourceId } from "./claim-source-id";
+import { extractBlockText, extractPlainTextFromDoc } from "../wiki/wiki-service";
 
 /** 1 ブロック分のプレーンテキスト（blockId 対応の quote 照合に使う） */
 export type SourceTextBlock = {
@@ -68,6 +71,14 @@ export type ResolveSourceTextDeps = {
   fetchUrlText?: (url: string) => Promise<{ title?: string; description?: string; text: string } | null>;
   /** メモ（capture）本文の検索。無ければ undefined */
   findCaptureText: (captureId: string) => string | undefined;
+  /**
+   * "claim:" 出典（トピックが引く知見）の存在・ゴミ箱・アーカイブ判定（v1.1）。
+   * 通常ノートと同じインデックスを引く想定だが、意味論が異なる（Wiki ページ）ため
+   * findNote とは別関数として注入する。未指定なら claim 出典は常に unreadable。
+   */
+  findClaim?: (claimId: string) => { deletedAt?: string; archivedAt?: string } | undefined;
+  /** "claim:" 出典の本文を読む（知見の照合で使う本文テキストと同じ入口）。未指定なら常に unreadable */
+  loadClaimDoc?: (claimId: string) => Promise<GraphiumDocument | null>;
 };
 
 /** 素材の読み込みと抽出。素材が無ければ deleted、抽出に失敗したら unreadable */
@@ -149,6 +160,21 @@ export async function resolveSourceText(
   sourceId: string,
   deps: ResolveSourceTextDeps,
 ): Promise<ResolveSourceTextResult> {
+  // トピックが引く知見（出典照合の中だけで使う "claim:" ID）
+  const claimId = parseClaimSourceId(sourceId);
+  if (claimId !== null) {
+    if (!deps.findClaim || !deps.loadClaimDoc) return { ok: false, kind: "claim", reason: "unreadable" };
+    const meta = deps.findClaim(claimId);
+    if (!meta || meta.deletedAt || meta.archivedAt) return { ok: false, kind: "claim", reason: "deleted" };
+    const doc = await deps.loadClaimDoc(claimId);
+    if (!doc) return { ok: false, kind: "claim", reason: "deleted" };
+    // 知見の照合で使う本文テキストと同じ関数（title + 本文）。
+    const body = extractPlainTextFromDoc(doc);
+    const text = doc.title ? `${doc.title}\n${body}` : body;
+    if (!text.trim()) return { ok: false, kind: "claim", reason: "empty" };
+    return { ok: true, kind: "claim", title: doc.title, text, origin: "stored" };
+  }
+
   const parsed = parseExternalSource(sourceId);
 
   if (!parsed) {

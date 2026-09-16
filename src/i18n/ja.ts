@@ -2882,6 +2882,8 @@ export const ja: Record<string, string> = {
   "sourceCheck.missingReason.unreadable": "原文を読み出せなかった",
   "sourceCheck.missingReason.unsupported-kind": "照合できない種類の出典",
   "sourceCheck.missingReason.empty": "出典の本文が空",
+  "sourceCheck.missingReason.ai-answer": "AI の回答から作った知見（原文なし）",
+  "sourceCheck.missingReason.not-recorded": "出典の記録が無い",
   "sourceCheck.staleNote": "本文変更後",
   "sourceCheck.staleHint": "照合したあとで本文が変わりました。もう一度照合してください。",
   "sourceCheck.checkedBy": "照合に使ったモデル",
@@ -2900,5 +2902,6 @@ export const ja: Record<string, string> = {
   "sourceCheck.sourceKind.url": "URL",
   "sourceCheck.sourceKind.memo": "メモ",
   "sourceCheck.sourceKind.chat": "AI チャット",
+  "sourceCheck.sourceKind.claim": "知見",
   "sourceCheck.sourceKind.unknown": "不明な出典",
 };

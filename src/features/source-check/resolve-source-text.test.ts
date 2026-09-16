@@ -200,6 +200,52 @@ describe("resolveSourceText - memo:", () => {
   });
 });
 
+describe("resolveSourceText - claim:（トピックが引く知見, v1.1）", () => {
+  it("知見の title + 本文を返す（deps 未指定の note の findNote/loadNoteDoc とは別関数）", async () => {
+    const deps = baseDeps({
+      findClaim: (id) => (id === "c1" ? {} : undefined),
+      loadClaimDoc: async (id) => (id === "c1" ? noteDoc("知見のタイトル") : null),
+    });
+    const result = await resolveSourceText("claim:c1", deps);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.kind).toBe("claim");
+    expect(result.title).toBe("知見のタイトル");
+    expect(result.text).toBe("知見のタイトル\n1行目\n2行目");
+  });
+
+  it("findClaim/loadClaimDoc が未指定なら unreadable", async () => {
+    const result = await resolveSourceText("claim:c1", baseDeps());
+    expect(result).toEqual({ ok: false, kind: "claim", reason: "unreadable" });
+  });
+
+  it("ゴミ箱入り・アーカイブ済み・存在しない知見は deleted", async () => {
+    const deps = baseDeps({
+      findClaim: (id) => {
+        if (id === "trashed") return { deletedAt: "2026-02-01T00:00:00Z" };
+        if (id === "archived") return { archivedAt: "2026-02-01T00:00:00Z" };
+        return undefined;
+      },
+      loadClaimDoc: async () => noteDoc("知見"),
+    });
+    expect(await resolveSourceText("claim:trashed", deps)).toEqual({ ok: false, kind: "claim", reason: "deleted" });
+    expect(await resolveSourceText("claim:archived", deps)).toEqual({ ok: false, kind: "claim", reason: "deleted" });
+    expect(await resolveSourceText("claim:missing", deps)).toEqual({ ok: false, kind: "claim", reason: "deleted" });
+  });
+
+  it("本文が空なら empty", async () => {
+    const empty = noteDoc("空知見");
+    empty.pages[0].blocks = [];
+    empty.title = "";
+    const deps = baseDeps({
+      findClaim: () => ({}),
+      loadClaimDoc: async () => empty,
+    });
+    const result = await resolveSourceText("claim:c1", deps);
+    expect(result).toEqual({ ok: false, kind: "claim", reason: "empty" });
+  });
+});
+
 describe("resolveSourceText - chat: / 出典として扱えない ID", () => {
   it("chat: は常に no-reference", async () => {
     const result = await resolveSourceText("chat:2026-01-01T00:00:00Z", baseDeps());

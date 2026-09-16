@@ -10,6 +10,8 @@ const MISSING_REASON_JA: Record<SourceMissingReason, string> = {
   unreadable: "出典の原文を読み出せなかった（URL の再取得や PDF・Word の抽出に失敗した）。",
   "unsupported-kind": "出典が原文照合に対応していない種別のため判定できなかった。",
   empty: "出典の原文が空だったため判定できなかった。",
+  "ai-answer": "⌘K の回答から作った知見のため、回答そのものは残っておらず照合できなかった。",
+  "not-recorded": "出典の記録が無いため照合できなかった。",
 };
 
 const MISSING_REASON_EN: Record<SourceMissingReason, string> = {
@@ -18,6 +20,8 @@ const MISSING_REASON_EN: Record<SourceMissingReason, string> = {
   unreadable: "Could not read the source text (re-fetching the URL or extracting the PDF/Word file failed).",
   "unsupported-kind": "This source kind is not supported for source checking.",
   empty: "The source text was empty.",
+  "ai-answer": "This claim was made from a Cmd-K answer, and the answer itself was not kept, so it could not be checked.",
+  "not-recorded": "No source was recorded, so it could not be checked.",
 };
 
 /** verdict: "source-missing" のときの rationale（UI 言語） */

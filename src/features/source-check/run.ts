@@ -1,11 +1,13 @@
-// 出典照合（Source check, v1） — 実行本体。
+// 出典照合（Source check, v1.1） — 実行本体。
 //
-// plan（出典 → 知見 ID 一覧のグルーピング）を出典ごとに順番に処理する（並列数の定数は
-// 作らない — 不変条件 2）。取り出せない出典は LLM を呼ばずに source-missing、取り出せたら
-// API を呼ぶ。**全出典の処理が終わった知見だけ**集約して呼び出し側に返す（中断時に一部の
-// 出典しか見ていない知見は書かない）。signal は出典の境目でだけチェックする。
+// plan（出典 → 文 ID 一覧のグルーピング + knownMissing）を処理する（並列数の定数は
+// 作らない — 不変条件 2）。knownMissing は LLM を呼ばずに source-missing で先に記録する。
+// 残りは出典ごとに順番に処理する: 取り出せない出典は LLM を呼ばずに source-missing、
+// 取り出せたら API を呼ぶ。**ドキュメントに属する全ての文の処理が終わったドキュメントだけ**
+// 集約して呼び出し側に返す（中断時に一部の文しか見ていないドキュメントは書かない —
+// トピックで一部の要点だけ処理済みの場合を含む）。signal は出典の境目でだけチェックする。
 
-import type { SourceCheckEntry, SourceCheckProfile } from "../../lib/document-types";
+import type { SourceCheckEntry, SourceCheckProfile, SourceCheckSourceKind } from "../../lib/document-types";
 import {
   callCheckSourcesApi,
   SourceCheckDegradedError,
@@ -18,15 +20,9 @@ import { computeClaimHash } from "./claim-hash";
 import { findBlockIdForQuote } from "./quote-match";
 import { missingResponseRationale, missingReasonRationale } from "./rationale-text";
 import { resolveSourceText, type ResolveSourceTextDeps } from "./resolve-source-text";
-import type { SourceCheckPlan } from "./plan";
+import { parseExternalSource } from "../network-graph/external-source";
+import type { PlanSourceCheckStatement, SourceCheckPlan } from "./plan";
 import { wikiLog } from "../wiki/wiki-log";
-
-export type RunSourceCheckClaim = {
-  id: string;
-  title: string;
-  /** 知見本文（claimHash 計算・LLM への提示に使う） */
-  body: string;
-};
 
 /** wiki-log への記録。テストでモックできるよう注入式（既定は wikiLog.append） */
 export type SourceCheckLogger = (
@@ -39,7 +35,8 @@ const defaultLogger: SourceCheckLogger = (wikiIds, summary, detail) =>
   wikiLog.append("source-check", wikiIds, summary, detail);
 
 export type RunSourceCheckParams = {
-  claimsById: Map<string, RunSourceCheckClaim>;
+  /** plan に登場する全文 ID → 文情報。plan.groups と plan.knownMissing の両方をカバーすること */
+  statementsById: Map<string, PlanSourceCheckStatement>;
   deps: ResolveSourceTextDeps;
   language: string;
   signal?: AbortSignal;
@@ -57,43 +54,80 @@ export type RunSourceCheckParams = {
 };
 
 export type RunSourceCheckResult = {
-  /** claimId → 書き込むべき SourceCheckProfile（全出典を処理し終えた知見のみ） */
+  /** docId → 書き込むべき SourceCheckProfile（ドキュメント内の全文を処理し終えたものだけ） */
   profiles: Map<string, SourceCheckProfile>;
   /** signal による中断、または API の degrade で run 全体を打ち切ったか */
   interrupted: boolean;
 };
 
+/** "claim:" などのプレフィックスから大まかな出典種別を推定する（knownMissing 用、実解決はしない） */
+function guessSourceKind(sourceId: string): SourceCheckSourceKind {
+  const parsed = parseExternalSource(sourceId);
+  if (!parsed) return "note";
+  if (parsed.kind === "shared" || parsed.kind === "data" || parsed.kind === "image") return "unknown";
+  return parsed.kind;
+}
+
 /**
  * 出典照合を実行する。
  *
- * - 出典ごとに resolveSourceText → （取れたら）callApi の順で直列処理する。
+ * - knownMissing の文は resolveSourceText / API を呼ばずに、先に source-missing で記録する。
+ * - それ以外は出典ごとに resolveSourceText → （取れたら）callApi の順で直列処理する。
  * - API が degrade（SourceCheckDegradedError）したら、誤った verdict を書き込まないよう
  *   その時点で run 全体を中断する（world-grounding が checkedAt のみで degrade するのと違い、
  *   SourceCheckVerdict の語彙に「判定できなかった」を表す値が無いため、部分結果を書かず
  *   run 自体を止める設計にした）。
- * - 中断時、まだ全出典を処理し終えていない知見は profiles に含めない
- *   （「全出典の処理が終わった知見だけ集約して書き込む」という仕様の核）。
+ * - 中断時、まだドキュメント内の全文を処理し終えていないドキュメントは profiles に含めない。
  */
 export async function runSourceCheck(
   plan: SourceCheckPlan,
   params: RunSourceCheckParams,
 ): Promise<RunSourceCheckResult> {
-  const { claimsById, deps, language, signal, onProgress } = params;
+  const { statementsById, deps, language, signal, onProgress } = params;
   const callApi = params.callApi ?? callCheckSourcesApi;
   const now = params.now ?? (() => new Date().toISOString());
   const logger = params.logger ?? defaultLogger;
 
-  // claimId → その知見が依拠する全出典 ID（「全出典処理済み」判定用）
-  const expectedSourcesByClaim = new Map<string, Set<string>>();
+  const entriesByStatement = new Map<string, SourceCheckEntry[]>();
+  const doneStatements = new Set<string>();
+
+  // knownMissing（1-c）: LLM を呼ばずに先に記録する。
+  for (const km of plan.knownMissing) {
+    const rationale = missingReasonRationale(km.reason, language);
+    if (km.sourceIds.length === 0) {
+      // 出典の記録自体が無い（"not-recorded"）→ 対象ドキュメントを指す 1 エントリのみ
+      pushEntry(entriesByStatement, km.statementId, {
+        sourceId: km.docId,
+        sourceKind: "unknown",
+        verdict: "source-missing",
+        rationale,
+        missingReason: km.reason,
+      });
+    } else {
+      // 出典自体は記録されているが解決を試みない（"ai-answer" 等）→ 出典ごとに記録
+      for (const sourceId of km.sourceIds) {
+        pushEntry(entriesByStatement, km.statementId, {
+          sourceId,
+          sourceKind: guessSourceKind(sourceId),
+          verdict: "source-missing",
+          rationale,
+          missingReason: km.reason,
+        });
+      }
+    }
+    doneStatements.add(km.statementId);
+  }
+
+  // statementId → その文が依拠する全出典 ID（「全出典処理済み」判定用）
+  const expectedSourcesByStatement = new Map<string, Set<string>>();
   for (const group of plan.groups) {
-    for (const claimId of group.claimIds) {
-      const set = expectedSourcesByClaim.get(claimId);
+    for (const statementId of group.statementIds) {
+      const set = expectedSourcesByStatement.get(statementId);
       if (set) set.add(group.sourceId);
-      else expectedSourcesByClaim.set(claimId, new Set([group.sourceId]));
+      else expectedSourcesByStatement.set(statementId, new Set([group.sourceId]));
     }
   }
 
-  const entriesByClaim = new Map<string, SourceCheckEntry[]>();
   const processedSourceIds = new Set<string>();
   const modelBySource = new Map<string, string>();
   let interrupted = false;
@@ -110,8 +144,8 @@ export async function runSourceCheck(
 
     if (!resolved.ok) {
       const rationale = missingReasonRationale(resolved.reason, language);
-      for (const claimId of group.claimIds) {
-        pushEntry(entriesByClaim, claimId, {
+      for (const statementId of group.statementIds) {
+        pushEntry(entriesByStatement, statementId, {
           sourceId: group.sourceId,
           sourceKind: resolved.kind,
           verdict: "source-missing",
@@ -123,14 +157,14 @@ export async function runSourceCheck(
       continue;
     }
 
-    const claimsForApi = group.claimIds
-      .map((id) => claimsById.get(id))
-      .filter((c): c is RunSourceCheckClaim => !!c)
-      .map((c) => ({ id: c.id, title: c.title, body: c.body }));
+    const statementsForApi = group.statementIds
+      .map((id) => statementsById.get(id))
+      .filter((s): s is PlanSourceCheckStatement => !!s)
+      .map((s) => ({ id: s.id, title: s.title, body: s.body }));
 
-    if (claimsForApi.length === 0) {
-      // このグループの知見はどれも claimsById に無い（呼び出し側の対象外）。
-      // 出典としては処理済み扱いにする（対象知見が無いので LLM を呼ぶ意味が無い）。
+    if (statementsForApi.length === 0) {
+      // このグループの文はどれも statementsById に無い（呼び出し側の対象外）。
+      // 出典としては処理済み扱いにする（対象が無いので LLM を呼ぶ意味が無い）。
       processedSourceIds.add(group.sourceId);
       continue;
     }
@@ -139,7 +173,7 @@ export async function runSourceCheck(
     try {
       apiResult = await callApi(
         { id: group.sourceId, kind: resolved.kind, title: resolved.title, text: resolved.text },
-        claimsForApi,
+        statementsForApi,
         language,
       );
     } catch (err) {
@@ -153,12 +187,12 @@ export async function runSourceCheck(
     }
     modelBySource.set(group.sourceId, apiResult.model);
 
-    for (const claimId of group.claimIds) {
-      const claim = claimsById.get(claimId);
-      if (!claim) continue;
-      const modelItem = apiResult.results.find((r) => r.claimId === claimId);
+    for (const statementId of group.statementIds) {
+      const statement = statementsById.get(statementId);
+      if (!statement) continue;
+      const modelItem = apiResult.results.find((r) => r.claimId === statementId);
       if (!modelItem) {
-        pushEntry(entriesByClaim, claimId, {
+        pushEntry(entriesByStatement, statementId, {
           sourceId: group.sourceId,
           sourceKind: resolved.kind,
           verdict: "unclear",
@@ -167,7 +201,7 @@ export async function runSourceCheck(
         continue;
       }
       const blockId = findBlockIdForQuote(resolved.blocks, modelItem.quote);
-      pushEntry(entriesByClaim, claimId, {
+      pushEntry(entriesByStatement, statementId, {
         sourceId: group.sourceId,
         sourceKind: resolved.kind,
         verdict: modelItem.verdict,
@@ -180,20 +214,54 @@ export async function runSourceCheck(
     processedSourceIds.add(group.sourceId);
   }
 
-  // 全出典の処理が終わった知見だけ集約する
+  for (const [statementId, expected] of expectedSourcesByStatement) {
+    if ([...expected].every((sid) => processedSourceIds.has(sid))) {
+      doneStatements.add(statementId);
+    }
+  }
+
+  // ドキュメント単位に文をまとめ、ドキュメント内の全文が完了したものだけ集約する。
+  // plan（groups または knownMissing）に実際に登場した文だけを対象にする
+  // （statementsById に無関係な文が混入していても無視する）。
+  const relevantStatementIds = new Set<string>([
+    ...expectedSourcesByStatement.keys(),
+    ...plan.knownMissing.map((km) => km.statementId),
+  ]);
+  const statementIdsByDoc = new Map<string, string[]>();
+  for (const id of relevantStatementIds) {
+    const statement = statementsById.get(id);
+    if (!statement) continue; // ghost（statementsById に無い）は対象外
+    const list = statementIdsByDoc.get(statement.docId);
+    if (list) list.push(id);
+    else statementIdsByDoc.set(statement.docId, [id]);
+  }
+
   const profiles = new Map<string, SourceCheckProfile>();
   const verdictCounts: Partial<Record<string, number>> = {};
-  for (const [claimId, expected] of expectedSourcesByClaim) {
-    const claim = claimsById.get(claimId);
-    if (!claim) continue;
-    const allProcessed = [...expected].every((sid) => processedSourceIds.has(sid));
-    if (!allProcessed) continue;
-    const entries = entriesByClaim.get(claimId) ?? [];
+  for (const [docId, statementIds] of statementIdsByDoc) {
+    const allDone = statementIds.every((id) => doneStatements.has(id));
+    if (!allDone) continue;
+
+    const entries: SourceCheckEntry[] = [];
+    const usedSourceIds = new Set<string>();
+    for (const id of statementIds) {
+      const statement = statementsById.get(id);
+      const stEntries = entriesByStatement.get(id) ?? [];
+      const stamped = statement?.statement
+        ? stEntries.map((e) => ({ ...e, statement: statement.statement, statementBlockId: statement.statementBlockId }))
+        : stEntries;
+      entries.push(...stamped);
+      const expected = expectedSourcesByStatement.get(id);
+      if (expected) for (const sid of expected) usedSourceIds.add(sid);
+    }
+
     const verdict = aggregateVerdict(entries);
-    const usedModels = [...expected].map((sid) => modelBySource.get(sid)).filter((m): m is string => !!m);
+    const usedModels = [...usedSourceIds].map((sid) => modelBySource.get(sid)).filter((m): m is string => !!m);
     const checkedBy = usedModels.length > 0 ? usedModels[usedModels.length - 1] : "local";
-    const claimHash = await computeClaimHash(claim.title, claim.body);
-    profiles.set(claimId, {
+    // ドキュメント全体のタイトル/本文はどの文でも同じ値を持つ（build-statements.ts が揃える）
+    const rep = statementsById.get(statementIds[0])!;
+    const claimHash = await computeClaimHash(rep.title, rep.hashBody);
+    profiles.set(docId, {
       verdict,
       entries,
       checkedAt: now(),
@@ -207,16 +275,16 @@ export async function runSourceCheck(
     const summaryParts = Object.entries(verdictCounts).map(([v, n]) => `${v}:${n}`);
     const summary =
       summaryParts.length > 0
-        ? `${profiles.size} claim(s) checked (${summaryParts.join(", ")})${interrupted ? " [interrupted]" : ""}`
-        : `source check interrupted before any claim completed`;
+        ? `${profiles.size} document(s) checked (${summaryParts.join(", ")})${interrupted ? " [interrupted]" : ""}`
+        : `source check interrupted before any document completed`;
     await logger([...profiles.keys()], summary, { verdictCounts, interrupted });
   }
 
   return { profiles, interrupted };
 }
 
-function pushEntry(map: Map<string, SourceCheckEntry[]>, claimId: string, entry: SourceCheckEntry): void {
-  const list = map.get(claimId);
+function pushEntry(map: Map<string, SourceCheckEntry[]>, statementId: string, entry: SourceCheckEntry): void {
+  const list = map.get(statementId);
   if (list) list.push(entry);
-  else map.set(claimId, [entry]);
+  else map.set(statementId, [entry]);
 }
