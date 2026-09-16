@@ -11,8 +11,8 @@ import {
   resolveSourceCheckTitles,
   type UseSourceCheckDeps,
 } from "./use-source-check";
-import type { GraphiumDocument, SourceCheckEntry, WikiMetaSummary } from "../lib/document-types";
-import type { GraphiumIndex } from "../features/navigation/index-file";
+import type { GraphiumDocument, SourceCheckEntry, WikiMetaSummary } from "../../lib/document-types";
+import type { GraphiumIndex } from "../navigation/index-file";
 
 function claimDoc(title: string, derivedFromNotes: string[]): GraphiumDocument {
   return {

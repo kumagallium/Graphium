@@ -6,10 +6,10 @@
 // 各画面コンポーネントは UI 状態だけを持つ。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { GraphiumDocument, SourceCheckProfile, WikiMetaSummary } from "../lib/document-types";
-import type { GraphiumIndex } from "../features/navigation/index-file";
-import type { MediaIndex } from "../features/asset-browser/media-index";
-import type { CaptureIndex } from "../features/mobile-capture/capture-store";
+import type { GraphiumDocument, SourceCheckProfile, WikiMetaSummary } from "../../lib/document-types";
+import type { GraphiumIndex } from "../navigation/index-file";
+import type { MediaIndex } from "../asset-browser/media-index";
+import type { CaptureIndex } from "../mobile-capture/capture-store";
 import {
   attachSourceCheck,
   buildSourceCheckStatements,
@@ -22,14 +22,14 @@ import {
   type SourceCheckLogger,
   type SourceCheckPlan,
   type SourceCheckTarget,
-} from "../features/source-check";
-import type { SourceCheckEntry } from "../lib/document-types";
-import { parseClaimSourceId } from "../features/source-check/claim-source-id";
-import { parseExternalSource } from "../features/network-graph/external-source";
-import { extractPlainTextFromDoc } from "../features/wiki/wiki-service";
-import { loadUrlText } from "../features/ai-assistant/url-text-loader";
-import { getLocale } from "../i18n";
-import { getActiveProvider } from "../lib/storage/registry";
+} from ".";
+import type { SourceCheckEntry } from "../../lib/document-types";
+import { parseClaimSourceId } from "./claim-source-id";
+import { parseExternalSource } from "../network-graph/external-source";
+import { extractPlainTextFromDoc } from "../wiki/wiki-service";
+import { loadUrlText } from "../ai-assistant/url-text-loader";
+import { getLocale } from "../../i18n";
+import { getActiveProvider } from "../../lib/storage/registry";
 
 export type SourceCheckTargetKind = "claim" | "topic" | "both";
 export type SourceCheckScope = "unchecked" | "stale" | "all";

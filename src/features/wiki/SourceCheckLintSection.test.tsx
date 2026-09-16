@@ -11,7 +11,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "../../i18n";
 import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
-import type { BatchRunResult, LintPlanResult } from "../../hooks/use-source-check";
+import type { BatchRunResult, LintPlanResult } from "../source-check/use-source-check";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

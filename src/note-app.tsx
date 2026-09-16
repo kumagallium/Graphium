@@ -400,7 +400,7 @@ import {
   useSourceCheckStale,
   sourceCheckLlmCallsFor,
   resolveSourceCheckTitles,
-} from "./hooks/use-source-check";
+} from "./features/source-check/use-source-check";
 import { parseClaimSourceId } from "./features/source-check/claim-source-id";
 import { useProvGeneration } from "./hooks/use-prov-generation";
 import { useFileManager } from "./hooks/use-file-manager";

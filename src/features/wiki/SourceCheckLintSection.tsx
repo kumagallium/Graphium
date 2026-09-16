@@ -19,7 +19,7 @@ import type {
   LintPlanResult,
   SourceCheckScope,
   SourceCheckTargetKind,
-} from "../../hooks/use-source-check";
+} from "../source-check/use-source-check";
 
 export type SourceCheckLintSectionProps = {
   /** 対象・範囲から計画を組み立てる（対象ドキュメントを実際に読み込むため非同期）。 */

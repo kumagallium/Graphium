@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
-import type { BatchRunResult, LintPlanResult } from "../../hooks/use-source-check";
+import type { BatchRunResult, LintPlanResult } from "../source-check/use-source-check";
 import "../../app.css";
 
 const meta: Meta = {
