@@ -2160,6 +2160,8 @@ export const en: Record<string, string> = {
   "intake.askAi": "Ask AI",
   "intake.setupAi": "Set up AI",
   "intake.setupAiHint": "Add a model in Settings to ask questions about what came in.",
+  "intake.ingestAll": "Add all to knowledge",
+  "intake.ingestAllHint": "Graphium reads what you just imported and builds claims and topics from it.",
   "intake.officeDerived": "{count} extracted from PowerPoint / Excel",
   "intake.officeSkipped": "{count} image(s) in PowerPoint files could not be converted and were skipped",
   "intake.skipped": "{count} skipped (types Graphium doesn't take)",

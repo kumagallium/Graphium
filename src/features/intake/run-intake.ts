@@ -32,6 +32,11 @@ export type MarkdownImportResult = {
   linksUnresolved: number;
   failed: string[];
   lastNewId: string | null;
+  /**
+   * 新規作成したノートの ID 一覧（existing で使い回したノートは含まない）。
+   * 完了画面の「まとめてナレッジ化」が対象を特定するために使う
+   */
+  createdIds: string[];
 };
 
 /** 投入口全体の進捗（notes + materials を合算した done/total） */
@@ -101,6 +106,17 @@ export type IntakeOutcome = {
   /** 対象外ファイルの内訳。キーは拡張子（小文字・ドット付き、無ければ "(none)"） */
   skippedByExt: Record<string, number>;
   lastNewId: string | null;
+  /**
+   * 今回新規作成したノートの ID 一覧（既存ノートを使い回した分は含まない）。
+   * 完了画面の「まとめてナレッジ化」が対象を特定するために使う
+   */
+  createdNoteIds: string[];
+  /**
+   * 今回新規登録した素材の fileId 一覧（既に登録済みだった素材は含まない。
+   * notes 側の createdNoteIds と対称: 「中身が同じで既にあったもの」は
+   * まとめてナレッジ化の対象から外す）
+   */
+  createdMediaFileIds: string[];
   /** フォルダを付けたファイルの「異なるフォルダ数」（ノート・素材あわせて重複なし） */
   folders: number;
   /**
@@ -140,6 +156,8 @@ export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome 
     skipped: a.skipped + b.skipped,
     skippedByExt,
     lastNewId: b.lastNewId ?? a.lastNewId,
+    createdNoteIds: [...a.createdNoteIds, ...b.createdNoteIds],
+    createdMediaFileIds: [...a.createdMediaFileIds, ...b.createdMediaFileIds],
     folders: a.folders + b.folders,
     ocrTargets: [...a.ocrTargets, ...b.ocrTargets],
     officeDerived: a.officeDerived + b.officeDerived,
@@ -182,6 +200,7 @@ export async function runIntake(
     linksUnresolved: 0,
     failed: [],
     lastNewId: null,
+    createdIds: [],
   };
   if (notes.length > 0) {
     try {
@@ -206,6 +225,7 @@ export async function runIntake(
   // materials: 1 件ずつアップロード。失敗しても続行する
   let materialsUploaded = 0;
   let materialsExisting = 0;
+  const createdMediaFileIds: string[] = [];
   const ocrTargets: BulkOcrTarget[] = [];
   let officeDerived = 0;
   let officeSkipped = 0;
@@ -229,6 +249,9 @@ export async function runIntake(
         ocrTargets.push({ fileId: entry.fileId, url: entry.url, name: entry.name });
       }
       const fileId = result && typeof result === "object" ? (result as { fileId?: string }).fileId : undefined;
+      // notes 側の createdNoteIds と対称: 中身が同じで既に登録済みだったもの（duplicate）は
+      // 「今回新規に持ち込んだ」対象から外す
+      if (fileId && !duplicate) createdMediaFileIds.push(fileId);
       const folder = folderOfFile(m);
       if (folder) {
         foldersSeen.add(folder);
@@ -293,6 +316,8 @@ export async function runIntake(
     skipped: skipped.length,
     skippedByExt,
     lastNewId: markdownResult.lastNewId,
+    createdNoteIds: markdownResult.createdIds,
+    createdMediaFileIds,
     folders: foldersSeen.size,
     ocrTargets,
     officeDerived,
