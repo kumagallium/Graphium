@@ -43,7 +43,7 @@ import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type F
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
-import { FlowStepPanel, type FlowSelection, type StepPanelData } from "./flow-attribute-table";
+import { FlowStepPanel, type FlowSelection, type SectionKind, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
@@ -173,6 +173,8 @@ export type StepFlowViewProps = {
   variant?: "editor" | "preview";
   /** 選択の裏にある step の中身（全テーブル + 本文 span 由来）を読む */
   getPanelFor?: (selection: FlowSelection) => StepPanelData | null;
+  /** 属性パネルに描くセクション。既定は 4 種すべて（計画ノートの工程パネルは attribute だけ） */
+  panelSections?: SectionKind[];
   onSetCell?: (blockId: string, rowIndex: number, colIndex: number, value: string) => void;
   /** 画像セルから画像だけを外す（テキスト・行 ID は残す） */
   onRemoveCellImage?: (blockId: string, rowIndex: number, colIndex: number) => void;
@@ -289,6 +291,7 @@ function StepFlowCanvas({
   layoutScope = null,
   variant = "editor",
   getPanelFor,
+  panelSections,
   onSetCell,
   onRemoveCellImage,
   onRenameColumn,
@@ -842,6 +845,7 @@ function StepFlowCanvas({
     <FlowStepPanel
       selection={selection}
       data={getPanelFor?.(selection) ?? null}
+      sections={panelSections}
       onSetCell={onSetCell}
       onRemoveCellImage={onRemoveCellImage}
       onRenameColumn={onRenameColumn}
