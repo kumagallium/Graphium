@@ -72,9 +72,12 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
+  findColumnIndexByName,
+  findColumnNameByType,
   hasColumnType,
   readFirstColumnName,
   readTableData,
+  withCellText,
   sortTableBlock,
   useWideTableBleed,
   type ColumnType,
@@ -1756,7 +1759,10 @@ function NoteEditorInner({
     return () => { styleEl?.remove(); };
   }, [highlightBlockIds]);
   // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
-  const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
+  // @ を打った場所がインデックステーブル（note-link 列）のセルかどうか。
+  // colIndex は note-link 列の位置 = 書き換えるセルの列。ここが -1 のままなら
+  // 本文と同じ普通のメンションとして扱う（打ったセルにそのまま入る）
+  const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number; colIndex: number }>({ tableBlockId: null, rowIndex: -1, colIndex: -1 });
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
   const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | null>(null);
   // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
@@ -6218,21 +6224,41 @@ function NoteEditorInner({
                 return blobUrl;
               }}
               getMentionSuggestions={(query) => {
-                mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                mentionContextRef.current = { tableBlockId: null, rowIndex: -1, colIndex: -1 };
                 const sel = window.getSelection();
                 const focusEl = sel?.focusNode instanceof HTMLElement
                   ? sel.focusNode
                   : sel?.focusNode?.parentElement;
                 if (focusEl) {
-                  const cell = focusEl.closest("td");
+                  const cell = focusEl.closest("td, th");
                   const row = cell?.closest("tr");
                   const table = row?.closest("table");
-                  if (row && table) {
+                  if (cell && row && table) {
                     const rowIndex = Array.from(table.querySelectorAll("tr")).indexOf(row);
+                    const cellIndex = Array.from(row.cells).indexOf(cell as HTMLTableCellElement);
                     const blockOuter = table.closest("[data-node-type='blockOuter']");
                     const tableBlockId = blockOuter?.getAttribute("data-id") ?? null;
-                    if (tableBlockId && tableMetaStore.hasColumnType(tableBlockId, "note-link")) {
-                      mentionContextRef.current = { tableBlockId, rowIndex };
+                    // 行 ↔ ノートの紐づけにするのは note-link 列のセルで打ったときだけ。
+                    // 他の列（条件・メモ等）で打った @ は、本文と同じでそのセルに入る。
+                    // 列を見ずに先頭列を書き換えていたため、2 列目で @ を打つと
+                    // 打っていない先頭列の中身が消えていた
+                    const block = tableBlockId
+                      ? editorRef.current?.getBlock(tableBlockId)
+                      : null;
+                    const noteLinkCol = block
+                      ? findColumnIndexByName(
+                          block,
+                          findColumnNameByType(tableMetaStore.metas.get(tableBlockId!), "note-link")
+                        )
+                      : -1;
+                    if (
+                      tableBlockId &&
+                      rowIndex > 0 &&
+                      cellIndex >= 0 &&
+                      cellIndex === noteLinkCol &&
+                      tableMetaStore.hasColumnType(tableBlockId, "note-link")
+                    ) {
+                      mentionContextRef.current = { tableBlockId, rowIndex, colIndex: cellIndex };
                     }
                   }
                 }
@@ -6291,6 +6317,7 @@ function NoteEditorInner({
                     const noteName = suggestion.label;
                     const tableBlockId = ctx.tableBlockId;
                     const rowIndex = ctx.rowIndex;
+                    const colIndex = ctx.colIndex >= 0 ? ctx.colIndex : 0;
                     tableMetaStore.setNoteLink(tableBlockId, `@${noteName}`, suggestion.id);
                     setTimeout(() => {
                       const block = editorRef.current?.getBlock(tableBlockId);
@@ -6299,10 +6326,13 @@ function NoteEditorInner({
                           if (i !== rowIndex) return r;
                           return {
                             ...r,
-                            cells: [
-                              [{ type: "text", text: `@${noteName}`, styles: { textColor: "blue" } }],
-                              ...r.cells.slice(1),
-                            ],
+                            // 書き換えるのは打った列だけ。他の列のセルはそのまま
+                            // （形式ごと差し替えるとセルの色・配置が落ちる）
+                            cells: r.cells.map((c: any, ci: number) =>
+                              ci === colIndex
+                                ? withCellText(c, `@${noteName}`, { textColor: "blue" })
+                                : c
+                            ),
                           };
                         });
                         editorRef.current.updateBlock(tableBlockId, {
@@ -6338,7 +6368,7 @@ function NoteEditorInner({
                     }
                     markDirty();
                   }
-                  mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                  mentionContextRef.current = { tableBlockId: null, rowIndex: -1, colIndex: -1 };
                 } else if (suggestion.type === "asset" && suggestion.assetType === "image") {
                   // 画像素材はリンク文字ではなく、その場に見えるインライン画像として埋める
                   // （セルの中に画像を置く経路。クリックで素材ピーク）。実体は fileId 参照

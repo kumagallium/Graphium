@@ -58,3 +58,34 @@ export function readTableData(block: any): { header: string[]; rows: string[][] 
   const [header, ...rows] = cellRows.map(pad);
   return { header, rows };
 }
+
+/**
+ * セルの中身を 1 つのテキストに差し替える。`tableCell` 形式なら props（背景色・
+ * 結合・配置）を残したまま content だけ入れ替える。旧 inline 配列形式は配列で返す。
+ *
+ * セルを `[{type:"text", ...}]` で丸ごと置き換えると、その形式の違いのぶん
+ * セルに付いていた色・配置が黙って落ちる。書き換えはこの 1 箇所に集める。
+ */
+export function withCellText(
+  cell: any,
+  text: string,
+  styles: Record<string, unknown> = {}
+): any {
+  const content = [{ type: "text", text, styles }];
+  if (cell && !Array.isArray(cell) && cell.type === "tableCell") {
+    return { ...cell, content };
+  }
+  return content;
+}
+
+/**
+ * ヘッダ行のテキストで列の位置を引く。列のふるまい（tableMeta.columns）は
+ * 列名で持っているため、位置に直すのはここを通す。
+ * 見つからなければ 0 — インデックステーブルは先頭列を行の名前に使う。
+ */
+export function findColumnIndexByName(block: any, columnName: string | undefined): number {
+  if (!columnName) return 0;
+  const headerCells = (block?.content?.rows ?? [])[0]?.cells ?? [];
+  const idx = headerCells.findIndex((c: any) => readCellText(c) === columnName);
+  return idx >= 0 ? idx : 0;
+}
