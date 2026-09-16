@@ -10,9 +10,10 @@ export type WikiLogEventType =
   | "ingest"      // ソースから Wiki を生成
   | "merge"       // 既存 Wiki にマージ
   | "lint"        // 整合性チェック実行
-  | "delete"      // Wiki 削除
+  | "delete"      // Wiki 削除（完全削除ではなくゴミ箱行き）
   | "cross-update" // 横断更新で既存ページを更新
-  | "regenerate"; // Wiki を再生成
+  | "regenerate"  // Wiki を再生成
+  | "archive";    // 可逆アーカイブ（空になったナレッジの自動退避・stale/redundant の一括退避）
 
 export type WikiLogEntry = {
   id: string;

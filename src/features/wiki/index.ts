@@ -22,6 +22,8 @@ export {
   extractTopicOneLiner, formatTopicRefForIndex, consolidateTopics, retargetClaimTopicId,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
+  // 機械的な自動アーカイブ（LLM 不要）
+  detectAutoArchivable, type AutoArchiveCandidate,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,
@@ -52,6 +54,10 @@ export {
 } from "./sampling";
 export { wikiLog } from "./wiki-log";
 export type { WikiLogEntry, WikiLogEventType } from "./wiki-log";
+export {
+  saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
+  type LintBadgeSummary,
+} from "./wiki-lint-badge";
 export { runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit } from "./topic-stage";
 export type {
   TopicStageClaimInput, TopicStageResult, TopicStageDeps,

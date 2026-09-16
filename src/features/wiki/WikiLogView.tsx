@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  Archive,
   ArrowLeft,
   BookOpen,
   GitMerge,
@@ -27,6 +28,7 @@ const EVENT_ICONS: Record<WikiLogEventType, typeof History> = {
   delete: Trash2,
   "cross-update": Zap,
   regenerate: RefreshCw,
+  archive: Archive,
 };
 
 const EVENT_COLORS: Record<WikiLogEventType, string> = {
@@ -36,6 +38,7 @@ const EVENT_COLORS: Record<WikiLogEventType, string> = {
   delete: "text-red-500",
   "cross-update": "text-orange-500",
   regenerate: "text-cyan-500",
+  archive: "text-slate-500",
 };
 
 function formatTime(isoDate: string): string {

@@ -45,7 +45,29 @@ type Props = {
    * 「統合」ワンクリック手当て。keepId に absorbId を吸収させる（モデルは呼ばない）。
    */
   onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
+  /**
+   * stale / redundant のチェックボックス一括選択からの「まとめてアーカイブ」。
+   * AI の判断（古い・冗長）は自動実行しない方針なので、ここはユーザーの明示操作のみ
+   * （呼び出し元でトースト + wikiLog への記録まで行う）。
+   */
+  onBulkArchiveWikis?: (wikiIds: string[]) => Promise<void> | void;
 };
+
+/** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
+const BULK_ARCHIVABLE_TYPES: ReadonlySet<LintIssueType> = new Set(["stale", "redundant"]);
+
+/**
+ * 1 件の issue から、一括アーカイブで実際にアーカイブすべき wiki id を決める。
+ * - redundant: affectedWikiIds は「keep を先頭、absorb を後続」に揃える規約
+ *   （LLM プロンプト・detectLocalIssues の両方）なので、先頭を残して残りだけを対象にする
+ * - stale: ページ自体が陳腐化の対象なので affected 全件を対象にする
+ */
+function bulkArchiveTargetIds(issue: LintIssue): string[] {
+  if (issue.type === "redundant") {
+    return issue.affectedWikiIds.slice(1);
+  }
+  return issue.affectedWikiIds;
+}
 
 const ISSUE_ICONS: Record<LintIssueType, typeof AlertTriangle> = {
   contradiction: ShieldAlert,
@@ -95,9 +117,48 @@ export function WikiLintView({
   wikiTitleById,
   wikiKindById,
   onMergeTopics,
+  onBulkArchiveWikis,
 }: Props) {
   const t = useT();
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // 一括アーカイブの選択（stale/redundant のみ選択可）。issue の配列インデックスで管理する。
+  const [selectedIssueIndices, setSelectedIssueIndices] = useState<Set<number>>(new Set());
+  const [bulkArchiving, setBulkArchiving] = useState(false);
+  // このセッションで一括アーカイブ済みの issue（表示から外す。再度点検を走らせれば
+  // 実データから自然に消える。単発アーカイブの archivedThisSession と同じ考え方）
+  const [dismissedIndices, setDismissedIndices] = useState<Set<number>>(new Set());
+
+  const toggleIssueSelected = (idx: number) => {
+    setSelectedIssueIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const handleBulkArchive = async () => {
+    if (!report || !onBulkArchiveWikis || selectedIssueIndices.size === 0 || bulkArchiving) return;
+    if (!window.confirm(t("wikiLint.bulk.confirmArchive", { count: String(selectedIssueIndices.size) }))) return;
+    setBulkArchiving(true);
+    try {
+      const targetIds = new Set<string>();
+      for (const idx of selectedIssueIndices) {
+        const issue = report.issues[idx];
+        if (!issue) continue;
+        for (const id of bulkArchiveTargetIds(issue)) targetIds.add(id);
+      }
+      if (targetIds.size > 0) {
+        await onBulkArchiveWikis([...targetIds]);
+      }
+      setDismissedIndices((prev) => new Set([...prev, ...selectedIssueIndices]));
+      setSelectedIssueIndices(new Set());
+    } catch (err) {
+      console.error("Bulk archive failed:", err);
+    } finally {
+      setBulkArchiving(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -180,6 +241,25 @@ export function WikiLintView({
                   {new Date(report.analyzedAt).toLocaleString()}
                 </span>
               </div>
+              {onBulkArchiveWikis && selectedIssueIndices.size > 0 && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] text-muted-foreground">
+                    {t("wikiLint.bulk.selected", { count: String(selectedIssueIndices.size) })}
+                  </span>
+                  <button
+                    onClick={handleBulkArchive}
+                    disabled={bulkArchiving}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-muted text-foreground hover:bg-muted/70 transition-colors disabled:opacity-50"
+                  >
+                    {bulkArchiving ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <ArchiveIcon size={12} />
+                    )}
+                    {t("wikiLint.bulk.archiveButton", { count: String(selectedIssueIndices.size) })}
+                  </button>
+                </div>
+              )}
               {report.issues.length > 0 && (
                 <div className="flex gap-3 text-[10px] text-muted-foreground">
                   {report.summary.contradictions > 0 && (
@@ -218,20 +298,27 @@ export function WikiLintView({
 
             {/* Issue リスト */}
             <div className="divide-y divide-border">
-              {report.issues.map((issue, idx) => (
-                <IssueCard
-                  key={idx}
-                  issue={issue}
-                  expanded={expandedId === idx}
-                  onToggle={() => setExpandedId(expandedId === idx ? null : idx)}
-                  onOpenWiki={onOpenWiki}
-                  onRegenerateWiki={onRegenerateWiki}
-                  onArchiveWiki={onArchiveWiki}
-                  wikiTitleById={wikiTitleById}
-                  wikiKindById={wikiKindById}
-                  onMergeTopics={onMergeTopics}
-                />
-              ))}
+              {report.issues.map((issue, idx) => {
+                if (dismissedIndices.has(idx)) return null;
+                const bulkSelectable = Boolean(onBulkArchiveWikis) && BULK_ARCHIVABLE_TYPES.has(issue.type);
+                return (
+                  <IssueCard
+                    key={idx}
+                    issue={issue}
+                    expanded={expandedId === idx}
+                    onToggle={() => setExpandedId(expandedId === idx ? null : idx)}
+                    onOpenWiki={onOpenWiki}
+                    onRegenerateWiki={onRegenerateWiki}
+                    onArchiveWiki={onArchiveWiki}
+                    wikiTitleById={wikiTitleById}
+                    wikiKindById={wikiKindById}
+                    onMergeTopics={onMergeTopics}
+                    bulkSelectable={bulkSelectable}
+                    bulkSelected={selectedIssueIndices.has(idx)}
+                    onToggleBulkSelected={() => toggleIssueSelected(idx)}
+                  />
+                );
+              })}
             </div>
           </>
         )}
@@ -250,6 +337,9 @@ function IssueCard({
   wikiTitleById,
   wikiKindById,
   onMergeTopics,
+  bulkSelectable,
+  bulkSelected,
+  onToggleBulkSelected,
 }: {
   issue: LintIssue;
   expanded: boolean;
@@ -260,6 +350,10 @@ function IssueCard({
   wikiTitleById?: Map<string, string>;
   wikiKindById?: Map<string, string>;
   onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
+  /** stale/redundant のみ true。一括アーカイブのチェックボックスを出すかどうか */
+  bulkSelectable?: boolean;
+  bulkSelected?: boolean;
+  onToggleBulkSelected?: () => void;
 }) {
   const t = useT();
   const Icon = ISSUE_ICONS[issue.type];
@@ -345,16 +439,28 @@ function IssueCard({
 
   return (
     <div className="px-4 py-3">
-      <button onClick={onToggle} className="w-full text-left">
-        <div className="flex items-start gap-2">
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${style}`}>
-            <Icon size={12} />
-            {label}
-          </span>
-          <span className="text-sm font-medium text-foreground flex-1">{issue.title}</span>
-          <Info size={14} className="text-muted-foreground mt-0.5 shrink-0" />
-        </div>
-      </button>
+      <div className="flex items-start gap-2">
+        {bulkSelectable && (
+          <input
+            type="checkbox"
+            checked={Boolean(bulkSelected)}
+            onChange={onToggleBulkSelected}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={t("wikiLint.bulk.select")}
+            className="mt-1 shrink-0"
+          />
+        )}
+        <button onClick={onToggle} className="flex-1 min-w-0 text-left">
+          <div className="flex items-start gap-2">
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${style}`}>
+              <Icon size={12} />
+              {label}
+            </span>
+            <span className="text-sm font-medium text-foreground flex-1">{issue.title}</span>
+            <Info size={14} className="text-muted-foreground mt-0.5 shrink-0" />
+          </div>
+        </button>
+      </div>
 
       {expanded && (
         <div className="mt-2 ml-1 pl-3 border-l-2 border-border space-y-2">

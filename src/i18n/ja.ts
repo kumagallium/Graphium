@@ -140,6 +140,7 @@ export const ja: Record<string, string> = {
   "sidebar.wikiLogHint": "ナレッジの変更履歴と生成元",
   "sidebar.wikiLint": "点検",
   "sidebar.wikiLintHint": "ナレッジの整合性・問題を検出",
+  "sidebar.wikiLintNeedsAttention": "手当ての要る項目が {count} 件あります",
 
   // ── エディタ ──
   "editor.titlePlaceholder": "ノートのタイトル",
@@ -1388,6 +1389,11 @@ export const ja: Record<string, string> = {
   "wikiLint.action.archiveRecommended": "アーカイブ（推奨）",
   "wikiLint.action.mergeTopics": "統合",
   "wikiLint.action.mergeDone": "統合済み",
+  "wikiLint.bulk.select": "選択",
+  "wikiLint.bulk.selected": "{count} 件選択中",
+  "wikiLint.bulk.archiveButton": "{count} 件をアーカイブ",
+  "wikiLint.bulk.confirmArchive": "古い・冗長な {count} 件をアーカイブしますか？アーカイブからいつでも戻せます。",
+  "wikiLint.bulk.archivedToast": "{count} 件をアーカイブしました（アーカイブから戻せます）",
   "trash.trashedHint": "このノートはゴミ箱にあり、編集できません。",
   "trash.restoreFromTrash": "ゴミ箱から復元",
   "trash.empty": "ゴミ箱は空です",
@@ -2152,6 +2158,7 @@ export const ja: Record<string, string> = {
   "ingest.needTwoWikis": "ナレッジ {count} 件（2 件以上で実行）",
   "ingest.analyzingWikis": "{count} wikis を分析中...",
   "ingest.noIssues": "問題なし",
+  "ingest.autoArchived": "{count} 件の空ページをアーカイブしました（アーカイブから戻せます）",
   "ingest.provFailed": "PROV 構造を生成できませんでした",
   "ingest.skippedWikiNotes": "ナレッジはスキップしました（{count} 件）",
   "ingest.enterUrl": "URL を入力してください:",

@@ -538,6 +538,29 @@ export const WithTopics: Story = {
   ),
 };
 
+export const WikiLintBadge: Story = {
+  name: "点検に「見てほしいことがある」印",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <FileSidebar
+        {...COMMON_PROPS}
+        onShowWikiLog={() => {}}
+        onShowWikiLint={() => {}}
+        wikiLintBadge={{ count: 4, hasError: true }}
+      />
+      <div className="flex-1 p-8 text-sm text-muted-foreground">
+        <h2 className="text-base font-semibold mb-2">点検ボタンの件数バッジ</h2>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>最後の点検が見つけた「手当ての要る」件数（自動アーカイブ済みを除く）を出す</li>
+          <li>矛盾（error）を含むときだけセマンティックな error 色、それ以外は通常の件数バッジと同じ見え方</li>
+          <li>点検画面を開くと消える。次に新しく見つかったときだけまた出る</li>
+          <li>0 件のときは何も出さない（段階的開示）</li>
+        </ol>
+      </div>
+    </div>
+  ),
+};
+
 // サイドバーの「起動中」表示はデスクトップ版だけのもので、判定は platform.ts の
 // isTauri() がモジュール直呼びで行う。Storybook で見るには Tauri の注入ポイントを
 // 差し込むしかないので、描画前に立てて、ストーリーを離れたら必ず戻す。

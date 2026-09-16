@@ -1587,7 +1587,7 @@ export function extractWikiDetail(
   return {
     id,
     title: doc.title,
-    kind: doc.wikiMeta.kind,
+    kind: "claim",
     sectionHeadings,
     sectionPreviews,
   };
@@ -1596,6 +1596,10 @@ export function extractWikiDetail(
 // ── Lint（整合性チェック） ──
 
 import type { LintReport, WikiSnapshot } from "../../server/services/wiki-linter";
+// 機械的な自動アーカイブ判定は LLM 不要な純関数なので、サーバー往復せずクライアントで直接使う
+// （detectLocalIssues は LLM lint と同じ /lint エンドポイント経由のまま。こちらは副作用
+//  ＝アーカイブが client の fm フック / IndexedDB(wikiLog) にしかないため呼び出し元も client）。
+export { detectAutoArchivable, type AutoArchiveCandidate } from "../../server/services/wiki-linter";
 
 /**
  * Wiki の整合性チェックを実行する
