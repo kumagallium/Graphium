@@ -119,6 +119,45 @@ describe("searchNotes", () => {
     expect(searchNotes("焼結", { kind: "wiki" }, root).map((h) => h.noteId)).toEqual(["w1"]);
   });
 
+  it("kind でナレッジ層の細かい種別（topic/claim/insight）まで絞り込める", () => {
+    writeNote("t1", "話題", "熱電");
+    writeNote("c1", "知見", "熱電");
+    writeNote("a1", "洞察", "熱電");
+    writeIndex([
+      entry("t1", "話題", { source: "ai", wikiKind: "topic" }),
+      entry("c1", "知見", { source: "ai", wikiKind: "claim" }),
+      entry("a1", "洞察", { source: "ai", wikiKind: "atom" }),
+    ]);
+
+    expect(searchNotes("熱電", { kind: "topic" }, root).map((h) => h.noteId)).toEqual(["t1"]);
+    expect(searchNotes("熱電", { kind: "claim" }, root).map((h) => h.noteId)).toEqual(["c1"]);
+    expect(searchNotes("熱電", { kind: "insight" }, root).map((h) => h.noteId)).toEqual(["a1"]);
+    expect(searchNotes("熱電", { kind: "wiki" }, root).map((h) => h.noteId).sort()).toEqual([
+      "a1",
+      "c1",
+      "t1",
+    ]);
+  });
+
+  it("SearchHit.kind にナレッジ層の種別が入る（topic/claim/insight/summary）", () => {
+    writeNote("t1", "話題", "焼結");
+    writeNote("c1", "知見", "焼結");
+    writeNote("a1", "洞察", "焼結");
+    writeNote("s1", "要約", "焼結");
+    writeIndex([
+      entry("t1", "話題", { source: "ai", wikiKind: "topic" }),
+      entry("c1", "知見", { source: "ai", wikiKind: "claim" }),
+      entry("a1", "洞察", { source: "ai", wikiKind: "atom" }),
+      entry("s1", "要約", { source: "ai", wikiKind: "summary" }),
+    ]);
+
+    const byId = new Map(searchNotes("焼結", {}, root).map((h) => [h.noteId, h.kind]));
+    expect(byId.get("t1")).toBe("topic");
+    expect(byId.get("c1")).toBe("claim");
+    expect(byId.get("a1")).toBe("insight");
+    expect(byId.get("s1")).toBe("summary");
+  });
+
   it("空のクエリでは何も返さない", () => {
     writeNote("n1", "焼結の記録", "本文");
     writeIndex([entry("n1", "焼結の記録")]);

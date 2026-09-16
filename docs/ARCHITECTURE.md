@@ -1429,17 +1429,21 @@ This target deliberately does **not** reuse the Node server (§6). The server
 exists to hold API keys and talk to LLMs; the MCP server holds neither, because
 the model calling it lives on the client side.
 
-Tools (7):
+Tools (9):
 
 | Tool | What it answers |
 |---|---|
-| `search_notes` | full-text search over titles, bodies, step names and labels |
-| `get_note` | one note as Markdown, plus its steps, labels and links |
+| `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`claim`/`insight`/`wiki` |
+| `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims/notes, conflicts) |
 | `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step |
 | `find_notes_using` | which notes used this material / tool / condition / output |
 | `list_entities` | what is labelled across the whole vault, most-shared first |
-| `trace_lineage` | what a note was derived from, and what was derived from it |
+| `list_topics` | index of topics (title + one-line summary + member count) — read this before `get_topic` |
+| `get_topic` | one topic's body plus its member claims and each claim's source notes (the 2-hop topic → claim → note) |
+| `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is |
 | `create_note` | write a new note (never edits existing ones) |
+
+The knowledge layer (topic / claim / insight) is not reachable from `NoteIndexEntry` alone — `topicIds` / `derivedFromClaims` / `conflictsWith` are not mirrored into the index, so these tools read `doc.wikiMeta` directly after narrowing the candidate set by `wikiKind` (never a blanket read of every wiki doc).
 
 Two design rules hold this target together:
 

@@ -1,7 +1,7 @@
 // note-text.ts のブロック→Markdown 変換・手順抽出の回帰テスト。
 
 import { describe, it, expect } from "vitest";
-import { extractInlineText, blocksToMarkdown, collectSteps } from "./note-text";
+import { extractInlineText, blocksToMarkdown, collectSteps, extractOneLiner } from "./note-text";
 
 /** テキストのみの inline content を組み立てる小ヘルパー */
 function text(t: string) {
@@ -126,5 +126,63 @@ describe("collectSteps", () => {
   it("step が無ければ空配列を返す", () => {
     const doc = { pages: [{ blocks: [{ type: "paragraph", content: text("本文") }] }] };
     expect(collectSteps(doc)).toEqual([]);
+  });
+});
+
+describe("extractOneLiner", () => {
+  it("「定義」見出し直後の段落の先頭文を返す", () => {
+    const doc = {
+      pages: [
+        {
+          blocks: [
+            { type: "heading", props: { level: 2 }, content: text("定義") },
+            { type: "paragraph", content: text("これが定義文です。補足はここから。") },
+            { type: "heading", props: { level: 2 }, content: text("背景") },
+            { type: "paragraph", content: text("背景の話") },
+          ],
+        },
+      ],
+    };
+    expect(extractOneLiner(doc)).toBe("これが定義文です。");
+  });
+
+  it("定義節が無ければ本文最初の非空段落の先頭文を使う", () => {
+    const doc = {
+      pages: [
+        {
+          blocks: [
+            { type: "heading", props: { level: 2 }, content: text("概要") },
+            { type: "paragraph", content: text("最初の段落。続き。") },
+          ],
+        },
+      ],
+    };
+    expect(extractOneLiner(doc)).toBe("最初の段落。");
+  });
+
+  it("columnList / column を透過する", () => {
+    const doc = {
+      pages: [
+        {
+          blocks: [
+            {
+              type: "columnList",
+              children: [
+                {
+                  type: "column",
+                  children: [{ type: "paragraph", content: text("カラム内の本文です。") }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(extractOneLiner(doc)).toBe("カラム内の本文です。");
+  });
+
+  it("本文が無ければ空文字を返す", () => {
+    expect(extractOneLiner({ pages: [] })).toBe("");
+    expect(extractOneLiner({ pages: [{ blocks: [] }] })).toBe("");
   });
 });
