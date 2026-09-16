@@ -23,6 +23,7 @@ import type { ProcessIndex, ProcessIndexEntry } from "./process-index";
 import { StepFlowView } from "./step-flow-view";
 import { addCrossNoteOriginsToFlowGraph } from "./cross-note-flow";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
+import { ProcessOverviewView } from "./process-overview-view";
 
 export type ProcessGalleryViewProps = {
   processIndex: ProcessIndex | null;
@@ -39,6 +40,12 @@ export type ProcessGalleryViewProps = {
    * 差し替えられるようにする。未指定なら従来どおり process.fork。
    */
   forkLabel?: string;
+  /**
+   * 一覧ヘッダの上に、ステップ名で集約した全体ビュー（ProcessOverviewView）を出す。
+   * 既定 false。共有ライブラリ（SharedLibraryView）からは渡さない
+   * （note-chain-plan.md §2.5「範囲: 共有フォルダ」は v1 では出さない）。
+   */
+  overview?: boolean;
 };
 
 type SortKey = "stepCount" | "modifiedAt" | "title";
@@ -59,6 +66,7 @@ export function ProcessGalleryView({
   onForkProcess,
   hideBack = false,
   forkLabel,
+  overview = false,
 }: ProcessGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,6 +75,14 @@ export function ProcessGalleryView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [forkingNoteId, setForkingNoteId] = useState<string | null>(null);
   const [forkError, setForkError] = useState(false);
+  // 全体ビューのノードクリックで一覧をステップ名で絞る。既存の検索欄（searchQuery）に
+  // 名前を入れることで絞り込みを実現する。同じ名前を再度クリックすると解除する。
+  // 強調するノードは検索欄の値から導出する（別 state に持つと、検索欄を手で書き換えた
+  // あとも強調が残り「そのステップ名で絞り込み中」に見える）
+  const overviewSelectedStepName = searchQuery.trim() || null;
+  const handleSelectStepName = (name: string) => {
+    setSearchQuery(overviewSelectedStepName === name ? "" : name);
+  };
 
   const processes = processIndex?.processes ?? [];
 
@@ -148,110 +164,122 @@ export function ProcessGalleryView({
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-background">
-      {/* 左: 一覧 */}
-      <div className="flex flex-col overflow-hidden shrink-0" style={{ width: "44%", minWidth: 340 }}>
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
-          {!hideBack && (
-            <button
-              onClick={onBack}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {t("common.back")}
-            </button>
-          )}
-          <span className="text-sm font-semibold text-foreground">{t("process.title")}</span>
-          <span className="text-xs text-muted-foreground">
-            {t("process.count", { n: String(filtered.length) })}
-          </span>
-        </div>
-
-        <div className="px-6 py-2 border-b border-border flex items-center gap-3">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            {...listSearchInputProps}
-            placeholder={t("process.search")}
-            className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+    <div className="flex-1 flex flex-col overflow-hidden bg-background">
+      {/* 全体ビュー: ステップ名で集約した有向グラフ。一覧より上に横いっぱいの帯として置く */}
+      {overview && (
+        <div className="px-6 py-4 border-b border-border shrink-0">
+          <ProcessOverviewView
+            processIndex={processIndex}
+            onSelectStepName={handleSelectStepName}
+            selectedStepName={overviewSelectedStepName}
           />
-          <div className="flex items-center gap-1 ml-auto">
-            {sortButton("stepCount", t("process.sortSteps"))}
-            {sortButton("modifiedAt", t("asset.sortDate"))}
-            {sortButton("title", t("process.sortTitle"))}
+        </div>
+      )}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 左: 一覧 */}
+        <div className="flex flex-col overflow-hidden shrink-0" style={{ width: "44%", minWidth: 340 }}>
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+            {!hideBack && (
+              <button
+                onClick={onBack}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {t("common.back")}
+              </button>
+            )}
+            <span className="text-sm font-semibold text-foreground">{t("process.title")}</span>
+            <span className="text-xs text-muted-foreground">
+              {t("process.count", { n: String(filtered.length) })}
+            </span>
           </div>
-        </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 && (
-            <div className="px-6 py-10 text-center text-xs text-muted-foreground">
-              {processes.length === 0 ? t("process.empty") : t("process.noMatch")}
-            </div>
-          )}
-          {filtered.map((process) => (
-            <ProcessRow
-              key={process.noteId}
-              process={process}
-              selected={process.noteId === selected?.noteId}
-              onSelect={() => setSelectedId(process.noteId)}
+          <div className="px-6 py-2 border-b border-border flex items-center gap-3">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              {...listSearchInputProps}
+              placeholder={t("process.search")}
+              className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
             />
-          ))}
-        </div>
-      </div>
-
-      {/* 右: 手順フローのプレビュー（ノート編集時と同じ描画） */}
-      <div className="flex-1 flex flex-col min-w-0 border-l border-border">
-        {selected ? (
-          <>
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <span className="text-xs font-medium text-foreground truncate">{selected.title}</span>
-              <span className="text-[10px] text-text-tertiary shrink-0">
-                {t("process.previewReadOnly")}
-              </span>
-              <button
-                onClick={() => onNavigateNote(selected.noteId)}
-                className="ml-auto shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded text-primary hover:bg-primary/10 transition-colors"
-              >
-                <ExternalLink size={11} strokeWidth={2.2} />
-                {t("process.openNote")}
-              </button>
-              <button
-                onClick={handleFork}
-                disabled={forkingNoteId !== null}
-                className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-border text-foreground hover:bg-surface-hover disabled:opacity-50 disabled:cursor-wait transition-colors"
-              >
-                <GitFork size={11} strokeWidth={2.2} />
-                {forkingNoteId === selected.noteId
-                  ? t("process.forking")
-                  : (forkLabel ?? t("process.fork"))}
-              </button>
+            <div className="flex items-center gap-1 ml-auto">
+              {sortButton("stepCount", t("process.sortSteps"))}
+              {sortButton("modifiedAt", t("asset.sortDate"))}
+              {sortButton("title", t("process.sortTitle"))}
             </div>
-            {forkError && (
-              <div role="alert" className="px-4 py-1.5 border-b border-border text-[11px] text-destructive">
-                {t("process.forkFailed")}
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {filtered.length === 0 && (
+              <div className="px-6 py-10 text-center text-xs text-muted-foreground">
+                {processes.length === 0 ? t("process.empty") : t("process.noMatch")}
               </div>
             )}
-            <div className="flex-1 min-h-0">
-              {/* コールバックを渡さない = 読み取り専用（P-3）。
-                  variant="preview" で属性テーブルを畳み、縮小の下限を上げる。
-
-                  key で作り直すのは必須。StepFlowView は「全ノードが measure され
-                  てから ELK を流す」作りなので、同じインスタンスに別プロセスの
-                  graph を渡すと新旧のノードが混ざって数が合わず、レイアウトが
-                  走らないまま全ノードが原点に重なる（実際に選択を切り替えて再現）。 */}
-              <StepFlowView
-                key={`${selected.noteId}:${processIndex?.updatedAt ?? ""}`}
-                graph={selectedGraph ?? selected.graph}
-                variant="preview"
-                onOpenExternalNote={onNavigateNote}
+            {filtered.map((process) => (
+              <ProcessRow
+                key={process.noteId}
+                process={process}
+                selected={process.noteId === selected?.noteId}
+                onSelect={() => setSelectedId(process.noteId)}
               />
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center px-8 text-center text-xs text-muted-foreground">
-            {t("process.selectHint")}
+            ))}
           </div>
-        )}
+        </div>
+
+        {/* 右: 手順フローのプレビュー（ノート編集時と同じ描画） */}
+        <div className="flex-1 flex flex-col min-w-0 border-l border-border">
+          {selected ? (
+            <>
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+                <span className="text-xs font-medium text-foreground truncate">{selected.title}</span>
+                <span className="text-[10px] text-text-tertiary shrink-0">
+                  {t("process.previewReadOnly")}
+                </span>
+                <button
+                  onClick={() => onNavigateNote(selected.noteId)}
+                  className="ml-auto shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                >
+                  <ExternalLink size={11} strokeWidth={2.2} />
+                  {t("process.openNote")}
+                </button>
+                <button
+                  onClick={handleFork}
+                  disabled={forkingNoteId !== null}
+                  className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-border text-foreground hover:bg-surface-hover disabled:opacity-50 disabled:cursor-wait transition-colors"
+                >
+                  <GitFork size={11} strokeWidth={2.2} />
+                  {forkingNoteId === selected.noteId
+                    ? t("process.forking")
+                    : (forkLabel ?? t("process.fork"))}
+                </button>
+              </div>
+              {forkError && (
+                <div role="alert" className="px-4 py-1.5 border-b border-border text-[11px] text-destructive">
+                  {t("process.forkFailed")}
+                </div>
+              )}
+              <div className="flex-1 min-h-0">
+                {/* コールバックを渡さない = 読み取り専用（P-3）。
+                    variant="preview" で属性テーブルを畳み、縮小の下限を上げる。
+
+                    key で作り直すのは必須。StepFlowView は「全ノードが measure され
+                    てから ELK を流す」作りなので、同じインスタンスに別プロセスの
+                    graph を渡すと新旧のノードが混ざって数が合わず、レイアウトが
+                    走らないまま全ノードが原点に重なる（実際に選択を切り替えて再現）。 */}
+                <StepFlowView
+                  key={`${selected.noteId}:${processIndex?.updatedAt ?? ""}`}
+                  graph={selectedGraph ?? selected.graph}
+                  variant="preview"
+                  onOpenExternalNote={onNavigateNote}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center px-8 text-center text-xs text-muted-foreground">
+              {t("process.selectHint")}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

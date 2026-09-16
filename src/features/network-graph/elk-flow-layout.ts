@@ -10,13 +10,14 @@ export type ElkLayoutEdge = { id: string; source: string; target: string };
 export async function layoutStepFlow(
   nodes: ElkLayoutNode[],
   edges: ElkLayoutEdge[],
+  opts?: { direction?: "DOWN" | "RIGHT" },
 ): Promise<Map<string, { x: number; y: number }>> {
   const elk = new ELK();
   const graph = await elk.layout({
     id: "root",
     layoutOptions: {
       "elk.algorithm": "layered",
-      "elk.direction": "DOWN",
+      "elk.direction": opts?.direction ?? "DOWN",
       "elk.spacing.nodeNode": "32",
       "elk.layered.spacing.nodeNodeBetweenLayers": "48",
       "elk.layered.spacing.edgeNodeBetweenLayers": "24",

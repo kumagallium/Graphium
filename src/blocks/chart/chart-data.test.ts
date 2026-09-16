@@ -15,6 +15,7 @@ import {
   type ChartDataResult,
   type TableData,
 } from "./chart-data";
+import { mergeLinkedColumns } from "../data-table/linked";
 
 describe("parseNumeric", () => {
   it("素の数値・小数・負数を読む", () => {
@@ -29,6 +30,16 @@ describe("parseNumeric", () => {
     expect(parseNumeric("36.5℃")).toBe(36.5);
     expect(parseNumeric("6/10")).toBe(6);
     expect(parseNumeric("1013hPa")).toBe(1013);
+  });
+  it("指数表記を読む（calc の計算列は小さい値を 8e-4 の形で書く）", () => {
+    expect(parseNumeric("8e-4")).toBe(0.0008);
+    expect(parseNumeric("1.2e+5")).toBe(120000);
+    expect(parseNumeric("-3.2E-4")).toBe(-0.00032);
+    expect(parseNumeric("1e-6 S/m")).toBe(1e-6);
+  });
+  it("数字の直後の e が単位の頭なら指数とみなさない", () => {
+    expect(parseNumeric("3eV")).toBe(3);
+    expect(parseNumeric("5e")).toBe(5);
   });
   it("読めない値・空は null（0 に化けさせない）", () => {
     expect(parseNumeric("")).toBeNull();
@@ -102,6 +113,26 @@ describe("buildChartData（系列ごとにテーブルを持つ）", () => {
     expect(points.length).toBe(3);
     expect(points.map((p) => p[1])).toEqual([6, 3, 7]);
     expect(points[0][0]).toBeLessThan(points[1][0]);
+  });
+
+  it("calc の計算列（指数表記を含む）を系列にしても値が桁ずれしない", () => {
+    // mathjs の notation:"auto" は |x| < 1e-3 を指数表記で書く。先頭の "8" だけ読むと
+    // 最初の点が 8 に化け、折れ線では軸の最大値から落ちる縦線になっていた
+    const merged = mergeLinkedColumns(
+      { headers: ["T", "S"], rows: [["323", "-20"], ["373", "-25"], ["423", "-31"]] },
+      [{ name: "zT", texts: ["8e-4", "0.0012", "0.0018"] }],
+    );
+    const result = buildChartData({
+      chartType: "line",
+      series: [{ table: merged!.data, xColumn: "T", yColumn: "zT" }],
+    });
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.series[0].points).toEqual([
+      [323, 0.0008],
+      [373, 0.0012],
+      [423, 0.0018],
+    ]);
   });
 
   it("複数テーブルを 1 チャートに重ねられる（eureco の複数ソース統合）", () => {

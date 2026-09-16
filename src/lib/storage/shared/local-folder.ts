@@ -25,6 +25,7 @@ import type {
 } from "./types";
 import { computeSharedEntryHash, computeBlobHash } from "./hash";
 import { isValidSharedId } from "./id";
+import { bytesToBase64 } from "@/lib/base64";
 
 // SharedEntry.type ("note" 等、単数) と shared フォルダ名 ("notes" 等、複数) の対応。
 // Tauri 側コマンドはフォルダ名を期待する（lib.rs の SHARED_ENTRY_TYPES）。
@@ -47,12 +48,7 @@ type StoredEntry = {
 };
 
 function uint8ToBase64(bytes: Uint8Array): string {
-  // 大量データは btoa が遅いが、Phase 1b はテキスト中心の想定なのでこれで足りる
-  let s = "";
-  for (let i = 0; i < bytes.length; i++) {
-    s += String.fromCharCode(bytes[i]);
-  }
-  return btoa(s);
+  return bytesToBase64(bytes);
 }
 
 function base64ToUint8(b64: string): Uint8Array {

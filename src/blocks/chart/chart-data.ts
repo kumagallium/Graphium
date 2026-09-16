@@ -77,13 +77,21 @@ export function normalizeNumericText(raw: string): string {
     .replace(/,/g, "");
 }
 
+/**
+ * 正規化済みテキストの先頭の数値部分（"6/10" や "36.5℃" の数値だけ）。
+ * 指数表記も含める — calc の計算列は |x| < 1e-3 を "8e-4" の形で書くので、
+ * 仮数だけ読むと 8 に化ける。指数は e の直後に数字があるときだけ（"3eV" は 3 + 単位）
+ */
+export function matchNumericPrefix(normalized: string): string | null {
+  return normalized.match(/^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?/)?.[0] ?? null;
+}
+
 export function parseNumeric(raw: string): number | null {
   const s = normalizeNumericText(raw);
   if (!s) return null;
-  // 先頭の数値部分だけを読む（"6/10" や "36.5℃" を許容）
-  const m = s.match(/^[+-]?\d+(\.\d+)?/);
-  if (!m) return null;
-  const n = Number(m[0]);
+  const m = matchNumericPrefix(s);
+  if (m === null) return null;
+  const n = Number(m);
   return Number.isFinite(n) ? n : null;
 }
 

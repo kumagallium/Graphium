@@ -10,7 +10,8 @@
 // 配色は knowledge-colors.ts と 2 ホップグラフ（view.tsx）に合わせている。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { RotateCcw, Search } from "lucide-react";
+import type { ReactNode } from "react";
+import { RotateCcw, Search, Network, Waypoints } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
@@ -998,6 +999,9 @@ export function GlobalGraphView({
   onOpenMemo,
   onClose,
   insightsEnabled = true,
+  mode = "overview",
+  onModeChange,
+  timeline,
 }: {
   data: NoteGraphData;
   /** ノード単クリック。noteId は wiki ノードに `wiki:` prefix が付く（SidePeek の規約に合わせる）。 */
@@ -1012,6 +1016,11 @@ export function GlobalGraphView({
   /** 洞察（Atom）レイヤの表示可否（設定の features.insights、既定 true）。
    *  false のとき Atom ノードと凡例を隠す。claim / synthesis には影響しない。 */
   insightsEnabled?: boolean;
+  /** 俯瞰 / 時系列のどちらを表示するか（未指定なら俯瞰固定でサブタブも出さない） */
+  mode?: "overview" | "timeline";
+  onModeChange?: (mode: "overview" | "timeline") => void;
+  /** 時系列モードの本体（ローカルビュー）。渡されたときだけ「俯瞰 / 時系列」サブタブを出す */
+  timeline?: ReactNode;
 }) {
   const t = useT();
   const [hideRefs, setHideRefs] = useState(false);
@@ -1108,127 +1117,160 @@ export function GlobalGraphView({
       {/* ヘッダー / ツールバー */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap">
         <span className="text-sm font-bold text-foreground">{t("globalGraph.title")}</span>
-        <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-          <input type="checkbox" checked={hideRefs} onChange={(e) => setHideRefs(e.target.checked)} />
-          {t("globalGraph.hideReferences")}
-        </label>
-        <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" title={t("globalGraph.showIsolatedHint")}>
-          <input type="checkbox" checked={showIsolated} onChange={(e) => setShowIsolated(e.target.checked)} />
-          {t("globalGraph.showIsolated")}
-          {isolatedCount > 0 && <span className="opacity-70">({isolatedCount})</span>}
-        </label>
-        <LayerChips visible={visible} counts={layerCounts} onToggle={toggleLayer} />
-        {/* 色の軸切替（種類 ⇄ 文脈タグ） */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground">{t("globalGraph.colorBy")}</span>
-          <div className="flex rounded-md border border-border overflow-hidden">
-            {(["kind", "context"] as const).map((m) => (
+        {/* 俯瞰 / 時系列サブタブ（timeline が渡されたときだけ出す。graph-links-panel.tsx と同じ作り） */}
+        {timeline && onModeChange && (
+          <div className="flex items-center gap-0.5 rounded-md border border-border overflow-hidden">
+            {([
+              { key: "overview" as const, icon: <Network size={12} />, label: t("globalGraph.mode.overview") },
+              { key: "timeline" as const, icon: <Waypoints size={12} />, label: t("globalGraph.mode.timeline") },
+            ]).map((tab) => (
               <button
-                key={m}
-                onClick={() => changeColorMode(m)}
-                className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                  colorMode === m
+                key={tab.key}
+                onClick={() => onModeChange(tab.key)}
+                className={`flex items-center gap-1 px-2 py-1 text-[11px] font-semibold transition-colors ${
+                  mode === tab.key
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {t(`globalGraph.colorMode.${m}` as any)}
+                {tab.icon}
+                {tab.label}
               </button>
             ))}
           </div>
-        </div>
-        {colorMode === "context" && (
-          <label
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
-            title={t("globalGraph.clusterByContextHint")}
-          >
-            <input
-              type="checkbox"
-              checked={clusterByContext}
-              onChange={(e) => setClusterByContext(e.target.checked)}
-            />
-            {t("globalGraph.clusterByContext")}
-          </label>
         )}
-        <span className="ml-auto flex items-center gap-3">
-          {/* 検索: ヒットを強調 + Enter でヒットへ順にパン（Esc でクリア） */}
-          <span className="relative">
-            <Search
-              size={12}
-              className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none"
-            />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              {...compositionHandlers}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !isImeKey(e)) {
-                  setSearchJumpToken((v) => v + 1);
-                } else if (e.key === "Escape" && searchInput) {
-                  // 検索中の Esc はクリアのみ（グラフ自体は閉じない）
-                  e.stopPropagation();
-                  setSearchInput("");
-                }
-              }}
-              {...listSearchInputProps}
-              placeholder={t("common.search")}
-              className="text-xs pl-7 pr-8 py-1 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 w-44 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            />
-            {searchInput.trim() && (
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">
-                {searchHits}
-              </span>
+        {mode === "overview" && (
+          <>
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+              <input type="checkbox" checked={hideRefs} onChange={(e) => setHideRefs(e.target.checked)} />
+              {t("globalGraph.hideReferences")}
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" title={t("globalGraph.showIsolatedHint")}>
+              <input type="checkbox" checked={showIsolated} onChange={(e) => setShowIsolated(e.target.checked)} />
+              {t("globalGraph.showIsolated")}
+              {isolatedCount > 0 && <span className="opacity-70">({isolatedCount})</span>}
+            </label>
+            <LayerChips visible={visible} counts={layerCounts} onToggle={toggleLayer} />
+            {/* 色の軸切替（種類 ⇄ 文脈タグ） */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground">{t("globalGraph.colorBy")}</span>
+              <div className="flex rounded-md border border-border overflow-hidden">
+                {(["kind", "context"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => changeColorMode(m)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      colorMode === m
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t(`globalGraph.colorMode.${m}` as any)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {colorMode === "context" && (
+              <label
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
+                title={t("globalGraph.clusterByContextHint")}
+              >
+                <input
+                  type="checkbox"
+                  checked={clusterByContext}
+                  onChange={(e) => setClusterByContext(e.target.checked)}
+                />
+                {t("globalGraph.clusterByContext")}
+              </label>
             )}
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            {shown.nodes.length} / {shown.edges.length}
-          </span>
-        </span>
-      </div>
-      {/* 凡例（色モードに追従: ノード凡例だけ切替、エッジ凡例は共通で常時表示） */}
-      <div className="px-4 py-2 border-b border-border">
-        {colorMode === "context" ? (
-          <ContextLegend
-            data={data}
-            edgeData={shown}
-            selected={selectedContexts}
-            onToggle={toggleContext}
-            hideUncategorized={hideUncategorized}
-            onToggleUncategorized={() => setHideUncategorized((v) => !v)}
-          />
-        ) : (
-          <Legend data={shown} />
+            <span className="ml-auto flex items-center gap-3">
+              {/* 検索: ヒットを強調 + Enter でヒットへ順にパン（Esc でクリア） */}
+              <span className="relative">
+                <Search
+                  size={12}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none"
+                />
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  {...compositionHandlers}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !isImeKey(e)) {
+                      setSearchJumpToken((v) => v + 1);
+                    } else if (e.key === "Escape" && searchInput) {
+                      // 検索中の Esc はクリアのみ（グラフ自体は閉じない）
+                      e.stopPropagation();
+                      setSearchInput("");
+                    }
+                  }}
+                  {...listSearchInputProps}
+                  placeholder={t("common.search")}
+                  className="text-xs pl-7 pr-8 py-1 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 w-44 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                />
+                {searchInput.trim() && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">
+                    {searchHits}
+                  </span>
+                )}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                {shown.nodes.length} / {shown.edges.length}
+              </span>
+            </span>
+          </>
         )}
       </div>
-      {/* キャンバス */}
-      <div className="flex-1 min-h-0">
-        {shown.nodes.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-            {t("globalGraph.empty")}
+      {mode === "timeline" ? (
+        // 時系列モード: 俯瞰用の凡例・キャンバスは描かず、ローカルビュー本体をそのまま表示する
+        <div className="flex-1 min-h-0">{timeline}</div>
+      ) : (
+        <>
+          {/* 凡例（色モードに追従: ノード凡例だけ切替、エッジ凡例は共通で常時表示） */}
+          <div className="px-4 py-2 border-b border-border">
+            {colorMode === "context" ? (
+              <ContextLegend
+                data={data}
+                edgeData={shown}
+                selected={selectedContexts}
+                onToggle={toggleContext}
+                hideUncategorized={hideUncategorized}
+                onToggleUncategorized={() => setHideUncategorized((v) => !v)}
+              />
+            ) : (
+              <Legend data={shown} />
+            )}
           </div>
-        ) : (
-          <GlobalGraphCanvas
-            data={data}
-            visibleLayers={visible}
-            hideReferences={hideRefs}
-            hideIsolated={!showIsolated}
-            colorMode={colorMode}
-            contextFilter={selectedContexts}
-            hideUncategorized={hideUncategorized}
-            hideAtoms={!insightsEnabled}
-            clusterByContext={clusterByContext}
-            searchQuery={searchInput}
-            searchJumpToken={searchJumpToken}
-            onSearchHits={setSearchHits}
-            onNavigate={onSelectNote}
-            onOpenMedia={onOpenMedia}
-            onOpenUrl={onOpenUrl}
-            onOpenMemo={onOpenMemo}
-            height="100%"
-          />
-        )}
-      </div>
+          {/* キャンバス */}
+          <div className="flex-1 min-h-0">
+            {shown.nodes.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                {t("globalGraph.empty")}
+              </div>
+            ) : (
+              <GlobalGraphCanvas
+                data={data}
+                visibleLayers={visible}
+                hideReferences={hideRefs}
+                hideIsolated={!showIsolated}
+                colorMode={colorMode}
+                contextFilter={selectedContexts}
+                hideUncategorized={hideUncategorized}
+                hideAtoms={!insightsEnabled}
+                clusterByContext={clusterByContext}
+                searchQuery={searchInput}
+                searchJumpToken={searchJumpToken}
+                onSearchHits={setSearchHits}
+                onNavigate={onSelectNote}
+                onOpenMedia={onOpenMedia}
+                onOpenUrl={onOpenUrl}
+                onOpenMemo={onOpenMemo}
+                height="100%"
+              />
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

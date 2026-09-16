@@ -10,7 +10,7 @@ import { useRef, useState } from "react";
 import { StepFlowView } from "./step-flow-view";
 import type { FlowSelection } from "./flow-attribute-table";
 import type { TableData } from "./table-row-edit";
-import type { FlowGraphData } from "./activity-graph-adapter";
+import type { FlowGraphData, FlowNoteRef, FlowStep } from "./activity-graph-adapter";
 import { LocaleProvider } from "../../i18n";
 
 const meta: Meta = {
@@ -598,4 +598,149 @@ const MULTI_STAGE_TABLES: Record<string, TableData> = {
 export const MultiStageParams: Story = {
   name: "段階（stage）行 / パラメータ表の複数行",
   render: () => <Playground initialGraph={MULTI_STAGE_GRAPH} initialTables={MULTI_STAGE_TABLES} />,
+};
+
+// ── 工程ノード（計画ノートの工程フロー）──
+//
+// plan-flow.ts が組む FlowStep.noteRef 付きノード。直線 3 工程（配合 → 焼成 → 保管）
+// + 測定への分岐。noteRef の状態を 4 種（linked=state 無し / unlinked / duplicateName /
+// trashed）で見せ、焼成の途中出力を「保管」が参照するが解決できない broken エッジも 1 本足す。
+
+const PLAN_FLOW_GRAPH: FlowGraphData = {
+  steps: [
+    {
+      id: "note:note-1",
+      name: "配合",
+      params: [{ label: "担当: 田中" }],
+      noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0 },
+    },
+    {
+      id: "note:note-2",
+      name: "焼成",
+      params: [{ label: "温度: 900C" }],
+      noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1 },
+    },
+    {
+      id: "row:tbl-plan:2",
+      name: "測定A",
+      params: [],
+      noteRef: { noteId: null, tableBlockId: "tbl-plan", rowIndex: 2, state: "unlinked" },
+    },
+    {
+      id: "row:tbl-plan:3",
+      name: "測定B",
+      params: [],
+      noteRef: { noteId: null, tableBlockId: "tbl-plan", rowIndex: 3, state: "duplicateName" },
+    },
+    {
+      id: "note:note-5",
+      name: "保管",
+      params: [],
+      noteRef: { noteId: "note-5", tableBlockId: "tbl-plan", rowIndex: 4, state: "trashed" },
+    },
+  ],
+  entities: [
+    { id: "note:note-1#out1", label: "配合粉末", kind: "output", attrs: [] },
+    { id: "note:note-2#broken:log", label: "焼成温度ログ", kind: "output", attrs: [] },
+  ],
+  edges: [
+    { id: "g1", kind: "generates", source: "note:note-1", target: "note:note-1#out1" },
+    { id: "u1", kind: "used", source: "note:note-1#out1", target: "note:note-2" },
+    { id: "u2", kind: "used", source: "note:note-1#out1", target: "row:tbl-plan:2" },
+    {
+      id: "u3-broken",
+      kind: "used",
+      source: "note:note-2#broken:log",
+      target: "note:note-5",
+      broken: true,
+    },
+  ],
+};
+
+export const PlanFlowNodes: Story = {
+  name: "工程ノード（計画ノートの工程フロー）",
+  render: () => (
+    <StepFlowView
+      graph={PLAN_FLOW_GRAPH}
+      onOpenNoteRef={(ref: FlowNoteRef, step: FlowStep) => console.log("onOpenNoteRef", ref, step)}
+    />
+  ),
+};
+
+// ── 予定の線（planned edges）── 4 状態を 1 画面で確認する ──
+//
+// 灰色の点線「予定」（配合 → 測定A、焼成 → 保管。まだ実績が無い/計画だけの状態）、
+// forest 実線「計画どおり」（配合 → 焼成）、amber 実線「計画外」（測定A → 保管、
+// 予定に無かった受け渡し）。connectNoteRefs を有効にして、工程ノード同士のドラッグ
+// 接続（onConnectSteps）と予定の線の削除（onRemovePlannedEdge）も確認できる。
+
+const PLAN_FLOW_PLANNED_EDGES_GRAPH: FlowGraphData = {
+  steps: [
+    { id: "note:note-1", name: "配合", params: [], noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0 } },
+    { id: "note:note-2", name: "焼成", params: [], noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1 } },
+    { id: "note:note-3", name: "測定A", params: [], noteRef: { noteId: "note-3", tableBlockId: "tbl-plan", rowIndex: 2 } },
+    { id: "note:note-4", name: "保管", params: [], noteRef: { noteId: "note-4", tableBlockId: "tbl-plan", rowIndex: 3 } },
+  ],
+  entities: [],
+  edges: [
+    // 予定の線（まだ実績が無い計画）
+    { id: "pl1", kind: "planned", source: "note:note-1", target: "note:note-3", deletable: true },
+    { id: "pl2", kind: "planned", source: "note:note-2", target: "note:note-4", deletable: true },
+    // 計画どおり（予定と実績が一致した受け渡し）
+    { id: "u1", kind: "used", source: "note:note-1", target: "note:note-2", plan: "asPlanned" },
+    // 計画外（実績はあるが予定に無かった受け渡し）
+    { id: "u2", kind: "used", source: "note:note-3", target: "note:note-4", plan: "unplanned" },
+  ],
+};
+
+export const PlanFlowPlannedEdges: Story = {
+  name: "予定の線（planned edges）",
+  render: () => (
+    <StepFlowView
+      graph={PLAN_FLOW_PLANNED_EDGES_GRAPH}
+      connectNoteRefs
+      onConnectSteps={(producer, consumer) => {
+        console.log("onConnectSteps", producer, consumer);
+        return { error: null };
+      }}
+      onRemovePlannedEdge={(producer, consumer) => console.log("onRemovePlannedEdge", producer, consumer)}
+      onOpenNoteRef={(ref: FlowNoteRef, step: FlowStep) => console.log("onOpenNoteRef", ref, step)}
+    />
+  ),
+};
+
+// ── マニュアル用（英語・パン作りの世界観）──
+// manual/public/screenshots/plan-flow-planned_en.png の元。予定 / 計画どおり / 計画外 を 1 画面で
+
+const PLAN_FLOW_MANUAL_GRAPH: FlowGraphData = {
+  steps: [
+    { id: "note:m-1", name: "Milling", params: [], noteRef: { noteId: "m-1", tableBlockId: "tbl-plan", rowIndex: 0 } },
+    { id: "note:m-2", name: "Kneading", params: [], noteRef: { noteId: "m-2", tableBlockId: "tbl-plan", rowIndex: 1 } },
+    { id: "note:m-3", name: "Proofing", params: [], noteRef: { noteId: "m-3", tableBlockId: "tbl-plan", rowIndex: 2 } },
+    { id: "note:m-4", name: "Baking", params: [], noteRef: { noteId: "m-4", tableBlockId: "tbl-plan", rowIndex: 3 } },
+    { id: "note:m-5", name: "Tasting", params: [], noteRef: { noteId: "m-5", tableBlockId: "tbl-plan", rowIndex: 4 } },
+    { id: "note:m-6", name: "Levain build", params: [], noteRef: { noteId: "m-6", tableBlockId: "tbl-plan", rowIndex: 5 } },
+  ],
+  entities: [],
+  edges: [
+    { id: "u1", kind: "used", source: "note:m-1", target: "note:m-2", plan: "asPlanned" },
+    { id: "u2", kind: "used", source: "note:m-2", target: "note:m-3", plan: "asPlanned" },
+    { id: "pl1", kind: "planned", source: "note:m-3", target: "note:m-4", deletable: true },
+    { id: "pl2", kind: "planned", source: "note:m-4", target: "note:m-5", deletable: true },
+    // 予定に無かった受け渡し（ルヴァンを別途仕込んで捏ねに使った）
+    { id: "u3", kind: "used", source: "note:m-6", target: "note:m-2", plan: "unplanned" },
+  ],
+};
+
+export const PlanFlowManual: Story = {
+  name: "Manual (English, bread world)",
+  render: () => (
+    <StepFlowView
+      graph={PLAN_FLOW_MANUAL_GRAPH}
+      connectNoteRefs
+      onConnectSteps={() => ({ error: null })}
+      onRemovePlannedEdge={() => {}}
+      onOpenNoteRef={() => {}}
+    />
+  ),
 };
