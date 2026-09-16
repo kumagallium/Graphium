@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.76.4](https://github.com/kumagallium/Graphium/compare/v0.76.3...v0.76.4) - 2026-09-16
+
+- feat(plan-flow): edit the plan's index table from the operations panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/952
+
 ## [v0.76.3](https://github.com/kumagallium/Graphium/compare/v0.76.2...v0.76.3) - 2026-09-16
 
 - fix(plan-flow): let planned lines start from an operation's output by @kumagallium in https://github.com/kumagallium/Graphium/pull/950
