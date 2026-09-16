@@ -8051,7 +8051,11 @@ export function NoteApp() {
     async (
       notes: IntakeFile[],
       onProgress: (p: IntakeProgress) => void,
-      ctx: { allFiles: IntakeFile[]; folderOf: (file: IntakeFile) => string | undefined },
+      ctx: {
+        allFiles: IntakeFile[];
+        folderOf: (file: IntakeFile) => string | undefined;
+        readFile: (file: IntakeFile) => Promise<File>;
+      },
     ): Promise<MarkdownImportResult> => {
       const {
         importMarkdownToGraphiumDoc,
@@ -8063,25 +8067,28 @@ export function NoteApp() {
       // path は "/" を含むかどうかで vault モード（フォルダ選択・vault ドロップ）か
       // 単体ファイルかを判定する（単体選択時は path = file.name のみ）。
       const isVaultMode = ctx.allFiles.some((f) => f.path.includes("/"));
-      const allByPath = new Map<string, File>();
+      const allByPath = new Map<string, IntakeFile>();
       if (isVaultMode) {
         for (const f of ctx.allFiles) {
-          allByPath.set(f.path.toLowerCase(), f.file);
+          allByPath.set(f.path.toLowerCase(), f);
           // 末尾のファイル名のみのキーでも引けるように
           const baseName = f.path.split("/").pop()?.toLowerCase();
-          if (baseName && !allByPath.has(baseName)) allByPath.set(baseName, f.file);
+          if (baseName && !allByPath.has(baseName)) allByPath.set(baseName, f);
         }
       }
-
+      // getFile() の重複呼び出しを避けるため、ctx.readFile（runIntake が持つ
+      // 取り込み全体の共有キャッシュ）を経由して読む。埋め込み画像
+      // （![[fig.png]]）は materials ループでも素材として登録されるため、
+      // ここでローカルにキャッシュを持つと materials 側と二重読みになる
       const resolveImage = isVaultMode
         ? async (relativePath: string): Promise<File | null> => {
             const lc = relativePath.toLowerCase();
             const direct = allByPath.get(lc);
-            if (direct) return direct;
+            if (direct) return ctx.readFile(direct);
             const baseName = lc.split("/").pop();
             if (baseName) {
               const byName = allByPath.get(baseName);
-              if (byName) return byName;
+              if (byName) return ctx.readFile(byName);
             }
             return null;
           }
@@ -8110,17 +8117,22 @@ export function NoteApp() {
 
       for (let i = 0; i < notes.length; i++) {
         const file = notes[i];
-        onProgress({ done: i, total: notes.length, current: file.file.name, failed: [...failed] });
+        onProgress({ done: i, total: notes.length, current: file.name, failed: [...failed] });
         try {
-          const baseName = file.file.name.replace(/\.(md|markdown)$/i, "");
+          const baseName = file.name.replace(/\.(md|markdown)$/i, "");
+          // 実体は 1 回だけ読み、ハッシュ計算とインポートの両方で使い回す
+          // （ネイティブ走査では getFile() の呼び出しがファイル読み込みそのもの。
+          // IntakeFile は走査時点の size を持たないため、サイズ判定も
+          // 読み込み後の実体（rawFile.size）で行う）
+          const rawFile = await file.getFile();
           // 素材側（asset-browser/dedupe.ts）と同じ上限。極端に大きいファイルを
           // メインスレッドで丸ごと読んでハッシュ計算することを避ける
           // （md は通常小さいが、エクスポートされた大規模ノート等の想定外入力向け）。
           // 上限超過時は重複判定を諦めて常に新規ノートとして扱う（importSource は付けない）。
-          const tooLargeToHash = file.file.size > MAX_HASH_BYTES;
+          const tooLargeToHash = rawFile.size > MAX_HASH_BYTES;
           const contentHash = tooLargeToHash
             ? undefined
-            : await computeBlobHash(new Uint8Array(await file.file.arrayBuffer()));
+            : await computeBlobHash(new Uint8Array(await rawFile.arrayBuffer()));
 
           // 1) 同一バッチ内で直前に作成/使い回したノート → 2) 既存の index、の順で探す
           const existingId = contentHash
@@ -8136,7 +8148,7 @@ export function NoteApp() {
             continue;
           }
 
-          let { doc, wikilinks } = await importMarkdownToGraphiumDoc(file.file, {
+          let { doc, wikilinks } = await importMarkdownToGraphiumDoc(rawFile, {
             resolveImage,
             uploadImage: fm.handleUploadMedia,
           });
@@ -8154,8 +8166,8 @@ export function NoteApp() {
           docsByNoteId.set(newId, { doc, wikilinks });
           lastNewId = newId;
         } catch (err) {
-          console.error("Markdown インポート失敗:", file.file.name, err);
-          failed.push(file.file.name);
+          console.error("Markdown インポート失敗:", file.name, err);
+          failed.push(file.name);
         }
         onProgress({ done: i + 1, total: notes.length, failed: [...failed] });
       }

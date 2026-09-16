@@ -100,7 +100,7 @@ describe("collectDroppedFiles", () => {
 
     const files = await collectDroppedFiles(dt);
 
-    expect(files.map((f) => f.file)).toEqual([f1, f2]);
+    expect(await Promise.all(files.map((f) => f.getFile()))).toEqual([f1, f2]);
     expect(files.map((f) => f.path)).toEqual(["note.md", "photo.png"]);
   });
 
