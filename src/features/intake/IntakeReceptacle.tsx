@@ -10,6 +10,7 @@ import { FolderInput, Loader2 } from "lucide-react";
 import { useT } from "@/i18n";
 import { Button } from "@/ui/button";
 import { collectDroppedFiles } from "./collect-dropped-files";
+import { isNativeScanAvailable, pickFolderNative, scanFolderNative } from "./native-scan";
 import { toIntakeFiles, type IntakeFile, type IntakeSource } from "./types";
 
 type IntakeReceptacleProps = {
@@ -34,6 +35,9 @@ export function IntakeReceptacle({ lead, emphasized = false, checking = false, o
   // 数分の空白ができる。その間「動いていない」と見えないよう表示を切り替える。
   // ユーザーがキャンセルすると input の cancel イベントで戻す
   const [picking, setPicking] = useState(false);
+  // ネイティブ走査が上限で打ち切られたとき、そのまま黙って一部だけ入れると
+  // 「全部入った」と誤解されるので、続けるかどうかを一度確かめる
+  const [truncatedFiles, setTruncatedFiles] = useState<IntakeFile[] | null>(null);
 
   // input の cancel イベントは React 18 の型に無いので、直接購読する
   useEffect(() => {
@@ -47,6 +51,33 @@ export function IntakeReceptacle({ lead, emphasized = false, checking = false, o
 
   const emphasize = emphasized || internalOver;
   const showChecking = checking || picking;
+
+  // デスクトップではブラウザの webkitdirectory を通さず、Rust に列挙させる。
+  // webkitdirectory は全ファイルに OS 問い合わせを行うため、NAS 越しだと
+  // ファイル数に比例して待たされる（native-scan.ts の冒頭に経緯）
+  const handleNativeFolderPick = async () => {
+    setPicking(true);
+    try {
+      const root = await pickFolderNative();
+      if (!root) {
+        setPicking(false);
+        return;
+      }
+      const { files, truncated } = await scanFolderNative(root);
+      setPicking(false);
+      if (files.length === 0) return;
+      if (truncated) {
+        setTruncatedFiles(files);
+        return;
+      }
+      onFilesSelected(files, "folder");
+    } catch (err) {
+      // ネイティブ側で失敗しても取り込みを諦めず、ブラウザ標準の経路に戻す。
+      // picking は立てたままにして、input の change / cancel で下ろす
+      console.warn("[intake] ネイティブのフォルダ走査に失敗。input に切り替えます:", err);
+      folderInputRef.current?.click();
+    }
+  };
 
   const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -68,7 +99,32 @@ export function IntakeReceptacle({ lead, emphasized = false, checking = false, o
         emphasize ? "border-primary bg-accent" : "border-border bg-muted/30"
       }`}
     >
-      {showChecking ? (
+      {truncatedFiles ? (
+        <>
+          <div className="h-12 w-12 rounded-full bg-secondary text-primary flex items-center justify-center">
+            <FolderInput size={24} />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {t("intake.scanLimit", { count: String(truncatedFiles.length) })}
+          </p>
+          <p className="text-xs text-muted-foreground">{t("intake.scanLimitHint")}</p>
+          <div className="flex gap-3 mt-1">
+            <Button
+              variant="primary"
+              onClick={() => {
+                const files = truncatedFiles;
+                setTruncatedFiles(null);
+                onFilesSelected(files, "folder");
+              }}
+            >
+              {t("intake.scanLimitContinue", { count: String(truncatedFiles.length) })}
+            </Button>
+            <Button variant="outline" onClick={() => setTruncatedFiles(null)}>
+              {t("intake.scanLimitCancel")}
+            </Button>
+          </div>
+        </>
+      ) : showChecking ? (
         <>
           <div className="h-12 w-12 rounded-full bg-secondary text-primary flex items-center justify-center">
             <Loader2 size={24} className="animate-spin" />
@@ -87,6 +143,10 @@ export function IntakeReceptacle({ lead, emphasized = false, checking = false, o
             <Button
               variant="primary"
               onClick={() => {
+                if (isNativeScanAvailable()) {
+                  void handleNativeFolderPick();
+                  return;
+                }
                 setPicking(true);
                 folderInputRef.current?.click();
               }}

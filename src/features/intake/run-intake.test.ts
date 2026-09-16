@@ -6,22 +6,23 @@
 import { describe, it, expect, vi } from "vitest";
 import { runIntake, mergeOutcome, type IntakeDeps, type IntakeOutcome, type IntakeProgress, type MarkdownImportResult } from "./run-intake";
 import type { IntakeFile } from "./types";
+import { intakeFileFrom } from "./test-helpers";
 
 function mdFile(name: string): IntakeFile {
-  return { file: new File(["# " + name], name, { type: "text/markdown" }), path: name };
+  return intakeFileFrom(new File(["# " + name], name, { type: "text/markdown" }), name);
 }
 function pdfFile(name: string): IntakeFile {
-  return { file: new File(["dummy"], name, { type: "application/pdf" }), path: name };
+  return intakeFileFrom(new File(["dummy"], name, { type: "application/pdf" }), name);
 }
 function otherFile(name: string): IntakeFile {
-  return { file: new File(["dummy"], name, { type: "" }), path: name };
+  return intakeFileFrom(new File(["dummy"], name, { type: "" }), name);
 }
 
 function makeDeps(overrides: Partial<IntakeDeps> = {}): IntakeDeps {
   const importMarkdown = vi.fn(
     async (files: IntakeFile[], onProgress: (p: IntakeProgress) => void): Promise<MarkdownImportResult> => {
       for (let i = 0; i < files.length; i++) {
-        onProgress({ done: i + 1, total: files.length, current: files[i].file.name, failed: [] });
+        onProgress({ done: i + 1, total: files.length, current: files[i].name, failed: [] });
       }
       return {
         created: files.length,
@@ -64,7 +65,7 @@ describe("runIntake", () => {
     expect(deps.importMarkdown).toHaveBeenCalledWith(
       expect.any(Array),
       expect.any(Function),
-      { allFiles: files, folderOf: expect.any(Function) },
+      { allFiles: files, folderOf: expect.any(Function), readFile: expect.any(Function) },
     );
   });
 
@@ -143,7 +144,7 @@ describe("runIntake", () => {
 
   it("フォルダの引き継ぎ: 根配下の md 2（別フォルダ）+ png 1（同フォルダ）で folders が 2、setAssetFolder が新規素材にだけ呼ばれる", async () => {
     function file(path: string): IntakeFile {
-      return { file: new File(["dummy"], path.split("/").pop()!), path };
+      return intakeFileFrom(new File(["dummy"], path.split("/").pop()!), path);
     }
     const files = [
       file("Vault/研究/a.md"),
@@ -163,7 +164,7 @@ describe("runIntake", () => {
 
   it("pptx/xlsx の新規登録には expandOffice が呼ばれ、officeDerived に合算される", async () => {
     function officeFile(name: string): IntakeFile {
-      return { file: new File(["dummy"], name, { type: "" }), path: name };
+      return intakeFileFrom(new File(["dummy"], name, { type: "" }), name);
     }
     const files = [officeFile("slides.pptx"), officeFile("sheet.xlsx")];
     const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: false }));
@@ -181,7 +182,7 @@ describe("runIntake", () => {
 
   it("expandOffice の skipped（変換できなかった画像件数）は officeSkipped に合算される", async () => {
     function officeFile(name: string): IntakeFile {
-      return { file: new File(["dummy"], name, { type: "" }), path: name };
+      return intakeFileFrom(new File(["dummy"], name, { type: "" }), name);
     }
     const files = [officeFile("slides.pptx"), officeFile("sheet.xlsx")];
     const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: false }));
@@ -198,7 +199,7 @@ describe("runIntake", () => {
 
   it("重複登録（duplicate）の pptx/xlsx には isOfficeExpanded 未指定なら expandOffice を呼ばない", async () => {
     function officeFile(name: string): IntakeFile {
-      return { file: new File(["dummy"], name, { type: "" }), path: name };
+      return intakeFileFrom(new File(["dummy"], name, { type: "" }), name);
     }
     const files = [officeFile("slides.pptx")];
     const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
@@ -213,7 +214,7 @@ describe("runIntake", () => {
 
   it("重複登録（duplicate）でも isOfficeExpanded が false（未展開）なら expandOffice を呼ぶ", async () => {
     function officeFile(name: string): IntakeFile {
-      return { file: new File(["dummy"], name, { type: "" }), path: name };
+      return intakeFileFrom(new File(["dummy"], name, { type: "" }), name);
     }
     const files = [officeFile("slides.pptx")];
     const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
@@ -229,7 +230,7 @@ describe("runIntake", () => {
 
   it("重複登録（duplicate）で isOfficeExpanded が true（展開済み）なら expandOffice を呼ばない", async () => {
     function officeFile(name: string): IntakeFile {
-      return { file: new File(["dummy"], name, { type: "" }), path: name };
+      return intakeFileFrom(new File(["dummy"], name, { type: "" }), name);
     }
     const files = [officeFile("slides.pptx")];
     const uploadAsset = vi.fn(async (file: File) => ({ fileId: `id-${file.name}`, duplicate: true }));
@@ -245,7 +246,7 @@ describe("runIntake", () => {
 
   it("expandOffice が throw しても取り込みは継続する", async () => {
     function officeFile(name: string): IntakeFile {
-      return { file: new File(["dummy"], name, { type: "" }), path: name };
+      return intakeFileFrom(new File(["dummy"], name, { type: "" }), name);
     }
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const files = [officeFile("slides.pptx")];
@@ -265,7 +266,7 @@ describe("runIntake", () => {
 
   it("フォルダの引き継ぎ: 既にフォルダを持つ登録済みの素材には setAssetFolder を呼ばない", async () => {
     function file(path: string): IntakeFile {
-      return { file: new File(["dummy"], path.split("/").pop()!), path };
+      return intakeFileFrom(new File(["dummy"], path.split("/").pop()!), path);
     }
     const files = [file("Vault/研究/fig.png")];
     const setAssetFolder = vi.fn();
@@ -284,7 +285,7 @@ describe("runIntake", () => {
   it("ocrTargets: 新規登録した画像は積み、PDF は積まない", async () => {
     const files = [pdfFile("doc.pdf")];
     function imageFile(name: string): IntakeFile {
-      return { file: new File(["dummy"], name, { type: "image/png" }), path: name };
+      return intakeFileFrom(new File(["dummy"], name, { type: "image/png" }), name);
     }
     const uploadAsset = vi.fn(async (file: File) => ({
       fileId: `id-${file.name}`,
@@ -309,7 +310,7 @@ describe("runIntake", () => {
 
   it("ocrTargets: 既存（duplicate）でも ocrText が無ければ積む。あれば積まない", async () => {
     function imageFile(name: string): IntakeFile {
-      return { file: new File(["dummy"], name, { type: "image/png" }), path: name };
+      return intakeFileFrom(new File(["dummy"], name, { type: "image/png" }), name);
     }
     const uploadAsset = vi.fn(async (file: File) => ({
       fileId: `id-${file.name}`,
@@ -391,6 +392,88 @@ describe("runIntake の堅牢性", () => {
   });
 });
 
+describe("runIntake の共有ファイルキャッシュ（getFile の二重呼び出し防止）", () => {
+  it("Markdown が参照する画像は resolveImage 相当と materials ループの両方から触れても getFile は 1 回だけ", async () => {
+    const imageGetFile = vi.fn(async () => new File(["img"], "fig.png", { type: "image/png" }));
+    const imageFile: IntakeFile = {
+      path: "fig.png",
+      name: "fig.png",
+      size: 3,
+      type: "image/png",
+      getFile: imageGetFile,
+    };
+    const md = mdFile("note.md");
+
+    // importMarkdown 実装内で「本文の埋め込み画像を解決する」動きを、
+    // ctx.readFile(imageFile) の呼び出しで模す（実際の resolveImage も
+    // 内部で ctx.readFile を経由するようになった）
+    const importMarkdown = vi.fn(
+      async (files: IntakeFile[], onProgress: (p: IntakeProgress) => void, ctx): Promise<MarkdownImportResult> => {
+        await ctx.readFile(imageFile);
+        onProgress({ done: 1, total: files.length, current: files[0].name, failed: [] });
+        return {
+          created: 1,
+          existing: 0,
+          linksResolved: 1,
+          linksUnresolved: 0,
+          failed: [],
+          lastNewId: "note-0",
+          createdIds: ["note-0"],
+        };
+      },
+    );
+    const uploadAsset = vi.fn(async () => ({ fileId: "asset-1" }));
+    const deps: IntakeDeps = { importMarkdown, uploadAsset };
+
+    const outcome = await runIntake([md, imageFile], deps, () => {});
+
+    // classify で imageFile は materials 側にも分類され、materials ループでも
+    // 読まれるはずだが、共有キャッシュにより getFile 自体は 1 回しか起きない
+    expect(imageGetFile).toHaveBeenCalledTimes(1);
+    expect(outcome.materials).toBe(1);
+    expect(uploadAsset).toHaveBeenCalledTimes(1);
+  });
+
+  it("materials ループで処理し終えたファイルはキャッシュから解放され、同じ IntakeFile が再度出てくれば getFile を再度呼ぶ", async () => {
+    const imageGetFile = vi.fn(async () => new File(["img"], "fig.png", { type: "image/png" }));
+    const imageFile: IntakeFile = {
+      path: "fig.png",
+      name: "fig.png",
+      size: 3,
+      type: "image/png",
+      getFile: imageGetFile,
+    };
+    const md = mdFile("note.md");
+
+    const importMarkdown = vi.fn(
+      async (files: IntakeFile[], onProgress: (p: IntakeProgress) => void, ctx): Promise<MarkdownImportResult> => {
+        await ctx.readFile(imageFile);
+        onProgress({ done: 1, total: files.length, current: files[0].name, failed: [] });
+        return {
+          created: 1,
+          existing: 0,
+          linksResolved: 1,
+          linksUnresolved: 0,
+          failed: [],
+          lastNewId: "note-0",
+          createdIds: ["note-0"],
+        };
+      },
+    );
+    const uploadAsset = vi.fn(async () => ({ fileId: "asset-1" }));
+    const deps: IntakeDeps = { importMarkdown, uploadAsset };
+
+    // classify はファイルを機械的に振り分けるだけで dedupe しないため、
+    // 同じ IntakeFile オブジェクトが materials に 2 回並ぶ状況を意図的に作る。
+    // 1 回目の処理後にキャッシュが解放されていれば、2 回目は getFile を
+    // 呼び直すはず（解放していなければ、ここも 1 回のままになってしまう）
+    const outcome = await runIntake([md, imageFile, imageFile], deps, () => {});
+
+    expect(imageGetFile).toHaveBeenCalledTimes(2);
+    expect(outcome.materials).toBe(2);
+  });
+});
+
 describe("mergeOutcome", () => {
   it("notes/materials/materialsExisting/links/skipped を加算し、skippedByExt はキーごとに加算、failed は連結、lastNewId は後勝ち", () => {
     const a: IntakeOutcome = {
@@ -462,14 +545,14 @@ describe("mergeOutcome", () => {
 
 describe("runIntake の Office 展開（同じ取り込みの中に同じファイルが 2 つ）", () => {
   function officeFile(name: string): IntakeFile {
-    return {
-      file: new File(["PK"], name, {
+    return intakeFileFrom(
+      new File(["PK"], name, {
         type: name.endsWith(".pptx")
           ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
           : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       }),
-      path: name,
-    };
+      name,
+    );
   }
 
   it("1 つ目の展開が済んだら 2 つ目は展開しない（判定は毎回最新を読む前提）", async () => {
@@ -507,7 +590,7 @@ describe("runIntake の Office 展開（同じ取り込みの中に同じファ�
 
 describe("runIntake の素材フォルダ（登録済みの扱い）", () => {
   function imgFile(path: string): IntakeFile {
-    return { file: new File(["x"], path.split("/").pop() ?? path, { type: "image/png" }), path };
+    return intakeFileFrom(new File(["x"], path.split("/").pop() ?? path, { type: "image/png" }), path);
   }
 
   it("登録済みでもフォルダが無ければ付ける（ノートが参照する画像が先に登録されるケース）", async () => {

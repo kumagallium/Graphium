@@ -1,6 +1,7 @@
 // Graphium デスクトップアプリのコアライブラリ
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -1661,6 +1662,193 @@ fn inbox_discard(root: String, name: String) -> Result<(), String> {
     fs::remove_file(&path).map_err(|e| e.to_string())
 }
 
+// --- ネイティブフォルダ走査（webkitdirectory の NAS 越し低速化を回避） ---
+//
+// `<input webkitdirectory>` は選択したフォルダ配下の全ファイルに対して
+// WebKit がエイリアス判定（getattrlist）を行うため、NAS 越しのフォルダでは
+// 数千ファイルで数分かかるほど極端に遅くなる。ここでは Rust 側で
+// fs::read_dir を直接叩いて回避する。
+
+/// scan_directory の走査上限件数。
+/// 上限を設けないと、NAS 越しの巨大フォルダを誤って選択したときに走査が
+/// 終わらず UI が固まって見える。50,000 は一般的な取り込み対象（数千〜1万件
+/// 程度のフォルダ）を十分に超える値で、それ以上は明示的に絞り込んでもらう想定。
+const SCAN_MAX_FILES: usize = 50_000;
+
+/// 許可リストに溜めるパスの上限。フォルダを選び直しても前回分をすぐには
+/// 捨てられない（取り込みが裏で続いている）ので、数回分は残せる大きさにしつつ、
+/// 際限なく増えないようここで頭を打つ。
+const SCAN_ALLOWLIST_MAX: usize = SCAN_MAX_FILES * 4;
+
+/// scan_directory の結果 1 件。TS 側と 1:1 対応する（camelCase で送る。
+/// 既存の InboxItem と同じ流儀）。
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedFile {
+    /// 絶対パス（canonicalize 済み）。read_scanned_file にはこの値をそのまま渡す。
+    pub path: String,
+    /// root からの相対パス。区切りは OS に依らず "/" に統一する。
+    pub relative_path: String,
+    /// ファイル名（パスの最後の要素）。
+    pub name: String,
+    /// バイトサイズ。
+    pub size: u64,
+}
+
+/// scan_directory の戻り値。
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanResult {
+    pub files: Vec<ScannedFile>,
+    /// SCAN_MAX_FILES に達して途中で打ち切った場合 true。
+    pub truncated: bool,
+}
+
+/// read_scanned_file が読み込みを許可する絶対パスの集合。
+///
+/// 「フォルダを走査して選ばせる」機能上、read 側が任意パスを受け付けると
+/// 実質的な任意ファイル読み込み口になってしまう。scan_directory が実際に
+/// 見つけたパスだけを許可リストに載せ、read_scanned_file はそこに載っている
+/// パスしか読まない。新しい scan_directory が呼ばれたら前回分は破棄して
+/// 丸ごと入れ替える（溜め込まない）。
+#[derive(Default)]
+struct ScanAllowlistState(Mutex<HashSet<PathBuf>>);
+
+/// root 配下を再帰的に走査してファイル一覧を集める（同期本体）。
+/// ディレクトリは対象外、シンボリックリンクは辿らない。読めないディレクトリは
+/// 読み飛ばし、全体は失敗させない。
+fn scan_directory_sync(root: String, app: &tauri::AppHandle) -> Result<ScanResult, String> {
+    // canonicalize してシンボリックリンク解決後の絶対パスに揃える。
+    // 許可リスト（read_scanned_file 側）の照合基準もここに合わせる。
+    let root_canonical = PathBuf::from(&root)
+        .canonicalize()
+        .map_err(|e| format!("フォルダを開けません: {e}"))?;
+
+    let mut files: Vec<ScannedFile> = Vec::new();
+    let mut truncated = false;
+    // 再帰は明示キューで行う（深いフォルダ構造でもスタックオーバーフローしない）。
+    //
+    // 深さ優先ではなく幅優先にしてある。上限に達したら打ち切る以上どこかは切れるが、
+    // 深さ優先だと read_dir の列挙順（ファイルシステム依存で並び順の保証がない）に
+    // 従って 1 つのサブフォルダへ潜り込むため、そこだけで上限を使い切ると
+    // 同じ階層に並んだ他のフォルダが 1 件も拾われないまま終わる。
+    // 幅優先なら浅い階層から均等に埋まり、「選んだフォルダの直下が丸ごと無い」
+    // という結果にはならない。
+    let mut queue = std::collections::VecDeque::from([root_canonical.clone()]);
+
+    'walk: while let Some(dir) = queue.pop_front() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            // 権限エラー等で読めないディレクトリは読み飛ばす（全体を失敗させない）。
+            Err(_) => continue,
+        };
+        for entry in entries {
+            let Ok(entry) = entry else { continue };
+            let path = entry.path();
+            // symlink_metadata はリンク自体の情報を返す（辿らない）。
+            // シンボリックリンクはループの恐れがあるため対象外にする。
+            let Ok(meta) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if meta.is_symlink() {
+                continue;
+            }
+            if meta.is_dir() {
+                queue.push_back(path);
+                continue;
+            }
+            if !meta.is_file() {
+                continue;
+            }
+            if files.len() >= SCAN_MAX_FILES {
+                truncated = true;
+                break 'walk;
+            }
+            let relative_path = path
+                .strip_prefix(&root_canonical)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            files.push(ScannedFile {
+                path: path.to_string_lossy().to_string(),
+                relative_path,
+                name,
+                size: meta.len(),
+            });
+        }
+    }
+
+    // 今回の走査結果を許可リストに足す。入れ替えではなく追加なのは、
+    // 走査のあと実際にファイルを読むのは取り込みループが 1 件ずつ進んだときで、
+    // 取り込みはモーダルを閉じても裏で走り続けるため（set_background_work_active）。
+    // その最中に別のフォルダを選び直した時点で前回分を捨てると、まだ読んでいない
+    // ファイルが軒並み「許可されていないパス」で失敗する。
+    // 際限なく溜めないよう、上限を超えたら一度空にしてから入れ直す。
+    let allowed: HashSet<PathBuf> = files.iter().map(|f| PathBuf::from(&f.path)).collect();
+    let state = app.state::<ScanAllowlistState>();
+    let mut guard = state.0.lock().unwrap();
+    if guard.len() + allowed.len() > SCAN_ALLOWLIST_MAX {
+        guard.clear();
+    }
+    guard.extend(allowed);
+    drop(guard);
+
+    Ok(ScanResult { files, truncated })
+}
+
+/// 任意フォルダを再帰列挙する（webkitdirectory 代替）。
+/// NAS 越しだと I/O 待ちが支配的で数秒〜数十秒かかりうるため、save_media_file 等と
+/// 同様に spawn_blocking でメインスレッドから逃がす。
+#[tauri::command]
+async fn scan_directory(app: tauri::AppHandle, root: String) -> Result<ScanResult, String> {
+    tauri::async_runtime::spawn_blocking(move || scan_directory_sync(root, &app))
+        .await
+        .map_err(|e| format!("フォルダ走査タスク失敗: {e}"))?
+}
+
+/// scan_directory が登録した許可リストに載っているパスのみ読み込んで返す。
+/// 登録外のパス・`..` を含む相対解決などで許可リストの実体と一致しないパスは拒否する。
+///
+/// 中身は Base64 ではなく `tauri::ipc::Response` の生バイトで返す。
+/// read_media_file は Base64 を返す既存流儀だが、あちらが扱うのは自前の
+/// メディアフォルダの中身なのに対し、こちらはユーザーが選んだフォルダを
+/// 丸ごと列挙した結果を読む。数百 MB の動画が混ざる確率が段違いに高く、
+/// Base64 だと Rust 側で元データ＋約 1.33 倍の文字列、WebView 側でも
+/// デコード前後のコピーが同時に乗る（サムネイル 60 枚で WebView が
+/// +700MB になった実測が read_media_file 側のコメントに残っている）。
+/// 生バイトならその往復が丸ごと消える。
+#[tauri::command]
+async fn read_scanned_file(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // 許可リスト側と同じ基準（canonicalize 後の絶対パス）で照合する。
+        let canonical = PathBuf::from(&path)
+            .canonicalize()
+            .map_err(|e| format!("ファイルを開けません: {e}"))?;
+        let allowed = {
+            let state = app.state::<ScanAllowlistState>();
+            let guard = state.0.lock().unwrap();
+            guard.contains(&canonical)
+        };
+        if !allowed {
+            return Err(
+                "許可されていないパスです（先に scan_directory で走査してください）"
+                    .to_string(),
+            );
+        }
+        let bytes = fs::read(&canonical).map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
+    .map_err(|e| format!("ファイル読み取りタスク失敗: {e}"))?
+}
+
 /// "sha256:<64 hex>" のチェック。
 fn validate_hash(hash: &str) -> Result<(), String> {
     let prefix = "sha256:";
@@ -2175,6 +2363,8 @@ pub fn run() {
             inbox_read,
             inbox_mark_imported,
             inbox_discard,
+            scan_directory,
+            read_scanned_file,
             app_ready,
             shutdown_ack,
             kill_pid,
@@ -2186,6 +2376,7 @@ pub fn run() {
             stop_native_sidecar,
         ])
         .manage(NativeSidecarState::default())
+        .manage(ScanAllowlistState::default())
         .setup(|app| {
             let _ = BOOT_AT.set(std::time::Instant::now());
             // ウィンドウのサイズ・位置を前回終了時の状態に復元する（デスクトップのみ）。

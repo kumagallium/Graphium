@@ -11,6 +11,11 @@
 
 import { type IntakeFile, toIntakeFiles } from "./types";
 
+/** 既に手元にある File 1 件を IntakeFile に包む（getFile は同じ参照を返すだけ） */
+function fileToIntakeFile(file: File, path: string): IntakeFile {
+  return { path, name: file.name, size: file.size, type: file.type, getFile: async () => file };
+}
+
 // lib.dom.d.ts に無い File System Entries API の最小限の型
 interface FileSystemEntryLike {
   isFile: boolean;
@@ -64,7 +69,7 @@ async function walkEntry(entry: FileSystemEntryLike, out: IntakeFile[]): Promise
     const file = await entryToFile(entry as FileSystemFileEntryLike);
     // fullPath は "/foo/bar.md" 形式。先頭の "/" を落として相対パスにする
     const path = entry.fullPath.replace(/^\/+/, "");
-    out.push({ file, path });
+    out.push(fileToIntakeFile(file, path));
     return;
   }
   if (entry.isDirectory) {
@@ -102,7 +107,7 @@ async function collectViaItems(items: DataTransferItem[]): Promise<IntakeFile[] 
       const file = item.getAsFile();
       if (file) {
         collectedAny = true;
-        out.push({ file, path: file.name });
+        out.push(fileToIntakeFile(file, file.name));
       }
     }
   }

@@ -3,9 +3,10 @@
 import { describe, it, expect } from "vitest";
 import { commonRootOf, folderOf } from "./folders";
 import type { IntakeFile } from "./types";
+import { intakeFileFrom } from "./test-helpers";
 
 function f(path: string): IntakeFile {
-  return { file: new File(["dummy"], path.split("/").pop()!), path };
+  return intakeFileFrom(new File(["dummy"], path.split("/").pop()!), path);
 }
 
 describe("commonRootOf", () => {

@@ -5,9 +5,10 @@
 import { describe, it, expect } from "vitest";
 import { classifyIntakeFiles } from "./classify";
 import type { IntakeFile } from "./types";
+import { intakeFileFrom } from "./test-helpers";
 
 function intakeFile(name: string, path: string, type: string): IntakeFile {
-  return { file: new File(["dummy"], name, { type }), path };
+  return intakeFileFrom(new File(["dummy"], name, { type }), path);
 }
 
 describe("classifyIntakeFiles", () => {

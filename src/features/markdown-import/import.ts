@@ -226,7 +226,9 @@ export function applyWikiLinkResolution(
   return { updates, resolvedCount, unresolvedCount };
 }
 
-export function isMarkdownFile(file: File): boolean {
+// File だけでなく IntakeFile（実体を遅延取得する形）でも name さえあれば判定できるよう、
+// 名前だけを持つ最小限の形を受け付ける
+export function isMarkdownFile(file: { name: string }): boolean {
   return /\.(md|markdown)$/i.test(file.name);
 }
 
