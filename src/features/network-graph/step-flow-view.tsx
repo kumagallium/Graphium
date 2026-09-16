@@ -43,10 +43,11 @@ import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type F
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
-import { FlowStepPanel, type FlowSelection, type StepPanelData } from "./flow-attribute-table";
+import { FlowStepPanel, type FlowSelection, type SectionKind, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
+import { plannedSourceId } from "./planned-edge-source";
 import { nextLayoutRequest } from "./step-flow-layout-gate";
 import { seedUnplacedFlowNodes, useGraphLayout } from "./use-graph-layout";
 import { ResizeHandle } from "../../components/ResizeHandle";
@@ -172,6 +173,8 @@ export type StepFlowViewProps = {
   variant?: "editor" | "preview";
   /** 選択の裏にある step の中身（全テーブル + 本文 span 由来）を読む */
   getPanelFor?: (selection: FlowSelection) => StepPanelData | null;
+  /** 属性パネルに描くセクション。既定は 4 種すべて（計画ノートの工程パネルは attribute だけ） */
+  panelSections?: SectionKind[];
   onSetCell?: (blockId: string, rowIndex: number, colIndex: number, value: string) => void;
   /** 画像セルから画像だけを外す（テキスト・行 ID は残す） */
   onRemoveCellImage?: (blockId: string, rowIndex: number, colIndex: number) => void;
@@ -288,6 +291,7 @@ function StepFlowCanvas({
   layoutScope = null,
   variant = "editor",
   getPanelFor,
+  panelSections,
   onSetCell,
   onRemoveCellImage,
   onRenameColumn,
@@ -746,11 +750,15 @@ function StepFlowCanvas({
       const targetStep = g.steps.find((s) => s.id === conn.target);
       if (!targetStep || targetStep.externalOrigin) return;
       if (targetStep.noteRef) {
-        // 予定の線: connectNoteRefs が有効な工程フローの step → step だけ許す。
-        // entity → noteRef（材料を工程ノートに渡す）は意味を持たないため不可
-        if (!connectNoteRefs || sourceEntity) return;
-        if (!isEditableStep(g, conn.source, true)) return;
-        const res = onConnectSteps?.(conn.source, conn.target);
+        // 予定の線: connectNoteRefs が有効な工程フローでだけ引ける。
+        // アウトプットのポートから引いたときは、その出力を出した工程からの線として
+        // 扱う（実行の線はアウトプット起点で描かれるので、掴める所を揃える）。
+        // 予定はノート（工程）の粒度なので、どの出力だったかは持たない
+        if (!connectNoteRefs) return;
+        const source = plannedSourceId(g.edges, conn.source, sourceEntity);
+        if (!source || source === conn.target) return;
+        if (!isEditableStep(g, source, true)) return;
+        const res = onConnectSteps?.(source, conn.target);
         if (res && res.error) showConnectError(res.error);
         return;
       }
@@ -788,15 +796,22 @@ function StepFlowCanvas({
       // 受け側は step のみ（entity への接続 = 生成関係はドキュメント側で書く）
       const targetStep = g.steps.find((s) => s.id === conn.target);
       if (!targetStep || targetStep.externalOrigin) return false;
-      const sourceIsEntity = g.entities.some((e) => e.id === conn.source);
+      const sourceEntity = g.entities.find((e) => e.id === conn.source);
+      const sourceIsEntity = !!sourceEntity;
+      // 既に同じ線があるかは「読み替えたあとの始点」で見る。アウトプット起点のまま
+      // 数えると、同じ工程どうしの予定を 2 本目として通してしまう
+      let effectiveSource = conn.source;
       if (targetStep.noteRef) {
-        // 予定の線: connectNoteRefs が有効な工程フローの step → step だけ許す
-        if (!connectNoteRefs || sourceIsEntity) return false;
-        if (!isEditableStep(g, conn.source, true)) return false;
+        // 予定の線。アウトプット起点は生成元の工程に読み替えて判定する（handleConnect と同じ規則）
+        if (!connectNoteRefs) return false;
+        const source = plannedSourceId(g.edges, conn.source, sourceEntity);
+        if (!source || source === conn.target) return false;
+        if (!isEditableStep(g, source, true)) return false;
+        effectiveSource = source;
       } else if (!sourceIsEntity && !isEditableStep(g, conn.source)) {
         return false;
       }
-      return !edges.some((e) => e.source === conn.source && e.target === conn.target);
+      return !edges.some((e) => e.source === effectiveSource && e.target === conn.target);
     },
     [edges, connectNoteRefs],
   );
@@ -830,6 +845,7 @@ function StepFlowCanvas({
     <FlowStepPanel
       selection={selection}
       data={getPanelFor?.(selection) ?? null}
+      sections={panelSections}
       onSetCell={onSetCell}
       onRemoveCellImage={onRemoveCellImage}
       onRenameColumn={onRenameColumn}

@@ -15,9 +15,11 @@ type ModalProps = {
   /** 閉じるコールバック（Escape キー・オーバーレイクリックでも呼ばれる） */
   onClose: () => void;
   children: React.ReactNode;
+  /** コンテンツパネルに足すクラス。中身で大きさが変わると困るモーダル（タブ切替など）はここで寸法を固定する */
+  className?: string;
 };
 
-function Modal({ open, onClose, children }: ModalProps) {
+function Modal({ open, onClose, children, className }: ModalProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -44,7 +46,12 @@ function Modal({ open, onClose, children }: ModalProps) {
         onClick={onClose}
       />
       {/* コンテンツ */}
-      <div className="relative bg-background border border-border rounded-xl shadow-lg max-h-[85dvh] overflow-y-auto">
+      <div
+        className={cn(
+          "relative bg-background border border-border rounded-xl shadow-lg max-h-[85dvh] overflow-y-auto",
+          className,
+        )}
+      >
         {children}
       </div>
     </div>,

@@ -322,6 +322,12 @@ export type TableData = {
    * セル値は文字列なので、画像の有無はここで別に持つ（表示だけに使う）
    */
   cellImages?: Record<string, string>;
+  /**
+   * 編集させない列（0 始まり）。計画ノートの工程パネルで、行とノートの紐づけを
+   * 持つ note-link 列に使う — ここを書き換えると noteLinks のキー（＝行名）から
+   * 外れて、行が「未作成」に落ちてしまう
+   */
+  readonlyColumns?: number[];
 };
 
 function findTableBlock(editor: any, tableBlockId: string): any | null {
