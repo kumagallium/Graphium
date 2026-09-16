@@ -54,6 +54,10 @@ export {
 } from "./sampling";
 export { wikiLog } from "./wiki-log";
 export type { WikiLogEntry, WikiLogEventType } from "./wiki-log";
+export {
+  saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
+  type LintBadgeSummary,
+} from "./wiki-lint-badge";
 export { runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit } from "./topic-stage";
 export type {
   TopicStageClaimInput, TopicStageResult, TopicStageDeps,

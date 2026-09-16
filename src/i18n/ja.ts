@@ -140,6 +140,7 @@ export const ja: Record<string, string> = {
   "sidebar.wikiLogHint": "ナレッジの変更履歴と生成元",
   "sidebar.wikiLint": "点検",
   "sidebar.wikiLintHint": "ナレッジの整合性・問題を検出",
+  "sidebar.wikiLintNeedsAttention": "手当ての要る項目が {count} 件あります",
 
   // ── エディタ ──
   "editor.titlePlaceholder": "ノートのタイトル",

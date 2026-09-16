@@ -140,6 +140,7 @@ export const en: Record<string, string> = {
   "sidebar.wikiLogHint": "Change history and sources of your knowledge",
   "sidebar.wikiLint": "Health",
   "sidebar.wikiLintHint": "Detect consistency issues in your knowledge",
+  "sidebar.wikiLintNeedsAttention": "{count} items need a look",
 
   // ── エディタ ──
   "editor.titlePlaceholder": "Note title",

@@ -125,6 +125,11 @@ export type FileSidebarProps = {
   onShowWikiLint?: () => void;
   /** Log/Lint がアクティブか */
   activeWikiView?: "log" | "lint" | null;
+  /**
+   * 点検の「見てほしいことがある」印。undefined = 何も出さない（0 件、または
+   * 前回の点検結果を既に開いて確認済み）。hasError のときだけ強めのセマンティック色を使う。
+   */
+  wikiLintBadge?: { count: number; hasError: boolean };
   /** Skill 件数 */
   skillCount?: number;
   /** Skill リスト表示 */
@@ -241,6 +246,7 @@ export function FileSidebar({
   aiAvailable = true,
   onShowWikiLog,
   onShowWikiLint,
+  wikiLintBadge,
   onShowProcessGallery,
   processGalleryActive,
   processCount = 0,
@@ -671,7 +677,11 @@ export function FileSidebar({
                 {onShowWikiLint && (
                   <button
                     onClick={onShowWikiLint}
-                    title={`${t("sidebar.wikiLint")} — ${t("sidebar.wikiLintHint")}`}
+                    title={
+                      wikiLintBadge
+                        ? `${t("sidebar.wikiLint")} — ${t("sidebar.wikiLintNeedsAttention", { count: String(wikiLintBadge.count) })}`
+                        : `${t("sidebar.wikiLint")} — ${t("sidebar.wikiLintHint")}`
+                    }
                     aria-label={t("sidebar.wikiLint")}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
                       activeWikiView === "lint"
@@ -681,6 +691,11 @@ export function FileSidebar({
                   >
                     <ShieldCheck size={12} />
                     <span>{t("sidebar.wikiLint")}</span>
+                    {wikiLintBadge && wikiLintBadge.count > 0 && (
+                      <span className={`text-xs ${wikiLintBadge.hasError ? "text-error" : "text-muted-foreground"}`}>
+                        {wikiLintBadge.count}
+                      </span>
+                    )}
                   </button>
                 )}
               </div>

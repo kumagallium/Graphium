@@ -276,7 +276,7 @@ import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, getActiveNotes, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
-import type { WikiSnapshot } from "./server/services/wiki-linter";
+import type { WikiSnapshot, LintIssue } from "./server/services/wiki-linter";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
@@ -316,6 +316,8 @@ import {
   buildNoteIndex,
   // 操作ログ
   wikiLog,
+  // 点検の「見てほしいことがある」印
+  saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
   // Topic（話題）
   composeTopicBody, rebuildTopicDocument, extractTopicOneLiner,
   type TopicComposeClaim,
@@ -7356,6 +7358,24 @@ export function NoteApp() {
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [lintReport, setLintReport] = useState<import("./server/services/wiki-linter").LintReport | null>(null);
   const [lintLoading, setLintLoading] = useState(false);
+  // 点検の「見てほしいことがある」印（サイドバーの点検ボタンに出す件数バッジ）。
+  // localStorage（wiki-lint-badge）の要約から初期化し、点検完了/開いた時点で更新する。
+  const [lintBadgeState, setLintBadgeState] = useState(() => getLintBadgeState());
+  // 点検完了後に呼ぶ: レポートの issues（自動アーカイブ済みを除いた残り）から
+  // 要約を作って永続化し、印の state も更新する。0 件のときも「見つからなかった」を
+  // 保存して古い印を消す（前回は溜まっていたが今回はクリーンだった、というケース）。
+  const applyLintBadgeFromReport = useCallback(
+    (report: import("./server/services/wiki-linter").LintReport) => {
+      const summary = {
+        lastLintAt: report.analyzedAt,
+        needsAttentionCount: report.issues.length,
+        hasError: report.issues.some((i) => i.severity === "error"),
+      };
+      saveLintBadgeSummary(summary);
+      setLintBadgeState((prev) => ({ summary, lastOpenedAt: prev.lastOpenedAt }));
+    },
+    [],
+  );
   // メモ挿入リクエスト（メモギャラリー → エディタ）
   const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
   // 引用は capture.handleCreateCapture でメモ化する単純フローに変更したため、
@@ -9362,6 +9382,10 @@ export function NoteApp() {
         const useLlm = snapshots.length >= 5;
         const report = await lintWikis(snapshots, getLocale(), !useLlm, signal);
         const issues = report.issues;
+        // 印（サイドバーの点検バッジ）は自動手当ての後に確定させる。ここで数えると
+        // 下の orphan 自動リンク・redundant 自動マージで直った分まで「手当てが要る」に
+        // 数えてしまい、開いても何も残っていないのにバッジが点く
+        const autoFixed = new Set<LintIssue>();
 
         if (issues.length > 0) {
           // contradiction はトーストで通知（人間が判断、自動修正不可）
@@ -9432,6 +9456,7 @@ export function NoteApp() {
                   });
                   wikiLog.append("cross-update", [proposal.targetWikiId, wikiId],
                     `Auto-fix orphan: linked "${doc.title}" → "${proposal.targetWikiTitle}"`).catch(() => {});
+                  autoFixed.add(orphan);
                 }
               } catch { /* orphan 修正失敗は無視 */ }
             }
@@ -9518,6 +9543,7 @@ export function NoteApp() {
 
                 wikiLog.append("merge", [keepId, mergeId],
                   `Auto-merge redundant: "${mergeDoc.title}" → "${keepDoc.title}"`).catch(() => {});
+                autoFixed.add(redundant);
 
                 setIngestToast((prev) => ({
                   items: [
@@ -9548,6 +9574,11 @@ export function NoteApp() {
             wikiLog.append("lint", [], `LLM health check: ${issues.length} issue(s) found`).catch(() => {});
           }
         }
+        // 自動で直った分を除いた「人の判断が要る残り」で印を確定する
+        applyLintBadgeFromReport({
+          ...report,
+          issues: issues.filter((i) => !autoFixed.has(i)),
+        });
         updateStage(
           "lint",
           "done",
@@ -9859,6 +9890,7 @@ export function NoteApp() {
         // LLM Lint は 5 ページ以上かつ前回から 24h 以上のときのみ
         const useLlm = snapshots.length >= 5;
         const report = await lintWikis(snapshots, getLocale(), !useLlm);
+        applyLintBadgeFromReport(report);
 
         if (report.issues.length > 0) {
           // contradiction / gap はトースト通知のみ
@@ -11125,6 +11157,10 @@ export function NoteApp() {
       }
       return { summary, claim, atom, synthesis, topic };
     })(),
+    // 点検の「見てほしいことがある」印。0 件 or 既に開いていれば undefined（何も出さない）。
+    wikiLintBadge: shouldShowLintBadge(lintBadgeState.summary, lintBadgeState.lastOpenedAt)
+      ? { count: lintBadgeState.summary!.needsAttentionCount, hasError: lintBadgeState.summary!.hasError }
+      : undefined,
     // Atom（洞察）レイヤは default 昇格済み（design revision 2026-05-27）。
     // 表示可否は features.insights（設定の「洞察を使う」）が握る。
     // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
@@ -11135,7 +11171,16 @@ export function NoteApp() {
     // 「バックエンド無し = web 版」と同じ案内（デスクトップ版を入手）が数秒出る。
     aiAvailable,
     onShowWikiLog: () => { closeAllViews(); setActiveWikiView("log"); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
-    onShowWikiLint: () => { closeAllViews(); setActiveWikiView("lint"); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
+    onShowWikiLint: () => {
+      closeAllViews();
+      setActiveWikiView("lint");
+      setSidebarOpen(false);
+      router.navigate({ view: "wiki-lint" });
+      // 点検画面を開いたので印を消す（次に新しい点検が見つければ、また立つ）
+      const openedAt = new Date().toISOString();
+      markLintOpened(openedAt);
+      setLintBadgeState((prev) => ({ ...prev, lastOpenedAt: openedAt }));
+    },
     activeWikiView,
     skillCount: fm.skillMetas.size,
     onShowSkillList: () => { closeAllViews(); setShowSkillList(true); setSidebarOpen(false); },
