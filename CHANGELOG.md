@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.75.1](https://github.com/kumagallium/Graphium/compare/v0.75.0...v0.75.1) - 2026-09-16
+
+- fix(media): keep asset URLs in the active provider's scheme by @kumagallium in https://github.com/kumagallium/Graphium/pull/939
+
 ## [v0.75.0](https://github.com/kumagallium/Graphium/compare/v0.74.0...v0.75.0) - 2026-09-16
 
 - Keep scatter legend markers next to their own labels by @kumagallium in https://github.com/kumagallium/Graphium/pull/936
