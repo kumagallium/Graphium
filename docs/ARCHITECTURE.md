@@ -1193,6 +1193,35 @@ The same `src/` tree is built four different ways.
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
   matched by TypeScript wrappers
+- Folder intake does not use `<input webkitdirectory>` on the desktop.
+  WebKit builds that file list by asking the OS whether each entry is an
+  alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs
+  a network round trip per file on an AFP or SMB share. A sample taken
+  during a stalled import of a NAS folder spent 65% of the WebContent main
+  thread inside that one call, with the receptacle still showing "looking
+  through the folder" because `change` had not fired yet — the import loop
+  had not started, so `set_background_work_active` (below) was not holding
+  either. `scan_directory` instead walks the tree in Rust and returns
+  paths, names and sizes only, capped at 50,000 entries and never
+  following symlinks. The walk is breadth-first on purpose: depth-first
+  follows `read_dir`'s order, which no filesystem guarantees, so one large
+  subfolder can spend the whole cap and leave its siblings with nothing.
+  `IntakeFile.getFile()` then reads one file at a time through
+  `read_scanned_file` as the import loop reaches it, so nothing is read
+  ahead of where the progress bar sits. That command returns raw bytes
+  (`tauri::ipc::Response`) rather than the Base64 `read_media_file` uses:
+  a folder walk can turn up a few hundred MB of video, and Base64 puts the
+  original plus a ~1.33× string on both sides at once. It refuses any path
+  no `scan_directory` call has returned (both sides compare canonicalized
+  absolute paths), so it cannot be used to read arbitrary files; the
+  allowlist accumulates rather than replaces, since an import keeps
+  reading in the background after the modal is closed and picking a second
+  folder would otherwise strand the first one's unread files. The browser
+  build keeps using webkitdirectory, and
+  `src/features/intake/native-scan.ts` falls back to it if the native path
+  fails. Drag and drop is deliberately left alone: reading paths from a
+  drop would need `dragDropEnabled: true`, which takes HTML5 drag events
+  away from the webview and breaks BlockNote's block drag handle (#288)
 - Printing goes through the `print_webview` command rather than the
   webview itself: macOS' WKWebView silently drops JavaScript's
   `window.print()`, so the panel has to be opened from Rust (wry's print,
