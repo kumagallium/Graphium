@@ -989,6 +989,44 @@ export function setMediaEntryContexts(
   );
   return { ...index, updatedAt: new Date().toISOString(), media };
 }
+
+/** 素材のフォルダを、いまの値から組み直す（付ける・外す）。空なら undefined を返してよい */
+export type MediaContextsEdit = (prev: readonly string[] | undefined) => string[] | undefined;
+
+/** 素材（複数可）のフォルダを付け外しする操作。use-file-manager の editMediaContexts がこの形 */
+export type EditMediaContexts = (
+  fileIds: readonly string[],
+  edit: MediaContextsEdit,
+) => Promise<void> | void;
+
+/**
+ * 複数の素材のフォルダを、それぞれの**いまの値**から組み直す。
+ *
+ * 呼び出し側が画面に描いた時点の値を握ったまま「付けた結果」を渡すと、ピッカーで
+ * 続けて付け外ししたときに直前の変更を古い値で上書きしてしまう。だから値ではなく
+ * 編集（関数）を受け取り、最新のインデックスに当てる。
+ * 変わった件数も返すので、変化なしなら保存を省ける。
+ */
+export function editMediaEntriesContexts(
+  index: MediaIndex,
+  fileIds: readonly string[],
+  edit: MediaContextsEdit,
+): { index: MediaIndex; changed: number } {
+  const targets = new Set(fileIds);
+  let changed = 0;
+  const media = index.media.map((m) => {
+    if (!targets.has(m.fileId)) return m;
+    const next = normalizeNoteContexts(edit(m.noteContexts));
+    const prev = m.noteContexts ?? [];
+    const same =
+      prev.length === (next?.length ?? 0) && prev.every((c, i) => c === next?.[i]);
+    if (same) return m;
+    changed++;
+    return { ...m, noteContexts: next };
+  });
+  if (changed === 0) return { index, changed };
+  return { index: { ...index, updatedAt: new Date().toISOString(), media }, changed };
+}
 /**
  * フォルダの名前を変える / 消すときに、そのフォルダを持つ素材をまとめて直す。
  * `to` が null なら取り除く。親を動かしたときは子（"親/子"）も連れて動く。

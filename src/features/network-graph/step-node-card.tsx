@@ -13,7 +13,7 @@ import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyfl
 import { ExternalLink, FileText, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t } from "../../i18n";
-import type { ActivityNode, ActivityParam, FlowStep } from "./activity-graph-adapter";
+import type { ActivityNode, ActivityParam, FlowNoteRef, FlowStep } from "./activity-graph-adapter";
 import { KIND_PALETTE, selectionRing } from "./flow-palette";
 
 /** 段階（stage）を持つパラメータ列を、段階ごとの連続した塊にまとめる。
@@ -32,12 +32,14 @@ export function groupParamsByStage(params: ActivityParam[]): { stage?: number; i
 export type StepNodeData = {
   /** F 案では FlowStep（id/name/params）を渡す。旧 ActivityNode も型互換
    *  （inputs/outputs はもう表示しない — Entity は独立ノードになった） */
-  activity: Pick<FlowStep, "id" | "name" | "params" | "stageCount" | "externalOrigin"> &
+  activity: Pick<FlowStep, "id" | "name" | "params" | "stageCount" | "externalOrigin" | "noteRef"> &
     Partial<Pick<ActivityNode, "inputs" | "outputs">>;
   onRename?: (blockId: string, title: string) => void;
   onDelete?: (blockId: string) => void;
   onJump?: (blockId: string) => void;
   onOpenExternalNote?: (noteId: string) => void;
+  /** 工程ノート（noteRef）の「ノートを開く / 作る」。noteId の有無で呼び出し側が判断する */
+  onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
   /** 削除確認に出す「中身のブロック数」。押した瞬間に評価する（stale 回避） */
   getContentCount?: (blockId: string) => number;
   /**
@@ -48,6 +50,12 @@ export type StepNodeData = {
   distinguishers?: string[];
   /** ツールバーの「パラメータを表示」。オンならカードに全件を並べる */
   showParams?: boolean;
+  /**
+   * 工程ノード（noteRef）同士の接続を許す（計画ノートの工程フローで予定の線を
+   * 引く）。true のとき noteRef のハンドルも通常どおり掴める見た目・
+   * isConnectable にする
+   */
+  connectNoteRefs?: boolean;
 };
 
 export type StepFlowNode = Node<StepNodeData, "step">;
@@ -77,16 +85,35 @@ const miniBtnStyle: CSSProperties = {
   height: 18,
 };
 
+/** 工程ノード（noteRef）のハンドル: 線の端点にはなるが掴めない点 */
+const INERT_HANDLE_STYLE: React.CSSProperties = {
+  width: 7,
+  height: 7,
+  background: "var(--color-border)",
+  border: "none",
+  cursor: "default",
+  pointerEvents: "none",
+};
+
 export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   const {
     activity,
-    onRename,
-    onDelete,
-    onJump,
+    onRename: onRenameProp,
+    onDelete: onDeleteProp,
+    onJump: onJumpProp,
     onOpenExternalNote,
+    onOpenNoteRef,
     getContentCount,
   } = data;
   const external = activity.externalOrigin;
+  const noteRef = activity.noteRef;
+  // 工程ノート同士の接続を許す画面（計画ノートの工程フロー、予定の線）では、
+  // noteRef のハンドルも通常の step と同じに掴める見た目・isConnectable にする
+  const noteRefConnectable = !!noteRef && !!data.connectNoteRefs;
+  // 工程ノート由来のノードは rename / delete / 本文へ を出さない（表側で名前を変える運用）
+  const onRename = noteRef ? undefined : onRenameProp;
+  const onDelete = noteRef ? undefined : onDeleteProp;
+  const onJump = noteRef ? undefined : onJumpProp;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(activity.name);
   const [confirmCount, setConfirmCount] = useState<number | null>(null);
@@ -193,6 +220,13 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
           <ExternalLink
             size={11}
             aria-label={t("activityGraph.externalProcess")}
+            style={{ flexShrink: 0, color: ACTIVITY_TEXT }}
+          />
+        )}
+        {noteRef && (
+          <FileText
+            size={11}
+            aria-label={t("planFlow.openNote")}
             style={{ flexShrink: 0, color: ACTIVITY_TEXT }}
           />
         )}
@@ -334,6 +368,62 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         </button>
       )}
 
+      {/* 工程ノート由来のノード: 状態バッジ（未作成 / 同名衝突 / ゴミ箱 / アーカイブ）と
+          「ノートを開く / 作る」ボタン。同名衝突は解決できないためボタンを出さない */}
+      {noteRef && (
+        <div className="nodrag" style={{ padding: "0 10px 6px" }}>
+          {noteRef.state === "unlinked" && (
+            <div
+              title={t("planFlow.unlinkedRowHint")}
+              style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-tertiary)", marginBottom: 3 }}
+            >
+              {t("planFlow.unlinkedRow")}
+            </div>
+          )}
+          {noteRef.state === "duplicateName" && (
+            <div style={{ fontSize: 10, color: "var(--color-destructive)" }}>
+              {t("planFlow.duplicateNameHint")}
+            </div>
+          )}
+          {noteRef.state === "trashed" && (
+            <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>
+              {t("planFlow.trashedNote")}
+            </div>
+          )}
+          {noteRef.state === "archived" && (
+            <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>
+              {t("planFlow.archivedNote")}
+            </div>
+          )}
+          {noteRef.state !== "duplicateName" && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenNoteRef?.(noteRef, activity as FlowStep);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                width: "100%",
+                padding: "4px 10px",
+                border: `1px solid ${ACTIVITY_BLUE}`,
+                borderRadius: 6,
+                background: "transparent",
+                color: ACTIVITY_TEXT,
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              <FileText size={11} style={{ flexShrink: 0 }} />
+              {noteRef.noteId ? t("planFlow.openNote") : t("planFlow.createNote")}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 削除確認（中身がある step は 1 クリックで消さない） */}
       {selected && confirmCount !== null && (
         <div className="nodrag" style={{ padding: "0 8px 6px 10px" }}>
@@ -420,29 +510,42 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         </div>
       )}
 
-      {/* 上=入力（受け側・白抜き）、下=出力（掴んで接続・青塗り） */}
+      {/* 上=入力（受け側・白抜き）、下=出力（掴んで接続・青塗り）。
+          工程ノード（noteRef）は線の端点としてハンドルを残すが、線はこの画面では
+          引けない（線の実体は工程ノート側の手順が前の工程の出力を入力に選ぶ参照）。
+          掴めそうに見えないよう、小さな灰色の点にしてポインタも受けない
+          （外部 step は受け側にならないので上ハンドルを出さない） */}
       {!external && (
         <Handle
           type="target"
           position={Position.Top}
-          style={{
-            width: 9,
-            height: 9,
-            background: "var(--color-card)",
-            border: `2px solid ${ACTIVITY_BLUE}`,
-          }}
+          isConnectable={!noteRef || noteRefConnectable}
+          style={
+            noteRef && !noteRefConnectable
+              ? INERT_HANDLE_STYLE
+              : {
+                  width: 9,
+                  height: 9,
+                  background: "var(--color-card)",
+                  border: `2px solid ${ACTIVITY_BLUE}`,
+                }
+          }
         />
       )}
       <Handle
         type="source"
         position={Position.Bottom}
-        isConnectable={!external}
-        style={{
-          width: 11,
-          height: 11,
-          background: ACTIVITY_BLUE,
-          border: `2px solid ${ACTIVITY_BLUE}`,
-        }}
+        isConnectable={!external && (!noteRef || noteRefConnectable)}
+        style={
+          noteRef && !noteRefConnectable
+            ? INERT_HANDLE_STYLE
+            : {
+                width: 11,
+                height: 11,
+                background: ACTIVITY_BLUE,
+                border: `2px solid ${ACTIVITY_BLUE}`,
+              }
+        }
       />
     </div>
   );

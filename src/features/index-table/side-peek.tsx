@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin } from "lucide-react";
+import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
 import { summarizeWikiGrowth } from "../network-graph/growth-summary";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
@@ -31,6 +31,7 @@ import {
   aggregateNoteContexts,
   addNoteContext,
   removeNoteContext,
+  replaceNoteContext,
   normalizeNoteContexts,
 } from "../note-context/context-tags";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, sanitizeBlocksForLoad } from "../../blocks/registry";
@@ -226,8 +227,6 @@ type SidePeekProps = {
     | ((rawRenamedId: string, oldTitle: string, newTitle: string, includeWikiLabels: boolean) => void)
     | null
   >;
-  /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
-  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /**
    * `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す。
    * sourceNoteId にはこのピークが表示中のノート ID を渡して派生元を記録する。
@@ -243,6 +242,11 @@ type SidePeekProps = {
    * （reindexNoteFromDoc で常に最新化される）を常に優先してよい。
    */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
+  /**
+   * このノートを起点にローカルビュー（周辺を時系列で見る）を開く。未指定ならボタンを
+   * 出さない。wiki: プレフィックス付きの ID（Wiki ノード）は対象外。
+   */
+  onOpenLocalView?: (noteId: string) => void;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -290,8 +294,9 @@ function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
-  onNoteContextsChange, onSaved, applyMentionRenameRef, onDeleteContextEverywhere,
+  onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
+  onOpenLocalView,
 }: SidePeekProps) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。素材ピークと幅設定を共有する。
@@ -1376,6 +1381,23 @@ function SidePeekInner({
     onNavigate(noteId, docRef.current ?? undefined);
   }, [saveStatus, noteId, onNavigate]);
 
+  // ローカルビューを開くときも保存してからピークを閉じる（onNavigate と同じ順）
+  const handleOpenLocalView = useCallback(async () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    try {
+      if (saveStatus === "dirty") {
+        await doSaveRef.current();
+      }
+    } catch (err) {
+      console.error("ローカルビューを開く前の保存に失敗:", err);
+    }
+    onClose();
+    onOpenLocalView?.(noteId);
+  }, [saveStatus, noteId, onClose, onOpenLocalView]);
+
   const statusText = saveStatus === "saving" ? t("common.saving")
     : saveStatus === "dirty" ? t("common.unsaved")
     : t("common.saved");
@@ -1508,6 +1530,39 @@ function SidePeekInner({
               <polyline points="9 21 3 21 3 15" />
               <line x1="10" y1="14" x2="3" y2="21" />
             </svg>
+          </button>
+        )}
+
+        {/* ローカルビュー（周辺を時系列で見る）の入口。wiki ノードは対象外 */}
+        {onOpenLocalView && !noteId.startsWith("wiki:") && (
+          <button
+            onClick={handleOpenLocalView}
+            title={t("localView.title")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              height: 28,
+              padding: "0 8px",
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              color: "var(--color-text-tertiary)",
+              fontSize: 11,
+              whiteSpace: "nowrap",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+            }}
+          >
+            <Waypoints size={14} strokeWidth={2} />
+            {t("localView.title")}
           </button>
         )}
 
@@ -1818,9 +1873,11 @@ function SidePeekInner({
                         createLabel={(v) => t("nav.createContext", { value: v })}
                         clearLabel={t("nav.clearContexts")}
                         emptyText={t("nav.contextEmpty")}
-                        onDeleteCandidate={onDeleteContextEverywhere}
                         onAdd={(v) => applyPeekContexts(addNoteContext(peekContexts, v) ?? [])}
                         onRemove={(v) => applyPeekContexts(removeNoteContext(peekContexts, v) ?? [])}
+                        onReplace={(from, to) =>
+                          applyPeekContexts(replaceNoteContext(peekContexts, from, to) ?? [])
+                        }
                         onClear={() => applyPeekContexts([])}
                       />
                     )}

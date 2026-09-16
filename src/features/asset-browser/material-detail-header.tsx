@@ -14,6 +14,9 @@
 //     3-dot メニュー内に Knowledge / PROV / Extract / Share / Delete を集約。
 //     X 閉じるは無し（フル画面は左ナビをオーバーレイしない inline 描画なので、
 //     ESC や Minimize 経由 / サイドバーで遷移する）。
+//
+// どちらの variant も、見出し行の下にフォルダ行を置く（ノートのタイトル下と同じ形）:
+//     [(フォルダ ×)] [(ノート由来のフォルダ)] [＋ フォルダ]
 
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -35,12 +38,26 @@ import {
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { ContextBadge } from "../note-context/ContextBadge";
+import { ContextTagPicker, type ContextSuggestion } from "../note-context/ContextTagPicker";
+import {
+  addNoteContext,
+  aggregateNoteContexts,
+  removeNoteContext,
+  replaceNoteContext,
+} from "../note-context/context-tags";
 import { resolveAssetFolders, type NoteFolderLookup } from "./asset-folders";
 
 /** 参照表が渡らない文脈用（自分で付けたフォルダだけになる） */
 const EMPTY_LOOKUP: NoteFolderLookup = new Map();
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
-import type { MediaIndex, MediaIndexEntry, MediaSharedRef, MediaType } from "./media-index";
+import type {
+  EditMediaContexts,
+  MediaContextsEdit,
+  MediaIndex,
+  MediaIndexEntry,
+  MediaSharedRef,
+  MediaType,
+} from "./media-index";
 import { SharedBadge } from "./share-media-dialog";
 import { MaterialActionsMenu } from "./material-actions-menu";
 
@@ -82,6 +99,13 @@ function TypeIcon({ type, size = 14 }: { type: MediaType; size?: number }) {
 export type MaterialDetailHeaderProps = {
   /** ノート id → フォルダ。使われているノートのフォルダを導出するために使う */
   noteFolderLookup?: NoteFolderLookup;
+  /**
+   * 素材のフォルダを付け外しする。渡されたときだけフォルダ行に「＋ フォルダ」と × を出す
+   * （未登録 URL やメモのピークのように、素材として実体が無いものには渡さない）。
+   */
+  onEditFolders?: EditMediaContexts;
+  /** 「＋ フォルダ」のピッカーの候補。省略時は素材とノートのフォルダから集める */
+  folderSuggestions?: ContextSuggestion[];
   entry: MediaIndexEntry;
   onClose: () => void;
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
@@ -123,6 +147,8 @@ export type MaterialDetailHeaderProps = {
 export function MaterialDetailHeader({
   entry,
   noteFolderLookup,
+  onEditFolders,
+  folderSuggestions,
   onClose,
   onRename,
   onIngest,
@@ -185,8 +211,22 @@ export function MaterialDetailHeader({
 
   const isShared = !!entry.sharedRef;
   const usageNoteCount = new Set(entry.usedIn.map((u) => u.noteId)).size;
-  // 属するフォルダ（自分で付けたもの + 使われているノートのフォルダ）
-  const folders = resolveAssetFolders(entry, noteFolderLookup ?? EMPTY_LOOKUP);
+  // 属するフォルダ（自分で付けたもの + 使われているノートのフォルダ）。
+  // 呼び出し側は開いた時点の entry を握っているので、フォルダは最新のインデックスから読む
+  // （付け外しした直後にバッジが追従するように）
+  const liveEntry = mediaIndex?.media.find((m) => m.fileId === entry.fileId) ?? entry;
+  const folders = resolveAssetFolders(liveEntry, noteFolderLookup ?? EMPTY_LOOKUP);
+
+  // ── フォルダの付け外し ──
+  const [folderPickerPos, setFolderPickerPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    setFolderPickerPos(null);
+  }, [entry.fileId]);
+  const editFolders = (edit: MediaContextsEdit) => {
+    void onEditFolders?.([entry.fileId], edit);
+  };
 
   // 名前 + メタチップを共通レンダリング
   const renderNameBlock = () => (
@@ -228,18 +268,80 @@ export function MaterialDetailHeader({
           {t("asset.usedInCount", { count: String(usageNoteCount) })}
         </span>
       )}
-      {/* 入っているフォルダ（ノートと同じ体系）。ノート由来は薄く出し、
-          「外すならノート側」という違いを見せる */}
-      {folders.map((f) => (
-        <ContextBadge
-          key={f.value}
-          value={f.value}
-          className={f.derived ? "shrink-0 opacity-60" : "shrink-0"}
-        />
-      ))}
       {isShared && <SharedBadge />}
     </div>
   );
+
+  // フォルダ行（見出しの下）。ノートのタイトル下のフォルダ行と同じ形にそろえる。
+  // 自分で付けたフォルダは × で出せる。ノート由来は薄く出して × を付けない
+  // （出すならノートのほう、という違いを見せる）。
+  const renderFolderRow = () => {
+    if (!onEditFolders && folders.length === 0) return null;
+    return (
+      <div
+        data-material-folder-row
+        className={`flex flex-wrap items-center gap-1.5 ${titleBarMode ? "px-3 md:px-4 pb-2" : ""}`}
+        style={titleBarMode ? undefined : { padding: "0 12px 8px" }}
+      >
+        {folders.map((f) =>
+          f.derived ? (
+            <span key={f.value} className="inline-flex" title={t("asset.folderFromNote")}>
+              <ContextBadge value={f.value} className="opacity-60" />
+            </span>
+          ) : (
+            <ContextBadge
+              key={f.value}
+              value={f.value}
+              onRemove={
+                onEditFolders
+                  ? () => editFolders((prev) => removeNoteContext(prev, f.value))
+                  : undefined
+              }
+            />
+          ),
+        )}
+        {onEditFolders && (
+          <button
+            type="button"
+            onClick={(e) => {
+              if (folderPickerPos) {
+                setFolderPickerPos(null);
+                return;
+              }
+              const r = e.currentTarget.getBoundingClientRect();
+              setFolderPickerPos({ top: r.bottom + 4, left: r.left });
+            }}
+            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+            title={folders.length > 0 ? t("nav.addContext") : t("asset.foldersTooltip")}
+          >
+            ＋ {t("nav.noteContexts")}
+          </button>
+        )}
+        {onEditFolders && folderPickerPos && (
+          <ContextTagPicker
+            position={folderPickerPos}
+            onClose={() => setFolderPickerPos(null)}
+            title={t("nav.noteContexts")}
+            // チェックを付け外しできるのは自分で付けた分だけ
+            selected={folders.filter((f) => !f.derived).map((f) => f.value)}
+            suggestions={
+              folderSuggestions ??
+              aggregateNoteContexts([
+                ...(mediaIndex?.media ?? []),
+                ...[...(noteFolderLookup ?? EMPTY_LOOKUP).values()].map((v) => ({
+                  noteContexts: [...v],
+                })),
+              ])
+            }
+            onAdd={(v) => editFolders((prev) => addNoteContext(prev, v))}
+            onRemove={(v) => editFolders((prev) => removeNoteContext(prev, v))}
+            onReplace={(from, to) => editFolders((prev) => replaceNoteContext(prev, from, to))}
+            onClear={() => editFolders(() => undefined)}
+          />
+        )}
+      </div>
+    );
+  };
 
   // Knowledge 化済みバッジ（状態表示）。peek/full 共通で使う。
   // AI で生成された状態を Bot アイコンで示し、クリックで Wiki ノートへジャンプ。
@@ -295,7 +397,92 @@ export function MaterialDetailHeader({
   // ── titleBar variant ──
   if (titleBarMode) {
     return (
-      <div className="px-3 md:px-4 py-2.5 md:py-2 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
+      <div className="border-b border-border shrink-0">
+        <div className="px-3 md:px-4 py-2.5 md:py-2 flex items-center gap-2 md:gap-3">
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: 4,
+              borderRadius: 4,
+              background: TYPE_HEX[entry.type] + "18",
+              color: TYPE_HEX[entry.type],
+              flexShrink: 0,
+            }}
+          >
+            <TypeIcon type={entry.type} size={12} />
+          </span>
+          {renderNameBlock()}
+          {renderRegisterButton()}
+          {renderKnowledgeBadge()}
+          {onToggleFull && (
+            <button
+              onClick={onToggleFull}
+              title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
+              className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            >
+              {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+          )}
+          {actionsMenu}
+        </div>
+        {renderFolderRow()}
+      </div>
+    );
+  }
+
+  // ── sidePeek variant ──
+  // ナビゲーション系（閉じる / 全画面）は Note SidePeek と揃えて左側に置く。
+  // アクション系はすべて 3-dot メニューに集約し、混雑と "peek→full でボタンが消える"
+  // 感覚を解消する。Knowledge 化済みバッジだけは状態表示として peek にも残す。
+  return (
+      <div
+        style={{
+          borderBottom: "1px solid var(--color-border-subtle)",
+          background: "var(--color-surface)",
+          flexShrink: 0,
+        }}
+      >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 12px",
+        }}
+      >
+        <button
+          onClick={onClose}
+          title={t("common.close")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: 6,
+            borderRadius: 4,
+            color: "var(--color-text-secondary)",
+          }}
+          className="hover:bg-muted transition-colors"
+        >
+          <X size={14} />
+        </button>
+
+        {onToggleFull && (
+          <button
+            onClick={onToggleFull}
+            title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: 6,
+              borderRadius: 4,
+              color: "var(--color-text-secondary)",
+            }}
+            className="hover:bg-muted transition-colors"
+          >
+            {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        )}
+
         <span
           style={{
             display: "inline-flex",
@@ -309,92 +496,16 @@ export function MaterialDetailHeader({
         >
           <TypeIcon type={entry.type} size={12} />
         </span>
+
         {renderNameBlock()}
+
         {renderRegisterButton()}
+
         {renderKnowledgeBadge()}
-        {onToggleFull && (
-          <button
-            onClick={onToggleFull}
-            title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
-            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
-          >
-            {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
-        )}
+
         {actionsMenu}
       </div>
-    );
-  }
-
-  // ── sidePeek variant ──
-  // ナビゲーション系（閉じる / 全画面）は Note SidePeek と揃えて左側に置く。
-  // アクション系はすべて 3-dot メニューに集約し、混雑と "peek→full でボタンが消える"
-  // 感覚を解消する。Knowledge 化済みバッジだけは状態表示として peek にも残す。
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "8px 12px",
-        borderBottom: "1px solid var(--color-border-subtle)",
-        background: "var(--color-surface)",
-        flexShrink: 0,
-      }}
-    >
-      <button
-        onClick={onClose}
-        title={t("common.close")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          padding: 6,
-          borderRadius: 4,
-          color: "var(--color-text-secondary)",
-        }}
-        className="hover:bg-muted transition-colors"
-      >
-        <X size={14} />
-      </button>
-
-      {onToggleFull && (
-        <button
-          onClick={onToggleFull}
-          title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: 6,
-            borderRadius: 4,
-            color: "var(--color-text-secondary)",
-          }}
-          className="hover:bg-muted transition-colors"
-        >
-          {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-        </button>
-      )}
-
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          padding: 4,
-          borderRadius: 4,
-          background: TYPE_HEX[entry.type] + "18",
-          color: TYPE_HEX[entry.type],
-          flexShrink: 0,
-        }}
-      >
-        <TypeIcon type={entry.type} size={12} />
-      </span>
-
-      {renderNameBlock()}
-
-      {renderRegisterButton()}
-
-      {renderKnowledgeBadge()}
-
-      {actionsMenu}
+      {renderFolderRow()}
     </div>
   );
 }

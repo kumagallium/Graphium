@@ -97,6 +97,25 @@ export function removeNoteContext(
 }
 
 /**
+ * 付いている文脈ラベルの 1 つを別の名前に差し替えた結果を返す（イミュータブル・小文字比較）。
+ * 並び順は保つ。差し替え先が既に付いていれば 1 つに畳む。`from` が付いていなければ
+ * 何も足さない（一括で直すとき、持っていない対象に新しい名前を付けないため）。
+ *
+ * ピッカーで作ったばかりのフォルダの打ち間違いを直す用途。外す→付けるを 2 回に分けると、
+ * 呼び出し側が描画時点の値を握っている場合に 2 回目が 1 回目を上書きするので、1 回で渡す。
+ */
+export function replaceNoteContext(
+  current: readonly string[] | undefined,
+  from: string,
+  to: string,
+): string[] | undefined {
+  const fromKey = from.trim().toLowerCase();
+  const list = current ?? [];
+  if (!list.some((c) => c.trim().toLowerCase() === fromKey)) return normalizeNoteContexts(list);
+  return normalizeNoteContexts(list.map((c) => (c.trim().toLowerCase() === fromKey ? to : c)));
+}
+
+/**
  * 文脈名から安定した色を決める（名前ハッシュ）。PROV ラベル（LABEL_HEX）とは別パレット。
  * ユーザーが色を選ぶ概念は v1 では出さない（段階的開示）。HSL で彩度・明度を固定し
  * 色相だけ名前から決めることで、design.md のトーン（淡い background + 濃いテキスト）に収める。

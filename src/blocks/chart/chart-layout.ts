@@ -5,6 +5,8 @@
 // 割り付けロジックを ECharts から切り離しておくことで、DOM も無い環境で単体テストできる。
 // 呼び出し側（view 側）はここで出た矩形をそのまま grid オプションに渡すだけにする。
 
+import { CHART_LEGEND_ITEM } from "./chart-theme";
+
 /** 枠と枠の間の最小余白(px)。軸を共有しない場合、軸ラベル領域に加えて空ける */
 export const PANEL_GAP = 16;
 
@@ -102,7 +104,9 @@ export function estimateLegendRows(
   orient: "horizontal" | "vertical",
   fontSize: number,
   /** 実測の文字幅(px)。測れないときは 0 以下を返す */
-  measure?: (text: string) => number
+  measure?: (text: string) => number,
+  /** 記号枠の幅(px)。散布図だけの横並び凡例は詰める（legend-icon.ts の legendItems） */
+  itemWidth: number = CHART_LEGEND_ITEM.width
 ): number {
   if (names.length === 0) return 0;
   // 縦並びは 1 項目 1 行
@@ -119,7 +123,7 @@ export function estimateLegendRows(
     return w;
   };
   // 記号の幅 + 記号と文字の間 + 項目どうしの間（ECharts の既定 itemGap = 10）
-  const itemExtra = 50 + 5 + 10;
+  const itemExtra = itemWidth + 5 + 10;
   let rows = 1;
   let used = 0;
   for (const name of names) {

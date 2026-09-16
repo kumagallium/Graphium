@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { StorageProvider, AuthState, MediaUploadResult } from "../types";
 import type { GraphiumDocument, GraphiumFile } from "../../document-types";
 import { migrateToLatest } from "../../document-migration";
+import { bytesToBase64 } from "@/lib/base64";
 
 /** Rust 側 FileInfo の型 */
 type RustFileInfo = {
@@ -113,12 +114,8 @@ export class LocalFilesystemProvider implements StorageProvider {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
-    // Base64 エンコード
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const data = btoa(binary);
+    // 1 バイトずつ += で組み立てると数十 MB で数分止まる（src/lib/base64.ts 参照）
+    const data = bytesToBase64(bytes);
 
     await invoke("save_media_file", {
       fileId: id,

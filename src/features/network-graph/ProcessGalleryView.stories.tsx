@@ -71,6 +71,7 @@ const entry = (
     tools?: string[];
     branchFrom?: number;
     forkedFrom?: ProcessIndexEntry["forkedFrom"];
+    crossNoteLinks?: ProcessIndexEntry["crossNoteLinks"];
   } = {},
 ): ProcessIndexEntry => {
   const graph = buildGraph(noteId, stepNames, opts);
@@ -88,6 +89,7 @@ const entry = (
       branching: opts.branchFrom !== undefined,
     },
     ...(opts.forkedFrom ? { forkedFrom: opts.forkedFrom } : {}),
+    ...(opts.crossNoteLinks ? { crossNoteLinks: opts.crossNoteLinks } : {}),
   };
 };
 
@@ -108,6 +110,20 @@ const INDEX: ProcessIndex = {
       materials: ["Cu粉末", "バインダー"],
       tools: ["管状炉"],
       forkedFrom: { noteId: "n1", title: "Cu粉末の焼結実験（第1回）", forkedAt: daysAgo(6) },
+      // n1 の「焼成」の出力を、この工程の「秤量」で受け取る cross-note 参照。
+      // 全体ビュー（overview）でステップ名を結ぶ線が出るための最小データ
+      crossNoteLinks: [
+        {
+          id: "n3-cross-1",
+          sourceBlockId: "n3-s0",
+          targetBlockId: "n1-s3",
+          targetNoteId: "n1",
+          targetStepTitle: "焼成",
+          type: "informed_by",
+          layer: "prov",
+          createdBy: "human",
+        },
+      ],
     }),
     entry("n4", "前駆体の予備検討", ["溶液調製", "乾燥"], 20, { materials: ["硝酸塩", "純水"] }),
   ],
@@ -182,6 +198,18 @@ export const Empty: Story = {
     onBack: () => {},
     onNavigateNote: () => {},
     onForkProcess: async () => "forked",
+  },
+  render: Frame,
+};
+
+/** 全体ビュー（ステップ名で集約）を上に重ねた状態。ノードクリックで一覧を絞れる */
+export const WithOverview: Story = {
+  args: {
+    processIndex: INDEX,
+    onBack: () => {},
+    onNavigateNote: () => {},
+    onForkProcess: async () => "forked",
+    overview: true,
   },
   render: Frame,
 };
