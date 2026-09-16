@@ -327,3 +327,61 @@ export const OriginNotSelected: Story = {
     />
   ),
 };
+
+// ── マニュアル用（英語・パン作りの世界観）──
+// manual/public/screenshots/timeline-mode_en.png の元。計画起点で 3 段目に各工程の手順が出る
+
+const MANUAL_MODEL: LocalViewModel = {
+  origin: { noteId: "plan", title: "Sourdough trial" },
+  plans: [],
+  parent: null,
+  siblings: [{ noteId: "plan", title: "Sourdough trial", t: "2026-04-01T09:00:00.000Z", row: 0, isOrigin: true }],
+  children: {
+    kind: "notes",
+    notes: [
+      { noteId: "mill", title: "Milling", t: "2026-04-03T09:00:00.000Z", row: 0, isOrigin: false },
+      { noteId: "dough", title: "Kneading", t: "2026-04-05T09:00:00.000Z", row: 0, isOrigin: false },
+      { noteId: "bake", title: "Baking", t: "2026-04-08T09:00:00.000Z", row: 0, isOrigin: false },
+    ],
+    stepsByNote: {
+      mill: {
+        steps: [
+          { id: "m1", name: "Weigh grain", col: 0, row: 0 },
+          { id: "m2", name: "Mill", col: 1, row: 0 },
+        ],
+        edges: [{ from: "m1", to: "m2" }],
+      },
+      dough: {
+        steps: [
+          { id: "d1", name: "Mix", col: 0, row: 0 },
+          { id: "d2", name: "Bulk ferment", col: 1, row: 0 },
+          { id: "d3", name: "Shape", col: 2, row: 0 },
+        ],
+        edges: [
+          { from: "d1", to: "d2" },
+          { from: "d2", to: "d3" },
+        ],
+      },
+      bake: {
+        steps: [{ id: "b1", name: "Bake", col: 0, row: 0 }],
+        edges: [],
+      },
+    },
+  },
+  // 受け渡しの線は同じ層（起点と同じレーン）の間だけ引かれる。計画起点では出ない
+  handoffs: [],
+  truncated: false,
+};
+
+export const Manual: Story = {
+  name: "Manual (English, bread world)",
+  render: () => (
+    <LocalGraphView
+      model={MANUAL_MODEL}
+      depth={1}
+      onDepthChange={() => {}}
+      onOpenNote={() => {}}
+      originPicker={staticOriginPicker(MANUAL_MODEL.origin.title)}
+    />
+  ),
+};

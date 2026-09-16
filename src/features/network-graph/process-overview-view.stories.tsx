@@ -150,3 +150,45 @@ export const Empty: Story = {
   name: "空",
   args: { processIndex: emptyIndex },
 };
+
+// ── マニュアル用（英語・パン作りの世界観）──
+// manual/public/screenshots/operation-overview_en.png の元。分岐と合流
+
+const manualIndex = buildIndex([
+  entry({ noteId: "n-mill", graph: { steps: [flowStep("s1", "Milling")], entities: [], edges: [] } }),
+  entry({ noteId: "n-mill-2", graph: { steps: [flowStep("s1", "Milling")], entities: [], edges: [] } }),
+  entry({ noteId: "n-levain", graph: { steps: [flowStep("s2", "Levain build")], entities: [], edges: [] } }),
+  entry({
+    noteId: "n-knead",
+    graph: { steps: [flowStep("s3", "Kneading")], entities: [], edges: [] },
+    crossNoteLinks: [
+      link({ id: "l1", sourceBlockId: "s3", targetBlockId: "s1", targetNoteId: "n-mill" }),
+      link({ id: "l2", sourceBlockId: "s3", targetBlockId: "s2", targetNoteId: "n-levain" }),
+    ],
+  }),
+  entry({
+    noteId: "n-knead-2",
+    graph: { steps: [flowStep("s3", "Kneading")], entities: [], edges: [] },
+    crossNoteLinks: [link({ id: "l3", sourceBlockId: "s3", targetBlockId: "s1", targetNoteId: "n-mill-2" })],
+  }),
+  entry({
+    noteId: "n-bake",
+    graph: { steps: [flowStep("s4", "Baking")], entities: [], edges: [] },
+    crossNoteLinks: [link({ id: "l4", sourceBlockId: "s4", targetBlockId: "s3", targetNoteId: "n-knead" })],
+  }),
+  entry({
+    noteId: "n-crumb",
+    graph: { steps: [flowStep("s5", "Crumb check")], entities: [], edges: [] },
+    crossNoteLinks: [link({ id: "l5", sourceBlockId: "s5", targetBlockId: "s4", targetNoteId: "n-bake" })],
+  }),
+  entry({
+    noteId: "n-taste",
+    graph: { steps: [flowStep("s6", "Tasting")], entities: [], edges: [] },
+    crossNoteLinks: [link({ id: "l6", sourceBlockId: "s6", targetBlockId: "s4", targetNoteId: "n-bake" })],
+  }),
+]);
+
+export const Manual: Story = {
+  name: "Manual (English, bread world)",
+  args: { processIndex: manualIndex },
+};

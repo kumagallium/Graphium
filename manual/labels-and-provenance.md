@@ -96,6 +96,8 @@ In a Plan note (see [Folders](/notes-and-editor#folders)) <Badge type="tip" text
 
 The Operations graph can also carry **Planned** connections <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a gray dotted line drawn from the plan's **Input from** column (see [The index table](/notes-and-editor#the-index-table)), independent of whether any operation note actually references the other's output yet. Drag a port between two operation nodes to write the source operation's row name into the target row's **Input from** cell; select a planned line and choose **Remove planned line** to clear it. When an actual cross-note reference matches a planned one, the line is shown **As planned** (solid green); an actual reference that has no matching plan is **Unplanned** (solid amber). A plan with no planned lines at all shows no marks. Planned lines are a planning aid only — they never appear in the PROV-DM output.
 
+
+![The Operations flow of a plan note: green As planned lines, an amber Unplanned line, and gray dotted Planned lines](/screenshots/plan-flow-planned_en.png)
 ![A note with its provenance graph in the right panel](/screenshots/editor-with-graph_en.png)
 
 What you're looking at:
@@ -180,6 +182,8 @@ Labels and links also feed graphs that span your whole workspace:
 - **Where to open it from** — switch to **Timeline** in the Global Graph header and pick an origin note from the search box, or jump in already anchored to a note: the note's right panel **Graph** tab, on a plan note the **Operations** row of the **Steps** panel, or the side peek's **Timeline around this note** button (the preview that opens from the note list or from a node in the Global Graph). When you arrive from a note, a **Back to the note** button appears in the header so you can return to it.
 - **Origin and depth** — the header's **Origin** field is a search-as-you-type select over note titles. **Depth** (1 to 3) only matters for a note with no plan: how many hops of references to follow when collecting the same-layer lane.
 
+
+![Timeline mode with a plan as the origin: the plan, its operations, and each operation's steps in three lanes](/screenshots/timeline-mode_en.png)
 ## Arranging graphs by hand <Badge type="tip" text="Added in v0.43.0 (2026-08-25)" /> {#arranging-graphs-by-hand}
 
 Every graph lays itself out automatically — and until this version, kept doing so. Now the arrangement is yours to keep. This works the same way in every graph in the app: the **Steps** panel, the **Graph** tab, the **Global Graph**, and a material's graph.
@@ -215,4 +219,6 @@ Above the process list sits a graph grouped by **step** name across every proces
 - A **period** control (3 months / 1 year / all) narrows which hand-offs are counted.
 - Clicking a node puts that step name into the search box, so the process list below keeps only the processes whose title or step names contain it; clicking the node again clears the filter.
 
+
+![The operation overview: step names with note counts, connected by hand-off lines](/screenshots/operation-overview_en.png)
 Together these answer the question labels exist for: not just "what did I write," but "where did this come from, and what did it lead to."
