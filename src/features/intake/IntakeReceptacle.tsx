@@ -20,10 +20,18 @@ type IntakeReceptacleProps = {
   emphasized?: boolean;
   /** 「中身を確認しています」の表示を外から固定する（Storybook 用） */
   checking?: boolean;
+  /** 打ち切り確認の表示を件数だけ与えて固定する（Storybook 用） */
+  truncatedCount?: number;
   onFilesSelected: (files: IntakeFile[], source: IntakeSource) => void;
 };
 
-export function IntakeReceptacle({ lead, emphasized = false, checking = false, onFilesSelected }: IntakeReceptacleProps) {
+export function IntakeReceptacle({
+  lead,
+  emphasized = false,
+  checking = false,
+  truncatedCount,
+  onFilesSelected,
+}: IntakeReceptacleProps) {
   const t = useT();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const filesInputRef = useRef<HTMLInputElement>(null);
@@ -50,6 +58,8 @@ export function IntakeReceptacle({ lead, emphasized = false, checking = false, o
   }, []);
 
   const emphasize = emphasized || internalOver;
+  // 実際に打ち切られた件数を優先し、無ければ Storybook から渡された件数を見る
+  const shownTruncatedCount = truncatedFiles?.length ?? truncatedCount;
   const showChecking = checking || picking;
 
   // デスクトップではブラウザの webkitdirectory を通さず、Rust に列挙させる。
@@ -99,13 +109,13 @@ export function IntakeReceptacle({ lead, emphasized = false, checking = false, o
         emphasize ? "border-primary bg-accent" : "border-border bg-muted/30"
       }`}
     >
-      {truncatedFiles ? (
+      {shownTruncatedCount != null ? (
         <>
           <div className="h-12 w-12 rounded-full bg-secondary text-primary flex items-center justify-center">
             <FolderInput size={24} />
           </div>
           <p className="text-sm font-medium text-foreground">
-            {t("intake.scanLimit", { count: String(truncatedFiles.length) })}
+            {t("intake.scanLimit", { count: String(shownTruncatedCount) })}
           </p>
           <p className="text-xs text-muted-foreground">{t("intake.scanLimitHint")}</p>
           <div className="flex gap-3 mt-1">
@@ -114,10 +124,10 @@ export function IntakeReceptacle({ lead, emphasized = false, checking = false, o
               onClick={() => {
                 const files = truncatedFiles;
                 setTruncatedFiles(null);
-                onFilesSelected(files, "folder");
+                if (files) onFilesSelected(files, "folder");
               }}
             >
-              {t("intake.scanLimitContinue", { count: String(truncatedFiles.length) })}
+              {t("intake.scanLimitContinue", { count: String(shownTruncatedCount) })}
             </Button>
             <Button variant="outline" onClick={() => setTruncatedFiles(null)}>
               {t("intake.scanLimitCancel")}

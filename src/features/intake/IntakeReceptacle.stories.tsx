@@ -47,6 +47,18 @@ export const Checking: Story = {
   },
 };
 
+/**
+ * デスクトップの走査が上限（50,000 件）で打ち切られ、そのまま入れるか
+ * 選び直すかを確かめる表示。一部だけ入ったのを「全部入った」と
+ * 誤解させないための一手間なので、件数が読めるかどうかが合否
+ */
+export const ScanTruncated: Story = {
+  args: {
+    truncatedCount: 50000,
+    onFilesSelected: noop,
+  },
+};
+
 /** lead を差し替えたケース（例: 素材が空のとき） */
 export const WithLead: Story = {
   args: {
