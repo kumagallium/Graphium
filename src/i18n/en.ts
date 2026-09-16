@@ -317,6 +317,8 @@ export const en: Record<string, string> = {
 
   // ── 設定モーダル ──
   "settings.title": "Settings",
+  "settings.detailsShow": "Details",
+  "settings.detailsHide": "Hide",
   "settings.language": "Language",
   "settings.font": "Reading font",
   "settings.fontHelp": "Set the Latin and Japanese fonts independently. The Latin font applies to alphanumerics; the Japanese font applies to kana / kanji.",

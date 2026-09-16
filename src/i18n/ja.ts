@@ -317,6 +317,8 @@ export const ja: Record<string, string> = {
 
   // ── 設定モーダル ──
   "settings.title": "設定",
+  "settings.detailsShow": "くわしく",
+  "settings.detailsHide": "とじる",
   "settings.language": "言語",
   "settings.font": "読みやすさ（フォント）",
   "settings.fontHelp": "ラテン文字と日本語のフォントを独立に設定できます。ラテン文字フォントは英数字に、日本語フォントはひらがな・カタカナ・漢字に適用されます。",
