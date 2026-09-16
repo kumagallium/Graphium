@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.76.3](https://github.com/kumagallium/Graphium/compare/v0.76.2...v0.76.3) - 2026-09-16
+
+- fix(plan-flow): let planned lines start from an operation's output by @kumagallium in https://github.com/kumagallium/Graphium/pull/950
+
 ## [v0.76.2](https://github.com/kumagallium/Graphium/compare/v0.76.1...v0.76.2) - 2026-09-16
 
 - Tidy up empty knowledge on its own, and scope cross-update to claims by @kumagallium in https://github.com/kumagallium/Graphium/pull/948
