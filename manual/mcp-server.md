@@ -81,7 +81,7 @@ By default the server reads `~/Documents/Graphium`. If you changed the Graphium 
 
 ## What the assistant can do
 
-Seven tools are available. You do not call them by name — you ask in plain language and the assistant picks.
+Nine tools are available. You do not call them by name — you ask in plain language and the assistant picks.
 
 | Tool | What you would ask |
 |---|---|
@@ -90,10 +90,18 @@ Seven tools are available. You do not call them by name — you ask in plain lan
 | `get_note_steps` | "What were the steps, with the conditions?" |
 | `find_notes_using` | "Which experiments used a planetary ball mill?" |
 | `list_entities` | "What materials and instruments show up across my notes?" |
+| `list_topics` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "What topics has Graphium worked out from my notes?" |
+| `get_topic` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "Tell me what you know about sintering conditions" |
 | `trace_lineage` | "Where did this conclusion come from?" |
 | `create_note` | "Save this as a note" |
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
+
+### Notes vs. knowledge
+
+Graphium builds a knowledge layer on top of your notes: **claims** (findings extracted from a note, with their source attached), **topics** (a page that gathers several related claims under one concept), and **insights** (a pattern that spans two or more claims). `search_notes` can filter by `kind` — `note`, `topic`, `claim`, `insight`, or `wiki` for all of the knowledge layer at once — and every hit reports which one it is.
+
+`list_topics` is the fastest way to see the shape of what Graphium has worked out: a title and one-line summary per topic, the same "read the index first" approach Karpathy describes for an LLM-facing wiki. `get_topic` opens one topic and follows both hops at once — the topic's body, the claims it gathers, and the notes each claim came from.
 
 Every answer carries the note id and the block id, so the assistant can tell you exactly where something came from and you can open that spot in Graphium.
 

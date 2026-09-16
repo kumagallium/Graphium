@@ -55,7 +55,6 @@ describe("fuseWikiSections", () => {
     const out = fuseWikiSections(
       [dense("w1", "s1", 0.9), dense("w2", "lead", 0.8), dense("w3", "s3", 0.5)],
       [lex("w2", "lead", 12), lex("w1", "s1", 10), lex("w4", "s4", 3)],
-      10,
     );
     const ids = out.map((p) => `${p.sourceId}:${p.chunkId}`);
     expect(ids.slice(0, 2).sort()).toEqual(["w1:s1", "w2:lead"]);
@@ -64,14 +63,14 @@ describe("fuseWikiSections", () => {
     expect(out.every((p) => p.kind === "wiki")).toBe(true);
   });
 
-  it("埋め込みが空でも語彙だけで返る（逆も同じ）。topK で切る", () => {
-    expect(fuseWikiSections([], [lex("w1", "a", 5), lex("w1", "b", 4)], 1).map((p) => p.chunkId)).toEqual(["a"]);
-    expect(fuseWikiSections([dense("w9", "z", 0.4)], [], 5).map((p) => p.sourceId)).toEqual(["w9"]);
-    expect(fuseWikiSections([], [], 5)).toEqual([]);
+  it("埋め込みが空でも語彙だけで返る（逆も同じ）。件数の上限は掛けない", () => {
+    expect(fuseWikiSections([], [lex("w1", "a", 5), lex("w1", "b", 4)]).map((p) => p.chunkId)).toEqual(["a", "b"]);
+    expect(fuseWikiSections([dense("w9", "z", 0.4)], []).map((p) => p.sourceId)).toEqual(["w9"]);
+    expect(fuseWikiSections([], [])).toEqual([]);
   });
 
   it("本文は埋め込み側の text を優先し、語彙だけの候補は語彙側の text とタイトルを持つ", () => {
-    const out = fuseWikiSections([dense("w1", "s1", 0.9, "dense text")], [lex("w1", "s1", 1, "Title A"), lex("w2", "s2", 1, "Title B")], 5);
+    const out = fuseWikiSections([dense("w1", "s1", 0.9, "dense text")], [lex("w1", "s1", 1, "Title A"), lex("w2", "s2", 1, "Title B")]);
     expect(out.find((p) => p.sourceId === "w1")?.text).toBe("dense text");
     expect(out.find((p) => p.sourceId === "w2")).toMatchObject({ title: "Title B", text: "w2/s2 text" });
   });
@@ -91,8 +90,9 @@ describe("formatRetrievedContext", () => {
       { kind: "asset", sourceId: "a1", chunkId: "c0", title: "manual.pdf", text: "PPMS TTO", score: 4 },
     ];
     const out = formatRetrievedContext(wiki, passages, "- **デシケーター運用**: 抜粋");
-    expect(out).toContain('[#1 | "デシケーター運用"]');
-    expect(out).toContain('[#2 | "焼結条件"]');
+    // 種別マップ未設定の wiki は既定で claim 扱い（同じ種別なので見出しは 1 つにまとまる）
+    expect(out).toContain('[#1 | Claim | "デシケーター運用"]');
+    expect(out).toContain('[#2 | Claim | "焼結条件"]');
     expect(out).toContain('[#3 | "試薬 X の保管"] (note)');
     expect(out).toContain('[#4 | "manual.pdf"] (asset)');
     expect(out.indexOf("<knowledge>")).toBeLessThan(out.indexOf("<notes>"));
@@ -112,7 +112,7 @@ describe("formatRetrievedContext", () => {
     ];
     const out = formatRetrievedContext(wiki, [], undefined);
     expect(out).not.toContain("orphan");
-    expect(out).toContain('[#1 | "焼結条件"]');
+    expect(out).toContain('[#1 | Claim | "焼結条件"]');
   });
 
   it("語彙側だけの wiki は自分の title で入る", () => {
@@ -122,7 +122,7 @@ describe("formatRetrievedContext", () => {
       [],
       undefined,
     );
-    expect(out).toContain('[#1 | "語彙で見つけた"]');
+    expect(out).toContain('[#1 | Claim | "語彙で見つけた"]');
   });
 
   it("断片は 1 件 700 字で切り、合計予算を超えたら以降を落とす", () => {
@@ -215,7 +215,7 @@ describe("retrieveWikiContext（共有ライブラリのレーン）", () => {
     expect(ctx).not.toBeNull();
     const knowledgeBlock = ctx.slice(ctx.indexOf("<knowledge>"), ctx.indexOf("<notes>"));
     const notesBlock = ctx.slice(ctx.indexOf("<notes>"));
-    expect(knowledgeBlock).toContain('| "共有ナレッジ"]');
+    expect(knowledgeBlock).toContain('Claim | "共有ナレッジ"]');
     expect(notesBlock).toContain('| "共有ノート"] (shared)');
     expect(notesBlock).toContain('| "手元ノート"] (note)');
     expect(knowledgeBlock).not.toContain("共有ノート");

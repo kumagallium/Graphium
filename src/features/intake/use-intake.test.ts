@@ -29,6 +29,7 @@ function makeDeps(overrides: Partial<IntakeDeps> = {}): IntakeDeps & { aiAvailab
         linksUnresolved: 0,
         failed: [],
         lastNewId: files.length > 0 ? "note-last" : null,
+        createdIds: files.map((_, i) => `note-${i}`),
       };
     },
   );

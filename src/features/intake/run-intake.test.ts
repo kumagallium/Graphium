@@ -30,6 +30,7 @@ function makeDeps(overrides: Partial<IntakeDeps> = {}): IntakeDeps {
         linksUnresolved: 0,
         failed: [],
         lastNewId: files.length > 0 ? "note-last" : null,
+        createdIds: files.map((_, i) => `note-${i}`),
       };
     },
   );
@@ -129,6 +130,7 @@ describe("runIntake", () => {
         linksUnresolved: 0,
         failed: [],
         lastNewId: "note-a",
+        createdIds: ["note-a"],
       }),
     );
     const deps = makeDeps({ importMarkdown });
@@ -334,6 +336,20 @@ describe("runIntake", () => {
 
     expect(outcome.ocrTargets).toEqual([{ fileId: "id-not-yet.png", url: "url-not-yet.png", name: "not-yet.png" }]);
   });
+
+  it("createdNoteIds は importMarkdown の createdIds をそのまま反映し、createdMediaFileIds は新規登録（非 duplicate）の fileId だけを積む", async () => {
+    const files = [mdFile("a.md"), pdfFile("new.pdf"), pdfFile("existing.pdf")];
+    const uploadAsset = vi.fn(async (file: File) => ({
+      fileId: `id-${file.name}`,
+      duplicate: file.name === "existing.pdf",
+    }));
+    const deps = makeDeps({ uploadAsset });
+
+    const outcome = await runIntake(files, deps, () => {});
+
+    expect(outcome.createdNoteIds).toEqual(["note-0"]);
+    expect(outcome.createdMediaFileIds).toEqual(["id-new.pdf"]);
+  });
 });
 
 describe("runIntake の堅牢性", () => {
@@ -388,6 +404,8 @@ describe("mergeOutcome", () => {
       skipped: 1,
       skippedByExt: { ".pptx": 1 },
       lastNewId: "note-a",
+      createdNoteIds: ["note-a"],
+      createdMediaFileIds: ["file-a"],
       folders: 2,
       ocrTargets: [{ fileId: "img-a", url: "url-a", name: "a.png" }],
       officeDerived: 4,
@@ -404,6 +422,8 @@ describe("mergeOutcome", () => {
       skipped: 0,
       skippedByExt: { ".pptx": 1, ".xlsx": 1 },
       lastNewId: null,
+      createdNoteIds: ["note-b1", "note-b2"],
+      createdMediaFileIds: ["file-b1", "file-b2"],
       folders: 1,
       ocrTargets: [{ fileId: "img-b", url: "url-b", name: "b.png" }],
       officeDerived: 2,
@@ -424,6 +444,9 @@ describe("mergeOutcome", () => {
       skippedByExt: { ".pptx": 2, ".xlsx": 1 },
       // b の lastNewId が null なので a を保つ
       lastNewId: "note-a",
+      // createdNoteIds / createdMediaFileIds は連結
+      createdNoteIds: ["note-a", "note-b1", "note-b2"],
+      createdMediaFileIds: ["file-a", "file-b1", "file-b2"],
       // folders は集合を持たないので加算で近似する
       folders: 3,
       // ocrTargets は連結

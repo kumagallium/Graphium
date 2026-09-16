@@ -87,6 +87,8 @@ export function useIntake(
           skipped: combined.skipped,
           skippedByExt: combined.skippedByExt,
           folders: combined.folders,
+          createdNoteIds: combined.createdNoteIds,
+          createdMediaFileIds: combined.createdMediaFileIds,
           ocrPending: combined.ocrTargets.length,
           officeDerived: combined.officeDerived,
           officeSkipped: combined.officeSkipped,

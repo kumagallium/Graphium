@@ -6,11 +6,17 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { upstreamOf, downstreamOf, traceLineage } from "./lineage";
+import {
+  upstreamOf,
+  downstreamOf,
+  traceLineage,
+  upstreamKnowledgeOf,
+  downstreamKnowledgeOf,
+} from "./lineage";
 import { resetSearchIndex } from "./search";
 import type { GraphiumIndex, NoteIndexEntry } from "../features/navigation/index-file";
 import type { BlockLink } from "../lib/block-link-types";
-import type { GraphiumDocument, NoteLink } from "../lib/document-types";
+import type { GraphiumDocument, NoteLink, WikiMeta } from "../lib/document-types";
 
 function makeEntry(overrides: Partial<NoteIndexEntry> = {}): NoteIndexEntry {
   return {
@@ -306,6 +312,93 @@ describe("lineage", () => {
       const ids = deep.upstream.map((n) => n.noteId).sort();
       expect(ids).toEqual(["note-1", "note-2"]);
       expect(deep.upstream.find((n) => n.noteId === "note-1")?.depth).toBe(2);
+    });
+  });
+
+  describe("ナレッジ層", () => {
+    function makeWikiMeta(overrides: Partial<WikiMeta>): WikiMeta {
+      return {
+        kind: "claim",
+        derivedFromNotes: [],
+        derivedFromChats: [],
+        generatedAt: "2026-09-01T00:00:00.000Z",
+        generatedBy: { model: "test", version: "1" },
+        ...overrides,
+      };
+    }
+
+    /** topic-1 → claim-1 → note-1 の 2 ホップを持つ vault */
+    function seedKnowledgeVault() {
+      const note1 = makeDoc();
+      const claim1 = makeDoc({
+        wikiMeta: makeWikiMeta({ kind: "claim", derivedFromNotes: ["note-1"], topicIds: ["topic-1"] }),
+      });
+      const topic1 = makeDoc({
+        wikiMeta: makeWikiMeta({ kind: "topic", derivedFromClaims: ["claim-1"] }),
+      });
+
+      buildVault(
+        dir,
+        { "note-1": note1, "claim-1": claim1, "topic-1": topic1 },
+        [
+          makeEntry({ noteId: "note-1", title: "実験ノート" }),
+          makeEntry({
+            noteId: "claim-1",
+            title: "知見",
+            source: "ai",
+            wikiKind: "claim",
+            derivedFromNotes: ["note-1"],
+          }),
+          makeEntry({ noteId: "topic-1", title: "トピック", source: "ai", wikiKind: "topic" }),
+        ],
+      );
+    }
+
+    it("upstreamKnowledgeOf: topic → メンバー知見、claim → 出どころノート", () => {
+      seedKnowledgeVault();
+      expect(upstreamKnowledgeOf("topic-1", dir).map((e) => e.noteId)).toEqual(["claim-1"]);
+      expect(upstreamKnowledgeOf("claim-1", dir).map((e) => e.noteId)).toEqual(["note-1"]);
+      expect(upstreamKnowledgeOf("topic-1", dir)[0].layer).toBe("knowledge");
+      expect(upstreamKnowledgeOf("note-1", dir)).toEqual([]); // wikiMeta を持たないノートは空
+    });
+
+    it("downstreamKnowledgeOf: claim → それをメンバーにする topic、note → それを出どころにする claim", () => {
+      seedKnowledgeVault();
+      expect(downstreamKnowledgeOf("claim-1", dir).map((e) => e.noteId)).toEqual(["topic-1"]);
+      expect(downstreamKnowledgeOf("note-1", dir).map((e) => e.noteId)).toEqual(["claim-1"]);
+    });
+
+    it("traceLineage は PROV 層とナレッジ層の両方を辿り、via.layer で区別する", () => {
+      seedKnowledgeVault();
+      const result = traceLineage("topic-1", { direction: "upstream", depth: 2 }, dir);
+      const ids = result.upstream.map((n) => n.noteId).sort();
+      expect(ids).toEqual(["claim-1", "note-1"]);
+      expect(result.upstream.every((n) => n.via?.layer === "knowledge")).toBe(true);
+    });
+
+    it("既存ノート（wikiMeta なし）どうしの PROV 層のみの来歴は変わらない", () => {
+      const doc1 = makeDoc();
+      const doc2 = makeDoc({
+        pages: [
+          {
+            id: "page-1",
+            title: "ページ1",
+            blocks: [],
+            labels: {},
+            provLinks: [makeProvLink({ sourceBlockId: "s", targetBlockId: "t", targetNoteId: "note-1" })],
+            knowledgeLinks: [],
+          },
+        ],
+      });
+      buildVault(
+        dir,
+        { "note-1": doc1, "note-2": doc2 },
+        [makeEntry({ noteId: "note-1" }), makeEntry({ noteId: "note-2" })],
+      );
+
+      const result = traceLineage("note-2", { direction: "upstream" }, dir);
+      expect(result.upstream.map((n) => n.noteId)).toEqual(["note-1"]);
+      expect(result.upstream[0].via?.layer).toBe("prov");
     });
   });
 });

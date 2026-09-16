@@ -1,5 +1,8 @@
-// ノート間の来歴（PROV 層リンク）を辿る。
+// ノート間の来歴を辿る。**PROV 層**（実験ノート間のリンク）と**ナレッジ層**
+// （トピック/知見/洞察の 2 ホップ）の 2 種類があり、この 2 つは意味が異なるため
+// LineageEdge / LineageNode は必ず `layer` を持ち、どちらの関係かを明示する。
 //
+// ── PROV 層 ──────────────────────────────────────────────
 // 方向の意味論は src/lib/block-link-types.ts の ProvLinkType に従う。
 // リンクは「後のもの → 元のもの」に張られる（derived_from: データ→考察、
 // used: 手順→試料、informed_by: 手順2→手順1）。したがってノートから出ている
@@ -11,16 +14,29 @@
 //   - doc.noteLinks                          … このノートから派生したもの（下流）
 // 実データには provLinks が空で noteLinks だけを持つノートが存在するため、
 // 下流は noteLinks を直接読んだうえで、相手側の上流からの逆引きも足して取りこぼしを防ぐ。
+//
+// ── ナレッジ層 ────────────────────────────────────────────
+// topicIds / derivedFromClaims / conflictsWith は index にミラーされていない
+// （index-file.ts 参照）ため doc.wikiMeta を直接読む。対象は wikiKind で絞ってから
+// readNote() する（全 wiki を無条件に読まない）。
+//   - topic   → derivedFromClaims: メンバー知見（上流）
+//   - insight(atom) → derivedFromClaims: 元になった知見（上流）
+//   - claim   → derivedFromNotes: 出どころノート（上流）
+// 下流はこの逆引き（自分を derivedFromClaims / derivedFromNotes に含む側を探す）。
 
 import type { LinkType } from "../lib/block-link-types";
 import { allEntries } from "./search";
 import { readNote, resolveGraphiumRoot } from "./vault";
+
+export type LineageLayer = "prov" | "knowledge";
 
 export type LineageEdge = {
   /** 相手側のノート ID */
   noteId: string;
   title: string;
   type: LinkType;
+  /** PROV 層のリンクか、ナレッジ層（トピック/知見/洞察）の関係か */
+  layer: LineageLayer;
   /** リンク元ブロック（このノート側） */
   sourceBlockId: string;
   /** リンク先ブロック（相手ノート側） */
@@ -51,6 +67,7 @@ export function upstreamOf(noteId: string, root = resolveGraphiumRoot()): Lineag
         noteId: target,
         title: link.targetNoteTitle ?? "",
         type: link.type,
+        layer: "prov",
         sourceBlockId: link.sourceBlockId,
         targetBlockId: link.targetBlockId,
         stepTitle: link.targetStepTitle,
@@ -68,6 +85,7 @@ export function upstreamOf(noteId: string, root = resolveGraphiumRoot()): Lineag
         noteId: doc.derivedFromNoteId,
         title: "",
         type: "derived_from",
+        layer: "prov",
         sourceBlockId: doc.derivedFromBlockId ?? "",
         targetBlockId: doc.derivedFromBlockId ?? "",
       });
@@ -104,6 +122,7 @@ export function downstreamOf(noteId: string, root = resolveGraphiumRoot()): Line
       noteId: link.targetNoteId,
       title: titles.get(link.targetNoteId) ?? "",
       type: link.type,
+      layer: "prov",
       sourceBlockId: link.sourceBlockId ?? "",
       targetBlockId: "",
     });
@@ -132,12 +151,88 @@ export function downstreamOf(noteId: string, root = resolveGraphiumRoot()): Line
   return edges;
 }
 
+/**
+ * ナレッジ層の上流（このドキュメントが束ねた／抽象化した側）。
+ * topic・insight(atom) は derivedFromClaims（メンバー知見）、claim は derivedFromNotes
+ * （出どころノート）を見る。wikiMeta を持たないノートは空。
+ */
+export function upstreamKnowledgeOf(noteId: string, root = resolveGraphiumRoot()): LineageEdge[] {
+  const doc = readNote(noteId, root);
+  const meta = doc?.wikiMeta;
+  if (!meta) return [];
+
+  const titles = new Map(allEntries(root).map((e) => [e.noteId, e.title]));
+  const edges: LineageEdge[] = [];
+  const push = (targetId: string) => {
+    if (!targetId || targetId === noteId) return;
+    edges.push({
+      noteId: targetId,
+      title: titles.get(targetId) ?? "",
+      type: "derived_from",
+      layer: "knowledge",
+      sourceBlockId: "",
+      targetBlockId: "",
+    });
+  };
+
+  if (meta.kind === "topic" || meta.kind === "atom") {
+    for (const claimId of meta.derivedFromClaims ?? []) push(claimId);
+  }
+  if (meta.kind === "claim") {
+    for (const sourceNoteId of meta.derivedFromNotes ?? []) push(sourceNoteId);
+  }
+  return edges;
+}
+
+/**
+ * ナレッジ層の下流（このドキュメントを束ねた／抽象化した側からの逆引き）。
+ * - このノートが知見(claim)なら、それをメンバーに持つ topic / insight(atom) を探す
+ * - このノートがノート/知見なら、それを出どころにする claim を探す
+ * 対象は wikiKind で絞ってから readNote() する（全 wiki を無条件に読まない）。
+ */
+export function downstreamKnowledgeOf(noteId: string, root = resolveGraphiumRoot()): LineageEdge[] {
+  const entries = allEntries(root);
+  const edges: LineageEdge[] = [];
+
+  const push = (targetId: string, title: string) => {
+    edges.push({
+      noteId: targetId,
+      title,
+      type: "derived_from",
+      layer: "knowledge",
+      sourceBlockId: "",
+      targetBlockId: "",
+    });
+  };
+
+  // topic / insight(atom) が自分をメンバー知見にしていないか
+  for (const entry of entries.filter((e) => e.wikiKind === "topic" || e.wikiKind === "atom")) {
+    if (entry.noteId === noteId) continue;
+    const doc = readNote(entry.noteId, root);
+    if (doc?.wikiMeta?.derivedFromClaims?.includes(noteId)) push(entry.noteId, entry.title);
+  }
+
+  // claim が自分を出どころにしていないか（derivedFromNotes は index にミラーされている）
+  for (const entry of entries.filter((e) => e.wikiKind === "claim")) {
+    if (entry.noteId === noteId) continue;
+    if ((entry.derivedFromNotes ?? []).includes(noteId)) push(entry.noteId, entry.title);
+  }
+
+  return edges;
+}
+
 export type LineageNode = {
   noteId: string;
   title: string;
   depth: number;
   /** この一段をどう辿ってきたか（起点ノートは undefined） */
-  via?: { type: LinkType; sourceBlockId: string; targetBlockId: string; stepTitle?: string };
+  via?: {
+    type: LinkType;
+    layer: LineageLayer;
+    sourceBlockId: string;
+    targetBlockId: string;
+    stepTitle?: string;
+  };
 };
 
 export type LineageResult = {
@@ -169,6 +264,7 @@ function walk(
           depth: d,
           via: {
             type: edge.type,
+            layer: edge.layer,
             sourceBlockId: edge.sourceBlockId,
             targetBlockId: edge.targetBlockId,
             stepTitle: edge.stepTitle,
@@ -191,11 +287,17 @@ export function traceLineage(
   const titles = new Map(allEntries(root).map((e) => [e.noteId, e.title]));
   const titleOf = (id: string) => titles.get(id) ?? "";
 
+  // PROV 層とナレッジ層を合わせて辿る。既存ノート（wikiMeta なし）では
+  // ナレッジ層側は常に空を返すので、PROV 層のみの挙動は変わらない。
+  const upstreamStep = (id: string) => [...upstreamOf(id, root), ...upstreamKnowledgeOf(id, root)];
+  const downstreamStep = (id: string) => [
+    ...downstreamOf(id, root),
+    ...downstreamKnowledgeOf(id, root),
+  ];
+
   return {
     noteId,
-    upstream:
-      direction === "downstream" ? [] : walk(noteId, depth, (id) => upstreamOf(id, root), titleOf),
-    downstream:
-      direction === "upstream" ? [] : walk(noteId, depth, (id) => downstreamOf(id, root), titleOf),
+    upstream: direction === "downstream" ? [] : walk(noteId, depth, upstreamStep, titleOf),
+    downstream: direction === "upstream" ? [] : walk(noteId, depth, downstreamStep, titleOf),
   };
 }
