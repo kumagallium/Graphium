@@ -48,6 +48,10 @@ export type IntakeState =
       skippedByExt: Record<string, number>;
       /** フォルダを付けたファイルの「異なるフォルダ数」（ノート・素材あわせて重複なし） */
       folders: number;
+      /** 今回新規作成したノートの ID（「まとめてナレッジ化」の対象特定に使う） */
+      createdNoteIds: string[];
+      /** 今回新規登録した素材の fileId（「まとめてナレッジ化」の対象特定に使う） */
+      createdMediaFileIds: string[];
       /** 文字がまだ読めていない画像素材の件数（このあと裏で順に読み取る） */
       ocrPending: number;
       /** PowerPoint / Excel の展開で追加登録された派生素材（画像・CSV）の合計件数 */
@@ -71,6 +75,8 @@ type IntakeModalProps = {
   onAskAi?: () => void;
   /** AI 未設定のとき「AI を設定する」を押した */
   onSetupAi?: () => void;
+  /** 「まとめてナレッジ化」。今回取り込んだノート ID・素材 fileId を渡す */
+  onIngestAll?: (noteIds: string[], mediaFileIds: string[]) => void;
 };
 
 export function IntakeModal({
@@ -83,6 +89,7 @@ export function IntakeModal({
   onShowGraph,
   onAskAi,
   onSetupAi,
+  onIngestAll,
 }: IntakeModalProps) {
   const t = useT();
 
@@ -245,6 +252,20 @@ export function IntakeModal({
                         {t("intake.setupAi")}
                       </Button>
                     )}
+                    {/* まとめてナレッジ化: AI 未設定のときは上の「AI を設定する」に任せる
+                        （ここで別の分岐を増やさない）。取り込んだノート・素材が
+                        1 件も無ければそもそも出さない */}
+                    {state.aiAvailable &&
+                      (state.createdNoteIds.length > 0 || state.createdMediaFileIds.length > 0) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onIngestAll?.(state.createdNoteIds, state.createdMediaFileIds)}
+                          title={t("intake.ingestAllHint")}
+                        >
+                          {t("intake.ingestAll")}
+                        </Button>
+                      )}
                   </div>
                 </div>
               </div>

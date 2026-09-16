@@ -86,6 +86,8 @@ export const Done: Story = {
       skippedByExt: {},
       folders: 0,
       materialsExisting: 0,
+      createdNoteIds: ["note-1", "note-2"],
+      createdMediaFileIds: ["file-1", "file-2"],
       ocrPending: 0,
       officeDerived: 0,
       officeSkipped: 0,
@@ -96,6 +98,7 @@ export const Done: Story = {
     onSearch: noop,
     onShowGraph: noop,
     onAskAi: noop,
+    onIngestAll: noop,
   },
 };
 
@@ -115,6 +118,8 @@ export const DoneWithIssues: Story = {
       skippedByExt: { ".ppt": 2, ".xls": 1, ".bak": 1 },
       folders: 3,
       materialsExisting: 5,
+      createdNoteIds: ["note-1", "note-2"],
+      createdMediaFileIds: ["file-1", "file-2"],
       ocrPending: 6,
       officeDerived: 12,
       officeSkipped: 3,
@@ -125,6 +130,7 @@ export const DoneWithIssues: Story = {
     onSearch: noop,
     onShowGraph: noop,
     onAskAi: noop,
+    onIngestAll: noop,
   },
 };
 
@@ -144,6 +150,8 @@ export const DoneNoAi: Story = {
       skippedByExt: {},
       folders: 0,
       materialsExisting: 0,
+      createdNoteIds: ["note-1", "note-2"],
+      createdMediaFileIds: ["file-1", "file-2"],
       ocrPending: 0,
       officeDerived: 0,
       officeSkipped: 0,
