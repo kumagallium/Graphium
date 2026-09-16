@@ -2178,7 +2178,7 @@ export const ja: Record<string, string> = {
   "intake.chooseFiles": "ファイルを選ぶ",
   "intake.checking": "中身を確認しています…",
   "intake.checkingHint": "ネットワーク上のフォルダは数分かかることがあります",
-  "intake.scanningCount": "{count} 件見つかりました",
+  "intake.scanningProgress": "{files} 件見つかりました（{folders} 個のフォルダを確認）",
   "intake.scanStop": "停止",
   "intake.running": "取り込んでいます {done} / {total}",
   "intake.scanLimit": "フォルダの中が多すぎるため、{count} 件で打ち切りました",

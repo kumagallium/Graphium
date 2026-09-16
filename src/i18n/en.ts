@@ -2179,7 +2179,7 @@ export const en: Record<string, string> = {
   "intake.chooseFiles": "Choose files",
   "intake.checking": "Looking through the folder…",
   "intake.checkingHint": "A folder on a network drive can take a few minutes",
-  "intake.scanningCount": "{count} found so far",
+  "intake.scanningProgress": "{files} found so far ({folders} folders checked)",
   "intake.scanStop": "Stop",
   "intake.running": "Bringing in {done} / {total}",
   "intake.scanLimit": "That folder holds too much, so we stopped at {count} files",

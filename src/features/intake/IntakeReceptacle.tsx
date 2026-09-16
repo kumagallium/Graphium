@@ -28,6 +28,8 @@ type IntakeReceptacleProps = {
   checking?: boolean;
   /** ネイティブ走査中で件数が分かっている状態を外から固定する（Storybook 用） */
   scanningCount?: number;
+  /** ネイティブ走査中のフォルダ数を外から固定する（Storybook 用。scanningCount とセットで使う） */
+  scanningFolders?: number;
   /** 打ち切り確認の表示を件数だけ与えて固定する（Storybook 用） */
   truncatedCount?: number;
   onFilesSelected: (files: IntakeFile[], source: IntakeSource) => void;
@@ -38,6 +40,7 @@ export function IntakeReceptacle({
   emphasized = false,
   checking = false,
   scanningCount,
+  scanningFolders,
   truncatedCount,
   onFilesSelected,
 }: IntakeReceptacleProps) {
@@ -56,8 +59,9 @@ export function IntakeReceptacle({
   // ダイアログを開いている間（picking は true だがこれはまだ false）は
   // 件数も停止ボタンも出さない
   const [isNativeScanning, setIsNativeScanning] = useState(false);
-  // 走査中に "intake-scan-progress" イベントで随時更新される、見つかった件数
+  // 走査中に "intake-scan-progress" イベントで随時更新される、見つかった件数とフォルダ数
   const [nativeScanFound, setNativeScanFound] = useState(0);
+  const [nativeScanFolders, setNativeScanFolders] = useState(0);
   // ネイティブ走査が上限で打ち切られたとき、そのまま黙って一部だけ入れると
   // 「全部入った」と誤解されるので、続けるかどうかを一度確かめる
   const [truncatedFiles, setTruncatedFiles] = useState<IntakeFile[] | null>(null);
@@ -83,6 +87,10 @@ export function IntakeReceptacle({
 
   // アンマウント時、自分が走らせている走査があれば中止する
   useEffect(() => {
+    // マウントのたびに立て直す。開発ビルドの StrictMode はマウント → アンマウント →
+    // 再マウントを 1 回行うので、クリーンアップで倒したままにすると以降の setState が
+    // すべて捨てられ、件数も出ず「停止」も効かないまま受け皿が固まる
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       if (scanIdRef.current) {
@@ -96,10 +104,12 @@ export function IntakeReceptacle({
   const emphasize = emphasized || internalOver;
   // 実際に打ち切られた件数を優先し、無ければ Storybook から渡された件数を見る
   const shownTruncatedCount = truncatedFiles?.length ?? truncatedCount;
-  // Storybook から scanningCount が渡されたときは、実際の走査が動いていなくても
-  // 「走査中で件数が分かっている」表示を固定する
-  const scanningActive = isNativeScanning || scanningCount != null;
+  // Storybook から scanningCount / scanningFolders が渡されたときは、実際の走査が
+  // 動いていなくても「走査中で件数が分かっている」表示を固定する
+  const scanningActive = isNativeScanning || scanningCount != null || scanningFolders != null;
   const shownScanningCount = scanningCount ?? (isNativeScanning ? nativeScanFound : undefined);
+  const shownScanningFolders =
+    scanningFolders ?? (isNativeScanning ? nativeScanFolders : undefined);
   const showChecking = checking || picking || scanningActive;
 
   // デスクトップではブラウザの webkitdirectory を通さず、Rust に列挙させる。
@@ -117,12 +127,14 @@ export function IntakeReceptacle({
       const scanId = createFolderScanId();
       scanIdRef.current = scanId;
       setNativeScanFound(0);
+      setNativeScanFolders(0);
       setIsNativeScanning(true);
       const { files, truncated, cancelled } = await scanFolderNative(root, {
         scanId,
-        onProgress: (found) => {
+        onProgress: ({ found, folders }) => {
           if (!mountedRef.current) return;
           setNativeScanFound(found);
+          setNativeScanFolders(folders);
         },
       });
       // 停止して別フォルダを選び直した等で、この結果がもう自分がいま持っている
@@ -212,9 +224,13 @@ export function IntakeReceptacle({
           </div>
           <p className="text-sm font-medium text-foreground">{t("intake.checking")}</p>
           <p className="text-xs text-muted-foreground">{t("intake.checkingHint")}</p>
-          {shownScanningCount != null && shownScanningCount > 0 && (
+          {((shownScanningCount != null && shownScanningCount > 0) ||
+            (shownScanningFolders != null && shownScanningFolders > 0)) && (
             <p className="text-xs text-muted-foreground">
-              {t("intake.scanningCount", { count: String(shownScanningCount) })}
+              {t("intake.scanningProgress", {
+                files: String(shownScanningCount ?? 0),
+                folders: String(shownScanningFolders ?? 0),
+              })}
             </p>
           )}
           {scanningActive && (

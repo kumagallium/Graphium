@@ -49,11 +49,12 @@ export const Checking: Story = {
 
 /**
  * デスクトップのネイティブ走査中、件数が分かってきた表示。
- * 件数の行と停止ボタンの両方が出ているかどうかが合否
+ * ファイル件数・フォルダ数の行と停止ボタンの両方が出ているかどうかが合否
  */
 export const ScanningWithCount: Story = {
   args: {
     scanningCount: 12840,
+    scanningFolders: 640,
     onFilesSelected: noop,
   },
 };

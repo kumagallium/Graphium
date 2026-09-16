@@ -131,8 +131,10 @@ describe("scanFolderNative", () => {
     expect(callOrder).toEqual(["listen", "invoke"]);
   });
 
-  it("イベントの found を onProgress にそのまま渡す", async () => {
-    let handler: ((event: { payload: { scanId: string; found: number } }) => void) | undefined;
+  it("イベントの found / folders を onProgress にそのまま渡す", async () => {
+    let handler:
+      | ((event: { payload: { scanId: string; found: number; folders: number } }) => void)
+      | undefined;
     listenMock.mockImplementationOnce((_event: string, cb: typeof handler) => {
       handler = cb;
       return Promise.resolve(unlistenMock);
@@ -140,25 +142,27 @@ describe("scanFolderNative", () => {
     invokeMock.mockImplementationOnce(async () => {
       // Rust 側は走査完了より前にイベントを発火しうる。購読が invoke 前に
       // 済んでいなければここで取りこぼす
-      handler?.({ payload: { scanId: "scan-1", found: 128 } });
+      handler?.({ payload: { scanId: "scan-1", found: 128, folders: 12 } });
       return scanned;
     });
     const onProgress = vi.fn();
 
     await scanFolderNative("/Volumes/NAS/work", { scanId: "scan-1", onProgress });
 
-    expect(onProgress).toHaveBeenCalledWith(128);
+    expect(onProgress).toHaveBeenCalledWith({ found: 128, folders: 12 });
   });
 
   it("別の scanId の進捗イベントは onProgress に渡らない（並行走査の混線防止）", async () => {
-    let handler: ((event: { payload: { scanId: string; found: number } }) => void) | undefined;
+    let handler:
+      | ((event: { payload: { scanId: string; found: number; folders: number } }) => void)
+      | undefined;
     listenMock.mockImplementationOnce((_event: string, cb: typeof handler) => {
       handler = cb;
       return Promise.resolve(unlistenMock);
     });
     invokeMock.mockImplementationOnce(async () => {
       // 別インスタンスが並行して走らせている走査（別の scanId）のイベント
-      handler?.({ payload: { scanId: "other-scan", found: 999 } });
+      handler?.({ payload: { scanId: "other-scan", found: 999, folders: 30 } });
       return scanned;
     });
     const onProgress = vi.fn();

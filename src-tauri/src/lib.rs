@@ -1734,6 +1734,10 @@ struct ScanProgressPayload {
     /// 並行して走っている走査の件数が互いの受け皿に混ざってしまう。
     scan_id: String,
     found: usize,
+    /// 見つけた（キューに積んだ）フォルダの数。ファイルが 1 件も無い深い
+    /// ツリー（NAS のバックアップ等）でも進捗が動いて見えるように、found とは
+    /// 別に持つ。
+    folders: usize,
 }
 
 /// scan_directory の中止フラグを走査 ID ごとに持つ表。
@@ -1849,13 +1853,27 @@ fn walk_intake_directory(
     max_files: usize,
     cancel: &AtomicBool,
     progress_interval: Duration,
-    mut on_progress: impl FnMut(usize),
+    mut on_progress: impl FnMut(usize, usize),
 ) -> WalkOutcome {
     let mut files: Vec<ScannedFile> = Vec::new();
+    let mut folders: usize = 0;
     let mut truncated = false;
     let mut queue: VecDeque<PathBuf> = VecDeque::from([root.to_path_buf()]);
     // 前回 on_progress を呼んでからの経過時間をここで測る。
     let mut last_progress = Instant::now();
+
+    // エントリを 1 件処理するたびに（ファイルかフォルダかに関係なく）呼ぶ。
+    // ファイル追加の直後だけに限定すると、NAS の深いバックアップツリーのように
+    // フォルダばかりが続きファイルが 1 件も見つからない区間で on_progress が
+    // 一度も呼ばれず、画面が固まって見えてしまう。
+    macro_rules! maybe_report_progress {
+        () => {
+            if last_progress.elapsed() >= progress_interval {
+                on_progress(files.len(), folders);
+                last_progress = Instant::now();
+            }
+        };
+    }
 
     'walk: while let Some(dir) = queue.pop_front() {
         let entries = match fs::read_dir(&dir) {
@@ -1884,14 +1902,18 @@ fn walk_intake_directory(
             let path = entry.path();
             if file_type.is_symlink() {
                 // シンボリックリンクはループの恐れがあるため対象外にする（辿らない）。
+                maybe_report_progress!();
                 continue;
             }
             if file_type.is_dir() {
                 queue.push_back(path);
+                folders += 1;
+                maybe_report_progress!();
                 continue;
             }
             if !file_type.is_file() {
                 // FIFO・ソケット等は対象外。
+                maybe_report_progress!();
                 continue;
             }
             if files.len() >= max_files {
@@ -1913,10 +1935,7 @@ fn walk_intake_directory(
                 name,
             });
 
-            if last_progress.elapsed() >= progress_interval {
-                on_progress(files.len());
-                last_progress = Instant::now();
-            }
+            maybe_report_progress!();
         }
     }
 
@@ -1965,12 +1984,13 @@ fn scan_directory_sync(
         SCAN_MAX_FILES,
         &cancel_flag,
         SCAN_PROGRESS_INTERVAL,
-        move |found| {
+        move |found, folders| {
             let _ = app_for_progress.emit(
                 "intake-scan-progress",
                 ScanProgressPayload {
                     scan_id: scan_id_for_progress.clone(),
                     found,
+                    folders,
                 },
             );
         },
@@ -3029,7 +3049,7 @@ mod tests {
         fs::write(root.join("x.txt"), b"x").unwrap();
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_| {});
+        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_, _| {});
 
         assert!(!outcome.truncated);
         assert!(!outcome.cancelled);
@@ -3057,7 +3077,7 @@ mod tests {
         std::os::unix::fs::symlink(root.join("real.txt"), root.join("link-to-file")).unwrap();
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 1000, &cancel, Duration::from_secs(3600), |_| {});
+        let outcome = walk_intake_directory(root, 1000, &cancel, Duration::from_secs(3600), |_, _| {});
 
         // ループを辿っていれば有限時間で戻ってこない。ここまで到達した時点で
         // 「有限時間で終わる」ことは確認できている。
@@ -3082,7 +3102,7 @@ mod tests {
         }
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 3, &cancel, Duration::from_secs(3600), |_| {});
+        let outcome = walk_intake_directory(root, 3, &cancel, Duration::from_secs(3600), |_, _| {});
 
         assert!(outcome.truncated);
         assert!(!outcome.cancelled);
@@ -3104,7 +3124,7 @@ mod tests {
         fs::write(root.join("light/g1.txt"), b"x").unwrap();
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 5, &cancel, Duration::from_secs(3600), |_| {});
+        let outcome = walk_intake_directory(root, 5, &cancel, Duration::from_secs(3600), |_, _| {});
 
         assert!(outcome.truncated);
         assert_eq!(outcome.files.len(), 5);
@@ -3127,7 +3147,7 @@ mod tests {
         fs::write(root.join("f.txt"), b"x").unwrap();
 
         let cancel = AtomicBool::new(true);
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_| {});
+        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_, _| {});
 
         assert!(outcome.cancelled);
         assert!(outcome.files.is_empty());
@@ -3224,7 +3244,7 @@ mod tests {
         let flag = state.begin("scan-walk");
         state.cancel("scan-walk");
 
-        let outcome = walk_intake_directory(root, 100, &flag, Duration::from_secs(3600), |_| {});
+        let outcome = walk_intake_directory(root, 100, &flag, Duration::from_secs(3600), |_, _| {});
 
         assert!(outcome.cancelled, "begin 後に cancel したフラグを渡すと走査は中止される");
         assert!(outcome.files.is_empty());
@@ -3240,17 +3260,66 @@ mod tests {
 
         let cancel = AtomicBool::new(false);
         let calls = std::cell::RefCell::new(Vec::new());
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::ZERO, |found| {
-            calls.borrow_mut().push(found);
+        let outcome = walk_intake_directory(root, 100, &cancel, Duration::ZERO, |found, folders| {
+            calls.borrow_mut().push((found, folders));
         });
 
         assert_eq!(outcome.files.len(), 5);
         let calls = calls.into_inner();
         assert_eq!(calls.len(), 5, "ZERO 間隔なら毎ファイルで呼ばれるはず: {calls:?}");
         for pair in calls.windows(2) {
-            assert!(pair[0] < pair[1], "件数は単調増加であるはず: {calls:?}");
+            assert!(pair[0].0 < pair[1].0, "found は単調増加であるはず: {calls:?}");
         }
-        assert_eq!(*calls.last().unwrap(), 5);
+        assert_eq!(calls.last().unwrap().0, 5);
+    }
+
+    #[test]
+    fn walk_intake_directory_zero_interval_reports_progress_for_folder_only_tree() {
+        // ファイルを 1 件も含まない、入れ子のフォルダだけのツリー（NAS の深い
+        // バックアップツリーのように、浅い階層がフォルダばかりでファイルが
+        // 1 件も見つからない区間を模している）。
+        //
+        // 直す前の実装（on_progress をファイル追加の直後にしか呼ばない）では
+        // ファイルが 1 件も追加されないため on_progress が一度も呼ばれず、
+        // このテストは calls が空のまま失敗する。
+        let tmp = ScanTestDir::new("folders-only");
+        let root = &tmp.path;
+        let mut dir = root.clone();
+        for i in 0..30 {
+            dir = dir.join(format!("d{i}"));
+            fs::create_dir_all(&dir).unwrap();
+        }
+
+        let cancel = AtomicBool::new(false);
+        let calls = std::cell::RefCell::new(Vec::new());
+        let outcome = walk_intake_directory(root, 100, &cancel, Duration::ZERO, |found, folders| {
+            calls.borrow_mut().push((found, folders));
+        });
+
+        assert!(!outcome.truncated);
+        assert!(!outcome.cancelled);
+        assert_eq!(outcome.files.len(), 0, "ファイルは 1 件も無いツリーのはず");
+
+        let calls = calls.into_inner();
+        assert!(
+            !calls.is_empty(),
+            "ファイルが 1 件も無くても、フォルダを見つけるたびに on_progress が呼ばれるはず"
+        );
+        assert!(
+            calls.iter().all(|&(found, _)| found == 0),
+            "found はファイルが無いので 0 のまま増えないはず: {calls:?}"
+        );
+        for pair in calls.windows(2) {
+            assert!(
+                pair[0].1 < pair[1].1,
+                "folders は単調増加であるはず: {calls:?}"
+            );
+        }
+        assert_eq!(
+            calls.last().unwrap().1,
+            30,
+            "30 個のネストしたフォルダを見つけているはず: {calls:?}"
+        );
     }
 
     #[test]
@@ -3261,7 +3330,7 @@ mod tests {
         fs::write(root.join("also-ok.txt"), b"x").unwrap();
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_| {});
+        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_, _| {});
         let allow: HashSet<PathBuf> = outcome
             .files
             .iter()
@@ -3301,7 +3370,7 @@ mod tests {
             max_files,
             &cancel,
             Duration::from_millis(200),
-            |found| println!("[bench] progress: {found}"),
+            |found, folders| println!("[bench] progress: found={found} folders={folders}"),
         );
         println!(
             "[bench] {} files (truncated={}, cancelled={}) in {:?}",

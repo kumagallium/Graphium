@@ -47,8 +47,13 @@ export type NativeScanOptions = {
    * 走査ごとに区別するのに使う
    */
   scanId: string;
-  /** 走査中、それまでに見つかった件数を随時受け取る（最短 200ms 間隔） */
-  onProgress?: (found: number) => void;
+  /**
+   * 走査中、それまでに見つかった件数を随時受け取る（最短 200ms 間隔）。
+   * found はファイル数、folders はキューに積んだ（見つけた）フォルダ数。
+   * 幅優先走査では深いツリーに入るまでファイルが 1 件も見つからないことがあり、
+   * その間も folders が動くことで「固まっていない」と伝えられる
+   */
+  onProgress?: (progress: { found: number; folders: number }) => void;
 };
 
 /** この環境でネイティブ走査が使えるか（＝デスクトップか） */
@@ -90,12 +95,12 @@ export async function scanFolderNative(
   opts: NativeScanOptions,
 ): Promise<NativeScanOutcome> {
   const { scanId } = opts;
-  const unlisten = await listen<{ scanId: string; found: number }>(
+  const unlisten = await listen<{ scanId: string; found: number; folders: number }>(
     "intake-scan-progress",
     (event) => {
       // 別インスタンスが並行して走らせている走査のイベントは無視する
       if (event.payload.scanId !== scanId) return;
-      opts.onProgress?.(event.payload.found);
+      opts.onProgress?.({ found: event.payload.found, folders: event.payload.folders });
     },
   );
   try {
