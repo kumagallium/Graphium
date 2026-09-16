@@ -16,8 +16,9 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Network, Info, StickyNote, Bot } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
-import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
+import type { EditMediaContexts, MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 import type { NoteFolderLookup } from "./asset-folders";
+import type { ContextSuggestion } from "../note-context/ContextTagPicker";
 import { MediaPreview } from "./media-preview";
 import type { CitationSource } from "./SelectionPill";
 import { AssetGraphPanel, shouldShowAssetGraph, type KnowledgeKindLookup } from "./asset-graph-panel";
@@ -44,6 +45,10 @@ export type MaterialFullViewProps = {
   entry: MediaIndexEntry;
   /** ノート id → フォルダ。素材のフォルダ導出に使う（そのまま詳細ヘッダへ渡す） */
   noteFolderLookup?: NoteFolderLookup;
+  /** 素材のフォルダを付け外しする（詳細ヘッダのフォルダ行へそのまま渡す） */
+  onEditFolders?: EditMediaContexts;
+  /** フォルダ付け外しのピッカー候補（省略時は詳細ヘッダが素材とノートから集める） */
+  folderSuggestions?: ContextSuggestion[];
   onClose: () => void;
   onToggleFull?: () => void;
   onDelete?: (entry: MediaIndexEntry) => void;
@@ -93,6 +98,8 @@ export type MaterialFullViewProps = {
 export function MaterialFullView({
   entry,
   noteFolderLookup,
+  onEditFolders,
+  folderSuggestions,
   onClose,
   onToggleFull,
   onDelete,
@@ -251,6 +258,8 @@ export function MaterialFullView({
       <MaterialDetailHeader
         entry={entry}
         noteFolderLookup={noteFolderLookup}
+        onEditFolders={onEditFolders}
+        folderSuggestions={folderSuggestions}
         onClose={onClose}
         onRename={onRename}
         onIngest={onIngest}

@@ -164,6 +164,7 @@ import {
   buildGlobalGraph,
   parseExternalSource,
 } from "./features/network-graph";
+import { LocalGraphViewContainer } from "./features/network-graph/local-view";
 import { ReleaseNotesPanel } from "./features/release-notes";
 import {
   AiAssistantProvider,
@@ -274,12 +275,14 @@ import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
+import type { EditMediaContexts } from "./features/asset-browser/media-index";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
-import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
+import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
+import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner, WikiContextDrawer,
@@ -965,6 +968,8 @@ type NoteEditorProps = {
    * （素材ギャラリー側と同じ導出を使い、見え方を揃える）。
    */
   noteFolderLookup?: NoteFolderLookup;
+  /** エディタ内から開く素材サイドピークで、素材のフォルダを付け外しする */
+  onEditMediaContexts?: EditMediaContexts;
   onSave: (doc: GraphiumDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   /** `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す（ナビゲーションしない） */
@@ -985,6 +990,11 @@ type NoteEditorProps = {
    * メモギャラリーの該当メモ詳細を開くハンドラ。未指定なら memo: は無反応。
    */
   onOpenMemoSource?: (captureId: string) => void;
+  /**
+   * ノート右パネルの Graph タブから、このノートを起点にローカルビュー（周辺を時系列で
+   * 見る）を開くハンドラ。未指定なら入口ボタンは出ない。
+   */
+  onOpenLocalView?: (noteId: string) => void;
   /** ドキュメントキャッシュ検索（サイドピーク即表示用） */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
   onRefreshFiles: () => void;
@@ -1002,8 +1012,6 @@ type NoteEditorProps = {
   rawNoteIndex?: GraphiumIndex | null;
   /** 来歴ラベル機能（手順の PROV 化）が有効か。false なら全ラベル UI を描画しない。 */
   provLabelsEnabled?: boolean;
-  /** 文脈候補（タグ）を全ノートから削除する（ヘッダ文脈ピッカーのゴミ箱）。削除したら true を返す。 */
-  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
   uploadFile?: (file: File) => Promise<string>;
   /**
@@ -1124,6 +1132,11 @@ type NoteEditorProps = {
    * memo: ソースのその場プレビュー（メモピーク）で使う。
    */
   openMaterialPeekRef?: React.MutableRefObject<((entry: MediaIndexEntry) => void) | null>;
+  /**
+   * NoteApp 側からモバイルの右パネル（全画面オーバーレイ）を閉じるための命令口
+   * （openMaterialPeekRef と同じ流儀）。ローカルビューを開く直前に使う。
+   */
+  closeRightTabRef?: React.MutableRefObject<(() => void) | null>;
   /** 現在開いているノートの引用（knowledge link）数を取得する ref。
    *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
   composerCitationRef?: React.MutableRefObject<(() => number) | null>;
@@ -1438,6 +1451,7 @@ function NoteEditorInner({
   fileId,
   initialDoc,
   noteFolderLookup,
+  onEditMediaContexts,
   onSave,
   onDeriveNote,
   onCreateLinkedNote,
@@ -1446,7 +1460,9 @@ function NoteEditorInner({
   onNavigateNote,
   onOpenMedia,
   onOpenMemoSource,
+  onOpenLocalView,
   openMaterialPeekRef,
+  closeRightTabRef,
   onRefreshFiles,
   saving,
   files,
@@ -1457,7 +1473,6 @@ function NoteEditorInner({
   getCachedDoc,
   noteIndex,
   rawNoteIndex,
-  onDeleteContextEverywhere,
   uploadFile,
   uploadAsset,
   mediaIndex,
@@ -4330,6 +4345,16 @@ function NoteEditorInner({
     };
   }, [openMaterialPeekRef]);
 
+  // モバイルの右パネル（全画面オーバーレイ）を閉じる命令口。NoteApp がローカルビューを
+  // 開く直前に呼ぶ（openMaterialPeekRef と同じ流儀）。
+  useEffect(() => {
+    if (!closeRightTabRef) return;
+    closeRightTabRef.current = () => setRightTab(null);
+    return () => {
+      if (closeRightTabRef.current) closeRightTabRef.current = null;
+    };
+  }, [closeRightTabRef]);
+
   // 現ノートの引用（knowledge layer = reference リンク）数を Composer に渡すため ref に登録。
   // Composer は NoteApp 直下にあり linkStore に触れないので、この imperative ref で橋渡しする。
   useEffect(() => {
@@ -6128,7 +6153,6 @@ function NoteEditorInner({
                     createLabel={(v) => t("nav.createContext", { value: v })}
                     clearLabel={t("nav.clearContexts")}
                     emptyText={t("nav.contextEmpty")}
-                    onDeleteCandidate={onDeleteContextEverywhere}
                     onAdd={(v) => {
                       const next = addNoteContext(noteContextsRef.current, v) ?? [];
                       noteContextsRef.current = next;
@@ -6137,6 +6161,12 @@ function NoteEditorInner({
                     }}
                     onRemove={(v) => {
                       const next = removeNoteContext(noteContextsRef.current, v) ?? [];
+                      noteContextsRef.current = next;
+                      setNoteContexts(next);
+                      markDirty();
+                    }}
+                    onReplace={(from, to) => {
+                      const next = replaceNoteContext(noteContextsRef.current, from, to) ?? [];
                       noteContextsRef.current = next;
                       setNoteContexts(next);
                       markDirty();
@@ -6469,6 +6499,7 @@ function NoteEditorInner({
             inline
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
+            onEditFolders={onEditMediaContexts}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
@@ -6492,6 +6523,7 @@ function NoteEditorInner({
           <MaterialSidePeek
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
+            onEditFolders={onEditMediaContexts}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
@@ -6575,10 +6607,20 @@ function NoteEditorInner({
                   }}
                   onOpenUrl={(url) => setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null))}
                   onOpenMemo={onOpenMemoSource}
+                  onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
                 />
               )}
               {rightTab === "prov" && provLabelsEnabled && (
-                <ProvGraphPanel doc={provDoc} editorRef={editorRef} noteId={fileId} />
+                <ProvGraphPanel
+                  doc={provDoc}
+                  editorRef={editorRef}
+                  noteId={fileId}
+                  noteContexts={noteContexts}
+                  // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
+                  // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
+                  index={rawNoteIndex ?? null}
+                  onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
+                />
               )}
               {rightTab === "chat" && (
                 <AiAssistantPanel
@@ -7066,6 +7108,14 @@ export function NoteApp() {
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
   // データ構築は fm 宣言後に行う（globalGraphData）。
   const [showGlobalGraph, setShowGlobalGraph] = useState(false);
+  // 全体グラフの表示モード（俯瞰 / 時系列）。時系列は全体グラフのサブタブとして本体をローカルビューに切り替える
+  // （2026-09-15 設計変更: 以前の排他ビュー localViewOrigin を廃止し、全体グラフの状態に統合した）。
+  const [globalGraphMode, setGlobalGraphMode] = useState<"overview" | "timeline">("overview");
+  // 時系列モードの起点ノート id（未選択なら null）
+  const [timelineOrigin, setTimelineOrigin] = useState<string | null>(null);
+  // 時系列モードを「ノートから」開いたときの、戻り先ノート id。ノートを開いていなかった
+  // （全体グラフのサイドピーク経由等）場合は null — この場合はヘッダーに「ノートに戻る」を出さない。
+  const [timelineReturnNoteId, setTimelineReturnNoteId] = useState<string | null>(null);
   // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
@@ -7100,6 +7150,9 @@ export function NoteApp() {
   // エディタ内の素材サイドピークを NoteApp 側から開く命令口（openSidePeekRef と同じ流儀）。
   // memo: ソースのその場プレビューで使う。エディタ非表示時は null。
   const openMaterialPeekRef = useRef<((entry: MediaIndexEntry) => void) | null>(null);
+  // モバイルでローカルビューを開く前に右パネル（全画面オーバーレイ）を閉じる命令口。
+  // NoteEditorInner が useEffect で setRightTab(null) を登録する（同じ流儀）。
+  const closeRightTabRef = useRef<(() => void) | null>(null);
   // 現ノートの引用数を取得する関数を NoteEditorInner が登録する（同じ流儀）。
   const composerCitationRef = useRef<(() => number) | null>(null);
   // ⌘K の共有欄から引用カードを挿す命令口。NoteEditorInner が登録する（同じ流儀）。
@@ -7490,6 +7543,9 @@ export function NoteApp() {
     // 共有ノートが本文より優先表示されたまま残る（他のビューで繰り返した消し忘れ）
     setSharedEntryViewId(null);
     setShowGlobalGraph(false);
+    // 時系列の起点・モードは畳まない（全体グラフに戻ったときにサブタブの選択を維持する）。
+    // 「ノートに戻る」の戻り先だけはここで畳む（ビューを離れた時点で無効な情報になるため）。
+    setTimelineReturnNoteId(null);
     setShowSkillList(false);
     setActiveWikiView(null);
     // 素材を Full view で開いたままサイドバーの同じ素材カテゴリを押すと
@@ -7527,6 +7583,7 @@ export function NoteApp() {
     if (fm.activeFileId !== prevActiveFileIdRef.current) {
       prevActiveFileIdRef.current = fm.activeFileId;
       setShowGlobalGraph(false);
+      setTimelineReturnNoteId(null);
     }
   }, [fm.activeFileId]);
 
@@ -8246,6 +8303,10 @@ export function NoteApp() {
   // 呼ばれる共通関数。
   const renameFolderEverywhere = useCallback(
     async (from: string, to: string) => {
+      // 予約フォルダ「計画」（またはその子）は改名しない（FolderMenu 側で項目自体も
+      // 出さないが、他の呼び出し口（ギャラリーの改名入口）向けの保険として実体側にも
+      // ガードを入れる）
+      if (isPlanFolderPath(from)) return;
       // ノートのタグ、メモ、素材、まだノートが無いフォルダの定義。
       // どれも子を連れて動く。ひとつでも取り残すと、同じフォルダのはずのものが
       // 古い名前に取り残されて行方不明になる
@@ -8267,6 +8328,8 @@ export function NoteApp() {
   // フォルダの削除（タグ剥がし）。中のノートは消さない。
   const deleteFolderEverywhere = useCallback(
     async (path: string) => {
+      // 予約フォルダ「計画」は削除しない（所属を戻せないため。空にすれば自然に消える）
+      if (isPlanFolderPath(path)) return;
       await fm.deleteNoteContextEverywhere(path);
       await capture.remapCaptureContextsEverywhere(path, null);
       await fm.remapMediaContextsEverywhere(path, null);
@@ -8285,12 +8348,32 @@ export function NoteApp() {
   // showGlobalGraphView とする。
   const showGlobalGraphView = useCallback(() => {
     // 他の排他ビューを全部畳んでから全体グラフを表示する（他の onShow* と同じ作法）。
+    // 左ナビの「全体グラフ」から開いたときは常に俯瞰に戻す。
     closeAllViews();
+    setGlobalGraphMode("overview");
     setShowGlobalGraph(true);
     setListSidePeekNoteId(null);
     dropPeekFromUrl();
     setSidebarOpen(false);
   }, [closeAllViews, dropPeekFromUrl]);
+
+  // ローカルビュー（起点ノート周辺を時系列で見る）を表示する。全体グラフを時系列モードで開き、
+  // 起点を指定ノートにする。工程サブタブ行・グラフタブ・サイドピークのボタンから呼ばれる。
+  const showLocalViewFor = useCallback((noteId: string) => {
+    // 他の排他ビューを全部畳む（これで showGlobalGraph も false になる）。
+    closeAllViews();
+    setTimelineOrigin(noteId);
+    // ノートを開いていたときだけ「ノートに戻る」の戻り先を持つ
+    // （全体グラフのサイドピーク経由など、ノートを開いていない場合は戻る先が無い）。
+    setTimelineReturnNoteId(fm.activeFileId ?? null);
+    setGlobalGraphMode("timeline");
+    setShowGlobalGraph(true);
+    setListSidePeekNoteId(null);
+    dropPeekFromUrl();
+    setSidebarOpen(false);
+    // モバイルは右パネルが全画面オーバーレイなので、開いたままだとローカルビューが隠れる。
+    if (!isDesktop) closeRightTabRef.current?.();
+  }, [closeAllViews, dropPeekFromUrl, fm.activeFileId, isDesktop]);
 
   // 投入口モーダルを閉じる。取り込みが完了していた（done）場合は、結果に応じて
   // 続きの遷移を行う: ノート 1 件だけならそのまま開く（従来の単体インポートの動作を
@@ -9581,21 +9664,6 @@ export function NoteApp() {
 
   const t = useT();
 
-  // 文脈候補（タグ）を全ノートから削除する。ピッカーのゴミ箱から呼ばれる。
-  // 使用中の件数を数え、1 件以上なら確認ダイアログを出す。実際に削除したら true を返す
-  // （ピッカー側がセッション表示から即座に消すのに使う）。
-  const handleDeleteContextEverywhere = async (value: string): Promise<boolean> => {
-    const key = value.trim().toLowerCase();
-    const count = (fm.noteIndex?.notes ?? []).filter((n) =>
-      (n.noteContexts ?? []).some((c) => c.trim().toLowerCase() === key),
-    ).length;
-    if (count >= 1 && !window.confirm(t("nav.deleteContextConfirm", { value, count: String(count) }))) {
-      return false;
-    }
-    await fm.deleteNoteContextEverywhere(value);
-    return true;
-  };
-
   // エディタ参照（メディアリネーム時のブロック同期用）
   const noteEditorRef = useRef<any>(null);
 
@@ -10826,6 +10894,25 @@ export function NoteApp() {
           <GlobalGraphView
             data={globalGraphData}
             insightsEnabled={featureFlags.insights ?? true}
+            mode={globalGraphMode}
+            onModeChange={setGlobalGraphMode}
+            timeline={
+              <LocalGraphViewContainer
+                originNoteId={timelineOrigin}
+                index={fm.rawNoteIndex ?? null}
+                onChangeOrigin={setTimelineOrigin}
+                onOpenNote={(noteId) => openListPeek(noteId)}
+                onBackToNote={
+                  timelineReturnNoteId
+                    ? () => {
+                        const target = timelineReturnNoteId;
+                        closeAllViews();
+                        navigateToNote(target);
+                      }
+                    : undefined
+                }
+              />
+            }
             onSelectNote={(noteId) => {
               // ノード単クリック → 共有 SidePeek で中身プレビュー（本開きは SidePeek 内から）。
               // noteId は wiki ノードに `wiki:` prefix 付き（SidePeek の規約に合わせる）。
@@ -10879,7 +10966,7 @@ export function NoteApp() {
             onArchiveMedia={fm.handleArchiveMedia}
             countSnapshotRefs={fm.countSnapshotRefsForAsset}
             onRenameMedia={handleRenameMediaWithBlockSync}
-            onSetMediaContexts={fm.updateMediaContexts}
+            onEditMediaContexts={fm.editMediaContexts}
             noteFolders={noteFolderNames}
             noteFolderLookup={noteFolderLookup}
             onFolderMenu={(path, position, opts) => {
@@ -11400,6 +11487,7 @@ export function NoteApp() {
               if (newNoteId) navigateToNote(newNoteId);
               return newNoteId;
             }}
+            overview
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView
@@ -11461,7 +11549,6 @@ export function NoteApp() {
             }}
             onOpenWikiPeek={(wikiNoteId) => openListPeek(wikiNoteId)}
             onSetNoteContexts={fm.updateNoteContexts}
-            onDeleteContextEverywhere={handleDeleteContextEverywhere}
             onShareSelected={
               isTauri() && getSharedRoot() && loadAuthorIdentity()
                 ? (ids) =>
@@ -11843,7 +11930,7 @@ export function NoteApp() {
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
             noteFolderLookup={noteFolderLookup}
-            onDeleteContextEverywhere={handleDeleteContextEverywhere}
+            onEditMediaContexts={fm.editMediaContexts}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
                 ? (() => {
@@ -12000,6 +12087,7 @@ export function NoteApp() {
               router.navigate({ view: "assets", mediaType: target.type });
             }}
             onOpenMemoSource={handleOpenMemoSource}
+            onOpenLocalView={showLocalViewFor}
             getCachedDoc={fm.getCachedDoc}
             onRefreshFiles={fm.refreshFiles}
             saving={fm.saving}
@@ -12055,6 +12143,7 @@ export function NoteApp() {
             openSidePeekRef={openSidePeekRef}
             onSidePeekChange={openPeek}
             openMaterialPeekRef={openMaterialPeekRef}
+            closeRightTabRef={closeRightTabRef}
             composerCitationRef={composerCitationRef}
             composerInsertSharedRef={composerInsertSharedRef}
             chatRunApplyRef={chatRunApplyRef}
@@ -12203,6 +12292,7 @@ export function NoteApp() {
               onCreateLinkedNote={fm.handleCreateLinkedNote}
               onOpenNoteInPeek={(peekId) => openListPeek(peekId)}
               onClose={() => openListPeek(null)}
+              onOpenLocalView={(id) => showLocalViewFor(id)}
               onNavigate={(noteId, savedDoc) => {
                 // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）は
                 // navigateToNote が全て畳む。1 つでも残すと activeFileId が変わっても
@@ -12211,7 +12301,6 @@ export function NoteApp() {
                 navigateToNote(noteId, savedDoc);
               }}
               onNoteContextsChange={(id, doc) => fm.reindexNoteFromDoc(id, doc)}
-              onDeleteContextEverywhere={handleDeleteContextEverywhere}
               wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
               onAddToKnowledge={
                 aiUiEnabled && !listSidePeekNoteId.startsWith("wiki:")
@@ -12251,13 +12340,16 @@ export function NoteApp() {
           position={folderMenu.position}
           initialMode={folderMenu.initialMode}
           onClose={() => setFolderMenu(null)}
-          onRename={(from, to) => void renameFolderEverywhere(from, to)}
-          onDelete={(path) => void deleteFolderEverywhere(path)}
+          // 予約フォルダ「計画」（またはその子）は改名・削除の項目自体を出さない
+          // （復元できない「所属」を戻す仕組みを作るより軽い。§2.1）
+          onRename={isPlanFolderPath(folderMenu.path) ? undefined : (from, to) => void renameFolderEverywhere(from, to)}
+          onDelete={isPlanFolderPath(folderMenu.path) ? undefined : (path) => void deleteFolderEverywhere(path)}
         />
       )}
       {listMaterialPeekEntry && (
         <MaterialSidePeek
           noteFolderLookup={noteFolderLookup}
+          onEditFolders={fm.editMediaContexts}
           entry={listMaterialPeekEntry}
           onClose={() => setListMaterialPeekEntry(null)}
           mediaIndex={fm.mediaIndex ?? null}

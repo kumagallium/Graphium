@@ -67,6 +67,8 @@ import {
 import {
   saveMediaIndex,
   setMediaEntryContexts,
+  editMediaEntriesContexts,
+  type MediaContextsEdit,
   remapMediaContexts,
   createEmptyIndex,
   addMediaEntry,
@@ -2268,6 +2270,28 @@ export function useFileManager(authenticated: boolean) {
     }
   }, []);
   /**
+   * 素材のフォルダを、それぞれの最新の値から付け外しする（詳細の「＋ フォルダ」・
+   * 一覧の行・一括のピッカーから呼ぶ）。値でなく編集を受け取るのは、ピッカーで続けて
+   * 操作したときに描画時点の古い値で直前の変更を上書きしないため。
+   * 複数件でも書き込みは 1 回にまとめる。
+   */
+  const editMediaContexts = useCallback(
+    async (fileIds: readonly string[], edit: MediaContextsEdit) => {
+      const current = mediaIndexRef.current;
+      if (!current) return;
+      const { index: updated, changed } = editMediaEntriesContexts(current, fileIds, edit);
+      if (changed === 0) return;
+      mediaIndexRef.current = updated;
+      setMediaIndex(updated);
+      try {
+        await saveMediaIndex(updated);
+      } catch (err) {
+        console.warn("素材のフォルダ保存に失敗:", err);
+      }
+    },
+    [],
+  );
+  /**
    * フォルダの改名 / 削除を素材にも波及させる（`to` が null なら取り除く）。
    * ノート由来の導出フォルダはノート側が直れば自然に追従するので、ここで直すのは
    * 素材が自前で持っている分（手で入れたフォルダ）。
@@ -3208,6 +3232,7 @@ export function useFileManager(authenticated: boolean) {
     countSnapshotRefsForAsset,
     handleRenameMedia,
     updateMediaContexts,
+    editMediaContexts,
     remapMediaContextsEverywhere,
     handleUpdateMediaSharedRef,
     handleAddUrlBookmark,

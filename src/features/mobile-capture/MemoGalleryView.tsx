@@ -20,6 +20,7 @@ import {
   noteContextHue,
   addNoteContext,
   removeNoteContext,
+  replaceNoteContext,
 } from "../note-context/context-tags";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
 import { ContextBadge } from "../note-context/ContextBadge";
@@ -1253,6 +1254,16 @@ export function MemoGalleryView({
                 await onSetMemoContexts(id, removeNoteContext(entry.noteContexts, value) ?? []);
               }
               setAssignApplied((prev) => prev.filter((v) => v !== value));
+            })();
+          }}
+          onReplace={(from, to) => {
+            void (async () => {
+              for (const id of selectedIds) {
+                const entry = allCaptures.find((c) => c.id === id);
+                if (!entry) continue;
+                await onSetMemoContexts(id, replaceNoteContext(entry.noteContexts, from, to) ?? []);
+              }
+              setAssignApplied((prev) => replaceNoteContext(prev, from, to) ?? []);
             })();
           }}
         />

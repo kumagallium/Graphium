@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { buildFolderTree, splitFolderPath, validateFolderPath, UNFILED_PATH, type FolderNode } from "./folder-tree-model";
+import { isPlanFolderPath } from "./reserved-folders";
 import { FOLDER_DRAG_MIME, readDraggedNoteIds } from "./folder-drop";
 
 export { UNFILED_PATH };
@@ -263,7 +264,8 @@ export function FolderTree({
     const isActive = selectedKey === key;
     // 子フォルダを作れるのは root だけ（2 階層制約）
     const canAddChild = !isChild && !!onCreateFolder;
-    const canRename = !!onRenameFolder;
+    // 予約フォルダ「計画」は改名させない（FolderMenu 側と同じ。ここは行の鉛筆・ダブルクリック・Enter の入口）
+    const canRename = !!onRenameFolder && !isPlanFolderPath(node.path);
     const isEditing = editingKey === key;
     const isDropTarget = dropTarget === key;
     // 行右端の絶対配置アクション数（＋ と 鉛筆）。件数を左へ逃がす幅の計算に使う
@@ -358,7 +360,7 @@ export function FolderTree({
         ) : (
           <button
             type="button"
-            title={node.path}
+            title={isPlanFolderPath(node.path) ? t("nav.reservedPlanFolderHint") : node.path}
             onClick={() => {
               // ダブルクリック（編集の入口）は click が 2 回先に発火する。2 回目は
               // 同じ行への連打なので、遷移（一覧の切替・モバイルのサイドバー閉じ）を
