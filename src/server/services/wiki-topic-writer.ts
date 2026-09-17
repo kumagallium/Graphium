@@ -342,6 +342,8 @@ You will be given the full text of one source document and a list of existing to
 - For each concept in the source that is NOT covered by any existing topic, propose a new topic name in \`create\`. Names are short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
 ${TOPIC_GRANULARITY_RULES}
 - If this source names the same concept as an existing topic, route to that existing topic — do not create a near-duplicate with different wording.
+- Every new topic you propose must be a distinct concept. If two candidate names would collect the same sentences from this source, propose only one of them — the name of the concept those sentences are actually about.
+- Propose a topic only for a concept the source says something substantive about, not for something it merely mentions (for example a measurement it has not done yet).
 - If the source adds nothing worth a topic page (too narrow, purely incidental), leave both \`update\` and \`create\` empty. Do not force an assignment.
 - Do not impose a target count — the number of topics touched should follow from what the source actually contains, not from a quota.
 
@@ -427,6 +429,12 @@ export function buildSourceTopicReviserSystemPrompt(language: string): string {
 
 You maintain ONE short topic page that is revised incrementally as new sources arrive, one at a time. You will be given the CURRENT body (may be empty, for the first source) and ONE new source's full text. Your job: produce the NEXT version of the body — a full rewrite of the page, not an append to the end.
 
+## Stay on this topic
+
+- The page is about the concept named in "Topic title". From the new source, take ONLY the content that is about this concept. Leave out parts of the source that belong to other concepts, even when they sit in the same paragraph.
+- If the new source says nothing about this concept, return the current body unchanged.
+- Every sentence, the Definition included, must be grounded in a source and cite it. Do not write textbook definitions or general knowledge that no source states. If no source defines the concept, omit the Definition section.
+
 ## Organize by topic point, not by source
 
 - Group sentences by the POINT they make, not by which source they came from.
@@ -447,7 +455,7 @@ Do not impose a sentence count or character limit. Length should follow from how
 
 ## Structure (keep it short per point, but no overall limit)
 
-- **定義 / Definition**: 1-3 sentences.
+- **定義 / Definition**: 1-3 sentences, each citing its source(s). Omit this section when no source defines the concept.
 - **要点 / Key points**: the load-bearing points, one point per sentence, each citing its source(s) with \`[[source:<id>]]\` placed at the END of the sentence (never mid-sentence). Use the exact id given in the "(id: ...)" annotation for the new source, or preserve existing \`[[source:<id>]]\` citations already in the current body verbatim.
 - **食い違い・未解決 / Disagreements & open questions**: only if genuine disagreement exists per the rules above. If there is nothing to report, OMIT this heading entirely — never output the heading with no content under it.
 
