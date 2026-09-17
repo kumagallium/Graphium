@@ -3,7 +3,7 @@
 // 背景ページは操作可能（薄暗くならない）
 // ラベル機能（ProvIndicatorLayer）対応
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
@@ -21,7 +21,9 @@ import {
   useBlockAlignmentStore,
   AlignmentStyleLayer,
 } from "../block-alignment";
-import type { GraphiumDocument } from "../../lib/document-types";
+import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
+import { useSourceCheckStale } from "../source-check/use-source-check";
+import { pickPeekExternalFields } from "./peek-save-merge";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { buildSavedPageFields, saveNoteDoc } from "@features/note-save";
 import { SandboxEditor } from "../../base/editor";
@@ -247,6 +249,24 @@ type SidePeekProps = {
    * 出さない。wiki: プレフィックス付きの ID（Wiki ノード）は対象外。
    */
   onOpenLocalView?: (noteId: string) => void;
+  /**
+   * 知見・洞察・トピック（wiki:）を開いたとき、本文の下に出す関連・文脈 UI
+   * （フル画面の WikiContextDrawer と同じ部品・同じハンドラ）。未指定なら出さない。
+   * 部品とハンドラは note-app 側が持ち、ピークは最新の wikiMeta と開き方だけを渡す。
+   */
+  renderWikiContext?: (args: PeekWikiContextArgs) => ReactNode;
+};
+
+/** renderWikiContext に渡す引数 */
+export type PeekWikiContextArgs = {
+  /** プレフィックス無しの wiki ID */
+  wikiId: string;
+  /** 照合・判定の消去を反映した最新の wikiMeta（doc キャッシュ優先） */
+  wikiMeta: WikiMeta;
+  /** 照合後に本文が変わったか */
+  sourceCheckStale: boolean;
+  /** 派生元・出典などのリンク先を開く（このピークの中で開き直す） */
+  openNote: (noteId: string) => void;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -296,7 +316,7 @@ function SidePeekInner({
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
-  onOpenLocalView,
+  onOpenLocalView, renderWikiContext,
 }: SidePeekProps) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。素材ピークと幅設定を共有する。
@@ -1110,6 +1130,14 @@ function SidePeekInner({
   // （cachedDoc を優先すると title 編集が stale な cachedDoc.title に固定され、
   //  サイドピークで「タイトルが変えられない」不具合になる。）
   const effectiveDoc = doc ?? initialCachedDoc;
+  // 本文下の文脈欄（WikiContextDrawer）に渡す doc。照合・判定の消去は note-app 側が
+  // doc キャッシュ経由で保存するため、キャッシュを優先して開いたままでも結果を反映する
+  // （ピーク自身の保存も onSaved → reindexNoteFromDoc でキャッシュに載る）。
+  const wikiContextDoc =
+    renderWikiContext && noteId.startsWith("wiki:")
+      ? (getCachedDoc?.(noteId) ?? effectiveDoc ?? null)
+      : null;
+  const wikiContextStale = useSourceCheckStale(wikiContextDoc);
   const initialContent = effectiveDoc?.pages?.[0]?.blocks?.length
     ? sanitizeBlocks(effectiveDoc.pages[0].blocks)
     : undefined;
@@ -1143,10 +1171,10 @@ function SidePeekInner({
       blockAlignmentStore: blockAlignmentStoreRef.current,
     });
 
-    // chats はピーク内で編集されないため、doc キャッシュ側が新しければそちらを
-    // 採用する（チャット run のアプリレベル書き戻しが、ピーク表示中のノートの
-    // chats を更新した場合に docRef の旧 chats で巻き戻さないため）
-    const latestChats = getCachedDocRef.current?.(noteId)?.chats;
+    // chats / wikiMeta はピーク内で編集されないため、doc キャッシュ側を採用する
+    // （チャット run の書き戻しや、本文下の文脈欄から走る照合・判定の消去を
+    // docRef の旧い値で巻き戻さないため。詳細は peek-save-merge.ts）
+    const externalFields = pickPeekExternalFields(noteId, getCachedDocRef.current?.(noteId));
 
     // テーブル注釈（名前・取り込み元・列のふるまい）。ピークで表の名前を付け替えた
     // ぶんを書き戻す。空のときは docRef 側を温存する — 復元 effect が走る前に
@@ -1159,7 +1187,7 @@ function SidePeekInner({
     // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
     const updatedDoc: GraphiumDocument = normalizeTableRowIdentities({
       ...docRef.current,
-      ...(latestChats ? { chats: latestChats } : {}),
+      ...externalFields,
       pages: [
         {
           ...docRef.current.pages[0],
@@ -1986,6 +2014,22 @@ function SidePeekInner({
                   return blobUrl;
                 }}
               />
+              {/* 知見・洞察・トピックの関連・文脈（派生元・世界照合・出典照合など）。
+                  フル画面の本文下（contextDrawerSlot）と同じ部品を同じ余白で置く。 */}
+              {renderWikiContext && wikiContextDoc?.source === "ai" && wikiContextDoc.wikiMeta && (
+                <div className="px-[54px]">
+                  {renderWikiContext({
+                    wikiId: noteId.replace(/^wiki:/, ""),
+                    wikiMeta: wikiContextDoc.wikiMeta,
+                    sourceCheckStale: wikiContextStale,
+                    openNote: (targetId) => {
+                      const openInPeek = onOpenNoteInPeekRef.current;
+                      if (openInPeek) openInPeek(targetId);
+                      else onNavigate(targetId);
+                    },
+                  })}
+                </div>
+              )}
             </div>
           </>
         )}
