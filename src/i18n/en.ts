@@ -634,7 +634,7 @@ export const en: Record<string, string> = {
   "settings.features.worldGrounding.title": "Use world grounding",
   "settings.features.worldGrounding.help": "World-grounding works better with a smarter model. When off, grounding buttons and columns are hidden. Existing results are kept.",
   "settings.features.claims.title": "Use claims",
-  "settings.features.claims.summary": "Topics are built directly from your sources. Claims and insights are a Graphium-specific extension: a claim pulls one sourced statement out of a note or document, and an insight generalizes a pattern shared by several claims into a form that still holds outside its original context.",
+  "settings.features.claims.summary": "Topics are built directly from your sources. Claims are a Graphium-specific extension that pulls sourced statements out of your notes and documents, one at a time. Insights are built from claims, so turning claims off turns insights off too.",
   "settings.features.claims.help": "When off, ingest skips claim extraction and only the topic stage runs from your source text. Existing claims and insights are kept and stay visible.",
   "settings.features.insights.title": "Use insights",
   "settings.features.insights.help": "Insights work better with a smarter model. When off, insights are hidden from the sidebar and lists. Existing insights are kept.",

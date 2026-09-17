@@ -634,7 +634,7 @@ export const ja: Record<string, string> = {
   "settings.features.worldGrounding.title": "世界照合を使う",
   "settings.features.worldGrounding.help": "世界照合は賢いモデルほど判定の質が上がります。オフにすると、照合のボタンと列が隠れます。照合済みの結果は残ります。",
   "settings.features.claims.title": "知見を使う",
-  "settings.features.claims.summary": "トピックは資料から直接作られます。知見と洞察は Graphium 独自の拡張です。知見はノートや資料から、根拠つきの主張を 1 つずつ取り出します。洞察は、複数の知見に共通する型を、元の文脈を離れても通じる形に一般化します。",
+  "settings.features.claims.summary": "トピックは資料から直接作られます。知見は Graphium 独自の拡張で、ノートや資料から根拠つきの主張を 1 つずつ取り出します。洞察は知見から作るため、知見をオフにすると洞察も使えません。",
   "settings.features.claims.help": "オフにすると、取り込みは知見の抽出をせず、トピック段だけが資料本文から走ります。作成済みの知見・洞察は残り、引き続き見られます。",
   "settings.features.insights.title": "洞察を使う",
   "settings.features.insights.help": "洞察は賢いモデルほど質が上がります。オフにすると、サイドバーと一覧から隠れます。作成済みの洞察は残ります。",
