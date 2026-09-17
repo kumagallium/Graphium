@@ -1332,66 +1332,6 @@ export async function ingestFromChat(
   return res.json();
 }
 
-/**
- * 既存 Wiki の 1 ページ分の見出し・プレビュー抽出結果。
- * 以前は横断更新（cross-update、2026-09-17 撤去）への入力だったが、
- * 現在は redundant 自動マージ（rewriteAndMerge 経路）の入力として使う。
- */
-export type ExistingWikiDetail = {
-  id: string;
-  title: string;
-  kind: "claim";
-  /** 既存セクションの見出しリスト */
-  sectionHeadings: string[];
-  /** セクション内容のサマリー（先頭200文字ずつ） */
-  sectionPreviews: string[];
-};
-
-/**
- * 既存の Wiki からセクション見出し・プレビューを抽出する
- */
-export function extractWikiDetail(
-  id: string,
-  doc: GraphiumDocument,
-): ExistingWikiDetail | null {
-  if (!doc.wikiMeta || doc.wikiMeta.kind !== "claim") return null;
-
-  const page = doc.pages[0];
-  if (!page) return null;
-
-  const sectionHeadings: string[] = [];
-  const sectionPreviews: string[] = [];
-  let currentHeading = "";
-  let currentContent: string[] = [];
-
-  const flushSection = () => {
-    if (currentHeading) {
-      sectionHeadings.push(currentHeading);
-      sectionPreviews.push(currentContent.join(" ").slice(0, 200));
-    }
-    currentContent = [];
-  };
-
-  for (const block of flattenColumns(page.blocks)) {
-    if (block.type === "heading" && block.props?.level === 2) {
-      flushSection();
-      currentHeading = extractInlineText(block.content);
-    } else if (currentHeading) {
-      const text = extractInlineText(block.content);
-      if (text) currentContent.push(text);
-    }
-  }
-  flushSection();
-
-  return {
-    id,
-    title: doc.title,
-    kind: "claim",
-    sectionHeadings,
-    sectionPreviews,
-  };
-}
-
 // ── Lint（整合性チェック） ──
 
 import type { LintReport, WikiSnapshot } from "../../server/services/wiki-linter";

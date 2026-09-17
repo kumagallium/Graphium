@@ -295,7 +295,7 @@ import {
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
-  extractWikiDetail, extractBodyPreview,
+  extractBodyPreview,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
   // 機械的な自動アーカイブ（LLM 不要）

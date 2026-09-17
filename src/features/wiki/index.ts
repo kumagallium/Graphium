@@ -17,7 +17,7 @@ export {
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge,
   promoteClaimStatusIfCorroborated,
   embedWikiSections, markEditedSections,
-  extractWikiDetail, extractBodyPreview,
+  extractBodyPreview,
   extractTopicOneLiner, formatTopicRefForIndex, consolidateTopics, retargetClaimTopicId,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
