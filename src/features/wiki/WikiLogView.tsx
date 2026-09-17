@@ -11,7 +11,7 @@ import {
   History,
   Loader2,
   RefreshCw,
-  ShieldCheck,
+  Scissors,
   Trash2,
   Zap,
 } from "lucide-react";
@@ -25,7 +25,7 @@ type Props = {
 const EVENT_ICONS: Record<WikiLogEventType, typeof History> = {
   ingest: BookOpen,
   merge: GitMerge,
-  lint: ShieldCheck,
+  lint: Scissors,
   delete: Trash2,
   "cross-update": Zap,
   regenerate: RefreshCw,

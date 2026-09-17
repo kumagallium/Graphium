@@ -8,7 +8,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   Image, FileText as FileTextIcon, FileText, Video, Volume2, Link, StickyNote, Bot, History,
-  PanelLeftClose, Trash2, Settings as SettingsIcon, Wrench, ShieldCheck, ArrowRight,
+  PanelLeftClose, Trash2, Settings as SettingsIcon, Wrench, Scissors, ArrowRight,
   ChevronDown, ChevronRight, Table, Folder,
 } from "lucide-react";
 import { FileSidebar } from "./FileSidebar";
@@ -300,12 +300,12 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
               <span>Log</span>
             </button>
             <button
-              title="Health Check"
-              aria-label="Health Check"
+              title="Upkeep"
+              aria-label="Upkeep"
               className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
-              <ShieldCheck size={12} />
-              <span>Health</span>
+              <Scissors size={12} />
+              <span>Upkeep</span>
             </button>
           </div>
         </CollapsibleSection>
