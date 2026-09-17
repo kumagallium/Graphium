@@ -40,6 +40,13 @@ describe("detectLocalIssues - orphan topic", () => {
     expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("topic-3"))).toBe(false);
   });
 
+  it("新形式トピック（derivedFromClaims 空・derivedFromNotes に資料 id）は orphan にしない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-4", title: "新形式話題", derivedFromClaims: [], derivedFromNotes: ["note-a"] }),
+    ]);
+    expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("topic-4"))).toBe(false);
+  });
+
   it("claim の orphan 判定ロジックには影響しない（topic 追加の副作用がないことの確認）", () => {
     const issues = detectLocalIssues([
       base({
@@ -143,6 +150,14 @@ describe("detectAutoArchivable - 機械的に判定できる空ナレッジの�
   it("メンバー知見を持つ topic は検出しない", () => {
     const candidates = detectAutoArchivable(
       [base({ id: "topic-1", title: "話題", kind: "topic", derivedFromClaims: ["claim-a"] })],
+      new Set(),
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it("新形式トピック（derivedFromClaims 空・derivedFromNotes に資料 id）は空トピックとみなさない", () => {
+    const candidates = detectAutoArchivable(
+      [base({ id: "topic-4", title: "新形式話題", kind: "topic", derivedFromClaims: [], derivedFromNotes: ["note-a"] })],
       new Set(),
     );
     expect(candidates).toHaveLength(0);
