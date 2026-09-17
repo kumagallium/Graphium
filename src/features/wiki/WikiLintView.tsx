@@ -46,7 +46,7 @@ type Props = {
   wikiKindById?: Map<string, string>;
   /**
    * redundant の recommendedAction（type: "merge"）が topic 同士のときだけ出る
-   * 「統合」ワンクリック手当て。keepId に absorbId を吸収させる（モデルは呼ばない）。
+   * 「統合」ワンクリック手当て。keepId に absorbId を吸収させる（本文の統合で AI を 1 回呼ぶ。どちらかが旧形式なら資料から組み直す）。
    */
   onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
   /**
@@ -597,7 +597,7 @@ function IssueCard({
   };
 
   // 統合のワンクリック手当ては、推奨の keep/absorb が両方 topic のときだけ出す
-  // （mergeTopicsExplicit は topic ページの統合専用）。モデルは呼ばない。
+  // （mergeTopicsExplicit は topic ページの統合専用）。統合の要否は AI に再判定させない — 押した人の判断で統合する。
   const canMergeTopics =
     recommended?.type === "merge" &&
     Boolean(onMergeTopics) &&
