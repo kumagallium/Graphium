@@ -30,8 +30,10 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
+import { INTAKE_EXTENSIONS } from "./classify";
 import {
   cancelFolderScanNative,
+  folderNameOf,
   createFolderScanId,
   pickFolderNative,
   scanFolderNative,
@@ -39,11 +41,12 @@ import {
 
 const scanned = {
   files: [
-    { path: "/Volumes/NAS/work/note.md", relativePath: "work/note.md", name: "note.md" },
-    { path: "/Volumes/NAS/work/fig.png", relativePath: "work/fig.png", name: "fig.png" },
+    { path: "/Volumes/NAS/work/note.md", relativePath: "note.md", name: "note.md" },
+    { path: "/Volumes/NAS/work/fig.png", relativePath: "fig.png", name: "fig.png" },
   ],
   truncated: false,
   cancelled: false,
+  skippedByExt: { ".log": 2 },
 };
 
 beforeEach(() => {
@@ -67,6 +70,7 @@ describe("scanFolderNative", () => {
     expect(invokeMock).toHaveBeenCalledWith("scan_directory", {
       root: "/Volumes/NAS/work",
       scanId: "scan-1",
+      extensions: INTAKE_EXTENSIONS,
     });
     expect(truncated).toBe(false);
     expect(cancelled).toBe(false);
@@ -133,7 +137,7 @@ describe("scanFolderNative", () => {
 
   it("イベントの found / folders を onProgress にそのまま渡す", async () => {
     let handler:
-      | ((event: { payload: { scanId: string; found: number; folders: number } }) => void)
+      | ((event: { payload: { scanId: string; found: number; folders: number; skipped?: number } }) => void)
       | undefined;
     listenMock.mockImplementationOnce((_event: string, cb: typeof handler) => {
       handler = cb;
@@ -142,19 +146,19 @@ describe("scanFolderNative", () => {
     invokeMock.mockImplementationOnce(async () => {
       // Rust 側は走査完了より前にイベントを発火しうる。購読が invoke 前に
       // 済んでいなければここで取りこぼす
-      handler?.({ payload: { scanId: "scan-1", found: 128, folders: 12 } });
+      handler?.({ payload: { scanId: "scan-1", found: 128, folders: 12, skipped: 7 } });
       return scanned;
     });
     const onProgress = vi.fn();
 
     await scanFolderNative("/Volumes/NAS/work", { scanId: "scan-1", onProgress });
 
-    expect(onProgress).toHaveBeenCalledWith({ found: 128, folders: 12 });
+    expect(onProgress).toHaveBeenCalledWith({ found: 128, folders: 12, skipped: 7 });
   });
 
   it("別の scanId の進捗イベントは onProgress に渡らない（並行走査の混線防止）", async () => {
     let handler:
-      | ((event: { payload: { scanId: string; found: number; folders: number } }) => void)
+      | ((event: { payload: { scanId: string; found: number; folders: number; skipped?: number } }) => void)
       | undefined;
     listenMock.mockImplementationOnce((_event: string, cb: typeof handler) => {
       handler = cb;
@@ -227,5 +231,27 @@ describe("pickFolderNative", () => {
   it("配列で返ってきても先頭を取る", async () => {
     openMock.mockResolvedValueOnce(["/Volumes/NAS/work"]);
     await expect(pickFolderNative()).resolves.toBe("/Volumes/NAS/work");
+  });
+});
+
+describe("走査結果の path と対象外の内訳", () => {
+  it("path の先頭に選んだフォルダの名前を付け、ブラウザの webkitRelativePath と揃える", async () => {
+    invokeMock.mockResolvedValueOnce({
+      ...scanned,
+      files: [{ path: "/Volumes/NAS/work/2020/a.md", relativePath: "2020/a.md", name: "a.md" }],
+    });
+
+    const { files, skippedByExt } = await scanFolderNative("/Volumes/NAS/work/", { scanId: "scan-1" });
+
+    // 付けないと、対象が 1 つのサブフォルダにだけあるとき "2020" が共通の根として外れる
+    expect(files[0].path).toBe("work/2020/a.md");
+    expect(skippedByExt).toEqual({ ".log": 2 });
+  });
+
+  it("フォルダ名の取り出し（区切り・末尾スラッシュ・ドライブ直下）", () => {
+    expect(folderNameOf("/Volumes/NAS/work")).toBe("work");
+    expect(folderNameOf("C:\\Users\\me\\data\\")).toBe("data");
+    expect(folderNameOf("/")).toBeNull();
+    expect(folderNameOf("C:\\")).toBeNull();
   });
 });

@@ -1678,16 +1678,30 @@ fn inbox_discard(root: String, name: String) -> Result<(), String> {
 // FindNextFileW の結果を保持済みで追加往復なし）ため、種別判定は
 // file_type() だけで行い、エントリごとの追加 stat 呼び出しは一切しない。
 
-/// scan_directory の走査上限件数。
-/// 上限を設けないと、NAS 越しの巨大フォルダを誤って選択したときに走査が
-/// 終わらず UI が固まって見える。50,000 は一般的な取り込み対象（数千〜1万件
-/// 程度のフォルダ）を十分に超える値で、それ以上は明示的に絞り込んでもらう想定。
-const SCAN_MAX_FILES: usize = 50_000;
+/// scan_directory の走査上限件数（取り込み対象の拡張子に当たったファイルだけを数える）。
+///
+/// 以前は 50,000 件で、しかも形式を問わず全ファイルを数えていたため、`.git` の中身や
+/// 装置のログが混ざった過去データのフォルダでは、取り込めるファイルが僅かでも上限に
+/// 届いてしまっていた。いまは件数表示と停止ボタンがあり「固まって見える」心配は
+/// 無いので、上限は日常の上限ではなく安全柵（パス一覧と許可リストがメモリを
+/// 食い潰さないための頭打ち）として置く。
+const SCAN_MAX_FILES: usize = 500_000;
 
 /// 許可リストに溜めるパスの上限。フォルダを選び直しても前回分をすぐには
-/// 捨てられない（取り込みが裏で続いている）ので、数回分は残せる大きさにしつつ、
-/// 際限なく増えないようここで頭を打つ。
-const SCAN_ALLOWLIST_MAX: usize = SCAN_MAX_FILES * 4;
+/// 捨てられない（取り込みが裏で続いている）ので、上限いっぱいの走査を 1 回分は
+/// 追加で残せる大きさにしつつ、際限なく増えないようここで頭を打つ。
+const SCAN_ALLOWLIST_MAX: usize = SCAN_MAX_FILES * 2;
+
+/// 対象外の内訳（拡張子 → 件数）に持つ種類の上限。ランダムな拡張子が大量に並ぶ
+/// フォルダでも表が膨らまないよう、超えた分は OTHER_EXT_KEY にまとめる。
+/// 画面に出すのは上位 3 種だけなので、64 あれば表示に影響しない。
+const SCAN_SKIPPED_EXT_KINDS_MAX: usize = 64;
+
+/// 拡張子が無いファイルの内訳キー。TS 側 run-intake.ts の extOf と同じ表記。
+const NO_EXT_KEY: &str = "(none)";
+
+/// SCAN_SKIPPED_EXT_KINDS_MAX を超えた種類をまとめる内訳キー。
+const OTHER_EXT_KEY: &str = "(other)";
 
 /// intake-scan-progress を emit する最短間隔。数万件規模の走査で毎エントリ emit すると
 /// IPC 自体がボトルネックになるため間引く。
@@ -1719,6 +1733,9 @@ pub struct ScanResult {
     pub files: Vec<ScannedFile>,
     /// SCAN_MAX_FILES に達して途中で打ち切った場合 true。
     pub truncated: bool,
+    /// 対象外の拡張子だったため載せなかったファイルの内訳（".log" → 件数）。
+    /// 隠しファイル・隠しフォルダの中身は数えない（降りていないので数えられない）。
+    pub skipped_by_ext: HashMap<String, usize>,
     /// cancel_scan で中止された場合 true。true のとき files は空で、
     /// 許可リストへの追加も行わない。
     pub cancelled: bool,
@@ -1734,6 +1751,9 @@ struct ScanProgressPayload {
     /// 並行して走っている走査の件数が互いの受け皿に混ざってしまう。
     scan_id: String,
     found: usize,
+    /// 対象外の拡張子だったため読み飛ばしたファイルの数。ログだけが大量に並ぶ
+    /// フォルダでは found も folders も動かないので、これで進んでいることを伝える。
+    skipped: usize,
     /// 見つけた（キューに積んだ）フォルダの数。ファイルが 1 件も無い深い
     /// ツリー（NAS のバックアップ等）でも進捗が動いて見えるように、found とは
     /// 別に持つ。
@@ -1823,11 +1843,67 @@ impl<F: FnMut()> Drop for DeferEnd<F> {
     }
 }
 
+/// walk_intake_directory の途中経過。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScanProgress {
+    found: usize,
+    folders: usize,
+    skipped: usize,
+}
+
+/// walk_intake_directory が拾うファイルの条件。
+#[derive(Debug, Default)]
+struct ScanFilter {
+    /// 取り込み対象の拡張子（小文字・ドット無し。例: "md", "png"）。
+    /// None なら拡張子で絞らない（テストと NAS ベンチ用）。
+    ///
+    /// 表の実体は TS 側（classify.ts の INTAKE_EXTENSIONS）にあり、scan_directory の
+    /// 引数で受け取る。Rust に同じ表を持つと、対応形式を増やしたときに片方だけ
+    /// 更新され、ネイティブ走査だけが黙ってファイルを落とす事故になるため。
+    extensions: Option<HashSet<String>>,
+}
+
+impl ScanFilter {
+    fn with_extensions(extensions: &[String]) -> Self {
+        Self {
+            extensions: Some(
+                extensions
+                    .iter()
+                    .map(|e| e.trim_start_matches('.').to_lowercase())
+                    .filter(|e| !e.is_empty())
+                    .collect(),
+            ),
+        }
+    }
+
+    /// ファイル名の拡張子（小文字・ドット無し）。先頭のドットは拡張子とみなさない。
+    fn extension_of(name: &str) -> Option<String> {
+        match name.rfind('.') {
+            Some(i) if i > 0 && i + 1 < name.len() => Some(name[i + 1..].to_lowercase()),
+            _ => None,
+        }
+    }
+
+    fn accepts(&self, name: &str) -> bool {
+        match &self.extensions {
+            None => true,
+            Some(set) => Self::extension_of(name).is_some_and(|ext| set.contains(&ext)),
+        }
+    }
+}
+
+/// 隠しファイル・隠しフォルダか（.git / .obsidian / .DS_Store 等）。
+/// TS 側 classify.ts の isHiddenPath と同じ規則（名前がドットで始まる）。
+fn is_hidden_name(name: &std::ffi::OsStr) -> bool {
+    name.as_encoded_bytes().first() == Some(&b'.')
+}
+
 /// walk_intake_directory の結果。
 #[derive(Debug)]
 struct WalkOutcome {
     files: Vec<ScannedFile>,
     truncated: bool,
+    skipped_by_ext: HashMap<String, usize>,
     /// cancel が立って途中で打ち切った場合 true。true のとき files は空。
     cancelled: bool,
 }
@@ -1848,15 +1924,22 @@ struct WalkOutcome {
 /// root は呼び出し側で canonicalize 済みであることを前提とする（シンボリックリンク
 /// 解決後の絶対パスに揃えるのは呼び出し側の責務。この関数自身はエントリごとの
 /// canonicalize/stat を一切行わない）。
+///
+/// 隠しファイルは拾わず、隠しフォルダ（.git 等）には降りない。filter に合わない
+/// 拡張子のファイルは files にも許可リストにも載せず、skipped_by_ext に件数だけ残す。
+/// max_files は filter を通ったファイルだけを数える。
 fn walk_intake_directory(
     root: &Path,
+    filter: &ScanFilter,
     max_files: usize,
     cancel: &AtomicBool,
     progress_interval: Duration,
-    mut on_progress: impl FnMut(usize, usize),
+    mut on_progress: impl FnMut(ScanProgress),
 ) -> WalkOutcome {
     let mut files: Vec<ScannedFile> = Vec::new();
     let mut folders: usize = 0;
+    let mut skipped: usize = 0;
+    let mut skipped_by_ext: HashMap<String, usize> = HashMap::new();
     let mut truncated = false;
     let mut queue: VecDeque<PathBuf> = VecDeque::from([root.to_path_buf()]);
     // 前回 on_progress を呼んでからの経過時間をここで測る。
@@ -1869,7 +1952,11 @@ fn walk_intake_directory(
     macro_rules! maybe_report_progress {
         () => {
             if last_progress.elapsed() >= progress_interval {
-                on_progress(files.len(), folders);
+                on_progress(ScanProgress {
+                    found: files.len(),
+                    folders,
+                    skipped,
+                });
                 last_progress = Instant::now();
             }
         };
@@ -1888,6 +1975,7 @@ fn walk_intake_directory(
                 return WalkOutcome {
                     files: Vec::new(),
                     truncated: false,
+                    skipped_by_ext: HashMap::new(),
                     cancelled: true,
                 };
             }
@@ -1899,6 +1987,12 @@ fn walk_intake_directory(
             let Ok(file_type) = entry.file_type() else {
                 continue;
             };
+            if is_hidden_name(&entry.file_name()) {
+                // 隠しフォルダには降りず、隠しファイルも拾わない。.git の中身だけで
+                // 数万件になることがあり、中まで辿るのは NAS 越しでは丸ごと無駄な往復になる。
+                maybe_report_progress!();
+                continue;
+            }
             let path = entry.path();
             if file_type.is_symlink() {
                 // シンボリックリンクはループの恐れがあるため対象外にする（辿らない）。
@@ -1916,6 +2010,25 @@ fn walk_intake_directory(
                 maybe_report_progress!();
                 continue;
             }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !filter.accepts(&name) {
+                // 対象外の拡張子は許可リストにも載せない（読める範囲を取り込み対象に限る）。
+                skipped += 1;
+                let key = match ScanFilter::extension_of(&name) {
+                    Some(ext) => format!(".{ext}"),
+                    None => NO_EXT_KEY.to_string(),
+                };
+                let key = if skipped_by_ext.contains_key(&key)
+                    || skipped_by_ext.len() < SCAN_SKIPPED_EXT_KINDS_MAX
+                {
+                    key
+                } else {
+                    OTHER_EXT_KEY.to_string()
+                };
+                *skipped_by_ext.entry(key).or_insert(0) += 1;
+                maybe_report_progress!();
+                continue;
+            }
             if files.len() >= max_files {
                 truncated = true;
                 break 'walk;
@@ -1925,10 +2038,6 @@ fn walk_intake_directory(
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
             files.push(ScannedFile {
                 path: path.to_string_lossy().to_string(),
                 relative_path,
@@ -1942,6 +2051,7 @@ fn walk_intake_directory(
     WalkOutcome {
         files,
         truncated,
+        skipped_by_ext,
         cancelled: false,
     }
 }
@@ -1951,6 +2061,7 @@ fn walk_intake_directory(
 fn scan_directory_sync(
     root: String,
     scan_id: String,
+    extensions: Vec<String>,
     app: &tauri::AppHandle,
 ) -> Result<ScanResult, String> {
     // 走査 ID ごとの中止フラグを canonicalize より前に登録する。
@@ -1979,18 +2090,21 @@ fn scan_directory_sync(
 
     let app_for_progress = app.clone();
     let scan_id_for_progress = scan_id.clone();
+    let filter = ScanFilter::with_extensions(&extensions);
     let outcome = walk_intake_directory(
         &root_canonical,
+        &filter,
         SCAN_MAX_FILES,
         &cancel_flag,
         SCAN_PROGRESS_INTERVAL,
-        move |found, folders| {
+        move |progress| {
             let _ = app_for_progress.emit(
                 "intake-scan-progress",
                 ScanProgressPayload {
                     scan_id: scan_id_for_progress.clone(),
-                    found,
-                    folders,
+                    found: progress.found,
+                    folders: progress.folders,
+                    skipped: progress.skipped,
                 },
             );
         },
@@ -2000,6 +2114,7 @@ fn scan_directory_sync(
         return Ok(ScanResult {
             files: Vec::new(),
             truncated: false,
+            skipped_by_ext: HashMap::new(),
             cancelled: true,
         });
     }
@@ -2022,6 +2137,7 @@ fn scan_directory_sync(
     Ok(ScanResult {
         files: outcome.files,
         truncated: outcome.truncated,
+        skipped_by_ext: outcome.skipped_by_ext,
         cancelled: false,
     })
 }
@@ -2035,7 +2151,7 @@ fn scan_directory_sync(
 /// 取り込みは走査のあと 1 件ずつ遅延読み込みしながら裏で進むので、
 /// フォルダを選び直した時点で前回分を捨てると未読ファイルが読めなくなる。
 /// 溜まりすぎを防ぐため SCAN_ALLOWLIST_MAX で頭を打つ（超えたら一度空にする。
-/// 5 万件級のフォルダを立て続けに選び直すと、そこで前回分の未読が読めなくなるが、
+/// 上限級のフォルダを立て続けに選び直すと、そこで前回分の未読が読めなくなるが、
 /// 取り込みが裏で走っている最中に何度も選び直す前提までは面倒を見ない）。
 #[derive(Default)]
 struct ScanAllowlistState(Mutex<HashSet<PathBuf>>);
@@ -2048,8 +2164,11 @@ async fn scan_directory(
     app: tauri::AppHandle,
     root: String,
     scan_id: String,
+    extensions: Vec<String>,
 ) -> Result<ScanResult, String> {
-    tauri::async_runtime::spawn_blocking(move || scan_directory_sync(root, scan_id, &app))
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_directory_sync(root, scan_id, extensions, &app)
+    })
         .await
         .map_err(|e| format!("フォルダ走査タスク失敗: {e}"))?
 }
@@ -3049,7 +3168,7 @@ mod tests {
         fs::write(root.join("x.txt"), b"x").unwrap();
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_, _| {});
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::from_secs(3600), |_| {});
 
         assert!(!outcome.truncated);
         assert!(!outcome.cancelled);
@@ -3077,7 +3196,7 @@ mod tests {
         std::os::unix::fs::symlink(root.join("real.txt"), root.join("link-to-file")).unwrap();
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 1000, &cancel, Duration::from_secs(3600), |_, _| {});
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 1000, &cancel, Duration::from_secs(3600), |_| {});
 
         // ループを辿っていれば有限時間で戻ってこない。ここまで到達した時点で
         // 「有限時間で終わる」ことは確認できている。
@@ -3102,7 +3221,7 @@ mod tests {
         }
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 3, &cancel, Duration::from_secs(3600), |_, _| {});
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 3, &cancel, Duration::from_secs(3600), |_| {});
 
         assert!(outcome.truncated);
         assert!(!outcome.cancelled);
@@ -3124,7 +3243,7 @@ mod tests {
         fs::write(root.join("light/g1.txt"), b"x").unwrap();
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 5, &cancel, Duration::from_secs(3600), |_, _| {});
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 5, &cancel, Duration::from_secs(3600), |_| {});
 
         assert!(outcome.truncated);
         assert_eq!(outcome.files.len(), 5);
@@ -3147,7 +3266,7 @@ mod tests {
         fs::write(root.join("f.txt"), b"x").unwrap();
 
         let cancel = AtomicBool::new(true);
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_, _| {});
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::from_secs(3600), |_| {});
 
         assert!(outcome.cancelled);
         assert!(outcome.files.is_empty());
@@ -3244,7 +3363,7 @@ mod tests {
         let flag = state.begin("scan-walk");
         state.cancel("scan-walk");
 
-        let outcome = walk_intake_directory(root, 100, &flag, Duration::from_secs(3600), |_, _| {});
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &flag, Duration::from_secs(3600), |_| {});
 
         assert!(outcome.cancelled, "begin 後に cancel したフラグを渡すと走査は中止される");
         assert!(outcome.files.is_empty());
@@ -3260,8 +3379,8 @@ mod tests {
 
         let cancel = AtomicBool::new(false);
         let calls = std::cell::RefCell::new(Vec::new());
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::ZERO, |found, folders| {
-            calls.borrow_mut().push((found, folders));
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::ZERO, |p| {
+            calls.borrow_mut().push((p.found, p.folders));
         });
 
         assert_eq!(outcome.files.len(), 5);
@@ -3292,8 +3411,8 @@ mod tests {
 
         let cancel = AtomicBool::new(false);
         let calls = std::cell::RefCell::new(Vec::new());
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::ZERO, |found, folders| {
-            calls.borrow_mut().push((found, folders));
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::ZERO, |p| {
+            calls.borrow_mut().push((p.found, p.folders));
         });
 
         assert!(!outcome.truncated);
@@ -3323,6 +3442,98 @@ mod tests {
     }
 
     #[test]
+    fn walk_intake_directory_filters_by_extension_and_counts_skipped() {
+        let tmp = ScanTestDir::new("filter");
+        let root = &tmp.path;
+        fs::create_dir_all(root.join("logs")).unwrap();
+        fs::write(root.join("note.MD"), b"x").unwrap();
+        fs::write(root.join("fig.png"), b"x").unwrap();
+        fs::write(root.join("logs/run1.log"), b"x").unwrap();
+        fs::write(root.join("logs/run2.log"), b"x").unwrap();
+        fs::write(root.join("archive.zip"), b"x").unwrap();
+        fs::write(root.join("Makefile"), b"x").unwrap();
+
+        let filter = ScanFilter::with_extensions(&["md".into(), ".png".into()]);
+        let cancel = AtomicBool::new(false);
+        let outcome =
+            walk_intake_directory(root, &filter, 100, &cancel, Duration::from_secs(3600), |_| {});
+
+        let mut names: Vec<&str> = outcome.files.iter().map(|f| f.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["fig.png", "note.MD"], "拡張子は大文字小文字を区別しない");
+        assert_eq!(outcome.skipped_by_ext.get(".log"), Some(&2));
+        assert_eq!(outcome.skipped_by_ext.get(".zip"), Some(&1));
+        assert_eq!(outcome.skipped_by_ext.get(NO_EXT_KEY), Some(&1));
+    }
+
+    #[test]
+    fn walk_intake_directory_skips_hidden_entries_without_descending() {
+        let tmp = ScanTestDir::new("hidden");
+        let root = &tmp.path;
+        fs::create_dir_all(root.join(".git/objects")).unwrap();
+        fs::write(root.join(".git/objects/readme.md"), b"x").unwrap();
+        fs::write(root.join(".DS_Store"), b"x").unwrap();
+        fs::write(root.join(".hidden.md"), b"x").unwrap();
+        fs::write(root.join("visible.md"), b"x").unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let folders = std::cell::Cell::new(0);
+        let outcome = walk_intake_directory(
+            root,
+            &ScanFilter::default(),
+            100,
+            &cancel,
+            Duration::ZERO,
+            |p| folders.set(p.folders),
+        );
+
+        let names: Vec<&str> = outcome.files.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, vec!["visible.md"]);
+        assert_eq!(folders.get(), 0, "隠しフォルダはキューに積まない（降りない）");
+        assert!(outcome.skipped_by_ext.is_empty(), "隠しファイルは対象外の内訳にも数えない");
+    }
+
+    #[test]
+    fn walk_intake_directory_max_files_counts_only_accepted_files() {
+        let tmp = ScanTestDir::new("max-accepted");
+        let root = &tmp.path;
+        for i in 0..10 {
+            fs::write(root.join(format!("noise{i}.log")), b"x").unwrap();
+        }
+        for i in 0..3 {
+            fs::write(root.join(format!("n{i}.md")), b"x").unwrap();
+        }
+
+        let filter = ScanFilter::with_extensions(&["md".into()]);
+        let cancel = AtomicBool::new(false);
+        let outcome =
+            walk_intake_directory(root, &filter, 3, &cancel, Duration::from_secs(3600), |_| {});
+
+        assert_eq!(outcome.files.len(), 3);
+        assert!(!outcome.truncated, "対象外のログは上限の件数に入らない");
+    }
+
+    #[test]
+    fn walk_intake_directory_folds_excess_skipped_kinds_into_other() {
+        let tmp = ScanTestDir::new("kinds");
+        let root = &tmp.path;
+        let kinds = SCAN_SKIPPED_EXT_KINDS_MAX + 5;
+        for i in 0..kinds {
+            fs::write(root.join(format!("f.x{i}")), b"x").unwrap();
+        }
+
+        let filter = ScanFilter::with_extensions(&["md".into()]);
+        let cancel = AtomicBool::new(false);
+        let outcome =
+            walk_intake_directory(root, &filter, 100, &cancel, Duration::from_secs(3600), |_| {});
+
+        assert_eq!(outcome.skipped_by_ext.len(), SCAN_SKIPPED_EXT_KINDS_MAX + 1);
+        let total: usize = outcome.skipped_by_ext.values().sum();
+        assert_eq!(total, kinds, "まとめても件数の合計は変わらない");
+        assert_eq!(outcome.skipped_by_ext.get(OTHER_EXT_KEY), Some(&5));
+    }
+
+    #[test]
     fn is_path_allowlisted_rejects_paths_outside_scan_result() {
         let tmp = ScanTestDir::new("allowlist");
         let root = &tmp.path;
@@ -3330,7 +3541,7 @@ mod tests {
         fs::write(root.join("also-ok.txt"), b"x").unwrap();
 
         let cancel = AtomicBool::new(false);
-        let outcome = walk_intake_directory(root, 100, &cancel, Duration::from_secs(3600), |_, _| {});
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::from_secs(3600), |_| {});
         let allow: HashSet<PathBuf> = outcome
             .files
             .iter()
@@ -3367,10 +3578,11 @@ mod tests {
         let start = Instant::now();
         let outcome = walk_intake_directory(
             &root_path,
+            &ScanFilter::default(),
             max_files,
             &cancel,
             Duration::from_millis(200),
-            |found, folders| println!("[bench] progress: found={found} folders={folders}"),
+            |p| println!("[bench] progress: found={} folders={}", p.found, p.folders),
         );
         println!(
             "[bench] {} files (truncated={}, cancelled={}) in {:?}",

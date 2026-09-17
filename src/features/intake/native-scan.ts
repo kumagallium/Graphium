@@ -17,7 +17,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isTauri } from "@/lib/platform";
-import { guessMimeType } from "./classify";
+import { guessMimeType, INTAKE_EXTENSIONS } from "./classify";
 import type { IntakeFile } from "./types";
 
 /** Rust の ScannedFile と対。フィールド名は camelCase で渡ってくる */
@@ -29,7 +29,13 @@ type ScannedFile = {
   name: string;
 };
 
-type ScanResult = { files: ScannedFile[]; truncated: boolean; cancelled: boolean };
+type ScanResult = {
+  files: ScannedFile[];
+  truncated: boolean;
+  cancelled: boolean;
+  /** 対象外の拡張子だったため載らなかったファイルの内訳（".log" → 件数） */
+  skippedByExt: Record<string, number>;
+};
 
 export type NativeScanOutcome = {
   files: IntakeFile[];
@@ -37,6 +43,12 @@ export type NativeScanOutcome = {
   truncated: boolean;
   /** 走査中に cancelFolderScanNative() で中止された場合 true。files は空 */
   cancelled: boolean;
+  /**
+   * 走査の段階で外した対象外ファイルの内訳（".log" → 件数）。files には含まれないので、
+   * 取り込み結果の「N 件は対象外」に足すために利用側が runIntake まで運ぶ。
+   * 隠しファイル・隠しフォルダ（.git 等）は Rust が降りないので数に入らない
+   */
+  skippedByExt: Record<string, number>;
 };
 
 export type NativeScanOptions = {
@@ -53,7 +65,7 @@ export type NativeScanOptions = {
    * 幅優先走査では深いツリーに入るまでファイルが 1 件も見つからないことがあり、
    * その間も folders が動くことで「固まっていない」と伝えられる
    */
-  onProgress?: (progress: { found: number; folders: number }) => void;
+  onProgress?: (progress: { found: number; folders: number; skipped: number }) => void;
 };
 
 /** この環境でネイティブ走査が使えるか（＝デスクトップか） */
@@ -95,20 +107,32 @@ export async function scanFolderNative(
   opts: NativeScanOptions,
 ): Promise<NativeScanOutcome> {
   const { scanId } = opts;
-  const unlisten = await listen<{ scanId: string; found: number; folders: number }>(
+  const unlisten = await listen<{ scanId: string; found: number; folders: number; skipped: number }>(
     "intake-scan-progress",
     (event) => {
       // 別インスタンスが並行して走らせている走査のイベントは無視する
       if (event.payload.scanId !== scanId) return;
-      opts.onProgress?.({ found: event.payload.found, folders: event.payload.folders });
+      opts.onProgress?.({
+        found: event.payload.found,
+        folders: event.payload.folders,
+        skipped: event.payload.skipped ?? 0,
+      });
     },
   );
   try {
-    const result = await invoke<ScanResult>("scan_directory", { root, scanId });
+    // 取り込めない形式（ログ・アーカイブ等）は Rust 側で数えるだけにして、
+    // 上限の件数にも読み込み許可にも入れない
+    const result = await invoke<ScanResult>("scan_directory", {
+      root,
+      scanId,
+      extensions: INTAKE_EXTENSIONS,
+    });
+    const rootName = folderNameOf(root);
     return {
-      files: result.files.map(toIntakeFile),
+      files: result.files.map((f) => toIntakeFile(f, rootName)),
       truncated: result.truncated,
       cancelled: result.cancelled,
+      skippedByExt: result.skippedByExt ?? {},
     };
   } finally {
     // invoke が失敗した場合も含め、購読を必ず解除する
@@ -121,12 +145,27 @@ export async function cancelFolderScanNative(scanId: string): Promise<void> {
   await invoke("cancel_scan", { scanId });
 }
 
-function toIntakeFile(scanned: ScannedFile): IntakeFile {
+/**
+ * 選んだフォルダ自身の名前。"/" や "C:\\" のように名前が無ければ null。
+ */
+export function folderNameOf(root: string): string | null {
+  const segments = root.split(/[\\/]/).filter((s) => s.length > 0);
+  const last = segments[segments.length - 1];
+  // Windows のドライブ直下（"C:"）はフォルダ名として扱わない
+  if (!last || /^[A-Za-z]:$/.test(last)) return null;
+  return last;
+}
+
+function toIntakeFile(scanned: ScannedFile, rootName: string | null): IntakeFile {
   // ネイティブ走査では MIME が分からないので拡張子から推定する。
   // classify 側も同じ関数でフォールバックしているので判定結果は揃う
   const type = guessMimeType(scanned.name);
   return {
-    path: scanned.relativePath,
+    // ブラウザの webkitRelativePath と同じく、選んだフォルダの名前を先頭に付ける。
+    // 付けないと、対象のファイルが 1 つのサブフォルダにだけあるとき commonRootOf が
+    // そのサブフォルダを「共通の根」と取り違えて外し、フォルダ分けが消える
+    // （以前は隠しファイルや対象外のファイルが直下に混ざることで偶然防がれていた）
+    path: rootName ? `${rootName}/${scanned.relativePath}` : scanned.relativePath,
     name: scanned.name,
     type,
     // 読んだ中身はあえて保持しない。取り込みは 1 ファイルにつき 1 回しか

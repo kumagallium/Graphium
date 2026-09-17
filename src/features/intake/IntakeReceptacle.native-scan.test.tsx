@@ -79,7 +79,7 @@ describe("IntakeReceptacle のデスクトップ走査（StrictMode）", () => {
     await startScan(getByText);
 
     await act(async () => {
-      lastOptions?.onProgress?.({ found: 1234, folders: 50 });
+      lastOptions?.onProgress?.({ found: 1234, folders: 50, skipped: 0 });
     });
 
     expect(await findByText("1234 found so far (50 folders checked)")).toBeTruthy();
@@ -91,7 +91,7 @@ describe("IntakeReceptacle のデスクトップ走査（StrictMode）", () => {
     await startScan(getByText);
 
     await act(async () => {
-      lastOptions?.onProgress?.({ found: 0, folders: 37 });
+      lastOptions?.onProgress?.({ found: 0, folders: 37, skipped: 0 });
     });
 
     expect(await findByText("0 found so far (37 folders checked)")).toBeTruthy();
@@ -104,12 +104,35 @@ describe("IntakeReceptacle のデスクトップ走査（StrictMode）", () => {
 
     const files = [fileAt("work/a.md"), fileAt("work/b.pdf")];
     await act(async () => {
-      resolveScan({ files, truncated: false, cancelled: false });
+      resolveScan({ files, truncated: false, cancelled: false, skippedByExt: { ".log": 3 } });
     });
 
     expect(await findByText("Choose a folder")).toBeTruthy();
     expect(queryByText("Stop")).toBeNull();
-    expect(onFilesSelected).toHaveBeenCalledWith(files, "folder");
+    expect(onFilesSelected).toHaveBeenCalledWith(files, "folder", { preSkippedByExt: { ".log": 3 } });
+  });
+
+  it("対象外の形式を読み飛ばしている間は、その件数も進捗に出す", async () => {
+    const { getByText, findByText } = renderReceptacle();
+    await startScan(getByText);
+
+    await act(async () => {
+      lastOptions?.onProgress?.({ found: 0, folders: 0, skipped: 812 });
+    });
+
+    expect(await findByText("0 found so far (0 folders checked, 812 of other types)")).toBeTruthy();
+  });
+
+  it("取り込める形式が 0 件でも、対象外の内訳があれば結果として渡す", async () => {
+    const { getByText, findByText, onFilesSelected } = renderReceptacle();
+    await startScan(getByText);
+
+    await act(async () => {
+      resolveScan({ files: [], truncated: false, cancelled: false, skippedByExt: { ".log": 40 } });
+    });
+
+    expect(await findByText("Choose a folder")).toBeTruthy();
+    expect(onFilesSelected).toHaveBeenCalledWith([], "folder", { preSkippedByExt: { ".log": 40 } });
   });
 
   it("停止を押すと自分の走査 ID で中止を送り、中止の結果で最初の表示に戻る", async () => {
@@ -122,7 +145,7 @@ describe("IntakeReceptacle のデスクトップ走査（StrictMode）", () => {
     expect(cancelMock).toHaveBeenCalledWith("scan-1");
 
     await act(async () => {
-      resolveScan({ files: [], truncated: false, cancelled: true });
+      resolveScan({ files: [], truncated: false, cancelled: true, skippedByExt: {} });
     });
 
     expect(await findByText("Choose a folder")).toBeTruthy();

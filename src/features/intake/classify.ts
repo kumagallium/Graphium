@@ -11,6 +11,7 @@
 // （件数だけ見せる）。
 
 import { isMarkdownFile } from "../markdown-import/import";
+import { DELIMITED_EXTENSIONS } from "../data-import/file-kind";
 import { mimeToMediaType, isModernOfficeEntry } from "../asset-browser/media-index";
 import type { IntakeFile } from "./types";
 
@@ -115,3 +116,30 @@ export function classifyIntakeFiles(files: IntakeFile[]): ClassifiedIntakeFiles 
 
   return { notes, materials, skipped };
 }
+
+/**
+ * 投入口が受け取る拡張子（小文字・ドット無し）。デスクトップのネイティブ走査は
+ * この一覧を Rust に渡し、当たらないファイルは読み込み許可にも載せずに件数だけ数える。
+ *
+ * 手で書いた表ではなく classifyIntakeFiles 自身に通して導く。表を 2 つ持つと
+ * 対応形式を増やしたときに片方だけ更新され、ネイティブ走査だけが黙って
+ * ファイルを落とす（MIME を持たない走査で動画が捨てられていた件と同じ型の事故）。
+ */
+export const INTAKE_EXTENSIONS: readonly string[] = (() => {
+  const candidates = new Set<string>([
+    "md",
+    "markdown",
+    ...Object.keys(EXTENSION_TO_MIME),
+    ...DELIMITED_EXTENSIONS.map((ext) => ext.replace(/^\./, "")),
+  ]);
+  return [...candidates].filter((ext) => {
+    const name = `x.${ext}`;
+    const probe: IntakeFile = {
+      path: name,
+      name,
+      type: "",
+      getFile: () => Promise.reject(new Error("probe")),
+    };
+    return classifyIntakeFiles([probe]).skipped.length === 0;
+  });
+})();
