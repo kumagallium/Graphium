@@ -9839,6 +9839,13 @@ export function NoteApp() {
   useEffect(() => {
     if (startupLintDoneRef.current) return;
     if (fm.wikiFiles.length < 2) return;
+    // ファイル一覧は wikiMetas（と本文キャッシュ）より先に届く。メタが揃う前に実行済みの印を
+    // 立てるとスナップショットが 0 件のまま抜けて、起動時の点検が一度も走らなくなる
+    // （2026-09-17 に確認）。use-file-manager はキャッシュを積んでから setWikiMetas するので、
+    // メタが揃っていれば本文も揃っている — 空トピックの誤アーカイブも起きない。
+    if (fm.wikiMetas.size < 2) return;
+    // ノート索引も待つ。null のまま自動アーカイブへ進むと、有効なノートが 0 件に見える。
+    if (!fm.noteIndex) return;
 
     startupLintDoneRef.current = true;
 
@@ -9887,7 +9894,7 @@ export function NoteApp() {
         // 起動時 Lint 失敗は静かに無視
       }
     })();
-  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex]);
 
   const t = useT();
 

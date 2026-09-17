@@ -214,6 +214,11 @@ describe("detectAutoArchivable の出どころ判定", () => {
     expect(detectAutoArchivable(wikis, new Set())).toEqual([]);
   });
 
+  it("有効なノートが 1 件も無い（索引が未読込の可能性）ときは知見を片付けない", () => {
+    const wikis = [claim("c1", ["note-a"])];
+    expect(detectAutoArchivable(wikis, new Set())).toEqual([]);
+  });
+
   it("出どころがノートだけで、そのノートが全部消えていれば片付ける", () => {
     const wikis = [claim("c1", ["note-gone"]), claim("c2", ["note-alive"])];
     const out = detectAutoArchivable(wikis, new Set(["note-alive"]));

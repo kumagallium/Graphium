@@ -451,7 +451,10 @@ export function detectAutoArchivable(
       candidates.push({ id: w.id, title: w.title, kind: "topic", reason: "empty-topic" });
       continue;
     }
-    if (w.kind === "claim") {
+    // 有効なノートが 1 件も渡されないときは「全部消えた」と「まだ索引が読めていない」を
+    // 区別できない（起動直後に noteIndex が null のまま呼ぶと全知見を誤って片付けた、
+    // 2026-09-17 に確認）。片付けない側に倒す。
+    if (w.kind === "claim" && validNoteIds.size > 0) {
       // 出どころが「ノートだけ」で、そのノートが 1 つも残っていないときだけ片付ける。
       //
       // derivedFromNotes にはノート id 以外も入る（pdf: / url: / document: / chat: /
