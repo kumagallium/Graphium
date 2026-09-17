@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Settings as SettingsIcon,
   ChevronDown,
+  ChevronRight,
   Plus,
   Trash2,
   Pencil,
@@ -58,7 +59,7 @@ import { useLocale, type Locale } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
-import { SettingsGroup } from "./SettingsGroup";
+import { SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { SettingToggle } from "./SettingToggle";
 // 共有ライブラリの読み直し通知（共有ルート・スイッチを変えたとき）。
@@ -296,6 +297,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
   // 設定値
   const [model, setModel] = useState("");
+  // 登録済みモデル一覧は登録後にほぼ見返さないので、既定で畳んで名前だけ出す
+  const [modelsListOpen, toggleModelsList] = usePersistentOpen("ai-models", false);
   const [embeddingModel, setEmbeddingModel] = useState("");
   // 埋め込みモデル接続テストの結果。保存前に、選んだモデルが実際に
   // /v1/embeddings に対応するかを 1 リクエストで確認できる。
@@ -2348,7 +2351,21 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             {/* 登録済みモデル一覧 */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-semibold text-foreground">{t("settings.models.title")}</h3>
+                {models.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={toggleModelsList}
+                    aria-expanded={modelsListOpen}
+                    className="flex items-center gap-1 text-xs font-semibold text-foreground"
+                  >
+                    <span className="-ml-0.5 text-muted-foreground">
+                      {modelsListOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    </span>
+                    {t("settings.models.title")}
+                  </button>
+                ) : (
+                  <h3 className="text-xs font-semibold text-foreground">{t("settings.models.title")}</h3>
+                )}
                 {!showAddForm && (
                   <button
                     onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}
@@ -2389,6 +2406,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     <Plus size={12} className="inline mr-1" />{t("settings.models.addFirst")}
                   </button>
                 </div>
+              ) : !modelsListOpen && editingId === null ? (
+                // 畳んでいても何が登録されているかは 1 行で分かるようにする
+                <p className="text-xs text-muted-foreground ml-3 truncate">
+                  {t("settings.models.collapsedSummary", {
+                    count: String(models.length),
+                    names: models.map((m) => m.name).join(locale === "ja" ? "、" : ", "),
+                  })}
+                </p>
               ) : (
                 <div className="space-y-2">
                   {models.map((m) => editingId === m.id ? (
@@ -2822,6 +2847,137 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 効かない設定を並べて見せない。登録すると下がまとめて現れる。 */}
             {models.length > 0 && (
               <>
+            {/* モデルの割り当て — 畳まずに常に見せる（2026-09-17 決定）。
+                AI を使い始めた人が最初に触るのがここなので、束に入れると見つからない。
+                説明は SettingSection の 2 段にして縦の長さを抑える。 */}
+            <div className="border-t border-border pt-6">
+              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionAssign")}</h3>
+              <div className="space-y-4">
+                <SettingSection
+                  title={t("settings.model")}
+                  summary={t("settings.model.summary")}
+                  details={<p>{t("settings.modelHelp")}</p>}
+                >
+                  <div className="relative">
+                    <select
+                      value={model}
+                      onChange={(e) => { setModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.model")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </SettingSection>
+
+                <SettingSection
+                  title={t("settings.chatSynthesisModel")}
+                  summary={t("settings.chatSynthesisModel.summary")}
+                  details={<p>{t("settings.chatSynthesisModelHelp")}</p>}
+                >
+                  <div className="relative">
+                    <select
+                      value={chatSynthesisModel}
+                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.chatSynthesisModel")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </SettingSection>
+
+                <SettingSection
+                  title={t("settings.embeddingModel.label")}
+                  summary={t("settings.embeddingModel.summary")}
+                  details={
+                    <>
+                      <p>{t("settings.embeddingModel.help")}</p>
+                      <p className="mt-1">{t("settings.embeddingModel.note")}</p>
+                    </>
+                  }
+                >
+                  <div className="relative">
+                    <select
+                      value={embeddingModel}
+                      onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.embeddingModel.label")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
+                      </option>
+                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
+                      ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
+                  {embeddingIndexStale && (
+                    <div className="mt-2 flex items-start gap-2 flex-wrap">
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        {t("settings.embeddingModel.staleHint")}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setTab("maintenance")}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
+                      >
+                        {t("settings.embeddingModel.openMaintenance")}
+                      </button>
+                    </div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleTestEmbedding}
+                      disabled={embTestState.status === "running" || (models.length === 0)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {embTestState.status === "running"
+                        ? t("settings.embeddingModel.testing")
+                        : t("settings.embeddingModel.test")}
+                    </button>
+                    {embTestState.status === "success" && (
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400">
+                        ✓ {embTestState.dimensions
+                          ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
+                          : t("settings.embeddingModel.testSuccessNoDim")}
+                      </span>
+                    )}
+                    {embTestState.status === "error" && (
+                      <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
+                        ⚠ {embTestState.message ?? "Unknown error"}
+                      </span>
+                    )}
+                  </div>
+                </SettingSection>
+              </div>
+            </div>
+
             {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
             <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
@@ -3161,143 +3317,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 )}
               </div>
             </div>
-
-            {/* ── モデルの割り当て ──
-             *  どの機能にどのモデルを当てるかは、どれか 1 つ登録すれば既定で動く。
-             *  使い分けたくなった人だけが開けばいいので畳んでおく。 */}
-            <SettingsGroup
-              storageKey="ai-assign"
-              title={t("settings.ai.sectionAssign")}
-              summary={t("settings.group.aiAssign.summary")}
-            >
-              <div className="space-y-4">
-                {/* デフォルトモデル */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.model")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={model}
-                      onChange={(e) => { setModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
-                      </option>
-                      {models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">{t("settings.modelHelp")}</p>
-                </div>
-
-                {/* Chat & Synthesis モデル選択（対話と統合用 — default より上のモデルを当てる場面用） */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.chatSynthesisModel")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={chatSynthesisModel}
-                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
-                      </option>
-                      {models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.chatSynthesisModelHelp")}
-                  </p>
-                </div>
-
-                {/* Embedding モデル選択 */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.embeddingModel.label")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={embeddingModel}
-                      onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
-                      </option>
-                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
-                      ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
-                  {embeddingIndexStale && (
-                    <div className="mt-2 flex items-start gap-2 flex-wrap">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">
-                        {t("settings.embeddingModel.staleHint")}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setTab("maintenance")}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
-                      >
-                        {t("settings.embeddingModel.openMaintenance")}
-                      </button>
-                    </div>
-                  )}
-                  {/* 接続テストボタンと結果表示 */}
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleTestEmbedding}
-                      disabled={embTestState.status === "running" || (models.length === 0)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {embTestState.status === "running"
-                        ? t("settings.embeddingModel.testing")
-                        : t("settings.embeddingModel.test")}
-                    </button>
-                    {embTestState.status === "success" && (
-                      <span className="text-xs text-emerald-700 dark:text-emerald-400">
-                        ✓ {embTestState.dimensions
-                          ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
-                          : t("settings.embeddingModel.testSuccessNoDim")}
-                      </span>
-                    )}
-                    {embTestState.status === "error" && (
-                      <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
-                        ⚠ {embTestState.message ?? "Unknown error"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.embeddingModel.help")}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("settings.embeddingModel.note")}
-                  </p>
-                </div>
-              </div>
-            </SettingsGroup>
               </>
             )}
 
