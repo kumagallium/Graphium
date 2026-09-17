@@ -60,7 +60,9 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 ## Model assignment
 
-**Model assignment** is a collapsed group — open it to decide which registered model handles which job. Only the default matters at first — the rest are optional refinements.
+**Model assignment** sits right below **Registered Models** and is always shown. It decides which registered model handles which job. Only the default matters at first — leave the others empty and every AI feature uses the default model; the rest are optional refinements.
+
+Once you have registered a model, **Registered Models** collapses to a one-line list of names so the assignments stay near the top. Click the heading to open the list again to edit or delete a model.
 
 | Assignment | Used for |
 |---|---|
