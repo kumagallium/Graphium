@@ -1064,7 +1064,7 @@ export async function ingestFromUrl(
   url: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
-): Promise<IngestResult> {
+): Promise<IngestResult & { sourceText: string; sourceTitle: string }> {
   // サーバーサイドで HTML 取得・パース
   const fetchRes = await fetch(`${API_BASE}/fetch-url`, {
     method: "POST",
@@ -1107,7 +1107,10 @@ export async function ingestFromUrl(
     throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
-  return res.json();
+  const data = (await res.json()) as IngestResult;
+  // トピックの段（新形式）が資料の全文を再取得せずに使えるよう、取り込みで
+  // 既に持っているテキストをそのまま返す。
+  return { ...data, sourceText: noteContent, sourceTitle: urlData.title || url };
 }
 
 /**
@@ -1122,7 +1125,7 @@ export async function ingestFromPdf(
   sourceNoteId: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
-): Promise<IngestResult & { pageCount: number }> {
+): Promise<IngestResult & { pageCount: number; sourceText: string; sourceTitle: string }> {
   const { extractPdfText } = await import("./pdf-text-extractor");
   const extracted = await extractPdfText(blob);
 
@@ -1168,7 +1171,7 @@ export async function ingestFromPdf(
   }
 
   const data = (await res.json()) as IngestResult;
-  return { ...data, pageCount: extracted.pageCount };
+  return { ...data, pageCount: extracted.pageCount, sourceText: extracted.text, sourceTitle: noteTitle };
 }
 
 /**
@@ -1182,7 +1185,7 @@ export async function ingestFromDocx(
   sourceNoteId: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
-): Promise<IngestResult> {
+): Promise<IngestResult & { sourceText: string; sourceTitle: string }> {
   const arrayBuffer = await blob.arrayBuffer();
   const mammoth = await import("mammoth");
   const extracted = await mammoth.extractRawText({ arrayBuffer });
@@ -1219,7 +1222,8 @@ export async function ingestFromDocx(
     throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
-  return (await res.json()) as IngestResult;
+  const data = (await res.json()) as IngestResult;
+  return { ...data, sourceText: text, sourceTitle: noteTitle };
 }
 
 // ── マルチソース Ingest（regenerate 用） ──
@@ -1305,7 +1309,7 @@ export async function ingestFromChat(
   chatTitle: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
-): Promise<IngestResult> {
+): Promise<IngestResult & { sourceText: string }> {
   // チャットメッセージをテキスト化
   const chatContent = chatMessages
     .map((m) => `${m.role === "user" ? "User" : "AI"}: ${m.content}`)
@@ -1329,7 +1333,8 @@ export async function ingestFromChat(
     throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
-  return res.json();
+  const data = (await res.json()) as IngestResult;
+  return { ...data, sourceText: chatContent };
 }
 
 // ── Lint（整合性チェック） ──
@@ -2710,6 +2715,70 @@ export function rebuildSourceTopicDocument(
     },
     modifiedAt: now,
   }, undefined);
+}
+
+/** route-topics API に渡す資料 1 本分（本文は全文でよい。長さの上限は置かない） */
+export type TopicRouteSource = { id: string; title: string; text: string };
+
+/** route-topics API に渡す既存トピックの index（タイトル + 定義の先頭文） */
+export type TopicRouteExistingRef = { id: string; title: string; oneLiner?: string };
+
+/**
+ * 資料 1 本をサーバー（/api/wiki/route-topics）へ渡し、「改訂する既存トピック id」
+ * 「新しく作るトピック名」を LLM に判断させる。存在しない既存トピック id（LLM の幻覚）は
+ * ここで捨てる — 呼び出し側（runSourceTopicStage）が渡した existingTopics の id 集合と
+ * 突き合わせる。失敗時（パース不能・LLM/ネットワークエラー）は例外を投げる
+ * （呼び出し側が failed として数えられるように）。
+ */
+export async function routeTopicsForSource(
+  source: TopicRouteSource,
+  existingTopics: TopicRouteExistingRef[],
+  language: string,
+  model?: string,
+): Promise<{ update: string[]; create: string[] }> {
+  const res = await fetch(`${API_BASE}/route-topics`, {
+    method: "POST",
+    headers: wikiHeaders(),
+    body: JSON.stringify({ language, source, existingTopics, ...(model ? { model } : {}) }),
+  });
+  if (!res.ok) {
+    throw await aiErrorFromResponse(res, `route-topics failed (${res.status})`);
+  }
+  const data = await res.json() as { update?: string[]; create?: string[] };
+  const existingIds = new Set(existingTopics.map((t) => t.id));
+  const update = (data.update ?? []).filter((id) => existingIds.has(id));
+  const create = data.create ?? [];
+  return { update, create };
+}
+
+/**
+ * トピックの前の本文（新規なら空文字列）と資料 1 本の全文から、サーバー
+ * （/api/wiki/revise-topic）で次の版の本文を作る。失敗時（パース不能・LLM エラー）は
+ * null を返す — 呼び出し側は「今回は改訂しない」を選べる（既存本文を温存できる）。
+ */
+export async function reviseTopicFromSource(
+  title: string,
+  currentBody: string,
+  source: { id: string; title: string; text: string },
+  language: string,
+  model?: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/revise-topic`, {
+      method: "POST",
+      headers: wikiHeaders(),
+      body: JSON.stringify({ title, language, currentBody, source, ...(model ? { model } : {}) }),
+    });
+    if (!res.ok) {
+      console.warn("reviseTopicFromSource failed:", await aiErrorFromResponse(res, `revise-topic failed (${res.status})`));
+      return null;
+    }
+    const data = await res.json() as { body?: string };
+    return typeof data.body === "string" && data.body.trim() ? data.body : null;
+  } catch (err) {
+    console.warn("reviseTopicFromSource failed:", err);
+    return null;
+  }
 }
 
 /**
