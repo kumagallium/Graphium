@@ -22,6 +22,10 @@ export type SettingToggleProps = {
   details?: ReactNode;
   /** トグルの下に置く追加のコントロール（オンのときだけ出す条件は呼び出し側で持つ） */
   children?: ReactNode;
+  /** 他設定に依存して操作不能なとき true。押しても onChange は呼ばれない */
+  disabled?: boolean;
+  /** disabled のときだけ summary の下に出す理由（例: 「知見が OFF のため」） */
+  disabledReason?: ReactNode;
 };
 
 export function SettingToggle({
@@ -31,6 +35,8 @@ export function SettingToggle({
   summary,
   details,
   children,
+  disabled,
+  disabledReason,
 }: SettingToggleProps) {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
@@ -42,10 +48,11 @@ export function SettingToggle({
         <button
           type="button"
           onClick={onChange}
+          disabled={disabled}
           role="switch"
           aria-checked={checked}
           aria-label={label}
-          className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${checked ? "bg-primary" : "bg-input"}`}
+          className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${checked ? "bg-primary" : "bg-input"} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           <span
             className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
@@ -68,6 +75,10 @@ export function SettingToggle({
       </div>
 
       {summary && <p className="text-xs text-muted-foreground mt-1.5 ml-10">{summary}</p>}
+
+      {disabled && disabledReason && (
+        <p className="text-xs text-muted-foreground mt-1 ml-10 italic">{disabledReason}</p>
+      )}
 
       {details && open && (
         <div id={detailsId} className="text-xs text-muted-foreground mt-1.5 ml-10 pl-2 border-l border-border">

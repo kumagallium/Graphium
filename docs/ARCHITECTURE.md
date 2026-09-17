@@ -724,7 +724,31 @@ through Topic rebuilding (the Topic assignment stage below) instead.
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims and Topics (including near-duplicate Topic titles), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim |
 | **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's full text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The same file also holds the legacy **Topic writer / Topic Namer / Topic Consolidator** (`POST /api/wiki/compose-topic`, `/name-topics`, `/consolidate-topics`) — kept only for "Organize topics" (Settings → Maintenance) and the Linter's redundant-Topic check, and for existing Claim-derived Topics until they are next touched (see migration note below); ingest itself no longer calls them |
 
-Trigger flow (client-pushed, not server-polled):
+**Claims/Insights are an optional extension on top of this pipeline** (2026-09-17
+decision): Topics are the always-on default, built directly from source text as
+described above; Claim extraction (the Ingester) and, transitively, Insight
+discovery (the Atomizer) sit behind the `features.claims` setting flag
+(`src/features/settings/store.ts`, exposed as `isClaimsEnabled()`). When it's
+off, the six client ingest entry points in `note-app.tsx` (note queue, media
+url/pdf/docx, chat, Composer URL paste) call the same
+`ingestNote` / `ingestFromUrl` / `ingestFromPdf` / `ingestFromDocx` /
+`ingestFromChat` functions in `src/features/wiki/wiki-service.ts` with a new
+`extractClaims: boolean` parameter set to `false`: these functions still do
+their local extraction (note text / URL fetch / PDF or Word text) and return
+it as `sourceText`, but skip the `POST /api/wiki/ingest` call entirely, so no
+Claim page is created and the Topic router/reviser above run unchanged
+from that `sourceText`. `features.claims` off also forces
+`features.insights` off (Insights are built from Claims), gating the
+Atomizer's ingest-time budget and the maintenance "Discover Insights from
+Claims" action. Existing Claim/Insight pages are never deleted by this
+setting; they stay readable, searchable, and (if any exist) visible in the
+sidebar even while the extension is off.
+
+Trigger flow (client-pushed, not server-polled). The diagram below assumes
+`features.claims` is on; when it's off, the client skips the
+`POST /api/wiki/ingest` call and the Ingester/Atomizer/Linter steps, but
+still performs local text extraction and proceeds straight to
+`route-topics` / `revise-topic` with that text:
 
 ```mermaid
 sequenceDiagram

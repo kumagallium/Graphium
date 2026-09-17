@@ -198,7 +198,7 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -6735,8 +6735,10 @@ function NoteEditorInner({
                   onReplaceBlocks={handleReplaceBlocks}
                   onDeriveNote={handleAiDeriveFromChat}
                   onIngestChat={onIngestChat}
-                  onGenerateKnowledgeCandidates={onCreateKnowledgeNote ? handleGenerateKnowledgeCandidates : undefined}
-                  onAdoptKnowledgeCandidates={onCreateKnowledgeNote ? handleAdoptKnowledgeCandidates : undefined}
+                  // 候補ピッカーは知見(claim)・洞察(atom)しか作らない（トピックの等価物が無い）ため、
+                  // 知見が OFF のときは機能ごと隠す（知見前提の操作 = 2026-09-17 決定）。
+                  onGenerateKnowledgeCandidates={onCreateKnowledgeNote && isClaimsEnabled() ? handleGenerateKnowledgeCandidates : undefined}
+                  onAdoptKnowledgeCandidates={onCreateKnowledgeNote && isClaimsEnabled() ? handleAdoptKnowledgeCandidates : undefined}
                   noteIndex={noteIndex}
                   onOpenWiki={(wikiId) => setSidePeekNoteId(`wiki:${wikiId}`)}
                   onOpenNote={(noteId) => setSidePeekNoteId(noteId)}
@@ -7059,7 +7061,7 @@ export function NoteApp() {
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
   // AI 機能ごとの表示切り替え（既定 ON）。設定モーダルを閉じた時に再読み込みして反映する
   // （experimentalFlags と同じ伝搬パターン）。loadSettings() は常に両方 boolean を返す。
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadSettings().features ?? { insights: true, worldGrounding: true });
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadSettings().features ?? { claims: true, insights: true, worldGrounding: true });
   // 来歴ラベル機能は常時有効。付与 UI が step の中に構造的に畳まれた
   // （ステップを使う人にだけ現れる）ため、設定トグルでの段階的開示は撤去した。
   const provLabelsEnabled = true;
@@ -9288,7 +9290,7 @@ export function NoteApp() {
 
         // 設定で選んだ既定モデル名を渡す。Tauri モードではヘッダーに API キーを乗せないため、
         // body.model 経由でサーバーに伝えないと models.json 先頭のモデルにフォールバックしてしまう。
-        const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills, signal);
+        const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills, signal, isClaimsEnabled());
 
         // トピックは知見の有無に関係なく資料そのものから作る（Karpathy 方式）。
         // 資料本文は取り込みで既に持っている job.doc をそのまま使う（再取得しない）。
@@ -9731,7 +9733,7 @@ export function NoteApp() {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
         try {
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromUrl(entry.url, existingWikis, getLocale());
+          const result = await ingestFromUrl(entry.url, existingWikis, getLocale(), isClaimsEnabled());
           // 知見（wiki）が 0 件でも、資料がトピック段に積める（sourceText がある）なら
           // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
@@ -9778,7 +9780,7 @@ export function NoteApp() {
           const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
           const blob = await (await fetch(blobUrl)).blob();
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale());
+          const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), isClaimsEnabled());
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
@@ -9825,7 +9827,7 @@ export function NoteApp() {
           const blobUrl = await provider.getMediaBlobUrl(fileId);
           const blob = await (await fetch(blobUrl)).blob();
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale());
+          const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), isClaimsEnabled());
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
@@ -10232,7 +10234,7 @@ export function NoteApp() {
       }));
       try {
         const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-        const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale());
+        const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale(), isClaimsEnabled());
         if (result.wikis.length === 0 && !result.sourceText.trim()) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
           return;
@@ -11163,6 +11165,9 @@ export function NoteApp() {
     // 表示可否は features.insights（設定の「洞察を使う」）が握る。
     // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
     showAtomLayer: featureFlags.insights ?? true,
+    // 知見（Claims）が設定で有効かどうか。OFF でも既存ページが残っていれば
+    // FileSidebar 側が件数を見て表示を維持する（2026-09-17 決定）。
+    claimsEnabled: featureFlags.claims ?? true,
     onShowWikiList: (kind: WikiKind) => { closeAllViews(); fm.setActiveWikiKind(kind); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     // null（判定中）のまま渡す。false に潰すと、デスクトップ版の起動直後に
@@ -12479,7 +12484,7 @@ export function NoteApp() {
                 }));
                 try {
                   const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-                  const result = await ingestFromUrl(url, existingWikis, getLocale());
+                  const result = await ingestFromUrl(url, existingWikis, getLocale(), isClaimsEnabled());
                   if (result.wikis.length === 0 && !result.sourceText.trim()) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                     ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);

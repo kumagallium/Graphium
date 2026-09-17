@@ -362,7 +362,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [colorMode, setColorMode] = useState<ColorMode>("");
   const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
   // AI 機能ごとの表示切り替え（既定 ON）。loadSettings() は常に両方 boolean で返すので undefined は来ない
-  const [features, setFeatures] = useState<FeatureFlags>({ insights: true, worldGrounding: true });
+  const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
 
   // サーバーデータ
@@ -624,7 +624,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setJpFont(settings.jpFont ?? "");
     setColorMode(settings.colorMode ?? "");
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
-    setFeatures(settings.features ?? { insights: true, worldGrounding: true });
+    setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true });
     setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
     setSaved(false);
     setShowAddForm(false);
@@ -2873,6 +2873,31 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             </div>
 
+            {/* 知見（Claims）— トピック（Karpathy 方式・資料から直接作る）が既定の知識層で、
+                知見・洞察は Graphium 独自の拡張として ON/OFF できる（2026-09-17 決定）。
+                OFF のときは取り込みが知見を抽出せず、トピック段だけが資料本文から走る。
+                作成済みの知見・洞察ページは消えず、再度 ON にすれば取り込みが再開する。 */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                <SettingToggle
+                  checked={!!features.claims}
+                  onChange={() => {
+                    // 知見を OFF にする瞬間、洞察は知見に依存するため一緒に OFF へ倒す
+                    // （store.ts の loadSettings と同じ規則を UI 側でも保つ）。
+                    setFeatures({
+                      ...features,
+                      claims: !features.claims,
+                      insights: !features.claims ? features.insights : false,
+                    });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.claims.title")}
+                  summary={t("settings.features.claims.summary")}
+                  details={<p>{t("settings.features.claims.help")}</p>}
+                />
+              </div>
+            </div>
+
             {/* 洞察の発見 — マスタースイッチ + 取り込み時のスキャン予算（LLM 呼び出し回数上限）。
                 「1 クラスタで何件拾えるか」の見積もり係数は置かず、ユーザーが決めるのは
                 コスト（回数）だけ。実際に視野へ入った件数は結果に実測値で表示される。 */}
@@ -2880,9 +2905,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionDiscovery")}</h3>
               <div className="space-y-4">
                 {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ —
-                    作成済みの洞察（atom）は消えず、再度 ON にすれば見える。 */}
+                    作成済みの洞察（atom）は消えず、再度 ON にすれば見える。
+                    知見（claims）が OFF のときは洞察も作れないため無効化し、理由を出す。 */}
                 <SettingToggle
-                  checked={!!features.insights}
+                  checked={!!features.claims && !!features.insights}
+                  disabled={!features.claims}
+                  disabledReason={!features.claims ? t("settings.features.insights.disabledByClaimsOff") : undefined}
                   onChange={() => {
                     setFeatures({ ...features, insights: !features.insights });
                     setSaved(false);
@@ -3673,7 +3701,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               onRegenerateWiki={onRegenerateWiki}
               onRunAtomizeDiscovery={onRunAtomizeDiscovery}
               onPlanAtomizeDiscovery={onPlanAtomizeDiscovery}
-              atomLayerEnabled={true}
+              /* 知見(claims) が OFF のときは洞察も作れないため、手入れ画面の「知見をまたぐ洞察を発見」も隠す
+                  （2026-09-17 決定: 知見前提の操作は既存の洞察 OFF 時の扱いを流用） */
+              atomLayerEnabled={!!features.claims}
               availableModels={models}
               defaultModel={model || defaultModel}
               chatSynthesisModel={chatSynthesisModel}
