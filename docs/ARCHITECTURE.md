@@ -718,11 +718,11 @@ through Topic rebuilding (the Topic assignment stage below) instead.
 
 | Stage | File | What it does |
 |---|---|---|
-| **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch; also proposes *Topic* name(s) per Claim after being shown an index of existing topics (title + one-line definition), the same "index + judgment" approach it already uses for merge-vs-create decisions on other Wiki pages |
-| **Topic assignment** | `src/features/wiki/wiki-service.ts` (client) | Resolves each Claim's proposed topic names against existing Topic pages (title match → embedding similarity > 0.9 → create new) and rewrites the affected Topic bodies |
+| **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch (Claims). No longer proposes Topic names — Claims are not Topic material (see Topic router below; changed 2026-09-17) |
+| **Topic router** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`runSourceTopicStage`) | Reads the full text of the ingested *source* (not the Claims derived from it) plus an index of existing Topics (title + one-line definition) and decides which existing Topic(s) to update and which new Topic(s) to create. No embedding similarity, no title-normalization matching, no count cap — the LLM alone judges "same concept or new" from the index, the same "index + judgment" approach used for merge-vs-create decisions on other Wiki pages |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims and Topics (including near-duplicate Topic titles), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim |
-| **Topic writer** | `src/server/services/wiki-topic-writer.ts` | Composes a Topic page's body from its current member Claims only (pure function — the previous body is never fed back in). Cites member Claims by id (`[[claim:<id>]]`, resolved to the Claim's current title before rendering) rather than by title, and the caller always appends a References section listing every member Claim. The same file also holds the **Topic Consolidator** — a separate LLM call (`POST /api/wiki/consolidate-topics`) used only by "Organize topics" (Settings → Maintenance) and by the Linter's redundant-Topic check, never by ingest itself — that maps a set of topic names to canonical titles (no count caps) |
+| **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's full text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The same file also holds the legacy **Topic writer / Topic Namer / Topic Consolidator** (`POST /api/wiki/compose-topic`, `/name-topics`, `/consolidate-topics`) — kept only for "Organize topics" (Settings → Maintenance) and the Linter's redundant-Topic check, and for existing Claim-derived Topics until they are next touched (see migration note below); ingest itself no longer calls them |
 
 Trigger flow (client-pushed, not server-polled):
 
@@ -734,7 +734,7 @@ sequenceDiagram
     participant I as Ingester
     participant A as Atomizer
     participant L as Linter
-    participant TW as Topic writer
+    participant TR as Topic router / reviser
     participant FS as Wiki files (JSON)
 
     E->>W: note saved (worthy?)
@@ -746,18 +746,19 @@ sequenceDiagram
     A->>FS: write Insight / Claim pages
     A->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
-    S-->>W: ingest result (Claims + proposed topic names)
-    opt Claims came back with proposed topics
-        W->>W: resolve topics (title match / embedding > 0.9 / create new)
-        loop each touched Topic
-            W->>S: POST /api/wiki/compose-topic
-            S->>TW: run
-            TW-->>S: topic body (markdown, pure function of member Claims)
-            S-->>W: topic body
-            W->>FS: write Topic page (client-side save)
-        end
+    S-->>W: ingest result (Claims; source full text already in hand)
+    W->>S: POST /api/wiki/route-topics (source text + existing Topic index)
+    S->>TR: run
+    TR-->>S: { update: [topicId...], create: [name...] }
+    S-->>W: routing result
+    loop each Topic to update/create
+        W->>S: POST /api/wiki/revise-topic (current body + source text)
+        S->>TR: run
+        TR-->>S: next body (markdown, [[source:<id>]] citations)
+        S-->>W: revised body
+        W->>FS: write Topic page (client-side save; migrates a Claim-derived Topic to source format on first touch)
     end
-    W-->>E: status (toast)
+    W-->>E: status (toast: created/updated + unchecked-statement count)
 ```
 
 Notes:
@@ -766,16 +767,29 @@ Notes:
   which posts to the server. There is no server-side file watcher.
 - **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
   note is ingest-worthy at all (e.g., empty drafts are skipped).
-- **Topics.** Alongside each Claim, the ingester also proposes topic name(s)
-  (noun phrases, in the note's language, usually just one) grouping it by
-  concept — shown the same existing-topic index (title + one-line
-  definition) it already sees for other Wiki pages, so it can reuse an
-  existing topic or decide a new one is warranted, the same way it decides
-  merge-vs-create elsewhere. There is no count cap on Topics per Claim and no
-  target member-count per Topic — those are thresholds nobody could justify;
-  see [DATA_MODEL.md §3.1a](DATA_MODEL.md) for how near-duplicate Topics get
-  cleaned up later instead (Organize topics / Linter, not ingest). Topics
-  never participate in the hourglass — the Atomizer only ever sees Claims.
+- **Topics read sources, not Claims (changed 2026-09-17).** A Topic page is
+  no longer synthesized from its member Claims. Instead, each ingested
+  *source* (a note, or an imported pdf/document/url/chat) is itself routed:
+  the Topic router is shown the source's full text plus an index of existing
+  Topics (title + one-line definition) and returns which existing Topic(s)
+  to update and which new Topic(s) to create — no embedding similarity, no
+  title-normalization matching, no count cap. For each Topic touched, the
+  Topic reviser then rewrites the page from its current body (empty for a
+  new Topic) plus that one source's full text — a full rewrite each time,
+  not an append, in the style of an incrementally-revised wiki. Citations
+  are `[[source:<id>]]` (the source id, not a Claim id), stored verbatim in
+  `wikiMeta.topicMarkdown` (see [DATA_MODEL.md §3.1b](DATA_MODEL.md)) so the
+  next revision and source-check both read the same text. Claims are no
+  longer Topic material at all — the ingester doesn't even propose topic
+  names for them anymore — but they still feed the hourglass exactly as
+  before (Topics never did). **Existing Claim-derived Topics** (no
+  `topicMarkdown`) are migrated the first time they're touched by the
+  router: `runSourceTopicStage` collects every source id referenced by the
+  Topic's member Claims, then rebuilds the page from an empty body by
+  replaying those sources one at a time through the reviser
+  (`rebuildTopicFromSources`, `src/features/wiki/topic-stage.ts`) before
+  finally folding in the new source. A source that can no longer be read
+  (trashed, never indexed) is skipped and counted, not silently dropped.
 - **Merging Topics has four entry points**, all funneling into the same
   pure execution function `applyTopicMerges` (`src/features/wiki/topic-stage.ts`),
   which retargets member Claims (`retargetClaimTopicId` + `linkClaimAndTopic`),
@@ -798,9 +812,12 @@ Notes:
   button). The chat model (Settings → AI → Chat model, falls back to the
   default model when unset) is used — not the default model — for both
   the full Lint analysis (`POST /api/wiki/lint`) and Topic consolidation
-  (`POST /api/wiki/consolidate-topics`); ingest-time Topic naming
-  (`POST /api/wiki/name-topics`) and body composition
-  (`POST /api/wiki/compose-topic`) keep using the default model.
+  (`POST /api/wiki/consolidate-topics`); ingest-time Topic routing
+  (`POST /api/wiki/route-topics`) and revision
+  (`POST /api/wiki/revise-topic`) keep using the default model. The legacy
+  `name-topics` / `compose-topic` endpoints are no longer called by ingest —
+  they remain only for "Organize topics" and pre-migration Claim-derived
+  Topics.
 - **Note mode vs document mode.** For a short personal note the ingester
   harvests every distinct transferable insight the note carries as its own
   Claim, with no fixed cap — each tagged with proposed Topics. When the

@@ -14,11 +14,11 @@ Because knowledge is *derived*, regeneration is normal. When your notes change, 
 
 ## The three kinds
 
-Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics sit alongside this hourglass rather than inside it: they group claims by concept and are never fed into insight discovery.
+Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics sit alongside this hourglass rather than inside it — they read your source material directly (not the claims) and are never fed into insight discovery.
 
 | Kind | What it is |
 |---|---|
-| **Topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | A page that groups related claims by concept, with two-hop provenance (topic → claim → note) |
+| **Topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | A page built directly from the source material it groups by concept (notes, PDFs, Word docs, URLs, chat sessions), with one-hop provenance (topic → source) |
 | **Claims** | A grounded assertion extracted from your notes |
 | **Insights** | A pattern that recurs across two or more claims |
 
@@ -26,9 +26,13 @@ Each kind carries a semantic type badge. Claims have a role (**Finding**, **Deci
 
 Graphium used to generate a fourth kind, **Summaries** — a short AI recap of a single note — but generation has stopped in favor of Topics, which now carry that grouping role. If you made some before this change, they haven't gone anywhere: a **Previous Summaries** row appears at the end of the sidebar's Knowledge list whenever you have any. They can still be viewed and deleted, but not regenerated.
 
+Topics used to be built from your **claims** (grouping already-extracted claims by concept). They're now built from the **source material itself**: when you ingest a note, PDF, Word doc, URL, or chat, the AI separately reads that source's full text and decides which existing topic(s) it should update and which new one(s) it should create — claims are extracted for other purposes but are no longer topic material. An older topic you made before this change keeps working, and is quietly upgraded to the new form the next time a new source is routed to it: Graphium replays the sources behind its existing member claims through the same one-source-at-a-time process before folding in the new one, so nothing you already wrote is lost.
+
 ## Adding a note to knowledge
 
-The main entry point is the **Add to Knowledge** chip in the note editor header (it also appears in the side peek and in the note's header menu). Click it and the AI reads the note, extracts claims from it, and groups them into topics.
+The main entry point is the **Add to Knowledge** chip in the note editor header (it also appears in the side peek and in the note's header menu). Click it and the AI reads the note, extracts claims from it, and — separately — routes the note's own text into one or more topics.
+
+Whenever a topic is created or revised this way, the completion toast also reports how many of its stated points are still unchecked against the source (Graphium doesn't check sources automatically unless you've turned that on in Settings) — open the **Upkeep → Source check** tab from there to verify them.
 
 Progress appears in a toast at the corner of the screen — **Generating Knowledge (1/3)** — which you can collapse with **Minimize** and reopen with **Show details**. While it runs, the toast header also has a **Stop** button (■): it interrupts the in-flight AI call, keeps whatever already finished, and marks the rest **Stopped** — useful when a slow model turns out to be slower than you expected. When it finishes you'll see **Done: 2 generated**, and the chip flips to **In Knowledge**; clicking it now jumps to the generated entry. Running it again on an updated note regenerates the existing entries rather than duplicating them.
 

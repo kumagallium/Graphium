@@ -975,15 +975,16 @@ constraint.
 
 ### 3.1b `topic` — new format, reading resources directly (2026-09 onwards)
 
-PR 3a lays the storage/rendering groundwork for a second topic format
+PR 3a laid the storage/rendering groundwork for a second topic format
 that skips the Claim-layer indirection described above: instead of
 grouping pre-extracted Claims, a "source" topic reads resources (note
 bodies, PDFs, Word documents, URLs, chat sessions) directly and keeps
 its own Markdown body (`wikiMeta.topicMarkdown`) as the source of
-truth. The switch-over of the ingest pipeline itself (`runTopicStage`,
-the ingester, and the six note-app entry points) is deferred to a
-follow-up PR (3b) — this PR only adds the functions, storage shape,
-and safety nets a later ingest change will rely on.
+truth. PR 3b wires this into ingest: all six note-app entry points now
+route the *source itself* (not its Claims) through
+`runSourceTopicStage` (`src/features/wiki/topic-stage.ts`), which
+creates and revises topics in this format. Claims are no longer topic
+material at all.
 
 Differences from the legacy format (§3.1a):
 
@@ -991,8 +992,24 @@ Differences from the legacy format (§3.1a):
 |---|---|---|
 | Member set | `derivedFromClaims` (Claim ids) | `derivedFromNotes` (resource ids, same id space as a Claim's own `derivedFromNotes`) |
 | Inline citation | `[[claim:<id>]]` → Claim's current title | `[[source:<id>]]` → resource's current title (unresolved ids are kept literally rather than dropped, same policy as the legacy form) |
-| Body regeneration | Pure function of the current member Claims; the previous body is never fed back in | The previous `topicMarkdown` is fed back to the writer as "the body to revise" on the next re-ingest (not yet wired — 3b) |
+| Body regeneration | Pure function of the current member Claims; the previous body is never fed back in | Incremental revision: the previous `topicMarkdown` (empty for a new topic) plus one new source's full text produce the next body — a full rewrite each time, not an append |
+| Assignment | Claim's `topics` field (proposed by the ingester) resolved by title match → embedding > 0.9 → create | A per-source LLM call (`POST /api/wiki/route-topics`) reads the source's full text and an index of existing topics and returns which to update / which new ones to create — no embedding, no title-normalization matching, no count cap |
 | Source-check hop count | Two hops: topic statement → member Claim → the Claim's own `derivedFromNotes` | One hop: topic statement → resource, since the citation already names the resource |
+
+**Migrating a legacy topic on first touch.** When the router selects an
+existing legacy topic (no `topicMarkdown`) as an update target,
+`runSourceTopicStage` migrates it in place rather than revising it as
+legacy: it collects every resource id referenced by the topic's member
+Claims' `derivedFromNotes`, then calls `rebuildTopicFromSources` to
+replay those resources one at a time from an empty body through the
+reviser, and finally folds in the new source. The member Claims'
+`derivedFromClaims` link and each Claim's own `topicIds` are left
+untouched — the migration only changes how the *topic page's own body*
+is produced from then on. A resource id that can no longer be resolved
+(trashed, or never indexed) is skipped and counted in the result
+(`sourcesSkipped`), not silently dropped. `rebuildTopicFromSources` is
+a standalone function so a future "rebuild from sources" action in the
+source-check triage UI can reuse it without going through the router.
 
 `buildSourceTopicDocument` / `rebuildSourceTopicDocument`
 (`wiki-service.ts`) assemble the new format the same way
