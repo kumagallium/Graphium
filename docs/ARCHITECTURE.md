@@ -733,7 +733,6 @@ sequenceDiagram
     participant S as Server (Hono)
     participant I as Ingester
     participant A as Atomizer
-    participant X as Cross-updater
     participant L as Linter
     participant TW as Topic writer
     participant FS as Wiki files (JSON)
@@ -745,9 +744,7 @@ sequenceDiagram
     I->>FS: read existing wiki pages
     I->>A: hand off changed sections
     A->>FS: write Insight / Claim pages
-    A->>X: notify changed pages
-    X->>FS: propagate to dependents
-    X->>L: schedule lint
+    A->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
     S-->>W: ingest result (Claims + proposed topic names)
     opt Claims came back with proposed topics
