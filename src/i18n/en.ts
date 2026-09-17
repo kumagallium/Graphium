@@ -654,7 +654,7 @@ export const en: Record<string, string> = {
   "settings.autoSourceCheck.help": "Checks newly created or updated claims and topics against their sources, one at a time in the background (off by default). Turning it on also works through anything not yet checked. Calls the AI once per source.",
   "settings.autoSourceCheck.summary": "Checks each new or updated claim and topic against its sources in the background, one at a time (off by default).",
   "settings.groundingModel.summary": "Falls back to the chat model when left unset.",
-  "settings.features.insights.summary": "Pulls the relationship pattern out of your claims and writes it as a principle that still holds in other fields. Each insight links back to its claims.",
+  "settings.features.insights.summary": "Generalizes the relationship pattern in your claims into a form that still holds outside its original context. Each insight links back to its claims.",
   "settings.insightModel.summary": "Falls back to the chat model when left unset.",
   "settings.atomizeIngestBudget.summary": "How many times to look for insights when a note is taken into knowledge.",
   "settings.ai.sectionDiscovery": "Insight discovery",
