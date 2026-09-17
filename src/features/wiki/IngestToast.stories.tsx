@@ -52,9 +52,8 @@ export const ManyItemsActive: Story = {
             noteTitle: "ゼーベック係数の温度依存性",
             detail: "claims...",
             stages: [
-              { key: "cross-update", label: "Cross-update", status: "done", detail: "2 wikis" },
+              { key: "topics", label: "Topics", status: "done", detail: "1 topic" },
               { key: "atomize", label: "Atomize", status: "running" },
-              { key: "synthesize", label: "Synthesize", status: "pending" },
               { key: "lint", label: "Lint", status: "pending" },
             ],
           },

@@ -9,7 +9,7 @@ import { useT } from "../../i18n";
 export type IngestStageStatus = "pending" | "running" | "done" | "skipped" | "error";
 
 export type IngestStage = {
-  /** 識別子（cross-update / atomize / synthesize / lint など） */
+  /** 識別子（topics / atomize / lint など） */
   key: string;
   /** 表示用ラベル */
   label: string;
@@ -27,7 +27,7 @@ export type IngestToastItem = {
   detail?: string;
   /** 結果メッセージ */
   result?: string;
-  /** パイプライン後半（cross-update / atomize / synthesize / lint）のステージ表示 */
+  /** パイプライン後半（topics / atomize / lint）のステージ表示 */
   stages?: IngestStage[];
 };
 
@@ -243,7 +243,7 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
                 {item.result}
               </div>
             )}
-            {/* パイプラインステージ（cross-update / atomize / synthesize / lint） */}
+            {/* パイプラインステージ（topics / atomize / lint） */}
             {item.stages && item.stages.length > 0 && (
               <ul className="pl-5 space-y-0.5">
                 {item.stages.map((stage) => (

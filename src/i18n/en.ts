@@ -599,7 +599,7 @@ export const en: Record<string, string> = {
   "settings.modelDefaultLabel": "default",
   "settings.modelLoading": "Loading models...",
   "settings.modelNone": "No models registered",
-  "settings.modelHelp": "Used as a fallback for everything, and directly for background tasks (ingest, lint, rewrite, cross-update).",
+  "settings.modelHelp": "Used as a fallback for everything, and directly for background tasks (ingest, lint, rewrite).",
   "settings.chatSynthesisModel": "Chat model",
   "settings.chatSynthesisModelSameAsDefault": "Same as default model",
   "settings.chatSynthesisModelHelp": "Optional. Used for AI Chat, lint (AI analysis), and topic merging (falls back to the default model). Insight generation uses the insight model in the \"Insight discovery\" section instead (falls back to this chat model when unset).",

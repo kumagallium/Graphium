@@ -22,12 +22,6 @@ import {
   type LintIssue,
 } from "../services/wiki-linter.js";
 import {
-  buildCrossUpdateSystemPrompt,
-  buildCrossUpdateUserMessage,
-  parseCrossUpdateOutput,
-  type ExistingWikiDetail,
-} from "../services/wiki-cross-updater.js";
-import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
   parseAtomizerOutput,
@@ -363,63 +357,6 @@ app.post("/rewrite", async (c) => {
   } catch (err) {
     console.error("Wiki rewrite error:", err);
     return c.json(errorBody(err), 500);
-  }
-});
-
-// 横断更新（Ingest 後に既存 Wiki の更新提案を生成）
-app.post("/cross-update", async (c) => {
-  const body = await c.req.json<{
-    newNoteTitle: string;
-    newNoteContent: string;
-    newWikiTitles: string[];
-    existingWikis: ExistingWikiDetail[];
-    language: string;
-    model?: string;
-    skills?: { title: string; prompt: string }[];
-  }>();
-
-  if (!body.existingWikis || body.existingWikis.length === 0) {
-    return c.json({ proposals: [] });
-  }
-
-  const modelConfig = resolveModelConfig(c, { modelName: body.model });
-
-  if (!modelConfig) {
-    return c.json({ proposals: [] });
-  }
-
-  const systemPrompt = buildCrossUpdateSystemPrompt(body.language || "en", body.skills);
-  const userMessage = buildCrossUpdateUserMessage(
-    body.newNoteTitle,
-    body.newNoteContent,
-    body.newWikiTitles,
-    body.existingWikis,
-  );
-
-  try {
-    const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "wiki.cross-update",
-      modelConfig,
-      abortSignal: c.req.raw.signal,
-    });
-
-    const proposals = parseCrossUpdateOutput(result.message);
-
-    return c.json({
-      proposals,
-      tokenUsage: result.tokenUsage,
-      model: result.model,
-    });
-  } catch (err) {
-    console.error("Wiki cross-update error:", err);
-    // degrade（200 + 空 proposals）だが code は添えておく
-    return c.json({ proposals: [], ...errorBody(err) });
   }
 });
 

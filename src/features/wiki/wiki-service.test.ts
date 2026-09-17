@@ -14,16 +14,13 @@ import {
   buildTopicDocument,
   rebuildTopicDocument,
   resolveAtomDuplicates,
-  extractWikiDetail,
   mergeIntoWikiDocument,
   rewriteAndMerge,
-  applyCrossUpdate,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
 import type { WikiMeta, SourceCheckProfile } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
-import type { CrossUpdateProposal } from "../../server/services/wiki-cross-updater";
 
 const emptyIndex: any[] = [];
 
@@ -847,47 +844,6 @@ describe("normalizeTopicTitle - 空白差・NFKC の吸収（D）", () => {
   });
 });
 
-describe("extractWikiDetail - 横断更新（cross-update）の対象は knowledge のみ", () => {
-  const docOf = (kind: string) => ({
-    version: 2,
-    title: "タイトル",
-    pages: [{
-      id: "main", title: "タイトル", blocks: [
-        { type: "heading", props: { level: 2 }, content: [{ type: "text", text: "節1", styles: {} }] },
-        { type: "paragraph", content: [{ type: "text", text: "本文", styles: {} }] },
-      ], labels: {}, provLinks: [], knowledgeLinks: [],
-    }],
-    wikiMeta: {
-      kind,
-      derivedFromNotes: [],
-      derivedFromChats: [],
-      generatedAt: "2026-07-01T00:00:00Z",
-      generatedBy: { model: "m", version: "1.0.0" },
-    },
-    createdAt: "2026-07-01T00:00:00Z",
-    modifiedAt: "2026-07-01T00:00:00Z",
-  }) as any;
-
-  it("claim では詳細（セクション見出し・kind）を抽出する", () => {
-    const detail = extractWikiDetail("claim-1", docOf("claim"));
-    expect(detail).not.toBeNull();
-    expect(detail?.kind).toBe("claim");
-    expect(detail?.sectionHeadings).toEqual(["節1"]);
-  });
-
-  it("topic は対象外（本文がメンバー知見からの純関数のため、cross-update の追記先にしない）", () => {
-    expect(extractWikiDetail("topic-1", docOf("topic"))).toBeNull();
-  });
-
-  it("atom（洞察）も対象外（同じく派生元から作り直す設計）", () => {
-    expect(extractWikiDetail("atom-1", docOf("atom"))).toBeNull();
-  });
-
-  it("summary（生成停止済み）も対象外", () => {
-    expect(extractWikiDetail("summary-1", docOf("summary"))).toBeNull();
-  });
-});
-
 describe("本文を作り直す merge/regenerate 系は古い sourceCheck を引き継がない", () => {
   const originalFetch = global.fetch;
 
@@ -968,19 +924,6 @@ describe("本文を作り直す merge/regenerate 系は古い sourceCheck を引
     expect(next.wikiMeta?.sourceCheck).toBeUndefined();
   });
 
-  it("applyCrossUpdate は本文（参照追加）を書き換えるので sourceCheck を落とす", async () => {
-    const existing = claimDocWithSourceCheck();
-    const proposal: CrossUpdateProposal = {
-      targetWikiId: "claim-1",
-      targetWikiTitle: "知見タイトル",
-      updateType: "add_reference",
-      reference: { noteTitle: "関連ノート", noteId: "note-3" },
-      reason: "テスト",
-      confidence: 0.9,
-    };
-    const next = await applyCrossUpdate(existing, proposal, "note-2", "m2");
-    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
-  });
 
   it("rebuildTopicDocument は本文を作り直すので sourceCheck を落とす", () => {
     const existing = claimDocWithSourceCheck();

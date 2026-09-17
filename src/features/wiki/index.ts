@@ -17,8 +17,7 @@ export {
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge,
   promoteClaimStatusIfCorroborated,
   embedWikiSections, markEditedSections,
-  // 横断更新
-  fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail, extractBodyPreview,
+  extractBodyPreview,
   extractTopicOneLiner, formatTopicRefForIndex, consolidateTopics, retargetClaimTopicId,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
