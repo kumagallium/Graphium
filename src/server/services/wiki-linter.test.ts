@@ -3,7 +3,7 @@
 // detectLocalIssues の orphan topic 検出（メンバー知見 0 件の話題ページ）を検証する。
 
 import { describe, it, expect } from "vitest";
-import { detectLocalIssues, detectAutoArchivable, type WikiSnapshot } from "./wiki-linter.ts";
+import { detectLocalIssues, detectAutoArchivable, detectMissingSourceIssues, type WikiSnapshot } from "./wiki-linter.ts";
 
 const base = (overrides: Partial<WikiSnapshot>): WikiSnapshot => ({
   id: "id-1",
@@ -239,5 +239,79 @@ describe("detectAutoArchivable の出どころ判定", () => {
     const out = detectAutoArchivable(wikis, new Set(["note-alive"]));
     expect(out.map((c) => c.id)).toEqual(["c1"]);
     expect(out[0].reason).toBe("orphaned-source");
+  });
+});
+
+describe("detectAutoArchivable - 新形式トピックの資料全滅（sources-gone）", () => {
+  const topic = (id: string, derivedFromNotes: string[]) => ({
+    id, title: id, kind: "topic" as const, derivedFromNotes, relatedClaims: [],
+    derivedFromClaims: [] as string[],
+    bodyPreview: "", modifiedAt: "2026-09-16T00:00:00.000Z",
+  });
+
+  it("資料が全てノート id で、全部ゴミ箱・未検出なら sources-gone として検出する", () => {
+    const wikis = [topic("t1", ["note-gone-a", "note-gone-b"])];
+    const out = detectAutoArchivable(wikis, new Set(["note-alive"]));
+    expect(out).toEqual([{ id: "t1", title: "t1", kind: "topic", reason: "sources-gone" }]);
+  });
+
+  it("資料に 1 件でも有効なノートがあれば検出しない", () => {
+    const wikis = [topic("t1", ["note-gone", "note-alive"])];
+    expect(detectAutoArchivable(wikis, new Set(["note-alive"]))).toEqual([]);
+  });
+
+  it("外部プレフィックス付き資料（pdf:/url: 等）が 1 つでも混ざれば検出しない", () => {
+    const wikis = [topic("t1", ["note-gone", "pdf:abc"])];
+    expect(detectAutoArchivable(wikis, new Set())).toEqual([]);
+  });
+
+  it("validNoteIds が空（索引未読込）なら判定しない", () => {
+    const wikis = [topic("t1", ["note-gone"])];
+    expect(detectAutoArchivable(wikis, new Set())).toEqual([]);
+  });
+
+  it("旧形式トピック（derivedFromClaims にメンバーあり）は対象外", () => {
+    const wikis = [{ ...topic("t1", ["note-gone"]), derivedFromClaims: ["claim-a"] }];
+    expect(detectAutoArchivable(wikis, new Set(["note-alive"]))).toEqual([]);
+  });
+});
+
+describe("detectMissingSourceIssues - 新形式トピックの資料一部欠落", () => {
+  const topic = (id: string, derivedFromNotes: string[], derivedFromClaims: string[] = []) => ({
+    id, title: id, kind: "topic" as const, derivedFromNotes, relatedClaims: [],
+    derivedFromClaims,
+    bodyPreview: "", modifiedAt: "2026-09-16T00:00:00.000Z",
+  });
+
+  it("資料の一部だけがゴミ箱・未検出なら warning issue を作る", () => {
+    const wikis = [topic("t1", ["note-alive", "note-gone"])];
+    const issues = detectMissingSourceIssues(wikis, new Set(["note-alive"]));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ type: "missing-source", severity: "warning", affectedWikiIds: ["t1"] });
+  });
+
+  it("資料が全滅（0 件有効）なら対象外（sources-gone 側の役割）", () => {
+    const wikis = [topic("t1", ["note-gone-a", "note-gone-b"])];
+    expect(detectMissingSourceIssues(wikis, new Set(["note-alive"]))).toEqual([]);
+  });
+
+  it("資料が全部有効なら issue を作らない", () => {
+    const wikis = [topic("t1", ["note-a", "note-b"])];
+    expect(detectMissingSourceIssues(wikis, new Set(["note-a", "note-b"]))).toEqual([]);
+  });
+
+  it("外部プレフィックス付き資料は判定対象から除く（残り全部有効なら issue なし）", () => {
+    const wikis = [topic("t1", ["note-a", "pdf:abc"])];
+    expect(detectMissingSourceIssues(wikis, new Set(["note-a"]))).toEqual([]);
+  });
+
+  it("旧形式トピック（derivedFromClaims にメンバーあり）は対象外", () => {
+    const wikis = [topic("t1", ["note-gone", "note-alive"], ["claim-a"])];
+    expect(detectMissingSourceIssues(wikis, new Set(["note-alive"]))).toEqual([]);
+  });
+
+  it("validNoteIds が空（索引未読込）なら判定しない", () => {
+    const wikis = [topic("t1", ["note-gone", "note-alive"])];
+    expect(detectMissingSourceIssues(wikis, new Set())).toEqual([]);
   });
 });

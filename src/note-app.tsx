@@ -297,9 +297,11 @@ import {
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
   extractBodyPreview,
   // Lint（自動実行用）
-  lintWikis, buildWikiSnapshots,
+  lintWikis, buildWikiSnapshots, mergeMissingSourceIssues,
   // 機械的な自動アーカイブ（LLM 不要）
   detectAutoArchivable,
+  // 資料の一部欠落（LLM 不要）
+  detectMissingSourceIssues,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   // Synthesis
@@ -317,10 +319,9 @@ import {
   wikiLog,
   // 点検の「見てほしいことがある」印
   saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
-  // Topic（話題）
-  composeTopicBody, rebuildTopicDocument, extractTopicOneLiner,
-  type TopicComposeClaim,
-  runTopicStage, type TopicStageClaimInput, type TopicStageResult, type ExistingTopicRef,
+  // Topic（話題。知見はもう材料にしない — 旧形式の割り当て系は撤去済み）
+  extractTopicOneLiner,
+  type ExistingTopicRef,
   consolidateExistingTopics, type ExistingTopicForMerge,
   mergeTopicsExplicit, normalizeTopicTitle,
   runSourceTopicStage, type SourceTopicStageInput, type SourceTopicStageResult,
@@ -481,42 +482,6 @@ async function loadMediaText(fileId: string): Promise<string | undefined> {
  * @param text メモ本文（trim 済みを想定）
  * @param fallbackTitle 先頭が空のときのタイトル
  */
-/**
- * runTopicStage の実行結果をトースト用の 1 行にまとめる。
- * 作成・更新は常に表示、未割り当て・失敗は 0 件なら出さない
- * （既存話題どうしの統合は ingest の隠れた段にはしない — 「話題を整理」の専用結果表示に任せる）。
- */
-function formatTopicStageDetail(
-  topicResult: TopicStageResult,
-  // この実行の直前時点の既存テーマ一覧（id/title）。渡すと、今回作ったテーマに
-  // ローカル判定（正規化タイトル一致）で候補が見つかったときだけヒントを 1 行足す。
-  // LLM は呼ばない（4 と同じ判定のうち同期で完結する部分のみ）。
-  existingTopicsSnapshot?: { id: string; title: string }[],
-): string {
-  let detail = `${tStatic("ingest.topicsDone", { created: String(topicResult.created), updated: String(topicResult.updated) })}`
-    + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-    + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
-
-  if (topicResult.createdTopics.length > 0 && existingTopicsSnapshot) {
-    const countByNormalizedTitle = new Map<string, number>();
-    for (const topic of existingTopicsSnapshot) {
-      const key = normalizeTopicTitle(topic.title);
-      countByNormalizedTitle.set(key, (countByNormalizedTitle.get(key) ?? 0) + 1);
-    }
-    for (const created of topicResult.createdTopics) {
-      const key = normalizeTopicTitle(created.title);
-      countByNormalizedTitle.set(key, (countByNormalizedTitle.get(key) ?? 0) + 1);
-    }
-    const hasCandidate = topicResult.createdTopics.some(
-      (created) => (countByNormalizedTitle.get(normalizeTopicTitle(created.title)) ?? 0) >= 2,
-    );
-    if (hasCandidate) {
-      detail += ` · ${tStatic("ingest.similarTopicsHint")}`;
-    }
-  }
-  return detail;
-}
-
 /** ingest 系 API に渡す既存 Wiki 参照 1 件分（kind === "topic" のとき oneLiner を持ちうる） */
 type ExistingWikiRefForIngest = { id: string; title: string; kind: WikiKind; oneLiner?: string };
 
@@ -7321,7 +7286,7 @@ export function NoteApp() {
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
-  // 話題（topic）の段の直列化キューと、直前の実行が作った話題の控え（runTopicStageForNoteApp 参照）
+  // 話題（topic）の段の直列化キューと、直前の実行が作った話題の控え（runSourceTopicStageForNoteApp 参照）
   const topicStageQueueRef = useRef<Promise<void>>(Promise.resolve());
   const knownTopicRefsRef = useRef<Map<string, string>>(new Map());
   // 取り込みパイプライン（ingest → atomize → lint）の中断ハンドル。
@@ -9032,69 +8997,6 @@ export function NoteApp() {
     />
   );
 
-  // 話題（topic）の段（runTopicStage）を note-app のファイル操作・ログに配線する共通ラッパー。
-  // 5 つの知見保存経路（ノート取り込み・チャットのナレッジ化・素材 URL/PDF/Word・URL 貼付）と
-  // 設定の「話題を整理」から同じ形で呼べるようにする。
-  const runTopicStageForNoteApp = useCallback(
-    (claims: TopicStageClaimInput[]) => {
-      // 素材の一括ナレッジ化は 1 件ごとに独立した async で走るため、話題の段が並行すると
-      // 「既存話題」のスナップショットが古いまま同名の話題を二重に作る（実測: 格子熱伝導率 ×2）。
-      // ここで直列化し、前の実行が作った話題を次の実行の既存一覧に引き継ぐ。
-      const run = topicStageQueueRef.current.then(async () => {
-        // 既存話題は「タイトル + 定義の先頭文」（index）として渡す — Karpathy の index.md と
-        // 同じ考え方で、LLM が表記ゆれだけで別話題に倒れず既存へ寄せられるようにする。
-        // 一覧はキャッシュ済みドキュメントからのみ拾う（未ロードの話題は強制ロードしない —
-        // 件数が多いと重くなるため oneLiner 無し＝タイトルのみで判断させる）。
-        const existingTopicRefs: ExistingTopicRef[] = (fm.noteIndex?.notes ?? [])
-          .filter((n) => n.source === "ai" && n.wikiKind === "topic")
-          .map((n) => {
-            const doc = fm.getCachedDoc(`wiki:${n.noteId}`);
-            const oneLiner = doc ? extractTopicOneLiner(doc) : "";
-            return { id: n.noteId, title: n.title, ...(oneLiner ? { oneLiner } : {}) };
-          });
-        // noteIndex への反映が追いつく前でも、直前の実行が作った話題を見落とさない
-        const seen = new Set(existingTopicRefs.map((r) => r.id));
-        for (const [id, title] of knownTopicRefsRef.current) {
-          if (!seen.has(id)) existingTopicRefs.push({ id, title });
-        }
-        const result = await runTopicStageInner(claims, existingTopicRefs);
-        for (const r of result.createdTopics) knownTopicRefsRef.current.set(r.id, r.title);
-        return result;
-      });
-      topicStageQueueRef.current = run.then(() => undefined, () => undefined);
-      return run;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fm]
-  );
-
-  const runTopicStageInner = useCallback(
-    async (claims: TopicStageClaimInput[], existingTopicRefs: ExistingTopicRef[]) => {
-      const claimTitleById = new Map(claims.map((c) => [c.id, c.title]));
-      return runTopicStage(claims, {
-        loadDoc: fm.loadDoc,
-        getCachedDoc: fm.getCachedDoc,
-        handleSaveWikiFile: fm.handleSaveWikiFile,
-        handleCreateWikiFile: fm.handleCreateWikiFile,
-        existingTopicRefs,
-        noteIndex: buildNoteIndex(fm.noteIndex),
-        locale: getLocale(),
-        onTopicSaved: (topicId, doc, triggerClaimId, _memberClaimIds, mode) => {
-          embedWikiSections(topicId, doc).catch(() => {});
-          const claimTitle = claimTitleById.get(triggerClaimId) ?? triggerClaimId;
-          if (mode === "create") {
-            wikiLog.append("ingest", [topicId], `Created topic "${doc.title}" from claim "${claimTitle}"`).catch(() => {});
-          } else {
-            wikiLog.append("cross-update", [topicId], `Updated topic "${doc.title}" with claim "${claimTitle}"`).catch(() => {});
-          }
-        },
-        log: (...args: unknown[]) => console.warn(...args),
-      });
-    },
-    [fm]
-  );
-
-
   // 資料 id → { resolveSource, resolveSourceTitle } の解決経路（出典照合と同じ入口）。
   // runSourceTopicStageForNoteApp・話題の統合・話題の手動再生成が共通して使う。
   const buildTopicSourceResolvers = useCallback(() => {
@@ -9127,17 +9029,27 @@ export function NoteApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fm, capture.captureIndex]);
   // 話題（topic）の段（新形式・資料を直接読む）を note-app のファイル操作・ログに配線する
-  // 共通ラッパー。旧 runTopicStageForNoteApp と同じキュー（topicStageQueueRef）で直列化する
+  // 共通ラッパー。同じキュー（topicStageQueueRef）で直列化する
   // ── 両方が同じ「既存話題スナップショットの古さ」問題を持つため。
   const runSourceTopicStageForNoteApp = useCallback(
     (sources: SourceTopicStageInput[]) => {
       const run = topicStageQueueRef.current.then(async () => {
+        // sourceIds（新形式トピックの derivedFromNotes）はキャッシュ済みドキュメントから
+        // 拾えるものだけ入れる（oneLiner と同じ理由 — 未ロードの話題を強制ロードしない）。
+        // runSourceTopicStage が「今回の資料を既に引用済みのトピック」を機械的に見つけ、
+        // ルーターの判断に関係なく改訂対象へ含めるために使う。
         const existingTopicRefs: ExistingTopicRef[] = (fm.noteIndex?.notes ?? [])
           .filter((n) => n.source === "ai" && n.wikiKind === "topic")
           .map((n) => {
             const doc = fm.getCachedDoc(`wiki:${n.noteId}`);
             const oneLiner = doc ? extractTopicOneLiner(doc) : "";
-            return { id: n.noteId, title: n.title, ...(oneLiner ? { oneLiner } : {}) };
+            const sourceIds = doc?.wikiMeta?.derivedFromNotes;
+            return {
+              id: n.noteId,
+              title: n.title,
+              ...(oneLiner ? { oneLiner } : {}),
+              ...(sourceIds && sourceIds.length > 0 ? { sourceIds } : {}),
+            };
           });
         const seen = new Set(existingTopicRefs.map((r) => r.id));
         for (const [id, title] of knownTopicRefsRef.current) {
@@ -9277,8 +9189,8 @@ export function NoteApp() {
     const signal = abortController.signal;
 
     // このバッチで新規作成・更新された claim を集めておき、パイプライン後半の
-    // 「話題（topic）」段（runTopicStage）でまとめて割り当てる。topics が空でも積む
-    // — 空の場合は runTopicStage 内で name-topics による補完を試みる。
+    // 「話題（topic）」段（runSourceTopicStage）でまとめて処理する。知見はもう材料にしない
+    // — 資料そのものを直接読んで作成・改訂する。
     // 話題（topic）段（新形式）に渡す資料一覧。知見の有無に関係なく、資料（ノート）1 本に
     // つき 1 件、取り込みが成功した時点で積む（知見はもうトピックの材料にしない）。
     const sourcesForTopicStage: SourceTopicStageInput[] = [];
@@ -9646,10 +9558,11 @@ export function NoteApp() {
     // 2026-09-17 決定: 冗長の自動統合・孤立の自動リンクは撤去し、人の判断に戻した）
     try {
       let snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+      const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
       // 機械的な自動アーカイブ（LLM 不要）を lint 本体より先に実行する
       snapshots = await autoArchiveEmptyWiki(
         snapshots,
-        new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId)),
+        validNoteIds,
         fm.handleArchiveWikiFile,
         setIngestToast,
       );
@@ -9658,7 +9571,10 @@ export function NoteApp() {
       } else {
         updateStage("lint", "running", tStatic("ingest.analyzingWikis", { count: String(snapshots.length) }));
         // localOnly=true: 機械判定（矛盾・構造的な孤立/重複の疑い）のみ。AI 分析はしない。
-        const report = await lintWikis(snapshots, getLocale(), true, signal);
+        const rawReport = await lintWikis(snapshots, getLocale(), true, signal);
+        // 資料の一部欠落（missing-source）は /lint が noteIndex を持たないため client 側で
+        // 検出し、ここで合流させる（他の機械判定と同じクイック点検の一部として扱う）。
+        const report = mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
         const issues = report.issues;
 
         // contradiction はトーストで通知（人間が判断、自動修正不可）
@@ -9698,7 +9614,7 @@ export function NoteApp() {
 
     ingestAbortRef.current = null;
     ingestRunningRef.current = false;
-  }, [fm, capture.handleRecordKnowledged, runTopicStageForNoteApp]);
+  }, [fm, capture.handleRecordKnowledged]);
 
   const enqueueIngest = useCallback((noteId: string, noteTitle: string, doc: import("./lib/document-types").GraphiumDocument) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
@@ -9995,10 +9911,11 @@ export function NoteApp() {
         }
 
         let snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+        const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
         // 機械的な自動アーカイブ（LLM 不要）を lint 本体より先に実行する
         snapshots = await autoArchiveEmptyWiki(
           snapshots,
-          new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId)),
+          validNoteIds,
           fm.handleArchiveWikiFile,
           setIngestToast,
         );
@@ -10006,7 +9923,9 @@ export function NoteApp() {
 
         // localOnly=true: 機械判定のみのクイック点検（AI 解析は手入れ画面で人が起動したときだけ）。
         // 2026-09-17 決定: 冗長の自動統合・孤立の自動リンクは撤去し、人の判断に戻した。
-        const report = await lintWikis(snapshots, getLocale(), true);
+        const rawReport = await lintWikis(snapshots, getLocale(), true);
+        // 資料の一部欠落（missing-source）は client 側で検出して合流させる（上と同じ理由）。
+        const report = mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
         applyLintBadgeFromReport(report);
 
         // contradiction のみトースト通知（人間が判断、自動修正不可）。gap は LLM 分析でしか
@@ -11071,7 +10990,6 @@ export function NoteApp() {
         title: cached?.title ?? wf.name ?? wf.id,
         kind: (meta?.kind ?? "claim") as WikiKind,
         model: meta?.model,
-        hasTopics: (meta?.topicIds?.length ?? 0) > 0,
       };
     });
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
@@ -11908,12 +11826,15 @@ export function NoteApp() {
                   // 伝える方が親切。
                   setLintReport({
                     issues: [],
-                    summary: { total: 0, contradictions: 0, orphans: 0, gaps: 0, stale: 0, redundant: 0 },
+                    summary: { total: 0, contradictions: 0, orphans: 0, gaps: 0, stale: 0, redundant: 0, missingSource: 0 },
                     analyzedAt: new Date().toISOString(),
                   });
                   return;
                 }
-                const report = await lintWikis(snapshots, getLocale(), localOnly);
+                const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
+                const rawReport = await lintWikis(snapshots, getLocale(), localOnly);
+                // 資料の一部欠落（missing-source）は client 側で検出して合流させる（クイック/フル共通）。
+                const report = mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
                 setLintReport(report);
               } catch (err) {
                 console.error("Lint failed:", err);
@@ -12829,34 +12750,11 @@ export function NoteApp() {
           }
           console.log(`Re-embed complete: ${successCount} success / ${failCount} failed / ${total} total`);
         }}
-        onOrganizeTopics={async (onProgress) => {
-          // (a) topicIds が空の claim を集め、話題の段（runTopicStage）を一括で回す
-          // （ingest 経路を通らずに作られた古い知見・name-topics 導入前の知見の救済）。
-          const targets = fm.wikiFiles.filter((wf) => {
-            const meta = fm.wikiMetas.get(wf.id);
-            return meta?.kind === "claim" && !(meta?.topicIds?.length);
-          });
-          const total = targets.length;
-          const claims: TopicStageClaimInput[] = [];
-          for (let i = 0; i < total; i++) {
-            const wf = targets[i];
-            onProgress(i, total);
-            const doc = fm.getCachedDoc(`wiki:${wf.id}`) ?? (await fm.loadDoc(`wiki:${wf.id}`));
-            if (!doc) continue;
-            claims.push({
-              id: wf.id,
-              title: doc.title,
-              body: extractBodyPreview(doc, 2000),
-              topics: [],
-            });
-          }
-          onProgress(total, total);
-          const assignResult = claims.length > 0
-            ? await runTopicStageForNoteApp(claims)
-            : { created: 0, updated: 0, failed: 0, withoutTopic: 0, createdTopics: [] };
-
-          // (b) 既存話題どうしの統合（表記ゆれ・粒度違いで増えてしまった話題を後から寄せる）。
-          // wiki-linter の redundant 検出と同じ考え方を、まとめて一括で実行するのがこのボタン。
+        onOrganizeTopics={async () => {
+          // 知見（claim）はもうトピックの材料にしない — 「話題を整理」は既存トピック
+          // どうしの名寄せ（Topic Consolidator）→ 統合（applyTopicMerges）だけを行う
+          // （表記ゆれ・粒度違いで増えてしまった話題を後から寄せる。wiki-linter の
+          // redundant 検出と同じ考え方を、まとめて一括で実行するのがこのボタン）。
           const existingTopics: ExistingTopicForMerge[] = fm.wikiFiles
             .filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic")
             .map((wf) => ({
@@ -12880,11 +12778,9 @@ export function NoteApp() {
           });
 
           return {
-            created: assignResult.created,
-            updated: assignResult.updated,
-            failed: assignResult.failed + mergeResult.failed,
-            withoutTopic: assignResult.withoutTopic,
             merged: mergeResult.merged,
+            rebuilt: mergeResult.rebuilt,
+            failed: mergeResult.failed,
           };
         }}
       />

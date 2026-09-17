@@ -18,11 +18,13 @@ export {
   promoteClaimStatusIfCorroborated,
   embedWikiSections, markEditedSections,
   extractBodyPreview,
-  extractTopicOneLiner, formatTopicRefForIndex, consolidateTopics, retargetClaimTopicId,
+  extractTopicOneLiner, consolidateTopics, retargetClaimTopicId,
   // Lint（自動実行用）
-  lintWikis, buildWikiSnapshots,
+  lintWikis, buildWikiSnapshots, mergeMissingSourceIssues,
   // 機械的な自動アーカイブ（LLM 不要）
   detectAutoArchivable, type AutoArchiveCandidate,
+  // 資料の一部欠落（LLM 不要）
+  detectMissingSourceIssues,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,
@@ -36,11 +38,9 @@ export {
   type AtomDuplicateVerdict, type AtomDuplicateJudgeVerdict, type AtomDuplicateResolution,
   // インライン引用リンク
   buildNoteIndex,
-  // Topic（話題）
-  normalizeTopicTitle, matchTopicsByTitle, resolveTopicsForClaim,
-  linkClaimAndTopic, unlinkClaimFromTopic,
-  composeTopicBody, buildTopicDocument, rebuildTopicDocument,
-  type ExistingTopicRef, type TopicMatch, type TopicComposeClaim,
+  // Topic（話題。知見はもう材料にしない — 旧形式の割り当て系は撤去済み）
+  normalizeTopicTitle, unlinkClaimFromTopic,
+  type ExistingTopicRef,
   // Topic（新形式・資料を直接読む）
   buildSourceTopicDocument, rebuildSourceTopicDocument, resolveSourceCitations, stripEmptyMarkdownSections,
   routeTopicsForSource, reviseTopicFromSource,
@@ -62,11 +62,10 @@ export {
   type LintBadgeSummary,
 } from "./wiki-lint-badge";
 export {
-  runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit,
+  consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit,
   runSourceTopicStage, rebuildTopicFromSources, isIngestInsufficient,
 } from "./topic-stage";
 export type {
-  TopicStageClaimInput, TopicStageResult, TopicStageDeps,
   ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
   SourceTopicStageInput, SourceTopicStageResult, SourceTopicStageDeps,
   RebuildTopicFromSourcesResult, RebuildTopicFromSourcesDeps,

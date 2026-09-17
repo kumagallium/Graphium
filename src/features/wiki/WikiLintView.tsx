@@ -86,6 +86,7 @@ const ISSUE_ICONS: Record<LintIssueType, typeof AlertTriangle> = {
   gap: Lightbulb,
   stale: Clock,
   redundant: Copy,
+  "missing-source": AlertTriangle,
 };
 
 const ISSUE_TYPE_I18N_KEY: Record<LintIssueType, string> = {
@@ -94,6 +95,7 @@ const ISSUE_TYPE_I18N_KEY: Record<LintIssueType, string> = {
   gap: "wikiLint.type.gap",
   stale: "wikiLint.type.stale",
   redundant: "wikiLint.type.redundant",
+  "missing-source": "wikiLint.type.missingSource",
 };
 
 // 各 issue type で適用可能な fix アクション（PR-B6 v1）
@@ -109,6 +111,8 @@ const FIX_ACTIONS_BY_TYPE: Record<LintIssueType, ReadonlyArray<"open" | "regener
   gap: ["open"],
   stale: ["open", "regenerate", "archive"],
   redundant: ["open", "archive"],
+  // missing-source: 資料から作り直す等の専用アクションは未実装（作業 C）。現状は Open のみ。
+  "missing-source": ["open"],
 };
 
 const SEVERITY_STYLES: Record<LintSeverity, string> = {
@@ -368,6 +372,12 @@ export function WikiLintView({
                     <span className="flex items-center gap-1">
                       <Copy size={10} className="text-amber-500" />
                       {report.summary.redundant}
+                    </span>
+                  )}
+                  {report.summary.missingSource > 0 && (
+                    <span className="flex items-center gap-1">
+                      <AlertTriangle size={10} className="text-amber-500" />
+                      {report.summary.missingSource}
                     </span>
                   )}
                 </div>
