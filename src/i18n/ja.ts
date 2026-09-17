@@ -654,7 +654,7 @@ export const ja: Record<string, string> = {
   "settings.autoSourceCheck.help": "新しく作られた・更新された知見とトピックを、バックグラウンドで1件ずつ出典照合します（既定 OFF）。オンにすると、まだ照合していないものも順に照合します。出典 1 件ごとに AI を呼びます。",
   "settings.autoSourceCheck.summary": "新しく作られた・更新された知見とトピックを、裏で 1 件ずつ自動で出典照合します（既定はオフ）。",
   "settings.groundingModel.summary": "未指定なら、チャットモデルをそのまま使います。",
-  "settings.features.insights.summary": "知見の中にある関係の型を取り出し、他の分野でも通じる原理として書きます。元の知見につながります。",
+  "settings.features.insights.summary": "知見に含まれる関係の型を、元の文脈を離れても通じる形に一般化します。元の知見につながります。",
   "settings.insightModel.summary": "未指定なら、チャットモデルをそのまま使います。",
   "settings.atomizeIngestBudget.summary": "ノートを知識に取り込むとき、洞察を探す回数の上限です。",
   "settings.ai.sectionDiscovery": "洞察の発見",
