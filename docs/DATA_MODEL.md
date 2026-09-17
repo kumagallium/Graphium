@@ -805,6 +805,22 @@ type WikiMeta = {
   // `derivedFromClaims` above.
   topicIds?: string[];
 
+  // Topic-only, new format (2026-09 onwards). Canonical Markdown body of a
+  // "source" topic — one that reads resources (note bodies / PDFs / Word /
+  // URLs / chats) directly rather than being assembled from member Claims.
+  // Sections are `## Definition` / `## Key points` / `## Open questions`,
+  // and each sentence ends with an inline `[[source:<id>]]` citation whose id
+  // is a resource id (plain note id, or "pdf:"/"document:"/"url:"/"chat:"/
+  // "memo:" prefixed — the same id space as `derivedFromNotes`). When present,
+  // this is the authoritative body: the next re-ingest is handed this text as
+  // "the previous body" to revise, and source-check reads its statements
+  // straight from here (one hop: topic statement -> resource, no intermediate
+  // Claim layer). `derivedFromNotes` holds the cited resource ids in this
+  // format; `derivedFromClaims` is left empty (unused). Absent `topicMarkdown`
+  // means the legacy format above (body is a pure function of member Claims in
+  // `derivedFromClaims`, two-hop source-check). See section 3.1b.
+  topicMarkdown?: string;
+
   // Knowledge cited/examined when this note was created from a Cmd-K verb
   // answer ("Make a Claim/Insight"). Distinct from derivedFromClaims (Atom
   // re-generation) and derivedFromNotes (regenerate assumes plain notes):
@@ -956,6 +972,48 @@ built the same way regardless of what the writer LLM produced.
 rather than an automatic pipeline: the user selects Insights, builds a
 citation note, and invokes the LLM with that as the search-space
 constraint.
+
+### 3.1b `topic` — new format, reading resources directly (2026-09 onwards)
+
+PR 3a lays the storage/rendering groundwork for a second topic format
+that skips the Claim-layer indirection described above: instead of
+grouping pre-extracted Claims, a "source" topic reads resources (note
+bodies, PDFs, Word documents, URLs, chat sessions) directly and keeps
+its own Markdown body (`wikiMeta.topicMarkdown`) as the source of
+truth. The switch-over of the ingest pipeline itself (`runTopicStage`,
+the ingester, and the six note-app entry points) is deferred to a
+follow-up PR (3b) — this PR only adds the functions, storage shape,
+and safety nets a later ingest change will rely on.
+
+Differences from the legacy format (§3.1a):
+
+| | Legacy (no `topicMarkdown`) | New (`topicMarkdown` present) |
+|---|---|---|
+| Member set | `derivedFromClaims` (Claim ids) | `derivedFromNotes` (resource ids, same id space as a Claim's own `derivedFromNotes`) |
+| Inline citation | `[[claim:<id>]]` → Claim's current title | `[[source:<id>]]` → resource's current title (unresolved ids are kept literally rather than dropped, same policy as the legacy form) |
+| Body regeneration | Pure function of the current member Claims; the previous body is never fed back in | The previous `topicMarkdown` is fed back to the writer as "the body to revise" on the next re-ingest (not yet wired — 3b) |
+| Source-check hop count | Two hops: topic statement → member Claim → the Claim's own `derivedFromNotes` | One hop: topic statement → resource, since the citation already names the resource |
+
+`buildSourceTopicDocument` / `rebuildSourceTopicDocument`
+(`wiki-service.ts`) assemble the new format the same way
+`buildTopicDocument` / `rebuildTopicDocument` assemble the legacy one:
+convert the Markdown into blocks, resolve `[[source:<id>]]` citations,
+and append a References section listing every cited resource as an
+`@` link. Before saving, `stripEmptyMarkdownSections` mechanically
+drops any `##` heading that has no body before the next heading (a
+re-ingest that finds nothing new for e.g. "Open questions" should not
+leave an empty heading behind).
+
+Because the two formats coexist, readers that count "members" via
+`derivedFromClaims` (the topic list's source-count column, the MCP
+topic index/detail, the linter's empty/orphan checks) fall back to
+`derivedFromNotes` when `derivedFromClaims` is empty, so a new-format
+topic is never mis-reported as having zero sources. The Wiki Linter's
+empty-topic / orphan-topic checks in particular now require **both**
+`derivedFromClaims` and `derivedFromNotes` to be empty before flagging
+a topic — a Claims-based fallback is not enough on its own, since a
+legitimate empty legacy topic (all member Claims deleted) must still be
+caught.
 
 ### 3.2 `level` and `status` for Claims
 

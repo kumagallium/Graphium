@@ -1122,6 +1122,21 @@ claims, so there is no single source text to hold it against.
   wrongly read as "not in source") resolves straight to
   `missingReason: "ai-answer"`; a claim with an empty `derivedFromNotes`
   or a topic with no citing block resolves to `"not-recorded"`.
+- **New-format topics (`wikiMeta.topicMarkdown` present, §3.1b of
+  DATA_MODEL.md) are checked in one hop instead of two.**
+  `extractSourceTopicStatements` (same file) reads `topicMarkdown`
+  directly rather than the built blocks — a `[[source:<id>]]` token
+  loses its brackets once it passes through `pushCitation` during block
+  conversion, the same reason rule (d) above needs the raw text — and
+  turns each non-heading line that carries at least one `[[source:<id>]]`
+  citation into a statement, with the citation stripped and its ids used
+  as-is. `buildSourceCheckStatements`
+  (`src/features/source-check/build-statements.ts`) picks this extractor
+  over `extractTopicStatements` whenever `topicMarkdown` is set, and,
+  critically, does **not** wrap the resulting ids with `toClaimSourceId`
+  — a new-format topic's citations already name a resource id (the same
+  id space as `derivedFromNotes`), so `resolveSourceText` resolves them
+  directly instead of through the synthetic `claim:` indirection.
 - **Retrieving the original text depends on the source kind**
   (`resolveSourceText`, `src/features/source-check/resolve-source-text.ts`):
   a plain-note id re-reads the note's current body, split into per-block
