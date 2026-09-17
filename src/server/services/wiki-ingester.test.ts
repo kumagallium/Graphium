@@ -48,7 +48,7 @@ describe("parseTopics", () => {
 describe("parseIngesterOutput - topics", () => {
   const wrap = (wikis: unknown) => JSON.stringify({ wikis });
 
-  it("claim では topics を残す", () => {
+  it("LLM が topics を返しても無視する（トピックはもう知見から作らない）", () => {
     const text = wrap([
       {
         kind: "claim",
@@ -63,7 +63,7 @@ describe("parseIngesterOutput - topics", () => {
     ]);
     const [out] = parseIngesterOutput(text);
     expect(out.kind).toBe("claim");
-    expect(out.topics).toEqual(["還元の反応速度", "pH 依存性"]);
+    expect(out.topics).toBeUndefined();
   });
 
   it("summary は要素ごと捨てる（PR3: 新規生成停止。LLM が指示に反して出しても無視）", () => {
@@ -117,21 +117,22 @@ describe("parseIngesterOutput - topics", () => {
   });
 });
 
-describe("buildIngesterSystemPrompt - 既存話題一覧の注入", () => {
-  it("既存の topic kind エントリがプロンプトに列挙される", () => {
+describe("buildIngesterSystemPrompt - 話題（topic）はもう ingester の材料にしない", () => {
+  it("既存の topic kind エントリは Existing Wikis の一覧にだけ現れ、専用の Topics セクションは無い", () => {
     const existingWikis: ExistingWikiInfo[] = [
       { id: "topic-1", title: "還元の反応速度", kind: "topic" },
       { id: "claim-1", title: "ある知見", kind: "claim" },
     ];
     const prompt = buildIngesterSystemPrompt("ja", existingWikis);
-    expect(prompt).toContain("還元の反応速度");
-    // claim 側の id ではなく話題名だけの列挙であることを確認（既存 wiki 一覧の書式と混同していない）
-    expect(prompt).toMatch(/Topics \(existing\)/);
+    // 既存 wiki 一覧（[kind] title (id: ...)）には出る
+    expect(prompt).toContain("[topic] 還元の反応速度 (id: topic-1)");
+    // 話題を振り分けさせる専用セクションはもう無い（トピックは資料を直接読む Topic Router が担う）
+    expect(prompt).not.toMatch(/## Topics\b/);
+    expect(prompt).not.toMatch(/Topics \(existing\)/);
   });
 
-  it("既存話題が無ければ (none yet) を出す", () => {
+  it("Claim の出力スキーマから topics フィールドが消えている", () => {
     const prompt = buildIngesterSystemPrompt("en", []);
-    const topicsSection = prompt.slice(prompt.indexOf("### Topics (existing)"));
-    expect(topicsSection).toContain("(none yet)");
+    expect(prompt).not.toContain('"topics"');
   });
 });

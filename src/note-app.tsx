@@ -203,7 +203,7 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
-import type { GraphiumDocument, NoteLink } from "./lib/document-types";
+import type { GraphiumDocument, NoteLink, SourceCheckEntry } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
@@ -289,7 +289,7 @@ import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteCo
 import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
-  WikiListView, WikiLogView, WikiLintView, WikiBanner, WikiContextDrawer,
+  WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer,
   IngestToast, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
   ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
@@ -323,7 +323,11 @@ import {
   runTopicStage, type TopicStageClaimInput, type TopicStageResult, type ExistingTopicRef,
   consolidateExistingTopics, type ExistingTopicForMerge,
   mergeTopicsExplicit, normalizeTopicTitle,
+  runSourceTopicStage, type SourceTopicStageInput, type SourceTopicStageResult,
+  isIngestInsufficient,
 } from "./features/wiki";
+import { buildSourceCheckStatements } from "./features/source-check/build-statements";
+import { planSourceCheck } from "./features/source-check/plan";
 import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
@@ -399,7 +403,9 @@ import {
   useSourceCheckStale,
   sourceCheckLlmCallsFor,
   resolveSourceCheckTitles,
+  buildResolveDeps as buildSourceCheckResolveDeps,
 } from "./features/source-check/use-source-check";
+import { resolveSourceText } from "./features/source-check/resolve-source-text";
 import { buildNeedsReviewList } from "./features/source-check/needs-review";
 import { parseClaimSourceId } from "./features/source-check/claim-source-id";
 import { useAutoSourceCheck } from "./features/source-check/use-auto-source-check";
@@ -7367,6 +7373,10 @@ export function NoteApp() {
   }, []);
   // Wiki Log 表示状態
   const [activeWikiView, setActiveWikiView] = useState<"log" | "lint" | null>(null);
+  // 手入れ画面（WikiLintView）を開くたびに反映したい初期タブ。key で再マウントして
+  // useState の初期値を効かせる（トーストの「出典照合を開く」から開いたときに使う）。
+  const [lintInitialTab, setLintInitialTab] = useState<WikiLintTab>("check");
+  const [lintViewKey, setLintViewKey] = useState(0);
   // Skill 表示状態
   const [showSkillList, setShowSkillList] = useState(false);
   const [showNewSkillDialog, setShowNewSkillDialog] = useState(false);
@@ -8059,6 +8069,20 @@ export function NoteApp() {
     },
   }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
+
+  // 手入れ画面を出典照合タブで開く（トーストの「出典照合を開く」から使う）。
+  // onShowWikiLint と同じ手順を踏み、タブだけ sourceCheck に固定する。
+  const openSourceCheckUpkeep = useCallback(() => {
+    closeAllViews();
+    setLintInitialTab("sourceCheck");
+    setLintViewKey((k) => k + 1);
+    setActiveWikiView("lint");
+    setSidebarOpen(false);
+    router.navigate({ view: "wiki-lint" });
+    const openedAt = new Date().toISOString();
+    markLintOpened(openedAt);
+    setLintBadgeState((prev) => ({ ...prev, lastOpenedAt: openedAt }));
+  }, [closeAllViews, router]);
 
   // ─── ノートを全画面（本文）で開く唯一の入口 ───
   // ここを通さず fm.handleOpenFile / fm.handleOpenWikiFile を直接呼ぶと URL も履歴も
@@ -9067,6 +9091,148 @@ export function NoteApp() {
     [fm]
   );
 
+  // 話題（topic）の段（新形式・資料を直接読む）を note-app のファイル操作・ログに配線する
+  // 共通ラッパー。旧 runTopicStageForNoteApp と同じキュー（topicStageQueueRef）で直列化する
+  // ── 両方が同じ「既存話題スナップショットの古さ」問題を持つため。
+  const runSourceTopicStageForNoteApp = useCallback(
+    (sources: SourceTopicStageInput[]) => {
+      const run = topicStageQueueRef.current.then(async () => {
+        const existingTopicRefs: ExistingTopicRef[] = (fm.noteIndex?.notes ?? [])
+          .filter((n) => n.source === "ai" && n.wikiKind === "topic")
+          .map((n) => {
+            const doc = fm.getCachedDoc(`wiki:${n.noteId}`);
+            const oneLiner = doc ? extractTopicOneLiner(doc) : "";
+            return { id: n.noteId, title: n.title, ...(oneLiner ? { oneLiner } : {}) };
+          });
+        const seen = new Set(existingTopicRefs.map((r) => r.id));
+        for (const [id, title] of knownTopicRefsRef.current) {
+          if (!seen.has(id)) existingTopicRefs.push({ id, title });
+        }
+        const resolveDeps = buildSourceCheckResolveDeps({
+          noteIndex: fm.noteIndex,
+          rawNoteIndex: fm.rawNoteIndex,
+          mediaIndex: fm.mediaIndex,
+          captureIndex: capture.captureIndex ?? null,
+          wikiFiles: fm.wikiFiles,
+          wikiMetas: fm.wikiMetas,
+          getCachedDoc: fm.getCachedDoc,
+          loadDoc: fm.loadDoc,
+          saveWikiFile: fm.handleSaveWikiFile,
+        });
+        const sourceTitleById = new Map(sources.map((s) => [s.id, s.title]));
+        const result = await runSourceTopicStage(sources, {
+          loadDoc: fm.loadDoc,
+          getCachedDoc: fm.getCachedDoc,
+          handleSaveWikiFile: fm.handleSaveWikiFile,
+          handleCreateWikiFile: fm.handleCreateWikiFile,
+          existingTopicRefs,
+          noteIndex: buildNoteIndex(fm.noteIndex),
+          locale: getLocale(),
+          resolveSource: async (sourceId) => {
+            const resolved = await resolveSourceText(sourceId, resolveDeps);
+            if (!resolved.ok) return undefined;
+            return { title: resolved.title ?? sourceId, text: resolved.text };
+          },
+          // 過去の資料は改訂のたびに全文（PDF 抽出等）を読み直さず、まずタイトルだけ
+          // 安く引く（出典照合と同じ解決経路）。引けなければ resolveSource にフォールバックする。
+          resolveSourceTitle: (sourceId) =>
+            resolveSourceCheckTitles([{ sourceId } as SourceCheckEntry], {
+              noteIndex: fm.noteIndex,
+              mediaIndex: fm.mediaIndex,
+              wikiMetas: fm.wikiMetas,
+            })[sourceId],
+          onTopicSaved: (topicId, doc, triggerSourceId, mode) => {
+            embedWikiSections(topicId, doc).catch(() => {});
+            const sourceTitle = sourceTitleById.get(triggerSourceId) ?? triggerSourceId;
+            if (mode === "create") {
+              wikiLog.append("ingest", [topicId], `Created topic "${doc.title}" from source "${sourceTitle}"`).catch(() => {});
+            } else if (mode === "migrate") {
+              wikiLog.append("cross-update", [topicId], `Migrated topic "${doc.title}" to source format`).catch(() => {});
+            } else {
+              wikiLog.append("cross-update", [topicId], `Updated topic "${doc.title}" with source "${sourceTitle}"`).catch(() => {});
+            }
+          },
+          log: (...args: unknown[]) => console.warn(...args),
+        });
+        for (const r of result.createdTopics) knownTopicRefsRef.current.set(r.id, r.title);
+        return result;
+      });
+      topicStageQueueRef.current = run.then(() => undefined, () => undefined);
+      return run;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fm, capture.captureIndex]
+  );
+
+  /**
+   * 触れた話題（作成・改訂・移行）の未照合の文の総数を数える。トーストの
+   * 「出典照合する」導線に出す件数 —自動では照合しない（設定「自動で出典照合する」が
+   * ON のときは既存の自動照合ルートが別途走るので、ここから二重に呼ばない）。
+   */
+  const countUncheckedSourceStatements = useCallback(
+    async (topicIds: string[]): Promise<number> => {
+      let total = 0;
+      for (const topicId of topicIds) {
+        const doc = fm.getCachedDoc(`wiki:${topicId}`) ?? (await fm.loadDoc(`wiki:${topicId}`));
+        if (!doc?.wikiMeta || doc.wikiMeta.kind !== "topic") continue;
+        const statements = buildSourceCheckStatements([{ docId: topicId, doc }]);
+        total += planSourceCheck(statements).statementCount;
+      }
+      return total;
+    },
+    [fm]
+  );
+
+  /**
+   * runSourceTopicStage の実行結果をトースト用の 1 行にまとめる。未照合件数は文言に
+   * 混ぜず、呼び出し側が pushSourceCheckPrompt で別項目として出せるよう別途返す。
+   */
+  const formatSourceTopicStageDetail = useCallback(
+    async (result: SourceTopicStageResult): Promise<{ detail: string; unchecked: number }> => {
+      let detail = tStatic("ingest.topicsDone", { created: String(result.created), updated: String(result.updated) });
+      if (result.migrated > 0) {
+        detail += ` · ${tStatic("ingest.topicsMigrated", { count: String(result.migrated) })}`;
+      }
+      if (result.migratedSourcesSkipped > 0) {
+        detail += ` · ${tStatic("ingest.topicsMigratedSkipped", { count: String(result.migratedSourcesSkipped) })}`;
+      }
+      if (result.failed > 0) {
+        detail += ` · ${tStatic("ingest.topicsFailed", { count: String(result.failed) })}`;
+      }
+      const unchecked = result.touchedTopicIds.length > 0
+        ? await countUncheckedSourceStatements(result.touchedTopicIds)
+        : 0;
+      return { detail, unchecked };
+    },
+    [countUncheckedSourceStatements]
+  );
+
+  /**
+   * トピック段で未照合の文が見つかったとき、トーストに専用の項目を 1 つ足す
+   * 「出典照合する」導線。設定「自動で出典照合する」が ON のときは、自動照合ルート
+   * （useAutoSourceCheck）が別途走るので、ここからは出さない（二重に呼ばない）。
+   */
+  const pushSourceCheckPrompt = useCallback(
+    (unchecked: number) => {
+      if (unchecked <= 0) return;
+      if (experimentalFlags.autoSourceCheck) return;
+      const promptId = `source-check-prompt:${crypto.randomUUID()}`;
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          {
+            id: promptId,
+            status: "success" as const,
+            noteTitle: tStatic("ingest.sourceCheckToastTitle"),
+            result: tStatic("ingest.sourceCheckPending", { count: String(unchecked) }),
+            action: { label: tStatic("ingest.openSourceCheck"), onClick: openSourceCheckUpkeep },
+          },
+        ],
+      }));
+    },
+    [experimentalFlags.autoSourceCheck, openSourceCheckUpkeep]
+  );
+
   // Ingest キューを処理する関数
   const processIngestQueue = useCallback(async () => {
     if (ingestRunningRef.current) return;
@@ -9078,7 +9244,9 @@ export function NoteApp() {
     // このバッチで新規作成・更新された claim を集めておき、パイプライン後半の
     // 「話題（topic）」段（runTopicStage）でまとめて割り当てる。topics が空でも積む
     // — 空の場合は runTopicStage 内で name-topics による補完を試みる。
-    const claimsForTopicAssignment: TopicStageClaimInput[] = [];
+    // 話題（topic）段（新形式）に渡す資料一覧。知見の有無に関係なく、資料（ノート）1 本に
+    // つき 1 件、取り込みが成功した時点で積む（知見はもうトピックの材料にしない）。
+    const sourcesForTopicStage: SourceTopicStageInput[] = [];
 
     while (ingestQueueRef.current.length > 0) {
       // 停止済みなら残りのキューを「中断」で畳んで抜ける
@@ -9122,7 +9290,21 @@ export function NoteApp() {
         // body.model 経由でサーバーに伝えないと models.json 先頭のモデルにフォールバックしてしまう。
         const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills, signal);
 
-        if (result.wikis.length === 0) {
+        // トピックは知見の有無に関係なく資料そのものから作る（Karpathy 方式）。
+        // 資料本文は取り込みで既に持っている job.doc をそのまま使う（再取得しない）。
+        const sourceText = extractPlainTextFromDoc(job.doc);
+        if (sourceText.trim()) {
+          sourcesForTopicStage.push({
+            id: job.noteId,
+            title: job.doc.title || job.noteTitle || job.noteId,
+            text: sourceText,
+            model: result.model ?? undefined,
+          });
+        }
+
+        // トピックは知見（wiki）が 0 件でも資料から反映されうるので、知見 0 件だけでは
+        // 失敗にしない — 資料がトピック段に積めた（sourceText がある）ときは続行する。
+        if (result.wikis.length === 0 && !sourceText.trim()) {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === jobId ? { ...i, status: "error" as const, detail: undefined, result: tStatic("ingest.insufficientContent") } : i
@@ -9163,15 +9345,6 @@ export function NoteApp() {
                 if (job.noteId.startsWith("memo:")) {
                   void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${wiki.mergeTargetId}`, wiki.title);
                 }
-                if (wiki.kind === "claim") {
-                  claimsForTopicAssignment.push({
-                    id: wiki.mergeTargetId,
-                    title: mergedDoc.title,
-                    body: extractBodyPreview(mergedDoc, 2000),
-                    topics: wiki.topics ?? [],
-                    model: result.model ?? undefined,
-                  });
-                }
                 continue;
               }
             } catch { /* fallback to create */ }
@@ -9195,21 +9368,17 @@ export function NoteApp() {
           if (job.noteId.startsWith("memo:")) {
             void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${newId}`, wiki.title);
           }
-          if (wiki.kind === "claim") {
-            claimsForTopicAssignment.push({
-              id: newId,
-              title: wikiDoc.title,
-              body: extractBodyPreview(wikiDoc, 2000),
-              topics: wiki.topics ?? [],
-              model: result.model ?? undefined,
-            });
-          }
         }
 
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
             i.id === jobId
-              ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)` }
+              ? {
+                  ...i,
+                  status: "success" as const,
+                  detail: undefined,
+                  result: result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly"),
+                }
               : i
           ),
         }));
@@ -9295,17 +9464,17 @@ export function NoteApp() {
       }));
     };
 
-    // 話題（topic）段: このバッチで作成・更新した claim を、既存の話題への
-    // マッチ（タイトル一致 → embedding 類似度）または新規作成で割り当てる。
-    // topics が空の claim は runTopicStage 内で name-topics による補完を試みる。
-    // 砂時計（ノート→知見→洞察）には参加しない — atomize には渡さない。
-    if (claimsForTopicAssignment.length === 0) {
+    // 話題（topic）段（新形式）: このバッチで取り込んだ資料それぞれを Topic Router に
+    // 振り分けさせ、改訂・新規作成する。知見（claim）はトピックの材料にしない
+    // — 砂時計（ノート→知見→洞察）には参加しない・atomize には渡さない。
+    if (sourcesForTopicStage.length === 0) {
       updateStage("topics", "skipped");
     } else {
-      updateStage("topics", "running", tStatic("ingest.topicsUpdating", { count: String(claimsForTopicAssignment.length) }));
-      const topicResult = await runTopicStageForNoteApp(claimsForTopicAssignment);
-      const doneDetail = formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })));
+      updateStage("topics", "running", tStatic("ingest.topicsUpdating", { count: String(sourcesForTopicStage.length) }));
+      const topicResult = await runSourceTopicStageForNoteApp(sourcesForTopicStage);
+      const { detail: doneDetail, unchecked } = await formatSourceTopicStageDetail(topicResult);
       updateStage("topics", "done", doneDetail);
+      pushSourceCheckPrompt(unchecked);
     }
 
     // 自動 Atomize: atom レイヤは default 有効化済み（design revision 2026-05-27）。
@@ -9563,31 +9732,36 @@ export function NoteApp() {
         try {
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
           const result = await ingestFromUrl(entry.url, existingWikis, getLocale());
-          if (result.wikis.length === 0) {
+          // 知見（wiki）が 0 件でも、資料がトピック段に積める（sourceText がある）なら
+          // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
+          if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
-          const claimsForTopicStage: TopicStageClaimInput[] = [];
           for (const wiki of result.wikis) {
             const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
             if (!wikiDoc) continue; // summary は新規生成を停止済み
             const newId = await fm.handleCreateWikiFile(wikiDoc);
             embedWikiSections(newId, wikiDoc).catch(() => {});
-            if (wiki.kind === "claim") {
-              claimsForTopicStage.push({
-                id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                topics: wiki.topics ?? [], model: result.model ?? undefined,
-              });
-            }
           }
+          // トピック（新形式）は知見の有無に関係なく資料そのものから作る。
           let topicDetail = "";
-          if (claimsForTopicStage.length > 0) {
-            const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-            topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
-              + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-              + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+          let topicsTouched = 0;
+          if (result.sourceText.trim()) {
+            const topicResult = await runSourceTopicStageForNoteApp([{
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+            }]);
+            topicsTouched = topicResult.created + topicResult.updated;
+            const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
+            topicDetail = ` · ${detail}`;
+            pushSourceCheckPrompt(unchecked);
           }
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+          if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            return;
+          }
+          const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
         } catch (err) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
         }
@@ -9605,31 +9779,33 @@ export function NoteApp() {
           const blob = await (await fetch(blobUrl)).blob();
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
           const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale());
-          if (result.wikis.length === 0) {
+          if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
-          const claimsForTopicStage: TopicStageClaimInput[] = [];
           for (const wiki of result.wikis) {
             const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
             if (!wikiDoc) continue; // summary は新規生成を停止済み
             const newId = await fm.handleCreateWikiFile(wikiDoc);
             embedWikiSections(newId, wikiDoc).catch(() => {});
-            if (wiki.kind === "claim") {
-              claimsForTopicStage.push({
-                id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                topics: wiki.topics ?? [], model: result.model ?? undefined,
-              });
-            }
           }
           let topicDetail = "";
-          if (claimsForTopicStage.length > 0) {
-            const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-            topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
-              + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-              + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+          let topicsTouched = 0;
+          if (result.sourceText.trim()) {
+            const topicResult = await runSourceTopicStageForNoteApp([{
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+            }]);
+            topicsTouched = topicResult.created + topicResult.updated;
+            const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
+            topicDetail = ` · ${detail}`;
+            pushSourceCheckPrompt(unchecked);
           }
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+          if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            return;
+          }
+          const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
         } catch (err) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
         }
@@ -9650,37 +9826,39 @@ export function NoteApp() {
           const blob = await (await fetch(blobUrl)).blob();
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
           const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale());
-          if (result.wikis.length === 0) {
+          if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
-          const claimsForTopicStage: TopicStageClaimInput[] = [];
           for (const wiki of result.wikis) {
             const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
             if (!wikiDoc) continue; // summary は新規生成を停止済み
             const newId = await fm.handleCreateWikiFile(wikiDoc);
             embedWikiSections(newId, wikiDoc).catch(() => {});
-            if (wiki.kind === "claim") {
-              claimsForTopicStage.push({
-                id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                topics: wiki.topics ?? [], model: result.model ?? undefined,
-              });
-            }
           }
           let topicDetail = "";
-          if (claimsForTopicStage.length > 0) {
-            const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-            topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
-              + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-              + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+          let topicsTouched = 0;
+          if (result.sourceText.trim()) {
+            const topicResult = await runSourceTopicStageForNoteApp([{
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+            }]);
+            topicsTouched = topicResult.created + topicResult.updated;
+            const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
+            topicDetail = ` · ${detail}`;
+            pushSourceCheckPrompt(unchecked);
           }
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+          if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            return;
+          }
+          const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
         } catch (err) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
         }
       })();
     }
-  }, [fm, runTopicStageForNoteApp]);
+  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt]);
 
   // 素材 fileId 配列から Knowledge 化する（投入口の「まとめてナレッジ化」用）。
   // 索引（fm.mediaIndex）から MediaIndexEntry を引けたものだけを対象にする
@@ -10055,40 +10233,39 @@ export function NoteApp() {
       try {
         const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
         const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale());
-        if (result.wikis.length === 0) {
+        if (result.wikis.length === 0 && !result.sourceText.trim()) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
           return;
         }
-        const claimsForTopicStage: TopicStageClaimInput[] = [];
         for (const wiki of result.wikis) {
           const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
           if (!wikiDoc) continue; // summary は新規生成を停止済み
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
-          if (wiki.kind === "claim") {
-            claimsForTopicStage.push({
-              id: newId,
-              title: wikiDoc.title,
-              body: extractBodyPreview(wikiDoc, 2000),
-              topics: wiki.topics ?? [],
-              model: result.model ?? undefined,
-            });
-          }
         }
-        // 話題（topic）段: このバッチで作成した claim を既存の話題へ割り当てる。
+        // 話題（topic）段（新形式）: チャット本文そのものから資料として振り分ける。
         let topicDetail = "";
-        if (claimsForTopicStage.length > 0) {
-          const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-          topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
-            + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-            + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+        let topicsTouched = 0;
+        if (result.sourceText.trim()) {
+          const topicResult = await runSourceTopicStageForNoteApp([{
+            id: jobId, title: `Chat: ${chatTitle}`, text: result.sourceText, model: result.model ?? undefined,
+          }]);
+          topicsTouched = topicResult.created + topicResult.updated;
+          const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
+          topicDetail = ` · ${detail}`;
+          pushSourceCheckPrompt(unchecked);
         }
-        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+        if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+          return;
+        }
+        const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
       } catch (err) {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
       }
     })();
-  }, [fm, runTopicStageForNoteApp]);
+  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt]);
 
   // Wiki 単体の再生成（WikiBanner / Settings の Maintenance タブ両方から呼ばれる）
   // openAfter=true で再生成後にエディタで開く（バナー経由のとき）
@@ -10994,6 +11171,8 @@ export function NoteApp() {
     onShowWikiLog: () => { closeAllViews(); setActiveWikiView("log"); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
     onShowWikiLint: () => {
       closeAllViews();
+      setLintInitialTab("check");
+      setLintViewKey((k) => k + 1);
       setActiveWikiView("lint");
       setSidebarOpen(false);
       router.navigate({ view: "wiki-lint" });
@@ -11663,6 +11842,8 @@ export function NoteApp() {
           />
         ) : activeWikiView === "lint" ? (
           <WikiLintView
+            key={lintViewKey}
+            initialTab={lintInitialTab}
             report={lintReport}
             loading={lintLoading}
             onRunLint={async (localOnly) => {
@@ -12299,33 +12480,36 @@ export function NoteApp() {
                 try {
                   const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
                   const result = await ingestFromUrl(url, existingWikis, getLocale());
-                  if (result.wikis.length === 0) {
+                  if (result.wikis.length === 0 && !result.sourceText.trim()) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                     ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
                     return;
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
-                  const claimsForTopicStage: TopicStageClaimInput[] = [];
                   for (const wiki of result.wikis) {
                     const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
                     if (!wikiDoc) continue; // summary は新規生成を停止済み
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
-                    if (wiki.kind === "claim") {
-                      claimsForTopicStage.push({
-                        id: newId, title: wikiDoc.title, body: extractBodyPreview(wikiDoc, 2000),
-                        topics: wiki.topics ?? [], model: result.model ?? undefined,
-                      });
-                    }
                   }
                   let topicDetail = "";
-                  if (claimsForTopicStage.length > 0) {
-                    const topicResult = await runTopicStageForNoteApp(claimsForTopicStage);
-                    topicDetail = ` · ${formatTopicStageDetail(topicResult, fm.wikiFiles.filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic").map((wf) => ({ id: wf.id, title: fm.wikiMetas.get(wf.id)!.title })))}`
-                      + (topicResult.withoutTopic > 0 ? ` · ${tStatic("ingest.claimsWithoutTopic", { count: String(topicResult.withoutTopic) })}` : "")
-                      + (topicResult.failed > 0 ? ` · ${tStatic("ingest.topicsFailed", { count: String(topicResult.failed) })}` : "");
+                  let topicsTouched = 0;
+                  if (result.sourceText.trim()) {
+                    const topicResult = await runSourceTopicStageForNoteApp([{
+                      id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+                    }]);
+                    topicsTouched = topicResult.created + topicResult.updated;
+                    const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
+                    topicDetail = ` · ${detail}`;
+                    pushSourceCheckPrompt(unchecked);
                   }
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)${topicDetail}` } : i) }));
+                  if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+                    ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
+                    return;
+                  }
+                  const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${wikiText}${topicDetail}` } : i) }));
                 } catch (err) {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                 }

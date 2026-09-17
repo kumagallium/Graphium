@@ -74,8 +74,12 @@ function loadWikiDoc(
   return loadDocByFullKey(`wiki:${docId}`, deps);
 }
 
-/** resolveSourceText の依存を、note-app 側が持つ index / provider から組み立てる */
-function buildResolveDeps(deps: UseSourceCheckDeps): ResolveSourceTextDeps {
+/**
+ * resolveSourceText の依存を、note-app 側が持つ index / provider から組み立てる。
+ * export しているのは、話題の段（新形式トピックの移行）が同じ「資料 id → 本文」解決を
+ * 必要とするため（runSourceTopicStage の resolveSource に渡す）。
+ */
+export function buildResolveDeps(deps: UseSourceCheckDeps): ResolveSourceTextDeps {
   return {
     findNote: (noteId) => {
       const entry = deps.rawNoteIndex?.notes.find((n) => n.noteId === noteId);

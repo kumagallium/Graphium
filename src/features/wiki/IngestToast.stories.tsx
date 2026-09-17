@@ -82,6 +82,27 @@ export const AllSuccess: Story = {
   ),
 };
 
+/** トピック改訂後、未照合の文があるときに添える「出典照合を開く」導線 */
+export const WithSourceCheckPrompt: Story = {
+  name: "出典照合の導線あり",
+  render: () => (
+    <ToastPlayground
+      initial={{
+        items: [
+          { id: "1", status: "success", noteTitle: "Al3V の格子熱伝導率", result: "1 wiki(s) · トピック: 作成 0 件・更新 1 件" },
+          {
+            id: "source-check-prompt:demo",
+            status: "success",
+            noteTitle: "出典照合",
+            result: "未照合 3 文",
+            action: { label: "出典照合を開く", onClick: () => alert("open source check") },
+          },
+        ],
+      }}
+    />
+  ),
+};
+
 /** エラー混じり — 最小化ピルにも赤いエラー件数が出る */
 export const WithErrors: Story = {
   name: "エラーあり",

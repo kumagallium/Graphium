@@ -142,13 +142,6 @@ export function buildIngesterSystemPrompt(
 
   const hasExistingConcepts = existingWikis.some((w) => w.kind === "claim");
 
-  // 既存の話題（topic）一覧。同じ概念には既存タイトルをそのまま使わせることで、
-  // 表記ゆれによる同じ話題の重複作成を防ぐ。
-  const existingTopics = existingWikis.filter((w) => w.kind === "topic");
-  const topicListText = existingTopics.length > 0
-    ? existingTopics.map((w) => `- ${w.oneLiner ? `${w.title}: ${w.oneLiner}` : w.title}`).join("\n")
-    : "(none yet)";
-
   const ja = language === "ja";
 
   // 取り込んだ外部文書（PDF / Word / URL / チャット）は通常、複数の転用可能な知見を主張する。
@@ -257,7 +250,6 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
         { "source": "textbook" | "external-paper" | "internal-claim", "citation": "one-sentence", "url": "https://... (optional)", "internalClaimId": "id (optional)" }
       ],
       "modalQualifier": "necessarily" | "probably" | "possibly" | "rarely", // Toulmin Modal qualifier。下の "Modal qualifier" 参照
-      "topics": ["string"],                                              // 名詞句。下の "Topics" 参照
       "procedureContext": {                                              // 手順依存の主張のときだけ。下の Procedure context 参照
         "derivedFromNotes": ["sourceNoteId"],
         "protocolFingerprint": "step1 → step2 → step3",                // 主要ステップを自然言語で短く
@@ -304,19 +296,6 @@ Guidance:
 - A flagged risk or limitation: \`["issue"]\`.
 - Hardware/protocol pre-conditions: \`["setup"]\`.
 - If none of these clearly fit, omit the field (do **not** pick \`finding\` as a default just to fill the slot).
-
-## Topics
-
-Tag every Claim with \`topics\`: short noun phrases naming the **concept(s)** this Claim belongs to, in the note's own language. A topic groups multiple Claims about the same concept into one page (e.g. "pH-dependent reduction kinetics", "SPS sintering conditions"). Topics are orthogonal to \`claimRole\` / \`level\` / \`epistemicStatus\` — they answer "what is this Claim *about*", not what kind of move it makes or how certain it is.
-
-- **Look at the existing topics listed below (each shown with its title and a one-line definition) and decide, like you would for existing Wiki pages above: does this Claim belong to one of them, or does it need a new topic?** Reuse an existing topic name exactly when the Claim belongs to the same concept — do not create a near-duplicate with different wording (e.g. don't emit "還元反応速度" if "還元の反応速度" already exists for the same concept), and never create a new name that differs from an existing one only by whitespace, symbols, or capitalization.
-- Keep phrases short (a few words), not full sentences.
-- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** Prefer "material × property", "method", "phenomenon", or "model/theory" level names. Do NOT make a separate topic per composition, sample, processing condition, or measurement run (e.g. prefer "Al3V の格子定数" or "Al3V の元素置換" over "Al3V1-xTix の格子定数"). The same concept belongs on one page.
-- Usually one topic is enough; add more only when the Claim genuinely spans distinct concepts. Omit the field entirely if no meaningful topic emerges (rare).
-
-### Topics (existing)
-
-${topicListText}
 
 ## Epistemic status (Phase η — REQUIRED for every Claim)
 
@@ -627,7 +606,6 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
         const rebuttalConditions = kind === "claim" ? parseRebuttalConditions(w.rebuttalConditions) : undefined;
         const backing = kind === "claim" ? parseBacking(w.backing) : undefined;
         const modalQualifier = kind === "claim" ? parseModalQualifier(w.modalQualifier) : undefined;
-        const topics = kind === "claim" ? parseTopics(w.topics) : undefined;
         // Phase η: epistemicStatus を fixed vocabulary でフィルタする。
         // LLM が不明な値を入れたら undefined にして下流で "interpretation" 扱いに倒す。
         const rawEpistemic =
@@ -648,7 +626,6 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
           rebuttalConditions,
           backing,
           modalQualifier,
-          topics,
           title: String(w.title),
           sections: w.sections.map((s: any) => ({
             heading: String(s.heading ?? ""),

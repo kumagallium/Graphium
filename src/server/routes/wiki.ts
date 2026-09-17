@@ -60,6 +60,14 @@ import {
   buildTopicConsolidatorUserMessage,
   parseTopicConsolidatorOutput,
   type TopicConsolidatorExistingRef,
+  buildTopicRouterSystemPrompt,
+  buildTopicRouterUserMessage,
+  parseTopicRouterOutput,
+  type TopicRouterSource,
+  type TopicRouterExistingRef,
+  buildSourceTopicReviserSystemPrompt,
+  buildSourceTopicReviserUserMessage,
+  parseSourceTopicReviserOutput,
 } from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -523,6 +531,114 @@ app.post("/consolidate-topics", async (c) => {
     });
   } catch (err) {
     console.error("Wiki consolidate-topics error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 新形式トピックの振り分け（資料 1 本 → 改訂する既存トピック / 新規に作るトピック名）。
+//   埋め込み類似度・正規化タイトル一致による機械的な名寄せは撤去し、資料全文と既存トピックの
+//   index を LLM に渡して自分で判断させる。件数の上限・しきい値は置かない。
+app.post("/route-topics", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    source: TopicRouterSource;
+    existingTopics: TopicRouterExistingRef[];
+    model?: string;
+  }>();
+
+  if (!body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+    return c.json({ error: "source is required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicRouterSystemPrompt(body.language || "en");
+  const userMessage = buildTopicRouterUserMessage(body.source, body.existingTopics ?? []);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.route-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicRouterOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse topic router output" }, 500);
+    }
+
+    return c.json({
+      update: parsed.update,
+      create: parsed.create,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki route-topics error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 新形式トピックの改訂（前の本文 + 資料 1 本 → 次の版の本文）。
+//   前の本文は member claims からではなく、そのトピック自身の wikiMeta.topicMarkdown を
+//   呼び出し側が渡す。新規作成時は currentBody を空文字列で渡す。
+app.post("/revise-topic", async (c) => {
+  const body = await c.req.json<{
+    title: string;
+    language: string;
+    currentBody: string;
+    source: { id: string; title: string; text: string };
+    model?: string;
+  }>();
+
+  if (!body.title || !body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+    return c.json({ error: "title and source are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildSourceTopicReviserSystemPrompt(body.language || "en");
+  const userMessage = buildSourceTopicReviserUserMessage(body.title, body.currentBody || "", body.source);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.revise-topic",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseSourceTopicReviserOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse source topic reviser output" }, 500);
+    }
+
+    return c.json({
+      body: parsed.body,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki revise-topic error:", err);
     return c.json(errorBody(err), 500);
   }
 });
