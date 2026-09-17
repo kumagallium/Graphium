@@ -112,6 +112,8 @@ const SEVERITY_STYLES: Record<LintSeverity, string> = {
   info: "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/40",
 };
 
+type WikiLintTab = "check" | "sourceCheck";
+
 export function WikiLintView({
   report,
   loading,
@@ -127,6 +129,8 @@ export function WikiLintView({
   sourceCheckProps,
 }: Props) {
   const t = useT();
+  // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
+  const [activeTab, setActiveTab] = useState<WikiLintTab>("check");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 一括アーカイブの選択（stale/redundant のみ選択可）。issue の配列インデックスで管理する。
   const [selectedIssueIndices, setSelectedIssueIndices] = useState<Set<number>>(new Set());
@@ -182,21 +186,51 @@ export function WikiLintView({
           <h2 className="text-sm font-semibold text-foreground">{t("wikiLint.header")}</h2>
         </div>
         <div className="flex-1" />
-        <button
-          onClick={() => onRunLint(false)}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          {loading ? t("wikiLint.analyzingShort") : t("wikiLint.runButton")}
-        </button>
+        {activeTab === "check" && (
+          <button
+            onClick={() => onRunLint(false)}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {loading ? t("wikiLint.analyzingShort") : t("wikiLint.runButton")}
+          </button>
+        )}
       </div>
 
-      {/* 出典照合（Source check, v1.1）点検欄 — 既存のクイック/フル点検とは別レーン。
-          自動点検にはつながず、ここからの実行だけを起点にする。 */}
-      {sourceCheckProps && <SourceCheckLintSection {...sourceCheckProps} />}
+      {/* タブ — 既定は既存の点検。出典照合は別レーンで、自動点検にはつながない
+          （sourceCheckProps が無ければタブ自体を出さない）。 */}
+      {sourceCheckProps && (
+        <div className="px-4 pt-3 flex gap-1 border-b border-border">
+          <button
+            onClick={() => setActiveTab("check")}
+            className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+              activeTab === "check"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {t("wikiLint.tabs.check")}
+          </button>
+          <button
+            onClick={() => setActiveTab("sourceCheck")}
+            className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+              activeTab === "sourceCheck"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {t("wikiLint.tabs.sourceCheck")}
+          </button>
+        </div>
+      )}
 
-      {/* コンテンツ */}
+      {/* 出典照合（Source check, v1.1）タブ — 既存のクイック/フル点検とは別レーン。
+          自動点検にはつながず、ここからの実行だけを起点にする。 */}
+      {sourceCheckProps && activeTab === "sourceCheck" && <SourceCheckLintSection {...sourceCheckProps} />}
+
+      {/* コンテンツ（既存の点検タブ） */}
+      {activeTab === "check" && (
       <div className="flex-1 overflow-y-auto">
         {!report && !loading && (
           <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3">
@@ -334,6 +368,7 @@ export function WikiLintView({
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

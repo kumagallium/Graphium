@@ -138,7 +138,7 @@ export const en: Record<string, string> = {
   // Log / Health buttons inside Knowledge
   "sidebar.wikiLog": "Log",
   "sidebar.wikiLogHint": "Change history and sources of your knowledge",
-  "sidebar.wikiLint": "Health",
+  "sidebar.wikiLint": "Upkeep",
   "sidebar.wikiLintHint": "Detect consistency issues in your knowledge",
   "sidebar.wikiLintNeedsAttention": "{count} items need a look",
 
@@ -644,6 +644,9 @@ export const en: Record<string, string> = {
   "settings.ai.sectionGrounding": "World grounding",
   "settings.features.worldGrounding.summary": "Checks whether what you wrote lines up with what the world already knows.",
   "settings.autoGrounding.summary": "Grounds each new insight and finding in the background, one at a time (off by default).",
+  "settings.autoSourceCheck.title": "Auto-check sources",
+  "settings.autoSourceCheck.help": "Checks newly created or updated claims and topics against their sources, one at a time in the background (off by default). Turning it on also works through anything not yet checked. Calls the AI once per source.",
+  "settings.autoSourceCheck.summary": "Checks each new or updated claim and topic against its sources in the background, one at a time (off by default).",
   "settings.groundingModel.summary": "Falls back to the chat model when left unset.",
   "settings.features.insights.summary": "Finds the patterns that keep coming back across your notes.",
   "settings.insightModel.summary": "Falls back to the chat model when left unset.",
@@ -1362,10 +1365,12 @@ export const en: Record<string, string> = {
   "wikiList.statusVerifiedTooltip": "Used in 2+ notes",
   "wikiList.statusCandidateTooltip": "Used in only 1 note",
   // Wiki health check (Lint)
-  "wikiLint.header": "Knowledge Health Check",
+  "wikiLint.header": "Knowledge upkeep",
+  "wikiLint.tabs.check": "Check",
+  "wikiLint.tabs.sourceCheck": "Source check",
   "wikiLint.runButton": "Run Check",
   "wikiLint.analyzingShort": "Analyzing...",
-  "wikiLint.emptyHint": "Run a health check to analyze your Knowledge for issues",
+  "wikiLint.emptyHint": "Run a check to analyze your Knowledge for issues",
   "wikiLint.quickButton": "Quick (local only)",
   "wikiLint.quickHint": "Detect orphan / duplicate-topic issues without using the LLM",
   "wikiLint.fullButton": "Full (AI analysis)",

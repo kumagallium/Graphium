@@ -114,6 +114,160 @@ describe("extractTopicStatements", () => {
     expect(extractTopicStatements(doc)).toEqual([]);
   });
 
+  // 実データ（wiki トピック）で確認した形: 要点ブロックの引用は knowledgeLinks を持たず、
+  // ただの inline テキストとして本文に続けて保存される。knowledgeLinks が付くのは
+  // References 見出し以降の各行だけ。
+  const REAL_REF_HEADING = {
+    id: "ref-heading",
+    type: "heading",
+    props: { level: 2 },
+    content: [{ type: "text", text: "References", styles: {} }],
+  };
+
+  it("実データの形（References 以降にしか reference リンクが無い）でも (b) 完全一致で照合する", () => {
+    const doc = topicDoc(
+      [
+        {
+          id: "b1",
+          type: "bulletListItem",
+          content: [
+            { type: "text", text: "SiはAlサイト、TiとNbはVサイトに置換する設計が用いられている。", styles: {} },
+            { type: "text", text: "元素置換でAl3Vのキャリアを調整する", styles: {} },
+          ],
+        },
+        REAL_REF_HEADING,
+        {
+          id: "ref1",
+          type: "bulletListItem",
+          content: [{ type: "text", text: "@🤖 元素置換でAl3Vのキャリアを調整する", styles: { textColor: "blue" } }],
+        },
+      ],
+      [
+        {
+          id: "l1",
+          sourceBlockId: "ref1",
+          targetBlockId: "",
+          targetNoteId: "claim-a",
+          type: "reference",
+          layer: "knowledge",
+          createdBy: "ai",
+        },
+      ],
+      ["claim-a"],
+    );
+    const statements = extractTopicStatements(doc);
+    expect(statements).toEqual([
+      { text: "SiはAlサイト、TiとNbはVサイトに置換する設計が用いられている。", blockId: "b1", claimIds: ["claim-a"] },
+    ]);
+  });
+
+  it("(c) 要素が 1 つに結合され、複数の引用が区切りなく連結されていても末尾から剥がして照合する", () => {
+    const doc = topicDoc(
+      [
+        {
+          id: "b1",
+          type: "bulletListItem",
+          content: [
+            {
+              type: "text",
+              text: "Ti置換では、a軸とb軸の変化は小さい一方、c軸が添加量に対して線形に大きく増加する。Ti置換でAl3Vのc軸が線形に伸びる Ti置換でAl3Vのc軸だけ大きく伸びる",
+              styles: {},
+            },
+          ],
+        },
+        REAL_REF_HEADING,
+        {
+          id: "ref1",
+          type: "bulletListItem",
+          content: [{ type: "text", text: "@🤖 Ti置換でAl3Vのc軸が線形に伸びる", styles: { textColor: "blue" } }],
+        },
+        {
+          id: "ref2",
+          type: "bulletListItem",
+          content: [{ type: "text", text: "@🤖 Ti置換でAl3Vのc軸だけ大きく伸びる", styles: { textColor: "blue" } }],
+        },
+      ],
+      [
+        { id: "l1", sourceBlockId: "ref1", targetBlockId: "", targetNoteId: "claim-a", type: "reference", layer: "knowledge", createdBy: "ai" },
+        { id: "l2", sourceBlockId: "ref2", targetBlockId: "", targetNoteId: "claim-b", type: "reference", layer: "knowledge", createdBy: "ai" },
+      ],
+      ["claim-a", "claim-b"],
+    );
+    const statements = extractTopicStatements(doc);
+    expect(statements).toHaveLength(1);
+    expect(statements[0].text).toBe("Ti置換では、a軸とb軸の変化は小さい一方、c軸が添加量に対して線形に大きく増加する。");
+    expect(new Set(statements[0].claimIds)).toEqual(new Set(["claim-a", "claim-b"]));
+  });
+
+  it("食い違い・未解決 見出しの下の箇条書きも References 以降のタイトルと (b) 一致で照合対象になる", () => {
+    const doc = topicDoc(
+      [
+        { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "食い違い・未解決", styles: {} }] },
+        {
+          id: "b1",
+          type: "bulletListItem",
+          content: [
+            { type: "text", text: "Nb置換については試料作製と相評価の記録はあるが、成否は未判定である。", styles: {} },
+            { type: "text", text: "Nb置換でAl3Vのキャリア調整を試みる", styles: {} },
+          ],
+        },
+        REAL_REF_HEADING,
+        {
+          id: "ref1",
+          type: "bulletListItem",
+          content: [{ type: "text", text: "@🤖 Nb置換でAl3Vのキャリア調整を試みる", styles: { textColor: "blue" } }],
+        },
+      ],
+      [{ id: "l1", sourceBlockId: "ref1", targetBlockId: "", targetNoteId: "claim-a", type: "reference", layer: "knowledge", createdBy: "ai" }],
+      ["claim-a"],
+    );
+    const statements = extractTopicStatements(doc);
+    expect(statements.map((s) => s.blockId)).toEqual(["b1"]);
+    expect(statements[0].claimIds).toEqual(["claim-a"]);
+  });
+
+  it("タイトルが対応表に一致しない文は照合対象にならない（推測で結び付けない）", () => {
+    const doc = topicDoc(
+      [
+        {
+          id: "b1",
+          type: "bulletListItem",
+          content: [
+            { type: "text", text: "似ているが少し違う文言のはず。", styles: {} },
+            { type: "text", text: "元素置換でAl3Vのキャリアを微調整する", styles: {} }, // References のタイトルと不一致
+          ],
+        },
+        REAL_REF_HEADING,
+        {
+          id: "ref1",
+          type: "bulletListItem",
+          content: [{ type: "text", text: "@🤖 元素置換でAl3Vのキャリアを調整する", styles: { textColor: "blue" } }],
+        },
+      ],
+      [{ id: "l1", sourceBlockId: "ref1", targetBlockId: "", targetNoteId: "claim-a", type: "reference", layer: "knowledge", createdBy: "ai" }],
+      ["claim-a"],
+    );
+    expect(extractTopicStatements(doc)).toEqual([]);
+  });
+
+  it("[[claim:<id>]] 形式（未解決の旧形式）も derivedFromClaims にあれば照合する", () => {
+    const doc = topicDoc(
+      [
+        {
+          id: "b1",
+          type: "paragraph",
+          content: [{ type: "text", text: "この記述の出典は [[claim:claim-a]] である。", styles: {} }],
+        },
+      ],
+      [],
+      ["claim-a"],
+    );
+    const statements = extractTopicStatements(doc);
+    expect(statements).toEqual([
+      { text: "この記述の出典は  である。", blockId: "b1", claimIds: ["claim-a"] },
+    ]);
+  });
+
   it("1 つのブロックが複数の知見を引いていれば claimIds に複数入る", () => {
     const doc = topicDoc(
       [

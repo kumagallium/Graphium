@@ -1,15 +1,26 @@
 // 出典照合（Source check, v1.1） — トピック本文から「照合する文」を取り出す。
 //
 // 本文ブロックのうち `References` 見出し（buildTopicReferenceBlocks が作る）より前の
-// ブロックを走査する。ブロック B が knowledgeLinks の "reference" 種別で
-// `wikiMeta.derivedFromClaims` に含まれる知見を 1 つ以上引いていれば、B のプレーンテキスト
-// （引用の "@タイトル" 部分は取り除く）を「照合する文」として、引いた各知見を「出典」とする。
-// 引用を持たないブロック（定義の段落など）は照合しない。
+// ブロックを走査する。ブロック B が引いている知見（下記 (a)〜(d) の和集合）が 1 つ以上
+// あれば、B のプレーンテキスト（引用部分は取り除く）を「照合する文」として、引いた各知見を
+// 「出典」とする。引用を持たないブロック（定義の段落など）は照合しない。
+//
+// 実データで判明した罠: トピック本文の要点ブロックでは、引用が knowledgeLinks（type
+// "reference"）としてではなく、ただの inline テキストとして保存されていることがある
+// （例: 本文の後に区切りなく知見タイトルがそのまま続く）。knowledgeLinks が付くのは
+// References 見出し以降の行だけ。そのため、次の 4 通りの一致方法の和集合で「引用」を判定する:
+//   (a) sourceBlockId がそのブロックの reference リンク（従来どおり）
+//   (b) inline テキスト要素のうち、trim して先頭の "@"/"🤖"/空白を除いたテキストが、
+//       References 以降から作った「知見タイトル → 知見 ID」対応表のタイトルと完全一致するもの
+//   (c) ブロックのプレーンテキストが対応表のタイトルで終わる（要素が 1 つに結合されている
+//       場合の保険）
+//   (d) `[[claim:<id>]]` の文字列で id が derivedFromClaims にあるもの（未解決の旧形式）
+// 推測で結び付けない（完全一致のみ）。
 
 import type { GraphiumDocument } from "../../lib/document-types";
 
 export type TopicStatement = {
-  /** 照合する文（プレーンテキスト。引用の "@タイトル" 部分は除く） */
+  /** 照合する文（プレーンテキスト。引用部分は除く） */
   text: string;
   /** そのブロックの ID（statementBlockId 用） */
   blockId: string;
@@ -31,31 +42,126 @@ function isGeneratedReferencesHeading(block: any): boolean {
   return text === "References";
 }
 
-/** 引用（青文字の "@..."）を除いたプレーンテキストを組み立てる */
-function extractStatementText(content: any): string {
-  if (!content) return "";
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((c: any) => {
-      const isCitation =
-        c?.type === "text" &&
-        c?.styles?.textColor === "blue" &&
-        typeof c.text === "string" &&
-        c.text.startsWith("@");
-      return !isCitation;
-    })
-    .map((c: any) => c.text ?? c.content ?? "")
-    .join("")
-    .trim();
-}
-
-/** 見出し判定専用: 引用除去はせずそのままのテキストを返す */
+/** 見出し判定・タイトル抽出専用: スタイルを見ずそのままのテキストを連結する */
 function extractPlainInlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((c: any) => c.text ?? c.content ?? "").join("");
+}
+
+/** 先頭の "@"・"🤖"・空白をすべて取り除く（References 行のタイトル抽出・(b) の比較両方で使う） */
+function stripCitationMarkers(text: string): string {
+  return text.replace(/^[@🤖\s]+/, "").trim();
+}
+
+/** (a) 旧来の青文字 "@..." 引用要素か */
+function isBlueCitationElement(el: any): boolean {
+  return (
+    el?.type === "text" &&
+    el?.styles?.textColor === "blue" &&
+    typeof el.text === "string" &&
+    el.text.startsWith("@")
+  );
+}
+
+/** `[[claim:<id>]]` 形式の未解決引用を text から取り除きつつ、該当 id を集める */
+function extractLegacyClaimRefs(
+  text: string,
+  derivedFromClaims: ReadonlySet<string>,
+): { text: string; claimIds: string[] } {
+  const claimIds: string[] = [];
+  const next = text.replace(/\[\[claim:([^\]]+)\]\]/g, (whole, id) => {
+    if (derivedFromClaims.has(id)) {
+      claimIds.push(id);
+      return "";
+    }
+    return whole;
+  });
+  return { text: next, claimIds };
+}
+
+/**
+ * References より後のブロックから「知見タイトル → 知見 ID」対応表を作る。
+ * そのブロックの reference リンクの targetNoteId が derivedFromClaims にあるものだけを拾う。
+ */
+function buildTitleToClaimId(
+  referenceBlocks: any[],
+  referenceLinksByBlock: Map<string, string[]>,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const block of referenceBlocks) {
+    const claimIds = referenceLinksByBlock.get(block.id);
+    if (!claimIds || claimIds.length === 0) continue;
+    const title = stripCitationMarkers(extractPlainInlineText(block.content));
+    if (!title) continue;
+    map.set(title, claimIds[0]);
+  }
+  return map;
+}
+
+/**
+ * 1 ブロックから「照合する文」と、引いている知見 ID を組み立てる。
+ * 引いている知見が 1 つも無ければ null。
+ */
+function extractStatementFromBlock(
+  block: any,
+  referenceLinksByBlock: Map<string, string[]>,
+  titleToClaimId: Map<string, string>,
+  derivedFromClaims: ReadonlySet<string>,
+): { text: string; claimIds: string[] } | null {
+  const content = block.content;
+  if (!Array.isArray(content)) return null;
+
+  const claimIds = new Set<string>();
+
+  // (a) sourceBlockId 一致（従来どおり）
+  for (const id of referenceLinksByBlock.get(block.id) ?? []) claimIds.add(id);
+
+  // (a) の青文字要素を除去しつつ、(b) 完全一致要素も除去して残りのテキストを組み立てる
+  const parts: string[] = [];
+  for (const el of content) {
+    if (isBlueCitationElement(el)) continue; // (a) の可視表現。テキストからは除く
+    const raw = typeof el?.text === "string" ? el.text : (el?.content ?? "");
+    if (typeof raw === "string") {
+      const stripped = stripCitationMarkers(raw);
+      const matchedClaimId = stripped ? titleToClaimId.get(stripped) : undefined;
+      if (matchedClaimId) {
+        claimIds.add(matchedClaimId); // (b) 完全一致
+        continue; // テキストからは除く
+      }
+    }
+    parts.push(raw ?? "");
+  }
+  let text = parts.join("");
+
+  // (d) [[claim:<id>]] 形式（未解決の旧形式）
+  const legacy = extractLegacyClaimRefs(text, derivedFromClaims);
+  text = legacy.text;
+  for (const id of legacy.claimIds) claimIds.add(id);
+
+  // (c) ブロックのプレーンテキストが対応表のタイトルで終わる（要素結合済みの保険）。
+  // 複数の引用が区切りなく連結されている場合に備え、末尾から繰り返し剥がす。
+  const titlesByLengthDesc = [...titleToClaimId.keys()].sort((a, b) => b.length - a.length);
+  let stripped = true;
+  while (stripped) {
+    stripped = false;
+    const trimmedEnd = text.trimEnd();
+    for (const title of titlesByLengthDesc) {
+      if (!title) continue;
+      if (trimmedEnd.endsWith(title)) {
+        claimIds.add(titleToClaimId.get(title)!);
+        text = trimmedEnd.slice(0, trimmedEnd.length - title.length);
+        stripped = true;
+        break;
+      }
+    }
+  }
+
+  if (claimIds.size === 0) return null;
+  const finalText = text.trim();
+  if (!finalText) return null;
+  return { text: finalText, claimIds: [...claimIds] };
 }
 
 /**
@@ -78,14 +184,18 @@ export function extractTopicStatements(doc: GraphiumDocument): TopicStatement[] 
     else referenceLinksByBlock.set(link.sourceBlockId, [link.targetNoteId]);
   }
 
+  const blocks = page.blocks ?? [];
+  const refHeadingIndex = blocks.findIndex((b: any) => isGeneratedReferencesHeading(b));
+  const bodyBlocks = refHeadingIndex === -1 ? blocks : blocks.slice(0, refHeadingIndex);
+  const referenceBlocks = refHeadingIndex === -1 ? [] : blocks.slice(refHeadingIndex + 1);
+
+  const titleToClaimId = buildTitleToClaimId(referenceBlocks, referenceLinksByBlock);
+
   const statements: TopicStatement[] = [];
-  for (const block of page.blocks ?? []) {
-    if (isGeneratedReferencesHeading(block)) break;
-    const claimIds = referenceLinksByBlock.get(block.id);
-    if (!claimIds || claimIds.length === 0) continue;
-    const text = extractStatementText(block.content);
-    if (!text) continue;
-    statements.push({ text, blockId: block.id, claimIds });
+  for (const block of bodyBlocks) {
+    const result = extractStatementFromBlock(block, referenceLinksByBlock, titleToClaimId, derivedFromClaims);
+    if (!result) continue;
+    statements.push({ text: result.text, blockId: block.id, claimIds: result.claimIds });
   }
   return statements;
 }

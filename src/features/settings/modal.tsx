@@ -360,7 +360,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [latinFont, setLatinFont] = useState<LatinFont>("");
   const [jpFont, setJpFont] = useState<JpFont>("");
   const [colorMode, setColorMode] = useState<ColorMode>("");
-  const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false });
+  const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
   // AI 機能ごとの表示切り替え（既定 ON）。loadSettings() は常に両方 boolean で返すので undefined は来ない
   const [features, setFeatures] = useState<FeatureFlags>({ insights: true, worldGrounding: true });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
@@ -623,7 +623,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setLatinFont(settings.latinFont ?? "");
     setJpFont(settings.jpFont ?? "");
     setColorMode(settings.colorMode ?? "");
-    setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false });
+    setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
     setFeatures(settings.features ?? { insights: true, worldGrounding: true });
     setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
     setSaved(false);
@@ -2853,6 +2853,23 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     </SettingSection>
                   </>
                 )}
+              </div>
+            </div>
+
+            {/* 出典照合の自動実行（opt-in / 既定 OFF）。世界照合と別レーンなのでマスタースイッチは
+                持たず、autoGrounding と同じ「自動化トグルだけ」の作りにする。 */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                <SettingToggle
+                  checked={experimental.autoSourceCheck}
+                  onChange={() => {
+                    setExperimental({ ...experimental, autoSourceCheck: !experimental.autoSourceCheck });
+                    setSaved(false);
+                  }}
+                  label={t("settings.autoSourceCheck.title")}
+                  summary={t("settings.autoSourceCheck.summary")}
+                  details={<p>{t("settings.autoSourceCheck.help")}</p>}
+                />
               </div>
             </div>
 

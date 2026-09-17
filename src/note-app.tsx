@@ -402,6 +402,7 @@ import {
   resolveSourceCheckTitles,
 } from "./features/source-check/use-source-check";
 import { parseClaimSourceId } from "./features/source-check/claim-source-id";
+import { useAutoSourceCheck } from "./features/source-check/use-auto-source-check";
 import { useProvGeneration } from "./hooks/use-prov-generation";
 import { useFileManager } from "./hooks/use-file-manager";
 import { useCapture } from "./hooks/use-capture";
@@ -7859,6 +7860,16 @@ export function NoteApp() {
     wikiMetas: fm.wikiMetas,
     busy: worldCheckingWikiId !== null,
     groundOne: (wikiId) => handleWorldCheckWiki(wikiId, "background"),
+  });
+
+  // 自動出典照合（opt-in / 既定 OFF）。設定 ON のとき、まだ出典照合していない知見・
+  // トピックを background で 1 件ずつ照合する（直列 + デバウンス）。runOne は手動の
+  // 1 件照合・一括照合と同じ排他ガードを共有するので、busy はそれらも含めて見る。
+  useAutoSourceCheck({
+    enabled: aiUiEnabled && (experimentalFlags.autoSourceCheck ?? false),
+    wikiMetas: fm.wikiMetas,
+    busy: sourceCheck.runningDocId !== null || sourceCheck.batchRunning,
+    checkOne: (wikiId) => sourceCheck.runOne(wikiId),
   });
 
   // Phase 4 (PR-B7): PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer の

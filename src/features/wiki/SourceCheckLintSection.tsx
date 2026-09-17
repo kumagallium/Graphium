@@ -1,13 +1,16 @@
-// 出典照合（Source check, v1.1）の点検欄。
+// 出典照合（Source check, v1.1）のタブ内容。
 //
-// 既存の「クイック / フル」点検（WikiLintView 本体）とは別レーンの欄として置く（仕様 2-b）。
-// 自動点検（ingest 直後・起動時）には一切つながない — ここに置いたボタンからしか走らない。
+// WikiLintView の「出典照合」タブに置く別レーンの機能（既存の「クイック / フル」点検とは
+// 別）。自動点検（ingest 直後・起動時）には一切つながない — ここに置いたボタンからしか走らない。
 // ビジネスロジック（対象の読み込み・plan/run/save）は useSourceCheck フック（呼び出し側）に
 // 委ね、この部品は UI 状態（選択・計画のプレビュー）だけを持つ。
 //
+// レイアウトは既存の点検タブの開始画面（中央揃え）に合わせる。対象・範囲の選択 → 計画の
+// 件数 → 実行/やめる → 進捗・中断 → 結果の件数、のどの段階も中央揃えの 1 カラムにする。
+//
 // 実行中かどうか・進捗・直近の完了結果は useSourceCheck フックの state
 // （batchRunning / batchProgress / batchResult）を props で受け取って表示する。
-// ローカル state に置くと、この欄がアンマウントされる（点検画面を離れる）だけで
+// ローカル state に置くと、この欄がアンマウントされる（タブを切り替える・画面を離れる）だけで
 // 実行中の進捗・完了結果が消えてしまうため（フックは note-app 側で保持され続ける）。
 
 import { useState } from "react";
@@ -100,130 +103,126 @@ export function SourceCheckLintSection({
   const showLocal = !showRunning && !showResult;
 
   return (
-    <div className="px-4 py-3 border-b border-border">
-      <div className="flex items-center gap-2 mb-2">
-        <FileSearch size={14} className="text-primary" />
-        <h3 className="text-sm font-semibold text-foreground">{t("wikiLint.sourceCheck.title")}</h3>
-      </div>
-      <p className="text-xs text-muted-foreground mb-2">{t("wikiLint.sourceCheck.help")}</p>
+    <div className="flex-1 overflow-y-auto">
+      <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3 px-4 text-center">
+        <FileSearch size={28} className="opacity-30" />
+        <p className="max-w-sm">{t("wikiLint.sourceCheck.help")}</p>
 
-      {showLocal && (phase.status === "idle" || phase.status === "planning") && (
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={target}
-            onChange={(e) => setTarget(e.target.value as SourceCheckTargetKind)}
-            disabled={phase.status === "planning"}
-            className="text-xs border border-border rounded px-2 py-1 bg-background"
-            aria-label={t("wikiLint.sourceCheck.targetLabel")}
-          >
-            <option value="both">{t("wikiLint.sourceCheck.targetBoth")}</option>
-            <option value="claim">{t("wikiLint.sourceCheck.targetClaim")}</option>
-            <option value="topic">{t("wikiLint.sourceCheck.targetTopic")}</option>
-          </select>
-          <select
-            value={scope}
-            onChange={(e) => setScope(e.target.value as SourceCheckScope)}
-            disabled={phase.status === "planning"}
-            className="text-xs border border-border rounded px-2 py-1 bg-background"
-            aria-label={t("wikiLint.sourceCheck.scopeLabel")}
-          >
-            <option value="unchecked">{t("wikiLint.sourceCheck.scopeUnchecked")}</option>
-            <option value="stale">{t("wikiLint.sourceCheck.scopeStale")}</option>
-            <option value="all">{t("wikiLint.sourceCheck.scopeAll")}</option>
-          </select>
-          <button
-            onClick={handlePlan}
-            disabled={phase.status === "planning"}
-            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted transition-colors disabled:opacity-50"
-          >
-            {phase.status === "planning" ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <FileSearch size={12} />
-            )}
-            {phase.status === "planning"
-              ? t("wikiLint.sourceCheck.planning")
-              : t("wikiLint.sourceCheck.planButton")}
-          </button>
-        </div>
-      )}
-
-      {showLocal && phase.status === "planned" && (
-        <div className="flex flex-col gap-2 text-xs">
-          <div className="text-foreground">
-            {t("wikiLint.sourceCheck.planSummary", {
-              targets: String(phase.plan.targetCount),
-              calls: String(phase.plan.plan.llmCalls),
-            })}
+        {showLocal && (phase.status === "idle" || phase.status === "planning") && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <select
+              value={target}
+              onChange={(e) => setTarget(e.target.value as SourceCheckTargetKind)}
+              disabled={phase.status === "planning"}
+              className="text-xs border border-border rounded px-2 py-1 bg-background"
+              aria-label={t("wikiLint.sourceCheck.targetLabel")}
+            >
+              <option value="both">{t("wikiLint.sourceCheck.targetBoth")}</option>
+              <option value="claim">{t("wikiLint.sourceCheck.targetClaim")}</option>
+              <option value="topic">{t("wikiLint.sourceCheck.targetTopic")}</option>
+            </select>
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value as SourceCheckScope)}
+              disabled={phase.status === "planning"}
+              className="text-xs border border-border rounded px-2 py-1 bg-background"
+              aria-label={t("wikiLint.sourceCheck.scopeLabel")}
+            >
+              <option value="unchecked">{t("wikiLint.sourceCheck.scopeUnchecked")}</option>
+              <option value="stale">{t("wikiLint.sourceCheck.scopeStale")}</option>
+              <option value="all">{t("wikiLint.sourceCheck.scopeAll")}</option>
+            </select>
+            <button
+              onClick={handlePlan}
+              disabled={phase.status === "planning"}
+              className="rounded px-3 py-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+            >
+              {phase.status === "planning" ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <FileSearch size={12} />
+              )}
+              {phase.status === "planning"
+                ? t("wikiLint.sourceCheck.planning")
+                : t("wikiLint.sourceCheck.planButton")}
+            </button>
           </div>
-          <div className="text-muted-foreground">{t("sourceCheck.llmCallsCaveat")}</div>
-          {Object.keys(phase.plan.plan.missingCounts).length > 0 && (
-            <div className="text-muted-foreground">
-              {t("wikiLint.sourceCheck.missingSummaryPrefix")} {missingSummary(phase.plan)}
+        )}
+
+        {showLocal && phase.status === "planned" && (
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-foreground">
+              {t("wikiLint.sourceCheck.planSummary", {
+                targets: String(phase.plan.targetCount),
+                calls: String(phase.plan.plan.llmCalls),
+              })}
             </div>
-          )}
-          <div className="flex gap-2">
+            <div className="text-muted-foreground">{t("sourceCheck.llmCallsCaveat")}</div>
+            {Object.keys(phase.plan.plan.missingCounts).length > 0 && (
+              <div className="text-muted-foreground">
+                {t("wikiLint.sourceCheck.missingSummaryPrefix")} {missingSummary(phase.plan)}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => void handleConfirmRun(phase.plan)}
+                disabled={phase.plan.targetCount === 0}
+                className="rounded px-3 py-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {t("wikiLint.sourceCheck.runButton")}
+              </button>
+              <button
+                onClick={() => setPhase({ status: "idle" })}
+                className="rounded px-3 py-1.5 text-xs border border-border hover:bg-muted transition-colors"
+              >
+                {t("wikiLint.sourceCheck.cancelPlan")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showRunning && (
+          <div className="flex flex-col items-center gap-2" aria-live="polite">
+            <Loader2 size={24} className="animate-spin text-primary" />
+            <span>
+              {progress
+                ? t("wikiLint.sourceCheck.progress", {
+                    index: String(progress.index + 1),
+                    total: String(progress.total),
+                  })
+                : t("wikiLint.sourceCheck.planning")}
+            </span>
             <button
-              onClick={() => void handleConfirmRun(phase.plan)}
-              disabled={phase.plan.targetCount === 0}
-              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              onClick={onCancel}
+              className="inline-flex items-center gap-1 rounded px-3 py-1.5 text-xs border border-border hover:bg-muted transition-colors"
             >
-              {t("wikiLint.sourceCheck.runButton")}
-            </button>
-            <button
-              onClick={() => setPhase({ status: "idle" })}
-              className="inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs border border-border hover:bg-muted transition-colors"
-            >
-              {t("wikiLint.sourceCheck.cancelPlan")}
+              <X size={11} />
+              {t("wikiLint.sourceCheck.cancelRun")}
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {showRunning && (
-        <div
-          className="flex items-center gap-2 text-xs text-muted-foreground"
-          aria-live="polite"
-        >
-          <Loader2 size={12} className="animate-spin text-primary" />
-          <span>
-            {progress
-              ? t("wikiLint.sourceCheck.progress", {
-                  index: String(progress.index + 1),
-                  total: String(progress.total),
-                })
-              : t("wikiLint.sourceCheck.planning")}
-          </span>
-          <button
-            onClick={onCancel}
-            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border hover:bg-muted transition-colors"
-          >
-            <X size={11} />
-            {t("wikiLint.sourceCheck.cancelRun")}
-          </button>
-        </div>
-      )}
-
-      {showResult && result && (
-        <div className="flex flex-col gap-1 text-xs" aria-live="polite">
-          <div className="text-foreground">
-            {t("wikiLint.sourceCheck.doneCount", { count: String(result.profiles.size) })}
-            {result.interrupted && ` (${t("wikiLint.sourceCheck.interrupted")})`}
+        {showResult && result && (
+          <div className="flex flex-col items-center gap-1" aria-live="polite">
+            <div className="text-foreground">
+              {t("wikiLint.sourceCheck.doneCount", { count: String(result.profiles.size) })}
+              {result.interrupted && ` (${t("wikiLint.sourceCheck.interrupted")})`}
+            </div>
+            {result.profiles.size > 0 && (
+              <div className="text-muted-foreground">{verdictSummary(result)}</div>
+            )}
+            <button
+              onClick={() => {
+                onDismissResult();
+                setPhase({ status: "idle" });
+              }}
+              className="inline-flex items-center gap-1 rounded px-3 py-1.5 text-xs border border-border hover:bg-muted transition-colors mt-1"
+            >
+              {t("wikiLint.sourceCheck.runAgain")}
+            </button>
           </div>
-          {result.profiles.size > 0 && (
-            <div className="text-muted-foreground">{verdictSummary(result)}</div>
-          )}
-          <button
-            onClick={() => {
-              onDismissResult();
-              setPhase({ status: "idle" });
-            }}
-            className="self-start inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border hover:bg-muted transition-colors mt-1"
-          >
-            {t("wikiLint.sourceCheck.runAgain")}
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -138,7 +138,7 @@ export const ja: Record<string, string> = {
   // ナレッジ内の Log / 点検 ボタン
   "sidebar.wikiLog": "ログ",
   "sidebar.wikiLogHint": "ナレッジの変更履歴と生成元",
-  "sidebar.wikiLint": "点検",
+  "sidebar.wikiLint": "手入れ",
   "sidebar.wikiLintHint": "ナレッジの整合性・問題を検出",
   "sidebar.wikiLintNeedsAttention": "手当ての要る項目が {count} 件あります",
 
@@ -644,6 +644,9 @@ export const ja: Record<string, string> = {
   "settings.ai.sectionGrounding": "世界照合",
   "settings.features.worldGrounding.summary": "書いたことが、世の中で知られていることと合うかを確かめます。",
   "settings.autoGrounding.summary": "新しくできた洞察・知見を、裏で 1 件ずつ自動で照合します（既定はオフ）。",
+  "settings.autoSourceCheck.title": "自動で出典照合する",
+  "settings.autoSourceCheck.help": "新しく作られた・更新された知見とトピックを、バックグラウンドで1件ずつ出典照合します（既定 OFF）。オンにすると、まだ照合していないものも順に照合します。出典 1 件ごとに AI を呼びます。",
+  "settings.autoSourceCheck.summary": "新しく作られた・更新された知見とトピックを、裏で 1 件ずつ自動で出典照合します（既定はオフ）。",
   "settings.groundingModel.summary": "未指定なら、チャットモデルをそのまま使います。",
   "settings.features.insights.summary": "ノートをまたいで、繰り返し出てくる型を見つけます。",
   "settings.insightModel.summary": "未指定なら、チャットモデルをそのまま使います。",
@@ -1362,7 +1365,9 @@ export const ja: Record<string, string> = {
   "wikiList.statusVerifiedTooltip": "2 件以上のノートで依拠されています",
   "wikiList.statusCandidateTooltip": "依拠しているノートは 1 件のみ",
   // Wiki ヘルスチェック (Lint)
-  "wikiLint.header": "ナレッジのヘルスチェック",
+  "wikiLint.header": "ナレッジの手入れ",
+  "wikiLint.tabs.check": "点検",
+  "wikiLint.tabs.sourceCheck": "出典照合",
   "wikiLint.runButton": "チェック実行",
   "wikiLint.analyzingShort": "解析中...",
   "wikiLint.emptyHint": "ナレッジの問題を検出するためにヘルスチェックを実行してください",
