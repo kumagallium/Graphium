@@ -621,6 +621,17 @@ export type SourceCheckSourceKind =
   | "claim"
   | "unknown";
 
+/** quote が出典原文のどこにあったか（照合を実行したその場で、判定に使った原文から機械的に解く）。
+ *  一意に決まらないとき（同じ文言が別ページ・別段落にもある）は付けない。 */
+export type SourceQuoteLocation = {
+  /** PDF: quote の先頭があるページ（1 始まり） */
+  page?: number;
+  /** PDF: quote がページをまたぐときの末尾ページ（page と異なるときだけ） */
+  pageEnd?: number;
+  /** Word: quote の先頭がある段落（1 始まり。空行で区切られた塊を 1 段落と数える） */
+  paragraph?: number;
+};
+
 export type SourceCheckEntry = {
   /** derivedFromNotes の要素そのまま（prefix 込み）。knownMissingReason で出典が無いとき（1-c の
    *  "not-recorded"）は対応する出典が無いため、代わりに対象ドキュメントの wikiId を入れる。 */
@@ -633,6 +644,8 @@ export type SourceCheckEntry = {
   quote?: string;
   /** ノート出典で quote を含むブロックが一意に分かるとき */
   blockId?: string;
+  /** PDF のページ・Word の段落。quote があり位置が一意に分かるときだけ */
+  quoteLocation?: SourceQuoteLocation;
   /** verdict が "source-missing" のときの理由 */
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";

@@ -29,6 +29,8 @@ export type ResolvedSourceText = {
   origin: "stored" | "refetched" | "extracted";
   /** ノート出典のときだけブロック単位のテキストも返す（blockId 対応のため） */
   blocks?: SourceTextBlock[];
+  /** PDF 出典のときだけ（quote-match.ts の resolveQuoteLocation がページ番号を解くのに使う） */
+  pageStarts?: number[];
 };
 
 export type UnresolvedSourceText = {
@@ -56,13 +58,14 @@ export type ResolveSourceTextDeps = {
   loadNoteDoc: (noteId: string) => Promise<GraphiumDocument | null>;
   /**
    * pdf/document 素材の実体バイト列を読む。素材が無ければ undefined。
-   * サイズ上限は掛けない（取り込みも PDF・Word に上限を掛けていない — 取り込みと同じ原文を見るため）。
+   * 出典照合としては独自の上限を足さない — PDF は取り込みと同じ抽出器の打ち切り
+   * （MAX_TEXT_CHARS）をそのまま受ける。
    */
   loadMediaBytes: (fileId: string) => Promise<Uint8Array | undefined>;
   /** メディア名（pdf/document のタイトルフォールバック用）。未指定なら undefined のまま */
   findMediaName?: (fileId: string) => string | undefined;
   /** PDF 抽出。未指定なら pdf-text-extractor を動的 import する（取り込みと同じ抽出器） */
-  extractPdfText?: (blob: Blob) => Promise<{ title: string; text: string }>;
+  extractPdfText?: (blob: Blob) => Promise<{ title: string; text: string; pageStarts?: number[] }>;
   /** DOCX 抽出。未指定なら mammoth.extractRawText を動的 import する（取り込みと同じ抽出器） */
   extractDocxText?: (blob: Blob) => Promise<{ value: string }>;
   /** URL の保存済み原文（sourceTextFileId 等）があれば返す。未指定 / undefined ならスキップ */
@@ -107,9 +110,15 @@ async function extractMediaText(
       const extract =
         deps.extractPdfText ?? (await import("../wiki/pdf-text-extractor")).extractPdfText;
       const extracted = await extract(blob);
-      const text = (extracted.text ?? "").trim();
+      const rawText = extracted.text ?? "";
+      const text = rawText.trim();
       if (!text) return { ok: false, kind, reason: "empty" };
-      return { ok: true, kind, title: extracted.title || fallbackTitle, text, origin: "extracted" };
+      // ここでの .trim() が extracted.text の先頭を削った分だけ、pageStarts を補正する
+      // （extractPdfText は自前で trim 済みのため通常は 0 ずれだが、二重に trim しても
+      // 壊れないよう防御的に補正する）。
+      const leadingTrimmed = rawText.length - rawText.trimStart().length;
+      const pageStarts = extracted.pageStarts?.map((s) => Math.max(0, s - leadingTrimmed));
+      return { ok: true, kind, title: extracted.title || fallbackTitle, text, origin: "extracted", pageStarts };
     }
     const extract =
       deps.extractDocxText ??

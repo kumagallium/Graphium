@@ -341,4 +341,83 @@ describe("runSourceCheck", () => {
 
     expect(result.profiles.get("topic-2")!.verdict).toBe("not-in-source");
   });
+
+  describe("quoteLocation（PDF のページ・Word の段落を機械的に解く）", () => {
+    /** pdf:doc-1 を出典に持つ PDF 出典 deps。extractPdfText はテスト用に差し替え、pdfjs には触れない */
+    function pdfDeps(
+      text: string,
+      pageStarts: number[] | undefined,
+    ): ResolveSourceTextDeps {
+      return {
+        ...makeDeps(),
+        loadMediaBytes: async (fileId) => (fileId === "doc-1" ? new Uint8Array([0]) : undefined),
+        extractPdfText: async () => ({ title: "テストPDF", text, pageStarts }),
+      };
+    }
+
+    it("PDF 出典で quoteLocation が entry に入る", async () => {
+      const c1 = claim("c1", ["pdf:doc-1"]);
+      const plan = planSourceCheck([c1]);
+      const statementsById = new Map([[c1.id, c1]]);
+      const text = "実験結果として融点は800℃だった。\n\n2ページ目の内容。";
+      const deps = pdfDeps(text, [0, text.indexOf("2ページ目")]);
+      const callApi = vi.fn(async (_s: CheckSourcesApiSource, claims: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => ({
+        model: "m",
+        results: claims.map((c) => ({
+          claimId: c.id,
+          verdict: "supported" as const,
+          rationale: "融点が一致する",
+          quote: "融点は800℃だった",
+        })),
+      }));
+
+      const result = await runSourceCheck(plan, { statementsById, deps, language: "ja", callApi, logger: noopLogger });
+      const entry = result.profiles.get("c1")!.entries[0];
+      expect(entry.quoteLocation).toEqual({ page: 1 });
+    });
+
+    it("位置が解けないとき quoteLocation キー自体が無い", async () => {
+      const c1 = claim("c1", ["pdf:doc-1"]);
+      const plan = planSourceCheck([c1]);
+      const statementsById = new Map([[c1.id, c1]]);
+      // pageStarts 無し（抽出器が返さない）→ 位置は解けない
+      const deps = pdfDeps("実験結果として融点は800℃だった。", undefined);
+      const callApi = vi.fn(async (_s: CheckSourcesApiSource, claims: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => ({
+        model: "m",
+        results: claims.map((c) => ({
+          claimId: c.id,
+          verdict: "supported" as const,
+          rationale: "融点が一致する",
+          quote: "融点は800℃だった",
+        })),
+      }));
+
+      const result = await runSourceCheck(plan, { statementsById, deps, language: "ja", callApi, logger: noopLogger });
+      const entry = result.profiles.get("c1")!.entries[0];
+      expect(entry.quote).toBe("融点は800℃だった");
+      expect("quoteLocation" in entry).toBe(false);
+    });
+
+    it("verdict は位置の有無で変わらない（unclear でも quote があれば位置は解こうとする）", async () => {
+      const c1 = claim("c1", ["pdf:doc-1"]);
+      const plan = planSourceCheck([c1]);
+      const statementsById = new Map([[c1.id, c1]]);
+      const text = "実験結果として融点は800℃だった。";
+      const deps = pdfDeps(text, [0]);
+      const callApi = vi.fn(async (_s: CheckSourcesApiSource, claims: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => ({
+        model: "m",
+        results: claims.map((c) => ({
+          claimId: c.id,
+          verdict: "unclear" as const,
+          rationale: "判断つかない",
+          // quote 無し（unclear で quote を伴わないケース）
+        })),
+      }));
+
+      const result = await runSourceCheck(plan, { statementsById, deps, language: "ja", callApi, logger: noopLogger });
+      const entry = result.profiles.get("c1")!.entries[0];
+      expect(entry.verdict).toBe("unclear");
+      expect("quoteLocation" in entry).toBe(false);
+    });
+  });
 });
