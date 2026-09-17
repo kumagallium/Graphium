@@ -3,7 +3,7 @@
 // Retriever（retriever.ts formatWikiContext）が LLM に渡す wikiContext には、
 // 各 knowledge セクションが `[#N | "title"]` ヘッダー + <wiki-index> のタイトル一覧として
 // 含まれる。LLM は理想的には番号 [#N] で引用するが、実際には次のような揺れが出る:
-//   - 番号を落として [N] にする
+//   - 番号を落として [N] にする / 括弧を全角にする（【#N】【N】・［#N］）
 //   - タイトルを復唱するが言い換える / 全角【】にする / @ を付ける
 //   - そもそも存在しないタイトルを捏造する（hallucination）
 //
@@ -56,8 +56,9 @@ function parseIndexTitles(wikiContext: string): string[] {
 }
 
 /**
- * LLM 応答内の引用（番号 [#N] / [N] ・半角 [Source: "..."] ・全角【Source: ...】）を
- * すべて正規の [Source: "exact title"] に揃える。解決できない引用は除去する。
+ * LLM 応答内の引用（番号 [#N] / [N] とその全角ゆれ【#N】［#N］・半角 [Source: "..."] ・
+ * 全角【Source: ...】）をすべて正規の [Source: "exact title"] に揃える。
+ * 解決できない引用は除去する。
  *
  * @param assistantMessage LLM の生応答
  * @param wikiContext      Retriever が注入した知識コンテキスト（番号付きセクション + index）
@@ -91,11 +92,20 @@ export function normalizeWikiCitations(
 
   // 1) 番号引用 [#N] / [N] → [Source: "title"]。numberToTitle に実在する番号だけ変換し、
   //    無関係な [1] 脚注などを巻き込まない。
+  //    日本語で応答するモデル（gpt-oss-120b など）は、プロンプトで半角を指示しても
+  //    全角括弧【#N】【N】／［#N］［N］で引用する癖があるので、開き・閉じを対にして拾う
+  //    （[#1】 のような混在は引用とみなさない）。＃ の全角ゆれも同時に吸収する。
   if (numberToTitle.size > 0) {
-    message = message.replace(/\[#?(\d{1,2})\]/g, (full, numStr: string) => {
-      const title = numberToTitle.get(parseInt(numStr, 10));
-      return title ? `[Source: "${title}"]` : full;
-    });
+    const numberCitation = /\[[#＃]?(\d{1,2})\]|【[#＃]?(\d{1,2})】|［[#＃]?(\d{1,2})］/g;
+    message = message.replace(
+      numberCitation,
+      (full: string, half?: string, lenticular?: string, bracket?: string) => {
+        const numStr = half ?? lenticular ?? bracket;
+        if (numStr === undefined) return full;
+        const title = numberToTitle.get(parseInt(numStr, 10));
+        return title ? `[Source: "${title}"]` : full;
+      },
+    );
   }
 
   const sources = new Set<string>();

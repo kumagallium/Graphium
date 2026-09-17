@@ -952,7 +952,11 @@ Notes:
   across all sections, so `citation-normalize.ts` resolves citations the
   same way regardless of where a passage came from (its regex tolerates the
   optional `| Kind` segment), and the chat panel jumps to a Wiki page, a
-  note side peek, or an asset peek by the resolved reference.
+  note side peek, or an asset peek by the resolved reference. The number
+  citation itself is also accepted in full-width brackets (`【#N】`, `【N】`,
+  `［#N］`): models answering in Japanese emit those despite the ASCII-only
+  instruction in the prompt, and only numbers present in the context are
+  converted, so unrelated `[1]`-style footnotes are left alone.
   The lexical index is a rebuildable per-device cache in IndexedDB
   (`graphium-lexical-index`, keyed by storage scope) — it never writes to
   notes or to `note-index.json`. It follows `noteIndex` (notes and Wiki

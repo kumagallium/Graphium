@@ -39,6 +39,78 @@ describe("normalizeWikiCitations", () => {
     expect(sources).toEqual(["Ti 置換は Al3V の熱伝導率を下げる"]);
   });
 
+  // gpt-oss-120b（さくら AI Engine）は、プロンプトで半角 [#N] を指示しても
+  // 日本語応答では全角【#N】で引用する。括弧をそのまま残すとリンクにならない。
+  it("全角の番号引用【#1】を [Source] リンクに変換する", () => {
+    const { message, sources } = normalizeWikiCitations(
+      "急冷で主相が得られます【#1】。",
+      WIKI_CONTEXT,
+    );
+    expect(message).toBe(
+      '急冷で主相が得られます[Source: "急冷速度を上げると Al6Ge5 が優先的に形成される"]。',
+    );
+    expect(sources).toEqual(["急冷速度を上げると Al6Ge5 が優先的に形成される"]);
+  });
+
+  it("# を落とした全角の番号引用【2】も変換する", () => {
+    const { message, sources } = normalizeWikiCitations(
+      "Ti 置換が効きます【2】。",
+      WIKI_CONTEXT,
+    );
+    expect(message).toBe('Ti 置換が効きます[Source: "Ti 置換は Al3V の熱伝導率を下げる"]。');
+    expect(sources).toEqual(["Ti 置換は Al3V の熱伝導率を下げる"]);
+  });
+
+  it("全角の角括弧［#1］も変換する", () => {
+    const { message, sources } = normalizeWikiCitations(
+      "急冷が効きます［#1］。",
+      WIKI_CONTEXT,
+    );
+    expect(message).toBe(
+      '急冷が効きます[Source: "急冷速度を上げると Al6Ge5 が優先的に形成される"]。',
+    );
+    expect(sources).toEqual(["急冷速度を上げると Al6Ge5 が優先的に形成される"]);
+  });
+
+  it("全角でも範囲外の番号【9】は引用に変換せずそのまま残す", () => {
+    const { message, sources } = normalizeWikiCitations(
+      "手順は 3 段階【9】あります。",
+      WIKI_CONTEXT,
+    );
+    expect(message).toBe("手順は 3 段階【9】あります。");
+    expect(sources).toEqual([]);
+  });
+
+  it("開き・閉じが混在した【#1] は引用とみなさない", () => {
+    const { message, sources } = normalizeWikiCitations(
+      "曖昧な表記【#1] です。",
+      WIKI_CONTEXT,
+    );
+    expect(message).toBe("曖昧な表記【#1] です。");
+    expect(sources).toEqual([]);
+  });
+
+  it("同一メッセージ内で半角・全角・【Source: …】が混在しても全て解決する", () => {
+    const { message, sources } = normalizeWikiCitations(
+      'A [#1] と B【#2】と C［2］、さらに D【Source: "インデックスだけのページ"】。',
+      WIKI_CONTEXT,
+    );
+    expect(message).toBe(
+      'A [Source: "急冷速度を上げると Al6Ge5 が優先的に形成される"] と ' +
+        'B[Source: "Ti 置換は Al3V の熱伝導率を下げる"]と ' +
+        'C[Source: "Ti 置換は Al3V の熱伝導率を下げる"]、さらに ' +
+        'D[Source: "インデックスだけのページ"]。',
+    );
+    expect(message).not.toContain("【");
+    // 【Source: …】を先に処理する段構成のため、sources の並びは本文の出現順より
+    // 全角【Source: …】が先に来る（本修正の前からの挙動）。
+    expect(sources).toEqual([
+      "インデックスだけのページ",
+      "急冷速度を上げると Al6Ge5 が優先的に形成される",
+      "Ti 置換は Al3V の熱伝導率を下げる",
+    ]);
+  });
+
   it("範囲外の番号 [9] は引用に変換せずそのまま残す", () => {
     const { message, sources } = normalizeWikiCitations(
       "手順は 3 段階 [9] あります。",
