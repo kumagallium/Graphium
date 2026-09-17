@@ -63,7 +63,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           .optional()
           .describe(
             "種別で絞る。note = 人が書いたノート、wiki = ナレッジ層すべて（topic/claim/insight/summary）、" +
-              "topic = 知見を概念ごとに束ねたトピック、claim = ノートから抽出された知見、" +
+              "topic = 資料を読んで概念ごとにまとめたトピック、claim = ノートから抽出された知見、" +
               "insight = 複数の知見にまたがる洞察。未指定なら全種別",
           ),
       },
@@ -119,8 +119,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
     {
       title: "トピックを開く",
       description:
-        "トピック 1 件の本文と、それを束ねるメンバー知見、各知見の出どころノートを一度に返す。" +
-        "トピック → 知見 → ノートの 2 ホップがこれで辿れる。list_topics で当たりを付けてから使う。",
+        "トピック 1 件の本文と、その出典を一度に返す。資料から作ったトピックは本文が資料を直接引く（members の各項目が資料 1 件）。" +
+        "以前の形式（知見から作ったトピック）はメンバー知見と各知見の出どころノートを返す。list_topics で当たりを付けてから使う。",
       inputSchema: {
         topicId: z.string().describe("トピック ID、または list_topics に出てきたタイトル"),
       },

@@ -1147,7 +1147,7 @@ export const ja: Record<string, string> = {
   "wikiList.kindClaimHint": "ノートから抽出した、根拠のある主張",
   "wikiList.kindAtomHint": "2つ以上の知見にまたがって現れるパターン",
   "wikiList.kindSynthesisHint": "知見・洞察を組み合わせて生まれる新しいアイデア",
-  "wikiList.kindTopicHint": "知見を概念ごとに束ねたページ",
+  "wikiList.kindTopicHint": "資料を読んで概念ごとにまとめたページ",
   // 提案 v4 Phase 1: 意味的な型のラベル（バッジ表示用）
   "wikiTypes.claimRole.finding": "発見・観察",
   "wikiTypes.claimRole.decision": "決定・選択",

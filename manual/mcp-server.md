@@ -99,9 +99,9 @@ Search covers titles, body text, step names and labels, and works in Japanese wi
 
 ### Notes vs. knowledge
 
-Graphium builds a knowledge layer on top of your notes: **claims** (findings extracted from a note, with their source attached), **topics** (a page that gathers several related claims under one concept), and **insights** (a pattern that spans two or more claims). `search_notes` can filter by `kind` — `note`, `topic`, `claim`, `insight`, or `wiki` for all of the knowledge layer at once — and every hit reports which one it is.
+Graphium builds a knowledge layer on top of your notes: **claims** (findings extracted from a note, with their source attached), **topics** (a page that gathers what your sources say about one concept), and **insights** (a pattern that spans two or more claims). `search_notes` can filter by `kind` — `note`, `topic`, `claim`, `insight`, or `wiki` for all of the knowledge layer at once — and every hit reports which one it is.
 
-`list_topics` is the fastest way to see the shape of what Graphium has worked out: a title and one-line summary per topic, the same "read the index first" approach Karpathy describes for an LLM-facing wiki. `get_topic` opens one topic and follows both hops at once — the topic's body, the claims it gathers, and the notes each claim came from.
+`list_topics` is the fastest way to see the shape of what Graphium has worked out: a title and one-line summary per topic, the same "read the index first" approach Karpathy describes for an LLM-facing wiki. `get_topic` opens one topic and returns its body together with its sources — the sources the body cites for topics built from sources, or, for older topics built from claims, the claims it gathers and the notes each claim came from.
 
 Every answer carries the note id and the block id, so the assistant can tell you exactly where something came from and you can open that spot in Graphium.
 

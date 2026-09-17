@@ -1146,7 +1146,7 @@ export const en: Record<string, string> = {
   "wikiList.kindClaimHint": "A grounded assertion extracted from your notes",
   "wikiList.kindAtomHint": "A pattern that recurs across two or more claims",
   "wikiList.kindSynthesisHint": "A new idea formed by combining claims and insights",
-  "wikiList.kindTopicHint": "A page that groups related claims by topic",
+  "wikiList.kindTopicHint": "A page that gathers what your sources say about one concept",
   // Phase 1 semantic-type badge labels
   "wikiTypes.claimRole.finding": "Finding",
   "wikiTypes.claimRole.decision": "Decision",
