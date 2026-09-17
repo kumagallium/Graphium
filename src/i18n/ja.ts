@@ -2191,6 +2191,8 @@ export const ja: Record<string, string> = {
   "ingest.claimsWithoutTopic": "トピックなし {count} 件",
   "ingest.topicsFailed": "書き直せなかったトピック {count} 件",
   "ingest.similarTopicsHint": "似たトピックがあります。トピックの一覧から統合できます",
+  "ingest.topicsMigrated": "新形式へ移行 {count} 件",
+  "ingest.sourceCheckPending": "トピックに未照合の文が {count} 件あります · 手入れ画面で出典照合できます",
   "ingest.atomizeCoverage": "視野 {covered}/{total} 件",
   "ingest.atomLayerDisabled": "洞察レイヤーが無効",
   "ingest.needTwoWikis": "ナレッジ {count} 件（2 件以上で実行）",

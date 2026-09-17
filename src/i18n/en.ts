@@ -2192,6 +2192,8 @@ export const en: Record<string, string> = {
   "ingest.claimsWithoutTopic": "{count} without a topic",
   "ingest.topicsFailed": "{count} topics could not be rewritten",
   "ingest.similarTopicsHint": "Similar topics exist. You can merge them from the topics list",
+  "ingest.topicsMigrated": "{count} moved to the new source-based format",
+  "ingest.sourceCheckPending": "{count} unchecked statement(s) in topics — check sources in Maintenance",
   "ingest.atomizeCoverage": "covered {covered}/{total}",
   "ingest.atomLayerDisabled": "Insight layer is disabled",
   "ingest.needTwoWikis": "{count} Knowledge page(s) (needs at least 2)",
