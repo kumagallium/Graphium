@@ -115,4 +115,21 @@ describe("SourceCheckReviewList", () => {
     fireEvent.click(bulkButton);
     await waitFor(() => expect(props.onBulkArchive).toHaveBeenCalledWith(["c1", "t1"]));
   });
+
+  it("ほかの一覧と同じく、チェックボックスを起点に Shift+クリックで範囲選択できる", async () => {
+    const three: NeedsReviewEntry[] = [
+      { id: "c1", title: "知見1", kind: "claim", verdict: "contradicted" },
+      { id: "c2", title: "知見2", kind: "claim", verdict: "not-in-source" },
+      { id: "t1", title: "トピック1", kind: "topic", verdict: "not-in-source" },
+    ];
+    const { props } = renderList({ items: three });
+    const cells = screen.getAllByLabelText(t("wikiLint.bulk.select")).map((el) => el.parentElement!);
+    fireEvent.mouseDown(cells[0], { button: 0 });
+    fireEvent.mouseUp(window);
+    fireEvent.mouseDown(cells[2], { button: 0, shiftKey: true });
+    fireEvent.mouseUp(window);
+    const bulkButton = screen.getByText(t("wikiLint.sourceCheck.review.bulkArchiveButton", { count: "3" }));
+    fireEvent.click(bulkButton);
+    await waitFor(() => expect(props.onBulkArchive).toHaveBeenCalledWith(["c1", "c2", "t1"]));
+  });
 });

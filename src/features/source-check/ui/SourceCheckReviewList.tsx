@@ -8,7 +8,8 @@
 // アーカイブ）と揃える。stale（本文変更）は一覧向けミラーだけでは判定できないため出さない
 // （仕様の明示的な決定: 一覧で本文を読まずに判定できないなら出さない）。
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useRangeSelect } from "../../../hooks/use-range-select";
 import { Archive as ArchiveIcon, Check, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import type { SourceCheckVerdict } from "../../../lib/document-types";
 import { sourceCheckVerdictPalette } from "./SourceCheckBadge";
@@ -64,6 +65,10 @@ export function SourceCheckReviewList({
   const [bulkArchiving, setBulkArchiving] = useState(false);
   // 行ごとの実行中アクション（同じ行に別アクションが同時に走らないように）
   const [pendingById, setPendingById] = useState<Record<string, "dismiss" | "archive" | "recheck" | null>>({});
+  // ドラッグ / Shift+クリックの範囲選択（ノート一覧・ナレッジ一覧と同じ共通フック）。
+  // フックは早期 return より前に呼ぶ（Hooks の呼び出し順を変えない）。
+  const orderedIds = useMemo(() => items.map((i) => i.id), [items]);
+  const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
 
   if (items.length === 0) return null;
 
@@ -133,18 +138,30 @@ export function SourceCheckReviewList({
         )}
       </div>
       <div className="divide-y divide-border">
-        {items.map((item) => {
+        {items.map((item, idx) => {
           const pending = pendingById[item.id];
           const recheckDisabled = Boolean(pending) || batchRunning || runningId === item.id;
           return (
-            <div key={item.id} className="px-4 py-3 flex items-center gap-2 flex-wrap">
-              <input
-                type="checkbox"
-                checked={selectedIds.has(item.id)}
-                onChange={() => toggleSelected(item.id)}
-                aria-label={t("wikiLint.bulk.select")}
-                className="shrink-0"
-              />
+            <div
+              key={item.id}
+              className={`px-4 py-3 flex items-center gap-2 flex-wrap ${selectedIds.has(item.id) ? "bg-primary/5" : ""}`}
+              onMouseDown={(e) => range.onRowMouseDown(e, idx)}
+              onMouseEnter={() => range.onRowMouseEnter(idx)}
+            >
+              <span
+                className="shrink-0 cursor-pointer"
+                title={t("wikiList.dragToRangeSelect")}
+                onMouseDown={(e) => range.onCheckboxMouseDown(e, idx)}
+              >
+                {/* マウスはフックが mousedown で扱う（pointer-events-none）。キーボードは onChange で切り替える */}
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(item.id)}
+                  onChange={() => toggleSelected(item.id)}
+                  aria-label={t("wikiLint.bulk.select")}
+                  className="pointer-events-none"
+                />
+              </span>
               {verdictBadge(t, item.verdict)}
               <span
                 className="text-sm font-medium text-foreground flex-1 min-w-0 truncate"
