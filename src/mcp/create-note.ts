@@ -16,8 +16,14 @@ import { userInfo } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { markdownToBlocks } from "./markdown-to-blocks";
-import { notesDir, resolveGraphiumRoot } from "./vault";
+import { makeProps, markdownToBlocks, parseInlineContent, type Block } from "./markdown-to-blocks";
+import { notesDir, readNote, resolveGraphiumRoot } from "./vault";
+
+/** 回答が引いた Graphium 内のページ/ノートの参照。id は noteId（wiki も同じ id 空間で読める） */
+export type CitationInput = {
+  id: string;
+  title?: string;
+};
 
 export type CreateNoteInput = {
   title: string;
@@ -29,6 +35,12 @@ export type CreateNoteInput = {
   model?: string;
   /** MCP クライアント名（claude-desktop / claude-code など）。initialize の clientInfo 由来 */
   client?: string;
+  /**
+   * 回答が引いた Graphium 内のページ/ノートの参照。指定すると本文末尾に
+   * References 節を作る。実在する id は @リンク、実在しない id は文字のまま残す
+   * （落とさない）。
+   */
+  citations?: CitationInput[];
 };
 
 export type CreateNoteResult = {
@@ -49,7 +61,65 @@ function resolveAuthor(): { username: string; email?: string } {
   return user;
 }
 
-export function buildNoteDocument(input: CreateNoteInput): Record<string, unknown> {
+/**
+ * citations から本文末尾に付ける References ブロックを組む。
+ * 見た目・knowledgeLinks の形は wiki-service.ts の buildSourceReferenceBlocks に揃える。
+ * 実在する id（root の notes/ または wiki/ にある）だけ @リンクにし、実在しない id は
+ * 文字のまま残す（読者に見えなくなるのを避けるため落とさない）。
+ */
+function buildCitationReferenceBlocks(
+  citations: CitationInput[],
+  root: string,
+): { blocks: Block[]; knowledgeLinks: Record<string, unknown>[] } {
+  const blocks: Block[] = [];
+  const knowledgeLinks: Record<string, unknown>[] = [];
+  if (citations.length === 0) return { blocks, knowledgeLinks };
+
+  blocks.push({
+    id: randomUUID(),
+    type: "heading",
+    props: makeProps({ level: 2 }),
+    content: parseInlineContent("References"),
+    children: [],
+  });
+
+  for (const citation of citations) {
+    const note = readNote(citation.id, root);
+    const resolvedTitle = citation.title?.trim() || note?.title || citation.id;
+    const blockId = randomUUID();
+    if (note) {
+      blocks.push({
+        id: blockId,
+        type: "bulletListItem",
+        props: makeProps(),
+        content: [{ type: "text", text: `@${resolvedTitle}`, styles: { textColor: "blue" } }],
+        children: [],
+      });
+      knowledgeLinks.push({
+        id: randomUUID(),
+        sourceBlockId: blockId,
+        targetBlockId: "",
+        targetNoteId: citation.id,
+        type: "reference",
+        layer: "knowledge",
+        createdBy: "ai",
+      });
+    } else {
+      // 実在しない id はリンクにせず文字のまま残す（既存の引用の扱いと同じ。落とさない）
+      blocks.push({
+        id: blockId,
+        type: "bulletListItem",
+        props: makeProps(),
+        content: parseInlineContent(resolvedTitle),
+        children: [],
+      });
+    }
+  }
+
+  return { blocks, knowledgeLinks };
+}
+
+export function buildNoteDocument(input: CreateNoteInput, root = resolveGraphiumRoot()): Record<string, unknown> {
   const now = new Date().toISOString();
   const generatedBy: Record<string, unknown> = {
     // どの経路で書かれたかが後から分かるように、クライアント名まで残す
@@ -59,17 +129,19 @@ export function buildNoteDocument(input: CreateNoteInput): Record<string, unknow
   };
   if (input.model?.trim()) generatedBy.model = input.model.trim();
 
-  return {
+  const refs = buildCitationReferenceBlocks(input.citations ?? [], root);
+
+  const doc: Record<string, unknown> = {
     version: 2,
     title: input.title,
     pages: [
       {
         id: "main",
         title: input.title,
-        blocks: markdownToBlocks(input.body),
+        blocks: [...markdownToBlocks(input.body), ...refs.blocks],
         labels: {},
         provLinks: [],
-        knowledgeLinks: [],
+        knowledgeLinks: refs.knowledgeLinks,
       },
     ],
     generatedBy,
@@ -77,6 +149,7 @@ export function buildNoteDocument(input: CreateNoteInput): Record<string, unknow
     createdAt: now,
     modifiedAt: now,
   };
+  return doc;
 }
 
 export function createNote(
@@ -91,7 +164,7 @@ export function createNote(
 
   const noteId = randomUUID();
   const filePath = join(dir, `${noteId}.json`);
-  const doc = buildNoteDocument(input);
+  const doc = buildNoteDocument(input, root);
   writeFileSync(filePath, JSON.stringify(doc, null, 2), "utf8");
 
   return {
