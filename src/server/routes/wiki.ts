@@ -68,6 +68,9 @@ import {
   buildSourceTopicReviserSystemPrompt,
   buildSourceTopicReviserUserMessage,
   parseSourceTopicReviserOutput,
+  buildTopicMergerSystemPrompt,
+  buildTopicMergerUserMessage,
+  parseTopicMergerOutput,
 } from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -639,6 +642,59 @@ app.post("/revise-topic", async (c) => {
     });
   } catch (err) {
     console.error("Wiki revise-topic error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 新形式トピックどうしの本文統合（話題の統合を「本文の統合」に置き換える）。
+//   知見（claim）を経由せず、統合対象の本文（すでに [[source:<id>]] 引用済み）を
+//   そのまま 2 本以上渡し、1 本の本文にまとめさせる。
+app.post("/merge-topics", async (c) => {
+  const body = await c.req.json<{
+    title: string;
+    language: string;
+    bodies: string[];
+    model?: string;
+  }>();
+
+  if (!body.title || !Array.isArray(body.bodies) || body.bodies.length < 2) {
+    return c.json({ error: "title and at least 2 bodies are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicMergerSystemPrompt(body.language || "en");
+  const userMessage = buildTopicMergerUserMessage(body.title, body.bodies);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.merge-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicMergerOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse topic merger output" }, 500);
+    }
+
+    return c.json({
+      body: parsed.body,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki merge-topics error:", err);
     return c.json(errorBody(err), 500);
   }
 });

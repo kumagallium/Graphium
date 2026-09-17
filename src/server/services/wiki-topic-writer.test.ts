@@ -20,6 +20,9 @@ import {
   buildSourceTopicReviserSystemPrompt,
   buildSourceTopicReviserUserMessage,
   parseSourceTopicReviserOutput,
+  buildTopicMergerSystemPrompt,
+  buildTopicMergerUserMessage,
+  parseTopicMergerOutput,
 } from "./wiki-topic-writer.ts";
 
 describe("parseTopicWriterOutput", () => {
@@ -312,5 +315,49 @@ describe("buildSourceTopicReviserSystemPrompt", () => {
   it("推量の強さを保持するルールが含まれる", () => {
     const prompt = buildSourceTopicReviserSystemPrompt("ja");
     expect(prompt).toMatch(/hedg/i);
+  });
+});
+
+describe("parseTopicMergerOutput", () => {
+  it("素の JSON から body を取り出す", () => {
+    const text = JSON.stringify({ body: "## 定義\n統合後の本文。" });
+    expect(parseTopicMergerOutput(text)).toEqual({ body: "## 定義\n統合後の本文。" });
+  });
+
+  it("コードフェンス付きでもパースできる", () => {
+    const text = "```json\n" + JSON.stringify({ body: "本文" }) + "\n```";
+    expect(parseTopicMergerOutput(text)).toEqual({ body: "本文" });
+  });
+
+  it("空本文・壊れた JSON は undefined", () => {
+    expect(parseTopicMergerOutput(JSON.stringify({ body: "" }))).toBeUndefined();
+    expect(parseTopicMergerOutput("{not json")).toBeUndefined();
+  });
+});
+
+describe("buildTopicMergerUserMessage", () => {
+  it("渡した本文をすべて含める", () => {
+    const msg = buildTopicMergerUserMessage("トピック", ["本文1 [[source:s1]]", "本文2 [[source:s2]]"]);
+    expect(msg).toContain("本文1 [[source:s1]]");
+    expect(msg).toContain("本文2 [[source:s2]]");
+    expect(msg).toContain("トピック");
+  });
+});
+
+describe("buildTopicMergerSystemPrompt", () => {
+  it("引用を書き換えない・落とさないことを明記する", () => {
+    const prompt = buildTopicMergerSystemPrompt("en");
+    expect(prompt).toMatch(/never invent, drop, or rewrite/i);
+    expect(prompt).toContain("[[source:<id>]]");
+  });
+
+  it("食い違いは統合せず両論併記するルールが含まれる", () => {
+    const prompt = buildTopicMergerSystemPrompt("en");
+    expect(prompt).toMatch(/keep both sentences/i);
+  });
+
+  it("文の決まり（sentence discipline）を共有する", () => {
+    const prompt = buildTopicMergerSystemPrompt("ja");
+    expect(prompt).toMatch(/Sentence discipline/i);
   });
 });

@@ -324,6 +324,7 @@ import {
   consolidateExistingTopics, type ExistingTopicForMerge,
   mergeTopicsExplicit, normalizeTopicTitle,
   runSourceTopicStage, type SourceTopicStageInput, type SourceTopicStageResult,
+  rebuildTopicFromSources,
   isIngestInsufficient,
 } from "./features/wiki";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
@@ -9093,6 +9094,38 @@ export function NoteApp() {
     [fm]
   );
 
+
+  // 資料 id → { resolveSource, resolveSourceTitle } の解決経路（出典照合と同じ入口）。
+  // runSourceTopicStageForNoteApp・話題の統合・話題の手動再生成が共通して使う。
+  const buildTopicSourceResolvers = useCallback(() => {
+    const resolveDeps = buildSourceCheckResolveDeps({
+      noteIndex: fm.noteIndex,
+      rawNoteIndex: fm.rawNoteIndex,
+      mediaIndex: fm.mediaIndex,
+      captureIndex: capture.captureIndex ?? null,
+      wikiFiles: fm.wikiFiles,
+      wikiMetas: fm.wikiMetas,
+      getCachedDoc: fm.getCachedDoc,
+      loadDoc: fm.loadDoc,
+      saveWikiFile: fm.handleSaveWikiFile,
+    });
+    return {
+      resolveSource: async (sourceId: string) => {
+        const resolved = await resolveSourceText(sourceId, resolveDeps);
+        if (!resolved.ok) return undefined;
+        return { title: resolved.title ?? sourceId, text: resolved.text };
+      },
+      // 過去の資料は改訂のたびに全文（PDF 抽出等）を読み直さず、まずタイトルだけ
+      // 安く引く（出典照合と同じ解決経路）。引けなければ resolveSource にフォールバックする。
+      resolveSourceTitle: (sourceId: string) =>
+        resolveSourceCheckTitles([{ sourceId } as SourceCheckEntry], {
+          noteIndex: fm.noteIndex,
+          mediaIndex: fm.mediaIndex,
+          wikiMetas: fm.wikiMetas,
+        })[sourceId],
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fm, capture.captureIndex]);
   // 話題（topic）の段（新形式・資料を直接読む）を note-app のファイル操作・ログに配線する
   // 共通ラッパー。旧 runTopicStageForNoteApp と同じキュー（topicStageQueueRef）で直列化する
   // ── 両方が同じ「既存話題スナップショットの古さ」問題を持つため。
@@ -10412,19 +10445,23 @@ export function NoteApp() {
         }));
         return { ok: true };
       } else if (isTopic) {
-        // 話題（topic）の手動再生成: メンバー知見（derivedFromClaims）を読み直し、
-        // composeTopicBody で本文を作り直す（前の本文は入力に渡さない純関数）。
-        const memberIds = doc.wikiMeta.derivedFromClaims ?? [];
-        const memberClaims: TopicComposeClaim[] = [];
-        for (const cId of memberIds) {
-          const cDoc = await fm.loadDoc(`wiki:${cId}`);
-          if (!cDoc) continue;
-          const cMeta = fm.wikiMetas.get(cId);
-          if (!cMeta || cMeta.kind !== "claim") continue;
-          memberClaims.push({ id: cId, title: cDoc.title, body: extractBodyPreview(cDoc, 2000) });
+        // 話題（topic）の手動再生成: 資料 id の列から rebuildTopicFromSources で組み直す
+        // （前の本文は入力に渡さない。新形式はそのまま derivedFromNotes、旧形式はメンバー知見の
+        // derivedFromNotes の和を資料とみなし、結果として新形式へ移行する）。
+        const sourceIds = new Set<string>();
+        if (typeof doc.wikiMeta.topicMarkdown === "string") {
+          for (const id of doc.wikiMeta.derivedFromNotes ?? []) sourceIds.add(id);
+        } else {
+          const memberIds = doc.wikiMeta.derivedFromClaims ?? [];
+          for (const cId of memberIds) {
+            const cDoc = await fm.loadDoc(`wiki:${cId}`);
+            const cMeta = fm.wikiMetas.get(cId);
+            if (!cDoc || !cMeta || cMeta.kind !== "claim") continue;
+            for (const id of cDoc.wikiMeta?.derivedFromNotes ?? []) sourceIds.add(id);
+          }
         }
-        if (memberClaims.length === 0) {
-          const errMsg = "Topic has no member claims to regenerate from";
+        if (sourceIds.size === 0) {
+          const errMsg = "Topic has no sources to regenerate from";
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
@@ -10432,24 +10469,31 @@ export function NoteApp() {
           }));
           return { ok: false, error: errMsg };
         }
-        const body = await composeTopicBody(wikiTitle, doc.wikiMeta.language ?? getLocale(), memberClaims, selectedModel);
-        if (!body) {
-          const errMsg = "Failed to compose topic body";
-          setIngestToast((prev) => ({
-            items: (prev?.items ?? []).map((i) =>
-              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
-            ),
-          }));
-          return { ok: false, error: errMsg };
-        }
-        const rewritten = rebuildTopicDocument(doc, body, memberClaims, selectedModel ?? null, buildNoteIndex(fm.noteIndex));
-        await fm.handleSaveWikiFile(wikiId, rewritten, {
-          activityType: "wiki_regenerate",
-          sources: memberClaims.map((c) => c.id),
+        const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
+        const rebuildResult = await rebuildTopicFromSources(wikiId, [...sourceIds], {
+          loadDoc: fm.loadDoc,
+          getCachedDoc: fm.getCachedDoc,
+          handleSaveWikiFile: fm.handleSaveWikiFile,
+          resolveSource,
+          resolveSourceTitle,
+          noteIndex: buildNoteIndex(fm.noteIndex),
+          locale: doc.wikiMeta.language ?? getLocale(),
+          model: selectedModel,
+          log: (...args: unknown[]) => console.warn(...args),
         });
+        if (!rebuildResult.rebuilt || !rebuildResult.doc) {
+          const errMsg = "Failed to rebuild topic from sources";
+          setIngestToast((prev) => ({
+            items: (prev?.items ?? []).map((i) =>
+              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+            ),
+          }));
+          return { ok: false, error: errMsg };
+        }
+        const rewritten = rebuildResult.doc;
         embedWikiSections(wikiId, rewritten).catch(() => {});
         if (openAfter) navigateToNote(`wiki:${wikiId}`);
-        wikiLog.append("regenerate", [wikiId], `Regenerated topic "${wikiTitle}" from ${memberClaims.length} member claim(s)`).catch(() => {});
+        wikiLog.append("regenerate", [wikiId], `Regenerated topic "${wikiTitle}" from ${rebuildResult.sourcesUsed} source(s)`).catch(() => {});
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
             i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: selectedModel ?? "default" } : i
@@ -10725,11 +10769,14 @@ export function NoteApp() {
       ],
     }));
     try {
+      const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
       const result = await mergeTopicsExplicit(keepId, mergeIds, existingTopics, {
         loadDoc: fm.loadDoc,
         getCachedDoc: fm.getCachedDoc,
         handleSaveWikiFile: fm.handleSaveWikiFile,
         handleDeleteWikiFile: fm.handleDeleteWikiFile,
+        resolveSource,
+        resolveSourceTitle,
         noteIndex: buildNoteIndex(fm.noteIndex),
         locale: getLocale(),
         log: (...args: unknown[]) => console.warn(...args),
@@ -10755,7 +10802,7 @@ export function NoteApp() {
         ),
       }));
     }
-  }, [fm]);
+  }, [fm, capture.captureIndex]);
 
   // テーマバナー用: 似たテーマ候補。LLM は呼ばない — ローカル判定のみ
   // (a) 正規化タイトル一致（同期）、(b) 埋め込みが使えるときは既存の重複判定 0.9 を流用（非同期）。
@@ -12817,10 +12864,13 @@ export function NoteApp() {
               title: fm.wikiMetas.get(wf.id)?.title ?? wf.id,
               memberClaimIds: fm.wikiMetas.get(wf.id)?.derivedFromClaims ?? [],
             }));
+          const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
           const mergeResult = await consolidateExistingTopics(existingTopics, {
             loadDoc: fm.loadDoc,
             getCachedDoc: fm.getCachedDoc,
             handleSaveWikiFile: fm.handleSaveWikiFile,
+            resolveSource,
+            resolveSourceTitle,
             handleDeleteWikiFile: fm.handleDeleteWikiFile,
             noteIndex: buildNoteIndex(fm.noteIndex),
             locale: getLocale(),

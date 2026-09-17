@@ -39,6 +39,7 @@ import {
   rebuildSourceTopicDocument,
   routeTopicsForSource,
   reviseTopicFromSource,
+  mergeTopicBodies,
   type ExistingTopicRef,
   type TopicComposeClaim,
   type TopicSourceRef,
@@ -340,6 +341,17 @@ export type ConsolidateExistingTopicsDeps = {
   ) => Promise<boolean | void>;
   /** 吸収された話題をゴミ箱へ送る（ソフトデリート）。既存の handleDeleteWikiFile をそのまま渡す想定 */
   handleDeleteWikiFile: (wikiId: string) => Promise<void>;
+  /**
+   * 資料 id から「タイトル + 全文」を解決する（新形式どうしの本文統合・旧形式を含む組み直しで
+   * 使う。出典照合の resolveSourceText と同じ入口を呼び出し側が注入する想定）。
+   * ゴミ箱・未検出などで読めない資料は undefined を返す。
+   */
+  resolveSource: (sourceId: string) => Promise<{ title: string; text: string } | undefined>;
+  /**
+   * 資料 id からタイトルだけを解決する軽量経路（runSourceTopicStage の resolveSourceTitle と
+   * 同じ役割）。未指定・解決不能なら resolveSource（全文取得を伴う）へフォールバックする。
+   */
+  resolveSourceTitle?: (sourceId: string) => string | undefined;
   noteIndex?: NoteIndex;
   locale: string;
   model?: string;
@@ -350,9 +362,17 @@ export type ConsolidateExistingTopicsDeps = {
  * 明示の対応表（吸収される話題 id → 統合先の話題 id）に従って話題どうしを統合する、
  * 副作用ありの実行部分。consolidateExistingTopics（LLM の consolidate-topics 経由）と、
  * 一覧・バナー・点検からの明示選択マージ（mergeTopics）が共通して使う。
- * 1. 統合先ごとに、吸収される話題のメンバー知見を統合先へ付け替え（claim.topicIds の
- *    retarget + topic.derivedFromClaims への合流）、本文を書き直す。
- * 2. 吸収された話題をゴミ箱へ送る（物理削除しない）。
+ *
+ * 本文の作り方は統合先・吸収元の形式で分かれる（知見を経由する統合は撤去済み）:
+ *   - 全員が新形式（topicMarkdown を持つ）: mergeTopicBodies で本文どうしを直接統合し、
+ *     資料は全員の derivedFromNotes の和にする。
+ *   - 1 つでも旧形式: 全体の資料 id（旧形式側はメンバー知見の derivedFromNotes の和、
+ *     新形式側は derivedFromNotes そのもの）を集め、rebuildTopicFromSources で
+ *     資料から組み直す（結果として新形式へ移行する）。
+ *
+ * 知見（claim）側の topicIds 付け替え（retargetClaimTopicId）は旧形式との互換のために残す
+ * — 新形式の吸収元はメンバー知見を持たないため、この付け替えは何もしない。
+ * 最後に、吸収された話題をゴミ箱へ送る（物理削除しない）。
  */
 export async function applyTopicMerges(
   existingTopics: ExistingTopicForMerge[],
@@ -379,12 +399,20 @@ export async function applyTopicMerges(
         continue;
       }
 
-      const mergedMemberIds = new Set(targetDoc.wikiMeta.derivedFromClaims ?? []);
+      // 吸収される話題それぞれの実ドキュメントを読む（新形式判定・derivedFromNotes 収集用）。
+      const sourceDocs: { id: string; doc: GraphiumDocument }[] = [];
+      for (const sourceId of sourceIds) {
+        const doc = deps.getCachedDoc(`wiki:${sourceId}`) ?? (await deps.loadDoc(`wiki:${sourceId}`));
+        if (doc?.wikiMeta && doc.wikiMeta.kind === "topic") sourceDocs.push({ id: sourceId, doc });
+      }
+      const sourceDocById = new Map(sourceDocs.map((d) => [d.id, d.doc]));
+
+      // 知見側 topicIds の付け替え（旧形式の互換）。新形式の吸収元は memberClaimIds が
+      // 空なので何もしない。
       for (const sourceId of sourceIds) {
         const source = topicById.get(sourceId);
         if (!source) continue;
         for (const claimId of source.memberClaimIds) {
-          mergedMemberIds.add(claimId);
           try {
             const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
             if (claimDoc?.wikiMeta && claimDoc.wikiMeta.kind === "claim") {
@@ -399,21 +427,84 @@ export async function applyTopicMerges(
         }
       }
 
-      const memberIds = [...mergedMemberIds];
-      const memberClaims: TopicComposeClaim[] = [];
-      for (const cId of memberIds) {
-        const cDoc = deps.getCachedDoc(`wiki:${cId}`) ?? (await deps.loadDoc(`wiki:${cId}`));
-        if (cDoc) memberClaims.push({ id: cId, title: cDoc.title, body: extractBodyPreview(cDoc, 2000) });
-      }
-      if (memberClaims.length > 0) {
-        const body = await composeTopicBody(targetDoc.title, deps.locale, memberClaims, deps.model);
-        if (body) {
-          const rewritten = rebuildTopicDocument(targetDoc, body, memberClaims, deps.model ?? null, deps.noteIndex);
-          await deps.handleSaveWikiFile(targetId, rewritten, { activityType: "wiki_cross_update", sources: memberIds });
+      const targetIsNew = typeof targetDoc.wikiMeta.topicMarkdown === "string";
+      const allNew = targetIsNew
+        && sourceDocs.length === sourceIds.length
+        && sourceDocs.every(({ doc }) => typeof doc.wikiMeta!.topicMarkdown === "string");
+
+      if (allNew) {
+        // 全員新形式: 本文どうしを直接統合する（資料は全員の derivedFromNotes の和）。
+        const seen = new Set<string>();
+        const refIds: string[] = [];
+        for (const id of targetDoc.wikiMeta.derivedFromNotes ?? []) {
+          if (!seen.has(id)) { seen.add(id); refIds.push(id); }
+        }
+        for (const { doc } of sourceDocs) {
+          for (const id of doc.wikiMeta!.derivedFromNotes ?? []) {
+            if (!seen.has(id)) { seen.add(id); refIds.push(id); }
+          }
+        }
+        const bodies = [
+          targetDoc.wikiMeta.topicMarkdown as string,
+          ...sourceDocs.map(({ doc }) => doc.wikiMeta!.topicMarkdown as string),
+        ];
+        const mergedBody = await mergeTopicBodies(targetDoc.title, bodies, deps.locale, deps.model);
+        if (mergedBody) {
+          const sourceRefs = await collectSourceRefs(refIds, deps);
+          const rewritten = rebuildSourceTopicDocument(targetDoc, mergedBody, sourceRefs, deps.model ?? null, deps.noteIndex);
+          await deps.handleSaveWikiFile(targetId, rewritten, {
+            activityType: "wiki_cross_update",
+            sources: sourceRefs.map((r) => r.id),
+          });
           result.rebuilt++;
         } else {
-          // 本文が作れなくても、メンバーの合流とゴミ箱送りは続行する
-          // （次の手動再生成 / 整理の再実行で本文は追従できる）。
+          // 本文が作れなくても、知見の合流（上で実施済み）とゴミ箱送りは続行する。
+          result.failed++;
+        }
+      } else {
+        // 1 つでも旧形式: 全体の資料 id の和を集め、資料から組み直す（新形式へ移行する）。
+        const collectedSourceIds = new Set<string>();
+        const addFromOldFormatMember = async (topicRef: ExistingTopicForMerge | undefined) => {
+          if (!topicRef) return;
+          for (const claimId of topicRef.memberClaimIds) {
+            const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
+            for (const sid of claimDoc?.wikiMeta?.derivedFromNotes ?? []) collectedSourceIds.add(sid);
+          }
+        };
+
+        if (targetIsNew) {
+          for (const id of targetDoc.wikiMeta.derivedFromNotes ?? []) collectedSourceIds.add(id);
+        } else {
+          await addFromOldFormatMember(topicById.get(targetId));
+        }
+        for (const sourceId of sourceIds) {
+          const sourceDoc = sourceDocById.get(sourceId);
+          if (sourceDoc && typeof sourceDoc.wikiMeta!.topicMarkdown === "string") {
+            for (const id of sourceDoc.wikiMeta!.derivedFromNotes ?? []) collectedSourceIds.add(id);
+          } else {
+            await addFromOldFormatMember(topicById.get(sourceId));
+          }
+        }
+
+        if (collectedSourceIds.size > 0) {
+          const rebuildResult = await rebuildTopicFromSources(targetId, [...collectedSourceIds], {
+            loadDoc: deps.loadDoc,
+            getCachedDoc: deps.getCachedDoc,
+            handleSaveWikiFile: deps.handleSaveWikiFile,
+            resolveSource: deps.resolveSource,
+            resolveSourceTitle: deps.resolveSourceTitle,
+            noteIndex: deps.noteIndex,
+            locale: deps.locale,
+            model: deps.model,
+            log: deps.log,
+          });
+          if (rebuildResult.rebuilt) {
+            result.rebuilt++;
+          } else {
+            // 本文が作れなくても、知見の合流（上で実施済み）とゴミ箱送りは続行する。
+            result.failed++;
+          }
+        } else {
           result.failed++;
         }
       }
@@ -569,7 +660,7 @@ export type SourceTopicStageDeps = {
  * 引用自体は resolveSourceCitations のフォールバックで文字列として残るため、参照そのものが
  * 消えるわけではない）。
  */
-async function collectSourceRefs(
+export async function collectSourceRefs(
   ids: string[],
   deps: Pick<SourceTopicStageDeps, "resolveSource" | "resolveSourceTitle">,
   knownSource?: SourceTopicStageInput,

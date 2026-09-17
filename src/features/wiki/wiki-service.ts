@@ -2830,6 +2830,37 @@ export async function reviseTopicFromSource(
 }
 
 /**
+ * 統合対象の新形式トピック本文どうしを、サーバー（/api/wiki/merge-topics）で 1 本の本文に
+ * 統合する。知見（claim）は経由しない — 各本文にすでに埋め込まれた [[source:<id>]] 引用を
+ * そのまま保つ。bodies は 2 件以上必須。失敗時（パース不能・LLM エラー）は null を返す
+ * （reviseTopicFromSource と同じ fail-open の方針。呼び出し側は「今回は統合しない」を選べる）。
+ */
+export async function mergeTopicBodies(
+  title: string,
+  bodies: string[],
+  language: string,
+  model?: string,
+): Promise<string | null> {
+  if (bodies.length < 2) return null;
+  try {
+    const res = await fetch(`${API_BASE}/merge-topics`, {
+      method: "POST",
+      headers: wikiHeaders(),
+      body: JSON.stringify({ title, language, bodies, ...(model ? { model } : {}) }),
+    });
+    if (!res.ok) {
+      console.warn("mergeTopicBodies failed:", await aiErrorFromResponse(res, `merge-topics failed (${res.status})`));
+      return null;
+    }
+    const data = await res.json() as { body?: string };
+    return typeof data.body === "string" && data.body.trim() ? data.body : null;
+  } catch (err) {
+    console.warn("mergeTopicBodies failed:", err);
+    return null;
+  }
+}
+
+/**
  * 既存の Concept ページからスナップショットを構築する（Synthesis 入力用）
  *
  * 誤差伝搬対策として、Concept の `derivedFromNotes` と一致する Summary を

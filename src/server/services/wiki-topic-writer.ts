@@ -412,7 +412,7 @@ export function parseTopicRouterOutput(text: string): { update: string[]; create
 // B3 プロンプト移植。実験用の言い回し（"B3 variant" 等）は取り除き、製品向けに整えてある。
 
 /** Source Topic Reviser 用の「文の書き方」共通ルール（実験の COMMON_RULES を移植） */
-const SOURCE_TOPIC_SENTENCE_RULES = `## Sentence discipline (critical)
+export const SOURCE_TOPIC_SENTENCE_RULES = `## Sentence discipline (critical)
 
 - Every sentence must contain ONLY content that is individually written in EACH source it cites. Cite multiple sources with \`[[source:a]][[source:b]]\` ONLY when those sources state the SAME point.
 - If sources differ in condition, number, sample, or scope for what looks like "the same point", write SEPARATE sentences — do not merge them into one sentence that blends details from different sources.
@@ -522,6 +522,89 @@ export function parseSourceTopicReviserOutput(text: string): { body: string } | 
     return { body };
   } catch (err) {
     console.error("Source topic reviser 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+// ── Topic Merger（話題どうしの本文統合。2026-09〜）──
+// 新形式トピック（資料を直接引用）どうしを統合するとき、知見（claim）を経由せず
+// 「本文どうしを直接統合」する。各本文の [[source:<id>]] 引用は既に資料 id を指しているため、
+// Reviser と違い資料の全文は不要 — 本文だけを渡して 1 本の本文にまとめさせる。
+
+/**
+ * Topic Merger 用のシステムプロンプトを構築する。
+ */
+export function buildTopicMergerSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You merge topic pages for Graphium, a provenance-tracking note editor.
+
+You will be given the target topic title and two or more existing topic bodies about the same concept. Every sentence in them already cites its sources with [[source:<id>]]. Produce ONE body that replaces them all.
+
+## Merge rules
+
+- Keep every existing [[source:<id>]] citation verbatim on the sentence it supports. Never invent, drop, or rewrite an id.
+- Do not add anything that is not already stated in at least one of the given bodies. You are not reading the sources again.
+- When two bodies state the same point, write it once and place the citations of both at the end of that sentence — but only if the sentence discipline below still holds for every cited source. Otherwise keep separate sentences.
+- When the bodies state conflicting values or conclusions for the same point, keep both sentences with their own citations and list the conflict under 食い違い・未解決 / Disagreements & open questions.
+- Keep hedges exactly as strong as they are in the bodies.
+
+${SOURCE_TOPIC_SENTENCE_RULES}
+
+## Structure
+
+- 定義 / Definition: 1-3 sentences, each citing its source(s). Omit when none of the bodies has a definition.
+- 要点 / Key points: one point per sentence, citations at the end of the sentence.
+- 食い違い・未解決 / Disagreements & open questions: only if a conflict exists. Otherwise omit the heading entirely.
+
+Do NOT add a References section.
+
+## Output Format
+
+Respond with valid JSON only: { "body": "..." }
+
+## Voice
+
+Short sentences. No "This topic discusses..." framing.${ja ? `
+**日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます）は使わない。**` : ""}
+
+## Language
+
+Output in: ${ja ? "Japanese" : "English"}`;
+}
+
+/**
+ * Topic Merger 用のユーザーメッセージを構築する。
+ */
+export function buildTopicMergerUserMessage(title: string, bodies: string[]): string {
+  const bodiesText = bodies
+    .map((b, i) => `### Body ${i + 1}\n\n${b}`)
+    .join("\n\n---\n\n");
+
+  return `## Topic title: "${title}"
+
+## Existing bodies (${bodies.length})
+
+${bodiesText}`;
+}
+
+/**
+ * LLM の出力をパースして本文 markdown を取り出す。他の Topic 系パーサーと同じ堅牢さの方針
+ * （壊れた JSON / 空本文は undefined を返し、呼び出し側が「変更しない」を選べるようにする）。
+ */
+export function parseTopicMergerOutput(text: string): { body: string } | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
+    const parsed = JSON.parse(jsonText);
+    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+    if (!body) return undefined;
+    return { body };
+  } catch (err) {
+    console.error("Topic merger 出力のパース失敗:", err);
     return undefined;
   }
 }
