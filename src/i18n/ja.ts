@@ -566,7 +566,7 @@ export const ja: Record<string, string> = {
   "settings.maintenance.kind.synthesis": "発想",
   "settings.maintenance.kind.topic": "トピック",
   "settings.maintenance.atomize.title": "知見をまたぐ洞察を発見",
-  "settings.maintenance.atomize.help": "{count} 件の知見を、似たもの同士のクラスタに分けて順にスキャンし、2 つ以上の知見にまたがって現れる洞察を抽出します。すべての知見が一度は視野に入るまで回り、必要な回数は知見の分布から計算して実行前に表示します。既存の洞察はモデルに渡して重複提案を抑えます。",
+  "settings.maintenance.atomize.help": "{count} 件の知見を、似たもの同士のクラスタに分けて順にスキャンし、知見の中にある関係の型を洞察として取り出します（同じ型の知見は 1 件にまとめます）。すべての知見が一度は視野に入るまで回り、必要な回数は知見の分布から計算して実行前に表示します。既存の洞察はモデルに渡して重複提案を抑えます。",
   "settings.maintenance.atomize.confirm": "全 {claims} 件の知見を視野に入れるため、LLM を {runs} 回呼び出します。実行しますか？（途中で停止できます。作成済みの洞察は残ります）",
   "settings.maintenance.atomize.run": "洞察を発見",
   "settings.maintenance.atomize.running": "発見中…",
@@ -654,7 +654,7 @@ export const ja: Record<string, string> = {
   "settings.autoSourceCheck.help": "新しく作られた・更新された知見とトピックを、バックグラウンドで1件ずつ出典照合します（既定 OFF）。オンにすると、まだ照合していないものも順に照合します。出典 1 件ごとに AI を呼びます。",
   "settings.autoSourceCheck.summary": "新しく作られた・更新された知見とトピックを、裏で 1 件ずつ自動で出典照合します（既定はオフ）。",
   "settings.groundingModel.summary": "未指定なら、チャットモデルをそのまま使います。",
-  "settings.features.insights.summary": "複数の知見に繰り返し現れる型（因果・機構・条件依存など）を見つけ、元の分野を離れても通じる原理として書きます。洞察には、元になった知見がつながります。",
+  "settings.features.insights.summary": "知見の中にある関係の型を取り出し、他の分野でも通じる原理として書きます。元の知見につながります。",
   "settings.insightModel.summary": "未指定なら、チャットモデルをそのまま使います。",
   "settings.atomizeIngestBudget.summary": "ノートを知識に取り込むとき、洞察を探す回数の上限です。",
   "settings.ai.sectionDiscovery": "洞察の発見",
@@ -1145,7 +1145,7 @@ export const ja: Record<string, string> = {
   // 各 kind の説明（サイドバーの title ツールチップ用）。砂時計: ノート→知見→洞察→発想
   "wikiList.kindSummaryHint": "ノート1件を AI が短くまとめたもの",
   "wikiList.kindClaimHint": "ノートや資料から取り出した命題（1 件に 1 つ）",
-  "wikiList.kindAtomHint": "2つ以上の知見にまたがって現れるパターン",
+  "wikiList.kindAtomHint": "知見から取り出した、他の分野でも通じる関係の型",
   "wikiList.kindSynthesisHint": "知見・洞察を組み合わせて生まれる新しいアイデア",
   "wikiList.kindTopicHint": "資料を読んで概念ごとにまとめたページ",
   // 提案 v4 Phase 1: 意味的な型のラベル（バッジ表示用）
