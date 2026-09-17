@@ -310,3 +310,210 @@ export function parseTopicConsolidatorOutput(text: string): Record<string, strin
     return undefined;
   }
 }
+
+// ── 新形式トピック（資料を直接読む。2026-09〜）──
+// Karpathy の LLM Wiki 方式: 知見（claim）はトピックの材料にしない。トピックは資料の全文を
+// 直接読み、「前の本文 + 新しい資料 1 本」から次の版の本文を作る（incremental revision）。
+// 振り分け（どのトピックを改訂するか・新規に立てるか）は Topic Router が別途担う。
+// プロンプトの中身は 2026-09-17 の実測実験（B3 案）から移植したもの — 文の決まり・推量の
+// 強さの保持・上限を置かないこと・空見出しを出さないことは実験で効果を確認済みなので変えない。
+
+/** Topic Router に渡す資料の最小情報（一覧には含めない — 振り分け対象の資料そのもの） */
+export type TopicRouterSource = { id: string; title: string; text: string };
+
+/** Topic Router に渡す既存トピックの index（タイトル + 定義の先頭文） */
+export type TopicRouterExistingRef = { id: string; title: string; oneLiner?: string };
+
+/**
+ * Topic Router 用のシステムプロンプトを構築する。
+ * 資料 1 本と既存トピックの一覧を見て、「改訂する既存トピック」「新しく作るトピック名」を
+ * LLM 自身に決めさせる（埋め込み類似度・正規化タイトル一致による機械的な名寄せは撤去）。
+ * 件数の上限・しきい値は置かない — 何も足さない資料なら両方空でよい。
+ */
+export function buildTopicRouterSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a topic router for Graphium, a provenance-tracking note editor.
+
+You will be given the full text of one source document and a list of existing topic pages (each shown with its title and a one-line definition). Your job is to decide which topic page(s) this source should update, and whether it introduces any concept that needs a brand-new topic page.
+
+## Rules
+
+- For each existing topic that this source meaningfully adds to (new detail, confirmation, or contradiction of a point already on that page), include its id in \`update\`.
+- For each concept in the source that is NOT covered by any existing topic, propose a new topic name in \`create\`. Names are short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
+${TOPIC_GRANULARITY_RULES}
+- If this source names the same concept as an existing topic, route to that existing topic — do not create a near-duplicate with different wording.
+- If the source adds nothing worth a topic page (too narrow, purely incidental), leave both \`update\` and \`create\` empty. Do not force an assignment.
+- Do not impose a target count — the number of topics touched should follow from what the source actually contains, not from a quota.
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "update": ["<existing topic id>", ...],
+  "create": ["<new topic name>", ...]
+}`;
+}
+
+/**
+ * Topic Router 用のユーザーメッセージを構築する。
+ */
+export function buildTopicRouterUserMessage(
+  source: TopicRouterSource,
+  existingTopics: TopicRouterExistingRef[],
+): string {
+  const topicListText = existingTopics.length > 0
+    ? existingTopics.map((t) => `- ${t.title} (id: ${t.id})${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")
+    : "(none yet)";
+
+  return `## Existing topics
+
+${topicListText}
+
+## Source (id: ${source.id})
+
+### ${source.title}
+
+${source.text}`;
+}
+
+/**
+ * LLM の出力をパースして「改訂する既存トピック id」「新規に作るトピック名」を取り出す。
+ * 存在しない id（LLM の幻覚）はここでは検出できないため、呼び出し側（runSourceTopicStage）が
+ * 既存トピック一覧に無い id を捨てるガードを持つ。壊れた JSON / 形が違う場合は undefined。
+ */
+export function parseTopicRouterOutput(text: string): { update: string[]; create: string[] } | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
+    const parsed = JSON.parse(jsonText);
+    if (!parsed || typeof parsed !== "object") return undefined;
+
+    const toStringArray = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()) : [];
+
+    return {
+      update: toStringArray((parsed as any).update),
+      create: toStringArray((parsed as any).create),
+    };
+  } catch (err) {
+    console.error("Topic router 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+// ── Source Topic Reviser（前の本文 + 資料 1 本 → 次の版の本文）──
+// B3 プロンプト移植。実験用の言い回し（"B3 variant" 等）は取り除き、製品向けに整えてある。
+
+/** Source Topic Reviser 用の「文の書き方」共通ルール（実験の COMMON_RULES を移植） */
+const SOURCE_TOPIC_SENTENCE_RULES = `## Sentence discipline (critical)
+
+- Every sentence must contain ONLY content that is individually written in EACH source it cites. Cite multiple sources with \`[[source:a]][[source:b]]\` ONLY when those sources state the SAME point.
+- If sources differ in condition, number, sample, or scope for what looks like "the same point", write SEPARATE sentences — do not merge them into one sentence that blends details from different sources.
+- Do not write a cross-document generalization or inference that isn't explicitly stated in a single source (e.g. do not synthesize "trend across samples" unless one source itself states that trend).
+- "食い違い・未解決" entries require sources that EXPLICITLY conflict (a different number for the same measured quantity, an opposite stated conclusion). Do not infer a disagreement between sources that simply address different things or that you construct by comparing your own paraphrases.`;
+
+/**
+ * Source Topic Reviser 用のシステムプロンプトを構築する。
+ * 前の本文（新規なら空）と新しい資料 1 本の全文を受け取り、次の版の本文（全文書き直し）を返す。
+ */
+export function buildSourceTopicReviserSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a topic-page writer for Graphium, a provenance-tracking note editor, using an incremental revision method.
+
+You maintain ONE short topic page that is revised incrementally as new sources arrive, one at a time. You will be given the CURRENT body (may be empty, for the first source) and ONE new source's full text. Your job: produce the NEXT version of the body — a full rewrite of the page, not an append to the end.
+
+## Organize by topic point, not by source
+
+- Group sentences by the POINT they make, not by which source they came from.
+- When the new source adds detail to (or restates) a point already in the current body, integrate it into the EXISTING sentence — do not add a new, separate sentence for it, UNLESS doing so would violate the sentence discipline rules below (in that case, keep them as separate sentences).
+- Do not silently overwrite a point from the current body just because the new source touches the same topic — merge/update it only when they actually agree or add detail to each other.
+
+${SOURCE_TOPIC_SENTENCE_RULES}
+
+## No arbitrary limits
+
+Do not impose a sentence count or character limit. Length should follow from how many distinct points exist — not from a target size.
+
+## Preserve hedging and epistemic strength exactly
+
+- If a source hedges a claim ("かもしれない" / "と考えられる" / "示唆される" / "今後測定予定" / "may" / "is expected to" / "future work will measure", etc.), keep that same hedge in the body — do not upgrade it to an unqualified statement.
+- Do not state a conclusion the source explicitly says is still future work / not yet measured.
+- Do not add a mechanism, reason, or explanation that isn't stated in the source or current body, even if it seems plausible.
+
+## Structure (keep it short per point, but no overall limit)
+
+- **定義 / Definition**: 1-3 sentences.
+- **要点 / Key points**: the load-bearing points, one point per sentence, each citing its source(s) with \`[[source:<id>]]\` placed at the END of the sentence (never mid-sentence). Use the exact id given in the "(id: ...)" annotation for the new source, or preserve existing \`[[source:<id>]]\` citations already in the current body verbatim.
+- **食い違い・未解決 / Disagreements & open questions**: only if genuine disagreement exists per the rules above. If there is nothing to report, OMIT this heading entirely — never output the heading with no content under it.
+
+Do NOT add a References / 関連 section — the caller appends that separately.
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "body": "## 定義\\n...\\n\\n## 要点\\n...[[source:abc123]]\\n\\n## 食い違い・未解決\\n..."
+}
+
+## Voice
+
+Short sentences. No "This topic discusses..." framing.${ja ? `
+**日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます）は使わない。**` : ""}
+
+## Language
+
+Output in: ${ja ? "Japanese" : "English"}`;
+}
+
+/**
+ * Source Topic Reviser 用のユーザーメッセージを構築する。
+ */
+export function buildSourceTopicReviserUserMessage(
+  title: string,
+  currentBody: string,
+  newSource: { id: string; title: string; text: string },
+): string {
+  const currentSection = currentBody
+    ? `## Current body\n\n${currentBody}`
+    : `## Current body\n\n(empty — this is the first source)`;
+
+  return `## Topic title: "${title}"
+
+${currentSection}
+
+## New source (id: ${newSource.id})
+
+### ${newSource.title}
+
+${newSource.text}
+
+引用は文末に [[source:<id>]] の形式で、与えられた id をそのまま使う（タイトルを書き換えない）。`;
+}
+
+/**
+ * LLM の出力をパースして本文 markdown を取り出す。parseTopicWriterOutput と同じ堅牢さの方針
+ * （壊れた JSON / 空本文は undefined を返し、呼び出し側が「変更しない」を選べるようにする）。
+ */
+export function parseSourceTopicReviserOutput(text: string): { body: string } | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
+    const parsed = JSON.parse(jsonText);
+    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+    if (!body) return undefined;
+    return { body };
+  } catch (err) {
+    console.error("Source topic reviser 出力のパース失敗:", err);
+    return undefined;
+  }
+}

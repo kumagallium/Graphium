@@ -14,6 +14,12 @@ import {
   buildTopicConsolidatorSystemPrompt,
   buildTopicConsolidatorUserMessage,
   parseTopicConsolidatorOutput,
+  buildTopicRouterSystemPrompt,
+  buildTopicRouterUserMessage,
+  parseTopicRouterOutput,
+  buildSourceTopicReviserSystemPrompt,
+  buildSourceTopicReviserUserMessage,
+  parseSourceTopicReviserOutput,
 } from "./wiki-topic-writer.ts";
 
 describe("parseTopicWriterOutput", () => {
@@ -214,5 +220,97 @@ describe("buildTopicConsolidatorSystemPrompt", () => {
   it("件数の上限に関する数値を含まない（Karpathy 方針: 数値しきい値を置かない）", () => {
     const prompt = buildTopicConsolidatorSystemPrompt("en");
     expect(prompt).not.toMatch(/\d+-\d+\s*claims?/i);
+  });
+});
+
+describe("parseTopicRouterOutput", () => {
+  it("update / create の配列を取り出す", () => {
+    const text = JSON.stringify({ update: ["t1", "t2"], create: ["新トピック"] });
+    expect(parseTopicRouterOutput(text)).toEqual({ update: ["t1", "t2"], create: ["新トピック"] });
+  });
+
+  it("フィールドが欠けていれば空配列で埋める", () => {
+    expect(parseTopicRouterOutput(JSON.stringify({}))).toEqual({ update: [], create: [] });
+  });
+
+  it("非文字列・空文字を落とす", () => {
+    const text = JSON.stringify({ update: ["t1", "", 123, null], create: ["ok", ""] });
+    expect(parseTopicRouterOutput(text)).toEqual({ update: ["t1"], create: ["ok"] });
+  });
+
+  it("コードフェンス付きでもパースできる", () => {
+    const text = "```json\n" + JSON.stringify({ update: [], create: ["x"] }) + "\n```";
+    expect(parseTopicRouterOutput(text)).toEqual({ update: [], create: ["x"] });
+  });
+
+  it("壊れた JSON は undefined", () => {
+    expect(parseTopicRouterOutput("{not json")).toBeUndefined();
+  });
+});
+
+describe("buildTopicRouterUserMessage / buildTopicRouterSystemPrompt", () => {
+  it("既存トピックを id 付きで列挙する", () => {
+    const msg = buildTopicRouterUserMessage(
+      { id: "note-1", title: "資料タイトル", text: "本文" },
+      [{ id: "t1", title: "話題A", oneLiner: "話題Aの定義。" }],
+    );
+    expect(msg).toContain("話題A (id: t1): 話題Aの定義。");
+    expect(msg).toContain("id: note-1");
+  });
+
+  it("既存トピックが無ければ (none yet)", () => {
+    const msg = buildTopicRouterUserMessage({ id: "s1", title: "t", text: "x" }, []);
+    expect(msg).toContain("(none yet)");
+  });
+
+  it("件数の上限・しきい値の数値を置かない", () => {
+    const prompt = buildTopicRouterSystemPrompt("en");
+    expect(prompt).not.toMatch(/\d+\s*(topics?|concepts?)\b/i);
+  });
+});
+
+describe("parseSourceTopicReviserOutput", () => {
+  it("素の JSON から body を取り出す", () => {
+    const text = JSON.stringify({ body: "## 定義\n本文。" });
+    expect(parseSourceTopicReviserOutput(text)).toEqual({ body: "## 定義\n本文。" });
+  });
+
+  it("コードフェンス付きでもパースできる", () => {
+    const text = "```json\n" + JSON.stringify({ body: "本文" }) + "\n```";
+    expect(parseSourceTopicReviserOutput(text)).toEqual({ body: "本文" });
+  });
+
+  it("空本文・壊れた JSON は undefined", () => {
+    expect(parseSourceTopicReviserOutput(JSON.stringify({ body: "" }))).toBeUndefined();
+    expect(parseSourceTopicReviserOutput("{not json")).toBeUndefined();
+  });
+});
+
+describe("buildSourceTopicReviserUserMessage", () => {
+  it("現在の本文が空なら「1 件目」の注記を出す", () => {
+    const msg = buildSourceTopicReviserUserMessage("トピック", "", { id: "s1", title: "資料", text: "本文" });
+    expect(msg).toContain("empty — this is the first source");
+  });
+
+  it("現在の本文があればそのまま渡す", () => {
+    const msg = buildSourceTopicReviserUserMessage("トピック", "## 定義\n既存の本文", { id: "s1", title: "資料", text: "本文" });
+    expect(msg).toContain("## 定義\n既存の本文");
+    expect(msg).toContain("id: s1");
+  });
+});
+
+describe("buildSourceTopicReviserSystemPrompt", () => {
+  it("[[source:<id>]] 引用形式を明記する", () => {
+    expect(buildSourceTopicReviserSystemPrompt("en")).toContain("[[source:<id>]]");
+  });
+
+  it("上限を置かないルールが含まれる（Karpathy 方針）", () => {
+    const prompt = buildSourceTopicReviserSystemPrompt("en");
+    expect(prompt).toMatch(/No arbitrary limits/i);
+  });
+
+  it("推量の強さを保持するルールが含まれる", () => {
+    const prompt = buildSourceTopicReviserSystemPrompt("ja");
+    expect(prompt).toMatch(/hedg/i);
   });
 });
