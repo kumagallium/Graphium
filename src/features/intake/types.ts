@@ -23,6 +23,16 @@ export type IntakeFile = {
   getFile: () => Promise<File>;
 };
 
+/**
+ * ファイル一覧と一緒に渡す補足。デスクトップのネイティブ走査は対象外の形式を
+ * 走査の段階で外すため、その内訳は IntakeFile[] に載らない。取り込み結果の
+ * 「N 件は対象外」に足せるよう、ここに載せて runIntake まで運ぶ
+ */
+export type IntakeSelectionExtra = {
+  /** 走査の段階で外した対象外ファイルの内訳（".log" → 件数） */
+  preSkippedByExt?: Record<string, number>;
+};
+
 /** ファイルがどの経路で渡されたか */
 export type IntakeSource = "folder" | "files" | "drop";
 

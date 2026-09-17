@@ -94,6 +94,17 @@ describe("runIntake", () => {
     expect(outcome.materials).toBe(1);
   });
 
+  it("走査の段階で外された対象外の内訳（preSkippedByExt）を skipped / skippedByExt に足す", async () => {
+    const files = [mdFile("a.md"), otherFile("b.bak")];
+    const deps = makeDeps();
+
+    const outcome = await runIntake(files, deps, () => {}, { preSkippedByExt: { ".log": 5, ".zip": 2 } });
+
+    expect(outcome.skipped).toBe(8);
+    expect(outcome.skippedByExt).toEqual({ ".log": 5, ".zip": 2, ".bak": 1 });
+    expect(outcome.notes).toBe(1);
+  });
+
   it("skippedByExt が拡張子ごとに数えられる（旧形式 .ppt/.xls は対象外のまま）", async () => {
     const files = [
       otherFile("a.ppt"),

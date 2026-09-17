@@ -34,7 +34,7 @@ import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
-import { IntakeReceptacle, type IntakeFile, type IntakeSource } from "../intake";
+import { IntakeReceptacle, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
@@ -504,7 +504,7 @@ export type AssetGalleryViewProps = {
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
   /** 投入口の受け皿から直接渡されたファイル群を取り込む（素材が 1 件も無いときの初回受け皿用） */
-  onIntakeFiles?: (files: IntakeFile[], source: IntakeSource) => void;
+  onIntakeFiles?: (files: IntakeFile[], source: IntakeSource, extra?: IntakeSelectionExtra) => void;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */

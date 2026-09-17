@@ -11446,7 +11446,7 @@ export function NoteApp() {
             }
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
-            onIntakeFiles={(files) => void intake.run(files)}
+            onIntakeFiles={(files, _source, extra) => void intake.run(files, extra)}
             onExtractDocxImages={handleExtractDocxImages}
             onExpandOffice={handleExpandOfficeEntry}
             resolveKnowledgeWikiId={(entry) => {
@@ -11873,7 +11873,7 @@ export function NoteApp() {
             }
             onIngestNotes={aiUiEnabled ? ingestNoteIds : undefined}
             onOpenIntake={intake.openIntake}
-            onIntakeFiles={(files) => void intake.run(files)}
+            onIntakeFiles={(files, _source, extra) => void intake.run(files, extra)}
             focusSearchSignal={focusSearchSignal}
           />
         ) : showMemos ? (
@@ -12932,7 +12932,7 @@ export function NoteApp() {
         state={intake.state}
         dragActive={intakeDragActive}
         onClose={handleIntakeClose}
-        onFilesSelected={(files) => void intake.run(files)}
+        onFilesSelected={(files, _source, extra) => void intake.run(files, extra)}
         onSearch={() => { intake.closeIntake(); showNoteList(); setFocusSearchSignal((n) => n + 1); }}
         onShowGraph={() => { intake.closeIntake(); showGlobalGraphView(); }}
         onAskAi={() => { intake.closeIntake(); composer.openComposer(); }}

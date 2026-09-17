@@ -50,7 +50,9 @@ There are four ways in: **Bring in files** in the sidebar, the **Bring in files*
 
 ![The intake receptacle, with buttons to choose a folder or files](/screenshots/intake-receptacle.png)
 
-The rule is one sentence: **Markdown becomes notes. PDF, Office files, images and CSV become materials.** Audio, video, and delimited data (`.csv` / `.tsv` / `.txt` / `.dat`) are materials too. A `.pptx` or `.xlsx` is expanded on the way in — see above. Old-style `.doc` / `.xls` / `.ppt` files are not taken in yet — the report lists them by extension and count instead of dropping them silently.
+The rule is one sentence: **Markdown becomes notes. PDF, Office files, images and CSV become materials.** Audio, video, and delimited data (`.csv` / `.tsv` / `.txt` / `.dat`) are materials too. A `.pptx` or `.xlsx` is expanded on the way in — see above. Old-style `.doc` / `.xls` / `.ppt` files are not taken in yet — the report lists them by extension and count instead of dropping them silently. The same goes for anything else Graphium can't open, such as archives or files without an extension. Hidden files and folders (names starting with `.`, such as `.git` or `.obsidian`) are left out.
+
+In the desktop app, choosing a folder never reads files of a type Graphium can't take in, so a folder of old data full of such files is still quick to go through. Up to 500,000 files that can be taken in are handled in one go; for anything larger, the app asks whether to bring in the first 500,000 or choose a smaller folder.
 
 Whatever order files sit in inside a dropped folder carries over as Graphium folders, for both notes and materials. The name of the folder you dropped is not used as a folder itself.
 

@@ -6,7 +6,7 @@
 
 import { classifyIntakeFiles } from "./classify";
 import { commonRootOf, folderOf } from "./folders";
-import type { IntakeFile } from "./types";
+import type { IntakeFile, IntakeSelectionExtra } from "./types";
 import type { BulkOcrTarget } from "../media-ocr";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 
@@ -193,6 +193,7 @@ export async function runIntake(
   files: IntakeFile[],
   deps: IntakeDeps,
   onProgress: (p: IntakeProgress) => void,
+  extra?: IntakeSelectionExtra,
 ): Promise<IntakeOutcome> {
   const { notes, materials, skipped } = classifyIntakeFiles(files);
   const total = notes.length + materials.length;
@@ -329,8 +330,11 @@ export async function runIntake(
   }
   onProgress({ done: total, total, failed });
 
-  // 対象外ファイルの内訳を拡張子ごとに数える
-  const skippedByExt: Record<string, number> = {};
+  // 対象外ファイルの内訳を拡張子ごとに数える。走査の段階で外された分
+  // （デスクトップのネイティブ走査）は files に載っていないので、渡された内訳を足す
+  const skippedByExt: Record<string, number> = { ...extra?.preSkippedByExt };
+  let preSkipped = 0;
+  for (const count of Object.values(extra?.preSkippedByExt ?? {})) preSkipped += count;
   for (const s of skipped) {
     const ext = extOf(s.path);
     skippedByExt[ext] = (skippedByExt[ext] ?? 0) + 1;
@@ -353,7 +357,7 @@ export async function runIntake(
     linksResolved: markdownResult.linksResolved,
     linksUnresolved: markdownResult.linksUnresolved,
     failed,
-    skipped: skipped.length,
+    skipped: skipped.length + preSkipped,
     skippedByExt,
     lastNewId: markdownResult.lastNewId,
     createdNoteIds: markdownResult.createdIds,

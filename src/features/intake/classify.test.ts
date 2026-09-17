@@ -3,7 +3,7 @@
 // notes / materials / skipped への振り分けを、拡張子・隠しパスの各パターンで確認する。
 
 import { describe, it, expect } from "vitest";
-import { classifyIntakeFiles } from "./classify";
+import { classifyIntakeFiles, INTAKE_EXTENSIONS } from "./classify";
 import type { IntakeFile } from "./types";
 import { intakeFileFrom } from "./test-helpers";
 
@@ -121,5 +121,21 @@ describe("classifyIntakeFiles", () => {
     const f = intakeFile("old.ppt", "old.ppt", "application/vnd.ms-powerpoint");
     const result = classifyIntakeFiles([f]);
     expect(result.skipped).toEqual([f]);
+  });
+});
+
+describe("INTAKE_EXTENSIONS（ネイティブ走査に渡す拡張子）", () => {
+  it("取り込める形式を含み、展開できない旧 Office 形式は含まない", () => {
+    for (const ext of ["md", "markdown", "pdf", "png", "mp4", "csv", "docx", "pptx", "xlsx"]) {
+      expect(INTAKE_EXTENSIONS).toContain(ext);
+    }
+    for (const ext of ["doc", "xls", "ppt", "zip"]) {
+      expect(INTAKE_EXTENSIONS).not.toContain(ext);
+    }
+  });
+
+  it("一覧のどの拡張子も、MIME 無し（ネイティブ走査と同じ条件）で対象外にならない", () => {
+    const files = INTAKE_EXTENSIONS.map((ext) => intakeFileFrom(new File(["x"], `f.${ext}`, { type: "" })));
+    expect(classifyIntakeFiles(files).skipped.map((f) => f.name)).toEqual([]);
   });
 });

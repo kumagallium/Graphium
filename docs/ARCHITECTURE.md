@@ -1382,8 +1382,23 @@ The same `src/` tree is built four different ways.
   walk-time size was ever read (`tooLargeToHash` in `note-app.tsx`) always
   calls `getFile()` first anyway, so fetching the size up front would have
   reintroduced the per-entry `stat` the walk just removed. The walk
-  returns paths, names and relative paths only, capped at 50,000 entries
-  and never following symlinks. It is breadth-first on purpose:
+  returns paths, names and relative paths only, never following symlinks.
+  It also filters as it goes: entries whose name starts with `.` are
+  skipped and hidden folders (`.git`, `.obsidian`, …) are never descended
+  into, and a file whose extension is not in the list the caller passes
+  (`INTAKE_EXTENSIONS` in `classify.ts`, derived by running
+  `classifyIntakeFiles` itself over every candidate extension so the two
+  cannot drift apart) is neither returned nor added to the read allowlist
+  — it is only counted per extension (`skippedByExt`), and those counts
+  are carried through to the import report's skipped line. The cap —
+  500,000 files — counts accepted files only. It used to be 50,000 counted
+  over every file, so a folder of old data whose logs or `.git` objects
+  outnumbered its notes hit the cap with little of value found; with a
+  progress count and a stop button in place the cap is now only a guard
+  on the memory the path list and allowlist can take. Scanned paths are
+  prefixed with the chosen folder's name, matching `webkitRelativePath`
+  in the browser, so that `commonRootOf` does not mistake a lone
+  subfolder for the root and drop it. It is breadth-first on purpose:
   depth-first follows `read_dir`'s order, which no filesystem guarantees,
   so one large subfolder can spend the whole cap and leave sibling folders
   with nothing. Breadth-first only keeps a deep subtree from starving its
@@ -1392,7 +1407,8 @@ The same `src/` tree is built four different ways.
   with nothing just the same. Because a scan of a large or cold NAS folder
   can run for minutes, `scan_directory` emits an `intake-scan-progress`
   event — at most every 200ms — with the number of files and folders found
-  so far. It checks whether to send one after every entry rather than only
+  so far, plus the number of files skipped for their type (a folder of
+  nothing but logs would otherwise show no movement at all). It checks whether to send one after every entry rather than only
   when a file is added: a deep backup can run through a long stretch of
   folders with no files, and reporting files alone left the receptacle
   looking frozen on a real NAS share. A `cancel_scan` command lets the

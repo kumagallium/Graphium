@@ -17,7 +17,7 @@ import {
   pickFolderNative,
   scanFolderNative,
 } from "./native-scan";
-import { toIntakeFiles, type IntakeFile, type IntakeSource } from "./types";
+import { toIntakeFiles, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "./types";
 
 type IntakeReceptacleProps = {
   /** 1 行目。未指定は intake.dropHere */
@@ -30,9 +30,11 @@ type IntakeReceptacleProps = {
   scanningCount?: number;
   /** ネイティブ走査中のフォルダ数を外から固定する（Storybook 用。scanningCount とセットで使う） */
   scanningFolders?: number;
+  /** ネイティブ走査中の対象外件数を外から固定する（Storybook 用。scanningCount とセットで使う） */
+  scanningSkipped?: number;
   /** 打ち切り確認の表示を件数だけ与えて固定する（Storybook 用） */
   truncatedCount?: number;
-  onFilesSelected: (files: IntakeFile[], source: IntakeSource) => void;
+  onFilesSelected: (files: IntakeFile[], source: IntakeSource, extra?: IntakeSelectionExtra) => void;
 };
 
 export function IntakeReceptacle({
@@ -41,6 +43,7 @@ export function IntakeReceptacle({
   checking = false,
   scanningCount,
   scanningFolders,
+  scanningSkipped,
   truncatedCount,
   onFilesSelected,
 }: IntakeReceptacleProps) {
@@ -62,9 +65,12 @@ export function IntakeReceptacle({
   // 走査中に "intake-scan-progress" イベントで随時更新される、見つかった件数とフォルダ数
   const [nativeScanFound, setNativeScanFound] = useState(0);
   const [nativeScanFolders, setNativeScanFolders] = useState(0);
+  const [nativeScanSkipped, setNativeScanSkipped] = useState(0);
   // ネイティブ走査が上限で打ち切られたとき、そのまま黙って一部だけ入れると
   // 「全部入った」と誤解されるので、続けるかどうかを一度確かめる
   const [truncatedFiles, setTruncatedFiles] = useState<IntakeFile[] | null>(null);
+  // 打ち切り確認を挟んだ場合に、確認後の取り込みへ一緒に渡す対象外の内訳
+  const truncatedSkippedRef = useRef<Record<string, number>>({});
   // このインスタンスがいま走らせている走査の ID。IntakeReceptacle はノート一覧の
   // 空状態・素材ギャラリーの空状態・IntakeModal の 3 か所に同時にマウントされうる
   // （モーダルはオーバーレイなので重なって存在できる）。プロセス全体で 1 つの
@@ -110,6 +116,7 @@ export function IntakeReceptacle({
   const shownScanningCount = scanningCount ?? (isNativeScanning ? nativeScanFound : undefined);
   const shownScanningFolders =
     scanningFolders ?? (isNativeScanning ? nativeScanFolders : undefined);
+  const shownScanningSkipped = scanningSkipped ?? (isNativeScanning ? nativeScanSkipped : undefined);
   const showChecking = checking || picking || scanningActive;
 
   // デスクトップではブラウザの webkitdirectory を通さず、Rust に列挙させる。
@@ -128,13 +135,15 @@ export function IntakeReceptacle({
       scanIdRef.current = scanId;
       setNativeScanFound(0);
       setNativeScanFolders(0);
+      setNativeScanSkipped(0);
       setIsNativeScanning(true);
-      const { files, truncated, cancelled } = await scanFolderNative(root, {
+      const { files, truncated, cancelled, skippedByExt } = await scanFolderNative(root, {
         scanId,
-        onProgress: ({ found, folders }) => {
+        onProgress: ({ found, folders, skipped }) => {
           if (!mountedRef.current) return;
           setNativeScanFound(found);
           setNativeScanFolders(folders);
+          setNativeScanSkipped(skipped);
         },
       });
       // 停止して別フォルダを選び直した等で、この結果がもう自分がいま持っている
@@ -146,12 +155,15 @@ export function IntakeReceptacle({
       setPicking(false);
       // 中止された場合は files が空で返ってくる。受け皿は既に最初の表示に戻っている
       if (cancelled) return;
-      if (files.length === 0) return;
+      // 取り込める形式が 1 件も無くても、対象外の内訳があれば結果として見せる
+      // （黙って何も起きないと、フォルダを選び間違えたのか分からない）
+      if (files.length === 0 && Object.keys(skippedByExt).length === 0) return;
       if (truncated) {
+        truncatedSkippedRef.current = skippedByExt;
         setTruncatedFiles(files);
         return;
       }
-      onFilesSelected(files, "folder");
+      onFilesSelected(files, "folder", { preSkippedByExt: skippedByExt });
     } catch (err) {
       if (scanIdRef.current) scanIdRef.current = null;
       if (!mountedRef.current) return;
@@ -207,7 +219,9 @@ export function IntakeReceptacle({
               onClick={() => {
                 const files = truncatedFiles;
                 setTruncatedFiles(null);
-                if (files) onFilesSelected(files, "folder");
+                if (files) {
+                  onFilesSelected(files, "folder", { preSkippedByExt: truncatedSkippedRef.current });
+                }
               }}
             >
               {t("intake.scanLimitContinue", { count: String(shownTruncatedCount) })}
@@ -225,12 +239,19 @@ export function IntakeReceptacle({
           <p className="text-sm font-medium text-foreground">{t("intake.checking")}</p>
           <p className="text-xs text-muted-foreground">{t("intake.checkingHint")}</p>
           {((shownScanningCount != null && shownScanningCount > 0) ||
-            (shownScanningFolders != null && shownScanningFolders > 0)) && (
+            (shownScanningFolders != null && shownScanningFolders > 0) ||
+            (shownScanningSkipped != null && shownScanningSkipped > 0)) && (
             <p className="text-xs text-muted-foreground">
-              {t("intake.scanningProgress", {
-                files: String(shownScanningCount ?? 0),
-                folders: String(shownScanningFolders ?? 0),
-              })}
+              {shownScanningSkipped != null && shownScanningSkipped > 0
+                ? t("intake.scanningProgressWithSkipped", {
+                    files: String(shownScanningCount ?? 0),
+                    folders: String(shownScanningFolders ?? 0),
+                    skipped: String(shownScanningSkipped),
+                  })
+                : t("intake.scanningProgress", {
+                    files: String(shownScanningCount ?? 0),
+                    folders: String(shownScanningFolders ?? 0),
+                  })}
             </p>
           )}
           {scanningActive && (
