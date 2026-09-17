@@ -800,9 +800,10 @@ Notes:
   (`POST /api/wiki/consolidate-topics`); ingest-time Topic naming
   (`POST /api/wiki/name-topics`) and body composition
   (`POST /api/wiki/compose-topic`) keep using the default model.
-- **Note mode vs document mode.** For a short personal note the ingester emits
-  0-3 Claims, each tagged with proposed Topics (the "1 note ≈ 1 idea"
-  assumption). When the source is an **imported external document** — its
+- **Note mode vs document mode.** For a short personal note the ingester
+  harvests every distinct transferable insight the note carries as its own
+  Claim, with no fixed cap — each tagged with proposed Topics. When the
+  source is an **imported external document** — its
   `noteId` carries a `pdf:` / `document:` / `url:` / `chat:` prefix (the
   external-source convention) — the ingester switches to *document mode*: it
   harvests every distinct transferable insight the document argues as its own
