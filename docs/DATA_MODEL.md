@@ -950,16 +950,21 @@ page) are caught later by two Karpathy-style *lint* mechanisms that
 look at the whole topic corpus at once, rather than one Claim at a
 time:
 
-- **"Organize topics"** (Settings → Maintenance): assigns topics to
-  Claims that still have none, then consolidates existing topics that
-  name the same concept (`POST /api/wiki/consolidate-topics` — an LLM
-  call that returns a proposed-name → canonical-title mapping, no
-  count caps), merging members into the canonical topic and moving the
-  absorbed topic to Trash.
+- **"Organize topics"** (Settings → Maintenance): consolidates existing
+  topics that name the same concept (`POST /api/wiki/consolidate-topics`
+  — an LLM call that returns a proposed-name → canonical-title mapping,
+  no count caps), merging the canonical topic's body and moving the
+  absorbed topic to Trash. It no longer assigns topics to Claims
+  (2026-09-17 change) — Claims are not topic material at all (§3.1b).
 - **Wiki Linter** (`wiki-linter.ts`): the `redundant` issue type now
   also considers Topic pages, both in the LLM lint pass and in a local
   (no-LLM) check that flags topics whose normalized titles collide
-  exactly.
+  exactly. Two more no-LLM checks apply only to §3.1b's new-format
+  topics: a topic whose sources are *all* gone (trashed or unindexed)
+  is auto-archived with reason `"sources-gone"` rather than surfaced as
+  a lint issue; a topic missing *some but not all* of its sources is
+  surfaced as a `missing-source` issue (warning severity) instead, since
+  archiving would hide a page that still has some grounding left.
 
 In the topic body, citations to member Claims are written as
 `[[claim:<id>]]` (the Claim's id, not its title — this avoids the
@@ -975,16 +980,14 @@ constraint.
 
 ### 3.1b `topic` — new format, reading resources directly (2026-09 onwards)
 
-PR 3a laid the storage/rendering groundwork for a second topic format
-that skips the Claim-layer indirection described above: instead of
-grouping pre-extracted Claims, a "source" topic reads resources (note
-bodies, PDFs, Word documents, URLs, chat sessions) directly and keeps
-its own Markdown body (`wikiMeta.topicMarkdown`) as the source of
-truth. PR 3b wires this into ingest: all six note-app entry points now
-route the *source itself* (not its Claims) through
-`runSourceTopicStage` (`src/features/wiki/topic-stage.ts`), which
-creates and revises topics in this format. Claims are no longer topic
-material at all.
+This second topic format skips the Claim-layer indirection described
+above: instead of grouping pre-extracted Claims, a "source" topic reads
+resources (note bodies, PDFs, Word documents, URLs, chat sessions)
+directly and keeps its own Markdown body (`wikiMeta.topicMarkdown`) as
+the source of truth. All six note-app entry points route the *source
+itself* (not its Claims) through `runSourceTopicStage`
+(`src/features/wiki/topic-stage.ts`), which creates and revises topics
+in this format. Claims are no longer topic material at all.
 
 Differences from the legacy format (§3.1a):
 
@@ -1007,9 +1010,25 @@ reviser, and finally folds in the new source. The member Claims'
 untouched — the migration only changes how the *topic page's own body*
 is produced from then on. A resource id that can no longer be resolved
 (trashed, or never indexed) is skipped and counted in the result
-(`sourcesSkipped`), not silently dropped. `rebuildTopicFromSources` is
-a standalone function so a future "rebuild from sources" action in the
-source-check triage UI can reuse it without going through the router.
+(`sourcesSkipped`), not silently dropped.
+
+`rebuildTopicFromSources` is a standalone function reused by three
+**human-initiated** "rebuild from sources" entry points beyond this
+automatic migration — a bulk rebuild is never triggered silently. Before
+any of them runs, the pure function `planTopicRebuild` computes the
+exact source list per topic and the resulting total AI-call count, which
+is shown in a confirmation dialog the user must accept: (1) a topic
+page's own "Regenerate" action; (2) the Lint view's "legacy-format
+topics" section, which rebuilds every topic still awaiting migration in
+one confirmed batch; (3) the Lint view's per-issue "Rebuild from
+sources" fix action on a `missing-source` finding.
+
+Re-ingesting a source also re-checks topics that already cite it, not
+just the ones the router names: `runSourceTopicStage` unions the
+router's `update` list with every new-format topic whose
+`derivedFromNotes` already contains the re-ingested source id, and
+tells the reviser to re-check previously-cited claims against the
+updated text (a `previouslyCited` flag passed to `revise-topic`).
 
 `buildSourceTopicDocument` / `rebuildSourceTopicDocument`
 (`wiki-service.ts`) assemble the new format the same way

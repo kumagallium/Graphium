@@ -722,7 +722,9 @@ through Topic rebuilding (the Topic assignment stage below) instead.
 | **Topic router** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`runSourceTopicStage`) | Reads the full text of the ingested *source* (not the Claims derived from it) plus an index of existing Topics (title + one-line definition) and decides which existing Topic(s) to update and which new Topic(s) to create. No embedding similarity, no title-normalization matching, no count cap — the LLM alone judges "same concept or new" from the index, the same "index + judgment" approach used for merge-vs-create decisions on other Wiki pages |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims and Topics (including near-duplicate Topic titles), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim |
-| **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's full text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The same file also holds the legacy **Topic writer / Topic Namer / Topic Consolidator** (`POST /api/wiki/compose-topic`, `/name-topics`, `/consolidate-topics`) — kept only for "Organize topics" (Settings → Maintenance) and the Linter's redundant-Topic check, and for existing Claim-derived Topics until they are next touched (see migration note below); ingest itself no longer calls them |
+| **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's full text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The legacy **Topic writer / Topic Namer** (`POST /api/wiki/compose-topic`, `/name-topics`), which built Topic bodies from member Claims, were removed 2026-09-17 together with the Claim→Topic assignment path (`matchTopicsByTitle`, `resolveTopicsForClaim`, `linkClaimAndTopic`, `buildTopicDocument`, `rebuildTopicDocument`) — Topics are now only ever created or revised by the Topic router/reviser above, reading source text directly |
+| **Topic Consolidator** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`consolidateExistingTopics`) | `POST /api/wiki/consolidate-topics`. Given only the titles of every existing Topic page (no bodies), the model proposes a suggested-title → canonical-title mapping; `planExistingTopicMerges` groups Topics by canonical title and picks a merge target, then `applyTopicMerges` executes the merge (see Topic Merger below). Powers "Organize topics" (Settings → Maintenance) and the Linter's redundant-Topic one-click Merge button |
+| **Topic Merger** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/wiki-service.ts` (`mergeTopicBodies`) | `POST /api/wiki/merge-topics`. Merges two or more **new-format** Topic bodies into one in a single call, keeping every existing `[[source:<id>]]` citation verbatim and not inventing content beyond what the input bodies already say. Used by `applyTopicMerges` only when the merge target and every absorbed Topic are new-format; if any side is still old-format (Claim-derived), `applyTopicMerges` instead collects the full set of source ids (via member Claims for old-format sides) and rebuilds through `rebuildTopicFromSources`, migrating the result to new-format |
 
 **Claims/Insights are an optional extension on top of this pipeline** (2026-09-17
 decision): Topics are the always-on default, built directly from source text as
@@ -816,32 +818,80 @@ Notes:
   (trashed, never indexed) is skipped and counted, not silently dropped.
 - **Merging Topics has four entry points**, all funneling into the same
   pure execution function `applyTopicMerges` (`src/features/wiki/topic-stage.ts`),
-  which retargets member Claims (`retargetClaimTopicId` + `linkClaimAndTopic`),
-  rewrites the kept Topic's body, and soft-deletes the absorbed Topic(s):
-  (1) **Topic banner** — a "similar topics" chip appears only when a local
-  check finds a candidate (normalized-title match, or embedding similarity
-  > 0.9 when an embedding model is configured); no LLM call. (2) **Topics
-  list** — select 2+ Topics and pick which one to keep; also no LLM call
-  (`mergeTopicsExplicit`, a thin wrapper around `applyTopicMerges` that
-  takes an explicit keep/merge id pair instead of computing one). (3)
-  **Lint** — the Linter's redundant-Topic finding (near-duplicate titles,
-  local or LLM-detected) gets a one-click "Merge" button that calls the
-  same explicit-pair path. (4) **Settings → Organize topics** — the only
-  entry point that judges *which* existing Topics are the same concept via
-  an LLM call (`consolidateExistingTopics` → `POST /api/wiki/consolidate-topics`,
-  the Topic Consolidator). In short: **deciding whether two Topics are the
-  same concept** is a chat-model judgment (Organize topics, and the Lint /
-  full-analysis redundant check); **moving members once the pair is known**
-  is mechanical and model-free (banner, list, and the per-issue Merge
-  button). The chat model (Settings → AI → Chat model, falls back to the
-  default model when unset) is used — not the default model — for both
-  the full Lint analysis (`POST /api/wiki/lint`) and Topic consolidation
+  which retargets member Claims (`retargetClaimTopicId`, kept for old-format
+  compatibility only — new-format absorbed Topics have no members to retarget)
+  and soft-deletes the absorbed Topic(s). The body is produced one of two ways,
+  branching on format: if the merge target and every absorbed Topic are
+  **new-format**, the bodies are merged directly by the Topic Merger
+  (`mergeTopicBodies`, one `POST /api/wiki/merge-topics` call), preserving
+  existing citations verbatim; if **any side is old-format**, `applyTopicMerges`
+  collects the full set of source ids instead (via member Claims for
+  old-format sides) and rebuilds the target from scratch through
+  `rebuildTopicFromSources`, migrating it to new-format in the process. The
+  four entry points: (1) **Topic banner** — a "similar topics" chip appears
+  only when a local check finds a candidate (normalized-title match, or
+  embedding similarity > 0.9 when an embedding model is configured); no LLM
+  call. (2) **Topics list** — select 2+ Topics and pick which one to keep;
+  also no LLM call (`mergeTopicsExplicit`, a thin wrapper around
+  `applyTopicMerges` that takes an explicit keep/merge id pair instead of
+  computing one). (3) **Lint** — the Linter's redundant-Topic finding
+  (near-duplicate titles, local or LLM-detected) gets a one-click "Merge"
+  button that calls the same explicit-pair path. (4) **Settings → Organize
+  topics** — the only entry point that judges *which* existing Topics are the
+  same concept via an LLM call (`consolidateExistingTopics` →
+  `POST /api/wiki/consolidate-topics`, the Topic Consolidator); it only
+  consolidates existing Topic pages now — Claims are never assigned or
+  reassigned to Topics by this action (2026-09-17 change). In short:
+  **deciding whether two Topics are the same concept** is a chat-model
+  judgment (Organize topics, and the Lint / full-analysis redundant check);
+  **moving members once the pair is known** is mechanical and model-free
+  (banner, list, and the per-issue Merge button); **producing the merged
+  body** is either one Topic Merger call (new-format-only) or a
+  resource-from-scratch rebuild (any old-format side). The chat model
+  (Settings → AI → Chat model, falls back to the default model when unset)
+  is used — not the default model — for both the full Lint analysis
+  (`POST /api/wiki/lint`) and Topic consolidation
   (`POST /api/wiki/consolidate-topics`); ingest-time Topic routing
-  (`POST /api/wiki/route-topics`) and revision
-  (`POST /api/wiki/revise-topic`) keep using the default model. The legacy
-  `name-topics` / `compose-topic` endpoints are no longer called by ingest —
-  they remain only for "Organize topics" and pre-migration Claim-derived
-  Topics.
+  (`POST /api/wiki/route-topics`), revision (`POST /api/wiki/revise-topic`),
+  and the Topic Merger (`POST /api/wiki/merge-topics`) keep using the
+  default model.
+- **"Rebuild from sources" is human-initiated, never automatic.** Beyond the
+  incremental per-source revision above, a Topic page can also be rebuilt
+  from scratch from its full source list (`rebuildTopicFromSources`,
+  replaying each source through the reviser from an empty body) — the same
+  routine that migrates an old-format Topic on first touch. Because this can
+  mean one LLM call per source, it is never run silently: a pure planning
+  function, `planTopicRebuild` (`src/features/wiki/topic-stage.ts`),
+  computes the exact source list and the resulting AI-call count *before*
+  anything runs, and every entry point shows that count in a confirmation
+  dialog the user must accept. Three entry points: (1) the topic page's own
+  "Regenerate" action (`WikiBanner`, one Topic); (2) the Lint view's
+  dedicated "legacy-format Topics" section, which lists every Topic still
+  awaiting migration and rebuilds them one by one on a single confirmation,
+  reporting rebuilt/skipped-source/failed counts afterward; (3) the Lint
+  view's per-issue "Rebuild from sources" fix action on a `missing-source`
+  finding (below). Sources that can no longer be read (trashed, never
+  indexed) are skipped and counted, never silently dropped.
+- **Re-ingesting a source re-checks the Topics that already cite it.** The
+  Topic router only sees one source at a time and can miss a Topic whose
+  citation of that source has gone stale; `runSourceTopicStage` closes this
+  gap mechanically by unioning the router's `update` list with every
+  new-format Topic that already lists the re-ingested source id in its
+  `derivedFromNotes` (via the existing-Topic index's `sourceIds`), and tells
+  the reviser to re-check previously-cited claims against the updated text
+  (a `previouslyCited` flag threaded through `revise-topic`).
+- **Sources that disappear are handled without an LLM call.** If every
+  source a new-format Topic cites turns out to be trashed or unindexed after
+  a re-ingest, `detectAutoArchivable` (`src/server/services/wiki-linter.ts`)
+  flags it with reason `"sources-gone"` and it is archived automatically
+  (reversible, same as any other archive) — a Topic with an external-prefixed
+  source (`pdf:`, `document:`, `url:`, `chat:`) is never auto-archived this
+  way, and the check is skipped entirely when the valid-note-id index is
+  still empty (e.g. right after startup), to avoid a false-positive sweep.
+  If only *some* of a Topic's sources are missing, it's left alone and
+  instead surfaced as a `missing-source` Lint issue (warning severity,
+  `detectMissingSourceIssues`) so a person can decide whether to rebuild it
+  from the remaining sources.
 - **Note mode vs document mode.** For a short personal note the ingester
   harvests every distinct transferable insight the note carries as its own
   Claim, with no fixed cap — each tagged with proposed Topics. When the
