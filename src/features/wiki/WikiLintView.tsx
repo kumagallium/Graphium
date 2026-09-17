@@ -62,6 +62,20 @@ type Props = {
   sourceCheckProps?: SourceCheckLintSectionProps;
   /** 開いたときに表示するタブ。未指定なら従来どおり "check"（呼び出し側で key を変えて再マウントする想定） */
   initialTab?: WikiLintTab;
+  /**
+   * 「資料から作り直す」（作業 C）: missing-source 点検の手当てで、そのトピック 1 件を
+   * 資料から作り直す。確認ダイアログ（AI 呼び出し回数）は呼び出し元で表示してから実行する。
+   */
+  onRebuildTopicWiki?: (wikiId: string) => Promise<void> | void;
+  /** 旧形式（topicMarkdown を持たない）のトピック一覧。1 件以上あるときだけ専用セクションを出す */
+  legacyTopics?: { id: string; title: string }[];
+  /**
+   * legacyTopics をまとめて資料から作り直す。確認ダイアログ（AI 呼び出し回数）は
+   * 呼び出し元で表示し、キャンセルされたら null を返す。
+   */
+  onRebuildTopicsFromSources?: (
+    topicIds: string[],
+  ) => Promise<{ rebuilt: number; sourcesSkipped: number; failed: number } | null>;
 };
 
 /** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
@@ -105,14 +119,15 @@ const ISSUE_TYPE_I18N_KEY: Record<LintIssueType, string> = {
 // - gap: AI による穴埋めは v2 以降 → Open のみ
 // - stale: Regenerate（最新 source から再生成）/ Archive / Open
 // - redundant: Auto-merge は v2 以降 → Archive で片側を隠す or Open で比較
-const FIX_ACTIONS_BY_TYPE: Record<LintIssueType, ReadonlyArray<"open" | "regenerate" | "archive">> = {
+const FIX_ACTIONS_BY_TYPE: Record<LintIssueType, ReadonlyArray<"open" | "regenerate" | "archive" | "rebuild">> = {
   contradiction: ["open"],
   orphan: ["open", "archive"],
   gap: ["open"],
   stale: ["open", "regenerate", "archive"],
   redundant: ["open", "archive"],
-  // missing-source: 資料から作り直す等の専用アクションは未実装（作業 C）。現状は Open のみ。
-  "missing-source": ["open"],
+  // missing-source: 資料から作り直す（rebuildTopicFromSources、資料が読めるところまで組み直す）。
+  // 確認ダイアログは呼び出し元（onRebuildTopicWiki）側で AI 呼び出し回数を見せてから出す。
+  "missing-source": ["open", "rebuild"],
 };
 
 const SEVERITY_STYLES: Record<LintSeverity, string> = {
@@ -137,6 +152,9 @@ export function WikiLintView({
   onBulkArchiveWikis,
   sourceCheckProps,
   initialTab,
+  onRebuildTopicWiki,
+  legacyTopics,
+  onRebuildTopicsFromSources,
 }: Props) {
   const t = useT();
   // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
@@ -148,6 +166,21 @@ export function WikiLintView({
   // このセッションで一括アーカイブ済みの issue（表示から外す。再度点検を走らせれば
   // 実データから自然に消える。単発アーカイブの archivedThisSession と同じ考え方）
   const [dismissedIndices, setDismissedIndices] = useState<Set<number>>(new Set());
+
+  // 旧形式トピックの一括「資料から作り直す」（作業 C）。確認ダイアログは
+  // onRebuildTopicsFromSources 側（呼び出し元）で AI 呼び出し回数を見せてから出す。
+  const [legacyRebuilding, setLegacyRebuilding] = useState(false);
+  const [legacyResult, setLegacyResult] = useState<{ rebuilt: number; sourcesSkipped: number; failed: number } | null>(null);
+  const handleRebuildLegacyTopics = async () => {
+    if (!onRebuildTopicsFromSources || legacyRebuilding || !legacyTopics || legacyTopics.length === 0) return;
+    setLegacyRebuilding(true);
+    try {
+      const result = await onRebuildTopicsFromSources(legacyTopics.map((t) => t.id));
+      if (result) setLegacyResult(result);
+    } finally {
+      setLegacyRebuilding(false);
+    }
+  };
 
   // ドラッグ / Shift+クリックの範囲選択（ノート一覧・ナレッジ一覧と同じ共通フック）。
   // 選べるのは一括アーカイブできる（stale/redundant）で、まだ表示に残っている issue だけ。
@@ -265,6 +298,34 @@ export function WikiLintView({
       {/* 出典照合（Source check, v1.1）タブ — 既存のクイック/フル点検とは別レーン。
           自動点検にはつながず、ここからの実行だけを起点にする。 */}
       {sourceCheckProps && activeTab === "sourceCheck" && <SourceCheckLintSection {...sourceCheckProps} />}
+
+      {/* 旧形式トピックの「資料から作り直す」（作業 C）。既存点検とは別に、1 件以上あるときだけ出す。 */}
+      {activeTab === "check" && legacyTopics && legacyTopics.length > 0 && (
+        <div className="px-4 py-3 border-b border-border bg-muted/30">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs text-foreground">
+              {t("wikiLint.legacyTopics.summary", { count: String(legacyTopics.length) })}
+            </span>
+            <button
+              onClick={handleRebuildLegacyTopics}
+              disabled={legacyRebuilding || !onRebuildTopicsFromSources}
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+            >
+              {legacyRebuilding ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              {legacyRebuilding ? t("wikiLint.legacyTopics.running") : t("wikiLint.legacyTopics.action")}
+            </button>
+          </div>
+          {legacyResult && (
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              {t("wikiLint.legacyTopics.done", {
+                rebuilt: String(legacyResult.rebuilt),
+                skipped: String(legacyResult.sourcesSkipped),
+                failed: String(legacyResult.failed),
+              })}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* コンテンツ（既存の点検タブ） */}
       {activeTab === "check" && (
@@ -403,6 +464,7 @@ export function WikiLintView({
                     onOpenWiki={onOpenWiki}
                     onRegenerateWiki={onRegenerateWiki}
                     onArchiveWiki={onArchiveWiki}
+                    onRebuildTopicWiki={onRebuildTopicWiki}
                     wikiTitleById={wikiTitleById}
                     wikiKindById={wikiKindById}
                     onMergeTopics={onMergeTopics}
@@ -437,6 +499,7 @@ function IssueCard({
   onOpenWiki,
   onRegenerateWiki,
   onArchiveWiki,
+  onRebuildTopicWiki,
   wikiTitleById,
   wikiKindById,
   onMergeTopics,
@@ -451,6 +514,8 @@ function IssueCard({
   onOpenWiki: (wikiId: string) => void;
   onRegenerateWiki?: (wikiId: string) => Promise<void> | void;
   onArchiveWiki?: (wikiId: string) => Promise<void> | void;
+  /** missing-source の「資料から作り直す」。確認ダイアログは呼び出し元で表示済みのものを実行するだけ */
+  onRebuildTopicWiki?: (wikiId: string) => Promise<void> | void;
   wikiTitleById?: Map<string, string>;
   wikiKindById?: Map<string, string>;
   onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
@@ -470,7 +535,7 @@ function IssueCard({
   const label = t(ISSUE_TYPE_I18N_KEY[issue.type] as any);
   const style = SEVERITY_STYLES[issue.severity];
   // 各 wiki ごとに「実行中アクション」を持つ（同時並行で同じ wiki に別アクションが走らないように）
-  const [pendingByWiki, setPendingByWiki] = useState<Record<string, "regenerate" | "archive" | null>>({});
+  const [pendingByWiki, setPendingByWiki] = useState<Record<string, "regenerate" | "archive" | "rebuild" | null>>({});
   const [merging, setMerging] = useState(false);
   const [merged, setMerged] = useState(false);
   // 本セッションで archive 済みの wiki を覚えておく。redundant では「全部消す」のを防ぐためのガード。
@@ -479,6 +544,7 @@ function IssueCard({
   const availableActions = FIX_ACTIONS_BY_TYPE[issue.type] ?? ["open"];
   const hasRegenerate = availableActions.includes("regenerate") && Boolean(onRegenerateWiki);
   const hasArchive = availableActions.includes("archive") && Boolean(onArchiveWiki);
+  const hasRebuild = availableActions.includes("rebuild") && Boolean(onRebuildTopicWiki);
 
   // Redundant ガード: 統合候補をすべてアーカイブできてしまうと知識が消失するため、
   // 「残り 1 件以下」になる手前で Archive を無効化する。
@@ -488,19 +554,24 @@ function IssueCard({
 
   const runAction = async (
     wikiId: string,
-    action: "regenerate" | "archive",
+    action: "regenerate" | "archive" | "rebuild",
   ) => {
     if (pendingByWiki[wikiId]) return;
     // 確認ダイアログ。i18n 文の {title} 補間用のヒントは issue.title or wikiId 接頭辞。
-    const titleHint = issue.title || wikiId.slice(0, 12);
-    const message =
-      action === "archive"
-        ? t("wikiLint.action.confirmArchive", { title: titleHint })
-        : t("wikiLint.action.confirmRegenerate", { title: titleHint });
-    if (!window.confirm(message)) return;
+    // rebuild（資料から作り直す）は AI 呼び出し回数の計算が必要なため、確認ダイアログは
+    // 呼び出し元（onRebuildTopicWiki）側で表示する — ここでは実行するだけ。
+    if (action !== "rebuild") {
+      const titleHint = issue.title || wikiId.slice(0, 12);
+      const message =
+        action === "archive"
+          ? t("wikiLint.action.confirmArchive", { title: titleHint })
+          : t("wikiLint.action.confirmRegenerate", { title: titleHint });
+      if (!window.confirm(message)) return;
+    }
     setPendingByWiki((p) => ({ ...p, [wikiId]: action }));
     try {
       if (action === "regenerate") await onRegenerateWiki?.(wikiId);
+      else if (action === "rebuild") await onRebuildTopicWiki?.(wikiId);
       else {
         await onArchiveWiki?.(wikiId);
         setArchivedThisSession((prev) => {
@@ -703,6 +774,25 @@ function IssueCard({
                             <>
                               <ArchiveIcon size={12} />
                               {isRecommendedAbsorb ? t("wikiLint.action.archiveRecommended") : t("wikiLint.action.archive")}
+                            </>
+                          )}
+                        </button>
+                      )}
+                      {hasRebuild && !alreadyArchived && (
+                        <button
+                          onClick={() => runAction(id, "rebuild")}
+                          disabled={Boolean(pending)}
+                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                        >
+                          {pending === "rebuild" ? (
+                            <>
+                              <Loader2 size={12} className="animate-spin" />
+                              {t("wikiLint.action.running")}
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw size={12} />
+                              {t("wikiLint.action.rebuildFromSources")}
                             </>
                           )}
                         </button>

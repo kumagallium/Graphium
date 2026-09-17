@@ -2226,7 +2226,7 @@ export function resolveTopicClaimCitations(body: string, memberClaims: TopicMemb
   });
 }
 
-// ── 新形式トピック（2026-09〜。資料 id を直接引用。土台のみ、取り込み配線は PR 3b） ──
+// ── 新形式トピック（2026-09〜。資料 id を直接引用。取り込み・再生成・作り直しの全経路で使用） ──
 
 /** 話題ページの本文・References 構築に渡す資料の最小情報（ノート id / "pdf:" 等の外部プレフィックス付き id） */
 export type TopicSourceRef = { id: string; title: string };
@@ -2338,7 +2338,7 @@ function buildSourceReferenceBlocks(sources: TopicSourceRef[]): RelationBlocksRe
 }
 
 /**
- * 新形式トピックの GraphiumDocument を新規に組み立てる（土台のみ。取り込み配線は PR 3b）。
+ * 新形式トピックの GraphiumDocument を新規に組み立てる。
  * markdown は保存前に stripEmptyMarkdownSections で空見出しを除去し、そのまま
  * wikiMeta.topicMarkdown に正本として保存する（次回改訂の入力・出典照合の要点抽出の元）。
  * derivedFromNotes に資料 id を積む（claim と同じ意味論・prefix）。derivedFromClaims は
@@ -2397,7 +2397,7 @@ export function buildSourceTopicDocument(
 }
 
 /**
- * 既存の新形式トピックドキュメントの本文を書き直して更新する（改訂共通。土台のみ）。
+ * 既存の新形式トピックドキュメントの本文を書き直して更新する（改訂・統合・作り直し共通）。
  * rebuildTopicDocument（旧形式）と同じく、書き直しのたびに References を作り直すので
  * 重複しない。出典照合の判定は引き継がない（本文を作り直す系の既存仕様と揃える）。
  */

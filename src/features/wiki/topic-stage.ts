@@ -640,8 +640,8 @@ export type RebuildTopicFromSourcesDeps = {
 /**
  * 既存の話題ページを、渡された資料 id の列から新形式で作り直す。空の本文から資料を
  * 1 本ずつ順に改訂して組み直す（Karpathy の incremental revision と同じ手順）。
- * PR 3b では旧形式トピックの「触れたら移行」から呼ばれる。PR 5 では手入れ画面の
- * 「資料から作り直す」からも同じ関数を再利用する想定。
+ * 旧形式トピックの「触れたら移行」（runSourceTopicStage）・手動再生成・手入れ画面の
+ * 「資料から作り直す」（作業 C）が共通してこの関数を使う。
  */
 export async function rebuildTopicFromSources(
   topicId: string,
@@ -693,6 +693,64 @@ export async function rebuildTopicFromSources(
     sources: usedRefs.map((r) => r.id),
   });
   return { rebuilt: true, doc: rewritten, sourcesUsed: usedRefs.length, sourcesSkipped: skipped };
+}
+
+// ── 「資料から作り直す」の実行前計画（人が起動し、実行前に AI 呼び出し回数を見せる）──
+// トピックページの再生成・手入れ画面の旧形式一括作り直し・missing-source の手当てが
+// 共通して使う。自動一括はしない方針のため、実行前に必ずこの計画を通して確認する。
+
+/** planTopicRebuild に渡す 1 トピック分の入力（id と、実ドキュメント） */
+export type TopicRebuildTarget = {
+  id: string;
+  doc: GraphiumDocument;
+};
+
+/** 1 トピック分の実行計画（重複除去済みの資料 id 列） */
+export type TopicRebuildPlanItem = {
+  topicId: string;
+  sourceIds: string[];
+};
+
+/** 「資料から作り直す」の実行前計画 */
+export type TopicRebuildPlan = {
+  items: TopicRebuildPlanItem[];
+  /** 資料が 1 件以上見つかり、実際に作り直せるトピック数 */
+  topicCount: number;
+  /** 合計 AI 呼び出し回数（rebuildTopicFromSources は資料 1 本につき改訂 1 回） */
+  totalCalls: number;
+};
+
+/**
+ * 「資料から作り直す」の実行前に、対象トピックそれぞれの資料 id 列と、
+ * 合計 AI 呼び出し回数を計算する副作用なしの純粋関数。
+ * 新形式（topicMarkdown を持つ）は derivedFromNotes をそのまま資料とみなし、
+ * 旧形式はメンバー知見（derivedFromClaims）の derivedFromNotes の和を資料とみなす
+ * （重複除去）。getDoc はメンバー知見のドキュメント解決だけに使う（呼び出し側が
+ * キャッシュ／ロードのどちらでも注入できるよう同期・非同期どちらの戻りも許す）。
+ */
+export async function planTopicRebuild(
+  topics: TopicRebuildTarget[],
+  getDoc: (noteId: string) => Promise<GraphiumDocument | null | undefined> | GraphiumDocument | null | undefined,
+): Promise<TopicRebuildPlan> {
+  const items: TopicRebuildPlanItem[] = [];
+  for (const { id, doc } of topics) {
+    if (!doc.wikiMeta || doc.wikiMeta.kind !== "topic") continue;
+    const sourceIds = new Set<string>();
+    if (typeof doc.wikiMeta.topicMarkdown === "string") {
+      for (const sourceId of doc.wikiMeta.derivedFromNotes ?? []) sourceIds.add(sourceId);
+    } else {
+      for (const claimId of doc.wikiMeta.derivedFromClaims ?? []) {
+        const claimDoc = await getDoc(`wiki:${claimId}`);
+        for (const sourceId of claimDoc?.wikiMeta?.derivedFromNotes ?? []) sourceIds.add(sourceId);
+      }
+    }
+    if (sourceIds.size > 0) items.push({ topicId: id, sourceIds: [...sourceIds] });
+  }
+  return {
+    items,
+    topicCount: items.length,
+    totalCalls: items.reduce((sum, item) => sum + item.sourceIds.length, 0),
+  };
 }
 
 // ── 取り込み結果の判定（純関数）──

@@ -63,10 +63,11 @@ export {
 } from "./wiki-lint-badge";
 export {
   consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit,
-  runSourceTopicStage, rebuildTopicFromSources, isIngestInsufficient,
+  runSourceTopicStage, rebuildTopicFromSources, isIngestInsufficient, planTopicRebuild,
 } from "./topic-stage";
 export type {
   ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
   SourceTopicStageInput, SourceTopicStageResult, SourceTopicStageDeps,
   RebuildTopicFromSourcesResult, RebuildTopicFromSourcesDeps,
+  TopicRebuildTarget, TopicRebuildPlan, TopicRebuildPlanItem,
 } from "./topic-stage";

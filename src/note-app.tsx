@@ -326,6 +326,7 @@ import {
   mergeTopicsExplicit, normalizeTopicTitle,
   runSourceTopicStage, type SourceTopicStageInput, type SourceTopicStageResult,
   rebuildTopicFromSources,
+  planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
 } from "./features/wiki";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
@@ -10227,7 +10228,7 @@ export function NoteApp() {
   const regenerateWikiById = useCallback(async (
     wikiId: string,
     options?: { model?: string; openAfter?: boolean; signal?: AbortSignal },
-  ): Promise<{ ok: boolean; error?: string; aborted?: boolean }> => {
+  ): Promise<{ ok: boolean; error?: string; aborted?: boolean; sourcesSkipped?: number }> => {
     // AI 未設定なら発火させない（WikiBanner / 一覧 / Maintenance すべてここを通る）
     if (!ensureAgentConfigured()) {
       return { ok: false, error: tStatic("settings.aiNotConfigured") };
@@ -10418,7 +10419,7 @@ export function NoteApp() {
             i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: selectedModel ?? "default" } : i
           ),
         }));
-        return { ok: true };
+        return { ok: true, sourcesSkipped: rebuildResult.sourcesSkipped };
       } else if (isSummary) {
         // 要約(summary)の新規生成パイプラインは撤退（PR3）。話題(topic)が役割を引き継ぐ。
         // 既存 summary ファイルは閲覧・削除できるが regenerate は不可。
@@ -10663,6 +10664,56 @@ export function NoteApp() {
       return { ok: false, error: localizeAiError(err) };
     }
   }, [fm, capture.captureIndex]);
+
+  // 「資料から作り直す」実行前の確認ダイアログ（作業 C）。人が起動し、実行前に AI 呼び出し
+  // 回数を見せる方針のため、regenerateWikiById / 一括作り直しの手前でこれを必ず通す。
+  // ユーザーがキャンセルしたら false を返す。
+  const confirmTopicRebuild = useCallback(async (topicIds: string[]): Promise<boolean> => {
+    const targets: TopicRebuildTarget[] = [];
+    for (const id of topicIds) {
+      const doc = fm.getCachedDoc(`wiki:${id}`) ?? (await fm.loadDoc(`wiki:${id}`));
+      if (doc) targets.push({ id, doc });
+    }
+    const plan = await planTopicRebuild(targets, async (noteId) =>
+      fm.getCachedDoc(noteId) ?? (await fm.loadDoc(noteId)),
+    );
+    return window.confirm(
+      tStatic("topicRebuild.confirm", { count: String(topicIds.length), calls: String(plan.totalCalls) }),
+    );
+  }, [fm]);
+
+  // 旧形式トピックをまとめて資料から作り直す（手入れ画面の専用セクションから）。
+  // 確認は 1 回・呼び出しは 1 件ずつ順に（並列にすると LLM 呼び出しが輻輳するため）。
+  const rebuildTopicsFromSourcesBulk = useCallback(async (
+    topicIds: string[],
+  ): Promise<{ rebuilt: number; sourcesSkipped: number; failed: number } | null> => {
+    if (topicIds.length === 0) return { rebuilt: 0, sourcesSkipped: 0, failed: 0 };
+    if (!(await confirmTopicRebuild(topicIds))) return null;
+    let rebuilt = 0;
+    let sourcesSkipped = 0;
+    let failed = 0;
+    for (const id of topicIds) {
+      const result = await regenerateWikiById(id, { openAfter: false });
+      if (result.ok) {
+        rebuilt++;
+        sourcesSkipped += result.sourcesSkipped ?? 0;
+      } else {
+        failed++;
+      }
+    }
+    wikiLog.append(
+      "regenerate",
+      topicIds,
+      `Rebuilt ${rebuilt} legacy-format topic page(s) from sources (skipped ${sourcesSkipped} source(s), failed ${failed})`,
+    ).catch(() => {});
+    return { rebuilt, sourcesSkipped, failed };
+  }, [confirmTopicRebuild, regenerateWikiById]);
+
+  // 単体トピックの「資料から作り直す」（missing-source の手当て）。確認 → 実行のみ。
+  const rebuildTopicWikiWithConfirm = useCallback(async (wikiId: string): Promise<void> => {
+    if (!(await confirmTopicRebuild([wikiId]))) return;
+    await regenerateWikiById(wikiId, { openAfter: false });
+  }, [confirmTopicRebuild, regenerateWikiById]);
 
   // テーマ一覧の選択統合（バナー・一覧・点検が共通して使う）。
   // ユーザーが明示的に選んだ組を渡すだけなのでモデルは呼ばない
@@ -11891,6 +11942,21 @@ export function NoteApp() {
               return map;
             })()}
             onMergeTopics={async (keepId, absorbId) => { await mergeTopicsFromSelection(keepId, [absorbId]); }}
+            onRebuildTopicWiki={rebuildTopicWikiWithConfirm}
+            onRebuildTopicsFromSources={rebuildTopicsFromSourcesBulk}
+            legacyTopics={(() => {
+              // 旧形式（topicMarkdown を持たない）トピックの近似判定: メンバー知見
+              // （derivedFromClaims）を 1 件以上持つ topic。新形式はビルド時に常に空配列にする
+              // ため、Summary だけで判定できる（wiki-linter の detectMissingSourceIssues と同じ基準）。
+              const list: { id: string; title: string }[] = [];
+              for (const [id, meta] of fm.wikiMetas.entries()) {
+                if (fm.archivedIdSet.has(id)) continue;
+                if (meta?.kind === "topic" && (meta.derivedFromClaims?.length ?? 0) > 0) {
+                  list.push({ id, title: meta.title ?? id });
+                }
+              }
+              return list;
+            })()}
             sourceCheckProps={
               aiUiEnabled
                 ? {
@@ -12124,7 +12190,13 @@ export function NoteApp() {
                 onRegenerate={() => {
                   if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
                   const wikiId = fm.activeFileId.replace("wiki:", "");
-                  void regenerateWikiById(wikiId, { openAfter: true });
+                  const isTopic = fm.activeDoc.wikiMeta.kind === "topic";
+                  void (async () => {
+                    // トピックの再生成は資料から作り直す（rebuildTopicFromSources）ので、
+                    // 実行前に AI 呼び出し回数を見せて確認する（人が起動する方針）。
+                    if (isTopic && !(await confirmTopicRebuild([wikiId]))) return;
+                    void regenerateWikiById(wikiId, { openAfter: true });
+                  })();
                 }}
                 onDelete={() => {
                   if (!fm.activeFileId) return;

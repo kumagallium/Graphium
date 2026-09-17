@@ -10,6 +10,7 @@ import {
   type ExistingTopicForMerge, type ConsolidateExistingTopicsDeps,
   runSourceTopicStage, type SourceTopicStageDeps, type SourceTopicStageInput,
   rebuildTopicFromSources, type RebuildTopicFromSourcesDeps,
+  planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
 } from "./topic-stage";
 import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
@@ -594,6 +595,59 @@ describe("mergeTopicsExplicit", () => {
     const result = await mergeTopicsExplicit("t1", ["t1"], existingTopics, deps);
     expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 0 });
     expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("planTopicRebuild", () => {
+  it("新形式トピックは derivedFromNotes をそのまま資料とみなす", async () => {
+    const doc = makeSourceTopicDoc("トピック", "本文", ["note-1", "note-2"]);
+    const targets: TopicRebuildTarget[] = [{ id: "topic-1", doc }];
+    const plan = await planTopicRebuild(targets, async () => null);
+    expect(plan).toEqual({
+      items: [{ topicId: "topic-1", sourceIds: ["note-1", "note-2"] }],
+      topicCount: 1,
+      totalCalls: 2,
+    });
+  });
+
+  it("旧形式トピックはメンバー知見の derivedFromNotes の和を重複除去して資料とみなす", async () => {
+    const claimDocs = new Map<string, GraphiumDocument>();
+    const claimA = makeClaimDoc("claim-a", "知見A");
+    claimA.wikiMeta!.derivedFromNotes = ["note-1", "note-2"];
+    const claimB = makeClaimDoc("claim-b", "知見B");
+    claimB.wikiMeta!.derivedFromNotes = ["note-2", "note-3"];
+    claimDocs.set("wiki:claim-a", claimA);
+    claimDocs.set("wiki:claim-b", claimB);
+
+    const topicDoc = makeTopicDoc("topic-1", "トピック", ["claim-a", "claim-b"]);
+    const targets: TopicRebuildTarget[] = [{ id: "topic-1", doc: topicDoc }];
+    const plan = await planTopicRebuild(targets, async (id) => claimDocs.get(id) ?? null);
+    expect(plan.topicCount).toBe(1);
+    expect(plan.items[0].sourceIds.sort()).toEqual(["note-1", "note-2", "note-3"]);
+    expect(plan.totalCalls).toBe(3);
+  });
+
+  it("資料が 1 件も見つからないトピックは計画から除かれる", async () => {
+    const doc = makeSourceTopicDoc("トピック", "本文", []);
+    const plan = await planTopicRebuild([{ id: "topic-1", doc }], async () => null);
+    expect(plan).toEqual({ items: [], topicCount: 0, totalCalls: 0 });
+  });
+
+  it("topic 以外の kind は無視する", async () => {
+    const claimDoc = makeClaimDoc("claim-1", "知見");
+    const plan = await planTopicRebuild([{ id: "claim-1", doc: claimDoc }], async () => null);
+    expect(plan).toEqual({ items: [], topicCount: 0, totalCalls: 0 });
+  });
+
+  it("複数トピックの合計呼び出し回数を積み上げる", async () => {
+    const docA = makeSourceTopicDoc("トピックA", "本文", ["note-1"]);
+    const docB = makeSourceTopicDoc("トピックB", "本文", ["note-2", "note-3"]);
+    const plan = await planTopicRebuild(
+      [{ id: "topic-a", doc: docA }, { id: "topic-b", doc: docB }],
+      async () => null,
+    );
+    expect(plan.topicCount).toBe(2);
+    expect(plan.totalCalls).toBe(3);
   });
 });
 
