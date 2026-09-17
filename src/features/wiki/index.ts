@@ -41,6 +41,10 @@ export {
   linkClaimAndTopic, unlinkClaimFromTopic,
   composeTopicBody, buildTopicDocument, rebuildTopicDocument,
   type ExistingTopicRef, type TopicMatch, type TopicComposeClaim,
+  // Topic（新形式・資料を直接読む）
+  buildSourceTopicDocument, rebuildSourceTopicDocument, resolveSourceCitations, stripEmptyMarkdownSections,
+  routeTopicsForSource, reviseTopicFromSource,
+  type TopicSourceRef, type TopicRouteSource, type TopicRouteExistingRef,
 } from "./wiki-service";
 export type { ClaimSnapshot } from "../../server/services/wiki-types";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";
@@ -57,8 +61,13 @@ export {
   saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
   type LintBadgeSummary,
 } from "./wiki-lint-badge";
-export { runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit } from "./topic-stage";
+export {
+  runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit,
+  runSourceTopicStage, rebuildTopicFromSources,
+} from "./topic-stage";
 export type {
   TopicStageClaimInput, TopicStageResult, TopicStageDeps,
   ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
+  SourceTopicStageInput, SourceTopicStageResult, SourceTopicStageDeps,
+  RebuildTopicFromSourcesResult, RebuildTopicFromSourcesDeps,
 } from "./topic-stage";

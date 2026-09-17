@@ -7,6 +7,8 @@ import {
   runTopicStage, type TopicStageDeps, type TopicStageClaimInput,
   planExistingTopicMerges, consolidateExistingTopics, mergeTopicsExplicit,
   type ExistingTopicForMerge, type ConsolidateExistingTopicsDeps,
+  runSourceTopicStage, type SourceTopicStageDeps, type SourceTopicStageInput,
+  rebuildTopicFromSources, type RebuildTopicFromSourcesDeps,
 } from "./topic-stage";
 import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
 
@@ -268,6 +270,235 @@ describe("runTopicStage", () => {
     const result = await runTopicStage(claims, deps);
     expect(result).toMatchObject({ created: 0, updated: 0, failed: 0, withoutTopic: 1 });
     expect(deps.log).toHaveBeenCalled();
+  });
+});
+
+/** 新形式トピック（topicMarkdown あり）のテスト用ドキュメント */
+function makeSourceTopicDoc(title: string, topicMarkdown: string, sourceIds: string[]): GraphiumDocument {
+  const wikiMeta: WikiMeta = {
+    kind: "topic",
+    derivedFromNotes: sourceIds,
+    derivedFromChats: [],
+    derivedFromClaims: [],
+    topicMarkdown,
+    generatedAt: new Date().toISOString(),
+    generatedBy: { model: "test-model", version: "1.0.0" },
+  };
+  return {
+    version: 2,
+    title,
+    pages: [{ id: "main", title, blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+    source: "ai",
+    wikiMeta,
+    createdAt: new Date().toISOString(),
+    modifiedAt: new Date().toISOString(),
+  };
+}
+
+function makeSourceDeps(
+  overrides: Partial<SourceTopicStageDeps> = {},
+): { deps: SourceTopicStageDeps; docs: Map<string, GraphiumDocument> } {
+  const docs = new Map<string, GraphiumDocument>();
+  let nextId = 0;
+  const deps: SourceTopicStageDeps = {
+    loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+    getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+    handleSaveWikiFile: vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+      docs.set(`wiki:${wikiId}`, doc);
+      return true;
+    }),
+    handleCreateWikiFile: vi.fn(async (doc: GraphiumDocument) => {
+      const id = `new-topic-${nextId++}`;
+      docs.set(`wiki:${id}`, doc);
+      return id;
+    }),
+    existingTopicRefs: [],
+    locale: "ja",
+    resolveSource: vi.fn(async () => undefined),
+    log: vi.fn(),
+    ...overrides,
+  };
+  return { deps, docs };
+}
+
+describe("runSourceTopicStage", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("sources が 0 件なら何もしない", async () => {
+    const { deps } = makeSourceDeps();
+    const result = await runSourceTopicStage([], deps);
+    expect(result).toMatchObject({ created: 0, updated: 0, migrated: 0, failed: 0 });
+    expect(deps.loadDoc).not.toHaveBeenCalled();
+  });
+
+  it("route-topics が create を返せば新形式トピックを新規作成する", async () => {
+    const { deps } = makeSourceDeps();
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料タイトル", text: "資料本文" }];
+    const result = await runSourceTopicStage(sources, deps);
+
+    expect(result).toMatchObject({ created: 1, updated: 0, migrated: 0, failed: 0 });
+    expect(deps.handleCreateWikiFile).toHaveBeenCalledTimes(1);
+    const [createdDoc] = (deps.handleCreateWikiFile as any).mock.calls[0];
+    expect(createdDoc.wikiMeta.topicMarkdown).toContain("本文");
+    expect(createdDoc.wikiMeta.derivedFromNotes).toEqual(["note-1"]);
+    expect(result.touchedTopicIds).toEqual(result.createdTopics.map((t) => t.id));
+  });
+
+  it("route-topics が既存の新形式トピックを update に返せば前の本文込みで改訂する", async () => {
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [{ id: "topic-1", title: "既存トピック" }],
+      resolveSource: vi.fn(async (id: string) => (id === "note-0" ? { title: "旧資料", text: "旧資料の本文" } : undefined)),
+    });
+    docs.set("wiki:topic-1", makeSourceTopicDoc("既存トピック", "## 定義\n旧本文[[source:note-0]]", ["note-0"]));
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: ["topic-1"], create: [] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n新本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料1", text: "本文1" }];
+    const result = await runSourceTopicStage(sources, deps);
+
+    expect(result).toMatchObject({ created: 0, updated: 1, migrated: 0, failed: 0 });
+    const saved = docs.get("wiki:topic-1");
+    expect(saved?.wikiMeta?.topicMarkdown).toContain("新本文");
+    expect(saved?.wikiMeta?.derivedFromNotes?.sort()).toEqual(["note-0", "note-1"]);
+    expect(result.touchedTopicIds).toEqual(["topic-1"]);
+  });
+
+  it("旧形式（知見由来）トピックが update に選ばれたら新形式へ移行する", async () => {
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [{ id: "topic-1", title: "旧トピック" }],
+      resolveSource: vi.fn(async (id: string) => {
+        if (id === "old-note-1") return { title: "旧資料", text: "旧資料の本文" };
+        return undefined;
+      }),
+    });
+    docs.set("wiki:topic-1", makeTopicDoc("topic-1", "旧トピック", ["claim-1"]));
+    const claimDoc = makeClaimDoc("claim-1", "知見1");
+    claimDoc.wikiMeta!.derivedFromNotes = ["old-note-1"];
+    docs.set("wiki:claim-1", claimDoc);
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: ["topic-1"], create: [] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n組み直した本文" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "new-note-1", title: "新資料", text: "新資料の本文" }];
+    const result = await runSourceTopicStage(sources, deps);
+
+    expect(result).toMatchObject({ created: 0, updated: 1, migrated: 1, failed: 0 });
+    const saved = docs.get("wiki:topic-1");
+    expect(saved?.wikiMeta?.topicMarkdown).toBeDefined();
+    expect(saved?.wikiMeta?.derivedFromNotes).toEqual(["old-note-1", "new-note-1"]);
+  });
+
+  it("route-topics の呼び出し自体が失敗すれば failed に数える", async () => {
+    const { deps } = makeSourceDeps();
+    (global.fetch as any).mockImplementation(async () => ({ ok: false, status: 500, text: async () => "{}" }));
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料", text: "本文" }];
+    const result = await runSourceTopicStage(sources, deps);
+    expect(result).toMatchObject({ created: 0, updated: 0, failed: 1 });
+    expect(deps.log).toHaveBeenCalled();
+  });
+});
+
+describe("rebuildTopicFromSources", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("資料本文が取得できない id は飛ばして件数を返す", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "", []));
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n本文" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const resolveSource = vi.fn(async (id: string) => (id === "ok-note" ? { title: "資料", text: "本文" } : undefined));
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+        docs.set(`wiki:${wikiId}`, doc);
+        return true;
+      }),
+      resolveSource,
+      locale: "ja",
+      log: vi.fn(),
+    };
+
+    const result = await rebuildTopicFromSources("topic-1", ["missing-note", "ok-note"], deps);
+    expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1, sourcesSkipped: 1 });
+    expect(docs.get("wiki:topic-1")?.wikiMeta?.derivedFromNotes).toEqual(["ok-note"]);
+  });
+
+  it("どの資料も解決できなければ rebuilt: false", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "", []));
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async () => true),
+      resolveSource: vi.fn(async () => undefined),
+      locale: "ja",
+    };
+    const result = await rebuildTopicFromSources("topic-1", ["a", "b"], deps);
+    expect(result).toEqual({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 2 });
+  });
+
+  it("対象がトピックでなければ全件 skipped", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:claim-1", makeClaimDoc("claim-1", "知見"));
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async () => true),
+      resolveSource: vi.fn(async () => ({ title: "t", text: "x" })),
+      locale: "ja",
+    };
+    const result = await rebuildTopicFromSources("claim-1", ["a"], deps);
+    expect(result).toEqual({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 1 });
   });
 });
 
