@@ -9,6 +9,7 @@ import {
   type ExistingTopicForMerge, type ConsolidateExistingTopicsDeps,
   runSourceTopicStage, type SourceTopicStageDeps, type SourceTopicStageInput,
   rebuildTopicFromSources, type RebuildTopicFromSourcesDeps,
+  isIngestInsufficient,
 } from "./topic-stage";
 import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
 
@@ -390,6 +391,34 @@ describe("runSourceTopicStage", () => {
     expect(result.touchedTopicIds).toEqual(["topic-1"]);
   });
 
+  it("resolveSourceTitle があれば、過去の資料に対して resolveSource（全文取得）を呼ばない", async () => {
+    const resolveSource = vi.fn(async () => ({ title: "呼ばれてはいけない", text: "全文" }));
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [{ id: "topic-1", title: "既存トピック" }],
+      resolveSource,
+      resolveSourceTitle: vi.fn((id: string) => (id === "note-0" ? "軽量タイトル" : undefined)),
+    });
+    docs.set("wiki:topic-1", makeSourceTopicDoc("既存トピック", "## 定義\n旧本文[[source:note-0]]", ["note-0"]));
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: ["topic-1"], create: [] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n新本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料1", text: "本文1" }];
+    const result = await runSourceTopicStage(sources, deps);
+
+    expect(result).toMatchObject({ updated: 1, failed: 0 });
+    expect(resolveSource).not.toHaveBeenCalledWith("note-0");
+    const saved = docs.get("wiki:topic-1");
+    expect(saved?.wikiMeta?.derivedFromNotes?.sort()).toEqual(["note-0", "note-1"]);
+  });
+
   it("旧形式（知見由来）トピックが update に選ばれたら新形式へ移行する", async () => {
     const { deps, docs } = makeSourceDeps({
       existingTopicRefs: [{ id: "topic-1", title: "旧トピック" }],
@@ -693,5 +722,17 @@ describe("mergeTopicsExplicit", () => {
     const result = await mergeTopicsExplicit("t1", ["t1"], existingTopics, deps);
     expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 0 });
     expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("isIngestInsufficient", () => {
+  it("知見・トピックのどちらも 0 件なら true", () => {
+    expect(isIngestInsufficient(0, 0)).toBe(true);
+  });
+  it("知見が 1 件以上あれば false", () => {
+    expect(isIngestInsufficient(1, 0)).toBe(false);
+  });
+  it("知見が 0 件でもトピックが 1 件以上反映されていれば false", () => {
+    expect(isIngestInsufficient(0, 1)).toBe(false);
   });
 });

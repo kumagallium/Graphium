@@ -1,6 +1,6 @@
 export { WikiListView } from "./WikiListView";
 export { WikiLogView } from "./WikiLogView";
-export { WikiLintView } from "./WikiLintView";
+export { WikiLintView, type WikiLintTab } from "./WikiLintView";
 export { WikiBanner, WikiContextDrawer } from "./WikiBanner";
 export { KnowledgeStatusChip } from "./KnowledgeStatusChip";
 export {
@@ -63,7 +63,7 @@ export {
 } from "./wiki-lint-badge";
 export {
   runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit,
-  runSourceTopicStage, rebuildTopicFromSources,
+  runSourceTopicStage, rebuildTopicFromSources, isIngestInsufficient,
 } from "./topic-stage";
 export type {
   TopicStageClaimInput, TopicStageResult, TopicStageDeps,

@@ -510,6 +510,11 @@ export type SourceTopicStageResult = {
   updated: number;
   /** 旧形式（知見由来）から新形式へ移行した話題ページ数（updated の内数） */
   migrated: number;
+  /**
+   * 移行時に読めなかった資料の延べ件数（ゴミ箱・未検出等。rebuildTopicFromSources の
+   * sourcesSkipped の合計）。黙って捨てず、トーストで件数として伝える。
+   */
+  migratedSourcesSkipped: number;
   /** 振り分け・改訂に失敗した件数 */
   failed: number;
   /** この実行で新規作成した話題（呼び出し側が並行実行の既存一覧に引き継ぐ） */
@@ -540,6 +545,13 @@ export type SourceTopicStageDeps = {
    * — 呼び出し側（rebuildTopicFromSources）はそれを件数として数え、黙って握り潰さない。
    */
   resolveSource: (sourceId: string) => Promise<{ title: string; text: string } | undefined>;
+  /**
+   * 資料 id からタイトルだけを解決する（全文は不要な場面用）。既存の参照先タイトルを
+   * 引ける索引（出典照合の resolveSourceCheckTitles 相当）を呼び出し側が注入する想定。
+   * 未指定・解決不能なら resolveSource（全文取得を伴う）へフォールバックする —
+   * 改訂のたびに過去の資料本文（PDF 抽出等）を読み直すコストを避けるための経路。
+   */
+  resolveSourceTitle?: (sourceId: string) => string | undefined;
   onTopicSaved?: (
     topicId: string,
     doc: GraphiumDocument,
@@ -551,19 +563,26 @@ export type SourceTopicStageDeps = {
 
 /**
  * 資料 id の列から TopicSourceRef（id + title）を集める。knownSource と一致する id は
- * 全文を再取得せずタイトルだけそのまま使う。解決できない id は結果から静かに落ちる
- * （本文中の [[source:id]] 引用自体は resolveSourceCitations のフォールバックで
- * 文字列として残るため、参照そのものが消えるわけではない）。
+ * 全文を再取得せずタイトルだけそのまま使う。それ以外はまず resolveSourceTitle（軽量・
+ * 全文を読まない）を試し、無い／解決できないときだけ resolveSource（全文取得を伴う）に
+ * フォールバックする。解決できない id は結果から静かに落ちる（本文中の [[source:id]]
+ * 引用自体は resolveSourceCitations のフォールバックで文字列として残るため、参照そのものが
+ * 消えるわけではない）。
  */
 async function collectSourceRefs(
   ids: string[],
-  deps: Pick<SourceTopicStageDeps, "resolveSource">,
+  deps: Pick<SourceTopicStageDeps, "resolveSource" | "resolveSourceTitle">,
   knownSource?: SourceTopicStageInput,
 ): Promise<TopicSourceRef[]> {
   const refs: TopicSourceRef[] = [];
   for (const id of ids) {
     if (knownSource && id === knownSource.id) {
       refs.push({ id, title: knownSource.title });
+      continue;
+    }
+    const titleOnly = deps.resolveSourceTitle?.(id);
+    if (titleOnly) {
+      refs.push({ id, title: titleOnly });
       continue;
     }
     const resolved = await deps.resolveSource(id);
@@ -584,6 +603,7 @@ export async function runSourceTopicStage(
     created: 0,
     updated: 0,
     migrated: 0,
+    migratedSourcesSkipped: 0,
     failed: 0,
     createdTopics: [],
     touchedTopicIds: [],
@@ -672,6 +692,7 @@ export async function runSourceTopicStage(
               log: deps.log,
             },
           );
+          result.migratedSourcesSkipped += migrateResult.sourcesSkipped;
           if (migrateResult.rebuilt && migrateResult.doc) {
             deps.onTopicSaved?.(topicId, migrateResult.doc, source.id, "migrate");
             result.migrated++;
@@ -751,6 +772,12 @@ export type RebuildTopicFromSourcesDeps = {
   ) => Promise<boolean | void>;
   /** 資料 id から「タイトル + 全文」を解決する。読めない資料は undefined（ゴミ箱・未検出等） */
   resolveSource: (sourceId: string) => Promise<{ title: string; text: string } | undefined>;
+  /**
+   * 資料 id からタイトルだけを解決する（collectSourceRefs / SourceTopicStageDeps と同じ形。
+   * このロジック自体は毎回 resolveSource で全文を読む必要があるため直接は使わないが、
+   * 呼び出し側の deps を SourceTopicStageDeps と揃えられるよう受け口だけ用意しておく）。
+   */
+  resolveSourceTitle?: (sourceId: string) => string | undefined;
   noteIndex?: NoteIndex;
   locale: string;
   model?: string;
@@ -813,4 +840,17 @@ export async function rebuildTopicFromSources(
     sources: usedRefs.map((r) => r.id),
   });
   return { rebuilt: true, doc: rewritten, sourcesUsed: usedRefs.length, sourcesSkipped: skipped };
+}
+
+// ── 取り込み結果の判定（純関数）──
+// note-app.tsx の各取り込み経路が「知見 0 件 = insufficientContent」を判定するのに使う。
+// トピックは知見の有無に関係なく資料から作られるため、知見が 0 件でもトピックの
+// 作成・改訂・移行のいずれかが 1 件でもあれば「反映された」とみなし、失敗にしない。
+
+/**
+ * 知見（wiki）件数とトピック段で反映できた件数から、取り込み全体を「反映なし」
+ * （insufficientContent）とみなすべきかを判定する。
+ */
+export function isIngestInsufficient(wikisCount: number, topicsTouchedCount: number): boolean {
+  return wikisCount <= 0 && topicsTouchedCount <= 0;
 }
