@@ -585,6 +585,8 @@ export const ja: Record<string, string> = {
   "settings.maintenance.total": "全ナレッジ",
   "settings.maintenance.regenerate": "一括再生成を実行",
   "settings.maintenance.running": "実行中...",
+  "settings.maintenance.aiCalls": "AI 呼び出し",
+  "settings.maintenance.confirmWithCalls": "{count} 件のナレッジを再生成します。トピックは資料から作り直すため、AI の呼び出しは合計 {calls} 回です。続行しますか？",
   "settings.maintenance.confirm": "{count} 件のナレッジを再生成します。LLM 呼び出しが発生し、コストとトークン消費があります。続行しますか？",
   "settings.maintenance.failed": "失敗",
   "settings.maintenance.cancelling": "キャンセル中...",

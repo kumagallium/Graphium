@@ -10715,6 +10715,39 @@ export function NoteApp() {
     await regenerateWikiById(wikiId, { openAfter: false });
   }, [confirmTopicRebuild, regenerateWikiById]);
 
+  // 設定 → メンテナンスの一括再生成が「実行前に AI 呼び出し回数を表示」できるよう、
+  // 対象 id 列から実際に発生する呼び出し回数を見積もる（同期。modal は doc を持たないため
+  // note-app 側から注入する）。トピック以外は 1 件 1 回（既存の再生成の実態どおり）、
+  // トピックは資料から作り直すため資料件数ぶん呼ぶ（rebuildTopicFromSources は資料 1 本に
+  // つき改訂 1 回）。doc がまだキャッシュに無いトピックは 1 回として見積もる保守的な下限
+  // （実行時に fm.loadDoc で確定するため、見積もりは目安）。
+  const estimateRegenerateCalls = useCallback((ids: string[]): number => {
+    let total = 0;
+    for (const id of ids) {
+      const meta = fm.wikiMetas.get(id);
+      if (meta?.kind !== "topic") {
+        total += 1;
+        continue;
+      }
+      const doc = fm.getCachedDoc(`wiki:${id}`);
+      if (!doc?.wikiMeta) {
+        total += 1;
+        continue;
+      }
+      const sourceIds = new Set<string>();
+      if (typeof doc.wikiMeta.topicMarkdown === "string") {
+        for (const sid of doc.wikiMeta.derivedFromNotes ?? []) sourceIds.add(sid);
+      } else {
+        for (const claimId of doc.wikiMeta.derivedFromClaims ?? []) {
+          const claimDoc = fm.getCachedDoc(`wiki:${claimId}`);
+          for (const sid of claimDoc?.wikiMeta?.derivedFromNotes ?? []) sourceIds.add(sid);
+        }
+      }
+      total += sourceIds.size > 0 ? sourceIds.size : 1;
+    }
+    return total;
+  }, [fm]);
+
   // テーマ一覧の選択統合（バナー・一覧・点検が共通して使う）。
   // ユーザーが明示的に選んだ組を渡すだけなのでモデルは呼ばない
   // （mergeTopicsExplicit → applyTopicMerges）。
@@ -12791,6 +12824,7 @@ export function NoteApp() {
         }}
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}
+        estimateRegenerateCalls={estimateRegenerateCalls}
         onRunAtomizeDiscovery={runAtomizeDiscovery}
         onPlanAtomizeDiscovery={planAtomizeDiscovery}
         onReembedAllWikis={async (onProgress) => {

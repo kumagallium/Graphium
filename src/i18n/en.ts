@@ -585,6 +585,8 @@ export const en: Record<string, string> = {
   "settings.maintenance.total": "Total Knowledge",
   "settings.maintenance.regenerate": "Run bulk regenerate",
   "settings.maintenance.running": "Running...",
+  "settings.maintenance.aiCalls": "AI calls",
+  "settings.maintenance.confirmWithCalls": "Regenerate {count} Knowledge page(s)? Topics are rebuilt from their sources, so this issues {calls} AI call(s) in total. Continue?",
   "settings.maintenance.confirm": "Regenerate {count} Knowledge page(s)? This will issue LLM calls and incur cost / token usage. Continue?",
   "settings.maintenance.failed": "failed",
   "settings.maintenance.cancelling": "Cancelling...",

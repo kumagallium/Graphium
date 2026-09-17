@@ -259,6 +259,13 @@ type SettingsModalProps = {
   wikiSummaries?: WikiSummaryForSettings[];
   /** Maintenance タブから 1 件ずつ呼ばれる再生成ハンドラ */
   onRegenerateWiki?: RegenerateWikiHandler;
+  /**
+   * 一括再生成の対象 id 列から、実際に発生する AI 呼び出し回数を見積もる（作業 C フォロー）。
+   * トピック以外は 1 件 1 回（既存の再生成の実態どおり）、トピックは資料から作り直すため
+   * 資料件数ぶん呼ぶ（rebuildTopicFromSources は資料 1 本につき改訂 1 回）。
+   * modal は doc を持たないため note-app 側から注入する。未指定なら件数と同じとみなす。
+   */
+  estimateRegenerateCalls?: (ids: string[]) => number;
   /** Maintenance タブの「Atom を発見」ハンドラ（atomLayer 有効時のみ表示）。
    *  全 Concept を見渡し、複数 Concept にまたがる共通抽象を auto-loop で発見する。 */
   onRunAtomizeDiscovery?: DiscoveryHandler;
@@ -272,7 +279,7 @@ type SettingsModalProps = {
   onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -3699,6 +3706,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               t={t}
               wikiSummaries={wikiSummaries ?? []}
               onRegenerateWiki={onRegenerateWiki}
+              estimateRegenerateCalls={estimateRegenerateCalls}
               onRunAtomizeDiscovery={onRunAtomizeDiscovery}
               onPlanAtomizeDiscovery={onPlanAtomizeDiscovery}
               /* 知見(claims) が OFF のときは洞察も作れないため、手入れ画面の「知見をまたぐ洞察を発見」も隠す
@@ -3774,6 +3782,7 @@ type MaintenanceTabProps = {
   t: (key: string, params?: Record<string, string>) => string;
   wikiSummaries: WikiSummaryForSettings[];
   onRegenerateWiki?: RegenerateWikiHandler;
+  estimateRegenerateCalls?: (ids: string[]) => number;
   onRunAtomizeDiscovery?: DiscoveryHandler;
   onPlanAtomizeDiscovery?: PlanDiscoveryHandler;
   atomLayerEnabled: boolean;
@@ -3803,6 +3812,7 @@ function MaintenanceTab({
   t,
   wikiSummaries,
   onRegenerateWiki,
+  estimateRegenerateCalls,
   onRunAtomizeDiscovery,
   onPlanAtomizeDiscovery,
   atomLayerEnabled,
@@ -3856,6 +3866,12 @@ function MaintenanceTab({
     () => wikiSummaries.filter((w) => bulkKinds.has(w.kind)),
     [wikiSummaries, bulkKinds],
   );
+  // 対象に含まれる AI 呼び出し回数の見積もり（トピックは資料から作り直すため資料数ぶん呼ぶ）。
+  // 未指定なら件数と同じとみなす（既存の「1 件 1 回」実態のフォールバック）。
+  const estimatedCalls = useMemo(
+    () => estimateRegenerateCalls ? estimateRegenerateCalls(targets.map((w) => w.id)) : targets.length,
+    [targets, estimateRegenerateCalls],
+  );
 
   const toggleKind = (k: WikiKind) => {
     const next = new Set(bulkKinds);
@@ -3866,7 +3882,16 @@ function MaintenanceTab({
 
   const runRegenerate = async (items: { id: string; title: string }[]) => {
     if (!onRegenerateWiki || bulkRunning || items.length === 0) return;
-    const confirmMsg = t("settings.maintenance.confirm").replace("{count}", String(items.length));
+    // 対象にトピックが 1 件以上含まれるときだけ、AI 呼び出し回数を見せる確認に切り替える
+    // （トピックは資料から作り直すため 1 件で資料数ぶん呼ぶ — 実行前に必ず見せる方針）。
+    const itemKindById = new Map(wikiSummaries.map((w) => [w.id, w.kind]));
+    const hasTopic = items.some((i) => itemKindById.get(i.id) === "topic");
+    const confirmMsg = hasTopic
+      ? t("settings.maintenance.confirmWithCalls", {
+          count: String(items.length),
+          calls: String(estimateRegenerateCalls ? estimateRegenerateCalls(items.map((i) => i.id)) : items.length),
+        })
+      : t("settings.maintenance.confirm").replace("{count}", String(items.length));
     if (!window.confirm(confirmMsg)) return;
 
     setBulkRunning(true);
@@ -4233,7 +4258,7 @@ function MaintenanceTab({
         </p>
       </div>
 
-      {/* 対象件数 */}
+      {/* 対象件数 + AI 呼び出し回数（トピックを含むと資料数ぶん増える） */}
       <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
         <div className="text-xs">
           <span className="font-semibold text-foreground">
@@ -4241,6 +4266,9 @@ function MaintenanceTab({
           </span>
           <span className="text-muted-foreground ml-2">
             / {t("settings.maintenance.total")}: {wikiSummaries.length}
+          </span>
+          <span className="text-muted-foreground ml-2">
+            / {t("settings.maintenance.aiCalls")}: {estimatedCalls}
           </span>
         </div>
       </div>
