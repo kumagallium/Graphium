@@ -42,7 +42,7 @@ Other routes into knowledge:
 
 | From | How |
 |---|---|
-| Note list | Select multiple notes, then **Add 3 to Knowledge**. A **Knowledge** column shows which notes are already in |
+| Note list | Select multiple notes, then **Add 3 to Knowledge**. A **Knowledge** column shows which notes are already in. Notes already in knowledge and unchanged since are dropped automatically here (not when adding a single note from its header) |
 | [Materials](/materials-and-citations) | Select URLs / PDFs in the gallery, then **Add 3 to Knowledge**; memos can be ingested directly too |
 | [AI chat](/ai-chat-and-ask) | **Make Knowledge** on an answer (see below) |
 | The Composer (`⌘K`, `Ctrl+K` on Windows/Linux) | The **Add this note to Knowledge** suggestion card |

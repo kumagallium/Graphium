@@ -61,6 +61,7 @@ export {
   saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
   type LintBadgeSummary,
 } from "./wiki-lint-badge";
+export { lastIngestedAtForSource, shouldSkipUnchangedSource } from "./ingest-skip";
 export {
   consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit,
   runSourceTopicStage, rebuildTopicFromSources, isIngestInsufficient, planTopicRebuild,
