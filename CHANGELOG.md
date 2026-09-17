@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.77.0](https://github.com/kumagallium/Graphium/compare/v0.76.7...v0.77.0) - 2026-09-17
+
+- feat(source-check): check that claims and topic points are written in their cited sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/964
+
 ## [v0.76.7](https://github.com/kumagallium/Graphium/compare/v0.76.6...v0.76.7) - 2026-09-16
 
 - fix(settings): stop the usage tab from crashing in the settings modal stories by @kumagallium in https://github.com/kumagallium/Graphium/pull/961
