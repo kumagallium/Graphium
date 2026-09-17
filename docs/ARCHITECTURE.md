@@ -1064,6 +1064,169 @@ sedimented entries that the model produced (seed entries are read-only
 from the UI; editing them requires changing `seed.v1.json` through a
 PR).
 
+**Source check — a client-driven verification lane, run manually or
+auto-triggered opt-in.** Where world-model grounding asks whether a claim
+holds up against outside knowledge, source check asks a narrower
+question: does the *source the statement itself cites* actually say
+this? It is neither part of ingest nor of lint — it is its own
+client-driven pipeline (`src/features/source-check/`), run over
+already-existing claims and topics rather than at creation time.
+**Insights are never checked** — an insight generalizes across several
+claims, so there is no single source text to hold it against.
+
+- **A claim's statement is the whole claim; a topic's statements are its
+  citing blocks, matched by exact text — not just by link.** For a claim
+  the statement is its title + body and its sources are
+  `derivedFromNotes`, unchanged from v1. For a topic
+  (`extractTopicStatements` in
+  `src/features/source-check/topic-statements.ts`), every body block
+  *before* the `References` heading (`buildTopicReferenceBlocks`, §3.3
+  above) that cites one or more of the topic's `derivedFromClaims`
+  becomes its own statement — the block's plain text with the citation
+  stripped — and its sources are the claims that block cites, addressed
+  with a synthetic `claim:<wikiId>` id
+  (`src/features/source-check/claim-source-id.ts`) that never appears in
+  `derivedFromNotes` and is not added to the shared external-source
+  prefix list, so lineage, graph, and PROV export readers are unaffected.
+  A citation is recognized by the union of four exact-match rules against
+  a title → claim-id map built from the `References` rows, never by
+  guessing: (a) the block's `knowledgeLinks` entry of `type: "reference"`
+  (the original, link-based form); (b) an inline text element that,
+  trimmed and stripped of a leading `@`/`🤖`/whitespace, exactly matches a
+  References title — needed because a topic body can carry the cited
+  claim's title as **plain text with no link**, immediately following the
+  sentence it supports; (c) the block's plain text ending in a References
+  title, as a fallback for citations merged into a single text run; (d) an
+  unresolved `[[claim:<id>]]` token whose id is in `derivedFromClaims`.
+  Without rule (b), every topic sentence that cites its source as plain
+  trailing text — the common real-world shape — was wrongly recorded as
+  "not recorded". A block with no such citation is not checked at all. Two shapes of
+  "cannot be checked" are recorded without an LLM call, not silently
+  skipped: a claim adopted from a Cmd-K answer
+  (`src/features/source-check/ai-answer.ts` detects
+  `generatedBy.sessionId` starting with `verb-suggestion-`, since
+  `buildVerbSuggestionDocument` in
+  `src/features/composer/verb-suggestion-doc.ts` never stores the answer
+  text itself, so diffing against the note where it was shown would
+  wrongly read as "not in source") resolves straight to
+  `missingReason: "ai-answer"`; a claim with an empty `derivedFromNotes`
+  or a topic with no citing block resolves to `"not-recorded"`.
+- **Retrieving the original text depends on the source kind**
+  (`resolveSourceText`, `src/features/source-check/resolve-source-text.ts`):
+  a plain-note id re-reads the note's current body, split into per-block
+  text so a verified quote can be traced back to one block; `pdf:` /
+  `document:` ids re-read the asset's bytes and re-run the **same**
+  extractor ingest uses (`pdf-text-extractor`, `mammoth.extractRawText`)
+  rather than trusting any cached extraction; `claim:` ids (topic sources)
+  re-read the cited claim's current title + body the same way a claim
+  checks its own text, and resolve to `deleted` if the claim is trashed,
+  archived, or gone; `memo:` ids read the capture text directly; `chat:`
+  ids carry no reference key back to the conversation that produced them,
+  so they resolve to `source-missing` / `no-reference` without attempting
+  anything. **`url:` ids always re-fetch** through the existing
+  `/api/wiki/fetch-url` path rather than reading a stored copy: the
+  `resolveSourceText` contract has a `loadStoredUrlText` slot for a
+  stored-original fast path, but the client wiring
+  (`src/features/source-check/use-source-check.ts`) has no index from a URL back to the
+  note that stored its fetched text (`sourceTextFileId` lives on the
+  individual note, not mirrored into `mediaIndex`), so that slot is left
+  unset and every `url:` source check re-fetches the URL fresh and
+  compares against whatever came back at that moment. None of these
+  readers impose a new size limit — ingest does not cap note, PDF, or
+  Word body length either, so source check re-reads exactly what ingest
+  would have seen.
+- **One call judges one source against every statement that cites it,
+  claims and topics combined.** `planSourceCheck`
+  (`src/features/source-check/plan.ts`) groups the statements being
+  checked (built by `buildSourceCheckStatements` /
+  `src/features/source-check/build-statements.ts`) by source id — a
+  claim's `derivedFromNotes` entry or a topic block's `claim:` id alike
+  — so a source shared by several claims, several topic sentences, or
+  both ends up in one group. `runSourceCheck`
+  (`src/features/source-check/run.ts`) walks the resulting groups
+  sequentially — no concurrency constant, matching the "no new numeric
+  limits" rule above — resolving each source's text and then, if any text
+  came back, sending it once to `POST /api/wiki/check-sources` with the
+  full list of statements that depend on it, `${docId}#${statementId}` as
+  each statement's unit id. This mirrors the unit ingest already uses
+  (one source, every claim it produced, in one call).
+- **A document's result is written only once every statement×source pair
+  it has is processed.** If a run is interrupted — the caller aborts, or
+  the API degrades partway — a claim, or a topic with even one unprocessed
+  statement, is left out of the result entirely rather than being written
+  with a partial `entries[]`; `runSourceCheck` reports whether the run was
+  `interrupted` so the caller can retry.
+- **Quote verification happens on the server before the client ever sees
+  it.** `POST /api/wiki/check-sources`
+  (`src/server/routes/wiki.ts` → `src/server/services/source-check.ts`)
+  builds one prompt per source (the closing `</source-text>` delimiter is
+  neutralized against injection from the source text itself), parses the
+  model's JSON, and runs `applyQuoteVerification` against the exact source
+  text before returning — a `quote` that cannot be found verbatim in the
+  source downgrades `supported` / `contradicted` to `unclear` server-side,
+  so the client never has to trust an unverified quote. The client then
+  separately maps a verified quote to a `blockId`
+  (`findBlockIdForQuote`, `src/features/source-check/quote-match.ts`) when
+  it lands inside exactly one note block.
+- **Model and degrade.** The route resolves a model the same way chat and
+  full lint do — the chat-synthesis model slot, not a dedicated
+  `groundingModel` slot — and responds `{ result: null, code }` when no
+  model is registered or the call fails. Unlike world-grounding, which can
+  degrade a single item to a `checkedAt`-only record, `SourceCheckVerdict`
+  has no "could not judge" value it would be safe to persist, so
+  `runSourceCheck` treats a degrade as a reason to stop the whole run
+  rather than write a wrong verdict.
+- **Body-rewriting stages drop stale results.** `mergeIntoWikiDocument`,
+  `rewriteAndMerge`, `applyCrossUpdate`, and `rebuildTopicDocument`
+  (§3.3 above, `src/features/wiki/wiki-service.ts`) all replace
+  `pages[0].blocks`, so each clears any existing `sourceCheck` rather than
+  let a judgment outlive the text it was checked against — which also
+  means a body-rewriting ingest makes the document eligible for automatic
+  source check again (below), since "no result" is exactly the trigger
+  condition. See [DATA_MODEL.md §3.8](./DATA_MODEL.md) for the
+  `sourceCheck` schema, the verdict-aggregation and quote rules, and the
+  `WikiMetaSummary` mirror.
+- Each run logs to `wiki-log` under the `source-check` event type.
+- **Automatic source check is opt-in and event-driven, off by default.**
+  `useAutoSourceCheck`
+  (`src/features/source-check/use-auto-source-check.ts`) mirrors
+  `useAutoGrounding`'s shape: it reacts to changes in `wikiMetas` rather
+  than polling, picks the first claim or topic whose
+  `WikiMetaSummary.sourceCheckVerdict` mirror is absent
+  (`pickNextUncheckedSource`), and checks it through the same `runOne`
+  path a manual single check uses, one source call at a time. It never
+  runs while a manual single or batch check is already running — `runOne`
+  shares the same `runningRef` exclusion guard, so the hook only needs to
+  skip its own scheduling while `busy`. A hard failure (the check call
+  rejects) is remembered for the session so the hook does not hot-loop
+  retrying the same id; a successful check naturally drops out of the
+  pick list once `sourceCheckVerdict` is set. The toggle is
+  `ExperimentalSettings.autoSourceCheck` (`src/features/settings/store.ts`),
+  placed directly under the auto-grounding toggle in Settings → AI → World
+  grounding, off by default like `autoGrounding`.
+- **The upkeep view groups Check and Source check as tabs, and keeps a
+  needs-review list instead of hiding anything.** `WikiLintView.tsx`
+  renders `wikiLint.tabs.check` (the existing Quick/Full lint) and
+  `wikiLint.tabs.sourceCheck` (`SourceCheckLintSection.tsx`, the
+  target/scope/plan/run flow above) as two tabs under one "Knowledge
+  upkeep" header (sidebar label "Upkeep"); both share the same centered
+  start state. Claims and topics whose latest verdict is `contradicted`
+  or `not-in-source` are **never removed from the Knowledge list
+  automatically** — an AI verdict can be wrong, the app promises no hidden
+  filters (see the FAQ), and a hidden claim would still silently feed
+  topics and chat. Instead `buildNeedsReviewList`
+  (`src/features/source-check/needs-review.ts`, a pure function over the
+  same `WikiMetaSummary` mirror) orders them contradicted-first, then
+  not-in-source, and `SourceCheckReviewList.tsx` renders that as a
+  standing panel in the Source check tab with per-row **open**,
+  **confirm** (dismiss), **archive**, and **re-check**, plus a checkbox
+  multi-select **bulk archive**. Archiving here is the same reversible
+  archive as everywhere else, so what disappears from the list is always
+  a decision the user made, not one the verdict made for them. The
+  Knowledge list itself gets an off-by-default **Needs review only**
+  filter (`WikiListView.tsx`, backed by the same `isNeedsReviewVerdict`
+  predicate) for claims and topics.
+
 **Idea authoring (Cmd-K Composer).** Ideas are produced through the
 Cmd-K Composer flow rather than a server-side pipeline. The user
 selects the Insights they want to weave, builds a citation note, and

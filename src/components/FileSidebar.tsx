@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -689,7 +689,7 @@ export function FileSidebar({
                         : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
                     }`}
                   >
-                    <ShieldCheck size={12} />
+                    <Scissors size={12} />
                     <span>{t("sidebar.wikiLint")}</span>
                     {wikiLintBadge && wikiLintBadge.count > 0 && (
                       <span className={`text-xs ${wikiLintBadge.hasError ? "text-error" : "text-muted-foreground"}`}>

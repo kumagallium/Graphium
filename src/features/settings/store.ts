@@ -293,6 +293,12 @@ export type ExperimentalSettings = {
    * 既定 OFF。コストはユーザーの新規性レートに収束する（使うほど KB ヒットが増える）。
    */
   autoGrounding: boolean;
+  /**
+   * 自動出典照合（opt-in / 既定 OFF）。
+   * ON のとき、まだ出典照合していない知見・トピックを background で1件ずつ照合する。
+   * autoGrounding と同じ作り（イベント駆動・直列・デバウンス・既定 OFF）。
+   */
+  autoSourceCheck: boolean;
 };
 
 /**
@@ -412,6 +418,7 @@ const DEFAULT_SETTINGS: Settings = {
     atomLayer: false,
     synthesis: false,
     autoGrounding: false,
+    autoSourceCheck: false,
   },
   features: {
     insights: false,
@@ -602,6 +609,7 @@ export function loadSettings(): Settings {
         // Synthesis は Atom 依存のため、atomLayer OFF なら強制的に OFF とする
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
         autoGrounding: typeof exp?.autoGrounding === "boolean" ? exp.autoGrounding : false,
+        autoSourceCheck: typeof exp?.autoSourceCheck === "boolean" ? exp.autoSourceCheck : false,
       },
       // ここに来るのは保存済み設定が存在するケース（raw が無ければ関数の先頭で
       // DEFAULT_SETTINGS を返しており、その features は false/false）。

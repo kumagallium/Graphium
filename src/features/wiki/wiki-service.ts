@@ -11,6 +11,7 @@ import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmb
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { t } from "../../i18n";
+import { attachSourceCheck } from "../source-check/attach";
 
 import type { GraphiumIndex } from "../navigation";
 
@@ -309,7 +310,9 @@ export function mergeIntoWikiDocument(
     ...new Set([...(existingDoc.wikiMeta?.derivedFromNotes ?? []), sourceNoteId]),
   ];
 
-  return {
+  // 本文（pages[0].blocks）を書き換えるため、古い出典照合の判定は引き継がない
+  // （仕様: 本文を作り直す merge/regenerate 系は sourceCheck を引き継がない）。
+  return attachSourceCheck({
     ...existingDoc,
     pages: [{
       ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
@@ -331,7 +334,7 @@ export function mergeIntoWikiDocument(
       model: model ?? existingDoc.generatedBy?.model ?? undefined,
     },
     modifiedAt: now,
-  };
+  }, undefined);
 }
 
 /**
@@ -420,7 +423,9 @@ export async function rewriteAndMerge(
       ...new Set([...(existingDoc.wikiMeta?.derivedFromNotes ?? []), sourceNoteId]),
     ];
 
-    return {
+    // 本文（pages[0].blocks）を書き換えるため、古い出典照合の判定は引き継がない
+    // （仕様: 本文を作り直す merge/regenerate 系は sourceCheck を引き継がない）。
+    return attachSourceCheck({
       ...existingDoc,
       pages: [{
         ...page,
@@ -442,7 +447,7 @@ export async function rewriteAndMerge(
         model: model ?? existingDoc.generatedBy?.model ?? undefined,
       },
       modifiedAt: now,
-    };
+    }, undefined);
   } catch (err) {
     console.warn("Rewrite failed:", err);
     return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
@@ -1033,7 +1038,7 @@ export function extractPlainTextFromDoc(doc: GraphiumDocument): string {
   return lines.join("\n");
 }
 
-function extractBlockText(block: any): string {
+export function extractBlockText(block: any): string {
   let text = extractInlineText(block.content);
   if (text) return text;
 
@@ -1527,7 +1532,9 @@ export async function applyCrossUpdate(
     ...new Set([...(existingDoc.wikiMeta?.derivedFromNotes ?? []), sourceNoteId]),
   ];
 
-  return {
+  // 本文（pages[0].blocks）を書き換えるため、古い出典照合の判定は引き継がない
+  // （仕様: 本文を作り直す merge/regenerate 系は sourceCheck を引き継がない）。
+  return attachSourceCheck({
     ...existingDoc,
     pages: [{
       ...page,
@@ -1545,7 +1552,7 @@ export async function applyCrossUpdate(
       model: model ?? existingDoc.generatedBy?.model ?? undefined,
     },
     modifiedAt: now,
-  };
+  }, undefined);
 }
 
 /**
@@ -2724,7 +2731,9 @@ export function rebuildTopicDocument(
   const refs = buildTopicReferenceBlocks(memberClaims);
   const page = existingDoc.pages[0];
 
-  return {
+  // 本文（pages[0].blocks）を書き換えるため、古い出典照合の判定は引き継がない
+  // （仕様: 本文を作り直す merge/regenerate 系は sourceCheck を引き継がない）。
+  return attachSourceCheck({
     ...existingDoc,
     pages: [{
       ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
@@ -2747,7 +2756,7 @@ export function rebuildTopicDocument(
       model: model ?? existingDoc.generatedBy?.model ?? undefined,
     },
     modifiedAt: now,
-  };
+  }, undefined);
 }
 
 /**

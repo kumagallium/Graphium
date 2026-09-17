@@ -3,7 +3,9 @@
 // PR-B6 (v1): 検出だけでなく Fix アクション（Regenerate / Archive / Open）も提供。
 // AI ナレッジ層では AI が主導権を握ってよいが、実行はユーザーのボタン押下時のみ。
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, SetStateAction } from "react";
+import { useRangeSelect } from "../../hooks/use-range-select";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -18,9 +20,11 @@ import {
   Clock,
   Archive as ArchiveIcon,
   ExternalLink,
+  Scissors,
 } from "lucide-react";
 import type { LintReport, LintIssue, LintIssueType, LintSeverity } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
+import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 
 type Props = {
   report: LintReport | null;
@@ -51,6 +55,11 @@ type Props = {
    * （呼び出し元でトースト + wikiLog への記録まで行う）。
    */
   onBulkArchiveWikis?: (wikiIds: string[]) => Promise<void> | void;
+  /**
+   * 出典照合（Source check, v1.1）の点検欄（仕様 2-b）。既存の「クイック / フル」点検とは
+   * 別レーンで、自動点検にはつながない。3 つとも揃っているときだけ欄を出す。
+   */
+  sourceCheckProps?: SourceCheckLintSectionProps;
 };
 
 /** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
@@ -106,6 +115,8 @@ const SEVERITY_STYLES: Record<LintSeverity, string> = {
   info: "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/40",
 };
 
+type WikiLintTab = "check" | "sourceCheck";
+
 export function WikiLintView({
   report,
   loading,
@@ -118,8 +129,11 @@ export function WikiLintView({
   wikiKindById,
   onMergeTopics,
   onBulkArchiveWikis,
+  sourceCheckProps,
 }: Props) {
   const t = useT();
+  // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
+  const [activeTab, setActiveTab] = useState<WikiLintTab>("check");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 一括アーカイブの選択（stale/redundant のみ選択可）。issue の配列インデックスで管理する。
   const [selectedIssueIndices, setSelectedIssueIndices] = useState<Set<number>>(new Set());
@@ -127,6 +141,33 @@ export function WikiLintView({
   // このセッションで一括アーカイブ済みの issue（表示から外す。再度点検を走らせれば
   // 実データから自然に消える。単発アーカイブの archivedThisSession と同じ考え方）
   const [dismissedIndices, setDismissedIndices] = useState<Set<number>>(new Set());
+
+  // ドラッグ / Shift+クリックの範囲選択（ノート一覧・ナレッジ一覧と同じ共通フック）。
+  // 選べるのは一括アーカイブできる（stale/redundant）で、まだ表示に残っている issue だけ。
+  // フックは文字列 ID で扱うので、issue の配列インデックスを文字列にして渡す。
+  const selectableIssueIds = useMemo(
+    () =>
+      (report?.issues ?? [])
+        .map((issue, idx) => (
+          !dismissedIndices.has(idx) && Boolean(onBulkArchiveWikis) && BULK_ARCHIVABLE_TYPES.has(issue.type)
+            ? String(idx)
+            : null
+        ))
+        .filter((id): id is string => id !== null),
+    [report, dismissedIndices, onBulkArchiveWikis],
+  );
+  const selectedIssueIdStrings = useMemo(
+    () => new Set([...selectedIssueIndices].map(String)),
+    [selectedIssueIndices],
+  );
+  const setSelectedIssueIdStrings = (v: SetStateAction<Set<string>>) => {
+    setSelectedIssueIndices((prev) => {
+      const prevStrings = new Set([...prev].map(String));
+      const next = typeof v === "function" ? v(prevStrings) : v;
+      return new Set([...next].map(Number));
+    });
+  };
+  const issueRange = useRangeSelect(selectableIssueIds, selectedIssueIdStrings, setSelectedIssueIdStrings);
 
   const toggleIssueSelected = (idx: number) => {
     setSelectedIssueIndices((prev) => {
@@ -171,21 +212,55 @@ export function WikiLintView({
           <ArrowLeft size={16} />
         </button>
         <div className="flex items-center gap-2">
-          <AlertTriangle size={16} className="text-primary" />
+          <Scissors size={16} className="text-primary" />
           <h2 className="text-sm font-semibold text-foreground">{t("wikiLint.header")}</h2>
         </div>
         <div className="flex-1" />
-        <button
-          onClick={() => onRunLint(false)}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          {loading ? t("wikiLint.analyzingShort") : t("wikiLint.runButton")}
-        </button>
+        {activeTab === "check" && (
+          <button
+            onClick={() => onRunLint(false)}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {loading ? t("wikiLint.analyzingShort") : t("wikiLint.runButton")}
+          </button>
+        )}
       </div>
 
-      {/* コンテンツ */}
+      {/* タブ — 既定は既存の点検。出典照合は別レーンで、自動点検にはつながない
+          （sourceCheckProps が無ければタブ自体を出さない）。 */}
+      {sourceCheckProps && (
+        <div className="px-4 pt-3 flex gap-1 border-b border-border">
+          <button
+            onClick={() => setActiveTab("check")}
+            className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+              activeTab === "check"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {t("wikiLint.tabs.check")}
+          </button>
+          <button
+            onClick={() => setActiveTab("sourceCheck")}
+            className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+              activeTab === "sourceCheck"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {t("wikiLint.tabs.sourceCheck")}
+          </button>
+        </div>
+      )}
+
+      {/* 出典照合（Source check, v1.1）タブ — 既存のクイック/フル点検とは別レーン。
+          自動点検にはつながず、ここからの実行だけを起点にする。 */}
+      {sourceCheckProps && activeTab === "sourceCheck" && <SourceCheckLintSection {...sourceCheckProps} />}
+
+      {/* コンテンツ（既存の点検タブ） */}
+      {activeTab === "check" && (
       <div className="flex-1 overflow-y-auto">
         {!report && !loading && (
           <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3">
@@ -301,12 +376,17 @@ export function WikiLintView({
               {report.issues.map((issue, idx) => {
                 if (dismissedIndices.has(idx)) return null;
                 const bulkSelectable = Boolean(onBulkArchiveWikis) && BULK_ARCHIVABLE_TYPES.has(issue.type);
+                const rangeIdx = selectableIssueIds.indexOf(String(idx));
                 return (
                   <IssueCard
                     key={idx}
                     issue={issue}
                     expanded={expandedId === idx}
-                    onToggle={() => setExpandedId(expandedId === idx ? null : idx)}
+                    onToggle={() => {
+                      // ドラッグで範囲選択した直後の click では開閉しない
+                      if (issueRange.shouldSuppressClick()) return;
+                      setExpandedId(expandedId === idx ? null : idx);
+                    }}
                     onOpenWiki={onOpenWiki}
                     onRegenerateWiki={onRegenerateWiki}
                     onArchiveWiki={onArchiveWiki}
@@ -316,6 +396,15 @@ export function WikiLintView({
                     bulkSelectable={bulkSelectable}
                     bulkSelected={selectedIssueIndices.has(idx)}
                     onToggleBulkSelected={() => toggleIssueSelected(idx)}
+                    rangeHandlers={
+                      rangeIdx >= 0
+                        ? {
+                            onRowMouseDown: (e) => issueRange.onRowMouseDown(e, rangeIdx),
+                            onRowMouseEnter: () => issueRange.onRowMouseEnter(rangeIdx),
+                            onCheckboxMouseDown: (e) => issueRange.onCheckboxMouseDown(e, rangeIdx),
+                          }
+                        : undefined
+                    }
                   />
                 );
               })}
@@ -323,6 +412,7 @@ export function WikiLintView({
           </>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -340,6 +430,7 @@ function IssueCard({
   bulkSelectable,
   bulkSelected,
   onToggleBulkSelected,
+  rangeHandlers,
 }: {
   issue: LintIssue;
   expanded: boolean;
@@ -354,6 +445,12 @@ function IssueCard({
   bulkSelectable?: boolean;
   bulkSelected?: boolean;
   onToggleBulkSelected?: () => void;
+  /** 範囲選択（ドラッグ / Shift+クリック）のハンドラ。一括アーカイブできる行だけ渡される */
+  rangeHandlers?: {
+    onRowMouseDown: (e: ReactMouseEvent) => void;
+    onRowMouseEnter: () => void;
+    onCheckboxMouseDown: (e: ReactMouseEvent) => void;
+  };
 }) {
   const t = useT();
   const Icon = ISSUE_ICONS[issue.type];
@@ -438,19 +535,42 @@ function IssueCard({
   };
 
   return (
-    <div className="px-4 py-3">
+    <div
+      className={`px-4 py-3 ${bulkSelected ? "bg-primary/5" : ""}`}
+      onMouseDown={rangeHandlers?.onRowMouseDown}
+      onMouseEnter={rangeHandlers?.onRowMouseEnter}
+    >
       <div className="flex items-start gap-2">
         {bulkSelectable && (
-          <input
-            type="checkbox"
-            checked={Boolean(bulkSelected)}
-            onChange={onToggleBulkSelected}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={t("wikiLint.bulk.select")}
-            className="mt-1 shrink-0"
-          />
+          <span
+            className="mt-1 shrink-0 cursor-pointer"
+            title={t("wikiList.dragToRangeSelect")}
+            onMouseDown={rangeHandlers?.onCheckboxMouseDown}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(bulkSelected)}
+              onChange={onToggleBulkSelected}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={t("wikiLint.bulk.select")}
+              className={rangeHandlers ? "pointer-events-none" : undefined}
+            />
+          </span>
         )}
-        <button onClick={onToggle} className="flex-1 min-w-0 text-left">
+        {/* 開閉は div role=button にする（button の上では範囲選択のドラッグを始められないため） */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={expanded}
+          onClick={onToggle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onToggle();
+            }
+          }}
+          className="flex-1 min-w-0 text-left cursor-pointer"
+        >
           <div className="flex items-start gap-2">
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${style}`}>
               <Icon size={12} />
@@ -459,7 +579,7 @@ function IssueCard({
             <span className="text-sm font-medium text-foreground flex-1">{issue.title}</span>
             <Info size={14} className="text-muted-foreground mt-0.5 shrink-0" />
           </div>
-        </button>
+        </div>
       </div>
 
       {expanded && (

@@ -71,6 +71,14 @@ import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 import type { ClaimSnapshot } from "../services/wiki-types.js";
 import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import {
+  buildSourceCheckSystemPrompt,
+  buildSourceCheckUserMessage,
+  parseSourceCheckOutput,
+  applyQuoteVerification,
+  type SourceCheckClaimInput,
+  type SourceCheckSourceInput,
+} from "../services/source-check.js";
 
 const app = new Hono();
 
@@ -848,6 +856,59 @@ app.post("/judge-atom-duplicates", async (c) => {
     console.error("Wiki judge-atom-duplicates error:", err);
     // fail-closed（黙って統合しない側に倒す）: 呼び出し側が verdicts 欠落を "different" として扱う
     return c.json({ verdicts: [], ...errorBody(err) });
+  }
+});
+
+// 出典照合（Source check, v1）— 出典 1 件 + それに依拠する知見群をまとめて判定する。
+// 世界照合（/api/world-grounding/check）とは別レーン。1 呼び出し = 出典 1 件。
+app.post("/check-sources", async (c) => {
+  const body = await c.req.json<{
+    source: SourceCheckSourceInput;
+    claims: SourceCheckClaimInput[];
+    language?: string;
+    model?: string;
+  }>();
+
+  if (!body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+    return c.json({ result: null, error: "source.text is required" }, 400);
+  }
+  if (!Array.isArray(body.claims) || body.claims.length === 0) {
+    return c.json({ result: null, error: "claims is required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    // モデル未登録 → degrade（world-grounding の /check と同じ流儀）。エラーにはしない。
+    return c.json({ result: null, error: "no model registered", code: "NO_MODEL_REGISTERED" });
+  }
+
+  const language = body.language || "en";
+  const systemPrompt = buildSourceCheckSystemPrompt(language);
+  const userMessage = buildSourceCheckUserMessage(body.source, body.claims);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.check-sources",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    const parsed = parseSourceCheckOutput(result.message, body.claims, language);
+    // 不変条件 3: quote は原文に実在すると照合できたものだけ残す（サーバー側で照合）。
+    const verified = applyQuoteVerification(parsed, body.source.text, language);
+    return c.json({
+      result: { results: verified, model: result.model },
+      tokenUsage: result.tokenUsage,
+    });
+  } catch (err) {
+    console.error("Wiki check-sources error:", err);
+    // LLM 呼び出し失敗 → degrade（world-grounding と同じ精神）
+    return c.json({ result: null, ...errorBody(err) });
   }
 });
 

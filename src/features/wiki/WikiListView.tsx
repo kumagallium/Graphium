@@ -10,10 +10,14 @@ import type {
   AtomType,
   ClaimRole,
   GroundingValidityVerdict,
+  SourceCheckVerdict,
   SynthesisMode,
   WikiKind,
   WikiMetaSummary,
 } from "../../lib/document-types";
+import { sourceCheckVerdictPalette } from "../source-check/ui/SourceCheckBadge";
+import { isNeedsReviewVerdict } from "../source-check/needs-review";
+import { FileSearch } from "lucide-react";
 import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -31,6 +35,7 @@ type SortKey =
   | "incoming"
   | "outgoing"
   | "verdict"
+  | "sourceVerdict"
   | "model";
 type SortDirection = "asc" | "desc";
 
@@ -45,6 +50,20 @@ const VERDICT_ORDER: Record<string, number> = {
 function verdictRank(verdict?: string): number {
   if (!verdict) return 99;
   return VERDICT_ORDER[verdict] ?? 50;
+}
+
+// 出典照合 verdict のソート順（aggregate.ts の優先順位と揃える）。
+// 注意が要る順（ドキュメント単位の集約 aggregateDocumentVerdict と同じ順）。
+const SOURCE_VERDICT_ORDER: Record<SourceCheckVerdict, number> = {
+  contradicted: 0,
+  "not-in-source": 1,
+  unclear: 2,
+  "source-missing": 3,
+  supported: 4,
+};
+function sourceVerdictRank(verdict?: SourceCheckVerdict): number {
+  if (!verdict) return 99;
+  return SOURCE_VERDICT_ORDER[verdict] ?? 50;
 }
 
 // PR 2A 方針 §5: 当初は一覧の verdict 列のソートを外していたが、
@@ -323,6 +342,8 @@ export function WikiListView({
   const [typeFilterOpen, setTypeFilterOpen] = useState(false);
   const [typeFilterPos, setTypeFilterPos] = useState({ top: 0, left: 0 });
   const typeFilterBtnRef = useRef<HTMLButtonElement>(null);
+  // 出典照合の「要確認のみ」フィルタ（claim/topic のみ意味を持つ）。既定は全件表示。
+  const [sourceCheckNeedsReviewOnly, setSourceCheckNeedsReviewOnly] = useState(false);
 
   // 被参照カウント（このページを参照している「distinct なノート/wiki」の数）
   // 1 ノートが本文で同じ wiki を複数回引用しても 1 と数える。
@@ -398,6 +419,8 @@ export function WikiListView({
         outgoing: outgoingRefCountById.get(f.id) ?? 0,
         // 世界モデル照合 verdict（Phase 2 / PR 2A） — summary 以外で意味を持つ
         worldGrounding: wikiMetas.get(f.id)!.groundingValidity,
+        // 出典照合 verdict（Source check, v1.1） — claim/topic のみ意味を持つ
+        sourceCheck: wikiMetas.get(f.id)!.sourceCheckVerdict,
       }));
     return real;
   }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, incomingRefCount, outgoingRefCountById]);
@@ -442,6 +465,7 @@ export function WikiListView({
     lastWikiKindRef.current = wikiKind;
     if (typeFilter.length > 0) setTypeFilter([]);
     if (typeFilterOpen) setTypeFilterOpen(false);
+    if (sourceCheckNeedsReviewOnly) setSourceCheckNeedsReviewOnly(false);
   }
 
   const handleSort = useCallback((key: SortKey) => {
@@ -476,6 +500,9 @@ export function WikiListView({
         return true;
       });
     }
+    if (sourceCheckNeedsReviewOnly && (wikiKind === "claim" || wikiKind === "topic")) {
+      result = result.filter((e) => isNeedsReviewVerdict(e.sourceCheck));
+    }
     const sorted = [...result].sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
@@ -509,6 +536,9 @@ export function WikiListView({
         case "verdict":
           cmp = verdictRank(a.worldGrounding?.verdict) - verdictRank(b.worldGrounding?.verdict);
           break;
+        case "sourceVerdict":
+          cmp = sourceVerdictRank(a.sourceCheck?.verdict) - sourceVerdictRank(b.sourceCheck?.verdict);
+          break;
         case "model":
           cmp = (a.model ?? "").localeCompare(b.model ?? "", "en");
           break;
@@ -516,7 +546,7 @@ export function WikiListView({
       return sortDir === "desc" ? -cmp : cmp;
     });
     return sorted;
-  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind]);
+  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind, sourceCheckNeedsReviewOnly]);
 
   // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
@@ -696,6 +726,17 @@ export function WikiListView({
 
       {/* ツールバー（検索） */}
       <div className="flex items-center gap-2 px-6 py-2 border-b border-border/50">
+        {(wikiKind === "claim" || wikiKind === "topic") && (
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={sourceCheckNeedsReviewOnly}
+              onChange={(e) => setSourceCheckNeedsReviewOnly(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+            />
+            {t("wikiList.filterSourceCheckNeedsReviewOnly")}
+          </label>
+        )}
         <div className="flex-1" />
         <div className="relative">
           <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -811,6 +852,19 @@ export function WikiListView({
                     {t("wikiList.colWorldVerdict")}{sortKey === "verdict" && (sortDir === "desc" ? " ↓" : " ↑")}
                   </th>
                 )}
+                {/* 出典照合 verdict — claim/topic のみ意味を持つ（世界照合列とは逆に、topic では出す）。
+                    stale（本文変更）は本文を読まないと判定できないため一覧では出さない
+                    （仕様 2-c の明示的な決定。SourceCheckBadge 側の stale 表示はバナー/詳細欄だけ）。 */}
+                {(wikiKind === "claim" || wikiKind === "topic") && (
+                  <th
+                    className="py-2 pl-3 w-[120px] cursor-pointer hover:text-foreground"
+                    onClick={() => handleSort("sourceVerdict")}
+                    title={t("wikiList.colSourceVerdictTooltip")}
+                  >
+                    {t("wikiList.colSourceVerdict")}
+                    {sortKey === "sourceVerdict" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
                 <th
                   className="py-2 px-2 w-[120px] cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("model")}
@@ -889,6 +943,11 @@ export function WikiListView({
                   {wikiKind !== "summary" && wikiKind !== "topic" && worldGroundingEnabled && (
                     <td className="py-2 pl-3 text-xs">
                       <WorldVerdictCell grounding={entry.worldGrounding} />
+                    </td>
+                  )}
+                  {(wikiKind === "claim" || wikiKind === "topic") && (
+                    <td className="py-2 pl-3 text-xs">
+                      <SourceVerdictCell sourceCheck={entry.sourceCheck} />
                     </td>
                   )}
                   <td className="py-2 px-2 text-xs text-muted-foreground truncate" title={entry.model ?? ""}>
@@ -1002,4 +1061,32 @@ function WorldVerdictCell({
     );
   }
   return <span className="text-muted-foreground/40">—</span>;
+}
+
+// 出典照合 verdict のセル（Source check, v1.1）。世界照合の WorldVerdictCell と同じ作り。
+// dismissed は verdict の色相を落とし、Check ではなく控えめなテキストで「確認済み」と示す
+// （バッジ側の DISMISSED_PALETTE と同じ意図。一覧は幅が狭いのでアイコンだけにする）。
+function SourceVerdictCell({
+  sourceCheck,
+}: {
+  sourceCheck?: { verdict: SourceCheckVerdict; dismissed?: boolean };
+}) {
+  const t = useT();
+  if (!sourceCheck) return <span className="text-muted-foreground/40">—</span>;
+  const { verdict, dismissed } = sourceCheck;
+  const p = sourceCheckVerdictPalette[verdict];
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium"
+      style={{
+        color: dismissed ? "var(--ink-3)" : p.color,
+        background: dismissed ? "transparent" : p.bg,
+        whiteSpace: "nowrap",
+      }}
+      title={`${t("sourceCheck.title")}: ${t(`sourceCheck.verdict.${verdict}` as never)}${dismissed ? ` (${t("sourceCheck.dismissed")})` : ""}`}
+    >
+      <FileSearch size={10} />
+      {t(`sourceCheck.verdict.${verdict}` as never)}
+    </span>
+  );
 }
