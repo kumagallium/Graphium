@@ -2799,6 +2799,37 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 効かない設定を並べて見せない。登録すると下がまとめて現れる。 */}
             {models.length > 0 && (
               <>
+            {/* チャットモデル — 最小構成のユーザーが唯一触りたい設定なので、
+                「モデルの割り当て」の畳んだ束からここへ引き上げる（2026-09-17 決定）。
+                デフォルトモデル・埋め込みモデルは裏方の設定として束に残す。 */}
+            <div className="border-t border-border pt-6">
+              <SettingSection
+                title={t("settings.chatSynthesisModel")}
+                summary={t("settings.chatSynthesisModel.summary")}
+                details={<p>{t("settings.chatSynthesisModelHelp")}</p>}
+              >
+                <div className="relative">
+                  <select
+                    value={chatSynthesisModel}
+                    onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
+                    disabled={modelsLoading || models.length === 0}
+                    aria-label={t("settings.chatSynthesisModel")}
+                    className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                  >
+                    <option value="">
+                      {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
+                    </option>
+                    {models.map((m) => (
+                      <option key={m.name} value={m.name}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </SettingSection>
+            </div>
+
             {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
             <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
@@ -3139,9 +3170,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             </div>
 
-            {/* ── モデルの割り当て ──
-             *  どの機能にどのモデルを当てるかは、どれか 1 つ登録すれば既定で動く。
-             *  使い分けたくなった人だけが開けばいいので畳んでおく。 */}
+            {/* ── モデルの割り当て（デフォルト・埋め込み） ──
+             *  チャットモデルは上に引き上げたので、ここに残るのは裏方の設定
+             *  （バックグラウンド処理のフォールバックと検索用の埋め込み）。
+             *  どれか 1 つ登録すれば既定で動くので、使い分けたくなった人だけが開けばいい。 */}
             <SettingsGroup
               storageKey="ai-assign"
               title={t("settings.ai.sectionAssign")}
@@ -3172,34 +3204,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">{t("settings.modelHelp")}</p>
-                </div>
-
-                {/* Chat & Synthesis モデル選択（対話と統合用 — default より上のモデルを当てる場面用） */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.chatSynthesisModel")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={chatSynthesisModel}
-                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
-                      </option>
-                      {models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.chatSynthesisModelHelp")}
-                  </p>
                 </div>
 
                 {/* Embedding モデル選択 */}
