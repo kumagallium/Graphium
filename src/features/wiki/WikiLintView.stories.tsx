@@ -112,7 +112,14 @@ function useAutoClickSequence(containerRef: React.RefObject<HTMLDivElement | nul
   }, []);
 }
 
-function Harness({ autoClickLabels = [] }: { autoClickLabels?: string[] }) {
+function Harness({
+  autoClickLabels = [],
+  withReviewList = false,
+}: {
+  autoClickLabels?: string[];
+  /** 要確認一覧のモック（データのみ。操作は console.info を鳴らすだけ） */
+  withReviewList?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const sourceCheckProps = useSourceCheckHarness(async () => makePlan(6, 3));
   useAutoClickSequence(ref, autoClickLabels);
@@ -125,7 +132,25 @@ function Harness({ autoClickLabels = [] }: { autoClickLabels?: string[] }) {
         onRunLint={() => console.info("[story] run lint")}
         onOpenWiki={() => console.info("[story] open wiki")}
         onBack={() => console.info("[story] back")}
-        sourceCheckProps={sourceCheckProps}
+        sourceCheckProps={{
+          ...sourceCheckProps,
+          reviewList: withReviewList
+            ? {
+                items: [
+                  { id: "c1", title: "熱電材料のゼーベック係数は温度に依存しない", kind: "claim", verdict: "contradicted" },
+                  { id: "t1", title: "熱電変換の基礎", kind: "topic", verdict: "not-in-source" },
+                  { id: "c2", title: "ZT 値は無次元の性能指数である", kind: "claim", verdict: "not-in-source" },
+                ],
+                onOpen: () => console.info("[story] open"),
+                onDismiss: async () => console.info("[story] dismiss"),
+                onArchive: async () => console.info("[story] archive"),
+                onBulkArchive: async () => console.info("[story] bulk archive"),
+                onRecheck: async () => console.info("[story] recheck"),
+                runningId: null,
+                batchRunning: false,
+              }
+            : undefined,
+        }}
       />
     </div>
   );
@@ -154,4 +179,11 @@ export const SourceCheckTabPlanned: Story = {
 export const SourceCheckTabDone: Story = {
   name: "出典照合タブ — 完了",
   render: () => <Harness autoClickLabels={["出典照合", "計画を確認", "実行"]} />,
+};
+
+// 「要確認」一覧がある状態（開始画面の下に常設で出る）。
+// AI の判定で一覧を隠さない代わりに、この別リストで目立たせる方針の確認用。
+export const SourceCheckTabWithReviewList: Story = {
+  name: "出典照合タブ — 要確認一覧あり",
+  render: () => <Harness autoClickLabels={["出典照合"]} withReviewList />,
 };

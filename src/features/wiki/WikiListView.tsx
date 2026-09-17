@@ -16,6 +16,7 @@ import type {
   WikiMetaSummary,
 } from "../../lib/document-types";
 import { sourceCheckVerdictPalette } from "../source-check/ui/SourceCheckBadge";
+import { isNeedsReviewVerdict } from "../source-check/needs-review";
 import { FileSearch } from "lucide-react";
 import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -341,6 +342,8 @@ export function WikiListView({
   const [typeFilterOpen, setTypeFilterOpen] = useState(false);
   const [typeFilterPos, setTypeFilterPos] = useState({ top: 0, left: 0 });
   const typeFilterBtnRef = useRef<HTMLButtonElement>(null);
+  // 出典照合の「要確認のみ」フィルタ（claim/topic のみ意味を持つ）。既定は全件表示。
+  const [sourceCheckNeedsReviewOnly, setSourceCheckNeedsReviewOnly] = useState(false);
 
   // 被参照カウント（このページを参照している「distinct なノート/wiki」の数）
   // 1 ノートが本文で同じ wiki を複数回引用しても 1 と数える。
@@ -462,6 +465,7 @@ export function WikiListView({
     lastWikiKindRef.current = wikiKind;
     if (typeFilter.length > 0) setTypeFilter([]);
     if (typeFilterOpen) setTypeFilterOpen(false);
+    if (sourceCheckNeedsReviewOnly) setSourceCheckNeedsReviewOnly(false);
   }
 
   const handleSort = useCallback((key: SortKey) => {
@@ -495,6 +499,9 @@ export function WikiListView({
         }
         return true;
       });
+    }
+    if (sourceCheckNeedsReviewOnly && (wikiKind === "claim" || wikiKind === "topic")) {
+      result = result.filter((e) => isNeedsReviewVerdict(e.sourceCheck));
     }
     const sorted = [...result].sort((a, b) => {
       let cmp = 0;
@@ -539,7 +546,7 @@ export function WikiListView({
       return sortDir === "desc" ? -cmp : cmp;
     });
     return sorted;
-  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind]);
+  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind, sourceCheckNeedsReviewOnly]);
 
   // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
@@ -719,6 +726,17 @@ export function WikiListView({
 
       {/* ツールバー（検索） */}
       <div className="flex items-center gap-2 px-6 py-2 border-b border-border/50">
+        {(wikiKind === "claim" || wikiKind === "topic") && (
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={sourceCheckNeedsReviewOnly}
+              onChange={(e) => setSourceCheckNeedsReviewOnly(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+            />
+            {t("wikiList.filterSourceCheckNeedsReviewOnly")}
+          </label>
+        )}
         <div className="flex-1" />
         <div className="relative">
           <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />

@@ -43,3 +43,10 @@ export {
 } from "./api";
 export { saveSourceCheckResult, saveSourceCheckResults, type SaveSourceCheckDeps } from "./save";
 export { pickNextUncheckedSource, useAutoSourceCheck } from "./use-auto-source-check";
+export {
+  buildNeedsReviewList,
+  isNeedsReviewVerdict,
+  NEEDS_REVIEW_VERDICT_ORDER,
+  type NeedsReviewEntry,
+  type NeedsReviewVerdict,
+} from "./needs-review";

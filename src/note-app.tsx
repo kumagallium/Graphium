@@ -401,6 +401,7 @@ import {
   sourceCheckLlmCallsFor,
   resolveSourceCheckTitles,
 } from "./features/source-check/use-source-check";
+import { buildNeedsReviewList } from "./features/source-check/needs-review";
 import { parseClaimSourceId } from "./features/source-check/claim-source-id";
 import { useAutoSourceCheck } from "./features/source-check/use-auto-source-check";
 import { useProvGeneration } from "./hooks/use-prov-generation";
@@ -12024,6 +12025,43 @@ export function NoteApp() {
                     progress: sourceCheck.batchProgress,
                     result: sourceCheck.batchResult,
                     onDismissResult: sourceCheck.resetBatchResult,
+                    reviewList: (() => {
+                      const items = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
+                      if (items.length === 0) return undefined;
+                      return {
+                        items,
+                        onOpen: (wikiId: string) => openListPeek(`wiki:${wikiId}`),
+                        onDismiss: (wikiId: string) => sourceCheck.dismiss(wikiId),
+                        onArchive: (wikiId: string) => fm.handleArchiveWikiFile(wikiId),
+                        onRecheck: (wikiId: string) => sourceCheck.runOne(wikiId),
+                        runningId: sourceCheck.runningDocId,
+                        batchRunning: sourceCheck.batchRunning,
+                        onBulkArchive: async (wikiIds: string[]) => {
+                          // 「まとめてアーカイブ」— 既存の点検タブの一括アーカイブ（stale/redundant）と
+                          // 同じ流儀（トースト + wikiLog への記録まで行う）。
+                          const titles = wikiIds.map((id) => fm.wikiMetas.get(id)?.title ?? id);
+                          for (const wikiId of wikiIds) {
+                            await fm.handleArchiveWikiFile(wikiId);
+                          }
+                          wikiLog.append(
+                            "archive",
+                            wikiIds,
+                            `Bulk-archived ${wikiIds.length} source-check needs-review page(s): ${titles.map((t) => `"${t}"`).join(", ")}`,
+                          ).catch(() => {});
+                          setIngestToast((prev) => ({
+                            items: [
+                              ...(prev?.items ?? []),
+                              {
+                                id: `bulk-archive-source-check:${crypto.randomUUID()}`,
+                                status: "success" as const,
+                                noteTitle: `\u{1F5C4} ${tStatic("wikiLint.bulk.archivedToast", { count: String(wikiIds.length) })}`,
+                                result: titles.join(", "),
+                              },
+                            ],
+                          }));
+                        },
+                      };
+                    })(),
                   }
                 : undefined
             }

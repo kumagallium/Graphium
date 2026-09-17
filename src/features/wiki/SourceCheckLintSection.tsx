@@ -23,6 +23,7 @@ import type {
   SourceCheckScope,
   SourceCheckTargetKind,
 } from "../source-check/use-source-check";
+import { SourceCheckReviewList, type SourceCheckReviewListProps } from "../source-check/ui/SourceCheckReviewList";
 
 export type SourceCheckLintSectionProps = {
   /** 対象・範囲から計画を組み立てる（対象ドキュメントを実際に読み込むため非同期）。 */
@@ -39,6 +40,11 @@ export type SourceCheckLintSectionProps = {
   result: BatchRunResult | null;
   /** 完了表示を閉じて次の計画に戻る（useSourceCheck.resetBatchResult）。 */
   onDismissResult: () => void;
+  /**
+   * 「要確認」一覧（仕様: AI の判定で一覧から自動的に隠さない代わりに常設の別リストで目立たせる）。
+   * 0 件のときは一覧自体を出さない（開始画面だけ）。未指定でも一覧を出さない。
+   */
+  reviewList?: SourceCheckReviewListProps;
 };
 
 type LocalPhase =
@@ -54,6 +60,7 @@ export function SourceCheckLintSection({
   progress,
   result,
   onDismissResult,
+  reviewList,
 }: SourceCheckLintSectionProps) {
   const t = useT();
   const [target, setTarget] = useState<SourceCheckTargetKind>("both");
@@ -223,6 +230,9 @@ export function SourceCheckLintSection({
           </div>
         )}
       </div>
+      {/* 要確認一覧は常設 — 開始画面・計画・実行中・完了のどの段階でも件数があれば出す。
+          中央揃えの開始画面の作りは崩さず、その下に全幅で置く（点検タブの issue リストと同じ見た目）。 */}
+      {reviewList && <SourceCheckReviewList {...reviewList} />}
     </div>
   );
 }

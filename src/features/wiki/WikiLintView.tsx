@@ -18,6 +18,7 @@ import {
   Clock,
   Archive as ArchiveIcon,
   ExternalLink,
+  Scissors,
 } from "lucide-react";
 import type { LintReport, LintIssue, LintIssueType, LintSeverity } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
@@ -182,7 +183,7 @@ export function WikiLintView({
           <ArrowLeft size={16} />
         </button>
         <div className="flex items-center gap-2">
-          <AlertTriangle size={16} className="text-primary" />
+          <Scissors size={16} className="text-primary" />
           <h2 className="text-sm font-semibold text-foreground">{t("wikiLint.header")}</h2>
         </div>
         <div className="flex-1" />
