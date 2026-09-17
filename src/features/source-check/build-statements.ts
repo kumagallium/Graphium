@@ -11,7 +11,7 @@ import type { GraphiumDocument } from "../../lib/document-types";
 import { isAiAnswerClaim } from "./ai-answer";
 import { toClaimSourceId } from "./claim-source-id";
 import type { PlanSourceCheckStatement } from "./plan";
-import { extractTopicStatements } from "./topic-statements";
+import { extractSourceTopicStatements, extractTopicStatements } from "./topic-statements";
 import { extractPlainTextFromDoc } from "../wiki/wiki-service";
 
 export type SourceCheckTarget = {
@@ -52,10 +52,13 @@ function buildTopicStatements(target: SourceCheckTarget): PlanSourceCheckStateme
   const { docId, doc } = target;
   const title = doc.title ?? "";
   const hashBody = extractPlainTextFromDoc(doc);
-  const statements = extractTopicStatements(doc);
+  // 新形式（wikiMeta.topicMarkdown あり）は資料 id を直接引用するので出典照合が 1 段になる
+  // （toClaimSourceId を通さない）。旧形式はメンバー知見 id に "claim:" を付けて 2 段のまま。
+  const isSourceFormat = Boolean(doc.wikiMeta?.topicMarkdown);
+  const statements = isSourceFormat ? extractSourceTopicStatements(doc) : extractTopicStatements(doc);
 
   if (statements.length === 0) {
-    // 引用を持つブロックが 1 つも無い = 出典の記録が無い（not-recorded）。
+    // 引用を持つブロック（行）が 1 つも無い = 出典の記録が無い（not-recorded）。
     return [
       {
         id: docId,
@@ -74,7 +77,7 @@ function buildTopicStatements(target: SourceCheckTarget): PlanSourceCheckStateme
     title,
     body: st.text,
     hashBody,
-    sourceIds: st.claimIds.map((claimId) => toClaimSourceId(claimId)),
+    sourceIds: isSourceFormat ? st.claimIds : st.claimIds.map((claimId) => toClaimSourceId(claimId)),
     statement: st.text,
     statementBlockId: st.blockId,
   }));

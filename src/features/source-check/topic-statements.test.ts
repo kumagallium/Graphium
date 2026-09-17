@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractTopicStatements } from "./topic-statements";
+import { extractSourceTopicStatements, extractTopicStatements } from "./topic-statements";
 import type { GraphiumDocument } from "../../lib/document-types";
 
 function topicDoc(blocks: any[], knowledgeLinks: any[], derivedFromClaims: string[]): GraphiumDocument {
@@ -292,5 +292,53 @@ describe("extractTopicStatements", () => {
     expect(statements).toHaveLength(1);
     expect(statements[0].claimIds).toEqual(["claim-a", "claim-b"]);
     expect(statements[0].text).toBe("と  は一致する。");
+  });
+});
+
+describe("extractSourceTopicStatements - 新形式トピック（topicMarkdown）", () => {
+  function sourceTopicDoc(topicMarkdown: string): GraphiumDocument {
+    return {
+      version: 2,
+      title: "トピック",
+      pages: [{ id: "p1", title: "Main", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+      wikiMeta: {
+        kind: "topic",
+        derivedFromNotes: [],
+        derivedFromChats: [],
+        derivedFromClaims: [],
+        topicMarkdown,
+        generatedAt: "2026-09-01T00:00:00Z",
+        generatedBy: { model: "m", version: "1.0.0" },
+      },
+      createdAt: "2026-09-01T00:00:00Z",
+      modifiedAt: "2026-09-01T00:00:00Z",
+    } as GraphiumDocument;
+  }
+
+  it("[[source:<id>]] を持つ行から文と出典 id を取り出す（プレフィックス無し = 1 段）", () => {
+    const doc = sourceTopicDoc("## 要点\nXRD パターンが取得された。[[source:note-a]]");
+    const statements = extractSourceTopicStatements(doc);
+    expect(statements).toHaveLength(1);
+    expect(statements[0].text).toBe("XRD パターンが取得された。");
+    expect(statements[0].claimIds).toEqual(["note-a"]);
+  });
+
+  it("見出し行・引用の無い行は対象外", () => {
+    const doc = sourceTopicDoc("## 定義\n前置きの説明。\n\n## 要点\n引用付きの文。[[source:note-a]]");
+    const statements = extractSourceTopicStatements(doc);
+    expect(statements).toHaveLength(1);
+    expect(statements[0].text).toBe("引用付きの文。");
+  });
+
+  it("複数の出典を引く行は claimIds に両方積む", () => {
+    const doc = sourceTopicDoc("## 要点\n共通の傾向。[[source:note-a]][[source:pdf:file-1]]");
+    const statements = extractSourceTopicStatements(doc);
+    expect(statements[0].claimIds).toEqual(["note-a", "pdf:file-1"]);
+  });
+
+  it("topicMarkdown が無い（旧形式）ときは空配列", () => {
+    const doc = sourceTopicDoc("");
+    (doc.wikiMeta as any).topicMarkdown = undefined;
+    expect(extractSourceTopicStatements(doc)).toEqual([]);
   });
 });
