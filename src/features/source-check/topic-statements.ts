@@ -164,6 +164,46 @@ function extractStatementFromBlock(
   return { text: finalText, claimIds: [...claimIds] };
 }
 
+/** `[[source:<id>]]` を検出する正規表現（id は空白・`]` を含まない） */
+const SOURCE_CITATION_RE = /\[\[source:([^\]]+?)\]\]/g;
+
+/**
+ * 新形式トピック（wikiMeta.topicMarkdown あり）から「照合する文」を取り出す（純関数）。
+ * 資料の全文を直接読んで改訂する取り込み（PR 3b）向けの土台。
+ *
+ * 旧形式（extractTopicStatements）はビルド済み BlockNote ブロックから引用を復元するが、
+ * 新形式は正本の markdown をそのまま行単位で走査する — `[[source:<id>]]` は
+ * convertSectionsToBlocks を通す際にブラケットが失われる（pushCitation の仕様）ため、
+ * ビルド後のブロックから復元しようとすると旧形式と同じ罠を踏む。markdown を直接見ることで
+ * これを避ける。
+ *
+ * `##` 見出し行と、引用を持たない行（定義の前置き等）は対象外。id は資料 id をそのまま使い
+ * （"claim:" プレフィックスは付けない＝出典照合が 1 段になる）、claimIds フィールドに積む
+ * （旧形式と同じ型を再利用するための命名 — 意味は「引いた出典 id」）。
+ */
+export function extractSourceTopicStatements(doc: GraphiumDocument): TopicStatement[] {
+  const meta = doc.wikiMeta;
+  if (!meta || meta.kind !== "topic" || !meta.topicMarkdown) return [];
+
+  const lines = meta.topicMarkdown.split("\n");
+  const statements: TopicStatement[] = [];
+  lines.forEach((rawLine, index) => {
+    const line = rawLine.trim();
+    if (!line) return;
+    if (/^#{1,6}\s/.test(line)) return; // 見出し行は対象外
+
+    const sourceIds: string[] = [];
+    const text = line.replace(SOURCE_CITATION_RE, (_match, rawId: string) => {
+      sourceIds.push(rawId.trim());
+      return "";
+    }).trim();
+
+    if (sourceIds.length === 0 || !text) return;
+    statements.push({ text, blockId: `line-${index}`, claimIds: sourceIds });
+  });
+  return statements;
+}
+
 /**
  * トピックドキュメントから「照合する文」の一覧を取り出す（純関数）。
  * doc.wikiMeta.kind !== "topic" のときは空配列を返す。

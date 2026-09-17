@@ -2491,6 +2491,227 @@ export function rebuildTopicDocument(
   }, undefined);
 }
 
+// ── 新形式トピック（2026-09〜。資料 id を直接引用。土台のみ、取り込み配線は PR 3b） ──
+
+/** 話題ページの本文・References 構築に渡す資料の最小情報（ノート id / "pdf:" 等の外部プレフィックス付き id） */
+export type TopicSourceRef = { id: string; title: string };
+
+/** `[[source:<id>]]` を検出する正規表現（id は空白・`]` を含まない） */
+const SOURCE_CITATION_RE = /\[\[source:([^\]]+?)\]\]/g;
+
+/**
+ * 新形式 Topic Writer が `[[source:<id>]]` 形式で出した引用を、資料の現在のタイトルへ
+ * 解決してから `[[<title>]]`（既存の parseInlineCitations が解釈する形式）に書き換える。
+ * resolveTopicClaimCitations（旧形式）と同じ理由 — LLM のタイトル転記ミスを id ベースの
+ * 引用にすることで避ける。
+ *
+ * id が sources に無い（LLM の幻覚・削除後の残骸）場合でも引用ごと落とさない —
+ * id を含む文字列として残し、目に見える形にする。
+ */
+export function resolveSourceCitations(body: string, sources: TopicSourceRef[]): string {
+  if (!body) return body;
+  const titleById = new Map(sources.map((s) => [s.id, s.title]));
+  return body.replace(SOURCE_CITATION_RE, (_match, rawId: string) => {
+    const id = rawId.trim();
+    const title = titleById.get(id);
+    if (title) return `[[${title}]]`;
+    return `[[source:${id}]]`;
+  });
+}
+
+/**
+ * markdown の空の `##` 見出し（次の見出しまで本文が無い見出し）を機械的に除去する純関数。
+ * 改訂のたびに LLM が「このトピックには食い違いが無い」等の空見出しを残すことがあり、
+ * 保存前にここで畳んでおく。見出し以外の本文（前置き）はそのまま残す。
+ */
+export function stripEmptyMarkdownSections(markdown: string): string {
+  if (!markdown) return markdown;
+  const lines = markdown.split("\n");
+  const headingIdx: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/^#{1,6}\s+\S/.test(lines[i])) headingIdx.push(i);
+  }
+  if (headingIdx.length === 0) return markdown;
+
+  const removeRanges: [number, number][] = [];
+  for (let h = 0; h < headingIdx.length; h++) {
+    const start = headingIdx[h];
+    const end = h + 1 < headingIdx.length ? headingIdx[h + 1] : lines.length;
+    const body = lines.slice(start + 1, end);
+    const hasContent = body.some((l) => l.trim().length > 0);
+    if (!hasContent) removeRanges.push([start, end]);
+  }
+  if (removeRanges.length === 0) return markdown;
+
+  const removed = new Set<number>();
+  for (const [s, e] of removeRanges) {
+    for (let i = s; i < e; i++) removed.add(i);
+  }
+  const kept = lines.filter((_, i) => !removed.has(i));
+
+  // 見出し除去で空行が積み重なるのを畳む
+  const collapsed: string[] = [];
+  for (const line of kept) {
+    if (line.trim() === "" && collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === "") continue;
+    collapsed.push(line);
+  }
+  while (collapsed.length > 0 && collapsed[0].trim() === "") collapsed.shift();
+  while (collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === "") collapsed.pop();
+  return collapsed.join("\n");
+}
+
+/**
+ * 新形式トピック末尾の References ブロックを構築する。資料 1 件につき 1 行、
+ * buildTopicReferenceBlocks（旧形式）と同じ見た目の @リンクにする。
+ * 資料は必ずしも AI 生成 wiki ページではない（通常ノート・pdf・url 等）ため、
+ * buildTopicReferenceBlocks と違い 🤖 プレフィックスは固定しない。
+ */
+function buildSourceReferenceBlocks(sources: TopicSourceRef[]): RelationBlocksResult {
+  const blocks: any[] = [];
+  const knowledgeLinks: any[] = [];
+  if (sources.length === 0) return { blocks, knowledgeLinks };
+
+  blocks.push({
+    id: crypto.randomUUID(),
+    type: "heading",
+    props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
+    content: [{ type: "text", text: "References", styles: {} }],
+    children: [],
+  });
+
+  for (const source of sources) {
+    const blockId = crypto.randomUUID();
+    blocks.push({
+      id: blockId,
+      type: "bulletListItem",
+      props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+      content: [{ type: "text", text: `@${source.title}`, styles: { textColor: "blue" } }],
+      children: [],
+    });
+    knowledgeLinks.push({
+      id: crypto.randomUUID(),
+      sourceBlockId: blockId,
+      targetBlockId: "",
+      targetNoteId: source.id,
+      type: "reference",
+      layer: "knowledge",
+      createdBy: "ai",
+    });
+  }
+
+  return { blocks, knowledgeLinks };
+}
+
+/**
+ * 新形式トピックの GraphiumDocument を新規に組み立てる（土台のみ。取り込み配線は PR 3b）。
+ * markdown は保存前に stripEmptyMarkdownSections で空見出しを除去し、そのまま
+ * wikiMeta.topicMarkdown に正本として保存する（次回改訂の入力・出典照合の要点抽出の元）。
+ * derivedFromNotes に資料 id を積む（claim と同じ意味論・prefix）。derivedFromClaims は
+ * 新形式では使わないため空配列にする。
+ */
+export function buildSourceTopicDocument(
+  title: string,
+  markdown: string,
+  sources: TopicSourceRef[],
+  model: string | null,
+  noteIndex?: NoteIndex,
+  language?: string,
+): GraphiumDocument {
+  const now = new Date().toISOString();
+  const stripped = stripEmptyMarkdownSections(markdown);
+  const resolvedBody = resolveSourceCitations(stripped, sources);
+  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title);
+  const refs = buildSourceReferenceBlocks(sources);
+
+  const wikiMeta: WikiMeta = {
+    kind: "topic",
+    derivedFromNotes: sources.map((s) => s.id),
+    derivedFromChats: [],
+    derivedFromClaims: [],
+    topicMarkdown: stripped,
+    generatedAt: now,
+    generatedBy: {
+      model: model ?? "unknown",
+      version: "1.0.0",
+    },
+    lastIngestedAt: now,
+    language: language ?? undefined,
+  };
+
+  return {
+    version: 2,
+    title,
+    pages: [{
+      id: "main",
+      title,
+      blocks: [...converted.blocks, ...refs.blocks],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks],
+    }],
+    source: "ai",
+    wikiMeta,
+    generatedBy: {
+      agent: "ai",
+      sessionId: `wiki-topic-${now}`,
+      model: model ?? undefined,
+    },
+    createdAt: now,
+    modifiedAt: now,
+  };
+}
+
+/**
+ * 既存の新形式トピックドキュメントの本文を書き直して更新する（改訂共通。土台のみ）。
+ * rebuildTopicDocument（旧形式）と同じく、書き直しのたびに References を作り直すので
+ * 重複しない。出典照合の判定は引き継がない（本文を作り直す系の既存仕様と揃える）。
+ */
+export function rebuildSourceTopicDocument(
+  existingDoc: GraphiumDocument,
+  markdown: string,
+  sources: TopicSourceRef[],
+  model: string | null,
+  noteIndex?: NoteIndex,
+): GraphiumDocument {
+  const now = new Date().toISOString();
+  const stripped = stripEmptyMarkdownSections(markdown);
+  const resolvedBody = resolveSourceCitations(stripped, sources);
+  const converted = convertSectionsToBlocks(
+    [{ heading: "", content: resolvedBody }],
+    noteIndex,
+    existingDoc.title,
+  );
+  const refs = buildSourceReferenceBlocks(sources);
+  const page = existingDoc.pages[0];
+
+  return attachSourceCheck({
+    ...existingDoc,
+    pages: [{
+      ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
+      blocks: [...converted.blocks, ...refs.blocks],
+      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks],
+    }],
+    wikiMeta: {
+      ...existingDoc.wikiMeta!,
+      kind: "topic",
+      derivedFromNotes: sources.map((s) => s.id),
+      derivedFromClaims: [],
+      topicMarkdown: stripped,
+      lastIngestedAt: now,
+      generatedBy: {
+        model: model ?? existingDoc.wikiMeta?.generatedBy?.model ?? "unknown",
+        version: "1.0.0",
+      },
+    },
+    generatedBy: {
+      agent: "ai",
+      sessionId: existingDoc.generatedBy?.sessionId ?? `wiki-topic-${now}`,
+      model: model ?? existingDoc.generatedBy?.model ?? undefined,
+    },
+    modifiedAt: now,
+  }, undefined);
+}
+
 /**
  * 既存の Concept ページからスナップショットを構築する（Synthesis 入力用）
  *

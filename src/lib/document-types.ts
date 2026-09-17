@@ -432,6 +432,15 @@ export type WikiMeta = {
    */
   topicIds?: string[];
   /**
+   * 新形式トピック（2026-09〜）の正本本文（Markdown）。
+   * `## 定義` / `## 要点` / `## 食い違い・未解決` の見出しと、文末の `[[source:<id>]]` 引用からなる。
+   * 資料（ノート本文・PDF・Word・URL・チャット）を直接読んで改訂する取り込みでは、
+   * 次回改訂時に「前の本文」として LLM に渡す入力になり、出典照合もここから要点を取る。
+   * 存在すれば新形式（引用先は `derivedFromNotes` の資料 id）、無ければ旧形式
+   * （引用先は `derivedFromClaims` のメンバー知見、本文は claim 群からの純関数）。
+   */
+  topicMarkdown?: string;
+  /**
    * Cmd-K Composer の verb 取り込み（R2 / PR3）で、このノートが引用・精査した
    * 知見/洞察（claim/atom）ノートの ID リスト。
    *
