@@ -1,6 +1,6 @@
 export { WikiListView } from "./WikiListView";
 export { WikiLogView } from "./WikiLogView";
-export { WikiLintView } from "./WikiLintView";
+export { WikiLintView, type WikiLintTab } from "./WikiLintView";
 export { WikiBanner, WikiContextDrawer } from "./WikiBanner";
 export { KnowledgeStatusChip } from "./KnowledgeStatusChip";
 export {
@@ -17,13 +17,14 @@ export {
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge,
   promoteClaimStatusIfCorroborated,
   embedWikiSections, markEditedSections,
-  // 横断更新
-  fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail, extractBodyPreview,
-  extractTopicOneLiner, formatTopicRefForIndex, consolidateTopics, retargetClaimTopicId,
+  extractBodyPreview,
+  extractTopicOneLiner, consolidateTopics, retargetClaimTopicId,
   // Lint（自動実行用）
-  lintWikis, buildWikiSnapshots,
+  lintWikis, buildWikiSnapshots, mergeMissingSourceIssues,
   // 機械的な自動アーカイブ（LLM 不要）
   detectAutoArchivable, type AutoArchiveCandidate,
+  // 資料の一部欠落（LLM 不要）
+  detectMissingSourceIssues,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,
@@ -37,11 +38,13 @@ export {
   type AtomDuplicateVerdict, type AtomDuplicateJudgeVerdict, type AtomDuplicateResolution,
   // インライン引用リンク
   buildNoteIndex,
-  // Topic（話題）
-  normalizeTopicTitle, matchTopicsByTitle, resolveTopicsForClaim,
-  linkClaimAndTopic, unlinkClaimFromTopic,
-  composeTopicBody, buildTopicDocument, rebuildTopicDocument,
-  type ExistingTopicRef, type TopicMatch, type TopicComposeClaim,
+  // Topic（話題。知見はもう材料にしない — 旧形式の割り当て系は撤去済み）
+  normalizeTopicTitle, unlinkClaimFromTopic,
+  type ExistingTopicRef,
+  // Topic（新形式・資料を直接読む）
+  buildSourceTopicDocument, rebuildSourceTopicDocument, resolveSourceCitations, stripEmptyMarkdownSections,
+  routeTopicsForSource, reviseTopicFromSource,
+  type TopicSourceRef, type TopicRouteSource, type TopicRouteExistingRef,
 } from "./wiki-service";
 export type { ClaimSnapshot } from "../../server/services/wiki-types";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";
@@ -58,10 +61,15 @@ export {
   saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
   type LintBadgeSummary,
 } from "./wiki-lint-badge";
-export { runTopicStage, consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit } from "./topic-stage";
+export {
+  consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit,
+  runSourceTopicStage, rebuildTopicFromSources, isIngestInsufficient, planTopicRebuild,
+} from "./topic-stage";
 export type {
-  TopicStageClaimInput, TopicStageResult, TopicStageDeps,
   ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
+  SourceTopicStageInput, SourceTopicStageResult, SourceTopicStageDeps,
+  RebuildTopicFromSourcesResult, RebuildTopicFromSourcesDeps,
+  TopicRebuildTarget, TopicRebuildPlan, TopicRebuildPlanItem,
 } from "./topic-stage";
 export { mergeAtomsExplicit } from "./atom-merge";
 export type { MergeAtomsDeps, MergeAtomsResult } from "./atom-merge";

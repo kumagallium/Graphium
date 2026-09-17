@@ -22,12 +22,6 @@ import {
   type LintIssue,
 } from "../services/wiki-linter.js";
 import {
-  buildCrossUpdateSystemPrompt,
-  buildCrossUpdateUserMessage,
-  parseCrossUpdateOutput,
-  type ExistingWikiDetail,
-} from "../services/wiki-cross-updater.js";
-import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
   parseAtomizerOutput,
@@ -54,23 +48,34 @@ import {
   type RewriteSection,
 } from "../services/wiki-rewriter.js";
 import {
-  buildTopicWriterSystemPrompt,
-  buildTopicWriterUserMessage,
-  parseTopicWriterOutput,
-  buildTopicNamerSystemPrompt,
-  buildTopicNamerUserMessage,
-  parseTopicNamerOutput,
-  type TopicMemberClaim,
-  type TopicNamerClaim,
   buildTopicConsolidatorSystemPrompt,
   buildTopicConsolidatorUserMessage,
   parseTopicConsolidatorOutput,
   type TopicConsolidatorExistingRef,
+  buildTopicRouterSystemPrompt,
+  buildTopicRouterUserMessage,
+  parseTopicRouterOutput,
+  type TopicRouterSource,
+  type TopicRouterExistingRef,
+  buildSourceTopicReviserSystemPrompt,
+  buildSourceTopicReviserUserMessage,
+  parseSourceTopicReviserOutput,
+  buildTopicMergerSystemPrompt,
+  buildTopicMergerUserMessage,
+  parseTopicMergerOutput,
 } from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 import type { ClaimSnapshot } from "../services/wiki-types.js";
 import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import {
+  buildSourceCheckSystemPrompt,
+  buildSourceCheckUserMessage,
+  parseSourceCheckOutput,
+  applyQuoteVerification,
+  type SourceCheckClaimInput,
+  type SourceCheckSourceInput,
+} from "../services/source-check.js";
 
 const app = new Hono();
 
@@ -284,6 +289,7 @@ function buildSummary(issues: { type: string }[]) {
     gaps: issues.filter((i) => i.type === "gap").length,
     stale: issues.filter((i) => i.type === "stale").length,
     redundant: issues.filter((i) => i.type === "redundant").length,
+    missingSource: issues.filter((i) => i.type === "missing-source").length,
   };
 }
 
@@ -358,177 +364,12 @@ app.post("/rewrite", async (c) => {
   }
 });
 
-// 横断更新（Ingest 後に既存 Wiki の更新提案を生成）
-app.post("/cross-update", async (c) => {
-  const body = await c.req.json<{
-    newNoteTitle: string;
-    newNoteContent: string;
-    newWikiTitles: string[];
-    existingWikis: ExistingWikiDetail[];
-    language: string;
-    model?: string;
-    skills?: { title: string; prompt: string }[];
-  }>();
-
-  if (!body.existingWikis || body.existingWikis.length === 0) {
-    return c.json({ proposals: [] });
-  }
-
-  const modelConfig = resolveModelConfig(c, { modelName: body.model });
-
-  if (!modelConfig) {
-    return c.json({ proposals: [] });
-  }
-
-  const systemPrompt = buildCrossUpdateSystemPrompt(body.language || "en", body.skills);
-  const userMessage = buildCrossUpdateUserMessage(
-    body.newNoteTitle,
-    body.newNoteContent,
-    body.newWikiTitles,
-    body.existingWikis,
-  );
-
-  try {
-    const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "wiki.cross-update",
-      modelConfig,
-      abortSignal: c.req.raw.signal,
-    });
-
-    const proposals = parseCrossUpdateOutput(result.message);
-
-    return c.json({
-      proposals,
-      tokenUsage: result.tokenUsage,
-      model: result.model,
-    });
-  } catch (err) {
-    console.error("Wiki cross-update error:", err);
-    // degrade（200 + 空 proposals）だが code は添えておく
-    return c.json({ proposals: [], ...errorBody(err) });
-  }
-});
-
-// 話題（topic）ページの本文を生成する。
-//   前の本文は受け取らない — メンバー知見（claims）だけから毎回作り直す純関数。
-//   新規話題の初回生成・既存話題へのメンバー変化後の書き直し・手動再生成のいずれも
-//   この 1 本のエンドポイントを通す（呼び出し側で activityType を使い分ける）。
-app.post("/compose-topic", async (c) => {
-  const body = await c.req.json<{
-    title: string;
-    language: string;
-    claims: TopicMemberClaim[];
-    model?: string;
-  }>();
-
-  if (!body.title || !Array.isArray(body.claims) || body.claims.length === 0) {
-    return c.json({ error: "title and claims are required" }, 400);
-  }
-
-  const modelConfig = resolveModelConfig(c, { modelName: body.model });
-
-  if (!modelConfig) {
-    return c.json(noModelRegisteredBody(), 400);
-  }
-
-  const systemPrompt = buildTopicWriterSystemPrompt(body.language || "en");
-  const userMessage = buildTopicWriterUserMessage(body.title, body.claims);
-
-  try {
-    const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "wiki.compose-topic",
-      modelConfig,
-      abortSignal: c.req.raw.signal,
-    });
-
-    const parsed = parseTopicWriterOutput(result.message);
-    if (!parsed) {
-      return c.json({ error: "Failed to parse topic writer output" }, 500);
-    }
-
-    return c.json({
-      body: parsed.body,
-      tokenUsage: result.tokenUsage,
-      model: result.model,
-    });
-  } catch (err) {
-    console.error("Wiki compose-topic error:", err);
-    return c.json(errorBody(err), 500);
-  }
-});
-
-// 話題（topic）名の保険生成。
-//   ingester が topics を出さなかった知見（claim）に対し、話題名だけを後から推測して埋める。
-//   本文（compose-topic）とは別エンドポイント — 命名のみで軽量。件数の上限は設けない
-//   （入力が大きすぎて LLM が失敗したら、そのまま失敗として呼び出し側（topic-stage）に返す）。
-app.post("/name-topics", async (c) => {
-  const body = await c.req.json<{
-    language: string;
-    existingTopics?: string[];
-    claims: TopicNamerClaim[];
-    model?: string;
-  }>();
-
-  if (!Array.isArray(body.claims) || body.claims.length === 0) {
-    return c.json({ error: "claims are required" }, 400);
-  }
-
-  const modelConfig = resolveModelConfig(c, { modelName: body.model });
-
-  if (!modelConfig) {
-    return c.json(noModelRegisteredBody(), 400);
-  }
-
-  const systemPrompt = buildTopicNamerSystemPrompt(body.language || "en");
-  const userMessage = buildTopicNamerUserMessage(body.existingTopics ?? [], body.claims);
-
-  try {
-    const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "wiki.name-topics",
-      modelConfig,
-      abortSignal: c.req.raw.signal,
-    });
-
-    const parsed = parseTopicNamerOutput(result.message);
-    if (!parsed) {
-      return c.json({ error: "Failed to parse topic namer output" }, 500);
-    }
-
-    return c.json({
-      topics: parsed,
-      tokenUsage: result.tokenUsage,
-      model: result.model,
-    });
-  } catch (err) {
-    console.error("Wiki name-topics error:", err);
-    return c.json(errorBody(err), 500);
-  }
-});
-
 // 話題（topic）名の統合（名寄せの後段）。
-//   name-topics は 20 件ずつチャンクで呼ばれるため全体を見渡せず、表記ゆれ・助詞の有無・
-//   語順違い・粒度違いの近縁話題が別々に残る（実測: 34 話題の大半がメンバー 1 件）。
-//   このエンドポイントは今回の提案名（と既存話題タイトル）をまとめて 1 回渡し、
-//   「どの提案名をどの正式名に寄せるか」の対応表だけを返す。本文は書かない・
-//   話題ページの作成/更新/マージは呼び出し側（topic-stage / note-app）が対応表を見て行う。
+//   資料ごとの振り分け（Topic Router）は資料 1 本ずつしか見ないため全体を見渡せず、
+//   表記ゆれ・助詞の有無・語順違い・粒度違いの近縁話題が別々に残る
+//   （実測: 34 話題の大半がメンバー 1 件）。このエンドポイントは既存話題タイトルを
+//   まとめて 1 回渡し、「どの話題をどの正式名に寄せるか」の対応表だけを返す。本文は書かない・
+//   話題ページの統合は呼び出し側（topic-stage / note-app）が対応表を見て行う。
 app.post("/consolidate-topics", async (c) => {
   const body = await c.req.json<{
     language: string;
@@ -578,6 +419,169 @@ app.post("/consolidate-topics", async (c) => {
     });
   } catch (err) {
     console.error("Wiki consolidate-topics error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 新形式トピックの振り分け（資料 1 本 → 改訂する既存トピック / 新規に作るトピック名）。
+//   埋め込み類似度・正規化タイトル一致による機械的な名寄せは撤去し、資料全文と既存トピックの
+//   index を LLM に渡して自分で判断させる。件数の上限・しきい値は置かない。
+app.post("/route-topics", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    source: TopicRouterSource;
+    existingTopics: TopicRouterExistingRef[];
+    model?: string;
+  }>();
+
+  if (!body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+    return c.json({ error: "source is required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicRouterSystemPrompt(body.language || "en");
+  const userMessage = buildTopicRouterUserMessage(body.source, body.existingTopics ?? []);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.route-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicRouterOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse topic router output" }, 500);
+    }
+
+    return c.json({
+      update: parsed.update,
+      create: parsed.create,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki route-topics error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 新形式トピックの改訂（前の本文 + 資料 1 本 → 次の版の本文）。
+//   前の本文は member claims からではなく、そのトピック自身の wikiMeta.topicMarkdown を
+//   呼び出し側が渡す。新規作成時は currentBody を空文字列で渡す。
+app.post("/revise-topic", async (c) => {
+  const body = await c.req.json<{
+    title: string;
+    language: string;
+    currentBody: string;
+    source: { id: string; title: string; text: string };
+    model?: string;
+    /** この資料が以前の版から既に [[source:<id>]] で引用済みか（再取り込み時の見直し指示に使う） */
+    previouslyCited?: boolean;
+  }>();
+
+  if (!body.title || !body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+    return c.json({ error: "title and source are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildSourceTopicReviserSystemPrompt(body.language || "en");
+  const userMessage = buildSourceTopicReviserUserMessage(body.title, body.currentBody || "", body.source, body.previouslyCited);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.revise-topic",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseSourceTopicReviserOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse source topic reviser output" }, 500);
+    }
+
+    return c.json({
+      body: parsed.body,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki revise-topic error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 新形式トピックどうしの本文統合（話題の統合を「本文の統合」に置き換える）。
+//   知見（claim）を経由せず、統合対象の本文（すでに [[source:<id>]] 引用済み）を
+//   そのまま 2 本以上渡し、1 本の本文にまとめさせる。
+app.post("/merge-topics", async (c) => {
+  const body = await c.req.json<{
+    title: string;
+    language: string;
+    bodies: string[];
+    model?: string;
+  }>();
+
+  if (!body.title || !Array.isArray(body.bodies) || body.bodies.length < 2) {
+    return c.json({ error: "title and at least 2 bodies are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicMergerSystemPrompt(body.language || "en");
+  const userMessage = buildTopicMergerUserMessage(body.title, body.bodies);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.merge-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicMergerOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse topic merger output" }, 500);
+    }
+
+    return c.json({
+      body: parsed.body,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki merge-topics error:", err);
     return c.json(errorBody(err), 500);
   }
 });
@@ -848,6 +852,59 @@ app.post("/judge-atom-duplicates", async (c) => {
     console.error("Wiki judge-atom-duplicates error:", err);
     // fail-closed（黙って統合しない側に倒す）: 呼び出し側が verdicts 欠落を "different" として扱う
     return c.json({ verdicts: [], ...errorBody(err) });
+  }
+});
+
+// 出典照合（Source check, v1）— 出典 1 件 + それに依拠する知見群をまとめて判定する。
+// 世界照合（/api/world-grounding/check）とは別レーン。1 呼び出し = 出典 1 件。
+app.post("/check-sources", async (c) => {
+  const body = await c.req.json<{
+    source: SourceCheckSourceInput;
+    claims: SourceCheckClaimInput[];
+    language?: string;
+    model?: string;
+  }>();
+
+  if (!body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+    return c.json({ result: null, error: "source.text is required" }, 400);
+  }
+  if (!Array.isArray(body.claims) || body.claims.length === 0) {
+    return c.json({ result: null, error: "claims is required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    // モデル未登録 → degrade（world-grounding の /check と同じ流儀）。エラーにはしない。
+    return c.json({ result: null, error: "no model registered", code: "NO_MODEL_REGISTERED" });
+  }
+
+  const language = body.language || "en";
+  const systemPrompt = buildSourceCheckSystemPrompt(language);
+  const userMessage = buildSourceCheckUserMessage(body.source, body.claims);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.check-sources",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    const parsed = parseSourceCheckOutput(result.message, body.claims, language);
+    // 不変条件 3: quote は原文に実在すると照合できたものだけ残す（サーバー側で照合）。
+    const verified = applyQuoteVerification(parsed, body.source.text, language);
+    return c.json({
+      result: { results: verified, model: result.model },
+      tokenUsage: result.tokenUsage,
+    });
+  } catch (err) {
+    console.error("Wiki check-sources error:", err);
+    // LLM 呼び出し失敗 → degrade（world-grounding と同じ精神）
+    return c.json({ result: null, ...errorBody(err) });
   }
 });
 

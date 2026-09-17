@@ -293,19 +293,32 @@ export type ExperimentalSettings = {
    * 既定 OFF。コストはユーザーの新規性レートに収束する（使うほど KB ヒットが増える）。
    */
   autoGrounding: boolean;
+  /**
+   * 自動出典照合（opt-in / 既定 OFF）。
+   * ON のとき、まだ出典照合していない知見・トピックを background で1件ずつ照合する。
+   * autoGrounding と同じ作り（イベント駆動・直列・デバウンス・既定 OFF）。
+   */
+  autoSourceCheck: boolean;
 };
 
 /**
  * AI 機能ごとの表示切り替え。
- * OFF は「無効化」ではなく「UI から隠す」— 作成済みのデータ（洞察 / 照合結果）は
+ * OFF は「無効化」ではなく「UI から隠す」— 作成済みのデータ（洞察 / 知見 / 照合結果）は
  * 消さず、再度 ON にすれば復帰する。賢いモデルを要求する機能のため、初回起動
  * （保存済み設定が無い状態）では既定 OFF で始める。一方、この版より前から
  * 使っているユーザー（保存済み設定はあるが features キーが無い）は既定 ON のまま
  * 維持する（loadSettings のマージで解決する）。
+ * - claims: 知見（Claims）層。トピック（Karpathy 方式・資料から直接作る）を既定の
+ *           知識層とし、知見・洞察は Graphium 独自の拡張として ON/OFF できるように
+ *           した（2026-09-17 決定）。OFF のとき、取り込みは知見の抽出（/api/wiki/ingest）
+ *           を呼ばず、トピック段だけが資料本文から走る。
  * - insights: 洞察（Atom）層。サイドバー・一覧・全体グラフから隠す。
+ *             知見（claims）から作るため、claims が OFF のときは常に false に倒す
+ *             （loadSettings のマージで解決する。UI 側もトグルを無効化して理由を出す）。
  * - worldGrounding: 世界照合。ボタン・列・自動照合トグルを隠す。
  */
 export type FeatureFlags = {
+  claims?: boolean;
   insights?: boolean;
   worldGrounding?: boolean;
 };
@@ -412,8 +425,10 @@ const DEFAULT_SETTINGS: Settings = {
     atomLayer: false,
     synthesis: false,
     autoGrounding: false,
+    autoSourceCheck: false,
   },
   features: {
+    claims: false,
     insights: false,
     worldGrounding: false,
   },
@@ -602,16 +617,24 @@ export function loadSettings(): Settings {
         // Synthesis は Atom 依存のため、atomLayer OFF なら強制的に OFF とする
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
         autoGrounding: typeof exp?.autoGrounding === "boolean" ? exp.autoGrounding : false,
+        autoSourceCheck: typeof exp?.autoSourceCheck === "boolean" ? exp.autoSourceCheck : false,
       },
       // ここに来るのは保存済み設定が存在するケース（raw が無ければ関数の先頭で
-      // DEFAULT_SETTINGS を返しており、その features は false/false）。
+      // DEFAULT_SETTINGS を返しており、その features は false/false/false）。
       // 保存済み設定はあるが features キー自体が無い場合（この版より前から使っている
-      // ユーザー）は両方 true にする — typeof ガードなので undefined は true 側に倒れる
+      // ユーザー）は既定 true にする — typeof ガードなので undefined は true 側に倒れる
       // （autoUpdateCheck と同じパターン）。features があればその値に従う。
-      features: {
-        insights: typeof feat?.insights === "boolean" ? feat.insights : true,
-        worldGrounding: typeof feat?.worldGrounding === "boolean" ? feat.worldGrounding : true,
-      },
+      // claims が OFF のときは insights を常に false に倒す（洞察は知見から作るため。
+      // 2026-09-17 決定）。claims 自体は他の 2 フラグと同じ既定ロジックに従う。
+      features: (() => {
+        const claimsValue = typeof feat?.claims === "boolean" ? feat.claims : true;
+        const insightsValue = typeof feat?.insights === "boolean" ? feat.insights : true;
+        return {
+          claims: claimsValue,
+          insights: claimsValue ? insightsValue : false,
+          worldGrounding: typeof feat?.worldGrounding === "boolean" ? feat.worldGrounding : true,
+        };
+      })(),
       atomizeIngestBudget: normalizeAtomizeIngestBudget(parsed.atomizeIngestBudget),
       // boolean 以外（壊れた値）は undefined（未確定）に倒す。起動時に判定して確定する。
       enableProvLabels:
@@ -778,14 +801,29 @@ export function isAgentConfigured(): boolean {
 }
 
 /**
+ * 知見（Claims）層が有効かどうか。
+ * 2026-09-17 決定: トピック（Karpathy 方式）を既定の知識層とし、知見・洞察は
+ * Graphium 独自の拡張として ON/OFF できるようにした。OFF のとき、取り込みは
+ * 知見の抽出（/api/wiki/ingest）を呼ばず、トピック段だけが資料本文から走る。
+ * 既存の知見・洞察ページ自体は消さず、閲覧・検索・一覧表示は引き続き可能。
+ * 既定値の向きは loadSettings 側（初回起動は OFF、既存ユーザーは ON）にのみ持たせる。
+ */
+export function isClaimsEnabled(): boolean {
+  return loadSettings().features?.claims === true;
+}
+
+/**
  * Atom レイヤ（洞察）が有効かどうか。
  * 2026-05-27 の design revision で experimental から default に昇格し、以後は
  * features.insights が可視性を持つ（OFF は無効化ではなく UI から隠すだけ）。
  * experimental.atomLayer は死んだフィールドで、ここでは読まない。
+ * 知見（features.claims）が OFF のときは常に false（loadSettings のマージで
+ * 既に反映済みだが、直接読む箇所のための二重防御としてここでも明示する）。
  * 既定値の向きは loadSettings 側（初回起動は OFF、既存ユーザーは ON）にのみ持たせる。
  */
 export function isAtomLayerEnabled(): boolean {
-  return loadSettings().features?.insights === true;
+  const settings = loadSettings();
+  return settings.features?.claims === true && settings.features?.insights === true;
 }
 
 /**

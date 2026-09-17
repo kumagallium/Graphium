@@ -1,278 +1,38 @@
-// 話題（topic）の段 — 知見（claim）を話題ページへ割り当て・本文を書き直す純粋なステージ。
+// 話題（topic）の段 — 資料（source）から話題ページを作る/改訂する純粋なステージと、
+// 既存話題どうしの統合。
 //
 // note-app.tsx の複数の取り込み経路（ノート取り込み・チャットのナレッジ化・素材 URL/PDF/Word・
 // URL 貼付・設定の「話題を整理」）から同じロジックを呼べるよう、依存を引数で注入する形で
-// 切り出している。挙動は元の実装（ingest 実行ループに埋め込まれていたもの）と同一。
+// 切り出している。
 //
-// 処理の流れ（Karpathy の LLM Wiki と同じ方針: LLM が「資料 + index」を見て自分で決める。
-// 数値のしきい値は置かない — 唯一の例外は resolveTopicsForClaim が使う embedding 重複判定
-// 0.9 で、これは既存の重複判定と共通の定数）:
-//   1. topics が空の知見を name-topics で補う（LLM が Topics 項目を無視した場合の保険）。
-//      既存話題は「タイトル + 定義の先頭文」の index として渡し、LLM が同じ概念かどうかを
-//      自分で判断できるようにする。API 呼び出し自体が失敗した知見は "failed" に数える。
-//   2. topics が（補完後も）空の知見は "withoutTopic" に数えて割り当てをスキップする。
-//   3. resolveTopicsForClaim でタイトル一致 → embedding 類似度の順に既存話題へ解決し、
-//      一致すれば追記・マージ、無ければ新規話題ページを作る。
-//   4. compose-topic の本文生成に失敗した match は "failed" に数え、その match だけ
-//      スキップする（他の match・他の claim には影響しない）。
+// 知見（claim）を経由してトピックを組み立てる旧方式（runTopicStage・name-topics による
+// 話題名の保険・compose-topic による本文生成）は撤去済み（2026-09）。知見はもうトピックの
+// 材料にしない — トピックは資料そのものを直接読む新形式（runSourceTopicStage）だけが作る。
 //
 // 話題どうしの統合（表記ゆれ・粒度違いの近縁話題を 1 つに寄せる）は ingest の隠れた段には
 // しない — 設定の「話題を整理」（consolidateExistingTopics）と点検（wiki-linter）の
-// redundant 検出に任せる。ingest 時にできるのは、LLM に既存話題の index を見せて
-// 「既存に寄せるか新規を作るか」を判断させることだけ。
+// redundant 検出に任せる。
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { EditActivityType } from "../document-provenance/types";
 import {
-  resolveTopicsForClaim,
-  linkClaimAndTopic,
-  composeTopicBody,
-  buildTopicDocument,
-  rebuildTopicDocument,
-  nameTopicsForClaims,
   consolidateTopics,
   normalizeTopicTitle,
   retargetClaimTopicId,
-  extractBodyPreview,
-  formatTopicRefForIndex,
+  buildSourceTopicDocument,
+  rebuildSourceTopicDocument,
+  routeTopicsForSource,
+  reviseTopicFromSource,
+  mergeTopicBodies,
   type ExistingTopicRef,
-  type TopicComposeClaim,
+  type TopicSourceRef,
+  type TopicRouteExistingRef,
   type NoteIndex,
 } from "./wiki-service";
 
-/** 話題の段に渡す知見（claim）1 件分の入力 */
-export type TopicStageClaimInput = {
-  id: string;
-  title: string;
-  /** 本文プレビュー（extractBodyPreview 程度の長さを想定） */
-  body: string;
-  /** ingester が出した話題名（空配列 = 未タグ付け）。関数内で書き換わる（呼び出し側に見せる必要はない） */
-  topics: string[];
-  model?: string;
-};
-
-/** 話題の段の実行結果（トースト表示用の件数） */
-export type TopicStageResult = {
-  /** 新規作成した話題ページ数 */
-  created: number;
-  /** 追記・本文更新した話題ページ数 */
-  updated: number;
-  /** compose 失敗・name-topics 呼び出し失敗などで処理できなかった件数 */
-  failed: number;
-  /** 話題を割り当てられなかった知見の件数（補完後も topics が空、または解決 0 件） */
-  withoutTopic: number;
-  /** この実行で新規作成した話題（呼び出し側が並行実行の既存一覧に引き継ぐ） */
-  createdTopics: { id: string; title: string }[];
-};
-
-export type TopicStageDeps = {
-  loadDoc: (noteId: string) => Promise<GraphiumDocument | null>;
-  getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined;
-  handleSaveWikiFile: (
-    wikiId: string,
-    doc: GraphiumDocument,
-    options?: { activityType?: EditActivityType; agentLabel?: string; sources?: string[] },
-  ) => Promise<boolean | void>;
-  handleCreateWikiFile: (
-    doc: GraphiumDocument,
-    options?: { activityType?: EditActivityType; agentLabel?: string; sources?: string[] },
-  ) => Promise<string>;
-  /** 既存の話題ページ一覧（id・title のみ）。関数内で新規作成分を追記していく */
-  existingTopicRefs: ExistingTopicRef[];
-  noteIndex?: NoteIndex;
-  locale: string;
-  /**
-   * 話題ページを保存・作成した直後に呼ばれる（embedWikiSections / wikiLog 等の副作用用）。
-   * triggerClaimId は今回の保存を引き起こした claim（ループ中の claimInfo.id）、
-   * memberClaimIds は保存後の話題ページのメンバー全体。
-   */
-  onTopicSaved?: (
-    topicId: string,
-    doc: GraphiumDocument,
-    triggerClaimId: string,
-    memberClaimIds: string[],
-    mode: "create" | "update",
-  ) => void;
-  /** 警告ログ（console.warn 相当）。テストではモックする */
-  log?: (...args: unknown[]) => void;
-};
-
-/**
- * 話題の段を実行する。claims は取り込み等で今回保存し終えた知見（claim）の一覧
- * （topics が空でも渡してよい — 冒頭で name-topics による補完を試みる）。
- */
-export async function runTopicStage(
-  claims: TopicStageClaimInput[],
-  deps: TopicStageDeps,
-): Promise<TopicStageResult> {
-  const result: TopicStageResult = {
-    created: 0,
-    updated: 0,
-    failed: 0,
-    withoutTopic: 0,
-    createdTopics: [],
-  };
-  if (claims.length === 0) return result;
-
-  const log = deps.log ?? (() => {});
-
-  // 1. topics が空の知見を name-topics で補完する（LLM が Topics 項目を無視した場合の保険）。
-  // 既存話題は「タイトル + 定義の先頭文」（index）として渡し、表記ゆれだけで別話題に
-  // 倒れないよう LLM 自身に既存へ寄せる判断をさせる（Karpathy の index.md と同じ考え方）。
-  const emptyTopicClaims = claims.filter((c) => c.topics.length === 0);
-  const nameTopicsFailedIds = new Set<string>();
-  if (emptyTopicClaims.length > 0) {
-    const existingTopicLines = deps.existingTopicRefs.map(formatTopicRefForIndex);
-    try {
-      const named = await nameTopicsForClaims(
-        emptyTopicClaims.map((c) => ({ id: c.id, title: c.title, body: c.body })),
-        existingTopicLines,
-        deps.locale,
-        emptyTopicClaims[0]?.model,
-      );
-      for (const c of emptyTopicClaims) {
-        const topics = named[c.id];
-        if (topics && topics.length > 0) c.topics = topics;
-      }
-    } catch (err) {
-      log("話題名の補完(name-topics)に失敗:", err);
-      for (const c of emptyTopicClaims) nameTopicsFailedIds.add(c.id);
-    }
-  }
-
-  // 2〜3. 割り当て（既存の ingest ループと同じロジック）
-  const existingTopicRefs = [...deps.existingTopicRefs];
-
-  for (const claimInfo of claims) {
-    if (claimInfo.topics.length === 0) {
-      if (nameTopicsFailedIds.has(claimInfo.id)) {
-        result.failed++;
-      } else {
-        result.withoutTopic++;
-      }
-      continue;
-    }
-
-    const claimDoc =
-      deps.getCachedDoc(`wiki:${claimInfo.id}`) ?? (await deps.loadDoc(`wiki:${claimInfo.id}`));
-    if (!claimDoc?.wikiMeta) {
-      log("話題割り当てをスキップ: claim ドキュメントが見つからない", claimInfo.id);
-      result.withoutTopic++;
-      continue;
-    }
-
-    const matches = await resolveTopicsForClaim(claimInfo.topics, existingTopicRefs);
-    if (matches.length === 0) {
-      result.withoutTopic++;
-      continue;
-    }
-
-    // claim ⇔ topic の双方向リンクは linkClaimAndTopic の戻り値経由でのみ更新する（入口 1 本）。
-    let currentClaimMeta = claimDoc.wikiMeta;
-    let matchedAnyTopic = false;
-
-    for (const match of matches) {
-      try {
-        let topicId: string;
-        let topicDoc: GraphiumDocument | null = null;
-
-        if (match.status === "matched") {
-          topicId = match.topicId;
-          topicDoc =
-            deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`)) ?? null;
-          if (!topicDoc?.wikiMeta || topicDoc.wikiMeta.kind !== "topic") continue;
-
-          const linked = linkClaimAndTopic(currentClaimMeta, claimInfo.id, topicDoc.wikiMeta, topicId);
-          if (linked.topicMeta !== topicDoc.wikiMeta) {
-            const nextMemberIds = linked.topicMeta.derivedFromClaims ?? [];
-            const memberClaims: TopicComposeClaim[] = [];
-            for (const cId of nextMemberIds) {
-              if (cId === claimInfo.id) {
-                memberClaims.push({ id: cId, title: claimInfo.title, body: claimInfo.body });
-                continue;
-              }
-              const cDoc = deps.getCachedDoc(`wiki:${cId}`) ?? (await deps.loadDoc(`wiki:${cId}`));
-              if (cDoc) memberClaims.push({ id: cId, title: cDoc.title, body: extractBodyPreview(cDoc, 2000) });
-            }
-            const body = await composeTopicBody(topicDoc.title, deps.locale, memberClaims, claimInfo.model);
-            if (!body) {
-              // compose 失敗: topic 側の derivedFromClaims 更新を保存できないので、
-              // この match は claim 側もリンクせずスキップする（非対称なリンクを避ける）。
-              result.failed++;
-              continue;
-            }
-            const rewritten = rebuildTopicDocument(
-              topicDoc,
-              body,
-              memberClaims,
-              claimInfo.model ?? null,
-              deps.noteIndex,
-            );
-            await deps.handleSaveWikiFile(topicId, rewritten, {
-              activityType: "wiki_cross_update",
-              sources: nextMemberIds,
-            });
-            deps.onTopicSaved?.(topicId, rewritten, claimInfo.id, nextMemberIds, "update");
-            result.updated++;
-          }
-          currentClaimMeta = linked.claimMeta;
-          matchedAnyTopic = true;
-        } else {
-          // 新規話題: メンバー 1 件（今回の claim）で本文を作ってから作成する。
-          const memberClaims: TopicComposeClaim[] = [{ id: claimInfo.id, title: claimInfo.title, body: claimInfo.body }];
-          const body = await composeTopicBody(match.title, deps.locale, memberClaims, claimInfo.model);
-          if (!body) {
-            // 本文が作れなかった話題は作成しない（次の呼び出しで同じ名前が出れば再挑戦になる）
-            result.failed++;
-            continue;
-          }
-          const newTopicDoc = buildTopicDocument(
-            match.title,
-            body,
-            memberClaims,
-            claimInfo.model ?? null,
-            deps.locale,
-            deps.noteIndex,
-          );
-          topicId = await deps.handleCreateWikiFile(newTopicDoc, {
-            activityType: "wiki_ingest",
-            sources: [claimInfo.id],
-          });
-          deps.onTopicSaved?.(topicId, newTopicDoc, claimInfo.id, [claimInfo.id], "create");
-          existingTopicRefs.push({ id: topicId, title: match.title });
-          result.createdTopics.push({ id: topicId, title: match.title });
-          result.created++;
-          topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? newTopicDoc;
-
-          // 新規 topic は derivedFromClaims: [claimInfo.id] を持った状態で既に作成済みなので、
-          // ここでは claim 側の topicIds だけ linkClaimAndTopic で確定させる（冪等）。
-          if (topicDoc?.wikiMeta) {
-            const linked = linkClaimAndTopic(currentClaimMeta, claimInfo.id, topicDoc.wikiMeta, topicId);
-            currentClaimMeta = linked.claimMeta;
-          }
-          matchedAnyTopic = true;
-        }
-      } catch (err) {
-        result.failed++;
-        log("話題割り当てに失敗:", claimInfo.id, match, err);
-      }
-    }
-
-    if (currentClaimMeta !== claimDoc.wikiMeta) {
-      await deps.handleSaveWikiFile(claimInfo.id, { ...claimDoc, wikiMeta: currentClaimMeta });
-    }
-    if (!matchedAnyTopic) {
-      result.withoutTopic++;
-    }
-  }
-
-  return result;
-}
-
 // ── 既存話題どうしの統合（設定「話題を整理」から呼ばれる）──
-// runTopicStage の統合ステップは「今回の実行で出た提案名」を対象にするのに対し、
-// こちらは既にページとして存在する話題タイトル全体を対象にする（表記ゆれ・粒度違いで
-// 増えてしまった話題を、後からまとめて 1 つに寄せる救済）。
+// 既にページとして存在する話題タイトル全体を対象に、表記ゆれ・粒度違いで
+// 増えてしまった話題を、後からまとめて 1 つに寄せる救済。
 
 /** 既存話題どうしの統合の入力（統合先を決める純粋関数に渡す最小情報） */
 export type ExistingTopicForMerge = {
@@ -334,6 +94,17 @@ export type ConsolidateExistingTopicsDeps = {
   ) => Promise<boolean | void>;
   /** 吸収された話題をゴミ箱へ送る（ソフトデリート）。既存の handleDeleteWikiFile をそのまま渡す想定 */
   handleDeleteWikiFile: (wikiId: string) => Promise<void>;
+  /**
+   * 資料 id から「タイトル + 全文」を解決する（新形式どうしの本文統合・旧形式を含む組み直しで
+   * 使う。出典照合の resolveSourceText と同じ入口を呼び出し側が注入する想定）。
+   * ゴミ箱・未検出などで読めない資料は undefined を返す。
+   */
+  resolveSource: (sourceId: string) => Promise<{ title: string; text: string } | undefined>;
+  /**
+   * 資料 id からタイトルだけを解決する軽量経路（runSourceTopicStage の resolveSourceTitle と
+   * 同じ役割）。未指定・解決不能なら resolveSource（全文取得を伴う）へフォールバックする。
+   */
+  resolveSourceTitle?: (sourceId: string) => string | undefined;
   noteIndex?: NoteIndex;
   locale: string;
   model?: string;
@@ -344,9 +115,17 @@ export type ConsolidateExistingTopicsDeps = {
  * 明示の対応表（吸収される話題 id → 統合先の話題 id）に従って話題どうしを統合する、
  * 副作用ありの実行部分。consolidateExistingTopics（LLM の consolidate-topics 経由）と、
  * 一覧・バナー・点検からの明示選択マージ（mergeTopics）が共通して使う。
- * 1. 統合先ごとに、吸収される話題のメンバー知見を統合先へ付け替え（claim.topicIds の
- *    retarget + topic.derivedFromClaims への合流）、本文を書き直す。
- * 2. 吸収された話題をゴミ箱へ送る（物理削除しない）。
+ *
+ * 本文の作り方は統合先・吸収元の形式で分かれる（知見を経由する統合は撤去済み）:
+ *   - 全員が新形式（topicMarkdown を持つ）: mergeTopicBodies で本文どうしを直接統合し、
+ *     資料は全員の derivedFromNotes の和にする。
+ *   - 1 つでも旧形式: 全体の資料 id（旧形式側はメンバー知見の derivedFromNotes の和、
+ *     新形式側は derivedFromNotes そのもの）を集め、rebuildTopicFromSources で
+ *     資料から組み直す（結果として新形式へ移行する）。
+ *
+ * 知見（claim）側の topicIds 付け替え（retargetClaimTopicId）は旧形式との互換のために残す
+ * — 新形式の吸収元はメンバー知見を持たないため、この付け替えは何もしない。
+ * 最後に、吸収された話題をゴミ箱へ送る（物理削除しない）。
  */
 export async function applyTopicMerges(
   existingTopics: ExistingTopicForMerge[],
@@ -373,12 +152,20 @@ export async function applyTopicMerges(
         continue;
       }
 
-      const mergedMemberIds = new Set(targetDoc.wikiMeta.derivedFromClaims ?? []);
+      // 吸収される話題それぞれの実ドキュメントを読む（新形式判定・derivedFromNotes 収集用）。
+      const sourceDocs: { id: string; doc: GraphiumDocument }[] = [];
+      for (const sourceId of sourceIds) {
+        const doc = deps.getCachedDoc(`wiki:${sourceId}`) ?? (await deps.loadDoc(`wiki:${sourceId}`));
+        if (doc?.wikiMeta && doc.wikiMeta.kind === "topic") sourceDocs.push({ id: sourceId, doc });
+      }
+      const sourceDocById = new Map(sourceDocs.map((d) => [d.id, d.doc]));
+
+      // 知見側 topicIds の付け替え（旧形式の互換）。新形式の吸収元は memberClaimIds が
+      // 空なので何もしない。
       for (const sourceId of sourceIds) {
         const source = topicById.get(sourceId);
         if (!source) continue;
         for (const claimId of source.memberClaimIds) {
-          mergedMemberIds.add(claimId);
           try {
             const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
             if (claimDoc?.wikiMeta && claimDoc.wikiMeta.kind === "claim") {
@@ -393,21 +180,84 @@ export async function applyTopicMerges(
         }
       }
 
-      const memberIds = [...mergedMemberIds];
-      const memberClaims: TopicComposeClaim[] = [];
-      for (const cId of memberIds) {
-        const cDoc = deps.getCachedDoc(`wiki:${cId}`) ?? (await deps.loadDoc(`wiki:${cId}`));
-        if (cDoc) memberClaims.push({ id: cId, title: cDoc.title, body: extractBodyPreview(cDoc, 2000) });
-      }
-      if (memberClaims.length > 0) {
-        const body = await composeTopicBody(targetDoc.title, deps.locale, memberClaims, deps.model);
-        if (body) {
-          const rewritten = rebuildTopicDocument(targetDoc, body, memberClaims, deps.model ?? null, deps.noteIndex);
-          await deps.handleSaveWikiFile(targetId, rewritten, { activityType: "wiki_cross_update", sources: memberIds });
+      const targetIsNew = typeof targetDoc.wikiMeta.topicMarkdown === "string";
+      const allNew = targetIsNew
+        && sourceDocs.length === sourceIds.length
+        && sourceDocs.every(({ doc }) => typeof doc.wikiMeta!.topicMarkdown === "string");
+
+      if (allNew) {
+        // 全員新形式: 本文どうしを直接統合する（資料は全員の derivedFromNotes の和）。
+        const seen = new Set<string>();
+        const refIds: string[] = [];
+        for (const id of targetDoc.wikiMeta.derivedFromNotes ?? []) {
+          if (!seen.has(id)) { seen.add(id); refIds.push(id); }
+        }
+        for (const { doc } of sourceDocs) {
+          for (const id of doc.wikiMeta!.derivedFromNotes ?? []) {
+            if (!seen.has(id)) { seen.add(id); refIds.push(id); }
+          }
+        }
+        const bodies = [
+          targetDoc.wikiMeta.topicMarkdown as string,
+          ...sourceDocs.map(({ doc }) => doc.wikiMeta!.topicMarkdown as string),
+        ];
+        const mergedBody = await mergeTopicBodies(targetDoc.title, bodies, deps.locale, deps.model);
+        if (mergedBody) {
+          const sourceRefs = await collectSourceRefs(refIds, deps);
+          const rewritten = rebuildSourceTopicDocument(targetDoc, mergedBody, sourceRefs, deps.model ?? null, deps.noteIndex);
+          await deps.handleSaveWikiFile(targetId, rewritten, {
+            activityType: "wiki_cross_update",
+            sources: sourceRefs.map((r) => r.id),
+          });
           result.rebuilt++;
         } else {
-          // 本文が作れなくても、メンバーの合流とゴミ箱送りは続行する
-          // （次の手動再生成 / 整理の再実行で本文は追従できる）。
+          // 本文が作れなくても、知見の合流（上で実施済み）とゴミ箱送りは続行する。
+          result.failed++;
+        }
+      } else {
+        // 1 つでも旧形式: 全体の資料 id の和を集め、資料から組み直す（新形式へ移行する）。
+        const collectedSourceIds = new Set<string>();
+        const addFromOldFormatMember = async (topicRef: ExistingTopicForMerge | undefined) => {
+          if (!topicRef) return;
+          for (const claimId of topicRef.memberClaimIds) {
+            const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
+            for (const sid of claimDoc?.wikiMeta?.derivedFromNotes ?? []) collectedSourceIds.add(sid);
+          }
+        };
+
+        if (targetIsNew) {
+          for (const id of targetDoc.wikiMeta.derivedFromNotes ?? []) collectedSourceIds.add(id);
+        } else {
+          await addFromOldFormatMember(topicById.get(targetId));
+        }
+        for (const sourceId of sourceIds) {
+          const sourceDoc = sourceDocById.get(sourceId);
+          if (sourceDoc && typeof sourceDoc.wikiMeta!.topicMarkdown === "string") {
+            for (const id of sourceDoc.wikiMeta!.derivedFromNotes ?? []) collectedSourceIds.add(id);
+          } else {
+            await addFromOldFormatMember(topicById.get(sourceId));
+          }
+        }
+
+        if (collectedSourceIds.size > 0) {
+          const rebuildResult = await rebuildTopicFromSources(targetId, [...collectedSourceIds], {
+            loadDoc: deps.loadDoc,
+            getCachedDoc: deps.getCachedDoc,
+            handleSaveWikiFile: deps.handleSaveWikiFile,
+            resolveSource: deps.resolveSource,
+            resolveSourceTitle: deps.resolveSourceTitle,
+            noteIndex: deps.noteIndex,
+            locale: deps.locale,
+            model: deps.model,
+            log: deps.log,
+          });
+          if (rebuildResult.rebuilt) {
+            result.rebuilt++;
+          } else {
+            // 本文が作れなくても、知見の合流（上で実施済み）とゴミ箱送りは続行する。
+            result.failed++;
+          }
+        } else {
           result.failed++;
         }
       }
@@ -479,4 +329,439 @@ export async function mergeTopicsExplicit(
     targetByTopicId.set(id, keepId);
   }
   return applyTopicMerges(existingTopics, targetByTopicId, deps);
+}
+
+// ── 新形式トピックの段（資料を直接読む。2026-09〜）──
+// 知見（claim）はトピックの材料にしない。資料 1 本ごとに Topic Router へ「改訂する既存
+// トピック / 新しく作るトピック名」を判断させ、Topic Reviser で「前の本文 + 資料全文」から
+// 次の版の本文を作る。埋め込み類似度・正規化タイトル一致による機械的な名寄せは行わない
+// （routeTopicsForSource が既存トピック index を渡し、LLM 自身に判断させる）。
+
+/** 話題の段に渡す資料（source）1 件分の入力。知見ではなく資料そのもの */
+export type SourceTopicStageInput = {
+  id: string;
+  title: string;
+  /** 資料の全文（取り込みで既に持っている本文をそのまま渡す。再取得しない・上限は置かない） */
+  text: string;
+  model?: string;
+};
+
+/** 新形式トピックの段の実行結果（トースト表示・出典照合の導線に使う） */
+export type SourceTopicStageResult = {
+  /** 新規作成した話題ページ数 */
+  created: number;
+  /** 資料を反映して本文を改訂した話題ページ数（新形式の改訂 + 旧形式からの移行を含む） */
+  updated: number;
+  /** 旧形式（知見由来）から新形式へ移行した話題ページ数（updated の内数） */
+  migrated: number;
+  /**
+   * 移行時に読めなかった資料の延べ件数（ゴミ箱・未検出等。rebuildTopicFromSources の
+   * sourcesSkipped の合計）。黙って捨てず、トーストで件数として伝える。
+   */
+  migratedSourcesSkipped: number;
+  /** 振り分け・改訂に失敗した件数 */
+  failed: number;
+  /** この実行で新規作成した話題（呼び出し側が並行実行の既存一覧に引き継ぐ） */
+  createdTopics: { id: string; title: string }[];
+  /** 触れた（作成・改訂・移行の）話題 id（トーストの「出典照合する」導線・未照合件数の対象） */
+  touchedTopicIds: string[];
+};
+
+export type SourceTopicStageDeps = {
+  loadDoc: (noteId: string) => Promise<GraphiumDocument | null>;
+  getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined;
+  handleSaveWikiFile: (
+    wikiId: string,
+    doc: GraphiumDocument,
+    options?: { activityType?: EditActivityType; agentLabel?: string; sources?: string[] },
+  ) => Promise<boolean | void>;
+  handleCreateWikiFile: (
+    doc: GraphiumDocument,
+    options?: { activityType?: EditActivityType; agentLabel?: string; sources?: string[] },
+  ) => Promise<string>;
+  /** 既存の話題ページ一覧（id・title・oneLiner）。関数内で新規作成分を追記していく */
+  existingTopicRefs: ExistingTopicRef[];
+  noteIndex?: NoteIndex;
+  locale: string;
+  /**
+   * 資料 id から「タイトル + 全文」を解決する（出典照合の resolveSourceText と同じ入口を
+   * 呼び出し側が注入する想定）。ゴミ箱・未検出などで読めない資料は undefined を返す
+   * — 呼び出し側（rebuildTopicFromSources）はそれを件数として数え、黙って握り潰さない。
+   */
+  resolveSource: (sourceId: string) => Promise<{ title: string; text: string } | undefined>;
+  /**
+   * 資料 id からタイトルだけを解決する（全文は不要な場面用）。既存の参照先タイトルを
+   * 引ける索引（出典照合の resolveSourceCheckTitles 相当）を呼び出し側が注入する想定。
+   * 未指定・解決不能なら resolveSource（全文取得を伴う）へフォールバックする —
+   * 改訂のたびに過去の資料本文（PDF 抽出等）を読み直すコストを避けるための経路。
+   */
+  resolveSourceTitle?: (sourceId: string) => string | undefined;
+  onTopicSaved?: (
+    topicId: string,
+    doc: GraphiumDocument,
+    triggerSourceId: string,
+    mode: "create" | "update" | "migrate",
+  ) => void;
+  log?: (...args: unknown[]) => void;
+};
+
+/**
+ * 資料 id の列から TopicSourceRef（id + title）を集める。knownSource と一致する id は
+ * 全文を再取得せずタイトルだけそのまま使う。それ以外はまず resolveSourceTitle（軽量・
+ * 全文を読まない）を試し、無い／解決できないときだけ resolveSource（全文取得を伴う）に
+ * フォールバックする。解決できない id は結果から静かに落ちる（本文中の [[source:id]]
+ * 引用自体は resolveSourceCitations のフォールバックで文字列として残るため、参照そのものが
+ * 消えるわけではない）。
+ */
+export async function collectSourceRefs(
+  ids: string[],
+  deps: Pick<SourceTopicStageDeps, "resolveSource" | "resolveSourceTitle">,
+  knownSource?: SourceTopicStageInput,
+): Promise<TopicSourceRef[]> {
+  const refs: TopicSourceRef[] = [];
+  for (const id of ids) {
+    if (knownSource && id === knownSource.id) {
+      refs.push({ id, title: knownSource.title });
+      continue;
+    }
+    const titleOnly = deps.resolveSourceTitle?.(id);
+    if (titleOnly) {
+      refs.push({ id, title: titleOnly });
+      continue;
+    }
+    const resolved = await deps.resolveSource(id);
+    if (resolved) refs.push({ id, title: resolved.title });
+  }
+  return refs;
+}
+
+/**
+ * 話題の段（新形式）を実行する。sources は取り込み等で今回処理し終えた資料の一覧
+ * （知見の有無に関係なく、資料 1 本につき 1 件渡す）。
+ */
+export async function runSourceTopicStage(
+  sources: SourceTopicStageInput[],
+  deps: SourceTopicStageDeps,
+): Promise<SourceTopicStageResult> {
+  const result: SourceTopicStageResult = {
+    created: 0,
+    updated: 0,
+    migrated: 0,
+    migratedSourcesSkipped: 0,
+    failed: 0,
+    createdTopics: [],
+    touchedTopicIds: [],
+  };
+  if (sources.length === 0) return result;
+
+  const log = deps.log ?? (() => {});
+  const existingTopicRefs = [...deps.existingTopicRefs];
+
+  for (const source of sources) {
+    let route: { update: string[]; create: string[] };
+    try {
+      const existingForRouter: TopicRouteExistingRef[] = existingTopicRefs.map((t) => ({
+        id: t.id,
+        title: t.title,
+        oneLiner: t.oneLiner,
+      }));
+      route = await routeTopicsForSource(
+        { id: source.id, title: source.title, text: source.text },
+        existingForRouter,
+        deps.locale,
+        source.model,
+      );
+    } catch (err) {
+      result.failed++;
+      log("資料の振り分け(route-topics)に失敗:", source.id, err);
+      continue;
+    }
+
+    // ルーターの結果に加え、今回の資料を既に引用済みの新形式トピックは必ず改訂対象に
+    // 含める（和集合。ルーターは資料 1 本ずつしか見ないため、既存の引用が古くなっても
+    // 拾わないことがある — LLM の判断任せにせず機械的に見つける）。
+    const previouslyCitedIds = new Set(
+      existingTopicRefs.filter((t) => t.sourceIds?.includes(source.id)).map((t) => t.id),
+    );
+    const updateIds = [...new Set([...route.update, ...previouslyCitedIds])];
+
+    for (const topicId of updateIds) {
+      try {
+        const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
+        if (!topicDoc?.wikiMeta || topicDoc.wikiMeta.kind !== "topic") {
+          log("話題の改訂をスキップ: ドキュメントが見つからない", topicId);
+          result.failed++;
+          continue;
+        }
+
+        if (typeof topicDoc.wikiMeta.topicMarkdown === "string") {
+          // 新形式: 前の本文 + 今回の資料全文で改訂する。
+          const currentBody = topicDoc.wikiMeta.topicMarkdown;
+          const revisedBody = await reviseTopicFromSource(
+            topicDoc.title,
+            currentBody,
+            { id: source.id, title: source.title, text: source.text },
+            deps.locale,
+            source.model,
+            previouslyCitedIds.has(topicId),
+          );
+          if (!revisedBody) {
+            result.failed++;
+            continue;
+          }
+          const priorIds = (topicDoc.wikiMeta.derivedFromNotes ?? []).filter((id) => id !== source.id);
+          const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
+          const rewritten = rebuildSourceTopicDocument(topicDoc, revisedBody, sourceRefs, source.model ?? null, deps.noteIndex);
+          await deps.handleSaveWikiFile(topicId, rewritten, {
+            activityType: "wiki_cross_update",
+            sources: sourceRefs.map((r) => r.id),
+          });
+          deps.onTopicSaved?.(topicId, rewritten, source.id, "update");
+          result.updated++;
+          result.touchedTopicIds.push(topicId);
+        } else {
+          // 旧形式（知見由来。topicMarkdown を持たない）: 触れたら新方式へ移行する。
+          // メンバー知見それぞれの derivedFromNotes から資料 id を集め、空の本文から
+          // 資料を 1 本ずつ順に改訂して組み直し、最後に今回の資料を足す。
+          const memberClaimIds = topicDoc.wikiMeta.derivedFromClaims ?? [];
+          const collectedSourceIds = new Set<string>();
+          for (const claimId of memberClaimIds) {
+            const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
+            for (const sid of claimDoc?.wikiMeta?.derivedFromNotes ?? []) collectedSourceIds.add(sid);
+          }
+          collectedSourceIds.delete(source.id);
+          const migrateResult = await rebuildTopicFromSources(
+            topicId,
+            [...collectedSourceIds, source.id],
+            {
+              loadDoc: deps.loadDoc,
+              getCachedDoc: deps.getCachedDoc,
+              handleSaveWikiFile: deps.handleSaveWikiFile,
+              resolveSource: async (id) =>
+                id === source.id ? { title: source.title, text: source.text } : deps.resolveSource(id),
+              noteIndex: deps.noteIndex,
+              locale: deps.locale,
+              model: source.model,
+              log: deps.log,
+            },
+          );
+          result.migratedSourcesSkipped += migrateResult.sourcesSkipped;
+          if (migrateResult.rebuilt && migrateResult.doc) {
+            deps.onTopicSaved?.(topicId, migrateResult.doc, source.id, "migrate");
+            result.migrated++;
+            result.updated++;
+            result.touchedTopicIds.push(topicId);
+          } else {
+            result.failed++;
+          }
+        }
+      } catch (err) {
+        result.failed++;
+        log("話題の改訂に失敗:", topicId, err);
+      }
+    }
+
+    for (const name of route.create) {
+      try {
+        const revisedBody = await reviseTopicFromSource(
+          name,
+          "",
+          { id: source.id, title: source.title, text: source.text },
+          deps.locale,
+          source.model,
+        );
+        if (!revisedBody) {
+          result.failed++;
+          continue;
+        }
+        const newDoc = buildSourceTopicDocument(
+          name,
+          revisedBody,
+          [{ id: source.id, title: source.title }],
+          source.model ?? null,
+          deps.noteIndex,
+          deps.locale,
+        );
+        const topicId = await deps.handleCreateWikiFile(newDoc, {
+          activityType: "wiki_ingest",
+          sources: [source.id],
+        });
+        deps.onTopicSaved?.(topicId, newDoc, source.id, "create");
+        existingTopicRefs.push({ id: topicId, title: name });
+        result.createdTopics.push({ id: topicId, title: name });
+        result.created++;
+        result.touchedTopicIds.push(topicId);
+      } catch (err) {
+        result.failed++;
+        log("話題の新規作成に失敗:", name, err);
+      }
+    }
+  }
+
+  return result;
+}
+
+// ── 旧形式トピックの新形式への組み直し（移行・手入れ画面の「資料から作り直す」共通）──
+
+/** rebuildTopicFromSources の実行結果 */
+export type RebuildTopicFromSourcesResult = {
+  /** 1 件以上の資料が反映され、保存できたか */
+  rebuilt: boolean;
+  /** 保存後のドキュメント（rebuilt が true のときだけ入る。呼び出し側の embed 等の副作用用） */
+  doc?: GraphiumDocument;
+  /** 実際に反映できた資料件数 */
+  sourcesUsed: number;
+  /** 本文が取得できない・改訂に失敗して飛ばした資料件数（黙って捨てず件数で返す） */
+  sourcesSkipped: number;
+};
+
+export type RebuildTopicFromSourcesDeps = {
+  loadDoc: (noteId: string) => Promise<GraphiumDocument | null>;
+  getCachedDoc: (noteId: string) => GraphiumDocument | null | undefined;
+  handleSaveWikiFile: (
+    wikiId: string,
+    doc: GraphiumDocument,
+    options?: { activityType?: EditActivityType; agentLabel?: string; sources?: string[] },
+  ) => Promise<boolean | void>;
+  /** 資料 id から「タイトル + 全文」を解決する。読めない資料は undefined（ゴミ箱・未検出等） */
+  resolveSource: (sourceId: string) => Promise<{ title: string; text: string } | undefined>;
+  /**
+   * 資料 id からタイトルだけを解決する（collectSourceRefs / SourceTopicStageDeps と同じ形。
+   * このロジック自体は毎回 resolveSource で全文を読む必要があるため直接は使わないが、
+   * 呼び出し側の deps を SourceTopicStageDeps と揃えられるよう受け口だけ用意しておく）。
+   */
+  resolveSourceTitle?: (sourceId: string) => string | undefined;
+  noteIndex?: NoteIndex;
+  locale: string;
+  model?: string;
+  log?: (...args: unknown[]) => void;
+};
+
+/**
+ * 既存の話題ページを、渡された資料 id の列から新形式で作り直す。空の本文から資料を
+ * 1 本ずつ順に改訂して組み直す（Karpathy の incremental revision と同じ手順）。
+ * 旧形式トピックの「触れたら移行」（runSourceTopicStage）・手動再生成・手入れ画面の
+ * 「資料から作り直す」（作業 C）が共通してこの関数を使う。
+ */
+export async function rebuildTopicFromSources(
+  topicId: string,
+  sourceIds: string[],
+  deps: RebuildTopicFromSourcesDeps,
+): Promise<RebuildTopicFromSourcesResult> {
+  const log = deps.log ?? (() => {});
+  const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
+  if (!topicDoc?.wikiMeta || topicDoc.wikiMeta.kind !== "topic") {
+    return { rebuilt: false, sourcesUsed: 0, sourcesSkipped: sourceIds.length };
+  }
+
+  // 重複 id を除きつつ、渡された順序は保つ（先に出てきたものを優先）。
+  const uniqueIds = [...new Set(sourceIds)];
+  let body = "";
+  const usedRefs: TopicSourceRef[] = [];
+  let skipped = 0;
+
+  for (const sourceId of uniqueIds) {
+    const resolved = await deps.resolveSource(sourceId);
+    if (!resolved) {
+      skipped++;
+      log("資料本文が取得できず飛ばした:", sourceId);
+      continue;
+    }
+    const revised = await reviseTopicFromSource(
+      topicDoc.title,
+      body,
+      { id: sourceId, title: resolved.title, text: resolved.text },
+      deps.locale,
+      deps.model,
+    );
+    if (!revised) {
+      skipped++;
+      log("トピック改訂に失敗し飛ばした:", sourceId);
+      continue;
+    }
+    body = revised;
+    usedRefs.push({ id: sourceId, title: resolved.title });
+  }
+
+  if (usedRefs.length === 0) {
+    return { rebuilt: false, sourcesUsed: 0, sourcesSkipped: skipped };
+  }
+
+  const rewritten = rebuildSourceTopicDocument(topicDoc, body, usedRefs, deps.model ?? null, deps.noteIndex);
+  await deps.handleSaveWikiFile(topicId, rewritten, {
+    activityType: "wiki_cross_update",
+    sources: usedRefs.map((r) => r.id),
+  });
+  return { rebuilt: true, doc: rewritten, sourcesUsed: usedRefs.length, sourcesSkipped: skipped };
+}
+
+// ── 「資料から作り直す」の実行前計画（人が起動し、実行前に AI 呼び出し回数を見せる）──
+// トピックページの再生成・手入れ画面の旧形式一括作り直し・missing-source の手当てが
+// 共通して使う。自動一括はしない方針のため、実行前に必ずこの計画を通して確認する。
+
+/** planTopicRebuild に渡す 1 トピック分の入力（id と、実ドキュメント） */
+export type TopicRebuildTarget = {
+  id: string;
+  doc: GraphiumDocument;
+};
+
+/** 1 トピック分の実行計画（重複除去済みの資料 id 列） */
+export type TopicRebuildPlanItem = {
+  topicId: string;
+  sourceIds: string[];
+};
+
+/** 「資料から作り直す」の実行前計画 */
+export type TopicRebuildPlan = {
+  items: TopicRebuildPlanItem[];
+  /** 資料が 1 件以上見つかり、実際に作り直せるトピック数 */
+  topicCount: number;
+  /** 合計 AI 呼び出し回数（rebuildTopicFromSources は資料 1 本につき改訂 1 回） */
+  totalCalls: number;
+};
+
+/**
+ * 「資料から作り直す」の実行前に、対象トピックそれぞれの資料 id 列と、
+ * 合計 AI 呼び出し回数を計算する副作用なしの純粋関数。
+ * 新形式（topicMarkdown を持つ）は derivedFromNotes をそのまま資料とみなし、
+ * 旧形式はメンバー知見（derivedFromClaims）の derivedFromNotes の和を資料とみなす
+ * （重複除去）。getDoc はメンバー知見のドキュメント解決だけに使う（呼び出し側が
+ * キャッシュ／ロードのどちらでも注入できるよう同期・非同期どちらの戻りも許す）。
+ */
+export async function planTopicRebuild(
+  topics: TopicRebuildTarget[],
+  getDoc: (noteId: string) => Promise<GraphiumDocument | null | undefined> | GraphiumDocument | null | undefined,
+): Promise<TopicRebuildPlan> {
+  const items: TopicRebuildPlanItem[] = [];
+  for (const { id, doc } of topics) {
+    if (!doc.wikiMeta || doc.wikiMeta.kind !== "topic") continue;
+    const sourceIds = new Set<string>();
+    if (typeof doc.wikiMeta.topicMarkdown === "string") {
+      for (const sourceId of doc.wikiMeta.derivedFromNotes ?? []) sourceIds.add(sourceId);
+    } else {
+      for (const claimId of doc.wikiMeta.derivedFromClaims ?? []) {
+        const claimDoc = await getDoc(`wiki:${claimId}`);
+        for (const sourceId of claimDoc?.wikiMeta?.derivedFromNotes ?? []) sourceIds.add(sourceId);
+      }
+    }
+    if (sourceIds.size > 0) items.push({ topicId: id, sourceIds: [...sourceIds] });
+  }
+  return {
+    items,
+    topicCount: items.length,
+    totalCalls: items.reduce((sum, item) => sum + item.sourceIds.length, 0),
+  };
+}
+
+// ── 取り込み結果の判定（純関数）──
+// note-app.tsx の各取り込み経路が「知見 0 件 = insufficientContent」を判定するのに使う。
+// トピックは知見の有無に関係なく資料から作られるため、知見が 0 件でもトピックの
+// 作成・改訂・移行のいずれかが 1 件でもあれば「反映された」とみなし、失敗にしない。
+
+/**
+ * 知見（wiki）件数とトピック段で反映できた件数から、取り込み全体を「反映なし」
+ * （insufficientContent）とみなすべきかを判定する。
+ */
+export function isIngestInsufficient(wikisCount: number, topicsTouchedCount: number): boolean {
+  return wikisCount <= 0 && topicsTouchedCount <= 0;
 }

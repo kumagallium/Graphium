@@ -5,6 +5,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { WikiBanner, WikiContextDrawer } from "./WikiBanner";
 import type { WikiMeta, WikiMetaSummary } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { LocaleProvider, syncLocale } from "../../i18n";
 
 const meta: Meta<typeof WikiBanner> = {
   title: "Molecules/WikiBanner",
@@ -828,3 +829,93 @@ export const WithToulminComplete: StoryObj = {
   ),
 };
 
+
+// サイドピーク内の文脈欄。ピーク（SidePeek）はタイトル・本文・文脈欄を同じ px-[54px] の
+// 余白で縦に積むので、その並びと既定幅（480px）を再現する。部品はフル画面と同じ
+// WikiContextDrawer をそのまま使う（ピーク専用のレイアウトは作らない）。
+function MockSidePeek({ title, wikiMeta }: { title: string; wikiMeta: WikiMeta }) {
+  return (
+    <LocaleProvider>
+      <div
+        style={{ width: 480, background: "var(--paper)", borderLeft: "1px solid var(--rule)" }}
+        className="flex flex-col"
+      >
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border text-xs text-muted-foreground">
+          <span className="flex-1 truncate">{title}</span>
+          <span>保存済み</span>
+        </div>
+        <div className="pb-10">
+          <div className="text-foreground text-3xl font-bold leading-tight mt-1 mb-4 px-[54px] break-words">
+            {title}
+          </div>
+          <p className="px-[54px] text-base leading-relaxed text-foreground">
+            塩基性条件下では電子移動律速が支配的になり、薄膜の還元速度は印加電位と pH の両方に対して
+            2 段階の依存性を示す。
+          </p>
+          <div className="px-[54px]">
+            <WikiContextDrawer
+              wikiMeta={wikiMeta}
+              noteIndex={sampleNoteIndex}
+              wikiId="claim-peek"
+              onNavigateNote={(noteId) => console.info("[story] onNavigateNote", noteId)}
+              onClearWorldValidity={() => console.info("[story] onClearWorldValidity")}
+              onRunSourceCheck={() => console.info("[story] onRunSourceCheck")}
+              onDismissSourceCheck={() => console.info("[story] onDismissSourceCheck")}
+              onClearSourceCheck={() => console.info("[story] onClearSourceCheck")}
+              onOpenSourceCheckSource={(id) => console.info("[story] onOpenSourceCheckSource", id)}
+              sourceCheckSourceTitles={{ "note-abc123": "実験ノート: MA→SPS 試料 03" }}
+            />
+          </div>
+        </div>
+      </div>
+    </LocaleProvider>
+  );
+}
+
+export const InSidePeek: StoryObj = {
+  name: "サイドピーク: 本文下の文脈欄（派生元・世界照合・出典照合）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "知見をサイドピークで開いたときの本文下。フル画面と同じ WikiContextDrawer を、ピークのタイトル・本文と同じ左右余白（54px）で既定幅 480px に置く。「もう一度照合」「確認した」「判定を消す」「出典を開く」もフル画面と同じハンドラにつながる。",
+      },
+    },
+  },
+  render: () => {
+    syncLocale("ja");
+    return (
+      <MockSidePeek
+        title="塩基性条件では電子移動律速が支配的になる"
+        wikiMeta={{
+          ...baseMeta,
+          kind: "claim",
+          claimRole: ["finding"],
+          grounding: {
+            validity: {
+              ...VERDICT_CHECK_META,
+              verdict: "supported",
+              score: 0.62,
+              rationale: "KB の Marcus 理論エントリと整合する",
+            },
+          },
+          sourceCheck: {
+            verdict: "supported",
+            checkedAt: "2026-09-10T09:00:00Z",
+            checkedBy: "claude-haiku-4-5",
+            claimHash: "hash-v1",
+            entries: [
+              {
+                sourceId: "note-abc123",
+                sourceKind: "note",
+                verdict: "supported",
+                rationale: "出典ノートの測定結果の節に同じ記述がある。",
+                quote: "pH 10 以上では電流応答が電位に対して 2 段階で変化した",
+              },
+            ],
+          },
+        }}
+      />
+    );
+  },
+};

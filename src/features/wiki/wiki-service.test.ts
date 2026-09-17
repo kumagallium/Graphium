@@ -7,18 +7,18 @@ import {
   buildWikiDocument,
   filterSelfFromDerivedFromClaims,
   normalizeTopicTitle,
-  matchTopicsByTitle,
-  resolveTopicsForClaim,
-  linkClaimAndTopic,
   unlinkClaimFromTopic,
-  buildTopicDocument,
-  rebuildTopicDocument,
+  buildSourceTopicDocument,
+  rebuildSourceTopicDocument,
+  stripEmptyMarkdownSections,
+  resolveSourceCitations,
   resolveAtomDuplicates,
-  extractWikiDetail,
+  mergeIntoWikiDocument,
+  rewriteAndMerge,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
-import type { WikiMeta } from "../../lib/document-types";
+import type { WikiMeta, SourceCheckProfile } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 
 const emptyIndex: any[] = [];
@@ -525,131 +525,6 @@ describe("normalizeTopicTitle - 話題名の一致判定用正規化", () => {
   });
 });
 
-describe("matchTopicsByTitle - タイトル正規化一致（同期版）", () => {
-  const existing: ExistingTopicRef[] = [
-    { id: "topic-1", title: "還元の反応速度" },
-    { id: "topic-2", title: "SPS 焼結条件" },
-  ];
-
-  it("正規化後に一致する既存話題を matched として返す", () => {
-    const result = matchTopicsByTitle(["  還元の反応速度  "], existing);
-    expect(result).toEqual([
-      { status: "matched", title: "  還元の反応速度  ", topicId: "topic-1", via: "title" },
-    ]);
-  });
-
-  it("大小文字違いでも一致する（英語話題名）", () => {
-    const result = matchTopicsByTitle(["sps 焼結条件"], existing);
-    expect(result[0]).toMatchObject({ status: "matched", topicId: "topic-2" });
-  });
-
-  it("一致しなければ new を返す", () => {
-    const result = matchTopicsByTitle(["まったく新しい話題"], existing);
-    expect(result).toEqual([{ status: "new", title: "まったく新しい話題" }]);
-  });
-
-  it("既存話題が空なら全件 new", () => {
-    const result = matchTopicsByTitle(["a", "b"], []);
-    expect(result.every((m) => m.status === "new")).toBe(true);
-  });
-
-  it("内部の空白差だけの表記ゆれも一致させる（D）", () => {
-    const result = matchTopicsByTitle(["SPS焼結条件"], existing);
-    expect(result[0]).toMatchObject({ status: "matched", topicId: "topic-2" });
-  });
-});
-
-describe("resolveTopicsForClaim - 話題の割り当て（正規化一致 → embedding → 新規）", () => {
-  it("タイトル一致する話題名は embedding を経由せず matched を返す", async () => {
-    const existing: ExistingTopicRef[] = [{ id: "topic-1", title: "還元の反応速度" }];
-    const result = await resolveTopicsForClaim(["還元の反応速度"], existing);
-    expect(result).toEqual([
-      { status: "matched", title: "還元の反応速度", topicId: "topic-1", via: "title" },
-    ]);
-  });
-
-  it("既存話題が無ければ即 new（embedding API を叩かない）", async () => {
-    const result = await resolveTopicsForClaim(["新しい話題"], []);
-    expect(result).toEqual([{ status: "new", title: "新しい話題" }]);
-  });
-
-  it("一致しない話題名は embedding モデル未設定時 fail-open で new になる", async () => {
-    // テスト環境では embedding モデル未設定 → partitionCandidatesByEmbedding が
-    // fail-open（全件 kept）で返るため、タイトル一致しない話題名は new に倒れる。
-    const existing: ExistingTopicRef[] = [{ id: "topic-1", title: "既存の話題" }];
-    const result = await resolveTopicsForClaim(["未知の話題"], existing);
-    expect(result).toEqual([{ status: "new", title: "未知の話題" }]);
-  });
-
-  it("同一呼び出し内の重複話題名（正規化後に同じ）は 1 件に畳む", async () => {
-    const result = await resolveTopicsForClaim(["話題A", " 話題A "], []);
-    expect(result).toHaveLength(1);
-  });
-
-  it("入力が空なら空配列", async () => {
-    expect(await resolveTopicsForClaim([], [])).toEqual([]);
-  });
-});
-
-describe("linkClaimAndTopic - claim ⇔ topic の双方向リンク", () => {
-  const baseClaimMeta = (topicIds?: string[]): WikiMeta => ({
-    kind: "claim",
-    derivedFromNotes: ["note-1"],
-    derivedFromChats: [],
-    generatedAt: "2026-07-01T00:00:00Z",
-    generatedBy: { model: "m", version: "1.0.0" },
-    topicIds,
-  });
-  const baseTopicMeta = (derivedFromClaims?: string[]): WikiMeta => ({
-    kind: "topic",
-    derivedFromNotes: [],
-    derivedFromChats: [],
-    generatedAt: "2026-07-01T00:00:00Z",
-    generatedBy: { model: "m", version: "1.0.0" },
-    derivedFromClaims,
-  });
-
-  it("claim.topicIds と topic.derivedFromClaims の双方に追加する", () => {
-    const { claimMeta, topicMeta } = linkClaimAndTopic(
-      baseClaimMeta([]),
-      "claim-1",
-      baseTopicMeta([]),
-      "topic-1",
-    );
-    expect(claimMeta.topicIds).toEqual(["topic-1"]);
-    expect(topicMeta.derivedFromClaims).toEqual(["claim-1"]);
-  });
-
-  it("既存のリストを保持したまま追加する", () => {
-    const { claimMeta, topicMeta } = linkClaimAndTopic(
-      baseClaimMeta(["topic-0"]),
-      "claim-1",
-      baseTopicMeta(["claim-0"]),
-      "topic-1",
-    );
-    expect(claimMeta.topicIds).toEqual(["topic-0", "topic-1"]);
-    expect(topicMeta.derivedFromClaims).toEqual(["claim-0", "claim-1"]);
-  });
-
-  it("既にリンク済みなら冪等（同じ配列インスタンスを保つ）", () => {
-    const claimMeta0 = baseClaimMeta(["topic-1"]);
-    const topicMeta0 = baseTopicMeta(["claim-1"]);
-    const { claimMeta, topicMeta } = linkClaimAndTopic(claimMeta0, "claim-1", topicMeta0, "topic-1");
-    expect(claimMeta).toBe(claimMeta0);
-    expect(topicMeta).toBe(topicMeta0);
-  });
-
-  it("claim.topicIds の件数に上限は無い", () => {
-    const { claimMeta } = linkClaimAndTopic(
-      baseClaimMeta(["t1", "t2", "t3"]),
-      "claim-1",
-      baseTopicMeta([]),
-      "t4",
-    );
-    expect(claimMeta.topicIds).toEqual(["t1", "t2", "t3", "t4"]);
-  });
-});
-
 describe("unlinkClaimFromTopic - 知見削除時のメンバー除外", () => {
   it("derivedFromClaims から対象 claim id を除く", () => {
     const topicMeta: WikiMeta = {
@@ -689,120 +564,142 @@ describe("unlinkClaimFromTopic - 知見削除時のメンバー除外", () => {
   });
 });
 
-describe("buildTopicDocument / rebuildTopicDocument - 保存経路で topicIds/derivedFromClaims が落ちない", () => {
-  it("buildTopicDocument は derivedFromClaims にメンバー知見 ID をすべて積む", () => {
-    const doc = buildTopicDocument(
+describe("stripEmptyMarkdownSections - 空の見出しを機械的に除去する", () => {
+  it("本文が無い見出しを除去する", () => {
+    const md = "## 定義\n本文A\n\n## 食い違い・未解決\n\n## 要点\n本文B";
+    const result = stripEmptyMarkdownSections(md);
+    expect(result).not.toContain("食い違い・未解決");
+    expect(result).toContain("定義");
+    expect(result).toContain("要点");
+  });
+
+  it("すべての見出しに本文があれば変更しない", () => {
+    const md = "## 定義\n本文A\n\n## 要点\n本文B";
+    expect(stripEmptyMarkdownSections(md)).toBe(md);
+  });
+
+  it("見出しが無い markdown はそのまま返す", () => {
+    const md = "見出しの無い本文だけ。";
+    expect(stripEmptyMarkdownSections(md)).toBe(md);
+  });
+
+  it("末尾の見出しが空でも除去する", () => {
+    const md = "## 定義\n本文A\n\n## 食い違い・未解決";
+    const result = stripEmptyMarkdownSections(md);
+    expect(result).not.toContain("食い違い・未解決");
+    expect(result.trim()).toBe("## 定義\n本文A");
+  });
+});
+
+describe("resolveSourceCitations - [[source:<id>]] の解決", () => {
+  it("既知の id をタイトルへ解決する", () => {
+    const sources = [{ id: "note-1", title: "元ノート" }];
+    const result = resolveSourceCitations("XRD パターンが取得された。[[source:note-1]]", sources);
+    expect(result).toBe("XRD パターンが取得された。[[元ノート]]");
+  });
+
+  it("未知の id は引用ごと落とさず残す", () => {
+    const result = resolveSourceCitations("何らかの知見。[[source:unknown-id]]", []);
+    expect(result).toContain("unknown-id");
+  });
+});
+
+describe("buildSourceTopicDocument / rebuildSourceTopicDocument - 新形式トピックの土台", () => {
+  it("derivedFromNotes に資料 id を積み、derivedFromClaims は空、topicMarkdown を保存する", () => {
+    const sources = [{ id: "note-a", title: "資料A" }, { id: "pdf:file-1", title: "資料B（PDF）" }];
+    const doc = buildSourceTopicDocument(
       "話題タイトル",
       "## 定義\n本文です。",
-      [{ id: "claim-a", title: "知見A" }, { id: "claim-b", title: "知見B" }],
+      sources,
       "test-model",
-      "ja",
     );
     expect(doc.wikiMeta?.kind).toBe("topic");
-    expect(doc.wikiMeta?.derivedFromClaims).toEqual(["claim-a", "claim-b"]);
+    expect(doc.wikiMeta?.derivedFromNotes).toEqual(["note-a", "pdf:file-1"]);
+    expect(doc.wikiMeta?.derivedFromClaims).toEqual([]);
+    expect(doc.wikiMeta?.topicMarkdown).toBe("## 定義\n本文です。");
   });
 
-  it("本文の `## 見出し` はブロック化され、段落テキストも保持される", () => {
-    const doc = buildTopicDocument("t", "## 定義\n本文です。", [{ id: "claim-a", title: "知見A" }], null);
+  it("保存前に空見出しを除去してから topicMarkdown に保存する", () => {
+    const doc = buildSourceTopicDocument(
+      "t",
+      "## 定義\n本文です。\n\n## 食い違い・未解決\n",
+      [{ id: "note-a", title: "資料A" }],
+      null,
+    );
+    expect(doc.wikiMeta?.topicMarkdown).not.toContain("食い違い・未解決");
+  });
+
+  it("[[source:<id>]] 引用を資料の現在のタイトルへ解決し @リンク化する", () => {
+    const sources = [{ id: "note-a", title: "Al3V の格子定数" }];
+    const doc = buildSourceTopicDocument(
+      "Al3V 合金",
+      "## 要点\nXRD パターンが取得された。[[source:note-a]]",
+      sources,
+      "test-model",
+      [{ id: "note-a", title: "Al3V の格子定数", isWiki: false } as any],
+    );
     const blocks = doc.pages[0].blocks as any[];
-    expect(blocks.some((b) => b.type === "heading")).toBe(true);
-    expect(blocks.some((b) => b.type === "paragraph")).toBe(true);
+    const para = blocks.find((b) => b.type === "paragraph");
+    const linkText = para.content.find((c: any) => c.text?.includes("Al3V の格子定数"));
+    expect(linkText).toBeDefined();
+    expect(doc.pages[0].knowledgeLinks.some((l: any) => l.targetNoteId === "note-a")).toBe(true);
   });
 
-  it("rebuildTopicDocument は既存 doc の他フィールド（documentProvenance 等）を保持しつつ derivedFromClaims を更新する", () => {
+  it("末尾に References（資料一覧の @リンク）を必ず付ける", () => {
+    const sources = [{ id: "note-a", title: "資料A" }, { id: "url:https://example.com", title: "資料B" }];
+    const doc = buildSourceTopicDocument("話題タイトル", "## 定義\n本文です。", sources, null);
+    const blocks = doc.pages[0].blocks as any[];
+    const headingIdx = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "References");
+    expect(headingIdx).toBeGreaterThan(-1);
+    const refItems = blocks.slice(headingIdx + 1).filter((b) => b.type === "bulletListItem");
+    expect(refItems).toHaveLength(2);
+  });
+
+  it("rebuildSourceTopicDocument は既存 doc の他フィールドを保持しつつ derivedFromNotes/topicMarkdown を更新する", () => {
     const existing: any = {
       version: 2,
       title: "話題タイトル",
       pages: [{ id: "main", title: "話題タイトル", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
       wikiMeta: {
         kind: "topic",
-        derivedFromNotes: [],
+        derivedFromNotes: ["note-a"],
         derivedFromChats: [],
-        derivedFromClaims: ["claim-a"],
-        generatedAt: "2026-07-01T00:00:00Z",
+        derivedFromClaims: [],
+        topicMarkdown: "## 定義\n旧本文。",
+        generatedAt: "2026-09-01T00:00:00Z",
         generatedBy: { model: "m", version: "1.0.0" },
       },
       documentProvenance: { revisions: [{ id: "rev-1" }], activities: [], agents: [] },
-      createdAt: "2026-07-01T00:00:00Z",
-      modifiedAt: "2026-07-01T00:00:00Z",
+      createdAt: "2026-09-01T00:00:00Z",
+      modifiedAt: "2026-09-01T00:00:00Z",
     };
-    const next = rebuildTopicDocument(
+    const next = rebuildSourceTopicDocument(
       existing,
       "## 定義\n更新後の本文。",
-      [{ id: "claim-a", title: "知見A" }, { id: "claim-b", title: "知見B" }],
+      [{ id: "note-a", title: "資料A" }, { id: "note-b", title: "資料B" }],
       "m2",
     );
-    expect(next.wikiMeta?.derivedFromClaims).toEqual(["claim-a", "claim-b"]);
+    expect(next.wikiMeta?.derivedFromNotes).toEqual(["note-a", "note-b"]);
+    expect(next.wikiMeta?.topicMarkdown).toBe("## 定義\n更新後の本文。");
     expect(next.documentProvenance).toBe(existing.documentProvenance);
   });
 
-  it("[[claim:<id>]] 引用をメンバー知見の現在のタイトルへ解決し @リンク化する（タイトル転記ミスを避ける）", () => {
-    const memberClaims = [
-      { id: "claim-a", title: "Al3V の格子定数" },
-      { id: "claim-b", title: "Al3V の元素置換" },
-    ];
-    const doc = buildTopicDocument(
-      "Al3V 合金",
-      "## 要点\nXRD パターンが取得された。[[claim:claim-a]]",
-      memberClaims,
-      "test-model",
-      "ja",
-      [
-        { id: "claim-a", title: "Al3V の格子定数", isWiki: true },
-        { id: "claim-b", title: "Al3V の元素置換", isWiki: true },
-      ],
-    );
-    const blocks = doc.pages[0].blocks as any[];
-    const para = blocks.find((b) => b.type === "paragraph");
-    const linkText = para.content.find((c: any) => c.text?.includes("Al3V の格子定数"));
-    expect(linkText).toBeDefined();
-    expect(linkText.text).toBe("@🤖 Al3V の格子定数");
-    expect(doc.pages[0].knowledgeLinks.some((l: any) => l.targetNoteId === "claim-a")).toBe(true);
-  });
-
-  it("未知の id は引用ごと落とさず、id が分かる文字列として残す", () => {
-    const doc = buildTopicDocument(
-      "話題タイトル",
-      "## 要点\n何らかの知見。[[claim:unknown-id]]",
-      [{ id: "claim-a", title: "知見A" }],
-      null,
-    );
-    const blocks = doc.pages[0].blocks as any[];
-    const para = blocks.find((b) => b.type === "paragraph");
-    const text = para.content.map((c: any) => c.text).join("");
-    expect(text).toContain("unknown-id");
-  });
-
-  it("末尾に References（メンバー知見一覧の @リンク）を必ず付ける", () => {
-    const memberClaims = [
-      { id: "claim-a", title: "知見A" },
-      { id: "claim-b", title: "知見B" },
-    ];
-    const doc = buildTopicDocument("話題タイトル", "## 定義\n本文です。", memberClaims, null);
-    const blocks = doc.pages[0].blocks as any[];
-    const headingIdx = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "References");
-    expect(headingIdx).toBeGreaterThan(-1);
-    const refItems = blocks.slice(headingIdx + 1).filter((b) => b.type === "bulletListItem");
-    expect(refItems).toHaveLength(2);
-    expect(doc.pages[0].knowledgeLinks.filter((l: any) => l.targetNoteId === "claim-a" || l.targetNoteId === "claim-b")).toHaveLength(2);
-  });
-
-  it("rebuildTopicDocument で書き直しても References は 1 つだけ（重複しない）", () => {
-    const memberClaims = [{ id: "claim-a", title: "知見A" }];
-    const first = buildTopicDocument("話題タイトル", "## 定義\n本文です。", memberClaims, null);
-    const rewritten = rebuildTopicDocument(first, "## 定義\n更新後の本文。", memberClaims, null);
+  it("rebuildSourceTopicDocument で書き直しても References は 1 つだけ（重複しない）", () => {
+    const sources = [{ id: "note-a", title: "資料A" }];
+    const first = buildSourceTopicDocument("話題タイトル", "## 定義\n本文です。", sources, null);
+    const rewritten = rebuildSourceTopicDocument(first, "## 定義\n更新後の本文。", sources, null);
     const blocks = rewritten.pages[0].blocks as any[];
     const headings = blocks.filter((b) => b.type === "heading" && b.content[0].text === "References");
     expect(headings).toHaveLength(1);
   });
 });
 
-describe("convertSectionsToBlocks（buildTopicDocument 経由）- 箇条書き / 番号付きリストの変換", () => {
+describe("convertSectionsToBlocks（buildSourceTopicDocument 経由）- 箇条書き / 番号付きリストの変換", () => {
   it("`- ` 始まりの行を bulletListItem ブロックに変換する", () => {
-    const doc = buildTopicDocument(
+    const doc = buildSourceTopicDocument(
       "話題タイトル",
       "## 要点\n- 1 つ目の要点\n- 2 つ目の要点",
-      [{ id: "claim-a", title: "知見A" }],
+      [{ id: "note-a", title: "資料A" }],
       null,
     );
     const blocks = doc.pages[0].blocks as any[];
@@ -814,10 +711,10 @@ describe("convertSectionsToBlocks（buildTopicDocument 経由）- 箇条書き /
   });
 
   it("`1. ` 始まりの行を numberedListItem ブロックに変換する", () => {
-    const doc = buildTopicDocument(
+    const doc = buildSourceTopicDocument(
       "話題タイトル",
       "## 要点\n1. 最初の手順\n2. 次の手順",
-      [{ id: "claim-a", title: "知見A" }],
+      [{ id: "note-a", title: "資料A" }],
       null,
     );
     const blocks = doc.pages[0].blocks as any[];
@@ -843,43 +740,98 @@ describe("normalizeTopicTitle - 空白差・NFKC の吸収（D）", () => {
   });
 });
 
-describe("extractWikiDetail - 横断更新（cross-update）の対象は knowledge のみ", () => {
-  const docOf = (kind: string) => ({
+describe("本文を作り直す merge/regenerate 系は古い sourceCheck を引き継がない", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const staleSourceCheck: SourceCheckProfile = {
+    verdict: "supported",
+    entries: [],
+    checkedAt: "2026-08-01T00:00:00Z",
+    checkedBy: "test-model",
+    claimHash: "old-hash",
+  };
+
+  const claimDocWithSourceCheck = (): any => ({
     version: 2,
-    title: "タイトル",
+    title: "知見タイトル",
     pages: [{
-      id: "main", title: "タイトル", blocks: [
-        { type: "heading", props: { level: 2 }, content: [{ type: "text", text: "節1", styles: {} }] },
-        { type: "paragraph", content: [{ type: "text", text: "本文", styles: {} }] },
-      ], labels: {}, provLinks: [], knowledgeLinks: [],
+      id: "main",
+      title: "知見タイトル",
+      blocks: [],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
     }],
     wikiMeta: {
-      kind,
-      derivedFromNotes: [],
+      kind: "claim",
+      derivedFromNotes: ["note-1"],
       derivedFromChats: [],
       generatedAt: "2026-07-01T00:00:00Z",
       generatedBy: { model: "m", version: "1.0.0" },
+      sourceCheck: staleSourceCheck,
     },
     createdAt: "2026-07-01T00:00:00Z",
     modifiedAt: "2026-07-01T00:00:00Z",
-  }) as any;
-
-  it("claim では詳細（セクション見出し・kind）を抽出する", () => {
-    const detail = extractWikiDetail("claim-1", docOf("claim"));
-    expect(detail).not.toBeNull();
-    expect(detail?.kind).toBe("claim");
-    expect(detail?.sectionHeadings).toEqual(["節1"]);
   });
 
-  it("topic は対象外（本文がメンバー知見からの純関数のため、cross-update の追記先にしない）", () => {
-    expect(extractWikiDetail("topic-1", docOf("topic"))).toBeNull();
+  const ingesterOutput: IngesterOutput = {
+    kind: "claim",
+    title: "知見タイトル",
+    sections: [{ heading: "節1", content: "新しい内容。" }],
+    suggestedAction: "merge",
+    confidence: 0.9,
+    relatedClaims: [],
+    externalReferences: [],
+  };
+
+  it("mergeIntoWikiDocument は本文を書き換えるので sourceCheck を落とす", () => {
+    const existing = claimDocWithSourceCheck();
+    const next = mergeIntoWikiDocument(existing, ingesterOutput, "note-2", "m2");
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
+    // 他フィールドは保持される
+    expect(next.wikiMeta?.derivedFromNotes).toContain("note-2");
   });
 
-  it("atom（洞察）も対象外（同じく派生元から作り直す設計）", () => {
-    expect(extractWikiDetail("atom-1", docOf("atom"))).toBeNull();
+  it("rewriteAndMerge は rewrite API 失敗時のフォールバック（append merge）でも sourceCheck を落とす", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    const existing = claimDocWithSourceCheck();
+    existing.pages[0].blocks = [
+      { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "節1", styles: {} }], children: [] },
+    ];
+    const next = await rewriteAndMerge(existing, ingesterOutput, "note-2", "m2");
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
   });
 
-  it("summary（生成停止済み）も対象外", () => {
-    expect(extractWikiDetail("summary-1", docOf("summary"))).toBeNull();
+  it("rewriteAndMerge は rewrite API 成功時（本文を再構成）でも sourceCheck を落とす", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ sections: [{ heading: "節1", content: "書き直された内容。" }] }),
+    });
+    const existing = claimDocWithSourceCheck();
+    existing.pages[0].blocks = [
+      { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "節1", styles: {} }], children: [] },
+    ];
+    const next = await rewriteAndMerge(existing, ingesterOutput, "note-2", "m2");
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
+  });
+
+
+  it("rebuildSourceTopicDocument は本文を作り直すので sourceCheck を落とす", () => {
+    const existing = claimDocWithSourceCheck();
+    existing.wikiMeta.kind = "topic";
+    existing.wikiMeta.derivedFromNotes = ["note-a"];
+    existing.wikiMeta.derivedFromClaims = [];
+    const next = rebuildSourceTopicDocument(
+      existing,
+      "## 定義\n更新後の本文。",
+      [{ id: "note-a", title: "資料A" }],
+      "m2",
+    );
+    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
   });
 });

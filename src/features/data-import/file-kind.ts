@@ -4,7 +4,7 @@
 // ここを 1 箇所にして、スラッシュメニュー・ドロップ・素材ギャラリーの 3 経路が
 // 同じ判断を使う。
 
-const DELIMITED_EXTENSIONS = [".csv", ".tsv", ".txt", ".dat", ".log", ".asc"];
+export const DELIMITED_EXTENSIONS = [".csv", ".tsv", ".txt", ".dat", ".log", ".asc"];
 
 export const DELIMITED_FILE_ACCEPT = DELIMITED_EXTENSIONS.join(",");
 

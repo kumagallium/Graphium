@@ -13,7 +13,8 @@ export type WikiLogEventType =
   | "delete"      // Wiki 削除（完全削除ではなくゴミ箱行き）
   | "cross-update" // 横断更新で既存ページを更新
   | "regenerate"  // Wiki を再生成
-  | "archive";    // 可逆アーカイブ（空になったナレッジの自動退避・stale/redundant の一括退避）
+  | "archive"     // 可逆アーカイブ（空になったナレッジの自動退避・stale/redundant の一括退避）
+  | "source-check"; // 出典照合（Source check）実行
 
 export type WikiLogEntry = {
   id: string;

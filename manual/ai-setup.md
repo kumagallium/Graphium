@@ -64,7 +64,7 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 | Assignment | Used for |
 |---|---|
-| **Default model** | Fallback for everything, and directly for background tasks (ingest, lint, rewrite, cross-update) |
+| **Default model** | Fallback for everything, and directly for background tasks (ingest, lint, rewrite) |
 | **Chat model** | [AI Chat](/ai-chat-and-ask), lint (AI analysis), and topic merging. Falls back to the default model when empty |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving |
 

@@ -433,6 +433,7 @@ export function useFileManager(authenticated: boolean) {
             if (r.status === "fulfilled") {
               const { id, doc } = r.value;
               const validity = doc.wikiMeta?.grounding?.validity;
+              const sourceCheck = doc.wikiMeta?.sourceCheck;
               metas.set(id, {
                 title: doc.title,
                 kind: doc.wikiMeta?.kind ?? "claim",
@@ -456,6 +457,13 @@ export function useFileManager(authenticated: boolean) {
                       checkedAt: validity.checkedAt,
                       entryId: validity.entryId,
                       dismissed: validity.dismissed,
+                    }
+                  : undefined,
+                sourceCheckVerdict: sourceCheck
+                  ? {
+                      verdict: sourceCheck.verdict,
+                      dismissed: sourceCheck.dismissed,
+                      claimHash: sourceCheck.claimHash,
                     }
                   : undefined,
               });
@@ -2565,6 +2573,7 @@ export function useFileManager(authenticated: boolean) {
           const next = new Map(prev);
           const existing = next.get(wikiId);
           const validity = doc.wikiMeta?.grounding?.validity;
+          const sourceCheck = doc.wikiMeta?.sourceCheck;
           next.set(wikiId, {
             title: doc.title,
             kind: doc.wikiMeta?.kind ?? existing?.kind ?? "claim",
@@ -2603,6 +2612,18 @@ export function useFileManager(authenticated: boolean) {
                   }
                 : undefined
               : existing?.groundingValidity,
+            // 出典照合の最小 mirror（Source check v1）。grounding と同じ規則:
+            // doc.wikiMeta があるならその sourceCheck が source of truth。undefined は
+            // 「照合結果が無い/消した」を意味するので existing にフォールバックしない。
+            sourceCheckVerdict: doc.wikiMeta
+              ? sourceCheck
+                ? {
+                    verdict: sourceCheck.verdict,
+                    dismissed: sourceCheck.dismissed,
+                    claimHash: sourceCheck.claimHash,
+                  }
+                : undefined
+              : existing?.sourceCheckVerdict,
           });
           return next;
         });
@@ -2913,6 +2934,7 @@ export function useFileManager(authenticated: boolean) {
       setWikiMetas((prev) => {
         const next = new Map(prev);
         const validity = doc.wikiMeta?.grounding?.validity;
+        const sourceCheck = doc.wikiMeta?.sourceCheck;
         next.set(newId, {
           title: doc.title,
           kind: doc.wikiMeta?.kind ?? "claim",
@@ -2932,6 +2954,13 @@ export function useFileManager(authenticated: boolean) {
                 verdict: validity.verdict,
                 checkedAt: validity.checkedAt,
                 entryId: validity.entryId,
+              }
+            : undefined,
+          sourceCheckVerdict: sourceCheck
+            ? {
+                verdict: sourceCheck.verdict,
+                dismissed: sourceCheck.dismissed,
+                claimHash: sourceCheck.claimHash,
               }
             : undefined,
         });

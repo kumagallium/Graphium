@@ -10,6 +10,7 @@ import { renderHook, act } from "@testing-library/react";
 import { useGlobalFileDrop } from "./use-global-file-drop";
 import * as collectModule from "./collect-dropped-files";
 import type { IntakeFile } from "./types";
+import { intakeFileFrom } from "./test-helpers";
 
 function makeFileDragEvent(type: string): Event {
   const e = new Event(type, { bubbles: true, cancelable: true });
@@ -82,7 +83,7 @@ describe("useGlobalFileDrop", () => {
 
   it("drop で onFiles が呼ばれ、collectDroppedFiles のフォールバック経由で files が渡る", async () => {
     const droppedFile = new File(["x"], "note.md");
-    const fakeFiles: IntakeFile[] = [{ file: droppedFile, path: "note.md" }];
+    const fakeFiles: IntakeFile[] = [intakeFileFrom(droppedFile, "note.md")];
     vi.spyOn(collectModule, "collectDroppedFiles").mockResolvedValue(fakeFiles);
 
     const onFiles = vi.fn();

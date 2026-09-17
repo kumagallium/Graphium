@@ -34,6 +34,56 @@ For the full picture, scroll to the bottom of the item. A **World check** sectio
 
 When two insights ground to the same world fact, Graphium links them: the section **Insights grounded to the same world fact** lists other insights that touched the world at the same point. This is a connection an isolated AI answer cannot hold for you.
 
+## Source check: does the source actually say it? <Badge type="tip" text="Added in v0.77.0 (2026-09-17)" />
+
+World grounding asks whether a claim holds up against outside knowledge. **Source check** asks a narrower, different question: does the *source this knowledge item itself cites* actually say this? It never touches outside knowledge and never judges whether the statement is true — only whether it is written in the cited source.
+
+Only **Claims** and **Topics** are checked. A Claim is checked as a whole (its title and body against every note in its **Derived from** list). A Topic is checked sentence by sentence: every sentence in its body that cites a member Claim (before the **References** section) is checked against that Claim's own text, whether the citation is a link or the claim's title written out as plain text right after the sentence — a Topic's plain definition sentences, which cite nothing, are skipped. **Insights are never checked**, because an Insight generalizes across several Claims rather than restating one source, so there's no single source text to hold it against.
+
+Run it from the **Check sources** button in a Claim's or Topic's banner (next to **Check world**, when the AI is available), or from a dedicated **Check sources** tab in the **Upkeep** view (see below). It doesn't run on its own by default — not at ingest, not on startup — so a result only appears because you asked for it, unless you've turned on **Auto-check sources** in Settings (off by default; see [Automatic source check](#automatic-source-check) below). Turning the AI off hides the button, but a result already recorded stays visible.
+
+**Reading the badge.** The badge next to the source-check button shows one of five judgments:
+
+| Badge | Meaning |
+|---|---|
+| **Differs from source** | The cited source actively contradicts the statement. Shown in the most attention-grabbing color of the five, since a claim disagreeing with its own source is the most surprising outcome. |
+| **Not in source** | The source was read, but doesn't say this. |
+| **Found in source** | The source says this. |
+| **Couldn't tell** | The judge read the source but couldn't decide either way. |
+| **Source unavailable** | The source itself couldn't be checked — see below. |
+
+Open the **Source check details** section at the bottom of the item for the per-source breakdown: each source's judgment, a short rationale, and, when the model's quote could be traced to one exact note block, a **Go to source** link. That link opens the source note, PDF, Word file, or Claim it points to — it stops at opening the item, since Graphium has no existing way to scroll straight to one block inside it. Sources that can't be opened at all (no source recorded, an AI-chat origin, or a Cmd-K answer with no note behind it) aren't rendered as links. For a Topic, each entry also shows the **statement** it checked — the specific sentence, not the whole page.
+
+**Why a source can be "unavailable".** The judge is never even called for these — they're recorded straight away:
+
+| Reason | When it happens |
+|---|---|
+| Source not found (deleted or in trash) | The cited note, PDF, Word file, or Claim has been trashed or no longer exists |
+| Can't trace the original conversation | The source is an AI chat — Graphium keeps no reference key back to it |
+| Could not read the source text | Re-fetching a URL or re-extracting a PDF/Word file failed |
+| This source kind can't be checked | An id kind source check doesn't handle |
+| The source text is empty | The source was read, but had nothing in it |
+| Claim made from an AI answer (no source text) | The Claim was adopted from a ⌘K answer — the answer text itself was never stored, so comparing against the note where it was shown would wrongly read as "not in source" |
+| No source was recorded | The Claim has no cited note at all, or (for a Topic) the sentence cites no member Claim |
+
+A source-check run always re-reads the source fresh rather than trusting anything cached — the same PDF and Word extractors ingest uses, and for a URL, an actual re-fetch rather than any previously stored copy of the page, so the judgment reflects whatever the URL holds right now. None of these re-reads impose a new size limit: source text, PDF pages, and Word documents are read in full, exactly as ingest does.
+
+The model reports how many sources it will need to judge before it decides, but sources that turn out to be unavailable are skipped rather than judged, so the actual number of model calls can come out lower than what was estimated.
+
+**A topic's badge reflects its worst sentence, not its best one.** A topic can have several checked sentences, each with its own verdict; the badge on the page shows the one that most needs attention rather than averaging them or letting a good result hide a bad one — one sentence coming back **Differs from source** or **Not in source** outranks every other sentence being **Found in source**. A topic only shows **Found in source** overall once every one of its sentences does. A Claim only ever has one statement, so this doesn't change how a Claim's own badge behaves.
+
+**Checking many at once.** The Claims/Topics list has a **Source check** column showing the latest verdict, sorted the same attention-first way: **Differs from source** → **Not in source** → **Couldn't tell** → **Source unavailable** → **Found in source**. Open **Upkeep** in the sidebar and switch to its **Source check** tab to pick a **Target** (Claims, Topics, or both) and a **Scope** (not checked yet, edited since the last check, or all), review a measured plan — how many items, how many model calls, and a breakdown of how many can't be checked and why — before running with a cancelable progress bar. This tab is separate from the **Check** tab's existing Quick/Full check and never feeds into it. A single item's check and a batch run never overlap; starting one blocks the other until it finishes.
+
+**Dealing with a result.** As with world grounding, the source-check verdict is yours to act on: **Check again** re-runs it and replaces the old result, **Confirm** marks a result as reviewed without changing it, and **Clear result** removes it. Graphium never decides for you which claims to fix or which citations to trust.
+
+**A worrying verdict is never hidden — it lands in Needs review instead.** A Claim or Topic that comes back **Differs from source** or **Not in source** stays exactly where it was in every list; an AI verdict can be wrong, and a claim silently dropped from the list would still keep feeding Topics and chat behind the scenes. Instead, the **Source check** tab keeps a standing **Needs review** list (differs first, then not-in-source) with **Open**, **Confirm**, **Archive**, and **Check again** on each row, plus a checkbox multi-select to archive several at once. Archiving here is the same reversible archive used elsewhere — restorable, never silent — so you're always the one deciding what disappears. The Claims/Topics list also gets a **Needs review only** filter, off by default.
+
+## Automatic source check <Badge type="tip" text="Added in v0.77.0 (2026-09-17)" />
+
+By default, source check only runs when you ask for it. To have new and edited knowledge checked as it appears, open **Settings** → **AI**, find the **World grounding** section, and switch on **Auto-check sources** — it sits directly under **Auto-ground new knowledge** (off by default).
+
+With the toggle on, newly created or updated Claims and Topics are checked against their sources one at a time in the background, calling the AI once per source. It also works its way through anything not yet checked. It never runs at the same time as a manual single check or batch run. An ingest that rewrites a page's body — a merge, a rewrite, or a topic being restructured — clears that page's stored result, so it becomes eligible for automatic checking again.
+
 ## How it works: a knowledge base that grows
 
 World grounding is built as two layers, and understanding them explains why it gets faster with use:

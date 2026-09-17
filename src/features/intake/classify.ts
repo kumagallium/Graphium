@@ -11,6 +11,7 @@
 // （件数だけ見せる）。
 
 import { isMarkdownFile } from "../markdown-import/import";
+import { DELIMITED_EXTENSIONS } from "../data-import/file-kind";
 import { mimeToMediaType, isModernOfficeEntry } from "../asset-browser/media-index";
 import type { IntakeFile } from "./types";
 
@@ -39,13 +40,34 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   webp: "image/webp",
   svg: "image/svg+xml",
   heic: "image/heic",
+  // ここから下の画像・音声・動画は、ブラウザなら File.type が付くので
+  // 元は要らなかったもの。デスクトップのネイティブ走査（native-scan.ts）は
+  // MIME を持たないため、ここに無いと素材と判定されず捨てられてしまう
+  bmp: "image/bmp",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  avif: "image/avif",
+  heif: "image/heif",
+  ico: "image/x-icon",
   mp4: "video/mp4",
   webm: "video/webm",
   mov: "video/quicktime",
+  m4v: "video/mp4",
+  avi: "video/x-msvideo",
+  mkv: "video/x-matroska",
+  mpg: "video/mpeg",
+  mpeg: "video/mpeg",
+  wmv: "video/x-ms-wmv",
+  "3gp": "video/3gpp",
   mp3: "audio/mpeg",
   wav: "audio/wav",
   m4a: "audio/mp4",
   ogg: "audio/ogg",
+  aac: "audio/aac",
+  flac: "audio/flac",
+  opus: "audio/opus",
+  aiff: "audio/aiff",
+  aif: "audio/aiff",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ppt: "application/vnd.ms-powerpoint",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -70,12 +92,12 @@ export function classifyIntakeFiles(files: IntakeFile[]): ClassifiedIntakeFiles 
       skipped.push(f);
       continue;
     }
-    if (isMarkdownFile(f.file)) {
+    if (isMarkdownFile(f)) {
       notes.push(f);
       continue;
     }
-    const mime = f.file.type || guessMimeType(f.file.name);
-    const mediaType = mimeToMediaType(mime, f.file.name);
+    const mime = f.type || guessMimeType(f.name);
+    const mediaType = mimeToMediaType(mime, f.name);
     // "document" は Word/Excel/PowerPoint をまとめた型だが、ちゃんと展開できるのは
     // .docx / .pptx / .xlsx まで。旧バイナリ形式（.doc / .xls / .ppt）はここで弾く
     if (
@@ -94,3 +116,30 @@ export function classifyIntakeFiles(files: IntakeFile[]): ClassifiedIntakeFiles 
 
   return { notes, materials, skipped };
 }
+
+/**
+ * 投入口が受け取る拡張子（小文字・ドット無し）。デスクトップのネイティブ走査は
+ * この一覧を Rust に渡し、当たらないファイルは読み込み許可にも載せずに件数だけ数える。
+ *
+ * 手で書いた表ではなく classifyIntakeFiles 自身に通して導く。表を 2 つ持つと
+ * 対応形式を増やしたときに片方だけ更新され、ネイティブ走査だけが黙って
+ * ファイルを落とす（MIME を持たない走査で動画が捨てられていた件と同じ型の事故）。
+ */
+export const INTAKE_EXTENSIONS: readonly string[] = (() => {
+  const candidates = new Set<string>([
+    "md",
+    "markdown",
+    ...Object.keys(EXTENSION_TO_MIME),
+    ...DELIMITED_EXTENSIONS.map((ext) => ext.replace(/^\./, "")),
+  ]);
+  return [...candidates].filter((ext) => {
+    const name = `x.${ext}`;
+    const probe: IntakeFile = {
+      path: name,
+      name,
+      type: "",
+      getFile: () => Promise.reject(new Error("probe")),
+    };
+    return classifyIntakeFiles([probe]).skipped.length === 0;
+  });
+})();

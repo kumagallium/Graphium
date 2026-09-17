@@ -6,7 +6,7 @@
 // - 陳腐化（Stale）: 後から作られた知見に内容を追い越されたページ
 // - 重複（Redundant）: 内容が大幅に重なる Claim 同士
 
-export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant";
+export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant" | "missing-source";
 export type LintSeverity = "info" | "warning" | "error";
 
 export type LintIssue = {
@@ -46,6 +46,8 @@ export type LintReport = {
     gaps: number;
     stale: number;
     redundant: number;
+    /** 資料の一部がゴミ箱・未検出になった新形式トピック（機械判定・LLM 不要） */
+    missingSource: number;
   };
   analyzedAt: string;
 };
@@ -292,7 +294,7 @@ export function parseLinterOutput(text: string): LintIssue[] {
 }
 
 function validateIssueType(type: string): LintIssueType {
-  if (["contradiction", "orphan", "gap", "stale", "redundant"].includes(type)) {
+  if (["contradiction", "orphan", "gap", "stale", "redundant", "missing-source"].includes(type)) {
     return type as LintIssueType;
   }
   return "gap";
@@ -371,14 +373,16 @@ export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
     // Orphan チェック（topic）: メンバー知見が 0 件の話題ページ。
     // 知見の削除で 0 件になった話題はそのまま残す設計（本文は書き直さない）ので、
     // ここで検出して点検結果に出す。LLM 不要でローカルに判定できる。
-    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0) {
+    // 新形式トピック（topicMarkdown あり）は derivedFromClaims を使わず derivedFromNotes
+    // （資料 id）にメンバーを持つため、両方が空のときだけ空トピックとみなす。
+    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0 && w.derivedFromNotes.length === 0) {
       issues.push({
         type: "orphan",
         severity: "warning",
         title: `"${w.title}" is a topic with no member claims`,
-        description: `This topic page has no Claims linked to it (derivedFromClaims is empty), likely because all member Claims were deleted.`,
+        description: `This topic page has no Claims or sources linked to it (derivedFromClaims and derivedFromNotes are both empty), likely because all member Claims/sources were deleted.`,
         affectedWikiIds: [w.id],
-        suggestion: `Delete this topic page, or link existing Claims to it.`,
+        suggestion: `Delete this topic page, or link existing Claims/sources to it.`,
       });
     }
   }
@@ -430,8 +434,11 @@ export type AutoArchiveCandidate = {
   id: string;
   title: string;
   kind: "topic" | "claim";
-  /** empty-topic: メンバー知見 0 件の話題 / orphaned-source: 出どころのノートが全て消失した知見 */
-  reason: "empty-topic" | "orphaned-source";
+  /**
+   * empty-topic: メンバー知見 0 件の話題 / orphaned-source: 出どころのノートが全て消失した知見 /
+   * sources-gone: 新形式トピックで、資料がすべてノート id かつどれも有効なノートに無い
+   */
+  reason: "empty-topic" | "orphaned-source" | "sources-gone";
 };
 
 /**
@@ -455,11 +462,36 @@ export function detectAutoArchivable(
 ): AutoArchiveCandidate[] {
   const candidates: AutoArchiveCandidate[] = [];
   for (const w of wikis) {
-    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0) {
+    // 新形式トピック（derivedFromNotes に資料 id を持つ）を誤って空判定しないよう、
+    // derivedFromClaims と derivedFromNotes の両方が空のときだけ「空トピック」とみなす。
+    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0 && w.derivedFromNotes.length === 0) {
       candidates.push({ id: w.id, title: w.title, kind: "topic", reason: "empty-topic" });
       continue;
     }
-    if (w.kind === "claim") {
+    // 新形式トピック（derivedFromClaims が空・derivedFromNotes が 1 件以上）で、資料が
+    // すべてノート id（外部プレフィックス無し）かつ、どれも validNoteIds に無いとき。
+    // detectAutoArchivable の claim 側（orphaned-source）と同じ理由で、有効なノートが
+    // 1 件も渡されない（起動直後で索引が未読込）ときは判定しない。
+    if (
+      w.kind === "topic"
+      && (w.derivedFromClaims ?? []).length === 0
+      && w.derivedFromNotes.length > 0
+      && validNoteIds.size > 0
+    ) {
+      const noteSources = w.derivedFromNotes.filter((id) => !id.includes(":"));
+      const hasExternalSource = w.derivedFromNotes.length > noteSources.length;
+      if (!hasExternalSource) {
+        const hasValidSource = noteSources.some((noteId) => validNoteIds.has(noteId));
+        if (!hasValidSource) {
+          candidates.push({ id: w.id, title: w.title, kind: "topic", reason: "sources-gone" });
+          continue;
+        }
+      }
+    }
+    // 有効なノートが 1 件も渡されないときは「全部消えた」と「まだ索引が読めていない」を
+    // 区別できない（起動直後に noteIndex が null のまま呼ぶと全知見を誤って片付けた、
+    // 2026-09-17 に確認）。片付けない側に倒す。
+    if (w.kind === "claim" && validNoteIds.size > 0) {
       // 出どころが「ノートだけ」で、そのノートが 1 つも残っていないときだけ片付ける。
       //
       // derivedFromNotes にはノート id 以外も入る（pdf: / url: / document: / chat: /
@@ -479,4 +511,39 @@ export function detectAutoArchivable(
     }
   }
   return candidates;
+}
+
+/**
+ * 資料の一部だけがゴミ箱・未検出になった新形式トピックを検出する（LLM 不要）。
+ *
+ * detectAutoArchivable の sources-gone（資料が全滅）と違い、こちらは
+ * 「1 件以上あるが全部ではない」ケースを拾う — 自動アーカイブはせず、点検の warning
+ * として出し、資料の見直し（手入れ画面の「資料から作り直す」等）を人に促す。
+ * 旧形式トピック（derivedFromClaims にメンバーを持つ）は対象外。
+ * validNoteIds が空（起動直後で索引が未読込）のときは判定しない
+ * （detectAutoArchivable と同じ理由 — 全件誤判定を避ける）。
+ */
+export function detectMissingSourceIssues(
+  wikis: WikiSnapshot[],
+  validNoteIds: Set<string>,
+): LintIssue[] {
+  if (validNoteIds.size === 0) return [];
+  const issues: LintIssue[] = [];
+  for (const w of wikis) {
+    if (w.kind !== "topic" || (w.derivedFromClaims ?? []).length > 0) continue;
+    const noteSources = w.derivedFromNotes.filter((id) => !id.includes(":"));
+    if (noteSources.length === 0) continue;
+    const missingCount = noteSources.filter((noteId) => !validNoteIds.has(noteId)).length;
+    // 1 件以上・全部ではない（全滅は detectAutoArchivable の sources-gone が拾う）
+    if (missingCount === 0 || missingCount >= noteSources.length) continue;
+    issues.push({
+      type: "missing-source",
+      severity: "warning",
+      title: `"${w.title}" cites a source that is missing`,
+      description: `${missingCount} of ${noteSources.length} source note(s) cited by this topic are in the trash or could not be found.`,
+      affectedWikiIds: [w.id],
+      suggestion: `${missingCount} source(s) missing`,
+    });
+  }
+  return issues;
 }

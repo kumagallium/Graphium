@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.77.0](https://github.com/kumagallium/Graphium/compare/v0.76.7...v0.77.0) - 2026-09-17
+
+- feat(source-check): check that claims and topic points are written in their cited sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/964
+
+## [v0.76.7](https://github.com/kumagallium/Graphium/compare/v0.76.6...v0.76.7) - 2026-09-16
+
+- fix(settings): stop the usage tab from crashing in the settings modal stories by @kumagallium in https://github.com/kumagallium/Graphium/pull/961
+- fix(desktop): scan folders natively instead of webkitdirectory by @kumagallium in https://github.com/kumagallium/Graphium/pull/954
+
+## [v0.76.6](https://github.com/kumagallium/Graphium/compare/v0.76.5...v0.76.6) - 2026-09-16
+
+- fix(settings): keep the settings modal the same size across tabs by @kumagallium in https://github.com/kumagallium/Graphium/pull/959
+
+## [v0.76.5](https://github.com/kumagallium/Graphium/compare/v0.76.4...v0.76.5) - 2026-09-16
+
+- fix(plan-flow): show only outputs that were actually handed on by @kumagallium in https://github.com/kumagallium/Graphium/pull/957
+
+## [v0.76.4](https://github.com/kumagallium/Graphium/compare/v0.76.3...v0.76.4) - 2026-09-16
+
+- feat(plan-flow): edit the plan's index table from the operations panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/952
+
+## [v0.76.3](https://github.com/kumagallium/Graphium/compare/v0.76.2...v0.76.3) - 2026-09-16
+
+- fix(plan-flow): let planned lines start from an operation's output by @kumagallium in https://github.com/kumagallium/Graphium/pull/950
+
 ## [v0.76.2](https://github.com/kumagallium/Graphium/compare/v0.76.1...v0.76.2) - 2026-09-16
 
 - Tidy up empty knowledge on its own, and scope cross-update to claims by @kumagallium in https://github.com/kumagallium/Graphium/pull/948

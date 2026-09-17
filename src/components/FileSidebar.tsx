@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -108,6 +108,13 @@ export type FileSidebarProps = {
    * サイドバーの Atom 行・件数を隠す（作成済みデータは消さない）。
    */
   showAtomLayer?: boolean;
+  /**
+   * 知見（Claims）が設定で有効かどうか（既定 true）。
+   * 設定の features.claims（「知見を使う」トグル）に従う。OFF でも既存の知見
+   * ページが 1 件以上残っていれば Claim 行は表示し続け（閲覧を維持）、0 件なら隠す
+   * （2026-09-17 決定。show*Layer 系との違いは「件数があれば OFF でも見える」点）。
+   */
+  claimsEnabled?: boolean;
   /** Wiki リスト表示 */
   onShowWikiList?: (kind: WikiKind) => void;
   /** 現在アクティブな Wiki カテゴリ（ハイライト用） */
@@ -241,6 +248,8 @@ export function FileSidebar({
   // Atom（洞察）レイヤの表示可否。設定の features.insights（「洞察を使う」）に従う。
   // 既定は表示（design revision 2026-05-27 で default 昇格済み）。
   showAtomLayer = true,
+  // 知見（Claims）が設定で有効かどうか。既定は有効（新規ユーザー以外は基本 true）。
+  claimsEnabled = true,
   onShowWikiList,
   activeWikiKind,
   aiAvailable = true,
@@ -306,15 +315,20 @@ export function FileSidebar({
     [folderTree],
   );
 
+  // 知見（Claims）行の表示可否。features.claims が OFF でも、既存の知見ページが
+  // 1 件以上残っていれば表示を維持する（0 件かつ OFF のときだけ隠す。2026-09-17 決定）。
+  const showClaimLayer = claimsEnabled || (wikiCounts?.claim ?? 0) > 0;
+
   // Skill はフッターに移したのでカウントには含めない。
   // synthesis（発想）はサイドバーに表示しないため total にも含めない（design revision 2026-05-27）。
   // showAtomLayer が false（features.insights OFF）のときは atom 件数も除く。
+  // showClaimLayer が false（features.claims OFF かつ 0 件）のときは claim 件数も除く。
   const aiTotalCount = useMemo(() => {
     const w = wikiCounts;
     return (
-      (w?.topic ?? 0) + (w?.summary ?? 0) + (w?.claim ?? 0) + (showAtomLayer ? (w?.atom ?? 0) : 0)
+      (w?.topic ?? 0) + (w?.summary ?? 0) + (showClaimLayer ? (w?.claim ?? 0) : 0) + (showAtomLayer ? (w?.atom ?? 0) : 0)
     );
-  }, [wikiCounts, showAtomLayer]);
+  }, [wikiCounts, showAtomLayer, showClaimLayer]);
 
   // ラベルカウント（ギャラリーの行数 = 同ラベル内のユニーク preview / text 数）
   // Phase D-3-α: インライン由来のハイライト text もユニーク集計に合流する。
@@ -607,12 +621,13 @@ export function FileSidebar({
                 // 非表示化（Cmd-K Composer 経由で再構築する想定）。既存 synthesis ファイルの
                 // 物理データは保持されるが、ここからの動線は提供しない。
                 // showAtomLayer が false（features.insights OFF）のときは atom 行も隠す。
+                // showClaimLayer が false（features.claims OFF かつ 0 件）のときは claim 行も隠す。
                 // 要約（summary）の新規生成は停止済み（PR3。話題(topic)が役割を引き継ぐ）。
                 // 新規ユーザーの導線には出さず、既存ファイルが 1 件以上残っているときだけ
                 // 末尾に「以前の要約」として表示する（データが消えたように見えないため）。
-                const kinds: WikiKind[] = showAtomLayer
-                  ? ["topic", "claim", "atom"]
-                  : ["topic", "claim"];
+                const kinds: WikiKind[] = ["topic" as WikiKind]
+                  .concat(showClaimLayer ? ["claim" as WikiKind] : [])
+                  .concat(showAtomLayer ? ["atom" as WikiKind] : []);
                 const summaryCount = wikiCounts?.summary ?? 0;
                 if (summaryCount > 0) kinds.push("summary");
                 return kinds.map((kind) => {
@@ -689,7 +704,7 @@ export function FileSidebar({
                         : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
                     }`}
                   >
-                    <ShieldCheck size={12} />
+                    <Scissors size={12} />
                     <span>{t("sidebar.wikiLint")}</span>
                     {wikiLintBadge && wikiLintBadge.count > 0 && (
                       <span className={`text-xs ${wikiLintBadge.hasError ? "text-error" : "text-muted-foreground"}`}>

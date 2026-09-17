@@ -9,7 +9,7 @@ import { useT } from "../../i18n";
 export type IngestStageStatus = "pending" | "running" | "done" | "skipped" | "error";
 
 export type IngestStage = {
-  /** 識別子（cross-update / atomize / synthesize / lint など） */
+  /** 識別子（topics / atomize / lint など） */
   key: string;
   /** 表示用ラベル */
   label: string;
@@ -27,8 +27,13 @@ export type IngestToastItem = {
   detail?: string;
   /** 結果メッセージ */
   result?: string;
-  /** パイプライン後半（cross-update / atomize / synthesize / lint）のステージ表示 */
+  /** パイプライン後半（topics / atomize / lint）のステージ表示 */
   stages?: IngestStage[];
+  /**
+   * success の項目に添える 1 個のテキストボタン（例: 「出典照合を開く」）。
+   * 結果行の下（pl-5）に小さく出す。押されても項目自体の状態は変えない。
+   */
+  action?: { label: string; onClick: () => void };
 };
 
 export type IngestToastState = {
@@ -243,7 +248,19 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
                 {item.result}
               </div>
             )}
-            {/* パイプラインステージ（cross-update / atomize / synthesize / lint） */}
+            {/* success の項目に添えるテキストボタン（例: 「出典照合を開く」） */}
+            {item.action && item.status === "success" && (
+              <div className="pl-5">
+                <button
+                  type="button"
+                  onClick={item.action.onClick}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  {item.action.label}
+                </button>
+              </div>
+            )}
+            {/* パイプラインステージ（topics / atomize / lint） */}
             {item.stages && item.stages.length > 0 && (
               <ul className="pl-5 space-y-0.5">
                 {item.stages.map((stage) => (

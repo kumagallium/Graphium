@@ -6,11 +6,12 @@ import {
   Archive,
   ArrowLeft,
   BookOpen,
+  FileSearch,
   GitMerge,
   History,
   Loader2,
   RefreshCw,
-  ShieldCheck,
+  Scissors,
   Trash2,
   Zap,
 } from "lucide-react";
@@ -24,11 +25,12 @@ type Props = {
 const EVENT_ICONS: Record<WikiLogEventType, typeof History> = {
   ingest: BookOpen,
   merge: GitMerge,
-  lint: ShieldCheck,
+  lint: Scissors,
   delete: Trash2,
   "cross-update": Zap,
   regenerate: RefreshCw,
   archive: Archive,
+  "source-check": FileSearch,
 };
 
 const EVENT_COLORS: Record<WikiLogEventType, string> = {
@@ -39,6 +41,7 @@ const EVENT_COLORS: Record<WikiLogEventType, string> = {
   "cross-update": "text-orange-500",
   regenerate: "text-cyan-500",
   archive: "text-slate-500",
+  "source-check": "text-teal-500",
 };
 
 function formatTime(isoDate: string): string {

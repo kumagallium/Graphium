@@ -47,6 +47,43 @@ export const Checking: Story = {
   },
 };
 
+/**
+ * デスクトップのネイティブ走査中、件数が分かってきた表示。
+ * ファイル件数・フォルダ数の行と停止ボタンの両方が出ているかどうかが合否
+ */
+export const ScanningWithCount: Story = {
+  args: {
+    scanningCount: 12840,
+    scanningFolders: 640,
+    onFilesSelected: noop,
+  },
+};
+
+/**
+ * 取り込めない形式（ログ等）を読み飛ばしている間は、その件数も並べて
+ * 「止まっていない」ことを伝える
+ */
+export const ScanningWithSkipped: Story = {
+  args: {
+    scanningCount: 320,
+    scanningFolders: 48,
+    scanningSkipped: 18204,
+    onFilesSelected: noop,
+  },
+};
+
+/**
+ * デスクトップの走査が上限（500,000 件）で打ち切られ、そのまま入れるか
+ * 選び直すかを確かめる表示。一部だけ入ったのを「全部入った」と
+ * 誤解させないための一手間なので、件数が読めるかどうかが合否
+ */
+export const ScanTruncated: Story = {
+  args: {
+    truncatedCount: 500000,
+    onFilesSelected: noop,
+  },
+};
+
 /** lead を差し替えたケース（例: 素材が空のとき） */
 export const WithLead: Story = {
   args: {

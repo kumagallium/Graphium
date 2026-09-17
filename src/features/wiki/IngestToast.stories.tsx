@@ -52,9 +52,8 @@ export const ManyItemsActive: Story = {
             noteTitle: "ゼーベック係数の温度依存性",
             detail: "claims...",
             stages: [
-              { key: "cross-update", label: "Cross-update", status: "done", detail: "2 wikis" },
+              { key: "topics", label: "Topics", status: "done", detail: "1 topic" },
               { key: "atomize", label: "Atomize", status: "running" },
-              { key: "synthesize", label: "Synthesize", status: "pending" },
               { key: "lint", label: "Lint", status: "pending" },
             ],
           },
@@ -77,6 +76,27 @@ export const AllSuccess: Story = {
         items: [
           { id: "1", status: "success", noteTitle: "Cu粉末の焼結実験（第1回）", result: "3 claims" },
           { id: "2", status: "success", noteTitle: "シリカ管の前処理手順", result: "2 claims" },
+        ],
+      }}
+    />
+  ),
+};
+
+/** トピック改訂後、未照合の文があるときに添える「出典照合を開く」導線 */
+export const WithSourceCheckPrompt: Story = {
+  name: "出典照合の導線あり",
+  render: () => (
+    <ToastPlayground
+      initial={{
+        items: [
+          { id: "1", status: "success", noteTitle: "Al3V の格子熱伝導率", result: "1 wiki(s) · トピック: 作成 0 件・更新 1 件" },
+          {
+            id: "source-check-prompt:demo",
+            status: "success",
+            noteTitle: "出典照合",
+            result: "未照合 3 文",
+            action: { label: "出典照合を開く", onClick: () => alert("open source check") },
+          },
         ],
       }}
     />

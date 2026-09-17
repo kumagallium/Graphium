@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Sparkles,
   BadgeCheck,
+  FileSearch,
 } from "lucide-react";
 import type {
   AtomRelation,
@@ -39,6 +40,8 @@ import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource } from "../network-graph/external-source";
 import { useT } from "../../i18n";
 import { SynthesisModeModal } from "./SynthesisModeModal";
+import { SourceCheckBadge } from "../source-check/ui/SourceCheckBadge";
+import { SourceCheckDetailSection } from "../source-check/ui/SourceCheckDetailSection";
 
 function TypeBadge({
   label,
@@ -122,6 +125,23 @@ type Props = {
   // 関連・文脈系の props（noteIndex / mediaIndex / onNavigateNote /
   // onClearWorldValidity / wikiId / allWikiMetas）は D2 配置で WikiContextDrawer
   // に移した。WikiBanner は identity（バッジ＋アクション）だけを担う。
+
+  /**
+   * 出典照合（Source check, v1.1）実行トリガ。claim/topic のときだけ渡す
+   * （build-statements.ts の対象と揃える）。世界照合と同じく未指定ならボタンを出さない。
+   * 初回実行と再照合（WikiContextDrawer の SourceCheckDetailSection.onRecheck）は
+   * 同じハンドラを共有する。
+   */
+  onRunSourceCheck?: () => void;
+  /** 出典照合の実行中。ボタンを disable する。 */
+  sourceCheckRunning?: boolean;
+  /**
+   * 実行前に分かる LLM 呼び出し回数（出典の数）。ボタンの title に
+   * 「判定 N 回」として出す（0 件のときは省略）。
+   */
+  sourceCheckLlmCalls?: number;
+  /** 照合後に本文が変わったか（呼び出し側で claimHash を比較して渡す） */
+  sourceCheckStale?: boolean;
 };
 
 function formatDate(isoDate: string): string {
@@ -146,6 +166,10 @@ export function WikiBanner({
   worldGroundingEnabled = true,
   similarTopics,
   onMergeTopicInto,
+  onRunSourceCheck,
+  sourceCheckRunning = false,
+  sourceCheckLlmCalls,
+  sourceCheckStale = false,
 }: Props) {
   const t = useT();
   const kindLabel =
@@ -284,6 +308,13 @@ export function WikiBanner({
           <WorldCheckedNoMatchBadge validity={wikiMeta.grounding.validity} />
         ) : null}
 
+        {/* 出典照合（Source check, v1.1）の verdict バッジ。世界照合の隣に並べる
+            （2-a）。stale は呼び出し側（現在の本文から計算した claimHash と
+            profile.claimHash の比較）で渡す。 */}
+        {wikiMeta.sourceCheck && (
+          <SourceCheckBadge profile={wikiMeta.sourceCheck} stale={sourceCheckStale} />
+        )}
+
         {/* Phase η: epistemicStatus バッジ — claim だけでなく atom / synthesis にも出す。
             Atomizer / Synthesizer が最低継承で値を引き継ぐ設計（document-types.ts）なので、
             wiki kind を問わず情報があるなら一目で読めるようにする。 */}
@@ -378,6 +409,37 @@ export function WikiBanner({
             >
               <Globe2 size={12} />
               {t("wikiBanner.worldCheck")}
+            </button>
+          )}
+
+          {/* 出典照合（Source check, v1.1）— 引かれた出典に知見/トピックの要点が
+              書いてあるか照合する。初回実行と再照合（WikiContextDrawer 側）は
+              同じハンドラを共有する。 */}
+          {onRunSourceCheck && (
+            <button
+              onClick={onRunSourceCheck}
+              disabled={loading || sourceCheckRunning}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 8px",
+                borderRadius: "var(--r-1)",
+                border: "1px dashed var(--rule)",
+                background: "var(--paper)",
+                color: "var(--ink-2)",
+                fontSize: 11,
+                cursor: "pointer",
+                opacity: loading || sourceCheckRunning ? 0.5 : 1,
+              }}
+              title={
+                sourceCheckLlmCalls
+                  ? t("wikiBanner.sourceCheckHintWithCount", { count: String(sourceCheckLlmCalls) })
+                  : t("wikiBanner.sourceCheckHint")
+              }
+            >
+              <FileSearch size={12} />
+              {wikiMeta.sourceCheck ? t("wikiBanner.sourceCheckRecheck") : t("wikiBanner.sourceCheck")}
             </button>
           )}
 
@@ -526,6 +588,13 @@ export function WikiContextDrawer({
   allWikiMetas,
   archived = false,
   worldGroundingEnabled = true,
+  onRunSourceCheck,
+  onDismissSourceCheck,
+  onClearSourceCheck,
+  onOpenSourceCheckSource,
+  sourceCheckSourceTitles,
+  sourceCheckStale = false,
+  sourceCheckRunning = false,
 }: {
   wikiMeta: WikiMeta;
   noteIndex?: GraphiumIndex | null;
@@ -539,6 +608,18 @@ export function WikiContextDrawer({
   archived?: boolean;
   /** 世界照合マスタースイッチ（既定 ON）。OFF なら照合詳細・関連洞察導線を畳む */
   worldGroundingEnabled?: boolean;
+  /** 出典照合の再照合（WikiBanner の初回実行ボタンと同じハンドラを渡す） */
+  onRunSourceCheck?: () => void;
+  onDismissSourceCheck?: () => void;
+  onClearSourceCheck?: () => void;
+  /** 出典を開く（ノート・素材を SidePeek 等で表示する想定） */
+  onOpenSourceCheckSource?: (sourceId: string, blockId?: string) => void;
+  /** sourceId → 表示名（noteIndex / mediaIndex / wikiMetas から呼び出し側が解決する） */
+  sourceCheckSourceTitles?: Record<string, string>;
+  /** 照合後に本文が変わったか */
+  sourceCheckStale?: boolean;
+  /** 出典照合が実行中（このドキュメント単体、または点検欄の一括実行）。「もう一度照合」を無効化する。 */
+  sourceCheckRunning?: boolean;
 }) {
   const entryId = wikiMeta.grounding?.validity?.entryId;
   const hasGroundingSiblings = (() => {
@@ -558,6 +639,7 @@ export function WikiContextDrawer({
   const showDerivedFrom = hasDerivedFrom(wikiMeta);
   const showWorldDetail =
     worldGroundingEnabled && !!wikiMeta.grounding?.validity?.checkedAt;
+  const showSourceCheck = !!wikiMeta.sourceCheck;
   const showBacking =
     wikiMeta.kind === "claim" && !!wikiMeta.backing && wikiMeta.backing.length > 0;
   const showRebuttal =
@@ -574,6 +656,7 @@ export function WikiContextDrawer({
     showDerivedFrom ||
     showWorldDetail ||
     hasGroundingSiblings ||
+    showSourceCheck ||
     showBacking ||
     showRebuttal ||
     showAtomShape;
@@ -614,6 +697,20 @@ export function WikiContextDrawer({
           currentWikiId={wikiId}
           allWikiMetas={allWikiMetas}
           onNavigateNote={onNavigateNote}
+        />
+      )}
+      {/* 出典照合（Source check, v1.1）詳細 — 世界照合詳細の近くに置く（2-a）。
+          トピックでは entry.statement/statementBlockId が部品側で表示される。 */}
+      {showSourceCheck && (
+        <SourceCheckDetailSection
+          profile={wikiMeta.sourceCheck!}
+          stale={sourceCheckStale}
+          sourceTitles={sourceCheckSourceTitles}
+          onOpenSource={onOpenSourceCheckSource}
+          onRecheck={onRunSourceCheck}
+          onDismiss={onDismissSourceCheck}
+          onClear={onClearSourceCheck}
+          running={sourceCheckRunning}
         />
       )}
       {showAtomShape && (

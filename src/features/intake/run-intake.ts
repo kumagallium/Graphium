@@ -6,7 +6,7 @@
 
 import { classifyIntakeFiles } from "./classify";
 import { commonRootOf, folderOf } from "./folders";
-import type { IntakeFile } from "./types";
+import type { IntakeFile, IntakeSelectionExtra } from "./types";
 import type { BulkOcrTarget } from "../media-ocr";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 
@@ -52,7 +52,21 @@ export type IntakeDeps = {
   importMarkdown: (
     files: IntakeFile[],
     onProgress: (p: IntakeProgress) => void,
-    ctx: { allFiles: IntakeFile[]; folderOf: (file: IntakeFile) => string | undefined },
+    ctx: {
+      allFiles: IntakeFile[];
+      folderOf: (file: IntakeFile) => string | undefined;
+      /**
+       * ctx.allFiles に含まれる IntakeFile の実体を読む（getFile() の結果を返す）。
+       * Markdown が参照する埋め込み画像（![[fig.png]]）は classifyIntakeFiles で
+       * materials 側にも分類されるため、この画像は「本文の画像解決」と
+       * 「素材としての登録（materials ループ）」の 2 経路から読まれる。
+       * runIntake 側の共有キャッシュを経由することで、同じ IntakeFile への
+       * getFile() 呼び出しを取り込み全体で 1 回に抑える
+       * （ネイティブ走査では getFile() 呼び出し = ファイル読み込みそのもの＝
+       * NAS ならネットワーク往復そのものなので、二重読みは実害になる）
+       */
+      readFile: (file: IntakeFile) => Promise<File>;
+    },
   ) => Promise<MarkdownImportResult>;
   /**
    * 素材を 1 件アップロードする。戻り値の duplicate が true なら
@@ -179,6 +193,7 @@ export async function runIntake(
   files: IntakeFile[],
   deps: IntakeDeps,
   onProgress: (p: IntakeProgress) => void,
+  extra?: IntakeSelectionExtra,
 ): Promise<IntakeOutcome> {
   const { notes, materials, skipped } = classifyIntakeFiles(files);
   const total = notes.length + materials.length;
@@ -189,6 +204,22 @@ export async function runIntake(
   const root = commonRootOf(files);
   const folderOfFile = (file: IntakeFile) => folderOf(file.path, root);
   const foldersSeen = new Set<string>();
+
+  // 取り込み 1 回分のスコープを持つ、実体読み込みの共有キャッシュ。
+  // Markdown が参照する埋め込み画像は notes 側の resolveImage と materials
+  // ループの両方から読まれうるため、Promise をキャッシュして「同じ
+  // IntakeFile には同じ Promise を返す」ことで getFile() の二重呼び出しを防ぐ
+  // （File ではなく Promise をキャッシュするのは、同時に呼ばれた場合でも
+  // 二重読みが起きないようにするため）
+  const fileReadCache = new Map<IntakeFile, Promise<File>>();
+  const readFile = (file: IntakeFile): Promise<File> => {
+    let p = fileReadCache.get(file);
+    if (!p) {
+      p = file.getFile();
+      fileReadCache.set(file, p);
+    }
+    return p;
+  };
 
   // notes: importMarkdown 側の進捗（0..notes.length）をそのまま全体の done として流す。
   // 実装側が丸ごと throw しても（保存先が開けない等）素材の登録まで止めない。
@@ -209,11 +240,11 @@ export async function runIntake(
         (p) => {
           onProgress({ done: p.done, total, current: p.current, failed: [...failed, ...p.failed] });
         },
-        { allFiles: files, folderOf: folderOfFile },
+        { allFiles: files, folderOf: folderOfFile, readFile },
       );
     } catch (err) {
       console.warn("[intake] Markdown の取り込みが途中で失敗:", err);
-      markdownResult = { ...markdownResult, failed: notes.map((n) => n.file.name) };
+      markdownResult = { ...markdownResult, failed: notes.map((n) => n.name) };
     }
   }
   failed.push(...markdownResult.failed);
@@ -232,9 +263,12 @@ export async function runIntake(
   const notesDone = notes.length;
   for (let i = 0; i < materials.length; i++) {
     const m = materials[i];
-    onProgress({ done: notesDone + i, total, current: m.file.name, failed });
+    onProgress({ done: notesDone + i, total, current: m.name, failed });
     try {
-      const result = await deps.uploadAsset(m.file);
+      // 実体は共有キャッシュ経由で読む（notes 側の resolveImage が同じ
+      // IntakeFile を先に読んでいれば、ここではその Promise を使い回すだけになる）
+      const rawFile = await readFile(m);
+      const result = await deps.uploadAsset(rawFile);
       materialsUploaded += 1;
       const duplicate =
         result && typeof result === "object" && (result as { duplicate?: boolean }).duplicate === true;
@@ -265,7 +299,7 @@ export async function runIntake(
             try {
               await deps.setAssetFolder(fileId, folder);
             } catch (err) {
-              console.warn(`[intake] 素材のフォルダ設定に失敗: ${m.file.name}`, err);
+              console.warn(`[intake] 素材のフォルダ設定に失敗: ${m.name}`, err);
             }
           }
         }
@@ -273,24 +307,34 @@ export async function runIntake(
       // PowerPoint / Excel の展開: 新規登録は常に対象。既存（duplicate）は
       // isOfficeExpanded で未展開と分かったときだけ対象にする（未指定なら従来どおり新規のみ）
       const needsExpand = !duplicate || (deps.isOfficeExpanded ? !deps.isOfficeExpanded(fileId ?? "") : false);
-      if (needsExpand && fileId && deps.expandOffice && isExpandableOfficeFile(m.file.name)) {
+      if (needsExpand && fileId && deps.expandOffice && isExpandableOfficeFile(m.name)) {
         try {
-          const { derived, skipped: officeSkippedCount } = await deps.expandOffice(m.file, fileId);
+          const { derived, skipped: officeSkippedCount } = await deps.expandOffice(rawFile, fileId);
           officeDerived += derived;
           officeSkipped += officeSkippedCount;
         } catch (err) {
-          console.warn(`[intake] Office ファイルの展開に失敗: ${m.file.name}`, err);
+          console.warn(`[intake] Office ファイルの展開に失敗: ${m.name}`, err);
         }
       }
     } catch (err) {
-      console.warn(`[intake] 素材のアップロードに失敗: ${m.file.name}`, err);
-      failed.push(m.file.name);
+      console.warn(`[intake] 素材のアップロードに失敗: ${m.name}`, err);
+      failed.push(m.name);
+    } finally {
+      // この素材の処理が終わったらキャッシュから解放する。解放しないと
+      // 取り込みが終わるまで全ファイルの実体（File オブジェクト）がメモリに
+      // 残り続けてしまう。成功・失敗どちらでも解放して構わない
+      // （notes 側は materials より先に完走しているため、ここで消しても
+      // 二重読み防止の役目は既に終わっている）
+      fileReadCache.delete(m);
     }
   }
   onProgress({ done: total, total, failed });
 
-  // 対象外ファイルの内訳を拡張子ごとに数える
-  const skippedByExt: Record<string, number> = {};
+  // 対象外ファイルの内訳を拡張子ごとに数える。走査の段階で外された分
+  // （デスクトップのネイティブ走査）は files に載っていないので、渡された内訳を足す
+  const skippedByExt: Record<string, number> = { ...extra?.preSkippedByExt };
+  let preSkipped = 0;
+  for (const count of Object.values(extra?.preSkippedByExt ?? {})) preSkipped += count;
   for (const s of skipped) {
     const ext = extOf(s.path);
     skippedByExt[ext] = (skippedByExt[ext] ?? 0) + 1;
@@ -313,7 +357,7 @@ export async function runIntake(
     linksResolved: markdownResult.linksResolved,
     linksUnresolved: markdownResult.linksUnresolved,
     failed,
-    skipped: skipped.length,
+    skipped: skipped.length + preSkipped,
     skippedByExt,
     lastNewId: markdownResult.lastNewId,
     createdNoteIds: markdownResult.createdIds,

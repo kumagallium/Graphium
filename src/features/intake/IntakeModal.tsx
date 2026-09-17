@@ -13,7 +13,7 @@ import { useT } from "@/i18n";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/ui/modal";
 import { Button } from "@/ui/button";
 import { IntakeReceptacle } from "./IntakeReceptacle";
-import type { IntakeFile, IntakeSource } from "./types";
+import type { IntakeFile, IntakeSelectionExtra, IntakeSource } from "./types";
 
 /**
  * 対象外ファイルの内訳を「（.pptx 3・.xlsx 1・.bak 1）」の形にする。
@@ -68,7 +68,7 @@ type IntakeModalProps = {
   /** 呼び出し側が「ウィンドウのどこかでドラッグ中」を知らせたいとき用。受け皿を強調する */
   dragActive?: boolean;
   /** 隠し input（webkitdirectory）でフォルダを選んだとき / ファイルを選んだとき / 受け皿に落としたとき。すべて同じ形で渡す */
-  onFilesSelected: (files: IntakeFile[], source: IntakeSource) => void;
+  onFilesSelected: (files: IntakeFile[], source: IntakeSource, extra?: IntakeSelectionExtra) => void;
   /** 復元レポートの次の動作 */
   onSearch?: () => void;
   onShowGraph?: () => void;

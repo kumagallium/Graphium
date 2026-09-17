@@ -10,7 +10,7 @@ import {
 } from "./note-list-source";
 import type { GraphiumIndex } from "./index-file";
 import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
-import { IntakeReceptacle, type IntakeFile, type IntakeSource } from "../intake";
+import { IntakeReceptacle, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
 import { useT, getDisplayLabelName } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { bestHitsBySource, useLexicalStatus } from "../lexical-search";
@@ -176,7 +176,7 @@ export function NoteListView({
    * 投入口の受け皿から直接渡されたファイル群を取り込む（一覧が空のときの受け皿用）。
    * 渡されたときだけ、空状態を受け皿に差し替える。
    */
-  onIntakeFiles?: (files: IntakeFile[], source: IntakeSource) => void;
+  onIntakeFiles?: (files: IntakeFile[], source: IntakeSource, extra?: IntakeSelectionExtra) => void;
   /** これが変化するたびに検索欄へフォーカスを当てる（復元レポートの「ノートを検索する」用） */
   focusSearchSignal?: number;
 }) {

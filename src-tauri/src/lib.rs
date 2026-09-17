@@ -1,13 +1,15 @@
 // Graphium デスクトップアプリのコアライブラリ
 
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -1661,6 +1663,602 @@ fn inbox_discard(root: String, name: String) -> Result<(), String> {
     fs::remove_file(&path).map_err(|e| e.to_string())
 }
 
+// --- ネイティブフォルダ走査（webkitdirectory の NAS 越し低速化を回避） ---
+//
+// `<input webkitdirectory>` は選択したフォルダ配下の全ファイルに対して
+// WebKit がエイリアス判定（getattrlist）を行うため、NAS 越しのフォルダでは
+// 数千ファイルで数分かかるほど極端に遅くなる。ここでは Rust 側で
+// fs::read_dir を直接叩いて回避する。
+//
+// 当初は各エントリに対し symlink_metadata（lstat）も呼んでいたが、NAS 越しでは
+// これがエントリ 1 件ごとの追加往復になり、実測で走査時間の 9 割を占めていた
+// （2,000〜3,000 件で readdir だけなら 12〜32 秒、lstat も呼ぶと 103〜192 秒）。
+// DirEntry::file_type() は readdir が返す d_type をそのまま使う（macOS は
+// DT_UNKNOWN のときだけ 1 回 fstatat にフォールバック、Windows は
+// FindNextFileW の結果を保持済みで追加往復なし）ため、種別判定は
+// file_type() だけで行い、エントリごとの追加 stat 呼び出しは一切しない。
+
+/// scan_directory の走査上限件数（取り込み対象の拡張子に当たったファイルだけを数える）。
+///
+/// 以前は 50,000 件で、しかも形式を問わず全ファイルを数えていたため、`.git` の中身や
+/// 装置のログが混ざった過去データのフォルダでは、取り込めるファイルが僅かでも上限に
+/// 届いてしまっていた。いまは件数表示と停止ボタンがあり「固まって見える」心配は
+/// 無いので、上限は日常の上限ではなく安全柵（パス一覧と許可リストがメモリを
+/// 食い潰さないための頭打ち）として置く。
+const SCAN_MAX_FILES: usize = 500_000;
+
+/// 許可リストに溜めるパスの上限。フォルダを選び直しても前回分をすぐには
+/// 捨てられない（取り込みが裏で続いている）ので、上限いっぱいの走査を 1 回分は
+/// 追加で残せる大きさにしつつ、際限なく増えないようここで頭を打つ。
+const SCAN_ALLOWLIST_MAX: usize = SCAN_MAX_FILES * 2;
+
+/// 対象外の内訳（拡張子 → 件数）に持つ種類の上限。ランダムな拡張子が大量に並ぶ
+/// フォルダでも表が膨らまないよう、超えた分は OTHER_EXT_KEY にまとめる。
+/// 画面に出すのは上位 3 種だけなので、64 あれば表示に影響しない。
+const SCAN_SKIPPED_EXT_KINDS_MAX: usize = 64;
+
+/// 拡張子が無いファイルの内訳キー。TS 側 run-intake.ts の extOf と同じ表記。
+const NO_EXT_KEY: &str = "(none)";
+
+/// SCAN_SKIPPED_EXT_KINDS_MAX を超えた種類をまとめる内訳キー。
+const OTHER_EXT_KEY: &str = "(other)";
+
+/// intake-scan-progress を emit する最短間隔。数万件規模の走査で毎エントリ emit すると
+/// IPC 自体がボトルネックになるため間引く。
+const SCAN_PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
+
+/// scan_directory の結果 1 件。TS 側と 1:1 対応する（camelCase で送る。
+/// 既存の InboxItem と同じ流儀）。
+///
+/// size は持たない: 走査時点のサイズを実際に使っているのは
+/// importMarkdownFiles の tooLargeToHash 判定（TS 側）だけで、その直後に必ず
+/// getFile() で実体を読むため走査側で持つ意味が薄い。種別判定は file_type() だけで
+/// 済むのに対し、サイズ取得には結局 1 件ごとの stat が要り、せっかく無くした
+/// NAS 往復を復活させてしまう。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedFile {
+    /// 絶対パス。read_scanned_file にはこの値をそのまま渡す。
+    pub path: String,
+    /// root からの相対パス。区切りは OS に依らず "/" に統一する。
+    pub relative_path: String,
+    /// ファイル名（パスの最後の要素）。
+    pub name: String,
+}
+
+/// scan_directory の戻り値。
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanResult {
+    pub files: Vec<ScannedFile>,
+    /// SCAN_MAX_FILES に達して途中で打ち切った場合 true。
+    pub truncated: bool,
+    /// 対象外の拡張子だったため載せなかったファイルの内訳（".log" → 件数）。
+    /// 隠しファイル・隠しフォルダの中身は数えない（降りていないので数えられない）。
+    pub skipped_by_ext: HashMap<String, usize>,
+    /// cancel_scan で中止された場合 true。true のとき files は空で、
+    /// 許可リストへの追加も行わない。
+    pub cancelled: bool,
+}
+
+/// intake-scan-progress イベントの payload。
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScanProgressPayload {
+    /// どの走査の進捗かを識別する ID（TS 側が走査ごとに crypto.randomUUID() で生成）。
+    /// IntakeReceptacle は NoteListView・AssetGalleryView の空状態・IntakeModal の
+    /// 3 か所に同時にマウントされうる（モーダルはオーバーレイ）ため、これが無いと
+    /// 並行して走っている走査の件数が互いの受け皿に混ざってしまう。
+    scan_id: String,
+    found: usize,
+    /// 対象外の拡張子だったため読み飛ばしたファイルの数。ログだけが大量に並ぶ
+    /// フォルダでは found も folders も動かないので、これで進んでいることを伝える。
+    skipped: usize,
+    /// 見つけた（キューに積んだ）フォルダの数。ファイルが 1 件も無い深い
+    /// ツリー（NAS のバックアップ等）でも進捗が動いて見えるように、found とは
+    /// 別に持つ。
+    folders: usize,
+}
+
+/// scan_directory の中止フラグを走査 ID ごとに持つ表。
+///
+/// 以前はプロセス全体で 1 つの AtomicBool だった。IntakeReceptacle は
+/// NoteListView・AssetGalleryView の空状態・IntakeModal の 3 か所に同時に
+/// マウントされうる（モーダルはオーバーレイなので下の受け皿と同時に存在する）ため、
+/// 単一フラグでは片方の「停止」がもう片方の走査も巻き込んで止め、逆に片方の
+/// 停止直後にもう片方が走査を始めると開始時の初期化で停止要求が消えてしまう。
+/// 走査 ID ごとに独立したフラグを持つことでこれを避ける。
+///
+/// scan_directory（begin）と cancel_scan（cancel）は別々の invoke で、どちらが
+/// 先に Rust 側へ届くかの保証が無い。cancel が begin より先に届く場合に備えて、
+/// cancel は該当エントリが無ければ「true で」新規登録し、begin は既存エントリが
+/// あればそれをそのまま使う（＝先着の中止要求を失わない）。
+#[derive(Default)]
+struct ScanCancelState(Mutex<HashMap<String, Arc<AtomicBool>>>);
+
+/// ScanCancelState の表に残せる走査 ID の上限。
+///
+/// 走査が正常に終われば scan_directory_sync が必ず end() を呼んで表から
+/// 取り除くが、scan_directory が一度も呼ばれないまま cancel_scan だけが届いた
+/// 場合（begin より cancel が先着したケースの取りこぼし対策）は孤児エントリが
+/// 残る。1 プロセスで同時に開いていられる受け皿は高々数個（NoteListView /
+/// AssetGalleryView / IntakeModal）なので、64 あれば通常運用で頭を打つことは
+/// ない。上限に達したら、進行中でない（フラグが true = 既に中止された）
+/// エントリから間引く。進行中（false のまま）のエントリを消すと、実際に
+/// 動いている走査の中止判定ができなくなってしまうため残す。
+const SCAN_CANCEL_TABLE_MAX: usize = 64;
+
+impl ScanCancelState {
+    /// 走査 id を開始する。表に既にエントリがあればそのフラグをそのまま返す
+    /// （begin より先に cancel(id) が届いていた場合、その中止要求を活かすため）。
+    /// 無ければ false で新規登録する。
+    fn begin(&self, id: &str) -> Arc<AtomicBool> {
+        let mut guard = self.0.lock().unwrap();
+        if let Some(flag) = guard.get(id) {
+            return flag.clone();
+        }
+        Self::evict_if_full(&mut guard);
+        let flag = Arc::new(AtomicBool::new(false));
+        guard.insert(id.to_string(), flag.clone());
+        flag
+    }
+
+    /// 走査 id に中止を要求する。表にエントリがあれば true にする。無ければ
+    /// true で新規登録する（scan_directory より cancel_scan が先に届いた場合、
+    /// 後から呼ばれる begin(id) がこのエントリをそのまま使い、中止済み状態から
+    /// 走査が始まる）。
+    fn cancel(&self, id: &str) {
+        let mut guard = self.0.lock().unwrap();
+        if let Some(flag) = guard.get(id) {
+            flag.store(true, Ordering::Relaxed);
+        } else {
+            Self::evict_if_full(&mut guard);
+            guard.insert(id.to_string(), Arc::new(AtomicBool::new(true)));
+        }
+    }
+
+    /// 走査 id の終了を表から取り除く。
+    fn end(&self, id: &str) {
+        self.0.lock().unwrap().remove(id);
+    }
+
+    /// 表のエントリ数が上限に達していたら、中止済み（true）のエントリを
+    /// 間引いて空きを作る。呼び出し側はロックを取得済みであること。
+    fn evict_if_full(guard: &mut HashMap<String, Arc<AtomicBool>>) {
+        if guard.len() < SCAN_CANCEL_TABLE_MAX {
+            return;
+        }
+        guard.retain(|_, flag| !flag.load(Ordering::Relaxed));
+    }
+}
+
+/// スコープを抜けるとき（正常終了・`?` による早期リターンのどちらでも）に
+/// 一度だけクロージャを実行するガード。scan_directory_sync の全ての終了経路で
+/// ScanCancelState::end を漏らさず呼ぶために使う（Rust に try/finally が無いため）。
+struct DeferEnd<F: FnMut()>(F);
+
+impl<F: FnMut()> Drop for DeferEnd<F> {
+    fn drop(&mut self) {
+        (self.0)();
+    }
+}
+
+/// walk_intake_directory の途中経過。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScanProgress {
+    found: usize,
+    folders: usize,
+    skipped: usize,
+}
+
+/// walk_intake_directory が拾うファイルの条件。
+#[derive(Debug, Default)]
+struct ScanFilter {
+    /// 取り込み対象の拡張子（小文字・ドット無し。例: "md", "png"）。
+    /// None なら拡張子で絞らない（テストと NAS ベンチ用）。
+    ///
+    /// 表の実体は TS 側（classify.ts の INTAKE_EXTENSIONS）にあり、scan_directory の
+    /// 引数で受け取る。Rust に同じ表を持つと、対応形式を増やしたときに片方だけ
+    /// 更新され、ネイティブ走査だけが黙ってファイルを落とす事故になるため。
+    extensions: Option<HashSet<String>>,
+}
+
+impl ScanFilter {
+    fn with_extensions(extensions: &[String]) -> Self {
+        Self {
+            extensions: Some(
+                extensions
+                    .iter()
+                    .map(|e| e.trim_start_matches('.').to_lowercase())
+                    .filter(|e| !e.is_empty())
+                    .collect(),
+            ),
+        }
+    }
+
+    /// ファイル名の拡張子（小文字・ドット無し）。先頭のドットは拡張子とみなさない。
+    fn extension_of(name: &str) -> Option<String> {
+        match name.rfind('.') {
+            Some(i) if i > 0 && i + 1 < name.len() => Some(name[i + 1..].to_lowercase()),
+            _ => None,
+        }
+    }
+
+    fn accepts(&self, name: &str) -> bool {
+        match &self.extensions {
+            None => true,
+            Some(set) => Self::extension_of(name).is_some_and(|ext| set.contains(&ext)),
+        }
+    }
+}
+
+/// 隠しファイル・隠しフォルダか（.git / .obsidian / .DS_Store 等）。
+/// TS 側 classify.ts の isHiddenPath と同じ規則（名前がドットで始まる）。
+fn is_hidden_name(name: &std::ffi::OsStr) -> bool {
+    name.as_encoded_bytes().first() == Some(&b'.')
+}
+
+/// walk_intake_directory の結果。
+#[derive(Debug)]
+struct WalkOutcome {
+    files: Vec<ScannedFile>,
+    truncated: bool,
+    skipped_by_ext: HashMap<String, usize>,
+    /// cancel が立って途中で打ち切った場合 true。true のとき files は空。
+    cancelled: bool,
+}
+
+/// root 配下を再帰的に走査してファイル一覧を集める（同期・純粋関数。Tauri に依存しない
+/// のでユニットテストしやすい）。ディレクトリは対象外、シンボリックリンクは辿らない。
+/// 読めないディレクトリ・読めないエントリは読み飛ばし、全体は失敗させない。
+///
+/// 幅優先（VecDeque）で辿る。深さ優先だと read_dir の列挙順（ファイルシステム依存で
+/// 並び順の保証がない）に従って 1 つのサブフォルダへ潜り込むため、そこだけで
+/// max_files を使い切ると同じ階層に並んだ他のフォルダが 1 件も拾われないまま終わる。
+/// 幅優先なら浅い階層から均等に埋まるので、深いサブツリーが兄弟フォルダを飢えさせる
+/// ことはない。ただし 1 つのフォルダが直下に max_files を超える数のファイルを持つ
+/// 場合は、そのフォルダの途中で打ち切られ、同じ階層の後続フォルダは拾われない
+/// （幅優先が保証するのは「兄弟フォルダ間」の公平性であり、1 フォルダ内の公平性までは
+/// 保証しない）。
+///
+/// root は呼び出し側で canonicalize 済みであることを前提とする（シンボリックリンク
+/// 解決後の絶対パスに揃えるのは呼び出し側の責務。この関数自身はエントリごとの
+/// canonicalize/stat を一切行わない）。
+///
+/// 隠しファイルは拾わず、隠しフォルダ（.git 等）には降りない。filter に合わない
+/// 拡張子のファイルは files にも許可リストにも載せず、skipped_by_ext に件数だけ残す。
+/// max_files は filter を通ったファイルだけを数える。
+fn walk_intake_directory(
+    root: &Path,
+    filter: &ScanFilter,
+    max_files: usize,
+    cancel: &AtomicBool,
+    progress_interval: Duration,
+    mut on_progress: impl FnMut(ScanProgress),
+) -> WalkOutcome {
+    let mut files: Vec<ScannedFile> = Vec::new();
+    let mut folders: usize = 0;
+    let mut skipped: usize = 0;
+    let mut skipped_by_ext: HashMap<String, usize> = HashMap::new();
+    let mut truncated = false;
+    let mut queue: VecDeque<PathBuf> = VecDeque::from([root.to_path_buf()]);
+    // 前回 on_progress を呼んでからの経過時間をここで測る。
+    let mut last_progress = Instant::now();
+
+    // エントリを 1 件処理するたびに（ファイルかフォルダかに関係なく）呼ぶ。
+    // ファイル追加の直後だけに限定すると、NAS の深いバックアップツリーのように
+    // フォルダばかりが続きファイルが 1 件も見つからない区間で on_progress が
+    // 一度も呼ばれず、画面が固まって見えてしまう。
+    macro_rules! maybe_report_progress {
+        () => {
+            if last_progress.elapsed() >= progress_interval {
+                on_progress(ScanProgress {
+                    found: files.len(),
+                    folders,
+                    skipped,
+                });
+                last_progress = Instant::now();
+            }
+        };
+    }
+
+    'walk: while let Some(dir) = queue.pop_front() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            // 権限エラー等で読めないディレクトリは読み飛ばす（全体を失敗させない）。
+            Err(_) => continue,
+        };
+        for entry in entries {
+            // 中止要求はエントリごとに確認する。数万件規模の走査でも
+            // 「押してからすぐ止まる」体感にするため。
+            if cancel.load(Ordering::Relaxed) {
+                return WalkOutcome {
+                    files: Vec::new(),
+                    truncated: false,
+                    skipped_by_ext: HashMap::new(),
+                    cancelled: true,
+                };
+            }
+            let Ok(entry) = entry else { continue };
+            // file_type() は readdir の d_type を使う（macOS は DT_UNKNOWN のときだけ
+            // 1 回 fstatat にフォールバック、Windows は FindNextFileW の結果を保持済み）。
+            // symlink_metadata / metadata は一切呼ばない — NAS 越しではこれがエントリごとの
+            // 追加往復になり、走査時間の大半を占めていた（モジュール冒頭コメント参照）。
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if is_hidden_name(&entry.file_name()) {
+                // 隠しフォルダには降りず、隠しファイルも拾わない。.git の中身だけで
+                // 数万件になることがあり、中まで辿るのは NAS 越しでは丸ごと無駄な往復になる。
+                maybe_report_progress!();
+                continue;
+            }
+            let path = entry.path();
+            if file_type.is_symlink() {
+                // シンボリックリンクはループの恐れがあるため対象外にする（辿らない）。
+                maybe_report_progress!();
+                continue;
+            }
+            if file_type.is_dir() {
+                queue.push_back(path);
+                folders += 1;
+                maybe_report_progress!();
+                continue;
+            }
+            if !file_type.is_file() {
+                // FIFO・ソケット等は対象外。
+                maybe_report_progress!();
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !filter.accepts(&name) {
+                // 対象外の拡張子は許可リストにも載せない（読める範囲を取り込み対象に限る）。
+                skipped += 1;
+                let key = match ScanFilter::extension_of(&name) {
+                    Some(ext) => format!(".{ext}"),
+                    None => NO_EXT_KEY.to_string(),
+                };
+                let key = if skipped_by_ext.contains_key(&key)
+                    || skipped_by_ext.len() < SCAN_SKIPPED_EXT_KINDS_MAX
+                {
+                    key
+                } else {
+                    OTHER_EXT_KEY.to_string()
+                };
+                *skipped_by_ext.entry(key).or_insert(0) += 1;
+                maybe_report_progress!();
+                continue;
+            }
+            if files.len() >= max_files {
+                truncated = true;
+                break 'walk;
+            }
+            let relative_path = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            files.push(ScannedFile {
+                path: path.to_string_lossy().to_string(),
+                relative_path,
+                name,
+            });
+
+            maybe_report_progress!();
+        }
+    }
+
+    WalkOutcome {
+        files,
+        truncated,
+        skipped_by_ext,
+        cancelled: false,
+    }
+}
+
+/// walk_intake_directory を Tauri 層につなぐ同期本体。canonicalize・進捗 emit・
+/// 許可リスト更新を担う。
+fn scan_directory_sync(
+    root: String,
+    scan_id: String,
+    extensions: Vec<String>,
+    app: &tauri::AppHandle,
+) -> Result<ScanResult, String> {
+    // 走査 ID ごとの中止フラグを canonicalize より前に登録する。
+    // IntakeReceptacle はフォルダ選択直後に「停止」ボタンを表示するため、
+    // canonicalize（NAS 越しだと実測 25〜226ms かかる）の最中に押された停止を
+    // 取りこぼさないようにするため。begin は先着の中止要求（cancel_scan が
+    // scan_directory より先に届いた場合）を引き継ぐ。
+    let cancel_state = app.state::<ScanCancelState>();
+    let cancel_flag = cancel_state.begin(&scan_id);
+
+    // この関数のどの終了経路（canonicalize 失敗による早期リターンを含む）でも
+    // end(scan_id) を漏らさず呼ぶ。さもないと表にエントリが残り続ける。
+    let app_for_end = app.clone();
+    let scan_id_for_end = scan_id.clone();
+    let _end_guard = DeferEnd(move || {
+        app_for_end.state::<ScanCancelState>().end(&scan_id_for_end);
+    });
+
+    // canonicalize してシンボリックリンク解決後の絶対パスに揃える。呼ぶのは
+    // 走査の最初の 1 回だけ（walk_intake_directory 内ではエントリごとの
+    // stat/canonicalize を一切行わない）。許可リスト（read_scanned_file 側）の
+    // 照合基準もこの絶対パスに合わせる。
+    let root_canonical = PathBuf::from(&root)
+        .canonicalize()
+        .map_err(|e| format!("フォルダを開けません: {e}"))?;
+
+    let app_for_progress = app.clone();
+    let scan_id_for_progress = scan_id.clone();
+    let filter = ScanFilter::with_extensions(&extensions);
+    let outcome = walk_intake_directory(
+        &root_canonical,
+        &filter,
+        SCAN_MAX_FILES,
+        &cancel_flag,
+        SCAN_PROGRESS_INTERVAL,
+        move |progress| {
+            let _ = app_for_progress.emit(
+                "intake-scan-progress",
+                ScanProgressPayload {
+                    scan_id: scan_id_for_progress.clone(),
+                    found: progress.found,
+                    folders: progress.folders,
+                    skipped: progress.skipped,
+                },
+            );
+        },
+    );
+
+    if outcome.cancelled {
+        return Ok(ScanResult {
+            files: Vec::new(),
+            truncated: false,
+            skipped_by_ext: HashMap::new(),
+            cancelled: true,
+        });
+    }
+
+    // 今回の走査結果を許可リストに足す。入れ替えではなく追加なのは、
+    // 走査のあと実際にファイルを読むのは取り込みループが 1 件ずつ進んだときで、
+    // 取り込みはモーダルを閉じても裏で走り続けるため（set_background_work_active）。
+    // その最中に別のフォルダを選び直した時点で前回分を捨てると、まだ読んでいない
+    // ファイルが軒並み「許可されていないパス」で失敗する。
+    // 際限なく溜めないよう、上限を超えたら一度空にしてから入れ直す。
+    let allowed: HashSet<PathBuf> = outcome.files.iter().map(|f| PathBuf::from(&f.path)).collect();
+    let state = app.state::<ScanAllowlistState>();
+    let mut guard = state.0.lock().unwrap();
+    if guard.len() + allowed.len() > SCAN_ALLOWLIST_MAX {
+        guard.clear();
+    }
+    guard.extend(allowed);
+    drop(guard);
+
+    Ok(ScanResult {
+        files: outcome.files,
+        truncated: outcome.truncated,
+        skipped_by_ext: outcome.skipped_by_ext,
+        cancelled: false,
+    })
+}
+
+/// read_scanned_file が読み込みを許可する絶対パスの集合。
+///
+/// 「フォルダを走査して選ばせる」機能上、read 側が任意パスを受け付けると
+/// 実質的な任意ファイル読み込み口になってしまう。scan_directory が実際に
+/// 見つけたパスだけを許可リストに載せ、read_scanned_file はそこに載っている
+/// パスしか読まない。新しい scan_directory が呼ばれても前回分は残す（追加）。
+/// 取り込みは走査のあと 1 件ずつ遅延読み込みしながら裏で進むので、
+/// フォルダを選び直した時点で前回分を捨てると未読ファイルが読めなくなる。
+/// 溜まりすぎを防ぐため SCAN_ALLOWLIST_MAX で頭を打つ（超えたら一度空にする。
+/// 上限級のフォルダを立て続けに選び直すと、そこで前回分の未読が読めなくなるが、
+/// 取り込みが裏で走っている最中に何度も選び直す前提までは面倒を見ない）。
+#[derive(Default)]
+struct ScanAllowlistState(Mutex<HashSet<PathBuf>>);
+
+/// 任意フォルダを再帰列挙する（webkitdirectory 代替）。
+/// NAS 越しだと I/O 待ちが支配的で数秒〜数十秒かかりうるため、save_media_file 等と
+/// 同様に spawn_blocking でメインスレッドから逃がす。
+#[tauri::command]
+async fn scan_directory(
+    app: tauri::AppHandle,
+    root: String,
+    scan_id: String,
+    extensions: Vec<String>,
+) -> Result<ScanResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_directory_sync(root, scan_id, extensions, &app)
+    })
+        .await
+        .map_err(|e| format!("フォルダ走査タスク失敗: {e}"))?
+}
+
+/// scan_directory の走査を中止する。ここでは該当 scan_id の中止フラグを
+/// 立てるだけで、実際の打ち切りは walk_intake_directory 側がエントリごとに
+/// 確認して行う。
+#[tauri::command]
+fn cancel_scan(app: tauri::AppHandle, scan_id: String) {
+    let state = app.state::<ScanCancelState>();
+    state.cancel(&scan_id);
+}
+
+/// path が許可リスト guard に完全一致で含まれるかどうか。read_scanned_file から
+/// 切り出したもの（単体テストで境界条件を直接検証するため）。
+fn is_path_allowlisted(guard: &HashSet<PathBuf>, path: &Path) -> bool {
+    guard.contains(path)
+}
+
+/// 許可リストにあるパスをシンボリックリンクを辿らずに開く。
+///
+/// scan_directory が許可リストに積んだのは走査時点の絶対パスだが、その後
+/// ファイルシステム側で最後の要素がシンボリックリンクへ差し替えられるレース
+/// （TOCTOU）が原理上あり得る。Unix では open(2) に O_NOFOLLOW を付け、最後の
+/// 要素がリンクなら ELOOP で失敗させることでこれを防ぐ。Windows には同等の
+/// フラグが無いが、こちらは許可リストとの完全一致照合（canonicalize しない）が
+/// 主たる防御線になる: 許可リストの実体は scan_directory が実際に見つけた
+/// 通常ファイルの絶対パスそのものなので、'..' を含む細工パスはもちろん、
+/// 一致しない文字列はそもそも許可リストに乗らない。
+#[cfg(unix)]
+fn open_allowlisted_file(path: &Path) -> std::io::Result<fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn open_allowlisted_file(path: &Path) -> std::io::Result<fs::File> {
+    fs::File::open(path)
+}
+
+/// scan_directory が登録した許可リストに載っているパスのみ読み込んで返す。
+/// 登録外のパス・`..` を含む相対解決などで許可リストの実体と一致しないパスは拒否する。
+///
+/// 照合は canonicalize せず、渡された文字列をそのまま許可リストと完全一致で比べる
+/// （scan_directory 側も走査開始の 1 回しか canonicalize しない方針に合わせた）。
+/// canonicalize → read という 2 段階を踏むと、その間にファイルシステム側で対象が
+/// 差し替えられる競合の窓が生まれる上、NAS 越しでは canonicalize（realpath）自体が
+/// 実測 1 ファイルあたり 25〜226ms かかり、大量ファイルの取り込みで無視できない
+/// オーバーヘッドになっていた。
+///
+/// 中身は Base64 ではなく `tauri::ipc::Response` の生バイトで返す。
+/// read_media_file は Base64 を返す既存流儀だが、あちらが扱うのは自前の
+/// メディアフォルダの中身なのに対し、こちらはユーザーが選んだフォルダを
+/// 丸ごと列挙した結果を読む。数百 MB の動画が混ざる確率が段違いに高く、
+/// Base64 だと Rust 側で元データ＋約 1.33 倍の文字列、WebView 側でも
+/// デコード前後のコピーが同時に乗る（サムネイル 60 枚で WebView が
+/// +700MB になった実測が read_media_file 側のコメントに残っている）。
+/// 生バイトならその往復が丸ごと消える。
+#[tauri::command]
+async fn read_scanned_file(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let candidate = PathBuf::from(&path);
+        let allowed = {
+            let state = app.state::<ScanAllowlistState>();
+            let guard = state.0.lock().unwrap();
+            is_path_allowlisted(&guard, &candidate)
+        };
+        if !allowed {
+            return Err(
+                "許可されていないパスです（先に scan_directory で走査してください）"
+                    .to_string(),
+            );
+        }
+        let mut file = open_allowlisted_file(&candidate)
+            .map_err(|e| format!("ファイルを開けません: {e}"))?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
+    .map_err(|e| format!("ファイル読み取りタスク失敗: {e}"))?
+}
+
 /// "sha256:<64 hex>" のチェック。
 fn validate_hash(hash: &str) -> Result<(), String> {
     let prefix = "sha256:";
@@ -2175,6 +2773,9 @@ pub fn run() {
             inbox_read,
             inbox_mark_imported,
             inbox_discard,
+            scan_directory,
+            cancel_scan,
+            read_scanned_file,
             app_ready,
             shutdown_ack,
             kill_pid,
@@ -2186,6 +2787,8 @@ pub fn run() {
             stop_native_sidecar,
         ])
         .manage(NativeSidecarState::default())
+        .manage(ScanAllowlistState::default())
+        .manage(ScanCancelState::default())
         .setup(|app| {
             let _ = BOOT_AT.set(std::time::Instant::now());
             // ウィンドウのサイズ・位置を前回終了時の状態に復元する（デスクトップのみ）。
@@ -2523,5 +3126,470 @@ mod tests {
         assert!(out.starts_with(&[0xFF, 0xD8]), "不透明な画像は JPEG で返す");
         let rgb = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(64, 64, image::Rgb([1, 2, 3])));
         assert!(encode_thumbnail(&rgb, 320).unwrap().starts_with(&[0xFF, 0xD8]));
+    }
+
+    // --- walk_intake_directory / read_scanned_file 照合 ---
+
+    /// walk_intake_directory 用のテンポラリディレクトリ。
+    /// tempfile クレートは使わず std::env::temp_dir() 配下に一意な名前で作り、
+    /// Drop で必ず削除する（symlink を含むツリーでも remove_dir_all で丸ごと消せる）。
+    struct ScanTestDir {
+        path: PathBuf,
+    }
+
+    impl ScanTestDir {
+        fn new(label: &str) -> Self {
+            let unique = format!(
+                "graphium-scan-test-{label}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            );
+            let path = std::env::temp_dir().join(unique);
+            fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+    }
+
+    impl Drop for ScanTestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn walk_intake_directory_counts_nested_files_and_uses_slash_relative_path() {
+        let tmp = ScanTestDir::new("nested");
+        let root = &tmp.path;
+        fs::create_dir_all(root.join("a/b")).unwrap();
+        fs::write(root.join("a/b/c.txt"), b"c").unwrap();
+        fs::write(root.join("x.txt"), b"x").unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::from_secs(3600), |_| {});
+
+        assert!(!outcome.truncated);
+        assert!(!outcome.cancelled);
+        assert_eq!(outcome.files.len(), 2);
+        let mut relative: Vec<&str> = outcome
+            .files
+            .iter()
+            .map(|f| f.relative_path.as_str())
+            .collect();
+        relative.sort();
+        assert_eq!(relative, vec!["a/b/c.txt", "x.txt"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn walk_intake_directory_unix_skips_symlinks_and_terminates_on_loop() {
+        let tmp = ScanTestDir::new("symlink");
+        let root = &tmp.path;
+        fs::write(root.join("real.txt"), b"real").unwrap();
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join("sub/inner.txt"), b"inner").unwrap();
+        // 親（root）を指すシンボリックリンク。誤って辿るとループする。
+        std::os::unix::fs::symlink(root, root.join("sub/loop-to-root")).unwrap();
+        // ファイルを指すシンボリックリンクも対象外にする。
+        std::os::unix::fs::symlink(root.join("real.txt"), root.join("link-to-file")).unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 1000, &cancel, Duration::from_secs(3600), |_| {});
+
+        // ループを辿っていれば有限時間で戻ってこない。ここまで到達した時点で
+        // 「有限時間で終わる」ことは確認できている。
+        assert!(!outcome.truncated);
+        assert!(!outcome.cancelled);
+        let mut relative: Vec<&str> = outcome
+            .files
+            .iter()
+            .map(|f| f.relative_path.as_str())
+            .collect();
+        relative.sort();
+        // シンボリックリンク（ループ側・ファイル側とも）は含まれない。
+        assert_eq!(relative, vec!["real.txt", "sub/inner.txt"]);
+    }
+
+    #[test]
+    fn walk_intake_directory_truncates_at_max_files() {
+        let tmp = ScanTestDir::new("truncate");
+        let root = &tmp.path;
+        for i in 0..5 {
+            fs::write(root.join(format!("f{i}.txt")), b"x").unwrap();
+        }
+
+        let cancel = AtomicBool::new(false);
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 3, &cancel, Duration::from_secs(3600), |_| {});
+
+        assert!(outcome.truncated);
+        assert!(!outcome.cancelled);
+        assert_eq!(outcome.files.len(), 3);
+    }
+
+    #[test]
+    fn walk_intake_directory_is_breadth_first_so_shallow_sibling_survives_truncation() {
+        let tmp = ScanTestDir::new("bfs");
+        let root = &tmp.path;
+        // heavy 配下は深い階層（heavy/sub）に大量のファイル、light は直下に少数のファイル。
+        // 深さ優先だと heavy/sub だけで上限を使い切り、light が 1 件も拾われない。
+        fs::create_dir_all(root.join("heavy/sub")).unwrap();
+        for i in 0..10 {
+            fs::write(root.join(format!("heavy/sub/f{i}.txt")), b"x").unwrap();
+        }
+        fs::create_dir_all(root.join("light")).unwrap();
+        fs::write(root.join("light/g0.txt"), b"x").unwrap();
+        fs::write(root.join("light/g1.txt"), b"x").unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 5, &cancel, Duration::from_secs(3600), |_| {});
+
+        assert!(outcome.truncated);
+        assert_eq!(outcome.files.len(), 5);
+        let light_count = outcome
+            .files
+            .iter()
+            .filter(|f| f.relative_path.starts_with("light/"))
+            .count();
+        assert_eq!(
+            light_count, 2,
+            "幅優先なら浅い light/ は上限に達しても両方拾われるはず: {:?}",
+            outcome.files
+        );
+    }
+
+    #[test]
+    fn walk_intake_directory_cancelled_from_start_returns_empty() {
+        let tmp = ScanTestDir::new("cancel");
+        let root = &tmp.path;
+        fs::write(root.join("f.txt"), b"x").unwrap();
+
+        let cancel = AtomicBool::new(true);
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::from_secs(3600), |_| {});
+
+        assert!(outcome.cancelled);
+        assert!(outcome.files.is_empty());
+    }
+
+    // --- ScanCancelState（走査 ID ごとの中止フラグ表） ---
+
+    #[test]
+    fn scan_cancel_state_flags_are_independent_per_scan_id() {
+        let state = ScanCancelState::default();
+        let flag_a = state.begin("scan-a");
+        let flag_b = state.begin("scan-b");
+
+        state.cancel("scan-a");
+
+        assert!(flag_a.load(Ordering::Relaxed), "cancel(A) は A のフラグを立てる");
+        assert!(
+            !flag_b.load(Ordering::Relaxed),
+            "cancel(A) が B のフラグまで立ててはいけない（プロセス全体で 1 つの中止フラグだった旧実装の再発防止）"
+        );
+    }
+
+    #[test]
+    fn scan_cancel_state_cancel_before_begin_is_not_lost() {
+        let state = ScanCancelState::default();
+
+        // scan_directory と cancel_scan は別々の invoke で、どちらが先に
+        // Rust 側へ届くかの保証が無い。cancel が begin より先に届いても
+        // 中止要求を失ってはいけない。
+        state.cancel("scan-early-cancel");
+        let flag = state.begin("scan-early-cancel");
+
+        assert!(
+            flag.load(Ordering::Relaxed),
+            "begin より先に cancel が届いていた場合、begin が返すフラグは中止済み（true）であるべき"
+        );
+    }
+
+    #[test]
+    fn scan_cancel_state_begin_after_end_starts_fresh() {
+        let state = ScanCancelState::default();
+        let first = state.begin("scan-reused-id");
+        first.store(true, Ordering::Relaxed);
+        state.end("scan-reused-id");
+
+        let second = state.begin("scan-reused-id");
+
+        assert!(
+            !second.load(Ordering::Relaxed),
+            "end() のあと同じ id で begin すると false から始まる（前の走査の中止状態を引きずらない）"
+        );
+    }
+
+    #[test]
+    fn scan_cancel_state_evicts_only_cancelled_entries_when_table_is_full() {
+        let state = ScanCancelState::default();
+        // 上限ちょうどまで埋める。前半は進行中（false）、後半は中止済み（true）。
+        for i in 0..SCAN_CANCEL_TABLE_MAX {
+            let flag = state.begin(&format!("scan-{i}"));
+            if i >= SCAN_CANCEL_TABLE_MAX / 2 {
+                flag.store(true, Ordering::Relaxed);
+            }
+        }
+
+        // 表が上限に達した状態でさらに 1 件追加すると、間引きが走る。
+        let new_flag = state.begin("scan-overflow");
+        assert!(
+            !new_flag.load(Ordering::Relaxed),
+            "新規エントリは false で始まる"
+        );
+
+        let guard = state.0.lock().unwrap();
+        assert!(
+            guard.len() <= SCAN_CANCEL_TABLE_MAX + 1,
+            "際限なく膨らんではいけない: {}",
+            guard.len()
+        );
+        // 進行中だった前半のエントリは間引かれずに残っているはず。
+        for i in 0..SCAN_CANCEL_TABLE_MAX / 2 {
+            assert!(
+                guard.contains_key(&format!("scan-{i}")),
+                "進行中（false）のエントリを間引いてはいけない: scan-{i}"
+            );
+        }
+    }
+
+    #[test]
+    fn scan_cancel_state_flag_cancels_running_walk() {
+        let tmp = ScanTestDir::new("cancel-state-walk");
+        let root = &tmp.path;
+        fs::write(root.join("f.txt"), b"x").unwrap();
+
+        let state = ScanCancelState::default();
+        let flag = state.begin("scan-walk");
+        state.cancel("scan-walk");
+
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &flag, Duration::from_secs(3600), |_| {});
+
+        assert!(outcome.cancelled, "begin 後に cancel したフラグを渡すと走査は中止される");
+        assert!(outcome.files.is_empty());
+    }
+
+    #[test]
+    fn walk_intake_directory_zero_interval_reports_monotonic_progress() {
+        let tmp = ScanTestDir::new("progress");
+        let root = &tmp.path;
+        for i in 0..5 {
+            fs::write(root.join(format!("f{i}.txt")), b"x").unwrap();
+        }
+
+        let cancel = AtomicBool::new(false);
+        let calls = std::cell::RefCell::new(Vec::new());
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::ZERO, |p| {
+            calls.borrow_mut().push((p.found, p.folders));
+        });
+
+        assert_eq!(outcome.files.len(), 5);
+        let calls = calls.into_inner();
+        assert_eq!(calls.len(), 5, "ZERO 間隔なら毎ファイルで呼ばれるはず: {calls:?}");
+        for pair in calls.windows(2) {
+            assert!(pair[0].0 < pair[1].0, "found は単調増加であるはず: {calls:?}");
+        }
+        assert_eq!(calls.last().unwrap().0, 5);
+    }
+
+    #[test]
+    fn walk_intake_directory_zero_interval_reports_progress_for_folder_only_tree() {
+        // ファイルを 1 件も含まない、入れ子のフォルダだけのツリー（NAS の深い
+        // バックアップツリーのように、浅い階層がフォルダばかりでファイルが
+        // 1 件も見つからない区間を模している）。
+        //
+        // 直す前の実装（on_progress をファイル追加の直後にしか呼ばない）では
+        // ファイルが 1 件も追加されないため on_progress が一度も呼ばれず、
+        // このテストは calls が空のまま失敗する。
+        let tmp = ScanTestDir::new("folders-only");
+        let root = &tmp.path;
+        let mut dir = root.clone();
+        for i in 0..30 {
+            dir = dir.join(format!("d{i}"));
+            fs::create_dir_all(&dir).unwrap();
+        }
+
+        let cancel = AtomicBool::new(false);
+        let calls = std::cell::RefCell::new(Vec::new());
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::ZERO, |p| {
+            calls.borrow_mut().push((p.found, p.folders));
+        });
+
+        assert!(!outcome.truncated);
+        assert!(!outcome.cancelled);
+        assert_eq!(outcome.files.len(), 0, "ファイルは 1 件も無いツリーのはず");
+
+        let calls = calls.into_inner();
+        assert!(
+            !calls.is_empty(),
+            "ファイルが 1 件も無くても、フォルダを見つけるたびに on_progress が呼ばれるはず"
+        );
+        assert!(
+            calls.iter().all(|&(found, _)| found == 0),
+            "found はファイルが無いので 0 のまま増えないはず: {calls:?}"
+        );
+        for pair in calls.windows(2) {
+            assert!(
+                pair[0].1 < pair[1].1,
+                "folders は単調増加であるはず: {calls:?}"
+            );
+        }
+        assert_eq!(
+            calls.last().unwrap().1,
+            30,
+            "30 個のネストしたフォルダを見つけているはず: {calls:?}"
+        );
+    }
+
+    #[test]
+    fn walk_intake_directory_filters_by_extension_and_counts_skipped() {
+        let tmp = ScanTestDir::new("filter");
+        let root = &tmp.path;
+        fs::create_dir_all(root.join("logs")).unwrap();
+        fs::write(root.join("note.MD"), b"x").unwrap();
+        fs::write(root.join("fig.png"), b"x").unwrap();
+        fs::write(root.join("logs/run1.log"), b"x").unwrap();
+        fs::write(root.join("logs/run2.log"), b"x").unwrap();
+        fs::write(root.join("archive.zip"), b"x").unwrap();
+        fs::write(root.join("Makefile"), b"x").unwrap();
+
+        let filter = ScanFilter::with_extensions(&["md".into(), ".png".into()]);
+        let cancel = AtomicBool::new(false);
+        let outcome =
+            walk_intake_directory(root, &filter, 100, &cancel, Duration::from_secs(3600), |_| {});
+
+        let mut names: Vec<&str> = outcome.files.iter().map(|f| f.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["fig.png", "note.MD"], "拡張子は大文字小文字を区別しない");
+        assert_eq!(outcome.skipped_by_ext.get(".log"), Some(&2));
+        assert_eq!(outcome.skipped_by_ext.get(".zip"), Some(&1));
+        assert_eq!(outcome.skipped_by_ext.get(NO_EXT_KEY), Some(&1));
+    }
+
+    #[test]
+    fn walk_intake_directory_skips_hidden_entries_without_descending() {
+        let tmp = ScanTestDir::new("hidden");
+        let root = &tmp.path;
+        fs::create_dir_all(root.join(".git/objects")).unwrap();
+        fs::write(root.join(".git/objects/readme.md"), b"x").unwrap();
+        fs::write(root.join(".DS_Store"), b"x").unwrap();
+        fs::write(root.join(".hidden.md"), b"x").unwrap();
+        fs::write(root.join("visible.md"), b"x").unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let folders = std::cell::Cell::new(0);
+        let outcome = walk_intake_directory(
+            root,
+            &ScanFilter::default(),
+            100,
+            &cancel,
+            Duration::ZERO,
+            |p| folders.set(p.folders),
+        );
+
+        let names: Vec<&str> = outcome.files.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, vec!["visible.md"]);
+        assert_eq!(folders.get(), 0, "隠しフォルダはキューに積まない（降りない）");
+        assert!(outcome.skipped_by_ext.is_empty(), "隠しファイルは対象外の内訳にも数えない");
+    }
+
+    #[test]
+    fn walk_intake_directory_max_files_counts_only_accepted_files() {
+        let tmp = ScanTestDir::new("max-accepted");
+        let root = &tmp.path;
+        for i in 0..10 {
+            fs::write(root.join(format!("noise{i}.log")), b"x").unwrap();
+        }
+        for i in 0..3 {
+            fs::write(root.join(format!("n{i}.md")), b"x").unwrap();
+        }
+
+        let filter = ScanFilter::with_extensions(&["md".into()]);
+        let cancel = AtomicBool::new(false);
+        let outcome =
+            walk_intake_directory(root, &filter, 3, &cancel, Duration::from_secs(3600), |_| {});
+
+        assert_eq!(outcome.files.len(), 3);
+        assert!(!outcome.truncated, "対象外のログは上限の件数に入らない");
+    }
+
+    #[test]
+    fn walk_intake_directory_folds_excess_skipped_kinds_into_other() {
+        let tmp = ScanTestDir::new("kinds");
+        let root = &tmp.path;
+        let kinds = SCAN_SKIPPED_EXT_KINDS_MAX + 5;
+        for i in 0..kinds {
+            fs::write(root.join(format!("f.x{i}")), b"x").unwrap();
+        }
+
+        let filter = ScanFilter::with_extensions(&["md".into()]);
+        let cancel = AtomicBool::new(false);
+        let outcome =
+            walk_intake_directory(root, &filter, 100, &cancel, Duration::from_secs(3600), |_| {});
+
+        assert_eq!(outcome.skipped_by_ext.len(), SCAN_SKIPPED_EXT_KINDS_MAX + 1);
+        let total: usize = outcome.skipped_by_ext.values().sum();
+        assert_eq!(total, kinds, "まとめても件数の合計は変わらない");
+        assert_eq!(outcome.skipped_by_ext.get(OTHER_EXT_KEY), Some(&5));
+    }
+
+    #[test]
+    fn is_path_allowlisted_rejects_paths_outside_scan_result() {
+        let tmp = ScanTestDir::new("allowlist");
+        let root = &tmp.path;
+        fs::write(root.join("ok.txt"), b"x").unwrap();
+        fs::write(root.join("also-ok.txt"), b"x").unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let outcome = walk_intake_directory(root, &ScanFilter::default(), 100, &cancel, Duration::from_secs(3600), |_| {});
+        let allow: HashSet<PathBuf> = outcome
+            .files
+            .iter()
+            .map(|f| PathBuf::from(&f.path))
+            .collect();
+
+        // 走査で見つかった実パスは許可される。
+        assert!(is_path_allowlisted(&allow, &root.join("ok.txt")));
+        // 走査結果に無いパスは拒否される（実在するかどうかに関わらず）。
+        assert!(!is_path_allowlisted(&allow, &root.join("not-scanned.txt")));
+        // '..' を含む細工パスは文字列として一致しないので拒否される。
+        let traversal = PathBuf::from(format!("{}/../etc/passwd", root.display()));
+        assert!(!is_path_allowlisted(&allow, &traversal));
+    }
+
+    /// 実 NAS での計測用ベンチ。GRAPHIUM_SCAN_BENCH_ROOT が未設定なら何もしない
+    /// （CI では常にスキップされる）。手動実行:
+    /// `GRAPHIUM_SCAN_BENCH_ROOT=/Volumes/nas/... cargo test walk_intake_directory_nas_bench -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn walk_intake_directory_nas_bench() {
+        let Ok(root) = std::env::var("GRAPHIUM_SCAN_BENCH_ROOT") else {
+            return;
+        };
+        let root_path = PathBuf::from(&root)
+            .canonicalize()
+            .expect("GRAPHIUM_SCAN_BENCH_ROOT を開けません");
+        // C のベンチ（readdir+lstat / readdir のみ）と同じ件数で打ち切って比べられるように
+        let max_files = std::env::var("GRAPHIUM_SCAN_BENCH_MAX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(usize::MAX);
+        let cancel = AtomicBool::new(false);
+        let start = Instant::now();
+        let outcome = walk_intake_directory(
+            &root_path,
+            &ScanFilter::default(),
+            max_files,
+            &cancel,
+            Duration::from_millis(200),
+            |p| println!("[bench] progress: found={} folders={}", p.found, p.folders),
+        );
+        println!(
+            "[bench] {} files (truncated={}, cancelled={}) in {:?}",
+            outcome.files.len(),
+            outcome.truncated,
+            outcome.cancelled,
+            start.elapsed()
+        );
     }
 }

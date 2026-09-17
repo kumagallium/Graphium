@@ -197,6 +197,7 @@
   /* Rose — 注意・エラー・結果 */
   --rose: oklch(0.62 0.14 25);
   --rose-soft: oklch(0.95 0.04 25);
+  --rose-ink: oklch(0.40 0.13 25); /* 文字用の濃色（forest-ink / amber-ink と同じ役割）。対 --paper 約 9.6:1 */
 
   /* Sky — AI・リンク・情報（補助、ブランド外アクセント用） */
   --sky: oklch(0.60 0.10 230);

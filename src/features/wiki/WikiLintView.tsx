@@ -3,7 +3,9 @@
 // PR-B6 (v1): 検出だけでなく Fix アクション（Regenerate / Archive / Open）も提供。
 // AI ナレッジ層では AI が主導権を握ってよいが、実行はユーザーのボタン押下時のみ。
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, SetStateAction } from "react";
+import { useRangeSelect } from "../../hooks/use-range-select";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -18,9 +20,11 @@ import {
   Clock,
   Archive as ArchiveIcon,
   ExternalLink,
+  Scissors,
 } from "lucide-react";
 import type { LintReport, LintIssue, LintIssueType, LintSeverity } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
+import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 
 type Props = {
   report: LintReport | null;
@@ -42,7 +46,7 @@ type Props = {
   wikiKindById?: Map<string, string>;
   /**
    * redundant の recommendedAction（type: "merge"）が topic 同士のときだけ出る
-   * 「統合」ワンクリック手当て。keepId に absorbId を吸収させる（モデルは呼ばない）。
+   * 「統合」ワンクリック手当て。keepId に absorbId を吸収させる（本文の統合で AI を 1 回呼ぶ。どちらかが旧形式なら資料から組み直す）。
    */
   onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
   /**
@@ -56,6 +60,27 @@ type Props = {
    * （呼び出し元でトースト + wikiLog への記録まで行う）。
    */
   onBulkArchiveWikis?: (wikiIds: string[]) => Promise<void> | void;
+  /**
+   * 出典照合（Source check, v1.1）の点検欄（仕様 2-b）。既存の「クイック / フル」点検とは
+   * 別レーンで、自動点検にはつながない。3 つとも揃っているときだけ欄を出す。
+   */
+  sourceCheckProps?: SourceCheckLintSectionProps;
+  /** 開いたときに表示するタブ。未指定なら従来どおり "check"（呼び出し側で key を変えて再マウントする想定） */
+  initialTab?: WikiLintTab;
+  /**
+   * 「資料から作り直す」（作業 C）: missing-source 点検の手当てで、そのトピック 1 件を
+   * 資料から作り直す。確認ダイアログ（AI 呼び出し回数）は呼び出し元で表示してから実行する。
+   */
+  onRebuildTopicWiki?: (wikiId: string) => Promise<void> | void;
+  /** 旧形式（topicMarkdown を持たない）のトピック一覧。1 件以上あるときだけ専用セクションを出す */
+  legacyTopics?: { id: string; title: string }[];
+  /**
+   * legacyTopics をまとめて資料から作り直す。確認ダイアログ（AI 呼び出し回数）は
+   * 呼び出し元で表示し、キャンセルされたら null を返す。
+   */
+  onRebuildTopicsFromSources?: (
+    topicIds: string[],
+  ) => Promise<{ rebuilt: number; sourcesSkipped: number; failed: number } | null>;
 };
 
 /** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
@@ -80,6 +105,7 @@ const ISSUE_ICONS: Record<LintIssueType, typeof AlertTriangle> = {
   gap: Lightbulb,
   stale: Clock,
   redundant: Copy,
+  "missing-source": AlertTriangle,
 };
 
 const ISSUE_TYPE_I18N_KEY: Record<LintIssueType, string> = {
@@ -88,6 +114,7 @@ const ISSUE_TYPE_I18N_KEY: Record<LintIssueType, string> = {
   gap: "wikiLint.type.gap",
   stale: "wikiLint.type.stale",
   redundant: "wikiLint.type.redundant",
+  "missing-source": "wikiLint.type.missingSource",
 };
 
 // 各 issue type で適用可能な fix アクション（PR-B6 v1）
@@ -97,12 +124,15 @@ const ISSUE_TYPE_I18N_KEY: Record<LintIssueType, string> = {
 // - gap: AI による穴埋めは v2 以降 → Open のみ
 // - stale: Regenerate（最新 source から再生成）/ Archive / Open
 // - redundant: Auto-merge は v2 以降 → Archive で片側を隠す or Open で比較
-const FIX_ACTIONS_BY_TYPE: Record<LintIssueType, ReadonlyArray<"open" | "regenerate" | "archive">> = {
+const FIX_ACTIONS_BY_TYPE: Record<LintIssueType, ReadonlyArray<"open" | "regenerate" | "archive" | "rebuild">> = {
   contradiction: ["open"],
   orphan: ["open", "archive"],
   gap: ["open"],
   stale: ["open", "regenerate", "archive"],
   redundant: ["open", "archive"],
+  // missing-source: 資料から作り直す（rebuildTopicFromSources、資料が読めるところまで組み直す）。
+  // 確認ダイアログは呼び出し元（onRebuildTopicWiki）側で AI 呼び出し回数を見せてから出す。
+  "missing-source": ["open", "rebuild"],
 };
 
 const SEVERITY_STYLES: Record<LintSeverity, string> = {
@@ -110,6 +140,8 @@ const SEVERITY_STYLES: Record<LintSeverity, string> = {
   warning: "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/30 dark:border-amber-900/40",
   info: "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/40",
 };
+
+export type WikiLintTab = "check" | "sourceCheck";
 
 export function WikiLintView({
   report,
@@ -124,8 +156,15 @@ export function WikiLintView({
   onMergeTopics,
   onMergeAtoms,
   onBulkArchiveWikis,
+  sourceCheckProps,
+  initialTab,
+  onRebuildTopicWiki,
+  legacyTopics,
+  onRebuildTopicsFromSources,
 }: Props) {
   const t = useT();
+  // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
+  const [activeTab, setActiveTab] = useState<WikiLintTab>(initialTab ?? "check");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 一括アーカイブの選択（stale/redundant のみ選択可）。issue の配列インデックスで管理する。
   const [selectedIssueIndices, setSelectedIssueIndices] = useState<Set<number>>(new Set());
@@ -133,6 +172,48 @@ export function WikiLintView({
   // このセッションで一括アーカイブ済みの issue（表示から外す。再度点検を走らせれば
   // 実データから自然に消える。単発アーカイブの archivedThisSession と同じ考え方）
   const [dismissedIndices, setDismissedIndices] = useState<Set<number>>(new Set());
+
+  // 旧形式トピックの一括「資料から作り直す」（作業 C）。確認ダイアログは
+  // onRebuildTopicsFromSources 側（呼び出し元）で AI 呼び出し回数を見せてから出す。
+  const [legacyRebuilding, setLegacyRebuilding] = useState(false);
+  const [legacyResult, setLegacyResult] = useState<{ rebuilt: number; sourcesSkipped: number; failed: number } | null>(null);
+  const handleRebuildLegacyTopics = async () => {
+    if (!onRebuildTopicsFromSources || legacyRebuilding || !legacyTopics || legacyTopics.length === 0) return;
+    setLegacyRebuilding(true);
+    try {
+      const result = await onRebuildTopicsFromSources(legacyTopics.map((t) => t.id));
+      if (result) setLegacyResult(result);
+    } finally {
+      setLegacyRebuilding(false);
+    }
+  };
+
+  // ドラッグ / Shift+クリックの範囲選択（ノート一覧・ナレッジ一覧と同じ共通フック）。
+  // 選べるのは一括アーカイブできる（stale/redundant）で、まだ表示に残っている issue だけ。
+  // フックは文字列 ID で扱うので、issue の配列インデックスを文字列にして渡す。
+  const selectableIssueIds = useMemo(
+    () =>
+      (report?.issues ?? [])
+        .map((issue, idx) => (
+          !dismissedIndices.has(idx) && Boolean(onBulkArchiveWikis) && BULK_ARCHIVABLE_TYPES.has(issue.type)
+            ? String(idx)
+            : null
+        ))
+        .filter((id): id is string => id !== null),
+    [report, dismissedIndices, onBulkArchiveWikis],
+  );
+  const selectedIssueIdStrings = useMemo(
+    () => new Set([...selectedIssueIndices].map(String)),
+    [selectedIssueIndices],
+  );
+  const setSelectedIssueIdStrings = (v: SetStateAction<Set<string>>) => {
+    setSelectedIssueIndices((prev) => {
+      const prevStrings = new Set([...prev].map(String));
+      const next = typeof v === "function" ? v(prevStrings) : v;
+      return new Set([...next].map(Number));
+    });
+  };
+  const issueRange = useRangeSelect(selectableIssueIds, selectedIssueIdStrings, setSelectedIssueIdStrings);
 
   const toggleIssueSelected = (idx: number) => {
     setSelectedIssueIndices((prev) => {
@@ -177,21 +258,83 @@ export function WikiLintView({
           <ArrowLeft size={16} />
         </button>
         <div className="flex items-center gap-2">
-          <AlertTriangle size={16} className="text-primary" />
+          <Scissors size={16} className="text-primary" />
           <h2 className="text-sm font-semibold text-foreground">{t("wikiLint.header")}</h2>
         </div>
         <div className="flex-1" />
-        <button
-          onClick={() => onRunLint(false)}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          {loading ? t("wikiLint.analyzingShort") : t("wikiLint.runButton")}
-        </button>
+        {activeTab === "check" && (
+          <button
+            onClick={() => onRunLint(false)}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {loading ? t("wikiLint.analyzingShort") : t("wikiLint.runButton")}
+          </button>
+        )}
       </div>
 
-      {/* コンテンツ */}
+      {/* タブ — 既定は既存の点検。出典照合は別レーンで、自動点検にはつながない
+          （sourceCheckProps が無ければタブ自体を出さない）。 */}
+      {sourceCheckProps && (
+        <div className="px-4 pt-3 flex gap-1 border-b border-border">
+          <button
+            onClick={() => setActiveTab("check")}
+            className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+              activeTab === "check"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {t("wikiLint.tabs.check")}
+          </button>
+          <button
+            onClick={() => setActiveTab("sourceCheck")}
+            className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+              activeTab === "sourceCheck"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {t("wikiLint.tabs.sourceCheck")}
+          </button>
+        </div>
+      )}
+
+      {/* 出典照合（Source check, v1.1）タブ — 既存のクイック/フル点検とは別レーン。
+          自動点検にはつながず、ここからの実行だけを起点にする。 */}
+      {sourceCheckProps && activeTab === "sourceCheck" && <SourceCheckLintSection {...sourceCheckProps} />}
+
+      {/* 旧形式トピックの「資料から作り直す」（作業 C）。既存点検とは別に、1 件以上あるときだけ出す。 */}
+      {activeTab === "check" && legacyTopics && legacyTopics.length > 0 && (
+        <div className="px-4 py-3 border-b border-border bg-muted/30">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs text-foreground">
+              {t("wikiLint.legacyTopics.summary", { count: String(legacyTopics.length) })}
+            </span>
+            <button
+              onClick={handleRebuildLegacyTopics}
+              disabled={legacyRebuilding || !onRebuildTopicsFromSources}
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+            >
+              {legacyRebuilding ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              {legacyRebuilding ? t("wikiLint.legacyTopics.running") : t("wikiLint.legacyTopics.action")}
+            </button>
+          </div>
+          {legacyResult && (
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              {t("wikiLint.legacyTopics.done", {
+                rebuilt: String(legacyResult.rebuilt),
+                skipped: String(legacyResult.sourcesSkipped),
+                failed: String(legacyResult.failed),
+              })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* コンテンツ（既存の点検タブ） */}
+      {activeTab === "check" && (
       <div className="flex-1 overflow-y-auto">
         {!report && !loading && (
           <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3">
@@ -298,6 +441,12 @@ export function WikiLintView({
                       {report.summary.redundant}
                     </span>
                   )}
+                  {report.summary.missingSource > 0 && (
+                    <span className="flex items-center gap-1">
+                      <AlertTriangle size={10} className="text-amber-500" />
+                      {report.summary.missingSource}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -307,15 +456,21 @@ export function WikiLintView({
               {report.issues.map((issue, idx) => {
                 if (dismissedIndices.has(idx)) return null;
                 const bulkSelectable = Boolean(onBulkArchiveWikis) && BULK_ARCHIVABLE_TYPES.has(issue.type);
+                const rangeIdx = selectableIssueIds.indexOf(String(idx));
                 return (
                   <IssueCard
                     key={idx}
                     issue={issue}
                     expanded={expandedId === idx}
-                    onToggle={() => setExpandedId(expandedId === idx ? null : idx)}
+                    onToggle={() => {
+                      // ドラッグで範囲選択した直後の click では開閉しない
+                      if (issueRange.shouldSuppressClick()) return;
+                      setExpandedId(expandedId === idx ? null : idx);
+                    }}
                     onOpenWiki={onOpenWiki}
                     onRegenerateWiki={onRegenerateWiki}
                     onArchiveWiki={onArchiveWiki}
+                    onRebuildTopicWiki={onRebuildTopicWiki}
                     wikiTitleById={wikiTitleById}
                     wikiKindById={wikiKindById}
                     onMergeTopics={onMergeTopics}
@@ -323,6 +478,15 @@ export function WikiLintView({
                     bulkSelectable={bulkSelectable}
                     bulkSelected={selectedIssueIndices.has(idx)}
                     onToggleBulkSelected={() => toggleIssueSelected(idx)}
+                    rangeHandlers={
+                      rangeIdx >= 0
+                        ? {
+                            onRowMouseDown: (e) => issueRange.onRowMouseDown(e, rangeIdx),
+                            onRowMouseEnter: () => issueRange.onRowMouseEnter(rangeIdx),
+                            onCheckboxMouseDown: (e) => issueRange.onCheckboxMouseDown(e, rangeIdx),
+                          }
+                        : undefined
+                    }
                   />
                 );
               })}
@@ -330,6 +494,7 @@ export function WikiLintView({
           </>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -341,6 +506,7 @@ function IssueCard({
   onOpenWiki,
   onRegenerateWiki,
   onArchiveWiki,
+  onRebuildTopicWiki,
   wikiTitleById,
   wikiKindById,
   onMergeTopics,
@@ -348,6 +514,7 @@ function IssueCard({
   bulkSelectable,
   bulkSelected,
   onToggleBulkSelected,
+  rangeHandlers,
 }: {
   issue: LintIssue;
   expanded: boolean;
@@ -355,6 +522,8 @@ function IssueCard({
   onOpenWiki: (wikiId: string) => void;
   onRegenerateWiki?: (wikiId: string) => Promise<void> | void;
   onArchiveWiki?: (wikiId: string) => Promise<void> | void;
+  /** missing-source の「資料から作り直す」。確認ダイアログは呼び出し元で表示済みのものを実行するだけ */
+  onRebuildTopicWiki?: (wikiId: string) => Promise<void> | void;
   wikiTitleById?: Map<string, string>;
   wikiKindById?: Map<string, string>;
   onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
@@ -363,13 +532,19 @@ function IssueCard({
   bulkSelectable?: boolean;
   bulkSelected?: boolean;
   onToggleBulkSelected?: () => void;
+  /** 範囲選択（ドラッグ / Shift+クリック）のハンドラ。一括アーカイブできる行だけ渡される */
+  rangeHandlers?: {
+    onRowMouseDown: (e: ReactMouseEvent) => void;
+    onRowMouseEnter: () => void;
+    onCheckboxMouseDown: (e: ReactMouseEvent) => void;
+  };
 }) {
   const t = useT();
   const Icon = ISSUE_ICONS[issue.type];
   const label = t(ISSUE_TYPE_I18N_KEY[issue.type] as any);
   const style = SEVERITY_STYLES[issue.severity];
   // 各 wiki ごとに「実行中アクション」を持つ（同時並行で同じ wiki に別アクションが走らないように）
-  const [pendingByWiki, setPendingByWiki] = useState<Record<string, "regenerate" | "archive" | null>>({});
+  const [pendingByWiki, setPendingByWiki] = useState<Record<string, "regenerate" | "archive" | "rebuild" | null>>({});
   const [merging, setMerging] = useState(false);
   const [merged, setMerged] = useState(false);
   // 本セッションで archive 済みの wiki を覚えておく。redundant では「全部消す」のを防ぐためのガード。
@@ -378,6 +553,7 @@ function IssueCard({
   const availableActions = FIX_ACTIONS_BY_TYPE[issue.type] ?? ["open"];
   const hasRegenerate = availableActions.includes("regenerate") && Boolean(onRegenerateWiki);
   const hasArchive = availableActions.includes("archive") && Boolean(onArchiveWiki);
+  const hasRebuild = availableActions.includes("rebuild") && Boolean(onRebuildTopicWiki);
 
   // Redundant ガード: 統合候補をすべてアーカイブできてしまうと知識が消失するため、
   // 「残り 1 件以下」になる手前で Archive を無効化する。
@@ -387,19 +563,24 @@ function IssueCard({
 
   const runAction = async (
     wikiId: string,
-    action: "regenerate" | "archive",
+    action: "regenerate" | "archive" | "rebuild",
   ) => {
     if (pendingByWiki[wikiId]) return;
     // 確認ダイアログ。i18n 文の {title} 補間用のヒントは issue.title or wikiId 接頭辞。
-    const titleHint = issue.title || wikiId.slice(0, 12);
-    const message =
-      action === "archive"
-        ? t("wikiLint.action.confirmArchive", { title: titleHint })
-        : t("wikiLint.action.confirmRegenerate", { title: titleHint });
-    if (!window.confirm(message)) return;
+    // rebuild（資料から作り直す）は AI 呼び出し回数の計算が必要なため、確認ダイアログは
+    // 呼び出し元（onRebuildTopicWiki）側で表示する — ここでは実行するだけ。
+    if (action !== "rebuild") {
+      const titleHint = issue.title || wikiId.slice(0, 12);
+      const message =
+        action === "archive"
+          ? t("wikiLint.action.confirmArchive", { title: titleHint })
+          : t("wikiLint.action.confirmRegenerate", { title: titleHint });
+      if (!window.confirm(message)) return;
+    }
     setPendingByWiki((p) => ({ ...p, [wikiId]: action }));
     try {
       if (action === "regenerate") await onRegenerateWiki?.(wikiId);
+      else if (action === "rebuild") await onRebuildTopicWiki?.(wikiId);
       else {
         await onArchiveWiki?.(wikiId);
         setArchivedThisSession((prev) => {
@@ -426,7 +607,7 @@ function IssueCard({
 
   // 統合のワンクリック手当ては、推奨の keep/absorb が両方 topic、または両方 atom の
   // ときだけ出す（mergeTopicsExplicit / mergeAtomsExplicit は同種ページの統合専用）。
-  // モデルは呼ばない。
+  // 統合の要否は AI に再判定させない — 押した人の判断で統合する。
   const canMergeTopics =
     recommended?.type === "merge" &&
     Boolean(onMergeTopics) &&
@@ -460,19 +641,42 @@ function IssueCard({
   };
 
   return (
-    <div className="px-4 py-3">
+    <div
+      className={`px-4 py-3 ${bulkSelected ? "bg-primary/5" : ""}`}
+      onMouseDown={rangeHandlers?.onRowMouseDown}
+      onMouseEnter={rangeHandlers?.onRowMouseEnter}
+    >
       <div className="flex items-start gap-2">
         {bulkSelectable && (
-          <input
-            type="checkbox"
-            checked={Boolean(bulkSelected)}
-            onChange={onToggleBulkSelected}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={t("wikiLint.bulk.select")}
-            className="mt-1 shrink-0"
-          />
+          <span
+            className="mt-1 shrink-0 cursor-pointer"
+            title={t("wikiList.dragToRangeSelect")}
+            onMouseDown={rangeHandlers?.onCheckboxMouseDown}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(bulkSelected)}
+              onChange={onToggleBulkSelected}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={t("wikiLint.bulk.select")}
+              className={rangeHandlers ? "pointer-events-none" : undefined}
+            />
+          </span>
         )}
-        <button onClick={onToggle} className="flex-1 min-w-0 text-left">
+        {/* 開閉は div role=button にする（button の上では範囲選択のドラッグを始められないため） */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={expanded}
+          onClick={onToggle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onToggle();
+            }
+          }}
+          className="flex-1 min-w-0 text-left cursor-pointer"
+        >
           <div className="flex items-start gap-2">
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${style}`}>
               <Icon size={12} />
@@ -481,7 +685,7 @@ function IssueCard({
             <span className="text-sm font-medium text-foreground flex-1">{issue.title}</span>
             <Info size={14} className="text-muted-foreground mt-0.5 shrink-0" />
           </div>
-        </button>
+        </div>
       </div>
 
       {expanded && (
@@ -594,6 +798,25 @@ function IssueCard({
                             <>
                               <ArchiveIcon size={12} />
                               {isRecommendedAbsorb ? t("wikiLint.action.archiveRecommended") : t("wikiLint.action.archive")}
+                            </>
+                          )}
+                        </button>
+                      )}
+                      {hasRebuild && !alreadyArchived && (
+                        <button
+                          onClick={() => runAction(id, "rebuild")}
+                          disabled={Boolean(pending)}
+                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                        >
+                          {pending === "rebuild" ? (
+                            <>
+                              <Loader2 size={12} className="animate-spin" />
+                              {t("wikiLint.action.running")}
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw size={12} />
+                              {t("wikiLint.action.rebuildFromSources")}
                             </>
                           )}
                         </button>

@@ -60,7 +60,7 @@ flowchart TB
     end
 
     subgraph SRV["Optional Node server (src/server/)"]
-        WI["wiki-ingester / atomizer /<br/>cross-updater / linter"]
+        WI["wiki-ingester / atomizer /<br/>linter"]
         EMB["embedding service"]
         LLM["llm proxy (Anthropic / OpenAI / local)"]
     end
@@ -709,18 +709,48 @@ TypeScript types use the historical `Wiki*` prefix (`WikiKind`,
 Ideas" instead.
 
 The pipeline (running on the Node server, plus one client-side step) has
-six stages:
+five stages. A sixth stage, the **Cross-updater**, proposed section-level
+append/revise updates to existing Claim pages after another note was
+ingested; it was removed 2026-09-17 because it silently dropped
+proposals below confidence 0.7 and carried unexplained caps (30
+candidates, 200-char previews). Page-to-page knowledge updates now go
+through Topic rebuilding (the Topic assignment stage below) instead.
 
 | Stage | File | What it does |
 |---|---|---|
-| **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch; also proposes *Topic* name(s) per Claim after being shown an index of existing topics (title + one-line definition), the same "index + judgment" approach it already uses for merge-vs-create decisions on other Wiki pages |
-| **Topic assignment** | `src/features/wiki/wiki-service.ts` (client) | Resolves each Claim's proposed topic names against existing Topic pages (title match → embedding similarity > 0.9 → create new) and rewrites the affected Topic bodies |
+| **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch (Claims). No longer proposes Topic names — Claims are not Topic material (see Topic router below; changed 2026-09-17) |
+| **Topic router** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`runSourceTopicStage`) | Reads the full text of the ingested *source* (not the Claims derived from it) plus an index of existing Topics (title + one-line definition) and decides which existing Topic(s) to update and which new Topic(s) to create. No embedding similarity, no title-normalization matching, no count cap — the LLM alone judges "same concept or new" from the index, the same "index + judgment" approach used for merge-vs-create decisions on other Wiki pages |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
-| **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, proposes section-level append/revise updates to dependent pages. Targets are Claim pages only — Topics and Insights are regenerated as a pure function of their member Claims (append-in-place would fight that), and Summaries are no longer generated |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, Topics (including near-duplicate Topic titles), and Insights (same Shape about the same underlying relationship, not just a similar topic), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim. A redundant-Insight finding gets a one-click Merge (`mergeAtomsExplicit`, `src/features/wiki/atom-merge.ts`) that unions `derivedFromClaims`/`relatedAtoms`/`conflictsWith` onto the kept page, archives the absorbed one, and rewrites the body through the same re-lift Regenerate uses — Insights are never auto-merged during ingest |
-| **Topic writer** | `src/server/services/wiki-topic-writer.ts` | Composes a Topic page's body from its current member Claims only (pure function — the previous body is never fed back in). Cites member Claims by id (`[[claim:<id>]]`, resolved to the Claim's current title before rendering) rather than by title, and the caller always appends a References section listing every member Claim. The same file also holds the **Topic Consolidator** — a separate LLM call (`POST /api/wiki/consolidate-topics`) used only by "Organize topics" (Settings → Maintenance) and by the Linter's redundant-Topic check, never by ingest itself — that maps a set of topic names to canonical titles (no count caps) |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, Topics (including near-duplicate Topic titles), and Insights (the same relation about the same Shape; merged only by an explicit click via `mergeAtomsExplicit`, never automatically), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim |
+| **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's full text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The legacy **Topic writer / Topic Namer** (`POST /api/wiki/compose-topic`, `/name-topics`), which built Topic bodies from member Claims, were removed 2026-09-17 together with the Claim→Topic assignment path (`matchTopicsByTitle`, `resolveTopicsForClaim`, `linkClaimAndTopic`, `buildTopicDocument`, `rebuildTopicDocument`) — Topics are now only ever created or revised by the Topic router/reviser above, reading source text directly |
+| **Topic Consolidator** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`consolidateExistingTopics`) | `POST /api/wiki/consolidate-topics`. Given only the titles of every existing Topic page (no bodies), the model proposes a suggested-title → canonical-title mapping; `planExistingTopicMerges` groups Topics by canonical title and picks a merge target, then `applyTopicMerges` executes the merge (see Topic Merger below). Powers "Organize topics" (Settings → Maintenance) and the Linter's redundant-Topic one-click Merge button |
+| **Topic Merger** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/wiki-service.ts` (`mergeTopicBodies`) | `POST /api/wiki/merge-topics`. Merges two or more **new-format** Topic bodies into one in a single call, keeping every existing `[[source:<id>]]` citation verbatim and not inventing content beyond what the input bodies already say. Used by `applyTopicMerges` only when the merge target and every absorbed Topic are new-format; if any side is still old-format (Claim-derived), `applyTopicMerges` instead collects the full set of source ids (via member Claims for old-format sides) and rebuilds through `rebuildTopicFromSources`, migrating the result to new-format |
 
-Trigger flow (client-pushed, not server-polled):
+**Claims/Insights are an optional extension on top of this pipeline** (2026-09-17
+decision): Topics are the always-on default, built directly from source text as
+described above; Claim extraction (the Ingester) and, transitively, Insight
+discovery (the Atomizer) sit behind the `features.claims` setting flag
+(`src/features/settings/store.ts`, exposed as `isClaimsEnabled()`). When it's
+off, the six client ingest entry points in `note-app.tsx` (note queue, media
+url/pdf/docx, chat, Composer URL paste) call the same
+`ingestNote` / `ingestFromUrl` / `ingestFromPdf` / `ingestFromDocx` /
+`ingestFromChat` functions in `src/features/wiki/wiki-service.ts` with a new
+`extractClaims: boolean` parameter set to `false`: these functions still do
+their local extraction (note text / URL fetch / PDF or Word text) and return
+it as `sourceText`, but skip the `POST /api/wiki/ingest` call entirely, so no
+Claim page is created and the Topic router/reviser above run unchanged
+from that `sourceText`. `features.claims` off also forces
+`features.insights` off (Insights are built from Claims), gating the
+Atomizer's ingest-time budget and the maintenance "Discover Insights from
+Claims" action. Existing Claim/Insight pages are never deleted by this
+setting; they stay readable, searchable, and (if any exist) visible in the
+sidebar even while the extension is off.
+
+Trigger flow (client-pushed, not server-polled). The diagram below assumes
+`features.claims` is on; when it's off, the client skips the
+`POST /api/wiki/ingest` call and the Ingester/Atomizer/Linter steps, but
+still performs local text extraction and proceeds straight to
+`route-topics` / `revise-topic` with that text:
 
 ```mermaid
 sequenceDiagram
@@ -729,9 +759,8 @@ sequenceDiagram
     participant S as Server (Hono)
     participant I as Ingester
     participant A as Atomizer
-    participant X as Cross-updater
     participant L as Linter
-    participant TW as Topic writer
+    participant TR as Topic router / reviser
     participant FS as Wiki files (JSON)
 
     E->>W: note saved (worthy?)
@@ -741,22 +770,21 @@ sequenceDiagram
     I->>FS: read existing wiki pages
     I->>A: hand off changed sections
     A->>FS: write Insight / Claim pages
-    A->>X: notify changed pages
-    X->>FS: propagate to dependents
-    X->>L: schedule lint
+    A->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
-    S-->>W: ingest result (Claims + proposed topic names)
-    opt Claims came back with proposed topics
-        W->>W: resolve topics (title match / embedding > 0.9 / create new)
-        loop each touched Topic
-            W->>S: POST /api/wiki/compose-topic
-            S->>TW: run
-            TW-->>S: topic body (markdown, pure function of member Claims)
-            S-->>W: topic body
-            W->>FS: write Topic page (client-side save)
-        end
+    S-->>W: ingest result (Claims; source full text already in hand)
+    W->>S: POST /api/wiki/route-topics (source text + existing Topic index)
+    S->>TR: run
+    TR-->>S: { update: [topicId...], create: [name...] }
+    S-->>W: routing result
+    loop each Topic to update/create
+        W->>S: POST /api/wiki/revise-topic (current body + source text)
+        S->>TR: run
+        TR-->>S: next body (markdown, [[source:<id>]] citations)
+        S-->>W: revised body
+        W->>FS: write Topic page (client-side save; migrates a Claim-derived Topic to source format on first touch)
     end
-    W-->>E: status (toast)
+    W-->>E: status (toast: created/updated + unchecked-statement count)
 ```
 
 Notes:
@@ -765,44 +793,109 @@ Notes:
   which posts to the server. There is no server-side file watcher.
 - **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
   note is ingest-worthy at all (e.g., empty drafts are skipped).
-- **Topics.** Alongside each Claim, the ingester also proposes topic name(s)
-  (noun phrases, in the note's language, usually just one) grouping it by
-  concept — shown the same existing-topic index (title + one-line
-  definition) it already sees for other Wiki pages, so it can reuse an
-  existing topic or decide a new one is warranted, the same way it decides
-  merge-vs-create elsewhere. There is no count cap on Topics per Claim and no
-  target member-count per Topic — those are thresholds nobody could justify;
-  see [DATA_MODEL.md §3.1a](DATA_MODEL.md) for how near-duplicate Topics get
-  cleaned up later instead (Organize topics / Linter, not ingest). Topics
-  never participate in the hourglass — the Atomizer only ever sees Claims.
+- **Topics read sources, not Claims (changed 2026-09-17).** A Topic page is
+  no longer synthesized from its member Claims. Instead, each ingested
+  *source* (a note, or an imported pdf/document/url/chat) is itself routed:
+  the Topic router is shown the source's full text plus an index of existing
+  Topics (title + one-line definition) and returns which existing Topic(s)
+  to update and which new Topic(s) to create — no embedding similarity, no
+  title-normalization matching, no count cap. For each Topic touched, the
+  Topic reviser then rewrites the page from its current body (empty for a
+  new Topic) plus that one source's full text — a full rewrite each time,
+  not an append, in the style of an incrementally-revised wiki. Citations
+  are `[[source:<id>]]` (the source id, not a Claim id), stored verbatim in
+  `wikiMeta.topicMarkdown` (see [DATA_MODEL.md §3.1b](DATA_MODEL.md)) so the
+  next revision and source-check both read the same text. Claims are no
+  longer Topic material at all — the ingester doesn't even propose topic
+  names for them anymore — but they still feed the hourglass exactly as
+  before (Topics never did). **Existing Claim-derived Topics** (no
+  `topicMarkdown`) are migrated the first time they're touched by the
+  router: `runSourceTopicStage` collects every source id referenced by the
+  Topic's member Claims, then rebuilds the page from an empty body by
+  replaying those sources one at a time through the reviser
+  (`rebuildTopicFromSources`, `src/features/wiki/topic-stage.ts`) before
+  finally folding in the new source. A source that can no longer be read
+  (trashed, never indexed) is skipped and counted, not silently dropped.
 - **Merging Topics has four entry points**, all funneling into the same
   pure execution function `applyTopicMerges` (`src/features/wiki/topic-stage.ts`),
-  which retargets member Claims (`retargetClaimTopicId` + `linkClaimAndTopic`),
-  rewrites the kept Topic's body, and soft-deletes the absorbed Topic(s):
-  (1) **Topic banner** — a "similar topics" chip appears only when a local
-  check finds a candidate (normalized-title match, or embedding similarity
-  > 0.9 when an embedding model is configured); no LLM call. (2) **Topics
-  list** — select 2+ Topics and pick which one to keep; also no LLM call
-  (`mergeTopicsExplicit`, a thin wrapper around `applyTopicMerges` that
-  takes an explicit keep/merge id pair instead of computing one). (3)
-  **Lint** — the Linter's redundant-Topic finding (near-duplicate titles,
-  local or LLM-detected) gets a one-click "Merge" button that calls the
-  same explicit-pair path. (4) **Settings → Organize topics** — the only
-  entry point that judges *which* existing Topics are the same concept via
-  an LLM call (`consolidateExistingTopics` → `POST /api/wiki/consolidate-topics`,
-  the Topic Consolidator). In short: **deciding whether two Topics are the
-  same concept** is a chat-model judgment (Organize topics, and the Lint /
-  full-analysis redundant check); **moving members once the pair is known**
-  is mechanical and model-free (banner, list, and the per-issue Merge
-  button). The chat model (Settings → AI → Chat model, falls back to the
-  default model when unset) is used — not the default model — for both
-  the full Lint analysis (`POST /api/wiki/lint`) and Topic consolidation
-  (`POST /api/wiki/consolidate-topics`); ingest-time Topic naming
-  (`POST /api/wiki/name-topics`) and body composition
-  (`POST /api/wiki/compose-topic`) keep using the default model.
-- **Note mode vs document mode.** For a short personal note the ingester emits
-  0-3 Claims, each tagged with proposed Topics (the "1 note ≈ 1 idea"
-  assumption). When the source is an **imported external document** — its
+  which retargets member Claims (`retargetClaimTopicId`, kept for old-format
+  compatibility only — new-format absorbed Topics have no members to retarget)
+  and soft-deletes the absorbed Topic(s). The body is produced one of two ways,
+  branching on format: if the merge target and every absorbed Topic are
+  **new-format**, the bodies are merged directly by the Topic Merger
+  (`mergeTopicBodies`, one `POST /api/wiki/merge-topics` call), preserving
+  existing citations verbatim; if **any side is old-format**, `applyTopicMerges`
+  collects the full set of source ids instead (via member Claims for
+  old-format sides) and rebuilds the target from scratch through
+  `rebuildTopicFromSources`, migrating it to new-format in the process. The
+  four entry points: (1) **Topic banner** — a "similar topics" chip appears
+  only when a local check finds a candidate (normalized-title match, or
+  embedding similarity > 0.9 when an embedding model is configured); no LLM
+  call. (2) **Topics list** — select 2+ Topics and pick which one to keep;
+  also no LLM call (`mergeTopicsExplicit`, a thin wrapper around
+  `applyTopicMerges` that takes an explicit keep/merge id pair instead of
+  computing one). (3) **Lint** — the Linter's redundant-Topic finding
+  (near-duplicate titles, local or LLM-detected) gets a one-click "Merge"
+  button that calls the same explicit-pair path. (4) **Settings → Organize
+  topics** — the only entry point that judges *which* existing Topics are the
+  same concept via an LLM call (`consolidateExistingTopics` →
+  `POST /api/wiki/consolidate-topics`, the Topic Consolidator); it only
+  consolidates existing Topic pages now — Claims are never assigned or
+  reassigned to Topics by this action (2026-09-17 change). In short:
+  **deciding whether two Topics are the same concept** is a chat-model
+  judgment (Organize topics, and the Lint / full-analysis redundant check);
+  **moving members once the pair is known** is mechanical and model-free
+  (banner, list, and the per-issue Merge button); **producing the merged
+  body** is either one Topic Merger call (new-format-only) or a
+  resource-from-scratch rebuild (any old-format side). The chat model
+  (Settings → AI → Chat model, falls back to the default model when unset)
+  is used — not the default model — for both the full Lint analysis
+  (`POST /api/wiki/lint`) and Topic consolidation
+  (`POST /api/wiki/consolidate-topics`); ingest-time Topic routing
+  (`POST /api/wiki/route-topics`), revision (`POST /api/wiki/revise-topic`),
+  and the Topic Merger (`POST /api/wiki/merge-topics`) keep using the
+  default model.
+- **"Rebuild from sources" is human-initiated, never automatic.** Beyond the
+  incremental per-source revision above, a Topic page can also be rebuilt
+  from scratch from its full source list (`rebuildTopicFromSources`,
+  replaying each source through the reviser from an empty body) — the same
+  routine that migrates an old-format Topic on first touch. Because this can
+  mean one LLM call per source, it is never run silently: a pure planning
+  function, `planTopicRebuild` (`src/features/wiki/topic-stage.ts`),
+  computes the exact source list and the resulting AI-call count *before*
+  anything runs, and every entry point shows that count in a confirmation
+  dialog the user must accept. Three entry points: (1) the topic page's own
+  "Regenerate" action (`WikiBanner`, one Topic); (2) the Lint view's
+  dedicated "legacy-format Topics" section, which lists every Topic still
+  awaiting migration and rebuilds them one by one on a single confirmation,
+  reporting rebuilt/skipped-source/failed counts afterward; (3) the Lint
+  view's per-issue "Rebuild from sources" fix action on a `missing-source`
+  finding (below). Sources that can no longer be read (trashed, never
+  indexed) are skipped and counted, never silently dropped.
+- **Re-ingesting a source re-checks the Topics that already cite it.** The
+  Topic router only sees one source at a time and can miss a Topic whose
+  citation of that source has gone stale; `runSourceTopicStage` closes this
+  gap mechanically by unioning the router's `update` list with every
+  new-format Topic that already lists the re-ingested source id in its
+  `derivedFromNotes` (via the existing-Topic index's `sourceIds`), and tells
+  the reviser to re-check previously-cited claims against the updated text
+  (a `previouslyCited` flag threaded through `revise-topic`).
+- **Sources that disappear are handled without an LLM call.** If every
+  source a new-format Topic cites turns out to be trashed or unindexed after
+  a re-ingest, `detectAutoArchivable` (`src/server/services/wiki-linter.ts`)
+  flags it with reason `"sources-gone"` and it is archived automatically
+  (reversible, same as any other archive) — a Topic with an external-prefixed
+  source (`pdf:`, `document:`, `url:`, `chat:`) is never auto-archived this
+  way, and the check is skipped entirely when the valid-note-id index is
+  still empty (e.g. right after startup), to avoid a false-positive sweep.
+  If only *some* of a Topic's sources are missing, it's left alone and
+  instead surfaced as a `missing-source` Lint issue (warning severity,
+  `detectMissingSourceIssues`) so a person can decide whether to rebuild it
+  from the remaining sources.
+- **Note mode vs document mode.** For a short personal note the ingester
+  harvests every distinct transferable insight the note carries as its own
+  Claim, with no fixed cap — each tagged with proposed Topics. When the
+  source is an **imported external document** — its
   `noteId` carries a `pdf:` / `document:` / `url:` / `chat:` prefix (the
   external-source convention) — the ingester switches to *document mode*: it
   harvests every distinct transferable insight the document argues as its own
@@ -898,20 +991,24 @@ Notes:
   the `⌘K` Composer's "Shared" section (`composer/search.ts →
   searchShared`), gated the same way (desktop + shared root + the
   setting).
-- **Auto-merge of redundant Claims.** When the linter / startup-merge
-  flow detects two Claims that overlap, one is rewritten into the
-  other and the absorbed Claim is **archived, not deleted**. Its file
-  stays on disk and its index entry gains an `archivedAt` flag, so any
-  note that cited it (or any Idea whose `derivedFromNotes` lists
-  it) keeps resolving through `loadDoc`. The archived page is hidden
-  from lists / search and is editable only after restore. See
+- **No unattended merge or auto-link.** The post-ingest and startup
+  checks run **Quick (local only)** — no LLM call — and never merge or
+  link pages on their own; they only archive mechanically empty pages
+  (reversible) and surface the rest (contradiction, suspected
+  orphan/duplicate) as an Upkeep badge. A **Full (AI analysis)** check
+  runs only when a person starts it from the Upkeep screen, and its
+  Redundant/Stale results offer **Open** and **Archive** — Claims are
+  not merged by the linter anymore (Topics keep their explicit
+  **Merge** action). Archiving keeps the file on disk with an
+  `archivedAt` flag, so any note that cited it (or any Idea whose
+  `derivedFromNotes` lists it) keeps resolving through `loadDoc`; the
+  archived page is hidden from lists / search and is editable only
+  after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
-  for the tri-state semantics. Both auto-merge sites gate on
-  `wikiMeta.kind === "claim"` for **both** pages, so a redundant-Topic or
-  redundant-Insight finding never falls through to this path — Topics merge
-  via `applyTopicMerges`, Insights via `mergeAtomsExplicit`, both only from
-  an explicit user click (Health check / Organize topics), never
-  automatically.
+  for the tri-state semantics. Existing data may still contain
+  Claims archived, and `wiki_dedup_merge` / orphan `cross-update`
+  entries written, by the retired automatic flow; those are legacy
+  records that new code no longer produces.
 - **Insights are structural abstractions, not tidied Claims.** A Claim is a
   domain finding; the Insight (Atom) is the *transferable structure* behind it,
   produced by the atomizer (`buildAtomizerSystemPrompt`) in four steps:
@@ -1069,6 +1166,184 @@ sedimented entries that the model produced (seed entries are read-only
 from the UI; editing them requires changing `seed.v1.json` through a
 PR).
 
+**Source check — a client-driven verification lane, run manually or
+auto-triggered opt-in.** Where world-model grounding asks whether a claim
+holds up against outside knowledge, source check asks a narrower
+question: does the *source the statement itself cites* actually say
+this? It is neither part of ingest nor of lint — it is its own
+client-driven pipeline (`src/features/source-check/`), run over
+already-existing claims and topics rather than at creation time.
+**Insights are never checked** — an insight generalizes across several
+claims, so there is no single source text to hold it against.
+
+- **A claim's statement is the whole claim; a topic's statements are its
+  citing blocks, matched by exact text — not just by link.** For a claim
+  the statement is its title + body and its sources are
+  `derivedFromNotes`, unchanged from v1. For a topic
+  (`extractTopicStatements` in
+  `src/features/source-check/topic-statements.ts`), every body block
+  *before* the `References` heading (`buildTopicReferenceBlocks`, §3.3
+  above) that cites one or more of the topic's `derivedFromClaims`
+  becomes its own statement — the block's plain text with the citation
+  stripped — and its sources are the claims that block cites, addressed
+  with a synthetic `claim:<wikiId>` id
+  (`src/features/source-check/claim-source-id.ts`) that never appears in
+  `derivedFromNotes` and is not added to the shared external-source
+  prefix list, so lineage, graph, and PROV export readers are unaffected.
+  A citation is recognized by the union of four exact-match rules against
+  a title → claim-id map built from the `References` rows, never by
+  guessing: (a) the block's `knowledgeLinks` entry of `type: "reference"`
+  (the original, link-based form); (b) an inline text element that,
+  trimmed and stripped of a leading `@`/`🤖`/whitespace, exactly matches a
+  References title — needed because a topic body can carry the cited
+  claim's title as **plain text with no link**, immediately following the
+  sentence it supports; (c) the block's plain text ending in a References
+  title, as a fallback for citations merged into a single text run; (d) an
+  unresolved `[[claim:<id>]]` token whose id is in `derivedFromClaims`.
+  Without rule (b), every topic sentence that cites its source as plain
+  trailing text — the common real-world shape — was wrongly recorded as
+  "not recorded". A block with no such citation is not checked at all. Two shapes of
+  "cannot be checked" are recorded without an LLM call, not silently
+  skipped: a claim adopted from a Cmd-K answer
+  (`src/features/source-check/ai-answer.ts` detects
+  `generatedBy.sessionId` starting with `verb-suggestion-`, since
+  `buildVerbSuggestionDocument` in
+  `src/features/composer/verb-suggestion-doc.ts` never stores the answer
+  text itself, so diffing against the note where it was shown would
+  wrongly read as "not in source") resolves straight to
+  `missingReason: "ai-answer"`; a claim with an empty `derivedFromNotes`
+  or a topic with no citing block resolves to `"not-recorded"`.
+- **New-format topics (`wikiMeta.topicMarkdown` present, §3.1b of
+  DATA_MODEL.md) are checked in one hop instead of two.**
+  `extractSourceTopicStatements` (same file) reads `topicMarkdown`
+  directly rather than the built blocks — a `[[source:<id>]]` token
+  loses its brackets once it passes through `pushCitation` during block
+  conversion, the same reason rule (d) above needs the raw text — and
+  turns each non-heading line that carries at least one `[[source:<id>]]`
+  citation into a statement, with the citation stripped and its ids used
+  as-is. `buildSourceCheckStatements`
+  (`src/features/source-check/build-statements.ts`) picks this extractor
+  over `extractTopicStatements` whenever `topicMarkdown` is set, and,
+  critically, does **not** wrap the resulting ids with `toClaimSourceId`
+  — a new-format topic's citations already name a resource id (the same
+  id space as `derivedFromNotes`), so `resolveSourceText` resolves them
+  directly instead of through the synthetic `claim:` indirection.
+- **Retrieving the original text depends on the source kind**
+  (`resolveSourceText`, `src/features/source-check/resolve-source-text.ts`):
+  a plain-note id re-reads the note's current body, split into per-block
+  text so a verified quote can be traced back to one block; `pdf:` /
+  `document:` ids re-read the asset's bytes and re-run the **same**
+  extractor ingest uses (`pdf-text-extractor`, `mammoth.extractRawText`)
+  rather than trusting any cached extraction; `claim:` ids (topic sources)
+  re-read the cited claim's current title + body the same way a claim
+  checks its own text, and resolve to `deleted` if the claim is trashed,
+  archived, or gone; `memo:` ids read the capture text directly; `chat:`
+  ids carry no reference key back to the conversation that produced them,
+  so they resolve to `source-missing` / `no-reference` without attempting
+  anything. **`url:` ids always re-fetch** through the existing
+  `/api/wiki/fetch-url` path rather than reading a stored copy: the
+  `resolveSourceText` contract has a `loadStoredUrlText` slot for a
+  stored-original fast path, but the client wiring
+  (`src/features/source-check/use-source-check.ts`) has no index from a URL back to the
+  note that stored its fetched text (`sourceTextFileId` lives on the
+  individual note, not mirrored into `mediaIndex`), so that slot is left
+  unset and every `url:` source check re-fetches the URL fresh and
+  compares against whatever came back at that moment. None of these
+  readers impose a new size limit — ingest does not cap note, PDF, or
+  Word body length either, so source check re-reads exactly what ingest
+  would have seen.
+- **One call judges one source against every statement that cites it,
+  claims and topics combined.** `planSourceCheck`
+  (`src/features/source-check/plan.ts`) groups the statements being
+  checked (built by `buildSourceCheckStatements` /
+  `src/features/source-check/build-statements.ts`) by source id — a
+  claim's `derivedFromNotes` entry or a topic block's `claim:` id alike
+  — so a source shared by several claims, several topic sentences, or
+  both ends up in one group. `runSourceCheck`
+  (`src/features/source-check/run.ts`) walks the resulting groups
+  sequentially — no concurrency constant, matching the "no new numeric
+  limits" rule above — resolving each source's text and then, if any text
+  came back, sending it once to `POST /api/wiki/check-sources` with the
+  full list of statements that depend on it, `${docId}#${statementId}` as
+  each statement's unit id. This mirrors the unit ingest already uses
+  (one source, every claim it produced, in one call).
+- **A document's result is written only once every statement×source pair
+  it has is processed.** If a run is interrupted — the caller aborts, or
+  the API degrades partway — a claim, or a topic with even one unprocessed
+  statement, is left out of the result entirely rather than being written
+  with a partial `entries[]`; `runSourceCheck` reports whether the run was
+  `interrupted` so the caller can retry.
+- **Quote verification happens on the server before the client ever sees
+  it.** `POST /api/wiki/check-sources`
+  (`src/server/routes/wiki.ts` → `src/server/services/source-check.ts`)
+  builds one prompt per source (the closing `</source-text>` delimiter is
+  neutralized against injection from the source text itself), parses the
+  model's JSON, and runs `applyQuoteVerification` against the exact source
+  text before returning — a `quote` that cannot be found verbatim in the
+  source downgrades `supported` / `contradicted` to `unclear` server-side,
+  so the client never has to trust an unverified quote. The client then
+  separately maps a verified quote to a `blockId`
+  (`findBlockIdForQuote`, `src/features/source-check/quote-match.ts`) when
+  it lands inside exactly one note block.
+- **Model and degrade.** The route resolves a model the same way chat and
+  full lint do — the chat-synthesis model slot, not a dedicated
+  `groundingModel` slot — and responds `{ result: null, code }` when no
+  model is registered or the call fails. Unlike world-grounding, which can
+  degrade a single item to a `checkedAt`-only record, `SourceCheckVerdict`
+  has no "could not judge" value it would be safe to persist, so
+  `runSourceCheck` treats a degrade as a reason to stop the whole run
+  rather than write a wrong verdict.
+- **Body-rewriting stages drop stale results.** `mergeIntoWikiDocument`,
+  `rewriteAndMerge`, and `rebuildTopicDocument`
+  (§3.3 above, `src/features/wiki/wiki-service.ts`) all replace
+  `pages[0].blocks`, so each clears any existing `sourceCheck` rather than
+  let a judgment outlive the text it was checked against — which also
+  means a body-rewriting ingest makes the document eligible for automatic
+  source check again (below), since "no result" is exactly the trigger
+  condition. See [DATA_MODEL.md §3.8](./DATA_MODEL.md) for the
+  `sourceCheck` schema, the verdict-aggregation and quote rules, and the
+  `WikiMetaSummary` mirror.
+- Each run logs to `wiki-log` under the `source-check` event type.
+- **Automatic source check is opt-in and event-driven, off by default.**
+  `useAutoSourceCheck`
+  (`src/features/source-check/use-auto-source-check.ts`) mirrors
+  `useAutoGrounding`'s shape: it reacts to changes in `wikiMetas` rather
+  than polling, picks the first claim or topic whose
+  `WikiMetaSummary.sourceCheckVerdict` mirror is absent
+  (`pickNextUncheckedSource`), and checks it through the same `runOne`
+  path a manual single check uses, one source call at a time. It never
+  runs while a manual single or batch check is already running — `runOne`
+  shares the same `runningRef` exclusion guard, so the hook only needs to
+  skip its own scheduling while `busy`. A hard failure (the check call
+  rejects) is remembered for the session so the hook does not hot-loop
+  retrying the same id; a successful check naturally drops out of the
+  pick list once `sourceCheckVerdict` is set. The toggle is
+  `ExperimentalSettings.autoSourceCheck` (`src/features/settings/store.ts`),
+  placed directly under the auto-grounding toggle in Settings → AI → World
+  grounding, off by default like `autoGrounding`.
+- **The upkeep view groups Check and Source check as tabs, and keeps a
+  needs-review list instead of hiding anything.** `WikiLintView.tsx`
+  renders `wikiLint.tabs.check` (the existing Quick/Full lint) and
+  `wikiLint.tabs.sourceCheck` (`SourceCheckLintSection.tsx`, the
+  target/scope/plan/run flow above) as two tabs under one "Knowledge
+  upkeep" header (sidebar label "Upkeep"); both share the same centered
+  start state. Claims and topics whose latest verdict is `contradicted`
+  or `not-in-source` are **never removed from the Knowledge list
+  automatically** — an AI verdict can be wrong, the app promises no hidden
+  filters (see the FAQ), and a hidden claim would still silently feed
+  topics and chat. Instead `buildNeedsReviewList`
+  (`src/features/source-check/needs-review.ts`, a pure function over the
+  same `WikiMetaSummary` mirror) orders them contradicted-first, then
+  not-in-source, and `SourceCheckReviewList.tsx` renders that as a
+  standing panel in the Source check tab with per-row **open**,
+  **confirm** (dismiss), **archive**, and **re-check**, plus a checkbox
+  multi-select **bulk archive**. Archiving here is the same reversible
+  archive as everywhere else, so what disappears from the list is always
+  a decision the user made, not one the verdict made for them. The
+  Knowledge list itself gets an off-by-default **Needs review only**
+  filter (`WikiListView.tsx`, backed by the same `isNeedsReviewVerdict`
+  predicate) for claims and topics.
+
 **Idea authoring (Cmd-K Composer).** Ideas are produced through the
 Cmd-K Composer flow rather than a server-side pipeline. The user
 selects the Insights they want to weave, builds a citation note, and
@@ -1121,7 +1396,7 @@ modalQualifier}` and the on-disk version is now
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
 metrics). Each roadmap phase declares which metrics it must improve;
 `pnpm bench:compare main` is required on every PR that touches the
-ingester / atomizer / cross-updater / linter. See the README's "Knowledge
+ingester / atomizer / linter. See the README's "Knowledge
 Layer benchmark" section and `docs/internal/benchmark.md` for the metric
 definitions, corpus rationale, and merge rules.
 
@@ -1198,6 +1473,104 @@ The same `src/` tree is built four different ways.
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
   matched by TypeScript wrappers
+- Folder intake does not use `<input webkitdirectory>` on the desktop.
+  WebKit builds that file list by asking the OS whether each entry is an
+  alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs
+  a network round trip per file on an AFP or SMB share. A sample taken
+  during a stalled import of a NAS folder spent 65% of the WebContent main
+  thread inside that one call, with the receptacle still showing "looking
+  through the folder" because `change` had not fired yet — the import loop
+  had not started, so `set_background_work_active` (below) was not holding
+  either. `scan_directory` instead walks the tree in Rust
+  (`walk_intake_directory`) — but the first version of that walk had the
+  same shape of problem one layer down: it called `symlink_metadata`
+  (`lstat`) on every entry to tell files, directories and symlinks apart,
+  and a process sample showed that one call taking 90% of the walk's time.
+  Over the same NAS share and the same 2,000–3,000 entries, a plain
+  `readdir` took 12–32 seconds; adding the per-entry `lstat` took
+  103–192 seconds. The walk now classifies entries with
+  `DirEntry::file_type()` alone, which reuses the `d_type` `readdir`
+  already returned (macOS falls back to one `fstatat` only when the type
+  is `DT_UNKNOWN`; Windows already has the type from `FindNextFileW`, so
+  neither platform pays a second round trip per entry) — `symlink_metadata`
+  paid that trip on both platforms, and on Windows specifically it means
+  opening, querying and closing the file (two to three round trips), not
+  one. `ScannedFile` correspondingly carries no size: the only place the
+  walk-time size was ever read (`tooLargeToHash` in `note-app.tsx`) always
+  calls `getFile()` first anyway, so fetching the size up front would have
+  reintroduced the per-entry `stat` the walk just removed. The walk
+  returns paths, names and relative paths only, never following symlinks.
+  It also filters as it goes: entries whose name starts with `.` are
+  skipped and hidden folders (`.git`, `.obsidian`, …) are never descended
+  into, and a file whose extension is not in the list the caller passes
+  (`INTAKE_EXTENSIONS` in `classify.ts`, derived by running
+  `classifyIntakeFiles` itself over every candidate extension so the two
+  cannot drift apart) is neither returned nor added to the read allowlist
+  — it is only counted per extension (`skippedByExt`), and those counts
+  are carried through to the import report's skipped line. The cap —
+  500,000 files — counts accepted files only. It used to be 50,000 counted
+  over every file, so a folder of old data whose logs or `.git` objects
+  outnumbered its notes hit the cap with little of value found; with a
+  progress count and a stop button in place the cap is now only a guard
+  on the memory the path list and allowlist can take. Scanned paths are
+  prefixed with the chosen folder's name, matching `webkitRelativePath`
+  in the browser, so that `commonRootOf` does not mistake a lone
+  subfolder for the root and drop it. It is breadth-first on purpose:
+  depth-first follows `read_dir`'s order, which no filesystem guarantees,
+  so one large subfolder can spend the whole cap and leave sibling folders
+  with nothing. Breadth-first only keeps a deep subtree from starving its
+  siblings, though — a folder whose own direct children outnumber the cap
+  still truncates mid-folder, and folders after it at that level are left
+  with nothing just the same. Because a scan of a large or cold NAS folder
+  can run for minutes, `scan_directory` emits an `intake-scan-progress`
+  event — at most every 200ms — with the number of files and folders found
+  so far, plus the number of files skipped for their type (a folder of
+  nothing but logs would otherwise show no movement at all). It checks whether to send one after every entry rather than only
+  when a file is added: a deep backup can run through a long stretch of
+  folders with no files, and reporting files alone left the receptacle
+  looking frozen on a real NAS share. A `cancel_scan` command lets the
+  user stop a scan in progress; the walk checks the cancel flag between every entry so a cancel takes effect
+  promptly rather than waiting for the current directory to finish. Both
+  carry a scan ID that the caller mints per scan (`crypto.randomUUID()`)
+  rather than sharing one flag process-wide, because `IntakeReceptacle`
+  can be mounted three times at once — the note list's empty state, the
+  asset gallery's empty state, and inside `IntakeModal`, which is an
+  overlay and so coexists with whichever empty state sits under it — and a
+  single shared flag let stopping one scan silently cancel the other, or
+  let a scan started right after a stop swallow that stop's request on
+  its own initialization. `scan_directory` and `cancel_scan` are two
+  independent invokes with no ordering guarantee between them, so the
+  per-ID cancel flag is registered before `canonicalize` runs rather than
+  after: a cancel that arrives first is kept rather than lost, and one
+  that arrives while `canonicalize` is still resolving is not overwritten
+  once it returns. Each `IntakeReceptacle` instance also cancels its own
+  scan on unmount, so a receptacle that leaves the screen mid-scan (modal
+  closed, folder re-picked) doesn't leave an unreachable scan running to
+  completion. `IntakeFile.getFile()` then reads one file at a time through
+  `read_scanned_file` as the import loop reaches it, so nothing is read
+  ahead of where the progress bar sits. That command returns raw bytes
+  (`tauri::ipc::Response`) rather than the Base64 `read_media_file` uses:
+  a folder walk can turn up a few hundred MB of video, and Base64 puts the
+  original plus a ~1.33× string on both sides at once. It refuses any path
+  the matching `scan_directory` call did not return, matched by exact
+  string equality against the allowlist rather than by canonicalizing the
+  requested path first — `canonicalize` (`realpath`) measured 25–226ms per
+  file over the same NAS share, and `scan_directory` itself now
+  canonicalizes only once, at the start of the walk, not per entry. On
+  Unix the file is then opened with `O_NOFOLLOW`, so a symlink swapped in
+  after the scan but before the read (a TOCTOU race) fails to open rather
+  than silently following the link; Windows has no equivalent flag, so
+  there the exact-string allowlist match is the primary defense — the
+  allowlist only ever holds the literal absolute paths `scan_directory`
+  found, so a crafted path containing `..` never matches an entry in it to
+  begin with. The allowlist accumulates rather than replaces, since an
+  import keeps reading in the background after the modal is closed and
+  picking a second folder would otherwise strand the first one's unread
+  files. The browser build keeps using webkitdirectory, and
+  `src/features/intake/native-scan.ts` falls back to it if the native path
+  fails. Drag and drop is deliberately left alone: reading paths from a
+  drop would need `dragDropEnabled: true`, which takes HTML5 drag events
+  away from the webview and breaks BlockNote's block drag handle (#288)
 - Printing goes through the `print_webview` command rather than the
   webview itself: macOS' WKWebView silently drops JavaScript's
   `window.print()`, so the panel has to be opened from Rust (wry's print,
