@@ -634,7 +634,7 @@ export const en: Record<string, string> = {
   "settings.features.worldGrounding.title": "Use world grounding",
   "settings.features.worldGrounding.help": "World-grounding works better with a smarter model. When off, grounding buttons and columns are hidden. Existing results are kept.",
   "settings.features.claims.title": "Use claims",
-  "settings.features.claims.summary": "Topics are built directly from your sources. Claims are a Graphium-specific extension that pulls sourced statements out of your notes and documents, one at a time. Insights are built from claims, so turning claims off turns insights off too.",
+  "settings.features.claims.summary": "Topics are built directly from your sources. Claims are a Graphium-specific extension: they take every proposition a note or document carries (such as \"X happens when Y\"), one proposition per claim, leaving out experiment-specific details so each still makes sense in another context. Insights are built from claims, so turning claims off turns insights off too.",
   "settings.features.claims.help": "When off, ingest skips claim extraction and only the topic stage runs from your source text. Existing claims and insights are kept and stay visible.",
   "settings.features.insights.title": "Use insights",
   "settings.features.insights.help": "Insights work better with a smarter model. When off, insights are hidden from the sidebar and lists. Existing insights are kept.",
@@ -1143,7 +1143,7 @@ export const en: Record<string, string> = {
   "wikiList.kindTopic": "Topics",
   // Per-kind descriptions (sidebar title tooltips). Hourglass: note -> claim -> insight -> idea
   "wikiList.kindSummaryHint": "A short AI summary of a single note",
-  "wikiList.kindClaimHint": "A grounded assertion extracted from your notes",
+  "wikiList.kindClaimHint": "One proposition taken from a note or document",
   "wikiList.kindAtomHint": "A pattern that recurs across two or more claims",
   "wikiList.kindSynthesisHint": "A new idea formed by combining claims and insights",
   "wikiList.kindTopicHint": "A page that gathers what your sources say about one concept",
