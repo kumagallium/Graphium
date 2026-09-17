@@ -319,6 +319,8 @@ import {
   wikiLog,
   // 点検の「見てほしいことがある」印
   saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
+  // 一括ナレッジ化の「取り込み済みで変わっていない」スキップ判定
+  lastIngestedAtForSource, shouldSkipUnchangedSource,
   // Topic（話題。知見はもう材料にしない — 旧形式の割り当て系は撤去済み）
   extractTopicOneLiner,
   type ExistingTopicRef,
@@ -9636,7 +9638,7 @@ export function NoteApp() {
     // AI 未設定なら発火させない（enqueueIngest にも同ガードがあるが、
     // doc ロード等の無駄な前処理に入る前にここで止める）
     if (!ensureAgentConfigured()) return;
-    const candidates: { id: string; title: string }[] = [];
+    const candidates: { id: string; title: string; modifiedAt: string }[] = [];
     const skippedAi: string[] = [];
     for (const id of ids) {
       const entry = fm.noteIndex?.notes.find((n) => n.noteId === id);
@@ -9645,7 +9647,7 @@ export function NoteApp() {
         skippedAi.push(entry.title || tStatic("nav.untitled"));
         continue;
       }
-      candidates.push({ id, title: entry.title || tStatic("nav.untitled") });
+      candidates.push({ id, title: entry.title || tStatic("nav.untitled"), modifiedAt: entry.modifiedAt });
     }
     if (skippedAi.length > 0) {
       const newItem: IngestToastItem = {
@@ -9655,10 +9657,57 @@ export function NoteApp() {
       };
       setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
     }
-    if (candidates.length === 0) return;
+
+    // 既にナレッジ化されていて、その後ノートが変わっていないものは一括では外す
+    // （個別の「ナレッジに追加」は enqueueIngest を直接呼ぶ別経路なので対象外）。
+    // ノート → 派生ナレッジページの逆引きはアーカイブ・ゴミ箱のページを含むため、
+    // 現役ページだけに絞る。
+    const rawKnowledgeMap = buildKnowledgeMap(fm.noteIndex ?? null);
+    const knowledgeDocCache = new Map<string, import("./lib/document-types").GraphiumDocument | null>();
+    const loadKnowledgeDoc = async (pageId: string) => {
+      if (knowledgeDocCache.has(pageId)) return knowledgeDocCache.get(pageId) ?? null;
+      // インデックスの noteId は wiki でも接頭辞なし。ドキュメントのキャッシュと読み込みは
+      // `wiki:<id>` で引く（他の wiki 読み込みと同じ）。付け忘れると常に null になり、
+      // 来歴が取れずこの判定が一度も効かない
+      const key = `wiki:${pageId}`;
+      const doc = fm.getCachedDoc(key) ?? await fm.loadDoc(key);
+      knowledgeDocCache.set(pageId, doc ?? null);
+      return doc ?? null;
+    };
+    const toIngest: { id: string; title: string }[] = [];
+    let skippedUnchanged = 0;
+    for (const { id, title, modifiedAt } of candidates) {
+      const knowledgePages = (rawKnowledgeMap.get(id) ?? []).filter(
+        (p) => !p.archivedAt && !p.deletedAt,
+      );
+      if (knowledgePages.length === 0) {
+        toIngest.push({ id, title });
+        continue;
+      }
+      const pageDocs: import("./lib/document-types").GraphiumDocument[] = [];
+      for (const page of knowledgePages) {
+        const doc = await loadKnowledgeDoc(page.noteId);
+        if (doc) pageDocs.push(doc);
+      }
+      const lastIngestedAt = lastIngestedAtForSource(id, pageDocs);
+      if (shouldSkipUnchangedSource(modifiedAt, lastIngestedAt)) {
+        skippedUnchanged++;
+        continue;
+      }
+      toIngest.push({ id, title });
+    }
+    if (skippedUnchanged > 0) {
+      const newItem: IngestToastItem = {
+        id: `ingest-skip-unchanged:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`,
+        status: "aborted",
+        noteTitle: tStatic("ingest.skippedUnchangedNotes", { count: String(skippedUnchanged) }),
+      };
+      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+    }
+    if (toIngest.length === 0) return;
 
     // doc 本体をロードしてキューに積む
-    for (const { id, title } of candidates) {
+    for (const { id, title } of toIngest) {
       const doc = await fm.loadDoc(id);
       if (!doc) continue;
       enqueueIngest(id, title, doc);
