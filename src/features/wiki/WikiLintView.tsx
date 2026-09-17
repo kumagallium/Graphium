@@ -60,6 +60,8 @@ type Props = {
    * 別レーンで、自動点検にはつながない。3 つとも揃っているときだけ欄を出す。
    */
   sourceCheckProps?: SourceCheckLintSectionProps;
+  /** 開いたときに表示するタブ。未指定なら従来どおり "check"（呼び出し側で key を変えて再マウントする想定） */
+  initialTab?: WikiLintTab;
 };
 
 /** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
@@ -115,7 +117,7 @@ const SEVERITY_STYLES: Record<LintSeverity, string> = {
   info: "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/40",
 };
 
-type WikiLintTab = "check" | "sourceCheck";
+export type WikiLintTab = "check" | "sourceCheck";
 
 export function WikiLintView({
   report,
@@ -130,10 +132,11 @@ export function WikiLintView({
   onMergeTopics,
   onBulkArchiveWikis,
   sourceCheckProps,
+  initialTab,
 }: Props) {
   const t = useT();
   // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
-  const [activeTab, setActiveTab] = useState<WikiLintTab>("check");
+  const [activeTab, setActiveTab] = useState<WikiLintTab>(initialTab ?? "check");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 一括アーカイブの選択（stale/redundant のみ選択可）。issue の配列インデックスで管理する。
   const [selectedIssueIndices, setSelectedIssueIndices] = useState<Set<number>>(new Set());

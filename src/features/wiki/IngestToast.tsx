@@ -29,6 +29,11 @@ export type IngestToastItem = {
   result?: string;
   /** パイプライン後半（topics / atomize / lint）のステージ表示 */
   stages?: IngestStage[];
+  /**
+   * success の項目に添える 1 個のテキストボタン（例: 「出典照合を開く」）。
+   * 結果行の下（pl-5）に小さく出す。押されても項目自体の状態は変えない。
+   */
+  action?: { label: string; onClick: () => void };
 };
 
 export type IngestToastState = {
@@ -241,6 +246,18 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
                 title={item.result}
               >
                 {item.result}
+              </div>
+            )}
+            {/* success の項目に添えるテキストボタン（例: 「出典照合を開く」） */}
+            {item.action && item.status === "success" && (
+              <div className="pl-5">
+                <button
+                  type="button"
+                  onClick={item.action.onClick}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  {item.action.label}
+                </button>
               </div>
             )}
             {/* パイプラインステージ（topics / atomize / lint） */}
