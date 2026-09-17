@@ -34,7 +34,7 @@ For the full picture, scroll to the bottom of the item. A **World check** sectio
 
 When two insights ground to the same world fact, Graphium links them: the section **Insights grounded to the same world fact** lists other insights that touched the world at the same point. This is a connection an isolated AI answer cannot hold for you.
 
-## Source check: does the source actually say it?
+## Source check: does the source actually say it? <Badge type="tip" text="Added in v0.77.0 (2026-09-17)" />
 
 World grounding asks whether a claim holds up against outside knowledge. **Source check** asks a narrower, different question: does the *source this knowledge item itself cites* actually say this? It never touches outside knowledge and never judges whether the statement is true — only whether it is written in the cited source.
 
@@ -78,7 +78,7 @@ The model reports how many sources it will need to judge before it decides, but 
 
 **A worrying verdict is never hidden — it lands in Needs review instead.** A Claim or Topic that comes back **Differs from source** or **Not in source** stays exactly where it was in every list; an AI verdict can be wrong, and a claim silently dropped from the list would still keep feeding Topics and chat behind the scenes. Instead, the **Source check** tab keeps a standing **Needs review** list (differs first, then not-in-source) with **Open**, **Confirm**, **Archive**, and **Check again** on each row, plus a checkbox multi-select to archive several at once. Archiving here is the same reversible archive used elsewhere — restorable, never silent — so you're always the one deciding what disappears. The Claims/Topics list also gets a **Needs review only** filter, off by default.
 
-## Automatic source check
+## Automatic source check <Badge type="tip" text="Added in v0.77.0 (2026-09-17)" />
 
 By default, source check only runs when you ask for it. To have new and edited knowledge checked as it appears, open **Settings** → **AI**, find the **World grounding** section, and switch on **Auto-check sources** — it sits directly under **Auto-ground new knowledge** (off by default).
 
