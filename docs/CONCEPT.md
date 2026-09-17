@@ -131,12 +131,21 @@ sit around this core with their own jobs. They read from the hourglass output
 but do not change its shape.
 
 The division of labour across the hourglass is asymmetric on purpose. The
-Notes → Claims → Insights side is automatic (Ingester + Atomizer). The
+Notes → Claims → Insights side is automatic (Ingester + Atomizer) whenever
+this extraction is turned on — see the note below. The
 Ideas side — the move from Insights to Ideas — is human-driven through the
 **Cmd-K Composer** flow: you select the Insights you want to weave, build a
 citation note, and invoke the LLM with that as the search-space constraint.
 The neck of the hourglass is where the user's intent crystallises, and that
 is exactly the work the user should keep.
+
+> A later addition, Topics, sits alongside this hourglass rather than
+> inside it: it reads source material directly (not Claims) and is always
+> on. Claim/Insight extraction — the automatic Notes → Claims → Insights
+> side above — became an optional extension on top of Topics (2026-09-17),
+> off by default for new users, so the diagram in this section describes
+> the shape knowledge takes when that extension is enabled. See the
+> [Knowledge layer](/knowledge-layer) manual page for the current default.
 
 ```mermaid
 flowchart LR
