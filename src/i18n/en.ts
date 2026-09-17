@@ -566,7 +566,7 @@ export const en: Record<string, string> = {
   "settings.maintenance.kind.synthesis": "Ideas",
   "settings.maintenance.kind.topic": "Topics",
   "settings.maintenance.atomize.title": "Discover Insights from Claims",
-  "settings.maintenance.atomize.help": "Scan the {count} Claims cluster by cluster and factor out the shared insights that recur across two or more of them. Scanning continues until every Claim has been in view at least once; the number of scans needed is computed from how the Claims are distributed and shown before running. Existing Insights are sent to the model to avoid duplicates.",
+  "settings.maintenance.atomize.help": "Scan the {count} Claims cluster by cluster and pull out the relationship patterns in them as Insights (Claims that share a pattern are folded into one). Scanning continues until every Claim has been in view at least once; the number of scans needed is computed from how the Claims are distributed and shown before running. Existing Insights are sent to the model to avoid duplicates.",
   "settings.maintenance.atomize.confirm": "Bring all {claims} Claims into view with {runs} LLM call(s)? You can stop anytime; Insights created so far are kept.",
   "settings.maintenance.atomize.run": "Discover Insights",
   "settings.maintenance.atomize.running": "Discovering…",
@@ -655,7 +655,7 @@ export const en: Record<string, string> = {
   "settings.autoSourceCheck.help": "Checks newly created or updated claims and topics against their sources, one at a time in the background (off by default). Turning it on also works through anything not yet checked. Calls the AI once per source.",
   "settings.autoSourceCheck.summary": "Checks each new or updated claim and topic against its sources in the background, one at a time (off by default).",
   "settings.groundingModel.summary": "Falls back to the chat model when left unset.",
-  "settings.features.insights.summary": "Finds patterns that recur across several claims (cause, mechanism, condition-dependence and so on) and writes each as a principle that still holds outside its original field. Each insight links back to the claims it came from.",
+  "settings.features.insights.summary": "Generalizes the relationship pattern in your claims into a form that still holds outside its original context. Each insight links back to its claims.",
   "settings.insightModel.summary": "Falls back to the chat model when left unset.",
   "settings.atomizeIngestBudget.summary": "How many times to look for insights when a note is taken into knowledge.",
   "settings.ai.sectionDiscovery": "Insight discovery",
@@ -1147,7 +1147,7 @@ export const en: Record<string, string> = {
   // Per-kind descriptions (sidebar title tooltips). Hourglass: note -> claim -> insight -> idea
   "wikiList.kindSummaryHint": "A short AI summary of a single note",
   "wikiList.kindClaimHint": "One proposition taken from a note or document",
-  "wikiList.kindAtomHint": "A pattern that recurs across two or more claims",
+  "wikiList.kindAtomHint": "A relationship pattern from your claims, written to hold in other fields",
   "wikiList.kindSynthesisHint": "A new idea formed by combining claims and insights",
   "wikiList.kindTopicHint": "A page that gathers what your sources say about one concept",
   // Phase 1 semantic-type badge labels
