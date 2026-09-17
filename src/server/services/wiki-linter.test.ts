@@ -40,6 +40,13 @@ describe("detectLocalIssues - orphan topic", () => {
     expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("topic-3"))).toBe(false);
   });
 
+  it("新形式トピック（derivedFromClaims 空・derivedFromNotes に資料 id）は orphan にしない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-4", title: "新形式話題", derivedFromClaims: [], derivedFromNotes: ["note-a"] }),
+    ]);
+    expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("topic-4"))).toBe(false);
+  });
+
   it("claim の orphan 判定ロジックには影響しない（topic 追加の副作用がないことの確認）", () => {
     const issues = detectLocalIssues([
       base({
@@ -148,6 +155,14 @@ describe("detectAutoArchivable - 機械的に判定できる空ナレッジの�
     expect(candidates).toHaveLength(0);
   });
 
+  it("新形式トピック（derivedFromClaims 空・derivedFromNotes に資料 id）は空トピックとみなさない", () => {
+    const candidates = detectAutoArchivable(
+      [base({ id: "topic-4", title: "新形式話題", kind: "topic", derivedFromClaims: [], derivedFromNotes: ["note-a"] })],
+      new Set(),
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
   it("derivedFromNotes が空の claim は片付けない（来歴が別フィールドにあり得る）", () => {
     const candidates = detectAutoArchivable(
       [base({ id: "claim-1", title: "根無し知見", kind: "claim", derivedFromNotes: [] })],
@@ -211,6 +226,11 @@ describe("detectAutoArchivable の出どころ判定", () => {
 
   it("ノートと素材が混ざっているときは、ノートが消えていても片付けない", () => {
     const wikis = [claim("c1", ["note-gone", "pdf:abc"])];
+    expect(detectAutoArchivable(wikis, new Set())).toEqual([]);
+  });
+
+  it("有効なノートが 1 件も無い（索引が未読込の可能性）ときは知見を片付けない", () => {
+    const wikis = [claim("c1", ["note-a"])];
     expect(detectAutoArchivable(wikis, new Set())).toEqual([]);
   });
 

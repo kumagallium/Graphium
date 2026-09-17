@@ -576,8 +576,8 @@ export function parseAtomizerOutput(
       // - 配列でなければ undefined。
       // - relationType が fixed vocabulary に無いエントリは捨てる。
       // - atomId / citation が空のエントリは捨てる（hallucination 防御）。
-      // - 同じバッチ内 / 既存 Atom への参照解決はこの段では行わない。呼び出し側（書き戻し時に
-      //   タイトル → ID 解決 or 後段の cross-update）で行う。
+      // - 同じバッチ内 / 既存 Atom への参照解決はこの段では行わない。呼び出し側（書き戻し時の
+      //   タイトル → ID 解決）で行う。
       const rawRelations = Array.isArray(a.relatedAtoms) ? a.relatedAtoms : [];
       const sanitizedRelations: AtomRelation[] = [];
       for (const r of rawRelations) {

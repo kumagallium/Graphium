@@ -60,7 +60,7 @@ flowchart TB
     end
 
     subgraph SRV["Optional Node server (src/server/)"]
-        WI["wiki-ingester / atomizer /<br/>cross-updater / linter"]
+        WI["wiki-ingester / atomizer /<br/>linter"]
         EMB["embedding service"]
         LLM["llm proxy (Anthropic / OpenAI / local)"]
     end
@@ -709,14 +709,18 @@ TypeScript types use the historical `Wiki*` prefix (`WikiKind`,
 Ideas" instead.
 
 The pipeline (running on the Node server, plus one client-side step) has
-six stages:
+five stages. A sixth stage, the **Cross-updater**, proposed section-level
+append/revise updates to existing Claim pages after another note was
+ingested; it was removed 2026-09-17 because it silently dropped
+proposals below confidence 0.7 and carried unexplained caps (30
+candidates, 200-char previews). Page-to-page knowledge updates now go
+through Topic rebuilding (the Topic assignment stage below) instead.
 
 | Stage | File | What it does |
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch; also proposes *Topic* name(s) per Claim after being shown an index of existing topics (title + one-line definition), the same "index + judgment" approach it already uses for merge-vs-create decisions on other Wiki pages |
 | **Topic assignment** | `src/features/wiki/wiki-service.ts` (client) | Resolves each Claim's proposed topic names against existing Topic pages (title match → embedding similarity > 0.9 → create new) and rewrites the affected Topic bodies |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
-| **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, proposes section-level append/revise updates to dependent pages. Targets are Claim pages only — Topics and Insights are regenerated as a pure function of their member Claims (append-in-place would fight that), and Summaries are no longer generated |
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims and Topics (including near-duplicate Topic titles), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim |
 | **Topic writer** | `src/server/services/wiki-topic-writer.ts` | Composes a Topic page's body from its current member Claims only (pure function — the previous body is never fed back in). Cites member Claims by id (`[[claim:<id>]]`, resolved to the Claim's current title before rendering) rather than by title, and the caller always appends a References section listing every member Claim. The same file also holds the **Topic Consolidator** — a separate LLM call (`POST /api/wiki/consolidate-topics`) used only by "Organize topics" (Settings → Maintenance) and by the Linter's redundant-Topic check, never by ingest itself — that maps a set of topic names to canonical titles (no count caps) |
 
@@ -729,7 +733,6 @@ sequenceDiagram
     participant S as Server (Hono)
     participant I as Ingester
     participant A as Atomizer
-    participant X as Cross-updater
     participant L as Linter
     participant TW as Topic writer
     participant FS as Wiki files (JSON)
@@ -741,9 +744,7 @@ sequenceDiagram
     I->>FS: read existing wiki pages
     I->>A: hand off changed sections
     A->>FS: write Insight / Claim pages
-    A->>X: notify changed pages
-    X->>FS: propagate to dependents
-    X->>L: schedule lint
+    A->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
     S-->>W: ingest result (Claims + proposed topic names)
     opt Claims came back with proposed topics
@@ -800,9 +801,10 @@ Notes:
   (`POST /api/wiki/consolidate-topics`); ingest-time Topic naming
   (`POST /api/wiki/name-topics`) and body composition
   (`POST /api/wiki/compose-topic`) keep using the default model.
-- **Note mode vs document mode.** For a short personal note the ingester emits
-  0-3 Claims, each tagged with proposed Topics (the "1 note ≈ 1 idea"
-  assumption). When the source is an **imported external document** — its
+- **Note mode vs document mode.** For a short personal note the ingester
+  harvests every distinct transferable insight the note carries as its own
+  Claim, with no fixed cap — each tagged with proposed Topics. When the
+  source is an **imported external document** — its
   `noteId` carries a `pdf:` / `document:` / `url:` / `chat:` prefix (the
   external-source convention) — the ingester switches to *document mode*: it
   harvests every distinct transferable insight the document argues as its own
@@ -898,15 +900,24 @@ Notes:
   the `⌘K` Composer's "Shared" section (`composer/search.ts →
   searchShared`), gated the same way (desktop + shared root + the
   setting).
-- **Auto-merge of redundant Claims.** When the linter / startup-merge
-  flow detects two Claims that overlap, one is rewritten into the
-  other and the absorbed Claim is **archived, not deleted**. Its file
-  stays on disk and its index entry gains an `archivedAt` flag, so any
-  note that cited it (or any Idea whose `derivedFromNotes` lists
-  it) keeps resolving through `loadDoc`. The archived page is hidden
-  from lists / search and is editable only after restore. See
+- **No unattended merge or auto-link.** The post-ingest and startup
+  checks run **Quick (local only)** — no LLM call — and never merge or
+  link pages on their own; they only archive mechanically empty pages
+  (reversible) and surface the rest (contradiction, suspected
+  orphan/duplicate) as an Upkeep badge. A **Full (AI analysis)** check
+  runs only when a person starts it from the Upkeep screen, and its
+  Redundant/Stale results offer **Open** and **Archive** — Claims are
+  not merged by the linter anymore (Topics keep their explicit
+  **Merge** action). Archiving keeps the file on disk with an
+  `archivedAt` flag, so any note that cited it (or any Idea whose
+  `derivedFromNotes` lists it) keeps resolving through `loadDoc`; the
+  archived page is hidden from lists / search and is editable only
+  after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
-  for the tri-state semantics.
+  for the tri-state semantics. Existing data may still contain
+  Claims archived, and `wiki_dedup_merge` / orphan `cross-update`
+  entries written, by the retired automatic flow; those are legacy
+  records that new code no longer produces.
 - **Insights are structural abstractions, not tidied Claims.** A Claim is a
   domain finding; the Insight (Atom) is the *transferable structure* behind it,
   produced by the atomizer (`buildAtomizerSystemPrompt`) in four steps:
@@ -1111,6 +1122,21 @@ claims, so there is no single source text to hold it against.
   wrongly read as "not in source") resolves straight to
   `missingReason: "ai-answer"`; a claim with an empty `derivedFromNotes`
   or a topic with no citing block resolves to `"not-recorded"`.
+- **New-format topics (`wikiMeta.topicMarkdown` present, §3.1b of
+  DATA_MODEL.md) are checked in one hop instead of two.**
+  `extractSourceTopicStatements` (same file) reads `topicMarkdown`
+  directly rather than the built blocks — a `[[source:<id>]]` token
+  loses its brackets once it passes through `pushCitation` during block
+  conversion, the same reason rule (d) above needs the raw text — and
+  turns each non-heading line that carries at least one `[[source:<id>]]`
+  citation into a statement, with the citation stripped and its ids used
+  as-is. `buildSourceCheckStatements`
+  (`src/features/source-check/build-statements.ts`) picks this extractor
+  over `extractTopicStatements` whenever `topicMarkdown` is set, and,
+  critically, does **not** wrap the resulting ids with `toClaimSourceId`
+  — a new-format topic's citations already name a resource id (the same
+  id space as `derivedFromNotes`), so `resolveSourceText` resolves them
+  directly instead of through the synthetic `claim:` indirection.
 - **Retrieving the original text depends on the source kind**
   (`resolveSourceText`, `src/features/source-check/resolve-source-text.ts`):
   a plain-note id re-reads the note's current body, split into per-block
@@ -1177,7 +1203,7 @@ claims, so there is no single source text to hold it against.
   `runSourceCheck` treats a degrade as a reason to stop the whole run
   rather than write a wrong verdict.
 - **Body-rewriting stages drop stale results.** `mergeIntoWikiDocument`,
-  `rewriteAndMerge`, `applyCrossUpdate`, and `rebuildTopicDocument`
+  `rewriteAndMerge`, and `rebuildTopicDocument`
   (§3.3 above, `src/features/wiki/wiki-service.ts`) all replace
   `pages[0].blocks`, so each clears any existing `sourceCheck` rather than
   let a judgment outlive the text it was checked against — which also
@@ -1279,7 +1305,7 @@ modalQualifier}` and the on-disk version is now
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
 metrics). Each roadmap phase declares which metrics it must improve;
 `pnpm bench:compare main` is required on every PR that touches the
-ingester / atomizer / cross-updater / linter. See the README's "Knowledge
+ingester / atomizer / linter. See the README's "Knowledge
 Layer benchmark" section and `docs/internal/benchmark.md` for the metric
 definitions, corpus rationale, and merge rules.
 

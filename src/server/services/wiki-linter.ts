@@ -363,14 +363,16 @@ export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
     // Orphan チェック（topic）: メンバー知見が 0 件の話題ページ。
     // 知見の削除で 0 件になった話題はそのまま残す設計（本文は書き直さない）ので、
     // ここで検出して点検結果に出す。LLM 不要でローカルに判定できる。
-    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0) {
+    // 新形式トピック（topicMarkdown あり）は derivedFromClaims を使わず derivedFromNotes
+    // （資料 id）にメンバーを持つため、両方が空のときだけ空トピックとみなす。
+    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0 && w.derivedFromNotes.length === 0) {
       issues.push({
         type: "orphan",
         severity: "warning",
         title: `"${w.title}" is a topic with no member claims`,
-        description: `This topic page has no Claims linked to it (derivedFromClaims is empty), likely because all member Claims were deleted.`,
+        description: `This topic page has no Claims or sources linked to it (derivedFromClaims and derivedFromNotes are both empty), likely because all member Claims/sources were deleted.`,
         affectedWikiIds: [w.id],
-        suggestion: `Delete this topic page, or link existing Claims to it.`,
+        suggestion: `Delete this topic page, or link existing Claims/sources to it.`,
       });
     }
   }
@@ -447,11 +449,16 @@ export function detectAutoArchivable(
 ): AutoArchiveCandidate[] {
   const candidates: AutoArchiveCandidate[] = [];
   for (const w of wikis) {
-    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0) {
+    // 新形式トピック（derivedFromNotes に資料 id を持つ）を誤って空判定しないよう、
+    // derivedFromClaims と derivedFromNotes の両方が空のときだけ「空トピック」とみなす。
+    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0 && w.derivedFromNotes.length === 0) {
       candidates.push({ id: w.id, title: w.title, kind: "topic", reason: "empty-topic" });
       continue;
     }
-    if (w.kind === "claim") {
+    // 有効なノートが 1 件も渡されないときは「全部消えた」と「まだ索引が読めていない」を
+    // 区別できない（起動直後に noteIndex が null のまま呼ぶと全知見を誤って片付けた、
+    // 2026-09-17 に確認）。片付けない側に倒す。
+    if (w.kind === "claim" && validNoteIds.size > 0) {
       // 出どころが「ノートだけ」で、そのノートが 1 つも残っていないときだけ片付ける。
       //
       // derivedFromNotes にはノート id 以外も入る（pdf: / url: / document: / chat: /

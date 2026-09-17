@@ -36,7 +36,9 @@ export function listTopics(
       topicId: entry.noteId,
       title: entry.title,
       oneLiner: extractOneLiner(doc),
-      memberCount: doc.wikiMeta?.derivedFromClaims?.length ?? 0,
+      // 新形式トピック（derivedFromClaims 未使用）は derivedFromNotes（資料 id）に
+      // フォールバックし、0 件と誤表示しないようにする。
+      memberCount: doc.wikiMeta?.derivedFromClaims?.length || (doc.wikiMeta?.derivedFromNotes?.length ?? 0),
     });
     if (items.length >= limit) break;
   }
@@ -84,18 +86,32 @@ export function getTopicDetail(idOrTitle: string, root = resolveGraphiumRoot()):
   const entryById = new Map(entries.map((e) => [e.noteId, e]));
   const claimIds = doc.wikiMeta?.derivedFromClaims ?? [];
 
-  const members: TopicMemberClaim[] = claimIds.map((claimId) => {
-    const claimEntry = entryById.get(claimId);
-    const sourceNoteIds = claimEntry?.derivedFromNotes ?? [];
-    return {
-      claimId,
-      title: claimEntry?.title ?? claimId,
-      sourceNotes: sourceNoteIds.map((noteId) => ({
-        noteId,
-        title: entryById.get(noteId)?.title ?? "",
-      })),
-    };
-  });
+  // 新形式トピック（derivedFromClaims が空、derivedFromNotes に資料 id を持つ）では
+  // 「メンバー知見」という間接層が無く、資料を直接引用する。members を空で返すと
+  // 「出どころが無い」と誤読されるため、資料そのものを擬似メンバーとして 1 段で返す
+  // （sourceNotes はノート id のときだけ自分自身を指す。pdf:/url: 等は空のまま）。
+  const members: TopicMemberClaim[] =
+    claimIds.length > 0
+      ? claimIds.map((claimId) => {
+          const claimEntry = entryById.get(claimId);
+          const sourceNoteIds = claimEntry?.derivedFromNotes ?? [];
+          return {
+            claimId,
+            title: claimEntry?.title ?? claimId,
+            sourceNotes: sourceNoteIds.map((noteId) => ({
+              noteId,
+              title: entryById.get(noteId)?.title ?? "",
+            })),
+          };
+        })
+      : (doc.wikiMeta?.derivedFromNotes ?? []).map((sourceId) => {
+          const sourceEntry = entryById.get(sourceId);
+          return {
+            claimId: sourceId,
+            title: sourceEntry?.title ?? sourceId,
+            sourceNotes: sourceEntry ? [{ noteId: sourceId, title: sourceEntry.title }] : [],
+          };
+        });
 
   return {
     topicId: entry.noteId,

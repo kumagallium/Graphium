@@ -411,9 +411,11 @@ export function WikiListView({
         hypothesisStatus: wikiMetas.get(f.id)!.hypothesisStatus,
         // topic の「生成元」列はメンバー知見数（derivedFromClaims）を出す —
         // 他 kind の「派生元ノート数」とは意味が違うが、同じ列を流用する（新規列を増やさない）。
+        // 新形式トピック（derivedFromClaims が未設定/空で derivedFromNotes に資料 id を持つ）は
+        // 0 件と誤表示しないよう、derivedFromClaims が空なら資料数にフォールバックする。
         sources:
           wikiKind === "topic"
-            ? (wikiMetas.get(f.id)!.derivedFromClaims?.length ?? 0)
+            ? ((wikiMetas.get(f.id)!.derivedFromClaims?.length ?? 0) || (sourcesCountById.get(f.id) ?? 0))
             : (sourcesCountById.get(f.id) ?? 0),
         incoming: incomingRefCount.get(f.id) ?? 0,
         outgoing: outgoingRefCountById.get(f.id) ?? 0,

@@ -94,4 +94,27 @@ describe("buildSourceCheckStatements", () => {
     target.doc.wikiMeta!.kind = "summary";
     expect(buildSourceCheckStatements([target])).toEqual([]);
   });
+
+  it("新形式トピック（topicMarkdown あり）は資料 id をそのまま sourceIds にする（1 段照合）", () => {
+    const doc: GraphiumDocument = {
+      version: 2,
+      title: "新形式トピック",
+      pages: [{ id: "p1", title: "Main", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+      wikiMeta: {
+        kind: "topic",
+        derivedFromNotes: ["note-a"],
+        derivedFromChats: [],
+        derivedFromClaims: [],
+        topicMarkdown: "## 要点\nXRD パターンが取得された。[[source:note-a]]",
+        generatedAt: "2026-09-01T00:00:00Z",
+        generatedBy: { model: "m", version: "1.0.0" },
+      },
+      createdAt: "2026-09-01T00:00:00Z",
+      modifiedAt: "2026-09-01T00:00:00Z",
+    } as GraphiumDocument;
+    const out = buildSourceCheckStatements([{ docId: "topic-1", doc }]);
+    expect(out).toHaveLength(1);
+    expect(out[0].sourceIds).toEqual(["note-a"]);
+    expect(out[0].statement).toBe("XRD パターンが取得された。");
+  });
 });

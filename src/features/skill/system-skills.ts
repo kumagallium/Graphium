@@ -23,7 +23,7 @@ export type SystemSkillDefinition = {
   prompt: string;
 };
 
-const VOICE_JA_PROMPT = `Graphium がノートを生成するときの文体ガイドです。Concept・Synthesis・AI チャット・リライト・横断更新のすべてに適用されます。
+const VOICE_JA_PROMPT = `Graphium がノートを生成するときの文体ガイドです。Concept・Synthesis・AI チャット・リライトのすべてに適用されます。
 
 ## Voice（読み手モデル）
 
@@ -64,7 +64,7 @@ const VOICE_JA_PROMPT = `Graphium がノートを生成するときの文体ガ�
 - AI チャットや個人ノートでは**「私（ユーザー）」を主語**に立ててよい（「私はこう考えました」「自分はこの形を選びました」）
 `;
 
-const VOICE_EN_PROMPT = `Style guideline for Graphium-generated notes (Concept, Synthesis, chat, rewrite, cross-update).
+const VOICE_EN_PROMPT = `Style guideline for Graphium-generated notes (Concept, Synthesis, chat, rewrite).
 
 ## Voice
 

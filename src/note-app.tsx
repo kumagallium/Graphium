@@ -59,7 +59,7 @@ import {
   setIndexTableCallbacks,
   setRegisterIndexTableCallback,
 } from "./features/index-table";
-import { SidePeek } from "./features/index-table/side-peek";
+import { SidePeek, type PeekWikiContextArgs } from "./features/index-table/side-peek";
 import {
   logTableSlashItem,
   setRegisterLogTableCallback,
@@ -276,7 +276,7 @@ import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, getActiveNotes, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
-import type { WikiSnapshot, LintIssue } from "./server/services/wiki-linter";
+import type { WikiSnapshot } from "./server/services/wiki-linter";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
@@ -295,8 +295,7 @@ import {
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
-  // 横断更新
-  fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail, extractBodyPreview,
+  extractBodyPreview,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
   // 機械的な自動アーカイブ（LLM 不要）
@@ -1236,6 +1235,11 @@ type NoteEditorProps = {
    * 置くことで縦の圧迫を抑える。空のときは呼び出し側が null を渡す。
    */
   contextDrawerSlot?: React.ReactNode;
+  /**
+   * このエディタのサイドピークで知見・洞察・トピックを開いたときの本文下の文脈欄。
+   * contextDrawerSlot と同じ部品・同じハンドラを NoteApp が組み立てて渡す。
+   */
+  renderPeekWikiContext?: (args: PeekWikiContextArgs) => React.ReactNode;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -1583,6 +1587,7 @@ function NoteEditorInner({
   onProposalRequestHandled,
   subHeaderSlot,
   contextDrawerSlot,
+  renderPeekWikiContext,
 }: NoteEditorProps) {
   const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
@@ -6514,6 +6519,7 @@ function NoteEditorInner({
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             getCachedDoc={getCachedDoc}
             onSaved={handlePeekSaved}
+            renderWikiContext={renderPeekWikiContext}
             applyMentionRenameRef={peekMentionRenameRef}
             onClose={() => setSidePeekNoteId(null)}
             onNavigate={(noteId, savedDoc) => {
@@ -6553,6 +6559,7 @@ function NoteEditorInner({
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             getCachedDoc={getCachedDoc}
             onSaved={handlePeekSaved}
+            renderWikiContext={renderPeekWikiContext}
             applyMentionRenameRef={peekMentionRenameRef}
             onClose={() => setSidePeekNoteId(null)}
             mediaIndex={mediaIndex ?? null}
@@ -7308,7 +7315,7 @@ export function NoteApp() {
   // 話題（topic）の段の直列化キューと、直前の実行が作った話題の控え（runTopicStageForNoteApp 参照）
   const topicStageQueueRef = useRef<Promise<void>>(Promise.resolve());
   const knownTopicRefsRef = useRef<Map<string, string>>(new Map());
-  // 取り込みパイプライン（ingest → cross-update → atomize → lint）の中断ハンドル。
+  // 取り込みパイプライン（ingest → atomize → lint）の中断ハンドル。
   // キュー処理の開始時に 1 本作り、各 LLM 呼び出しの fetch に signal として渡す。
   // トーストの「停止」で abort() + キューを空にする。fetch が切れるとサーバー側の
   // c.req.raw.signal も発火して LLM 呼び出しごと止まる（wiki.ts が配線済み）。
@@ -8910,14 +8917,22 @@ export function NoteApp() {
   // network-graph/external-source.ts のプレフィックス一覧に無い、出典照合専用の合成 ID のため）。
   // ノートは blockId が分かっても該当ブロックへスクロールする仕組みが既存に無いため、
   // ノートを開くところまでで止める（未実装。理由は最終報告を参照）。
+  // openNote を渡すと、ノート・知見はその開き方で開く（サイドピーク内の文脈欄から
+  // 開くとき、同じピークの中で開き直すため）。素材・URL・メモの開き先は変わらない。
   const handleOpenSourceCheckSource = useCallback(
-    (sourceId: string, _blockId?: string) => {
-      const claimId = parseClaimSourceId(sourceId);
-      if (claimId !== null) {
+    (sourceId: string, _blockId?: string, openNote?: (noteId: string) => void) => {
+      const openTarget = (target: string) => {
+        if (openNote) {
+          openNote(target);
+          return;
+        }
         const openSidePeek = openSidePeekRef.current;
-        const target = `wiki:${claimId}`;
         if (openSidePeek) openSidePeek(target);
         else navigateToNote(target);
+      };
+      const claimId = parseClaimSourceId(sourceId);
+      if (claimId !== null) {
+        openTarget(`wiki:${claimId}`);
         return;
       }
       const ext = parseExternalSource(sourceId);
@@ -8948,12 +8963,46 @@ export function NoteApp() {
       // 通常ノート。ただし Wiki ページ ID（derivedFromNotes に生 ID で入りうる）は
       // "wiki:" を付けないと通常ノートとして誤って開いてしまう
       // （WikiBanner.tsx の resolveDerivedEntries / resolveRelatedAtomEntries と同じ区別）。
-      const target = fm.wikiMetas.has(sourceId) ? `wiki:${sourceId}` : sourceId;
-      const openSidePeek = openSidePeekRef.current;
-      if (openSidePeek) openSidePeek(target);
-      else navigateToNote(target);
+      openTarget(fm.wikiMetas.has(sourceId) ? `wiki:${sourceId}` : sourceId);
     },
     [fm.mediaIndex, fm.wikiMetas, handleOpenMemoSource, navigateToNote, dropPeekFromUrl],
+  );
+
+  // サイドピークで開いた知見・洞察・トピックの本文下に出す文脈欄。フル画面の
+  // contextDrawerSlot と同じ部品・同じハンドラ（照合の実行・確認・消去、出典を開く）を使う。
+  // 違いは「リンク先をどこで開くか」だけで、ピークの中で開き直す（openNote）。
+  // 照合・消去の保存は fm.handleSaveWikiFile が doc キャッシュと wikiMetas を更新し、
+  // ピークはキャッシュ側の wikiMeta を読むので、開いたまま結果が反映される。
+  const renderPeekWikiContext = ({ wikiId, wikiMeta, sourceCheckStale, openNote }: PeekWikiContextArgs) => (
+    <WikiContextDrawer
+      wikiMeta={wikiMeta}
+      noteIndex={fm.noteIndex}
+      mediaIndex={fm.mediaIndex}
+      archived={fm.archivedIdSet.has(wikiId)}
+      onNavigateNote={openNote}
+      onOpenMemo={handleOpenMemoSource}
+      onClearWorldValidity={
+        featureFlags.worldGrounding ? () => void handleClearWorldValidity(wikiId) : undefined
+      }
+      wikiId={wikiId}
+      allWikiMetas={fm.wikiMetas}
+      worldGroundingEnabled={featureFlags.worldGrounding ?? true}
+      onRunSourceCheck={aiUiEnabled ? () => void sourceCheck.runOne(wikiId) : undefined}
+      onDismissSourceCheck={() => void sourceCheck.dismiss(wikiId)}
+      onClearSourceCheck={() => void sourceCheck.clear(wikiId)}
+      onOpenSourceCheckSource={(sourceId, blockId) => handleOpenSourceCheckSource(sourceId, blockId, openNote)}
+      sourceCheckSourceTitles={
+        wikiMeta.sourceCheck
+          ? resolveSourceCheckTitles(wikiMeta.sourceCheck.entries, {
+              noteIndex: fm.noteIndex,
+              mediaIndex: fm.mediaIndex,
+              wikiMetas: fm.wikiMetas,
+            })
+          : undefined
+      }
+      sourceCheckStale={sourceCheckStale}
+      sourceCheckRunning={sourceCheck.runningDocId === wikiId || sourceCheck.batchRunning}
+    />
   );
 
   // 話題（topic）の段（runTopicStage）を note-app のファイル操作・ログに配線する共通ラッパー。
@@ -9155,81 +9204,6 @@ export function NoteApp() {
               model: result.model ?? undefined,
             });
           }
-        }
-
-        // 横断更新: 既存 Concept ページの自動更新
-        if (existingWikis.length > 0 && job.doc) {
-          (async () => {
-            try {
-              // ② Cross-Update に渡す既存 Wiki は本文込みで重いので、関連度上位 K 件に絞る。
-              // 母集団が大きいと context length に当たって silent fail するリスクがある。
-              // 上限は 30 件で固定。embedding が両方そろっていれば cosine、それ以外は
-              // タイトル + section preview の token Jaccard でフォールバック。
-              const CROSS_UPDATE_CAP = 30;
-              const allExistingDetails = existingWikis
-                .filter((w) => w.kind === "claim" && !createdWikiIds.includes(w.id))
-                .map((w) => {
-                  const doc = fm.getCachedDoc(`wiki:${w.id}`);
-                  return doc ? extractWikiDetail(w.id, doc) : null;
-                })
-                .filter((d): d is NonNullable<typeof d> => d !== null);
-
-              if (allExistingDetails.length > 0) {
-                // children も再帰する共通ヘルパーで抽出（トップレベルの content
-                // だけ見ると、本文が step・カラムの中にあるノートが空扱いになる）
-                const noteContent = blocksToPlainText(job.doc);
-
-                // クエリ embedding は、直前に作った Wiki の代表ベクトルを使う
-                // （embed が非同期で間に合っていない可能性あり → null フォールバック）
-                const queryEmbedding = createdWikiIds.length > 0
-                  ? await getDocEmbedding(createdWikiIds[0]).catch(() => null)
-                  : null;
-                const queryText = `${job.noteTitle}\n${noteContent.slice(0, 1000)}`;
-
-                const candidateFeatures = await Promise.all(
-                  allExistingDetails.map(async (d) => ({
-                    detail: d,
-                    embedding: await getDocEmbedding(d.id).catch(() => null),
-                    similarityText: `${d.title}\n${d.sectionPreviews.join("\n")}`,
-                  })),
-                );
-                const ranked = rankCandidatesByRelevance(
-                  { embedding: queryEmbedding, similarityText: queryText },
-                  candidateFeatures,
-                  CROSS_UPDATE_CAP,
-                );
-                const existingDetails = ranked.map((f) => f.detail);
-
-                const crossResult = await fetchCrossUpdateProposals({
-                  newNoteTitle: job.noteTitle,
-                  newNoteContent: noteContent,
-                  newWikiTitles: createdWikiTitles,
-                  existingWikis: existingDetails,
-                  language: getLocale(),
-                  ...(ingestSkills.length > 0 ? { skills: ingestSkills } : {}),
-                });
-
-                for (const proposal of crossResult.proposals) {
-                  const targetDoc = fm.getCachedDoc(`wiki:${proposal.targetWikiId}`);
-                  if (!targetDoc) continue;
-                  const updatedDoc = await applyCrossUpdate(targetDoc, proposal, job.noteId, result.model, buildNoteIndex(fm.noteIndex), ingestSkills, getLocale());
-                  await fm.handleSaveWikiFile(proposal.targetWikiId, updatedDoc, {
-                    activityType: "wiki_cross_update",
-                    agentLabel: result.model ?? undefined,
-                    sources: [job.noteId],
-                  });
-                  embedWikiSections(proposal.targetWikiId, updatedDoc).catch(() => {});
-                  wikiLog.append(
-                    "cross-update",
-                    [proposal.targetWikiId],
-                    `Updated "${proposal.targetWikiTitle}" (${proposal.updateType}): ${proposal.reason}`,
-                  ).catch(() => {});
-                }
-              }
-            } catch (err) {
-              console.error("Cross-update failed:", err);
-            }
-          })();
         }
 
         setIngestToast((prev) => ({
@@ -9464,7 +9438,8 @@ export function NoteApp() {
     // 砂時計のくびれ（synthesize）は人間に戻し、Cmd-K Composer 経由で再構築する想定。
     // 既存 synthesis ファイルの物理データは保持される。
 
-    // 自動 Lint: ローカル検出 + LLM 分析（5ページ以上で LLM 実行）
+    // 自動 Lint: 機械判定のみのクイック点検（AI 解析は手入れ画面で人が起動したときだけ走る。
+    // 2026-09-17 決定: 冗長の自動統合・孤立の自動リンクは撤去し、人の判断に戻した）
     try {
       let snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
       // 機械的な自動アーカイブ（LLM 不要）を lint 本体より先に実行する
@@ -9478,207 +9453,29 @@ export function NoteApp() {
         updateStage("lint", "skipped", tStatic("ingest.needTwoWikis", { count: String(snapshots.length) }));
       } else {
         updateStage("lint", "running", tStatic("ingest.analyzingWikis", { count: String(snapshots.length) }));
-        // LLM Lint: 5ページ以上で矛盾・ギャップを LLM で分析
-        const useLlm = snapshots.length >= 5;
-        const report = await lintWikis(snapshots, getLocale(), !useLlm, signal);
+        // localOnly=true: 機械判定（矛盾・構造的な孤立/重複の疑い）のみ。AI 分析はしない。
+        const report = await lintWikis(snapshots, getLocale(), true, signal);
         const issues = report.issues;
-        // 印（サイドバーの点検バッジ）は自動手当ての後に確定させる。ここで数えると
-        // 下の orphan 自動リンク・redundant 自動マージで直った分まで「手当てが要る」に
-        // 数えてしまい、開いても何も残っていないのにバッジが点く
-        const autoFixed = new Set<LintIssue>();
 
-        if (issues.length > 0) {
-          // contradiction はトーストで通知（人間が判断、自動修正不可）
-          const contradictions = issues.filter((i) => i.type === "contradiction");
-          if (contradictions.length > 0) {
-            setIngestToast((prev) => ({
-              items: [
-                ...(prev?.items ?? []),
-                ...contradictions.map((c) => ({
-                  id: `lint:${crypto.randomUUID()}`,
-                  status: "error" as const,
-                  noteTitle: `⚠ ${c.title}`,
-                  result: c.suggestion,
-                })),
-              ],
-            }));
-          }
-
-          // orphan: cross-update で接続先を探して自動リンク
-          const orphans = issues.filter((i) => i.type === "orphan");
-          for (const orphan of orphans) {
-            for (const wikiId of orphan.affectedWikiIds) {
-              try {
-                const doc = fm.getCachedDoc(`wiki:${wikiId}`);
-                if (!doc) continue;
-                const detail = extractWikiDetail(wikiId, doc);
-                if (!detail) continue;
-                const allOtherConcepts = snapshots
-                  .filter((s) => s.kind === "claim" && s.id !== wikiId)
-                  .map((s) => {
-                    const d = fm.getCachedDoc(`wiki:${s.id}`);
-                    return d ? extractWikiDetail(s.id, d) : null;
-                  })
-                  .filter((d): d is NonNullable<typeof d> => d !== null);
-                if (allOtherConcepts.length === 0) continue;
-                // ② と同じく cross-update 入力は本文込みで重いので関連度上位 30 件に絞る
-                const ORPHAN_CROSS_UPDATE_CAP = 30;
-                const orphanQueryEmbedding = await getDocEmbedding(wikiId).catch(() => null);
-                const orphanQueryText = `${doc.title}\n${detail.sectionPreviews.join("\n")}`;
-                const orphanCandidateFeatures = await Promise.all(
-                  allOtherConcepts.map(async (d) => ({
-                    detail: d,
-                    embedding: await getDocEmbedding(d.id).catch(() => null),
-                    similarityText: `${d.title}\n${d.sectionPreviews.join("\n")}`,
-                  })),
-                );
-                const otherConcepts = rankCandidatesByRelevance(
-                  { embedding: orphanQueryEmbedding, similarityText: orphanQueryText },
-                  orphanCandidateFeatures,
-                  ORPHAN_CROSS_UPDATE_CAP,
-                ).map((f) => f.detail);
-                const orphanSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
-                const crossResult = await fetchCrossUpdateProposals({
-                  newNoteTitle: doc.title,
-                  newNoteContent: detail.sectionPreviews.join("\n"),
-                  newWikiTitles: [doc.title],
-                  existingWikis: otherConcepts,
-                  language: getLocale(),
-                  ...(orphanSkills.length > 0 ? { skills: orphanSkills } : {}),
-                });
-                for (const proposal of crossResult.proposals) {
-                  const targetDoc = fm.getCachedDoc(`wiki:${proposal.targetWikiId}`);
-                  if (!targetDoc) continue;
-                  const updated = await applyCrossUpdate(targetDoc, proposal, wikiId, null, buildNoteIndex(fm.noteIndex), orphanSkills, getLocale());
-                  await fm.handleSaveWikiFile(proposal.targetWikiId, updated, {
-                    activityType: "wiki_cross_update",
-                    sources: [wikiId],
-                  });
-                  wikiLog.append("cross-update", [proposal.targetWikiId, wikiId],
-                    `Auto-fix orphan: linked "${doc.title}" → "${proposal.targetWikiTitle}"`).catch(() => {});
-                  autoFixed.add(orphan);
-                }
-              } catch { /* orphan 修正失敗は無視 */ }
-            }
-          }
-
-          // gap はトーストで通知（次回 Ingest の参考に）
-          const gaps = issues.filter((i) => i.type === "gap");
-          if (gaps.length > 0) {
-            setIngestToast((prev) => ({
-              items: [
-                ...(prev?.items ?? []),
-                ...gaps.map((g) => ({
-                  id: `lint:${crypto.randomUUID()}`,
-                  status: "success" as const,
-                  noteTitle: `💡 ${g.title}`,
-                  result: g.suggestion,
-                })),
-              ],
-            }));
-          }
-
-          // redundant: 重複 Concept を自動マージ（知識を統合、削除はしない）
-          const redundants = issues.filter((i) => i.type === "redundant");
-          for (const redundant of redundants) {
-            if (redundant.affectedWikiIds.length < 2) continue;
-            const [keepId, mergeId] = redundant.affectedWikiIds;
-            try {
-              const keepDoc = fm.getCachedDoc(`wiki:${keepId}`);
-              const mergeDoc = fm.getCachedDoc(`wiki:${mergeId}`);
-              if (!keepDoc || !mergeDoc) continue;
-
-              // mergeDoc のセクションを抽出して keepDoc に rewrite で統合
-              const mergeDetail = extractWikiDetail(mergeId, mergeDoc);
-              if (!mergeDetail) continue;
-
-              // mergeDoc の全セクション内容を IngesterOutput 形式に変換
-              const mergeSections = mergeDetail.sectionHeadings.map((h, i) => ({
-                heading: h,
-                content: mergeDetail.sectionPreviews[i] ?? "",
-              })).filter((s) => s.content);
-
-              if (mergeSections.length > 0) {
-                const mergeSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
-                const mergedResult = await rewriteAndMerge(
-                  keepDoc,
-                  {
-                    kind: "claim",
-                    title: keepDoc.title,
-                    sections: mergeSections,
-                    suggestedAction: "merge" as const,
-                    mergeTargetId: keepId,
-                    confidence: 0.9,
-                    relatedClaims: [],
-                    externalReferences: [],
-                  },
-                  mergeDoc.wikiMeta?.derivedFromNotes[0] ?? "",
-                  null,
-                  getLocale(),
-                  buildNoteIndex(fm.noteIndex),
-                  mergeSkills,
-                );
-
-                // 統合先に mergeDoc の derivedFromNotes も追加
-                if (mergedResult.wikiMeta) {
-                  mergedResult.wikiMeta.derivedFromNotes = [
-                    ...new Set([
-                      ...(mergedResult.wikiMeta.derivedFromNotes ?? []),
-                      ...(mergeDoc.wikiMeta?.derivedFromNotes ?? []),
-                    ]),
-                  ];
-                }
-
-                await fm.handleSaveWikiFile(keepId, mergedResult, {
-                  activityType: "wiki_dedup_merge",
-                  sources: [mergeId],
-                });
-                embedWikiSections(keepId, mergedResult).catch(() => {});
-
-                // 統合元をアーカイブ（参照保護のため物理削除しない）
-                // ファイル本体は残し、一覧・検索からのみ除外する。
-                // 引用や regenerate からは引き続き解決できるので、
-                // derivedFromNotes に旧 ID が残っていても壊れない。
-                await fm.handleArchiveWikiFile(mergeId);
-
-                wikiLog.append("merge", [keepId, mergeId],
-                  `Auto-merge redundant: "${mergeDoc.title}" → "${keepDoc.title}"`).catch(() => {});
-                autoFixed.add(redundant);
-
-                setIngestToast((prev) => ({
-                  items: [
-                    ...(prev?.items ?? []),
-                    {
-                      id: `merge:${crypto.randomUUID()}`,
-                      status: "success" as const,
-                      noteTitle: `\ud83d\udd04 Merged "${mergeDoc.title}" into "${keepDoc.title}"`,
-                      result: redundant.suggestion,
-                    },
-                  ],
-                }));
-              }
-            } catch {
-              // マージ失敗は無視（トースト通知はそのまま残る）
-            }
-          }
-
-          // stale はログに記録
-          const stale = issues.filter((i) => i.type === "stale");
-          if (stale.length > 0) {
-            wikiLog.append("lint", stale.flatMap((i) => i.affectedWikiIds),
-              `Stale pages: ${stale.map((i) => `"${i.title}"`).join(", ")}`).catch(() => {});
-          }
-
-          // 全体のログ
-          if (useLlm) {
-            wikiLog.append("lint", [], `LLM health check: ${issues.length} issue(s) found`).catch(() => {});
-          }
+        // contradiction はトーストで通知（人間が判断、自動修正不可）
+        const contradictions = issues.filter((i) => i.type === "contradiction");
+        if (contradictions.length > 0) {
+          setIngestToast((prev) => ({
+            items: [
+              ...(prev?.items ?? []),
+              ...contradictions.map((c) => ({
+                id: `lint:${crypto.randomUUID()}`,
+                status: "error" as const,
+                noteTitle: `⚠ ${c.title}`,
+                result: c.suggestion,
+              })),
+            ],
+          }));
         }
-        // 自動で直った分を除いた「人の判断が要る残り」で印を確定する
-        applyLintBadgeFromReport({
-          ...report,
-          issues: issues.filter((i) => !autoFixed.has(i)),
-        });
+
+        // orphan / redundant / stale はここでは自動手当てせず、印（バッジ）だけ立てて
+        // 手入れ画面（フル点検）での人の判断に委ねる。
+        applyLintBadgeFromReport(report);
         updateStage(
           "lint",
           "done",
@@ -9966,6 +9763,13 @@ export function NoteApp() {
   useEffect(() => {
     if (startupLintDoneRef.current) return;
     if (fm.wikiFiles.length < 2) return;
+    // ファイル一覧は wikiMetas（と本文キャッシュ）より先に届く。メタが揃う前に実行済みの印を
+    // 立てるとスナップショットが 0 件のまま抜けて、起動時の点検が一度も走らなくなる
+    // （2026-09-17 に確認）。use-file-manager はキャッシュを積んでから setWikiMetas するので、
+    // メタが揃っていれば本文も揃っている — 空トピックの誤アーカイブも起きない。
+    if (fm.wikiMetas.size < 2) return;
+    // ノート索引も待つ。null のまま自動アーカイブへ進むと、有効なノートが 0 件に見える。
+    if (!fm.noteIndex) return;
 
     startupLintDoneRef.current = true;
 
@@ -9987,117 +9791,34 @@ export function NoteApp() {
         );
         if (snapshots.length < 2) return;
 
-        // LLM Lint は 5 ページ以上かつ前回から 24h 以上のときのみ
-        const useLlm = snapshots.length >= 5;
-        const report = await lintWikis(snapshots, getLocale(), !useLlm);
+        // localOnly=true: 機械判定のみのクイック点検（AI 解析は手入れ画面で人が起動したときだけ）。
+        // 2026-09-17 決定: 冗長の自動統合・孤立の自動リンクは撤去し、人の判断に戻した。
+        const report = await lintWikis(snapshots, getLocale(), true);
         applyLintBadgeFromReport(report);
 
-        if (report.issues.length > 0) {
-          // contradiction / gap はトースト通知のみ
-          const notifyOnly = report.issues.filter((i) =>
-            i.type === "contradiction" || i.type === "gap",
-          );
-          if (notifyOnly.length > 0) {
-            const iconMap: Record<string, string> = {
-              contradiction: "\u26a0",
-              gap: "\ud83d\udca1",
-            };
-            setIngestToast((prev) => ({
-              items: [
-                ...(prev?.items ?? []),
-                ...notifyOnly.slice(0, 3).map((issue) => ({
-                  id: `auto-lint:${crypto.randomUUID()}`,
-                  status: (issue.type === "contradiction" ? "error" : "success") as "error" | "success",
-                  noteTitle: `${iconMap[issue.type] ?? "\u26a0"} ${issue.title}`,
-                  result: issue.suggestion,
-                })),
-              ],
-            }));
-          }
-
-          // redundant: 自動マージ
-          const redundants = report.issues.filter((i) => i.type === "redundant");
-          for (const redundant of redundants) {
-            if (redundant.affectedWikiIds.length < 2) continue;
-            const [keepId, mergeId] = redundant.affectedWikiIds;
-            try {
-              const keepDoc = fm.getCachedDoc(`wiki:${keepId}`);
-              const mergeDoc = fm.getCachedDoc(`wiki:${mergeId}`);
-              if (!keepDoc || !mergeDoc) continue;
-
-              const mergeDetail = extractWikiDetail(mergeId, mergeDoc);
-              if (!mergeDetail) continue;
-
-              const mergeSections = mergeDetail.sectionHeadings.map((h, i) => ({
-                heading: h,
-                content: mergeDetail.sectionPreviews[i] ?? "",
-              })).filter((s) => s.content);
-
-              if (mergeSections.length > 0) {
-                const mergeSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
-                const mergedResult = await rewriteAndMerge(
-                  keepDoc,
-                  {
-                    kind: "claim",
-                    title: keepDoc.title,
-                    sections: mergeSections,
-                    suggestedAction: "merge" as const,
-                    mergeTargetId: keepId,
-                    confidence: 0.9,
-                    relatedClaims: [],
-                    externalReferences: [],
-                  },
-                  mergeDoc.wikiMeta?.derivedFromNotes[0] ?? "",
-                  null,
-                  getLocale(),
-                  buildNoteIndex(fm.noteIndex),
-                  mergeSkills,
-                );
-
-                if (mergedResult.wikiMeta) {
-                  mergedResult.wikiMeta.derivedFromNotes = [
-                    ...new Set([
-                      ...(mergedResult.wikiMeta.derivedFromNotes ?? []),
-                      ...(mergeDoc.wikiMeta?.derivedFromNotes ?? []),
-                    ]),
-                  ];
-                }
-
-                await fm.handleSaveWikiFile(keepId, mergedResult, {
-                  activityType: "wiki_dedup_merge",
-                  sources: [mergeId],
-                });
-                embedWikiSections(keepId, mergedResult).catch(() => {});
-                // 統合元をアーカイブ（参照保護のため物理削除しない）
-                await fm.handleArchiveWikiFile(mergeId);
-
-                wikiLog.append("merge", [keepId, mergeId],
-                  `Startup auto-merge: "${mergeDoc.title}" → "${keepDoc.title}"`).catch(() => {});
-
-                setIngestToast((prev) => ({
-                  items: [
-                    ...(prev?.items ?? []),
-                    {
-                      id: `merge:${crypto.randomUUID()}`,
-                      status: "success" as const,
-                      noteTitle: `\ud83d\udd04 Merged "${mergeDoc.title}" into "${keepDoc.title}"`,
-                      result: redundant.suggestion,
-                    },
-                  ],
-                }));
-              }
-            } catch {
-              // マージ失敗は無視
-            }
-          }
+        // contradiction のみトースト通知（人間が判断、自動修正不可）。gap は LLM 分析でしか
+        // 出ないので、クイック点検の経路ではそもそも来ない。
+        const contradictions = report.issues.filter((i) => i.type === "contradiction");
+        if (contradictions.length > 0) {
+          setIngestToast((prev) => ({
+            items: [
+              ...(prev?.items ?? []),
+              ...contradictions.slice(0, 3).map((issue) => ({
+                id: `auto-lint:${crypto.randomUUID()}`,
+                status: "error" as const,
+                noteTitle: `\u26a0 ${issue.title}`,
+                result: issue.suggestion,
+              })),
+            ],
+          }));
         }
 
-        wikiLog.append("lint", [], `Startup auto-lint: ${report.issues.length} issue(s)`).catch(() => {});
+        wikiLog.append("lint", [], `Startup quick check: ${report.issues.length} issue(s)`).catch(() => {});
       } catch {
         // 起動時 Lint 失敗は静かに無視
       }
     })();
-  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex]);
 
   const t = useT();
 
@@ -11774,6 +11495,7 @@ export function NoteApp() {
                     cachedDoc={fm.getCachedDoc(noteId) ?? undefined}
                     getCachedDoc={fm.getCachedDoc}
                     onSaved={handleListPeekSaved}
+                    renderWikiContext={renderPeekWikiContext}
                     onClose={() => openAssetPeek(null)}
                     onNavigate={(navId, savedDoc) => {
                       // SidePeek 内のリンクから本格的に開く場合はアセット画面を含む
@@ -12306,6 +12028,7 @@ export function NoteApp() {
             initialDoc={fm.activeDoc}
             noteFolderLookup={noteFolderLookup}
             onEditMediaContexts={fm.editMediaContexts}
+            renderPeekWikiContext={renderPeekWikiContext}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
                 ? (() => {
@@ -12656,6 +12379,7 @@ export function NoteApp() {
               cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
               getCachedDoc={fm.getCachedDoc}
               onSaved={handleListPeekSaved}
+              renderWikiContext={renderPeekWikiContext}
               onOpenMaterialPeek={(entry) => {
                 // ピーク内の素材リンク（URL/@素材）→ 素材サイドピークへ切り替える
                 setListSidePeekNoteId(null);

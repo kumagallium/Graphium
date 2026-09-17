@@ -152,16 +152,14 @@ export function buildIngesterSystemPrompt(
   const ja = language === "ja";
 
   // 取り込んだ外部文書（PDF / Word / URL / チャット）は通常、複数の転用可能な知見を主張する。
-  // 短い個人ノート前提の「0-3 件」「ユーザー自身の経験」枠のままだと、文書を読み切ってリッチな
   // 旧 Summary が存在した頃は、文書を読み切ってリッチな Summary を作っても見出し級の
   // 1 件だけを Claim に昇格させ、残りを Summary に埋もれさせる過少抽出が起きていた
   // （ALCOA 資料で実観測）。Summary は撤退済み（PR3）だが、この過少抽出そのものは
   // Claim 単体でも起き得るため、文書モードでは以下のブロックで既定の抽出件数を上書きする。
   const isDocument = opts?.isDocument === true;
-  // メモ（capture）は「1 断片 ≈ 1 着想」の走り書き。通常ノート前提の保守的な
-  // 0-3 件ガイダンスのままだと、引用・エピソード型の短い断片が「主張ではない」
-  // として Claim 0 件に倒れやすい（実観測）。memo モードでは
-  // 「短さを理由に落とさず、含まれる着想 1 件の抽出を試みる」よう既定を上書きする。
+  // メモ（capture）は「1 断片 ≈ 1 着想」の走り書き。短い断片が「主張ではない」として
+  // Claim 0 件に倒れやすい（実観測）ため、memo モードでは
+  // 「短さを理由に落とさず、含まれる着想の抽出を試みる」よう既定を上書きする。
   const isMemo = opts?.isMemo === true && !isDocument;
 
   const documentHarvestBlock = isDocument
@@ -179,20 +177,29 @@ export function buildIngesterSystemPrompt(
 
 - **Try hard to extract that one spark as a Claim.** Brevity is the nature of a memo, not evidence of emptiness. Do not skip extraction just because the text is one or two sentences.
 - **Quotes, anecdotes and observations count.** When a memo records someone's words or a small episode, abstract the transferable insight it carries — ask "why did the user capture this?". From a veteran craftsman's quip about doing the same thing for sixty years, one can abstract a Claim like "一つの対象を追い続けた時間そのものが、その人の専門性とアイデンティティになる". Promote that abstraction as the Claim, citing the memo as the source.
-- **But never pad.** If the memo genuinely carries no transferable idea (a bare URL, a shopping reminder, a lone keyword), emit zero Claims.`
+- **No fixed upper limit, and no padding.** A memo usually carries exactly one spark, but if it genuinely holds several independent ideas, promote each as its own Claim rather than bundling them. If the memo genuinely carries no transferable idea (a bare URL, a shopping reminder, a lone keyword), emit zero Claims.`
     : "";
 
-  const claimCountHeading = isDocument
-    ? "harvest every distinct transferable insight — no fixed cap"
-    : isMemo
+  // 通常ノートも「持ち運べる主張はすべて、固定の上限なし・水増しなし」に揃える
+  // （FAQ が「上限はない」と約束しているため）。ユーザー自身の経験という枠組みは
+  // 通常ノートでは保つ（文書モードのように「文書自体が確立する命題」までは広げない）。
+  const normalHarvestBlock = !isDocument && !isMemo
+    ? `**Harvest every distinct transferable insight the note carries as its own Claim.** Walk the note from start to end and pull out each idea — grounded in the user's own experience (see the level guidance below) — that can stand on its own and transfer to another context.
+
+- **No fixed upper limit, and no padding.** A rich note commonly yields several Claims; a thin note may yield only one, or zero if it carries nothing transferable. Emit exactly as many as the note genuinely carries — never pad to reach a number, never bundle two ideas to save space.
+- **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" below).
+- The quality gate is unchanged: no restatement of the source, no textbook filler, each Claim is one transferable idea.`
+    : "";
+
+  const claimCountHeading = isMemo
     ? "usually exactly 1 — extract the memo's spark"
-    : "0-3 per note";
+    : "harvest every distinct transferable insight — no fixed cap";
 
   const claimCountGuideline = isDocument
     ? `one per distinct transferable insight the document carries (no fixed cap; a substantial document commonly yields 5-8). **Harvest, don't collapse** — see the document-mode block above. Still no padding or restatement; each Claim holds exactly one idea.`
     : isMemo
-    ? `usually exactly 1: the single transferable insight the memo captures. Extract it even from a short quote or observation (see the memo block above). 0 only when the memo genuinely carries nothing transferable; 2 at most when the fragment truly holds two independent ideas.`
-    : `0-3. **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" above).`;
+    ? `usually exactly 1: the single transferable insight the memo captures. Extract it even from a short quote or observation (see the memo block above). 0 only when the memo genuinely carries nothing transferable; more than one only when the fragment truly holds multiple independent ideas — this is not a cap.`
+    : `one per distinct transferable insight the note carries — no fixed cap (see the harvest block above). **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" above).`;
 
   const skillSection = skills && skills.length > 0
     ? `\n\n## Applied Style Skills (apply these to ALL output below)\n\nThe following style skills define the voice, register, and rhythm of every note you write. Treat them as overriding any default tone you would otherwise use. Re-read them before writing each Claim.\n\n${skills.map((s) => `### ${s.title}\n\n${s.prompt}`).join("\n\n")}`
@@ -462,7 +469,9 @@ ${isDocument ? `
 ${documentHarvestBlock}
 ` : isMemo ? `
 ${memoSparkBlock}
-` : ""}
+` : `
+${normalHarvestBlock}
+`}
 **One Claim = one idea.** This is the strongest rule. If a note carries two transferable claims, generate two Claims — never bundle them into a single longer page. Splitting beats one big page. A reader should be able to say what the Claim is in a single sentence after reading it.
 
 Claims are **transferable knowledge**, written so they make sense to a researcher who has never seen this lab. They MUST be PII-free and abstracted:
@@ -485,7 +494,7 @@ When in doubt, split.
 
 - **\`finding\`** (default, where most Claims live): a transferable proposition that emerged from the user's own experience. Specific enough to be **the user's** knowledge, abstract enough to combine with other findings. Example: "塩基性条件で酸化膜の還元は律速段階が切り替わる".
 - **\`principle\`**: a textbook-knowable general truth that the note's reasoning **explicitly depended on**. Recording these is valuable because (a) the user may not have known it before, (b) it becomes a synthesis hub when other notes also lean on it. But the bar for generation is high — see threshold below.
-- \`bridge\` is reserved for cross-update synthesis; do not generate at ingest time.
+- \`bridge\` is a legacy level from the removed cross-update synthesis pass; do not generate it at ingest time.
 
 ### Principle threshold (strict — read carefully)
 
