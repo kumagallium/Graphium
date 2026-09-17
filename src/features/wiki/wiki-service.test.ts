@@ -17,13 +17,11 @@ import {
   extractWikiDetail,
   mergeIntoWikiDocument,
   rewriteAndMerge,
-  applyCrossUpdate,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
 import type { WikiMeta, SourceCheckProfile } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
-import type { CrossUpdateProposal } from "../../server/services/wiki-cross-updater";
 
 const emptyIndex: any[] = [];
 
@@ -847,7 +845,7 @@ describe("normalizeTopicTitle - 空白差・NFKC の吸収（D）", () => {
   });
 });
 
-describe("extractWikiDetail - 横断更新（cross-update）の対象は knowledge のみ", () => {
+describe("extractWikiDetail - 抽出対象は knowledge のみ", () => {
   const docOf = (kind: string) => ({
     version: 2,
     title: "タイトル",
@@ -875,7 +873,7 @@ describe("extractWikiDetail - 横断更新（cross-update）の対象は knowled
     expect(detail?.sectionHeadings).toEqual(["節1"]);
   });
 
-  it("topic は対象外（本文がメンバー知見からの純関数のため、cross-update の追記先にしない）", () => {
+  it("topic は対象外（本文がメンバー知見からの純関数のため、追記先にしない）", () => {
     expect(extractWikiDetail("topic-1", docOf("topic"))).toBeNull();
   });
 
@@ -968,19 +966,6 @@ describe("本文を作り直す merge/regenerate 系は古い sourceCheck を引
     expect(next.wikiMeta?.sourceCheck).toBeUndefined();
   });
 
-  it("applyCrossUpdate は本文（参照追加）を書き換えるので sourceCheck を落とす", async () => {
-    const existing = claimDocWithSourceCheck();
-    const proposal: CrossUpdateProposal = {
-      targetWikiId: "claim-1",
-      targetWikiTitle: "知見タイトル",
-      updateType: "add_reference",
-      reference: { noteTitle: "関連ノート", noteId: "note-3" },
-      reason: "テスト",
-      confidence: 0.9,
-    };
-    const next = await applyCrossUpdate(existing, proposal, "note-2", "m2");
-    expect(next.wikiMeta?.sourceCheck).toBeUndefined();
-  });
 
   it("rebuildTopicDocument は本文を作り直すので sourceCheck を落とす", () => {
     const existing = claimDocWithSourceCheck();

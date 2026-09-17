@@ -494,7 +494,7 @@ When in doubt, split.
 
 - **\`finding\`** (default, where most Claims live): a transferable proposition that emerged from the user's own experience. Specific enough to be **the user's** knowledge, abstract enough to combine with other findings. Example: "塩基性条件で酸化膜の還元は律速段階が切り替わる".
 - **\`principle\`**: a textbook-knowable general truth that the note's reasoning **explicitly depended on**. Recording these is valuable because (a) the user may not have known it before, (b) it becomes a synthesis hub when other notes also lean on it. But the bar for generation is high — see threshold below.
-- \`bridge\` is reserved for cross-update synthesis; do not generate at ingest time.
+- \`bridge\` is a legacy level from the removed cross-update synthesis pass; do not generate it at ingest time.
 
 ### Principle threshold (strict — read carefully)
 

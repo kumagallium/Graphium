@@ -295,8 +295,7 @@ import {
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
-  // 横断更新
-  fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail, extractBodyPreview,
+  extractWikiDetail, extractBodyPreview,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots,
   // 機械的な自動アーカイブ（LLM 不要）
@@ -7316,7 +7315,7 @@ export function NoteApp() {
   // 話題（topic）の段の直列化キューと、直前の実行が作った話題の控え（runTopicStageForNoteApp 参照）
   const topicStageQueueRef = useRef<Promise<void>>(Promise.resolve());
   const knownTopicRefsRef = useRef<Map<string, string>>(new Map());
-  // 取り込みパイプライン（ingest → cross-update → atomize → lint）の中断ハンドル。
+  // 取り込みパイプライン（ingest → atomize → lint）の中断ハンドル。
   // キュー処理の開始時に 1 本作り、各 LLM 呼び出しの fetch に signal として渡す。
   // トーストの「停止」で abort() + キューを空にする。fetch が切れるとサーバー側の
   // c.req.raw.signal も発火して LLM 呼び出しごと止まる（wiki.ts が配線済み）。
@@ -9205,81 +9204,6 @@ export function NoteApp() {
               model: result.model ?? undefined,
             });
           }
-        }
-
-        // 横断更新: 既存 Concept ページの自動更新
-        if (existingWikis.length > 0 && job.doc) {
-          (async () => {
-            try {
-              // ② Cross-Update に渡す既存 Wiki は本文込みで重いので、関連度上位 K 件に絞る。
-              // 母集団が大きいと context length に当たって silent fail するリスクがある。
-              // 上限は 30 件で固定。embedding が両方そろっていれば cosine、それ以外は
-              // タイトル + section preview の token Jaccard でフォールバック。
-              const CROSS_UPDATE_CAP = 30;
-              const allExistingDetails = existingWikis
-                .filter((w) => w.kind === "claim" && !createdWikiIds.includes(w.id))
-                .map((w) => {
-                  const doc = fm.getCachedDoc(`wiki:${w.id}`);
-                  return doc ? extractWikiDetail(w.id, doc) : null;
-                })
-                .filter((d): d is NonNullable<typeof d> => d !== null);
-
-              if (allExistingDetails.length > 0) {
-                // children も再帰する共通ヘルパーで抽出（トップレベルの content
-                // だけ見ると、本文が step・カラムの中にあるノートが空扱いになる）
-                const noteContent = blocksToPlainText(job.doc);
-
-                // クエリ embedding は、直前に作った Wiki の代表ベクトルを使う
-                // （embed が非同期で間に合っていない可能性あり → null フォールバック）
-                const queryEmbedding = createdWikiIds.length > 0
-                  ? await getDocEmbedding(createdWikiIds[0]).catch(() => null)
-                  : null;
-                const queryText = `${job.noteTitle}\n${noteContent.slice(0, 1000)}`;
-
-                const candidateFeatures = await Promise.all(
-                  allExistingDetails.map(async (d) => ({
-                    detail: d,
-                    embedding: await getDocEmbedding(d.id).catch(() => null),
-                    similarityText: `${d.title}\n${d.sectionPreviews.join("\n")}`,
-                  })),
-                );
-                const ranked = rankCandidatesByRelevance(
-                  { embedding: queryEmbedding, similarityText: queryText },
-                  candidateFeatures,
-                  CROSS_UPDATE_CAP,
-                );
-                const existingDetails = ranked.map((f) => f.detail);
-
-                const crossResult = await fetchCrossUpdateProposals({
-                  newNoteTitle: job.noteTitle,
-                  newNoteContent: noteContent,
-                  newWikiTitles: createdWikiTitles,
-                  existingWikis: existingDetails,
-                  language: getLocale(),
-                  ...(ingestSkills.length > 0 ? { skills: ingestSkills } : {}),
-                });
-
-                for (const proposal of crossResult.proposals) {
-                  const targetDoc = fm.getCachedDoc(`wiki:${proposal.targetWikiId}`);
-                  if (!targetDoc) continue;
-                  const updatedDoc = await applyCrossUpdate(targetDoc, proposal, job.noteId, result.model, buildNoteIndex(fm.noteIndex), ingestSkills, getLocale());
-                  await fm.handleSaveWikiFile(proposal.targetWikiId, updatedDoc, {
-                    activityType: "wiki_cross_update",
-                    agentLabel: result.model ?? undefined,
-                    sources: [job.noteId],
-                  });
-                  embedWikiSections(proposal.targetWikiId, updatedDoc).catch(() => {});
-                  wikiLog.append(
-                    "cross-update",
-                    [proposal.targetWikiId],
-                    `Updated "${proposal.targetWikiTitle}" (${proposal.updateType}): ${proposal.reason}`,
-                  ).catch(() => {});
-                }
-              }
-            } catch (err) {
-              console.error("Cross-update failed:", err);
-            }
-          })();
         }
 
         setIngestToast((prev) => ({

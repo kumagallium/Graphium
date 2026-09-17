@@ -599,7 +599,7 @@ export const ja: Record<string, string> = {
   "settings.modelDefaultLabel": "デフォルト",
   "settings.modelLoading": "モデルを読み込み中...",
   "settings.modelNone": "モデルが未登録です",
-  "settings.modelHelp": "全体のフォールバックとして使われ、バックグラウンド処理（Ingest・Lint・Rewrite・Cross-Update）でも直接使われます。",
+  "settings.modelHelp": "全体のフォールバックとして使われ、バックグラウンド処理（Ingest・Lint・Rewrite）でも直接使われます。",
   "settings.chatSynthesisModel": "チャットモデル",
   "settings.chatSynthesisModelSameAsDefault": "デフォルトモデルと同じ",
   "settings.chatSynthesisModelHelp": "任意。AI チャット、点検（AI 解析）、トピックの統合に使います（未指定はデフォルトモデル）。洞察の生成には「洞察の発見」セクションの洞察モデルが使われます（未指定ならこのチャットモデルにフォールバック）。",

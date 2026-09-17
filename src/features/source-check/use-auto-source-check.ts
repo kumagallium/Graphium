@@ -5,7 +5,7 @@
 // - 対象は kind が claim / topic で、まだ出典照合の結果（WikiMetaSummary.sourceCheckVerdict）
 //   が無く、dismissed でないもの。sourceCheckVerdict は結果が付くと必ず現れるフィールドで、
 //   dismissed はその内側にしか存在しないため、「結果が無い」判定だけで両方をカバーできる。
-// - 本文を書き換える取り込み（merge / rewrite / cross-update / トピック再構成）は
+// - 本文を書き換える取り込み（merge / rewrite / トピック再構成）は
 //   attachSourceCheck(doc, undefined) で sourceCheck を消すので、再び対象になる。
 // - 実行は runOne（use-source-check.ts）を使う。runOne は 1 件実行・手動一括実行と
 //   同じ排他ガード（runningRef）を共有するため、ここでは「busy なら何もしない」で
