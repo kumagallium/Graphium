@@ -1507,7 +1507,14 @@ type SourceCheckProfile = {
 - **`WikiMetaSummary.sourceCheckVerdict`** mirrors the minimal slice
   (`verdict`, `dismissed`, `claimHash`) into the runtime index, the same
   way `groundingValidity` does — `INDEX_SCHEMA_VERSION` does **not** bump,
-  since the mirror is not persisted into `NoteIndexEntry`.
+  since the mirror is not persisted into `NoteIndexEntry`. This mirror is
+  also the sole input to two UI-side readers: `pickNextUncheckedSource`
+  (auto source check picks the first claim/topic whose mirror is absent)
+  and `isNeedsReviewVerdict` / `buildNeedsReviewList` (the upkeep view's
+  needs-review list and the Knowledge list's "Needs review only" filter
+  treat `verdict` in `{"contradicted", "not-in-source"}` with `dismissed`
+  falsy as needing attention) — see [ARCHITECTURE.md
+  §3.3](./ARCHITECTURE.md) for both.
 
 Chat-derived claims (`derivedFromNotes` referencing a `chat:` id) have no
 reference key back to the original conversation, so they are always
