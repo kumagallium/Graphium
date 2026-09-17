@@ -1371,7 +1371,7 @@ export const ja: Record<string, string> = {
   "wikiLint.tabs.sourceCheck": "出典照合",
   "wikiLint.runButton": "チェック実行",
   "wikiLint.analyzingShort": "解析中...",
-  "wikiLint.emptyHint": "ナレッジの問題を検出するためにヘルスチェックを実行してください",
+  "wikiLint.emptyHint": "点検を実行すると、ナレッジの矛盾・孤立・重複などを洗い出します",
   "wikiLint.quickButton": "クイック（ローカルのみ）",
   "wikiLint.quickHint": "孤立／重複するトピックなど、LLM を使わずに検出できる問題を即座にチェック",
   "wikiLint.fullButton": "フル（AI 解析）",
@@ -1407,9 +1407,9 @@ export const ja: Record<string, string> = {
   "wikiLint.bulk.archiveButton": "{count} 件をアーカイブ",
   "wikiLint.bulk.confirmArchive": "古い・冗長な {count} 件をアーカイブしますか？アーカイブからいつでも戻せます。",
   "wikiLint.bulk.archivedToast": "{count} 件をアーカイブしました（アーカイブから戻せます）",
-  // 出典照合（Source check, v1.1）点検欄 — クイック/フル点検とは別レーン。自動点検にはつながない。
+  // 出典照合（Source check, v1.1）手入れ画面のタブ — クイック/フル点検とは別レーン。自動点検にはつながない。自動照合は設定でオンにしたときだけ。
   "wikiLint.sourceCheck.title": "出典照合",
-  "wikiLint.sourceCheck.help": "引かれた出典に、知見/トピックの要点が書いてあるかを照合します。命題が正しいかではなく、出典に書いてあるかどうかの判定です。自動では走りません。",
+  "wikiLint.sourceCheck.help": "知見とトピックの要点が、引いている出典に書いてあるかを照合します。内容が正しいかではなく、出典に書いてあるかの判定です。自動で照合するかは設定で選べます（既定はオフ）。",
   "wikiLint.sourceCheck.targetLabel": "対象",
   "wikiLint.sourceCheck.targetBoth": "知見・トピック両方",
   "wikiLint.sourceCheck.targetClaim": "知見のみ",

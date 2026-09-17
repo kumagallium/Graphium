@@ -1371,7 +1371,7 @@ export const en: Record<string, string> = {
   "wikiLint.tabs.sourceCheck": "Source check",
   "wikiLint.runButton": "Run Check",
   "wikiLint.analyzingShort": "Analyzing...",
-  "wikiLint.emptyHint": "Run a check to analyze your Knowledge for issues",
+  "wikiLint.emptyHint": "Run a check to surface contradictions, orphans, duplicates and other issues in your Knowledge",
   "wikiLint.quickButton": "Quick (local only)",
   "wikiLint.quickHint": "Detect orphan / duplicate-topic issues without using the LLM",
   "wikiLint.fullButton": "Full (AI analysis)",
@@ -1407,9 +1407,9 @@ export const en: Record<string, string> = {
   "wikiLint.bulk.archiveButton": "Archive {count}",
   "wikiLint.bulk.confirmArchive": "Archive {count} stale/redundant page(s)? They can be restored from Archive.",
   "wikiLint.bulk.archivedToast": "Archived {count} page(s) (restorable from Archive)",
-  // Source check (v1.1) lint section — separate lane from quick/full lint. Never runs automatically.
+  // Source check (v1.1) upkeep tab — separate lane from quick/full lint. Runs automatically only when the setting is on (off by default).
   "wikiLint.sourceCheck.title": "Check sources",
-  "wikiLint.sourceCheck.help": "Checks whether the cited sources actually say what the claim/topic states. This judges the sources, not whether the claim itself is true. Never runs automatically.",
+  "wikiLint.sourceCheck.help": "Checks whether the sources a claim or topic cites actually say what it states. It judges what the source says, not whether the statement is true. You can turn on automatic source checks in Settings (off by default).",
   "wikiLint.sourceCheck.targetLabel": "Target",
   "wikiLint.sourceCheck.targetBoth": "Claims and topics",
   "wikiLint.sourceCheck.targetClaim": "Claims only",
