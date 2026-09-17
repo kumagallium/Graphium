@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.78.1](https://github.com/kumagallium/Graphium/compare/v0.78.0...v0.78.1) - 2026-09-17
+
+- Notice when the embedding index was built with another model, and merge duplicate insights by @kumagallium in https://github.com/kumagallium/Graphium/pull/956
+- Show model assignments up front and collapse the registered-model list by @kumagallium in https://github.com/kumagallium/Graphium/pull/979
+- Skip notes that are already in knowledge and unchanged when adding in bulk by @kumagallium in https://github.com/kumagallium/Graphium/pull/980
+
 ## [v0.78.0](https://github.com/kumagallium/Graphium/compare/v0.77.0...v0.78.0) - 2026-09-17
 
 - fix(side-peek): show the knowledge context drawer below the body in side peeks by @kumagallium in https://github.com/kumagallium/Graphium/pull/966
