@@ -66,7 +66,7 @@ Open the **Source check details** section at the bottom of the item for the per-
 | Claim made from an AI answer (no source text) | The Claim was adopted from a ⌘K answer — the answer text itself was never stored, so comparing against the note where it was shown would wrongly read as "not in source" |
 | No source was recorded | The Claim has no cited note at all, or (for a Topic) the sentence cites no member Claim |
 
-A source-check run always re-reads the source fresh rather than trusting anything cached — the same PDF and Word extractors ingest uses, and for a URL, an actual re-fetch rather than any previously stored copy of the page, so the judgment reflects whatever the URL holds right now. None of these re-reads impose a new size limit: source text, PDF pages, and Word documents are read in full, exactly as ingest does.
+A source-check run always re-reads the source fresh rather than trusting anything cached — the same PDF and Word extractors ingest uses, and for a URL, an actual re-fetch rather than any previously stored copy of the page, so the judgment reflects whatever the URL holds right now. None of these re-reads add a size limit of their own: notes, Word documents, and web pages are read in full, and a PDF is read up to the same 80,000-character limit ingest uses (see the [FAQ](/faq)), so source check compares against the same range ingest read.
 
 The model reports how many sources it will need to judge before it decides, but sources that turn out to be unavailable are skipped rather than judged, so the actual number of model calls can come out lower than what was estimated.
 
