@@ -104,13 +104,20 @@ async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): P
       notifyEmbeddingFailure(await aiErrorFromResponse(res, "Embedding request failed"));
       return [];
     }
-    const data = await res.json() as { embeddings: { vector: number[] }[] };
+    const data = await res.json() as { embeddings: { vector: number[] }[]; modelVersion?: string };
     const queryVector = data.embeddings?.[0]?.vector;
     if (!queryVector) return [];
     // 除外分を見込んで多めに取り、@引用・派生知識と重複するものを落とす。
     // スコア下限は掛けない — RRF が順位で融合するので、語彙側に対応物の無い
     // 非対称なフィルタは二重チェックにしかならない（文字数予算が最終的な蓋）
-    const results = await embeddingStore.searchByVector(queryVector, LEXICAL_CANDIDATES + (excludeIds?.size ?? 0));
+    // modelVersion は今回問い合わせに実際に使われたモデル（サーバーが解決した結果）を渡す。
+    // 取れなければ（サーバーがレスポンスに含めなかった等）空文字列 = どのレコードとも
+    // 一致せず結果 0 件になる安全側の挙動にする。
+    const results = await embeddingStore.searchByVector(
+      queryVector,
+      LEXICAL_CANDIDATES + (excludeIds?.size ?? 0),
+      data.modelVersion ?? "",
+    );
     return results.filter((r) => !excludeIds?.has(r.documentId));
   } catch (err) {
     notifyEmbeddingFailure(err);

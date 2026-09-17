@@ -3,7 +3,7 @@
 Once [AI is set up](/ai-setup), Graphium gives you two ways to talk to a model without leaving your work: a chat panel that knows what note (or block) you are looking at, and the Composer — a `⌘K` (`Ctrl+K` on Windows/Linux) palette that combines note search with one-shot AI questions. This page covers both, plus how answers cite sources, how to reuse an answer, and how to steer the AI with skills.
 
 ::: info Which model answers
-Chat and the Composer use the model assigned as **Chat model** in Settings → **AI**, inside the collapsed **Model assignment** group (falling back to the default model when unset). See [AI setup](/ai-setup).
+Chat and the Composer use the model assigned as **Chat model** in Settings → **AI**, under **Model assignment** (falling back to the default model when unset). See [AI setup](/ai-setup).
 :::
 
 ## The AI chat panel

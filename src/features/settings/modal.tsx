@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Settings as SettingsIcon,
   ChevronDown,
+  ChevronRight,
   Plus,
   Trash2,
   Pencil,
@@ -23,7 +24,8 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel } from "./store";
+import { embeddingStore } from "../../lib/embedding-store";
 import {
   fetchModels,
   type ModelInfo,
@@ -57,7 +59,7 @@ import { useLocale, type Locale } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
-import { SettingsGroup } from "./SettingsGroup";
+import { SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { SettingToggle } from "./SettingToggle";
 // 共有ライブラリの読み直し通知（共有ルート・スイッチを変えたとき）。
@@ -295,6 +297,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
   // 設定値
   const [model, setModel] = useState("");
+  // 登録済みモデル一覧は登録後にほぼ見返さないので、既定で畳んで名前だけ出す
+  const [modelsListOpen, toggleModelsList] = usePersistentOpen("ai-models", false);
   const [embeddingModel, setEmbeddingModel] = useState("");
   // 埋め込みモデル接続テストの結果。保存前に、選んだモデルが実際に
   // /v1/embeddings に対応するかを 1 リクエストで確認できる。
@@ -376,6 +380,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
+  // 埋め込みモデル欄で選んでいるモデルと、索引を作ったモデルが違うか。
+  // 版ずれの案内は「ナレッジ管理」にもあるが、モデルを変えるのはこの AI タブなので、
+  // 変えたその場で気づけるよう同じ判定をここでも出す（変えずに開いたときも、既に
+  // ずれていれば出る）。判定は MaintenanceTab と同じ物差し（models の model_id =
+  // /wiki/embed が保存に使う modelVersion）で、索引の件数を見るだけの軽い処理。
+  const [embeddingIndexStale, setEmbeddingIndexStale] = useState(false);
 
   // ヘルスチェック
   const [health, setHealth] = useState<HealthStatus>(null);
@@ -596,6 +606,22 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       setRestartingSidecar(false);
     }
   }, [refreshHealth, t]);
+
+  // 選択中の埋め込みモデルで索引が作られているか（上の embeddingIndexStale の判定）
+  useEffect(() => {
+    if (!isOpen) return;
+    const selectedName = embeddingModel || model || defaultModel;
+    const selectedId = models.find((m) => m.name === selectedName)?.model_id;
+    if (!selectedId) {
+      setEmbeddingIndexStale(false);
+      return;
+    }
+    let cancelled = false;
+    embeddingStore.isEmbeddingIndexStale(selectedId).then((stale) => {
+      if (!cancelled) setEmbeddingIndexStale(stale);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen, embeddingModel, model, defaultModel, models]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -2325,7 +2351,21 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             {/* 登録済みモデル一覧 */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-semibold text-foreground">{t("settings.models.title")}</h3>
+                {models.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={toggleModelsList}
+                    aria-expanded={modelsListOpen}
+                    className="flex items-center gap-1 text-xs font-semibold text-foreground"
+                  >
+                    <span className="-ml-0.5 text-muted-foreground">
+                      {modelsListOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    </span>
+                    {t("settings.models.title")}
+                  </button>
+                ) : (
+                  <h3 className="text-xs font-semibold text-foreground">{t("settings.models.title")}</h3>
+                )}
                 {!showAddForm && (
                   <button
                     onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}
@@ -2366,6 +2406,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     <Plus size={12} className="inline mr-1" />{t("settings.models.addFirst")}
                   </button>
                 </div>
+              ) : !modelsListOpen && editingId === null ? (
+                // 畳んでいても何が登録されているかは 1 行で分かるようにする
+                <p className="text-xs text-muted-foreground ml-3 truncate">
+                  {t("settings.models.collapsedSummary", {
+                    count: String(models.length),
+                    names: models.map((m) => m.name).join(locale === "ja" ? "、" : ", "),
+                  })}
+                </p>
               ) : (
                 <div className="space-y-2">
                   {models.map((m) => editingId === m.id ? (
@@ -2799,6 +2847,137 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 効かない設定を並べて見せない。登録すると下がまとめて現れる。 */}
             {models.length > 0 && (
               <>
+            {/* モデルの割り当て — 畳まずに常に見せる（2026-09-17 決定）。
+                AI を使い始めた人が最初に触るのがここなので、束に入れると見つからない。
+                説明は SettingSection の 2 段にして縦の長さを抑える。 */}
+            <div className="border-t border-border pt-6">
+              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionAssign")}</h3>
+              <div className="space-y-4">
+                <SettingSection
+                  title={t("settings.model")}
+                  summary={t("settings.model.summary")}
+                  details={<p>{t("settings.modelHelp")}</p>}
+                >
+                  <div className="relative">
+                    <select
+                      value={model}
+                      onChange={(e) => { setModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.model")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </SettingSection>
+
+                <SettingSection
+                  title={t("settings.chatSynthesisModel")}
+                  summary={t("settings.chatSynthesisModel.summary")}
+                  details={<p>{t("settings.chatSynthesisModelHelp")}</p>}
+                >
+                  <div className="relative">
+                    <select
+                      value={chatSynthesisModel}
+                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.chatSynthesisModel")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </SettingSection>
+
+                <SettingSection
+                  title={t("settings.embeddingModel.label")}
+                  summary={t("settings.embeddingModel.summary")}
+                  details={
+                    <>
+                      <p>{t("settings.embeddingModel.help")}</p>
+                      <p className="mt-1">{t("settings.embeddingModel.note")}</p>
+                    </>
+                  }
+                >
+                  <div className="relative">
+                    <select
+                      value={embeddingModel}
+                      onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.embeddingModel.label")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
+                      </option>
+                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
+                      ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
+                  {embeddingIndexStale && (
+                    <div className="mt-2 flex items-start gap-2 flex-wrap">
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        {t("settings.embeddingModel.staleHint")}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setTab("maintenance")}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
+                      >
+                        {t("settings.embeddingModel.openMaintenance")}
+                      </button>
+                    </div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleTestEmbedding}
+                      disabled={embTestState.status === "running" || (models.length === 0)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {embTestState.status === "running"
+                        ? t("settings.embeddingModel.testing")
+                        : t("settings.embeddingModel.test")}
+                    </button>
+                    {embTestState.status === "success" && (
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400">
+                        ✓ {embTestState.dimensions
+                          ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
+                          : t("settings.embeddingModel.testSuccessNoDim")}
+                      </span>
+                    )}
+                    {embTestState.status === "error" && (
+                      <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
+                        ⚠ {embTestState.message ?? "Unknown error"}
+                      </span>
+                    )}
+                  </div>
+                </SettingSection>
+              </div>
+            </div>
+
             {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
             <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
@@ -3138,127 +3317,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 )}
               </div>
             </div>
-
-            {/* ── モデルの割り当て ──
-             *  どの機能にどのモデルを当てるかは、どれか 1 つ登録すれば既定で動く。
-             *  使い分けたくなった人だけが開けばいいので畳んでおく。 */}
-            <SettingsGroup
-              storageKey="ai-assign"
-              title={t("settings.ai.sectionAssign")}
-              summary={t("settings.group.aiAssign.summary")}
-            >
-              <div className="space-y-4">
-                {/* デフォルトモデル */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.model")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={model}
-                      onChange={(e) => { setModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
-                      </option>
-                      {models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">{t("settings.modelHelp")}</p>
-                </div>
-
-                {/* Chat & Synthesis モデル選択（対話と統合用 — default より上のモデルを当てる場面用） */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.chatSynthesisModel")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={chatSynthesisModel}
-                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
-                      </option>
-                      {models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.chatSynthesisModelHelp")}
-                  </p>
-                </div>
-
-                {/* Embedding モデル選択 */}
-                <div>
-                  <label className="text-xs font-medium text-foreground mb-2 block">
-                    {t("settings.embeddingModel.label")}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={embeddingModel}
-                      onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
-                      disabled={modelsLoading || models.length === 0}
-                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
-                      </option>
-                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  {/* 接続テストボタンと結果表示 */}
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleTestEmbedding}
-                      disabled={embTestState.status === "running" || (models.length === 0)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {embTestState.status === "running"
-                        ? t("settings.embeddingModel.testing")
-                        : t("settings.embeddingModel.test")}
-                    </button>
-                    {embTestState.status === "success" && (
-                      <span className="text-xs text-emerald-700 dark:text-emerald-400">
-                        ✓ {embTestState.dimensions
-                          ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
-                          : t("settings.embeddingModel.testSuccessNoDim")}
-                      </span>
-                    )}
-                    {embTestState.status === "error" && (
-                      <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
-                        ⚠ {embTestState.message ?? "Unknown error"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t("settings.embeddingModel.help")}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("settings.embeddingModel.note")}
-                  </p>
-                </div>
-              </div>
-            </SettingsGroup>
               </>
             )}
 
@@ -3848,6 +3906,31 @@ function MaintenanceTab({
   const [reembedRunning, setReembedRunning] = useState(false);
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
   const [reembedError, setReembedError] = useState<string | null>(null);
+  // 埋め込みの版ずれ検知（軽量: modelVersion index の件数だけ見る。全件走査はしない）。
+  // タブを開いたときに 1 回だけ判定する。作り直し完了後は false に落として案内を消す。
+  const [embeddingStale, setEmbeddingStale] = useState(false);
+  // レコードに保存されるのは表示名（name）ではなく、書き込み/検索と同じ経路
+  // （/wiki/embed のレスポンス modelVersion = サーバー側 config.modelId）で解決した
+  // modelId。getEmbeddingLLMModel() は localStorage（LLM_MODELS_KEY）しか見ないため、
+  // モデル定義がサーバー側にある Tauri デスクトップ版では常に undefined になり、
+  // 検知が一度も発火しない。availableModels（GET /api/models = model_id、
+  // fetchModels() 経由でデスクトップでも正しく取れる）はサーバー側と同じ
+  // listModels() 由来の modelId を返すため、これと getEmbeddingModel()（選択中の
+  // 埋め込みモデル名。空なら defaultModel にフォールバック。プラットフォーム
+  // 非依存）で名前引きすれば、/wiki/embed が実際に使う modelVersion と一致する。
+  const resolveCurrentEmbeddingModelId = useCallback((): string | undefined => {
+    const currentModelName = getEmbeddingModel() || defaultModel;
+    return availableModels.find((m) => m.name === currentModelName)?.model_id;
+  }, [availableModels, defaultModel]);
+  useEffect(() => {
+    let cancelled = false;
+    const current = resolveCurrentEmbeddingModelId();
+    if (!current) return;
+    embeddingStore.isEmbeddingIndexStale(current).then((stale) => {
+      if (!cancelled) setEmbeddingStale(stale);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [resolveCurrentEmbeddingModelId]);
   const [organizeTopicsRunning, setOrganizeTopicsRunning] = useState(false);
   const [organizeTopicsResult, setOrganizeTopicsResult] = useState<OrganizeTopicsResult | null>(null);
   const [organizeTopicsError, setOrganizeTopicsError] = useState<string | null>(null);
@@ -4042,6 +4125,11 @@ function MaintenanceTab({
             <p className="text-xs text-muted-foreground leading-relaxed">
               {t("settings.maintenance.reembedHelp")}
             </p>
+            {embeddingStale && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                {t("settings.maintenance.reembedStale")}
+              </p>
+            )}
           </div>
           {reembedProgress && reembedRunning && (
             <div className="text-xs text-muted-foreground">
@@ -4079,6 +4167,14 @@ function MaintenanceTab({
               try {
                 // 第 2 引数を t と名付けると i18n の t を隠してしまうため total で受ける
                 await onReembedAllWikis((done, tot) => setReembedProgress({ done, total: tot }));
+                // onReembedAllWikis は embed API が全滅して text-only フォールバックに
+                // 落ちても例外を投げない（正常終了扱い）。「呼べたら消す」ではなく、
+                // 索引の実体を isEmbeddingIndexStale で再判定してから案内の表示を決める。
+                const current = resolveCurrentEmbeddingModelId();
+                if (current) {
+                  const stale = await embeddingStore.isEmbeddingIndexStale(current);
+                  setEmbeddingStale(stale);
+                }
               } catch (e) {
                 setReembedError(e instanceof Error ? e.message : String(e));
               } finally {

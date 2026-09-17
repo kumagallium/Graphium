@@ -34,6 +34,16 @@ function writeOpenState(storageKey: string, open: boolean): void {
   }
 }
 
+/** 束と同じ保存先で開閉を覚える。見出しに別のボタンを並べたい箇所（登録済みモデル）用 */
+export function usePersistentOpen(storageKey: string, defaultOpen: boolean) {
+  const [open, setOpen] = useState<boolean>(() => readOpenState(storageKey, defaultOpen));
+  useEffect(() => {
+    writeOpenState(storageKey, open);
+  }, [storageKey, open]);
+  const toggle = useCallback(() => setOpen((v) => !v), []);
+  return [open, toggle] as const;
+}
+
 export type SettingsGroupProps = {
   /** 開閉状態の保存キー（"advanced" など。prefix は内部で付ける） */
   storageKey: string;
@@ -53,14 +63,8 @@ export function SettingsGroup({
   defaultOpen = false,
   children,
 }: SettingsGroupProps) {
-  const [open, setOpen] = useState<boolean>(() => readOpenState(storageKey, defaultOpen));
+  const [open, toggle] = usePersistentOpen(storageKey, defaultOpen);
   const bodyId = useId();
-
-  useEffect(() => {
-    writeOpenState(storageKey, open);
-  }, [storageKey, open]);
-
-  const toggle = useCallback(() => setOpen((v) => !v), []);
 
   return (
     <div className="border-t border-border pt-4">
