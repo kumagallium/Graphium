@@ -634,7 +634,7 @@ export const ja: Record<string, string> = {
   "settings.features.worldGrounding.title": "世界照合を使う",
   "settings.features.worldGrounding.help": "世界照合は賢いモデルほど判定の質が上がります。オフにすると、照合のボタンと列が隠れます。照合済みの結果は残ります。",
   "settings.features.claims.title": "知見を使う",
-  "settings.features.claims.summary": "トピックは資料から直接作られます。知見は Graphium 独自の拡張で、ノートや資料から根拠つきの主張を 1 つずつ取り出します。洞察は知見から作るため、知見をオフにすると洞察も使えません。",
+  "settings.features.claims.summary": "トピックは資料から直接作られます。知見は Graphium 独自の拡張で、ノートや資料に含まれる命題（「Y のとき X になる」など）を、1 つの命題につき 1 件として、あるだけ取り出します。実験固有の詳細は除き、他の文脈でも使える形で書きます。洞察は知見から作るため、知見をオフにすると洞察も使えません。",
   "settings.features.claims.help": "オフにすると、取り込みは知見の抽出をせず、トピック段だけが資料本文から走ります。作成済みの知見・洞察は残り、引き続き見られます。",
   "settings.features.insights.title": "洞察を使う",
   "settings.features.insights.help": "洞察は賢いモデルほど質が上がります。オフにすると、サイドバーと一覧から隠れます。作成済みの洞察は残ります。",
@@ -1144,7 +1144,7 @@ export const ja: Record<string, string> = {
   "wikiList.kindTopic": "トピック",
   // 各 kind の説明（サイドバーの title ツールチップ用）。砂時計: ノート→知見→洞察→発想
   "wikiList.kindSummaryHint": "ノート1件を AI が短くまとめたもの",
-  "wikiList.kindClaimHint": "ノートから抽出した、根拠のある主張",
+  "wikiList.kindClaimHint": "ノートや資料から取り出した命題（1 件に 1 つ）",
   "wikiList.kindAtomHint": "2つ以上の知見にまたがって現れるパターン",
   "wikiList.kindSynthesisHint": "知見・洞察を組み合わせて生まれる新しいアイデア",
   "wikiList.kindTopicHint": "資料を読んで概念ごとにまとめたページ",
