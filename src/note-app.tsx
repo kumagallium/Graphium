@@ -59,7 +59,7 @@ import {
   setIndexTableCallbacks,
   setRegisterIndexTableCallback,
 } from "./features/index-table";
-import { SidePeek } from "./features/index-table/side-peek";
+import { SidePeek, type PeekWikiContextArgs } from "./features/index-table/side-peek";
 import {
   logTableSlashItem,
   setRegisterLogTableCallback,
@@ -1236,6 +1236,11 @@ type NoteEditorProps = {
    * 置くことで縦の圧迫を抑える。空のときは呼び出し側が null を渡す。
    */
   contextDrawerSlot?: React.ReactNode;
+  /**
+   * このエディタのサイドピークで知見・洞察・トピックを開いたときの本文下の文脈欄。
+   * contextDrawerSlot と同じ部品・同じハンドラを NoteApp が組み立てて渡す。
+   */
+  renderPeekWikiContext?: (args: PeekWikiContextArgs) => React.ReactNode;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -1583,6 +1588,7 @@ function NoteEditorInner({
   onProposalRequestHandled,
   subHeaderSlot,
   contextDrawerSlot,
+  renderPeekWikiContext,
 }: NoteEditorProps) {
   const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
@@ -6514,6 +6520,7 @@ function NoteEditorInner({
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             getCachedDoc={getCachedDoc}
             onSaved={handlePeekSaved}
+            renderWikiContext={renderPeekWikiContext}
             applyMentionRenameRef={peekMentionRenameRef}
             onClose={() => setSidePeekNoteId(null)}
             onNavigate={(noteId, savedDoc) => {
@@ -6553,6 +6560,7 @@ function NoteEditorInner({
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             getCachedDoc={getCachedDoc}
             onSaved={handlePeekSaved}
+            renderWikiContext={renderPeekWikiContext}
             applyMentionRenameRef={peekMentionRenameRef}
             onClose={() => setSidePeekNoteId(null)}
             mediaIndex={mediaIndex ?? null}
@@ -8910,14 +8918,22 @@ export function NoteApp() {
   // network-graph/external-source.ts のプレフィックス一覧に無い、出典照合専用の合成 ID のため）。
   // ノートは blockId が分かっても該当ブロックへスクロールする仕組みが既存に無いため、
   // ノートを開くところまでで止める（未実装。理由は最終報告を参照）。
+  // openNote を渡すと、ノート・知見はその開き方で開く（サイドピーク内の文脈欄から
+  // 開くとき、同じピークの中で開き直すため）。素材・URL・メモの開き先は変わらない。
   const handleOpenSourceCheckSource = useCallback(
-    (sourceId: string, _blockId?: string) => {
-      const claimId = parseClaimSourceId(sourceId);
-      if (claimId !== null) {
+    (sourceId: string, _blockId?: string, openNote?: (noteId: string) => void) => {
+      const openTarget = (target: string) => {
+        if (openNote) {
+          openNote(target);
+          return;
+        }
         const openSidePeek = openSidePeekRef.current;
-        const target = `wiki:${claimId}`;
         if (openSidePeek) openSidePeek(target);
         else navigateToNote(target);
+      };
+      const claimId = parseClaimSourceId(sourceId);
+      if (claimId !== null) {
+        openTarget(`wiki:${claimId}`);
         return;
       }
       const ext = parseExternalSource(sourceId);
@@ -8948,12 +8964,46 @@ export function NoteApp() {
       // 通常ノート。ただし Wiki ページ ID（derivedFromNotes に生 ID で入りうる）は
       // "wiki:" を付けないと通常ノートとして誤って開いてしまう
       // （WikiBanner.tsx の resolveDerivedEntries / resolveRelatedAtomEntries と同じ区別）。
-      const target = fm.wikiMetas.has(sourceId) ? `wiki:${sourceId}` : sourceId;
-      const openSidePeek = openSidePeekRef.current;
-      if (openSidePeek) openSidePeek(target);
-      else navigateToNote(target);
+      openTarget(fm.wikiMetas.has(sourceId) ? `wiki:${sourceId}` : sourceId);
     },
     [fm.mediaIndex, fm.wikiMetas, handleOpenMemoSource, navigateToNote, dropPeekFromUrl],
+  );
+
+  // サイドピークで開いた知見・洞察・トピックの本文下に出す文脈欄。フル画面の
+  // contextDrawerSlot と同じ部品・同じハンドラ（照合の実行・確認・消去、出典を開く）を使う。
+  // 違いは「リンク先をどこで開くか」だけで、ピークの中で開き直す（openNote）。
+  // 照合・消去の保存は fm.handleSaveWikiFile が doc キャッシュと wikiMetas を更新し、
+  // ピークはキャッシュ側の wikiMeta を読むので、開いたまま結果が反映される。
+  const renderPeekWikiContext = ({ wikiId, wikiMeta, sourceCheckStale, openNote }: PeekWikiContextArgs) => (
+    <WikiContextDrawer
+      wikiMeta={wikiMeta}
+      noteIndex={fm.noteIndex}
+      mediaIndex={fm.mediaIndex}
+      archived={fm.archivedIdSet.has(wikiId)}
+      onNavigateNote={openNote}
+      onOpenMemo={handleOpenMemoSource}
+      onClearWorldValidity={
+        featureFlags.worldGrounding ? () => void handleClearWorldValidity(wikiId) : undefined
+      }
+      wikiId={wikiId}
+      allWikiMetas={fm.wikiMetas}
+      worldGroundingEnabled={featureFlags.worldGrounding ?? true}
+      onRunSourceCheck={aiUiEnabled ? () => void sourceCheck.runOne(wikiId) : undefined}
+      onDismissSourceCheck={() => void sourceCheck.dismiss(wikiId)}
+      onClearSourceCheck={() => void sourceCheck.clear(wikiId)}
+      onOpenSourceCheckSource={(sourceId, blockId) => handleOpenSourceCheckSource(sourceId, blockId, openNote)}
+      sourceCheckSourceTitles={
+        wikiMeta.sourceCheck
+          ? resolveSourceCheckTitles(wikiMeta.sourceCheck.entries, {
+              noteIndex: fm.noteIndex,
+              mediaIndex: fm.mediaIndex,
+              wikiMetas: fm.wikiMetas,
+            })
+          : undefined
+      }
+      sourceCheckStale={sourceCheckStale}
+      sourceCheckRunning={sourceCheck.runningDocId === wikiId || sourceCheck.batchRunning}
+    />
   );
 
   // 話題（topic）の段（runTopicStage）を note-app のファイル操作・ログに配線する共通ラッパー。
@@ -11774,6 +11824,7 @@ export function NoteApp() {
                     cachedDoc={fm.getCachedDoc(noteId) ?? undefined}
                     getCachedDoc={fm.getCachedDoc}
                     onSaved={handleListPeekSaved}
+                    renderWikiContext={renderPeekWikiContext}
                     onClose={() => openAssetPeek(null)}
                     onNavigate={(navId, savedDoc) => {
                       // SidePeek 内のリンクから本格的に開く場合はアセット画面を含む
@@ -12306,6 +12357,7 @@ export function NoteApp() {
             initialDoc={fm.activeDoc}
             noteFolderLookup={noteFolderLookup}
             onEditMediaContexts={fm.editMediaContexts}
+            renderPeekWikiContext={renderPeekWikiContext}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
                 ? (() => {
@@ -12656,6 +12708,7 @@ export function NoteApp() {
               cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
               getCachedDoc={fm.getCachedDoc}
               onSaved={handleListPeekSaved}
+              renderWikiContext={renderPeekWikiContext}
               onOpenMaterialPeek={(entry) => {
                 // ピーク内の素材リンク（URL/@素材）→ 素材サイドピークへ切り替える
                 setListSidePeekNoteId(null);
