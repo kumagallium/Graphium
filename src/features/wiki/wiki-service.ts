@@ -107,8 +107,16 @@ export async function ingestNote(
   skills?: { title: string; prompt: string }[],
   /** 中断シグナル。fetch を切るとサーバー側の LLM 呼び出しも止まる */
   signal?: AbortSignal,
+  /** 知見（Claims）抽出を行うかどうか（既定 true）。features.claims が OFF のとき
+   *  呼び出し側が false を渡す。false のときは /api/wiki/ingest を呼ばず、
+   *  知見 0 件の結果を返す（トピック段は呼び出し側で資料本文から別途走らせる）。 */
+  extractClaims: boolean = true,
 ): Promise<IngestResult> {
   const noteContent = extractPlainTextFromDoc(doc);
+
+  if (!extractClaims) {
+    return { wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null };
+  }
 
   // 提案 v4 Phase 2.2: ノートの PROV 構造をプロンプトに流すための要約。
   // ラベル不十分なノートでも部分情報を返すので、常に呼んで構わない。
@@ -1064,6 +1072,9 @@ export async function ingestFromUrl(
   url: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは HTML 取得・本文抽出
+   *  だけ行い、/api/wiki/ingest は呼ばない（トピック段は呼び出し側が sourceText で走らせる）。 */
+  extractClaims: boolean = true,
 ): Promise<IngestResult & { sourceText: string; sourceTitle: string }> {
   // サーバーサイドで HTML 取得・パース
   const fetchRes = await fetch(`${API_BASE}/fetch-url`, {
@@ -1088,6 +1099,13 @@ export async function ingestFromUrl(
     "",
     urlData.text,
   ].filter(Boolean).join("\n");
+
+  if (!extractClaims) {
+    return {
+      wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
+      sourceText: noteContent, sourceTitle: urlData.title || url,
+    };
+  }
 
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",
@@ -1125,6 +1143,9 @@ export async function ingestFromPdf(
   sourceNoteId: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは PDF テキスト抽出
+   *  だけ行い、/api/wiki/ingest は呼ばない。 */
+  extractClaims: boolean = true,
 ): Promise<IngestResult & { pageCount: number; sourceText: string; sourceTitle: string }> {
   const { extractPdfText } = await import("./pdf-text-extractor");
   const extracted = await extractPdfText(blob);
@@ -1151,6 +1172,13 @@ export async function ingestFromPdf(
       ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
       : `[Output language: ${language}]`;
   const noteContent = `${languageHint}\n\n${extracted.text}`;
+
+  if (!extractClaims) {
+    return {
+      wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
+      pageCount: extracted.pageCount, sourceText: extracted.text, sourceTitle: noteTitle,
+    };
+  }
 
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",
@@ -1185,6 +1213,9 @@ export async function ingestFromDocx(
   sourceNoteId: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは Word 本文抽出
+   *  だけ行い、/api/wiki/ingest は呼ばない。 */
+  extractClaims: boolean = true,
 ): Promise<IngestResult & { sourceText: string; sourceTitle: string }> {
   const arrayBuffer = await blob.arrayBuffer();
   const mammoth = await import("mammoth");
@@ -1196,6 +1227,13 @@ export async function ingestFromDocx(
   }
 
   const noteTitle = fileName.replace(/\.(docx|doc)$/i, "");
+
+  if (!extractClaims) {
+    return {
+      wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
+      sourceText: text, sourceTitle: noteTitle,
+    };
+  }
 
   // PDF と同じく、本文冒頭に出力言語ヒントを再掲する
   const languageHint =
@@ -1309,11 +1347,21 @@ export async function ingestFromChat(
   chatTitle: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときはメッセージの
+   *  テキスト化だけ行い、/api/wiki/ingest は呼ばない。 */
+  extractClaims: boolean = true,
 ): Promise<IngestResult & { sourceText: string }> {
   // チャットメッセージをテキスト化
   const chatContent = chatMessages
     .map((m) => `${m.role === "user" ? "User" : "AI"}: ${m.content}`)
     .join("\n\n");
+
+  if (!extractClaims) {
+    return {
+      wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
+      sourceText: chatContent,
+    };
+  }
 
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",

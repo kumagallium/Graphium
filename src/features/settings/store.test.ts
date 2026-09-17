@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isWorldGroundingEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName } from "./store";
+import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -100,35 +100,57 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
     localStorage.clear();
   });
 
-  it("保存済み設定が無い（初回起動）場合は両方 false になる", () => {
-    expect(loadSettings().features).toEqual({ insights: false, worldGrounding: false });
+  it("保存済み設定が無い（初回起動）場合は claims/insights/worldGrounding すべて false になる", () => {
+    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: false });
+    expect(isClaimsEnabled()).toBe(false);
     expect(isAtomLayerEnabled()).toBe(false);
     expect(isWorldGroundingEnabled()).toBe(false);
   });
 
-  it("保存済み設定はあるが features キーが無い（この版より前から使っているユーザー）場合は両方 true になる", () => {
+  it("保存済み設定はあるが features キーが無い（この版より前から使っているユーザー）場合はすべて true になる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ latinFont: "" }));
-    expect(loadSettings().features).toEqual({ insights: true, worldGrounding: true });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true });
+    expect(isClaimsEnabled()).toBe(true);
     expect(isAtomLayerEnabled()).toBe(true);
     expect(isWorldGroundingEnabled()).toBe(true);
   });
 
   it("features が無い（キーごと欠落）場合も既定 ON に倒れる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({}));
-    expect(loadSettings().features).toEqual({ insights: true, worldGrounding: true });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true });
   });
 
   it("features があればその値に従う", () => {
     localStorage.setItem(
       "graphium-settings",
-      JSON.stringify({ features: { insights: false, worldGrounding: false } }),
+      JSON.stringify({ features: { claims: true, insights: false, worldGrounding: false } }),
     );
-    expect(loadSettings().features).toEqual({ insights: false, worldGrounding: false });
+    expect(loadSettings().features).toEqual({ claims: true, insights: false, worldGrounding: false });
     localStorage.setItem(
       "graphium-settings",
-      JSON.stringify({ features: { insights: true, worldGrounding: true } }),
+      JSON.stringify({ features: { claims: true, insights: true, worldGrounding: true } }),
     );
-    expect(loadSettings().features).toEqual({ insights: true, worldGrounding: true });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true });
+  });
+
+  it("claims が OFF のときは insights の保存値に関わらず false に倒れる（洞察は知見から作るため）", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ features: { claims: false, insights: true, worldGrounding: true } }),
+    );
+    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: true });
+    expect(isClaimsEnabled()).toBe(false);
+    expect(isAtomLayerEnabled()).toBe(false);
+    expect(isWorldGroundingEnabled()).toBe(true);
+  });
+
+  it("claims が ON なら insights は独立に決まる", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ features: { claims: true, insights: false, worldGrounding: true } }),
+    );
+    expect(isClaimsEnabled()).toBe(true);
+    expect(isAtomLayerEnabled()).toBe(false);
   });
 
   it("明示的に false を保存すればそれぞれ独立に反映される", () => {
