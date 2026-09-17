@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.78.0](https://github.com/kumagallium/Graphium/compare/v0.77.0...v0.78.0) - 2026-09-17
+
+- fix(side-peek): show the knowledge context drawer below the body in side peeks by @kumagallium in https://github.com/kumagallium/Graphium/pull/966
+- Stop running AI checks, auto-merge and orphan auto-link in the background by @kumagallium in https://github.com/kumagallium/Graphium/pull/967
+- Stop capping Claims at 0-3 per note and remove the Claim cross-update pass by @kumagallium in https://github.com/kumagallium/Graphium/pull/968
+- Add storage and one-hop source check for source-cited Topic pages by @kumagallium in https://github.com/kumagallium/Graphium/pull/969
+- Filter the desktop folder scan to importable types and raise its cap by @kumagallium in https://github.com/kumagallium/Graphium/pull/970
+- Build Topic pages from sources, revising the previous body (Karpathy LLM Wiki) by @kumagallium in https://github.com/kumagallium/Graphium/pull/971
+- Make Claims and Insights an optional extension, off for new users by @kumagallium in https://github.com/kumagallium/Graphium/pull/972
+- Merge, rebuild and refresh Topics from their sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/973
+- Describe claims and insights accurately in settings and the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/974
+- Describe claims as propositions, as many as a source carries by @kumagallium in https://github.com/kumagallium/Graphium/pull/975
+- Describe insights as relationship patterns generalized from claims by @kumagallium in https://github.com/kumagallium/Graphium/pull/976
+- Word the insight discovery summary as generalizing beyond the original context by @kumagallium in https://github.com/kumagallium/Graphium/pull/977
+
 ## [v0.77.0](https://github.com/kumagallium/Graphium/compare/v0.76.7...v0.77.0) - 2026-09-17
 
 - feat(source-check): check that claims and topic points are written in their cited sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/964
