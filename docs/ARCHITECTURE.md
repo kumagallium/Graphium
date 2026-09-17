@@ -898,15 +898,24 @@ Notes:
   the `⌘K` Composer's "Shared" section (`composer/search.ts →
   searchShared`), gated the same way (desktop + shared root + the
   setting).
-- **Auto-merge of redundant Claims.** When the linter / startup-merge
-  flow detects two Claims that overlap, one is rewritten into the
-  other and the absorbed Claim is **archived, not deleted**. Its file
-  stays on disk and its index entry gains an `archivedAt` flag, so any
-  note that cited it (or any Idea whose `derivedFromNotes` lists
-  it) keeps resolving through `loadDoc`. The archived page is hidden
-  from lists / search and is editable only after restore. See
+- **No unattended merge or auto-link.** The post-ingest and startup
+  checks run **Quick (local only)** — no LLM call — and never merge or
+  link pages on their own; they only archive mechanically empty pages
+  (reversible) and surface the rest (contradiction, suspected
+  orphan/duplicate) as an Upkeep badge. A **Full (AI analysis)** check
+  runs only when a person starts it from the Upkeep screen, and its
+  Redundant/Stale results offer **Open** and **Archive** — Claims are
+  not merged by the linter anymore (Topics keep their explicit
+  **Merge** action). Archiving keeps the file on disk with an
+  `archivedAt` flag, so any note that cited it (or any Idea whose
+  `derivedFromNotes` lists it) keeps resolving through `loadDoc`; the
+  archived page is hidden from lists / search and is editable only
+  after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
-  for the tri-state semantics.
+  for the tri-state semantics. Existing data may still contain
+  Claims archived, and `wiki_dedup_merge` / orphan `cross-update`
+  entries written, by the retired automatic flow; those are legacy
+  records that new code no longer produces.
 - **Insights are structural abstractions, not tidied Claims.** A Claim is a
   domain finding; the Insight (Atom) is the *transferable structure* behind it,
   produced by the atomizer (`buildAtomizerSystemPrompt`) in four steps:
