@@ -28,7 +28,7 @@ Topics are Graphium's default knowledge layer — they're always on and are buil
 
 Graphium used to generate a fourth kind, **Summaries** — a short AI recap of a single note — but generation has stopped in favor of Topics, which now carry that grouping role. If you made some before this change, they haven't gone anywhere: a **Previous Summaries** row appears at the end of the sidebar's Knowledge list whenever you have any. They can still be viewed and deleted, but not regenerated.
 
-Topics used to be built from your **claims** (grouping already-extracted claims by concept). They're now built from the **source material itself**: when you ingest a note, PDF, Word doc, URL, or chat, the AI separately reads that source's full text and decides which existing topic(s) it should update and which new one(s) it should create — claims are extracted for other purposes but are no longer topic material. An older topic you made before this change keeps working, and moves to the new form the next time a new source is routed to it (the completion toast reports how many topics were migrated). Graphium replays the sources behind its existing member claims one at a time to rebuild the body, so the wording can change; a source that's no longer readable (trashed, never indexed) is skipped, and that count is reported too.
+<Badge type="tip" text="Changed in v0.78.0 (2026-09-17)" /> Topics used to be built from your **claims** (grouping already-extracted claims by concept). They're now built from the **source material itself**: when you ingest a note, PDF, Word doc, URL, or chat, the AI separately reads that source's full text and decides which existing topic(s) it should update and which new one(s) it should create — claims are extracted for other purposes but are no longer topic material. An older topic you made before this change keeps working, and moves to the new form the next time a new source is routed to it (the completion toast reports how many topics were migrated). Graphium replays the sources behind its existing member claims one at a time to rebuild the body, so the wording can change; a source that's no longer readable (trashed, never indexed) is skipped, and that count is reported too.
 
 ## Adding a note to knowledge
 
@@ -91,7 +91,7 @@ Topics can drift apart over wording, particles, or an overly narrow per-sample t
 
 The first three don't call a model — you've already made the decision by picking the topics. Organize topics and the AI-analysis Check tab use your **Chat model** (Settings → AI) to judge whether topics are the same concept. What happens to the absorbed topic's text when it's kept: if both pages are already in the newer source-reading format, their bodies are combined in one AI call that keeps every existing citation as-is; if one of them still predates that format, Graphium instead rebuilds the kept page from scratch from every source both pages ever cited (see **Rebuilding a topic from its sources** below).
 
-## Rebuilding a topic from its sources
+## Rebuilding a topic from its sources <Badge type="tip" text="Added in v0.78.0 (2026-09-17)" />
 
 Beyond the ordinary one-source-at-a-time revision that happens on ingest, a Topic can also be rebuilt from scratch — reading every source it cites again, one at a time. This can mean several AI calls for one page, so Graphium never does it on its own: you always start it, and you always see how many AI calls it will take before it runs.
 
