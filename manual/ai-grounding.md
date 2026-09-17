@@ -54,6 +54,8 @@ Run it from the **Check sources** button in a Claim's or Topic's banner (next to
 
 Open the **Source check details** section at the bottom of the item for the per-source breakdown: each source's judgment, a short rationale, and, when the model's quote could be traced to one exact note block, a **Go to source** link. That link opens the source note, PDF, Word file, or Claim it points to — it stops at opening the item, since Graphium has no existing way to scroll straight to one block inside it. Sources that can't be opened at all (no source recorded, an AI-chat origin, or a Cmd-K answer with no note behind it) aren't rendered as links. For a Topic, each entry also shows the **statement** it checked — the specific sentence, not the whole page.
 
+When the source is a PDF or a Word file, the quote also shows where in that document it came from — a line right under it reads, for example, **Page 12**, **Pages 12–13**, or **Paragraph 3**. Graphium works this out mechanically from the same text the check just read rather than asking the model, and it never changes the verdict — it only helps you find the passage. If the exact same wording appears more than once in the source, at different pages or paragraphs, Graphium can't tell which one was meant and leaves this line out rather than guess.
+
 **Why a source can be "unavailable".** The judge is never even called for these — they're recorded straight away:
 
 | Reason | When it happens |

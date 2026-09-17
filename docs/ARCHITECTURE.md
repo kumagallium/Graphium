@@ -1283,9 +1283,11 @@ claims, so there is no single source text to hold it against.
   individual note, not mirrored into `mediaIndex`), so that slot is left
   unset and every `url:` source check re-fetches the URL fresh and
   compares against whatever came back at that moment. None of these
-  readers impose a new size limit — ingest does not cap note, PDF, or
-  Word body length either, so source check re-reads exactly what ingest
-  would have seen.
+  readers impose their own size limit beyond what the underlying
+  extractor already does — note and Word bodies are read in full; a
+  PDF is read through the same `pdf-text-extractor` ingest uses, which
+  truncates at `MAX_TEXT_CHARS` (80,000 characters), so source check
+  sees exactly what ingest would have seen, truncation included.
 - **One call judges one source against every statement that cites it,
   claims and topics combined.** `planSourceCheck`
   (`src/features/source-check/plan.ts`) groups the statements being
@@ -1319,6 +1321,24 @@ claims, so there is no single source text to hold it against.
   separately maps a verified quote to a `blockId`
   (`findBlockIdForQuote`, `src/features/source-check/quote-match.ts`) when
   it lands inside exactly one note block.
+- **The quote's position in the source (`quoteLocation`) is resolved the
+  same way, right after `blockId`, from the identical source text —
+  never written by the model, and never fed back into the verdict.**
+  `resolveQuoteLocation` (same file) normalizes the source text (NFKC,
+  whitespace-collapsed — the same rule `quoteAppearsInSource` uses
+  server-side) while tracking, for every normalized character, which
+  span of the *original* text it came from, so a match found in the
+  normalized text can be mapped back to an exact offset range and
+  re-verified against the untouched original before being trusted. For a
+  `pdf` source it turns that offset into a page number using
+  `extractPdfText`'s own `pageStarts` (an array of per-page character
+  offsets returned alongside `text`, threaded through
+  `resolveSourceText`'s `ResolvedSourceText.pageStarts`); for a
+  `document` (Word) source it counts blank-line-separated paragraphs
+  instead. Either way, a location is written only when every occurrence
+  of the quote in the source resolves to the same page (or paragraph) —
+  the same text appearing twice at different positions leaves
+  `quoteLocation` unset rather than guessed, exactly like `blockId`.
 - **Model and degrade.** The route resolves a model the same way chat and
   full lint do — the chat-synthesis model slot, not a dedicated
   `groundingModel` slot — and responds `{ result: null, code }` when no
