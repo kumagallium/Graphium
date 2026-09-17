@@ -179,18 +179,18 @@ export type WikiSummaryForSettings = {
   title: string;
   kind: WikiKind;
   model?: string;
-  /** kind === "claim" のとき、話題（topic）に紐づいているか（「話題を整理」の対象判定に使う） */
-  hasTopics?: boolean;
 };
 
-/** 「話題を整理」の実行結果（件数のみ。詳細は wikiLog に記録される） */
+/**
+ * 「話題を整理」の実行結果（件数のみ。詳細は wikiLog に記録される）。
+ * 知見（claim）はもうトピックの材料にしない — 既存トピックどうしの統合結果のみを持つ。
+ */
 export type OrganizeTopicsResult = {
-  created: number;
-  updated: number;
-  failed: number;
-  withoutTopic: number;
   /** 既存話題どうしの統合で、別名側をゴミ箱へ送った件数 */
   merged: number;
+  /** 統合先の本文を書き直せた件数 */
+  rebuilt: number;
+  failed: number;
 };
 
 export type RegenerateWikiHandler = (
@@ -259,6 +259,13 @@ type SettingsModalProps = {
   wikiSummaries?: WikiSummaryForSettings[];
   /** Maintenance タブから 1 件ずつ呼ばれる再生成ハンドラ */
   onRegenerateWiki?: RegenerateWikiHandler;
+  /**
+   * 一括再生成の対象 id 列から、実際に発生する AI 呼び出し回数を見積もる（作業 C フォロー）。
+   * トピック以外は 1 件 1 回（既存の再生成の実態どおり）、トピックは資料から作り直すため
+   * 資料件数ぶん呼ぶ（rebuildTopicFromSources は資料 1 本につき改訂 1 回）。
+   * modal は doc を持たないため note-app 側から注入する。未指定なら件数と同じとみなす。
+   */
+  estimateRegenerateCalls?: (ids: string[]) => number;
   /** Maintenance タブの「Atom を発見」ハンドラ（atomLayer 有効時のみ表示）。
    *  全 Concept を見渡し、複数 Concept にまたがる共通抽象を auto-loop で発見する。 */
   onRunAtomizeDiscovery?: DiscoveryHandler;
@@ -269,10 +276,10 @@ type SettingsModalProps = {
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
   /** topicIds が空の知見に話題を割り当て直す（話題の段を一括実行）。ingest 経路を通らずに
    *  作られた古い知見や、name-topics 補完前に作られた知見の救済に使う。 */
-  onOrganizeTopics?: (onProgress: (done: number, total: number) => void) => Promise<OrganizeTopicsResult>;
+  onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -3699,6 +3706,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               t={t}
               wikiSummaries={wikiSummaries ?? []}
               onRegenerateWiki={onRegenerateWiki}
+              estimateRegenerateCalls={estimateRegenerateCalls}
               onRunAtomizeDiscovery={onRunAtomizeDiscovery}
               onPlanAtomizeDiscovery={onPlanAtomizeDiscovery}
               /* 知見(claims) が OFF のときは洞察も作れないため、手入れ画面の「知見をまたぐ洞察を発見」も隠す
@@ -3774,6 +3782,7 @@ type MaintenanceTabProps = {
   t: (key: string, params?: Record<string, string>) => string;
   wikiSummaries: WikiSummaryForSettings[];
   onRegenerateWiki?: RegenerateWikiHandler;
+  estimateRegenerateCalls?: (ids: string[]) => number;
   onRunAtomizeDiscovery?: DiscoveryHandler;
   onPlanAtomizeDiscovery?: PlanDiscoveryHandler;
   atomLayerEnabled: boolean;
@@ -3796,13 +3805,14 @@ type MaintenanceTabProps = {
   atomizeProgress: DiscoveryRunState | null;
   setAtomizeProgress: (p: DiscoveryRunState | null) => void;
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
-  onOrganizeTopics?: (onProgress: (done: number, total: number) => void) => Promise<OrganizeTopicsResult>;
+  onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
 };
 
 function MaintenanceTab({
   t,
   wikiSummaries,
   onRegenerateWiki,
+  estimateRegenerateCalls,
   onRunAtomizeDiscovery,
   onPlanAtomizeDiscovery,
   atomLayerEnabled,
@@ -3839,13 +3849,8 @@ function MaintenanceTab({
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
   const [reembedError, setReembedError] = useState<string | null>(null);
   const [organizeTopicsRunning, setOrganizeTopicsRunning] = useState(false);
-  const [organizeTopicsProgress, setOrganizeTopicsProgress] = useState<{ done: number; total: number } | null>(null);
   const [organizeTopicsResult, setOrganizeTopicsResult] = useState<OrganizeTopicsResult | null>(null);
   const [organizeTopicsError, setOrganizeTopicsError] = useState<string | null>(null);
-  const claimsWithoutTopicCount = useMemo(
-    () => wikiSummaries.filter((w) => w.kind === "claim" && !w.hasTopics).length,
-    [wikiSummaries],
-  );
   // 既存話題どうしの統合対象になり得るか（2 件以上あれば意味がある）
   const topicsCount = useMemo(
     () => wikiSummaries.filter((w) => w.kind === "topic").length,
@@ -3861,6 +3866,12 @@ function MaintenanceTab({
     () => wikiSummaries.filter((w) => bulkKinds.has(w.kind)),
     [wikiSummaries, bulkKinds],
   );
+  // 対象に含まれる AI 呼び出し回数の見積もり（トピックは資料から作り直すため資料数ぶん呼ぶ）。
+  // 未指定なら件数と同じとみなす（既存の「1 件 1 回」実態のフォールバック）。
+  const estimatedCalls = useMemo(
+    () => estimateRegenerateCalls ? estimateRegenerateCalls(targets.map((w) => w.id)) : targets.length,
+    [targets, estimateRegenerateCalls],
+  );
 
   const toggleKind = (k: WikiKind) => {
     const next = new Set(bulkKinds);
@@ -3871,7 +3882,16 @@ function MaintenanceTab({
 
   const runRegenerate = async (items: { id: string; title: string }[]) => {
     if (!onRegenerateWiki || bulkRunning || items.length === 0) return;
-    const confirmMsg = t("settings.maintenance.confirm").replace("{count}", String(items.length));
+    // 対象にトピックが 1 件以上含まれるときだけ、AI 呼び出し回数を見せる確認に切り替える
+    // （トピックは資料から作り直すため 1 件で資料数ぶん呼ぶ — 実行前に必ず見せる方針）。
+    const itemKindById = new Map(wikiSummaries.map((w) => [w.id, w.kind]));
+    const hasTopic = items.some((i) => itemKindById.get(i.id) === "topic");
+    const confirmMsg = hasTopic
+      ? t("settings.maintenance.confirmWithCalls", {
+          count: String(items.length),
+          calls: String(estimateRegenerateCalls ? estimateRegenerateCalls(items.map((i) => i.id)) : items.length),
+        })
+      : t("settings.maintenance.confirm").replace("{count}", String(items.length));
     if (!window.confirm(confirmMsg)) return;
 
     setBulkRunning(true);
@@ -4075,9 +4095,9 @@ function MaintenanceTab({
         </div>
       )}
 
-      {/* topicIds が空の知見に話題を割り当て直す（話題の段の一括実行）。
-          ingest 経路を通らずに作られた古い知見や、name-topics 補完導入前の知見を救済する。 */}
-      {onOrganizeTopics && (claimsWithoutTopicCount > 0 || topicsCount > 1) && (
+      {/* 似た既存トピックどうしの名寄せ・統合（表記ゆれ・粒度違いで増えてしまった話題を寄せる）。
+          知見（claim）はもうトピックの材料にしないため、割り当て直しはここでは行わない。 */}
+      {onOrganizeTopics && topicsCount > 1 && (
         <div className="rounded-lg border border-border p-3 space-y-3">
           <div>
             <h3 className="text-xs font-semibold text-foreground mb-1">
@@ -4087,28 +4107,19 @@ function MaintenanceTab({
               {t("settings.maintenance.organizeTopics.help")}
             </p>
           </div>
-          {organizeTopicsProgress && organizeTopicsRunning && (
+          {organizeTopicsRunning && (
             <div className="text-xs text-muted-foreground">
-              {t("settings.maintenance.organizeTopics.progress", {
-                done: String(organizeTopicsProgress.done),
-                total: String(organizeTopicsProgress.total),
-              })}
+              {t("settings.maintenance.organizeTopics.running")}
             </div>
           )}
           {organizeTopicsResult && !organizeTopicsRunning && !organizeTopicsError && (
             <div className="text-xs text-emerald-600 dark:text-emerald-400">
               {t("settings.maintenance.organizeTopics.done", {
-                created: String(organizeTopicsResult.created),
-                updated: String(organizeTopicsResult.updated),
+                merged: String(organizeTopicsResult.merged),
+                rebuilt: String(organizeTopicsResult.rebuilt),
               })}
-              {organizeTopicsResult.withoutTopic > 0
-                ? ` · ${t("ingest.claimsWithoutTopic", { count: String(organizeTopicsResult.withoutTopic) })}`
-                : ""}
               {organizeTopicsResult.failed > 0
                 ? ` · ${t("ingest.topicsFailed", { count: String(organizeTopicsResult.failed) })}`
-                : ""}
-              {organizeTopicsResult.merged > 0
-                ? ` · ${t("settings.maintenance.organizeTopics.merged", { count: String(organizeTopicsResult.merged) })}`
                 : ""}
             </div>
           )}
@@ -4121,18 +4132,13 @@ function MaintenanceTab({
             size="sm"
             disabled={organizeTopicsRunning}
             onClick={async () => {
-              const confirmed = window.confirm(
-                claimsWithoutTopicCount > 0
-                  ? t("settings.maintenance.organizeTopics.confirm", { count: String(claimsWithoutTopicCount) })
-                  : t("settings.maintenance.organizeTopics.confirmConsolidateOnly"),
-              );
+              const confirmed = window.confirm(t("settings.maintenance.organizeTopics.confirmConsolidateOnly"));
               if (!confirmed) return;
               setOrganizeTopicsRunning(true);
               setOrganizeTopicsError(null);
               setOrganizeTopicsResult(null);
-              setOrganizeTopicsProgress({ done: 0, total: claimsWithoutTopicCount });
               try {
-                const result = await onOrganizeTopics((done, total) => setOrganizeTopicsProgress({ done, total }));
+                const result = await onOrganizeTopics();
                 setOrganizeTopicsResult(result);
               } catch (e) {
                 setOrganizeTopicsError(e instanceof Error ? e.message : String(e));
@@ -4144,9 +4150,7 @@ function MaintenanceTab({
             {organizeTopicsRunning ? (
               <><Loader2 size={12} className="animate-spin mr-1.5" />{t("settings.maintenance.organizeTopics.running")}</>
             ) : (
-              claimsWithoutTopicCount > 0
-                ? t("settings.maintenance.organizeTopics.run", { count: String(claimsWithoutTopicCount) })
-                : t("settings.maintenance.organizeTopics.runConsolidateOnly")
+              t("settings.maintenance.organizeTopics.runConsolidateOnly")
             )}
           </Button>
         </div>
@@ -4254,7 +4258,7 @@ function MaintenanceTab({
         </p>
       </div>
 
-      {/* 対象件数 */}
+      {/* 対象件数 + AI 呼び出し回数（トピックを含むと資料数ぶん増える） */}
       <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
         <div className="text-xs">
           <span className="font-semibold text-foreground">
@@ -4262,6 +4266,9 @@ function MaintenanceTab({
           </span>
           <span className="text-muted-foreground ml-2">
             / {t("settings.maintenance.total")}: {wikiSummaries.length}
+          </span>
+          <span className="text-muted-foreground ml-2">
+            / {t("settings.maintenance.aiCalls")}: {estimatedCalls}
           </span>
         </div>
       </div>

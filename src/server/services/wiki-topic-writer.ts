@@ -1,211 +1,14 @@
 // Wiki Topic Writer
-// 話題（topic）ページの本文を、メンバー知見（Claim）群だけから生成する。
+// 話題（topic）ページの本文・振り分けを生成するプロンプト群。
 //
-// 設計の意図:
-//   話題ページは「メンバー知見の集合から作られる純関数」（LLM Wiki が誤りを積み重ねて
-//   伝播させる弱点への回答）。前の本文は入力に渡さない — 触れるたびに member claims から
-//   作り直す。本文は短く: 定義 / 要点（知見を [[claim:<id>]] で引用） / 食い違い・未解決。
-//   引用はタイトルの転記ミス（LLM が組成名などを書き間違える）を避けるため、タイトル文字列
-//   ではなくユーザーメッセージに与えた id をそのまま使わせる。呼び出し元
-//   （wiki-service.ts の buildTopicDocument / rebuildTopicDocument）が [[claim:<id>]] を
-//   その時点のメンバー知見タイトルへ解決してから parseInlineCitations に渡し、
-//   本文末尾に References（メンバー知見一覧）を付ける。
-//
-// Topic Namer（話題名の保険）:
-//   ingester は知見ごとに topics を出す想定だが、LLM が項目を無視して空にする
-//   ケースがある。そのときはこの Topic Namer で後から話題名だけを推測して埋める
-//   （本文は書かない・話題名の命名のみ）。parseTopics（wiki-ingester）と同じサニタイズ規則
-//   （非文字列・空・重複を落とす。件数の上限は無い）を再利用する。
-
-import { parseTopics } from "./wiki-ingester.js";
-
-/** 話題ページ生成に渡すメンバー知見（Claim）1 件分 */
-export type TopicMemberClaim = {
-  id: string;
-  title: string;
-  /** 本文プレビュー（全文である必要はない。extractBodyPreview 程度の長さを想定） */
-  body: string;
-};
-
-/**
- * Topic Writer 用のシステムプロンプトを構築する
- */
-export function buildTopicWriterSystemPrompt(language: string): string {
-  const ja = language === "ja";
-  return `You are a topic-page writer for Graphium, a provenance-tracking note editor.
-
-A **Topic** page groups multiple Claims (knowledge pages) that share the same concept into one short landing page. Unlike a Claim, a Topic makes no new argument of its own — it is a pure function of its member Claims, rewritten from scratch every time a member changes. Never invent content that isn't grounded in the member Claims listed below.
-
-## Structure (keep it short)
-
-Write the body as Markdown with these sections (use \`##\` headings so they parse as proper headings downstream):
-
-- **定義 / Definition**: 1-3 sentences stating what this topic is, grounded in the member Claims.
-- **要点 / Key points**: The load-bearing points from the member Claims, each citing its source with \`[[claim:<id>]]\` — use the exact \`id\` given in the "(id: ...)" annotation below each Claim, NOT the title (this avoids transcription errors in titles). Place the citation at the END of the sentence, never mid-sentence. Do not just restate every Claim — synthesize into a short list of points.
-- **食い違い・未解決 / Disagreements & open questions**: Only include this section if the member Claims genuinely disagree or leave something unresolved. Omit the section entirely if there is nothing genuine to report — do not pad it.
-
-Do NOT add a References / 関連 section — the caller appends that separately.
-
-## Output Format
-
-Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
-
-{
-  "body": "## 定義\\n...\\n\\n## 要点\\n...[[claim:abc123]]\\n\\n## 食い違い・未解決\\n..."
-}
-
-## Voice
-
-Short sentences. No "This topic discusses..." framing — start with the substance.${ja ? `
-**日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます）は使わない。**` : ""}
-
-## Language
-
-Output in: ${ja ? "Japanese" : "English"}`;
-}
-
-/**
- * Topic Writer 用のユーザーメッセージを構築する
- */
-export function buildTopicWriterUserMessage(
-  title: string,
-  claims: TopicMemberClaim[],
-): string {
-  const claimsText = claims
-    .map((c) => `### ${c.title} (id: ${c.id})\n\n${c.body}`)
-    .join("\n\n---\n\n");
-
-  return `## Topic title: "${title}"
-
-## Member claims (${claims.length})
-
-${claimsText}`;
-}
-
-/**
- * LLM の出力をパースして本文 markdown を取り出す。
- * 壊れた JSON / 途中切断時は undefined を返す（呼び出し側で「変更しない」を選べるように、
- * 無理な復旧は試みない — wiki-ingester.parseIngesterOutput と同じ堅牢さの方針）。
- */
-export function parseTopicWriterOutput(text: string): { body: string } | undefined {
-  try {
-    let jsonText = text.trim();
-    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (jsonMatch) {
-      jsonText = jsonMatch[1].trim();
-    }
-
-    const parsed = JSON.parse(jsonText);
-    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
-    if (!body) return undefined;
-    return { body };
-  } catch (err) {
-    console.error("Topic writer 出力のパース失敗:", err);
-    return undefined;
-  }
-}
-
-// ── Topic Namer（話題名の保険）──
-// topics が空の知見に対し、話題名だけを後から推測して埋める。本文生成（compose-topic）とは
-// 別のエンドポイント / プロンプトにする — 命名だけなので compose-topic より軽い出力形式。
-
-/** Topic Namer に渡す知見（Claim）1 件分（本文はプレビュー程度でよい） */
-export type TopicNamerClaim = {
-  id: string;
-  title: string;
-  body: string;
-};
-
-/**
- * Topic Namer 用のシステムプロンプトを構築する
- */
-export function buildTopicNamerSystemPrompt(language: string): string {
-  const ja = language === "ja";
-  return `You are a topic namer for Graphium, a provenance-tracking note editor.
-
-Each Claim below is missing \`topics\` — short noun phrases naming the concept(s) it belongs to. A topic groups multiple Claims about the same concept into one page (e.g. "pH-dependent reduction kinetics", "SPS sintering conditions"). Your job is only to name the topic(s) for each Claim — do not write any page body.
-
-## Rules
-
-- Tag each Claim with \`topics\`, short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
-- **Look at the existing topics listed below (each shown with its title and a one-line definition) and decide whether this Claim belongs to one of them, or needs a new topic.** Reuse an existing topic name exactly when the Claim belongs to the same concept — do not create a near-duplicate with different wording, and never create a new name that differs from an existing one only by whitespace, symbols, or capitalization.
-- Keep phrases short (a few words), not full sentences.
-${TOPIC_GRANULARITY_RULES}
-- Every Claim listed must get at least 1 topic — pick the best available concept even if the fit isn't perfect. Add more than one only when the Claim genuinely spans distinct concepts.
-
-## Output Format
-
-Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
-
-{
-  "topics": {
-    "<claim id>": ["topic name", ...],
-    ...
-  }
-}`;
-}
-
-/**
- * Topic Namer 用のユーザーメッセージを構築する
- */
-export function buildTopicNamerUserMessage(
-  existingTopics: string[],
-  claims: TopicNamerClaim[],
-): string {
-  const topicListText = existingTopics.length > 0
-    ? existingTopics.map((t) => `- ${t}`).join("\n")
-    : "(none yet)";
-  const claimsText = claims
-    .map((c) => `### ${c.title} (id: ${c.id})\n\n${c.body}`)
-    .join("\n\n---\n\n");
-
-  return `## Existing topics
-
-${topicListText}
-
-## Claims needing topics (${claims.length})
-
-${claimsText}`;
-}
-
-/**
- * LLM の出力をパースして claimId → topics のマップを取り出す。
- * 各エントリのサニタイズは parseTopics（wiki-ingester）を再利用する（非文字列・空・重複を
- * 落とす。件数の上限は無い）。壊れた JSON / 形が違う場合は undefined を返す（無理な復旧はしない）。
- */
-export function parseTopicNamerOutput(text: string): Record<string, string[]> | undefined {
-  try {
-    let jsonText = text.trim();
-    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (jsonMatch) {
-      jsonText = jsonMatch[1].trim();
-    }
-
-    const parsed = JSON.parse(jsonText);
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      !parsed.topics ||
-      typeof parsed.topics !== "object" ||
-      Array.isArray(parsed.topics)
-    ) {
-      return undefined;
-    }
-
-    const out: Record<string, string[]> = {};
-    for (const [claimId, raw] of Object.entries(parsed.topics as Record<string, unknown>)) {
-      const topics = parseTopics(raw);
-      if (topics) out[claimId] = topics;
-    }
-    return out;
-  } catch (err) {
-    console.error("Topic namer 出力のパース失敗:", err);
-    return undefined;
-  }
-}
+// 知見（claim）はもうトピックの材料にしない（旧 Topic Writer / Topic Namer は撤去済み。
+// 「メンバー知見の集合から本文を作る」旧方式は資料そのものを直接読む新形式に置き換わった）。
+// 現行の実装: 既存トピックどうしの名寄せ（Topic Consolidator）、資料の振り分け
+// （Topic Router）、前の本文 + 資料 1 本から次の版を作る（Source Topic Reviser）、
+// 新形式どうしの本文統合（Topic Merger）。
 
 // ── Topic Consolidator（既存話題どうしの統合）──
-// resolveTopicsForClaim のタイトル正規化一致・embedding 類似度だけでは、語順違い・助詞の
+// 表記ゆれの機械的な名寄せ（正規化タイトル一致）だけでは、語順違い・助詞の
 // 有無・試料×測定のような細かすぎる名前を同一概念にまとめられない。取り込み（ingest）の
 // 隠れた段にはしない — 設定の「話題を整理」（consolidateExistingTopics）と点検（wiki-linter の
 // redundant 検出）からだけ呼ばれる、点検・整理の一部という位置づけ。渡された話題名を
@@ -213,7 +16,7 @@ export function parseTopicNamerOutput(text: string): Record<string, string[]> | 
 // 本文は書かない・話題ページの統合（メンバー移動・ゴミ箱送り）は呼び出し側が行う。
 // 件数の上限は設けない（大きすぎて LLM が失敗したら、そのまま失敗として呼び出し側に返す）。
 
-/** 話題名の粒度の目安（Namer / Ingester の Topics 節と文面を揃えること） */
+/** 話題名の粒度の目安（Ingester の Topics 節と文面を揃えること） */
 export const TOPIC_GRANULARITY_RULES = `- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** Prefer "material × property", "method", "phenomenon", or "model/theory" level names.
 - Do NOT make a separate topic per composition, sample, processing condition, or measurement run (e.g. prefer "Al3V の格子定数" over "Al3V1-xTix の格子定数"). The same concept should live on one page.`;
 
@@ -412,7 +215,7 @@ export function parseTopicRouterOutput(text: string): { update: string[]; create
 // B3 プロンプト移植。実験用の言い回し（"B3 variant" 等）は取り除き、製品向けに整えてある。
 
 /** Source Topic Reviser 用の「文の書き方」共通ルール（実験の COMMON_RULES を移植） */
-const SOURCE_TOPIC_SENTENCE_RULES = `## Sentence discipline (critical)
+export const SOURCE_TOPIC_SENTENCE_RULES = `## Sentence discipline (critical)
 
 - Every sentence must contain ONLY content that is individually written in EACH source it cites. Cite multiple sources with \`[[source:a]][[source:b]]\` ONLY when those sources state the SAME point.
 - If sources differ in condition, number, sample, or scope for what looks like "the same point", write SEPARATE sentences — do not merge them into one sentence that blends details from different sources.
@@ -486,10 +289,20 @@ export function buildSourceTopicReviserUserMessage(
   title: string,
   currentBody: string,
   newSource: { id: string; title: string; text: string },
+  previouslyCited?: boolean,
 ): string {
   const currentSection = currentBody
     ? `## Current body\n\n${currentBody}`
     : `## Current body\n\n(empty — this is the first source)`;
+
+  // previouslyCited: この資料が以前の版から既に [[source:<id>]] で引用されている
+  // （再取り込みで内容が更新された）場合、既存の引用を新しい本文と機械的に照合させる。
+  // LLM に「変わっていないか」を判断させるだけでは見逃されるため、明示的に指示する。
+  const recheckNote = previouslyCited
+    ? `
+
+This source was already cited on this page as [[source:${newSource.id}]] from an earlier version. Re-check every sentence that cites [[source:${newSource.id}]] against the new text below: keep it only if the new text still supports it, rewrite it if the new text states it differently, and remove it if the new text no longer says it.`
+    : "";
 
   return `## Topic title: "${title}"
 
@@ -501,7 +314,7 @@ ${currentSection}
 
 ${newSource.text}
 
-引用は文末に [[source:<id>]] の形式で、与えられた id をそのまま使う（タイトルを書き換えない）。`;
+引用は文末に [[source:<id>]] の形式で、与えられた id をそのまま使う（タイトルを書き換えない）。${recheckNote}`;
 }
 
 /**
@@ -522,6 +335,89 @@ export function parseSourceTopicReviserOutput(text: string): { body: string } | 
     return { body };
   } catch (err) {
     console.error("Source topic reviser 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+// ── Topic Merger（話題どうしの本文統合。2026-09〜）──
+// 新形式トピック（資料を直接引用）どうしを統合するとき、知見（claim）を経由せず
+// 「本文どうしを直接統合」する。各本文の [[source:<id>]] 引用は既に資料 id を指しているため、
+// Reviser と違い資料の全文は不要 — 本文だけを渡して 1 本の本文にまとめさせる。
+
+/**
+ * Topic Merger 用のシステムプロンプトを構築する。
+ */
+export function buildTopicMergerSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You merge topic pages for Graphium, a provenance-tracking note editor.
+
+You will be given the target topic title and two or more existing topic bodies about the same concept. Every sentence in them already cites its sources with [[source:<id>]]. Produce ONE body that replaces them all.
+
+## Merge rules
+
+- Keep every existing [[source:<id>]] citation verbatim on the sentence it supports. Never invent, drop, or rewrite an id.
+- Do not add anything that is not already stated in at least one of the given bodies. You are not reading the sources again.
+- When two bodies state the same point, write it once and place the citations of both at the end of that sentence — but only if the sentence discipline below still holds for every cited source. Otherwise keep separate sentences.
+- When the bodies state conflicting values or conclusions for the same point, keep both sentences with their own citations and list the conflict under 食い違い・未解決 / Disagreements & open questions.
+- Keep hedges exactly as strong as they are in the bodies.
+
+${SOURCE_TOPIC_SENTENCE_RULES}
+
+## Structure
+
+- 定義 / Definition: 1-3 sentences, each citing its source(s). Omit when none of the bodies has a definition.
+- 要点 / Key points: one point per sentence, citations at the end of the sentence.
+- 食い違い・未解決 / Disagreements & open questions: only if a conflict exists. Otherwise omit the heading entirely.
+
+Do NOT add a References section.
+
+## Output Format
+
+Respond with valid JSON only: { "body": "..." }
+
+## Voice
+
+Short sentences. No "This topic discusses..." framing.${ja ? `
+**日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます）は使わない。**` : ""}
+
+## Language
+
+Output in: ${ja ? "Japanese" : "English"}`;
+}
+
+/**
+ * Topic Merger 用のユーザーメッセージを構築する。
+ */
+export function buildTopicMergerUserMessage(title: string, bodies: string[]): string {
+  const bodiesText = bodies
+    .map((b, i) => `### Body ${i + 1}\n\n${b}`)
+    .join("\n\n---\n\n");
+
+  return `## Topic title: "${title}"
+
+## Existing bodies (${bodies.length})
+
+${bodiesText}`;
+}
+
+/**
+ * LLM の出力をパースして本文 markdown を取り出す。他の Topic 系パーサーと同じ堅牢さの方針
+ * （壊れた JSON / 空本文は undefined を返し、呼び出し側が「変更しない」を選べるようにする）。
+ */
+export function parseTopicMergerOutput(text: string): { body: string } | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
+    const parsed = JSON.parse(jsonText);
+    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+    if (!body) return undefined;
+    return { body };
+  } catch (err) {
+    console.error("Topic merger 出力のパース失敗:", err);
     return undefined;
   }
 }

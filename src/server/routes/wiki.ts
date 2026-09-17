@@ -48,14 +48,6 @@ import {
   type RewriteSection,
 } from "../services/wiki-rewriter.js";
 import {
-  buildTopicWriterSystemPrompt,
-  buildTopicWriterUserMessage,
-  parseTopicWriterOutput,
-  buildTopicNamerSystemPrompt,
-  buildTopicNamerUserMessage,
-  parseTopicNamerOutput,
-  type TopicMemberClaim,
-  type TopicNamerClaim,
   buildTopicConsolidatorSystemPrompt,
   buildTopicConsolidatorUserMessage,
   parseTopicConsolidatorOutput,
@@ -68,6 +60,9 @@ import {
   buildSourceTopicReviserSystemPrompt,
   buildSourceTopicReviserUserMessage,
   parseSourceTopicReviserOutput,
+  buildTopicMergerSystemPrompt,
+  buildTopicMergerUserMessage,
+  parseTopicMergerOutput,
 } from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -294,6 +289,7 @@ function buildSummary(issues: { type: string }[]) {
     gaps: issues.filter((i) => i.type === "gap").length,
     stale: issues.filter((i) => i.type === "stale").length,
     redundant: issues.filter((i) => i.type === "redundant").length,
+    missingSource: issues.filter((i) => i.type === "missing-source").length,
   };
 }
 
@@ -368,120 +364,12 @@ app.post("/rewrite", async (c) => {
   }
 });
 
-// 話題（topic）ページの本文を生成する。
-//   前の本文は受け取らない — メンバー知見（claims）だけから毎回作り直す純関数。
-//   新規話題の初回生成・既存話題へのメンバー変化後の書き直し・手動再生成のいずれも
-//   この 1 本のエンドポイントを通す（呼び出し側で activityType を使い分ける）。
-app.post("/compose-topic", async (c) => {
-  const body = await c.req.json<{
-    title: string;
-    language: string;
-    claims: TopicMemberClaim[];
-    model?: string;
-  }>();
-
-  if (!body.title || !Array.isArray(body.claims) || body.claims.length === 0) {
-    return c.json({ error: "title and claims are required" }, 400);
-  }
-
-  const modelConfig = resolveModelConfig(c, { modelName: body.model });
-
-  if (!modelConfig) {
-    return c.json(noModelRegisteredBody(), 400);
-  }
-
-  const systemPrompt = buildTopicWriterSystemPrompt(body.language || "en");
-  const userMessage = buildTopicWriterUserMessage(body.title, body.claims);
-
-  try {
-    const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "wiki.compose-topic",
-      modelConfig,
-      abortSignal: c.req.raw.signal,
-    });
-
-    const parsed = parseTopicWriterOutput(result.message);
-    if (!parsed) {
-      return c.json({ error: "Failed to parse topic writer output" }, 500);
-    }
-
-    return c.json({
-      body: parsed.body,
-      tokenUsage: result.tokenUsage,
-      model: result.model,
-    });
-  } catch (err) {
-    console.error("Wiki compose-topic error:", err);
-    return c.json(errorBody(err), 500);
-  }
-});
-
-// 話題（topic）名の保険生成。
-//   ingester が topics を出さなかった知見（claim）に対し、話題名だけを後から推測して埋める。
-//   本文（compose-topic）とは別エンドポイント — 命名のみで軽量。件数の上限は設けない
-//   （入力が大きすぎて LLM が失敗したら、そのまま失敗として呼び出し側（topic-stage）に返す）。
-app.post("/name-topics", async (c) => {
-  const body = await c.req.json<{
-    language: string;
-    existingTopics?: string[];
-    claims: TopicNamerClaim[];
-    model?: string;
-  }>();
-
-  if (!Array.isArray(body.claims) || body.claims.length === 0) {
-    return c.json({ error: "claims are required" }, 400);
-  }
-
-  const modelConfig = resolveModelConfig(c, { modelName: body.model });
-
-  if (!modelConfig) {
-    return c.json(noModelRegisteredBody(), 400);
-  }
-
-  const systemPrompt = buildTopicNamerSystemPrompt(body.language || "en");
-  const userMessage = buildTopicNamerUserMessage(body.existingTopics ?? [], body.claims);
-
-  try {
-    const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "wiki.name-topics",
-      modelConfig,
-      abortSignal: c.req.raw.signal,
-    });
-
-    const parsed = parseTopicNamerOutput(result.message);
-    if (!parsed) {
-      return c.json({ error: "Failed to parse topic namer output" }, 500);
-    }
-
-    return c.json({
-      topics: parsed,
-      tokenUsage: result.tokenUsage,
-      model: result.model,
-    });
-  } catch (err) {
-    console.error("Wiki name-topics error:", err);
-    return c.json(errorBody(err), 500);
-  }
-});
-
 // 話題（topic）名の統合（名寄せの後段）。
-//   name-topics は 20 件ずつチャンクで呼ばれるため全体を見渡せず、表記ゆれ・助詞の有無・
-//   語順違い・粒度違いの近縁話題が別々に残る（実測: 34 話題の大半がメンバー 1 件）。
-//   このエンドポイントは今回の提案名（と既存話題タイトル）をまとめて 1 回渡し、
-//   「どの提案名をどの正式名に寄せるか」の対応表だけを返す。本文は書かない・
-//   話題ページの作成/更新/マージは呼び出し側（topic-stage / note-app）が対応表を見て行う。
+//   資料ごとの振り分け（Topic Router）は資料 1 本ずつしか見ないため全体を見渡せず、
+//   表記ゆれ・助詞の有無・語順違い・粒度違いの近縁話題が別々に残る
+//   （実測: 34 話題の大半がメンバー 1 件）。このエンドポイントは既存話題タイトルを
+//   まとめて 1 回渡し、「どの話題をどの正式名に寄せるか」の対応表だけを返す。本文は書かない・
+//   話題ページの統合は呼び出し側（topic-stage / note-app）が対応表を見て行う。
 app.post("/consolidate-topics", async (c) => {
   const body = await c.req.json<{
     language: string;
@@ -599,6 +487,8 @@ app.post("/revise-topic", async (c) => {
     currentBody: string;
     source: { id: string; title: string; text: string };
     model?: string;
+    /** この資料が以前の版から既に [[source:<id>]] で引用済みか（再取り込み時の見直し指示に使う） */
+    previouslyCited?: boolean;
   }>();
 
   if (!body.title || !body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
@@ -612,7 +502,7 @@ app.post("/revise-topic", async (c) => {
   }
 
   const systemPrompt = buildSourceTopicReviserSystemPrompt(body.language || "en");
-  const userMessage = buildSourceTopicReviserUserMessage(body.title, body.currentBody || "", body.source);
+  const userMessage = buildSourceTopicReviserUserMessage(body.title, body.currentBody || "", body.source, body.previouslyCited);
 
   try {
     const model = await createModel(modelConfig);
@@ -639,6 +529,59 @@ app.post("/revise-topic", async (c) => {
     });
   } catch (err) {
     console.error("Wiki revise-topic error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 新形式トピックどうしの本文統合（話題の統合を「本文の統合」に置き換える）。
+//   知見（claim）を経由せず、統合対象の本文（すでに [[source:<id>]] 引用済み）を
+//   そのまま 2 本以上渡し、1 本の本文にまとめさせる。
+app.post("/merge-topics", async (c) => {
+  const body = await c.req.json<{
+    title: string;
+    language: string;
+    bodies: string[];
+    model?: string;
+  }>();
+
+  if (!body.title || !Array.isArray(body.bodies) || body.bodies.length < 2) {
+    return c.json({ error: "title and at least 2 bodies are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicMergerSystemPrompt(body.language || "en");
+  const userMessage = buildTopicMergerUserMessage(body.title, body.bodies);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.merge-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicMergerOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse topic merger output" }, 500);
+    }
+
+    return c.json({
+      body: parsed.body,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki merge-topics error:", err);
     return c.json(errorBody(err), 500);
   }
 });
