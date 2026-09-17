@@ -1469,6 +1469,8 @@ export function buildWikiSnapshots(
       derivedFromClaims: meta.kind === "topic" ? (wikiMeta?.derivedFromClaims ?? []) : undefined,
       // 矛盾する既存洞察（atom のみ意味を持つ）。detectLocalIssues の contradiction 判定に使う。
       conflictsWith: meta.kind === "atom" ? wikiMeta?.conflictsWith : undefined,
+      // Atom の構造（shape）。redundant 判定（LLM lint）に「同じ構造か」のヒントとして渡す。
+      shape: meta.kind === "atom" ? meta.shape : undefined,
       lastIngestedAt: wikiMeta?.lastIngestedAt,
       modifiedAt: file.modifiedTime,
     });
@@ -1667,6 +1669,7 @@ export async function partitionCandidatesByEmbedding<T extends { title: string; 
 
     const data = await res.json() as {
       embeddings: { documentId: string; sectionId: string; vector: number[] }[];
+      modelVersion?: string;
     };
 
     // 既存同 kind ドキュメントの中で類似度 > threshold のものがあれば duplicate
@@ -1680,7 +1683,9 @@ export async function partitionCandidatesByEmbedding<T extends { title: string; 
         kept.push(candidate); // ベクトル取れず → 素通し
         continue;
       }
-      const results = await embeddingStore.searchByVector(emb.vector, TOP_K);
+      // modelVersion は今回の embed 呼び出しでサーバーが実際に使ったモデル版
+      // （data.modelVersion）を渡す。取れなければ既存索引と一致しない安全側の空文字列。
+      const results = await embeddingStore.searchByVector(emb.vector, TOP_K, data.modelVersion ?? "");
       const best = results
         .filter((r) => existingSameKindDocIds.has(r.documentId) && r.score > threshold)
         .sort((a, b) => b.score - a.score)[0];
