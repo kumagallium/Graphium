@@ -71,3 +71,5 @@ export type {
   RebuildTopicFromSourcesResult, RebuildTopicFromSourcesDeps,
   TopicRebuildTarget, TopicRebuildPlan, TopicRebuildPlanItem,
 } from "./topic-stage";
+export { mergeAtomsExplicit } from "./atom-merge";
+export type { MergeAtomsDeps, MergeAtomsResult } from "./atom-merge";

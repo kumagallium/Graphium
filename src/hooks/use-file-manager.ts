@@ -442,6 +442,7 @@ export function useFileManager(authenticated: boolean) {
                 status: doc.wikiMeta?.status,
                 claimRole: doc.wikiMeta?.claimRole,
                 atomType: doc.wikiMeta?.atomType,
+                shape: doc.wikiMeta?.shape,
                 synthesisMode: doc.wikiMeta?.synthesisMode,
                 hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
                 // topic のメンバー知見 / claim の所属話題。保存時の mirror（handleSaveWikiFile /
@@ -2581,6 +2582,7 @@ export function useFileManager(authenticated: boolean) {
             status: doc.wikiMeta?.status ?? existing?.status,
             claimRole: doc.wikiMeta?.claimRole ?? existing?.claimRole,
             atomType: doc.wikiMeta?.atomType ?? existing?.atomType,
+            shape: doc.wikiMeta?.shape ?? existing?.shape,
             synthesisMode: doc.wikiMeta?.synthesisMode ?? existing?.synthesisMode,
             hypothesisStatus: doc.wikiMeta?.hypothesisStatus ?? existing?.hypothesisStatus,
             // topic のメンバー知見 / claim の所属話題（一覧の知見数列・孤立話題判定・
@@ -2941,6 +2943,7 @@ export function useFileManager(authenticated: boolean) {
           status: doc.wikiMeta?.status,
           claimRole: doc.wikiMeta?.claimRole,
           atomType: doc.wikiMeta?.atomType,
+          shape: doc.wikiMeta?.shape,
           synthesisMode: doc.wikiMeta?.synthesisMode,
           hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
           derivedFromClaims: doc.wikiMeta?.derivedFromClaims,

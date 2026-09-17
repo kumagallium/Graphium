@@ -23,7 +23,8 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel } from "./store";
+import { embeddingStore } from "../../lib/embedding-store";
 import {
   fetchModels,
   type ModelInfo,
@@ -376,6 +377,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
+  // 埋め込みモデル欄で選んでいるモデルと、索引を作ったモデルが違うか。
+  // 版ずれの案内は「ナレッジ管理」にもあるが、モデルを変えるのはこの AI タブなので、
+  // 変えたその場で気づけるよう同じ判定をここでも出す（変えずに開いたときも、既に
+  // ずれていれば出る）。判定は MaintenanceTab と同じ物差し（models の model_id =
+  // /wiki/embed が保存に使う modelVersion）で、索引の件数を見るだけの軽い処理。
+  const [embeddingIndexStale, setEmbeddingIndexStale] = useState(false);
 
   // ヘルスチェック
   const [health, setHealth] = useState<HealthStatus>(null);
@@ -596,6 +603,22 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       setRestartingSidecar(false);
     }
   }, [refreshHealth, t]);
+
+  // 選択中の埋め込みモデルで索引が作られているか（上の embeddingIndexStale の判定）
+  useEffect(() => {
+    if (!isOpen) return;
+    const selectedName = embeddingModel || model || defaultModel;
+    const selectedId = models.find((m) => m.name === selectedName)?.model_id;
+    if (!selectedId) {
+      setEmbeddingIndexStale(false);
+      return;
+    }
+    let cancelled = false;
+    embeddingStore.isEmbeddingIndexStale(selectedId).then((stale) => {
+      if (!cancelled) setEmbeddingIndexStale(stale);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen, embeddingModel, model, defaultModel, models]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -3225,6 +3248,22 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
+                  {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
+                      ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
+                  {embeddingIndexStale && (
+                    <div className="mt-2 flex items-start gap-2 flex-wrap">
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        {t("settings.embeddingModel.staleHint")}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setTab("maintenance")}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
+                      >
+                        {t("settings.embeddingModel.openMaintenance")}
+                      </button>
+                    </div>
+                  )}
                   {/* 接続テストボタンと結果表示 */}
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <button
@@ -3848,6 +3887,31 @@ function MaintenanceTab({
   const [reembedRunning, setReembedRunning] = useState(false);
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
   const [reembedError, setReembedError] = useState<string | null>(null);
+  // 埋め込みの版ずれ検知（軽量: modelVersion index の件数だけ見る。全件走査はしない）。
+  // タブを開いたときに 1 回だけ判定する。作り直し完了後は false に落として案内を消す。
+  const [embeddingStale, setEmbeddingStale] = useState(false);
+  // レコードに保存されるのは表示名（name）ではなく、書き込み/検索と同じ経路
+  // （/wiki/embed のレスポンス modelVersion = サーバー側 config.modelId）で解決した
+  // modelId。getEmbeddingLLMModel() は localStorage（LLM_MODELS_KEY）しか見ないため、
+  // モデル定義がサーバー側にある Tauri デスクトップ版では常に undefined になり、
+  // 検知が一度も発火しない。availableModels（GET /api/models = model_id、
+  // fetchModels() 経由でデスクトップでも正しく取れる）はサーバー側と同じ
+  // listModels() 由来の modelId を返すため、これと getEmbeddingModel()（選択中の
+  // 埋め込みモデル名。空なら defaultModel にフォールバック。プラットフォーム
+  // 非依存）で名前引きすれば、/wiki/embed が実際に使う modelVersion と一致する。
+  const resolveCurrentEmbeddingModelId = useCallback((): string | undefined => {
+    const currentModelName = getEmbeddingModel() || defaultModel;
+    return availableModels.find((m) => m.name === currentModelName)?.model_id;
+  }, [availableModels, defaultModel]);
+  useEffect(() => {
+    let cancelled = false;
+    const current = resolveCurrentEmbeddingModelId();
+    if (!current) return;
+    embeddingStore.isEmbeddingIndexStale(current).then((stale) => {
+      if (!cancelled) setEmbeddingStale(stale);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [resolveCurrentEmbeddingModelId]);
   const [organizeTopicsRunning, setOrganizeTopicsRunning] = useState(false);
   const [organizeTopicsResult, setOrganizeTopicsResult] = useState<OrganizeTopicsResult | null>(null);
   const [organizeTopicsError, setOrganizeTopicsError] = useState<string | null>(null);
@@ -4042,6 +4106,11 @@ function MaintenanceTab({
             <p className="text-xs text-muted-foreground leading-relaxed">
               {t("settings.maintenance.reembedHelp")}
             </p>
+            {embeddingStale && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                {t("settings.maintenance.reembedStale")}
+              </p>
+            )}
           </div>
           {reembedProgress && reembedRunning && (
             <div className="text-xs text-muted-foreground">
@@ -4079,6 +4148,14 @@ function MaintenanceTab({
               try {
                 // 第 2 引数を t と名付けると i18n の t を隠してしまうため total で受ける
                 await onReembedAllWikis((done, tot) => setReembedProgress({ done, total: tot }));
+                // onReembedAllWikis は embed API が全滅して text-only フォールバックに
+                // 落ちても例外を投げない（正常終了扱い）。「呼べたら消す」ではなく、
+                // 索引の実体を isEmbeddingIndexStale で再判定してから案内の表示を決める。
+                const current = resolveCurrentEmbeddingModelId();
+                if (current) {
+                  const stale = await embeddingStore.isEmbeddingIndexStale(current);
+                  setEmbeddingStale(stale);
+                }
               } catch (e) {
                 setReembedError(e instanceof Error ? e.message : String(e));
               } finally {

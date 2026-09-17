@@ -50,6 +50,11 @@ type Props = {
    */
   onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
   /**
+   * redundant の recommendedAction（type: "merge"）が atom（洞察）同士のときだけ出る
+   * 「統合」ワンクリック手当て。keepId に absorbId を吸収させる（モデルは呼ばない）。
+   */
+  onMergeAtoms?: (keepId: string, absorbId: string) => Promise<void> | void;
+  /**
    * stale / redundant のチェックボックス一括選択からの「まとめてアーカイブ」。
    * AI の判断（古い・冗長）は自動実行しない方針なので、ここはユーザーの明示操作のみ
    * （呼び出し元でトースト + wikiLog への記録まで行う）。
@@ -149,6 +154,7 @@ export function WikiLintView({
   wikiTitleById,
   wikiKindById,
   onMergeTopics,
+  onMergeAtoms,
   onBulkArchiveWikis,
   sourceCheckProps,
   initialTab,
@@ -468,6 +474,7 @@ export function WikiLintView({
                     wikiTitleById={wikiTitleById}
                     wikiKindById={wikiKindById}
                     onMergeTopics={onMergeTopics}
+                    onMergeAtoms={onMergeAtoms}
                     bulkSelectable={bulkSelectable}
                     bulkSelected={selectedIssueIndices.has(idx)}
                     onToggleBulkSelected={() => toggleIssueSelected(idx)}
@@ -503,6 +510,7 @@ function IssueCard({
   wikiTitleById,
   wikiKindById,
   onMergeTopics,
+  onMergeAtoms,
   bulkSelectable,
   bulkSelected,
   onToggleBulkSelected,
@@ -519,6 +527,7 @@ function IssueCard({
   wikiTitleById?: Map<string, string>;
   wikiKindById?: Map<string, string>;
   onMergeTopics?: (keepId: string, absorbId: string) => Promise<void> | void;
+  onMergeAtoms?: (keepId: string, absorbId: string) => Promise<void> | void;
   /** stale/redundant のみ true。一括アーカイブのチェックボックスを出すかどうか */
   bulkSelectable?: boolean;
   bulkSelected?: boolean;
@@ -596,19 +605,32 @@ function IssueCard({
     return `${id.slice(0, 8)}…`;
   };
 
-  // 統合のワンクリック手当ては、推奨の keep/absorb が両方 topic のときだけ出す
-  // （mergeTopicsExplicit は topic ページの統合専用）。統合の要否は AI に再判定させない — 押した人の判断で統合する。
+  // 統合のワンクリック手当ては、推奨の keep/absorb が両方 topic、または両方 atom の
+  // ときだけ出す（mergeTopicsExplicit / mergeAtomsExplicit は同種ページの統合専用）。
+  // 統合の要否は AI に再判定させない — 押した人の判断で統合する。
   const canMergeTopics =
     recommended?.type === "merge" &&
     Boolean(onMergeTopics) &&
     wikiKindById?.get(recommended.keepId) === "topic" &&
     wikiKindById?.get(recommended.absorbId) === "topic";
 
+  const canMergeAtoms =
+    recommended?.type === "merge" &&
+    Boolean(onMergeAtoms) &&
+    wikiKindById?.get(recommended.keepId) === "atom" &&
+    wikiKindById?.get(recommended.absorbId) === "atom";
+
+  const canMerge = canMergeTopics || canMergeAtoms;
+
   const runMerge = async () => {
-    if (!canMergeTopics || !recommended || merging || merged) return;
+    if (!canMerge || !recommended || merging || merged) return;
     setMerging(true);
     try {
-      await onMergeTopics!(recommended.keepId, recommended.absorbId);
+      if (canMergeTopics) {
+        await onMergeTopics!(recommended.keepId, recommended.absorbId);
+      } else {
+        await onMergeAtoms!(recommended.keepId, recommended.absorbId);
+      }
       setMerged(true);
       setArchivedThisSession((prev) => new Set(prev).add(recommended.absorbId));
     } catch (err) {
@@ -681,7 +703,7 @@ function IssueCard({
               {recommended.reason}
             </div>
           )}
-          {canMergeTopics && (
+          {canMerge && (
             <div>
               <button
                 onClick={runMerge}
@@ -695,8 +717,10 @@ function IssueCard({
                   </>
                 ) : merged ? (
                   t("wikiLint.action.mergeDone")
-                ) : (
+                ) : canMergeTopics ? (
                   t("wikiLint.action.mergeTopics")
+                ) : (
+                  t("wikiLint.action.mergeAtoms")
                 )}
               </button>
             </div>
