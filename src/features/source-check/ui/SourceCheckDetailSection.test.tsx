@@ -221,6 +221,76 @@ describe("SourceCheckDetailSection", () => {
     expect(button).toBeTruthy();
   });
 
+  it("quoteLocation（PDF ページのみ）があれば注記を出す", () => {
+    const { container } = render(
+      <LocaleProvider>
+        <SourceCheckDetailSection
+          profile={profile([entry({ quote: "抜粋", quoteLocation: { page: 4 } })])}
+        />
+      </LocaleProvider>,
+    );
+    openDetail(container);
+    expect(container.textContent).toContain(t("sourceCheck.quoteLocation.page", { page: "4" }));
+    // 読み上げで「何の位置か」が伝わるよう、注記の直前に読み上げ専用の前置きがある
+    const prefix = container.querySelector(".sr-only");
+    expect(prefix?.textContent?.trim()).toBe(t("sourceCheck.quoteLocation.srPrefix"));
+    expect(prefix?.parentElement?.textContent).toContain(t("sourceCheck.quoteLocation.page", { page: "4" }));
+  });
+
+  it("quoteLocation（PDF ページまたぎ）は範囲表記になる", () => {
+    const { container } = render(
+      <LocaleProvider>
+        <SourceCheckDetailSection
+          profile={profile([entry({ quote: "抜粋", quoteLocation: { page: 7, pageEnd: 8 } })])}
+        />
+      </LocaleProvider>,
+    );
+    openDetail(container);
+    expect(container.textContent).toContain(
+      t("sourceCheck.quoteLocation.pageRange", { page: "7", pageEnd: "8" }),
+    );
+  });
+
+  it("quoteLocation（Word 段落）があれば段落番号を出す", () => {
+    const { container } = render(
+      <LocaleProvider>
+        <SourceCheckDetailSection
+          profile={profile([entry({ quote: "抜粋", quoteLocation: { paragraph: 12 } })])}
+        />
+      </LocaleProvider>,
+    );
+    openDetail(container);
+    expect(container.textContent).toContain(
+      t("sourceCheck.quoteLocation.paragraph", { paragraph: "12" }),
+    );
+  });
+
+  it("quoteLocation が無ければ位置の注記は出ない", () => {
+    const { container } = render(
+      <LocaleProvider>
+        <SourceCheckDetailSection profile={profile([entry({ quote: "抜粋" })])} />
+      </LocaleProvider>,
+    );
+    openDetail(container);
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+      expect(container.textContent).not.toContain(t("sourceCheck.quoteLocation.page", { page: String(n) }));
+      expect(container.textContent).not.toContain(t("sourceCheck.quoteLocation.paragraph", { paragraph: String(n) }));
+    }
+  });
+
+  it("quote が無くても quoteLocation だけあれば壊れず注記が出る", () => {
+    const { container } = render(
+      <LocaleProvider>
+        <SourceCheckDetailSection
+          profile={profile([entry({ quoteLocation: { page: 2 } })])}
+        />
+      </LocaleProvider>,
+    );
+    openDetail(container);
+    expect(container.textContent).toContain(t("sourceCheck.quoteLocation.page", { page: "2" }));
+    expect(container.querySelector("blockquote")).toBeNull();
+  });
+
   it("running のときは「もう一度照合」を無効化する", () => {
     const { container, getByText } = render(
       <LocaleProvider>

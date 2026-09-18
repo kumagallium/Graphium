@@ -1613,6 +1613,18 @@ type SourceMissingReason =
 // claims it cites, not a derivedFromNotes entry.
 type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "claim" | "unknown";
 
+/** Where in the source text the quote was found (resolved mechanically, in the same pass that
+ *  runs the check, from the exact source text judgment used). Left unset when the position is
+ *  not unambiguous (the same wording also appears on another page / in another paragraph). */
+type SourceQuoteLocation = {
+  /** PDF: the page the quote starts on (1-indexed) */
+  page?: number;
+  /** PDF: the page the quote ends on, when it spans a page break (only set if different from page) */
+  pageEnd?: number;
+  /** Word: the paragraph the quote starts in (1-indexed; a block separated by a blank line counts as one paragraph) */
+  paragraph?: number;
+};
+
 type SourceCheckEntry = {
   sourceId: string;                 // the derivedFromNotes entry verbatim, prefix included; for
                                      // "not-recorded" (no source to point at) this is the
@@ -1622,6 +1634,7 @@ type SourceCheckEntry = {
   rationale: string;                // 1-2 sentences, UI language
   quote?: string;                   // kept only when verified verbatim against the source text
   blockId?: string;                 // set only when quote resolves to exactly one note block
+  quoteLocation?: SourceQuoteLocation; // PDF page or Word paragraph; set only when the quote's position is unambiguous
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
   statement?: string;               // the sentence checked (topics only; a claim's whole body is
@@ -1677,6 +1690,16 @@ type SourceCheckProfile = {
   `blockId` is filled in only when the quote is contained by exactly one
   block of the source note — an ambiguous or cross-block match is left
   unset rather than guessed.
+- **`quoteLocation` is resolved mechanically, in the same pass that runs
+  the check, from the exact source text that judgment used** — never
+  written by the model, and never allowed to influence the verdict. It is
+  set only when the quote's position is unambiguous: for `pdf` sources it
+  is the page (or page range) from the extractor's own page boundaries;
+  for `document` (Word) sources it is the paragraph, counted over blocks
+  separated by a blank line; every other source kind (`note`, `url`,
+  `memo`, `claim`, `chat`, `unknown`) never sets it. When the same quoted
+  text appears more than once at different positions, no location is
+  recorded rather than guessed.
 - **`claimHash`** is a hash of the checked document's `title` + body at the
   moment of checking (`computeClaimHash`, the same SHA-256 blob-hash
   utility team-shared-storage uses) — for a topic this is the whole topic

@@ -9,10 +9,18 @@ import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 // それ以上はコスト・レイテンシが急増するので打ち切る。
 const MAX_TEXT_CHARS = 80_000;
 
+// 打ち切り注記の先頭（出典照合の quote-match.ts が「出現位置がこの注記内か」を
+// 判定するのに使う。バンドル境界の事情で quote-match.ts 側にも複製してある —
+// 値を変えるときは両方直すこと）。
+export const PDF_TRUNCATION_MARKER = "\n\n[... truncated: read ";
+
 export type ExtractedPdf = {
   title: string;
   text: string;
   pageCount: number;
+  /** pageStarts[i] = 返す text 上で (i+1) ページ目のテキストが始まる文字オフセット。読んだページ数ぶん。
+   *  出典照合（quote-match.ts の resolveQuoteLocation）がページ番号を解くのに使う。 */
+  pageStarts?: number[];
 };
 
 /**
@@ -41,14 +49,34 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
     if (total > MAX_TEXT_CHARS) break;
   }
 
-  let text = parts.join("\n\n").trim();
+  // parts.join("\n\n") 前の、各ページ開始オフセットを先に出しておく（join は
+  // ページ間に "\n\n"（2 文字）を挟むだけなので、結合後のオフセットも機械的に求まる）。
+  const rawPageStarts: number[] = [];
+  {
+    let offset = 0;
+    for (let i = 0; i < parts.length; i++) {
+      rawPageStarts.push(offset);
+      offset += parts[i].length + (i < parts.length - 1 ? 2 : 0);
+    }
+  }
+
+  const joined = parts.join("\n\n");
+  let text = joined.trim();
+  // 先頭 trim で削れた文字数だけ、各ページ開始オフセットを引く。
+  const leadingTrimmed = joined.length - joined.trimStart().length;
+  let pageStarts = rawPageStarts.map((s) => Math.max(0, s - leadingTrimmed));
+
   const truncated = pagesRead < pageCount || text.length > MAX_TEXT_CHARS;
   if (text.length > MAX_TEXT_CHARS) {
     text = text.slice(0, MAX_TEXT_CHARS);
   }
+  // スライス後の本文長（この時点の text.length）以上から始まるページは、もう
+  // 本文に存在しない（打ち切り注記より後ろに追いやられた扱い）ので含めない。
+  const bodyLength = text.length;
+  pageStarts = pageStarts.filter((s) => s < bodyLength);
   if (truncated) {
     // LLM に「全文を読んだ」と誤認させないため、何ページ中何ページまで読めたかを明示する
-    text += `\n\n[... truncated: read ${pagesRead} of ${pageCount} pages]`;
+    text += `${PDF_TRUNCATION_MARKER}${pagesRead} of ${pageCount} pages]`;
   }
 
   let title = "";
@@ -60,7 +88,7 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
     // メタなし PDF はタイトル空のまま
   }
 
-  return { title, text, pageCount };
+  return { title, text, pageCount, pageStarts };
 }
 
 // 翻訳取り込み用の上限。要約と違い「全文」を訳すため Summary より広く取る。

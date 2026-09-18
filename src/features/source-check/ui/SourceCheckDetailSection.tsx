@@ -24,9 +24,32 @@ import type {
   SourceCheckEntry,
   SourceCheckProfile,
   SourceCheckSourceKind,
+  SourceQuoteLocation,
 } from "../../../lib/document-types";
 import { useT } from "../../../i18n";
 import { sourceCheckVerdictPalette } from "./SourceCheckBadge";
+
+// quoteLocation → 表示文言。位置が解けていない（undefined）ときは何も返さない。
+// quote が無いのに位置だけある状態は起きない想定だが、呼び出し側は quote の有無を見ずに
+// quoteLocation の有無だけで出し分けるので、ここも quote には依存しない。
+function formatQuoteLocation(
+  t: ReturnType<typeof useT>,
+  loc: SourceQuoteLocation | undefined,
+): string | undefined {
+  if (!loc) return undefined;
+  if (loc.page !== undefined) {
+    return loc.pageEnd !== undefined && loc.pageEnd !== loc.page
+      ? t("sourceCheck.quoteLocation.pageRange", {
+          page: String(loc.page),
+          pageEnd: String(loc.pageEnd),
+        })
+      : t("sourceCheck.quoteLocation.page", { page: String(loc.page) });
+  }
+  if (loc.paragraph !== undefined) {
+    return t("sourceCheck.quoteLocation.paragraph", { paragraph: String(loc.paragraph) });
+  }
+  return undefined;
+}
 
 // 出典の種類 → アイコン。素材一覧（MaterialListItem.tsx）の TypeIcon と役割は近いが、
 // note / memo / chat は素材ではなくノート・引用元なので独自にマップする。
@@ -105,6 +128,7 @@ function EntryRow({
 }) {
   const t = useT();
   const sourceLabel = sourceTitles?.[entry.sourceId] ?? entry.sourceId;
+  const locationText = formatQuoteLocation(t, entry.quoteLocation);
   // source-missing は保存済み rationale（照合当時の言語のまま焼き付いている可能性がある）より、
   // 現在の UI 言語で出せる missingReason ラベルを優先する。
   const reasonText =
@@ -187,6 +211,14 @@ function EntryRow({
         >
           {entry.quote}
         </blockquote>
+      )}
+      {locationText && (
+        // 「4 ページ」だけ読み上げると何の位置か伝わらないので、読み上げ専用の前置きを添える
+        // （役割の無い div への aria-label は読まれないことが多い）。
+        <div style={{ color: "var(--ink-3)", fontSize: 12 }}>
+          <span className="sr-only">{t("sourceCheck.quoteLocation.srPrefix")} </span>
+          {locationText}
+        </div>
       )}
       {entry.blockId && onOpenSource && (
         <button

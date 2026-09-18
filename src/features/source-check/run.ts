@@ -17,7 +17,7 @@ import {
 } from "./api";
 import { aggregateDocumentVerdict, aggregateVerdict } from "./aggregate";
 import { computeClaimHash } from "./claim-hash";
-import { findBlockIdForQuote } from "./quote-match";
+import { findBlockIdForQuote, resolveQuoteLocation } from "./quote-match";
 import { missingResponseRationale, missingReasonRationale } from "./rationale-text";
 import { resolveSourceText, type ResolveSourceTextDeps } from "./resolve-source-text";
 import { parseExternalSource } from "../network-graph/external-source";
@@ -201,6 +201,12 @@ export async function runSourceCheck(
         continue;
       }
       const blockId = findBlockIdForQuote(resolved.blocks, modelItem.quote);
+      // quote の位置（PDF のページ・Word の段落）を、判定に使ったのと同じ原文から機械的に解く。
+      // verdict には一切影響しない（位置が解けなくても quoteLocation を付けないだけ）。
+      const quoteLocation = resolveQuoteLocation(
+        { kind: resolved.kind, text: resolved.text, pageStarts: resolved.pageStarts },
+        modelItem.quote,
+      );
       pushEntry(entriesByStatement, statementId, {
         sourceId: group.sourceId,
         sourceKind: resolved.kind,
@@ -209,6 +215,7 @@ export async function runSourceCheck(
         quote: modelItem.quote,
         blockId,
         sourceTextOrigin: resolved.origin,
+        ...(quoteLocation ? { quoteLocation } : {}),
       });
     }
     processedSourceIds.add(group.sourceId);

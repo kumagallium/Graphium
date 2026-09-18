@@ -260,6 +260,64 @@ export const DetailTopicStatements: Story = {
   ),
 };
 
+// C: 出典照合の quote 位置（PDF ページ・Word 段落）。位置は照合時に原文から機械的に解いた
+// もので、verdict には影響しない。一意に決まらないときは quoteLocation 自体が付かない。
+export const DetailQuoteLocation: Story = {
+  name: "詳細欄 — 出典中の引用位置（ページ・段落）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "PDF は quote があったページ（またぎのときはページ範囲）、Word は段落番号を、引用の下に控えめに添える。同じ文言が複数箇所にあり一意に決まらないときは quoteLocation を持たず、位置注記も出ない（3 件目）。",
+      },
+    },
+  },
+  render: () => (
+    <SourceCheckDetailSection
+      profile={profile("supported", [
+        {
+          sourceId: "pdf:media-pdf-1",
+          sourceKind: "pdf",
+          verdict: "supported",
+          rationale: "出典の記述と一致する。",
+          quote: "塩基性条件下では電子移動律速が支配的になる。",
+          quoteLocation: { page: 4 },
+        },
+        {
+          sourceId: "pdf:media-pdf-2",
+          sourceKind: "pdf",
+          verdict: "supported",
+          rationale: "出典の記述と一致する（段落が次ページにまたがる）。",
+          quote: "Diffusion-controlled kinetics dominate under alkaline conditions, and this trend continues across the page boundary into the following section.",
+          quoteLocation: { page: 7, pageEnd: 8 },
+        },
+        {
+          sourceId: "document:media-doc-1",
+          sourceKind: "document",
+          verdict: "supported",
+          rationale: "出典の記述と一致する（同じ文言が複数段落にあり位置は特定できない）。",
+          quote: "焼結温度は 900℃ とした。",
+        },
+        {
+          sourceId: "document:report-1",
+          sourceKind: "document",
+          verdict: "supported",
+          rationale: "出典の記述と一致する。",
+          quote: "降温速度を緩めることで相変態が安定した。",
+          quoteLocation: { paragraph: 12 },
+        },
+      ])}
+      sourceTitles={{
+        ...SOURCE_TITLES,
+        "pdf:media-pdf-2": "Diffusion Kinetics Review.pdf",
+        "document:media-doc-1": "焼結条件メモ.docx",
+        "document:report-1": "実験報告書.docx",
+      }}
+      onOpenSource={(sourceId, blockId) => console.info("[story] onOpenSource", sourceId, blockId)}
+    />
+  ),
+};
+
 export const DetailStale: Story = {
   name: "詳細欄 — 本文変更後（stale）",
   render: () => (
