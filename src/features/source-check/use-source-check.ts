@@ -225,7 +225,11 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
    */
   const planForLint = useCallback(
     async (target: SourceCheckTargetKind, scope: SourceCheckScope): Promise<LintPlanResult> => {
-      const wantedKinds = target === "both" ? ["claim", "topic"] : [target];
+      // answer（回答ページ）は topic と同じ枠で数える（UI に専用の選択肢は増やさない）。
+      const wantedKinds =
+        target === "both" ? ["claim", "topic", "answer"]
+        : target === "topic" ? ["topic", "answer"]
+        : [target];
       const candidates = deps.wikiFiles.filter((f) => {
         const meta = deps.wikiMetas.get(f.id);
         return meta && wantedKinds.includes(meta.kind);
@@ -320,12 +324,12 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
 
 /**
  * WikiBanner の実行ボタンの title に出す「判定 N 回」。
- * 出典照合の対象（claim/topic）以外は undefined。純関数で同期的に計算する
+ * 出典照合の対象（claim/topic/answer）以外は undefined。純関数で同期的に計算する
  * （既に読み込み済みの doc から作るだけなので非同期の解決は不要）。
  */
 export function sourceCheckLlmCallsFor(docId: string, doc: GraphiumDocument | null | undefined): number | undefined {
   if (!doc?.wikiMeta) return undefined;
-  if (doc.wikiMeta.kind !== "claim" && doc.wikiMeta.kind !== "topic") return undefined;
+  if (doc.wikiMeta.kind !== "claim" && doc.wikiMeta.kind !== "topic" && doc.wikiMeta.kind !== "answer") return undefined;
   const statements = buildSourceCheckStatements([{ docId, doc }]);
   if (statements.length === 0) return undefined;
   return planSourceCheck(statements).llmCalls;

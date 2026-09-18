@@ -47,6 +47,20 @@ describe("detectLocalIssues - orphan topic", () => {
     expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("topic-4"))).toBe(false);
   });
 
+  it("answer（回答ページ）も derivedFromClaims/derivedFromNotes が両方空なら orphan として検出する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "answer-1", title: "孤立した回答", kind: "answer", derivedFromClaims: [], derivedFromNotes: [] }),
+    ]);
+    expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("answer-1"))).toBe(true);
+  });
+
+  it("answer で資料（derivedFromNotes）を持てば orphan にしない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "answer-2", title: "回答", kind: "answer", derivedFromClaims: [], derivedFromNotes: ["note-a"] }),
+    ]);
+    expect(issues.some((i) => i.type === "orphan" && i.affectedWikiIds.includes("answer-2"))).toBe(false);
+  });
+
   it("claim の orphan 判定ロジックには影響しない（topic 追加の副作用がないことの確認）", () => {
     const issues = detectLocalIssues([
       base({
@@ -274,6 +288,12 @@ describe("detectAutoArchivable - 新形式トピックの資料全滅（sources-
     const wikis = [{ ...topic("t1", ["note-gone"]), derivedFromClaims: ["claim-a"] }];
     expect(detectAutoArchivable(wikis, new Set(["note-alive"]))).toEqual([]);
   });
+
+  it("answer（回答ページ）も同じ規則で sources-gone を検出し、kind を answer のまま返す", () => {
+    const wikis = [{ ...topic("a1", ["note-gone-a", "note-gone-b"]), kind: "answer" as const }];
+    const out = detectAutoArchivable(wikis, new Set(["note-alive"]));
+    expect(out).toEqual([{ id: "a1", title: "a1", kind: "answer", reason: "sources-gone" }]);
+  });
 });
 
 describe("detectMissingSourceIssues - 新形式トピックの資料一部欠落", () => {
@@ -313,5 +333,12 @@ describe("detectMissingSourceIssues - 新形式トピックの資料一部欠落
   it("validNoteIds が空（索引未読込）なら判定しない", () => {
     const wikis = [topic("t1", ["note-gone", "note-alive"])];
     expect(detectMissingSourceIssues(wikis, new Set())).toEqual([]);
+  });
+
+  it("answer（回答ページ）も同じ規則で資料一部欠落を検出する", () => {
+    const wikis = [{ ...topic("a1", ["note-alive", "note-gone"]), kind: "answer" as const }];
+    const issues = detectMissingSourceIssues(wikis, new Set(["note-alive"]));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ type: "missing-source", severity: "warning", affectedWikiIds: ["a1"] });
   });
 });

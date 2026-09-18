@@ -31,7 +31,7 @@ export function isNeedsReviewVerdict(mirror: SourceCheckVerdictMirror | undefine
 export type NeedsReviewEntry = {
   id: string;
   title: string;
-  kind: "claim" | "topic";
+  kind: "claim" | "topic" | "answer";
   verdict: NeedsReviewVerdict;
 };
 
@@ -47,7 +47,7 @@ export function buildNeedsReviewList(
   for (const f of wikiFiles) {
     const meta = wikiMetas.get(f.id);
     if (!meta) continue;
-    if (meta.kind !== "claim" && meta.kind !== "topic") continue;
+    if (meta.kind !== "claim" && meta.kind !== "topic" && meta.kind !== "answer") continue;
     const mirror = meta.sourceCheckVerdict;
     if (!isNeedsReviewVerdict(mirror)) continue;
     entries.push({

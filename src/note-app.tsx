@@ -9085,8 +9085,10 @@ export function NoteApp() {
         // 拾えるものだけ入れる（oneLiner と同じ理由 — 未ロードの話題を強制ロードしない）。
         // runSourceTopicStage が「今回の資料を既に引用済みのトピック」を機械的に見つけ、
         // ルーターの判断に関係なく改訂対象へ含めるために使う。
+        // answer（回答ページ）も振り分け対象に含める（決定事項）。ルーターには kind で
+        // 「回答ページ」と分かるように渡す。
         const existingTopicRefs: ExistingTopicRef[] = (fm.noteIndex?.notes ?? [])
-          .filter((n) => n.source === "ai" && n.wikiKind === "topic")
+          .filter((n) => n.source === "ai" && (n.wikiKind === "topic" || n.wikiKind === "answer"))
           .map((n) => {
             const doc = fm.getCachedDoc(`wiki:${n.noteId}`);
             const oneLiner = doc ? extractTopicOneLiner(doc) : "";
@@ -9096,6 +9098,7 @@ export function NoteApp() {
               title: n.title,
               ...(oneLiner ? { oneLiner } : {}),
               ...(sourceIds && sourceIds.length > 0 ? { sourceIds } : {}),
+              ...(n.wikiKind === "answer" ? { kind: "answer" as const } : {}),
             };
           });
         const seen = new Set(existingTopicRefs.map((r) => r.id));
@@ -9168,7 +9171,7 @@ export function NoteApp() {
       let total = 0;
       for (const topicId of topicIds) {
         const doc = fm.getCachedDoc(`wiki:${topicId}`) ?? (await fm.loadDoc(`wiki:${topicId}`));
-        if (!doc?.wikiMeta || doc.wikiMeta.kind !== "topic") continue;
+        if (!doc?.wikiMeta || (doc.wikiMeta.kind !== "topic" && doc.wikiMeta.kind !== "answer")) continue;
         const statements = buildSourceCheckStatements([{ docId: topicId, doc }]);
         total += planSourceCheck(statements).statementCount;
       }
@@ -10353,7 +10356,8 @@ export function NoteApp() {
     const wikiKind = doc.wikiMeta.kind;
     const isSynthesis = wikiKind === "synthesis";
     const isAtom = wikiKind === "atom";
-    const isTopic = wikiKind === "topic";
+    // answer（回答ページ）も topic と同じ「資料から作り直す」経路を使う（旧形式は持たない）。
+    const isTopic = wikiKind === "topic" || wikiKind === "answer";
     const isSummary = wikiKind === "summary";
 
     setIngestToast((prev) => ({
@@ -12385,7 +12389,7 @@ export function NoteApp() {
                 onRegenerate={() => {
                   if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
                   const wikiId = fm.activeFileId.replace("wiki:", "");
-                  const isTopic = fm.activeDoc.wikiMeta.kind === "topic";
+                  const isTopic = fm.activeDoc.wikiMeta.kind === "topic" || fm.activeDoc.wikiMeta.kind === "answer";
                   void (async () => {
                     // トピックの再生成は資料から作り直す（rebuildTopicFromSources）ので、
                     // 実行前に AI 呼び出し回数を見せて確認する（人が起動する方針）。
@@ -12421,7 +12425,7 @@ export function NoteApp() {
                 }
                 onRunSourceCheck={
                   aiUiEnabled &&
-                  (fm.activeDoc.wikiMeta.kind === "claim" || fm.activeDoc.wikiMeta.kind === "topic") && wikiIdForBanner
+                  (fm.activeDoc.wikiMeta.kind === "claim" || fm.activeDoc.wikiMeta.kind === "topic" || fm.activeDoc.wikiMeta.kind === "answer") && wikiIdForBanner
                     ? () => void sourceCheck.runOne(wikiIdForBanner)
                     : undefined
                 }

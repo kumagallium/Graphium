@@ -124,8 +124,9 @@ export function parseTopicConsolidatorOutput(text: string): Record<string, strin
 /** Topic Router に渡す資料の最小情報（一覧には含めない — 振り分け対象の資料そのもの） */
 export type TopicRouterSource = { id: string; title: string; text: string };
 
-/** Topic Router に渡す既存トピックの index（タイトル + 定義の先頭文） */
-export type TopicRouterExistingRef = { id: string; title: string; oneLiner?: string };
+/** Topic Router に渡す既存トピックの index（タイトル + 定義の先頭文）。
+ *  kind: "answer" のときは回答ページ（問いに答えるページ）であることを一覧に明示する。 */
+export type TopicRouterExistingRef = { id: string; title: string; oneLiner?: string; kind?: "topic" | "answer" };
 
 /**
  * Topic Router 用のシステムプロンプトを構築する。
@@ -137,11 +138,12 @@ export function buildTopicRouterSystemPrompt(language: string): string {
   const ja = language === "ja";
   return `You are a topic router for Graphium, a provenance-tracking note editor.
 
-You will be given the full text of one source document and a list of existing topic pages (each shown with its title and a one-line definition). Your job is to decide which topic page(s) this source should update, and whether it introduces any concept that needs a brand-new topic page.
+You will be given the full text of one source document and a list of existing topic pages (each shown with its title and a one-line definition). Some of these pages are marked [answer] — a page that answers a specific question rather than surveying a concept. Your job is to decide which topic page(s) this source should update, and whether it introduces any concept that needs a brand-new topic page.
 
 ## Rules
 
 - For each existing topic that this source meaningfully adds to (new detail, confirmation, or contradiction of a point already on that page), include its id in \`update\`.
+- For an [answer] page, only include it in \`update\` when the source updates or contradicts the answer to its question — do not route sources that merely touch the same general topic.
 - For each concept in the source that is NOT covered by any existing topic, propose a new topic name in \`create\`. Names are short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
 ${TOPIC_GRANULARITY_RULES}
 - If this source names the same concept as an existing topic, route to that existing topic — do not create a near-duplicate with different wording.
@@ -168,7 +170,7 @@ export function buildTopicRouterUserMessage(
   existingTopics: TopicRouterExistingRef[],
 ): string {
   const topicListText = existingTopics.length > 0
-    ? existingTopics.map((t) => `- ${t.title} (id: ${t.id})${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")
+    ? existingTopics.map((t) => `- ${t.kind === "answer" ? "[answer] " : ""}${t.title} (id: ${t.id})${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")
     : "(none yet)";
 
   return `## Existing topics
@@ -226,12 +228,12 @@ export const SOURCE_TOPIC_SENTENCE_RULES = `## Sentence discipline (critical)
  * Source Topic Reviser 用のシステムプロンプトを構築する。
  * 前の本文（新規なら空）と新しい資料 1 本の全文を受け取り、次の版の本文（全文書き直し）を返す。
  */
-export function buildSourceTopicReviserSystemPrompt(language: string): string {
+export function buildSourceTopicReviserSystemPrompt(language: string, isAnswer?: boolean): string {
   const ja = language === "ja";
   return `You are a topic-page writer for Graphium, a provenance-tracking note editor, using an incremental revision method.
 
 You maintain ONE short topic page that is revised incrementally as new sources arrive, one at a time. You will be given the CURRENT body (may be empty, for the first source) and ONE new source's full text. Your job: produce the NEXT version of the body — a full rewrite of the page, not an append to the end.
-
+${isAnswer ? "\nThis page answers a specific question (the \"Topic title\" IS the question). Write so the page keeps answering that question as sources are added or revised — do not drift into a general survey of the topic.\n" : ""}
 ## Stay on this topic
 
 - The page is about the concept named in "Topic title". From the new source, take ONLY the content that is about this concept. Leave out parts of the source that belong to other concepts, even when they sit in the same paragraph.

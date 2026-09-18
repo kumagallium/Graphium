@@ -134,7 +134,7 @@ export const ja: Record<string, string> = {
   "sidebar.shared": "共有",
   "sidebar.skill": "スキル",
   "sidebar.knowledge": "ナレッジ",
-  "sidebar.knowledgeHint": "AI がノートから抽出したナレッジ層（トピック・知見・洞察）",
+  "sidebar.knowledgeHint": "AI がノートから抽出したナレッジ層（トピック・知見・洞察・回答）",
   // ナレッジ内の Log / 点検 ボタン
   "sidebar.wikiLog": "ログ",
   "sidebar.wikiLogHint": "ナレッジの変更履歴と生成元",

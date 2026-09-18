@@ -17,7 +17,7 @@ import { extractPlainTextFromDoc } from "../wiki/wiki-service";
 export type SourceCheckTarget = {
   /** ドキュメントの wikiId（"wiki:" プレフィックス無し） */
   docId: string;
-  /** wikiMeta.kind が "claim" | "topic" のドキュメント。それ以外は無視する */
+  /** wikiMeta.kind が "claim" | "topic" | "answer" のドキュメント。それ以外は無視する */
   doc: GraphiumDocument;
 };
 
@@ -47,13 +47,14 @@ function buildClaimStatement(target: SourceCheckTarget): PlanSourceCheckStatemen
   };
 }
 
-/** トピック 1 件を、要点の文ごとに複数の PlanSourceCheckStatement に変換する */
+/** トピック・回答ページ 1 件を、要点の文ごとに複数の PlanSourceCheckStatement に変換する */
 function buildTopicStatements(target: SourceCheckTarget): PlanSourceCheckStatement[] {
   const { docId, doc } = target;
   const title = doc.title ?? "";
   const hashBody = extractPlainTextFromDoc(doc);
   // 新形式（wikiMeta.topicMarkdown あり）は資料 id を直接引用するので出典照合が 1 段になる
   // （toClaimSourceId を通さない）。旧形式はメンバー知見 id に "claim:" を付けて 2 段のまま。
+  // answer（回答ページ）は常に topicMarkdown を持つため常に 1 段になる。
   const isSourceFormat = Boolean(doc.wikiMeta?.topicMarkdown);
   const statements = isSourceFormat ? extractSourceTopicStatements(doc) : extractTopicStatements(doc);
 
@@ -84,8 +85,9 @@ function buildTopicStatements(target: SourceCheckTarget): PlanSourceCheckStateme
 }
 
 /**
- * 知見・トピックのドキュメント群を、planSourceCheck にそのまま渡せる
- * PlanSourceCheckStatement[] に変換する。wikiMeta.kind が claim/topic 以外のドキュメントは無視する。
+ * 知見・トピック・回答ページのドキュメント群を、planSourceCheck にそのまま渡せる
+ * PlanSourceCheckStatement[] に変換する。wikiMeta.kind が claim/topic/answer 以外の
+ * ドキュメントは無視する。
  */
 export function buildSourceCheckStatements(targets: SourceCheckTarget[]): PlanSourceCheckStatement[] {
   const out: PlanSourceCheckStatement[] = [];
@@ -93,10 +95,10 @@ export function buildSourceCheckStatements(targets: SourceCheckTarget[]): PlanSo
     const kind = target.doc.wikiMeta?.kind;
     if (kind === "claim") {
       out.push(buildClaimStatement(target));
-    } else if (kind === "topic") {
+    } else if (kind === "topic" || kind === "answer") {
       out.push(...buildTopicStatements(target));
     }
-    // それ以外の kind（summary/atom/synthesis）は対象外（1-a の対象は claim/topic のみ）
+    // それ以外の kind（summary/atom/synthesis）は対象外（1-a の対象は claim/topic/answer のみ）
   }
   return out;
 }

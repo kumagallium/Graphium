@@ -105,7 +105,7 @@ Every AI reply has action buttons underneath:
 
 ### Keeping a whole answer
 
-If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium saves the message text unedited as an [Answer page](/knowledge-layer#the-kinds), titled with the question you asked, and carries over any citation the answer showed (the ones you could click to open a note or material) as the page's own citations. It doesn't call the AI again and doesn't offer a preview to edit first — it saves exactly what you read. Once saved, the button becomes a confirmation with an **Open** link to the new page. See [Knowledge layer](/knowledge-layer#keeping-a-whole-answer) for what an Answer page can and can't do yet.
+If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium saves the message text unedited as an [Answer page](/knowledge-layer#the-kinds), titled with the question you asked, and carries over any citation the answer showed (the ones you could click to open a note or material) as the page's own citations. It doesn't call the AI again and doesn't offer a preview to edit first — it saves exactly what you read. Once saved, the button becomes a confirmation with an **Open** link to the new page, and from then on the page is upkept like a Topic — revised when a source updates or contradicts the answer, checked, and source-checked. See [Knowledge layer](/knowledge-layer#keeping-a-whole-answer) for details.
 
 ## The Composer (⌘K)
 

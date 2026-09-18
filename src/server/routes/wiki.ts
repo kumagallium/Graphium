@@ -489,6 +489,8 @@ app.post("/revise-topic", async (c) => {
     model?: string;
     /** この資料が以前の版から既に [[source:<id>]] で引用済みか（再取り込み時の見直し指示に使う） */
     previouslyCited?: boolean;
+    /** このページが回答ページ（answer）か。true のとき「問いに答え続ける」規則を追加する */
+    isAnswer?: boolean;
   }>();
 
   if (!body.title || !body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
@@ -501,7 +503,7 @@ app.post("/revise-topic", async (c) => {
     return c.json(noModelRegisteredBody(), 400);
   }
 
-  const systemPrompt = buildSourceTopicReviserSystemPrompt(body.language || "en");
+  const systemPrompt = buildSourceTopicReviserSystemPrompt(body.language || "en", body.isAnswer);
   const userMessage = buildSourceTopicReviserUserMessage(body.title, body.currentBody || "", body.source, body.previouslyCited);
 
   try {

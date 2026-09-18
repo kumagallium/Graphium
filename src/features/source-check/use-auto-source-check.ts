@@ -14,14 +14,14 @@
 import { useEffect, useRef } from "react";
 import type { WikiKind, WikiMetaSummary } from "../../lib/document-types";
 
-/** 自動出典照合の対象 kind。summary / atom / synthesis は対象外。 */
-const AUTO_SOURCE_CHECK_KINDS: ReadonlySet<WikiKind> = new Set<WikiKind>(["claim", "topic"]);
+/** 自動出典照合の対象 kind。summary / atom / synthesis は対象外。answer もトピックと同じ扱い。 */
+const AUTO_SOURCE_CHECK_KINDS: ReadonlySet<WikiKind> = new Set<WikiKind>(["claim", "topic", "answer"]);
 
 /**
- * まだ出典照合していない（sourceCheckVerdict が無い）知見・トピックのうち、
+ * まだ出典照合していない（sourceCheckVerdict が無い）知見・トピック・回答ページのうち、
  * 最初の 1 件の wikiId を返す。無ければ null。純関数なのでテストしやすい。
  *
- * - claim / topic 以外は対象外
+ * - claim / topic / answer 以外は対象外
  * - sourceCheckVerdict があるものは「照合済み」とみなしスキップする
  *   （dismissed はこのフィールドの内側にしか無いため、これだけで両方カバーできる）
  * - skip 集合に含まれる id はスキップ（このセッションでハード失敗した id。ホットループ防止）

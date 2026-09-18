@@ -134,7 +134,7 @@ export const en: Record<string, string> = {
   "sidebar.shared": "Shared",
   "sidebar.skill": "Skill",
   "sidebar.knowledge": "Knowledge",
-  "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (topics, claims, insights)",
+  "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (topics, claims, insights, answers)",
   // Log / Health buttons inside Knowledge
   "sidebar.wikiLog": "Log",
   "sidebar.wikiLogHint": "Change history and sources of your knowledge",
