@@ -442,6 +442,29 @@ describe("runSourceTopicStage", () => {
     expect(created?.wikiMeta?.topicMarkdown).toContain("窓1の本文");
   });
 
+  it("中断は失敗に数えない（実行中の振り分けが AbortError で落ちても failed は増えない）", async () => {
+    const { deps } = makeSourceDeps();
+    const controller = new AbortController();
+
+    let routeCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        routeCalls++;
+        if (routeCalls === 1) return { ok: true, json: async () => ({ update: [], create: [] }) };
+        // 2 枚目の窓の振り分け中にユーザーが停止した状況（fetch が AbortError で落ちる）。
+        controller.abort();
+        throw new DOMException("aborted", "AbortError");
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "長い資料", text: LONG_TEXT }];
+    const result = await runSourceTopicStage(sources, { ...deps, signal: controller.signal });
+
+    expect(result.failed).toBe(0);
+    expect(routeCalls).toBe(2); // 2 枚目で止まり、3 枚目には進まない
+  });
+
   it("窓が複数トピックに振り分けられても、改訂回数は窓ごとに route が返したトピック分だけ", async () => {
     const { deps, docs } = makeSourceDeps({
       existingTopicRefs: [

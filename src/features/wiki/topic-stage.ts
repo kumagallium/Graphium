@@ -31,6 +31,7 @@ import {
   type NoteIndex,
 } from "./wiki-service";
 import { splitIntoWindows } from "./source-windows";
+import { isAbortError } from "../../lib/abort-error";
 // wiki-topic-writer.ts はプロンプト文字列を組むだけの純関数（サーバー専用の依存を持たない）
 // なので client バンドルへそのまま import してよい（wiki-linter からの再 export と同じ扱い）。
 import { buildWindowTextWithSurvey } from "../../server/services/wiki-topic-writer";
@@ -685,6 +686,9 @@ export async function runSourceTopicStage(
           deps.signal,
         );
       } catch (err) {
+        // ユーザーの停止は失敗ではない（取り込みキューと同じ扱い）。その窓で打ち切り、
+        // ここまでに改訂した本文は下の保存へ進む。
+        if (isAbortError(err) || deps.signal?.aborted) break;
         result.failed++;
         log("資料の振り分け(route-topics)に失敗:", source.id, "窓", win.index, err);
         continue;
@@ -760,6 +764,8 @@ export async function runSourceTopicStage(
             deps.signal,
           );
           if (!revisedBody) {
+            // 停止で改訂が返らなかった場合は失敗に数えない。
+            if (deps.signal?.aborted) break;
             result.failed++;
             continue;
           }
@@ -770,6 +776,7 @@ export async function runSourceTopicStage(
           });
           if (isFirstTouch) result.touchedTopicIds.push(topicId);
         } catch (err) {
+          if (isAbortError(err) || deps.signal?.aborted) break;
           result.failed++;
           log("話題の改訂に失敗:", topicId, err);
         }
@@ -793,7 +800,7 @@ export async function runSourceTopicStage(
             );
             if (revisedBody && state) {
               touched.set(existingId, { ...state, body: revisedBody });
-            } else if (!revisedBody) {
+            } else if (!revisedBody && !deps.signal?.aborted) {
               result.failed++;
             }
             continue;
@@ -811,6 +818,8 @@ export async function runSourceTopicStage(
             deps.signal,
           );
           if (!revisedBody) {
+            // 停止で改訂が返らなかった場合は失敗に数えない。
+            if (deps.signal?.aborted) break;
             result.failed++;
             continue;
           }
@@ -834,6 +843,7 @@ export async function runSourceTopicStage(
           result.created++;
           result.touchedTopicIds.push(topicId);
         } catch (err) {
+          if (isAbortError(err) || deps.signal?.aborted) break;
           result.failed++;
           log("話題の新規作成に失敗:", name, err);
         }

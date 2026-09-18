@@ -149,6 +149,7 @@ ${TOPIC_GRANULARITY_RULES}
 - If this source names the same concept as an existing topic, route to that existing topic — do not create a near-duplicate with different wording.
 - Every new topic you propose must be a distinct concept. If two candidate names would collect the same sentences from this source, propose only one of them — the name of the concept those sentences are actually about.
 - Propose a topic only for a concept the source says something substantive about, not for something it merely mentions (for example a measurement it has not done yet).
+- **When the text is one window of a long source** (the heading above the excerpt says so), the rest of that source arrives as later windows. Prefer routing the window into an existing topic over opening a page for every term the window happens to use — a tool, method or quantity the window merely applies belongs on the page of what it is being applied to, unless this window is substantively about that tool itself. Never leave both lists empty just because the text is a fragment: if the window adds something to a concept an existing page covers, update that page.
 - If the source adds nothing worth a topic page (too narrow, purely incidental), leave both \`update\` and \`create\` empty. Do not force an assignment.
 - Do not impose a target count — the number of topics touched should follow from what the source actually contains, not from a quota.
 
