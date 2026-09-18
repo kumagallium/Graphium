@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.81.0](https://github.com/kumagallium/Graphium/compare/v0.80.0...v0.81.0) - 2026-09-18
+
+- 左ナビの節見出しを中身より濃くする by @kumagallium in https://github.com/kumagallium/Graphium/pull/994
+- Add the v0.80.0 manual badges, roadmap row, and figures by @kumagallium in https://github.com/kumagallium/Graphium/pull/996
+- ノートに紐づかないチャットを追加する by @kumagallium in https://github.com/kumagallium/Graphium/pull/997
+- ⌘K の質問をノートに紐づかないチャットへ送る by @kumagallium in https://github.com/kumagallium/Graphium/pull/998
+- チャット一覧を表にして、ピークと回答の操作を足す by @kumagallium in https://github.com/kumagallium/Graphium/pull/999
+- 問答ページを、会話から書き起こして作る by @kumagallium in https://github.com/kumagallium/Graphium/pull/1000
+- チャットに URL を持たせ、引用を押せるようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1001
+- チャット画面に地色を敷く by @kumagallium in https://github.com/kumagallium/Graphium/pull/1002
+
 ## [v0.80.0](https://github.com/kumagallium/Graphium/compare/v0.79.0...v0.80.0) - 2026-09-18
 
 - Say that PDF text is read only up to 80,000 characters by @kumagallium in https://github.com/kumagallium/Graphium/pull/984
