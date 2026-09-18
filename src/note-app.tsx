@@ -345,6 +345,7 @@ import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLangu
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import { StandaloneChatListView } from "./features/standalone-chat/StandaloneChatListView";
 import { StandaloneChatView } from "./features/standalone-chat/StandaloneChatView";
+import { StandaloneChatSidePeek } from "./features/standalone-chat/StandaloneChatSidePeek";
 import {
   loadStandaloneChatIndex,
   loadStandaloneChat,
@@ -352,6 +353,7 @@ import {
   deleteStandaloneChat,
   createStandaloneChat,
 } from "./features/standalone-chat/store";
+import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
@@ -7365,6 +7367,9 @@ export function NoteApp() {
   // 会話 id が立っているときだけ StandaloneChatView を出し、無ければ一覧を出す。
   const [showChatList, setShowChatList] = useState(false);
   const [activeStandaloneChatId, setActiveStandaloneChatId] = useState<string | null>(null);
+  // 一覧から選んだ会話をピーク（右から出る細い面）で開くか、全画面で開くか。
+  // 一覧の行クリック → peek、新しいチャット（一覧ボタン／⌘K）→ full。
+  const [standaloneChatViewMode, setStandaloneChatViewMode] = useState<"full" | "peek">("full");
   const [standaloneChatSummaries, setStandaloneChatSummaries] = useState<StandaloneChatSummary[]>([]);
   const [activeStandaloneChat, setActiveStandaloneChat] = useState<StandaloneChat | null>(null);
   // 応答待ち・エラーは「どの会話の分か」を id で持つ。表示側は
@@ -7392,10 +7397,12 @@ export function NoteApp() {
     return () => { cancelled = true; };
   }, [showChatList]);
 
-  // 一覧から会話を選ぶ: 全文を読み込んでアクティブにする。
+  // 一覧から会話を選ぶ: 全文を読み込んでアクティブにする。ノート一覧・ナレッジ一覧と
+  // 同じ作法で、まずピーク（右から出る細い面）に開く。
   const handleSelectStandaloneChat = useCallback(async (id: string) => {
     setStandaloneChatError(null);
     setActiveStandaloneChatId(id);
+    setStandaloneChatViewMode("peek");
     standaloneChatActiveIdRef.current = id;
     const provider = getActiveProvider();
     const chat = await loadStandaloneChat(provider, id);
@@ -7407,12 +7414,14 @@ export function NoteApp() {
   // 新しいチャット: この時点では保存しない（空のチャットをファイルに残さないため）。
   // 最初のメッセージが返ってきた時点で初めて保存する。
   // attachedNoteIds: ⌘K の Ask で「開いていたノートを引用として添える」場合に渡す。
+  // 新規作成は常に全画面で開く（一覧の「新しいチャット」／⌘K どちらも）。
   const handleNewStandaloneChat = useCallback((attachedNoteIds?: string[]) => {
     setStandaloneChatError(null);
     const chat = createStandaloneChat(attachedNoteIds);
     standaloneChatActiveIdRef.current = chat.id;
     setActiveStandaloneChat(chat);
     setActiveStandaloneChatId(chat.id);
+    setStandaloneChatViewMode("full");
     return chat;
   }, []);
 
@@ -7574,7 +7583,7 @@ export function NoteApp() {
   // そのまま送信できる。ノート内チャット（handleAiChatSubmit）と同じ組み立て方針を踏襲するが、
   // ノート本文・引用・ブロック ID には依存しない。
   const sendStandaloneChatMessage = useCallback(
-    async (chat: StandaloneChat, text: string) => {
+    async (chat: StandaloneChat, text: string, rewindIndex?: number) => {
       // この送信が対象とする会話 id。完了時点でこれと違う会話を見ていたら
       // 画面の state は更新しない（保存はこの id 宛てにそのまま行う）。
       const chatId = chat.id;
@@ -7586,7 +7595,9 @@ export function NoteApp() {
       setStandaloneChatError(null);
       const now = new Date().toISOString();
       const userMessage = { role: "user" as const, content: text, timestamp: now };
-      const baseMessages = chat.messages;
+      // rewindIndex 指定時（編集&再実行・回答の再生成）は、その位置以降を破棄して
+      // 新しい user メッセージを置く（ノート内チャット handleAiChatSubmit と同じ組み立て）。
+      const baseMessages = rewindIndex != null ? chat.messages.slice(0, rewindIndex) : chat.messages;
       const chatAfterUser: StandaloneChat = {
         ...chat,
         messages: [...baseMessages, userMessage],
@@ -7681,6 +7692,25 @@ export function NoteApp() {
         setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
         // 表示中の会話が既に切り替わっていたら、その画面を上書きしない。
         if (isStillActive()) setActiveStandaloneChat(finalChat);
+        // 最初のやり取り（最初の質問 + 最初の応答）がそろった直後にだけ、AI に短い題を
+        // 付けさせる。応答はもう画面に出ているので、ここでは待たせない（fire-and-forget）。
+        // 失敗しても会話は壊さない — 題が無いままでよい（一覧はこれまでどおり最初の
+        // 質問を見出しに使う）。
+        if (shouldGenerateChatTitle({ existingTitle: chat.title, baseMessageCount: baseMessages.length })) {
+          void generateTitle(text)
+            .then(async (title) => {
+              if (!title) return;
+              // 保存は必ず元の会話 id 宛て（呼び出し中に別の会話へ切り替わっていてもよい）。
+              const titledChat: StandaloneChat = { ...finalChat, title };
+              await saveStandaloneChat(provider, titledChat);
+              setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+              // 画面がまだこの会話を開いていれば、開いている内容にも反映する。
+              if (isStillActive()) setActiveStandaloneChat(titledChat);
+            })
+            .catch(() => {
+              // 題の生成に失敗しても会話は壊さない。題が無いままでよい。
+            });
+        }
       } catch (err) {
         if (isAbortError(err)) {
           // ユーザーが Stop した場合は中断。エラー表示しない。
@@ -7710,6 +7740,75 @@ export function NoteApp() {
       void sendStandaloneChatMessage(activeStandaloneChat, text);
     },
     [activeStandaloneChat, sendStandaloneChatMessage],
+  );
+
+  // 編集&再実行・回答の再生成の共通経路。rewindIndex 以降を捨てて text から送り直す
+  // （ノート内チャットの handleAiChatSubmit と同じ考え方。会話 id は既存のものを使い回す）。
+  const handleStandaloneChatResend = useCallback(
+    (text: string, rewindIndex: number) => {
+      if (!activeStandaloneChat) return;
+      void sendStandaloneChatMessage(activeStandaloneChat, text, rewindIndex);
+    },
+    [activeStandaloneChat, sendStandaloneChatMessage],
+  );
+
+  // 分岐: index までのメッセージを引き継いだ新しい会話を作り、一覧に増やしてから
+  // そちらへ切り替える（ノート内チャットの forkChatAt は同一ノート内に ScopeChat を
+  // 増やすが、standalone chat には ScopeChat の概念が無いので新規会話として保存する）。
+  const handleForkStandaloneChat = useCallback(
+    async (index: number) => {
+      if (!activeStandaloneChat) return;
+      const forked: StandaloneChat = {
+        ...createStandaloneChat(activeStandaloneChat.attachedNoteIds),
+        messages: activeStandaloneChat.messages.slice(0, index + 1),
+      };
+      standaloneChatActiveIdRef.current = forked.id;
+      setActiveStandaloneChat(forked);
+      setActiveStandaloneChatId(forked.id);
+      const provider = getActiveProvider();
+      await saveStandaloneChat(provider, forked);
+      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+    },
+    [activeStandaloneChat],
+  );
+
+  // 分岐元の会話が保存済み全文を必要としないよう、ノート内チャットの
+  // onCreateAnswerNote（12964 行付近）と同じ組み立てで「回答」ページを作る。
+  const handleCreateAnswerNoteForStandaloneChat = useCallback(
+    async (doc: GraphiumDocument) => {
+      const newId = await fm.handleCreateWikiFile(doc, {
+        activityType: "wiki_ingest",
+        sources: doc.wikiMeta?.derivedFromNotes ?? [],
+      });
+      embedWikiSections(newId, doc).catch(() => {});
+      wikiLog.append("ingest", [newId], `answer: "${doc.title}"`).catch(() => {});
+      return newId;
+    },
+    [fm.handleCreateWikiFile],
+  );
+
+  // ナレッジに残す: ノート内チャットの handleSaveChatAsAnswer と同じ組み立て
+  // （ノートエディタに依存しない部分をそのまま使い回す。noteIndex と保存経路だけが要る）。
+  const handleSaveStandaloneChatAsAnswer = useCallback(
+    async (question: string, answer: string): Promise<string | null> => {
+      if (!aiUiEnabled) return null;
+      const cleaned = cleanSuggestionText(answer);
+      if (!cleaned.trim()) return null;
+      const titleToRef = getSourceTitleToRefMap();
+      const { markdown, sources } = convertCitationsToSourceRefs(cleaned, titleToRef);
+      const answerTitle = deriveSuggestionTitle(question);
+      const doc = buildSourceBackedWikiDocument(
+        "answer",
+        answerTitle,
+        markdown,
+        sources,
+        getChatSynthesisModelName(),
+        buildNoteIndex(fm.noteIndex),
+        getLocale(),
+      );
+      return handleCreateAnswerNoteForStandaloneChat(doc);
+    },
+    [aiUiEnabled, fm.noteIndex, handleCreateAnswerNoteForStandaloneChat],
   );
 
   // 送信中断: いま開いている会話の送信だけを中断する（chatRunManager は使わない。
@@ -12636,7 +12735,7 @@ export function NoteApp() {
             onEditSkill={(skillId) => setEditingSkillId(skillId)}
             onResetSystemSkill={fm.handleResetSystemSkill}
           />
-        ) : showChatList && activeStandaloneChatId ? (
+        ) : showChatList && activeStandaloneChatId && standaloneChatViewMode === "full" ? (
           <StandaloneChatView
             title={activeStandaloneChat?.title}
             messages={activeStandaloneChat?.messages ?? []}
@@ -12651,6 +12750,10 @@ export function NoteApp() {
             aiConfigured={agentConfigured}
             attachedNotes={standaloneChatAttachedNotesView}
             onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
+            onSaveAsAnswer={aiUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
+            onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
+            onResend={handleStandaloneChatResend}
+            onFork={handleForkStandaloneChat}
           />
         ) : showChatList ? (
           <StandaloneChatListView
@@ -12658,6 +12761,7 @@ export function NoteApp() {
             onSelect={handleSelectStandaloneChat}
             onNewChat={() => handleNewStandaloneChat()}
             onDelete={handleDeleteStandaloneChat}
+            onBack={() => setShowChatList(false)}
           />
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
@@ -13148,6 +13252,27 @@ export function NoteApp() {
           </div>
         )}
       </main>
+      {/* ノートに紐づかないチャットの一覧用サイドピーク（NoteEditorInner 外で表示）。
+          一覧の行クリックはここで開き、「フルスクリーンで開く」で全画面表示に切り替える。 */}
+      {showChatList && activeStandaloneChatId && standaloneChatViewMode === "peek" && (
+        <StandaloneChatSidePeek
+          chat={activeStandaloneChat}
+          messages={activeStandaloneChat?.messages ?? []}
+          loading={standaloneChatLoadingId === activeStandaloneChatId || !activeStandaloneChat}
+          error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
+          onSend={handleStandaloneChatSend}
+          onStop={handleStandaloneChatStop}
+          onClose={() => { standaloneChatActiveIdRef.current = null; setActiveStandaloneChatId(null); }}
+          onToggleFull={() => setStandaloneChatViewMode("full")}
+          aiConfigured={agentConfigured}
+          attachedNotes={standaloneChatAttachedNotesView}
+          onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
+          onSaveAsAnswer={aiUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
+          onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
+          onResend={handleStandaloneChatResend}
+          onFork={handleForkStandaloneChat}
+        />
+      )}
       {/* 一覧ビュー用サイドピーク（NoteEditorInner 外で表示） */}
       {listSidePeekNoteId && (
         <AiAssistantProvider aiAvailable={false}>

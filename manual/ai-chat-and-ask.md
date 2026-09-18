@@ -69,9 +69,11 @@ Conversations are editable, not append-only:
 
 ## Chat without a note open
 
-The **Chat** entry in the sidebar, under **Records & knowledge** (between **All notes** and **Knowledge**), is a conversation that is not about any particular note. Open it and you get a list of past conversations — one line each, showing the title (for now, just the first question you asked; a short AI-generated title is planned) and the first question, plus **N messages · date**. **New chat** starts one.
+The **Chat** entry in the sidebar, under **Records & knowledge** (between **All notes** and **Knowledge**), is a conversation that is not about any particular note. Open it and you get a **table**, styled like the note list or the Knowledge list, with past conversations. Columns are Title, first question, **message count**, and **updated**. It sorts by most recently updated by default, and clicking the message-count or updated header re-sorts. The breadcrumb reads Home → Chat. The title is written by the AI once the first exchange is done — until then it stays empty and you can tell conversations apart by the first question.
 
-It answers the same way the note chat panel does when set to **Internal** — always cross-searching your notes and Knowledge — but has none of the note-chat extras: no `@` attachments, no **Grounding** chip, and no editing, regenerating, or forking a past message. There is nothing to insert a reply into either, since it is not attached to a document.
+Picking a conversation from the list opens it in a **peek** first — a narrow pane sliding in from the right. From there, **Open in full screen** switches to the full view, and `Esc` closes it. Starting a new one — from **New chat** in the list or from `⌘K` — opens straight into full screen.
+
+It answers the same way the note chat panel does when set to **Internal** — always cross-searching your notes and Knowledge. Conversations support **edit and resend**, **regenerate response**, and **new chat from here** (forking), with the same look and controls as the note chat panel, and work the same way in the peek and in full screen. Forking is the one difference: instead of adding to the same note's history, it adds a new conversation to the list. What is still missing: `@` attachments, the **Grounding** chip, **Make Knowledge** (the claims/insights picker), and inserting or replacing into a note — there is nothing to insert into, since it is not attached to a document, but **Keep as knowledge** is available to save the answer as its own page.
 
 A conversation is saved the moment you send a message, not when the answer comes back — so if the AI request fails, the question stays in the list and you can reopen it later. While waiting for a reply the panel shows "Thinking..." with a **Stop** button that only cancels the conversation you are looking at; other conversations keep running if you switch away. Hovering a row in the list reveals a delete button, which asks for confirmation before removing the conversation.
 
@@ -80,9 +82,10 @@ Conversations live on this device, in app data — never mixed into a note file,
 | | Note chat panel | Chat without a note |
 |---|---|---|
 | What it is about | The note (or block) you have open | Nothing in particular — its own topic |
-| Can insert into a note | Yes | No |
+| Insert / replace into a note | Yes | No |
 | `@` attachments, Grounding chip | Yes | No |
-| Edit / regenerate / fork | Yes | No |
+| Edit / regenerate / fork | Yes | Yes (forking adds a new conversation to the list) |
+| **Make Knowledge** (claims/insights picker) | Yes | No (**Keep as knowledge** is available) |
 | What **Stop** cancels | That conversation | Only the conversation you are looking at (others keep running if you switch away) |
 
 Use the note chat panel while you are writing and want the AI to see (or write into) that note. Use the sidebar chat when the question is not about any one note — general questions, working things out, or checking something across everything you have written.
