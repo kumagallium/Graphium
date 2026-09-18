@@ -198,7 +198,7 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isAutoFullCheckEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -7034,7 +7034,7 @@ export function NoteApp() {
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
   // AI 機能ごとの表示切り替え（既定 ON）。設定モーダルを閉じた時に再読み込みして反映する
   // （experimentalFlags と同じ伝搬パターン）。loadSettings() は常に両方 boolean を返す。
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadSettings().features ?? { claims: true, insights: true, worldGrounding: true });
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadSettings().features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
   // 来歴ラベル機能は常時有効。付与 UI が step の中に構造的に畳まれた
   // （ステップを使う人にだけ現れる）ため、設定トグルでの段階的開示は撤去した。
   const provLabelsEnabled = true;
@@ -9561,8 +9561,10 @@ export function NoteApp() {
     // 砂時計のくびれ（synthesize）は人間に戻し、Cmd-K Composer 経由で再構築する想定。
     // 既存 synthesis ファイルの物理データは保持される。
 
-    // 自動 Lint: 機械判定のみのクイック点検（AI 解析は手入れ画面で人が起動したときだけ走る。
-    // 2026-09-17 決定: 冗長の自動統合・孤立の自動リンクは撤去し、人の判断に戻した）
+    // 自動 Lint: 既定は機械判定のみのクイック点検。features.autoFullCheck が ON の
+    // ユーザーは、自動で走る点検でも AI 解析（フル点検）まで行う（2026-09-18 決定）。
+    // ON でも自動の手当て（冗長の自動統合・孤立の自動リンク）は追加しない — 直すのは人のまま
+    // （2026-09-17 決定を維持）。
     try {
       let snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
       const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
@@ -9576,9 +9578,14 @@ export function NoteApp() {
       if (snapshots.length < 2) {
         updateStage("lint", "skipped", tStatic("ingest.needTwoWikis", { count: String(snapshots.length) }));
       } else {
-        updateStage("lint", "running", tStatic("ingest.analyzingWikis", { count: String(snapshots.length) }));
-        // localOnly=true: 機械判定（矛盾・構造的な孤立/重複の疑い）のみ。AI 分析はしない。
-        const rawReport = await lintWikis(snapshots, getLocale(), true, signal);
+        const autoFullCheck = isAutoFullCheckEnabled();
+        updateStage(
+          "lint",
+          "running",
+          tStatic(autoFullCheck ? "ingest.analyzingWikisFull" : "ingest.analyzingWikis", { count: String(snapshots.length) }),
+        );
+        // localOnly: 設定 OFF なら機械判定のみ、ON なら AI 解析まで行う。
+        const rawReport = await lintWikis(snapshots, getLocale(), !autoFullCheck, signal);
         // 資料の一部欠落（missing-source）は /lint が noteIndex を持たないため client 側で
         // 検出し、ここで合流させる（他の機械判定と同じクイック点検の一部として扱う）。
         const report = mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
@@ -9975,9 +9982,10 @@ export function NoteApp() {
         );
         if (snapshots.length < 2) return;
 
-        // localOnly=true: 機械判定のみのクイック点検（AI 解析は手入れ画面で人が起動したときだけ）。
-        // 2026-09-17 決定: 冗長の自動統合・孤立の自動リンクは撤去し、人の判断に戻した。
-        const rawReport = await lintWikis(snapshots, getLocale(), true);
+        // localOnly: 設定 OFF なら機械判定のみのクイック点検、ON なら AI 解析まで行う
+        // フル点検（2026-09-18 決定）。ON でも自動の手当て（統合・リンク）は追加しない。
+        const autoFullCheck = isAutoFullCheckEnabled();
+        const rawReport = await lintWikis(snapshots, getLocale(), !autoFullCheck);
         // 資料の一部欠落（missing-source）は client 側で検出して合流させる（上と同じ理由）。
         const report = mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
         applyLintBadgeFromReport(report);
@@ -9999,7 +10007,13 @@ export function NoteApp() {
           }));
         }
 
-        wikiLog.append("lint", [], `Startup quick check: ${report.issues.length} issue(s)`).catch(() => {});
+        wikiLog
+          .append(
+            "lint",
+            [],
+            `Startup ${autoFullCheck ? "full (AI) check" : "quick check"}: ${report.issues.length} issue(s)`,
+          )
+          .catch(() => {});
       } catch {
         // 起動時 Lint 失敗は静かに無視
       }

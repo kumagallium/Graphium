@@ -316,11 +316,18 @@ export type ExperimentalSettings = {
  *             知見（claims）から作るため、claims が OFF のときは常に false に倒す
  *             （loadSettings のマージで解決する。UI 側もトグルを無効化して理由を出す）。
  * - worldGrounding: 世界照合。ボタン・列・自動照合トグルを隠す。
+ * - autoFullCheck: 自動で走る点検（取り込み直後・起動時 24h）で AI 解析（フル点検）まで
+ *                  **オプトイン（既定オフ。既存ユーザーも含む）** —
+ *                  走らせるかどうか。OFF のときは従来どおり機械判定のみのクイック点検になる。
+ *                  ON でも「直すのは人」は変わらない — 冗長の自動統合・孤立の自動リンクは
+ *                  ここでは追加しない（2026-09-18 決定。手入れ画面からの手動フル点検は
+ *                  この設定に関わらずいつでも起動できる）。他の 3 フラグと同じ既定ロジック。
  */
 export type FeatureFlags = {
   claims?: boolean;
   insights?: boolean;
   worldGrounding?: boolean;
+  autoFullCheck?: boolean;
 };
 
 export type Settings = {
@@ -431,6 +438,7 @@ const DEFAULT_SETTINGS: Settings = {
     claims: false,
     insights: false,
     worldGrounding: false,
+    autoFullCheck: false,
   },
   displayCurrency: "usd",
   usdJpyRate: 150,
@@ -633,6 +641,11 @@ export function loadSettings(): Settings {
           claims: claimsValue,
           insights: claimsValue ? insightsValue : false,
           worldGrounding: typeof feat?.worldGrounding === "boolean" ? feat.worldGrounding : true,
+          // autoFullCheck だけは「キーが無い＝既存ユーザー」でも false に倒す。他の 3 フラグの
+          // 既定 true は「既存ユーザーの挙動を変えない」ための向きだが、自動フル点検は
+          // これまで走っていなかった処理（#967 で止めた AI 呼び出し）なので、true に倒すと
+          // 既存ユーザーの費用が黙って増える。オプトインにする（2026-09-18）。
+          autoFullCheck: typeof feat?.autoFullCheck === "boolean" ? feat.autoFullCheck : false,
         };
       })(),
       atomizeIngestBudget: normalizeAtomizeIngestBudget(parsed.atomizeIngestBudget),
@@ -834,6 +847,17 @@ export function isAtomLayerEnabled(): boolean {
  */
 export function isWorldGroundingEnabled(): boolean {
   return loadSettings().features?.worldGrounding === true;
+}
+
+/**
+ * 自動で走る点検（取り込み直後・起動時 24h）で AI 解析（フル点検）まで行うかどうか。
+ * OFF のときは従来どおり機械判定のみのクイック点検（localOnly=true）になる。
+ * ON でも自動の手当て（冗長の自動統合・孤立の自動リンク）は追加しない — 直すのは人のまま。
+ * 手入れ画面からの手動フル点検は、この設定に関わらずいつでも起動できる。
+ * 既定値の向きは loadSettings 側（初回起動は OFF、既存ユーザーは ON）にのみ持たせる。
+ */
+export function isAutoFullCheckEnabled(): boolean {
+  return loadSettings().features?.autoFullCheck === true;
 }
 
 /**

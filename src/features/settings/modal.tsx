@@ -373,7 +373,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [colorMode, setColorMode] = useState<ColorMode>("");
   const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
   // AI 機能ごとの表示切り替え（既定 ON）。loadSettings() は常に両方 boolean で返すので undefined は来ない
-  const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true });
+  const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
 
   // サーバーデータ
@@ -657,7 +657,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setJpFont(settings.jpFont ?? "");
     setColorMode(settings.colorMode ?? "");
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
-    setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true });
+    setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
     setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
     setSaved(false);
     setShowAddForm(false);
@@ -3055,6 +3055,25 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   label={t("settings.autoSourceCheck.title")}
                   summary={t("settings.autoSourceCheck.summary")}
                   details={<p>{t("settings.autoSourceCheck.help")}</p>}
+                />
+              </div>
+            </div>
+
+            {/* 自動で走る点検（取り込み直後・起動時 24h）を AI 解析（フル）まで行うかどうか。
+                OFF は機械判定のみのクイック点検（既存の挙動）。ON でも自動の手当て
+                （冗長の自動統合・孤立の自動リンク）は追加しない — 直すのは人のまま
+                （2026-09-18 決定）。手入れ画面からの手動フル点検はこの設定に関わらず動く。 */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                <SettingToggle
+                  checked={!!features.autoFullCheck}
+                  onChange={() => {
+                    setFeatures({ ...features, autoFullCheck: !features.autoFullCheck });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.autoFullCheck.title")}
+                  summary={t("settings.features.autoFullCheck.summary")}
+                  details={<p>{t("settings.features.autoFullCheck.help")}</p>}
                 />
               </div>
             </div>
