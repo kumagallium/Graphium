@@ -101,7 +101,7 @@ export type FileSidebarProps = {
   /** モバイル受信箱ビューがアクティブか */
   mobileActive?: boolean;
   /** Wiki カテゴリ別カウント */
-  wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number; topic?: number };
+  wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number; topic?: number; answer?: number };
   /**
    * Atom（洞察）レイヤをサイドバーに表示するか（既定 true）。
    * 設定の features.insights（「洞察を使う」トグル）に従う。OFF のときは
@@ -326,7 +326,7 @@ export function FileSidebar({
   const aiTotalCount = useMemo(() => {
     const w = wikiCounts;
     return (
-      (w?.topic ?? 0) + (w?.summary ?? 0) + (showClaimLayer ? (w?.claim ?? 0) : 0) + (showAtomLayer ? (w?.atom ?? 0) : 0)
+      (w?.topic ?? 0) + (w?.answer ?? 0) + (w?.summary ?? 0) + (showClaimLayer ? (w?.claim ?? 0) : 0) + (showAtomLayer ? (w?.atom ?? 0) : 0)
     );
   }, [wikiCounts, showAtomLayer, showClaimLayer]);
 
@@ -625,7 +625,7 @@ export function FileSidebar({
                 // 要約（summary）の新規生成は停止済み（PR3。話題(topic)が役割を引き継ぐ）。
                 // 新規ユーザーの導線には出さず、既存ファイルが 1 件以上残っているときだけ
                 // 末尾に「以前の要約」として表示する（データが消えたように見えないため）。
-                const kinds: WikiKind[] = ["topic" as WikiKind]
+                const kinds: WikiKind[] = ["topic" as WikiKind, "answer" as WikiKind]
                   .concat(showClaimLayer ? ["claim" as WikiKind] : [])
                   .concat(showAtomLayer ? ["atom" as WikiKind] : []);
                 const summaryCount = wikiCounts?.summary ?? 0;
@@ -634,12 +634,14 @@ export function FileSidebar({
                   const count = kind === "summary" ? summaryCount : (wikiCounts?.[kind] ?? 0);
                   const label =
                     kind === "topic" ? t("wikiList.kindTopic")
+                    : kind === "answer" ? t("wikiList.kindAnswer")
                     : kind === "summary" ? t("wikiList.kindSummaryLegacy")
                     : kind === "claim" ? t("wikiList.kindClaim")
                     : t("wikiList.kindAtom");
                   // 各 kind の意味を title ツールチップで補足する（初見ユーザー向け）。
                   const hint =
                     kind === "topic" ? t("wikiList.kindTopicHint")
+                    : kind === "answer" ? t("wikiList.kindAnswerHint")
                     : kind === "summary" ? t("wiki.summaryRetiredHint")
                     : kind === "claim" ? t("wikiList.kindClaimHint")
                     : t("wikiList.kindAtomHint");

@@ -1453,6 +1453,10 @@ export function buildWikiSnapshots(
   for (const file of wikiFiles) {
     const meta = wikiMetas.get(file.id);
     if (!meta) continue;
+    // answer（AI チャットの回答をナレッジ層に書き戻したページ）は保守（改訂・点検）の
+    // 対象化を別 PR に切り出している。lint 対象に含めない — WikiSnapshot.kind の型も
+    // まだ answer を持たない。
+    if (meta.kind === "answer") continue;
 
     const doc = getCachedDoc(`wiki:${file.id}`);
     const wikiMeta = doc?.wikiMeta;

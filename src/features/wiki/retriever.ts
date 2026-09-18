@@ -349,7 +349,7 @@ export function setWikiTopicMembers(map: Map<string, string[]>): void {
 }
 
 /** <knowledge> 内でセクションを並べる種別の順序（抽象度が上がる方向 + 撤退済み synthesis は末尾） */
-const WIKI_KIND_ORDER: WikiKind[] = ["topic", "claim", "atom", "summary", "synthesis"];
+const WIKI_KIND_ORDER: WikiKind[] = ["topic", "answer", "claim", "atom", "summary", "synthesis"];
 
 /**
  * 引用マーカー [#N | Label | "title"] に出す表示名。
@@ -360,6 +360,7 @@ const WIKI_KIND_ORDER: WikiKind[] = ["topic", "claim", "atom", "summary", "synth
  */
 const WIKI_KIND_LABEL: Record<WikiKind, string> = {
   topic: "Topic",
+  answer: "Answer",
   claim: "Claim",
   atom: "Insight",
   summary: "Summary",
@@ -381,6 +382,7 @@ function topicMembersLine(kind: WikiKind, sourceId: string): string {
 /** <knowledge> 内の見出し（種別ごとのブロックを区切る） */
 const WIKI_KIND_HEADING: Record<WikiKind, string> = {
   topic: "Topics",
+  answer: "Answers",
   claim: "Claims",
   atom: "Insights",
   summary: "Summaries",

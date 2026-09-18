@@ -331,10 +331,11 @@ import {
   rebuildTopicFromSources,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
+  buildSourceBackedWikiDocument,
 } from "./features/wiki";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
-import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap } from "./features/wiki/retriever";
+import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap, getSourceTitleToRefMap } from "./features/wiki/retriever";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
@@ -435,7 +436,8 @@ import { useIsDesktop } from "./hooks/use-media-query";
 import { useListSearchHotkey } from "./hooks/use-list-search-hotkey";
 import { Composer, useComposer, type ComposerSubmission, type DiscoveryCard } from "./features/composer";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./features/composer/discovery-cards";
-import { cleanSuggestionText, type KnowledgeCandidate } from "./features/composer/verb-suggestion-doc";
+import { cleanSuggestionText, deriveSuggestionTitle, type KnowledgeCandidate } from "./features/composer/verb-suggestion-doc";
+import { convertCitationsToSourceRefs } from "./features/ai-assistant/citation-normalize";
 import type { WikiLogEntry } from "./features/wiki/wiki-log";
 import { EmptyNoteGuide } from "./features/onboarding";
 
@@ -1017,6 +1019,11 @@ type NoteEditorProps = {
   onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
   /** knowledge ノート（claim/atom）を作成し、新ファイル ID を返す（R2 / Loop M2 の手動取り込み） */
   onCreateKnowledgeNote?: (doc: GraphiumDocument, kind: "claim" | "atom") => Promise<string>;
+  /**
+   * チャットの回答をナレッジ層の「回答」ページ（answer）として作成し、新ファイル ID を返す。
+   * トピックと同じ出典つきページの組み立て。未指定ならチャットに「ナレッジに残す」ボタンは出ない。
+   */
+  onCreateAnswerNote?: (doc: GraphiumDocument) => Promise<string>;
   onNavigateNote: (noteId: string, cachedDoc?: GraphiumDocument) => void;
   /**
    * ノート右パネルの Graph タブから素材ノードクリックされたときの遷移ハンドラ。
@@ -1501,6 +1508,7 @@ function NoteEditorInner({
   onCreateLinkedNote,
   onAiDeriveNote,
   onCreateKnowledgeNote,
+  onCreateAnswerNote,
   onNavigateNote,
   onOpenMedia,
   onOpenMemoSource,
@@ -4478,6 +4486,37 @@ function NoteEditorInner({
     [fileId, title, aiAssistant, labelStore, initialDoc, onAiDeriveNote, onSourceDocChange],
   );
 
+  // AI 回答をナレッジ層の「回答」ページ（answer）として書き戻す（カーパシー LLM Wiki の
+  // 「良い回答は wiki のページとして書き戻す」に対応。保守 = 改訂・点検の対象化は別 PR）。
+  // トピック（新形式）と同じ出典つきページの組み立てを使い回す:
+  //   1. cleanSuggestionText で PROV マーカー・引用フッターを除去
+  //   2. normalizeWikiCitations 済みの [Source: "title"] 引用を、解決済みタイトル→id マップ
+  //      （getSourceTitleToRefMap）で [[source:<id>]] に置き換える。解決できない引用は
+  //      文字のまま残す（根拠不明の言い切りにしない）
+  //   3. タイトルは問い（ユーザーの質問）そのもの。切り詰めは既存のタイトル規則
+  //      （deriveSuggestionTitle）に合わせる
+  const handleSaveChatAsAnswer = useCallback(
+    async (question: string, answer: string): Promise<string | null> => {
+      if (!onCreateAnswerNote) return null;
+      const cleaned = cleanSuggestionText(answer);
+      if (!cleaned.trim()) return null;
+      const titleToRef = getSourceTitleToRefMap();
+      const { markdown, sources } = convertCitationsToSourceRefs(cleaned, titleToRef);
+      const answerTitle = deriveSuggestionTitle(question);
+      const doc = buildSourceBackedWikiDocument(
+        "answer",
+        answerTitle,
+        markdown,
+        sources,
+        getChatSynthesisModelName(),
+        buildNoteIndex(noteIndex),
+        getLocale(),
+      );
+      return onCreateAnswerNote(doc);
+    },
+    [onCreateAnswerNote, noteIndex],
+  );
+
   // R2 / Loop M2: AI 回答を knowledge ノート（知見=claim / 洞察=atom）として手動取り込みする。
   // 砂時計の首は人間に戻す方針なので自動 ingest はしない。kind はユーザーが選ぶ。
   //
@@ -6707,6 +6746,7 @@ function NoteEditorInner({
                   onInsertToScope={handleInsertToScope}
                   onReplaceBlocks={handleReplaceBlocks}
                   onDeriveNote={handleAiDeriveFromChat}
+                  onSaveAsAnswer={handleSaveChatAsAnswer}
                   onIngestChat={onIngestChat}
                   // 候補ピッカーは知見(claim)・洞察(atom)しか作らない（トピックの等価物が無い）ため、
                   // 知見が OFF のときは機能ごと隠す（知見前提の操作 = 2026-09-17 決定）。
@@ -11313,6 +11353,7 @@ export function NoteApp() {
       let atom = 0;
       let synthesis = 0;
       let topic = 0;
+      let answer = 0;
       for (const wf of fm.wikiFiles) {
         const meta = fm.wikiMetas.get(wf.id);
         if (!meta) continue;
@@ -11321,8 +11362,9 @@ export function NoteApp() {
         else if (meta.kind === "atom") atom++;
         else if (meta.kind === "synthesis") synthesis++;
         else if (meta.kind === "topic") topic++;
+        else if (meta.kind === "answer") answer++;
       }
-      return { summary, claim, atom, synthesis, topic };
+      return { summary, claim, atom, synthesis, topic, answer };
     })(),
     // 点検の「見てほしいことがある」印。0 件 or 既に開いていれば undefined（何も出さない）。
     wikiLintBadge: shouldShowLintBadge(lintBadgeState.summary, lintBadgeState.lastOpenedAt)
@@ -12594,6 +12636,17 @@ export function NoteApp() {
               // 取り込んだノートは SidePeek で開いて即確認できるようにする。
               const openSidePeek = openSidePeekRef.current;
               if (openSidePeek) openSidePeek(`wiki:${newId}`);
+              return newId;
+            } : undefined}
+            onCreateAnswerNote={aiUiEnabled ? async (doc) => {
+              // チャットの回答をナレッジ層の「回答」ページとして保存する。
+              // handleCreateWikiFile が PROV リビジョン記録まで行う（トピックと同じ wiki_ingest）。
+              const newId = await fm.handleCreateWikiFile(doc, {
+                activityType: "wiki_ingest",
+                sources: doc.wikiMeta?.derivedFromNotes ?? [],
+              });
+              embedWikiSections(newId, doc).catch(() => {});
+              wikiLog.append("ingest", [newId], `answer: "${doc.title}"`).catch(() => {});
               return newId;
             } : undefined}
             onNavigateNote={navigateToNote}

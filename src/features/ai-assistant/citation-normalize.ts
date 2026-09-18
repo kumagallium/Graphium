@@ -136,6 +136,39 @@ export function normalizeWikiCitations(
   return { message, sources: [...sources], candidateTitles };
 }
 
+/** ナレッジ（answer）ページの出典 1 件（buildSourceBackedWikiDocument の TopicSourceRef と同じ形） */
+export type AnswerSourceRef = { id: string; title: string };
+
+/**
+ * チャット回答本文（normalizeWikiCitations 済みで `[Source: "title"]` 形式の引用を含む）を、
+ * 出典つきナレッジページ（wiki-service の buildSourceBackedWikiDocument）が読む
+ * `[[source:<id>]]` 形式に変換する。
+ *
+ * titleToRef は getSourceTitleToRefMap() の返り値（タイトル → 参照。Wiki は wikiId、
+ * ノートは `note:<id>`、素材は `asset:<fileId>`、共有は `shared:<id>`）。このセッションで
+ * 実際に注入した断片・Wiki のタイトルしか載らないため、解決できない引用（別セッションの
+ * 応答を後から保存した等）は `[Source: "title"]` の文字列のまま本文に残す
+ * （引用が消えて根拠不明の言い切りになるのを避ける）。
+ */
+export function convertCitationsToSourceRefs(
+  content: string,
+  titleToRef: Map<string, string>,
+): { markdown: string; sources: AnswerSourceRef[] } {
+  const sources: AnswerSourceRef[] = [];
+  const seen = new Set<string>();
+  const pattern = /\[Source:\s*"([^"]+)"\]/g;
+  const markdown = content.replace(pattern, (full: string, title: string) => {
+    const ref = titleToRef.get(title);
+    if (!ref) return full;
+    if (!seen.has(ref)) {
+      seen.add(ref);
+      sources.push({ id: ref, title });
+    }
+    return `[[source:${ref}]]`;
+  });
+  return { markdown, sources };
+}
+
 /**
  * 実際に引用できた内部ノート（Wiki）を「ノート内の知識」トレーリングリストとして
  * 本文末尾に付ける。引用が 1 件も無ければ何も付けない（候補一覧の機械的な流し込みは
