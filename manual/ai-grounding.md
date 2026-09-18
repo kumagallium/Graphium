@@ -56,6 +56,8 @@ Open the **Source check details** section at the bottom of the item for the per-
 
 <Badge type="tip" text="Added in v0.80.0 (2026-09-18)" /> When the source is a PDF or a Word file, the quote also shows where in that document it came from — a line right under it reads, for example, **Page 12**, **Pages 12–13**, or **Paragraph 3**. Graphium works this out mechanically from the same text the check just read rather than asking the model, and it never changes the verdict — it only helps you find the passage. If the exact same wording appears more than once in the source, at different pages or paragraphs, Graphium can't tell which one was meant and leaves this line out rather than guess.
 
+![Source check details listing three sources, each quote followed by where it sits: Page 12, Pages 7–8, Paragraph 12](/screenshots/source-check-quote-location.png)
+
 **Why a source can be "unavailable".** The judge is never even called for these — they're recorded straight away:
 
 | Reason | When it happens |

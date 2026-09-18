@@ -177,3 +177,40 @@ export const Stoppable: Story = {
   name: "停止ボタン（処理中 → 中断）",
   render: () => <StoppableToast />,
 };
+
+/**
+ * マニュアル用（英語・パン作りの世界観）。長い資料を窓に分けて読んでいる最中の進捗。
+ * 「窓 5/32」まで進んだところを撮る想定（scripts/manual-screenshots-windows.mjs）。
+ */
+export const ManualWindowProgress: Story = {
+  name: "Manual (English, window progress)",
+  render: () => (
+    <div className="min-h-[360px] p-4">
+      <IngestToast
+        state={{
+          items: [
+            {
+              id: "1",
+              status: "success",
+              noteTitle: "Sourdough starter — week 1",
+              result: "2 claims",
+            },
+            {
+              id: "2",
+              status: "generating",
+              noteTitle: "Fermentation science (handbook, 118 pages)",
+              detail: "Reading the source",
+              stages: [
+                { key: "topics", label: "Topics", status: "running", detail: "Source 2/6 · window 5/32" },
+                { key: "atomize", label: "Insights", status: "pending" },
+                { key: "lint", label: "Check", status: "pending" },
+              ],
+            },
+          ],
+        }}
+        onDismiss={() => {}}
+        onStop={() => {}}
+      />
+    </div>
+  ),
+};

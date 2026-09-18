@@ -448,3 +448,59 @@ export const English: Story = {
   ),
 };
 
+
+/**
+ * マニュアル用（英語・パン作りの世界観）。PDF のページ・Word の段落が引用の下に出る形を撮る。
+ * 撮影は scripts/manual-screenshots-windows.mjs。decorator の locale を英語に上書きする。
+ */
+export const ManualQuoteLocation: Story = {
+  name: "Manual (English, quote location)",
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <div style={{ background: "var(--paper-2)", padding: 20 }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+  render: () => (
+    <SourceCheckDetailSection
+      profile={profile("supported", [
+        {
+          sourceId: "pdf:media-pdf-1",
+          sourceKind: "pdf",
+          verdict: "supported",
+          rationale: "The source states this in the same terms.",
+          quote: "A wetter dough ferments faster at the same temperature.",
+          quoteLocation: { page: 12 },
+        },
+        {
+          sourceId: "pdf:media-pdf-2",
+          sourceKind: "pdf",
+          verdict: "supported",
+          rationale: "The passage runs across a page break.",
+          quote: "Below 22 °C the starter doubles in roughly eight hours, and the rise slows further as the room cools.",
+          quoteLocation: { page: 7, pageEnd: 8 },
+        },
+        {
+          sourceId: "document:media-doc-1",
+          sourceKind: "document",
+          verdict: "supported",
+          rationale: "The source states this.",
+          quote: "Bake at 240 °C with steam for the first ten minutes.",
+          quoteLocation: { paragraph: 12 },
+        },
+      ])}
+      sourceTitles={{
+        "pdf:media-pdf-1": "Fermentation Science.pdf",
+        "pdf:media-pdf-2": "Starter Handbook.pdf",
+        "document:media-doc-1": "Bake log.docx",
+      }}
+      onOpenSource={() => {}}
+    />
+  ),
+};
