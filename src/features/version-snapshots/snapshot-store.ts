@@ -56,6 +56,7 @@ export async function takeSnapshot(
   noteId: string,
   doc: GraphiumDocument,
   label?: string,
+  origin?: SnapshotMeta["origin"],
 ): Promise<TakeSnapshotResult> {
   if (!provider.writeAppData || !provider.readAppData) {
     throw new Error("この保存先は版の記録に対応していません");
@@ -73,6 +74,7 @@ export async function takeSnapshot(
     label: label?.trim() || undefined,
     savedAt: new Date().toISOString(),
     contentHash,
+    origin,
   };
   await provider.writeAppData(docKey(meta.id), doc);
   await provider.writeAppData(indexKey(noteId), [...metas, meta]);

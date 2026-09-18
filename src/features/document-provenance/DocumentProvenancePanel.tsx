@@ -299,6 +299,7 @@ export function DocumentProvenancePanel({
     restore: t("version.restore"),
     rename: t("version.rename"),
     delete: t("version.delete"),
+    aiRewriteBadge: t("version.aiRewriteBadge"),
   };
 
   const handleRevisionClick = (revId: string, summary: RevisionSummary) => {
@@ -327,6 +328,7 @@ export function DocumentProvenancePanel({
               version={item.snap.version}
               label={item.snap.label}
               savedAt={item.snap.savedAt}
+              origin={item.snap.origin}
               selected={selectedSnapshotId === item.snap.id}
               labels={rowLabels}
               onOpen={onOpenSnapshot ? () => onOpenSnapshot(item.snap.id) : undefined}

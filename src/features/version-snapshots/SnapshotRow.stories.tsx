@@ -10,6 +10,7 @@ const labels: SnapshotRowLabels = {
   restore: "この版に戻す",
   rename: "名前を変更",
   delete: "削除",
+  aiRewriteBadge: "AI書き換え前",
 };
 
 const noop = () => {};
@@ -59,6 +60,12 @@ export const SkillRow: Story = {
     onDerive: undefined,
     onRestore: noop,
   },
+};
+
+// AI がナレッジページを書き換える直前に自動で残した版（人が編集した来歴があるページのみ）
+export const AiRewrite: Story = {
+  name: "AI書き換え前（自動）",
+  args: { version: 4, label: undefined, origin: "ai_rewrite" },
 };
 
 export const Timeline: Story = {

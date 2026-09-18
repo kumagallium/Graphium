@@ -5367,8 +5367,11 @@ function NoteEditorInner({
     versionToastTimerRef.current = window.setTimeout(() => setVersionToast(null), 2600);
   }, []);
 
+  // 版一覧はノート・スキルに加えて Wiki（isWikiDoc）でも読み込む — 「版を残す」ボタンは
+  // Wiki では出さない（保存経路が違う）が、AI 書き換え前の自動スナップショットは
+  // handleSaveWikiFile 側で作られるため、一覧・復元は Wiki でも成立させる必要がある。
   useEffect(() => {
-    if (!fileId || isWikiDoc) {
+    if (!fileId) {
       setSnapshots([]);
       return;
     }
@@ -5381,7 +5384,7 @@ function NoteEditorInner({
     return () => {
       cancelled = true;
     };
-  }, [fileId, isWikiDoc]);
+  }, [fileId]);
 
   // 「版を残す」: いまの編集を通常経路（handleSave）で確定してから、保存済み全文を
   // 版としてコピーする。buildDocument を直接呼ばないことで、recordRevision /
@@ -12506,6 +12509,28 @@ export function NoteApp() {
                 await fm.handleSaveSkillFile(skillId, restored);
                 // cache は保存で更新済みなので、開き直しでエディタを新内容で再マウントする
                 fm.handleOpenSkillFile(skillId);
+              } catch (e) {
+                console.error("版の復元に失敗:", e);
+              }
+            } : fm.activeDoc?.source === "ai" ? async (snapshotId: string) => {
+              // Wiki（ナレッジページ）の復元。AI 書き換え前の自動スナップショットを
+              // ワンクリックで戻せるようにする経路（スキルと同じ形。§version-snapshots/ai-rewrite.ts）。
+              const wikiId = fm.activeFileId?.replace("wiki:", "");
+              const current = fm.activeDoc;
+              if (!wikiId || !current) return;
+              if (!window.confirm(t("version.restoreConfirm"))) return;
+              try {
+                const provider = getActiveProvider();
+                const snapDoc = await loadSnapshot(provider, snapshotId);
+                if (!snapDoc) return;
+                let restored = buildRestoredDocument(current, snapDoc);
+                const email = await provider.getUserEmail() ?? undefined;
+                const author = loadAuthorIdentity() ?? undefined;
+                restored = await recordRevision(restored, current.pages[0] ?? null, "snapshot_restore", { force: true, email, author });
+                // activityType 未指定で保存（人間操作の復元は snapshotBeforeAiRewrite の対象外）
+                await fm.handleSaveWikiFile(wikiId, restored);
+                // cache は保存で更新済みなので、開き直しでエディタを新内容で再マウントする
+                fm.handleOpenWikiFile(wikiId);
               } catch (e) {
                 console.error("版の復元に失敗:", e);
               }

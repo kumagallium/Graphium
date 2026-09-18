@@ -462,6 +462,8 @@ Saved versions are listed in the same panel. Each one offers:
 
 Forking is how you explore a different direction without losing the original: the new note records where it came from, and that link shows up in the [lineage graph](/labels-and-provenance#graph-views-beyond-one-note).
 
+Knowledge pages you've edited by hand get a version automatically, right before the AI rewrites them (topic revision, merge, cross-update, or regenerate). This only kicks in once a page has some human editing history — a page the AI generated and you've never touched isn't versioned this way, since the AI can freely regenerate it. These automatic versions show a small **AI** badge in the panel so you can tell them apart from ones you saved yourself, and they can be restored with one click the same way a Skill's versions can.
+
 ## Folders
 
 Under the title of every note sits a **Folder** button. Folder names are free-form ("battery project", "reading notes") — type to create one, or pick from folders you have used before. Made a typo? While the list is still open, a folder you just created has a pencil to fix its name, and unchecking it undoes the folder altogether. To rename or delete a folder that is already in use, use the sidebar (see below). Folders are the fastest way to slice the notes list (**Filter by folder**) and to color the global graph by project.

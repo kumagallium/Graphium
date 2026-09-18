@@ -7,6 +7,6 @@ export type {
   RevisionSummary,
   BlockContentDiff,
 } from "./types";
-export { recordRevision, detectActivityType, createEmptyProvenance } from "./tracker";
+export { recordRevision, detectActivityType, createEmptyProvenance, isHumanActivityType, hasHumanEditHistory } from "./tracker";
 export { buildDocumentProvenanceBundle } from "./prov-output";
 export { DocumentProvenancePanel } from "./DocumentProvenancePanel";
