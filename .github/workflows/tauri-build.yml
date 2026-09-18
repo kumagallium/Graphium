@@ -70,6 +70,8 @@ jobs:
         with:
           ref: ${{ needs.resolve-release.outputs.tag }}
 
+      - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
