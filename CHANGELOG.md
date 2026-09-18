@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.80.0](https://github.com/kumagallium/Graphium/compare/v0.79.0...v0.80.0) - 2026-09-18
+
+- Say that PDF text is read only up to 80,000 characters by @kumagallium in https://github.com/kumagallium/Graphium/pull/984
+- Show where in a PDF or Word source the quote was found by @kumagallium in https://github.com/kumagallium/Graphium/pull/985
+- Read a long source in windows instead of stopping at 80,000 characters by @kumagallium in https://github.com/kumagallium/Graphium/pull/992
+
 ## [v0.79.0](https://github.com/kumagallium/Graphium/compare/v0.78.1...v0.79.0) - 2026-09-18
 
 - List the chat retrieval numbers in the FAQ table by @kumagallium in https://github.com/kumagallium/Graphium/pull/981
