@@ -88,6 +88,8 @@ export type EditActivityType =
   | "knowledge_schema_default_update"
   /** Knowledge Schema の明示 Reset */
   | "knowledge_schema_reset"
+  /** ユーザーが Knowledge Schema の言語別既定本文へ明示的に切り替え */
+  | "knowledge_schema_language_switch"
   /** 手動で残した版（スナップショット）への復元。ユーザー操作なので human agent に紐づく */
   | "snapshot_restore"
   /** 共有された「変更の提案」の取り込み。ユーザー操作なので human agent に紐づく。

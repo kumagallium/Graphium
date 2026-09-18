@@ -34,7 +34,7 @@ import {
   buildDerivedDocument,
   appendDerivedNoteLink,
 } from "../features/derivation/clone-document";
-import { loadSnapshot } from "../features/version-snapshots/snapshot-store";
+import { loadSnapshot, takeSnapshot } from "../features/version-snapshots/snapshot-store";
 import { snapshotBeforeAiRewrite } from "../features/version-snapshots/ai-rewrite";
 import { findSnapshotsReferencingAsset } from "../features/version-snapshots/snapshot-refs";
 import { registerPendingOcrFile } from "../features/media-ocr";
@@ -3103,10 +3103,15 @@ export function useFileManager(authenticated: boolean) {
 
   // Skill を保存
   const handleSaveSkillFile = useCallback(
-    async (skillId: string, doc: GraphiumDocument) => {
+    async (
+      skillId: string,
+      doc: GraphiumDocument,
+      options?: { skipKnowledgeSchemaRevision?: boolean },
+    ) => {
       try {
         const previous = docCacheRef.current.get(`skill:${skillId}`);
-        const savedDoc = doc.skillMeta?.systemSkillId === "knowledge-schema"
+        const savedDoc = doc.skillMeta?.systemSkillId === "knowledge-schema" &&
+          !options?.skipKnowledgeSchemaRevision
           ? await recordRevision(doc, previous?.pages[0] ?? null, "knowledge_schema_edit")
           : doc;
         await saveSkillFile(skillId, savedDoc);
@@ -3218,6 +3223,74 @@ export function useFileManager(authenticated: boolean) {
       }
     },
     [skillMetas, activeFileId, setActiveDoc, setEditorKey]
+  );
+
+  const handleSwitchKnowledgeSchemaLanguage = useCallback(
+    async (language: "ja" | "en") => {
+      const skillId = "knowledge-schema";
+      try {
+        const { getSystemSkillById } = await import("../features/skill/system-skills");
+        const { buildSystemSkillDocument, resolveSystemSkillDefinition } = await import("../features/skill/skill-service");
+        const baseDef = getSystemSkillById(skillId);
+        if (!baseDef) throw new Error("Knowledge Schema の同梱定義がありません");
+        const previous = docCacheRef.current.get(`skill:${skillId}`) ?? await loadSkillFile(skillId);
+        if (previous.skillMeta?.systemSkillId !== skillId) {
+          throw new Error("固定 ID の文書が Knowledge Schema ではありません");
+        }
+
+        const definition = resolveSystemSkillDefinition(baseDef, language);
+        const fresh = await buildSystemSkillDocument(definition);
+        await takeSnapshot(
+          storage(),
+          skillId,
+          previous,
+          `Knowledge Schema backup (${previous.skillMeta.language ?? "unknown"})`,
+          undefined,
+          true,
+        );
+        let updated: GraphiumDocument = {
+          ...previous,
+          title: fresh.title,
+          pages: fresh.pages,
+          modifiedAt: fresh.modifiedAt,
+          skillMeta: {
+            ...fresh.skillMeta!,
+            createdAt: previous.skillMeta.createdAt,
+          },
+        };
+        updated = await recordRevision(
+          updated,
+          previous.pages[0] ?? null,
+          "knowledge_schema_language_switch",
+          { agentLabel: `user-language-switch:${language}`, force: true },
+        );
+
+        await saveSkillFile(skillId, updated);
+        docCacheRef.current.set(`skill:${skillId}`, updated);
+        setSkillFiles((prev) => prev.map((file) => (
+          file.id === skillId ? { ...file, modifiedTime: updated.modifiedAt } : file
+        )));
+        setSkillMetas((prev) => {
+          const next = new Map(prev);
+          next.set(skillId, {
+            title: updated.title,
+            description: updated.skillMeta?.description ?? "",
+            availableForIngest: updated.skillMeta?.availableForIngest ?? true,
+            systemSkillId: updated.skillMeta?.systemSkillId,
+            language: updated.skillMeta?.language,
+          });
+          return next;
+        });
+        if (activeFileId === `skill:${skillId}`) {
+          setActiveDoc(updated);
+          setEditorKey((key) => key + 1);
+        }
+      } catch (err) {
+        console.error("Knowledge Schema の言語切替に失敗:", err);
+        throw err;
+      }
+    },
+    [activeFileId, setActiveDoc, setEditorKey],
   );
 
   // 生成経路はこの入口だけを使い、固定 Schema の欠落・破損を既定本文で隠さない。
@@ -3399,6 +3472,7 @@ export function useFileManager(authenticated: boolean) {
     handleSaveSkillFile,
     handleDeleteSkillFile,
     handleResetSystemSkill,
+    handleSwitchKnowledgeSchemaLanguage,
     getKnowledgeSchemaPrompt,
     handleCreateSkillFile,
     handleUpdateSkillMeta,

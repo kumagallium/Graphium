@@ -24,6 +24,7 @@ import { registerProvider, setActiveProvider } from "../lib/storage/registry";
 import { clearMediaIndexCache, type MediaIndexEntry } from "../features/asset-browser";
 import { buildSystemSkillDocument, resolveSystemSkillDefinition } from "../features/skill/skill-service";
 import { SYSTEM_SKILLS } from "../features/skill/system-skills";
+import { recordRevision } from "../features/document-provenance/tracker";
 import {
   buildProcessEntry,
   clearLatestProcessIndex,
@@ -229,7 +230,7 @@ function enableSkillStorage(
   seed: Record<string, GraphiumDocument>,
 ) {
   const skills = new Map(Object.entries(seed).map(([id, doc]) => [id, structuredClone(doc)]));
-  const flags = { failListSkillFiles: false };
+  const flags = { failListSkillFiles: false, failSaveSkillFile: false };
   const calls = {
     saveSkillFile: [] as Array<{ id: string; doc: GraphiumDocument }>,
     deleteSkillFile: [] as string[],
@@ -250,6 +251,7 @@ function enableSkillStorage(
       return structuredClone(doc);
     },
     async saveSkillFile(id: string, doc: GraphiumDocument): Promise<void> {
+      if (flags.failSaveSkillFile) throw new Error("skill save failure");
       calls.saveSkillFile.push({ id, doc: structuredClone(doc) });
       skills.set(id, structuredClone(doc));
     },
@@ -797,7 +799,10 @@ describe("useFileManager: Skill一覧失敗時はsystem Skillを上書きしな�
   it("listSkillFilesが失敗したrefreshではKnowledge Schemaを作成・同期しない", async () => {
     const mock = setupProvider();
     const base = SYSTEM_SKILLS.find((skill) => skill.id === "knowledge-schema")!;
-    const schema = await buildSystemSkillDocument(resolveSystemSkillDefinition(base, "ja"));
+    const schema = {
+      ...await buildSystemSkillDocument(resolveSystemSkillDefinition(base, "ja")),
+      version: 6 as const,
+    };
     const skillStorage = enableSkillStorage(mock, { "knowledge-schema": schema });
     const hook = await renderFileManager();
 
@@ -879,6 +884,108 @@ describe("useFileManager: Skill一覧失敗時はsystem Skillを上書きしな�
     const saved = skillStorage.calls.saveSkillFile.find(({ id }) => id === "knowledge-schema")?.doc;
     expect(saved?.skillMeta?.language).toBe("ja");
     expect(JSON.stringify(saved?.pages)).toContain("安全に変更してよい");
+  });
+
+  it("明示切替は英語既定本文・metadata・専用Revisionを一括保存し、以後のResetも英語を使う", async () => {
+    const mock = setupProvider();
+    const base = SYSTEM_SKILLS.find((skill) => skill.id === "knowledge-schema")!;
+    const schema = {
+      ...await buildSystemSkillDocument(resolveSystemSkillDefinition(base, "ja")),
+      version: 6 as const,
+    };
+    const skillStorage = enableSkillStorage(mock, { "knowledge-schema": schema });
+    const hook = await renderFileManager();
+
+    await waitFor(() => {
+      expect(hook.result.current.skillMetas.get("knowledge-schema")?.language).toBe("ja");
+    });
+
+    await act(async () => {
+      await hook.result.current.handleSwitchKnowledgeSchemaLanguage("en");
+    });
+
+    const switched = skillStorage.skills.get("knowledge-schema")!;
+    expect(switched.version).toBe(6);
+    expect(switched.skillMeta?.language).toBe("en");
+    expect(switched.skillMeta?.systemSkillVersion).toBe(base.version);
+    expect(switched.skillMeta?.defaultPromptHash).toBeTruthy();
+    expect(JSON.stringify(switched.pages)).toContain("Safe to change");
+    const activities = switched.documentProvenance?.activities ?? [];
+    const activity = activities[activities.length - 1];
+    expect(activity?.type).toBe("knowledge_schema_language_switch");
+    expect(switched.documentProvenance?.agents.find((agent) => agent.id === activity?.wasAssociatedWith)?.label)
+      .toBe("user-language-switch:en");
+    const revisions = switched.documentProvenance?.revisions ?? [];
+    expect(revisions[revisions.length - 1]?.summary.contentDiff?.some(
+      (diff) => diff.before?.includes("安全に変更してよい"),
+    )).toBe(true);
+    const snapshotIndex = mock.appData.get("snapshot-index:knowledge-schema") as Array<{ id: string; label?: string }>;
+    expect(snapshotIndex).toHaveLength(1);
+    expect(snapshotIndex[0].label).toBe("Knowledge Schema backup (ja)");
+    const snapshot = mock.appData.get(`snapshot:${snapshotIndex[0].id}`) as GraphiumDocument;
+    expect(snapshot.version).toBe(6);
+    expect(snapshot.skillMeta?.language).toBe("ja");
+    expect(JSON.stringify(snapshot.pages)).toContain("安全に変更してよい");
+    expect(hook.result.current.skillMetas.get("knowledge-schema")?.language).toBe("en");
+
+    skillStorage.calls.saveSkillFile.length = 0;
+    await act(async () => {
+      await hook.result.current.handleResetSystemSkill("knowledge-schema");
+    });
+    const reset = skillStorage.calls.saveSkillFile[skillStorage.calls.saveSkillFile.length - 1]?.doc;
+    expect(reset?.skillMeta?.language).toBe("en");
+    expect(JSON.stringify(reset?.pages)).toContain("Safe to change");
+  });
+
+  it("言語切替の保存失敗時は本文・metadata・表示状態を更新しない", async () => {
+    const mock = setupProvider();
+    const base = SYSTEM_SKILLS.find((skill) => skill.id === "knowledge-schema")!;
+    const schema = await buildSystemSkillDocument(resolveSystemSkillDefinition(base, "ja"));
+    const skillStorage = enableSkillStorage(mock, { "knowledge-schema": schema });
+    const hook = await renderFileManager();
+
+    await waitFor(() => {
+      expect(hook.result.current.skillMetas.get("knowledge-schema")?.language).toBe("ja");
+    });
+    const previous = structuredClone(skillStorage.skills.get("knowledge-schema"));
+    skillStorage.flags.failSaveSkillFile = true;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await act(async () => {
+      await expect(hook.result.current.handleSwitchKnowledgeSchemaLanguage("en"))
+        .rejects.toThrow("skill save failure");
+    });
+
+    expect(skillStorage.skills.get("knowledge-schema")).toEqual(previous);
+    expect(hook.result.current.skillMetas.get("knowledge-schema")?.language).toBe("ja");
+    expect(mock.appData.get("snapshot-index:knowledge-schema")).toHaveLength(1);
+  });
+
+  it("Schemaの版復元保存ではsnapshot_restoreに通常編集Revisionを重ねない", async () => {
+    const mock = setupProvider();
+    const base = SYSTEM_SKILLS.find((skill) => skill.id === "knowledge-schema")!;
+    const schema = await buildSystemSkillDocument(resolveSystemSkillDefinition(base, "ja"));
+    const english = await buildSystemSkillDocument(resolveSystemSkillDefinition(base, "en"));
+    const skillStorage = enableSkillStorage(mock, { "knowledge-schema": schema });
+    const hook = await renderFileManager();
+    const restored = await recordRevision(
+      { ...schema, pages: english.pages },
+      schema.pages[0],
+      "snapshot_restore",
+      { force: true },
+    );
+
+    await act(async () => {
+      await hook.result.current.handleSaveSkillFile(
+        "knowledge-schema",
+        restored,
+        { skipKnowledgeSchemaRevision: true },
+      );
+    });
+
+    const saved = skillStorage.skills.get("knowledge-schema")!;
+    expect(saved.documentProvenance?.activities.map((activity) => activity.type))
+      .toEqual(["snapshot_restore"]);
   });
 });
 

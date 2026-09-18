@@ -74,6 +74,16 @@ from the saved `skillMeta.language`, so an untouched English v1 Schema
 auto-updates to the English v2 default, while an edited v1 Schema only gets the
 standard newer-default notification.
 
+The only operation allowed to change the saved Schema language is the explicit,
+confirmed language switch shown while the fixed `knowledge-schema` document is
+open. It atomically replaces the body with the selected bundled v2 default and
+updates `skillMeta.language`, version, and default prompt hash while preserving
+the document version. Before replacement, the prior full document is stored in
+the existing version-snapshot store so it can be restored, and the replacement
+is recorded separately as a `knowledge_schema_language_switch`
+revision/activity. Ordinary Skill metadata updates still preserve the existing
+Schema language.
+
 Each note is a single JSON file (or one row in IndexedDB for the `local`
 provider). The top-level shape:
 

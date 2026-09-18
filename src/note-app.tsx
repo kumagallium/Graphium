@@ -12629,6 +12629,15 @@ export function NoteApp() {
           {fm.activeDoc?.source === "skill" && fm.activeDoc?.skillMeta && (
             <SkillBanner
               availableForIngest={fm.activeDoc.skillMeta.availableForIngest}
+              systemSkillId={fm.activeDoc.skillMeta.systemSkillId}
+              language={fm.activeDoc.skillMeta.language}
+              onSwitchKnowledgeSchemaLanguage={async (language) => {
+                try {
+                  await fm.handleSwitchKnowledgeSchemaLanguage(language);
+                } catch {
+                  alert(tStatic("skill.switchSchemaLanguageFailed"));
+                }
+              }}
               onEdit={() => {
                 const id = fm.activeFileId?.replace(/^skill:/, "");
                 if (id) setEditingSkillId(id);
@@ -12833,7 +12842,7 @@ export function NoteApp() {
                 const email = await provider.getUserEmail() ?? undefined;
                 const author = loadAuthorIdentity() ?? undefined;
                 restored = await recordRevision(restored, current.pages[0] ?? null, "snapshot_restore", { force: true, email, author });
-                await fm.handleSaveSkillFile(skillId, restored);
+                await fm.handleSaveSkillFile(skillId, restored, { skipKnowledgeSchemaRevision: true });
                 // cache は保存で更新済みなので、開き直しでエディタを新内容で再マウントする
                 fm.handleOpenSkillFile(skillId);
               } catch (e) {

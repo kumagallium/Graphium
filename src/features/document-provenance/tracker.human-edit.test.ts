@@ -14,6 +14,7 @@ describe("isHumanActivityType", () => {
     expect(isHumanActivityType("derive_source")).toBe(true);
     expect(isHumanActivityType("knowledge_schema_edit")).toBe(true);
     expect(isHumanActivityType("knowledge_schema_reset")).toBe(true);
+    expect(isHumanActivityType("knowledge_schema_language_switch")).toBe(true);
     expect(isHumanActivityType("snapshot_restore")).toBe(true);
     expect(isHumanActivityType("proposal_adopt")).toBe(true);
   });

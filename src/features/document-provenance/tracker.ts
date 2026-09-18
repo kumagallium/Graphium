@@ -27,6 +27,7 @@ export function isHumanActivityType(activityType: EditActivityType): boolean {
     activityType === "derive_source" ||
     activityType === "knowledge_schema_edit" ||
     activityType === "knowledge_schema_reset" ||
+    activityType === "knowledge_schema_language_switch" ||
     activityType === "snapshot_restore" ||
     activityType === "proposal_adopt"
   );
