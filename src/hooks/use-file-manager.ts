@@ -3,12 +3,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GraphiumFile, GraphiumDocument, WikiKind, WikiMetaSummary } from "../lib/document-types";
+import { migrateToLatest } from "../lib/document-migration";
 import { clearAppDataFileCache } from "../lib/storage/app-data-file";
 import { getActiveProvider } from "../lib/storage/registry";
 import { PROV_TEMPLATE } from "../lib/prov-template";
 import { recordRevision } from "../features/document-provenance/tracker";
 import type { EditActivityType } from "../features/document-provenance/types";
-import type { SkillMetaSummary } from "../features/skill/skill-service";
+import { loadKnowledgeSchemaPrompt, type SkillMetaSummary } from "../features/skill/skill-service";
 import { promoteClaimStatusIfCorroborated, unlinkClaimFromTopic } from "../features/wiki/wiki-service";
 
 /** Wiki 保存・新規作成時のリビジョン記録オプション */
@@ -131,9 +132,9 @@ const deleteWikiFileFromStorage = (id: string) => {
 };
 // Skill ドキュメント操作ヘルパー
 const listSkillFiles = () => storage().listSkillFiles?.() ?? Promise.resolve([]);
-const loadSkillFile = (id: string) => {
+const loadSkillFile = async (id: string) => {
   if (!storage().loadSkillFile) throw new Error("Skill 非対応のストレージプロバイダーです");
-  return storage().loadSkillFile!(id);
+  return migrateToLatest(await storage().loadSkillFile!(id), id);
 };
 const createSkillFile = (title: string, content: GraphiumDocument) => {
   if (!storage().createSkillFile) throw new Error("Skill 非対応のストレージプロバイダーです");
@@ -353,7 +354,9 @@ export function useFileManager(authenticated: boolean) {
           if (provider.saveSkillFile) {
             for (const def of SYSTEM_SKILLS) {
               if (!existingSystemIds.has(def.id)) {
-                const newId = crypto.randomUUID();
+                // Knowledge Schema は storage 上でも固定 ID を使う。Voice 等の既存
+                // system Skill は過去のランダム ID 契約を維持する。
+                const newId = def.id === "knowledge-schema" ? def.id : crypto.randomUUID();
                 const doc = await buildSystemSkillDocument(def);
                 await provider.saveSkillFile(newId, doc);
                 metas.set(newId, {
@@ -403,7 +406,12 @@ export function useFileManager(authenticated: boolean) {
                   },
                   modifiedAt: new Date().toISOString(),
                 };
-                updated = await recordRevision(updated, doc.pages[0] ?? null, "skill_default_update", { agentLabel: "system-default", force: true });
+                updated = await recordRevision(
+                  updated,
+                  doc.pages[0] ?? null,
+                  def.id === "knowledge-schema" ? "knowledge_schema_default_update" : "skill_default_update",
+                  { agentLabel: "system-default", force: true },
+                );
                 await provider.saveSkillFile(fileId, updated);
                 docCacheRef.current.set(`skill:${fileId}`, updated);
                 setSkillFiles((prev) => prev.map((f) => f.id === fileId ? { ...f, modifiedTime: updated.modifiedAt } : f));
@@ -3028,16 +3036,20 @@ export function useFileManager(authenticated: boolean) {
   const handleSaveSkillFile = useCallback(
     async (skillId: string, doc: GraphiumDocument) => {
       try {
-        await saveSkillFile(skillId, doc);
-        docCacheRef.current.set(`skill:${skillId}`, doc);
+        const previous = docCacheRef.current.get(`skill:${skillId}`);
+        const savedDoc = doc.skillMeta?.systemSkillId === "knowledge-schema"
+          ? await recordRevision(doc, previous?.pages[0] ?? null, "knowledge_schema_edit")
+          : doc;
+        await saveSkillFile(skillId, savedDoc);
+        docCacheRef.current.set(`skill:${skillId}`, savedDoc);
         setSkillMetas((prev) => {
           const next = new Map(prev);
           next.set(skillId, {
-            title: doc.title,
-            description: doc.skillMeta?.description ?? "",
-            availableForIngest: doc.skillMeta?.availableForIngest ?? true,
-            systemSkillId: doc.skillMeta?.systemSkillId,
-            language: doc.skillMeta?.language,
+            title: savedDoc.title,
+            description: savedDoc.skillMeta?.description ?? "",
+            availableForIngest: savedDoc.skillMeta?.availableForIngest ?? true,
+            systemSkillId: savedDoc.skillMeta?.systemSkillId,
+            language: savedDoc.skillMeta?.language,
             // 編集保存では新デフォルト通知は解消しない（Reset するまで残す）
             hasNewerDefault: prev.get(skillId)?.hasNewerDefault,
           });
@@ -3057,6 +3069,11 @@ export function useFileManager(authenticated: boolean) {
   const handleDeleteSkillFile = useCallback(
     async (skillId: string) => {
       try {
+        const doc = docCacheRef.current.get(`skill:${skillId}`) ?? await loadSkillFile(skillId);
+        if (doc.skillMeta?.systemSkillId) {
+          console.warn("システム同梱スキルは削除できません:", skillId);
+          return;
+        }
         docCacheRef.current.delete(`skill:${skillId}`);
         await deleteSkillFileFromStorage(skillId);
         if (activeFileId === `skill:${skillId}`) {
@@ -3084,7 +3101,7 @@ export function useFileManager(authenticated: boolean) {
       try {
         const { getSystemSkillById } = await import("../features/skill/system-skills");
         const { buildSystemSkillDocument } = await import("../features/skill/skill-service");
-        const def = getSystemSkillById(meta.systemSkillId as any);
+        const def = getSystemSkillById(meta.systemSkillId as import("../features/skill/system-skills").SystemSkillId);
         if (!def) return;
         const prevDoc = docCacheRef.current.get(`skill:${skillId}`) ?? await loadSkillFile(skillId).catch(() => undefined);
         let doc = await buildSystemSkillDocument(def);
@@ -3098,7 +3115,16 @@ export function useFileManager(authenticated: boolean) {
             skillMeta: { ...doc.skillMeta!, createdAt: prevDoc.skillMeta?.createdAt ?? doc.skillMeta!.createdAt },
           };
         }
-        doc = await recordRevision(doc, prevDoc?.pages[0] ?? null, "skill_default_update", { agentLabel: "system-default", force: true });
+        doc = await recordRevision(
+          doc,
+          prevDoc?.pages[0] ?? null,
+          meta.systemSkillId === "knowledge-schema" ? "knowledge_schema_reset" : "skill_default_update",
+          {
+            agentLabel: meta.systemSkillId === "knowledge-schema" ? "user" : "system-default",
+            force: true,
+          },
+        );
+
         await saveSkillFile(skillId, doc);
         docCacheRef.current.set(`skill:${skillId}`, doc);
         setSkillMetas((prev) => {
@@ -3122,6 +3148,18 @@ export function useFileManager(authenticated: boolean) {
       }
     },
     [skillMetas, activeFileId, setActiveDoc, setEditorKey]
+  );
+
+  // 生成経路はこの入口だけを使い、固定 Schema の欠落・破損を既定本文で隠さない。
+  const getKnowledgeSchemaPrompt = useCallback(
+    async () => loadKnowledgeSchemaPrompt(async (id) => {
+      const cached = docCacheRef.current.get(`skill:${id}`);
+      if (cached) return cached;
+      const doc = await loadSkillFile(id);
+      docCacheRef.current.set(`skill:${id}`, doc);
+      return doc;
+    }),
+    [],
   );
 
   // Skill の新規作成
@@ -3300,6 +3338,7 @@ export function useFileManager(authenticated: boolean) {
     handleSaveSkillFile,
     handleDeleteSkillFile,
     handleResetSystemSkill,
+    getKnowledgeSchemaPrompt,
     handleCreateSkillFile,
     handleUpdateSkillMeta,
   };

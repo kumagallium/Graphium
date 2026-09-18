@@ -8,10 +8,12 @@ function makeActivity(type: EditActivity["type"]): EditActivity {
 }
 
 describe("isHumanActivityType", () => {
-  it("human_edit / human_derivation / derive_source / snapshot_restore / proposal_adopt は人間の操作", () => {
+  it("human-owned document の編集・Reset は人間の操作", () => {
     expect(isHumanActivityType("human_edit")).toBe(true);
     expect(isHumanActivityType("human_derivation")).toBe(true);
     expect(isHumanActivityType("derive_source")).toBe(true);
+    expect(isHumanActivityType("knowledge_schema_edit")).toBe(true);
+    expect(isHumanActivityType("knowledge_schema_reset")).toBe(true);
     expect(isHumanActivityType("snapshot_restore")).toBe(true);
     expect(isHumanActivityType("proposal_adopt")).toBe(true);
   });
@@ -27,6 +29,7 @@ describe("isHumanActivityType", () => {
     expect(isHumanActivityType("wiki_atomize")).toBe(false);
     expect(isHumanActivityType("wiki_reinforce")).toBe(false);
     expect(isHumanActivityType("skill_default_update")).toBe(false);
+    expect(isHumanActivityType("knowledge_schema_default_update")).toBe(false);
   });
 });
 

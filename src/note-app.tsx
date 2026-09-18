@@ -1030,6 +1030,8 @@ type NoteEditorProps = {
   onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
   /** knowledge ノート（claim/atom）を作成し、新ファイル ID を返す（R2 / Loop M2 の手動取り込み） */
   onCreateKnowledgeNote?: (doc: GraphiumDocument, kind: "claim" | "atom") => Promise<string>;
+  /** 保存済み Knowledge Schema のプロンプト本文を取得する */
+  getKnowledgeSchemaPrompt: () => Promise<string>;
   /**
    * チャットの回答をナレッジ層の「回答」ページ（answer）として作成し、新ファイル ID を返す。
    * トピックと同じ出典つきページの組み立て。未指定ならチャットに「ナレッジに残す」ボタンは出ない。
@@ -1519,6 +1521,7 @@ function NoteEditorInner({
   onCreateLinkedNote,
   onAiDeriveNote,
   onCreateKnowledgeNote,
+  getKnowledgeSchemaPrompt,
   onCreateAnswerNote,
   onNavigateNote,
   onOpenMedia,
@@ -4566,6 +4569,7 @@ function NoteEditorInner({
       const existingWikiTitles = existingWikis.map((w) => ({ id: w.id, title: w.title }));
       // verb が精査した引用知見（現ノートの reference リンク先）を PROV の素地として温存する。
       const citedIds = collectCitedNotes().map((n) => n.id);
+      const knowledgeSchema = await getKnowledgeSchemaPrompt();
 
       // 1) ingester で AI 回答から知見(claim)を抽出（chat: prefix で document-mode）。一度だけ。
       const ingestRes = await ingestFromChat(
@@ -4573,6 +4577,7 @@ function NoteEditorInner({
         noteTitle,
         existingWikis,
         getLocale(),
+        knowledgeSchema,
       );
       const claimOutputs = ingestRes.wikis.filter((w) => w.kind === "claim");
       if (claimOutputs.length === 0) return [];
@@ -4647,7 +4652,7 @@ function NoteEditorInner({
 
       return [...claimCandidates, ...atomCandidates];
     },
-    [collectCitedNotes, fileId, initialDoc?.title, noteIndex],
+    [collectCitedNotes, fileId, getKnowledgeSchemaPrompt, initialDoc?.title, noteIndex],
   );
 
   // 選択された候補を保存する。候補ごとに 1 ノート（onCreateKnowledgeNote が
@@ -7509,6 +7514,7 @@ export function NoteApp() {
           messages: [...history, { role: "user", content: text }],
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
+          knowledge_schema: await fm.getKnowledgeSchemaPrompt(),
           language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         };
@@ -9318,6 +9324,7 @@ export function NoteApp() {
           saveWikiFile: fm.handleSaveWikiFile,
         });
         const sourceTitleById = new Map(sources.map((s) => [s.id, s.title]));
+        const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
         const result = await runSourceTopicStage(sources, {
           loadDoc: fm.loadDoc,
           getCachedDoc: fm.getCachedDoc,
@@ -9326,6 +9333,7 @@ export function NoteApp() {
           existingTopicRefs,
           noteIndex: buildNoteIndex(fm.noteIndex),
           locale: getLocale(),
+          knowledgeSchema,
           resolveSource: async (sourceId) => {
             const resolved = await resolveSourceText(sourceId, resolveDeps);
             if (!resolved.ok) return undefined;
@@ -9488,10 +9496,11 @@ export function NoteApp() {
           (id) => fm.getCachedDoc(`skill:${id}`),
           getLocale(),
         );
+        const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
 
         // 設定で選んだ既定モデル名を渡す。Tauri モードではヘッダーに API キーを乗せないため、
         // body.model 経由でサーバーに伝えないと models.json 先頭のモデルにフォールバックしてしまう。
-        const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills, signal, isClaimsEnabled());
+        const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills, knowledgeSchema, signal, isClaimsEnabled());
 
         // トピックは知見の有無に関係なく資料そのものから作る（Karpathy 方式）。
         // 資料本文は取り込みで既に持っている job.doc をそのまま使う（再取得しない）。
@@ -9533,7 +9542,7 @@ export function NoteApp() {
               const existingDoc = fm.getCachedDoc(`wiki:${wiki.mergeTargetId}`);
               if (existingDoc) {
                 const nIdx = buildNoteIndex(fm.noteIndex);
-                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getLocale(), nIdx, ingestSkills);
+                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getLocale(), nIdx, ingestSkills, knowledgeSchema);
                 await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc, {
                   activityType: "wiki_merge",
                   agentLabel: result.model ?? undefined,
@@ -10010,7 +10019,8 @@ export function NoteApp() {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
         try {
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromUrl(entry.url, existingWikis, getLocale(), isClaimsEnabled());
+          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+          const result = await ingestFromUrl(entry.url, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
           // 知見（wiki）が 0 件でも、資料がトピック段に積める（sourceText がある）なら
           // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
@@ -10057,7 +10067,8 @@ export function NoteApp() {
           const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
           const blob = await (await fetch(blobUrl)).blob();
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), isClaimsEnabled());
+          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+          const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
@@ -10104,7 +10115,8 @@ export function NoteApp() {
           const blobUrl = await provider.getMediaBlobUrl(fileId);
           const blob = await (await fetch(blobUrl)).blob();
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), isClaimsEnabled());
+          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+          const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
@@ -10521,7 +10533,8 @@ export function NoteApp() {
       }));
       try {
         const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-        const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale(), isClaimsEnabled());
+        const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+        const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
         if (result.wikis.length === 0 && !result.sourceText.trim()) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
           return;
@@ -10725,6 +10738,7 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
         const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
+        const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
         const rebuildResult = await rebuildTopicFromSources(wikiId, [...sourceIds], {
           loadDoc: fm.loadDoc,
           getCachedDoc: fm.getCachedDoc,
@@ -10734,6 +10748,7 @@ export function NoteApp() {
           noteIndex: buildNoteIndex(fm.noteIndex),
           locale: doc.wikiMeta.language ?? getLocale(),
           model: selectedModel,
+          knowledgeSchema,
           log: (...args: unknown[]) => console.warn(...args),
         });
         if (!rebuildResult.rebuilt || !rebuildResult.doc) {
@@ -10885,12 +10900,14 @@ export function NoteApp() {
         }
 
         const regenIngestSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
+        const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
         const result = await ingestFromMultiSource(
           parts,
           wikiTitle,
           wikiId,
           [],
           getLocale(),
+          knowledgeSchema,
           selectedModel,
           regenIngestSkills,
         );
@@ -12700,6 +12717,7 @@ export function NoteApp() {
             onProposalRequestHandled={() => setProposalOpenRequest(null)}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
+            getKnowledgeSchemaPrompt={fm.getKnowledgeSchemaPrompt}
             noteFolderLookup={noteFolderLookup}
             onEditMediaContexts={fm.editMediaContexts}
             renderPeekWikiContext={renderPeekWikiContext}
@@ -13005,7 +13023,8 @@ export function NoteApp() {
                 }));
                 try {
                   const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-                  const result = await ingestFromUrl(url, existingWikis, getLocale(), isClaimsEnabled());
+                  const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+                  const result = await ingestFromUrl(url, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
                   if (result.wikis.length === 0 && !result.sourceText.trim()) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                     ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
@@ -13317,6 +13336,7 @@ export function NoteApp() {
               memberClaimIds: fm.wikiMetas.get(wf.id)?.derivedFromClaims ?? [],
             }));
           const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
+          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
           const mergeResult = await consolidateExistingTopics(existingTopics, {
             loadDoc: fm.loadDoc,
             getCachedDoc: fm.getCachedDoc,
@@ -13328,6 +13348,7 @@ export function NoteApp() {
             locale: getLocale(),
             // テーマどうしの統合可否はチャットモデルで判断する
             model: getChatSynthesisModelName() || undefined,
+            knowledgeSchema,
             log: (...args: unknown[]) => console.warn(...args),
           });
 

@@ -9,6 +9,9 @@ import {
   buildSystemSkillDocument,
   extractSkillPrompt,
   decideSkillSync,
+  extractKnowledgeSchemaPrompt,
+  loadKnowledgeSchemaPrompt,
+  buildKnowledgeSchemaPromptSection,
 } from "./skill-service";
 import { SYSTEM_SKILLS, type SystemSkillDefinition } from "./system-skills";
 
@@ -75,6 +78,32 @@ describe("decideSkillSync", () => {
   it("版情報のない旧文書は migrate_meta（内容は触らずサイレント移行）", () => {
     expect(decideSkillSync(TEST_DEF, undefined, "whatever")).toBe("migrate_meta");
     expect(decideSkillSync(TEST_DEF, {}, "whatever")).toBe("migrate_meta");
+  });
+
+  describe("Knowledge Schema", () => {
+    it("同梱 Schema を保存可能な system Skill として生成・抽出する", async () => {
+      const definition = SYSTEM_SKILLS.find((skill) => skill.id === "knowledge-schema");
+      expect(definition).toBeDefined();
+      const doc = await buildSystemSkillDocument(definition!);
+      expect(doc.source).toBe("skill");
+      expect(doc.skillMeta?.systemSkillId).toBe("knowledge-schema");
+      expect(extractKnowledgeSchemaPrompt(doc)).toContain("## Claim");
+    });
+
+    it("Schema 以外の Skill を Knowledge Schema として抽出しない", async () => {
+      const doc = await buildSystemSkillDocument(TEST_DEF);
+      expect(() => extractKnowledgeSchemaPrompt(doc)).toThrow("Knowledge Schema");
+    });
+
+    it("Schema の取得失敗を既定本文へフォールバックせず呼び出し元へ返す", async () => {
+      await expect(loadKnowledgeSchemaPrompt(async () => {
+        throw new Error("storage unavailable");
+      })).rejects.toThrow("storage unavailable");
+    });
+
+    it("Voice/Skill とは独立したプロンプト section を構築する", () => {
+      expect(buildKnowledgeSchemaPromptSection("schema body")).toBe("\n\n## Knowledge Schema\n\nschema body");
+    });
   });
 
   it("版が同じか新しい文書は up_to_date", () => {

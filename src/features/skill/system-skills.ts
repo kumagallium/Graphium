@@ -6,7 +6,7 @@
 // プロンプトは BlockNote ブロックに変換されて保存されるため、
 // `extractSkillPrompt` で抜き出される平文形式で書く（マークダウン互換）。
 
-export type SystemSkillId = "default-voice-ja" | "default-voice-en";
+export type SystemSkillId = "default-voice-ja" | "default-voice-en" | "knowledge-schema";
 
 export type SystemSkillDefinition = {
   id: SystemSkillId;
@@ -91,6 +91,34 @@ Write so a future reader wants to keep reading. Aim for the tone of a short note
 - For chat replies and personal notes, first-person ("I think", "I picked") is fine.
 `;
 
+const KNOWLEDGE_SCHEMA_PROMPT = `## Knowledge Schema
+
+This document defines the structure and maintenance conventions for Graphium's Knowledge layer. It is independent from writing Voice. Code-level safety rules, structured-output validation, citation verification, and guardrails remain mandatory even when this document is edited.
+
+## Topic and Answer
+
+- A Topic is a source-grounded page about one concept. An Answer is a source-grounded page that keeps answering its title question; do not turn it into a general survey.
+- Revise the complete page from the current body and the new source. Keep distinct source-specific statements separate when their conditions, samples, numbers, or scope differ.
+- Every factual sentence needs an inline source citation. Preserve a hedge, uncertainty, contradiction, and open question when the source has one. Do not invent a citation, mechanism, or generalization.
+
+## Claim
+
+- A Claim is one transferable proposition supported by its source, not a summary or textbook filler.
+- Keep claims atomic: split independently useful propositions and do not combine evidence from unrelated sources into one assertion.
+- Retain conditions, evidence limits, and epistemic strength. Classify only from what the source supports.
+
+## Citation and revision
+
+- Use the exact citation identifiers supplied by Graphium. Citations must support the sentence they end.
+- A revision incorporates new evidence without silently erasing supported prior evidence. Explicit conflicts belong in a disagreement or open-question section.
+- Do not fabricate sources, URLs, quotations, measurements, or provenance.
+
+## Upkeep
+
+- Prefer a precise, traceable page over a broad but weak one.
+- Surface missing support, stale statements, duplicates, contradictions, and unresolved questions for review.
+- Do not make destructive maintenance decisions or overwrite human-owned content without the corresponding Graphium workflow.`;
+
 export const SYSTEM_SKILLS: SystemSkillDefinition[] = [
   {
     id: "default-voice-ja",
@@ -109,6 +137,15 @@ export const SYSTEM_SKILLS: SystemSkillDefinition[] = [
     language: "en",
     availableForIngest: true,
     prompt: VOICE_EN_PROMPT,
+  },
+  {
+    id: "knowledge-schema",
+    version: 1,
+    title: "Knowledge Schema / ナレッジスキーマ",
+    description: "Conventions for Topics, Answers, Claims, citations, revision, and upkeep / ナレッジ生成・引用・改訂の規約",
+    language: "en",
+    availableForIngest: false,
+    prompt: KNOWLEDGE_SCHEMA_PROMPT,
   },
 ];
 

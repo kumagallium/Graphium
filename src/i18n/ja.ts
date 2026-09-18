@@ -277,6 +277,9 @@ export const ja: Record<string, string> = {
   "history.type.wikiAtomize": "洞察抽出",
   "history.type.wikiReinforce": "支持追加",
   "history.type.skillDefaultUpdate": "デフォルト同期",
+  "history.type.knowledgeSchemaEdit": "ナレッジスキーマを編集",
+  "history.type.knowledgeSchemaDefaultUpdate": "ナレッジスキーマのデフォルト同期",
+  "history.type.knowledgeSchemaReset": "ナレッジスキーマをリセット",
   "history.type.snapshotRestore": "版を復元",
   "history.type.proposalAdopt": "提案を取り込み",
   "history.sources": "取り込み元",
@@ -2191,6 +2194,8 @@ export const ja: Record<string, string> = {
   "skill.newerDefaultTooltip": "アプリ同梱のデフォルト内容が新しくなっています。「デフォルトに戻す」を押すと、編集中の内容を新しいデフォルトに置き換えます。",
   "skill.noMatching": "一致するスキルがありません",
   "skill.empty": "スキルはまだありません。作成すると、ナレッジ化のときに AI へ渡せます。",
+  "skill.knowledgeSchema": "ナレッジスキーマ",
+  "skill.knowledgeSchemaDescription": "Topic・Answer・Claim、引用、改訂、点検の生成規約",
 
   // エディタ・共有メニュー
   "editor.saveFailed": "保存に失敗しました。再度お試しください。",

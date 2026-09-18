@@ -6,6 +6,12 @@ Notes are your working memory: dated, contextual, full of detail. The Knowledge 
 The Knowledge layer runs only with an AI backend, which ships inside the [desktop app](/desktop-app), with at least one model registered. See [AI setup](/ai-setup). In the browser preview the **Knowledge** section shows an upgrade notice instead.
 :::
 
+## Knowledge Schema
+
+**Knowledge Schema** is one built-in, editable document in the **Skill** list. It defines the generation conventions for Topics, Answers, and Claims: source citations, incremental revision, and upkeep. It is separate from the writing Voice and does not change Graphium's code-enforced citation checks, structured output validation, or safety rules.
+
+Graphium creates exactly one Schema in the Skill storage area. It is not a note or a knowledge page, so it is not included in search, Knowledge counts, or the graph. Edits affect later generation only; they never regenerate existing knowledge automatically. Like other built-in skills, it cannot be deleted. A new app default updates an untouched Schema automatically; an edited Schema shows an update badge and remains unchanged until you choose **Reset to default**. Editing, default synchronization, and Reset leave entries in the document History.
+
 ## Notes vs. knowledge
 
 A lab note answers "what happened on Tuesday". A knowledge page answers "what do I now know". Graphium keeps both, linked in one direction: every knowledge page ends with a **References** section whose **Source:** entries link back to the notes it was distilled from, so you can always drop back into the original context.

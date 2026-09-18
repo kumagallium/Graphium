@@ -56,6 +56,16 @@ A few invariants underpin every schema in this document.
 
 ## 2. The note: `GraphiumDocument`
 
+### Knowledge Schema system Skill
+
+The Knowledge Schema is a single additive `GraphiumDocument` with `source:
+"skill"` and `skillMeta.systemSkillId: "knowledge-schema"`. Its storage ID is
+also the fixed string `knowledge-schema`. It uses the existing `SkillMeta`
+default version and prompt hash fields, and the existing
+`DocumentProvenance` revision chain for edits, default synchronization, and
+Reset. It is not a `WikiKind`, is never projected to the note index, and does
+not require a document-version or index-schema-version change.
+
 Each note is a single JSON file (or one row in IndexedDB for the `local`
 provider). The top-level shape:
 

@@ -5,6 +5,9 @@ import { apiBase, isTauri } from "../../lib/platform";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
+import { getActiveProvider } from "../../lib/storage/registry";
+import { migrateToLatest } from "../../lib/document-migration";
+import { loadKnowledgeSchemaPrompt } from "../skill/skill-service";
 
 /**
  * Registry URL・LLM API キーが設定されている場合はヘッダーに含める。
@@ -71,6 +74,8 @@ export type AgentRunRequest = {
   grounding_scope?: GroundingScope;
   /** 構造化出力用のシステムプロンプトに使う言語（"en" | "ja"） */
   language?: string;
+  /** 保存済み Knowledge Schema。通常 Skill の custom_instructions とは別に注入する。 */
+  knowledge_schema?: string;
   options?: {
     max_turns?: number;
     model?: string;
@@ -184,10 +189,17 @@ export async function runAgent(
   req: AgentRunRequest,
   signal?: AbortSignal,
 ): Promise<AgentRunResponse> {
+  // Assistant の全経路で同じ保存済み Schema を使う。欠落・読み込み失敗時は
+  // 既定本文へ置換せず、呼び出し元の既存エラー表示へ伝播する。
+  const knowledgeSchema = req.knowledge_schema ?? await loadKnowledgeSchemaPrompt(async (id) => {
+    const provider = getActiveProvider();
+    if (!provider.loadSkillFile) throw new Error("Skill 非対応のストレージプロバイダーです");
+    return migrateToLatest(await provider.loadSkillFile(id), id);
+  });
   const res = await fetch(`${apiBase()}/agent/run`, {
     method: "POST",
     headers: apiHeaders("chat"),
-    body: JSON.stringify(req),
+    body: JSON.stringify({ ...req, knowledge_schema: knowledgeSchema }),
     signal,
   });
 

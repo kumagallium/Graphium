@@ -2,6 +2,9 @@
 
 import type { GraphiumDocument, SkillMeta } from "../../lib/document-types";
 import type { SystemSkillDefinition } from "./system-skills";
+import { getSystemSkillById } from "./system-skills";
+
+export const KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID = "knowledge-schema";
 
 /**
  * skillMetas Map のエントリ型。
@@ -157,6 +160,34 @@ export function pickActiveSkills(
     result.push({ title: meta.title, prompt: extractSkillPrompt(doc) });
   }
   return result;
+}
+
+/** 保存済みの Knowledge Schema だけを抽出し、通常 Skill / Voice と混在させない。 */
+export function extractKnowledgeSchemaPrompt(doc: GraphiumDocument): string {
+  if (doc.source !== "skill" || doc.skillMeta?.systemSkillId !== KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID) {
+    throw new Error("Knowledge Schema ではないスキル文書です");
+  }
+  const prompt = extractSkillPrompt(doc).trim();
+  if (!prompt) throw new Error("Knowledge Schema の本文が空です");
+  return prompt;
+}
+
+/**
+ * Knowledge Schema を固定 ID から読む共通 loader。
+ * 取得失敗や不正な文書を既定本文へ黙って差し替えない。呼び出し元は AI 実行を中止して
+ * 既存のエラー表示経路へ渡す。
+ */
+export async function loadKnowledgeSchemaPrompt(
+  load: (skillId: string) => Promise<GraphiumDocument>,
+): Promise<string> {
+  const definition = getSystemSkillById(KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID);
+  if (!definition) throw new Error("Knowledge Schema の組み込み定義がありません");
+  return extractKnowledgeSchemaPrompt(await load(definition.id));
+}
+
+/** Knowledge Schema を Voice / Skill とは別の system prompt section にする。 */
+export function buildKnowledgeSchemaPromptSection(prompt: string): string {
+  return `\n\n## Knowledge Schema\n\n${prompt}`;
 }
 
 /**

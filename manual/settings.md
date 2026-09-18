@@ -77,6 +77,8 @@ A browser for the knowledge base that [world grounding](/ai-grounding) checks ag
 
 ## Knowledge
 
+The editable **Knowledge Schema** lives in the sidebar's **Skill** list rather than this tab. It is one built-in document, excluded from Knowledge counts, search, and graphs. Its saved rules apply to later Topic, Answer, and Claim generation; changing or resetting it does not automatically regenerate existing pages.
+
 Maintenance jobs for the [Knowledge layer](/knowledge-layer). These run LLM calls, so each job asks for confirmation and reports token cost on the [Usage](#usage) tab.
 
 | Group | What it does |

@@ -277,6 +277,9 @@ export const en: Record<string, string> = {
   "history.type.wikiAtomize": "Insight discovery",
   "history.type.wikiReinforce": "Reinforced",
   "history.type.skillDefaultUpdate": "Default sync",
+  "history.type.knowledgeSchemaEdit": "Knowledge Schema edit",
+  "history.type.knowledgeSchemaDefaultUpdate": "Knowledge Schema default sync",
+  "history.type.knowledgeSchemaReset": "Knowledge Schema reset",
   "history.type.snapshotRestore": "Version restore",
   "history.type.proposalAdopt": "Proposal adopted",
   "history.sources": "Sources",
@@ -2192,6 +2195,8 @@ export const en: Record<string, string> = {
   "skill.newerDefaultTooltip": "A newer default for this skill shipped with the app. \"Reset to default\" replaces your edited content with the new version.",
   "skill.noMatching": "No matching skills found",
   "skill.empty": "No skills yet. Create one and it gets handed to the AI on ingest.",
+  "skill.knowledgeSchema": "Knowledge Schema",
+  "skill.knowledgeSchemaDescription": "Rules for generated Topics, Answers, Claims, citations, revisions, and upkeep",
 
   // エディタ・共有メニュー
   "editor.saveFailed": "Failed to save. Please try again.",

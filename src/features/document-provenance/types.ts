@@ -82,6 +82,12 @@ export type EditActivityType =
   | "wiki_reinforce"
   /** システムスキルのデフォルト内容への同期（未編集スキルの自動更新 / Reset to default） */
   | "skill_default_update"
+  /** Knowledge Schema の通常編集 */
+  | "knowledge_schema_edit"
+  /** Knowledge Schema の同梱既定版への同期 */
+  | "knowledge_schema_default_update"
+  /** Knowledge Schema の明示 Reset */
+  | "knowledge_schema_reset"
   /** 手動で残した版（スナップショット）への復元。ユーザー操作なので human agent に紐づく */
   | "snapshot_restore"
   /** 共有された「変更の提案」の取り込み。ユーザー操作なので human agent に紐づく。
