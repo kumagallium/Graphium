@@ -97,7 +97,7 @@ The body ends with a **References** section linking back to sources. Keep in min
 
 ## Merging topics <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" />
 
-Topics can drift apart over wording, particles, or an overly narrow per-sample title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
+Topics can drift apart over wording, particles, or an overly narrow per-case title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
 
 - **Topics list** — select 2 or more Topics and press **Merge**; pick which one to keep.
 - **A topic's own banner** — shows a **Similar topics** chip when a candidate is found nearby (same normalized title, or embedding similarity when an embedding model is set); press **Merge** to absorb it into the page you're viewing.

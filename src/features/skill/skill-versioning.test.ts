@@ -46,7 +46,7 @@ This document defines the structure and maintenance conventions for Graphium's K
 ## Topic and Answer
 
 - A Topic is a source-grounded page about one concept. An Answer is a source-grounded page that keeps answering its title question; do not turn it into a general survey.
-- Revise the complete page from the current body and the new source. Keep distinct source-specific statements separate when their conditions, samples, numbers, or scope differ.
+- Revise the complete page from the current body and the new source. Keep distinct source-specific statements separate when their conditions, cases, numbers, assumptions, or scope differ.
 - Every factual sentence needs an inline source citation. Preserve a hedge, uncertainty, contradiction, and open question when the source has one. Do not invent a citation, mechanism, or generalization.
 
 ## Claim
@@ -127,6 +127,7 @@ describe("decideSkillSync", () => {
     it("SYSTEM_SKILLS 上の Schema 定義は固定 ID の 1 件だけ", () => {
       const definitions = SYSTEM_SKILLS.filter((skill) => skill.id === "knowledge-schema");
       expect(definitions).toHaveLength(1);
+      expect(definitions[0].version).toBe(3);
       expect(definitions[0].availableForIngest).toBe(false);
     });
 
@@ -215,7 +216,7 @@ describe("decideSkillSync", () => {
       expect(synced.defaultPromptHash).toBe("resolved-hash");
     });
 
-    it("日本語本文に編集ガイドの重要語・例・一般規約が含まれる", () => {
+    it("日本語本文に編集ガイドの重要語・分野横断例・一般規約が含まれる", () => {
       const prompt = KNOWLEDGE_SCHEMA_PROMPTS.ja;
       for (const word of [
         "安全に変更してよい",
@@ -225,10 +226,12 @@ describe("decideSkillSync", () => {
         "Schemaで変更不可",
         "[[source:id]]",
         "人間所有文書",
-        "材料科学",
-        "温度",
-        "圧力",
-        "試料",
+        "ソフトウェア",
+        "企画",
+        "学習",
+        "実行環境",
+        "判断基準",
+        "確信度",
         "Topic",
         "Answer",
         "Claim",
@@ -240,6 +243,9 @@ describe("decideSkillSync", () => {
         "upkeep",
       ]) {
         expect(prompt).toContain(word);
+      }
+      for (const specialized of ["材料科学", "試料組成", "測定条件"]) {
+        expect(prompt).not.toContain(specialized);
       }
     });
 
@@ -301,7 +307,7 @@ describe("decideSkillSync", () => {
       });
     });
 
-    it("英語本文にも等価な editing guide が含まれる", () => {
+    it("英語本文にも等価な分野横断 editing guide が含まれる", () => {
       const prompt = KNOWLEDGE_SCHEMA_PROMPTS.en;
       for (const word of [
         "Safe to change",
@@ -311,12 +317,17 @@ describe("decideSkillSync", () => {
         "Not changeable",
         "[[source:id]]",
         "human-owned documents",
-        "materials science",
-        "temperature",
-        "pressure",
-        "sample",
+        "software",
+        "planning",
+        "learning",
+        "runtime environments",
+        "decision criteria",
+        "confidence",
       ]) {
         expect(prompt).toContain(word);
+      }
+      for (const specialized of ["materials science", "sample composition", "measurement conditions"]) {
+        expect(prompt).not.toContain(specialized);
       }
     });
 
@@ -341,7 +352,7 @@ describe("decideSkillSync", () => {
     });
 
     it("保存済みの日本語自由編集本文を既定本文へ戻さず AI prompt 用に返す", async () => {
-      const customPrompt = "## ナレッジスキーマ\n\n材料科学では焼成温度と雰囲気を必ず残す。";
+      const customPrompt = "## ナレッジスキーマ\n\nソフトウェアではバージョンと再現手順を必ず残す。";
       const doc = buildSkillDocument(
         "Knowledge Schema / ナレッジスキーマ",
         "custom schema",
@@ -350,7 +361,7 @@ describe("decideSkillSync", () => {
         {
           systemSkillId: "knowledge-schema",
           language: "ja",
-          systemSkillVersion: 2,
+          systemSkillVersion: 3,
           defaultPromptHash: "edited",
         },
       );
@@ -362,7 +373,7 @@ describe("decideSkillSync", () => {
       expect(buildKnowledgeSchemaPromptSection("schema body")).toBe("\n\n## Knowledge Schema\n\nschema body");
     });
 
-    it("v1 英語 Schema が未編集なら auto_update、編集済みなら notify_newer", async () => {
+    it("旧版の英語 Schema が未編集なら auto_update、編集済みなら notify_newer", async () => {
       const current = resolveSystemSkillDefinition(SYSTEM_SKILLS.find((skill) => skill.id === "knowledge-schema")!, "en");
       const oldDoc = await buildSystemSkillDocument(KNOWLEDGE_SCHEMA_V1_DEF);
       const oldHash = await hashSkillPrompt(extractSkillPrompt(oldDoc));
