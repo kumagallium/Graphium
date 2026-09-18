@@ -10,7 +10,7 @@ import { X, Square, Send } from "lucide-react";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { NavBackButton } from "../../components/NavBackButton";
-import { ChatBubble } from "../ai-assistant/panel";
+import { ChatBubble, type SourceLinkHandlers } from "../ai-assistant/panel";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
@@ -31,6 +31,7 @@ export function StandaloneChatView({
   onResend,
   onFork,
   onOpenWiki,
+  sourceLinks,
 }: {
   title?: string;
   messages: ChatMessage[];
@@ -51,6 +52,9 @@ export function StandaloneChatView({
   onFork?: (index: number) => void;
   /** 保存した回答ページを開く。ChatBubble が保存後の「開く」導線に使う */
   onOpenWiki?: (wikiId: string) => void;
+  /** [Source: "title"] 引用のリンク化（Wiki / ノート / 素材）。panel.tsx の useSourceLinks と
+   *  同じ組み立て。未指定ならプレーンテキストのまま（panel.tsx 側の従来挙動を変えない） */
+  sourceLinks?: SourceLinkHandlers;
 }) {
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
@@ -152,6 +156,7 @@ export function StandaloneChatView({
             }
             onFork={onFork && msg.role === "assistant" ? () => onFork(i) : undefined}
             onOpenWiki={onOpenWiki}
+            sourceLinks={sourceLinks}
           />
         ))}
         {loading && (

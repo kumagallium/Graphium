@@ -12,6 +12,7 @@ import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { StandaloneChatView } from "./StandaloneChatView";
+import type { SourceLinkHandlers } from "../ai-assistant/panel";
 import type { StandaloneChat } from "./types";
 import type { ChatMessage } from "../../lib/document-types";
 
@@ -31,6 +32,7 @@ export function StandaloneChatSidePeek({
   onResend,
   onFork,
   onOpenWiki,
+  sourceLinks,
 }: {
   chat: StandaloneChat | null;
   messages: ChatMessage[];
@@ -48,6 +50,7 @@ export function StandaloneChatSidePeek({
   onResend?: (text: string, rewindIndex: number) => void;
   onFork?: (index: number) => void;
   onOpenWiki?: (wikiId: string) => void;
+  sourceLinks?: SourceLinkHandlers;
 }) {
   const t = useT();
   const peekResize = useSidePeekWidth();
@@ -179,6 +182,7 @@ export function StandaloneChatSidePeek({
           onResend={onResend}
           onFork={onFork}
           onOpenWiki={onOpenWiki}
+          sourceLinks={sourceLinks}
         />
       </div>
     </div>

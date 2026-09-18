@@ -140,6 +140,50 @@ describe("parseInlineCitations - citations", () => {
     expect(knowledgeLinks[0].targetNoteId).toBe("n2");
   });
 
+  it("noteIndex に無くても extraTitleToId（資料一覧）にあれば青リンクになる", () => {
+    // PDF・URL 等の素材は noteIndex に載らない。References の行と同じ資料一覧を渡せば
+    // 本文側の [[title]] もリンク化できる（食い違いの修正）
+    const extraTitleToId = new Map([["実験手順書.pdf", "pdf:asset-1"]]);
+    const { inlineContent, knowledgeLinks } = parseInlineCitations(
+      "詳細は [[実験手順書.pdf]] を参照",
+      emptyIndex,
+      undefined,
+      extraTitleToId,
+    );
+    expect(inlineContent).toContainEqual({
+      type: "text",
+      text: "@実験手順書.pdf",
+      styles: { textColor: "blue" },
+    });
+    expect(knowledgeLinks).toHaveLength(1);
+    expect(knowledgeLinks[0].targetNoteId).toBe("pdf:asset-1");
+  });
+
+  it("extraTitleToId にも無ければ従来どおりプレーンテキストのまま", () => {
+    const extraTitleToId = new Map([["別の資料", "pdf:asset-2"]]);
+    const { inlineContent, knowledgeLinks } = parseInlineCitations(
+      "[[未知の資料]]",
+      emptyIndex,
+      undefined,
+      extraTitleToId,
+    );
+    expect(inlineContent[0]).toEqual({ type: "text", text: "未知の資料", styles: {} });
+    expect(knowledgeLinks).toHaveLength(0);
+  });
+
+  it("selfTitle と一致する引用は extraTitleToId にあってもリンク化しない（自己引用ガード優先）", () => {
+    const selfTitle = "自分自身のタイトル";
+    const extraTitleToId = new Map([[selfTitle, "pdf:self"]]);
+    const { inlineContent, knowledgeLinks } = parseInlineCitations(
+      `[[${selfTitle}]]`,
+      emptyIndex,
+      selfTitle,
+      extraTitleToId,
+    );
+    expect(inlineContent[0]).toEqual({ type: "text", text: selfTitle, styles: {} });
+    expect(knowledgeLinks).toHaveLength(0);
+  });
+
   it("[[https://...]] は BlockNote link に変換される", () => {
     const { inlineContent } = parseInlineCitations("[[https://example.com]]", emptyIndex);
     expect(inlineContent[0]).toEqual({
@@ -716,6 +760,31 @@ describe("buildSourceBackedWikiDocument - kind を受け取る出典つきペー
     const blocks = doc.pages[0].blocks as any[];
     const headingIdx = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "References");
     expect(headingIdx).toBeGreaterThan(-1);
+  });
+
+  it("素材（noteIndex に載らない資料）の引用も References と同じく本文で青リンクになる", () => {
+    // PDF/URL 等の素材は noteIndex に載らないため、以前は本文だけプレーン文字に落ちていた
+    // （References 側は sources から直接リンクにしていて食い違っていた）
+    const sources = [{ id: "pdf:asset-1", title: "実験手順書.pdf" }];
+    const doc = buildSourceBackedWikiDocument(
+      "topic",
+      "手順の要点",
+      "## 概要\n手順は [[source:pdf:asset-1]] にまとめた。",
+      sources,
+      "test-model",
+    );
+    const blocks = doc.pages[0].blocks as any[];
+    const bodyParagraph = blocks.find(
+      (b) => b.type === "paragraph" && b.content.some((c: any) => c.text?.includes("手順は")),
+    );
+    expect(bodyParagraph.content).toContainEqual({
+      type: "text",
+      text: "@実験手順書.pdf",
+      styles: { textColor: "blue" },
+    });
+    expect(bodyParagraph.knowledgeLinks).toBeUndefined(); // knowledgeLinks はブロックでなくページ側
+    const pageLinks = doc.pages[0].knowledgeLinks as any[];
+    expect(pageLinks.some((l) => l.targetNoteId === "pdf:asset-1")).toBe(true);
   });
 
   it("既定（kind 未指定の buildSourceTopicDocument）は topic のまま", () => {

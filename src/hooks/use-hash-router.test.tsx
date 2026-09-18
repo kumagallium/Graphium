@@ -26,6 +26,8 @@ function noopActions(): RouteActions {
     setShowMemos: vi.fn(),
     setShowMobile: vi.fn(),
     setShowSharedLibrary: vi.fn(),
+    setShowChatList: vi.fn(),
+    openChatFull: vi.fn(),
     clearViews: vi.fn(),
     setPeek: vi.fn(),
   };
@@ -251,5 +253,56 @@ describe("サイドピークの履歴", () => {
     act(() => result.current.navigate({ view: "notes", peek: "n1" }));
     expect(window.location.hash).toBe("#notes?peek=n1");
     expect(result.current.parseHash()).toEqual({ view: "notes", peek: "n1" });
+  });
+});
+
+describe("ノートに紐づかないチャットのルート", () => {
+  it("一覧を #chats として往復できる", async () => {
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+
+    act(() => result.current.navigate({ view: "chats" }));
+    expect(window.location.hash).toBe("#chats");
+    expect(result.current.parseHash()).toEqual({ view: "chats" });
+
+    await flushNavigate();
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 1 } }));
+    });
+    expect(actions.setShowChatList).toHaveBeenCalledWith(true);
+    expect(actions.setPeek).toHaveBeenLastCalledWith(null, "chats");
+  });
+
+  it("個別の会話を #chats/<id> として全画面で往復できる", async () => {
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+
+    act(() => result.current.navigate({ view: "chat", chatId: "c1" }));
+    expect(window.location.hash).toBe("#chats/c1");
+    expect(result.current.parseHash()).toEqual({ view: "chat", chatId: "c1" });
+
+    await flushNavigate();
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 1 } }));
+    });
+    expect(actions.setShowChatList).toHaveBeenCalledWith(true);
+    expect(actions.openChatFull).toHaveBeenCalledWith("c1");
+  });
+
+  it("一覧上のピーク会話を #chats?peek=<id> として往復できる", async () => {
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+
+    act(() => result.current.navigate({ view: "chats", peek: "c1" }));
+    expect(window.location.hash).toBe("#chats?peek=c1");
+    expect(result.current.parseHash()).toEqual({ view: "chats", peek: "c1" });
+
+    await flushNavigate();
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 1 } }));
+    });
+    expect(actions.setShowChatList).toHaveBeenCalledWith(true);
+    // ピークはビューを立て終えたあとに当てる（一覧の row peek と同じ順序）
+    expect(actions.setPeek).toHaveBeenLastCalledWith("c1", "chats");
   });
 });
