@@ -115,6 +115,8 @@ Both tools write something new into your vault, but into different layers, and G
 
 Use `save_answer` for something you expect Graphium to keep maintaining as your notes grow; use `create_note` for a one-off record you will maintain yourself.
 
+In the body you pass to `save_answer`, **end every grounded sentence with `[[source:<id>]]`** (the ids you pass in `citations`; list several when several sources say the same thing). Source check works sentence by sentence — it asks whether the sources a sentence cites really say it — so an answer page with no citations in its body is never checked. Save one without them and the tool says so in its reply.
+
 `save_answer` takes:
 
 - **`question`** — becomes the page title.

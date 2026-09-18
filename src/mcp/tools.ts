@@ -487,7 +487,13 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         "（実在する id は @リンク、存在しない id は文字のまま残る）。",
       inputSchema: {
         question: z.string().describe("問い。回答ページのタイトルになる（命題形・問い形が望ましい）"),
-        answer: z.string().describe("回答本文（Markdown）。[[source:<id>]] で citations を引用できる"),
+        answer: z
+          .string()
+          .describe(
+            "回答本文（Markdown）。**根拠のある文はすべて、文末に [[source:<id>]] を書く**" +
+              "（id は citations に渡すもの。同じ内容を複数の資料が述べるなら並べてよい）。" +
+              "本文に [[source:<id>]] が 1 つも無いと、その回答ページは出典照合の対象にならない",
+          ),
         sessionId: z.string().optional().describe("呼び出し側のセッション識別子"),
         model: z.string().optional().describe("回答を書いた LLM のモデル ID（例: claude-opus-5）"),
         citations: z
@@ -520,6 +526,13 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             `  ファイル: ${result.filePath}`,
             "",
             `Graphium を再読み込みすると一覧に表示されます。以後は Graphium 側で改訂・点検の対象になります。`,
+            ...(result.sourceRefCount === 0
+              ? [
+                  "",
+                  "注意: 本文に [[source:<id>]] の引用が 1 つも無いため、このページは出典照合の対象になりません。",
+                  "根拠のある文の文末に [[source:<id>]] を書いて保存し直すと、文ごとに出典と照らせます。",
+                ]
+              : []),
           ].join("\n"),
         );
       } catch (err) {
