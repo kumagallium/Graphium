@@ -115,7 +115,12 @@ import { collectOcrText } from "../media-ocr/collect";
 //      旧ノートは importSourceHash=undefined のまま読める（後方互換）。
 //      bump を必ず実地確認する: Graphium 起動時に v25 インデックスが v26 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 26;
+// v27: wikiKind が取りうる値に "answer"（AI チャットの回答をナレッジ層に書き戻したページ）
+//      を追加。既存インデックスは wikiKind の値そのものを再検証しないため互換上は問題ない
+//      が、schema bump の慣例（フィールドの意味が増えたら version を上げる）に合わせる。
+//      bump を必ず実地確認する: Graphium 起動時に v26 インデックスが v27 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 27;
 
 export type GraphiumIndex = {
   version: number;

@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BookPlus, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork, FileText, Link as LinkIcon } from "lucide-react";
+import { Bot, BookPlus, BookMarked, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork, FileText, Link as LinkIcon } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
@@ -56,6 +56,12 @@ type AiAssistantPanelProps = {
   onReplaceBlocks?: (markdown: string) => void;
   /** 別ノートとして派生する（従来の buildAiDerivedDocument 動作） */
   onDeriveNote?: (question: string, answer: string) => void;
+  /**
+   * この回答をナレッジ層に「回答（answer）」ページとして書き戻す（トピックと同じ出典つき
+   * ページ。保守 = 改訂・点検の対象化は別 PR）。成功したら新規ページの id を返す
+   * （呼び出し元がトーストの「開く」導線に使う）。共有ノート・素材のチャットには渡さない。
+   */
+  onSaveAsAnswer?: (question: string, answer: string) => Promise<string | null>;
   /** チャット内容を Knowledge に追加する */
   onIngestChat?: (messages: ChatMessage[]) => void;
   /** AI 回答を ingester / atomizer に通して 知見(claim) + 洞察(atom) の**候補**を生成する
@@ -91,6 +97,7 @@ export function AiAssistantPanel({
   onInsertToScope,
   onReplaceBlocks,
   onDeriveNote,
+  onSaveAsAnswer,
   onIngestChat,
   onGenerateKnowledgeCandidates,
   onAdoptKnowledgeCandidates,
@@ -521,6 +528,16 @@ export function AiAssistantPanel({
                       }
                     : undefined
                 }
+                onSaveAsAnswer={
+                  onSaveAsAnswer && i > 0 && msg.role === "assistant"
+                    ? () => {
+                        const userMsg = messages[i - 1];
+                        return userMsg?.role === "user"
+                          ? onSaveAsAnswer(userMsg.content, msg.content)
+                          : Promise.resolve(null);
+                      }
+                    : undefined
+                }
                 onGenerateKnowledgeCandidates={
                   onGenerateKnowledgeCandidates && msg.role === "assistant"
                     ? (onClaimsReady) => onGenerateKnowledgeCandidates(msg.content, onClaimsReady)
@@ -528,6 +545,7 @@ export function AiAssistantPanel({
                 }
                 onAdoptKnowledgeCandidates={onAdoptKnowledgeCandidates}
                 sourceLinks={sourceLinks}
+                onOpenWiki={onOpenWiki}
               />
             ))}
             {loading && (
@@ -725,9 +743,11 @@ function ChatBubble({
   onRegenerate,
   onFork,
   onDerive,
+  onSaveAsAnswer,
   onGenerateKnowledgeCandidates,
   onAdoptKnowledgeCandidates,
   sourceLinks,
+  onOpenWiki,
 }: {
   message: ChatMessage;
   /** AI 実行中（編集・再実行・分岐を無効化する） */
@@ -741,11 +761,15 @@ function ChatBubble({
   /** このメッセージまでを引き継いだ新チャットに分岐する */
   onFork?: () => void;
   onDerive?: () => void;
+  /** この回答をナレッジ層の「回答」ページとして保存する。成功したら新規ページ id を返す */
+  onSaveAsAnswer?: () => Promise<string | null>;
   onGenerateKnowledgeCandidates?: (
     onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
   ) => Promise<KnowledgeCandidate[]>;
   onAdoptKnowledgeCandidates?: (candidates: KnowledgeCandidate[]) => Promise<void>;
   sourceLinks?: SourceLinkHandlers;
+  /** 保存した回答ページを開く（トーストの「開く」導線用） */
+  onOpenWiki?: (wikiId: string) => void;
 }) {
   const t = useT();
   const isUser = message.role === "user";
@@ -784,6 +808,20 @@ function ChatBubble({
   const [adopting, setAdopting] = useState(false);
   const [done, setDone] = useState<null | { count: number }>(null);
   const [empty, setEmpty] = useState(false);
+
+  // 「ナレッジに残す」（answer 保存）の状態。バブル単位・保存後は id を保持して「開く」を出す。
+  const [savingAnswer, setSavingAnswer] = useState(false);
+  const [savedAnswerId, setSavedAnswerId] = useState<string | null>(null);
+  const handleSaveAsAnswer = async () => {
+    if (!onSaveAsAnswer || savingAnswer) return;
+    setSavingAnswer(true);
+    try {
+      const id = await onSaveAsAnswer();
+      if (id) setSavedAnswerId(id);
+    } finally {
+      setSavingAnswer(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!onGenerateKnowledgeCandidates || phase) return;
@@ -940,7 +978,7 @@ function ChatBubble({
           </button>
         </div>
       )}
-      {!isUser && (onInsert || onReplace || onDerive || hasMakeKnowledge || onRegenerate || onFork) && (
+      {!isUser && (onInsert || onReplace || onDerive || onSaveAsAnswer || hasMakeKnowledge || onRegenerate || onFork) && (
         <div className="mt-1 w-full max-w-[95%] flex flex-col gap-1">
           <div className="flex gap-1 flex-wrap">
             {onReplace && (
@@ -972,6 +1010,31 @@ function ChatBubble({
                 <FilePlus size={10} />
                 {t("aiChat.deriveAsNote")}
               </button>
+            )}
+            {onSaveAsAnswer && !savedAnswerId && (
+              <button
+                onClick={handleSaveAsAnswer}
+                disabled={savingAnswer}
+                title={t("aiChat.saveAsAnswer")}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                {savingAnswer ? <Loader2 size={10} className="animate-spin" /> : <BookMarked size={10} />}
+                {t("aiChat.saveAsAnswer")}
+              </button>
+            )}
+            {savedAnswerId && (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 font-medium">
+                <Check size={10} />
+                {t("aiChat.answerSaved")}
+                {onOpenWiki && (
+                  <button
+                    onClick={() => onOpenWiki(savedAnswerId)}
+                    className="underline decoration-dotted underline-offset-2 hover:text-emerald-900"
+                  >
+                    {t("aiChat.answerSavedOpen")}
+                  </button>
+                )}
+              </span>
             )}
             {hasMakeKnowledge && !done && !candidates && (
               <KnowledgeButton

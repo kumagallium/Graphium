@@ -15,6 +15,11 @@ import type { BlockLink } from "./block-link-types";
 // topic    : 知見(claim)を概念ごとに束ねたページ。出典は 話題 → 知見 → ノート の 2 ホップ。
 //            砂時計（ノート→知見→洞察）には参加しない — atomize の入力は従来どおり知見のみで、
 //            話題は渡さない。メンバー知見の集合から作られる純関数（前の本文は入力に渡さない）。
+// answer   : AI チャットで得た良い回答をナレッジ層に書き戻したページ（カーパシー LLM Wiki の
+//            「良い回答は wiki のページとして書き戻す」に対応）。topic と同じく資料を直接読んで
+//            本文を作る種別で、正本は topicMarkdown・出典は derivedFromNotes に入る資料 id
+//            （引用チャットの元ノート・素材）。タイトルは問い（ユーザーの質問）そのもの。
+//            2026-09-18 時点ではページを作るところまでで、保守（改訂・点検の対象化）は別 PR。
 //
 // experimental.atomLayer / experimental.synthesis 設定で生成可否を制御する。
 // 既存ユーザーの synthesis ファイルは削除しないため、atom 同様に kind 文字列としては常に有効。
@@ -24,7 +29,7 @@ import type { BlockLink } from "./block-link-types";
 // 領域内に閉じる結果が続いた。代替として「テーマを人間が与えて Synthesizer がそれを
 // lens に書く」方向に舵を切る — その設計は別 PR で行う。撤退の窓が開いている
 // （v0.9.0 以降にユーザーが meta-atom データを残していない）うちに kind ごと外す。
-export type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic";
+export type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic" | "answer";
 
 // Claim の抽象度レベル（claim のみで意味を持つ）
 // principle: ノートが推論ステップで依拠した一般原理（教科書知識でも、本人の研究で実際に使われたもの）
@@ -432,11 +437,13 @@ export type WikiMeta = {
    */
   topicIds?: string[];
   /**
-   * 新形式トピック（2026-09〜）の正本本文（Markdown）。
-   * `## 定義` / `## 要点` / `## 食い違い・未解決` の見出しと、文末の `[[source:<id>]]` 引用からなる。
+   * トピック・回答（answer）など、AI が保守する本文の正本（Markdown）。
+   * トピックは `## 定義` / `## 要点` / `## 食い違い・未解決` の見出しと、文末の
+   * `[[source:<id>]]` 引用からなる。回答は問い（タイトル）に対する Markdown の答えで、
+   * 引用した資料を同じ `[[source:<id>]]` 形式で埋め込む。
    * 資料（ノート本文・PDF・Word・URL・チャット）を直接読んで改訂する取り込みでは、
    * 次回改訂時に「前の本文」として LLM に渡す入力になり、出典照合もここから要点を取る。
-   * 存在すれば新形式（引用先は `derivedFromNotes` の資料 id）、無ければ旧形式
+   * 存在すれば新形式（引用先は `derivedFromNotes` の資料 id）、無ければ旧形式トピック
    * （引用先は `derivedFromClaims` のメンバー知見、本文は claim 群からの純関数）。
    */
   topicMarkdown?: string;

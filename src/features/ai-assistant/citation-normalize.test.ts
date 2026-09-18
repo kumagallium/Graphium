@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeWikiCitations, appendKnowledgeReferenced } from "./citation-normalize";
+import { normalizeWikiCitations, appendKnowledgeReferenced, convertCitationsToSourceRefs } from "./citation-normalize";
 
 // Retriever が注入する wikiContext を模した fixture。
 // knowledge セクションは `[#N | "title"]` ヘッダー、index は `- **title**` 形式。
@@ -183,5 +183,36 @@ describe("appendKnowledgeReferenced", () => {
   it("sources が空なら何も付けない（候補の機械的な流し込みをしない）", () => {
     const out = appendKnowledgeReferenced("本文", [], "📓 ノート内の知識");
     expect(out).toBe("本文");
+  });
+});
+
+describe("convertCitationsToSourceRefs - answer 保存時の [Source: \"title\"] → [[source:<id>]] 変換", () => {
+  it("解決できる引用を [[source:<id>]] に変換し、出典一覧を返す", () => {
+    const titleToRef = new Map([["Al3V の格子定数", "note:note-a"]]);
+    const { markdown, sources } = convertCitationsToSourceRefs(
+      "XRD パターンが取得された [Source: \"Al3V の格子定数\"]。",
+      titleToRef,
+    );
+    expect(markdown).toBe("XRD パターンが取得された [[source:note:note-a]]。");
+    expect(sources).toEqual([{ id: "note:note-a", title: "Al3V の格子定数" }]);
+  });
+
+  it("解決できない引用は [Source: \"title\"] のまま文字として残す", () => {
+    const titleToRef = new Map<string, string>();
+    const { markdown, sources } = convertCitationsToSourceRefs(
+      "この主張は [Source: \"消えたページ\"] に基づく。",
+      titleToRef,
+    );
+    expect(markdown).toBe("この主張は [Source: \"消えたページ\"] に基づく。");
+    expect(sources).toEqual([]);
+  });
+
+  it("同じ出典を複数回引用しても sources は重複しない", () => {
+    const titleToRef = new Map([["資料A", "asset:file-1"]]);
+    const { sources } = convertCitationsToSourceRefs(
+      "前段 [Source: \"資料A\"]。後段でも同じ根拠 [Source: \"資料A\"]。",
+      titleToRef,
+    );
+    expect(sources).toEqual([{ id: "asset:file-1", title: "資料A" }]);
   });
 });

@@ -946,6 +946,10 @@ export const ja: Record<string, string> = {
   "aiChat.insertToNote": "ノートに反映",
   "aiChat.replaceInNote": "置換",
   "aiChat.deriveAsNote": "別ノートとして派生",
+  // ナレッジ層への書き戻し（answer）。トピックと同じ出典つきページを、問いをタイトルにして作る
+  "aiChat.saveAsAnswer": "ナレッジに残す",
+  "aiChat.answerSaved": "ナレッジに残しました",
+  "aiChat.answerSavedOpen": "開く",
   // R2 / Loop M2: 手動で AI 回答をナレッジ化する
   "aiChat.makeClaim": "知見にする",
   "aiChat.makeInsight": "洞察にする",
@@ -1152,12 +1156,14 @@ export const ja: Record<string, string> = {
   "wikiList.kindAtom": "洞察",
   "wikiList.kindSynthesis": "発想",
   "wikiList.kindTopic": "トピック",
+  "wikiList.kindAnswer": "回答",
   // 各 kind の説明（サイドバーの title ツールチップ用）。砂時計: ノート→知見→洞察→発想
   "wikiList.kindSummaryHint": "ノート1件を AI が短くまとめたもの",
   "wikiList.kindClaimHint": "ノートや資料から取り出した命題（1 件に 1 つ）",
   "wikiList.kindAtomHint": "知見から取り出した、他の分野でも通じる関係の型",
   "wikiList.kindSynthesisHint": "知見・洞察を組み合わせて生まれる新しいアイデア",
   "wikiList.kindTopicHint": "資料を読んで概念ごとにまとめたページ",
+  "wikiList.kindAnswerHint": "AI チャットで得た良い回答を書き残したページ",
   // 提案 v4 Phase 1: 意味的な型のラベル（バッジ表示用）
   "wikiTypes.claimRole.finding": "発見・観察",
   "wikiTypes.claimRole.decision": "決定・選択",

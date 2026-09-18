@@ -946,6 +946,10 @@ export const en: Record<string, string> = {
   "aiChat.insertToNote": "Insert into note",
   "aiChat.replaceInNote": "Replace in note",
   "aiChat.deriveAsNote": "Derive as note",
+  // Write back to the knowledge layer (answer). Same source-backed page as a topic, titled by the question
+  "aiChat.saveAsAnswer": "Keep as knowledge",
+  "aiChat.answerSaved": "Saved to knowledge",
+  "aiChat.answerSavedOpen": "Open",
   // R2 / Loop M2: 手動で AI 回答を knowledge ノート化する
   "aiChat.makeClaim": "Make a Claim",
   "aiChat.makeInsight": "Make an Insight",
@@ -1151,12 +1155,14 @@ export const en: Record<string, string> = {
   "wikiList.kindAtom": "Insights",
   "wikiList.kindSynthesis": "Ideas",
   "wikiList.kindTopic": "Topics",
+  "wikiList.kindAnswer": "Answers",
   // Per-kind descriptions (sidebar title tooltips). Hourglass: note -> claim -> insight -> idea
   "wikiList.kindSummaryHint": "A short AI summary of a single note",
   "wikiList.kindClaimHint": "One proposition taken from a note or document",
   "wikiList.kindAtomHint": "A relationship pattern from your claims, written to hold in other fields",
   "wikiList.kindSynthesisHint": "A new idea formed by combining claims and insights",
   "wikiList.kindTopicHint": "A page that gathers what your sources say about one concept",
+  "wikiList.kindAnswerHint": "A page keeping a good answer from an AI chat",
   // Phase 1 semantic-type badge labels
   "wikiTypes.claimRole.finding": "Finding",
   "wikiTypes.claimRole.decision": "Decision",

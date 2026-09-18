@@ -20,12 +20,15 @@ import type { WikiKind } from "../../lib/document-types";
 //  - topic    : 紫（要約の色を継承。要約は新規生成を止め、知見を束ねる役割を
 //               トピックが引き継いだので、「ナレッジの中心」の色も引き継ぐ。
 //               2026-09-16 決定 / Storybook `Graph/Global Graph` で確認）
+//  - answer   : topic と同色（トピックに準じた見た目。2026-09-18 決定 — design.md 参照。
+//               トピックと同じ「資料を直接読んで書く」出典つきページのため区別しない）
 const KNOWLEDGE_KIND_COLORS: Record<WikiKind, string> = {
   summary: "#9b6dcc",
   atom: "#6ba89e",
   claim: "#c46d56",
   synthesis: "#6c5ca8",
   topic: "#9b6dcc",
+  answer: "#9b6dcc",
 } as const;
 
 /** Knowledge kind 別の border 色（塗りより 15〜20% 暗い） */
@@ -35,6 +38,7 @@ const KNOWLEDGE_KIND_BORDERS: Record<WikiKind, string> = {
   claim: "#9b5644",
   synthesis: "#544591",
   topic: "#7b4fb0",
+  answer: "#7b4fb0",
 } as const;
 
 /** kind 未指定 / 不明なときのフォールバック（既存紫色を維持） */
@@ -63,6 +67,7 @@ export function knowledgeKindBorder(kind: WikiKind | undefined): string {
  */
 export const KNOWLEDGE_KIND_LEGEND_ORDER: WikiKind[] = [
   "topic",
+  "answer",
   "summary",
   "claim",
   "atom",

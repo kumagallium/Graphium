@@ -10,6 +10,8 @@ import {
   unlinkClaimFromTopic,
   buildSourceTopicDocument,
   rebuildSourceTopicDocument,
+  buildSourceBackedWikiDocument,
+  rebuildSourceBackedWikiDocument,
   stripEmptyMarkdownSections,
   resolveSourceCitations,
   resolveAtomDuplicates,
@@ -691,6 +693,47 @@ describe("buildSourceTopicDocument / rebuildSourceTopicDocument - 新形式ト�
     const blocks = rewritten.pages[0].blocks as any[];
     const headings = blocks.filter((b) => b.type === "heading" && b.content[0].text === "References");
     expect(headings).toHaveLength(1);
+  });
+});
+
+describe("buildSourceBackedWikiDocument - kind を受け取る出典つきページ組み立て（answer）", () => {
+  it("kind に answer を渡すと wikiMeta.kind が answer になり、topic と同じ土台（derivedFromNotes/topicMarkdown/References）を持つ", () => {
+    const sources = [{ id: "note-a", title: "資料A" }];
+    const doc = buildSourceBackedWikiDocument(
+      "answer",
+      "この現象はなぜ起きますか？",
+      "## 回答\n本文です。[[source:note-a]]",
+      sources,
+      "test-model",
+    );
+    expect(doc.wikiMeta?.kind).toBe("answer");
+    expect(doc.title).toBe("この現象はなぜ起きますか？");
+    expect(doc.wikiMeta?.derivedFromNotes).toEqual(["note-a"]);
+    expect(doc.wikiMeta?.derivedFromClaims).toEqual([]);
+    expect(doc.wikiMeta?.topicMarkdown).toContain("本文です。");
+    const blocks = doc.pages[0].blocks as any[];
+    const headingIdx = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "References");
+    expect(headingIdx).toBeGreaterThan(-1);
+  });
+
+  it("既定（kind 未指定の buildSourceTopicDocument）は topic のまま", () => {
+    const doc = buildSourceTopicDocument("t", "## 定義\n本文。", [{ id: "note-a", title: "資料A" }], null);
+    expect(doc.wikiMeta?.kind).toBe("topic");
+  });
+
+  it("rebuildSourceBackedWikiDocument に kind を渡すと wikiMeta.kind が更新される", () => {
+    const sources = [{ id: "note-a", title: "資料A" }];
+    const first = buildSourceBackedWikiDocument("answer", "問い", "## 回答\n本文。", sources, null);
+    const rewritten = rebuildSourceBackedWikiDocument(first, "## 回答\n更新後の本文。", sources, null, undefined, "answer");
+    expect(rewritten.wikiMeta?.kind).toBe("answer");
+    expect(rewritten.wikiMeta?.topicMarkdown).toBe("## 回答\n更新後の本文。");
+  });
+
+  it("rebuildSourceBackedWikiDocument は kind 未指定なら既存 doc の kind を引き継ぐ", () => {
+    const sources = [{ id: "note-a", title: "資料A" }];
+    const first = buildSourceBackedWikiDocument("answer", "問い", "## 回答\n本文。", sources, null);
+    const rewritten = rebuildSourceBackedWikiDocument(first, "## 回答\n更新後。", sources, null);
+    expect(rewritten.wikiMeta?.kind).toBe("answer");
   });
 });
 

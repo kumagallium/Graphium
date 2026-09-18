@@ -1453,6 +1453,10 @@ export function buildWikiSnapshots(
   for (const file of wikiFiles) {
     const meta = wikiMetas.get(file.id);
     if (!meta) continue;
+    // answer（AI チャットの回答をナレッジ層に書き戻したページ）は保守（改訂・点検）の
+    // 対象化を別 PR に切り出している。lint 対象に含めない — WikiSnapshot.kind の型も
+    // まだ answer を持たない。
+    if (meta.kind === "answer") continue;
 
     const doc = getCachedDoc(`wiki:${file.id}`);
     const wikiMeta = doc?.wikiMeta;
@@ -2343,13 +2347,16 @@ function buildSourceReferenceBlocks(sources: TopicSourceRef[]): RelationBlocksRe
 }
 
 /**
- * 新形式トピックの GraphiumDocument を新規に組み立てる。
- * markdown は保存前に stripEmptyMarkdownSections で空見出しを除去し、そのまま
- * wikiMeta.topicMarkdown に正本として保存する（次回改訂の入力・出典照合の要点抽出の元）。
+ * 出典つき（[[source:<id>]] 引用）ナレッジページの GraphiumDocument を新規に組み立てる。
+ * トピック（話題）・回答（answer）など、資料を直接読んで本文を作る種別すべてに共通する
+ * 組み立て。markdown は保存前に stripEmptyMarkdownSections で空見出しを除去し、そのまま
+ * wikiMeta.topicMarkdown に正本として保存する（次回改訂の入力・出典照合の要点抽出の元。
+ * topicMarkdown という名前だが、トピックに限らず「AI が保守する本文の正本」を指す）。
  * derivedFromNotes に資料 id を積む（claim と同じ意味論・prefix）。derivedFromClaims は
- * 新形式では使わないため空配列にする。
+ * この形式では使わないため空配列にする。
  */
-export function buildSourceTopicDocument(
+export function buildSourceBackedWikiDocument(
+  kind: WikiKind,
   title: string,
   markdown: string,
   sources: TopicSourceRef[],
@@ -2364,7 +2371,7 @@ export function buildSourceTopicDocument(
   const refs = buildSourceReferenceBlocks(sources);
 
   const wikiMeta: WikiMeta = {
-    kind: "topic",
+    kind,
     derivedFromNotes: sources.map((s) => s.id),
     derivedFromChats: [],
     derivedFromClaims: [],
@@ -2393,7 +2400,7 @@ export function buildSourceTopicDocument(
     wikiMeta,
     generatedBy: {
       agent: "ai",
-      sessionId: `wiki-topic-${now}`,
+      sessionId: `wiki-${kind}-${now}`,
       model: model ?? undefined,
     },
     createdAt: now,
@@ -2401,17 +2408,31 @@ export function buildSourceTopicDocument(
   };
 }
 
+/** 互換のためのトピック専用ラッパー（既定 kind: "topic"）。呼び出しは新規には増やさない。 */
+export function buildSourceTopicDocument(
+  title: string,
+  markdown: string,
+  sources: TopicSourceRef[],
+  model: string | null,
+  noteIndex?: NoteIndex,
+  language?: string,
+): GraphiumDocument {
+  return buildSourceBackedWikiDocument("topic", title, markdown, sources, model, noteIndex, language);
+}
+
 /**
- * 既存の新形式トピックドキュメントの本文を書き直して更新する（改訂・統合・作り直し共通）。
- * rebuildTopicDocument（旧形式）と同じく、書き直しのたびに References を作り直すので
+ * 既存の出典つきナレッジドキュメントの本文を書き直して更新する（改訂・統合・作り直し共通）。
+ * rebuildTopicDocument（旧形式トピック）と同じく、書き直しのたびに References を作り直すので
  * 重複しない。出典照合の判定は引き継がない（本文を作り直す系の既存仕様と揃える）。
+ * kind は既存 wikiMeta.kind を引き継ぐ（呼び出し側が明示すればそれを優先）。
  */
-export function rebuildSourceTopicDocument(
+export function rebuildSourceBackedWikiDocument(
   existingDoc: GraphiumDocument,
   markdown: string,
   sources: TopicSourceRef[],
   model: string | null,
   noteIndex?: NoteIndex,
+  kind?: WikiKind,
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
@@ -2433,7 +2454,7 @@ export function rebuildSourceTopicDocument(
     }],
     wikiMeta: {
       ...existingDoc.wikiMeta!,
-      kind: "topic",
+      kind: kind ?? existingDoc.wikiMeta?.kind ?? "topic",
       derivedFromNotes: sources.map((s) => s.id),
       derivedFromClaims: [],
       topicMarkdown: stripped,
@@ -2450,6 +2471,17 @@ export function rebuildSourceTopicDocument(
     },
     modifiedAt: now,
   }, undefined);
+}
+
+/** 互換のためのトピック専用ラッパー。既存呼び出し元は変更しない。 */
+export function rebuildSourceTopicDocument(
+  existingDoc: GraphiumDocument,
+  markdown: string,
+  sources: TopicSourceRef[],
+  model: string | null,
+  noteIndex?: NoteIndex,
+): GraphiumDocument {
+  return rebuildSourceBackedWikiDocument(existingDoc, markdown, sources, model, noteIndex, "topic");
 }
 
 /** route-topics API に渡す資料 1 本分（本文は全文でよい。長さの上限は置かない） */
