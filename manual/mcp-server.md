@@ -94,7 +94,7 @@ Ten tools are available. You do not call them by name — you ask in plain langu
 | `get_topic` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "Tell me what you know about sintering conditions" |
 | `trace_lineage` | "Where did this conclusion come from?" |
 | `create_note` | "Save this as a note" |
-| `save_answer` | "Keep this answer for later" |
+| `save_answer` <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" /> | "Keep this answer for later" |
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
 
