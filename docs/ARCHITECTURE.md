@@ -719,10 +719,10 @@ through Topic rebuilding (the Topic assignment stage below) instead.
 | Stage | File | What it does |
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch (Claims). No longer proposes Topic names — Claims are not Topic material (see Topic router below; changed 2026-09-17) |
-| **Topic router** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`runSourceTopicStage`) | Reads the full text of the ingested *source* (not the Claims derived from it) plus an index of existing Topics (title + one-line definition) and decides which existing Topic(s) to update and which new Topic(s) to create. No embedding similarity, no title-normalization matching, no count cap — the LLM alone judges "same concept or new" from the index, the same "index + judgment" approach used for merge-vs-create decisions on other Wiki pages |
+| **Topic router** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`runSourceTopicStage`) | Reads the text of the ingested *source* (not the Claims derived from it) plus an index of existing Topics (title + one-line definition) and decides which existing Topic(s) to update and which new Topic(s) to create. No embedding similarity, no title-normalization matching, no count cap — the LLM alone judges "same concept or new" from the index, the same "index + judgment" approach used for merge-vs-create decisions on other Wiki pages. A source longer than one window (see "Reading long sources in windows" below) is routed once per window, not once for the whole text |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, Topics (including near-duplicate Topic titles), and Insights (the same relation about the same Shape; merged only by an explicit click via `mergeAtomsExplicit`, never automatically), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim |
-| **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's full text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The legacy **Topic writer / Topic Namer** (`POST /api/wiki/compose-topic`, `/name-topics`), which built Topic bodies from member Claims, were removed 2026-09-17 together with the Claim→Topic assignment path (`matchTopicsByTitle`, `resolveTopicsForClaim`, `linkClaimAndTopic`, `buildTopicDocument`, `rebuildTopicDocument`) — Topics are now only ever created or revised by the Topic router/reviser above, reading source text directly |
+| **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. For a source that spans multiple windows, this is one revision call per window that touches the Topic, each folding into the body the previous window left — not one call for the whole source. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The legacy **Topic writer / Topic Namer** (`POST /api/wiki/compose-topic`, `/name-topics`), which built Topic bodies from member Claims, were removed 2026-09-17 together with the Claim→Topic assignment path (`matchTopicsByTitle`, `resolveTopicsForClaim`, `linkClaimAndTopic`, `buildTopicDocument`, `rebuildTopicDocument`) — Topics are now only ever created or revised by the Topic router/reviser above, reading source text directly |
 | **Topic Consolidator** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`consolidateExistingTopics`) | `POST /api/wiki/consolidate-topics`. Given only the titles of every existing Topic page (no bodies), the model proposes a suggested-title → canonical-title mapping; `planExistingTopicMerges` groups Topics by canonical title and picks a merge target, then `applyTopicMerges` executes the merge (see Topic Merger below). Powers "Organize topics" (Settings → Maintenance) and the Linter's redundant-Topic one-click Merge button |
 | **Topic Merger** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/wiki-service.ts` (`mergeTopicBodies`) | `POST /api/wiki/merge-topics`. Merges two or more **new-format** Topic bodies into one in a single call, keeping every existing `[[source:<id>]]` citation verbatim and not inventing content beyond what the input bodies already say. Used by `applyTopicMerges` only when the merge target and every absorbed Topic are new-format; if any side is still old-format (Claim-derived), `applyTopicMerges` instead collects the full set of source ids (via member Claims for old-format sides) and rebuilds through `rebuildTopicFromSources`, migrating the result to new-format |
 
@@ -772,18 +772,30 @@ sequenceDiagram
     A->>FS: write Insight / Claim pages
     A->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
-    S-->>W: ingest result (Claims; source full text already in hand)
-    W->>S: POST /api/wiki/route-topics (source text + existing Topic index)
-    S->>TR: run
-    TR-->>S: { update: [topicId...], create: [name...] }
-    S-->>W: routing result
-    loop each Topic to update/create
-        W->>S: POST /api/wiki/revise-topic (current body + source text)
+    S-->>W: ingest result (Claims; source text already in hand)
+    opt source spans more than one window
+        W->>S: POST /api/wiki/survey-source (first window only)
         S->>TR: run
-        TR-->>S: next body (markdown, [[source:<id>]] citations)
-        S-->>W: revised body
-        W->>FS: write Topic page (client-side save; migrates a Claim-derived Topic to source format on first touch)
+        TR-->>S: short orientation survey
+        S-->>W: survey text
     end
+    loop each window of the source (a single iteration when the source fits in one window)
+        W->>S: POST /api/wiki/route-topics (window text [+ survey] + existing Topic index)
+        S->>TR: run
+        TR-->>S: { update: [topicId...], create: [name...] }
+        S-->>W: routing result
+        loop each Topic to update/create for this window
+            W->>S: POST /api/wiki/revise-topic (current body + window text [+ survey])
+            S->>TR: run
+            TR-->>S: next body (markdown, [[source:<id>]] citations)
+            alt Topic is new (route said create)
+                W->>FS: write the new Topic page immediately (so later windows can update it)
+            else Topic already exists
+                S-->>W: revised body (kept in memory, not saved yet)
+            end
+        end
+    end
+    W->>FS: write each Topic whose in-memory body still differs from what was last saved for it, once, after all windows (migrates a Claim-derived Topic to source format on first touch)
     W-->>E: status (toast: created/updated + unchecked-statement count)
 ```
 
@@ -796,12 +808,12 @@ Notes:
 - **Topics read sources, not Claims (changed 2026-09-17).** A Topic page is
   no longer synthesized from its member Claims. Instead, each ingested
   *source* (a note, or an imported pdf/document/url/chat) is itself routed:
-  the Topic router is shown the source's full text plus an index of existing
+  the Topic router is shown the source's text plus an index of existing
   Topics (title + one-line definition) and returns which existing Topic(s)
   to update and which new Topic(s) to create — no embedding similarity, no
   title-normalization matching, no count cap. For each Topic touched, the
   Topic reviser then rewrites the page from its current body (empty for a
-  new Topic) plus that one source's full text — a full rewrite each time,
+  new Topic) plus that one source's text — a full rewrite each time,
   not an append, in the style of an incrementally-revised wiki. Citations
   are `[[source:<id>]]` (the source id, not a Claim id), stored verbatim in
   `wikiMeta.topicMarkdown` (see [DATA_MODEL.md §3.1b](DATA_MODEL.md)) so the
@@ -816,6 +828,44 @@ Notes:
   (`rebuildTopicFromSources`, `src/features/wiki/topic-stage.ts`) before
   finally folding in the new source. A source that can no longer be read
   (trashed, never indexed) is skipped and counted, not silently dropped.
+- **Reading long sources in windows (added 2026-09-18).** A source that
+  fits in one 4,000-character window (400-character overlap, `WINDOW_SIZE`
+  / `WINDOW_OVERLAP` in `src/features/wiki/source-windows.ts`) is routed
+  and revised exactly as above — one call each, unchanged behavior. A
+  longer source is split into overlapping windows (`splitIntoWindows`,
+  boundary nudged to the nearest sentence end) and read window by window:
+  a short orientation **survey** is generated once, from the first window
+  only (`POST /api/wiki/survey-source`, `buildSourceSurveySystemPrompt` in
+  `wiki-topic-writer.ts`); each subsequent window is then routed and
+  revised with that survey prefixed to it
+  (`buildWindowTextWithSurvey`) so the model keeps the document's overall
+  context without re-reading everything already seen. The router can
+  send different windows to different Topics, and the reviser folds each
+  window into whichever body (in-memory, not yet saved) the source has
+  produced so far for that Topic — so a Topic touched by two windows out
+  of five gets two revision calls, not five, and the per-source call
+  count does not multiply by the number of existing Topics. `previouslyCited`
+  (the re-check flag described above) is only asserted on the first window,
+  since it means "this Topic cited the source before this run" and would
+  otherwise be true for every window of the same run. For a *new-format*
+  Topic that already existed before this run, saving happens once, after
+  every window of the source has been processed — the same "revise in
+  memory, save once at the end" shape `rebuildTopicFromSources` already
+  used. The exception is a *legacy-format* Topic selected as an update
+  target mid-window: it is migrated in place by calling
+  `rebuildTopicFromSources` synchronously, which saves it immediately
+  (its own single-save shape, see above) — the remaining windows of the
+  source never touch that Topic again. A Topic that
+  this run *creates* is written to disk immediately (so a later window can
+  route to it and see its body); if a later window then revises that same
+  Topic again, the revision is saved a second time at the end alongside
+  any other Topic this run touched more than once. An `AbortSignal` passed down from the ingest pipeline is
+  checked between windows, so a stopped ingest keeps whatever windows
+  already finished and saves that partial body rather than discarding it.
+  `extractPdfText` no longer truncates a long PDF — it returns full text
+  for the window reader to work through; only the *single-call* ingest
+  paths that never route through windows (`capForSingleCall`, see
+  §10) still cap what they send to the model in one call.
 - **Merging Topics has four entry points**, all funneling into the same
   pure execution function `applyTopicMerges` (`src/features/wiki/topic-stage.ts`),
   which retargets member Claims (`retargetClaimTopicId`, kept for old-format
@@ -862,9 +912,16 @@ Notes:
   routine that migrates an old-format Topic on first touch. Because this can
   mean one LLM call per source, it is never run silently: a pure planning
   function, `planTopicRebuild` (`src/features/wiki/topic-stage.ts`),
-  computes the exact source list and the resulting AI-call count *before*
+  computes the exact source list and a *lower-bound* AI-call count (one
+  call per source id, without reading any source's text) *before*
   anything runs, and every entry point shows that count in a confirmation
-  dialog the user must accept. Three entry points: (1) the topic page's own
+  dialog the user must accept, phrased as "at least N calls." A source
+  long enough to need windowing (see "Reading long sources in windows"
+  below) costs a survey call plus one call per window, so the real count
+  can run higher than what the dialog shows — `planTopicRebuild` does not
+  read source text to find this out, since doing so would mean running
+  PDF extraction / URL refetching for every source just to show a
+  confirmation dialog. Three entry points: (1) the topic page's own
   "Regenerate" action (`WikiBanner`, one Topic); (2) the Lint view's
   dedicated "legacy-format Topics" section, which lists every Topic still
   awaiting migration and rebuilds them one by one on a single confirmation,
@@ -2393,6 +2450,18 @@ so contributors do not mistake these for finished design.
 - **No first-class auth on the server.** See §6.1. Acceptable for the
   current deployment shapes (Tauri sidecar, self-hosted behind a proxy)
   but a known gap if the server is ever exposed publicly.
+- **A single-call character cap still exists, off to the side of the
+  window reader.** See §3.3, "Reading long sources in windows".
+  `extractPdfText` returns a PDF's full text uncapped; the Topic router/
+  reviser reads it in windows and never hits a length limit. But a
+  handful of paths still send a source to the model in one call instead
+  of routing through the window reader (`ingestFromPdf`'s Claim-extraction
+  call, the PROV ingester's PDF import) — those apply
+  `capForSingleCall` (`src/features/wiki/pdf-text-extractor.ts`,
+  `SINGLE_CALL_MAX_CHARS = 80,000`) so a very long PDF still gets
+  truncated there, with a `[... truncated: read N of M pages]` note
+  appended. Whether every one-shot path should eventually move onto the
+  window reader instead of capping is open.
 
 ---
 

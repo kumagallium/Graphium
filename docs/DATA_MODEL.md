@@ -1029,9 +1029,27 @@ Differences from the legacy format (§3.1a):
 |---|---|---|
 | Member set | `derivedFromClaims` (Claim ids) | `derivedFromNotes` (resource ids, same id space as a Claim's own `derivedFromNotes`) |
 | Inline citation | `[[claim:<id>]]` → Claim's current title | `[[source:<id>]]` → resource's current title (unresolved ids are kept literally rather than dropped, same policy as the legacy form) |
-| Body regeneration | Pure function of the current member Claims; the previous body is never fed back in | Incremental revision: the previous `topicMarkdown` (empty for a new topic) plus one new source's full text produce the next body — a full rewrite each time, not an append |
-| Assignment | Claim's `topics` field (proposed by the ingester) resolved by title match → embedding > 0.9 → create | A per-source LLM call (`POST /api/wiki/route-topics`) reads the source's full text and an index of existing topics and returns which to update / which new ones to create — no embedding, no title-normalization matching, no count cap |
+| Body regeneration | Pure function of the current member Claims; the previous body is never fed back in | Incremental revision: the previous `topicMarkdown` (empty for a new topic) plus one new source's text produce the next body — a full rewrite each time, not an append. A source longer than one window is folded in one window at a time (see below), not in a single call |
+| Assignment | Claim's `topics` field (proposed by the ingester) resolved by title match → embedding > 0.9 → create | A per-source, per-window LLM call (`POST /api/wiki/route-topics`) reads the window's text and an index of existing topics and returns which to update / which new ones to create — no embedding, no title-normalization matching, no count cap |
 | Source-check hop count | Two hops: topic statement → member Claim → the Claim's own `derivedFromNotes` | One hop: topic statement → resource, since the citation already names the resource |
+
+**Reading a long source in windows.** A source that fits in one 4,000-character
+window is routed and revised in a single call, same as before. A longer one is
+split into overlapping windows (`splitIntoWindows`,
+`src/features/wiki/source-windows.ts`) and read window by window: a short
+orientation survey is built once from the first window
+(`POST /api/wiki/survey-source`), then each window — survey prefixed — is
+routed and revised in turn, folding into whichever in-memory body that Topic
+has accumulated from earlier windows of the same source. A *new-format*
+Topic that already existed is saved once, after all windows of the source
+are done, not once per window — except a *legacy-format* Topic selected as
+an update target mid-window, which is migrated (and thus saved) immediately
+by `rebuildTopicFromSources` and is not touched again by later windows of
+the same source; a Topic that this run *creates* is saved immediately (so a
+later window can route to it), and a second save happens at the end only if a
+later window revises it again. See [ARCHITECTURE.md §3.3, "Reading long sources in
+windows"](ARCHITECTURE.md) for the full mechanics (survey scope, abort
+behavior, why per-window revision calls don't multiply by Topic count).
 
 **Migrating a legacy topic on first touch.** When the router selects an
 existing legacy topic (no `topicMarkdown`) as an update target,
@@ -1050,8 +1068,10 @@ is produced from then on. A resource id that can no longer be resolved
 **human-initiated** "rebuild from sources" entry points beyond this
 automatic migration — a bulk rebuild is never triggered silently. Before
 any of them runs, the pure function `planTopicRebuild` computes the
-exact source list per topic and the resulting total AI-call count, which
-is shown in a confirmation dialog the user must accept: (1) a topic
+exact source list per topic and a *lower-bound* total AI-call count (one
+call per source id; it does not read source text, so it cannot account
+for windowing), which is shown as "at least N calls" in a confirmation
+dialog the user must accept: (1) a topic
 page's own "Regenerate" action; (2) the Lint view's "legacy-format
 topics" section, which rebuilds every topic still awaiting migration in
 one confirmed batch; (3) the Lint view's per-issue "Rebuild from

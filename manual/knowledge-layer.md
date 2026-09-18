@@ -19,7 +19,7 @@ Graphium's knowledge follows an hourglass: context-rich notes narrow into short 
 | Kind | What it is |
 |---|---|
 | **Topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | A page built directly from the source material it groups by concept (notes, PDFs, Word docs, URLs, chat sessions), with one-hop provenance (topic → source) |
-| **Answers** <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" /> | A page keeping one good [AI chat](/ai-chat-and-ask) answer, titled by the question you asked, citing the notes/materials it drew on |
+| **Answers** | A page keeping one good [AI chat](/ai-chat-and-ask) answer, titled by the question you asked, citing the notes/materials it drew on |
 | **Claims** | One proposition taken from a note or document |
 | **Insights** | A relationship pattern from your claims, written to hold in other fields |
 
@@ -29,7 +29,9 @@ Topics are Graphium's default knowledge layer — they're always on and are buil
 
 Graphium used to generate a fourth kind, **Summaries** — a short AI recap of a single note — but generation has stopped in favor of Topics, which now carry that grouping role. If you made some before this change, they haven't gone anywhere: a **Previous Summaries** row appears at the end of the sidebar's Knowledge list whenever you have any. They can still be viewed and deleted, but not regenerated.
 
-<Badge type="tip" text="Changed in v0.78.0 (2026-09-17)" /> Topics used to be built from your **claims** (grouping already-extracted claims by concept). They're now built from the **source material itself**: when you ingest a note, PDF, Word doc, URL, or chat, the AI separately reads that source's text (a PDF up to its first 80,000 characters — see the [FAQ](/faq)) and decides which existing topic(s) it should update and which new one(s) it should create — claims are extracted for other purposes but are no longer topic material. An older topic you made before this change keeps working, and moves to the new form the next time a new source is routed to it (the completion toast reports how many topics were migrated). Graphium replays the sources behind its existing member claims one at a time to rebuild the body, so the wording can change; a source that's no longer readable (trashed, never indexed) is skipped, and that count is reported too.
+<Badge type="tip" text="Changed in v0.78.0 (2026-09-17)" /> Topics used to be built from your **claims** (grouping already-extracted claims by concept). They're now built from the **source material itself**: when you ingest a note, PDF, Word doc, URL, or chat, the AI separately reads that source's text and decides which existing topic(s) it should update and which new one(s) it should create — claims are extracted for other purposes but are no longer topic material. An older topic you made before this change keeps working, and moves to the new form the next time a new source is routed to it (the completion toast reports how many topics were migrated). Graphium replays the sources behind its existing member claims one at a time to rebuild the body, so the wording can change; a source that's no longer readable (trashed, never indexed) is skipped, and that count is reported too.
+
+A long document doesn't get read in one shot and doesn't get cut off partway through, either: Graphium reads it in overlapping windows from start to finish, first skimming just the opening to get its bearings before working through the rest window by window, so a 100-page paper's later sections still make it into your topics. You'll see this as the progress toast counting up through both the document and the window (e.g. source 2/6 · window 5/32) on a long source — a PDF, but also a long note, Word doc, URL, or chat import — instead of jumping straight from one document to the next; a topic still only gets rewritten once per window that actually concerns it, not once per window regardless of relevance. A topic that already existed is saved once, after the whole document has been read; a topic the document creates along the way is saved right away so a later window can add to it, and gets one more save at the end if that happens. The one exception: a topic that predates the source-reading format and gets migrated to it mid-document is saved right away at the moment it migrates, not held until the whole document is done.
 
 ## Adding a note to knowledge
 
@@ -94,9 +96,9 @@ The first three don't call a model — you've already made the decision by picki
 
 ## Rebuilding a topic from its sources <Badge type="tip" text="Added in v0.78.0 (2026-09-17)" />
 
-Beyond the ordinary one-source-at-a-time revision that happens on ingest, a Topic can also be rebuilt from scratch — reading every source it cites again, one at a time. This can mean several AI calls for one page, so Graphium never does it on its own: you always start it, and you always see how many AI calls it will take before it runs.
+Beyond the ordinary one-source-at-a-time revision that happens on ingest, a Topic can also be rebuilt from scratch — reading every source it cites again, one at a time. This can mean several AI calls for one page, so Graphium never does it on its own: you always start it, and you always see a minimum AI-call count before it runs — a source long enough to be read in windows (see above) takes more than one call, so the real count can run higher than the number shown.
 
-- **A topic page's own Regenerate button** — rebuilds that one page; the confirmation dialog names the call count first.
+- **A topic page's own Regenerate button** — rebuilds that one page; the confirmation dialog names the minimum call count first.
 - **Upkeep → Check → "N topics in the older format"** — appears only while you still have topics made before the source-reading format existed. One button rebuilds all of them at once, after a single confirmation, and reports how many were rebuilt, how many sources it had to skip (unreadable — trashed or never indexed), and how many failed.
 - **Upkeep → Check → a "Missing source" issue's "Rebuild from sources" button** — rebuilds just that one topic from the sources it can still reach.
 
@@ -136,7 +138,7 @@ Both show a confirmation with the count first; regeneration issues LLM calls and
 
 When an [AI chat](/ai-chat-and-ask) answer contains something worth keeping, press **Make Knowledge** under the answer. Instead of saving the whole reply, Graphium proposes discrete candidates in a picker titled **Knowledge candidates (select to save)** — each with a **Claims** or **Insights** badge, a title, and a preview. Check the ones you want (or **Select all**) and press **Save selected (2)**. Only what you pick enters your knowledge.
 
-## Keeping a whole answer <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" />
+## Keeping a whole answer
 
 **Make Knowledge** breaks an answer apart into claims/insights. If instead the whole answer reads well as-is — a self-contained explanation you'd want to find again by the question you asked — press **Keep as knowledge** under the same message. Graphium saves the answer's text as-is as an **Answer** page, titled with your question, with any citation the answer already showed (the ones you could click to open a note or material) carried over as the page's own citations. A confirmation with an **Open** link appears once it's saved.
 
