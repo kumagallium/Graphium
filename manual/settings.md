@@ -75,7 +75,7 @@ A browser for the knowledge base that [world grounding](/ai-grounding) checks ag
 | Per-entry delete | Remove a single cached entry; seed entries cannot be deleted from the UI. |
 | **Clear sedimented entries** | Bulk-remove all model-cached entries while keeping the bundled seed set. |
 
-## Knowledge
+## Knowledge <Badge type="tip" text="Added in v0.81.1 (2026-09-18)" />
 
 The editable **Knowledge Schema** lives in the sidebar's **Skill** list rather than this tab. It is one built-in document, excluded from Knowledge counts, search, and graphs. On first creation only, Graphium saves the default body in the current UI language; later UI language changes do not translate or overwrite it. Open the Schema and use the confirmed language-switch action when you deliberately want to replace it with the other bundled language default. Its saved rules apply to later Topic, Answer, and Claim generation; changing, switching, or resetting it does not automatically regenerate existing pages.
 
