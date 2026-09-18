@@ -107,6 +107,23 @@ export const Loading: Story = {
   },
 };
 
+export const WithMessageActions: Story = {
+  name: "ナレッジに残す・編集&再実行・分岐が見える状態",
+  args: {
+    title: "焼結温度の決め方",
+    messages: threeTurnMessages,
+    loading: false,
+    onSend: (text) => console.info("[story] onSend", text),
+    onBack: () => console.info("[story] onBack"),
+    onSaveAsAnswer: async (question, answer) => {
+      console.info("[story] onSaveAsAnswer", question, answer);
+      return "story-answer-id";
+    },
+    onResend: (text, rewindIndex) => console.info("[story] onResend", text, rewindIndex),
+    onFork: (index) => console.info("[story] onFork", index),
+  },
+};
+
 export const WithError: Story = {
   name: "エラー表示",
   args: {

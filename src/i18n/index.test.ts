@@ -127,10 +127,10 @@ describe("syncLocale() / getLocale()", () => {
       expect(t("skill.knowledgeSchemaDescription")).toContain("トピック・問答（Q&A）・知見");
     });
 
-    it("英語UIではTopic/Answerを維持する", () => {
+    it("英語UIではTopics/Q&Aを表示する", () => {
       syncLocale("en");
       expect(t("wikiList.kindTopic")).toBe("Topics");
-      expect(t("wikiList.kindAnswer")).toBe("Answers");
+      expect(t("wikiList.kindAnswer")).toBe("Q&A");
     });
   });
 

@@ -1,7 +1,7 @@
 # Graphium — Data Model
 
 This document describes the on-disk shapes Graphium uses: notes,
-Knowledge layer documents (Topics / Answers / Summaries / Claims / Insights / Ideas), the
+Knowledge layer documents (Topics / Q&A / Summaries / Claims / Insights / Ideas), the
 navigation index, shared storage entries, and the IndexedDB layout of
 the browser provider. It is the reference for anyone who wants to read,
 write, migrate, or interoperate with Graphium files.

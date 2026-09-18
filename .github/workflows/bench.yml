@@ -58,6 +58,8 @@ jobs:
         with:
           fetch-depth: 0   # bench:compare main で git show が必要
 
+      - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -113,6 +115,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -166,6 +170,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
 
       - uses: pnpm/action-setup@v4
         with:
@@ -223,6 +229,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
 
       - uses: pnpm/action-setup@v4
         with:

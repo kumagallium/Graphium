@@ -23,6 +23,9 @@ export type ViewRoute =
   // 共有エントリの全画面表示。引用カードの `#shared/<id>`（router に登録しない
   // 別の口）と混ざらないよう、専用のパスを持つ
   | { view: "shared-entry"; id: string }
+  // ノートに紐づかないチャットの一覧。個別の会話はピーク（?peek=）か、下の "chat" で全画面
+  | { view: "chats" }
+  | { view: "chat"; chatId: string }
   | { view: "home" }; // デフォルト（何も開いていない状態）
 
 /** ビュー + サイドピーク。ピークはどのビューの上にも開くので、view とは直交させる。
@@ -46,6 +49,8 @@ function viewToHash(route: ViewRoute): string {
     case "mobile": return "#mobile";
     case "shared-library": return "#shared-library";
     case "shared-entry": return `#shared-entry/${route.id}`;
+    case "chats": return "#chats";
+    case "chat": return `#chats/${encodeURIComponent(route.chatId)}`;
     case "home": return "";
   }
 }
@@ -118,6 +123,12 @@ function parseHash(hash: string): AppRoute {
         });
       }
       break;
+    case "chats":
+      // #chats/<id> は個別の会話を全画面で。#chats（+?peek=<id>）は一覧（+ピーク）
+      if (parts[1]) {
+        return withPeek({ view: "chat", chatId: decodeURIComponent(parts.slice(1).join("/")) });
+      }
+      return withPeek({ view: "chats" });
   }
   return withPeek({ view: "home" });
 }
@@ -143,6 +154,11 @@ export type RouteActions = {
   setShowSharedLibrary?: (show: boolean) => void;
   /** 共有エントリの全画面表示を開く（未指定なら Library にフォールバックする） */
   openSharedEntryView?: (id: string) => void;
+  /** ノートに紐づかないチャットの一覧を開閉する */
+  setShowChatList: (show: boolean) => void;
+  /** URL（#chats/<id>）からの復元用。個別の会話を全画面で開く。
+   *  一覧上のピーク（?peek=<id>）は setPeek 側（view: "chats"）で扱う */
+  openChatFull: (chatId: string) => void;
   clearViews: () => void;
   /** サイドピークの適用（null で閉じる）。ビューを立て終えたあとに呼ばれる。
    *  ビュー切り替え側がピークを畳む実装なので、順序が逆だと開いた直後に消える。
@@ -226,6 +242,15 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
         // 何も起きずに空画面になるより、共有の入口に着地させる
         if (actions.openSharedEntryView) actions.openSharedEntryView(route.id);
         else actions.setShowSharedLibrary?.(true);
+        break;
+      case "chats":
+        actions.clearViews();
+        actions.setShowChatList(true);
+        break;
+      case "chat":
+        actions.clearViews();
+        actions.setShowChatList(true);
+        actions.openChatFull(route.chatId);
         break;
       case "home":
         actions.clearViews();

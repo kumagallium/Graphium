@@ -973,14 +973,24 @@ Notes:
   Ingester/Atomizer/Topic router — it's written directly by the client when
   the user clicks "Keep as knowledge" on an assistant message in the AI chat
   panel (`onSaveAsAnswer` in `src/features/ai-assistant/panel.tsx`,
-  `src/note-app.tsx`). It reuses the same document shape as a source Topic
+  `src/note-app.tsx`). Before writing the page, the client calls
+  `rewriteAnswerFromConversation` (`src/features/wiki/wiki-service.ts`),
+  which hits `POST /api/wiki/rewrite-answer`
+  (`src/server/routes/wiki.ts` → `buildAnswerRewriterSystemPrompt` /
+  `buildAnswerRewriterUserMessage` in `src/server/services/wiki-topic-writer.ts`)
+  with the trimmed conversation history and the answer's already-resolved
+  sources, so a context-dependent reply ("about the first one…") is rewritten
+  into a title and body that read standalone, with citations re-anchored to
+  `[[source:<id>]]`. If the call fails, the model isn't configured, or the
+  rewritten body drops citations the original had, the client falls back to
+  the unedited answer text and the asked question as title — so saving never
+  blocks on this step. It reuses the same document shape as a source Topic
   (§3.1b) — `buildSourceBackedWikiDocument` with `kind: "answer"` instead of
   `"topic"` — so it lives in the Knowledge layer, is searchable, and shows up
-  in the sidebar and graph like any other Knowledge page, but title (the
-  user's question) and citation source (the chat's already-resolved
-  `[Source: "title"]` markers, converted to `[[source:<id>]]`) come from the
-  chat exchange rather than from a Topic-router/reviser call at creation
-  time. Once created, an Answer page IS maintained the same way as a Topic:
+  in the sidebar and graph like any other Knowledge page, but the
+  (possibly rewritten) title and citations come from this client-side step
+  rather than from a Topic-router/reviser call at creation time. Once
+  created, an Answer page IS maintained the same way as a Topic:
   it is included in the Topic Router's existing-page list (shown as
   `[answer]` so the LLM only routes a source to it when the source updates
   or contradicts the answer, not merely for topical overlap), is revised
@@ -1008,9 +1018,14 @@ Notes:
   cross-search behind the Internal / External grounding scopes
   (`src/features/wiki/retriever.ts`). The sidebar's standalone chat
   (§8, `src/features/standalone-chat/`) is a second entry point into the
-  same `retrieveWikiContext` call the per-note chat panel uses — it has
-  no open note to draw context from, so it always searches across notes
-  and Knowledge rather than any single document:
+  same `retrieveWikiContext` call the per-note chat panel uses — it
+  usually has no open note to draw context from, so it defaults to
+  searching across notes and Knowledge rather than any single document.
+  The `⌘K` Composer's bare "Ask AI" row (`handleComposerAsk` in
+  `src/note-app.tsx`) also creates a standalone chat rather than using
+  the per-note chat panel, even when a note is open — if one is open at
+  the time, it is attached as that conversation's single note citation,
+  the same mechanism as an `@` attachment:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
     embedding model (OpenAI-compatible; absent or failing, this side is

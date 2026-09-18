@@ -6,6 +6,7 @@ import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import { extractWikiSections, flattenColumns } from "./section-extract";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
+import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
@@ -561,6 +562,9 @@ function pushCitation(
   noteIndex: NoteIndex,
   /** 生成中／再生成中の Wiki 自身のタイトル。これと一致する引用は自己参照なのでリンク化しない。 */
   selfTitle?: string,
+  /** noteIndex に載らない資料（pdf/url 等の素材）のタイトル→id。References の行と同じ
+   *  資料一覧（sources）から作る。noteIndex で解決できなかったときだけのフォールバック */
+  extraTitleToId?: Map<string, string>,
 ): void {
   // 自己引用ガード: LLM がまれに「この知見こそが観測の根拠だ」と自分のタイトルを
   // [[...]] で引用してくることがある。再生成時は自分自身も noteIndex に乗るため、
@@ -614,6 +618,27 @@ function pushCitation(
     return;
   }
 
+  // noteIndex に載らない素材（pdf/url 等）。References の行と同じ id で解決できれば
+  // 同じ見た目（@タイトル・青リンク）にする。解決できなければ今までどおり文字のまま。
+  const extraId = extraTitleToId?.get(citedTitle);
+  if (extraId) {
+    inlineContent.push({
+      type: "text",
+      text: `@${citedTitle}`,
+      styles: { textColor: "blue" },
+    });
+    knowledgeLinks.push({
+      id: crypto.randomUUID(),
+      sourceBlockId: blockId,
+      targetBlockId: "",
+      targetNoteId: extraId,
+      type: "reference",
+      layer: "knowledge",
+      createdBy: "ai",
+    });
+    return;
+  }
+
   // マッチしない → プレーンテキスト
   inlineContent.push({ type: "text", text: citedTitle, styles: {} });
 }
@@ -628,6 +653,8 @@ export function parseInlineCitations(
   noteIndex: NoteIndex,
   /** 生成中／再生成中の Wiki 自身のタイトル（自己引用ガード用） */
   selfTitle?: string,
+  /** noteIndex に載らない資料（pdf/url 等）のタイトル→id。pushCitation 参照 */
+  extraTitleToId?: Map<string, string>,
 ): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
   const blockId = crypto.randomUUID();
   const inlineContent: any[] = [];
@@ -653,7 +680,7 @@ export function parseInlineCitations(
     }
 
     if (match[1] !== undefined) {
-      pushCitation(inlineContent, knowledgeLinks, blockId, match[1], noteIndex, selfTitle);
+      pushCitation(inlineContent, knowledgeLinks, blockId, match[1], noteIndex, selfTitle, extraTitleToId);
     } else if (match[2] !== undefined && match[3] !== undefined) {
       inlineContent.push({
         type: "link",
@@ -733,6 +760,8 @@ function convertSectionsToBlocks(
   noteIndex: NoteIndex = [],
   /** 生成中／再生成中の Wiki 自身のタイトル（自己引用ガード用） */
   selfTitle?: string,
+  /** noteIndex に載らない資料（pdf/url 等）のタイトル→id。pushCitation 参照 */
+  extraTitleToId?: Map<string, string>,
 ): ConvertResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
@@ -790,7 +819,7 @@ function convertSectionsToBlocks(
       const numbered = bullet === null ? parseMarkdownNumbered(para) : null;
       if (bullet !== null || numbered !== null) {
         const itemText = bullet !== null ? bullet : (numbered as string);
-        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle);
+        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle, extraTitleToId);
         blocks.push({
           id: parsedItem.blockId,
           type: bullet !== null ? "bulletListItem" : "numberedListItem",
@@ -806,7 +835,7 @@ function convertSectionsToBlocks(
         continue;
       }
 
-      const parsed = parseInlineCitations(para, noteIndex, selfTitle);
+      const parsed = parseInlineCitations(para, noteIndex, selfTitle, extraTitleToId);
       blocks.push({
         id: parsed.blockId,
         type: "paragraph",
@@ -2386,7 +2415,10 @@ export function buildSourceBackedWikiDocument(
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
   const resolvedBody = resolveSourceCitations(stripped, sources);
-  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title);
+  // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
+  // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
+  const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
+  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title, sourceTitleToId);
   const refs = buildSourceReferenceBlocks(sources);
 
   const wikiMeta: WikiMeta = {
@@ -2456,10 +2488,14 @@ export function rebuildSourceBackedWikiDocument(
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
   const resolvedBody = resolveSourceCitations(stripped, sources);
+  // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
+  // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
+  const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
   const converted = convertSectionsToBlocks(
     [{ heading: "", content: resolvedBody }],
     noteIndex,
     existingDoc.title,
+    sourceTitleToId,
   );
   const refs = buildSourceReferenceBlocks(sources);
   const page = existingDoc.pages[0];
@@ -2652,6 +2688,60 @@ export async function mergeTopicBodies(
     return typeof data.body === "string" && data.body.trim() ? data.body : null;
   } catch (err) {
     console.warn("mergeTopicBodies failed:", err);
+    return null;
+  }
+}
+
+/** rewriteAnswerFromConversation に渡す会話 1 メッセージ */
+export type AnswerRewriteConversationMessage = { role: "user" | "assistant"; content: string };
+
+/** rewriteAnswerFromConversation の返り値。title は空文字のことがある（呼び出し側で deriveSuggestionTitle にフォールバック）。 */
+export type AnswerRewriteResult = { title: string; body: string };
+
+/**
+ * チャットの回答を、それまでの会話を渡して単体で読める記事（タイトル＋本文）に書き起こす
+ * （サーバー /api/wiki/rewrite-answer）。「それについては…」のように前の会話に寄りかかった
+ * 回答を、指示語・省略を補って単体で読めるページにする（カーパシー LLM Wiki の
+ * 「良い回答はページとして書き起こす」に対応）。失敗時（パース不能・LLM エラー・
+ * AI 未設定）は null を返す — 呼び出し側は「元の回答文・deriveSuggestionTitle(question) を
+ * そのまま使う」にフォールバックできる（保存自体を失敗させない）。
+ */
+export async function rewriteAnswerFromConversation(
+  question: string,
+  answer: string,
+  conversation: AnswerRewriteConversationMessage[],
+  sources: TopicSourceRef[],
+  language: string,
+  model?: string,
+  signal?: AbortSignal,
+): Promise<AnswerRewriteResult | null> {
+  try {
+    // 会話は「直近のやり取り」に切り詰めてから送る（古いものから落とす）。
+    const truncated = truncateConversationForAnswerRewrite(conversation);
+    const res = await fetch(`${API_BASE}/rewrite-answer`, {
+      method: "POST",
+      headers: wikiHeaders(),
+      body: JSON.stringify({
+        question, answer, language, conversation: truncated, sources,
+        ...(model ? { model } : {}),
+      }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) {
+      console.warn("rewriteAnswerFromConversation failed:", await aiErrorFromResponse(res, `rewrite-answer failed (${res.status})`));
+      return null;
+    }
+    const data = await res.json() as { title?: string; body?: string };
+    if (typeof data.body !== "string" || !data.body.trim()) return null;
+    // 出典消失ガード: 元の本文にあった出典マーカーが書き起こし後に 1 つも残っていなければ、
+    // 書き起こし自体を不採用にする（読みにくくても根拠が残る元の本文を優先する）。
+    if (!answerRewritePreservesCitations(answer, data.body)) {
+      console.warn("rewriteAnswerFromConversation: citations were dropped, falling back to original body");
+      return null;
+    }
+    return { title: typeof data.title === "string" ? data.title.trim() : "", body: data.body };
+  } catch (err) {
+    console.warn("rewriteAnswerFromConversation failed:", err);
     return null;
   }
 }

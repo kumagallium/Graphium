@@ -22,6 +22,11 @@ import {
   buildSourceSurveyUserMessage,
   parseSourceSurveyOutput,
   buildWindowTextWithSurvey,
+  buildAnswerRewriterUserMessage,
+  parseAnswerRewriterOutput,
+  truncateConversationForAnswerRewrite,
+  answerRewritePreservesCitations,
+  type AnswerRewriteMessage,
 } from "./wiki-topic-writer.ts";
 
 describe("parseTopicConsolidatorOutput", () => {
@@ -305,5 +310,90 @@ describe("buildWindowTextWithSurvey", () => {
     expect(ja).toContain("引用の根拠にはしない");
     const en = buildWindowTextWithSurvey("summary", 0, 2, "body", "en");
     expect(en.toLowerCase()).toContain("not a citable source");
+  });
+});
+
+describe("buildAnswerRewriterUserMessage", () => {
+  it("質問・回答・会話・出典一覧を組み立てる", () => {
+    const conversation: AnswerRewriteMessage[] = [
+      { role: "user", content: "前の質問" },
+      { role: "assistant", content: "前の回答" },
+    ];
+    const text = buildAnswerRewriterUserMessage(
+      "それの単位は？",
+      "それは W/mK である。",
+      conversation,
+      [{ id: "wiki-1", title: "熱伝導率の資料" }],
+    );
+    expect(text).toContain("前の質問");
+    expect(text).toContain("前の回答");
+    expect(text).toContain("それの単位は？");
+    expect(text).toContain("それは W/mK である。");
+    expect(text).toContain("熱伝導率の資料 (id: wiki-1)");
+  });
+
+  it("会話が空でも壊れない（見出しはそのまま出す）", () => {
+    const text = buildAnswerRewriterUserMessage("質問", "回答", [], []);
+    expect(text).toContain("no preceding conversation");
+    expect(text).toContain("(none)");
+  });
+});
+
+describe("parseAnswerRewriterOutput", () => {
+  it("title と body を取り出す", () => {
+    const text = JSON.stringify({ title: "焼結温度の目安", body: "## 回答\n本文。[[source:a]]" });
+    expect(parseAnswerRewriterOutput(text)).toEqual({ title: "焼結温度の目安", body: "## 回答\n本文。[[source:a]]" });
+  });
+
+  it("title が無くても body があれば空文字の title で返す（呼び出し側フォールバック用）", () => {
+    const text = JSON.stringify({ body: "本文のみ。" });
+    expect(parseAnswerRewriterOutput(text)).toEqual({ title: "", body: "本文のみ。" });
+  });
+
+  it("壊れた JSON は undefined を返す", () => {
+    expect(parseAnswerRewriterOutput("not json")).toBeUndefined();
+  });
+
+  it("body が空文字なら undefined を返す", () => {
+    expect(parseAnswerRewriterOutput(JSON.stringify({ body: "" }))).toBeUndefined();
+  });
+});
+
+describe("truncateConversationForAnswerRewrite", () => {
+  it("上限内なら全件をそのまま返す", () => {
+    const messages: AnswerRewriteMessage[] = [
+      { role: "user", content: "短い質問" },
+      { role: "assistant", content: "短い回答" },
+    ];
+    expect(truncateConversationForAnswerRewrite(messages, 1000)).toEqual(messages);
+  });
+
+  it("上限を超えるときは古いメッセージから落とす", () => {
+    const messages: AnswerRewriteMessage[] = [
+      { role: "user", content: "a".repeat(50) },
+      { role: "assistant", content: "b".repeat(50) },
+      { role: "user", content: "c".repeat(50) },
+    ];
+    const result = truncateConversationForAnswerRewrite(messages, 80);
+    // 新しい方（末尾）から積むので、残るのは最後の 1 件のみ
+    expect(result).toEqual([messages[2]]);
+  });
+});
+
+describe("answerRewritePreservesCitations", () => {
+  it("元の本文にあった未解決の [Source: \"...\"] が書き起こし後に消えていれば false", () => {
+    const original = "焼結条件はこうだ。[Source: \"焼結メモ\"]";
+    const rewritten = "焼結条件はこうだ。"; // 出典の痕跡が消えている
+    expect(answerRewritePreservesCitations(original, rewritten)).toBe(false);
+  });
+
+  it("[[source:<id>]] 形式で出典が保たれていれば true", () => {
+    const original = "熱伝導率は 5 W/mK である。[Source: \"熱伝導率の資料\"]";
+    const rewritten = "熱伝導率は 5 W/mK である。[[source:wiki-1]]"; // id 解決済みで残っている
+    expect(answerRewritePreservesCitations(original, rewritten)).toBe(true);
+  });
+
+  it("元の本文にそもそも出典が無ければ判定不要で true", () => {
+    expect(answerRewritePreservesCitations("出典の無い雑談。", "書き起こし後も出典なし。")).toBe(true);
   });
 });

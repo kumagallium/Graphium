@@ -177,6 +177,7 @@ export function WikiBanner({
     : wikiMeta.kind === "synthesis" ? t("wikiList.kindSynthesis")
     : wikiMeta.kind === "atom" ? t("wikiList.kindAtom")
     : wikiMeta.kind === "topic" ? t("wikiList.kindTopic")
+    : wikiMeta.kind === "answer" ? t("wikiList.kindAnswer")
     : t("wikiList.kindClaim");
 
   const [modeModal, setModeModal] = useState<SynthesisMode | null>(null);

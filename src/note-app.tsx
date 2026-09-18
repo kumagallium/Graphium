@@ -177,6 +177,7 @@ import {
   generateTitle,
   buildAiDerivedDocument,
 } from "./features/ai-assistant";
+import { useSourceLinks } from "./features/ai-assistant/panel";
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage, AgentRunRequest } from "./features/ai-assistant";
 import { buildAttachmentSuffix } from "./features/ai-assistant/attachment-suffix";
@@ -196,7 +197,7 @@ import { setParamLinkResolver, setParamLinkSuggestions } from "./features/networ
 import { rememberBlobUrl } from "./features/inline-image/spec";
 import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
-import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
+import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isAutoFullCheckEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
@@ -333,6 +334,8 @@ import {
   isIngestInsufficient,
   buildSourceBackedWikiDocument,
   surveySourceForWindows,
+  rewriteAnswerFromConversation,
+  type AnswerRewriteConversationMessage,
 } from "./features/wiki";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
@@ -345,6 +348,7 @@ import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLangu
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import { StandaloneChatListView } from "./features/standalone-chat/StandaloneChatListView";
 import { StandaloneChatView } from "./features/standalone-chat/StandaloneChatView";
+import { StandaloneChatSidePeek } from "./features/standalone-chat/StandaloneChatSidePeek";
 import {
   loadStandaloneChatIndex,
   loadStandaloneChat,
@@ -352,6 +356,7 @@ import {
   deleteStandaloneChat,
   createStandaloneChat,
 } from "./features/standalone-chat/store";
+import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
@@ -635,6 +640,27 @@ function buildCitationSourceLabel(source: CitationSource): string {
     return source.entry.urlMeta?.domain ?? source.entry.name;
   }
   return source.entry.name;
+}
+
+/**
+ * 保存対象の回答（answer）が会話のどの時点かを探し、それより前のやり取りだけを
+ * 「それまでの会話」として書き起こし（rewriteAnswerFromConversation）に渡す。
+ * answer と厳密一致する最後の assistant メッセージを基準にする — 同じ内容が
+ * 複数回出ていても、直前に保存操作をしたやり取りに最も近いものを選ぶため。
+ * 見つからない場合（保存対象が現在の会話履歴に含まれない等）は空配列を返す
+ * （文脈なしで書き起こす＝最悪でも今までどおりの単体テキストにしかならない）。
+ */
+function extractPrecedingConversation(
+  messages: { role: "user" | "assistant"; content: string }[],
+  answer: string,
+): AnswerRewriteConversationMessage[] {
+  let answerIndex = -1;
+  messages.forEach((m, i) => {
+    if (m.role === "assistant" && m.content === answer) answerIndex = i;
+  });
+  if (answerIndex <= 0) return [];
+  // answerIndex の 1 つ前（ユーザーの質問）は question として別途渡すので、それより前を返す
+  return messages.slice(0, Math.max(0, answerIndex - 1)).map((m) => ({ role: m.role, content: m.content }));
 }
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
@@ -3918,48 +3944,19 @@ function NoteEditorInner({
           }
         }
         // @ メンションで添付されたノートの内容をコンテキストに追加
+        // （本文展開はノートに紐づかないチャットと共通の resolveAttachedNoteContents に委ねる。
+        //  素材添付（右パネル「AI に質問」）はノートではないので下の「引用・添付素材」経路
+        //  （assembleCitedAssetContext）で本文を組み立てる。resolveAttachedNoteContents 側で
+        //  kind === "asset" は読み飛ばす）
         if (attachedNotes && attachedNotes.length > 0) {
-          const noteContents: string[] = [];
-          for (const attached of attachedNotes) {
-            // 素材添付（右パネル「AI に質問」）はノートではないので loadFile 経路に載せず、
-            // 下の「引用・添付素材」経路（assembleCitedAssetContext）で本文を組み立てる。
-            if (attached.kind === "asset") continue;
-            try {
-              const provider = getActiveProvider();
-              const doc = attached.isWiki && provider.loadWikiFile
-                ? await provider.loadWikiFile(attached.id)
-                : await provider.loadFile(attached.id);
-              if (doc) {
-                // 引用先が文書ノート（PDF/docx/URL 由来）なら、薄い本文ではなく
-                // 1ホップ派生知識（派生メモ＋派生 Claim/洞察）を優先し、
-                // 派生知識が無い/余剰予算ぶんは原文（PDF 全文等）で埋める。
-                if (isDocumentNote(doc)) {
-                  const assembled = await assembleCitedDocumentContext(attached.id, doc, {
-                    noteIndex: noteIndex ?? null,
-                    captureIndex: captureIndexProp ?? null,
-                    provider,
-                    scope,
-                    loadUrlText,
-                    loadMediaText,
-                  });
-                  if (assembled) {
-                    noteContents.push(assembled);
-                    continue;
-                  }
-                }
-                // プレーンテキスト抽出（ブロック構造から確実にテキストを取得）。
-                // children も再帰する共通ヘルパーに委ねる — トップレベルの
-                // content だけ見ると、本文が step・カラムの中にあるノートが
-                // 空扱いになり context から丸ごと落ちる。
-                const content = blocksToPlainText(doc);
-                if (content.trim()) {
-                  noteContents.push(`## ${attached.title}\n${content.trim()}`);
-                }
-              }
-            } catch {
-              // ロード失敗は無視
-            }
-          }
+          const noteContents = await resolveAttachedNoteContents(attachedNotes, {
+            noteIndex: noteIndex ?? null,
+            captureIndex: captureIndexProp ?? null,
+            provider: getActiveProvider(),
+            scope,
+            loadUrlText,
+            loadMediaText,
+          });
           if (noteContents.length > 0) {
             userMessage = [
               userMessage,
@@ -4313,18 +4310,20 @@ function NoteEditorInner({
       const { mode, prompt, verb, scope } = submission;
       const h = composerHandlersRef.current;
 
-      if (mode === "ask") {
+      // verb（動詞メニュー）付きの送信だけがここに来る。素の Ask（verb なし）は
+      // NoteApp 側（handleComposerSubmit）が常にグローバルに処理する
+      // （ノートに紐づかないチャットへ流す）ため、ここには来ない。
+      if (mode === "ask" && verb) {
         // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
         if (!ensureAgentConfigured()) return;
-        // Cmd+K で開く Composer は「新しい問いを立てる」ショートカットとして扱う。
+        // Cmd+K の動詞メニューは「新しい問いを立てる」ショートカットとして扱う。
         // 既存チャットがあれば履歴 (chats) に退避してから新セッションを開始する。
-        // チャット欄を開いている状態での追加質問は、チャット欄の input を使えばよい。
         h.parkChat();
         h.setRightTab("chat");
         // このノートが @ で引用している参照先（reference リンク先 = 知見・洞察・文書ノート）
-        // の中身を AI 文脈に載せる。verb（引用集合の精査）だけでなく素の質問でも、
-        // 引用した論文 PDF 等の中身を踏まえて答えられるよう常に収集する。文書ノートは
-        // handleAiChatSubmit 側の attachedNotes 経路で 1ホップ派生知識＋全文に展開される。
+        // の中身を AI 文脈に載せる。動詞のプロンプトは「このノートで引用した知見・洞察」を
+        // 前提にしているため、必ず収集する。文書ノートは handleAiChatSubmit 側の
+        // attachedNotes 経路で 1ホップ派生知識＋全文に展開される。
         const citedNotes = h.collectCitedNotes();
         // freshChat: parkChat() と同一 tick で呼ぶため handleAiChatSubmit のクロージャは
         // park 前の stale な state を見ている。新しいチャットとして開始することを明示し、
@@ -4516,11 +4515,24 @@ function NoteEditorInner({
       if (!cleaned.trim()) return null;
       const titleToRef = getSourceTitleToRefMap();
       const { markdown, sources } = convertCitationsToSourceRefs(cleaned, titleToRef);
-      const answerTitle = deriveSuggestionTitle(question);
+      // それまでの会話を渡して、タイトル・本文とも単体で読める形に書き起こす
+      // （指示語・省略の解決。タイトルは deriveSuggestionTitle と違い会話の文脈を補える）。
+      // 失敗時（AI 未設定・パース不能等）は null が返るので、今までどおり生の質問文から
+      // 作ったタイトル・回答文字列をそのまま使う（保存自体は失敗させない）。
+      const conversation = extractPrecedingConversation(aiAssistant.messages, answer);
+      const rewritten = await rewriteAnswerFromConversation(
+        question,
+        markdown,
+        conversation,
+        sources,
+        getLocale(),
+        getChatSynthesisModelName() || undefined,
+      );
+      const answerTitle = rewritten?.title || deriveSuggestionTitle(question);
       const doc = buildSourceBackedWikiDocument(
         "answer",
         answerTitle,
-        markdown,
+        rewritten?.body ?? markdown,
         sources,
         getChatSynthesisModelName(),
         buildNoteIndex(noteIndex),
@@ -4528,7 +4540,7 @@ function NoteEditorInner({
       );
       return onCreateAnswerNote(doc);
     },
-    [onCreateAnswerNote, noteIndex],
+    [onCreateAnswerNote, noteIndex, aiAssistant.messages],
   );
 
   // R2 / Loop M2: AI 回答を knowledge ノート（知見=claim / 洞察=atom）として手動取り込みする。
@@ -7265,8 +7277,8 @@ export function NoteApp() {
   // useComposer の組み込みショートカットは無効化して、開く条件はここで制御する。
   const composer = useComposer({ disableShortcut: true });
   const [composerPrompt, setComposerPrompt] = useState("");
-  // 開いた時点でノートの編集面が出ていたか（＝AI 質問まで使えるか）。
-  // ノート以外の画面では検索専用として開くので、AI 導線を出し分けるために持つ。
+  // AI が使える設定か（aiUiEnabled）。Ask は常にグローバル（ノートに紐づかないチャットへ流す）
+  // なので、ノートの編集面が出ているかどうかは問わない。未設定時のみ検索専用として開く。
   const [composerCanAskAi, setComposerCanAskAi] = useState(true);
   // 開いた時点でエディタの編集面が出ていたか（＝共有エントリの引用カードを挿せるか）。
   // AI の可否（aiUiEnabled）とは別軸なので canAskAi とは分けて持つ。
@@ -7297,23 +7309,6 @@ export function NoteApp() {
   const chatRunApplyRef = useRef<ChatRunApplyHandle | null>(null);
   // 世界モデル照合（Phase 2 / PR 2A）— 照合中の Wiki ID を覚えてバナーボタンを disable する
   const [worldCheckingWikiId, setWorldCheckingWikiId] = useState<string | null>(null);
-  const handleComposerSubmit = useCallback(
-    async (submission: ComposerSubmission) => {
-      const handler = composerSubmitRef.current;
-      setComposerPrompt("");
-      composer.closeComposer();
-      if (!handler) {
-        console.info("[Composer] no active note — submit ignored:", submission);
-        return;
-      }
-      try {
-        await handler(submission);
-      } catch (err) {
-        console.error("[Composer] submit handler threw:", err);
-      }
-    },
-    [composer],
-  );
   // カード選択ハンドラは enqueueIngest 定義後に置くため後方で宣言する。
   // ここでは ref 経由で参照だけ確保しておく。
   // 一覧ビュー用サイドピーク（NoteEditorInner 外でも使えるグローバルな state）
@@ -7414,6 +7409,9 @@ export function NoteApp() {
   // 会話 id が立っているときだけ StandaloneChatView を出し、無ければ一覧を出す。
   const [showChatList, setShowChatList] = useState(false);
   const [activeStandaloneChatId, setActiveStandaloneChatId] = useState<string | null>(null);
+  // 一覧から選んだ会話をピーク（右から出る細い面）で開くか、全画面で開くか。
+  // 一覧の行クリック → peek、新しいチャット（一覧ボタン／⌘K）→ full。
+  const [standaloneChatViewMode, setStandaloneChatViewMode] = useState<"full" | "peek">("full");
   const [standaloneChatSummaries, setStandaloneChatSummaries] = useState<StandaloneChatSummary[]>([]);
   const [activeStandaloneChat, setActiveStandaloneChat] = useState<StandaloneChat | null>(null);
   // 応答待ち・エラーは「どの会話の分か」を id で持つ。表示側は
@@ -7441,10 +7439,12 @@ export function NoteApp() {
     return () => { cancelled = true; };
   }, [showChatList]);
 
-  // 一覧から会話を選ぶ: 全文を読み込んでアクティブにする。
+  // 一覧から会話を選ぶ: 全文を読み込んでアクティブにする。ノート一覧・ナレッジ一覧と
+  // 同じ作法で、まずピーク（右から出る細い面）に開く。
   const handleSelectStandaloneChat = useCallback(async (id: string) => {
     setStandaloneChatError(null);
     setActiveStandaloneChatId(id);
+    setStandaloneChatViewMode("peek");
     standaloneChatActiveIdRef.current = id;
     const provider = getActiveProvider();
     const chat = await loadStandaloneChat(provider, id);
@@ -7453,142 +7453,43 @@ export function NoteApp() {
     setActiveStandaloneChat(chat);
   }, []);
 
+  // URL（#chats/<id>）からの復元専用。handleSelectStandaloneChat はピーク固定なので、
+  // 全画面用に分けておく。ここでも router.navigate はしない（popstate/初回復元からも
+  // 呼ばれるため、二重に履歴を積むと「戻る」が効かなくなる）。
+  const openStandaloneChatFull = useCallback(async (id: string) => {
+    setStandaloneChatError(null);
+    setActiveStandaloneChatId(id);
+    setStandaloneChatViewMode("full");
+    standaloneChatActiveIdRef.current = id;
+    const provider = getActiveProvider();
+    const chat = await loadStandaloneChat(provider, id);
+    if (standaloneChatActiveIdRef.current !== id) return;
+    setActiveStandaloneChat(chat);
+  }, []);
+
   // 新しいチャット: この時点では保存しない（空のチャットをファイルに残さないため）。
   // 最初のメッセージが返ってきた時点で初めて保存する。
-  const handleNewStandaloneChat = useCallback(() => {
+  // attachedNoteIds: ⌘K の Ask で「開いていたノートを引用として添える」場合に渡す。
+  // 新規作成は常に全画面で開く（一覧の「新しいチャット」／⌘K どちらも）。
+  const handleNewStandaloneChat = useCallback((attachedNoteIds?: string[]) => {
     setStandaloneChatError(null);
-    const chat = createStandaloneChat();
+    const chat = createStandaloneChat(attachedNoteIds);
     standaloneChatActiveIdRef.current = chat.id;
     setActiveStandaloneChat(chat);
     setActiveStandaloneChatId(chat.id);
+    setStandaloneChatViewMode("full");
+    return chat;
   }, []);
 
-  // ノートに紐づかないチャットの送信。ノート内チャット（handleAiChatSubmit）と同じ組み立て
-  // 方針を踏襲するが、ノート本文・引用・ブロック ID には依存しない。添付ノートの本文展開は
-  // 既存実装がノート本文中に埋め込まれていて単体の関数として取り出せないため、この作業では
-  // 見送り、横断検索（retrieveWikiContext）だけを必ず通す。
-  const handleStandaloneChatSend = useCallback(
-    async (text: string) => {
-      if (!activeStandaloneChat) return;
-      // この送信が対象とする会話 id。完了時点でこれと違う会話を見ていたら
-      // 画面の state は更新しない（保存はこの id 宛てにそのまま行う）。
-      const chatId = activeStandaloneChat.id;
-      const isStillActive = () => standaloneChatActiveIdRef.current === chatId;
-      if (!isAgentConfigured()) {
-        setStandaloneChatError({ id: chatId, message: tStatic("settings.aiNotConfigured") });
-        return;
-      }
-      setStandaloneChatError(null);
-      const now = new Date().toISOString();
-      const userMessage = { role: "user" as const, content: text, timestamp: now };
-      const baseMessages = activeStandaloneChat.messages;
-      const chatAfterUser: StandaloneChat = {
-        ...activeStandaloneChat,
-        messages: [...baseMessages, userMessage],
-        modifiedAt: now,
-      };
-      setActiveStandaloneChat(chatAfterUser);
-      setStandaloneChatLoadingId(chatId);
-      // 応答を待たずにここで保存する。鍵切れ・通信失敗で下の try が落ちても、
-      // 打った質問だけは残す（応答が返ったらもう一度保存し直す）。
-      const provider = getActiveProvider();
-      await saveStandaloneChat(provider, chatAfterUser);
-      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
-      // finally で「自分が積んだ AbortController か」を判定するために外へ出しておく。
-      let ownController: AbortController | undefined;
-      try {
-        // 横断検索（この機能の核）。失敗しても文脈なしで続行する。
-        let wikiContext: string | undefined;
-        try {
-          const { retrieveWikiContext } = await import("./features/wiki/retriever");
-          const excludeIds = new Set<string>(activeStandaloneChat.attachedNoteIds ?? []);
-          wikiContext = (await retrieveWikiContext(text, excludeIds)) ?? undefined;
-        } catch {
-          // Retriever 失敗は無視（embedding が無い場合など）
-        }
-        const selectedModel = getChatSynthesisModelName();
-        const disabledTools = getDisabledTools();
-        const history: AgentChatMessage[] = baseMessages.map((m) => ({ role: m.role, content: m.content }));
-        const req: AgentRunRequest = {
-          message: text,
-          messages: [...history, { role: "user", content: text }],
-          ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
-          ...(wikiContext ? { wiki_context: wikiContext } : {}),
-          knowledge_schema: await fm.getKnowledgeSchemaPrompt(),
-          language: getLocale(),
-          options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
-        };
-        const controller = new AbortController();
-        ownController = controller;
-        standaloneChatAbortRef.current.set(chatId, controller);
-        const response = await runAgent(req, controller.signal);
-        let assistantMessage = response.message;
-        if (wikiContext) {
-          const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
-            "./features/ai-assistant/citation-normalize"
-          );
-          const { message, sources } = normalizeWikiCitations(assistantMessage, wikiContext);
-          assistantMessage = appendKnowledgeReferenced(message, sources, tStatic("chat.sources.fromNotes"));
-        }
-        const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
-        const assistantAt = new Date().toISOString();
-        const finalChat: StandaloneChat = {
-          ...chatAfterUser,
-          messages: [
-            ...chatAfterUser.messages,
-            { role: "assistant" as const, content: cleanMessage, timestamp: assistantAt },
-          ],
-          modifiedAt: assistantAt,
-        };
-        // 保存はこの会話宛てにそのまま行う（送った質問と応答は本来の会話に残す）。
-        await saveStandaloneChat(provider, finalChat);
-        setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
-        // 表示中の会話が既に切り替わっていたら、その画面を上書きしない。
-        if (isStillActive()) setActiveStandaloneChat(finalChat);
-      } catch (err) {
-        if (isAbortError(err)) {
-          // ユーザーが Stop した場合は中断。エラー表示しない。
-        } else {
-          // エラーは会話 id を添えて持つ。表示側で開いている会話と一致する
-          // ときだけ出すので、いま別の会話を見ていても後で戻れば表示される。
-          setStandaloneChatError({ id: chatId, message: localizeAiError(err) });
-        }
-      } finally {
-        // 待ち状態も会話 id 単位。この送信が今も自分の会話の「待ち」印であれば外す
-        // （同じ会話で新しい送信が既に始まっていたら、それを消さない）。
-        setStandaloneChatLoadingId((prev) => (prev === chatId ? null : prev));
-        // 別の会話の送信が既に新しい AbortController を積んでいるかもしれないので、
-        // 自分が積んだものだけを外す。
-        if (ownController && standaloneChatAbortRef.current.get(chatId) === ownController) {
-          standaloneChatAbortRef.current.delete(chatId);
-        }
-      }
-    },
-    [activeStandaloneChat],
-  );
-
-  // 送信中断: いま開いている会話の送信だけを中断する（chatRunManager は使わない。
-  // 上の standaloneChatAbortRef 宣言のコメント参照）。開いている会話が待っていな
-  // ければ何もしない（他会話の待ちを誤って止めないため）。
-  const handleStandaloneChatStop = useCallback(() => {
-    if (!activeStandaloneChatId) return;
-    standaloneChatAbortRef.current.get(activeStandaloneChatId)?.abort();
-  }, [activeStandaloneChatId]);
-
-  // 一覧からの会話削除。開いている会話を消した場合は一覧へ戻す。
-  const handleDeleteStandaloneChat = useCallback(
-    async (id: string) => {
-      const provider = getActiveProvider();
-      await deleteStandaloneChat(provider, id);
-      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
-      if (activeStandaloneChatId === id) {
-        standaloneChatActiveIdRef.current = null;
-        setActiveStandaloneChatId(null);
-        setActiveStandaloneChat(null);
-      }
-    },
-    [activeStandaloneChatId],
-  );
+  // 添付ノートのチップの × — 会話の attachedNoteIds から 1 件外す。まだ未保存の会話でも
+  // state だけ更新すれば、次の送信（sendStandaloneChatMessage）にそのまま反映される。
+  const handleRemoveStandaloneChatAttachedNote = useCallback((noteId: string) => {
+    setActiveStandaloneChat((prev) => {
+      if (!prev) return prev;
+      const next = (prev.attachedNoteIds ?? []).filter((id) => id !== noteId);
+      return { ...prev, attachedNoteIds: next.length > 0 ? next : undefined };
+    });
+  }, []);
 
   const [showNewSkillDialog, setShowNewSkillDialog] = useState(false);
   // 編集ダイアログを開いている Skill の id（null なら閉じている）
@@ -7721,6 +7622,287 @@ export function NoteApp() {
       (m) => m.type === "url" && m.url === listMaterialPeekEntry.url,
     );
   const capture = useCapture(authenticated);
+
+  // 添付ノートのチップ表示用。永続化される attachedNoteIds は id のみなので、
+  // 表示に要るタイトル/isWiki は noteIndex から都度引く（別ファイルに二重管理しない）。
+  const standaloneChatAttachedNotesView = useMemo(() => {
+    const ids = activeStandaloneChat?.attachedNoteIds ?? [];
+    if (ids.length === 0) return [];
+    return ids.map((id) => {
+      const entry = fm.noteIndex?.notes.find((n) => n.noteId === id);
+      return { id, title: entry?.title ?? id, isWiki: entry?.source === "ai" };
+    });
+  }, [activeStandaloneChat?.attachedNoteIds, fm.noteIndex]);
+
+  // ノートに紐づかないチャットの送信の中核。会話オブジェクトを明示的に受け取る形にすることで、
+  // Composer(Cmd+K) の Ask が新規会話を作った直後（setState の反映を待てない）にも
+  // そのまま送信できる。ノート内チャット（handleAiChatSubmit）と同じ組み立て方針を踏襲するが、
+  // ノート本文・引用・ブロック ID には依存しない。
+  const sendStandaloneChatMessage = useCallback(
+    async (chat: StandaloneChat, text: string, rewindIndex?: number) => {
+      // この送信が対象とする会話 id。完了時点でこれと違う会話を見ていたら
+      // 画面の state は更新しない（保存はこの id 宛てにそのまま行う）。
+      const chatId = chat.id;
+      const isStillActive = () => standaloneChatActiveIdRef.current === chatId;
+      if (!isAgentConfigured()) {
+        setStandaloneChatError({ id: chatId, message: tStatic("settings.aiNotConfigured") });
+        return;
+      }
+      setStandaloneChatError(null);
+      const now = new Date().toISOString();
+      const userMessage = { role: "user" as const, content: text, timestamp: now };
+      // rewindIndex 指定時（編集&再実行・回答の再生成）は、その位置以降を破棄して
+      // 新しい user メッセージを置く（ノート内チャット handleAiChatSubmit と同じ組み立て）。
+      const baseMessages = rewindIndex != null ? chat.messages.slice(0, rewindIndex) : chat.messages;
+      const chatAfterUser: StandaloneChat = {
+        ...chat,
+        messages: [...baseMessages, userMessage],
+        modifiedAt: now,
+      };
+      // 呼び出し時点でまだ画面に反映されていない会話（Ask 直後）でも、対象がいま
+      // 表示中の会話であれば描画を進める。
+      if (isStillActive()) setActiveStandaloneChat(chatAfterUser);
+      setStandaloneChatLoadingId(chatId);
+      // 応答を待たずにここで保存する。鍵切れ・通信失敗で下の try が落ちても、
+      // 打った質問だけは残す（応答が返ったらもう一度保存し直す）。
+      const provider = getActiveProvider();
+      await saveStandaloneChat(provider, chatAfterUser);
+      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+      // finally で「自分が積んだ AbortController か」を判定するために外へ出しておく。
+      let ownController: AbortController | undefined;
+      try {
+        // 添付ノート（⌘K の Ask で添えた引用）の本文をこのターンの質問に同梱する。
+        // ノート用チャットと同じ組み立て（resolveAttachedNoteContents）を使う。
+        // 画面表示（chatAfterUser.messages）には積まない — 添付はチップで別に見せる。
+        const attachedNoteIds = chat.attachedNoteIds ?? [];
+        let userMessageForModel = text;
+        if (attachedNoteIds.length > 0) {
+          const attachedNotes = attachedNoteIds.map((id) => {
+            const entry = fm.noteIndex?.notes.find((n) => n.noteId === id);
+            return { id, title: entry?.title ?? id, isWiki: entry?.source === "ai" };
+          });
+          const noteContents = await resolveAttachedNoteContents(attachedNotes, {
+            noteIndex: fm.noteIndex ?? null,
+            captureIndex: capture.captureIndex ?? null,
+            provider,
+            scope: DEFAULT_GROUNDING_SCOPE,
+            loadUrlText,
+            loadMediaText,
+          });
+          if (noteContents.length > 0) {
+            userMessageForModel = [
+              text,
+              "",
+              "---",
+              "以下はユーザーが明示的に添付したノートの内容です。質問はこの内容に基づいて回答してください:",
+              "",
+              ...noteContents,
+              "---",
+            ].join("\n");
+          }
+        }
+        // 横断検索（この機能の核）。失敗しても文脈なしで続行する。
+        let wikiContext: string | undefined;
+        try {
+          const { retrieveWikiContext } = await import("./features/wiki/retriever");
+          const excludeIds = new Set<string>(attachedNoteIds);
+          wikiContext = (await retrieveWikiContext(text, excludeIds)) ?? undefined;
+        } catch {
+          // Retriever 失敗は無視（embedding が無い場合など）
+        }
+        const selectedModel = getChatSynthesisModelName();
+        const disabledTools = getDisabledTools();
+        const history: AgentChatMessage[] = baseMessages.map((m) => ({ role: m.role, content: m.content }));
+        const req: AgentRunRequest = {
+          message: userMessageForModel,
+          messages: [...history, { role: "user", content: userMessageForModel }],
+          ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
+          ...(wikiContext ? { wiki_context: wikiContext } : {}),
+          knowledge_schema: await fm.getKnowledgeSchemaPrompt(),
+          language: getLocale(),
+          options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
+        };
+        const controller = new AbortController();
+        ownController = controller;
+        standaloneChatAbortRef.current.set(chatId, controller);
+        const response = await runAgent(req, controller.signal);
+        let assistantMessage = response.message;
+        if (wikiContext) {
+          const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
+            "./features/ai-assistant/citation-normalize"
+          );
+          const { message, sources } = normalizeWikiCitations(assistantMessage, wikiContext);
+          assistantMessage = appendKnowledgeReferenced(message, sources, tStatic("chat.sources.fromNotes"));
+        }
+        const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
+        const assistantAt = new Date().toISOString();
+        const finalChat: StandaloneChat = {
+          ...chatAfterUser,
+          messages: [
+            ...chatAfterUser.messages,
+            { role: "assistant" as const, content: cleanMessage, timestamp: assistantAt },
+          ],
+          modifiedAt: assistantAt,
+        };
+        // 保存はこの会話宛てにそのまま行う（送った質問と応答は本来の会話に残す）。
+        await saveStandaloneChat(provider, finalChat);
+        setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+        // 表示中の会話が既に切り替わっていたら、その画面を上書きしない。
+        if (isStillActive()) setActiveStandaloneChat(finalChat);
+        // 最初のやり取り（最初の質問 + 最初の応答）がそろった直後にだけ、AI に短い題を
+        // 付けさせる。応答はもう画面に出ているので、ここでは待たせない（fire-and-forget）。
+        // 失敗しても会話は壊さない — 題が無いままでよい（一覧はこれまでどおり最初の
+        // 質問を見出しに使う）。
+        if (shouldGenerateChatTitle({ existingTitle: chat.title, baseMessageCount: baseMessages.length })) {
+          void generateTitle(text)
+            .then(async (title) => {
+              if (!title) return;
+              // 保存は必ず元の会話 id 宛て（呼び出し中に別の会話へ切り替わっていてもよい）。
+              const titledChat: StandaloneChat = { ...finalChat, title };
+              await saveStandaloneChat(provider, titledChat);
+              setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+              // 画面がまだこの会話を開いていれば、開いている内容にも反映する。
+              if (isStillActive()) setActiveStandaloneChat(titledChat);
+            })
+            .catch(() => {
+              // 題の生成に失敗しても会話は壊さない。題が無いままでよい。
+            });
+        }
+      } catch (err) {
+        if (isAbortError(err)) {
+          // ユーザーが Stop した場合は中断。エラー表示しない。
+        } else {
+          // エラーは会話 id を添えて持つ。表示側で開いている会話と一致する
+          // ときだけ出すので、いま別の会話を見ていても後で戻れば表示される。
+          setStandaloneChatError({ id: chatId, message: localizeAiError(err) });
+        }
+      } finally {
+        // 待ち状態も会話 id 単位。この送信が今も自分の会話の「待ち」印であれば外す
+        // （同じ会話で新しい送信が既に始まっていたら、それを消さない）。
+        setStandaloneChatLoadingId((prev) => (prev === chatId ? null : prev));
+        // 別の会話の送信が既に新しい AbortController を積んでいるかもしれないので、
+        // 自分が積んだものだけを外す。
+        if (ownController && standaloneChatAbortRef.current.get(chatId) === ownController) {
+          standaloneChatAbortRef.current.delete(chatId);
+        }
+      }
+    },
+    [fm.noteIndex, fm.getKnowledgeSchemaPrompt, capture.captureIndex],
+  );
+
+  // 通常の入力欄からの送信: いま開いている会話を対象に送る。
+  const handleStandaloneChatSend = useCallback(
+    (text: string) => {
+      if (!activeStandaloneChat) return;
+      void sendStandaloneChatMessage(activeStandaloneChat, text);
+    },
+    [activeStandaloneChat, sendStandaloneChatMessage],
+  );
+
+  // 編集&再実行・回答の再生成の共通経路。rewindIndex 以降を捨てて text から送り直す
+  // （ノート内チャットの handleAiChatSubmit と同じ考え方。会話 id は既存のものを使い回す）。
+  const handleStandaloneChatResend = useCallback(
+    (text: string, rewindIndex: number) => {
+      if (!activeStandaloneChat) return;
+      void sendStandaloneChatMessage(activeStandaloneChat, text, rewindIndex);
+    },
+    [activeStandaloneChat, sendStandaloneChatMessage],
+  );
+
+  // 分岐: index までのメッセージを引き継いだ新しい会話を作り、一覧に増やしてから
+  // そちらへ切り替える（ノート内チャットの forkChatAt は同一ノート内に ScopeChat を
+  // 増やすが、standalone chat には ScopeChat の概念が無いので新規会話として保存する）。
+  const handleForkStandaloneChat = useCallback(
+    async (index: number) => {
+      if (!activeStandaloneChat) return;
+      const forked: StandaloneChat = {
+        ...createStandaloneChat(activeStandaloneChat.attachedNoteIds),
+        messages: activeStandaloneChat.messages.slice(0, index + 1),
+      };
+      standaloneChatActiveIdRef.current = forked.id;
+      setActiveStandaloneChat(forked);
+      setActiveStandaloneChatId(forked.id);
+      const provider = getActiveProvider();
+      await saveStandaloneChat(provider, forked);
+      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+    },
+    [activeStandaloneChat],
+  );
+
+  // 分岐元の会話が保存済み全文を必要としないよう、ノート内チャットの
+  // onCreateAnswerNote（12964 行付近）と同じ組み立てで「回答」ページを作る。
+  const handleCreateAnswerNoteForStandaloneChat = useCallback(
+    async (doc: GraphiumDocument) => {
+      const newId = await fm.handleCreateWikiFile(doc, {
+        activityType: "wiki_ingest",
+        sources: doc.wikiMeta?.derivedFromNotes ?? [],
+      });
+      embedWikiSections(newId, doc).catch(() => {});
+      wikiLog.append("ingest", [newId], `answer: "${doc.title}"`).catch(() => {});
+      return newId;
+    },
+    [fm.handleCreateWikiFile],
+  );
+
+  // ナレッジに残す: ノート内チャットの handleSaveChatAsAnswer と同じ組み立て
+  // （ノートエディタに依存しない部分をそのまま使い回す。noteIndex と保存経路だけが要る）。
+  const handleSaveStandaloneChatAsAnswer = useCallback(
+    async (question: string, answer: string): Promise<string | null> => {
+      if (!aiUiEnabled) return null;
+      const cleaned = cleanSuggestionText(answer);
+      if (!cleaned.trim()) return null;
+      const titleToRef = getSourceTitleToRefMap();
+      const { markdown, sources } = convertCitationsToSourceRefs(cleaned, titleToRef);
+      // ノート内チャットの handleSaveChatAsAnswer と同じ書き起こし（タイトルも含む）。
+      // 失敗時は markdown（元の回答文字列）・deriveSuggestionTitle(question) をそのまま
+      // 使う（保存自体は失敗させない）。
+      const conversation = extractPrecedingConversation(activeStandaloneChat?.messages ?? [], answer);
+      const rewritten = await rewriteAnswerFromConversation(
+        question,
+        markdown,
+        conversation,
+        sources,
+        getLocale(),
+        getChatSynthesisModelName() || undefined,
+      );
+      const answerTitle = rewritten?.title || deriveSuggestionTitle(question);
+      const doc = buildSourceBackedWikiDocument(
+        "answer",
+        answerTitle,
+        rewritten?.body ?? markdown,
+        sources,
+        getChatSynthesisModelName(),
+        buildNoteIndex(fm.noteIndex),
+        getLocale(),
+      );
+      return handleCreateAnswerNoteForStandaloneChat(doc);
+    },
+    [aiUiEnabled, fm.noteIndex, handleCreateAnswerNoteForStandaloneChat, activeStandaloneChat?.messages],
+  );
+
+  // 送信中断: いま開いている会話の送信だけを中断する（chatRunManager は使わない。
+  // 上の standaloneChatAbortRef 宣言のコメント参照）。開いている会話が待っていな
+  // ければ何もしない（他会話の待ちを誤って止めないため）。
+  const handleStandaloneChatStop = useCallback(() => {
+    if (!activeStandaloneChatId) return;
+    standaloneChatAbortRef.current.get(activeStandaloneChatId)?.abort();
+  }, [activeStandaloneChatId]);
+
+  // 一覧からの会話削除。開いている会話を消した場合は一覧へ戻す。
+  const handleDeleteStandaloneChat = useCallback(
+    async (id: string) => {
+      const provider = getActiveProvider();
+      await deleteStandaloneChat(provider, id);
+      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+      if (activeStandaloneChatId === id) {
+        standaloneChatActiveIdRef.current = null;
+        setActiveStandaloneChatId(null);
+        setActiveStandaloneChat(null);
+      }
+    },
+    [activeStandaloneChatId],
+  );
+
   // 一覧 / アセットピークの保存後フック: キャッシュ / インデックス更新に加え、
   // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
   // これらのビューではメインエディタは非マウントなので、直前まで開いていたノート
@@ -7892,6 +8074,59 @@ export function NoteApp() {
     // 「一覧に戻れない（押しても無反応）」になるのを防ぐ。
     setAssetViewResetSeq((n) => n + 1);
   }, [fm]);
+
+  // Composer(Cmd+K) の Ask は常にグローバル: ノートを開いていても、そのノートのチャット
+  // （右パネル。「このノートについて聞く・本文へ挿入する」担当）ではなく、ノートに紐づかない
+  // チャットの新しい会話を始める。開いていたノートがあれば、その 1 件だけを引用として
+  // 添える（何も開いていなければ何も添えない）。
+  const handleComposerAsk = useCallback(
+    async (prompt: string) => {
+      if (!ensureAgentConfigured()) return;
+      const openNoteId = fm.activeFileId?.replace(/^wiki:/, "").replace(/^skill:/, "");
+      const attachedNoteIds = openNoteId && fm.activeDoc ? [openNoteId] : undefined;
+      // 先に他の全画面ビューを畳む。本文領域は排他の三項で出し分けているので、
+      // 一覧やギャラリーを開いたまま showChatList を立てても、そちらが優先されて
+      // 画面が変わらない（会話だけ裏でできる）。closeAllViews は showChatList と
+      // activeStandaloneChatId も戻すので、会話を作るより前に呼ぶ。
+      closeAllViews();
+      const chat = handleNewStandaloneChat(attachedNoteIds);
+      setShowChatList(true);
+      setSidebarOpen(false);
+      router.navigate({ view: "chat", chatId: chat.id });
+      await sendStandaloneChatMessage(chat, prompt);
+    },
+    // router は本 useCallback より下（8523 行）で宣言されるため、依存配列に入れると
+    // TDZ で ReferenceError になる。router.navigate 自体は内部で useCallback([]) の
+    // 安定した関数なので、古い router オブジェクト経由でも問題なく呼べる
+    [fm.activeFileId, fm.activeDoc, closeAllViews, handleNewStandaloneChat, sendStandaloneChatMessage],
+  );
+
+  const handleComposerSubmit = useCallback(
+    async (submission: ComposerSubmission) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      // verb（動詞メニュー）が付いていない素の Ask だけがグローバル（ノートに紐づかない
+      // チャット）へ流れる。verb 付きは「このノートで引用した知見・洞察」前提の文面な
+      // ので、従来どおり composerSubmitRef 経由でノート内チャットへ流す（下へ続く）。
+      if (submission.mode === "ask" && !submission.verb) {
+        // composerSubmitRef（ノート内チャット向け）には委ねない。ノートが開いていない
+        // 画面から開いても Ask は成立する。
+        await handleComposerAsk(submission.prompt);
+        return;
+      }
+      const handler = composerSubmitRef.current;
+      if (!handler) {
+        console.info("[Composer] no active note — submit ignored:", submission);
+        return;
+      }
+      try {
+        await handler(submission);
+      } catch (err) {
+        console.error("[Composer] submit handler threw:", err);
+      }
+    },
+    [composer, handleComposerAsk],
+  );
   // 手順を書いたノートの件数。プロセス一覧の入口を出すかの判定に使う。
   // 投影キャッシュがあればそれが正（一覧の件数と一致する）。まだ一度も投影して
   // いないときだけ note-index の steps から見積もる — 入口を出す判断には足りる。
@@ -8165,17 +8400,16 @@ export function NoteApp() {
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex, fm.activeFileId]);
 
   // Cmd+K: どこからでも Composer を開く。
-  // ノート編集中は AI 質問まで使えるが、一覧・Wiki ハブ・アセットギャラリー等では
-  // NoteEditor が描画されておらず composerSubmitRef が空なので、検索専用として開く
-  // （AI 行・発見カード・grounding チップは出さない）。
-  // AI モデル未登録のときも同じ検索専用の姿で開く — 本文・素材の検索（語彙インデックス）は
+  // Ask はノートを開いているかどうかに関わらず常に使える（ノートに紐づかない
+  // チャットへ流れる）。AI モデル未登録のときだけ検索専用の姿で開く
+  // （AI 行・発見カード・grounding チップは出さない） — 本文・素材の検索（語彙インデックス）は
   // AI と無関係に動くので、AI を使わない人の入口を塞がない（AI 導線だけを隠す）。
   // 開いた瞬間の状態を state へ写す — ref の変化では再描画されないため。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setComposerCanAskAi(aiUiEnabled && !!composerSubmitRef.current);
+        setComposerCanAskAi(aiUiEnabled);
         // 引用カードの挿入はエディタが出ていれば AI 無効でも使える
         setComposerCanInsertCitation(!!composerInsertSharedRef.current);
         composer.toggleComposer();
@@ -8256,6 +8490,8 @@ export function NoteApp() {
     // 積んでしまい「戻るが効かない」になる。state を立てるだけにする。
     // エントリが共有ストアに無い場合の Library への落としどころは表示側が持つ。
     openSharedEntryView: (id: string) => setSharedEntryViewId(id),
+    setShowChatList: (show: boolean) => setShowChatList(show),
+    openChatFull: (chatId: string) => void openStandaloneChatFull(chatId),
     // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
     // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
     clearViews: closeAllViews,
@@ -8274,6 +8510,18 @@ export function NoteApp() {
         openSidePeekRef.current?.(noteId);
         setListSidePeekNoteId(null);
         setAssetSidePeekNoteId(null);
+      } else if (view === "chats") {
+        // チャット一覧上のピーク会話。一覧はそのまま裏に残し、右からの細い面で読み込む
+        // （器は StandaloneChatSidePeek で listSidePeekNoteId とは別 state）。
+        if (noteId) {
+          void handleSelectStandaloneChat(noteId);
+        } else {
+          standaloneChatActiveIdRef.current = null;
+          setActiveStandaloneChatId(null);
+        }
+        setListSidePeekNoteId(null);
+        setAssetSidePeekNoteId(null);
+        openSidePeekRef.current?.(null);
       } else {
         setListSidePeekNoteId(noteId);
         setAssetSidePeekNoteId(null);
@@ -8281,7 +8529,7 @@ export function NoteApp() {
       }
       requestAnimationFrame(() => { applyingPeekRef.current = false; });
     },
-  }), [fm, closeAllViews]);
+  }), [fm, closeAllViews, openStandaloneChatFull, handleSelectStandaloneChat]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
   // 手入れ画面を出典照合タブで開く（トーストの「出典照合を開く」から使う）。
@@ -8672,6 +8920,35 @@ export function NoteApp() {
     setAssetSidePeekNoteId(noteId);
     openPeek(noteId);
   }, [openPeek]);
+
+  // チャット一覧の行クリック。一覧・ギャラリーの openListPeek/openAssetPeek と同じ作法で、
+  // state 更新（会話読み込み）と URL 反映（#chats?peek=<id>）を両方行う。
+  const openStandaloneChatPeek = useCallback((id: string | null) => {
+    if (id) void handleSelectStandaloneChat(id);
+    else {
+      standaloneChatActiveIdRef.current = null;
+      setActiveStandaloneChatId(null);
+    }
+    openPeek(id);
+  }, [handleSelectStandaloneChat, openPeek]);
+
+  // スタンドアロンチャットの [Source: "title"] 引用（panel.tsx と同じ組み立て）から開く先。
+  // ノート内チャット（NoteEditorInner）と違い、ここは「本文を開いていない」トップレベルの
+  // 画面なので、setSidePeekNoteId ではなく一覧用ピーク／素材ピークを使う。
+  const handleStandaloneChatOpenNote = useCallback((noteId: string) => {
+    openListPeek(noteId);
+  }, [openListPeek]);
+  const handleStandaloneChatOpenAsset = useCallback((fileId: string) => {
+    const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+    if (target) setListMaterialPeekEntry(target);
+  }, [fm.mediaIndex]);
+  const standaloneChatSourceLinks = useSourceLinks(
+    fm.noteIndex,
+    activeStandaloneChat?.messages.length ?? 0,
+    (wikiId: string) => navigateToNote(`wiki:${wikiId}`),
+    handleStandaloneChatOpenNote,
+    handleStandaloneChatOpenAsset,
+  );
 
   // 別のピーク（素材・メモ）や全体グラフへ移るためにノートピークを畳むとき用。
   // ユーザーが「閉じた」訳ではないので履歴は積まず、URL からピークだけ落とす。
@@ -11645,7 +11922,7 @@ export function NoteApp() {
     skillCount: fm.skillMetas.size,
     onShowSkillList: () => { closeAllViews(); setShowSkillList(true); setSidebarOpen(false); },
     skillActive: showSkillList,
-    onShowChatList: () => { closeAllViews(); setShowChatList(true); setSidebarOpen(false); },
+    onShowChatList: () => { closeAllViews(); setShowChatList(true); setSidebarOpen(false); router.navigate({ view: "chats" }); },
     chatActive: showChatList,
     chatCount: standaloneChatSummaries.length,
     onShowTrash: () => {
@@ -12585,7 +12862,7 @@ export function NoteApp() {
             onEditSkill={(skillId) => setEditingSkillId(skillId)}
             onResetSystemSkill={fm.handleResetSystemSkill}
           />
-        ) : showChatList && activeStandaloneChatId ? (
+        ) : showChatList && activeStandaloneChatId && standaloneChatViewMode === "full" ? (
           <StandaloneChatView
             title={activeStandaloneChat?.title}
             messages={activeStandaloneChat?.messages ?? []}
@@ -12596,15 +12873,23 @@ export function NoteApp() {
             error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
             onSend={handleStandaloneChatSend}
             onStop={handleStandaloneChatStop}
-            onBack={() => { standaloneChatActiveIdRef.current = null; setActiveStandaloneChatId(null); }}
+            onBack={() => { standaloneChatActiveIdRef.current = null; setActiveStandaloneChatId(null); router.navigate({ view: "chats" }); }}
             aiConfigured={agentConfigured}
+            attachedNotes={standaloneChatAttachedNotesView}
+            onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
+            onSaveAsAnswer={aiUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
+            onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
+            onResend={handleStandaloneChatResend}
+            onFork={handleForkStandaloneChat}
+            sourceLinks={standaloneChatSourceLinks}
           />
         ) : showChatList ? (
           <StandaloneChatListView
             chats={standaloneChatSummaries}
-            onSelect={handleSelectStandaloneChat}
-            onNewChat={handleNewStandaloneChat}
+            onSelect={openStandaloneChatPeek}
+            onNewChat={() => handleNewStandaloneChat()}
             onDelete={handleDeleteStandaloneChat}
+            onBack={() => { setShowChatList(false); router.navigate({ view: "home" }); }}
           />
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
@@ -13106,6 +13391,31 @@ export function NoteApp() {
           </div>
         )}
       </main>
+      {/* ノートに紐づかないチャットの一覧用サイドピーク（NoteEditorInner 外で表示）。
+          一覧の行クリックはここで開き、「フルスクリーンで開く」で全画面表示に切り替える。 */}
+      {showChatList && activeStandaloneChatId && standaloneChatViewMode === "peek" && (
+        <StandaloneChatSidePeek
+          chat={activeStandaloneChat}
+          messages={activeStandaloneChat?.messages ?? []}
+          loading={standaloneChatLoadingId === activeStandaloneChatId || !activeStandaloneChat}
+          error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
+          onSend={handleStandaloneChatSend}
+          onStop={handleStandaloneChatStop}
+          onClose={() => openStandaloneChatPeek(null)}
+          onToggleFull={() => {
+            setStandaloneChatViewMode("full");
+            if (activeStandaloneChatId) router.navigate({ view: "chat", chatId: activeStandaloneChatId });
+          }}
+          aiConfigured={agentConfigured}
+          attachedNotes={standaloneChatAttachedNotesView}
+          onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
+          onSaveAsAnswer={aiUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
+          onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
+          onResend={handleStandaloneChatResend}
+          onFork={handleForkStandaloneChat}
+          sourceLinks={standaloneChatSourceLinks}
+        />
+      )}
       {/* 一覧ビュー用サイドピーク（NoteEditorInner 外で表示） */}
       {listSidePeekNoteId && (
         <AiAssistantProvider aiAvailable={false}>

@@ -129,28 +129,9 @@ export function AiAssistantPanel({
   // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
-  // [Source: "title"] 引用クリック用にタイトル→参照先マップを構築。
-  // Retriever が LLM に渡したのと同じタイトル空間を使う（noteIndex に wiki が無くても動く）。
-  // 値は Wiki なら wikiId、横断検索で注入したノート本文 / 素材 / 共有エントリなら
-  // `note:<id>` / `asset:<fileId>` / `shared:<id>`。
-  // messages 更新で再計算（最新応答が含む新規 wiki・新規断片のために）。
-  const wikiTitleToId = useMemo(() => {
-    const map = getSourceTitleToRefMap();
-    // noteIndex に wiki エントリがある場合はそれもマージ（重複時は noteIndex 優先）
-    if (noteIndex) {
-      for (const n of noteIndex.notes) {
-        if (n.wikiKind && n.title) map.set(n.title, n.noteId);
-      }
-    }
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteIndex, messages.length]);
-
-  // 引用クリックの振り分け（Wiki / ノート / 素材）
-  const sourceLinks = useMemo<SourceLinkHandlers>(
-    () => ({ titleToRef: wikiTitleToId, onOpenWiki, onOpenNote, onOpenAsset }),
-    [wikiTitleToId, onOpenWiki, onOpenNote, onOpenAsset],
-  );
+  // 引用クリックの振り分け（Wiki / ノート / 素材）。組み立て自体はスタンドアロンチャットと
+  // 共有する（useSourceLinks）。ここでの依存・挙動は従来と同一。
+  const sourceLinks = useSourceLinks(noteIndex, messages.length, onOpenWiki, onOpenNote, onOpenAsset);
 
   // @ メンション機能
   const [attachedNotes, setAttachedNotes] = useState<AttachedNote[]>([]);
@@ -1058,8 +1039,11 @@ export function ChatBubble({
                 {t("aiChat.candidatesSaved", { n: String(done.count) })}
               </span>
             )}
+            {/* 回答に付く操作（再生成・分岐）は、同じ回答の「ナレッジに残す」の隣に並べる。
+                以前は ml-auto で行の右端に押し出していたが、幅の広い画面（ノートに紐づかない
+                チャットの全画面）では本文から離れて浮いて見えた。 */}
             {(onRegenerate || onFork) && (
-              <span className="ml-auto flex gap-0.5">
+              <span className="flex gap-0.5">
                 {onRegenerate && (
                   <button
                     onClick={onRegenerate}
@@ -1265,13 +1249,46 @@ function stripDisplayMarkers(content: string): string {
 }
 
 /** [Source: "title"] リンクの解決先と開き方 */
-type SourceLinkHandlers = {
+export type SourceLinkHandlers = {
   /** タイトル → 参照先。Wiki は wikiId、ノートは `note:<id>`、素材は `asset:<fileId>`、共有は `shared:<id>` */
   titleToRef: Map<string, string> | undefined;
   onOpenWiki: ((wikiId: string) => void) | undefined;
   onOpenNote?: (noteId: string) => void;
   onOpenAsset?: (fileId: string) => void;
 };
+
+/**
+ * [Source: "title"] 引用クリック用にタイトル→参照先マップを組み立て、開き方ハンドラとまとめる。
+ * Retriever が LLM に渡したのと同じタイトル空間を使う（noteIndex に wiki が無くても動く）。
+ * 値は Wiki なら wikiId、横断検索で注入したノート本文 / 素材 / 共有エントリなら
+ * `note:<id>` / `asset:<fileId>` / `shared:<id>`。
+ * ノート内チャット（この panel.tsx）とスタンドアロンチャットの両方から同じ組み立てを使う。
+ * messagesLength は最新応答が含む新規 wiki・新規断片を拾うための再計算トリガー。
+ */
+export function useSourceLinks(
+  noteIndex: GraphiumIndex | null | undefined,
+  messagesLength: number,
+  onOpenWiki?: (wikiId: string) => void,
+  onOpenNote?: (noteId: string) => void,
+  onOpenAsset?: (fileId: string) => void,
+): SourceLinkHandlers {
+  const titleToRef = useMemo(() => {
+    const map = getSourceTitleToRefMap();
+    // noteIndex に wiki エントリがある場合はそれもマージ（重複時は noteIndex 優先）
+    if (noteIndex) {
+      for (const n of noteIndex.notes) {
+        if (n.wikiKind && n.title) map.set(n.title, n.noteId);
+      }
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteIndex, messagesLength]);
+
+  return useMemo(
+    () => ({ titleToRef, onOpenWiki, onOpenNote, onOpenAsset }),
+    [titleToRef, onOpenWiki, onOpenNote, onOpenAsset],
+  );
+}
 
 /** 参照先を開く。開けない種類（ハンドラ未指定）なら null を返し、呼び出し側はプレーンテキストにする */
 function openHandlerFor(ref: string, h: SourceLinkHandlers): (() => void) | null {

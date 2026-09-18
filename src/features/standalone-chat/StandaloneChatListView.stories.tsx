@@ -1,5 +1,6 @@
 // ノートに紐づかないチャット一覧のストーリー
 // 見た目のみ確認する（保存・AI 呼び出しは行わない）
+// テーブルは WikiListView と同じクラスを使うため、狭い幅では横スクロールになる。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider, syncLocale } from "../../i18n";
@@ -22,7 +23,7 @@ const meta: Meta<typeof StandaloneChatListView> = {
     (Story, context) => {
       syncLocale("ja");
       // 既定は専用画面に置いたときの幅。狭い幅の確認はストーリー側で width を上書きする
-      const width = (context.parameters.frameWidth as number | undefined) ?? 640;
+      const width = (context.parameters.frameWidth as number | undefined) ?? 900;
       return (
         <LocaleProvider>
           <div style={{ width, background: "var(--paper, #fff)" }}>
@@ -74,6 +75,7 @@ export const Default: Story = {
     onSelect: (id) => console.info("[story] onSelect", id),
     onNewChat: () => console.info("[story] onNewChat"),
     onDelete: (id) => console.info("[story] onDelete", id),
+    onBack: () => console.info("[story] onBack"),
   },
 };
 
@@ -91,6 +93,7 @@ export const NoTitleYet: Story = {
     onSelect: (id) => console.info("[story] onSelect", id),
     onNewChat: () => console.info("[story] onNewChat"),
     onDelete: (id) => console.info("[story] onDelete", id),
+    onBack: () => console.info("[story] onBack"),
   },
 };
 
@@ -111,6 +114,7 @@ export const LongTitleAndQuestion: Story = {
     onSelect: (id) => console.info("[story] onSelect", id),
     onNewChat: () => console.info("[story] onNewChat"),
     onDelete: (id) => console.info("[story] onDelete", id),
+    onBack: () => console.info("[story] onBack"),
   },
 };
 
@@ -121,6 +125,7 @@ export const Empty: Story = {
     onSelect: (id) => console.info("[story] onSelect", id),
     onNewChat: () => console.info("[story] onNewChat"),
     onDelete: (id) => console.info("[story] onDelete", id),
+    onBack: () => console.info("[story] onBack"),
   },
 };
 
@@ -139,6 +144,7 @@ export const TwelveChats: Story = {
     onSelect: (id) => console.info("[story] onSelect", id),
     onNewChat: () => console.info("[story] onNewChat"),
     onDelete: (id) => console.info("[story] onDelete", id),
+    onBack: () => console.info("[story] onBack"),
   },
 };
 
@@ -164,5 +170,6 @@ export const NarrowWidth: Story = {
     onSelect: (id) => console.info("[story] onSelect", id),
     onNewChat: () => console.info("[story] onNewChat"),
     onDelete: (id) => console.info("[story] onDelete", id),
+    onBack: () => console.info("[story] onBack"),
   },
 };

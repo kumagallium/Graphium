@@ -67,11 +67,13 @@ Conversations are editable, not append-only:
 | **Regenerate response** | Circular-arrow icon under an AI reply | Asks the model to answer the same question again. |
 | **New chat from here** | Fork icon under an AI reply | Starts a new chat carrying the conversation up to that reply, leaving the original intact. Forked chats show a **Forked** badge in the history list. |
 
-## Chat without a note open
+## Chat without a note open <Badge type="tip" text="Added in v0.81.0 (2026-09-18)" />
 
-The **Chat** entry in the sidebar, under **Records & knowledge** (between **All notes** and **Knowledge**), is a conversation that is not about any particular note. Open it and you get a list of past conversations — one line each, showing the title (for now, just the first question you asked; a short AI-generated title is planned) and the first question, plus **N messages · date**. **New chat** starts one.
+The **Chat** entry in the sidebar, under **Records & knowledge** (between **All notes** and **Knowledge**), is a conversation that is not about any particular note. Open it and you get a **table**, styled like the note list or the Knowledge list, with past conversations. Columns are Title, first question, **message count**, and **updated**. It sorts by most recently updated by default, and clicking the message-count or updated header re-sorts. The breadcrumb reads Home → Chat. The title is written by the AI once the first exchange is done — until then it stays empty and you can tell conversations apart by the first question.
 
-It answers the same way the note chat panel does when set to **Internal** — always cross-searching your notes and Knowledge — but has none of the note-chat extras: no `@` attachments, no **Grounding** chip, and no editing, regenerating, or forking a past message. There is nothing to insert a reply into either, since it is not attached to a document.
+Picking a conversation from the list opens it in a **peek** first — a narrow pane sliding in from the right. From there, **Open in full screen** switches to the full view, and `Esc` closes it. Starting a new one — from **New chat** in the list or from `⌘K` — opens straight into full screen.
+
+It answers the same way the note chat panel does when set to **Internal** — always cross-searching your notes and Knowledge. Conversations support **edit and resend**, **regenerate response**, and **new chat from here** (forking), with the same look and controls as the note chat panel, and work the same way in the peek and in full screen. Forking is the one difference: instead of adding to the same note's history, it adds a new conversation to the list. What is still missing: `@` attachments, the **Grounding** chip, **Make Knowledge** (the claims/insights picker), and inserting or replacing into a note — there is nothing to insert into, since it is not attached to a document, but **Keep as knowledge** is available to save the answer as its own page.
 
 A conversation is saved the moment you send a message, not when the answer comes back — so if the AI request fails, the question stays in the list and you can reopen it later. While waiting for a reply the panel shows "Thinking..." with a **Stop** button that only cancels the conversation you are looking at; other conversations keep running if you switch away. Hovering a row in the list reveals a delete button, which asks for confirmation before removing the conversation.
 
@@ -80,12 +82,15 @@ Conversations live on this device, in app data — never mixed into a note file,
 | | Note chat panel | Chat without a note |
 |---|---|---|
 | What it is about | The note (or block) you have open | Nothing in particular — its own topic |
-| Can insert into a note | Yes | No |
+| Insert / replace into a note | Yes | No |
 | `@` attachments, Grounding chip | Yes | No |
-| Edit / regenerate / fork | Yes | No |
+| Edit / regenerate / fork | Yes | Yes (forking adds a new conversation to the list) |
+| **Make Knowledge** (claims/insights picker) | Yes | No (**Keep as knowledge** is available) |
 | What **Stop** cancels | That conversation | Only the conversation you are looking at (others keep running if you switch away) |
 
 Use the note chat panel while you are writing and want the AI to see (or write into) that note. Use the sidebar chat when the question is not about any one note — general questions, working things out, or checking something across everything you have written.
+
+`⌘K` is another way in: press it from anywhere, including with a note open, and choose **Ask AI: "..."** (or `⌘Enter`) to start one of these note-independent conversations without leaving where you are. See [The Composer](#the-composer-k) below.
 
 ## Chats stay with the note — and keep running <Badge type="tip" text="Added in v0.17.1 (2026-07-06)" />
 
@@ -117,15 +122,15 @@ Every AI reply has action buttons underneath:
 | **Replace in note** | Replaces the source blocks with the answer (shown when the chat was started from specific blocks) |
 | **Derive as note** | Creates a new note from the question and answer, with provenance linking back to the source note, and opens it in the side peek |
 | **Make Knowledge** | Extracts knowledge candidates from the answer (below) |
-| **Keep as knowledge** | Saves the whole answer as-is, as an Answer page in the Knowledge layer (below) |
+| **Keep as knowledge** | Saves the whole answer as-is, as a Q&A page in the Knowledge layer (below) |
 
 ### Extracting knowledge from a chat <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
 **Make Knowledge** turns a good answer into entries in your [Knowledge layer](/knowledge-layer) — without saving anything you didn't choose. Graphium shows "Extracting claims…", then "Generating insights…", and presents a picker titled **Knowledge candidates (select to save)**. Each candidate carries a **Claims** or **Insights** badge; use **Select all** / **Clear**, then **Save selected (n)** — or **Cancel** to keep nothing. Only the candidates you pick become knowledge pages.
 
-### Keeping a whole answer
+### Keeping a whole Q&A
 
-If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium saves the message text unedited as an [Answer page](/knowledge-layer#the-kinds), titled with the question you asked, and carries over any citation the answer showed (the ones you could click to open a note or material) as the page's own citations. It doesn't call the AI again and doesn't offer a preview to edit first — it saves exactly what you read. Once saved, the button becomes a confirmation with an **Open** link to the new page, and from then on the page is upkept like a Topic — revised when a source updates or contradicts the answer, checked, and source-checked. See [Knowledge layer](/knowledge-layer#keeping-a-whole-answer) for details.
+If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium calls the AI once more first, handing over the conversation so far to rewrite the exchange into a [Q&A page](/knowledge-layer#the-kinds) that reads standalone — filling in what a context-dependent reply left implicit and rewriting the title away from the phrasing of your request — with any citation the answer showed carried over to the rewritten sentences. There's no preview to edit first; if the rewrite fails or strips out every citation the original had, Graphium falls back to saving the message text unedited, titled with the question you asked. Once saved, the button becomes a confirmation with an **Open** link to the new page, and from then on the page is upkept like a Topic — revised when a source updates or contradicts the answer, checked, and source-checked. See [Knowledge layer](/knowledge-layer#keeping-a-whole-qa) for details.
 
 ## The Composer (⌘K)
 
@@ -133,7 +138,7 @@ Press `⌘K` to open the Composer — one input for both "find a note" and "ask 
 
 The placeholder says it all: **Find a note or ask AI...**
 
-Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an asset...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent. The same search-only form is what you get when no AI model is registered at all <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — the search half needs no AI, so `⌘K` still opens.
+Both halves are live everywhere — not only while editing a note. Open `⌘K` from the note list, the materials gallery, the Knowledge hub, or with nothing open at all, and you can still search *and* ask the AI a fresh question. The verb buttons and one-click suggestion cards described below are the exception: they need a note open that cites claims or insights, since their prompts are built from that note's cited set. The search-only form still appears when no AI model is registered at all <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — the search half needs no AI, so `⌘K` still opens.
 
 ![Composer palette with the verb menu on a note with citations](/screenshots/composer-verbs.png)
 
@@ -160,11 +165,11 @@ Assets stay out of the empty-input view and out of `#label` / `@author` queries;
 
 ### Asking the AI
 
-The last row of results is always **Ask AI: "your text"** — select it, or press `⌘Enter` to send your input straight to the AI regardless of what is highlighted. The answer opens in the chat panel as a fresh conversation, and anything the current note cites with `@` (knowledge pages, document notes) is handed to the AI as context automatically. The Composer has the same **Grounding** chip and web-search warning as the chat panel.
+The last row of results is always **Ask AI: "your text"** — select it, or press `⌘Enter` to send your input straight to the AI regardless of what is highlighted. The answer opens full-screen, as a new conversation of its own — not the open note's chat panel, even if you had a note open when you asked. If a note was open, it is attached above the conversation as a citation chip, which you can remove with its ×; while attached, its content is handed to the AI as context. The Composer has the same **Grounding** chip and web-search warning as the chat panel.
 
 ### Verb buttons on notes with citations
 
-On a note that cites claims or insights, opening the Composer with an empty input shows a set of one-click questions about the cited set, under the heading **Ask the AI (this note + N citations)**:
+On a note that cites claims or insights, opening the Composer with an empty input shows a set of one-click questions about the cited set, under the heading **Ask the AI (this note + N citations)**. Unlike a typed question, these go straight to the open note's chat panel (the same one in the right-hand panel), because their prompts are built from that note's own cited claims and insights:
 
 | Group | Buttons |
 |---|---|

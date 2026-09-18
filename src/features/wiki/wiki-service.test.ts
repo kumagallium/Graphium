@@ -18,6 +18,7 @@ import {
   mergeIntoWikiDocument,
   rewriteAndMerge,
   buildWikiSnapshots,
+  rewriteAnswerFromConversation,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
@@ -137,6 +138,50 @@ describe("parseInlineCitations - citations", () => {
     );
     expect(knowledgeLinks).toHaveLength(1);
     expect(knowledgeLinks[0].targetNoteId).toBe("n2");
+  });
+
+  it("noteIndex に無くても extraTitleToId（資料一覧）にあれば青リンクになる", () => {
+    // PDF・URL 等の素材は noteIndex に載らない。References の行と同じ資料一覧を渡せば
+    // 本文側の [[title]] もリンク化できる（食い違いの修正）
+    const extraTitleToId = new Map([["実験手順書.pdf", "pdf:asset-1"]]);
+    const { inlineContent, knowledgeLinks } = parseInlineCitations(
+      "詳細は [[実験手順書.pdf]] を参照",
+      emptyIndex,
+      undefined,
+      extraTitleToId,
+    );
+    expect(inlineContent).toContainEqual({
+      type: "text",
+      text: "@実験手順書.pdf",
+      styles: { textColor: "blue" },
+    });
+    expect(knowledgeLinks).toHaveLength(1);
+    expect(knowledgeLinks[0].targetNoteId).toBe("pdf:asset-1");
+  });
+
+  it("extraTitleToId にも無ければ従来どおりプレーンテキストのまま", () => {
+    const extraTitleToId = new Map([["別の資料", "pdf:asset-2"]]);
+    const { inlineContent, knowledgeLinks } = parseInlineCitations(
+      "[[未知の資料]]",
+      emptyIndex,
+      undefined,
+      extraTitleToId,
+    );
+    expect(inlineContent[0]).toEqual({ type: "text", text: "未知の資料", styles: {} });
+    expect(knowledgeLinks).toHaveLength(0);
+  });
+
+  it("selfTitle と一致する引用は extraTitleToId にあってもリンク化しない（自己引用ガード優先）", () => {
+    const selfTitle = "自分自身のタイトル";
+    const extraTitleToId = new Map([[selfTitle, "pdf:self"]]);
+    const { inlineContent, knowledgeLinks } = parseInlineCitations(
+      `[[${selfTitle}]]`,
+      emptyIndex,
+      selfTitle,
+      extraTitleToId,
+    );
+    expect(inlineContent[0]).toEqual({ type: "text", text: selfTitle, styles: {} });
+    expect(knowledgeLinks).toHaveLength(0);
   });
 
   it("[[https://...]] は BlockNote link に変換される", () => {
@@ -717,6 +762,31 @@ describe("buildSourceBackedWikiDocument - kind を受け取る出典つきペー
     expect(headingIdx).toBeGreaterThan(-1);
   });
 
+  it("素材（noteIndex に載らない資料）の引用も References と同じく本文で青リンクになる", () => {
+    // PDF/URL 等の素材は noteIndex に載らないため、以前は本文だけプレーン文字に落ちていた
+    // （References 側は sources から直接リンクにしていて食い違っていた）
+    const sources = [{ id: "pdf:asset-1", title: "実験手順書.pdf" }];
+    const doc = buildSourceBackedWikiDocument(
+      "topic",
+      "手順の要点",
+      "## 概要\n手順は [[source:pdf:asset-1]] にまとめた。",
+      sources,
+      "test-model",
+    );
+    const blocks = doc.pages[0].blocks as any[];
+    const bodyParagraph = blocks.find(
+      (b) => b.type === "paragraph" && b.content.some((c: any) => c.text?.includes("手順は")),
+    );
+    expect(bodyParagraph.content).toContainEqual({
+      type: "text",
+      text: "@実験手順書.pdf",
+      styles: { textColor: "blue" },
+    });
+    expect(bodyParagraph.knowledgeLinks).toBeUndefined(); // knowledgeLinks はブロックでなくページ側
+    const pageLinks = doc.pages[0].knowledgeLinks as any[];
+    expect(pageLinks.some((l) => l.targetNoteId === "pdf:asset-1")).toBe(true);
+  });
+
   it("既定（kind 未指定の buildSourceTopicDocument）は topic のまま", () => {
     const doc = buildSourceTopicDocument("t", "## 定義\n本文。", [{ id: "note-a", title: "資料A" }], null);
     expect(doc.wikiMeta?.kind).toBe("topic");
@@ -886,6 +956,48 @@ describe("本文を作り直す merge/regenerate 系は古い sourceCheck を引
     expect(next.wikiMeta?.sourceCheck).toBeUndefined();
   });
 
+
+  it("rewriteAnswerFromConversation は API 失敗時に null を返す（呼び出し側は元の回答文にフォールバックできる）", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    const result = await rewriteAnswerFromConversation(
+      "それの単位は？",
+      "それは W/mK である。",
+      [{ role: "user", content: "熱伝導率の話" }, { role: "assistant", content: "熱伝導率は…" }],
+      [{ id: "wiki-1", title: "資料A" }],
+      "ja",
+    );
+    expect(result).toBeNull();
+  });
+
+  it("rewriteAnswerFromConversation は出典マーカーが書き起こしで消えていたら null を返す（出典消失ガード）", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ title: "焼結条件の目安", body: "出典の痕跡が消えた本文。" }),
+    });
+    const result = await rewriteAnswerFromConversation(
+      "それの単位は？",
+      "焼結条件はこうだ。[Source: \"焼結メモ\"]",
+      [],
+      [],
+      "ja",
+    );
+    expect(result).toBeNull();
+  });
+
+  it("rewriteAnswerFromConversation はサーバーが title を返さないとき空文字にする（呼び出し側は deriveSuggestionTitle にフォールバックできる）", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ body: "書き起こした本文。" }),
+    });
+    const result = await rewriteAnswerFromConversation(
+      "それの単位は？",
+      "それは W/mK である。",
+      [],
+      [],
+      "ja",
+    );
+    expect(result).toEqual({ title: "", body: "書き起こした本文。" });
+  });
 
   it("rebuildSourceTopicDocument は本文を作り直すので sourceCheck を落とす", () => {
     const existing = claimDocWithSourceCheck();

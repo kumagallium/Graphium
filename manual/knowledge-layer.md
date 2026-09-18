@@ -22,12 +22,12 @@ Because knowledge is *derived*, regeneration is normal. When your notes change, 
 
 ## The kinds
 
-Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics and Answers sit alongside this hourglass rather than inside it — they read your source material (or, for Answers, a chat exchange) directly and are never fed into insight discovery.
+Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics and Q&A sit alongside this hourglass rather than inside it — they read your source material (or, for Q&A, a chat exchange) directly and are never fed into insight discovery.
 
 | Kind | What it is |
 |---|---|
 | **Topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | A page built directly from the source material it groups by concept (notes, PDFs, Word docs, URLs, chat sessions), with one-hop provenance (topic → source) |
-| **Answers** | A page keeping one good [AI chat](/ai-chat-and-ask) answer, titled by the question you asked, citing the notes/materials it drew on |
+| **Q&A** <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" /> | A page keeping one good [AI chat](/ai-chat-and-ask) answer, titled by the question you asked, citing the notes/materials it drew on |
 | **Claims** | One proposition taken from a note or document |
 | **Insights** | A relationship pattern from your claims, written to hold in other fields |
 
@@ -72,7 +72,7 @@ Prompts take trial and error, so skills support the same manual version snapshot
 
 ## Browsing knowledge
 
-The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Answers**, **Claims**, and **Insights** with counts (plus **Previous Summaries** if any legacy summaries remain). Click a kind to open its list view, which offers:
+The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Q&A**, **Claims**, and **Insights** with counts (plus **Previous Summaries** if any legacy summaries remain). Click a kind to open its list view, which offers:
 
 - Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many member claims it groups instead), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
@@ -150,13 +150,13 @@ Both show a confirmation with the count first; regeneration issues LLM calls and
 
 When an [AI chat](/ai-chat-and-ask) answer contains something worth keeping, press **Make Knowledge** under the answer. Instead of saving the whole reply, Graphium proposes discrete candidates in a picker titled **Knowledge candidates (select to save)** — each with a **Claims** or **Insights** badge, a title, and a preview. Check the ones you want (or **Select all**) and press **Save selected (2)**. Only what you pick enters your knowledge.
 
-## Keeping a whole answer
+## Keeping a whole Q&A <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" />
 
-**Make Knowledge** breaks an answer apart into claims/insights. If instead the whole answer reads well as-is — a self-contained explanation you'd want to find again by the question you asked — press **Keep as knowledge** under the same message. Graphium saves the answer's text as-is as an **Answer** page, titled with your question, with any citation the answer already showed (the ones you could click to open a note or material) carried over as the page's own citations. A confirmation with an **Open** link appears once it's saved.
+**Make Knowledge** breaks an answer apart into claims/insights. If instead the whole answer reads well as-is — a self-contained explanation you'd want to find again by the question you asked — press **Keep as knowledge** under the same message. Before saving, Graphium calls the AI once more to rewrite the exchange into a standalone article: it hands over the conversation so far, so a reply that only makes sense in context ("for the first one, how far should I push it? keep it short") comes back with the missing context filled in and the title rewritten to something that reads on its own, not the phrasing of your request. Any citation the answer already showed carries over, re-anchored to the rewritten sentences. A confirmation with an **Open** link appears once it's saved.
 
-Keep as knowledge doesn't call the AI again — it saves the message you already read, unedited, so there's nothing to review before it lands. It's also not available in shared-note or material chat, only the note editor's chat panel.
+If the rewrite fails — the AI isn't configured, or the call errors — saving still goes through: Graphium falls back to the answer's text as-is, titled with the question you asked, same as before. It also falls back if the rewrite drops every citation the original answer had — losing sources isn't worth reading better. It's not available in shared-note or material chat, but works from both the note editor's chat panel and the [sidebar chat without a note open](/ai-chat-and-ask#chat-without-a-note-open).
 
-Once saved, an Answer page is upkept the same way a Topic is: it's included in Upkeep's **Check** (empty page, missing source, and out-of-date checks), covered by source check, and can be rebuilt from its sources with **Regenerate** if a source changes. A new note only revises an existing Answer page when it actually updates or contradicts the answer — otherwise the note becomes its own Topic instead of drifting the Answer off-topic.
+Once saved, a Q&A page is upkept the same way a Topic is: it's included in Upkeep's **Check** (empty page, missing source, and out-of-date checks), covered by source check, and can be rebuilt from its sources with **Regenerate** if a source changes. A new note only revises an existing Q&A page when it actually updates or contradicts the answer — otherwise the note becomes its own Topic instead of drifting the Q&A page off-topic.
 
 ## Knowledge in the global graph
 

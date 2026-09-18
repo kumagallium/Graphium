@@ -395,3 +395,76 @@ export async function assembleCitedAssetContext(
     deps.scope ?? DEFAULT_GROUNDING_SCOPE,
   );
 }
+
+/** チャットに添付されたノート（素材添付を除く）の最小情報。AttachedNote のサブセット */
+export type AttachedNoteRef = {
+  id: string;
+  title: string;
+  isWiki?: boolean;
+  /** "asset" のとき id はノートではなく素材の fileId を指すので、この関数では読み飛ばす。 */
+  kind?: "asset";
+};
+
+/** resolveAttachedNoteContents の依存（CitedDocDeps とほぼ同形。テスト時に差し替え可能） */
+export type ResolveAttachedNoteContentsDeps = {
+  noteIndex: GraphiumIndex | null;
+  captureIndex: CaptureIndex | null;
+  provider: {
+    loadWikiFile?(id: string): Promise<GraphiumDocument>;
+    loadFile(id: string): Promise<GraphiumDocument>;
+    getMediaBlobUrl(id: string): Promise<string>;
+  };
+  scope?: GroundingScope;
+  loadUrlText?: (url: string) => Promise<string | undefined>;
+  loadMediaText?: (fileId: string) => Promise<string | undefined>;
+};
+
+/**
+ * @ メンション等でチャットに添付されたノートの内容を、AI 文脈に積める Markdown セクション列に
+ * 展開する（ノート内チャット・ノートに紐づかないチャットの双方から呼ばれる共通処理）。
+ *
+ * 引用先が文書ノート（PDF/URL/docx 由来）なら 1ホップ派生知識＋原文を優先し
+ * （assembleCitedDocumentContext）、それ以外はプレーンテキスト化した本文を使う。
+ * 素材添付（kind === "asset"）はノートではないためここでは読み飛ばす（呼び出し側が
+ * assembleCitedAssetContext 等の別経路で扱う）。
+ * 個々の添付が解決できない（削除済み等）場合はその 1 件だけ飛ばし、残りは続行する。
+ */
+export async function resolveAttachedNoteContents(
+  attachedNotes: AttachedNoteRef[],
+  deps: ResolveAttachedNoteContentsDeps,
+): Promise<string[]> {
+  const noteContents: string[] = [];
+  for (const attached of attachedNotes) {
+    if (attached.kind === "asset") continue;
+    try {
+      const doc = attached.isWiki && deps.provider.loadWikiFile
+        ? await deps.provider.loadWikiFile(attached.id)
+        : await deps.provider.loadFile(attached.id);
+      if (!doc) continue;
+      if (isDocumentNote(doc)) {
+        const assembled = await assembleCitedDocumentContext(attached.id, doc, {
+          noteIndex: deps.noteIndex,
+          captureIndex: deps.captureIndex,
+          provider: deps.provider,
+          scope: deps.scope,
+          loadUrlText: deps.loadUrlText,
+          loadMediaText: deps.loadMediaText,
+        });
+        if (assembled) {
+          noteContents.push(assembled);
+          continue;
+        }
+      }
+      // プレーンテキスト抽出（ブロック構造から確実にテキストを取得）。children も再帰する
+      // 共通ヘルパーに委ねる — トップレベルの content だけ見ると、本文が step・カラムの
+      // 中にあるノートが空扱いになり context から丸ごと落ちる。
+      const content = blocksToPlainText(doc);
+      if (content.trim()) {
+        noteContents.push(`## ${attached.title}\n${content.trim()}`);
+      }
+    } catch {
+      // ロード失敗（削除済み等）は該当の 1 件だけ読み飛ばして続行する
+    }
+  }
+  return noteContents;
+}

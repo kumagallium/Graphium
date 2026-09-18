@@ -47,6 +47,8 @@ export {
   resolveSourceCitations, stripEmptyMarkdownSections,
   routeTopicsForSource, reviseTopicFromSource,
   type TopicSourceRef, type TopicRouteSource, type TopicRouteExistingRef,
+  // チャットの回答を単体で読める記事に書き起こす（保存時の会話→ページ変換）
+  rewriteAnswerFromConversation, type AnswerRewriteConversationMessage, type AnswerRewriteResult,
   // 長い資料の窓分割で読む段の見取り図
   surveySourceForWindows,
 } from "./wiki-service";
