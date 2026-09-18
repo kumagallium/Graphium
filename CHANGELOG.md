@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.79.0](https://github.com/kumagallium/Graphium/compare/v0.78.1...v0.79.0) - 2026-09-18
+
+- List the chat retrieval numbers in the FAQ table by @kumagallium in https://github.com/kumagallium/Graphium/pull/981
+- [fix] Normalize full-width number citations in AI chat answers by @kumagallium in https://github.com/kumagallium/Graphium/pull/982
+- Let create_note carry the citations an answer used by @kumagallium in https://github.com/kumagallium/Graphium/pull/986
+- Keep the version before an AI rewrite on pages people have edited by @kumagallium in https://github.com/kumagallium/Graphium/pull/987
+- Let automatic knowledge checks run the full AI analysis when turned on by @kumagallium in https://github.com/kumagallium/Graphium/pull/988
+- Add the Answer knowledge kind and save chat answers into it by @kumagallium in https://github.com/kumagallium/Graphium/pull/989
+- Maintain answer pages like topics by @kumagallium in https://github.com/kumagallium/Graphium/pull/990
+- Add an MCP save_answer tool for knowledge-layer answer pages by @kumagallium in https://github.com/kumagallium/Graphium/pull/991
+
 ## [v0.78.1](https://github.com/kumagallium/Graphium/compare/v0.78.0...v0.78.1) - 2026-09-17
 
 - Notice when the embedding index was built with another model, and merge duplicate insights by @kumagallium in https://github.com/kumagallium/Graphium/pull/956
