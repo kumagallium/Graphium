@@ -2,9 +2,55 @@
 
 import type { GraphiumDocument, SkillMeta } from "../../lib/document-types";
 import type { SystemSkillDefinition } from "./system-skills";
-import { getSystemSkillById } from "./system-skills";
+import { getSystemSkillById, KNOWLEDGE_SCHEMA_PROMPTS } from "./system-skills";
 
 export const KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID = "knowledge-schema";
+
+export type SystemSkillFileCandidate = {
+  id: string;
+  modifiedAt: string;
+};
+
+export type SystemSkillNormalization = {
+  sourceId: string;
+  targetId: string;
+  deleteIds: string[];
+};
+
+/**
+ * 固定 ID の Knowledge Schema が一覧にはあるのに、この refresh では読めなかったか。
+ * 一時的な読込失敗を未作成と誤認して、既存本文を既定値で上書きしないために使う。
+ */
+export function isKnowledgeSchemaListedButNotLoaded(
+  listedFileIds: readonly string[],
+  loadedFileIds: ReadonlySet<string>,
+): boolean {
+  return listedFileIds.includes(KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID)
+    && !loadedFileIds.has(KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID);
+}
+
+/**
+ * systemSkillId が重複したときの保存元・survivor・削除対象を決める。
+ * Knowledge Schema だけは最新内容を固定 storage ID へ集約し、それ以外は
+ * 従来どおり最新ファイル自身を survivor にする。
+ */
+export function decideSystemSkillNormalization(
+  systemSkillId: string,
+  files: readonly SystemSkillFileCandidate[],
+): SystemSkillNormalization | undefined {
+  if (files.length === 0) return undefined;
+  const newest = [...files].sort(
+    (a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime(),
+  )[0];
+  const targetId = systemSkillId === KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID
+    ? KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID
+    : newest.id;
+  return {
+    sourceId: newest.id,
+    targetId,
+    deleteIds: files.filter((file) => file.id !== targetId).map((file) => file.id),
+  };
+}
 
 /**
  * skillMetas Map のエントリ型。
@@ -19,6 +65,33 @@ export type SkillMetaSummary = {
   /** システムスキルの同梱デフォルトがユーザー側より新しい（編集済みのため自動更新できない） */
   hasNewerDefault?: boolean;
 };
+
+export type SkillMetadataUpdate = {
+  title: string;
+  description: string;
+  availableForIngest: boolean;
+  language?: "ja" | "en";
+};
+
+/** メタ情報更新時も Knowledge Schema の初期言語を固定する。 */
+export function applySkillMetadataUpdate(
+  base: GraphiumDocument,
+  values: SkillMetadataUpdate,
+): GraphiumDocument {
+  const language = base.skillMeta?.systemSkillId === KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID
+    ? base.skillMeta.language
+    : values.language;
+  return {
+    ...base,
+    title: values.title,
+    skillMeta: {
+      ...(base.skillMeta ?? { createdAt: new Date().toISOString() }),
+      description: values.description,
+      availableForIngest: values.availableForIngest,
+      language,
+    },
+  };
+}
 
 /**
  * 新しい Skill ドキュメントを構築する
@@ -188,6 +261,41 @@ export async function loadKnowledgeSchemaPrompt(
 /** Knowledge Schema を Voice / Skill とは別の system prompt section にする。 */
 export function buildKnowledgeSchemaPromptSection(prompt: string): string {
   return `\n\n## Knowledge Schema\n\n${prompt}`;
+}
+
+/** Knowledge Schema の保存言語に対応する同梱デフォルト定義を返す。 */
+export function resolveSystemSkillDefinition(
+  def: SystemSkillDefinition,
+  language?: "ja" | "en",
+): SystemSkillDefinition {
+  if (def.id !== KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID) return def;
+  const resolvedLanguage = language ?? def.language;
+  return {
+    ...def,
+    language: resolvedLanguage,
+    prompt: KNOWLEDGE_SCHEMA_PROMPTS[resolvedLanguage],
+  };
+}
+
+export function resolveSystemSkillDefinitionForDocument(
+  def: SystemSkillDefinition,
+  doc: Pick<GraphiumDocument, "skillMeta"> | undefined,
+): SystemSkillDefinition {
+  return resolveSystemSkillDefinition(def, doc?.skillMeta?.language);
+}
+
+/** migrate_meta / auto_update 共通で、解決済み定義の版・hash・言語を固定する。 */
+export function buildSyncedSystemSkillMeta(
+  meta: SkillMeta,
+  def: SystemSkillDefinition,
+  defaultPromptHash: string,
+): SkillMeta {
+  return {
+    ...meta,
+    language: def.language,
+    systemSkillVersion: def.version,
+    defaultPromptHash,
+  };
 }
 
 /**

@@ -10,7 +10,9 @@ The Knowledge layer runs only with an AI backend, which ships inside the [deskto
 
 **Knowledge Schema** is one built-in, editable document in the **Skill** list. It defines the generation conventions for Topics, Answers, and Claims: source citations, incremental revision, and upkeep. It is separate from the writing Voice and does not change Graphium's code-enforced citation checks, structured output validation, or safety rules.
 
-Graphium creates exactly one Schema in the Skill storage area. It is not a note or a knowledge page, so it is not included in search, Knowledge counts, or the graph. Edits affect later generation only; they never regenerate existing knowledge automatically. Like other built-in skills, it cannot be deleted. A new app default updates an untouched Schema automatically; an edited Schema shows an update badge and remains unchanged until you choose **Reset to default**. Editing, default synchronization, and Reset leave entries in the document History.
+Graphium creates exactly one Schema in the Skill storage area. On first creation only, the saved default follows the current UI language: Japanese UI gets the Japanese Schema body, English UI gets the English body. After that, the saved Schema's own language is fixed in `skillMeta.language`; changing the UI language later does not translate, overwrite, or switch the Schema body.
+
+It is not a note or a knowledge page, so it is not included in search, Knowledge counts, or the graph. Edits affect later generation only; they never regenerate existing knowledge automatically. Like other built-in skills, it cannot be deleted. A new app default updates an untouched Schema automatically in the Schema's saved language; an edited Schema shows an update badge and remains unchanged until you choose **Reset to default**, which also uses that saved language. Editing, default synchronization, and Reset leave entries in the document History.
 
 ## Notes vs. knowledge
 

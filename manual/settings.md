@@ -77,7 +77,7 @@ A browser for the knowledge base that [world grounding](/ai-grounding) checks ag
 
 ## Knowledge
 
-The editable **Knowledge Schema** lives in the sidebar's **Skill** list rather than this tab. It is one built-in document, excluded from Knowledge counts, search, and graphs. Its saved rules apply to later Topic, Answer, and Claim generation; changing or resetting it does not automatically regenerate existing pages.
+The editable **Knowledge Schema** lives in the sidebar's **Skill** list rather than this tab. It is one built-in document, excluded from Knowledge counts, search, and graphs. On first creation only, Graphium saves the default body in the current UI language; after that, the Schema's saved language is fixed and later UI language changes do not translate or overwrite it. Its saved rules apply to later Topic, Answer, and Claim generation; changing or resetting it does not automatically regenerate existing pages.
 
 Maintenance jobs for the [Knowledge layer](/knowledge-layer). These run LLM calls, so each job asks for confirmation and reports token cost on the [Usage](#usage) tab.
 

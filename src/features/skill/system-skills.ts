@@ -91,9 +91,17 @@ Write so a future reader wants to keep reading. Aim for the tone of a short note
 - For chat replies and personal notes, first-person ("I think", "I picked") is fine.
 `;
 
-const KNOWLEDGE_SCHEMA_PROMPT = `## Knowledge Schema
+export const KNOWLEDGE_SCHEMA_PROMPTS: Record<"ja" | "en", string> = {
+  en: `## Knowledge Schema
 
 This document defines the structure and maintenance conventions for Graphium's Knowledge layer. It is independent from writing Voice. Code-level safety rules, structured-output validation, citation verification, and guardrails remain mandatory even when this document is edited.
+
+## Editing guide
+
+- **Safe to change:** domain terminology, conditions that must always be retained, citation granularity, page structure, and upkeep review criteria.
+- **Not changeable in this Schema; enforced by code:** JSON shape, storage paths, the \`[[source:id]]\` citation syntax, and the rule that Graphium must not update human-owned documents without an explicit workflow.
+- **Example customization:** in materials science, require temperature, pressure, atmosphere, sample composition, processing route, and measurement conditions to stay attached to every claim; cite at the sentence or sub-result level when one paper reports multiple samples or parameter sweeps.
+- Keep edits operational and concrete. The saved body is passed directly into AI prompts, so write instructions you want future Topic, Answer, and Claim generation to follow.
 
 ## Topic and Answer
 
@@ -107,17 +115,74 @@ This document defines the structure and maintenance conventions for Graphium's K
 - Keep claims atomic: split independently useful propositions and do not combine evidence from unrelated sources into one assertion.
 - Retain conditions, evidence limits, and epistemic strength. Classify only from what the source supports.
 
-## Citation and revision
+## Citation and evidence
 
 - Use the exact citation identifiers supplied by Graphium. Citations must support the sentence they end.
-- A revision incorporates new evidence without silently erasing supported prior evidence. Explicit conflicts belong in a disagreement or open-question section.
+- Preserve quotations, measurements, methods, provenance, and source-local distinctions at the granularity needed to audit the statement.
 - Do not fabricate sources, URLs, quotations, measurements, or provenance.
 
-## Upkeep
+## Conditions and uncertainty
+
+- Keep conditions, sample boundaries, parameter ranges, and negative or null results when they affect whether a statement holds.
+- Mark uncertainty, disagreement, missing support, and open questions explicitly instead of smoothing them away.
+
+## Revision
+
+- A revision incorporates new evidence without silently erasing supported prior evidence.
+- Explicit conflicts belong in a disagreement or open-question section, not in an averaged statement that hides the conflict.
+- Do not overwrite human-owned wording or decisions without the corresponding Graphium workflow.
+
+## Lint and upkeep
 
 - Prefer a precise, traceable page over a broad but weak one.
-- Surface missing support, stale statements, duplicates, contradictions, and unresolved questions for review.
-- Do not make destructive maintenance decisions or overwrite human-owned content without the corresponding Graphium workflow.`;
+- Surface missing support, stale statements, duplicates, contradictions, citation gaps, and unresolved questions for review.
+- Do not make destructive maintenance decisions or overwrite human-owned content without the corresponding Graphium workflow.`,
+  ja: `## ナレッジスキーマ
+
+この文書は Graphium のナレッジ層の構造と保守規約を定義します。Writing Voice とは独立しています。この文書を編集しても、コード側の安全規則、構造化出力の検証、引用照合、ガードレールは必ず維持されます。
+
+## 編集ガイド
+
+- **安全に変更してよい:** 分野用語、必ず残す条件、引用粒度、ページ構成、点検観点。
+- **Schemaで変更不可・コードが守る:** JSON の形、保存経路、\`[[source:id]]\` 引用構文、人間所有文書を明示ワークフローなしに更新しないこと。
+- **具体的な日本語変更例:** 材料科学では、温度、圧力、雰囲気、試料組成、作製プロセス、測定条件を各主張に必ず残す。1 本の論文が複数試料やパラメータ掃引を報告している場合は、文単位または小さな結果単位まで引用粒度を細かくする。
+- 編集は運用できる具体的な指示にしてください。保存された本文はそのまま AI prompt に渡されるため、以後の Topic・Answer・Claim 生成に守らせたい規約として書きます。
+
+## Topic and Answer
+
+- Topic は 1 つの概念について、出典に根拠づけられたページです。Answer はタイトルの問いに答え続ける、出典に根拠づけられたページです。一般的な概説へ変えないでください。
+- 現在の本文と新しい出典からページ全体を改訂します。条件、試料、数値、スコープが異なる出典固有の記述は混ぜずに分けます。
+- 事実を述べる文にはすべて文中引用が必要です。出典に留保、不確実性、矛盾、未解決の問いがある場合は残します。引用、機構、一般化を捏造しないでください。
+
+## Claim
+
+- Claim は出典に支えられた、転用可能な 1 つの命題です。要約や教科書的な穴埋めではありません。
+- Claim は原子的に保ちます。独立して使える命題は分け、無関係な出典の根拠を 1 つの主張に混ぜないでください。
+- 条件、根拠の限界、確からしさの強さを残します。分類は出典が支える範囲だけから行います。
+
+## 引用と根拠
+
+- Graphium が渡した正確な引用 ID を使います。引用は、その文末にある文を支えていなければなりません。
+- 記述を監査できる粒度で、引用、測定値、方法、来歴、出典内の区別を残します。
+- 出典、URL、引用文、測定値、来歴を捏造しないでください。
+
+## 条件と不確実性
+
+- 条件、試料境界、パラメータ範囲、否定的結果や差が出なかった結果は、主張の成立範囲に影響するなら残します。
+- 不確実性、不一致、根拠不足、未解決の問いを、なめらかに消さず明示します。
+
+## 改訂
+
+- 改訂では、新しい根拠を取り込みつつ、根拠のある既存記述を黙って消しません。
+- 明示的な矛盾は、衝突や未解決の問いとして置きます。矛盾を隠す平均的な記述にしないでください。
+- 人間が所有している文言や判断を、対応する Graphium ワークフローなしに上書きしないでください。
+
+## lint と upkeep
+
+- 広いが弱いページより、精密で追跡できるページを優先します。
+- 根拠不足、古くなった記述、重複、矛盾、引用漏れ、未解決の問いを点検対象として表面化します。
+- 破壊的な保守判断を勝手に行わず、人間所有文書を対応する Graphium ワークフローなしに上書きしないでください。`,
+};
 
 export const SYSTEM_SKILLS: SystemSkillDefinition[] = [
   {
@@ -140,12 +205,12 @@ export const SYSTEM_SKILLS: SystemSkillDefinition[] = [
   },
   {
     id: "knowledge-schema",
-    version: 1,
+    version: 2,
     title: "Knowledge Schema / ナレッジスキーマ",
     description: "Conventions for Topics, Answers, Claims, citations, revision, and upkeep / ナレッジ生成・引用・改訂の規約",
     language: "en",
     availableForIngest: false,
-    prompt: KNOWLEDGE_SCHEMA_PROMPT,
+    prompt: KNOWLEDGE_SCHEMA_PROMPTS.en,
   },
 ];
 

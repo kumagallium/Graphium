@@ -3,13 +3,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GraphiumFile, GraphiumDocument, WikiKind, WikiMetaSummary } from "../lib/document-types";
+import { getLocale } from "../i18n";
 import { migrateToLatest } from "../lib/document-migration";
 import { clearAppDataFileCache } from "../lib/storage/app-data-file";
 import { getActiveProvider } from "../lib/storage/registry";
 import { PROV_TEMPLATE } from "../lib/prov-template";
 import { recordRevision } from "../features/document-provenance/tracker";
 import type { EditActivityType } from "../features/document-provenance/types";
-import { loadKnowledgeSchemaPrompt, type SkillMetaSummary } from "../features/skill/skill-service";
+import {
+  applySkillMetadataUpdate,
+  decideSystemSkillNormalization,
+  isKnowledgeSchemaListedButNotLoaded,
+  loadKnowledgeSchemaPrompt,
+  type SkillMetaSummary,
+} from "../features/skill/skill-service";
 import { promoteClaimStatusIfCorroborated, unlinkClaimFromTopic } from "../features/wiki/wiki-service";
 
 /** Wiki 保存・新規作成時のリビジョン記録オプション */
@@ -296,12 +303,15 @@ export function useFileManager(authenticated: boolean) {
           return { id: f.id, doc };
         })
       ).then(async (results) => {
+        if (skillSettled.status !== "fulfilled") return;
         const metas = new Map<string, SkillMetaSummary>();
+        const loadedSkillIds = new Set<string>();
         // systemSkillId ごとに、対応するファイル ID の配列（重複検出用）
         const systemSkillFiles = new Map<string, { id: string; modifiedAt: string }[]>();
         for (const r of results) {
           if (r.status === "fulfilled") {
             const { id, doc } = r.value;
+            loadedSkillIds.add(id);
             metas.set(id, {
               title: doc.title,
               description: doc.skillMeta?.description ?? "",
@@ -317,30 +327,86 @@ export function useFileManager(authenticated: boolean) {
             }
           }
         }
+        const unreadableKnowledgeSchema = isKnowledgeSchemaListedButNotLoaded(
+          skillResult.map((file) => file.id),
+          loadedSkillIds,
+        );
+        if (unreadableKnowledgeSchema) {
+          console.warn(
+            "固定 ID の Knowledge Schema を読み込めなかったため、この refresh では作成・重複正規化・デフォルト同期を保留します",
+          );
+        }
 
-        // 同じ systemSkillId を持つファイルが 2 つ以上あれば、最も新しいもの 1 つだけ残す
+        // system skill の重複を最新 1 件へ集約する。Knowledge Schema は最新内容を
+        // storage 固定 ID に保存してから、固定 ID 以外を削除する。
         const provider = storage();
         const removedIds: string[] = [];
+        const normalizedKnowledgeSchemaFiles: GraphiumFile[] = [];
         for (const [systemId, files] of systemSkillFiles.entries()) {
-          if (files.length <= 1) continue;
-          // modifiedAt 降順でソート、先頭以外を削除
-          files.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
-          for (const dup of files.slice(1)) {
+          if (systemId === "knowledge-schema" && unreadableKnowledgeSchema) continue;
+          const normalization = decideSystemSkillNormalization(systemId, files);
+          if (!normalization) continue;
+
+          if (systemId === "knowledge-schema" && normalization.sourceId !== normalization.targetId) {
+            const sourceDoc = docCacheRef.current.get(`skill:${normalization.sourceId}`);
+            if (!sourceDoc || !provider.saveSkillFile) continue;
             try {
-              if (provider.deleteSkillFile) {
-                await provider.deleteSkillFile(dup.id);
-              }
-              metas.delete(dup.id);
-              docCacheRef.current.delete(`skill:${dup.id}`);
-              removedIds.push(dup.id);
-              console.info(`[bootstrap] 重複したシステムスキル ${systemId} (file ${dup.id}) を削除しました`);
+              // 固定 ID への保存が完了するまで元ファイルには一切触れない。
+              await provider.saveSkillFile(normalization.targetId, sourceDoc);
+              const sourceMeta = metas.get(normalization.sourceId);
+              if (sourceMeta) metas.set(normalization.targetId, sourceMeta);
+              docCacheRef.current.set(`skill:${normalization.targetId}`, sourceDoc);
+              normalizedKnowledgeSchemaFiles.push({
+                id: normalization.targetId,
+                name: sourceDoc.title,
+                modifiedTime: sourceDoc.modifiedAt,
+                createdTime: sourceDoc.createdAt,
+              });
             } catch (err) {
-              console.warn("重複システムスキルの削除に失敗:", err);
+              console.warn("Knowledge Schema の固定 ID への正規化に失敗:", err);
+              continue;
+            }
+          }
+
+          // 版同期は必ず正規化後の survivor を参照する。
+          const survivorDoc = docCacheRef.current.get(`skill:${normalization.targetId}`);
+          if (survivorDoc) {
+            systemSkillFiles.set(systemId, [{
+              id: normalization.targetId,
+              modifiedAt: survivorDoc.modifiedAt,
+            }]);
+          }
+
+          for (const duplicateId of normalization.deleteIds) {
+            let deleted = !provider.deleteSkillFile;
+            if (provider.deleteSkillFile) {
+              try {
+                await provider.deleteSkillFile(duplicateId);
+                deleted = true;
+                console.info(`[bootstrap] 重複したシステムスキル ${systemId} (file ${duplicateId}) を削除しました`);
+              } catch (err) {
+                console.warn("重複システムスキルの削除に失敗:", err);
+              }
+            }
+            // Knowledge Schema は固定 ID の保存に成功した時点で、UI/cache 上の
+            // survivor を固定 ID に統一する。storage 削除失敗時は次回起動で再試行する。
+            if (deleted || systemId === "knowledge-schema") {
+              metas.delete(duplicateId);
+              docCacheRef.current.delete(`skill:${duplicateId}`);
+              removedIds.push(duplicateId);
             }
           }
         }
-        if (removedIds.length > 0) {
-          setSkillFiles((prev) => prev.filter((f) => !removedIds.includes(f.id)));
+        if (removedIds.length > 0 || normalizedKnowledgeSchemaFiles.length > 0) {
+          setSkillFiles((prev) => {
+            const next = prev.filter((f) => !removedIds.includes(f.id));
+            for (const normalized of normalizedKnowledgeSchemaFiles) {
+              const index = next.findIndex((f) => f.id === normalized.id);
+              if (index >= 0) next[index] = normalized;
+              else next.push(normalized);
+            }
+            return next;
+          });
         }
 
         const existingSystemIds = new Set<string>(systemSkillFiles.keys());
@@ -350,10 +416,12 @@ export function useFileManager(authenticated: boolean) {
         // 未編集なら新デフォルトへ自動更新、編集済みならバッジで知らせる。
         try {
           const { SYSTEM_SKILLS } = await import("../features/skill/system-skills");
-          const { buildSystemSkillDocument, decideSkillSync, hashSkillPrompt, extractSkillPrompt, computeSystemSkillDefaultHash } = await import("../features/skill/skill-service");
+          const { buildSystemSkillDocument, buildSyncedSystemSkillMeta, decideSkillSync, hashSkillPrompt, extractSkillPrompt, computeSystemSkillDefaultHash, resolveSystemSkillDefinition, resolveSystemSkillDefinitionForDocument } = await import("../features/skill/skill-service");
           if (provider.saveSkillFile) {
-            for (const def of SYSTEM_SKILLS) {
-              if (!existingSystemIds.has(def.id)) {
+            for (const baseDef of SYSTEM_SKILLS) {
+              if (baseDef.id === "knowledge-schema" && unreadableKnowledgeSchema) continue;
+              if (!existingSystemIds.has(baseDef.id)) {
+                const def = resolveSystemSkillDefinition(baseDef, baseDef.id === "knowledge-schema" ? getLocale() : undefined);
                 // Knowledge Schema は storage 上でも固定 ID を使う。Voice 等の既存
                 // system Skill は過去のランダム ID 契約を維持する。
                 const newId = def.id === "knowledge-schema" ? def.id : crypto.randomUUID();
@@ -372,9 +440,10 @@ export function useFileManager(authenticated: boolean) {
               }
 
               // 既存スキルの版同期（重複除去後に生き残った先頭ファイルが対象）
-              const survivor = (systemSkillFiles.get(def.id) ?? [])[0];
+              const survivor = (systemSkillFiles.get(baseDef.id) ?? [])[0];
               const doc = survivor ? docCacheRef.current.get(`skill:${survivor.id}`) : undefined;
               if (!survivor || !doc) continue;
+              const def = resolveSystemSkillDefinitionForDocument(baseDef, doc);
               const fileId = survivor.id;
               const currentHash = await hashSkillPrompt(extractSkillPrompt(doc));
               const decision = decideSkillSync(def, doc.skillMeta, currentHash);
@@ -384,11 +453,11 @@ export function useFileManager(authenticated: boolean) {
                 // 版管理導入前の文書: 内容は触らず版情報だけ記録する
                 const migrated: GraphiumDocument = {
                   ...doc,
-                  skillMeta: {
-                    ...doc.skillMeta!,
-                    systemSkillVersion: def.version,
-                    defaultPromptHash: await computeSystemSkillDefaultHash(def),
-                  },
+                  skillMeta: buildSyncedSystemSkillMeta(
+                    doc.skillMeta!,
+                    def,
+                    await computeSystemSkillDefaultHash(def),
+                  ),
                 };
                 await provider.saveSkillFile(fileId, migrated);
                 docCacheRef.current.set(`skill:${fileId}`, migrated);
@@ -399,11 +468,11 @@ export function useFileManager(authenticated: boolean) {
                 let updated: GraphiumDocument = {
                   ...doc,
                   pages: [{ ...fresh.pages[0], id: doc.pages[0]?.id ?? fresh.pages[0].id, title: doc.title }],
-                  skillMeta: {
-                    ...doc.skillMeta!,
-                    systemSkillVersion: def.version,
-                    defaultPromptHash: fresh.skillMeta?.defaultPromptHash,
-                  },
+                  skillMeta: buildSyncedSystemSkillMeta(
+                    doc.skillMeta!,
+                    def,
+                    fresh.skillMeta!.defaultPromptHash!,
+                  ),
                   modifiedAt: new Date().toISOString(),
                 };
                 updated = await recordRevision(
@@ -3100,10 +3169,11 @@ export function useFileManager(authenticated: boolean) {
       }
       try {
         const { getSystemSkillById } = await import("../features/skill/system-skills");
-        const { buildSystemSkillDocument } = await import("../features/skill/skill-service");
-        const def = getSystemSkillById(meta.systemSkillId as import("../features/skill/system-skills").SystemSkillId);
-        if (!def) return;
+        const { buildSystemSkillDocument, resolveSystemSkillDefinition } = await import("../features/skill/skill-service");
+        const baseDef = getSystemSkillById(meta.systemSkillId as import("../features/skill/system-skills").SystemSkillId);
+        if (!baseDef) return;
         const prevDoc = docCacheRef.current.get(`skill:${skillId}`) ?? await loadSkillFile(skillId).catch(() => undefined);
+        const def = resolveSystemSkillDefinition(baseDef, prevDoc?.skillMeta?.language ?? meta.language);
         let doc = await buildSystemSkillDocument(def);
         // 内容はデフォルトへ完全に戻すが、documentProvenance と作成日時は引き継いで
         // 編集履歴のチェーンを切らない（リセットも来歴上の 1 操作として記録する）
@@ -3198,16 +3268,7 @@ export function useFileManager(authenticated: boolean) {
     ) => {
       try {
         const base = docCacheRef.current.get(`skill:${skillId}`) ?? (await loadSkillFile(skillId));
-        const doc: GraphiumDocument = {
-          ...base,
-          title: values.title,
-          skillMeta: {
-            ...(base.skillMeta ?? { createdAt: new Date().toISOString() }),
-            description: values.description,
-            availableForIngest: values.availableForIngest,
-            language: values.language,
-          },
-        };
+        const doc = applySkillMetadataUpdate(base, values);
         await saveSkillFile(skillId, doc);
         docCacheRef.current.set(`skill:${skillId}`, doc);
         setSkillMetas((prev) => {
@@ -3217,7 +3278,7 @@ export function useFileManager(authenticated: boolean) {
             description: values.description,
             availableForIngest: values.availableForIngest,
             systemSkillId: doc.skillMeta?.systemSkillId,
-            language: values.language,
+            language: doc.skillMeta?.language,
           });
           return next;
         });

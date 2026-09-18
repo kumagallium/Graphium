@@ -13423,6 +13423,7 @@ export function NoteApp() {
         return (
           <SkillDialog
             mode="edit"
+            systemSkillId={meta.systemSkillId}
             initial={{
               title: meta.title,
               description: meta.description,

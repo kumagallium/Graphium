@@ -66,6 +66,14 @@ default version and prompt hash fields, and the existing
 Reset. It is not a `WikiKind`, is never projected to the note index, and does
 not require a document-version or index-schema-version change.
 
+On first creation only, the bundled Schema body is chosen from the current
+Graphium UI locale (`ja` or `en`) and that language is stored in
+`skillMeta.language`. Later locale changes do not translate or overwrite the
+saved Schema. Version synchronization and Reset resolve the bundled default
+from the saved `skillMeta.language`, so an untouched English v1 Schema
+auto-updates to the English v2 default, while an edited v1 Schema only gets the
+standard newer-default notification.
+
 Each note is a single JSON file (or one row in IndexedDB for the `local`
 provider). The top-level shape:
 

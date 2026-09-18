@@ -187,4 +187,4 @@ Each skill's **Edit** dialog controls:
 
 Skills are ordinary documents: click one to edit its prompt body like any note.
 
-The built-in **Knowledge Schema** is the exception to auto-apply: Graphium always supplies its saved body as a separate instruction when an assistant helps with Knowledge, or when Topics, Answers, and Claims are generated. It defines structure, citations, revision, and upkeep rather than writing voice; it can be edited and reset like a system skill, but cannot be deleted.
+The built-in **Knowledge Schema** is the exception to auto-apply: Graphium always supplies its saved body as a separate instruction when an assistant helps with Knowledge, or when Topics, Answers, and Claims are generated. The first saved default follows the UI language at creation time, then stays in that saved language even if you later switch the UI. It defines structure, citations, revision, and upkeep rather than writing voice; it can be edited and reset like a system skill, but cannot be deleted.
