@@ -425,17 +425,33 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       description:
         "Graphium に新しいノートを作る。既存ノートは変更しない。" +
         "本文は Markdown（見出し・箇条書き・コード・表・強調に対応）。" +
-        "誰がどの経路で書いたかは来歴として記録される。作成後、Graphium を再読み込みすると一覧に出る。",
+        "誰がどの経路で書いたかは来歴として記録される。作成後、Graphium を再読み込みすると一覧に出る。" +
+        "citations を指定すると本文末尾に " +
+        "References 節を作る（実在する noteId は @リンク、存在しない id は文字のまま残す）。",
       inputSchema: {
         title: z.string().describe("ノートのタイトル。命題形か問い形で書く（「〜について」は避ける）"),
         body: z.string().describe("Markdown 本文"),
         sessionId: z.string().optional().describe("呼び出し側のセッション識別子"),
         model: z.string().optional().describe("書いた LLM のモデル ID（例: claude-opus-5）"),
+        citations: z
+          .array(z.object({ id: z.string(), title: z.string().optional() }))
+          .optional()
+          .describe(
+            "回答が引いた Graphium 内のノート/ページの参照。本文末尾に References 節として付く。" +
+              "id が実在するノートを指していれば @リンクになり、存在しなければ文字のまま残る",
+          ),
       },
     },
-    async ({ title, body, sessionId, model }) => {
+    async ({ title, body, sessionId, model, citations }) => {
       try {
-        const result = createNote({ title, body, sessionId, model, client: ctx.getClientName?.() });
+        const result = createNote({
+          title,
+          body,
+          sessionId,
+          model,
+          citations,
+          client: ctx.getClientName?.(),
+        });
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
         addCreatedNoteToIndex(result.noteId, title, body);
         return text(

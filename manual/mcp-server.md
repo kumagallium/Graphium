@@ -97,6 +97,14 @@ Nine tools are available. You do not call them by name — you ask in plain lang
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
 
+### `create_note`: citations
+
+`create_note` takes two optional arguments beyond `title` and `body`:
+
+- **`citations`** — a list of `{ id, title? }` referring to Graphium notes or pages the answer drew on. When present, a References section is appended to the note body: an entry whose `id` matches an existing note becomes an `@`-linked reference (same shape as the References section topics build from their sources); an entry whose `id` does not resolve is kept as plain text instead of being silently dropped.
+
+Both arguments are additive — a call without them behaves exactly as before.
+
 ### Notes vs. knowledge
 
 Graphium builds a knowledge layer on top of your notes: **claims** (findings extracted from a note, with their source attached), **topics** (a page that gathers what your sources say about one concept), and **insights** (a pattern that spans two or more claims). `search_notes` can filter by `kind` — `note`, `topic`, `claim`, `insight`, or `wiki` for all of the knowledge layer at once — and every hit reports which one it is.
