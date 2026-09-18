@@ -1058,8 +1058,11 @@ export function ChatBubble({
                 {t("aiChat.candidatesSaved", { n: String(done.count) })}
               </span>
             )}
+            {/* 回答に付く操作（再生成・分岐）は、同じ回答の「ナレッジに残す」の隣に並べる。
+                以前は ml-auto で行の右端に押し出していたが、幅の広い画面（ノートに紐づかない
+                チャットの全画面）では本文から離れて浮いて見えた。 */}
             {(onRegenerate || onFork) && (
-              <span className="ml-auto flex gap-0.5">
+              <span className="flex gap-0.5">
                 {onRegenerate && (
                   <button
                     onClick={onRegenerate}

@@ -944,6 +944,10 @@ export const en: Record<string, string> = {
   "standaloneChat.stop": "Stop",
   "standaloneChat.removeAttachment": "Remove {title}",
   "standaloneChat.deleteConfirm": "Delete this chat?",
+  "standaloneChat.colTitle": "Title",
+  "standaloneChat.colFirstQuestion": "First question",
+  "standaloneChat.colMessageCount": "Messages",
+  "standaloneChat.colModified": "Modified",
   "aiChat.pageScope": "Page",
   // メッセージの編集&再実行・回答の再生成・チャット分岐
   "aiChat.editMessage": "Edit and resend",
