@@ -4,10 +4,10 @@
 import { pdfjs } from "react-pdf";
 import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 
-// 長文 PDF（100 ページ級の論文・資料）でも Summary が「冒頭しか読まなかった要約」に
-// ならないよう、LLM に渡す上限を広めに取る。日本語混じりで概ね 60-90 ページぶん。
-// それ以上はコスト・レイテンシが急増するので打ち切る。
-const MAX_TEXT_CHARS = 80_000;
+// 1 回の呼び出しで全文を LLM に渡す経路（route-topics を経ない旧来の ingest 等）だけが使う
+// 上限。窓分割で読む新経路（トピック段）はこの上限を経由せず全文を読む。
+// 日本語混じりで概ね 60-90 ページぶん。それ以上はコスト・レイテンシが急増するので打ち切る。
+export const SINGLE_CALL_MAX_CHARS = 80_000;
 
 // 打ち切り注記の先頭（出典照合の quote-match.ts が「出現位置がこの注記内か」を
 // 判定するのに使う。バンドル境界の事情で quote-match.ts 側にも複製してある —
@@ -25,7 +25,8 @@ export type ExtractedPdf = {
 
 /**
  * PDF Blob からテキスト全体とメタタイトルを抽出する。
- * 長すぎる場合は MAX_TEXT_CHARS で打ち切る（LLM コンテキスト節約）。
+ * 打ち切りはしない（全ページを読んで全文を返す） — 窓分割で読む消費者が全文を必要とするため。
+ * 1 回の呼び出しで全文を LLM に渡す経路は capForSingleCall で別途上限を掛けること。
  */
 export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
   const buffer = await blob.arrayBuffer();
@@ -33,8 +34,6 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
 
   const pageCount = doc.numPages;
   const parts: string[] = [];
-  let total = 0;
-  let pagesRead = 0;
 
   for (let i = 1; i <= pageCount; i++) {
     const page = await doc.getPage(i);
@@ -44,13 +43,11 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
       .filter(Boolean)
       .join(" ");
     parts.push(pageText);
-    total += pageText.length;
-    pagesRead = i;
-    if (total > MAX_TEXT_CHARS) break;
   }
 
   // parts.join("\n\n") 前の、各ページ開始オフセットを先に出しておく（join は
   // ページ間に "\n\n"（2 文字）を挟むだけなので、結合後のオフセットも機械的に求まる）。
+  // 打ち切りをしなくなったので、全ページぶんがそのまま残る。
   const rawPageStarts: number[] = [];
   {
     let offset = 0;
@@ -61,23 +58,10 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
   }
 
   const joined = parts.join("\n\n");
-  let text = joined.trim();
+  const text = joined.trim();
   // 先頭 trim で削れた文字数だけ、各ページ開始オフセットを引く。
   const leadingTrimmed = joined.length - joined.trimStart().length;
-  let pageStarts = rawPageStarts.map((s) => Math.max(0, s - leadingTrimmed));
-
-  const truncated = pagesRead < pageCount || text.length > MAX_TEXT_CHARS;
-  if (text.length > MAX_TEXT_CHARS) {
-    text = text.slice(0, MAX_TEXT_CHARS);
-  }
-  // スライス後の本文長（この時点の text.length）以上から始まるページは、もう
-  // 本文に存在しない（打ち切り注記より後ろに追いやられた扱い）ので含めない。
-  const bodyLength = text.length;
-  pageStarts = pageStarts.filter((s) => s < bodyLength);
-  if (truncated) {
-    // LLM に「全文を読んだ」と誤認させないため、何ページ中何ページまで読めたかを明示する
-    text += `${PDF_TRUNCATION_MARKER}${pagesRead} of ${pageCount} pages]`;
-  }
+  const pageStarts = rawPageStarts.map((s) => Math.max(0, s - leadingTrimmed));
 
   let title = "";
   try {
@@ -89,6 +73,22 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
   }
 
   return { title, text, pageCount, pageStarts };
+}
+
+/**
+ * 「1 回の呼び出しで全文を LLM に渡す」経路のためだけに使う上限適用。
+ * 窓分割で読む経路（トピック段）は使わない — extractPdfText の全文をそのまま渡す。
+ * ページ数が分かれば「何ページ中何ページ相当まで」、分からなければ文字数で打ち切り注記を付ける。
+ */
+export function capForSingleCall(text: string, pageCount?: number): string {
+  if (text.length <= SINGLE_CALL_MAX_CHARS) return text;
+  const capped = text.slice(0, SINGLE_CALL_MAX_CHARS);
+  if (pageCount && pageCount > 0) {
+    // 文字数比から「概ね何ページぶん読めたか」を見積もる（正確なページ境界は分からないため概算）
+    const estimatedPagesRead = Math.max(1, Math.round((SINGLE_CALL_MAX_CHARS / text.length) * pageCount));
+    return `${capped}${PDF_TRUNCATION_MARKER}${estimatedPagesRead} of ${pageCount} pages]`;
+  }
+  return `${capped}${PDF_TRUNCATION_MARKER}${SINGLE_CALL_MAX_CHARS} of ${text.length} characters]`;
 }
 
 // 翻訳取り込み用の上限。要約と違い「全文」を訳すため Summary より広く取る。

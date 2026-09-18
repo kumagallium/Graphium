@@ -47,6 +47,8 @@ export {
   resolveSourceCitations, stripEmptyMarkdownSections,
   routeTopicsForSource, reviseTopicFromSource,
   type TopicSourceRef, type TopicRouteSource, type TopicRouteExistingRef,
+  // 長い資料の窓分割で読む段の見取り図
+  surveySourceForWindows,
 } from "./wiki-service";
 export type { ClaimSnapshot } from "../../server/services/wiki-types";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";

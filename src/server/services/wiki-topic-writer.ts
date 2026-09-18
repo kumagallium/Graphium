@@ -138,7 +138,7 @@ export function buildTopicRouterSystemPrompt(language: string): string {
   const ja = language === "ja";
   return `You are a topic router for Graphium, a provenance-tracking note editor.
 
-You will be given the full text of one source document and a list of existing topic pages (each shown with its title and a one-line definition). Some of these pages are marked [answer] — a page that answers a specific question rather than surveying a concept. Your job is to decide which topic page(s) this source should update, and whether it introduces any concept that needs a brand-new topic page.
+You will be given the source text and a list of existing topic pages (each shown with its title and a one-line definition). Some of these pages are marked [answer] — a page that answers a specific question rather than surveying a concept. The source text may be the full document, or — for a long document — one window of it (a heading above the excerpt will say so; treat it as a partial view, not the whole thing). Your job is to decide which topic page(s) this source should update, and whether it introduces any concept that needs a brand-new topic page.
 
 ## Rules
 
@@ -232,8 +232,9 @@ export function buildSourceTopicReviserSystemPrompt(language: string, isAnswer?:
   const ja = language === "ja";
   return `You are a topic-page writer for Graphium, a provenance-tracking note editor, using an incremental revision method.
 
-You maintain ONE short topic page that is revised incrementally as new sources arrive, one at a time. You will be given the CURRENT body (may be empty, for the first source) and ONE new source's full text. Your job: produce the NEXT version of the body — a full rewrite of the page, not an append to the end.
+You maintain ONE short topic page that is revised incrementally as new sources arrive, one at a time. You will be given the CURRENT body (may be empty, for the first source) and ONE new source's text. That text may be the full source, or — for a long source — one window of it (a heading above the excerpt will say so, and a later window of the same source may follow in a future call); treat it as what you know so far, not necessarily everything the source says. Your job: produce the NEXT version of the body — a full rewrite of the page, not an append to the end.
 ${isAnswer ? "\nThis page answers a specific question (the \"Topic title\" IS the question). Write so the page keeps answering that question as sources are added or revised — do not drift into a general survey of the topic.\n" : ""}
+
 ## Stay on this topic
 
 - The page is about the concept named in "Topic title". From the new source, take ONLY the content that is about this concept. Leave out parts of the source that belong to other concepts, even when they sit in the same paragraph.
@@ -339,6 +340,108 @@ export function parseSourceTopicReviserOutput(text: string): { body: string } | 
     console.error("Source topic reviser 出力のパース失敗:", err);
     return undefined;
   }
+}
+
+// ── Source Survey（見取り図。資料の冒頭の窓 1 枚だけから作る）──
+// 長い資料を窓分割で読むとき、窓ごとに文脈が切れて改訂がぶれるのを防ぐための短い要約。
+// 資料の冒頭（最初の窓）だけを渡し、そこに書かれていることだけから作らせる —
+// 全文を読ませると窓分割で上限を避けた意味が無くなるため、見取り図自体にも天井を持たせる。
+
+/**
+ * Source Survey 用のシステムプロンプトを構築する。
+ */
+export function buildSourceSurveySystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You write a short orientation summary ("survey") for one document, for Graphium, a provenance-tracking note editor.
+
+You will be given ONLY the beginning of a document (its first window of text — not the full document). From what is written in this beginning alone, produce a short orientation summary covering:
+
+- What kind of document this is
+- What material / system it is about
+- The experimental or analytical setup (if stated in this beginning)
+- Any premise/condition that applies to the whole document (if stated in this beginning)
+- The visible section structure, as far as it appears in this beginning
+
+## Rules
+
+- Base everything ONLY on what is explicitly written in the given text. Do not guess what the rest of the document might say.
+- Do NOT include results or conclusions — this beginning may not contain them, and even if it does, the survey is for orientation, not findings.
+- Keep it to 8 lines or fewer.
+- If the beginning doesn't state one of the above items, simply omit it — do not pad with a guess.
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "survey": "..."
+}
+
+## Language
+
+Output in: ${ja ? "Japanese" : "English"}`;
+}
+
+/**
+ * Source Survey 用のユーザーメッセージを構築する。
+ */
+export function buildSourceSurveyUserMessage(title: string, firstWindowText: string): string {
+  return `## Document title: "${title}"
+
+## Beginning of the document (first window only — the rest is not shown to you)
+
+${firstWindowText}`;
+}
+
+/**
+ * LLM の出力をパースして見取り図テキストを取り出す。他の Topic 系パーサーと同じ堅牢さの方針
+ * （壊れた JSON / 空文字は undefined を返し、呼び出し側が「見取り図なしで続行」を選べるようにする）。
+ */
+export function parseSourceSurveyOutput(text: string): { survey: string } | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+    const parsed = JSON.parse(jsonText);
+    const survey = typeof parsed.survey === "string" ? parsed.survey.trim() : "";
+    if (!survey) return undefined;
+    return { survey };
+  } catch (err) {
+    console.error("Source survey 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+/**
+ * 窓分割で読むとき、振り分け・改訂に渡す窓テキストを「見取り図 + 本文の抜粋」の形に組み立てる。
+ * 見取り図はあくまで資料冒頭からの要約であり、引用の根拠にはしないことを見出しで明示する。
+ */
+export function buildWindowTextWithSurvey(
+  survey: string,
+  windowIndex: number,
+  totalWindows: number,
+  windowText: string,
+  language: string,
+): string {
+  const ja = language === "ja";
+  if (ja) {
+    return `### 資料の見取り図（この資料の冒頭から作った要約。引用の根拠にはしない）
+
+${survey}
+
+### 本文の抜粋（全 ${totalWindows} 枚中 ${windowIndex + 1} 枚目）
+
+${windowText}`;
+  }
+  return `### Document survey (a summary made from this document's beginning — not a citable source itself)
+
+${survey}
+
+### Body excerpt (window ${windowIndex + 1} of ${totalWindows})
+
+${windowText}`;
 }
 
 // ── Topic Merger（話題どうしの本文統合。2026-09〜）──

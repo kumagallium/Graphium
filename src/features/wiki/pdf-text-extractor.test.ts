@@ -28,7 +28,7 @@ vi.mock("react-pdf", () => ({
 }));
 vi.mock("../../lib/pdfjs-config", () => ({ PDFJS_DOC_OPTIONS: {} }));
 
-import { extractPdfText } from "./pdf-text-extractor";
+import { extractPdfText, capForSingleCall } from "./pdf-text-extractor";
 
 function setPages(pages: FakePage[], title?: string) {
   mockDoc = makeFakeDoc(pages, title);
@@ -66,16 +66,29 @@ describe("extractPdfText - pageStarts", () => {
     expect(result.text.slice(result.pageStarts![1])).toMatch(/^本文開始。/);
   });
 
-  it("80,000 字打ち切りで、本文からはみ出たページの pageStarts は含まれず、注記が付く", async () => {
+  it("80,000 字を超えても打ち切らず、全ページの pageStarts を返す（上限は capForSingleCall 側）", async () => {
     const bigPage = "実測データが多数含まれる本文の一部。".repeat(5000); // 十分長い1ページ
-    setPages([{ text: bigPage }, { text: "次のページの内容。" }]);
+    const lastPage = "次のページの内容。";
+    setPages([{ text: bigPage }, { text: lastPage }]);
     const result = await extractPdfText(new Blob());
     expect(result.pageCount).toBe(2);
-    expect(result.text.length).toBeGreaterThan(80_000); // 注記込みで 80,000 を超える
-    expect(result.text).toMatch(/\[\.\.\. truncated: read \d+ of 2 pages\]$/);
-    // 1 ページ目しか本文に残っていない（2 ページ目は打ち切りで消えている）
-    expect(result.pageStarts).toHaveLength(1);
-    expect(result.pageStarts![0]).toBe(0);
+    expect(result.text.length).toBeGreaterThan(80_000);
+    // 打ち切り注記は付かない（窓分割で読む消費者が全文を必要とする）
+    expect(result.text).not.toContain("truncated");
+    expect(result.text.endsWith(lastPage)).toBe(true);
+    expect(result.pageStarts).toHaveLength(2);
+    expect(result.text.slice(result.pageStarts![1])).toBe(lastPage);
+  });
+
+  it("capForSingleCall は 1 回で全文を渡す経路だけに上限を掛ける", async () => {
+    const short = "短い本文。";
+    expect(capForSingleCall(short)).toBe(short); // 上限以下はそのまま
+    const long = "あ".repeat(90_000);
+    const capped = capForSingleCall(long, 100);
+    expect(capped.length).toBeLessThan(long.length);
+    expect(capped).toMatch(/\[\.\.\. truncated: read \d+ of 100 pages\]$/);
+    // ページ数が分からないときは文字数で知らせる
+    expect(capForSingleCall(long)).toMatch(/\[\.\.\. truncated: read 80000 of 90000 characters\]$/);
   });
 
   it("既存の text 出力（タイトル・pageCount 含む）が変わっていないこと", async () => {
