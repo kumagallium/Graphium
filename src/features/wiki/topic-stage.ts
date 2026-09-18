@@ -30,6 +30,11 @@ import {
   type TopicRouteExistingRef,
   type NoteIndex,
 } from "./wiki-service";
+import { splitIntoWindows } from "./source-windows";
+import { isAbortError } from "../../lib/abort-error";
+// wiki-topic-writer.ts はプロンプト文字列を組むだけの純関数（サーバー専用の依存を持たない）
+// なので client バンドルへそのまま import してよい（wiki-linter からの再 export と同じ扱い）。
+import { buildWindowTextWithSurvey } from "../../server/services/wiki-topic-writer";
 
 // ── 既存話題どうしの統合（設定「話題を整理」から呼ばれる）──
 // 既にページとして存在する話題タイトル全体を対象に、表記ゆれ・粒度違いで
@@ -403,6 +408,21 @@ export type SourceTopicStageDeps = {
     triggerSourceId: string,
     mode: "create" | "update" | "migrate",
   ) => void;
+  /**
+   * 資料の見取り図を 1 回作る（窓が複数のときだけ呼ぶ。先頭の窓だけを渡す）。
+   * 失敗・null を返しても処理は止めず、見取り図なしで窓ごとの振り分け・改訂を続ける。
+   * 未指定なら見取り図を作らない（テストでの省略を許すため）。
+   */
+  surveySource?: (
+    source: { title: string; text: string },
+    language: string,
+    model?: string,
+    signal?: AbortSignal,
+  ) => Promise<string | null>;
+  /** 中断シグナル。窓ループの合間（次の窓に入る前）で見る。未指定なら中断しない */
+  signal?: AbortSignal;
+  /** 窓ごとの進捗通知（資料が複数窓に分かれたときだけ呼ぶ） */
+  onWindowProgress?: (p: { sourceId: string; windowIndex: number; windowTotal: number }) => void;
   log?: (...args: unknown[]) => void;
 };
 
@@ -459,146 +479,396 @@ export async function runSourceTopicStage(
   const existingTopicRefs = [...deps.existingTopicRefs];
 
   for (const source of sources) {
-    let route: { update: string[]; create: string[] };
-    try {
-      const existingForRouter: TopicRouteExistingRef[] = existingTopicRefs.map((t) => ({
-        id: t.id,
-        title: t.title,
-        oneLiner: t.oneLiner,
-        ...(t.kind === "answer" ? { kind: "answer" as const } : {}),
-      }));
-      route = await routeTopicsForSource(
-        { id: source.id, title: source.title, text: source.text },
-        existingForRouter,
-        deps.locale,
-        source.model,
-      );
-    } catch (err) {
-      result.failed++;
-      log("資料の振り分け(route-topics)に失敗:", source.id, err);
-      continue;
-    }
+    const windows = splitIntoWindows(source.text);
 
-    // ルーターの結果に加え、今回の資料を既に引用済みの新形式トピックは必ず改訂対象に
-    // 含める（和集合。ルーターは資料 1 本ずつしか見ないため、既存の引用が古くなっても
-    // 拾わないことがある — LLM の判断任せにせず機械的に見つける）。
-    const previouslyCitedIds = new Set(
-      existingTopicRefs.filter((t) => t.sourceIds?.includes(source.id)).map((t) => t.id),
-    );
-    const updateIds = [...new Set([...route.update, ...previouslyCitedIds])];
-
-    for (const topicId of updateIds) {
+    if (windows.length === 1) {
+      // 窓 1 枚（資料が窓 1 枚に収まる）: 従来通り全文で振り分け 1 回・改訂 1 回。
+      let route: { update: string[]; create: string[] };
       try {
-        const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
-        if (!topicDoc?.wikiMeta || (topicDoc.wikiMeta.kind !== "topic" && topicDoc.wikiMeta.kind !== "answer")) {
-          log("話題の改訂をスキップ: ドキュメントが見つからない", topicId);
-          result.failed++;
-          continue;
-        }
+        const existingForRouter: TopicRouteExistingRef[] = existingTopicRefs.map((t) => ({
+          id: t.id,
+          title: t.title,
+          oneLiner: t.oneLiner,
+          ...(t.kind === "answer" ? { kind: "answer" as const } : {}),
+        }));
+        route = await routeTopicsForSource(
+          { id: source.id, title: source.title, text: source.text },
+          existingForRouter,
+          deps.locale,
+          source.model,
+        );
+      } catch (err) {
+        result.failed++;
+        log("資料の振り分け(route-topics)に失敗:", source.id, err);
+        continue;
+      }
 
-        if (typeof topicDoc.wikiMeta.topicMarkdown === "string") {
-          // 新形式: 前の本文 + 今回の資料全文で改訂する。
-          const currentBody = topicDoc.wikiMeta.topicMarkdown;
-          const isAnswer = topicDoc.wikiMeta.kind === "answer";
+      // ルーターの結果に加え、今回の資料を既に引用済みの新形式トピックは必ず改訂対象に
+      // 含める（和集合。ルーターは資料 1 本ずつしか見ないため、既存の引用が古くなっても
+      // 拾わないことがある — LLM の判断任せにせず機械的に見つける）。
+      const previouslyCitedIds = new Set(
+        existingTopicRefs.filter((t) => t.sourceIds?.includes(source.id)).map((t) => t.id),
+      );
+      const updateIds = [...new Set([...route.update, ...previouslyCitedIds])];
+
+      for (const topicId of updateIds) {
+        try {
+          const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
+          if (!topicDoc?.wikiMeta || (topicDoc.wikiMeta.kind !== "topic" && topicDoc.wikiMeta.kind !== "answer")) {
+            log("話題の改訂をスキップ: ドキュメントが見つからない", topicId);
+            result.failed++;
+            continue;
+          }
+
+          if (typeof topicDoc.wikiMeta.topicMarkdown === "string") {
+            // 新形式: 前の本文 + 今回の資料全文で改訂する。
+            const currentBody = topicDoc.wikiMeta.topicMarkdown;
+            const isAnswer = topicDoc.wikiMeta.kind === "answer";
+            const revisedBody = await reviseTopicFromSource(
+              topicDoc.title,
+              currentBody,
+              { id: source.id, title: source.title, text: source.text },
+              deps.locale,
+              source.model,
+              previouslyCitedIds.has(topicId),
+              isAnswer,
+            );
+            if (!revisedBody) {
+              result.failed++;
+              continue;
+            }
+            const priorIds = (topicDoc.wikiMeta.derivedFromNotes ?? []).filter((id) => id !== source.id);
+            const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
+            // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
+            const rewritten = rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, source.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind);
+            await deps.handleSaveWikiFile(topicId, rewritten, {
+              activityType: "wiki_cross_update",
+              sources: sourceRefs.map((r) => r.id),
+            });
+            deps.onTopicSaved?.(topicId, rewritten, source.id, "update");
+            result.updated++;
+            result.touchedTopicIds.push(topicId);
+          } else {
+            // 旧形式（知見由来。topicMarkdown を持たない）: 触れたら新方式へ移行する。
+            // メンバー知見それぞれの derivedFromNotes から資料 id を集め、空の本文から
+            // 資料を 1 本ずつ順に改訂して組み直し、最後に今回の資料を足す。
+            const memberClaimIds = topicDoc.wikiMeta.derivedFromClaims ?? [];
+            const collectedSourceIds = new Set<string>();
+            for (const claimId of memberClaimIds) {
+              const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
+              for (const sid of claimDoc?.wikiMeta?.derivedFromNotes ?? []) collectedSourceIds.add(sid);
+            }
+            collectedSourceIds.delete(source.id);
+            const migrateResult = await rebuildTopicFromSources(
+              topicId,
+              [...collectedSourceIds, source.id],
+              {
+                loadDoc: deps.loadDoc,
+                getCachedDoc: deps.getCachedDoc,
+                handleSaveWikiFile: deps.handleSaveWikiFile,
+                resolveSource: async (id) =>
+                  id === source.id ? { title: source.title, text: source.text } : deps.resolveSource(id),
+                noteIndex: deps.noteIndex,
+                locale: deps.locale,
+                model: source.model,
+                log: deps.log,
+              },
+            );
+            result.migratedSourcesSkipped += migrateResult.sourcesSkipped;
+            if (migrateResult.rebuilt && migrateResult.doc) {
+              deps.onTopicSaved?.(topicId, migrateResult.doc, source.id, "migrate");
+              result.migrated++;
+              result.updated++;
+              result.touchedTopicIds.push(topicId);
+            } else {
+              result.failed++;
+            }
+          }
+        } catch (err) {
+          result.failed++;
+          log("話題の改訂に失敗:", topicId, err);
+        }
+      }
+
+      for (const name of route.create) {
+        try {
           const revisedBody = await reviseTopicFromSource(
-            topicDoc.title,
-            currentBody,
+            name,
+            "",
             { id: source.id, title: source.title, text: source.text },
             deps.locale,
             source.model,
-            previouslyCitedIds.has(topicId),
-            isAnswer,
           );
           if (!revisedBody) {
             result.failed++;
             continue;
           }
-          const priorIds = (topicDoc.wikiMeta.derivedFromNotes ?? []).filter((id) => id !== source.id);
-          const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
-          // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
-          const rewritten = rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, source.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind);
-          await deps.handleSaveWikiFile(topicId, rewritten, {
-            activityType: "wiki_cross_update",
-            sources: sourceRefs.map((r) => r.id),
-          });
-          deps.onTopicSaved?.(topicId, rewritten, source.id, "update");
-          result.updated++;
-          result.touchedTopicIds.push(topicId);
-        } else {
-          // 旧形式（知見由来。topicMarkdown を持たない）: 触れたら新方式へ移行する。
-          // メンバー知見それぞれの derivedFromNotes から資料 id を集め、空の本文から
-          // 資料を 1 本ずつ順に改訂して組み直し、最後に今回の資料を足す。
-          const memberClaimIds = topicDoc.wikiMeta.derivedFromClaims ?? [];
-          const collectedSourceIds = new Set<string>();
-          for (const claimId of memberClaimIds) {
-            const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
-            for (const sid of claimDoc?.wikiMeta?.derivedFromNotes ?? []) collectedSourceIds.add(sid);
-          }
-          collectedSourceIds.delete(source.id);
-          const migrateResult = await rebuildTopicFromSources(
-            topicId,
-            [...collectedSourceIds, source.id],
-            {
-              loadDoc: deps.loadDoc,
-              getCachedDoc: deps.getCachedDoc,
-              handleSaveWikiFile: deps.handleSaveWikiFile,
-              resolveSource: async (id) =>
-                id === source.id ? { title: source.title, text: source.text } : deps.resolveSource(id),
-              noteIndex: deps.noteIndex,
-              locale: deps.locale,
-              model: source.model,
-              log: deps.log,
-            },
+          const newDoc = buildSourceTopicDocument(
+            name,
+            revisedBody,
+            [{ id: source.id, title: source.title }],
+            source.model ?? null,
+            deps.noteIndex,
+            deps.locale,
           );
-          result.migratedSourcesSkipped += migrateResult.sourcesSkipped;
-          if (migrateResult.rebuilt && migrateResult.doc) {
-            deps.onTopicSaved?.(topicId, migrateResult.doc, source.id, "migrate");
-            result.migrated++;
-            result.updated++;
-            result.touchedTopicIds.push(topicId);
-          } else {
-            result.failed++;
-          }
+          const topicId = await deps.handleCreateWikiFile(newDoc, {
+            activityType: "wiki_ingest",
+            sources: [source.id],
+          });
+          deps.onTopicSaved?.(topicId, newDoc, source.id, "create");
+          existingTopicRefs.push({ id: topicId, title: name });
+          result.createdTopics.push({ id: topicId, title: name });
+          result.created++;
+          result.touchedTopicIds.push(topicId);
+        } catch (err) {
+          result.failed++;
+          log("話題の新規作成に失敗:", name, err);
         }
+      }
+      continue;
+    }
+
+    // 窓が複数: 見取り図を 1 回作る（先頭の窓だけ）→ 窓ごとに振り分け・改訂（in-memory）
+    // → すべての窓が終わったら（中断された場合も含め）触れたトピックごとに 1 回だけ保存する。
+    let survey: string | null = null;
+    if (deps.surveySource) {
+      try {
+        survey = await deps.surveySource(
+          { title: source.title, text: windows[0].text },
+          deps.locale,
+          source.model,
+          deps.signal,
+        );
+        if (!survey) log("見取り図が作れなかった（見取り図なしで続行）:", source.id);
       } catch (err) {
-        result.failed++;
-        log("話題の改訂に失敗:", topicId, err);
+        log("見取り図の作成に失敗（見取り図なしで続行）:", source.id, err);
       }
     }
 
-    for (const name of route.create) {
+    // ルーターの結果に加え、今回の資料を既に引用済みの新形式トピックは必ず改訂対象に含める
+    // （1 枚目の窓に限る。decision 4: 2 枚目以降の窓では previouslyCited を立てないため、
+    // ここで足すのも 1 枚目の窓の処理でだけ）。
+    const previouslyCitedIds = new Set(
+      existingTopicRefs.filter((t) => t.sourceIds?.includes(source.id)).map((t) => t.id),
+    );
+
+    // この資料の処理中の in-memory 状態。窓をまたいで本文を積み上げ、最後にまとめて保存する
+    // （rebuildTopicFromSources と同じ「途中は in-memory、最後に保存」の型）。
+    type WindowTopicState = { body: string; persistedBody: string | null; priorDoc: GraphiumDocument };
+    const touched = new Map<string, WindowTopicState>();
+    // この資料の処理中に新規作成したトピック名 → topicId（同じ窓ループ内で二重作成しないため）。
+    const createdNames = new Map<string, string>();
+    // 旧形式から移行済みの topicId（rebuildTopicFromSources が資料全文で即保存するため、
+    // この資料の残りの窓では触らない）。
+    const migratedIds = new Set<string>();
+
+    for (const win of windows) {
+      if (deps.signal?.aborted) break;
+      deps.onWindowProgress?.({ sourceId: source.id, windowIndex: win.index, windowTotal: windows.length });
+
+      const windowText = survey
+        ? buildWindowTextWithSurvey(survey, win.index, windows.length, win.text, deps.locale)
+        : win.text;
+
+      let route: { update: string[]; create: string[] };
       try {
-        const revisedBody = await reviseTopicFromSource(
-          name,
-          "",
-          { id: source.id, title: source.title, text: source.text },
+        const existingForRouter: TopicRouteExistingRef[] = existingTopicRefs.map((t) => ({
+          id: t.id,
+          title: t.title,
+          oneLiner: t.oneLiner,
+          ...(t.kind === "answer" ? { kind: "answer" as const } : {}),
+        }));
+        route = await routeTopicsForSource(
+          { id: source.id, title: source.title, text: windowText },
+          existingForRouter,
           deps.locale,
           source.model,
+          deps.signal,
         );
-        if (!revisedBody) {
+      } catch (err) {
+        // ユーザーの停止は失敗ではない（取り込みキューと同じ扱い）。その窓で打ち切り、
+        // ここまでに改訂した本文は下の保存へ進む。
+        if (isAbortError(err) || deps.signal?.aborted) break;
+        result.failed++;
+        log("資料の振り分け(route-topics)に失敗:", source.id, "窓", win.index, err);
+        continue;
+      }
+
+      const existingIds = new Set(existingTopicRefs.map((t) => t.id));
+      const updateIds = new Set(route.update.filter((id) => existingIds.has(id)));
+      if (win.index === 0) {
+        for (const id of previouslyCitedIds) updateIds.add(id);
+      }
+
+      for (const topicId of updateIds) {
+        if (migratedIds.has(topicId)) continue;
+        try {
+          const state = touched.get(topicId);
+          const topicDoc = state?.priorDoc ?? deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
+          if (!topicDoc?.wikiMeta || (topicDoc.wikiMeta.kind !== "topic" && topicDoc.wikiMeta.kind !== "answer")) {
+            log("話題の改訂をスキップ: ドキュメントが見つからない", topicId);
+            result.failed++;
+            continue;
+          }
+
+          if (typeof topicDoc.wikiMeta.topicMarkdown !== "string") {
+            // 旧形式: 移行は資料全文（窓分割は rebuildTopicFromSources 側が担う）で行う。
+            const memberClaimIds = topicDoc.wikiMeta.derivedFromClaims ?? [];
+            const collectedSourceIds = new Set<string>();
+            for (const claimId of memberClaimIds) {
+              const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
+              for (const sid of claimDoc?.wikiMeta?.derivedFromNotes ?? []) collectedSourceIds.add(sid);
+            }
+            collectedSourceIds.delete(source.id);
+            const migrateResult = await rebuildTopicFromSources(
+              topicId,
+              [...collectedSourceIds, source.id],
+              {
+                loadDoc: deps.loadDoc,
+                getCachedDoc: deps.getCachedDoc,
+                handleSaveWikiFile: deps.handleSaveWikiFile,
+                resolveSource: async (id) =>
+                  id === source.id ? { title: source.title, text: source.text } : deps.resolveSource(id),
+                surveySource: deps.surveySource,
+                noteIndex: deps.noteIndex,
+                locale: deps.locale,
+                model: source.model,
+                log: deps.log,
+                signal: deps.signal,
+              },
+            );
+            result.migratedSourcesSkipped += migrateResult.sourcesSkipped;
+            migratedIds.add(topicId);
+            if (migrateResult.rebuilt && migrateResult.doc) {
+              deps.onTopicSaved?.(topicId, migrateResult.doc, source.id, "migrate");
+              result.migrated++;
+              result.updated++;
+              result.touchedTopicIds.push(topicId);
+            } else {
+              result.failed++;
+            }
+            continue;
+          }
+
+          const isFirstTouch = !state;
+          const currentBody = state?.body ?? topicDoc.wikiMeta.topicMarkdown;
+          const previouslyCited = win.index === 0 && isFirstTouch && previouslyCitedIds.has(topicId);
+          const revisedBody = await reviseTopicFromSource(
+            topicDoc.title,
+            currentBody,
+            { id: source.id, title: source.title, text: windowText },
+            deps.locale,
+            source.model,
+            previouslyCited,
+            topicDoc.wikiMeta.kind === "answer",
+            deps.signal,
+          );
+          if (!revisedBody) {
+            // 停止で改訂が返らなかった場合は失敗に数えない。
+            if (deps.signal?.aborted) break;
+            result.failed++;
+            continue;
+          }
+          touched.set(topicId, {
+            body: revisedBody,
+            persistedBody: state?.persistedBody ?? null,
+            priorDoc: topicDoc,
+          });
+          if (isFirstTouch) result.touchedTopicIds.push(topicId);
+        } catch (err) {
+          if (isAbortError(err) || deps.signal?.aborted) break;
           result.failed++;
-          continue;
+          log("話題の改訂に失敗:", topicId, err);
         }
-        const newDoc = buildSourceTopicDocument(
-          name,
-          revisedBody,
-          [{ id: source.id, title: source.title }],
-          source.model ?? null,
-          deps.noteIndex,
-          deps.locale,
-        );
-        const topicId = await deps.handleCreateWikiFile(newDoc, {
-          activityType: "wiki_ingest",
-          sources: [source.id],
+      }
+
+      for (const name of route.create) {
+        try {
+          const existingId = createdNames.get(name);
+          if (existingId) {
+            // この資料の処理中に既に同名で作成済み: 通常の改訂として扱う（in-memory 更新）。
+            const state = touched.get(existingId);
+            const revisedBody = await reviseTopicFromSource(
+              name,
+              state?.body ?? "",
+              { id: source.id, title: source.title, text: windowText },
+              deps.locale,
+              source.model,
+              false,
+              false,
+              deps.signal,
+            );
+            if (revisedBody && state) {
+              touched.set(existingId, { ...state, body: revisedBody });
+            } else if (!revisedBody && !deps.signal?.aborted) {
+              result.failed++;
+            }
+            continue;
+          }
+
+          // 初めて: 空本文から改訂して新規作成する（既存の作成経路）。
+          const revisedBody = await reviseTopicFromSource(
+            name,
+            "",
+            { id: source.id, title: source.title, text: windowText },
+            deps.locale,
+            source.model,
+            undefined,
+            undefined,
+            deps.signal,
+          );
+          if (!revisedBody) {
+            // 停止で改訂が返らなかった場合は失敗に数えない。
+            if (deps.signal?.aborted) break;
+            result.failed++;
+            continue;
+          }
+          const newDoc = buildSourceTopicDocument(
+            name,
+            revisedBody,
+            [{ id: source.id, title: source.title }],
+            source.model ?? null,
+            deps.noteIndex,
+            deps.locale,
+          );
+          const topicId = await deps.handleCreateWikiFile(newDoc, {
+            activityType: "wiki_ingest",
+            sources: [source.id],
+          });
+          deps.onTopicSaved?.(topicId, newDoc, source.id, "create");
+          existingTopicRefs.push({ id: topicId, title: name });
+          createdNames.set(name, topicId);
+          touched.set(topicId, { body: revisedBody, persistedBody: revisedBody, priorDoc: newDoc });
+          result.createdTopics.push({ id: topicId, title: name });
+          result.created++;
+          result.touchedTopicIds.push(topicId);
+        } catch (err) {
+          if (isAbortError(err) || deps.signal?.aborted) break;
+          result.failed++;
+          log("話題の新規作成に失敗:", name, err);
+        }
+      }
+    }
+
+    // すべての窓（または中断まで）が終わったら、本文が変化したトピックだけ 1 回保存する
+    // （新規作成のみで以後触れていないトピックは、作成時に既に保存済みなのでここでは保存しない）。
+    const createdIds = new Set(createdNames.values());
+    for (const [topicId, state] of touched) {
+      if (state.body === state.persistedBody) continue;
+      try {
+        const priorIds = (state.priorDoc.wikiMeta?.derivedFromNotes ?? []).filter((id) => id !== source.id);
+        const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
+        // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
+        const rewritten = rebuildSourceBackedWikiDocument(state.priorDoc, state.body, sourceRefs, source.model ?? null, deps.noteIndex, state.priorDoc.wikiMeta?.kind ?? "topic");
+        await deps.handleSaveWikiFile(topicId, rewritten, {
+          activityType: "wiki_cross_update",
+          sources: sourceRefs.map((r) => r.id),
         });
-        deps.onTopicSaved?.(topicId, newDoc, source.id, "create");
-        existingTopicRefs.push({ id: topicId, title: name });
-        result.createdTopics.push({ id: topicId, title: name });
-        result.created++;
-        result.touchedTopicIds.push(topicId);
+        deps.onTopicSaved?.(topicId, rewritten, source.id, "update");
+        if (!createdIds.has(topicId)) result.updated++;
       } catch (err) {
         result.failed++;
-        log("話題の新規作成に失敗:", name, err);
+        log("話題の改訂保存に失敗:", topicId, err);
       }
     }
   }
@@ -639,15 +909,25 @@ export type RebuildTopicFromSourcesDeps = {
   noteIndex?: NoteIndex;
   locale: string;
   model?: string;
+  /** 資料の見取り図を作る（資料が複数窓に分かれたときだけ呼ぶ）。未指定なら見取り図なしで続行する */
+  surveySource?: (
+    source: { title: string; text: string },
+    language: string,
+    model?: string,
+    signal?: AbortSignal,
+  ) => Promise<string | null>;
+  /** 中断シグナル。資料ごと・窓ごとのループの合間で見る */
+  signal?: AbortSignal;
   log?: (...args: unknown[]) => void;
 };
 
 /**
  * 既存の話題ページを、渡された資料 id の列から新形式で作り直す。空の本文から資料を
  * 1 本ずつ順に改訂して組み直す（Karpathy の incremental revision と同じ手順）。
+ * 資料 1 本が窓 4,000 字を超える場合は splitIntoWindows で窓に分け、窓ごとに改訂を重ねる
+ * （見取り図は資料ごとに 1 回。窓 1 枚に収まる資料は従来通り全文で改訂 1 回）。
  * 旧形式トピックの「触れたら移行」（runSourceTopicStage）・手動再生成・手入れ画面の
  * 「資料から作り直す」（作業 C）が共通してこの関数を使う。
- * answer（回答ページ）もトピックと同じ規則で組み直せる（kind は維持する）。
  */
 export async function rebuildTopicFromSources(
   topicId: string,
@@ -667,30 +947,56 @@ export async function rebuildTopicFromSources(
   let body = "";
   const usedRefs: TopicSourceRef[] = [];
   let skipped = 0;
+  let stoppedByAbort = false;
 
   for (const sourceId of uniqueIds) {
+    if (stoppedByAbort || deps.signal?.aborted) break;
     const resolved = await deps.resolveSource(sourceId);
     if (!resolved) {
       skipped++;
       log("資料本文が取得できず飛ばした:", sourceId);
       continue;
     }
-    const revised = await reviseTopicFromSource(
-      topicDoc.title,
-      body,
-      { id: sourceId, title: resolved.title, text: resolved.text },
-      deps.locale,
-      deps.model,
-      undefined,
-      isAnswer,
-    );
-    if (!revised) {
-      skipped++;
-      log("トピック改訂に失敗し飛ばした:", sourceId);
-      continue;
+
+    const windows = splitIntoWindows(resolved.text);
+    let survey: string | null = null;
+    if (windows.length > 1 && deps.surveySource) {
+      try {
+        survey = await deps.surveySource({ title: resolved.title, text: windows[0].text }, deps.locale, deps.model, deps.signal);
+        if (!survey) log("見取り図が作れなかった（見取り図なしで続行）:", sourceId);
+      } catch (err) {
+        log("見取り図の作成に失敗（見取り図なしで続行）:", sourceId, err);
+      }
     }
-    body = revised;
-    usedRefs.push({ id: sourceId, title: resolved.title });
+
+    let usedThisSource = false;
+    for (const win of windows) {
+      if (deps.signal?.aborted) { stoppedByAbort = true; break; }
+      const windowText = windows.length > 1 && survey
+        ? buildWindowTextWithSurvey(survey, win.index, windows.length, win.text, deps.locale)
+        : win.text;
+      const revised = await reviseTopicFromSource(
+        topicDoc.title,
+        body,
+        { id: sourceId, title: resolved.title, text: windowText },
+        deps.locale,
+        deps.model,
+        undefined,
+        isAnswer,
+        deps.signal,
+      );
+      if (!revised) {
+        log("トピック改訂に失敗し飛ばした:", sourceId, "窓", win.index);
+        continue;
+      }
+      body = revised;
+      usedThisSource = true;
+    }
+    if (usedThisSource) {
+      usedRefs.push({ id: sourceId, title: resolved.title });
+    } else {
+      skipped++;
+    }
   }
 
   if (usedRefs.length === 0) {
@@ -727,18 +1033,27 @@ export type TopicRebuildPlan = {
   items: TopicRebuildPlanItem[];
   /** 資料が 1 件以上見つかり、実際に作り直せるトピック数 */
   topicCount: number;
-  /** 合計 AI 呼び出し回数（rebuildTopicFromSources は資料 1 本につき改訂 1 回） */
+  /**
+   * 合計 AI 呼び出し回数の下限見積り（資料 1 本につき改訂 1 回として計算）。
+   * 実際の rebuildTopicFromSources は資料が窓分割対象（4,000 字超）なら
+   * 見取り図 1 回＋窓ごとの改訂を行うため、資料の実文字数はここでは分からず
+   * 実際の呼び出し回数はこれより多くなりうる。呼び出し側（確認ダイアログ）は
+   * この数を「少なくとも N 回」として提示すること。
+   */
   totalCalls: number;
 };
 
 /**
  * 「資料から作り直す」の実行前に、対象トピックそれぞれの資料 id 列と、
- * 合計 AI 呼び出し回数を計算する副作用なしの純粋関数。
+ * 合計 AI 呼び出し回数の下限見積りを計算する副作用なしの純粋関数。
+ * 資料の実文字数を読まずに数えるため、窓分割対象の資料（4,000 字超）が
+ * 混ざっていても呼び出し回数を実測せず、常に資料 1 本＝1 回として数える
+ * （実測するには resolveSource で全文を読む必要があり、確認ダイアログを
+ * 出す前に PDF 抽出・URL 再取得まで走らせることになるため見送っている）。
  * 新形式（topicMarkdown を持つ）は derivedFromNotes をそのまま資料とみなし、
  * 旧形式はメンバー知見（derivedFromClaims）の derivedFromNotes の和を資料とみなす
  * （重複除去）。getDoc はメンバー知見のドキュメント解決だけに使う（呼び出し側が
  * キャッシュ／ロードのどちらでも注入できるよう同期・非同期どちらの戻りも許す）。
- * answer（回答ページ）は旧形式を持たないため常に topicMarkdown 分岐に入る。
  */
 export async function planTopicRebuild(
   topics: TopicRebuildTarget[],

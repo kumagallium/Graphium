@@ -143,7 +143,7 @@ Citing itself calls no AI — it just links existing entries. AI features like t
 
 ## @-mentions of materials
 
-Type `@` in a note and the mention menu lists notes to link — plus a **Document materials** group with your PDFs and Word files. Mentioning a material inserts an @-link and registers the document as cited by the note, which means the Composer and AI chat can read its text (a PDF up to its first 80,000 characters) and your highlight memos when answering questions about that note. (Choosing **Link** in the media picker does the same thing.)
+Type `@` in a note and the mention menu lists notes to link — plus a **Document materials** group with your PDFs and Word files. Mentioning a material inserts an @-link and registers the document as cited by the note, which means the Composer and AI chat can read its text (as much of it as the chat's context budget allows) and your highlight memos when answering questions about that note. (Choosing **Link** in the media picker does the same thing.)
 
 The mention is a plain link — no AI runs until you actually ask something.
 

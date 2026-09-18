@@ -4,7 +4,7 @@
 
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
-import { extractPdfText } from "../wiki/pdf-text-extractor";
+import { extractPdfText, capForSingleCall } from "../wiki/pdf-text-extractor";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
 import type { ProvVocabulary } from "./label-vocabulary";
@@ -66,11 +66,12 @@ export async function ingestPdfToProv(
       ? fallbackTitle
       : extracted.title || fallbackTitle;
 
+  // /api/prov/ingest-pdf は 1 回の呼び出しで全文を渡す経路なので上限を掛ける。
   const res = await fetch(`${apiBase()}/prov/ingest-pdf`, {
     method: "POST",
     headers: provHeaders(),
     body: JSON.stringify({
-      text: extracted.text,
+      text: capForSingleCall(extracted.text, extracted.pageCount),
       title,
       language,
       ...(vocabulary ? { vocabulary } : {}),

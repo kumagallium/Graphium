@@ -2217,6 +2217,8 @@ export const en: Record<string, string> = {
   "ingest.contradictions": "{count} contradiction(s)",
   // Topic stage — after ingesting claims, assign them to topics and rewrite topic bodies
   "ingest.topicsUpdating": "Updating topics ({count})",
+  // Long sources (over 4,000 chars) are read window by window; per-window progress overwrites topicsUpdating
+  "ingest.topicsWindowProgress": "Source {sourceIndex}/{sourceTotal} · window {windowIndex}/{windowTotal}",
   "ingest.topicsDone": "Topics: {created} created, {updated} updated",
   "ingest.topicsFailed": "{count} topics could not be rewritten",
   "ingest.topicsMigrated": "{count} moved to the new source-based format",
@@ -2588,7 +2590,7 @@ export const en: Record<string, string> = {
   "settings.maintenance.reembedRunning": "Re-embedding…",
   "settings.maintenance.reembedRun": "Re-embed {count} Knowledge page(s)",
   "settings.maintenance.reembedStale": "The embedding model looks different from the one the index was built with. Rebuilding restores duplicate detection and cross-search.",
-  "topicRebuild.confirm": "Rebuild {count} topic page(s) from their sources? This uses {calls} AI call(s) (unreadable sources are skipped). Continue?",
+  "topicRebuild.confirm": "Rebuild {count} topic page(s) from their sources? This uses at least {calls} AI call(s) (long sources are read in windows, so the actual count can be higher; unreadable sources are skipped). Continue?",
   "settings.maintenance.organizeTopics.title": "Organize topics",
   "settings.maintenance.organizeTopics.help": "Consolidates similar existing topics and rewrites the topic pages.",
   "settings.maintenance.organizeTopics.done": "Done. {merged} merged, {rebuilt} rewritten",

@@ -63,6 +63,9 @@ import {
   buildTopicMergerSystemPrompt,
   buildTopicMergerUserMessage,
   parseTopicMergerOutput,
+  buildSourceSurveySystemPrompt,
+  buildSourceSurveyUserMessage,
+  parseSourceSurveyOutput,
 } from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -531,6 +534,58 @@ app.post("/revise-topic", async (c) => {
     });
   } catch (err) {
     console.error("Wiki revise-topic error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 資料の見取り図を作る（窓分割で読むとき、資料冒頭の窓 1 枚だけから 1 回だけ生成する）。
+//   /revise-topic と同じ作り。maxSteps 1・モデル未登録は同じ degrade。
+app.post("/survey-source", async (c) => {
+  const body = await c.req.json<{
+    title: string;
+    text: string;
+    language?: string;
+    model?: string;
+  }>();
+
+  if (!body.title || typeof body.text !== "string" || !body.text.trim()) {
+    return c.json({ error: "title and text are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildSourceSurveySystemPrompt(body.language || "en");
+  const userMessage = buildSourceSurveyUserMessage(body.title, body.text);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.survey-source",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseSourceSurveyOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse source survey output" }, 500);
+    }
+
+    return c.json({
+      survey: parsed.survey,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki survey-source error:", err);
     return c.json(errorBody(err), 500);
   }
 });

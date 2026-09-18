@@ -1147,7 +1147,7 @@ export async function ingestFromPdf(
    *  だけ行い、/api/wiki/ingest は呼ばない。 */
   extractClaims: boolean = true,
 ): Promise<IngestResult & { pageCount: number; sourceText: string; sourceTitle: string }> {
-  const { extractPdfText } = await import("./pdf-text-extractor");
+  const { extractPdfText, capForSingleCall } = await import("./pdf-text-extractor");
   const extracted = await extractPdfText(blob);
 
   if (!extracted.text || extracted.text.length < 50) {
@@ -1171,7 +1171,9 @@ export async function ingestFromPdf(
     language === "ja"
       ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
       : `[Output language: ${language}]`;
-  const noteContent = `${languageHint}\n\n${extracted.text}`;
+  // /api/wiki/ingest は 1 回の呼び出しで全文を渡す経路なので上限を掛ける。
+  // 返す sourceText は全文のまま（トピック段は窓に分けて読むため上限を経由しない）。
+  const noteContent = `${languageHint}\n\n${capForSingleCall(extracted.text, extracted.pageCount)}`;
 
   if (!extractClaims) {
     return {
@@ -2484,6 +2486,40 @@ export function rebuildSourceTopicDocument(
   return rebuildSourceBackedWikiDocument(existingDoc, markdown, sources, model, noteIndex, "topic");
 }
 
+/**
+ * 資料の冒頭の窓 1 枚だけをサーバー（/api/wiki/survey-source）へ渡し、見取り図（短い要約）を
+ * 作らせる。窓分割で読む資料（複数窓）のときだけ、窓ごとの振り分け・改訂の前に 1 回呼ぶ。
+ * 失敗時（パース不能・LLM/ネットワークエラー）は null を返す — 呼び出し側は
+ * 「見取り図なしで続行」を選べる（reviseTopicFromSource と同じ fail-open の方針）。
+ */
+export async function surveySourceForWindows(
+  source: { title: string; text: string },
+  language: string,
+  model?: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/survey-source`, {
+      method: "POST",
+      headers: wikiHeaders(),
+      body: JSON.stringify({
+        title: source.title, text: source.text, language,
+        ...(model ? { model } : {}),
+      }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) {
+      console.warn("surveySourceForWindows failed:", await aiErrorFromResponse(res, `survey-source failed (${res.status})`));
+      return null;
+    }
+    const data = await res.json() as { survey?: string };
+    return typeof data.survey === "string" && data.survey.trim() ? data.survey : null;
+  } catch (err) {
+    console.warn("surveySourceForWindows failed:", err);
+    return null;
+  }
+}
+
 /** route-topics API に渡す資料 1 本分（本文は全文でよい。長さの上限は置かない） */
 export type TopicRouteSource = { id: string; title: string; text: string };
 
@@ -2503,11 +2539,13 @@ export async function routeTopicsForSource(
   existingTopics: TopicRouteExistingRef[],
   language: string,
   model?: string,
+  signal?: AbortSignal,
 ): Promise<{ update: string[]; create: string[] }> {
   const res = await fetch(`${API_BASE}/route-topics`, {
     method: "POST",
     headers: wikiHeaders(),
     body: JSON.stringify({ language, source, existingTopics, ...(model ? { model } : {}) }),
+    ...(signal ? { signal } : {}),
   });
   if (!res.ok) {
     throw await aiErrorFromResponse(res, `route-topics failed (${res.status})`);
@@ -2534,6 +2572,7 @@ export async function reviseTopicFromSource(
   previouslyCited?: boolean,
   /** このページが回答ページ（answer）か。true のとき「問いに答え続ける」規則を追加する */
   isAnswer?: boolean,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/revise-topic`, {
@@ -2545,6 +2584,7 @@ export async function reviseTopicFromSource(
         ...(previouslyCited ? { previouslyCited } : {}),
         ...(isAnswer ? { isAnswer } : {}),
       }),
+      ...(signal ? { signal } : {}),
     });
     if (!res.ok) {
       console.warn("reviseTopicFromSource failed:", await aiErrorFromResponse(res, `revise-topic failed (${res.status})`));

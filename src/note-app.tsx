@@ -332,6 +332,7 @@ import {
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
   buildSourceBackedWikiDocument,
+  surveySourceForWindows,
 } from "./features/wiki";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
@@ -9079,7 +9080,15 @@ export function NoteApp() {
   // 共通ラッパー。同じキュー（topicStageQueueRef）で直列化する
   // ── 両方が同じ「既存話題スナップショットの古さ」問題を持つため。
   const runSourceTopicStageForNoteApp = useCallback(
-    (sources: SourceTopicStageInput[]) => {
+    (
+      sources: SourceTopicStageInput[],
+      options?: {
+        /** 取り込みの中断シグナル。窓ループの合間で見る（既存の呼び出し側は省略可） */
+        signal?: AbortSignal;
+        /** 窓ごとの進捗通知（資料が複数窓に分かれたときだけ呼ばれる） */
+        onWindowProgress?: (p: { sourceId: string; windowIndex: number; windowTotal: number }) => void;
+      },
+    ) => {
       const run = topicStageQueueRef.current.then(async () => {
         // sourceIds（新形式トピックの derivedFromNotes）はキャッシュ済みドキュメントから
         // 拾えるものだけ入れる（oneLiner と同じ理由 — 未ロードの話題を強制ロードしない）。
@@ -9149,6 +9158,11 @@ export function NoteApp() {
               wikiLog.append("cross-update", [topicId], `Updated topic "${doc.title}" with source "${sourceTitle}"`).catch(() => {});
             }
           },
+          // 長い資料（窓が複数）だけ見取り図を作る。失敗しても runSourceTopicStage 側が
+          // 見取り図なしで続行するので、ここでは null を返すだけでよい。
+          surveySource: (source, locale, model, signal) => surveySourceForWindows(source, locale, model, signal),
+          signal: options?.signal,
+          onWindowProgress: options?.onWindowProgress,
           log: (...args: unknown[]) => console.warn(...args),
         });
         for (const r of result.createdTopics) knownTopicRefsRef.current.set(r.id, r.title);
@@ -9468,7 +9482,25 @@ export function NoteApp() {
       updateStage("topics", "skipped");
     } else {
       updateStage("topics", "running", tStatic("ingest.topicsUpdating", { count: String(sourcesForTopicStage.length) }));
-      const topicResult = await runSourceTopicStageForNoteApp(sourcesForTopicStage);
+      // 長い資料は窓に分けて読む（source-windows.ts）。窓ごとの進捗が来たら
+      // 「資料 2/6・窓 5/32」のようにトーストの detail を上書きする。
+      let topicStageSourceIndex = 0;
+      const topicStageSourceIds = new Set<string>();
+      const topicResult = await runSourceTopicStageForNoteApp(sourcesForTopicStage, {
+        signal,
+        onWindowProgress: ({ sourceId, windowIndex, windowTotal }) => {
+          if (!topicStageSourceIds.has(sourceId)) {
+            topicStageSourceIds.add(sourceId);
+            topicStageSourceIndex++;
+          }
+          updateStage("topics", "running", tStatic("ingest.topicsWindowProgress", {
+            sourceIndex: String(topicStageSourceIndex),
+            sourceTotal: String(sourcesForTopicStage.length),
+            windowIndex: String(windowIndex + 1),
+            windowTotal: String(windowTotal),
+          }));
+        },
+      });
       const { detail: doneDetail, unchecked } = await formatSourceTopicStageDetail(topicResult);
       updateStage("topics", "done", doneDetail);
       pushSourceCheckPrompt(unchecked);
@@ -10571,12 +10603,13 @@ export function NoteApp() {
               const provider = getActiveProvider();
               const blobUrl = await provider.getMediaBlobUrl(fileId);
               const blob = await (await fetch(blobUrl)).blob();
-              const { extractPdfText } = await import("./features/wiki/pdf-text-extractor");
+              const { extractPdfText, capForSingleCall } = await import("./features/wiki/pdf-text-extractor");
               const extracted = await extractPdfText(blob);
               if (extracted.text && extracted.text.length >= 50) {
                 const mediaEntry = fm.mediaIndex?.media?.find((e) => e.fileId === fileId);
                 const pdfTitle = extracted.title || mediaEntry?.name || `PDF ${fileId.slice(0, 8)}`;
-                parts.push({ sourceNoteId: rawId, kind: "pdf", title: pdfTitle, text: extracted.text });
+                // これは 1 回の ingest で全ソースをまとめて渡す経路のため、単発呼び出しの上限を適用する
+                parts.push({ sourceNoteId: rawId, kind: "pdf", title: pdfTitle, text: capForSingleCall(extracted.text, extracted.pageCount) });
               } else {
                 skipped.push(rawId);
               }

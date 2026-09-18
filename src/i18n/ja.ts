@@ -2216,6 +2216,8 @@ export const ja: Record<string, string> = {
   "ingest.contradictions": "矛盾 {count} 件",
   // 話題（topic）段 — 知見の取り込み後、話題への割り当て・本文の書き直しを行う段階
   "ingest.topicsUpdating": "トピックを更新中 ({count})",
+  // 長い資料（窓 4,000 字超）は窓に分けて読む。窓ごとの進捗が来たら topicsUpdating を上書きする
+  "ingest.topicsWindowProgress": "資料 {sourceIndex}/{sourceTotal}・窓 {windowIndex}/{windowTotal}",
   "ingest.topicsDone": "トピック: 作成 {created} 件・更新 {updated} 件",
   "ingest.topicsFailed": "書き直せなかったトピック {count} 件",
   "ingest.topicsMigrated": "新形式へ移行 {count} 件",
@@ -2586,7 +2588,7 @@ export const ja: Record<string, string> = {
   "settings.maintenance.reembedRunning": "作り直し中…",
   "settings.maintenance.reembedRun": "{count} 件のナレッジを作り直す",
   "settings.maintenance.reembedStale": "埋め込みモデルが変わったようです。作り直すと、重複の判定と横断検索が元どおり効きます。",
-  "topicRebuild.confirm": "トピック {count} 件を資料から作り直します。AI の呼び出しは {calls} 回です（資料が読めないものは飛ばします）。実行しますか？",
+  "topicRebuild.confirm": "トピック {count} 件を資料から作り直します。AI の呼び出しは少なくとも {calls} 回です（長い資料は窓に分けて読むため、実際にはさらに増えることがあります。資料が読めないものは飛ばします）。実行しますか？",
   "settings.maintenance.organizeTopics.title": "トピックを整理",
   "settings.maintenance.organizeTopics.help": "似た既存のトピックどうしを統合し、トピックページを書き直します。",
   "settings.maintenance.organizeTopics.done": "完了。統合 {merged} 件・書き直し {rebuilt} 件",

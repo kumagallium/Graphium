@@ -18,6 +18,10 @@ import {
   buildTopicMergerSystemPrompt,
   buildTopicMergerUserMessage,
   parseTopicMergerOutput,
+  buildSourceSurveySystemPrompt,
+  buildSourceSurveyUserMessage,
+  parseSourceSurveyOutput,
+  buildWindowTextWithSurvey,
 } from "./wiki-topic-writer.ts";
 
 describe("parseTopicConsolidatorOutput", () => {
@@ -228,5 +232,78 @@ describe("buildTopicMergerSystemPrompt", () => {
   it("文の決まり（sentence discipline）を共有する", () => {
     const prompt = buildTopicMergerSystemPrompt("ja");
     expect(prompt).toMatch(/Sentence discipline/i);
+  });
+});
+
+describe("parseSourceSurveyOutput", () => {
+  it("素の JSON から survey を取り出す", () => {
+    const text = JSON.stringify({ survey: "この文書は...の論文である。" });
+    expect(parseSourceSurveyOutput(text)).toEqual({ survey: "この文書は...の論文である。" });
+  });
+
+  it("コードフェンス付きでもパースできる", () => {
+    const text = "```json\n" + JSON.stringify({ survey: "見取り図" }) + "\n```";
+    expect(parseSourceSurveyOutput(text)).toEqual({ survey: "見取り図" });
+  });
+
+  it("空文字・壊れた JSON は undefined", () => {
+    expect(parseSourceSurveyOutput(JSON.stringify({ survey: "" }))).toBeUndefined();
+    expect(parseSourceSurveyOutput("{not json")).toBeUndefined();
+  });
+});
+
+describe("buildSourceSurveySystemPrompt", () => {
+  it("結果・結論を書かないことを明記する", () => {
+    const prompt = buildSourceSurveySystemPrompt("en");
+    expect(prompt).toMatch(/Do NOT include results or conclusions/i);
+  });
+
+  it("推測しないことを明記する", () => {
+    const prompt = buildSourceSurveySystemPrompt("en");
+    expect(prompt).toMatch(/Do not guess what the rest of the document might say/i);
+  });
+
+  it("言語指定が出力言語に反映される", () => {
+    expect(buildSourceSurveySystemPrompt("ja")).toContain("Japanese");
+    expect(buildSourceSurveySystemPrompt("en")).toContain("English");
+  });
+
+  it("8 行以内の上限を明記する", () => {
+    const prompt = buildSourceSurveySystemPrompt("en");
+    expect(prompt).toMatch(/8 lines or fewer/i);
+  });
+});
+
+describe("buildSourceSurveyUserMessage", () => {
+  it("タイトルと冒頭の窓本文のみを渡す（全文ではない旨も明記）", () => {
+    const msg = buildSourceSurveyUserMessage("資料タイトル", "冒頭の窓本文");
+    expect(msg).toContain("資料タイトル");
+    expect(msg).toContain("冒頭の窓本文");
+    expect(msg).toContain("first window only");
+  });
+});
+
+describe("buildWindowTextWithSurvey", () => {
+  it("日本語のとき「見取り図」「本文の抜粋」の見出しを付ける", () => {
+    const text = buildWindowTextWithSurvey("見取り図の中身", 1, 4, "窓の本文", "ja");
+    expect(text).toContain("資料の見取り図");
+    expect(text).toContain("見取り図の中身");
+    expect(text).toContain("全 4 枚中 2 枚目");
+    expect(text).toContain("窓の本文");
+  });
+
+  it("英語のとき対応する英語見出しを付ける", () => {
+    const text = buildWindowTextWithSurvey("survey content", 0, 3, "window body", "en");
+    expect(text).toContain("Document survey");
+    expect(text).toContain("survey content");
+    expect(text).toContain("window 1 of 3");
+    expect(text).toContain("window body");
+  });
+
+  it("見取り図が引用の根拠にならない旨を明示する", () => {
+    const ja = buildWindowTextWithSurvey("要約", 0, 2, "本文", "ja");
+    expect(ja).toContain("引用の根拠にはしない");
+    const en = buildWindowTextWithSurvey("summary", 0, 2, "body", "en");
+    expect(en.toLowerCase()).toContain("not a citable source");
   });
 });
