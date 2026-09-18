@@ -27,6 +27,7 @@ import {
   appendDerivedNoteLink,
 } from "../features/derivation/clone-document";
 import { loadSnapshot } from "../features/version-snapshots/snapshot-store";
+import { snapshotBeforeAiRewrite } from "../features/version-snapshots/ai-rewrite";
 import { findSnapshotsReferencingAsset } from "../features/version-snapshots/snapshot-refs";
 import { registerPendingOcrFile } from "../features/media-ocr";
 // 提案の基準版の控えの片付け（§25b C-3）。fork したノートを完全削除したときに消す
@@ -2553,6 +2554,16 @@ export function useFileManager(authenticated: boolean) {
         if (options?.activityType) {
           const cached = docCacheRef.current.get(`wiki:${wikiId}`);
           const prevPage = cached?.pages?.[0] ?? null;
+          // AI がこのページの本文を書き換える直前に版を残す（人が編集した来歴があるページに限る。
+          // 判定・条件は snapshotBeforeAiRewrite 側に集約 — 新規作成・reinforce・未編集ページ・
+          // 直前と同一内容は自動で除外される）
+          await snapshotBeforeAiRewrite(
+            storage(),
+            wikiId,
+            cached,
+            options.activityType,
+            tStatic("version.aiRewriteLabel"),
+          );
           doc = await recordRevision(doc, prevPage, options.activityType, {
             agentLabel: options.agentLabel,
             force: true,

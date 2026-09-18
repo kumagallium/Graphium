@@ -295,6 +295,8 @@ export const ja: Record<string, string> = {
   "version.unchangedToast": "前回の版から変更はありません",
   "version.failedToast": "版の作成に失敗しました",
   "version.editGroup": "編集 {count} 回",
+  "version.aiRewriteLabel": "AIが書き換える前",
+  "version.aiRewriteBadge": "AI書き換え前",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",

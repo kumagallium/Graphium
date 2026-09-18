@@ -5,7 +5,7 @@
 // i18n 非依存: 表示文字列は labels prop で受け取り、Storybook / テストで provider 不要にする。
 
 import { useState } from "react";
-import { Pin, Eye, GitBranch, Pencil, Trash2, RotateCcw } from "lucide-react";
+import { Pin, Eye, GitBranch, Pencil, Trash2, RotateCcw, Bot } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
 /** 日時を YYYY-MM-DD HH:MM で表示（design.md の日付キャプション形式に揃える） */
@@ -22,12 +22,16 @@ export type SnapshotRowLabels = {
   restore: string;
   rename: string;
   delete: string;
+  /** origin が "ai_rewrite" の版に付ける小さな印（例: "AI書き換え前"） */
+  aiRewriteBadge: string;
 };
 
 type Props = {
   version: number;
   label?: string;
   savedAt: string;
+  /** この版の出どころ。"ai_rewrite" なら AI が書き換える直前に自動で残した版 */
+  origin?: "ai_rewrite";
   /** 選択中（中央サイドピークで開いている版）なら枠を強調 */
   selected?: boolean;
   onOpen?: () => void;
@@ -44,6 +48,7 @@ export function SnapshotRow({
   version,
   label,
   savedAt,
+  origin,
   selected,
   onOpen,
   onDerive,
@@ -106,6 +111,15 @@ export function SnapshotRow({
         ) : (
           <span className={label ? "font-medium text-foreground" : "text-muted-foreground"}>
             {label ?? labels.unnamed}
+          </span>
+        )}
+        {!editing && origin === "ai_rewrite" && (
+          <span
+            title={labels.aiRewriteBadge}
+            className="flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground"
+          >
+            <Bot size={11} aria-hidden />
+            {labels.aiRewriteBadge}
           </span>
         )}
         {!editing && (

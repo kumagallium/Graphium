@@ -679,6 +679,7 @@ type SnapshotMeta = {
   label?: string;      // optional user-given name
   savedAt: string;     // ISO 8601
   contentHash: string; // same page hash as the revision log
+  origin?: "ai_rewrite"; // absent = user-taken; "ai_rewrite" = auto-taken before an AI rewrite
 };
 ```
 
@@ -686,6 +687,26 @@ Versions are immutable once taken; taking a snapshot whose content hash
 equals the latest one is a no-op instead of a duplicate. The history
 panel interleaves snapshots with the automatic revision log into a
 single timeline ordered by timestamp.
+
+Knowledge pages (Wiki documents) also get a version, but only an
+**automatic** one, and only under a narrow condition: right before an
+AI rewrite of a page's body (topic revision/merge, cross-update,
+dedup-merge, or multi-source regenerate — decided at the single
+`handleSaveWikiFile` choke point in `use-file-manager.ts`), a snapshot
+of the pre-rewrite content is taken **if and only if the page's
+provenance log already contains at least one human-authored activity**
+(`human_edit`, `human_derivation`, `derive_source`, `snapshot_restore`,
+or `proposal_adopt` — see `isHumanActivityType` /
+`hasHumanEditHistory` in `document-provenance/tracker.ts`). Pages an AI
+created and a human has never touched are skipped, since the AI can
+freely regenerate them and there is no "the human's version" to
+protect. New pages are never snapshotted (there is nothing to roll
+back to), and the existing content-hash dedup means repeated rewrites
+without human edits in between don't pile up extra versions. These
+automatic snapshots carry `origin: "ai_rewrite"` and are marked with a
+small badge in the history panel so they're visually distinguishable
+from user-taken versions; they use the same one-click **Restore this
+version** path as Skill documents.
 
 Restoring differs by document kind. Notes offer **Fork from here** (a
 new note derived from the version). Skill documents instead offer

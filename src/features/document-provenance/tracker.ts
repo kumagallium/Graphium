@@ -14,6 +14,32 @@ import type { GraphiumDocument, GraphiumPage } from "../../lib/document-types";
 // 既知のエージェント ID
 const HUMAN_AGENT_ID = "agent_human";
 
+/**
+ * activityType が「人間の操作」を表すかどうか。
+ * recordRevision のエージェント分類（human/ai）と同じ基準を使う。
+ * - human_edit / human_derivation / derive_source: 人が本文を直接編集・派生させた操作
+ * - snapshot_restore / proposal_adopt: 内容は版・提案由来でも、実行したのは人間の操作
+ */
+export function isHumanActivityType(activityType: EditActivityType): boolean {
+  return (
+    activityType === "human_edit" ||
+    activityType === "human_derivation" ||
+    activityType === "derive_source" ||
+    activityType === "snapshot_restore" ||
+    activityType === "proposal_adopt"
+  );
+}
+
+/**
+ * ドキュメントの来歴に「人間による編集」が一度でも記録されているか。
+ * AI が本文を書き換える直前にスナップショットを取るかどうかの判定に使う
+ * （AI が作ったまま人が触っていないページでは取らない）。
+ */
+export function hasHumanEditHistory(provenance: DocumentProvenance | undefined): boolean {
+  if (!provenance) return false;
+  return provenance.activities.some((a) => isHumanActivityType(a.type));
+}
+
 /** 連番 ID 生成 */
 function nextId(prefix: string, existing: { id: string }[]): string {
   let max = 0;
@@ -116,9 +142,7 @@ export async function recordRevision(
   const contentHash = await computePageHash(currentPage);
 
   // エージェント登録
-  const agentType =
-    activityType === "human_edit" || activityType === "human_derivation" || activityType === "derive_source" || activityType === "snapshot_restore" || activityType === "proposal_adopt"
-      ? "human" : "ai";
+  const agentType = isHumanActivityType(activityType) ? "human" : "ai";
   const label = agentLabel ?? (agentType === "human" ? "user" : "ai");
   // author は人間エージェントにのみ付与（AI には self-asserted identity を持たせない）
   const effectiveAuthor = agentType === "human" ? author : undefined;

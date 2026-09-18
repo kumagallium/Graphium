@@ -24,4 +24,11 @@ export interface SnapshotMeta {
    * 直近版との重複判定（無駄な版を作らない）と、将来の改ざん検知・先取権証明に使う。
    */
   contentHash: string;
+  /**
+   * この版の出どころ。未指定（undefined）＝人が「版を残す」で明示的に作った版。
+   * "ai_rewrite" ＝ AI がナレッジページの本文を書き換える直前に自動で残した版
+   * （人が編集したページに限る。§version-snapshots/ai-rewrite.ts）。
+   * 一覧で人が残した版と見分けられるよう、UI 側で軽い印を出す。
+   */
+  origin?: "ai_rewrite";
 }

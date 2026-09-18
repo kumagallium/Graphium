@@ -295,6 +295,8 @@ export const en: Record<string, string> = {
   "version.unchangedToast": "No changes since the last version",
   "version.failedToast": "Couldn't save the version",
   "version.editGroup": "{count} edits",
+  "version.aiRewriteLabel": "Before AI rewrite",
+  "version.aiRewriteBadge": "Before AI rewrite",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",
