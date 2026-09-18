@@ -75,13 +75,13 @@ function resolveSources(citations: AnswerCitationInput[], root: string): TopicSo
 }
 
 /**
- * buildSourceBackedWikiDocument が作る References ブロックは、渡した sources を
- * 無条件に @リンクとして描画する（トピックの通常フローでは sources が必ず実在する前提のため）。
+ * buildSourceBackedWikiDocument が作る References ブロック・本文中の [[source:id]] 引用は、
+ * 渡した sources を無条件に @リンクとして描画する（トピックの通常フローでは sources が
+ * 必ず実在する前提のため。wiki-service.ts の pushCitation は noteIndex に加え、この
+ * sources 由来のタイトル→id（extraTitleToId）でも解決する）。
  * MCP の citations は呼び出し側の自己申告で実在しない id を含みうるので、create_note の
  * buildCitationReferenceBlocks と同じ規則（実在する id だけ @リンク・knowledgeLink を持ち、
- * 実在しない id は文字のまま残す）に揃えて末尾の References ブロックを描き直す。
- * 本文中の [[source:id]] 引用（pushCitation 経由）は noteIndex 参照で既に正しく振り分けられている
- * ため、ここでは触らない。
+ * 実在しない id は文字のまま残す）に揃えて References・本文の両方を描き直す。
  */
 function fixReferenceBlockExistence(
   doc: GraphiumDocument,
@@ -93,20 +93,36 @@ function fixReferenceBlockExistence(
   const refBlockCount = sources.length + 1; // heading + 資料ごとの bulletListItem
   const blocks: any[] = page.blocks;
   const refBlocks = blocks.slice(blocks.length - refBlockCount);
+  const bodyBlocks = blocks.slice(0, blocks.length - refBlockCount);
   const headingBlock = refBlocks[0];
   const bulletBlocks = refBlocks.slice(1);
   if (headingBlock?.type !== "heading" || bulletBlocks.length !== sources.length) return doc;
 
-  const missingSourceIds = new Set<string>();
+  const missingSources = new Map<string, string>(); // id → title
   bulletBlocks.forEach((bullet: any, i: number) => {
     const source = sources[i];
     if (readNote(source.id, root)) return; // 実在するので @リンクのまま
-    missingSourceIds.add(source.id);
+    missingSources.set(source.id, source.title);
     bullet.content = [{ type: "text", text: source.title }];
   });
 
+  // 本文中の [[source:<missing-id>]] は pushCitation の extraTitleToId 解決で
+  // 既に `@タイトル`（青リンク）になっている。References と同じ「実在しない id は
+  // 文字のまま」に揃えるため、該当テキストだけプレーンに戻す。
+  if (missingSources.size > 0) {
+    const missingTitles = new Set(missingSources.values());
+    for (const block of bodyBlocks) {
+      if (!Array.isArray(block.content)) continue;
+      block.content = block.content.map((c: any) =>
+        c.type === "text" && typeof c.text === "string" && c.text.startsWith("@") && missingTitles.has(c.text.slice(1))
+          ? { type: "text", text: c.text.slice(1), styles: {} }
+          : c,
+      );
+    }
+  }
+
   const knowledgeLinks = (page.knowledgeLinks as any[]).filter(
-    (l) => !(l.type === "reference" && l.layer === "knowledge" && missingSourceIds.has(l.targetNoteId)),
+    (l) => !(l.type === "reference" && l.layer === "knowledge" && missingSources.has(l.targetNoteId)),
   );
 
   return {

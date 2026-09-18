@@ -177,6 +177,7 @@ import {
   generateTitle,
   buildAiDerivedDocument,
 } from "./features/ai-assistant";
+import { useSourceLinks } from "./features/ai-assistant/panel";
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage, AgentRunRequest } from "./features/ai-assistant";
 import { buildAttachmentSuffix } from "./features/ai-assistant/attachment-suffix";
@@ -7447,6 +7448,20 @@ export function NoteApp() {
     setActiveStandaloneChat(chat);
   }, []);
 
+  // URL（#chats/<id>）からの復元専用。handleSelectStandaloneChat はピーク固定なので、
+  // 全画面用に分けておく。ここでも router.navigate はしない（popstate/初回復元からも
+  // 呼ばれるため、二重に履歴を積むと「戻る」が効かなくなる）。
+  const openStandaloneChatFull = useCallback(async (id: string) => {
+    setStandaloneChatError(null);
+    setActiveStandaloneChatId(id);
+    setStandaloneChatViewMode("full");
+    standaloneChatActiveIdRef.current = id;
+    const provider = getActiveProvider();
+    const chat = await loadStandaloneChat(provider, id);
+    if (standaloneChatActiveIdRef.current !== id) return;
+    setActiveStandaloneChat(chat);
+  }, []);
+
   // 新しいチャット: この時点では保存しない（空のチャットをファイルに残さないため）。
   // 最初のメッセージが返ってきた時点で初めて保存する。
   // attachedNoteIds: ⌘K の Ask で「開いていたノートを引用として添える」場合に渡す。
@@ -8071,8 +8086,12 @@ export function NoteApp() {
       const chat = handleNewStandaloneChat(attachedNoteIds);
       setShowChatList(true);
       setSidebarOpen(false);
+      router.navigate({ view: "chat", chatId: chat.id });
       await sendStandaloneChatMessage(chat, prompt);
     },
+    // router は本 useCallback より下（8523 行）で宣言されるため、依存配列に入れると
+    // TDZ で ReferenceError になる。router.navigate 自体は内部で useCallback([]) の
+    // 安定した関数なので、古い router オブジェクト経由でも問題なく呼べる
     [fm.activeFileId, fm.activeDoc, closeAllViews, handleNewStandaloneChat, sendStandaloneChatMessage],
   );
 
@@ -8465,6 +8484,8 @@ export function NoteApp() {
     // 積んでしまい「戻るが効かない」になる。state を立てるだけにする。
     // エントリが共有ストアに無い場合の Library への落としどころは表示側が持つ。
     openSharedEntryView: (id: string) => setSharedEntryViewId(id),
+    setShowChatList: (show: boolean) => setShowChatList(show),
+    openChatFull: (chatId: string) => void openStandaloneChatFull(chatId),
     // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
     // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
     clearViews: closeAllViews,
@@ -8483,6 +8504,18 @@ export function NoteApp() {
         openSidePeekRef.current?.(noteId);
         setListSidePeekNoteId(null);
         setAssetSidePeekNoteId(null);
+      } else if (view === "chats") {
+        // チャット一覧上のピーク会話。一覧はそのまま裏に残し、右からの細い面で読み込む
+        // （器は StandaloneChatSidePeek で listSidePeekNoteId とは別 state）。
+        if (noteId) {
+          void handleSelectStandaloneChat(noteId);
+        } else {
+          standaloneChatActiveIdRef.current = null;
+          setActiveStandaloneChatId(null);
+        }
+        setListSidePeekNoteId(null);
+        setAssetSidePeekNoteId(null);
+        openSidePeekRef.current?.(null);
       } else {
         setListSidePeekNoteId(noteId);
         setAssetSidePeekNoteId(null);
@@ -8490,7 +8523,7 @@ export function NoteApp() {
       }
       requestAnimationFrame(() => { applyingPeekRef.current = false; });
     },
-  }), [fm, closeAllViews]);
+  }), [fm, closeAllViews, openStandaloneChatFull, handleSelectStandaloneChat]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
   // 手入れ画面を出典照合タブで開く（トーストの「出典照合を開く」から使う）。
@@ -8881,6 +8914,35 @@ export function NoteApp() {
     setAssetSidePeekNoteId(noteId);
     openPeek(noteId);
   }, [openPeek]);
+
+  // チャット一覧の行クリック。一覧・ギャラリーの openListPeek/openAssetPeek と同じ作法で、
+  // state 更新（会話読み込み）と URL 反映（#chats?peek=<id>）を両方行う。
+  const openStandaloneChatPeek = useCallback((id: string | null) => {
+    if (id) void handleSelectStandaloneChat(id);
+    else {
+      standaloneChatActiveIdRef.current = null;
+      setActiveStandaloneChatId(null);
+    }
+    openPeek(id);
+  }, [handleSelectStandaloneChat, openPeek]);
+
+  // スタンドアロンチャットの [Source: "title"] 引用（panel.tsx と同じ組み立て）から開く先。
+  // ノート内チャット（NoteEditorInner）と違い、ここは「本文を開いていない」トップレベルの
+  // 画面なので、setSidePeekNoteId ではなく一覧用ピーク／素材ピークを使う。
+  const handleStandaloneChatOpenNote = useCallback((noteId: string) => {
+    openListPeek(noteId);
+  }, [openListPeek]);
+  const handleStandaloneChatOpenAsset = useCallback((fileId: string) => {
+    const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+    if (target) setListMaterialPeekEntry(target);
+  }, [fm.mediaIndex]);
+  const standaloneChatSourceLinks = useSourceLinks(
+    fm.noteIndex,
+    activeStandaloneChat?.messages.length ?? 0,
+    (wikiId: string) => navigateToNote(`wiki:${wikiId}`),
+    handleStandaloneChatOpenNote,
+    handleStandaloneChatOpenAsset,
+  );
 
   // 別のピーク（素材・メモ）や全体グラフへ移るためにノートピークを畳むとき用。
   // ユーザーが「閉じた」訳ではないので履歴は積まず、URL からピークだけ落とす。
@@ -11843,7 +11905,7 @@ export function NoteApp() {
     skillCount: fm.skillMetas.size,
     onShowSkillList: () => { closeAllViews(); setShowSkillList(true); setSidebarOpen(false); },
     skillActive: showSkillList,
-    onShowChatList: () => { closeAllViews(); setShowChatList(true); setSidebarOpen(false); },
+    onShowChatList: () => { closeAllViews(); setShowChatList(true); setSidebarOpen(false); router.navigate({ view: "chats" }); },
     chatActive: showChatList,
     chatCount: standaloneChatSummaries.length,
     onShowTrash: () => {
@@ -12794,7 +12856,7 @@ export function NoteApp() {
             error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
             onSend={handleStandaloneChatSend}
             onStop={handleStandaloneChatStop}
-            onBack={() => { standaloneChatActiveIdRef.current = null; setActiveStandaloneChatId(null); }}
+            onBack={() => { standaloneChatActiveIdRef.current = null; setActiveStandaloneChatId(null); router.navigate({ view: "chats" }); }}
             aiConfigured={agentConfigured}
             attachedNotes={standaloneChatAttachedNotesView}
             onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
@@ -12802,14 +12864,15 @@ export function NoteApp() {
             onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
             onResend={handleStandaloneChatResend}
             onFork={handleForkStandaloneChat}
+            sourceLinks={standaloneChatSourceLinks}
           />
         ) : showChatList ? (
           <StandaloneChatListView
             chats={standaloneChatSummaries}
-            onSelect={handleSelectStandaloneChat}
+            onSelect={openStandaloneChatPeek}
             onNewChat={() => handleNewStandaloneChat()}
             onDelete={handleDeleteStandaloneChat}
-            onBack={() => setShowChatList(false)}
+            onBack={() => { setShowChatList(false); router.navigate({ view: "home" }); }}
           />
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
@@ -13310,8 +13373,11 @@ export function NoteApp() {
           error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
           onSend={handleStandaloneChatSend}
           onStop={handleStandaloneChatStop}
-          onClose={() => { standaloneChatActiveIdRef.current = null; setActiveStandaloneChatId(null); }}
-          onToggleFull={() => setStandaloneChatViewMode("full")}
+          onClose={() => openStandaloneChatPeek(null)}
+          onToggleFull={() => {
+            setStandaloneChatViewMode("full");
+            if (activeStandaloneChatId) router.navigate({ view: "chat", chatId: activeStandaloneChatId });
+          }}
           aiConfigured={agentConfigured}
           attachedNotes={standaloneChatAttachedNotesView}
           onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
@@ -13319,6 +13385,7 @@ export function NoteApp() {
           onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
           onResend={handleStandaloneChatResend}
           onFork={handleForkStandaloneChat}
+          sourceLinks={standaloneChatSourceLinks}
         />
       )}
       {/* 一覧ビュー用サイドピーク（NoteEditorInner 外で表示） */}

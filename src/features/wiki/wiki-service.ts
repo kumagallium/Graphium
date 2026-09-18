@@ -557,6 +557,9 @@ function pushCitation(
   noteIndex: NoteIndex,
   /** 生成中／再生成中の Wiki 自身のタイトル。これと一致する引用は自己参照なのでリンク化しない。 */
   selfTitle?: string,
+  /** noteIndex に載らない資料（pdf/url 等の素材）のタイトル→id。References の行と同じ
+   *  資料一覧（sources）から作る。noteIndex で解決できなかったときだけのフォールバック */
+  extraTitleToId?: Map<string, string>,
 ): void {
   // 自己引用ガード: LLM がまれに「この知見こそが観測の根拠だ」と自分のタイトルを
   // [[...]] で引用してくることがある。再生成時は自分自身も noteIndex に乗るため、
@@ -610,6 +613,27 @@ function pushCitation(
     return;
   }
 
+  // noteIndex に載らない素材（pdf/url 等）。References の行と同じ id で解決できれば
+  // 同じ見た目（@タイトル・青リンク）にする。解決できなければ今までどおり文字のまま。
+  const extraId = extraTitleToId?.get(citedTitle);
+  if (extraId) {
+    inlineContent.push({
+      type: "text",
+      text: `@${citedTitle}`,
+      styles: { textColor: "blue" },
+    });
+    knowledgeLinks.push({
+      id: crypto.randomUUID(),
+      sourceBlockId: blockId,
+      targetBlockId: "",
+      targetNoteId: extraId,
+      type: "reference",
+      layer: "knowledge",
+      createdBy: "ai",
+    });
+    return;
+  }
+
   // マッチしない → プレーンテキスト
   inlineContent.push({ type: "text", text: citedTitle, styles: {} });
 }
@@ -624,6 +648,8 @@ export function parseInlineCitations(
   noteIndex: NoteIndex,
   /** 生成中／再生成中の Wiki 自身のタイトル（自己引用ガード用） */
   selfTitle?: string,
+  /** noteIndex に載らない資料（pdf/url 等）のタイトル→id。pushCitation 参照 */
+  extraTitleToId?: Map<string, string>,
 ): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
   const blockId = crypto.randomUUID();
   const inlineContent: any[] = [];
@@ -649,7 +675,7 @@ export function parseInlineCitations(
     }
 
     if (match[1] !== undefined) {
-      pushCitation(inlineContent, knowledgeLinks, blockId, match[1], noteIndex, selfTitle);
+      pushCitation(inlineContent, knowledgeLinks, blockId, match[1], noteIndex, selfTitle, extraTitleToId);
     } else if (match[2] !== undefined && match[3] !== undefined) {
       inlineContent.push({
         type: "link",
@@ -729,6 +755,8 @@ function convertSectionsToBlocks(
   noteIndex: NoteIndex = [],
   /** 生成中／再生成中の Wiki 自身のタイトル（自己引用ガード用） */
   selfTitle?: string,
+  /** noteIndex に載らない資料（pdf/url 等）のタイトル→id。pushCitation 参照 */
+  extraTitleToId?: Map<string, string>,
 ): ConvertResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
@@ -786,7 +814,7 @@ function convertSectionsToBlocks(
       const numbered = bullet === null ? parseMarkdownNumbered(para) : null;
       if (bullet !== null || numbered !== null) {
         const itemText = bullet !== null ? bullet : (numbered as string);
-        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle);
+        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle, extraTitleToId);
         blocks.push({
           id: parsedItem.blockId,
           type: bullet !== null ? "bulletListItem" : "numberedListItem",
@@ -802,7 +830,7 @@ function convertSectionsToBlocks(
         continue;
       }
 
-      const parsed = parseInlineCitations(para, noteIndex, selfTitle);
+      const parsed = parseInlineCitations(para, noteIndex, selfTitle, extraTitleToId);
       blocks.push({
         id: parsed.blockId,
         type: "paragraph",
@@ -2370,7 +2398,10 @@ export function buildSourceBackedWikiDocument(
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
   const resolvedBody = resolveSourceCitations(stripped, sources);
-  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title);
+  // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
+  // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
+  const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
+  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title, sourceTitleToId);
   const refs = buildSourceReferenceBlocks(sources);
 
   const wikiMeta: WikiMeta = {
@@ -2440,10 +2471,14 @@ export function rebuildSourceBackedWikiDocument(
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
   const resolvedBody = resolveSourceCitations(stripped, sources);
+  // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
+  // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
+  const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
   const converted = convertSectionsToBlocks(
     [{ heading: "", content: resolvedBody }],
     noteIndex,
     existingDoc.title,
+    sourceTitleToId,
   );
   const refs = buildSourceReferenceBlocks(sources);
   const page = existingDoc.pages[0];
