@@ -8,6 +8,7 @@ import {
   formatCitedDocument,
   assembleCitedDocumentContext,
   assembleCitedAssetContext,
+  resolveAttachedNoteContents,
   __clearPdfTextCacheForTest,
 } from "./cited-document-context";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -456,5 +457,104 @@ describe("assembleCitedAssetContext", () => {
     );
     expect(md).toContain("（URL）");
     expect(md).toContain("抜粋だけの本文");
+  });
+});
+
+describe("resolveAttachedNoteContents", () => {
+  // ノート内チャット（handleAiChatSubmit）・ノートに紐づかないチャットの双方が
+  // この関数経由で添付ノートの本文を展開する。ここでは両者の代表的な分岐だけを検証する
+  // （文書ノート経路の詳細は assembleCitedDocumentContext のテストでカバー済み）。
+
+  it("通常ノートはプレーンテキスト化して見出し付きで返す", async () => {
+    const doc = makeDoc({
+      title: "通常ノート",
+      pages: [makePage([{ type: "paragraph", content: [{ text: "本文だよ" }] }], "t")],
+    });
+    const got = await resolveAttachedNoteContents(
+      [{ id: "note-1", title: "通常ノート" }],
+      {
+        noteIndex: null,
+        captureIndex: null,
+        provider: { loadFile: async (id) => (id === "note-1" ? doc : makeDoc({})), getMediaBlobUrl: async () => "" },
+      },
+    );
+    expect(got).toEqual(["## 通常ノート\n本文だよ"]);
+  });
+
+  it("文書ノート（URL 由来）は assembleCitedDocumentContext 経路で組み立てる", async () => {
+    // resolveAttachedNoteContents の依存は extractPdfText/loadBlob を持たないため
+    // （呼び出し元も渡していない）、ここでは loadUrlText 経路で文書ノート分岐を確認する。
+    const doc = makeDoc({ title: "記事Y", sourceUrl: "https://example.com/y" });
+    const got = await resolveAttachedNoteContents(
+      [{ id: "note-2", title: "記事Y" }],
+      {
+        noteIndex: { notes: [] } as unknown as GraphiumIndex,
+        captureIndex: null,
+        provider: { loadFile: async () => doc, getMediaBlobUrl: async () => "" },
+        loadUrlText: async () => "記事の全文",
+      },
+    );
+    expect(got).toHaveLength(1);
+    expect(got[0]).toContain("## 引用文書: 記事Y（URL）");
+    expect(got[0]).toContain("記事の全文");
+  });
+
+  it("isWiki 指定のノートは loadWikiFile 経由で読む", async () => {
+    const doc = makeDoc({
+      title: "知見ノート",
+      pages: [makePage([{ type: "paragraph", content: [{ text: "知見の本文" }] }], "t")],
+    });
+    let calledWiki = false;
+    const got = await resolveAttachedNoteContents(
+      [{ id: "wiki-1", title: "知見ノート", isWiki: true }],
+      {
+        noteIndex: null,
+        captureIndex: null,
+        provider: {
+          loadFile: async () => { throw new Error("loadFile は呼ばれないはず"); },
+          loadWikiFile: async () => { calledWiki = true; return doc; },
+          getMediaBlobUrl: async () => "",
+        },
+      },
+    );
+    expect(calledWiki).toBe(true);
+    expect(got).toEqual(["## 知見ノート\n知見の本文"]);
+  });
+
+  it("素材添付（kind: asset）は読み飛ばす", async () => {
+    const got = await resolveAttachedNoteContents(
+      [{ id: "asset-1", title: "素材", kind: "asset" }],
+      {
+        noteIndex: null,
+        captureIndex: null,
+        provider: { loadFile: async () => { throw new Error("呼ばれないはず"); }, getMediaBlobUrl: async () => "" },
+      },
+    );
+    expect(got).toEqual([]);
+  });
+
+  it("解決できない添付（削除済み等）は 1 件だけ読み飛ばし、残りは続行する", async () => {
+    const doc = makeDoc({
+      title: "生きているノート",
+      pages: [makePage([{ type: "paragraph", content: [{ text: "残った本文" }] }], "t")],
+    });
+    const got = await resolveAttachedNoteContents(
+      [
+        { id: "deleted-1", title: "削除済み" },
+        { id: "note-3", title: "生きているノート" },
+      ],
+      {
+        noteIndex: null,
+        captureIndex: null,
+        provider: {
+          loadFile: async (id) => {
+            if (id === "deleted-1") throw new Error("not found");
+            return doc;
+          },
+          getMediaBlobUrl: async () => "",
+        },
+      },
+    );
+    expect(got).toEqual(["## 生きているノート\n残った本文"]);
   });
 });
