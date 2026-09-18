@@ -81,7 +81,7 @@ By default the server reads `~/Documents/Graphium`. If you changed the Graphium 
 
 ## What the assistant can do
 
-Nine tools are available. You do not call them by name — you ask in plain language and the assistant picks.
+Ten tools are available. You do not call them by name — you ask in plain language and the assistant picks.
 
 | Tool | What you would ask |
 |---|---|
@@ -94,6 +94,7 @@ Nine tools are available. You do not call them by name — you ask in plain lang
 | `get_topic` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "Tell me what you know about sintering conditions" |
 | `trace_lineage` | "Where did this conclusion come from?" |
 | `create_note` | "Save this as a note" |
+| `save_answer` | "Keep this answer for later" |
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
 
@@ -104,6 +105,26 @@ Search covers titles, body text, step names and labels, and works in Japanese wi
 - **`citations`** — a list of `{ id, title? }` referring to Graphium notes or pages the answer drew on. When present, a References section is appended to the note body: an entry whose `id` matches an existing note becomes an `@`-linked reference (same shape as the References section topics build from their sources); an entry whose `id` does not resolve is kept as plain text instead of being silently dropped.
 
 Both arguments are additive — a call without them behaves exactly as before.
+
+### `create_note` vs. `save_answer`
+
+Both tools write something new into your vault, but into different layers, and Graphium treats each layer differently afterwards:
+
+- **`create_note`** writes a **note** — something a human maintains. Graphium never touches it again on its own.
+- **`save_answer`** writes an **answer page** — a knowledge-layer page (the same `answer` kind the in-app "Keep as knowledge" button on a chat message produces). Once it exists, Graphium revises it whenever related material is ingested, and includes it in linting and source-check like any other knowledge page.
+
+Use `save_answer` for something you expect Graphium to keep maintaining as your notes grow; use `create_note` for a one-off record you will maintain yourself.
+
+In the body you pass to `save_answer`, **end every grounded sentence with `[[source:<id>]]`** (the ids you pass in `citations`; list several when several sources say the same thing). Source check works sentence by sentence — it asks whether the sources a sentence cites really say it — so an answer page with no citations in its body is never checked. Save one without them and the tool says so in its reply.
+
+`save_answer` takes:
+
+- **`question`** — becomes the page title.
+- **`answer`** — the body (Markdown). Write `[[source:<id>]]` inline where the answer cites something in your vault.
+- **`citations`** — a list of `{ id, title? }`, the same shape as `create_note`'s. Each `[[source:<id>]]` in `answer` is resolved against this list, and a References section is appended. An `id` that matches an existing note or page becomes an `@`-linked reference; an `id` that does not resolve is kept as plain text.
+- **`sessionId`**, **`model`** — same as `create_note`, recorded for provenance.
+
+After `save_answer` returns, the page appears in Graphium after a reload, same as a note from `create_note`.
 
 ### Notes vs. knowledge
 
@@ -161,13 +182,13 @@ This is the payoff of labelling: once a handful of notes name the same instrumen
 
 ## What it deliberately does not do
 
-**It never edits your existing notes.** `create_note` only adds new ones. Nothing an assistant does through MCP can overwrite something you wrote.
+**It never edits your existing notes.** `create_note` only adds new ones. `save_answer` only adds new answer pages — it does not touch your notes either, though the answer page it creates *will* be revised later by Graphium's own knowledge-layer maintenance, unlike a note. Nothing an assistant does through MCP can overwrite something you wrote.
 
 **It never invents provenance.** You might expect that chatting about an experiment would build the provenance graph for you. It does not, and this is on purpose. Provenance is a record of what actually happened. A graph reconstructed from a conversation would look the same but mean something different — a guess about your procedure, with nothing to check it against. Graphium records provenance from what you did in the editor, not from what a model inferred you probably did.
 
 What *is* recorded automatically is the write itself. A note created through MCP carries who asked for it, which client it came through, and which model wrote it. That is an observation, not an inference.
 
-**Notes created through MCP appear after a reload.** The note list is built by the app, so a note written while Graphium is open shows up the next time you reload or restart it.
+**Notes and answer pages created through MCP appear after a reload.** Both lists are built by the app, so something written while Graphium is open shows up the next time you reload or restart it.
 
 ## Troubleshooting
 

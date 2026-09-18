@@ -14,7 +14,8 @@ import { createNote } from "./create-note";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { traceLineage } from "./lineage";
 import { collectSteps, noteToMarkdown } from "./note-text";
-import { addCreatedNoteToIndex, allEntries, getEntry, searchNotes } from "./search";
+import { saveAnswer } from "./save-answer";
+import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, getEntry, searchNotes } from "./search";
 import { getTopicDetail, listTopics } from "./topics";
 import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
 
@@ -467,6 +468,75 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         );
       } catch (err) {
         return text(`ノートの作成に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  );
+
+  // ── 8. 回答をナレッジ層に残す ─────────────────────────────────
+  server.registerTool(
+    "save_answer",
+    {
+      title: "回答をナレッジ層に残す",
+      description:
+        "AI チャットの良い回答を、Graphium のナレッジ層に「回答」ページ（answer）として残す。" +
+        "作成後は Graphium 側で資料の取り込みのたびに改訂され、点検・出典照合の対象になる" +
+        "（create_note で作るノートは人が保守するもので、Graphium は一切自動で変更しない）。" +
+        "「あとで見返せるようにこの回答を残しておいて」のような依頼に使う。" +
+        "本文が単発の作業記録・メモなら create_note を、AI が引き続き面倒を見るべき知識なら save_answer を使う。" +
+        "citations を指定すると本文中の [[source:<id>]] 引用が解決され、末尾に References 節も作る" +
+        "（実在する id は @リンク、存在しない id は文字のまま残る）。",
+      inputSchema: {
+        question: z.string().describe("問い。回答ページのタイトルになる（命題形・問い形が望ましい）"),
+        answer: z
+          .string()
+          .describe(
+            "回答本文（Markdown）。**根拠のある文はすべて、文末に [[source:<id>]] を書く**" +
+              "（id は citations に渡すもの。同じ内容を複数の資料が述べるなら並べてよい）。" +
+              "本文に [[source:<id>]] が 1 つも無いと、その回答ページは出典照合の対象にならない",
+          ),
+        sessionId: z.string().optional().describe("呼び出し側のセッション識別子"),
+        model: z.string().optional().describe("回答を書いた LLM のモデル ID（例: claude-opus-5）"),
+        citations: z
+          .array(z.object({ id: z.string(), title: z.string().optional() }))
+          .optional()
+          .describe(
+            "回答が引いた Graphium 内のノート/ページの参照。本文中の [[source:<id>]] を解決し、" +
+              "末尾に References 節を作る。id が実在するノートを指していれば @リンクになり、" +
+              "存在しなければ文字のまま残る",
+          ),
+      },
+    },
+    async ({ question, answer, sessionId, model, citations }) => {
+      try {
+        const result = await saveAnswer({
+          question,
+          answer,
+          sessionId,
+          model,
+          citations,
+          client: ctx.getClientName?.(),
+        });
+        // 保存直後に search_notes で引けるよう、索引にも即座に足す
+        addCreatedWikiToIndex(result.noteId, result.title, answer, "answer");
+        return text(
+          [
+            `回答ページを作成しました。`,
+            `  タイトル: ${result.title}`,
+            `  noteId: ${result.noteId}`,
+            `  ファイル: ${result.filePath}`,
+            "",
+            `Graphium を再読み込みすると一覧に表示されます。以後は Graphium 側で改訂・点検の対象になります。`,
+            ...(result.sourceRefCount === 0
+              ? [
+                  "",
+                  "注意: 本文に [[source:<id>]] の引用が 1 つも無いため、このページは出典照合の対象になりません。",
+                  "根拠のある文の文末に [[source:<id>]] を書いて保存し直すと、文ごとに出典と照らせます。",
+                ]
+              : []),
+          ].join("\n"),
+        );
+      } catch (err) {
+        return text(`回答ページの作成に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   );
