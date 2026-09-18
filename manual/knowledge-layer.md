@@ -1,6 +1,6 @@
 # Knowledge layer
 
-Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the three kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
+Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
 
 ::: info Needs AI
 The Knowledge layer runs only with an AI backend, which ships inside the [desktop app](/desktop-app), with at least one model registered. See [AI setup](/ai-setup). In the browser preview the **Knowledge** section shows an upgrade notice instead.
@@ -12,13 +12,14 @@ A lab note answers "what happened on Tuesday". A knowledge page answers "what do
 
 Because knowledge is *derived*, regeneration is normal. When your notes change, the pages built from them can be rebuilt — knowledge follows your notes, not the other way around.
 
-## The three kinds
+## The kinds
 
-Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics sit alongside this hourglass rather than inside it — they read your source material directly (not the claims) and are never fed into insight discovery.
+Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md). Topics and Answers sit alongside this hourglass rather than inside it — they read your source material (or, for Answers, a chat exchange) directly and are never fed into insight discovery.
 
 | Kind | What it is |
 |---|---|
 | **Topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | A page built directly from the source material it groups by concept (notes, PDFs, Word docs, URLs, chat sessions), with one-hop provenance (topic → source) |
+| **Answers** | A page keeping one good [AI chat](/ai-chat-and-ask) answer, titled by the question you asked, citing the notes/materials it drew on |
 | **Claims** | One proposition taken from a note or document |
 | **Insights** | A relationship pattern from your claims, written to hold in other fields |
 
@@ -57,7 +58,7 @@ Prompts take trial and error, so skills support the same manual version snapshot
 
 ## Browsing knowledge
 
-The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Claims**, and **Insights** with counts (plus **Previous Summaries** if any legacy summaries remain). Click a kind to open its list view, which offers:
+The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Answers**, **Claims**, and **Insights** with counts (plus **Previous Summaries** if any legacy summaries remain). Click a kind to open its list view, which offers:
 
 - Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many member claims it groups instead), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
@@ -134,6 +135,12 @@ Both show a confirmation with the count first; regeneration issues LLM calls and
 ## Saving chat findings as knowledge <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
 When an [AI chat](/ai-chat-and-ask) answer contains something worth keeping, press **Make Knowledge** under the answer. Instead of saving the whole reply, Graphium proposes discrete candidates in a picker titled **Knowledge candidates (select to save)** — each with a **Claims** or **Insights** badge, a title, and a preview. Check the ones you want (or **Select all**) and press **Save selected (2)**. Only what you pick enters your knowledge.
+
+## Keeping a whole answer
+
+**Make Knowledge** breaks an answer apart into claims/insights. If instead the whole answer reads well as-is — a self-contained explanation you'd want to find again by the question you asked — press **Keep as knowledge** under the same message. Graphium saves the answer's text as-is as an **Answer** page, titled with your question, with any citation the answer already showed (the ones you could click to open a note or material) carried over as the page's own citations. A confirmation with an **Open** link appears once it's saved.
+
+Keep as knowledge doesn't call the AI again — it saves the message you already read, unedited, so there's nothing to review before it lands. It's also not available in shared-note or material chat, only the note editor's chat panel. An Answer page is currently a snapshot: it doesn't yet have **Regenerate**, isn't included in Upkeep's Check, and won't be revised as your notes change — treat it as a bookmark of a good answer rather than a page that keeps itself up to date.
 
 ## Knowledge in the global graph
 

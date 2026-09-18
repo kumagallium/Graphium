@@ -82,7 +82,7 @@ Entries in the shared library can be discussed the same way, without forking the
 Three things are worth knowing about it:
 
 - **Click a paragraph to ask about that paragraph.** While **Ask AI** is the open tab, clicking a paragraph in the body starts a new conversation quoting it, instead of marking it as the place for a comment. Close the tab, or switch back to **Comments**, and paragraph clicks go back to picking a comment target.
-- **The conversation stays on your side.** Questions and answers are saved on your own device, never in the shared folder — the person who shared the entry does not see that you asked, or what you asked. Nothing is written into provenance either, so the buttons under an answer — **Insert into note**, **Derive as note**, **Make Knowledge** — are not offered here; it is someone else's material you are reading, not your own note you are writing. To keep something from the conversation, use **Add to Knowledge** in the panel header (the book icon, which appears once the conversation has a message): it hands the whole conversation to your own [Knowledge layer](/knowledge-layer) and reports what it wrote in a toast.
+- **The conversation stays on your side.** Questions and answers are saved on your own device, never in the shared folder — the person who shared the entry does not see that you asked, or what you asked. Nothing is written into provenance either, so the buttons under an answer — **Insert into note**, **Derive as note**, **Make Knowledge**, **Keep as knowledge** — are not offered here; it is someone else's material you are reading, not your own note you are writing. To keep something from the conversation, use **Add to Knowledge** in the panel header (the book icon, which appears once the conversation has a message): it hands the whole conversation to your own [Knowledge layer](/knowledge-layer) and reports what it wrote in a toast.
 - **The shared text is what grounds the answer.** The entry's content travels with every question (long entries are cut off, with a line saying so), so the model answers from what is actually shared rather than from the title. Whether the answer may also draw on *other* shared entries follows the search setting described in [Storage & sync](/storage-and-sync#shared-entries-in-search-and-ai-chat); your own notes and Knowledge are reached the usual way, by choosing Internal or External as the grounding scope.
 
 One limitation to keep in mind: leaving the page cancels an answer still being written. Unlike a note's chat, this conversation does not keep running in the background — wait for the reply before you navigate away.
@@ -97,10 +97,15 @@ Every AI reply has action buttons underneath:
 | **Replace in note** | Replaces the source blocks with the answer (shown when the chat was started from specific blocks) |
 | **Derive as note** | Creates a new note from the question and answer, with provenance linking back to the source note, and opens it in the side peek |
 | **Make Knowledge** | Extracts knowledge candidates from the answer (below) |
+| **Keep as knowledge** | Saves the whole answer as-is, as an Answer page in the Knowledge layer (below) |
 
 ### Extracting knowledge from a chat <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
 **Make Knowledge** turns a good answer into entries in your [Knowledge layer](/knowledge-layer) — without saving anything you didn't choose. Graphium shows "Extracting claims…", then "Generating insights…", and presents a picker titled **Knowledge candidates (select to save)**. Each candidate carries a **Claims** or **Insights** badge; use **Select all** / **Clear**, then **Save selected (n)** — or **Cancel** to keep nothing. Only the candidates you pick become knowledge pages.
+
+### Keeping a whole answer
+
+If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium saves the message text unedited as an [Answer page](/knowledge-layer#the-kinds), titled with the question you asked, and carries over any citation the answer showed (the ones you could click to open a note or material) as the page's own citations. It doesn't call the AI again and doesn't offer a preview to edit first — it saves exactly what you read. Once saved, the button becomes a confirmation with an **Open** link to the new page. See [Knowledge layer](/knowledge-layer#keeping-a-whole-answer) for what an Answer page can and can't do yet.
 
 ## The Composer (⌘K)
 

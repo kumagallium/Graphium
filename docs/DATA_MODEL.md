@@ -1,7 +1,7 @@
 # Graphium — Data Model
 
 This document describes the on-disk shapes Graphium uses: notes,
-Knowledge layer documents (Topics / Summaries / Claims / Insights / Ideas), the
+Knowledge layer documents (Topics / Answers / Summaries / Claims / Insights / Ideas), the
 navigation index, shared storage entries, and the IndexedDB layout of
 the browser provider. It is the reference for anyone who wants to read,
 write, migrate, or interoperate with Graphium files.
@@ -13,6 +13,7 @@ write, migrate, or interoperate with Graphium files.
 > | UI label (EN / JA) | On-disk `WikiKind` |
 > |---|---|
 > | Topics / 話題 | `topic` |
+> | Answers / 回答 | `answer` |
 > | Summaries / 要約 | `summary` |
 > | Claims / 知見 | `claim` |
 > | Insights / 洞察 | `atom` |
@@ -784,7 +785,7 @@ A Wiki document is a regular `GraphiumDocument` with `source: "ai"` and
 a populated `wikiMeta`. It opens in the same editor as a human note.
 
 ```ts
-type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic";
+type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic" | "answer";
 
 type WikiMeta = {
   kind: WikiKind;
@@ -826,20 +827,32 @@ type WikiMeta = {
   // `derivedFromClaims` above.
   topicIds?: string[];
 
-  // Topic-only, new format (2026-09 onwards). Canonical Markdown body of a
-  // "source" topic — one that reads resources (note bodies / PDFs / Word /
-  // URLs / chats) directly rather than being assembled from member Claims.
-  // Sections are `## Definition` / `## Key points` / `## Open questions`,
-  // and each sentence ends with an inline `[[source:<id>]]` citation whose id
-  // is a resource id (plain note id, or "pdf:"/"document:"/"url:"/"chat:"/
-  // "memo:" prefixed — the same id space as `derivedFromNotes`). When present,
-  // this is the authoritative body: the next re-ingest is handed this text as
-  // "the previous body" to revise, and source-check reads its statements
-  // straight from here (one hop: topic statement -> resource, no intermediate
-  // Claim layer). `derivedFromNotes` holds the cited resource ids in this
-  // format; `derivedFromClaims` is left empty (unused). Absent `topicMarkdown`
-  // means the legacy format above (body is a pure function of member Claims in
-  // `derivedFromClaims`, two-hop source-check). See section 3.1b.
+  // Topic/Answer, new format (2026-09 onwards). Canonical Markdown body kept
+  // by the AI for any Knowledge kind that reads resources directly (note
+  // bodies / PDFs / Word / URLs / chats) rather than being assembled from
+  // member Claims. The name is historical (it was introduced for the "source"
+  // Topic) but is now the general slot for this kind of body — an Answer page
+  // (`kind: "answer"`, see below) uses it the same way.
+  //   - Topic: sections are `## Definition` / `## Key points` / `## Open
+  //     questions`.
+  //   - Answer: the answer text itself, no fixed section structure — the
+  //     question (title) drives the shape.
+  // In both cases each cited sentence ends with an inline `[[source:<id>]]`
+  // citation whose id is a resource id (plain note id, or
+  // "pdf:"/"document:"/"url:"/"chat:"/"memo:" prefixed, or — for Answers,
+  // where the resource can be a note/asset/shared-entry surfaced during
+  // chat — "note:"/"asset:"/"shared:" prefixed; same id space as
+  // `derivedFromNotes`). When present, this is the authoritative body: for
+  // Topics, the next re-ingest is handed this text as "the previous body" to
+  // revise, and source-check reads its statements straight from here (one
+  // hop: statement -> resource, no intermediate Claim layer). Answer pages do
+  // not yet have a revise/re-ingest path (maintenance — revision and
+  // source-check — is a follow-up; as of 2026-09-18 an Answer page is
+  // write-once). `derivedFromNotes` holds the cited resource ids in this
+  // format; `derivedFromClaims` is left empty (unused). For Topics, absent
+  // `topicMarkdown` means the legacy format above (body is a pure function of
+  // member Claims in `derivedFromClaims`, two-hop source-check) — see section
+  // 3.1b. Answer pages always use this new format.
   topicMarkdown?: string;
 
   // Knowledge cited/examined when this note was created from a Cmd-K verb
@@ -1051,7 +1064,7 @@ router's `update` list with every new-format topic whose
 tells the reviser to re-check previously-cited claims against the
 updated text (a `previouslyCited` flag passed to `revise-topic`).
 
-`buildSourceTopicDocument` / `rebuildSourceTopicDocument`
+`buildSourceBackedWikiDocument` / `rebuildSourceBackedWikiDocument`
 (`wiki-service.ts`) assemble the new format the same way
 `buildTopicDocument` / `rebuildTopicDocument` assemble the legacy one:
 convert the Markdown into blocks, resolve `[[source:<id>]]` citations,
@@ -1059,7 +1072,10 @@ and append a References section listing every cited resource as an
 `@` link. Before saving, `stripEmptyMarkdownSections` mechanically
 drops any `##` heading that has no body before the next heading (a
 re-ingest that finds nothing new for e.g. "Open questions" should not
-leave an empty heading behind).
+leave an empty heading behind). These two functions take a `kind`
+parameter and are shared with `answer` pages (§3.1c);
+`buildSourceTopicDocument` / `rebuildSourceTopicDocument` remain as
+thin `kind: "topic"` wrappers for the existing Topic call sites.
 
 Because the two formats coexist, readers that count "members" via
 `derivedFromClaims` (the topic list's source-count column, the MCP
@@ -1071,6 +1087,39 @@ empty-topic / orphan-topic checks in particular now require **both**
 a topic — a Claims-based fallback is not enough on its own, since a
 legitimate empty legacy topic (all member Claims deleted) must still be
 caught.
+
+### 3.1c `answer` — a chat answer written back to the Knowledge layer (2026-09-18 onwards)
+
+`kind: "answer"` is a Knowledge page created from a single good answer
+in the AI chat panel — the "Keep as knowledge" action next to an
+assistant message (`src/features/ai-assistant/panel.tsx`,
+`onSaveAsAnswer` / `ChatBubble`'s "Keep as knowledge" button). It uses
+the same source-backed shape as the new-format Topic (§3.1b) — same
+`wikiMeta.topicMarkdown` body slot, same `[[source:<id>]]` citations,
+same `derivedFromNotes` id space, same References block — built through
+`buildSourceBackedWikiDocument("answer", ...)`. The differences are:
+
+- **Title.** The Topic title is a concept name chosen by the LLM; the
+  Answer title is the user's question itself, truncated by the same
+  rule as other AI-derived titles (`deriveSuggestionTitle`, 40
+  characters).
+- **Citation source.** A Topic's citations come from the LLM writer
+  reading resources directly. An Answer's citations come from the
+  already-rendered chat message: the assistant's normalized
+  `[Source: "title"]` markers (`citation-normalize.ts`,
+  `normalizeWikiCitations`) are converted to `[[source:<id>]]` by
+  looking up each title in the retriever's session-scoped
+  title-to-ref map (`getSourceTitleToRefMap()` in `retriever.ts`) —
+  the same map the chat UI uses to make `[Source: "..."]` clickable.
+  A title the map can't resolve (e.g. the chat session that produced
+  it has since been replaced) is left as literal `[Source: "title"]`
+  text rather than silently dropped, so the answer never claims a
+  citation it can no longer back.
+- **Maintenance.** As of 2026-09-18 an Answer page is write-once: there
+  is no revise/re-ingest path, and `buildWikiSnapshots` (the Wiki
+  Linter's input) skips `answer` pages entirely, so they never appear
+  in Lint findings. Folding Answer pages into the same
+  revision/point-check flow as Topics is a follow-up.
 
 ### 3.2 `level` and `status` for Claims
 
@@ -1823,6 +1872,7 @@ Bumping rules:
 | **24** | Outline collection treats multi-column blocks (`columnList` / `column`) as transparent layout wrappers — headings and steps placed inside a column are collected as if they were top-level, so they appear in the outline and in search. No `NoteIndexEntry` field changed; the bump exists because the collection logic changed and column-using notes need a rebuild to be indexed correctly. Notes without columns produce identical entries. |
 | **25** | `extractBlockText` now yields the `cachedTitle` / `fileName` snapshot of `sharedCitation` blocks (§7.5), so a note is findable by the title of the shared entry it cites. No `NoteIndexEntry` field changed; citation-using notes need a rebuild to pick up the searchable text. |
 | **26** | Added `importSourceHash` — mirrors `GraphiumDocument.importSource.contentHash`. Intake's note-dedupe (`src/features/intake/note-dedupe.ts`) used to narrow candidates by filename-derived title before reading each candidate's doc to compare hashes; a renamed-but-unchanged file could not be recognized as the same file re-imported. It now scans the index for a matching `importSourceHash` directly (no per-candidate doc read, and rename-proof). Pre-v26 notes keep `importSourceHash: undefined` until `ensureIndex` rebuilds on the bump. |
+| **27** | `wikiKind` can now be `"answer"` (§3.1c). No `NoteIndexEntry` field was added — the bump follows the convention of bumping when the set of values a field can hold grows, so pre-v27 index entries are rebuilt and the sidebar / search / list-kind filters see `answer` pages consistently. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
