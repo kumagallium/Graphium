@@ -289,6 +289,199 @@ describe("runSourceTopicStage", () => {
     expect(saved?.wikiMeta?.topicMarkdown).toContain("更新後の本文");
   });
 
+  // レビュー確認用: surveySource が deps に渡されていても、窓 1 枚（4,000 字以下）の
+  // 資料では呼ばれないこと・fetch も route-topics 1 回 + revise-topic 1 回だけであること。
+  // decision 2「窓 1 枚に収まる資料は今と完全に同じ動き」を fetch 呼び出し回数で確認する。
+  it("窓 1 枚の資料は surveySource が渡されていても呼ばれず、fetch も route 1 回 + revise 1 回だけ", async () => {
+    const surveySource = vi.fn(async () => "見取り図テキスト");
+    const { deps } = makeSourceDeps({ surveySource });
+
+    let fetchCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      fetchCalls++;
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "短い資料", text: "短い本文" }];
+    await runSourceTopicStage(sources, deps);
+
+    expect(surveySource).not.toHaveBeenCalled();
+    expect(fetchCalls).toBe(2); // route-topics 1 回 + revise-topic 1 回
+    expect(deps.handleCreateWikiFile).toHaveBeenCalledTimes(1);
+    expect(deps.handleSaveWikiFile).not.toHaveBeenCalled(); // 新規作成のみ・改訂保存は別経路
+  });
+
+  // ── 窓分割（複数窓）── splitIntoWindows は 4,000 字超で複数窓に分ける。
+  // ここでは長文を作り、見取り図・窓ごとの route/revise・保存回数を検証する。
+  const LONG_TEXT = "あ".repeat(5000); // 窓 4,000 字・重ね 400 字なので窓 2 枚になる
+
+  it("4,000 字を超える資料は見取り図 1 回 + 窓ごとの振り分け・改訂が呼ばれ、保存は 1 回", async () => {
+    const surveySource = vi.fn(async () => "見取り図テキスト");
+    const { deps, docs } = makeSourceDeps({ surveySource });
+
+    let routeCalls = 0;
+    let reviseCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        routeCalls++;
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        reviseCalls++;
+        return { ok: true, json: async () => ({ body: `## 定義\n本文${reviseCalls}[[source:note-1]]` }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "長い資料", text: LONG_TEXT }];
+    const result = await runSourceTopicStage(sources, deps);
+
+    expect(surveySource).toHaveBeenCalledTimes(1);
+    expect(routeCalls).toBe(2); // 窓ごとに 1 回
+    expect(reviseCalls).toBe(2); // 窓 1: 新規作成 / 窓 2: 同名を更新として改訂
+    expect(result.created).toBe(1);
+    expect(deps.handleCreateWikiFile).toHaveBeenCalledTimes(1);
+    // 作成後、窓 2 でさらに改訂されたので保存が 1 回だけ追加で走る（作成の保存とは別）
+    expect(deps.handleSaveWikiFile).toHaveBeenCalledTimes(1);
+    const created = docs.get(`wiki:${result.createdTopics[0].id}`);
+    expect(created?.wikiMeta?.topicMarkdown).toContain("本文2");
+  });
+
+  // レビュー確認用: 窓 1 枚目で新規作成したトピックの id が、窓 2 枚目の route-topics 呼び出しの
+  // existingTopics に実際に含まれること（decision 5「作成後は existingRefs に加える」の直接確認）。
+  it("窓 1 枚目で新規作成したトピックは、窓 2 枚目の route-topics の existingTopics に含まれる", async () => {
+    const { deps } = makeSourceDeps();
+
+    const routeRequestBodies: any[] = [];
+    let createdTopicId: string | undefined;
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
+      if (String(url).includes("/route-topics")) {
+        const parsedBody = JSON.parse(init.body);
+        routeRequestBodies.push(parsedBody);
+        // 窓 1 枚目（existingTopics に無題トピックが無い）は新規作成、窓 2 枚目は同じ名前を返す
+        // （実装側が createdNames で二重作成せず、existingTopics 経由の存在確認とは別経路で
+        // 重複を防いでいることは既存テストで確認済み。ここでは existingTopics の中身を見る）。
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    (deps.handleCreateWikiFile as any).mockImplementation(async (doc: GraphiumDocument) => {
+      createdTopicId = "new-topic-0";
+      return createdTopicId;
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "長い資料", text: LONG_TEXT }];
+    await runSourceTopicStage(sources, deps);
+
+    expect(routeRequestBodies).toHaveLength(2);
+    // 窓 1 枚目: まだ作成前なので existingTopics に含まれない
+    expect(routeRequestBodies[0].existingTopics.map((t: any) => t.id)).not.toContain(createdTopicId);
+    // 窓 2 枚目: 窓 1 枚目で作成済みの id が existingTopics に含まれる
+    expect(routeRequestBodies[1].existingTopics.map((t: any) => t.id)).toContain(createdTopicId);
+  });
+
+  it("窓が複数のとき、2 枚目以降の窓では previouslyCited が false になる", async () => {
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [{ id: "topic-1", title: "既存トピック", sourceIds: ["note-1"] }],
+    });
+    docs.set("wiki:topic-1", makeSourceTopicDoc("既存トピック", "## 定義\n旧本文[[source:note-1]]", ["note-1"]));
+
+    const sentBodies: any[] = [];
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: ["topic-1"], create: [] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        sentBodies.push(JSON.parse(init.body));
+        return { ok: true, json: async () => ({ body: "## 定義\n更新後の本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料（更新後）", text: LONG_TEXT }];
+    await runSourceTopicStage(sources, deps);
+
+    expect(sentBodies).toHaveLength(2);
+    expect(sentBodies[0].previouslyCited).toBe(true); // 1 枚目: 実行前から引用済み
+    expect(sentBodies[1].previouslyCited).toBeFalsy(); // 2 枚目以降は立てない
+  });
+
+  it("窓 2 枚目で中断されたら、そこで止まり 1 枚目までの本文が保存される", async () => {
+    const { deps, docs } = makeSourceDeps();
+    const controller = new AbortController();
+
+    let reviseCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        reviseCalls++;
+        // 窓 1 枚目の改訂が終わった直後に中断を発行する（窓ループの先頭で検出される）。
+        if (reviseCalls === 1) controller.abort();
+        return { ok: true, json: async () => ({ body: `## 定義\n窓${reviseCalls}の本文[[source:note-1]]` }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "長い資料", text: LONG_TEXT }];
+    const result = await runSourceTopicStage(sources, { ...deps, signal: controller.signal });
+
+    expect(reviseCalls).toBe(1); // 窓 2 枚目には入らない
+    expect(result.created).toBe(1);
+    const created = docs.get(`wiki:${result.createdTopics[0].id}`);
+    expect(created?.wikiMeta?.topicMarkdown).toContain("窓1の本文");
+  });
+
+  it("窓が複数トピックに振り分けられても、改訂回数は窓ごとに route が返したトピック分だけ", async () => {
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [
+        { id: "topic-a", title: "トピックA" },
+        { id: "topic-b", title: "トピックB" },
+      ],
+    });
+    docs.set("wiki:topic-a", makeSourceTopicDoc("トピックA", "## 定義\nA旧本文", []));
+    docs.set("wiki:topic-b", makeSourceTopicDoc("トピックB", "## 定義\nB旧本文", []));
+
+    let routeCalls = 0;
+    let reviseCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        routeCalls++;
+        // 窓 1 は topic-a だけ、窓 2 は topic-a・topic-b 両方を返す
+        // （もし窓数×トピック数で回るなら 2×2=4 回になるはずが、そうならないことを確認する）。
+        return routeCalls === 1
+          ? { ok: true, json: async () => ({ update: ["topic-a"], create: [] }) }
+          : { ok: true, json: async () => ({ update: ["topic-a", "topic-b"], create: [] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        reviseCalls++;
+        return { ok: true, json: async () => ({ body: `## 定義\n改訂${reviseCalls}` }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料", text: LONG_TEXT }];
+    const result = await runSourceTopicStage(sources, deps);
+
+    // 窓 1: topic-a のみ改訂（1 回）/ 窓 2: topic-a・topic-b を改訂（2 回）= 合計 3 回。
+    // 窓数×トピック数（2×2=4）にはならない — 窓ごとに route が実際に返した分だけ。
+    expect(reviseCalls).toBe(3);
+    expect(result.updated).toBe(2); // topic-a・topic-b それぞれ 1 回だけ保存（窓ごとではない）
+    expect(deps.handleSaveWikiFile).toHaveBeenCalledTimes(2);
+    const savedA = docs.get("wiki:topic-a");
+    expect(savedA?.wikiMeta?.topicMarkdown).toContain("改訂2"); // 最終窓（窓2）の本文が保存される
+  });
+
   it("引用済みトピックの改訂では、previouslyCited フラグ付きでユーザーメッセージに再確認の指示が入る", async () => {
     const { deps, docs } = makeSourceDeps({
       existingTopicRefs: [{ id: "topic-1", title: "既存トピック", sourceIds: ["note-1"] }],
@@ -419,6 +612,47 @@ describe("rebuildTopicFromSources", () => {
     const result = await rebuildTopicFromSources("topic-1", ["missing-note", "ok-note"], deps);
     expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1, sourcesSkipped: 1 });
     expect(docs.get("wiki:topic-1")?.wikiMeta?.derivedFromNotes).toEqual(["ok-note"]);
+  });
+
+  // レビュー確認用: 資料本文が 4,000 字を超えたら rebuildTopicFromSources 自身も
+  // splitIntoWindows を通し、見取り図 1 回 + 窓ごとの改訂を重ね、保存はトピック全体で 1 回だけ
+  // であること（作業 G 「既存の rebuildTopicFromSources も同じ窓分割を通す」の確認）。
+  it("長い資料は見取り図 1 回 + 窓ごとの改訂を重ね、保存は 1 回だけ", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "", []));
+    const longText = "あ".repeat(5000); // 窓 2 枚になる
+
+    let reviseCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        reviseCalls++;
+        return { ok: true, json: async () => ({ body: `## 定義\n改訂${reviseCalls}[[source:note-1]]` }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const surveySource = vi.fn(async () => "見取り図テキスト");
+    const handleSaveWikiFile = vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+      docs.set(`wiki:${wikiId}`, doc);
+      return true;
+    });
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile,
+      resolveSource: vi.fn(async () => ({ title: "長い資料", text: longText })),
+      surveySource,
+      locale: "ja",
+      log: vi.fn(),
+    };
+
+    const result = await rebuildTopicFromSources("topic-1", ["note-1"], deps);
+
+    expect(surveySource).toHaveBeenCalledTimes(1);
+    expect(reviseCalls).toBe(2); // 窓ごとに改訂を重ねる
+    expect(handleSaveWikiFile).toHaveBeenCalledTimes(1); // 保存はトピック全体で 1 回だけ
+    expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1, sourcesSkipped: 0 });
+    expect(docs.get("wiki:topic-1")?.wikiMeta?.topicMarkdown).toContain("改訂2"); // 最終窓の本文
   });
 
   it("どの資料も解決できなければ rebuilt: false", async () => {
