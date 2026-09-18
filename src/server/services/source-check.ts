@@ -8,8 +8,9 @@
 // 不変条件（仕様 v1 より）:
 //   1. 知見の title/本文/status 等は一切書き換えない。ここは純関数の集まりで、
 //      wikiMeta.sourceCheck への書き込みは呼び出し側（クライアントの attachSourceCheck）が担う。
-//   2. 根拠のない数値定数を足さない。出典テキストの切り詰めもここでは行わない
-//      （wiki-ingester.ts はノート文字数に上限を設けていない — 既存の上限が無いので切らない）。
+//   2. 根拠のない数値定数を足さない。出典テキストの切り詰めもここでは足さない
+//      （取り込みと同じ原文を見る。ノート・Word・URL は全文、PDF は抽出器
+//      pdf-text-extractor.ts の MAX_TEXT_CHARS で打ち切られた、取り込みと同じ範囲）。
 //   3. quote は原文に実在すると照合できたものだけを残す（quoteAppearsInSource / applyQuoteVerification）。
 //   4. モデル未設定などは呼び出し側（route）が result:null + code で degrade する。
 
