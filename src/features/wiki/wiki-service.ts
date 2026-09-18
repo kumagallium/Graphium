@@ -1453,10 +1453,8 @@ export function buildWikiSnapshots(
   for (const file of wikiFiles) {
     const meta = wikiMetas.get(file.id);
     if (!meta) continue;
-    // answer（AI チャットの回答をナレッジ層に書き戻したページ）は保守（改訂・点検）の
-    // 対象化を別 PR に切り出している。lint 対象に含めない — WikiSnapshot.kind の型も
-    // まだ answer を持たない。
-    if (meta.kind === "answer") continue;
+    // answer（AI チャットの回答をナレッジ層に書き戻したページ）もトピックと同じ規則で
+    // 保守（改訂・点検）の対象にする（決定事項）。
 
     const doc = getCachedDoc(`wiki:${file.id}`);
     const wikiMeta = doc?.wikiMeta;
@@ -1469,8 +1467,8 @@ export function buildWikiSnapshots(
       relatedClaims: extractRelatedClaims(doc),
       bodyPreview: doc ? extractBodyPreview(doc, 240) : "",
       level: meta.kind === "claim" ? meta.level : undefined,
-      // topic のメンバー知見数（orphan＝0 件判定用）。topic 以外では意味を持たないので省略。
-      derivedFromClaims: meta.kind === "topic" ? (wikiMeta?.derivedFromClaims ?? []) : undefined,
+      // topic / answer のメンバー知見・資料数（orphan＝0 件判定用）。それ以外では意味を持たないので省略。
+      derivedFromClaims: (meta.kind === "topic" || meta.kind === "answer") ? (wikiMeta?.derivedFromClaims ?? []) : undefined,
       // 矛盾する既存洞察（atom のみ意味を持つ）。detectLocalIssues の contradiction 判定に使う。
       conflictsWith: meta.kind === "atom" ? wikiMeta?.conflictsWith : undefined,
       // Atom の構造（shape）。redundant 判定（LLM lint）に「同じ構造か」のヒントとして渡す。
@@ -2096,6 +2094,8 @@ export type ExistingTopicRef = {
    * 振り分け結果に無くても改訂対象に含める）。旧形式・未取得のときは省略してよい。
    */
   sourceIds?: string[];
+  /** answer（回答ページ）を混ぜて渡すときの種別。省略時は topic とみなす。 */
+  kind?: "topic" | "answer";
 };
 
 /**
@@ -2487,8 +2487,9 @@ export function rebuildSourceTopicDocument(
 /** route-topics API に渡す資料 1 本分（本文は全文でよい。長さの上限は置かない） */
 export type TopicRouteSource = { id: string; title: string; text: string };
 
-/** route-topics API に渡す既存トピックの index（タイトル + 定義の先頭文） */
-export type TopicRouteExistingRef = { id: string; title: string; oneLiner?: string };
+/** route-topics API に渡す既存トピックの index（タイトル + 定義の先頭文）。
+ *  kind: "answer" のときは回答ページ（問いに答えるページ）であることをルーターに伝える。 */
+export type TopicRouteExistingRef = { id: string; title: string; oneLiner?: string; kind?: "topic" | "answer" };
 
 /**
  * 資料 1 本をサーバー（/api/wiki/route-topics）へ渡し、「改訂する既存トピック id」
@@ -2531,6 +2532,8 @@ export async function reviseTopicFromSource(
   model?: string,
   /** この資料が以前の版から既に [[source:<id>]] で引用済みか（サーバーに見直し指示を出させる） */
   previouslyCited?: boolean,
+  /** このページが回答ページ（answer）か。true のとき「問いに答え続ける」規則を追加する */
+  isAnswer?: boolean,
 ): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/revise-topic`, {
@@ -2540,6 +2543,7 @@ export async function reviseTopicFromSource(
         title, language, currentBody, source,
         ...(model ? { model } : {}),
         ...(previouslyCited ? { previouslyCited } : {}),
+        ...(isAnswer ? { isAnswer } : {}),
       }),
     });
     if (!res.ok) {

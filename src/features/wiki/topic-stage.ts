@@ -21,6 +21,7 @@ import {
   retargetClaimTopicId,
   buildSourceTopicDocument,
   rebuildSourceTopicDocument,
+  rebuildSourceBackedWikiDocument,
   routeTopicsForSource,
   reviseTopicFromSource,
   mergeTopicBodies,
@@ -464,6 +465,7 @@ export async function runSourceTopicStage(
         id: t.id,
         title: t.title,
         oneLiner: t.oneLiner,
+        ...(t.kind === "answer" ? { kind: "answer" as const } : {}),
       }));
       route = await routeTopicsForSource(
         { id: source.id, title: source.title, text: source.text },
@@ -488,7 +490,7 @@ export async function runSourceTopicStage(
     for (const topicId of updateIds) {
       try {
         const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
-        if (!topicDoc?.wikiMeta || topicDoc.wikiMeta.kind !== "topic") {
+        if (!topicDoc?.wikiMeta || (topicDoc.wikiMeta.kind !== "topic" && topicDoc.wikiMeta.kind !== "answer")) {
           log("話題の改訂をスキップ: ドキュメントが見つからない", topicId);
           result.failed++;
           continue;
@@ -497,6 +499,7 @@ export async function runSourceTopicStage(
         if (typeof topicDoc.wikiMeta.topicMarkdown === "string") {
           // 新形式: 前の本文 + 今回の資料全文で改訂する。
           const currentBody = topicDoc.wikiMeta.topicMarkdown;
+          const isAnswer = topicDoc.wikiMeta.kind === "answer";
           const revisedBody = await reviseTopicFromSource(
             topicDoc.title,
             currentBody,
@@ -504,6 +507,7 @@ export async function runSourceTopicStage(
             deps.locale,
             source.model,
             previouslyCitedIds.has(topicId),
+            isAnswer,
           );
           if (!revisedBody) {
             result.failed++;
@@ -511,7 +515,8 @@ export async function runSourceTopicStage(
           }
           const priorIds = (topicDoc.wikiMeta.derivedFromNotes ?? []).filter((id) => id !== source.id);
           const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
-          const rewritten = rebuildSourceTopicDocument(topicDoc, revisedBody, sourceRefs, source.model ?? null, deps.noteIndex);
+          // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
+          const rewritten = rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, source.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind);
           await deps.handleSaveWikiFile(topicId, rewritten, {
             activityType: "wiki_cross_update",
             sources: sourceRefs.map((r) => r.id),
@@ -642,6 +647,7 @@ export type RebuildTopicFromSourcesDeps = {
  * 1 本ずつ順に改訂して組み直す（Karpathy の incremental revision と同じ手順）。
  * 旧形式トピックの「触れたら移行」（runSourceTopicStage）・手動再生成・手入れ画面の
  * 「資料から作り直す」（作業 C）が共通してこの関数を使う。
+ * answer（回答ページ）もトピックと同じ規則で組み直せる（kind は維持する）。
  */
 export async function rebuildTopicFromSources(
   topicId: string,
@@ -650,9 +656,11 @@ export async function rebuildTopicFromSources(
 ): Promise<RebuildTopicFromSourcesResult> {
   const log = deps.log ?? (() => {});
   const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
-  if (!topicDoc?.wikiMeta || topicDoc.wikiMeta.kind !== "topic") {
+  if (!topicDoc?.wikiMeta || (topicDoc.wikiMeta.kind !== "topic" && topicDoc.wikiMeta.kind !== "answer")) {
     return { rebuilt: false, sourcesUsed: 0, sourcesSkipped: sourceIds.length };
   }
+  // answer は問いに答えるページであることをプロンプトに伝える（reviser の追加規則）。
+  const isAnswer = topicDoc.wikiMeta.kind === "answer";
 
   // 重複 id を除きつつ、渡された順序は保つ（先に出てきたものを優先）。
   const uniqueIds = [...new Set(sourceIds)];
@@ -673,6 +681,8 @@ export async function rebuildTopicFromSources(
       { id: sourceId, title: resolved.title, text: resolved.text },
       deps.locale,
       deps.model,
+      undefined,
+      isAnswer,
     );
     if (!revised) {
       skipped++;
@@ -687,7 +697,8 @@ export async function rebuildTopicFromSources(
     return { rebuilt: false, sourcesUsed: 0, sourcesSkipped: skipped };
   }
 
-  const rewritten = rebuildSourceTopicDocument(topicDoc, body, usedRefs, deps.model ?? null, deps.noteIndex);
+  // kind は既存ドキュメントのものを維持する（answer を組み直しても topic に化けない）。
+  const rewritten = rebuildSourceBackedWikiDocument(topicDoc, body, usedRefs, deps.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind);
   await deps.handleSaveWikiFile(topicId, rewritten, {
     activityType: "wiki_cross_update",
     sources: usedRefs.map((r) => r.id),
@@ -727,6 +738,7 @@ export type TopicRebuildPlan = {
  * 旧形式はメンバー知見（derivedFromClaims）の derivedFromNotes の和を資料とみなす
  * （重複除去）。getDoc はメンバー知見のドキュメント解決だけに使う（呼び出し側が
  * キャッシュ／ロードのどちらでも注入できるよう同期・非同期どちらの戻りも許す）。
+ * answer（回答ページ）は旧形式を持たないため常に topicMarkdown 分岐に入る。
  */
 export async function planTopicRebuild(
   topics: TopicRebuildTarget[],
@@ -734,7 +746,7 @@ export async function planTopicRebuild(
 ): Promise<TopicRebuildPlan> {
   const items: TopicRebuildPlanItem[] = [];
   for (const { id, doc } of topics) {
-    if (!doc.wikiMeta || doc.wikiMeta.kind !== "topic") continue;
+    if (!doc.wikiMeta || (doc.wikiMeta.kind !== "topic" && doc.wikiMeta.kind !== "answer")) continue;
     const sourceIds = new Set<string>();
     if (typeof doc.wikiMeta.topicMarkdown === "string") {
       for (const sourceId of doc.wikiMeta.derivedFromNotes ?? []) sourceIds.add(sourceId);

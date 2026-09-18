@@ -17,10 +17,11 @@ import {
   resolveAtomDuplicates,
   mergeIntoWikiDocument,
   rewriteAndMerge,
+  buildWikiSnapshots,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
-import type { WikiMeta, SourceCheckProfile } from "../../lib/document-types";
+import type { WikiMeta, SourceCheckProfile, WikiMetaSummary } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 
 const emptyIndex: any[] = [];
@@ -734,6 +735,28 @@ describe("buildSourceBackedWikiDocument - kind を受け取る出典つきペー
     const first = buildSourceBackedWikiDocument("answer", "問い", "## 回答\n本文。", sources, null);
     const rewritten = rebuildSourceBackedWikiDocument(first, "## 回答\n更新後。", sources, null);
     expect(rewritten.wikiMeta?.kind).toBe("answer");
+  });
+});
+
+describe("buildWikiSnapshots - answer（回答ページ）も点検スナップショットに含める", () => {
+  it("kind: answer の wiki を含める（早期 continue で除外しない）", () => {
+    const doc = buildSourceBackedWikiDocument(
+      "answer",
+      "この現象はなぜ起きますか？",
+      "## 回答\n本文です。[[source:note-a]]",
+      [{ id: "note-a", title: "資料A" }],
+      "test-model",
+    );
+    const wikiMetas = new Map<string, WikiMetaSummary>([
+      ["answer-1", { title: doc.title, kind: "answer" }],
+    ]);
+    const snapshots = buildWikiSnapshots(
+      [{ id: "answer-1", modifiedTime: "2026-09-18T00:00:00.000Z" }],
+      wikiMetas,
+      (id) => (id === "wiki:answer-1" ? doc : null),
+    );
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toMatchObject({ id: "answer-1", kind: "answer", derivedFromNotes: ["note-a"] });
   });
 });
 

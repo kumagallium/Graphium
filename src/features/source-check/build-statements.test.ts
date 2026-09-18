@@ -117,4 +117,27 @@ describe("buildSourceCheckStatements", () => {
     expect(out[0].sourceIds).toEqual(["note-a"]);
     expect(out[0].statement).toBe("XRD パターンが取得された。");
   });
+
+  it("answer（回答ページ）も topic と同じ 1 段照合の文を取り出せる", () => {
+    const doc: GraphiumDocument = {
+      version: 2,
+      title: "この現象はなぜ起きますか？",
+      pages: [{ id: "p1", title: "Main", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+      wikiMeta: {
+        kind: "answer",
+        derivedFromNotes: ["note-a"],
+        derivedFromChats: [],
+        derivedFromClaims: [],
+        topicMarkdown: "## 回答\n温度差により生じる。[[source:note-a]]",
+        generatedAt: "2026-09-18T00:00:00Z",
+        generatedBy: { model: "m", version: "1.0.0" },
+      },
+      createdAt: "2026-09-18T00:00:00Z",
+      modifiedAt: "2026-09-18T00:00:00Z",
+    } as GraphiumDocument;
+    const out = buildSourceCheckStatements([{ docId: "answer-1", doc }]);
+    expect(out).toHaveLength(1);
+    expect(out[0].sourceIds).toEqual(["note-a"]);
+    expect(out[0].statement).toBe("温度差により生じる。");
+  });
 });

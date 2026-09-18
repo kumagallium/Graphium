@@ -911,21 +911,28 @@ Notes:
   Topics now carry that grouping role — existing Summary files remain
   readable, listed, searchable, and deletable, see
   [DATA_MODEL.md §3.1](./DATA_MODEL.md#31-kind-semantics) (kind semantics).)
-- **Answer pages are outside this pipeline (2026-09-18 onwards).** A `kind:
-  "answer"` page is not produced by the Ingester/Atomizer/Topic router — it's
-  written directly by the client when the user clicks "Keep as knowledge" on
-  an assistant message in the AI chat panel (`onSaveAsAnswer` in
-  `src/features/ai-assistant/panel.tsx`, `src/note-app.tsx`). It reuses the
-  same document shape as a source Topic (§3.1b) — `buildSourceBackedWikiDocument`
-  with `kind: "answer"` instead of `"topic"` — so it lives in the Knowledge
-  layer, is searchable, and shows up in the sidebar and graph like any other
-  Knowledge page, but title (the user's question) and citation source (the
-  chat's already-resolved `[Source: "title"]` markers, converted to
-  `[[source:<id>]]`) come from the chat exchange rather than from a
-  Topic-router/reviser call. As of this PR an Answer page is write-once: it
-  is not a revise/re-ingest target, and the Linter skips it entirely (see
-  [DATA_MODEL.md §3.1c](./DATA_MODEL.md)). Folding Answer pages into the
-  same maintenance (revision + point-check) flow as Topics is a follow-up.
+- **Answer pages are created outside this pipeline, but maintained inside
+  it (2026-09-18 onwards).** A `kind: "answer"` page is not *created* by the
+  Ingester/Atomizer/Topic router — it's written directly by the client when
+  the user clicks "Keep as knowledge" on an assistant message in the AI chat
+  panel (`onSaveAsAnswer` in `src/features/ai-assistant/panel.tsx`,
+  `src/note-app.tsx`). It reuses the same document shape as a source Topic
+  (§3.1b) — `buildSourceBackedWikiDocument` with `kind: "answer"` instead of
+  `"topic"` — so it lives in the Knowledge layer, is searchable, and shows up
+  in the sidebar and graph like any other Knowledge page, but title (the
+  user's question) and citation source (the chat's already-resolved
+  `[Source: "title"]` markers, converted to `[[source:<id>]]`) come from the
+  chat exchange rather than from a Topic-router/reviser call at creation
+  time. Once created, an Answer page IS maintained the same way as a Topic:
+  it is included in the Topic Router's existing-page list (shown as
+  `[answer]` so the LLM only routes a source to it when the source updates
+  or contradicts the answer, not merely for topical overlap), is revised
+  with `reviseTopicFromSource` (told to keep answering its question), is a
+  Wiki Linter target (`WikiSnapshot.kind: "answer"`, same empty/
+  missing-source/sources-gone rules as a Topic), can be rebuilt from sources
+  via `rebuildTopicFromSources`/`planTopicRebuild` (kind preserved), and is
+  covered by source check. See
+  [DATA_MODEL.md §3.1c](./DATA_MODEL.md) for the field-level detail.
 - **Failure handling:** retries are not centralized today. Each stage
   surfaces its own errors back through the response. AI-setup and
   authentication failures additionally carry a machine-readable `code`

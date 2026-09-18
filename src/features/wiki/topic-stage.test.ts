@@ -77,6 +77,28 @@ function makeSourceTopicDoc(title: string, topicMarkdown: string, sourceIds: str
   };
 }
 
+/** 新形式 answer（回答ページ・topicMarkdown あり）のテスト用ドキュメント */
+function makeSourceAnswerDoc(title: string, topicMarkdown: string, sourceIds: string[]): GraphiumDocument {
+  const wikiMeta: WikiMeta = {
+    kind: "answer",
+    derivedFromNotes: sourceIds,
+    derivedFromChats: [],
+    derivedFromClaims: [],
+    topicMarkdown,
+    generatedAt: new Date().toISOString(),
+    generatedBy: { model: "test-model", version: "1.0.0" },
+  };
+  return {
+    version: 2,
+    title,
+    pages: [{ id: "main", title, blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+    source: "ai",
+    wikiMeta,
+    createdAt: new Date().toISOString(),
+    modifiedAt: new Date().toISOString(),
+  };
+}
+
 function makeSourceDeps(
   overrides: Partial<SourceTopicStageDeps> = {},
 ): { deps: SourceTopicStageDeps; docs: Map<string, GraphiumDocument> } {
@@ -290,6 +312,73 @@ describe("runSourceTopicStage", () => {
 
     expect(sentBody.previouslyCited).toBe(true);
   });
+
+  it("answer（回答ページ）はルーターに渡す既存一覧に kind: answer 付きで載る", async () => {
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [{ id: "answer-1", title: "この現象はなぜ起きますか？", kind: "answer" }],
+    });
+    docs.set("wiki:answer-1", makeSourceAnswerDoc("この現象はなぜ起きますか？", "## 回答\n本文[[source:note-0]]", ["note-0"]));
+
+    let routeBody: any;
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
+      if (String(url).includes("/route-topics")) {
+        routeBody = JSON.parse(init.body);
+        return { ok: true, json: async () => ({ update: [], create: [] }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "新しい資料", text: "新しい資料の本文" }];
+    await runSourceTopicStage(sources, deps);
+
+    expect(routeBody.existingTopics).toEqual([
+      expect.objectContaining({ id: "answer-1", kind: "answer" }),
+    ]);
+  });
+
+  it("引用済みの answer は、ルーターが update に選ばなくても改訂対象に含める（トピックと同じ規則）", async () => {
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [{ id: "answer-1", title: "問い", sourceIds: ["note-1"], kind: "answer" }],
+    });
+    docs.set("wiki:answer-1", makeSourceAnswerDoc("問い", "## 回答\n旧本文[[source:note-1]]", ["note-1"]));
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: [], create: [] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 回答\n更新後の本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料（更新後）", text: "更新後の本文" }];
+    const result = await runSourceTopicStage(sources, deps);
+
+    expect(result).toMatchObject({ created: 0, updated: 1, failed: 0 });
+    const saved = docs.get("wiki:answer-1");
+    expect(saved?.wikiMeta?.kind).toBe("answer");
+    expect(saved?.wikiMeta?.topicMarkdown).toContain("更新後の本文");
+  });
+
+  it("新規作成（route-topics の create）では answer は作られない — 常に topic として作る", async () => {
+    const { deps } = makeSourceDeps();
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: [], create: ["新しい話題"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料", text: "本文" }];
+    await runSourceTopicStage(sources, deps);
+
+    const [createdDoc] = (deps.handleCreateWikiFile as any).mock.calls[0];
+    expect(createdDoc.wikiMeta.kind).toBe("topic");
+  });
 });
 
 describe("rebuildTopicFromSources", () => {
@@ -358,6 +447,30 @@ describe("rebuildTopicFromSources", () => {
     };
     const result = await rebuildTopicFromSources("claim-1", ["a"], deps);
     expect(result).toEqual({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 1 });
+  });
+
+  it("answer（回答ページ）も組み直せる。kind は answer のまま保たれる", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:answer-1", makeSourceAnswerDoc("問い", "", []));
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 回答\n本文[[source:note-a]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+        docs.set(`wiki:${wikiId}`, doc);
+        return true;
+      }),
+      resolveSource: vi.fn(async () => ({ title: "資料", text: "本文" })),
+      locale: "ja",
+    };
+    const result = await rebuildTopicFromSources("answer-1", ["note-a"], deps);
+    expect(result.rebuilt).toBe(true);
+    expect(docs.get("wiki:answer-1")?.wikiMeta?.kind).toBe("answer");
   });
 });
 
@@ -648,6 +761,16 @@ describe("planTopicRebuild", () => {
     );
     expect(plan.topicCount).toBe(2);
     expect(plan.totalCalls).toBe(3);
+  });
+
+  it("answer（回答ページ）も対象に含める（topicMarkdown から derivedFromNotes をそのまま資料とみなす）", async () => {
+    const doc = makeSourceAnswerDoc("問い", "本文", ["note-1", "note-2"]);
+    const plan = await planTopicRebuild([{ id: "answer-1", doc }], async () => null);
+    expect(plan).toEqual({
+      items: [{ topicId: "answer-1", sourceIds: ["note-1", "note-2"] }],
+      topicCount: 1,
+      totalCalls: 2,
+    });
   });
 });
 

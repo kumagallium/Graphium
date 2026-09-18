@@ -140,7 +140,9 @@ When an [AI chat](/ai-chat-and-ask) answer contains something worth keeping, pre
 
 **Make Knowledge** breaks an answer apart into claims/insights. If instead the whole answer reads well as-is — a self-contained explanation you'd want to find again by the question you asked — press **Keep as knowledge** under the same message. Graphium saves the answer's text as-is as an **Answer** page, titled with your question, with any citation the answer already showed (the ones you could click to open a note or material) carried over as the page's own citations. A confirmation with an **Open** link appears once it's saved.
 
-Keep as knowledge doesn't call the AI again — it saves the message you already read, unedited, so there's nothing to review before it lands. It's also not available in shared-note or material chat, only the note editor's chat panel. An Answer page is currently a snapshot: it doesn't yet have **Regenerate**, isn't included in Upkeep's Check, and won't be revised as your notes change — treat it as a bookmark of a good answer rather than a page that keeps itself up to date.
+Keep as knowledge doesn't call the AI again — it saves the message you already read, unedited, so there's nothing to review before it lands. It's also not available in shared-note or material chat, only the note editor's chat panel.
+
+Once saved, an Answer page is upkept the same way a Topic is: it's included in Upkeep's **Check** (empty page, missing source, and out-of-date checks), covered by source check, and can be rebuilt from its sources with **Regenerate** if a source changes. A new note only revises an existing Answer page when it actually updates or contradicts the answer — otherwise the note becomes its own Topic instead of drifting the Answer off-topic.
 
 ## Knowledge in the global graph
 

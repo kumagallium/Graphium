@@ -1115,11 +1115,24 @@ same `derivedFromNotes` id space, same References block — built through
   it has since been replaced) is left as literal `[Source: "title"]`
   text rather than silently dropped, so the answer never claims a
   citation it can no longer back.
-- **Maintenance.** As of 2026-09-18 an Answer page is write-once: there
-  is no revise/re-ingest path, and `buildWikiSnapshots` (the Wiki
-  Linter's input) skips `answer` pages entirely, so they never appear
-  in Lint findings. Folding Answer pages into the same
-  revision/point-check flow as Topics is a follow-up.
+- **Maintenance.** As of 2026-09-18 an Answer page is maintained the
+  same way as a source-backed Topic: it participates in Topic Router
+  ingest (marked `[answer]` in the router's existing-page list so the
+  LLM only revises it when a source actually updates or contradicts the
+  answer, not merely on topical overlap), is revised with
+  `reviseTopicFromSource` (with an added instruction that the page
+  keeps answering its question), appears in `buildWikiSnapshots` /
+  `WikiSnapshot.kind` and is covered by the Wiki Linter's local checks
+  (empty-answer via `derivedFromClaims`+`derivedFromNotes`,
+  `missing-source`, `sources-gone` auto-archive) the same way a Topic
+  is, is a target for "Rebuild from sources"
+  (`rebuildTopicFromSources` / `planTopicRebuild`, kind preserved), and
+  is included in source check (`buildSourceCheckStatements`,
+  `sourceCheckLlmCallsFor`, `useAutoSourceCheck`). A source that already
+  cites the Answer page (`derivedFromNotes`) is always revised on
+  re-ingest regardless of the router's decision, same as a Topic.
+  New Answer pages are still only created by the chat "Keep as
+  knowledge" action — ingest never creates one.
 
 ### 3.2 `level` and `status` for Claims
 

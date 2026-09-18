@@ -55,7 +55,7 @@ export type LintReport = {
 export type WikiSnapshot = {
   id: string;
   title: string;
-  kind: "summary" | "claim" | "atom" | "synthesis" | "topic";
+  kind: "summary" | "claim" | "atom" | "synthesis" | "topic" | "answer";
   derivedFromNotes: string[];
   relatedClaims: string[];
   /** 本文先頭のプレビュー（1ノート1知見前提で sections は廃止） */
@@ -370,19 +370,20 @@ export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
       }
     }
 
-    // Orphan チェック（topic）: メンバー知見が 0 件の話題ページ。
+    // Orphan チェック（topic / answer）: メンバー知見・資料が 0 件のページ。
     // 知見の削除で 0 件になった話題はそのまま残す設計（本文は書き直さない）ので、
     // ここで検出して点検結果に出す。LLM 不要でローカルに判定できる。
     // 新形式トピック（topicMarkdown あり）は derivedFromClaims を使わず derivedFromNotes
     // （資料 id）にメンバーを持つため、両方が空のときだけ空トピックとみなす。
-    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0 && w.derivedFromNotes.length === 0) {
+    // answer（回答ページ）もトピックと同じ規則で扱う（決定事項）。
+    if ((w.kind === "topic" || w.kind === "answer") && (w.derivedFromClaims ?? []).length === 0 && w.derivedFromNotes.length === 0) {
       issues.push({
         type: "orphan",
         severity: "warning",
-        title: `"${w.title}" is a topic with no member claims`,
-        description: `This topic page has no Claims or sources linked to it (derivedFromClaims and derivedFromNotes are both empty), likely because all member Claims/sources were deleted.`,
+        title: w.kind === "answer" ? `"${w.title}" is an answer page with no sources` : `"${w.title}" is a topic with no member claims`,
+        description: `This page has no Claims or sources linked to it (derivedFromClaims and derivedFromNotes are both empty), likely because all member Claims/sources were deleted.`,
         affectedWikiIds: [w.id],
-        suggestion: `Delete this topic page, or link existing Claims/sources to it.`,
+        suggestion: w.kind === "answer" ? `Delete this answer page, or link existing sources to it.` : `Delete this topic page, or link existing Claims/sources to it.`,
       });
     }
   }
@@ -433,10 +434,10 @@ function normalizeForDuplicateCheck(title: string): string {
 export type AutoArchiveCandidate = {
   id: string;
   title: string;
-  kind: "topic" | "claim";
+  kind: "topic" | "claim" | "answer";
   /**
-   * empty-topic: メンバー知見 0 件の話題 / orphaned-source: 出どころのノートが全て消失した知見 /
-   * sources-gone: 新形式トピックで、資料がすべてノート id かつどれも有効なノートに無い
+   * empty-topic: メンバー知見 0 件の話題（answer も同じ判定を使う） / orphaned-source: 出どころのノートが全て消失した知見 /
+   * sources-gone: 新形式トピック・answer で、資料がすべてノート id かつどれも有効なノートに無い
    */
   reason: "empty-topic" | "orphaned-source" | "sources-gone";
 };
@@ -464,16 +465,17 @@ export function detectAutoArchivable(
   for (const w of wikis) {
     // 新形式トピック（derivedFromNotes に資料 id を持つ）を誤って空判定しないよう、
     // derivedFromClaims と derivedFromNotes の両方が空のときだけ「空トピック」とみなす。
-    if (w.kind === "topic" && (w.derivedFromClaims ?? []).length === 0 && w.derivedFromNotes.length === 0) {
-      candidates.push({ id: w.id, title: w.title, kind: "topic", reason: "empty-topic" });
+    // answer（回答ページ）もトピックと同じ規則で扱う（決定事項）。
+    if ((w.kind === "topic" || w.kind === "answer") && (w.derivedFromClaims ?? []).length === 0 && w.derivedFromNotes.length === 0) {
+      candidates.push({ id: w.id, title: w.title, kind: w.kind, reason: "empty-topic" });
       continue;
     }
-    // 新形式トピック（derivedFromClaims が空・derivedFromNotes が 1 件以上）で、資料が
+    // 新形式トピック / answer（derivedFromClaims が空・derivedFromNotes が 1 件以上）で、資料が
     // すべてノート id（外部プレフィックス無し）かつ、どれも validNoteIds に無いとき。
     // detectAutoArchivable の claim 側（orphaned-source）と同じ理由で、有効なノートが
     // 1 件も渡されない（起動直後で索引が未読込）ときは判定しない。
     if (
-      w.kind === "topic"
+      (w.kind === "topic" || w.kind === "answer")
       && (w.derivedFromClaims ?? []).length === 0
       && w.derivedFromNotes.length > 0
       && validNoteIds.size > 0
@@ -483,7 +485,7 @@ export function detectAutoArchivable(
       if (!hasExternalSource) {
         const hasValidSource = noteSources.some((noteId) => validNoteIds.has(noteId));
         if (!hasValidSource) {
-          candidates.push({ id: w.id, title: w.title, kind: "topic", reason: "sources-gone" });
+          candidates.push({ id: w.id, title: w.title, kind: w.kind, reason: "sources-gone" });
           continue;
         }
       }
@@ -530,7 +532,8 @@ export function detectMissingSourceIssues(
   if (validNoteIds.size === 0) return [];
   const issues: LintIssue[] = [];
   for (const w of wikis) {
-    if (w.kind !== "topic" || (w.derivedFromClaims ?? []).length > 0) continue;
+    // answer（回答ページ）もトピックと同じ規則で扱う（決定事項）。
+    if ((w.kind !== "topic" && w.kind !== "answer") || (w.derivedFromClaims ?? []).length > 0) continue;
     const noteSources = w.derivedFromNotes.filter((id) => !id.includes(":"));
     if (noteSources.length === 0) continue;
     const missingCount = noteSources.filter((noteId) => !validNoteIds.has(noteId)).length;
@@ -540,7 +543,7 @@ export function detectMissingSourceIssues(
       type: "missing-source",
       severity: "warning",
       title: `"${w.title}" cites a source that is missing`,
-      description: `${missingCount} of ${noteSources.length} source note(s) cited by this topic are in the trash or could not be found.`,
+      description: `${missingCount} of ${noteSources.length} source note(s) cited by this page are in the trash or could not be found.`,
       affectedWikiIds: [w.id],
       suggestion: `${missingCount} source(s) missing`,
     });
