@@ -19,6 +19,10 @@ export function activityTypeLabelKey(type: string): string | null {
     case "wiki_atomize": return "history.type.wikiAtomize";
     case "wiki_reinforce": return "history.type.wikiReinforce";
     case "skill_default_update": return "history.type.skillDefaultUpdate";
+    case "knowledge_schema_edit": return "history.type.knowledgeSchemaEdit";
+    case "knowledge_schema_default_update": return "history.type.knowledgeSchemaDefaultUpdate";
+    case "knowledge_schema_reset": return "history.type.knowledgeSchemaReset";
+    case "knowledge_schema_language_switch": return "history.type.knowledgeSchemaLanguageSwitch";
     case "snapshot_restore": return "history.type.snapshotRestore";
     case "proposal_adopt": return "history.type.proposalAdopt";
     default: return null;

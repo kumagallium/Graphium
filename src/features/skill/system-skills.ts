@@ -6,7 +6,7 @@
 // プロンプトは BlockNote ブロックに変換されて保存されるため、
 // `extractSkillPrompt` で抜き出される平文形式で書く（マークダウン互換）。
 
-export type SystemSkillId = "default-voice-ja" | "default-voice-en";
+export type SystemSkillId = "default-voice-ja" | "default-voice-en" | "knowledge-schema";
 
 export type SystemSkillDefinition = {
   id: SystemSkillId;
@@ -91,6 +91,99 @@ Write so a future reader wants to keep reading. Aim for the tone of a short note
 - For chat replies and personal notes, first-person ("I think", "I picked") is fine.
 `;
 
+export const KNOWLEDGE_SCHEMA_PROMPTS: Record<"ja" | "en", string> = {
+  en: `## Knowledge Schema
+
+This document defines the structure and maintenance conventions for Graphium's Knowledge layer. It is independent from writing Voice. Code-level safety rules, structured-output validation, citation verification, and guardrails remain mandatory even when this document is edited.
+
+## Editing guide
+
+- **Safe to change:** domain terminology, conditions that must always be retained, citation granularity, page structure, and upkeep review criteria.
+- **Not changeable in this Schema; enforced by code:** JSON shape, storage paths, the \`[[source:id]]\` citation syntax, and the rule that Graphium must not update human-owned documents without an explicit workflow.
+- **Example customizations:** for software work, retain versions, runtime environments, and reproduction steps; for planning, retain owners, deadlines, dependencies, and decision criteria; for learning, retain the source, context, and confidence behind each explanation. In every domain, choose citation granularity fine enough to distinguish independently supported results or decisions.
+- Keep edits operational and concrete. The saved body is passed directly into AI prompts, so write instructions you want future Topic, Answer, and Claim generation to follow.
+
+## Topic and Answer
+
+- A Topic is a source-grounded page about one concept. An Answer is a source-grounded page that keeps answering its title question; do not turn it into a general survey.
+- Revise the complete page from the current body and the new source. Keep distinct source-specific statements separate when their conditions, cases, numbers, assumptions, or scope differ.
+- Every factual sentence needs an inline source citation. Preserve a hedge, uncertainty, contradiction, and open question when the source has one. Do not invent a citation, mechanism, or generalization.
+
+## Claim
+
+- A Claim is one transferable proposition supported by its source, not a summary or textbook filler.
+- Keep claims atomic: split independently useful propositions and do not combine evidence from unrelated sources into one assertion.
+- Retain conditions, evidence limits, and epistemic strength. Classify only from what the source supports.
+
+## Citation and evidence
+
+- Use the exact citation identifiers supplied by Graphium. Citations must support the sentence they end.
+- Preserve quotations, quantitative values, methods, decision grounds, provenance, and source-local distinctions at the granularity needed to audit the statement.
+- Do not fabricate sources, URLs, quotations, quantitative values, decisions, or provenance.
+
+## Conditions and uncertainty
+
+- Keep conditions, case boundaries, parameter or assumption ranges, and failed, negative, or null results when they affect whether a statement holds.
+- Mark uncertainty, disagreement, missing support, and open questions explicitly instead of smoothing them away.
+
+## Revision
+
+- A revision incorporates new evidence without silently erasing supported prior evidence.
+- Explicit conflicts belong in a disagreement or open-question section, not in an averaged statement that hides the conflict.
+- Do not overwrite human-owned wording or decisions without the corresponding Graphium workflow.
+
+## Lint and upkeep
+
+- Prefer a precise, traceable page over a broad but weak one.
+- Surface missing support, stale statements, duplicates, contradictions, citation gaps, and unresolved questions for review.
+- Do not make destructive maintenance decisions or overwrite human-owned content without the corresponding Graphium workflow.`,
+  ja: `## ナレッジスキーマ
+
+この文書は Graphium のナレッジ層の構造と保守規約を定義します。文体（Voice）とは独立しています。この文書を編集しても、コード側の安全規則、構造化出力の検証、引用照合、ガードレールは必ず維持されます。
+
+## 編集ガイド
+
+- **安全に変更してよい:** 分野用語、必ず残す条件、引用粒度、ページ構成、点検観点。
+- **ナレッジスキーマでは変更不可・コードが守る:** JSON 形式、保存経路、\`[[source:id]]\` 引用構文、人間が所有する文書を明示的な操作手順なしに更新しないこと。
+- **具体的な変更例:** ソフトウェアではバージョン、実行環境、再現手順を残す。企画では担当者、期限、依存関係、判断基準を残す。学習では説明ごとの出典、文脈、確信度を残す。どの分野でも、独立して裏づけられた結果や判断を区別できる細かさで引用します。
+- 編集は運用できる具体的な指示にしてください。保存された本文はそのまま AI への指示に渡されるため、以後のトピック・問答（Q&A）・知見の生成に守らせたい規約として書きます。
+
+## トピックと問答（Q&A）
+
+- トピックは 1 つの概念について、出典に根拠づけられたページです。問答（Q&A）はタイトルの問いに答え続ける、出典に根拠づけられたページです。一般的な概説へ変えないでください。
+- 現在の本文と新しい出典からページ全体を改訂します。条件、事例、数値、前提、スコープが異なる出典固有の記述は混ぜずに分けます。
+- 事実を述べる文にはすべて文中引用が必要です。出典に留保、不確実性、矛盾、未解決の問いがある場合は残します。引用、機構、一般化を捏造しないでください。
+
+## 知見
+
+- 知見は出典に支えられた、転用可能な 1 つの命題です。要約や教科書的な穴埋めではありません。
+- 知見は原子的に保ちます。独立して使える命題は分け、無関係な出典の根拠を 1 つの主張に混ぜないでください。
+- 条件、根拠の限界、確からしさの強さを残します。分類は出典が支える範囲だけから行います。
+
+## 引用と根拠
+
+- Graphium が渡した正確な引用 ID を使います。引用は、その文末にある文を支えていなければなりません。
+- 記述を監査できる粒度で、引用、定量値、方法、判断根拠、来歴、出典内の区別を残します。
+- 出典、URL、引用文、定量値、判断、来歴を捏造しないでください。
+
+## 条件と不確実性
+
+- 条件、事例の境界、パラメータや前提の範囲、失敗、否定的結果、差が出なかった結果は、主張の成立範囲に影響するなら残します。
+- 不確実性、不一致、根拠不足、未解決の問いを、なめらかに消さず明示します。
+
+## 改訂
+
+- 改訂では、新しい根拠を取り込みつつ、根拠のある既存記述を黙って消しません。
+- 明示的な矛盾は、衝突や未解決の問いとして置きます。矛盾を隠す平均的な記述にしないでください。
+- 人間が所有している文言や判断を、対応する Graphium ワークフローなしに上書きしないでください。
+
+## 点検と手入れ
+
+- 広いが弱いページより、精密で追跡できるページを優先します。
+- 根拠不足、古くなった記述、重複、矛盾、引用漏れ、未解決の問いを点検対象として表面化します。
+- 破壊的な保守判断を勝手に行わず、人間所有文書を対応する Graphium ワークフローなしに上書きしないでください。`,
+};
+
 export const SYSTEM_SKILLS: SystemSkillDefinition[] = [
   {
     id: "default-voice-ja",
@@ -109,6 +202,15 @@ export const SYSTEM_SKILLS: SystemSkillDefinition[] = [
     language: "en",
     availableForIngest: true,
     prompt: VOICE_EN_PROMPT,
+  },
+  {
+    id: "knowledge-schema",
+    version: 4,
+    title: "Knowledge Schema / ナレッジスキーマ",
+    description: "Conventions for Topics, Answers, Claims, citations, revision, and upkeep / ナレッジ生成・引用・改訂の規約",
+    language: "en",
+    availableForIngest: false,
+    prompt: KNOWLEDGE_SCHEMA_PROMPTS.en,
   },
 ];
 

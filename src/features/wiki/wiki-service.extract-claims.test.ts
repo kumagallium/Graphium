@@ -22,6 +22,7 @@ describe("ingest 関数の extractClaims フラグ（知見の ON/OFF）", () =>
       "テストチャット",
       [],
       "ja",
+      "schema",
       false,
     );
 
@@ -42,6 +43,7 @@ describe("ingest 関数の extractClaims フラグ（知見の ON/OFF）", () =>
       "テストチャット",
       [],
       "ja",
+      "schema",
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -55,7 +57,7 @@ describe("ingest 関数の extractClaims フラグ（知見の ON/OFF）", () =>
     }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const result = await ingestFromUrl("https://example.com", [], "ja", false);
+    const result = await ingestFromUrl("https://example.com", [], "ja", "schema", false);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.wikis).toEqual([]);
@@ -75,7 +77,7 @@ describe("ingest 関数の extractClaims フラグ（知見の ON/OFF）", () =>
       });
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const result = await ingestFromUrl("https://example.com", [], "ja");
+    const result = await ingestFromUrl("https://example.com", [], "ja", "schema");
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.model).toBe("test-model");

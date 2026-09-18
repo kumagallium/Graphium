@@ -74,6 +74,26 @@ describe("snapshot-store", () => {
     expect(await listSnapshots(provider, "note-1")).toHaveLength(1);
   });
 
+  it("force指定なら第1ページが同一でも切替直前の全文を新しい版として残す", async () => {
+    const provider = makeProvider();
+    const first = { ...makeDoc("同じ本文"), title: "初期タイトル" };
+    const latest = { ...makeDoc("同じ本文"), title: "切替直前タイトル" };
+    await takeSnapshot(provider, "knowledge-schema", first);
+
+    const forced = await takeSnapshot(
+      provider,
+      "knowledge-schema",
+      latest,
+      "Knowledge Schema backup (ja)",
+      undefined,
+      true,
+    );
+
+    expect(forced.status).toBe("created");
+    expect(forced.meta.version).toBe(2);
+    expect((await loadSnapshot(provider, forced.meta.id))?.title).toBe("切替直前タイトル");
+  });
+
   it("ノートごとに採番が独立する", async () => {
     const provider = makeProvider();
     await takeSnapshot(provider, "note-1", makeDoc("A"));
@@ -141,5 +161,41 @@ describe("buildRestoredDocument", () => {
     expect(restored.skillMeta?.createdAt).toBe("2026-01-05T00:00:00Z");
     expect(restored.skillMeta?.systemSkillVersion).toBe(3);
     expect(restored.skillMeta?.defaultPromptHash).toBe("new-hash");
+  });
+
+  it("Knowledge Schemaは本文と言語に対応する版同期情報もスナップショットから戻す", () => {
+    const snapshot: GraphiumDocument = {
+      ...makeDoc("日本語の既定本文"),
+      source: "skill",
+      skillMeta: {
+        description: "日本語",
+        availableForIngest: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        systemSkillId: "knowledge-schema",
+        language: "ja",
+        systemSkillVersion: 2,
+        defaultPromptHash: "ja-hash",
+      },
+    };
+    const current: GraphiumDocument = {
+      ...makeDoc("English default"),
+      source: "skill",
+      skillMeta: {
+        description: "English",
+        availableForIngest: false,
+        createdAt: "2026-01-05T00:00:00Z",
+        systemSkillId: "knowledge-schema",
+        language: "en",
+        systemSkillVersion: 3,
+        defaultPromptHash: "en-hash",
+      },
+    };
+
+    const restored = buildRestoredDocument(current, snapshot);
+
+    expect(restored.skillMeta?.language).toBe("ja");
+    expect(restored.skillMeta?.systemSkillVersion).toBe(2);
+    expect(restored.skillMeta?.defaultPromptHash).toBe("ja-hash");
+    expect(restored.skillMeta?.createdAt).toBe("2026-01-05T00:00:00Z");
   });
 });
