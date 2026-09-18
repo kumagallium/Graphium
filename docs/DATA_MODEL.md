@@ -12,8 +12,8 @@ write, migrate, or interoperate with Graphium files.
 >
 > | UI label (EN / JA) | On-disk `WikiKind` |
 > |---|---|
-> | Topics / 話題 | `topic` |
-> | Answers / 回答 | `answer` |
+> | Topics / トピック | `topic` |
+> | Answers / 問答（Q&A） | `answer` |
 > | Summaries / 要約 | `summary` |
 > | Claims / 知見 | `claim` |
 > | Insights / 洞察 | `atom` |

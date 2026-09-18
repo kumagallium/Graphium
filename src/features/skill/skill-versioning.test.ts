@@ -127,7 +127,7 @@ describe("decideSkillSync", () => {
     it("SYSTEM_SKILLS 上の Schema 定義は固定 ID の 1 件だけ", () => {
       const definitions = SYSTEM_SKILLS.filter((skill) => skill.id === "knowledge-schema");
       expect(definitions).toHaveLength(1);
-      expect(definitions[0].version).toBe(3);
+      expect(definitions[0].version).toBe(4);
       expect(definitions[0].availableForIngest).toBe(false);
     });
 
@@ -223,7 +223,7 @@ describe("decideSkillSync", () => {
         "分野用語",
         "必ず残す条件",
         "引用粒度",
-        "Schemaで変更不可",
+        "ナレッジスキーマでは変更不可",
         "[[source:id]]",
         "人間所有文書",
         "ソフトウェア",
@@ -232,17 +232,20 @@ describe("decideSkillSync", () => {
         "実行環境",
         "判断基準",
         "確信度",
-        "Topic",
-        "Answer",
-        "Claim",
+        "トピック",
+        "問答（Q&A）",
+        "知見",
         "引用",
         "根拠",
         "不確実性",
         "改訂",
-        "lint",
-        "upkeep",
+        "点検",
+        "手入れ",
       ]) {
         expect(prompt).toContain(word);
+      }
+      for (const untranslated of ["Topic は", "Answer は", "## Claim", "Writing Voice", "AI prompt"]) {
+        expect(prompt).not.toContain(untranslated);
       }
       for (const specialized of ["材料科学", "試料組成", "測定条件"]) {
         expect(prompt).not.toContain(specialized);

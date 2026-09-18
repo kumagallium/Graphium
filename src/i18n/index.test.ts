@@ -119,6 +119,21 @@ describe("syncLocale() / getLocale()", () => {
     expect(getLocale()).toBe("en");
   });
 
+  describe("Knowledge layer terminology", () => {
+    it("日本語UIではanswerを問答（Q&A）として表示する", () => {
+      syncLocale("ja");
+      expect(t("wikiList.kindTopic")).toBe("トピック");
+      expect(t("wikiList.kindAnswer")).toBe("問答（Q&A）");
+      expect(t("skill.knowledgeSchemaDescription")).toContain("トピック・問答（Q&A）・知見");
+    });
+
+    it("英語UIではTopic/Answerを維持する", () => {
+      syncLocale("en");
+      expect(t("wikiList.kindTopic")).toBe("Topics");
+      expect(t("wikiList.kindAnswer")).toBe("Answers");
+    });
+  });
+
   it("syncLocale('ja') 後に t() が日本語翻訳を返す", () => {
     syncLocale("ja");
     expect(getLocale()).toBe("ja");
