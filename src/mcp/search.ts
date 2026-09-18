@@ -200,6 +200,36 @@ export function addCreatedNoteToIndex(
   cache.indexMtimeMs = noteIndexMtimeMs(root);
 }
 
+/**
+ * MCP 経由で作った回答ページ（wiki/answer）をインデックスに足す。
+ * addCreatedNoteToIndex と同じ理由（保存直後に検索できないと流れが崩れる）で、
+ * kind だけ "answer" にして同じことをする。
+ */
+export function addCreatedWikiToIndex(
+  noteId: string,
+  title: string,
+  body: string,
+  kind: DetailedKind,
+  root = resolveGraphiumRoot(),
+): void {
+  if (!cache || cache.root !== root) return;
+  if (cache.mini.has(noteId)) return;
+
+  cache.mini.add({ id: noteId, title, text: body, labels: "", steps: "", kind });
+  cache.entries.set(noteId, {
+    noteId,
+    title,
+    modifiedAt: "",
+    createdAt: "",
+    headings: [],
+    labels: [],
+    outgoingLinks: [],
+    source: "ai",
+    wikiKind: kind === "answer" ? "answer" : undefined,
+  } as NoteIndexEntry);
+  cache.indexMtimeMs = noteIndexMtimeMs(root);
+}
+
 /** テスト・再読み込み用にキャッシュを捨てる */
 export function resetSearchIndex(): void {
   cache = null;
