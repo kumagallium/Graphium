@@ -1848,11 +1848,11 @@ This target deliberately does **not** reuse the Node server (§6). The server
 exists to hold API keys and talk to LLMs; the MCP server holds neither, because
 the model calling it lives on the client side.
 
-Tools (9):
+Tools (10):
 
 | Tool | What it answers |
 |---|---|
-| `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`claim`/`insight`/`wiki` |
+| `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`answer`/`claim`/`insight`/`wiki` |
 | `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims/notes, conflicts) |
 | `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step |
 | `find_notes_using` | which notes used this material / tool / condition / output |
@@ -1861,6 +1861,7 @@ Tools (9):
 | `get_topic` | one topic's body plus its member claims and each claim's source notes (the 2-hop topic → claim → note) |
 | `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is |
 | `create_note` | write a new note (never edits existing ones) |
+| `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
 
 The knowledge layer (topic / claim / insight) is not reachable from `NoteIndexEntry` alone — `topicIds` / `derivedFromClaims` / `conflictsWith` are not mirrored into the index, so these tools read `doc.wikiMeta` directly after narrowing the candidate set by `wikiKind` (never a blanket read of every wiki doc).
 
@@ -1874,6 +1875,17 @@ Two design rules hold this target together:
   "the steps you probably took" from a conversation would produce a graph that
   looks like provenance but cannot be checked against anything, which is worse
   than having none.
+
+`save_answer` (`src/mcp/save-answer.ts`) reuses `buildSourceBackedWikiDocument`
+from `src/features/wiki/wiki-service.ts` directly rather than duplicating the
+citation-resolution/block-building rules — that function's call path has no
+browser-only dependency (`apiBase()`/`isTauri()` degrade safely when `window`
+is undefined), confirmed by running it under Node. Only the References
+section is corrected afterwards to match `create_note`'s existence rule
+(non-existent `id`s stay plain text instead of becoming `@`-links), since
+`buildSourceReferenceBlocks` normally assumes its `sources` already exist.
+Document provenance is recorded with the same `recordRevision(..., "wiki_ingest", …)`
+call `handleCreateWikiFile` makes in the app.
 
 Search is rebuilt in-process on first use rather than read from the app: the
 lexical index (§3.3) lives in IndexedDB and is unreachable from outside the

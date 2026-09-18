@@ -1131,8 +1131,20 @@ same `derivedFromNotes` id space, same References block — built through
   `sourceCheckLlmCallsFor`, `useAutoSourceCheck`). A source that already
   cites the Answer page (`derivedFromNotes`) is always revised on
   re-ingest regardless of the router's decision, same as a Topic.
-  New Answer pages are still only created by the chat "Keep as
-  knowledge" action — ingest never creates one.
+- **Creation paths.** As of 2026-09-18 there are two ways to create an
+  Answer page, both calling `buildSourceBackedWikiDocument("answer",
+  ...)` so the resulting page is indistinguishable once saved:
+  1. **In-app chat** — the "Keep as knowledge" action described above,
+     citations resolved from the retriever's title-to-ref map.
+  2. **MCP `save_answer`** (`src/mcp/save-answer.ts`, `src/mcp/tools.ts`)
+     — an outside agent (Claude Desktop, Claude Code, …) passes
+     `question`/`answer`/`citations` directly; citation ids are resolved
+     against the vault on disk instead of a chat session's title-to-ref
+     map, and a non-existent id is kept as literal text in both the body
+     and the References block rather than becoming an `@`-link (see
+     Architecture §4.4). Ingest still never creates one on its own —
+     both paths require a human (in-app) or an outside agent (MCP)
+     asking for the page explicitly.
 
 ### 3.2 `level` and `status` for Claims
 
