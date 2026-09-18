@@ -41,8 +41,10 @@ export {
   // Topic（話題。知見はもう材料にしない — 旧形式の割り当て系は撤去済み）
   normalizeTopicTitle, unlinkClaimFromTopic,
   type ExistingTopicRef,
-  // Topic（新形式・資料を直接読む）
-  buildSourceTopicDocument, rebuildSourceTopicDocument, resolveSourceCitations, stripEmptyMarkdownSections,
+  // Topic（新形式・資料を直接読む） / Answer など、出典つきナレッジページ共通の組み立て
+  buildSourceTopicDocument, rebuildSourceTopicDocument,
+  buildSourceBackedWikiDocument, rebuildSourceBackedWikiDocument,
+  resolveSourceCitations, stripEmptyMarkdownSections,
   routeTopicsForSource, reviseTopicFromSource,
   type TopicSourceRef, type TopicRouteSource, type TopicRouteExistingRef,
 } from "./wiki-service";
