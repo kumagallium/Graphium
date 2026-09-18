@@ -26,17 +26,18 @@ import {
  * ノートの種別。
  * - note    : 人が書いたノート（PROV 層）
  * - topic   : 知見(claim)を概念ごとに束ねたトピック
+ * - answer  : AI チャットの良い回答をナレッジ層に書き戻したページ（WikiKind の "answer"）
  * - claim   : ノートから抽出された出典つきの知見
  * - insight : 複数の知見にまたがる構造的パターン（WikiKind の "atom"）
  * - summary : 生成停止済みの旧「1 ノート要約」（WikiKind の "summary" / "synthesis" を含む）
  */
-export type DetailedKind = "note" | "topic" | "claim" | "insight" | "summary";
+export type DetailedKind = "note" | "topic" | "answer" | "claim" | "insight" | "summary";
 
 /**
  * search_notes / list_entities 系フィルタが受け付ける種別。
  * "wiki" は DetailedKind のうち "note" 以外すべて（ナレッジ全種）を指す後方互換の値。
  */
-export type NoteKind = "note" | "wiki" | "topic" | "claim" | "insight";
+export type NoteKind = "note" | "wiki" | "topic" | "answer" | "claim" | "insight";
 
 /** NoteIndexEntry から DetailedKind を導く */
 function detailedKindOf(entry: NoteIndexEntry): DetailedKind {
@@ -44,6 +45,8 @@ function detailedKindOf(entry: NoteIndexEntry): DetailedKind {
   switch (entry.wikiKind) {
     case "topic":
       return "topic";
+    case "answer":
+      return "answer";
     case "claim":
       return "claim";
     case "atom":

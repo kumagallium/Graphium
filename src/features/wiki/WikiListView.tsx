@@ -307,6 +307,15 @@ function TypeBadge({
     );
   }
 
+  // answer も topic と同じく細目分類を持たない
+  if (kind === "answer") {
+    return (
+      <span className="inline-block px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[11px] font-medium">
+        {t("wikiList.kindAnswer")}
+      </span>
+    );
+  }
+
   return null;
 }
 
@@ -622,6 +631,7 @@ export function WikiListView({
     : wikiKind === "synthesis" ? t("wikiList.kindSynthesis")
     : wikiKind === "atom" ? t("wikiList.kindAtom")
     : wikiKind === "topic" ? t("wikiList.kindTopic")
+    : wikiKind === "answer" ? t("wikiList.kindAnswer")
     : t("wikiList.kindClaim");
 
   return (
@@ -652,7 +662,7 @@ export function WikiListView({
                 {t("share.bulk.selected", { count: String(selectedIds.size) })}
               </button>
             )}
-            {onWorldCheckWiki && wikiKind !== "summary" && wikiKind !== "topic" && (
+            {onWorldCheckWiki && wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && (
               <button
                 onClick={() => {
                   // 一括世界照合（Phase 2 / PR 2A）— 蒸留 KB のみで照合するため fire-and-forget OK
@@ -668,7 +678,7 @@ export function WikiListView({
                 {t("wikiList.worldCheckSelected", { count: String(selectedIds.size) })}
               </button>
             )}
-            {onClearWorldValidity && wikiKind !== "summary" && wikiKind !== "topic" && (
+            {onClearWorldValidity && wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && (
               <button
                 onClick={async () => {
                   // 選択した Wiki の照合結果（verdict / 出典）を一括クリア。
@@ -845,7 +855,7 @@ export function WikiListView({
                 >
                   {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                {wikiKind !== "summary" && wikiKind !== "topic" && worldGroundingEnabled && (
+                {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
                   <th
                     className="py-2 pl-3 w-[110px] cursor-pointer hover:text-foreground"
                     onClick={() => handleSort("verdict")}
@@ -942,7 +952,7 @@ export function WikiListView({
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
                     {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
                   </td>
-                  {wikiKind !== "summary" && wikiKind !== "topic" && worldGroundingEnabled && (
+                  {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
                     <td className="py-2 pl-3 text-xs">
                       <WorldVerdictCell grounding={entry.worldGrounding} />
                     </td>

@@ -54,16 +54,17 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         "Graphium の vault を全文検索する。日本語も分かち書きなしで検索できる。" +
         "タイトル・本文・手順名・PROV ラベルを対象にし、手順名とラベルは本文より重く扱う。" +
         "まず何があるか知りたいときの入口。" +
-        "ナレッジ層（topic/claim/insight）を広く見たいときは list_topics も使える。",
+        "ナレッジ層（topic/answer/claim/insight）を広く見たいときは list_topics も使える。",
       inputSchema: {
         query: z.string().describe("検索語。自然文でも単語でもよい"),
         limit: z.number().int().min(1).max(50).optional().describe("最大件数（既定 10）"),
         kind: z
-          .enum(["note", "wiki", "topic", "claim", "insight"])
+          .enum(["note", "wiki", "topic", "answer", "claim", "insight"])
           .optional()
           .describe(
-            "種別で絞る。note = 人が書いたノート、wiki = ナレッジ層すべて（topic/claim/insight/summary）、" +
-              "topic = 資料を読んで概念ごとにまとめたトピック、claim = ノートから抽出された知見、" +
+            "種別で絞る。note = 人が書いたノート、wiki = ナレッジ層すべて（topic/answer/claim/insight/summary）、" +
+              "topic = 資料を読んで概念ごとにまとめたトピック、answer = AI チャットの回答を書き戻したページ、" +
+              "claim = ノートから抽出された知見、" +
               "insight = 複数の知見にまたがる洞察。未指定なら全種別",
           ),
       },
