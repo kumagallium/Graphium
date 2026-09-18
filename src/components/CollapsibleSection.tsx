@@ -68,7 +68,7 @@ export function CollapsibleSection({
   const headerClass = "flex items-center gap-1 text-xs font-semibold mb-1.5 transition-colors";
   const labelClass = titleActive
     ? "text-primary"
-    : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70";
+    : "text-sidebar-foreground/75 hover:text-sidebar-foreground";
 
   return (
     <div className="px-4 pt-2 pb-1">
@@ -100,7 +100,7 @@ export function CollapsibleSection({
           type="button"
           onClick={toggle}
           aria-expanded={open}
-          className={`w-full ${headerClass} text-sidebar-foreground/40 hover:text-sidebar-foreground/70`}
+          className={`w-full ${headerClass} text-sidebar-foreground/75 hover:text-sidebar-foreground`}
         >
           <span className="shrink-0 -ml-0.5">{chevron}</span>
           <span className="flex-1 text-left">{title}</span>
