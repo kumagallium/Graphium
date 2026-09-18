@@ -996,11 +996,19 @@ Notes:
   searchShared`), gated the same way (desktop + shared root + the
   setting).
 - **No unattended merge or auto-link.** The post-ingest and startup
-  checks run **Quick (local only)** — no LLM call — and never merge or
-  link pages on their own; they only archive mechanically empty pages
-  (reversible) and surface the rest (contradiction, suspected
-  orphan/duplicate) as an Upkeep badge. A **Full (AI analysis)** check
-  runs only when a person starts it from the Upkeep screen, and its
+  checks run **Quick (local only)** — no LLM call — by default, and
+  never merge or link pages on their own regardless of that setting:
+  they only archive mechanically empty pages (reversible) and surface
+  the rest (contradiction, suspected orphan/duplicate, and — when Full
+  is enabled — gap/stale/redundant) as an Upkeep badge. Turning on
+  `features.autoFullCheck` in Settings → AI (off on first launch, on by
+  default for anyone who already had settings saved before this flag
+  existed; `isAutoFullCheckEnabled()`, `src/features/settings/store.ts`)
+  switches these same automatic checks to **Full (AI analysis)**
+  (`localOnly=false` passed to `lintWikis`, `src/note-app.tsx`) — it only
+  changes which pass runs automatically, not who acts on the result. A
+  person can also start a **Full (AI analysis)** check directly from the
+  Upkeep screen at any time, independent of this setting, and its
   Redundant/Stale results offer **Open** and **Archive** — Claims are
   not merged by the linter anymore (Topics keep their explicit
   **Merge** action). Archiving keeps the file on disk with an
