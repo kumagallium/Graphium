@@ -91,7 +91,7 @@ export function StandaloneChatView({
   // ルートの w-full min-w-0 は、ピークが display:flex の枠に入れるため必要。
   // 幅指定が無いと中身の幅にすぼまって左に寄る（全画面側は元から幅いっぱいなので影響しない）
   return (
-    <div className="flex flex-col h-full w-full min-w-0">
+    <div className="flex flex-col h-full w-full min-w-0 bg-background">
       {/* ヘッダー */}
       <div className="px-3 py-2 border-b border-border flex items-center gap-2">
         <NavBackButton onBack={onBack} canGoBack />
