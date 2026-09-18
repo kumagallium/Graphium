@@ -1008,9 +1008,14 @@ Notes:
   cross-search behind the Internal / External grounding scopes
   (`src/features/wiki/retriever.ts`). The sidebar's standalone chat
   (§8, `src/features/standalone-chat/`) is a second entry point into the
-  same `retrieveWikiContext` call the per-note chat panel uses — it has
-  no open note to draw context from, so it always searches across notes
-  and Knowledge rather than any single document:
+  same `retrieveWikiContext` call the per-note chat panel uses — it
+  usually has no open note to draw context from, so it defaults to
+  searching across notes and Knowledge rather than any single document.
+  The `⌘K` Composer's bare "Ask AI" row (`handleComposerAsk` in
+  `src/note-app.tsx`) also creates a standalone chat rather than using
+  the per-note chat panel, even when a note is open — if one is open at
+  the time, it is attached as that conversation's single note citation,
+  the same mechanism as an `@` attachment:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
     embedding model (OpenAI-compatible; absent or failing, this side is

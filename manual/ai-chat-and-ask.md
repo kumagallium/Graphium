@@ -87,6 +87,8 @@ Conversations live on this device, in app data — never mixed into a note file,
 
 Use the note chat panel while you are writing and want the AI to see (or write into) that note. Use the sidebar chat when the question is not about any one note — general questions, working things out, or checking something across everything you have written.
 
+`⌘K` is another way in: press it from anywhere, including with a note open, and choose **Ask AI: "..."** (or `⌘Enter`) to start one of these note-independent conversations without leaving where you are. See [The Composer](#the-composer-k) below.
+
 ## Chats stay with the note — and keep running <Badge type="tip" text="Added in v0.17.1 (2026-07-06)" />
 
 Each note keeps its own chat history, saved with the note. In the panel header, **Chat history** lists past conversations (with message counts), **+ New chat** starts a fresh one, and **Clear chat** discards the current one.
@@ -133,7 +135,7 @@ Press `⌘K` to open the Composer — one input for both "find a note" and "ask 
 
 The placeholder says it all: **Find a note or ask AI...**
 
-Both halves are live while you are editing a note. From any other screen <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> — the note list, the materials gallery, the Knowledge hub — there is no open note for an answer to be about, so the Composer opens in a search-only form: the placeholder reads **Find a note or an asset...**, and the AI row, the suggestion cards, and the **Grounding** chip are absent. The same search-only form is what you get when no AI model is registered at all <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — the search half needs no AI, so `⌘K` still opens.
+Both halves are live everywhere — not only while editing a note. Open `⌘K` from the note list, the materials gallery, the Knowledge hub, or with nothing open at all, and you can still search *and* ask the AI a fresh question. The verb buttons and one-click suggestion cards described below are the exception: they need a note open that cites claims or insights, since their prompts are built from that note's cited set. The search-only form still appears when no AI model is registered at all <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — the search half needs no AI, so `⌘K` still opens.
 
 ![Composer palette with the verb menu on a note with citations](/screenshots/composer-verbs.png)
 
@@ -160,11 +162,11 @@ Assets stay out of the empty-input view and out of `#label` / `@author` queries;
 
 ### Asking the AI
 
-The last row of results is always **Ask AI: "your text"** — select it, or press `⌘Enter` to send your input straight to the AI regardless of what is highlighted. The answer opens in the chat panel as a fresh conversation, and anything the current note cites with `@` (knowledge pages, document notes) is handed to the AI as context automatically. The Composer has the same **Grounding** chip and web-search warning as the chat panel.
+The last row of results is always **Ask AI: "your text"** — select it, or press `⌘Enter` to send your input straight to the AI regardless of what is highlighted. The answer opens full-screen, as a new conversation of its own — not the open note's chat panel, even if you had a note open when you asked. If a note was open, it is attached above the conversation as a citation chip, which you can remove with its ×; while attached, its content is handed to the AI as context. The Composer has the same **Grounding** chip and web-search warning as the chat panel.
 
 ### Verb buttons on notes with citations
 
-On a note that cites claims or insights, opening the Composer with an empty input shows a set of one-click questions about the cited set, under the heading **Ask the AI (this note + N citations)**:
+On a note that cites claims or insights, opening the Composer with an empty input shows a set of one-click questions about the cited set, under the heading **Ask the AI (this note + N citations)**. Unlike a typed question, these go straight to the open note's chat panel (the same one in the right-hand panel), because their prompts are built from that note's own cited claims and insights:
 
 | Group | Buttons |
 |---|---|
