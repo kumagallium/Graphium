@@ -1,7 +1,7 @@
 # Graphium — Data Model
 
 This document describes the on-disk shapes Graphium uses: notes,
-Knowledge layer documents (Topics / Answers / Summaries / Claims / Insights / Ideas), the
+Knowledge layer documents (Topics / Q&A / Summaries / Claims / Insights / Ideas), the
 navigation index, shared storage entries, and the IndexedDB layout of
 the browser provider. It is the reference for anyone who wants to read,
 write, migrate, or interoperate with Graphium files.
@@ -13,7 +13,7 @@ write, migrate, or interoperate with Graphium files.
 > | UI label (EN / JA) | On-disk `WikiKind` |
 > |---|---|
 > | Topics / 話題 | `topic` |
-> | Answers / 回答 | `answer` |
+> | Q&A / 問答 | `answer` |
 > | Summaries / 要約 | `summary` |
 > | Claims / 知見 | `claim` |
 > | Insights / 洞察 | `atom` |

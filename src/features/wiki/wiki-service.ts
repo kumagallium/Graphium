@@ -6,6 +6,7 @@ import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import { extractWikiSections, flattenColumns } from "./section-extract";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
+import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
@@ -2625,6 +2626,60 @@ export async function mergeTopicBodies(
     return typeof data.body === "string" && data.body.trim() ? data.body : null;
   } catch (err) {
     console.warn("mergeTopicBodies failed:", err);
+    return null;
+  }
+}
+
+/** rewriteAnswerFromConversation に渡す会話 1 メッセージ */
+export type AnswerRewriteConversationMessage = { role: "user" | "assistant"; content: string };
+
+/** rewriteAnswerFromConversation の返り値。title は空文字のことがある（呼び出し側で deriveSuggestionTitle にフォールバック）。 */
+export type AnswerRewriteResult = { title: string; body: string };
+
+/**
+ * チャットの回答を、それまでの会話を渡して単体で読める記事（タイトル＋本文）に書き起こす
+ * （サーバー /api/wiki/rewrite-answer）。「それについては…」のように前の会話に寄りかかった
+ * 回答を、指示語・省略を補って単体で読めるページにする（カーパシー LLM Wiki の
+ * 「良い回答はページとして書き起こす」に対応）。失敗時（パース不能・LLM エラー・
+ * AI 未設定）は null を返す — 呼び出し側は「元の回答文・deriveSuggestionTitle(question) を
+ * そのまま使う」にフォールバックできる（保存自体を失敗させない）。
+ */
+export async function rewriteAnswerFromConversation(
+  question: string,
+  answer: string,
+  conversation: AnswerRewriteConversationMessage[],
+  sources: TopicSourceRef[],
+  language: string,
+  model?: string,
+  signal?: AbortSignal,
+): Promise<AnswerRewriteResult | null> {
+  try {
+    // 会話は「直近のやり取り」に切り詰めてから送る（古いものから落とす）。
+    const truncated = truncateConversationForAnswerRewrite(conversation);
+    const res = await fetch(`${API_BASE}/rewrite-answer`, {
+      method: "POST",
+      headers: wikiHeaders(),
+      body: JSON.stringify({
+        question, answer, language, conversation: truncated, sources,
+        ...(model ? { model } : {}),
+      }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) {
+      console.warn("rewriteAnswerFromConversation failed:", await aiErrorFromResponse(res, `rewrite-answer failed (${res.status})`));
+      return null;
+    }
+    const data = await res.json() as { title?: string; body?: string };
+    if (typeof data.body !== "string" || !data.body.trim()) return null;
+    // 出典消失ガード: 元の本文にあった出典マーカーが書き起こし後に 1 つも残っていなければ、
+    // 書き起こし自体を不採用にする（読みにくくても根拠が残る元の本文を優先する）。
+    if (!answerRewritePreservesCitations(answer, data.body)) {
+      console.warn("rewriteAnswerFromConversation: citations were dropped, falling back to original body");
+      return null;
+    }
+    return { title: typeof data.title === "string" ? data.title.trim() : "", body: data.body };
+  } catch (err) {
+    console.warn("rewriteAnswerFromConversation failed:", err);
     return null;
   }
 }

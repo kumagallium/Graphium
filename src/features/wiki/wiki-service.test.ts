@@ -18,6 +18,7 @@ import {
   mergeIntoWikiDocument,
   rewriteAndMerge,
   buildWikiSnapshots,
+  rewriteAnswerFromConversation,
   type AtomCandidate,
   type ExistingTopicRef,
 } from "./wiki-service";
@@ -886,6 +887,48 @@ describe("本文を作り直す merge/regenerate 系は古い sourceCheck を引
     expect(next.wikiMeta?.sourceCheck).toBeUndefined();
   });
 
+
+  it("rewriteAnswerFromConversation は API 失敗時に null を返す（呼び出し側は元の回答文にフォールバックできる）", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    const result = await rewriteAnswerFromConversation(
+      "それの単位は？",
+      "それは W/mK である。",
+      [{ role: "user", content: "熱伝導率の話" }, { role: "assistant", content: "熱伝導率は…" }],
+      [{ id: "wiki-1", title: "資料A" }],
+      "ja",
+    );
+    expect(result).toBeNull();
+  });
+
+  it("rewriteAnswerFromConversation は出典マーカーが書き起こしで消えていたら null を返す（出典消失ガード）", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ title: "焼結条件の目安", body: "出典の痕跡が消えた本文。" }),
+    });
+    const result = await rewriteAnswerFromConversation(
+      "それの単位は？",
+      "焼結条件はこうだ。[Source: \"焼結メモ\"]",
+      [],
+      [],
+      "ja",
+    );
+    expect(result).toBeNull();
+  });
+
+  it("rewriteAnswerFromConversation はサーバーが title を返さないとき空文字にする（呼び出し側は deriveSuggestionTitle にフォールバックできる）", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ body: "書き起こした本文。" }),
+    });
+    const result = await rewriteAnswerFromConversation(
+      "それの単位は？",
+      "それは W/mK である。",
+      [],
+      [],
+      "ja",
+    );
+    expect(result).toEqual({ title: "", body: "書き起こした本文。" });
+  });
 
   it("rebuildSourceTopicDocument は本文を作り直すので sourceCheck を落とす", () => {
     const existing = claimDocWithSourceCheck();

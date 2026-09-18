@@ -66,6 +66,11 @@ import {
   buildSourceSurveySystemPrompt,
   buildSourceSurveyUserMessage,
   parseSourceSurveyOutput,
+  buildAnswerRewriterSystemPrompt,
+  buildAnswerRewriterUserMessage,
+  parseAnswerRewriterOutput,
+  type AnswerRewriteMessage,
+  type AnswerRewriteSourceRef,
 } from "../services/wiki-topic-writer.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -639,6 +644,67 @@ app.post("/merge-topics", async (c) => {
     });
   } catch (err) {
     console.error("Wiki merge-topics error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// チャットの回答を、単体で読める記事に書き起こす（回答をナレッジ層の answer ページとして
+// 保存するときに使う）。それまでの会話（呼び出し側で切り詰め済み）を渡し、指示語・省略を
+// 解決させる。会話から新しい事実を持ち込ませない・出典は渡した一覧の id だけを使わせる。
+app.post("/rewrite-answer", async (c) => {
+  const body = await c.req.json<{
+    question: string;
+    answer: string;
+    language: string;
+    conversation?: AnswerRewriteMessage[];
+    sources?: AnswerRewriteSourceRef[];
+    model?: string;
+  }>();
+
+  if (!body.question || typeof body.answer !== "string" || !body.answer.trim()) {
+    return c.json({ error: "question and answer are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildAnswerRewriterSystemPrompt(body.language || "en");
+  const userMessage = buildAnswerRewriterUserMessage(
+    body.question,
+    body.answer,
+    Array.isArray(body.conversation) ? body.conversation : [],
+    Array.isArray(body.sources) ? body.sources : [],
+  );
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.rewrite-answer",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseAnswerRewriterOutput(result.message);
+    if (!parsed) {
+      return c.json({ error: "Failed to parse answer rewriter output" }, 500);
+    }
+
+    return c.json({
+      title: parsed.title,
+      body: parsed.body,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki rewrite-answer error:", err);
     return c.json(errorBody(err), 500);
   }
 });

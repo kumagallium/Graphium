@@ -333,6 +333,8 @@ import {
   isIngestInsufficient,
   buildSourceBackedWikiDocument,
   surveySourceForWindows,
+  rewriteAnswerFromConversation,
+  type AnswerRewriteConversationMessage,
 } from "./features/wiki";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
@@ -637,6 +639,27 @@ function buildCitationSourceLabel(source: CitationSource): string {
     return source.entry.urlMeta?.domain ?? source.entry.name;
   }
   return source.entry.name;
+}
+
+/**
+ * 保存対象の回答（answer）が会話のどの時点かを探し、それより前のやり取りだけを
+ * 「それまでの会話」として書き起こし（rewriteAnswerFromConversation）に渡す。
+ * answer と厳密一致する最後の assistant メッセージを基準にする — 同じ内容が
+ * 複数回出ていても、直前に保存操作をしたやり取りに最も近いものを選ぶため。
+ * 見つからない場合（保存対象が現在の会話履歴に含まれない等）は空配列を返す
+ * （文脈なしで書き起こす＝最悪でも今までどおりの単体テキストにしかならない）。
+ */
+function extractPrecedingConversation(
+  messages: { role: "user" | "assistant"; content: string }[],
+  answer: string,
+): AnswerRewriteConversationMessage[] {
+  let answerIndex = -1;
+  messages.forEach((m, i) => {
+    if (m.role === "assistant" && m.content === answer) answerIndex = i;
+  });
+  if (answerIndex <= 0) return [];
+  // answerIndex の 1 つ前（ユーザーの質問）は question として別途渡すので、それより前を返す
+  return messages.slice(0, Math.max(0, answerIndex - 1)).map((m) => ({ role: m.role, content: m.content }));
 }
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
@@ -4488,11 +4511,24 @@ function NoteEditorInner({
       if (!cleaned.trim()) return null;
       const titleToRef = getSourceTitleToRefMap();
       const { markdown, sources } = convertCitationsToSourceRefs(cleaned, titleToRef);
-      const answerTitle = deriveSuggestionTitle(question);
+      // それまでの会話を渡して、タイトル・本文とも単体で読める形に書き起こす
+      // （指示語・省略の解決。タイトルは deriveSuggestionTitle と違い会話の文脈を補える）。
+      // 失敗時（AI 未設定・パース不能等）は null が返るので、今までどおり生の質問文から
+      // 作ったタイトル・回答文字列をそのまま使う（保存自体は失敗させない）。
+      const conversation = extractPrecedingConversation(aiAssistant.messages, answer);
+      const rewritten = await rewriteAnswerFromConversation(
+        question,
+        markdown,
+        conversation,
+        sources,
+        getLocale(),
+        getChatSynthesisModelName() || undefined,
+      );
+      const answerTitle = rewritten?.title || deriveSuggestionTitle(question);
       const doc = buildSourceBackedWikiDocument(
         "answer",
         answerTitle,
-        markdown,
+        rewritten?.body ?? markdown,
         sources,
         getChatSynthesisModelName(),
         buildNoteIndex(noteIndex),
@@ -4500,7 +4536,7 @@ function NoteEditorInner({
       );
       return onCreateAnswerNote(doc);
     },
-    [onCreateAnswerNote, noteIndex],
+    [onCreateAnswerNote, noteIndex, aiAssistant.messages],
   );
 
   // R2 / Loop M2: AI 回答を knowledge ノート（知見=claim / 洞察=atom）として手動取り込みする。
@@ -7796,11 +7832,23 @@ export function NoteApp() {
       if (!cleaned.trim()) return null;
       const titleToRef = getSourceTitleToRefMap();
       const { markdown, sources } = convertCitationsToSourceRefs(cleaned, titleToRef);
-      const answerTitle = deriveSuggestionTitle(question);
+      // ノート内チャットの handleSaveChatAsAnswer と同じ書き起こし（タイトルも含む）。
+      // 失敗時は markdown（元の回答文字列）・deriveSuggestionTitle(question) をそのまま
+      // 使う（保存自体は失敗させない）。
+      const conversation = extractPrecedingConversation(activeStandaloneChat?.messages ?? [], answer);
+      const rewritten = await rewriteAnswerFromConversation(
+        question,
+        markdown,
+        conversation,
+        sources,
+        getLocale(),
+        getChatSynthesisModelName() || undefined,
+      );
+      const answerTitle = rewritten?.title || deriveSuggestionTitle(question);
       const doc = buildSourceBackedWikiDocument(
         "answer",
         answerTitle,
-        markdown,
+        rewritten?.body ?? markdown,
         sources,
         getChatSynthesisModelName(),
         buildNoteIndex(fm.noteIndex),
@@ -7808,7 +7856,7 @@ export function NoteApp() {
       );
       return handleCreateAnswerNoteForStandaloneChat(doc);
     },
-    [aiUiEnabled, fm.noteIndex, handleCreateAnswerNoteForStandaloneChat],
+    [aiUiEnabled, fm.noteIndex, handleCreateAnswerNoteForStandaloneChat, activeStandaloneChat?.messages],
   );
 
   // 送信中断: いま開いている会話の送信だけを中断する（chatRunManager は使わない。
