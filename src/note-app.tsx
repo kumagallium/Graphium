@@ -343,6 +343,16 @@ import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary } from "./features/url-to-prov";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
+import { StandaloneChatListView } from "./features/standalone-chat/StandaloneChatListView";
+import { StandaloneChatView } from "./features/standalone-chat/StandaloneChatView";
+import {
+  loadStandaloneChatIndex,
+  loadStandaloneChat,
+  saveStandaloneChat,
+  deleteStandaloneChat,
+  createStandaloneChat,
+} from "./features/standalone-chat/store";
+import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates, buildDocumentFromTemplate, pageTemplateToBuildResult, deserializeTemplate, type PageTemplate } from "./features/template";
@@ -7395,6 +7405,185 @@ export function NoteApp() {
   const [lintViewKey, setLintViewKey] = useState(0);
   // Skill 表示状態
   const [showSkillList, setShowSkillList] = useState(false);
+  // ノートに紐づかないチャット表示状態。一覧（showChatList）と個別の会話（id）を分けて持つ。
+  // 会話 id が立っているときだけ StandaloneChatView を出し、無ければ一覧を出す。
+  const [showChatList, setShowChatList] = useState(false);
+  const [activeStandaloneChatId, setActiveStandaloneChatId] = useState<string | null>(null);
+  const [standaloneChatSummaries, setStandaloneChatSummaries] = useState<StandaloneChatSummary[]>([]);
+  const [activeStandaloneChat, setActiveStandaloneChat] = useState<StandaloneChat | null>(null);
+  // 応答待ち・エラーは「どの会話の分か」を id で持つ。表示側は
+  // 開いている会話 id と一致するときだけ反映する（他会話の待ち状態を出さないため）。
+  const [standaloneChatLoadingId, setStandaloneChatLoadingId] = useState<string | null>(null);
+  const [standaloneChatError, setStandaloneChatError] = useState<{ id: string; message: string } | null>(null);
+  // 送信中の中断用。ノート内チャットの chatRunManager は run 完了時にノート文書へ
+  // 書き戻す前提（noteId/chatId で ScopeChat を特定）で、保存先が別チャネルの
+  // standalone chat には素直に載らないため、この会話専用の AbortController で代替する。
+  // 会話ごとに独立した送信が走りうるため、会話 id をキーに Map で持つ。
+  const standaloneChatAbortRef = useRef<Map<string, AbortController>>(new Map());
+  // いま画面に出すべき会話 id。非同期処理の完了時にこれと突き合わせ、
+  // 別の会話に切り替わっていたら画面の state を更新しない（保存は行ってよい）。
+  const standaloneChatActiveIdRef = useRef<string | null>(null);
+
+  // ノートに紐づかないチャット（standalone chat）一覧を開いたときに索引を読む。
+  useEffect(() => {
+    if (!showChatList) return;
+    let cancelled = false;
+    (async () => {
+      const provider = getActiveProvider();
+      const summaries = await loadStandaloneChatIndex(provider);
+      if (!cancelled) setStandaloneChatSummaries(summaries);
+    })();
+    return () => { cancelled = true; };
+  }, [showChatList]);
+
+  // 一覧から会話を選ぶ: 全文を読み込んでアクティブにする。
+  const handleSelectStandaloneChat = useCallback(async (id: string) => {
+    setStandaloneChatError(null);
+    setActiveStandaloneChatId(id);
+    standaloneChatActiveIdRef.current = id;
+    const provider = getActiveProvider();
+    const chat = await loadStandaloneChat(provider, id);
+    // 読み込み中に別の会話が選ばれていたら、古い方の中身で上書きしない。
+    if (standaloneChatActiveIdRef.current !== id) return;
+    setActiveStandaloneChat(chat);
+  }, []);
+
+  // 新しいチャット: この時点では保存しない（空のチャットをファイルに残さないため）。
+  // 最初のメッセージが返ってきた時点で初めて保存する。
+  const handleNewStandaloneChat = useCallback(() => {
+    setStandaloneChatError(null);
+    const chat = createStandaloneChat();
+    standaloneChatActiveIdRef.current = chat.id;
+    setActiveStandaloneChat(chat);
+    setActiveStandaloneChatId(chat.id);
+  }, []);
+
+  // ノートに紐づかないチャットの送信。ノート内チャット（handleAiChatSubmit）と同じ組み立て
+  // 方針を踏襲するが、ノート本文・引用・ブロック ID には依存しない。添付ノートの本文展開は
+  // 既存実装がノート本文中に埋め込まれていて単体の関数として取り出せないため、この作業では
+  // 見送り、横断検索（retrieveWikiContext）だけを必ず通す。
+  const handleStandaloneChatSend = useCallback(
+    async (text: string) => {
+      if (!activeStandaloneChat) return;
+      // この送信が対象とする会話 id。完了時点でこれと違う会話を見ていたら
+      // 画面の state は更新しない（保存はこの id 宛てにそのまま行う）。
+      const chatId = activeStandaloneChat.id;
+      const isStillActive = () => standaloneChatActiveIdRef.current === chatId;
+      if (!isAgentConfigured()) {
+        setStandaloneChatError({ id: chatId, message: tStatic("settings.aiNotConfigured") });
+        return;
+      }
+      setStandaloneChatError(null);
+      const now = new Date().toISOString();
+      const userMessage = { role: "user" as const, content: text, timestamp: now };
+      const baseMessages = activeStandaloneChat.messages;
+      const chatAfterUser: StandaloneChat = {
+        ...activeStandaloneChat,
+        messages: [...baseMessages, userMessage],
+        modifiedAt: now,
+      };
+      setActiveStandaloneChat(chatAfterUser);
+      setStandaloneChatLoadingId(chatId);
+      // 応答を待たずにここで保存する。鍵切れ・通信失敗で下の try が落ちても、
+      // 打った質問だけは残す（応答が返ったらもう一度保存し直す）。
+      const provider = getActiveProvider();
+      await saveStandaloneChat(provider, chatAfterUser);
+      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+      // finally で「自分が積んだ AbortController か」を判定するために外へ出しておく。
+      let ownController: AbortController | undefined;
+      try {
+        // 横断検索（この機能の核）。失敗しても文脈なしで続行する。
+        let wikiContext: string | undefined;
+        try {
+          const { retrieveWikiContext } = await import("./features/wiki/retriever");
+          const excludeIds = new Set<string>(activeStandaloneChat.attachedNoteIds ?? []);
+          wikiContext = (await retrieveWikiContext(text, excludeIds)) ?? undefined;
+        } catch {
+          // Retriever 失敗は無視（embedding が無い場合など）
+        }
+        const selectedModel = getChatSynthesisModelName();
+        const disabledTools = getDisabledTools();
+        const history: AgentChatMessage[] = baseMessages.map((m) => ({ role: m.role, content: m.content }));
+        const req: AgentRunRequest = {
+          message: text,
+          messages: [...history, { role: "user", content: text }],
+          ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
+          ...(wikiContext ? { wiki_context: wikiContext } : {}),
+          language: getLocale(),
+          options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
+        };
+        const controller = new AbortController();
+        ownController = controller;
+        standaloneChatAbortRef.current.set(chatId, controller);
+        const response = await runAgent(req, controller.signal);
+        let assistantMessage = response.message;
+        if (wikiContext) {
+          const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
+            "./features/ai-assistant/citation-normalize"
+          );
+          const { message, sources } = normalizeWikiCitations(assistantMessage, wikiContext);
+          assistantMessage = appendKnowledgeReferenced(message, sources, tStatic("chat.sources.fromNotes"));
+        }
+        const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
+        const assistantAt = new Date().toISOString();
+        const finalChat: StandaloneChat = {
+          ...chatAfterUser,
+          messages: [
+            ...chatAfterUser.messages,
+            { role: "assistant" as const, content: cleanMessage, timestamp: assistantAt },
+          ],
+          modifiedAt: assistantAt,
+        };
+        // 保存はこの会話宛てにそのまま行う（送った質問と応答は本来の会話に残す）。
+        await saveStandaloneChat(provider, finalChat);
+        setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+        // 表示中の会話が既に切り替わっていたら、その画面を上書きしない。
+        if (isStillActive()) setActiveStandaloneChat(finalChat);
+      } catch (err) {
+        if (isAbortError(err)) {
+          // ユーザーが Stop した場合は中断。エラー表示しない。
+        } else {
+          // エラーは会話 id を添えて持つ。表示側で開いている会話と一致する
+          // ときだけ出すので、いま別の会話を見ていても後で戻れば表示される。
+          setStandaloneChatError({ id: chatId, message: localizeAiError(err) });
+        }
+      } finally {
+        // 待ち状態も会話 id 単位。この送信が今も自分の会話の「待ち」印であれば外す
+        // （同じ会話で新しい送信が既に始まっていたら、それを消さない）。
+        setStandaloneChatLoadingId((prev) => (prev === chatId ? null : prev));
+        // 別の会話の送信が既に新しい AbortController を積んでいるかもしれないので、
+        // 自分が積んだものだけを外す。
+        if (ownController && standaloneChatAbortRef.current.get(chatId) === ownController) {
+          standaloneChatAbortRef.current.delete(chatId);
+        }
+      }
+    },
+    [activeStandaloneChat],
+  );
+
+  // 送信中断: いま開いている会話の送信だけを中断する（chatRunManager は使わない。
+  // 上の standaloneChatAbortRef 宣言のコメント参照）。開いている会話が待っていな
+  // ければ何もしない（他会話の待ちを誤って止めないため）。
+  const handleStandaloneChatStop = useCallback(() => {
+    if (!activeStandaloneChatId) return;
+    standaloneChatAbortRef.current.get(activeStandaloneChatId)?.abort();
+  }, [activeStandaloneChatId]);
+
+  // 一覧からの会話削除。開いている会話を消した場合は一覧へ戻す。
+  const handleDeleteStandaloneChat = useCallback(
+    async (id: string) => {
+      const provider = getActiveProvider();
+      await deleteStandaloneChat(provider, id);
+      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+      if (activeStandaloneChatId === id) {
+        standaloneChatActiveIdRef.current = null;
+        setActiveStandaloneChatId(null);
+        setActiveStandaloneChat(null);
+      }
+    },
+    [activeStandaloneChatId],
+  );
+
   const [showNewSkillDialog, setShowNewSkillDialog] = useState(false);
   // 編集ダイアログを開いている Skill の id（null なら閉じている）
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
@@ -7689,6 +7878,9 @@ export function NoteApp() {
     // 「ノートに戻る」の戻り先だけはここで畳む（ビューを離れた時点で無効な情報になるため）。
     setTimelineReturnNoteId(null);
     setShowSkillList(false);
+    setShowChatList(false);
+    standaloneChatActiveIdRef.current = null;
+    setActiveStandaloneChatId(null);
     setActiveWikiView(null);
     // 素材を Full view で開いたままサイドバーの同じ素材カテゴリを押すと
     // 「一覧に戻れない（押しても無反応）」になるのを防ぐ。
@@ -11436,6 +11628,9 @@ export function NoteApp() {
     skillCount: fm.skillMetas.size,
     onShowSkillList: () => { closeAllViews(); setShowSkillList(true); setSidebarOpen(false); },
     skillActive: showSkillList,
+    onShowChatList: () => { closeAllViews(); setShowChatList(true); setSidebarOpen(false); },
+    chatActive: showChatList,
+    chatCount: standaloneChatSummaries.length,
     onShowTrash: () => {
       closeAllViews();
       setShowTrash(true);
@@ -12372,6 +12567,27 @@ export function NoteApp() {
             onNewSkill={() => setShowNewSkillDialog(true)}
             onEditSkill={(skillId) => setEditingSkillId(skillId)}
             onResetSystemSkill={fm.handleResetSystemSkill}
+          />
+        ) : showChatList && activeStandaloneChatId ? (
+          <StandaloneChatView
+            title={activeStandaloneChat?.title}
+            messages={activeStandaloneChat?.messages ?? []}
+            // 会話読み込み中（activeStandaloneChat がまだ null）も loading 扱いにして、
+            // 一覧へのちらつき（フォールバック表示）を防ぐ。待ち状態は会話 id が
+            // いま開いている会話と一致するときだけ反映する（他会話の待ちを出さない）。
+            loading={standaloneChatLoadingId === activeStandaloneChatId || !activeStandaloneChat}
+            error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
+            onSend={handleStandaloneChatSend}
+            onStop={handleStandaloneChatStop}
+            onBack={() => { standaloneChatActiveIdRef.current = null; setActiveStandaloneChatId(null); }}
+            aiConfigured={agentConfigured}
+          />
+        ) : showChatList ? (
+          <StandaloneChatListView
+            chats={standaloneChatSummaries}
+            onSelect={handleSelectStandaloneChat}
+            onNewChat={handleNewStandaloneChat}
+            onDelete={handleDeleteStandaloneChat}
           />
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */

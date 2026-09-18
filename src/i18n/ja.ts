@@ -133,6 +133,7 @@ export const ja: Record<string, string> = {
   "sidebar.groupRepository": "保管庫",
   "sidebar.shared": "共有",
   "sidebar.skill": "スキル",
+  "sidebar.chat": "チャット",
   "sidebar.knowledge": "ナレッジ",
   "sidebar.knowledgeHint": "AI がノートから抽出したナレッジ層（トピック・知見・洞察・回答）",
   // ナレッジ内の Log / 点検 ボタン
@@ -933,6 +934,16 @@ export const ja: Record<string, string> = {
   "aiChat.diagBootLogHint": "Documents/Graphium/sidecar-boot.log があれば、その中身も送ってください。stderr が無音のときでも起動状況が記録されます。",
   "aiChat.emptyChat": "(空のチャット)",
   "aiChat.messageCount": "{count} メッセージ",
+  // ノートに紐づかないチャットの一覧
+  "standaloneChat.empty": "まだチャットがありません",
+  // ノートに紐づかないチャットの会話画面
+  "standaloneChat.newChatTitle": "新しいチャット",
+  "standaloneChat.placeholder": "気になることを聞いてみましょう",
+  "standaloneChat.startHint": "ここで話しかけてみましょう",
+  "standaloneChat.sendHint": "{shortcut} で送信",
+  "standaloneChat.stop": "停止",
+  "standaloneChat.removeAttachment": "{title} を外す",
+  "standaloneChat.deleteConfirm": "この会話を削除しますか？",
   "aiChat.pageScope": "ページ全体",
   // メッセージの編集&再実行・回答の再生成・チャット分岐
   "aiChat.editMessage": "編集して再実行",

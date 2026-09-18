@@ -779,6 +779,47 @@ message and resending it, or regenerating an assistant response,
 rewrites the active chat in place: messages after the edit point are
 discarded and replaced by the new exchange.
 
+#### Standalone chats (not attached to a note)
+
+A chat can also be started with no note open at all — from the
+sidebar's **Chat** entry (`src/features/standalone-chat/`). It has no
+scope to anchor to, so it is not a `ScopeChat`; it uses a separate type,
+`StandaloneChat`:
+
+```ts
+type StandaloneChat = {
+  id: string;
+  // AI-assigned short title, added later; undefined until generated.
+  title?: string;
+  messages: ChatMessage[];
+  // Notes/Knowledge pages attached as context when the chat was started
+  // (e.g. arriving from Composer with an existing @-mention).
+  attachedNoteIds?: string[];
+  createdAt: string;
+  modifiedAt: string;
+};
+```
+
+It reuses `ChatMessage` (the same message shape `ScopeChat` uses) but is
+otherwise unrelated to any `GraphiumDocument` — nothing is added to the
+note format for it. Persistence is a two-layer app-data split
+(`src/features/standalone-chat/store.ts`, §6.1) so the list view never
+has to load full conversation bodies:
+
+- `standalone-chat-index` — `{ version: 1; chats: StandaloneChatSummary[] }`,
+  one lightweight row per conversation (`firstQuestion` truncated to 120
+  characters, `messageCount`, `modifiedAt`, optional `title`) for the
+  list screen.
+- `standalone-chat:<chatId>` — the full `StandaloneChat`, fetched only
+  when a conversation is opened.
+
+Saving writes the full conversation first, then rebuilds the index row
+for it, so a failure partway through never leaves the index pointing at
+a body that does not exist. Deleting writes `null` to both keys, the
+same logical delete used elsewhere in app data. A standalone chat is
+saved as soon as the first message is sent, so a failed response still
+leaves the question in the list.
+
 ## 3. Knowledge layer documents
 
 A Wiki document is a regular `GraphiumDocument` with `source: "ai"` and
@@ -2188,8 +2229,9 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   index file, manual version snapshots (`snapshot-index:<noteId>` /
   `snapshot:<snapshotId>`, see §2.4), material-scoped AI chats
   (`asset-chats:<fileId>`) and shared-entry AI chats
-  (`shared-chats:<sharedId>`, both see §2.5), and other internal
-  metadata.
+  (`shared-chats:<sharedId>`, both see §2.5), standalone chats not
+  attached to any note (`standalone-chat-index` and
+  `standalone-chat:<chatId>`, see §2.5), and other internal metadata.
 - **Knowledge / Skill CRUD** (optional) — separate listings for Knowledge and
   Skill documents so backends can store them in dedicated namespaces.
 
