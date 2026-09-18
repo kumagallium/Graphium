@@ -161,6 +161,12 @@ export type FileSidebarProps = {
   onShowSharedLibrary?: () => void;
   /** Shared Library がアクティブか */
   sharedLibraryActive?: boolean;
+  /** ノートに紐づかないチャットの一覧を開く。渡らなければ項目自体を出さない */
+  onShowChatList?: () => void;
+  /** チャット節（一覧 / 個別会話）がアクティブか */
+  chatActive?: boolean;
+  /** チャット件数 */
+  chatCount?: number;
 };
 
 /**
@@ -269,6 +275,9 @@ export function FileSidebar({
   trashCount = 0,
   onShowSharedLibrary,
   sharedLibraryActive = false,
+  onShowChatList,
+  chatActive = false,
+  chatCount = 0,
 }: FileSidebarProps) {
   const t = useT();
   // mac は ⌘ ⇧ M に分離、Windows / Linux は Ctrl+Shift+M を 1 キャップ（横並び配置では出さない）
@@ -564,6 +573,27 @@ export function FileSidebar({
           )}
         </button>
 
+        )}
+
+        {/* ①'' チャット（見出し風リンク） — ノートに紐づかない会話。すべてのノートと
+            ナレッジの間に置く（ノートの一覧・AI が編む知識、どちらとも違う「対話」の置き場）。 */}
+        {onShowChatList && (
+          <button
+            onClick={onShowChatList}
+            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
+              chatActive
+                ? "text-primary"
+                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+            }`}
+          >
+            <span className="shrink-0 -ml-0.5" aria-hidden>
+              <ArrowRight size={12} />
+            </span>
+            <span className="flex-1 text-left">{t("sidebar.chat")}</span>
+            {chatCount > 0 && (
+              <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{chatCount}</span>
+            )}
+          </button>
         )}
 
         {/* ② ナレッジ（AI が編む脳）— Notes 直下に配置 */}

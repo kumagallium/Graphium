@@ -67,6 +67,26 @@ Conversations are editable, not append-only:
 | **Regenerate response** | Circular-arrow icon under an AI reply | Asks the model to answer the same question again. |
 | **New chat from here** | Fork icon under an AI reply | Starts a new chat carrying the conversation up to that reply, leaving the original intact. Forked chats show a **Forked** badge in the history list. |
 
+## Chat without a note open
+
+The **Chat** entry in the sidebar, under **Records & knowledge** (between **All notes** and **Knowledge**), is a conversation that is not about any particular note. Open it and you get a list of past conversations — one line each, showing the title (for now, just the first question you asked; a short AI-generated title is planned) and the first question, plus **N messages · date**. **New chat** starts one.
+
+It answers the same way the note chat panel does when set to **Internal** — always cross-searching your notes and Knowledge — but has none of the note-chat extras: no `@` attachments, no **Grounding** chip, and no editing, regenerating, or forking a past message. There is nothing to insert a reply into either, since it is not attached to a document.
+
+A conversation is saved the moment you send a message, not when the answer comes back — so if the AI request fails, the question stays in the list and you can reopen it later. While waiting for a reply the panel shows "Thinking..." with a **Stop** button that only cancels the conversation you are looking at; other conversations keep running if you switch away. Hovering a row in the list reveals a delete button, which asks for confirmation before removing the conversation.
+
+Conversations live on this device, in app data — never mixed into a note file, so they do not travel with a note if you export or share it.
+
+| | Note chat panel | Chat without a note |
+|---|---|---|
+| What it is about | The note (or block) you have open | Nothing in particular — its own topic |
+| Can insert into a note | Yes | No |
+| `@` attachments, Grounding chip | Yes | No |
+| Edit / regenerate / fork | Yes | No |
+| What **Stop** cancels | That conversation | Only the conversation you are looking at (others keep running if you switch away) |
+
+Use the note chat panel while you are writing and want the AI to see (or write into) that note. Use the sidebar chat when the question is not about any one note — general questions, working things out, or checking something across everything you have written.
+
 ## Chats stay with the note — and keep running <Badge type="tip" text="Added in v0.17.1 (2026-07-06)" />
 
 Each note keeps its own chat history, saved with the note. In the panel header, **Chat history** lists past conversations (with message counts), **+ New chat** starts a fresh one, and **Clear chat** discards the current one.

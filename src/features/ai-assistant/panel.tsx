@@ -734,7 +734,9 @@ function ChatListView({
 }
 
 // チャットバブルコンポーネント
-function ChatBubble({
+// standalone-chat の会話画面（StandaloneChatView）からも再利用するため export する。
+// 呼び出し側を増やすためだけの変更で、中身・既存の呼び出しは変えていない。
+export function ChatBubble({
   message,
   busy,
   onInsert,

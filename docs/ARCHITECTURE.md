@@ -949,7 +949,11 @@ Notes:
   `aiUiEnabled` in `src/note-app.tsx`).
 - **Retrieval for AI chat is hybrid.** Two substrates feed the
   cross-search behind the Internal / External grounding scopes
-  (`src/features/wiki/retriever.ts`):
+  (`src/features/wiki/retriever.ts`). The sidebar's standalone chat
+  (§8, `src/features/standalone-chat/`) is a second entry point into the
+  same `retrieveWikiContext` call the per-note chat panel uses — it has
+  no open note to draw context from, so it always searches across notes
+  and Knowledge rather than any single document:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
     embedding model (OpenAI-compatible; absent or failing, this side is
@@ -2290,6 +2294,7 @@ people most often need to find.
 | PROV-DM graph generation | `src/features/prov-generator/` |
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |
+| Standalone chat (sidebar, not attached to a note) | `src/features/standalone-chat/` |
 | ⌘K palette (note search + ask) | `src/features/composer/` |
 | Lexical (BM25) index over notes / Wiki / assets | `src/features/lexical-search/` |
 | ⌘F in-document find (highlight matches) | `src/features/document-search/` |

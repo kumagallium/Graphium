@@ -133,6 +133,7 @@ export const en: Record<string, string> = {
   "sidebar.groupRepository": "Repository",
   "sidebar.shared": "Shared",
   "sidebar.skill": "Skill",
+  "sidebar.chat": "Chat",
   "sidebar.knowledge": "Knowledge",
   "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (topics, claims, insights, answers)",
   // Log / Health buttons inside Knowledge
@@ -933,6 +934,16 @@ export const en: Record<string, string> = {
   "aiChat.diagBootLogHint": "Also send Documents/Graphium/sidecar-boot.log if it exists — it captures startup even when stderr is silent.",
   "aiChat.emptyChat": "(empty chat)",
   "aiChat.messageCount": "{count} messages",
+  // List of chats not attached to any note
+  "standaloneChat.empty": "No chats yet",
+  // Conversation screen for chats not attached to any note
+  "standaloneChat.newChatTitle": "New chat",
+  "standaloneChat.placeholder": "Ask something...",
+  "standaloneChat.startHint": "Ask something to get started",
+  "standaloneChat.sendHint": "{shortcut} to send",
+  "standaloneChat.stop": "Stop",
+  "standaloneChat.removeAttachment": "Remove {title}",
+  "standaloneChat.deleteConfirm": "Delete this chat?",
   "aiChat.pageScope": "Page",
   // メッセージの編集&再実行・回答の再生成・チャット分岐
   "aiChat.editMessage": "Edit and resend",
