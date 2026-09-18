@@ -19,7 +19,7 @@ Graphium's knowledge follows an hourglass: context-rich notes narrow into short 
 | Kind | What it is |
 |---|---|
 | **Topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | A page built directly from the source material it groups by concept (notes, PDFs, Word docs, URLs, chat sessions), with one-hop provenance (topic → source) |
-| **Q&A** | A page keeping one good [AI chat](/ai-chat-and-ask) answer, titled by the question you asked, citing the notes/materials it drew on |
+| **Q&A** <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" /> | A page keeping one good [AI chat](/ai-chat-and-ask) answer, titled by the question you asked, citing the notes/materials it drew on |
 | **Claims** | One proposition taken from a note or document |
 | **Insights** | A relationship pattern from your claims, written to hold in other fields |
 
@@ -142,7 +142,7 @@ Both show a confirmation with the count first; regeneration issues LLM calls and
 
 When an [AI chat](/ai-chat-and-ask) answer contains something worth keeping, press **Make Knowledge** under the answer. Instead of saving the whole reply, Graphium proposes discrete candidates in a picker titled **Knowledge candidates (select to save)** — each with a **Claims** or **Insights** badge, a title, and a preview. Check the ones you want (or **Select all**) and press **Save selected (2)**. Only what you pick enters your knowledge.
 
-## Keeping a whole Q&A
+## Keeping a whole Q&A <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" />
 
 **Make Knowledge** breaks an answer apart into claims/insights. If instead the whole answer reads well as-is — a self-contained explanation you'd want to find again by the question you asked — press **Keep as knowledge** under the same message. Before saving, Graphium calls the AI once more to rewrite the exchange into a standalone article: it hands over the conversation so far, so a reply that only makes sense in context ("for the first one, how far should I push it? keep it short") comes back with the missing context filled in and the title rewritten to something that reads on its own, not the phrasing of your request. Any citation the answer already showed carries over, re-anchored to the rewritten sentences. A confirmation with an **Open** link appears once it's saved.
 

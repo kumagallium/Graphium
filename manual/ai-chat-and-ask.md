@@ -67,7 +67,7 @@ Conversations are editable, not append-only:
 | **Regenerate response** | Circular-arrow icon under an AI reply | Asks the model to answer the same question again. |
 | **New chat from here** | Fork icon under an AI reply | Starts a new chat carrying the conversation up to that reply, leaving the original intact. Forked chats show a **Forked** badge in the history list. |
 
-## Chat without a note open
+## Chat without a note open <Badge type="tip" text="Added in v0.81.0 (2026-09-18)" />
 
 The **Chat** entry in the sidebar, under **Records & knowledge** (between **All notes** and **Knowledge**), is a conversation that is not about any particular note. Open it and you get a **table**, styled like the note list or the Knowledge list, with past conversations. Columns are Title, first question, **message count**, and **updated**. It sorts by most recently updated by default, and clicking the message-count or updated header re-sorts. The breadcrumb reads Home → Chat. The title is written by the AI once the first exchange is done — until then it stays empty and you can tell conversations apart by the first question.
 
