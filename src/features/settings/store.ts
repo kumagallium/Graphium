@@ -317,6 +317,7 @@ export type ExperimentalSettings = {
  *             （loadSettings のマージで解決する。UI 側もトグルを無効化して理由を出す）。
  * - worldGrounding: 世界照合。ボタン・列・自動照合トグルを隠す。
  * - autoFullCheck: 自動で走る点検（取り込み直後・起動時 24h）で AI 解析（フル点検）まで
+ *                  **オプトイン（既定オフ。既存ユーザーも含む）** —
  *                  走らせるかどうか。OFF のときは従来どおり機械判定のみのクイック点検になる。
  *                  ON でも「直すのは人」は変わらない — 冗長の自動統合・孤立の自動リンクは
  *                  ここでは追加しない（2026-09-18 決定。手入れ画面からの手動フル点検は
@@ -640,8 +641,11 @@ export function loadSettings(): Settings {
           claims: claimsValue,
           insights: claimsValue ? insightsValue : false,
           worldGrounding: typeof feat?.worldGrounding === "boolean" ? feat.worldGrounding : true,
-          // autoFullCheck は他フラグと独立（claims/insights のようなマスタースイッチ依存は無い）。
-          autoFullCheck: typeof feat?.autoFullCheck === "boolean" ? feat.autoFullCheck : true,
+          // autoFullCheck だけは「キーが無い＝既存ユーザー」でも false に倒す。他の 3 フラグの
+          // 既定 true は「既存ユーザーの挙動を変えない」ための向きだが、自動フル点検は
+          // これまで走っていなかった処理（#967 で止めた AI 呼び出し）なので、true に倒すと
+          // 既存ユーザーの費用が黙って増える。オプトインにする（2026-09-18）。
+          autoFullCheck: typeof feat?.autoFullCheck === "boolean" ? feat.autoFullCheck : false,
         };
       })(),
       atomizeIngestBudget: normalizeAtomizeIngestBudget(parsed.atomizeIngestBudget),

@@ -108,18 +108,19 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
     expect(isAutoFullCheckEnabled()).toBe(false);
   });
 
-  it("保存済み設定はあるが features キーが無い（この版より前から使っているユーザー）場合はすべて true になる", () => {
+  it("保存済み設定はあるが features キーが無い（この版より前から使っているユーザー）場合は autoFullCheck 以外 true になる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ latinFont: "" }));
-    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: true });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
     expect(isClaimsEnabled()).toBe(true);
     expect(isAtomLayerEnabled()).toBe(true);
     expect(isWorldGroundingEnabled()).toBe(true);
-    expect(isAutoFullCheckEnabled()).toBe(true);
+    // autoFullCheck だけは既存ユーザーでもオプトイン（黙って AI 呼び出しを増やさない）
+    expect(isAutoFullCheckEnabled()).toBe(false);
   });
 
   it("features が無い（キーごと欠落）場合も既定 ON に倒れる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({}));
-    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: true });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
   });
 
   it("features があればその値に従う", () => {
@@ -140,7 +141,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
       "graphium-settings",
       JSON.stringify({ features: { claims: false, insights: true, worldGrounding: true } }),
     );
-    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: true, autoFullCheck: true });
+    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: true, autoFullCheck: false });
     expect(isClaimsEnabled()).toBe(false);
     expect(isAtomLayerEnabled()).toBe(false);
     expect(isWorldGroundingEnabled()).toBe(true);

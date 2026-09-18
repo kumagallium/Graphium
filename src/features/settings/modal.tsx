@@ -373,7 +373,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [colorMode, setColorMode] = useState<ColorMode>("");
   const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
   // AI 機能ごとの表示切り替え（既定 ON）。loadSettings() は常に両方 boolean で返すので undefined は来ない
-  const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true, autoFullCheck: true });
+  const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
 
   // サーバーデータ
@@ -657,7 +657,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setJpFont(settings.jpFont ?? "");
     setColorMode(settings.colorMode ?? "");
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
-    setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: true });
+    setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
     setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
     setSaved(false);
     setShowAddForm(false);

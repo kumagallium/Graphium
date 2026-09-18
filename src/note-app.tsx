@@ -7034,7 +7034,7 @@ export function NoteApp() {
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
   // AI 機能ごとの表示切り替え（既定 ON）。設定モーダルを閉じた時に再読み込みして反映する
   // （experimentalFlags と同じ伝搬パターン）。loadSettings() は常に両方 boolean を返す。
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadSettings().features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: true });
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadSettings().features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
   // 来歴ラベル機能は常時有効。付与 UI が step の中に構造的に畳まれた
   // （ステップを使う人にだけ現れる）ため、設定トグルでの段階的開示は撤去した。
   const provLabelsEnabled = true;
