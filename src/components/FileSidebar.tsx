@@ -547,7 +547,7 @@ export function FileSidebar({
           className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
             noteListActive
               ? "text-primary"
-              : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+              : "text-sidebar-foreground/75 hover:text-sidebar-foreground"
           }`}
         >
           <span className="shrink-0 -ml-0.5" aria-hidden>
@@ -739,7 +739,7 @@ export function FileSidebar({
             className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 mb-1.5 text-xs font-semibold transition-colors ${
               mobileActive
                 ? "text-primary"
-                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+                : "text-sidebar-foreground/75 hover:text-sidebar-foreground"
             }`}
           >
             <span className="shrink-0 -ml-0.5" aria-hidden>
@@ -835,7 +835,7 @@ export function FileSidebar({
             className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
               processGalleryActive
                 ? "text-primary"
-                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+                : "text-sidebar-foreground/75 hover:text-sidebar-foreground"
             }`}
           >
             <span className="shrink-0 -ml-0.5" aria-hidden>
