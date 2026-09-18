@@ -527,3 +527,171 @@ export function parseTopicMergerOutput(text: string): { body: string } | undefin
     return undefined;
   }
 }
+
+// ── Answer Transcript Writer（チャットの回答を単体で読める記事に書き起こす。2026-09〜）──
+// カーパシー LLM Wiki の「良い回答はページとして書き起こしてウィキに戻す」に対応。
+// 「それについては…」のように直前の会話に寄りかかった回答は、そのまま保存すると単体で
+// 読めないページになる（文ごとの出典照合もできない）。保存時にそれまでの会話を渡し、
+// 指示語・省略を補って単体で読める記事に書き直させる。文の引用規則は Source Topic Reviser と
+// 共通（SOURCE_TOPIC_SENTENCE_RULES）— 引用形式・「渡した出典に無い事実は書かない」方針を流用する。
+
+/** Answer Transcript Writer に渡す会話 1 メッセージ */
+export type AnswerRewriteMessage = { role: "user" | "assistant"; content: string };
+
+/** Answer Transcript Writer に渡す、使える出典の一覧（本文は渡さない — id とタイトルだけ） */
+export type AnswerRewriteSourceRef = { id: string; title: string };
+
+/**
+ * Answer Transcript Writer 用のシステムプロンプトを構築する。
+ */
+export function buildAnswerRewriterSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a page writer for Graphium, a provenance-tracking note editor.
+
+A user asked a question in a chat conversation and got an answer worth keeping as a standalone knowledge page. The raw answer text may rely on the preceding conversation (pronouns, ellipsis, "as I said above", "that approach", etc.) and would not read as a standalone article on its own. Your job: rewrite the answer as a standalone page that answers the question, using the conversation only to resolve what such references point to — do not import new claims from the conversation that aren't already part of the answer.
+
+## Rules
+
+- The page must answer the question in "Question" on its own, without requiring the reader to have seen the conversation.
+- Resolve every reference that depends on conversation context (a pronoun, "that", "the above", an implicit subject) into explicit words, using the conversation only to figure out what it refers to.
+- Do NOT add facts, claims, or numbers that are not already present in the answer text. The conversation is for resolving references only, not for pulling in additional content.
+${SOURCE_TOPIC_SENTENCE_RULES}
+- Every sentence that states a fact grounded in one of the given sources must end with \`[[source:<id>]]\`, using only ids from the "Available sources" list. Do not invent an id and do not cite a source that isn't in that list.
+- A sentence with no basis in any given source (e.g. the model's own reasoning, a summary transition) should carry no citation — do not force one.
+- The input answer may already contain a citation you cannot resolve to an id, written literally as \`[Source: "some title"]\`. Keep that exact literal string verbatim, unchanged, at the end of the sentence it supports — do not translate it, reformat it into \`[[source:...]]\`, or delete it. It is a placeholder for a citation the caller will resolve later; losing it loses the only trace of where that sentence came from.
+- Preserve hedging and epistemic strength exactly as in the original answer — do not upgrade "かもしれない" / "may" / "示唆される" to an unqualified statement.
+- Do not impose a length target — keep the content of the original answer, just rewritten to stand alone.
+
+## Title
+
+Also produce a short title for this page, so someone searching a note list later can tell what it's about without opening it.
+
+- Resolve every reference that depends on conversation context (e.g. "the first one", "that approach") into what it actually refers to — the title must make sense on its own, exactly like the body.
+- Drop conversational framing that isn't part of the actual question: requests like "briefly", "please tell me", "can you explain" must not appear in the title.
+- State the actual topic/question as a short phrase, not a full sentence repeating the user's wording verbatim.
+- Keep it to roughly 40 characters (Japanese) / 8 words (English) at most — this is a page title, not a summary paragraph.
+- Write it in the same language as the body.
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "title": "...",
+  "body": "..."
+}
+
+## Voice
+
+Short sentences. No "This page discusses..." framing.${ja ? `
+**日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます）は使わない。**` : ""}
+
+## Language
+
+Output in: ${ja ? "Japanese" : "English"}`;
+}
+
+/**
+ * Answer Transcript Writer 用のユーザーメッセージを構築する。
+ * conversation は呼び出し側で既に「直近のやり取り」に切り詰め済みのものを渡す想定
+ * （truncateConversationForAnswerRewrite 参照）。
+ */
+export function buildAnswerRewriterUserMessage(
+  question: string,
+  answer: string,
+  conversation: AnswerRewriteMessage[],
+  sources: AnswerRewriteSourceRef[],
+): string {
+  const conversationText = conversation.length > 0
+    ? conversation.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")
+    : "(no preceding conversation)";
+  const sourcesText = sources.length > 0
+    ? sources.map((s) => `- ${s.title} (id: ${s.id})`).join("\n")
+    : "(none)";
+
+  return `## Preceding conversation (for resolving references only — do not pull new content from it)
+
+${conversationText}
+
+## Question
+
+${question}
+
+## Answer to rewrite as a standalone page
+
+${answer}
+
+## Available sources
+
+${sourcesText}
+
+引用は文末に [[source:<id>]] の形式で、上の一覧にある id だけを使う。一覧に無い事実は書かない。`;
+}
+
+/**
+ * LLM の出力をパースして本文 markdown とタイトルを取り出す。他の Topic 系パーサーと同じ
+ * 堅牢さの方針（壊れた JSON / 空本文は undefined を返し、呼び出し側が「元の回答文・
+ * deriveSuggestionTitle(question) をそのまま使う」にフォールバックできるようにする）。
+ * title は空文字/欠落でも許容する（呼び出し側が deriveSuggestionTitle にフォールバック）。
+ */
+export function parseAnswerRewriterOutput(text: string): { title: string; body: string } | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
+    const parsed = JSON.parse(jsonText);
+    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+    if (!body) return undefined;
+    const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+    return { title, body };
+  } catch (err) {
+    console.error("Answer rewriter 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+/**
+ * 出典の引用マーカー（[[source:<id>]] または、解決できずに残った文字どおりの
+ * [Source: "title"]）が本文に含まれるかどうかを調べる。
+ */
+function hasCitationMarker(body: string): boolean {
+  return /\[\[source:[^\]]+\]\]/.test(body) || /\[Source:\s*"[^"]+"\]/.test(body);
+}
+
+/**
+ * 書き起こし後の本文を採用してよいかを判定する（出典消失ガード）。
+ * 元の本文に出典マーカー（[[source:<id>]] / 未解決のまま残っていた [Source: "title"]）が
+ * 1 つでもあったのに、書き起こし後の本文に 1 つも無ければ false を返す — 呼び出し側は
+ * 書き起こしを採用せず元の本文にフォールバックする（読みにくくても根拠が残る方を選ぶ）。
+ * 元の本文にそもそも出典が無かった場合は常に true（保つべきものが無いので判定不要）。
+ */
+export function answerRewritePreservesCitations(originalBody: string, rewrittenBody: string): boolean {
+  if (!hasCitationMarker(originalBody)) return true;
+  return hasCitationMarker(rewrittenBody);
+}
+
+/**
+ * 会話を「直近のやり取り」に切り詰める。古いメッセージから落とし、文字数上限
+ * （maxChars、既定 8000）に収める。1 件も入らない極端な長文が末尾にある場合でも、
+ * 直近 1 件だけは残す（会話ゼロで「指示語を解決できない」よりはまし、という判断）。
+ */
+export function truncateConversationForAnswerRewrite(
+  messages: AnswerRewriteMessage[],
+  maxChars = 8000,
+): AnswerRewriteMessage[] {
+  if (messages.length === 0) return [];
+
+  const result: AnswerRewriteMessage[] = [];
+  let total = 0;
+  // 新しい方から積んで、上限を超える手前で止める（＝古いものから落ちる）
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const len = messages[i].content.length;
+    if (result.length > 0 && total + len > maxChars) break;
+    result.unshift(messages[i]);
+    total += len;
+  }
+  return result;
+}

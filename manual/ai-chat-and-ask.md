@@ -122,15 +122,15 @@ Every AI reply has action buttons underneath:
 | **Replace in note** | Replaces the source blocks with the answer (shown when the chat was started from specific blocks) |
 | **Derive as note** | Creates a new note from the question and answer, with provenance linking back to the source note, and opens it in the side peek |
 | **Make Knowledge** | Extracts knowledge candidates from the answer (below) |
-| **Keep as knowledge** | Saves the whole answer as-is, as an Answer page in the Knowledge layer (below) |
+| **Keep as knowledge** | Saves the whole answer as-is, as a Q&A page in the Knowledge layer (below) |
 
 ### Extracting knowledge from a chat <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
 **Make Knowledge** turns a good answer into entries in your [Knowledge layer](/knowledge-layer) — without saving anything you didn't choose. Graphium shows "Extracting claims…", then "Generating insights…", and presents a picker titled **Knowledge candidates (select to save)**. Each candidate carries a **Claims** or **Insights** badge; use **Select all** / **Clear**, then **Save selected (n)** — or **Cancel** to keep nothing. Only the candidates you pick become knowledge pages.
 
-### Keeping a whole answer
+### Keeping a whole Q&A
 
-If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium saves the message text unedited as an [Answer page](/knowledge-layer#the-kinds), titled with the question you asked, and carries over any citation the answer showed (the ones you could click to open a note or material) as the page's own citations. It doesn't call the AI again and doesn't offer a preview to edit first — it saves exactly what you read. Once saved, the button becomes a confirmation with an **Open** link to the new page, and from then on the page is upkept like a Topic — revised when a source updates or contradicts the answer, checked, and source-checked. See [Knowledge layer](/knowledge-layer#keeping-a-whole-answer) for details.
+If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium calls the AI once more first, handing over the conversation so far to rewrite the exchange into a [Q&A page](/knowledge-layer#the-kinds) that reads standalone — filling in what a context-dependent reply left implicit and rewriting the title away from the phrasing of your request — with any citation the answer showed carried over to the rewritten sentences. There's no preview to edit first; if the rewrite fails or strips out every citation the original had, Graphium falls back to saving the message text unedited, titled with the question you asked. Once saved, the button becomes a confirmation with an **Open** link to the new page, and from then on the page is upkept like a Topic — revised when a source updates or contradicts the answer, checked, and source-checked. See [Knowledge layer](/knowledge-layer#keeping-a-whole-qa) for details.
 
 ## The Composer (⌘K)
 

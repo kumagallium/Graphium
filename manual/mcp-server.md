@@ -111,11 +111,11 @@ Both arguments are additive — a call without them behaves exactly as before.
 Both tools write something new into your vault, but into different layers, and Graphium treats each layer differently afterwards:
 
 - **`create_note`** writes a **note** — something a human maintains. Graphium never touches it again on its own.
-- **`save_answer`** writes an **answer page** — a knowledge-layer page (the same `answer` kind the in-app "Keep as knowledge" button on a chat message produces). Once it exists, Graphium revises it whenever related material is ingested, and includes it in linting and source-check like any other knowledge page.
+- **`save_answer`** writes a **Q&A page** — a knowledge-layer page (the same `answer` kind the in-app "Keep as knowledge" button on a chat message produces). Once it exists, Graphium revises it whenever related material is ingested, and includes it in linting and source-check like any other knowledge page. One difference from the in-app button: "Keep as knowledge" rewrites the exchange into a standalone article before saving (it has the conversation to draw on); `save_answer` saves the `question`/`answer` you pass exactly as given, since Graphium has no access to the rest of your conversation with the external client. Write the body so it already reads standalone.
 
 Use `save_answer` for something you expect Graphium to keep maintaining as your notes grow; use `create_note` for a one-off record you will maintain yourself.
 
-In the body you pass to `save_answer`, **end every grounded sentence with `[[source:<id>]]`** (the ids you pass in `citations`; list several when several sources say the same thing). Source check works sentence by sentence — it asks whether the sources a sentence cites really say it — so an answer page with no citations in its body is never checked. Save one without them and the tool says so in its reply.
+In the body you pass to `save_answer`, **end every grounded sentence with `[[source:<id>]]`** (the ids you pass in `citations`; list several when several sources say the same thing). Source check works sentence by sentence — it asks whether the sources a sentence cites really say it — so a Q&A page with no citations in its body is never checked. Save one without them and the tool says so in its reply.
 
 `save_answer` takes:
 
@@ -182,13 +182,13 @@ This is the payoff of labelling: once a handful of notes name the same instrumen
 
 ## What it deliberately does not do
 
-**It never edits your existing notes.** `create_note` only adds new ones. `save_answer` only adds new answer pages — it does not touch your notes either, though the answer page it creates *will* be revised later by Graphium's own knowledge-layer maintenance, unlike a note. Nothing an assistant does through MCP can overwrite something you wrote.
+**It never edits your existing notes.** `create_note` only adds new ones. `save_answer` only adds new Q&A pages — it does not touch your notes either, though the Q&A page it creates *will* be revised later by Graphium's own knowledge-layer maintenance, unlike a note. Nothing an assistant does through MCP can overwrite something you wrote.
 
 **It never invents provenance.** You might expect that chatting about an experiment would build the provenance graph for you. It does not, and this is on purpose. Provenance is a record of what actually happened. A graph reconstructed from a conversation would look the same but mean something different — a guess about your procedure, with nothing to check it against. Graphium records provenance from what you did in the editor, not from what a model inferred you probably did.
 
 What *is* recorded automatically is the write itself. A note created through MCP carries who asked for it, which client it came through, and which model wrote it. That is an observation, not an inference.
 
-**Notes and answer pages created through MCP appear after a reload.** Both lists are built by the app, so something written while Graphium is open shows up the next time you reload or restart it.
+**Notes and Q&A pages created through MCP appear after a reload.** Both lists are built by the app, so something written while Graphium is open shows up the next time you reload or restart it.
 
 ## Troubleshooting
 
