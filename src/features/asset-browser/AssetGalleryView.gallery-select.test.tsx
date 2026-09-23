@@ -105,6 +105,23 @@ function renderGallery(onBulkShare?: (fileIds: string[]) => void) {
   );
 }
 
+function documentEntry(
+  fileId: string,
+  name: string,
+  mimeType: string,
+): MediaIndexEntry {
+  return {
+    fileId,
+    name,
+    type: "document",
+    mimeType,
+    url: `https://example.test/${name}`,
+    thumbnailUrl: "",
+    uploadedAt: "2026-01-03T00:00:00.000Z",
+    usedIn: [],
+  };
+}
+
 /** タイル／行のチェックボックス（包む要素）を上から順に返す */
 function checkboxCells(): HTMLElement[] {
   return screen.getAllByTitle("Drag or shift-click to select a range");
@@ -175,5 +192,41 @@ describe("ギャラリー表示の複数選択", () => {
       (cell) => (cell.querySelector("input[type=checkbox]") as HTMLInputElement).checked,
     );
     expect(boxes).toEqual([true, true, false]);
+  });
+});
+
+describe("ドキュメント種別の絞り込み", () => {
+  it("Word は Word 文書だけを表示し、PowerPoint と Excel を除外する", () => {
+    const mediaIndex: MediaIndex = {
+      version: 7,
+      updatedAt: "2026-01-04T00:00:00.000Z",
+      media: [
+        documentEntry("word", "report.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        documentEntry("powerpoint", "slides.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+        documentEntry("excel", "data.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+      ],
+    };
+
+    render(
+      <LocaleProvider>
+        <AssetGalleryView
+          mediaIndex={mediaIndex}
+          mediaType="document"
+          onBack={() => {}}
+          onNavigateNote={() => {}}
+          onDeleteMedia={async () => {}}
+          onRenameMedia={async () => {}}
+        />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "All3" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Word/ }));
+
+    expect(screen.getByRole("button", { name: "Word1" })).toBeTruthy();
+    expect(screen.getByText("report.docx")).toBeTruthy();
+    expect(screen.queryByText("slides.pptx")).toBeNull();
+    expect(screen.queryByText("data.xlsx")).toBeNull();
   });
 });
