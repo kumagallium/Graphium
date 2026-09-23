@@ -2,15 +2,25 @@
 // 「まだ取り出していないものは、取り込みからでも素材の詳細からでも取り出せる」の土台
 
 import { describe, expect, it } from "vitest";
-import { canExpandOffice, hasExpandedOffice } from "./media-index";
+import { canExpandOffice, hasExpandedOffice, isWordDocumentEntry } from "./media-index";
 
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const DOC_MIME = "application/msword";
 
 describe("canExpandOffice", () => {
   it("pptx は展開対象", () => {
     expect(canExpandOffice({ type: "document", mimeType: PPTX_MIME })).toBe(true);
+  });
+
+  describe("isWordDocumentEntry", () => {
+    it("Word の新旧形式だけを Word として判定する", () => {
+      expect(isWordDocumentEntry({ type: "document", mimeType: DOCX_MIME })).toBe(true);
+      expect(isWordDocumentEntry({ type: "document", mimeType: DOC_MIME })).toBe(true);
+      expect(isWordDocumentEntry({ type: "document", mimeType: PPTX_MIME })).toBe(false);
+      expect(isWordDocumentEntry({ type: "document", mimeType: XLSX_MIME })).toBe(false);
+    });
   });
 
   it("xlsx は展開対象", () => {

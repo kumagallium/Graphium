@@ -39,6 +39,11 @@ export function isDocumentMime(mimeType: string): boolean {
 
 /** Word (.docx) の MIME。埋め込み画像抽出は .docx のみ対応（.doc/.xls/.ppt は非対応）。 */
 const WORD_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+/** 旧形式を含む Word MIME。一覧の Word 絞り込みに使う。 */
+const WORD_DOCUMENT_MIMES = new Set([
+  WORD_DOCX_MIME,
+  "application/msword",
+]);
 /** PowerPoint (.pptx) の MIME */
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 /** Excel (.xlsx) の MIME */
@@ -47,6 +52,11 @@ const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 /** Word (.docx) 素材かどうか */
 export function isWordDocxEntry(entry: { type: MediaType; mimeType: string }): boolean {
   return entry.type === "document" && entry.mimeType === WORD_DOCX_MIME;
+}
+
+/** Word（.docx / .doc）素材かどうか */
+export function isWordDocumentEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "document" && WORD_DOCUMENT_MIMES.has(entry.mimeType);
 }
 
 /** PowerPoint (.pptx) 素材かどうか */

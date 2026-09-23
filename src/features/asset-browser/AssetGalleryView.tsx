@@ -21,7 +21,7 @@ import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
-import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, isWordDocumentEntry, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
@@ -940,7 +940,7 @@ export function AssetGalleryView({
       if (m.archivedAt) return false;
       if (mediaType !== "document") return m.type === mediaType;
       if (docFilter === "pdf") return m.type === "pdf";
-      if (docFilter === "word") return m.type === "document";
+      if (docFilter === "word") return isWordDocumentEntry(m);
       return m.type === "document" || m.type === "pdf";
     });
     // フォルダ絞り込み（OR・小文字比較）。ノート一覧の文脈フィルタと同じ規則にそろえる
@@ -1030,12 +1030,18 @@ export function AssetGalleryView({
     if (!mediaIndex) return { pdf: 0, word: 0, all: 0 };
     let pdf = 0;
     let word = 0;
+    let all = 0;
     for (const m of mediaIndex.media) {
       if (m.archivedAt) continue;
-      if (m.type === "pdf") pdf++;
-      else if (m.type === "document") word++;
+      if (m.type === "pdf") {
+        pdf++;
+        all++;
+      } else if (m.type === "document") {
+        all++;
+        if (isWordDocumentEntry(m)) word++;
+      }
     }
-    return { pdf, word, all: pdf + word };
+    return { pdf, word, all };
   }, [mediaIndex]);
 
   const handleDeleteConfirm = useCallback(async () => {
