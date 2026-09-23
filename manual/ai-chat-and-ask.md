@@ -21,7 +21,7 @@ By default the chat can see the note you have open. To focus it on a specific pa
 | Select multiple blocks → **Ask AI about selection** | Exactly the blocks you selected |
 | Select text → **Ask AI about selection** in the floating toolbar | The selected text |
 
-Whichever starting point you use, the note you have open is passed as background as well. A quoted sentence that leans on the lines before it — a pronoun, an abbreviation, "at this temperature" — is still understood. The answer stays on the quoted part; the rest of the note is there only for context. It is re-read on every message, so edits you make mid-conversation are picked up. <Badge type="tip" text="Added in v0.29.0 (2026-08-05)" />
+Whichever starting point you use, the note you have open is passed as background as well. A quoted sentence that leans on the lines before it — a pronoun, an abbreviation, "under these conditions" — is still understood. The answer stays on the quoted part; the rest of the note is there only for context. It is re-read on every message, so edits you make mid-conversation are picked up. <Badge type="tip" text="Added in v0.29.0 (2026-08-05)" />
 
 When a chat starts from blocks or a selection, the passed content stays visible at the top of the panel under **Quote**, so you always know what the conversation is about.
 
@@ -191,3 +191,5 @@ Each skill's **Edit** dialog controls:
 | **Auto-apply on Ingest** | When on, the skill's prompt is automatically appended as instructions when Graphium generates knowledge from your notes — and in AI chat conversations |
 
 Skills are ordinary documents: click one to edit its prompt body like any note.
+
+The built-in **Knowledge Schema** is the exception to auto-apply: Graphium always supplies its saved body as a separate instruction when an assistant helps with Knowledge, or when Topics, Answers, and Claims are generated. The first saved default follows the UI language at creation time and does not change when you later switch the UI. To replace it deliberately, open the Schema and use the confirmed **Switch to Japanese** or **Switch to English** action; the previous body stays recoverable in History. It defines structure, citations, revision, and upkeep rather than writing voice; it can be edited and reset like a system skill, but cannot be deleted.

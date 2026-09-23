@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.81.1](https://github.com/kumagallium/Graphium/compare/v0.81.0...v0.81.1) - 2026-09-18
+
+- chore(ci): Takumi Guardで依存取得を保護 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1003
+- feat(knowledge): Knowledge Schemaを導入 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1005
+
 ## [v0.81.0](https://github.com/kumagallium/Graphium/compare/v0.80.0...v0.81.0) - 2026-09-18
 
 - 左ナビの節見出しを中身より濃くする by @kumagallium in https://github.com/kumagallium/Graphium/pull/994

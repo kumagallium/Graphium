@@ -46,6 +46,7 @@ export type TakeSnapshotResult =
 /**
  * 現在の doc を新しい版として残す。
  * 直近の版と内容ハッシュが同一なら版を作らず "unchanged"（＝「変更がありません」）を返す。
+ * force は本文以外のメタデータも含め、その時点の全文を必ず残す操作で使う。
  *
  * 全文を先に書き、成功後にメタ index を更新する。こうすると index が指す全文が必ず存在する
  * （途中失敗で index だけ進んで実体が無い、という不整合を避ける）。逆に全文だけ残る孤児は
@@ -57,6 +58,7 @@ export async function takeSnapshot(
   doc: GraphiumDocument,
   label?: string,
   origin?: SnapshotMeta["origin"],
+  force = false,
 ): Promise<TakeSnapshotResult> {
   if (!provider.writeAppData || !provider.readAppData) {
     throw new Error("この保存先は版の記録に対応していません");
@@ -64,7 +66,7 @@ export async function takeSnapshot(
   const metas = await listSnapshots(provider, noteId);
   const contentHash = await snapshotHash(doc);
   const last = metas[metas.length - 1];
-  if (last && last.contentHash === contentHash) {
+  if (!force && last && last.contentHash === contentHash) {
     return { status: "unchanged", meta: last };
   }
   const meta: SnapshotMeta = {
@@ -98,7 +100,13 @@ export function buildRestoredDocument(
     sharedRef: current.sharedRef,
     modifiedAt: new Date().toISOString(),
     skillMeta: current.skillMeta && snapshot.skillMeta
-      ? {
+      ? current.skillMeta.systemSkillId === "knowledge-schema" &&
+        snapshot.skillMeta.systemSkillId === "knowledge-schema"
+        ? {
+          ...snapshot.skillMeta,
+          createdAt: current.skillMeta.createdAt,
+        }
+        : {
           ...snapshot.skillMeta,
           createdAt: current.skillMeta.createdAt,
           // 版同期の管理情報は現在を維持する。復元した内容が同梱デフォルトと

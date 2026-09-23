@@ -63,10 +63,11 @@ export function SkillListView({
       .filter((f) => skillMetas.has(f.id))
       .map((f) => {
         const meta = skillMetas.get(f.id)!;
+        const isKnowledgeSchema = meta.systemSkillId === "knowledge-schema";
         return {
           id: f.id,
-          title: meta.title,
-          description: meta.description,
+          title: isKnowledgeSchema ? t("skill.knowledgeSchema") : meta.title,
+          description: isKnowledgeSchema ? t("skill.knowledgeSchemaDescription") : meta.description,
           availableForIngest: meta.availableForIngest,
           modifiedAt: f.modifiedTime,
           systemSkillId: meta.systemSkillId,
@@ -81,7 +82,7 @@ export function SkillListView({
         if (aSys !== bSys) return aSys - bSys;
         return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
       });
-  }, [skillFiles, skillMetas]);
+  }, [skillFiles, skillMetas, t]);
 
   const filtered = useMemo(() => {
     if (!searchQuery) return skillEntries;

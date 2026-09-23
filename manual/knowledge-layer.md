@@ -6,6 +6,14 @@ Notes are your working memory: dated, contextual, full of detail. The Knowledge 
 The Knowledge layer runs only with an AI backend, which ships inside the [desktop app](/desktop-app), with at least one model registered. See [AI setup](/ai-setup). In the browser preview the **Knowledge** section shows an upgrade notice instead.
 :::
 
+## Knowledge Schema
+
+**Knowledge Schema** is one built-in, editable document in the **Skill** list. It defines the generation conventions for Topics, Answers, and Claims: source citations, incremental revision, and upkeep. It is separate from the writing Voice and does not change Graphium's code-enforced citation checks, structured output validation, or safety rules.
+
+Graphium creates exactly one Schema in the Skill storage area. On first creation only, the saved default follows the current UI language: Japanese UI gets the Japanese Schema body, English UI gets the English body. After that, changing the UI language does not automatically translate, overwrite, or switch the Schema body. To change it deliberately, open the Knowledge Schema and choose **Switch to Japanese** or **Switch to English** in its banner. Graphium asks for confirmation before replacing the body with that language's bundled default; the previous body remains recoverable from History.
+
+It is not a note or a knowledge page, so it is not included in search, Knowledge counts, or the graph. Edits affect later generation only; they never regenerate existing knowledge automatically. Like other built-in skills, it cannot be deleted. A new app default updates an untouched Schema automatically in the Schema's saved language; an edited Schema shows an update badge and remains unchanged until you choose **Reset to default**, which also uses that saved language. Editing, default synchronization, Reset, and explicit language switches leave distinct entries in the document History.
+
 ## Notes vs. knowledge
 
 A lab note answers "what happened on Tuesday". A knowledge page answers "what do I now know". Graphium keeps both, linked in one direction: every knowledge page ends with a **References** section whose **Source:** entries link back to the notes it was distilled from, so you can always drop back into the original context.
@@ -89,7 +97,7 @@ The body ends with a **References** section linking back to sources. Keep in min
 
 ## Merging topics <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" />
 
-Topics can drift apart over wording, particles, or an overly narrow per-sample title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
+Topics can drift apart over wording, particles, or an overly narrow per-case title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
 
 - **Topics list** — select 2 or more Topics and press **Merge**; pick which one to keep.
 - **A topic's own banner** — shows a **Similar topics** chip when a candidate is found nearby (same normalized title, or embedding similarity when an embedding model is set); press **Merge** to absorb it into the page you're viewing.

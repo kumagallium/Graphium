@@ -18,11 +18,12 @@ type Props = {
   mode: "create" | "edit";
   /** 編集時の初期値。create のときは未指定でよい。 */
   initial?: SkillFormValues;
+  systemSkillId?: string;
   onClose: () => void;
   onSubmit: (values: SkillFormValues) => void;
 };
 
-export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
+export function SkillDialog({ mode, initial, systemSkillId, onClose, onSubmit }: Props) {
   const t = useT();
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -31,6 +32,7 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
   const [language, setLanguage] = useState<"all" | "ja" | "en">(initial?.language ?? "all");
 
   const isEdit = mode === "edit";
+  const isKnowledgeSchema = systemSkillId === "knowledge-schema";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +41,9 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
       title: title.trim(),
       description: description.trim(),
       availableForIngest,
-      language: language === "all" ? undefined : language,
+      language: isKnowledgeSchema
+        ? initial?.language
+        : language === "all" ? undefined : language,
     });
   };
 
@@ -81,23 +85,25 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
               {t("skill.descriptionHelp")}
             </p>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">
-              {t("skill.languageLabel")}
-            </label>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value as "all" | "ja" | "en")}
-              className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="all">{t("skill.langAll")}</option>
-              <option value="ja">{t("skill.langJa")}</option>
-              <option value="en">{t("skill.langEn")}</option>
-            </select>
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              {t("skill.languageHelp")}
-            </p>
-          </div>
+          {!isKnowledgeSchema && (
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">
+                {t("skill.languageLabel")}
+              </label>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as "all" | "ja" | "en")}
+                className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="all">{t("skill.langAll")}</option>
+                <option value="ja">{t("skill.langJa")}</option>
+                <option value="en">{t("skill.langEn")}</option>
+              </select>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {t("skill.languageHelp")}
+              </p>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <input
               type="checkbox"

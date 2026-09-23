@@ -14,8 +14,13 @@ import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 import { forcesWebSearch, type GroundingScope } from "../../lib/grounding-scope.js";
 import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-service.js";
 
 const app = new Hono();
+
+function requiredTrimmedString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
 /**
  * ノート本文の取得先に関するガードレール。
@@ -64,6 +69,8 @@ app.post("/run", async (c) => {
     grounding_scope?: GroundingScope;
     /** 構造化出力（コンテキストラベル）の指示に使う言語 */
     language?: string;
+    /** AI がナレッジ生成を案内するときに参照する保存済み Schema */
+    knowledge_schema?: string;
     options?: {
       max_turns?: number;
       model?: string;
@@ -72,6 +79,10 @@ app.post("/run", async (c) => {
 
   if (!body.message && (!body.messages || body.messages.length === 0)) {
     return c.json({ error: "message is required" }, 400);
+  }
+  const knowledgeSchema = requiredTrimmedString(body.knowledge_schema);
+  if (!knowledgeSchema) {
+    return c.json({ error: "knowledge_schema is required" }, 400);
   }
 
   // モデル解決: ヘッダー → options.model → デフォルト
@@ -90,6 +101,7 @@ app.post("/run", async (c) => {
   if (body.custom_instructions) {
     systemPrompt += `\n\n${body.custom_instructions}`;
   }
+  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
 
   // メッセージ構築
   // フロントエンドから messages 配列が渡された場合はそれを使う
