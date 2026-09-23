@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.81.2](https://github.com/kumagallium/Graphium/compare/v0.81.1...v0.81.2) - 2026-09-23
+
+- fix(assets): show only Word files under the Word document filter by @kumagallium in https://github.com/kumagallium/Graphium/pull/1008
+- fix(knowledge): Stop cancels URL/PDF/Word ingestion jobs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1007
+- docs(manual): v0.81.1のKnowledge Schemaを案内する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1006
+
 ## [v0.81.1](https://github.com/kumagallium/Graphium/compare/v0.81.0...v0.81.1) - 2026-09-18
 
 - chore(ci): Takumi Guardで依存取得を保護 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1003
