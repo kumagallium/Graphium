@@ -6,7 +6,7 @@ Notes are your working memory: dated, contextual, full of detail. The Knowledge 
 The Knowledge layer runs only with an AI backend, which ships inside the [desktop app](/desktop-app), with at least one model registered. See [AI setup](/ai-setup). In the browser preview the **Knowledge** section shows an upgrade notice instead.
 :::
 
-## Knowledge Schema
+## Knowledge Schema <Badge type="tip" text="Added in v0.81.1 (2026-09-18)" />
 
 **Knowledge Schema** is one built-in, editable document in the **Skill** list. It defines the generation conventions for Topics, Answers, and Claims: source citations, incremental revision, and upkeep. It is separate from the writing Voice and does not change Graphium's code-enforced citation checks, structured output validation, or safety rules.
 
