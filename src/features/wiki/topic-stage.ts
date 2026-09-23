@@ -114,6 +114,8 @@ export type ConsolidateExistingTopicsDeps = {
   noteIndex?: NoteIndex;
   locale: string;
   model?: string;
+  /** 保存済み Knowledge Schema。未指定は旧呼び出し元との互換用。 */
+  knowledgeSchema?: string;
   log?: (...args: unknown[]) => void;
 };
 
@@ -207,7 +209,13 @@ export async function applyTopicMerges(
           targetDoc.wikiMeta.topicMarkdown as string,
           ...sourceDocs.map(({ doc }) => doc.wikiMeta!.topicMarkdown as string),
         ];
-        const mergedBody = await mergeTopicBodies(targetDoc.title, bodies, deps.locale, deps.model);
+        const mergedBody = await mergeTopicBodies(
+          targetDoc.title,
+          bodies,
+          deps.locale,
+          deps.model,
+          deps.knowledgeSchema,
+        );
         if (mergedBody) {
           const sourceRefs = await collectSourceRefs(refIds, deps);
           const rewritten = rebuildSourceTopicDocument(targetDoc, mergedBody, sourceRefs, deps.model ?? null, deps.noteIndex);
@@ -255,6 +263,7 @@ export async function applyTopicMerges(
             noteIndex: deps.noteIndex,
             locale: deps.locale,
             model: deps.model,
+            knowledgeSchema: deps.knowledgeSchema,
             log: deps.log,
           });
           if (rebuildResult.rebuilt) {
@@ -307,6 +316,7 @@ export async function consolidateExistingTopics(
       [],
       deps.locale,
       deps.model,
+      deps.knowledgeSchema,
     );
   } catch (err) {
     log("既存話題の統合(consolidate-topics)に失敗:", err);
@@ -389,6 +399,8 @@ export type SourceTopicStageDeps = {
   existingTopicRefs: ExistingTopicRef[];
   noteIndex?: NoteIndex;
   locale: string;
+  /** この実行で共通に使う、保存済み Knowledge Schema 本文 */
+  knowledgeSchema?: string;
   /**
    * 資料 id から「タイトル + 全文」を解決する（出典照合の resolveSourceText と同じ入口を
    * 呼び出し側が注入する想定）。ゴミ箱・未検出などで読めない資料は undefined を返す
@@ -496,6 +508,8 @@ export async function runSourceTopicStage(
           existingForRouter,
           deps.locale,
           source.model,
+          undefined,
+          deps.knowledgeSchema,
         );
       } catch (err) {
         result.failed++;
@@ -532,6 +546,8 @@ export async function runSourceTopicStage(
               source.model,
               previouslyCitedIds.has(topicId),
               isAnswer,
+              undefined,
+              deps.knowledgeSchema,
             );
             if (!revisedBody) {
               result.failed++;
@@ -571,6 +587,7 @@ export async function runSourceTopicStage(
                 noteIndex: deps.noteIndex,
                 locale: deps.locale,
                 model: source.model,
+                knowledgeSchema: deps.knowledgeSchema,
                 log: deps.log,
               },
             );
@@ -598,6 +615,10 @@ export async function runSourceTopicStage(
             { id: source.id, title: source.title, text: source.text },
             deps.locale,
             source.model,
+            undefined,
+            undefined,
+            undefined,
+            deps.knowledgeSchema,
           );
           if (!revisedBody) {
             result.failed++;
@@ -684,6 +705,7 @@ export async function runSourceTopicStage(
           deps.locale,
           source.model,
           deps.signal,
+          deps.knowledgeSchema,
         );
       } catch (err) {
         // ユーザーの停止は失敗ではない（取り込みキューと同じ扱い）。その窓で打ち切り、
@@ -733,6 +755,7 @@ export async function runSourceTopicStage(
                 noteIndex: deps.noteIndex,
                 locale: deps.locale,
                 model: source.model,
+                knowledgeSchema: deps.knowledgeSchema,
                 log: deps.log,
                 signal: deps.signal,
               },
@@ -762,6 +785,7 @@ export async function runSourceTopicStage(
             previouslyCited,
             topicDoc.wikiMeta.kind === "answer",
             deps.signal,
+            deps.knowledgeSchema,
           );
           if (!revisedBody) {
             // 停止で改訂が返らなかった場合は失敗に数えない。
@@ -797,6 +821,7 @@ export async function runSourceTopicStage(
               false,
               false,
               deps.signal,
+              deps.knowledgeSchema,
             );
             if (revisedBody && state) {
               touched.set(existingId, { ...state, body: revisedBody });
@@ -816,6 +841,7 @@ export async function runSourceTopicStage(
             undefined,
             undefined,
             deps.signal,
+            deps.knowledgeSchema,
           );
           if (!revisedBody) {
             // 停止で改訂が返らなかった場合は失敗に数えない。
@@ -909,6 +935,8 @@ export type RebuildTopicFromSourcesDeps = {
   noteIndex?: NoteIndex;
   locale: string;
   model?: string;
+  /** 保存済み Knowledge Schema。未指定は旧呼び出し元との互換用。 */
+  knowledgeSchema?: string;
   /** 資料の見取り図を作る（資料が複数窓に分かれたときだけ呼ぶ）。未指定なら見取り図なしで続行する */
   surveySource?: (
     source: { title: string; text: string },
@@ -984,6 +1012,7 @@ export async function rebuildTopicFromSources(
         undefined,
         isAnswer,
         deps.signal,
+        deps.knowledgeSchema,
       );
       if (!revised) {
         log("トピック改訂に失敗し飛ばした:", sourceId, "窓", win.index);

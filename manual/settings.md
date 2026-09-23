@@ -77,13 +77,15 @@ A browser for the knowledge base that [world grounding](/ai-grounding) checks ag
 
 ## Knowledge
 
+The editable **Knowledge Schema** lives in the sidebar's **Skill** list rather than this tab. It is one built-in document, excluded from Knowledge counts, search, and graphs. On first creation only, Graphium saves the default body in the current UI language; later UI language changes do not translate or overwrite it. Open the Schema and use the confirmed language-switch action when you deliberately want to replace it with the other bundled language default. Its saved rules apply to later Topic, Answer, and Claim generation; changing, switching, or resetting it does not automatically regenerate existing pages.
+
 Maintenance jobs for the [Knowledge layer](/knowledge-layer). These run LLM calls, so each job asks for confirmation and reports token cost on the [Usage](#usage) tab.
 
 | Group | What it does |
 |---|---|
 | **Connection Status** | Shows the health of each backend component, with a **Restart backend** button on the desktop app. |
 | **Re-embed all Knowledge** | Rebuilds the embeddings behind AI chat citation search — use it if citation lookup stops working. Graphium also checks (cheaply, without a full scan) whether the index still has any vectors from the currently selected embedding model, and shows a one-line notice here if it looks like the model changed and the index needs a rebuild — nothing rebuilds automatically, since it spends your embedding API budget. |
-| **Organize topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Consolidates existing topics that name the same concept (wording variants, particle differences, over-fragmented per-sample topics) and merges their pages. It only consolidates topic pages — it doesn't assign or reassign Claims to topics (changed 2026-09-17). Consolidated topics are sent to Trash, not deleted outright. |
+| **Organize topics** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Consolidates existing topics that name the same concept (wording variants, particle differences, over-fragmented per-case topics) and merges their pages. It only consolidates topic pages — it doesn't assign or reassign Claims to topics (changed 2026-09-17). Consolidated topics are sent to Trash, not deleted outright. |
 | **Bulk regenerate Knowledge** | Rebuilds existing Knowledge pages after you change prompts or models, with **Target kinds** filters (**Topics** / **Claims** / **Insights** — Summaries are no longer generated and are not a regenerate target), an optional model override, cancel support, and **Retry failed only**. Topics are rebuilt from their sources, so a batch that includes Topics issues one AI call per source, not one per page — the AI-call total is shown next to the target count, and confirmed before running whenever Topics are included. |
 | **Discover Insights from Claims** | Scans your Claims cluster by cluster until every one has been in view at least once, pulling out the relationship patterns in them as Insights (Claims that share a pattern are folded into one). The number of LLM calls needed is measured from your corpus and shown before running; you can stop anytime. |
 

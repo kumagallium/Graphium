@@ -12,8 +12,8 @@ write, migrate, or interoperate with Graphium files.
 >
 > | UI label (EN / JA) | On-disk `WikiKind` |
 > |---|---|
-> | Topics / 話題 | `topic` |
-> | Q&A / 問答 | `answer` |
+> | Topics / トピック | `topic` |
+> | Answers / 問答（Q&A） | `answer` |
 > | Summaries / 要約 | `summary` |
 > | Claims / 知見 | `claim` |
 > | Insights / 洞察 | `atom` |
@@ -55,6 +55,34 @@ A few invariants underpin every schema in this document.
   not in a parallel sidecar that might drift.
 
 ## 2. The note: `GraphiumDocument`
+
+### Knowledge Schema system Skill
+
+The Knowledge Schema is a single additive `GraphiumDocument` with `source:
+"skill"` and `skillMeta.systemSkillId: "knowledge-schema"`. Its storage ID is
+also the fixed string `knowledge-schema`. It uses the existing `SkillMeta`
+default version and prompt hash fields, and the existing
+`DocumentProvenance` revision chain for edits, default synchronization, and
+Reset. It is not a `WikiKind`, is never projected to the note index, and does
+not require a document-version or index-schema-version change.
+
+On first creation only, the bundled Schema body is chosen from the current
+Graphium UI locale (`ja` or `en`) and that language is stored in
+`skillMeta.language`. Later locale changes do not translate or overwrite the
+saved Schema. Version synchronization and Reset resolve the bundled default
+from the saved `skillMeta.language`, so an untouched older English Schema
+auto-updates to the current English default, while an edited older Schema only gets the
+standard newer-default notification.
+
+The only operation allowed to change the saved Schema language is the explicit,
+confirmed language switch shown while the fixed `knowledge-schema` document is
+open. It atomically replaces the body with the selected current bundled default and
+updates `skillMeta.language`, version, and default prompt hash while preserving
+the document version. Before replacement, the prior full document is stored in
+the existing version-snapshot store so it can be restored, and the replacement
+is recorded separately as a `knowledge_schema_language_switch`
+revision/activity. Ordinary Skill metadata updates still preserve the existing
+Schema language.
 
 Each note is a single JSON file (or one row in IndexedDB for the `local`
 provider). The top-level shape:
@@ -315,9 +343,10 @@ type TableSource = {
   (`.txt` / `.dat` / `.csv`) are turned into ordinary tables, and the conversion
   parameters — which lines were read, with which delimiter — are kept here rather
   than thrown away. Dropping them would make the numbers untraceable back to the
-  raw file, which is exactly the thing this app exists to prevent. The preamble a
-  converter normally discards (`# Device Model: ENV-MONITOR-X9`) is kept as
-  `meta`, because for a lab note those lines *are* the measurement conditions.
+  raw file, which is exactly the thing this app exists to prevent. A preamble a
+  converter normally discards (for example `# Source: service-export-v4`) is kept
+  as `meta`, because those lines may carry essential runtime, collection, or
+  decision context in any domain.
   When the file was also registered as an asset, `fileId` links the table back to
   it and the import can be re-run with the stored settings.
 - **Delimited imports become a `dataTable` block by default.** The block
@@ -1020,7 +1049,7 @@ only then created as new.
 There is no separate ingest-time "consolidation" step and no target
 member-count per topic — those would be thresholds nobody could
 justify. Instead, near-duplicate or over-fragmented topics (wording
-variants, particle differences, per-sample slices that should share a
+variants, particle differences, per-case slices that should share a
 page) are caught later by two Karpathy-style *lint* mechanisms that
 look at the whole topic corpus at once, rather than one Claim at a
 time:

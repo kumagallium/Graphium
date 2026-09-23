@@ -106,6 +106,8 @@ export async function ingestNote(
   model?: string,
   /** Ingest 時に適用する Skill（プロンプトテンプレート） */
   skills?: { title: string; prompt: string }[],
+  /** 保存済み Knowledge Schema。Voice/Skill とは独立して送る。 */
+  knowledgeSchema?: string,
   /** 中断シグナル。fetch を切るとサーバー側の LLM 呼び出しも止まる */
   signal?: AbortSignal,
   /** 知見（Claims）抽出を行うかどうか（既定 true）。features.claims が OFF のとき
@@ -137,6 +139,7 @@ export async function ingestNote(
       provSummary,
       ...(model ? { model } : {}),
       ...(skills && skills.length > 0 ? { skills } : {}),
+      ...(knowledgeSchema ? { knowledgeSchema } : {}),
     }),
     ...(signal ? { signal } : {}),
   });
@@ -360,6 +363,7 @@ export async function rewriteAndMerge(
   language?: string,
   noteIndex?: NoteIndex,
   skills?: { title: string; prompt: string }[],
+  knowledgeSchema?: string,
 ): Promise<GraphiumDocument> {
   const page = existingDoc.pages[0];
   if (!page) return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
@@ -390,6 +394,7 @@ export async function rewriteAndMerge(
         language: existingDoc.wikiMeta?.language ?? language ?? "en",
         ...(model ? { model } : wikiBodyModel()),
         ...(skills && skills.length > 0 ? { skills } : {}),
+        ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
     });
 
@@ -1101,6 +1106,7 @@ export async function ingestFromUrl(
   url: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  knowledgeSchema: string,
   /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは HTML 取得・本文抽出
    *  だけ行い、/api/wiki/ingest は呼ばない（トピック段は呼び出し側が sourceText で走らせる）。 */
   extractClaims: boolean = true,
@@ -1147,6 +1153,7 @@ export async function ingestFromUrl(
       noteTitle: urlData.title || url,
       existingWikiTitles: existingWikis,
       language,
+      knowledgeSchema,
       ...wikiBodyModel(),
     }),
     signal,
@@ -1175,6 +1182,7 @@ export async function ingestFromPdf(
   sourceNoteId: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  knowledgeSchema: string,
   /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは PDF テキスト抽出
    *  だけ行い、/api/wiki/ingest は呼ばない。 */
   extractClaims: boolean = true,
@@ -1224,6 +1232,7 @@ export async function ingestFromPdf(
       noteTitle,
       existingWikiTitles: existingWikis,
       language,
+      knowledgeSchema,
       ...wikiBodyModel(),
     }),
     signal,
@@ -1249,6 +1258,7 @@ export async function ingestFromDocx(
   sourceNoteId: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  knowledgeSchema: string,
   /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは Word 本文抽出
    *  だけ行い、/api/wiki/ingest は呼ばない。 */
   extractClaims: boolean = true,
@@ -1291,6 +1301,7 @@ export async function ingestFromDocx(
       noteTitle,
       existingWikiTitles: existingWikis,
       language,
+      knowledgeSchema,
       ...wikiBodyModel(),
     }),
     signal,
@@ -1334,6 +1345,7 @@ export async function ingestFromMultiSource(
   wikiId: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  knowledgeSchema: string,
   model?: string,
   skills?: { title: string; prompt: string }[],
 ): Promise<IngestResult> {
@@ -1369,6 +1381,7 @@ export async function ingestFromMultiSource(
       language,
       ...(model ? { model } : wikiBodyModel()),
       ...(skills && skills.length > 0 ? { skills } : {}),
+      knowledgeSchema,
     }),
   });
 
@@ -1388,6 +1401,7 @@ export async function ingestFromChat(
   chatTitle: string,
   existingWikis: ExistingWikiInfo[],
   language: string,
+  knowledgeSchema: string,
   /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときはメッセージの
    *  テキスト化だけ行い、/api/wiki/ingest は呼ばない。 */
   extractClaims: boolean = true,
@@ -1413,6 +1427,7 @@ export async function ingestFromChat(
       noteTitle: `Chat: ${chatTitle}`,
       existingWikiTitles: existingWikis,
       language,
+      knowledgeSchema,
       ...wikiBodyModel(),
     }),
   });
@@ -2222,6 +2237,7 @@ export async function consolidateTopics(
   existingTopics: ExistingTopicRef[],
   language: string,
   model?: string,
+  knowledgeSchema?: string,
 ): Promise<Record<string, string>> {
   if (proposedTitles.length === 0) return {};
   try {
@@ -2234,6 +2250,7 @@ export async function consolidateTopics(
         existingTopics: existingTopics.map((t) => ({ id: t.id, title: t.title, oneLiner: t.oneLiner })),
         proposedTitles,
         ...(model ? { model } : wikiBodyModel("chatSynthesis")),
+        ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
     });
     if (!res.ok) {
@@ -2586,11 +2603,12 @@ export async function routeTopicsForSource(
   language: string,
   model?: string,
   signal?: AbortSignal,
+  knowledgeSchema?: string,
 ): Promise<{ update: string[]; create: string[] }> {
   const res = await fetch(`${API_BASE}/route-topics`, {
     method: "POST",
     headers: wikiHeaders(),
-    body: JSON.stringify({ language, source, existingTopics, ...(model ? { model } : {}) }),
+    body: JSON.stringify({ language, source, existingTopics, ...(model ? { model } : {}), ...(knowledgeSchema ? { knowledgeSchema } : {}) }),
     ...(signal ? { signal } : {}),
   });
   if (!res.ok) {
@@ -2619,6 +2637,7 @@ export async function reviseTopicFromSource(
   /** このページが回答ページ（answer）か。true のとき「問いに答え続ける」規則を追加する */
   isAnswer?: boolean,
   signal?: AbortSignal,
+  knowledgeSchema?: string,
 ): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/revise-topic`, {
@@ -2629,6 +2648,7 @@ export async function reviseTopicFromSource(
         ...(model ? { model } : {}),
         ...(previouslyCited ? { previouslyCited } : {}),
         ...(isAnswer ? { isAnswer } : {}),
+        ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
       ...(signal ? { signal } : {}),
     });
@@ -2655,13 +2675,20 @@ export async function mergeTopicBodies(
   bodies: string[],
   language: string,
   model?: string,
+  knowledgeSchema?: string,
 ): Promise<string | null> {
   if (bodies.length < 2) return null;
   try {
     const res = await fetch(`${API_BASE}/merge-topics`, {
       method: "POST",
       headers: wikiHeaders(),
-      body: JSON.stringify({ title, language, bodies, ...(model ? { model } : {}) }),
+      body: JSON.stringify({
+        title,
+        language,
+        bodies,
+        ...(model ? { model } : {}),
+        ...(knowledgeSchema ? { knowledgeSchema } : {}),
+      }),
     });
     if (!res.ok) {
       console.warn("mergeTopicBodies failed:", await aiErrorFromResponse(res, `merge-topics failed (${res.status})`));

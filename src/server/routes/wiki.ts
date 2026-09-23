@@ -84,8 +84,13 @@ import {
   type SourceCheckClaimInput,
   type SourceCheckSourceInput,
 } from "../services/source-check.js";
+import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-service.js";
 
 const app = new Hono();
+
+function requiredTrimmedString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
 // ノートから Wiki を生成
 app.post("/ingest", async (c) => {
@@ -103,10 +108,15 @@ app.post("/ingest", async (c) => {
     provSummary?: unknown;
     model?: string;
     skills?: { title: string; prompt: string }[];
+    knowledgeSchema?: string;
   }>();
 
   if (!body.noteContent) {
     return c.json({ error: "noteContent is required" }, 400);
+  }
+  const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
+  if (!knowledgeSchema) {
+    return c.json({ error: "knowledgeSchema is required" }, 400);
   }
 
   // モデル解決: ヘッダー → body.model → デフォルト
@@ -125,12 +135,13 @@ app.post("/ingest", async (c) => {
   // 「短くても着想 1 件の抽出を試みる」memo モードに切り替える。
   const isMemo = /^memo:/.test(body.noteId ?? "");
 
-  const systemPrompt = buildIngesterSystemPrompt(
+  let systemPrompt = buildIngesterSystemPrompt(
     body.language || "en",
     body.existingWikiTitles || [],
     body.skills,
     { isDocument, isMemo },
   );
+  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
 
   // PROV 構造があれば user message の先頭にコンパクトに添える。
   // 中身が空（activities も results も plan も無い）なら添えても情報がないので省略。
@@ -327,10 +338,15 @@ app.post("/rewrite", async (c) => {
     language: string;
     model?: string;
     skills?: { title: string; prompt: string }[];
+    knowledgeSchema?: string;
   }>();
 
   if (!body.existingSections || !body.newSections) {
     return c.json({ error: "existingSections and newSections are required" }, 400);
+  }
+  const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
+  if (!knowledgeSchema) {
+    return c.json({ error: "knowledgeSchema is required" }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
@@ -339,7 +355,8 @@ app.post("/rewrite", async (c) => {
     return c.json(noModelRegisteredBody(), 400);
   }
 
-  const systemPrompt = buildRewriterSystemPrompt(body.language || "en", body.skills);
+  let systemPrompt = buildRewriterSystemPrompt(body.language || "en", body.skills);
+  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
   const userMessage = buildRewriterUserMessage({
     existingSections: body.existingSections,
     newSections: body.newSections,
@@ -384,10 +401,15 @@ app.post("/consolidate-topics", async (c) => {
     existingTopics: TopicConsolidatorExistingRef[];
     proposedTitles: string[];
     model?: string;
+    knowledgeSchema?: string;
   }>();
 
   if (!Array.isArray(body.proposedTitles) || body.proposedTitles.length === 0) {
     return c.json({ error: "proposedTitles are required" }, 400);
+  }
+  const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
+  if (!knowledgeSchema) {
+    return c.json({ error: "knowledgeSchema is required" }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
@@ -396,7 +418,8 @@ app.post("/consolidate-topics", async (c) => {
     return c.json(noModelRegisteredBody(), 400);
   }
 
-  const systemPrompt = buildTopicConsolidatorSystemPrompt(body.language || "en");
+  let systemPrompt = buildTopicConsolidatorSystemPrompt(body.language || "en");
+  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
   const userMessage = buildTopicConsolidatorUserMessage(body.existingTopics ?? [], body.proposedTitles);
 
   try {
@@ -440,10 +463,15 @@ app.post("/route-topics", async (c) => {
     source: TopicRouterSource;
     existingTopics: TopicRouterExistingRef[];
     model?: string;
+    knowledgeSchema?: string;
   }>();
 
   if (!body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
     return c.json({ error: "source is required" }, 400);
+  }
+  const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
+  if (!knowledgeSchema) {
+    return c.json({ error: "knowledgeSchema is required" }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
@@ -452,7 +480,8 @@ app.post("/route-topics", async (c) => {
     return c.json(noModelRegisteredBody(), 400);
   }
 
-  const systemPrompt = buildTopicRouterSystemPrompt(body.language || "en");
+  let systemPrompt = buildTopicRouterSystemPrompt(body.language || "en");
+  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
   const userMessage = buildTopicRouterUserMessage(body.source, body.existingTopics ?? []);
 
   try {
@@ -499,10 +528,15 @@ app.post("/revise-topic", async (c) => {
     previouslyCited?: boolean;
     /** このページが回答ページ（answer）か。true のとき「問いに答え続ける」規則を追加する */
     isAnswer?: boolean;
+    knowledgeSchema?: string;
   }>();
 
   if (!body.title || !body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
     return c.json({ error: "title and source are required" }, 400);
+  }
+  const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
+  if (!knowledgeSchema) {
+    return c.json({ error: "knowledgeSchema is required" }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
@@ -511,7 +545,8 @@ app.post("/revise-topic", async (c) => {
     return c.json(noModelRegisteredBody(), 400);
   }
 
-  const systemPrompt = buildSourceTopicReviserSystemPrompt(body.language || "en", body.isAnswer);
+  let systemPrompt = buildSourceTopicReviserSystemPrompt(body.language || "en", body.isAnswer);
+  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
   const userMessage = buildSourceTopicReviserUserMessage(body.title, body.currentBody || "", body.source, body.previouslyCited);
 
   try {
@@ -604,10 +639,15 @@ app.post("/merge-topics", async (c) => {
     language: string;
     bodies: string[];
     model?: string;
+    knowledgeSchema?: string;
   }>();
 
   if (!body.title || !Array.isArray(body.bodies) || body.bodies.length < 2) {
     return c.json({ error: "title and at least 2 bodies are required" }, 400);
+  }
+  const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
+  if (!knowledgeSchema) {
+    return c.json({ error: "knowledgeSchema is required" }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
@@ -616,7 +656,8 @@ app.post("/merge-topics", async (c) => {
     return c.json(noModelRegisteredBody(), 400);
   }
 
-  const systemPrompt = buildTopicMergerSystemPrompt(body.language || "en");
+  let systemPrompt = buildTopicMergerSystemPrompt(body.language || "en");
+  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
   const userMessage = buildTopicMergerUserMessage(body.title, body.bodies);
 
   try {
