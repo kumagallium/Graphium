@@ -80,4 +80,23 @@ describe("ingest 関数の extractClaims フラグ（知見の ON/OFF）", () =>
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.model).toBe("test-model");
   });
+
+  it("ingestFromUrl は停止シグナルを URL 取得と知見抽出の両方へ渡す", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ title: "テストページ", description: "", text: "本文テキスト", url: "https://example.com" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: "test-model" }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const controller = new AbortController();
+
+    await ingestFromUrl("https://example.com", [], "ja", true, controller.signal);
+
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ signal: controller.signal });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ signal: controller.signal });
+  });
 });

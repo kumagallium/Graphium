@@ -1104,12 +1104,14 @@ export async function ingestFromUrl(
   /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは HTML 取得・本文抽出
    *  だけ行い、/api/wiki/ingest は呼ばない（トピック段は呼び出し側が sourceText で走らせる）。 */
   extractClaims: boolean = true,
+  signal?: AbortSignal,
 ): Promise<IngestResult & { sourceText: string; sourceTitle: string }> {
   // サーバーサイドで HTML 取得・パース
   const fetchRes = await fetch(`${API_BASE}/fetch-url`, {
     method: "POST",
     headers: wikiHeaders(),
     body: JSON.stringify({ url }),
+    signal,
   });
 
   if (!fetchRes.ok) {
@@ -1147,6 +1149,7 @@ export async function ingestFromUrl(
       language,
       ...wikiBodyModel(),
     }),
+    signal,
   });
 
   if (!res.ok) {
@@ -1175,9 +1178,10 @@ export async function ingestFromPdf(
   /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは PDF テキスト抽出
    *  だけ行い、/api/wiki/ingest は呼ばない。 */
   extractClaims: boolean = true,
+  signal?: AbortSignal,
 ): Promise<IngestResult & { pageCount: number; sourceText: string; sourceTitle: string }> {
   const { extractPdfText, capForSingleCall } = await import("./pdf-text-extractor");
-  const extracted = await extractPdfText(blob);
+  const extracted = await extractPdfText(blob, signal);
 
   if (!extracted.text || extracted.text.length < 50) {
     throw new Error(t("ingest.pdfNoText"));
@@ -1222,6 +1226,7 @@ export async function ingestFromPdf(
       language,
       ...wikiBodyModel(),
     }),
+    signal,
   });
 
   if (!res.ok) {
@@ -1247,10 +1252,14 @@ export async function ingestFromDocx(
   /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは Word 本文抽出
    *  だけ行い、/api/wiki/ingest は呼ばない。 */
   extractClaims: boolean = true,
+  signal?: AbortSignal,
 ): Promise<IngestResult & { sourceText: string; sourceTitle: string }> {
+  if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
   const arrayBuffer = await blob.arrayBuffer();
+  if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
   const mammoth = await import("mammoth");
   const extracted = await mammoth.extractRawText({ arrayBuffer });
+  if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
   const text = (extracted.value ?? "").trim();
 
   if (!text || text.length < 50) {
@@ -1284,6 +1293,7 @@ export async function ingestFromDocx(
       language,
       ...wikiBodyModel(),
     }),
+    signal,
   });
 
   if (!res.ok) {

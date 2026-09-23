@@ -7343,10 +7343,10 @@ export function NoteApp() {
   const topicStageQueueRef = useRef<Promise<void>>(Promise.resolve());
   const knownTopicRefsRef = useRef<Map<string, string>>(new Map());
   // 取り込みパイプライン（ingest → atomize → lint）の中断ハンドル。
-  // キュー処理の開始時に 1 本作り、各 LLM 呼び出しの fetch に signal として渡す。
-  // トーストの「停止」で abort() + キューを空にする。fetch が切れるとサーバー側の
+  // ノートキューと各素材ジョブで controller を作り、各 LLM 呼び出しの fetch に signal として渡す。
+  // トーストの「停止」で全 controller を abort() する。fetch が切れるとサーバー側の
   // c.req.raw.signal も発火して LLM 呼び出しごと止まる（wiki.ts が配線済み）。
-  const ingestAbortRef = useRef<AbortController | null>(null);
+  const ingestAbortRef = useRef<Set<AbortController>>(new Set());
   // AI 未設定ガード（ensureAgentConfigured）発火時のトースト表示。
   // 設定モーダル自体は既存の `graphium-open-settings` リスナーが AI タブで開く。
   // 固定 id で置き換えるので、連続発火（複数ノート一括 Knowledge 化等）でも 1 件に収まる。
@@ -9718,7 +9718,7 @@ export function NoteApp() {
     if (ingestRunningRef.current) return;
     ingestRunningRef.current = true;
     const abortController = new AbortController();
-    ingestAbortRef.current = abortController;
+    ingestAbortRef.current.add(abortController);
     const signal = abortController.signal;
 
     // このバッチで新規作成・更新された claim を集めておき、パイプライン後半の
@@ -9891,7 +9891,7 @@ export function NoteApp() {
             : i
         ),
       }));
-      ingestAbortRef.current = null;
+      ingestAbortRef.current.delete(abortController);
       ingestRunningRef.current = false;
       return;
     }
@@ -10090,7 +10090,7 @@ export function NoteApp() {
           // ユーザーの「停止」。以降の Lint も走らせず、ここで畳む。
           updateStage("atomize", "skipped", tStatic("ingest.aborted"));
           updateStage("lint", "skipped", tStatic("ingest.aborted"));
-          ingestAbortRef.current = null;
+          ingestAbortRef.current.delete(abortController);
           ingestRunningRef.current = false;
           return;
         }
@@ -10170,7 +10170,7 @@ export function NoteApp() {
       }
     }
 
-    ingestAbortRef.current = null;
+    ingestAbortRef.current.delete(abortController);
     ingestRunningRef.current = false;
   }, [fm, capture.handleRecordKnowledged]);
 
@@ -10276,6 +10276,9 @@ export function NoteApp() {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
     if (!ensureAgentConfigured()) return;
     if (entry.type === "url" && entry.url) {
+      const abortController = new AbortController();
+      ingestAbortRef.current.add(abortController);
+      const signal = abortController.signal;
       // toast ID は一意にしておくが、wiki に保存する sourceNoteId は URL ベースの安定 ID
       // にしておくことで、同じ URL を再 ingest した際に逆引き（Knowledge 化済み判定）
       // が壊れない。
@@ -10287,7 +10290,7 @@ export function NoteApp() {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
         try {
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromUrl(entry.url, existingWikis, getLocale(), isClaimsEnabled());
+          const result = await ingestFromUrl(entry.url, existingWikis, getLocale(), isClaimsEnabled(), signal);
           // 知見（wiki）が 0 件でも、資料がトピック段に積める（sourceText がある）なら
           // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
@@ -10306,7 +10309,7 @@ export function NoteApp() {
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
-            }]);
+            }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
             topicDetail = ` · ${detail}`;
@@ -10319,10 +10322,16 @@ export function NoteApp() {
           const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
         } catch (err) {
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+          const aborted = isAbortError(err) || signal.aborted;
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+        } finally {
+          ingestAbortRef.current.delete(abortController);
         }
       })();
     } else if (entry.type === "pdf" && entry.fileId) {
+      const abortController = new AbortController();
+      ingestAbortRef.current.add(abortController);
+      const signal = abortController.signal;
       const toastId = `pdf-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
       const sourceNoteId = `pdf:${entry.fileId}`;
       const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
@@ -10332,9 +10341,9 @@ export function NoteApp() {
         try {
           const provider = getActiveProvider();
           const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
-          const blob = await (await fetch(blobUrl)).blob();
+          const blob = await (await fetch(blobUrl, { signal })).blob();
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), isClaimsEnabled());
+          const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), isClaimsEnabled(), signal);
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
@@ -10350,7 +10359,7 @@ export function NoteApp() {
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
-            }]);
+            }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
             topicDetail = ` · ${detail}`;
@@ -10363,11 +10372,17 @@ export function NoteApp() {
           const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
         } catch (err) {
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+          const aborted = isAbortError(err) || signal.aborted;
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+        } finally {
+          ingestAbortRef.current.delete(abortController);
         }
       })();
     } else if (entry.type === "document" && entry.fileId
       && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      const abortController = new AbortController();
+      ingestAbortRef.current.add(abortController);
+      const signal = abortController.signal;
       // Word (.docx) を Knowledge 化: mammoth でテキスト抽出後、PDF と同じ /ingest API に流す
       const toastId = `doc-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
       const sourceNoteId = `document:${entry.fileId}`;
@@ -10379,9 +10394,9 @@ export function NoteApp() {
           const provider = getActiveProvider();
           const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
           const blobUrl = await provider.getMediaBlobUrl(fileId);
-          const blob = await (await fetch(blobUrl)).blob();
+          const blob = await (await fetch(blobUrl, { signal })).blob();
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), isClaimsEnabled());
+          const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), isClaimsEnabled(), signal);
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
@@ -10397,7 +10412,7 @@ export function NoteApp() {
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
-            }]);
+            }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
             topicDetail = ` · ${detail}`;
@@ -10410,7 +10425,10 @@ export function NoteApp() {
           const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
         } catch (err) {
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+          const aborted = isAbortError(err) || signal.aborted;
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
+        } finally {
+          ingestAbortRef.current.delete(abortController);
         }
       })();
     }
@@ -13348,9 +13366,9 @@ export function NoteApp() {
           state={ingestToast}
           onDismiss={() => setIngestToast(null)}
           onStop={() => {
-            // 進行中の fetch を切る（→ サーバー側の LLM 呼び出しも止まる）。
+            // 進行中の抽出・fetch をすべて切る（→ サーバー側の LLM 呼び出しも止まる）。
             // 残りのキューは processIngestQueue 側が signal.aborted を見て畳む。
-            ingestAbortRef.current?.abort();
+            ingestAbortRef.current.forEach((controller) => controller.abort());
           }}
         />
         {/* 派生ノート作成中のオーバーレイ */}

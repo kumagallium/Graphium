@@ -23,56 +23,74 @@ export type ExtractedPdf = {
   pageStarts?: number[];
 };
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
+}
+
 /**
  * PDF Blob からテキスト全体とメタタイトルを抽出する。
  * 打ち切りはしない（全ページを読んで全文を返す） — 窓分割で読む消費者が全文を必要とするため。
  * 1 回の呼び出しで全文を LLM に渡す経路は capForSingleCall で別途上限を掛けること。
  */
-export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
+export async function extractPdfText(blob: Blob, signal?: AbortSignal): Promise<ExtractedPdf> {
+  throwIfAborted(signal);
   const buffer = await blob.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), ...PDFJS_DOC_OPTIONS }).promise;
+  throwIfAborted(signal);
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer), ...PDFJS_DOC_OPTIONS });
+  const cancelLoading = () => { void loadingTask.destroy(); };
+  signal?.addEventListener("abort", cancelLoading, { once: true });
 
-  const pageCount = doc.numPages;
-  const parts: string[] = [];
-
-  for (let i = 1; i <= pageCount; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = content.items
-      .map((item) => ("str" in item ? (item as { str: string }).str : ""))
-      .filter(Boolean)
-      .join(" ");
-    parts.push(pageText);
-  }
-
-  // parts.join("\n\n") 前の、各ページ開始オフセットを先に出しておく（join は
-  // ページ間に "\n\n"（2 文字）を挟むだけなので、結合後のオフセットも機械的に求まる）。
-  // 打ち切りをしなくなったので、全ページぶんがそのまま残る。
-  const rawPageStarts: number[] = [];
-  {
-    let offset = 0;
-    for (let i = 0; i < parts.length; i++) {
-      rawPageStarts.push(offset);
-      offset += parts[i].length + (i < parts.length - 1 ? 2 : 0);
-    }
-  }
-
-  const joined = parts.join("\n\n");
-  const text = joined.trim();
-  // 先頭 trim で削れた文字数だけ、各ページ開始オフセットを引く。
-  const leadingTrimmed = joined.length - joined.trimStart().length;
-  const pageStarts = rawPageStarts.map((s) => Math.max(0, s - leadingTrimmed));
-
-  let title = "";
   try {
-    const meta = await doc.getMetadata();
-    const info = meta?.info as { Title?: string } | undefined;
-    title = info?.Title?.trim() ?? "";
-  } catch {
-    // メタなし PDF はタイトル空のまま
-  }
+    const doc = await loadingTask.promise;
+    throwIfAborted(signal);
+    const pageCount = doc.numPages;
+    const parts: string[] = [];
 
-  return { title, text, pageCount, pageStarts };
+    for (let i = 1; i <= pageCount; i++) {
+      throwIfAborted(signal);
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      throwIfAborted(signal);
+      const pageText = content.items
+        .map((item) => ("str" in item ? (item as { str: string }).str : ""))
+        .filter(Boolean)
+        .join(" ");
+      parts.push(pageText);
+    }
+
+    // parts.join("\n\n") 前の、各ページ開始オフセットを先に出しておく（join は
+    // ページ間に "\n\n"（2 文字）を挟むだけなので、結合後のオフセットも機械的に求まる）。
+    // 打ち切りをしなくなったので、全ページぶんがそのまま残る。
+    const rawPageStarts: number[] = [];
+    {
+      let offset = 0;
+      for (let i = 0; i < parts.length; i++) {
+        rawPageStarts.push(offset);
+        offset += parts[i].length + (i < parts.length - 1 ? 2 : 0);
+      }
+    }
+
+    const joined = parts.join("\n\n");
+    const text = joined.trim();
+    // 先頭 trim で削れた文字数だけ、各ページ開始オフセットを引く。
+    const leadingTrimmed = joined.length - joined.trimStart().length;
+    const pageStarts = rawPageStarts.map((s) => Math.max(0, s - leadingTrimmed));
+
+    let title = "";
+    try {
+      const meta = await doc.getMetadata();
+      const info = meta?.info as { Title?: string } | undefined;
+      title = info?.Title?.trim() ?? "";
+    } catch {
+      // メタなし PDF はタイトル空のまま
+    }
+
+    return { title, text, pageCount, pageStarts };
+  } finally {
+    signal?.removeEventListener("abort", cancelLoading);
+  }
 }
 
 /**

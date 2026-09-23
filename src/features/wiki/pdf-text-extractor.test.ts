@@ -19,11 +19,12 @@ function makeFakeDoc(pages: FakePage[], title?: string) {
 }
 
 let mockDoc: ReturnType<typeof makeFakeDoc>;
+const mockDestroy = vi.fn();
 
 vi.mock("react-pdf", () => ({
   pdfjs: {
     GlobalWorkerOptions: {},
-    getDocument: () => ({ promise: Promise.resolve(mockDoc) }),
+    getDocument: () => ({ promise: Promise.resolve(mockDoc), destroy: mockDestroy }),
   },
 }));
 vi.mock("../../lib/pdfjs-config", () => ({ PDFJS_DOC_OPTIONS: {} }));
@@ -95,5 +96,21 @@ describe("extractPdfText - pageStarts", () => {
     setPages([{ text: "本文。" }], "テストPDF");
     const result = await extractPdfText(new Blob());
     expect(result).toMatchObject({ title: "テストPDF", text: "本文。", pageCount: 1 });
+  });
+
+  it("停止時は読み込みタスクを破棄し、ページ抽出を中断する", async () => {
+    const controller = new AbortController();
+    mockDestroy.mockClear();
+    mockDoc = {
+      numPages: 1,
+      getPage: async () => {
+        controller.abort();
+        return { getTextContent: async () => ({ items: [{ str: "本文。" }] }) };
+      },
+      getMetadata: async () => ({ info: { Title: "" } }),
+    };
+
+    await expect(extractPdfText(new Blob(), controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(mockDestroy).toHaveBeenCalledTimes(1);
   });
 });
