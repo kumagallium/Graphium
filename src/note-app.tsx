@@ -7639,7 +7639,7 @@ export function NoteApp() {
   // そのまま送信できる。ノート内チャット（handleAiChatSubmit）と同じ組み立て方針を踏襲するが、
   // ノート本文・引用・ブロック ID には依存しない。
   const sendStandaloneChatMessage = useCallback(
-    async (chat: StandaloneChat, text: string, rewindIndex?: number) => {
+    async (chat: StandaloneChat, text: string, rewindIndex?: number, scope: GroundingScope = DEFAULT_GROUNDING_SCOPE) => {
       // この送信が対象とする会話 id。完了時点でこれと違う会話を見ていたら
       // 画面の state は更新しない（保存はこの id 宛てにそのまま行う）。
       const chatId = chat.id;
@@ -7685,7 +7685,7 @@ export function NoteApp() {
             noteIndex: fm.noteIndex ?? null,
             captureIndex: capture.captureIndex ?? null,
             provider,
-            scope: DEFAULT_GROUNDING_SCOPE,
+            scope,
             loadUrlText,
             loadMediaText,
           });
@@ -7718,6 +7718,9 @@ export function NoteApp() {
           messages: [...history, { role: "user", content: userMessageForModel }],
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
+          // 既定（DEFAULT_GROUNDING_SCOPE = "notes"）を渡しても forcesWebSearch は
+          // false のままなので、通常の送信（⌘K の Ask 含む）の挙動は変わらない。
+          grounding_scope: scope,
           knowledge_schema: await fm.getKnowledgeSchemaPrompt(),
           language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
@@ -12683,6 +12686,18 @@ export function NoteApp() {
             onMergeAtoms={async (keepId, absorbId) => { await mergeAtomsFromSelection(keepId, [absorbId]); }}
             onRebuildTopicWiki={rebuildTopicWikiWithConfirm}
             onRebuildTopicsFromSources={rebuildTopicsFromSourcesBulk}
+            onAskLintQuestion={async (question) => {
+              // 「次に調べること」の「チャットで聞く」。⌘K の素の Ask（handleComposerAsk）と
+              // 同じ経路（新しい会話を全画面で開いて送る）を再利用し、needs をそのまま
+              // grounding scope（internal/external）として渡す。
+              if (!ensureAgentConfigured()) return;
+              closeAllViews();
+              const chat = handleNewStandaloneChat();
+              setShowChatList(true);
+              setSidebarOpen(false);
+              router.navigate({ view: "chat", chatId: chat.id });
+              await sendStandaloneChatMessage(chat, question.question, undefined, question.needs);
+            }}
             legacyTopics={(() => {
               // 旧形式（topicMarkdown を持たない）トピックの近似判定: メンバー知見
               // （derivedFromClaims）を 1 件以上持つ topic。新形式はビルド時に常に空配列にする

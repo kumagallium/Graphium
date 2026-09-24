@@ -1422,6 +1422,13 @@ export const en: Record<string, string> = {
   "wikiLint.issuesFound": "{count} issue(s) found",
   "wikiLint.suggestionPrefix": "Suggestion: ",
   "wikiLint.openWikiPrefix": "Open: ",
+  // Next questions to investigate (full-lint LLM output only; not counted in the issue total)
+  "wikiLint.questions.header": "Worth investigating ({count})",
+  "wikiLint.questions.lookFor": "Look for",
+  "wikiLint.questions.askInChat": "Ask in chat",
+  // Notice shown when the AI analysis (full lint) fails
+  "wikiLint.lintError.notice": "AI analysis failed. Showing quick (rule-based) results only.",
+  "wikiLint.lintError.details": "Details",
   // Issue types
   "wikiLint.type.contradiction": "Contradiction",
   "wikiLint.type.orphan": "Orphan",

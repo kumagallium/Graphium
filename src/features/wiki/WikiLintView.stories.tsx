@@ -187,3 +187,72 @@ export const SourceCheckTabWithReviewList: Story = {
   name: "出典照合タブ — 要確認一覧あり",
   render: () => <Harness autoClickLabels={["出典照合"]} withReviewList />,
 };
+
+// フル点検の結果に「次に調べること」が付いた状態。既定で畳まれ、開くと問い・理由・
+// 関係ページ・「チャットで聞く」ボタンが見える（issue の件数・サマリーには数えない）。
+export const CheckTabWithQuestions: Story = {
+  name: "点検タブ — 次に調べること",
+  render: () => (
+    <div style={{ height: "100%" }}>
+      <WikiLintView
+        report={{
+          issues: [
+            {
+              type: "gap",
+              severity: "info",
+              title: "多バンド伝導に触れた知見が複数あるが、専用ページが無い",
+              description: "複数のページが「多バンド伝導」に言及しているが、まとめて説明するページが無い。",
+              affectedWikiIds: ["w1", "w2"],
+              suggestion: "「多バンド伝導」を主題にした Claim ページを新設する。",
+            },
+          ],
+          summary: { total: 1, contradictions: 0, orphans: 0, gaps: 1, stale: 0, redundant: 0, missingSource: 0 },
+          analyzedAt: "2026-09-24T00:00:00Z",
+          questions: [
+            {
+              question: "Ti 置換量を変えた系で熱伝導率はどう変化するか",
+              why: "「Al5Co2 の熱電特性」に Ti 置換の効果が書かれておらず、書ければページの結論が変わりうる。",
+              affectedWikiIds: ["w1"],
+              needs: "external",
+              lookFor: "Ti 置換量を振った熱伝導率の測定データ",
+            },
+            {
+              question: "既存の 3 本の実験ノートから、多バンド伝導の温度依存の傾向をまとめられるか",
+              why: "手元のノートに材料は揃っているが、横断してまとめた記述がまだ無い。",
+              affectedWikiIds: ["w1", "w2"],
+              needs: "internal",
+            },
+          ],
+        }}
+        loading={false}
+        onRunLint={() => console.info("[story] run lint")}
+        onOpenWiki={(id) => console.info("[story] open wiki", id)}
+        onBack={() => console.info("[story] back")}
+        wikiTitleById={new Map([["w1", "Al5Co2 の熱電特性"], ["w2", "多バンド伝導と Seebeck 係数"]])}
+        onAskLintQuestion={(q) => console.info("[story] ask in chat", q.question, q.needs)}
+      />
+    </div>
+  ),
+};
+
+// AI 解析（フル点検の LLM 呼び出し）が失敗した状態。issues/summary はクイック（機械判定）の
+// 結果のみだが、「問題は見つかりませんでした」は出さず、注意枠で失敗を明示する。
+export const CheckTabWithLintError: Story = {
+  name: "点検タブ — AI 解析失敗",
+  render: () => (
+    <div style={{ height: "100%" }}>
+      <WikiLintView
+        report={{
+          issues: [],
+          summary: { total: 0, contradictions: 0, orphans: 0, gaps: 0, stale: 0, redundant: 0, missingSource: 0 },
+          analyzedAt: "2026-09-24T00:00:00Z",
+          lintError: "Input length (230346) exceeds model's maximum context length (131072).",
+        }}
+        loading={false}
+        onRunLint={() => console.info("[story] run lint")}
+        onOpenWiki={(id) => console.info("[story] open wiki", id)}
+        onBack={() => console.info("[story] back")}
+      />
+    </div>
+  ),
+};
