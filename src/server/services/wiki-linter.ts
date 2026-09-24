@@ -201,6 +201,8 @@ Do NOT propose:
 
 There is no target count and no cap. Emit every question that passes the test above; do not pad with weak ones and do not trim strong ones.
 
+If a "## Recent activity" section is included below, use it only to prioritize which questions to surface: favor questions tied to recently ingested material or recently created answer pages, and drop questions whose answer the recent activity already shows was written up. Do not use recent activity to judge issues — it is priority material for questions only.
+
 For each question:
 - \`question\`: one sentence, phrased as something to go find out, in the page language
 - \`why\`: one sentence — which page's blank this fills and what would change once answered
@@ -271,7 +273,7 @@ Output in: ${language === "ja" ? "Japanese" : "English"}`;
 /**
  * Lint 用のユーザーメッセージを構築する
  */
-export function buildLinterUserMessage(wikis: WikiSnapshot[]): string {
+export function buildLinterUserMessage(wikis: WikiSnapshot[], recentLog?: string): string {
   // summary（要約）は生成を止めた旧種別で、ユーザー向けに「以前の要約」として残っている
   // だけなので LLM には渡さない（実データ規模でコンテキスト長を超える対策。数値のしきい値
   // ではなく構造で減らす — FAQ の「隠れたフィルターは無い」に反しないよう、種別を渡すか
@@ -301,7 +303,12 @@ export function buildLinterUserMessage(wikis: WikiSnapshot[]): string {
     return lines.join("\n");
   }).join("\n\n---\n\n");
 
-  return `Analyze the following ${targetWikis.length} Wiki documents for quality issues:\n\n${wikiDescriptions}`;
+  const base = `Analyze the following ${targetWikis.length} Wiki documents for quality issues:\n\n${wikiDescriptions}`;
+
+  // recentLog（直近 1 週間の Wiki 操作ログ）はフル点検のときだけクライアントが同送する
+  // （棚卸し D2）。末尾に節として付けるだけで、issue の判定材料にはしない（プロンプト側で明示）。
+  if (!recentLog) return base;
+  return `${base}\n\n## Recent activity (newest first)\n\n${recentLog}`;
 }
 
 /**

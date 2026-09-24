@@ -225,6 +225,8 @@ app.post("/lint", async (c) => {
     model?: string;
     /** true: ローカル検出のみ（LLM 不使用）。デフォルト false */
     localOnly?: boolean;
+    /** フル点検のときだけクライアントが同送する直近ログ（棚卸し D2。questions の優先づけ用） */
+    recentLog?: string;
   }>();
 
   if (!body.wikis || body.wikis.length === 0) {
@@ -257,7 +259,7 @@ app.post("/lint", async (c) => {
   }
 
   const systemPrompt = buildLinterSystemPrompt(body.language || "en");
-  const userMessage = buildLinterUserMessage(body.wikis);
+  const userMessage = buildLinterUserMessage(body.wikis, body.recentLog);
 
   try {
     const model = await createModel(modelConfig);
