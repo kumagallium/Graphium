@@ -50,6 +50,36 @@ export type LintReport = {
     missingSource: number;
   };
   analyzedAt: string;
+  /**
+   * 次に調べるべき問い（フル点検の LLM 出力のみ。クイック点検では出さない）。
+   * 省略可能 — 古い保存済みレポート（このフィールドが無い）を読んでも壊れないようにする。
+   * issue（直すもの）とは別の性質（調べるもの）なので summary には数えない。
+   */
+  questions?: LintQuestion[];
+  /**
+   * フル点検（LLM 解析）が失敗したときのエラーメッセージ（英語のまま、生の文言）。
+   * このフィールドがあるときは issues/summary は「クイック（機械判定）のみ」の結果 —
+   * AI 解析が走っていないことを画面側で必ず伝える（サーバーは既に返していたが、
+   * クライアントが読んでおらず「問題なし」に見えてしまっていた不具合の是正）。
+   */
+  lintError?: string;
+};
+
+/** 問いに答えるのに必要な情報の在りか */
+export type LintQuestionNeeds = "internal" | "external";
+
+/** フル点検で LLM が提案する「次に調べるべき問い」1 件 */
+export type LintQuestion = {
+  /** 問いの文（ページの言語で、1 文） */
+  question: string;
+  /** なぜ調べる価値があるか（どのページのどの穴が埋まるか、1 文） */
+  why: string;
+  /** 関係する Wiki ドキュメント ID */
+  affectedWikiIds: string[];
+  /** internal: 手元のノート・ナレッジで答えられそう / external: 外の資料が要る */
+  needs: LintQuestionNeeds;
+  /** needs === "external" のときのみ意味を持つ。探すべき資料の種類 */
+  lookFor?: string;
 };
 
 export type WikiSnapshot = {
@@ -155,6 +185,32 @@ Severity: "warning"
 
 **For redundant issues you MUST fill \`recommendedAction\`** with \`keepId\`, \`absorbId\`, and a \`reason\` that satisfies self-check #3 above. If you cannot write a \`reason\` of that form, **drop the issue entirely** — do not emit a redundant flag with vague justification.
 
+## Questions to Investigate (separate from Issues — this section is expected, not optional)
+
+Issues are things that are already wrong. **Questions are things the corpus cannot answer yet** — what to go and find out next. Every real corpus has some, so an empty list is the exception, not the default. The "be conservative" rule below applies to issues; for questions, the test is different: **would the answer change a page?**
+
+Where questions come from, in order of priority:
+1. **Every contradiction implies one.** Two pages disagree → the question is what would settle it (which measurement, which condition, which paper). Emit it with both ids.
+2. **Every gap implies one.** A concept several pages lean on but none defines → the question is what that page would have to say.
+3. **Pages that stop short.** A topic states a result but not its condition, mechanism, or range (e.g. a bandgap with no temperature or composition dependence; a synthesis with no yield or reproducibility note) → the question that fills that specific blank.
+
+Do NOT propose:
+- General background questions with no specific page behind them ("what is a bandgap?")
+- Questions whose answer is already written on one of the pages — that's a missed read, not a question
+- Vague "learn more about X" prompts
+
+There is no target count and no cap. Emit every question that passes the test above; do not pad with weak ones and do not trim strong ones.
+
+For each question:
+- \`question\`: one sentence, phrased as something to go find out, in the page language
+- \`why\`: one sentence — which page's blank this fills and what would change once answered
+- \`affectedWikiIds\`: the wiki id(s) that are incomplete without this answer
+- \`needs\`: \`"internal"\` if the answer is likely already latent in the user's own notes/knowledge (just needs pulling together and hasn't been written up), \`"external"\` if it requires genuinely new outside material (a measurement, a paper, a dataset)
+- \`lookFor\` (only when \`needs\` is \`"external"\`): one short phrase naming the kind of source to go look for — not a literature review
+
+Example (from a corpus where two pages give different bandgaps for the same compound):
+{ "question": "Al₆Ge₅ のバンドギャップ 1 eV と 0.49 eV の差は、測定法（光学 / 輸送）か組成の違いか？", "why": "『Al6Ge5 のバンドギャップ』の値が確定し、矛盾している知見のどちらかが改訂される", "affectedWikiIds": ["<id-1>", "<id-2>"], "needs": "external", "lookFor": "同一試料での光学測定と輸送測定の比較" }
+
 ## Output Format
 
 Respond with valid JSON only (no markdown wrapper):
@@ -174,6 +230,15 @@ Respond with valid JSON only (no markdown wrapper):
         "absorbId": "wiki-id-to-absorb",
         "reason": "Why keepId is the canonical one (one sentence)"
       }
+    }
+  ],
+  "questions": [                              // 省略可・該当が無ければ空配列
+    {
+      "question": "Something worth going to find out",
+      "why": "Which page's gap this fills, and what would change",
+      "affectedWikiIds": ["wiki-id-1"],
+      "needs": "internal" | "external",
+      "lookFor": "What kind of source to look for"   // needs === "external" のときだけ
     }
   ]
 }
@@ -207,11 +272,17 @@ Output in: ${language === "ja" ? "Japanese" : "English"}`;
  * Lint 用のユーザーメッセージを構築する
  */
 export function buildLinterUserMessage(wikis: WikiSnapshot[]): string {
-  if (wikis.length === 0) {
+  // summary（要約）は生成を止めた旧種別で、ユーザー向けに「以前の要約」として残っている
+  // だけなので LLM には渡さない（実データ規模でコンテキスト長を超える対策。数値のしきい値
+  // ではなく構造で減らす — FAQ の「隠れたフィルターは無い」に反しないよう、種別を渡すか
+  // 渡さないかの一律ルールにする）。
+  const targetWikis = wikis.filter((w) => w.kind !== "summary");
+
+  if (targetWikis.length === 0) {
     return "No Wiki documents to analyze.";
   }
 
-  const wikiDescriptions = wikis.map((w) => {
+  const wikiDescriptions = targetWikis.map((w) => {
     const kindLabel = w.kind === "claim" && w.level ? `concept/${w.level}` : w.kind;
     const lines = [
       `## [${kindLabel}] ${w.title} (id: ${w.id})`,
@@ -223,18 +294,27 @@ export function buildLinterUserMessage(wikis: WikiSnapshot[]): string {
         : null,
       // Atom の構造（shape）。redundant 判定で「同じ構造について同じことを言っているか」の手がかり
       w.kind === "atom" && w.shape ? `Shape: ${w.shape}` : null,
-      w.bodyPreview ? `Preview: ${w.bodyPreview}` : null,
+      // claim（知見）はタイトルが命題そのものなのでプレビューは重複。トピック・問答・洞察は
+      // これまでどおりプレビューを出す。
+      w.kind !== "claim" && w.bodyPreview ? `Preview: ${w.bodyPreview}` : null,
     ].filter(Boolean);
     return lines.join("\n");
   }).join("\n\n---\n\n");
 
-  return `Analyze the following ${wikis.length} Wiki documents for quality issues:\n\n${wikiDescriptions}`;
+  return `Analyze the following ${targetWikis.length} Wiki documents for quality issues:\n\n${wikiDescriptions}`;
 }
 
 /**
- * Linter の LLM 出力をパースする
+ * Linter の LLM 出力をパースする。
+ *
+ * validWikiIds を渡すと、questions の affectedWikiIds から実在しない id だけを間引く
+ * （hallucination 防御。既存 issue の recommendedAction 検証と同じ考え方）。
+ * 既存 issue の検出・出力ロジックはここでは一切変えない。
  */
-export function parseLinterOutput(text: string): LintIssue[] {
+export function parseLinterOutput(
+  text: string,
+  validWikiIds?: Set<string>,
+): { issues: LintIssue[]; questions: LintQuestion[] } {
   try {
     let jsonText = text.trim();
     const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
@@ -243,11 +323,9 @@ export function parseLinterOutput(text: string): LintIssue[] {
     }
 
     const parsed = JSON.parse(jsonText);
-    const issues = parsed.issues ?? parsed;
+    const issuesRaw = parsed.issues ?? parsed;
 
-    if (!Array.isArray(issues)) return [];
-
-    return issues
+    const issues: LintIssue[] = !Array.isArray(issuesRaw) ? [] : issuesRaw
       .filter((i: any) => i.type && i.title && i.description)
       .map((i: any) => {
         const affectedWikiIds: string[] = Array.isArray(i.affectedWikiIds)
@@ -287,9 +365,34 @@ export function parseLinterOutput(text: string): LintIssue[] {
           recommendedAction,
         };
       });
+
+    const questionsRaw = parsed.questions;
+    const questions: LintQuestion[] = !Array.isArray(questionsRaw) ? [] : questionsRaw
+      .filter((q: any) => q && typeof q.question === "string" && typeof q.why === "string")
+      .map((q: any) => {
+        let affectedWikiIds: string[] = Array.isArray(q.affectedWikiIds)
+          ? q.affectedWikiIds.map(String)
+          : [];
+        // 実在しない id だけを間引く（validWikiIds が渡されたときのみ。id 自体は残す方針の
+        // 既存 issue と違い、questions は wiki 一覧が確実に手元にある呼び出し元（route）
+        // からしか parseLinterOutput を呼ばないため、この検証を効かせられる）。
+        if (validWikiIds) {
+          affectedWikiIds = affectedWikiIds.filter((id) => validWikiIds.has(id));
+        }
+        const needs: LintQuestionNeeds = q.needs === "external" ? "external" : "internal";
+        return {
+          question: String(q.question),
+          why: String(q.why),
+          affectedWikiIds,
+          needs,
+          lookFor: needs === "external" && typeof q.lookFor === "string" ? q.lookFor : undefined,
+        };
+      });
+
+    return { issues, questions };
   } catch (err) {
     console.error("Linter 出力のパース失敗:", err);
-    return [];
+    return { issues: [], questions: [] };
   }
 }
 

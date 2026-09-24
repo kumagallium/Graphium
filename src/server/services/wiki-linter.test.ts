@@ -3,7 +3,7 @@
 // detectLocalIssues の orphan topic 検出（メンバー知見 0 件の話題ページ）を検証する。
 
 import { describe, it, expect } from "vitest";
-import { detectLocalIssues, detectAutoArchivable, detectMissingSourceIssues, type WikiSnapshot } from "./wiki-linter.ts";
+import { detectLocalIssues, detectAutoArchivable, detectMissingSourceIssues, parseLinterOutput, buildLinterUserMessage, type WikiSnapshot } from "./wiki-linter.ts";
 
 const base = (overrides: Partial<WikiSnapshot>): WikiSnapshot => ({
   id: "id-1",
@@ -340,5 +340,110 @@ describe("detectMissingSourceIssues - 新形式トピックの資料一部欠落
     const issues = detectMissingSourceIssues(wikis, new Set(["note-alive"]));
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ type: "missing-source", severity: "warning", affectedWikiIds: ["a1"] });
+  });
+});
+
+describe("parseLinterOutput - questions（次に調べること）", () => {
+  it("questions を読み取る", () => {
+    const text = JSON.stringify({
+      issues: [],
+      questions: [
+        {
+          question: "Ti 置換量を変えた系の熱伝導率はどうなるか",
+          why: "「Al5Co2 の熱電特性」の記述に Ti 置換の効果が抜けている",
+          affectedWikiIds: ["w1"],
+          needs: "external",
+          lookFor: "Ti 置換量を振った熱伝導率の測定",
+        },
+      ],
+    });
+    const { issues, questions } = parseLinterOutput(text, new Set(["w1"]));
+    expect(issues).toEqual([]);
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toMatchObject({
+      question: "Ti 置換量を変えた系の熱伝導率はどうなるか",
+      needs: "external",
+      lookFor: "Ti 置換量を振った熱伝導率の測定",
+      affectedWikiIds: ["w1"],
+    });
+  });
+
+  it("questions が無い出力でも既存どおり動く（空配列で返る）", () => {
+    const text = JSON.stringify({ issues: [] });
+    const { issues, questions } = parseLinterOutput(text);
+    expect(issues).toEqual([]);
+    expect(questions).toEqual([]);
+  });
+
+  it("question/why を欠いた壊れた要素は捨てる", () => {
+    const text = JSON.stringify({
+      issues: [],
+      questions: [
+        { question: "問いだけあって why が無い", affectedWikiIds: [] },
+        { question: "ちゃんとした問い", why: "理由", affectedWikiIds: [] },
+      ],
+    });
+    const { questions } = parseLinterOutput(text);
+    expect(questions).toHaveLength(1);
+    expect(questions[0].question).toBe("ちゃんとした問い");
+  });
+
+  it("affectedWikiIds に実在しない id があればその id だけ落とす（validWikiIds 指定時）", () => {
+    const text = JSON.stringify({
+      issues: [],
+      questions: [
+        {
+          question: "q",
+          why: "w",
+          affectedWikiIds: ["real-id", "hallucinated-id"],
+          needs: "internal",
+        },
+      ],
+    });
+    const { questions } = parseLinterOutput(text, new Set(["real-id"]));
+    expect(questions[0].affectedWikiIds).toEqual(["real-id"]);
+  });
+
+  it("needs が external 以外は internal 扱い・lookFor は internal では捨てる", () => {
+    const text = JSON.stringify({
+      issues: [],
+      questions: [{ question: "q", why: "w", affectedWikiIds: [], needs: "internal", lookFor: "無視されるはず" }],
+    });
+    const { questions } = parseLinterOutput(text);
+    expect(questions[0].needs).toBe("internal");
+    expect(questions[0].lookFor).toBeUndefined();
+  });
+});
+
+describe("buildLinterUserMessage - コンテキスト長対策（構造で減らす）", () => {
+  it("kind === 'summary' のページを渡さない", () => {
+    const wikis = [
+      base({ id: "s1", kind: "summary", title: "旧・要約ページ", bodyPreview: "むかしの要約" }),
+      base({ id: "t1", kind: "topic", title: "トピック", bodyPreview: "トピックの中身" }),
+    ];
+    const msg = buildLinterUserMessage(wikis);
+    expect(msg).not.toContain("旧・要約ページ");
+    expect(msg).not.toContain("むかしの要約");
+    expect(msg).toContain("トピック");
+  });
+
+  it("knowledge（claim）は Preview 行を出さず、topic には出す", () => {
+    const wikis = [
+      base({ id: "c1", kind: "claim", title: "知見のタイトルは命題そのもの", bodyPreview: "本文プレビューは重複するので出ない" }),
+      base({ id: "t1", kind: "topic", title: "トピック", bodyPreview: "トピックのプレビューは出る" }),
+    ];
+    const msg = buildLinterUserMessage(wikis);
+    expect(msg).not.toContain("本文プレビューは重複するので出ない");
+    expect(msg).toContain("Preview: トピックのプレビューは出る");
+  });
+
+  it("冒頭の件数は summary を除いた実際に渡した件数になる", () => {
+    const wikis = [
+      base({ id: "s1", kind: "summary", title: "旧・要約" }),
+      base({ id: "t1", kind: "topic", title: "トピック1" }),
+      base({ id: "t2", kind: "topic", title: "トピック2" }),
+    ];
+    const msg = buildLinterUserMessage(wikis);
+    expect(msg).toContain("Analyze the following 2 Wiki documents");
   });
 });

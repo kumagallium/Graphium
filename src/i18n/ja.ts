@@ -1422,6 +1422,13 @@ export const ja: Record<string, string> = {
   "wikiLint.issuesFound": "{count} 件の問題",
   "wikiLint.suggestionPrefix": "提案: ",
   "wikiLint.openWikiPrefix": "開く: ",
+  // 次に調べること（フル点検の LLM 出力のみ。問題の件数には含めない）
+  "wikiLint.questions.header": "次に調べること（{count}）",
+  "wikiLint.questions.lookFor": "探すもの",
+  "wikiLint.questions.askInChat": "チャットで聞く",
+  // AI 解析（フル点検）が失敗したときの注意枠
+  "wikiLint.lintError.notice": "AI 解析ができませんでした。クイック（機械判定）の結果だけを表示しています。",
+  "wikiLint.lintError.details": "詳細",
   // 問題タイプ
   "wikiLint.type.contradiction": "矛盾",
   "wikiLint.type.orphan": "孤立",

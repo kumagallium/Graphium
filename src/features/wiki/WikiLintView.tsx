@@ -21,8 +21,11 @@ import {
   Archive as ArchiveIcon,
   ExternalLink,
   Scissors,
+  ChevronDown,
+  HelpCircle,
+  MessageCircle,
 } from "lucide-react";
-import type { LintReport, LintIssue, LintIssueType, LintSeverity } from "../../server/services/wiki-linter";
+import type { LintReport, LintIssue, LintIssueType, LintSeverity, LintQuestion } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
 import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 
@@ -81,6 +84,13 @@ type Props = {
   onRebuildTopicsFromSources?: (
     topicIds: string[],
   ) => Promise<{ rebuilt: number; sourcesSkipped: number; failed: number } | null>;
+  /**
+   * 「次に調べること」の 1 件について「チャットで聞く」を押したときの配線。
+   * ノートに紐づかないチャットの新しい会話を全画面で開き、その問いを送る想定
+   * （呼び出し元は question.needs を internal/external の grounding scope に対応させる）。
+   * 未指定なら「次に調べること」欄自体にボタンを出さない。
+   */
+  onAskLintQuestion?: (question: LintQuestion) => Promise<void> | void;
 };
 
 /** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
@@ -161,6 +171,7 @@ export function WikiLintView({
   onRebuildTopicWiki,
   legacyTopics,
   onRebuildTopicsFromSources,
+  onAskLintQuestion,
 }: Props) {
   const t = useT();
   // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
@@ -371,7 +382,7 @@ export function WikiLintView({
             {/* サマリー */}
             <div className="px-4 py-3 border-b border-border">
               <div className="flex items-center gap-2 mb-2">
-                {report.issues.length === 0 ? (
+                {report.lintError ? null : report.issues.length === 0 ? (
                   <>
                     <CheckCircle size={14} className="text-emerald-500" />
                     <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
@@ -390,6 +401,12 @@ export function WikiLintView({
                   {new Date(report.analyzedAt).toLocaleString()}
                 </span>
               </div>
+              {/* AI 解析（フル点検の LLM 呼び出し）が失敗したときの注意枠。
+                  issues/summary はクイック（機械判定）の結果のみなので、「問題は見つかりませんでした」
+                  と誤読されないよう、成功時のメッセージは出さずここで明示する。 */}
+              {report.lintError && (
+                <LintErrorNotice message={report.lintError} />
+              )}
               {onBulkArchiveWikis && selectedIssueIndices.size > 0 && (
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-[10px] text-muted-foreground">
@@ -491,9 +508,150 @@ export function WikiLintView({
                 );
               })}
             </div>
+
+            {/* 次に調べること（フル点検の LLM 出力のみ）。issue（直すもの）とは別の枠にして、
+                件数・要確認 N 件・サマリーには一切数えない。0 件・古いレポート（questions
+                無し）のときは枠ごと出さない。 */}
+            {report.questions && report.questions.length > 0 && (
+              <NextQuestionsSection
+                questions={report.questions}
+                onOpenWiki={onOpenWiki}
+                wikiTitleById={wikiTitleById}
+                onAskLintQuestion={onAskLintQuestion}
+              />
+            )}
           </>
         )}
       </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * AI 解析（フル点検の LLM 呼び出し）失敗の注意枠。
+ * 見出しは短い日本語/英語の定型文、生のエラー文（英語のまま）は折りたたみの中に出す
+ * （デバッグ用の詳細なので、常時は見出しだけで十分）。
+ */
+function LintErrorNotice({ message }: { message: string }) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2 mb-2">
+      <div className="flex items-center gap-1.5 text-xs text-destructive">
+        <AlertTriangle size={12} className="shrink-0" />
+        <span>{t("wikiLint.lintError.notice")}</span>
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-destructive/80 hover:text-destructive transition-colors"
+        >
+          {t("wikiLint.lintError.details")}
+          <ChevronDown size={10} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {expanded && (
+        <p className="mt-1.5 text-[10px] text-destructive/80 font-mono break-words">{message}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 「次に調べること」欄。既定で畳んでおき、見出しに件数だけ出す。
+ * 問題一覧とは別の枠（bg-muted/20 の帯）にして、直すもの（issue）と調べるものを混ぜない。
+ */
+function NextQuestionsSection({
+  questions,
+  onOpenWiki,
+  wikiTitleById,
+  onAskLintQuestion,
+}: {
+  questions: LintQuestion[];
+  onOpenWiki: (wikiId: string) => void;
+  wikiTitleById?: Map<string, string>;
+  onAskLintQuestion?: (question: LintQuestion) => Promise<void> | void;
+}) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  // 同時に 1 件だけ「聞く」を実行中にする（複数会話を同時に開始させない）
+  const [askingIndex, setAskingIndex] = useState<number | null>(null);
+
+  const resolveTitle = (id: string): string => {
+    const title = wikiTitleById?.get(id);
+    if (title && title.trim()) return title;
+    return `${id.slice(0, 8)}…`;
+  };
+
+  const handleAsk = async (idx: number, question: LintQuestion) => {
+    if (!onAskLintQuestion || askingIndex !== null) return;
+    setAskingIndex(idx);
+    try {
+      await onAskLintQuestion(question);
+    } catch (err) {
+      console.error("Ask lint question failed:", err);
+    } finally {
+      setAskingIndex(null);
+    }
+  };
+
+  return (
+    <div className="border-t border-border bg-muted/20">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-muted/40 transition-colors"
+      >
+        <HelpCircle size={14} className="text-blue-500 shrink-0" />
+        <span className="text-xs font-medium text-foreground">
+          {t("wikiLint.questions.header", { count: String(questions.length) })}
+        </span>
+        <span className="flex-1" />
+        <ChevronDown
+          size={14}
+          className={`text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
+        />
+      </button>
+      {expanded && (
+        <div className="divide-y divide-border border-t border-border">
+          {questions.map((q, idx) => (
+            <div key={idx} className="px-4 py-3">
+              <p className="text-sm text-foreground">{q.question}</p>
+              <p className="text-xs text-muted-foreground mt-1">{q.why}</p>
+              {q.needs === "external" && q.lookFor && (
+                <p className="text-xs text-muted-foreground/80 mt-0.5">
+                  {t("wikiLint.questions.lookFor")}: {q.lookFor}
+                </p>
+              )}
+              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                {q.affectedWikiIds.map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => onOpenWiki(id)}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-background text-foreground hover:bg-muted transition-colors"
+                  >
+                    <ExternalLink size={12} />
+                    {resolveTitle(id)}
+                  </button>
+                ))}
+                {onAskLintQuestion && (
+                  <button
+                    onClick={() => handleAsk(idx, q)}
+                    disabled={askingIndex !== null}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                  >
+                    {askingIndex === idx ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <MessageCircle size={12} />
+                    )}
+                    {t("wikiLint.questions.askInChat")}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

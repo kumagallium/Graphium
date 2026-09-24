@@ -272,7 +272,10 @@ app.post("/lint", async (c) => {
       abortSignal: c.req.raw.signal,
     });
 
-    const llmIssues = parseLinterOutput(result.message);
+    // summary（要約）は buildLinterUserMessage が LLM に渡していない（コンテキスト長対策）ので、
+    // LLM が知りようのない id を questions に返す余地を作らないよう、要約を除いた集合にする。
+    const validWikiIds = new Set(body.wikis.filter((w) => w.kind !== "summary").map((w) => w.id));
+    const { issues: llmIssues, questions } = parseLinterOutput(result.message, validWikiIds);
 
     // ローカル検出 + LLM 分析をマージ（重複排除）
     const allIssues = mergeIssues(localIssues, llmIssues);
@@ -281,6 +284,9 @@ app.post("/lint", async (c) => {
       issues: allIssues,
       summary: buildSummary(allIssues),
       analyzedAt: new Date().toISOString(),
+      // フル点検（AI 呼び出しが成功した経路）のときだけ questions を持たせる。
+      // クイック点検（localOnly）はこの分岐に来ないので、AI 呼び出しを増やさない設計を保つ。
+      ...(questions.length > 0 ? { questions } : {}),
     };
 
     return c.json({
