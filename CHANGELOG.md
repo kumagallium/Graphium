@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.81.4](https://github.com/kumagallium/Graphium/compare/v0.81.3...v0.81.4) - 2026-09-24
+
+- 点検が UI の言語で答え、ページを番号で参照する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1017
+
 ## [v0.81.3](https://github.com/kumagallium/Graphium/compare/v0.81.2...v0.81.3) - 2026-09-24
 
 - フル点検が「次に調べること」を挙げる by @kumagallium in https://github.com/kumagallium/Graphium/pull/1010
