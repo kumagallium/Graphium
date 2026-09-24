@@ -1529,7 +1529,9 @@ export function buildWikiSnapshots(
       id: file.id,
       title: meta.title,
       kind: meta.kind,
-      derivedFromNotes: wikiMeta?.derivedFromNotes ?? [],
+      // ドキュメントキャッシュ優先。作成直後・MCP 経由等でまだキャッシュに載っていない
+      // ページは WikiMetaSummary 側の mirror にフォールバックする（孤立の誤判定防止）。
+      derivedFromNotes: wikiMeta?.derivedFromNotes ?? meta.derivedFromNotes ?? [],
       relatedClaims: extractRelatedClaims(doc),
       bodyPreview: doc ? extractBodyPreview(doc, 240) : "",
       level: meta.kind === "claim" ? meta.level : undefined,

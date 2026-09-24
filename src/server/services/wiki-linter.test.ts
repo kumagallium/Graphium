@@ -3,7 +3,7 @@
 // detectLocalIssues の orphan topic 検出（メンバー知見 0 件の話題ページ）を検証する。
 
 import { describe, it, expect } from "vitest";
-import { detectLocalIssues, detectAutoArchivable, detectMissingSourceIssues, parseLinterOutput, buildLinterUserMessage, type WikiSnapshot } from "./wiki-linter.ts";
+import { detectLocalIssues, detectAutoArchivable, detectMissingSourceIssues, parseLinterOutput, buildLinterUserMessage, buildLinterSystemPrompt, type WikiSnapshot } from "./wiki-linter.ts";
 
 const base = (overrides: Partial<WikiSnapshot>): WikiSnapshot => ({
   id: "id-1",
@@ -421,10 +421,10 @@ describe("buildLinterUserMessage - コンテキスト長対策（構造で減ら
       base({ id: "s1", kind: "summary", title: "旧・要約ページ", bodyPreview: "むかしの要約" }),
       base({ id: "t1", kind: "topic", title: "トピック", bodyPreview: "トピックの中身" }),
     ];
-    const msg = buildLinterUserMessage(wikis);
-    expect(msg).not.toContain("旧・要約ページ");
-    expect(msg).not.toContain("むかしの要約");
-    expect(msg).toContain("トピック");
+    const { text } = buildLinterUserMessage(wikis);
+    expect(text).not.toContain("旧・要約ページ");
+    expect(text).not.toContain("むかしの要約");
+    expect(text).toContain("トピック");
   });
 
   it("knowledge（claim）は Preview 行を出さず、topic には出す", () => {
@@ -432,9 +432,9 @@ describe("buildLinterUserMessage - コンテキスト長対策（構造で減ら
       base({ id: "c1", kind: "claim", title: "知見のタイトルは命題そのもの", bodyPreview: "本文プレビューは重複するので出ない" }),
       base({ id: "t1", kind: "topic", title: "トピック", bodyPreview: "トピックのプレビューは出る" }),
     ];
-    const msg = buildLinterUserMessage(wikis);
-    expect(msg).not.toContain("本文プレビューは重複するので出ない");
-    expect(msg).toContain("Preview: トピックのプレビューは出る");
+    const { text } = buildLinterUserMessage(wikis);
+    expect(text).not.toContain("本文プレビューは重複するので出ない");
+    expect(text).toContain("Preview: トピックのプレビューは出る");
   });
 
   it("冒頭の件数は summary を除いた実際に渡した件数になる", () => {
@@ -443,22 +443,251 @@ describe("buildLinterUserMessage - コンテキスト長対策（構造で減ら
       base({ id: "t1", kind: "topic", title: "トピック1" }),
       base({ id: "t2", kind: "topic", title: "トピック2" }),
     ];
-    const msg = buildLinterUserMessage(wikis);
-    expect(msg).toContain("Analyze the following 2 Wiki documents");
+    const { text } = buildLinterUserMessage(wikis);
+    expect(text).toContain("Analyze the following 2 Wiki documents");
   });
 });
 
 describe("buildLinterUserMessage - recentLog（棚卸し D2）", () => {
   it("recentLog を渡すと末尾に節が付く", () => {
     const wikis = [base({ id: "t1", kind: "topic", title: "トピック" })];
-    const msg = buildLinterUserMessage(wikis, "[2026-09-20 00:00] ingest: foo");
-    expect(msg).toContain("## Recent activity (newest first)");
-    expect(msg).toContain("[2026-09-20 00:00] ingest: foo");
+    const { text } = buildLinterUserMessage(wikis, "[2026-09-20 00:00] ingest: foo");
+    expect(text).toContain("## Recent activity (newest first)");
+    expect(text).toContain("[2026-09-20 00:00] ingest: foo");
   });
 
   it("recentLog を渡さないと従来どおり（節が付かない）", () => {
     const wikis = [base({ id: "t1", kind: "topic", title: "トピック" })];
-    const msg = buildLinterUserMessage(wikis);
-    expect(msg).not.toContain("## Recent activity");
+    const { text } = buildLinterUserMessage(wikis);
+    expect(text).not.toContain("## Recent activity");
+  });
+});
+
+describe("buildLinterUserMessage - #N 参照番号と日時の短縮（実データ規模のトークン対策）", () => {
+  it("見出しは UUID ではなく渡した順の #N になり、numberToId が同じ順序で対応表を持つ", () => {
+    const wikis = [
+      base({ id: "uuid-a", kind: "topic", title: "トピックA" }),
+      base({ id: "uuid-b", kind: "topic", title: "トピックB" }),
+    ];
+    const { text, numberToId } = buildLinterUserMessage(wikis);
+    expect(text).toContain("## #1 [topic] トピックA");
+    expect(text).toContain("## #2 [topic] トピックB");
+    expect(text).not.toContain("uuid-a");
+    expect(text).not.toContain("uuid-b");
+    expect(text).not.toContain("(id:");
+    expect(numberToId.get("1")).toBe("uuid-a");
+    expect(numberToId.get("2")).toBe("uuid-b");
+  });
+
+  it("入力の順序を変えても numberToId は本文の見出し順とずれない", () => {
+    const wikisReversed = [
+      base({ id: "uuid-b", kind: "topic", title: "トピックB" }),
+      base({ id: "uuid-a", kind: "topic", title: "トピックA" }),
+    ];
+    const { text, numberToId } = buildLinterUserMessage(wikisReversed);
+    expect(text).toContain("## #1 [topic] トピックB");
+    expect(text).toContain("## #2 [topic] トピックA");
+    expect(numberToId.get("1")).toBe("uuid-b");
+    expect(numberToId.get("2")).toBe("uuid-a");
+  });
+
+  it("Last updated は日付だけになる（時刻を出さない）", () => {
+    const wikis = [base({ id: "t1", kind: "topic", title: "トピック", modifiedAt: "2026-09-24T12:34:56.000Z" })];
+    const { text } = buildLinterUserMessage(wikis);
+    expect(text).toContain("Last updated: 2026-09-24");
+    expect(text).not.toContain("12:34:56");
+  });
+
+  it("Last ingested は更新日と同じ日なら省略する", () => {
+    const wikis = [
+      base({
+        id: "t1",
+        kind: "topic",
+        title: "トピック",
+        modifiedAt: "2026-09-24T00:00:00.000Z",
+        lastIngestedAt: "2026-09-24T09:00:00.000Z",
+      }),
+    ];
+    const { text } = buildLinterUserMessage(wikis);
+    expect(text).not.toContain("Last ingested");
+  });
+
+  it("Last ingested は更新日と日付が違うときだけ出す", () => {
+    const wikis = [
+      base({
+        id: "t1",
+        kind: "topic",
+        title: "トピック",
+        modifiedAt: "2026-09-24T00:00:00.000Z",
+        lastIngestedAt: "2026-09-20T09:00:00.000Z",
+      }),
+    ];
+    const { text } = buildLinterUserMessage(wikis);
+    expect(text).toContain("Last ingested: 2026-09-20");
+  });
+});
+
+describe("buildLinterSystemPrompt - 出力言語の指示（点検結果が英語になる不具合の回帰防止）", () => {
+  it("ja のとき日本語で出力する指示を含み、英語出力の指示は含まない", () => {
+    const prompt = buildLinterSystemPrompt("ja");
+    expect(prompt).toContain("Output in: Japanese");
+    expect(prompt).not.toContain("Output in: English");
+  });
+
+  it("en のとき英語で出力する指示を含み、日本語出力の指示は含まない", () => {
+    const prompt = buildLinterSystemPrompt("en");
+    expect(prompt).toContain("Output in: English");
+    expect(prompt).not.toContain("Output in: Japanese");
+  });
+
+  it("questions を必ず出力に含める指示を含む", () => {
+    const prompt = buildLinterSystemPrompt("ja");
+    expect(prompt).toMatch(/questions.*MUST always be present/);
+  });
+});
+
+describe("parseLinterOutput - id 欄にタイトルが紛れ込んだ場合の引き直し（実モデル回帰）", () => {
+  const validWikiIds = new Set(["id-a", "id-b", "id-c"]);
+  const titleToId = new Map([
+    ["タイトルA", "id-a"],
+    ["タイトルB", "id-b"],
+    ["タイトルC", "id-c"],
+  ]);
+
+  it("affectedWikiIds にタイトルが入っていれば id に引き直す", () => {
+    const text = JSON.stringify({
+      issues: [
+        {
+          type: "gap",
+          severity: "info",
+          title: "t",
+          description: "d",
+          affectedWikiIds: ["タイトルA", "id-b"],
+          suggestion: "s",
+        },
+      ],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId);
+    expect(issues[0].affectedWikiIds).toEqual(["id-a", "id-b"]);
+  });
+
+  it("id にもタイトルにも一致しない要素は落とす", () => {
+    const text = JSON.stringify({
+      issues: [
+        {
+          type: "gap",
+          severity: "info",
+          title: "t",
+          description: "d",
+          affectedWikiIds: ["id-a", "存在しないタイトル", "hallucinated-id"],
+          suggestion: "s",
+        },
+      ],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId);
+    expect(issues[0].affectedWikiIds).toEqual(["id-a"]);
+  });
+
+  it("redundant の keepId/absorbId がタイトルで来ても引き直し、affectedWikiIds にも反映する", () => {
+    const text = JSON.stringify({
+      issues: [
+        {
+          type: "redundant",
+          severity: "warning",
+          title: "t",
+          description: "d",
+          affectedWikiIds: ["タイトルA", "タイトルB"],
+          suggestion: "s",
+          recommendedAction: { type: "merge", keepId: "タイトルA", absorbId: "タイトルB", reason: "r" },
+        },
+      ],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId);
+    expect(issues[0].recommendedAction).toMatchObject({ keepId: "id-a", absorbId: "id-b" });
+  });
+
+  it("redundant の keepId が id にもタイトルにも引き直せないときは issue ごと落とす", () => {
+    const text = JSON.stringify({
+      issues: [
+        {
+          type: "redundant",
+          severity: "warning",
+          title: "t",
+          description: "d",
+          affectedWikiIds: ["id-a", "id-b"],
+          suggestion: "s",
+          recommendedAction: { type: "merge", keepId: "存在しないタイトル", absorbId: "id-b", reason: "r" },
+        },
+      ],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId);
+    expect(issues).toHaveLength(0);
+  });
+
+  it("questions の affectedWikiIds も同じ規則で引き直す", () => {
+    const text = JSON.stringify({
+      issues: [],
+      questions: [
+        { question: "q", why: "w", affectedWikiIds: ["タイトルC", "存在しない"], needs: "internal" },
+      ],
+    });
+    const { questions } = parseLinterOutput(text, validWikiIds, titleToId);
+    expect(questions[0].affectedWikiIds).toEqual(["id-c"]);
+  });
+
+  it("validWikiIds を渡さないときは従来どおり素通しする（後方互換）", () => {
+    const text = JSON.stringify({
+      issues: [
+        { type: "gap", severity: "info", title: "t", description: "d", affectedWikiIds: ["タイトルA"], suggestion: "s" },
+      ],
+    });
+    const { issues } = parseLinterOutput(text);
+    expect(issues[0].affectedWikiIds).toEqual(["タイトルA"]);
+  });
+});
+
+describe("parseLinterOutput - #N 参照番号の引き直し（実データ規模のトークン対策）", () => {
+  const validWikiIds = new Set(["id-a", "id-b"]);
+  const titleToId = new Map([["タイトルA", "id-a"]]);
+  const numberToId = new Map([["1", "id-a"], ["2", "id-b"]]);
+
+  it("#12 形式（# 付き数字）を id に引き直す", () => {
+    const text = JSON.stringify({
+      issues: [{ type: "gap", severity: "info", title: "t", description: "d", affectedWikiIds: ["#1"], suggestion: "s" }],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId, numberToId);
+    expect(issues[0].affectedWikiIds).toEqual(["id-a"]);
+  });
+
+  it("12 形式（# 無しの数字のみ）を id に引き直す", () => {
+    const text = JSON.stringify({
+      issues: [{ type: "gap", severity: "info", title: "t", description: "d", affectedWikiIds: ["2"], suggestion: "s" }],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId, numberToId);
+    expect(issues[0].affectedWikiIds).toEqual(["id-b"]);
+  });
+
+  it("実 id（UUID 等）はそのまま通す", () => {
+    const text = JSON.stringify({
+      issues: [{ type: "gap", severity: "info", title: "t", description: "d", affectedWikiIds: ["id-a"], suggestion: "s" }],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId, numberToId);
+    expect(issues[0].affectedWikiIds).toEqual(["id-a"]);
+  });
+
+  it("タイトルも従来どおり id に引き直す", () => {
+    const text = JSON.stringify({
+      issues: [{ type: "gap", severity: "info", title: "t", description: "d", affectedWikiIds: ["タイトルA"], suggestion: "s" }],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId, numberToId);
+    expect(issues[0].affectedWikiIds).toEqual(["id-a"]);
+  });
+
+  it("存在しない番号（範囲外）は落とす", () => {
+    const text = JSON.stringify({
+      issues: [{ type: "gap", severity: "info", title: "t", description: "d", affectedWikiIds: ["#99"], suggestion: "s" }],
+    });
+    const { issues } = parseLinterOutput(text, validWikiIds, titleToId, numberToId);
+    expect(issues[0].affectedWikiIds).toEqual([]);
   });
 });
