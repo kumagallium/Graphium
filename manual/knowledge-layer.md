@@ -125,7 +125,7 @@ Two buttons at the bottom of the sidebar's **Knowledge** section open maintenanc
 
 A Redundant issue between two Insights also gets a one-click **Merge** button, just like the one for Topics: their source Claims, related Insights, and Contradiction links are combined, the absorbed Insight is archived (reversible, never deleted), and the kept page's body is rewritten through the same re-lift Regenerate uses. Insights are never merged automatically during ingest — the Merge button is the only way, so a model's judgment never quietly shrinks your Insight collection.
 
-### Worth investigating
+### Worth investigating <Badge type="tip" text="Added in v0.81.3 (2026-09-24)" />
 
 Alongside issues to fix (Contradiction, Stale, Orphan, Redundant, Gap, Missing source), a Full check also proposes **questions worth going and finding out** — things the corpus doesn't yet answer. These show up below the issue list as **Worth investigating (N)**, collapsed by default (the section doesn't appear at all when there are none). Each row names why it's worth investigating (what it would change on which page) and links to the pages involved; a question that needs outside material also gets a hint of what to look for.
 
