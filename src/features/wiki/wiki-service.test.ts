@@ -19,8 +19,10 @@ import {
   rewriteAndMerge,
   buildWikiSnapshots,
   rewriteAnswerFromConversation,
+  formatWikiIndexForLLM,
   type AtomCandidate,
   type ExistingTopicRef,
+  type WikiIndexEntry,
 } from "./wiki-service";
 import type { WikiMeta, SourceCheckProfile, WikiMetaSummary } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
@@ -1011,5 +1013,65 @@ describe("本文を作り直す merge/regenerate 系は古い sourceCheck を引
       "m2",
     );
     expect(next.wikiMeta?.sourceCheck).toBeUndefined();
+  });
+});
+
+describe("formatWikiIndexForLLM - 索引はタイトルのみ（プレビューは載せない・summary は除外）", () => {
+  function entry(overrides: Partial<WikiIndexEntry>): WikiIndexEntry {
+    return {
+      id: overrides.id ?? "id-1",
+      title: overrides.title ?? "タイトル",
+      kind: overrides.kind ?? "claim",
+      bodyPreview: overrides.bodyPreview ?? "本文のプレビュー文字列がここに入る",
+      level: overrides.level,
+      derivedFromNotes: overrides.derivedFromNotes ?? [],
+      relatedClaims: overrides.relatedClaims ?? [],
+      modifiedAt: overrides.modifiedAt ?? "2026-01-01T00:00:00.000Z",
+    };
+  }
+
+  it("bodyPreview を出力に含めない", () => {
+    const text = formatWikiIndexForLLM([
+      entry({ kind: "claim", title: "熱電材料の基礎", bodyPreview: "これはプレビュー本文です" }),
+    ]);
+    expect(text).not.toContain("これはプレビュー本文です");
+    expect(text).toContain("熱電材料の基礎");
+  });
+
+  it("summary（旧種別）は索引に載せない", () => {
+    const text = formatWikiIndexForLLM([
+      entry({ kind: "summary", title: "古い要約ページ" }),
+      entry({ kind: "claim", title: "残る知見" }),
+    ]);
+    expect(text).not.toContain("古い要約ページ");
+    expect(text).not.toContain("Summaries");
+    expect(text).toContain("残る知見");
+  });
+
+  it("Topics / Concepts / Syntheses / Atoms の見出しと [level] タグを残す", () => {
+    const text = formatWikiIndexForLLM([
+      entry({ kind: "topic", title: "話題A" }),
+      entry({ kind: "claim", title: "概念B", level: "principle" }),
+      entry({ kind: "synthesis", title: "統合C" }),
+      entry({ kind: "atom", title: "断片D" }),
+    ]);
+    expect(text).toContain("### Topics (1)");
+    expect(text).toContain("### Concepts (1)");
+    expect(text).toContain("### Syntheses (1)");
+    expect(text).toContain("### Atoms (1)");
+    expect(text).toContain("**概念B** [principle]");
+  });
+
+  it("件数表記は summary を除いた実際に渡した数になる", () => {
+    const text = formatWikiIndexForLLM([
+      entry({ kind: "summary", title: "要約1" }),
+      entry({ kind: "summary", title: "要約2" }),
+      entry({ kind: "claim", title: "知見1" }),
+    ]);
+    expect(text).toContain("## Wiki Index (1 pages)");
+  });
+
+  it("空配列なら空文字列を返す", () => {
+    expect(formatWikiIndexForLLM([])).toBe("");
   });
 });
