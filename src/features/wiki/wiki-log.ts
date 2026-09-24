@@ -140,7 +140,7 @@ export const wikiLog = {
     });
   },
 
-  /** LLM 向けのログテキストに��ォーマット（直近の操作履歴） */
+  /** LLM 向けのログテキストにフォーマット（直近の操作履歴） */
   async formatForLLM(limit: number = 20): Promise<string> {
     const entries = await this.getRecent(limit);
     if (entries.length === 0) return "";
@@ -151,5 +151,28 @@ export const wikiLog = {
     });
 
     return `## Recent Wiki Activity\n\n${lines.join("\n")}`;
+  },
+
+  /**
+   * 直近 N 日分のログを LLM 向けにフォーマットする（フル点検が「次に調べること」の
+   * 優先づけに使う）。件数の恣意的な上限は置かず、期間で切る方針（棚卸し D2）。
+   * ログが極端に多い期間があっても、そのまま渡す（コスト警告は別レイヤーの責務）。
+   * 見出し（節）は呼び出し元（buildLinterUserMessage）が付けるので、ここでは行だけを返す。
+   */
+  async formatRecentForLLM(days: number = 7): Promise<string> {
+    const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+    // getRecent は件数上限が必要な API なので、期間を賄えるだけの件数を広めに取ってから
+    // タイムスタンプで絞り込む（型を汚さずに済む最小の実装）。
+    const entries = (await this.getRecent(500)).filter(
+      (e) => new Date(e.timestamp).getTime() >= sinceMs,
+    );
+    if (entries.length === 0) return "";
+
+    return entries
+      .map((e) => {
+        const date = new Date(e.timestamp).toISOString().slice(0, 16).replace("T", " ");
+        return `[${date}] ${e.type}: ${e.summary}`;
+      })
+      .join("\n");
   },
 };

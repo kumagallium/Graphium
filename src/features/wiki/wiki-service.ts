@@ -1444,6 +1444,7 @@ export async function ingestFromChat(
 // ── Lint（整合性チェック） ──
 
 import type { LintReport, WikiSnapshot } from "../../server/services/wiki-linter";
+import { wikiLog } from "./wiki-log";
 // 機械的な自動アーカイブ判定は LLM 不要な純関数なので、サーバー往復せずクライアントで直接使う
 // （detectLocalIssues は LLM lint と同じ /lint エンドポイント経由のまま。こちらは副作用
 //  ＝アーカイブが client の fm フック / IndexedDB(wikiLog) にしかないため呼び出し元も client）。
@@ -1462,11 +1463,20 @@ export async function lintWikis(
   localOnly: boolean = false,
   signal?: AbortSignal,
 ): Promise<LintReport> {
+  // フル点検（localOnly=false）のときだけ、直近 1 週間のログを添えて「次に調べること」の
+  // 優先づけに使わせる（棚卸し D2）。クイック点検は機械判定のみで LLM を呼ばないため不要。
+  const recentLog = localOnly ? undefined : await wikiLog.formatRecentForLLM(7);
   const res = await fetch(`${API_BASE}/lint`, {
     method: "POST",
     // フル点検（LLM 解析）はチャットモデルで判断する（localOnly のときは未使用なので害は無い）
     headers: wikiHeaders("chatSynthesis"),
-    body: JSON.stringify({ wikis, language, localOnly, ...wikiBodyModel("chatSynthesis") }),
+    body: JSON.stringify({
+      wikis,
+      language,
+      localOnly,
+      ...(recentLog ? { recentLog } : {}),
+      ...wikiBodyModel("chatSynthesis"),
+    }),
     ...(signal ? { signal } : {}),
   });
 

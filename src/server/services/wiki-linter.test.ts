@@ -447,3 +447,18 @@ describe("buildLinterUserMessage - コンテキスト長対策（構造で減ら
     expect(msg).toContain("Analyze the following 2 Wiki documents");
   });
 });
+
+describe("buildLinterUserMessage - recentLog（棚卸し D2）", () => {
+  it("recentLog を渡すと末尾に節が付く", () => {
+    const wikis = [base({ id: "t1", kind: "topic", title: "トピック" })];
+    const msg = buildLinterUserMessage(wikis, "[2026-09-20 00:00] ingest: foo");
+    expect(msg).toContain("## Recent activity (newest first)");
+    expect(msg).toContain("[2026-09-20 00:00] ingest: foo");
+  });
+
+  it("recentLog を渡さないと従来どおり（節が付かない）", () => {
+    const wikis = [base({ id: "t1", kind: "topic", title: "トピック" })];
+    const msg = buildLinterUserMessage(wikis);
+    expect(msg).not.toContain("## Recent activity");
+  });
+});
