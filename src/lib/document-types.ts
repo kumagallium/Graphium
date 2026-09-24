@@ -761,6 +761,13 @@ export type WikiMetaSummary = {
   derivedFromClaims?: string[];
   /** この Claim が所属する話題ページの ID リスト（claim のみ） */
   topicIds?: string[];
+  /**
+   * topic / answer の資料 id 一覧（derivedFromNotes の mirror）。
+   * buildWikiSnapshots はドキュメントキャッシュ（getCachedDoc）を優先するが、
+   * 作成直後などキャッシュがまだ無いページでも孤立（orphan）判定を誤らないよう
+   * フォールバックとして参照する。
+   */
+  derivedFromNotes?: string[];
   /** Synthesis の推論モード */
   synthesisMode?: SynthesisMode;
   /**
