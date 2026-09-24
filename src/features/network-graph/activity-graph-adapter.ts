@@ -318,6 +318,17 @@ export type FlowStep = {
    * クリックはノートを開く。
    */
   noteRef?: FlowNoteRef;
+  /** 計画ノートの工程フローで、この工程が属するインデックステーブル（帯）。表が 2 つ以上あるときだけ付く */
+  group?: FlowGroup;
+};
+
+export type FlowGroup = {
+  /** 表のブロック id。帯ノードの id にもなる（"group:" + id） */
+  id: string;
+  /** 表のキャプション。無ければ空文字（表示側が「表 N」に置き換える） */
+  label: string;
+  /** 本文での表の出現順（0 始まり）。色相と帯の並びに使う */
+  index: number;
 };
 
 export type FlowNoteRef = {
