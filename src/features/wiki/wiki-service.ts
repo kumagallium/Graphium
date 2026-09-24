@@ -1607,20 +1607,23 @@ export function buildWikiIndex(
 export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   if (entries.length === 0) return "";
 
-  const summaries = entries.filter((e) => e.kind === "summary");
+  // summary は生成を止めた旧種別。索引から外し、タイトルだけの一覧にする
+  // （892 ページ実測で bodyPreview 込みだと 12.8 万トークンに膨らみ回答が空になった。
+  //  プレビュー相当は断片検索（retriever.ts）が別途担うため、索引は 1 ページ 1 行で十分）。
   const concepts = entries.filter((e) => e.kind === "claim");
   const syntheses = entries.filter((e) => e.kind === "synthesis");
   const atoms = entries.filter((e) => e.kind === "atom");
   const topics = entries.filter((e) => e.kind === "topic");
+  const indexedCount = topics.length + concepts.length + syntheses.length + atoms.length;
 
-  let text = `## Wiki Index (${entries.length} pages)\n\n`;
+  let text = `## Wiki Index (${indexedCount} pages)\n\n`;
 
   // 話題（topic）は知見を概念ごとに束ねたページ。Concepts より先に出すことで、
   // LLM が「まずどの話題群があるか」を把握してから個々の Claim を見られるようにする。
   if (topics.length > 0) {
     text += `### Topics (${topics.length})\n`;
     for (const t of topics) {
-      text += `- **${t.title}**: ${t.bodyPreview}\n`;
+      text += `- **${t.title}**\n`;
     }
     text += "\n";
   }
@@ -1629,15 +1632,7 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
     text += `### Concepts (${concepts.length})\n`;
     for (const c of concepts) {
       const tag = c.level ? ` [${c.level}]` : "";
-      text += `- **${c.title}**${tag}: ${c.bodyPreview}\n`;
-    }
-    text += "\n";
-  }
-
-  if (summaries.length > 0) {
-    text += `### Summaries (${summaries.length})\n`;
-    for (const s of summaries) {
-      text += `- **${s.title}**: ${s.bodyPreview}\n`;
+      text += `- **${c.title}**${tag}\n`;
     }
     text += "\n";
   }
@@ -1645,7 +1640,7 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   if (syntheses.length > 0) {
     text += `### Syntheses (${syntheses.length})\n`;
     for (const s of syntheses) {
-      text += `- **${s.title}**: ${s.bodyPreview}\n`;
+      text += `- **${s.title}**\n`;
     }
     text += "\n";
   }
@@ -1656,7 +1651,7 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   if (atoms.length > 0) {
     text += `### Atoms (${atoms.length})\n`;
     for (const a of atoms) {
-      text += `- **${a.title}**: ${a.bodyPreview}\n`;
+      text += `- **${a.title}**\n`;
     }
   }
 

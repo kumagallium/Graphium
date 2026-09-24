@@ -1055,6 +1055,14 @@ Notes:
   `［#N］`): models answering in Japanese emit those despite the ASCII-only
   instruction in the prompt, and only numbers present in the context are
   converted, so unrelated `[1]`-style footnotes are left alone.
+  Alongside the fused passages, the prompt also carries a `<wiki-index>`
+  block (`formatWikiIndexForLLM` in `src/features/wiki/wiki-service.ts`) —
+  a full listing of every Wiki page, grouped by kind, so the model can spot
+  and cite a page the retrieval budget didn't surface. This index lists
+  titles only (no body preview) and excludes the legacy `summary` kind;
+  on a 892-page corpus, adding previews back would have pushed the index
+  alone past ~130k tokens. Passage-level detail still comes from the fused
+  retrieval above, not the index.
   The lexical index is a rebuildable per-device cache in IndexedDB
   (`graphium-lexical-index`, keyed by storage scope) — it never writes to
   notes or to `note-index.json`. It follows `noteIndex` (notes and Wiki
