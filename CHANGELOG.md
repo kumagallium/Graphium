@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.81.3](https://github.com/kumagallium/Graphium/compare/v0.81.2...v0.81.3) - 2026-09-24
+
+- フル点検が「次に調べること」を挙げる by @kumagallium in https://github.com/kumagallium/Graphium/pull/1010
+- チャットに渡すナレッジの索引をタイトルだけにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1012
+- フル点検が直近 1 週間のログを読む by @kumagallium in https://github.com/kumagallium/Graphium/pull/1013
+
 ## [v0.81.2](https://github.com/kumagallium/Graphium/compare/v0.81.1...v0.81.2) - 2026-09-23
 
 - fix(assets): show only Word files under the Word document filter by @kumagallium in https://github.com/kumagallium/Graphium/pull/1008
