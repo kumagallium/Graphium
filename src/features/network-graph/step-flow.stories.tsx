@@ -744,3 +744,129 @@ export const PlanFlowManual: Story = {
     />
   ),
 };
+
+// ── 表ごとの帯（group）── plan-flow-groups.proposal.stories.tsx ストーリー 1 と同じ絵。
+// 3 表（生地 2 行 / 焼成 2 行 / 評価 1 行）、計画どおり 3・計画外 1・予定 1
+
+const PLAN_FLOW_GROUPS_GRAPH: FlowGraphData = {
+  steps: [
+    {
+      id: "note:g-dough-a",
+      name: "生地 A",
+      params: [],
+      noteRef: { noteId: "g-dough-a", tableBlockId: "tbl-dough", rowIndex: 0 },
+      group: { id: "tbl-dough", label: "生地", index: 0 },
+    },
+    {
+      id: "note:g-dough-b",
+      name: "生地 B",
+      params: [],
+      noteRef: { noteId: "g-dough-b", tableBlockId: "tbl-dough", rowIndex: 1 },
+      group: { id: "tbl-dough", label: "生地", index: 0 },
+    },
+    {
+      id: "note:g-bake-1",
+      name: "焼き 001",
+      params: [],
+      noteRef: { noteId: "g-bake-1", tableBlockId: "tbl-bake", rowIndex: 0 },
+      group: { id: "tbl-bake", label: "焼成", index: 1 },
+    },
+    {
+      id: "note:g-bake-2",
+      name: "焼き 002",
+      params: [],
+      noteRef: { noteId: "g-bake-2", tableBlockId: "tbl-bake", rowIndex: 1 },
+      group: { id: "tbl-bake", label: "焼成", index: 1 },
+    },
+    {
+      id: "note:g-taste",
+      name: "試食まとめ",
+      params: [],
+      noteRef: { noteId: "g-taste", tableBlockId: "tbl-eval", rowIndex: 0 },
+      group: { id: "tbl-eval", label: "評価", index: 2 },
+    },
+  ],
+  entities: [],
+  edges: [
+    { id: "gu1", kind: "used", source: "note:g-dough-a", target: "note:g-bake-1", plan: "asPlanned" },
+    { id: "gu2", kind: "used", source: "note:g-dough-b", target: "note:g-bake-2", plan: "asPlanned" },
+    { id: "gu3", kind: "used", source: "note:g-dough-a", target: "note:g-bake-2", plan: "unplanned" },
+    { id: "gu4", kind: "used", source: "note:g-bake-1", target: "note:g-taste", plan: "asPlanned" },
+    { id: "gpl1", kind: "planned", source: "note:g-bake-2", target: "note:g-taste", deletable: true },
+  ],
+};
+
+export const PlanFlowGroups: Story = {
+  name: "表ごとの帯（工程フロー）",
+  render: () => (
+    <StepFlowView
+      graph={PLAN_FLOW_GROUPS_GRAPH}
+      connectNoteRefs
+      onConnectSteps={() => ({ error: null })}
+      onRemovePlannedEdge={() => {}}
+      onOpenNoteRef={() => {}}
+    />
+  ),
+};
+
+// ── マニュアル用（英語・パン作りの世界観）── 帯付きの絵の英語版
+const PLAN_FLOW_GROUPS_MANUAL_GRAPH: FlowGraphData = {
+  steps: [
+    {
+      id: "note:gm-dough-a",
+      name: "Dough A",
+      params: [],
+      noteRef: { noteId: "gm-dough-a", tableBlockId: "tbl-dough", rowIndex: 0 },
+      group: { id: "tbl-dough", label: "Dough", index: 0 },
+    },
+    {
+      id: "note:gm-dough-b",
+      name: "Dough B",
+      params: [],
+      noteRef: { noteId: "gm-dough-b", tableBlockId: "tbl-dough", rowIndex: 1 },
+      group: { id: "tbl-dough", label: "Dough", index: 0 },
+    },
+    {
+      id: "note:gm-bake-1",
+      name: "Bake 001",
+      params: [],
+      noteRef: { noteId: "gm-bake-1", tableBlockId: "tbl-bake", rowIndex: 0 },
+      group: { id: "tbl-bake", label: "Bake", index: 1 },
+    },
+    {
+      id: "note:gm-bake-2",
+      name: "Bake 002",
+      params: [],
+      noteRef: { noteId: "gm-bake-2", tableBlockId: "tbl-bake", rowIndex: 1 },
+      group: { id: "tbl-bake", label: "Bake", index: 1 },
+    },
+    {
+      id: "note:gm-taste",
+      name: "Tasting",
+      params: [],
+      noteRef: { noteId: "gm-taste", tableBlockId: "tbl-eval", rowIndex: 0 },
+      group: { id: "tbl-eval", label: "Tasting notes", index: 2 },
+    },
+  ],
+  entities: [],
+  edges: [
+    { id: "gmu1", kind: "used", source: "note:gm-dough-a", target: "note:gm-bake-1", plan: "asPlanned" },
+    { id: "gmu2", kind: "used", source: "note:gm-dough-b", target: "note:gm-bake-2", plan: "asPlanned" },
+    { id: "gmu3", kind: "used", source: "note:gm-dough-a", target: "note:gm-bake-2", plan: "unplanned" },
+    { id: "gmu4", kind: "used", source: "note:gm-bake-1", target: "note:gm-taste", plan: "asPlanned" },
+    { id: "gmpl1", kind: "planned", source: "note:gm-bake-2", target: "note:gm-taste", deletable: true },
+  ],
+};
+
+export const PlanFlowGroupsManual: Story = {
+  name: "Groups: Manual (English, bread world)",
+  render: () => (
+    <StepFlowView
+      graph={PLAN_FLOW_GROUPS_MANUAL_GRAPH}
+      connectNoteRefs
+      onConnectSteps={() => ({ error: null })}
+      onRemovePlannedEdge={() => {}}
+      onOpenNoteRef={() => {}}
+    />
+  ),
+};

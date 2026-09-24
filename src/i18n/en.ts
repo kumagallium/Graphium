@@ -2942,6 +2942,7 @@ export const en: Record<string, string> = {
   // "Operation" = a note referenced from a row of a plan note's index table. Kept distinct from "step" (a step block inside a note)
   "planFlow.addOperation": "Add operation",
   "planFlow.addWorkStep": "Add step",
+  "planFlow.tableN": "Table {n}",
   "planFlow.openNote": "Open note",
   "planFlow.createNote": "Create note",
   "planFlow.defaultOperationName": "Operation {n}",

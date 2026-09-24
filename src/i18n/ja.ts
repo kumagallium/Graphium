@@ -2940,6 +2940,7 @@ export const ja: Record<string, string> = {
   // 「工程」= 計画ノートのインデックステーブルの行から参照されるノート。step（手順）とは別の語で統一する
   "planFlow.addOperation": "工程を追加",
   "planFlow.addWorkStep": "作業手順を追加",
+  "planFlow.tableN": "表 {n}",
   "planFlow.openNote": "ノートを開く",
   "planFlow.createNote": "ノートを作る",
   "planFlow.defaultOperationName": "工程 {n}",
