@@ -181,6 +181,14 @@ every later PR repeats the same warning.
 
 Each posts an independent sticky comment to the PR (`bench-delta` /
 `bench-adversarial` / `bench-migration` / `bench-performance` headers).
+
+The `bench-delta` comment compares the tracked `bench/baseline.json` on
+`origin/main` with this PR's fresh dry-run
+(`BENCH_RIGHT=bench/latest-baseline.json pnpm bench:compare origin/main`).
+The dry-run is deterministic, so a PR that does not touch the pipeline
+shows no change. If a PR changes the dry-run metrics on purpose,
+regenerate `bench/baseline.json` with `BENCH_MODE=dry-run pnpm bench:run`
+in the same PR; otherwise every later PR shows the same delta.
 A `workflow_dispatch` lets a maintainer run the live LLM mode against
 the org's API-key secret when needed.
 
