@@ -23,7 +23,7 @@ import {
 } from "../block-alignment";
 import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../../lib/document-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
-import { pickPeekExternalFields } from "./peek-save-merge";
+import { applySavedToPeekDoc, pickPeekExternalFields } from "./peek-save-merge";
 import { leaveAfterSave } from "./peek-leave";
 import { pendingPeekSave, queuePeekSave } from "../../lib/peek-save-queue";
 import { isIncomingDocNewer } from "../../hooks/doc-recency";
@@ -217,7 +217,8 @@ type SidePeekProps = {
    * 文脈ラベル（noteContexts）を変更しファイル保存（doSave）が完了した後に呼ばれる。
    * 保存済みの doc を渡すので、呼び出し側はこの doc からインデックスや doc キャッシュを
    * 再構築する（reindexNoteFromDoc）。ファイル保存は SidePeek 自身が済ませているため
-   * 二重保存はしない。未指定でも表示・編集・ファイル保存は動く（一覧列への即時反映のみ省略）。
+   * 二重保存はしない。保存に失敗したときは呼ばない。
+   * 未指定でも表示・編集・ファイル保存は動く（一覧列への即時反映のみ省略）。
    */
   onNoteContextsChange?: (noteId: string, savedDoc: GraphiumDocument | null) => void;
   /**
@@ -426,7 +427,9 @@ function SidePeekInner({
           if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
           autoSaveTimerRef.current = null;
         },
-        save: () => doSaveRef.current(),
+        save: async () => {
+          await doSaveRef.current();
+        },
         waitSaved: async () => {
           await pendingPeekSave(noteId);
         },
@@ -1267,15 +1270,19 @@ function SidePeekInner({
   getCachedDocRef.current = getCachedDoc;
 
   // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）。
+  // 書き出した doc を返す（保存しなかった・失敗したときは null）。
   // unmounting: アンマウント時の書き出し。エディタはこの後外されるので、表の行 ID を
   // エディタへ書き戻さない（書き戻しは次の保存で同じ ID を保つためのもの。保存する doc は
   // 下の normalizeTableRowIdentities が揃える）
-  const doSave = useCallback(async (opts?: { unmounting?: boolean }) => {
+  const doSave = useCallback(async (opts?: { unmounting?: boolean }): Promise<GraphiumDocument | null> => {
     // 版スナップショット（snapshot:）は不変・読み取り専用。エディタも editable=false に
     // しているが、保存経路にも多重ガードを置く（誤って書き戻すと版が壊れるため）。
-    if (noteId.startsWith("snapshot:")) return;
+    if (noteId.startsWith("snapshot:")) return null;
     const editor = editorRef.current;
-    if (!editor || !docRef.current) return;
+    // 保存を始めた時点の docRef。書き込みを待つ間に docRef へ入った書き換えは、
+    // 保存が終わったときにこれと突き合わせて残す（applySavedToPeekDoc）
+    const base = docRef.current;
+    if (!editor || !base) return null;
 
     const currentBlocks = opts?.unmounting
       ? (editor.document ?? [])
@@ -1305,17 +1312,17 @@ function SidePeekInner({
     // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
     // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
     const updatedDoc: GraphiumDocument = normalizeTableRowIdentities({
-      ...docRef.current,
+      ...base,
       ...externalFields,
       pages: [
         {
-          ...docRef.current.pages[0],
+          ...base.pages[0],
           blocks: currentBlocks,
           labels,
           provLinks,
           knowledgeLinks,
           blockAlignments,
-          tableMeta: hasTableMeta ? tableMetaSnapshot : docRef.current.pages[0]?.tableMeta,
+          tableMeta: hasTableMeta ? tableMetaSnapshot : base.pages[0]?.tableMeta,
         },
       ],
       modifiedAt: new Date().toISOString(),
@@ -1333,7 +1340,10 @@ function SidePeekInner({
           noteId,
           doc: updatedDoc,
           onSaved: (savedId, savedDoc) => {
-            docRef.current = savedDoc;
+            // 保存した doc で置き換えず、この保存の持ち分（本文・更新時刻など）だけを重ねる。
+            // 書き込みを待つ間に入ったタイトル・文脈ラベル・引用素材・noteLinks の書き換えを
+            // 消さず、次の保存に乗せるため（peek-save-merge.ts）
+            docRef.current = applySavedToPeekDoc(docRef.current, base, savedDoc);
             // 保存中に打った分があれば「未保存」のまま（自動保存のタイマーが待っている）
             setSaveStatus(unsavedRef.current ? "dirty" : "saved");
             // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
@@ -1343,11 +1353,13 @@ function SidePeekInner({
           },
         }),
       );
+      return updatedDoc;
     } catch (err) {
       console.error("サイドピーク保存に失敗:", err);
       // 書けなかった分は未保存に戻す（離れるとき・アンマウントのときにもう一度書き出す）
       unsavedRef.current = true;
       setSaveStatus("dirty");
+      return null;
     }
   }, [noteId]);
 
@@ -1480,6 +1492,10 @@ function SidePeekInner({
   // 保存の完了を待ってから onNoteContextsChange に「保存済み doc」を渡し、一覧インデックスと
   // doc キャッシュを再構築させる。await してから通知することで、一覧復帰時に ensureIndex が
   // 保存前の古いノートファイルを読んで index を上書きしてしまう競合を避ける。
+  // 渡すのはこの保存で書いた doc で、docRef ではない。docRef には保存を待つ間に打った
+  // まだ保存していないタイトル等が重なっていることがあり、それでキャッシュを作ると、
+  // そのタイトルを保存したときの onSaved が旧タイトルを新タイトルと取り違えて
+  // @メンションの改名伝播を飛ばす。保存できなかったときは知らせない
   const applyPeekContexts = useCallback(
     async (next: string[]) => {
       const normalized = normalizeNoteContexts(next);
@@ -1488,8 +1504,8 @@ function SidePeekInner({
         docRef.current = { ...docRef.current, noteContexts: normalized };
       }
       setDoc((d) => (d ? { ...d, noteContexts: normalized } : d));
-      await doSaveRef.current();
-      onNoteContextsChange?.(noteId, docRef.current);
+      const savedDoc = await doSaveRef.current();
+      if (savedDoc) onNoteContextsChange?.(noteId, savedDoc);
     },
     [noteId, onNoteContextsChange],
   );
