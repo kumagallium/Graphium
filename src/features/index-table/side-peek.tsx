@@ -24,6 +24,7 @@ import {
 import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
 import { pickPeekExternalFields } from "./peek-save-merge";
+import { leaveAfterSave } from "./peek-leave";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { buildSavedPageFields, saveNoteDoc } from "@features/note-save";
 import { SandboxEditor } from "../../base/editor";
@@ -374,6 +375,24 @@ function SidePeekInner({
   onSavedRef.current = onSaved;
   const onOpenNoteInPeekRef = useRef(onOpenNoteInPeek);
   onOpenNoteInPeekRef.current = onOpenNoteInPeek;
+  // 保存状態の写し（クリックのリスナーは保存状態が変わるたびには張り直さない）
+  const saveStatusRef = useRef(saveStatus);
+  saveStatusRef.current = saveStatus;
+  // ピーク内のクリックで別の面へ移るときは、未保存の編集を保存し終えてから go を呼ぶ
+  // （閉じる・全画面で開くときと同じ順。理由は peek-leave.ts）
+  const leavePeek = useCallback((go: () => void) => {
+    leaveAfterSave(
+      { status: saveStatusRef.current, timerPending: autoSaveTimerRef.current !== null },
+      {
+        cancelTimer: () => {
+          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        },
+        save: () => doSaveRef.current(),
+        go,
+      },
+    );
+  }, []);
   // メインエディタ側のタイトルリネームを、このピークで開いているノートの本文へ
   // ライブ反映する命令口を登録する。ファイル直書きだとピークの次のオートセーブが
   // 旧内容で上書きして伝播が巻き戻るため、エディタ経由で書き換えて通常のオート
@@ -748,7 +767,8 @@ function SidePeekInner({
   // note-app の document ハンドラはピーク内（data-side-peek 配下）をスキップするので、
   // ここで「このピーク自身の linkStore」を使って厳密な ID に解決する（同名ノートでも正しい）。
   // 解決と振り分けは note-app と共通の関数を通す（片方だけ直す移植漏れで、ピークでは
-  // @txt などのデータ素材が開かず、表の中では同じ表の別リンクへ飛んでいた）
+  // @txt などのデータ素材が開かず、表の中では同じ表の別リンクへ飛んでいた）。
+  // ピークを離れる開き方は leavePeek を通し、未保存の編集を書き出してから移る
   useEffect(() => {
     if (!onOpenNoteInPeek) return;
     const root = sidePeekRef.current;
@@ -765,7 +785,7 @@ function SidePeekInner({
           e.preventDefault();
           e.stopPropagation();
           if (onOpenMaterialPeek) {
-            onOpenMaterialPeek(buildUrlPeekEntry(href, mediaIndex ?? null));
+            leavePeek(() => onOpenMaterialPeek(buildUrlPeekEntry(href, mediaIndex ?? null)));
           } else {
             void openExternalUrl(href);
           }
@@ -788,7 +808,8 @@ function SidePeekInner({
         if (extLink?.targetNoteId) {
           e.preventDefault();
           e.stopPropagation();
-          onOpenNoteInPeek(extLink.targetNoteId);
+          const sourceNoteId = extLink.targetNoteId;
+          leavePeek(() => onOpenNoteInPeek(sourceNoteId));
           return;
         }
       }
@@ -810,18 +831,21 @@ function SidePeekInner({
       e.stopPropagation();
       // References の「Source: @ラベル」等の外部ソース ID は素材ピーク（素材ピークの無い
       // 画面では URL だけ外部ブラウザ）へ。ノートピークとして開き直すと loadFile が
-      // 失敗して「読み込みに失敗しました」になる。chat: は開ける実体が無いので何もしない
+      // 失敗して「読み込みに失敗しました」になる。chat: は開ける実体が無いので何もしない。
+      // 外部ブラウザはピークを離れないので、その場で開く
+      const openMaterial = onOpenMaterialPeek;
+      const openMemo = onOpenMemoSource;
       openPeekTarget(peekId, mediaIndex, {
-        openNote: onOpenNoteInPeek,
-        openMaterial: onOpenMaterialPeek,
+        openNote: (id) => leavePeek(() => onOpenNoteInPeek(id)),
+        openMaterial: openMaterial && ((entry) => leavePeek(() => openMaterial(entry))),
         openUrlFallback: (url) => void openExternalUrl(url),
         // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
-        openMemo: onOpenMemoSource,
+        openMemo: openMemo && ((captureId) => leavePeek(() => openMemo(captureId))),
       });
     };
     root.addEventListener("click", onClick, true);
     return () => root.removeEventListener("click", onClick, true);
-  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor]);
+  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor, leavePeek]);
 
   // データ表への計算列は本文を変えないので、宣言の変化でも列を配り直す（note-app と同じ）
   useEffect(() => {
@@ -869,7 +893,7 @@ function SidePeekInner({
       if (isExternalSourceId(targetNoteId)) return false;
       const callback = onOpenNoteInPeekRef.current;
       if (!callback) return false;
-      callback(targetNoteId);
+      leavePeek(() => callback(targetNoteId));
       return true;
     });
     return () => {
@@ -884,7 +908,7 @@ function SidePeekInner({
       if (typeof offContentChange === "function") offContentChange();
       offDataArrived();
     };
-  }, [sidePeekEditor, tableMetaStore]);
+  }, [sidePeekEditor, tableMetaStore, leavePeek]);
 
   // スラッシュ用に「直前のスラッシュブロック」を退避する。
   // BlockNote はスラッシュアイテム選択時点で `/` を含む空ブロックの中身を消すが、
@@ -1231,6 +1255,8 @@ function SidePeekInner({
     labelAutoRef.current?.();
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
+      // 発火したら空に戻す（null でない = 保存待ちの編集がある、を leavePeek が見る）
+      autoSaveTimerRef.current = null;
       doSaveRef.current();
     }, 3000);
   }, [noteId, scanRemoteImages]);
@@ -1988,8 +2014,10 @@ function SidePeekInner({
                     sourceCheckStale: wikiContextStale,
                     openNote: (targetId) => {
                       const openInPeek = onOpenNoteInPeekRef.current;
-                      if (openInPeek) openInPeek(targetId);
-                      else onNavigate(targetId);
+                      leavePeek(() => {
+                        if (openInPeek) openInPeek(targetId);
+                        else onNavigate(targetId);
+                      });
                     },
                   })}
                 </div>
