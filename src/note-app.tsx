@@ -4,19 +4,15 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
-import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
-import { calloutSlashItem } from "./blocks/callout";
-import { mathSlashItem } from "./blocks/math";
-import { calcSlashItem } from "./blocks/calc";
-import { inlineMathSlashItem } from "./features/inline-math/spec";
+import { setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
+import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems } from "./blocks/slash-items";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
-import { stepSlashItem } from "./blocks/step";
-import { columnsSlashItem } from "./blocks/multi-column";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
   RemoteContentBar,
@@ -55,13 +51,11 @@ import {
 } from "./features/context-label/prov-indicator";
 import {
   IndexTableIconLayer,
-  indexTableSlashItem,
   setIndexTableCallbacks,
   setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek, type PeekWikiContextArgs } from "./features/index-table/side-peek";
 import {
-  logTableSlashItem,
   setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
@@ -118,7 +112,6 @@ import {
   type ExportPayload,
 } from "./blocks/data-table";
 import {
-  chartSlashItem,
   ChartAssetSourceFlow,
   setChartAssetSourceCallback,
   type ChartAssetSourceResult,
@@ -365,17 +358,15 @@ import {
 import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates, buildDocumentFromTemplate, pageTemplateToBuildResult, deserializeTemplate, type PageTemplate } from "./features/template";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
+import { TemplatePickerModal, setTemplatePickerCallback, getAllTemplates, buildDocumentFromTemplate, pageTemplateToBuildResult, deserializeTemplate, type PageTemplate } from "./features/template";
 import {
   CitePickerModal,
-  getCiteSlashMenuItems,
   setCitePickerCallback,
   type CitePickerKind,
 } from "./features/cite-picker";
 import { SharedCitePickerModal } from "./features/sharing/SharedCitePickerModal";
 import {
-  sharedCitationSlashItem,
   setSharedCitePickerCallback,
   setSharedEntryOpenCallback,
   openSharedEntry,
@@ -389,7 +380,6 @@ import {
   LabelGalleryView,
   MediaPickerModal,
   NoteMemosSection,
-  getMediaSlashMenuItems,
   setMediaPickerCallback,
   DEFAULT_MEDIA_SLASH_KEYS,
   UrlPasteMenu,
@@ -2818,11 +2808,10 @@ function NoteEditorInner({
     }
   }, [removeBlockMetadata, linkStore]);
 
-  // スラッシュメニューアイテム（既存メディア・メモから挿入）
-  const mediaSlashItems = useMemo(() => getMediaSlashMenuItems(), []);
-  const memoSlashItem = useMemo(() => getMemoSlashMenuItem(), []);
-  const templateSlashItem = useMemo(() => getTemplateSlashMenuItem(), []);
-  const citeSlashItems = useMemo(() => getCiteSlashMenuItems(), []);
+  // スラッシュメニューアイテム。一覧は blocks/slash-items にまとめてあり、SidePeek も
+  // 同じ common を使う。新しい項目はそちらに足す（メインにしか出ない漏れを防ぐため）
+  const mainOnlySlashItems = useMemo(() => getMainEditorOnlySlashMenuItems(), []);
+  const commonSlashItems = useMemo(() => getCommonSlashMenuItems({ includeCite: true }), []);
   // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
   // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
   // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
@@ -6214,7 +6203,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
+              extraSlashMenuItems={[newNoteSlashItem, ...mainOnlySlashItems, ...commonSlashItems]}
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -12348,6 +12337,20 @@ export function NoteApp() {
                     noteIndex={fm.noteIndex ?? null}
                     onCreateLinkedNote={fm.handleCreateLinkedNote}
                     onOpenNoteInPeek={(peekId) => openAssetPeek(peekId)}
+                    onOpenMaterialPeek={(entry) => {
+                      // ピーク内の @素材 → 全画面表示をその素材に差し替える。ノートピークは残し、
+                      // ノートを読みながら @素材 を順に見られるようにする。右パネルのグラフで
+                      // 素材ノードを押したときと同じく、ギャラリーの種類と URL は変えない
+                      // （全画面を抜けると元の一覧に戻る）。これを渡していなかったので、ここだけ
+                      // @素材 を押しても何も起きなかった。
+                      // 未登録の URL はギャラリーに実体が無いので、素材ピークの無い画面と同じく
+                      // 外部ブラウザで開く
+                      if (fm.mediaIndex?.media.some((m) => m.fileId === entry.fileId)) {
+                        setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
+                      } else if (entry.type === "url" && entry.url) {
+                        void openExternalUrl(entry.url);
+                      }
+                    }}
                     onOpenMemoSource={handleOpenMemoSource}
                   />
                 </ListSidePeekBoundary>
