@@ -175,7 +175,14 @@ talks to LLM and embedding backends.
   through `features/markdown-export/inline-text.ts`, and the knowledge layer's
   reader turns tags and formulas in the model's reply back into styles,
   `inlineMath` and `math` blocks, so a formula survives a round trip through a
-  rewrite. Places where the text is a key rather than something a model reads
+  rewrite. A Skill's prompt is read by a model too: `extractSkillPrompt`
+  (`features/skill/skill-service.ts`) writes a Skill body as Markdown, with bold
+  and code as `**…**` / `` `…` `` and superscript / subscript and formulas
+  through the same `inline-text.ts`, but it keeps a link's URL as
+  `[text](URL)`. A Skill is the user's own instruction, and a URL they put in it
+  is part of what they asked for; a pasted URL whose text is the URL itself is
+  written once.
+  Places where the text is a key rather than something a model reads
   keep it plain, without tags: the lexical index (whose NFKC normalization
   already folds 10⁵ to 105), the MCP search index, outlines, PROV labels, the
   proposal diff, and the source-check fingerprint (`claimHash`, see

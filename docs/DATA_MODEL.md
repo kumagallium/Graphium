@@ -1882,6 +1882,15 @@ startup the app compares it with `skillMeta.systemSkillVersion`:
 Edit detection hashes a normalized prompt (whitespace / blank lines
 ignored) extracted through the same markdown ⇄ block pipeline on both
 sides, so editor round-trips do not produce false "edited" states.
+The extraction writes links as `[text](URL)`, inline formulas as `$ … $`
+and superscript / subscript as `<sup>` / `<sub>`, so adding a formula or
+a link, or turning text into superscript, counts as an edit. Plain text,
+bold and code — everything the shipped defaults contain — extract the
+same way they always have. `defaultPromptHash` is written into each
+document when it is created or synced, so changing how that text is
+extracted would turn every untouched built-in skill into an edited one
+and stop its auto-updates; a unit test pins the hashes of the shipped
+defaults for that reason.
 Auto-update and *Reset to default* both append a `skill_default_update`
 activity to the document provenance chain instead of discarding it.
 

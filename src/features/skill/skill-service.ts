@@ -1,6 +1,7 @@
 // Skill サービス（プロンプトテンプレートの管理）
 
 import type { GraphiumDocument, SkillMeta } from "../../lib/document-types";
+import { inlineContentToText } from "../markdown-export/inline-text";
 import type { SystemSkillDefinition } from "./system-skills";
 import { getSystemSkillById, KNOWLEDGE_SCHEMA_PROMPTS } from "./system-skills";
 
@@ -441,6 +442,11 @@ function parseInlineMarkdown(line: string): { type: "text"; text: string; styles
 /**
  * マークダウン文字列を BlockNote ブロックの配列に変換する。
  * 対応: `## ` h2 / `### ` h3 / `- ` 箇条書き / `1. ` 番号付き箇条書き / `> ` 引用 / 空行 / 通常段落 / `**bold**` / `` `code` ``
+ *
+ * リンク（`[文字](URL)`）・数式（`$…$`）・`<sup>` / `<sub>` は読まず、文字のまま残す。
+ * この変換を通るのは同梱の既定プロンプトだけで（ユーザーのスキルはエディタで直接ブロックになる）、
+ * 抽出側（inlineContentToMarkdown）は平文を書き換えずに通すので、既定にこれらを書いても
+ * 書いたとおりの文字列が AI に渡り、未編集判定の往復（computeSystemSkillDefaultHash）も崩れない。
  */
 function parseMarkdownToBlocks(text: string): any[] {
   const blocks: any[] = [];
@@ -530,7 +536,13 @@ function parseMarkdownToBlocks(text: string): any[] {
 
 /**
  * BlockNote のインラインコンテンツをマークダウン文字列に直す。
- * `bold` と `code` のスタイルを `**...**` / `` `...` `` に戻す。
+ * `bold` と `code` のスタイルを `**...**` / `` `...` `` に戻し、リンクは `[文字](URL)` にする。
+ * インライン数式（`$…$`）と上付き・下付き（`<sup>` / `<sub>`）は AI に渡す本文の共通処理
+ * （markdown-export/inline-text.ts）と同じ表記にする。
+ *
+ * 平文・太字・コードだけの本文の出力は変えないこと。システムスキルの未編集判定は、
+ * 作成時にこの出力から計算して保存したハッシュ（skillMeta.defaultPromptHash）との比較なので、
+ * 出力が 1 文字でも変わると、手を入れていない既存のスキルまで「編集済み」になり自動更新が止まる。
  */
 function inlineContentToMarkdown(content: any): string {
   if (!content) return "";
@@ -538,7 +550,8 @@ function inlineContentToMarkdown(content: any): string {
   if (!Array.isArray(content)) return "";
   return content
     .map((c: any) => {
-      const text = c.text ?? c.content ?? "";
+      if (c?.type === "link") return linkToMarkdown(c);
+      const text = inlineContentToText([c], { scripts: true });
       if (!text) return "";
       const styles = c.styles ?? {};
       let result = text;
@@ -547,6 +560,29 @@ function inlineContentToMarkdown(content: any): string {
       return result;
     })
     .join("");
+}
+
+/**
+ * リンクを `[文字](URL)` にする。スキルは書き手が AI に渡す指示そのもので、書き手が入れた
+ * URL（参照先・引用の形式など）も指示の一部なので残す（ノート本文を素材として渡すときは
+ * 文字だけにしている — inline-text.ts）。
+ * 文字が URL そのもの（貼り付けた URL の自動リンク。href 側は %エンコード済みのこともある）なら、
+ * 同じ URL を二度渡さないよう文字だけにする。href の無いリンクも文字だけ。
+ * URL の丸括弧や空白はエスケープしない。読むのは AI だけで、Markdown として読み戻す処理は無い。
+ */
+function linkToMarkdown(link: any): string {
+  const text = inlineContentToMarkdown(link.content);
+  const href = typeof link.href === "string" ? link.href.trim() : "";
+  if (!text || !href || text === href || text === decodeUriSafely(href)) return text;
+  return `[${text}](${href})`;
+}
+
+function decodeUriSafely(uri: string): string {
+  try {
+    return decodeURI(uri);
+  } catch {
+    return uri;
+  }
 }
 
 /**
