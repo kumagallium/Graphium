@@ -417,6 +417,8 @@ Type `@` anywhere in the text to open the link menu. Candidates are grouped:
 | **Document materials** | Materials from your library — PDF and Word for citing sources, and (inside a table cell) data files and images. |
 | **New** | **Create a new note…** — name it in a dialog, and it is created and linked in one step. |
 
+When materials share a name — each sample's own `XRD.txt`, say — the menu shows the folder each one was imported from on a second line (or when it was added, if it has no folder). A link typed inside a table remembers its row, so each row opens its own file.
+
 Mentions are live references, not plain text: rename a note and every `@mention` of it updates in the notes that refer to it. <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" />
 
 ![The @ menu grouped by other notes, AI knowledge, and create-new](/screenshots/at-mention.png)
