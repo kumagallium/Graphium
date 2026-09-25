@@ -3,7 +3,7 @@
 // 背景ページは操作可能（薄暗くならない）
 // ラベル機能（ProvIndicatorLayer）対応
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
@@ -111,6 +111,7 @@ import {
   resolveMentionClickTarget,
 } from "@features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
+import { buildNewNoteSlashItem } from "@features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
 import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
 import { isProvLabelsEnabled } from "@features/settings";
@@ -336,7 +337,7 @@ function SidePeekInner({
   const editorRef = useRef<any>(null);
   // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
-  // @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全）
+  // @ メニュー「新しいノートを作成」とスラッシュ「新しいノート」の名前入力ダイアログ（IME 安全）
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
@@ -1293,6 +1294,30 @@ function SidePeekInner({
     registerUrlAsset(url, linked ? buildPeekUsage(blockId) : [], onAddUrlBookmark);
   }, [buildPeekUsage, onAddUrlBookmark]);
 
+  // スラッシュメニューの「新しいノート」。組み立てはメインと共通
+  // （block-link/new-note-slash-item.ts）で、記録先だけこのピークのものを渡す:
+  // reference リンクはピークの linkStore、派生関係（noteLinks）はピークで開いている
+  // ノート（doSave が docRef.current を spread して一緒に保存する）。新しいノートの
+  // 派生元もこのノートにする（@ の「新規ノートを作成」と同じ）。作れないときは出さない
+  const newNoteSlashItem = useMemo(
+    () =>
+      onCreateLinkedNote
+        ? buildNewNoteSlashItem({
+            promptNoteName,
+            createNote: (title) => onCreateLinkedNote(title, noteId),
+            getEditor: () => editorRef.current,
+            addLink: (params) => linkStoreRef.current.addLink(params),
+            addNoteLink: (link) => {
+              const cur = docRef.current;
+              if (!cur || (cur.noteLinks ?? []).some((l) => l.targetNoteId === link.targetNoteId)) return;
+              docRef.current = { ...cur, noteLinks: [...(cur.noteLinks ?? []), link] };
+              handleChange();
+            },
+          })
+        : null,
+    [onCreateLinkedNote, promptNoteName, noteId, handleChange],
+  );
+
   // 文脈ラベルの初期化（ノートを開いた最初のロード時に doc から取り込む。noteId 単位で一度だけ、
   // 以降の本文編集による doc 変化ではリセットしない）。
   useEffect(() => {
@@ -1944,8 +1969,9 @@ function SidePeekInner({
                 // 各 slash item の onItemClick はクリック時のエディタを
                 // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
                 // 挿入される。メインに固定の受け口で動く項目（インデックステーブル等）は
-                // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）
-                extraSlashMenuItems={getCommonSlashMenuItems({ includeCite: !!noteIndex })}
+                // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）。
+                // 先頭の「新しいノート」はメインと同じ組み立てで、記録先がこのピーク
+                extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...getCommonSlashMenuItems({ includeCite: !!noteIndex })]}
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
@@ -2034,7 +2060,7 @@ function SidePeekInner({
         }
       `}</style>
 
-      {/* @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全） */}
+      {/* @ メニュー「新しいノートを作成」とスラッシュ「新しいノート」の名前入力ダイアログ（IME 安全） */}
       {newNoteNameDialog}
 
       {/* URL ペースト → ブックマーク/リンク選択メニュー（メインエディタと同じ） */}
