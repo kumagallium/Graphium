@@ -190,6 +190,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
+import { pendingPeekSave } from "./lib/peek-save-queue";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -7869,6 +7870,10 @@ export function NoteApp() {
       const noteId = run.noteId;
       const chain = chatWritebackChainsRef.current.get(noteId) ?? Promise.resolve();
       const task = chain.then(async () => {
+        // ピークが閉じた直後の回収では、ピークがアンマウント時に書き出した本文がまだ
+        // 書き込み中のことがある。書き終わってから読む（先に読むと古い本文に応答を足して
+        // 書いてピークの編集を巻き戻すか、後から着いたピークの保存が応答を消す）
+        await pendingPeekSave(noteId);
         const baseDoc = await loadNoteDocByFullKey(noteId, fmGetCachedDocStable);
         if (!baseDoc) {
           throw new Error(`書き戻し先ノートが読み込めませんでした: ${noteId}`);
