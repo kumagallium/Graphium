@@ -4,7 +4,7 @@
  *
  * シナリオ:
  *   一時 vault に fixture ノートを 2 件置く
- *   → MCP クライアントとして接続し、7 ツールが登録されていることを確認
+ *   → MCP クライアントとして接続し、10 ツールが登録されていることを確認
  *   → search / get_note / get_note_steps / find_notes_using / list_entities / trace_lineage
  *   → create_note で 3 件目を書き、そのまま検索で引けることを確認
  *
@@ -188,7 +188,7 @@ try {
   await client.connect(transport);
 
   const { tools } = await client.listTools();
-  check("7 つのツールが登録されている", tools.length === 7, `got ${tools.length}: ${tools.map((t) => t.name).join(", ")}`);
+  check("10 のツールが登録されている", tools.length === 10, `got ${tools.length}: ${tools.map((t) => t.name).join(", ")}`);
 
   console.log("\n[read]");
   const search = await call("search_notes", { query: "焼結" });
