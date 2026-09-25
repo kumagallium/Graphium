@@ -508,11 +508,15 @@ function SidePeekInner({
 
   // ドキュメント読み込み後にラベル・リンクを復元
   // setLabel / restoreLinks は useCallback で安定な参照
+  // 依存は doc ではなく読み込んだ page。タイトルや文脈タグの編集は setDoc で doc だけを
+  // 差し替える（page は同じ参照のまま）ので、ここは走らない。走ると読み込み時点の page で
+  // 復元し直し、このピークで足したリンク・ラベル・表の注釈（インデックステーブルの行の
+  // 紐付けなど）が消えて、次のオートセーブでそのまま書き出される
   const { setLabel } = labelStore;
   const { restoreLinks } = linkStore;
+  const loadedPage = doc?.pages?.[0];
   useEffect(() => {
-    if (!doc) return;
-    const page = doc.pages?.[0];
+    const page = loadedPage;
     if (!page) return;
 
     // ラベル復元
@@ -536,7 +540,7 @@ function SidePeekInner({
     // indexTables はここで変換する。これが無いとピークでは表の名前も
     // 取り込み元バッジも出ず、長い表の折りたたみも効かない
     tableMetaStoreRef.current.restore(migrateTableMeta(page));
-  }, [doc, setLabel, restoreLinks]);
+  }, [loadedPage, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
   const handleEditorReady = useCallback((editor: any) => {
