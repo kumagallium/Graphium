@@ -119,7 +119,7 @@ import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, findExist
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
 import { computeBlobHash } from "./lib/storage/shared/hash";
 import { normalizeNoteContexts } from "./features/note-context/context-tags";
-import { syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
+import { remintPastedRowIdentities, syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
 import {
@@ -131,6 +131,7 @@ import {
   GRAPHIUM_CLIPBOARD_MIME,
   applyClipboardPayload,
   buildClipboardPayload,
+  carriesBlockStructure,
   computeIdMap,
   embedPayloadInHtml,
   extractPayloadFromHtml,
@@ -160,6 +161,11 @@ import {
   recordMentionLink,
   type UpdateNoteLinks,
 } from "./features/block-link/mention-insert";
+import {
+  applyPastedMentionLinks,
+  mentionCopyContext,
+  mentionLabelResolver,
+} from "./features/block-link/mention-paste";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
@@ -1752,6 +1758,10 @@ function NoteEditorInner({
     if (f) return f.name.replace(/\.(graphium|provnote)\.json$/, "");
     return null;
   };
+  // 貼り付けで運んだ @リンクの行き先の表示名（貼った先にその `@ラベル` が入ったかを見る）。
+  // 上と同じく paste リスナーから最新の noteIndex / mediaIndex を読むため ref で持つ
+  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
+  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
   // 初期値を URL から取る。ノートを開き直すとこのコンポーネントは作り直されるので、
   // 命令口（openSidePeekRef）だけに頼ると ref 登録前に届いたピーク指定を取りこぼす。
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(() => readPeekFromHash());
@@ -2783,6 +2793,8 @@ function NoteEditorInner({
           getLabel: (id) => labelStore.getLabel(id),
           getAttributes: (id) => labelStore.getAttributes(id),
           allLinks: linkStore.getAllLinks(),
+          // @リンクは、コピーした中身に @ラベル があるものだけ（表の 1 行の中ならその行の分だけ）運ぶ（SidePeek と共通）
+          ...mentionCopyContext(editor, (target) => mentionLabelOfRef.current(target)),
         });
         if (!payload) return;
         e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
@@ -2879,8 +2891,10 @@ function NoteEditorInner({
       ) {
         const graphiumRaw = e.clipboardData.getData(GRAPHIUM_CLIPBOARD_MIME);
         const htmlForPayload = e.clipboardData.getData("text/html");
-        const hasGraphiumPayload =
+        const graphiumPayload =
           parseClipboardPayload(graphiumRaw) ?? extractPayloadFromHtml(htmlForPayload);
+        // @リンクだけのペイロード（段落の文字のコピー）はブロックの構造を運ばないので救済する
+        const hasGraphiumPayload = !!graphiumPayload && carriesBlockStructure(graphiumPayload);
         const plain = e.clipboardData.getData("text/plain");
         // Graphium ペイロード（複数ブロック想定）はブロック置換でも構造が保たれるためスルー。
         // ここではプレーンテキスト相当の paste のみ救済する。
@@ -2920,7 +2934,10 @@ function NoteEditorInner({
         setTimeout(() => {
           const afterIds = flattenBlockIds(editor.document);
           const newIds = new Set(afterIds.filter((id) => !beforeIdsForRegen.has(id)));
-          if (newIds.size > 0) regenInlineEntitiesInBlocks(editor, newIds);
+          if (newIds.size === 0) return;
+          // 表の行の identity も同じ理由で、元の表と重なる分だけ振り直す（元の表の行を守る）
+          remintPastedRowIdentities(editor, newIds);
+          regenInlineEntitiesInBlocks(editor, newIds);
         }, 0);
       };
 
@@ -2936,13 +2953,29 @@ function NoteEditorInner({
         setTimeout(() => {
           const afterIds = flattenBlockIds(editor.document);
           const newIds = afterIds.filter((id) => !beforeIds.has(id));
+          // @リンクを行に紐づける前に、複製した表の行の identity を振り直しておく
+          const rowRemap = remintPastedRowIdentities(editor, newIds);
           const idMap = computeIdMap(payload.blockIds, newIds);
-          if (idMap.size === 0) return;
-          applyClipboardPayload(idMap, payload, {
-            setLabel: (blockId, label) => labelStore.setLabel(blockId, label),
-            setAttributes: (blockId, attrs) => labelStore.setAttributes(blockId, attrs),
-            addLink: (params) => linkStore.addLink(params),
-          });
+          if (idMap.size > 0) {
+            applyClipboardPayload(idMap, payload, {
+              setLabel: (blockId, label) => labelStore.setLabel(blockId, label),
+              setAttributes: (blockId, attrs) => labelStore.setAttributes(blockId, attrs),
+              addLink: (params) => linkStore.addLink(params),
+            });
+          }
+          // @リンク（ノート・素材行き）は、貼った先に入ったメンションの分だけ記録し直す。
+          // 文中に貼った（ブロックが増えない）ときも運ぶ（SidePeek と共通。mention-paste.ts）
+          applyPastedMentionLinks(editor, payload, idMap, {
+            addLink: linkStore.addLink,
+            getAllLinks: () => linkStore.getAllLinks(),
+            labelOfTarget: (target) => mentionLabelOfRef.current(target),
+            citeAsset: (fileId) => {
+              if (!citedAssetFileIdsRef.current.includes(fileId)) {
+                citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, fileId];
+              }
+            },
+            updateNoteLinks,
+          }, rowRemap);
         }, 0);
         scheduleEntityRegen();
         return;

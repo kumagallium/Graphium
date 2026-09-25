@@ -200,3 +200,76 @@ export function syncTableRowIdentitiesToEditor(editor: {
   syncBlocks(currentBlocks, normalizedBlocks);
   return normalizedBlocks;
 }
+
+/**
+ * 貼り付けで増えた表の行の identity を、文書のほかの表と重なる分だけ振り直す。
+ *
+ * 表をコピーして同じノートに貼ると、行は元の表と同じ identity のまま入ってくる。
+ * 保存時の正規化は重複を「文書で後ろにある方」から振り直すので、元の表より上に
+ * 貼ると元の表の行が別の Entity に変わり、ほかのノートからの行の参照や行ごとの
+ * @リンクが外れていた。貼った側を先に振り直して、元の表を守る。
+ * 切り取って貼った（移動した）ときは元が消えているので重ならず、そのまま残る。
+ *
+ * @param pastedBlockIds 貼り付けで増えたブロック ID（表以外が混ざっていてよい）
+ * @returns 振り直した行の対応（貼った表のブロック ID → 旧 identity → 新 identity）。
+ *   行に紐づく @リンクを貼った先の行へ付け直すのに使う
+ */
+export function remintPastedRowIdentities(
+  editor: {
+    document?: any[];
+    updateBlock: (id: string, patch: { content: any }) => unknown;
+  },
+  pastedBlockIds: Iterable<string>,
+): Map<string, Map<string, string>> {
+  const reminted = new Map<string, Map<string, string>>();
+  const pasted = new Set(pastedBlockIds);
+  if (pasted.size === 0) return reminted;
+  const tables: { block: any; isPasted: boolean }[] = [];
+  const walk = (blocks: any[] | undefined, insidePasted: boolean) => {
+    for (const block of blocks ?? []) {
+      const isPasted = insidePasted || pasted.has(block?.id);
+      if (block?.type === "table" && Array.isArray(block.content?.rows)) tables.push({ block, isPasted });
+      if (Array.isArray(block?.children)) walk(block.children, isPasted);
+    }
+  };
+  walk(editor.document, false);
+
+  // 貼った表の外（元からある表）で使っている identity
+  const used = new Set<string>();
+  for (const { block, isPasted } of tables) {
+    if (isPasted) continue;
+    for (const row of block.content.rows) {
+      const identity = row?.cells ? rowIdentity(row.cells[0]) : undefined;
+      if (identity) used.add(identity);
+    }
+  }
+
+  for (const { block, isPasted } of tables) {
+    if (!isPasted) continue;
+    const changes = new Map<string, string>();
+    const kept = new Set<string>();
+    let changed = false;
+    const rows = block.content.rows.map((row: any) => {
+      const identity = row?.cells ? rowIdentity(row.cells[0]) : undefined;
+      if (!identity) return row;
+      if (!used.has(identity)) {
+        used.add(identity);
+        kept.add(identity);
+        return row;
+      }
+      let fresh = makeTableRowIdentity();
+      while (used.has(fresh)) fresh = makeTableRowIdentity();
+      used.add(fresh);
+      changed = true;
+      // 同じ表の中の重複（先の行が identity を残した）は、対応に載せない — 旧 identity の
+      // リンクは残った先の行のもの
+      if (!kept.has(identity) && !changes.has(identity)) changes.set(identity, fresh);
+      return { ...row, cells: [withRowIdentity(row.cells[0], fresh), ...row.cells.slice(1)] };
+    });
+    if (!changed) continue;
+    // content は rows だけ差し替えて渡す（列幅・見出しの行と列の指定を落とさない）
+    editor.updateBlock(block.id, { content: { ...block.content, rows } });
+    if (changes.size > 0) reminted.set(block.id, changes);
+  }
+  return reminted;
+}

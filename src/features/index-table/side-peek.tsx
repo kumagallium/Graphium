@@ -70,6 +70,7 @@ import {
   GRAPHIUM_CLIPBOARD_MIME,
   applyClipboardPayload,
   buildClipboardPayload,
+  carriesBlockStructure,
   computeIdMap,
   embedPayloadInHtml,
   extractPayloadFromHtml,
@@ -79,6 +80,7 @@ import {
 import { regenInlineEntitiesInBlocks } from "@features/inline-label/regen-on-paste";
 import {
   normalizeTableRowIdentities,
+  remintPastedRowIdentities,
   syncTableRowIdentitiesToEditor,
 } from "../../lib/table-row-identity";
 import {
@@ -124,6 +126,11 @@ import {
   type AddReferenceLink,
   type UpdateNoteLinks,
 } from "@features/block-link/mention-insert";
+import {
+  applyPastedMentionLinks,
+  mentionCopyContext,
+  mentionLabelResolver,
+} from "@features/block-link/mention-paste";
 import {
   openPeekTarget,
   readMentionAt,
@@ -413,6 +420,17 @@ function SidePeekInner({
   const [peekContexts, setPeekContexts] = useState<string[]>([]);
   const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
+  // 貼り付けで運んだ @リンクの記録に使う読み口・書き口。コピー＆ペーストのリスナーは
+  // 依存を固定した effect にあるので、最新の noteIndex / mediaIndex と docRef を ref で渡す
+  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
+  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  const citeAssetInPeekRef = useRef((fileId: string) => {
+    // 引用素材は docRef に積む（doSave が spread して一緒に書き出す）
+    const cur = docRef.current;
+    if (cur && !(cur.citedAssetFileIds ?? []).includes(fileId)) {
+      docRef.current = { ...cur, citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), fileId] };
+    }
+  });
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 保存にまだ渡していない編集があるか。handleChange で立て、doSave が本文を読み取った
   // 時点で下ろし、保存に失敗したら立て直す。離れるとき・アンマウントのときに書き出すかを
@@ -750,6 +768,8 @@ function SidePeekInner({
           getLabel: (id) => labelStoreRef.current.getLabel(id),
           getAttributes: (id) => labelStoreRef.current.getAttributes(id),
           allLinks: linkStoreRef.current.getAllLinks(),
+          // @リンクは、コピーした中身に @ラベル があるものだけ（表の 1 行の中ならその行の分だけ）運ぶ（メインと共通）
+          ...mentionCopyContext(editor, (target) => mentionLabelOfRef.current(target)),
         });
         if (!payload) return;
         e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
@@ -774,9 +794,11 @@ function SidePeekInner({
         cursorBlock.content.length === 0 &&
         e.clipboardData
       ) {
-        const hasGraphiumPayload =
+        const graphiumPayload =
           parseClipboardPayload(e.clipboardData.getData(GRAPHIUM_CLIPBOARD_MIME)) ??
           extractPayloadFromHtml(e.clipboardData.getData("text/html"));
+        // @リンクだけのペイロード（段落の文字のコピー）はブロックの構造を運ばないので救済する
+        const hasGraphiumPayload = !!graphiumPayload && carriesBlockStructure(graphiumPayload);
         const plain = e.clipboardData.getData("text/plain");
         if (!hasGraphiumPayload && plain) {
           const cleaned = plain.replace(/\r?\n+$/g, "");
@@ -798,7 +820,10 @@ function SidePeekInner({
         setTimeout(() => {
           const afterIds = flattenBlockIds(editor.document);
           const newIds = new Set(afterIds.filter((id) => !beforeIdsForRegen.has(id)));
-          if (newIds.size > 0) regenInlineEntitiesInBlocks(editor, newIds);
+          if (newIds.size === 0) return;
+          // 表の行の identity も同じ理由で、元の表と重なる分だけ振り直す（元の表の行を守る）
+          remintPastedRowIdentities(editor, newIds);
+          regenInlineEntitiesInBlocks(editor, newIds);
         }, 0);
       };
 
@@ -813,13 +838,26 @@ function SidePeekInner({
         setTimeout(() => {
           const afterIds = flattenBlockIds(editor.document);
           const newIds = afterIds.filter((id) => !beforeIds.has(id));
+          // @リンクを行に紐づける前に、複製した表の行の identity を振り直しておく
+          const rowRemap = remintPastedRowIdentities(editor, newIds);
           const idMap = computeIdMap(payload.blockIds, newIds);
-          if (idMap.size === 0) return;
-          applyClipboardPayload(idMap, payload, {
-            setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
-            setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+          if (idMap.size > 0) {
+            applyClipboardPayload(idMap, payload, {
+              setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
+              setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+              addLink: (params) => linkStoreRef.current.addLink(params),
+            });
+          }
+          // @リンク（ノート・素材行き）は、貼った先に入ったメンションの分だけ記録し直す
+          // （メインと共通。mention-paste.ts）。記録先はこのピークのもの — 引用素材と
+          // noteLinks はピークで開いているノートの docRef に積む
+          applyPastedMentionLinks(editor, payload, idMap, {
             addLink: (params) => linkStoreRef.current.addLink(params),
-          });
+            getAllLinks: () => linkStoreRef.current.getAllLinks(),
+            labelOfTarget: (target) => mentionLabelOfRef.current(target),
+            citeAsset: (fileId) => citeAssetInPeekRef.current(fileId),
+            updateNoteLinks: (update) => updateNoteLinksRef.current(update),
+          }, rowRemap);
         }, 0);
         scheduleEntityRegen();
         return;
@@ -1514,6 +1552,9 @@ function SidePeekInner({
     },
     [handleChange],
   );
+  // コピー＆ペーストのリスナー（依存を固定した effect）から最新の書き込み口を呼ぶ
+  const updateNoteLinksRef = useRef(updateNoteLinks);
+  updateNoteLinksRef.current = updateNoteLinks;
 
   // スラッシュメニューの「新しいノート」。組み立てはメインと共通
   // （block-link/new-note-slash-item.ts）で、記録先だけこのピークのものを渡す:

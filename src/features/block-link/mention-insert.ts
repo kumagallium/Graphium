@@ -34,27 +34,31 @@ export type TableRowPosition = { tableBlockId: string; rowIndex: number };
 export type TableCellPosition = TableRowPosition & { colIndex: number };
 
 /**
- * カーソルがある表のセルを返す。表の外なら null。
+ * ProseMirror の位置（選択の $from / $to）がある表のセルを返す。表の外なら null。
  * BlockNote の表は blockContainer > table > tableRow > tableCell の入れ子で、
  * tableRow の並びは block.content.rows と、tableCell の並びはその行の cells と
  * 1 対 1 に対応する。
  */
-export function tableCellAtCursor(editor: any): TableCellPosition | null {
-  const $from = editor?._tiptapEditor?.state?.selection?.$from;
-  if (!$from) return null;
+export function tableCellAt($pos: any): TableCellPosition | null {
+  if (!$pos) return null;
   let rowIndex = -1;
   let colIndex = -1;
-  for (let depth = $from.depth; depth > 0; depth--) {
-    const node = $from.node(depth);
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    const node = $pos.node(depth);
     if (node.type.name === "tableRow") {
-      rowIndex = $from.index(depth - 1);
-      colIndex = $from.index(depth);
+      rowIndex = $pos.index(depth - 1);
+      colIndex = $pos.index(depth);
     }
     if (node.type.name === "blockContainer") {
       return rowIndex >= 0 ? { tableBlockId: node.attrs.id, rowIndex, colIndex } : null;
     }
   }
   return null;
+}
+
+/** カーソル（選択の始まり）がある表のセルを返す。表の外なら null */
+export function tableCellAtCursor(editor: any): TableCellPosition | null {
+  return tableCellAt(editor?._tiptapEditor?.state?.selection?.$from);
 }
 
 /** カーソルがある表の行を返す。表の外なら null */
