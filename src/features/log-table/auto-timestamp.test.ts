@@ -179,3 +179,42 @@ describe("記録はエディタ単位（メインと SidePeek が同時に開い
     expect(() => primeLogTableRowTracking(null, [], ["t1"])).not.toThrow();
   });
 });
+
+// ホストは表の注釈の復元とエディタの公開の両方の時点で prime を呼ぶ（どちらが先でも
+// 取りこぼさないため）。後の呼び出しで記録を崩さないことを確かめる
+describe("prime は記録の無い表だけを埋める", () => {
+  it("後から読み込み時の本文で呼ばれても、記録済みの行数は変えない", () => {
+    const loaded = makeTable("t1", [["日時", "値"], ["2026-08-11 08:15", "7"]]);
+    const editor = makeEditor([loaded]);
+    primeLogTableRowTracking(editor, [loaded], ["t1"]); // 2 行
+    addEmptyRow(editor, "t1");
+    applyLogTableTimestamps(editor, ["t1"], NOW); // 3 行目に日時が入り、記録は 3 行
+    // 利用者が 3 行目の日時をあえて消した
+    const table = editor.getBlock("t1");
+    editor.updateBlock("t1", {
+      content: {
+        ...table.content,
+        rows: table.content.rows.map((row: any, i: number) =>
+          i === 2 ? { cells: [cell(""), cell("")] } : row
+        ),
+      },
+    });
+    editor.updates.length = 0;
+    // 読み込み時の本文（2 行）でもう一度呼ばれた
+    primeLogTableRowTracking(editor, [loaded], ["t1"]);
+    applyLogTableTimestamps(editor, ["t1"], NOW);
+    // 行は増えていないので、消した日時を埋め戻さない
+    expect(editor.updates.length).toBe(0);
+  });
+
+  it("空の一覧で呼ばれても、記録は消えない", () => {
+    const saved = makeTable("t1", [["日時", "値"], ["2026-08-11 08:15", "7"]]);
+    const editor = makeEditor([saved]);
+    primeLogTableRowTracking(editor, [saved], ["t1"]);
+    // 後から空の一覧で呼ばれた（呼ぶ側がまだ注釈を持っていなかった等）
+    primeLogTableRowTracking(editor, [saved], []);
+    addEmptyRow(editor, "t1");
+    applyLogTableTimestamps(editor, ["t1"], NOW);
+    expect(editor.updates.map((u) => u.rows[2])).toEqual([["2026-08-12 09:30", ""]]);
+  });
+});

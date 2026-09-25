@@ -93,6 +93,7 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
+  hasColumnType,
   readFirstColumnName,
   readTableData,
   sortTableBlock,
@@ -553,7 +554,18 @@ function SidePeekInner({
     // テーブル注釈（名前・取り込み元・列のふるまい）。メインと同じく旧 logTables /
     // indexTables はここで変換する。これが無いとピークでは表の名前も
     // 取り込み元バッジも出ず、長い表の折りたたみも効かない
-    tableMetaStoreRef.current.restore(migrateTableMeta(page));
+    const tableMeta = migrateTableMeta(page);
+    tableMetaStoreRef.current.restore(tableMeta);
+    // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+    // 日時が入るように）。エディタがまだ無ければ空振りし、エディタができたときの
+    // effect が記録する（メインの初期データの復元と同じ）
+    primeLogTableRowTracking(
+      editorRef.current,
+      page.blocks,
+      Object.entries(tableMeta ?? {})
+        .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
+        .map(([blockId]) => blockId),
+    );
   }, [doc, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
@@ -878,9 +890,9 @@ function SidePeekInner({
       );
     });
     // 開いたときの行数を、このエディタの分として先に記録しておく（開いて最初の行追加
-    // から日時が入るように）。エディタは doc と同じ描画で作られ、表の注釈の復元
-    // （読み込み後の effect）はこの再レンダーより前に済んでいる。あの effect は文脈ラベルの
-    // 変更でも走り直すので、そちらで記録すると読み込み時の古い行数に戻ってしまう
+    // から日時が入るように）。読み込み後の復元 effect でも記録するので、注釈の復元と
+    // エディタの公開のどちらが先でも取りこぼさない（記録の無い表だけを埋めるので、
+    // 二度呼んでも崩れない）
     primeLogTableRowTracking(
       sidePeekEditor,
       sidePeekEditor.document,

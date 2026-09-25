@@ -30,11 +30,23 @@ function withCellText(cell: any, text: string): any {
 // 作り直されるので、ノート切替で前の記録を捨てる処理は要らない。
 const rowCountsByEditor = new WeakMap<object, Map<string, number>>();
 
+function rowCountsOf(editor: object): Map<string, number> {
+  let counts = rowCountsByEditor.get(editor);
+  if (!counts) {
+    counts = new Map();
+    rowCountsByEditor.set(editor, counts);
+  }
+  return counts;
+}
+
 /**
- * ノートを開いたとき（エディタができたとき）に、各記録テーブルの行数を
- * そのエディタの分として先に記録しておく。これが無いと「ノートを開いて最初の
- * 行追加」が初見扱いになり日時が入らない（初見で書き込まないのは、既存の空セルを
- * 勝手に埋めないための仕様）。同じエディタの記録は置き換える。
+ * ノートを開いたときに、各記録テーブルの行数をそのエディタの分として先に記録して
+ * おく。これが無いと「ノートを開いて最初の行追加」が初見扱いになり日時が入らない
+ * （初見で書き込まないのは、既存の空セルを勝手に埋めないための仕様）。
+ *
+ * まだ記録の無い表だけを記録し、記録済みの行数は上書きしない。ホストは表の注釈の
+ * 復元とエディタの公開のどちらが先でも取りこぼさないよう両方の時点で呼ぶので、
+ * 後から古い本文や空の一覧で呼ばれても、その間に足した行の記録を崩さないため。
  */
 export function primeLogTableRowTracking(
   editor: object | null | undefined,
@@ -42,18 +54,18 @@ export function primeLogTableRowTracking(
   logTableIds: Iterable<string>
 ): void {
   if (!editor) return;
-  const counts = new Map<string, number>();
   const ids = new Set(logTableIds);
+  if (ids.size === 0) return;
+  const counts = rowCountsOf(editor);
   const visit = (list: any[]) => {
     for (const b of list ?? []) {
-      if (b?.type === "table" && ids.has(b.id)) {
+      if (b?.type === "table" && ids.has(b.id) && !counts.has(b.id)) {
         counts.set(b.id, (b.content?.rows ?? []).length);
       }
       if (Array.isArray(b?.children)) visit(b.children);
     }
   };
-  if (ids.size > 0) visit(blocks ?? []);
-  rowCountsByEditor.set(editor, counts);
+  visit(blocks ?? []);
 }
 
 /**
@@ -67,11 +79,7 @@ export function applyLogTableTimestamps(
   now: Date = new Date()
 ): void {
   if (!editor) return;
-  let prevRowCounts = rowCountsByEditor.get(editor);
-  if (!prevRowCounts) {
-    prevRowCounts = new Map();
-    rowCountsByEditor.set(editor, prevRowCounts);
-  }
+  const prevRowCounts = rowCountsOf(editor);
   for (const blockId of logTableIds) {
     const block = editor?.getBlock?.(blockId);
     if (!block || block.type !== "table") {

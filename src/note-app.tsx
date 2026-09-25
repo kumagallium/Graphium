@@ -68,6 +68,7 @@ import {
   migrateTableMeta,
   findColumnIndexByName,
   findColumnNameByType,
+  hasColumnType,
   readFirstColumnName,
   readTableData,
   withCellText,
@@ -4925,8 +4926,16 @@ function NoteEditorInner({
       const tableMeta = migrateTableMeta(page);
       tableMetaStore.restore(tableMeta);
       const tableMetaEntries = Object.entries(tableMeta ?? {});
-      // 日時が入る列を持つテーブルの行数の記録は、エディタ単位なので
-      // エディタが公開されたときに取る（下の primeLogTableRowTracking の effect）
+      // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+      // 日時が入るように）。記録はエディタ単位で、エディタの公開がこの復元より後なら
+      // ここはエディタが無く空振りする。そのときは下の mainEditor の effect が記録する
+      primeLogTableRowTracking(
+        editorRef.current,
+        page.blocks,
+        tableMetaEntries
+          .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
+          .map(([blockId]) => blockId)
+      );
       // 行に紐付いたノートは Graph 表示用の noteLinks にも反映する
       const existingLinks = noteLinksRef.current;
       let added = false;
@@ -5227,8 +5236,8 @@ function NoteEditorInner({
   // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
   // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
   // key={fileId || "new"} で作り直されるが、表の注釈（tableMetaStore）は残る。
-  // ノートを開いたときの注釈の復元（初期データの復元 effect）は、エディタの公開
-  // （setMainEditor）による再レンダーより前に済んでいる
+  // 初期データの復元でも記録するので、注釈の復元とエディタの公開のどちらが先でも
+  // 取りこぼさない（記録の無い表だけを埋めるので、二度呼んでも崩れない）
   useEffect(() => {
     if (!mainEditor) return;
     primeLogTableRowTracking(
