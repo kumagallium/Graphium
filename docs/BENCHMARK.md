@@ -138,10 +138,14 @@ Two kinds of probes live next to the corpus:
 `bench/migration/fixtures/` stores frozen snapshots of older document /
 index schemas. `pnpm test:migration` replays each fixture through the
 production migration code and asserts the pre-declared invariants
-(version bumped, key labels remapped, `title` / `createdAt` preserved).
-In CI this job runs with `BENCH_MIGRATION_STRICT=true` — any data-loss
-failure blocks the merge. New schema-bump Phases (η / γ / δ / ε / ζ)
-add their pre-bump fixture to this directory.
+(version bumped, key labels remapped, the shape of a restructured block
+tree, `title` / `createdAt` and every block id and text run preserved).
+In CI this job runs with `BENCH_MIGRATION_STRICT=true` — any failure
+fails the job and blocks the merge. When you raise
+`LATEST_DOCUMENT_VERSION`, bump `version` in the document fixtures'
+`*.expect.json` and add a fixture whose input is the previous version,
+so the new migration step is replayed too. New schema-bump Phases
+(η / γ / δ / ε / ζ) add their pre-bump fixture to this directory.
 
 ## Performance regression
 

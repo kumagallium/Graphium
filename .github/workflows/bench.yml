@@ -188,7 +188,11 @@ jobs:
         env:
           # データロス系の失敗は CI を block する。これは破壊的変更検知の最後の砦。
           BENCH_MIGRATION_STRICT: 'true'
-        run: pnpm test:migration | tee bench/migration-stdout.log
+        # run の既定シェル（bash -e）には pipefail が無く、パイプの終了コードは tee の 0 になる。
+        # STRICT の exit 1 がそれで握り潰され、v6 で fixture が古くなってもジョブは通り続けていた。
+        run: |
+          set -o pipefail
+          pnpm test:migration | tee bench/migration-stdout.log
 
       - name: Generate migration summary
         if: always()
@@ -206,7 +210,8 @@ jobs:
           } > bench/migration-summary.md
 
       - name: Post migration summary
-        if: github.event_name == 'pull_request' && hashFiles('bench/migration-summary.md') != ''
+        # fixture が落ちた回こそコメントを更新したいので、前のステップが失敗しても走らせる
+        if: always() && github.event_name == 'pull_request' && hashFiles('bench/migration-summary.md') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           path: bench/migration-summary.md
