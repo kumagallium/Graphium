@@ -2166,6 +2166,12 @@ export const en: Record<string, string> = {
   "globalGraph.uncategorized": "Uncategorized",
   "globalGraph.toggleUncategorizedHint": "Click to show/hide uncategorized notes",
   "globalGraph.noContexts": "No notes in a folder yet",
+  "globalGraph.foldLeaves": "Fold leaves",
+  "globalGraph.foldLeavesHint": "Collapse claims and sources that hang off a single node into a +n on that node",
+  "globalGraph.size": "Size",
+  "globalGraph.size.kind": "Kind",
+  "globalGraph.size.reach": "Reach",
+  "globalGraph.sizeReachHint": "Size by the number of other notes within two hops",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化

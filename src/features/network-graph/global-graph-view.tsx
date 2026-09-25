@@ -20,6 +20,7 @@ import { aggregateNoteContexts, noteContextHue } from "../note-context/context-t
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import type { NoteNode, NoteGraphData, EdgeRelation } from "./graph-builder";
+import { foldLeafNodes, computeReachScores } from "./global-graph-structure";
 import { globalGraphScope } from "./graph-layout";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
@@ -47,23 +48,15 @@ ensureCytoscapePlugins();
 
 // ── kind / 層 ──
 
-type GraphKind = "external" | "note" | "summary" | "claim" | "atom" | "synthesis" | "topic";
-type LayerId = "source" | "note" | "crystal" | "synth";
+// kind 判定（kindOf）は graph-kind.ts に切り出してある。global-graph-structure.ts
+// もそこから使う（このファイルから export すると global-graph-structure.ts との
+// 循環依存になり lint:deps の no-circular に引っかかるため）。
+export type { GraphKind } from "./graph-kind";
+export { kindOf } from "./graph-kind";
+import type { GraphKind } from "./graph-kind";
+import { kindOf } from "./graph-kind";
 
-/** NoteNode から kind を判定する。 */
-function kindOf(n: NoteNode): GraphKind {
-  if (n.external) return "external";
-  if (n.isWiki) {
-    const k = n.wikiKind;
-    if (k === "claim" || k === "atom" || k === "synthesis" || k === "topic") return k;
-    // 撤退済み / 未知の wikiKind（旧 meta-atom 等）は synthesis（統合）扱いにフォールバック。
-    // ここで GraphKind 外の値を返すと KIND_LAYER 引きが undefined になり、層フィルタで
-    // 常に弾かれて silent に消える（meta-atom が見えなかった原因）。
-    // 注: summary は buildGlobalGraph 側でグラフから除外済みなのでここには来ない。
-    return "synthesis";
-  }
-  return "note";
-}
+type LayerId = "source" | "note" | "crystal" | "synth";
 
 const KIND_LAYER: Record<GraphKind, LayerId> = {
   external: "source",
@@ -261,6 +254,12 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
   ...interactionStyles,
   hoverFullLabelStyle,
   {
+    // 葉を畳んだ相手ノード: 枠を 1 段太くして「畳んだものを持っている」ことを示す
+    // （実寸は変えたくないので width/height ではなく border-width のみ）
+    selector: "node[folded > 0]",
+    style: { "border-width": 3 },
+  },
+  {
     // 検索ヒット: 琥珀色の太枠 + フルラベル表示。faded より優先されるよう後段に置く
     selector: "node.search-hit",
     style: {
@@ -341,6 +340,9 @@ export function GlobalGraphCanvas({
   hideUncategorized = false,
   hideAtoms = false,
   clusterByContext = false,
+  foldLeaves = false,
+  sizeMode = "kind",
+  precomputedFold,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -364,6 +366,15 @@ export function GlobalGraphCanvas({
   hideAtoms?: boolean;
   /** 同じ文脈タグのノードを不可視エッジで引き寄せ、クラスターとして固まらせる。 */
   clusterByContext?: boolean;
+  /** ノート以外で次数 1 の「葉」を、繋がる相手（多くはノート）に畳んで `+n` にまとめる（既定 false = 今の挙動）。 */
+  foldLeaves?: boolean;
+  /** ノート（kind note）の大きさの決め方。kind=種類ごとの固定値（既定）/ reach=2 ホップ以内で届く別ノート数。 */
+  sizeMode?: "kind" | "reach";
+  /** 呼び出し元（GlobalGraphView）が filterGlobalGraph + foldLeafNodes を先に済ませた
+   *  結果。foldLeaves=true のときだけ使い、指定があれば内部での foldLeafNodes 再計算
+   *  を省く（同じ入力に対する二重計算を避けるためのもの）。未指定なら自前で計算する
+   *  （Storybook 等の単体利用はこちら）。 */
+  precomputedFold?: { data: NoteGraphData; foldedCount: Map<string, number> };
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -387,6 +398,16 @@ export function GlobalGraphCanvas({
   searchRef.current = searchQuery;
   const colorModeRef = useRef(colorMode);
   colorModeRef.current = colorMode;
+  // sizeMode / reachScores / maxReachScore も同様に ref 経由で読む。
+  // メイン構築 effect は renderKey（shownNodes/shownEdges の中身）が変わったときだけ
+  // 走るため、sizeMode 単独の切替では再構築されない（それは下のサイズ用 effect が
+  // data 書き換えで反映する）。ただし構造変化（葉を畳む ON/OFF 等）で cy が作り直され
+  // たときは、この ref を読んで最初から正しい size を入れる（そうしないと種類固定サイズ
+  // で仮置きされたまま、サイズ用 effect の依存が変わらず再適用されずに残ってしまう）。
+  const sizeModeRef = useRef(sizeMode);
+  sizeModeRef.current = sizeMode;
+  const reachScoresRef = useRef<Map<string, number> | null>(null);
+  const maxReachScoreRef = useRef(0);
   // Enter 巡回の現在位置（クエリが変わったら 0 に戻す）
   const jumpIndexRef = useRef(0);
 
@@ -410,19 +431,55 @@ export function GlobalGraphCanvas({
   // 二重レンダーで変化を食われる
   const lastClusterRef = useRef(clusterByContext);
 
-  // 表示中の層・参照・文脈タグ・未分類・孤立フィルタを適用
-  const { nodes: shownNodes, edges: shownEdges } = useMemo(
-    () =>
-      filterGlobalGraph(data, {
-        visibleLayers,
-        hideReferences,
-        hideIsolated,
-        contextFilter,
-        hideUncategorized,
-        hideAtoms,
-      }),
-    [data, visibleLayers, hideReferences, hideIsolated, contextFilter, hideUncategorized, hideAtoms],
+  // 表示中の層・参照・文脈タグ・未分類・孤立フィルタを適用し、foldLeaves が
+  // 有効なら「葉を畳む」を続けて掛ける（畳んだ相手ノード id → 個数が foldedCount）。
+  // precomputedFold が渡されていれば（GlobalGraphView が先に計算済み）、同じ入力に対する
+  // foldLeafNodes の二重計算を避けてそれをそのまま使う。
+  const { nodes: shownNodes, edges: shownEdges, foldedCount } = useMemo(() => {
+    if (foldLeaves && precomputedFold) {
+      return {
+        nodes: precomputedFold.data.nodes,
+        edges: precomputedFold.data.edges,
+        foldedCount: precomputedFold.foldedCount,
+      };
+    }
+    const filtered = filterGlobalGraph(data, {
+      visibleLayers,
+      hideReferences,
+      hideIsolated,
+      contextFilter,
+      hideUncategorized,
+      hideAtoms,
+    });
+    if (!foldLeaves) return { ...filtered, foldedCount: new Map<string, number>() };
+    const folded = foldLeafNodes(filtered);
+    return { nodes: folded.data.nodes, edges: folded.data.edges, foldedCount: folded.foldedCount };
+  }, [
+    data,
+    visibleLayers,
+    hideReferences,
+    hideIsolated,
+    contextFilter,
+    hideUncategorized,
+    hideAtoms,
+    foldLeaves,
+    precomputedFold,
+  ]);
+  // つながりで大きさ（reach）: 畳んだ後のサブグラフで計算する
+  // reach スコアは表示中サブグラフの分布に対する相対値で使う（絶対値だと生成データでは
+  // ほぼ全ノートが上限に張り付いてしまう）。maxReachScore はその分布の最大値。
+  const reachScores = useMemo(
+    () => (sizeMode === "reach" ? computeReachScores({ nodes: shownNodes, edges: shownEdges }) : null),
+    [shownNodes, shownEdges, sizeMode],
   );
+  const maxReachScore = useMemo(() => {
+    if (!reachScores) return 0;
+    let max = 0;
+    for (const v of reachScores.values()) if (v > max) max = v;
+    return max;
+  }, [reachScores]);
+  reachScoresRef.current = reachScores;
+  maxReachScoreRef.current = maxReachScore;
   // 描画し直すかは中身で決める（data の参照はノート保存のたびに変わる）
   const shownKey = useGraphDataKey(shownNodes) + "|" + useGraphDataKey(shownEdges);
   // グラフの「形」。読み込み中に形が連続で変わる間は組み直しを 1 回にまとめる
@@ -455,19 +512,32 @@ export function GlobalGraphCanvas({
     const elements: cytoscape.ElementDefinition[] = [];
     for (const node of shownNodes) {
       const kind = kindOf(node);
+      const foldedN = foldedCount.get(node.id) ?? 0;
       const full = `${nodeIcon(node)}${node.title}`;
+      // 畳んだ分の suffix はタイトルの truncate 後に付ける（truncate で "…" と
+      // 混ざって読めなくならないように）。
+      const foldSuffix = foldedN > 0 ? ` +${foldedN}` : "";
       // 色は構築時点のモードで塗る。モード切替時は色 effect が data を書き換える
-      // （cy を作り直さない＝レイアウトを保つ）。
+      // （cy を作り直さない＝レイアウトを保つ）。大きさも ref 経由で今の sizeMode /
+      // reachScores を読んで最初から正しい値を入れる（構造変化で cy が作り直された
+      // ときに、サイズ用 effect の依存が変わらず再適用されない事故を避けるため。
+      // 切替時の書き換えは後段の大きさ用 effect が担う）。
       const { fill, border } = nodeColors(node, colorModeRef.current);
+      const baseSize = KIND_SIZE[kind];
+      const size =
+        sizeModeRef.current === "reach" && kind === "note" && maxReachScoreRef.current > 0
+          ? baseSize + 48 * ((reachScoresRef.current?.get(node.id) ?? 0) / maxReachScoreRef.current)
+          : baseSize;
       elements.push({
         data: {
           id: node.id,
-          label: truncate(full),
-          fullLabel: full,
+          label: `${truncate(full)}${foldSuffix}`,
+          fullLabel: `${full}${foldSuffix}`,
           color: fill,
           borderColor: border,
           shape: KIND_SHAPE[kind],
-          size: KIND_SIZE[kind],
+          size,
+          folded: foldedN,
           isWiki: !!node.isWiki,
           external: node.external,
           externalUrl: node.externalUrl,
@@ -701,6 +771,28 @@ export function GlobalGraphCanvas({
       });
     });
   }, [colorMode, shownNodes]);
+
+  // 大きさモード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）。
+  // ノート以外は種類ごとの固定値のまま変えない。reach は絶対値ではなく、表示中
+  // ノートの分布に対する相対値で決める（最大のノートが +48、0 なら +0＝今のまま）。
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const byId = new Map(shownNodes.map((n) => [n.id, n]));
+    cy.batch(() => {
+      cy.nodes().forEach((cn) => {
+        const n = byId.get(cn.id());
+        if (!n) return;
+        const kind = kindOf(n);
+        const baseSize = KIND_SIZE[kind];
+        const size =
+          sizeMode === "reach" && kind === "note" && maxReachScore > 0
+            ? baseSize + 48 * ((reachScores?.get(n.id) ?? 0) / maxReachScore)
+            : baseSize;
+        cn.data("size", size);
+      });
+    });
+  }, [sizeMode, reachScores, maxReachScore, shownNodes]);
 
   // 検索: クラス操作のみ（destroy・再レイアウトなし）。
   // メイン effect より後に宣言してあるので、cy 再構築直後にも再適用される。
@@ -1002,6 +1094,8 @@ export function GlobalGraphView({
   mode = "overview",
   onModeChange,
   timeline,
+  initialFoldLeaves,
+  initialSizeMode,
 }: {
   data: NoteGraphData;
   /** ノード単クリック。noteId は wiki ノードに `wiki:` prefix が付く（SidePeek の規約に合わせる）。 */
@@ -1021,6 +1115,10 @@ export function GlobalGraphView({
   onModeChange?: (mode: "overview" | "timeline") => void;
   /** 時系列モードの本体（ローカルビュー）。渡されたときだけ「俯瞰 / 時系列」サブタブを出す */
   timeline?: ReactNode;
+  /** 「葉を畳む」の初期値（Storybook の比較用。未指定なら false = 今の挙動）。保存はしない。 */
+  initialFoldLeaves?: boolean;
+  /** 大きさモードの初期値（Storybook の比較用。未指定なら "kind" = 今の挙動）。保存はしない。 */
+  initialSizeMode?: "kind" | "reach";
 }) {
   const t = useT();
   const [hideRefs, setHideRefs] = useState(false);
@@ -1033,6 +1131,9 @@ export function GlobalGraphView({
   const [clusterByContext, setClusterByContext] = useState(false);
   // 未分類（タグ無しの通常ノート）を隠す。凡例の未分類チップでトグル
   const [hideUncategorized, setHideUncategorized] = useState(false);
+  // 構造の提案（Storybook 合意用の props 切替）: 葉を畳む / 大きさをつながりで決める
+  const [foldLeaves, setFoldLeaves] = useState(initialFoldLeaves ?? false);
+  const [sizeMode, setSizeMode] = useState<"kind" | "reach">(initialSizeMode ?? "kind");
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
   const [searchInput, setSearchInput] = useState("");
   const [searchJumpToken, setSearchJumpToken] = useState(0);
@@ -1056,6 +1157,15 @@ export function GlobalGraphView({
       isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
     };
   }, [data, visible, hideRefs, showIsolated, selectedContexts, hideUncategorized, insightsEnabled]);
+
+  // 「葉を畳む」を今の表示中サブグラフ（shown）に適用した結果。チェックの ON/OFF に
+  // 関わらず常に計算する（OFF でも「畳んだらどれだけ減るか」をチェック横に出すため）。
+  const foldResult = useMemo(() => foldLeafNodes(shown), [shown]);
+  const foldedTotal = foldResult.foldedTotal;
+  // ヘッダー右の件数表示は「畳む」が ON なら畳んだ後の数（実際に描画される数）にする。
+  // 各層チップ（原料/ノート/知見・洞察）は畳む前の総数のまま変えない。
+  const displayedNodeCount = foldLeaves ? foldResult.data.nodes.length : shown.nodes.length;
+  const displayedEdgeCount = foldLeaves ? foldResult.data.edges.length : shown.edges.length;
 
   // 各層のノード総数（孤立含む・フィルタ前）。チップの件数表示に使う。
   // 洞察（features.insights）OFF の Atom だけは数えない — 機能として存在しない扱いなので、
@@ -1150,6 +1260,12 @@ export function GlobalGraphView({
               {t("globalGraph.showIsolated")}
               {isolatedCount > 0 && <span className="opacity-70">({isolatedCount})</span>}
             </label>
+            {/* 構造の提案（Storybook 合意用）: 葉を畳む */}
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" title={t("globalGraph.foldLeavesHint")}>
+              <input type="checkbox" checked={foldLeaves} onChange={(e) => setFoldLeaves(e.target.checked)} />
+              {t("globalGraph.foldLeaves")}
+              {foldedTotal > 0 && <span className="opacity-70">(−{foldedTotal})</span>}
+            </label>
             <LayerChips visible={visible} counts={layerCounts} onToggle={toggleLayer} />
             {/* 色の軸切替（種類 ⇄ 文脈タグ） */}
             <div className="flex items-center gap-1.5">
@@ -1166,6 +1282,25 @@ export function GlobalGraphView({
                     }`}
                   >
                     {t(`globalGraph.colorMode.${m}` as any)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* 構造の提案（Storybook 合意用）: 大きさをつながりで決める */}
+            <div className="flex items-center gap-1.5" title={t("globalGraph.sizeReachHint")}>
+              <span className="text-[11px] text-muted-foreground">{t("globalGraph.size")}</span>
+              <div className="flex rounded-md border border-border overflow-hidden">
+                {(["kind", "reach"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setSizeMode(m)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      sizeMode === m
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t(`globalGraph.size.${m}` as any)}
                   </button>
                 ))}
               </div>
@@ -1215,7 +1350,7 @@ export function GlobalGraphView({
                 )}
               </span>
               <span className="text-[11px] text-muted-foreground">
-                {shown.nodes.length} / {shown.edges.length}
+                {displayedNodeCount} / {displayedEdgeCount}
               </span>
             </span>
           </>
@@ -1258,6 +1393,9 @@ export function GlobalGraphView({
                 hideUncategorized={hideUncategorized}
                 hideAtoms={!insightsEnabled}
                 clusterByContext={clusterByContext}
+                foldLeaves={foldLeaves}
+                sizeMode={sizeMode}
+                precomputedFold={foldResult}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
                 onSearchHits={setSearchHits}
