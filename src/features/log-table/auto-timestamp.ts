@@ -23,27 +23,44 @@ function withCellText(cell: any, text: string): any {
   return content;
 }
 
-// テーブルブロック ID → 直近に見た行数（ヘッダ込み）
-const prevRowCounts = new Map<string, number>();
+// エディタ → （テーブルブロック ID → 直近に見た行数（ヘッダ込み））
+// メインエディタと SidePeek は同時に開いていて、それぞれ別のノートを持つ。記録を
+// 1 つにまとめると、片方の読み込み（prime）がもう片方の記録を消し、消された側の
+// 次の行追加が「初見」扱いになって日時が入らない。エディタはノートを開くたびに
+// 作り直されるので、ノート切替で前の記録を捨てる処理は要らない。
+const rowCountsByEditor = new WeakMap<object, Map<string, number>>();
 
-/** ノート切替時に呼ぶ。前のノートの行数記録を捨て、次のノートで「初見」から始める */
-export function resetLogTableRowTracking(): void {
-  prevRowCounts.clear();
+function rowCountsOf(editor: object): Map<string, number> {
+  let counts = rowCountsByEditor.get(editor);
+  if (!counts) {
+    counts = new Map();
+    rowCountsByEditor.set(editor, counts);
+  }
+  return counts;
 }
 
 /**
- * ノート読込時に、保存済みブロックから各記録テーブルの行数を先に記録しておく。
- * これが無いと「ノートを開いて最初の行追加」が初見扱いになり日時が入らない
+ * ノートを開いたときに、各記録テーブルの行数をそのエディタの分として先に記録して
+ * おく。これが無いと「ノートを開いて最初の行追加」が初見扱いになり日時が入らない
  * （初見で書き込まないのは、既存の空セルを勝手に埋めないための仕様）。
+ *
+ * まだ記録の無い表だけを記録し、記録済みの行数は上書きしない。ホストは表の注釈の
+ * 復元とエディタの公開のどちらが先でも取りこぼさないよう両方の時点で呼ぶので、
+ * 後から古い本文や空の一覧で呼ばれても、その間に足した行の記録を崩さないため。
  */
-export function primeLogTableRowTracking(blocks: any[], logTableIds: Iterable<string>): void {
-  prevRowCounts.clear();
+export function primeLogTableRowTracking(
+  editor: object | null | undefined,
+  blocks: any[],
+  logTableIds: Iterable<string>
+): void {
+  if (!editor) return;
   const ids = new Set(logTableIds);
   if (ids.size === 0) return;
+  const counts = rowCountsOf(editor);
   const visit = (list: any[]) => {
     for (const b of list ?? []) {
-      if (b?.type === "table" && ids.has(b.id)) {
-        prevRowCounts.set(b.id, (b.content?.rows ?? []).length);
+      if (b?.type === "table" && ids.has(b.id) && !counts.has(b.id)) {
+        counts.set(b.id, (b.content?.rows ?? []).length);
       }
       if (Array.isArray(b?.children)) visit(b.children);
     }
@@ -54,12 +71,15 @@ export function primeLogTableRowTracking(blocks: any[], logTableIds: Iterable<st
 /**
  * 登録済み記録テーブルの行数変化を調べ、増えていれば 1 列目が空の
  * データ行に現在日時を書き込む。editor.onChange から毎回呼んでよい。
+ * 行数の記録は渡されたエディタの分だけを読み書きする。
  */
 export function applyLogTableTimestamps(
   editor: any,
   logTableIds: Iterable<string>,
   now: Date = new Date()
 ): void {
+  if (!editor) return;
+  const prevRowCounts = rowCountsOf(editor);
   for (const blockId of logTableIds) {
     const block = editor?.getBlock?.(blockId);
     if (!block || block.type !== "table") {

@@ -155,6 +155,7 @@ import {
   resolveMentionClickTarget,
 } from "./features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
+import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
@@ -2569,49 +2570,23 @@ function NoteEditorInner({
   // 同じ common を使う。新しい項目はそちらに足す（メインにしか出ない漏れを防ぐため）
   const mainOnlySlashItems = useMemo(() => getMainEditorOnlySlashMenuItems(), []);
   const commonSlashItems = useMemo(() => getCommonSlashMenuItems({ includeCite: true }), []);
-  // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
-  // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
-  // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
-  // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
-  const newNoteSlashItem: SlashMenuItem = useMemo(
-    () => ({
-      // ラベルは getter で遅延評価する。この項目は useMemo で保持されるので、
-      // ここで t() を即時評価すると言語を切り替えても古いラベルが残る。
-      get title() { return tStatic("slashMenu.newNote.title"); },
-      get subtext() { return tStatic("slashMenu.newNote.subtext"); },
-      get group() { return tStatic("slashMenu.newNote.group"); },
-      aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
-      onItemClick: (editor: any) => {
-        const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
-        void (async () => {
-          if (!onCreateLinkedNote) return;
-          const title = (await promptNoteName(""))?.trim() ?? "";
-          if (!title) return;
-          const newId = await onCreateLinkedNote(title);
-          if (!newId) return;
-          if (sourceBlockId) {
-            linkStore.addLink({
-              sourceBlockId,
-              targetBlockId: "",
-              targetNoteId: newId,
-              type: "reference",
-              createdBy: "human",
-            });
-            const exists = noteLinksRef.current.some((l) => l.targetNoteId === newId);
-            if (!exists) {
-              noteLinksRef.current = [
-                ...noteLinksRef.current,
-                { targetNoteId: newId, sourceBlockId, type: "derived_from" },
-              ];
-            }
-          }
-          // insertInlineContent の onChange で自動 markDirty される
-          setTimeout(() => {
-            insertNoteMentionInline(editorRef.current, newId, title);
-          }, 50);
-        })();
-      },
-    }),
+  // 「新しいノート」（名前を付けて新規ノートを作成し、ここにリンク）。組み立ては
+  // block-link/new-note-slash-item.ts で SidePeek と共通。メインが渡すのは記録先
+  // （このエディタの linkStore と noteLinksRef）だけ。作れないときは出さない
+  const newNoteSlashItem: SlashMenuItem | null = useMemo(
+    () =>
+      onCreateLinkedNote
+        ? buildNewNoteSlashItem({
+            promptNoteName,
+            createNote: (title) => onCreateLinkedNote(title),
+            getEditor: () => editorRef.current,
+            addLink: linkStore.addLink,
+            addNoteLink: (link) => {
+              if (noteLinksRef.current.some((l) => l.targetNoteId === link.targetNoteId)) return;
+              noteLinksRef.current = [...noteLinksRef.current, link];
+            },
+          })
+        : null,
     [onCreateLinkedNote, promptNoteName, linkStore],
   );
 
@@ -4679,9 +4654,11 @@ function NoteEditorInner({
       const tableMeta = migrateTableMeta(page);
       tableMetaStore.restore(tableMeta);
       const tableMetaEntries = Object.entries(tableMeta ?? {});
-      // 日時が入る列を持つテーブルの行数を先に記録しておく
-      // （開いて最初の行追加から日時が入るように）
+      // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+      // 日時が入るように）。記録はエディタ単位で、エディタの公開がこの復元より後なら
+      // ここはエディタが無く空振りする。そのときは下の mainEditor の effect が記録する
       primeLogTableRowTracking(
+        editorRef.current,
         page.blocks,
         tableMetaEntries
           .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
@@ -4973,13 +4950,30 @@ function NoteEditorInner({
   }, [addFirstColumnType]);
 
   // スラッシュメニューからの時系列テーブル登録コールバック
-  // （挿入されたテーブルの先頭列に datetime-auto を付ける）
+  // （挿入されたテーブルの先頭列に datetime-auto を付ける）。項目は SidePeek と共通なので、
+  // このエディタで押されたときだけ呼ばれるようにエディタ単位で登録する
   useEffect(() => {
-    setRegisterLogTableCallback((blockId: string) => {
+    if (!mainEditor) return;
+    setRegisterLogTableCallback(mainEditor, (blockId: string) => {
       addFirstColumnType(blockId, "datetime-auto");
     });
-    return () => { setRegisterLogTableCallback(null); };
-  }, [addFirstColumnType]);
+    return () => { setRegisterLogTableCallback(mainEditor, null); };
+  }, [mainEditor, addFirstColumnType]);
+
+  // 日時が入る列を持つテーブルの行数を、このエディタの分として先に記録しておく
+  // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
+  // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
+  // key={fileId || "new"} で作り直されるが、表の注釈（tableMetaStore）は残る。
+  // 初期データの復元でも記録するので、注釈の復元とエディタの公開のどちらが先でも
+  // 取りこぼさない（記録の無い表だけを埋めるので、二度呼んでも崩れない）
+  useEffect(() => {
+    if (!mainEditor) return;
+    primeLogTableRowTracking(
+      mainEditor,
+      mainEditor.document,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
+  }, [mainEditor]);
 
   // スコープ派生ボタン → 別ノートとして作成
   useEffect(() => {
@@ -5950,7 +5944,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...mainOnlySlashItems, ...commonSlashItems]}
+              extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...mainOnlySlashItems, ...commonSlashItems]}
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

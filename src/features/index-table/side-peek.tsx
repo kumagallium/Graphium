@@ -3,7 +3,7 @@
 // 背景ページは操作可能（薄暗くならない）
 // ラベル機能（ProvIndicatorLayer）対応
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
@@ -93,11 +93,18 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
+  hasColumnType,
+  readFirstColumnName,
   readTableData,
   sortTableBlock,
   type TableExpandData,
   type SortState,
 } from "@features/table-meta";
+import {
+  setRegisterLogTableCallback,
+  applyLogTableTimestamps,
+  primeLogTableRowTracking,
+} from "@features/log-table";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
@@ -111,6 +118,7 @@ import {
   resolveMentionClickTarget,
 } from "@features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
+import { buildNewNoteSlashItem } from "@features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
 import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
 import { isProvLabelsEnabled } from "@features/settings";
@@ -337,7 +345,7 @@ function SidePeekInner({
   const editorRef = useRef<any>(null);
   // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
-  // @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全）
+  // @ メニュー「新しいノートを作成」とスラッシュ「新しいノート」の名前入力ダイアログ（IME 安全）
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
@@ -526,14 +534,20 @@ function SidePeekInner({
     // 「読み込み中」と本文が高速に切り替わり続ける。store は ref 経由で参照する。
   }, [noteId]);
 
-  // ドキュメント読み込み後にラベル・リンクを復元
-  // setLabel / restoreLinks は useCallback で安定な参照
+  // ドキュメント読み込み後にラベル・リンクを復元（1 回の読み込みにつき 1 度だけ）
+  // setLabel / restoreLinks は useCallback で安定な参照。
+  // タイトルや文脈ラベルの変更も setDoc で doc を作り直すが、pages は読み込み時のまま。
+  // そこで走り直すと、このピークで加えた注釈・リンク・配置揃え（ピークで作った
+  // 時系列テーブルの登録など）が読み込み時の状態に戻り、次の自動保存で確定してしまう
   const { setLabel } = labelStore;
   const { restoreLinks } = linkStore;
+  const restoredPagesRef = useRef<unknown>(null);
   useEffect(() => {
     if (!doc) return;
     const page = doc.pages?.[0];
     if (!page) return;
+    if (restoredPagesRef.current === doc.pages) return;
+    restoredPagesRef.current = doc.pages;
 
     // ラベル復元
     if (page.labels) {
@@ -555,7 +569,18 @@ function SidePeekInner({
     // テーブル注釈（名前・取り込み元・列のふるまい）。メインと同じく旧 logTables /
     // indexTables はここで変換する。これが無いとピークでは表の名前も
     // 取り込み元バッジも出ず、長い表の折りたたみも効かない
-    tableMetaStoreRef.current.restore(migrateTableMeta(page));
+    const tableMeta = migrateTableMeta(page);
+    tableMetaStoreRef.current.restore(tableMeta);
+    // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+    // 日時が入るように）。エディタがまだ無ければ空振りし、エディタができたときの
+    // effect が記録する（メインの初期データの復元と同じ）
+    primeLogTableRowTracking(
+      editorRef.current,
+      page.blocks,
+      Object.entries(tableMeta ?? {})
+        .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
+        .map(([blockId]) => blockId),
+    );
   }, [doc, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
@@ -866,6 +891,30 @@ function SidePeekInner({
     if (!sidePeekEditor) return;
     publishTableColumns(sidePeekEditor, tableMetaStore);
   }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
+
+  // 時系列テーブル（行を足すと 1 列目に日時が入る表）。スラッシュ項目はメインと共通で、
+  // 登録先は押されたエディタをキーに引くので、ピークで挿入した表はピークの
+  // tableMetaStore に付く（メイン側のノートに注釈が漏れない）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setRegisterLogTableCallback(sidePeekEditor, (blockId: string) => {
+      tableMetaStoreRef.current.addColumnType(
+        blockId,
+        readFirstColumnName(sidePeekEditor.getBlock?.(blockId)),
+        "datetime-auto",
+      );
+    });
+    // 開いたときの行数を、このエディタの分として先に記録しておく（開いて最初の行追加
+    // から日時が入るように）。読み込み後の復元 effect でも記録するので、注釈の復元と
+    // エディタの公開のどちらが先でも取りこぼさない（記録の無い表だけを埋めるので、
+    // 二度呼んでも崩れない）
+    primeLogTableRowTracking(
+      sidePeekEditor,
+      sidePeekEditor.document,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
+    return () => { setRegisterLogTableCallback(sidePeekEditor, null); };
+  }, [sidePeekEditor]);
 
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
@@ -1267,6 +1316,12 @@ function SidePeekInner({
     if (noteId.startsWith("snapshot:")) return;
     setSaveStatus("dirty");
     labelAutoRef.current?.();
+    // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
+    // 1 列目に日時を入れる（メインエディタの handleContentChange と同じ）
+    applyLogTableTimestamps(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       // 発火したら空に戻す（null でない = 保存待ちの編集がある、を leavePeek が見る）
@@ -1306,6 +1361,30 @@ function SidePeekInner({
     const linked = blockContainsUrlLink(editor, blockId, url);
     registerUrlAsset(url, linked ? buildPeekUsage(blockId) : [], onAddUrlBookmark);
   }, [buildPeekUsage, onAddUrlBookmark]);
+
+  // スラッシュメニューの「新しいノート」。組み立てはメインと共通
+  // （block-link/new-note-slash-item.ts）で、記録先だけこのピークのものを渡す:
+  // reference リンクはピークの linkStore、派生関係（noteLinks）はピークで開いている
+  // ノート（doSave が docRef.current を spread して一緒に保存する）。新しいノートの
+  // 派生元もこのノートにする（@ の「新規ノートを作成」と同じ）。作れないときは出さない
+  const newNoteSlashItem = useMemo(
+    () =>
+      onCreateLinkedNote
+        ? buildNewNoteSlashItem({
+            promptNoteName,
+            createNote: (title) => onCreateLinkedNote(title, noteId),
+            getEditor: () => editorRef.current,
+            addLink: (params) => linkStoreRef.current.addLink(params),
+            addNoteLink: (link) => {
+              const cur = docRef.current;
+              if (!cur || (cur.noteLinks ?? []).some((l) => l.targetNoteId === link.targetNoteId)) return;
+              docRef.current = { ...cur, noteLinks: [...(cur.noteLinks ?? []), link] };
+              handleChange();
+            },
+          })
+        : null,
+    [onCreateLinkedNote, promptNoteName, noteId, handleChange],
+  );
 
   // 文脈ラベルの初期化（ノートを開いた最初のロード時に doc から取り込む。noteId 単位で一度だけ、
   // 以降の本文編集による doc 変化ではリセットしない）。
@@ -1958,8 +2037,9 @@ function SidePeekInner({
                 // 各 slash item の onItemClick はクリック時のエディタを
                 // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
                 // 挿入される。メインに固定の受け口で動く項目（インデックステーブル等）は
-                // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）
-                extraSlashMenuItems={getCommonSlashMenuItems({ includeCite: !!noteIndex })}
+                // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）。
+                // 先頭の「新しいノート」はメインと同じ組み立てで、記録先がこのピーク
+                extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...getCommonSlashMenuItems({ includeCite: !!noteIndex })]}
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
@@ -2048,7 +2128,7 @@ function SidePeekInner({
         }
       `}</style>
 
-      {/* @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全） */}
+      {/* @ メニュー「新しいノートを作成」とスラッシュ「新しいノート」の名前入力ダイアログ（IME 安全） */}
       {newNoteNameDialog}
 
       {/* URL ペースト → ブックマーク/リンク選択メニュー（メインエディタと同じ） */}
