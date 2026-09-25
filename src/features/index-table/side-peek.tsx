@@ -518,14 +518,20 @@ function SidePeekInner({
     // 「読み込み中」と本文が高速に切り替わり続ける。store は ref 経由で参照する。
   }, [noteId]);
 
-  // ドキュメント読み込み後にラベル・リンクを復元
-  // setLabel / restoreLinks は useCallback で安定な参照
+  // ドキュメント読み込み後にラベル・リンクを復元（1 回の読み込みにつき 1 度だけ）
+  // setLabel / restoreLinks は useCallback で安定な参照。
+  // タイトルや文脈ラベルの変更も setDoc で doc を作り直すが、pages は読み込み時のまま。
+  // そこで走り直すと、このピークで加えた注釈・リンク・配置揃え（ピークで作った
+  // 時系列テーブルの登録など）が読み込み時の状態に戻り、次の自動保存で確定してしまう
   const { setLabel } = labelStore;
   const { restoreLinks } = linkStore;
+  const restoredPagesRef = useRef<unknown>(null);
   useEffect(() => {
     if (!doc) return;
     const page = doc.pages?.[0];
     if (!page) return;
+    if (restoredPagesRef.current === doc.pages) return;
+    restoredPagesRef.current = doc.pages;
 
     // ラベル復元
     if (page.labels) {
