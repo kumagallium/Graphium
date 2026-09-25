@@ -1806,10 +1806,11 @@ type SourceCheckProfile = {
   has since changed. The body here is a fixed plain-text fingerprint
   (`claimHashBody` in `src/features/source-check/claim-hash.ts`), not the
   text the check sends to the model: that text keeps superscript /
-  subscript and formulas, while the fingerprint keeps the original v1
-  extraction (no tags, formulas ignored, links as `[object Object]`),
-  because changing how it is extracted would mark every checked page as
-  changed.
+  subscript and formulas and reads step contents, nested blocks and tables,
+  while the fingerprint keeps the original v1 extraction (no tags, formulas
+  ignored, links as `[object Object]`, children of a block that has text of
+  its own skipped, BlockNote 0.47 table cells read as empty), because
+  changing how it is extracted would mark every checked page as changed.
 - **`dismissed`** marks a verdict the user manually cleared from the note,
   distinguishing "never checked" (no `sourceCheck` at all) from "checked,
   then deliberately cleared" — the same semantics as `grounding.validity.dismissed`
