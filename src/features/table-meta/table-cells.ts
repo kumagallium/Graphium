@@ -3,6 +3,8 @@
 // BlockNote のテーブルセルは、新しい `tableCell` 形式と旧 inline 配列形式の
 // 両方がありうる（既存ノートには両方が混在する）。読み取りはこの 1 箇所に集める。
 
+import { TABLE_ROW_IDENTITY_STYLE, tableRowIdentityOfCell } from "../../lib/table-row-identity";
+
 /** セルからテキストを取り出す */
 export function readCellText(cell: any): string {
   const content = Array.isArray(cell)
@@ -65,13 +67,20 @@ export function readTableData(block: any): { header: string[]; rows: string[][] 
  *
  * セルを `[{type:"text", ...}]` で丸ごと置き換えると、その形式の違いのぶん
  * セルに付いていた色・配置が黙って落ちる。書き換えはこの 1 箇所に集める。
+ *
+ * 先頭列のセルには行の同一性（tableRowIdentity）が付いている。書き換えで落とすと
+ * 次の保存でその行が別の Entity として採番し直され、行に紐づくもの（他ノートからの
+ * 行の参照・行ごとの @リンク）が外れる。元のセルに付いていれば新しい文字へ引き継ぐ
  */
 export function withCellText(
   cell: any,
   text: string,
   styles: Record<string, unknown> = {}
 ): any {
-  const content = [{ type: "text", text, styles }];
+  const identity = text ? tableRowIdentityOfCell(cell) : undefined;
+  const content = [
+    { type: "text", text, styles: identity ? { ...styles, [TABLE_ROW_IDENTITY_STYLE]: identity } : styles },
+  ];
   if (cell && !Array.isArray(cell) && cell.type === "tableCell") {
     return { ...cell, content };
   }

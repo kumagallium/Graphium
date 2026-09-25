@@ -328,11 +328,23 @@ export const MENTIONABLE_ASSET_TYPES: readonly string[] = ["pdf", "document", "d
  */
 export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSuggestion[] {
   if (!mediaIndex) return [];
-  return mediaIndex.media
+  const assets = mediaIndex.media
     .filter((m) => MENTIONABLE_ASSET_TYPES.includes(m.type))
     .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
-    .slice(0, 15)
-    .map((m) => ({
+    .slice(0, 15);
+  // 同名の素材が並ぶときだけ、2 行目に出どころを添える（ノートの同名と同じ扱い）。
+  // 装置の出力は同じ名前が普通にある（試料ごとの XRD.txt）。フォルダごと取り込んだ
+  // 素材は取り込み元のフォルダを持つのでそれを、無ければ登録日時を出す — まとめて
+  // 取り込むと登録日時はほぼ同じになり、区別の手がかりにならない
+  const nameCount = new Map<string, number>();
+  for (const m of assets) {
+    const key = m.name.normalize("NFC");
+    nameCount.set(key, (nameCount.get(key) ?? 0) + 1);
+  }
+  return assets.map((m) => {
+    const duplicated = (nameCount.get(m.name.normalize("NFC")) ?? 0) > 1;
+    const origin = m.noteContexts?.length ? m.noteContexts.join(", ") : formatMentionDate(m.uploadedAt);
+    return {
       type: "asset" as const,
       id: m.fileId,
       // 絵文字はピッカーのサムネイルと同じ使い分け（データ素材は 🧾）。
@@ -340,5 +352,7 @@ export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSu
       label: `${m.type === "data" ? "🧾" : m.type === "image" ? "🖼" : "📄"} ${m.name}`,
       group: t("mention.groupAssets"),
       assetType: m.type,
-    }));
+      ...(duplicated && origin ? { subtext: origin } : {}),
+    };
+  });
 }

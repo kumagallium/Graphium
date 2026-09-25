@@ -61,6 +61,13 @@ export type BlockLink = {
   targetSourceModifiedAt?: string;
   /** 現在ノート側に作った material span の entityId */
   sourceEntityId?: string;
+  /**
+   * 表のセルに入れた @リンクのとき、そのセルがある行の tableRowIdentity。
+   * 表は 1 ブロックに全セルのリンクが並ぶので、同じ表に同じラベル（試料ごとの
+   * data.txt 等）が並んでも、クリックを行ごとの正しい行き先へ届けるための手がかり。
+   * これより前に作ったリンクには無い（その場合は従来どおりブロック単位で解決する）
+   */
+  sourceRowIdentity?: string;
   /** 投影未読・リンク切れでも表示するためのスナップショット */
   targetEntityLabel?: string;
   targetNoteTitle?: string;

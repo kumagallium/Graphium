@@ -38,14 +38,43 @@ const media = [
 ];
 const mediaIndex = { version: 9, updatedAt: "t", media } as MediaIndex;
 
-const ref = (sourceBlockId: string, targetNoteId: string) => ({
+const ref = (sourceBlockId: string, targetNoteId: string, sourceRowIdentity?: string) => ({
   sourceBlockId,
   targetNoteId,
   type: "reference",
+  ...(sourceRowIdentity ? { sourceRowIdentity } : {}),
 });
 
 describe("resolveMentionClickTarget", () => {
-  const base = { blockId: "b1", inTableCell: false, links: [], noteIndex, media };
+  const base = { blockId: "b1", inTableCell: false, rowIdentity: null, links: [], noteIndex, media };
+
+  describe("表の行に紐づけたリンク", () => {
+    // 試料ごとの data.txt（同名の別ファイル）を、同じ表の行ごとに @ で並べた状態
+    const rowLinks = [ref("tbl", "data:f2", "row_1"), ref("tbl", "data:f3", "row_2")];
+    const cell = { ...base, blockId: "tbl", inTableCell: true, mentionText: "data.txt", links: rowLinks };
+
+    it("同じ表に同じラベルが並んでも、押した行のリンクの素材を開く", () => {
+      expect(resolveMentionClickTarget({ ...cell, rowIdentity: "row_1" })).toBe("data:f2");
+      expect(resolveMentionClickTarget({ ...cell, rowIdentity: "row_2" })).toBe("data:f3");
+    });
+
+    it("別の行に紐づいたリンクは使わない（その行に記録が無ければ名前の逆引きへ）", () => {
+      // row_3 には記録が無い。row_1 のリンク（f2）ではなく、引用素材の f3 が選ばれる
+      expect(
+        resolveMentionClickTarget({ ...cell, rowIdentity: "row_3", citedAssetFileIds: ["f3"] }),
+      ).toBe("data:f3");
+    });
+
+    it("行の記録が無い旧いリンクは、どの行からも従来どおり使う", () => {
+      const legacy = [ref("tbl", "data:f3")];
+      expect(resolveMentionClickTarget({ ...cell, rowIdentity: "row_1", links: legacy })).toBe("data:f3");
+    });
+
+    it("その行のリンクを旧いリンクより先に見る", () => {
+      const mixed = [ref("tbl", "data:f3"), ref("tbl", "data:f2", "row_1")];
+      expect(resolveMentionClickTarget({ ...cell, rowIdentity: "row_1", links: mixed })).toBe("data:f2");
+    });
+  });
 
   it("段落の @素材 は記録したリンクの外部ソース ID に解決する", () => {
     const id = resolveMentionClickTarget({
@@ -220,14 +249,33 @@ describe("readMentionAt", () => {
 
   it("エディタ内の青い @ラベル から、@ を除いたラベルとブロック ID を読む", () => {
     const el = mount(`<div class="bn-editor"><div data-id="p1"><p>${blue("@spectrum.txt")}</p></div></div>`);
-    expect(readMentionAt(el)).toEqual({ mentionText: "spectrum.txt", blockId: "p1", inTableCell: false });
+    expect(readMentionAt(el)).toEqual({
+      mentionText: "spectrum.txt",
+      blockId: "p1",
+      inTableCell: false,
+      rowIdentity: null,
+    });
   });
 
-  it("表のセル内なら inTableCell。ブロック ID は表ブロック", () => {
+  it("表のセル内なら inTableCell。ブロック ID は表ブロック、行 ID は先頭セルの印から", () => {
     const el = mount(
-      `<div class="bn-editor"><div data-id="tbl"><table><tr><td>${blue("@spectrum.txt")}</td></tr></table></div></div>`,
+      `<div class="bn-editor"><div data-id="tbl"><table><tr>` +
+        `<td><span data-style-type="tableRowIdentity" data-row-identity="row_7">試料A</span></td>` +
+        `<td>${blue("@spectrum.txt")}</td></tr></table></div></div>`,
     );
-    expect(readMentionAt(el)).toEqual({ mentionText: "spectrum.txt", blockId: "tbl", inTableCell: true });
+    expect(readMentionAt(el)).toEqual({
+      mentionText: "spectrum.txt",
+      blockId: "tbl",
+      inTableCell: true,
+      rowIdentity: "row_7",
+    });
+  });
+
+  it("未採番の行（先頭セルに印が無い）は行 ID が null", () => {
+    const el = mount(
+      `<div class="bn-editor"><div data-id="tbl"><table><tr><td>新しい行</td><td>${blue("@spectrum.txt")}</td></tr></table></div></div>`,
+    );
+    expect(readMentionAt(el)?.rowIdentity).toBeNull();
   });
 
   it("表の先頭列のように、内側に行 ID のスタイルが重なっていても外側の青文字から読む", () => {
@@ -237,7 +285,12 @@ describe("readMentionAt", () => {
         `<span data-testid="t" data-style-type="tableRowIdentity" data-row-identity="row_1">@spectrum.txt</span>` +
         `</span></td></tr></table></div></div>`,
     );
-    expect(readMentionAt(el)).toEqual({ mentionText: "spectrum.txt", blockId: "tbl", inTableCell: true });
+    expect(readMentionAt(el)).toEqual({
+      mentionText: "spectrum.txt",
+      blockId: "tbl",
+      inTableCell: true,
+      rowIdentity: "row_1",
+    });
   });
 
   it("見出しへの参照・@ 無しの青文字・エディタ外は対象外", () => {
