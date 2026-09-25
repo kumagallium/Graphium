@@ -5,6 +5,18 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Component, type ReactNode } from "react";
 import { SandboxEditor } from "./editor";
 import { helloBlock } from "../blocks/example-hello";
+import "../app.css";
+// SandboxEditor は note-app と同じ Context 群を要求する（calc / chart のストーリーと同じ理由）。
+// 包まないと「LabelStoreProvider が見つかりません」で全ストーリーが描画エラーになる
+import {
+  LabelStoreProvider,
+  ProvLabelsEnabledProvider,
+} from "../features/context-label/store";
+import { LinkStoreProvider } from "../features/block-link/store";
+import { TableMetaStoreProvider } from "../features/table-meta/store";
+import { MediaInlineLabelProvider } from "../features/inline-label/media-store";
+import { BlockAlignmentProvider } from "../features/block-alignment/store";
+import { AiAssistantProvider } from "../features/ai-assistant/store";
 
 // ── エラーバウンダリ（BlockNote 初期化エラーを吸収） ──
 class ErrorBoundary extends Component<
@@ -28,7 +40,23 @@ class ErrorBoundary extends Component<
 }
 
 function Safe({ children }: { children: ReactNode }) {
-  return <ErrorBoundary>{children}</ErrorBoundary>;
+  return (
+    <ErrorBoundary>
+      <ProvLabelsEnabledProvider enabled={false}>
+        <LabelStoreProvider>
+          <LinkStoreProvider>
+            <TableMetaStoreProvider>
+              <MediaInlineLabelProvider>
+                <BlockAlignmentProvider>
+                  <AiAssistantProvider aiAvailable={false}>{children}</AiAssistantProvider>
+                </BlockAlignmentProvider>
+              </MediaInlineLabelProvider>
+            </TableMetaStoreProvider>
+          </LinkStoreProvider>
+        </LabelStoreProvider>
+      </ProvLabelsEnabledProvider>
+    </ErrorBoundary>
+  );
 }
 
 const meta: Meta = {
