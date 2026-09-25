@@ -80,6 +80,25 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
     executeSave();
   }, [executeSave]);
 
+  // 未保存の編集を今すぐ呼び出し側へ渡す（開いているエディタの「今すぐ書き出す」口。
+  // 同じノートを別の場所で開くときに使う — lib/peek-save-queue.ts の registerLivePeek）。
+  // 未保存が無ければ null。あれば自動保存のタイマーを止めて未保存を下ろし、それまでに
+  // 始めた保存がすべて終わったら true で解決する Promise を返す（その後で書くこと）
+  const takeUnsaved = useCallback((): Promise<boolean> | null => {
+    if (unmountedRef.current || !unsavedRef.current) return null;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = null;
+    unsavedRef.current = false;
+    return inflightRef.current.then(() => true);
+  }, []);
+  // 渡した書き出しが書けなかったら未保存に戻す（次の保存・アンマウント時にもう一度書く）
+  const restoreUnsaved = useCallback(() => {
+    if (unmountedRef.current) return;
+    unsavedRef.current = true;
+    setDirty(true);
+  }, []);
+  const hasUnsaved = useCallback(() => !unmountedRef.current && unsavedRef.current, []);
+
   // アンマウント時: 未保存の編集が残っていれば書き出す（ノートを切り替えた・一覧や素材
   // ギャラリーへ移った瞬間の、直前 3 秒の編集を落とさないため）。
   // レイアウト段階の後片付けで行うのは、ここではまだ子のエディタが外されておらず本文を
@@ -140,5 +159,5 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
     };
   }, []);
 
-  return { dirty, setDirty, markDirty, saveNow };
+  return { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved };
 }

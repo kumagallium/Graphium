@@ -233,3 +233,59 @@ describe("useAutoSave: アンマウント時の書き出し（StrictMode）", ()
     expect(writes).toEqual([]);
   });
 });
+
+describe("useAutoSave: 開いたまま今すぐ書き出す口（takeUnsaved / restoreUnsaved）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("未保存を受け取るとタイマーは止まり、書けなかったら未保存に戻してアンマウント時に書き出す", async () => {
+    const saves: string[] = [];
+    const flushes: string[] = [];
+    let api!: ReturnType<typeof useAutoSave>;
+    function Probe() {
+      api = useAutoSave(
+        () => {
+          saves.push("timer");
+        },
+        (ready) => {
+          void ready.then((ok) => {
+            if (ok) flushes.push("unmount");
+          });
+        },
+      );
+      return null;
+    }
+    const { unmount } = render(<Strict><Probe /></Strict>);
+
+    expect(api.takeUnsaved()).toBeNull();
+    await act(async () => {
+      api.markDirty();
+    });
+    expect(api.hasUnsaved()).toBe(true);
+    let ready: Promise<boolean> | null = null;
+    await act(async () => {
+      ready = api.takeUnsaved();
+    });
+    expect(ready).not.toBeNull();
+    expect(await ready!).toBe(true);
+    expect(api.hasUnsaved()).toBe(false);
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(saves).toEqual([]); // 受け取った分をタイマーが二重に書かない
+
+    // 受け取った書き出しが失敗 → 未保存に戻す → アンマウントで書き出す
+    await act(async () => {
+      api.restoreUnsaved();
+    });
+    expect(api.hasUnsaved()).toBe(true);
+    await act(async () => {
+      unmount();
+    });
+    expect(flushes).toEqual(["unmount"]);
+  });
+});
