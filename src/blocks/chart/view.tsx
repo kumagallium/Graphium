@@ -991,8 +991,8 @@ export function buildChart(
   const coverTopRight = Math.max(0, area.coverTopRight ?? 0);
   const buttonAbove =
     coverTopRight > 0 && (compact || (legendTop && config.legendPosition === "top-right"));
-  // 凡例は折り返すと 2 行目以降がプロット枠に重なるので、行数ぶんの高さを先に空ける。
-  // 1 行に収まるときは従来と同じ値（48 / 32）になるので既存の図は動かない。
+  // 凡例は折り返すと 2 行目以降がプロット枠に重なるので、行数ぶんの高さを先に空ける
+  //（1 行 24px。LEGEND_ROW_PITCH）。1 行に収まるときは従来と同じ値（48 / 32）になる。
   // 凡例の幅は右上の設定ボタンに掛からないところまでに絞り、見積もりと実際の
   // 折り返し位置を合わせる。72 は日本語の「設定」ボタン（63px）に隙間を足した幅。
   // ボタンが図に重なったままなら実際に覆っている幅まで空ける（英語の「Settings」は
@@ -1834,6 +1834,26 @@ function ChartCanvas({
   const [failed, setFailed] = useState(false);
   const [width, setWidth] = useState(0);
   const [coverTopRight, setCoverTopRight] = useState(0);
+  // Web フォントの読み込みが終わるたびに進める番号。凡例の行数・狭い図の縦軸の余白は
+  // canvas で測った文字幅から決まるが、フォントの読み込みでは組み直されない。
+  // 読み込み前は代替フォントで 5〜8% 狭く測られ、凡例の行数を少なく見積もって
+  // 最終行が枠に食い込んだ（Storybook の初回表示で実測。アプリでも起動直後に
+  // 図のあるノートを開くと起こりうる）
+  const [fontEpoch, bumpFontEpoch] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    if (!fonts) return;
+    let alive = true;
+    // マウント時の組み立ての後で読み込みが終わっていても取りこぼさないよう、1 回は測り直す
+    void fonts.ready.then(() => {
+      if (alive) bumpFontEpoch();
+    });
+    fonts.addEventListener("loadingdone", bumpFontEpoch);
+    return () => {
+      alive = false;
+      fonts.removeEventListener("loadingdone", bumpFontEpoch);
+    };
+  }, []);
 
   // コンテナ幅に追従（アスペクト比で高さを決めるため幅を測る）。あわせて設定ボタンが
   // 図の右上を横方向にどれだけ覆っているかを測る。ボタンを図の上の行へ逃がしても
@@ -1865,8 +1885,11 @@ function ChartCanvas({
     let disposed = false;
     // cleanup は「この effect 実行が作ったインスタンス」だけを破棄する
     let created: any = null;
-    loadECharts()
-      .then((ec) => {
+    // 最初の描画は Web フォントが揃ってからにする。ECharts（zrender）は文字幅を
+    // フォント名ごとに覚えて測り直さないので、代替フォントで先に描くと、凡例の並びが
+    // こちらの見積もり（読み込み後に測り直す）とずれて、凡例と枠の間が空きすぎる
+    Promise.all([loadECharts(), waitForWebFonts()])
+      .then(([ec]) => {
         if (disposed || !chartElRef.current) return;
         created = ec.init(chartElRef.current, undefined, { renderer: "svg" });
         setChart(created);
@@ -1882,10 +1905,11 @@ function ChartCanvas({
   }, []);
 
   // 高さは余白の計算と一緒に決まる（狭い図は描画領域が潰れないよう縦に伸ばす）ので、
-  // option と同時に組む
+  // option と同時に組む。fontEpoch はフォントが揃ったら文字幅を測り直すための依存
   const figure = useMemo(
     () => buildChart(result, config, tables, { width, coverTopRight }),
-    [result, config, tables, width, coverTopRight]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [result, config, tables, width, coverTopRight, fontEpoch]
   );
 
   // ボタンの置き場所はブロック側（ChartBlockView）が持つ。描画前に知らせて、
@@ -1913,6 +1937,25 @@ function ChartCanvas({
       <div ref={chartElRef} style={{ width: "100%", height: figure.height }} />
     </div>
   );
+}
+
+/** 最初の描画でフォントを待つ上限(ms)。読み込みが長引いても図は出す */
+const WEB_FONT_WAIT_MS = 1000;
+
+/**
+ * Web フォントの読み込みを待つ。document.fonts が無い環境（テストの jsdom）や、
+ * 上限を過ぎても終わらないときは待たない。失敗しても図は描く（reject しない）
+ */
+function waitForWebFonts(): Promise<void> {
+  const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+  if (!fonts) return Promise.resolve();
+  return Promise.race([
+    fonts.ready.then(
+      () => undefined,
+      () => undefined
+    ),
+    new Promise<void>((resolve) => setTimeout(resolve, WEB_FONT_WAIT_MS)),
+  ]);
 }
 
 const EMPTY_TABLES: ChartSourceOption[] = [];

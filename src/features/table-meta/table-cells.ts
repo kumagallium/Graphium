@@ -89,3 +89,36 @@ export function findColumnIndexByName(block: any, columnName: string | undefined
   const idx = headerCells.findIndex((c: any) => readCellText(c) === columnName);
   return idx >= 0 ? idx : 0;
 }
+
+/**
+ * 表の 1 セルを 1 つのテキストに書き換えて editor に反映する。セルは withCellText を通す。
+ *
+ * 渡す content は、いまの content の rows だけを差し替えたもの。列幅（columnWidths）と
+ * 見出しの行・列（headerRows / headerCols）も content に入っていて、rows だけで渡すと
+ * BlockNote は無いものとして表を作り直す（広げた列幅が既定に戻り、見出し行が解ける）。
+ *
+ * @param rowIndex content.rows の位置（見出し行が 0）
+ * @returns 書き換えたら true。表・行・セルが無ければ何もせず false
+ */
+export function writeCellText(
+  editor: any,
+  blockId: string,
+  rowIndex: number,
+  colIndex: number,
+  text: string,
+  styles: Record<string, unknown> = {}
+): boolean {
+  const block = editor?.getBlock?.(blockId);
+  if (block?.type !== "table") return false;
+  const content = block.content ?? {};
+  const rows: any[] = content.rows ?? [];
+  const cells: any[] | undefined = rows[rowIndex]?.cells;
+  if (!cells || colIndex < 0 || colIndex >= cells.length) return false;
+  const nextRows = rows.map((row, i) =>
+    i === rowIndex
+      ? { ...row, cells: cells.map((c, ci) => (ci === colIndex ? withCellText(c, text, styles) : c)) }
+      : row
+  );
+  editor.updateBlock(blockId, { content: { ...content, type: "tableContent", rows: nextRows } });
+  return true;
+}
