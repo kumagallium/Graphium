@@ -2,10 +2,32 @@
 //
 // docs/internal/note-chain-plan.md §2.4・§3 PR3。
 // データは local-view-model.ts の buildLocalView（純関数）に一本化し、
-// このファイルは Proposal の Swimlane（note-chain.proposal.stories.tsx）を
-// 実データで描く SVG レイアウトだけを担当する。
+// このファイルは実データを React Flow で描く（工程フローと同じ部品・同じ
+// ズーム/パン操作）レイアウトだけを担当する。
+//
+// ノードカードは step-flow-view.tsx と同じ StepNodeCard / GroupFlowNode を
+// そのまま再利用する。手順フローと違い、ここではドラッグ・接続・ELK は
+// 使わない（時間軸に沿った固定レイアウト。ノードは model が変わるたびに
+// 丸ごと作り直す）。
 
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  Background,
+  BaseEdge,
+  Controls,
+  MarkerType,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  getBezierPath,
+  useInternalNode,
+  useReactFlow,
+  type Edge,
+  type EdgeProps,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { Undo2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { buildLocalView } from "./local-view-model";
@@ -17,26 +39,28 @@ import {
   requestLatestProcessIndexRefresh,
   subscribeLatestProcessIndex,
 } from "./process-index";
+import { StepNodeCard } from "./step-node-card";
+import { GroupFlowNode } from "./group-flow-node";
+import type { FlowNoteRef, FlowStep } from "./activity-graph-adapter";
 
-// ── 寸法（SVG viewBox 座標。表示幅は 100% でスケールする） ──
+// ── 寸法（React Flow の座標。ピクセル） ──
 
-const VIEW_W = 960;
-const LEFT = 116;
-const RIGHT_PAD = 24;
-const NODE_W = 148;
-const NODE_H = 44;
-const ROW_GAP = 12;
-const LANE_GAP = 56;
-const AXIS_H = 30;
-const TOP_PAD = 16;
-const BOTTOM_PAD = 20;
-const STEP_W = 120;
-const STEP_GAP = 28;
+const NODE_W = 180;
+const NODE_H = 64;
+const ROW_GAP = 16;
+const LANE_PAD_TOP = 40; // 帯のラベル分
+const LANE_PAD = 16;
+const LANE_GAP = 40;
+/** 同じレーンに並ぶノード 1 つあたりの最小横幅 */
+const MIN_SLOT = NODE_W + 40;
+const STEP_W = NODE_W;
+const STEP_GAP = 32;
+const AXIS_H = 28;
 
-const LANE_WIDTH = VIEW_W - LEFT - RIGHT_PAD;
+const FOREST = "var(--forest)";
+const MUTED = "var(--color-muted-foreground)";
 
 // ── 時間軸 ──
-
 
 function dateLabel(iso: string): string {
   const d = new Date(iso);
@@ -53,124 +77,524 @@ function buildTimeScale(nodes: LocalViewNode[]): TimeScale | null {
 }
 
 /** 時刻を横位置（左端）へ写す。幅 0（全ノード同時刻）なら左寄せ */
-function xOfTime(iso: string, scale: TimeScale | null): number {
-  if (!scale) return LEFT;
+function xOfTime(iso: string, scale: TimeScale | null, laneW: number): number {
+  if (!scale) return LANE_PAD;
   const t = new Date(iso).getTime();
-  if (Number.isNaN(t) || scale.max === scale.min) return LEFT;
+  if (Number.isNaN(t) || scale.max === scale.min) return LANE_PAD;
   const ratio = (t - scale.min) / (scale.max - scale.min);
-  return LEFT + ratio * (LANE_WIDTH - NODE_W);
+  return LANE_PAD + ratio * (laneW - 2 * LANE_PAD - NODE_W);
 }
 
-function buildTicks(scale: TimeScale | null): { x: number; label: string }[] {
+function buildTicks(scale: TimeScale | null, laneW: number): { x: number; label: string }[] {
   if (!scale) return [];
   const COUNT = 5;
   if (scale.max === scale.min) {
-    return [{ x: LEFT + NODE_W / 2, label: dateLabel(new Date(scale.min).toISOString()) }];
+    return [{ x: LANE_PAD + NODE_W / 2, label: dateLabel(new Date(scale.min).toISOString()) }];
   }
   const ticks: { x: number; label: string }[] = [];
   for (let i = 0; i < COUNT; i++) {
     const ratio = i / (COUNT - 1);
     const t = scale.min + ratio * (scale.max - scale.min);
     const iso = new Date(t).toISOString();
-    ticks.push({ x: LEFT + ratio * (LANE_WIDTH - NODE_W) + NODE_W / 2, label: dateLabel(iso) });
+    ticks.push({
+      x: LANE_PAD + ratio * (laneW - 2 * LANE_PAD - NODE_W) + NODE_W / 2,
+      label: dateLabel(iso),
+    });
   }
   // 同じ日に収まる範囲（数分差など）だと 5 つとも同じ日付になる。同じラベルは 1 つに畳む
   return ticks.filter((tick, i) => i === 0 || tick.label !== ticks[i - 1].label);
 }
 
-// ── 行数から高さを出す ──
+// ── 行数から帯の高さを出す ──
 
-function rowCountOf(nodes: LocalViewNode[]): number {
-  return nodes.length === 0 ? 0 : Math.max(...nodes.map((n) => n.row)) + 1;
+function laneRows(nodes: { row: number }[]): number {
+  return nodes.length === 0 ? 1 : Math.max(...nodes.map((n) => n.row)) + 1;
 }
 
-function laneHeight(rows: number): number {
-  return rows === 0 ? NODE_H : rows * NODE_H + (rows - 1) * ROW_GAP;
+function bandHeight(rows: number): number {
+  return LANE_PAD_TOP + rows * NODE_H + (rows - 1) * ROW_GAP + LANE_PAD;
 }
 
-// ── ノードカード ──
+// ── ノード id ──
 
-function NoteNodeCard({
-  node,
-  x,
-  y,
-  width,
-  onOpenNote,
-  trashedLabel,
-  archivedLabel,
-}: {
-  node: LocalViewNode;
-  x: number;
-  y: number;
-  width: number;
-  onOpenNote: (noteId: string) => void;
-  trashedLabel: string;
-  archivedLabel: string;
-}) {
-  const fill = node.isOrigin ? "var(--forest-soft)" : "var(--color-card)";
-  const stroke = node.isOrigin ? "var(--forest)" : "var(--color-border)";
-  const dimmed = Boolean(node.state);
-  const note = node.state === "trashed" ? trashedLabel : node.state === "archived" ? archivedLabel : null;
+function noteNodeId(noteId: string): string {
+  return `note:${noteId}`;
+}
+
+function stepNodeId(ownerNoteId: string, stepId: string): string {
+  return `step:${ownerNoteId}:${stepId}`;
+}
+
+// ── エッジの見た目 ──
+//
+// 全エッジは同じカスタム型 "timeline"（TimelineEdgeComponent）で描く。
+// ハンドルの位置（StepNodeCard の上/下ハンドル）には依存せず、data.kind で
+// 横向き（handoff・step: 右辺中央→左辺中央）/ 縦向き（partOf: 下辺中央→上辺中央）
+// を出し分ける（ノードの絶対座標から毎回計算し直すので、レーンをまたいでも
+// 輪を描かない）。
+
+export type TimelineEdgeKind = "handoff" | "step" | "partOf";
+type TimelineEdgeData = { kind: TimelineEdgeKind; broken?: boolean };
+type TimelineFlowEdge = Edge<TimelineEdgeData, "timeline">;
+
+function partOfEdge(source: string, target: string): Edge {
+  return {
+    id: `partOf-${source}->${target}`,
+    source,
+    target,
+    type: "timeline",
+    data: { kind: "partOf" },
+    style: { stroke: MUTED, strokeWidth: 1, strokeDasharray: "4 3" },
+    selectable: false,
+  };
+}
+
+function handoffEdge(source: string, target: string, broken: boolean): Edge {
+  return {
+    id: `handoff-${source}->${target}`,
+    source,
+    target,
+    type: "timeline",
+    data: { kind: "handoff", broken },
+    style: { stroke: FOREST, strokeWidth: 1.5, ...(broken ? { strokeDasharray: "4 3" } : {}) },
+    markerEnd: { type: MarkerType.ArrowClosed, color: FOREST, width: 16, height: 16 },
+    selectable: false,
+  };
+}
+
+function stepEdge(source: string, target: string): Edge {
+  return {
+    id: `step-${source}->${target}`,
+    source,
+    target,
+    type: "timeline",
+    data: { kind: "step" },
+    style: { stroke: FOREST, strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: FOREST, width: 16, height: 16 },
+    selectable: false,
+  };
+}
+
+/**
+ * 全エッジ共通のカスタムエッジ。ハンドルの座標（下→上に回り込む輪の原因）
+ * ではなく、両端ノードの絶対座標（useInternalNode）から直接
+ * 「横向き: 右辺中央→左辺中央」「縦向き: 下辺中央→上辺中央」を計算する。
+ */
+function TimelineEdgeComponent({ id, source, target, style, markerEnd, data }: EdgeProps<TimelineFlowEdge>) {
+  const t = useT();
+  const sourceNode = useInternalNode(source);
+  const targetNode = useInternalNode(target);
+  if (!sourceNode || !targetNode) return null;
+
+  // partOf（親→同じ層、起点→子、工程→その手順）だけ縦向き。
+  // handoff・step（同じレーン内の受け渡し・手順間）は横向き
+  const horizontal = data?.kind !== "partOf";
+
+  const sx = sourceNode.internals.positionAbsolute.x;
+  const sy = sourceNode.internals.positionAbsolute.y;
+  const sw = sourceNode.measured.width ?? NODE_W;
+  const sh = sourceNode.measured.height ?? NODE_H;
+  const tx = targetNode.internals.positionAbsolute.x;
+  const ty = targetNode.internals.positionAbsolute.y;
+  const tw = targetNode.measured.width ?? NODE_W;
+  const th = targetNode.measured.height ?? NODE_H;
+
+  const sourceX = horizontal ? sx + sw : sx + sw / 2;
+  const sourceY = horizontal ? sy + sh / 2 : sy + sh;
+  const targetX = horizontal ? tx : tx + tw / 2;
+  const targetY = horizontal ? ty + th / 2 : ty;
+
+  const [path] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition: horizontal ? Position.Right : Position.Bottom,
+    targetX,
+    targetY,
+    targetPosition: horizontal ? Position.Left : Position.Top,
+  });
+
+  const edge = <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />;
+  // broken な受け渡し線だけ、旧 SVG 版と同じホバー説明を出す
+  if (data?.kind === "handoff" && data.broken) {
+    return (
+      <g>
+        <title>{t("planFlow.brokenRef")}</title>
+        {edge}
+      </g>
+    );
+  }
+  return edge;
+}
+
+const edgeTypes = { timeline: TimelineEdgeComponent };
+
+// ── 帯ごとのラベル（相対表示。localView.lane.* の出し分けは元の SVG 版と同じ規則）──
+
+type LaneLabels = { parent: string; siblings: string; children: string; childSteps: string };
+
+// ── ノード生成 ──
+
+function noteFlowStep(node: LocalViewNode): FlowStep {
+  return {
+    id: noteNodeId(node.noteId),
+    name: node.title,
+    params: [],
+    noteRef: { noteId: node.noteId, tableBlockId: "", rowIndex: -1, state: node.state },
+  };
+}
+
+function noteNode(
+  node: LocalViewNode,
+  parentId: string,
+  x: number,
+  y: number,
+  onOpenNote: (noteId: string) => void,
+): Node {
+  return {
+    id: noteNodeId(node.noteId),
+    type: "step",
+    parentId,
+    position: { x, y },
+    data: {
+      activity: noteFlowStep(node),
+      onOpenNoteRef: (ref: FlowNoteRef) => {
+        if (ref.noteId) onOpenNote(ref.noteId);
+      },
+      showParams: false,
+      connectNoteRefs: false,
+    },
+    selected: node.isOrigin,
+    draggable: false,
+    selectable: false,
+    connectable: false,
+  };
+}
+
+function stepNode(step: LocalViewStep, ownerNoteId: string, parentId: string, x: number, y: number): Node {
+  return {
+    id: stepNodeId(ownerNoteId, step.id),
+    type: "step",
+    parentId,
+    position: { x, y },
+    data: {
+      activity: { id: stepNodeId(ownerNoteId, step.id), name: step.name, params: [] },
+      showParams: false,
+      connectNoteRefs: false,
+    },
+    draggable: false,
+    selectable: false,
+    connectable: false,
+  };
+}
+
+function bandNode(id: string, y: number, width: number, height: number, label: string, index: number): Node {
+  return {
+    id,
+    type: "band",
+    position: { x: 0, y },
+    style: { width, height },
+    data: { label, index },
+    selectable: false,
+    draggable: false,
+    connectable: false,
+    zIndex: -1,
+  };
+}
+
+// ── レイアウト本体（model → React Flow の nodes/edges）──
+
+function buildTimelineFlow(
+  model: LocalViewModel,
+  labels: LaneLabels,
+  onOpenNote: (noteId: string) => void,
+): { nodes: Node[]; edges: Edge[] } {
+  const childNotes = model.children.kind === "notes" ? model.children.notes : [];
+  const stepsByNote = model.children.kind === "notes" ? model.children.stepsByNote : {};
+
+  const timeScale = buildTimeScale([...model.siblings, ...childNotes]);
+  const n = Math.max(model.siblings.length, childNotes.length, 1);
+  // 時間 → x のスケール（ratio の分母）。帯・時間軸の実際の幅（containerW、
+  // 下で算出）とは別物にする — 後で右端の overflow に合わせて帯を広げても、
+  // 一度決めた時間軸のスケール自体はずらさない（目盛りとノードの対応がぶれない）
+  const laneW = Math.max(960, n * MIN_SLOT);
+  const xOfNote = (node: LocalViewNode) => xOfTime(node.t, timeScale, laneW);
+  const originNode = model.siblings.find((s) => s.isOrigin) ?? null;
+
+  // 帯は「幅が決まるまで」スペックだけ集めておき、containerW が決まった後に
+  // Node へ変換する（各工程の手順は起点ノートの x + col 分右へ伸びるので、
+  // 右端が laneW を超えることがある。960 起点の初期値のままだと右端が
+  // 帯からはみ出る）
+  const bandSpecs: { id: string; y: number; height: number; label: string; index: number }[] = [];
+  const items: Node[] = [];
+  const edges: Edge[] = [];
+  let y = 0;
+  // 色相の index は帯の出現順ではなく役割で固定する（親=0/同じ層=1/子=2/
+  // 各工程の手順=3）。親が無いときも同じ層は 1 のまま（0 にはならない）
+  const BAND_INDEX = { parent: 0, siblings: 1, children: 2, childSteps: 3 } as const;
+
+  // 親レーン
+  if (model.parent) {
+    const bandId = "band:parent";
+    const height = bandHeight(1);
+    bandSpecs.push({ id: bandId, y, height, label: labels.parent, index: BAND_INDEX.parent });
+    items.push(noteNode(model.parent, bandId, LANE_PAD, LANE_PAD_TOP, onOpenNote));
+    y += height + LANE_GAP;
+  }
+
+  // 同じ層
+  const siblingsBandId = "band:siblings";
+  {
+    const height = bandHeight(laneRows(model.siblings));
+    bandSpecs.push({ id: siblingsBandId, y, height, label: labels.siblings, index: BAND_INDEX.siblings });
+    for (const node of model.siblings) {
+      const x = xOfNote(node);
+      const ny = LANE_PAD_TOP + node.row * (NODE_H + ROW_GAP);
+      items.push(noteNode(node, siblingsBandId, x, ny, onOpenNote));
+    }
+    y += height + LANE_GAP;
+  }
+
+  // 子
+  const childrenBandId = "band:children";
+  const originX = originNode ? xOfNote(originNode) : LANE_PAD;
+  {
+    const rows = model.children.kind === "notes" ? laneRows(childNotes) : laneRows(model.children.steps);
+    const height = bandHeight(rows);
+    bandSpecs.push({ id: childrenBandId, y, height, label: labels.children, index: BAND_INDEX.children });
+    if (model.children.kind === "notes") {
+      for (const note of childNotes) {
+        const x = xOfNote(note);
+        const ny = LANE_PAD_TOP + note.row * (NODE_H + ROW_GAP);
+        items.push(noteNode(note, childrenBandId, x, ny, onOpenNote));
+      }
+    } else {
+      for (const step of model.children.steps) {
+        const x = originX + step.col * (STEP_W + STEP_GAP);
+        const ny = LANE_PAD_TOP + step.row * (NODE_H + ROW_GAP);
+        items.push(stepNode(step, model.origin.noteId, childrenBandId, x, ny));
+      }
+    }
+    y += height + LANE_GAP;
+  }
+
+  // 各工程の手順（3 段目。起点が計画ノートのときだけ）
+  const childStepGroups: {
+    note: LocalViewNode;
+    steps: LocalViewStep[];
+    edges: { from: string; to: string }[];
+    rowOffset: number;
+  }[] = [];
+  if (model.children.kind === "notes") {
+    let rowOffset = 0;
+    for (const note of childNotes) {
+      const data = stepsByNote[note.noteId];
+      if (!data || data.steps.length === 0) continue;
+      childStepGroups.push({ note, steps: data.steps, edges: data.edges, rowOffset });
+      rowOffset += Math.max(...data.steps.map((s) => s.row)) + 1;
+    }
+  }
+  const hasChildSteps = childStepGroups.length > 0;
+  let childStepsBandId: string | null = null;
+  if (hasChildSteps) {
+    const totalRows = childStepGroups.reduce(
+      (acc, g) => acc + Math.max(...g.steps.map((s) => s.row)) + 1,
+      0,
+    );
+    childStepsBandId = "band:childSteps";
+    const height = bandHeight(totalRows);
+    bandSpecs.push({ id: childStepsBandId, y, height, label: labels.childSteps, index: BAND_INDEX.childSteps });
+    for (const group of childStepGroups) {
+      const baseX = xOfNote(group.note);
+      for (const step of group.steps) {
+        const x = baseX + step.col * (STEP_W + STEP_GAP);
+        const ny = LANE_PAD_TOP + (group.rowOffset + step.row) * (NODE_H + ROW_GAP);
+        items.push(stepNode(step, group.note.noteId, childStepsBandId, x, ny));
+      }
+    }
+    y += height + LANE_GAP;
+  }
+
+  // 帯・時間軸の実際の幅。全ノード（手順の col 分の右への伸びも含む）の
+  // 右端 + LANE_PAD を下回らないようにする（時間軸のスケール laneW はそのまま）
+  const maxRight = items.reduce((max, item) => Math.max(max, item.position.x + NODE_W), 0);
+  const containerW = Math.max(laneW, maxRight + LANE_PAD);
+  const bands: Node[] = bandSpecs.map((spec) =>
+    bandNode(spec.id, spec.y, containerW, spec.height, spec.label, spec.index),
+  );
+
+  // 時間軸
+  const ticks = buildTicks(timeScale, laneW);
+  const axisNode: Node = {
+    id: "axis",
+    type: "axis",
+    position: { x: 0, y },
+    style: { width: containerW, height: AXIS_H },
+    data: { ticks },
+    selectable: false,
+    draggable: false,
+    connectable: false,
+  };
+
+  // ── エッジ ──
+
+  if (model.parent) {
+    for (const s of model.siblings) {
+      edges.push(partOfEdge(noteNodeId(model.parent.noteId), noteNodeId(s.noteId)));
+    }
+  }
+
+  if (originNode) {
+    if (model.children.kind === "notes") {
+      for (const note of childNotes) {
+        edges.push(partOfEdge(noteNodeId(originNode.noteId), noteNodeId(note.noteId)));
+      }
+    } else {
+      for (const step of model.children.steps.filter((s) => s.col === 0)) {
+        edges.push(partOfEdge(noteNodeId(originNode.noteId), stepNodeId(model.origin.noteId, step.id)));
+      }
+    }
+  }
+
+  for (const group of childStepGroups) {
+    const first = group.steps[0];
+    if (!first) continue;
+    edges.push(partOfEdge(noteNodeId(group.note.noteId), stepNodeId(group.note.noteId, first.id)));
+  }
+
+  for (const h of model.handoffs) {
+    edges.push(handoffEdge(noteNodeId(h.from), noteNodeId(h.to), h.broken));
+  }
+
+  if (model.children.kind === "steps") {
+    for (const e of model.children.edges) {
+      edges.push(stepEdge(stepNodeId(model.origin.noteId, e.from), stepNodeId(model.origin.noteId, e.to)));
+    }
+  }
+
+  for (const group of childStepGroups) {
+    for (const e of group.edges) {
+      edges.push(stepEdge(stepNodeId(group.note.noteId, e.from), stepNodeId(group.note.noteId, e.to)));
+    }
+  }
+
+  return { nodes: [...bands, ...items, axisNode], edges };
+}
+
+// ── 時間軸ノード（帯の下に 1 本。目盛りを絶対配置で並べるだけの表示専用）──
+
+type TimeAxisData = { ticks: { x: number; label: string }[] };
+type TimeAxisFlowNode = Node<TimeAxisData, "axis">;
+
+function TimeAxisNode({ data }: NodeProps<TimeAxisFlowNode>) {
   return (
-    <g
-      onClick={() => onOpenNote(node.noteId)}
-      style={{ cursor: "pointer" }}
-      opacity={dimmed ? 0.55 : 1}
-    >
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={NODE_H}
-        rx={6}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={node.isOrigin ? 2 : 1}
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 1,
+          background: MUTED,
+        }}
       />
-      <text
-        x={x + 10}
-        y={y + (note ? 17 : NODE_H / 2 + 4)}
-        fill="var(--color-foreground)"
-        fontWeight={node.isOrigin ? 600 : 500}
-        fontSize={12}
-      >
-        <title>{node.title}</title>
-        {truncateLabel(node.title, width)}
-      </text>
-      {note && (
-        <text x={x + 10} y={y + 34} fill="var(--color-muted-foreground)" fontSize={10.5}>
-          {note}
-        </text>
-      )}
-    </g>
+      {data.ticks.map((tick, i) => (
+        <span
+          key={i}
+          style={{
+            position: "absolute",
+            left: tick.x,
+            top: 6,
+            transform: "translateX(-50%)",
+            fontSize: 11,
+            color: MUTED,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tick.label}
+        </span>
+      ))}
+    </div>
   );
 }
 
-function truncateLabel(label: string, width: number): string {
-  // 1 文字 ≒ 7px の粗い近似（等幅フォントではないが目安には十分）
-  const maxChars = Math.max(4, Math.floor((width - 20) / 7));
-  if (label.length <= maxChars) return label;
-  return label.slice(0, Math.max(1, maxChars - 1)) + "…";
-}
+const nodeTypes = { step: StepNodeCard, band: GroupFlowNode, axis: TimeAxisNode };
 
-function StepNodeCard({ step, x, y }: { step: LocalViewStep; x: number; y: number }) {
+// ── React Flow キャンバス ──
+
+function TimelineFlow({
+  model,
+  onOpenNote,
+}: {
+  model: LocalViewModel;
+  onOpenNote: (noteId: string) => void;
+}) {
+  const t = useT();
+  const { fitView } = useReactFlow();
+  const rafRef = useRef<number | null>(null);
+
+  // 呼び出し元（note-app.tsx）は onOpenNote を毎レンダー新しい関数で渡してくる。
+  // 参照を ref に retain し、buildTimelineFlow/useMemo の依存には入れない
+  // ノードを作り直す条件を「model が変わったとき」だけに保ち、無関係な
+  // 再レンダーで fitView が巻き戻らないようにするため
+  const onOpenNoteRef = useRef(onOpenNote);
+  onOpenNoteRef.current = onOpenNote;
+  const openNote = useRef((noteId: string) => onOpenNoteRef.current(noteId)).current;
+
+  const labels: LaneLabels = useMemo(
+    () => ({
+      parent: t("localView.lane.parent"),
+      siblings:
+        !model.parent && model.children.kind === "notes"
+          ? t("localView.lane.parent")
+          : t("localView.lane.siblings"),
+      children: model.children.kind === "notes" ? t("localView.lane.siblings") : t("localView.lane.children"),
+      childSteps: t("localView.lane.childSteps"),
+    }),
+    [t, model.parent, model.children.kind],
+  );
+
+  const { nodes, edges } = useMemo(
+    () => buildTimelineFlow(model, labels, openNote),
+    [model, labels, openNote],
+  );
+
+  // model が変わるたびにノードを作り直しているので、実測サイズが揃うのを
+  // 待ってから改めて全体を収める。ELK もドラッグも無い画面なので、
+  // 二度 rAF を挟むだけの簡単な再試行で足りる
+  useEffect(() => {
+    const raf1 = requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(() => {
+        void fitView({ padding: 0.1, maxZoom: 1 });
+      });
+    });
+    rafRef.current = raf1;
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges, fitView]);
+
   return (
-    <g>
-      <rect
-        x={x}
-        y={y}
-        width={STEP_W}
-        height={NODE_H}
-        rx={6}
-        fill="var(--color-card)"
-        stroke="var(--color-border)"
-        strokeWidth={1}
-      />
-      <text x={x + 8} y={y + NODE_H / 2 + 4} fill="var(--color-foreground)" fontSize={12} fontWeight={500}>
-        <title>{step.name}</title>
-        {truncateLabel(step.name, STEP_W)}
-      </text>
-    </g>
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
+      onNodeClick={(_e, node) => {
+        if (node.id.startsWith("note:")) openNote(node.id.slice("note:".length));
+      }}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable={false}
+      fitView
+      fitViewOptions={{ padding: 0.1, maxZoom: 1 }}
+      minZoom={0.2}
+      style={{ background: "var(--color-background)" }}
+    >
+      <Background color="var(--color-border)" gap={22} size={1.5} />
+      <Controls showInteractive={false} />
+    </ReactFlow>
   );
 }
 
@@ -185,12 +609,6 @@ export type LocalGraphViewProps = {
   originPicker?: ReactNode;
   /** ノートから来たときだけ渡す。ヘッダー右端に t("localView.backToNote") */
   onBackToNote?: () => void;
-};
-
-type ChildStepGroup = {
-  note: LocalViewNode;
-  items: { step: LocalViewStep; x: number; y: number }[];
-  edges: { x1: number; y1: number; x2: number; y2: number }[];
 };
 
 export function LocalGraphView({
@@ -250,320 +668,20 @@ export function LocalGraphView({
     );
   }
 
-  // ── レイアウト計算 ──
-  const siblingsRows = rowCountOf(model.siblings);
-  const childNotes = model.children.kind === "notes" ? model.children.notes : [];
-  const stepsByNote = model.children.kind === "notes" ? model.children.stepsByNote : {};
-  const childRows =
-    model.children.kind === "notes"
-      ? rowCountOf(childNotes)
-      : model.children.steps.length === 0
-        ? 0
-        : Math.max(...model.children.steps.map((s) => s.row)) + 1;
-
-  const parentY = TOP_PAD + 18; // レーンラベル分の余白
-  const parentHeight = model.parent ? NODE_H : 0;
-  const siblingsY = parentY + parentHeight + (model.parent ? LANE_GAP : 18);
-  const siblingsHeight = laneHeight(siblingsRows);
-  const childrenY = siblingsY + siblingsHeight + LANE_GAP;
-  const childrenHeight = laneHeight(childRows === 0 ? 1 : childRows);
-
-  const timeScale = buildTimeScale([...model.siblings, ...childNotes]);
-  const ticks = buildTicks(timeScale);
-
-  const siblingById = new Map(model.siblings.map((n) => [n.noteId, n]));
-  const originNode = model.siblings.find((n) => n.isOrigin) ?? null;
-
-  function xOfNote(n: LocalViewNode): number {
-    return xOfTime(n.t, timeScale);
-  }
-  function yOfSibling(n: LocalViewNode): number {
-    return siblingsY + n.row * (NODE_H + ROW_GAP);
-  }
-  function yOfChildNote(n: LocalViewNode): number {
-    return childrenY + n.row * (NODE_H + ROW_GAP);
-  }
-  function xOfStep(step: LocalViewStep): number {
-    const base = originNode ? xOfNote(originNode) : LEFT;
-    return base + step.col * (STEP_W + STEP_GAP);
-  }
-  function yOfStep(step: LocalViewStep): number {
-    return childrenY + step.row * (NODE_H + ROW_GAP);
-  }
-
-  // ── 3 段目のレーン: 各工程の手順（起点が計画ノートのときだけ）──
-  // 工程ごとに縦に並べる: 各工程ノートの手順は、その工程の x を基準に
-  // col を右へ、row を下へ配置し、工程の並び順で積み上げる。
-  const childStepsY = childrenY + childrenHeight + LANE_GAP;
-  const childStepGroups: ChildStepGroup[] = [];
-  let childStepsRows = 0;
-  if (model.children.kind === "notes") {
-    for (const note of childNotes) {
-      const data = stepsByNote[note.noteId];
-      if (!data || data.steps.length === 0) continue;
-      const posById = new Map<string, { x: number; y: number }>();
-      const items = data.steps.map((step) => {
-        const x = xOfNote(note) + step.col * (STEP_W + STEP_GAP);
-        const y = childStepsY + (childStepsRows + step.row) * (NODE_H + ROW_GAP);
-        posById.set(step.id, { x, y });
-        return { step, x, y };
-      });
-      const edges = data.edges
-        .map((e) => {
-          const from = posById.get(e.from);
-          const to = posById.get(e.to);
-          if (!from || !to) return null;
-          return { x1: from.x + STEP_W, y1: from.y + NODE_H / 2, x2: to.x, y2: to.y + NODE_H / 2 };
-        })
-        .filter((e): e is { x1: number; y1: number; x2: number; y2: number } => e !== null);
-      childStepGroups.push({ note, items, edges });
-      childStepsRows += Math.max(...data.steps.map((s) => s.row)) + 1;
-    }
-  }
-  const hasChildSteps = childStepGroups.length > 0;
-  const childStepsHeight = laneHeight(childStepsRows);
-  const totalHeight =
-    (hasChildSteps ? childStepsY + childStepsHeight + LANE_GAP : childrenY + childrenHeight) +
-    AXIS_H +
-    BOTTOM_PAD;
-
   return (
     <div className="flex flex-col h-full min-h-0">
       {header}
-      <div className="flex-1 overflow-auto p-4">
-        <svg
-          viewBox={`0 0 ${VIEW_W} ${totalHeight}`}
-          width="100%"
-          style={{ display: "block", fontSize: 12 }}
-        >
-          <defs>
-            <marker id="lv-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-              <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" strokeWidth="1.5" strokeLinecap="round" />
-            </marker>
-          </defs>
-
-          {/* レーンの区切り線とラベル */}
-          {model.parent && (
-            <LaneHeader y={parentY - 14} label={t("localView.lane.parent")} />
-          )}
-          {/* レーン名は相対。起点が計画ノート（子が工程ノート）なら、同じ層は「計画」、子は「工程ノート」 */}
-          <LaneHeader
-            y={siblingsY - 14}
-            label={
-              !model.parent && model.children.kind === "notes"
-                ? t("localView.lane.parent")
-                : t("localView.lane.siblings")
-            }
-          />
-          <LaneHeader
-            y={childrenY - 14}
-            label={model.children.kind === "notes" ? t("localView.lane.siblings") : t("localView.lane.children")}
-          />
-          {hasChildSteps && <LaneHeader y={childStepsY - 14} label={t("localView.lane.childSteps")} />}
-
-          {/* 親 → 同じ層（partOf、点線） */}
-          {model.parent &&
-            model.siblings.map((n) => (
-              <path
-                key={`parent-${n.noteId}`}
-                d={`M${xOfNote(n) + NODE_W / 2} ${parentY + NODE_H} L${xOfNote(n) + NODE_W / 2} ${yOfSibling(n)}`}
-                fill="none"
-                stroke="var(--color-muted-foreground)"
-                strokeDasharray="4 3"
-              />
-            ))}
-
-          {/* 起点 → 子（partOf、点線） */}
-          {originNode &&
-            (model.children.kind === "notes"
-              ? childNotes.map((n) => (
-                  <path
-                    key={`child-${n.noteId}`}
-                    d={`M${xOfNote(originNode) + NODE_W / 2} ${yOfSibling(originNode) + NODE_H} L${xOfNote(n) + NODE_W / 2} ${yOfChildNote(n)}`}
-                    fill="none"
-                    stroke="var(--color-muted-foreground)"
-                    strokeDasharray="4 3"
-                  />
-                ))
-              : model.children.steps
-                  .filter((s) => s.col === 0)
-                  .map((s) => (
-                    <path
-                      key={`child-${s.id}`}
-                      d={`M${xOfNote(originNode) + NODE_W / 2} ${yOfSibling(originNode) + NODE_H} L${xOfStep(s) + STEP_W / 2} ${yOfStep(s)}`}
-                      fill="none"
-                      stroke="var(--color-muted-foreground)"
-                      strokeDasharray="4 3"
-                    />
-                  )))}
-
-          {/* 子（工程ノート） → その手順（partOf、点線） */}
-          {hasChildSteps &&
-            childStepGroups.map((group) => {
-              const first = group.items[0];
-              if (!first) return null;
-              return (
-                <path
-                  key={`childstep-${group.note.noteId}`}
-                  d={`M${xOfNote(group.note) + NODE_W / 2} ${yOfChildNote(group.note) + NODE_H} L${first.x + STEP_W / 2} ${first.y}`}
-                  fill="none"
-                  stroke="var(--color-muted-foreground)"
-                  strokeDasharray="4 3"
-                />
-              );
-            })}
-
-          {/* handoffs（同じ層の受け渡し） */}
-          {model.handoffs.map((h, i) => {
-            const a = siblingById.get(h.from);
-            const b = siblingById.get(h.to);
-            if (!a || !b) return null;
-            const x1 = xOfNote(a) + NODE_W;
-            const y1 = yOfSibling(a) + NODE_H / 2;
-            const x2 = xOfNote(b);
-            const y2 = yOfSibling(b) + NODE_H / 2;
-            const d =
-              y1 === y2
-                ? `M${x1} ${y1} L${x2 - 2} ${y2}`
-                : `M${x1} ${y1} C${x1 + 30} ${y1} ${x2 - 30} ${y2} ${x2 - 2} ${y2}`;
-            return (
-              <path
-                key={`ho-${i}`}
-                d={d}
-                fill="none"
-                stroke="var(--forest)"
-                strokeWidth={1.5}
-                strokeDasharray={h.broken ? "4 3" : undefined}
-                markerEnd="url(#lv-arrow)"
-              >
-                {h.broken && <title>{t("planFlow.brokenRef")}</title>}
-              </path>
-            );
-          })}
-
-          {/* ステップ間の線 */}
-          {model.children.kind === "steps" &&
-            model.children.edges.map((e, i) => {
-              const a = model.children.kind === "steps" ? model.children.steps.find((s) => s.id === e.from) : null;
-              const b = model.children.kind === "steps" ? model.children.steps.find((s) => s.id === e.to) : null;
-              if (!a || !b) return null;
-              const x1 = xOfStep(a) + STEP_W;
-              const y1 = yOfStep(a) + NODE_H / 2;
-              const x2 = xOfStep(b);
-              const y2 = yOfStep(b) + NODE_H / 2;
-              const d =
-                y1 === y2
-                  ? `M${x1} ${y1} L${x2 - 2} ${y2}`
-                  : `M${x1} ${y1} C${x1 + 20} ${y1} ${x2 - 20} ${y2} ${x2 - 2} ${y2}`;
-              return (
-                <path key={`se-${i}`} d={d} fill="none" stroke="var(--forest)" strokeWidth={1.5} markerEnd="url(#lv-arrow)" />
-              );
-            })}
-
-          {/* 各工程の手順（3 段目のレーン）の内部エッジ */}
-          {hasChildSteps &&
-            childStepGroups.flatMap((group, gi) =>
-              group.edges.map((e, i) => {
-                const d =
-                  e.y1 === e.y2
-                    ? `M${e.x1} ${e.y1} L${e.x2 - 2} ${e.y2}`
-                    : `M${e.x1} ${e.y1} C${e.x1 + 20} ${e.y1} ${e.x2 - 20} ${e.y2} ${e.x2 - 2} ${e.y2}`;
-                return (
-                  <path
-                    key={`cse-${gi}-${i}`}
-                    d={d}
-                    fill="none"
-                    stroke="var(--forest)"
-                    strokeWidth={1.5}
-                    markerEnd="url(#lv-arrow)"
-                  />
-                );
-              }),
-            )}
-
-          {/* 親ノード */}
-          {model.parent && (
-            <NoteNodeCard
-              node={model.parent}
-              x={LEFT}
-              y={parentY}
-              width={LANE_WIDTH}
-              onOpenNote={onOpenNote}
-              trashedLabel={t("planFlow.trashedNote")}
-              archivedLabel={t("planFlow.archivedNote")}
-            />
-          )}
-
-          {/* 同じ層のノード */}
-          {model.siblings.map((n) => (
-            <NoteNodeCard
-              key={n.noteId}
-              node={n}
-              x={xOfNote(n)}
-              y={yOfSibling(n)}
-              width={NODE_W}
-              onOpenNote={onOpenNote}
-              trashedLabel={t("planFlow.trashedNote")}
-              archivedLabel={t("planFlow.archivedNote")}
-            />
-          ))}
-
-          {/* 子のノード */}
-          {model.children.kind === "notes"
-            ? childNotes.map((n) => (
-                <NoteNodeCard
-                  key={n.noteId}
-                  node={n}
-                  x={xOfNote(n)}
-                  y={yOfChildNote(n)}
-                  width={NODE_W}
-                  onOpenNote={onOpenNote}
-                  trashedLabel={t("planFlow.trashedNote")}
-                  archivedLabel={t("planFlow.archivedNote")}
-                />
-              ))
-            : model.children.steps.map((s) => (
-                <StepNodeCard key={s.id} step={s} x={xOfStep(s)} y={yOfStep(s)} />
-              ))}
-
-          {/* 各工程の手順（3 段目のレーン）のノード */}
-          {hasChildSteps &&
-            childStepGroups.flatMap((group) =>
-              group.items.map(({ step, x, y }) => (
-                <StepNodeCard key={`${group.note.noteId}:${step.id}`} step={step} x={x} y={y} />
-              )),
-            )}
-
-          {/* 時間軸 */}
-          <line
-            x1={LEFT}
-            x2={VIEW_W - RIGHT_PAD}
-            y1={totalHeight - AXIS_H}
-            y2={totalHeight - AXIS_H}
-            stroke="var(--color-muted-foreground)"
-          />
-          {ticks.map((tick, i) => (
-            <text key={i} x={tick.x} y={totalHeight - AXIS_H + 16} fill="var(--color-muted-foreground)" textAnchor="middle">
-              {tick.label}
-            </text>
-          ))}
-        </svg>
-        {model.truncated && (
-          <p className="mt-2 text-xs text-muted-foreground">{t("planFlow.truncated")}</p>
-        )}
+      <div className="flex-1 min-h-0">
+        <ReactFlowProvider>
+          <TimelineFlow model={model} onOpenNote={onOpenNote} />
+        </ReactFlowProvider>
       </div>
+      {model.truncated && (
+        <p className="px-4 py-1 text-xs text-muted-foreground shrink-0 border-t border-border">
+          {t("planFlow.truncated")}
+        </p>
+      )}
     </div>
-  );
-}
-
-function LaneHeader({ y, label }: { y: number; label: string }) {
-  return (
-    <g>
-      <line x1={0} x2={VIEW_W} y1={y} y2={y} stroke="var(--color-border)" />
-      <text x={4} y={y + NODE_H / 2 + 4} fill="var(--color-muted-foreground)">
-        {label}
-      </text>
-    </g>
   );
 }
 

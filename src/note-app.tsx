@@ -1,7 +1,7 @@
 // ノートアプリのメイン画面
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
@@ -195,7 +195,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
-import { pendingPeekSave, queuePeekSave } from "./lib/peek-save-queue";
+import { pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -422,6 +422,7 @@ import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
 import type { EditorSaveTarget } from "./hooks/use-file-manager";
+import { usePeekSettledDoc } from "./hooks/use-peek-settled-doc";
 import { useImeEnterGuard } from "./hooks/use-ime-enter-guard";
 import { useAutoGrounding } from "./hooks/use-auto-grounding";
 import {
@@ -1044,6 +1045,17 @@ type NoteEditorProps = {
   fileId: string | null;
   initialDoc: GraphiumDocument | null;
   /**
+   * 開いているノートのキー（fm.activeFileId。wiki:/skill: 付き。新規ノートは null）。
+   * サイドピークの保存の列と同じ形で、同じノートの書き出しを待つのに使う（NoteEditor）。
+   * メインエディタの保存先（EditorSaveTarget）と、アンマウント時の書き出しを並べるキーにも使う
+   */
+  docKey?: string | null;
+  /**
+   * サイドピークが保存できなかった編集を持ち込んで開いた。「未保存」から始め、自動保存で
+   * 書き直す（NoteEditor が決める。hooks/use-peek-settled-doc.ts）
+   */
+  startUnsaved?: boolean;
+  /**
    * ノート id → そのノートのフォルダ。エディタ内から開く素材サイドピークで、
    * 素材が「使われているノートのフォルダ」に属して見えるようにするために渡す
    * （素材ギャラリー側と同じ導出を使い、見え方を揃える）。
@@ -1051,11 +1063,6 @@ type NoteEditorProps = {
   noteFolderLookup?: NoteFolderLookup;
   /** エディタ内から開く素材サイドピークで、素材のフォルダを付け外しする */
   onEditMediaContexts?: EditMediaContexts;
-  /**
-   * 開いているノートのキー（fm.activeFileId。wiki:/skill: 付き。新規ノートは null）。
-   * 保存先（EditorSaveTarget）とノートごとの保存の列のキーに使う
-   */
-  docKey?: string | null;
   /** エディタを開いた回（fm.editorKey）。保存先の判定に使う（use-file-manager の saveEditorDoc） */
   editorSession?: number;
   /**
@@ -1285,6 +1292,18 @@ type NoteEditorProps = {
 };
 
 function NoteEditor(props: NoteEditorProps) {
+  const t = useT();
+  // サイドピークで同じノートを編集した直後なら、その書き出しが済んでから本文を組み立てる。
+  // 待たずに作ると書き出し前の古い本文のエディタができ、その自動保存がピークの編集を
+  // 書き戻す（理由と入口の分担は hooks/use-peek-settled-doc.ts）
+  const settled = usePeekSettledDoc(props.docKey ?? null, props.initialDoc);
+  if (settled.waiting) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        {t("common.loading")}
+      </div>
+    );
+  }
   return (
     <ProvLabelsEnabledProvider enabled={props.provLabelsEnabled ?? true}>
     <LabelStoreProvider>
@@ -1296,7 +1315,7 @@ function NoteEditor(props: NoteEditorProps) {
         {/* モデル未登録（agentConfigured=false）ならエディタ内 AI ボタン群
             （フォーマッティングツールバー / ドラッグメニュー / 選択ツールバーの Bot）も隠す */}
         <AiAssistantProvider aiAvailable={(props.aiAvailable ?? true) && (props.agentConfigured ?? true)}>
-          <NoteEditorInner {...props} />
+          <NoteEditorInner {...props} initialDoc={settled.doc} startUnsaved={settled.startUnsaved} />
         </AiAssistantProvider>
         </BlockAlignmentProvider>
         </MediaOcrProvider>
@@ -1560,6 +1579,7 @@ function NoteGraphTabPanel({
 function NoteEditorInner({
   fileId,
   initialDoc,
+  startUnsaved = false,
   noteFolderLookup,
   onEditMediaContexts,
   docKey,
@@ -3243,12 +3263,15 @@ function NoteEditorInner({
     return true;
   }, [saveDoc, buildDocument, fileId, sharedRefState, sidePeekNoteId, isWikiDoc, onPropagateMentionRename]);
 
-  // アンマウント時の書き出し（ノートを切り替えた・一覧や素材ギャラリーへ移った瞬間に残っていた、
-  // 直前 3 秒の編集）。useAutoSave がエディタの外される前（レイアウト段階の後片付け）に同期で
-  // 呼ぶので、本文はここで読む。書き出しはノートごとの保存の列に同期で並べる — 移った先の
-  // サイドピークが同じノートを開くとき、この書き出しを待ってから読めるように。
-  // ready が false（StrictMode の試しのアンマウント）なら何も書かない
-  const flushOnUnmount = useCallback((ready: Promise<boolean>) => {
+  // 未保存の編集の書き出し。2 つの入口から呼ぶ:
+  // - アンマウント時（ノートを切り替えた・一覧や素材ギャラリーへ移った瞬間に残っていた、直前
+  //   3 秒の編集）。useAutoSave がエディタの外される前（レイアウト段階の後片付け）に同期で呼ぶ
+  // - 開いたまま、同じノートを別の場所で開くとき（下の registerLivePeek の flush）
+  // 本文はここで同期で読み、ノートごとの保存の列にも同期で並べる — 同じノートを開く側
+  // （サイドピーク・メインエディタの関所・handleOpen*）が、この書き出しを待ってから読めるように。
+  // ready が false（StrictMode の試しのアンマウント）なら何も書かない。
+  // onFailed: 書けなかったとき（開いたままなら未保存に戻す）
+  const flushPending = useCallback((ready: Promise<boolean>, onFailed?: () => void) => {
     const target = saveTargetRef.current!;
     // 削除した・保存先が切り替わった・同じノートを外の更新で作り直した、なら書かない（fm）
     if (!canFlushOnUnmount?.(target)) return;
@@ -3271,13 +3294,44 @@ function NoteEditorInner({
       return doc;
     }).catch(() => {
       // 失敗は fm が知らせている（保存失敗のアラート）
+      onFailed?.();
     });
   }, [canFlushOnUnmount, captureDocument, finishDocument, onSave, sharedRefState, fileId, isWikiDoc, onPropagateMentionRename]);
 
   // ── オートセーブ ──
-  const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave, flushOnUnmount);
+  const { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved } =
+    useAutoSave(handleSave, flushPending);
+
+  // 開いている間は「未保存を今すぐ書き出す」口を出す（lib/peek-save-queue.ts）。同じノートを
+  // サイドピークやメインで開き直すとき、開く側はここに書き出させてから列を待つ。
+  // レイアウト段階で登録し、後片付けで外す: 新しい NoteEditor の描画（usePeekSettledDoc）の
+  // 時点で、外れるこのエディタがまだ見えている必要がある。書き出さない（同じノートを外の
+  // 更新で作り直す等）と決まるなら未保存は無いと答え、新しいエディタを待たせない
+  const flushPendingRef = useRef(flushPending);
+  flushPendingRef.current = flushPending;
+  const canFlushRef = useRef(canFlushOnUnmount);
+  canFlushRef.current = canFlushOnUnmount;
+  useLayoutEffect(() => {
+    const key = saveTargetRef.current?.key;
+    if (!key) return;
+    return registerLivePeek(key, {
+      hasUnsaved: () => hasUnsaved() && !!canFlushRef.current?.(saveTargetRef.current!),
+      flush: () => {
+        if (!canFlushRef.current?.(saveTargetRef.current!)) return;
+        const ready = takeUnsaved();
+        if (ready) flushPendingRef.current(ready, restoreUnsaved);
+      },
+    });
+  }, [hasUnsaved, takeUnsaved, restoreUnsaved]);
   markDirtyRef.current = markDirty;
   saveNowRef.current = saveNow;
+  // サイドピークが保存できなかった編集を持ち込んで開いた。その編集はどこにも保存されて
+  // いないので、「未保存」から始めて自動保存で書き直す（NoteEditor が決める）
+  useEffect(() => {
+    if (startUnsaved) markDirty();
+    // 開いたときに一度だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── team-shared storage（Phase 2a / 2b-1） ──
   // sharedRefState は handleSave の上で宣言済み（buildDocument 結果への再注入用）
