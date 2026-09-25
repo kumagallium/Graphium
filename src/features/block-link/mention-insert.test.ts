@@ -1,12 +1,19 @@
 // @メンション挿入の共通処理（メインエディタ・サイドピーク共通）の回帰ガード
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ensureTableRowIdentity,
   insertAssetMention,
+  linkTableRowToNote,
+  noteLinkCellAtCursor,
   recordMentionLink,
+  tableCellAtCursor,
   tableRowAtCursor,
 } from "./mention-insert";
 import type { ReferenceSuggestion } from "./mention-menu";
+import type { NoteLink, TableMeta } from "../../lib/document-types";
 
 const text = (t: string, styles: Record<string, unknown> = {}) => ({ type: "text", text: t, styles });
 const cell = (content: any[]) => ({ type: "tableCell", content, props: {} });
@@ -14,9 +21,12 @@ const cell = (content: any[]) => ({ type: "tableCell", content, props: {} });
 /**
  * BlockNote エディタの最小の替え玉。document / getBlock / updateBlock と、
  * カーソル位置（ProseMirror の $from）だけを持つ。
- * cursor: 表の中なら { tableBlockId, rowIndex }、表の外なら null
+ * cursor: 表の中なら { tableBlockId, rowIndex, colIndex? }、表の外なら null
  */
-function fakeEditor(blocks: any[], cursor: { tableBlockId: string; rowIndex: number } | null) {
+function fakeEditor(
+  blocks: any[],
+  cursor: { tableBlockId: string; rowIndex: number; colIndex?: number } | null,
+) {
   const store = new Map<string, any>(blocks.map((b) => [b.id, b]));
   // tableRow → blockContainer の順に外へ辿れる $from（間の table ノードは省略）
   const chain = cursor
@@ -32,10 +42,12 @@ function fakeEditor(blocks: any[], cursor: { tableBlockId: string; rowIndex: num
         { type: { name: "blockContainer" }, attrs: { id: "p1" } },
         { type: { name: "paragraph" } },
       ];
+  // index(d) は d 段目の祖先の中で何番目の子にいるか。表の中なら
+  // 1 段目（表を包むところ）で行の番号、2 段目（tableRow）で列の番号
   const $from = {
     depth: chain.length - 1,
     node: (d: number) => chain[d],
-    index: (d: number) => (cursor && d === 1 ? cursor.rowIndex : 0),
+    index: (d: number) => (!cursor ? 0 : d === 1 ? cursor.rowIndex : d === 2 ? (cursor.colIndex ?? 0) : 0),
   };
   return {
     get document() {
@@ -65,6 +77,120 @@ describe("tableRowAtCursor", () => {
     });
     expect(tableRowAtCursor(fakeEditor([], null))).toBeNull();
     expect(tableRowAtCursor(null)).toBeNull();
+  });
+});
+
+describe("tableCellAtCursor", () => {
+  it("表の中なら行と列の番号、外なら null", () => {
+    expect(tableCellAtCursor(fakeEditor([], { tableBlockId: "tbl", rowIndex: 2, colIndex: 1 }))).toEqual({
+      tableBlockId: "tbl",
+      rowIndex: 2,
+      colIndex: 1,
+    });
+    expect(tableCellAtCursor(fakeEditor([], null))).toBeNull();
+  });
+});
+
+// ── インデックステーブルの行の紐付け（メイン・ピーク共通） ──
+
+/** 先頭列 Name に note-link が付いたインデックステーブル（2 列目は条件） */
+const indexTable = () =>
+  table([
+    [cell([text("Name")]), cell([text("Cond")])],
+    [cell([text("S1", { tableRowIdentity: "row_s1" })]), cell([text("80C", { textColor: "red" })])],
+    [cell([text("S2", { tableRowIdentity: "row_s2" })]), cell([])],
+  ]);
+const noteLinkMeta = (): Record<string, TableMeta> => ({ tbl: { columns: { Name: ["note-link"] } } });
+
+describe("noteLinkCellAtCursor", () => {
+  const at = (cursor: { tableBlockId: string; rowIndex: number; colIndex?: number } | null, metas = noteLinkMeta()) =>
+    noteLinkCellAtCursor(fakeEditor([indexTable()], cursor), (id) => metas[id]);
+
+  it("note-link 列の見出し以外のセルなら、その位置を返す", () => {
+    expect(at({ tableBlockId: "tbl", rowIndex: 2, colIndex: 0 })).toEqual({
+      tableBlockId: "tbl",
+      rowIndex: 2,
+      colIndex: 0,
+    });
+  });
+
+  it("他の列・見出し行・表の外では紐付けない（本文と同じ普通のメンションになる）", () => {
+    expect(at({ tableBlockId: "tbl", rowIndex: 1, colIndex: 1 })).toBeNull();
+    expect(at({ tableBlockId: "tbl", rowIndex: 0, colIndex: 0 })).toBeNull();
+    expect(at(null)).toBeNull();
+  });
+
+  it("note-link のふるまいが無い表では紐付けない", () => {
+    expect(at({ tableBlockId: "tbl", rowIndex: 1, colIndex: 0 }, {})).toBeNull();
+    expect(at({ tableBlockId: "tbl", rowIndex: 1, colIndex: 0 }, { tbl: { caption: "Samples" } })).toBeNull();
+  });
+});
+
+describe("linkTableRowToNote", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function setup(initialNoteLinks: NoteLink[] = []) {
+    const tbl = indexTable();
+    (tbl.content as any).columnWidths = [140, undefined];
+    const ed = fakeEditor([tbl], { tableBlockId: "tbl", rowIndex: 2, colIndex: 0 });
+    let noteLinks = initialNoteLinks;
+    const ops = {
+      setNoteLink: vi.fn(),
+      addLink: vi.fn(),
+      updateNoteLinks: vi.fn((update: (links: NoteLink[]) => NoteLink[]) => {
+        noteLinks = update(noteLinks);
+      }),
+      onLinked: vi.fn(),
+    };
+    return { ed, ops, noteLinks: () => noteLinks };
+  }
+
+  it("表の注釈・noteLinks を控え、打ったセルを青い @名前 に書き換えて行にリンクを紐づける", () => {
+    const { ed, ops, noteLinks } = setup();
+    linkTableRowToNote(() => ed, { tableBlockId: "tbl", rowIndex: 2, colIndex: 0 }, { id: "n-rich", label: "Rich" }, ops);
+
+    // 表の注釈のキーは書き換えた後のセルの文字（行アイコン層はこれで「開く」行と判断する）
+    expect(ops.setNoteLink).toHaveBeenCalledWith("tbl", "@Rich", "n-rich");
+    expect(noteLinks()).toEqual([{ targetNoteId: "n-rich", sourceBlockId: "tbl", type: "derived_from" }]);
+    expect(ops.onLinked).toHaveBeenCalled();
+    // セルの書き換えはメニューが片付いてから
+    expect(ed.updateBlock).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
+    const content = ed.getBlock("tbl").content;
+    // 打ったセルだけ書き換わり、行の identity は引き継がれる
+    expect(content.rows[2].cells[0].content).toEqual([
+      text("@Rich", { textColor: "blue", tableRowIdentity: "row_s2" }),
+    ]);
+    // 他の行・他の列はそのまま。列幅も戻らない
+    expect(content.rows[1].cells).toEqual(indexTable().content.rows[1].cells);
+    expect(content.rows[2].cells[1]).toEqual(cell([]));
+    expect(content.columnWidths).toEqual([140, undefined]);
+    // reference リンクはカーソルではなく打った行に紐づく
+    expect(ops.addLink).toHaveBeenCalledWith({
+      sourceBlockId: "tbl",
+      targetBlockId: "",
+      targetNoteId: "n-rich",
+      type: "reference",
+      createdBy: "human",
+      sourceRowIdentity: "row_s2",
+    });
+  });
+
+  it("同じノートへの noteLinks が既にあれば足さない", () => {
+    const existing: NoteLink = { targetNoteId: "n-rich", sourceBlockId: "p1", type: "derived_from" };
+    const { ed, ops, noteLinks } = setup([existing]);
+    linkTableRowToNote(() => ed, { tableBlockId: "tbl", rowIndex: 2, colIndex: 0 }, { id: "n-rich", label: "Rich" }, ops);
+    expect(noteLinks()).toEqual([existing]);
+  });
+
+  it("書き込む前にエディタが外れていたら、表には触らない（注釈は先に控える）", () => {
+    const { ops } = setup();
+    linkTableRowToNote(() => null, { tableBlockId: "tbl", rowIndex: 2, colIndex: 0 }, { id: "n-rich", label: "Rich" }, ops);
+    vi.advanceTimersByTime(100);
+    expect(ops.setNoteLink).toHaveBeenCalled();
+    expect(ops.addLink).not.toHaveBeenCalled();
   });
 });
 
@@ -178,5 +304,50 @@ describe("insertAssetMention", () => {
     ]);
     expect(addLink).not.toHaveBeenCalled();
     expect(citeAsset).not.toHaveBeenCalled();
+  });
+});
+
+// ── 構造ガード: @ メニューを持つエディタは、どれも行の紐付けを共通の関数で行う ──
+// SidePeek はメインの並行実装で、メインにだけ入った @ の行の紐付けがピークに無かった
+// （行アイコンが「ノートを作成」のまま残り、押すと「@名前」という題の重複ノートができた）
+
+const SRC_DIR = fileURLToPath(new URL("../..", import.meta.url));
+
+/** src 配下の .ts/.tsx を列挙する（テストとストーリーは除く） */
+function collectSourceFiles(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) {
+      collectSourceFiles(path, out);
+      continue;
+    }
+    if (!/\.tsx?$/.test(name)) continue;
+    if (/\.(test|spec|stories)\.tsx?$/.test(name)) continue;
+    out.push(path);
+  }
+  return out;
+}
+
+describe("構造ガード", () => {
+  // エディタに @ メニューの選択口（onMentionSelect）を渡しているファイル
+  const editors = collectSourceFiles(SRC_DIR)
+    .map((file) => ({ file: file.slice(SRC_DIR.length), source: readFileSync(file, "utf8") }))
+    .filter(({ source }) => source.includes("onMentionSelect={"));
+
+  it("メインエディタと SidePeek の両方を見つけている", () => {
+    // prop 名が変わってガードが空振りするのを防ぐ
+    const files = editors.map((e) => e.file);
+    expect(files).toContain("note-app.tsx");
+    expect(files).toContain("features/index-table/side-peek.tsx");
+  });
+
+  it("どのエディタも行の紐付けの判定と書き込みを mention-insert.ts の関数で行う", () => {
+    const missing = editors
+      .filter(({ source }) => !/\bnoteLinkCellAtCursor\(/.test(source) || !/\blinkTableRowToNote\(/.test(source))
+      .map((e) => e.file);
+    expect(
+      missing,
+      `インデックステーブルの note-link 列で選んだノートは noteLinkCellAtCursor / linkTableRowToNote で行に紐付けてください: ${missing.join(", ")}`,
+    ).toEqual([]);
   });
 });
