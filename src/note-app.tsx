@@ -154,9 +154,11 @@ import {
 } from "./features/block-link/mention-click";
 import {
   insertAssetMention,
+  insertNoteMention,
   linkTableRowToNote,
   noteLinkCellAtCursor,
   recordMentionLink,
+  type UpdateNoteLinks,
 } from "./features/block-link/mention-insert";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
@@ -421,6 +423,7 @@ import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
+import { usePeekSettledDoc } from "./hooks/use-peek-settled-doc";
 import { useImeEnterGuard } from "./hooks/use-ime-enter-guard";
 import { useAutoGrounding } from "./hooks/use-auto-grounding";
 import {
@@ -1043,6 +1046,16 @@ type NoteEditorProps = {
   fileId: string | null;
   initialDoc: GraphiumDocument | null;
   /**
+   * 開いているノートのキー（fm.activeFileId。wiki:/skill: 付き。新規ノートは null）。
+   * サイドピークの保存の列と同じ形で、同じノートの書き出しを待つのに使う（NoteEditor）
+   */
+  docKey?: string | null;
+  /**
+   * サイドピークが保存できなかった編集を持ち込んで開いた。「未保存」から始め、自動保存で
+   * 書き直す（NoteEditor が決める。hooks/use-peek-settled-doc.ts）
+   */
+  startUnsaved?: boolean;
+  /**
    * ノート id → そのノートのフォルダ。エディタ内から開く素材サイドピークで、
    * 素材が「使われているノートのフォルダ」に属して見えるようにするために渡す
    * （素材ギャラリー側と同じ導出を使い、見え方を揃える）。
@@ -1267,6 +1280,18 @@ type NoteEditorProps = {
 };
 
 function NoteEditor(props: NoteEditorProps) {
+  const t = useT();
+  // サイドピークで同じノートを編集した直後なら、その書き出しが済んでから本文を組み立てる。
+  // 待たずに作ると書き出し前の古い本文のエディタができ、その自動保存がピークの編集を
+  // 書き戻す（理由と入口の分担は hooks/use-peek-settled-doc.ts）
+  const settled = usePeekSettledDoc(props.docKey ?? null, props.initialDoc);
+  if (settled.waiting) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        {t("common.loading")}
+      </div>
+    );
+  }
   return (
     <ProvLabelsEnabledProvider enabled={props.provLabelsEnabled ?? true}>
     <LabelStoreProvider>
@@ -1278,7 +1303,7 @@ function NoteEditor(props: NoteEditorProps) {
         {/* モデル未登録（agentConfigured=false）ならエディタ内 AI ボタン群
             （フォーマッティングツールバー / ドラッグメニュー / 選択ツールバーの Bot）も隠す */}
         <AiAssistantProvider aiAvailable={(props.aiAvailable ?? true) && (props.agentConfigured ?? true)}>
-          <NoteEditorInner {...props} />
+          <NoteEditorInner {...props} initialDoc={settled.doc} startUnsaved={settled.startUnsaved} />
         </AiAssistantProvider>
         </BlockAlignmentProvider>
         </MediaOcrProvider>
@@ -1542,6 +1567,7 @@ function NoteGraphTabPanel({
 function NoteEditorInner({
   fileId,
   initialDoc,
+  startUnsaved = false,
   noteFolderLookup,
   onEditMediaContexts,
   onSave,
@@ -2574,9 +2600,15 @@ function NoteEditorInner({
   // 同じ common を使う。新しい項目はそちらに足す（メインにしか出ない漏れを防ぐため）
   const mainOnlySlashItems = useMemo(() => getMainEditorOnlySlashMenuItems(), []);
   const commonSlashItems = useMemo(() => getCommonSlashMenuItems({ includeCite: true }), []);
+  // noteLinks（グラフ・来歴に出す派生関係）の書き込み口。@ メニュー（表の外・表の行）と
+  // 「新しいノート」が共通で使う。何を足すか（同じノートへの線は 1 本）は
+  // block-link/mention-insert.ts が SidePeek と共通で決め、ここは noteLinksRef を置き換えるだけ
+  const updateNoteLinks: UpdateNoteLinks = useCallback((update) => {
+    noteLinksRef.current = update(noteLinksRef.current);
+  }, []);
   // 「新しいノート」（名前を付けて新規ノートを作成し、ここにリンク）。組み立ては
   // block-link/new-note-slash-item.ts で SidePeek と共通。メインが渡すのは記録先
-  // （このエディタの linkStore と noteLinksRef）だけ。作れないときは出さない
+  // （このエディタの linkStore と noteLinks の書き込み口）だけ。作れないときは出さない
   const newNoteSlashItem: SlashMenuItem | null = useMemo(
     () =>
       onCreateLinkedNote
@@ -2585,13 +2617,10 @@ function NoteEditorInner({
             createNote: (title) => onCreateLinkedNote(title),
             getEditor: () => editorRef.current,
             addLink: linkStore.addLink,
-            addNoteLink: (link) => {
-              if (noteLinksRef.current.some((l) => l.targetNoteId === link.targetNoteId)) return;
-              noteLinksRef.current = [...noteLinksRef.current, link];
-            },
+            updateNoteLinks,
           })
         : null,
-    [onCreateLinkedNote, promptNoteName, linkStore],
+    [onCreateLinkedNote, promptNoteName, linkStore, updateNoteLinks],
   );
 
   // ── URL ペースト検知 ──
@@ -3186,6 +3215,13 @@ function NoteEditorInner({
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
   markDirtyRef.current = markDirty;
   saveNowRef.current = saveNow;
+  // サイドピークが保存できなかった編集を持ち込んで開いた。その編集はどこにも保存されて
+  // いないので、「未保存」から始めて自動保存で書き直す（NoteEditor が決める）
+  useEffect(() => {
+    if (startUnsaved) markDirty();
+    // 開いたときに一度だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── team-shared storage（Phase 2a / 2b-1） ──
   // sharedRefState は handleSave の上で宣言済み（buildDocument 結果への再注入用）
@@ -6026,11 +6062,10 @@ function NoteEditorInner({
                   }, 100);
                   markDirty();
                 } else if (suggestion.type === "note") {
-                  // reference リンクは入れた直後に記録する（表のセルなら行の identity を
-                  // 控えるため。mention-insert.ts の recordMentionLink）
-                  const noteId = suggestion.id;
                   // インデックステーブルの note-link 列で選んだら、その行とノートを紐付ける。
-                  // 判定も書き込みも SidePeek と同じ関数（mention-insert.ts）
+                  // それ以外は青い @タイトル を入れ、reference リンク（表のセルなら行の
+                  // identity 付き）と noteLinks の派生関係を記録する。判定も挿入・記録も
+                  // SidePeek と同じ関数（mention-insert.ts）
                   const rowCell = noteLinkCellAtCursor(editorRef.current, (id) =>
                     tableMetaStore.metas.get(id)
                   );
@@ -6038,31 +6073,15 @@ function NoteEditorInner({
                     linkTableRowToNote(() => editorRef.current, rowCell, suggestion, {
                       setNoteLink: tableMetaStore.setNoteLink,
                       addLink: linkStore.addLink,
-                      updateNoteLinks: (update) => {
-                        noteLinksRef.current = update(noteLinksRef.current);
-                      },
+                      updateNoteLinks,
                       onLinked: markDirty,
                     });
                   } else {
-                    const targetLabel = suggestion.label;
-                    setTimeout(() => {
-                      // 本文は青い @タイトル、ノート ID はリンクの記録に持つ（同名ノートでも正しく解決）
-                      insertNoteMentionInline(editorRef.current, noteId, targetLabel);
-                      recordMentionLink(editorRef.current, linkStore.addLink, {
-                        sourceBlockId,
-                        targetNoteId: noteId,
-                      });
-                    }, 100);
-                    const exists = noteLinksRef.current.some(
-                      (l) => l.targetNoteId === suggestion.id
-                    );
-                    if (!exists) {
-                      noteLinksRef.current = [
-                        ...noteLinksRef.current,
-                        { targetNoteId: suggestion.id, sourceBlockId, type: "derived_from" },
-                      ];
-                    }
-                    markDirty();
+                    insertNoteMention(() => editorRef.current, sourceBlockId, suggestion, {
+                      addLink: linkStore.addLink,
+                      updateNoteLinks,
+                      onInserted: markDirty,
+                    });
                   }
                 } else if (suggestion.type === "asset") {
                   // 素材（PDF/docx/データ本体・画像）の引用。ノートではなく素材を指す。
@@ -12627,6 +12646,7 @@ export function NoteApp() {
             }
             onProposalRequestHandled={() => setProposalOpenRequest(null)}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
+            docKey={fm.activeFileId}
             initialDoc={fm.activeDoc}
             getKnowledgeSchemaPrompt={fm.getKnowledgeSchemaPrompt}
             noteFolderLookup={noteFolderLookup}

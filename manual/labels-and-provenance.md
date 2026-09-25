@@ -176,7 +176,7 @@ Labels and links also feed graphs that span your whole workspace:
 - **Lineage** — the second sub-tab of **Graph**: a tree of the current note's upstream sources — the notes, materials, and versions it was derived from.
 - **Global Graph** <Badge type="tip" text="Added in v0.16.5 (2026-06-29)" /> — in the sidebar: every note at once, layered as **Sources**, **Notes**, and **Claim · Insight** ([Knowledge layer](/knowledge-layer) entries), with edges for **Derived**, **Used**, and **Reference** relations. Toggle **Hide references** or **Show isolated**, color nodes by type or folder, and **Group by folder** to pull related notes into clusters. Toggle **Overview / Timeline** in the header to switch between the layered view and the timeline described below.
 
-  By default, single-link claims and sources fold into their parent as a small
+  <Badge type="tip" text="Added in v0.83.0 (2026-09-25)" /> By default, single-link claims and sources fold into their parent as a small
   count on it, node size follows how far a node's connections reach rather than
   a fixed size per kind, and the layout groups connected notes into islands
   instead of one undifferentiated cloud. Three controls in the header adjust
@@ -188,6 +188,8 @@ Labels and links also feed graphs that span your whole workspace:
   around; a claim-focused island is built around topics rather than individual
   claims, since claims usually far outnumber topics.
 
+
+  ![The Global Graph in Islands layout: notes sized by reach, folded claims as small satellites, connected notes grouped into islands](/screenshots/global-graph-islands_en.png)
 - **Activity graph editor** — the **Steps (only)** view described [above](#the-provenance-graph-panel), where the step order itself can be rewired by dragging.
 - **Process list** — in the sidebar under **Processes**: the flow each note describes, listed side by side (see [Process list](#process-list) below).
 
