@@ -143,7 +143,6 @@ import {
   getAssetSuggestions,
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
-  insertNoteMentionInline,
 } from "./features/block-link/mention-menu";
 import {
   assetIdsForName,
@@ -158,6 +157,7 @@ import {
   linkTableRowToNote,
   noteLinkCellAtCursor,
   recordMentionLink,
+  tryConvertNoteLinkPaste as convertNoteLinkPaste,
   type UpdateNoteLinks,
 } from "./features/block-link/mention-insert";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
@@ -2823,43 +2823,17 @@ function NoteEditorInner({
     };
 
     // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
-    // に変換する。処理した場合 true を返す（呼び出し元で return する）。
-    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean => {
-      const noteLinkMatch = /#note\/([^/\s#?]+)/.exec(pastedText);
-      if (!noteLinkMatch) return false;
-      const linkedFileId = decodeURIComponent(noteLinkMatch[1]);
-      const linkedTitle = resolveNoteLinkTitleRef.current(linkedFileId);
-      if (!linkedTitle) return false;
-      // クリップボードリスナーが二重登録されると同一 paste イベントが 2 回
-      // このハンドラに届き、メンションが 2 個入る。イベント単位の既処理フラグ
-      // ＋ stopImmediatePropagation で 1 回だけ処理する。
-      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return true;
-      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const sourceBlockId = editor.getTextCursorPosition()?.block?.id;
-      if (sourceBlockId) {
-        linkStore.addLink({
-          sourceBlockId,
-          targetBlockId: "",
-          targetNoteId: linkedFileId,
-          type: "reference",
-          createdBy: "human",
-        });
-        const exists = noteLinksRef.current.some((l) => l.targetNoteId === linkedFileId);
-        if (!exists) {
-          noteLinksRef.current = [
-            ...noteLinksRef.current,
-            { targetNoteId: linkedFileId, sourceBlockId, type: "derived_from" },
-          ];
-        }
-      }
-      // insertInlineContent の onChange で自動 markDirty される
-      setTimeout(() => {
-        insertNoteMentionInline(editorRef.current, linkedFileId, linkedTitle);
-      }, 0);
-      return true;
-    };
+    // に変換する。処理した場合 true を返す（呼び出し元で return する）。変換と記録
+    // （reference リンク・noteLinks の派生関係・二重登録ガード）は SidePeek と共通の
+    // mention-insert.ts。insertInlineContent の onChange で自動 markDirty される
+    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean =>
+      convertNoteLinkPaste(e, pastedText, {
+        editor,
+        getEditor: () => editorRef.current,
+        resolveTitle: (noteId) => resolveNoteLinkTitleRef.current(noteId),
+        addLink: linkStore.addLink,
+        updateNoteLinks,
+      });
 
     // paste: Graphium ペイロードを最優先で処理し、なければ既存の URL 検知に流す
     const pasteListener = (e: ClipboardEvent) => {
@@ -3032,7 +3006,7 @@ function NoteEditorInner({
       domEl.addEventListener("copy", copyListener, false);
     };
     attachClipboardListeners();
-  }, [labelStore, linkStore, uploadFile]);
+  }, [labelStore, linkStore, uploadFile, updateNoteLinks]);
 
   // ── 保存ロジック ──
   // 今の本文と注釈から doc を組む（同期。来歴はまだ刻まない — finishDocument）。
