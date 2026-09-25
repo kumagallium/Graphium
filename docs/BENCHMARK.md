@@ -150,11 +150,23 @@ so the new migration step is replayed too. New schema-bump Phases
 ## Performance regression
 
 `pnpm bench:performance` runs the dry-run pipeline against a 100-note
-synthetic corpus and records duration, peak heap delta, and the byte
-size of `atoms` / `syntheses` JSON. Numbers are compared to
-`bench/performance/baseline.json`; a metric exceeding +20 % is flagged
-as a regression (warning, not block). Update the baseline with
-`BENCH_PERF_UPDATE_BASELINE=true pnpm bench:performance`.
+synthetic corpus (one warm-up run, then the median of five) and records
+duration, peak heap delta, and the byte size of the `atoms` JSON.
+Numbers are compared to `bench/performance/baseline.json` (warning, not
+block):
+
+| Metric | Flagged when worse by more than |
+|---|---|
+| `duration_ms` | +20 % **and** +50 ms |
+| `heap_peak_bytes` | +20 % **and** +16 MiB |
+| `atoms_json_bytes` | +20 % |
+
+A run takes a few milliseconds and a few MiB, so duration and heap move
+with JIT warm-up, GC timing, and the machine; changes below those floors
+are noise. The `atoms` JSON size is deterministic. If a PR changes the
+pipeline's output on purpose, re-record the baseline in the same PR with
+`BENCH_PERF_UPDATE_BASELINE=true pnpm bench:performance` — otherwise
+every later PR repeats the same warning.
 
 ## CI
 
