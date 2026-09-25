@@ -619,6 +619,13 @@ function StepFlowCanvas({
     const structureChanged = lastStructureRef.current !== structureKey;
     lastStructureRef.current = structureKey;
     if (structureChanged) layoutRetryRef.current = 0;
+    // ドラッグで「自動配置を捨てた」印は、その時のレイアウトを守るためのもの。
+    // 形が変わって保存した並びを使わないなら（帯があるときは常にそう）、新しい形は
+    // 並べ直してよい。下ろさないと、表 1 つの計画でノードを動かしたあと表を足したとき、
+    // 帯が既定サイズのまま重なり、工程ノードが (0,0) に置き去りになる（実機で再現）
+    if ((structureChanged && !usingSavedLayoutRef.current) || hasGroups) {
+      layoutAbandonedRef.current = false;
+    }
     needsLayoutRef.current = nextLayoutRequest({
       pending: needsLayoutRef.current,
       usingSavedLayout: usingSavedLayoutRef.current && !!savedNow,

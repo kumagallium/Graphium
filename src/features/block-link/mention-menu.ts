@@ -98,10 +98,19 @@ export function resolveMentionTargetFromLinks(
   links: ReadonlyArray<{ sourceBlockId: string; targetNoteId?: string; type?: string }>,
   noteIndex: GraphiumIndex | null | undefined,
   /**
-   * 素材名 → 外部ソース ID（"pdf:<fileId>" / "data:<fileId>" 等）。
+   * 素材名 → その名前を持つ素材の外部ソース ID（"pdf:<fileId>" / "data:<fileId>" 等）すべて。
    * 素材メンションのラベルは noteIndex で照合できないため、これで照合する。
+   * 装置の出力（data.txt 等）は同名の別ファイルが普通にあるので、1 件に決め打ちしない
    */
-  resolveAssetId?: (name: string) => string | null,
+  resolveAssetIds?: (name: string) => readonly string[],
+  options?: {
+    /**
+     * 表のセル内のメンションか。表は 1 ブロックに全セルのメンションのリンクが並ぶので、
+     * 先頭候補は別のセルの行き先であることが多い（インデックステーブルの行ノートは
+     * 紐づけを tableMeta 側に持ち、表ブロックのリンクに記録されないことがある）
+     */
+    inTableCell?: boolean;
+  },
 ): { noteId: string; isWiki: boolean } | null {
   if (!blockId) return null;
   const candidates = links.filter(
@@ -115,15 +124,21 @@ export function resolveMentionTargetFromLinks(
       return { noteId: c.targetNoteId as string, isWiki: entry.source === "ai" };
     }
   }
-  // 素材メンション: ラベル（素材名）から外部ソース ID を引いて候補と照合する。
-  // 一致すればそれ、無ければ null — 素材名として解決できる mentionText を
-  // 下の先頭候補（同じブロックの別メンションのリンク）へ倒すと、クリックで
-  // 無関係なノートが開いてしまう。null なら呼び出し側の素材名逆引きが拾う
-  const assetId = resolveAssetId?.(mentionText);
-  if (assetId) {
-    const c = candidates.find((l) => l.targetNoteId === assetId);
-    return c ? { noteId: assetId, isWiki: false } : null;
+  // 素材メンション: ラベル（素材名）を持つ素材の外部ソース ID と候補を照合する。
+  // 同名の素材が複数あっても、このブロックに記録したリンクの先が正解になる。
+  // 一致が無ければ null — 素材名として解決できる mentionText を下の先頭候補
+  // （同じブロックの別メンションのリンク）へ倒すと、クリックで無関係なノートが
+  // 開いてしまう。null なら呼び出し側の素材名逆引きが拾う
+  const assetIds = resolveAssetIds?.(mentionText) ?? [];
+  if (assetIds.length > 0) {
+    const c = candidates.find((l) => assetIds.includes(l.targetNoteId as string));
+    return c ? { noteId: c.targetNoteId as string, isWiki: false } : null;
   }
+  // 表のセルで、ラベルが別のノートのタイトルそのものなら、そのノートへのリンク記録が
+  // 表ブロックに無いだけ。下の先頭候補へ倒すと別のセルの行き先（@素材 等）が開くので、
+  // 呼び出し側のタイトル逆引きに委ねる。表の外（References の「Source: @ラベル」など
+  // 1 ブロック 1 リンクの行）は、ラベルが同名ノートと重なっても従来どおり記録したリンクを採る
+  if (options?.inTableCell && noteIndex?.notes.some((n) => n.title === mentionText)) return null;
   // タイトル一致が無い（作成後にタイトル変更された等）→ 先頭候補にフォールバック。
   const first = candidates[0];
   const entry = noteIndex?.notes.find((n) => n.noteId === first.targetNoteId);
@@ -300,6 +315,12 @@ export function getNoteSuggestions(
 }
 
 /**
+ * @ で引用できる素材の種類。候補に出すのも、クリックで @素材名 を素材として
+ * 解決するのもこの種類だけ（動画・音声などは外部ソース ID の形を持たない）。
+ */
+export const MENTIONABLE_ASSET_TYPES: readonly string[] = ["pdf", "document", "data", "image"];
+
+/**
  * 取り込んだドキュメント素材（PDF / docx / 区切りテキスト等）を @ 候補として収集する。
  * ノート由来ではなく「素材そのもの」を引用したい場合（論文 PDF の引用、測定データの
  * 参照等）に使う。選択すると本文に @素材名 を挿入し、doc.citedAssetFileIds に fileId を
@@ -308,9 +329,7 @@ export function getNoteSuggestions(
 export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSuggestion[] {
   if (!mediaIndex) return [];
   return mediaIndex.media
-    .filter(
-      (m) => m.type === "pdf" || m.type === "document" || m.type === "data" || m.type === "image"
-    )
+    .filter((m) => MENTIONABLE_ASSET_TYPES.includes(m.type))
     .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
     .slice(0, 15)
     .map((m) => ({

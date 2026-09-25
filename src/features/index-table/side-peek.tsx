@@ -103,8 +103,12 @@ import {
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
   insertNoteMentionInline,
-  resolveMentionTargetFromLinks,
 } from "@features/block-link/mention-menu";
+import {
+  openPeekTarget,
+  readMentionAt,
+  resolveMentionClickTarget,
+} from "@features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
 import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
@@ -740,33 +744,15 @@ function SidePeekInner({
     };
   }, [sidePeekEditor]);
 
-  // ピーク内の @メンションクリック → そのノートをピークで開き直す。
+  // ピーク内の @メンションクリック → ノートはピークで開き直し、素材は素材ピークへ。
   // note-app の document ハンドラはピーク内（data-side-peek 配下）をスキップするので、
   // ここで「このピーク自身の linkStore」を使って厳密な ID に解決する（同名ノートでも正しい）。
+  // 解決と振り分けは note-app と共通の関数を通す（片方だけ直す移植漏れで、ピークでは
+  // @txt などのデータ素材が開かず、表の中では同じ表の別リンクへ飛んでいた）
   useEffect(() => {
     if (!onOpenNoteInPeek) return;
     const root = sidePeekRef.current;
     if (!root) return;
-    const isMentionSpan = (el: HTMLElement): boolean => {
-      if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
-      if (!el.closest(".bn-editor")) return false;
-      // note-link 列の先頭列セルは行アイコンの担当（note-app 側と同じ絞り込み）。
-      // それ以外のセル内メンションはピーク内でも押せるようにする
-      const cellEl = el.closest("td, th");
-      if (cellEl) {
-        const tableBlockId = el.closest("[data-id]")?.getAttribute("data-id");
-        const isFirstColumn = cellEl.parentElement?.children[0] === cellEl;
-        if (
-          isFirstColumn &&
-          tableBlockId &&
-          tableMetaStore.hasColumnType(tableBlockId, "note-link")
-        ) {
-          return false;
-        }
-      }
-      const text = el.textContent?.trim();
-      return !!text && text.startsWith("@") && !text.startsWith("@#");
-    };
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       // ピーク本文内の通常リンク（http(s)）は URL リーダーのピークで開き直す。
@@ -806,48 +792,36 @@ function SidePeekInner({
           return;
         }
       }
-      if (!isMentionSpan(target)) return;
-      const noteName = target.textContent!.trim().slice(1);
-      const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
-      let resolved = resolveMentionTargetFromLinks(
-        blockId,
-        noteName,
-        linkStoreRef.current.getAllLinks(),
-        noteIndex ?? null,
-      );
-      if (!resolved) {
-        const entry = noteIndex?.notes.find((n) => n.title === noteName);
-        if (entry) resolved = { noteId: entry.noteId, isWiki: entry.source === "ai" };
-      }
-      if (!resolved) return;
+      // インデックステーブルの先頭列も本文と同じに扱う（ピークには行アイコンの層が
+      // 無いので、先頭列を除外すると行ノートも @素材 もピーク内から開けなかった）
+      const mention = readMentionAt(target);
+      if (!mention) return;
+      const peekDoc = docRef.current;
+      const peekId = resolveMentionClickTarget({
+        ...mention,
+        links: linkStoreRef.current.getAllLinks(),
+        noteIndex,
+        media: mediaIndex?.media,
+        citedAssetFileIds: peekDoc?.citedAssetFileIds,
+        derivedFromNotes: peekDoc?.wikiMeta?.derivedFromNotes,
+      });
+      if (!peekId) return;
       e.preventDefault();
       e.stopPropagation();
-      // References の「Source: @ラベル」等は linkStore の targetNoteId に外部ソース ID
-      // （url:/pdf:/document:/chat:）がそのまま入る。ノートピークとして開き直すと
-      // loadFile が失敗して「読み込みに失敗しました」になるため、素材ピークへ振り分ける。
-      const ext = parseExternalSource(resolved.noteId);
-      if (ext) {
-        if (ext.kind === "url") {
-          if (onOpenMaterialPeek) {
-            onOpenMaterialPeek(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
-          } else {
-            void openExternalUrl(ext.key);
-          }
-        } else if (ext.kind === "pdf" || ext.kind === "document") {
-          const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
-          if (entry && onOpenMaterialPeek) onOpenMaterialPeek(entry);
-        } else if (ext.kind === "memo") {
-          // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
-          onOpenMemoSource?.(ext.key);
-        }
-        // chat: は開ける実体が無いので何もしない（グラフノードと同じ扱い）
-        return;
-      }
-      onOpenNoteInPeek(resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId);
+      // References の「Source: @ラベル」等の外部ソース ID は素材ピーク（素材ピークの無い
+      // 画面では URL だけ外部ブラウザ）へ。ノートピークとして開き直すと loadFile が
+      // 失敗して「読み込みに失敗しました」になる。chat: は開ける実体が無いので何もしない
+      openPeekTarget(peekId, mediaIndex, {
+        openNote: onOpenNoteInPeek,
+        openMaterial: onOpenMaterialPeek,
+        openUrlFallback: (url) => void openExternalUrl(url),
+        // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
+        openMemo: onOpenMemoSource,
+      });
     };
     root.addEventListener("click", onClick, true);
     return () => root.removeEventListener("click", onClick, true);
-  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor, tableMetaStore]);
+  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor]);
 
   // データ表への計算列は本文を変えないので、宣言の変化でも列を配り直す（note-app と同じ）
   useEffect(() => {
@@ -957,6 +931,17 @@ function SidePeekInner({
           ...cur,
           citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), entry.fileId],
         };
+      }
+      // linkStore にも外部ソース ID で記録する（main editor と同じ）。クリックはこれで
+      // 素材を厳密に引く。無いと素材名の逆引きになり、同名の素材があると取り違える
+      if (entry.fileId) {
+        linkStoreRef.current.addLink({
+          sourceBlockId: currentBlock.id,
+          targetBlockId: "",
+          targetNoteId: `${entry.type}:${entry.fileId}`,
+          type: "reference",
+          createdBy: "human",
+        });
       }
       // insertInlineContent の onChange 経由で自動保存される
       insertInlineAtSlash(editor, currentBlock, [

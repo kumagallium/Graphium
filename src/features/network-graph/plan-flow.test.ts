@@ -468,6 +468,7 @@ describe("buildPlanFlowGraph", () => {
         name: "未作成",
         params: [],
         noteRef: { noteId: null, tableBlockId: "t1", rowIndex: 1, state: "unlinked" },
+        group: { id: "t1", label: "", index: 0 },
       },
     ]);
     expect(result.graph.entities).toEqual([]);
@@ -741,13 +742,13 @@ describe("buildPlanFlowGraph", () => {
     expect(result.graph.steps.find((s) => s.name === "焼成")?.group).toEqual({ id: "t2", label: "焼成", index: 1 });
   });
 
-  it("表が 1 つだけなら group を付けない", () => {
+  it("表が 1 つだけでも group を付ける（帯は常に描く）", () => {
     const rows = linearRows([
       ["合成", "note-a"],
       ["焼成", "note-b"],
     ]);
     const result = buildPlanFlowGraph({ rows, index: null, processIndex: null });
-    for (const step of result.graph.steps) expect(step.group).toBeUndefined();
+    for (const step of result.graph.steps) expect(step.group?.id).toBe(rows[0].tableBlockId);
   });
 
   it("キャプション無しの表は group.label が空文字", () => {
