@@ -114,6 +114,7 @@ export type WikiSnapshot = {
  * Lint 用のシステムプロンプトを構築する
  */
 export function buildLinterSystemPrompt(language: string): string {
+  const ja = language === "ja";
   return `You are a knowledge base health checker for Graphium, a provenance-tracking research editor.
 
 Your task is to analyze a collection of Wiki documents (AI-generated knowledge pages) and identify quality issues.
@@ -204,16 +205,18 @@ There is no target count and no cap. Emit every question that passes the test ab
 If a "## Recent activity" section is included below, use it only to prioritize which questions to surface: favor questions tied to recently ingested material or recently created answer pages, and drop questions whose answer the recent activity already shows was written up. Do not use recent activity to judge issues — it is priority material for questions only.
 
 For each question:
-- \`question\`: one sentence, phrased as something to go find out, in the page language
+- \`question\`: one sentence, phrased as something to go find out, in the output language stated above
 - \`why\`: one sentence — which page's blank this fills and what would change once answered
-- \`affectedWikiIds\`: the wiki id(s) that are incomplete without this answer
+- \`affectedWikiIds\`: the wiki reference number(s) (\`#N\`, from each page's \`## #N ...\` heading) that are incomplete without this answer
 - \`needs\`: \`"internal"\` if the answer is likely already latent in the user's own notes/knowledge (just needs pulling together and hasn't been written up), \`"external"\` if it requires genuinely new outside material (a measurement, a paper, a dataset)
 - \`lookFor\` (only when \`needs\` is \`"external"\`): one short phrase naming the kind of source to go look for — not a literature review
 
 Example (from a corpus where two pages give different bandgaps for the same compound):
-{ "question": "Al₆Ge₅ のバンドギャップ 1 eV と 0.49 eV の差は、測定法（光学 / 輸送）か組成の違いか？", "why": "『Al6Ge5 のバンドギャップ』の値が確定し、矛盾している知見のどちらかが改訂される", "affectedWikiIds": ["<id-1>", "<id-2>"], "needs": "external", "lookFor": "同一試料での光学測定と輸送測定の比較" }
+{ "question": "Al₆Ge₅ のバンドギャップ 1 eV と 0.49 eV の差は、測定法（光学 / 輸送）か組成の違いか？", "why": "『Al6Ge5 のバンドギャップ』の値が確定し、矛盾している知見のどちらかが改訂される", "affectedWikiIds": ["#3", "#7"], "needs": "external", "lookFor": "同一試料での光学測定と輸送測定の比較" }
 
 ## Output Format
+
+\`questions\` MUST always be present in the output, even when empty (\`"questions": []\`) — never omit the key.
 
 Respond with valid JSON only (no markdown wrapper):
 
@@ -224,12 +227,12 @@ Respond with valid JSON only (no markdown wrapper):
       "severity": "info" | "warning" | "error",
       "title": "Short issue title",
       "description": "Detailed explanation of the issue",
-      "affectedWikiIds": ["wiki-id-1", "wiki-id-2"],
+      "affectedWikiIds": ["#3", "#12"],
       "suggestion": "What should be done to resolve this",
       "recommendedAction": {                  // redundant のみ必須。他は省略
         "type": "merge",
-        "keepId": "wiki-id-to-keep",
-        "absorbId": "wiki-id-to-absorb",
+        "keepId": "#3",
+        "absorbId": "#12",
         "reason": "Why keepId is the canonical one (one sentence)"
       }
     }
@@ -238,21 +241,24 @@ Respond with valid JSON only (no markdown wrapper):
     {
       "question": "Something worth going to find out",
       "why": "Which page's gap this fills, and what would change",
-      "affectedWikiIds": ["wiki-id-1"],
+      "affectedWikiIds": ["#3"],
       "needs": "internal" | "external",
       "lookFor": "What kind of source to look for"   // needs === "external" のときだけ
     }
   ]
 }
 
-## CRITICAL: refer to wiki pages by TITLE, not by ID
+## CRITICAL: refer to wiki pages by TITLE in text, by #N in id fields
+
+Each page's heading is \`## #N [kind] Title\` — \`#N\` is its reference number, not a UUID. There is no id shown to you; do not invent one.
 
 In \`title\`, \`description\`, and \`suggestion\`:
 - **Always use the page title** when referring to a specific wiki. Example: "Keep \"Bandgap engineering of Al5Co2\" and merge \"Al5Co2 reduction kinetics\" into it."
-- **Never paste raw UUIDs** like \`af4189d8-...\` in user-facing text — those are unreadable.
-- IDs go in \`affectedWikiIds\` and \`recommendedAction\` only (the UI handles ID-to-action wiring).
+- **Never write reference numbers** like \`#12\` in user-facing text — those are unreadable to the user.
+- Reference numbers go in \`affectedWikiIds\` and \`recommendedAction\` only (the UI handles number-to-action wiring).
+- Conversely, \`affectedWikiIds\`, \`keepId\`, and \`absorbId\` must contain the \`#N\` reference number ONLY — never the page title, even in the exact wording used above.
 
-If two pages have very similar titles, disambiguate with a short distinguishing phrase, not with the ID.
+If two pages have very similar titles, disambiguate with a short distinguishing phrase, not with the reference number.
 
 ## Guidelines
 
@@ -267,29 +273,66 @@ If two pages have very similar titles, disambiguate with a short distinguishing 
 
 ## Language
 
-Output in: ${language === "ja" ? "Japanese" : "English"}`;
+Output in: ${ja ? "Japanese" : "English"}. This applies to every user-facing text field: \`issues[].title\`, \`issues[].description\`, \`issues[].suggestion\`, \`recommendedAction.reason\`, and \`questions[].question\`, \`questions[].why\`, \`questions[].lookFor\`.
+
+Exception: when you quote a wiki page's title inside these fields, quote it verbatim in its original language — do not translate the title itself.
+
+This exception is about TEXT fields only. It never applies to \`affectedWikiIds\`, \`keepId\`, or \`absorbId\` — those always take the \`#N\` reference number shown in each page's \`## #N ...\` heading, never the title, regardless of output language.`;
 }
 
 /**
  * Lint 用のユーザーメッセージを構築する
  */
-export function buildLinterUserMessage(wikis: WikiSnapshot[], recentLog?: string): string {
+/**
+ * ISO 日時文字列を `YYYY-MM-DD` に切り詰める。壊れた値は素通しする（表示劣化のみで済ませ、
+ * 例外で lint 全体を落とさない）。
+ */
+function toDateOnly(iso: string): string {
+  return iso.length >= 10 ? iso.slice(0, 10) : iso;
+}
+
+/**
+ * ページに渡した順で `#1`〜`#N` の参照番号を振る（summary を除いた対象だけ）。
+ *
+ * buildLinterUserMessage 本文の見出しと、route が parseLinterOutput に渡す番号→id
+ * 対応表を**同じ関数**から作ることで、順序のずれ（本文は N 番目でも対応表は別順、等）を
+ * 構造的に起こらないようにする。
+ */
+export function numberWikis(wikis: WikiSnapshot[]): { targetWikis: WikiSnapshot[]; numberToId: Map<string, string> } {
+  const targetWikis = wikis.filter((w) => w.kind !== "summary");
+  const numberToId = new Map<string, string>();
+  targetWikis.forEach((w, i) => numberToId.set(String(i + 1), w.id));
+  return { targetWikis, numberToId };
+}
+
+export function buildLinterUserMessage(
+  wikis: WikiSnapshot[],
+  recentLog?: string,
+): { text: string; numberToId: Map<string, string> } {
   // summary（要約）は生成を止めた旧種別で、ユーザー向けに「以前の要約」として残っている
   // だけなので LLM には渡さない（実データ規模でコンテキスト長を超える対策。数値のしきい値
   // ではなく構造で減らす — FAQ の「隠れたフィルターは無い」に反しないよう、種別を渡すか
   // 渡さないかの一律ルールにする）。
-  const targetWikis = wikis.filter((w) => w.kind !== "summary");
+  const { targetWikis, numberToId } = numberWikis(wikis);
 
   if (targetWikis.length === 0) {
-    return "No Wiki documents to analyze.";
+    return { text: "No Wiki documents to analyze.", numberToId };
   }
 
-  const wikiDescriptions = targetWikis.map((w) => {
+  const wikiDescriptions = targetWikis.map((w, i) => {
+    const num = i + 1;
     const kindLabel = w.kind === "claim" && w.level ? `concept/${w.level}` : w.kind;
+    // UUID (id: …) を見出しに出さない — LLM への参照は #N（短い参照番号）に一本化する
+    // （実データ規模で id・日時が入力トークンの大半を占めていた対策。id 自体は
+    // route 側の numberToId 対応表から後で引き直す）。
+    const updatedDate = toDateOnly(w.modifiedAt);
+    const ingestedDate = w.lastIngestedAt ? toDateOnly(w.lastIngestedAt) : null;
     const lines = [
-      `## [${kindLabel}] ${w.title} (id: ${w.id})`,
-      `Last updated: ${w.modifiedAt}`,
-      w.lastIngestedAt ? `Last ingested: ${w.lastIngestedAt}` : null,
+      `## #${num} [${kindLabel}] ${w.title}`,
+      `Last updated: ${updatedDate}`,
+      // 取り込み日が更新日と同じ日なら情報が増えないので省く（stale 判定は日付の前後関係が
+      // わかれば十分で、時刻・重複日は要らない）。
+      ingestedDate && ingestedDate !== updatedDate ? `Last ingested: ${ingestedDate}` : null,
       `Sources: ${w.derivedFromNotes.length} note(s)`,
       w.relatedClaims.length > 0
         ? `Related concepts: ${w.relatedClaims.join(", ")}`
@@ -307,8 +350,8 @@ export function buildLinterUserMessage(wikis: WikiSnapshot[], recentLog?: string
 
   // recentLog（直近 1 週間の Wiki 操作ログ）はフル点検のときだけクライアントが同送する
   // （棚卸し D2）。末尾に節として付けるだけで、issue の判定材料にはしない（プロンプト側で明示）。
-  if (!recentLog) return base;
-  return `${base}\n\n## Recent activity (newest first)\n\n${recentLog}`;
+  const text = !recentLog ? base : `${base}\n\n## Recent activity (newest first)\n\n${recentLog}`;
+  return { text, numberToId };
 }
 
 /**
@@ -318,9 +361,45 @@ export function buildLinterUserMessage(wikis: WikiSnapshot[], recentLog?: string
  * （hallucination 防御。既存 issue の recommendedAction 検証と同じ考え方）。
  * 既存 issue の検出・出力ロジックはここでは一切変えない。
  */
+/**
+ * id 欄（affectedWikiIds / keepId / absorbId）の値を実 id に引き直す。
+ *
+ * 入力トークン対策で本文の見出しは UUID ではなく `#N`（参照番号）を使うため、LLM は
+ * 通常 `#12` や `12`（数字のみ）で答える。加えて、タイトル言語の指示（`## Language` の
+ * 「タイトルは原文のまま」例外）を誤って id 欄にまで適用し、id の代わりにページタイトルを
+ * 書いてしまうこともある。この関数は `#N` / 数字のみ / 実 id（UUID 等）/ タイトル の
+ * いずれの形で来ても、以下の優先順位で実 id に引き直す。
+ *   1. すでに実在する id そのもの
+ *   2. `#N` または `N`（参照番号）→ numberToId で引く
+ *   3. ページタイトル → titleToId で引く
+ * どれにも一致しなければ hallucination として落とす（null を返す）。
+ *
+ * validWikiIds が渡されない（= 呼び出し元がテスト等で検証を求めていない）ときは、
+ * 既存動作を壊さないよう値をそのまま通す。
+ */
+function resolveWikiId(
+  raw: string,
+  validWikiIds: Set<string> | undefined,
+  titleToId: Map<string, string> | undefined,
+  numberToId: Map<string, string> | undefined,
+): string | null {
+  if (!validWikiIds) return raw;
+  if (validWikiIds.has(raw)) return raw;
+  const numMatch = raw.match(/^#?(\d+)$/);
+  if (numMatch) {
+    const byNumber = numberToId?.get(numMatch[1]);
+    if (byNumber && validWikiIds.has(byNumber)) return byNumber;
+  }
+  const byTitle = titleToId?.get(raw);
+  if (byTitle && validWikiIds.has(byTitle)) return byTitle;
+  return null;
+}
+
 export function parseLinterOutput(
   text: string,
   validWikiIds?: Set<string>,
+  titleToId?: Map<string, string>,
+  numberToId?: Map<string, string>,
 ): { issues: LintIssue[]; questions: LintQuestion[] } {
   try {
     let jsonText = text.trim();
@@ -334,19 +413,27 @@ export function parseLinterOutput(
 
     const issues: LintIssue[] = !Array.isArray(issuesRaw) ? [] : issuesRaw
       .filter((i: any) => i.type && i.title && i.description)
-      .map((i: any) => {
-        const affectedWikiIds: string[] = Array.isArray(i.affectedWikiIds)
+      .map((i: any): LintIssue | null => {
+        const rawAffectedWikiIds: string[] = Array.isArray(i.affectedWikiIds)
           ? i.affectedWikiIds.map(String)
           : [];
+        // タイトルが紛れ込んでいれば id に引き直し、どちらにも一致しない要素は落とす。
+        const affectedWikiIds = rawAffectedWikiIds
+          .map((id) => resolveWikiId(id, validWikiIds, titleToId, numberToId))
+          .filter((id): id is string => id !== null);
         // PR-B6.2: recommendedAction の取り出し。
         // - type === "merge" 限定
-        // - keepId / absorbId は affectedWikiIds に含まれていなければ無効として捨てる
-        //   （LLM がノイズの id を返した時の hallucination 防御）
+        // - keepId / absorbId も同じ規則で id に引き直す。引き直せない、または
+        //   affectedWikiIds に含まれていなければ無効として捨てる
+        //   （LLM がノイズの id/タイトルを返した時の hallucination 防御）
         let recommendedAction: LintIssue["recommendedAction"];
         const ra = i.recommendedAction;
+        const isRedundant = validateIssueType(i.type) === "redundant";
         if (ra && typeof ra === "object" && ra.type === "merge") {
-          const keepId = typeof ra.keepId === "string" ? ra.keepId : "";
-          const absorbId = typeof ra.absorbId === "string" ? ra.absorbId : "";
+          const rawKeepId = typeof ra.keepId === "string" ? ra.keepId : "";
+          const rawAbsorbId = typeof ra.absorbId === "string" ? ra.absorbId : "";
+          const keepId = rawKeepId ? resolveWikiId(rawKeepId, validWikiIds, titleToId, numberToId) : null;
+          const absorbId = rawAbsorbId ? resolveWikiId(rawAbsorbId, validWikiIds, titleToId, numberToId) : null;
           if (
             keepId &&
             absorbId &&
@@ -362,6 +449,8 @@ export function parseLinterOutput(
             };
           }
         }
+        // redundant は recommendedAction が必須。引き直せず落ちたなら issue ごと捨てる。
+        if (isRedundant && !recommendedAction) return null;
         return {
           type: validateIssueType(i.type),
           severity: validateSeverity(i.severity),
@@ -371,21 +460,22 @@ export function parseLinterOutput(
           suggestion: String(i.suggestion ?? ""),
           recommendedAction,
         };
-      });
+      })
+      .filter((i: LintIssue | null): i is LintIssue => i !== null);
 
     const questionsRaw = parsed.questions;
     const questions: LintQuestion[] = !Array.isArray(questionsRaw) ? [] : questionsRaw
       .filter((q: any) => q && typeof q.question === "string" && typeof q.why === "string")
       .map((q: any) => {
-        let affectedWikiIds: string[] = Array.isArray(q.affectedWikiIds)
+        const rawAffectedWikiIds: string[] = Array.isArray(q.affectedWikiIds)
           ? q.affectedWikiIds.map(String)
           : [];
-        // 実在しない id だけを間引く（validWikiIds が渡されたときのみ。id 自体は残す方針の
-        // 既存 issue と違い、questions は wiki 一覧が確実に手元にある呼び出し元（route）
-        // からしか parseLinterOutput を呼ばないため、この検証を効かせられる）。
-        if (validWikiIds) {
-          affectedWikiIds = affectedWikiIds.filter((id) => validWikiIds.has(id));
-        }
+        // 実在しない id・引き直せないタイトルは間引く（validWikiIds が渡されたときのみ。
+        // questions は wiki 一覧が確実に手元にある呼び出し元（route）からしか
+        // parseLinterOutput を呼ばないため、この検証を効かせられる）。
+        const affectedWikiIds = rawAffectedWikiIds
+          .map((id) => resolveWikiId(id, validWikiIds, titleToId, numberToId))
+          .filter((id): id is string => id !== null);
         const needs: LintQuestionNeeds = q.needs === "external" ? "external" : "internal";
         return {
           question: String(q.question),

@@ -259,7 +259,9 @@ app.post("/lint", async (c) => {
   }
 
   const systemPrompt = buildLinterSystemPrompt(body.language || "en");
-  const userMessage = buildLinterUserMessage(body.wikis, body.recentLog);
+  // text の見出し番号（#N）と numberToId は同じ関数（buildLinterUserMessage）が同じ順序で
+  // 作るので、ここで別途採番し直してずれる余地は無い。
+  const { text: userMessage, numberToId } = buildLinterUserMessage(body.wikis, body.recentLog);
 
   try {
     const model = await createModel(modelConfig);
@@ -276,8 +278,12 @@ app.post("/lint", async (c) => {
 
     // summary（要約）は buildLinterUserMessage が LLM に渡していない（コンテキスト長対策）ので、
     // LLM が知りようのない id を questions に返す余地を作らないよう、要約を除いた集合にする。
-    const validWikiIds = new Set(body.wikis.filter((w) => w.kind !== "summary").map((w) => w.id));
-    const { issues: llmIssues, questions } = parseLinterOutput(result.message, validWikiIds);
+    const targetWikis = body.wikis.filter((w) => w.kind !== "summary");
+    const validWikiIds = new Set(targetWikis.map((w) => w.id));
+    // id 欄にタイトルが紛れ込んだとき id に引き直すための対応表（タイトル→id）。
+    // プロンプトの「タイトルは原文のまま」指示を LLM が id 欄にまで誤適用する対策。
+    const titleToId = new Map(targetWikis.map((w) => [w.title, w.id]));
+    const { issues: llmIssues, questions } = parseLinterOutput(result.message, validWikiIds, titleToId, numberToId);
 
     // ローカル検出 + LLM 分析をマージ（重複排除）
     const allIssues = mergeIssues(localIssues, llmIssues);

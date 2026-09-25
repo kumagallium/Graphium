@@ -830,6 +830,20 @@ describe("buildWikiSnapshots - answer（回答ページ）も点検スナップ�
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]).toMatchObject({ id: "answer-1", kind: "answer", derivedFromNotes: ["note-a"] });
   });
+
+  it("ドキュメントキャッシュに未登録（作成直後等）でも WikiMetaSummary.derivedFromNotes から資料を補い孤立にしない", () => {
+    const wikiMetas = new Map<string, WikiMetaSummary>([
+      ["answer-2", { title: "作成直後の問答", kind: "answer", derivedFromNotes: ["note-b"] }],
+    ]);
+    // getCachedDoc は常に未登録（undefined）を返す = キャッシュがまだ載っていない状態を再現
+    const snapshots = buildWikiSnapshots(
+      [{ id: "answer-2", modifiedTime: "2026-09-24T00:00:00.000Z" }],
+      wikiMetas,
+      () => undefined,
+    );
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].derivedFromNotes).toEqual(["note-b"]);
+  });
 });
 
 describe("convertSectionsToBlocks（buildSourceTopicDocument 経由）- 箇条書き / 番号付きリストの変換", () => {

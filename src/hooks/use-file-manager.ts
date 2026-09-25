@@ -527,6 +527,9 @@ export function useFileManager(authenticated: boolean) {
                 // handleCreateWikiFile）と同じ値を起動時にも積む — 無いと再起動後に一覧の
                 // 知見数列と知見削除時のリンク解除が効かなくなる。
                 derivedFromClaims: doc.wikiMeta?.derivedFromClaims,
+                // topic / answer の資料 id（クイック点検が cache 未登録時に orphan 誤判定
+                // しないためのフォールバック mirror）。
+                derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
                 topicIds: doc.wikiMeta?.topicIds,
                 theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
                 groundingValidity: validity
@@ -2678,6 +2681,11 @@ export function useFileManager(authenticated: boolean) {
             derivedFromClaims: doc.wikiMeta
               ? doc.wikiMeta.derivedFromClaims
               : existing?.derivedFromClaims,
+            // topic / answer の資料 id（クイック点検の orphan フォールバック mirror）。
+            // derivedFromClaims と同じ規則。
+            derivedFromNotes: doc.wikiMeta
+              ? doc.wikiMeta.derivedFromNotes
+              : existing?.derivedFromNotes,
             topicIds: doc.wikiMeta ? doc.wikiMeta.topicIds : existing?.topicIds,
             theme:
               doc.wikiMeta?.kind === "synthesis"
@@ -3035,6 +3043,10 @@ export function useFileManager(authenticated: boolean) {
           synthesisMode: doc.wikiMeta?.synthesisMode,
           hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
           derivedFromClaims: doc.wikiMeta?.derivedFromClaims,
+          // 作成直後は getCachedDoc 側の doc キャッシュも即座に載るが（本関数内で既に
+          // set 済み）、クイック点検が別プロセス由来のドキュメント等でキャッシュを
+          // 引けないケースに備えたフォールバック mirror。
+          derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
           topicIds: doc.wikiMeta?.topicIds,
           theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
           groundingValidity: validity
