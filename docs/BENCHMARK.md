@@ -83,7 +83,7 @@ All metrics are normalized to 0–1. Implementation in `bench/metrics.ts`.
 | `lift_score` | Fraction of Atoms whose title/body contains no domain-specific jargon (proper nouns, instrument names, abbreviations). |
 | `mode_distribution_entropy` | Shannon entropy of Synthesis mode firing (`deductive` / `abductive` / `analogical` / `dialectic`), normalized by `log2(4)`. 0 = single mode dominates; 1 = perfect balance. |
 | `epistemic_preservation` | Fraction of notes whose extracted Claim epistemic status matches ground-truth. |
-| `adversarial_pass_rate` | Fraction of probes whose expected behavior is observed. |
+| `adversarial_pass_rate` | Fraction of spec probes (`bench/probes/*.probe.json`) whose expected behavior is observed. Despite the name, it does not include the adversarial probes, which `pnpm bench:adversarial` reports separately (see [Probes](#probes)). |
 | `novelty_score` | Fraction of Syntheses whose body is not a paraphrase of source Atoms. |
 | `cross_language_consistency` | Fraction of `cross-language-pair` notes (same `pairId`, JP↔EN) that collapse into a single Atom. 1.0 when the corpus has no pairs (vacuous). |
 | `domain_balance_score` | Per-domain Atom lift-rate, combined as `meanPass × normalizedEntropy`. Penalises both low lift and uneven lift across domains; 0 when only one domain has signal. |
@@ -133,6 +133,34 @@ Two kinds of probes live next to the corpus:
   100 KB body, mixed-language, circular reference) do not crash or stall
   the pipeline. Run with `pnpm bench:adversarial`.
 
+### How the adversarial probes are evaluated
+
+`pnpm bench:adversarial` has no live mode yet. It always runs the
+dry-run heuristic pipeline, which calls no production code and copies
+note text into Claims and Atoms almost verbatim. So:
+
+- **Not evaluated in dry-run** — the checks that look for banned strings
+  in the output (`atomTitleMustNotContain`, `atomBodyMustNotContain`,
+  `claimContentMustNotContain`). In dry-run they would only report which
+  line of the note the heuristic happened to copy, so they are marked
+  `–`, and the probe is reported as `SKIP` unless one of its other checks
+  fails. Judging them needs a live LLM run.
+- **Evaluated** — crash, duration, Claim / Atom counts, and
+  `atomEpistemicStatusMustNotBe`. These run against the bench's own
+  heuristic pipeline, not the production ingest, so read them as a
+  self-test of the dry-run pipeline.
+
+A key in a probe's `expected` that no check implements, or a value the
+check does not support (for example `pipelineCompletes: false`), fails
+the run, so a probe cannot appear to check something it does not.
+
+The dry-run is deterministic, so each probe's result (pass / fail /
+skip, per check) is recorded in `bench/probes/adversarial/baseline.json`
+and every run is compared with it. If a PR changes these results on
+purpose, re-record the baseline in the same PR with
+`BENCH_ADVERSARIAL_UPDATE_BASELINE=true pnpm bench:adversarial` —
+otherwise every later PR reports the same change.
+
 ## Migration fixtures
 
 `bench/migration/fixtures/` stores frozen snapshots of older document /
@@ -175,7 +203,7 @@ every later PR repeats the same warning.
 | Job | Source | Blocks merge? |
 |---|---|---|
 | `bench / wiki-pipeline` | `pnpm bench:run` (dry-run by default) | No (warning) |
-| `bench / adversarial` | `pnpm bench:adversarial` | No (warning) |
+| `bench / adversarial` | `pnpm bench:adversarial` | No (warning; the job fails only if the script crashes) |
 | `bench / migration` | `pnpm test:migration` (`STRICT=true`) | **Yes** |
 | `bench / performance` | `pnpm bench:performance` | No (warning) |
 
@@ -191,6 +219,13 @@ regenerate `bench/baseline.json` with `BENCH_MODE=dry-run pnpm bench:run`
 in the same PR; otherwise every later PR shows the same delta.
 A `workflow_dispatch` lets a maintainer run the live LLM mode against
 the org's API-key secret when needed.
+
+The `bench-adversarial` comment is posted only when the probe results
+differ from `bench/probes/adversarial/baseline.json`. A PR that does not
+change them gets no comment, and a comment left by an earlier push is
+deleted. The full report — or the error, if the script crashes — is
+always in the job summary. This job runs in dry-run even on a
+`workflow_dispatch` in live mode.
 
 ## For contributors writing a roadmap phase
 
