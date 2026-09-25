@@ -462,7 +462,15 @@ every non-empty data row gets one, and a duplicated id (row copied) keeps
 the first occurrence and re-mints the rest. The style is registered in
 the editor schema but renders as an invisible `display: contents` span,
 and the PROV generator carries it onto the emitted node as
-`graphium:tableRowId`.
+`graphium:tableRowId`. Rewriting a first cell from the app (creating a
+row's note, picking a note with `@` in the note-link column) keeps the id
+on the new text.
+An `@`-mention typed into a table cell records its `reference` link with
+the row's id as `sourceRowIdentity` (optional on `BlockLink`): one table
+block holds every cell's links, so the row is what tells apart two cells
+with the same label — each sample's own `data.txt`. A row that has not
+been saved yet is numbered on the spot. Links recorded before this carry
+no row and still resolve per block.
 Adding an input, tool or output from the graph appends a row to that
 step's labelled table — creating and labelling one if the step has none —
 so the note accumulates a sample table rather than one-word paragraphs.

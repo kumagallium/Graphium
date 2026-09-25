@@ -110,10 +110,16 @@ import {
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
+  getAssetSuggestions,
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
   insertNoteMentionInline,
 } from "@features/block-link/mention-menu";
+import {
+  insertAssetMention,
+  recordMentionLink,
+  type AddReferenceLink,
+} from "@features/block-link/mention-insert";
 import {
   openPeekTarget,
   readMentionAt,
@@ -1036,7 +1042,7 @@ function SidePeekInner({
 
   // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する
   // （main editor の insertInlineAtSlash と同じ流儀）。
-  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[], onInserted?: () => void) => {
     const content = currentBlock.content;
     const isSlashOnly =
       Array.isArray(content) &&
@@ -1049,6 +1055,7 @@ function SidePeekInner({
     editor.setTextCursorPosition(target, "end");
     setTimeout(() => {
       editor.insertInlineContent(inline);
+      onInserted?.();
     }, 0);
   }, []);
 
@@ -1074,22 +1081,25 @@ function SidePeekInner({
           citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), entry.fileId],
         };
       }
-      // linkStore にも外部ソース ID で記録する（main editor と同じ）。クリックはこれで
-      // 素材を厳密に引く。無いと素材名の逆引きになり、同名の素材があると取り違える
-      if (entry.fileId) {
-        linkStoreRef.current.addLink({
-          sourceBlockId: currentBlock.id,
-          targetBlockId: "",
-          targetNoteId: `${entry.type}:${entry.fileId}`,
-          type: "reference",
-          createdBy: "human",
-        });
-      }
-      // insertInlineContent の onChange 経由で自動保存される
-      insertInlineAtSlash(editor, currentBlock, [
-        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
-        { type: "text", text: " ", styles: {} },
-      ]);
+      // insertInlineContent の onChange 経由で自動保存される。
+      // 入れた直後に linkStore にも外部ソース ID で記録する（main editor と同じ）。
+      // クリックはこれで素材を厳密に引く。無いと素材名の逆引きになり、同名の素材が
+      // あると取り違える（表のセルなら行の identity も控える）
+      insertInlineAtSlash(
+        editor,
+        currentBlock,
+        [
+          { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+          { type: "text", text: " ", styles: {} },
+        ],
+        () => {
+          if (!entry.fileId) return;
+          recordMentionLink(editor, (p) => linkStoreRef.current.addLink(p), {
+            sourceBlockId: currentBlock.id,
+            targetNoteId: `${entry.type}:${entry.fileId}`,
+          });
+        },
+      );
       setPickerMediaType(null);
       return;
     }
@@ -2160,13 +2170,16 @@ function SidePeekInner({
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
-                // `@` 参照: 他ノートの参照 + 「新規ノートを作成」。メインエディタと同じく
-                // 挿入後はピーク内に留まり、青い @テキストをクリックすると（note-app の
-                // document クリックハンドラが .bn-editor を拾うため）サイドピークで開く。
+                // `@` 参照: 他ノート・素材の参照 + 「新規ノートを作成」。メインエディタと同じく
+                // 挿入後はピーク内に留まり、青い @テキストをクリックすると（このピークの
+                // クリックハンドラが拾う）ノートはピークで、素材は素材ピークで開く。
                 getMentionSuggestions={(query) => {
                   // 見出し候補は DOM 全体から拾ってしまい（メイン+ピークが同居）紛れるため、
-                  // ピークでは他ノート参照と新規作成のみに絞る。
-                  const base = getNoteSuggestions([], noteId, noteIndex);
+                  // ピークでは他ノート・素材の参照と新規作成に絞る。
+                  const base = [
+                    ...getNoteSuggestions([], noteId, noteIndex),
+                    ...getAssetSuggestions(mediaIndex),
+                  ];
                   if (onCreateLinkedNote) {
                     const createItem = getCreateNoteSuggestion(query, base);
                     if (createItem) base.push(createItem);
@@ -2185,19 +2198,33 @@ function SidePeekInner({
                     if (!newId) return;
                     s = { type: "note", id: newId, label: title, group: "" };
                   }
+                  const addLink: AddReferenceLink = (p) => linkStoreRef.current.addLink(p);
+                  if (s.type === "asset") {
+                    // メインエディタと同じ関数（mention-insert.ts）。引用素材は docRef に積み、
+                    // doSave が docRef.current を spread するので一緒に永続化される
+                    insertAssetMention(() => editorRef.current, sourceBlockId, s, {
+                      addLink,
+                      citeAsset: (fileId) => {
+                        const cur = docRef.current;
+                        if (cur && !(cur.citedAssetFileIds ?? []).includes(fileId)) {
+                          docRef.current = {
+                            ...cur,
+                            citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), fileId],
+                          };
+                        }
+                      },
+                      onInserted: handleChange,
+                    });
+                    return;
+                  }
                   if (s.type !== "note") return;
-                  linkStoreRef.current.addLink({
-                    sourceBlockId,
-                    targetBlockId: "",
-                    targetNoteId: s.id,
-                    type: "reference",
-                    createdBy: "human",
-                  });
                   const noteRefId = s.id;
                   const label = s.label;
                   setTimeout(() => {
-                    // href に noteId を埋めた link として挿入（同名ノートでも正しく解決）
+                    // 本文は青い @タイトル、ノート ID はリンクの記録に持つ（同名ノートでも正しく解決）。
+                    // 記録は入れた直後に（表のセルなら行の identity も控える）
                     insertNoteMentionInline(editorRef.current, noteRefId, label);
+                    recordMentionLink(editorRef.current, addLink, { sourceBlockId, targetNoteId: noteRefId });
                     handleChange();
                   }, 100);
                 }}
