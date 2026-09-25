@@ -289,3 +289,41 @@ describe("useAutoSave: 開いたまま今すぐ書き出す口（takeUnsaved / r
     expect(flushes).toEqual(["unmount"]);
   });
 });
+
+describe("useAutoSave: 自動保存の外の保存（trackSave）", () => {
+  it("共有などで始めた保存が書き込み中なら、アンマウント時の書き出しはその完了を待つ", async () => {
+    const order: string[] = [];
+    let api!: ReturnType<typeof useAutoSave>;
+    function Probe() {
+      api = useAutoSave(
+        () => true,
+        (ready) => {
+          void ready.then((ok) => {
+            if (ok) order.push("書き出し");
+          });
+        },
+      );
+      return null;
+    }
+    const { unmount } = render(<Strict><Probe /></Strict>);
+    let release!: () => void;
+    const share = new Promise<void>((resolve) => {
+      release = resolve;
+    }).then(() => {
+      order.push("共有の保存");
+    });
+    await act(async () => {
+      api.trackSave(share);
+      api.markDirty();
+    });
+    await act(async () => {
+      unmount();
+    });
+    expect(order).toEqual([]);
+    await act(async () => {
+      release();
+      await share;
+    });
+    expect(order).toEqual(["共有の保存", "書き出し"]);
+  });
+});

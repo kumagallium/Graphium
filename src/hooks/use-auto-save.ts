@@ -80,6 +80,14 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
     executeSave();
   }, [executeSave]);
 
+  // 自動保存の外で始めた保存（共有・提案など）も「書き込み中」に数える。アンマウント時の
+  // 書き出しがその完了を待ち、古い内容が後から届いて直前の編集を巻き戻さないように
+  const trackSave = useCallback(<T,>(save: Promise<T>): Promise<T> => {
+    const prev = inflightRef.current;
+    inflightRef.current = Promise.allSettled([prev, save]).then(() => {});
+    return save;
+  }, []);
+
   // 未保存の編集を今すぐ呼び出し側へ渡す（開いているエディタの「今すぐ書き出す」口。
   // 同じノートを別の場所で開くときに使う — lib/peek-save-queue.ts の registerLivePeek）。
   // 未保存が無ければ null。あれば自動保存のタイマーを止めて未保存を下ろし、それまでに
@@ -159,5 +167,5 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
     };
   }, []);
 
-  return { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved };
+  return { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved, trackSave };
 }

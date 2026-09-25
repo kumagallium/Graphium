@@ -3211,10 +3211,19 @@ function NoteEditorInner({
       provider: getActiveProvider(),
     };
   }
+  // 自動保存の外から呼ぶ保存（共有・提案）は useAutoSave の trackSave で数える（下で設定）
+  const trackSaveRef = useRef<(<T,>(save: Promise<T>) => Promise<T>) | null>(null);
   const saveDoc = useCallback(
     (doc: GraphiumDocument, opts?: { unmounting?: boolean }) =>
       onSave(saveTargetRef.current!, doc, opts),
     [onSave],
+  );
+  const saveDocTracked = useCallback(
+    (doc: GraphiumDocument) => {
+      const save = saveDoc(doc);
+      return trackSaveRef.current ? trackSaveRef.current(save) : save;
+    },
+    [saveDoc],
   );
 
   const handleSave = useCallback(async (): Promise<boolean> => {
@@ -3299,8 +3308,10 @@ function NoteEditorInner({
   }, [canFlushOnUnmount, captureDocument, finishDocument, onSave, sharedRefState, fileId, isWikiDoc, onPropagateMentionRename]);
 
   // ── オートセーブ ──
-  const { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved } =
+  const { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved, trackSave } =
     useAutoSave(handleSave, flushPending);
+  // 共有・提案など自動保存の外の保存も、アンマウント時の書き出しが待つ「書き込み中」に数える
+  trackSaveRef.current = trackSave;
 
   // 開いている間は「未保存を今すぐ書き出す」口を出す（lib/peek-save-queue.ts）。同じノートを
   // サイドピークやメインで開き直すとき、開く側はここに書き出させてから列を待つ。
@@ -3385,7 +3396,7 @@ function NoteEditorInner({
         return;
       }
       // sharedRef 付きの doc を保存（personal 側に sharedRef を持たせる）
-      void saveDoc(result.doc);
+      void saveDocTracked(result.doc);
       // 共有ライブラリが変わった（Library / 引用ピッカー / 語彙索引の追従はこの通知 1 本）
       notifySharedLibraryChanged();
       // バッジを即時更新（initialDoc は親側で書き替えるまで変わらないので、ローカル state で先に反映）
@@ -3404,7 +3415,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, saveDoc, t, sharedRefState, isWikiDoc, fileId]);
+  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -3487,13 +3498,13 @@ function NoteEditorInner({
   const handleProposalShared = useCallback(
     (doc: GraphiumDocument) => {
       // sharedRef 付きの doc を保存（手元ノートが提案の封筒を指す）
-      void saveDoc(doc);
+      void saveDocTracked(doc);
       setSharedRefState(doc.sharedRef);
       window.alert(
         isProposalShared ? t("share.propose.updateSuccess") : t("share.propose.success"),
       );
     },
-    [saveDoc, isProposalShared, t],
+    [saveDocTracked, isProposalShared, t],
   );
 
   const handleWithdrawProposal = useCallback(async () => {
@@ -3511,7 +3522,7 @@ function NoteEditorInner({
         return;
       }
       // 手元ノートの sharedRef を外す（buildDocument は sharedRef を持たない）
-      await saveDoc(await buildDocument());
+      await saveDocTracked(await buildDocument());
       setSharedRefState(undefined);
       // 提案をやめたので、基準版の控えはもう使わない（§25b C-3）
       if (fileId) await clearForkBase(fileId);
@@ -3520,7 +3531,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, saveDoc, fileId, t]);
+  }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, saveDocTracked, fileId, t]);
 
   // ── メモ挿入（メモギャラリーから） ──
   useEffect(() => {
