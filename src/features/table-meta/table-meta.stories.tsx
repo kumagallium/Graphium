@@ -21,7 +21,6 @@ import { readTableData } from "./table-cells";
 import {
   applyLogTableTimestamps,
   primeLogTableRowTracking,
-  resetLogTableRowTracking,
 } from "../log-table/auto-timestamp";
 import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { MediaOcrProvider } from "../media-ocr/store";
@@ -103,12 +102,12 @@ function TableMetaDemoInner({
   // 拡大表示（実アプリと同じ配線: ⤢ → 読み取り専用スナップショット → モーダル）
   const [expandData, setExpandData] = useState<TableExpandData | null>(null);
   useEffect(() => {
-    resetLogTableRowTracking();
     if (datetimeColumn !== null) {
       store.addColumnType(TABLE_ID, datetimeColumn, "datetime-auto");
-      // 実アプリはノート読み込み時に行数を記録する。ここでも同じ状態にしないと
-      // 最初の行追加が「初見」扱いになり、日時が入らない
-      primeLogTableRowTracking(content, [TABLE_ID]);
+      // 実アプリはノートを開いたときに行数をエディタ単位で記録する。ここでも同じ状態に
+      // しないと最初の行追加が「初見」扱いになり、日時が入らない
+      // （エディタの公開は子の effect なので、ここより先に editorRef に入っている）
+      primeLogTableRowTracking(editorRef.current, content, [TABLE_ID]);
     }
     if (caption) store.setCaption(TABLE_ID, caption);
     // eslint-disable-next-line react-hooks/exhaustive-deps

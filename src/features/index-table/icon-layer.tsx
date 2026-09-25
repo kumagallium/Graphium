@@ -1,6 +1,8 @@
 // インデックステーブルの行頭アイコンレイヤー
 // ProvIndicatorLayer と同じく、エディタのラッパーの中に絶対配置で描画する
 // （body に fixed で置くと、スクロールに追随できず、開いたメニューも覆う）
+// メインエディタと SidePeek のどちらにも置く。受け口（ノートを作る・紐付ける・開く）は
+// 描いているエディタに登録されたものを引く（context.tsx の setEditorIndexTableCallbacks）
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -9,7 +11,7 @@ import { useTableMetaStore } from "../table-meta/store";
 import { withCellText } from "../table-meta/table-cells";
 import { hasColumnType } from "../table-meta/types";
 import { getFirstCellText, createNoteFromRow } from "./create-note-from-row";
-import { getIndexTableCallbacks } from "./context";
+import { getEditorIndexTableCallbacks } from "./context";
 
 // 行ごとのアイコン情報
 type RowIcon = {
@@ -21,12 +23,39 @@ type RowIcon = {
   left: number;
 };
 
-export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<any> }) {
+export function IndexTableIconLayer({
+  editorRef,
+  wrapperEl,
+  readOnly = false,
+}: {
+  editorRef: React.RefObject<any>;
+  /**
+   * この層が見るエディタの外枠（TableCaptionLayer と同じ流儀）。SidePeek は自分の
+   * wrapper を渡す。null（まだ付いていない）の間は何も描かない — 最初の外枠に落とすと
+   * メインのラッパーにピークの行アイコンを描いてしまう。省略時は最初の
+   * [data-label-wrapper]＝メインエディタ（DOM 順でメインが先に出る）
+   */
+  wrapperEl?: HTMLElement | null;
+  /**
+   * ノートが読み取り専用（アーカイブ・ゴミ箱・版）のとき true。行からノートを作る
+   * アイコンを出さない（作ると読み取り専用のノートの表を書き換える）。
+   * つながった行を開く覆いは出す
+   */
+  readOnly?: boolean;
+}) {
   // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
   useLocaleSubscription();
   const store = useTableMetaStore();
   const [icons, setIcons] = useState<RowIcon[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
+
+  const resolveRoot = useCallback(
+    (): HTMLElement | null =>
+      wrapperEl !== undefined
+        ? wrapperEl
+        : document.querySelector<HTMLElement>("[data-label-wrapper]"),
+    [wrapperEl],
+  );
 
   // テーブル行の位置を計算
   // ノート読み込み直後など editor / DOM がまだ準備できていない場合は
@@ -47,7 +76,8 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
       return;
     }
 
-    const root = document.querySelector<HTMLElement>("[data-label-wrapper]");
+    // 外枠が付いたら resolveRoot が変わって測り直すので、ここでは待つだけでよい
+    const root = resolveRoot();
     if (!root) return;
     setPortalHost((prev) => (prev === root ? prev : root));
     // ラッパー内座標の基準（スクロール量込み）
@@ -100,7 +130,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
         compute();
       }, 200);
     }
-  }, [store.metas, editorRef]);
+  }, [store.metas, editorRef, resolveRoot]);
 
   useEffect(() => {
     return () => {
@@ -129,7 +159,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
     window.addEventListener("scroll", compute, true);
     window.addEventListener("resize", compute);
 
-    const editorEl = document.querySelector("[data-label-wrapper]");
+    const editorEl = resolveRoot();
     let observer: MutationObserver | null = null;
     // サイドピーク・素材ピーク・右パネルの開閉ではウィンドウの幅は変わらず、エディタの
     // 幅だけが変わって表が左右に動く。window の resize では拾えず、行を開く透明な覆いが
@@ -154,14 +184,16 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
       observer?.disconnect();
       resizeObserver?.disconnect();
     };
-  }, [compute]);
+  }, [compute, resolveRoot]);
 
   // リンク済みセルの位置情報（カーソル変更用オーバーレイ）
   const hostRect = portalHost?.getBoundingClientRect() ?? null;
   const linkedCellRects = icons
     .filter((icon) => icon.linkedNoteId)
     .map((icon) => {
-      const blockEl = document.querySelector(
+      // 表はこの層の外枠の中で探す。メインとピークで同じノートを開くと同じ
+      // ブロック ID の表が 2 つあり、document 全体からだと先に出る方を拾う
+      const blockEl = portalHost?.querySelector(
         `[data-id="${icon.blockId}"][data-node-type="blockOuter"]`
       );
       if (!blockEl) return null;
@@ -192,8 +224,10 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
   // 未リンク行 → ノート作成
   const handleCreateNote = useCallback(
     async (blockId: string, rowIndex: number, sampleName: string) => {
-      const callbacks = getIndexTableCallbacks();
       const editor = editorRef.current;
+      // 描いているエディタの受け口。作ったノートの派生元・noteLinks の書き込み先は
+      // そのエディタのノート（ピークで作ったらピークのノート）
+      const callbacks = getEditorIndexTableCallbacks(editor);
       if (!callbacks || !editor) return;
 
       if (!sampleName) {
@@ -236,8 +270,8 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
           }
 
           callbacks.onRefreshFiles();
-          // 作成直後にサイドピークで開く
-          callbacks.onOpenSidePeek(fileId);
+          // 作成直後に開く（メインはサイドピークに開く。SidePeek は受け口を渡さず表に留まる）
+          callbacks.onNoteCreated?.(fileId);
         }
       } catch (err) {
         console.error("ノート作成に失敗:", err);
@@ -250,8 +284,9 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
   );
 
 
-  // リンク済み行はアイコンを出さない（セルテキストクリックでサイドピークが開く）
-  const unlinkedIcons = icons.filter((icon) => !icon.linkedNoteId);
+  // リンク済み行はアイコンを出さない（セルテキストクリックでサイドピークが開く）。
+  // 読み取り専用のノートでは作る入口そのものを出さない
+  const unlinkedIcons = readOnly ? [] : icons.filter((icon) => !icon.linkedNoteId);
 
   if (!portalHost) return null;
 
@@ -323,8 +358,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
         <div
           key={`link-${key}`}
           onClick={() => {
-            const callbacks = getIndexTableCallbacks();
-            callbacks?.onOpenSidePeek(noteId);
+            getEditorIndexTableCallbacks(editorRef.current)?.onOpenSidePeek(noteId);
           }}
           style={{
             position: "absolute",

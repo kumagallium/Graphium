@@ -3,7 +3,7 @@
 // 背景ページは操作可能（薄暗くならない）
 // ラベル機能（ProvIndicatorLayer）対応
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
@@ -21,9 +21,10 @@ import {
   useBlockAlignmentStore,
   AlignmentStyleLayer,
 } from "../block-alignment";
-import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
+import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../../lib/document-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
 import { pickPeekExternalFields } from "./peek-save-merge";
+import { leaveAfterSave } from "./peek-leave";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { buildSavedPageFields, saveNoteDoc } from "@features/note-save";
 import { SandboxEditor } from "../../base/editor";
@@ -43,15 +44,9 @@ import {
   useRemoteContentScope,
   useRemoteImageImport,
 } from "../../blocks/remote-content";
-import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
-import { calloutSlashItem } from "../../blocks/callout";
-import { mathSlashItem } from "../../blocks/math";
-import { calcSlashItem } from "../../blocks/calc";
-import { inlineMathSlashItem } from "../inline-math/spec";
-import { stepSlashItem } from "../../blocks/step";
-import { columnsSlashItem } from "../../blocks/multi-column";
+import { setBookmarkPickerCallback } from "../../blocks/bookmark";
+import { getCommonSlashMenuItems } from "../../blocks/slash-items";
 import {
-  getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_KEYS,
   MediaPickerModal,
   setMediaPickerCallback,
@@ -85,7 +80,6 @@ import {
   syncTableRowIdentitiesToEditor,
 } from "../../lib/table-row-identity";
 import {
-  getMemoSlashMenuItem,
   setMemoPickerCallback,
   MemoPickerModal,
   buildMemoInsertBlock,
@@ -99,11 +93,18 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
+  hasColumnType,
+  readFirstColumnName,
   readTableData,
   sortTableBlock,
   type TableExpandData,
   type SortState,
 } from "@features/table-meta";
+import {
+  setRegisterLogTableCallback,
+  applyLogTableTimestamps,
+  primeLogTableRowTracking,
+} from "@features/log-table";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
@@ -123,6 +124,7 @@ import {
   resolveMentionClickTarget,
 } from "@features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
+import { buildNewNoteSlashItem } from "@features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
 import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
 import { isProvLabelsEnabled } from "@features/settings";
@@ -131,13 +133,11 @@ import { KnowledgeStatusChip } from "@features/wiki/KnowledgeStatusChip";
 import type { GraphiumIndex, NoteIndexEntry } from "@features/navigation";
 import {
   CitePickerModal,
-  getCiteSlashMenuItems,
   setCitePickerCallback,
   type CitePickerKind,
 } from "@features/cite-picker";
 import { SharedCitePickerModal } from "@features/sharing/SharedCitePickerModal";
 import {
-  sharedCitationSlashItem,
   setSharedCitePickerCallback,
   insertSharedCitations,
 } from "../../blocks/shared-citation";
@@ -147,12 +147,17 @@ import {
   setChartAssetSourceCallback,
   type ChartAssetSourceResult,
 } from "../../blocks/chart";
-import { isTauri } from "../../lib/platform";
+import { useTemplatePicker } from "@features/template";
 import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
-import { setEditorSidePeekCallback } from "./context";
+import {
+  setEditorIndexTableCallbacks,
+  setEditorSidePeekCallback,
+  setRegisterIndexTableCallback,
+} from "./context";
+import { IndexTableIconLayer } from "./icon-layer";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
@@ -246,6 +251,13 @@ type SidePeekProps = {
    */
   onCreateLinkedNote?: (title: string, sourceNoteId?: string) => Promise<string | null>;
   /**
+   * ノートのファイル一覧と、その再取得（メインエディタに渡すものと同じ値）。
+   * インデックステーブルの「行からノートを作る」が、同名ノートの確認と、作ったノートを
+   * 一覧に載せるのに使う。未指定なら確認と一覧の更新を省く（作成と紐付けは動く）
+   */
+  files?: GraphiumFile[];
+  onRefreshFiles?: () => void;
+  /**
    * 保存直前に doc キャッシュから最新の chats を採用するための getter。
    * チャット実行のアプリレベル書き戻し（chat-run-manager）が、ピーク表示中の
    * ノートの doc.chats を更新することがある。doSave は docRef（このピークが
@@ -326,7 +338,7 @@ function SidePeekInner({
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
-  onOpenLocalView, renderWikiContext,
+  onOpenLocalView, renderWikiContext, files, onRefreshFiles,
 }: SidePeekProps) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。素材ピークと幅設定を共有する。
@@ -351,7 +363,7 @@ function SidePeekInner({
   const editorRef = useRef<any>(null);
   // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
-  // @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全）
+  // @ メニュー「新しいノートを作成」とスラッシュ「新しいノート」の名前入力ダイアログ（IME 安全）
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
@@ -372,6 +384,19 @@ function SidePeekInner({
   const [chartAssetRequest, setChartAssetRequest] = useState<{
     onDone: (result: ChartAssetSourceResult) => void;
   } | null>(null);
+  // スラッシュメニューの「テンプレート」（メインと共通の useTemplatePicker）。
+  // ラベル・前手順リンク・表の列のふるまいは、このピークのノートのストアへ書く。
+  // ストアは毎レンダリング新しいオブジェクトになるので ref 経由で最新を引く
+  const templatePicker = useTemplatePicker(sidePeekEditor, {
+    stores: {
+      setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
+      setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+      addLink: (params) => linkStoreRef.current.addLink(params),
+      addColumnType: (blockId, columnName, type) =>
+        tableMetaStoreRef.current.addColumnType(blockId, columnName, type),
+    },
+    uploadFile,
+  });
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
   const [loading, setLoading] = useState(true);
@@ -390,6 +415,24 @@ function SidePeekInner({
   onSavedRef.current = onSaved;
   const onOpenNoteInPeekRef = useRef(onOpenNoteInPeek);
   onOpenNoteInPeekRef.current = onOpenNoteInPeek;
+  // 保存状態の写し（クリックのリスナーは保存状態が変わるたびには張り直さない）
+  const saveStatusRef = useRef(saveStatus);
+  saveStatusRef.current = saveStatus;
+  // ピーク内のクリックで別の面へ移るときは、未保存の編集を保存し終えてから go を呼ぶ
+  // （閉じる・全画面で開くときと同じ順。理由は peek-leave.ts）
+  const leavePeek = useCallback((go: () => void) => {
+    leaveAfterSave(
+      { status: saveStatusRef.current, timerPending: autoSaveTimerRef.current !== null },
+      {
+        cancelTimer: () => {
+          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        },
+        save: () => doSaveRef.current(),
+        go,
+      },
+    );
+  }, []);
   // メインエディタ側のタイトルリネームを、このピークで開いているノートの本文へ
   // ライブ反映する命令口を登録する。ファイル直書きだとピークの次のオートセーブが
   // 旧内容で上書きして伝播が巻き戻るため、エディタ経由で書き換えて通常のオート
@@ -509,14 +552,20 @@ function SidePeekInner({
     // 「読み込み中」と本文が高速に切り替わり続ける。store は ref 経由で参照する。
   }, [noteId]);
 
-  // ドキュメント読み込み後にラベル・リンクを復元
-  // setLabel / restoreLinks は useCallback で安定な参照
+  // ドキュメント読み込み後にラベル・リンクを復元（1 回の読み込みにつき 1 度だけ）
+  // setLabel / restoreLinks は useCallback で安定な参照。
+  // タイトルや文脈ラベルの変更も setDoc で doc を作り直すが、pages は読み込み時のまま。
+  // そこで走り直すと、このピークで加えた注釈・リンク・配置揃え（ピークで作った
+  // 時系列テーブルの登録など）が読み込み時の状態に戻り、次の自動保存で確定してしまう
   const { setLabel } = labelStore;
   const { restoreLinks } = linkStore;
+  const restoredPagesRef = useRef<unknown>(null);
   useEffect(() => {
     if (!doc) return;
     const page = doc.pages?.[0];
     if (!page) return;
+    if (restoredPagesRef.current === doc.pages) return;
+    restoredPagesRef.current = doc.pages;
 
     // ラベル復元
     if (page.labels) {
@@ -538,7 +587,18 @@ function SidePeekInner({
     // テーブル注釈（名前・取り込み元・列のふるまい）。メインと同じく旧 logTables /
     // indexTables はここで変換する。これが無いとピークでは表の名前も
     // 取り込み元バッジも出ず、長い表の折りたたみも効かない
-    tableMetaStoreRef.current.restore(migrateTableMeta(page));
+    const tableMeta = migrateTableMeta(page);
+    tableMetaStoreRef.current.restore(tableMeta);
+    // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+    // 日時が入るように）。エディタがまだ無ければ空振りし、エディタができたときの
+    // effect が記録する（メインの初期データの復元と同じ）
+    primeLogTableRowTracking(
+      editorRef.current,
+      page.blocks,
+      Object.entries(tableMeta ?? {})
+        .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
+        .map(([blockId]) => blockId),
+    );
   }, [doc, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
@@ -764,7 +824,8 @@ function SidePeekInner({
   // note-app の document ハンドラはピーク内（data-side-peek 配下）をスキップするので、
   // ここで「このピーク自身の linkStore」を使って厳密な ID に解決する（同名ノートでも正しい）。
   // 解決と振り分けは note-app と共通の関数を通す（片方だけ直す移植漏れで、ピークでは
-  // @txt などのデータ素材が開かず、表の中では同じ表の別リンクへ飛んでいた）
+  // @txt などのデータ素材が開かず、表の中では同じ表の別リンクへ飛んでいた）。
+  // ピークを離れる開き方は leavePeek を通し、未保存の編集を書き出してから移る
   useEffect(() => {
     if (!onOpenNoteInPeek) return;
     const root = sidePeekRef.current;
@@ -781,7 +842,7 @@ function SidePeekInner({
           e.preventDefault();
           e.stopPropagation();
           if (onOpenMaterialPeek) {
-            onOpenMaterialPeek(buildUrlPeekEntry(href, mediaIndex ?? null));
+            leavePeek(() => onOpenMaterialPeek(buildUrlPeekEntry(href, mediaIndex ?? null)));
           } else {
             void openExternalUrl(href);
           }
@@ -804,12 +865,14 @@ function SidePeekInner({
         if (extLink?.targetNoteId) {
           e.preventDefault();
           e.stopPropagation();
-          onOpenNoteInPeek(extLink.targetNoteId);
+          const sourceNoteId = extLink.targetNoteId;
+          leavePeek(() => onOpenNoteInPeek(sourceNoteId));
           return;
         }
       }
-      // インデックステーブルの先頭列も本文と同じに扱う（ピークには行アイコンの層が
-      // 無いので、先頭列を除外すると行ノートも @素材 もピーク内から開けなかった）
+      // インデックステーブルの先頭列も本文と同じに扱う。行ノートにつながった行は
+      // 行アイコン層の透明な覆いが先にクリックを受けて行ノートを開くので、ここへ来るのは
+      // つながっていない行のメンション（@素材 など）だけ（note-app と同じ）
       const mention = readMentionAt(target);
       if (!mention) return;
       const peekDoc = docRef.current;
@@ -826,24 +889,51 @@ function SidePeekInner({
       e.stopPropagation();
       // References の「Source: @ラベル」等の外部ソース ID は素材ピーク（素材ピークの無い
       // 画面では URL だけ外部ブラウザ）へ。ノートピークとして開き直すと loadFile が
-      // 失敗して「読み込みに失敗しました」になる。chat: は開ける実体が無いので何もしない
+      // 失敗して「読み込みに失敗しました」になる。chat: は開ける実体が無いので何もしない。
+      // 外部ブラウザはピークを離れないので、その場で開く
+      const openMaterial = onOpenMaterialPeek;
+      const openMemo = onOpenMemoSource;
       openPeekTarget(peekId, mediaIndex, {
-        openNote: onOpenNoteInPeek,
-        openMaterial: onOpenMaterialPeek,
+        openNote: (id) => leavePeek(() => onOpenNoteInPeek(id)),
+        openMaterial: openMaterial && ((entry) => leavePeek(() => openMaterial(entry))),
         openUrlFallback: (url) => void openExternalUrl(url),
         // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
-        openMemo: onOpenMemoSource,
+        openMemo: openMemo && ((captureId) => leavePeek(() => openMemo(captureId))),
       });
     };
     root.addEventListener("click", onClick, true);
     return () => root.removeEventListener("click", onClick, true);
-  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor]);
+  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor, leavePeek]);
 
   // データ表への計算列は本文を変えないので、宣言の変化でも列を配り直す（note-app と同じ）
   useEffect(() => {
     if (!sidePeekEditor) return;
     publishTableColumns(sidePeekEditor, tableMetaStore);
   }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
+
+  // 時系列テーブル（行を足すと 1 列目に日時が入る表）。スラッシュ項目はメインと共通で、
+  // 登録先は押されたエディタをキーに引くので、ピークで挿入した表はピークの
+  // tableMetaStore に付く（メイン側のノートに注釈が漏れない）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setRegisterLogTableCallback(sidePeekEditor, (blockId: string) => {
+      tableMetaStoreRef.current.addColumnType(
+        blockId,
+        readFirstColumnName(sidePeekEditor.getBlock?.(blockId)),
+        "datetime-auto",
+      );
+    });
+    // 開いたときの行数を、このエディタの分として先に記録しておく（開いて最初の行追加
+    // から日時が入るように）。読み込み後の復元 effect でも記録するので、注釈の復元と
+    // エディタの公開のどちらが先でも取りこぼさない（記録の無い表だけを埋めるので、
+    // 二度呼んでも崩れない）
+    primeLogTableRowTracking(
+      sidePeekEditor,
+      sidePeekEditor.document,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
+    return () => { setRegisterLogTableCallback(sidePeekEditor, null); };
+  }, [sidePeekEditor]);
 
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
@@ -885,7 +975,7 @@ function SidePeekInner({
       if (isExternalSourceId(targetNoteId)) return false;
       const callback = onOpenNoteInPeekRef.current;
       if (!callback) return false;
-      callback(targetNoteId);
+      leavePeek(() => callback(targetNoteId));
       return true;
     });
     return () => {
@@ -900,7 +990,7 @@ function SidePeekInner({
       if (typeof offContentChange === "function") offContentChange();
       offDataArrived();
     };
-  }, [sidePeekEditor, tableMetaStore]);
+  }, [sidePeekEditor, tableMetaStore, leavePeek]);
 
   // スラッシュ用に「直前のスラッシュブロック」を退避する。
   // BlockNote はスラッシュアイテム選択時点で `/` を含む空ブロックの中身を消すが、
@@ -1249,8 +1339,16 @@ function SidePeekInner({
     if (noteId.startsWith("snapshot:")) return;
     setSaveStatus("dirty");
     labelAutoRef.current?.();
+    // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
+    // 1 列目に日時を入れる（メインエディタの handleContentChange と同じ）
+    applyLogTableTimestamps(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
+      // 発火したら空に戻す（null でない = 保存待ちの編集がある、を leavePeek が見る）
+      autoSaveTimerRef.current = null;
       doSaveRef.current();
     }, 3000);
   }, [noteId, scanRemoteImages]);
@@ -1286,6 +1384,30 @@ function SidePeekInner({
     const linked = blockContainsUrlLink(editor, blockId, url);
     registerUrlAsset(url, linked ? buildPeekUsage(blockId) : [], onAddUrlBookmark);
   }, [buildPeekUsage, onAddUrlBookmark]);
+
+  // スラッシュメニューの「新しいノート」。組み立てはメインと共通
+  // （block-link/new-note-slash-item.ts）で、記録先だけこのピークのものを渡す:
+  // reference リンクはピークの linkStore、派生関係（noteLinks）はピークで開いている
+  // ノート（doSave が docRef.current を spread して一緒に保存する）。新しいノートの
+  // 派生元もこのノートにする（@ の「新規ノートを作成」と同じ）。作れないときは出さない
+  const newNoteSlashItem = useMemo(
+    () =>
+      onCreateLinkedNote
+        ? buildNewNoteSlashItem({
+            promptNoteName,
+            createNote: (title) => onCreateLinkedNote(title, noteId),
+            getEditor: () => editorRef.current,
+            addLink: (params) => linkStoreRef.current.addLink(params),
+            addNoteLink: (link) => {
+              const cur = docRef.current;
+              if (!cur || (cur.noteLinks ?? []).some((l) => l.targetNoteId === link.targetNoteId)) return;
+              docRef.current = { ...cur, noteLinks: [...(cur.noteLinks ?? []), link] };
+              handleChange();
+            },
+          })
+        : null,
+    [onCreateLinkedNote, promptNoteName, noteId, handleChange],
+  );
 
   // 文脈ラベルの初期化（ノートを開いた最初のロード時に doc から取り込む。noteId 単位で一度だけ、
   // 以降の本文編集による doc 変化ではリセットしない）。
@@ -1351,6 +1473,49 @@ function SidePeekInner({
       handleChange();
     }
   }, [tableMetaStore.metas, handleChange]);
+
+  // インデックステーブル（行からノートを作れる表）の受け口を、このピークのエディタに登録する。
+  // スラッシュ項目と行アイコンはメインと同じ部品で、押されたエディタをキーに受け口を引く。
+  // 表の注釈・作ったノートの派生元・noteLinks はこのピークのノートに入る（メインには入らない）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setRegisterIndexTableCallback(sidePeekEditor, (blockId) => {
+      // メインの addFirstColumnType と同じ: 先頭列の名前をキーに note-link を付ける
+      const block = sidePeekEditor.getBlock?.(blockId);
+      tableMetaStoreRef.current.addColumnType(blockId, readFirstColumnName(block), "note-link");
+    });
+    setEditorIndexTableCallbacks(sidePeekEditor, {
+      files: files ?? [],
+      // メインと同じく wiki:/skill: を外した ID を派生元にする
+      currentFileId: noteId.replace(/^(wiki|skill):/, ""),
+      onRefreshFiles: () => onRefreshFiles?.(),
+      // つながった行を開くのも、ピーク内のほかのクリックと同じく leavePeek を通す。
+      // 行からノートを作った直後や打った直後に押すと、表の書き換え・紐付け・本文の編集が
+      // 書き出されないまま、ピークが別ノートへ作り直されて消える
+      onOpenSidePeek: (targetId) => leavePeek(() => onOpenNoteInPeekRef.current?.(targetId)),
+      onAddNoteLink: (targetNoteId, sourceBlockId) => {
+        const cur = docRef.current;
+        if (!cur) return;
+        const links = cur.noteLinks ?? [];
+        if (links.some((l) => l.targetNoteId === targetNoteId && l.sourceBlockId === sourceBlockId)) {
+          return;
+        }
+        // doSave は docRef.current を spread するので、ここに積めば一緒に書き出される
+        // （noteLinks は画面に出さないので、表示用の doc state は触らない）
+        docRef.current = {
+          ...cur,
+          noteLinks: [...links, { targetNoteId, sourceBlockId, type: "derived_from" }],
+        };
+        handleChange();
+      },
+      // onNoteCreated は渡さない: 作った直後に開くとピークの中身が差し替わって表が
+      // 見えなくなる（戻る導線も無い）。行の先頭セルが @名前 になり、押せばそこで開く
+    });
+    return () => {
+      setRegisterIndexTableCallback(sidePeekEditor, null);
+      setEditorIndexTableCallbacks(sidePeekEditor, null);
+    };
+  }, [sidePeekEditor, noteId, files, onRefreshFiles, leavePeek, handleChange]);
 
   // Cmd+S / Ctrl+S
   useEffect(() => {
@@ -1662,6 +1827,14 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
+            {/* インデックステーブルの行アイコン（行からノートを作る・つながった行を開く）。
+                メインと同じ層をピークの外枠に閉じて使い、受け口はこのピークのエディタに
+                登録したものを引く。読み取り専用のノートでは作る入口を出さない */}
+            <IndexTableIconLayer
+              editorRef={editorRef}
+              wrapperEl={wrapperEl}
+              readOnly={archived || trashed || noteId.startsWith("snapshot:")}
+            />
             {/* 表の名前・取り込み元バッジ・長い表の折りたたみ。メインと同じ層を
                 ピークの外枠に閉じて使う（wrapperEl 無しだとメイン側の表を測る） */}
             <TableCaptionLayer
@@ -1934,23 +2107,13 @@ function SidePeekInner({
                 blocks={customBlockEntries}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}
-                // メインエディタと同じ slash items を出す。
+                // どのエディタでも動く slash items を出す（メインと同じ一覧から取る）。
                 // 各 slash item の onItemClick はクリック時のエディタを
-                // ピッカーに渡すよう改修済みなので、SidePeek で開いた場合は
-                // SidePeek のエディタに挿入される。
-                extraSlashMenuItems={[
-                  ...getMediaSlashMenuItems(),
-                  bookmarkSlashItem,
-                  calloutSlashItem,
-                  stepSlashItem,
-                  columnsSlashItem,
-                  mathSlashItem,
-                  inlineMathSlashItem,
-                  calcSlashItem,
-                  getMemoSlashMenuItem(),
-                  ...(noteIndex ? getCiteSlashMenuItems() : []),
-                  ...(isTauri() ? [sharedCitationSlashItem] : []),
-                ]}
+                // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
+                // 挿入される。メインに固定の受け口で動く項目（getMainEditorOnlySlashMenuItems）は
+                // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）。
+                // 先頭の「新しいノート」はメインと同じ組み立てで、記録先がこのピーク
+                extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...getCommonSlashMenuItems({ includeCite: !!noteIndex })]}
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
@@ -2036,8 +2199,10 @@ function SidePeekInner({
                     sourceCheckStale: wikiContextStale,
                     openNote: (targetId) => {
                       const openInPeek = onOpenNoteInPeekRef.current;
-                      if (openInPeek) openInPeek(targetId);
-                      else onNavigate(targetId);
+                      leavePeek(() => {
+                        if (openInPeek) openInPeek(targetId);
+                        else onNavigate(targetId);
+                      });
                     },
                   })}
                 </div>
@@ -2054,7 +2219,7 @@ function SidePeekInner({
         }
       `}</style>
 
-      {/* @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全） */}
+      {/* @ メニュー「新しいノートを作成」とスラッシュ「新しいノート」の名前入力ダイアログ（IME 安全） */}
       {newNoteNameDialog}
 
       {/* URL ペースト → ブックマーク/リンク選択メニュー（メインエディタと同じ） */}
@@ -2071,8 +2236,10 @@ function SidePeekInner({
       {/* スラッシュメニューのピッカーモーダル。
           SidePeek overlay (z-index:100) より前面に出すため、
           z-index:200 の wrapper で stacking context を切る。
-          (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。) */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || chartAssetRequest ? "auto" : "none" }}>
+          (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。)
+          ピッカーを足したら pointerEvents の条件にも足す。足し忘れると、開いたピッカーの
+          クリックが下のピークに抜ける（共有ライブラリの引用ピッカーが条件から漏れていた） */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || sharedCitePickerOpen || chartAssetRequest || templatePicker.open ? "auto" : "none" }}>
         {pickerMediaType && (
           <MediaPickerModal
             mediaIndex={mediaIndex ?? null}
@@ -2103,6 +2270,7 @@ function SidePeekInner({
             onClose={() => setCitePickerKind(null)}
           />
         )}
+        {templatePicker.dialog}
         {sharedCitePickerOpen && (
           <SharedCitePickerModal
             onConfirm={(entries) => {
