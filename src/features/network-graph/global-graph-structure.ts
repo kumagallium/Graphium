@@ -5,10 +5,15 @@
 // - computeReachScores: ノートごとに、辺を無向にたどって hops 以内で届く
 //   「別のノート」の数を数える（知見や外部ソースを経由してもよい）。
 // - assignIslands: reach の高いノート（ハブ）を選び、他のノートを最も近いハブに
-//   割り当てる（layoutMode: islands の裏側。clusterByContext の「タグごとの
-//   重心」と同じ仕組みをハブ割り当てで作るための下ごしらえ）。
+//   割り当てる（layoutMode: islands 初期版の裏側。現在は使っていないがテストは
+//   残す。clusterByContext の「タグごとの重心」と同じ仕組みをハブ割り当てで
+//   作るための下ごしらえだった）。
+// - detectCommunities: ラベル伝播法で全ノード込みのコミュニティを検出する。
+// - detectNoteCommunities: detectCommunities をノート限定（ノート同士の辺だけ）
+//   で走らせ、ノート以外は隣接ノートの多数派に所属させる（layoutMode: islands
+//   の現在の裏側）。
 //
-// どちらも表示 props（foldLeaves / sizeMode / layoutMode）の裏側として
+// 表示 props（foldLeaves / sizeMode / layoutMode）の裏側として
 // global-graph-view.tsx から使う。
 
 import type { NoteGraphData, NoteNode } from "./graph-builder";
@@ -28,6 +33,10 @@ export function foldLeafNodes(data: NoteGraphData): {
   data: NoteGraphData;
   foldedCount: Map<string, number>;
   foldedTotal: number;
+  /** 畳まれた葉 id → 畳み先（親）ノート id。相手が無く単に取り除かれた
+   *  （ノート隣接 0）ノードはここには入らない（foldedCount/foldedTotal にのみ数える）。
+   *  layoutMode: islands で畳んだ葉を「衛星」として描き直すときに使う。 */
+  foldedInto: Map<string, string>;
 } {
   const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
   const neighborIds = new Map<string, string[]>();
@@ -39,6 +48,7 @@ export function foldLeafNodes(data: NoteGraphData): {
 
   const removeIds = new Set<string>();
   const foldedCount = new Map<string, number>();
+  const foldedInto = new Map<string, string>();
   let foldedTotal = 0;
 
   for (const n of data.nodes) {
@@ -52,6 +62,7 @@ export function foldLeafNodes(data: NoteGraphData): {
       const targetId = [...noteNeighbors][0];
       removeIds.add(n.id);
       foldedCount.set(targetId, (foldedCount.get(targetId) ?? 0) + 1);
+      foldedInto.set(n.id, targetId);
       foldedTotal++;
     } else if (noteNeighbors.size === 0) {
       removeIds.add(n.id);
@@ -62,7 +73,7 @@ export function foldLeafNodes(data: NoteGraphData): {
 
   const nodes = data.nodes.filter((n) => !removeIds.has(n.id));
   const edges = data.edges.filter((e) => !removeIds.has(e.source) && !removeIds.has(e.target));
-  return { data: { nodes, edges }, foldedCount, foldedTotal };
+  return { data: { nodes, edges }, foldedCount, foldedTotal, foldedInto };
 }
 
 /**
@@ -273,4 +284,65 @@ export function detectCommunities(
     if (!changed) break;
   }
   return label;
+}
+
+/**
+ * detectCommunities をノート限定で走らせる。ノート同士の辺（両端が kind
+ * "note"）だけでラベル伝播し、知見・原料などノート以外のノードを混ぜない
+ * ——複数ノートに共有された知見が、その共有だけを理由に別々の島を
+ * くっつけてしまわないようにする（detectCommunities は全ノード込みでラベル
+ * 伝播するため、共有ノードが橋になり得る）。
+ *
+ * ノート以外のノードは、直接隣接するノート（1 ホップのみ。他の知見・原料を
+ * 経由した間接的な隣接は数えない）が所属するコミュニティの多数派に所属させる
+ * （同数なら文字列順で小さい方）。ノートに一つも隣接しないノードは戻り値の
+ * Map に入らない（「所属無し」）。
+ */
+export function detectNoteCommunities(data: NoteGraphData): Map<string, string> {
+  const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
+  const isNote = (id: string) => {
+    const n = nodeById.get(id);
+    return !!n && kindOf(n) === "note";
+  };
+
+  const noteNodes = data.nodes.filter((n) => isNote(n.id));
+  const noteEdges = data.edges.filter((e) => isNote(e.source) && isNote(e.target));
+  const noteCommunities = detectCommunities({ nodes: noteNodes, edges: noteEdges });
+
+  const result = new Map<string, string>(noteCommunities);
+
+  // ノート以外のノードごとに、直接隣接するノートの id を集める
+  const noteNeighborsOf = new Map<string, string[]>();
+  for (const n of data.nodes) if (!isNote(n.id)) noteNeighborsOf.set(n.id, []);
+  for (const e of data.edges) {
+    const sourceIsNote = isNote(e.source);
+    const targetIsNote = isNote(e.target);
+    if (sourceIsNote && !targetIsNote) noteNeighborsOf.get(e.target)?.push(e.source);
+    else if (targetIsNote && !sourceIsNote) noteNeighborsOf.get(e.source)?.push(e.target);
+    // 両方ノート（noteEdges 側で処理済み）/ 両方ノート以外は対象外
+  }
+
+  for (const n of data.nodes) {
+    if (isNote(n.id)) continue;
+    const neighborNoteIds = noteNeighborsOf.get(n.id) ?? [];
+    if (neighborNoteIds.length === 0) continue; // ノートに隣接しない → 所属無し
+    const counts = new Map<string, number>();
+    for (const noteId of neighborNoteIds) {
+      const community = noteCommunities.get(noteId);
+      if (community === undefined) continue;
+      counts.set(community, (counts.get(community) ?? 0) + 1);
+    }
+    if (counts.size === 0) continue;
+    let bestLabel: string | null = null;
+    let bestCount = -1;
+    for (const l of [...counts.keys()].sort()) {
+      const c = counts.get(l)!;
+      if (c > bestCount) {
+        bestCount = c;
+        bestLabel = l;
+      }
+    }
+    if (bestLabel !== null) result.set(n.id, bestLabel);
+  }
+  return result;
 }

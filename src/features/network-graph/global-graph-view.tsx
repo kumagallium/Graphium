@@ -19,8 +19,8 @@ import { openExternalUrl } from "../../lib/external-link";
 import { aggregateNoteContexts, noteContextHue } from "../note-context/context-tags";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
-import type { NoteNode, NoteGraphData, EdgeRelation } from "./graph-builder";
-import { foldLeafNodes, computeReachScores, detectCommunities } from "./global-graph-structure";
+import type { NoteNode, NoteGraphData, NoteEdge, EdgeRelation } from "./graph-builder";
+import { foldLeafNodes, computeReachScores, detectNoteCommunities } from "./global-graph-structure";
 import { globalGraphScope } from "./graph-layout";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
@@ -260,6 +260,12 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
     style: { "border-width": 3 },
   },
   {
+    // 畳んだ葉を衛星として残したノード（layoutMode: islands + fold ON）。
+    // 量感は出すが主役ではないので少し透過・低い z-index にする。
+    selector: "node[?satellite]",
+    style: { opacity: 0.85, "z-index": 1 },
+  },
+  {
     // 検索ヒット: 琥珀色の太枠 + フルラベル表示。faded より優先されるよう後段に置く
     selector: "node.search-hit",
     style: {
@@ -328,6 +334,132 @@ function applySearchHighlight(cy: cytoscape.Core, rawQuery: string): number {
   return hits.length;
 }
 
+/**
+ * layoutMode: islands の 2 段目（幾何）。1 段目の fcose（ノート + 重心ダミー +
+ * ノート同士の実辺 + 重心の不可視エッジ）が決めた位置を土台に、ノート以外の
+ * 実ノード（知見・原料・話題）と衛星（畳んだ葉）を幾何計算だけで直接置く。
+ * fcose の 1 段目には混ぜない——質量が大きく、混ぜると島が分かれなくなる。
+ *
+ * - ノート以外の実ノード: 直接隣接する実ノート（shownEdges の実辺のみ。
+ *   重心の不可視エッジ・衛星の不可視エッジは数えない）の位置の平均に置く。
+ *   隣接ノートが 1 つならそのノートから半径 40（角度は id のハッシュで決定的）。
+ *   同じ点に重なる場合は id 順に 8px ずつ螺旋状にずらす。隣接ノートが無いものは
+ *   触らない（元の位置のまま）。
+ * - 衛星: 親ノートの周りのリングに等間隔で置く。半径 = 親の size/2 + 14、
+ *   1 リング 12 個まで、超えたら半径 +12 の次のリング。角度は index から決定的に。
+ */
+function placeIslandGeometry(
+  cy: cytoscape.Core,
+  opts: {
+    shownEdges: NoteEdge[];
+    noteIds: Set<string>;
+    foldedOutNodes: NoteNode[];
+    foldedInto: Map<string, string>;
+  },
+): void {
+  const { shownEdges, noteIds, foldedOutNodes, foldedInto } = opts;
+
+  // ── ノート以外の実ノード: 隣接ノートの平均位置 ──
+  const noteNeighborsOf = new Map<string, string[]>();
+  for (const e of shownEdges) {
+    const sourceIsNote = noteIds.has(e.source);
+    const targetIsNote = noteIds.has(e.target);
+    if (sourceIsNote && !targetIsNote) {
+      const list = noteNeighborsOf.get(e.target);
+      if (list) list.push(e.source);
+      else noteNeighborsOf.set(e.target, [e.source]);
+    } else if (targetIsNote && !sourceIsNote) {
+      const list = noteNeighborsOf.get(e.source);
+      if (list) list.push(e.target);
+      else noteNeighborsOf.set(e.source, [e.target]);
+    }
+  }
+
+  // 決定的な疑似角度（id のハッシュ）。乱数は使わない。
+  const hashAngle = (id: string): number => {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return (h % 360) * (Math.PI / 180);
+  };
+
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const [nodeId, noteNeighborIds] of noteNeighborsOf) {
+    if (noteNeighborIds.length === 0) continue;
+    if (noteNeighborIds.length === 1) {
+      const note = cy.getElementById(noteNeighborIds[0]);
+      if (note.empty()) continue;
+      const p = note.position();
+      const angle = hashAngle(nodeId);
+      positions.set(nodeId, { x: p.x + 40 * Math.cos(angle), y: p.y + 40 * Math.sin(angle) });
+      continue;
+    }
+    let sumX = 0;
+    let sumY = 0;
+    let count = 0;
+    for (const noteId of noteNeighborIds) {
+      const note = cy.getElementById(noteId);
+      if (note.empty()) continue;
+      sumX += note.position().x;
+      sumY += note.position().y;
+      count++;
+    }
+    if (count === 0) continue;
+    positions.set(nodeId, { x: sumX / count, y: sumY / count });
+  }
+
+  // 同じ点に重なるものを id 順に 8px ずつ螺旋状にずらす
+  const byRoundedPoint = new Map<string, string[]>();
+  for (const [nodeId, p] of positions) {
+    const key = `${Math.round(p.x)}:${Math.round(p.y)}`;
+    const list = byRoundedPoint.get(key);
+    if (list) list.push(nodeId);
+    else byRoundedPoint.set(key, [nodeId]);
+  }
+  for (const ids of byRoundedPoint.values()) {
+    if (ids.length < 2) continue;
+    const sorted = [...ids].sort();
+    sorted.forEach((nodeId, i) => {
+      if (i === 0) return; // 先頭はそのまま
+      const base = positions.get(nodeId)!;
+      const angle = i * 2.4; // 黄金角に近い値で重なりを避ける
+      const radius = 8 * i;
+      positions.set(nodeId, { x: base.x + radius * Math.cos(angle), y: base.y + radius * Math.sin(angle) });
+    });
+  }
+
+  for (const [nodeId, p] of positions) {
+    const node = cy.getElementById(nodeId);
+    if (!node.empty()) node.position(p);
+  }
+
+  // ── 衛星: 親ノートの周りのリング ──
+  const byParent = new Map<string, string[]>();
+  for (const node of foldedOutNodes) {
+    const parentId = foldedInto.get(node.id);
+    if (!parentId) continue;
+    const list = byParent.get(parentId);
+    if (list) list.push(node.id);
+    else byParent.set(parentId, [node.id]);
+  }
+  const RING_CAPACITY = 12;
+  for (const [parentId, satelliteIds] of byParent) {
+    const parent = cy.getElementById(parentId);
+    if (parent.empty()) continue;
+    const ppos = parent.position();
+    const parentSize = Number(parent.data("size")) || KIND_SIZE.note;
+    satelliteIds.forEach((satId, index) => {
+      const ring = Math.floor(index / RING_CAPACITY);
+      const indexInRing = index % RING_CAPACITY;
+      const radius = parentSize / 2 + 14 + ring * 12;
+      const angle = (indexInRing / RING_CAPACITY) * 2 * Math.PI;
+      const sat = cy.getElementById(satId);
+      if (!sat.empty()) {
+        sat.position({ x: ppos.x + radius * Math.cos(angle), y: ppos.y + radius * Math.sin(angle) });
+      }
+    });
+  }
+}
+
 // ── キャンバス（クロムなし。オーバーレイや Storybook から使う） ──
 
 export function GlobalGraphCanvas({
@@ -377,8 +509,14 @@ export function GlobalGraphCanvas({
   /** 呼び出し元（GlobalGraphView）が filterGlobalGraph + foldLeafNodes を先に済ませた
    *  結果。foldLeaves=true のときだけ使い、指定があれば内部での foldLeafNodes 再計算
    *  を省く（同じ入力に対する二重計算を避けるためのもの）。未指定なら自前で計算する
-   *  （Storybook 等の単体利用はこちら）。 */
-  precomputedFold?: { data: NoteGraphData; foldedCount: Map<string, number> };
+   *  （Storybook 等の単体利用はこちら）。foldedInto/foldedOutNodes は layoutMode:
+   *  islands で畳んだ葉を「衛星」として描き直すために使う。 */
+  precomputedFold?: {
+    data: NoteGraphData;
+    foldedCount: Map<string, number>;
+    foldedInto: Map<string, string>;
+    foldedOutNodes: NoteNode[];
+  };
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -442,12 +580,16 @@ export function GlobalGraphCanvas({
   // 有効なら「葉を畳む」を続けて掛ける（畳んだ相手ノード id → 個数が foldedCount）。
   // precomputedFold が渡されていれば（GlobalGraphView が先に計算済み）、同じ入力に対する
   // foldLeafNodes の二重計算を避けてそれをそのまま使う。
-  const { nodes: shownNodes, edges: shownEdges, foldedCount } = useMemo(() => {
+  // foldedOutNodes/foldedInto は、layoutMode: islands のときに畳んだ葉を「衛星」
+  // として描き直すために持っておく（実際に使うのは cy 構築側）。
+  const { nodes: shownNodes, edges: shownEdges, foldedCount, foldedOutNodes, foldedInto } = useMemo(() => {
     if (foldLeaves && precomputedFold) {
       return {
         nodes: precomputedFold.data.nodes,
         edges: precomputedFold.data.edges,
         foldedCount: precomputedFold.foldedCount,
+        foldedOutNodes: precomputedFold.foldedOutNodes,
+        foldedInto: precomputedFold.foldedInto,
       };
     }
     const filtered = filterGlobalGraph(data, {
@@ -458,9 +600,23 @@ export function GlobalGraphCanvas({
       hideUncategorized,
       hideAtoms,
     });
-    if (!foldLeaves) return { ...filtered, foldedCount: new Map<string, number>() };
+    if (!foldLeaves) {
+      return {
+        ...filtered,
+        foldedCount: new Map<string, number>(),
+        foldedOutNodes: [] as NoteNode[],
+        foldedInto: new Map<string, string>(),
+      };
+    }
     const folded = foldLeafNodes(filtered);
-    return { nodes: folded.data.nodes, edges: folded.data.edges, foldedCount: folded.foldedCount };
+    const foldedOutNodes = filtered.nodes.filter((n) => folded.foldedInto.has(n.id));
+    return {
+      nodes: folded.data.nodes,
+      edges: folded.data.edges,
+      foldedCount: folded.foldedCount,
+      foldedOutNodes,
+      foldedInto: folded.foldedInto,
+    };
   }, [
     data,
     visibleLayers,
@@ -529,8 +685,10 @@ export function GlobalGraphCanvas({
       const foldedN = foldedCount.get(node.id) ?? 0;
       const full = `${nodeIcon(node)}${node.title}`;
       // 畳んだ分の suffix はタイトルの truncate 後に付ける（truncate で "…" と
-      // 混ざって読めなくならないように）。
-      const foldSuffix = foldedN > 0 ? ` +${foldedN}` : "";
+      // 混ざって読めなくならないように）。ただし layoutMode: islands のときは
+      // 畳んだ葉を衛星として個別に描くので、親側に "+n" は付けない（衛星の量感で
+      // 見えるため、二重に示さない）。
+      const foldSuffix = foldedN > 0 && layoutMode !== "islands" ? ` +${foldedN}` : "";
       // 色は構築時点のモードで塗る。モード切替時は色 effect が data を書き換える
       // （cy を作り直さない＝レイアウトを保つ）。大きさも ref 経由で今の sizeMode /
       // reachScores を読んで最初から正しい値を入れる（構造変化で cy が作り直された
@@ -605,13 +763,16 @@ export function GlobalGraphCanvas({
     }
     if (layoutMode === "islands") {
       // 「島の配置」: clusterByContext と同じ仕組み（不可視のダミー重心 + 不可視
-      // エッジ）を、タグの代わりに detectCommunities（ラベル伝播法）が見つけた
-      // コミュニティで作る。ハブ方式（assignIslands、reach 上位をハブにして
-      // 割り当てる）はハブが少数しか取れない生成データでは全体が 1 つの塊に
-      // なってしまったため、コミュニティ検出に切り替えた（assignIslands 自体は
-      // テストのために残す）。メンバー 2 以下のコミュニティは重心を置かない。
+      // エッジ）を、タグの代わりに detectNoteCommunities が見つけたコミュニティで
+      // 作る。ハブ方式（assignIslands、reach 上位をハブにして割り当てる）はハブが
+      // 少数しか取れない生成データでは全体が 1 つの塊になってしまったため、
+      // コミュニティ検出に切り替えた（assignIslands 自体はテストのために残す）。
+      // detectNoteCommunities はノート同士の辺だけでラベル伝播し、知見・原料は
+      // 隣接ノートの多数派に所属させる——detectCommunities（全ノード込み）だと
+      // 複数ノートに共有された知見が橋になって島をくっつけてしまう。
+      // メンバー 2 以下のコミュニティは重心を置かない。
       // clusterByContext と併用されたときは両方の重心が置かれる。
-      const communities = detectCommunities({ nodes: shownNodes, edges: shownEdges });
+      const communities = detectNoteCommunities({ nodes: shownNodes, edges: shownEdges });
       const byCommunity = new Map<string, string[]>();
       for (const [nodeId, communityId] of communities) {
         const list = byCommunity.get(communityId);
@@ -633,6 +794,45 @@ export function GlobalGraphCanvas({
             classes: "cluster-edge",
           });
         }
+      }
+    }
+    if (layoutMode === "islands" && foldLeaves && foldedOutNodes.length > 0) {
+      // 「畳んだ葉を衛星として描く」: fold ON のときに畳んだ葉（知見・原料など）を
+      // 消さずに、小さな衛星ノードとして親（畳み先）の周りに残す。実辺（親→葉）は
+      // 描かない（foldLeafNodes が既に取り除いている）。id は元のノード id を
+      // そのまま使うので、クリックは既存のノードクリック経路
+      // （cy.on("tap", "node", ...)）がそのまま働く。ラベルは畳んだ数量感だけを
+      // 見せたいので空にし、フルラベルは残す（ホバー・検索ヒットで見える）。
+      for (const node of foldedOutNodes) {
+        const parentId = foldedInto.get(node.id);
+        if (!parentId) continue;
+        const kind = kindOf(node);
+        const full = `${nodeIcon(node)}${node.title}`;
+        const { fill, border } = nodeColors(node, colorModeRef.current);
+        elements.push({
+          data: {
+            id: node.id,
+            label: "",
+            fullLabel: full,
+            color: fill,
+            borderColor: border,
+            shape: KIND_SHAPE[kind],
+            size: 9,
+            satellite: true,
+            isWiki: !!node.isWiki,
+            external: node.external,
+            externalUrl: node.externalUrl,
+          },
+        });
+        elements.push({
+          data: {
+            id: `satellite:${parentId}:${node.id}`,
+            source: parentId,
+            target: node.id,
+            satellite: true,
+          },
+          classes: "cluster-edge",
+        });
       }
     }
 
@@ -687,15 +887,23 @@ export function GlobalGraphCanvas({
     // たび全体を並べ直すと、配置替えが何度も走って見える）
     // 引き継いだ座標を持つノードが 1 つも無いときは最初から並べる（原点に重なったまま
     // 続きを並べると一直線に潰れる）
-    const gentle = !modeChanged && !!carried && placedCount > 0;
-    if (gentle) seedUnplacedNodes(cy, unplacedIds);
-    // 「島の配置」(layoutMode==="islands"): つながりの多いノート（reachNorm が高い）
-    // ほど反発を強め・繋がる辺を短く・強い弾性にする。加えて（clusterByContext と
-    // 同じ仕組みの）ハブごとの不可視ダミー重心（上で追加した island-hub 要素）が
-    // 実際の「島」を作る主役——力の係数だけでは 1 つの密な網から分かれなかった。
-    // gravity も clusterByContext と同じ値（0.06）まで弱め、中央への引き寄せに
-    // 負けず島が離れられるようにする（plain のときはどちらも今のまま）。
     const islands = layoutMode === "islands";
+    // islands は切替のたびに並べ直す（前回座標からの「続き」はしない）。
+    // 引き継いだ座標に混じって、ノート以外（今回は幾何で置く）の古い位置が
+    // 残っていると土台が歪むため、常に randomize で 1 段目を走らせる。
+    const gentle = !islands && !modeChanged && !!carried && placedCount > 0;
+    if (gentle) seedUnplacedNodes(cy, unplacedIds);
+    // 「島の配置」(layoutMode==="islands"): 2 段階で組む。
+    //   1 段目（物理・fcose）: ノート + 重心ダミー + ノート同士の実辺 + 重心の
+    //     不可視エッジだけを対象にする（cy.collection().layout(...)）。知見・
+    //     原料・話題（ノート以外の実ノード）と衛星は質量が大きく、混ぜると
+    //     1 つの密な網から分かれなかったため対象から外す。
+    //   2 段目（幾何・layoutstop で同期的に）: ノート以外の実ノードは隣接ノートの
+    //     平均位置へ、衛星は親ノートの周りのリングへ、幾何計算で直接置く
+    //     （placeIslandGeometry）。
+    // gravity・重心の弾性は clusterByContext と同じ考え方（引き寄せを弱め、
+    // 塊同士が離れられるようにする）。plain / clusterByContext 単独のときは
+    // どちらも今のまま（1 段のみ・cy 全体が対象）。
     const reachNorm = (id: string): number => {
       if (!reachScores || maxReachScore <= 0) return 0;
       return (reachScores.get(id) ?? 0) / maxReachScore;
@@ -703,7 +911,28 @@ export function GlobalGraphCanvas({
     const baseRepulsion = clusterByContext ? 30000 : 9000;
     const baseLen = clusterByContext ? 300 : 110;
     const baseEl = clusterByContext ? 0.2 : 0.4;
-    const lay = cy.layout({
+
+    const noteIds = new Set(shownNodes.filter((n) => kindOf(n) === "note").map((n) => n.id));
+    // 1 段目の対象コレクション。islands のときだけ絞る（ノート + 重心ダミー +
+    // ノート同士の実辺 + 重心の不可視エッジで、その不可視エッジもメンバーが
+    // ノートのものだけに絞る——知見・原料・話題向けの重心エッジは 2 段目で扱う）。
+    let physicsEles: any = cy.elements();
+    if (islands) {
+      const physicsNodes = cy.nodes().filter((n: any) => n.hasClass("cluster-hub") || noteIds.has(n.id()));
+      const physicsEdges = cy.edges().filter((e: any) => {
+        if (e.data("satellite")) return false;
+        if (e.data("virtual")) {
+          const source = e.source();
+          const target = e.target();
+          const member = source.hasClass("cluster-hub") ? target : source;
+          return noteIds.has(member.id());
+        }
+        return noteIds.has(e.source().id()) && noteIds.has(e.target().id());
+      });
+      physicsEles = physicsNodes.union(physicsEdges);
+    }
+
+    const lay = physicsEles.layout({
       name: "fcose",
       animate: true,
       animationDuration: gentle ? 400 : 700,
@@ -720,16 +949,22 @@ export function GlobalGraphCanvas({
             : baseLen,
       edgeElasticity: (edge: any) =>
         edge.data("virtual")
-          ? 0.9
+          ? islands
+            ? 1.2
+            : 0.9
           : islands
             ? baseEl * (1 + 2 * Math.max(reachNorm(edge.source().id()), reachNorm(edge.target().id())))
             : baseEl,
       gravity: islands || clusterByContext ? 0.06 : 0.3,
-      nodeSeparation: 120,
+      nodeSeparation: islands ? 60 : 120,
       padding: 50,
     } as any);
     lay.on("layoutstop", () => {
       layoutRunning = false;
+      // 2 段目（幾何）: 1 段目が置いたノート・重心の位置を土台に、ノート以外の
+      // 実ノードと衛星を直接配置する。ドラッグ中の移動を打ち消さないよう、
+      // fit の前に済ませる（fit 自体はドラッグで止めた場合はスキップする）。
+      if (islands) placeIslandGeometry(cy, { shownEdges, noteIds, foldedOutNodes, foldedInto });
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) cy.fit(undefined, 30);
     });
@@ -1197,11 +1432,7 @@ export function GlobalGraphView({
   const t = useT();
   const [hideRefs, setHideRefs] = useState(false);
   const [showIsolated, setShowIsolated] = useState(false);
-  // 島の配置（layoutMode: islands）で始まるときも、色: フォルダ と同じ理由で
-  // 最初からノート層だけにする（原料・知見は詰め物になって島が崩れる）。
-  const [visible, setVisible] = useState<Set<LayerId>>(
-    new Set(initialLayoutMode === "islands" ? (["note"] as const) : ALL_LAYERS),
-  );
+  const [visible, setVisible] = useState<Set<LayerId>>(new Set(ALL_LAYERS));
   // 色の軸（kind=種類 / context=文脈タグ）と、文脈タグ絞り込み（小文字キー）
   const [colorMode, setColorMode] = useState<GraphColorMode>("kind");
   const [selectedContexts, setSelectedContexts] = useState<Set<string>>(new Set());
@@ -1242,6 +1473,11 @@ export function GlobalGraphView({
   // 関わらず常に計算する（OFF でも「畳んだらどれだけ減るか」をチェック横に出すため）。
   const foldResult = useMemo(() => foldLeafNodes(shown), [shown]);
   const foldedTotal = foldResult.foldedTotal;
+  // 畳まれた葉の実体（layoutMode: islands で「衛星」として描き直すために Canvas へ渡す）
+  const foldedOutNodes = useMemo(
+    () => shown.nodes.filter((n) => foldResult.foldedInto.has(n.id)),
+    [shown, foldResult],
+  );
   // ヘッダー右の件数表示は「畳む」が ON なら畳んだ後の数（実際に描画される数）にする。
   // 各層チップ（原料/ノート/知見・洞察）は畳む前の総数のまま変えない。
   const displayedNodeCount = foldLeaves ? foldResult.data.nodes.length : shown.nodes.length;
@@ -1290,20 +1526,6 @@ export function GlobalGraphView({
       setVisible(new Set(ALL_LAYERS));
     } else {
       setVisible(new Set<LayerId>(["note"]));
-    }
-  };
-
-  // 配置切替も同じ扱い: 島（layoutMode: islands）は原料・知見が詰め物になって
-  // 崩れるので、ノート層だけにする（色: フォルダ と同じ理由・同じ仕組み）。
-  // 標準に戻したら、色が種類のときだけ全層に戻す（文脈モード中はノート層のまま
-  // ——そちらの理由で既に絞っているので上書きしない）。層チップは残るので、
-  // どちらのモードでも手動で原料・知見を再表示できる。
-  const changeLayoutMode = (m: "plain" | "islands") => {
-    setLayoutMode(m);
-    if (m === "islands") {
-      setVisible(new Set<LayerId>(["note"]));
-    } else if (colorMode === "kind") {
-      setVisible(new Set(ALL_LAYERS));
     }
   };
 
@@ -1406,7 +1628,7 @@ export function GlobalGraphView({
                 {(["plain", "islands"] as const).map((m) => (
                   <button
                     key={m}
-                    onClick={() => changeLayoutMode(m)}
+                    onClick={() => setLayoutMode(m)}
                     className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                       layoutMode === m
                         ? "bg-primary text-primary-foreground"
@@ -1509,7 +1731,12 @@ export function GlobalGraphView({
                 foldLeaves={foldLeaves}
                 sizeMode={sizeMode}
                 layoutMode={layoutMode}
-                precomputedFold={foldResult}
+                precomputedFold={{
+                  data: foldResult.data,
+                  foldedCount: foldResult.foldedCount,
+                  foldedInto: foldResult.foldedInto,
+                  foldedOutNodes,
+                }}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
                 onSearchHits={setSearchHits}

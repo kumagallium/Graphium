@@ -4,7 +4,13 @@
 // assignIslands: reach の高いノートをハブにし、他のノートを最も近いハブに割り当てる。
 
 import { describe, expect, it } from "vitest";
-import { foldLeafNodes, computeReachScores, assignIslands, detectCommunities } from "./global-graph-structure";
+import {
+  foldLeafNodes,
+  computeReachScores,
+  assignIslands,
+  detectCommunities,
+  detectNoteCommunities,
+} from "./global-graph-structure";
 import type { NoteGraphData, NoteNode } from "./graph-builder";
 
 function note(id: string): NoteNode {
@@ -338,5 +344,73 @@ describe("detectCommunities", () => {
     const first = detectCommunities(data);
     const second = detectCommunities(data);
     expect([...second.entries()]).toEqual([...first.entries()]);
+  });
+});
+
+describe("detectNoteCommunities", () => {
+  it("2 系列のノートが共有知見 1 つで繋がっていても 2 つの島のまま", () => {
+    // c1 は p1・q1 の両方に繋がる共有知見だが、ノート同士の辺だけでラベル伝播
+    // するので c1 経由で 2 系列がくっつくことはない。
+    const data: NoteGraphData = {
+      nodes: [
+        note("p1"), note("p2"), note("p3"), note("p4"),
+        note("q1"), note("q2"), note("q3"), note("q4"),
+        claim("c1"),
+      ],
+      edges: [
+        { source: "p1", target: "p2", relation: "derived" },
+        { source: "p2", target: "p3", relation: "derived" },
+        { source: "p3", target: "p4", relation: "derived" },
+        { source: "q1", target: "q2", relation: "derived" },
+        { source: "q2", target: "q3", relation: "derived" },
+        { source: "q3", target: "q4", relation: "derived" },
+        { source: "p1", target: "c1", relation: "derived" },
+        { source: "q1", target: "c1", relation: "derived" },
+      ],
+    };
+    const communities = detectNoteCommunities(data);
+    const pLabel = communities.get("p1");
+    const qLabel = communities.get("q1");
+    expect(communities.get("p4")).toBe(pLabel);
+    expect(communities.get("q4")).toBe(qLabel);
+    expect(pLabel).not.toBe(qLabel);
+  });
+
+  it("共有知見は隣接ノートの多い方の島に所属する", () => {
+    const data: NoteGraphData = {
+      nodes: [
+        note("p1"), note("p2"), note("p3"), note("p4"),
+        note("q1"), note("q2"), note("q3"), note("q4"),
+        claim("c1"),
+      ],
+      edges: [
+        { source: "p1", target: "p2", relation: "derived" },
+        { source: "p2", target: "p3", relation: "derived" },
+        { source: "p3", target: "p4", relation: "derived" },
+        { source: "q1", target: "q2", relation: "derived" },
+        { source: "q2", target: "q3", relation: "derived" },
+        { source: "q3", target: "q4", relation: "derived" },
+        // c1 は p 系列に 2 本、q 系列に 1 本 → p 系列の島に所属する
+        { source: "p1", target: "c1", relation: "derived" },
+        { source: "p2", target: "c1", relation: "derived" },
+        { source: "q1", target: "c1", relation: "derived" },
+      ],
+    };
+    const communities = detectNoteCommunities(data);
+    expect(communities.get("c1")).toBe(communities.get("p1"));
+  });
+
+  it("孤立知見（ノートに隣接しない）は Map に無い", () => {
+    // c2 は c1 経由でしか繋がっておらず、ノートに直接隣接しない
+    const data: NoteGraphData = {
+      nodes: [note("n1"), claim("c1"), claim("c2")],
+      edges: [
+        { source: "n1", target: "c1", relation: "derived" },
+        { source: "c1", target: "c2", relation: "derived" },
+      ],
+    };
+    const communities = detectNoteCommunities(data);
+    expect(communities.get("c1")).toBe(communities.get("n1"));
+    expect(communities.has("c2")).toBe(false);
   });
 });
