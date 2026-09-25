@@ -1219,7 +1219,8 @@ export const PanelsLegendPerPanel: StoryObj = {
 // ピーク側で 108×46px、メイン側で 59×12px まで潰れた（余白は 16px の文字に合わせた
 // 固定値のまま、高さだけが幅に比例して縮むため）。幅 400px 未満の図は余白を目盛り
 // ラベルに合わせて詰め、描画領域に 120px の高さを確保し、目盛りを間引き、設定ボタンを
-// 図の上の行へ逃がす。400px 以上の図は従来とまったく同じ
+// 図の上の行へ逃がす。400px 以上の図の余白・目盛りは従来のまま（高さは、横長・多段で
+// 枠が潰れるときだけ伸ばす — 末尾の「通常の幅: 横長・多段の図」）
 
 /** パンの発酵記録（ピークで潰れた図の再現に使った 2 列の表） */
 function riseTable(id: string) {
@@ -1442,6 +1443,85 @@ export const LegendRowsNormalWidth: StoryObj = {
           baseTables={LEGEND_ROW_TABLES}
           hideTables
           config={{ chartType: "line", series: SHORTER_SAMPLE_SERIES, yAxisName: "σ (S/cm)" }}
+        />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 通常の幅でも、横長（3:1〜5:1）や多段の図は固定の余白（凡例 48・横軸名 64・分けた枠の
+// 間 80）で枠がほとんど残らない（2026-09-25 の実測で、図 564px の 5:1 は 1px、√2:1 を
+// 3 段に分けてつなげないと 42px）。そういう図だけ、縦軸の目盛りが 16px 間隔で並び、
+// 縦軸名が図からはみ出さず、オフセット表示の段名が重ならない高さ（下限 60px）まで
+// 縦に伸ばす。アスペクト比より読めることを優先する。高さの足りている図は比どおり
+const THERMO_THREE_ROWS = series([
+  { sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF (mW/mK²)", panelIndex: 0 },
+  { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "S (µV/K)", panelIndex: 1 },
+  { sourceBlockId: "te-kappa", xColumn: "T (K)", yColumn: "kappa", label: "κ (W/mK)", panelIndex: 2 },
+]);
+const XRD_SAMPLE_LINE = series([{ sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity" }]);
+
+export const SquashedPlotsNormalWidth: StoryObj = {
+  name: "通常の幅: 横長・多段の図（枠が潰れるときだけ縦に伸ばす）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={572}
+          label="図 564px・XRD の測定・5:1（比どおりなら枠 1px。目盛り 5 本が並ぶ 64px まで）"
+          baseTables={XRD_TABLES.slice(0, 1)}
+          hideTables
+          config={{ chartType: "line", series: XRD_SAMPLE_LINE, aspect: "spectrum", xMin: "10", xMax: "60" }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・XRD のオフセット表示・5:1（段名と縦軸名が収まる 75px まで）"
+          baseTables={XRD_TABLES}
+          hideTables
+          config={{
+            chartType: "line",
+            series: series([
+              { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料" },
+              { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A" },
+              { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B" },
+            ]),
+            stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
+            aspect: "spectrum",
+            xMin: "10",
+            xMax: "60",
+            xAxisName: "2θ (deg)",
+            yAxisName: "Intensity (a.u.)",
+          }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・PF・4:1（目盛り 9 本が並ぶ 128px まで）"
+          baseTables={THERMO_TABLES}
+          hideTables
+          config={{
+            chartType: "line",
+            series: series([{ sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF (mW/mK²)" }]),
+            aspect: "ultrawide",
+          }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・熱電特性を 3 段・つなげない（比どおりなら 1 段 42px）"
+          baseTables={THERMO_TABLES}
+          hideTables
+          config={{
+            chartType: "line",
+            panels: { rows: 3, cols: 1, joinVertical: false, joinHorizontal: false },
+            series: THERMO_THREE_ROWS,
+            xAxisName: "T (K)",
+          }}
+        />
+        <NarrowCase
+          shell={720}
+          label="図 712px・XRD の測定・4:1（枠 66px で目盛りが並ぶので比どおり）"
+          baseTables={XRD_TABLES.slice(0, 1)}
+          hideTables
+          config={{ chartType: "line", series: XRD_SAMPLE_LINE, aspect: "ultrawide", xMin: "10", xMax: "60" }}
         />
       </div>
     </ErrorBoundary>

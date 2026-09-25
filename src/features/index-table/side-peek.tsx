@@ -117,6 +117,8 @@ import {
 } from "@features/block-link/mention-menu";
 import {
   insertAssetMention,
+  linkTableRowToNote,
+  noteLinkCellAtCursor,
   recordMentionLink,
   type AddReferenceLink,
 } from "@features/block-link/mention-insert";
@@ -2192,6 +2194,7 @@ function SidePeekInner({
                 // `@` 参照: 他ノート・素材の参照 + 「新規ノートを作成」。メインエディタと同じく
                 // 挿入後はピーク内に留まり、青い @テキストをクリックすると（このピークの
                 // クリックハンドラが拾う）ノートはピークで、素材は素材ピークで開く。
+                // インデックステーブルの note-link 列で選んだノートは、その行に紐付ける。
                 getMentionSuggestions={(query) => {
                   // 見出し候補は DOM 全体から拾ってしまい（メイン+ピークが同居）紛れるため、
                   // ピークでは他ノート・素材の参照と新規作成に絞る。
@@ -2199,7 +2202,13 @@ function SidePeekInner({
                     ...getNoteSuggestions([], noteId, noteIndex),
                     ...getAssetSuggestions(mediaIndex),
                   ];
-                  if (onCreateLinkedNote) {
+                  // note-link 列では、新しいノートは行アイコンから作る流れに委ねるので
+                  // 新規作成候補は出さない（メインと同じ判定。mention-insert.ts）
+                  const inNoteLinkCell =
+                    noteLinkCellAtCursor(editorRef.current, (id) =>
+                      tableMetaStoreRef.current.metas.get(id),
+                    ) !== null;
+                  if (onCreateLinkedNote && !inNoteLinkCell) {
                     const createItem = getCreateNoteSuggestion(query, base);
                     if (createItem) base.push(createItem);
                   }
@@ -2237,6 +2246,31 @@ function SidePeekInner({
                     return;
                   }
                   if (s.type !== "note") return;
+                  // インデックステーブルの note-link 列で選んだら、その行とノートを紐付ける
+                  // （判定も書き込みもメインと同じ関数。mention-insert.ts）。表の注釈・リンク・
+                  // noteLinks はこのピークのノートに入る。紐付けないと行アイコンが「ノートを作成」の
+                  // まま残り、押すと「@名前」という題の重複ノートができていた
+                  const rowCell = noteLinkCellAtCursor(editorRef.current, (id) =>
+                    tableMetaStoreRef.current.metas.get(id),
+                  );
+                  if (rowCell) {
+                    linkTableRowToNote(() => editorRef.current, rowCell, s, {
+                      setNoteLink: (tableBlockId, rowValue, targetNoteId) =>
+                        tableMetaStoreRef.current.setNoteLink(tableBlockId, rowValue, targetNoteId),
+                      addLink,
+                      updateNoteLinks: (update) => {
+                        const cur = docRef.current;
+                        if (!cur) return;
+                        const links = cur.noteLinks ?? [];
+                        const next = update(links);
+                        // doSave は docRef.current を spread するので、ここに積めば一緒に書き出される
+                        // （noteLinks は画面に出さないので、表示用の doc state は触らない）
+                        if (next !== links) docRef.current = { ...cur, noteLinks: next };
+                      },
+                      onLinked: handleChange,
+                    });
+                    return;
+                  }
                   const noteRefId = s.id;
                   const label = s.label;
                   setTimeout(() => {
