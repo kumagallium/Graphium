@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
+import { BlockNoteEditor } from "@blocknote/core";
 import {
   renameTableRow,
   setTableCell,
   removeTableRow,
   appendEntityRowToTable,
   addTableRow,
+  removeTableColumn,
 } from "./table-row-edit";
 
 const cell = (text: string) => ({ type: "tableCell", content: [{ type: "text", text, styles: {} }] });
@@ -271,5 +273,82 @@ describe("addTableRow", () => {
     table.content.rows = [];
     expect(addTableRow(ed, "tbl-1", "行1")).toBe(false);
     expect(ed.updates.length).toBe(0);
+  });
+});
+
+describe("removeTableColumn", () => {
+  // BlockNote は columnWidths を列の位置で当てる（columnWidths[列] がその列の幅）。
+  // 消した列の幅を残したままだと、残った列に隣の幅がずれて当たる
+  function makeWidenedEditor(extra: Record<string, any> = {}) {
+    const ed = makeEditor();
+    Object.assign((ed.document[0].children[0] as any).content, extra);
+    return ed;
+  }
+
+  it("先頭列を消すと、残った列は元の列の幅のまま（消した列の幅だけ取り除く）", () => {
+    const ed = makeWidenedEditor({ columnWidths: [260, 120, undefined], headerRows: 1 });
+    expect(removeTableColumn(ed, "tbl-1", 0)).toBe(true);
+    const content = ed.updates[0].content;
+    expect(rowTexts(content)).toEqual([
+      ["質量", "メモ"],
+      ["5g", "焼成用"],
+      ["5g", "対照"],
+    ]);
+    expect(content.columnWidths).toHaveLength(2);
+    expect(content.columnWidths).toEqual([120, undefined]);
+    // 列幅以外の設定はそのまま持ち越す
+    expect(content.headerRows).toBe(1);
+  });
+
+  it("真ん中の列を消すと、両隣の列の幅はそのまま", () => {
+    const ed = makeWidenedEditor({ columnWidths: [260, 120, 180] });
+    expect(removeTableColumn(ed, "tbl-1", 1)).toBe(true);
+    expect(rowTexts(ed.updates[0].content)[0]).toEqual(["名前", "メモ"]);
+    expect(ed.updates[0].content.columnWidths).toEqual([260, 180]);
+  });
+
+  it("列幅が無い表・消す列まで幅が無い表では columnWidths に触らない", () => {
+    const none = makeWidenedEditor();
+    expect(removeTableColumn(none, "tbl-1", 0)).toBe(true);
+    expect("columnWidths" in none.updates[0].content).toBe(false);
+
+    const short = makeWidenedEditor({ columnWidths: [260] });
+    expect(removeTableColumn(short, "tbl-1", 2)).toBe(true);
+    expect(short.updates[0].content.columnWidths).toEqual([260]);
+  });
+
+  it("結合セルのある表では、列の位置とセルの位置が一致しないので columnWidths は今のまま持ち越す", () => {
+    const ed = makeWidenedEditor({ columnWidths: [260, 120, 180] });
+    const rows = (ed.document[0].children[0] as any).content.rows;
+    rows[1].cells = [{ ...cell("バッチA 5g"), props: { colspan: 2, rowspan: 1 } }, cell("焼成用")];
+    expect(removeTableColumn(ed, "tbl-1", 1)).toBe(true);
+    expect(ed.updates[0].content.columnWidths).toEqual([260, 120, 180]);
+  });
+
+  it("実際の BlockNote でも、列を消した後に残った列が元の幅のまま", () => {
+    const editor = BlockNoteEditor.create({
+      initialContent: [
+        {
+          type: "table",
+          content: {
+            type: "tableContent",
+            columnWidths: [260, 120, undefined],
+            rows: [
+              { cells: [cell("Name"), cell("Mass"), cell("Memo")] },
+              { cells: [cell("Batch A"), cell("5g"), cell("bake")] },
+            ],
+          },
+        },
+      ],
+    } as any);
+    const id = editor.document[0].id;
+    expect(removeTableColumn(editor, id, 0)).toBe(true);
+    const content = (editor.getBlock(id) as any).content;
+    expect(rowTexts(content)).toEqual([
+      ["Mass", "Memo"],
+      ["5g", "bake"],
+    ]);
+    expect(content.columnWidths).toHaveLength(2);
+    expect(content.columnWidths).toEqual([120, undefined]);
   });
 });

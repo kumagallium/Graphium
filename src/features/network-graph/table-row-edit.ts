@@ -93,9 +93,12 @@ function findTableRow(editor: any, tableBlockId: string, rowName: string): Table
   return null;
 }
 
-function writeRows(editor: any, block: any, rows: any[]): boolean {
+/** rows を差し替えて書き戻す（columnWidths / headerRows などは持ち越す。columnWidths を渡せば差し替える） */
+function writeRows(editor: any, block: any, rows: any[], columnWidths?: any[]): boolean {
   try {
-    editor.updateBlock(block.id, { content: { ...block.content, rows } });
+    const content: Record<string, any> = { ...block.content, rows };
+    if (columnWidths) content.columnWidths = columnWidths;
+    editor.updateBlock(block.id, { content });
     return true;
   } catch {
     return false;
@@ -494,14 +497,36 @@ export function addTableColumns(editor: any, tableBlockId: string, names: string
   return writeRows(editor, block, next);
 }
 
-/** 列を消す（ヘッダとすべてのデータ行から） */
+/**
+ * 列を消す（ヘッダとすべてのデータ行から）。
+ *
+ * columnWidths は列の位置で当たる（BlockNote は columnWidths[列] をその列の幅にする）ので、
+ * 消した列の幅も同じ位置から取り除く。持ち越したままだと、残った列に隣の列の幅が
+ * ずれて当たる（先頭列を消すと、2 列目が先頭列の幅になる）。
+ * 結合セルのある表は列の位置とセルの位置が一致せず、取り除く幅が決まらないので、
+ * columnWidths は今までどおりそのまま持ち越す。
+ */
 export function removeTableColumn(editor: any, tableBlockId: string, colIndex: number): boolean {
   const block = findTableBlock(editor, tableBlockId);
   if (!block) return false;
   const rows: any[] = block.content?.rows ?? [];
   if (colIndex < 0 || (rows[0]?.cells?.length ?? 0) <= 1) return false; // 最後の 1 列は残す
   const next = rows.map((row) => ({ ...row, cells: row.cells.filter((_: any, j: number) => j !== colIndex) }));
-  return writeRows(editor, block, next);
+  const widths = block.content?.columnWidths;
+  const nextWidths =
+    Array.isArray(widths) && colIndex < widths.length && !hasMergedCells(rows)
+      ? widths.filter((_: any, j: number) => j !== colIndex)
+      : undefined;
+  return writeRows(editor, block, next, nextWidths);
+}
+
+/** colspan / rowspan が 1 より大きいセル（結合セル）があるか */
+function hasMergedCells(rows: any[]): boolean {
+  return rows.some((row) =>
+    (row?.cells ?? []).some(
+      (cell: any) => (cell?.props?.colspan ?? 1) > 1 || (cell?.props?.rowspan ?? 1) > 1,
+    ),
+  );
 }
 
 /** 空のデータ行を足す（1 列目に name を入れる） */
