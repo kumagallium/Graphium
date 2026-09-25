@@ -13,7 +13,7 @@ import {
   syncTableRowIdentitiesToEditor,
   tableRowIdentityOfCell,
 } from "../../lib/table-row-identity";
-import { findColumnIndexByName, withCellText } from "../table-meta/table-cells";
+import { findColumnIndexByName, writeCellText } from "../table-meta/table-cells";
 import { findColumnNameByType, hasColumnType } from "../table-meta/types";
 import type { ReferenceSuggestion } from "./mention-menu";
 
@@ -161,24 +161,8 @@ export function linkTableRowToNote(
   setTimeout(() => {
     const editor = getEditor();
     if (!editor) return;
-    const block = editor.getBlock?.(cell.tableBlockId);
-    if (block?.content?.rows?.[cell.rowIndex]) {
-      const rows = block.content.rows.map((r: any, i: number) =>
-        i !== cell.rowIndex
-          ? r
-          : {
-              ...r,
-              // 書き換えるのは打った列だけ。他の列のセルはそのまま
-              // （形式ごと差し替えるとセルの色・配置が落ちる）
-              cells: r.cells.map((c: any, ci: number) =>
-                ci === cell.colIndex ? withCellText(c, mention, { textColor: "blue" }) : c,
-              ),
-            },
-      );
-      // 列幅・見出し行の指定は content に一緒に入っている。rows だけで渡すと
-      // BlockNote は無いものとして作り直し、広げた列幅が既定に戻る
-      editor.updateBlock(cell.tableBlockId, { content: { ...block.content, rows } });
-    }
+    // 書き換えるのは打った列のセルだけ。他の列のセル・列幅・見出し行はそのまま残る
+    writeCellText(editor, cell.tableBlockId, cell.rowIndex, cell.colIndex, mention, { textColor: "blue" });
     // セルを書き換えて入れる経路なので、カーソルではなく打った行に紐づける
     recordMentionLink(editor, ops.addLink, {
       sourceBlockId: cell.tableBlockId,
