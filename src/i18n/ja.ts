@@ -154,6 +154,9 @@ export const ja: Record<string, string> = {
   "editor.archiveNoteHint": "一覧から隠れますが、派生リンクや引用は解決し続けます。Trash & Archive からいつでも復元できます。",
   "editor.aiAssistant": "🤖 AI アシスタント",
   "editor.askAi": "選択範囲を AI に聞く",
+  // 書式ツールバーの上付き・下付き（base/script-style-button.tsx）
+  "editor.superscript": "上付き文字",
+  "editor.subscript": "下付き文字",
   "editor.derivedNote": "派生ノート",
   // ── ドキュメント内検索（Cmd+F） ──
   "docSearch.placeholder": "ノート内を検索",
@@ -2167,6 +2170,18 @@ export const ja: Record<string, string> = {
   "globalGraph.uncategorized": "未分類",
   "globalGraph.toggleUncategorizedHint": "クリックで未分類ノートの表示/非表示を切り替え",
   "globalGraph.noContexts": "フォルダに入っているノートがまだありません",
+  "globalGraph.foldLeaves": "葉を畳む",
+  "globalGraph.foldLeavesHint": "1 本の線でしかつながっていない知見・原料をノート側に「+n」として畳みます",
+  "globalGraph.size": "大きさ",
+  "globalGraph.size.kind": "種類",
+  "globalGraph.size.reach": "つながり",
+  "globalGraph.sizeReachHint": "2 ホップ以内で届く別のノートの数で大きさを決めます",
+  "globalGraph.layout": "配置",
+  "globalGraph.layout.plain": "標準",
+  "globalGraph.layout.islands": "島",
+  "globalGraph.layoutIslandsHint": "つながりでまとまったノートの島を作ります。知見・原料は所属する島の中に置きます",
+  "globalGraph.focusHint": "島モードでは、選んだ種類を中心に島を作ります",
+  "globalGraph.focusSourceUnavailable": "原料を中心にした島は用意していません",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括ナレッジ化
