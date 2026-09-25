@@ -5,6 +5,7 @@ import { Children, useCallback, useEffect, useMemo, useRef, useState, type React
 import { Bot, BookPlus, BookMarked, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork, FileText, Link as LinkIcon } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { rehypeSupSub } from "./rehype-sup-sub";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
@@ -941,6 +942,7 @@ export function ChatBubble({
           ) : (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeSupSub]}
               components={buildMarkdownComponents(sourceLinks)}
             >
               {displayContent}
@@ -1386,6 +1388,9 @@ function buildMarkdownComponents(handlers: SourceLinkHandlers | undefined): Comp
     li: ({ children }) => <li>{proc(children)}</li>,
     strong: ({ children }) => <strong className="font-semibold">{proc(children)}</strong>,
     em: ({ children }) => <em className="italic">{proc(children)}</em>,
+    // 回答中の <sup> / <sub>（rehypeSupSub が要素に組み直したもの）
+    sup: ({ children }) => <sup>{proc(children)}</sup>,
+    sub: ({ children }) => <sub>{proc(children)}</sub>,
     hr: () => <hr className="my-2 border-t border-border" />,
     blockquote: ({ children }) => (
       <blockquote className="border-l-2 border-border pl-2 my-1.5 text-muted-foreground">{proc(children)}</blockquote>
