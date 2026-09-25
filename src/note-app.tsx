@@ -195,7 +195,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
-import { pendingPeekSave } from "./lib/peek-save-queue";
+import { pendingPeekSave, queuePeekSave } from "./lib/peek-save-queue";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -421,6 +421,7 @@ import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
+import type { EditorSaveTarget } from "./hooks/use-file-manager";
 import { useImeEnterGuard } from "./hooks/use-ime-enter-guard";
 import { useAutoGrounding } from "./hooks/use-auto-grounding";
 import {
@@ -1050,7 +1051,24 @@ type NoteEditorProps = {
   noteFolderLookup?: NoteFolderLookup;
   /** エディタ内から開く素材サイドピークで、素材のフォルダを付け外しする */
   onEditMediaContexts?: EditMediaContexts;
-  onSave: (doc: GraphiumDocument) => void;
+  /**
+   * 開いているノートのキー（fm.activeFileId。wiki:/skill: 付き。新規ノートは null）。
+   * 保存先（EditorSaveTarget）とノートごとの保存の列のキーに使う
+   */
+  docKey?: string | null;
+  /** エディタを開いた回（fm.editorKey）。保存先の判定に使う（use-file-manager の saveEditorDoc） */
+  editorSession?: number;
+  /**
+   * 保存。保存先はエディタを開いた時点で決めた target（保存のたびに開いているノートを読み直さない）。
+   * 書けたら true。書かなかった（保存中で捨てた・失敗した）ら false で、エディタは未保存のまま持つ
+   */
+  onSave: (
+    target: EditorSaveTarget,
+    doc: GraphiumDocument,
+    opts?: { unmounting?: boolean },
+  ) => Promise<boolean>;
+  /** アンマウント時に未保存を書き出してよいか（use-file-manager の shouldFlushEditor） */
+  canFlushOnUnmount?: (target: EditorSaveTarget) => boolean;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   /** `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す（ナビゲーションしない） */
   onCreateLinkedNote?: (title: string) => Promise<string | null>;
@@ -1544,7 +1562,10 @@ function NoteEditorInner({
   initialDoc,
   noteFolderLookup,
   onEditMediaContexts,
+  docKey,
+  editorSession,
   onSave,
+  canFlushOnUnmount,
   onDeriveNote,
   onCreateLinkedNote,
   onAiDeriveNote,
@@ -2607,9 +2628,10 @@ function NoteEditorInner({
   // イベントが来ず usedIn が空のまま = グラフに URL ノードが出ない。
   // useAutoSave はこの位置より後で宣言されるため ref 経由で参照する。
   // saveNow（即時保存）ではなく markDirty を使う: fetchUrlMetadata は最大 5 秒
-  // かかり、その間にノートを切り替えるとアンマウント後の stale save が
-  // 「切替先ノートに旧ノートの内容を保存」するデータ破壊になる。markDirty の
-  // タイマーは useAutoSave がアンマウント時に必ずクリアするため安全。
+  // かかり、その間にノートを切り替えていることがある。アンマウント後の markDirty /
+  // saveNow は useAutoSave が無視する（未保存はアンマウント時に書き出し済みで、外された
+  // エディタから後で書くと開き直した同じノートの編集を上書きしうる）。保存先はエディタを
+  // 開いた時点で固定しているので、切り替え先のノートへ書くことはない（saveTargetRef）。
   const markDirtyRef = useRef<() => void>(() => {});
   // 取り込みのような「まとまった量が一度に入る」編集は、3 秒の自動保存待ちに
   // 賭けずその場で保存する（待っている間に何かがエディタを作り直すと丸ごと消える）。
@@ -2988,9 +3010,18 @@ function NoteEditorInner({
   }, [labelStore, linkStore, uploadFile]);
 
   // ── 保存ロジック ──
-  const buildDocument = useCallback(async (): Promise<GraphiumDocument> => {
+  // 今の本文と注釈から doc を組む（同期。来歴はまだ刻まない — finishDocument）。
+  // unmounting: アンマウント時の書き出し。エディタはこの後外されるので、表の行 ID を
+  // エディタへ書き戻さない（書き戻しは次の保存で同じ ID を保つためのもの。保存する doc は
+  // fm の normalizeTableRowIdentities が揃える）。ここは副作用を持たないこと
+  // （StrictMode の試しのアンマウントでも呼ばれ、そのときは書かずに捨てる）
+  const captureDocument = useCallback((opts?: { unmounting?: boolean }): GraphiumDocument => {
     const editor = editorRef.current;
-    const blocks = editor ? syncTableRowIdentitiesToEditor(editor) : [];
+    const blocks = editor
+      ? opts?.unmounting
+        ? (editor.document ?? [])
+        : syncTableRowIdentitiesToEditor(editor)
+      : [];
     // labels / provLinks / knowledgeLinks / blockAlignments の組み立ては
     // SidePeek（side-peek.tsx doSave）と同一なので共有モジュールに集約。
     const {
@@ -3021,7 +3052,7 @@ function NoteEditorInner({
     // 画像 OCR テキスト（端末内 Tesseract.js。標準 image ブロックの注釈層）
     const mediaOcrSnapshot = mediaOcrStore.getSnapshot();
     const hasMediaOcr = Object.keys(mediaOcrSnapshot).length > 0;
-    let doc: GraphiumDocument = {
+    const doc: GraphiumDocument = {
       version: LATEST_DOCUMENT_VERSION,
       title,
       pages: [
@@ -3082,7 +3113,12 @@ function NoteEditorInner({
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
+    return doc;
+  }, [title, labelStore, linkStore, tableMetaStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
 
+  // 組んだ doc に来歴（リビジョン）を刻む。前回保存状態（prevPageRef）もここで進める
+  const finishDocument = useCallback(async (captured: GraphiumDocument): Promise<GraphiumDocument> => {
+    let doc = captured;
     // ドキュメント来歴: リビジョンを追記（buildDocument を async 化）
     // AI 挿入直後かどうかを判定（lastAiInsertRef が true なら ai_generation）
     let actType: import("./features/document-provenance/types").EditActivityType;
@@ -3116,7 +3152,12 @@ function NoteEditorInner({
     prevPageRef.current = structuredClone(doc.pages[0]);
 
     return doc;
-  }, [title, labelStore, linkStore, tableMetaStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
+  }, []);
+
+  const buildDocument = useCallback(
+    async (): Promise<GraphiumDocument> => finishDocument(captureDocument()),
+    [captureDocument, finishDocument],
+  );
 
   // sharedRef は initialDoc から初期化し、Share 成功時に即時更新する。
   // initialDoc は親が新しい doc に差し替えない限り変わらないため、ローカル state で持つ。
@@ -3138,7 +3179,25 @@ function NoteEditorInner({
     lastSavedTitleRef.current = initialDoc?.title ?? "";
   }, [initialDoc]);
 
-  const handleSave = useCallback(async () => {
+  // 保存先。エディタを開いた時点で決め、保存のたびに開いているノートを読み直さない
+  // （ノートを切り替えた後に届く保存・アンマウント時の書き出しを、切り替え先へ書かないため。
+  // 新規ノートは最初の保存が作ったノートへ fm が書き続ける）
+  const saveTargetRef = useRef<EditorSaveTarget | null>(null);
+  if (!saveTargetRef.current) {
+    saveTargetRef.current = {
+      key: docKey ?? fileId,
+      kind: initialDoc?.source === "ai" ? "wiki" : initialDoc?.source === "skill" ? "skill" : "note",
+      session: editorSession ?? 0,
+      provider: getActiveProvider(),
+    };
+  }
+  const saveDoc = useCallback(
+    (doc: GraphiumDocument, opts?: { unmounting?: boolean }) =>
+      onSave(saveTargetRef.current!, doc, opts),
+    [onSave],
+  );
+
+  const handleSave = useCallback(async (): Promise<boolean> => {
     const baseDoc = await buildDocument();
     // 通常保存時にも sharedRef を持たせる（buildDocument が落とすため）。
     // これがないと auto-save ごとに sharedRef がディスクから消え、再共有時に
@@ -3146,7 +3205,8 @@ function NoteEditorInner({
     const doc: GraphiumDocument = sharedRefState
       ? { ...baseDoc, sharedRef: sharedRefState }
       : baseDoc;
-    onSave(doc);
+    // 書き終わるまで待つ（書かなかったら編集を未保存のまま持つ — useAutoSave）
+    if (!(await saveDoc(doc))) return false;
     // タイトルが変わった保存なら、@メンションのラベルを参照元ノートへ伝播する。
     // ピークで開いているノートはファイル直書きすると、ピークの次のオートセーブが
     // 旧内容で上書きして伝播が巻き戻るため対象から外し、代わりにピークのエディタを
@@ -3180,10 +3240,42 @@ function NoteEditorInner({
         });
       }
     }
-  }, [onSave, buildDocument, fileId, sharedRefState, sidePeekNoteId, isWikiDoc, onPropagateMentionRename]);
+    return true;
+  }, [saveDoc, buildDocument, fileId, sharedRefState, sidePeekNoteId, isWikiDoc, onPropagateMentionRename]);
+
+  // アンマウント時の書き出し（ノートを切り替えた・一覧や素材ギャラリーへ移った瞬間に残っていた、
+  // 直前 3 秒の編集）。useAutoSave がエディタの外される前（レイアウト段階の後片付け）に同期で
+  // 呼ぶので、本文はここで読む。書き出しはノートごとの保存の列に同期で並べる — 移った先の
+  // サイドピークが同じノートを開くとき、この書き出しを待ってから読めるように。
+  // ready が false（StrictMode の試しのアンマウント）なら何も書かない
+  const flushOnUnmount = useCallback((ready: Promise<boolean>) => {
+    const target = saveTargetRef.current!;
+    // 削除した・保存先が切り替わった・同じノートを外の更新で作り直した、なら書かない（fm）
+    if (!canFlushOnUnmount?.(target)) return;
+    const captured = captureDocument({ unmounting: true });
+    const sharedRef = sharedRefState;
+    const prevTitle = lastSavedTitleRef.current;
+    const rawId = fileId;
+    void queuePeekSave(target.key ?? rawId ?? `new:${target.session}`, captured, async () => {
+      if (!(await ready)) return captured;
+      const finished = await finishDocument(captured);
+      const doc: GraphiumDocument = sharedRef ? { ...finished, sharedRef } : finished;
+      if (!(await onSave(target, doc, { unmounting: true }))) {
+        throw new Error("アンマウント時の書き出しに失敗");
+      }
+      // タイトルを変えてすぐ移った場合も、@メンションのラベルを参照元へ伝播する
+      // （このエディタのピークはもう閉じているのでライブ更新はしない）
+      if (rawId && prevTitle && doc.title && prevTitle !== doc.title) {
+        void onPropagateMentionRename?.(isWikiDoc ? `wiki:${rawId}` : rawId, prevTitle, doc.title);
+      }
+      return doc;
+    }).catch(() => {
+      // 失敗は fm が知らせている（保存失敗のアラート）
+    });
+  }, [canFlushOnUnmount, captureDocument, finishDocument, onSave, sharedRefState, fileId, isWikiDoc, onPropagateMentionRename]);
 
   // ── オートセーブ ──
-  const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
+  const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave, flushOnUnmount);
   markDirtyRef.current = markDirty;
   saveNowRef.current = saveNow;
 
@@ -3239,7 +3331,7 @@ function NoteEditorInner({
         return;
       }
       // sharedRef 付きの doc を保存（personal 側に sharedRef を持たせる）
-      onSave(result.doc);
+      void saveDoc(result.doc);
       // 共有ライブラリが変わった（Library / 引用ピッカー / 語彙索引の追従はこの通知 1 本）
       notifySharedLibraryChanged();
       // バッジを即時更新（initialDoc は親側で書き替えるまで変わらないので、ローカル state で先に反映）
@@ -3258,7 +3350,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, onSave, t, sharedRefState, isWikiDoc, fileId]);
+  }, [sharedRoot, sharedAuthor, buildDocument, saveDoc, t, sharedRefState, isWikiDoc, fileId]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -3341,13 +3433,13 @@ function NoteEditorInner({
   const handleProposalShared = useCallback(
     (doc: GraphiumDocument) => {
       // sharedRef 付きの doc を保存（手元ノートが提案の封筒を指す）
-      onSave(doc);
+      void saveDoc(doc);
       setSharedRefState(doc.sharedRef);
       window.alert(
         isProposalShared ? t("share.propose.updateSuccess") : t("share.propose.success"),
       );
     },
-    [onSave, isProposalShared, t],
+    [saveDoc, isProposalShared, t],
   );
 
   const handleWithdrawProposal = useCallback(async () => {
@@ -3365,7 +3457,7 @@ function NoteEditorInner({
         return;
       }
       // 手元ノートの sharedRef を外す（buildDocument は sharedRef を持たない）
-      onSave(await buildDocument());
+      await saveDoc(await buildDocument());
       setSharedRefState(undefined);
       // 提案をやめたので、基準版の控えはもう使わない（§25b C-3）
       if (fileId) await clearForkBase(fileId);
@@ -3374,7 +3466,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, onSave, fileId, t]);
+  }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, saveDoc, fileId, t]);
 
   // ── メモ挿入（メモギャラリーから） ──
   useEffect(() => {
@@ -12624,6 +12716,8 @@ export function NoteApp() {
             }
             onProposalRequestHandled={() => setProposalOpenRequest(null)}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
+            docKey={fm.activeFileId}
+            editorSession={fm.editorKey}
             initialDoc={fm.activeDoc}
             getKnowledgeSchemaPrompt={fm.getKnowledgeSchemaPrompt}
             noteFolderLookup={noteFolderLookup}
@@ -12711,17 +12805,9 @@ export function NoteApp() {
             })()}
             isTrashed={(noteId: string) => fm.trashedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
             onRestoreTrashedById={(noteId: string) => fm.handleRestore(noteId.replace(/^(wiki|skill):/, ""))}
-            onSave={fm.activeDoc?.source === "ai"
-              ? (doc: GraphiumDocument) => {
-                  const wikiId = fm.activeFileId?.replace("wiki:", "");
-                  if (wikiId) fm.handleSaveWikiFile(wikiId, doc);
-                }
-              : fm.activeDoc?.source === "skill"
-              ? (doc: GraphiumDocument) => {
-                  const skillId = fm.activeFileId?.replace("skill:", "");
-                  if (skillId) fm.handleSaveSkillFile(skillId, doc);
-                }
-              : fm.handleSave}
+            // 保存先（ノート / Wiki / Skill）はエディタが開いた時点で決めて渡す（EditorSaveTarget）
+            onSave={fm.saveEditorDoc}
+            canFlushOnUnmount={fm.shouldFlushEditor}
             onDeriveNote={fm.handleDeriveNote}
             onCreateLinkedNote={fm.handleCreateLinkedNote}
             onDeriveWholeNote={fm.handleDeriveWholeNote}
