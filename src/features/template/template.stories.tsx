@@ -5,7 +5,7 @@
 // インデックステーブル（行からノートを作れる表）になっていなければならない。
 //   - 行頭にノート作成ボタン（「S-01 のノートを作成」）が出る
 //   - ⠿ メニューに「インデックステーブルを解除」が出る（= 登録済み）
-// を目視確認する。適用手順は note-app の handleTemplateSelect と同じ
+// を目視確認する。適用はアプリと同じ insertTemplateDef（features/template/insert.ts）で行う
 // （挿入前に id を振る → columnTypes の path を id に解決 → insertBlocks →
 //   先頭列名をキーに tableMeta へ note-link を付ける）。
 
@@ -20,7 +20,6 @@ import {
 } from "../context-label/store";
 import { LinkStoreProvider } from "../block-link/store";
 import { TableMetaStoreProvider, useTableMetaStore } from "../table-meta/store";
-import { readFirstColumnName } from "../table-meta/table-cells";
 import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { MediaOcrProvider } from "../media-ocr/store";
 import { BlockAlignmentProvider } from "../block-alignment/store";
@@ -28,6 +27,7 @@ import { AiAssistantProvider } from "../ai-assistant/store";
 import { IndexTableIconLayer } from "../index-table/icon-layer";
 import { NoteSideMenu } from "../../components/side-menu";
 import { getAllTemplates } from "./templates";
+import { insertTemplateDef } from "./insert";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -66,28 +66,6 @@ function EditorProviders({ children }: { children: ReactNode }) {
   );
 }
 
-/** note-app の handleTemplateSelect と同じく、挿入前に全ブロックへ id を振る */
-function assignIds(list: any[]) {
-  for (const b of list ?? []) {
-    if (b && typeof b === "object") {
-      if (!b.id) b.id = crypto.randomUUID();
-      if (Array.isArray(b.children)) assignIds(b.children);
-    }
-  }
-}
-
-/** path（ルートからのインデックス配列）でブロック id を引く */
-function idAtPath(blocks: any[], path: number[]): string | null {
-  let nodes: any[] = blocks;
-  let node: any = null;
-  for (const idx of path) {
-    node = nodes?.[idx];
-    if (!node) return null;
-    nodes = node.children ?? [];
-  }
-  return node?.id ?? null;
-}
-
 /**
  * テンプレートをエディタに適用するデモ本体。
  * applyColumnTypes=false は修正前の見え方（表が素の table のまま）を比較用に再現する。
@@ -113,27 +91,23 @@ function TemplateDemoInner({
 
       const tmpl = getAllTemplates().find((x) => x.id === templateId);
       if (!tmpl) return;
-      const { blocks, columnTypes } = tmpl.build(t);
-      assignIds(blocks);
-      // 変換前に id へ解決（note-app と同じ）
-      const marks = (columnTypes ?? []).map((c) => ({
-        blockId: idAtPath(blocks, c.path),
-        type: c.type,
-      }));
-
+      // 先頭の空段落をスラッシュのブロックに見立てて挿す（挿入後に消える）
       const trigger = (editor.document as any[])[0];
-      editor.insertBlocks(blocks, trigger, "after");
-      editor.removeBlocks([trigger]);
-
-      if (!applyColumnTypes) return;
-      // 挿入した表の先頭列にふるまいを付ける（スラッシュ挿入と同じ addColumnType）
-      setTimeout(() => {
-        for (const { blockId, type } of marks) {
-          if (!blockId) continue;
-          const block = editor.getBlock(blockId);
-          storeRef.current.addColumnType(blockId, readFirstColumnName(block), type);
-        }
-      }, 0);
+      insertTemplateDef(
+        editor,
+        trigger,
+        tmpl,
+        {
+          setLabel: () => {},
+          setAttributes: () => {},
+          addLink: () => {},
+          // 比較用（applyColumnTypes=false）は列のふるまいを付けない
+          addColumnType: (blockId, columnName, type) => {
+            if (applyColumnTypes) storeRef.current.addColumnType(blockId, columnName, type);
+          },
+        },
+        t,
+      );
     },
     [templateId, applyColumnTypes],
   );

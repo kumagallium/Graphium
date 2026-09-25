@@ -1,20 +1,21 @@
 {
-  "recordedAt": "2026-05-19T00:38:12.419Z",
+  "recordedAt": "2026-09-25T06:01:51.106Z",
+  "environment": "darwin-arm64 node v22.14.0",
   "result": {
     "corpusSize": 100,
-    "durationMedianMs": 1,
+    "durationMedianMs": 2.61,
     "durationSamplesMs": [
-      2,
-      1,
-      0
+      2.73,
+      2.61,
+      1.46,
+      1.56,
+      2.88
     ],
-    "heapDeltaPeakBytes": 1086360,
-    "atomsJsonBytes": 28581,
-    "syntheses_json_bytes": 111556,
+    "heapDeltaPeakBytes": 5703920,
+    "atomsJsonBytes": 36303,
     "counts": {
       "claims": 100,
-      "atoms": 100,
-      "syntheses": 390
+      "atoms": 100
     }
   }
 }

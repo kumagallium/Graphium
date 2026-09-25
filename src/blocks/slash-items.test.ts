@@ -4,6 +4,7 @@
 // メインにだけ足された項目がピークに出なかった（チャートをピークで作れなかった）。
 // 一覧を blocks/slash-items の 1 か所にまとめ、両方がそこから取ることで防いでいる。
 // このテストは「一覧の中身」と「両方がその一覧を使っていること」を確かめる。
+// 一覧に置けない「新しいノート」は、両方が同じ組み立てで並べていることを確かめる。
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -41,6 +42,30 @@ describe("getCommonSlashMenuItems", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(indexTableSlashItem);
   });
 
+  it("時系列テーブルはどのエディタでも出る（登録先を押されたエディタで引く）", () => {
+    expect(getCommonSlashMenuItems({ includeCite: false })).toContain(logTableSlashItem);
+    expect(getCommonSlashMenuItems({ includeCite: true })).toContain(logTableSlashItem);
+  });
+
+  it("テンプレートはどのエディタでも出る（受け口がエディタ単位なので SidePeek でも挿せる）", () => {
+    const templateTitle = getTemplateSlashMenuItem().title;
+    expect(titles(getCommonSlashMenuItems({ includeCite: false }))).toContain(templateTitle);
+    expect(titles(getCommonSlashMenuItems({ includeCite: true }))).toContain(templateTitle);
+  });
+
+  it("メインでの並びは、項目を common へ移しても変わらない（インデックステーブル → 時系列テーブル → テンプレート）", () => {
+    // エディタは項目をグループ単位にまとめ、グループの中は渡した順に並べる。
+    // メインの一覧は「メイン専用 → common」の順につなぐ（note-app と同じ）
+    const advanced = getTemplateSlashMenuItem().group;
+    const mainList = [...getMainEditorOnlySlashMenuItems(), ...getCommonSlashMenuItems({ includeCite: true })];
+    const advancedTitles = titles(mainList.filter((item) => item.group === advanced));
+    expect(advancedTitles.slice(0, 3)).toEqual([
+      indexTableSlashItem.title,
+      logTableSlashItem.title,
+      getTemplateSlashMenuItem().title,
+    ]);
+  });
+
   it("ノート・wiki の引用は includeCite のときだけ出る", () => {
     const citeTitles = titles(getCiteSlashMenuItems());
     expect(citeTitles.length).toBeGreaterThan(0);
@@ -61,10 +86,9 @@ describe("getCommonSlashMenuItems", () => {
 
 describe("getMainEditorOnlySlashMenuItems", () => {
   it("メインに固定の受け口で動く項目だけを持つ", () => {
-    expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([
-      logTableSlashItem.title,
-      getTemplateSlashMenuItem().title,
-    ]);
+    // インデックステーブル・時系列テーブル・テンプレートは受け口をエディタ単位に直して
+    // common へ移したので、今は空
+    expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([]);
   });
 
   it("共通の一覧には混ざらない（ピークで押すとメイン側に書き込むため）", () => {
@@ -80,8 +104,14 @@ describe("getMainEditorOnlySlashMenuItems", () => {
 
 const SRC_DIR = fileURLToPath(new URL("..", import.meta.url));
 const PROP = "extraSlashMenuItems={";
-/** note-app の状態を閉じ込めた項目。blocks/slash-items に置けないので直接並べてよい */
+/**
+ * エディタごとの記録先（linkStore・noteLinks）を閉じ込めた項目。blocks/slash-items に
+ * 置けないので直接並べてよい。組み立ては block-link/new-note-slash-item.ts に一本化してあり、
+ * メインも SidePeek も同じ変数名で並べる（下の「新しいノート」のガード）
+ */
 const ALLOWED_DIRECT_ITEMS = new Set(["newNoteSlashItem"]);
+const MAIN_EDITOR_FILE = "note-app.tsx";
+const SIDE_PEEK_FILE = "features/index-table/side-peek.tsx";
 const LIST_FUNCTIONS = new Set(["getCommonSlashMenuItems", "getMainEditorOnlySlashMenuItems"]);
 
 /** src 配下の .ts/.tsx を列挙する（テストとストーリーは除く） */
@@ -135,8 +165,8 @@ describe("構造ガード", () => {
   it("メインエディタと SidePeek の両方を見つけている", () => {
     // prop 名が変わってガードが空振りするのを防ぐ
     const files = sites.map((site) => site.file);
-    expect(files).toContain("note-app.tsx");
-    expect(files).toContain("features/index-table/side-peek.tsx");
+    expect(files).toContain(MAIN_EDITOR_FILE);
+    expect(files).toContain(SIDE_PEEK_FILE);
   });
 
   it("どのエディタも共通の一覧を使う", () => {
@@ -163,5 +193,21 @@ describe("構造ガード", () => {
         "（どのエディタでも動くなら common、メインに固定の受け口なら main-only）: " +
         offenders.join(", "),
     ).toEqual([]);
+  });
+
+  it("「新しいノート」はメインにも SidePeek にも出る", () => {
+    // 以前はメインにだけ並べていて、ピークでは作れなかった
+    for (const file of [MAIN_EDITOR_FILE, SIDE_PEEK_FILE]) {
+      const exprs = sites.filter((site) => site.file === file).map((site) => site.expr);
+      expect(exprs.some((expr) => /\bnewNoteSlashItem\b/.test(expr)), file).toBe(true);
+    }
+  });
+
+  it("「新しいノート」はどのエディタも同じ組み立て（buildNewNoteSlashItem）で作る", () => {
+    // 手書きの項目を置くと、記録するもの（リンク・派生関係）がエディタごとにずれる
+    const handWritten = [
+      ...new Set(sites.filter((site) => /\bnewNoteSlashItem\b/.test(site.expr)).map((site) => site.file)),
+    ].filter((file) => !/\bbuildNewNoteSlashItem\(/.test(readFileSync(join(SRC_DIR, file), "utf8")));
+    expect(handWritten).toEqual([]);
   });
 });

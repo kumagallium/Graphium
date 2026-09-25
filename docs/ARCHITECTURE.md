@@ -258,7 +258,17 @@ talks to LLM and embedding backends.
   global graph, asset graph) stay on cytoscape (canvas), which
   scales better for large force-directed views;
   `provToCytoscapeElements` also still feeds printing, where the graph is
-  rasterized to a PNG and appended to the printed note.
+  rasterized to a PNG and appended to the printed note. The global graph's
+  overview adds three structure-derived transforms on top of the raw
+  cytoscape rendering: folding leaves (single-link non-focus nodes) into a
+  `+n` on their parent, sizing nodes by reach (how many other focus-kind
+  nodes they can reach within two hops) instead of a fixed size per kind,
+  and an islands layout that finds communities by label propagation, seeds
+  one hidden centroid node per community, and lays out in two passes —
+  fcose physics for the focus-kind subgraph, then geometric placement for
+  everything else. Focusing on claims builds islands around topics instead
+  of claims themselves, since the sheer volume of claims would otherwise
+  collapse the physics pass into a single blob.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph
@@ -2393,7 +2403,7 @@ people most often need to find.
 | Want to change | Look in |
 |---|---|
 | Block types or editor behavior | `src/blocks/`, `src/note-app.tsx` |
-| Slash menu / inline `@`-link / label UI | `src/blocks/slash-items.ts` (the slash menu's item list, shared by the main editor and the side peek), `src/features/block-link/`, `src/features/context-label/`, `src/features/inline-label/` |
+| Slash menu / inline `@`-link / label UI | `src/blocks/slash-items.ts` (the slash menu's item list, shared by the main editor and the side peek; **New note** is built in `src/features/block-link/new-note-slash-item.ts` instead, because each editor records the link in its own stores), `src/features/block-link/`, `src/features/context-label/`, `src/features/inline-label/` |
 | PROV-DM graph generation | `src/features/prov-generator/` |
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |

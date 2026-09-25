@@ -12,6 +12,9 @@
 // - note-link 列で @ から既存ノートを選ぶと、その行に紐付く（メインと同じ）。
 //   以前はピークだけ @リンクを入れるだけで、行アイコンが「ノートを作成」のまま残り、
 //   押すと「@名前」という題の重複ノートができていた
+// - つながった行を開く前に、待っている編集を保存し終える。行を押すとピークは別ノートへ
+//   切り替わり（親の key={noteId} で作り直し）、3 秒待ちの自動保存はアンマウントで
+//   流れない。保存中に打った分（表示は「保存済み」でもタイマーが待っている）も含む
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 
@@ -24,9 +27,11 @@ vi.mock("react-pdf", () => ({
 }));
 vi.mock("../../lib/pdfjs-config", () => ({}));
 
-// BlockNote 実体は jsdom で描けないので、ブロックの外枠だけを持つ偽エディタに差し替える
+// BlockNote 実体は jsdom で描けないので、ブロックの外枠だけを持つ偽エディタに差し替える。
+// onChange は本文の編集を再現するために控える
 const editorHolder = vi.hoisted(() => ({
   current: null as any,
+  onChange: null as (() => void) | null,
   // エディタに渡された @ メニューの口（最新の描画のもの）
   mention: null as null | {
     getMentionSuggestions?: (query: string) => any[];
@@ -41,14 +46,17 @@ vi.mock("../../base/editor", async () => {
     SandboxEditor: ({
       initialContent,
       onEditorReady,
+      onChange,
       getMentionSuggestions,
       onMentionSelect,
     }: {
       initialContent?: any[];
       onEditorReady?: (editor: any) => void;
+      onChange?: () => void;
       getMentionSuggestions?: (query: string) => any[];
       onMentionSelect?: (sourceBlockId: string, suggestion: any) => unknown;
     }) => {
+      editorHolder.onChange = onChange ?? null;
       editorHolder.mention = { getMentionSuggestions, onMentionSelect };
       // 実物と同じく、エディタはマウント時に 1 回だけ作る（initialContent は
       // ピークの描画ごとに作り直される配列なので、変化で作り直すと無限に回る）
@@ -101,8 +109,13 @@ vi.mock("../../base/editor", async () => {
   };
 });
 
-// 保存はストレージに行かず、書き出す doc を控える
-const saved = vi.hoisted(() => ({ docs: [] as any[] }));
+// 保存はストレージに行かず、書き出す doc を控える。hold を置くと次の保存を
+// それが解決するまで止める（保存中の打鍵を再現する）。completed は書き終えた数
+const saved = vi.hoisted(() => ({
+  docs: [] as any[],
+  hold: null as Promise<void> | null,
+  completed: 0,
+}));
 vi.mock("@features/note-save", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@features/note-save")>()),
   saveNoteDoc: async ({
@@ -115,7 +128,11 @@ vi.mock("@features/note-save", async (importOriginal) => ({
     onSaved?: (id: string, doc: any) => void;
   }) => {
     saved.docs.push(doc);
+    const hold = saved.hold;
+    saved.hold = null;
+    if (hold) await hold;
     onSaved?.(noteId, doc);
+    saved.completed += 1;
   },
 }));
 
@@ -154,6 +171,7 @@ if (!window.matchMedia) {
 }
 
 const TABLE_ID = "peek-table";
+const BODY_ID = "peek-body";
 const cell = (text: string) => ({
   type: "tableCell",
   content: [{ type: "text", text, styles: {} }],
@@ -181,6 +199,13 @@ function makeDoc(tableMeta?: NonNullable<GraphiumDocument["pages"][number]["tabl
             },
             children: [],
           } as any,
+          {
+            id: BODY_ID,
+            type: "paragraph",
+            props: {},
+            content: [{ type: "text", text: "Body", styles: {} }],
+            children: [],
+          } as any,
         ],
         labels: {},
         provLinks: [],
@@ -196,7 +221,10 @@ function makeDoc(tableMeta?: NonNullable<GraphiumDocument["pages"][number]["tabl
 afterEach(() => {
   cleanup();
   saved.docs = [];
+  saved.hold = null;
+  saved.completed = 0;
   editorHolder.current = null;
+  editorHolder.onChange = null;
   editorHolder.mention = null;
   editorHolder.cursor = null;
 });
@@ -212,6 +240,48 @@ async function saveWithShortcut(): Promise<any> {
   });
   await waitFor(() => expect(saved.docs.length).toBeGreaterThan(before));
   return saved.docs[saved.docs.length - 1];
+}
+
+/** 本文の段落を書き換え、エディタの変更として通知する（打鍵と同じく自動保存のタイマーが動く） */
+function editBody(editor: any, text: string) {
+  act(() => {
+    editor.updateBlock(BODY_ID, { content: [{ type: "text", text, styles: {} }] });
+    editorHolder.onChange?.();
+  });
+}
+
+function bodyText(doc: GraphiumDocument | undefined): string | undefined {
+  const block = doc?.pages[0].blocks.find((b: any) => b.id === BODY_ID) as any;
+  return block?.content?.map((c: any) => c.text).join("");
+}
+
+/** 行を開いた時点で保存し終えていた最後の doc を控える onOpenNoteInPeek */
+function recordOpens() {
+  const opens: { id: string; lastSaved: GraphiumDocument | undefined }[] = [];
+  const onOpenNoteInPeek = vi.fn((id: string) => {
+    opens.push({ id, lastSaved: saved.docs[saved.docs.length - 1] });
+  });
+  return { opens, onOpenNoteInPeek };
+}
+
+async function renderPeek(onOpenNoteInPeek: (id: string) => void) {
+  render(
+    <LocaleProvider>
+      <SidePeek
+        noteId="peek-note"
+        cachedDoc={makeDoc()}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        onOpenNoteInPeek={onOpenNoteInPeek}
+        files={[]}
+        onRefreshFiles={vi.fn()}
+      />
+    </LocaleProvider>,
+  );
+  await waitFor(() => expect(editorHolder.current).not.toBeNull());
+  const editor = editorHolder.current;
+  await waitFor(() => expect(getEditorIndexTableCallbacks(editor)).not.toBeNull());
+  return { editor, callbacks: getEditorIndexTableCallbacks(editor)! };
 }
 
 describe("SidePeek のインデックステーブル", () => {
@@ -332,5 +402,48 @@ describe("SidePeek のインデックステーブル", () => {
     });
     expect(firstCell.styles.tableRowIdentity).toMatch(/^row_/);
     expect(onCreateLinkedNote).not.toHaveBeenCalled();
+  });
+
+  it("編集の直後につながった行を押しても、保存し終えてから開く", async () => {
+    const { opens, onOpenNoteInPeek } = recordOpens();
+    const { editor, callbacks } = await renderPeek(onOpenNoteInPeek);
+
+    // 打ってから 3 秒待たずに行を押す（行アイコン層の覆いは onOpenSidePeek を呼ぶ）
+    editBody(editor, "edited right before the switch");
+    act(() => callbacks.onOpenSidePeek("row-note"));
+
+    await waitFor(() => expect(onOpenNoteInPeek).toHaveBeenCalledTimes(1));
+    expect(opens[0].id).toBe("row-note");
+    expect(bodyText(opens[0].lastSaved)).toBe("edited right before the switch");
+  });
+
+  it("保存中に打った分も、つながった行を開く前に保存する", async () => {
+    const { opens, onOpenNoteInPeek } = recordOpens();
+    const { editor, callbacks } = await renderPeek(onOpenNoteInPeek);
+
+    // 1 回目の保存（⌘S）を止めておき、その間に打つ
+    let release!: () => void;
+    saved.hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    editBody(editor, "first");
+    const title = document.querySelector<HTMLTextAreaElement>("[data-side-peek] textarea")!;
+    act(() => {
+      title.focus();
+      fireEvent.keyDown(document, { key: "s", metaKey: true });
+    });
+    await waitFor(() => expect(saved.docs.length).toBe(1));
+    editBody(editor, "typed while saving");
+
+    // 1 回目が書き終わると表示は「保存済み」に戻るが、後から打った分はタイマーで待っている
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(saved.completed).toBe(1));
+
+    act(() => callbacks.onOpenSidePeek("row-note"));
+
+    await waitFor(() => expect(onOpenNoteInPeek).toHaveBeenCalledTimes(1));
+    expect(bodyText(opens[0].lastSaved)).toBe("typed while saving");
   });
 });

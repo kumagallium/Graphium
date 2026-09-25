@@ -4,6 +4,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
@@ -158,6 +159,7 @@ import {
   recordMentionLink,
 } from "./features/block-link/mention-insert";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
+import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
@@ -193,6 +195,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
+import { pendingPeekSave } from "./lib/peek-save-queue";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -362,7 +365,7 @@ import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { TemplatePickerModal, setTemplatePickerCallback, getAllTemplates, buildDocumentFromTemplate, pageTemplateToBuildResult, deserializeTemplate, type PageTemplate } from "./features/template";
+import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate } from "./features/template";
 import {
   CitePickerModal,
   setCitePickerCallback,
@@ -1962,18 +1965,23 @@ function NoteEditorInner({
     };
   }, [mainEditor, mediaIndex]);
 
-  // スラッシュメニューからテンプレートピッカーを開くコールバック登録
-  useEffect(() => {
-    setTemplatePickerCallback((triggerBlock: any) => {
-      templateTriggerBlockRef.current = triggerBlock;
-      setTemplatePickerOpen(true);
-    });
-    return () => { setTemplatePickerCallback(null); };
-  }, []);
+  // スラッシュメニューの「テンプレート」。ピッカーの開閉と挿入は SidePeek と共通の
+  // useTemplatePicker が持ち、ここではメインのエディタとメインのノートのストアを渡す
+  // （ピークはピーク自身のエディタとストアを渡す）
+  const templatePicker = useTemplatePicker(mainEditor, {
+    stores: {
+      setLabel: labelStore.setLabel,
+      setAttributes: labelStore.setAttributes,
+      addLink: linkStore.addLink,
+      addColumnType: tableMetaStore.addColumnType,
+    },
+    uploadFile,
+  });
 
   // テーブルブロックの先頭列にふるまいを付ける（先頭列の名前をキーに tableMeta へ記録）。
-  // スラッシュメニューのインデックス/時系列テーブル挿入と、テンプレート適用（columnTypes）
-  // が同じ経路を通る — どちらも「挿入した表の先頭列に note-link / datetime-auto を付ける」。
+  // スラッシュメニューのインデックス/時系列テーブル挿入が通る — どちらも「挿入した表の
+  // 先頭列に note-link / datetime-auto を付ける」。テンプレートの表（columnTypes）も
+  // 同じ記録の仕方で付けている（features/template/insert.ts）。
   const addFirstColumnType = useCallback(
     (blockId: string, type: ColumnType) => {
       const block = editorRef.current?.getBlock?.(blockId);
@@ -1981,254 +1989,6 @@ function NoteEditorInner({
     },
     [tableMetaStore],
   );
-
-  // テンプレートを選択してエディタに挿入
-  const handleTemplateSelect = useCallback((templateId: string) => {
-    setTemplatePickerOpen(false);
-    const editor = editorRef.current;
-    if (!editor) return;
-
-    const allTemplates = getAllTemplates();
-    const tmpl = allTemplates.find((t) => t.id === templateId);
-    if (!tmpl) return;
-
-    const triggerBlock = templateTriggerBlockRef.current ?? editor.getTextCursorPosition()?.block;
-    if (!triggerBlock) return;
-
-    const { blocks: rawBlocks, labels: rawLabels, provLinks, columnTypes } = tmpl.build(tStatic);
-
-    // テンプレートは旧語彙（procedure/plan/result ラベル付き見出し）で定義されている。
-    // 挿入前に step ブロックへ変換する（工程は step が正。ラベルのまま挿すと
-    // v6 済みドキュメントに旧形式が永久残留する）。
-    // 変換は block id ベースなので一時 id を振り、provLinks / focusPath は
-    // 変換前に id へ解決しておく（変換は id を保存するため、挿入後は id で引ける）。
-    const assignIds = (list: any[]) => {
-      for (const b of list ?? []) {
-        if (b && typeof b === "object") {
-          if (!b.id) b.id = crypto.randomUUID();
-          if (Array.isArray(b.children)) assignIds(b.children);
-        }
-      }
-    };
-    assignIds(rawBlocks);
-    const idAtPath = (path: number[]): string | null => {
-      let nodes: any[] = rawBlocks;
-      let node: any = null;
-      for (const idx of path) {
-        node = nodes?.[idx];
-        if (!node) return null;
-        nodes = node.children ?? [];
-      }
-      return node?.id ?? null;
-    };
-    const linkIds = (provLinks ?? []).map((l) => ({
-      sourceId: idAtPath(l.sourcePath),
-      targetId: idAtPath(l.targetPath),
-      type: l.type,
-    }));
-    // テーブルの列のふるまい（計画テンプレートの表を note-link = インデックステーブルにする等）。
-    // provLinks と同じく変換前に id へ解決しておく
-    const columnTypeIds = (columnTypes ?? []).map((c) => ({
-      blockId: idAtPath(c.path),
-      type: c.type,
-    }));
-    const focusId = idAtPath(tmpl.focusPath);
-    const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
-      rawBlocks,
-      rawLabels as any,
-    );
-
-    const inserted = editor.insertBlocks(blocks, triggerBlock, "after");
-
-    // スラッシュを打ったブロックが空なら削除
-    const content = triggerBlock.content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] ||
-        (content[0].type === "text" &&
-          content[0].text.replace("/", "").trim() === ""))
-    ) {
-      editor.removeBlocks([triggerBlock]);
-    }
-
-    // パスから挿入後のブロックを取得
-    const resolveByPath = (path: number[]): any | null => {
-      let nodes: any[] = inserted as any[];
-      let node: any = null;
-      for (const idx of path) {
-        node = nodes?.[idx];
-        if (!node) return null;
-        nodes = node.children ?? [];
-      }
-      return node;
-    };
-
-    // ラベル付与・前手順リンク追加・列のふるまい付与（次フレームに延期して、エディタの
-    // 状態反映後に実行）。
-    // procedure/plan/result は変換で消費済み。リンクは変換前に解決した id で張る
-    // （テンプレの step1→step2 informed_by は、見出し id を引き継いだ step 間に張られる）。
-    // 列のふるまいはスラッシュメニューのインデックス/時系列テーブル挿入と同じ関数で付ける。
-    if (labels.length > 0 || linkIds.length > 0 || columnTypeIds.length > 0) {
-      setTimeout(() => {
-        for (const { path, label } of labels) {
-          const block = resolveByPath(path);
-          if (block?.id) {
-            labelStore.setLabel(block.id, label);
-          }
-        }
-        for (const link of linkIds) {
-          if (link.sourceId && link.targetId) {
-            linkStore.addLink({
-              sourceBlockId: link.sourceId,
-              targetBlockId: link.targetId,
-              type: link.type,
-              createdBy: "human",
-            });
-          }
-        }
-        for (const { blockId, type } of columnTypeIds) {
-          if (blockId) addFirstColumnType(blockId, type);
-        }
-      }, 0);
-    }
-
-    // フォーカスブロックにカーソルを移動（id は変換を跨いで保存される）
-    if (focusId) {
-      try {
-        editor.setTextCursorPosition(focusId, "end");
-      } catch {
-        /* no-op */
-      }
-    }
-
-    templateTriggerBlockRef.current = null;
-    // insertBlocks による onChange で自動的に markDirty される
-  }, [labelStore, linkStore, addFirstColumnType]);
-
-  // チームのテンプレート（共有ライブラリの type=template）をピッカーから挿入する。
-  // 公式テンプレートとの違いは「本文が共有ルートにある」ことだけなので、
-  // 読み出し → hash 照合 → shared-blob: の解決 まで済ませてから、
-  // 公式と同じ挿入経路（ブロック挿入 → 次フレームでラベル・属性・列のふるまいを適用）に流す。
-  const handleSharedTemplateSelect = useCallback(async (entry: SharedEntry) => {
-    setTemplatePickerOpen(false);
-    const editor = editorRef.current;
-    // 挿入位置は本文の読み出し（非同期）を跨ぐので先に確保する。
-    // ref は次の選択に備えてここで空に戻す
-    const triggerBlock = templateTriggerBlockRef.current ?? editor?.getTextCursorPosition()?.block;
-    templateTriggerBlockRef.current = null;
-    if (!editor || !triggerBlock) return;
-
-    let template: PageTemplate;
-    try {
-      const { body, verified } = await readSharedEntryBody(entry);
-      if (!verified) {
-        // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
-        // 本文自体は読めるので、挿すかどうかは利用者に決めさせる
-        if (!window.confirm(tStatic("template.picker.hashMismatchConfirm"))) return;
-      }
-      // バイト列を生文字列として扱うと日本語が壊れる。必ず TextDecoder で読む
-      template = deserializeTemplate(new TextDecoder().decode(body));
-    } catch (e) {
-      alert(tStatic("template.picker.loadFailed", { error: e instanceof Error ? e.message : String(e) }));
-      return;
-    }
-
-    // shared-blob: を自分のローカル素材へ置き換える（fork・テンプレートから新規ノートと
-    // 同じ materializeSharedBlobs）。doc 単位の関数なので 1 ページの擬似 doc に包む。
-    // ここでブロック id は変えない — このあとの pageTemplateToBuildResult が
-    // labels / attributes / tableMeta を「元の blockId」で引くため、
-    // 先に id が変わると注釈がまとめて落ちる
-    const extraBlobs = (entry.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-    const blobRoot = getBlobRoot();
-    if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot && uploadFile) {
-      const blobProvider = new LocalFolderBlobProvider(blobRoot);
-      const now = new Date().toISOString();
-      const pseudoDoc: GraphiumDocument = {
-        version: LATEST_DOCUMENT_VERSION,
-        title: template.name,
-        pages: [
-          {
-            id: "main",
-            title: template.pageTitle,
-            blocks: template.blocks,
-            labels: {},
-            provLinks: [],
-            knowledgeLinks: [],
-          },
-        ],
-        createdAt: now,
-        modifiedAt: now,
-      };
-      const materialized = await materializeSharedBlobs(pseudoDoc, {
-        blobs: extraBlobs,
-        fetchBytes: (ref) => blobProvider.get(ref),
-        uploadMedia: async (file) => ({ url: await uploadFile(file) }),
-      });
-      template = { ...template, blocks: materialized.doc.pages[0]?.blocks ?? template.blocks };
-      if (materialized.missing.length > 0) {
-        alert(tStatic("template.picker.mediaMissing", { count: String(materialized.missing.length) }));
-      }
-    }
-
-    const { blocks, labels, attributes, columnTypes } = pageTemplateToBuildResult(template);
-    if (blocks.length === 0) return;
-
-    const inserted = editor.insertBlocks(blocks, triggerBlock, "after");
-
-    // スラッシュを打ったブロックが空なら削除（公式テンプレートと同じ後始末）
-    const content = (triggerBlock as any).content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] ||
-        (content[0].type === "text" &&
-          content[0].text.replace("/", "").trim() === ""))
-    ) {
-      editor.removeBlocks([triggerBlock]);
-    }
-
-    // パスから挿入後のブロックを取得（公式テンプレートと同じ引き当て方）
-    const resolveByPath = (path: number[]): any | null => {
-      let nodes: any[] = inserted as any[];
-      let node: any = null;
-      for (const idx of path) {
-        node = nodes?.[idx];
-        if (!node) return null;
-        nodes = node.children ?? [];
-      }
-      return node;
-    };
-
-    // エディタの状態反映後に注釈層を復元する（公式テンプレートと同じく次フレーム）
-    setTimeout(() => {
-      for (const { path, label } of labels) {
-        const block = resolveByPath(path);
-        if (block?.id) labelStore.setLabel(block.id, label);
-      }
-      // 連動属性はラベルを付けた直後にだけ入る（setAttributes は既定値が無いブロックでは
-      // 何もしない）。ラベルが復元できなかったブロックの属性は落ちるが、
-      // 属性だけ復活しても意味が無いのでそれで正しい
-      for (const { path, attributes: attrs } of attributes ?? []) {
-        const block = resolveByPath(path);
-        if (block?.id) labelStore.setAttributes(block.id, attrs);
-      }
-      for (const { path, type } of columnTypes ?? []) {
-        const block = resolveByPath(path);
-        if (block?.id) addFirstColumnType(block.id, type);
-      }
-    }, 0);
-
-    // 共有テンプレートは focusPath を持たないので、挿入した先頭ブロックにカーソルを置く
-    const firstId = (inserted as any[])[0]?.id;
-    if (firstId) {
-      try {
-        editor.setTextCursorPosition(firstId, "end");
-      } catch {
-        /* no-op */
-      }
-    }
-  }, [labelStore, addFirstColumnType, uploadFile]);
 
   // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
   const isSlashOnlyBlock = useCallback((block: any) => {
@@ -2814,55 +2574,25 @@ function NoteEditorInner({
   // 同じ common を使う。新しい項目はそちらに足す（メインにしか出ない漏れを防ぐため）
   const mainOnlySlashItems = useMemo(() => getMainEditorOnlySlashMenuItems(), []);
   const commonSlashItems = useMemo(() => getCommonSlashMenuItems({ includeCite: true }), []);
-  // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
-  // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
-  // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
-  // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
-  const newNoteSlashItem: SlashMenuItem = useMemo(
-    () => ({
-      // ラベルは getter で遅延評価する。この項目は useMemo で保持されるので、
-      // ここで t() を即時評価すると言語を切り替えても古いラベルが残る。
-      get title() { return tStatic("slashMenu.newNote.title"); },
-      get subtext() { return tStatic("slashMenu.newNote.subtext"); },
-      get group() { return tStatic("slashMenu.newNote.group"); },
-      aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
-      onItemClick: (editor: any) => {
-        const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
-        void (async () => {
-          if (!onCreateLinkedNote) return;
-          const title = (await promptNoteName(""))?.trim() ?? "";
-          if (!title) return;
-          const newId = await onCreateLinkedNote(title);
-          if (!newId) return;
-          if (sourceBlockId) {
-            linkStore.addLink({
-              sourceBlockId,
-              targetBlockId: "",
-              targetNoteId: newId,
-              type: "reference",
-              createdBy: "human",
-            });
-            const exists = noteLinksRef.current.some((l) => l.targetNoteId === newId);
-            if (!exists) {
-              noteLinksRef.current = [
-                ...noteLinksRef.current,
-                { targetNoteId: newId, sourceBlockId, type: "derived_from" },
-              ];
-            }
-          }
-          // insertInlineContent の onChange で自動 markDirty される
-          setTimeout(() => {
-            insertNoteMentionInline(editorRef.current, newId, title);
-          }, 50);
-        })();
-      },
-    }),
+  // 「新しいノート」（名前を付けて新規ノートを作成し、ここにリンク）。組み立ては
+  // block-link/new-note-slash-item.ts で SidePeek と共通。メインが渡すのは記録先
+  // （このエディタの linkStore と noteLinksRef）だけ。作れないときは出さない
+  const newNoteSlashItem: SlashMenuItem | null = useMemo(
+    () =>
+      onCreateLinkedNote
+        ? buildNewNoteSlashItem({
+            promptNoteName,
+            createNote: (title) => onCreateLinkedNote(title),
+            getEditor: () => editorRef.current,
+            addLink: linkStore.addLink,
+            addNoteLink: (link) => {
+              if (noteLinksRef.current.some((l) => l.targetNoteId === link.targetNoteId)) return;
+              noteLinksRef.current = [...noteLinksRef.current, link];
+            },
+          })
+        : null,
     [onCreateLinkedNote, promptNoteName, linkStore],
   );
-
-  // テンプレートピッカーモーダル
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const templateTriggerBlockRef = useRef<any>(null);
 
   // ── URL ペースト検知 ──
   const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
@@ -4928,9 +4658,11 @@ function NoteEditorInner({
       const tableMeta = migrateTableMeta(page);
       tableMetaStore.restore(tableMeta);
       const tableMetaEntries = Object.entries(tableMeta ?? {});
-      // 日時が入る列を持つテーブルの行数を先に記録しておく
-      // （開いて最初の行追加から日時が入るように）
+      // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+      // 日時が入るように）。記録はエディタ単位で、エディタの公開がこの復元より後なら
+      // ここはエディタが無く空振りする。そのときは下の mainEditor の effect が記録する
       primeLogTableRowTracking(
+        editorRef.current,
         page.blocks,
         tableMetaEntries
           .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
@@ -5232,13 +4964,30 @@ function NoteEditorInner({
   }, [mainEditor, addFirstColumnType]);
 
   // スラッシュメニューからの時系列テーブル登録コールバック
-  // （挿入されたテーブルの先頭列に datetime-auto を付ける）
+  // （挿入されたテーブルの先頭列に datetime-auto を付ける）。項目は SidePeek と共通なので、
+  // このエディタで押されたときだけ呼ばれるようにエディタ単位で登録する
   useEffect(() => {
-    setRegisterLogTableCallback((blockId: string) => {
+    if (!mainEditor) return;
+    setRegisterLogTableCallback(mainEditor, (blockId: string) => {
       addFirstColumnType(blockId, "datetime-auto");
     });
-    return () => { setRegisterLogTableCallback(null); };
-  }, [addFirstColumnType]);
+    return () => { setRegisterLogTableCallback(mainEditor, null); };
+  }, [mainEditor, addFirstColumnType]);
+
+  // 日時が入る列を持つテーブルの行数を、このエディタの分として先に記録しておく
+  // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
+  // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
+  // key={fileId || "new"} で作り直されるが、表の注釈（tableMetaStore）は残る。
+  // 初期データの復元でも記録するので、注釈の復元とエディタの公開のどちらが先でも
+  // 取りこぼさない（記録の無い表だけを埋めるので、二度呼んでも崩れない）
+  useEffect(() => {
+    if (!mainEditor) return;
+    primeLogTableRowTracking(
+      mainEditor,
+      mainEditor.document,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
+  }, [mainEditor]);
 
   // スコープ派生ボタン → 別ノートとして作成
   useEffect(() => {
@@ -5808,13 +5557,7 @@ function NoteEditorInner({
         />
       )}
       {/* テンプレートピッカーモーダル（スラッシュメニュー /template から） */}
-      {templatePickerOpen && (
-        <TemplatePickerModal
-          onSelect={handleTemplateSelect}
-          onSelectShared={handleSharedTemplateSelect}
-          onClose={() => setTemplatePickerOpen(false)}
-        />
-      )}
+      {templatePicker.dialog}
       {/* 引用ピッカーモーダル（スラッシュメニュー /claims, /Insights から） */}
       {citePickerKind && (
         <CitePickerModal
@@ -6215,7 +5958,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...mainOnlySlashItems, ...commonSlashItems]}
+              extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...mainOnlySlashItems, ...commonSlashItems]}
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -7800,6 +7543,10 @@ export function NoteApp() {
       const noteId = run.noteId;
       const chain = chatWritebackChainsRef.current.get(noteId) ?? Promise.resolve();
       const task = chain.then(async () => {
+        // ピークが閉じた直後の回収では、ピークがアンマウント時に書き出した本文がまだ
+        // 書き込み中のことがある。書き終わってから読む（先に読むと古い本文に応答を足して
+        // 書いてピークの編集を巻き戻すか、後から着いたピークの保存が応答を消す）
+        await pendingPeekSave(noteId);
         const baseDoc = await loadNoteDocByFullKey(noteId, fmGetCachedDocStable);
         if (!baseDoc) {
           throw new Error(`書き戻し先ノートが読み込めませんでした: ${noteId}`);
@@ -12270,6 +12017,20 @@ export function NoteApp() {
                     files={fm.files}
                     onRefreshFiles={fm.refreshFiles}
                     onOpenNoteInPeek={(peekId) => openAssetPeek(peekId)}
+                    onOpenMaterialPeek={(entry) => {
+                      // ピーク内の @素材 → 全画面表示をその素材に差し替える。ノートピークは残し、
+                      // ノートを読みながら @素材 を順に見られるようにする。右パネルのグラフで
+                      // 素材ノードを押したときと同じく、ギャラリーの種類と URL は変えない
+                      // （全画面を抜けると元の一覧に戻る）。これを渡していなかったので、ここだけ
+                      // @素材 を押しても何も起きなかった。
+                      // 未登録の URL はギャラリーに実体が無いので、素材ピークの無い画面と同じく
+                      // 外部ブラウザで開く
+                      if (fm.mediaIndex?.media.some((m) => m.fileId === entry.fileId)) {
+                        setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
+                      } else if (entry.type === "url" && entry.url) {
+                        void openExternalUrl(entry.url);
+                      }
+                    }}
                     onOpenMemoSource={handleOpenMemoSource}
                   />
                 </ListSidePeekBoundary>
