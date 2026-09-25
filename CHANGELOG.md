@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.83.1](https://github.com/kumagallium/Graphium/compare/v0.83.0...v0.83.1) - 2026-09-25
+
+- fix(bench): stop the adversarial probes from posting the same result on every PR by @kumagallium in https://github.com/kumagallium/Graphium/pull/1046
+- fix(side-peek): keep peek edits when the same note opens in the main editor by @kumagallium in https://github.com/kumagallium/Graphium/pull/1047
+- fix(side-peek): record the derived-from link when @-mentioning a note outside a table by @kumagallium in https://github.com/kumagallium/Graphium/pull/1049
+- fix(editor): keep the main editor's last edits when switching notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1051
+- fix(knowledge): keep superscript, subscript and formulas in the text the AI reads and writes back by @kumagallium in https://github.com/kumagallium/Graphium/pull/1052
+- chore: remove the unused build:server script and tsconfig.server.json by @kumagallium in https://github.com/kumagallium/Graphium/pull/1054
+- Record the derived-from link when pasting a note link in the side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1053
+- fix(search): read links and formulas as text in Wiki search, note outlines and topic statements by @kumagallium in https://github.com/kumagallium/Graphium/pull/1055
+- Search every note and material from the @ menu, not just the newest by @kumagallium in https://github.com/kumagallium/Graphium/pull/1050
+- fix(knowledge): read step contents, nested blocks and tables in the text the AI reads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1058
+
 ## [v0.83.0](https://github.com/kumagallium/Graphium/compare/v0.82.1...v0.83.0) - 2026-09-25
 
 - fix(side-peek): offer the chart block in the side peek's slash menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1027
