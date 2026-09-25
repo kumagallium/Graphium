@@ -135,6 +135,12 @@ type DemoOptions = {
   lead?: string;
   /** チャートをテーブルより前に置く（XRD は行数が多く、後ろだと見るのに延々スクロールする） */
   chartFirst?: boolean;
+  /**
+   * デモ枠の幅(px)を固定する（サイドピークのような狭い場所の再現）。
+   * SandboxEditor は左右に 54px の余白を持つので、チャートブロックの幅は
+   * この値 − 108 − 枠の padding と border（18）になる
+   */
+  width?: number;
 };
 
 function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
@@ -154,7 +160,14 @@ function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
 function ChartDemo({ config, ...opts }: { config: Record<string, unknown> } & DemoOptions) {
   return (
     <EditorProviders>
-      <div style={{ maxWidth: 680, border: "1px solid #e5e7eb", borderRadius: 12, padding: 8 }}>
+      <div
+        style={{
+          ...(opts.width !== undefined ? { width: opts.width, flexShrink: 0 } : { maxWidth: 680 }),
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 8,
+        }}
+      >
         <SandboxEditor blocks={[chartBlock]} initialContent={chartContent(config, opts)} />
       </div>
     </EditorProviders>
@@ -1190,6 +1203,164 @@ export const PanelsLegendPerPanel: StoryObj = {
           caption: "試料 A・B の熱電特性",
         }}
       />
+    </ErrorBoundary>
+  ),
+};
+
+// ── 狭い場所（サイドピーク等）──────────────────────────────────────
+// 2026-09-25、幅 1024px のウィンドウでメインとピークを並べると、図の描画領域が
+// ピーク側で 108×46px、メイン側で 59×12px まで潰れた（余白は 16px の文字に合わせた
+// 固定値のまま、高さだけが幅に比例して縮むため）。幅 400px 未満の図は余白を目盛り
+// ラベルに合わせて詰め、描画領域に 120px の高さを確保し、目盛りを間引き、設定ボタンを
+// 図の上の行へ逃がす。400px 以上の図は従来とまったく同じ
+
+/** パンの発酵記録（ピークで潰れた図の再現に使った 2 列の表） */
+function riseTable(id: string) {
+  return {
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: [cell("Minutes"), cell("Height"), cell("Temperature"), cell("Volume index")] },
+        { cells: [cell("0"), cell("4.0"), cell("24.1"), cell("1.00")] },
+        { cells: [cell("30"), cell("5.5"), cell("25.3"), cell("1.38")] },
+        { cells: [cell("60"), cell("7.2"), cell("26.0"), cell("1.80")] },
+      ],
+    },
+  };
+}
+
+const RISE_LINE = series([{ sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Height" }]);
+
+/** デモ枠の幅。チャートブロックの幅（shell）に、エディタの左右の余白 108 と枠の 18 を足す */
+const frameForShell = (shell: number) => shell + 108 + 18;
+
+function NarrowCase({
+  label,
+  shell,
+  config,
+  baseTables = [riseTable("rise")],
+}: {
+  label: string;
+  shell: number;
+  config: Record<string, unknown>;
+  baseTables?: any[];
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 12, color: "#6b7280", maxWidth: frameForShell(shell) }}>{label}</div>
+      <ChartDemo width={frameForShell(shell)} baseTables={baseTables} lead="記録" chartFirst config={config} />
+    </div>
+  );
+}
+
+const narrowRow = { display: "flex", flexWrap: "wrap" as const, gap: 20, alignItems: "flex-start" };
+
+// 同じ図を、実機で測った 4 つの幅で並べる。右端（564px）は従来の見た目のまま
+export const NarrowWidths: StoryObj = {
+  name: "狭い場所: 幅ごとの見え方（175 / 224 / 315 / 564px）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={183}
+          label="幅 1024 でピークと並べたメイン（図 175px）"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+        <NarrowCase
+          shell={232}
+          label="幅 1024 のサイドピーク（図 224px）"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+        <NarrowCase
+          shell={323}
+          label="幅 1280 のサイドピーク（図 315px）"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+        <NarrowCase
+          shell={572}
+          label="幅 1024 のメイン（図 564px・従来どおり）"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 狭い図の凡例: 右上揃え・長い系列名（第 2 軸あり）・2 段に分けた図。
+// 記号枠を短くし、入りきらない名前は末尾を省略してホバーで全文を出す
+export const NarrowLegends: StoryObj = {
+  name: "狭い場所: 凡例（右上・長い名前・2 段）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={232}
+          label="凡例を右上に"
+          config={{ chartType: "line", series: RISE_LINE, legendPosition: "top-right" }}
+        />
+        <NarrowCase
+          shell={232}
+          label="3 系列（2 本は第 2 軸）"
+          config={{
+            chartType: "line",
+            series: series([
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Height" },
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Temperature", axis: "right" },
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Volume index", axis: "right" },
+            ]),
+          }}
+        />
+        <NarrowCase
+          shell={232}
+          label="2 段に分けた図（ラベルの長さが違っても枠が揃う）"
+          config={{
+            chartType: "line",
+            panels: { rows: 2, cols: 1, joinVertical: true, joinHorizontal: false, showPanelLabels: true, labelPosition: "top-left" },
+            series: series([
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Height", panelIndex: 0 },
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Temperature", panelIndex: 1 },
+            ]),
+          }}
+        />
+        <NarrowCase
+          shell={232}
+          label="5:1（狭い場所では比より読める高さを優先）"
+          config={{ chartType: "line", series: RISE_LINE, aspect: "spectrum" }}
+        />
+        <NarrowCase
+          shell={232}
+          label="時間軸（日時の記録）"
+          baseTables={[diaryTable("diary-table-1")]}
+          config={{
+            chartType: "line",
+            series: series([{ sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "痛み" }]),
+          }}
+        />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 通常の幅でも、枠の上・右端揃えの凡例は設定ボタンの下に潜るので、ボタンだけを
+// 図の上の行へ逃がす（図そのものは従来と同じ）。左上の凡例はボタンを重ねたまま
+export const SettingsButtonOverTopRightLegend: StoryObj = {
+  name: "設定ボタンと右上の凡例（通常の幅）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={572}
+          label="凡例が右上: ボタンは図の上の行"
+          config={{ chartType: "line", series: RISE_LINE, legendPosition: "top-right" }}
+        />
+        <NarrowCase
+          shell={572}
+          label="凡例が左上: ボタンは従来どおり図に重ねる"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+      </div>
     </ErrorBoundary>
   ),
 };

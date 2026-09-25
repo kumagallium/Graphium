@@ -72,23 +72,27 @@ export type LegendItemSeries = {
 /**
  * 1 つの凡例の data と記号枠の幅を決める。
  * 縦並び・散布図を含まない凡例は従来どおり（名前だけ・枠 50）。
+ * markerWidth は折れ線・棒の記号枠の幅（狭い図は短くする。既定は 50）
  */
 export function legendItems(
   entries: LegendItemSeries[],
-  orient: "horizontal" | "vertical"
+  orient: "horizontal" | "vertical",
+  markerWidth: number = CHART_LEGEND_ITEM.width
 ): { data: Array<string | { name: string; icon: string }>; itemWidth: number } {
   const names = entries.map((e) => e.name);
   const anyScatter = entries.some((e) => e.scatterSymbol !== null);
   if (orient !== "horizontal" || !anyScatter) {
-    return { data: names, itemWidth: CHART_LEGEND_ITEM.width };
+    return { data: names, itemWidth: markerWidth };
   }
   if (entries.every((e) => e.scatterSymbol !== null)) {
     return { data: names, itemWidth: CHART_LEGEND_ITEM.height };
   }
   return {
     data: entries.map((e) =>
-      e.scatterSymbol !== null ? { name: e.name, icon: scatterLegendIcon(e.scatterSymbol) } : e.name
+      e.scatterSymbol !== null
+        ? { name: e.name, icon: scatterLegendIcon(e.scatterSymbol, markerWidth) }
+        : e.name
     ),
-    itemWidth: CHART_LEGEND_ITEM.width,
+    itemWidth: markerWidth,
   };
 }
