@@ -421,6 +421,7 @@ import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
+import { usePeekSettledDoc } from "./hooks/use-peek-settled-doc";
 import { useImeEnterGuard } from "./hooks/use-ime-enter-guard";
 import { useAutoGrounding } from "./hooks/use-auto-grounding";
 import {
@@ -1043,6 +1044,16 @@ type NoteEditorProps = {
   fileId: string | null;
   initialDoc: GraphiumDocument | null;
   /**
+   * 開いているノートのキー（fm.activeFileId。wiki:/skill: 付き。新規ノートは null）。
+   * サイドピークの保存の列と同じ形で、同じノートの書き出しを待つのに使う（NoteEditor）
+   */
+  docKey?: string | null;
+  /**
+   * サイドピークが保存できなかった編集を持ち込んで開いた。「未保存」から始め、自動保存で
+   * 書き直す（NoteEditor が決める。hooks/use-peek-settled-doc.ts）
+   */
+  startUnsaved?: boolean;
+  /**
    * ノート id → そのノートのフォルダ。エディタ内から開く素材サイドピークで、
    * 素材が「使われているノートのフォルダ」に属して見えるようにするために渡す
    * （素材ギャラリー側と同じ導出を使い、見え方を揃える）。
@@ -1267,6 +1278,18 @@ type NoteEditorProps = {
 };
 
 function NoteEditor(props: NoteEditorProps) {
+  const t = useT();
+  // サイドピークで同じノートを編集した直後なら、その書き出しが済んでから本文を組み立てる。
+  // 待たずに作ると書き出し前の古い本文のエディタができ、その自動保存がピークの編集を
+  // 書き戻す（理由と入口の分担は hooks/use-peek-settled-doc.ts）
+  const settled = usePeekSettledDoc(props.docKey ?? null, props.initialDoc);
+  if (settled.waiting) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        {t("common.loading")}
+      </div>
+    );
+  }
   return (
     <ProvLabelsEnabledProvider enabled={props.provLabelsEnabled ?? true}>
     <LabelStoreProvider>
@@ -1278,7 +1301,7 @@ function NoteEditor(props: NoteEditorProps) {
         {/* モデル未登録（agentConfigured=false）ならエディタ内 AI ボタン群
             （フォーマッティングツールバー / ドラッグメニュー / 選択ツールバーの Bot）も隠す */}
         <AiAssistantProvider aiAvailable={(props.aiAvailable ?? true) && (props.agentConfigured ?? true)}>
-          <NoteEditorInner {...props} />
+          <NoteEditorInner {...props} initialDoc={settled.doc} startUnsaved={settled.startUnsaved} />
         </AiAssistantProvider>
         </BlockAlignmentProvider>
         </MediaOcrProvider>
@@ -1542,6 +1565,7 @@ function NoteGraphTabPanel({
 function NoteEditorInner({
   fileId,
   initialDoc,
+  startUnsaved = false,
   noteFolderLookup,
   onEditMediaContexts,
   onSave,
@@ -3186,6 +3210,13 @@ function NoteEditorInner({
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
   markDirtyRef.current = markDirty;
   saveNowRef.current = saveNow;
+  // サイドピークが保存できなかった編集を持ち込んで開いた。その編集はどこにも保存されて
+  // いないので、「未保存」から始めて自動保存で書き直す（NoteEditor が決める）
+  useEffect(() => {
+    if (startUnsaved) markDirty();
+    // 開いたときに一度だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── team-shared storage（Phase 2a / 2b-1） ──
   // sharedRefState は handleSave の上で宣言済み（buildDocument 結果への再注入用）
@@ -12624,6 +12655,7 @@ export function NoteApp() {
             }
             onProposalRequestHandled={() => setProposalOpenRequest(null)}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
+            docKey={fm.activeFileId}
             initialDoc={fm.activeDoc}
             getKnowledgeSchemaPrompt={fm.getKnowledgeSchemaPrompt}
             noteFolderLookup={noteFolderLookup}
