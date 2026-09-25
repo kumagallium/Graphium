@@ -2393,7 +2393,7 @@ people most often need to find.
 | Want to change | Look in |
 |---|---|
 | Block types or editor behavior | `src/blocks/`, `src/note-app.tsx` |
-| Slash menu / inline `@`-link / label UI | `src/blocks/slash-items.ts` (the slash menu's item list, shared by the main editor and the side peek), `src/features/block-link/`, `src/features/context-label/`, `src/features/inline-label/` |
+| Slash menu / inline `@`-link / label UI | `src/blocks/slash-items.ts` (the slash menu's item list, shared by the main editor and the side peek; **New note** is built in `src/features/block-link/new-note-slash-item.ts` instead, because each editor records the link in its own stores), `src/features/block-link/`, `src/features/context-label/`, `src/features/inline-label/` |
 | PROV-DM graph generation | `src/features/prov-generator/` |
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |
