@@ -1997,7 +1997,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **26**.
+Defined in `src/features/navigation/index-file.ts`. Currently **28**.
 Bumping rules:
 
 | Version | Change |
@@ -2025,6 +2025,7 @@ Bumping rules:
 | **25** | `extractBlockText` now yields the `cachedTitle` / `fileName` snapshot of `sharedCitation` blocks (§7.5), so a note is findable by the title of the shared entry it cites. No `NoteIndexEntry` field changed; citation-using notes need a rebuild to pick up the searchable text. |
 | **26** | Added `importSourceHash` — mirrors `GraphiumDocument.importSource.contentHash`. Intake's note-dedupe (`src/features/intake/note-dedupe.ts`) used to narrow candidates by filename-derived title before reading each candidate's doc to compare hashes; a renamed-but-unchanged file could not be recognized as the same file re-imported. It now scans the index for a matching `importSourceHash` directly (no per-candidate doc read, and rename-proof). Pre-v26 notes keep `importSourceHash: undefined` until `ensureIndex` rebuilds on the bump. |
 | **27** | `wikiKind` can now be `"answer"` (§3.1c). No `NoteIndexEntry` field was added — the bump follows the convention of bumping when the set of values a field can hold grows, so pre-v27 index entries are rebuilt and the sidebar / search / list-kind filters see `answer` pages consistently. |
+| **28** | `headings[].text`, `steps[].text` and `labels[].preview` render inline content through `inlineContentToText` (`src/features/markdown-export/inline-text.ts`) in its plain mode: a link now yields its text instead of `[object Object]`, and an inline formula yields `$ … $` instead of disappearing. Superscript / subscript stay untagged (10⁵ reads as 105), as before. No `NoteIndexEntry` field changed; the bump rebuilds notes whose headings, steps or labelled blocks hold a link or a formula. Wiki entries need no bump for this — they are rebuilt from the Wiki files on every start. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
