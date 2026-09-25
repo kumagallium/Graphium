@@ -131,6 +131,10 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
 
     const editorEl = document.querySelector("[data-label-wrapper]");
     let observer: MutationObserver | null = null;
+    // サイドピーク・素材ピーク・右パネルの開閉ではウィンドウの幅は変わらず、エディタの
+    // 幅だけが変わって表が左右に動く。window の resize では拾えず、行を開く透明な覆いが
+    // 元の位置に残って、隣の列（@素材 のセル等）のクリックを横取りしていた
+    let resizeObserver: ResizeObserver | null = null;
     if (editorEl) {
       observer = new MutationObserver(compute);
       observer.observe(editorEl, {
@@ -138,12 +142,17 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
         childList: true,
         characterData: true,
       });
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => compute());
+        resizeObserver.observe(editorEl);
+      }
     }
 
     return () => {
       window.removeEventListener("scroll", compute, true);
       window.removeEventListener("resize", compute);
       observer?.disconnect();
+      resizeObserver?.disconnect();
     };
   }, [compute]);
 

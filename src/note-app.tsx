@@ -145,8 +145,14 @@ import {
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
   insertNoteMentionInline,
-  resolveMentionTargetFromLinks,
 } from "./features/block-link/mention-menu";
+import {
+  assetIdsForName,
+  findNoteByTitle,
+  openPeekTarget,
+  readMentionAt,
+  resolveMentionClickTarget,
+} from "./features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
 import {
@@ -2565,37 +2571,15 @@ function NoteEditorInner({
 
   // 解決済み ID（ノートの素 ID / wiki: / 外部ソース ID）をサイドピークへ振り分ける。
   // 本文の @メンション・インデックステーブル・グラフのパラメータ ↗ が同じ経路を通る。
-  // 開けたら true（chat:/shared: など実体の無い ID は false で何もしない）
+  // 振り分け本体はサイドピークと共通（openPeekTarget）。開けたら true
+  // （chat:/shared: など実体の無い ID は false で何もしない）
   const openPeekTargetId = useCallback(
-    (id: string): boolean => {
-      const ext = parseExternalSource(id);
-      if (ext) {
-        if (ext.kind === "url") {
-          setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
-          return true;
-        }
-        if (
-          ext.kind === "pdf" ||
-          ext.kind === "document" ||
-          ext.kind === "data" ||
-          ext.kind === "image"
-        ) {
-          const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
-          if (entry) {
-            setMaterialSidePeekEntry(entry);
-            return true;
-          }
-          return false;
-        }
-        if (ext.kind === "memo") {
-          onOpenMemoSource?.(ext.key);
-          return true;
-        }
-        return false;
-      }
-      setSidePeekNoteId(id);
-      return true;
-    },
+    (id: string): boolean =>
+      openPeekTarget(id, mediaIndex, {
+        openNote: setSidePeekNoteId,
+        openMaterial: setMaterialSidePeekEntry,
+        openMemo: onOpenMemoSource,
+      }),
     [mediaIndex, onOpenMemoSource]
   );
 
@@ -5131,63 +5115,12 @@ function NoteEditorInner({
 
   // エディタ内の @ノート名クリックでサイドピークを開く
   useEffect(() => {
-    const isMentionSpan = (el: HTMLElement): boolean => {
-      if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
-      if (!el.closest(".bn-editor")) return false;
-      // インデックステーブル（note-link 列）の先頭列セルだけは icon-layer が
-      // 行ノートを開くのでここでは扱わない。それ以外のセル内メンション
-      // （素材リンク・他ノート参照）は本文と同じにクリックで開く。
-      // 以前はテーブル全体を除外していて、セルに貼った素材リンクが押せなかった
-      const cellEl = el.closest("td, th");
-      if (cellEl) {
-        const tableBlockId = el.closest("[data-id]")?.getAttribute("data-id");
-        const isFirstColumn = cellEl.parentElement?.children[0] === cellEl;
-        if (
-          isFirstColumn &&
-          tableBlockId &&
-          tableMetaStore.hasColumnType(tableBlockId, "note-link")
-        ) {
-          return false;
-        }
-      }
-      const text = el.textContent?.trim();
-      return !!text && text.startsWith("@") && !text.startsWith("@#");
-    };
-    const resolveMentionNoteId = (noteName: string): { noteId: string; isWiki: boolean } | null => {
-      // ノートから検索
-      const found = noteIndex?.notes.find((n) => n.title === noteName);
-      if (found) return { noteId: found.noteId, isWiki: found.source === "ai" };
-      const file = files.find(
-        (f) => f.name.replace(/\.(graphium|provnote)\.json$/, "") === noteName
-      );
-      if (file) return { noteId: file.id, isWiki: false };
-      // Wiki から検索（🤖 プレフィックスを除去して検索）
-      const cleanName = noteName.replace(/^🤖\s*/, "");
-      const wikiEntry = noteIndex?.notes.find(
-        (n) => n.source === "ai" && (n.title === noteName || n.title === cleanName)
-      );
-      if (wikiEntry) return { noteId: wikiEntry.noteId, isWiki: true };
-      return null;
-    };
-    // 素材名 → 外部ソース ID（"data:<fileId>" 等）。リンク照合と逆引きの両方が使う。
-    // macOS のファイル名は NFD で来ることがあるため NFC に正規化して比べる。
-    const resolveAssetExternalId = (name: string): string | null => {
-      const nfc = name.normalize("NFC");
-      const entry = mediaIndex?.media.find((m) => m.name.normalize("NFC") === nfc);
-      return entry ? `${entry.type}:${entry.fileId}` : null;
-    };
-    // 素材名の逆引き（リンク記録の無い既存の @素材名 向けフォールバック）。
-    // 外部ソース ID を返し、下流の素材ピーク振り分けに乗せる。
-    const resolveMentionAssetId = (name: string): { noteId: string; isWiki: boolean } | null => {
-      const id = resolveAssetExternalId(name);
-      return id ? { noteId: id, isWiki: false } : null;
-    };
     // グラフ側（右パネルの表・カードのパラメータ表示）の @参照は、本文メンションと
     // 同じ解決を使う。ここ（noteIndex / files / mediaIndex が揃う場所）で登録する
     setParamLinkResolver((name) => {
-      const note = resolveMentionNoteId(name);
+      const note = findNoteByTitle(name, noteIndex, files);
       if (note) return note.isWiki ? `wiki:${note.noteId}` : note.noteId;
-      return resolveAssetExternalId(name);
+      return assetIdsForName(mediaIndex?.media, name)[0] ?? null;
     });
     // 値セルで @ を打ったときの候補も本文メンションと同じ材料から出す。
     // 表の値は測定ファイル参照が本命なので素材を先に並べる
@@ -5223,7 +5156,7 @@ function NoteEditorInner({
         }
       }
       // 外部参照インプット行（data-row-identity）は、@と同じ青リンクとして
-      // 参照元ノートを Side Peek で開く。テーブル内なので isMentionSpan より先に見る
+      // 参照元ノートを Side Peek で開く。テーブル内なのでメンション判定より先に見る
       const rowIdentityEl = target.closest("[data-row-identity]");
       if (rowIdentityEl && target.closest('[contenteditable="true"]')) {
         const identity = rowIdentityEl.getAttribute("data-row-identity");
@@ -5242,66 +5175,31 @@ function NoteEditorInner({
           return;
         }
       }
-      if (!isMentionSpan(target)) return;
-      const noteName = target.textContent!.trim().slice(1);
-      // まず記録済みリンク（linkStore）から厳密な ID で解決する。挿入時に
-      // targetNoteId を記録してあるので、同名ノートが複数あっても正しく開ける。
-      // 解決できなければタイトル逆引きにフォールバック（旧データや素材引用向け）。
-      const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
-      const resolved =
-        resolveMentionTargetFromLinks(
-          blockId,
-          noteName,
-          linkStore.getAllLinks(),
-          noteIndex,
-          resolveAssetExternalId
-        ) ??
-        resolveMentionNoteId(noteName) ??
-        resolveMentionAssetId(noteName);
-      if (resolved) {
-        e.preventDefault();
-        e.stopPropagation();
-        // References の「Source: @ラベル」等は linkStore の targetNoteId に外部ソース ID
-        // （url:/pdf:/document:/data:/chat:）がそのまま入る。振り分けは openPeekTargetId に
-        // 集約（chat: は開ける実体が無いので何も起きない）。
-        // ノート / Wiki どちらでもまずサイドピークで開く。SidePeek 内の「Open full」で
-        // 完全表示に切り替えられる方が、いきなりページ遷移するより流れが良い。
-        // Wiki の場合は SidePeek が wiki: プレフィックスで loadWikiFile を呼ぶ。
-        const isExt = parseExternalSource(resolved.noteId) !== null;
-        openPeekTargetId(!isExt && resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId);
-        return;
-      }
-      // ノートで解決できなければ、@ 引用したドキュメント素材として解決を試みる。
-      // citedAssetFileIds の中から表示名が一致する素材を逆引きし、素材サイドピーク（PDF 等）を開く。
-      const assetFileId = citedAssetFileIdsRef.current.find((fid) => {
-        const entry = mediaIndex?.media.find((m) => m.fileId === fid);
-        return entry?.name === noteName;
+      // インデックステーブルの先頭列も本文と同じに扱う。行ノートにつながった行は
+      // icon-layer の透明な覆いが先にクリックを受けて行ノートを開くので、ここへ来るのは
+      // つながっていない行のメンション（@素材 など）だけ。以前は先頭列を丸ごと除外して
+      // いて、先頭列に置いた @素材 がどこからも開けなかった
+      const mention = readMentionAt(target);
+      if (!mention) return;
+      // 解決は SidePeek と共通（resolveMentionClickTarget）。記録済みリンク → タイトル →
+      // 素材名 → 知見の派生元 の順で、同名のノート・素材があっても厳密な ID に届く
+      const peekId = resolveMentionClickTarget({
+        ...mention,
+        links: linkStore.getAllLinks(),
+        noteIndex,
+        media: mediaIndex?.media,
+        files,
+        citedAssetFileIds: citedAssetFileIdsRef.current,
+        derivedFromNotes: initialDoc?.wikiMeta?.derivedFromNotes,
       });
-      if (assetFileId) {
-        const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
-        if (entry) {
-          e.preventDefault();
-          e.stopPropagation();
-          setMaterialSidePeekEntry(entry);
-          return;
-        }
-      }
-      // それでも解決できない場合: source 引用が「派生元の文書からの引用テキスト」で、
-      // ノートにも @素材にも一致しないケース（知見/claim が document:/pdf: から派生したとき）。
-      // この知見の derivedFromNotes にある文書/PDF 素材をピークで開く。再生成でリネームされた
-      // 旧タイトル引用や、文書由来の引用文はノートとして解決できないので、ここで源泉文書に橋渡しする。
-      const derived = initialDoc?.wikiMeta?.derivedFromNotes ?? [];
-      for (const sourceId of derived) {
-        const ext = /^(document|pdf):(.+)$/.exec(sourceId);
-        if (!ext) continue;
-        const entry = mediaIndex?.media.find((m) => m.fileId === ext[2]);
-        if (entry) {
-          e.preventDefault();
-          e.stopPropagation();
-          setMaterialSidePeekEntry(entry);
-          return;
-        }
-      }
+      if (!peekId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // ノート / Wiki どちらでもまずサイドピークで開く。SidePeek 内の「Open full」で
+      // 完全表示に切り替えられる方が、いきなりページ遷移するより流れが良い。
+      // References の「Source: @ラベル」等の外部ソース ID（url:/pdf:/document:/data:/image:）は
+      // 素材ピークへ振り分ける（chat: は開ける実体が無いので何も起きない）
+      openPeekTargetId(peekId);
     };
     document.addEventListener("click", handleClick, true);
     return () => {
@@ -5309,7 +5207,7 @@ function NoteEditorInner({
       setParamLinkResolver(null);
       setParamLinkSuggestions(null);
     };
-  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource, tableMetaStore]);
+  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, openPeekTargetId]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）

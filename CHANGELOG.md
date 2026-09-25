@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.82.1](https://github.com/kumagallium/Graphium/compare/v0.82.0...v0.82.1) - 2026-09-25
+
+- fix(assets): let the document filter pick Excel and PowerPoint files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1021
+- Open @-linked data files from the side peek and index-table first columns by @kumagallium in https://github.com/kumagallium/Graphium/pull/1022
+- Re-run the plan flow layout after a table is added, and band a single table too by @kumagallium in https://github.com/kumagallium/Graphium/pull/1025
+
 ## [v0.82.0](https://github.com/kumagallium/Graphium/compare/v0.81.4...v0.82.0) - 2026-09-25
 
 - Design proposal: group operations by table, edge evidence, order-only planned lines by @kumagallium in https://github.com/kumagallium/Graphium/pull/1016
