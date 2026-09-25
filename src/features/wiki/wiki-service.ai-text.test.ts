@@ -166,6 +166,43 @@ describe("AI に渡す本文 - 上付き・下付き・数式・リンクを保�
       const math = blocks.find((b) => b.type === "math");
       expect(math.props).toEqual({ latex: "\\Delta G = \\Delta H - T\\Delta S" });
     });
+
+    it("書き直しの往復で、丸括弧を含む URL を書き換えない", async () => {
+      global.fetch = vi.fn(async (url: any, init: any) => {
+        if (String(url).endsWith("/rewrite")) {
+          const sent = JSON.parse(String(init?.body));
+          return { ok: true, json: async () => ({ sections: sent.existingSections }) };
+        }
+        return { ok: false, status: 500 };
+      }) as unknown as typeof fetch;
+
+      const wiki = "https://en.wikipedia.org/wiki/Seebeck_(disambiguation)";
+      const odd = "https://example.com/a(b";
+      const existing = claimDoc();
+      existing.pages[0].blocks = [
+        { id: "h1", type: "heading", props: { level: 2 }, content: [t("条件")], children: [] },
+        {
+          id: "p1",
+          type: "paragraph",
+          content: [
+            { type: "link", href: wiki, content: [t("Seebeck")] },
+            t(" と "),
+            { type: "link", href: odd, content: [t("対の無い括弧")] },
+          ],
+          children: [],
+        },
+      ] as any;
+      const next = await rewriteAndMerge(existing, ingesterOutput, "note-2", "m");
+
+      const paragraph = (next.pages[0].blocks as any[]).find((b) => b.type === "paragraph");
+      expect(paragraph.id).not.toBe("p1");
+      expect(paragraph.content).toEqual([
+        { type: "link", href: wiki, content: [t("Seebeck")] },
+        t(" と "),
+        // 対の無い丸括弧だけは %28 にして読み戻す（リンクは失わない）
+        { type: "link", href: "https://example.com/a%28b", content: [t("対の無い括弧")] },
+      ]);
+    });
   });
 });
 
@@ -264,6 +301,24 @@ describe("parseInlineCitations - 上付き・下付きと数式を読み戻す",
   it("金額の $ は数式にしない（markdown-math.ts と同じ判定）", () => {
     const { inlineContent } = parseInlineCitations("原料は $100 と $200 の 2 種類", emptyIndex);
     expect(inlineContent).toEqual([t("原料は $100 と $200 の 2 種類")]);
+  });
+
+  it("価格帯（$50-$75）も数式にしない（後ろの金額を落とさない）", () => {
+    const { inlineContent } = parseInlineCitations("1 kg あたり $50-$75 で買える", emptyIndex);
+    expect(inlineContent).toEqual([t("1 kg あたり $50-$75 で買える")]);
+  });
+
+  it("リンクの URL は対になった丸括弧を含められる（Wikipedia の Foo_(bar)）", () => {
+    const { inlineContent } = parseInlineCitations(
+      "[Seebeck](https://en.wikipedia.org/wiki/Seebeck_(disambiguation)) と [例](https://example.com) (補足)",
+      emptyIndex,
+    );
+    expect(inlineContent).toEqual([
+      { type: "link", href: "https://en.wikipedia.org/wiki/Seebeck_(disambiguation)", content: [t("Seebeck")] },
+      t(" と "),
+      { type: "link", href: "https://example.com", content: [t("例")] },
+      t(" (補足)"),
+    ]);
   });
 
   it("コードの中の $ は数式にしない", () => {

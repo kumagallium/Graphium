@@ -497,16 +497,20 @@ function extractInlineTextWithCitations(content: any): string {
   return extractInlineText(content);
 }
 
+/** parseInlineCitations がそのまま読み戻せる URL（丸括弧は 1 段の対だけ。Wikipedia の Foo_(bar) など） */
+const READABLE_HREF = /^(?:[^()]|\([^()]*\))+$/;
+
 /**
  * リンクを parseInlineCitations が読み戻せる `[文字](URL)` にする（書き直しでリンクを失わない）。
  * 読み戻せない形（URL が無い・空白を含む・文字に角括弧を含む）は文字だけを返す。
- * URL の丸括弧は %28 / %29 にする（`(…)` の終わりと取り違えないように。指す先は同じ）。
+ * 対になっていない丸括弧だけは %28 / %29 にする（`(…)` の終わりと取り違えないように。指す先は同じ）。
  */
 function linkToMarkdown(link: any): string {
   const text = inlineContentToText(link.content, { scripts: true });
   const href = typeof link.href === "string" ? link.href.trim() : "";
   if (!text || !href || /\s/.test(href) || /[[\]]/.test(text)) return text;
-  return `[${text}](${href.replace(/\(/g, "%28").replace(/\)/g, "%29")})`;
+  const readable = READABLE_HREF.test(href) ? href : href.replace(/\(/g, "%28").replace(/\)/g, "%29");
+  return `[${text}](${readable})`;
 }
 
 /**
@@ -694,7 +698,9 @@ export function parseInlineCitations(
   // - <sup>/<sub> も 1 つのトークンにする。文字として残すと、中の * 同士
   //   （「A<sup>*</sup> と B<sup>*</sup>」）が斜体の対に化ける
   // - 数式は先に目印（{{GWMATH_n}}）へ退避してあるので、式の中の * や _ はここに来ない
-  const TOKEN_RE = /\[\[([^\]]+?)\]\]|\[([^\]]+?)\]\(([^)]+?)\)|\*\*([^*]+?)\*\*|\*([^*\s](?:[^*]*?[^*\s])?)\*|`([^`]+?)`|<(sup|sub)(?:\s[^<>]*)?>(?:(?!<\/?(?:sup|sub)\b)[^\n])+?<\/\7\s*>/gi;
+  // - リンクの URL は 1 段の対になった丸括弧を含められる（Wikipedia の Foo_(bar) が
+  //   「Foo_(bar」と余った「)」に割れないように。CommonMark と同じ扱い）
+  const TOKEN_RE = /\[\[([^\]]+?)\]\]|\[([^\]]+?)\]\(((?:[^()]|\([^()]*\))+?)\)|\*\*([^*]+?)\*\*|\*([^*\s](?:[^*]*?[^*\s])?)\*|`([^`]+?)`|<(sup|sub)(?:\s[^<>]*)?>(?:(?!<\/?(?:sup|sub)\b)[^\n])+?<\/\7\s*>/gi;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
