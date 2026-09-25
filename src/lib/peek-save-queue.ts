@@ -129,8 +129,12 @@ export function flushPeekSaves(noteId: string): Promise<PeekSaveOutcome> | null 
   if (!first) return null;
   return (async () => {
     let outcome = await first;
-    // 待つ間に次の保存が並ぶことがある（まだ開いているピークに打たれた・ピークが閉じて書き出した）
-    for (let next = flushLivePeeks(noteId); next; next = flushLivePeeks(noteId)) {
+    // 待つ間に次の保存が並ぶことがある（まだ開いているピークに打たれた・ピークが閉じて書き出した）。
+    // 保存に失敗したらそこで止める — ピークは書けなかった編集を「未保存」に戻すので、書き出させ
+    // 直すと保存先が落ちている間ずっと回る。書けなかった doc は unsavedDocs に残り、開く側が引き取る
+    while (outcome.saved) {
+      const next = flushLivePeeks(noteId);
+      if (!next) break;
       outcome = await next;
     }
     return outcome;

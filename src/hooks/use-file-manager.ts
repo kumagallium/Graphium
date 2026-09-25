@@ -2567,6 +2567,10 @@ export function useFileManager(authenticated: boolean) {
   // Wiki を開く
   const handleOpenWikiFile = useCallback(async (wikiId: string) => {
     const request = ++openRequestRef.current;
+    const generation = processIndexGenerationRef.current;
+    const provider = storage();
+    const isCurrent = () =>
+      generation === processIndexGenerationRef.current && storage() === provider;
     try {
       setShowNoteList(false);
       setActiveAssetType(null);
@@ -2576,7 +2580,7 @@ export function useFileManager(authenticated: boolean) {
       const peekSaves = flushPeekSaves(`wiki:${wikiId}`);
       if (peekSaves) {
         await peekSaves;
-        if (request !== openRequestRef.current) return;
+        if (!isCurrent() || request !== openRequestRef.current) return;
       }
 
       const cached = docCacheRef.current.get(`wiki:${wikiId}`);
@@ -3124,12 +3128,16 @@ export function useFileManager(authenticated: boolean) {
   const handleOpenSkillFile = useCallback(
     async (skillId: string) => {
       const request = ++openRequestRef.current;
+      const generation = processIndexGenerationRef.current;
+      const provider = storage();
+      const isCurrent = () =>
+        generation === processIndexGenerationRef.current && storage() === provider;
       try {
         // サイドピークで同じ Skill を編集した直後なら、書き終わるのを待ってから読む（openRequestRef）
         const peekSaves = flushPeekSaves(`skill:${skillId}`);
         if (peekSaves) {
           await peekSaves;
-          if (request !== openRequestRef.current) return;
+          if (!isCurrent() || request !== openRequestRef.current) return;
         }
         const cached = docCacheRef.current.get(`skill:${skillId}`);
         const doc = cached ?? await loadSkillFile(skillId);

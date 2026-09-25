@@ -106,7 +106,10 @@ describe("queuePeekSave / pendingPeekSave", () => {
   });
 });
 
-/** registerLivePeek に渡す偽のピーク。flush でその時点の doc と write を列に並べる */
+/**
+ * registerLivePeek に渡す偽のピーク。flush でその時点の doc と write を列に並べる。
+ * 保存に失敗したら「未保存」に戻す（SidePeek の doSave の catch と同じ）
+ */
 function fakeLivePeek(noteId: string, doc: GraphiumDocument, write: () => Promise<void>) {
   const peek = {
     unsaved: true,
@@ -117,7 +120,9 @@ function fakeLivePeek(noteId: string, doc: GraphiumDocument, write: () => Promis
     flush: () => {
       peek.flushes += 1;
       peek.unsaved = false;
-      void queuePeekSave(noteId, peek.doc, peek.write).catch(() => {});
+      void queuePeekSave(noteId, peek.doc, peek.write).catch(() => {
+        peek.unsaved = true;
+      });
     },
   };
   return peek;
@@ -219,6 +224,21 @@ describe("開いているピーク（registerLivePeek / hasPendingPeekEdits / fl
     expect(done).toBe(false);
     second.resolve();
     await expect(settled).resolves.toEqual({ doc: docV3, saved: true });
+  });
+
+  it("保存に失敗したら書き出させ直さない（保存先が落ちている間ずっと回り続けない）", async () => {
+    // 書き込みは 1 回ごとにイベントループへ返す。書き出させ直す不具合が戻っても、テストが
+    // マイクロタスクだけで回り続けて止まらず、タイムアウトで落ちるように
+    const peek = fakeLivePeek("n-offline", makeDoc("v2"), async () => {
+      await new Promise((r) => setTimeout(r, 0));
+      throw new Error("offline");
+    });
+    const unregister = registerLivePeek("n-offline", peek);
+    await expect(flushPeekSaves("n-offline")).resolves.toEqual({ doc: peek.doc, saved: false });
+    expect(peek.flushes).toBe(1);
+    // 書けなかった編集は未保存のまま（ピークがアンマウント時にもう一度書き出す）
+    expect(peek.unsaved).toBe(true);
+    unregister();
   });
 
   it("別のノートのピークには書き出させない", () => {
