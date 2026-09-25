@@ -3,8 +3,9 @@
 // （StrictMode で描画する。main.tsx と同じ）。
 //
 // 対象の不変条件:
-// - 保存の書き込みを待つ間に変えたタイトルが、次の保存に乗る（保存の完了で docRef を
-//   保存した doc に置き換えない。peek-save-merge.ts の applySavedToPeekDoc）
+// - 保存の書き込みを待つ間に変えたタイトルや、スラッシュ「新しいノート」で積んだ派生元の線
+//   （noteLinks）が、次の保存に乗る（保存の完了で docRef を保存した doc に置き換えない。
+//   peek-save-merge.ts の applySavedToPeekDoc）
 // - 文脈ラベルを変えたときに一覧へ知らせる doc は、その保存で書いた doc。保存を待つ間に
 //   打ったまだ保存していないタイトルを混ぜない（混ぜると、そのタイトルを保存したときの
 //   onSaved が旧タイトルを取り違えて @メンションの改名伝播を飛ばす）
@@ -20,28 +21,40 @@ vi.mock("react-pdf", () => ({
 }));
 vi.mock("../../lib/pdfjs-config", () => ({}));
 
-// BlockNote 実体は jsdom で描けないので、本文（document）だけを持つ偽エディタに差し替える
-const editors = vi.hoisted(() => ({ list: [] as Array<{ document: any[] }> }));
+// BlockNote 実体は jsdom で描けないので、本文（document）と挿入だけを持つ偽エディタに差し替える。
+// props（onChange・スラッシュ項目）は最新の描画のものを覚えておく
+type FakeEditorProps = {
+  initialContent?: any[];
+  onEditorReady?: (editor: any) => void;
+  onChange?: () => void;
+  extraSlashMenuItems?: Array<{ aliases?: string[]; onItemClick: (editor: any) => void }>;
+};
+const editors = vi.hoisted(() => ({
+  list: [] as Array<{ document: any[] }>,
+  props: null as FakeEditorProps | null,
+  inserted: [] as any[][],
+}));
 vi.mock("../../base/editor", async () => {
   const { useEffect } = await import("react");
   return {
-    SandboxEditor: ({
-      initialContent,
-      onEditorReady,
-    }: {
-      initialContent?: any[];
-      onEditorReady?: (editor: any) => void;
-    }) => {
+    SandboxEditor: (props: FakeEditorProps) => {
+      editors.props = props;
       useEffect(() => {
         const editor = {
-          document: initialContent ?? [],
+          document: props.initialContent ?? [],
           domElement: document.createElement("div"),
           getBlock: (id: string) => editor.document.find((b: any) => b.id === id) ?? null,
           updateBlock: () => {},
           focus: () => {},
+          getTextCursorPosition: () => ({ block: editor.document[0] }),
+          // 本物のエディタと同じく、挿入したら変更通知（onChange）を出す
+          insertInlineContent: (content: any[]) => {
+            editors.inserted.push(content);
+            editors.props?.onChange?.();
+          },
         };
         editors.list.push(editor);
-        onEditorReady?.(editor);
+        props.onEditorReady?.(editor);
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, []);
       return <div data-testid="fake-editor" />;
@@ -141,7 +154,13 @@ function pressSave(titleBox: HTMLTextAreaElement) {
   fireEvent.keyDown(document, { key: "s", metaKey: true });
 }
 
-async function renderPeek(doc: GraphiumDocument, props?: { onNoteContextsChange?: (id: string, d: GraphiumDocument | null) => void }) {
+async function renderPeek(
+  doc: GraphiumDocument,
+  props?: {
+    onNoteContextsChange?: (id: string, d: GraphiumDocument | null) => void;
+    onCreateLinkedNote?: (title: string, sourceNoteId?: string) => Promise<string | null>;
+  },
+) {
   storage.files.set("n1", doc);
   const utils = render(
     <SidePeek
@@ -150,6 +169,7 @@ async function renderPeek(doc: GraphiumDocument, props?: { onNoteContextsChange?
       onClose={() => {}}
       onNavigate={() => {}}
       onNoteContextsChange={props?.onNoteContextsChange}
+      onCreateLinkedNote={props?.onCreateLinkedNote}
       inline
     />,
     { wrapper: Wrap },
@@ -163,6 +183,8 @@ async function renderPeek(doc: GraphiumDocument, props?: { onNoteContextsChange?
 afterEach(() => {
   cleanup();
   editors.list = [];
+  editors.props = null;
+  editors.inserted = [];
   storage.files.clear();
   storage.saves = [];
   storage.hold = false;
@@ -207,6 +229,38 @@ describe("SidePeek: 保存を待つ間の書き換え", () => {
     pressSave(titleBox);
     await waitFor(() => expect(storage.saves).toHaveLength(3));
     expect(storage.saves.map((d) => d.title)).toEqual(["旧タイトル", "新タイトル", "三つ目のタイトル"]);
+  });
+
+  it("書き込みを待つ間にスラッシュ「新しいノート」で積んだ派生元の線（noteLinks）が、次の保存に乗る", async () => {
+    const titleBox = await renderPeek(makeDoc(), { onCreateLinkedNote: async () => "n-child" });
+
+    storage.hold = true;
+    pressSave(titleBox);
+    // 書き込みを待つ間に「新しいノート」を選び、名前を入れて作る
+    const newNote = editors.props?.extraSlashMenuItems?.find((item) => item.aliases?.includes("newnote"));
+    expect(newNote).toBeTruthy();
+    act(() => newNote!.onItemClick(editors.list[editors.list.length - 1]));
+    // 名前の入力欄（ダイアログの input。タイトル欄と同じ placeholder）
+    const nameInput = await waitFor(() => {
+      const el = document.querySelector<HTMLInputElement>('input[placeholder="Note title"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.change(nameInput, { target: { value: "子" } });
+    fireEvent.keyDown(nameInput, { key: "Enter", code: "Enter", keyCode: 13 });
+    // 作成の後、@リンクを入れてから派生元の線を docRef に積む
+    await waitFor(() => expect(editors.inserted).toHaveLength(1));
+    await finishSave(0);
+    await waitFor(() => expect(storage.saves).toHaveLength(1));
+    // 1 本目が書いたのは保存を始めた時点の写し（線はまだ無い）
+    expect(storage.saves[0].noteLinks ?? []).toEqual([]);
+
+    storage.hold = false;
+    pressSave(titleBox);
+    await waitFor(() => expect(storage.saves).toHaveLength(2));
+    expect(storage.saves[1].noteLinks).toEqual([
+      { targetNoteId: "n-child", sourceBlockId: "b1", type: "derived_from" },
+    ]);
   });
 
   it("文脈ラベルを外したときに一覧へ渡す doc は、その保存で書いた doc（保存を待つ間のタイトルを混ぜない）", async () => {
