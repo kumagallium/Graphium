@@ -152,7 +152,9 @@ talks to LLM and embedding backends.
   layer's own reader for model output (`parseInlineCitations` /
   `convertSectionsToBlocks` in `wiki-service.ts`) does not use BlockNote's
   parser, but it detects formulas with the same `stashMath` before looking for
-  anything else, so the two paths agree on what counts as a formula.
+  anything else, so the two paths agree on what counts as a formula. The MCP
+  server's `create_note` has a third, dependency-free converter that applies
+  the same rules (§4.4).
 - Superscript and subscript are boolean text styles (`styles.superscript` /
   `styles.subscript`, rendered as `<sup>` / `<sub>`), so units and chemical
   formulas such as 10⁵ Pa or H₂O can sit in running text without opening the
@@ -2032,6 +2034,26 @@ Two design rules hold this target together:
   "the steps you probably took" from a conversation would produce a graph that
   looks like provenance but cannot be checked against anything, which is worse
   than having none.
+
+`create_note` turns its Markdown body into blocks with a minimal converter of
+its own (`src/mcp/markdown-to-blocks.ts`), since the MCP server does not load
+BlockNote's parser. The converter reads the notation `get_note` writes, so an
+agent that quotes a note into a new one keeps its formatting: `<sup>` /
+`<sub>` become the superscript / subscript styles (undoing the escapes the
+export adds inside the tags, so `<sup>\[1\]</sup>` is a superscript "[1]",
+not a formula), `$ … $` and `\( … \)` become `inlineMath`, and
+`$$ … $$` or `\[ … \]` standing on a line of its own — possibly spread over
+several lines — becomes a `math` block. Inside a sentence, heading, list item
+or table cell, `$$ … $$` stays in that line as an inline formula rather than
+splitting it (the app's import splits the paragraph there). What counts as a
+formula or a tag follows the app's Markdown import (`stashMath` /
+`markScriptTags`): nothing inside code, a `$` formula needs non-space just
+inside both delimiters and no digit right after the closing one (so `$50-$75`
+stays a price range), and an inline formula is at most 200 characters. The
+Claude Code skill's `save.mjs` (`scripts/claude-code-skill/save-to-graphium/`)
+carries a copy of the same converter so that it runs on Node's standard
+library alone; `markdown-to-blocks.test.ts` runs `save.mjs` and checks that
+both produce the same blocks for the same Markdown.
 
 `save_answer` (`src/mcp/save-answer.ts`) reuses `buildSourceBackedWikiDocument`
 from `src/features/wiki/wiki-service.ts` directly rather than duplicating the
