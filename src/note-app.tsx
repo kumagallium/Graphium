@@ -4901,9 +4901,11 @@ function NoteEditorInner({
       const tableMeta = migrateTableMeta(page);
       tableMetaStore.restore(tableMeta);
       const tableMetaEntries = Object.entries(tableMeta ?? {});
-      // 日時が入る列を持つテーブルの行数を先に記録しておく
-      // （開いて最初の行追加から日時が入るように）
+      // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+      // 日時が入るように）。記録はエディタ単位で、エディタの公開がこの復元より後なら
+      // ここはエディタが無く空振りする。そのときは下の mainEditor の effect が記録する
       primeLogTableRowTracking(
+        editorRef.current,
         page.blocks,
         tableMetaEntries
           .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
@@ -5195,13 +5197,30 @@ function NoteEditorInner({
   }, [addFirstColumnType]);
 
   // スラッシュメニューからの時系列テーブル登録コールバック
-  // （挿入されたテーブルの先頭列に datetime-auto を付ける）
+  // （挿入されたテーブルの先頭列に datetime-auto を付ける）。項目は SidePeek と共通なので、
+  // このエディタで押されたときだけ呼ばれるようにエディタ単位で登録する
   useEffect(() => {
-    setRegisterLogTableCallback((blockId: string) => {
+    if (!mainEditor) return;
+    setRegisterLogTableCallback(mainEditor, (blockId: string) => {
       addFirstColumnType(blockId, "datetime-auto");
     });
-    return () => { setRegisterLogTableCallback(null); };
-  }, [addFirstColumnType]);
+    return () => { setRegisterLogTableCallback(mainEditor, null); };
+  }, [mainEditor, addFirstColumnType]);
+
+  // 日時が入る列を持つテーブルの行数を、このエディタの分として先に記録しておく
+  // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
+  // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
+  // key={fileId || "new"} で作り直されるが、表の注釈（tableMetaStore）は残る。
+  // 初期データの復元でも記録するので、注釈の復元とエディタの公開のどちらが先でも
+  // 取りこぼさない（記録の無い表だけを埋めるので、二度呼んでも崩れない）
+  useEffect(() => {
+    if (!mainEditor) return;
+    primeLogTableRowTracking(
+      mainEditor,
+      mainEditor.document,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
+  }, [mainEditor]);
 
   // スコープ派生ボタン → 別ノートとして作成
   useEffect(() => {
