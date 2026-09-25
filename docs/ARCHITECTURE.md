@@ -168,8 +168,9 @@ talks to LLM and embedding backends.
   [DATA_MODEL.md §8](DATA_MODEL.md)).
   Text handed to a model without going through the Markdown export uses the
   same notation: the knowledge layer's input (`extractPlainTextFromDoc` /
-  `extractBlockText` in `wiki-service.ts`, which ingest, the Topic stage and
-  source check all read) and the MCP server's note bodies
+  `extractPlainTextBlocks` in `wiki-service.ts`, which ingest, the Topic stage
+  and source check all read — see §3.3 for how steps, nesting and tables are
+  laid out) and the MCP server's note bodies
   (`src/mcp/note-text.ts`) write superscript / subscript as tags, formulas as
   `$ … $` / `$$ … $$`, and links as their text. Both render inline content
   through `features/markdown-export/inline-text.ts`, and the knowledge layer's
@@ -846,6 +847,34 @@ Notes:
   which posts to the server. There is no server-side file watcher.
 - **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
   note is ingest-worthy at all (e.g., empty drafts are skipped).
+- **What the pipeline reads from a note (changed 2026-09-25).** Ingest
+  (`ingestNote`'s `noteContent`), the Topic stage (`sourcesForTopicStage` in
+  `note-app.tsx`), regenerating a page from its sources, and source check's
+  re-read of a note (`resolveSourceText`) all take the note's text from
+  `extractPlainTextFromDoc` in `wiki-service.ts`. Source check joins the
+  per-block list from `extractPlainTextBlocks` instead — the same text,
+  split by block, so a quote can be traced to the block it came from. The
+  whole block tree is read: a step's contents (the step block's own content
+  is only its title), nested list items, and a toggle heading's children,
+  each child indented two spaces deeper than its parent so the model can
+  see where a step ends and what is nested. `columnList` / `column` are
+  layout wrappers, read through without indentation. A table becomes one
+  line per row with cells separated by ` | ` (`tableContentToText` in
+  `features/markdown-export/inline-text.ts`, which reads both BlockNote
+  0.47's `{ type: "tableCell", content }` cells and the older bare inline
+  arrays); where a single line is expected — body previews, a Topic's
+  one-line definition — the rows are joined with ` / ` instead, so a table
+  never splits a list entry in a prompt. Before this, only top-level blocks were read, a block with text
+  of its own lost its children, and 0.47-style table cells read as empty:
+  on a real 137-note vault about a third of the characters (step contents,
+  nested items, every table) never reached the model. A note without
+  nesting, steps or tables reads exactly as before. Reading everything
+  costs more where there is more to read — a note that now runs past one
+  4,000-character window is read in more windows (see below), and Claim
+  extraction still sends the whole note in one call. The source-check
+  fingerprint (`claimHashBody`) keeps its own frozen v1 extraction and is
+  not derived from this text, so pages checked earlier don't all turn
+  stale (see [DATA_MODEL.md](DATA_MODEL.md)).
 - **Topics read sources, not Claims (changed 2026-09-17).** A Topic page is
   no longer synthesized from its member Claims. Instead, each ingested
   *source* (a note, or an imported pdf/document/url/chat) is itself routed:
