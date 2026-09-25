@@ -293,7 +293,7 @@ A table brought in from a measurement file shows its first rows with the rest fo
 - Fill the first column, then click the row's icon ("Create note for A-01") to generate a linked note for that row. An empty first column shows "Enter the note title in the first column" instead.
 - Typing `@` inside a row's first column links the row to an existing note instead.
 - Linked rows offer **Open note** and **Side peek** — the side peek opens the row's note next to the current one, so you can update a run without leaving the plan.
-- In a note opened in the side peek, you can also insert an index table and create a note from a row's icon. The new note is linked to the note shown in the peek, and the peek stays on the table instead of switching to the new note — click the row's name to open it there.
+- In a note opened in the side peek, you can also insert an index table, create a note from a row's icon, and link a row to an existing note by typing `@`. Either way, the row's note is linked to the note shown in the peek, and the peek stays on the table instead of switching to the row's note — click the row's name to open it there.
 
 Like the time-series table, an index table is not a separate kind of table — it is an ordinary table with the row-to-note behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into index table**". Turning it off removes the row-to-note links (the notes themselves are untouched).
 
