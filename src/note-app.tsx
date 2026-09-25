@@ -2625,8 +2625,19 @@ function NoteEditorInner({
 
   // ── URL ペースト検知 ──
   const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
-  const pasteListenerRef = useRef<((e: ClipboardEvent) => void) | null>(null);
-  const copyListenerRef = useRef<((e: ClipboardEvent) => void) | null>(null);
+  // いま本文に付いている copy / paste / drop のリスナー（付けた要素ごと）。
+  // handleEditorReady はストアが変わるたびに呼ばれ、本文の DOM ができる前にも来る。
+  // DOM 待ち（rAF）の回が後から重なって付くと、同じ貼り付けを古いクロージャの
+  // リスナーまで処理し、@リンクやブロック間リンクが貼るたびに重複して記録される
+  // （実測で paste が 3 本・drop が 10 本付いていた）。付け替えは必ずここを外してから
+  const clipboardListenersRef = useRef<{
+    el: HTMLElement;
+    copy: (e: ClipboardEvent) => void;
+    paste: (e: ClipboardEvent) => void;
+    drop: (e: DragEvent) => void;
+  } | null>(null);
+  // 付け替えの回。後から来た handleEditorReady が引き継いだら、前の回の DOM 待ちは何もしない
+  const clipboardAttachGenerationRef = useRef(0);
 
   // スラッシュメニューからの URL ピッカーモーダル用状態
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
@@ -2742,15 +2753,7 @@ function NoteEditorInner({
     // ラベル自動設定をセットアップ
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStore, linkStore);
 
-    // 前回のリスナーがあればクリーンアップ。
-    // copy は capture / bubble の両方に登録しているので両方とも removeEventListener する。
-    if (pasteListenerRef.current) {
-      editor.domElement?.removeEventListener("paste", pasteListenerRef.current, true);
-    }
-    if (copyListenerRef.current) {
-      editor.domElement?.removeEventListener("copy", copyListenerRef.current, true);
-      editor.domElement?.removeEventListener("copy", copyListenerRef.current, false);
-    }
+    // 前回のリスナーは、下の attachClipboardListeners が付け替えるときに外す
 
     // copy: 選択範囲の labels / links をクリップボードに載せて運ぶ（Phase 3）。
     //
@@ -2790,7 +2793,6 @@ function NoteEditorInner({
         console.warn("[Graphium copy] error", err);
       }
     };
-    copyListenerRef.current = copyListener;
 
     // URL 単体ペーストならブックマーク選択メニューを出す（段落・リスト項目共通）。
     // 位置はメニュー表示直前に計算する。paste イベント同期時の selection rect は
@@ -2969,7 +2971,6 @@ function NoteEditorInner({
       if (!currentBlock) return;
       maybeShowUrlPasteMenu(e.clipboardData?.getData("text/plain"), currentBlock.id);
     };
-    pasteListenerRef.current = pasteListener;
 
     // .csv / .txt / .dat のドロップは取り込みダイアログに回す。
     // 何もしないと BlockNote が汎用の file ブロック（添付）として貼り付けてしまい、
@@ -2995,13 +2996,23 @@ function NoteEditorInner({
     // まだ設定されていない段階でも複数回呼ばれるため、ここでガードする。
     // セーブまでリスナーが付かない不具合を防ぐ。
     let attempts = 0;
+    const generation = ++clipboardAttachGenerationRef.current;
     const attachClipboardListeners = () => {
+      if (clipboardAttachGenerationRef.current !== generation) return;
       const domEl = editor.domElement;
       if (!domEl) {
         if (attempts++ < 60) {
           requestAnimationFrame(attachClipboardListeners);
         }
         return;
+      }
+      // 前回付けたものを、付けた要素から外す（copy は capture / bubble の両方）
+      const prev = clipboardListenersRef.current;
+      if (prev) {
+        prev.el.removeEventListener("copy", prev.copy, true);
+        prev.el.removeEventListener("copy", prev.copy, false);
+        prev.el.removeEventListener("paste", prev.paste, true);
+        prev.el.removeEventListener("drop", prev.drop, true);
       }
       // ProseMirror が copy/paste を capture phase で先取りする場合があるため、
       // 自分も capture phase で受け取る。preventDefault はしないので
@@ -3012,6 +3023,7 @@ function NoteEditorInner({
       // bubble phase でも copy を補足する（capture phase で setData した内容を
       // ProseMirror が clearData している場合、bubble の最後でもう一度 setData する）
       domEl.addEventListener("copy", copyListener, false);
+      clipboardListenersRef.current = { el: domEl, copy: copyListener, paste: pasteListener, drop: dropListener };
     };
     attachClipboardListeners();
   }, [labelStore, linkStore, uploadFile]);
