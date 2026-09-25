@@ -50,6 +50,26 @@ describe("buildSourceCheckStatements", () => {
     ]);
   });
 
+  it("知見の body は AI に渡す本文（上付き・数式を保つ）、hashBody は v1 固定の指紋", () => {
+    const target = claimDoc("c1", "知見1", ["note-a"]);
+    target.doc.pages[0].blocks = [
+      {
+        id: "b1",
+        type: "paragraph",
+        content: [
+          { type: "text", text: "H", styles: {} },
+          { type: "text", text: "2", styles: { subscript: true } },
+          { type: "text", text: "O の ", styles: {} },
+          { type: "inlineMath", props: { latex: "\\rho" } },
+        ],
+      },
+    ] as any;
+    const [statement] = buildSourceCheckStatements([target]);
+    expect(statement.body).toBe("H<sub>2</sub>O の $\\rho$");
+    // 照合済みの知見が「本文が変わった」扱いにならないよう、指紋は以前と同じ抽出のまま
+    expect(statement.hashBody).toBe("H2O の ");
+  });
+
   it("ai-answer 由来の知見は knownMissingReason: ai-answer を持つ（sourceIds は保持する）", () => {
     const out = buildSourceCheckStatements([
       claimDoc("c1", "AI回答からの知見", ["note-a"], "verb-suggestion-2026-01-01T00:00:00.000Z"),
@@ -72,7 +92,7 @@ describe("buildSourceCheckStatements", () => {
         title: "トピック1",
         body: "要点1",
         // hashBody（claimHash 用）はドキュメント全体のプレーンテキストで、引用も含む
-        // （extractPlainTextFromDoc は引用を除去しない — text/hashBody で基準を変えない）
+        // （claimHashBody は引用を除去しない — text/hashBody で基準を変えない）
         hashBody: "要点1 @🤖 知見A",
         sourceIds: ["claim:claim-a"],
         statement: "要点1",

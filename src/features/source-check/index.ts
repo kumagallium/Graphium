@@ -25,7 +25,7 @@ export {
 } from "./run";
 export { attachSourceCheck } from "./attach";
 export { aggregateDocumentVerdict, aggregateVerdict } from "./aggregate";
-export { computeClaimHash } from "./claim-hash";
+export { claimHashBody, computeClaimHash } from "./claim-hash";
 export { findBlockIdForQuote } from "./quote-match";
 export { extractTopicStatements, type TopicStatement } from "./topic-statements";
 export { isAiAnswerClaim } from "./ai-answer";

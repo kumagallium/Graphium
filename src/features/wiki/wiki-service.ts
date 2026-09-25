@@ -13,6 +13,9 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { t } from "../../i18n";
 import { attachSourceCheck } from "../source-check/attach";
+import { inlineContentToText } from "../markdown-export/inline-text";
+import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
+import { unescapeScriptTagText } from "../../lib/script-styles";
 
 import type { GraphiumIndex } from "../navigation";
 
@@ -470,13 +473,16 @@ export async function rewriteAndMerge(
 
 /**
  * インラインコンテンツからテキストを抽出する
- * @リンク（青テキスト）は [[タイトル]] 形式に復元する（Rewriter に渡す際に引用を保持するため）
+ * @リンク（青テキスト）は [[タイトル]] 形式に復元する（Rewriter に渡す際に引用を保持するため）。
+ * Rewriter の出力はそのまま parseInlineCitations でページに戻るので、読み戻せる表記で渡す:
+ * リンクは [文字](URL)、上付き・下付きは <sup> / <sub>、数式は $…$
  */
 function extractInlineTextWithCitations(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content.map((c: any) => {
+      if (!c || typeof c !== "object") return "";
       // @リンク（青テキスト）を [[タイトル]] に復元
       if (c.type === "text" && c.styles?.textColor === "blue" && typeof c.text === "string" && c.text.startsWith("@")) {
         let title = c.text.slice(1); // '@' を除去
@@ -484,10 +490,23 @@ function extractInlineTextWithCitations(content: any): string {
         if (title.startsWith("🤖 ")) title = title.slice(3);
         return `[[${title}]]`;
       }
-      return c.text ?? c.content ?? "";
+      if (c.type === "link") return linkToMarkdown(c);
+      return inlineContentToText([c], { scripts: true });
     }).join("");
   }
   return extractInlineText(content);
+}
+
+/**
+ * リンクを parseInlineCitations が読み戻せる `[文字](URL)` にする（書き直しでリンクを失わない）。
+ * 読み戻せない形（URL が無い・空白を含む・文字に角括弧を含む）は文字だけを返す。
+ * URL の丸括弧は %28 / %29 にする（`(…)` の終わりと取り違えないように。指す先は同じ）。
+ */
+function linkToMarkdown(link: any): string {
+  const text = inlineContentToText(link.content, { scripts: true });
+  const href = typeof link.href === "string" ? link.href.trim() : "";
+  if (!text || !href || /\s/.test(href) || /[[\]]/.test(text)) return text;
+  return `[${text}](${href.replace(/\(/g, "%28").replace(/\)/g, "%29")})`;
 }
 
 /**
@@ -518,7 +537,8 @@ function extractSectionsFromBlocks(
         break;
       }
     } else if (currentHeading) {
-      const text = extractInlineTextWithCitations(block.content);
+      // 数式ブロックは $$ … $$ の 1 行にする（書き直しの出力から数式ブロックに戻る）
+      const text = extractInlineTextWithCitations(block.content) || mathBlockText(block);
       if (text) currentContent.push(text);
     }
   }
@@ -645,8 +665,10 @@ function pushCitation(
 
 /**
  * テキスト中の `[[タイトル]]` 引用と Markdown インライン装飾
- * （`**bold**` / `*italic*` / `` `code` `` / `[text](url)`）を検出し、
- * BlockNote のインラインコンテンツ配列と knowledgeLinks に変換する。
+ * （`**bold**` / `*italic*` / `` `code` `` / `[text](url)` / `<sup>` / `<sub>`）と
+ * 数式（`$…$` / `\(…\)`）を検出し、BlockNote のインラインコンテンツ配列と knowledgeLinks に変換する。
+ * 上付き・下付きと数式は、AI に渡す本文（extractInlineText）が使うのと同じ表記を読み戻す
+ * （AI が本文の表記をそのまま書き返しても、ページに生のタグや $ が出ないように）。
  */
 export function parseInlineCitations(
   text: string,
@@ -655,62 +677,154 @@ export function parseInlineCitations(
   selfTitle?: string,
   /** noteIndex に載らない資料（pdf/url 等）のタイトル→id。pushCitation 参照 */
   extraTitleToId?: Map<string, string>,
+  /** convertSectionsToBlocks が節ごとに退避した数式。省略時はこの行の数式をここで退避する */
+  math?: MathStash[],
 ): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
   const blockId = crypto.randomUUID();
   const inlineContent: any[] = [];
   const knowledgeLinks: any[] = [];
 
-  const normalized = normalizeInlineMarkup(text);
+  let normalized = normalizeInlineMarkup(text);
+  let stash = math;
+  if (!stash) ({ text: normalized, math: stash } = stashLineMath(normalized));
 
-  // 優先順: [[...]] > [text](url) > **bold** > *italic* > `code`
+  // 優先順: [[...]] > [text](url) > **bold** > *italic* > `code` > <sup>/<sub>
   // - italic は単独 `*` の対なので、空白のみを内包しないよう制限する
   // - bold/italic は最短マッチ（lazy）にして、`**foo** **bar**` のような連続パターンに対応
-  const TOKEN_RE = /\[\[([^\]]+?)\]\]|\[([^\]]+?)\]\(([^)]+?)\)|\*\*([^*]+?)\*\*|\*([^*\s](?:[^*]*?[^*\s])?)\*|`([^`]+?)`/g;
+  // - <sup>/<sub> も 1 つのトークンにする。文字として残すと、中の * 同士
+  //   （「A<sup>*</sup> と B<sup>*</sup>」）が斜体の対に化ける
+  // - 数式は先に目印（{{GWMATH_n}}）へ退避してあるので、式の中の * や _ はここに来ない
+  const TOKEN_RE = /\[\[([^\]]+?)\]\]|\[([^\]]+?)\]\(([^)]+?)\)|\*\*([^*]+?)\*\*|\*([^*\s](?:[^*]*?[^*\s])?)\*|`([^`]+?)`|<(sup|sub)(?:\s[^<>]*)?>(?:(?!<\/?(?:sup|sub)\b)[^\n])+?<\/\7\s*>/gi;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = TOKEN_RE.exec(normalized)) !== null) {
     if (match.index > lastIndex) {
-      inlineContent.push({
-        type: "text",
-        text: normalized.slice(lastIndex, match.index),
-        styles: {},
-      });
+      pushFormattedText(inlineContent, normalized.slice(lastIndex, match.index), {}, stash);
     }
 
     if (match[1] !== undefined) {
-      pushCitation(inlineContent, knowledgeLinks, blockId, match[1], noteIndex, selfTitle, extraTitleToId);
+      // 引用のタイトルは数式にできないので、目印を元の表記に戻してから照合する
+      pushCitation(inlineContent, knowledgeLinks, blockId, restoreMathText(match[1], stash), noteIndex, selfTitle, extraTitleToId);
     } else if (match[2] !== undefined && match[3] !== undefined) {
-      inlineContent.push({
-        type: "link",
-        href: match[3],
-        content: [{ type: "text", text: match[2], styles: {} }],
-      });
+      // リンクの中身は書式付きの文字だけ（inlineMath は入れられない）ので、数式は元の表記に戻す
+      const content: any[] = [];
+      pushFormattedText(content, restoreMathText(match[2], stash), {}, null);
+      inlineContent.push({ type: "link", href: restoreMathText(match[3], stash), content });
     } else if (match[4] !== undefined) {
-      inlineContent.push({ type: "text", text: match[4], styles: { bold: true } });
+      pushFormattedText(inlineContent, match[4], { bold: true }, stash);
     } else if (match[5] !== undefined) {
-      inlineContent.push({ type: "text", text: match[5], styles: { italic: true } });
+      pushFormattedText(inlineContent, match[5], { italic: true }, stash);
     } else if (match[6] !== undefined) {
       inlineContent.push({ type: "text", text: match[6], styles: { code: true } as any });
+    } else if (match[7] !== undefined) {
+      pushFormattedText(inlineContent, match[0], {}, stash);
     }
 
     lastIndex = TOKEN_RE.lastIndex;
   }
 
   if (lastIndex < normalized.length) {
-    inlineContent.push({
-      type: "text",
-      text: normalized.slice(lastIndex),
-      styles: {},
-    });
+    pushFormattedText(inlineContent, normalized.slice(lastIndex), {}, stash);
   }
 
   if (inlineContent.length === 0) {
-    inlineContent.push({ type: "text", text: normalized, styles: {} });
+    inlineContent.push({ type: "text", text: restoreMathText(normalized, stash), styles: {} });
   }
 
   return { inlineContent, knowledgeLinks, blockId };
+}
+
+// ── 上付き・下付きと数式の読み戻し（parseInlineCitations / convertSectionsToBlocks 用） ──
+
+/** 上付き・下付きのタグ 1 対。1 行の中で閉じ、入れ子の sup / sub を含まないもの
+ *  （Markdown 取り込みの markScriptTags と同じ条件。ただし表の区切り | は行の中に無いので許す） */
+const SCRIPT_TAG_RE = /<(sup|sub)(?:\s[^<>]*)?>((?:(?!<\/?(?:sup|sub)\b)[^\n])+?)<\/\1\s*>/gi;
+
+/** stashMath が置く数式の目印 */
+const MATH_SENTINEL_RE = /\{\{GWMATH_(\d+)\}\}/g;
+
+/**
+ * 1 行ぶんの数式を目印に退避する（判定は markdown-math.ts の stashMath と同じ）。
+ * 行の中ではブロック数式（$$ … $$）もインライン数式として扱うので、stashMath が
+ * ブロック数式の前後に足す空行を外す。
+ */
+function stashLineMath(line: string): { text: string; math: MathStash[] } {
+  const { text, math } = stashMath(line);
+  return { text: text.replace(/\n\n(\{\{GWMATH_\d+\}\})\n\n/g, "$1"), math };
+}
+
+/** 数式の目印を元の表記（$…$ / $$ … $$）に戻す。数式にできない場所（引用のタイトル・リンク）用 */
+function restoreMathText(text: string, math: MathStash[]): string {
+  return text.replace(MATH_SENTINEL_RE, (sentinel, index: string) => {
+    const entry = math[Number(index)];
+    if (!entry) return sentinel;
+    return entry.display ? mathBlockToMarkdown(entry.latex) : `$${entry.latex}$`;
+  });
+}
+
+/**
+ * 文字列を text インラインにして積む。<sup> / <sub> のタグは上付き・下付きの書式に、
+ * 数式の目印は inlineMath に戻す（math が null なら目印は含まれない前提で文字のまま）。
+ */
+function pushFormattedText(
+  out: any[],
+  text: string,
+  styles: Record<string, unknown>,
+  math: MathStash[] | null,
+): void {
+  let last = 0;
+  for (const tag of text.matchAll(SCRIPT_TAG_RE)) {
+    const at = tag.index ?? 0;
+    pushTextWithMath(out, text.slice(last, at), styles, math);
+    const style = tag[1].toLowerCase() === "sup" ? "superscript" : "subscript";
+    pushTextWithMath(out, unescapeScriptTagText(tag[2]), { ...styles, [style]: true }, math);
+    last = at + tag[0].length;
+  }
+  pushTextWithMath(out, text.slice(last), styles, math);
+}
+
+function pushTextWithMath(
+  out: any[],
+  text: string,
+  styles: Record<string, unknown>,
+  math: MathStash[] | null,
+): void {
+  if (!text) return;
+  let last = 0;
+  if (math) {
+    for (const sentinel of text.matchAll(MATH_SENTINEL_RE)) {
+      const entry = math[Number(sentinel[1])];
+      if (!entry) continue; // 対応する数式が無い目印は文字のまま残す
+      const at = sentinel.index ?? 0;
+      if (at > last) out.push({ type: "text", text: text.slice(last, at), styles: { ...styles } });
+      out.push({ type: "inlineMath", props: { latex: entry.latex } });
+      last = at + sentinel[0].length;
+    }
+  }
+  if (last < text.length) out.push({ type: "text", text: text.slice(last), styles: { ...styles } });
+}
+
+/**
+ * 見出しなど、引用や強調を解釈しない場所の inline content。上付き・下付きと数式だけを戻す
+ * （`[[…]]` や `**…**` は従来どおり文字のまま）。
+ */
+function formatHeadingInlines(text: string, math?: MathStash[]): any[] {
+  let source = text;
+  let stash = math;
+  if (!stash) ({ text: source, math: stash } = stashLineMath(text));
+  const out: any[] = [];
+  pushFormattedText(out, source, {}, stash);
+  return out;
+}
+
+/** 行がブロック数式の目印だけなら、その LaTeX を返す（数式ブロックにする行か） */
+function soleDisplayMath(line: string, math: MathStash[]): string | null {
+  const m = /^\{\{GWMATH_(\d+)\}\}$/.exec(line.trim());
+  if (!m) return null;
+  const entry = math[Number(m[1])];
+  return entry?.display ? entry.latex : null;
 }
 
 /**
@@ -785,15 +899,30 @@ function convertSectionsToBlocks(
           textAlignment: "left",
           level: 2,
         },
-        content: [{ type: "text", text: trimmedHeading, styles: {} }],
+        content: formatHeadingInlines(trimmedHeading),
         children: [],
       });
     }
 
+    // 数式は節ごとに先に目印へ退避する（複数行にまたがる $$ … $$ を 1 つの数式ブロックに
+    // するため。式の中の * や _ を強調の記法として拾わないためでもある）
+    const { text: sectionContent, math } = stashMath(section.content);
+
     // コンテンツを行ごとに分割し、`## ...` 形式の markdown 見出しは
     // 生テキスト段落ではなく proper な heading ブロックに変換する。
-    const paragraphs = section.content.split("\n").filter(Boolean);
+    const paragraphs = sectionContent.split("\n").filter(Boolean);
     for (const para of paragraphs) {
+      // 行がブロック数式だけなら数式ブロックにする（Markdown 取り込みと同じ扱い）
+      const displayLatex = soleDisplayMath(para, math);
+      if (displayLatex !== null) {
+        blocks.push({
+          id: crypto.randomUUID(),
+          type: "math",
+          props: { latex: displayLatex },
+          children: [],
+        });
+        continue;
+      }
       const md = parseMarkdownHeading(para);
       if (md) {
         // References 系の埋め込み見出しもここでドロップする。
@@ -807,7 +936,7 @@ function convertSectionsToBlocks(
             textAlignment: "left",
             level: md.level,
           },
-          content: [{ type: "text", text: md.text, styles: {} }],
+          content: formatHeadingInlines(md.text, math),
           children: [],
         });
         continue;
@@ -819,7 +948,7 @@ function convertSectionsToBlocks(
       const numbered = bullet === null ? parseMarkdownNumbered(para) : null;
       if (bullet !== null || numbered !== null) {
         const itemText = bullet !== null ? bullet : (numbered as string);
-        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle, extraTitleToId);
+        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle, extraTitleToId, math);
         blocks.push({
           id: parsedItem.blockId,
           type: bullet !== null ? "bulletListItem" : "numberedListItem",
@@ -835,7 +964,7 @@ function convertSectionsToBlocks(
         continue;
       }
 
-      const parsed = parseInlineCitations(para, noteIndex, selfTitle, extraTitleToId);
+      const parsed = parseInlineCitations(para, noteIndex, selfTitle, extraTitleToId, math);
       blocks.push({
         id: parsed.blockId,
         type: "paragraph",
@@ -1066,7 +1195,10 @@ export async function embedWikiSections(
 
 
 /**
- * GraphiumDocument からプレーンテキストを抽出する
+ * GraphiumDocument から AI に渡す本文テキストを抽出する（トップレベルのブロック 1 つ＝1 行）。
+ * 取り込み・トピック段・出典照合の原文が同じこの関数を通る（照合の引用が原文に見つかるように）。
+ * 上付き・下付きは <sup> / <sub>、数式は $…$ / $$…$$ で残す（extractInlineText 参照）。
+ * 出典照合の claimHash には使わない（source-check/claim-hash.ts の claimHashBody を使う）。
  */
 export function extractPlainTextFromDoc(doc: GraphiumDocument): string {
   const page = doc.pages[0];
@@ -1084,6 +1216,9 @@ export function extractBlockText(block: any): string {
   let text = extractInlineText(block.content);
   if (text) return text;
 
+  text = mathBlockText(block);
+  if (text) return text;
+
   if (block.props?.text) return block.props.text;
 
   if (block.children?.length) {
@@ -1095,6 +1230,15 @@ export function extractBlockText(block: any): string {
   }
 
   return "";
+}
+
+/**
+ * 数式ブロック（type: "math"）の式を $$ … $$ にする。数式ブロックでなければ空文字。
+ * 式は content ではなく props.latex にあるので、content だけを見る抽出では消えてしまう。
+ */
+function mathBlockText(block: any): string {
+  if (block?.type !== "math") return "";
+  return mathBlockToMarkdown(String(block.props?.latex ?? ""));
 }
 
 // ── 追加 Ingest ソース ──
@@ -2857,18 +3001,24 @@ export function extractBodyPreview(doc: GraphiumDocument, maxLen: number): strin
   // preview から消え、Linter / Synthesizer / 一覧が「本文なし」として扱う。
   for (const block of flattenColumns(page.blocks)) {
     if (block.type === "heading") continue; // H1/H2/H3 はスキップ — タイトルや節見出しは preview に入れない
-    const t = extractInlineText(block.content);
+    const t = extractInlineText(block.content) || mathBlockText(block);
     if (t) lines.push(t);
     if (lines.join(" ").length >= maxLen) break;
   }
   return lines.join(" ").slice(0, maxLen);
 }
 
+/**
+ * AI に渡す本文のテキスト化（取り込み・トピック段・出典照合・点検・書き直しの入力に共通）。
+ * 上付き・下付きは <sup> / <sub>、数式は $…$ で意味を保つ（Markdown 書き出しと同じ表記）。
+ * 照合済みページの指紋（claimHash）はここを通さない — source-check/claim-hash.ts の
+ * claimHashBody が旧来の抽出を固定で持つ（ここを変えても照合結果が古くならないように）。
+ */
 function extractInlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
-    return content.map((c: any) => c.text ?? c.content ?? "").join("");
+    return inlineContentToText(content, { scripts: true });
   }
   if (content.type === "tableContent" && Array.isArray(content.rows)) {
     return content.rows
