@@ -85,6 +85,22 @@ describe("withCellText", () => {
       { type: "text", text: "@N", styles: {} },
     ]);
   });
+
+  it("先頭列の行の同一性（tableRowIdentity）は新しい文字へ引き継ぐ", () => {
+    // 行アイコンの「ノートを作成」や先頭列での @ が名前セルを書き換えても、
+    // 行が別の Entity として採番し直されないように
+    const first = {
+      type: "tableCell",
+      content: [{ type: "text", text: "Sample 2", styles: { tableRowIdentity: "row_abc" } }],
+      props: { colspan: 1, rowspan: 1 },
+    };
+    expect(withCellText(first, "@Sample 2", { textColor: "blue" }).content).toEqual([
+      { type: "text", text: "@Sample 2", styles: { textColor: "blue", tableRowIdentity: "row_abc" } },
+    ]);
+    // 行の同一性が無いセル・空文字への書き換えには付けない
+    expect(withCellText(cell("x"), "@N").every((c: any) => !c.styles.tableRowIdentity)).toBe(true);
+    expect(withCellText(first, "").content[0].styles).toEqual({});
+  });
 });
 
 describe("findColumnIndexByName", () => {
