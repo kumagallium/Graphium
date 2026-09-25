@@ -93,12 +93,18 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
+  hasColumnType,
   readFirstColumnName,
   readTableData,
   sortTableBlock,
   type TableExpandData,
   type SortState,
 } from "@features/table-meta";
+import {
+  setRegisterLogTableCallback,
+  applyLogTableTimestamps,
+  primeLogTableRowTracking,
+} from "@features/log-table";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
@@ -526,18 +532,20 @@ function SidePeekInner({
     // 「読み込み中」と本文が高速に切り替わり続ける。store は ref 経由で参照する。
   }, [noteId]);
 
-  // ドキュメント読み込み後にラベル・リンクを復元
-  // setLabel / restoreLinks は useCallback で安定な参照
-  // 依存は doc ではなく読み込んだ page。タイトルや文脈タグの編集は setDoc で doc だけを
-  // 差し替える（page は同じ参照のまま）ので、ここは走らない。走ると読み込み時点の page で
-  // 復元し直し、このピークで足したリンク・ラベル・表の注釈（インデックステーブルの行の
-  // 紐付けなど）が消えて、次のオートセーブでそのまま書き出される
+  // ドキュメント読み込み後にラベル・リンクを復元（1 回の読み込みにつき 1 度だけ）
+  // setLabel / restoreLinks は useCallback で安定な参照。
+  // タイトルや文脈ラベルの変更も setDoc で doc を作り直すが、pages は読み込み時のまま。
+  // そこで走り直すと、このピークで加えた注釈・リンク・配置揃え（ピークで作った
+  // 時系列テーブルの登録など）が読み込み時の状態に戻り、次の自動保存で確定してしまう
   const { setLabel } = labelStore;
   const { restoreLinks } = linkStore;
-  const loadedPage = doc?.pages?.[0];
+  const restoredPagesRef = useRef<unknown>(null);
   useEffect(() => {
-    const page = loadedPage;
+    if (!doc) return;
+    const page = doc.pages?.[0];
     if (!page) return;
+    if (restoredPagesRef.current === doc.pages) return;
+    restoredPagesRef.current = doc.pages;
 
     // ラベル復元
     if (page.labels) {
@@ -559,8 +567,19 @@ function SidePeekInner({
     // テーブル注釈（名前・取り込み元・列のふるまい）。メインと同じく旧 logTables /
     // indexTables はここで変換する。これが無いとピークでは表の名前も
     // 取り込み元バッジも出ず、長い表の折りたたみも効かない
-    tableMetaStoreRef.current.restore(migrateTableMeta(page));
-  }, [loadedPage, setLabel, restoreLinks]);
+    const tableMeta = migrateTableMeta(page);
+    tableMetaStoreRef.current.restore(tableMeta);
+    // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+    // 日時が入るように）。エディタがまだ無ければ空振りし、エディタができたときの
+    // effect が記録する（メインの初期データの復元と同じ）
+    primeLogTableRowTracking(
+      editorRef.current,
+      page.blocks,
+      Object.entries(tableMeta ?? {})
+        .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
+        .map(([blockId]) => blockId),
+    );
+  }, [doc, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
   const handleEditorReady = useCallback((editor: any) => {
@@ -871,6 +890,30 @@ function SidePeekInner({
     if (!sidePeekEditor) return;
     publishTableColumns(sidePeekEditor, tableMetaStore);
   }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
+
+  // 時系列テーブル（行を足すと 1 列目に日時が入る表）。スラッシュ項目はメインと共通で、
+  // 登録先は押されたエディタをキーに引くので、ピークで挿入した表はピークの
+  // tableMetaStore に付く（メイン側のノートに注釈が漏れない）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setRegisterLogTableCallback(sidePeekEditor, (blockId: string) => {
+      tableMetaStoreRef.current.addColumnType(
+        blockId,
+        readFirstColumnName(sidePeekEditor.getBlock?.(blockId)),
+        "datetime-auto",
+      );
+    });
+    // 開いたときの行数を、このエディタの分として先に記録しておく（開いて最初の行追加
+    // から日時が入るように）。読み込み後の復元 effect でも記録するので、注釈の復元と
+    // エディタの公開のどちらが先でも取りこぼさない（記録の無い表だけを埋めるので、
+    // 二度呼んでも崩れない）
+    primeLogTableRowTracking(
+      sidePeekEditor,
+      sidePeekEditor.document,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
+    return () => { setRegisterLogTableCallback(sidePeekEditor, null); };
+  }, [sidePeekEditor]);
 
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
@@ -1272,6 +1315,12 @@ function SidePeekInner({
     if (noteId.startsWith("snapshot:")) return;
     setSaveStatus("dirty");
     labelAutoRef.current?.();
+    // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
+    // 1 列目に日時を入れる（メインエディタの handleContentChange と同じ）
+    applyLogTableTimestamps(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       // 発火したら空に戻す（null でない = 保存待ちの編集がある、を leavePeek が見る）
@@ -2037,7 +2086,7 @@ function SidePeekInner({
                 // どのエディタでも動く slash items を出す（メインと同じ一覧から取る）。
                 // 各 slash item の onItemClick はクリック時のエディタを
                 // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
-                // 挿入される。メインに固定の受け口で動く項目（時系列テーブル・テンプレート）は
+                // 挿入される。メインに固定の受け口で動く項目（テンプレート）は
                 // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）。
                 // 先頭の「新しいノート」はメインと同じ組み立てで、記録先がこのピーク
                 extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...getCommonSlashMenuItems({ includeCite: !!noteIndex })]}
