@@ -1,8 +1,8 @@
 {
-  "version": 5,
+  "version": 6,
   "labels": {
     "blk-heading": "procedure"
   },
   "noDataLoss": true,
-  "rationale": "v4 → v5 で block-level inline-type label（material / tool）は対応 block の content[] inline text に inline style として変換され、labels マップからは消える。heading 用の procedure label は残る。block content の text 値（ZnSb / SPS）は保持される。"
+  "rationale": "v4 → v5 で block-level inline-type label（material / tool）は対応 block の content[] inline text に inline style として変換され、labels マップからは消える。procedure ラベルの指す blk-heading はブロックとして存在しないので、v6 の step 化は起きずラベルのまま残る。block の id と content の text 値（ZnSb / SPS）は保持される。"
 }
