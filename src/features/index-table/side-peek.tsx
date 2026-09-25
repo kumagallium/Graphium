@@ -25,7 +25,7 @@ import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
 import { pickPeekExternalFields } from "./peek-save-merge";
 import { leaveAfterSave } from "./peek-leave";
-import { pendingPeekSave, queuePeekSave } from "../../lib/peek-save-queue";
+import { pendingPeekSave, queuePeekSave, registerLivePeek } from "../../lib/peek-save-queue";
 import { isIncomingDocNewer } from "../../hooks/doc-recency";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { buildSavedPageFields, saveNoteDoc } from "@features/note-save";
@@ -1362,6 +1362,25 @@ function SidePeekInner({
       if (unsavedRef.current) void doSaveRef.current({ unmounting: true });
     };
   }, []);
+
+  // 開いている間は「未保存を今すぐ書き出す」口を出す。メインエディタが同じノートを開くとき
+  // （サイドバーで押す・一覧の行をダブルクリックする）、メインはこのピークがまだ開いている
+  // うちに doc を決めるので、自動保存やアンマウント時の書き出しを待たずに先に書かせる
+  // （lib/peek-save-queue.ts の flushPeekSaves）
+  useLayoutEffect(
+    () =>
+      registerLivePeek(noteId, {
+        hasUnsaved: () => unsavedRef.current,
+        flush: () => {
+          if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
+          }
+          if (unsavedRef.current) void doSaveRef.current();
+        },
+      }),
+    [noteId],
+  );
 
   // 外部メディアゲートの単位。noteId ではなくこのピーク 1 回分の値にする（理由は
   // blocks/remote-content/store.ts）。閉じれば消えるので、開き直せばまた同意を求める。

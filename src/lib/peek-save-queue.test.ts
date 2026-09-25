@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { pendingPeekSave, queuePeekSave } from "./peek-save-queue";
+import {
+  flushPeekSaves,
+  hasPendingPeekEdits,
+  pendingPeekSave,
+  queuePeekSave,
+  registerLivePeek,
+  releaseUnsavedPeekDoc,
+  unsavedPeekDoc,
+} from "./peek-save-queue";
 import type { GraphiumDocument } from "./document-types";
 
 function makeDoc(title: string): GraphiumDocument {
@@ -95,5 +103,166 @@ describe("queuePeekSave / pendingPeekSave", () => {
     expect(b.started()).toBe(true);
     a.resolve();
     b.resolve();
+  });
+});
+
+/** registerLivePeek に渡す偽のピーク。flush でその時点の doc と write を列に並べる */
+function fakeLivePeek(noteId: string, doc: GraphiumDocument, write: () => Promise<void>) {
+  const peek = {
+    unsaved: true,
+    flushes: 0,
+    doc,
+    write,
+    hasUnsaved: () => peek.unsaved,
+    flush: () => {
+      peek.flushes += 1;
+      peek.unsaved = false;
+      void queuePeekSave(noteId, peek.doc, peek.write).catch(() => {});
+    },
+  };
+  return peek;
+}
+
+describe("開いているピーク（registerLivePeek / hasPendingPeekEdits / flushPeekSaves）", () => {
+  it("未保存のピークがあれば hasPendingPeekEdits は true。登録を外せば false", () => {
+    const peek = fakeLivePeek("n-live", makeDoc("v2"), async () => {});
+    const unregister = registerLivePeek("n-live", peek);
+    expect(hasPendingPeekEdits("n-live")).toBe(true);
+    peek.unsaved = false;
+    expect(hasPendingPeekEdits("n-live")).toBe(false);
+    peek.unsaved = true;
+    unregister();
+    expect(hasPendingPeekEdits("n-live")).toBe(false);
+  });
+
+  it("書き込み中の保存があれば、開いているピークが無くても true", async () => {
+    const w = deferredWrite();
+    const run = queuePeekSave("n-inflight", makeDoc("v2"), w.write);
+    expect(hasPendingPeekEdits("n-inflight")).toBe(true);
+    w.resolve();
+    await run;
+    await flush();
+    expect(hasPendingPeekEdits("n-inflight")).toBe(false);
+  });
+
+  it("flushPeekSaves はピークに今すぐ書き出させ、書き終わってから解決する", async () => {
+    const w = deferredWrite();
+    const doc = makeDoc("v2");
+    const peek = fakeLivePeek("n-flush", doc, w.write);
+    const unregister = registerLivePeek("n-flush", peek);
+    const settled = flushPeekSaves("n-flush");
+    expect(settled).not.toBeNull();
+    // 呼んだその場で書き始める（自動保存の 3 秒を待たない）
+    expect(peek.flushes).toBe(1);
+    expect(w.started()).toBe(true);
+    let done = false;
+    void settled!.then(() => {
+      done = true;
+    });
+    await flush();
+    expect(done).toBe(false);
+    w.resolve();
+    await expect(settled).resolves.toEqual({ doc, saved: true });
+    expect(pendingPeekSave("n-flush")).toBeNull();
+    unregister();
+  });
+
+  it("待つものが無ければ null（ピークが無い・未保存が無い）", () => {
+    expect(flushPeekSaves("n-none")).toBeNull();
+    const peek = fakeLivePeek("n-clean", makeDoc("v1"), async () => {});
+    peek.unsaved = false;
+    const unregister = registerLivePeek("n-clean", peek);
+    expect(flushPeekSaves("n-clean")).toBeNull();
+    expect(peek.flushes).toBe(0);
+    unregister();
+  });
+
+  it("待つ間にピークにまた打たれたら、その分も書き出させて待つ", async () => {
+    const first = deferredWrite();
+    const second = deferredWrite();
+    const docV3 = makeDoc("v3");
+    const peek = fakeLivePeek("n-again", makeDoc("v2"), first.write);
+    const unregister = registerLivePeek("n-again", peek);
+    const settled = flushPeekSaves("n-again")!;
+    let done = false;
+    void settled.then(() => {
+      done = true;
+    });
+    // 1 本目の書き込み中に、もう一度打たれた
+    peek.unsaved = true;
+    peek.doc = docV3;
+    peek.write = second.write;
+    first.resolve();
+    await flush();
+    // 1 本目が書き終わった時点で、もう一度書き出させている
+    expect(peek.flushes).toBe(2);
+    expect(second.started()).toBe(true);
+    expect(done).toBe(false);
+    second.resolve();
+    await expect(settled).resolves.toEqual({ doc: docV3, saved: true });
+    unregister();
+  });
+
+  it("待つ間に列に並んだ保存（閉じたピークの書き出しなど）も待つ", async () => {
+    const first = deferredWrite();
+    const second = deferredWrite();
+    const docV3 = makeDoc("v3");
+    void queuePeekSave("n-queued", makeDoc("v2"), first.write);
+    const settled = flushPeekSaves("n-queued")!;
+    let done = false;
+    void settled.then(() => {
+      done = true;
+    });
+    void queuePeekSave("n-queued", docV3, second.write);
+    first.resolve();
+    await flush();
+    expect(done).toBe(false);
+    second.resolve();
+    await expect(settled).resolves.toEqual({ doc: docV3, saved: true });
+  });
+
+  it("別のノートのピークには書き出させない", () => {
+    const other = fakeLivePeek("n-other", makeDoc("v2"), async () => {});
+    const unregister = registerLivePeek("n-other", other);
+    expect(flushPeekSaves("n-mine")).toBeNull();
+    expect(other.flushes).toBe(0);
+    unregister();
+  });
+});
+
+describe("保存できなかった doc（unsavedPeekDoc / releaseUnsavedPeekDoc）", () => {
+  it("失敗した保存の doc を残し、同じノートの後の保存が成功したら消す", async () => {
+    const a = deferredWrite();
+    const b = deferredWrite();
+    const docA = makeDoc("A");
+    const runA = queuePeekSave("n-unsaved", docA, a.write).catch(() => {});
+    a.reject(new Error("offline"));
+    await runA;
+    await flush();
+    expect(unsavedPeekDoc("n-unsaved")).toBe(docA);
+    const runB = queuePeekSave("n-unsaved", makeDoc("B"), b.write);
+    b.resolve();
+    await runB;
+    await flush();
+    expect(unsavedPeekDoc("n-unsaved")).toBeNull();
+  });
+
+  it("引き取ると消える。別の失敗で差し替わっていれば残す", async () => {
+    const a = deferredWrite();
+    const b = deferredWrite();
+    const docA = makeDoc("A");
+    const docB = makeDoc("B");
+    const runA = queuePeekSave("n-release", docA, a.write).catch(() => {});
+    a.reject(new Error("offline"));
+    await runA;
+    await flush();
+    const runB = queuePeekSave("n-release", docB, b.write).catch(() => {});
+    b.reject(new Error("offline"));
+    await runB;
+    await flush();
+    releaseUnsavedPeekDoc("n-release", docA);
+    expect(unsavedPeekDoc("n-release")).toBe(docB);
+    releaseUnsavedPeekDoc("n-release", docB);
+    expect(unsavedPeekDoc("n-release")).toBeNull();
   });
 });
