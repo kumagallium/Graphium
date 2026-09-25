@@ -202,7 +202,10 @@ describe("Markdown（実エディタ経由）", () => {
     ]);
   });
 
-  it("上付きの中の数式は inlineMath に戻る", () => {
+  // 数式（inlineMath）は BlockNote の custom inline content（content: "none"）で、
+  // styles を持つ欄が無い。数式ごと上付きにはできないので、式の中身を残して
+  // 外側の上付きは落とす（指数は LaTeX の ^{} で式の中に書ける）
+  it("上付きの中の数式は inlineMath に戻る（数式は書式を持てないので上付きは付かない）", () => {
     const blocks = parseMarkdownToBlocksWithMath(createEditor(), "a<sup>$x^2$</sup>");
     expect(blocks[0].content).toEqual([text("a"), { type: "inlineMath", props: { latex: "x^2" } }]);
   });
