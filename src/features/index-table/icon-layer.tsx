@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
 import { useTableMetaStore } from "../table-meta/store";
-import { withCellText } from "../table-meta/table-cells";
+import { writeCellText } from "../table-meta/table-cells";
 import { hasColumnType } from "../table-meta/types";
 import { getFirstCellText, createNoteFromRow } from "./create-note-from-row";
 import { getIndexTableCallbacks } from "./context";
@@ -214,23 +214,9 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
           callbacks.currentFileId,
         );
         if (fileId) {
-          // セルテキストを @ノート名（青文字）に変換
-          const block = editor.getBlock(blockId);
-          if (block?.content?.rows?.[rowIndex]) {
-            const newRows = block.content.rows.map((r: any, i: number) => {
-              if (i !== rowIndex) return r;
-              return {
-                ...r,
-                // 先頭列だけ書き換える。セルを配列で置き換えると tableCell の
-                // props（色・配置・結合）が落ちるので withCellText を通す
-                cells: r.cells.map((c: any, ci: number) =>
-                  ci === 0 ? withCellText(c, `@${sampleName}`, { textColor: "blue" }) : c
-                ),
-              };
-            });
-            editor.updateBlock(blockId, {
-              content: { type: "tableContent", rows: newRows },
-            });
+          // 先頭セルだけを @ノート名（青文字）に書き換える。セルの props（色・配置・結合）と
+          // 表の列幅・見出し行は writeCellText が残す
+          if (writeCellText(editor, blockId, rowIndex, 0, `@${sampleName}`, { textColor: "blue" })) {
             // noteLinks のキーを @付きに更新
             store.setNoteLink(blockId, `@${sampleName}`, fileId);
           }
