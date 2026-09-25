@@ -50,6 +50,12 @@ jobs:
       - name: Type check
         run: pnpm exec tsc --noEmit
 
+      # bench/ は上の tsconfig（include: src）の対象外で、Bench ワークフローも tsx で型を
+      # 剥がして実行するだけ。src/ の API 変更（例: createModel の async 化）で bench
+      # スクリプトが壊れても気づけないので、src/ を変える PR でも走るここで検査する。
+      - name: Type check (bench)
+        run: pnpm exec tsc -p bench/tsconfig.json --noEmit
+
       - name: Dependency boundaries
         run: pnpm run lint:deps
 
