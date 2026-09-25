@@ -93,11 +93,17 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
+  readFirstColumnName,
   readTableData,
   sortTableBlock,
   type TableExpandData,
   type SortState,
 } from "@features/table-meta";
+import {
+  setRegisterLogTableCallback,
+  applyLogTableTimestamps,
+  primeLogTableRowTracking,
+} from "@features/log-table";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
@@ -853,6 +859,30 @@ function SidePeekInner({
     publishTableColumns(sidePeekEditor, tableMetaStore);
   }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
 
+  // 時系列テーブル（行を足すと 1 列目に日時が入る表）。スラッシュ項目はメインと共通で、
+  // 登録先は押されたエディタをキーに引くので、ピークで挿入した表はピークの
+  // tableMetaStore に付く（メイン側のノートに注釈が漏れない）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setRegisterLogTableCallback(sidePeekEditor, (blockId: string) => {
+      tableMetaStoreRef.current.addColumnType(
+        blockId,
+        readFirstColumnName(sidePeekEditor.getBlock?.(blockId)),
+        "datetime-auto",
+      );
+    });
+    // 開いたときの行数を、このエディタの分として先に記録しておく（開いて最初の行追加
+    // から日時が入るように）。エディタは doc と同じ描画で作られ、表の注釈の復元
+    // （読み込み後の effect）はこの再レンダーより前に済んでいる。あの effect は文脈ラベルの
+    // 変更でも走り直すので、そちらで記録すると読み込み時の古い行数に戻ってしまう
+    primeLogTableRowTracking(
+      sidePeekEditor,
+      sidePeekEditor.document,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
+    return () => { setRegisterLogTableCallback(sidePeekEditor, null); };
+  }, [sidePeekEditor]);
+
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
   // どちらのエディタからクリックされたかを WeakMap で識別する。
@@ -1253,6 +1283,12 @@ function SidePeekInner({
     if (noteId.startsWith("snapshot:")) return;
     setSaveStatus("dirty");
     labelAutoRef.current?.();
+    // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
+    // 1 列目に日時を入れる（メインエディタの handleContentChange と同じ）
+    applyLogTableTimestamps(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       // 発火したら空に戻す（null でない = 保存待ちの編集がある、を leavePeek が見る）
