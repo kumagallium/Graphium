@@ -4,9 +4,8 @@
 // 対象の不変条件:
 // - オートセーブは常に「最新のスナップショット」を保存する（デバウンス中の
 //   内容更新は新しい方が書かれる）
-// - アンマウント時に保留中のデバウンスタイマーを必ずクリアする
-//   （ノート切替後に旧ノートの内容が新 activeFileId で保存される stale save
-//    = データ破壊を防ぐ最後の砦。note-app.tsx の markDirtyRef 周辺コメント参照）
+// - アンマウント後にタイマーの保存を走らせない（未保存の書き出しは
+//   use-auto-save.unmount-flush.test.tsx）
 //
 // テスト環境メモ: プロジェクト既定の vitest 環境は node なので、
 // 先頭の @vitest-environment ディレクティブで per-file に jsdom を指定する。
@@ -78,13 +77,10 @@ describe("useAutoSave: 保存経路の不変条件", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
-  // 不変条件 3（ノート切替時の stale save 防止）の hook 側の担保:
-  // ノート切替でエディタ（と useAutoSave）はアンマウントされる。このとき保留中の
-  // デバウンスタイマーが生き残ると、旧ノートの内容が切替先ノートの activeFileId で
-  // 保存される「切替先ノートに旧ノートの内容を保存」データ破壊が起きる。
-  // note-app.tsx はこのクリーンアップを前提に markDirty を安全としている
-  // （saveNow をアンマウント跨ぎで呼ぶのは NG、という設計コメントが該当箇所にある）。
-  it("アンマウント時に保留中のオートセーブタイマーをクリアする（stale save 防止）", async () => {
+  // アンマウント後にタイマーの保存を走らせない（外されたエディタから後で書くと、開き直した
+  // 同じノートの編集を古い本文で上書きしうる）。未保存の書き出しは onUnmountFlush が担う
+  // （下の「アンマウント時の書き出し」）。書き出しを渡さない使い方ではタイマーを消すだけ。
+  it("アンマウント後にタイマーの保存は走らない（書き出しを渡さないときは何もしない）", async () => {
     const onSave = vi.fn();
     const { result, unmount } = renderHook(() => useAutoSave(onSave));
 

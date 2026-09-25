@@ -13,7 +13,9 @@
 // 「開いているピーク」の口で未保存を書き出させてから列を待つ（flushPeekSaves）。
 //
 // キーはピークの noteId そのまま（wiki:/skill: 付き。doc キャッシュのキーと同じ形）。
-// メインエディタの保存はこの列に並ばない。
+// メインエディタの保存はこの列に並ばないが、アンマウント時の書き出し（ノートを切り替えた・
+// 一覧や素材ギャラリーへ移った瞬間に残っていた直前 3 秒の編集）は同じキーで並ぶ。移った先の
+// ピークが同じノートを開くとき、書き出しの完了を待てるように（note-app.tsx NoteEditorInner）
 
 import type { GraphiumDocument } from "./document-types";
 
@@ -35,19 +37,21 @@ const unsavedDocs = new Map<string, GraphiumDocument>();
 /**
  * 同じノートの先の保存が終わってから write を実行する。
  * 戻り値は write の結果（失敗なら reject する。呼び出し側が「未保存」に戻す）。
+ * write が doc を返したら、それを「書いた doc」として結果に載せる（doc が書き込みの直前まで
+ * 決まらない保存用。メインエディタは来歴を刻んでから書く）。返さなければ引数の doc
  */
 export function queuePeekSave(
   noteId: string,
   doc: GraphiumDocument,
-  write: () => Promise<void>,
-): Promise<void> {
+  write: () => Promise<GraphiumDocument | void>,
+): Promise<GraphiumDocument | void> {
   const prev = tails.get(noteId);
   // prev（列の末尾）は reject しない
   const run = prev ? prev.then(() => write()) : write();
   const tail = run.then(
-    (): PeekSaveOutcome => {
+    (written): PeekSaveOutcome => {
       unsavedDocs.delete(noteId);
-      return { doc, saved: true };
+      return { doc: written ?? doc, saved: true };
     },
     (): PeekSaveOutcome => {
       unsavedDocs.set(noteId, doc);
