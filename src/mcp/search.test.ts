@@ -92,6 +92,40 @@ describe("searchNotes", () => {
     expect(hits[0].snippet).toContain("グラファイトダイ");
   });
 
+  it("上付きの本文は平文で索引する（「10⁵」「105」で当たり、タグ名 sup では当たらない）", () => {
+    writeFileSync(
+      join(root, "notes", "n1.json"),
+      JSON.stringify({
+        version: 2,
+        title: "無題",
+        pages: [{
+          id: "main",
+          title: "無題",
+          blocks: [{
+            id: "p",
+            type: "paragraph",
+            props: {},
+            content: [
+              { type: "text", text: "圧力 10", styles: {} },
+              { type: "text", text: "5", styles: { superscript: true } },
+              { type: "text", text: " Pa", styles: {} },
+            ],
+            children: [],
+          }],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+        }],
+        source: "human",
+      }),
+    );
+    writeIndex([entry("n1", "無題")]);
+
+    expect(searchNotes("10⁵", {}, root).map((h) => h.noteId)).toEqual(["n1"]);
+    expect(searchNotes("105", {}, root).map((h) => h.noteId)).toEqual(["n1"]);
+    expect(searchNotes("sup", {}, root)).toEqual([]);
+  });
+
   it("手順名でも引ける（本文に無くても当たる）", () => {
     writeNote("n1", "無題", "内容は関係のない文", { stepTitle: "ホットプレス" });
     writeIndex([entry("n1", "無題", { steps: [{ blockId: "n1-s", text: "ホットプレス" }] })]);

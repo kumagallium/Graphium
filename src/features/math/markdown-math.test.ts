@@ -36,6 +36,19 @@ describe("stashMath", () => {
     expect(text).toBe("価格は $100 から $200 に上がった。");
   });
 
+  it("価格帯（$ の間がダッシュやスラッシュだけ）も数式として拾わない", () => {
+    for (const src of ["1 kg あたり $50-$75 で買える", "$50–$75", "($5/$10)", "US$50-$75"]) {
+      const { text, math } = stashMath(src);
+      expect(math).toEqual([]);
+      expect(text).toBe(src);
+    }
+  });
+
+  it("閉じの $ の直後が数字でなければ、式の直後に文字が続いても数式にする", () => {
+    const { math } = stashMath("$x$-軸と $y$、$n$個");
+    expect(math.map((m) => m.latex)).toEqual(["x", "y", "n"]);
+  });
+
   it("フェンスコードブロック内の $$ は数式にしない", () => {
     const src = "```latex\n$$\nE = mc^2\n$$\n```";
     const { text, math } = stashMath(src);

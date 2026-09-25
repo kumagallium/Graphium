@@ -140,7 +140,9 @@ function buildIndex(root: string): IndexCache {
     docs.push({
       id: entry.noteId,
       title: entry.title ?? "",
-      text: doc ? noteToMarkdown(doc) : "",
+      // 索引は平文（上付き・下付きのタグを入れない）。本体の語彙索引と揃え、
+      // "sup" が語として当たらないようにする。「10⁵」は NFKC で「105」として引ける
+      text: doc ? noteToMarkdown(doc, { scripts: false }) : "",
       labels: labelsText(entry),
       steps: stepsText(entry),
       kind: detailedKindOf(entry),

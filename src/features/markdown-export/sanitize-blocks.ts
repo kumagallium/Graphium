@@ -18,6 +18,7 @@
 import { inlineMathToMarkdown } from "../math/markdown-math";
 import { blockMarkdownConverters } from "../../blocks/markdown";
 import { scriptStyleToMarkdown } from "../../lib/script-styles";
+import { inlineContentToText } from "./inline-text";
 
 /** BlockNote の inline content（text / link / その他）1 要素 */
 type InlineItem = Record<string, any>;
@@ -108,17 +109,12 @@ function sanitizeInlines(content: unknown, knownStyles: ReadonlySet<string>): In
   return out;
 }
 
-/** inline content からプレーンテキストを抽出する（未知ブロックのフォールバック用） */
+/**
+ * inline content からプレーンテキストを抽出する（未知ブロックのフォールバック・検索索引用）。
+ * 上付き・下付きのタグは付けない（平文。出し分けは inline-text.ts を参照）
+ */
 export function extractInlineText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  let text = "";
-  for (const item of content) {
-    if (!item || typeof item !== "object") continue;
-    if ((item as any).type === "inlineMath") text += inlineMathToMarkdown(String((item as any).props?.latex ?? ""));
-    else if (typeof (item as any).text === "string") text += (item as any).text;
-    else if (Array.isArray((item as any).content)) text += extractInlineText((item as any).content);
-  }
-  return text;
+  return inlineContentToText(content);
 }
 
 /** table content（{ type: "tableContent", rows: [...] }）のセルをサニタイズする */
