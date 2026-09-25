@@ -44,15 +44,9 @@ import {
   useRemoteContentScope,
   useRemoteImageImport,
 } from "../../blocks/remote-content";
-import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
-import { calloutSlashItem } from "../../blocks/callout";
-import { mathSlashItem } from "../../blocks/math";
-import { calcSlashItem } from "../../blocks/calc";
-import { inlineMathSlashItem } from "../inline-math/spec";
-import { stepSlashItem } from "../../blocks/step";
-import { columnsSlashItem } from "../../blocks/multi-column";
+import { setBookmarkPickerCallback } from "../../blocks/bookmark";
+import { getCommonSlashMenuItems } from "../../blocks/slash-items";
 import {
-  getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_KEYS,
   MediaPickerModal,
   setMediaPickerCallback,
@@ -86,7 +80,6 @@ import {
   syncTableRowIdentitiesToEditor,
 } from "../../lib/table-row-identity";
 import {
-  getMemoSlashMenuItem,
   setMemoPickerCallback,
   MemoPickerModal,
   buildMemoInsertBlock,
@@ -126,13 +119,11 @@ import { KnowledgeStatusChip } from "@features/wiki/KnowledgeStatusChip";
 import type { GraphiumIndex, NoteIndexEntry } from "@features/navigation";
 import {
   CitePickerModal,
-  getCiteSlashMenuItems,
   setCitePickerCallback,
   type CitePickerKind,
 } from "@features/cite-picker";
 import { SharedCitePickerModal } from "@features/sharing/SharedCitePickerModal";
 import {
-  sharedCitationSlashItem,
   setSharedCitePickerCallback,
   insertSharedCitations,
 } from "../../blocks/shared-citation";
@@ -142,7 +133,6 @@ import {
   setChartAssetSourceCallback,
   type ChartAssetSourceResult,
 } from "../../blocks/chart";
-import { isTauri } from "../../lib/platform";
 import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
@@ -1950,23 +1940,12 @@ function SidePeekInner({
                 blocks={customBlockEntries}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}
-                // メインエディタと同じ slash items を出す。
+                // どのエディタでも動く slash items を出す（メインと同じ一覧から取る）。
                 // 各 slash item の onItemClick はクリック時のエディタを
-                // ピッカーに渡すよう改修済みなので、SidePeek で開いた場合は
-                // SidePeek のエディタに挿入される。
-                extraSlashMenuItems={[
-                  ...getMediaSlashMenuItems(),
-                  bookmarkSlashItem,
-                  calloutSlashItem,
-                  stepSlashItem,
-                  columnsSlashItem,
-                  mathSlashItem,
-                  inlineMathSlashItem,
-                  calcSlashItem,
-                  getMemoSlashMenuItem(),
-                  ...(noteIndex ? getCiteSlashMenuItems() : []),
-                  ...(isTauri() ? [sharedCitationSlashItem] : []),
-                ]}
+                // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
+                // 挿入される。メインに固定の受け口で動く項目（インデックステーブル等）は
+                // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）
+                extraSlashMenuItems={getCommonSlashMenuItems({ includeCite: !!noteIndex })}
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}

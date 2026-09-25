@@ -10,14 +10,9 @@ import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
-import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
-import { calloutSlashItem } from "./blocks/callout";
-import { mathSlashItem } from "./blocks/math";
-import { calcSlashItem } from "./blocks/calc";
-import { inlineMathSlashItem } from "./features/inline-math/spec";
+import { setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
+import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems } from "./blocks/slash-items";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
-import { stepSlashItem } from "./blocks/step";
-import { columnsSlashItem } from "./blocks/multi-column";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
   RemoteContentBar,
@@ -56,13 +51,11 @@ import {
 } from "./features/context-label/prov-indicator";
 import {
   IndexTableIconLayer,
-  indexTableSlashItem,
   setIndexTableCallbacks,
   setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek, type PeekWikiContextArgs } from "./features/index-table/side-peek";
 import {
-  logTableSlashItem,
   setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
@@ -119,7 +112,6 @@ import {
   type ExportPayload,
 } from "./blocks/data-table";
 import {
-  chartSlashItem,
   ChartAssetSourceFlow,
   setChartAssetSourceCallback,
   type ChartAssetSourceResult,
@@ -366,17 +358,15 @@ import {
 import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates, buildDocumentFromTemplate, pageTemplateToBuildResult, deserializeTemplate, type PageTemplate } from "./features/template";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
+import { TemplatePickerModal, setTemplatePickerCallback, getAllTemplates, buildDocumentFromTemplate, pageTemplateToBuildResult, deserializeTemplate, type PageTemplate } from "./features/template";
 import {
   CitePickerModal,
-  getCiteSlashMenuItems,
   setCitePickerCallback,
   type CitePickerKind,
 } from "./features/cite-picker";
 import { SharedCitePickerModal } from "./features/sharing/SharedCitePickerModal";
 import {
-  sharedCitationSlashItem,
   setSharedCitePickerCallback,
   setSharedEntryOpenCallback,
   openSharedEntry,
@@ -390,7 +380,6 @@ import {
   LabelGalleryView,
   MediaPickerModal,
   NoteMemosSection,
-  getMediaSlashMenuItems,
   setMediaPickerCallback,
   DEFAULT_MEDIA_SLASH_KEYS,
   UrlPasteMenu,
@@ -2819,11 +2808,10 @@ function NoteEditorInner({
     }
   }, [removeBlockMetadata, linkStore]);
 
-  // スラッシュメニューアイテム（既存メディア・メモから挿入）
-  const mediaSlashItems = useMemo(() => getMediaSlashMenuItems(), []);
-  const memoSlashItem = useMemo(() => getMemoSlashMenuItem(), []);
-  const templateSlashItem = useMemo(() => getTemplateSlashMenuItem(), []);
-  const citeSlashItems = useMemo(() => getCiteSlashMenuItems(), []);
+  // スラッシュメニューアイテム。一覧は blocks/slash-items にまとめてあり、SidePeek も
+  // 同じ common を使う。新しい項目はそちらに足す（メインにしか出ない漏れを防ぐため）
+  const mainOnlySlashItems = useMemo(() => getMainEditorOnlySlashMenuItems(), []);
+  const commonSlashItems = useMemo(() => getCommonSlashMenuItems({ includeCite: true }), []);
   // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
   // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
   // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
@@ -6215,7 +6203,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
+              extraSlashMenuItems={[newNoteSlashItem, ...mainOnlySlashItems, ...commonSlashItems]}
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
