@@ -69,6 +69,15 @@ describe("legendItems", () => {
     expect(legendItems([line("σ"), scatter("S")], "vertical")).toEqual({ data: ["σ", "S"], itemWidth: W });
     expect(legendItems([scatter("S"), scatter("zT")], "vertical")).toEqual({ data: ["S", "zT"], itemWidth: W });
   });
+
+  it("狭い図の短い記号枠: 折れ線の枠と、散布図のアイコンを寄せる右端がその幅になる", () => {
+    expect(legendItems([line("A")], "horizontal", 30)).toEqual({ data: ["A"], itemWidth: 30 });
+    const mixed = legendItems([line("σ"), scatter("S", "circle")], "horizontal", 30);
+    expect(mixed.itemWidth).toBe(30);
+    expect(mixed.data[1]).toEqual({ name: "S", icon: scatterLegendIcon("circle", 30) });
+    // 散布図だけの凡例はもともと正方形に詰めるので変わらない
+    expect(legendItems([scatter("S")], "horizontal", 30).itemWidth).toBe(H);
+  });
 });
 
 describe("ECharts の実レイアウト（SSR）", () => {

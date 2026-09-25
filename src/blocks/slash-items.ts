@@ -7,12 +7,13 @@
 //   - getCommonSlashMenuItems: どのエディタでも動く項目。挿入するだけのものか、
 //     受け口（ピッカー・表の登録先等）を「押されたエディタ」をキーに引くもの
 //     （setMediaPickerCallback / setChartAssetSourceCallback /
-//     setRegisterLogTableCallback などの WeakMap 登録）。メインにも SidePeek にも出る
+//     setRegisterLogTableCallback / setTemplatePickerCallback などの WeakMap 登録）。
+//     メインにも SidePeek にも出る
 //   - getMainEditorOnlySlashMenuItems: メインエディタに固定の受け口で動く項目。
 //     モジュール変数 1 つに note-app が登録したコールバックを呼ぶので、SidePeek に
-//     出すと、ピークで押した結果がメイン側のノート（表の注釈・ラベル・リンク）に
-//     書き込まれる。ピークでも使うなら、受け口をエディタ単位の登録に直してから
-//     common へ移す
+//     出すと、ピークで押した結果がメイン側のノート（表の注釈）に書き込まれる。
+//     ピークでも使うなら、受け口をエディタ単位の登録に直してから common へ移す
+//     （時系列テーブルとテンプレートはこの手順で移した）
 //
 // 「新しいノート」はどちらのエディタにも出すが、リンクの記録先（linkStore・noteLinks）が
 // エディタごとに違うので、この一覧には置けない。組み立ては block-link/new-note-slash-item.ts
@@ -47,6 +48,9 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
     ...getMediaSlashMenuItems(),
     bookmarkSlashItem,
     logTableSlashItem,
+    // 時系列テーブルの後ろに置く。メインでの並び（インデックステーブル → 時系列テーブル →
+    // テンプレート）が、どちらもメイン専用の一覧にあった頃と変わらない
+    getTemplateSlashMenuItem(),
     calloutSlashItem,
     stepSlashItem,
     columnsSlashItem,
@@ -63,5 +67,5 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
 
 /** メインエディタに固定の受け口で動く項目（SidePeek には出さない。理由は冒頭） */
 export function getMainEditorOnlySlashMenuItems(): SlashMenuItem[] {
-  return [indexTableSlashItem, getTemplateSlashMenuItem()];
+  return [indexTableSlashItem];
 }
