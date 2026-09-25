@@ -119,7 +119,7 @@ import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, findExist
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
 import { computeBlobHash } from "./lib/storage/shared/hash";
 import { normalizeNoteContexts } from "./features/note-context/context-tags";
-import { syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
+import { remintPastedRowIdentities, syncTableRowIdentitiesToEditor } from "./lib/table-row-identity";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
 import {
@@ -131,6 +131,7 @@ import {
   GRAPHIUM_CLIPBOARD_MIME,
   applyClipboardPayload,
   buildClipboardPayload,
+  carriesBlockStructure,
   computeIdMap,
   embedPayloadInHtml,
   extractPayloadFromHtml,
@@ -160,6 +161,11 @@ import {
   tryConvertNoteLinkPaste as convertNoteLinkPaste,
   type UpdateNoteLinks,
 } from "./features/block-link/mention-insert";
+import {
+  applyPastedMentionLinks,
+  mentionCopyContext,
+  mentionLabelResolver,
+} from "./features/block-link/mention-paste";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
@@ -1769,6 +1775,10 @@ function NoteEditorInner({
     if (f) return f.name.replace(/\.(graphium|provnote)\.json$/, "");
     return null;
   };
+  // 貼り付けで運んだ @リンクの行き先の表示名（貼った先にその `@ラベル` が入ったかを見る）。
+  // 上と同じく paste リスナーから最新の noteIndex / mediaIndex を読むため ref で持つ
+  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
+  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
   // 初期値を URL から取る。ノートを開き直すとこのコンポーネントは作り直されるので、
   // 命令口（openSidePeekRef）だけに頼ると ref 登録前に届いたピーク指定を取りこぼす。
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(() => readPeekFromHash());
@@ -2642,8 +2652,19 @@ function NoteEditorInner({
 
   // ── URL ペースト検知 ──
   const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
-  const pasteListenerRef = useRef<((e: ClipboardEvent) => void) | null>(null);
-  const copyListenerRef = useRef<((e: ClipboardEvent) => void) | null>(null);
+  // いま本文に付いている copy / paste / drop のリスナー（付けた要素ごと）。
+  // handleEditorReady はストアが変わるたびに呼ばれ、本文の DOM ができる前にも来る。
+  // DOM 待ち（rAF）の回が後から重なって付くと、同じ貼り付けを古いクロージャの
+  // リスナーまで処理し、@リンクやブロック間リンクが貼るたびに重複して記録される
+  // （実測で paste が 3 本・drop が 10 本付いていた）。付け替えは必ずここを外してから
+  const clipboardListenersRef = useRef<{
+    el: HTMLElement;
+    copy: (e: ClipboardEvent) => void;
+    paste: (e: ClipboardEvent) => void;
+    drop: (e: DragEvent) => void;
+  } | null>(null);
+  // 付け替えの回。後から来た handleEditorReady が引き継いだら、前の回の DOM 待ちは何もしない
+  const clipboardAttachGenerationRef = useRef(0);
 
   // スラッシュメニューからの URL ピッカーモーダル用状態
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
@@ -2760,15 +2781,7 @@ function NoteEditorInner({
     // ラベル自動設定をセットアップ
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStore, linkStore);
 
-    // 前回のリスナーがあればクリーンアップ。
-    // copy は capture / bubble の両方に登録しているので両方とも removeEventListener する。
-    if (pasteListenerRef.current) {
-      editor.domElement?.removeEventListener("paste", pasteListenerRef.current, true);
-    }
-    if (copyListenerRef.current) {
-      editor.domElement?.removeEventListener("copy", copyListenerRef.current, true);
-      editor.domElement?.removeEventListener("copy", copyListenerRef.current, false);
-    }
+    // 前回のリスナーは、下の attachClipboardListeners が付け替えるときに外す
 
     // copy: 選択範囲の labels / links をクリップボードに載せて運ぶ（Phase 3）。
     //
@@ -2798,6 +2811,8 @@ function NoteEditorInner({
           getLabel: (id) => labelStore.getLabel(id),
           getAttributes: (id) => labelStore.getAttributes(id),
           allLinks: linkStore.getAllLinks(),
+          // @リンクは、コピーした中身に @ラベル があるものだけ（表の 1 行の中ならその行の分だけ）運ぶ（SidePeek と共通）
+          ...mentionCopyContext(editor, (target) => mentionLabelOfRef.current(target)),
         });
         if (!payload) return;
         e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
@@ -2808,7 +2823,6 @@ function NoteEditorInner({
         console.warn("[Graphium copy] error", err);
       }
     };
-    copyListenerRef.current = copyListener;
 
     // URL 単体ペーストならブックマーク選択メニューを出す（段落・リスト項目共通）。
     // 位置はメニュー表示直前に計算する。paste イベント同期時の selection rect は
@@ -2869,8 +2883,10 @@ function NoteEditorInner({
       ) {
         const graphiumRaw = e.clipboardData.getData(GRAPHIUM_CLIPBOARD_MIME);
         const htmlForPayload = e.clipboardData.getData("text/html");
-        const hasGraphiumPayload =
+        const graphiumPayload =
           parseClipboardPayload(graphiumRaw) ?? extractPayloadFromHtml(htmlForPayload);
+        // @リンクだけのペイロード（段落の文字のコピー）はブロックの構造を運ばないので救済する
+        const hasGraphiumPayload = !!graphiumPayload && carriesBlockStructure(graphiumPayload);
         const plain = e.clipboardData.getData("text/plain");
         // Graphium ペイロード（複数ブロック想定）はブロック置換でも構造が保たれるためスルー。
         // ここではプレーンテキスト相当の paste のみ救済する。
@@ -2910,7 +2926,10 @@ function NoteEditorInner({
         setTimeout(() => {
           const afterIds = flattenBlockIds(editor.document);
           const newIds = new Set(afterIds.filter((id) => !beforeIdsForRegen.has(id)));
-          if (newIds.size > 0) regenInlineEntitiesInBlocks(editor, newIds);
+          if (newIds.size === 0) return;
+          // 表の行の identity も同じ理由で、元の表と重なる分だけ振り直す（元の表の行を守る）
+          remintPastedRowIdentities(editor, newIds);
+          regenInlineEntitiesInBlocks(editor, newIds);
         }, 0);
       };
 
@@ -2926,13 +2945,29 @@ function NoteEditorInner({
         setTimeout(() => {
           const afterIds = flattenBlockIds(editor.document);
           const newIds = afterIds.filter((id) => !beforeIds.has(id));
+          // @リンクを行に紐づける前に、複製した表の行の identity を振り直しておく
+          const rowRemap = remintPastedRowIdentities(editor, newIds);
           const idMap = computeIdMap(payload.blockIds, newIds);
-          if (idMap.size === 0) return;
-          applyClipboardPayload(idMap, payload, {
-            setLabel: (blockId, label) => labelStore.setLabel(blockId, label),
-            setAttributes: (blockId, attrs) => labelStore.setAttributes(blockId, attrs),
-            addLink: (params) => linkStore.addLink(params),
-          });
+          if (idMap.size > 0) {
+            applyClipboardPayload(idMap, payload, {
+              setLabel: (blockId, label) => labelStore.setLabel(blockId, label),
+              setAttributes: (blockId, attrs) => labelStore.setAttributes(blockId, attrs),
+              addLink: (params) => linkStore.addLink(params),
+            });
+          }
+          // @リンク（ノート・素材行き）は、貼った先に入ったメンションの分だけ記録し直す。
+          // 文中に貼った（ブロックが増えない）ときも運ぶ（SidePeek と共通。mention-paste.ts）
+          applyPastedMentionLinks(editor, payload, idMap, {
+            addLink: linkStore.addLink,
+            getAllLinks: () => linkStore.getAllLinks(),
+            labelOfTarget: (target) => mentionLabelOfRef.current(target),
+            citeAsset: (fileId) => {
+              if (!citedAssetFileIdsRef.current.includes(fileId)) {
+                citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, fileId];
+              }
+            },
+            updateNoteLinks,
+          }, rowRemap);
         }, 0);
         scheduleEntityRegen();
         return;
@@ -2961,7 +2996,6 @@ function NoteEditorInner({
       if (!currentBlock) return;
       maybeShowUrlPasteMenu(e.clipboardData?.getData("text/plain"), currentBlock.id);
     };
-    pasteListenerRef.current = pasteListener;
 
     // .csv / .txt / .dat のドロップは取り込みダイアログに回す。
     // 何もしないと BlockNote が汎用の file ブロック（添付）として貼り付けてしまい、
@@ -2987,13 +3021,23 @@ function NoteEditorInner({
     // まだ設定されていない段階でも複数回呼ばれるため、ここでガードする。
     // セーブまでリスナーが付かない不具合を防ぐ。
     let attempts = 0;
+    const generation = ++clipboardAttachGenerationRef.current;
     const attachClipboardListeners = () => {
+      if (clipboardAttachGenerationRef.current !== generation) return;
       const domEl = editor.domElement;
       if (!domEl) {
         if (attempts++ < 60) {
           requestAnimationFrame(attachClipboardListeners);
         }
         return;
+      }
+      // 前回付けたものを、付けた要素から外す（copy は capture / bubble の両方）
+      const prev = clipboardListenersRef.current;
+      if (prev) {
+        prev.el.removeEventListener("copy", prev.copy, true);
+        prev.el.removeEventListener("copy", prev.copy, false);
+        prev.el.removeEventListener("paste", prev.paste, true);
+        prev.el.removeEventListener("drop", prev.drop, true);
       }
       // ProseMirror が copy/paste を capture phase で先取りする場合があるため、
       // 自分も capture phase で受け取る。preventDefault はしないので
@@ -3004,6 +3048,7 @@ function NoteEditorInner({
       // bubble phase でも copy を補足する（capture phase で setData した内容を
       // ProseMirror が clearData している場合、bubble の最後でもう一度 setData する）
       domEl.addEventListener("copy", copyListener, false);
+      clipboardListenersRef.current = { el: domEl, copy: copyListener, paste: pasteListener, drop: dropListener };
     };
     attachClipboardListeners();
   }, [labelStore, linkStore, uploadFile, updateNoteLinks]);

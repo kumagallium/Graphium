@@ -7,6 +7,7 @@ import {
   applyClipboardPayload,
   embedPayloadInHtml,
   extractPayloadFromHtml,
+  carriesBlockStructure,
   GRAPHIUM_CLIPBOARD_VERSION,
   type GraphiumClipboardPayload,
 } from "./clipboard";
@@ -135,6 +136,103 @@ describe("buildClipboardPayload", () => {
     expect(payload).not.toBeNull();
     expect(payload!.labels).toEqual({});
     expect(payload!.links).toHaveLength(1);
+  });
+});
+
+describe("buildClipboardPayload — @リンク（行き先がノート・素材）", () => {
+  const mention = (id: string, source: string, target: string, row?: string): BlockLink => ({
+    id,
+    sourceBlockId: source,
+    targetBlockId: "",
+    targetNoteId: target,
+    type: "reference",
+    layer: "knowledge",
+    createdBy: "human",
+    ...(row ? { sourceRowIdentity: row } : {}),
+  });
+  const base = {
+    getLabel: () => undefined,
+    getAttributes: () => undefined,
+  };
+
+  it("出どころがコピー範囲にある @リンクを、両端が範囲内のリンクとは別に運ぶ（ラベルが無くても）", () => {
+    const payload = buildClipboardPayload({
+      ...base,
+      blockIds: ["p1"],
+      allLinks: [mention("m1", "p1", "data:f1"), mention("m2", "outside", "n9")],
+    });
+    expect(payload).not.toBeNull();
+    expect(payload!.links).toEqual([]);
+    expect(payload!.mentionLinks).toEqual([{ sourceBlockId: "p1", targetNoteId: "data:f1" }]);
+  });
+
+  it("表の行に紐づくリンクは、行の identity ごと運ぶ", () => {
+    const payload = buildClipboardPayload({
+      ...base,
+      blockIds: ["tbl"],
+      allLinks: [mention("m1", "tbl", "data:f1", "row_a"), mention("m2", "tbl", "data:f2", "row_b")],
+    });
+    expect(payload!.mentionLinks).toEqual([
+      { sourceBlockId: "tbl", targetNoteId: "data:f1", sourceRowIdentity: "row_a" },
+      { sourceBlockId: "tbl", targetNoteId: "data:f2", sourceRowIdentity: "row_b" },
+    ]);
+  });
+
+  it("コピーした中身に @ラベル が無い行き先のリンクは運ばない（何も残らなければペイロードも作らない）", () => {
+    const allLinks = [mention("m1", "p1", "data:f1"), mention("m2", "p1", "n1")];
+    const payload = buildClipboardPayload({ ...base, blockIds: ["p1"], allLinks, carriesMention: (t) => t === "n1" });
+    expect(payload!.mentionLinks).toEqual([{ sourceBlockId: "p1", targetNoteId: "n1" }]);
+    expect(buildClipboardPayload({ ...base, blockIds: ["p1"], allLinks, carriesMention: () => false })).toBeNull();
+  });
+
+  it("表の 1 行の中だけのコピーは、その行のリンクだけ（行の記録が無い旧いリンクは残す）", () => {
+    const payload = buildClipboardPayload({
+      ...base,
+      blockIds: ["tbl"],
+      copiedRow: { blockId: "tbl", rowIdentity: "row_b" },
+      allLinks: [
+        mention("m1", "tbl", "data:f1", "row_a"),
+        mention("m2", "tbl", "data:f2", "row_b"),
+        mention("m3", "tbl", "n1"),
+      ],
+    });
+    expect(payload!.mentionLinks).toEqual([
+      { sourceBlockId: "tbl", targetNoteId: "data:f2", sourceRowIdentity: "row_b" },
+      { sourceBlockId: "tbl", targetNoteId: "n1" },
+    ]);
+    // identity の無い行（見出し行など）の中だけなら、行に紐づくリンクはどれも運ばない
+    const header = buildClipboardPayload({
+      ...base,
+      blockIds: ["tbl"],
+      copiedRow: { blockId: "tbl", rowIdentity: null },
+      allLinks: [mention("m1", "tbl", "data:f1", "row_a"), mention("m3", "tbl", "n1")],
+    });
+    expect(header!.mentionLinks).toEqual([{ sourceBlockId: "tbl", targetNoteId: "n1" }]);
+  });
+
+  it("parse で @リンクが戻り、旧いペイロード（欄なし）・形の崩れた欄も読める", () => {
+    const payload = buildClipboardPayload({
+      ...base,
+      blockIds: ["tbl"],
+      allLinks: [mention("m1", "tbl", "data:f1", "row_a")],
+    })!;
+    expect(parseClipboardPayload(JSON.stringify(payload))).toEqual(payload);
+    const legacy = { version: GRAPHIUM_CLIPBOARD_VERSION, blockIds: ["a"], labels: {}, links: [] };
+    expect(parseClipboardPayload(JSON.stringify(legacy))!.mentionLinks).toBeUndefined();
+    const broken = {
+      ...legacy,
+      mentionLinks: [{ sourceBlockId: "a" }, { sourceBlockId: "a", targetNoteId: "n1", sourceRowIdentity: 3 }, { sourceBlockId: "a", targetNoteId: "n2" }],
+    };
+    expect(parseClipboardPayload(JSON.stringify(broken))!.mentionLinks).toEqual([{ sourceBlockId: "a", targetNoteId: "n2" }]);
+  });
+});
+
+describe("carriesBlockStructure", () => {
+  it("ラベルかブロック間リンクがあれば true、@リンクだけなら false", () => {
+    const base = { version: GRAPHIUM_CLIPBOARD_VERSION, blockIds: ["a"], labels: {}, links: [] };
+    expect(carriesBlockStructure({ ...base, labels: { a: "procedure" } })).toBe(true);
+    expect(carriesBlockStructure({ ...base, links: [makeLink("l1", "a", "b")] })).toBe(true);
+    expect(carriesBlockStructure({ ...base, mentionLinks: [{ sourceBlockId: "a", targetNoteId: "n1" }] })).toBe(false);
   });
 });
 
