@@ -21,7 +21,8 @@ export type PlanSourceCheckStatement = {
   title: string;
   /** API に渡す本文。知見: 知見本文全体。トピック: そのブロックのプレーンテキスト */
   body: string;
-  /** claimHash 計算用の本文（常にドキュメント全体のプレーンテキスト。知見は body と同じ） */
+  /** claimHash 計算用の本文（常にドキュメント全体。claim-hash.ts の claimHashBody で作る
+   *  v1 固定の指紋で、AI に渡す body とは抽出が違う — 知見でも body と一致するとは限らない） */
   hashBody: string;
   /** 出典 ID 一覧。知見: derivedFromNotes。トピック: そのブロックが引いた知見 ID に
    *  "claim:" プレフィックスを付けたもの */

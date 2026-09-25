@@ -146,9 +146,13 @@ talks to LLM and embedding backends.
   `node_modules` into `public/mathlive/fonts/` by a Vite plugin, because
   MathLive fetches them at runtime rather than through CSS. Conversion to and from Markdown (`$ … $`,
   `$$ … $$`) is centralized in `src/features/math/markdown-math.ts` — every
-  Markdown → block path goes through `parseMarkdownToBlocksWithMath`, because
-  BlockNote's own parser destroys LaTeX delimiters and eats `^` / `_` as
-  emphasis markers.
+  Markdown → block path that goes through BlockNote's parser goes through
+  `parseMarkdownToBlocksWithMath`, because BlockNote's own parser destroys
+  LaTeX delimiters and eats `^` / `_` as emphasis markers. The knowledge
+  layer's own reader for model output (`parseInlineCitations` /
+  `convertSectionsToBlocks` in `wiki-service.ts`) does not use BlockNote's
+  parser, but it detects formulas with the same `stashMath` before looking for
+  anything else, so the two paths agree on what counts as a formula.
 - Superscript and subscript are boolean text styles (`styles.superscript` /
   `styles.subscript`, rendered as `<sup>` / `<sub>`), so units and chemical
   formulas such as 10⁵ Pa or H₂O can sit in running text without opening the
@@ -162,6 +166,29 @@ talks to LLM and embedding backends.
   `parseMarkdownToBlocksWithMath` reads the tags back. Like every persisted
   style, both are listed in `KNOWN_STYLE_KEYS` (see
   [DATA_MODEL.md §8](DATA_MODEL.md)).
+  Text handed to a model without going through the Markdown export uses the
+  same notation: the knowledge layer's input (`extractPlainTextFromDoc` /
+  `extractBlockText` in `wiki-service.ts`, which ingest, the Topic stage and
+  source check all read) and the MCP server's note bodies
+  (`src/mcp/note-text.ts`) write superscript / subscript as tags, formulas as
+  `$ … $` / `$$ … $$`, and links as their text. Both render inline content
+  through `features/markdown-export/inline-text.ts`, and the knowledge layer's
+  reader turns tags and formulas in the model's reply back into styles,
+  `inlineMath` and `math` blocks, so a formula survives a round trip through a
+  rewrite. Places where the text is a key rather than something a model reads
+  keep it plain, without tags: the lexical index (whose NFKC normalization
+  already folds 10⁵ to 105), the MCP search index, outlines, PROV labels, the
+  proposal diff, and the source-check fingerprint (`claimHash`, see
+  [DATA_MODEL.md](DATA_MODEL.md)). All of these except PROV labels and the
+  fingerprint render inline content with the same `inline-text.ts` in its
+  plain mode, so links still count as their text and formulas as `$ … $` —
+  including the Wiki section text that the lexical index and the
+  semantic-search embeddings share (`wiki/section-extract.ts`), the outlines
+  and label previews in the note index (`navigation/index-file.ts`), and the
+  statements checked on old-format Topics. An embedding keeps the text it was
+  made from until its page is saved again or the user re-embeds every page
+  from Settings; nothing re-embeds existing pages automatically, because that
+  spends the user's API key.
 - `step` is the one container block: it holds child blocks, and a procedure is
   written by putting its content inside a step rather than by labelling a
   heading. Nesting and reordering use BlockNote's own drag handle. The card's
@@ -2022,7 +2049,10 @@ lexical index (§3.3) lives in IndexedDB and is unreachable from outside the
 browser. Reading the whole vault costs ~160ms and the MiniSearch build brings
 first search to ~600ms; later calls are ~2ms. The tokenizer is imported from
 `src/features/lexical-search/tokenizer.ts` so that CJK segmentation matches the
-app — otherwise a query would hit in Graphium and miss over MCP.
+app — otherwise a query would hit in Graphium and miss over MCP. For the same
+reason the index is built from note bodies rendered without `<sup>` / `<sub>`
+tags (`noteToMarkdown(doc, { scripts: false })`), while `get_note` returns them
+with tags.
 
 ## 5. Sharing and Library
 

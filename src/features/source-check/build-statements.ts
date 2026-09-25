@@ -12,6 +12,7 @@ import { isAiAnswerClaim } from "./ai-answer";
 import { toClaimSourceId } from "./claim-source-id";
 import type { PlanSourceCheckStatement } from "./plan";
 import { extractSourceTopicStatements, extractTopicStatements } from "./topic-statements";
+import { claimHashBody } from "./claim-hash";
 import { extractPlainTextFromDoc } from "../wiki/wiki-service";
 
 export type SourceCheckTarget = {
@@ -25,13 +26,15 @@ export type SourceCheckTarget = {
 function buildClaimStatement(target: SourceCheckTarget): PlanSourceCheckStatement {
   const { docId, doc } = target;
   const title = doc.title ?? "";
-  const hashBody = extractPlainTextFromDoc(doc);
+  // AI に渡す本文（上付き・下付き・数式を保つ）と、claimHash の指紋（v1 の抽出に固定）は別
+  const body = extractPlainTextFromDoc(doc);
+  const hashBody = claimHashBody(doc);
   if (isAiAnswerClaim(doc)) {
     return {
       id: docId,
       docId,
       title,
-      body: hashBody,
+      body,
       hashBody,
       sourceIds: doc.wikiMeta?.derivedFromNotes ?? [],
       knownMissingReason: "ai-answer",
@@ -41,7 +44,7 @@ function buildClaimStatement(target: SourceCheckTarget): PlanSourceCheckStatemen
     id: docId,
     docId,
     title,
-    body: hashBody,
+    body,
     hashBody,
     sourceIds: doc.wikiMeta?.derivedFromNotes ?? [],
   };
@@ -51,7 +54,7 @@ function buildClaimStatement(target: SourceCheckTarget): PlanSourceCheckStatemen
 function buildTopicStatements(target: SourceCheckTarget): PlanSourceCheckStatement[] {
   const { docId, doc } = target;
   const title = doc.title ?? "";
-  const hashBody = extractPlainTextFromDoc(doc);
+  const hashBody = claimHashBody(doc);
   // 新形式（wikiMeta.topicMarkdown あり）は資料 id を直接引用するので出典照合が 1 段になる
   // （toClaimSourceId を通さない）。旧形式はメンバー知見 id に "claim:" を付けて 2 段のまま。
   // answer（回答ページ）は常に topicMarkdown を持つため常に 1 段になる。
@@ -65,7 +68,7 @@ function buildTopicStatements(target: SourceCheckTarget): PlanSourceCheckStateme
         id: docId,
         docId,
         title,
-        body: hashBody,
+        body: extractPlainTextFromDoc(doc),
         hashBody,
         sourceIds: [],
       },

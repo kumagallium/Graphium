@@ -7,6 +7,7 @@ import { getLocale } from "../i18n";
 import { migrateToLatest } from "../lib/document-migration";
 import { clearAppDataFileCache } from "../lib/storage/app-data-file";
 import { getActiveProvider } from "../lib/storage/registry";
+import type { StorageProvider } from "../lib/storage/types";
 import { PROV_TEMPLATE } from "../lib/prov-template";
 import { recordRevision } from "../features/document-provenance/tracker";
 import type { EditActivityType } from "../features/document-provenance/types";
@@ -29,6 +30,9 @@ export type WikiSaveOptions = {
    *  merge ならマージ元ノート、cross-update ならトリガーノート、
    *  regenerate なら再生成に使った全ソースを渡す。 */
   sources?: string[];
+  /** 保存中（savingRef）でも捨てずに書く。メインエディタのアンマウント時の書き出し用。
+   *  他の保存と並んで走るので savingRef は立てない */
+  force?: boolean;
 };
 import {
   buildDerivedDocument,
@@ -59,6 +63,7 @@ import {
 import {
   getRecentNotes,
   addToRecent,
+  renameInRecent,
   removeFromRecent,
   ensureIndex,
   readIndexFile,
@@ -111,6 +116,22 @@ import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 import { normalizeTableRowIdentities } from "../lib/table-row-identity";
 import { flushPeekSaves } from "../lib/peek-save-queue";
 import { t as tStatic } from "../i18n";
+
+/**
+ * メインエディタの保存先。エディタを開いた時点で決まり、保存のたびに
+ * activeFileId を読み直さない（ノートを切り替えた後に届く保存・アンマウント時の書き出しを
+ * 切り替え先のノートへ書かないため）
+ */
+export type EditorSaveTarget = {
+  /** 開いたときの activeFileId（wiki:/skill: 付きのことがある）。新規ノートは null */
+  key: string | null;
+  /** 保存の種類（開いた doc の source で決まる） */
+  kind: "note" | "wiki" | "skill";
+  /** エディタを開いた回（editorKey）。新規ノートの採番と、同じノートの開き直しの判定に使う */
+  session: number;
+  /** エディタを開いたときの保存先。切り替わっていたら書かない */
+  provider: StorageProvider;
+};
 
 // ストレージプロバイダー経由のファイル操作ヘルパー
 const storage = () => getActiveProvider();
@@ -1227,6 +1248,133 @@ export function useFileManager(authenticated: boolean) {
     [files, updateLoadedProcessIndexEntry, createProcessIndexScope],
   );
 
+  // ノートを 1 件書く本体（handleSave と saveEditorDoc が共有する）。fileId が null なら新規作成。
+  // 例外はそのまま投げる（呼び出し側が保存失敗を知らせる）。戻り値は書いたノートの id。
+  // - activate: 新規作成したノートを開いているノートにする。そのエディタがもう画面に無い
+  //   （別のノートへ移った後に書き出した）ときは false — 移った先を奪わない
+  // - background: 開いているノートではない（移った後の書き出し）。最近のノートの並びを変えない
+  const writeNoteDoc = useCallback(
+    async (
+      fileId: string | null,
+      doc: GraphiumDocument,
+      opts: { activate: boolean; background: boolean },
+    ): Promise<string> => {
+      // 孤児リンクをクリーンアップ（存在しないノートへの参照を除去）。
+      // ただし一覧（files）が未ロード／transient 失敗で空のときに実行すると、
+      // 生きているリンクまで「孤児」とみなして全消去してしまう。一覧が信頼できる
+      // とき（ロード完了かつ非空）だけ掃除する。
+      if (!filesLoading && files.length > 0) {
+        const fileIds = new Set(files.map((f) => f.id));
+        if (doc.noteLinks) {
+          doc = { ...doc, noteLinks: doc.noteLinks.filter((l) => fileIds.has(l.targetNoteId)) };
+          if (doc.noteLinks!.length === 0) doc = { ...doc, noteLinks: undefined };
+        }
+        if (doc.derivedFromNoteId && !fileIds.has(doc.derivedFromNoteId)) {
+          doc = { ...doc, derivedFromNoteId: undefined, derivedFromBlockId: undefined };
+        }
+      }
+      // テーブル行の identity は保存時にのみ補う。以降の保存・キャッシュ・投影は
+      // 同じ正規化済みドキュメントを使い、ノート横断参照とのズレを作らない。
+      doc = normalizeTableRowIdentities(doc);
+
+      let savedFileId: string;
+      let savedModifiedTime: string;
+      if (fileId) {
+        // 既存ノートは常に同じ id へ上書き保存する。
+        // ここで「新規作成」分岐に落ちると、同一ノートが新 id で複製され、
+        // 既存の被参照リンク（他ノート→旧 id）が取り残されてしまう。
+        // soft-delete / 完全削除はアクティブノートの activeFileId を null にするため、
+        // fileId が立っている = そのノートは開いていてゴミ箱にない、が保証される
+        // （アンマウント時の書き出しは shouldFlushEditor が削除済みを外す）。
+        // よって一覧（files）が transient なロード失敗で stale/空でも、複製ではなく上書きが正しい。
+        await saveFile(fileId, doc);
+        savedModifiedTime = new Date().toISOString();
+        savedFileId = fileId;
+        // キャッシュも更新
+        docCacheRef.current.set(fileId, doc);
+        // activeDoc も最新化しておく。一覧やギャラリー等から本文へ戻ってエディタが
+        // 再マウントされる際の復元元（NoteEditor の initialDoc）が、開いた時点の古い
+        // 内容のままだと保存済みの編集まで巻き戻るため、保存のたびに追従させる。
+        // NoteEditor 側の初期化は initializedRef で一度きりにガードされており、
+        // initialDoc が変わってもマウント済みエディタの内容は再設定されない（チラつかない）。
+        if (fileId === activeFileIdRef.current) {
+          setActiveDoc(doc);
+        }
+        // ローカルのファイル一覧を upsert（stale で欠けていても復元する）
+        setFiles((prev) => {
+          const name = `${doc.title}.graphium.json`;
+          const modifiedTime = savedModifiedTime;
+          if (prev.some((f) => f.id === fileId)) {
+            return prev.map((f) =>
+              f.id === fileId ? { ...f, name, modifiedTime } : f
+            );
+          }
+          return [
+            { id: fileId, name, modifiedTime, createdTime: doc.createdAt ?? modifiedTime },
+            ...prev,
+          ];
+        });
+        // 最近のノートを更新（移った後の書き出しは並びを変えずタイトルだけ）
+        setRecentNotes(
+          opts.background ? renameInRecent(fileId, doc.title) : addToRecent(fileId, doc.title),
+        );
+      } else {
+        // 新規作成
+        const newId = await createFile(doc.title, doc);
+        savedModifiedTime = new Date().toISOString();
+        savedFileId = newId;
+        docCacheRef.current.set(newId, doc);
+        if (opts.activate) {
+          setActiveDoc(doc);
+          setActiveFileId(newId);
+          // 最近のノートに追加
+          setRecentNotes(addToRecent(newId, doc.title));
+        }
+        // 新規ファイルを一覧に追加
+        const newFile: GraphiumFile = {
+          id: newId,
+          name: `${doc.title}.graphium.json`,
+          modifiedTime: savedModifiedTime,
+          createdTime: savedModifiedTime,
+        };
+        setFiles((prev) => [newFile, ...prev]);
+      }
+
+      // 未ロードなら、一覧を開いたときに構築する既存の遅延方針を維持する。
+      updateLoadedProcessIndexEntry(savedFileId, doc, savedModifiedTime);
+
+      // インデックスを差分更新
+      if (noteIndexRef.current) {
+        const updated = updateIndexEntry(noteIndexRef.current, savedFileId, doc);
+        noteIndexRef.current = updated;
+        setNoteIndex(updated);
+        queueSaveIndex(updated);
+      }
+
+      // メディアインデックスの usedIn を同期
+      if (mediaIndexRef.current) {
+        if (doc.pages[0]) {
+          const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
+          // PROV ノートはトップレベル `sourcePdfFileId` で PDF を参照するので
+          // document-level の PDF 参照も渡して usedIn に反映する。
+          const docPdfRefs = collectSourceAssetFileIdsFromDoc(doc);
+          // mediaIndexRef.current（フックが控えている古いスナップショット）を
+          // そのまま土台にすると、投入口後追い OCR のように裏で長時間 latestIndex/
+          // ディスクへ直接書き込む処理と競合し、片方の更新を丸ごと消してしまう。
+          // readMediaIndex() で「ディスクと latestIndex のうち新しい方」を取り直して
+          // から usedIn を組み立てる（persistOcrTextPatch 等と同じ read-modify-write）。
+          const latest = (await readMediaIndex()) ?? mediaIndexRef.current;
+          const updated = syncUsedIn(latest, savedFileId, doc.title, mediaMap, docPdfRefs);
+          mediaIndexRef.current = updated;
+          setMediaIndex(updated);
+          saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+        }
+      }
+      return savedFileId;
+    },
+    [setActiveFileId, files, filesLoading, updateLoadedProcessIndexEntry]
+  );
+
   // 保存（ref 経由で常に最新の activeFileId を使用）
   const handleSave = useCallback(
     async (doc: GraphiumDocument) => {
@@ -1235,113 +1383,7 @@ export function useFileManager(authenticated: boolean) {
       savingRef.current = true;
       setSaving(true);
       try {
-        // 孤児リンクをクリーンアップ（存在しないノートへの参照を除去）。
-        // ただし一覧（files）が未ロード／transient 失敗で空のときに実行すると、
-        // 生きているリンクまで「孤児」とみなして全消去してしまう。一覧が信頼できる
-        // とき（ロード完了かつ非空）だけ掃除する。
-        if (!filesLoading && files.length > 0) {
-          const fileIds = new Set(files.map((f) => f.id));
-          if (doc.noteLinks) {
-            doc = { ...doc, noteLinks: doc.noteLinks.filter((l) => fileIds.has(l.targetNoteId)) };
-            if (doc.noteLinks!.length === 0) doc = { ...doc, noteLinks: undefined };
-          }
-          if (doc.derivedFromNoteId && !fileIds.has(doc.derivedFromNoteId)) {
-            doc = { ...doc, derivedFromNoteId: undefined, derivedFromBlockId: undefined };
-          }
-        }
-        // テーブル行の identity は保存時にのみ補う。以降の保存・キャッシュ・投影は
-        // 同じ正規化済みドキュメントを使い、ノート横断参照とのズレを作らない。
-        doc = normalizeTableRowIdentities(doc);
-
-        const currentFileId = activeFileIdRef.current;
-        let savedFileId: string;
-        let savedModifiedTime: string;
-        if (currentFileId) {
-          // 既存ノートは常に同じ id へ上書き保存する。
-          // ここで「新規作成」分岐に落ちると、同一ノートが新 id で複製され、
-          // 既存の被参照リンク（他ノート→旧 id）が取り残されてしまう。
-          // soft-delete / 完全削除はアクティブノートの activeFileId を null にするため、
-          // currentFileId が立っている = そのノートは開いていてゴミ箱にない、が保証される。
-          // よって一覧（files）が transient なロード失敗で stale/空でも、複製ではなく上書きが正しい。
-          await saveFile(currentFileId, doc);
-          savedModifiedTime = new Date().toISOString();
-          savedFileId = currentFileId;
-          // キャッシュも更新
-          docCacheRef.current.set(currentFileId, doc);
-          // activeDoc も最新化しておく。一覧やギャラリー等から本文へ戻ってエディタが
-          // 再マウントされる際の復元元（NoteEditor の initialDoc）が、開いた時点の古い
-          // 内容のままだと保存済みの編集まで巻き戻るため、保存のたびに追従させる。
-          // NoteEditor 側の初期化は initializedRef で一度きりにガードされており、
-          // initialDoc が変わってもマウント済みエディタの内容は再設定されない（チラつかない）。
-          if (currentFileId === activeFileIdRef.current) {
-            setActiveDoc(doc);
-          }
-          // ローカルのファイル一覧を upsert（stale で欠けていても復元する）
-          setFiles((prev) => {
-            const name = `${doc.title}.graphium.json`;
-            const modifiedTime = savedModifiedTime;
-            if (prev.some((f) => f.id === currentFileId)) {
-              return prev.map((f) =>
-                f.id === currentFileId ? { ...f, name, modifiedTime } : f
-              );
-            }
-            return [
-              { id: currentFileId, name, modifiedTime, createdTime: doc.createdAt ?? modifiedTime },
-              ...prev,
-            ];
-          });
-          // 最近のノートを更新
-          setRecentNotes(addToRecent(currentFileId, doc.title));
-        } else {
-          // 新規作成
-          const newId = await createFile(doc.title, doc);
-          savedModifiedTime = new Date().toISOString();
-          savedFileId = newId;
-          docCacheRef.current.set(newId, doc);
-          setActiveDoc(doc);
-          setActiveFileId(newId);
-          // 最近のノートに追加
-          setRecentNotes(addToRecent(newId, doc.title));
-          // 新規ファイルを一覧に追加
-          const newFile: GraphiumFile = {
-            id: newId,
-            name: `${doc.title}.graphium.json`,
-            modifiedTime: savedModifiedTime,
-            createdTime: savedModifiedTime,
-          };
-          setFiles((prev) => [newFile, ...prev]);
-        }
-
-        // 未ロードなら、一覧を開いたときに構築する既存の遅延方針を維持する。
-        updateLoadedProcessIndexEntry(savedFileId, doc, savedModifiedTime);
-
-        // インデックスを差分更新
-        if (noteIndexRef.current) {
-          const updated = updateIndexEntry(noteIndexRef.current, savedFileId, doc);
-          noteIndexRef.current = updated;
-          setNoteIndex(updated);
-          queueSaveIndex(updated);
-        }
-
-        // メディアインデックスの usedIn を同期
-        if (mediaIndexRef.current) {
-          if (doc.pages[0]) {
-            const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
-            // PROV ノートはトップレベル `sourcePdfFileId` で PDF を参照するので
-            // document-level の PDF 参照も渡して usedIn に反映する。
-            const docPdfRefs = collectSourceAssetFileIdsFromDoc(doc);
-            // mediaIndexRef.current（フックが控えている古いスナップショット）を
-            // そのまま土台にすると、投入口後追い OCR のように裏で長時間 latestIndex/
-            // ディスクへ直接書き込む処理と競合し、片方の更新を丸ごと消してしまう。
-            // readMediaIndex() で「ディスクと latestIndex のうち新しい方」を取り直して
-            // から usedIn を組み立てる（persistOcrTextPatch 等と同じ read-modify-write）。
-            const latest = (await readMediaIndex()) ?? mediaIndexRef.current;
-            const updated = syncUsedIn(latest, savedFileId, doc.title, mediaMap, docPdfRefs);
-            mediaIndexRef.current = updated;
-            setMediaIndex(updated);
-            saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
-          }
-        }
+        await writeNoteDoc(activeFileIdRef.current, doc, { activate: true, background: false });
       } catch (err) {
         console.error("保存に失敗:", err);
         alert(tStatic("editor.saveFailed"));
@@ -1350,7 +1392,112 @@ export function useFileManager(authenticated: boolean) {
         setSaving(false);
       }
     },
-    [setActiveFileId, files, filesLoading, updateLoadedProcessIndexEntry]
+    [writeNoteDoc]
+  );
+
+  // ── メインエディタの保存（保存先はエディタを開いた時点で固定） ──
+  // エディタは開いたノートの EditorSaveTarget を持ち、保存のたびにそれを渡す。
+  // activeFileId を保存の時点で読むと、ノートを切り替えた後に届く保存（アンマウント時の
+  // 書き出し・切り替えの直前に始まった保存）が切り替え先のノートを上書きする。
+  //
+  // 新規ノート（key が null）は、その回（session）で最初の保存が作ったノートへ書き続ける。
+  // 作成中に次の保存が来たら、作成が終わるのを待ってから同じノートへ書く（二重に作らない）
+  const createdIdBySessionRef = useRef(new Map<number, string>());
+  const creatingBySessionRef = useRef(new Map<number, Promise<string | null>>());
+  // いま画面にあるエディタの回。描画の時点で進めておく（古いエディタの後片付けはその後に走る）
+  const editorKeyRef = useRef(editorKey);
+  editorKeyRef.current = editorKey;
+
+  /** 保存先のノートの activeFileId の形（新規ノートはこの回で作った id） */
+  const resolveEditorTargetKey = (target: EditorSaveTarget): string | null =>
+    target.key ?? createdIdBySessionRef.current.get(target.session) ?? null;
+
+  /**
+   * アンマウントしたエディタの未保存を書き出すか（後片付けの中で同期で決める）。
+   * 書かないのは:
+   * - 保存先が切り替わった（プロバイダーの切り替え・サインアウトでキャッシュが空になった）
+   * - ノートが消された（完全削除はキャッシュからも外す）
+   * - 同じノートが新しい回のエディタで開き直された。素材名の変更・Skill のリセット・版の復元・
+   *   新しい doc を持ち込んだ再オープンなど、外から書き換えた doc でエディタを作り直す経路で、
+   *   書き出すと外の更新を古い本文で上書きする（この場合は従来どおり外の更新を採る）
+   */
+  const shouldFlushEditor = useCallback((target: EditorSaveTarget): boolean => {
+    if (storage() !== target.provider) return false;
+    const key = resolveEditorTargetKey(target);
+    if (!key) return true; // まだ作っていない新規ノート（作って書く）
+    if (!docCacheRef.current.has(key)) return false;
+    if (key === activeFileIdRef.current && editorKeyRef.current !== target.session) return false;
+    return true;
+  }, []);
+
+  /**
+   * メインエディタからの保存。書けたら true、書かなかった・書けなかったら false
+   * （エディタは false のとき編集を「未保存」のまま持ち、次の保存・アンマウント時に書き直す）。
+   * unmounting: アンマウント時の書き出し。保存中（savingRef）でも捨てず、savingRef も立てない
+   * （立てると移った先のノートの自動保存を捨てる）。順序はエディタ側が直前の保存を待って守る
+   */
+  const saveEditorDoc = useCallback(
+    async (
+      target: EditorSaveTarget,
+      doc: GraphiumDocument,
+      opts?: { unmounting?: boolean },
+    ): Promise<boolean> => {
+      if (storage() !== target.provider) return false;
+      const force = !!opts?.unmounting;
+      const rawKey = target.key?.replace(/^(wiki|skill):/, "") ?? null;
+      if (target.kind === "wiki") {
+        return rawKey ? handleSaveWikiFile(rawKey, doc, force ? { force } : undefined) : false;
+      }
+      if (target.kind === "skill") {
+        return rawKey ? handleSaveSkillFile(rawKey, doc) : false;
+      }
+      if (!force) {
+        // 保存中なら二重実行しない（handleSave と同じ）。捨てた分はエディタが未保存のまま持つ
+        if (savingRef.current) return false;
+        savingRef.current = true;
+        setSaving(true);
+      }
+      try {
+        let fileId = resolveEditorTargetKey(target);
+        if (!fileId) {
+          const creating = creatingBySessionRef.current.get(target.session);
+          if (creating) fileId = await creating;
+        }
+        // そのエディタがまだ画面の回か（一覧・ギャラリーを開いている間も同じ回）
+        const sessionCurrent = editorKeyRef.current === target.session;
+        if (fileId) {
+          await writeNoteDoc(fileId, doc, {
+            activate: false,
+            background: fileId !== activeFileIdRef.current,
+          });
+        } else {
+          const creating = writeNoteDoc(null, doc, {
+            // 別のノート・別の新規ノートへ移った後なら、作ったノートを開かない
+            activate: sessionCurrent && activeFileIdRef.current === null,
+            background: !sessionCurrent,
+          });
+          creatingBySessionRef.current.set(target.session, creating.catch(() => null));
+          try {
+            createdIdBySessionRef.current.set(target.session, await creating);
+          } finally {
+            creatingBySessionRef.current.delete(target.session);
+          }
+        }
+        return true;
+      } catch (err) {
+        console.error("保存に失敗:", err);
+        alert(tStatic("editor.saveFailed"));
+        return false;
+      } finally {
+        if (!force) {
+          savingRef.current = false;
+          setSaving(false);
+        }
+      }
+    },
+    // handleSaveWikiFile / handleSaveSkillFile は依存なしの安定した関数（下で宣言）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [writeNoteDoc]
   );
 
   // 派生ノートを別ファイルとして作成
@@ -2630,9 +2777,13 @@ export function useFileManager(authenticated: boolean) {
   // パイプラインが「保存されていないのに成功記録する」偽成功の温床だった）。
   const handleSaveWikiFile = useCallback(
     async (wikiId: string, doc: GraphiumDocument, options?: WikiSaveOptions): Promise<boolean> => {
-      if (savingRef.current) return false;
-      savingRef.current = true;
-      setSaving(true);
+      // force（メインエディタのアンマウント時の書き出し）は保存中でも書き、savingRef も立てない
+      const ownsLock = !options?.force;
+      if (ownsLock) {
+        if (savingRef.current) return false;
+        savingRef.current = true;
+        setSaving(true);
+      }
       try {
         // Claim corroboration（candidate → verified）は保存チョークポイントで一括評価する。
         // - 独立ソース = derivedFromNotes のうち「自分自身」と「他の wiki ページ
@@ -2774,8 +2925,10 @@ export function useFileManager(authenticated: boolean) {
         console.error("Wiki の保存に失敗:", err);
         return false;
       } finally {
-        savingRef.current = false;
-        setSaving(false);
+        if (ownsLock) {
+          savingRef.current = false;
+          setSaving(false);
+        }
       }
     },
     []
@@ -3158,7 +3311,7 @@ export function useFileManager(authenticated: boolean) {
       skillId: string,
       doc: GraphiumDocument,
       options?: { skipKnowledgeSchemaRevision?: boolean },
-    ) => {
+    ): Promise<boolean> => {
       try {
         const previous = docCacheRef.current.get(`skill:${skillId}`);
         const savedDoc = doc.skillMeta?.systemSkillId === "knowledge-schema" &&
@@ -3183,8 +3336,10 @@ export function useFileManager(authenticated: boolean) {
         setSkillFiles((prev) => prev.map((f) =>
           f.id === skillId ? { ...f, modifiedTime: new Date().toISOString() } : f
         ));
+        return true;
       } catch (err) {
         console.error("Skill の保存に失敗:", err);
+        return false;
       }
     },
     []
@@ -3469,6 +3624,8 @@ export function useFileManager(authenticated: boolean) {
     handleNewNote,
     handleNewFromTemplate,
     handleSave,
+    saveEditorDoc,
+    shouldFlushEditor,
     handleSaveNoteById,
     handleDeriveNote,
     handleCreateLinkedNote,

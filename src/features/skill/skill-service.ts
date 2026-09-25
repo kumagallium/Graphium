@@ -390,15 +390,6 @@ export function decideSkillSync(
   return "notify_newer";
 }
 
-function extractInlineText(content: any): string {
-  if (!content) return "";
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content.map((c: any) => c.text ?? c.content ?? "").join("");
-  }
-  return "";
-}
-
 // ----------------------------------------------------------------
 // Markdown <-> BlockNote ブロックの相互変換
 // ----------------------------------------------------------------

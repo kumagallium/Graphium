@@ -60,6 +60,18 @@ function escapeForScriptTag(text: string): string {
 }
 
 /**
+ * escapeForScriptTag の逆。Markdown パーサを通さずにタグの中身を読み戻す所
+ * （Wiki の parseInlineCitations）で使う。AI が書き返した「<sup>\*</sup>」を「*」に戻す。
+ */
+export function unescapeScriptTagText(text: string): string {
+  return text
+    .replace(/\\([\\`*_[\]~])/g, "$1")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+/**
  * テキスト 1 片を Markdown 用に <sup> / <sub> で包む。
  * 戻り値の styles からは上付き・下付きを除く（残りの書式だけを呼び出し側が扱う）。
  * コード書式（styles.code）の片は包まない — コードの中ではタグが文字のまま出るため。

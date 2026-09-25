@@ -113,7 +113,6 @@ import {
   getAssetSuggestions,
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
-  insertNoteMentionInline,
 } from "@features/block-link/mention-menu";
 import {
   insertAssetMention,
@@ -121,6 +120,7 @@ import {
   linkTableRowToNote,
   noteLinkCellAtCursor,
   recordMentionLink,
+  tryConvertNoteLinkPaste as convertNoteLinkPaste,
   type AddReferenceLink,
   type UpdateNoteLinks,
 } from "@features/block-link/mention-insert";
@@ -672,6 +672,8 @@ function SidePeekInner({
     const entry = noteIndex?.notes.find((n) => n.noteId === fileId);
     return entry ? entry.title : null;
   };
+  // noteLinks の書き込み口（updateNoteLinks。宣言はこの後）を paste リスナーから呼ぶための ref
+  const updateNoteLinksRef = useRef<UpdateNoteLinks>(() => {});
 
   // クリップボード処理（メインエディタ src/note-app.tsx の handleEditorReady 内と挙動を揃える）:
   //   copy) 選択ブロックの labels / links を buildClipboardPayload でシリアライズし、
@@ -700,32 +702,18 @@ function SidePeekInner({
 
     // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
     // に変換する。処理した場合 true を返す（呼び出し元で return する）。
-    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean => {
-      const m = /#note\/([^/\s#?]+)/.exec(pastedText);
-      if (!m) return false;
-      const fileId = decodeURIComponent(m[1]);
-      const title = resolveNoteLinkTitleRef.current(fileId);
-      if (!title) return false;
-      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return true;
-      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
-      if (sourceBlockId) {
-        linkStoreRef.current.addLink({
-          sourceBlockId,
-          targetBlockId: "",
-          targetNoteId: fileId,
-          type: "reference",
-          createdBy: "human",
-        });
-      }
-      // insertInlineContent の onChange で自動的に dirty 化・保存される
-      setTimeout(() => {
-        insertNoteMentionInline(editorRef.current, fileId, title);
-      }, 0);
-      return true;
-    };
+    // 変換と記録（reference リンク・noteLinks の派生関係・二重登録ガード）はメインと共通の
+    // mention-insert.ts。以前はピークだけ noteLinks を記録せず、貼り付けで入れたノートへの
+    // 線がグラフ・来歴に出なかった。insertInlineContent の onChange で自動的に dirty 化・保存される
+    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean =>
+      convertNoteLinkPaste(e, pastedText, {
+        editor,
+        getEditor: () => editorRef.current,
+        resolveTitle: (noteId) => resolveNoteLinkTitleRef.current(noteId),
+        addLink: (params) => linkStoreRef.current.addLink(params),
+        // この effect は [sidePeekEditor] でしか張り直さないので、最新の書き込み口を ref で読む
+        updateNoteLinks: (update) => updateNoteLinksRef.current(update),
+      });
 
     // copy: 選択範囲の labels / links をクリップボードに載せて運ぶ（メインと同じ Phase 3）。
     // Chrome はカスタム MIME を OS clipboard へ書き出す際に捨てるため、
@@ -1514,6 +1502,7 @@ function SidePeekInner({
     },
     [handleChange],
   );
+  updateNoteLinksRef.current = updateNoteLinks;
 
   // スラッシュメニューの「新しいノート」。組み立てはメインと共通
   // （block-link/new-note-slash-item.ts）で、記録先だけこのピークのものを渡す:
