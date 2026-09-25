@@ -2178,10 +2178,11 @@ function SidePeekInner({
                 // インデックステーブルの note-link 列で選んだノートは、その行に紐付ける。
                 getMentionSuggestions={(query) => {
                   // 見出し候補は DOM 全体から拾ってしまい（メイン+ピークが同居）紛れるため、
-                  // ピークでは他ノート・素材の参照と新規作成に絞る。
+                  // ピークでは他ノート・素材の参照と新規作成に絞る。ノート・素材は
+                  // 打った文字で全件から先に絞る（メインと同じ）
                   const base = [
-                    ...getNoteSuggestions([], noteId, noteIndex),
-                    ...getAssetSuggestions(mediaIndex),
+                    ...getNoteSuggestions([], noteId, noteIndex, query),
+                    ...getAssetSuggestions(mediaIndex, query),
                   ];
                   // note-link 列では、新しいノートは行アイコンから作る流れに委ねるので
                   // 新規作成候補は出さない（メインと同じ判定。mention-insert.ts）

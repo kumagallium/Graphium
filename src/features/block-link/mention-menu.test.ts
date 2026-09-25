@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { getAssetSuggestions, getNoteSuggestions, resolveMentionTargetFromLinks } from "./mention-menu";
+import {
+  getAssetSuggestions,
+  getCreateNoteSuggestion,
+  getNoteSuggestions,
+  resolveMentionTargetFromLinks,
+} from "./mention-menu";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 
 function note(
@@ -66,6 +71,85 @@ describe("getNoteSuggestions — 同名ノートの subtext", () => {
     expect(dups).toHaveLength(2);
     expect(dups.every((s) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s.subtext ?? ""))).toBe(true);
     expect(suggestions.find((s) => s.label === "本番")?.subtext).toBeUndefined();
+  });
+});
+
+describe("getNoteSuggestions — 打った文字で全ノートから絞る", () => {
+  // 新しい順の 25 件より古いノート（2026-01）を 1 件、その後に新しいノートを 30 件
+  const old = note("old", "焼成条件の検討", "2026-01-05T09:00:00.000Z");
+  const recent = Array.from({ length: 30 }, (_, i) =>
+    note(`n${i}`, `日誌 ${i}`, `2026-09-${String((i % 28) + 1).padStart(2, "0")}T09:00:00.000Z`),
+  );
+  const idx = index([old, ...recent]);
+
+  it("入力が無ければ従来どおり新しい順の 25 件", () => {
+    const ids = getNoteSuggestions([], undefined, idx).map((s) => s.id);
+    expect(ids).toHaveLength(25);
+    expect(ids).not.toContain("old");
+  });
+
+  it("上位 25 件に入らない古いノートも、題名の一部を打てば出る", () => {
+    const suggestions = getNoteSuggestions([], undefined, idx, "焼成");
+    expect(suggestions.map((s) => s.id)).toEqual(["old"]);
+  });
+
+  it("既存ノートと同じ題を打ったとき「新規ノートに」を出さない（同名ノートを作らせない）", () => {
+    const base = getNoteSuggestions([], undefined, idx, "焼成条件の検討");
+    expect(getCreateNoteSuggestion("焼成条件の検討", base)).toBeNull();
+  });
+
+  it("知見は表示名（「🤖 Concept: 題」）で照合する — BlockNote が絞るのも表示名", () => {
+    const withWiki = index([...recent, note("w1", "粒径と密度", "2026-01-01T00:00:00.000Z", "ai")]);
+    expect(getNoteSuggestions([], undefined, withWiki, "粒径").map((s) => s.id)).toEqual(["w1"]);
+    expect(getNoteSuggestions([], undefined, withWiki, "concept").map((s) => s.id)).toEqual(["w1"]);
+  });
+
+  it("大文字・小文字を区別しない", () => {
+    const en = index([note("e1", "XRD Analysis", "2026-01-01T00:00:00.000Z")]);
+    expect(getNoteSuggestions([], undefined, en, "xrd").map((s) => s.id)).toEqual(["e1"]);
+  });
+});
+
+describe("getAssetSuggestions — 打った文字で全素材から絞る", () => {
+  const asset = (fileId: string, name: string, uploadedAt: string, noteContexts?: string[]) => ({
+    fileId,
+    name,
+    type: "data",
+    uploadedAt,
+    url: `media-server://${fileId}`,
+    ...(noteContexts ? { noteContexts } : {}),
+  });
+  // 古い素材 1 件と、新しい素材 20 件
+  const media = [
+    asset("old", "calibration.csv", "2025-12-01T00:00:00.000Z"),
+    ...Array.from({ length: 20 }, (_, i) => asset(`m${i}`, `run-${i}.txt`, `2026-09-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`)),
+  ];
+
+  it("入力が無ければ従来どおり新しい順の 15 件", () => {
+    const ids = getAssetSuggestions({ media } as any).map((s) => s.id);
+    expect(ids).toHaveLength(15);
+    expect(ids).not.toContain("old");
+  });
+
+  it("上位 15 件に入らない古い素材も、名前の一部を打てば出る", () => {
+    expect(getAssetSuggestions({ media } as any, "calib").map((s) => s.id)).toEqual(["old"]);
+  });
+
+  it("取り込み元のフォルダ名でも絞れ、BlockNote が照合できるよう aliases に載せる", () => {
+    const foldered = [
+      asset("s1", "XRD.txt", "2026-09-01T00:00:00.000Z", ["2020/S1"]),
+      asset("s2", "XRD.txt", "2026-09-01T00:00:00.000Z", ["2020/S2"]),
+    ];
+    const hits = getAssetSuggestions({ media: foldered } as any, "S2");
+    expect(hits.map((s) => s.id)).toEqual(["s2"]);
+    expect(hits[0].aliases).toEqual(["2020/S2"]);
+  });
+
+  it("macOS の NFD のファイル名も、打った文字（NFC）で当たり、表示名は NFC にそろう", () => {
+    const nfd = [asset("j1", "データ.txt".normalize("NFD"), "2025-01-01T00:00:00.000Z")];
+    const hits = getAssetSuggestions({ media: nfd } as any, "データ");
+    expect(hits.map((s) => s.id)).toEqual(["j1"]);
+    expect(hits[0].label).toBe("🧾 データ.txt".normalize("NFC"));
   });
 });
 

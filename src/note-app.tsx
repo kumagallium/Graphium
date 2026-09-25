@@ -4869,11 +4869,12 @@ function NoteEditorInner({
     // 表の値は測定ファイル参照が本命なので素材を先に並べる
     setParamLinkSuggestions((query) => {
       const q = query.normalize("NFC").toLowerCase();
-      const assets = getAssetSuggestions(mediaIndex).map((sug) => ({
+      // 打った文字で全件から先に絞る（上位だけに切ってから絞ると古いものが出ない）
+      const assets = getAssetSuggestions(mediaIndex, query).map((sug) => ({
         label: sug.label,
         insert: `@${sug.label.replace(/^(📄|🧾|🖼)\s*/, "")}`,
       }));
-      const notes = getNoteSuggestions(files, undefined, noteIndex).map((sug) => ({
+      const notes = getNoteSuggestions(files, undefined, noteIndex, query).map((sug) => ({
         label: sug.label,
         insert: `@${sug.label}`,
       }));
@@ -5978,10 +5979,12 @@ function NoteEditorInner({
                 return blobUrl;
               }}
               getMentionSuggestions={(query) => {
+                // ノート・素材は打った文字で全件から先に絞る（古いものも打てば出る。
+                // 既存ノートと同じ題なら「新規ノートを作成」も出ない）
                 const base = [
                   ...getHeadingSuggestions(),
-                  ...getNoteSuggestions(files, fileId ?? undefined, noteIndex),
-                  ...getAssetSuggestions(mediaIndex),
+                  ...getNoteSuggestions(files, fileId ?? undefined, noteIndex, query),
+                  ...getAssetSuggestions(mediaIndex, query),
                 ];
                 // 入力中の文字が既存ノートに一致しないとき「新規ノートを作成」を末尾に追加。
                 // インデックステーブルの note-link 列では既存の行→ノート生成フローに
