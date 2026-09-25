@@ -111,6 +111,38 @@ export function isCompactChart(width: number): boolean {
   return width > 0 && width < COMPACT_CHART_WIDTH;
 }
 
+/**
+ * 通常の幅（400px 以上）の図で、枠 1 段の描画領域に下限を設ける試み。採否と値を
+ * 決めるまでの比較用で、既定は当てない（既存ノートの図は動かない）。
+ * Storybook の比較ストーリーだけが値を渡す。
+ *
+ * 高さは「幅 ÷ アスペクト比」なのに余白（凡例 48・横軸名 64・枠の間 80）は固定なので、
+ * 横長（4:1・5:1）や多段の図は枠がほとんど残らない（図 564px の 5:1 で 1px）
+ */
+export type ChartLayoutTrial = {
+  /**
+   * 枠 1 段に確保する高さ(px)。その高さに届くまで図を縦に伸ばす（狭い図の
+   * MIN_COMPACT_PANEL_HEIGHT と同じ考え方で、値だけ小さい）。0 は固定の下限なし
+   */
+  minPanelHeight: number;
+  /**
+   * 縦軸の目盛りラベル 1 間隔に確保する高さ(px)。指定すると、目盛りの本数 × この値に
+   * 届かない枠も伸ばす（minPanelHeight と大きいほう）。本数はデータの範囲から
+   * ECharts の刻みの規則で見積もる（valueAxisTickLabels）。省略すると目盛りは見ない
+   */
+  tickPitch?: number;
+  /**
+   * 縦軸名が図の上下にはみ出さない高さも確保する。軸名は枠の縦の中央に置かれ、
+   * 図の外にはみ出すと ECharts 6 が枠のほうを縮める（grid.outerBoundsMode: "auto"）
+   */
+  fitAxisName?: boolean;
+  /**
+   * オフセット表示で段名を図の中に出す枠に、段 1 つあたり確保する高さ(px)。
+   * 段名は段の上端（下端）から 12px の位置に置かれるので、段が低いと隣の段名と重なる
+   */
+  stackRowPitch?: number;
+};
+
 export type FigureMarginsInput = {
   compact: boolean;
   /** どれかの枠が縦軸名を持つ（共有した縦軸名を含む） */
@@ -306,6 +338,11 @@ export type FigureHeightInput = {
   margins: Pick<FigureMargins, "top" | "bottom" | "xAxisSpace">;
   /** 縦に並ぶ枠をつなげる（枠の間隔 0） */
   joinVertical: boolean;
+  /**
+   * 通常の図で、枠 1 段に確保する描画領域の高さ(px)。省略・0 は従来どおり
+   * アスペクト比のまま（比較用の試み ChartLayoutTrial だけが渡す）
+   */
+  minPanelHeight?: number;
 };
 
 /**
@@ -317,11 +354,11 @@ export type FigureHeightInput = {
  */
 export function computeFigureHeight(input: FigureHeightInput): number {
   const byAspect = Math.round(input.width / input.aspectRatio);
-  if (!input.compact) return byAspect;
+  const minPanel = input.compact ? MIN_COMPACT_PANEL_HEIGHT : Math.max(0, input.minPanelHeight ?? 0);
+  if (!(minPanel > 0)) return byAspect;
   const rows = normalizeCount(input.rows);
   const rowGap = input.joinVertical ? 0 : input.margins.xAxisSpace + PANEL_GAP;
-  const needed =
-    input.margins.top + input.margins.bottom + (rows - 1) * rowGap + rows * MIN_COMPACT_PANEL_HEIGHT;
+  const needed = input.margins.top + input.margins.bottom + (rows - 1) * rowGap + rows * minPanel;
   return Math.max(byAspect, Math.ceil(needed));
 }
 

@@ -2,10 +2,12 @@
 // 記録テーブル（頭痛ダイアリー想定のサンプルデータ）を参照して描画する様子と、
 // 複数テーブルの重ね描き・テーブル未選択のプレースホルダを目視確認する。
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Component, type ReactNode } from "react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { SandboxEditor } from "../../base/editor";
 import { chartBlock } from "./index";
+import { ChartLayoutTrialContext } from "./view";
+import type { ChartLayoutTrial } from "./chart-layout";
 import "../../app.css";
 // SandboxEditor は note-app と同じ Context 群を要求する（step のストーリーと同じ理由）
 import {
@@ -19,6 +21,7 @@ import { BlockAlignmentProvider } from "../../features/block-alignment/store";
 import { AiAssistantProvider } from "../../features/ai-assistant/store";
 import type { ChartSeriesConfig } from "./chart-config";
 import { primeAssetText } from "./asset-source";
+import { loadECharts } from "./echarts-loader";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -141,7 +144,12 @@ type DemoOptions = {
    * この値 − 108 − 枠の padding と border（18）になる
    */
   width?: number;
+  /** データのテーブルを隠す（図だけを並べて比べるとき。図はテーブルがあれば描ける） */
+  hideTables?: boolean;
 };
+
+const HIDE_TABLES_CLASS = "chart-demo-hide-tables";
+const HIDE_TABLES_CSS = `.${HIDE_TABLES_CLASS} [data-content-type="table"] { display: none; }`;
 
 function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
   const tables = [...(opts.baseTables ?? [diaryTable("diary-table-1")]), ...(opts.extraTables ?? [])];
@@ -160,7 +168,9 @@ function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
 function ChartDemo({ config, ...opts }: { config: Record<string, unknown> } & DemoOptions) {
   return (
     <EditorProviders>
+      {opts.hideTables && <style>{HIDE_TABLES_CSS}</style>}
       <div
+        className={opts.hideTables ? HIDE_TABLES_CLASS : undefined}
         style={{
           ...(opts.width !== undefined ? { width: opts.width, flexShrink: 0 } : { maxWidth: 680 }),
           border: "1px solid #e5e7eb",
@@ -274,9 +284,130 @@ const THERMO_TABLES = [
 
 const series = (list: ChartSeriesConfig[]) => list;
 
+// ── 比較: 通常の幅の図の枠に高さの下限を設けたら（採否を決めるまで）──────────
+// 図の高さは「幅 ÷ アスペクト比」なのに余白は固定なので、横長（4:1・5:1）や多段の図は
+// 枠がほとんど残らない。狭い図（400px 未満）と同じく「枠 1 段がこの高さに届くまで図を
+// 縦に伸ばす」を通常の幅にも当てたときの見え方。既存ノートの図が変わる変更なので、
+// 既定は当てない（アプリ本体は従来どおり）。Controls の「表示」で、どのストーリーも
+// 「現在」と「修正案」を並べて描ける
+
+type TrialView = "compare" | "current" | "proposed";
+/**
+ * 下限の候補。数値は枠 1 段の高さ(px)。ticks は縦軸の目盛りの間隔が 16px に届くまで
+ *（目盛りの本数 × 16px）、60-ticks はそれと 60px の大きいほう（目盛りの無い
+ * オフセット表示の枠も 60px は確保する）。fit はさらに、縦軸名が図の上下に
+ * はみ出さない高さと、オフセット表示の段名が重ならない高さ（段の数 × 20px）も取る
+ */
+type TrialMinPanel = "60" | "80" | "100" | "120" | "ticks" | "60-ticks" | "fit";
+type TrialArgs = {
+  layoutTrial: TrialView;
+  minPanelHeight: TrialMinPanel;
+};
+
+/** 目盛りの本数で伸ばすときの、ラベル 1 間隔の高さ(px)。文字（16px）1 行ぶん */
+const TRIAL_TICK_PITCH = 16;
+
+const TRIALS: Record<TrialMinPanel, ChartLayoutTrial> = {
+  60: { minPanelHeight: 60 },
+  80: { minPanelHeight: 80 },
+  100: { minPanelHeight: 100 },
+  120: { minPanelHeight: 120 },
+  ticks: { minPanelHeight: 0, tickPitch: TRIAL_TICK_PITCH },
+  "60-ticks": { minPanelHeight: 60, tickPitch: TRIAL_TICK_PITCH },
+  fit: { minPanelHeight: 60, tickPitch: TRIAL_TICK_PITCH, fitAxisName: true, stackRowPitch: 20 },
+};
+
+// Provider の値は図の組み直しの依存に入るので、同じ値には同じオブジェクトを渡す（TRIALS）
+const proposedTrial = (args: TrialArgs): ChartLayoutTrial => TRIALS[args.minPanelHeight] ?? TRIALS[80];
+
+const TRIAL_LABELS: Record<TrialMinPanel, string> = {
+  60: "修正案（枠 1 段の下限 60px）",
+  80: "修正案（枠 1 段の下限 80px）",
+  100: "修正案（枠 1 段の下限 100px）",
+  120: "修正案（枠 1 段の下限 120px）",
+  ticks: "修正案（縦軸の目盛りの間隔 16px まで）",
+  "60-ticks": "修正案（下限 60px ＋ 目盛りの間隔 16px まで）",
+  fit: "修正案（重ならない高さまで: 60px・目盛り・縦軸名・段名）",
+};
+const trialLabel = (args: TrialArgs) => TRIAL_LABELS[args.minPanelHeight] ?? TRIAL_LABELS[80];
+
+const variantTitle = { fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 4 };
+
+/**
+ * 「現在」と「修正案」を並べて（または片方だけ）描く。stack は縦に積む — 幅を決めて
+ * いない図を横に並べると、列が中身の幅に縮んで本来より狭く描かれるため
+ */
+function TrialVariants({ args, stack, children }: { args: TrialArgs; stack?: boolean; children: ReactNode }) {
+  const current = (
+    <div data-trial="current" style={{ maxWidth: "100%", minWidth: 0 }}>
+      <div style={variantTitle}>現在（既定）</div>
+      {children}
+    </div>
+  );
+  const proposed = (
+    <div data-trial="proposed" style={{ maxWidth: "100%", minWidth: 0 }}>
+      <div style={{ ...variantTitle, color: "#2563eb" }}>{trialLabel(args)}</div>
+      <ChartLayoutTrialContext.Provider value={proposedTrial(args)}>{children}</ChartLayoutTrialContext.Provider>
+    </div>
+  );
+  if (args.layoutTrial === "current") return current;
+  if (args.layoutTrial === "proposed") return proposed;
+  return (
+    <div
+      style={
+        stack
+          ? { display: "flex", flexDirection: "column", gap: 16 }
+          : { display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }
+      }
+    >
+      {current}
+      {proposed}
+    </div>
+  );
+}
+
+// 既存のストーリーはまるごと 2 回描いて縦に積む。比較用のストーリー
+//（parameters.layoutTrialPairs）は図ごとに自分で並べるので、そのまま描く
+const withLayoutTrial: Decorator = (Story, context) =>
+  context.parameters.layoutTrialPairs ? (
+    <Story />
+  ) : (
+    <TrialVariants args={context.args as TrialArgs} stack>
+      <Story />
+    </TrialVariants>
+  );
+
 const meta: Meta = {
   title: "Blocks/ChartBlock",
   parameters: { layout: "padded" },
+  decorators: [withLayoutTrial],
+  argTypes: {
+    layoutTrial: {
+      name: "表示",
+      options: ["compare", "current", "proposed"],
+      control: {
+        type: "inline-radio",
+        labels: { compare: "並べる（現在｜修正案）", current: "現在のみ", proposed: "修正案のみ" },
+      },
+    },
+    minPanelHeight: {
+      name: "修正案: 枠 1 段の下限",
+      options: ["60", "80", "100", "120", "ticks", "60-ticks", "fit"],
+      control: {
+        type: "inline-radio",
+        labels: {
+          60: "60px",
+          80: "80px",
+          100: "100px",
+          120: "120px（狭い図と同じ）",
+          ticks: "目盛りの本数 × 16px",
+          "60-ticks": "60px ＋ 目盛りの本数 × 16px",
+          fit: "重ならない高さまで（60px・目盛り・縦軸名・段名）",
+        },
+      },
+    },
+  },
+  args: { layoutTrial: "compare", minPanelHeight: "fit" } satisfies TrialArgs,
 };
 export default meta;
 
@@ -1360,6 +1491,252 @@ export const SettingsButtonOverTopRightLegend: StoryObj = {
           label="凡例が左上: ボタンは従来どおり図に重ねる"
           config={{ chartType: "line", series: RISE_LINE }}
         />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// ── 通常の幅で枠が潰れる図（採否を決めるための比較）──────────────────────
+// 図の高さは「幅 ÷ アスペクト比」、余白は固定（凡例を上に置くと上 48px・横軸名があると
+// 下 64px・枠を分けてつなげないと枠の間 80px）。横長の図と多段の図は枠がほとんど
+// 残らず、目盛りの文字が重なる。図の幅は 564px（幅 1024 のウィンドウのメイン）と
+// 712px（本文幅いっぱい）。各図の下に、描かれた枠の高さと図の寸法を ECharts から読んで出す
+
+/** 比べる図の幅。shell はチャートブロックの幅で、図はその左右 4px 内側 */
+const TRIAL_WIDTHS = [
+  { shell: 572, figure: 564 },
+  { shell: 720, figure: 712 },
+] as const;
+
+/**
+ * 描かれた図の実寸（ECharts の枠の矩形）を図の下に出す。数値の比較は headless の
+ * 計測を正にするが、Storybook を開いた人がその場で読めるように
+ */
+function FigureSizeNote() {
+  const [text, setText] = useState("…");
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let alive = true;
+    let timer = 0;
+    const read = async () => {
+      const box = ref.current?.parentElement;
+      const dom = box?.querySelector<HTMLElement>("[_echarts_instance_]");
+      const ec = await loadECharts();
+      const inst: any = dom ? ec.getInstanceByDom(dom) : null;
+      const model = inst?.getModel();
+      const grids: any[] = model ? model.queryComponents({ mainType: "grid" }) : [];
+      if (alive && inst && grids.length > 0 && grids.every((g) => g.coordinateSystem)) {
+        const heights = grids.map((g) => Math.round(g.coordinateSystem.getRect().height));
+        const uniq = [...new Set(heights)];
+        setText(
+          `枠の高さ ${uniq.join(" / ")}px（${grids.length} 枠）・図 ${inst.getWidth()}×${inst.getHeight()}px（${(inst.getWidth() / inst.getHeight()).toFixed(2)}:1）`
+        );
+      }
+      if (alive) timer = window.setTimeout(read, 1000);
+    };
+    void read();
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, []);
+  return (
+    <div ref={ref} data-figure-size style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+      {text}
+    </div>
+  );
+}
+
+function TrialCase({
+  args,
+  label,
+  shell,
+  config,
+  baseTables,
+}: {
+  args: TrialArgs;
+  label: string;
+  shell: number;
+  config: Record<string, unknown>;
+  baseTables: any[];
+}) {
+  return (
+    <div data-trial-case={label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{label}</div>
+      <TrialVariants args={args}>
+        <div>
+          <ChartDemo
+            width={frameForShell(shell)}
+            baseTables={baseTables}
+            lead="記録"
+            chartFirst
+            hideTables
+            config={config}
+          />
+          <FigureSizeNote />
+        </div>
+      </TrialVariants>
+    </div>
+  );
+}
+
+const trialStack = { display: "flex", flexDirection: "column" as const, gap: 32 };
+
+// (a) 枠を分けた図。アスペクト比は既定の √2:1、凡例は既定の左上。
+// 目盛りの本数はデータの範囲で決まる（ECharts の 5 分割は 4〜9 本になる）ので、
+// 本数の少ない XRD（測定 0〜8,000 の 5 本、文献 0〜100 の 6 本）と、多い熱電特性
+//（PF 0.5〜1.3 の 9 本、S 80〜200 の 7 本、κ 1.8〜3.3 の 6 本、σ 500〜900 の 5 本）で見る。
+// PF のデータは 0.60 からだが、ECharts は 0.6 ÷ 0.1 = 5.999… を切り捨てて 0.5 から刻む
+const SPLIT_ROW_CASES = [
+  { label: "2 段・つなげない", rows: 2, join: false },
+  { label: "2 段・つなげる", rows: 2, join: true },
+  { label: "3 段・つなげない", rows: 3, join: false },
+  { label: "3 段・つなげる", rows: 3, join: true },
+  { label: "4 段・つなげない", rows: 4, join: false },
+  { label: "4 段・つなげる", rows: 4, join: true },
+];
+
+// 4 段目の文献（別の相）。XRD_TABLES の 3 件に足す
+const XRD_TRIAL_TABLES = [
+  ...XRD_TABLES,
+  xrdTable(
+    "xrd-ref-c",
+    [
+      [24.1, 70],
+      [29.8, 100],
+      [34.6, 45],
+      [42.9, 30],
+      [50.3, 25],
+    ],
+    2
+  ),
+];
+
+const SPLIT_DATA = {
+  xrd: {
+    label: "XRD",
+    tables: XRD_TRIAL_TABLES,
+    xAxisName: "2θ (deg)",
+    series: series([
+      { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料", panelIndex: 0 },
+      { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A", panelIndex: 1 },
+      { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B", panelIndex: 2 },
+      { sourceBlockId: "xrd-ref-c", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 C", panelIndex: 3 },
+    ]),
+  },
+  thermo: {
+    // 上から PF・S・κ・σ（本数の多い PF を必ず含める）
+    label: "熱電特性",
+    tables: THERMO_TABLES,
+    xAxisName: "T (K)",
+    series: series([
+      { sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF (mW/mK²)", panelIndex: 0 },
+      { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "S (µV/K)", panelIndex: 1 },
+      { sourceBlockId: "te-kappa", xColumn: "T (K)", yColumn: "kappa", label: "κ (W/mK)", panelIndex: 2 },
+      { sourceBlockId: "te-sigma", xColumn: "T (K)", yColumn: "sigma", label: "σ (S/cm)", panelIndex: 3 },
+    ]),
+  },
+};
+
+function SplitRowsTrial({ args, data }: { args: TrialArgs; data: (typeof SPLIT_DATA)[keyof typeof SPLIT_DATA] }) {
+  return (
+    <ErrorBoundary>
+      <div style={trialStack}>
+        {TRIAL_WIDTHS.flatMap(({ shell, figure }) =>
+          SPLIT_ROW_CASES.map((c) => (
+            <TrialCase
+              key={`${figure}-${c.label}`}
+              args={args}
+              label={`図 ${figure}px・${data.label}・${c.label}`}
+              shell={shell}
+              baseTables={data.tables}
+              config={{
+                chartType: "line",
+                panels: { rows: c.rows, cols: 1, joinVertical: c.join, joinHorizontal: false },
+                series: data.series.slice(0, c.rows),
+                xAxisName: data.xAxisName,
+              }}
+            />
+          ))
+        )}
+      </div>
+    </ErrorBoundary>
+  );
+}
+
+export const TrialSplitRowsXrd: StoryObj = {
+  name: "比較: 枠を分けた図・XRD（2〜4 段 × つなげる/つなげない × 564 / 712px）",
+  parameters: { layoutTrialPairs: true },
+  render: (args) => <SplitRowsTrial args={args as TrialArgs} data={SPLIT_DATA.xrd} />,
+};
+
+export const TrialSplitRowsThermo: StoryObj = {
+  name: "比較: 枠を分けた図・熱電特性（2〜4 段 × つなげる/つなげない × 564 / 712px）",
+  parameters: { layoutTrialPairs: true },
+  render: (args) => <SplitRowsTrial args={args as TrialArgs} data={SPLIT_DATA.thermo} />,
+};
+
+// (b) 横長の図。XRD のような横長のパターン向けの比（chart-theme.ts）で描く。
+// 目盛りの少ない XRD の測定（0〜8,000 の 5 本）、多い PF（0.5〜1.3 の 9 本）、
+// 縦軸に目盛りの無いオフセット表示（測定＋文献 2 件、段名は図の中）
+const WIDE_ASPECT_CASES = [
+  { label: "3:1", aspect: "panorama" },
+  { label: "4:1", aspect: "ultrawide" },
+  { label: "5:1", aspect: "spectrum" },
+];
+const WIDE_DATA = [
+  {
+    label: "XRD の測定",
+    tables: XRD_TABLES.slice(0, 1),
+    config: {
+      series: series([{ sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity" }]),
+      xMin: "10",
+      xMax: "60",
+    },
+  },
+  {
+    label: "PF の温度依存",
+    tables: THERMO_TABLES,
+    config: { series: series([{ sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF (mW/mK²)" }]) },
+  },
+  {
+    label: "XRD のオフセット表示",
+    tables: XRD_TABLES,
+    config: {
+      series: series([
+        { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料" },
+        { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A" },
+        { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B" },
+      ]),
+      stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
+      xMin: "10",
+      xMax: "60",
+      xAxisName: "2θ (deg)",
+      yAxisName: "Intensity (a.u.)",
+    },
+  },
+];
+
+export const TrialWideAspects: StoryObj = {
+  name: "比較: 横長の図（3:1 / 4:1 / 5:1 × XRD・PF・オフセット表示 × 564 / 712px）",
+  parameters: { layoutTrialPairs: true },
+  render: (args) => (
+    <ErrorBoundary>
+      <div style={trialStack}>
+        {TRIAL_WIDTHS.flatMap(({ shell, figure }) =>
+          WIDE_DATA.flatMap((d) =>
+            WIDE_ASPECT_CASES.map((c) => (
+              <TrialCase
+                key={`${figure}-${d.label}-${c.label}`}
+                args={args as TrialArgs}
+                label={`図 ${figure}px・${d.label}・${c.label}`}
+                shell={shell}
+                baseTables={d.tables}
+                config={{ chartType: "line", aspect: c.aspect, ...d.config }}
+              />
+            ))
+          )
+        )}
       </div>
     </ErrorBoundary>
   ),

@@ -19,7 +19,17 @@
 // - 参照切れ（テーブル削除・列名変更・素材の削除）はエラーにせず、その系列だけ空にする
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { ChartSpline, Database, SlidersHorizontal } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { getLocale, t, useLocaleSubscription } from "../../i18n";
@@ -89,6 +99,7 @@ import {
   estimateLegendRows,
   isCompactChart,
   valueAxisTickLabels,
+  type ChartLayoutTrial,
 } from "./chart-layout";
 import { legendItems, type LegendItemSeries } from "./legend-icon";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
@@ -590,7 +601,15 @@ export type ChartArea = {
    * 無い・図の外にある）。凡例をボタンの下に潜らせないために使う
    */
   coverTopRight?: number;
+  /** 通常の幅の図の枠に高さの下限を設ける試み（比較用）。省略・null は従来どおり */
+  trial?: ChartLayoutTrial | null;
 };
+
+/**
+ * ChartLayoutTrial を図に渡す口。採否を決めるまでの比較用で、Provider の無い
+ * ところ（アプリ本体）では null = 従来どおりに描く
+ */
+export const ChartLayoutTrialContext = createContext<ChartLayoutTrial | null>(null);
 
 /** 図 1 枚ぶんの描画結果 */
 export type ChartFigure = {
@@ -888,65 +907,68 @@ export function buildChart(
     return measured > 0 ? measured : approxTextWidth(text, CHART_FONT_SIZE);
   };
   function widestYTickLabel(side: "left" | "right"): number {
-    const detail = side === "left" ? config.yAxisDetail : config.yRightAxisDetail;
-    if (!detail.show || !detail.showLabels) return 0;
     let widest = 0;
-    panels.forEach((panel, p) => {
-      // オフセット表示の縦軸・横につないだ内側の枠は目盛りラベルを出さない
-      if (side === "left" && panel.stackActive) return;
-      if (side === "right" && !panel.useRight) return;
-      if (split && config.panels.joinHorizontal && p % config.panels.cols !== 0 && side === "left") return;
-      let lo = Infinity;
-      let hi = -Infinity;
-      // 積み上げた棒は合計が軸の範囲になる（系列ごとの端を足して多めに見積もる）
-      let anyStacked = false;
-      let stackLo = 0;
-      let stackHi = 0;
-      panel.view.series.forEach((s, k) => {
-        const sc = config.series[panel.indices[k]];
-        const onRight = panel.useRight && sc?.axis === "right";
-        if ((side === "right") !== onRight) return;
-        const seriesType: SeriesType = isHistogram ? "bar" : ((sc?.type ?? config.chartType) as SeriesType);
-        let sLo = Infinity;
-        let sHi = -Infinity;
-        for (const point of s.points as Array<number | null | [number, number | null]>) {
-          const y = Array.isArray(point) ? point[1] : point;
-          if (typeof y !== "number" || !Number.isFinite(y)) continue;
-          if (y < sLo) sLo = y;
-          if (y > sHi) sHi = y;
-        }
-        if (!Number.isFinite(sLo)) return;
-        if (seriesType === "bar" && !isHistogram && resolveSeriesStyle(sc, seriesType).stacked) {
-          anyStacked = true;
-          stackLo += Math.min(0, sLo);
-          stackHi += Math.max(0, sHi);
-        } else {
-          lo = Math.min(lo, sLo);
-          hi = Math.max(hi, sHi);
-        }
-      });
-      if (anyStacked) {
-        lo = Math.min(lo, stackLo);
-        hi = Math.max(hi, stackHi);
-      }
-      // 棒・ヒストグラムの縦軸は 0 を含む（scale: false）
-      if (!fitAxis && Number.isFinite(lo)) {
-        lo = Math.min(lo, 0);
-        hi = Math.max(hi, 0);
-      }
-      const fixedMin = side === "left" ? panel.axis.yMin : panel.axis.yRightMin;
-      const fixedMax = side === "left" ? panel.axis.yMax : panel.axis.yRightMax;
-      const min = fixedMin ?? lo;
-      const max = fixedMax ?? hi;
-      if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-      for (const label of valueAxisTickLabels({ min, max }, 5, {
-        min: fixedMin !== null,
-        max: fixedMax !== null,
-      })) {
-        widest = Math.max(widest, measureAxisText(label));
-      }
+    panels.forEach((_, p) => {
+      for (const label of yTickLabelsOf(side, p)) widest = Math.max(widest, measureAxisText(label));
     });
     return widest;
+  }
+  // 枠 p の縦軸（左・右）に並ぶ目盛りラベルの見積もり。ラベルを出さない軸は空
+  function yTickLabelsOf(side: "left" | "right", p: number): string[] {
+    const detail = side === "left" ? config.yAxisDetail : config.yRightAxisDetail;
+    if (!detail.show || !detail.showLabels) return [];
+    const panel = panels[p];
+    // オフセット表示の縦軸・横につないだ内側の枠は目盛りラベルを出さない
+    if (side === "left" && panel.stackActive) return [];
+    if (side === "right" && !panel.useRight) return [];
+    if (split && config.panels.joinHorizontal && p % config.panels.cols !== 0 && side === "left") return [];
+    let lo = Infinity;
+    let hi = -Infinity;
+    // 積み上げた棒は合計が軸の範囲になる（系列ごとの端を足して多めに見積もる）
+    let anyStacked = false;
+    let stackLo = 0;
+    let stackHi = 0;
+    panel.view.series.forEach((s, k) => {
+      const sc = config.series[panel.indices[k]];
+      const onRight = panel.useRight && sc?.axis === "right";
+      if ((side === "right") !== onRight) return;
+      const seriesType: SeriesType = isHistogram ? "bar" : ((sc?.type ?? config.chartType) as SeriesType);
+      let sLo = Infinity;
+      let sHi = -Infinity;
+      for (const point of s.points as Array<number | null | [number, number | null]>) {
+        const y = Array.isArray(point) ? point[1] : point;
+        if (typeof y !== "number" || !Number.isFinite(y)) continue;
+        if (y < sLo) sLo = y;
+        if (y > sHi) sHi = y;
+      }
+      if (!Number.isFinite(sLo)) return;
+      if (seriesType === "bar" && !isHistogram && resolveSeriesStyle(sc, seriesType).stacked) {
+        anyStacked = true;
+        stackLo += Math.min(0, sLo);
+        stackHi += Math.max(0, sHi);
+      } else {
+        lo = Math.min(lo, sLo);
+        hi = Math.max(hi, sHi);
+      }
+    });
+    if (anyStacked) {
+      lo = Math.min(lo, stackLo);
+      hi = Math.max(hi, stackHi);
+    }
+    // 棒・ヒストグラムの縦軸は 0 を含む（scale: false）
+    if (!fitAxis && Number.isFinite(lo)) {
+      lo = Math.min(lo, 0);
+      hi = Math.max(hi, 0);
+    }
+    const fixedMin = side === "left" ? panel.axis.yMin : panel.axis.yRightMin;
+    const fixedMax = side === "left" ? panel.axis.yMax : panel.axis.yRightMax;
+    const min = fixedMin ?? lo;
+    const max = fixedMax ?? hi;
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [];
+    return valueAxisTickLabels({ min, max }, 5, {
+      min: fixedMin !== null,
+      max: fixedMax !== null,
+    });
   }
 
   // ── レイアウト ──────────────────────────────────────────────────
@@ -1033,6 +1055,49 @@ export function buildChart(
   const crossPanelTooltip =
     split && config.panels.joinVertical && config.panels.rows > 1 && result.xAxis !== "category";
 
+  // 比較用の試み: 通常の幅の図でも、枠 1 段の描画領域に下限を設ける（ChartLayoutTrial）。
+  // 目盛り・縦軸名・段名で要る高さは枠ごとに見積もり、いちばん要る枠に合わせる
+  //（枠の高さはどの段も同じなので）
+  const trialMinPanelHeight = (() => {
+    const trial = area.trial;
+    if (compact || !trial) return 0;
+    let need = Math.max(0, trial.minPanelHeight);
+    const rows = split ? config.panels.rows : 1;
+    const cols = split ? config.panels.cols : 1;
+    panels.forEach((panel, p) => {
+      if (trial.tickPitch !== undefined && trial.tickPitch > 0) {
+        for (const side of ["left", "right"] as const) {
+          const labels = yTickLabelsOf(side, p).length;
+          if (labels > 1) need = Math.max(need, (labels - 1) * trial.tickPitch);
+        }
+      }
+      if (trial.stackRowPitch && panel.stackActive && panel.stack.labels === "inline") {
+        need = Math.max(need, panel.view.series.length * trial.stackRowPitch);
+      }
+      if (trial.fitAxisName) {
+        // 軸名は枠の縦の中央に置かれる。はみ出して困るのは図の上端（最上段）と
+        // 下端（最下段）だけで、段の間なら隣の枠の上に掛かるだけで縮められない
+        const row = Math.floor(p / cols);
+        const edges = [
+          ...(row === 0 ? [margins.top] : []),
+          ...(row === rows - 1 ? [margins.bottom] : []),
+        ];
+        if (edges.length === 0) return;
+        const edge = Math.min(...edges);
+        const names = [
+          config.yAxisDetail.show && sharedYName === null ? panel.yName : "",
+          config.yRightAxisDetail.show && panel.useRight ? panel.yRightName : "",
+        ];
+        // ECharts 6 は軸名の長さ方向の両端に 3px の余白を足してはみ出しを見る
+        //（AxisBuilder の DEFAULT_CENTER_NAME_MARGIN_LEVELS。枠が図の幅の半分より広いとき）
+        for (const name of names) {
+          if (name) need = Math.max(need, Math.ceil(measureAxisText(name) + 2 * 3) - 2 * edge);
+        }
+      }
+    });
+    return need;
+  })();
+
   // 実寸が来ていない初回描画では本文幅なりの値で置く（測れた時点で組み直される）。
   // 枠内凡例の右端・下端の位置計算にも同じ値を使う
   const layoutWidth = chartWidth > 0 ? chartWidth : 720;
@@ -1047,6 +1112,7 @@ export function buildChart(
             rows: split ? config.panels.rows : 1,
             margins,
             joinVertical: split && config.panels.joinVertical,
+            minPanelHeight: trialMinPanelHeight,
           })
         : 320;
 
@@ -1834,6 +1900,8 @@ function ChartCanvas({
   const [failed, setFailed] = useState(false);
   const [width, setWidth] = useState(0);
   const [coverTopRight, setCoverTopRight] = useState(0);
+  // 比較用の試み（Storybook の比較ストーリーだけが渡す）。アプリ本体では null
+  const trial = useContext(ChartLayoutTrialContext);
 
   // コンテナ幅に追従（アスペクト比で高さを決めるため幅を測る）。あわせて設定ボタンが
   // 図の右上を横方向にどれだけ覆っているかを測る。ボタンを図の上の行へ逃がしても
@@ -1884,8 +1952,8 @@ function ChartCanvas({
   // 高さは余白の計算と一緒に決まる（狭い図は描画領域が潰れないよう縦に伸ばす）ので、
   // option と同時に組む
   const figure = useMemo(
-    () => buildChart(result, config, tables, { width, coverTopRight }),
-    [result, config, tables, width, coverTopRight]
+    () => buildChart(result, config, tables, { width, coverTopRight, trial }),
+    [result, config, tables, width, coverTopRight, trial]
   );
 
   // ボタンの置き場所はブロック側（ChartBlockView）が持つ。描画前に知らせて、
