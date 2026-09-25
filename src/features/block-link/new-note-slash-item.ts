@@ -7,21 +7,13 @@
 // メインエディタと SidePeek の両方に出す。以前はメイン（note-app）にだけ手書きの項目が
 // あり、ピークには出ていなかった。組み立てはここ 1 か所にまとめ、何を記録するか
 // （reference リンクと派生関係）もここで決める。各エディタが渡すのは記録先だけ
-// （自分の linkStore と、開いているノートの noteLinks）。
+// （自分の linkStore と、開いているノートの noteLinks の書き込み口）。派生関係の足し方
+// （同じノートへの線は 1 本）は @ メニューと同じ関数を使う（mention-insert.ts）。
 
 import type { SlashMenuItem } from "../../base/slash-menu-types";
-import type { NoteLink } from "../../lib/document-types";
 import { t } from "../../i18n";
 import { insertNoteMentionInline } from "./mention-menu";
-
-/** reference リンクの記録口（メイン・ピークどちらの linkStore.addLink でも渡せる最小形） */
-export type AddReferenceLink = (params: {
-  sourceBlockId: string;
-  targetBlockId: string;
-  targetNoteId: string;
-  type: "reference";
-  createdBy: "human";
-}) => unknown;
+import { type AddReferenceLink, type UpdateNoteLinks, withDerivedFromLink } from "./mention-insert";
 
 export type NewNoteSlashItemDeps = {
   /** ノート名を尋ねる（IME 安全なダイアログ）。キャンセルは null */
@@ -38,8 +30,8 @@ export type NewNoteSlashItemDeps = {
   getEditor: () => any;
   /** reference リンクの記録先（そのエディタの linkStore） */
   addLink: AddReferenceLink;
-  /** 派生関係の記録先（そのエディタで開いているノートの noteLinks） */
-  addNoteLink: (link: NoteLink) => void;
+  /** 派生関係の記録先（そのエディタで開いているノートの noteLinks の書き込み口。@ メニューと同じもの） */
+  updateNoteLinks: UpdateNoteLinks;
 };
 
 export function buildNewNoteSlashItem(deps: NewNoteSlashItemDeps): SlashMenuItem {
@@ -72,7 +64,7 @@ export function buildNewNoteSlashItem(deps: NewNoteSlashItemDeps): SlashMenuItem
             type: "reference",
             createdBy: "human",
           });
-          deps.addNoteLink({ targetNoteId: noteId, sourceBlockId, type: "derived_from" });
+          deps.updateNoteLinks((links) => withDerivedFromLink(links, noteId, sourceBlockId));
         }, 50);
       })();
     },
