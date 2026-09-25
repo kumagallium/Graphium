@@ -149,6 +149,19 @@ talks to LLM and embedding backends.
   Markdown → block path goes through `parseMarkdownToBlocksWithMath`, because
   BlockNote's own parser destroys LaTeX delimiters and eats `^` / `_` as
   emphasis markers.
+- Superscript and subscript are boolean text styles (`styles.superscript` /
+  `styles.subscript`, rendered as `<sup>` / `<sub>`), so units and chemical
+  formulas such as 10⁵ Pa or H₂O can sit in running text without opening the
+  formula editor. They are defined in `src/base/script-styles.ts`, applied from
+  the formatting toolbar or with `⌘.` / `⌘,` (`Ctrl` on Windows / Linux), and
+  exclude each other: setting one clears the other. Pasted `<sup>` / `<sub>`
+  and `vertical-align: super / sub` spans (Google Docs) become the same styles,
+  and so do superscript / subscript runs in an imported `.docx`. Markdown has
+  no syntax for them, so `blocksToMarkdown` writes the HTML tags — dropping the
+  style would turn 10⁵ into 105 in an export or an AI quote — and
+  `parseMarkdownToBlocksWithMath` reads the tags back. Like every persisted
+  style, both are listed in `KNOWN_STYLE_KEYS` (see
+  [DATA_MODEL.md §8](DATA_MODEL.md)).
 - `step` is the one container block: it holds child blocks, and a procedure is
   written by putting its content inside a step rather than by labelling a
   heading. Nesting and reordering use BlockNote's own drag handle. The card's

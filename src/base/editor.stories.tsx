@@ -115,6 +115,32 @@ export const WithCustomBlock: StoryObj = {
   ),
 };
 
+// 上付き・下付き（書式ツールバーの x² / x₂ ボタン）
+// 文字を選択すると、取り消し線の直後に上付き・下付きのボタンが並ぶ。
+// ⌘. / ⌘,（Windows は Ctrl+. / Ctrl+,）でも切り替えられる。
+const sup = (text: string) => ({ type: "text", text, styles: { superscript: true } });
+const sub = (text: string) => ({ type: "text", text, styles: { subscript: true } });
+const plain = (text: string) => ({ type: "text", text, styles: {} });
+
+export const SuperscriptAndSubscript: StoryObj = {
+  name: "上付き・下付き",
+  render: () => (
+    <Safe>
+      <div style={{ maxWidth: 800, border: "1px solid #e5e7eb", borderRadius: 12 }}>
+        <SandboxEditor
+          initialContent={[
+            { type: "heading", props: { level: 2 }, content: [plain("CO"), sub("2"), plain(" 吸着の測定条件")] },
+            { type: "paragraph", content: [plain("圧力 1.0×10"), sup("5"), plain(" Pa、比表面積 120 m"), sup("2"), plain("/g、昇温速度 5 K min"), sup("−1")] },
+            { type: "paragraph", content: [plain("H"), sub("2"), plain(" 雰囲気で Fe"), sub("2"), plain("O"), sub("3"), plain(" を還元し、生成した H"), sub("2"), plain("O を除去する。")] },
+            { type: "bulletListItem", content: [plain("有意差あり（p < 0.05）"), sup("*")] },
+            { type: "paragraph", content: [plain("↑ 文字を選択すると、取り消し線の右に上付き・下付きのボタンが出ます（⌘. / ⌘,）")] },
+          ]}
+        />
+      </div>
+    </Safe>
+  ),
+};
+
 // SideMenu なし
 export const WithoutSideMenu: StoryObj = {
   name: "SideMenu なし",

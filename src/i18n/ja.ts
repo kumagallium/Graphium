@@ -154,6 +154,9 @@ export const ja: Record<string, string> = {
   "editor.archiveNoteHint": "一覧から隠れますが、派生リンクや引用は解決し続けます。Trash & Archive からいつでも復元できます。",
   "editor.aiAssistant": "🤖 AI アシスタント",
   "editor.askAi": "選択範囲を AI に聞く",
+  // 書式ツールバーの上付き・下付き（base/script-style-button.tsx）
+  "editor.superscript": "上付き文字",
+  "editor.subscript": "下付き文字",
   "editor.derivedNote": "派生ノート",
   // ── ドキュメント内検索（Cmd+F） ──
   "docSearch.placeholder": "ノート内を検索",

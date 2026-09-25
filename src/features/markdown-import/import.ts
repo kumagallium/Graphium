@@ -5,6 +5,7 @@
 // 順に解決して実リンクへ復元する。解決できなかった `[[X]]` はテキストとして残す（B-1）。
 
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
+import { scriptStyleSpecs } from "../../base/script-styles";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { BlockLink } from "../block-link/link-types";
 import { parseMarkdownToBlocksWithMath } from "../math/markdown-math";
@@ -85,10 +86,11 @@ export async function importMarkdownToGraphiumDoc(
 
   const schema = BlockNoteSchema.create({
     blockSpecs: defaultBlockSpecs,
-    styleSpecs: defaultStyleSpecs,
+    styleSpecs: { ...defaultStyleSpecs, ...scriptStyleSpecs },
   });
   const editor = BlockNoteEditor.create({ schema });
   // 数式（$$ ... $$ / \( ... \)）は素の tryParse では壊れるので数式対応版を通す。
+  // 上付き・下付きの <sup> / <sub> もここで拾われる。
   // wikilink のセンチネル（{{GWLINK_n}}）とはプレフィックスが違うので干渉しない。
   const blocks = parseMarkdownToBlocksWithMath(editor, withSentinels);
 
