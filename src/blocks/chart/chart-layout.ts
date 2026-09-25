@@ -84,14 +84,11 @@ export function computePanelLayout(input: PanelLayoutInput): PanelLayout {
   return { grids, showXAxis, showYAxis };
 }
 
-/** 凡例 1 行の高さ(px)。ECharts の既定の行送りに合わせた実測値 */
-export const LEGEND_LINE_HEIGHT = 17;
-
 /**
- * 凡例が折り返したときの実際の行送り(px)。ECharts は項目の高さ（記号枠 14）+
- * 項目間の余白（itemGap 10）で次の行へ送る（2026-09-25 実測）。
- * LEGEND_LINE_HEIGHT は既存の図の位置を保つために据え置いており、4 行以上に
- * 折り返すと枠に食い込む。狭い図（コンパクト）はこちらで行数ぶんを空ける
+ * 凡例が折り返したときの行送り(px)。ECharts は項目の高さ（記号枠 14）+
+ * 項目間の余白（itemGap 10）で次の行へ送る（2026-09-25 実測。上に置いても下に
+ * 置いても 24px）。折り返した行数ぶんをこれで空ける。以前の通常の図は 1 行 17px で
+ * 空けていたので、4 行で凡例が枠に接し、5 行以上で最終行が枠に食い込んでいた
  */
 export const LEGEND_ROW_PITCH = 24;
 
@@ -174,8 +171,9 @@ const FIGURE_EDGE_PAD = 4;
 export function computeFigureMargins(input: FigureMarginsInput): FigureMargins {
   const { compact, anyYName, anyXName, anyUseRight, anyYRightName, legendTop, legendBottom } = input;
   const extraRows = Math.max(0, Math.floor(input.legendRows) - 1);
+  // 折り返した行のぶん（1 行なら 0 なので、凡例が 1 行の図の余白は変わらない）
+  const extraLegend = extraRows * LEGEND_ROW_PITCH;
   if (!compact) {
-    const extraLegend = extraRows * LEGEND_LINE_HEIGHT;
     const xAxisSpace = anyXName ? 64 : 40;
     return {
       left: anyYName ? 84 : 60,
@@ -188,7 +186,6 @@ export function computeFigureMargins(input: FigureMarginsInput): FigureMargins {
       xNameGap: 34,
     };
   }
-  const extraLegend = extraRows * LEGEND_ROW_PITCH;
   const xAxisSpace = anyXName ? 56 : 32;
   // 軸線 → ラベル → 軸名 → 図の端、の順に積む
   const nameGapFor = (labelWidth: number) => Math.ceil(AXIS_LABEL_MARGIN + labelWidth + AXIS_NAME_PAD);
@@ -374,17 +371,22 @@ export function estimateLegendRows(
     const measured = measure?.(text) ?? 0;
     return measured > 0 ? measured : approxTextWidth(text, fontSize);
   };
-  // 記号の幅 + 記号と文字の間 + 項目どうしの間（ECharts の既定 itemGap = 10）
-  const itemExtra = itemWidth + 5 + 10;
+  // 1 項目の幅 = 記号 + 記号と文字の間（5）+ 文字。項目どうしの間（ECharts の既定
+  // itemGap = 10）は項目の後ろに空くが、折り返すかどうかは「行の中の位置 + 項目の幅」
+  // が凡例の幅を超えるかで決まる（ECharts の util/layout.js の boxLayout と同じ規則）。
+  // 行末の項目にまで間を足すと、ほぼ埋まった行を 1 行多く見積もり、凡例と枠の間が
+  // 1 行ぶん空く（8 系列の図で、見積もり 7 行・実際は 5 行だった）
+  const itemExtra = itemWidth + 5;
+  const itemGap = 10;
   let rows = 1;
   let used = 0;
   for (const name of names) {
     const w = textWidth(name) + itemExtra;
     if (used > 0 && used + w > availableWidth) {
       rows += 1;
-      used = w;
+      used = w + itemGap;
     } else {
-      used += w;
+      used += w + itemGap;
     }
   }
   return rows;
