@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   foldLeafNodes,
   computeReachScores,
+  computeTopicReachScores,
+  computeFocusFoldResult,
   assignIslands,
   detectCommunities,
   detectNoteCommunities,
@@ -135,6 +137,34 @@ describe("foldLeafNodes", () => {
     expect(foldedCount.get("n1")).toBe(1);
     expect(foldedTotal).toBe(2);
   });
+
+  it("focus が note 以外（crystal/source）のとき、フォーカス隣接 0 のノードは取り除かれず残る", () => {
+    // n1・n2 はどちらもノート（crystal/source どちらのフォーカス種類でもない）。
+    // 互いにしか繋がっていないので、フォーカス隣接は 0。
+    // focus="crystal"/"source" では橋として残す（後始末の幾何配置で位置を
+    // 決めるため。取り除くと孤立の既定位置に取り残されてしまう事故の元だった）。
+    const data: NoteGraphData = {
+      nodes: [note("n1"), note("n2")],
+      edges: [{ source: "n1", target: "n2", relation: "derived" }],
+    };
+    const crystalResult = foldLeafNodes(data, { focus: "crystal" });
+    expect(crystalResult.data.nodes.map((n) => n.id).sort()).toEqual(["n1", "n2"]);
+    expect(crystalResult.foldedTotal).toBe(0);
+
+    const sourceResult = foldLeafNodes(data, { focus: "source" });
+    expect(sourceResult.data.nodes.map((n) => n.id).sort()).toEqual(["n1", "n2"]);
+    expect(sourceResult.foldedTotal).toBe(0);
+
+    // 対比: focus="note"（既定）ではノート以外（ここでは external）の
+    // フォーカス隣接 0 は今までどおり取り除かれる。
+    const dataWithExternal: NoteGraphData = {
+      nodes: [note("n1"), external("s1")],
+      edges: [], // s1 はどのノートにも used されていない
+    };
+    const noteResult = foldLeafNodes(dataWithExternal);
+    expect(noteResult.data.nodes.map((n) => n.id)).toEqual(["n1"]);
+    expect(noteResult.foldedTotal).toBe(1);
+  });
 });
 
 describe("computeReachScores", () => {
@@ -188,6 +218,27 @@ describe("computeReachScores", () => {
     const scores = computeReachScores(data);
     expect(scores.get("n1")).toBe(0);
     expect(scores.get("n2")).toBe(0);
+  });
+});
+
+describe("computeTopicReachScores", () => {
+  it("直線 t1—c1—t2—c2—t3 で t2=2、t1/t3 は既定 hops=2 なら 1、hops を伸ばすと 2", () => {
+    const data: NoteGraphData = {
+      nodes: [topic("t1"), claim("c1"), topic("t2"), claim("c2"), topic("t3")],
+      edges: [
+        { source: "t1", target: "c1", relation: "derived" },
+        { source: "c1", target: "t2", relation: "derived" },
+        { source: "t2", target: "c2", relation: "derived" },
+        { source: "c2", target: "t3", relation: "derived" },
+      ],
+    };
+    const scores = computeTopicReachScores(data); // 既定 hops=2
+    expect(scores.get("t2")).toBe(2); // t1・t3 とも depth2 で届く
+    expect(scores.get("t1")).toBe(1); // t2 だけ（t3 は depth4 で届かない）
+    expect(scores.get("t3")).toBe(1);
+
+    const wideScores = computeTopicReachScores(data, { hops: 4 });
+    expect(wideScores.get("t1")).toBe(2); // t2（depth2）・t3（depth4）とも届く
   });
 });
 
@@ -536,5 +587,49 @@ describe("analyzeCrystalIslands", () => {
       (e) => (e.source === "t1" && e.target === "t2") || (e.source === "t2" && e.target === "t1"),
     );
     expect(edge).toBeUndefined();
+  });
+
+  it("話題0件・ノート0件・辺0本の空データでも例外にならない", () => {
+    const data: NoteGraphData = { nodes: [], edges: [] };
+    expect(() => analyzeCrystalIslands(data)).not.toThrow();
+    const result = analyzeCrystalIslands(data);
+    expect(result.topicIds.size).toBe(0);
+    expect(result.topicEdges).toHaveLength(0);
+    expect(result.communities.size).toBe(0);
+    expect(result.sharedClaimIds.size).toBe(0);
+    expect(result.leafParent.size).toBe(0);
+    expect(result.unplaced.size).toBe(0);
+  });
+
+  it("話題も持たずノートにも隣接しない知見（知見同士だけで繋がる）は unplaced に入る", () => {
+    // c1—c2 は知見同士だけで繋がっており、どちらも話題・ノートに隣接しない。
+    const data: NoteGraphData = {
+      nodes: [claim("c1"), claim("c2")],
+      edges: [{ source: "c1", target: "c2", relation: "derived" }],
+    };
+    const { unplaced, sharedClaimIds, leafParent } = analyzeCrystalIslands(data);
+    expect(unplaced.has("c1")).toBe(true);
+    expect(unplaced.has("c2")).toBe(true);
+    expect(sharedClaimIds.size).toBe(0);
+    expect(leafParent.size).toBe(0);
+  });
+});
+
+describe("computeFocusFoldResult", () => {
+  it('focus: "crystal" は葉知見を話題に畳み、共有知見は残す', () => {
+    // c1: t1 のみ（葉知見）→ 畳まれる。c2: t1・t2（共有知見）→ 残る。
+    const data: NoteGraphData = {
+      nodes: [topic("t1"), topic("t2"), claim("c1"), claim("c2")],
+      edges: [
+        { source: "c1", target: "t1", relation: "derived" },
+        { source: "c2", target: "t1", relation: "derived" },
+        { source: "c2", target: "t2", relation: "derived" },
+      ],
+    };
+    const result = computeFocusFoldResult(data, "crystal");
+    expect(result.data.nodes.map((n) => n.id).sort()).toEqual(["c2", "t1", "t2"]);
+    expect(result.foldedInto.get("c1")).toBe("t1");
+    expect(result.foldedCount.get("t1")).toBe(1);
+    expect(result.foldedTotal).toBe(1);
   });
 });

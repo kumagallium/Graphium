@@ -397,6 +397,12 @@ export interface CrystalIslands {
   /** 葉知見（隣接話題が 1 つ以下）の id → 親の id。話題が 1 つあればその話題、
    *  無ければ隣接ノートの 1 つ（無ければ含めない）。 */
   leafParent: Map<string, string>;
+  /** 話題も持たずノートにも隣接しない知見・洞察（例: 知見同士だけで繋がって
+   *  いるもの）の id。sharedClaimIds にも leafParent にも入らず、幾何配置の
+   *  どの経路（話題の平均・衛星リング）にも当たらない——
+   *  placeCrystalIslandGeometry の最後の後始末（runOrphanCleanupPass）で
+   *  拾われる想定のノードを明示するためのもの。 */
+  unplaced: Set<string>;
 }
 
 /**
@@ -447,15 +453,22 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
   const sharedClaimIds = new Set<string>();
   const leafParent = new Map<string, string>();
   const claimTopicNeighbors = new Map<string, string[]>();
+  const unplaced = new Set<string>();
   for (const n of data.nodes) {
     if (!isClaimOrAtomId(n.id)) continue;
     const topics = claimTopicNeighborSets.get(n.id) ?? new Set<string>();
     claimTopicNeighbors.set(n.id, [...topics]);
     if (topics.size >= 2) {
       sharedClaimIds.add(n.id);
+      continue;
+    }
+    const parent = topics.size === 1 ? [...topics][0] : firstNoteNeighbor.get(n.id);
+    if (parent) {
+      leafParent.set(n.id, parent);
     } else {
-      const parent = topics.size === 1 ? [...topics][0] : firstNoteNeighbor.get(n.id);
-      if (parent) leafParent.set(n.id, parent);
+      // 話題も持たずノートにも隣接しない（知見同士だけで繋がっている等）→
+      // 幾何配置のどの経路にも当たらない。後始末（BFS）に委ねる。
+      unplaced.add(n.id);
     }
   }
 
@@ -487,7 +500,7 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
   }));
   const communities = detectCommunities({ nodes: topicNodes, edges: projectionAsEdges });
 
-  return { topicIds, topicEdges, communities, claimTopicNeighbors, sharedClaimIds, leafParent };
+  return { topicIds, topicEdges, communities, claimTopicNeighbors, sharedClaimIds, leafParent, unplaced };
 }
 
 /**

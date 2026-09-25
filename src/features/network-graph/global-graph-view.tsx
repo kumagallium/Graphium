@@ -297,10 +297,20 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
   },
   { selector: "edge.hover-connected", style: { width: 2.5, opacity: 1, "z-index": 10 } },
   {
-    // 「文脈で寄せる」用の不可視エッジ。描画・操作はさせず fcose の引力計算にだけ効かせる
-    // （display:none だとレイアウト対象から外れるので opacity 0 で隠す）。
+    // 「文脈で寄せる」・島の重心・射影用の不可視エッジ。描画・操作はさせず
+    // fcose の引力計算にだけ効かせる（display:none だとレイアウト対象から
+    // 外れるので opacity 0 で隠す）。これらの要素は data(color)/data(lineStyle)
+    // を持たない（隠すだけで見た目は関係ない）ので、汎用 edge セレクタの
+    // data() マッピングに任せず、ここで固定値を明示して cytoscape の
+    // 「マップ先の data が無い」警告を避ける。
     selector: "edge.cluster-edge",
-    style: { opacity: 0, events: "no" as any },
+    style: {
+      opacity: 0,
+      events: "no" as any,
+      "line-color": "#000" as any,
+      "target-arrow-color": "#000" as any,
+      "line-style": "solid" as any,
+    },
   },
   {
     // 衛星と親（畳み先）を結ぶ実エッジ。見えるが控えめ（細め・薄め・矢印無し）。
@@ -317,7 +327,18 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
     // クラスタ重心のダミーハブノード。見えない・触れないがレイアウトには参加し、
     // ハブ同士の反発でクラスタ間の距離を生む。
     selector: "node.cluster-hub",
-    style: { opacity: 0, events: "no" as any, label: "", width: 1, height: 1 },
+    style: {
+      opacity: 0,
+      events: "no" as any,
+      label: "",
+      width: 1,
+      height: 1,
+      // 汎用 node セレクタの data(color)/data(borderColor)/data(shape) マッピング
+      // に任せない（ダミーなので data を持たせていない）。cluster-edge と同じ理由。
+      "background-color": "#000" as any,
+      "border-color": "#000" as any,
+      shape: "ellipse" as any,
+    },
   },
 ];
 
@@ -1030,9 +1051,14 @@ export function GlobalGraphCanvas({
 
     // crystal フォーカスは話題だけを物理配置に参加させる専用の分析結果を使う
     // （要素構築時の projection エッジ・後段の fcose 対象コレクション・幾何配置の
-    // どこからも参照するので、ここで 1 回だけ計算する）。
+    // どこからも参照するので、ここで 1 回だけ計算する）。effectiveFocus を使う
+    // ——layoutMode: plain のときは focusLayer に関わらず crystal 扱いにしない
+    // （plain に戻したのに crystal の幾何配置が fcose の結果を上書きしてしまう
+    // 事故を避ける）。
     const crystalAnalysis =
-      focusLayer === "crystal" ? analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges }) : null;
+      layoutMode === "islands" && effectiveFocus === "crystal"
+        ? analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges })
+        : null;
 
     const elements: cytoscape.ElementDefinition[] = [];
     for (const node of shownNodes) {
@@ -1130,7 +1156,12 @@ export function GlobalGraphCanvas({
       // 共有された知見が橋になって島をくっつけてしまう。
       // メンバー 2 以下のコミュニティは重心を置かない。
       // clusterByContext と併用されたときは両方の重心が置かれる。
-      const communities = detectFocusCommunities({ nodes: shownNodes, edges: shownEdges }, focusLayer);
+      // crystal は上で計算済みの crystalAnalysis.communities を使い回す
+      // （detectFocusCommunities("crystal") は内部で analyzeCrystalIslands を
+      // 呼ぶだけなので、同じ入力に対する二重計算を避ける）。
+      const communities =
+        crystalAnalysis?.communities ??
+        detectFocusCommunities({ nodes: shownNodes, edges: shownEdges }, focusLayer);
       const byCommunity = new Map<string, string[]>();
       for (const [nodeId, communityId] of communities) {
         const list = byCommunity.get(communityId);
@@ -1400,19 +1431,22 @@ export function GlobalGraphCanvas({
     lay.on("layoutstop", () => {
       layoutRunning = false;
       // 2 段目（幾何）: 1 段目が置いたフォーカスノード・重心の位置を土台に、
-      // フォーカス以外の実ノードと衛星を直接配置する。ドラッグ中の移動を
-      // 打ち消さないよう、fit の前に済ませる（fit 自体はドラッグで止めた場合は
-      // スキップする）。
-      if (crystalAnalysis) {
-        placeCrystalIslandGeometry(cy, {
-          shownNodes,
-          shownEdges,
-          foldedOutNodes,
-          foldedInto,
-          sharedClaimIds: crystalAnalysis.sharedClaimIds,
-        });
-      } else if (islands) {
-        placeIslandGeometry(cy, { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto });
+      // フォーカス以外の実ノードと衛星を直接配置する。ドラッグで途中で止めた
+      // ときは、1 段目がまだ収束していない位置に対して幾何配置をかけると
+      // 指で掴んでいるノードの下で他ノードが飛ぶ事故になるので、その場合は
+      // 幾何配置ごと止める（fit も同じ理由で止める。既存どおり）。
+      if (!layoutStoppedByUser) {
+        if (crystalAnalysis) {
+          placeCrystalIslandGeometry(cy, {
+            shownNodes,
+            shownEdges,
+            foldedOutNodes,
+            foldedInto,
+            sharedClaimIds: crystalAnalysis.sharedClaimIds,
+          });
+        } else if (islands) {
+          placeIslandGeometry(cy, { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto });
+        }
       }
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) cy.fit(undefined, 30);
@@ -1920,7 +1954,14 @@ export function GlobalGraphView({
   // ときはチップは今の表示/非表示のままにする（visible には触らない）。
   const changeLayoutMode = (m: "plain" | "islands") => {
     setLayoutMode(m);
-    if (m === "islands") setVisible(new Set(ALL_LAYERS));
+    if (m === "islands") {
+      setVisible(new Set(ALL_LAYERS));
+    } else {
+      // 標準に戻すときはフォーカスも既定（note）に戻す。次にまた islands に
+      // 入ったときに、消したはずの crystal/source フォーカスが残っていて
+      // 混乱しないようにする。
+      setFocusLayer("note");
+    }
   };
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
   const [searchInput, setSearchInput] = useState("");
@@ -2006,7 +2047,12 @@ export function GlobalGraphView({
       setClusterByContext(false);
       setHideUncategorized(false);
       setVisible(new Set(ALL_LAYERS));
-    } else {
+    } else if (layoutMode !== "islands") {
+      // 文脈モードは「文脈を持てるノート層」だけを表示する（原料・結晶は
+      // noteContexts を持たないため）。ただし layoutMode: islands 中は層チップが
+      // 「フォーカス」（crystal/source 等）として使われているので、ここで
+      // ノート層だけに絞ると選んでいたフォーカスの中身が無音で消えてしまう。
+      // islands 中は visible に触らない（全層のまま）。
       setVisible(new Set<LayerId>(["note"]));
     }
   };
