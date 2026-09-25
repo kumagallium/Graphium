@@ -4,7 +4,8 @@
 // 「行×列に分割し、軸を共有する枠は隙間を詰めて隣の枠の軸ラベル領域を消す」という
 // 割り付けロジックを ECharts から切り離しておくことで、DOM も無い環境で単体テストできる。
 // 呼び出し側（view 側）はここで出た矩形をそのまま grid オプションに渡すだけにする。
-// 図の外周余白・図の高さ・目盛りの本数（狭い場所の図を読めるようにする計算）もここに置く。
+// 図の外周余白・図の高さ・目盛りの本数（狭い場所の図や、横長・多段で枠が潰れる図を
+// 読めるようにする計算）もここに置く。
 
 import { CHART_LEGEND_ITEM } from "./chart-theme";
 
@@ -95,8 +96,8 @@ export const LEGEND_ROW_PITCH = 24;
 // ── 狭い場所（サイドピーク等）の図 ────────────────────────────────
 // 余白は 16px の文字に合わせた固定値なので、幅が 400px を切ると描画領域のほうが
 // 先に潰れる（幅 224px の図で 108×46px、175px で 59×12px まで縮んだ）。
-// 狭い図だけ余白を詰め、描画領域に最低限の高さを確保する。幅が足りる図は
-// 従来とまったく同じ値になる（既存ノートの図は動かない）
+// 狭い図だけ余白を詰め、描画領域に最低限の高さを確保する。幅が足りる図の余白・
+// 目盛りは従来とまったく同じ値になる（高さは下の「通常の幅の図の描画領域」）
 
 /** これより狭い図はコンパクトに描く(px) */
 export const COMPACT_CHART_WIDTH = 400;
@@ -292,6 +293,71 @@ export function approxTextWidth(text: string, fontSize: number): number {
   return w;
 }
 
+// ── 通常の幅の図の描画領域 ────────────────────────────────────────
+// 高さは「幅 ÷ アスペクト比」なのに余白（凡例 48・横軸名 64・分けた枠の間 80）は
+// 固定なので、横長（4:1・5:1）や多段の図は枠がほとんど残らない（図 564px の 5:1 で
+// 1px、√2:1 を 3 段に分けてつなげないと 42px）。枠に中身が収まらない図だけ、
+// アスペクト比より読めることを優先して縦に伸ばす。既定の √2:1・1 段のように
+// 高さの足りている図は従来と同じ高さのまま
+
+/** 通常の幅の図で、枠 1 段に確保する描画領域の高さ(px)。目盛りも段名も無い枠にも効く床 */
+export const MIN_PANEL_HEIGHT = 60;
+
+/**
+ * 縦軸の目盛りラベル 1 間隔に確保する高さ(px)。文字（16px）1 行ぶん。数字の墨は
+ * 約 12px なので、これより詰まると隣のラベルと触れ、12px を切ると重なる
+ */
+export const MIN_TICK_PITCH = 16;
+
+/**
+ * オフセット表示で段名を図の中に出すとき、段 1 つに確保する高さ(px)。段名は段の
+ * 上端（下端）から 12px の位置に置かれるので、段が低いと隣の段の名前と重なる
+ */
+export const MIN_STACK_ROW_HEIGHT = 20;
+
+/**
+ * ECharts 6 が枠の中央に置いた軸名の長さ方向の両端に足す余白(px)。この余白込みで
+ * 図の上下にはみ出すかを見て、はみ出すと枠のほうを縮める（grid.outerBoundsMode:
+ * "auto"。はみ出した量の 2 倍縮む）。AxisBuilder の DEFAULT_CENTER_NAME_MARGIN_LEVELS
+ * で、枠が図の幅の半分より広いときの値（狭い枠は 2px なので、3 で見積もれば足りる）
+ */
+const AXIS_NAME_END_MARGIN = 3;
+
+export type PanelNeedsInput = {
+  /** 枠ごと・軸ごと（左・右）の縦軸の目盛りラベルの数。valueAxisTickLabels の見積もり */
+  tickLabelCounts: number[];
+  /** 段名を図の中に出すオフセット表示の枠ごとの、段の数 */
+  inlineStackRows: number[];
+  /**
+   * 図の上端・下端に接する枠の縦軸名。width は軸名の文字幅(px)、edge は接する側の
+   * 図の余白(px)。軸名は枠の縦の中央に置かれるので、枠が低いと図の外にはみ出す
+   *（段の間の枠なら隣の枠に掛かるだけで、ECharts に縮められない）
+   */
+  edgeAxisNames: Array<{ width: number; edge: number }>;
+};
+
+/**
+ * 通常の幅の図で、枠 1 段に要る描画領域の高さ(px)。
+ *
+ * 縦軸の目盛りラベルが MIN_TICK_PITCH 間隔で並び、縦軸名が図からはみ出さず、
+ * オフセット表示の段名が重ならない高さのうち最大（どれも満たす枠でも
+ * MIN_PANEL_HEIGHT は確保する）。固定の下限だけでは、目盛りの多い軸（0.5〜1.3 を
+ * 0.1 刻みで 9 本）を読めるようにすると、目盛りの少ない読めている図まで伸びる
+ */
+export function requiredPanelHeight(input: PanelNeedsInput): number {
+  let need = MIN_PANEL_HEIGHT;
+  for (const labels of input.tickLabelCounts) {
+    if (labels > 1) need = Math.max(need, (labels - 1) * MIN_TICK_PITCH);
+  }
+  for (const rows of input.inlineStackRows) {
+    need = Math.max(need, rows * MIN_STACK_ROW_HEIGHT);
+  }
+  for (const { width, edge } of input.edgeAxisNames) {
+    need = Math.max(need, Math.ceil(width + 2 * AXIS_NAME_END_MARGIN) - 2 * edge);
+  }
+  return need;
+}
+
 export type FigureHeightInput = {
   /** 図の幅(px) */
   width: number;
@@ -303,22 +369,28 @@ export type FigureHeightInput = {
   margins: Pick<FigureMargins, "top" | "bottom" | "xAxisSpace">;
   /** 縦に並ぶ枠をつなげる（枠の間隔 0） */
   joinVertical: boolean;
+  /**
+   * 通常の図で、枠 1 段に要る描画領域の高さ(px)。requiredPanelHeight の値を渡す。
+   * 省略・0 はアスペクト比のまま。コンパクトな図は使わない（MIN_COMPACT_PANEL_HEIGHT）
+   */
+  minPanelHeight?: number;
 };
 
 /**
  * 図の高さ(px)。基本は「幅 ÷ アスペクト比」。
  *
- * コンパクトな図は、余白を引いた残りが枠 1 段あたり MIN_COMPACT_PANEL_HEIGHT に
- * 届くまで縦に伸ばす。狭い場所ではアスペクト比より「目盛りが読める」ことを
- * 優先する（比を守ると 5:1 の図は幅 224px で高さ 45px になり、何も読めない）
+ * 余白を引いた残りが枠 1 段あたりの下限に届かないときは、届くまで縦に伸ばす。
+ * アスペクト比より「目盛りが読める」ことを優先する（比を守ると 5:1 の図は幅 224px で
+ * 高さ 45px、564px でも 113px になり、枠がほとんど残らない）。下限はコンパクトな図が
+ * MIN_COMPACT_PANEL_HEIGHT、通常の図が minPanelHeight（中身から見積もった高さ）
  */
 export function computeFigureHeight(input: FigureHeightInput): number {
   const byAspect = Math.round(input.width / input.aspectRatio);
-  if (!input.compact) return byAspect;
+  const minPanel = input.compact ? MIN_COMPACT_PANEL_HEIGHT : Math.max(0, input.minPanelHeight ?? 0);
+  if (!(minPanel > 0)) return byAspect;
   const rows = normalizeCount(input.rows);
   const rowGap = input.joinVertical ? 0 : input.margins.xAxisSpace + PANEL_GAP;
-  const needed =
-    input.margins.top + input.margins.bottom + (rows - 1) * rowGap + rows * MIN_COMPACT_PANEL_HEIGHT;
+  const needed = input.margins.top + input.margins.bottom + (rows - 1) * rowGap + rows * minPanel;
   return Math.max(byAspect, Math.ceil(needed));
 }
 
