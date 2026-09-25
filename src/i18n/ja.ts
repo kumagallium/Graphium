@@ -1658,6 +1658,8 @@ export const ja: Record<string, string> = {
   "asset.docFilter.all": "すべて",
   "asset.docFilter.pdf": "PDF",
   "asset.docFilter.word": "Word",
+  "asset.docFilter.excel": "Excel",
+  "asset.docFilter.powerpoint": "PowerPoint",
   "asset.urlOpen": "新しいタブで開く",
   "asset.url.readerLoading": "Reader を取得中…",
   "asset.url.readerEmpty": "この URL は Reader モードでは読み取れませんでした。",

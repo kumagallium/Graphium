@@ -1658,6 +1658,8 @@ export const en: Record<string, string> = {
   "asset.docFilter.all": "All",
   "asset.docFilter.pdf": "PDF",
   "asset.docFilter.word": "Word",
+  "asset.docFilter.excel": "Excel",
+  "asset.docFilter.powerpoint": "PowerPoint",
   "asset.urlOpen": "Open in new tab",
   "asset.url.readerLoading": "Loading reader…",
   "asset.url.readerEmpty": "This URL could not be read in Reader Mode.",

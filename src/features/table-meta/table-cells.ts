@@ -3,6 +3,8 @@
 // BlockNote のテーブルセルは、新しい `tableCell` 形式と旧 inline 配列形式の
 // 両方がありうる（既存ノートには両方が混在する）。読み取りはこの 1 箇所に集める。
 
+import { TABLE_ROW_IDENTITY_STYLE, tableRowIdentityOfCell } from "../../lib/table-row-identity";
+
 /** セルからテキストを取り出す */
 export function readCellText(cell: any): string {
   const content = Array.isArray(cell)
@@ -65,13 +67,20 @@ export function readTableData(block: any): { header: string[]; rows: string[][] 
  *
  * セルを `[{type:"text", ...}]` で丸ごと置き換えると、その形式の違いのぶん
  * セルに付いていた色・配置が黙って落ちる。書き換えはこの 1 箇所に集める。
+ *
+ * 先頭列のセルには行の同一性（tableRowIdentity）が付いている。書き換えで落とすと
+ * 次の保存でその行が別の Entity として採番し直され、行に紐づくもの（他ノートからの
+ * 行の参照・行ごとの @リンク）が外れる。元のセルに付いていれば新しい文字へ引き継ぐ
  */
 export function withCellText(
   cell: any,
   text: string,
   styles: Record<string, unknown> = {}
 ): any {
-  const content = [{ type: "text", text, styles }];
+  const identity = text ? tableRowIdentityOfCell(cell) : undefined;
+  const content = [
+    { type: "text", text, styles: identity ? { ...styles, [TABLE_ROW_IDENTITY_STYLE]: identity } : styles },
+  ];
   if (cell && !Array.isArray(cell) && cell.type === "tableCell") {
     return { ...cell, content };
   }
@@ -88,4 +97,37 @@ export function findColumnIndexByName(block: any, columnName: string | undefined
   const headerCells = (block?.content?.rows ?? [])[0]?.cells ?? [];
   const idx = headerCells.findIndex((c: any) => readCellText(c) === columnName);
   return idx >= 0 ? idx : 0;
+}
+
+/**
+ * 表の 1 セルを 1 つのテキストに書き換えて editor に反映する。セルは withCellText を通す。
+ *
+ * 渡す content は、いまの content の rows だけを差し替えたもの。列幅（columnWidths）と
+ * 見出しの行・列（headerRows / headerCols）も content に入っていて、rows だけで渡すと
+ * BlockNote は無いものとして表を作り直す（広げた列幅が既定に戻り、見出し行が解ける）。
+ *
+ * @param rowIndex content.rows の位置（見出し行が 0）
+ * @returns 書き換えたら true。表・行・セルが無ければ何もせず false
+ */
+export function writeCellText(
+  editor: any,
+  blockId: string,
+  rowIndex: number,
+  colIndex: number,
+  text: string,
+  styles: Record<string, unknown> = {}
+): boolean {
+  const block = editor?.getBlock?.(blockId);
+  if (block?.type !== "table") return false;
+  const content = block.content ?? {};
+  const rows: any[] = content.rows ?? [];
+  const cells: any[] | undefined = rows[rowIndex]?.cells;
+  if (!cells || colIndex < 0 || colIndex >= cells.length) return false;
+  const nextRows = rows.map((row, i) =>
+    i === rowIndex
+      ? { ...row, cells: cells.map((c, ci) => (ci === colIndex ? withCellText(c, text, styles) : c)) }
+      : row
+  );
+  editor.updateBlock(blockId, { content: { ...content, type: "tableContent", rows: nextRows } });
+  return true;
 }

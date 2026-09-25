@@ -4,19 +4,21 @@
 // 紐付けるインデックステーブル付き」と謳っている。表が素の table のまま挿入されると
 // その説明が嘘になる（行頭のノート作成ボタンも @ での紐付けも出ない）ので、
 //   - 定義側の columnTypes マーク（どの表を note-link にするか）
-//   - note-app の handleTemplateSelect がそれを tableMeta に適用するときの前提
+//   - insert.ts の insertTemplateDef がそれを tableMeta に適用するときの前提
 //     （挿入前に振った id が挿入後も保たれ、先頭列の名前が読める）
 // をここで固定する。
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { BlockNoteEditor } from "@blocknote/core";
 import { getAllTemplates, type TemplateDef } from "./templates";
+import { insertTemplateDef } from "./insert";
 import { readFirstColumnName, withColumnType } from "../table-meta";
 import { getLocale, syncLocale, t } from "../../i18n";
+import type { ColumnType } from "../../lib/document-types";
 
 const identity = (key: string) => key;
 
-/** path（ルートからのインデックス配列）でブロックを引く。note-app の idAtPath と同じ辿り方 */
+/** path（ルートからのインデックス配列）でブロックを引く。insert.ts と同じ辿り方 */
 function blockAtPath(blocks: any[], path: number[]): any | null {
   let nodes: any[] = blocks;
   let node: any = null;
@@ -26,16 +28,6 @@ function blockAtPath(blocks: any[], path: number[]): any | null {
     nodes = node.children ?? [];
   }
   return node;
-}
-
-/** note-app の handleTemplateSelect と同じく、挿入前に全ブロックへ id を振る */
-function assignIds(list: any[]) {
-  for (const b of list ?? []) {
-    if (b && typeof b === "object") {
-      if (!b.id) b.id = crypto.randomUUID();
-      if (Array.isArray(b.children)) assignIds(b.children);
-    }
-  }
 }
 
 function planTemplate(): TemplateDef {
@@ -79,15 +71,16 @@ describe("公式テンプレートの columnTypes", () => {
   });
 });
 
-describe("テンプレート適用（note-app の handleTemplateSelect と同じ手順）", () => {
-  // note-app は「挿入前に id を振る → columnTypes の path を id に解決 → insertBlocks →
-  // editor.getBlock(id) → readFirstColumnName を列名として addColumnType(id, 列名, type)」
-  // の順で、スラッシュメニューのインデックステーブル挿入と同じ関数で note-link を付ける。
-  // ここでは id が挿入後も保たれ、先頭列名が読めて、tableMeta の形になることを
-  // ヘッドレス BlockNote で確認する（列名は言語で変わるので日英とも見る）。
+describe("テンプレート適用（insertTemplateDef を実物の BlockNote で）", () => {
+  // insertTemplateDef は「挿入前に id を振る → columnTypes の path を id に解決 → insertBlocks →
+  // 次フレームで editor.getBlock(id) → readFirstColumnName を列名として
+  // addColumnType(id, 列名, type)」の順で、スラッシュメニューのインデックステーブル挿入と
+  // 同じ形で note-link を付ける。ここでは id が挿入後も保たれ、先頭列名が読めて、
+  // tableMeta の形になることをヘッドレス BlockNote で確認する（列名は言語で変わるので日英とも見る）。
   const originalLocale = getLocale();
   afterEach(() => {
     syncLocale(originalLocale);
+    vi.useRealTimers();
   });
 
   it.each([
@@ -95,28 +88,36 @@ describe("テンプレート適用（note-app の handleTemplateSelect と同じ
     ["en", "Item"],
   ] as const)("%s: 挿入後の表に先頭列「%s」をキーとして note-link が付く", (locale, expectedColumn) => {
     syncLocale(locale);
-    const { blocks, columnTypes } = planTemplate().build(t);
-    assignIds(blocks);
-    const marks = (columnTypes ?? []).map((c) => ({
-      blockId: blockAtPath(blocks, c.path)?.id ?? null,
-      type: c.type,
-    }));
-    expect(marks).toHaveLength(1);
-    expect(marks[0].blockId).toBeTruthy();
-
+    vi.useFakeTimers();
     const editor = BlockNoteEditor.create({
       initialContent: [{ type: "paragraph", content: [{ type: "text", text: "/", styles: {} }] }],
     } as any);
-    editor.insertBlocks(blocks as any, (editor.document as any[])[0], "after");
+    const marks: { blockId: string; columnName: string; type: ColumnType }[] = [];
+
+    insertTemplateDef(
+      editor,
+      (editor.document as any[])[0],
+      planTemplate(),
+      {
+        setLabel: () => {},
+        setAttributes: () => {},
+        addLink: () => {},
+        addColumnType: (blockId, columnName, type) => void marks.push({ blockId, columnName, type }),
+      },
+      t,
+    );
+    vi.runAllTimers();
 
     // 挿入前に振った id で挿入後の表が引ける（focusPath / provLinks と同じ前提）
-    const inserted = editor.getBlock(marks[0].blockId!) as any;
-    expect(inserted?.type).toBe("table");
+    expect(marks).toHaveLength(1);
+    expect((editor.getBlock(marks[0].blockId) as any)?.type).toBe("table");
+    // スラッシュだけのブロックは消えている
+    expect((editor.document as any[]).some((b) => b.type === "table")).toBe(true);
+    expect((editor.document as any[])[0].type).toBe("heading");
 
     // 先頭列名をキーに note-link が付く = スラッシュ挿入したインデックステーブルと同じ形
-    const columnName = readFirstColumnName(inserted);
-    expect(columnName).toBe(expectedColumn);
-    expect(withColumnType(undefined, columnName, marks[0].type)).toEqual({
+    expect(marks[0].columnName).toBe(expectedColumn);
+    expect(withColumnType(undefined, marks[0].columnName, marks[0].type)).toEqual({
       [expectedColumn]: ["note-link"],
     });
   });

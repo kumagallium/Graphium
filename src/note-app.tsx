@@ -4,19 +4,15 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
-import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
-import { calloutSlashItem } from "./blocks/callout";
-import { mathSlashItem } from "./blocks/math";
-import { calcSlashItem } from "./blocks/calc";
-import { inlineMathSlashItem } from "./features/inline-math/spec";
+import { setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
+import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems } from "./blocks/slash-items";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
-import { stepSlashItem } from "./blocks/step";
-import { columnsSlashItem } from "./blocks/multi-column";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
   RemoteContentBar,
@@ -55,13 +51,12 @@ import {
 } from "./features/context-label/prov-indicator";
 import {
   IndexTableIconLayer,
-  indexTableSlashItem,
+  setEditorIndexTableCallbacks,
   setIndexTableCallbacks,
   setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek, type PeekWikiContextArgs } from "./features/index-table/side-peek";
 import {
-  logTableSlashItem,
   setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
@@ -118,7 +113,6 @@ import {
   type ExportPayload,
 } from "./blocks/data-table";
 import {
-  chartSlashItem,
   ChartAssetSourceFlow,
   setChartAssetSourceCallback,
   type ChartAssetSourceResult,
@@ -153,9 +147,17 @@ import {
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
   insertNoteMentionInline,
-  resolveMentionTargetFromLinks,
 } from "./features/block-link/mention-menu";
+import {
+  assetIdsForName,
+  findNoteByTitle,
+  openPeekTarget,
+  readMentionAt,
+  resolveMentionClickTarget,
+} from "./features/block-link/mention-click";
+import { insertAssetMention, recordMentionLink } from "./features/block-link/mention-insert";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
+import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
@@ -191,6 +193,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
+import { pendingPeekSave } from "./lib/peek-save-queue";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -359,17 +362,15 @@ import {
 import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates, buildDocumentFromTemplate, pageTemplateToBuildResult, deserializeTemplate, type PageTemplate } from "./features/template";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
+import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate } from "./features/template";
 import {
   CitePickerModal,
-  getCiteSlashMenuItems,
   setCitePickerCallback,
   type CitePickerKind,
 } from "./features/cite-picker";
 import { SharedCitePickerModal } from "./features/sharing/SharedCitePickerModal";
 import {
-  sharedCitationSlashItem,
   setSharedCitePickerCallback,
   setSharedEntryOpenCallback,
   openSharedEntry,
@@ -383,7 +384,6 @@ import {
   LabelGalleryView,
   MediaPickerModal,
   NoteMemosSection,
-  getMediaSlashMenuItems,
   setMediaPickerCallback,
   DEFAULT_MEDIA_SLASH_KEYS,
   UrlPasteMenu,
@@ -1968,18 +1968,23 @@ function NoteEditorInner({
     };
   }, [mainEditor, mediaIndex]);
 
-  // スラッシュメニューからテンプレートピッカーを開くコールバック登録
-  useEffect(() => {
-    setTemplatePickerCallback((triggerBlock: any) => {
-      templateTriggerBlockRef.current = triggerBlock;
-      setTemplatePickerOpen(true);
-    });
-    return () => { setTemplatePickerCallback(null); };
-  }, []);
+  // スラッシュメニューの「テンプレート」。ピッカーの開閉と挿入は SidePeek と共通の
+  // useTemplatePicker が持ち、ここではメインのエディタとメインのノートのストアを渡す
+  // （ピークはピーク自身のエディタとストアを渡す）
+  const templatePicker = useTemplatePicker(mainEditor, {
+    stores: {
+      setLabel: labelStore.setLabel,
+      setAttributes: labelStore.setAttributes,
+      addLink: linkStore.addLink,
+      addColumnType: tableMetaStore.addColumnType,
+    },
+    uploadFile,
+  });
 
   // テーブルブロックの先頭列にふるまいを付ける（先頭列の名前をキーに tableMeta へ記録）。
-  // スラッシュメニューのインデックス/時系列テーブル挿入と、テンプレート適用（columnTypes）
-  // が同じ経路を通る — どちらも「挿入した表の先頭列に note-link / datetime-auto を付ける」。
+  // スラッシュメニューのインデックス/時系列テーブル挿入が通る — どちらも「挿入した表の
+  // 先頭列に note-link / datetime-auto を付ける」。テンプレートの表（columnTypes）も
+  // 同じ記録の仕方で付けている（features/template/insert.ts）。
   const addFirstColumnType = useCallback(
     (blockId: string, type: ColumnType) => {
       const block = editorRef.current?.getBlock?.(blockId);
@@ -1987,254 +1992,6 @@ function NoteEditorInner({
     },
     [tableMetaStore],
   );
-
-  // テンプレートを選択してエディタに挿入
-  const handleTemplateSelect = useCallback((templateId: string) => {
-    setTemplatePickerOpen(false);
-    const editor = editorRef.current;
-    if (!editor) return;
-
-    const allTemplates = getAllTemplates();
-    const tmpl = allTemplates.find((t) => t.id === templateId);
-    if (!tmpl) return;
-
-    const triggerBlock = templateTriggerBlockRef.current ?? editor.getTextCursorPosition()?.block;
-    if (!triggerBlock) return;
-
-    const { blocks: rawBlocks, labels: rawLabels, provLinks, columnTypes } = tmpl.build(tStatic);
-
-    // テンプレートは旧語彙（procedure/plan/result ラベル付き見出し）で定義されている。
-    // 挿入前に step ブロックへ変換する（工程は step が正。ラベルのまま挿すと
-    // v6 済みドキュメントに旧形式が永久残留する）。
-    // 変換は block id ベースなので一時 id を振り、provLinks / focusPath は
-    // 変換前に id へ解決しておく（変換は id を保存するため、挿入後は id で引ける）。
-    const assignIds = (list: any[]) => {
-      for (const b of list ?? []) {
-        if (b && typeof b === "object") {
-          if (!b.id) b.id = crypto.randomUUID();
-          if (Array.isArray(b.children)) assignIds(b.children);
-        }
-      }
-    };
-    assignIds(rawBlocks);
-    const idAtPath = (path: number[]): string | null => {
-      let nodes: any[] = rawBlocks;
-      let node: any = null;
-      for (const idx of path) {
-        node = nodes?.[idx];
-        if (!node) return null;
-        nodes = node.children ?? [];
-      }
-      return node?.id ?? null;
-    };
-    const linkIds = (provLinks ?? []).map((l) => ({
-      sourceId: idAtPath(l.sourcePath),
-      targetId: idAtPath(l.targetPath),
-      type: l.type,
-    }));
-    // テーブルの列のふるまい（計画テンプレートの表を note-link = インデックステーブルにする等）。
-    // provLinks と同じく変換前に id へ解決しておく
-    const columnTypeIds = (columnTypes ?? []).map((c) => ({
-      blockId: idAtPath(c.path),
-      type: c.type,
-    }));
-    const focusId = idAtPath(tmpl.focusPath);
-    const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
-      rawBlocks,
-      rawLabels as any,
-    );
-
-    const inserted = editor.insertBlocks(blocks, triggerBlock, "after");
-
-    // スラッシュを打ったブロックが空なら削除
-    const content = triggerBlock.content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] ||
-        (content[0].type === "text" &&
-          content[0].text.replace("/", "").trim() === ""))
-    ) {
-      editor.removeBlocks([triggerBlock]);
-    }
-
-    // パスから挿入後のブロックを取得
-    const resolveByPath = (path: number[]): any | null => {
-      let nodes: any[] = inserted as any[];
-      let node: any = null;
-      for (const idx of path) {
-        node = nodes?.[idx];
-        if (!node) return null;
-        nodes = node.children ?? [];
-      }
-      return node;
-    };
-
-    // ラベル付与・前手順リンク追加・列のふるまい付与（次フレームに延期して、エディタの
-    // 状態反映後に実行）。
-    // procedure/plan/result は変換で消費済み。リンクは変換前に解決した id で張る
-    // （テンプレの step1→step2 informed_by は、見出し id を引き継いだ step 間に張られる）。
-    // 列のふるまいはスラッシュメニューのインデックス/時系列テーブル挿入と同じ関数で付ける。
-    if (labels.length > 0 || linkIds.length > 0 || columnTypeIds.length > 0) {
-      setTimeout(() => {
-        for (const { path, label } of labels) {
-          const block = resolveByPath(path);
-          if (block?.id) {
-            labelStore.setLabel(block.id, label);
-          }
-        }
-        for (const link of linkIds) {
-          if (link.sourceId && link.targetId) {
-            linkStore.addLink({
-              sourceBlockId: link.sourceId,
-              targetBlockId: link.targetId,
-              type: link.type,
-              createdBy: "human",
-            });
-          }
-        }
-        for (const { blockId, type } of columnTypeIds) {
-          if (blockId) addFirstColumnType(blockId, type);
-        }
-      }, 0);
-    }
-
-    // フォーカスブロックにカーソルを移動（id は変換を跨いで保存される）
-    if (focusId) {
-      try {
-        editor.setTextCursorPosition(focusId, "end");
-      } catch {
-        /* no-op */
-      }
-    }
-
-    templateTriggerBlockRef.current = null;
-    // insertBlocks による onChange で自動的に markDirty される
-  }, [labelStore, linkStore, addFirstColumnType]);
-
-  // チームのテンプレート（共有ライブラリの type=template）をピッカーから挿入する。
-  // 公式テンプレートとの違いは「本文が共有ルートにある」ことだけなので、
-  // 読み出し → hash 照合 → shared-blob: の解決 まで済ませてから、
-  // 公式と同じ挿入経路（ブロック挿入 → 次フレームでラベル・属性・列のふるまいを適用）に流す。
-  const handleSharedTemplateSelect = useCallback(async (entry: SharedEntry) => {
-    setTemplatePickerOpen(false);
-    const editor = editorRef.current;
-    // 挿入位置は本文の読み出し（非同期）を跨ぐので先に確保する。
-    // ref は次の選択に備えてここで空に戻す
-    const triggerBlock = templateTriggerBlockRef.current ?? editor?.getTextCursorPosition()?.block;
-    templateTriggerBlockRef.current = null;
-    if (!editor || !triggerBlock) return;
-
-    let template: PageTemplate;
-    try {
-      const { body, verified } = await readSharedEntryBody(entry);
-      if (!verified) {
-        // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
-        // 本文自体は読めるので、挿すかどうかは利用者に決めさせる
-        if (!window.confirm(tStatic("template.picker.hashMismatchConfirm"))) return;
-      }
-      // バイト列を生文字列として扱うと日本語が壊れる。必ず TextDecoder で読む
-      template = deserializeTemplate(new TextDecoder().decode(body));
-    } catch (e) {
-      alert(tStatic("template.picker.loadFailed", { error: e instanceof Error ? e.message : String(e) }));
-      return;
-    }
-
-    // shared-blob: を自分のローカル素材へ置き換える（fork・テンプレートから新規ノートと
-    // 同じ materializeSharedBlobs）。doc 単位の関数なので 1 ページの擬似 doc に包む。
-    // ここでブロック id は変えない — このあとの pageTemplateToBuildResult が
-    // labels / attributes / tableMeta を「元の blockId」で引くため、
-    // 先に id が変わると注釈がまとめて落ちる
-    const extraBlobs = (entry.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-    const blobRoot = getBlobRoot();
-    if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot && uploadFile) {
-      const blobProvider = new LocalFolderBlobProvider(blobRoot);
-      const now = new Date().toISOString();
-      const pseudoDoc: GraphiumDocument = {
-        version: LATEST_DOCUMENT_VERSION,
-        title: template.name,
-        pages: [
-          {
-            id: "main",
-            title: template.pageTitle,
-            blocks: template.blocks,
-            labels: {},
-            provLinks: [],
-            knowledgeLinks: [],
-          },
-        ],
-        createdAt: now,
-        modifiedAt: now,
-      };
-      const materialized = await materializeSharedBlobs(pseudoDoc, {
-        blobs: extraBlobs,
-        fetchBytes: (ref) => blobProvider.get(ref),
-        uploadMedia: async (file) => ({ url: await uploadFile(file) }),
-      });
-      template = { ...template, blocks: materialized.doc.pages[0]?.blocks ?? template.blocks };
-      if (materialized.missing.length > 0) {
-        alert(tStatic("template.picker.mediaMissing", { count: String(materialized.missing.length) }));
-      }
-    }
-
-    const { blocks, labels, attributes, columnTypes } = pageTemplateToBuildResult(template);
-    if (blocks.length === 0) return;
-
-    const inserted = editor.insertBlocks(blocks, triggerBlock, "after");
-
-    // スラッシュを打ったブロックが空なら削除（公式テンプレートと同じ後始末）
-    const content = (triggerBlock as any).content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] ||
-        (content[0].type === "text" &&
-          content[0].text.replace("/", "").trim() === ""))
-    ) {
-      editor.removeBlocks([triggerBlock]);
-    }
-
-    // パスから挿入後のブロックを取得（公式テンプレートと同じ引き当て方）
-    const resolveByPath = (path: number[]): any | null => {
-      let nodes: any[] = inserted as any[];
-      let node: any = null;
-      for (const idx of path) {
-        node = nodes?.[idx];
-        if (!node) return null;
-        nodes = node.children ?? [];
-      }
-      return node;
-    };
-
-    // エディタの状態反映後に注釈層を復元する（公式テンプレートと同じく次フレーム）
-    setTimeout(() => {
-      for (const { path, label } of labels) {
-        const block = resolveByPath(path);
-        if (block?.id) labelStore.setLabel(block.id, label);
-      }
-      // 連動属性はラベルを付けた直後にだけ入る（setAttributes は既定値が無いブロックでは
-      // 何もしない）。ラベルが復元できなかったブロックの属性は落ちるが、
-      // 属性だけ復活しても意味が無いのでそれで正しい
-      for (const { path, attributes: attrs } of attributes ?? []) {
-        const block = resolveByPath(path);
-        if (block?.id) labelStore.setAttributes(block.id, attrs);
-      }
-      for (const { path, type } of columnTypes ?? []) {
-        const block = resolveByPath(path);
-        if (block?.id) addFirstColumnType(block.id, type);
-      }
-    }, 0);
-
-    // 共有テンプレートは focusPath を持たないので、挿入した先頭ブロックにカーソルを置く
-    const firstId = (inserted as any[])[0]?.id;
-    if (firstId) {
-      try {
-        editor.setTextCursorPosition(firstId, "end");
-      } catch {
-        /* no-op */
-      }
-    }
-  }, [labelStore, addFirstColumnType, uploadFile]);
 
   // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
   const isSlashOnlyBlock = useCallback((block: any) => {
@@ -2249,7 +2006,7 @@ function NoteEditorInner({
   // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する。
   // スラッシュだけのブロックなら中身を空にしてカーソル位置に差し込み、
   // 本文があるブロックでは現在のカーソル位置にそのまま挿入する。
-  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[], onInserted?: () => void) => {
     if (isSlashOnlyBlock(currentBlock)) {
       editor.updateBlock(currentBlock, { type: "paragraph", content: [] });
     }
@@ -2257,6 +2014,7 @@ function NoteEditorInner({
     editor.setTextCursorPosition(target, "end");
     setTimeout(() => {
       editor.insertInlineContent(inline);
+      onInserted?.();
     }, 0);
   }, [isSlashOnlyBlock]);
 
@@ -2278,22 +2036,25 @@ function NoteEditorInner({
       if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
         citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, entry.fileId];
       }
-      // @メンションの asset 分岐と同じく linkStore にも記録する（クリックで素材を開くため）
-      if (entry.fileId) {
-        linkStore.addLink({
-          sourceBlockId: currentBlock.id,
-          targetBlockId: "",
-          targetNoteId: `${entry.type}:${entry.fileId}`,
-          type: "reference",
-          createdBy: "human",
-        });
-      }
       // insertInlineContent が onChange を発火 → 自動 markDirty。
       // citedAssetFileIdsRef は同期的に更新済みなので、その後の save で拾われる。
-      insertInlineAtSlash(editor, currentBlock, [
-        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
-        { type: "text", text: " ", styles: {} },
-      ]);
+      // @メンションの asset 分岐と同じく、入れた直後に linkStore にも記録する
+      // （クリックで素材を開くため。表のセルなら行の identity も控える）
+      insertInlineAtSlash(
+        editor,
+        currentBlock,
+        [
+          { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+          { type: "text", text: " ", styles: {} },
+        ],
+        () => {
+          if (!entry.fileId) return;
+          recordMentionLink(editor, linkStore.addLink, {
+            sourceBlockId: currentBlock.id,
+            targetNoteId: `${entry.type}:${entry.fileId}`,
+          });
+        },
+      );
       return;
     }
 
@@ -2576,37 +2337,15 @@ function NoteEditorInner({
 
   // 解決済み ID（ノートの素 ID / wiki: / 外部ソース ID）をサイドピークへ振り分ける。
   // 本文の @メンション・インデックステーブル・グラフのパラメータ ↗ が同じ経路を通る。
-  // 開けたら true（chat:/shared: など実体の無い ID は false で何もしない）
+  // 振り分け本体はサイドピークと共通（openPeekTarget）。開けたら true
+  // （chat:/shared: など実体の無い ID は false で何もしない）
   const openPeekTargetId = useCallback(
-    (id: string): boolean => {
-      const ext = parseExternalSource(id);
-      if (ext) {
-        if (ext.kind === "url") {
-          setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
-          return true;
-        }
-        if (
-          ext.kind === "pdf" ||
-          ext.kind === "document" ||
-          ext.kind === "data" ||
-          ext.kind === "image"
-        ) {
-          const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
-          if (entry) {
-            setMaterialSidePeekEntry(entry);
-            return true;
-          }
-          return false;
-        }
-        if (ext.kind === "memo") {
-          onOpenMemoSource?.(ext.key);
-          return true;
-        }
-        return false;
-      }
-      setSidePeekNoteId(id);
-      return true;
-    },
+    (id: string): boolean =>
+      openPeekTarget(id, mediaIndex, {
+        openNote: setSidePeekNoteId,
+        openMaterial: setMaterialSidePeekEntry,
+        openMemo: onOpenMemoSource,
+      }),
     [mediaIndex, onOpenMemoSource]
   );
 
@@ -2834,60 +2573,29 @@ function NoteEditorInner({
     }
   }, [removeBlockMetadata, linkStore]);
 
-  // スラッシュメニューアイテム（既存メディア・メモから挿入）
-  const mediaSlashItems = useMemo(() => getMediaSlashMenuItems(), []);
-  const memoSlashItem = useMemo(() => getMemoSlashMenuItem(), []);
-  const templateSlashItem = useMemo(() => getTemplateSlashMenuItem(), []);
-  const citeSlashItems = useMemo(() => getCiteSlashMenuItems(), []);
-  // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
-  // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
-  // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
-  // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
-  const newNoteSlashItem: SlashMenuItem = useMemo(
-    () => ({
-      // ラベルは getter で遅延評価する。この項目は useMemo で保持されるので、
-      // ここで t() を即時評価すると言語を切り替えても古いラベルが残る。
-      get title() { return tStatic("slashMenu.newNote.title"); },
-      get subtext() { return tStatic("slashMenu.newNote.subtext"); },
-      get group() { return tStatic("slashMenu.newNote.group"); },
-      aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
-      onItemClick: (editor: any) => {
-        const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
-        void (async () => {
-          if (!onCreateLinkedNote) return;
-          const title = (await promptNoteName(""))?.trim() ?? "";
-          if (!title) return;
-          const newId = await onCreateLinkedNote(title);
-          if (!newId) return;
-          if (sourceBlockId) {
-            linkStore.addLink({
-              sourceBlockId,
-              targetBlockId: "",
-              targetNoteId: newId,
-              type: "reference",
-              createdBy: "human",
-            });
-            const exists = noteLinksRef.current.some((l) => l.targetNoteId === newId);
-            if (!exists) {
-              noteLinksRef.current = [
-                ...noteLinksRef.current,
-                { targetNoteId: newId, sourceBlockId, type: "derived_from" },
-              ];
-            }
-          }
-          // insertInlineContent の onChange で自動 markDirty される
-          setTimeout(() => {
-            insertNoteMentionInline(editorRef.current, newId, title);
-          }, 50);
-        })();
-      },
-    }),
+  // スラッシュメニューアイテム。一覧は blocks/slash-items にまとめてあり、SidePeek も
+  // 同じ common を使う。新しい項目はそちらに足す（メインにしか出ない漏れを防ぐため）
+  const mainOnlySlashItems = useMemo(() => getMainEditorOnlySlashMenuItems(), []);
+  const commonSlashItems = useMemo(() => getCommonSlashMenuItems({ includeCite: true }), []);
+  // 「新しいノート」（名前を付けて新規ノートを作成し、ここにリンク）。組み立ては
+  // block-link/new-note-slash-item.ts で SidePeek と共通。メインが渡すのは記録先
+  // （このエディタの linkStore と noteLinksRef）だけ。作れないときは出さない
+  const newNoteSlashItem: SlashMenuItem | null = useMemo(
+    () =>
+      onCreateLinkedNote
+        ? buildNewNoteSlashItem({
+            promptNoteName,
+            createNote: (title) => onCreateLinkedNote(title),
+            getEditor: () => editorRef.current,
+            addLink: linkStore.addLink,
+            addNoteLink: (link) => {
+              if (noteLinksRef.current.some((l) => l.targetNoteId === link.targetNoteId)) return;
+              noteLinksRef.current = [...noteLinksRef.current, link];
+            },
+          })
+        : null,
     [onCreateLinkedNote, promptNoteName, linkStore],
   );
-
-  // テンプレートピッカーモーダル
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const templateTriggerBlockRef = useRef<any>(null);
 
   // ── URL ペースト検知 ──
   const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
@@ -4953,9 +4661,11 @@ function NoteEditorInner({
       const tableMeta = migrateTableMeta(page);
       tableMetaStore.restore(tableMeta);
       const tableMetaEntries = Object.entries(tableMeta ?? {});
-      // 日時が入る列を持つテーブルの行数を先に記録しておく
-      // （開いて最初の行追加から日時が入るように）
+      // 日時が入る列を持つテーブルの行数を先に記録しておく（開いて最初の行追加から
+      // 日時が入るように）。記録はエディタ単位で、エディタの公開がこの復元より後なら
+      // ここはエディタが無く空振りする。そのときは下の mainEditor の effect が記録する
       primeLogTableRowTracking(
+        editorRef.current,
         page.blocks,
         tableMetaEntries
           .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
@@ -5115,9 +4825,11 @@ function NoteEditorInner({
     return () => { setOnPrevStepLinkSelected(null); };
   }, [linkStore]);
 
-  // インデックステーブル用のグローバルコールバック登録
+  // インデックステーブル用のコールバック登録。行アイコンはエディタ単位の受け口
+  // （メインのエディタに登録。SidePeek は自分のエディタに登録する）を引く。グローバルは
+  // グラフパネル・インライン画像など、メインのノートに固定の経路が引く
   useEffect(() => {
-    setIndexTableCallbacks({
+    const callbacks = {
       files,
       currentFileId: fileId,
       onNavigateNote,
@@ -5137,69 +4849,24 @@ function NoteEditorInner({
           markDirty();
         }
       },
-    });
-    return () => { setIndexTableCallbacks(null); };
-  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty, openPeekTargetId]);
+    };
+    setIndexTableCallbacks(callbacks);
+    // 行から作ったノートは、表の横のサイドピークに開く
+    setEditorIndexTableCallbacks(mainEditor, { ...callbacks, onNoteCreated: callbacks.onOpenSidePeek });
+    return () => {
+      setIndexTableCallbacks(null);
+      setEditorIndexTableCallbacks(mainEditor, null);
+    };
+  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty, openPeekTargetId, mainEditor]);
 
   // エディタ内の @ノート名クリックでサイドピークを開く
   useEffect(() => {
-    const isMentionSpan = (el: HTMLElement): boolean => {
-      if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
-      if (!el.closest(".bn-editor")) return false;
-      // インデックステーブル（note-link 列）の先頭列セルだけは icon-layer が
-      // 行ノートを開くのでここでは扱わない。それ以外のセル内メンション
-      // （素材リンク・他ノート参照）は本文と同じにクリックで開く。
-      // 以前はテーブル全体を除外していて、セルに貼った素材リンクが押せなかった
-      const cellEl = el.closest("td, th");
-      if (cellEl) {
-        const tableBlockId = el.closest("[data-id]")?.getAttribute("data-id");
-        const isFirstColumn = cellEl.parentElement?.children[0] === cellEl;
-        if (
-          isFirstColumn &&
-          tableBlockId &&
-          tableMetaStore.hasColumnType(tableBlockId, "note-link")
-        ) {
-          return false;
-        }
-      }
-      const text = el.textContent?.trim();
-      return !!text && text.startsWith("@") && !text.startsWith("@#");
-    };
-    const resolveMentionNoteId = (noteName: string): { noteId: string; isWiki: boolean } | null => {
-      // ノートから検索
-      const found = noteIndex?.notes.find((n) => n.title === noteName);
-      if (found) return { noteId: found.noteId, isWiki: found.source === "ai" };
-      const file = files.find(
-        (f) => f.name.replace(/\.(graphium|provnote)\.json$/, "") === noteName
-      );
-      if (file) return { noteId: file.id, isWiki: false };
-      // Wiki から検索（🤖 プレフィックスを除去して検索）
-      const cleanName = noteName.replace(/^🤖\s*/, "");
-      const wikiEntry = noteIndex?.notes.find(
-        (n) => n.source === "ai" && (n.title === noteName || n.title === cleanName)
-      );
-      if (wikiEntry) return { noteId: wikiEntry.noteId, isWiki: true };
-      return null;
-    };
-    // 素材名 → 外部ソース ID（"data:<fileId>" 等）。リンク照合と逆引きの両方が使う。
-    // macOS のファイル名は NFD で来ることがあるため NFC に正規化して比べる。
-    const resolveAssetExternalId = (name: string): string | null => {
-      const nfc = name.normalize("NFC");
-      const entry = mediaIndex?.media.find((m) => m.name.normalize("NFC") === nfc);
-      return entry ? `${entry.type}:${entry.fileId}` : null;
-    };
-    // 素材名の逆引き（リンク記録の無い既存の @素材名 向けフォールバック）。
-    // 外部ソース ID を返し、下流の素材ピーク振り分けに乗せる。
-    const resolveMentionAssetId = (name: string): { noteId: string; isWiki: boolean } | null => {
-      const id = resolveAssetExternalId(name);
-      return id ? { noteId: id, isWiki: false } : null;
-    };
     // グラフ側（右パネルの表・カードのパラメータ表示）の @参照は、本文メンションと
     // 同じ解決を使う。ここ（noteIndex / files / mediaIndex が揃う場所）で登録する
     setParamLinkResolver((name) => {
-      const note = resolveMentionNoteId(name);
+      const note = findNoteByTitle(name, noteIndex, files);
       if (note) return note.isWiki ? `wiki:${note.noteId}` : note.noteId;
-      return resolveAssetExternalId(name);
+      return assetIdsForName(mediaIndex?.media, name)[0] ?? null;
     });
     // 値セルで @ を打ったときの候補も本文メンションと同じ材料から出す。
     // 表の値は測定ファイル参照が本命なので素材を先に並べる
@@ -5235,7 +4902,7 @@ function NoteEditorInner({
         }
       }
       // 外部参照インプット行（data-row-identity）は、@と同じ青リンクとして
-      // 参照元ノートを Side Peek で開く。テーブル内なので isMentionSpan より先に見る
+      // 参照元ノートを Side Peek で開く。テーブル内なのでメンション判定より先に見る
       const rowIdentityEl = target.closest("[data-row-identity]");
       if (rowIdentityEl && target.closest('[contenteditable="true"]')) {
         const identity = rowIdentityEl.getAttribute("data-row-identity");
@@ -5254,66 +4921,31 @@ function NoteEditorInner({
           return;
         }
       }
-      if (!isMentionSpan(target)) return;
-      const noteName = target.textContent!.trim().slice(1);
-      // まず記録済みリンク（linkStore）から厳密な ID で解決する。挿入時に
-      // targetNoteId を記録してあるので、同名ノートが複数あっても正しく開ける。
-      // 解決できなければタイトル逆引きにフォールバック（旧データや素材引用向け）。
-      const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
-      const resolved =
-        resolveMentionTargetFromLinks(
-          blockId,
-          noteName,
-          linkStore.getAllLinks(),
-          noteIndex,
-          resolveAssetExternalId
-        ) ??
-        resolveMentionNoteId(noteName) ??
-        resolveMentionAssetId(noteName);
-      if (resolved) {
-        e.preventDefault();
-        e.stopPropagation();
-        // References の「Source: @ラベル」等は linkStore の targetNoteId に外部ソース ID
-        // （url:/pdf:/document:/data:/chat:）がそのまま入る。振り分けは openPeekTargetId に
-        // 集約（chat: は開ける実体が無いので何も起きない）。
-        // ノート / Wiki どちらでもまずサイドピークで開く。SidePeek 内の「Open full」で
-        // 完全表示に切り替えられる方が、いきなりページ遷移するより流れが良い。
-        // Wiki の場合は SidePeek が wiki: プレフィックスで loadWikiFile を呼ぶ。
-        const isExt = parseExternalSource(resolved.noteId) !== null;
-        openPeekTargetId(!isExt && resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId);
-        return;
-      }
-      // ノートで解決できなければ、@ 引用したドキュメント素材として解決を試みる。
-      // citedAssetFileIds の中から表示名が一致する素材を逆引きし、素材サイドピーク（PDF 等）を開く。
-      const assetFileId = citedAssetFileIdsRef.current.find((fid) => {
-        const entry = mediaIndex?.media.find((m) => m.fileId === fid);
-        return entry?.name === noteName;
+      // インデックステーブルの先頭列も本文と同じに扱う。行ノートにつながった行は
+      // icon-layer の透明な覆いが先にクリックを受けて行ノートを開くので、ここへ来るのは
+      // つながっていない行のメンション（@素材 など）だけ。以前は先頭列を丸ごと除外して
+      // いて、先頭列に置いた @素材 がどこからも開けなかった
+      const mention = readMentionAt(target);
+      if (!mention) return;
+      // 解決は SidePeek と共通（resolveMentionClickTarget）。記録済みリンク → タイトル →
+      // 素材名 → 知見の派生元 の順で、同名のノート・素材があっても厳密な ID に届く
+      const peekId = resolveMentionClickTarget({
+        ...mention,
+        links: linkStore.getAllLinks(),
+        noteIndex,
+        media: mediaIndex?.media,
+        files,
+        citedAssetFileIds: citedAssetFileIdsRef.current,
+        derivedFromNotes: initialDoc?.wikiMeta?.derivedFromNotes,
       });
-      if (assetFileId) {
-        const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
-        if (entry) {
-          e.preventDefault();
-          e.stopPropagation();
-          setMaterialSidePeekEntry(entry);
-          return;
-        }
-      }
-      // それでも解決できない場合: source 引用が「派生元の文書からの引用テキスト」で、
-      // ノートにも @素材にも一致しないケース（知見/claim が document:/pdf: から派生したとき）。
-      // この知見の derivedFromNotes にある文書/PDF 素材をピークで開く。再生成でリネームされた
-      // 旧タイトル引用や、文書由来の引用文はノートとして解決できないので、ここで源泉文書に橋渡しする。
-      const derived = initialDoc?.wikiMeta?.derivedFromNotes ?? [];
-      for (const sourceId of derived) {
-        const ext = /^(document|pdf):(.+)$/.exec(sourceId);
-        if (!ext) continue;
-        const entry = mediaIndex?.media.find((m) => m.fileId === ext[2]);
-        if (entry) {
-          e.preventDefault();
-          e.stopPropagation();
-          setMaterialSidePeekEntry(entry);
-          return;
-        }
-      }
+      if (!peekId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // ノート / Wiki どちらでもまずサイドピークで開く。SidePeek 内の「Open full」で
+      // 完全表示に切り替えられる方が、いきなりページ遷移するより流れが良い。
+      // References の「Source: @ラベル」等の外部ソース ID（url:/pdf:/document:/data:/image:）は
+      // 素材ピークへ振り分ける（chat: は開ける実体が無いので何も起きない）
+      openPeekTargetId(peekId);
     };
     document.addEventListener("click", handleClick, true);
     return () => {
@@ -5321,25 +4953,44 @@ function NoteEditorInner({
       setParamLinkResolver(null);
       setParamLinkSuggestions(null);
     };
-  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource, tableMetaStore]);
+  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, openPeekTargetId]);
 
-  // スラッシュメニューからのインデックステーブル登録コールバック
+  // スラッシュメニューからのインデックステーブル登録コールバック（メインのエディタ用。
+  // SidePeek は自分のエディタに同じ受け口を登録する）
   // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）
   useEffect(() => {
-    setRegisterIndexTableCallback((blockId: string) => {
+    if (!mainEditor) return;
+    setRegisterIndexTableCallback(mainEditor, (blockId: string) => {
       addFirstColumnType(blockId, "note-link");
     });
-    return () => { setRegisterIndexTableCallback(null); };
-  }, [addFirstColumnType]);
+    return () => { setRegisterIndexTableCallback(mainEditor, null); };
+  }, [mainEditor, addFirstColumnType]);
 
   // スラッシュメニューからの時系列テーブル登録コールバック
-  // （挿入されたテーブルの先頭列に datetime-auto を付ける）
+  // （挿入されたテーブルの先頭列に datetime-auto を付ける）。項目は SidePeek と共通なので、
+  // このエディタで押されたときだけ呼ばれるようにエディタ単位で登録する
   useEffect(() => {
-    setRegisterLogTableCallback((blockId: string) => {
+    if (!mainEditor) return;
+    setRegisterLogTableCallback(mainEditor, (blockId: string) => {
       addFirstColumnType(blockId, "datetime-auto");
     });
-    return () => { setRegisterLogTableCallback(null); };
-  }, [addFirstColumnType]);
+    return () => { setRegisterLogTableCallback(mainEditor, null); };
+  }, [mainEditor, addFirstColumnType]);
+
+  // 日時が入る列を持つテーブルの行数を、このエディタの分として先に記録しておく
+  // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
+  // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
+  // key={fileId || "new"} で作り直されるが、表の注釈（tableMetaStore）は残る。
+  // 初期データの復元でも記録するので、注釈の復元とエディタの公開のどちらが先でも
+  // 取りこぼさない（記録の無い表だけを埋めるので、二度呼んでも崩れない）
+  useEffect(() => {
+    if (!mainEditor) return;
+    primeLogTableRowTracking(
+      mainEditor,
+      mainEditor.document,
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+    );
+  }, [mainEditor]);
 
   // スコープ派生ボタン → 別ノートとして作成
   useEffect(() => {
@@ -5909,13 +5560,7 @@ function NoteEditorInner({
         />
       )}
       {/* テンプレートピッカーモーダル（スラッシュメニュー /template から） */}
-      {templatePickerOpen && (
-        <TemplatePickerModal
-          onSelect={handleTemplateSelect}
-          onSelectShared={handleSharedTemplateSelect}
-          onClose={() => setTemplatePickerOpen(false)}
-        />
-      )}
+      {templatePicker.dialog}
       {/* 引用ピッカーモーダル（スラッシュメニュー /claims, /Insights から） */}
       {citePickerKind && (
         <CitePickerModal
@@ -6316,7 +5961,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, logTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, calcSlashItem, memoSlashItem, chartSlashItem, ...citeSlashItems, ...(isTauri() ? [sharedCitationSlashItem] : [])]}
+              extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...mainOnlySlashItems, ...commonSlashItems]}
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -6417,13 +6062,9 @@ function NoteEditorInner({
                   }, 100);
                   markDirty();
                 } else if (suggestion.type === "note") {
-                  linkStore.addLink({
-                    sourceBlockId,
-                    targetBlockId: "",
-                    targetNoteId: suggestion.id,
-                    type: "reference",
-                    createdBy: "human",
-                  });
+                  // reference リンクは入れた直後に記録する（表のセルなら行の identity を
+                  // 控えるため。mention-insert.ts の recordMentionLink）
+                  const noteId = suggestion.id;
                   const ctx = mentionContextRef.current;
                   if (ctx.tableBlockId && ctx.rowIndex > 0 && editorRef.current) {
                     const noteName = suggestion.label;
@@ -6432,7 +6073,8 @@ function NoteEditorInner({
                     const colIndex = ctx.colIndex >= 0 ? ctx.colIndex : 0;
                     tableMetaStore.setNoteLink(tableBlockId, `@${noteName}`, suggestion.id);
                     setTimeout(() => {
-                      const block = editorRef.current?.getBlock(tableBlockId);
+                      const editor = editorRef.current;
+                      const block = editor?.getBlock(tableBlockId);
                       if (block?.content?.rows?.[rowIndex]) {
                         const newRows = block.content.rows.map((r: any, i: number) => {
                           if (i !== rowIndex) return r;
@@ -6447,10 +6089,16 @@ function NoteEditorInner({
                             ),
                           };
                         });
-                        editorRef.current.updateBlock(tableBlockId, {
+                        editor.updateBlock(tableBlockId, {
                           content: { type: "tableContent", rows: newRows },
                         });
                       }
+                      // セルを書き換えて入れる経路なので、カーソルではなく打った行に紐づける
+                      recordMentionLink(editor, linkStore.addLink, {
+                        sourceBlockId,
+                        targetNoteId: noteId,
+                        row: { tableBlockId, rowIndex },
+                      });
                     }, 100);
                     const exists = noteLinksRef.current.some(
                       (l) => l.targetNoteId === suggestion.id
@@ -6463,11 +6111,14 @@ function NoteEditorInner({
                     }
                     markDirty();
                   } else {
-                    const targetId = suggestion.id;
                     const targetLabel = suggestion.label;
                     setTimeout(() => {
-                      // href に noteId を埋めた link として挿入（同名ノートでも正しく解決）
-                      insertNoteMentionInline(editorRef.current, targetId, targetLabel);
+                      // 本文は青い @タイトル、ノート ID はリンクの記録に持つ（同名ノートでも正しく解決）
+                      insertNoteMentionInline(editorRef.current, noteId, targetLabel);
+                      recordMentionLink(editorRef.current, linkStore.addLink, {
+                        sourceBlockId,
+                        targetNoteId: noteId,
+                      });
                     }, 100);
                     const exists = noteLinksRef.current.some(
                       (l) => l.targetNoteId === suggestion.id
@@ -6481,43 +6132,20 @@ function NoteEditorInner({
                     markDirty();
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1, colIndex: -1 };
-                } else if (suggestion.type === "asset" && suggestion.assetType === "image") {
-                  // 画像素材はリンク文字ではなく、その場に見えるインライン画像として埋める
-                  // （セルの中に画像を置く経路。クリックで素材ピーク）。実体は fileId 参照
-                  const imageName = suggestion.label.replace(/^🖼\s*/, "");
-                  setTimeout(() => {
-                    editorRef.current?.insertInlineContent([
-                      { type: "inlineImage", props: { fileId: suggestion.id, name: imageName } } as any,
-                      { type: "text", text: " ", styles: {} },
-                    ]);
-                  }, 100);
-                  markDirty();
                 } else if (suggestion.type === "asset") {
-                  // 素材（PDF/docx/データ本体）の引用。ノートではなく素材を指す。
-                  // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が
-                  // その素材の全文＋ハイライトメモを読めるようになる。
-                  // 併せて linkStore にも外部ソース ID（pdf:/document:/data:）で記録する。
-                  // これが無いと @素材名 をクリックしても解決できず何も開かない
-                  // （References の「Source: @ラベル」と同じ形に揃えて既存の
-                  // 素材ピーク振り分けに乗せる）。
-                  linkStore.addLink({
-                    sourceBlockId,
-                    targetBlockId: "",
-                    targetNoteId: `${suggestion.assetType ?? "document"}:${suggestion.id}`,
-                    type: "reference",
-                    createdBy: "human",
+                  // 素材（PDF/docx/データ本体・画像）の引用。ノートではなく素材を指す。
+                  // 画像はインライン画像、それ以外は @素材名 ＋ 外部ソース ID のリンク記録 ＋
+                  // citedAssetFileIds（Cmd-K / チャットの AI が全文を読める）。
+                  // SidePeek と同じ関数を通す（mention-insert.ts）
+                  insertAssetMention(() => editorRef.current, sourceBlockId, suggestion, {
+                    addLink: linkStore.addLink,
+                    citeAsset: (fileId) => {
+                      if (!citedAssetFileIdsRef.current.includes(fileId)) {
+                        citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, fileId];
+                      }
+                    },
+                    onInserted: markDirty,
                   });
-                  if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
-                    citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
-                  }
-                  const assetLabel = suggestion.label.replace(/^(📄|🧾|🖼)\s*/, "");
-                  setTimeout(() => {
-                    editorRef.current?.insertInlineContent([
-                      { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },
-                      { type: "text", text: " ", styles: {} },
-                    ]);
-                  }, 100);
-                  markDirty();
                 }
               }}
             />
@@ -6579,6 +6207,8 @@ function NoteEditorInner({
             onAddUrlBookmark={onAddUrlBookmark}
             noteIndex={noteIndex ?? null}
             onCreateLinkedNote={onCreateLinkedNote}
+            files={files}
+            onRefreshFiles={onRefreshFiles}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             onOpenMemoSource={onOpenMemoSource}
@@ -6619,6 +6249,8 @@ function NoteEditorInner({
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
             noteIndex={noteIndex ?? null}
             onCreateLinkedNote={onCreateLinkedNote}
+            files={files}
+            onRefreshFiles={onRefreshFiles}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             onOpenMemoSource={onOpenMemoSource}
@@ -7982,6 +7614,10 @@ export function NoteApp() {
       const noteId = run.noteId;
       const chain = chatWritebackChainsRef.current.get(noteId) ?? Promise.resolve();
       const task = chain.then(async () => {
+        // ピークが閉じた直後の回収では、ピークがアンマウント時に書き出した本文がまだ
+        // 書き込み中のことがある。書き終わってから読む（先に読むと古い本文に応答を足して
+        // 書いてピークの編集を巻き戻すか、後から着いたピークの保存が応答を消す）
+        await pendingPeekSave(noteId);
         const baseDoc = await loadNoteDocByFullKey(noteId, fmGetCachedDocStable);
         if (!baseDoc) {
           throw new Error(`書き戻し先ノートが読み込めませんでした: ${noteId}`);
@@ -12449,7 +12085,23 @@ export function NoteApp() {
                     onAddUrlBookmark={fm.handleAddUrlBookmark}
                     noteIndex={fm.noteIndex ?? null}
                     onCreateLinkedNote={fm.handleCreateLinkedNote}
+                    files={fm.files}
+                    onRefreshFiles={fm.refreshFiles}
                     onOpenNoteInPeek={(peekId) => openAssetPeek(peekId)}
+                    onOpenMaterialPeek={(entry) => {
+                      // ピーク内の @素材 → 全画面表示をその素材に差し替える。ノートピークは残し、
+                      // ノートを読みながら @素材 を順に見られるようにする。右パネルのグラフで
+                      // 素材ノードを押したときと同じく、ギャラリーの種類と URL は変えない
+                      // （全画面を抜けると元の一覧に戻る）。これを渡していなかったので、ここだけ
+                      // @素材 を押しても何も起きなかった。
+                      // 未登録の URL はギャラリーに実体が無いので、素材ピークの無い画面と同じく
+                      // 外部ブラウザで開く
+                      if (fm.mediaIndex?.media.some((m) => m.fileId === entry.fileId)) {
+                        setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
+                      } else if (entry.type === "url" && entry.url) {
+                        void openExternalUrl(entry.url);
+                      }
+                    }}
                     onOpenMemoSource={handleOpenMemoSource}
                   />
                 </ListSidePeekBoundary>
@@ -13494,6 +13146,8 @@ export function NoteApp() {
               onAddUrlBookmark={fm.handleAddUrlBookmark}
               noteIndex={fm.noteIndex ?? null}
               onCreateLinkedNote={fm.handleCreateLinkedNote}
+              files={fm.files}
+              onRefreshFiles={fm.refreshFiles}
               onOpenNoteInPeek={(peekId) => openListPeek(peekId)}
               onClose={() => openListPeek(null)}
               onOpenLocalView={(id) => showLocalViewFor(id)}

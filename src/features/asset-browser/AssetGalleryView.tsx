@@ -20,8 +20,8 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
-import type { EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
-import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, isWordDocumentEntry, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
+import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
@@ -699,8 +699,8 @@ export function AssetGalleryView({
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("uploadedAt");
   const [sortAsc, setSortAsc] = useState(false);
-  // Documents タブのサブフィルタ（PDF / Word / All）
-  const [docFilter, setDocFilter] = useState<"all" | "pdf" | "word">("all");
+  // Documents タブのサブフィルタ（All / PDF / Word / Excel / PowerPoint）
+  const [docFilter, setDocFilter] = useState<"all" | DocumentKind>("all");
   // フォルダでの絞り込み（ノートと同じ体系。UNFILED_PATH は「フォルダに入っていない素材」）
   const [folderFilter, setFolderFilter] = useState<string[]>([]);
   // 改名されたフォルダが絞り込み中に入っていたら、新しい名前へ追従させる。
@@ -933,14 +933,13 @@ export function AssetGalleryView({
 
   // タイプ別にフィルタ + 検索 + ソート
   // Documents タブには PDF も含める（UI 上の統合。内部 type は維持）。
-  // docFilter が "pdf" / "word" のときはサブフィルタを適用する。
+  // docFilter が "all" 以外のときは、その種類（旧形式を含む）だけに絞る。
   const filtered = useMemo(() => {
     if (!mediaIndex) return [];
     let result = mediaIndex.media.filter((m) => {
       if (m.archivedAt) return false;
       if (mediaType !== "document") return m.type === mediaType;
-      if (docFilter === "pdf") return m.type === "pdf";
-      if (docFilter === "word") return isWordDocumentEntry(m);
+      if (docFilter !== "all") return documentKindOf(m) === docFilter;
       return m.type === "document" || m.type === "pdf";
     });
     // フォルダ絞り込み（OR・小文字比較）。ノート一覧の文脈フィルタと同じ規則にそろえる
@@ -1027,21 +1026,16 @@ export function AssetGalleryView({
 
   // Documents タブのサブフィルタ用件数
   const docCounts = useMemo(() => {
-    if (!mediaIndex) return { pdf: 0, word: 0, all: 0 };
-    let pdf = 0;
-    let word = 0;
-    let all = 0;
+    const counts: Record<"all" | DocumentKind, number> = { all: 0, pdf: 0, word: 0, excel: 0, powerpoint: 0 };
+    if (!mediaIndex) return counts;
     for (const m of mediaIndex.media) {
       if (m.archivedAt) continue;
-      if (m.type === "pdf") {
-        pdf++;
-        all++;
-      } else if (m.type === "document") {
-        all++;
-        if (isWordDocumentEntry(m)) word++;
-      }
+      if (m.type !== "document" && m.type !== "pdf") continue;
+      counts.all++;
+      const kind = documentKindOf(m);
+      if (kind) counts[kind]++;
     }
-    return { pdf, word, all };
+    return counts;
   }, [mediaIndex]);
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -1435,14 +1429,17 @@ export function AssetGalleryView({
             placeholder={t("asset.search")}
             className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
           />
-          {/* Documents タブのサブフィルタ（PDF / Word / All） */}
+          {/* Documents タブのサブフィルタ。拡張子ではなく資料の種類で並べ、
+              持っていない種類は出さない（選択中のものは 0 件になっても残す） */}
           {mediaType === "document" && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-wrap">
               {([
                 { key: "all" as const, label: t("asset.docFilter.all"), count: docCounts.all },
                 { key: "pdf" as const, label: t("asset.docFilter.pdf"), count: docCounts.pdf },
                 { key: "word" as const, label: t("asset.docFilter.word"), count: docCounts.word },
-              ]).map(({ key, label, count }) => (
+                { key: "excel" as const, label: t("asset.docFilter.excel"), count: docCounts.excel },
+                { key: "powerpoint" as const, label: t("asset.docFilter.powerpoint"), count: docCounts.powerpoint },
+              ]).filter(({ key, count }) => key === "all" || count > 0 || docFilter === key).map(({ key, label, count }) => (
                 <button
                   key={key}
                   onClick={() => setDocFilter(key)}
