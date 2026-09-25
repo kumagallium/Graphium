@@ -37,6 +37,16 @@ const rel = (f) => path.relative(ROOT, f);
 
 // ── CHANGELOG からリリース済みバージョンを読む ────────────────────────
 const changelog = fs.readFileSync(CHANGELOG, "utf8");
+// release-history.md は CHANGELOG をそのまま @include するので、バッククォートの外に生の
+// HTML タグ（<sup> 等）があると VitePress が Vue テンプレートとして解釈して
+// "Element is missing end tag" でビルドが落ちる（v0.83.0 の Pages デプロイで発症）。
+// PR タイトルにタグを書くときはバッククォートで囲む。
+for (const [i, line] of changelog.split("\n").entries()) {
+  const outsideCode = line.replace(/`[^`]*`/g, "");
+  if (/<[a-zA-Z][^>]*>/.test(outsideCode)) {
+    errors.push(`CHANGELOG.md:${i + 1}: バッククォートの外に HTML タグがあります（release-history の VitePress ビルドが落ちます）: ${line.trim().slice(0, 80)}`);
+  }
+}
 const released = [...changelog.matchAll(/^## \[?(v\d+\.\d+\.\d+)\]?.*?- (\d{4}-\d{2}-\d{2})/gm)].map(
   (m) => ({ version: m[1], date: m[2] })
 );
