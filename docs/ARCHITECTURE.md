@@ -179,7 +179,16 @@ talks to LLM and embedding backends.
   keep it plain, without tags: the lexical index (whose NFKC normalization
   already folds 10⁵ to 105), the MCP search index, outlines, PROV labels, the
   proposal diff, and the source-check fingerprint (`claimHash`, see
-  [DATA_MODEL.md](DATA_MODEL.md)).
+  [DATA_MODEL.md](DATA_MODEL.md)). All of these except PROV labels and the
+  fingerprint render inline content with the same `inline-text.ts` in its
+  plain mode, so links still count as their text and formulas as `$ … $` —
+  including the Wiki section text that the lexical index and the
+  semantic-search embeddings share (`wiki/section-extract.ts`), the outlines
+  and label previews in the note index (`navigation/index-file.ts`), and the
+  statements checked on old-format Topics. An embedding keeps the text it was
+  made from until its page is saved again or the user re-embeds every page
+  from Settings; nothing re-embeds existing pages automatically, because that
+  spends the user's API key.
 - `step` is the one container block: it holds child blocks, and a procedure is
   written by putting its content inside a step rather than by labelling a
   heading. Nesting and reordering use BlockNote's own drag handle. The card's

@@ -2,10 +2,11 @@
 //
 // embedding（意味検索）と語彙インデックス（BM25）が同じ「H2 セクション」単位で
 // 索引するための共通抽出。wiki-service（重い依存を持つ）から切り出してある。
-// ここは document-types の型以外に依存しないこと — lexical-search からも import され、
-// wiki-service / retriever と循環させないための置き場所。
+// ここは document-types の型と inline-text（エディタに依存しない純関数）以外に依存しないこと —
+// lexical-search からも import され、wiki-service / retriever と循環させないための置き場所。
 
 import type { GraphiumDocument } from "../../lib/document-types";
+import { inlineContentToText } from "../markdown-export/inline-text";
 
 /** embedding / 語彙インデックス共通のセクション */
 export type WikiSection = {
@@ -30,13 +31,14 @@ export function flattenColumns(blocks: any[]): any[] {
   );
 }
 
-/** inline / 表コンテンツをプレーンテキストにする */
+/**
+ * inline / 表コンテンツをプレーンテキストにする。
+ * 検索・重複判定のキーなので平文（上付き・下付きのタグは入れない。リンクは中身の文字、数式は $…$）
+ */
 function inlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content.map((c: any) => c.text ?? c.content ?? "").join("");
-  }
+  if (Array.isArray(content)) return inlineContentToText(content);
   if (content.type === "tableContent" && Array.isArray(content.rows)) {
     return content.rows
       .map((row: any) => (row.cells ?? []).map((cell: any) => inlineText(cell)).join(" "))

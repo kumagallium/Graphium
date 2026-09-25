@@ -1199,6 +1199,8 @@ export function SandboxEditor({
         group: s.group,
         // 同名ノート区別用の 2 行目（shadcn の SuggestionMenu.Item が描画する）
         subtext: s.subtext,
+        // 表示名のほかに打って当たる語（素材の取り込み元フォルダ）。_filterSuggestionItems が照合する
+        aliases: s.aliases,
         onItemClick: () => {
           const block = (editor as any).getTextCursorPosition?.()?.block;
           if (block && onMentionSelect) {
