@@ -317,12 +317,30 @@ describe("removeTableColumn", () => {
     expect(short.updates[0].content.columnWidths).toEqual([260]);
   });
 
+  it("見出し列を消すと headerCols を 1 減らす（見出し列より右の列なら変えない）", () => {
+    // headerCols は先頭から何個のセルを見出しにするか。減らさないと次の列が見出し列になる
+    const first = makeWidenedEditor({ headerCols: 1, headerRows: 1 });
+    expect(removeTableColumn(first, "tbl-1", 0)).toBe(true);
+    expect(first.updates[0].content.headerCols).toBe(0);
+    expect(first.updates[0].content.headerRows).toBe(1);
+
+    const two = makeWidenedEditor({ headerCols: 2 });
+    expect(removeTableColumn(two, "tbl-1", 1)).toBe(true);
+    expect(two.updates[0].content.headerCols).toBe(1);
+
+    const right = makeWidenedEditor({ headerCols: 1 });
+    expect(removeTableColumn(right, "tbl-1", 2)).toBe(true);
+    expect(right.updates[0].content.headerCols).toBe(1);
+  });
+
   it("結合セルのある表では、列の位置とセルの位置が一致しないので columnWidths は今のまま持ち越す", () => {
-    const ed = makeWidenedEditor({ columnWidths: [260, 120, 180] });
+    const ed = makeWidenedEditor({ columnWidths: [260, 120, 180], headerCols: 2 });
     const rows = (ed.document[0].children[0] as any).content.rows;
     rows[1].cells = [{ ...cell("バッチA 5g"), props: { colspan: 2, rowspan: 1 } }, cell("焼成用")];
     expect(removeTableColumn(ed, "tbl-1", 1)).toBe(true);
     expect(ed.updates[0].content.columnWidths).toEqual([260, 120, 180]);
+    // headerCols はセルの並び順で当たる（消すのもセルの並び順）ので、結合があっても 1 減らす
+    expect(ed.updates[0].content.headerCols).toBe(1);
   });
 
   it("実際の BlockNote でも、列を消した後に残った列が元の幅のまま", () => {
@@ -350,5 +368,31 @@ describe("removeTableColumn", () => {
     ]);
     expect(content.columnWidths).toHaveLength(2);
     expect(content.columnWidths).toEqual([120, undefined]);
+  });
+
+  it("実際の BlockNote でも、見出し列を消すと次の列が見出し列にならない", () => {
+    const editor = BlockNoteEditor.create({
+      initialContent: [
+        {
+          type: "table",
+          content: {
+            type: "tableContent",
+            headerRows: 1,
+            headerCols: 1,
+            rows: [
+              { cells: [cell("Name"), cell("Mass"), cell("Memo")] },
+              { cells: [cell("Batch A"), cell("5g"), cell("bake")] },
+            ],
+          },
+        },
+      ],
+    } as any);
+    const id = editor.document[0].id;
+    expect((editor.getBlock(id) as any).content.headerCols).toBe(1);
+    expect(removeTableColumn(editor, id, 0)).toBe(true);
+    const content = (editor.getBlock(id) as any).content;
+    expect(rowTexts(content)[0]).toEqual(["Mass", "Memo"]);
+    expect(content.headerCols ?? 0).toBe(0);
+    expect(content.headerRows).toBe(1);
   });
 });

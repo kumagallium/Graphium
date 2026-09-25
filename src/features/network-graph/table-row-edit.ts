@@ -93,11 +93,16 @@ function findTableRow(editor: any, tableBlockId: string, rowName: string): Table
   return null;
 }
 
-/** rows を差し替えて書き戻す（columnWidths / headerRows などは持ち越す。columnWidths を渡せば差し替える） */
-function writeRows(editor: any, block: any, rows: any[], columnWidths?: any[]): boolean {
+/**
+ * rows を差し替えて書き戻す（columnWidths / headerRows などは持ち越す）。
+ * patch に値を渡した項目だけ差し替える（undefined は持ち越し）
+ */
+function writeRows(editor: any, block: any, rows: any[], patch: Record<string, unknown> = {}): boolean {
   try {
     const content: Record<string, any> = { ...block.content, rows };
-    if (columnWidths) content.columnWidths = columnWidths;
+    for (const [key, value] of Object.entries(patch)) {
+      if (value !== undefined) content[key] = value;
+    }
     editor.updateBlock(block.id, { content });
     return true;
   } catch {
@@ -500,11 +505,13 @@ export function addTableColumns(editor: any, tableBlockId: string, names: string
 /**
  * 列を消す（ヘッダとすべてのデータ行から）。
  *
- * columnWidths は列の位置で当たる（BlockNote は columnWidths[列] をその列の幅にする）ので、
- * 消した列の幅も同じ位置から取り除く。持ち越したままだと、残った列に隣の列の幅が
- * ずれて当たる（先頭列を消すと、2 列目が先頭列の幅になる）。
- * 結合セルのある表は列の位置とセルの位置が一致せず、取り除く幅が決まらないので、
- * columnWidths は今までどおりそのまま持ち越す。
+ * 位置で当たる設定は、消した列に合わせて詰めてから書き戻す。持ち越したままだと、
+ * 残った列に隣の列の設定がずれて当たる:
+ * - columnWidths（BlockNote は columnWidths[列] をその列の幅にする）: 消した列の幅を
+ *   取り除く。先頭列を消すと、2 列目が先頭列の幅になっていた。結合セルのある表は
+ *   列の位置とセルの位置が一致せず、取り除く幅が決まらないので、今までどおり持ち越す
+ * - headerCols（先頭から何個のセルを見出しにするか）: 見出し列を消したら 1 減らす。
+ *   減らさないと次の列が見出し列になる。セルの並び順で当たるので結合セルがあっても同じ
  */
 export function removeTableColumn(editor: any, tableBlockId: string, colIndex: number): boolean {
   const block = findTableBlock(editor, tableBlockId);
@@ -513,11 +520,14 @@ export function removeTableColumn(editor: any, tableBlockId: string, colIndex: n
   if (colIndex < 0 || (rows[0]?.cells?.length ?? 0) <= 1) return false; // 最後の 1 列は残す
   const next = rows.map((row) => ({ ...row, cells: row.cells.filter((_: any, j: number) => j !== colIndex) }));
   const widths = block.content?.columnWidths;
-  const nextWidths =
-    Array.isArray(widths) && colIndex < widths.length && !hasMergedCells(rows)
-      ? widths.filter((_: any, j: number) => j !== colIndex)
-      : undefined;
-  return writeRows(editor, block, next, nextWidths);
+  const headerCols = block.content?.headerCols;
+  return writeRows(editor, block, next, {
+    columnWidths:
+      Array.isArray(widths) && colIndex < widths.length && !hasMergedCells(rows)
+        ? widths.filter((_: any, j: number) => j !== colIndex)
+        : undefined,
+    headerCols: typeof headerCols === "number" && colIndex < headerCols ? headerCols - 1 : undefined,
+  });
 }
 
 /** colspan / rowspan が 1 より大きいセル（結合セル）があるか */
