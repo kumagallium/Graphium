@@ -154,6 +154,9 @@ export const en: Record<string, string> = {
   "editor.archiveNoteHint": "Hidden from the list, but links and citations keep resolving. Restore anytime from Trash & Archive.",
   "editor.aiAssistant": "🤖 AI Assistant",
   "editor.askAi": "Ask AI about selection",
+  // 書式ツールバーの上付き・下付き（base/script-style-button.tsx）
+  "editor.superscript": "Superscript",
+  "editor.subscript": "Subscript",
   "editor.derivedNote": "Derived note",
   // ── ドキュメント内検索（Cmd+F） ──
   "docSearch.placeholder": "Find in note",
