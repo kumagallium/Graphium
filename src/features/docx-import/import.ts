@@ -4,6 +4,7 @@
 
 import mammoth from "mammoth";
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
+import { scriptStyleSpecs } from "../../base/script-styles";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { bytesToBase64 } from "@/lib/base64";
 import {
@@ -141,7 +142,8 @@ export async function importDocxToGraphiumDoc(
   // にする（Graphium のカスタムブロックは編集中に追加されるため、import 時は不要）。
   const schema = BlockNoteSchema.create({
     blockSpecs: defaultBlockSpecs,
-    styleSpecs: defaultStyleSpecs,
+    // 上付き・下付きも持つ（mammoth は Word の上付き・下付きを <sup> / <sub> で出す）
+    styleSpecs: { ...defaultStyleSpecs, ...scriptStyleSpecs },
   });
   const editor = BlockNoteEditor.create({ schema });
   const blocks = editor.tryParseHTMLToBlocks(html);

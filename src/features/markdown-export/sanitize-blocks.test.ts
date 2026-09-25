@@ -532,3 +532,75 @@ describe("メンション変換（children / テーブルセル）", () => {
     expect(blocks[0].content[0].text).toBe("@Note");
   });
 });
+
+describe("上付き・下付き → <sup> / <sub>", () => {
+  // 書式を落として平文にすると「10⁵」が「105」になり、AI への引用や
+  // エクスポートで意味が変わる。Markdown に記法が無いので HTML タグで残す。
+  const para = (content: any[]) => [{ id: "b1", type: "paragraph", props: {}, content, children: [] }];
+
+  it("上付き・下付きをタグで包み、style キーは残さない", () => {
+    const result = sanitizeBlocksForMarkdown(
+      para([
+        text("10"),
+        text("5", { superscript: true }),
+        text(" Pa, H"),
+        text("2", { subscript: true }),
+        text("O"),
+      ]),
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([
+      text("10"),
+      text("<sup>5</sup>"),
+      text(" Pa, H"),
+      text("<sub>2</sub>"),
+      text("O"),
+    ]);
+  });
+
+  it("ほかの書式（太字など）はそのまま残る", () => {
+    const result = sanitizeBlocksForMarkdown(para([text("2", { subscript: true, bold: true })]), SCHEMA);
+    expect(result[0].content).toEqual([text("<sub>2</sub>", { bold: true })]);
+  });
+
+  it("コード書式の片は包まない（コードの中ではタグが文字のまま出るため）", () => {
+    const result = sanitizeBlocksForMarkdown(para([text("x^2", { superscript: true, code: true })]), SCHEMA);
+    expect(result[0].content).toEqual([text("x^2", { code: true })]);
+  });
+
+  it("タグの中の Markdown 記号と HTML の特殊文字をエスケープする", () => {
+    // 上付きアスタリスク同士が強調の組にならないように（p* と q*）
+    const result = sanitizeBlocksForMarkdown(
+      para([text("*", { superscript: true }), text("a<b & c_d", { subscript: true })]),
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([
+      text("<sup>\\*</sup>"),
+      text("<sub>a&lt;b &amp; c\\_d</sub>"),
+    ]);
+  });
+
+  it("リンクの中身とテーブルのセルでも包む", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [
+        {
+          id: "b1",
+          type: "paragraph",
+          props: {},
+          content: [{ type: "link", href: "https://example.com", content: [text("CO"), text("2", { subscript: true })] }],
+          children: [],
+        },
+        {
+          id: "t1",
+          type: "table",
+          props: {},
+          content: { type: "tableContent", rows: [{ cells: [[text("m"), text("2", { superscript: true })]] }] },
+          children: [],
+        },
+      ],
+      SCHEMA,
+    );
+    expect(result[0].content[0].content).toEqual([text("CO"), text("<sub>2</sub>")]);
+    expect(result[1].content.rows[0].cells[0]).toEqual([text("m"), text("<sup>2</sup>")]);
+  });
+});

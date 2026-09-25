@@ -56,7 +56,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # bench:compare main で git show が必要
+          fetch-depth: 0   # bench:compare origin/main で git show が必要
 
       - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
 
@@ -88,7 +88,14 @@ jobs:
       - name: Compare against main
         if: github.event_name == 'pull_request'
         continue-on-error: true   # bench delta は block ではなく warning（spec §5 CI 統合）
-        run: pnpm bench:compare main > bench/delta.md
+        env:
+          # 右（この PR の実測）は上の bench:run が BENCH_OUTPUT に書いたファイル。
+          # 渡さないと右が tracked の bench/baseline.json のままになり、差分が常に 0 に見える。
+          BENCH_RIGHT: bench/latest-baseline.json
+        # checkout は PR のマージコミットを detached HEAD で取り出し、ブランチは
+        # refs/remotes/origin/* にしか作らない（ローカルの main は無い）ので origin/main を渡す。
+        # --silent は pnpm の「> graphium@x bench:compare」見出しをコメントに混ぜないため。
+        run: pnpm --silent bench:compare origin/main > bench/delta.md
 
       - name: Post delta comment
         if: github.event_name == 'pull_request' && hashFiles('bench/delta.md') != ''
@@ -188,7 +195,11 @@ jobs:
         env:
           # データロス系の失敗は CI を block する。これは破壊的変更検知の最後の砦。
           BENCH_MIGRATION_STRICT: 'true'
-        run: pnpm test:migration | tee bench/migration-stdout.log
+        # run の既定シェル（bash -e）には pipefail が無く、パイプの終了コードは tee の 0 になる。
+        # STRICT の exit 1 がそれで握り潰され、v6 で fixture が古くなってもジョブは通り続けていた。
+        run: |
+          set -o pipefail
+          pnpm test:migration | tee bench/migration-stdout.log
 
       - name: Generate migration summary
         if: always()
@@ -206,7 +217,8 @@ jobs:
           } > bench/migration-summary.md
 
       - name: Post migration summary
-        if: github.event_name == 'pull_request' && hashFiles('bench/migration-summary.md') != ''
+        # fixture が落ちた回こそコメントを更新したいので、前のステップが失敗しても走らせる
+        if: always() && github.event_name == 'pull_request' && hashFiles('bench/migration-summary.md') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           path: bench/migration-summary.md

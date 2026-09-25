@@ -21,9 +21,9 @@ import {
   useBlockAlignmentStore,
   AlignmentStyleLayer,
 } from "../block-alignment";
-import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
+import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../../lib/document-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
-import { pickPeekExternalFields } from "./peek-save-merge";
+import { applySavedToPeekDoc, pickPeekExternalFields } from "./peek-save-merge";
 import { leaveAfterSave } from "./peek-leave";
 import { pendingPeekSave, queuePeekSave, registerLivePeek } from "../../lib/peek-save-queue";
 import { isIncomingDocNewer } from "../../hooks/doc-recency";
@@ -110,10 +110,16 @@ import {
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
+  getAssetSuggestions,
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
   insertNoteMentionInline,
 } from "@features/block-link/mention-menu";
+import {
+  insertAssetMention,
+  recordMentionLink,
+  type AddReferenceLink,
+} from "@features/block-link/mention-insert";
 import {
   openPeekTarget,
   readMentionAt,
@@ -148,7 +154,12 @@ import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
-import { setEditorSidePeekCallback } from "./context";
+import {
+  setEditorIndexTableCallbacks,
+  setEditorSidePeekCallback,
+  setRegisterIndexTableCallback,
+} from "./context";
+import { IndexTableIconLayer } from "./icon-layer";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
@@ -212,7 +223,8 @@ type SidePeekProps = {
    * 文脈ラベル（noteContexts）を変更しファイル保存（doSave）が完了した後に呼ばれる。
    * 保存済みの doc を渡すので、呼び出し側はこの doc からインデックスや doc キャッシュを
    * 再構築する（reindexNoteFromDoc）。ファイル保存は SidePeek 自身が済ませているため
-   * 二重保存はしない。未指定でも表示・編集・ファイル保存は動く（一覧列への即時反映のみ省略）。
+   * 二重保存はしない。保存に失敗したときは呼ばない。
+   * 未指定でも表示・編集・ファイル保存は動く（一覧列への即時反映のみ省略）。
    */
   onNoteContextsChange?: (noteId: string, savedDoc: GraphiumDocument | null) => void;
   /**
@@ -241,6 +253,13 @@ type SidePeekProps = {
    * 未指定だと `@` で既存ノート参照のみ（新規作成は出ない）。
    */
   onCreateLinkedNote?: (title: string, sourceNoteId?: string) => Promise<string | null>;
+  /**
+   * ノートのファイル一覧と、その再取得（メインエディタに渡すものと同じ値）。
+   * インデックステーブルの「行からノートを作る」が、同名ノートの確認と、作ったノートを
+   * 一覧に載せるのに使う。未指定なら確認と一覧の更新を省く（作成と紐付けは動く）
+   */
+  files?: GraphiumFile[];
+  onRefreshFiles?: () => void;
   /**
    * 保存直前に doc キャッシュから最新の chats を採用するための getter。
    * チャット実行のアプリレベル書き戻し（chat-run-manager）が、ピーク表示中の
@@ -322,7 +341,7 @@ function SidePeekInner({
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
-  onOpenLocalView, renderWikiContext,
+  onOpenLocalView, renderWikiContext, files, onRefreshFiles,
 }: SidePeekProps) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。素材ピークと幅設定を共有する。
@@ -414,7 +433,9 @@ function SidePeekInner({
           if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
           autoSaveTimerRef.current = null;
         },
-        save: () => doSaveRef.current(),
+        save: async () => {
+          await doSaveRef.current();
+        },
         waitSaved: async () => {
           await pendingPeekSave(noteId);
         },
@@ -891,8 +912,9 @@ function SidePeekInner({
           return;
         }
       }
-      // インデックステーブルの先頭列も本文と同じに扱う（ピークには行アイコンの層が
-      // 無いので、先頭列を除外すると行ノートも @素材 もピーク内から開けなかった）
+      // インデックステーブルの先頭列も本文と同じに扱う。行ノートにつながった行は
+      // 行アイコン層の透明な覆いが先にクリックを受けて行ノートを開くので、ここへ来るのは
+      // つながっていない行のメンション（@素材 など）だけ（note-app と同じ）
       const mention = readMentionAt(target);
       if (!mention) return;
       const peekDoc = docRef.current;
@@ -1020,7 +1042,7 @@ function SidePeekInner({
 
   // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する
   // （main editor の insertInlineAtSlash と同じ流儀）。
-  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[], onInserted?: () => void) => {
     const content = currentBlock.content;
     const isSlashOnly =
       Array.isArray(content) &&
@@ -1033,6 +1055,7 @@ function SidePeekInner({
     editor.setTextCursorPosition(target, "end");
     setTimeout(() => {
       editor.insertInlineContent(inline);
+      onInserted?.();
     }, 0);
   }, []);
 
@@ -1058,22 +1081,25 @@ function SidePeekInner({
           citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), entry.fileId],
         };
       }
-      // linkStore にも外部ソース ID で記録する（main editor と同じ）。クリックはこれで
-      // 素材を厳密に引く。無いと素材名の逆引きになり、同名の素材があると取り違える
-      if (entry.fileId) {
-        linkStoreRef.current.addLink({
-          sourceBlockId: currentBlock.id,
-          targetBlockId: "",
-          targetNoteId: `${entry.type}:${entry.fileId}`,
-          type: "reference",
-          createdBy: "human",
-        });
-      }
-      // insertInlineContent の onChange 経由で自動保存される
-      insertInlineAtSlash(editor, currentBlock, [
-        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
-        { type: "text", text: " ", styles: {} },
-      ]);
+      // insertInlineContent の onChange 経由で自動保存される。
+      // 入れた直後に linkStore にも外部ソース ID で記録する（main editor と同じ）。
+      // クリックはこれで素材を厳密に引く。無いと素材名の逆引きになり、同名の素材が
+      // あると取り違える（表のセルなら行の identity も控える）
+      insertInlineAtSlash(
+        editor,
+        currentBlock,
+        [
+          { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+          { type: "text", text: " ", styles: {} },
+        ],
+        () => {
+          if (!entry.fileId) return;
+          recordMentionLink(editor, (p) => linkStoreRef.current.addLink(p), {
+            sourceBlockId: currentBlock.id,
+            targetNoteId: `${entry.type}:${entry.fileId}`,
+          });
+        },
+      );
       setPickerMediaType(null);
       return;
     }
@@ -1254,15 +1280,19 @@ function SidePeekInner({
   getCachedDocRef.current = getCachedDoc;
 
   // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）。
+  // 書き出した doc を返す（保存しなかった・失敗したときは null）。
   // unmounting: アンマウント時の書き出し。エディタはこの後外されるので、表の行 ID を
   // エディタへ書き戻さない（書き戻しは次の保存で同じ ID を保つためのもの。保存する doc は
   // 下の normalizeTableRowIdentities が揃える）
-  const doSave = useCallback(async (opts?: { unmounting?: boolean }) => {
+  const doSave = useCallback(async (opts?: { unmounting?: boolean }): Promise<GraphiumDocument | null> => {
     // 版スナップショット（snapshot:）は不変・読み取り専用。エディタも editable=false に
     // しているが、保存経路にも多重ガードを置く（誤って書き戻すと版が壊れるため）。
-    if (noteId.startsWith("snapshot:")) return;
+    if (noteId.startsWith("snapshot:")) return null;
     const editor = editorRef.current;
-    if (!editor || !docRef.current) return;
+    // 保存を始めた時点の docRef。書き込みを待つ間に docRef へ入った書き換えは、
+    // 保存が終わったときにこれと突き合わせて残す（applySavedToPeekDoc）
+    const base = docRef.current;
+    if (!editor || !base) return null;
 
     const currentBlocks = opts?.unmounting
       ? (editor.document ?? [])
@@ -1292,17 +1322,17 @@ function SidePeekInner({
     // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
     // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
     const updatedDoc: GraphiumDocument = normalizeTableRowIdentities({
-      ...docRef.current,
+      ...base,
       ...externalFields,
       pages: [
         {
-          ...docRef.current.pages[0],
+          ...base.pages[0],
           blocks: currentBlocks,
           labels,
           provLinks,
           knowledgeLinks,
           blockAlignments,
-          tableMeta: hasTableMeta ? tableMetaSnapshot : docRef.current.pages[0]?.tableMeta,
+          tableMeta: hasTableMeta ? tableMetaSnapshot : base.pages[0]?.tableMeta,
         },
       ],
       modifiedAt: new Date().toISOString(),
@@ -1320,7 +1350,10 @@ function SidePeekInner({
           noteId,
           doc: updatedDoc,
           onSaved: (savedId, savedDoc) => {
-            docRef.current = savedDoc;
+            // 保存した doc で置き換えず、この保存の持ち分（本文・更新時刻など）だけを重ねる。
+            // 書き込みを待つ間に入ったタイトル・文脈ラベル・引用素材・noteLinks の書き換えを
+            // 消さず、次の保存に乗せるため（peek-save-merge.ts）
+            docRef.current = applySavedToPeekDoc(docRef.current, base, savedDoc);
             // 保存中に打った分があれば「未保存」のまま（自動保存のタイマーが待っている）
             setSaveStatus(unsavedRef.current ? "dirty" : "saved");
             // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
@@ -1330,11 +1363,13 @@ function SidePeekInner({
           },
         }),
       );
+      return updatedDoc;
     } catch (err) {
       console.error("サイドピーク保存に失敗:", err);
       // 書けなかった分は未保存に戻す（離れるとき・アンマウントのときにもう一度書き出す）
       unsavedRef.current = true;
       setSaveStatus("dirty");
+      return null;
     }
   }, [noteId]);
 
@@ -1486,6 +1521,10 @@ function SidePeekInner({
   // 保存の完了を待ってから onNoteContextsChange に「保存済み doc」を渡し、一覧インデックスと
   // doc キャッシュを再構築させる。await してから通知することで、一覧復帰時に ensureIndex が
   // 保存前の古いノートファイルを読んで index を上書きしてしまう競合を避ける。
+  // 渡すのはこの保存で書いた doc で、docRef ではない。docRef には保存を待つ間に打った
+  // まだ保存していないタイトル等が重なっていることがあり、それでキャッシュを作ると、
+  // そのタイトルを保存したときの onSaved が旧タイトルを新タイトルと取り違えて
+  // @メンションの改名伝播を飛ばす。保存できなかったときは知らせない
   const applyPeekContexts = useCallback(
     async (next: string[]) => {
       const normalized = normalizeNoteContexts(next);
@@ -1494,8 +1533,8 @@ function SidePeekInner({
         docRef.current = { ...docRef.current, noteContexts: normalized };
       }
       setDoc((d) => (d ? { ...d, noteContexts: normalized } : d));
-      await doSaveRef.current();
-      onNoteContextsChange?.(noteId, docRef.current);
+      const savedDoc = await doSaveRef.current();
+      if (savedDoc) onNoteContextsChange?.(noteId, savedDoc);
     },
     [noteId, onNoteContextsChange],
   );
@@ -1536,6 +1575,49 @@ function SidePeekInner({
       handleChange();
     }
   }, [tableMetaStore.metas, handleChange]);
+
+  // インデックステーブル（行からノートを作れる表）の受け口を、このピークのエディタに登録する。
+  // スラッシュ項目と行アイコンはメインと同じ部品で、押されたエディタをキーに受け口を引く。
+  // 表の注釈・作ったノートの派生元・noteLinks はこのピークのノートに入る（メインには入らない）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setRegisterIndexTableCallback(sidePeekEditor, (blockId) => {
+      // メインの addFirstColumnType と同じ: 先頭列の名前をキーに note-link を付ける
+      const block = sidePeekEditor.getBlock?.(blockId);
+      tableMetaStoreRef.current.addColumnType(blockId, readFirstColumnName(block), "note-link");
+    });
+    setEditorIndexTableCallbacks(sidePeekEditor, {
+      files: files ?? [],
+      // メインと同じく wiki:/skill: を外した ID を派生元にする
+      currentFileId: noteId.replace(/^(wiki|skill):/, ""),
+      onRefreshFiles: () => onRefreshFiles?.(),
+      // つながった行を開くのも、ピーク内のほかのクリックと同じく leavePeek を通す。
+      // 行からノートを作った直後や打った直後に押すと、表の書き換え・紐付け・本文の編集が
+      // 書き出されないまま、ピークが別ノートへ作り直されて消える
+      onOpenSidePeek: (targetId) => leavePeek(() => onOpenNoteInPeekRef.current?.(targetId)),
+      onAddNoteLink: (targetNoteId, sourceBlockId) => {
+        const cur = docRef.current;
+        if (!cur) return;
+        const links = cur.noteLinks ?? [];
+        if (links.some((l) => l.targetNoteId === targetNoteId && l.sourceBlockId === sourceBlockId)) {
+          return;
+        }
+        // doSave は docRef.current を spread するので、ここに積めば一緒に書き出される
+        // （noteLinks は画面に出さないので、表示用の doc state は触らない）
+        docRef.current = {
+          ...cur,
+          noteLinks: [...links, { targetNoteId, sourceBlockId, type: "derived_from" }],
+        };
+        handleChange();
+      },
+      // onNoteCreated は渡さない: 作った直後に開くとピークの中身が差し替わって表が
+      // 見えなくなる（戻る導線も無い）。行の先頭セルが @名前 になり、押せばそこで開く
+    });
+    return () => {
+      setRegisterIndexTableCallback(sidePeekEditor, null);
+      setEditorIndexTableCallbacks(sidePeekEditor, null);
+    };
+  }, [sidePeekEditor, noteId, files, onRefreshFiles, leavePeek, handleChange]);
 
   // Cmd+S / Ctrl+S
   useEffect(() => {
@@ -1817,6 +1899,14 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
+            {/* インデックステーブルの行アイコン（行からノートを作る・つながった行を開く）。
+                メインと同じ層をピークの外枠に閉じて使い、受け口はこのピークのエディタに
+                登録したものを引く。読み取り専用のノートでは作る入口を出さない */}
+            <IndexTableIconLayer
+              editorRef={editorRef}
+              wrapperEl={wrapperEl}
+              readOnly={archived || trashed || noteId.startsWith("snapshot:")}
+            />
             {/* 表の名前・取り込み元バッジ・長い表の折りたたみ。メインと同じ層を
                 ピークの外枠に閉じて使う（wrapperEl 無しだとメイン側の表を測る） */}
             <TableCaptionLayer
@@ -2092,20 +2182,23 @@ function SidePeekInner({
                 // どのエディタでも動く slash items を出す（メインと同じ一覧から取る）。
                 // 各 slash item の onItemClick はクリック時のエディタを
                 // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
-                // 挿入される。メインに固定の受け口で動く項目（インデックステーブル等）は
+                // 挿入される。メインに固定の受け口で動く項目（getMainEditorOnlySlashMenuItems）は
                 // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）。
                 // 先頭の「新しいノート」はメインと同じ組み立てで、記録先がこのピーク
                 extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...getCommonSlashMenuItems({ includeCite: !!noteIndex })]}
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
-                // `@` 参照: 他ノートの参照 + 「新規ノートを作成」。メインエディタと同じく
-                // 挿入後はピーク内に留まり、青い @テキストをクリックすると（note-app の
-                // document クリックハンドラが .bn-editor を拾うため）サイドピークで開く。
+                // `@` 参照: 他ノート・素材の参照 + 「新規ノートを作成」。メインエディタと同じく
+                // 挿入後はピーク内に留まり、青い @テキストをクリックすると（このピークの
+                // クリックハンドラが拾う）ノートはピークで、素材は素材ピークで開く。
                 getMentionSuggestions={(query) => {
                   // 見出し候補は DOM 全体から拾ってしまい（メイン+ピークが同居）紛れるため、
-                  // ピークでは他ノート参照と新規作成のみに絞る。
-                  const base = getNoteSuggestions([], noteId, noteIndex);
+                  // ピークでは他ノート・素材の参照と新規作成に絞る。
+                  const base = [
+                    ...getNoteSuggestions([], noteId, noteIndex),
+                    ...getAssetSuggestions(mediaIndex),
+                  ];
                   if (onCreateLinkedNote) {
                     const createItem = getCreateNoteSuggestion(query, base);
                     if (createItem) base.push(createItem);
@@ -2124,19 +2217,33 @@ function SidePeekInner({
                     if (!newId) return;
                     s = { type: "note", id: newId, label: title, group: "" };
                   }
+                  const addLink: AddReferenceLink = (p) => linkStoreRef.current.addLink(p);
+                  if (s.type === "asset") {
+                    // メインエディタと同じ関数（mention-insert.ts）。引用素材は docRef に積み、
+                    // doSave が docRef.current を spread するので一緒に永続化される
+                    insertAssetMention(() => editorRef.current, sourceBlockId, s, {
+                      addLink,
+                      citeAsset: (fileId) => {
+                        const cur = docRef.current;
+                        if (cur && !(cur.citedAssetFileIds ?? []).includes(fileId)) {
+                          docRef.current = {
+                            ...cur,
+                            citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), fileId],
+                          };
+                        }
+                      },
+                      onInserted: handleChange,
+                    });
+                    return;
+                  }
                   if (s.type !== "note") return;
-                  linkStoreRef.current.addLink({
-                    sourceBlockId,
-                    targetBlockId: "",
-                    targetNoteId: s.id,
-                    type: "reference",
-                    createdBy: "human",
-                  });
                   const noteRefId = s.id;
                   const label = s.label;
                   setTimeout(() => {
-                    // href に noteId を埋めた link として挿入（同名ノートでも正しく解決）
+                    // 本文は青い @タイトル、ノート ID はリンクの記録に持つ（同名ノートでも正しく解決）。
+                    // 記録は入れた直後に（表のセルなら行の identity も控える）
                     insertNoteMentionInline(editorRef.current, noteRefId, label);
+                    recordMentionLink(editorRef.current, addLink, { sourceBlockId, targetNoteId: noteRefId });
                     handleChange();
                   }, 100);
                 }}

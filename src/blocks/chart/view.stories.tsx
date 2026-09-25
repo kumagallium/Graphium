@@ -141,7 +141,12 @@ type DemoOptions = {
    * この値 − 108 − 枠の padding と border（18）になる
    */
   width?: number;
+  /** データのテーブルを隠す（図だけを並べて見るとき。図はテーブルがあれば描ける） */
+  hideTables?: boolean;
 };
+
+const HIDE_TABLES_CLASS = "chart-demo-hide-tables";
+const HIDE_TABLES_CSS = `.${HIDE_TABLES_CLASS} [data-content-type="table"] { display: none; }`;
 
 function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
   const tables = [...(opts.baseTables ?? [diaryTable("diary-table-1")]), ...(opts.extraTables ?? [])];
@@ -160,7 +165,9 @@ function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
 function ChartDemo({ config, ...opts }: { config: Record<string, unknown> } & DemoOptions) {
   return (
     <EditorProviders>
+      {opts.hideTables && <style>{HIDE_TABLES_CSS}</style>}
       <div
+        className={opts.hideTables ? HIDE_TABLES_CLASS : undefined}
         style={{
           ...(opts.width !== undefined ? { width: opts.width, flexShrink: 0 } : { maxWidth: 680 }),
           border: "1px solid #e5e7eb",
@@ -1241,16 +1248,25 @@ function NarrowCase({
   shell,
   config,
   baseTables = [riseTable("rise")],
+  hideTables,
 }: {
   label: string;
   shell: number;
   config: Record<string, unknown>;
   baseTables?: any[];
+  hideTables?: boolean;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ fontSize: 12, color: "#6b7280", maxWidth: frameForShell(shell) }}>{label}</div>
-      <ChartDemo width={frameForShell(shell)} baseTables={baseTables} lead="記録" chartFirst config={config} />
+      <ChartDemo
+        width={frameForShell(shell)}
+        baseTables={baseTables}
+        lead="記録"
+        chartFirst
+        hideTables={hideTables}
+        config={config}
+      />
     </div>
   );
 }
@@ -1359,6 +1375,73 @@ export const SettingsButtonOverTopRightLegend: StoryObj = {
           shell={572}
           label="凡例が左上: ボタンは従来どおり図に重ねる"
           config={{ chartType: "line", series: RISE_LINE }}
+        />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 通常の幅で凡例が何行にも折り返す図。以前は折り返し 1 行を 17px で空けていたので、
+// 上に置いた凡例は 4 行で枠に接し、5 行以上で最終行が枠に食い込んだ（下に置くと軸名に
+// 重なった）。行送りは実測の 24px で、行数は ECharts と同じ規則（行末の項目に項目間の
+// 余白を足さない）で見積もる。凡例と枠の間は行数によらず上 21px・下 25px になる
+const LEGEND_ROW_TABLES = Array.from({ length: 8 }, (_, k) =>
+  thermoTable(`te-legend-${k}`, "sigma", (t) => 900 - 0.8 * (t - 300) - 45 * k)
+);
+const legendRowSeries = (names: string[]) =>
+  series(names.map((label, k) => ({ sourceBlockId: `te-legend-${k}`, xColumn: "T (K)", yColumn: "sigma", label })));
+// 短めの名前は 1 行に 2 つ、長めの名前は 564px で 1 行に 1 つ（712px で 2 つ）並ぶ
+const SHORTER_SAMPLE_SERIES = legendRowSeries([
+  "試料 A（未処理）",
+  "試料 B（300 ℃）",
+  "試料 C（400 ℃）",
+  "試料 D（500 ℃）",
+  "試料 E（600 ℃）",
+  "試料 F（700 ℃）",
+  "試料 G（Ar 中）",
+  "試料 H（N₂ 中）",
+]);
+const LONGER_SAMPLE_SERIES = legendRowSeries(
+  ["A", "B", "C", "D", "E", "F"].map((s, k) => `試料 ${s}（${200 + 100 * k} ℃ 焼成）`)
+);
+
+export const LegendRowsNormalWidth: StoryObj = {
+  name: "凡例の折り返し（通常の幅・6〜8 系列）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={572}
+          label="図 564px・8 系列（凡例は上）"
+          baseTables={LEGEND_ROW_TABLES}
+          hideTables
+          config={{ chartType: "line", series: SHORTER_SAMPLE_SERIES, yAxisName: "σ (S/cm)" }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・6 系列・長めの名前（凡例は上）"
+          baseTables={LEGEND_ROW_TABLES}
+          hideTables
+          config={{ chartType: "line", series: LONGER_SAMPLE_SERIES, yAxisName: "σ (S/cm)" }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・6 系列・長めの名前（凡例は下）"
+          baseTables={LEGEND_ROW_TABLES}
+          hideTables
+          config={{
+            chartType: "line",
+            series: LONGER_SAMPLE_SERIES,
+            yAxisName: "σ (S/cm)",
+            legendPosition: "bottom",
+          }}
+        />
+        <NarrowCase
+          shell={720}
+          label="図 712px・8 系列（凡例は上）"
+          baseTables={LEGEND_ROW_TABLES}
+          hideTables
+          config={{ chartType: "line", series: SHORTER_SAMPLE_SERIES, yAxisName: "σ (S/cm)" }}
         />
       </div>
     </ErrorBoundary>

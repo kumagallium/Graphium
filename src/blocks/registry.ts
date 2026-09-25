@@ -8,6 +8,7 @@
 
 import { defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import { inlineLabelStyleSpecs } from "../features/inline-label/styles";
+import { scriptStyleSpecs } from "../base/script-styles";
 import type { CustomBlockEntry } from "../base/schema";
 import { pdfViewerBlock } from "./pdf-viewer";
 import { bookmarkBlock } from "./bookmark";
@@ -143,11 +144,14 @@ export const KNOWN_INLINE_TYPES: ReadonlySet<string> = new Set([
 // BlockNote は styleSchema に無い style キーを含むコンテンツで throw するため
 // （silent drop ではなく画面全損）、未来のビルドが保存したノートを
 // このビルドが開けるように、未知キーは読込時に剥がす。
-// ブロック型と同じく schema の実物（defaultStyleSpecs / inlineLabelStyleSpecs）
-// から導出する — 手書きの列挙は style を足した時に取りこぼす。
+// ブロック型と同じく schema の実物（defaultStyleSpecs / inlineLabelStyleSpecs /
+// scriptStyleSpecs）から導出する — 手書きの列挙は style を足した時に取りこぼす。
+// base/editor.tsx の styleSpecs に足した style は、ここにも必ず足すこと
+// （漏れると保存 → 再読込でその書式だけが剥がされ、そのまま自動保存される）。
 export const KNOWN_STYLE_KEYS: ReadonlySet<string> = new Set([
   ...Object.keys(defaultStyleSpecs),
   ...Object.keys(inlineLabelStyleSpecs),
+  ...Object.keys(scriptStyleSpecs),
 ]);
 
 // inline ノードの styles / ネスト content から未知 style キーを取り除く。

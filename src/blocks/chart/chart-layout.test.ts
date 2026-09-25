@@ -10,7 +10,6 @@ import {
   computePanelLayout,
   estimateLegendRows,
   isCompactChart,
-  LEGEND_LINE_HEIGHT,
   LEGEND_ROW_PITCH,
   MIN_COMPACT_PANEL_HEIGHT,
   PANEL_GAP,
@@ -139,7 +138,8 @@ describe("estimateLegendRows", () => {
   });
 
   it("記号枠の幅を詰めると、同じ幅により多く並ぶ（散布図だけの凡例）", () => {
-    // 1 項目 = 文字 100 + 記号 + 5 + 10。記号 50 なら 165×2 = 330 > 300、記号 14 なら 129×2 = 258
+    // 1 項目 = 記号 + 5 + 文字 100、項目の間 10。記号 50 なら 155 + 10 + 155 = 320 > 300、
+    // 記号 14 なら 119 + 10 + 119 = 248
     const names = ["A", "B"];
     expect(estimateLegendRows(names, 300, "horizontal", 12, () => 100)).toBe(2);
     expect(estimateLegendRows(names, 300, "horizontal", 12, () => 100, 14)).toBe(1);
@@ -151,6 +151,30 @@ describe("estimateLegendRows", () => {
     expect(estimateLegendRows(names, 600, "horizontal", 12, () => 400)).toBe(2);
     // 測れなければ近似に落ちる（0 以下を返す実装を想定）
     expect(estimateLegendRows(names, 600, "horizontal", 12, () => 0)).toBe(1);
+  });
+
+  it("行末の項目には項目間の余白を数えない（ECharts と同じ折り返し）", () => {
+    // 1 項目 = 50 + 5 + 140 = 195。2 項目で 195 + 10 + 195 = 400 → 幅 400 にちょうど収まる
+    const names = ["A", "B"];
+    expect(estimateLegendRows(names, 400, "horizontal", 16, () => 140)).toBe(1);
+    expect(estimateLegendRows(names, 399, "horizontal", 16, () => 140)).toBe(2);
+  });
+
+  it("実測した 8 系列の凡例（幅 385px）を、ECharts と同じ 5 行と見積もる", () => {
+    // 2026-09-25 の実測（Chromium・Inter 16px）。ECharts は [A B] [C] [D E] [F G] [H] と
+    // 並べた。行末の項目にも余白を足す数え方は 7 行と見積もり、凡例と枠の間が 2 行ぶん空いた
+    const widths: Record<string, number> = {
+      A: 127.3,
+      B: 132.3,
+      C: 133.6,
+      D: 132.9,
+      E: 131.2,
+      F: 130,
+      G: 117.7,
+      H: 118,
+    };
+    const rows = estimateLegendRows(Object.keys(widths), 385, "horizontal", 16, (name) => widths[name]);
+    expect(rows).toBe(5);
   });
 
   it("縦並びは項目数がそのまま行数", () => {
@@ -207,11 +231,14 @@ describe("computeFigureMargins", () => {
     expect(computeFigureMargins({ ...base, yLabelWidth: 200 }).left).toBe(84);
   });
 
-  it("通常の図の凡例の行は従来の見積もり（1 行 17px）で空ける", () => {
+  it("通常の図も、凡例の折り返しは実際の行送り（24px）で空ける", () => {
+    // 1 行 17px で空けていたときは、上の凡例が 4 行で枠に接し、5 行で 7px 食い込んだ
     const three = computeFigureMargins({ ...base, legendRows: 3 });
-    expect(three.top).toBe(48 + 2 * LEGEND_LINE_HEIGHT);
+    expect(three.top).toBe(48 + 2 * LEGEND_ROW_PITCH);
     const bottom = computeFigureMargins({ ...base, legendTop: false, legendBottom: true, legendRows: 2 });
-    expect(bottom.bottom).toBe(64 + 32 + LEGEND_LINE_HEIGHT);
+    expect(bottom.bottom).toBe(64 + 32 + LEGEND_ROW_PITCH);
+    // 1 行なら従来の値のまま（凡例が 1 行の図は動かない）
+    expect(computeFigureMargins({ ...base, legendRows: 1 }).top).toBe(48);
   });
 
   it("コンパクトは縦軸名を目盛りラベルのすぐ外に置き、左の余白をそのぶんだけにする", () => {

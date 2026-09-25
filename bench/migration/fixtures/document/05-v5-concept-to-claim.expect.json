@@ -1,10 +1,10 @@
 {
-  "version": 5,
+  "version": 6,
   "wikiKind": "claim",
   "removedKeys": [
     "wikiMeta.derivedFromConcepts",
     "wikiMeta.conceptRole"
   ],
   "noDataLoss": true,
-  "rationale": "v5 への version bump はないが、wikiMeta.kind=concept は idempotent に claim にリネームされる。旧フィールド derivedFromConcepts / conceptRole は新名 derivedFromClaims / claimRole に rename。version field とは独立に毎回正規化される（migrateConceptKindToClaim）。"
+  "rationale": "入力は v5（ブロックが無いので v6 の step 化は何もしない）。wikiMeta.kind=concept は version とは独立に、読み込むたびに claim にリネームされる。旧フィールド derivedFromConcepts / conceptRole は新名 derivedFromClaims / claimRole に rename（migrateConceptKindToClaim）。"
 }

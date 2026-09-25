@@ -14,10 +14,13 @@
 //   - version === <number>
 //   - "title" / "noteCount" 等の主要フィールドが保持される
 //   - "labels.<blockId>" が rename されている
-//   - "noDataLoss": true なら、input にあった key が必ず output にも残る
+//   - "paths" の各パスが指定の値になっている（ブロックの木を組み替える移行の形を確かめる）
+//   - "noDataLoss": true なら、title / createdAt と、全ブロックの id・本文テキストが output にも残る
 //
 // `pnpm test:migration` で全 fixture を順次 migrate し、不変量違反があれば fail。
-// Phase μ-3 時点では document migration (v1-v4 → v5) のみ完全動作する。
+// document migration は v1〜v5 の各段（→ 最新 v6）に fixture がある。
+// LATEST_DOCUMENT_VERSION を上げたら、expect の version を上げ、新しい段の
+// fixture（入力 = 1 つ前の version）を足す。上げ忘れると CI の migration ジョブが落ちる。
 // Phase η 以降が INDEX bump fixture を追加していく前提。
 
 import { readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
@@ -44,7 +47,16 @@ export type MigrationExpect = {
   removedKeys?: string[];
   /** 保持されるべきトップレベルキー（title / pages / createdAt 等） */
   preservedKeys?: string[];
-  /** noDataLoss=true なら、input の primitives 全てが output に等価に残る */
+  /**
+   * migrate 後に、パス（removedKeys と同じ書式: "pages[0].blocks[1].type"）の値が
+   * これと等しいこと（JSON で比較）。v6 の step 化のようにブロックの木を組み替える
+   * 移行で、どのブロックがどこに収まったかを確かめる
+   */
+  paths?: Record<string, unknown>;
+  /**
+   * noDataLoss=true なら、title / createdAt と、全ブロック（children を含む）の id と
+   * 本文テキストが output にも残る。表のセルの中身は見ない
+   */
   noDataLoss?: boolean;
   /** index 用: notes 件数の不変量 */
   noteCount?: number;
@@ -56,6 +68,8 @@ export type MigrationCheck = {
   name: string;
   passed: boolean;
   reason: string;
+  /** 失敗したときの直し方。同じ文言は集約して summary の最後に 1 回だけ出す */
+  hint?: string;
 };
 
 export type MigrationResult = {
@@ -99,10 +113,18 @@ function evaluateDocument(
 
   if (typeof expect.version === "number") {
     const ok = after.version === expect.version;
+    // 最新 version に上がったのに期待値が古いだけなら、移行ではなく fixture の更新漏れ
+    const staleExpect =
+      !ok && after.version === LATEST_DOCUMENT_VERSION && expect.version < LATEST_DOCUMENT_VERSION;
     checks.push({
       name: "version",
       passed: ok,
       reason: ok ? `version === ${expect.version}` : `expected ${expect.version}, got ${after.version}`,
+      hint: staleExpect
+        ? `LATEST_DOCUMENT_VERSION is now ${LATEST_DOCUMENT_VERSION} but some expect files still say ` +
+          `${expect.version}. Bump "version" in bench/migration/fixtures/document/*.expect.json and add a ` +
+          `fixture whose input is version ${LATEST_DOCUMENT_VERSION - 1} for the new migration step.`
+        : undefined,
     });
   } else {
     // 既定: LATEST_DOCUMENT_VERSION に揃っていること
@@ -153,6 +175,20 @@ function evaluateDocument(
     }
   }
 
+  if (expect.paths) {
+    for (const [path, expected] of Object.entries(expect.paths)) {
+      const actual = getPath(after, path);
+      const ok = JSON.stringify(actual) === JSON.stringify(expected);
+      checks.push({
+        name: `path:${path}`,
+        passed: ok,
+        reason: ok
+          ? `=== ${JSON.stringify(expected)}`
+          : `expected ${JSON.stringify(expected)}, got ${actual === undefined ? "(absent)" : JSON.stringify(actual)}`,
+      });
+    }
+  }
+
   if (Array.isArray(expect.preservedKeys)) {
     for (const key of expect.preservedKeys) {
       const before_ = (before as any)[key];
@@ -167,16 +203,7 @@ function evaluateDocument(
   }
 
   if (expect.noDataLoss === true) {
-    // input にあった primitive key→value セットが output にも残ること。
     // labels の値変更や key rename は許容するため、key 単位ではなく value 集合で比較。
-    const beforeValues = new Set<string>();
-    deepKeys(before, "", []); // warm up
-    const beforeList: string[] = [];
-    deepKeys(before, "", beforeList);
-    for (const entry of beforeList) {
-      const v = entry.split("=").slice(1).join("=");
-      beforeValues.add(v);
-    }
     const afterList: string[] = [];
     deepKeys(after, "", afterList);
     const afterValues = new Set(afterList.map((e) => e.split("=").slice(1).join("=")));
@@ -194,26 +221,87 @@ function evaluateDocument(
       passed: createdAtOk,
       reason: createdAtOk ? "createdAt preserved" : `createdAt "${before.createdAt}" lost`,
     });
+
+    // ブロックの木を組み替える移行（v6 の step 化）が、ブロックを落としたり id を
+    // 振り直したりしていないこと。id はメモ・リンク・PROV（activity_<id>）の参照先なので、
+    // 位置が変わっても値が残っていなければならない。
+    const beforeBlocks = collectBlockContent(before);
+    const afterBlocks = collectBlockContent(after);
+    const afterIds = new Set(afterBlocks.ids);
+    const lostIds = beforeBlocks.ids.filter((id) => !afterIds.has(id));
+    checks.push({
+      name: "noDataLoss:blockIds",
+      passed: lostIds.length === 0,
+      reason:
+        lostIds.length === 0
+          ? `${beforeBlocks.ids.length} block id(s) preserved`
+          : `block id(s) lost: ${lostIds.join(", ")}`,
+    });
+    // 同じ文字列が複数のブロックにあっても片方の消失に気づけるよう、出現回数で突き合わせる
+    const afterTextCounts = new Map<string, number>();
+    for (const t of afterBlocks.texts) afterTextCounts.set(t, (afterTextCounts.get(t) ?? 0) + 1);
+    const lostTexts: string[] = [];
+    for (const t of beforeBlocks.texts) {
+      const left = afterTextCounts.get(t) ?? 0;
+      if (left === 0) lostTexts.push(t);
+      else afterTextCounts.set(t, left - 1);
+    }
+    checks.push({
+      name: "noDataLoss:blockText",
+      passed: lostTexts.length === 0,
+      reason:
+        lostTexts.length === 0
+          ? `${beforeBlocks.texts.length} text run(s) preserved`
+          : `text lost: ${lostTexts.map((t) => JSON.stringify(t)).join(", ")}`,
+    });
   }
 
   return checks;
 }
 
-function pathExists(obj: unknown, path: string): boolean {
-  const parts = path.split(".");
+/** 全ページのブロック（children を含む）の id と、インライン本文の text を集める（表のセルは見ない） */
+function collectBlockContent(doc: GraphiumDocument): { ids: string[]; texts: string[] } {
+  const ids: string[] = [];
+  const texts: string[] = [];
+  const walkInline = (content: unknown): void => {
+    if (!Array.isArray(content)) return;
+    for (const c of content as any[]) {
+      if (typeof c?.text === "string") texts.push(c.text);
+      // link 等はインラインの中にさらにインラインを持つ
+      walkInline(c?.content);
+    }
+  };
+  const walkBlocks = (blocks: unknown): void => {
+    if (!Array.isArray(blocks)) return;
+    for (const b of blocks as any[]) {
+      if (typeof b?.id === "string") ids.push(b.id);
+      walkInline(b?.content);
+      walkBlocks(b?.children);
+    }
+  };
+  for (const page of doc.pages ?? []) walkBlocks(page.blocks);
+  return { ids, texts };
+}
+
+/** "pages[0].blocks[1].id" 形式のパスで値を取り出す。途中で途切れたら undefined */
+function getPath(obj: unknown, path: string): unknown {
   let cur: any = obj;
-  for (const p of parts) {
-    if (cur == null) return false;
+  for (const p of path.split(".")) {
+    if (cur == null) return undefined;
     const m = p.match(/^(.+?)\[(\d+)\]$/);
     if (m) {
       cur = cur[m[1]];
-      if (!Array.isArray(cur)) return false;
+      if (!Array.isArray(cur)) return undefined;
       cur = cur[parseInt(m[2], 10)];
       continue;
     }
     cur = cur[p];
   }
-  return cur !== undefined;
+  return cur;
+}
+
+function pathExists(obj: unknown, path: string): boolean {
+  return getPath(obj, path) !== undefined;
 }
 
 function evaluateIndex(
@@ -389,8 +477,15 @@ function main(): void {
     if (!r.passed) anyFail = true;
   }
 
-  // データロス系の fail は CI を block する。Phase μ-3 では document migration は
-  // 全 pass する想定（v1-v4 fixture は既存 production コードを通すだけ）。
+  const hints = new Set(
+    report.results.flatMap((r) => r.checks.filter((c) => !c.passed && c.hint).map((c) => c.hint!)),
+  );
+  for (const hint of hints) {
+    console.log(`\nhint: ${hint}`);
+  }
+
+  // データロス系の fail は CI を block する。document migration は全 pass する想定
+  // （各 fixture は既存 production コードを通すだけ）。
   if (anyFail && process.env.BENCH_MIGRATION_STRICT === "true") {
     process.exit(1);
   }

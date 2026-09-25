@@ -1,0 +1,34 @@
+{
+  "version": 6,
+  "paths": {
+    "pages[0].blocks.length": 3,
+    "pages[0].blocks[0].id": "blk-h-synth",
+    "pages[0].blocks[0].type": "step",
+    "pages[0].blocks[0].content[0].text": "ZnSb の合成",
+    "pages[0].blocks[0].children.length": 4,
+    "pages[0].blocks[0].children[0].id": "blk-p-weigh",
+    "pages[0].blocks[0].children[0].content[0].styles.inlineMaterial": "ent_blk-p-weigh",
+    "pages[0].blocks[0].children[1].id": "blk-h-plan",
+    "pages[0].blocks[0].children[1].type": "heading",
+    "pages[0].blocks[0].children[2].id": "blk-p-plan",
+    "pages[0].blocks[0].children[3].id": "blk-h-sps",
+    "pages[0].blocks[0].children[3].type": "step",
+    "pages[0].blocks[0].children[3].children.length": 1,
+    "pages[0].blocks[0].children[3].children[0].id": "blk-p-sps",
+    "pages[0].blocks[1].id": "blk-h-eval",
+    "pages[0].blocks[1].type": "heading",
+    "pages[0].blocks[2].id": "blk-p-eval",
+    "pages[0].provLinks[0].sourceBlockId": "blk-h-sps",
+    "pages[0].provLinks[0].targetBlockId": "blk-h-synth"
+  },
+  "labels": {
+    "blk-p-eval": "free.観察"
+  },
+  "removedKeys": [
+    "pages[0].labels.blk-h-synth",
+    "pages[0].labels.blk-h-sps",
+    "pages[0].labels.blk-h-plan"
+  ],
+  "noDataLoss": true,
+  "rationale": "v5 の「procedure ラベル付き見出し + スコープ」は v6 で同じ id の step ブロックになり、スコープ（同レベル以上の次の見出しの手前まで）が children に入る。下位レベルの procedure 見出しは入れ子の step になり、plan ラベルは除去されて見出しのまま残る。procedure / plan ラベルは消費されるが、ブロックの id・本文・インライン style・リンクの参照先はすべて残り、free.* ラベルもそのまま残る。"
+}
