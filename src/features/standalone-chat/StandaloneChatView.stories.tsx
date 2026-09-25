@@ -124,6 +124,39 @@ export const WithMessageActions: Story = {
   },
 };
 
+export const WithSuperscriptSubscript: Story = {
+  name: "回答に上付き・下付きがある",
+  args: {
+    title: "封入時の真空度",
+    messages: [
+      msg({ role: "user", content: "シリカ管に封入するときの真空度と、気をつけることを教えてください。" }),
+      msg({
+        role: "assistant",
+        content: [
+          "封入前に 10<sup>-3</sup> Pa 程度まで引いておくのが目安です。",
+          "",
+          "- 残った H<sub>2</sub>O は加熱中に試料を酸化させるので、200 ℃ で 1 時間ほど焼き出してから封じます",
+          "- Ar を 2×10<sup>4</sup> Pa ほど戻して封じると、高温での管の変形を抑えられます",
+          "",
+          "| 排気 | 到達圧力 |",
+          "| --- | --- |",
+          "| ロータリーポンプのみ | 10<sup>-1</sup> Pa |",
+          "| ターボ分子ポンプ併用 | 10<sup>-4</sup> Pa |",
+        ].join("\n"),
+      }),
+      msg({ role: "user", content: "Markdown で上付き・下付きを書くにはどうすればいいですか？" }),
+      msg({
+        role: "assistant",
+        content:
+          "`10<sup>5</sup>` のように `<sup>` で囲むと 10<sup>5</sup> に、`<sub>` で囲むと H<sub>2</sub>O のようになります。閉じタグを忘れると 10<sup>5 のように文字のまま出ます。",
+      }),
+    ],
+    loading: false,
+    onSend: (text) => console.info("[story] onSend", text),
+    onBack: () => console.info("[story] onBack"),
+  },
+};
+
 export const WithError: Story = {
   name: "エラー表示",
   args: {
