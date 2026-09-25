@@ -8,6 +8,7 @@
 
 import { t } from "../../i18n";
 import { formatDateTime } from "../../lib/format-datetime";
+import { applyLogTableTimestamps } from "./auto-timestamp";
 
 export {
   applyLogTableTimestamps,
@@ -75,7 +76,13 @@ export const logTableSlashItem = {
     if (inserted?.[0]) {
       const blockId = inserted[0].id;
       setTimeout(() => {
-        registerCallbacks.get(editor)?.(blockId);
+        const register = registerCallbacks.get(editor);
+        if (!register) return;
+        register(blockId);
+        // 挿入直後の行追加から日時が入るよう、いまの行数を初見として記録する
+        // （ドラッグハンドルの「時系列テーブルにする」と同じ）。これが無いと、
+        // 挿入して何も打たずに足した最初の行が初見扱いになり、日時が入らない
+        applyLogTableTimestamps(editor, [blockId]);
       }, 0);
     }
 
