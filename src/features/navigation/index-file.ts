@@ -18,6 +18,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { normalizeLabel } from "../context-label/labels";
 import { normalizeNoteContexts } from "../note-context/context-tags";
 import { collectOcrText } from "../media-ocr/collect";
+import { inlineContentToText } from "../markdown-export/inline-text";
 
 // ── 型定義 ──
 
@@ -120,7 +121,15 @@ import { collectOcrText } from "../media-ocr/collect";
 //      が、schema bump の慣例（フィールドの意味が増えたら version を上げる）に合わせる。
 //      bump を必ず実地確認する: Graphium 起動時に v26 インデックスが v27 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 27;
+// v28: 見出し・step のタイトル・ラベルのプレビュー（extractBlockText）の inline の文字列化を
+//      markdown-export/inline-text.ts の inlineContentToText（平文）に揃えた。リンクが
+//      "[object Object]"、インライン数式が空文字になっていたのを、リンクは中身の文字、
+//      数式は $…$ にする。NoteIndexEntry のフィールドは変わらない。リンク・数式を含む
+//      見出し等を持つ既存ノートを作り直すための bump（Wiki のエントリは起動のたびに
+//      buildIndexEntry で作り直されるので、版に関係なく直る）。
+//      bump を必ず実地確認する: Graphium 起動時に v27 インデックスが v28 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 28;
 
 export type GraphiumIndex = {
   version: number;
@@ -676,12 +685,12 @@ function findBlockById(blocks: any[], id: string): any | undefined {
 }
 
 // BlockNote のインラインコンテンツからテキストを抽出
+// 目次・プレビュー・検索のキーなので平文（上付き・下付きのタグは入れない。リンクは中身の文字、
+// 数式は $…$）。inline の文字列化は markdown-export/inline-text.ts に寄せてある
 function extractInlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content.map((c: any) => c.text ?? c.content ?? "").join("");
-  }
+  if (Array.isArray(content)) return inlineContentToText(content);
   // テーブルコンテンツ: { type: "tableContent", rows: [{ cells: [[...]] }] }
   if (content.type === "tableContent" && Array.isArray(content.rows)) {
     return content.rows
