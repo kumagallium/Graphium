@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.82.0](https://github.com/kumagallium/Graphium/compare/v0.81.4...v0.82.0) - 2026-09-25
+
+- Design proposal: group operations by table, edge evidence, order-only planned lines by @kumagallium in https://github.com/kumagallium/Graphium/pull/1016
+- Draw one band per index table in the plan note's Operations flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1018
+
 ## [v0.81.4](https://github.com/kumagallium/Graphium/compare/v0.81.3...v0.81.4) - 2026-09-24
 
 - 点検が UI の言語で答え、ページを番号で参照する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1017
