@@ -138,19 +138,35 @@ Two kinds of probes live next to the corpus:
 `bench/migration/fixtures/` stores frozen snapshots of older document /
 index schemas. `pnpm test:migration` replays each fixture through the
 production migration code and asserts the pre-declared invariants
-(version bumped, key labels remapped, `title` / `createdAt` preserved).
-In CI this job runs with `BENCH_MIGRATION_STRICT=true` — any data-loss
-failure blocks the merge. New schema-bump Phases (η / γ / δ / ε / ζ)
-add their pre-bump fixture to this directory.
+(version bumped, key labels remapped, the shape of a restructured block
+tree, `title` / `createdAt` and every block id and text run preserved).
+In CI this job runs with `BENCH_MIGRATION_STRICT=true` — any failure
+fails the job and blocks the merge. When you raise
+`LATEST_DOCUMENT_VERSION`, bump `version` in the document fixtures'
+`*.expect.json` and add a fixture whose input is the previous version,
+so the new migration step is replayed too. New schema-bump Phases
+(η / γ / δ / ε / ζ) add their pre-bump fixture to this directory.
 
 ## Performance regression
 
 `pnpm bench:performance` runs the dry-run pipeline against a 100-note
-synthetic corpus and records duration, peak heap delta, and the byte
-size of `atoms` / `syntheses` JSON. Numbers are compared to
-`bench/performance/baseline.json`; a metric exceeding +20 % is flagged
-as a regression (warning, not block). Update the baseline with
-`BENCH_PERF_UPDATE_BASELINE=true pnpm bench:performance`.
+synthetic corpus (one warm-up run, then the median of five) and records
+duration, peak heap delta, and the byte size of the `atoms` JSON.
+Numbers are compared to `bench/performance/baseline.json` (warning, not
+block):
+
+| Metric | Flagged when worse by more than |
+|---|---|
+| `duration_ms` | +20 % **and** +50 ms |
+| `heap_peak_bytes` | +20 % **and** +16 MiB |
+| `atoms_json_bytes` | +20 % |
+
+A run takes a few milliseconds and a few MiB, so duration and heap move
+with JIT warm-up, GC timing, and the machine; changes below those floors
+are noise. The `atoms` JSON size is deterministic. If a PR changes the
+pipeline's output on purpose, re-record the baseline in the same PR with
+`BENCH_PERF_UPDATE_BASELINE=true pnpm bench:performance` — otherwise
+every later PR repeats the same warning.
 
 ## CI
 
@@ -165,6 +181,14 @@ as a regression (warning, not block). Update the baseline with
 
 Each posts an independent sticky comment to the PR (`bench-delta` /
 `bench-adversarial` / `bench-migration` / `bench-performance` headers).
+
+The `bench-delta` comment compares the tracked `bench/baseline.json` on
+`origin/main` with this PR's fresh dry-run
+(`BENCH_RIGHT=bench/latest-baseline.json pnpm bench:compare origin/main`).
+The dry-run is deterministic, so a PR that does not touch the pipeline
+shows no change. If a PR changes the dry-run metrics on purpose,
+regenerate `bench/baseline.json` with `BENCH_MODE=dry-run pnpm bench:run`
+in the same PR; otherwise every later PR shows the same delta.
 A `workflow_dispatch` lets a maintainer run the live LLM mode against
 the org's API-key secret when needed.
 

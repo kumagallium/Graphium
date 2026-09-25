@@ -115,6 +115,23 @@ describe("getAssetSuggestions", () => {
     expect(data.label).toBe("🧾 測定.csv");
     expect(data.assetType).toBe("data");
   });
+
+  it("同名の素材が並ぶときだけ、2 行目に取り込み元のフォルダ（無ければ登録日時）を添える", () => {
+    // 試料ごとのフォルダから取り込んだ同名の測定ファイル
+    const idx = {
+      media: [
+        { ...media({ fileId: "x1", name: "XRD.txt", type: "data" }), noteContexts: ["2020/S1"] },
+        { ...media({ fileId: "x2", name: "XRD.txt", type: "data" }), noteContexts: ["2020/S2"] },
+        media({ fileId: "x3", name: "XRD.txt", type: "data", uploadedAt: "2026-09-01T09:05:00" }),
+        media({ fileId: "u1", name: "一意.csv", type: "data" }),
+      ],
+    } as any;
+    const byId = new Map(getAssetSuggestions(idx).map((s) => [s.id, s]));
+    expect(byId.get("x1")!.subtext).toBe("2020/S1");
+    expect(byId.get("x2")!.subtext).toBe("2020/S2");
+    expect(byId.get("x3")!.subtext).toBe("2026-09-01 09:05");
+    expect(byId.get("u1")!.subtext).toBeUndefined();
+  });
 });
 
 describe("resolveMentionTargetFromLinks（素材メンションの照合）", () => {

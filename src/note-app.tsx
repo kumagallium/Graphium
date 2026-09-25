@@ -155,6 +155,7 @@ import {
   readMentionAt,
   resolveMentionClickTarget,
 } from "./features/block-link/mention-click";
+import { insertAssetMention, recordMentionLink } from "./features/block-link/mention-insert";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
@@ -192,6 +193,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
+import { pendingPeekSave } from "./lib/peek-save-queue";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -2004,7 +2006,7 @@ function NoteEditorInner({
   // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する。
   // スラッシュだけのブロックなら中身を空にしてカーソル位置に差し込み、
   // 本文があるブロックでは現在のカーソル位置にそのまま挿入する。
-  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[], onInserted?: () => void) => {
     if (isSlashOnlyBlock(currentBlock)) {
       editor.updateBlock(currentBlock, { type: "paragraph", content: [] });
     }
@@ -2012,6 +2014,7 @@ function NoteEditorInner({
     editor.setTextCursorPosition(target, "end");
     setTimeout(() => {
       editor.insertInlineContent(inline);
+      onInserted?.();
     }, 0);
   }, [isSlashOnlyBlock]);
 
@@ -2033,22 +2036,25 @@ function NoteEditorInner({
       if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
         citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, entry.fileId];
       }
-      // @メンションの asset 分岐と同じく linkStore にも記録する（クリックで素材を開くため）
-      if (entry.fileId) {
-        linkStore.addLink({
-          sourceBlockId: currentBlock.id,
-          targetBlockId: "",
-          targetNoteId: `${entry.type}:${entry.fileId}`,
-          type: "reference",
-          createdBy: "human",
-        });
-      }
       // insertInlineContent が onChange を発火 → 自動 markDirty。
       // citedAssetFileIdsRef は同期的に更新済みなので、その後の save で拾われる。
-      insertInlineAtSlash(editor, currentBlock, [
-        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
-        { type: "text", text: " ", styles: {} },
-      ]);
+      // @メンションの asset 分岐と同じく、入れた直後に linkStore にも記録する
+      // （クリックで素材を開くため。表のセルなら行の identity も控える）
+      insertInlineAtSlash(
+        editor,
+        currentBlock,
+        [
+          { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+          { type: "text", text: " ", styles: {} },
+        ],
+        () => {
+          if (!entry.fileId) return;
+          recordMentionLink(editor, linkStore.addLink, {
+            sourceBlockId: currentBlock.id,
+            targetNoteId: `${entry.type}:${entry.fileId}`,
+          });
+        },
+      );
       return;
     }
 
@@ -6056,13 +6062,9 @@ function NoteEditorInner({
                   }, 100);
                   markDirty();
                 } else if (suggestion.type === "note") {
-                  linkStore.addLink({
-                    sourceBlockId,
-                    targetBlockId: "",
-                    targetNoteId: suggestion.id,
-                    type: "reference",
-                    createdBy: "human",
-                  });
+                  // reference リンクは入れた直後に記録する（表のセルなら行の identity を
+                  // 控えるため。mention-insert.ts の recordMentionLink）
+                  const noteId = suggestion.id;
                   const ctx = mentionContextRef.current;
                   if (ctx.tableBlockId && ctx.rowIndex > 0 && editorRef.current) {
                     const noteName = suggestion.label;
@@ -6071,7 +6073,8 @@ function NoteEditorInner({
                     const colIndex = ctx.colIndex >= 0 ? ctx.colIndex : 0;
                     tableMetaStore.setNoteLink(tableBlockId, `@${noteName}`, suggestion.id);
                     setTimeout(() => {
-                      const block = editorRef.current?.getBlock(tableBlockId);
+                      const editor = editorRef.current;
+                      const block = editor?.getBlock(tableBlockId);
                       if (block?.content?.rows?.[rowIndex]) {
                         const newRows = block.content.rows.map((r: any, i: number) => {
                           if (i !== rowIndex) return r;
@@ -6086,10 +6089,16 @@ function NoteEditorInner({
                             ),
                           };
                         });
-                        editorRef.current.updateBlock(tableBlockId, {
+                        editor.updateBlock(tableBlockId, {
                           content: { type: "tableContent", rows: newRows },
                         });
                       }
+                      // セルを書き換えて入れる経路なので、カーソルではなく打った行に紐づける
+                      recordMentionLink(editor, linkStore.addLink, {
+                        sourceBlockId,
+                        targetNoteId: noteId,
+                        row: { tableBlockId, rowIndex },
+                      });
                     }, 100);
                     const exists = noteLinksRef.current.some(
                       (l) => l.targetNoteId === suggestion.id
@@ -6102,11 +6111,14 @@ function NoteEditorInner({
                     }
                     markDirty();
                   } else {
-                    const targetId = suggestion.id;
                     const targetLabel = suggestion.label;
                     setTimeout(() => {
-                      // href に noteId を埋めた link として挿入（同名ノートでも正しく解決）
-                      insertNoteMentionInline(editorRef.current, targetId, targetLabel);
+                      // 本文は青い @タイトル、ノート ID はリンクの記録に持つ（同名ノートでも正しく解決）
+                      insertNoteMentionInline(editorRef.current, noteId, targetLabel);
+                      recordMentionLink(editorRef.current, linkStore.addLink, {
+                        sourceBlockId,
+                        targetNoteId: noteId,
+                      });
                     }, 100);
                     const exists = noteLinksRef.current.some(
                       (l) => l.targetNoteId === suggestion.id
@@ -6120,43 +6132,20 @@ function NoteEditorInner({
                     markDirty();
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1, colIndex: -1 };
-                } else if (suggestion.type === "asset" && suggestion.assetType === "image") {
-                  // 画像素材はリンク文字ではなく、その場に見えるインライン画像として埋める
-                  // （セルの中に画像を置く経路。クリックで素材ピーク）。実体は fileId 参照
-                  const imageName = suggestion.label.replace(/^🖼\s*/, "");
-                  setTimeout(() => {
-                    editorRef.current?.insertInlineContent([
-                      { type: "inlineImage", props: { fileId: suggestion.id, name: imageName } } as any,
-                      { type: "text", text: " ", styles: {} },
-                    ]);
-                  }, 100);
-                  markDirty();
                 } else if (suggestion.type === "asset") {
-                  // 素材（PDF/docx/データ本体）の引用。ノートではなく素材を指す。
-                  // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が
-                  // その素材の全文＋ハイライトメモを読めるようになる。
-                  // 併せて linkStore にも外部ソース ID（pdf:/document:/data:）で記録する。
-                  // これが無いと @素材名 をクリックしても解決できず何も開かない
-                  // （References の「Source: @ラベル」と同じ形に揃えて既存の
-                  // 素材ピーク振り分けに乗せる）。
-                  linkStore.addLink({
-                    sourceBlockId,
-                    targetBlockId: "",
-                    targetNoteId: `${suggestion.assetType ?? "document"}:${suggestion.id}`,
-                    type: "reference",
-                    createdBy: "human",
+                  // 素材（PDF/docx/データ本体・画像）の引用。ノートではなく素材を指す。
+                  // 画像はインライン画像、それ以外は @素材名 ＋ 外部ソース ID のリンク記録 ＋
+                  // citedAssetFileIds（Cmd-K / チャットの AI が全文を読める）。
+                  // SidePeek と同じ関数を通す（mention-insert.ts）
+                  insertAssetMention(() => editorRef.current, sourceBlockId, suggestion, {
+                    addLink: linkStore.addLink,
+                    citeAsset: (fileId) => {
+                      if (!citedAssetFileIdsRef.current.includes(fileId)) {
+                        citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, fileId];
+                      }
+                    },
+                    onInserted: markDirty,
                   });
-                  if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
-                    citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
-                  }
-                  const assetLabel = suggestion.label.replace(/^(📄|🧾|🖼)\s*/, "");
-                  setTimeout(() => {
-                    editorRef.current?.insertInlineContent([
-                      { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },
-                      { type: "text", text: " ", styles: {} },
-                    ]);
-                  }, 100);
-                  markDirty();
                 }
               }}
             />
@@ -7625,6 +7614,10 @@ export function NoteApp() {
       const noteId = run.noteId;
       const chain = chatWritebackChainsRef.current.get(noteId) ?? Promise.resolve();
       const task = chain.then(async () => {
+        // ピークが閉じた直後の回収では、ピークがアンマウント時に書き出した本文がまだ
+        // 書き込み中のことがある。書き終わってから読む（先に読むと古い本文に応答を足して
+        // 書いてピークの編集を巻き戻すか、後から着いたピークの保存が応答を消す）
+        await pendingPeekSave(noteId);
         const baseDoc = await loadNoteDocByFullKey(noteId, fmGetCachedDocStable);
         if (!baseDoc) {
           throw new Error(`書き戻し先ノートが読み込めませんでした: ${noteId}`);

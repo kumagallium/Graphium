@@ -1,0 +1,101 @@
+{
+  "version": 5,
+  "title": "v5 fixture: procedure headings become step blocks",
+  "createdAt": "2026-06-01T09:00:00.000Z",
+  "modifiedAt": "2026-06-01T09:00:00.000Z",
+  "pages": [
+    {
+      "id": "page-1",
+      "title": "Page",
+      "blocks": [
+        {
+          "id": "blk-h-synth",
+          "type": "heading",
+          "props": { "level": 2 },
+          "content": [
+            { "type": "text", "text": "ZnSb の合成", "styles": {} }
+          ],
+          "children": []
+        },
+        {
+          "id": "blk-p-weigh",
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "ZnSb 粉末", "styles": { "inlineMaterial": "ent_blk-p-weigh" } },
+            { "type": "text", "text": " を 2 g 秤量した", "styles": {} }
+          ],
+          "children": []
+        },
+        {
+          "id": "blk-h-plan",
+          "type": "heading",
+          "props": { "level": 3 },
+          "content": [
+            { "type": "text", "text": "計画", "styles": {} }
+          ],
+          "children": []
+        },
+        {
+          "id": "blk-p-plan",
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "850℃ で 5 分焼結する予定", "styles": {} }
+          ],
+          "children": []
+        },
+        {
+          "id": "blk-h-sps",
+          "type": "heading",
+          "props": { "level": 3 },
+          "content": [
+            { "type": "text", "text": "SPS 焼結", "styles": {} }
+          ],
+          "children": []
+        },
+        {
+          "id": "blk-p-sps",
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "SPS", "styles": { "inlineTool": "ent_blk-p-sps" } },
+            { "type": "text", "text": " で焼結した", "styles": {} }
+          ],
+          "children": []
+        },
+        {
+          "id": "blk-h-eval",
+          "type": "heading",
+          "props": { "level": 2 },
+          "content": [
+            { "type": "text", "text": "評価", "styles": {} }
+          ],
+          "children": []
+        },
+        {
+          "id": "blk-p-eval",
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "緻密度 95% を達成", "styles": {} }
+          ],
+          "children": []
+        }
+      ],
+      "provLinks": [
+        {
+          "id": "lnk-1",
+          "type": "informed_by",
+          "sourceBlockId": "blk-h-sps",
+          "targetBlockId": "blk-h-synth",
+          "layer": "prov",
+          "createdBy": "human"
+        }
+      ],
+      "knowledgeLinks": [],
+      "labels": {
+        "blk-h-synth": "procedure",
+        "blk-h-plan": "plan",
+        "blk-h-sps": "procedure",
+        "blk-p-eval": "free.観察"
+      }
+    }
+  ]
+}
