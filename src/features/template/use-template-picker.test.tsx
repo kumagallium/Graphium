@@ -7,6 +7,7 @@
 // モジュール変数 1 つ（メインに固定）で、ピークに出すとメイン側のノートに書き込んでいた。
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { StrictMode } from "react";
 import { render, fireEvent, cleanup, act, within } from "@testing-library/react";
 
 const loader = vi.hoisted(() => ({ loadSharedTemplate: vi.fn() }));
@@ -74,15 +75,21 @@ function Host({ name, editor, stores }: { name: string; editor: any; stores: Tem
   );
 }
 
-/** メインとピークを同時に描く（画面に 2 つのエディタが同居する状態） */
+/**
+ * メインとピークを同時に描く（画面に 2 つのエディタが同居する状態）。
+ * アプリ（main.tsx）と同じく StrictMode で包む — 開発時は effect が
+ * 登録 → 解除 → 登録と二重に走るので、その後も受け口が残っていることを含めて見る
+ */
 function renderBoth() {
   const main = { editor: makeEditor(), ...recordingStores() };
   const peek = { editor: makeEditor(), ...recordingStores() };
   const view = render(
-    <LocaleProvider>
-      <Host name="main" editor={main.editor} stores={main.stores} />
-      <Host name="peek" editor={peek.editor} stores={peek.stores} />
-    </LocaleProvider>,
+    <StrictMode>
+      <LocaleProvider>
+        <Host name="main" editor={main.editor} stores={main.stores} />
+        <Host name="peek" editor={peek.editor} stores={peek.stores} />
+      </LocaleProvider>
+    </StrictMode>,
   );
   const host = (name: "main" | "peek") => view.getByTestId(name);
   return { main, peek, host, view };
