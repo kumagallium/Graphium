@@ -47,6 +47,7 @@ import {
   CHART_GRID_LINE,
   CHART_INK,
   CHART_LEGEND_ITEM,
+  CHART_LEGEND_ITEM_COMPACT_WIDTH,
   PANEL_LABEL_INSET,
   CHART_LINE_WIDTHS,
   CHART_SERIES_COLORS,
@@ -79,7 +80,16 @@ import {
   type DisplayLabel,
   type SeriesType,
 } from "./chart-config";
-import { computePanelLayout, estimateLegendRows, LEGEND_LINE_HEIGHT } from "./chart-layout";
+import {
+  approxTextWidth,
+  axisSplitNumber,
+  computeFigureHeight,
+  computeFigureMargins,
+  computePanelLayout,
+  estimateLegendRows,
+  isCompactChart,
+  valueAxisTickLabels,
+} from "./chart-layout";
 import { legendItems, type LegendItemSeries } from "./legend-icon";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
 import {
@@ -269,6 +279,9 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   // 設定ボタン + パネルのアンカー。外側クリック判定はこの要素基準で行う
   // （ブロック全体を基準にするとチャート上のクリックで閉じなくなる）
   const settingsAnchorRef = useRef<HTMLDivElement>(null);
+  // 設定ボタンを図に重ねず、図の上に 1 行とって置くか（狭い図・右上の凡例。
+  // 決めるのは余白を計算する ChartCanvas 側）
+  const [buttonAbove, setButtonAbove] = useState(false);
 
   const computePanelPlacement = () => {
     const rect = settingsAnchorRef.current?.getBoundingClientRect();
@@ -487,6 +500,11 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
 
   return (
     <div data-test="chart-block" contentEditable={false} style={styles.shell}>
+      {editable && buttonAbove && (
+        // 設定ボタンの行。ボタン自体は下のアンカーが絶対配置でこの行に重なる。
+        // 印刷ではボタンと一緒に消えるよう同じ印を持つ（図の上に空白を残さない）
+        <div data-chart-ui="true" aria-hidden="true" style={styles.settingsRow} />
+      )}
       {editable && (
         <div
           ref={settingsAnchorRef}
@@ -523,7 +541,13 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
         </div>
       )}
       {result.kind === "ok" ? (
-        <ChartCanvas result={result} config={config} tables={tables} />
+        <ChartCanvas
+          result={result}
+          config={config}
+          tables={tables}
+          settingsAnchorRef={editable ? settingsAnchorRef : undefined}
+          onButtonAboveChange={setButtonAbove}
+        />
       ) : (
         <div style={styles.emptyState}>
           {/* 素材を読んでいる最中は「データが無い」ではなく読み込み中と出す */}
@@ -555,6 +579,32 @@ function measureLegendText(text: string, font: string): number {
   return legendMeasureCtx.measureText(text).width;
 }
 
+/** 図を描く場所の寸法 */
+export type ChartArea = {
+  /** 図の幅(px)。0 は未計測 */
+  width: number;
+  /** 図の高さ(px)。省略すると幅とアスペクト比から決める（狭い図は読める高さまで伸ばす） */
+  height?: number;
+  /**
+   * 設定ボタンが図の右上を横方向に覆っている幅(px)。0 は覆っていない（ボタンが
+   * 無い・図の外にある）。凡例をボタンの下に潜らせないために使う
+   */
+  coverTopRight?: number;
+};
+
+/** 図 1 枚ぶんの描画結果 */
+export type ChartFigure = {
+  /** ECharts の option */
+  option: any;
+  /** チャート要素に与える高さ(px) */
+  height: number;
+  /**
+   * 設定ボタンを図に重ねず、図の上の行に置くべきか。狭い図（余白が無く
+   * 凡例も枠もボタンの下に来る）と、枠の上・右端揃えの凡例が覆われるとき
+   */
+  buttonAbove: boolean;
+};
+
 /**
  * ECharts の option を組み立てる（eureco の学術スタイル、chart-theme.ts の実測値）。
  * 描画状態を持たない純粋な変換。
@@ -568,6 +618,19 @@ export function buildOption(
   /** チャート要素の実寸。枠を分割するときだけ要る（grid を px で置くため） */
   size?: { width: number; height: number }
 ): any {
+  return buildChart(result, config, tables, size ?? { width: 0 }).option;
+}
+
+/**
+ * 図を組み立てる。option に加えて、チャート要素の高さと設定ボタンの置き場所を返す
+ *（どちらも余白の計算と一緒に決まるので、ここで一度に出す）
+ */
+export function buildChart(
+  result: Extract<ChartDataResult, { kind: "ok" }>,
+  config: ChartBlockConfig,
+  tables: ChartSourceOption[],
+  area: ChartArea
+): ChartFigure {
   const isHistogram = config.chartType === "histogram";
   const count = panelCount(config);
   // 枠を分割していない図は従来どおり 1 枚の grid（外周からの余白指定）で描く。
@@ -575,6 +638,10 @@ export function buildOption(
   // 取れないので、割り付けには要素の実寸が要る
   const split = count > 1;
   const locale = getLocale();
+  const chartWidth = area.width > 0 ? area.width : 0;
+  // 狭い図（サイドピーク等）は余白を詰め、描画領域に読める高さを確保する
+  //（chart-layout.ts）。幅を測れていない・十分に広い図は従来どおり
+  const compact = isCompactChart(chartWidth);
 
   const fontFamily =
     typeof window !== "undefined" ? getComputedStyle(document.body).fontFamily : "sans-serif";
@@ -784,7 +851,7 @@ export function buildOption(
   const legendNames = legendEntries.map((e) => e.name);
   // 凡例の項目と記号枠の幅。横並びに散布図系列が入ると、既定のアイコンでは
   // マーカーが前の項目に寄って見えるので、記号枠を詰めるかアイコンを差し替える
-  //（理由と規則は legend-icon.ts）
+  //（理由と規則は legend-icon.ts）。狭い図は記号枠を短くして系列名に幅を回す
   const legendSpecOf = (entries: Array<{ name: string; i: number }>) =>
     legendItems(
       entries.map(({ name, i }): LegendItemSeries => {
@@ -795,7 +862,8 @@ export function buildOption(
           scatterSymbol: seriesType === "scatter" ? resolveSeriesStyle(sc, "scatter").symbol : null,
         };
       }),
-      config.legendOrient
+      config.legendOrient,
+      compact ? CHART_LEGEND_ITEM_COMPACT_WIDTH : CHART_LEGEND_ITEM.width
     );
   const legendSpec = legendSpecOf(legendEntries);
   // 凡例は系列名（＝記法を落とした素のテキスト）で引かれるので、記法を書いた
@@ -810,6 +878,76 @@ export function buildOption(
     }
   });
   const legendHasRich = legendRichText.size > 0;
+
+  // 縦軸の目盛りラベルのうち最も幅を取るものの幅(px)。狭い図の余白を決めるのに使う。
+  // ラベルは ECharts の刻みの規則でデータの範囲から見積もる。数えるのは最も細かく
+  // 刻む既定の 5 分割。間引くと刻みが粗くなるだけで小数の桁は増えないので、
+  // 実際のラベルより広めの見積もりになる
+  const measureAxisText = (text: string) => {
+    const measured = measureLegendText(text, `${CHART_FONT_SIZE}px ${fontFamily}`);
+    return measured > 0 ? measured : approxTextWidth(text, CHART_FONT_SIZE);
+  };
+  function widestYTickLabel(side: "left" | "right"): number {
+    const detail = side === "left" ? config.yAxisDetail : config.yRightAxisDetail;
+    if (!detail.show || !detail.showLabels) return 0;
+    let widest = 0;
+    panels.forEach((panel, p) => {
+      // オフセット表示の縦軸・横につないだ内側の枠は目盛りラベルを出さない
+      if (side === "left" && panel.stackActive) return;
+      if (side === "right" && !panel.useRight) return;
+      if (split && config.panels.joinHorizontal && p % config.panels.cols !== 0 && side === "left") return;
+      let lo = Infinity;
+      let hi = -Infinity;
+      // 積み上げた棒は合計が軸の範囲になる（系列ごとの端を足して多めに見積もる）
+      let anyStacked = false;
+      let stackLo = 0;
+      let stackHi = 0;
+      panel.view.series.forEach((s, k) => {
+        const sc = config.series[panel.indices[k]];
+        const onRight = panel.useRight && sc?.axis === "right";
+        if ((side === "right") !== onRight) return;
+        const seriesType: SeriesType = isHistogram ? "bar" : ((sc?.type ?? config.chartType) as SeriesType);
+        let sLo = Infinity;
+        let sHi = -Infinity;
+        for (const point of s.points as Array<number | null | [number, number | null]>) {
+          const y = Array.isArray(point) ? point[1] : point;
+          if (typeof y !== "number" || !Number.isFinite(y)) continue;
+          if (y < sLo) sLo = y;
+          if (y > sHi) sHi = y;
+        }
+        if (!Number.isFinite(sLo)) return;
+        if (seriesType === "bar" && !isHistogram && resolveSeriesStyle(sc, seriesType).stacked) {
+          anyStacked = true;
+          stackLo += Math.min(0, sLo);
+          stackHi += Math.max(0, sHi);
+        } else {
+          lo = Math.min(lo, sLo);
+          hi = Math.max(hi, sHi);
+        }
+      });
+      if (anyStacked) {
+        lo = Math.min(lo, stackLo);
+        hi = Math.max(hi, stackHi);
+      }
+      // 棒・ヒストグラムの縦軸は 0 を含む（scale: false）
+      if (!fitAxis && Number.isFinite(lo)) {
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+      }
+      const fixedMin = side === "left" ? panel.axis.yMin : panel.axis.yRightMin;
+      const fixedMax = side === "left" ? panel.axis.yMax : panel.axis.yRightMax;
+      const min = fixedMin ?? lo;
+      const max = fixedMax ?? hi;
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+      for (const label of valueAxisTickLabels({ min, max }, 5, {
+        min: fixedMin !== null,
+        max: fixedMax !== null,
+      })) {
+        widest = Math.max(widest, measureAxisText(label));
+      }
+    });
+    return widest;
+  }
 
   // ── レイアウト ──────────────────────────────────────────────────
   // 段ラベルを図に直接置くときは、凡例は同じ情報の二重表示になるので出さない
@@ -828,14 +966,54 @@ export function buildOption(
   const anyXName = panels.some((p) => p.xName !== "");
   const anyUseRight = panels.some((p) => p.useRight);
   const anyYRightName = panels.some((p) => p.yRightName !== "");
-  const gridLeft = anyYName ? 84 : 60;
-  const gridRight = anyUseRight ? (anyYRightName ? 84 : 60) : 32;
+  // 狭い図の縦軸の余白は「目盛りラベルが収まるぶん」にする（固定値で詰めると、
+  // 長めのラベルの枠だけ ECharts に縮められて分割した図の枠が揃わない）
+  const yLabelWidth = compact ? widestYTickLabel("left") : 0;
+  const yRightLabelWidth = compact && anyUseRight ? widestYTickLabel("right") : 0;
+  const marginsInput = {
+    compact,
+    anyYName,
+    anyXName,
+    anyUseRight,
+    anyYRightName,
+    legendTop,
+    legendBottom,
+    yLabelWidth,
+    yRightLabelWidth,
+  };
+  // 左右の余白は凡例の行数に依らない。先に出して、凡例の折り返し幅に使う
+  const { left: gridLeft, right: gridRight } = computeFigureMargins({ ...marginsInput, legendRows: 1 });
+
+  // 設定ボタンの置き場所。狭い図は図の上端までボタンの下に来るので、ボタンを図の
+  // 上の行へ逃がす。枠の上・右端揃えの凡例も、ボタンが図に掛かる幅ではボタンの
+  // 下に潜るので同じく逃がす。覆っていなければ（ボタンが無い・図が中央寄せで
+  // 右に余白がある）従来どおり重ねて置く
+  const coverTopRight = Math.max(0, area.coverTopRight ?? 0);
+  const buttonAbove =
+    coverTopRight > 0 && (compact || (legendTop && config.legendPosition === "top-right"));
   // 凡例は折り返すと 2 行目以降がプロット枠に重なるので、行数ぶんの高さを先に空ける。
   // 1 行に収まるときは従来と同じ値（48 / 32）になるので既存の図は動かない。
   // 凡例の幅は右上の設定ボタンに掛からないところまでに絞り、見積もりと実際の
-  // 折り返し位置を合わせる
-  const chartWidth = size?.width && size.width > 0 ? size.width : 0;
-  const legendWidth = chartWidth > 0 ? Math.max(0, chartWidth - gridLeft - Math.max(gridRight, 72)) : 0;
+  // 折り返し位置を合わせる。72 は日本語の「設定」ボタン（63px）に隙間を足した幅。
+  // ボタンが図に重なったままなら実際に覆っている幅まで空ける（英語の「Settings」は
+  // 87px）。狭い図ではボタンが上の行にあるので、凡例は図の端まで使ってよい
+  const legendReserveRight = Math.max(72, !buttonAbove && coverTopRight > 0 ? coverTopRight + 8 : 0);
+  const legendWidth = (() => {
+    if (chartWidth <= 0) return 0;
+    if (!compact) return Math.max(0, chartWidth - gridLeft - Math.max(gridRight, legendReserveRight));
+    // 狭い図は設定ボタンが上の行にあるので、枠の外の凡例は図の端（4px 手前）まで
+    // 使ってよい（第 2 軸の余白の上も空いている）。枠の中の凡例は枠の幅に収める
+    switch (config.legendPosition) {
+      case "top-left":
+        return Math.max(0, chartWidth - gridLeft - 4);
+      case "top-right":
+        return Math.max(0, chartWidth - gridRight - 4);
+      case "bottom":
+        return Math.max(0, chartWidth - 8);
+      default:
+        return Math.max(0, chartWidth - gridLeft - gridRight - 24);
+    }
+  })();
   const legendRows =
     showLegend && (legendTop || legendBottom)
       ? estimateLegendRows(
@@ -847,9 +1025,9 @@ export function buildOption(
           legendSpec.itemWidth
         )
       : 1;
-  const extraLegendRows = Math.max(0, legendRows - 1) * LEGEND_LINE_HEIGHT;
-  const gridTop = legendTop ? 48 + extraLegendRows : 20;
-  const gridBottom = (anyXName ? 64 : 40) + (legendBottom ? 32 + extraLegendRows : 0);
+  const margins = computeFigureMargins({ ...marginsInput, legendRows });
+  const gridTop = margins.top;
+  const gridBottom = margins.bottom;
 
   // 縦につないだ列だけが X を共有する。横のつなぎ（Y の共有）は x とは関係ない
   const crossPanelTooltip =
@@ -857,8 +1035,20 @@ export function buildOption(
 
   // 実寸が来ていない初回描画では本文幅なりの値で置く（測れた時点で組み直される）。
   // 枠内凡例の右端・下端の位置計算にも同じ値を使う
-  const layoutWidth = size?.width && size.width > 0 ? size.width : 720;
-  const layoutHeight = size?.height && size.height > 0 ? size.height : 320;
+  const layoutWidth = chartWidth > 0 ? chartWidth : 720;
+  const layoutHeight =
+    area.height && area.height > 0
+      ? area.height
+      : chartWidth > 0
+        ? computeFigureHeight({
+            width: chartWidth,
+            aspectRatio: CHART_ASPECT_RATIOS[config.aspect],
+            compact,
+            rows: split ? config.panels.rows : 1,
+            margins,
+            joinVertical: split && config.panels.joinVertical,
+          })
+        : 320;
 
   const layout = split
     ? computePanelLayout({
@@ -867,12 +1057,23 @@ export function buildOption(
         width: layoutWidth,
         height: layoutHeight,
         outer: { left: gridLeft, right: gridRight, top: gridTop, bottom: gridBottom },
-        xAxisSpace: anyXName ? 64 : 40,
+        xAxisSpace: margins.xAxisSpace,
         yAxisSpace: gridLeft,
         joinVertical: config.panels.joinVertical,
         joinHorizontal: config.panels.joinHorizontal,
       })
     : null;
+
+  // 枠の実寸（狭い図で目盛りの本数を決めるのに使う）。通常の図は null を返して
+  // ECharts の既定に任せる — 既存ノートの図の目盛りは 1 本も変えない
+  const plotSizeOf = (p: number): { width: number; height: number } | null => {
+    if (!compact) return null;
+    if (layout) return layout.grids[p] ?? null;
+    return {
+      width: layoutWidth - gridLeft - gridRight,
+      height: layoutHeight - gridTop - gridBottom,
+    };
+  };
 
   // つなげた向きは軸を共有する = 範囲も実際に揃える。揃えないと目盛りだけ
   // 最下段（左端）に出るのに枠ごとの縮尺が違う、という嘘の図になる
@@ -942,6 +1143,17 @@ export function buildOption(
     axisLabel: { ...(axis.axisLabel ?? {}), [key]: false },
   });
 
+  // 目盛りの間引き（狭い図だけ）。ECharts の既定（5 分割）は軸の長さを見ないので、
+  // 短い軸ではラベルが重なる。1 目盛りあたりの間隔（縦は文字 2 つぶん、横は数値
+  // ラベル 4 文字ぶん、時間軸は 5 文字ぶん）を確保できる分割数に減らし、それでも
+  // 重なるラベルは隠す。狭い図でも十分な長さの軸には何も足さない
+  const yTickPitch = CHART_FONT_SIZE * 2;
+  const xTickPitch = CHART_FONT_SIZE * (result.xAxis === "time" ? 5 : 4);
+  const withTickDensity = (axis: any, splitNumber: number | undefined) =>
+    splitNumber === undefined
+      ? axis
+      : { ...axis, splitNumber, axisLabel: { ...(axis.axisLabel ?? {}), hideOverlap: true } };
+
   // 凡例の配置。top-* は枠の左右端に揃え、inside-* は枠内の四隅に置く
   const legendLayout = (() => {
     switch (config.legendPosition) {
@@ -961,6 +1173,20 @@ export function buildOption(
         return { right: gridRight + 12, bottom: gridBottom + 10, ...INSIDE_LEGEND_STYLE };
     }
   })();
+
+  // 狭い図では、入りきらない長い系列名を末尾「…」で切り、ホバーで全文を出す。
+  // 図の外へはみ出して文字が欠けるより、どの系列かが読める。available は凡例を
+  // 置ける幅、padding は凡例の内側の余白（記号と名前の間は ECharts の既定 5px）
+  const legendTextLimit = (available: number, itemWidth: number, padding: number) =>
+    compact && available > 0
+      ? {
+          textStyle: {
+            width: Math.max(24, Math.floor(available - itemWidth - 5 - 2 * padding)),
+            overflow: "truncate" as const,
+          },
+          tooltip: { show: true },
+        }
+      : null;
 
   // panel スコープの凡例: 枠ごとに 1 つ、その枠の系列名だけを持つ凡例を
   // 枠の矩形の内側（四隅のいずれか）に置く。top-*/bottom は inside-* に読み替える
@@ -988,6 +1214,8 @@ export function buildOption(
                 };
             }
           })();
+          // 枠の中に置くので、名前は枠の幅（左右 12px の内寄せを除く）に収める
+          const limit = legendTextLimit(g.width - 24, spec.itemWidth, INSIDE_LEGEND_STYLE.padding);
           return {
             show: true,
             data: spec.data,
@@ -1000,7 +1228,9 @@ export function buildOption(
               fontSize: CHART_FONT_SIZE,
               color: CHART_INK,
               ...(legendHasRich ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
+              ...limit?.textStyle,
             },
+            ...(limit ? { tooltip: limit.tooltip } : {}),
             ...(legendHasRich
               ? { formatter: (name: string) => legendRichText.get(name) ?? name }
               : {}),
@@ -1075,9 +1305,20 @@ export function buildOption(
       return Number.isFinite(edge) ? edge : null;
     })();
 
-    const leftAxis = {
+    // この枠の目盛りの分割数。段オフセット中の縦軸は目盛りを出さないので触らない。
+    // カテゴリ軸は ECharts が重ならない間隔を自分で選ぶ
+    const plot = plotSizeOf(p);
+    const ySplit = plot && !panel.stackActive ? axisSplitNumber(plot.height, yTickPitch) : undefined;
+    const xSplit =
+      plot && result.xAxis !== "category" ? axisSplitNumber(plot.width, xTickPitch) : undefined;
+
+    // 狭い図の縦軸名は、目盛りラベルの幅から決めた位置（nameGap）に固定する。
+    // ECharts に動かさせると、動いた枠だけが縮んで分割した図の枠が揃わない
+    const fixedYName = compact ? { nameMoveOverlap: false } : {};
+    const leftAxis = withTickDensity({
       type: "value" as const,
-      nameGap: 52,
+      nameGap: margins.yNameGap,
+      ...fixedYName,
       scale: fitAxis,
       ...(yMin !== null ? { min: yMin } : {}),
       ...(yMax !== null ? { max: yMax } : {}),
@@ -1098,16 +1339,17 @@ export function buildOption(
           }
         : {}),
       ...(split ? { gridIndex: p } : {}),
-    };
-    const rightAxis = {
+    }, ySplit);
+    const rightAxis = withTickDensity({
       type: "value" as const,
-      nameGap: 52,
+      nameGap: margins.yRightNameGap,
+      ...fixedYName,
       scale: fitAxis,
       ...(yRightMin !== null ? { min: yRightMin } : {}),
       ...(yRightMax !== null ? { max: yRightMax } : {}),
       ...axisFromDetail(config.yRightAxisDetail, panel.yRightLabel),
       ...(split ? { gridIndex: p } : {}),
-    };
+    }, ySplit);
     // 軸名を載せるので、X 軸の詳細はこの枠ぶんを作る
     const xAxisDetail = axisFromDetail(config.xAxisDetail, panel.xLabel);
     const trimmedLeftAxis =
@@ -1119,11 +1361,17 @@ export function buildOption(
 
     const xAxis =
       result.xAxis === "category"
-        ? { type: "category", data: result.categories, name: panel.xName, nameGap: 34, ...xAxisDetail }
-        : {
+        ? {
+            type: "category",
+            data: result.categories,
+            name: panel.xName,
+            nameGap: margins.xNameGap,
+            ...xAxisDetail,
+          }
+        : withTickDensity({
             type: result.xAxis,
             name: panel.xName,
-            nameGap: 34,
+            nameGap: margins.xNameGap,
             // 数値 X 軸はデータ範囲にフィットさせる。既定（0 を含む）だと気圧
             // 998〜1015 hPa や 2θ = 10〜60° のような系列が右側に潰れる。
             // 縦軸と違って棒でも 0 基準にする理由はない（棒の長さは縦方向の量）ので
@@ -1143,7 +1391,7 @@ export function buildOption(
                   },
                 }
               : {}),
-          };
+          }, xSplit);
     const trimmedXAxis =
       split && config.panels.joinHorizontal && col > 0
         ? trimEdgeLabel(xAxis, "showMinLabel")
@@ -1321,7 +1569,9 @@ export function buildOption(
     return [
       {
         type: "text" as const,
-        left: 18,
+        // 狭い図は左の余白を目盛りラベルに合わせて詰めているので、枠ごとの軸名と
+        // 同じ位置（軸線から nameGap 外）に置く。通常の図は従来どおり
+        left: compact ? Math.max(0, gridLeft - margins.yNameGap - 20) : 18,
         top: (top + bottom) / 2,
         rotation: Math.PI / 2,
         style: {
@@ -1346,7 +1596,14 @@ export function buildOption(
     z: 10,
   };
 
-  return {
+  // 図全体の凡例の名前を収める幅（legendWidth は狭い図では置き場所ごとの幅になっている）
+  const figureLegendLimit = legendTextLimit(
+    legendWidth,
+    legendSpec.itemWidth,
+    config.legendPosition.startsWith("inside") ? INSIDE_LEGEND_STYLE.padding : 5
+  );
+
+  const option = {
     animation: false,
     textStyle: { fontFamily, fontSize: CHART_FONT_SIZE, color: CHART_INK },
     // 記号も共有縦軸名も分割時だけのものなので、1×1 の option には現れない
@@ -1412,7 +1669,9 @@ export function buildOption(
               fontSize: CHART_FONT_SIZE,
               color: CHART_INK,
               ...(legendHasRich ? { rich: richStyleDefs(CHART_FONT_SIZE) } : {}),
+              ...figureLegendLimit?.textStyle,
             },
+            ...(figureLegendLimit ? { tooltip: figureLegendLimit.tooltip } : {}),
             // 凡例は系列名（記法を落とした素のテキスト）で引かれる。記法を書いた
             // 系列だけ、描画用の rich text に戻す
             ...(legendHasRich
@@ -1436,6 +1695,7 @@ export function buildOption(
     yAxis: split ? yAxes : panels[0]?.useRight ? yAxes : yAxes[0],
     series: optionSeries,
   };
+  return { option, height: layoutHeight, buttonAbove };
 }
 
 /**
@@ -1550,12 +1810,18 @@ const INSIDE_LEGEND_STYLE = {
 function ChartCanvas({
   result,
   config,
-  tables,
+  tables = EMPTY_TABLES,
+  settingsAnchorRef,
+  onButtonAboveChange,
 }: {
   result: Extract<ChartDataResult, { kind: "ok" }>;
   config: ChartBlockConfig;
   /** スタック時の段名をテーブル名から解決するために渡す */
   tables?: ChartSourceOption[];
+  /** 設定ボタン（のアンカー）。図の右上をどれだけ覆うかを測る。編集できないときは無い */
+  settingsAnchorRef?: React.RefObject<HTMLDivElement | null>;
+  /** 設定ボタンを図の上の行へ逃がすべきかが変わったとき */
+  onButtonAboveChange?: (above: boolean) => void;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const chartElRef = useRef<HTMLDivElement>(null);
@@ -1567,17 +1833,33 @@ function ChartCanvas({
   const [chart, setChart] = useState<any>(null);
   const [failed, setFailed] = useState(false);
   const [width, setWidth] = useState(0);
+  const [coverTopRight, setCoverTopRight] = useState(0);
 
-  // コンテナ幅に追従（アスペクト比で高さを決めるため幅を測る）
+  // コンテナ幅に追従（アスペクト比で高さを決めるため幅を測る）。あわせて設定ボタンが
+  // 図の右上を横方向にどれだけ覆っているかを測る。ボタンを図の上の行へ逃がしても
+  // 横の重なりは変わらないので、行の出し入れでこの値が揺れることはない。
+  // 図が最大幅で止まった後もブロックの幅が変わればボタンは動くので、外枠も見る
   useLayoutEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    const update = () => setWidth(el.clientWidth);
+    const anchor = settingsAnchorRef?.current ?? null;
+    const update = () => {
+      setWidth(el.clientWidth);
+      if (!anchor) {
+        setCoverTopRight(0);
+        return;
+      }
+      const chartRect = el.getBoundingClientRect();
+      const buttonRect = anchor.getBoundingClientRect();
+      setCoverTopRight(Math.max(0, Math.round(chartRect.right - buttonRect.left)));
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
+    if (el.parentElement) observer.observe(el.parentElement);
+    if (anchor) observer.observe(anchor);
     return () => observer.disconnect();
-  }, []);
+  }, [settingsAnchorRef]);
 
   useEffect(() => {
     let disposed = false;
@@ -1599,13 +1881,26 @@ function ChartCanvas({
     };
   }, []);
 
-  const height = width > 0 ? Math.round(width / CHART_ASPECT_RATIOS[config.aspect]) : 320;
+  // 高さは余白の計算と一緒に決まる（狭い図は描画領域が潰れないよう縦に伸ばす）ので、
+  // option と同時に組む
+  const figure = useMemo(
+    () => buildChart(result, config, tables, { width, coverTopRight }),
+    [result, config, tables, width, coverTopRight]
+  );
+
+  // ボタンの置き場所はブロック側（ChartBlockView）が持つ。描画前に知らせて、
+  // ボタンが図に重なった状態を一瞬でも見せない
+  useLayoutEffect(() => {
+    onButtonAboveChange?.(figure.buttonAbove);
+  }, [figure.buttonAbove, onButtonAboveChange]);
+  // 図が消えたら（データが空になった等）ボタンは元の位置に戻す
+  useEffect(() => () => onButtonAboveChange?.(false), [onButtonAboveChange]);
 
   useEffect(() => {
     if (!chart) return;
-    chart.setOption(buildOption(result, config, tables, { width, height }), true);
+    chart.setOption(figure.option, true);
     chart.resize();
-  }, [chart, result, config, tables, width, height]);
+  }, [chart, figure]);
 
   if (failed) {
     return <div style={styles.emptyState}>{t("chart.noData")}</div>;
@@ -1615,10 +1910,12 @@ function ChartCanvas({
     // 最大幅 720px・中央寄せ。狭い場所（SidePeek 等）では幅なりに縮む
     <div ref={wrapperRef} style={{ position: "relative", width: "100%", maxWidth: 720, margin: "0 auto" }}>
       {!chart && <div style={styles.loading}>{t("chart.loading")}</div>}
-      <div ref={chartElRef} style={{ width: "100%", height }} />
+      <div ref={chartElRef} style={{ width: "100%", height: figure.height }} />
     </div>
   );
 }
+
+const EMPTY_TABLES: ChartSourceOption[] = [];
 
 const styles: Record<string, React.CSSProperties> = {
   shell: {
@@ -1634,6 +1931,11 @@ const styles: Record<string, React.CSSProperties> = {
     top: 8,
     right: 4,
     zIndex: 20,
+  },
+  // 設定ボタンの高さぶんの行（ボタンは 26px。shell の gap 4 で図と離れる）
+  settingsRow: {
+    height: 26,
+    flexShrink: 0,
   },
   settingsButton: {
     display: "flex",
