@@ -14,7 +14,7 @@ import {
   type ChartBlockConfig,
 } from "./chart-config";
 import type { ChartDataResult } from "./chart-data";
-import { MIN_COMPACT_PANEL_HEIGHT } from "./chart-layout";
+import { LEGEND_ROW_PITCH, MIN_COMPACT_PANEL_HEIGHT } from "./chart-layout";
 import { CHART_LEGEND_ITEM, CHART_LEGEND_ITEM_COMPACT_WIDTH, PANEL_LABEL_INSET } from "./chart-theme";
 import { scatterLegendIcon } from "./legend-icon";
 
@@ -708,5 +708,32 @@ describe("buildChart（狭い場所の図）", () => {
       expect(legendWidthOf(63)).toBe(width - 84 - 72);
       expect(legendWidthOf(87)).toBe(width - 84 - (87 + 8));
     });
+  });
+});
+
+// 通常の幅の図の凡例。以前は折り返し 1 行を 17px で空けていたので、上に置いた凡例は
+// 4 行で枠に接し、5 行以上で最終行が枠に食い込んだ（2026-09-25 の実測。行送りは 24px）
+describe("buildChart（通常の幅の凡例の折り返し）", () => {
+  const names = ["A", "B", "C", "D", "E", "F"].map((s, k) => `試料 ${s}（${200 + 100 * k} ℃ 焼成）`);
+  const sixSeries: OkResult = {
+    kind: "ok",
+    xAxis: "value",
+    categories: [],
+    series: names.map((_, k) => ({ points: [[300, 900 - 45 * k], [800, 500 - 45 * k]] as Array<[number, number]> })),
+  };
+  const sixConfig = (over: Partial<ChartBlockConfig> = {}) =>
+    config({
+      series: names.map((label) => ({ sourceBlockId: "t1", xColumn: "T (K)", yColumn: "sigma", label })),
+      ...over,
+    });
+
+  it("1 行に 1 項目しか入らない長い名前は、行数ぶん（1 行 24px）枠を下げる", () => {
+    const { option } = buildChart(sixSeries, sixConfig(), [], { width: 564 });
+    expect(option.grid.top).toBe(48 + 5 * LEGEND_ROW_PITCH);
+  });
+
+  it("下に置いた凡例も、行数ぶん枠の下を空ける", () => {
+    const { option } = buildChart(sixSeries, sixConfig({ legendPosition: "bottom" }), [], { width: 564 });
+    expect(option.grid.bottom).toBe(64 + 32 + 5 * LEGEND_ROW_PITCH);
   });
 });
