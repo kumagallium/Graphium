@@ -5,7 +5,8 @@
 // option をスナップショットで固定しておく。スナップショットは一般化する前の
 // 実装から取ってあるので、差分が出たら既存ノートの図が変わったということ。
 import { describe, expect, it } from "vitest";
-import { buildOption } from "./view";
+import * as echarts from "echarts";
+import { buildChart, buildOption } from "./view";
 import {
   DEFAULT_CHART_CONFIG,
   DEFAULT_PANELS_CONFIG,
@@ -13,7 +14,8 @@ import {
   type ChartBlockConfig,
 } from "./chart-config";
 import type { ChartDataResult } from "./chart-data";
-import { CHART_LEGEND_ITEM, PANEL_LABEL_INSET } from "./chart-theme";
+import { MIN_COMPACT_PANEL_HEIGHT } from "./chart-layout";
+import { CHART_LEGEND_ITEM, CHART_LEGEND_ITEM_COMPACT_WIDTH, PANEL_LABEL_INSET } from "./chart-theme";
 import { scatterLegendIcon } from "./legend-icon";
 
 type OkResult = Extract<ChartDataResult, { kind: "ok" }>;
@@ -540,6 +542,171 @@ describe("buildOption（枠の分割）", () => {
       // figure スコープの top-left 凡例は上の余白を広げるが、panel スコープは
       // 枠内に収まるので gridTop（= grid[0].top）が figure より小さい
       expect(panelOption.grid[0].top).toBeLessThan(figureOption.grid[0].top);
+    });
+  });
+});
+
+// 狭い場所（サイドピーク等）の図。2026-09-25 の実測で、幅 224px の図の描画領域が
+// 108×46px まで潰れ、目盛りラベルが重なり、凡例が設定ボタンに隠れた
+describe("buildChart（狭い場所の図）", () => {
+  // サイドピークに置いた 1 系列の折れ線（Minutes × Height）と同じ形
+  const riseResult: OkResult = {
+    kind: "ok",
+    xAxis: "value",
+    categories: [],
+    series: [{ points: [[0, 4], [30, 5.5], [60, 7.2]] }],
+  };
+  const rise = (over: Partial<ChartBlockConfig> = {}) =>
+    config({ series: [{ sourceBlockId: "t1", xColumn: "Minutes", yColumn: "Height" }], ...over });
+
+  it("描画領域に最低限の高さを確保する（アスペクト比より読めることを優先）", () => {
+    const { option, height } = buildChart(riseResult, rise(), [], { width: 224 });
+    const plotHeight = height - option.grid.top - option.grid.bottom;
+    expect(plotHeight).toBe(MIN_COMPACT_PANEL_HEIGHT);
+    // 従来の余白（左 84・右 32）より描画領域の幅が広い
+    expect(224 - option.grid.left - option.grid.right).toBeGreaterThan(224 - 84 - 32);
+  });
+
+  it("縦軸名は目盛りラベルのすぐ外に固定し、ECharts に動かさせない", () => {
+    const { option } = buildChart(riseResult, rise(), [], { width: 224 });
+    expect(option.yAxis.name).toBe("Height");
+    expect(option.yAxis.nameMoveOverlap).toBe(false);
+    // 軸名は余白の内側に収まる（軸名 1 行ぶん + 図の端までの隙間を残す）
+    expect(option.grid.left).toBeGreaterThanOrEqual(option.yAxis.nameGap + 20);
+  });
+
+  it("短い軸は目盛りを間引き、それでも重なるラベルは隠す", () => {
+    const { option } = buildChart(riseResult, rise(), [], { width: 224 });
+    // 高さ 120px の縦軸 → 3 分割、幅 150px 前後の横軸 → 2 分割
+    expect(option.yAxis.splitNumber).toBe(3);
+    expect(option.yAxis.axisLabel.hideOverlap).toBe(true);
+    expect(option.xAxis.splitNumber).toBe(2);
+    expect(option.xAxis.axisLabel.hideOverlap).toBe(true);
+  });
+
+  it("カテゴリ軸は ECharts の間引きに任せる", () => {
+    const { option } = buildChart(
+      categoryResult,
+      config({ chartType: "bar", series: [{ sourceBlockId: "t1", xColumn: "name", yColumn: "count" }] }),
+      [],
+      { width: 224 }
+    );
+    expect(option.xAxis.splitNumber).toBeUndefined();
+    expect(option.xAxis.axisLabel.hideOverlap).toBeUndefined();
+  });
+
+  it("十分に広い図は従来と同じ option（目盛り・軸名・余白に何も足さない）", () => {
+    const width = 564;
+    const height = Math.round(width / Math.SQRT2);
+    const { option, height: chartHeight, buttonAbove } = buildChart(riseResult, rise(), [], { width });
+    expect(chartHeight).toBe(height);
+    expect(buttonAbove).toBe(false);
+    expect(option).toEqual(buildOption(riseResult, rise(), [], { width, height }));
+    expect(option.grid).toMatchObject({ left: 84, right: 32, top: 48, bottom: 64 });
+    expect(option.yAxis.splitNumber).toBeUndefined();
+    expect(option.yAxis.nameMoveOverlap).toBeUndefined();
+    expect(option.yAxis.nameGap).toBe(52);
+    expect(option.xAxis.splitNumber).toBeUndefined();
+    expect(option.legend.itemWidth).toBe(CHART_LEGEND_ITEM.width);
+  });
+
+  it("凡例の記号枠を短くし、入りきらない名前は末尾を省略してホバーで全文を出す", () => {
+    const { option } = buildChart(riseResult, rise(), [], { width: 224 });
+    expect(option.legend.itemWidth).toBe(CHART_LEGEND_ITEM_COMPACT_WIDTH);
+    expect(option.legend.textStyle.overflow).toBe("truncate");
+    expect(option.legend.textStyle.width).toBeGreaterThan(0);
+    expect(option.legend.tooltip).toEqual({ show: true });
+  });
+
+  it("分割した図は枠の左端が揃う（軸名を ECharts に動かさせない）", () => {
+    const { option } = buildChart(
+      numericResult,
+      config({
+        panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: true },
+        series: [
+          { sourceBlockId: "t1", xColumn: "T", yColumn: "Height", panelIndex: 0 },
+          { sourceBlockId: "t1", xColumn: "T", yColumn: "Temperature", panelIndex: 1 },
+        ],
+      }),
+      [],
+      { width: 224 }
+    );
+    expect(option.grid).toHaveLength(2);
+    expect(option.grid[1].left).toBe(option.grid[0].left);
+    expect(option.grid[1].width).toBe(option.grid[0].width);
+    expect(option.grid.map((g: any) => g.height)).toEqual([MIN_COMPACT_PANEL_HEIGHT, MIN_COMPACT_PANEL_HEIGHT]);
+    expect(option.yAxis.every((a: any) => a.nameMoveOverlap === false)).toBe(true);
+  });
+
+  it("ECharts の実レイアウト（SSR）でも、ラベルの長さが違う枠どうしの左端が揃う", () => {
+    // 上の枠は 1 桁（4〜8）、下の枠は "24.5" のような 4 文字のラベル。固定の余白で
+    // 詰めていたときは、下の枠だけ軸名が逃がされ、その枠だけ 12px 縮んでずれた
+    const twoRanges: OkResult = {
+      kind: "ok",
+      xAxis: "value",
+      categories: [],
+      series: [
+        { points: [[0, 4], [30, 5.5], [60, 7.2]] },
+        { points: [[0, 24.1], [30, 25.3], [60, 26]] },
+      ],
+    };
+    const { option, height } = buildChart(
+      twoRanges,
+      config({
+        panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: true },
+        series: [
+          { sourceBlockId: "t1", xColumn: "Minutes", yColumn: "Height", panelIndex: 0 },
+          { sourceBlockId: "t1", xColumn: "Minutes", yColumn: "Temperature", panelIndex: 1 },
+        ],
+      }),
+      [],
+      { width: 224 }
+    );
+    const chart = echarts.init(null, null, { renderer: "svg", ssr: true, width: 224, height }) as any;
+    chart.setOption(option);
+    const rects = [0, 1].map((i) => chart.getModel().getComponent("grid", i).coordinateSystem.getRect());
+    chart.dispose();
+    // ECharts が枠を縮めていない（option どおり）ので、上下の枠の左端と幅が揃う
+    expect(rects[0].x).toBeCloseTo(option.grid[0].left, 5);
+    expect(rects[1].x).toBeCloseTo(option.grid[1].left, 5);
+    expect(rects[1].x).toBeCloseTo(rects[0].x, 5);
+    expect(rects[1].width).toBeCloseTo(rects[0].width, 5);
+  });
+
+  describe("設定ボタンの置き場所", () => {
+    it("狭い図はボタンを図の上の行に置く（凡例も枠もボタンの下に来るため）", () => {
+      expect(buildChart(riseResult, rise(), [], { width: 224, coverTopRight: 63 }).buttonAbove).toBe(true);
+    });
+
+    it("ボタンが無い・図に掛かっていないときは上の行を取らない", () => {
+      expect(buildChart(riseResult, rise(), [], { width: 224 }).buttonAbove).toBe(false);
+      expect(
+        buildChart(riseResult, rise({ legendPosition: "top-right" }), [], { width: 720, coverTopRight: 0 })
+          .buttonAbove
+      ).toBe(false);
+    });
+
+    it("広い図でも、枠の上・右端揃えの凡例がボタンの下に潜るときは上の行へ逃がす", () => {
+      const topRight = buildChart(riseResult, rise({ legendPosition: "top-right" }), [], {
+        width: 564,
+        coverTopRight: 63,
+      });
+      expect(topRight.buttonAbove).toBe(true);
+      // 図そのものは変えない（ボタンだけが動く）
+      expect(topRight.option).toEqual(
+        buildOption(riseResult, rise({ legendPosition: "top-right" }), [], { width: 564, height: topRight.height })
+      );
+      // 左上の凡例はボタンに掛からない幅で折り返すので、ボタンは重ねたまま
+      expect(buildChart(riseResult, rise(), [], { width: 564, coverTopRight: 63 }).buttonAbove).toBe(false);
+    });
+
+    it("ボタンが重なったままなら、凡例はボタンが覆う幅の手前で折り返す（英語の Settings は 87px）", () => {
+      const width = 564;
+      const legendWidthOf = (coverTopRight: number) =>
+        buildChart(riseResult, rise(), [], { width, coverTopRight }).option.legend.width;
+      // 日本語の「設定」（63px）は従来の 72px の空きに収まる
+      expect(legendWidthOf(63)).toBe(width - 84 - 72);
+      expect(legendWidthOf(87)).toBe(width - 84 - (87 + 8));
     });
   });
 });
