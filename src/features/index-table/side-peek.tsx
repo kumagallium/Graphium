@@ -1401,18 +1401,6 @@ function SidePeekInner({
     }
   }, [tableMetaStore.metas, handleChange]);
 
-  // つながった行のノートを開く前に、待っている保存を済ませる。ピークは key={noteId} で
-  // 作り直され、3 秒待ちの自動保存はアンマウントで流れない。行からノートを作った直後に
-  // その行を押すと、表の書き換えと紐付けが書き出されないまま消える
-  const openInPeekAfterSave = useCallback(async (targetId: string) => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    if (saveStatusRef.current === "dirty") await doSaveRef.current();
-    onOpenNoteInPeekRef.current?.(targetId);
-  }, []);
-
   // インデックステーブル（行からノートを作れる表）の受け口を、このピークのエディタに登録する。
   // スラッシュ項目と行アイコンはメインと同じ部品で、押されたエディタをキーに受け口を引く。
   // 表の注釈・作ったノートの派生元・noteLinks はこのピークのノートに入る（メインには入らない）
@@ -1428,7 +1416,10 @@ function SidePeekInner({
       // メインと同じく wiki:/skill: を外した ID を派生元にする
       currentFileId: noteId.replace(/^(wiki|skill):/, ""),
       onRefreshFiles: () => onRefreshFiles?.(),
-      onOpenSidePeek: (targetId) => void openInPeekAfterSave(targetId),
+      // つながった行を開くのも、ピーク内のほかのクリックと同じく leavePeek を通す。
+      // 行からノートを作った直後や打った直後に押すと、表の書き換え・紐付け・本文の編集が
+      // 書き出されないまま、ピークが別ノートへ作り直されて消える
+      onOpenSidePeek: (targetId) => leavePeek(() => onOpenNoteInPeekRef.current?.(targetId)),
       onAddNoteLink: (targetNoteId, sourceBlockId) => {
         const cur = docRef.current;
         if (!cur) return;
@@ -1451,7 +1442,7 @@ function SidePeekInner({
       setRegisterIndexTableCallback(sidePeekEditor, null);
       setEditorIndexTableCallbacks(sidePeekEditor, null);
     };
-  }, [sidePeekEditor, noteId, files, onRefreshFiles, openInPeekAfterSave, handleChange]);
+  }, [sidePeekEditor, noteId, files, onRefreshFiles, leavePeek, handleChange]);
 
   // Cmd+S / Ctrl+S
   useEffect(() => {
