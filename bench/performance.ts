@@ -8,11 +8,13 @@
 //   2. メモリ使用量 peak  — heapUsed の最大値（< 100 MB を維持）
 //   3. INDEX サイズの肥大化 — Atom 100 件の dry-run pipeline 出力 JSON サイズ
 //
-// 結果は `bench/performance/baseline.json` と比較し、20% 以上の悪化で warning。
-// 「LLM call なし」で完全に決定的に走るため、CI で毎 PR 走らせても無償。
+// 結果は `bench/performance/baseline.json` と比較し、指標ごとの判定（REGRESSION_RULES）で
+// 悪化と見なしたものだけ warning にする。「LLM call なし」で走るため、CI で毎 PR 走らせても無償。
+// 出力（atoms_json_bytes）は決定的だが、時間とヒープは JIT・GC・マシンの負荷で揺れる。
 //
 // baseline 更新: `BENCH_PERF_UPDATE_BASELINE=true pnpm bench:performance`
-// （Phase μ-3 の最初は baseline.json を新規生成）
+// パイプラインの出力を意図して変えた PR は、同じ PR で baseline も取り直す
+// （取り直さないと、以後のすべての PR に同じ warning が出続ける）。
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
@@ -67,9 +69,12 @@ function buildSyntheticCorpus(size: number): CorpusNote[] {
   return out;
 }
 
-/** ms 単位の wall-clock 時間。process.hrtime のほうが精度が高いが Number で十分。 */
+/**
+ * ms 単位の wall-clock 時間（小数つき）。1 回数 ms の処理なので、整数 ms に切り捨てると
+ * 0〜2 ms しか取れず、それだけで基準値との比が何倍にも振れる。
+ */
 function nowMs(): number {
-  return Number(process.hrtime.bigint() / 1_000_000n);
+  return performance.now();
 }
 
 export type PerformanceResult = {
@@ -87,6 +92,8 @@ export type PerformanceResult = {
 
 export type PerformanceBaseline = {
   recordedAt: string;
+  /** 取ったマシン（例: "darwin-arm64 node v22.14.0"）。CI の実測との差を読むため */
+  environment?: string;
   result: PerformanceResult;
 };
 
@@ -96,6 +103,9 @@ export type PerformanceReport = {
   durationMs: number;
   result: PerformanceResult;
   baseline?: PerformanceResult;
+  /** baseline をいつ・どこで取ったか（古い baseline との比較に気づけるよう表示する） */
+  baselineRecordedAt?: string;
+  baselineEnvironment?: string;
   regressions: PerformanceRegression[];
   passed: boolean;
 };
@@ -106,12 +116,31 @@ export type PerformanceRegression = {
   current: number;
   deltaPct: number;
   thresholdPct: number;
+  /** これ以下の増加は測定の揺れとして扱う（絶対値。単位は指標と同じ） */
+  minDelta: number;
   isRegression: boolean;
 };
 
-const REGRESSION_THRESHOLD_PCT = 20;
+type RegressionRule = { thresholdPct: number; minDelta: number };
+
+/**
+ * 指標ごとの「悪化」の判定。相対しきい値（%）と絶対差分の床の両方を超えたときだけ警告する。
+ *
+ * - duration_ms: 100 ノートで数 ms の処理なので、JIT・マシンの負荷・基準を取ったマシンと
+ *   CI の差だけで 2〜3 倍に揺れる（CI の実測で 3〜8 ms）。+50 ms 未満は見ない
+ * - heap_peak_bytes: GC がいつ走るかで数 MiB 揺れる。+16 MiB 未満は見ない
+ * - atoms_json_bytes: 決定的（同じコードなら毎回同じ値）なので相対 % だけで判定する
+ */
+const REGRESSION_RULES = {
+  duration_ms: { thresholdPct: 20, minDelta: 50 },
+  heap_peak_bytes: { thresholdPct: 20, minDelta: 16 * 1024 * 1024 },
+  atoms_json_bytes: { thresholdPct: 20, minDelta: 0 },
+} satisfies Record<string, RegressionRule>;
+
+type RegressionMetric = keyof typeof REGRESSION_RULES;
+
 const SYNTH_CORPUS_SIZE = 100;
-const SAMPLES = 3;
+const SAMPLES = 5;
 
 function measureOnce(corpus: CorpusNote[]): PerformanceResult {
   // GC を呼んで heap 計測をクリーンにする（node --expose-gc 起動時のみ）
@@ -125,13 +154,15 @@ function measureOnce(corpus: CorpusNote[]): PerformanceResult {
   const t1 = nowMs();
   const heapEnd = process.memoryUsage().heapUsed;
   const heapDelta = Math.max(0, heapEnd - heapStart);
+  // 0.01 ms より細かい桁は揺れしか表さないので丸める（baseline.json を読みやすく保つ）
+  const durationMs = Math.round((t1 - t0) * 100) / 100;
 
   const atomsJsonBytes = Buffer.byteLength(JSON.stringify(result.allAtoms), "utf-8");
 
   return {
     corpusSize: corpus.length,
-    durationMedianMs: t1 - t0,
-    durationSamplesMs: [t1 - t0],
+    durationMedianMs: durationMs,
+    durationSamplesMs: [durationMs],
     heapDeltaPeakBytes: heapDelta,
     atomsJsonBytes,
     counts: {
@@ -152,6 +183,10 @@ function median(xs: number[]): number {
 export function runPerformanceTest(): PerformanceReport {
   const startedAt = new Date();
   const corpus = buildSyntheticCorpus(SYNTH_CORPUS_SIZE);
+
+  // 暖機。初回はモジュールの遅延初期化と JIT のコンパイルが乗って 2 回目以降の数倍かかるので、
+  // 計測には入れない。
+  measureOnce(corpus);
 
   const samples: PerformanceResult[] = [];
   for (let i = 0; i < SAMPLES; i++) {
@@ -174,9 +209,10 @@ export function runPerformanceTest(): PerformanceReport {
   };
 
   let baseline: PerformanceResult | undefined;
+  let baselineRaw: PerformanceBaseline | undefined;
   const regressions: PerformanceRegression[] = [];
   if (existsSync(BASELINE_PATH)) {
-    const baselineRaw = JSON.parse(readFileSync(BASELINE_PATH, "utf-8")) as PerformanceBaseline;
+    baselineRaw = JSON.parse(readFileSync(BASELINE_PATH, "utf-8")) as PerformanceBaseline;
     baseline = baselineRaw.result;
     regressions.push(
       regressionOf("duration_ms", baseline.durationMedianMs, representative.durationMedianMs),
@@ -192,14 +228,22 @@ export function runPerformanceTest(): PerformanceReport {
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     result: representative,
     baseline,
+    baselineRecordedAt: baselineRaw?.recordedAt,
+    baselineEnvironment: baselineRaw?.environment,
     regressions,
     passed: regressions.every((r) => !r.isRegression),
   };
 }
 
-function regressionOf(metric: string, base: number, cur: number): PerformanceRegression {
+/** 計測したマシン。baseline を取ったマシンと CI の差を読むために残す */
+function describeEnvironment(): string {
+  return `${process.platform}-${process.arch} node ${process.version}`;
+}
+
+function regressionOf(metric: RegressionMetric, base: number, cur: number): PerformanceRegression {
+  const { thresholdPct, minDelta } = REGRESSION_RULES[metric];
   if (base <= 0) {
-    return { metric, baseline: base, current: cur, deltaPct: 0, thresholdPct: REGRESSION_THRESHOLD_PCT, isRegression: false };
+    return { metric, baseline: base, current: cur, deltaPct: 0, thresholdPct, minDelta, isRegression: false };
   }
   const deltaPct = ((cur - base) / base) * 100;
   return {
@@ -207,8 +251,9 @@ function regressionOf(metric: string, base: number, cur: number): PerformanceReg
     baseline: base,
     current: cur,
     deltaPct,
-    thresholdPct: REGRESSION_THRESHOLD_PCT,
-    isRegression: deltaPct > REGRESSION_THRESHOLD_PCT,
+    thresholdPct,
+    minDelta,
+    isRegression: deltaPct > thresholdPct && cur - base > minDelta,
   };
 }
 
@@ -218,6 +263,13 @@ function fmtBytes(b: number): string {
   return `${(b / 1024 / 1024).toFixed(2)} MiB`;
 }
 
+/** 指標の値を単位つきで出す。atoms_json_bytes は決定的なので丸めずに出す */
+function fmtMetric(metric: string, v: number): string {
+  if (metric === "duration_ms") return `${v.toFixed(2)} ms`;
+  if (metric === "heap_peak_bytes") return fmtBytes(v);
+  return `${v} B`;
+}
+
 function main(): void {
   const report = runPerformanceTest();
 
@@ -225,6 +277,7 @@ function main(): void {
   if (updateBaseline) {
     const newBaseline: PerformanceBaseline = {
       recordedAt: new Date().toISOString(),
+      environment: describeEnvironment(),
       result: report.result,
     };
     writeFileSync(BASELINE_PATH, JSON.stringify(newBaseline, null, 2), "utf-8");
@@ -249,12 +302,25 @@ function main(): void {
   if (report.regressions.length === 0) {
     console.log("(no baseline yet — current run becomes the new baseline)");
   } else {
-    console.log("baseline comparison:");
+    const recorded = [report.baselineRecordedAt, report.baselineEnvironment].filter(Boolean).join(", ");
+    // 取り直した回は、比較の相手が「いま上書きした古い baseline」になる
+    const label = updateBaseline ? "comparison with the previous baseline" : "baseline comparison";
+    console.log(`${label}${recorded ? ` (recorded ${recorded})` : ""}:`);
     for (const r of report.regressions) {
       const flag = r.isRegression ? "⚠ REGRESSION" : "ok";
       const sign = r.deltaPct >= 0 ? "+" : "";
       console.log(
-        `  ${r.metric.padEnd(20)}: baseline ${r.baseline.toFixed(0)} → current ${r.current.toFixed(0)} (${sign}${r.deltaPct.toFixed(1)}%) ${flag}`,
+        `  ${r.metric.padEnd(20)}: baseline ${fmtMetric(r.metric, r.baseline)} → current ${fmtMetric(r.metric, r.current)} (${sign}${r.deltaPct.toFixed(1)}%) ${flag}`,
+      );
+    }
+    const rules = report.regressions
+      .map((r) => `${r.metric} +${r.thresholdPct}%${r.minDelta > 0 ? ` and +${fmtMetric(r.metric, r.minDelta)}` : ""}`)
+      .join(", ");
+    console.log(`  (warns only when worse by more than: ${rules}. Smaller changes are measurement noise)`);
+    if (!report.passed && !updateBaseline) {
+      console.log(
+        "\nIf this change is intended, re-record the baseline in the same PR:\n" +
+          "  BENCH_PERF_UPDATE_BASELINE=true pnpm bench:performance",
       );
     }
   }
