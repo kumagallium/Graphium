@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ensureTableRowIdentity,
   insertAssetMention,
+  insertNoteMention,
   linkTableRowToNote,
   noteLinkCellAtCursor,
   recordMentionLink,
   tableCellAtCursor,
   tableRowAtCursor,
+  withDerivedFromLink,
 } from "./mention-insert";
 import type { ReferenceSuggestion } from "./mention-menu";
 import type { NoteLink, TableMeta } from "../../lib/document-types";
@@ -194,6 +196,108 @@ describe("linkTableRowToNote", () => {
   });
 });
 
+// ── 表の外で選んだノート（メイン・ピーク共通） ──
+
+describe("withDerivedFromLink", () => {
+  const link = (targetNoteId: string, sourceBlockId: string): NoteLink => ({
+    targetNoteId,
+    sourceBlockId,
+    type: "derived_from",
+  });
+
+  it("入れたノートへの派生関係を末尾に足す（既にある線は残す）", () => {
+    expect(withDerivedFromLink([link("n-old", "p0")], "n-new", "p1")).toEqual([
+      link("n-old", "p0"),
+      link("n-new", "p1"),
+    ]);
+  });
+
+  it("同じノートへの線が既にあれば、別のブロックからでも足さずに同じ配列を返す", () => {
+    const links = [link("n-rich", "p0")];
+    // 同じ配列（参照）が返るので、書き込み口は書き換え不要と分かる
+    expect(withDerivedFromLink(links, "n-rich", "p1")).toBe(links);
+  });
+});
+
+describe("insertNoteMention", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function setup(
+    initialNoteLinks: NoteLink[] = [],
+    cursor: { tableBlockId: string; rowIndex: number; colIndex?: number } | null = null,
+  ) {
+    const ed = fakeEditor([indexTable()], cursor);
+    let noteLinks = initialNoteLinks;
+    const ops = {
+      addLink: vi.fn(),
+      updateNoteLinks: vi.fn((update: (links: NoteLink[]) => NoteLink[]) => {
+        noteLinks = update(noteLinks);
+      }),
+      onInserted: vi.fn(),
+    };
+    return { ed, ops, noteLinks: () => noteLinks };
+  }
+
+  it("青い @タイトル を入れてから、reference リンクと noteLinks の派生関係を記録する", () => {
+    const { ed, ops, noteLinks } = setup();
+    insertNoteMention(() => ed, "p1", { id: "n-rich", label: "Rich" }, ops);
+
+    // メニューが閉じて入力中の `@…` が片付いてから入れる
+    expect(ed.insertInlineContent).not.toHaveBeenCalled();
+    expect(ops.updateNoteLinks).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(100);
+
+    expect(ed.insertInlineContent).toHaveBeenCalledWith([
+      { type: "text", text: "@Rich", styles: { textColor: "blue" } },
+      { type: "text", text: " ", styles: {} },
+    ]);
+    expect(ops.addLink).toHaveBeenCalledWith({
+      sourceBlockId: "p1",
+      targetBlockId: "",
+      targetNoteId: "n-rich",
+      type: "reference",
+      createdBy: "human",
+    });
+    expect(noteLinks()).toEqual([{ targetNoteId: "n-rich", sourceBlockId: "p1", type: "derived_from" }]);
+    expect(ops.onInserted).toHaveBeenCalled();
+    // 記録は入れた後（本文に無いリンクを残さない。スラッシュの「新しいノート」と同じ順）
+    const inserted = ed.insertInlineContent.mock.invocationCallOrder[0];
+    expect(ops.addLink.mock.invocationCallOrder[0]).toBeGreaterThan(inserted);
+    expect(ops.updateNoteLinks.mock.invocationCallOrder[0]).toBeGreaterThan(inserted);
+  });
+
+  it("同じノートへの線が既にあれば noteLinks は足さない（@リンクとリンクは入れる）", () => {
+    const existing: NoteLink[] = [{ targetNoteId: "n-rich", sourceBlockId: "p0", type: "derived_from" }];
+    const { ed, ops, noteLinks } = setup(existing);
+    insertNoteMention(() => ed, "p1", { id: "n-rich", label: "Rich" }, ops);
+    vi.advanceTimersByTime(100);
+
+    expect(noteLinks()).toBe(existing);
+    expect(ed.insertInlineContent).toHaveBeenCalled();
+    expect(ops.addLink).toHaveBeenCalled();
+  });
+
+  it("表のセル（note-link 列以外）に入れたら、リンクに行の identity を控える", () => {
+    const { ed, ops, noteLinks } = setup([], { tableBlockId: "tbl", rowIndex: 1, colIndex: 1 });
+    insertNoteMention(() => ed, "tbl", { id: "n-rich", label: "Rich" }, ops);
+    vi.advanceTimersByTime(100);
+
+    expect(ops.addLink.mock.calls[0][0]).toMatchObject({ sourceBlockId: "tbl", sourceRowIdentity: "row_s1" });
+    expect(noteLinks()).toEqual([{ targetNoteId: "n-rich", sourceBlockId: "tbl", type: "derived_from" }]);
+  });
+
+  it("入れる前にエディタが外れていたら、何も記録しない", () => {
+    const { ops } = setup();
+    insertNoteMention(() => null, "p1", { id: "n-rich", label: "Rich" }, ops);
+    vi.advanceTimersByTime(100);
+
+    expect(ops.addLink).not.toHaveBeenCalled();
+    expect(ops.updateNoteLinks).not.toHaveBeenCalled();
+    expect(ops.onInserted).not.toHaveBeenCalled();
+  });
+});
+
 describe("ensureTableRowIdentity", () => {
   it("採番済みの行はその identity を返す", () => {
     const ed = fakeEditor(
@@ -307,9 +411,11 @@ describe("insertAssetMention", () => {
   });
 });
 
-// ── 構造ガード: @ メニューを持つエディタは、どれも行の紐付けを共通の関数で行う ──
-// SidePeek はメインの並行実装で、メインにだけ入った @ の行の紐付けがピークに無かった
-// （行アイコンが「ノートを作成」のまま残り、押すと「@名前」という題の重複ノートができた）
+// ── 構造ガード: @ メニューを持つエディタは、どれもノートの挿入を共通の関数で行う ──
+// SidePeek はメインの並行実装で、メインにだけ入った処理がピークに無かった:
+// - @ の行の紐付け（行アイコンが「ノートを作成」のまま残り、押すと「@名前」という題の
+//   重複ノートができた）
+// - 表の外で入れたノートの noteLinks（@ したノートへの派生元の線がグラフ・来歴に出なかった）
 
 const SRC_DIR = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -348,6 +454,16 @@ describe("構造ガード", () => {
     expect(
       missing,
       `インデックステーブルの note-link 列で選んだノートは noteLinkCellAtCursor / linkTableRowToNote で行に紐付けてください: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("どのエディタも表の外で選んだノートを mention-insert.ts の関数で入れる", () => {
+    // @リンク・reference リンク・noteLinks の派生関係をまとめて記録する関数。
+    // エディタ側で挿入とリンクの記録だけを手書きすると、noteLinks が片方で抜ける
+    const missing = editors.filter(({ source }) => !/\binsertNoteMention\(/.test(source)).map((e) => e.file);
+    expect(
+      missing,
+      `表の外で選んだノートは insertNoteMention で入れてください（noteLinks の記録を含む）: ${missing.join(", ")}`,
     ).toEqual([]);
   });
 });

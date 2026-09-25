@@ -12,6 +12,9 @@
 // - note-link 列で @ から既存ノートを選ぶと、その行に紐付く（メインと同じ）。
 //   以前はピークだけ @リンクを入れるだけで、行アイコンが「ノートを作成」のまま残り、
 //   押すと「@名前」という題の重複ノートができていた
+// - 表の外で @ から既存ノートを選ぶと、ピークのノートの noteLinks に派生関係が入る
+//   （メインと同じ）。以前はピークだけ記録せず、@ したノートへの線がグラフ・来歴に
+//   出なかった。保存を待つ間に選んでも、保存完了で消えない
 // - つながった行を開く前に、待っている編集を保存し終える。行を押すとピークは別ノートへ
 //   切り替わり（親の key={noteId} で作り直し）、3 秒待ちの自動保存はアンマウントで
 //   流れない。保存中に打った分（表示は「保存済み」でもタイマーが待っている）も含む
@@ -70,6 +73,14 @@ vi.mock("../../base/editor", async () => {
           updateBlock: (idOrBlock: any, patch: any) => {
             const id = typeof idOrBlock === "string" ? idOrBlock : idOrBlock?.id;
             blocks = blocks.map((b) => (b.id === id ? { ...b, ...patch } : b));
+          },
+          // @リンクの挿入。表の外のカーソルは本文の最初の段落の末尾にいる扱い
+          // （表のセルへの挿入は linkTableRowToNote がセルを書き換えるので使わない）
+          insertInlineContent: (content: any[]) => {
+            if (editorHolder.cursor) return;
+            const at = blocks.findIndex((b) => b.type === "paragraph");
+            if (at < 0) return;
+            blocks = blocks.map((b, i) => (i === at ? { ...b, content: [...(b.content ?? []), ...content] } : b));
           },
           // カーソル位置（ProseMirror の $from）。表の中なら blockContainer > table >
           // tableRow > tableCell の入れ子で、index は祖先の中で何番目の子にいるか
@@ -255,6 +266,11 @@ function bodyText(doc: GraphiumDocument | undefined): string | undefined {
   return block?.content?.map((c: any) => c.text).join("");
 }
 
+/** エディタ上の本文の段落の文字（保存前の状態を見る） */
+function editorBodyText(editor: any): string {
+  return editor.getBlock(BODY_ID).content.map((c: any) => c.text).join("");
+}
+
 /** 行を開いた時点で保存し終えていた最後の doc を控える onOpenNoteInPeek */
 function recordOpens() {
   const opens: { id: string; lastSaved: GraphiumDocument | undefined }[] = [];
@@ -402,6 +418,73 @@ describe("SidePeek のインデックステーブル", () => {
     });
     expect(firstCell.styles.tableRowIdentity).toMatch(/^row_/);
     expect(onCreateLinkedNote).not.toHaveBeenCalled();
+  });
+
+  it("表の外で @ から既存ノートを選ぶと、@リンク・リンク・noteLinks をピークのノートに保存する", async () => {
+    const { editor } = await renderPeek(vi.fn());
+    const rich = { type: "note", id: "rich-note", label: "Rich", group: "" };
+
+    // 本文の段落で @ を打って既存ノートを選ぶ（挿入はメニューが片付いてから）
+    editorHolder.cursor = null;
+    await act(async () => {
+      await editorHolder.mention!.onMentionSelect!(BODY_ID, rich);
+    });
+    await waitFor(() => expect(editorBodyText(editor)).toBe("Body@Rich "));
+
+    const doc = await saveWithShortcut();
+    // グラフ・来歴の派生関係はピークのノートに入る（メインの @ と同じ）
+    expect(doc.noteLinks).toEqual([
+      { targetNoteId: "rich-note", sourceBlockId: BODY_ID, type: "derived_from" },
+    ]);
+    expect(bodyText(doc)).toBe("Body@Rich ");
+    const page = doc.pages[0];
+    const link = [...page.provLinks, ...page.knowledgeLinks].find((l: any) => l.targetNoteId === "rich-note");
+    expect(link).toMatchObject({ sourceBlockId: BODY_ID, type: "reference" });
+    // 表の外なので行の identity は付かない
+    expect(link.sourceRowIdentity).toBeUndefined();
+
+    // 同じノートをもう一度入れても、ノートからノートへの線は 1 本のまま
+    await act(async () => {
+      await editorHolder.mention!.onMentionSelect!(BODY_ID, rich);
+    });
+    await waitFor(() => expect(editorBodyText(editor)).toBe("Body@Rich @Rich "));
+    const again = await saveWithShortcut();
+    expect(again.noteLinks).toEqual(doc.noteLinks);
+  });
+
+  it("保存を待つ間に @ で入れたノートの noteLinks も、保存完了で消えずに次の保存に乗る", async () => {
+    const { editor } = await renderPeek(vi.fn());
+
+    // 1 回目の保存（⌘S）を止めておき、その間に @ で既存ノートを入れる
+    let release!: () => void;
+    saved.hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    editBody(editor, "first");
+    await saveWithShortcut();
+    editorHolder.cursor = null;
+    await act(async () => {
+      await editorHolder.mention!.onMentionSelect!(BODY_ID, {
+        type: "note",
+        id: "rich-note",
+        label: "Rich",
+        group: "",
+      });
+    });
+    await waitFor(() => expect(editorBodyText(editor)).toBe("first@Rich "));
+
+    // 1 回目は @ の前に組んだ doc を書く。書き終えても、保存を待つ間に積んだ線は残る
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(saved.completed).toBe(1));
+    expect(saved.docs[0].noteLinks).toBeUndefined();
+
+    const doc = await saveWithShortcut();
+    expect(doc.noteLinks).toEqual([
+      { targetNoteId: "rich-note", sourceBlockId: BODY_ID, type: "derived_from" },
+    ]);
+    expect(bodyText(doc)).toBe("first@Rich ");
   });
 
   it("編集の直後につながった行を押しても、保存し終えてから開く", async () => {

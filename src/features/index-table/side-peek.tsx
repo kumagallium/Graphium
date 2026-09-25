@@ -117,10 +117,12 @@ import {
 } from "@features/block-link/mention-menu";
 import {
   insertAssetMention,
+  insertNoteMention,
   linkTableRowToNote,
   noteLinkCellAtCursor,
   recordMentionLink,
   type AddReferenceLink,
+  type UpdateNoteLinks,
 } from "@features/block-link/mention-insert";
 import {
   openPeekTarget,
@@ -1475,11 +1477,30 @@ function SidePeekInner({
     registerUrlAsset(url, linked ? buildPeekUsage(blockId) : [], onAddUrlBookmark);
   }, [buildPeekUsage, onAddUrlBookmark]);
 
+  // noteLinks（グラフ・来歴に出す派生関係）の書き込み口。@ メニュー（表の外・表の行）と
+  // 「新しいノート」が共通で使う（メインと同じ形。何を足すか — 同じノートへの線は 1 本 —
+  // は block-link/mention-insert.ts が決める）。noteLinks はこのピークで開いているノートに
+  // 入る: docRef を作り直して積めば doSave が spread して一緒に書き出し、保存中に積んでも
+  // 保存完了で消えない（applySavedToPeekDoc）。noteLinks は画面に出さないので、表示用の
+  // doc state は触らない
+  const updateNoteLinks: UpdateNoteLinks = useCallback(
+    (update) => {
+      const cur = docRef.current;
+      if (!cur) return;
+      const links = cur.noteLinks ?? [];
+      const next = update(links);
+      if (next === links) return;
+      docRef.current = { ...cur, noteLinks: next };
+      handleChange();
+    },
+    [handleChange],
+  );
+
   // スラッシュメニューの「新しいノート」。組み立てはメインと共通
   // （block-link/new-note-slash-item.ts）で、記録先だけこのピークのものを渡す:
   // reference リンクはピークの linkStore、派生関係（noteLinks）はピークで開いている
-  // ノート（doSave が docRef.current を spread して一緒に保存する）。新しいノートの
-  // 派生元もこのノートにする（@ の「新規ノートを作成」と同じ）。作れないときは出さない
+  // ノート（上の書き込み口）。新しいノートの派生元もこのノートにする（@ の
+  // 「新規ノートを作成」と同じ）。作れないときは出さない
   const newNoteSlashItem = useMemo(
     () =>
       onCreateLinkedNote
@@ -1488,15 +1509,10 @@ function SidePeekInner({
             createNote: (title) => onCreateLinkedNote(title, noteId),
             getEditor: () => editorRef.current,
             addLink: (params) => linkStoreRef.current.addLink(params),
-            addNoteLink: (link) => {
-              const cur = docRef.current;
-              if (!cur || (cur.noteLinks ?? []).some((l) => l.targetNoteId === link.targetNoteId)) return;
-              docRef.current = { ...cur, noteLinks: [...(cur.noteLinks ?? []), link] };
-              handleChange();
-            },
+            updateNoteLinks,
           })
         : null,
-    [onCreateLinkedNote, promptNoteName, noteId, handleChange],
+    [onCreateLinkedNote, promptNoteName, noteId, updateNoteLinks],
   );
 
   // 文脈ラベルの更新: ローカル state + docRef を更新し、SidePeek 自身の doSave で保存する
@@ -2239,28 +2255,20 @@ function SidePeekInner({
                       setNoteLink: (tableBlockId, rowValue, targetNoteId) =>
                         tableMetaStoreRef.current.setNoteLink(tableBlockId, rowValue, targetNoteId),
                       addLink,
-                      updateNoteLinks: (update) => {
-                        const cur = docRef.current;
-                        if (!cur) return;
-                        const links = cur.noteLinks ?? [];
-                        const next = update(links);
-                        // doSave は docRef.current を spread するので、ここに積めば一緒に書き出される
-                        // （noteLinks は画面に出さないので、表示用の doc state は触らない）
-                        if (next !== links) docRef.current = { ...cur, noteLinks: next };
-                      },
+                      updateNoteLinks,
                       onLinked: handleChange,
                     });
                     return;
                   }
-                  const noteRefId = s.id;
-                  const label = s.label;
-                  setTimeout(() => {
-                    // 本文は青い @タイトル、ノート ID はリンクの記録に持つ（同名ノートでも正しく解決）。
-                    // 記録は入れた直後に（表のセルなら行の identity も控える）
-                    insertNoteMentionInline(editorRef.current, noteRefId, label);
-                    recordMentionLink(editorRef.current, addLink, { sourceBlockId, targetNoteId: noteRefId });
-                    handleChange();
-                  }, 100);
+                  // 表の外（note-link 列以外のセルを含む）: 青い @タイトル を入れ、reference
+                  // リンクと noteLinks の派生関係をこのピークのノートに記録する。メインと同じ関数
+                  // （mention-insert.ts）。以前はピークだけ noteLinks を記録せず、@ したノートへの
+                  // 線がグラフ・来歴に出なかった
+                  insertNoteMention(() => editorRef.current, sourceBlockId, s, {
+                    addLink,
+                    updateNoteLinks,
+                    onInserted: handleChange,
+                  });
                 }}
                 // メインエディタと同様にメディア URL を解決する。
                 // これがないと image / video / audio のブロックが

@@ -1,8 +1,8 @@
 // @メンションを本文に入れるときの共通処理（メインエディタ・サイドピーク共通）。
 //
-// 素材の @リンクの挿入と、reference リンクの記録、インデックステーブルの行の紐付けを
-// ここに集める。どちらのエディタも同じ関数を通す（片方だけ直す移植漏れを防ぐ。
-// クリック側は mention-click.ts）。
+// ノート・素材の @リンクの挿入と、reference リンク・noteLinks（派生関係）の記録、
+// インデックステーブルの行の紐付けをここに集める。どちらのエディタも同じ関数を通す
+// （片方だけ直す移植漏れを防ぐ。クリック側は mention-click.ts）。
 //
 // 表のセルに入れたときは、その行の tableRowIdentity をリンクに控える。表は 1 ブロックに
 // 全セルのリンクが並ぶので、同じ表に同じラベル（試料ごとの data.txt 等）が並ぶと、
@@ -15,7 +15,7 @@ import {
 } from "../../lib/table-row-identity";
 import { findColumnIndexByName, withCellText } from "../table-meta/table-cells";
 import { findColumnNameByType, hasColumnType } from "../table-meta/types";
-import type { ReferenceSuggestion } from "./mention-menu";
+import { insertNoteMentionInline, type ReferenceSuggestion } from "./mention-menu";
 
 /** reference リンクの記録口（メイン・ピークどちらの linkStore.addLink でも渡せる最小形） */
 export type AddReferenceLink = (params: {
@@ -122,6 +122,29 @@ export function recordMentionLink(
 }
 
 /**
+ * ノートの noteLinks（グラフ・来歴に出す派生関係）の書き込み口。今の配列から次の配列を
+ * 作る関数を受け取って置き換える（同じ配列が返ったら書き換えなくてよい）。noteLinks は
+ * エディタで開いているノートごと（メインは noteLinksRef、ピークは docRef の doc）なので、
+ * 呼び出し側が自分のものを渡す。何を足すか（重複の判定を含む）はこのファイル側で決める
+ */
+export type UpdateNoteLinks = (update: (links: NoteLink[]) => NoteLink[]) => void;
+
+/**
+ * noteLinks に、@ で入れたノートへの派生関係（derived_from）を足した配列を返す。
+ * 同じノートへの線が既にあれば、受け取った配列をそのまま返す（別のブロックから
+ * 入れ直しても、ノートからノートへの線は 1 本）。
+ */
+export function withDerivedFromLink(
+  links: NoteLink[],
+  targetNoteId: string,
+  sourceBlockId: string,
+): NoteLink[] {
+  return links.some((l) => l.targetNoteId === targetNoteId)
+    ? links
+    : [...links, { targetNoteId, sourceBlockId, type: "derived_from" }];
+}
+
+/**
  * 行の紐付けの書き込み先。表の注釈・リンク・noteLinks はエディタのノートごとに違う
  * （ピークで紐付けたらピークのノートに入る）ので、呼び出し側が自分のものを渡す。
  */
@@ -130,7 +153,7 @@ export type RowNoteLinkOps = {
   setNoteLink: (tableBlockId: string, rowValue: string, noteId: string) => void;
   addLink: AddReferenceLink;
   /** ノートの noteLinks（グラフ表示用の派生関係）を、今の配列から次の配列に置き換える */
-  updateNoteLinks: (update: (links: NoteLink[]) => NoteLink[]) => void;
+  updateNoteLinks: UpdateNoteLinks;
   /** 書き込みを始めたら呼ぶ（自動保存を起こす） */
   onLinked?: () => void;
 };
@@ -152,11 +175,7 @@ export function linkTableRowToNote(
 ): void {
   const mention = `@${note.label}`;
   ops.setNoteLink(cell.tableBlockId, mention, note.id);
-  ops.updateNoteLinks((links) =>
-    links.some((l) => l.targetNoteId === note.id)
-      ? links
-      : [...links, { targetNoteId: note.id, sourceBlockId: cell.tableBlockId, type: "derived_from" }],
-  );
+  ops.updateNoteLinks((links) => withDerivedFromLink(links, note.id, cell.tableBlockId));
   ops.onLinked?.();
   setTimeout(() => {
     const editor = getEditor();
@@ -185,6 +204,40 @@ export function linkTableRowToNote(
       targetNoteId: note.id,
       row: cell,
     });
+  }, 100);
+}
+
+/** 表の外で選んだノートの記録先。エディタのノートごとに違うので、呼び出し側が自分のものを渡す */
+export type NoteMentionOps = {
+  addLink: AddReferenceLink;
+  updateNoteLinks: UpdateNoteLinks;
+  /** 入れ終えたら呼ぶ（自動保存を起こす） */
+  onInserted?: () => void;
+};
+
+/**
+ * @ メニューで選んだノートを本文に入れる（インデックステーブルの行に紐付けるときは
+ * linkTableRowToNote）。メニューが閉じて入力中の `@…` が片付いてから（少し遅らせて）:
+ * 1. 青い `@タイトル` を入れる（ノート ID は本文に持たず、リンクの記録に持つ）
+ * 2. reference リンクを記録する（表のセルなら行の identity も控える）
+ * 3. ノートの noteLinks に派生関係を足す（グラフ・来歴の線。同じノートへの線が既に
+ *    あれば足さない）
+ * 記録は入れた後に行い、入れる前にエディタが外れていたら何も記録しない（本文に無い
+ * リンクを残さない。スラッシュの「新しいノート」と同じ順）。
+ */
+export function insertNoteMention(
+  getEditor: () => any,
+  sourceBlockId: string,
+  note: { id: string; label: string },
+  ops: NoteMentionOps,
+): void {
+  setTimeout(() => {
+    const editor = getEditor();
+    if (!editor) return;
+    insertNoteMentionInline(editor, note.id, note.label);
+    recordMentionLink(editor, ops.addLink, { sourceBlockId, targetNoteId: note.id });
+    ops.updateNoteLinks((links) => withDerivedFromLink(links, note.id, sourceBlockId));
+    ops.onInserted?.();
   }, 100);
 }
 
