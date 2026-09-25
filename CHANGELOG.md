@@ -1,5 +1,29 @@
 # Changelog
 
+## [v0.83.0](https://github.com/kumagallium/Graphium/compare/v0.82.1...v0.83.0) - 2026-09-25
+
+- fix(side-peek): offer the chart block in the side peek's slash menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1027
+- fix: open @-linked materials from the gallery's note peek without losing peek edits by @kumagallium in https://github.com/kumagallium/Graphium/pull/1029
+- fix(side-peek): offer "New note" in the side peek's slash menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1030
+- fix(side-peek): create and use time-series tables in the side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1033
+- fix(chart): keep charts readable in narrow places like the side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1034
+- fix(side-peek): insert templates from the side peek's slash menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1032
+- Let the side peek create and use index tables by @kumagallium in https://github.com/kumagallium/Graphium/pull/1031
+- fix(table): keep column widths and header columns in place when a column is removed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1039
+- fix(table): keep column widths and header rows when creating a note from a table row by @kumagallium in https://github.com/kumagallium/Graphium/pull/1037
+- fix(chart): keep wrapped legends clear of the plot at normal widths by @kumagallium in https://github.com/kumagallium/Graphium/pull/1038
+- fix(side-peek): keep title, folder, and link edits made while a save is still being written by @kumagallium in https://github.com/kumagallium/Graphium/pull/1036
+- fix: keep side-peek edits when something outside the peek closes it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1035
+- Tie @-links in table cells to their row, and offer materials in the side peek's @ menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1026
+- fix(bench): stop the bench bot from reporting the same failures on every PR by @kumagallium in https://github.com/kumagallium/Graphium/pull/1040
+- Fold leaves, size notes by reach and lay the Global Graph out as islands by @kumagallium in https://github.com/kumagallium/Graphium/pull/1024
+- feat(editor): add superscript and subscript formatting to note text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1041
+- fix(chart): keep squashed plots readable at normal widths by @kumagallium in https://github.com/kumagallium/Graphium/pull/1042
+- fix(side-peek): link an index-table row to an existing note from the @ menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1044
+- fix(bench): await createModel in the atomtype probe and type-check bench/ in CI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1045
+- fix(chat): show <sup> / <sub> in AI answers as superscript and subscript by @kumagallium in https://github.com/kumagallium/Graphium/pull/1043
+- Draw the Global Graph's Timeline mode with React Flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1023
+
 ## [v0.82.1](https://github.com/kumagallium/Graphium/compare/v0.82.0...v0.82.1) - 2026-09-25
 
 - fix(assets): let the document filter pick Excel and PowerPoint files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1021
