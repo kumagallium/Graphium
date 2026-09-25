@@ -14,8 +14,22 @@ import {
   type ChartBlockConfig,
 } from "./chart-config";
 import type { ChartDataResult } from "./chart-data";
-import { LEGEND_ROW_PITCH, MIN_COMPACT_PANEL_HEIGHT } from "./chart-layout";
-import { CHART_LEGEND_ITEM, CHART_LEGEND_ITEM_COMPACT_WIDTH, PANEL_LABEL_INSET } from "./chart-theme";
+import {
+  approxTextWidth,
+  LEGEND_ROW_PITCH,
+  MIN_COMPACT_PANEL_HEIGHT,
+  MIN_STACK_ROW_HEIGHT,
+  MIN_TICK_PITCH,
+  requiredPanelHeight,
+  valueAxisTickLabels,
+} from "./chart-layout";
+import {
+  CHART_ASPECT_RATIOS,
+  CHART_FONT_SIZE,
+  CHART_LEGEND_ITEM,
+  CHART_LEGEND_ITEM_COMPACT_WIDTH,
+  PANEL_LABEL_INSET,
+} from "./chart-theme";
 import { scatterLegendIcon } from "./legend-icon";
 
 type OkResult = Extract<ChartDataResult, { kind: "ok" }>;
@@ -735,5 +749,117 @@ describe("buildChart（通常の幅の凡例の折り返し）", () => {
   it("下に置いた凡例も、行数ぶん枠の下を空ける", () => {
     const { option } = buildChart(sixSeries, sixConfig({ legendPosition: "bottom" }), [], { width: 564 });
     expect(option.grid.bottom).toBe(64 + 32 + 5 * LEGEND_ROW_PITCH);
+  });
+});
+
+// 通常の幅でも、横長（4:1・5:1）や多段の図は固定の余白で描画領域が潰れる（2026-09-25 の
+// 実測で、図 564px の 5:1 は 1px、√2:1 を 3 段に分けてつなげないと 42px）。潰れる図だけ、
+// 目盛り・縦軸名・段名が収まる高さまで縦に伸ばす。足りている図の高さは変えない
+describe("buildChart（通常の幅で枠が潰れる図）", () => {
+  const riseResult: OkResult = {
+    kind: "ok",
+    xAxis: "value",
+    categories: [],
+    series: [{ points: [[0, 4], [30, 5.5], [60, 7.2]] }],
+  };
+  const rise = (over: Partial<ChartBlockConfig> = {}) =>
+    config({ series: [{ sourceBlockId: "t1", xColumn: "Minutes", yColumn: "Height" }], ...over });
+
+  it("横長で枠が潰れる図は、縦軸の目盛りが 16px 間隔で並ぶ高さまで伸ばす", () => {
+    const width = 564;
+    const { option, height } = buildChart(riseResult, rise({ aspect: "spectrum" }), [], { width });
+    // 4.0〜7.2 は 0.5 刻みで 4〜7.5 の 8 本
+    const labels = valueAxisTickLabels({ min: 4, max: 7.2 }, 5);
+    expect(labels).toHaveLength(8);
+    expect(height).toBeGreaterThan(Math.round(width / 5));
+    expect(height - option.grid.top - option.grid.bottom).toBe((labels.length - 1) * MIN_TICK_PITCH);
+    // 余白・目盛りは従来のまま（伸ばすのは高さだけ）
+    expect(option.grid).toMatchObject({ left: 84, right: 32, top: 48, bottom: 64 });
+    expect(option.yAxis.splitNumber).toBeUndefined();
+  });
+
+  it("高さの足りている図は幅 ÷ アスペクト比のまま（既定の √2:1・2:1・3:1）", () => {
+    for (const aspect of ["standard", "wide", "panorama"] as const) {
+      const { height } = buildChart(riseResult, rise({ aspect }), [], { width: 712 });
+      expect(height).toBe(Math.round(712 / CHART_ASPECT_RATIOS[aspect]));
+    }
+  });
+
+  it("分けた枠は、いちばん高さの要る枠に合わせて全部の段を伸ばす", () => {
+    // 上の枠は 4〜7.5 の 8 本（112px 要る）、下の枠は 24〜26 の 5 本（64px で足りる）
+    const twoRanges: OkResult = {
+      kind: "ok",
+      xAxis: "value",
+      categories: [],
+      series: [
+        { points: [[0, 4], [30, 5.5], [60, 7.2]] },
+        { points: [[0, 24.1], [30, 25.3], [60, 26]] },
+      ],
+    };
+    const { option, height } = buildChart(
+      twoRanges,
+      config({
+        panels: { ...DEFAULT_PANELS_CONFIG, rows: 2, joinVertical: false },
+        series: [
+          { sourceBlockId: "t1", xColumn: "Minutes", yColumn: "Height", panelIndex: 0 },
+          { sourceBlockId: "t1", xColumn: "Minutes", yColumn: "Temperature", panelIndex: 1 },
+        ],
+      }),
+      [],
+      { width: 564 }
+    );
+    // √2:1 のままだと 1 段 103.5px
+    expect(height).toBeGreaterThan(Math.round(564 / Math.SQRT2));
+    expect(option.grid.map((g: any) => g.height)).toEqual([7 * MIN_TICK_PITCH, 7 * MIN_TICK_PITCH]);
+  });
+
+  it("オフセット表示は段名が重ならず、縦軸名が図からはみ出さない高さまで伸ばす", () => {
+    const stackResult: OkResult = {
+      kind: "ok",
+      xAxis: "value",
+      categories: [],
+      series: [0, 1, 2].map((k) => ({
+        points: [[10, 1 + k], [30, 8 + k], [60, 2 + k]] as Array<[number, number]>,
+      })),
+    };
+    const yAxisName = "Intensity (a.u.)";
+    const width = 564;
+    const { option, height } = buildChart(
+      stackResult,
+      config({
+        series: ["測定", "文献 A", "文献 B"].map((label) => ({
+          sourceBlockId: "t1",
+          xColumn: "2θ (deg)",
+          yColumn: "Intensity",
+          label,
+        })),
+        stack: { ...DEFAULT_STACK_CONFIG, enabled: true, labels: "inline" },
+        aspect: "spectrum",
+        yAxisName,
+      }),
+      [],
+      { width }
+    );
+    const plot = height - option.grid.top - option.grid.bottom;
+    // 段名を図の中に出すので凡例は無く、上の余白は 20px。テストの環境（canvas なし）では
+    // 文字幅は近似（approxTextWidth）で見積もる
+    expect(option.grid.top).toBe(20);
+    expect(plot).toBeGreaterThanOrEqual(3 * MIN_STACK_ROW_HEIGHT);
+    expect(plot).toBe(
+      requiredPanelHeight({
+        tickLabelCounts: [],
+        inlineStackRows: [3],
+        edgeAxisNames: [{ width: approxTextWidth(yAxisName, CHART_FONT_SIZE), edge: 20 }],
+      })
+    );
+    // ECharts の実レイアウト（SSR）でも枠は縮められない。軸名が図の上下にはみ出すと
+    // ECharts 6 は枠のほうを縮める（grid.outerBoundsMode: "auto"）。段名だけで伸ばした
+    // 60px の枠では、実際に上端が下がった
+    const chart = echarts.init(null, null, { renderer: "svg", ssr: true, width, height }) as any;
+    chart.setOption(option);
+    const rect = chart.getModel().getComponent("grid", 0).coordinateSystem.getRect();
+    chart.dispose();
+    expect(rect.y).toBeCloseTo(option.grid.top, 5);
+    expect(rect.height).toBeCloseTo(plot, 5);
   });
 });

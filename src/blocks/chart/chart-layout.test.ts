@@ -12,7 +12,11 @@ import {
   isCompactChart,
   LEGEND_ROW_PITCH,
   MIN_COMPACT_PANEL_HEIGHT,
+  MIN_PANEL_HEIGHT,
+  MIN_STACK_ROW_HEIGHT,
+  MIN_TICK_PITCH,
   PANEL_GAP,
+  requiredPanelHeight,
   valueAxisTickLabels,
   type FigureMarginsInput,
   type PanelLayoutInput,
@@ -287,10 +291,49 @@ describe("computeFigureHeight", () => {
     expect(
       computeFigureHeight({ width: 564, aspectRatio: Math.SQRT2, compact: false, rows: 1, margins, joinVertical: false })
     ).toBe(Math.round(564 / Math.SQRT2));
-    // 5:1 のように余白で描画領域が潰れる比でも、通常の図は伸ばさない（ユーザーが選んだ形）
+    // 下限を渡さなければ、5:1 で描画領域が潰れる比でもそのまま
     expect(
       computeFigureHeight({ width: 712, aspectRatio: 5, compact: false, rows: 1, margins, joinVertical: false })
     ).toBe(Math.round(712 / 5));
+  });
+
+  it("通常の図も、描画領域が枠 1 段あたりの下限に届かなければ届くまで伸ばす", () => {
+    // 564px の 5:1 は高さ 113px。余白（上 38・下 56）を引くと 19px しか残らない
+    const h = computeFigureHeight({
+      width: 564,
+      aspectRatio: 5,
+      compact: false,
+      rows: 1,
+      margins,
+      joinVertical: false,
+      minPanelHeight: 64,
+    });
+    expect(h - margins.top - margins.bottom).toBe(64);
+    // 足りている図は幅 ÷ アスペクト比のまま（既定の √2:1 は 287px 残る）
+    expect(
+      computeFigureHeight({
+        width: 564,
+        aspectRatio: Math.SQRT2,
+        compact: false,
+        rows: 1,
+        margins,
+        joinVertical: false,
+        minPanelHeight: 128,
+      })
+    ).toBe(Math.round(564 / Math.SQRT2));
+  });
+
+  it("通常の図の多段は、つなげない段の間隔も足して各段に下限を確保する", () => {
+    const h = computeFigureHeight({
+      width: 564,
+      aspectRatio: Math.SQRT2,
+      compact: false,
+      rows: 3,
+      margins,
+      joinVertical: false,
+      minPanelHeight: 128,
+    });
+    expect(h).toBe(margins.top + margins.bottom + 2 * (margins.xAxisSpace + PANEL_GAP) + 3 * 128);
   });
 
   it("コンパクトは描画領域が枠 1 段あたり最低限の高さになるまで伸ばす", () => {
@@ -324,6 +367,34 @@ describe("computeFigureHeight", () => {
       joinHorizontal: false,
     });
     expect(layout.grids.map((g) => g.height)).toEqual([MIN_COMPACT_PANEL_HEIGHT, MIN_COMPACT_PANEL_HEIGHT]);
+  });
+});
+
+describe("requiredPanelHeight", () => {
+  const none = { tickLabelCounts: [], inlineStackRows: [], edgeAxisNames: [] };
+
+  it("目盛りも段名も軸名も無い枠でも床の高さは確保する", () => {
+    expect(requiredPanelHeight(none)).toBe(MIN_PANEL_HEIGHT);
+  });
+
+  it("縦軸の目盛りラベルが 16px 間隔で並ぶ高さ（いちばん本数の多い軸に合わせる）", () => {
+    // XRD の 0〜8,000（5 本）は床の 60px で足りない 64px、PF の 0.5〜1.3（9 本）は 128px
+    expect(requiredPanelHeight({ ...none, tickLabelCounts: [5, 0] })).toBe(4 * MIN_TICK_PITCH);
+    expect(requiredPanelHeight({ ...none, tickLabelCounts: [5, 9, 6] })).toBe(8 * MIN_TICK_PITCH);
+    // 3 本（2 間隔 = 32px）なら床のまま
+    expect(requiredPanelHeight({ ...none, tickLabelCounts: [3] })).toBe(MIN_PANEL_HEIGHT);
+  });
+
+  it("オフセット表示の段名は段 1 つあたり 20px", () => {
+    expect(requiredPanelHeight({ ...none, inlineStackRows: [5] })).toBe(5 * MIN_STACK_ROW_HEIGHT);
+  });
+
+  it("縦軸名は ECharts が両端に足す 3px も込みで、図の上下にはみ出さない高さ", () => {
+    // 実測した "Intensity (a.u.)"（108.1px）を凡例の無い図（上の余白 20px）に置くと、
+    // 枠の中央から上に 57px 伸びるので、枠は 75px 要る（2026-09-25、ECharts 6.1）
+    expect(requiredPanelHeight({ ...none, edgeAxisNames: [{ width: 108.1, edge: 20 }] })).toBe(75);
+    // 凡例が上にある図（48px）なら余白に収まるので床のまま
+    expect(requiredPanelHeight({ ...none, edgeAxisNames: [{ width: 108.1, edge: 48 }] })).toBe(MIN_PANEL_HEIGHT);
   });
 });
 

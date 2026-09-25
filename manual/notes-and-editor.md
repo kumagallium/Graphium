@@ -313,7 +313,7 @@ Any table can be named from the drag-handle (⠿) menu — "**Name this table**"
 
 A time-series table is not a separate kind of table — it is an ordinary table with this behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into time-series table**".
 
-**Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. In narrow places such as the side peek, the chart puts readable ticks first: it tightens its margins, thins out the ticks, and keeps enough height for the plot, so it can come out taller than its aspect ratio.
+**Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. In narrow places such as the side peek, the chart puts readable ticks first: it tightens its margins, thins out the ticks, and keeps enough height for the plot, so it can come out taller than its aspect ratio. The same happens at full width when a wide ratio (4:1, 5:1) or panels split into rows would leave the plot too short to read: the chart grows taller until the tick labels, the axis name and the names of offset rows fit, while a chart that already has room keeps its ratio.
 
 ![Two time-series tables overlaid in one chart: pain on the left axis, pressure on the right](/screenshots/chart-dual-axis.png)
 

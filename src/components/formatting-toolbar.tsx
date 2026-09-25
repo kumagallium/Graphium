@@ -27,6 +27,7 @@ import {
   type MediaInlineLabelType,
 } from "../features/inline-label/media-store";
 import { useMediaOcrStoreOptional, ImageOcrToolbarButton } from "../features/media-ocr";
+import { withScriptStyleButtons } from "../base/script-style-button";
 
 type InlineLabelKey = keyof typeof LABEL_TO_STYLE;
 
@@ -218,7 +219,8 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
           切り替わるため、標準アイテム + AI ボタンを 1 行目としてまとめる。
           gap: inherit で BlockNote 側のアイテム間隔をそのまま引き継ぐ。 */}
       <div className="flex items-center" style={{ gap: "inherit" }}>
-        {getFormattingToolbarItems(props.blockTypeSelectItems)}
+        {/* 上付き・下付きは取り消し線の直後（サイドピークの既定ツールバーと同じ並び） */}
+        {withScriptStyleButtons(getFormattingToolbarItems(props.blockTypeSelectItems))}
         {/* 画像から文字を読む / 読んだ文字を見る。画像をクリックすれば必ず目に入るので、
             ドラッグハンドルのメニューより見つけやすい主導線になる。 */}
         {ocrStore && mediaSel?.blockType === "image" && selectedImageUrl && (

@@ -13,6 +13,9 @@
 // コード領域（``` フェンス / `インラインコード`）の中身は数式として扱わない。
 // LaTeX のサンプルコードを載せたノートを壊さないため。
 
+import { maskCodeRegions, unmaskCodeRegions } from "../../lib/markdown-code-regions";
+import { markScriptTags, restoreScriptTags } from "../../lib/script-styles";
+
 /** 退避した数式 1 個 */
 export type MathStash = {
   /** LaTeX 本文（デリミタを除いた中身） */
@@ -22,7 +25,6 @@ export type MathStash = {
 };
 
 const SENTINEL_PREFIX = "{{GWMATH_";
-const CODE_PREFIX = "{{GWCODE_";
 const SENTINEL_SUFFIX = "}}";
 const SENTINEL_REGEX = /\{\{GWMATH_(\d+)\}\}/g;
 
@@ -76,28 +78,6 @@ export function stashMath(markdown: string): { text: string; math: MathStash[] }
   });
 
   return { text: unmaskCodeRegions(text, codes), math };
-}
-
-/** コード領域をセンチネルに退避する（数式判定から除外するため） */
-function maskCodeRegions(markdown: string): { text: string; codes: string[] } {
-  const codes: string[] = [];
-  const stash = (m: string): string => {
-    codes.push(m);
-    return `${CODE_PREFIX}${codes.length - 1}${SENTINEL_SUFFIX}`;
-  };
-  const text = markdown
-    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, stash)
-    .replace(/`[^`\n]*`/g, stash);
-  return { text, codes };
-}
-
-/** maskCodeRegions で退避したコード領域を元に戻す */
-function unmaskCodeRegions(text: string, codes: string[]): string {
-  if (codes.length === 0) return text;
-  return text.replace(/\{\{GWCODE_(\d+)\}\}/g, (full, n: string) => {
-    const code = codes[Number(n)];
-    return code === undefined ? full : code;
-  });
 }
 
 // ─────────────────────────────────────────────
@@ -224,11 +204,17 @@ function expandSentinelInlines(inlines: any[], math: MathStash[]): any[] {
 /**
  * `editor.tryParseMarkdownToBlocks` の数式対応版。
  * Markdown → ブロック変換をする箇所はこの関数を通すこと（素の tryParse は数式を壊す）。
+ *
+ * 上付き・下付きの `<sup>` / `<sub>` もここで拾う。素の tryParse は生の HTML タグを
+ * 捨てて中身だけ残すため「10<sup>5</sup>」が「105」になる（書き出し側は
+ * markdown-export/sanitize-blocks.ts がこのタグで書く）。
  */
 export function parseMarkdownToBlocksWithMath(editor: any, markdown: string): any[] {
   const { text, math } = stashMath(markdown);
-  const blocks = editor.tryParseMarkdownToBlocks(text) as any[];
-  return restoreMath(blocks, math);
+  const blocks = editor.tryParseMarkdownToBlocks(markScriptTags(text)) as any[];
+  // 上付き・下付きの目印を先に戻す。目印の間に数式のセンチネルがあっても、
+  // そのテキスト片を restoreMath が inlineMath に展開できる
+  return restoreMath(restoreScriptTags(blocks), math);
 }
 
 // ─────────────────────────────────────────────
