@@ -10,6 +10,7 @@ import {
   assignIslands,
   detectCommunities,
   detectNoteCommunities,
+  detectFocusCommunities,
 } from "./global-graph-structure";
 import type { NoteGraphData, NoteNode } from "./graph-builder";
 
@@ -21,6 +22,9 @@ function claim(id: string): NoteNode {
 }
 function topic(id: string): NoteNode {
   return { id, title: id, isCurrent: false, hop: 0, isWiki: true, wikiKind: "topic" };
+}
+function external(id: string): NoteNode {
+  return { id, title: id, isCurrent: false, hop: 0, external: "pdf" };
 }
 
 describe("foldLeafNodes", () => {
@@ -412,5 +416,75 @@ describe("detectNoteCommunities", () => {
     const communities = detectNoteCommunities(data);
     expect(communities.get("c1")).toBe(communities.get("n1"));
     expect(communities.has("c2")).toBe(false);
+  });
+});
+
+describe("detectFocusCommunities", () => {
+  it("crystal フォーカス: 同じノートに付いた知見3つが1島、別ノートの知見2つが別島", () => {
+    // c1〜c3 は n1 にだけ繋がる（直接の知見同士の辺は無い）。focus=crystal では
+    // 非フォーカス（ノート）を 1 つ共有していれば射影で辺が繋がるので、
+    // n1 を共有する c1・c2・c3 は同じ島になる。c4・c5 は n2 を共有して別の島。
+    const data: NoteGraphData = {
+      nodes: [note("n1"), note("n2"), claim("c1"), claim("c2"), claim("c3"), claim("c4"), claim("c5")],
+      edges: [
+        { source: "n1", target: "c1", relation: "derived" },
+        { source: "n1", target: "c2", relation: "derived" },
+        { source: "n1", target: "c3", relation: "derived" },
+        { source: "n2", target: "c4", relation: "derived" },
+        { source: "n2", target: "c5", relation: "derived" },
+      ],
+    };
+    const communities = detectFocusCommunities(data, "crystal");
+    const communityA = communities.get("c1");
+    const communityB = communities.get("c4");
+    expect(communities.get("c2")).toBe(communityA);
+    expect(communities.get("c3")).toBe(communityA);
+    expect(communities.get("c5")).toBe(communityB);
+    expect(communityA).not.toBe(communityB);
+    // ノート（非フォーカス）は隣接する知見の多数派（この場合は全員同じ島）に所属する
+    expect(communities.get("n1")).toBe(communityA);
+    expect(communities.get("n2")).toBe(communityB);
+  });
+
+  it("source フォーカス: 同じノートで使われた原料2つが同じ島", () => {
+    const data: NoteGraphData = {
+      nodes: [note("n1"), note("n2"), external("s1"), external("s2"), external("s3")],
+      edges: [
+        { source: "s1", target: "n1", relation: "used" },
+        { source: "s2", target: "n1", relation: "used" },
+        { source: "s3", target: "n2", relation: "used" },
+      ],
+    };
+    const communities = detectFocusCommunities(data, "source");
+    expect(communities.get("s1")).toBe(communities.get("s2"));
+    expect(communities.get("s3")).not.toBe(communities.get("s1"));
+  });
+
+  it("非フォーカスのノードは隣接するフォーカスノードの多数派の島に所属する（focus: note）", () => {
+    // detectFocusCommunities(data, "note") は detectNoteCommunities と同じ規則。
+    // focus が "note" のときは共有隣接による射影を使わないので、c1（知見。
+    // 非フォーカス）が p 系列に 2 本・q 系列に 1 本繋がっても、p・q 各系列の
+    // コミュニティ自体はそれぞれの直接のノート間の辺だけで決まり、崩れない。
+    const data: NoteGraphData = {
+      nodes: [note("p1"), note("p2"), note("p3"), note("q1"), note("q2"), note("q3"), claim("c1")],
+      edges: [
+        { source: "p1", target: "p2", relation: "derived" },
+        { source: "p1", target: "p3", relation: "derived" },
+        { source: "p2", target: "p3", relation: "derived" },
+        { source: "q1", target: "q2", relation: "derived" },
+        { source: "q1", target: "q3", relation: "derived" },
+        { source: "q2", target: "q3", relation: "derived" },
+        { source: "p1", target: "c1", relation: "derived" },
+        { source: "p2", target: "c1", relation: "derived" },
+        { source: "q1", target: "c1", relation: "derived" },
+      ],
+    };
+    const communities = detectFocusCommunities(data, "note");
+    const pLabel = communities.get("p1");
+    const qLabel = communities.get("q1");
+    expect(communities.get("p2")).toBe(pLabel);
+    expect(communities.get("q2")).toBe(qLabel);
+    expect(pLabel).not.toBe(qLabel);
+    expect(communities.get("c1")).toBe(pLabel); // p 系列に 2 本・q 系列に 1 本 → 多数派の p
   });
 });

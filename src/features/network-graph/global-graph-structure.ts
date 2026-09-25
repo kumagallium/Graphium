@@ -1,43 +1,66 @@
 // 全体グラフ（俯瞰）に構造由来の量を持ち込む純関数群。
 //
-// - foldLeafNodes: ノート以外（外部ソース・知見・洞察・話題）を、無向に隣接する
-//   「ノート（kind === "note"）の数」で判定して畳む/取り除く。
-// - computeReachScores: ノートごとに、辺を無向にたどって hops 以内で届く
-//   「別のノート」の数を数える（知見や外部ソースを経由してもよい）。
+// - FocusLayer / isFocused: 「島」を何を中心に作るか（ノート / 知見・洞察・話題
+//   / 外部ソース）。foldLeafNodes・computeReachScores・detectFocusCommunities が
+//   共通で使う。
+// - foldLeafNodes: フォーカス種類以外を、無向に隣接する「フォーカス種類の数」で
+//   判定して畳む/取り除く（既定 focus は "note"）。
+// - computeReachScores: フォーカス種類のノードごとに、辺を無向にたどって hops
+//   以内で届く「別のフォーカスノード」の数を数える（既定 focus は "note"）。
 // - assignIslands: reach の高いノート（ハブ）を選び、他のノートを最も近いハブに
 //   割り当てる（layoutMode: islands 初期版の裏側。現在は使っていないがテストは
 //   残す。clusterByContext の「タグごとの重心」と同じ仕組みをハブ割り当てで
 //   作るための下ごしらえだった）。
 // - detectCommunities: ラベル伝播法で全ノード込みのコミュニティを検出する。
-// - detectNoteCommunities: detectCommunities をノート限定（ノート同士の辺だけ）
-//   で走らせ、ノート以外は隣接ノートの多数派に所属させる（layoutMode: islands
-//   の現在の裏側）。
+// - detectFocusCommunities: detectCommunities をフォーカス種類限定（射影グラフ）
+//   で走らせ、フォーカス以外は隣接フォーカスノードの多数派に所属させる
+//   （layoutMode: islands の裏側）。detectNoteCommunities はその focus="note" 版。
 //
-// 表示 props（foldLeaves / sizeMode / layoutMode）の裏側として
+// 表示 props（foldLeaves / sizeMode / layoutMode / focusLayer）の裏側として
 // global-graph-view.tsx から使う。
 
 import type { NoteGraphData, NoteNode } from "./graph-builder";
 import { kindOf } from "./graph-kind";
 
 /**
- * ノート以外（external / wiki: claim・atom・synthesis・topic）のノードを、
- * 無向に隣接する「ノート（kind === "note"）の数」で判定する:
- *   - ちょうど 1 : その 1 つのノートに畳む（+n）。知見同士・話題との辺も一緒に消える
- *   - 0         : ノートに繋がっていない（話題や、知見にしか繋がっていない知見など）。
+ * 全体グラフ（俯瞰）の「島」を何を中心に作るか。
+ *   - note    : ノート（既定。今までの動作）
+ *   - crystal : 知見・洞察・話題（claim / atom / topic）
+ *   - source  : 外部ソース（external）
+ */
+export type FocusLayer = "note" | "crystal" | "source";
+
+/** ノードが focus の種類に属するかを判定する。 */
+export function isFocused(node: NoteNode, focus: FocusLayer): boolean {
+  const kind = kindOf(node);
+  if (focus === "note") return kind === "note";
+  if (focus === "source") return kind === "external";
+  return kind === "claim" || kind === "atom" || kind === "topic";
+}
+
+/**
+ * フォーカス種類以外のノードを、無向に隣接する「フォーカス種類のノードの数」で
+ * 判定する（既定 focus は "note" で、今までの「ノート以外を畳む」と同じ結果）:
+ *   - ちょうど 1 : その 1 つのフォーカスノードに畳む（+n）。互いの辺も一緒に消える
+ *   - 0         : フォーカス種類に繋がっていない。
  *                 取り除くが特定の相手へは畳まない（foldedTotal にだけ数える）
- *   - 2 以上     : ノートをまたぐ橋なので骨格の一部として残す
+ *   - 2 以上     : フォーカス種類をまたぐ橋なので骨格の一部として残す
  * すべて元データの隣接関係だけで 1 回の走査で決める（畳んだ結果を使って再判定しない
  * ＝連鎖させない）。
  */
-export function foldLeafNodes(data: NoteGraphData): {
+export function foldLeafNodes(
+  data: NoteGraphData,
+  opts?: { focus?: FocusLayer },
+): {
   data: NoteGraphData;
   foldedCount: Map<string, number>;
   foldedTotal: number;
-  /** 畳まれた葉 id → 畳み先（親）ノート id。相手が無く単に取り除かれた
-   *  （ノート隣接 0）ノードはここには入らない（foldedCount/foldedTotal にのみ数える）。
+  /** 畳まれた葉 id → 畳み先（親）フォーカスノード id。相手が無く単に取り除かれた
+   *  （フォーカス隣接 0）ノードはここには入らない（foldedCount/foldedTotal にのみ数える）。
    *  layoutMode: islands で畳んだ葉を「衛星」として描き直すときに使う。 */
   foldedInto: Map<string, string>;
 } {
+  const focus = opts?.focus ?? "note";
   const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
   const neighborIds = new Map<string, string[]>();
   for (const n of data.nodes) neighborIds.set(n.id, []);
@@ -52,23 +75,23 @@ export function foldLeafNodes(data: NoteGraphData): {
   let foldedTotal = 0;
 
   for (const n of data.nodes) {
-    if (kindOf(n) === "note") continue;
-    const noteNeighbors = new Set<string>();
+    if (isFocused(n, focus)) continue;
+    const focusNeighbors = new Set<string>();
     for (const nbId of neighborIds.get(n.id) ?? []) {
       const nb = nodeById.get(nbId);
-      if (nb && kindOf(nb) === "note") noteNeighbors.add(nbId);
+      if (nb && isFocused(nb, focus)) focusNeighbors.add(nbId);
     }
-    if (noteNeighbors.size === 1) {
-      const targetId = [...noteNeighbors][0];
+    if (focusNeighbors.size === 1) {
+      const targetId = [...focusNeighbors][0];
       removeIds.add(n.id);
       foldedCount.set(targetId, (foldedCount.get(targetId) ?? 0) + 1);
       foldedInto.set(n.id, targetId);
       foldedTotal++;
-    } else if (noteNeighbors.size === 0) {
+    } else if (focusNeighbors.size === 0) {
       removeIds.add(n.id);
       foldedTotal++;
     }
-    // 2 以上はノートをまたぐ橋として残す（何もしない）
+    // 2 以上はフォーカス種類をまたぐ橋として残す（何もしない）
   }
 
   const nodes = data.nodes.filter((n) => !removeIds.has(n.id));
@@ -77,15 +100,17 @@ export function foldLeafNodes(data: NoteGraphData): {
 }
 
 /**
- * ノートごとに、辺を無向に hops（既定 2）ホップ以内でたどって届く
- * 別のノート（kind === "note"）の数を返す。ノート以外の id は Map に入れない。
- * 各ノートから素直に BFS を回す（ノート数百 × 辺数千なら十分速い）。
+ * フォーカス種類（既定 "note"）のノードごとに、辺を無向に hops（既定 2）ホップ
+ * 以内でたどって届く別のフォーカスノードの数を返す。フォーカス以外の id は
+ * Map に入れない。各ノードから素直に BFS を回す（ノード数百 × 辺数千なら
+ * 十分速い）。
  */
 export function computeReachScores(
   data: NoteGraphData,
-  opts?: { hops?: number },
+  opts?: { hops?: number; focus?: FocusLayer },
 ): Map<string, number> {
   const hops = opts?.hops ?? 2;
+  const focus = opts?.focus ?? "note";
   const adjacency = new Map<string, string[]>();
   const addEdge = (a: string, b: string) => {
     const list = adjacency.get(a);
@@ -98,10 +123,10 @@ export function computeReachScores(
     addEdge(e.target, e.source);
   }
 
-  const noteIds = new Set(data.nodes.filter((n) => kindOf(n) === "note").map((n) => n.id));
+  const focusIds = new Set(data.nodes.filter((n) => isFocused(n, focus)).map((n) => n.id));
   const scores = new Map<string, number>();
 
-  for (const startId of noteIds) {
+  for (const startId of focusIds) {
     const visited = new Map<string, number>([[startId, 0]]);
     let frontier = [startId];
     for (let depth = 1; depth <= hops && frontier.length > 0; depth++) {
@@ -119,7 +144,7 @@ export function computeReachScores(
     for (const [id, depth] of visited) {
       if (depth === 0) continue;
       if (depth > hops) continue;
-      if (noteIds.has(id)) score++;
+      if (focusIds.has(id)) score++;
     }
     scores.set(startId, score);
   }
@@ -287,48 +312,83 @@ export function detectCommunities(
 }
 
 /**
- * detectCommunities をノート限定で走らせる。ノート同士の辺（両端が kind
- * "note"）だけでラベル伝播し、知見・原料などノート以外のノードを混ぜない
- * ——複数ノートに共有された知見が、その共有だけを理由に別々の島を
- * くっつけてしまわないようにする（detectCommunities は全ノード込みでラベル
- * 伝播するため、共有ノードが橋になり得る）。
+ * detectCommunities をフォーカス種類限定で走らせる（layoutMode: islands の裏側）。
  *
- * ノート以外のノードは、直接隣接するノート（1 ホップのみ。他の知見・原料を
- * 経由した間接的な隣接は数えない）が所属するコミュニティの多数派に所属させる
- * （同数なら文字列順で小さい方）。ノートに一つも隣接しないノードは戻り値の
- * Map に入らない（「所属無し」）。
+ * フォーカス種類のノード同士の**射影グラフ**でラベル伝播する。射影グラフの辺は:
+ *   - 元データに直接の辺がある
+ *   - focus が "note" 以外のときに限り、非フォーカスのノード（例: ノート）を
+ *     1 つ共有していれば辺で繋ぐ（同じノートに付いた知見・同じノートで使われた
+ *     原料を同じ島にするため）
+ * focus が "note" のときは直接の辺だけを使う（共有隣接を使わない） ——
+ * ノートは知見を共有しやすく、共有隣接で繋ぐと島が溶けてしまうため
+ * （detectCommunities が全ノード込みでラベル伝播すると共有ノードが橋になり
+ * 得るのと同じ理由）。
+ *
+ * フォーカス以外のノードは、直接隣接するフォーカスノード（1 ホップのみ。他の
+ * ノードを経由した間接的な隣接は数えない）が所属するコミュニティの多数派に
+ * 所属させる（同数なら文字列順で小さい方）。フォーカス種類に一つも隣接しない
+ * ノードは戻り値の Map に入らない（「所属無し」）。
  */
-export function detectNoteCommunities(data: NoteGraphData): Map<string, string> {
+export function detectFocusCommunities(data: NoteGraphData, focus: FocusLayer): Map<string, string> {
   const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
-  const isNote = (id: string) => {
+  const isFocusId = (id: string) => {
     const n = nodeById.get(id);
-    return !!n && kindOf(n) === "note";
+    return !!n && isFocused(n, focus);
   };
 
-  const noteNodes = data.nodes.filter((n) => isNote(n.id));
-  const noteEdges = data.edges.filter((e) => isNote(e.source) && isNote(e.target));
-  const noteCommunities = detectCommunities({ nodes: noteNodes, edges: noteEdges });
+  const focusNodes = data.nodes.filter((n) => isFocused(n, focus));
+  const focusIds = new Set(focusNodes.map((n) => n.id));
 
-  const result = new Map<string, string>(noteCommunities);
+  // 直接の辺（両端がフォーカス種類）
+  const projectionEdges = data.edges.filter((e) => focusIds.has(e.source) && focusIds.has(e.target));
 
-  // ノート以外のノードごとに、直接隣接するノートの id を集める
-  const noteNeighborsOf = new Map<string, string[]>();
-  for (const n of data.nodes) if (!isNote(n.id)) noteNeighborsOf.set(n.id, []);
+  if (focus !== "note") {
+    // 非フォーカスのノードを 1 つ共有しているフォーカスノード同士を辺で繋ぐ（射影）
+    const focusNeighborsOfNonFocus = new Map<string, Set<string>>();
+    for (const e of data.edges) {
+      const sourceIsFocus = focusIds.has(e.source);
+      const targetIsFocus = focusIds.has(e.target);
+      if (sourceIsFocus && !targetIsFocus) {
+        const set = focusNeighborsOfNonFocus.get(e.target) ?? new Set<string>();
+        set.add(e.source);
+        focusNeighborsOfNonFocus.set(e.target, set);
+      } else if (targetIsFocus && !sourceIsFocus) {
+        const set = focusNeighborsOfNonFocus.get(e.source) ?? new Set<string>();
+        set.add(e.target);
+        focusNeighborsOfNonFocus.set(e.source, set);
+      }
+    }
+    for (const ids of focusNeighborsOfNonFocus.values()) {
+      const list = [...ids];
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          projectionEdges.push({ source: list[i], target: list[j], relation: "derived" });
+        }
+      }
+    }
+  }
+
+  const focusCommunities = detectCommunities({ nodes: focusNodes, edges: projectionEdges });
+  const result = new Map<string, string>(focusCommunities);
+
+  // フォーカス以外のノードごとに、直接隣接するフォーカスノードの id を集める
+  const focusNeighborsOf = new Map<string, string[]>();
+  for (const n of data.nodes) if (!isFocusId(n.id)) focusNeighborsOf.set(n.id, []);
   for (const e of data.edges) {
-    const sourceIsNote = isNote(e.source);
-    const targetIsNote = isNote(e.target);
-    if (sourceIsNote && !targetIsNote) noteNeighborsOf.get(e.target)?.push(e.source);
-    else if (targetIsNote && !sourceIsNote) noteNeighborsOf.get(e.source)?.push(e.target);
-    // 両方ノート（noteEdges 側で処理済み）/ 両方ノート以外は対象外
+    const sourceIsFocus = isFocusId(e.source);
+    const targetIsFocus = isFocusId(e.target);
+    if (sourceIsFocus && !targetIsFocus) focusNeighborsOf.get(e.target)?.push(e.source);
+    else if (targetIsFocus && !sourceIsFocus) focusNeighborsOf.get(e.source)?.push(e.target);
+    // 両方フォーカス（projectionEdges 側で処理済み）/ 両方非フォーカスは対象外
   }
 
   for (const n of data.nodes) {
-    if (isNote(n.id)) continue;
-    const neighborNoteIds = noteNeighborsOf.get(n.id) ?? [];
-    if (neighborNoteIds.length === 0) continue; // ノートに隣接しない → 所属無し
+    if (isFocusId(n.id)) continue;
+    const neighborFocusIds = focusNeighborsOf.get(n.id) ?? [];
+    if (neighborFocusIds.length === 0) continue; // フォーカス種類に隣接しない → 所属無し
     const counts = new Map<string, number>();
-    for (const noteId of neighborNoteIds) {
-      const community = noteCommunities.get(noteId);
+    for (const fid of neighborFocusIds) {
+      const community = focusCommunities.get(fid);
       if (community === undefined) continue;
       counts.set(community, (counts.get(community) ?? 0) + 1);
     }
@@ -345,4 +405,10 @@ export function detectNoteCommunities(data: NoteGraphData): Map<string, string> 
     if (bestLabel !== null) result.set(n.id, bestLabel);
   }
   return result;
+}
+
+/** detectFocusCommunities(data, "note") の薄いラッパー。既存の呼び出し元・
+ *  テストとの互換のために残す。 */
+export function detectNoteCommunities(data: NoteGraphData): Map<string, string> {
+  return detectFocusCommunities(data, "note");
 }

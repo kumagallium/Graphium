@@ -266,6 +266,8 @@ function noop() {
 
 const meta: Meta = {
   title: "Proposal/全体グラフの構造",
+  // SAMPLE_DATA は検証スクリプトから読むための export。ストーリーとして拾わせない
+  excludeStories: ["SAMPLE_DATA"],
   parameters: {
     layout: "fullscreen",
     docs: {
@@ -369,6 +371,64 @@ export const FoldReachAndIslands: Story = {
         initialFoldLeaves
         initialSizeMode="reach"
         initialLayoutMode="islands"
+      />
+    </Frame>
+  ),
+};
+
+export const FocusCrystal: Story = {
+  name: "5. 知見にフォーカス",
+  render: () => (
+    <Frame
+      note={
+        <CaseNote
+          title="focusLayer: crystal（islands + fold + reach）"
+          points={[
+            "島の中心は知見・洞察・話題（claim/atom/topic）。同じノートに付いた知見・話題は射影の不可視エッジで引き寄せられ、島になる。",
+            "ノート・原料はフォーカス以外の実ノード（橋）として小さく（size 14）描かれ、隣接する知見の平均位置に幾何配置される。",
+            "畳んだ葉（このフォーカスでは、知見に 1 本だけ繋がる原料・話題）は衛星として知見の周りに残る。",
+            "ヘッダーの「配置」セグメントで標準に戻すと、フォーカスチップは表示/非表示のトグルに戻る（visible はそのまま）。",
+          ]}
+        />
+      }
+    >
+      <GlobalGraphView
+        data={SAMPLE_DATA}
+        onClose={noop}
+        onSelectNote={noop}
+        initialFoldLeaves
+        initialSizeMode="reach"
+        initialLayoutMode="islands"
+        initialFocusLayer="crystal"
+      />
+    </Frame>
+  ),
+};
+
+export const FocusSource: Story = {
+  name: "6. 原料にフォーカス",
+  render: () => (
+    <Frame
+      note={
+        <CaseNote
+          title="focusLayer: source（islands + fold + reach）"
+          points={[
+            "島の中心は外部ソース（原料）。同じノートで使われた原料同士が射影の不可視エッジで引き寄せられ、島になる。",
+            "ノート・知見はフォーカス以外の実ノード（橋）として小さく（size 14）描かれ、隣接する原料の平均位置に幾何配置される。",
+            "非フォーカスが十分小さくなって周りに寄るか、原料同士の島がそれでも読み取れるかを確認する（原料は元々ノートより少ないので、島が細かく分かれすぎないかも見る）。",
+            "ヘッダーの「配置」セグメントで標準に戻すと、フォーカスチップは表示/非表示のトグルに戻る（visible はそのまま）。",
+          ]}
+        />
+      }
+    >
+      <GlobalGraphView
+        data={SAMPLE_DATA}
+        onClose={noop}
+        onSelectNote={noop}
+        initialFoldLeaves
+        initialSizeMode="reach"
+        initialLayoutMode="islands"
+        initialFocusLayer="source"
       />
     </Frame>
   ),

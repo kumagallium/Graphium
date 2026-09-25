@@ -20,7 +20,13 @@ import { aggregateNoteContexts, noteContextHue } from "../note-context/context-t
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import type { NoteNode, NoteGraphData, NoteEdge, EdgeRelation } from "./graph-builder";
-import { foldLeafNodes, computeReachScores, detectNoteCommunities } from "./global-graph-structure";
+import {
+  foldLeafNodes,
+  computeReachScores,
+  detectFocusCommunities,
+  isFocused,
+  type FocusLayer,
+} from "./global-graph-structure";
 import { globalGraphScope } from "./graph-layout";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
@@ -295,6 +301,17 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
     style: { opacity: 0, events: "no" as any },
   },
   {
+    // 衛星と親（畳み先）を結ぶ実エッジ。見えるが控えめ（細め・薄め・矢印無し）。
+    // 物理（fcose の 1 段目）には参加させない——2 段目の幾何配置の後に見た目だけ足す。
+    selector: "edge.satellite-edge",
+    style: {
+      width: 0.8,
+      opacity: 0.35,
+      "target-arrow-shape": "none" as any,
+      "line-style": "solid" as any,
+    },
+  },
+  {
     // クラスタ重心のダミーハブノード。見えない・触れないがレイアウトには参加し、
     // ハブ同士の反発でクラスタ間の距離を生む。
     selector: "node.cluster-hub",
@@ -336,15 +353,16 @@ function applySearchHighlight(cy: cytoscape.Core, rawQuery: string): number {
 
 /**
  * layoutMode: islands の 2 段目（幾何）。1 段目の fcose（ノート + 重心ダミー +
- * ノート同士の実辺 + 重心の不可視エッジ）が決めた位置を土台に、ノート以外の
- * 実ノード（知見・原料・話題）と衛星（畳んだ葉）を幾何計算だけで直接置く。
- * fcose の 1 段目には混ぜない——質量が大きく、混ぜると島が分かれなくなる。
+ * フォーカス種類同士の実辺 + 重心の不可視エッジ）が決めた位置を土台に、
+ * フォーカス以外の実ノード（例: focus=note なら知見・原料・話題）と衛星
+ * （畳んだ葉）を幾何計算だけで直接置く。fcose の 1 段目には混ぜない
+ * ——質量が大きく、混ぜると島が分かれなくなる。
  *
- * - ノート以外の実ノード: 直接隣接する実ノート（shownEdges の実辺のみ。
- *   重心の不可視エッジ・衛星の不可視エッジは数えない）の位置の平均に置く。
- *   隣接ノートが 1 つならそのノートから半径 40（角度は id のハッシュで決定的）。
- *   同じ点に重なる場合は id 順に 8px ずつ螺旋状にずらす。隣接ノートが無いものは
- *   触らない（元の位置のまま）。
+ * - フォーカス以外の実ノード: 直接隣接するフォーカスノード（shownEdges の
+ *   実辺のみ。重心の不可視エッジ・衛星の不可視エッジは数えない）の位置の
+ *   平均に置く。隣接フォーカスノードが 1 つならそこから半径 40（角度は id の
+ *   ハッシュで決定的）。同じ点に重なる場合は id 順に 8px ずつ螺旋状にずらす。
+ *   隣接フォーカスノードが無いものは触らない（元の位置のまま）。
  * - 衛星: 親ノートの周りのリングに等間隔で置く。半径 = 親の size/2 + 14、
  *   1 リング 12 個まで、超えたら半径 +12 の次のリング。角度は index から決定的に。
  */
@@ -352,26 +370,26 @@ function placeIslandGeometry(
   cy: cytoscape.Core,
   opts: {
     shownEdges: NoteEdge[];
-    noteIds: Set<string>;
+    focusIds: Set<string>;
     foldedOutNodes: NoteNode[];
     foldedInto: Map<string, string>;
   },
 ): void {
-  const { shownEdges, noteIds, foldedOutNodes, foldedInto } = opts;
+  const { shownEdges, focusIds, foldedOutNodes, foldedInto } = opts;
 
-  // ── ノート以外の実ノード: 隣接ノートの平均位置 ──
-  const noteNeighborsOf = new Map<string, string[]>();
+  // ── フォーカス以外の実ノード: 隣接フォーカスノードの平均位置 ──
+  const focusNeighborsOf = new Map<string, string[]>();
   for (const e of shownEdges) {
-    const sourceIsNote = noteIds.has(e.source);
-    const targetIsNote = noteIds.has(e.target);
-    if (sourceIsNote && !targetIsNote) {
-      const list = noteNeighborsOf.get(e.target);
+    const sourceIsFocus = focusIds.has(e.source);
+    const targetIsFocus = focusIds.has(e.target);
+    if (sourceIsFocus && !targetIsFocus) {
+      const list = focusNeighborsOf.get(e.target);
       if (list) list.push(e.source);
-      else noteNeighborsOf.set(e.target, [e.source]);
-    } else if (targetIsNote && !sourceIsNote) {
-      const list = noteNeighborsOf.get(e.source);
+      else focusNeighborsOf.set(e.target, [e.source]);
+    } else if (targetIsFocus && !sourceIsFocus) {
+      const list = focusNeighborsOf.get(e.source);
       if (list) list.push(e.target);
-      else noteNeighborsOf.set(e.source, [e.target]);
+      else focusNeighborsOf.set(e.source, [e.target]);
     }
   }
 
@@ -383,12 +401,12 @@ function placeIslandGeometry(
   };
 
   const positions = new Map<string, { x: number; y: number }>();
-  for (const [nodeId, noteNeighborIds] of noteNeighborsOf) {
-    if (noteNeighborIds.length === 0) continue;
-    if (noteNeighborIds.length === 1) {
-      const note = cy.getElementById(noteNeighborIds[0]);
-      if (note.empty()) continue;
-      const p = note.position();
+  for (const [nodeId, focusNeighborIds] of focusNeighborsOf) {
+    if (focusNeighborIds.length === 0) continue;
+    if (focusNeighborIds.length === 1) {
+      const focusNode = cy.getElementById(focusNeighborIds[0]);
+      if (focusNode.empty()) continue;
+      const p = focusNode.position();
       const angle = hashAngle(nodeId);
       positions.set(nodeId, { x: p.x + 40 * Math.cos(angle), y: p.y + 40 * Math.sin(angle) });
       continue;
@@ -396,11 +414,11 @@ function placeIslandGeometry(
     let sumX = 0;
     let sumY = 0;
     let count = 0;
-    for (const noteId of noteNeighborIds) {
-      const note = cy.getElementById(noteId);
-      if (note.empty()) continue;
-      sumX += note.position().x;
-      sumY += note.position().y;
+    for (const focusNodeId of focusNeighborIds) {
+      const focusNode = cy.getElementById(focusNodeId);
+      if (focusNode.empty()) continue;
+      sumX += focusNode.position().x;
+      sumY += focusNode.position().y;
       count++;
     }
     if (count === 0) continue;
@@ -460,6 +478,35 @@ function placeIslandGeometry(
   }
 }
 
+/**
+ * ノードの大きさを決める（サイズモード + 配置モード + フォーカス種類を考慮）。
+ * plain のときは今までどおり: sizeMode "reach" なら note だけ正規化 reach、
+ * それ以外は種類ごとの固定値。islands のときは、フォーカス種類のノードは
+ * plain と同じ規則（reach なら正規化 reach、それ以外は種類ごとの固定値）だが、
+ * フォーカス以外の実ノード（橋）は固定 14（衛星は別枠で size 9 を直接指定する
+ * ので、ここには来ない）。
+ */
+function sizeForNode(
+  node: NoteNode,
+  kind: GraphKind,
+  opts: {
+    layoutMode: "plain" | "islands";
+    focus: FocusLayer;
+    sizeMode: "kind" | "reach";
+    reachScores: Map<string, number> | null;
+    maxReachScore: number;
+  },
+): number {
+  const { layoutMode, focus, sizeMode, reachScores, maxReachScore } = opts;
+  const baseSize = KIND_SIZE[kind];
+  if (layoutMode === "islands" && !isFocused(node, focus)) return 14;
+  const isReachTarget = layoutMode === "islands" ? isFocused(node, focus) : kind === "note";
+  if (sizeMode === "reach" && isReachTarget && maxReachScore > 0) {
+    return baseSize + 48 * ((reachScores?.get(node.id) ?? 0) / maxReachScore);
+  }
+  return baseSize;
+}
+
 // ── キャンバス（クロムなし。オーバーレイや Storybook から使う） ──
 
 export function GlobalGraphCanvas({
@@ -475,6 +522,7 @@ export function GlobalGraphCanvas({
   foldLeaves = false,
   sizeMode = "kind",
   layoutMode = "plain",
+  focusLayer = "note",
   precomputedFold,
   searchQuery = "",
   searchJumpToken = 0,
@@ -506,6 +554,9 @@ export function GlobalGraphCanvas({
   /** fcose のレイアウト定数の決め方。plain=今の固定値（既定）/ islands=つながりの多いノート
    *  ほど周りを強く引き寄せ・ノート同士は強く反発させて「島」を作る。 */
   layoutMode?: "plain" | "islands";
+  /** layoutMode: islands のときだけ効く「島の中心にする種類」。plain のときは
+   *  無視され、常に "note" として扱う（既定の挙動を変えないため）。 */
+  focusLayer?: FocusLayer;
   /** 呼び出し元（GlobalGraphView）が filterGlobalGraph + foldLeafNodes を先に済ませた
    *  結果。foldLeaves=true のときだけ使い、指定があれば内部での foldLeafNodes 再計算
    *  を省く（同じ入力に対する二重計算を避けるためのもの）。未指定なら自前で計算する
@@ -575,6 +626,13 @@ export function GlobalGraphCanvas({
   // layoutMode（配置: 標準 / 島）の切替も、clusterByContext と同じ扱いで並べ直しの
   // トリガーにする（保存済み配置・引き継ぎ座標を無視して fcose を流し直す）。
   const lastLayoutModeRef = useRef(layoutMode);
+  // フォーカス種類の切替（islands 中）も同格の並べ直しトリガーにする
+  // （フォーカスが変わると畳み方・島の中身が変わるため）。
+  const lastFocusLayerRef = useRef(focusLayer);
+
+  // layoutMode: islands のときだけ focusLayer を効かせる。plain のときは常に
+  // "note"（今までの既定の挙動を変えないため）。
+  const effectiveFocus: FocusLayer = layoutMode === "islands" ? focusLayer : "note";
 
   // 表示中の層・参照・文脈タグ・未分類・孤立フィルタを適用し、foldLeaves が
   // 有効なら「葉を畳む」を続けて掛ける（畳んだ相手ノード id → 個数が foldedCount）。
@@ -608,7 +666,7 @@ export function GlobalGraphCanvas({
         foldedInto: new Map<string, string>(),
       };
     }
-    const folded = foldLeafNodes(filtered);
+    const folded = foldLeafNodes(filtered, { focus: effectiveFocus });
     const foldedOutNodes = filtered.nodes.filter((n) => folded.foldedInto.has(n.id));
     return {
       nodes: folded.data.nodes,
@@ -627,6 +685,7 @@ export function GlobalGraphCanvas({
     hideAtoms,
     foldLeaves,
     precomputedFold,
+    effectiveFocus,
   ]);
   // つながりで大きさ（reach）: 畳んだ後のサブグラフで計算する。sizeMode="reach" だけ
   // でなく layoutMode="islands"（引力で島を作る）も reachNorm を使うので、どちらか
@@ -635,8 +694,11 @@ export function GlobalGraphCanvas({
   // maxReachScore はその分布の最大値。
   const needsReach = sizeMode === "reach" || layoutMode === "islands";
   const reachScores = useMemo(
-    () => (needsReach ? computeReachScores({ nodes: shownNodes, edges: shownEdges }) : null),
-    [shownNodes, shownEdges, needsReach],
+    () =>
+      needsReach
+        ? computeReachScores({ nodes: shownNodes, edges: shownEdges }, { focus: effectiveFocus })
+        : null,
+    [shownNodes, shownEdges, needsReach, effectiveFocus],
   );
   const maxReachScore = useMemo(() => {
     if (!reachScores) return 0;
@@ -670,7 +732,10 @@ export function GlobalGraphCanvas({
     // 「配置: 標準 / 島」の切替直後か（並べ直しのトリガーとして clusterChanged と同格に扱う）
     const layoutChanged = lastLayoutModeRef.current !== layoutMode;
     lastLayoutModeRef.current = layoutMode;
-    const modeChanged = clusterChanged || layoutChanged;
+    // フォーカス種類の切替直後か（同様に並べ直しのトリガーにする）
+    const focusChanged = lastFocusLayerRef.current !== focusLayer;
+    lastFocusLayerRef.current = focusLayer;
+    const modeChanged = clusterChanged || layoutChanged || focusChanged;
     if (shownNodes.length === 0) {
       if (cyRef.current) {
         cyRef.current.destroy();
@@ -695,11 +760,13 @@ export function GlobalGraphCanvas({
       // ときに、サイズ用 effect の依存が変わらず再適用されない事故を避けるため。
       // 切替時の書き換えは後段の大きさ用 effect が担う）。
       const { fill, border } = nodeColors(node, colorModeRef.current);
-      const baseSize = KIND_SIZE[kind];
-      const size =
-        sizeModeRef.current === "reach" && kind === "note" && maxReachScoreRef.current > 0
-          ? baseSize + 48 * ((reachScoresRef.current?.get(node.id) ?? 0) / maxReachScoreRef.current)
-          : baseSize;
+      const size = sizeForNode(node, kind, {
+        layoutMode,
+        focus: effectiveFocus,
+        sizeMode: sizeModeRef.current,
+        reachScores: reachScoresRef.current,
+        maxReachScore: maxReachScoreRef.current,
+      });
       elements.push({
         data: {
           id: node.id,
@@ -763,16 +830,17 @@ export function GlobalGraphCanvas({
     }
     if (layoutMode === "islands") {
       // 「島の配置」: clusterByContext と同じ仕組み（不可視のダミー重心 + 不可視
-      // エッジ）を、タグの代わりに detectNoteCommunities が見つけたコミュニティで
+      // エッジ）を、タグの代わりに detectFocusCommunities が見つけたコミュニティで
       // 作る。ハブ方式（assignIslands、reach 上位をハブにして割り当てる）はハブが
       // 少数しか取れない生成データでは全体が 1 つの塊になってしまったため、
       // コミュニティ検出に切り替えた（assignIslands 自体はテストのために残す）。
-      // detectNoteCommunities はノート同士の辺だけでラベル伝播し、知見・原料は
-      // 隣接ノートの多数派に所属させる——detectCommunities（全ノード込み）だと
-      // 複数ノートに共有された知見が橋になって島をくっつけてしまう。
+      // detectFocusCommunities はフォーカス種類の射影グラフでラベル伝播し、
+      // フォーカス以外は隣接フォーカスノードの多数派に所属させる——focus が
+      // "note" のとき detectCommunities（全ノード込み）を直接使うと、複数ノートに
+      // 共有された知見が橋になって島をくっつけてしまう。
       // メンバー 2 以下のコミュニティは重心を置かない。
       // clusterByContext と併用されたときは両方の重心が置かれる。
-      const communities = detectNoteCommunities({ nodes: shownNodes, edges: shownEdges });
+      const communities = detectFocusCommunities({ nodes: shownNodes, edges: shownEdges }, focusLayer);
       const byCommunity = new Map<string, string[]>();
       for (const [nodeId, communityId] of communities) {
         const list = byCommunity.get(communityId);
@@ -795,14 +863,60 @@ export function GlobalGraphCanvas({
           });
         }
       }
+      if (focusLayer !== "note") {
+        // detectFocusCommunities がラベル伝播で使う「非フォーカスのノードを 1 つ
+        // 共有していれば辺」という射影を、物理配置にも反映させる（そうしないと
+        // ラベルは同じ島でも物理的に引き寄せられない）。物理専用の不可視エッジ
+        // として足す（自然長 110・弾性 0.4。focus が "note" のときはこの射影を
+        // 使わないので足さない——ノートは知見を共有しやすく、共有隣接で繋ぐと
+        // 島が溶けてしまうため）。
+        const focusIdsForProjection = new Set(
+          shownNodes.filter((n) => isFocused(n, focusLayer)).map((n) => n.id),
+        );
+        const focusNeighborsOfNonFocus = new Map<string, Set<string>>();
+        for (const e of shownEdges) {
+          const sourceIsFocus = focusIdsForProjection.has(e.source);
+          const targetIsFocus = focusIdsForProjection.has(e.target);
+          if (sourceIsFocus && !targetIsFocus) {
+            const set = focusNeighborsOfNonFocus.get(e.target) ?? new Set<string>();
+            set.add(e.source);
+            focusNeighborsOfNonFocus.set(e.target, set);
+          } else if (targetIsFocus && !sourceIsFocus) {
+            const set = focusNeighborsOfNonFocus.get(e.source) ?? new Set<string>();
+            set.add(e.target);
+            focusNeighborsOfNonFocus.set(e.source, set);
+          }
+        }
+        let projectionCounter = 0;
+        for (const ids of focusNeighborsOfNonFocus.values()) {
+          const list = [...ids];
+          for (let i = 0; i < list.length; i++) {
+            for (let j = i + 1; j < list.length; j++) {
+              projectionCounter++;
+              elements.push({
+                data: {
+                  id: `island-projection:${projectionCounter}:${list[i]}:${list[j]}`,
+                  source: list[i],
+                  target: list[j],
+                  virtual: true,
+                  projection: true,
+                },
+                classes: "cluster-edge",
+              });
+            }
+          }
+        }
+      }
     }
     if (layoutMode === "islands" && foldLeaves && foldedOutNodes.length > 0) {
       // 「畳んだ葉を衛星として描く」: fold ON のときに畳んだ葉（知見・原料など）を
-      // 消さずに、小さな衛星ノードとして親（畳み先）の周りに残す。実辺（親→葉）は
-      // 描かない（foldLeafNodes が既に取り除いている）。id は元のノード id を
-      // そのまま使うので、クリックは既存のノードクリック経路
+      // 消さずに、小さな衛星ノードとして親（畳み先）の周りに残す。id は元の
+      // ノード id をそのまま使うので、クリックは既存のノードクリック経路
       // （cy.on("tap", "node", ...)）がそのまま働く。ラベルは畳んだ数量感だけを
       // 見せたいので空にし、フルラベルは残す（ホバー・検索ヒットで見える）。
+      // 衛星と親の間には見える実エッジ（satellite-edge、細め・薄め・矢印無し）を
+      // 張る——線が無いと衛星が親のものだと分かりにくい。物理（fcose の 1 段目）
+      // には参加させない（2 段目の幾何配置の後に見た目だけ足す）。
       for (const node of foldedOutNodes) {
         const parentId = foldedInto.get(node.id);
         if (!parentId) continue;
@@ -830,8 +944,9 @@ export function GlobalGraphCanvas({
             source: parentId,
             target: node.id,
             satellite: true,
+            color: fill,
           },
-          classes: "cluster-edge",
+          classes: "satellite-edge",
         });
       }
     }
@@ -894,13 +1009,14 @@ export function GlobalGraphCanvas({
     const gentle = !islands && !modeChanged && !!carried && placedCount > 0;
     if (gentle) seedUnplacedNodes(cy, unplacedIds);
     // 「島の配置」(layoutMode==="islands"): 2 段階で組む。
-    //   1 段目（物理・fcose）: ノート + 重心ダミー + ノート同士の実辺 + 重心の
-    //     不可視エッジだけを対象にする（cy.collection().layout(...)）。知見・
-    //     原料・話題（ノート以外の実ノード）と衛星は質量が大きく、混ぜると
+    //   1 段目（物理・fcose）: フォーカス種類のノード + 重心ダミー + それらの
+    //     間の辺（直接の実辺 + 射影の不可視エッジ）だけを対象にする
+    //     （cy.collection().layout(...)）。フォーカス以外の実ノード（例:
+    //     focus=note なら知見・原料・話題）と衛星は質量が大きく、混ぜると
     //     1 つの密な網から分かれなかったため対象から外す。
-    //   2 段目（幾何・layoutstop で同期的に）: ノート以外の実ノードは隣接ノートの
-    //     平均位置へ、衛星は親ノートの周りのリングへ、幾何計算で直接置く
-    //     （placeIslandGeometry）。
+    //   2 段目（幾何・layoutstop で同期的に）: フォーカス以外の実ノードは隣接
+    //     フォーカスノードの平均位置へ、衛星は親ノートの周りのリングへ、
+    //     幾何計算で直接置く（placeIslandGeometry）。
     // gravity・重心の弾性は clusterByContext と同じ考え方（引き寄せを弱め、
     // 塊同士が離れられるようにする）。plain / clusterByContext 単独のときは
     // どちらも今のまま（1 段のみ・cy 全体が対象）。
@@ -912,22 +1028,23 @@ export function GlobalGraphCanvas({
     const baseLen = clusterByContext ? 300 : 110;
     const baseEl = clusterByContext ? 0.2 : 0.4;
 
-    const noteIds = new Set(shownNodes.filter((n) => kindOf(n) === "note").map((n) => n.id));
-    // 1 段目の対象コレクション。islands のときだけ絞る（ノート + 重心ダミー +
-    // ノート同士の実辺 + 重心の不可視エッジで、その不可視エッジもメンバーが
-    // ノートのものだけに絞る——知見・原料・話題向けの重心エッジは 2 段目で扱う）。
+    const focusIds = new Set(shownNodes.filter((n) => isFocused(n, effectiveFocus)).map((n) => n.id));
+    // 1 段目の対象コレクション。islands のときだけ絞る（フォーカス種類 + 重心
+    // ダミー + それらの間の辺で、重心の不可視エッジもメンバーがフォーカス種類の
+    // ものだけに絞る——フォーカス以外向けの重心エッジは 2 段目で扱う）。
     let physicsEles: any = cy.elements();
     if (islands) {
-      const physicsNodes = cy.nodes().filter((n: any) => n.hasClass("cluster-hub") || noteIds.has(n.id()));
+      const physicsNodes = cy.nodes().filter((n: any) => n.hasClass("cluster-hub") || focusIds.has(n.id()));
       const physicsEdges = cy.edges().filter((e: any) => {
         if (e.data("satellite")) return false;
+        if (e.data("projection")) return true; // 射影の不可視エッジ。両端は常にフォーカス種類
         if (e.data("virtual")) {
           const source = e.source();
           const target = e.target();
           const member = source.hasClass("cluster-hub") ? target : source;
-          return noteIds.has(member.id());
+          return focusIds.has(member.id());
         }
-        return noteIds.has(e.source().id()) && noteIds.has(e.target().id());
+        return focusIds.has(e.source().id()) && focusIds.has(e.target().id());
       });
       physicsEles = physicsNodes.union(physicsEdges);
     }
@@ -942,29 +1059,34 @@ export function GlobalGraphCanvas({
         ? (node: any) => baseRepulsion * (1 + 6 * reachNorm(node.id()))
         : baseRepulsion,
       idealEdgeLength: (edge: any) =>
-        edge.data("virtual")
-          ? 35
-          : islands
-            ? baseLen * (1 - 0.6 * Math.max(reachNorm(edge.source().id()), reachNorm(edge.target().id())))
-            : baseLen,
+        edge.data("projection")
+          ? 110
+          : edge.data("virtual")
+            ? 35
+            : islands
+              ? baseLen * (1 - 0.6 * Math.max(reachNorm(edge.source().id()), reachNorm(edge.target().id())))
+              : baseLen,
       edgeElasticity: (edge: any) =>
-        edge.data("virtual")
-          ? islands
-            ? 1.2
-            : 0.9
-          : islands
-            ? baseEl * (1 + 2 * Math.max(reachNorm(edge.source().id()), reachNorm(edge.target().id())))
-            : baseEl,
+        edge.data("projection")
+          ? 0.4
+          : edge.data("virtual")
+            ? islands
+              ? 1.2
+              : 0.9
+            : islands
+              ? baseEl * (1 + 2 * Math.max(reachNorm(edge.source().id()), reachNorm(edge.target().id())))
+              : baseEl,
       gravity: islands || clusterByContext ? 0.06 : 0.3,
       nodeSeparation: islands ? 60 : 120,
       padding: 50,
     } as any);
     lay.on("layoutstop", () => {
       layoutRunning = false;
-      // 2 段目（幾何）: 1 段目が置いたノート・重心の位置を土台に、ノート以外の
-      // 実ノードと衛星を直接配置する。ドラッグ中の移動を打ち消さないよう、
-      // fit の前に済ませる（fit 自体はドラッグで止めた場合はスキップする）。
-      if (islands) placeIslandGeometry(cy, { shownEdges, noteIds, foldedOutNodes, foldedInto });
+      // 2 段目（幾何）: 1 段目が置いたフォーカスノード・重心の位置を土台に、
+      // フォーカス以外の実ノードと衛星を直接配置する。ドラッグ中の移動を
+      // 打ち消さないよう、fit の前に済ませる（fit 自体はドラッグで止めた場合は
+      // スキップする）。
+      if (islands) placeIslandGeometry(cy, { shownEdges, focusIds, foldedOutNodes, foldedInto });
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) cy.fit(undefined, 30);
     });
@@ -1053,6 +1175,7 @@ export function GlobalGraphCanvas({
     renderKey,
     clusterByContext,
     layoutMode,
+    focusLayer,
     onNavigate,
     onOpenMedia,
     onOpenUrl,
@@ -1079,8 +1202,9 @@ export function GlobalGraphCanvas({
   }, [colorMode, shownNodes]);
 
   // 大きさモード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）。
-  // ノート以外は種類ごとの固定値のまま変えない。reach は絶対値ではなく、表示中
-  // ノートの分布に対する相対値で決める（最大のノートが +48、0 なら +0＝今のまま）。
+  // フォーカス以外（islands で残る橋ノード）・衛星は sizeForNode 内で別枠で扱う。
+  // reach は絶対値ではなく、表示中フォーカスノードの分布に対する相対値で決める
+  // （最大のノードが +48、0 なら +0＝今のまま）。
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
@@ -1090,15 +1214,11 @@ export function GlobalGraphCanvas({
         const n = byId.get(cn.id());
         if (!n) return;
         const kind = kindOf(n);
-        const baseSize = KIND_SIZE[kind];
-        const size =
-          sizeMode === "reach" && kind === "note" && maxReachScore > 0
-            ? baseSize + 48 * ((reachScores?.get(n.id) ?? 0) / maxReachScore)
-            : baseSize;
+        const size = sizeForNode(n, kind, { layoutMode, focus: effectiveFocus, sizeMode, reachScores, maxReachScore });
         cn.data("size", size);
       });
     });
-  }, [sizeMode, reachScores, maxReachScore, shownNodes]);
+  }, [sizeMode, reachScores, maxReachScore, shownNodes, layoutMode, effectiveFocus]);
 
   // 検索: クラス操作のみ（destroy・再レイアウトなし）。
   // メイン effect より後に宣言してあるので、cy 再構築直後にも再適用される。
@@ -1345,26 +1465,41 @@ function ContextLegend({
 // 各層のチップに「その層に属するノード総数」を出す。
 // 統合(60)のように数はあるのに孤立で非表示、という状態をユーザーが把握できる。
 // 総数 0 の層はグレーアウトして押せなくする（その層がデータに無いことが分かる）。
+//
+// layoutMode: islands のときは「フォーカス（1 つ選ぶ）」に変わる（mode="focus"）。
+// 選んだ種類が物理配置の中心になり、それ以外は小さくなって幾何配置される
+// （global-graph-structure.ts の FocusLayer/detectFocusCommunities）。
+// plain のときは今までどおり表示/非表示のトグル（mode="visibility"、既定）。
 function LayerChips({
   visible,
   counts,
   onToggle,
+  mode = "visibility",
+  focus,
+  onFocusChange,
 }: {
   visible: Set<LayerId>;
   counts: Record<LayerId, number>;
   onToggle: (id: LayerId) => void;
+  mode?: "visibility" | "focus";
+  focus?: FocusLayer;
+  onFocusChange?: (id: FocusLayer) => void;
 }) {
   const t = useT();
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5" title={mode === "focus" ? t("globalGraph.focusHint") : undefined}>
       {ALL_LAYERS.map((id) => {
-        const on = visible.has(id);
+        const on = mode === "focus" ? focus === id : visible.has(id);
         const count = counts[id] ?? 0;
         const empty = count === 0;
         return (
           <button
             key={id}
-            onClick={() => !empty && onToggle(id)}
+            onClick={() => {
+              if (empty) return;
+              if (mode === "focus") onFocusChange?.(id as FocusLayer);
+              else onToggle(id);
+            }}
             disabled={empty}
             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
               empty
@@ -1403,6 +1538,7 @@ export function GlobalGraphView({
   initialFoldLeaves,
   initialSizeMode,
   initialLayoutMode,
+  initialFocusLayer,
 }: {
   data: NoteGraphData;
   /** ノード単クリック。noteId は wiki ノードに `wiki:` prefix が付く（SidePeek の規約に合わせる）。 */
@@ -1428,6 +1564,9 @@ export function GlobalGraphView({
   initialSizeMode?: "kind" | "reach";
   /** 配置モードの初期値（Storybook の比較用。未指定なら "plain" = 今の挙動）。保存はしない。 */
   initialLayoutMode?: "plain" | "islands";
+  /** フォーカス種類の初期値（Storybook の比較用。未指定なら "note" = 今の挙動）。
+   *  layoutMode: islands のときだけ効く。保存はしない。 */
+  initialFocusLayer?: FocusLayer;
 }) {
   const t = useT();
   const [hideRefs, setHideRefs] = useState(false);
@@ -1445,6 +1584,17 @@ export function GlobalGraphView({
   const [sizeMode, setSizeMode] = useState<"kind" | "reach">(initialSizeMode ?? "kind");
   // 配置: 標準（今の fcose 定数）/ 島（つながりの多いノートが周りを引き寄せる）
   const [layoutMode, setLayoutMode] = useState<"plain" | "islands">(initialLayoutMode ?? "plain");
+  // 島モードで「何を中心に島を作るか」（既定 note）。plain のときは無視される。
+  const [focusLayer, setFocusLayer] = useState<FocusLayer>(initialFocusLayer ?? "note");
+  // layoutMode: islands のときだけ focusLayer を効かせる（plain の既定挙動は変えない）。
+  const effectiveFocus: FocusLayer = layoutMode === "islands" ? focusLayer : "note";
+  // 配置切替。islands に入るときは層チップを「フォーカス」として使うので、
+  // 表示している層を全部戻す（隠れていると島の中心にできない）。plain に戻す
+  // ときはチップは今の表示/非表示のままにする（visible には触らない）。
+  const changeLayoutMode = (m: "plain" | "islands") => {
+    setLayoutMode(m);
+    if (m === "islands") setVisible(new Set(ALL_LAYERS));
+  };
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
   const [searchInput, setSearchInput] = useState("");
   const [searchJumpToken, setSearchJumpToken] = useState(0);
@@ -1471,7 +1621,10 @@ export function GlobalGraphView({
 
   // 「葉を畳む」を今の表示中サブグラフ（shown）に適用した結果。チェックの ON/OFF に
   // 関わらず常に計算する（OFF でも「畳んだらどれだけ減るか」をチェック横に出すため）。
-  const foldResult = useMemo(() => foldLeafNodes(shown), [shown]);
+  const foldResult = useMemo(
+    () => foldLeafNodes(shown, { focus: effectiveFocus }),
+    [shown, effectiveFocus],
+  );
   const foldedTotal = foldResult.foldedTotal;
   // 畳まれた葉の実体（layoutMode: islands で「衛星」として描き直すために Canvas へ渡す）
   const foldedOutNodes = useMemo(
@@ -1582,7 +1735,14 @@ export function GlobalGraphView({
               {t("globalGraph.foldLeaves")}
               {foldedTotal > 0 && <span className="opacity-70">(−{foldedTotal})</span>}
             </label>
-            <LayerChips visible={visible} counts={layerCounts} onToggle={toggleLayer} />
+            <LayerChips
+              visible={visible}
+              counts={layerCounts}
+              onToggle={toggleLayer}
+              mode={layoutMode === "islands" ? "focus" : "visibility"}
+              focus={focusLayer}
+              onFocusChange={setFocusLayer}
+            />
             {/* 色の軸切替（種類 ⇄ 文脈タグ） */}
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground">{t("globalGraph.colorBy")}</span>
@@ -1628,7 +1788,7 @@ export function GlobalGraphView({
                 {(["plain", "islands"] as const).map((m) => (
                   <button
                     key={m}
-                    onClick={() => setLayoutMode(m)}
+                    onClick={() => changeLayoutMode(m)}
                     className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                       layoutMode === m
                         ? "bg-primary text-primary-foreground"
@@ -1731,6 +1891,7 @@ export function GlobalGraphView({
                 foldLeaves={foldLeaves}
                 sizeMode={sizeMode}
                 layoutMode={layoutMode}
+                focusLayer={focusLayer}
                 precomputedFold={{
                   data: foldResult.data,
                   foldedCount: foldResult.foldedCount,
