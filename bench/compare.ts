@@ -1,15 +1,16 @@
 // Phase μ-1: ブランチ間 delta 計算
 //
 // 使い方:
-//   pnpm bench:compare main           # 現在の latest を main の baseline と比較
+//   pnpm bench:compare main           # 作業ツリーの bench/baseline.json（bench:run の実測）を main の baseline と比較
+//   BENCH_RIGHT=bench/latest-baseline.json pnpm bench:compare origin/main   # CI: 右に実測のファイルを渡す
 //   BENCH_LEFT=path/to/old.json BENCH_RIGHT=path/to/new.json pnpm bench:compare
 //
-// 引数で渡されたブランチ名は git で baseline.json を取り出すヒント。
-// 単純化のため、左 = bench/baseline.json、右 = bench/latest-<profile>.json を比較する。
+// 引数は git の ref（ブランチ名・origin/main・SHA）で、<ref>:bench/baseline.json を左にする。
+// 引数なしなら、左 = bench/baseline.json、右 = bench/latest-baseline.json を比較する。
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync, writeFileSync, mkdtempSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { BENCH_DIR } from "./load.ts";
 import type { BenchRunOutput } from "./types.ts";
@@ -27,25 +28,80 @@ function tryLoadJson(path: string): BenchRunOutput | null {
   }
 }
 
-function fetchBaselineFromBranch(branch: string): BenchRunOutput {
-  // git show <branch>:bench/baseline.json でファイル取得
-  const out = execSync(`git show ${branch}:bench/baseline.json`, { encoding: "utf-8" });
-  return JSON.parse(out) as BenchRunOutput;
+type RefBaseline = { baseline: BenchRunOutput } | { missing: string; advice?: string };
+
+/**
+ * <ref>:bench/baseline.json を取り出す。「ref が無い」と「ref にファイルが無い」を分けて返す。
+ * 以前は区別せず「main に bench/baseline.json がありません」と出していたため、CI の
+ * チェックアウトにローカルの main ブランチが無いだけ（origin/main はある）なのを見誤った。
+ */
+function fetchBaselineFromRef(ref: string): RefBaseline {
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { stdio: "ignore" });
+  } catch {
+    return {
+      missing: `\`${ref}\` という ref が見つかりません`,
+      advice: ref.startsWith("origin/")
+        ? "比較先のブランチを fetch してください。"
+        : `リモート追跡ブランチしか無い環境（CI の actions/checkout など）では \`origin/${ref}\` を渡してください。`,
+    };
+  }
+  let raw: string;
+  try {
+    raw = execFileSync("git", ["show", `${ref}:bench/baseline.json`], {
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return {
+      missing: `${ref} に bench/baseline.json がありません（この PR がベースラインを初めて追加する場合、マージ後の PR から delta が出ます）`,
+    };
+  }
+  try {
+    return { baseline: JSON.parse(raw) as BenchRunOutput };
+  } catch (err) {
+    return { missing: `${ref} の bench/baseline.json を JSON として読めません（${(err as Error).message}）` };
+  }
 }
 
 /** baseline が見つからないときに CI コメントへ出す説明（throw で落とさない）。
  *  bench.yml は stdout を delta.md にリダイレクトして sticky comment に貼るため、
  *  ここで exit 1 すると pnpm の ELIFECYCLE エラーがそのまま PR コメントになる
  *  （#366 で baseline.json が撤去されて以来、実際にそうなっていた）。 */
-function renderMissingBaseline(detail: string): string {
+function renderMissingBaseline(detail: string, advice?: string): string {
   return [
     "# Bench delta",
     "",
     `比較できませんでした: ${detail}`,
     "",
-    "delta 表を出すには、tracked の \`bench/baseline.json\` が必要です。",
-    "\`pnpm bench:run\`（baseline プロファイル）が \`bench/baseline.json\` を書くので、",
-    "内容を確認のうえコミットすると、以後の PR で main との差分が出ます。",
+    ...(advice
+      ? [advice]
+      : [
+          "delta 表を出すには、tracked の \`bench/baseline.json\` が必要です。",
+          "\`BENCH_MODE=dry-run pnpm bench:run\`（baseline プロファイル）が \`bench/baseline.json\` を書くので、",
+          "内容を確認のうえコミットすると、以後の PR で main との差分が出ます。",
+        ]),
+  ].join("\n");
+}
+
+/**
+ * 差分が出たときの案内。差分がこの PR の意図した変化なのに bench/baseline.json を
+ * 更新しないままマージすると、以後のすべての PR に同じ差分が出続ける。
+ * tracked の baseline がすでに実測と一致していれば、そう伝える。
+ */
+function renderBaselineHint(
+  left: BenchRunOutput,
+  right: BenchRunOutput,
+  tracked: BenchRunOutput | null,
+): string | null {
+  if (computeDelta(left, right).every((d) => d.delta === 0)) return null;
+  if (tracked && computeDelta(tracked, right).every((d) => d.delta === 0)) {
+    return "作業ツリーの \`bench/baseline.json\` はこの実測と一致しています（コミット済みなら、マージ後の PR の差分は 0 に戻ります）。";
+  }
+  return [
+    "差分がこの PR の意図した変化なら、\`BENCH_MODE=dry-run pnpm bench:run\` で \`bench/baseline.json\` を更新し、",
+    "この PR に含めてください。含めないと、マージ後のすべての PR に同じ差分が出続けます。",
   ].join("\n");
 }
 
@@ -109,6 +165,7 @@ function main(): void {
   const arg = process.argv[2];
   let left: BenchRunOutput | null;
   let right: BenchRunOutput | null;
+  let hint: string | null = null;
 
   const leftEnv = process.env.BENCH_LEFT;
   const rightEnv = process.env.BENCH_RIGHT;
@@ -117,28 +174,32 @@ function main(): void {
     left = loadJson(leftEnv);
     right = loadJson(rightEnv);
   } else if (arg) {
-    // git ブランチ指定: 左 = <branch>:bench/baseline.json、右 = ローカル bench/baseline.json
-    // （CI では直前の bench:run が bench/baseline.json を dry-run 結果で上書きして
-    //   いるので、右 = この PR の実測、左 = 比較先ブランチの tracked baseline になる）
-    let branchBaseline: BenchRunOutput | null = null;
-    try {
-      branchBaseline = fetchBaselineFromBranch(arg);
-    } catch (err) {
-      console.error(`[bench] ${arg} の baseline.json 取り出しに失敗: ${(err as Error).message}`);
-    }
-    const localBaseline = tryLoadJson(join(BENCH_DIR, "baseline.json"));
-    if (!branchBaseline || !localBaseline) {
-      const detail =
-        !branchBaseline && !localBaseline
-          ? `${arg} にも作業ツリーにも bench/baseline.json がありません`
-          : !branchBaseline
-            ? `${arg} に bench/baseline.json がありません（この PR がベースラインを初めて追加する場合、マージ後の PR から delta が出ます）`
-            : `作業ツリーに bench/baseline.json がありません（${arg} 側には存在します）`;
-      console.log(renderMissingBaseline(detail));
+    // git の ref 指定: 左 = <ref>:bench/baseline.json、右 = この作業ツリーの実測。
+    // 右は BENCH_RIGHT があればそれ、無ければ bench/baseline.json（ローカルでは bench:run が
+    // baseline プロファイルの結果をここに上書きする）。CI（bench.yml）の bench:run は
+    // BENCH_OUTPUT=bench/latest-baseline.json に書くので、BENCH_RIGHT でそのファイルを渡す。
+    // 渡さないと右が tracked の baseline のままになり、差分が常に 0 に見える。
+    const trackedPath = join(BENCH_DIR, "baseline.json");
+    const rightPath = rightEnv ?? trackedPath;
+    const fetched = fetchBaselineFromRef(arg);
+    if ("missing" in fetched) {
+      console.log(renderMissingBaseline(fetched.missing, fetched.advice));
       return;
     }
-    left = branchBaseline;
-    right = localBaseline;
+    const measured = tryLoadJson(rightPath);
+    if (!measured) {
+      console.log(
+        renderMissingBaseline(
+          `比較する実測（${rightPath}）がありません`,
+          "先に \`BENCH_MODE=dry-run pnpm bench:run\` を実行してください。",
+        ),
+      );
+      return;
+    }
+    left = fetched.baseline;
+    right = measured;
+    const tracked = resolve(rightPath) === resolve(trackedPath) ? measured : tryLoadJson(trackedPath);
+    hint = renderBaselineHint(left, right, tracked);
   } else {
     left = tryLoadJson(join(BENCH_DIR, "baseline.json"));
     if (!left) {
@@ -150,6 +211,7 @@ function main(): void {
   }
 
   console.log(renderDeltaTable(left, right));
+  if (hint) console.log(`\n${hint}`);
 }
 
 function round3(n: number): number {

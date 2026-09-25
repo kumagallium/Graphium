@@ -42,6 +42,10 @@ export const CHART_GRID_LINE = { width: 0.8, type: "dashed" as const };
 // 凡例マーカー（eureco: 横長 50×14）
 export const CHART_LEGEND_ITEM = { width: 50, height: 14 };
 
+// 狭い図（サイドピーク等）の凡例マーカーの幅。50 のままだと記号だけで図の幅の
+// 1/4 近くを取り、系列名が図の外へはみ出す。線の上にマーカーが載る形は保てる長さ
+export const CHART_LEGEND_ITEM_COMPACT_WIDTH = 30;
+
 // ── 系列スタイルの段階プリセット ──
 // 見た目は「細/中/太」「小/中/大」の 3 段階で選ばせ、実寸はここに集約する。
 // px を直接入力させないのは、学術図としての見え方（線とマーカーの比）を

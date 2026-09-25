@@ -135,7 +135,18 @@ type DemoOptions = {
   lead?: string;
   /** チャートをテーブルより前に置く（XRD は行数が多く、後ろだと見るのに延々スクロールする） */
   chartFirst?: boolean;
+  /**
+   * デモ枠の幅(px)を固定する（サイドピークのような狭い場所の再現）。
+   * SandboxEditor は左右に 54px の余白を持つので、チャートブロックの幅は
+   * この値 − 108 − 枠の padding と border（18）になる
+   */
+  width?: number;
+  /** データのテーブルを隠す（図だけを並べて見るとき。図はテーブルがあれば描ける） */
+  hideTables?: boolean;
 };
+
+const HIDE_TABLES_CLASS = "chart-demo-hide-tables";
+const HIDE_TABLES_CSS = `.${HIDE_TABLES_CLASS} [data-content-type="table"] { display: none; }`;
 
 function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
   const tables = [...(opts.baseTables ?? [diaryTable("diary-table-1")]), ...(opts.extraTables ?? [])];
@@ -154,7 +165,16 @@ function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
 function ChartDemo({ config, ...opts }: { config: Record<string, unknown> } & DemoOptions) {
   return (
     <EditorProviders>
-      <div style={{ maxWidth: 680, border: "1px solid #e5e7eb", borderRadius: 12, padding: 8 }}>
+      {opts.hideTables && <style>{HIDE_TABLES_CSS}</style>}
+      <div
+        className={opts.hideTables ? HIDE_TABLES_CLASS : undefined}
+        style={{
+          ...(opts.width !== undefined ? { width: opts.width, flexShrink: 0 } : { maxWidth: 680 }),
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 8,
+        }}
+      >
         <SandboxEditor blocks={[chartBlock]} initialContent={chartContent(config, opts)} />
       </div>
     </EditorProviders>
@@ -1190,6 +1210,320 @@ export const PanelsLegendPerPanel: StoryObj = {
           caption: "試料 A・B の熱電特性",
         }}
       />
+    </ErrorBoundary>
+  ),
+};
+
+// ── 狭い場所（サイドピーク等）──────────────────────────────────────
+// 2026-09-25、幅 1024px のウィンドウでメインとピークを並べると、図の描画領域が
+// ピーク側で 108×46px、メイン側で 59×12px まで潰れた（余白は 16px の文字に合わせた
+// 固定値のまま、高さだけが幅に比例して縮むため）。幅 400px 未満の図は余白を目盛り
+// ラベルに合わせて詰め、描画領域に 120px の高さを確保し、目盛りを間引き、設定ボタンを
+// 図の上の行へ逃がす。400px 以上の図の余白・目盛りは従来のまま（高さは、横長・多段で
+// 枠が潰れるときだけ伸ばす — 末尾の「通常の幅: 横長・多段の図」）
+
+/** パンの発酵記録（ピークで潰れた図の再現に使った 2 列の表） */
+function riseTable(id: string) {
+  return {
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: [cell("Minutes"), cell("Height"), cell("Temperature"), cell("Volume index")] },
+        { cells: [cell("0"), cell("4.0"), cell("24.1"), cell("1.00")] },
+        { cells: [cell("30"), cell("5.5"), cell("25.3"), cell("1.38")] },
+        { cells: [cell("60"), cell("7.2"), cell("26.0"), cell("1.80")] },
+      ],
+    },
+  };
+}
+
+const RISE_LINE = series([{ sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Height" }]);
+
+/** デモ枠の幅。チャートブロックの幅（shell）に、エディタの左右の余白 108 と枠の 18 を足す */
+const frameForShell = (shell: number) => shell + 108 + 18;
+
+function NarrowCase({
+  label,
+  shell,
+  config,
+  baseTables = [riseTable("rise")],
+  hideTables,
+}: {
+  label: string;
+  shell: number;
+  config: Record<string, unknown>;
+  baseTables?: any[];
+  hideTables?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 12, color: "#6b7280", maxWidth: frameForShell(shell) }}>{label}</div>
+      <ChartDemo
+        width={frameForShell(shell)}
+        baseTables={baseTables}
+        lead="記録"
+        chartFirst
+        hideTables={hideTables}
+        config={config}
+      />
+    </div>
+  );
+}
+
+const narrowRow = { display: "flex", flexWrap: "wrap" as const, gap: 20, alignItems: "flex-start" };
+
+// 同じ図を、実機で測った 4 つの幅で並べる。右端（564px）は従来の見た目のまま
+export const NarrowWidths: StoryObj = {
+  name: "狭い場所: 幅ごとの見え方（175 / 224 / 315 / 564px）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={183}
+          label="幅 1024 でピークと並べたメイン（図 175px）"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+        <NarrowCase
+          shell={232}
+          label="幅 1024 のサイドピーク（図 224px）"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+        <NarrowCase
+          shell={323}
+          label="幅 1280 のサイドピーク（図 315px）"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+        <NarrowCase
+          shell={572}
+          label="幅 1024 のメイン（図 564px・従来どおり）"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 狭い図の凡例: 右上揃え・長い系列名（第 2 軸あり）・2 段に分けた図。
+// 記号枠を短くし、入りきらない名前は末尾を省略してホバーで全文を出す
+export const NarrowLegends: StoryObj = {
+  name: "狭い場所: 凡例（右上・長い名前・2 段）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={232}
+          label="凡例を右上に"
+          config={{ chartType: "line", series: RISE_LINE, legendPosition: "top-right" }}
+        />
+        <NarrowCase
+          shell={232}
+          label="3 系列（2 本は第 2 軸）"
+          config={{
+            chartType: "line",
+            series: series([
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Height" },
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Temperature", axis: "right" },
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Volume index", axis: "right" },
+            ]),
+          }}
+        />
+        <NarrowCase
+          shell={232}
+          label="2 段に分けた図（ラベルの長さが違っても枠が揃う）"
+          config={{
+            chartType: "line",
+            panels: { rows: 2, cols: 1, joinVertical: true, joinHorizontal: false, showPanelLabels: true, labelPosition: "top-left" },
+            series: series([
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Height", panelIndex: 0 },
+              { sourceBlockId: "rise", xColumn: "Minutes", yColumn: "Temperature", panelIndex: 1 },
+            ]),
+          }}
+        />
+        <NarrowCase
+          shell={232}
+          label="5:1（狭い場所では比より読める高さを優先）"
+          config={{ chartType: "line", series: RISE_LINE, aspect: "spectrum" }}
+        />
+        <NarrowCase
+          shell={232}
+          label="時間軸（日時の記録）"
+          baseTables={[diaryTable("diary-table-1")]}
+          config={{
+            chartType: "line",
+            series: series([{ sourceBlockId: "diary-table-1", xColumn: "日時", yColumn: "痛み" }]),
+          }}
+        />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 通常の幅でも、枠の上・右端揃えの凡例は設定ボタンの下に潜るので、ボタンだけを
+// 図の上の行へ逃がす（図そのものは従来と同じ）。左上の凡例はボタンを重ねたまま
+export const SettingsButtonOverTopRightLegend: StoryObj = {
+  name: "設定ボタンと右上の凡例（通常の幅）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={572}
+          label="凡例が右上: ボタンは図の上の行"
+          config={{ chartType: "line", series: RISE_LINE, legendPosition: "top-right" }}
+        />
+        <NarrowCase
+          shell={572}
+          label="凡例が左上: ボタンは従来どおり図に重ねる"
+          config={{ chartType: "line", series: RISE_LINE }}
+        />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 通常の幅で凡例が何行にも折り返す図。以前は折り返し 1 行を 17px で空けていたので、
+// 上に置いた凡例は 4 行で枠に接し、5 行以上で最終行が枠に食い込んだ（下に置くと軸名に
+// 重なった）。行送りは実測の 24px で、行数は ECharts と同じ規則（行末の項目に項目間の
+// 余白を足さない）で見積もる。凡例と枠の間は行数によらず上 21px・下 25px になる
+const LEGEND_ROW_TABLES = Array.from({ length: 8 }, (_, k) =>
+  thermoTable(`te-legend-${k}`, "sigma", (t) => 900 - 0.8 * (t - 300) - 45 * k)
+);
+const legendRowSeries = (names: string[]) =>
+  series(names.map((label, k) => ({ sourceBlockId: `te-legend-${k}`, xColumn: "T (K)", yColumn: "sigma", label })));
+// 短めの名前は 1 行に 2 つ、長めの名前は 564px で 1 行に 1 つ（712px で 2 つ）並ぶ
+const SHORTER_SAMPLE_SERIES = legendRowSeries([
+  "試料 A（未処理）",
+  "試料 B（300 ℃）",
+  "試料 C（400 ℃）",
+  "試料 D（500 ℃）",
+  "試料 E（600 ℃）",
+  "試料 F（700 ℃）",
+  "試料 G（Ar 中）",
+  "試料 H（N₂ 中）",
+]);
+const LONGER_SAMPLE_SERIES = legendRowSeries(
+  ["A", "B", "C", "D", "E", "F"].map((s, k) => `試料 ${s}（${200 + 100 * k} ℃ 焼成）`)
+);
+
+export const LegendRowsNormalWidth: StoryObj = {
+  name: "凡例の折り返し（通常の幅・6〜8 系列）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={572}
+          label="図 564px・8 系列（凡例は上）"
+          baseTables={LEGEND_ROW_TABLES}
+          hideTables
+          config={{ chartType: "line", series: SHORTER_SAMPLE_SERIES, yAxisName: "σ (S/cm)" }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・6 系列・長めの名前（凡例は上）"
+          baseTables={LEGEND_ROW_TABLES}
+          hideTables
+          config={{ chartType: "line", series: LONGER_SAMPLE_SERIES, yAxisName: "σ (S/cm)" }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・6 系列・長めの名前（凡例は下）"
+          baseTables={LEGEND_ROW_TABLES}
+          hideTables
+          config={{
+            chartType: "line",
+            series: LONGER_SAMPLE_SERIES,
+            yAxisName: "σ (S/cm)",
+            legendPosition: "bottom",
+          }}
+        />
+        <NarrowCase
+          shell={720}
+          label="図 712px・8 系列（凡例は上）"
+          baseTables={LEGEND_ROW_TABLES}
+          hideTables
+          config={{ chartType: "line", series: SHORTER_SAMPLE_SERIES, yAxisName: "σ (S/cm)" }}
+        />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 通常の幅でも、横長（3:1〜5:1）や多段の図は固定の余白（凡例 48・横軸名 64・分けた枠の
+// 間 80）で枠がほとんど残らない（2026-09-25 の実測で、図 564px の 5:1 は 1px、√2:1 を
+// 3 段に分けてつなげないと 42px）。そういう図だけ、縦軸の目盛りが 16px 間隔で並び、
+// 縦軸名が図からはみ出さず、オフセット表示の段名が重ならない高さ（下限 60px）まで
+// 縦に伸ばす。アスペクト比より読めることを優先する。高さの足りている図は比どおり
+const THERMO_THREE_ROWS = series([
+  { sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF (mW/mK²)", panelIndex: 0 },
+  { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "S (µV/K)", panelIndex: 1 },
+  { sourceBlockId: "te-kappa", xColumn: "T (K)", yColumn: "kappa", label: "κ (W/mK)", panelIndex: 2 },
+]);
+const XRD_SAMPLE_LINE = series([{ sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity" }]);
+
+export const SquashedPlotsNormalWidth: StoryObj = {
+  name: "通常の幅: 横長・多段の図（枠が潰れるときだけ縦に伸ばす）",
+  render: () => (
+    <ErrorBoundary>
+      <div style={narrowRow}>
+        <NarrowCase
+          shell={572}
+          label="図 564px・XRD の測定・5:1（比どおりなら枠 1px。目盛り 5 本が並ぶ 64px まで）"
+          baseTables={XRD_TABLES.slice(0, 1)}
+          hideTables
+          config={{ chartType: "line", series: XRD_SAMPLE_LINE, aspect: "spectrum", xMin: "10", xMax: "60" }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・XRD のオフセット表示・5:1（段名と縦軸名が収まる 75px まで）"
+          baseTables={XRD_TABLES}
+          hideTables
+          config={{
+            chartType: "line",
+            series: series([
+              { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料" },
+              { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A" },
+              { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B" },
+            ]),
+            stack: { enabled: true, normalize: "max", gap: 1.15, order: "first-bottom", labels: "inline" },
+            aspect: "spectrum",
+            xMin: "10",
+            xMax: "60",
+            xAxisName: "2θ (deg)",
+            yAxisName: "Intensity (a.u.)",
+          }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・PF・4:1（目盛り 9 本が並ぶ 128px まで）"
+          baseTables={THERMO_TABLES}
+          hideTables
+          config={{
+            chartType: "line",
+            series: series([{ sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF (mW/mK²)" }]),
+            aspect: "ultrawide",
+          }}
+        />
+        <NarrowCase
+          shell={572}
+          label="図 564px・熱電特性を 3 段・つなげない（比どおりなら 1 段 42px）"
+          baseTables={THERMO_TABLES}
+          hideTables
+          config={{
+            chartType: "line",
+            panels: { rows: 3, cols: 1, joinVertical: false, joinHorizontal: false },
+            series: THERMO_THREE_ROWS,
+            xAxisName: "T (K)",
+          }}
+        />
+        <NarrowCase
+          shell={720}
+          label="図 712px・XRD の測定・4:1（枠 66px で目盛りが並ぶので比どおり）"
+          baseTables={XRD_TABLES.slice(0, 1)}
+          hideTables
+          config={{ chartType: "line", series: XRD_SAMPLE_LINE, aspect: "ultrawide", xMin: "10", xMax: "60" }}
+        />
+      </div>
     </ErrorBoundary>
   ),
 };

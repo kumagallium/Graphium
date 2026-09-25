@@ -149,6 +149,19 @@ talks to LLM and embedding backends.
   Markdown → block path goes through `parseMarkdownToBlocksWithMath`, because
   BlockNote's own parser destroys LaTeX delimiters and eats `^` / `_` as
   emphasis markers.
+- Superscript and subscript are boolean text styles (`styles.superscript` /
+  `styles.subscript`, rendered as `<sup>` / `<sub>`), so units and chemical
+  formulas such as 10⁵ Pa or H₂O can sit in running text without opening the
+  formula editor. They are defined in `src/base/script-styles.ts`, applied from
+  the formatting toolbar or with `⌘.` / `⌘,` (`Ctrl` on Windows / Linux), and
+  exclude each other: setting one clears the other. Pasted `<sup>` / `<sub>`
+  and `vertical-align: super / sub` spans (Google Docs) become the same styles,
+  and so do superscript / subscript runs in an imported `.docx`. Markdown has
+  no syntax for them, so `blocksToMarkdown` writes the HTML tags — dropping the
+  style would turn 10⁵ into 105 in an export or an AI quote — and
+  `parseMarkdownToBlocksWithMath` reads the tags back. Like every persisted
+  style, both are listed in `KNOWN_STYLE_KEYS` (see
+  [DATA_MODEL.md §8](DATA_MODEL.md)).
 - `step` is the one container block: it holds child blocks, and a procedure is
   written by putting its content inside a step rather than by labelling a
   heading. Nesting and reordering use BlockNote's own drag handle. The card's
@@ -258,7 +271,17 @@ talks to LLM and embedding backends.
   global graph, asset graph) stay on cytoscape (canvas), which
   scales better for large force-directed views;
   `provToCytoscapeElements` also still feeds printing, where the graph is
-  rasterized to a PNG and appended to the printed note.
+  rasterized to a PNG and appended to the printed note. The global graph's
+  overview adds three structure-derived transforms on top of the raw
+  cytoscape rendering: folding leaves (single-link non-focus nodes) into a
+  `+n` on their parent, sizing nodes by reach (how many other focus-kind
+  nodes they can reach within two hops) instead of a fixed size per kind,
+  and an islands layout that finds communities by label propagation, seeds
+  one hidden centroid node per community, and lays out in two passes —
+  fcose physics for the focus-kind subgraph, then geometric placement for
+  everything else. Focusing on claims builds islands around topics instead
+  of claims themselves, since the sheer volume of claims would otherwise
+  collapse the physics pass into a single blob.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph
@@ -2393,7 +2416,7 @@ people most often need to find.
 | Want to change | Look in |
 |---|---|
 | Block types or editor behavior | `src/blocks/`, `src/note-app.tsx` |
-| Slash menu / inline `@`-link / label UI | `src/features/block-link/`, `src/features/context-label/`, `src/features/inline-label/` |
+| Slash menu / inline `@`-link / label UI | `src/blocks/slash-items.ts` (the slash menu's item list, shared by the main editor and the side peek; **New note** is built in `src/features/block-link/new-note-slash-item.ts` instead, because each editor records the link in its own stores), `src/features/block-link/`, `src/features/context-label/`, `src/features/inline-label/` |
 | PROV-DM graph generation | `src/features/prov-generator/` |
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |
@@ -2412,7 +2435,7 @@ people most often need to find.
 | Process index (cross-note step graphs, step reuse) | `src/features/network-graph/process-index.ts` |
 | Cross-note output references (durable row ids, upstream overlay) | `src/lib/table-row-identity.ts`, `src/features/network-graph/cross-note-flow.ts` |
 | Reserved "plan" folder detection | `src/features/note-context/reserved-folders.ts` |
-| Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` — planned edges come from the `planned-input` column of the plan note's index table; executed edges come from cross-note references. Plans with two or more index tables draw one band per table (ELK compound layout; `elk-flow-layout.ts` / `group-flow-node.tsx`) |
+| Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` — planned edges come from the `planned-input` column of the plan note's index table; executed edges come from cross-note references. The flow draws one band per index table (ELK compound layout; `elk-flow-layout.ts` / `group-flow-node.tsx`) |
 | Local view data (origin note's parent/peer/child lanes) | `src/features/network-graph/local-view-model.ts` |
 | Sharing / Library / Fork | `src/features/sharing/`, `src/lib/storage/shared/` |
 | Settings UI (model, profile, fonts) | `src/features/settings/` |

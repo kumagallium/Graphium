@@ -386,11 +386,8 @@ export function buildPlanFlowGraph(input: {
 }): PlanFlowResult {
   const { rows, index, processIndex } = input;
 
-  // 表が 2 つ以上あるときだけ、行ごとに所属する表の帯（group）を付ける。
-  // 表が 1 つの計画は今までどおり帯無しの絵のまま
-  const distinctTableIds = new Set(rows.map((row) => row.tableBlockId));
-  const hasMultipleTables = distinctTableIds.size >= 2;
-
+  // 行ごとに所属する表の帯（group）を付ける。表が 1 つでも帯を描く —
+  // 表の名前（キャプション）が工程の層の名前として見え、表が増えても絵が変わらない
   const steps: FlowStep[] = rows.map((row) => ({
     id: stepIdOfRow(row),
     name: stripLeadingAt(row.name),
@@ -401,15 +398,11 @@ export function buildPlanFlowGraph(input: {
       rowIndex: row.rowIndex,
       state: row.state,
     },
-    ...(hasMultipleTables
-      ? {
-          group: {
-            id: row.tableBlockId,
-            label: row.tableCaption ?? "",
-            index: row.tableIndex ?? 0,
-          } satisfies FlowGroup,
-        }
-      : {}),
+    group: {
+      id: row.tableBlockId,
+      label: row.tableCaption ?? "",
+      index: row.tableIndex ?? 0,
+    } satisfies FlowGroup,
   }));
 
   const entities: FlowEntity[] = [];

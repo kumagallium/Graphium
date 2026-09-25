@@ -12,6 +12,7 @@
 // Markdown の文字列は変わらない（URL はテキストとしてそのまま残る）。
 
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
+import { scriptStyleSpecs } from "../../base/script-styles";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { inertMediaBlockSpecs } from "./inert-media-elements";
 import { extractInlineText } from "./sanitize-blocks";
@@ -24,7 +25,9 @@ function getHeadlessEditor() {
   if (!headlessEditor) {
     const schema = BlockNoteSchema.create({
       blockSpecs: inertMediaBlockSpecs(defaultBlockSpecs),
-      styleSpecs: defaultStyleSpecs,
+      // 上付き・下付きは sanitize-blocks が <sup> / <sub> の文字列にしてから渡すが、
+      // 保存済み style を持つスキーマは全作成箇所で揃える（DATA_MODEL.md §8）
+      styleSpecs: { ...defaultStyleSpecs, ...scriptStyleSpecs },
     });
     headlessEditor = BlockNoteEditor.create({ schema }) as any;
   }

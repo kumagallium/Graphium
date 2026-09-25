@@ -154,6 +154,9 @@ export const en: Record<string, string> = {
   "editor.archiveNoteHint": "Hidden from the list, but links and citations keep resolving. Restore anytime from Trash & Archive.",
   "editor.aiAssistant": "🤖 AI Assistant",
   "editor.askAi": "Ask AI about selection",
+  // 書式ツールバーの上付き・下付き（base/script-style-button.tsx）
+  "editor.superscript": "Superscript",
+  "editor.subscript": "Subscript",
   "editor.derivedNote": "Derived note",
   // ── ドキュメント内検索（Cmd+F） ──
   "docSearch.placeholder": "Find in note",
@@ -1658,6 +1661,8 @@ export const en: Record<string, string> = {
   "asset.docFilter.all": "All",
   "asset.docFilter.pdf": "PDF",
   "asset.docFilter.word": "Word",
+  "asset.docFilter.excel": "Excel",
+  "asset.docFilter.powerpoint": "PowerPoint",
   "asset.urlOpen": "Open in new tab",
   "asset.url.readerLoading": "Loading reader…",
   "asset.url.readerEmpty": "This URL could not be read in Reader Mode.",
@@ -2166,6 +2171,18 @@ export const en: Record<string, string> = {
   "globalGraph.uncategorized": "Uncategorized",
   "globalGraph.toggleUncategorizedHint": "Click to show/hide uncategorized notes",
   "globalGraph.noContexts": "No notes in a folder yet",
+  "globalGraph.foldLeaves": "Fold leaves",
+  "globalGraph.foldLeavesHint": "Collapse claims and sources that hang off a single node into a +n on that node",
+  "globalGraph.size": "Size",
+  "globalGraph.size.kind": "Kind",
+  "globalGraph.size.reach": "Reach",
+  "globalGraph.sizeReachHint": "Size by the number of other notes within two hops",
+  "globalGraph.layout": "Layout",
+  "globalGraph.layout.plain": "Standard",
+  "globalGraph.layout.islands": "Islands",
+  "globalGraph.layoutIslandsHint": "Lays notes out as islands of connected notes; claims and sources sit inside the island they belong to",
+  "globalGraph.focusHint": "In islands mode, islands are built around the selected kind",
+  "globalGraph.focusSourceUnavailable": "Islands around sources are not available",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化

@@ -9,6 +9,7 @@
 // callout の枠）は捨て、テキストとリンクだけを確実に残す。
 // ただし数式は「見た目」ではなく内容なので、$$ ... $$ / $ ... $ の LaTeX 表記に
 // 戻して残す（他の Markdown ツールでもそのまま数式として読める形）。
+// 上付き・下付きも同じく内容なので <sup> / <sub> で残す（落とすと「10⁵」が「105」になる）。
 //
 // ブロックごとの落とし込みはここには書かない。ブロック定義の隣（各ブロックの
 // to-markdown.ts）に置き、blocks/markdown.ts のレジストリから引く。ここに
@@ -16,6 +17,7 @@
 
 import { inlineMathToMarkdown } from "../math/markdown-math";
 import { blockMarkdownConverters } from "../../blocks/markdown";
+import { scriptStyleToMarkdown } from "../../lib/script-styles";
 
 /** BlockNote の inline content（text / link / その他）1 要素 */
 type InlineItem = Record<string, any>;
@@ -70,10 +72,16 @@ function sanitizeInlines(content: unknown, knownStyles: ReadonlySet<string>): In
         out.push({ type: "text", text: wikiLink, styles: {} });
         continue;
       }
+      // 上付き・下付きはタグで包んだ文字列にする。style のまま残しても default
+      // スキーマでは剥がれるし、BlockNote の Markdown 化も書式を捨てて平文にする
+      const { text, styles } = scriptStyleToMarkdown(
+        typeof item.text === "string" ? item.text : "",
+        item.styles,
+      );
       out.push({
         type: "text",
-        text: typeof item.text === "string" ? item.text : "",
-        styles: sanitizeStyles(item.styles, knownStyles),
+        text,
+        styles: sanitizeStyles(styles, knownStyles),
       });
     } else if (item.type === "link") {
       out.push({

@@ -60,6 +60,11 @@ function rowIdentity(cell: any): string | undefined {
   return inlineRowIdentity(cellContent(cell) ?? []);
 }
 
+/** 先頭列のセル（tableCell / 旧 inline 配列）に付いている行の identity。無ければ undefined */
+export function tableRowIdentityOfCell(cell: any): string | undefined {
+  return rowIdentity(cell);
+}
+
 function withIdentityInlines(inlines: any[], identity: string): [any[], boolean] {
   let changed = false;
   const next = inlines.map((inline) => {

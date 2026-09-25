@@ -8,7 +8,7 @@
 //   — 共有を使っていない人に「チーム」という概念を見せない
 // - 共有ルートがあれば、まだ 1 件も共有されていなくても空案内の 1 行は出す
 // - 行に出すのは type=template だけ。題名・説明・「チーム」バッジ・作者を見せ、
-//   選ぶと SharedEntry がそのまま呼び出し側に渡る（本文の読み出しは note-app の責務）
+//   選ぶと SharedEntry がそのまま呼び出し側に渡る（本文の読み出しは useTemplatePicker の責務）
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, fireEvent, cleanup, act } from "@testing-library/react";

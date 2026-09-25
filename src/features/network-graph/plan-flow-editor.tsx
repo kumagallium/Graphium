@@ -36,7 +36,7 @@ import {
   setTableCellAt,
   readTable,
 } from "./table-row-edit";
-import { collectTableBlocks } from "../table-meta/table-cells";
+import { collectTableBlocks, writeCellText } from "../table-meta/table-cells";
 import { useTableMetaStore, type TableMetaStoreValue } from "../table-meta/store";
 import { getFirstCellText, createNoteFromRow } from "../index-table/create-note-from-row";
 import { getIndexTableCallbacks, openEditorSidePeek } from "../index-table/context";
@@ -141,20 +141,8 @@ async function createOperationNoteFromRef(
   );
   if (!fileId) return;
 
-  const freshBlock = editor.getBlock(ref.tableBlockId);
-  const rows: any[] | undefined = freshBlock?.content?.rows;
-  if (rows?.[ref.rowIndex]) {
-    const newRows = rows.map((r: any, i: number) => {
-      if (i !== ref.rowIndex) return r;
-      return {
-        ...r,
-        cells: [
-          [{ type: "text", text: `@${rawName}`, styles: { textColor: "blue" } }],
-          ...r.cells.slice(1),
-        ],
-      };
-    });
-    editor.updateBlock(ref.tableBlockId, { content: { type: "tableContent", rows: newRows } });
+  // 先頭セルの props（色・配置・結合）と表の列幅・見出し行は writeCellText が残す
+  if (writeCellText(editor, ref.tableBlockId, ref.rowIndex, 0, `@${rawName}`, { textColor: "blue" })) {
     tableMetaStore.setNoteLink(ref.tableBlockId, `@${rawName}`, fileId);
   }
 
