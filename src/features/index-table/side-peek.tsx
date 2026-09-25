@@ -21,7 +21,7 @@ import {
   useBlockAlignmentStore,
   AlignmentStyleLayer,
 } from "../block-alignment";
-import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
+import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../../lib/document-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
 import { pickPeekExternalFields } from "./peek-save-merge";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -92,6 +92,7 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
+  readFirstColumnName,
   readTableData,
   sortTableBlock,
   type TableExpandData,
@@ -136,7 +137,12 @@ import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
-import { setEditorSidePeekCallback } from "./context";
+import {
+  setEditorIndexTableCallbacks,
+  setEditorSidePeekCallback,
+  setRegisterIndexTableCallback,
+} from "./context";
+import { IndexTableIconLayer } from "./icon-layer";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
@@ -230,6 +236,13 @@ type SidePeekProps = {
    */
   onCreateLinkedNote?: (title: string, sourceNoteId?: string) => Promise<string | null>;
   /**
+   * ノートのファイル一覧と、その再取得（メインエディタに渡すものと同じ値）。
+   * インデックステーブルの「行からノートを作る」が、同名ノートの確認と、作ったノートを
+   * 一覧に載せるのに使う。未指定なら確認と一覧の更新を省く（作成と紐付けは動く）
+   */
+  files?: GraphiumFile[];
+  onRefreshFiles?: () => void;
+  /**
    * 保存直前に doc キャッシュから最新の chats を採用するための getter。
    * チャット実行のアプリレベル書き戻し（chat-run-manager）が、ピーク表示中の
    * ノートの doc.chats を更新することがある。doSave は docRef（このピークが
@@ -310,7 +323,7 @@ function SidePeekInner({
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
-  onOpenLocalView, renderWikiContext,
+  onOpenLocalView, renderWikiContext, files, onRefreshFiles,
 }: SidePeekProps) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。素材ピークと幅設定を共有する。
@@ -792,8 +805,9 @@ function SidePeekInner({
           return;
         }
       }
-      // インデックステーブルの先頭列も本文と同じに扱う（ピークには行アイコンの層が
-      // 無いので、先頭列を除外すると行ノートも @素材 もピーク内から開けなかった）
+      // インデックステーブルの先頭列も本文と同じに扱う。行ノートにつながった行は
+      // 行アイコン層の透明な覆いが先にクリックを受けて行ノートを開くので、ここへ来るのは
+      // つながっていない行のメンション（@素材 など）だけ（note-app と同じ）
       const mention = readMentionAt(target);
       if (!mention) return;
       const peekDoc = docRef.current;
@@ -1332,6 +1346,60 @@ function SidePeekInner({
     }
   }, [tableMetaStore.metas, handleChange]);
 
+  // つながった行のノートを開く前に、待っている保存を済ませる。ピークは key={noteId} で
+  // 作り直され、3 秒待ちの自動保存はアンマウントで流れない。行からノートを作った直後に
+  // その行を押すと、表の書き換えと紐付けが書き出されないまま消える
+  const saveStatusRef = useRef(saveStatus);
+  saveStatusRef.current = saveStatus;
+  const openInPeekAfterSave = useCallback(async (targetId: string) => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    if (saveStatusRef.current === "dirty") await doSaveRef.current();
+    onOpenNoteInPeekRef.current?.(targetId);
+  }, []);
+
+  // インデックステーブル（行からノートを作れる表）の受け口を、このピークのエディタに登録する。
+  // スラッシュ項目と行アイコンはメインと同じ部品で、押されたエディタをキーに受け口を引く。
+  // 表の注釈・作ったノートの派生元・noteLinks はこのピークのノートに入る（メインには入らない）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setRegisterIndexTableCallback(sidePeekEditor, (blockId) => {
+      // メインの addFirstColumnType と同じ: 先頭列の名前をキーに note-link を付ける
+      const block = sidePeekEditor.getBlock?.(blockId);
+      tableMetaStoreRef.current.addColumnType(blockId, readFirstColumnName(block), "note-link");
+    });
+    setEditorIndexTableCallbacks(sidePeekEditor, {
+      files: files ?? [],
+      // メインと同じく wiki:/skill: を外した ID を派生元にする
+      currentFileId: noteId.replace(/^(wiki|skill):/, ""),
+      onRefreshFiles: () => onRefreshFiles?.(),
+      onOpenSidePeek: (targetId) => void openInPeekAfterSave(targetId),
+      onAddNoteLink: (targetNoteId, sourceBlockId) => {
+        const cur = docRef.current;
+        if (!cur) return;
+        const links = cur.noteLinks ?? [];
+        if (links.some((l) => l.targetNoteId === targetNoteId && l.sourceBlockId === sourceBlockId)) {
+          return;
+        }
+        // doSave は docRef.current を spread するので、ここに積めば一緒に書き出される
+        // （noteLinks は画面に出さないので、表示用の doc state は触らない）
+        docRef.current = {
+          ...cur,
+          noteLinks: [...links, { targetNoteId, sourceBlockId, type: "derived_from" }],
+        };
+        handleChange();
+      },
+      // onNoteCreated は渡さない: 作った直後に開くとピークの中身が差し替わって表が
+      // 見えなくなる（戻る導線も無い）。行の先頭セルが @名前 になり、押せばそこで開く
+    });
+    return () => {
+      setRegisterIndexTableCallback(sidePeekEditor, null);
+      setEditorIndexTableCallbacks(sidePeekEditor, null);
+    };
+  }, [sidePeekEditor, noteId, files, onRefreshFiles, openInPeekAfterSave, handleChange]);
+
   // Cmd+S / Ctrl+S
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1642,6 +1710,14 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
+            {/* インデックステーブルの行アイコン（行からノートを作る・つながった行を開く）。
+                メインと同じ層をピークの外枠に閉じて使い、受け口はこのピークのエディタに
+                登録したものを引く。読み取り専用のノートでは作る入口を出さない */}
+            <IndexTableIconLayer
+              editorRef={editorRef}
+              wrapperEl={wrapperEl}
+              readOnly={archived || trashed || noteId.startsWith("snapshot:")}
+            />
             {/* 表の名前・取り込み元バッジ・長い表の折りたたみ。メインと同じ層を
                 ピークの外枠に閉じて使う（wrapperEl 無しだとメイン側の表を測る） */}
             <TableCaptionLayer
@@ -1917,7 +1993,7 @@ function SidePeekInner({
                 // どのエディタでも動く slash items を出す（メインと同じ一覧から取る）。
                 // 各 slash item の onItemClick はクリック時のエディタを
                 // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
-                // 挿入される。メインに固定の受け口で動く項目（インデックステーブル等）は
+                // 挿入される。メインに固定の受け口で動く項目（時系列テーブル・テンプレート）は
                 // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）
                 extraSlashMenuItems={getCommonSlashMenuItems({ includeCite: !!noteIndex })}
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
