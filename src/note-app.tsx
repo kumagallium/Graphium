@@ -4,6 +4,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
@@ -12348,6 +12349,20 @@ export function NoteApp() {
                     noteIndex={fm.noteIndex ?? null}
                     onCreateLinkedNote={fm.handleCreateLinkedNote}
                     onOpenNoteInPeek={(peekId) => openAssetPeek(peekId)}
+                    onOpenMaterialPeek={(entry) => {
+                      // ピーク内の @素材 → 全画面表示をその素材に差し替える。ノートピークは残し、
+                      // ノートを読みながら @素材 を順に見られるようにする。右パネルのグラフで
+                      // 素材ノードを押したときと同じく、ギャラリーの種類と URL は変えない
+                      // （全画面を抜けると元の一覧に戻る）。これを渡していなかったので、ここだけ
+                      // @素材 を押しても何も起きなかった。
+                      // 未登録の URL はギャラリーに実体が無いので、素材ピークの無い画面と同じく
+                      // 外部ブラウザで開く
+                      if (fm.mediaIndex?.media.some((m) => m.fileId === entry.fileId)) {
+                        setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
+                      } else if (entry.type === "url" && entry.url) {
+                        void openExternalUrl(entry.url);
+                      }
+                    }}
                     onOpenMemoSource={handleOpenMemoSource}
                   />
                 </ListSidePeekBoundary>
