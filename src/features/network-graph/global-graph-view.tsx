@@ -21,9 +21,11 @@ import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import type { NoteNode, NoteGraphData, NoteEdge, EdgeRelation } from "./graph-builder";
 import {
-  foldLeafNodes,
   computeReachScores,
+  computeTopicReachScores,
+  computeFocusFoldResult,
   detectFocusCommunities,
+  analyzeCrystalIslands,
   isFocused,
   type FocusLayer,
 } from "./global-graph-structure";
@@ -365,17 +367,23 @@ function applySearchHighlight(cy: cytoscape.Core, rawQuery: string): number {
  *   隣接フォーカスノードが無いものは触らない（元の位置のまま）。
  * - 衛星: 親ノートの周りのリングに等間隔で置く。半径 = 親の size/2 + 14、
  *   1 リング 12 個まで、超えたら半径 +12 の次のリング。角度は index から決定的に。
+ * - 後始末（最後に必ず実行）: 上のどれでも位置が決まらなかった実ノード（例:
+ *   隣接するフォーカスノードが無い「橋」）を、隣接ノードの平均位置（隣接も
+ *   未配置なら無向 BFS で最寄りの配置済みノードへ）に置く。辺が 1 本も無い
+ *   （孤立ノード）ものは触らない——hideIsolated の扱いに従う（既定では
+ *   filterGlobalGraph の時点で除かれている）。
  */
 function placeIslandGeometry(
   cy: cytoscape.Core,
   opts: {
+    shownNodes: NoteNode[];
     shownEdges: NoteEdge[];
     focusIds: Set<string>;
     foldedOutNodes: NoteNode[];
     foldedInto: Map<string, string>;
   },
 ): void {
-  const { shownEdges, focusIds, foldedOutNodes, foldedInto } = opts;
+  const { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto } = opts;
 
   // ── フォーカス以外の実ノード: 隣接フォーカスノードの平均位置 ──
   const focusNeighborsOf = new Map<string, string[]>();
@@ -476,6 +484,261 @@ function placeIslandGeometry(
       }
     });
   }
+
+  // ── 後始末: まだ位置が決まっていない実ノードを最寄りに置く ──
+  const positionedIds = new Set<string>(focusIds);
+  for (const id of positions.keys()) positionedIds.add(id);
+  for (const node of foldedOutNodes) positionedIds.add(node.id);
+  runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds);
+}
+
+/**
+ * まだ位置が決まっていない実ノード（`positionedIds` に入っていないもの）を、
+ * 隣接ノードの平均位置（隣接も未配置なら無向 BFS で最寄りの配置済みノードへ）に
+ * 置く。辺を 1 本でも持つものだけ対象にする（辺が無い孤立ノードは既定で
+ * filterGlobalGraph に除かれているはずだが、hideIsolated が OFF で残っている
+ * 場合も含めて触らない＝孤立ノードの今までの扱いのまま）。
+ * layoutMode: islands の各幾何配置関数（placeIslandGeometry /
+ * placeCrystalIslandGeometry）が最後に必ず呼ぶ。
+ */
+function runOrphanCleanupPass(
+  cy: cytoscape.Core,
+  shownNodes: NoteNode[],
+  shownEdges: NoteEdge[],
+  positionedIds: Set<string>,
+): void {
+  const adjacency = new Map<string, string[]>();
+  for (const n of shownNodes) adjacency.set(n.id, []);
+  for (const e of shownEdges) {
+    adjacency.get(e.source)?.push(e.target);
+    adjacency.get(e.target)?.push(e.source);
+  }
+
+  const orphanIds = shownNodes
+    .map((n) => n.id)
+    .filter((id) => !positionedIds.has(id) && (adjacency.get(id) ?? []).length > 0);
+
+  const cleanupPositions = new Map<string, { x: number; y: number }>();
+  const positionOf = (id: string): { x: number; y: number } | null => {
+    const cached = cleanupPositions.get(id);
+    if (cached) return cached;
+    const el = cy.getElementById(id);
+    return el.empty() ? null : el.position();
+  };
+  for (const id of orphanIds) {
+    const neighbors = adjacency.get(id) ?? [];
+    const positionedNeighbors = neighbors.filter((nb) => positionedIds.has(nb) || cleanupPositions.has(nb));
+    if (positionedNeighbors.length > 0) {
+      let sumX = 0;
+      let sumY = 0;
+      let count = 0;
+      for (const nb of positionedNeighbors) {
+        const p = positionOf(nb);
+        if (!p) continue;
+        sumX += p.x;
+        sumY += p.y;
+        count++;
+      }
+      if (count > 0) cleanupPositions.set(id, { x: sumX / count, y: sumY / count });
+      continue;
+    }
+    // 隣接も未配置 → 無向 BFS で最寄りの配置済みノードを探す
+    const visited = new Set<string>([id]);
+    let frontier = [id];
+    let nearest: string | null = null;
+    while (frontier.length > 0 && !nearest) {
+      const next: string[] = [];
+      for (const cur of frontier) {
+        for (const nb of adjacency.get(cur) ?? []) {
+          if (visited.has(nb)) continue;
+          visited.add(nb);
+          if (positionedIds.has(nb) || cleanupPositions.has(nb)) {
+            nearest = nb;
+            break;
+          }
+          next.push(nb);
+        }
+        if (nearest) break;
+      }
+      frontier = next;
+    }
+    if (nearest) {
+      const p = positionOf(nearest);
+      if (p) cleanupPositions.set(id, { x: p.x, y: p.y });
+    }
+  }
+
+  // 同じ点に重なるものを id 順に 8px ずつ螺旋状にずらす
+  const byRoundedCleanupPoint = new Map<string, string[]>();
+  for (const [id, p] of cleanupPositions) {
+    const key = `${Math.round(p.x)}:${Math.round(p.y)}`;
+    const list = byRoundedCleanupPoint.get(key);
+    if (list) list.push(id);
+    else byRoundedCleanupPoint.set(key, [id]);
+  }
+  for (const ids of byRoundedCleanupPoint.values()) {
+    if (ids.length < 2) continue;
+    const sorted = [...ids].sort();
+    sorted.forEach((id, i) => {
+      if (i === 0) return;
+      const base = cleanupPositions.get(id)!;
+      const angle = i * 2.4;
+      const radius = 8 * i;
+      cleanupPositions.set(id, { x: base.x + radius * Math.cos(angle), y: base.y + radius * Math.sin(angle) });
+    });
+  }
+
+  for (const [id, p] of cleanupPositions) {
+    const node = cy.getElementById(id);
+    if (!node.empty()) node.position(p);
+  }
+}
+
+/**
+ * crystal フォーカス専用の 2 段目（幾何）。1 段目の fcose が話題（topic）だけを
+ * 置いた後、この順で幾何計算だけで直接置く:
+ *   (1) 知見・洞察: 隣接する話題の平均位置。話題が 1 つならその話題の衛星リング
+ *       （foldedOutNodes/foldedInto 経由。既に「葉知見」として shownNodes から
+ *       除かれている）、2 つ以上（sharedClaimIds）なら平均位置に実ノードとして
+ *       置く（size 30 は sizeForNode 側で設定済み）。
+ *   (2) ノート: 隣接する（(1) で配置済みの）知見の平均位置。
+ *   (1 続き) 話題を持たない知見（隣接ノートの衛星）は、親のノートが (2) で
+ *       配置された後にリングへ置く。
+ *   (3) 原料: 隣接ノートの平均位置。
+ *   (4) 後始末（runOrphanCleanupPass）は他の配置方法と共通。
+ */
+function placeCrystalIslandGeometry(
+  cy: cytoscape.Core,
+  opts: {
+    shownNodes: NoteNode[];
+    shownEdges: NoteEdge[];
+    foldedOutNodes: NoteNode[];
+    foldedInto: Map<string, string>;
+    sharedClaimIds: Set<string>;
+  },
+): void {
+  const { shownNodes, shownEdges, foldedOutNodes, foldedInto, sharedClaimIds } = opts;
+  const nodeById = new Map(shownNodes.map((n) => [n.id, n]));
+
+  const dedupeSpiral = (positions: Map<string, { x: number; y: number }>) => {
+    const byRounded = new Map<string, string[]>();
+    for (const [id, p] of positions) {
+      const key = `${Math.round(p.x)}:${Math.round(p.y)}`;
+      const list = byRounded.get(key);
+      if (list) list.push(id);
+      else byRounded.set(key, [id]);
+    }
+    for (const ids of byRounded.values()) {
+      if (ids.length < 2) continue;
+      const sorted = [...ids].sort();
+      sorted.forEach((id, i) => {
+        if (i === 0) return;
+        const base = positions.get(id)!;
+        const angle = i * 2.4;
+        const radius = 8 * i;
+        positions.set(id, { x: base.x + radius * Math.cos(angle), y: base.y + radius * Math.sin(angle) });
+      });
+    }
+  };
+  const applyPositions = (positions: Map<string, { x: number; y: number }>) => {
+    for (const [id, p] of positions) {
+      const el = cy.getElementById(id);
+      if (!el.empty()) el.position(p);
+    }
+  };
+  const placeRings = (byParent: Map<string, string[]>) => {
+    const RING_CAPACITY = 12;
+    for (const [parentId, ids] of byParent) {
+      const parent = cy.getElementById(parentId);
+      if (parent.empty()) continue;
+      const ppos = parent.position();
+      const parentSize = Number(parent.data("size")) || KIND_SIZE.note;
+      ids.forEach((id, index) => {
+        const ring = Math.floor(index / RING_CAPACITY);
+        const indexInRing = index % RING_CAPACITY;
+        const radius = parentSize / 2 + 14 + ring * 12;
+        const angle = (indexInRing / RING_CAPACITY) * 2 * Math.PI;
+        const el = cy.getElementById(id);
+        if (!el.empty()) {
+          el.position({ x: ppos.x + radius * Math.cos(angle), y: ppos.y + radius * Math.sin(angle) });
+        }
+      });
+    }
+  };
+  // 無向・実辺のみの隣接（ノート↔共有知見、原料↔ノートの平均位置に使う）
+  const adjacency = new Map<string, string[]>();
+  for (const n of shownNodes) adjacency.set(n.id, []);
+  for (const e of shownEdges) {
+    adjacency.get(e.source)?.push(e.target);
+    adjacency.get(e.target)?.push(e.source);
+  }
+  const averageOfReference = (
+    candidateIds: string[],
+    referenceIds: Set<string>,
+  ): Map<string, { x: number; y: number }> => {
+    const result = new Map<string, { x: number; y: number }>();
+    for (const id of candidateIds) {
+      const neighbors = (adjacency.get(id) ?? []).filter((nb) => referenceIds.has(nb));
+      if (neighbors.length === 0) continue;
+      let sumX = 0;
+      let sumY = 0;
+      let count = 0;
+      for (const nb of neighbors) {
+        const el = cy.getElementById(nb);
+        if (el.empty()) continue;
+        const p = el.position();
+        sumX += p.x;
+        sumY += p.y;
+        count++;
+      }
+      if (count > 0) result.set(id, { x: sumX / count, y: sumY / count });
+    }
+    return result;
+  };
+
+  // 衛星（葉知見）を親の種類で 2 グループに分ける（話題の衛星 / ノートの衛星）
+  const byTopicParent = new Map<string, string[]>();
+  const byNoteParent = new Map<string, string[]>();
+  for (const n of foldedOutNodes) {
+    const parentId = foldedInto.get(n.id);
+    if (!parentId) continue;
+    const parentNode = nodeById.get(parentId);
+    if (!parentNode) continue;
+    const bucket = kindOf(parentNode) === "topic" ? byTopicParent : byNoteParent;
+    const list = bucket.get(parentId);
+    if (list) list.push(n.id);
+    else bucket.set(parentId, [n.id]);
+  }
+
+  // (1a) 話題が 1 つの知見: 話題の衛星リング（話題は 1 段目の fcose で配置済み）
+  placeRings(byTopicParent);
+
+  // (1b) 話題が 2 つ以上の共有知見: 隣接話題の平均位置に実ノードとして置く
+  const topicIds = new Set(shownNodes.filter((n) => kindOf(n) === "topic").map((n) => n.id));
+  const sharedPositions = averageOfReference([...sharedClaimIds], topicIds);
+  dedupeSpiral(sharedPositions);
+  applyPositions(sharedPositions);
+
+  // (2) ノート: 隣接する（(1) で配置済みの）知見の平均位置
+  const positionedKnowledge = new Set<string>([...topicIds, ...sharedClaimIds]);
+  const noteIds = shownNodes.filter((n) => kindOf(n) === "note").map((n) => n.id);
+  const notePositions = averageOfReference(noteIds, positionedKnowledge);
+  dedupeSpiral(notePositions);
+  applyPositions(notePositions);
+
+  // (1 続き) 話題を持たない知見: ノートの衛星（ノート配置後）
+  placeRings(byNoteParent);
+
+  // (3) 原料: 隣接ノートの平均位置
+  const externalIds = shownNodes.filter((n) => kindOf(n) === "external").map((n) => n.id);
+  const externalPositions = averageOfReference(externalIds, new Set(noteIds));
+  dedupeSpiral(externalPositions);
+  applyPositions(externalPositions);
+
+  // (4) 後始末
+  const positionedIds = new Set<string>([...topicIds, ...sharedPositions.keys(), ...notePositions.keys(), ...externalPositions.keys()]);
+  for (const n of foldedOutNodes) positionedIds.add(n.id);
+  runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds);
 }
 
 /**
@@ -485,6 +748,12 @@ function placeIslandGeometry(
  * plain と同じ規則（reach なら正規化 reach、それ以外は種類ごとの固定値）だが、
  * フォーカス以外の実ノード（橋）は固定 14（衛星は別枠で size 9 を直接指定する
  * ので、ここには来ない）。
+ *
+ * crystal フォーカスは話題を中心にする専用規則: 話題は reach（話題どうしの
+ * reach。reachScores は呼び出し側で computeTopicReachScores に差し替え済み）で
+ * 正規化、共有知見（claim/atom。shownNodes に残っている時点で共有知見——葉知見は
+ * 衛星として既に除かれている）は種類に関わらず固定 KIND_SIZE.claim、ノート
+ * （糊）・原料（橋）は固定 14。sizeMode に関わらずこの規則を使う。
  */
 function sizeForNode(
   node: NoteNode,
@@ -499,6 +768,17 @@ function sizeForNode(
 ): number {
   const { layoutMode, focus, sizeMode, reachScores, maxReachScore } = opts;
   const baseSize = KIND_SIZE[kind];
+  if (layoutMode === "islands" && focus === "crystal") {
+    if (kind === "topic") {
+      // 32〜64（48 だと種類の他の値と近すぎ、80 だと重なりやすいので 32 を足す）
+      if (sizeMode === "reach" && maxReachScore > 0) {
+        return baseSize + 32 * ((reachScores?.get(node.id) ?? 0) / maxReachScore);
+      }
+      return baseSize;
+    }
+    if (kind === "claim" || kind === "atom") return KIND_SIZE.claim;
+    return 14; // ノート・原料（幾何配置の橋）
+  }
   if (layoutMode === "islands" && !isFocused(node, focus)) return 14;
   const isReachTarget = layoutMode === "islands" ? isFocused(node, focus) : kind === "note";
   if (sizeMode === "reach" && isReachTarget && maxReachScore > 0) {
@@ -666,7 +946,7 @@ export function GlobalGraphCanvas({
         foldedInto: new Map<string, string>(),
       };
     }
-    const folded = foldLeafNodes(filtered, { focus: effectiveFocus });
+    const folded = computeFocusFoldResult(filtered, effectiveFocus);
     const foldedOutNodes = filtered.nodes.filter((n) => folded.foldedInto.has(n.id));
     return {
       nodes: folded.data.nodes,
@@ -693,12 +973,16 @@ export function GlobalGraphCanvas({
   // （絶対値だと生成データではほぼ全ノートが上限に張り付いてしまう）。
   // maxReachScore はその分布の最大値。
   const needsReach = sizeMode === "reach" || layoutMode === "islands";
+  // crystal フォーカスは話題どうしの reach（他の crystal 種類込みだと知見の数が
+  // 多く差が付きにくいため、話題限定で数える）。
   const reachScores = useMemo(
     () =>
       needsReach
-        ? computeReachScores({ nodes: shownNodes, edges: shownEdges }, { focus: effectiveFocus })
+        ? layoutMode === "islands" && focusLayer === "crystal"
+          ? computeTopicReachScores({ nodes: shownNodes, edges: shownEdges })
+          : computeReachScores({ nodes: shownNodes, edges: shownEdges }, { focus: effectiveFocus })
         : null,
-    [shownNodes, shownEdges, needsReach, effectiveFocus],
+    [shownNodes, shownEdges, needsReach, effectiveFocus, layoutMode, focusLayer],
   );
   const maxReachScore = useMemo(() => {
     if (!reachScores) return 0;
@@ -743,6 +1027,12 @@ export function GlobalGraphCanvas({
       }
       return;
     }
+
+    // crystal フォーカスは話題だけを物理配置に参加させる専用の分析結果を使う
+    // （要素構築時の projection エッジ・後段の fcose 対象コレクション・幾何配置の
+    // どこからも参照するので、ここで 1 回だけ計算する）。
+    const crystalAnalysis =
+      focusLayer === "crystal" ? analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges }) : null;
 
     const elements: cytoscape.ElementDefinition[] = [];
     for (const node of shownNodes) {
@@ -863,13 +1153,14 @@ export function GlobalGraphCanvas({
           });
         }
       }
-      if (focusLayer !== "note") {
+      if (focusLayer === "source") {
         // detectFocusCommunities がラベル伝播で使う「非フォーカスのノードを 1 つ
         // 共有していれば辺」という射影を、物理配置にも反映させる（そうしないと
         // ラベルは同じ島でも物理的に引き寄せられない）。物理専用の不可視エッジ
-        // として足す（自然長 110・弾性 0.4。focus が "note" のときはこの射影を
-        // 使わないので足さない——ノートは知見を共有しやすく、共有隣接で繋ぐと
-        // 島が溶けてしまうため）。
+        // として足す（自然長 110・弾性 0.4）。focus が "note" のときはこの射影を
+        // 使わない（ノートは知見を共有しやすく、共有隣接で繋ぐと島が溶けてしまう
+        // ため）。focus が "crystal" のときも使わない——話題を中心にした専用の
+        // 実辺グラフ（analyzeCrystalIslands）でコミュニティも物理配置も決める。
         const focusIdsForProjection = new Set(
           shownNodes.filter((n) => isFocused(n, focusLayer)).map((n) => n.id),
         );
@@ -905,6 +1196,23 @@ export function GlobalGraphCanvas({
               });
             }
           }
+        }
+      }
+      if (crystalAnalysis) {
+        // crystal: 話題どうしの射影（共有する知見の数が 1 以上のペア）を物理専用の
+        // 不可視エッジとして足す。共有数（sharedCount）は fcose 側で弾性に使う。
+        for (const topicEdge of crystalAnalysis.topicEdges) {
+          elements.push({
+            data: {
+              id: `island-projection:${topicEdge.source}:${topicEdge.target}`,
+              source: topicEdge.source,
+              target: topicEdge.target,
+              virtual: true,
+              projection: true,
+              sharedCount: topicEdge.sharedCount,
+            },
+            classes: "cluster-edge",
+          });
         }
       }
     }
@@ -1028,7 +1336,13 @@ export function GlobalGraphCanvas({
     const baseLen = clusterByContext ? 300 : 110;
     const baseEl = clusterByContext ? 0.2 : 0.4;
 
-    const focusIds = new Set(shownNodes.filter((n) => isFocused(n, effectiveFocus)).map((n) => n.id));
+    // crystal フォーカスは話題だけが物理参加集合（analyzeCrystalIslands は
+    // effect 冒頭で計算済み）。それ以外は generic な isFocused ベースの集合。
+    // crystal の話題どうしの辺は実辺ではなく射影（projection）だけなので、
+    // 下の physicsEdges フィルタは既存の projection 分岐がそのまま拾う。
+    const focusIds =
+      crystalAnalysis?.topicIds ??
+      new Set(shownNodes.filter((n) => isFocused(n, effectiveFocus)).map((n) => n.id));
     // 1 段目の対象コレクション。islands のときだけ絞る（フォーカス種類 + 重心
     // ダミー + それらの間の辺で、重心の不可視エッジもメンバーがフォーカス種類の
     // ものだけに絞る——フォーカス以外向けの重心エッジは 2 段目で扱う）。
@@ -1068,7 +1382,10 @@ export function GlobalGraphCanvas({
               : baseLen,
       edgeElasticity: (edge: any) =>
         edge.data("projection")
-          ? 0.4
+          // crystal の話題どうしの射影は共有する知見の数（sharedCount）に比例
+          // して弾性を強める（source の射影は sharedCount を持たないので既定 1
+          // ＝今までどおり 0.4 のまま）。
+          ? 0.4 * Math.min(edge.data("sharedCount") ?? 1, 5)
           : edge.data("virtual")
             ? islands
               ? 1.2
@@ -1086,7 +1403,17 @@ export function GlobalGraphCanvas({
       // フォーカス以外の実ノードと衛星を直接配置する。ドラッグ中の移動を
       // 打ち消さないよう、fit の前に済ませる（fit 自体はドラッグで止めた場合は
       // スキップする）。
-      if (islands) placeIslandGeometry(cy, { shownEdges, focusIds, foldedOutNodes, foldedInto });
+      if (crystalAnalysis) {
+        placeCrystalIslandGeometry(cy, {
+          shownNodes,
+          shownEdges,
+          foldedOutNodes,
+          foldedInto,
+          sharedClaimIds: crystalAnalysis.sharedClaimIds,
+        });
+      } else if (islands) {
+        placeIslandGeometry(cy, { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto });
+      }
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) cy.fit(undefined, 30);
     });
@@ -1622,7 +1949,7 @@ export function GlobalGraphView({
   // 「葉を畳む」を今の表示中サブグラフ（shown）に適用した結果。チェックの ON/OFF に
   // 関わらず常に計算する（OFF でも「畳んだらどれだけ減るか」をチェック横に出すため）。
   const foldResult = useMemo(
-    () => foldLeafNodes(shown, { focus: effectiveFocus }),
+    () => computeFocusFoldResult(shown, effectiveFocus),
     [shown, effectiveFocus],
   );
   const foldedTotal = foldResult.foldedTotal;
@@ -1633,6 +1960,8 @@ export function GlobalGraphView({
   );
   // ヘッダー右の件数表示は「畳む」が ON なら畳んだ後の数（実際に描画される数）にする。
   // 各層チップ（原料/ノート/知見・洞察）は畳む前の総数のまま変えない。
+  // foldResult.data は畳んだ葉（衛星として別描画するもの）を既に取り除いた集合
+  // なので、ここには衛星を数え直す必要はない（畳む前の集合は shown 側）。
   const displayedNodeCount = foldLeaves ? foldResult.data.nodes.length : shown.nodes.length;
   const displayedEdgeCount = foldLeaves ? foldResult.data.edges.length : shown.edges.length;
 

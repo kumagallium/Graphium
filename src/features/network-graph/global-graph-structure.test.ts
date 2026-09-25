@@ -11,6 +11,7 @@ import {
   detectCommunities,
   detectNoteCommunities,
   detectFocusCommunities,
+  analyzeCrystalIslands,
 } from "./global-graph-structure";
 import type { NoteGraphData, NoteNode } from "./graph-builder";
 
@@ -420,30 +421,18 @@ describe("detectNoteCommunities", () => {
 });
 
 describe("detectFocusCommunities", () => {
-  it("crystal フォーカス: 同じノートに付いた知見3つが1島、別ノートの知見2つが別島", () => {
-    // c1〜c3 は n1 にだけ繋がる（直接の知見同士の辺は無い）。focus=crystal では
-    // 非フォーカス（ノート）を 1 つ共有していれば射影で辺が繋がるので、
-    // n1 を共有する c1・c2・c3 は同じ島になる。c4・c5 は n2 を共有して別の島。
+  it("crystal フォーカス: 知見を共有する話題2つは同じ島", () => {
+    // t1・t2 は知見 c1 を共有する（射影の辺で繋がる）ので同じ島になる。
+    // 物理配置に参加するのは話題だけなので、島は話題どうしのグラフで決まる。
     const data: NoteGraphData = {
-      nodes: [note("n1"), note("n2"), claim("c1"), claim("c2"), claim("c3"), claim("c4"), claim("c5")],
+      nodes: [topic("t1"), topic("t2"), claim("c1")],
       edges: [
-        { source: "n1", target: "c1", relation: "derived" },
-        { source: "n1", target: "c2", relation: "derived" },
-        { source: "n1", target: "c3", relation: "derived" },
-        { source: "n2", target: "c4", relation: "derived" },
-        { source: "n2", target: "c5", relation: "derived" },
+        { source: "c1", target: "t1", relation: "derived" },
+        { source: "c1", target: "t2", relation: "derived" },
       ],
     };
     const communities = detectFocusCommunities(data, "crystal");
-    const communityA = communities.get("c1");
-    const communityB = communities.get("c4");
-    expect(communities.get("c2")).toBe(communityA);
-    expect(communities.get("c3")).toBe(communityA);
-    expect(communities.get("c5")).toBe(communityB);
-    expect(communityA).not.toBe(communityB);
-    // ノート（非フォーカス）は隣接する知見の多数派（この場合は全員同じ島）に所属する
-    expect(communities.get("n1")).toBe(communityA);
-    expect(communities.get("n2")).toBe(communityB);
+    expect(communities.get("t1")).toBe(communities.get("t2"));
   });
 
   it("source フォーカス: 同じノートで使われた原料2つが同じ島", () => {
@@ -486,5 +475,66 @@ describe("detectFocusCommunities", () => {
     expect(communities.get("q2")).toBe(qLabel);
     expect(pLabel).not.toBe(qLabel);
     expect(communities.get("c1")).toBe(pLabel); // p 系列に 2 本・q 系列に 1 本 → 多数派の p
+  });
+});
+
+describe("analyzeCrystalIslands", () => {
+  it("葉知見は衛星として親が話題になる（ノートより話題を優先）", () => {
+    // c1 は隣接ノート 1 つ・隣接話題 1 つ（隣接話題は 2 未満）→ 葉知見。
+    // 話題があるので親は話題（ノートではなく）。
+    const data: NoteGraphData = {
+      nodes: [note("n1"), claim("c1"), topic("t1")],
+      edges: [
+        { source: "n1", target: "c1", relation: "derived" },
+        { source: "c1", target: "t1", relation: "derived" },
+      ],
+    };
+    const { leafParent, topicIds } = analyzeCrystalIslands(data);
+    expect(leafParent.get("c1")).toBe("t1");
+    expect(topicIds.has("c1")).toBe(false); // 話題以外は物理配置に参加しない
+  });
+
+  it("隣接話題が2つ以上の知見は共有知見として扱われる（衛星にならない）", () => {
+    const data: NoteGraphData = {
+      nodes: [topic("t1"), topic("t2"), claim("c1")],
+      edges: [
+        { source: "c1", target: "t1", relation: "derived" },
+        { source: "c1", target: "t2", relation: "derived" },
+      ],
+    };
+    const { leafParent, sharedClaimIds } = analyzeCrystalIslands(data);
+    expect(sharedClaimIds.has("c1")).toBe(true);
+    expect(leafParent.has("c1")).toBe(false);
+  });
+
+  it("話題2つが知見1つを共有すると射影の辺がある", () => {
+    const data: NoteGraphData = {
+      nodes: [topic("t1"), topic("t2"), claim("c1")],
+      edges: [
+        { source: "c1", target: "t1", relation: "derived" },
+        { source: "c1", target: "t2", relation: "derived" },
+      ],
+    };
+    const { topicEdges } = analyzeCrystalIslands(data);
+    const edge = topicEdges.find(
+      (e) => (e.source === "t1" && e.target === "t2") || (e.source === "t2" && e.target === "t1"),
+    );
+    expect(edge).toBeDefined();
+    expect(edge?.sharedCount).toBe(1);
+  });
+
+  it("知見を共有しなければ話題どうしの射影の辺は無い", () => {
+    const data: NoteGraphData = {
+      nodes: [topic("t1"), topic("t2"), claim("c1"), claim("c2")],
+      edges: [
+        { source: "c1", target: "t1", relation: "derived" },
+        { source: "c2", target: "t2", relation: "derived" },
+      ],
+    };
+    const { topicEdges } = analyzeCrystalIslands(data);
+    const edge = topicEdges.find(
+      (e) => (e.source === "t1" && e.target === "t2") || (e.source === "t2" && e.target === "t1"),
+    );
+    expect(edge).toBeUndefined();
   });
 });

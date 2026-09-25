@@ -177,8 +177,17 @@ function buildSampleData(): NoteGraphData {
     for (const targetId of targets) edges.push({ source: id, target: targetId, relation: "used" });
   }
 
+  // ノート id → シリーズ番号（知見がどのシリーズに属するかを追うために使う。
+  // 話題はシリーズをまたがない——知見の一次所属を選ぶ元データがシリーズ単位なため）。
+  const seriesIdxByNoteId = new Map<string, number>();
+  seriesNoteIds.forEach((ids, si) => {
+    for (const id of ids) seriesIdxByNoteId.set(id, si);
+  });
+
   // 知見（claim）700: 9割(630)は1ノートにだけ繋がる葉、1割(70)は2〜3ノートを共有
   const claimIds: string[] = [];
+  // シリーズ番号 → そのシリーズのノートに付いた知見 id（話題の割り当て元）
+  const claimsBySeriesIdx: string[][] = Array.from({ length: SERIES_COUNT }, () => []);
   let claimCounter = 0;
   for (let i = 0; i < 630; i++) {
     claimCounter++;
@@ -192,7 +201,9 @@ function buildSampleData(): NoteGraphData {
       wikiKind: "claim",
     });
     claimIds.push(id);
-    edges.push({ source: pick(rng, allNoteIds), target: id, relation: "derived" });
+    const noteId = pick(rng, allNoteIds);
+    edges.push({ source: noteId, target: id, relation: "derived" });
+    claimsBySeriesIdx[seriesIdxByNoteId.get(noteId)!].push(id);
   }
   for (let i = 0; i < 70; i++) {
     claimCounter++;
@@ -211,6 +222,7 @@ function buildSampleData(): NoteGraphData {
     const si = randInt(rng, 0, SERIES_COUNT - 1);
     const notesFor = shuffle(rng, seriesNoteIds[si]).slice(0, randInt(rng, 2, 3));
     for (const noteId of notesFor) edges.push({ source: noteId, target: id, relation: "derived" });
+    claimsBySeriesIdx[si].push(id);
   }
 
   // 洞察（atom）64: 各 2〜4 件の知見から派生
@@ -221,14 +233,88 @@ function buildSampleData(): NoteGraphData {
     for (const claimId of claimsFor) edges.push({ source: claimId, target: id, relation: "derived" });
   }
 
-  // 話題（topic）44: 各 10〜40 件の知見を束ねる（名前は循環させて連番を振る）
-  for (let i = 0; i < 44; i++) {
-    const id = `t${i + 1}`;
-    const baseName = TOPIC_NAMES[i % TOPIC_NAMES.length];
-    const title = i < TOPIC_NAMES.length ? baseName : `${baseName} ${Math.floor(i / TOPIC_NAMES.length) + 1}`;
-    nodes.push({ id, title, isCurrent: false, hop: 0, isWiki: true, wikiKind: "topic" });
-    const claimsFor = shuffle(rng, claimIds).slice(0, randInt(rng, 10, 40));
-    for (const claimId of claimsFor) edges.push({ source: claimId, target: id, relation: "derived" });
+  // 話題（topic）44: シリーズごとに 3〜4 個作り、そのシリーズの知見（claim）から
+  // 5〜25 件ずつ選ぶ（合計 440 件。話題はシリーズをまたがない）。実際の
+  // Graphium では知見は話題 1 つに属するのが普通なので、割り当てた 440 件の
+  // うち 12% だけを 2 つ目の話題（同じシリーズの他の話題を優先）にも足す。
+  // 残り 260 件は話題を持たない（後段の analyzeCrystalIslands で衛星になる）。
+  const topicsPerSeries: number[] = [];
+  for (let s = 0; s < SERIES_COUNT; s++) topicsPerSeries.push(randInt(rng, 3, 4));
+  const TOPIC_TOTAL = 44;
+  let topicDeficit = TOPIC_TOTAL - topicsPerSeries.reduce((a, b) => a + b, 0);
+  let topicCursor = 0;
+  while (topicDeficit !== 0) {
+    const idx = topicCursor % SERIES_COUNT;
+    topicCursor++;
+    if (topicDeficit > 0 && topicsPerSeries[idx] < 4) {
+      topicsPerSeries[idx]++;
+      topicDeficit--;
+    } else if (topicDeficit < 0 && topicsPerSeries[idx] > 3) {
+      topicsPerSeries[idx]--;
+      topicDeficit++;
+    }
+  }
+
+  const claimCountPerTopic: number[] = [];
+  for (let i = 0; i < TOPIC_TOTAL; i++) claimCountPerTopic.push(randInt(rng, 5, 25));
+  const CLAIM_ASSIGN_TOTAL = 440;
+  let claimAssignDeficit = CLAIM_ASSIGN_TOTAL - claimCountPerTopic.reduce((a, b) => a + b, 0);
+  let claimAssignCursor = 0;
+  while (claimAssignDeficit !== 0) {
+    const idx = claimAssignCursor % TOPIC_TOTAL;
+    claimAssignCursor++;
+    if (claimAssignDeficit > 0 && claimCountPerTopic[idx] < 25) {
+      claimCountPerTopic[idx]++;
+      claimAssignDeficit--;
+    } else if (claimAssignDeficit < 0 && claimCountPerTopic[idx] > 5) {
+      claimCountPerTopic[idx]--;
+      claimAssignDeficit++;
+    }
+  }
+
+  const topicIdsBySeries: string[][] = [];
+  const primaryTopicOfClaim = new Map<string, string>();
+  let topicCounter = 0;
+  let claimCountCursor = 0;
+  for (let s = 0; s < SERIES_COUNT; s++) {
+    const availableClaims = shuffle(rng, claimsBySeriesIdx[s]);
+    let consumed = 0;
+    const seriesTopicIds: string[] = [];
+    for (let k = 0; k < topicsPerSeries[s]; k++) {
+      topicCounter++;
+      const id = `t${topicCounter}`;
+      const baseName = TOPIC_NAMES[(topicCounter - 1) % TOPIC_NAMES.length];
+      const title =
+        topicCounter <= TOPIC_NAMES.length
+          ? baseName
+          : `${baseName} ${Math.floor((topicCounter - 1) / TOPIC_NAMES.length) + 1}`;
+      nodes.push({ id, title, isCurrent: false, hop: 0, isWiki: true, wikiKind: "topic" });
+      seriesTopicIds.push(id);
+
+      const want = Math.max(0, Math.min(claimCountPerTopic[claimCountCursor], availableClaims.length - consumed));
+      claimCountCursor++;
+      const picked = availableClaims.slice(consumed, consumed + want);
+      consumed += picked.length;
+      for (const claimId of picked) {
+        edges.push({ source: claimId, target: id, relation: "derived" });
+        if (!primaryTopicOfClaim.has(claimId)) primaryTopicOfClaim.set(claimId, id);
+      }
+    }
+    topicIdsBySeries.push(seriesTopicIds);
+  }
+
+  // 割り当てた知見の 12% だけが 2 つ目の話題にも属する（同じシリーズの他の
+  // 話題を優先。無ければ 2 つ目は付けない）。
+  const assignedClaimIds = [...primaryTopicOfClaim.keys()];
+  const secondaryCount = Math.round(assignedClaimIds.length * 0.12);
+  const secondaryCandidates = shuffle(rng, assignedClaimIds).slice(0, secondaryCount);
+  for (const claimId of secondaryCandidates) {
+    const primaryTopicId = primaryTopicOfClaim.get(claimId)!;
+    const seriesIdx = topicIdsBySeries.findIndex((ids) => ids.includes(primaryTopicId));
+    const sameSeriesTopics = topicIdsBySeries[seriesIdx].filter((id) => id !== primaryTopicId);
+    if (sameSeriesTopics.length === 0) continue;
+    const secondTopicId = pick(rng, sameSeriesTopics);
+    edges.push({ source: claimId, target: secondTopicId, relation: "derived" });
   }
 
   return { nodes, edges };
@@ -384,10 +470,10 @@ export const FocusCrystal: Story = {
         <CaseNote
           title="focusLayer: crystal（islands + fold + reach）"
           points={[
-            "島の中心は知見・洞察・話題（claim/atom/topic）。同じノートに付いた知見・話題は射影の不可視エッジで引き寄せられ、島になる。",
-            "ノート・原料はフォーカス以外の実ノード（橋）として小さく（size 14）描かれ、隣接する知見の平均位置に幾何配置される。",
-            "畳んだ葉（このフォーカスでは、知見に 1 本だけ繋がる原料・話題）は衛星として知見の周りに残る。",
-            "ヘッダーの「配置」セグメントで標準に戻すと、フォーカスチップは表示/非表示のトグルに戻る（visible はそのまま）。",
+            "島の中心は話題（topic）だけ。知見は数が多く（生成データで知見 700 件）、共有知見まで物理配置に混ぜても 1 つの塊になってしまったため、物理配置に参加するのは話題だけにした。話題どうしは、共有する知見の数が 1 以上のペアだけを射影の辺（不可視・自然長 110・弾性は共有数に比例）で繋ぐ。",
+            "知見・洞察は幾何配置: 隣接話題が 2 つ以上（共有知見）なら平均位置に size 30 の実ノードとして立つ（島の中や島の間）。隣接話題が 1 つなら衛星としてその話題のリングへ、話題を持たなければ隣接ノートの衛星になる。",
+            "ノート・原料も幾何配置: ノートは隣接する（配置済みの）知見の平均位置、原料は隣接ノートの平均位置に、どちらも size 14 の小さな橋として立つ。",
+            "話題の大きさは話題どうしの reach（2 ホップで届く他の話題の数）で 32〜64 に決まる。ヘッダーの「配置」セグメントで標準に戻すと、フォーカスチップは表示/非表示のトグルに戻る（visible はそのまま）。",
           ]}
         />
       }
