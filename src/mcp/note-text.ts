@@ -4,38 +4,35 @@
 // MCP サーバーは stdio で spawn されるたびに起動するため、エディタの初期化コスト
 // （と DOM 前提の依存）を持ち込めない。ここでは Claude が読める程度の軽量な
 // Markdown 化に絞って自前で実装する。往復変換の忠実さは目的ではない。
+// inline の文字列化と数式の表記だけは、Markdown 書き出しと同じ純関数
+// （inline-text.ts / markdown-math.ts。エディタに依存しない）を借りて表記を揃える。
 //
 // ブロック走査の規則は src/features/navigation/index-file.ts の collectOutline に揃える:
 //   - step コンテナは content がタイトル、children が中身
 //   - columnList / column はレイアウト用ラッパーなので透過する
+//
+// 既定は AI（MCP の外部エージェント）に渡す本文で、上付き・下付きを <sup> / <sub> で包む
+// （落とすと「10⁵」が「105」になる）。検索索引や照合キーのようにタグを入れたくない所は
+// { scripts: false } を渡す。数式（$…$ / $$…$$）はどちらでも残す。
 
-/** inline content からプレーンテキストを取り出す（inlineMath は LaTeX を $ で囲む） */
-export function extractInlineText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  let text = "";
-  for (const item of content) {
-    if (!item || typeof item !== "object") continue;
-    const it = item as Record<string, any>;
-    if (it.type === "inlineMath") {
-      const latex = String(it.props?.latex ?? "");
-      if (latex) text += `$${latex}$`;
-    } else if (typeof it.text === "string") {
-      text += it.text;
-    } else if (Array.isArray(it.content)) {
-      text += extractInlineText(it.content);
-    }
-  }
-  return text;
+import { inlineContentToText, type InlineTextOptions } from "../features/markdown-export/inline-text";
+import { mathBlockToMarkdown } from "../features/math/markdown-math";
+
+const FOR_AI: InlineTextOptions = { scripts: true };
+
+/** inline content からテキストを取り出す（inlineMath は LaTeX を $ で囲む） */
+export function extractInlineText(content: unknown, options: InlineTextOptions = FOR_AI): string {
+  return inlineContentToText(content, options);
 }
 
 /** table content（{ rows: [{ cells }] }）を Markdown テーブルに落とす */
-function tableToMarkdown(content: unknown): string {
+function tableToMarkdown(content: unknown, options: InlineTextOptions): string {
   const rows = (content as any)?.rows;
   if (!Array.isArray(rows) || rows.length === 0) return "";
   const cellText = (cell: unknown): string => {
-    if (Array.isArray(cell)) return extractInlineText(cell);
+    if (Array.isArray(cell)) return extractInlineText(cell, options);
     if (cell && typeof cell === "object" && Array.isArray((cell as any).content)) {
-      return extractInlineText((cell as any).content);
+      return extractInlineText((cell as any).content, options);
     }
     return "";
   };
@@ -72,7 +69,7 @@ function collectBlockIds(blocks: any[], out: string[]): void {
  * ブロック列を Markdown 文字列にする。
  * step は「### n. タイトル」として出し、中身をインデントせず続けて並べる。
  */
-export function blocksToMarkdown(blocks: any[], depth = 0): string {
+export function blocksToMarkdown(blocks: any[], depth = 0, options: InlineTextOptions = FOR_AI): string {
   const out: string[] = [];
   let stepNo = 0;
 
@@ -82,19 +79,19 @@ export function blocksToMarkdown(blocks: any[], depth = 0): string {
 
     // レイアウト用ラッパーは透過（中身だけ出す）
     if (type === "columnList" || type === "column") {
-      if (block.children?.length) out.push(blocksToMarkdown(block.children, depth));
+      if (block.children?.length) out.push(blocksToMarkdown(block.children, depth, options));
       continue;
     }
 
     if (type === "step") {
       stepNo += 1;
-      const title = extractInlineText(block.content) || `(step ${stepNo})`;
+      const title = extractInlineText(block.content, options) || `(step ${stepNo})`;
       out.push(`### ${stepNo}. ${title}`);
-      if (block.children?.length) out.push(blocksToMarkdown(block.children, depth));
+      if (block.children?.length) out.push(blocksToMarkdown(block.children, depth, options));
       continue;
     }
 
-    const text = extractInlineText(block.content);
+    const text = extractInlineText(block.content, options);
 
     switch (type) {
       case "heading": {
@@ -115,8 +112,14 @@ export function blocksToMarkdown(blocks: any[], depth = 0): string {
         out.push(`\`\`\`${block.props?.language ?? ""}\n${text}\n\`\`\``);
         break;
       case "table": {
-        const table = tableToMarkdown(block.content);
+        const table = tableToMarkdown(block.content, options);
         if (table) out.push(table);
+        break;
+      }
+      case "math": {
+        // 数式ブロックは式を props.latex に持つ（content は無い）ので、ここで拾わないと消える
+        const math = mathBlockToMarkdown(String(block.props?.latex ?? ""));
+        if (math) out.push(math);
         break;
       }
       case "image":
@@ -134,7 +137,7 @@ export function blocksToMarkdown(blocks: any[], depth = 0): string {
 
     // リストの入れ子は深さを足して辿る（step 以外の子）
     if (block.children?.length && type !== "step") {
-      out.push(blocksToMarkdown(block.children, depth + 1));
+      out.push(blocksToMarkdown(block.children, depth + 1, options));
     }
   }
 
@@ -142,10 +145,13 @@ export function blocksToMarkdown(blocks: any[], depth = 0): string {
 }
 
 /** ノート全体（全ページ）を Markdown にする */
-export function noteToMarkdown(doc: { pages?: { blocks?: any[] }[] }): string {
+export function noteToMarkdown(
+  doc: { pages?: { blocks?: any[] }[] },
+  options: InlineTextOptions = FOR_AI,
+): string {
   const pages = doc?.pages ?? [];
   return pages
-    .map((p) => blocksToMarkdown(p?.blocks ?? []))
+    .map((p) => blocksToMarkdown(p?.blocks ?? [], 0, options))
     .filter((s) => s.trim())
     .join("\n\n---\n\n");
 }

@@ -140,7 +140,7 @@ These cite notes from your [Knowledge layer](/knowledge-layer).
 - **Write with symbols** — a visual math editor: type `x/y` to get a fraction, with a symbol palette for the rest.
 - **Write in LaTeX** — edit the LaTeX source directly ("Enter a formula (LaTeX)").
 
-Your last-used mode is remembered on this device. Formulas are stored as LaTeX and rendered with KaTeX, so they survive export as plain LaTeX math delimiters.
+Your last-used mode is remembered on this device. Formulas are stored as LaTeX and rendered with KaTeX, so they survive export as plain LaTeX math delimiters. The AI reads them the same way: when a note becomes knowledge, or an agent reads it over MCP, each formula arrives as its LaTeX, and a formula the AI writes into a knowledge page shows up as a formula rather than as raw `$…$` text.
 
 ![The formula editor in visual mode, with a toggle to LaTeX](/screenshots/math-editor.png)
 

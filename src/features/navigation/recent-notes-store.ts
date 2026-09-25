@@ -41,6 +41,16 @@ export function addToRecent(noteId: string, title: string): RecentNote[] {
   return trimmed;
 }
 
+// 履歴にあるノートのタイトルだけ差し替える（並び順・アクセス時刻は変えない）。
+// 別のノートへ移った後に書き出した保存用。addToRecent だと移った先より前に並ぶ
+export function renameInRecent(noteId: string, title: string): RecentNote[] {
+  const recent = getRecentNotes();
+  if (!recent.some((n) => n.noteId === noteId && n.title !== title)) return recent;
+  const next = recent.map((n) => (n.noteId === noteId ? { ...n, title } : n));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  return next;
+}
+
 // 削除されたノートを履歴から除去
 export function removeFromRecent(noteId: string): RecentNote[] {
   const recent = getRecentNotes().filter((n) => n.noteId !== noteId);

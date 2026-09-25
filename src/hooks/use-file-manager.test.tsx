@@ -19,8 +19,8 @@
 import "./save-path-test-polyfills";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useFileManager } from "./use-file-manager";
-import { registerProvider, setActiveProvider } from "../lib/storage/registry";
+import { useFileManager, type EditorSaveTarget } from "./use-file-manager";
+import { getActiveProvider, registerProvider, setActiveProvider } from "../lib/storage/registry";
 import { clearMediaIndexCache, type MediaIndexEntry } from "../features/asset-browser";
 import { buildSystemSkillDocument, resolveSystemSkillDefinition } from "../features/skill/skill-service";
 import { SYSTEM_SKILLS } from "../features/skill/system-skills";
@@ -1163,6 +1163,163 @@ describe("useFileManager: 同じ中身の素材を二度登録しない", () => 
     });
     expect(mock.calls.uploadMedia).toHaveLength(0);
     expect(result.current.mediaIndex?.media).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// メインエディタの保存先の固定（saveEditorDoc / shouldFlushEditor）
+// ノートを切り替えた瞬間のアンマウント時の書き出しは、切り替え先ではなく
+// エディタが開いていたノートへ書く。保存中でも捨てない。
+// ---------------------------------------------------------------------------
+
+describe("useFileManager: メインエディタの保存先は開いた時点で固定する", () => {
+  function editorTarget(
+    key: string | null,
+    session: number,
+    kind: EditorSaveTarget["kind"] = "note",
+  ): EditorSaveTarget {
+    return { key, kind, session, provider: getActiveProvider() };
+  }
+
+  async function openNote(result: { current: ReturnType<typeof useFileManager> }, id: string) {
+    await act(async () => {
+      await result.current.handleOpenFile(id);
+    });
+    await waitFor(() => expect(result.current.activeFileId).toBe(id));
+    return result.current.editorKey;
+  }
+
+  it("B へ移った後の書き出しは A に書き、B にも開いているノートにも触れない", async () => {
+    const mock = setupProvider({ "note-a": mockDoc("A"), "note-b": mockDoc("B") });
+    const { result } = await renderFileManager();
+    const sessionA = await openNote(result, "note-a");
+    const targetA = editorTarget("note-a", sessionA);
+    await openNote(result, "note-b");
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.saveEditorDoc(targetA, mockDoc("A 切替直前の編集"), { unmounting: true });
+    });
+
+    expect(ok).toBe(true);
+    expect(mock.calls.saveFile).toEqual(["note-a"]);
+    expect(mock.files.get("note-a")?.doc.title).toBe("A 切替直前の編集");
+    expect(mock.files.get("note-b")?.doc.title).toBe("B");
+    expect(result.current.activeFileId).toBe("note-b");
+    expect(result.current.activeDoc?.title).toBe("B");
+    // 最近のノートの並びは移った先（B）が先頭のまま。A はタイトルだけ追従する
+    expect(result.current.recentNotes.map((n) => [n.noteId, n.title])).toEqual([
+      ["note-b", "B"],
+      ["note-a", "A 切替直前の編集"],
+    ]);
+  });
+
+  it("書き込み中の保存があっても、アンマウント時の書き出しは捨てずに書く", async () => {
+    const mock = setupProvider({ "note-a": mockDoc("A") });
+    const { result } = await renderFileManager();
+    const target = editorTarget("note-a", await openNote(result, "note-a"));
+    // 1 本目の保存を書き込みの途中で止める
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const originalSave = mock.provider.saveFile.bind(mock.provider);
+    let first = true;
+    mock.provider.saveFile = async (id: string, doc: GraphiumDocument) => {
+      if (first) {
+        first = false;
+        await held;
+      }
+      return originalSave(id, doc);
+    };
+
+    let firstSave!: Promise<boolean>;
+    act(() => {
+      firstSave = result.current.saveEditorDoc(target, mockDoc("A 1 本目"));
+    });
+    // 保存中の通常保存は従来どおり捨てる（false を返し、エディタが未保存のまま持つ）
+    let second = true;
+    await act(async () => {
+      second = await result.current.saveEditorDoc(target, mockDoc("A 保存中に打った分"));
+    });
+    expect(second).toBe(false);
+
+    let flushed = false;
+    await act(async () => {
+      flushed = await result.current.saveEditorDoc(target, mockDoc("A 書き出し"), { unmounting: true });
+    });
+    expect(flushed).toBe(true);
+    expect(mock.files.get("note-a")?.doc.title).toBe("A 書き出し");
+
+    await act(async () => {
+      release();
+      await firstSave;
+    });
+  });
+
+  it("新規ノートの書き出しは作ったノートを開かない（移った先を奪わない）。同じ回の次の保存は同じノートへ", async () => {
+    const mock = setupProvider({ "note-b": mockDoc("B") });
+    const { result } = await renderFileManager();
+    const newTarget = editorTarget(null, result.current.editorKey);
+    await openNote(result, "note-b");
+
+    await act(async () => {
+      await result.current.saveEditorDoc(newTarget, mockDoc("書きかけの新規ノート"), { unmounting: true });
+    });
+    expect(mock.calls.createFile).toEqual(["created-1"]);
+    expect(result.current.activeFileId).toBe("note-b");
+    expect(result.current.activeDoc?.title).toBe("B");
+
+    await act(async () => {
+      await result.current.saveEditorDoc(newTarget, mockDoc("書きかけの新規ノート 2"), { unmounting: true });
+    });
+    expect(mock.calls.createFile).toEqual(["created-1"]);
+    expect(mock.calls.saveFile).toEqual(["created-1"]);
+    expect(mock.files.get("created-1")?.doc.title).toBe("書きかけの新規ノート 2");
+  });
+
+  it("画面のままの新規ノートは、最初の保存で作ったノートを開く（従来どおり）", async () => {
+    setupProvider();
+    const { result } = await renderFileManager();
+    const target = editorTarget(null, result.current.editorKey);
+    await act(async () => {
+      await result.current.saveEditorDoc(target, mockDoc("新しいノート"));
+    });
+    await waitFor(() => expect(result.current.activeFileId).toBe("created-1"));
+  });
+
+  it("書き出してよいか: 別のノートへ移った後は書く。同じノートを作り直した・完全削除した・保存先が変わったら書かない", async () => {
+    setupProvider({ "note-a": mockDoc("A"), "note-b": mockDoc("B") });
+    const { result } = await renderFileManager();
+    const sessionA = await openNote(result, "note-a");
+    const targetA = editorTarget("note-a", sessionA);
+
+    // 一覧・ギャラリーを開いただけ（同じ回）なら書く
+    expect(result.current.shouldFlushEditor(targetA)).toBe(true);
+
+    // 新しい doc を持ち込んで同じノートを開き直す（外の更新でエディタを作り直す経路）
+    await act(async () => {
+      await result.current.handleOpenFile("note-a", {
+        ...mockDoc("外から更新した A"),
+        modifiedAt: "2026-12-31T00:00:00Z",
+      });
+    });
+    await waitFor(() => expect(result.current.editorKey).not.toBe(sessionA));
+    expect(result.current.shouldFlushEditor(targetA)).toBe(false);
+
+    // 別のノートへ移った後は書く
+    const targetA2 = editorTarget("note-a", result.current.editorKey);
+    await openNote(result, "note-b");
+    expect(result.current.shouldFlushEditor(targetA2)).toBe(true);
+
+    // 保存先が切り替わった
+    expect(
+      result.current.shouldFlushEditor({ ...targetA2, provider: {} as EditorSaveTarget["provider"] }),
+    ).toBe(false);
+
+    // 完全削除したノート（書くとファイルとインデックスを蘇らせる）
+    await act(async () => {
+      await result.current.handlePermanentDelete("note-a");
+    });
+    expect(result.current.shouldFlushEditor(targetA2)).toBe(false);
   });
 });
 

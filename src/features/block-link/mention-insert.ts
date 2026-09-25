@@ -201,6 +201,11 @@ export type NoteMentionOps = {
   updateNoteLinks: UpdateNoteLinks;
   /** 入れ終えたら呼ぶ（自動保存を起こす） */
   onInserted?: () => void;
+  /**
+   * 入れるまで待つ時間（ms）。既定の 100 は @ メニューが閉じて入力中の `@…` が
+   * 片付くのを待つ分。貼り付けは片付けるものが無いので 0（次のタスク）でよい
+   */
+  delayMs?: number;
 };
 
 /**
@@ -226,7 +231,51 @@ export function insertNoteMention(
     recordMentionLink(editor, ops.addLink, { sourceBlockId, targetNoteId: note.id });
     ops.updateNoteLinks((links) => withDerivedFromLink(links, note.id, sourceBlockId));
     ops.onInserted?.();
-  }, 100);
+  }, ops.delayMs ?? 100);
+}
+
+/** 貼り付けたノートリンクの変換に要るもの。エディタのノートごとに違うので呼び出し側が渡す */
+export type NoteLinkPasteOps = Omit<NoteMentionOps, "delayMs"> & {
+  /** 貼り付けを受けたエディタ（カーソルのブロックを読む） */
+  editor: any;
+  /** 挿入時点のエディタ（外れていたら null） */
+  getEditor: () => any;
+  /** ノート ID から今のタイトルを引く。一覧に無いノートなら null（通常の貼り付けに任せる） */
+  resolveTitle: (noteId: string) => string | null;
+};
+
+/**
+ * 単一トークンの Graphium ノートリンク（…#note/<id>）の貼り付けを @タイトル に変換する。
+ * 処理を引き受けたら true を返す（呼び出し元の paste リスナーで return する）。
+ * 入れ方と記録は @ メニューで選んだときと同じ insertNoteMention に任せる — reference
+ * リンク・noteLinks の派生関係（グラフ・来歴の線）・表のセルなら行の identity まで。
+ * 以前はエディタごとに手書きしていて、ピークだけ noteLinks を記録していなかった。
+ *
+ * クリップボードリスナーが二重登録されると同じ paste イベントが 2 回届き、メンションが
+ * 2 個入る。イベント単位の既処理フラグ＋ stopImmediatePropagation で 1 回だけ処理する。
+ */
+export function tryConvertNoteLinkPaste(e: ClipboardEvent, pastedText: string, ops: NoteLinkPasteOps): boolean {
+  const m = /#note\/([^/\s#?]+)/.exec(pastedText);
+  if (!m) return false;
+  const noteId = decodeURIComponent(m[1]);
+  const title = ops.resolveTitle(noteId);
+  if (!title) return false;
+  const flagged = e as unknown as { __ghNoteLinkHandled?: boolean };
+  if (flagged.__ghNoteLinkHandled) return true;
+  flagged.__ghNoteLinkHandled = true;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const sourceBlockId: string | undefined = ops.editor.getTextCursorPosition?.()?.block?.id;
+  if (!sourceBlockId) {
+    // 記録元のブロックが分からないときは @タイトル だけ入れる（線の出どころが無い）
+    setTimeout(() => {
+      const editor = ops.getEditor();
+      if (editor) insertNoteMentionInline(editor, noteId, title);
+    }, 0);
+    return true;
+  }
+  insertNoteMention(ops.getEditor, sourceBlockId, { id: noteId, label: title }, { ...ops, delayMs: 0 });
+  return true;
 }
 
 /** 素材候補のラベル先頭の種類アイコン（📄 / 🧾 / 🖼）を外した素材名 */

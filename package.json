@@ -21,7 +21,6 @@
     "dev:client": "node scripts/fetch-fonts.mjs && vite",
     "dev:server": "tsx watch --env-file .env src/server/index.ts",
     "build": "node scripts/fetch-fonts.mjs && tsc && vite build",
-    "build:server": "tsc -p tsconfig.server.json --noEmit",
     "preview": "vite preview",
     "manual:dev": "vitepress dev manual --port 5199",
     "manual:build": "vitepress build manual",

@@ -196,14 +196,14 @@ function propsSignature(block: Record<string, any>): string {
   return stableStringify(entries);
 }
 
-/** 対応付け用の素のテキスト（表はセルを並べたもの） */
+/** 対応付け用の素のテキスト（表はセルを並べたもの。上付き・下付きのタグは入れない） */
 function blockPlainText(block: Record<string, any>): string {
   if (block.type === "table") {
     const data = readTableData(block);
     if (!data) return "";
     return [data.header, ...data.rows].map((row) => row.join("\t")).join("\n");
   }
-  return extractInlineText(block.content);
+  return extractInlineText(block.content, { scripts: false });
 }
 
 /** 中身が変わったかを判定するための署名（子ブロックは含めない） */
@@ -216,7 +216,7 @@ function blockSignature(block: Record<string, any>): string {
   const content = block.content;
   // content が配列でないブロック（独自の入れ物を持つもの）は中身も署名に入れる
   const extra = content && typeof content === "object" && !Array.isArray(content) ? content : null;
-  return stableStringify([type, extractInlineText(content), extra, propsSignature(block)]);
+  return stableStringify([type, extractInlineText(content, { scripts: false }), extra, propsSignature(block)]);
 }
 
 // ──────────────────────────────────────────────

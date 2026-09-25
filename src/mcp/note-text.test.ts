@@ -29,9 +29,61 @@ describe("extractInlineText", () => {
     expect(extractInlineText(undefined)).toBe("");
     expect(extractInlineText(null)).toBe("");
   });
+
+  it("上付き・下付きは既定（AI に渡す本文）で <sup> / <sub> にする（10⁵ を 105 にしない）", () => {
+    const content = [
+      { type: "text", text: "10", styles: {} },
+      { type: "text", text: "5", styles: { superscript: true } },
+      { type: "text", text: " Pa の H", styles: {} },
+      { type: "text", text: "2", styles: { subscript: true } },
+      { type: "text", text: "O", styles: {} },
+    ];
+    expect(extractInlineText(content)).toBe("10<sup>5</sup> Pa の H<sub>2</sub>O");
+  });
+
+  it("{ scripts: false } ではタグを入れない（検索索引・照合キー用）", () => {
+    const content = [
+      { type: "text", text: "10", styles: {} },
+      { type: "text", text: "5", styles: { superscript: true } },
+    ];
+    expect(extractInlineText(content, { scripts: false })).toBe("105");
+  });
 });
 
 describe("blocksToMarkdown", () => {
+  it("数式ブロックを $$ … $$ にする（式は props.latex にあり content を持たない）", () => {
+    const blocks = [
+      { type: "paragraph", content: text("エネルギーは") },
+      { type: "math", props: { latex: "E = mc^2" } },
+    ];
+    expect(blocksToMarkdown(blocks)).toBe("エネルギーは\n\n$$ E = mc^2 $$");
+  });
+
+  it("入れ子のリストと表のセルにも上付き・下付きの出し分けが届く", () => {
+    const sup = [
+      { type: "text", text: "10", styles: {} },
+      { type: "text", text: "-3", styles: { superscript: true } },
+      { type: "text", text: " M", styles: {} },
+    ];
+    const blocks = [
+      {
+        type: "bulletListItem",
+        content: text("濃度"),
+        children: [{ type: "bulletListItem", content: sup }],
+      },
+      {
+        type: "table",
+        content: { type: "tableContent", rows: [{ cells: [text("条件")] }, { cells: [{ type: "tableCell", content: sup }] }] },
+      },
+    ];
+    expect(blocksToMarkdown(blocks)).toBe(
+      "- 濃度\n\n  - 10<sup>-3</sup> M\n\n| 条件 |\n| --- |\n| 10<sup>-3</sup> M |",
+    );
+    expect(blocksToMarkdown(blocks, 0, { scripts: false })).toBe(
+      "- 濃度\n\n  - 10-3 M\n\n| 条件 |\n| --- |\n| 10-3 M |",
+    );
+  });
+
   it("heading を # に変換する", () => {
     const blocks = [{ type: "heading", props: { level: 2 }, content: text("見出し") }];
     expect(blocksToMarkdown(blocks)).toBe("## 見出し");
@@ -121,6 +173,30 @@ describe("collectSteps", () => {
       order: 2,
       childBlockIds: ["child-3"],
     });
+  });
+
+  it("手順名と中身の上付き・下付き・数式を保つ（get_note_steps は AI に渡す本文）", () => {
+    const doc = {
+      pages: [
+        {
+          blocks: [
+            {
+              type: "step",
+              id: "step-1",
+              content: [
+                { type: "text", text: "CO", styles: {} },
+                { type: "text", text: "2", styles: { subscript: true } },
+                { type: "text", text: " を流す", styles: {} },
+              ],
+              children: [{ id: "c1", type: "math", props: { latex: "Q = 10\\,\\mathrm{sccm}" } }],
+            },
+          ],
+        },
+      ],
+    };
+    const [step] = collectSteps(doc);
+    expect(step.title).toBe("CO<sub>2</sub> を流す");
+    expect(step.body).toBe("$$ Q = 10\\,\\mathrm{sccm} $$");
   });
 
   it("step が無ければ空配列を返す", () => {
