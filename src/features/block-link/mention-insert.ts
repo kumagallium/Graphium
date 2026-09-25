@@ -1,16 +1,20 @@
 // @メンションを本文に入れるときの共通処理（メインエディタ・サイドピーク共通）。
 //
-// 素材の @リンクの挿入と、reference リンクの記録をここに集める。どちらのエディタも
-// 同じ関数を通す（片方だけ直す移植漏れを防ぐ。クリック側は mention-click.ts）。
+// 素材の @リンクの挿入と、reference リンクの記録、インデックステーブルの行の紐付けを
+// ここに集める。どちらのエディタも同じ関数を通す（片方だけ直す移植漏れを防ぐ。
+// クリック側は mention-click.ts）。
 //
 // 表のセルに入れたときは、その行の tableRowIdentity をリンクに控える。表は 1 ブロックに
 // 全セルのリンクが並ぶので、同じ表に同じラベル（試料ごとの data.txt 等）が並ぶと、
 // ラベルとブロックだけではどの行のリンクか区別できない。
 
+import type { NoteLink, TableMeta } from "../../lib/document-types";
 import {
   syncTableRowIdentitiesToEditor,
   tableRowIdentityOfCell,
 } from "../../lib/table-row-identity";
+import { findColumnIndexByName, withCellText } from "../table-meta/table-cells";
+import { findColumnNameByType, hasColumnType } from "../table-meta/types";
 import type { ReferenceSuggestion } from "./mention-menu";
 
 /** reference リンクの記録口（メイン・ピークどちらの linkStore.addLink でも渡せる最小形） */
@@ -26,23 +30,58 @@ export type AddReferenceLink = (params: {
 /** 表の中の行の位置（表ブロック ID と行の番号。0 は見出し行） */
 export type TableRowPosition = { tableBlockId: string; rowIndex: number };
 
+/** 表の中のセルの位置（行の位置と列の番号） */
+export type TableCellPosition = TableRowPosition & { colIndex: number };
+
 /**
- * カーソルがある表の行を返す。表の外なら null。
+ * カーソルがある表のセルを返す。表の外なら null。
  * BlockNote の表は blockContainer > table > tableRow > tableCell の入れ子で、
- * tableRow の並びは block.content.rows と 1 対 1 に対応する。
+ * tableRow の並びは block.content.rows と、tableCell の並びはその行の cells と
+ * 1 対 1 に対応する。
  */
-export function tableRowAtCursor(editor: any): TableRowPosition | null {
+export function tableCellAtCursor(editor: any): TableCellPosition | null {
   const $from = editor?._tiptapEditor?.state?.selection?.$from;
   if (!$from) return null;
   let rowIndex = -1;
+  let colIndex = -1;
   for (let depth = $from.depth; depth > 0; depth--) {
     const node = $from.node(depth);
-    if (node.type.name === "tableRow") rowIndex = $from.index(depth - 1);
+    if (node.type.name === "tableRow") {
+      rowIndex = $from.index(depth - 1);
+      colIndex = $from.index(depth);
+    }
     if (node.type.name === "blockContainer") {
-      return rowIndex >= 0 ? { tableBlockId: node.attrs.id, rowIndex } : null;
+      return rowIndex >= 0 ? { tableBlockId: node.attrs.id, rowIndex, colIndex } : null;
     }
   }
   return null;
+}
+
+/** カーソルがある表の行を返す。表の外なら null */
+export function tableRowAtCursor(editor: any): TableRowPosition | null {
+  const cell = tableCellAtCursor(editor);
+  return cell ? { tableBlockId: cell.tableBlockId, rowIndex: cell.rowIndex } : null;
+}
+
+/**
+ * @ で行とノートを紐付けるセルなら、その位置を返す。インデックステーブル（note-link の
+ * ふるまいを持つ列がある表）の、その列の見出し行以外のセルにカーソルがあるときだけ。
+ * 他の列（条件・メモ等）で打った @ は、本文と同じでそのセルに入る — 列を見ずに
+ * 先頭列を書き換えていたため、2 列目で @ を打つと打っていない先頭列の中身が消えていた。
+ * 表の注釈はエディタごと（メインとピークで別のストア）なので、読み口を渡す。
+ */
+export function noteLinkCellAtCursor(
+  editor: any,
+  getTableMeta: (tableBlockId: string) => TableMeta | undefined,
+): TableCellPosition | null {
+  const cell = tableCellAtCursor(editor);
+  if (!cell || cell.rowIndex <= 0 || cell.colIndex < 0) return null;
+  const meta = getTableMeta(cell.tableBlockId);
+  if (!hasColumnType(meta, "note-link")) return null;
+  const block = editor.getBlock?.(cell.tableBlockId);
+  if (!block) return null;
+  const noteLinkCol = findColumnIndexByName(block, findColumnNameByType(meta, "note-link"));
+  return cell.colIndex === noteLinkCol ? cell : null;
 }
 
 /**
@@ -80,6 +119,73 @@ export function recordMentionLink(
     createdBy: "human",
     ...(sourceRowIdentity ? { sourceRowIdentity } : {}),
   });
+}
+
+/**
+ * 行の紐付けの書き込み先。表の注釈・リンク・noteLinks はエディタのノートごとに違う
+ * （ピークで紐付けたらピークのノートに入る）ので、呼び出し側が自分のものを渡す。
+ */
+export type RowNoteLinkOps = {
+  /** 表の注釈に「行の値 → ノート」を控える（そのエディタの tableMetaStore.setNoteLink） */
+  setNoteLink: (tableBlockId: string, rowValue: string, noteId: string) => void;
+  addLink: AddReferenceLink;
+  /** ノートの noteLinks（グラフ表示用の派生関係）を、今の配列から次の配列に置き換える */
+  updateNoteLinks: (update: (links: NoteLink[]) => NoteLink[]) => void;
+  /** 書き込みを始めたら呼ぶ（自動保存を起こす） */
+  onLinked?: () => void;
+};
+
+/**
+ * @ メニューで選んだ既存ノートを、インデックステーブルの行に紐付ける
+ * （noteLinkCellAtCursor が返したセルで選んだとき）。紐付けないと行アイコン層は
+ * その行を「ノートを作成」のまま出し、押すと「@名前」という題の重複ノートができる。
+ * 1. 表の注釈に「@名前 → ノート」を控える（キーは書き換えた後のセルの文字）
+ * 2. ノートの noteLinks に derived_from を足す（同じノートへの線が既にあれば足さない）
+ * 3. 打ったセルを青い @名前 に書き換え、打った行に紐づく reference リンクを記録する。
+ *    メニューが閉じて入力中の `@…` が片付いてから（ノートのメンションと同じく少し遅らせる）
+ */
+export function linkTableRowToNote(
+  getEditor: () => any,
+  cell: TableCellPosition,
+  note: { id: string; label: string },
+  ops: RowNoteLinkOps,
+): void {
+  const mention = `@${note.label}`;
+  ops.setNoteLink(cell.tableBlockId, mention, note.id);
+  ops.updateNoteLinks((links) =>
+    links.some((l) => l.targetNoteId === note.id)
+      ? links
+      : [...links, { targetNoteId: note.id, sourceBlockId: cell.tableBlockId, type: "derived_from" }],
+  );
+  ops.onLinked?.();
+  setTimeout(() => {
+    const editor = getEditor();
+    if (!editor) return;
+    const block = editor.getBlock?.(cell.tableBlockId);
+    if (block?.content?.rows?.[cell.rowIndex]) {
+      const rows = block.content.rows.map((r: any, i: number) =>
+        i !== cell.rowIndex
+          ? r
+          : {
+              ...r,
+              // 書き換えるのは打った列だけ。他の列のセルはそのまま
+              // （形式ごと差し替えるとセルの色・配置が落ちる）
+              cells: r.cells.map((c: any, ci: number) =>
+                ci === cell.colIndex ? withCellText(c, mention, { textColor: "blue" }) : c,
+              ),
+            },
+      );
+      // 列幅・見出し行の指定は content に一緒に入っている。rows だけで渡すと
+      // BlockNote は無いものとして作り直し、広げた列幅が既定に戻る
+      editor.updateBlock(cell.tableBlockId, { content: { ...block.content, rows } });
+    }
+    // セルを書き換えて入れる経路なので、カーソルではなく打った行に紐づける
+    recordMentionLink(editor, ops.addLink, {
+      sourceBlockId: cell.tableBlockId,
+      targetNoteId: note.id,
+      row: cell,
+    });
+  }, 100);
 }
 
 /** 素材候補のラベル先頭の種類アイコン（📄 / 🧾 / 🖼）を外した素材名 */

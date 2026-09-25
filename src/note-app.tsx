@@ -66,12 +66,9 @@ import {
   TableCaptionLayer,
   TableExpandModal,
   migrateTableMeta,
-  findColumnIndexByName,
-  findColumnNameByType,
   hasColumnType,
   readFirstColumnName,
   readTableData,
-  withCellText,
   sortTableBlock,
   useWideTableBleed,
   type ColumnType,
@@ -154,7 +151,12 @@ import {
   readMentionAt,
   resolveMentionClickTarget,
 } from "./features/block-link/mention-click";
-import { insertAssetMention, recordMentionLink } from "./features/block-link/mention-insert";
+import {
+  insertAssetMention,
+  linkTableRowToNote,
+  noteLinkCellAtCursor,
+  recordMentionLink,
+} from "./features/block-link/mention-insert";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
 import {
@@ -1845,11 +1847,6 @@ function NoteEditorInner({
 }`;
     return () => { styleEl?.remove(); };
   }, [highlightBlockIds]);
-  // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
-  // @ を打った場所がインデックステーブル（note-link 列）のセルかどうか。
-  // colIndex は note-link 列の位置 = 書き換えるセルの列。ここが -1 のままなら
-  // 本文と同じ普通のメンションとして扱う（打ったセルにそのまま入る）
-  const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number; colIndex: number }>({ tableBlockId: null, rowIndex: -1, colIndex: -1 });
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
   const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | null>(null);
   // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
@@ -6238,53 +6235,17 @@ function NoteEditorInner({
                 return blobUrl;
               }}
               getMentionSuggestions={(query) => {
-                mentionContextRef.current = { tableBlockId: null, rowIndex: -1, colIndex: -1 };
-                const sel = window.getSelection();
-                const focusEl = sel?.focusNode instanceof HTMLElement
-                  ? sel.focusNode
-                  : sel?.focusNode?.parentElement;
-                if (focusEl) {
-                  const cell = focusEl.closest("td, th");
-                  const row = cell?.closest("tr");
-                  const table = row?.closest("table");
-                  if (cell && row && table) {
-                    const rowIndex = Array.from(table.querySelectorAll("tr")).indexOf(row);
-                    const cellIndex = Array.from(row.cells).indexOf(cell as HTMLTableCellElement);
-                    const blockOuter = table.closest("[data-node-type='blockOuter']");
-                    const tableBlockId = blockOuter?.getAttribute("data-id") ?? null;
-                    // 行 ↔ ノートの紐づけにするのは note-link 列のセルで打ったときだけ。
-                    // 他の列（条件・メモ等）で打った @ は、本文と同じでそのセルに入る。
-                    // 列を見ずに先頭列を書き換えていたため、2 列目で @ を打つと
-                    // 打っていない先頭列の中身が消えていた
-                    const block = tableBlockId
-                      ? editorRef.current?.getBlock(tableBlockId)
-                      : null;
-                    const noteLinkCol = block
-                      ? findColumnIndexByName(
-                          block,
-                          findColumnNameByType(tableMetaStore.metas.get(tableBlockId!), "note-link")
-                        )
-                      : -1;
-                    if (
-                      tableBlockId &&
-                      rowIndex > 0 &&
-                      cellIndex >= 0 &&
-                      cellIndex === noteLinkCol &&
-                      tableMetaStore.hasColumnType(tableBlockId, "note-link")
-                    ) {
-                      mentionContextRef.current = { tableBlockId, rowIndex, colIndex: cellIndex };
-                    }
-                  }
-                }
                 const base = [
                   ...getHeadingSuggestions(),
                   ...getNoteSuggestions(files, fileId ?? undefined, noteIndex),
                   ...getAssetSuggestions(mediaIndex),
                 ];
                 // 入力中の文字が既存ノートに一致しないとき「新規ノートを作成」を末尾に追加。
-                // テーブルセル内（インデックステーブル）では既存の行→ノート生成フローに
-                // 委ねるため、新規作成候補は出さない。
-                if (onCreateLinkedNote && !mentionContextRef.current.tableBlockId) {
+                // インデックステーブルの note-link 列では既存の行→ノート生成フローに
+                // 委ねるため、新規作成候補は出さない（判定は SidePeek と同じ関数。mention-insert.ts）
+                const inNoteLinkCell =
+                  noteLinkCellAtCursor(editorRef.current, (id) => tableMetaStore.metas.get(id)) !== null;
+                if (onCreateLinkedNote && !inNoteLinkCell) {
                   const createItem = getCreateNoteSuggestion(query, base);
                   if (createItem) base.push(createItem);
                 }
@@ -6322,51 +6283,20 @@ function NoteEditorInner({
                   // reference リンクは入れた直後に記録する（表のセルなら行の identity を
                   // 控えるため。mention-insert.ts の recordMentionLink）
                   const noteId = suggestion.id;
-                  const ctx = mentionContextRef.current;
-                  if (ctx.tableBlockId && ctx.rowIndex > 0 && editorRef.current) {
-                    const noteName = suggestion.label;
-                    const tableBlockId = ctx.tableBlockId;
-                    const rowIndex = ctx.rowIndex;
-                    const colIndex = ctx.colIndex >= 0 ? ctx.colIndex : 0;
-                    tableMetaStore.setNoteLink(tableBlockId, `@${noteName}`, suggestion.id);
-                    setTimeout(() => {
-                      const editor = editorRef.current;
-                      const block = editor?.getBlock(tableBlockId);
-                      if (block?.content?.rows?.[rowIndex]) {
-                        const newRows = block.content.rows.map((r: any, i: number) => {
-                          if (i !== rowIndex) return r;
-                          return {
-                            ...r,
-                            // 書き換えるのは打った列だけ。他の列のセルはそのまま
-                            // （形式ごと差し替えるとセルの色・配置が落ちる）
-                            cells: r.cells.map((c: any, ci: number) =>
-                              ci === colIndex
-                                ? withCellText(c, `@${noteName}`, { textColor: "blue" })
-                                : c
-                            ),
-                          };
-                        });
-                        editor.updateBlock(tableBlockId, {
-                          content: { type: "tableContent", rows: newRows },
-                        });
-                      }
-                      // セルを書き換えて入れる経路なので、カーソルではなく打った行に紐づける
-                      recordMentionLink(editor, linkStore.addLink, {
-                        sourceBlockId,
-                        targetNoteId: noteId,
-                        row: { tableBlockId, rowIndex },
-                      });
-                    }, 100);
-                    const exists = noteLinksRef.current.some(
-                      (l) => l.targetNoteId === suggestion.id
-                    );
-                    if (!exists) {
-                      noteLinksRef.current = [
-                        ...noteLinksRef.current,
-                        { targetNoteId: suggestion.id, sourceBlockId: tableBlockId, type: "derived_from" },
-                      ];
-                    }
-                    markDirty();
+                  // インデックステーブルの note-link 列で選んだら、その行とノートを紐付ける。
+                  // 判定も書き込みも SidePeek と同じ関数（mention-insert.ts）
+                  const rowCell = noteLinkCellAtCursor(editorRef.current, (id) =>
+                    tableMetaStore.metas.get(id)
+                  );
+                  if (rowCell) {
+                    linkTableRowToNote(() => editorRef.current, rowCell, suggestion, {
+                      setNoteLink: tableMetaStore.setNoteLink,
+                      addLink: linkStore.addLink,
+                      updateNoteLinks: (update) => {
+                        noteLinksRef.current = update(noteLinksRef.current);
+                      },
+                      onLinked: markDirty,
+                    });
                   } else {
                     const targetLabel = suggestion.label;
                     setTimeout(() => {
@@ -6388,7 +6318,6 @@ function NoteEditorInner({
                     }
                     markDirty();
                   }
-                  mentionContextRef.current = { tableBlockId: null, rowIndex: -1, colIndex: -1 };
                 } else if (suggestion.type === "asset") {
                   // 素材（PDF/docx/データ本体・画像）の引用。ノートではなく素材を指す。
                   // 画像はインライン画像、それ以外は @素材名 ＋ 外部ソース ID のリンク記録 ＋
