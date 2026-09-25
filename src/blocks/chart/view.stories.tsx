@@ -2,10 +2,12 @@
 // 記録テーブル（頭痛ダイアリー想定のサンプルデータ）を参照して描画する様子と、
 // 複数テーブルの重ね描き・テーブル未選択のプレースホルダを目視確認する。
 
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { Component, type ReactNode } from "react";
 import { SandboxEditor } from "../../base/editor";
 import { chartBlock } from "./index";
+import { ChartLayoutTrialContext } from "./view";
+import type { ChartLayoutTrial } from "./chart-layout";
 import "../../app.css";
 // SandboxEditor は note-app と同じ Context 群を要求する（step のストーリーと同じ理由）
 import {
@@ -141,7 +143,12 @@ type DemoOptions = {
    * この値 − 108 − 枠の padding と border（18）になる
    */
   width?: number;
+  /** データのテーブルを隠す（図だけを並べて比べるとき。図はテーブルがあれば描ける） */
+  hideTables?: boolean;
 };
+
+const HIDE_TABLES_CLASS = "chart-demo-hide-tables";
+const HIDE_TABLES_CSS = `.${HIDE_TABLES_CLASS} [data-content-type="table"] { display: none; }`;
 
 function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
   const tables = [...(opts.baseTables ?? [diaryTable("diary-table-1")]), ...(opts.extraTables ?? [])];
@@ -160,7 +167,9 @@ function chartContent(config: Record<string, unknown>, opts: DemoOptions = {}) {
 function ChartDemo({ config, ...opts }: { config: Record<string, unknown> } & DemoOptions) {
   return (
     <EditorProviders>
+      {opts.hideTables && <style>{HIDE_TABLES_CSS}</style>}
       <div
+        className={opts.hideTables ? HIDE_TABLES_CLASS : undefined}
         style={{
           ...(opts.width !== undefined ? { width: opts.width, flexShrink: 0 } : { maxWidth: 680 }),
           border: "1px solid #e5e7eb",
@@ -274,9 +283,92 @@ const THERMO_TABLES = [
 
 const series = (list: ChartSeriesConfig[]) => list;
 
+// ── 比較: 通常の幅の図に狭い図の手当てを当てたら（採否を決めるまで）──────────
+// 狭い図（400px 未満）だけに当てている 2 つの手当て — 目盛りを軸の長さで間引く・
+// 凡例の折り返しを実測の行送り 24px で数える — を、通常の幅の図にも当てたときの
+// 見え方。既存ノートの図が変わる変更なので、既定は当てない（アプリ本体は従来どおり）。
+// Controls の「表示」で、どのストーリーも「現在」と「修正案」を並べて描ける
+
+type TrialView = "compare" | "current" | "proposed";
+type TrialArgs = {
+  layoutTrial: TrialView;
+  shortAxes: ChartLayoutTrial["shortAxes"];
+  legendRowPitch: boolean;
+};
+
+// Provider の値は図の組み直しの依存に入るので、同じ組み合わせには同じオブジェクトを渡す
+const trialCache = new Map<string, ChartLayoutTrial>();
+function proposedTrial(args: TrialArgs): ChartLayoutTrial {
+  const key = `${args.shortAxes}/${args.legendRowPitch}`;
+  let trial = trialCache.get(key);
+  if (!trial) {
+    trial = { shortAxes: args.shortAxes, legendRowPitch: args.legendRowPitch };
+    trialCache.set(key, trial);
+  }
+  return trial;
+}
+
+const variantTitle = { fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 4 };
+
+/** 「現在」と「修正案」を並べて（または片方だけ）描く。幅が足りなければ縦に積む */
+function TrialVariants({ args, children }: { args: TrialArgs; children: ReactNode }) {
+  const current = (
+    <div data-trial="current" style={{ maxWidth: "100%", minWidth: 0 }}>
+      <div style={variantTitle}>現在（既定）</div>
+      {children}
+    </div>
+  );
+  const proposed = (
+    <div data-trial="proposed" style={{ maxWidth: "100%", minWidth: 0 }}>
+      <div style={{ ...variantTitle, color: "#2563eb" }}>修正案</div>
+      <ChartLayoutTrialContext.Provider value={proposedTrial(args)}>{children}</ChartLayoutTrialContext.Provider>
+    </div>
+  );
+  if (args.layoutTrial === "current") return current;
+  if (args.layoutTrial === "proposed") return proposed;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
+      {current}
+      {proposed}
+    </div>
+  );
+}
+
+// 既存のストーリーはまるごと 2 回描いて並べる。比較用のストーリー
+//（parameters.layoutTrialPairs）は図ごとに自分で並べるので、そのまま描く
+const withLayoutTrial: Decorator = (Story, context) =>
+  context.parameters.layoutTrialPairs ? (
+    <Story />
+  ) : (
+    <TrialVariants args={context.args as TrialArgs}>
+      <Story />
+    </TrialVariants>
+  );
+
 const meta: Meta = {
   title: "Blocks/ChartBlock",
   parameters: { layout: "padded" },
+  decorators: [withLayoutTrial],
+  argTypes: {
+    layoutTrial: {
+      name: "表示",
+      options: ["compare", "current", "proposed"],
+      control: {
+        type: "inline-radio",
+        labels: { compare: "並べる（現在｜修正案）", current: "現在のみ", proposed: "修正案のみ" },
+      },
+    },
+    shortAxes: {
+      name: "修正案: 短い軸の目盛り",
+      options: ["thin", "hide", "off"],
+      control: {
+        type: "inline-radio",
+        labels: { thin: "間引く（軸の長さで）", hide: "重なるラベルだけ隠す", off: "そのまま" },
+      },
+    },
+    legendRowPitch: { name: "修正案: 凡例の行送りを 24px で数える", control: "boolean" },
+  },
+  args: { layoutTrial: "compare", shortAxes: "thin", legendRowPitch: true } satisfies TrialArgs,
 };
 export default meta;
 
@@ -1360,6 +1452,230 @@ export const SettingsButtonOverTopRightLegend: StoryObj = {
           label="凡例が左上: ボタンは従来どおり図に重ねる"
           config={{ chartType: "line", series: RISE_LINE }}
         />
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// ── 通常の幅でも軸が短い図・凡例が折り返す図（採否を決めるための比較）──────────
+// 目盛りの間引きは図の幅 400px 未満だけなので、通常の幅でも軸が短い図 — 枠を分けた図と
+// 3:1〜5:1 の横長の図 — は ECharts の既定（5 分割）のまま目盛りラベルが詰まる。
+// 凡例も、通常の図は折り返し 1 行を 17px で数える（実際の行送りは 24px）。
+// どちらも直すと既存ノートの図が変わるので、同じ図を「現在」と「修正案」で並べる。
+// 図の幅は 564px（幅 1024 のウィンドウのメイン）と 712px（本文幅いっぱい）。
+//
+// 2026-09-25 の実測（headless Chromium・英語 UI、Controls の既定＝間引く＋凡例 24px）:
+// - 目盛り: 22 図のうち文字が重なるのは 7 図。すべて枠の高さ 90px 以下で、うち 5 図は
+//   42px 以下（4:1・5:1 の 564px は 29px・1px — 枠そのものが潰れている）。
+//   「間引く」は重なりを消すが、重なっていない図でも軸の範囲を広げる（0〜8,000 →
+//   0〜9,000、0〜100 → 0〜120）。「隠す」は範囲を変えないが、残るラベルが端を欠く
+//   （2×2 の横軸 300〜800 → 400 と 600 だけ）
+// - 凡例: 行送りは実測 24px。上に置いた凡例と枠の間は 1 行 21px・3 行 7px・4 行 0px・
+//   5 行 -7px（枠に食い込む）。修正案は行数によらず 21px（下に置くと 25px）
+
+/** 比べる図の幅。shell はチャートブロックの幅で、図はその左右 4px 内側 */
+const TRIAL_WIDTHS = [
+  { shell: 572, figure: 564 },
+  { shell: 720, figure: 712 },
+] as const;
+
+function TrialCase({
+  args,
+  label,
+  shell,
+  config,
+  baseTables,
+}: {
+  args: TrialArgs;
+  label: string;
+  shell: number;
+  config: Record<string, unknown>;
+  baseTables: any[];
+}) {
+  return (
+    <div data-trial-case={label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{label}</div>
+      <TrialVariants args={args}>
+        <ChartDemo
+          width={frameForShell(shell)}
+          baseTables={baseTables}
+          lead="記録"
+          chartFirst
+          hideTables
+          config={config}
+        />
+      </TrialVariants>
+    </div>
+  );
+}
+
+const trialStack = { display: "flex", flexDirection: "column" as const, gap: 32 };
+
+// (a) 枠を分けた図。アスペクト比は既定の √2:1 のまま、凡例は既定の左上。
+// 目盛りの本数はデータの範囲で決まる（ECharts の 5 分割は 4〜9 本になる）ので、
+// 本数の少ない XRD（0〜8,000 を 2,000 刻みで 5 本）と、多い熱電特性（PF は
+// 0.6〜1.3 を 0.1 刻みで 8 本）の 2 通りで見る
+const SPLIT_ROW_CASES = [
+  { label: "2 段・つなげない", rows: 2, join: false },
+  { label: "2 段・つなげる", rows: 2, join: true },
+  { label: "3 段・つなげない", rows: 3, join: false },
+  { label: "3 段・つなげる", rows: 3, join: true },
+];
+const SPLIT_DATA = [
+  {
+    label: "XRD",
+    tables: XRD_TABLES,
+    xAxisName: "2θ (deg)",
+    series: series([
+      { sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity", label: "測定試料", panelIndex: 0 },
+      { sourceBlockId: "xrd-ref-a", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 A", panelIndex: 1 },
+      { sourceBlockId: "xrd-ref-b", xColumn: "2θ (deg)", yColumn: "Intensity", label: "文献 B", panelIndex: 2 },
+    ]),
+  },
+  {
+    // 2 段は PF・S、3 段は PF・S・κ（本数の多い PF を必ず含める）
+    label: "熱電特性",
+    tables: THERMO_TABLES,
+    xAxisName: "T (K)",
+    series: series([
+      { sourceBlockId: "te-pf", xColumn: "T (K)", yColumn: "PF", label: "PF (mW/mK²)", panelIndex: 0 },
+      { sourceBlockId: "te-seebeck", xColumn: "T (K)", yColumn: "S", label: "S (µV/K)", panelIndex: 1 },
+      { sourceBlockId: "te-kappa", xColumn: "T (K)", yColumn: "kappa", label: "κ (W/mK)", panelIndex: 2 },
+    ]),
+  },
+];
+
+export const NormalWidthSplitRows: StoryObj = {
+  name: "比較: 枠を分けた図の目盛り（2 段・3 段 × XRD・熱電 × 564 / 712px）",
+  parameters: { layoutTrialPairs: true },
+  render: (args) => (
+    <ErrorBoundary>
+      <div style={trialStack}>
+        {TRIAL_WIDTHS.flatMap(({ shell, figure }) =>
+          SPLIT_DATA.flatMap((d) =>
+            SPLIT_ROW_CASES.map((c) => (
+              <TrialCase
+                key={`${figure}-${d.label}-${c.label}`}
+                args={args as TrialArgs}
+                label={`図 ${figure}px・${d.label}・${c.label}`}
+                shell={shell}
+                baseTables={d.tables}
+                config={{
+                  chartType: "line",
+                  panels: { rows: c.rows, cols: 1, joinVertical: c.join, joinHorizontal: false },
+                  series: d.series.slice(0, c.rows),
+                  xAxisName: d.xAxisName,
+                }}
+              />
+            ))
+          )
+        )}
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// (b) 横長の図。XRD のような横長のパターン向けの比（chart-theme.ts）で、測定 1 本を描く
+const WIDE_ASPECT_CASES = [
+  { label: "3:1", aspect: "panorama" },
+  { label: "4:1", aspect: "ultrawide" },
+  { label: "5:1", aspect: "spectrum" },
+];
+
+export const NormalWidthWideAspects: StoryObj = {
+  name: "比較: 横長の図の目盛り（3:1 / 4:1 / 5:1 × 564 / 712px）",
+  parameters: { layoutTrialPairs: true },
+  render: (args) => (
+    <ErrorBoundary>
+      <div style={trialStack}>
+        {TRIAL_WIDTHS.flatMap(({ shell, figure }) =>
+          WIDE_ASPECT_CASES.map((c) => (
+            <TrialCase
+              key={`${figure}-${c.label}`}
+              args={args as TrialArgs}
+              label={`図 ${figure}px・${c.label}`}
+              shell={shell}
+              baseTables={XRD_TABLES.slice(0, 1)}
+              config={{
+                chartType: "line",
+                series: series([{ sourceBlockId: "xrd-sample", xColumn: "2θ (deg)", yColumn: "Intensity" }]),
+                aspect: c.aspect,
+                xMin: "10",
+                xMax: "60",
+              }}
+            />
+          ))
+        )}
+      </div>
+    </ErrorBoundary>
+  ),
+};
+
+// (c) 系列の多い図の凡例。試料ごとの σ(T) を 1 枠に重ねる。名前の長さで 1 行に並ぶ数が
+// 変わる（短めの名前は 1 行に 2 つ、長めの名前は 564px で 1 つ・712px で 2 つ）
+const LEGEND_TRIAL_TABLES = Array.from({ length: 8 }, (_, k) =>
+  thermoTable(`te-legend-${k}`, "sigma", (t) => 900 - 0.8 * (t - 300) - 45 * k)
+);
+const SHORTER_SAMPLE_NAMES = [
+  "試料 A（未処理）",
+  "試料 B（300 ℃）",
+  "試料 C（400 ℃）",
+  "試料 D（500 ℃）",
+  "試料 E（600 ℃）",
+  "試料 F（700 ℃）",
+  "試料 G（Ar 中）",
+  "試料 H（N₂ 中）",
+];
+const LONGER_SAMPLE_NAMES = [
+  "試料 A（200 ℃ 焼成）",
+  "試料 B（300 ℃ 焼成）",
+  "試料 C（400 ℃ 焼成）",
+  "試料 D（500 ℃ 焼成）",
+  "試料 E（600 ℃ 焼成）",
+  "試料 F（700 ℃ 焼成）",
+];
+const LEGEND_ROW_CASES = [
+  { label: "8 系列・短めの名前", names: SHORTER_SAMPLE_NAMES },
+  { label: "5 系列・長めの名前", names: LONGER_SAMPLE_NAMES.slice(0, 5) },
+  { label: "6 系列・長めの名前", names: LONGER_SAMPLE_NAMES },
+];
+const LEGEND_TRIAL_POSITIONS = [
+  { label: "凡例は上", position: "top-left" },
+  { label: "凡例は下", position: "bottom" },
+];
+
+export const NormalWidthLegendRows: StoryObj = {
+  name: "比較: 凡例の折り返し（5〜8 系列 × 上・下 × 564 / 712px）",
+  parameters: { layoutTrialPairs: true },
+  render: (args) => (
+    <ErrorBoundary>
+      <div style={trialStack}>
+        {TRIAL_WIDTHS.flatMap(({ shell, figure }) =>
+          LEGEND_TRIAL_POSITIONS.flatMap((pos) =>
+            LEGEND_ROW_CASES.map((c) => (
+              <TrialCase
+                key={`${figure}-${pos.position}-${c.label}`}
+                args={args as TrialArgs}
+                label={`図 ${figure}px・${c.label}・${pos.label}`}
+                shell={shell}
+                baseTables={LEGEND_TRIAL_TABLES}
+                config={{
+                  chartType: "line",
+                  series: series(
+                    c.names.map((label, k) => ({
+                      sourceBlockId: `te-legend-${k}`,
+                      xColumn: "T (K)",
+                      yColumn: "sigma",
+                      label,
+                    }))
+                  ),
+                  legendPosition: pos.position,
+                  yAxisName: "σ (S/cm)",
+                }}
+              />
+            ))
+          )
+        )}
       </div>
     </ErrorBoundary>
   ),

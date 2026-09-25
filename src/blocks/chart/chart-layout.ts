@@ -111,6 +111,27 @@ export function isCompactChart(width: number): boolean {
   return width > 0 && width < COMPACT_CHART_WIDTH;
 }
 
+/**
+ * 通常の幅（400px 以上）の図に、狭い図の手当てを 2 つ当てる試み。採否を決めるまでの
+ * 比較用で、既定はどちらも当てない（既存ノートの図は動かない）。
+ * Storybook の比較ストーリーだけが値を渡す
+ */
+export type ChartLayoutTrial = {
+  /**
+   * 短い軸（分けた枠・3:1〜5:1 の縦軸）の目盛り。
+   * - thin: 狭い図と同じく、間引きを「図の幅」ではなく「軸の長さ」で決める（分割数を
+   *   減らす。刻みが粗くなるぶん、軸の範囲がデータより広がることがある）
+   * - hide: 分割数はそのまま、重なるラベルだけを隠す（範囲・刻みは変えない）
+   * - off: 従来どおり
+   */
+  shortAxes: "thin" | "hide" | "off";
+  /**
+   * 凡例を実際の並べ方どおりに数える: 折り返し 1 行ぶんを実測の行送り（LEGEND_ROW_PITCH）で
+   * 空け、行数も ECharts と同じ規則で見積もる（行末の項目に項目間の余白を足さない）
+   */
+  legendRowPitch: boolean;
+};
+
 export type FigureMarginsInput = {
   compact: boolean;
   /** どれかの枠が縦軸名を持つ（共有した縦軸名を含む） */
@@ -134,6 +155,11 @@ export type FigureMarginsInput = {
   yLabelWidth?: number;
   /** 第 2 軸の目盛りラベルの最大幅(px)。同上 */
   yRightLabelWidth?: number;
+  /**
+   * 通常の図でも、凡例の折り返しを実測の行送りで数える（ChartLayoutTrial）。
+   * 省略すると従来の LEGEND_LINE_HEIGHT。コンパクトな図は常に実測の行送り
+   */
+  measuredLegendPitch?: boolean;
 };
 
 export type FigureMargins = {
@@ -175,7 +201,7 @@ export function computeFigureMargins(input: FigureMarginsInput): FigureMargins {
   const { compact, anyYName, anyXName, anyUseRight, anyYRightName, legendTop, legendBottom } = input;
   const extraRows = Math.max(0, Math.floor(input.legendRows) - 1);
   if (!compact) {
-    const extraLegend = extraRows * LEGEND_LINE_HEIGHT;
+    const extraLegend = extraRows * (input.measuredLegendPitch ? LEGEND_ROW_PITCH : LEGEND_LINE_HEIGHT);
     const xAxisSpace = anyXName ? 64 : 40;
     return {
       left: anyYName ? 84 : 60,

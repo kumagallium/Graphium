@@ -19,7 +19,17 @@
 // - 参照切れ（テーブル削除・列名変更・素材の削除）はエラーにせず、その系列だけ空にする
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { ChartSpline, Database, SlidersHorizontal } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { getLocale, t, useLocaleSubscription } from "../../i18n";
@@ -89,6 +99,7 @@ import {
   estimateLegendRows,
   isCompactChart,
   valueAxisTickLabels,
+  type ChartLayoutTrial,
 } from "./chart-layout";
 import { legendItems, type LegendItemSeries } from "./legend-icon";
 import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
@@ -590,7 +601,15 @@ export type ChartArea = {
    * 無い・図の外にある）。凡例をボタンの下に潜らせないために使う
    */
   coverTopRight?: number;
+  /** 通常の幅の図に狭い図の手当てを当てる試み（比較用）。省略・null は従来どおり */
+  trial?: ChartLayoutTrial | null;
 };
+
+/**
+ * ChartLayoutTrial を図に渡す口。採否を決めるまでの比較用で、Provider の無い
+ * ところ（アプリ本体）では null = 従来どおりに描く
+ */
+export const ChartLayoutTrialContext = createContext<ChartLayoutTrial | null>(null);
 
 /** 図 1 枚ぶんの描画結果 */
 export type ChartFigure = {
@@ -1014,18 +1033,27 @@ export function buildChart(
         return Math.max(0, chartWidth - gridLeft - gridRight - 24);
     }
   })();
+  // 比較用の試み legendRowPitch は、行数も ECharts の折り返しどおりに数える。
+  // estimateLegendRows は項目ごとに項目間の 10px（itemGap）を足すので、行末の項目にも
+  // 10px を取り、ほぼ埋まった行を 1 行多く見積もる。ECharts は「行の中の位置 + 項目の
+  // 幅 > 凡例の幅」で折り返すので、凡例の幅を 10px 広げて渡すと同じ判定になる
+  const exactLegendWrap = !compact && area.trial?.legendRowPitch === true;
   const legendRows =
     showLegend && (legendTop || legendBottom)
       ? estimateLegendRows(
           legendNames,
-          legendWidth,
+          legendWidth + (exactLegendWrap ? 10 : 0),
           config.legendOrient,
           CHART_FONT_SIZE,
           (text) => measureLegendText(text, `${CHART_FONT_SIZE}px ${fontFamily}`),
           legendSpec.itemWidth
         )
       : 1;
-  const margins = computeFigureMargins({ ...marginsInput, legendRows });
+  const margins = computeFigureMargins({
+    ...marginsInput,
+    legendRows,
+    measuredLegendPitch: area.trial?.legendRowPitch === true,
+  });
   const gridTop = margins.top;
   const gridBottom = margins.bottom;
 
@@ -1066,8 +1094,9 @@ export function buildChart(
 
   // 枠の実寸（狭い図で目盛りの本数を決めるのに使う）。通常の図は null を返して
   // ECharts の既定に任せる — 既存ノートの図の目盛りは 1 本も変えない
+  //（比較用の試み shortAxes: "thin" のときだけ、通常の図でも軸の長さで決める）
   const plotSizeOf = (p: number): { width: number; height: number } | null => {
-    if (!compact) return null;
+    if (!compact && area.trial?.shortAxes !== "thin") return null;
     if (layout) return layout.grids[p] ?? null;
     return {
       width: layoutWidth - gridLeft - gridRight,
@@ -1149,10 +1178,14 @@ export function buildChart(
   // 重なるラベルは隠す。狭い図でも十分な長さの軸には何も足さない
   const yTickPitch = CHART_FONT_SIZE * 2;
   const xTickPitch = CHART_FONT_SIZE * (result.xAxis === "time" ? 5 : 4);
+  // 比較用の試み shortAxes: "hide" は、通常の図の分割数には触らず重なるラベルだけ隠す
+  const hideOverlapOnly = !compact && area.trial?.shortAxes === "hide";
   const withTickDensity = (axis: any, splitNumber: number | undefined) =>
-    splitNumber === undefined
-      ? axis
-      : { ...axis, splitNumber, axisLabel: { ...(axis.axisLabel ?? {}), hideOverlap: true } };
+    splitNumber !== undefined
+      ? { ...axis, splitNumber, axisLabel: { ...(axis.axisLabel ?? {}), hideOverlap: true } }
+      : hideOverlapOnly
+        ? { ...axis, axisLabel: { ...(axis.axisLabel ?? {}), hideOverlap: true } }
+        : axis;
 
   // 凡例の配置。top-* は枠の左右端に揃え、inside-* は枠内の四隅に置く
   const legendLayout = (() => {
@@ -1834,6 +1867,8 @@ function ChartCanvas({
   const [failed, setFailed] = useState(false);
   const [width, setWidth] = useState(0);
   const [coverTopRight, setCoverTopRight] = useState(0);
+  // 比較用の試み（Storybook の比較ストーリーだけが渡す）。アプリ本体では null
+  const trial = useContext(ChartLayoutTrialContext);
 
   // コンテナ幅に追従（アスペクト比で高さを決めるため幅を測る）。あわせて設定ボタンが
   // 図の右上を横方向にどれだけ覆っているかを測る。ボタンを図の上の行へ逃がしても
@@ -1884,8 +1919,8 @@ function ChartCanvas({
   // 高さは余白の計算と一緒に決まる（狭い図は描画領域が潰れないよう縦に伸ばす）ので、
   // option と同時に組む
   const figure = useMemo(
-    () => buildChart(result, config, tables, { width, coverTopRight }),
-    [result, config, tables, width, coverTopRight]
+    () => buildChart(result, config, tables, { width, coverTopRight, trial }),
+    [result, config, tables, width, coverTopRight, trial]
   );
 
   // ボタンの置き場所はブロック側（ChartBlockView）が持つ。描画前に知らせて、
