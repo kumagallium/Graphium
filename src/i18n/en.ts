@@ -2177,6 +2177,7 @@ export const en: Record<string, string> = {
   "globalGraph.layout.islands": "Islands",
   "globalGraph.layoutIslandsHint": "Lays notes out as islands of connected notes; claims and sources sit inside the island they belong to",
   "globalGraph.focusHint": "In islands mode, islands are built around the selected kind",
+  "globalGraph.focusSourceUnavailable": "Islands around sources are not available",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化

@@ -258,7 +258,17 @@ talks to LLM and embedding backends.
   global graph, asset graph) stay on cytoscape (canvas), which
   scales better for large force-directed views;
   `provToCytoscapeElements` also still feeds printing, where the graph is
-  rasterized to a PNG and appended to the printed note.
+  rasterized to a PNG and appended to the printed note. The global graph's
+  overview adds three structure-derived transforms on top of the raw
+  cytoscape rendering: folding leaves (single-link non-focus nodes) into a
+  `+n` on their parent, sizing nodes by reach (how many other focus-kind
+  nodes they can reach within two hops) instead of a fixed size per kind,
+  and an islands layout that finds communities by label propagation, seeds
+  one hidden centroid node per community, and lays out in two passes —
+  fcose physics for the focus-kind subgraph, then geometric placement for
+  everything else. Focusing on claims builds islands around topics instead
+  of claims themselves, since the sheer volume of claims would otherwise
+  collapse the physics pass into a single blob.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph

@@ -2176,6 +2176,7 @@ export const ja: Record<string, string> = {
   "globalGraph.layout.islands": "島",
   "globalGraph.layoutIslandsHint": "つながりでまとまったノートの島を作ります。知見・原料は所属する島の中に置きます",
   "globalGraph.focusHint": "島モードでは、選んだ種類を中心に島を作ります",
+  "globalGraph.focusSourceUnavailable": "原料を中心にした島は用意していません",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括ナレッジ化

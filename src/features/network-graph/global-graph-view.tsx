@@ -1852,18 +1852,22 @@ function LayerChips({
       {ALL_LAYERS.map((id) => {
         const on = mode === "focus" ? focus === id : visible.has(id);
         const count = counts[id] ?? 0;
-        const empty = count === 0;
+        // 原料を中心にした島はまだ用意していないので、フォーカスモードでは
+        // 「原料」チップを選べなくする（コードの source フォーカス自体は残す）。
+        const sourceUnavailable = mode === "focus" && id === "source";
+        const disabled = count === 0 || sourceUnavailable;
         return (
           <button
             key={id}
             onClick={() => {
-              if (empty) return;
+              if (disabled) return;
               if (mode === "focus") onFocusChange?.(id as FocusLayer);
               else onToggle(id);
             }}
-            disabled={empty}
+            disabled={disabled}
+            title={sourceUnavailable ? t("globalGraph.focusSourceUnavailable") : undefined}
             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
-              empty
+              disabled
                 ? "bg-muted/50 text-muted-foreground/40 border-border/50 cursor-default"
                 : on
                   ? "bg-primary text-primary-foreground border-primary"
@@ -1919,14 +1923,14 @@ export function GlobalGraphView({
   onModeChange?: (mode: "overview" | "timeline") => void;
   /** 時系列モードの本体（ローカルビュー）。渡されたときだけ「俯瞰 / 時系列」サブタブを出す */
   timeline?: ReactNode;
-  /** 「葉を畳む」の初期値（Storybook の比較用。未指定なら false = 今の挙動）。保存はしない。 */
+  /** 「葉を畳む」の初期値（未指定なら true が既定）。保存はしない。 */
   initialFoldLeaves?: boolean;
-  /** 大きさモードの初期値（Storybook の比較用。未指定なら "kind" = 今の挙動）。保存はしない。 */
+  /** 大きさモードの初期値（未指定なら "reach" が既定）。保存はしない。 */
   initialSizeMode?: "kind" | "reach";
-  /** 配置モードの初期値（Storybook の比較用。未指定なら "plain" = 今の挙動）。保存はしない。 */
+  /** 配置モードの初期値（未指定なら "islands" が既定）。保存はしない。 */
   initialLayoutMode?: "plain" | "islands";
-  /** フォーカス種類の初期値（Storybook の比較用。未指定なら "note" = 今の挙動）。
-   *  layoutMode: islands のときだけ効く。保存はしない。 */
+  /** フォーカス種類の初期値（未指定なら "note" が既定）。layoutMode: islands の
+   *  ときだけ効く。保存はしない。 */
   initialFocusLayer?: FocusLayer;
 }) {
   const t = useT();
@@ -1940,11 +1944,12 @@ export function GlobalGraphView({
   const [clusterByContext, setClusterByContext] = useState(false);
   // 未分類（タグ無しの通常ノート）を隠す。凡例の未分類チップでトグル
   const [hideUncategorized, setHideUncategorized] = useState(false);
-  // 構造の提案（Storybook 合意用の props 切替）: 葉を畳む / 大きさをつながりで決める
-  const [foldLeaves, setFoldLeaves] = useState(initialFoldLeaves ?? false);
-  const [sizeMode, setSizeMode] = useState<"kind" | "reach">(initialSizeMode ?? "kind");
+  // 葉を畳む / 大きさをつながりで決める / 配置。既定は fold ON・reach・islands
+  // （合意済みの既定値。initial* が渡されればそちらを優先する）。
+  const [foldLeaves, setFoldLeaves] = useState(initialFoldLeaves ?? true);
+  const [sizeMode, setSizeMode] = useState<"kind" | "reach">(initialSizeMode ?? "reach");
   // 配置: 標準（今の fcose 定数）/ 島（つながりの多いノートが周りを引き寄せる）
-  const [layoutMode, setLayoutMode] = useState<"plain" | "islands">(initialLayoutMode ?? "plain");
+  const [layoutMode, setLayoutMode] = useState<"plain" | "islands">(initialLayoutMode ?? "islands");
   // 島モードで「何を中心に島を作るか」（既定 note）。plain のときは無視される。
   const [focusLayer, setFocusLayer] = useState<FocusLayer>(initialFocusLayer ?? "note");
   // layoutMode: islands のときだけ focusLayer を効かせる（plain の既定挙動は変えない）。
