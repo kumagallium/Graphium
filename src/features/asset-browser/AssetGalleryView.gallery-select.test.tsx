@@ -229,4 +229,57 @@ describe("ドキュメント種別の絞り込み", () => {
     expect(screen.queryByText("slides.pptx")).toBeNull();
     expect(screen.queryByText("data.xlsx")).toBeNull();
   });
+
+  // 旧形式（.xls / .ppt）も同じ種類に入る。拡張子ごとのチップには分けない
+  const OFFICE_INDEX: MediaIndex = {
+    version: 7,
+    updatedAt: "2026-01-04T00:00:00.000Z",
+    media: [
+      documentEntry("word", "report.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+      documentEntry("pptx", "slides.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+      documentEntry("ppt", "old-slides.ppt", "application/vnd.ms-powerpoint"),
+      documentEntry("xlsx", "data.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+      documentEntry("xls", "old-data.xls", "application/vnd.ms-excel"),
+    ],
+  };
+
+  function renderDocuments(mediaIndex: MediaIndex) {
+    return render(
+      <LocaleProvider>
+        <AssetGalleryView
+          mediaIndex={mediaIndex}
+          mediaType="document"
+          onBack={() => {}}
+          onNavigateNote={() => {}}
+          onDeleteMedia={async () => {}}
+          onRenameMedia={async () => {}}
+        />
+      </LocaleProvider>,
+    );
+  }
+
+  it("Excel は .xlsx と .xls を、PowerPoint は .pptx と .ppt を表示する", () => {
+    renderDocuments(OFFICE_INDEX);
+
+    fireEvent.click(screen.getByRole("button", { name: "Excel2" }));
+    expect(screen.getByText("data.xlsx")).toBeTruthy();
+    expect(screen.getByText("old-data.xls")).toBeTruthy();
+    expect(screen.queryByText("report.docx")).toBeNull();
+    expect(screen.queryByText("slides.pptx")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "PowerPoint2" }));
+    expect(screen.getByText("slides.pptx")).toBeTruthy();
+    expect(screen.getByText("old-slides.ppt")).toBeTruthy();
+    expect(screen.queryByText("data.xlsx")).toBeNull();
+    expect(screen.queryByText("report.docx")).toBeNull();
+  });
+
+  it("1 件も無い種類のチップは出さない", () => {
+    renderDocuments(OFFICE_INDEX);
+
+    expect(screen.getByRole("button", { name: "All5" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Word1" })).toBeTruthy();
+    // PDF は 1 件も無いので、押しても空振りするチップは並べない
+    expect(screen.queryByRole("button", { name: /^PDF\d+$/ })).toBeNull();
+  });
 });

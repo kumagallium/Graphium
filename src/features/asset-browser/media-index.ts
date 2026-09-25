@@ -48,15 +48,31 @@ const WORD_DOCUMENT_MIMES = new Set([
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 /** Excel (.xlsx) の MIME */
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/** 旧形式を含む Excel MIME。一覧の Excel 絞り込みに使う。 */
+const EXCEL_MIMES = new Set([XLSX_MIME, "application/vnd.ms-excel"]);
+/** 旧形式を含む PowerPoint MIME。一覧の PowerPoint 絞り込みに使う。 */
+const POWERPOINT_MIMES = new Set([PPTX_MIME, "application/vnd.ms-powerpoint"]);
+
+/**
+ * ドキュメント一覧の絞り込みに使う種類。
+ * 拡張子ではなく「どんな資料か」（文章・表・スライド）で分けるので、
+ * 旧形式（.doc / .xls / .ppt）も新形式と同じ種類に入れる。
+ */
+export type DocumentKind = "pdf" | "word" | "excel" | "powerpoint";
+
+/** 素材のドキュメント種類。ドキュメント一覧に出ない素材は null */
+export function documentKindOf(entry: { type: MediaType; mimeType: string }): DocumentKind | null {
+  if (entry.type === "pdf") return "pdf";
+  if (entry.type !== "document") return null;
+  if (WORD_DOCUMENT_MIMES.has(entry.mimeType)) return "word";
+  if (EXCEL_MIMES.has(entry.mimeType)) return "excel";
+  if (POWERPOINT_MIMES.has(entry.mimeType)) return "powerpoint";
+  return null;
+}
 
 /** Word (.docx) 素材かどうか */
 export function isWordDocxEntry(entry: { type: MediaType; mimeType: string }): boolean {
   return entry.type === "document" && entry.mimeType === WORD_DOCX_MIME;
-}
-
-/** Word（.docx / .doc）素材かどうか */
-export function isWordDocumentEntry(entry: { type: MediaType; mimeType: string }): boolean {
-  return entry.type === "document" && WORD_DOCUMENT_MIMES.has(entry.mimeType);
 }
 
 /** PowerPoint (.pptx) 素材かどうか */
