@@ -16,7 +16,13 @@ import { parseExternalSource } from "../network-graph/external-source";
 import { MENTIONABLE_ASSET_TYPES, resolveMentionTargetFromLinks } from "./mention-menu";
 
 /** リンク記録のうち、解決に使う部分だけ */
-type LinkLike = { sourceBlockId: string; targetNoteId?: string; type?: string };
+type LinkLike = {
+  sourceBlockId: string;
+  targetNoteId?: string;
+  type?: string;
+  /** 表のセルに入れた @リンクの行（mention-insert.ts の recordMentionLink が控える） */
+  sourceRowIdentity?: string;
+};
 
 /** 素材一覧の要素のうち、解決に使う部分だけ */
 type AssetLike = Pick<MediaIndexEntry, "fileId" | "name" | "type">;
@@ -29,6 +35,8 @@ export type MentionAt = {
   blockId: string | null;
   /** 表のセル内か（表は 1 ブロックに全セルのメンションのリンクが並ぶ） */
   inTableCell: boolean;
+  /** 表のセル内なら、その行の tableRowIdentity（先頭セルの印）。未採番の行・表の外は null */
+  rowIdentity: string | null;
 };
 
 /**
@@ -45,11 +53,25 @@ export function readMentionAt(el: HTMLElement): MentionAt | null {
   if (!span || !span.closest(".bn-editor")) return null;
   const text = span.textContent?.trim();
   if (!text || !text.startsWith("@") || text.startsWith("@#")) return null;
+  const row = span.closest("tr");
   return {
     mentionText: text.slice(1),
     blockId: span.closest("[data-id]")?.getAttribute("data-id") ?? null,
     inTableCell: span.closest("td, th") !== null,
+    rowIdentity:
+      row?.cells[0]?.querySelector("[data-row-identity]")?.getAttribute("data-row-identity") ?? null,
   };
+}
+
+/**
+ * 表のセルのメンションで使うリンクを選ぶ。その行に紐づけたリンクを先に並べ、
+ * 別の行に紐づいたリンクは外す。行の記録が無いリンク（これより前に作ったもの）は
+ * どの行からも候補に残す — 従来どおりブロック単位で解決できるように。
+ */
+function linksForRow<T extends LinkLike>(links: ReadonlyArray<T>, rowIdentity: string | null): T[] {
+  const own = rowIdentity ? links.filter((l) => l.sourceRowIdentity === rowIdentity) : [];
+  const unbound = links.filter((l) => !l.sourceRowIdentity);
+  return [...own, ...unbound];
 }
 
 /**
@@ -112,11 +134,13 @@ export type MentionClickInput = MentionAt & {
 export function resolveMentionClickTarget(input: MentionClickInput): string | null {
   const { mentionText, media } = input;
 
-  // 1) 挿入時に記録したリンク。同名のノート・素材があっても厳密な ID に届く
+  // 1) 挿入時に記録したリンク。同名のノート・素材があっても厳密な ID に届く。
+  //    表のセルは行で絞る（同じ表に同じラベルが並んでも、その行のリンクが採られる）
+  const links = input.inTableCell ? linksForRow(input.links, input.rowIdentity) : input.links;
   const fromLinks = resolveMentionTargetFromLinks(
     input.blockId,
     mentionText,
-    input.links,
+    links,
     input.noteIndex,
     (name) => assetIdsForName(media, name),
     { inTableCell: input.inTableCell },

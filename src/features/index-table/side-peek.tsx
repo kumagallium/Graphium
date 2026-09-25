@@ -111,6 +111,7 @@ import {
   CREATE_NEW_NOTE_ID,
   insertNoteMentionInline,
 } from "@features/block-link/mention-menu";
+import { recordMentionLink, type AddReferenceLink } from "@features/block-link/mention-insert";
 import {
   openPeekTarget,
   readMentionAt,
@@ -904,7 +905,7 @@ function SidePeekInner({
 
   // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する
   // （main editor の insertInlineAtSlash と同じ流儀）。
-  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[], onInserted?: () => void) => {
     const content = currentBlock.content;
     const isSlashOnly =
       Array.isArray(content) &&
@@ -917,6 +918,7 @@ function SidePeekInner({
     editor.setTextCursorPosition(target, "end");
     setTimeout(() => {
       editor.insertInlineContent(inline);
+      onInserted?.();
     }, 0);
   }, []);
 
@@ -942,22 +944,25 @@ function SidePeekInner({
           citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), entry.fileId],
         };
       }
-      // linkStore にも外部ソース ID で記録する（main editor と同じ）。クリックはこれで
-      // 素材を厳密に引く。無いと素材名の逆引きになり、同名の素材があると取り違える
-      if (entry.fileId) {
-        linkStoreRef.current.addLink({
-          sourceBlockId: currentBlock.id,
-          targetBlockId: "",
-          targetNoteId: `${entry.type}:${entry.fileId}`,
-          type: "reference",
-          createdBy: "human",
-        });
-      }
-      // insertInlineContent の onChange 経由で自動保存される
-      insertInlineAtSlash(editor, currentBlock, [
-        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
-        { type: "text", text: " ", styles: {} },
-      ]);
+      // insertInlineContent の onChange 経由で自動保存される。
+      // 入れた直後に linkStore にも外部ソース ID で記録する（main editor と同じ）。
+      // クリックはこれで素材を厳密に引く。無いと素材名の逆引きになり、同名の素材が
+      // あると取り違える（表のセルなら行の identity も控える）
+      insertInlineAtSlash(
+        editor,
+        currentBlock,
+        [
+          { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+          { type: "text", text: " ", styles: {} },
+        ],
+        () => {
+          if (!entry.fileId) return;
+          recordMentionLink(editor, (p) => linkStoreRef.current.addLink(p), {
+            sourceBlockId: currentBlock.id,
+            targetNoteId: `${entry.type}:${entry.fileId}`,
+          });
+        },
+      );
       setPickerMediaType(null);
       return;
     }
@@ -1969,19 +1974,15 @@ function SidePeekInner({
                     if (!newId) return;
                     s = { type: "note", id: newId, label: title, group: "" };
                   }
+                  const addLink: AddReferenceLink = (p) => linkStoreRef.current.addLink(p);
                   if (s.type !== "note") return;
-                  linkStoreRef.current.addLink({
-                    sourceBlockId,
-                    targetBlockId: "",
-                    targetNoteId: s.id,
-                    type: "reference",
-                    createdBy: "human",
-                  });
                   const noteRefId = s.id;
                   const label = s.label;
                   setTimeout(() => {
-                    // href に noteId を埋めた link として挿入（同名ノートでも正しく解決）
+                    // 本文は青い @タイトル、ノート ID はリンクの記録に持つ（同名ノートでも正しく解決）。
+                    // 記録は入れた直後に（表のセルなら行の identity も控える）
                     insertNoteMentionInline(editorRef.current, noteRefId, label);
+                    recordMentionLink(editorRef.current, addLink, { sourceBlockId, targetNoteId: noteRefId });
                     handleChange();
                   }, 100);
                 }}
