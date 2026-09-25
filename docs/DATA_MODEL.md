@@ -459,7 +459,11 @@ ProseMirror mark) on the first cell's content
 (`src/lib/table-row-identity.ts`). A mark is the one piece of state that
 travels with the row through cell edits. Saving normalizes identities:
 every non-empty data row gets one, and a duplicated id (row copied) keeps
-the first occurrence and re-mints the rest. The style is registered in
+the first occurrence and re-mints the rest. Pasting a copied table
+re-mints the pasted rows whose ids collide with a table already in the
+note, right after the paste, so the original keeps its ids even when the
+copy lands above it (a cut-and-paste move collides with nothing and keeps
+them). The style is registered in
 the editor schema but renders as an invisible `display: contents` span,
 and the PROV generator carries it onto the emitted node as
 `graphium:tableRowId`. Rewriting a first cell from the app (creating a
@@ -471,6 +475,17 @@ block holds every cell's links, so the row is what tells apart two cells
 with the same label — each sample's own `data.txt`. A row that has not
 been saved yet is numbered on the spot. Links recorded before this carry
 no row and still resolve per block.
+Copy and paste carries these `reference` links too. They point outside
+the copied range (at a note or a material), so the clipboard payload holds
+them separately from the block-to-block `links`, as `mentionLinks` that
+keep the row id (`src/features/block-lifecycle/clipboard.ts`); copying
+text inside one row carries only that row's links. The paste records them
+again only for the `@` labels that actually landed — on the row with the
+same id in a pasted table (following the re-mint above; a row that did not
+come along is skipped, since a partial copy shifts the row order), on the
+cursor's row for text pasted into a cell — together with what `@` records:
+the note's `noteLinks` entry or cited material
+(`src/features/block-link/mention-paste.ts`).
 Adding an input, tool or output from the graph appends a row to that
 step's labelled table — creating and labelling one if the step has none —
 so the note accumulates a sample table rather than one-word paragraphs.
