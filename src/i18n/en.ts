@@ -2172,6 +2172,10 @@ export const en: Record<string, string> = {
   "globalGraph.size.kind": "Kind",
   "globalGraph.size.reach": "Reach",
   "globalGraph.sizeReachHint": "Size by the number of other notes within two hops",
+  "globalGraph.layout": "Layout",
+  "globalGraph.layout.plain": "Standard",
+  "globalGraph.layout.islands": "Islands",
+  "globalGraph.layoutIslandsHint": "Lays notes out as islands of connected notes; sources and claims are folded and only notes are shown",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化

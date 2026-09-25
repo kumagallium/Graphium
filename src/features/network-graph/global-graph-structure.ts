@@ -4,8 +4,12 @@
 //   「ノート（kind === "note"）の数」で判定して畳む/取り除く。
 // - computeReachScores: ノートごとに、辺を無向にたどって hops 以内で届く
 //   「別のノート」の数を数える（知見や外部ソースを経由してもよい）。
+// - assignIslands: reach の高いノート（ハブ）を選び、他のノートを最も近いハブに
+//   割り当てる（layoutMode: islands の裏側。clusterByContext の「タグごとの
+//   重心」と同じ仕組みをハブ割り当てで作るための下ごしらえ）。
 //
-// どちらも表示 props（foldLeaves / sizeMode）の裏側として global-graph-view.tsx から使う。
+// どちらも表示 props（foldLeaves / sizeMode / layoutMode）の裏側として
+// global-graph-view.tsx から使う。
 
 import type { NoteGraphData, NoteNode } from "./graph-builder";
 import { kindOf } from "./graph-kind";
@@ -109,4 +113,164 @@ export function computeReachScores(
     scores.set(startId, score);
   }
   return scores;
+}
+
+/**
+ * reach（computeReachScores の結果）が高いノートを「ハブ」に選び、他のノートを
+ * 最も近いハブに割り当てる（layoutMode: islands の裏側）。
+ *
+ * - ハブ候補: reach が maxReach（表示中の最大値）の 60% 以上のノート。候補が 0
+ *   件なら reach 上位 3 件にフォールバックする。
+ * - 候補同士が無向で 2 ホップ以内に隣接していれば、reach の高い方だけ残す
+ *   （近すぎるハブを間引く。reach 降順で貪欲に選ぶ）。
+ * - 残ったハブから無向 BFS を 3 ホップ（既定）まで伸ばし、各ノート（kind===
+ *   "note" のみ。ハブ以外は対象外）を最も近いハブに割り当てる。同距離なら
+ *   reach の高いハブを選ぶ。ハブ自身は自分に割り当てる。届かないノートは
+ *   戻り値の Map に入らない。
+ */
+export function assignIslands(
+  data: NoteGraphData,
+  reachScores: Map<string, number>,
+  opts?: { maxHops?: number },
+): Map<string, string> {
+  const maxHops = opts?.maxHops ?? 3;
+  const noteIds = data.nodes.filter((n) => kindOf(n) === "note").map((n) => n.id);
+  const assignment = new Map<string, string>();
+  if (noteIds.length === 0) return assignment;
+
+  const adjacency = new Map<string, string[]>();
+  for (const n of data.nodes) adjacency.set(n.id, []);
+  for (const e of data.edges) {
+    adjacency.get(e.source)?.push(e.target);
+    adjacency.get(e.target)?.push(e.source);
+  }
+
+  let maxReach = 0;
+  for (const v of reachScores.values()) if (v > maxReach) maxReach = v;
+
+  const reachOf = (id: string) => reachScores.get(id) ?? 0;
+  const threshold = maxReach * 0.6;
+  let candidateIds = noteIds.filter((id) => reachOf(id) >= threshold);
+  if (candidateIds.length === 0) {
+    candidateIds = [...noteIds].sort((a, b) => reachOf(b) - reachOf(a)).slice(0, 3);
+  }
+
+  const withinHops = (start: string, hops: number): Set<string> => {
+    const visited = new Set<string>([start]);
+    let frontier = [start];
+    for (let d = 1; d <= hops && frontier.length > 0; d++) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const nb of adjacency.get(id) ?? []) {
+          if (!visited.has(nb)) {
+            visited.add(nb);
+            next.push(nb);
+          }
+        }
+      }
+      frontier = next;
+    }
+    return visited;
+  };
+
+  // 近すぎる候補は reach の高い方だけ残す（reach 降順で貪欲に選ぶ）
+  const sortedCandidates = [...candidateIds].sort((a, b) => reachOf(b) - reachOf(a));
+  const hubs: string[] = [];
+  for (const id of sortedCandidates) {
+    const near = withinHops(id, 2);
+    if (hubs.some((h) => near.has(h))) continue;
+    hubs.push(id);
+  }
+
+  // 各ハブから maxHops 以内の距離を求める
+  const distanceByHub = new Map<string, Map<string, number>>();
+  for (const hub of hubs) {
+    const dist = new Map<string, number>([[hub, 0]]);
+    let frontier = [hub];
+    for (let d = 1; d <= maxHops && frontier.length > 0; d++) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const nb of adjacency.get(id) ?? []) {
+          if (!dist.has(nb)) {
+            dist.set(nb, d);
+            next.push(nb);
+          }
+        }
+      }
+      frontier = next;
+    }
+    distanceByHub.set(hub, dist);
+  }
+
+  for (const noteId of noteIds) {
+    let bestHub: string | null = null;
+    let bestDist = Infinity;
+    for (const hub of hubs) {
+      const d = distanceByHub.get(hub)?.get(noteId);
+      if (d === undefined) continue;
+      if (d < bestDist || (d === bestDist && bestHub !== null && reachOf(hub) > reachOf(bestHub))) {
+        bestDist = d;
+        bestHub = hub;
+      }
+    }
+    if (bestHub !== null) assignment.set(noteId, bestHub);
+  }
+  return assignment;
+}
+
+/**
+ * ラベル伝播法（Label Propagation Algorithm）でコミュニティを検出する。
+ * ノート以外も含む全ノードが対象。
+ *
+ * 全ノードに自分の id をラベルとして与え、ノード id の**昇順**で走査して、
+ * 隣接ノードの現在のラベル（同じ 1 回の走査の中で既に更新されたものも含む——
+ * 非同期更新）のうち最多のものに置き換える。同数なら文字列順で小さい方。
+ * これを `iterations`（既定 20）回か、1 回の走査で誰も変わらなくなるまで繰り返す。
+ * 乱数は使わない（決定的）。孤立ノード（隣接無し）は自分のラベルのまま。
+ */
+export function detectCommunities(
+  data: NoteGraphData,
+  opts?: { iterations?: number },
+): Map<string, string> {
+  const maxIterations = opts?.iterations ?? 20;
+  const ids = data.nodes.map((n) => n.id).sort();
+  const adjacency = new Map<string, string[]>();
+  for (const n of data.nodes) adjacency.set(n.id, []);
+  for (const e of data.edges) {
+    adjacency.get(e.source)?.push(e.target);
+    adjacency.get(e.target)?.push(e.source);
+  }
+
+  const label = new Map<string, string>();
+  for (const id of ids) label.set(id, id);
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    let changed = false;
+    for (const id of ids) {
+      const neighbors = adjacency.get(id) ?? [];
+      if (neighbors.length === 0) continue;
+      const counts = new Map<string, number>();
+      for (const nb of neighbors) {
+        const l = label.get(nb)!;
+        counts.set(l, (counts.get(l) ?? 0) + 1);
+      }
+      // 文字列順（昇順）に見て、最初に最多数を更新したラベルを採用する
+      // → 同数のときは文字列順で小さい方が自然に残る
+      let bestLabel: string | null = null;
+      let bestCount = -1;
+      for (const l of [...counts.keys()].sort()) {
+        const c = counts.get(l)!;
+        if (c > bestCount) {
+          bestCount = c;
+          bestLabel = l;
+        }
+      }
+      if (bestLabel !== null && bestLabel !== label.get(id)) {
+        label.set(id, bestLabel);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return label;
 }

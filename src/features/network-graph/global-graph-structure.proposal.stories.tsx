@@ -54,7 +54,11 @@ function shuffle<T>(rng: Rng, arr: T[]): T[] {
 
 // ── サンプルデータ生成（パン作りの世界観・連番で十分） ──────
 
-const NOTE_CONTEXTS = ["春の試作", "秋の試作", "粉の比較"];
+// 12 の「試作シリーズ」＝季節ごとの試作ロット（noteContexts に使う名前そのもの）
+const SERIES_NAMES = [
+  "早春の試作", "春の試作", "晩春の試作", "初夏の試作", "梅雨の試作", "盛夏の試作",
+  "晩夏の試作", "初秋の試作", "秋の試作", "晩秋の試作", "初冬の試作", "厳冬の試作",
+];
 const NOTE_PHRASES = [
   "粉の配合", "一次発酵", "二次発酵", "成形", "焼成温度の検討", "冷却まとめ",
   "加水率の検討", "捏ね時間の検討", "粉の比較", "保存性メモ", "塩分量の検討",
@@ -76,59 +80,91 @@ const EXT_TITLE_BASE: Record<string, string> = {
   pdf: "配合表", url: "レシピ考察", document: "実験ノート", chat: "作業チャット", memo: "覚え書き",
 };
 
-/** ノート138・外部ソース110・知見700・洞察64・話題44 の砂時計データを組む。 */
+/**
+ * ノート138・外部ソース110・知見700・洞察64・話題44 の砂時計データを組む。
+ * ノートは 12 の試作シリーズ（各 8〜14 ノート）に分け、鎖・参照・知見の共有は
+ * シリーズの中を基本にする（layoutMode: islands で「島」ができる種にする）。
+ */
 function buildSampleData(): NoteGraphData {
   const rng = mulberry32(20260925);
   const nodes: NoteNode[] = [];
   const edges: NoteEdge[] = [];
 
-  // ノート間の「派生」の鎖（長さ 3〜6 ×20本、合計が 120 になるよう調整）。
+  // ノート 138 を 12 の「試作シリーズ」（各 8〜14 ノート）に分ける。
+  // 派生の鎖・参照・知見の共有はシリーズの中を基本にし、シリーズをまたぐ参照は
+  // ごく少数だけにする——これが「島」の種になる（島にならない構造からは
+  // どんな引力係数を使っても島は生まれない）。
   const NOTE_TOTAL = 138;
-  const CHAIN_COUNT = 20;
-  const chainLengths: number[] = [];
-  for (let i = 0; i < CHAIN_COUNT; i++) chainLengths.push(randInt(rng, 3, 6));
-  let deficit = NOTE_TOTAL - chainLengths.reduce((a, b) => a + b, 0);
-  // 20 本×最大 6 = 120 では 138 に届かないので、上限 6 を外して埋める
-  // （鎖の長さの見た目は変わるが、鎖と参照の作り方自体は変えていない）。
-  while (deficit > 0) {
-    const idx = randInt(rng, 0, CHAIN_COUNT - 1);
-    chainLengths[idx]++;
-    deficit--;
+  const SERIES_COUNT = 12;
+  const seriesSizes: number[] = [];
+  for (let i = 0; i < SERIES_COUNT; i++) seriesSizes.push(randInt(rng, 8, 14));
+  let deficit = NOTE_TOTAL - seriesSizes.reduce((a, b) => a + b, 0);
+  // 8〜14 の範囲を保ったまま、決定的に（インデックスを順に回して）埋める/削る。
+  let cursor = 0;
+  while (deficit !== 0) {
+    const idx = cursor % SERIES_COUNT;
+    cursor++;
+    if (deficit > 0 && seriesSizes[idx] < 14) {
+      seriesSizes[idx]++;
+      deficit--;
+    } else if (deficit < 0 && seriesSizes[idx] > 8) {
+      seriesSizes[idx]--;
+      deficit++;
+    }
   }
 
-  const noteIdsByChain: string[][] = [];
+  const seriesNoteIds: string[][] = [];
   let noteCounter = 0;
-  for (let c = 0; c < CHAIN_COUNT; c++) {
-    const ctx = pick(rng, NOTE_CONTEXTS);
+  for (let s = 0; s < SERIES_COUNT; s++) {
+    const ctx = SERIES_NAMES[s];
     const ids: string[] = [];
-    for (let k = 0; k < chainLengths[c]; k++) {
+    for (let k = 0; k < seriesSizes[s]; k++) {
       noteCounter++;
       const id = `n${noteCounter}`;
       const phrase = pick(rng, NOTE_PHRASES);
       nodes.push({ id, title: `${phrase} ${noteCounter}`, isCurrent: false, hop: 0, noteContexts: [ctx] });
       ids.push(id);
     }
-    noteIdsByChain.push(ids);
+    seriesNoteIds.push(ids);
+    // シリーズ内の派生の鎖（そのシリーズの全ノートを 1 本の鎖でつなぐ）
     for (let k = 0; k < ids.length - 1; k++) {
       edges.push({ source: ids[k], target: ids[k + 1], relation: "derived" });
     }
   }
-  const allNoteIds = noteIdsByChain.flat();
+  const allNoteIds = seriesNoteIds.flat();
 
-  // 鎖をまたぐ「参照」30 本。うち 15 本は意図的に作ったハブ 5 つに集中させる
-  // （つながりで大きさ を相対値にしたときに差が出るよう、参照を多く受けるノートを作る）。
-  const hubNoteIds = shuffle(rng, allNoteIds).slice(0, 5);
-  for (let i = 0; i < 15; i++) {
+  // シリーズ内の「参照」40 本
+  for (let i = 0; i < 40; i++) {
+    const si = randInt(rng, 0, SERIES_COUNT - 1);
+    const ids = seriesNoteIds[si];
+    const a = pick(rng, ids);
+    let b = pick(rng, ids);
+    if (a === b) b = pick(rng, ids);
+    if (a === b) continue;
+    edges.push({ source: a, target: b, relation: "reference" });
+  }
+
+  // シリーズをまたぐ参照は 12 本だけ。うち 8 本は 5 つのハブ（5 シリーズの中心ノート）
+  // に集める。残り 4 本はどのシリーズとも無関係にランダムな橋を架ける。
+  const hubSeriesIdx = shuffle(
+    rng,
+    Array.from({ length: SERIES_COUNT }, (_, i) => i),
+  ).slice(0, 5);
+  const hubNoteIds = hubSeriesIdx.map((si) => seriesNoteIds[si][Math.floor(seriesNoteIds[si].length / 2)]);
+  for (let i = 0; i < 8; i++) {
     const target = pick(rng, hubNoteIds);
-    let source = pick(rng, allNoteIds);
-    if (source === target) source = pick(rng, allNoteIds);
-    if (source === target) continue;
+    const targetSeriesIdx = seriesNoteIds.findIndex((ids) => ids.includes(target));
+    let sourceSeriesIdx = randInt(rng, 0, SERIES_COUNT - 1);
+    if (sourceSeriesIdx === targetSeriesIdx) sourceSeriesIdx = (sourceSeriesIdx + 1) % SERIES_COUNT;
+    const source = pick(rng, seriesNoteIds[sourceSeriesIdx]);
     edges.push({ source, target, relation: "reference" });
   }
-  for (let i = 0; i < 15; i++) {
-    const a = pick(rng, allNoteIds);
-    const b = pick(rng, allNoteIds);
-    if (a === b) continue;
+  for (let i = 0; i < 4; i++) {
+    let aSeriesIdx = randInt(rng, 0, SERIES_COUNT - 1);
+    let bSeriesIdx = randInt(rng, 0, SERIES_COUNT - 1);
+    if (bSeriesIdx === aSeriesIdx) bSeriesIdx = (bSeriesIdx + 1) % SERIES_COUNT;
+    const a = pick(rng, seriesNoteIds[aSeriesIdx]);
+    const b = pick(rng, seriesNoteIds[bSeriesIdx]);
     edges.push({ source: a, target: b, relation: "reference" });
   }
 
@@ -170,7 +206,10 @@ function buildSampleData(): NoteGraphData {
       wikiKind: "claim",
     });
     claimIds.push(id);
-    const notesFor = shuffle(rng, allNoteIds).slice(0, randInt(rng, 2, 3));
+    // 知見の共有もシリーズの中を基本にする（シリーズをまたいで共有すると、
+    // その知見の辺が島を橋渡ししてしまい「島」が崩れる）。
+    const si = randInt(rng, 0, SERIES_COUNT - 1);
+    const notesFor = shuffle(rng, seriesNoteIds[si]).slice(0, randInt(rng, 2, 3));
     for (const noteId of notesFor) edges.push({ source: noteId, target: id, relation: "derived" });
   }
 
@@ -195,7 +234,7 @@ function buildSampleData(): NoteGraphData {
   return { nodes, edges };
 }
 
-const SAMPLE_DATA = buildSampleData();
+export const SAMPLE_DATA = buildSampleData();
 
 // ── 共通部品（plan-flow-groups.proposal と同じ流儀） ────────
 
@@ -291,7 +330,7 @@ export const FoldAndReach: Story = {
             "葉を畳んだ上で、ノートの大きさを「2 ホップ以内で届く別のノートの数」で決める。",
             "鎖の途中にいて知見・原料を多く共有するノートほど大きく見えるはず（ハブが目立つ）。",
             "知見・洞察・話題・外部ソースの大きさは変えていない（種類ごとの固定値のまま）。",
-            "fcose のレイアウト定数はどのストーリーも共通（この PR では触っていない）。詰まって見えるかは目視で確認する。",
+            "配置は標準（layoutMode: plain）のまま。fcose の定数はこの PR では触っていない。詰まって見えるかは目視で確認する。",
           ]}
         />
       }
@@ -302,6 +341,35 @@ export const FoldAndReach: Story = {
         onSelectNote={noop}
         initialFoldLeaves
         initialSizeMode="reach"
+      />
+    </Frame>
+  ),
+};
+
+export const FoldReachAndIslands: Story = {
+  name: "4. 畳む + 大きさ + 島の配置",
+  render: () => (
+    <Frame
+      note={
+        <CaseNote
+          title="foldLeaves: ON + sizeMode: reach + layoutMode: islands"
+          points={[
+            "データ自体が「島になりうる構造」: ノート 138 を 12 の試作シリーズ（各 8〜14 ノート）に分け、鎖・参照・知見の共有はシリーズの中を基本にする。シリーズをまたぐ参照は 12 本だけ。",
+            "島 = ラベル伝播法（detectCommunities）で見つけたコミュニティ。コミュニティごとに不可視の重心を置いて引き寄せる（clusterByContext の「フォルダで寄せる」と同じ仕組み）。島の中心に見えるノートは reach の大きさ（sizeMode: reach）で分かる。",
+            "島の輪郭が読めるか（どこまでが 1 つの島かが視覚的に分かるか）、試作シリーズの区切りと島がだいたい一致するかを確認する。",
+            "島モードはノート層だけを表示する（原料・知見は詰め物になって島が崩れるため。色: フォルダ と同じ理由）。層チップで手動で原料・知見を戻せる。",
+            "ヘッダーの「配置」セグメントで標準 (plain) に切り替えて見比べられる。",
+          ]}
+        />
+      }
+    >
+      <GlobalGraphView
+        data={SAMPLE_DATA}
+        onClose={noop}
+        onSelectNote={noop}
+        initialFoldLeaves
+        initialSizeMode="reach"
+        initialLayoutMode="islands"
       />
     </Frame>
   ),

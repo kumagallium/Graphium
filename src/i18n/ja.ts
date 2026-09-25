@@ -2171,6 +2171,10 @@ export const ja: Record<string, string> = {
   "globalGraph.size.kind": "種類",
   "globalGraph.size.reach": "つながり",
   "globalGraph.sizeReachHint": "2 ホップ以内で届く別のノートの数で大きさを決めます",
+  "globalGraph.layout": "配置",
+  "globalGraph.layout.plain": "標準",
+  "globalGraph.layout.islands": "島",
+  "globalGraph.layoutIslandsHint": "つながりでまとまったノートの島を作ります。原料・知見は畳み、ノートだけを表示します",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括ナレッジ化

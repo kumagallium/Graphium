@@ -1,9 +1,10 @@
 // global-graph-structure.ts の検証。
 // foldLeafNodes: ノート隣接数（0/1/2以上）で畳む・取り除く・残す規則。
 // computeReachScores: hops 以内で届く別のノートの数。
+// assignIslands: reach の高いノートをハブにし、他のノートを最も近いハブに割り当てる。
 
 import { describe, expect, it } from "vitest";
-import { foldLeafNodes, computeReachScores } from "./global-graph-structure";
+import { foldLeafNodes, computeReachScores, assignIslands, detectCommunities } from "./global-graph-structure";
 import type { NoteGraphData, NoteNode } from "./graph-builder";
 
 function note(id: string): NoteNode {
@@ -176,5 +177,166 @@ describe("computeReachScores", () => {
     const scores = computeReachScores(data);
     expect(scores.get("n1")).toBe(0);
     expect(scores.get("n2")).toBe(0);
+  });
+});
+
+describe("assignIslands", () => {
+  it("2 つの鎖にそれぞれハブがあれば鎖ごとに分かれる", () => {
+    // h1-x1-x2-x3（鎖1）と h2-y1-y2-y3（鎖2）は互いに繋がっていない。
+    // h1, h2 だけ reach が高い（候補かつハブ候補間で 2 ホップ以内に隣接しないので残る）。
+    const data: NoteGraphData = {
+      nodes: [note("h1"), note("x1"), note("x2"), note("x3"), note("h2"), note("y1"), note("y2"), note("y3")],
+      edges: [
+        { source: "h1", target: "x1", relation: "derived" },
+        { source: "x1", target: "x2", relation: "derived" },
+        { source: "x2", target: "x3", relation: "derived" },
+        { source: "h2", target: "y1", relation: "derived" },
+        { source: "y1", target: "y2", relation: "derived" },
+        { source: "y2", target: "y3", relation: "derived" },
+      ],
+    };
+    const reachScores = new Map<string, number>([
+      ["h1", 10],
+      ["x1", 1],
+      ["x2", 1],
+      ["x3", 1],
+      ["h2", 10],
+      ["y1", 1],
+      ["y2", 1],
+      ["y3", 1],
+    ]);
+    const assignment = assignIslands(data, reachScores);
+    expect(assignment.get("h1")).toBe("h1");
+    expect(assignment.get("x1")).toBe("h1");
+    expect(assignment.get("x2")).toBe("h1");
+    expect(assignment.get("x3")).toBe("h1");
+    expect(assignment.get("h2")).toBe("h2");
+    expect(assignment.get("y1")).toBe("h2");
+    expect(assignment.get("y2")).toBe("h2");
+    expect(assignment.get("y3")).toBe("h2");
+  });
+
+  it("同距離なら reach の高い方に割り当てる", () => {
+    // A-a1-m-b1-B: A と B は 4 ホップ離れているので 2 ホップ以内の間引きに
+    // 引っかからず両方ハブとして残る。m は A・B のどちらからも 2 ホップで、
+    // reach の高い A（10）に割り当てられるはず（B は 8）。
+    const data: NoteGraphData = {
+      nodes: [note("A"), note("a1"), note("m"), note("b1"), note("B")],
+      edges: [
+        { source: "A", target: "a1", relation: "derived" },
+        { source: "a1", target: "m", relation: "derived" },
+        { source: "m", target: "b1", relation: "derived" },
+        { source: "b1", target: "B", relation: "derived" },
+      ],
+    };
+    const reachScores = new Map<string, number>([
+      ["A", 10],
+      ["a1", 1],
+      ["m", 1],
+      ["b1", 1],
+      ["B", 8],
+    ]);
+    const assignment = assignIslands(data, reachScores);
+    expect(assignment.get("A")).toBe("A");
+    expect(assignment.get("B")).toBe("B");
+    expect(assignment.get("m")).toBe("A");
+  });
+
+  it("届かないノートは Map に無い", () => {
+    // far は他のどのノードとも繋がっていない孤立ノート。ハブ（h）からの
+    // BFS が 3 ホップ以内に届かないので割り当てられない。
+    const data: NoteGraphData = {
+      nodes: [note("h"), note("x1"), note("far")],
+      edges: [{ source: "h", target: "x1", relation: "derived" }],
+    };
+    const reachScores = new Map<string, number>([
+      ["h", 10],
+      ["x1", 1],
+      ["far", 1],
+    ]);
+    const assignment = assignIslands(data, reachScores);
+    expect(assignment.get("h")).toBe("h");
+    expect(assignment.get("x1")).toBe("h");
+    expect(assignment.has("far")).toBe(false);
+  });
+});
+
+describe("detectCommunities", () => {
+  it("2 つの鎖（それぞれ 4 ノート、間に辺なし）が 2 つのラベルに分かれる", () => {
+    const data: NoteGraphData = {
+      nodes: [note("p1"), note("p2"), note("p3"), note("p4"), note("q1"), note("q2"), note("q3"), note("q4")],
+      edges: [
+        { source: "p1", target: "p2", relation: "derived" },
+        { source: "p2", target: "p3", relation: "derived" },
+        { source: "p3", target: "p4", relation: "derived" },
+        { source: "q1", target: "q2", relation: "derived" },
+        { source: "q2", target: "q3", relation: "derived" },
+        { source: "q3", target: "q4", relation: "derived" },
+      ],
+    };
+    const labels = detectCommunities(data);
+    const pLabel = labels.get("p1");
+    const qLabel = labels.get("q1");
+    expect(labels.get("p2")).toBe(pLabel);
+    expect(labels.get("p3")).toBe(pLabel);
+    expect(labels.get("p4")).toBe(pLabel);
+    expect(labels.get("q2")).toBe(qLabel);
+    expect(labels.get("q3")).toBe(qLabel);
+    expect(labels.get("q4")).toBe(qLabel);
+    expect(pLabel).not.toBe(qLabel);
+  });
+
+  it("三角形+1本の橋で繋がった2つの三角形が2つに分かれる", () => {
+    // 橋は各三角形の中で id が最も大きいノード（p3, q3）どうしを繋ぐ。
+    // 三角形内の他 2 ノードは既にその三角形のラベルに揃った後で橋ノードが
+    // 処理されるので、橋の 1 票は 2 票の内輪多数決に負ける（同数のタイに
+    // ならない）。
+    const data: NoteGraphData = {
+      nodes: [note("p1"), note("p2"), note("p3"), note("q1"), note("q2"), note("q3")],
+      edges: [
+        { source: "p1", target: "p2", relation: "derived" },
+        { source: "p1", target: "p3", relation: "derived" },
+        { source: "p2", target: "p3", relation: "derived" },
+        { source: "q1", target: "q2", relation: "derived" },
+        { source: "q1", target: "q3", relation: "derived" },
+        { source: "q2", target: "q3", relation: "derived" },
+        { source: "p3", target: "q3", relation: "reference" },
+      ],
+    };
+    const labels = detectCommunities(data);
+    const pLabel = labels.get("p1");
+    const qLabel = labels.get("q1");
+    expect(labels.get("p2")).toBe(pLabel);
+    expect(labels.get("p3")).toBe(pLabel);
+    expect(labels.get("q2")).toBe(qLabel);
+    expect(labels.get("q3")).toBe(qLabel);
+    expect(pLabel).not.toBe(qLabel);
+  });
+
+  it("孤立ノードは単独（自分の id のまま）", () => {
+    const data: NoteGraphData = {
+      nodes: [note("n1"), note("n2"), note("solo")],
+      edges: [{ source: "n1", target: "n2", relation: "derived" }],
+    };
+    const labels = detectCommunities(data);
+    expect(labels.get("solo")).toBe("solo");
+  });
+
+  it("実行が決定的（2 回呼んで同じ結果）", () => {
+    const data: NoteGraphData = {
+      nodes: [note("p1"), note("p2"), note("p3"), note("q1"), note("q2"), note("q3")],
+      edges: [
+        { source: "p1", target: "p2", relation: "derived" },
+        { source: "p1", target: "p3", relation: "derived" },
+        { source: "p2", target: "p3", relation: "derived" },
+        { source: "q1", target: "q2", relation: "derived" },
+        { source: "q1", target: "q3", relation: "derived" },
+        { source: "q2", target: "q3", relation: "derived" },
+        { source: "p3", target: "q3", relation: "reference" },
+      ],
+    };
+    const first = detectCommunities(data);
+    const second = detectCommunities(data);
+    expect([...second.entries()]).toEqual([...first.entries()]);
   });
 });

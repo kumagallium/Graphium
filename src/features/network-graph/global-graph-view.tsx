@@ -20,7 +20,7 @@ import { aggregateNoteContexts, noteContextHue } from "../note-context/context-t
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import type { NoteNode, NoteGraphData, EdgeRelation } from "./graph-builder";
-import { foldLeafNodes, computeReachScores } from "./global-graph-structure";
+import { foldLeafNodes, computeReachScores, detectCommunities } from "./global-graph-structure";
 import { globalGraphScope } from "./graph-layout";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
@@ -342,6 +342,7 @@ export function GlobalGraphCanvas({
   clusterByContext = false,
   foldLeaves = false,
   sizeMode = "kind",
+  layoutMode = "plain",
   precomputedFold,
   searchQuery = "",
   searchJumpToken = 0,
@@ -370,6 +371,9 @@ export function GlobalGraphCanvas({
   foldLeaves?: boolean;
   /** ノート（kind note）の大きさの決め方。kind=種類ごとの固定値（既定）/ reach=2 ホップ以内で届く別ノート数。 */
   sizeMode?: "kind" | "reach";
+  /** fcose のレイアウト定数の決め方。plain=今の固定値（既定）/ islands=つながりの多いノート
+   *  ほど周りを強く引き寄せ・ノート同士は強く反発させて「島」を作る。 */
+  layoutMode?: "plain" | "islands";
   /** 呼び出し元（GlobalGraphView）が filterGlobalGraph + foldLeafNodes を先に済ませた
    *  結果。foldLeaves=true のときだけ使い、指定があれば内部での foldLeafNodes 再計算
    *  を省く（同じ入力に対する二重計算を避けるためのもの）。未指定なら自前で計算する
@@ -430,6 +434,9 @@ export function GlobalGraphCanvas({
   // 比較は effect の中で行う — レンダー中に ref を更新すると StrictMode の
   // 二重レンダーで変化を食われる
   const lastClusterRef = useRef(clusterByContext);
+  // layoutMode（配置: 標準 / 島）の切替も、clusterByContext と同じ扱いで並べ直しの
+  // トリガーにする（保存済み配置・引き継ぎ座標を無視して fcose を流し直す）。
+  const lastLayoutModeRef = useRef(layoutMode);
 
   // 表示中の層・参照・文脈タグ・未分類・孤立フィルタを適用し、foldLeaves が
   // 有効なら「葉を畳む」を続けて掛ける（畳んだ相手ノード id → 個数が foldedCount）。
@@ -465,12 +472,15 @@ export function GlobalGraphCanvas({
     foldLeaves,
     precomputedFold,
   ]);
-  // つながりで大きさ（reach）: 畳んだ後のサブグラフで計算する
-  // reach スコアは表示中サブグラフの分布に対する相対値で使う（絶対値だと生成データでは
-  // ほぼ全ノートが上限に張り付いてしまう）。maxReachScore はその分布の最大値。
+  // つながりで大きさ（reach）: 畳んだ後のサブグラフで計算する。sizeMode="reach" だけ
+  // でなく layoutMode="islands"（引力で島を作る）も reachNorm を使うので、どちらか
+  // 片方が有効なら計算する。reach スコアは表示中サブグラフの分布に対する相対値で使う
+  // （絶対値だと生成データではほぼ全ノートが上限に張り付いてしまう）。
+  // maxReachScore はその分布の最大値。
+  const needsReach = sizeMode === "reach" || layoutMode === "islands";
   const reachScores = useMemo(
-    () => (sizeMode === "reach" ? computeReachScores({ nodes: shownNodes, edges: shownEdges }) : null),
-    [shownNodes, shownEdges, sizeMode],
+    () => (needsReach ? computeReachScores({ nodes: shownNodes, edges: shownEdges }) : null),
+    [shownNodes, shownEdges, needsReach],
   );
   const maxReachScore = useMemo(() => {
     if (!reachScores) return 0;
@@ -501,6 +511,10 @@ export function GlobalGraphCanvas({
     // 「文脈で寄せる」の切り替え直後か
     const clusterChanged = lastClusterRef.current !== clusterByContext;
     lastClusterRef.current = clusterByContext;
+    // 「配置: 標準 / 島」の切替直後か（並べ直しのトリガーとして clusterChanged と同格に扱う）
+    const layoutChanged = lastLayoutModeRef.current !== layoutMode;
+    lastLayoutModeRef.current = layoutMode;
+    const modeChanged = clusterChanged || layoutChanged;
     if (shownNodes.length === 0) {
       if (cyRef.current) {
         cyRef.current.destroy();
@@ -589,14 +603,46 @@ export function GlobalGraphCanvas({
         }
       }
     }
+    if (layoutMode === "islands") {
+      // 「島の配置」: clusterByContext と同じ仕組み（不可視のダミー重心 + 不可視
+      // エッジ）を、タグの代わりに detectCommunities（ラベル伝播法）が見つけた
+      // コミュニティで作る。ハブ方式（assignIslands、reach 上位をハブにして
+      // 割り当てる）はハブが少数しか取れない生成データでは全体が 1 つの塊に
+      // なってしまったため、コミュニティ検出に切り替えた（assignIslands 自体は
+      // テストのために残す）。メンバー 2 以下のコミュニティは重心を置かない。
+      // clusterByContext と併用されたときは両方の重心が置かれる。
+      const communities = detectCommunities({ nodes: shownNodes, edges: shownEdges });
+      const byCommunity = new Map<string, string[]>();
+      for (const [nodeId, communityId] of communities) {
+        const list = byCommunity.get(communityId);
+        if (list) list.push(nodeId);
+        else byCommunity.set(communityId, [nodeId]);
+      }
+      for (const [communityId, memberIds] of byCommunity) {
+        if (memberIds.length < 2) continue;
+        const dummyId = `island-hub:${communityId}`;
+        elements.push({ data: { id: dummyId }, classes: "cluster-hub" });
+        for (const memberId of memberIds) {
+          elements.push({
+            data: {
+              id: `island:${communityId}:${memberId}`,
+              source: dummyId,
+              target: memberId,
+              virtual: true,
+            },
+            classes: "cluster-edge",
+          });
+        }
+      }
+    }
 
     // 前回の座標を常に引き継ぎ、手動保存があればそれを上に重ねる。
-    // ただし「文脈で寄せる」の切り替え直後は、並べ直しが目的なのでどちらも無視する
-    // take() は寄せ方の切り替え直後でも呼ぶ（自動配置に戻した直後かの判定もここで進む）
+    // ただし「文脈で寄せる」「配置」の切り替え直後は、並べ直しが目的なのでどちらも無視する
+    // take() は切り替え直後でも呼ぶ（自動配置に戻した直後かの判定もここで進む）
     const taken = carryOver.take();
-    const carry = clusterChanged ? null : taken;
+    const carry = modeChanged ? null : taken;
     const carried = carry?.positions ?? null;
-    const persisted = clusterChanged ? null : savedPositionsRef.current;
+    const persisted = modeChanged ? null : savedPositionsRef.current;
     const basePositions = carried || persisted ? { ...(carried ?? {}), ...(persisted ?? {}) } : null;
     const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
     // 手で整えた並び（保存）を持つノードが 1 つでもあれば fcose は流さない
@@ -641,20 +687,44 @@ export function GlobalGraphCanvas({
     // たび全体を並べ直すと、配置替えが何度も走って見える）
     // 引き継いだ座標を持つノードが 1 つも無いときは最初から並べる（原点に重なったまま
     // 続きを並べると一直線に潰れる）
-    const gentle = !clusterChanged && !!carried && placedCount > 0;
+    const gentle = !modeChanged && !!carried && placedCount > 0;
     if (gentle) seedUnplacedNodes(cy, unplacedIds);
+    // 「島の配置」(layoutMode==="islands"): つながりの多いノート（reachNorm が高い）
+    // ほど反発を強め・繋がる辺を短く・強い弾性にする。加えて（clusterByContext と
+    // 同じ仕組みの）ハブごとの不可視ダミー重心（上で追加した island-hub 要素）が
+    // 実際の「島」を作る主役——力の係数だけでは 1 つの密な網から分かれなかった。
+    // gravity も clusterByContext と同じ値（0.06）まで弱め、中央への引き寄せに
+    // 負けず島が離れられるようにする（plain のときはどちらも今のまま）。
+    const islands = layoutMode === "islands";
+    const reachNorm = (id: string): number => {
+      if (!reachScores || maxReachScore <= 0) return 0;
+      return (reachScores.get(id) ?? 0) / maxReachScore;
+    };
+    const baseRepulsion = clusterByContext ? 30000 : 9000;
+    const baseLen = clusterByContext ? 300 : 110;
+    const baseEl = clusterByContext ? 0.2 : 0.4;
     const lay = cy.layout({
       name: "fcose",
       animate: true,
       animationDuration: gentle ? 400 : 700,
       randomize: !gentle,
       quality: "default",
-      nodeRepulsion: clusterByContext ? 30000 : 9000,
+      nodeRepulsion: islands
+        ? (node: any) => baseRepulsion * (1 + 6 * reachNorm(node.id()))
+        : baseRepulsion,
       idealEdgeLength: (edge: any) =>
-        edge.data("virtual") ? 35 : clusterByContext ? 300 : 110,
+        edge.data("virtual")
+          ? 35
+          : islands
+            ? baseLen * (1 - 0.6 * Math.max(reachNorm(edge.source().id()), reachNorm(edge.target().id())))
+            : baseLen,
       edgeElasticity: (edge: any) =>
-        edge.data("virtual") ? 0.9 : clusterByContext ? 0.2 : 0.4,
-      gravity: clusterByContext ? 0.06 : 0.3,
+        edge.data("virtual")
+          ? 0.9
+          : islands
+            ? baseEl * (1 + 2 * Math.max(reachNorm(edge.source().id()), reachNorm(edge.target().id())))
+            : baseEl,
+      gravity: islands || clusterByContext ? 0.06 : 0.3,
       nodeSeparation: 120,
       padding: 50,
     } as any);
@@ -747,6 +817,7 @@ export function GlobalGraphCanvas({
   }, [
     renderKey,
     clusterByContext,
+    layoutMode,
     onNavigate,
     onOpenMedia,
     onOpenUrl,
@@ -1096,6 +1167,7 @@ export function GlobalGraphView({
   timeline,
   initialFoldLeaves,
   initialSizeMode,
+  initialLayoutMode,
 }: {
   data: NoteGraphData;
   /** ノード単クリック。noteId は wiki ノードに `wiki:` prefix が付く（SidePeek の規約に合わせる）。 */
@@ -1119,11 +1191,17 @@ export function GlobalGraphView({
   initialFoldLeaves?: boolean;
   /** 大きさモードの初期値（Storybook の比較用。未指定なら "kind" = 今の挙動）。保存はしない。 */
   initialSizeMode?: "kind" | "reach";
+  /** 配置モードの初期値（Storybook の比較用。未指定なら "plain" = 今の挙動）。保存はしない。 */
+  initialLayoutMode?: "plain" | "islands";
 }) {
   const t = useT();
   const [hideRefs, setHideRefs] = useState(false);
   const [showIsolated, setShowIsolated] = useState(false);
-  const [visible, setVisible] = useState<Set<LayerId>>(new Set(ALL_LAYERS));
+  // 島の配置（layoutMode: islands）で始まるときも、色: フォルダ と同じ理由で
+  // 最初からノート層だけにする（原料・知見は詰め物になって島が崩れる）。
+  const [visible, setVisible] = useState<Set<LayerId>>(
+    new Set(initialLayoutMode === "islands" ? (["note"] as const) : ALL_LAYERS),
+  );
   // 色の軸（kind=種類 / context=文脈タグ）と、文脈タグ絞り込み（小文字キー）
   const [colorMode, setColorMode] = useState<GraphColorMode>("kind");
   const [selectedContexts, setSelectedContexts] = useState<Set<string>>(new Set());
@@ -1134,6 +1212,8 @@ export function GlobalGraphView({
   // 構造の提案（Storybook 合意用の props 切替）: 葉を畳む / 大きさをつながりで決める
   const [foldLeaves, setFoldLeaves] = useState(initialFoldLeaves ?? false);
   const [sizeMode, setSizeMode] = useState<"kind" | "reach">(initialSizeMode ?? "kind");
+  // 配置: 標準（今の fcose 定数）/ 島（つながりの多いノートが周りを引き寄せる）
+  const [layoutMode, setLayoutMode] = useState<"plain" | "islands">(initialLayoutMode ?? "plain");
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
   const [searchInput, setSearchInput] = useState("");
   const [searchJumpToken, setSearchJumpToken] = useState(0);
@@ -1210,6 +1290,20 @@ export function GlobalGraphView({
       setVisible(new Set(ALL_LAYERS));
     } else {
       setVisible(new Set<LayerId>(["note"]));
+    }
+  };
+
+  // 配置切替も同じ扱い: 島（layoutMode: islands）は原料・知見が詰め物になって
+  // 崩れるので、ノート層だけにする（色: フォルダ と同じ理由・同じ仕組み）。
+  // 標準に戻したら、色が種類のときだけ全層に戻す（文脈モード中はノート層のまま
+  // ——そちらの理由で既に絞っているので上書きしない）。層チップは残るので、
+  // どちらのモードでも手動で原料・知見を再表示できる。
+  const changeLayoutMode = (m: "plain" | "islands") => {
+    setLayoutMode(m);
+    if (m === "islands") {
+      setVisible(new Set<LayerId>(["note"]));
+    } else if (colorMode === "kind") {
+      setVisible(new Set(ALL_LAYERS));
     }
   };
 
@@ -1305,6 +1399,25 @@ export function GlobalGraphView({
                 ))}
               </div>
             </div>
+            {/* 構造の提案（Storybook 合意用）: 引力で島を作る */}
+            <div className="flex items-center gap-1.5" title={t("globalGraph.layoutIslandsHint")}>
+              <span className="text-[11px] text-muted-foreground">{t("globalGraph.layout")}</span>
+              <div className="flex rounded-md border border-border overflow-hidden">
+                {(["plain", "islands"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => changeLayoutMode(m)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      layoutMode === m
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t(`globalGraph.layout.${m}` as any)}
+                  </button>
+                ))}
+              </div>
+            </div>
             {colorMode === "context" && (
               <label
                 className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
@@ -1395,6 +1508,7 @@ export function GlobalGraphView({
                 clusterByContext={clusterByContext}
                 foldLeaves={foldLeaves}
                 sizeMode={sizeMode}
+                layoutMode={layoutMode}
                 precomputedFold={foldResult}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
