@@ -3,7 +3,7 @@
 // 背景ページは操作可能（薄暗くならない）
 // ラベル機能（ProvIndicatorLayer）対応
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
@@ -25,6 +25,8 @@ import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../../lib/documen
 import { useSourceCheckStale } from "../source-check/use-source-check";
 import { applySavedToPeekDoc, pickPeekExternalFields } from "./peek-save-merge";
 import { leaveAfterSave } from "./peek-leave";
+import { pendingPeekSave, queuePeekSave } from "../../lib/peek-save-queue";
+import { isIncomingDocNewer } from "../../hooks/doc-recency";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { buildSavedPageFields, saveNoteDoc } from "@features/note-save";
 import { SandboxEditor } from "../../base/editor";
@@ -400,9 +402,14 @@ function SidePeekInner({
   // 文脈ラベル（タイトル直下のタグ行）。表示・編集用のローカル state。
   const [peekContexts, setPeekContexts] = useState<string[]>([]);
   const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
-  const contextsInitRef = useRef<string | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 保存にまだ渡していない編集があるか。handleChange で立て、doSave が本文を読み取った
+  // 時点で下ろし、保存に失敗したら立て直す。離れるとき・アンマウントのときに書き出すかを
+  // これで決める（saveStatus は保存中に打った分を表せない: 先の保存の完了で saved に戻る）
+  const unsavedRef = useRef(false);
+  // アンマウント済みか。後片付けの書き出しの後に届く変更通知で自動保存を張らないため
+  const unmountedRef = useRef(false);
   const sidePeekRef = useRef<HTMLDivElement>(null);
   const labelAutoRef = useRef<(() => void) | null>(null);
   // onSaved は毎レンダリング新しい関数になり得るため ref 経由で参照する
@@ -410,14 +417,11 @@ function SidePeekInner({
   onSavedRef.current = onSaved;
   const onOpenNoteInPeekRef = useRef(onOpenNoteInPeek);
   onOpenNoteInPeekRef.current = onOpenNoteInPeek;
-  // 保存状態の写し（クリックのリスナーは保存状態が変わるたびには張り直さない）
-  const saveStatusRef = useRef(saveStatus);
-  saveStatusRef.current = saveStatus;
-  // ピーク内のクリックで別の面へ移るときは、未保存の編集を保存し終えてから go を呼ぶ
-  // （閉じる・全画面で開くときと同じ順。理由は peek-leave.ts）
+  // ピークの操作で別の面へ移るとき（閉じる・全画面・ローカルビュー・ピーク内のリンク）は、
+  // 未保存の編集を保存し、書き込み中の保存も済ませてから go を呼ぶ（理由は peek-leave.ts）
   const leavePeek = useCallback((go: () => void) => {
     leaveAfterSave(
-      { status: saveStatusRef.current, timerPending: autoSaveTimerRef.current !== null },
+      { unsaved: unsavedRef.current, saving: pendingPeekSave(noteId) !== null },
       {
         cancelTimer: () => {
           if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -426,10 +430,13 @@ function SidePeekInner({
         save: async () => {
           await doSaveRef.current();
         },
+        waitSaved: async () => {
+          await pendingPeekSave(noteId);
+        },
         go,
       },
     );
-  }, []);
+  }, [noteId]);
   // メインエディタ側のタイトルリネームを、このピークで開いているノートの本文へ
   // ライブ反映する命令口を登録する。ファイル直書きだとピークの次のオートセーブが
   // 旧内容で上書きして伝播が巻き戻るため、エディタ経由で書き換えて通常のオート
@@ -485,20 +492,56 @@ function SidePeekInner({
   const initialCachedDocRef = useRef(cachedDoc);
   const initialCachedDoc = initialCachedDocRef.current;
 
-  // ノート読み込み（mount 時に cachedDoc がなければ API 取得）
+  // ノート読み込み。開く doc は次の順で決める:
+  //   1) 同じノートの保存が列に残っていれば（閉じた・作り直した直前のピークが書き出し中）、
+  //      書き終わるのを待ち、その結果と親の doc キャッシュの新しい方で開く。mount 時の
+  //      cachedDoc はその保存より前の写しなので使わない — 使うと初期化で走る自動保存が
+  //      古い本文を書き戻す（素材ギャラリーで素材を切り替えるとピークごと作り直される）
+  //   2) mount 時の cachedDoc があれば API は呼ばない（親のキャッシュの方が新しければそちら）
+  //   3) どちらも無ければ API から読む
+  // 直前のピークの後片付け（書き出し）は、同じコミットのこの effect より先に走る。
   useEffect(() => {
-    if (initialCachedDocRef.current) {
-      // cachedDoc がある場合は API 不要
-      const cached = initialCachedDocRef.current;
-      setDoc(cached);
-      docRef.current = cached;
+    let cancelled = false;
+    // 決めた doc で開く。unsaved は直前のピークが書けなかった doc で開くとき
+    // （その編集はどこにも保存されていないので、未保存のまま持って次の保存で書く）
+    const open = (d: GraphiumDocument, unsaved = false) => {
+      setDoc(d);
+      docRef.current = d;
       setLoading(false);
       setError(null);
+      unsavedRef.current = unsaved;
+      setSaveStatus(unsaved ? "dirty" : "saved");
+      // 文脈ラベル（タイトル直下のタグ行）は開いた doc から一度だけ取り込む。以降の
+      // 本文編集による doc 変化では取り直さない（ローカル state が正）
+      setPeekContexts(normalizeNoteContexts(d.noteContexts) ?? []);
+    };
+    // 親の doc キャッシュ（onSaved → reindexNoteFromDoc で進む）の方が新しければそちら
+    const newest = (d: GraphiumDocument) => {
+      const latest = getCachedDocRef.current?.(noteId);
+      return latest && isIncomingDocNewer(latest, d) ? latest : d;
+    };
+
+    const pending = pendingPeekSave(noteId);
+    if (pending) {
+      setLoading(true);
+      setError(null);
+      setDoc(null);
       setSaveStatus("saved");
+      void pending.then((outcome) => {
+        if (cancelled) return;
+        const d = newest(outcome.doc);
+        open(d, !outcome.saved && d === outcome.doc);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (initialCachedDocRef.current) {
+      open(newest(initialCachedDocRef.current));
       return;
     }
 
-    let cancelled = false;
     setLoading(true);
     setError(null);
     setDoc(null);
@@ -520,11 +563,7 @@ function SidePeekInner({
 
     (loadFn ?? Promise.reject(new Error("Wiki not supported")))
       .then((d) => {
-        if (!cancelled) {
-          setDoc(d);
-          docRef.current = d;
-          setLoading(false);
-        }
+        if (!cancelled) open(d);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -1232,10 +1271,10 @@ function SidePeekInner({
 
   // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）。
   // 書き出した doc を返す（保存しなかった・失敗したときは null）。
-  // 保存どうしは並べていない: 前の保存の書き込み中に次の保存が始まることがあり、
-  // 後から始めた保存が先に終わると、docRef の本文の写しと onSaved で親へ渡る doc が
-  // 1 つ前のものに戻る（書き換えは applySavedToPeekDoc で残る）
-  const doSave = useCallback(async (): Promise<GraphiumDocument | null> => {
+  // unmounting: アンマウント時の書き出し。エディタはこの後外されるので、表の行 ID を
+  // エディタへ書き戻さない（書き戻しは次の保存で同じ ID を保つためのもの。保存する doc は
+  // 下の normalizeTableRowIdentities が揃える）
+  const doSave = useCallback(async (opts?: { unmounting?: boolean }): Promise<GraphiumDocument | null> => {
     // 版スナップショット（snapshot:）は不変・読み取り専用。エディタも editable=false に
     // しているが、保存経路にも多重ガードを置く（誤って書き戻すと版が壊れるため）。
     if (noteId.startsWith("snapshot:")) return null;
@@ -1245,7 +1284,9 @@ function SidePeekInner({
     const base = docRef.current;
     if (!editor || !base) return null;
 
-    const currentBlocks = syncTableRowIdentitiesToEditor(editor);
+    const currentBlocks = opts?.unmounting
+      ? (editor.document ?? [])
+      : syncTableRowIdentitiesToEditor(editor);
     // ページ差分フィールド（labels / provLinks / knowledgeLinks / blockAlignments）は
     // メインエディタ（note-app.tsx buildDocument）と同じ組み立てを共有モジュールに集約。
     // リンクは restoreLinks 済みの linkStore を真実として layer 別に書き出す
@@ -1287,28 +1328,36 @@ function SidePeekInner({
       modifiedAt: new Date().toISOString(),
     });
 
+    // ここまでの編集はこの保存が持っていく（保存中に打った分は handleChange が立て直す）
+    unsavedRef.current = false;
     setSaveStatus("saving");
     try {
+      // 同じノートの先の保存（閉じた・作り直した直前のピークの分を含む）が終わってから書く。
       // saveNoteDoc が provider への保存と wiki:/skill: の振り分けを担い、
       // 保存成功時のみ onSaved を発火する（#514: 保存後 reindex 漏れ防止の順序を強制）。
-      await saveNoteDoc({
-        noteId,
-        doc: updatedDoc,
-        onSaved: (savedId, savedDoc) => {
-          // 保存した doc で置き換えず、この保存の持ち分（本文・更新時刻など）だけを重ねる。
-          // 書き込みを待つ間に入ったタイトル・文脈ラベル・引用素材・noteLinks の書き換えを
-          // 消さず、次の保存に乗せるため（peek-save-merge.ts）
-          docRef.current = applySavedToPeekDoc(docRef.current, base, savedDoc);
-          setSaveStatus("saved");
-          // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
-          // これが無いと再オープン時に stale な cachedDoc が出て、そこからの保存で
-          // 旧内容がディスクへ書き戻される。
-          onSavedRef.current?.(savedId, savedDoc);
-        },
-      });
+      await queuePeekSave(noteId, updatedDoc, () =>
+        saveNoteDoc({
+          noteId,
+          doc: updatedDoc,
+          onSaved: (savedId, savedDoc) => {
+            // 保存した doc で置き換えず、この保存の持ち分（本文・更新時刻など）だけを重ねる。
+            // 書き込みを待つ間に入ったタイトル・文脈ラベル・引用素材・noteLinks の書き換えを
+            // 消さず、次の保存に乗せるため（peek-save-merge.ts）
+            docRef.current = applySavedToPeekDoc(docRef.current, base, savedDoc);
+            // 保存中に打った分があれば「未保存」のまま（自動保存のタイマーが待っている）
+            setSaveStatus(unsavedRef.current ? "dirty" : "saved");
+            // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
+            // これが無いと再オープン時に stale な cachedDoc が出て、そこからの保存で
+            // 旧内容がディスクへ書き戻される。
+            onSavedRef.current?.(savedId, savedDoc);
+          },
+        }),
+      );
       return updatedDoc;
     } catch (err) {
       console.error("サイドピーク保存に失敗:", err);
+      // 書けなかった分は未保存に戻す（離れるとき・アンマウントのときにもう一度書き出す）
+      unsavedRef.current = true;
       setSaveStatus("dirty");
       return null;
     }
@@ -1318,6 +1367,26 @@ function SidePeekInner({
   useEffect(() => {
     doSaveRef.current = doSave;
   }, [doSave]);
+
+  // アンマウント時: 未保存の編集が残っていれば「閉じる」と同じく書き出す。ピークの外の操作
+  // （素材ギャラリーで素材を切り替えて全画面ごと作り直す・サイドバーで別の画面へ移る・
+  // 画面幅が変わってピークの出し方が切り替わる）でも、直前 3 秒の編集を落とさないため。
+  // レイアウト段階の後片付けで行うのは、ここではまだ子のエディタが外されておらず本文を
+  // 同期で読めるから（React は削除する木の後片付けを親から子の順に走らせ、エディタは ref の
+  // 解除で外れる。通常の effect の後片付けはその後）。書き出しは保存の列に並ぶので、
+  // 同じノートを開き直したピークはその完了を待ってから開く（読み込み effect）。
+  // フラグは effect 本体で下ろし直す（StrictMode の試しのアンマウント → 再マウント）
+  useLayoutEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      if (unsavedRef.current) void doSaveRef.current({ unmounting: true });
+    };
+  }, []);
 
   // 外部メディアゲートの単位。noteId ではなくこのピーク 1 回分の値にする（理由は
   // blocks/remote-content/store.ts）。閉じれば消えるので、開き直せばまた同意を求める。
@@ -1336,12 +1405,17 @@ function SidePeekInner({
   // labelAutoRef はメインエディタ（note-app.tsx の handleContentChange）と同様、
   // 毎変更時に呼ぶ契約（箇条書き Enter のラベル継承・削除ブロックの孤立ラベル清掃）
   const handleChange = useCallback(() => {
+    // アンマウント後に届く変更通知（遅れて終わった外部画像の取り込みなど）では何もしない。
+    // 未保存は後片付けで書き出し済みで、ここで自動保存を張ると外されたエディタの古い本文を
+    // 後から書き、開き直したピークの編集を上書きしうる
+    if (unmountedRef.current) return;
     // 取り込みは保存状態の判定より前に呼ぶ。取り込めた分は本文がローカル参照になり、
     // 「外部画像を読み込む」の対象から外れる。
     scanRemoteImages();
     // 版スナップショット（snapshot:）は読み取り専用。エディタ初期化時の change でも
     // 「未保存」表示や自動保存タイマーを起こさない（doSave 側にも多重ガードあり）。
     if (noteId.startsWith("snapshot:")) return;
+    unsavedRef.current = true;
     setSaveStatus("dirty");
     labelAutoRef.current?.();
     // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
@@ -1352,7 +1426,6 @@ function SidePeekInner({
     );
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
-      // 発火したら空に戻す（null でない = 保存待ちの編集がある、を leavePeek が見る）
       autoSaveTimerRef.current = null;
       doSaveRef.current();
     }, 3000);
@@ -1413,15 +1486,6 @@ function SidePeekInner({
         : null,
     [onCreateLinkedNote, promptNoteName, noteId, handleChange],
   );
-
-  // 文脈ラベルの初期化（ノートを開いた最初のロード時に doc から取り込む。noteId 単位で一度だけ、
-  // 以降の本文編集による doc 変化ではリセットしない）。
-  useEffect(() => {
-    if (!effectiveDoc) return;
-    if (contextsInitRef.current === noteId) return;
-    contextsInitRef.current = noteId;
-    setPeekContexts(normalizeNoteContexts(effectiveDoc.noteContexts) ?? []);
-  }, [effectiveDoc, noteId]);
 
   // 文脈ラベルの更新: ローカル state + docRef を更新し、SidePeek 自身の doSave で保存する
   // （doSave は ...docRef.current を spread するので noteContexts も一緒に書き出される）。
@@ -1537,6 +1601,7 @@ function SidePeekInner({
           e.preventDefault();
           e.stopPropagation();
           if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
           doSaveRef.current();
         }
       }
@@ -1545,55 +1610,24 @@ function SidePeekInner({
     return () => document.removeEventListener("keydown", handler, { capture: true });
   }, []);
 
-  // 閉じるときに未保存を保存
-  const handleClose = useCallback(async () => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    try {
-      if (saveStatus === "dirty") {
-        await doSaveRef.current();
-      }
-    } catch (err) {
-      console.error("閉じる前の保存に失敗:", err);
-    }
-    onClose();
-  }, [saveStatus, onClose]);
+  // 閉じる・全画面で開く・ローカルビューを開くも、ピーク内のリンクと同じく leavePeek を通す
+  // （saveStatus だけを見ると、保存中に打った分を先の保存の完了で saved と取り違える）
+  const handleClose = useCallback(() => {
+    leavePeek(onClose);
+  }, [leavePeek, onClose]);
 
-  // フルで開くときも保存
-  const handleNavigate = useCallback(async () => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    try {
-      if (saveStatus === "dirty") {
-        await doSaveRef.current();
-      }
-    } catch (err) {
-      console.error("遷移前の保存に失敗:", err);
-    }
-    // 保存済みドキュメントを渡してキャッシュ即時更新（API再取得の遅延を回避）
-    onNavigate(noteId, docRef.current ?? undefined);
-  }, [saveStatus, noteId, onNavigate]);
+  // 全画面で開く。保存し終えた doc を渡してメインのキャッシュを即時更新する（API 再取得の遅延を回避）
+  const handleNavigate = useCallback(() => {
+    leavePeek(() => onNavigate(noteId, docRef.current ?? undefined));
+  }, [leavePeek, noteId, onNavigate]);
 
-  // ローカルビューを開くときも保存してからピークを閉じる（onNavigate と同じ順）
-  const handleOpenLocalView = useCallback(async () => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    try {
-      if (saveStatus === "dirty") {
-        await doSaveRef.current();
-      }
-    } catch (err) {
-      console.error("ローカルビューを開く前の保存に失敗:", err);
-    }
-    onClose();
-    onOpenLocalView?.(noteId);
-  }, [saveStatus, noteId, onClose, onOpenLocalView]);
+  // ローカルビューを開くときも保存してからピークを閉じる（全画面と同じ順）
+  const handleOpenLocalView = useCallback(() => {
+    leavePeek(() => {
+      onClose();
+      onOpenLocalView?.(noteId);
+    });
+  }, [leavePeek, noteId, onClose, onOpenLocalView]);
 
   const statusText = saveStatus === "saving" ? t("common.saving")
     : saveStatus === "dirty" ? t("common.unsaved")
