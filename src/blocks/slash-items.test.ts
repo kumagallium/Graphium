@@ -37,6 +37,11 @@ describe("getCommonSlashMenuItems", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(chartSlashItem);
   });
 
+  it("インデックステーブルはどのエディタでも出る（表の登録先は押されたエディタの受け口）", () => {
+    expect(getCommonSlashMenuItems({ includeCite: false })).toContain(indexTableSlashItem);
+    expect(getCommonSlashMenuItems({ includeCite: true })).toContain(indexTableSlashItem);
+  });
+
   it("時系列テーブルはどのエディタでも出る（登録先を押されたエディタで引く）", () => {
     expect(getCommonSlashMenuItems({ includeCite: false })).toContain(logTableSlashItem);
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(logTableSlashItem);
@@ -81,9 +86,9 @@ describe("getCommonSlashMenuItems", () => {
 
 describe("getMainEditorOnlySlashMenuItems", () => {
   it("メインに固定の受け口で動く項目だけを持つ", () => {
-    expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([
-      indexTableSlashItem.title,
-    ]);
+    // インデックステーブル・時系列テーブル・テンプレートは受け口をエディタ単位に直して
+    // common へ移したので、今は空
+    expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([]);
   });
 
   it("共通の一覧には混ざらない（ピークで押すとメイン側に書き込むため）", () => {
