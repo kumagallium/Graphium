@@ -107,11 +107,16 @@ import {
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
+  getAssetSuggestions,
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
   insertNoteMentionInline,
 } from "@features/block-link/mention-menu";
-import { recordMentionLink, type AddReferenceLink } from "@features/block-link/mention-insert";
+import {
+  insertAssetMention,
+  recordMentionLink,
+  type AddReferenceLink,
+} from "@features/block-link/mention-insert";
 import {
   openPeekTarget,
   readMentionAt,
@@ -1949,13 +1954,16 @@ function SidePeekInner({
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
-                // `@` 参照: 他ノートの参照 + 「新規ノートを作成」。メインエディタと同じく
-                // 挿入後はピーク内に留まり、青い @テキストをクリックすると（note-app の
-                // document クリックハンドラが .bn-editor を拾うため）サイドピークで開く。
+                // `@` 参照: 他ノート・素材の参照 + 「新規ノートを作成」。メインエディタと同じく
+                // 挿入後はピーク内に留まり、青い @テキストをクリックすると（このピークの
+                // クリックハンドラが拾う）ノートはピークで、素材は素材ピークで開く。
                 getMentionSuggestions={(query) => {
                   // 見出し候補は DOM 全体から拾ってしまい（メイン+ピークが同居）紛れるため、
-                  // ピークでは他ノート参照と新規作成のみに絞る。
-                  const base = getNoteSuggestions([], noteId, noteIndex);
+                  // ピークでは他ノート・素材の参照と新規作成に絞る。
+                  const base = [
+                    ...getNoteSuggestions([], noteId, noteIndex),
+                    ...getAssetSuggestions(mediaIndex),
+                  ];
                   if (onCreateLinkedNote) {
                     const createItem = getCreateNoteSuggestion(query, base);
                     if (createItem) base.push(createItem);
@@ -1975,6 +1983,24 @@ function SidePeekInner({
                     s = { type: "note", id: newId, label: title, group: "" };
                   }
                   const addLink: AddReferenceLink = (p) => linkStoreRef.current.addLink(p);
+                  if (s.type === "asset") {
+                    // メインエディタと同じ関数（mention-insert.ts）。引用素材は docRef に積み、
+                    // doSave が docRef.current を spread するので一緒に永続化される
+                    insertAssetMention(() => editorRef.current, sourceBlockId, s, {
+                      addLink,
+                      citeAsset: (fileId) => {
+                        const cur = docRef.current;
+                        if (cur && !(cur.citedAssetFileIds ?? []).includes(fileId)) {
+                          docRef.current = {
+                            ...cur,
+                            citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), fileId],
+                          };
+                        }
+                      },
+                      onInserted: handleChange,
+                    });
+                    return;
+                  }
                   if (s.type !== "note") return;
                   const noteRefId = s.id;
                   const label = s.label;
