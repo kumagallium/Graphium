@@ -30,6 +30,7 @@ import type {
   FlowEdge,
   FlowEntity,
   FlowGraphData,
+  FlowGroup,
   FlowStep,
 } from "./activity-graph-adapter";
 import type { BlockLink } from "../../lib/block-link-types";
@@ -54,6 +55,15 @@ export type OperationRow = {
   state?: OperationRowState;
   /** ColumnType "planned-input" の列セルを parsePlannedInputs したもの。列が無ければ [] */
   plannedFrom: string[];
+  /**
+   * 表のキャプション（meta.caption を trim。無ければ空文字）。
+   * collectOperationRowsFromBlocks が常に付けるが、テストのフィクスチャ等で
+   * 直接 OperationRow を組み立てる既存コードを壊さないよう optional にしてある
+   * （buildPlanFlowGraph 側では undefined を "" として扱う）
+   */
+  tableCaption?: string;
+  /** note-link 列を持ち行が 1 つ以上ある表の、本文での出現順（0 始まり）。省略時は 0 として扱う */
+  tableIndex?: number;
 };
 
 // ── 予定の線（入力元セル） ──
@@ -135,14 +145,20 @@ export function collectOperationRowsFromBlocks(
   const tableBlocks = collectTableBlocks(blocks ?? []);
   const rows: OperationRow[] = [];
   const seenNames = new Set<string>();
+  // note-link 列を持ち行が 1 つ以上ある表の出現順（0 始まり）
+  let tableIndexCounter = 0;
 
   for (const [blockId, block] of tableBlocks) {
     const meta: TableMeta | undefined = tableMeta?.[blockId];
     if (!hasColumnType(meta, "note-link")) continue;
 
     const tableRows: any[] = block?.content?.rows ?? [];
-    if (tableRows.length === 0) continue;
+    // ヘッダだけ（データ行 0）の表は工程を持たない。番号も消費しない
+    // （消費すると帯の「表 N」が飛び、「表 1」が永久に出ない）
+    if (tableRows.length <= 1) continue;
     const headerRow = tableRows[0];
+    const tableCaption = meta?.caption?.trim() ?? "";
+    const tableIndex = tableIndexCounter++;
 
     // "planned-input" 列（既定名「入力元」）の列番号をヘッダから探す。無ければ -1（plannedFrom は常に []）
     const plannedInputColumnName = findColumnNameByType(meta, "planned-input");
@@ -193,7 +209,17 @@ export function collectOperationRowsFromBlocks(
         attrs.push({ label: headerName ? `${headerName}: ${value}` : value });
       }
 
-      rows.push({ rowIndex: i, tableBlockId: blockId, name: rawName, noteId, attrs, state, plannedFrom });
+      rows.push({
+        rowIndex: i,
+        tableBlockId: blockId,
+        name: rawName,
+        noteId,
+        attrs,
+        state,
+        plannedFrom,
+        tableCaption,
+        tableIndex,
+      });
     }
   }
 
@@ -360,6 +386,11 @@ export function buildPlanFlowGraph(input: {
 }): PlanFlowResult {
   const { rows, index, processIndex } = input;
 
+  // 表が 2 つ以上あるときだけ、行ごとに所属する表の帯（group）を付ける。
+  // 表が 1 つの計画は今までどおり帯無しの絵のまま
+  const distinctTableIds = new Set(rows.map((row) => row.tableBlockId));
+  const hasMultipleTables = distinctTableIds.size >= 2;
+
   const steps: FlowStep[] = rows.map((row) => ({
     id: stepIdOfRow(row),
     name: stripLeadingAt(row.name),
@@ -370,6 +401,15 @@ export function buildPlanFlowGraph(input: {
       rowIndex: row.rowIndex,
       state: row.state,
     },
+    ...(hasMultipleTables
+      ? {
+          group: {
+            id: row.tableBlockId,
+            label: row.tableCaption ?? "",
+            index: row.tableIndex ?? 0,
+          } satisfies FlowGroup,
+        }
+      : {}),
   }));
 
   const entities: FlowEntity[] = [];

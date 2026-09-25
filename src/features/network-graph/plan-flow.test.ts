@@ -730,6 +730,34 @@ describe("buildPlanFlowGraph", () => {
     const result = buildPlanFlowGraph({ rows, index, processIndex: null });
     expect(result.truncated).toBe(true);
   });
+
+  it("表が 2 つ以上あると、行の所属表から group が付く（label はキャプション・index は出現順）", () => {
+    const rows: OperationRow[] = [
+      { rowIndex: 1, tableBlockId: "t1", name: "合成", noteId: "note-a", attrs: [], plannedFrom: [], tableCaption: "生地", tableIndex: 0 },
+      { rowIndex: 1, tableBlockId: "t2", name: "焼成", noteId: "note-b", attrs: [], plannedFrom: [], tableCaption: "焼成", tableIndex: 1 },
+    ];
+    const result = buildPlanFlowGraph({ rows, index: null, processIndex: null });
+    expect(result.graph.steps.find((s) => s.name === "合成")?.group).toEqual({ id: "t1", label: "生地", index: 0 });
+    expect(result.graph.steps.find((s) => s.name === "焼成")?.group).toEqual({ id: "t2", label: "焼成", index: 1 });
+  });
+
+  it("表が 1 つだけなら group を付けない", () => {
+    const rows = linearRows([
+      ["合成", "note-a"],
+      ["焼成", "note-b"],
+    ]);
+    const result = buildPlanFlowGraph({ rows, index: null, processIndex: null });
+    for (const step of result.graph.steps) expect(step.group).toBeUndefined();
+  });
+
+  it("キャプション無しの表は group.label が空文字", () => {
+    const rows: OperationRow[] = [
+      { rowIndex: 1, tableBlockId: "t1", name: "合成", noteId: "note-a", attrs: [], plannedFrom: [], tableCaption: "", tableIndex: 0 },
+      { rowIndex: 1, tableBlockId: "t2", name: "焼成", noteId: "note-b", attrs: [], plannedFrom: [], tableCaption: "", tableIndex: 1 },
+    ];
+    const result = buildPlanFlowGraph({ rows, index: null, processIndex: null });
+    expect(result.graph.steps.find((s) => s.name === "合成")?.group?.label).toBe("");
+  });
 });
 
 // ── parsePlannedInputs / formatPlannedInputs ──
@@ -995,6 +1023,44 @@ describe("collectOperationRowsFromBlocks", () => {
   it("tableMeta が undefined でも落ちない（空扱い）", () => {
     const blocks = [tableBlock("t1", [["工程"], ["合成"]])];
     expect(collectOperationRowsFromBlocks(blocks, undefined)).toEqual([]);
+  });
+
+  it("複数表の tableCaption / tableIndex を出現順で拾う", () => {
+    const blocks = [
+      tableBlock("t1", [["工程"], ["合成"]]),
+      tableBlock("t2", [["工程"], ["焼成"]]),
+    ];
+    const tableMeta = {
+      t1: { noteLinks: { 合成: "note-a" }, columns: { 工程: ["note-link"] }, caption: " 生地 " },
+      t2: { noteLinks: { 焼成: "note-b" }, columns: { 工程: ["note-link"] }, caption: "焼成" },
+    } as any;
+    const rows = collectOperationRowsFromBlocks(blocks, tableMeta);
+    expect(rows.map((r) => ({ name: r.name, tableCaption: r.tableCaption, tableIndex: r.tableIndex }))).toEqual([
+      { name: "合成", tableCaption: "生地", tableIndex: 0 },
+      { name: "焼成", tableCaption: "焼成", tableIndex: 1 },
+    ]);
+  });
+
+  it("ヘッダだけの表（データ行 0）は tableIndex を消費しない", () => {
+    const blocks = [
+      tableBlock("t0", [["工程"]]),
+      tableBlock("t1", [["工程"], ["合成"]]),
+      tableBlock("t2", [["工程"], ["焼成"]]),
+    ];
+    const tableMeta = {
+      t0: { columns: { 工程: ["note-link"] } },
+      t1: { noteLinks: { 合成: "note-a" }, columns: { 工程: ["note-link"] } },
+      t2: { noteLinks: { 焼成: "note-b" }, columns: { 工程: ["note-link"] } },
+    } as any;
+    const rows = collectOperationRowsFromBlocks(blocks, tableMeta);
+    expect(rows.map((r) => r.tableIndex)).toEqual([0, 1]);
+  });
+
+  it("キャプション無しの表は tableCaption が空文字", () => {
+    const blocks = [tableBlock("t1", [["工程"], ["合成"]])];
+    const tableMeta = { t1: { noteLinks: { 合成: "note-a" }, columns: { 工程: ["note-link"] } } } as any;
+    const rows = collectOperationRowsFromBlocks(blocks, tableMeta);
+    expect(rows[0].tableCaption).toBe("");
   });
 });
 

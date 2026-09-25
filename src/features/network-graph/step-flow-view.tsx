@@ -40,9 +40,10 @@ import { LayoutGrid, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
 import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
 import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
-import { layoutStepFlow } from "./elk-flow-layout";
+import { layoutStepFlow, type ElkLayoutNode } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
+import { GroupFlowNode } from "./group-flow-node";
 import { FlowStepPanel, type FlowSelection, type SectionKind, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
@@ -188,7 +189,7 @@ export type StepFlowViewProps = {
   onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
 };
 
-const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
+const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode, band: GroupFlowNode };
 
 /** プレビューで先頭に寄せるときの上余白 */
 const PREVIEW_TOP_PADDING = 24;
@@ -261,6 +262,18 @@ function isEditableStep(graph: FlowGraphData, id: string, connectNoteRefs = fals
       // 保存されるため、引いても 1 番目の同名行に付け替わってしまう。端点にしない
       (!step.noteRef || (connectNoteRefs && step.noteRef.state !== "duplicateName")),
   );
+}
+
+/** 帯ノードの id（"group:" + 表の blockId） */
+function groupNodeId(groupId: string): string {
+  return `group:${groupId}`;
+}
+
+/** グラフに登場する帯ノード id の集合（step.group から重複なく集める） */
+function groupNodeIdsOf(graph: Pick<FlowGraphData, "steps">): string[] {
+  const ids = new Set<string>();
+  for (const s of graph.steps) if (s.group) ids.add(groupNodeId(s.group.id));
+  return [...ids];
 }
 
 function StepFlowCanvas({
@@ -381,13 +394,16 @@ function StepFlowCanvas({
   // コールバック安定化のため）
   const graphRef = useRef(graph);
   graphRef.current = graph;
+  // 帯（表ごとのグループ）があるか。あると手動配置（保存済み座標・ドラッグ）は使わない
+  // — 帯の子は相対座標、帯の無いノードは絶対座標なので混ざると壊れる
+  const hasGroups = graph.steps.some((s) => !!s.group);
   // ノードを作り直すかは中身で決める。graph は PROV の再生成のたびに新しい
   // オブジェクトになるので、参照を依存にすると入力のたびに ELK が流れてノードが動く
   const graphKey = useGraphDataKey(graph);
   // 並べ直すのは「形が変わったとき」だけ。名前や件数が変わっただけで ELK を
   // 流すと、入力のたびにノードが動いて読めなくなる
   const structureKey = useGraphStructureKey(
-    [...graph.steps.map((x) => x.id), ...graph.entities.map((x) => x.id)],
+    [...graph.steps.map((x) => x.id), ...graph.entities.map((x) => x.id), ...groupNodeIdsOf(graph)],
     graph.edges,
   );
   // ドラッグ中と読み込み中の連続変化は、作り直しを待たせて 1 回にする
@@ -435,12 +451,42 @@ function StepFlowCanvas({
       // dimensions change → ELK → fitView が一周するまで見えない。コールバックの
       // 参照が変わっただけの再構築でその一周を毎回やると、ノードが消えたままになる
       const prevMeasured = new Map(prev.map((n) => [n.id, n.measured]));
-      // 保存済みの座標。スコープが無い文脈（プレビュー等）では常に null
-      const saved = savedPositionsRef.current;
-      const nodesAreDraggable = !!layoutScope;
+      // 帯ノードの直前の style（width/height）。measured と同じ理由で引き継ぐ
+      const prevStyle = new Map(prev.map((n) => [n.id, n.style]));
+      // 保存済みの座標。スコープが無い文脈（プレビュー等）では常に null。
+      // 帯があるときは使わない（相対座標と絶対座標が混ざるのを避ける）
+      const saved = hasGroups ? null : savedPositionsRef.current;
+      const nodesAreDraggable = !!layoutScope && !hasGroups;
       // 同名ステップ（条件違いの並列ラン）を見分けるためのパラメータ
       const distinguishers = computeStepDistinguishers(graph.steps);
       const showParams = showParamsRef.current;
+
+      // 帯ノード（重複なし、表の出現順）。先頭に置く（背面表示は zIndex で担保）
+      const groupsById = new Map<string, { id: string; label: string; index: number }>();
+      for (const s of graph.steps) {
+        if (s.group && !groupsById.has(s.group.id)) groupsById.set(s.group.id, s.group);
+      }
+      const groups = [...groupsById.values()].sort((a, b) => a.index - b.index);
+      const groupNodes: Node[] = groups.map((g) => {
+        const gid = groupNodeId(g.id);
+        const prevGroupStyle = prevStyle.get(gid) as { width?: number; height?: number } | undefined;
+        return {
+          id: gid,
+          type: "band" as const,
+          position: prevPos.get(gid) ?? { x: 0, y: 0 },
+          ...(prevMeasured.get(gid) ? { measured: prevMeasured.get(gid) } : {}),
+          style: {
+            width: prevGroupStyle?.width ?? 240,
+            height: prevGroupStyle?.height ?? 120,
+          },
+          data: { label: g.label, index: g.index },
+          selectable: false,
+          draggable: false,
+          connectable: false,
+          zIndex: -1,
+        };
+      });
+
       const stepNodes: Node[] = graph.steps.map((s) => ({
         id: s.id,
         type: "step" as const,
@@ -460,6 +506,7 @@ function StepFlowCanvas({
         },
         draggable: nodesAreDraggable,
         selected: s.id === selectedIdRef.current,
+        ...(s.group ? { parentId: groupNodeId(s.group.id), extent: "parent" as const } : {}),
       }));
       const entityNodes: Node[] = graph.entities.map((e) => ({
         id: e.id,
@@ -478,7 +525,7 @@ function StepFlowCanvas({
         draggable: nodesAreDraggable,
         selected: e.id === selectedIdRef.current,
       }));
-      return [...stepNodes, ...entityNodes];
+      return [...groupNodes, ...stepNodes, ...entityNodes];
     });
     setEdges(
       graph.edges.map((e) => {
@@ -559,12 +606,13 @@ function StepFlowCanvas({
       }),
     );
     // 保存済みの配置が 1 つでもあるなら ELK は流さない（手で整えた並びを保つ）。
-    // 保存に無い新しいノードだけ、既存の並びの下に仮置きして気づけるようにする
-    const savedNow = savedPositionsRef.current;
+    // 保存に無い新しいノードだけ、既存の並びの下に仮置きして気づけるようにする。
+    // 帯があるときは保存済み座標を使わない（相対座標と絶対座標が混ざるのを避ける）
+    const savedNow = hasGroups ? null : savedPositionsRef.current;
     const placedCount = savedNow
       ? [...graph.steps, ...graph.entities].filter((n) => savedNow[n.id]).length
       : 0;
-    usingSavedLayoutRef.current = placedCount > 0;
+    usingSavedLayoutRef.current = hasGroups ? false : placedCount > 0;
     // 形が前回と同じなら、位置は prevPos で引き継がれている。新しく並べ直す
     // 理由は無いが、実測待ちで積んだままの要求は消さずに持ち越す
     // （この effect はコールバックの参照が変わっただけでも走る）
@@ -621,7 +669,11 @@ function StepFlowCanvas({
     // ここで走らせると「古い一覧は全部測定済み」で ELK が確定してしまい、
     // 直後にマウントされる新ノードが (0,0) に置き去りになる（実バグ）
     const g = graphRef.current;
-    const expected = new Set<string>([...g.steps.map((s) => s.id), ...g.entities.map((e) => e.id)]);
+    const expected = new Set<string>([
+      ...g.steps.map((s) => s.id),
+      ...g.entities.map((e) => e.id),
+      ...groupNodeIdsOf(g),
+    ]);
     if (
       current.length === 0 ||
       current.length !== expected.size ||
@@ -640,11 +692,18 @@ function StepFlowCanvas({
       return;
     }
     layoutRunningRef.current = true;
-    const sized = current.map((n) => ({
-      id: n.id,
-      width: n.measured?.width ?? 180,
-      height: n.measured?.height ?? 48,
-    }));
+    // 帯ノードは parentId 無し・width/height を渡さない（ELK が子から決める）。
+    // 帯の子は parentId を渡し、compound layout の対象にする
+    const sized: ElkLayoutNode[] = current.map((n) =>
+      n.type === "band"
+        ? { id: n.id }
+        : {
+            id: n.id,
+            width: n.measured?.width ?? 180,
+            height: n.measured?.height ?? 48,
+            ...(n.parentId ? { parentId: n.parentId } : {}),
+          },
+    );
     // ELK は非同期。完了までに graph の中身（ノード id の集合）が変わっていたら、
     // その結果は古い id の座標でしかなく、今のノードには当たらない。適用も
     // 「要求を消す」こともせず、finally で並べ直しに回す。
@@ -664,7 +723,11 @@ function StepFlowCanvas({
         return;
       }
       const latest = graphRef.current;
-      const latestIds = idsOf([...latest.steps.map((n) => n.id), ...latest.entities.map((n) => n.id)]);
+      const latestIds = idsOf([
+        ...latest.steps.map((n) => n.id),
+        ...latest.entities.map((n) => n.id),
+        ...groupNodeIdsOf(latest),
+      ]);
       if (latestIds !== startedIds) {
         // 古い結果。要求は残したまま（finally が最新の graph で並べ直す）
         needsLayoutRef.current = true;
@@ -676,7 +739,21 @@ function StepFlowCanvas({
       // ノードが (0,0) や旧位置に置き去りのまま「グラフが消えた」状態に固定された
       needsLayoutRef.current = false;
       setNodes((nds: Node[]) =>
-        nds.map((n: Node) => ({ ...n, position: positions.get(n.id) ?? n.position })),
+        nds.map((n: Node) => {
+          const pos = positions.get(n.id);
+          if (!pos) return n;
+          if (n.type === "band") {
+            // 帯: 位置に加えて ELK が子から決めた width/height も反映する
+            return {
+              ...n,
+              position: { x: pos.x, y: pos.y },
+              style: { ...(n.style ?? {}), width: pos.width, height: pos.height },
+            };
+          }
+          // 帯の子は相対座標（ELK の出力どおり。React Flow の parentId 付きノードも
+          // 相対座標なのでそのまま使える）
+          return { ...n, position: { x: pos.x, y: pos.y } };
+        }),
       );
       requestAnimationFrame(() => {
         // duration を残すと、アニメーションが後から viewport を動かして
@@ -936,7 +1013,8 @@ function StepFlowCanvas({
           beginDrag();
         }}
         onSelectionDragStop={() => {
-          if (!layoutScope) {
+          // 帯があるときは保存しない（子は帯からの相対座標。保存は絶対座標前提）
+          if (!layoutScope || hasGroups) {
             endDrag();
             return;
           }
@@ -947,7 +1025,7 @@ function StepFlowCanvas({
           endDrag();
         }}
         onNodeDragStop={(_e, _node, dragged) => {
-          if (!layoutScope) {
+          if (!layoutScope || hasGroups) {
             endDrag();
             return;
           }
@@ -960,7 +1038,7 @@ function StepFlowCanvas({
           // 保存されていない座標で組み直してしまう）
           endDrag();
         }}
-        nodesDraggable={!!layoutScope}
+        nodesDraggable={!!layoutScope && !hasGroups}
         deleteKeyCode={null}
         minZoom={0.2}
         maxZoom={4}
