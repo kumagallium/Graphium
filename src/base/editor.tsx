@@ -89,6 +89,8 @@ import { dropToColumnsExtension, columnDropCursorPosition } from "../blocks/mult
 import { gatedMediaBlockEntries } from "../blocks/remote-content/gated-media-spec";
 import { setEditorRemoteScope } from "../blocks/remote-content/store";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
+import { scriptStyleSpecs } from "./script-styles";
+import { DefaultFormattingToolbar } from "./script-style-button";
 
 type SandboxEditorProps = {
   blocks?: CustomBlockEntry[];
@@ -102,7 +104,7 @@ type SandboxEditorProps = {
   sideMenu?: FC<SideMenuProps> | false;
   /**
    * カスタムFormattingToolbarコンポーネントを渡す。
-   * - undefined: デフォルトのFormattingToolbar
+   * - undefined: デフォルトのFormattingToolbar（BlockNote 既定 + 上付き・下付き）
    * - FC: カスタムFormattingToolbar
    */
   formattingToolbar?: FC<FormattingToolbarProps>;
@@ -801,6 +803,8 @@ export function SandboxEditor({
     styleSpecs: {
       ...defaultStyleSpecs,
       ...inlineLabelStyleSpecs,
+      // 上付き・下付き。読込時サニタイズ（KNOWN_STYLE_KEYS）にも登録してある
+      ...scriptStyleSpecs,
     } as any,
   });
 
@@ -1250,9 +1254,10 @@ export function SandboxEditor({
       )}
       {/* strategy:"fixed" でツールバーをビューポート基準に配置し、エディタの
           overflow スクロール領域でクリップされて隠れるのを防ぐ。
-          formattingToolbar 未指定時は BlockNote 既定のツールバーが描画される。 */}
+          formattingToolbar 未指定時（サイドピーク等）は BlockNote 既定の並びに
+          上付き・下付きを足したツールバーを出す（メインエディタと同じボタンが並ぶように）。 */}
       <FormattingToolbarController
-        formattingToolbar={formattingToolbar}
+        formattingToolbar={formattingToolbar ?? DefaultFormattingToolbar}
         floatingUIOptions={{ useFloatingOptions: { strategy: "fixed" } }}
       />
       {hasExtraSlash && (

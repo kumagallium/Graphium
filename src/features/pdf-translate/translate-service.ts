@@ -22,6 +22,7 @@
 //   6. GraphiumDocument を返す（保存は呼び出し側）
 
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
+import { scriptStyleSpecs } from "../../base/script-styles";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
@@ -197,7 +198,7 @@ function firstHeading(markdown: string): string | null {
 function markdownToBlocks(markdown: string): any[] {
   const schema = BlockNoteSchema.create({
     blockSpecs: defaultBlockSpecs,
-    styleSpecs: defaultStyleSpecs,
+    styleSpecs: { ...defaultStyleSpecs, ...scriptStyleSpecs },
   });
   const editor = BlockNoteEditor.create({ schema });
   return parseMarkdownToBlocksWithMath(editor, markdown);

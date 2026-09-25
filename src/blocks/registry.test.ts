@@ -20,6 +20,7 @@ vi.mock("../lib/pdfjs-config", () => ({}));
 
 import { defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import { inlineLabelStyleSpecs } from "../features/inline-label/styles";
+import { scriptStyleSpecs } from "../base/script-styles";
 import {
   customBlockEntries,
   CUSTOM_BLOCK_TYPES,
@@ -318,13 +319,34 @@ describe("KNOWN_STYLE_KEYS と未知 style の除去", () => {
   // BlockNote は styleSchema に無い style キーで throw する（silent drop ではない）。
   // 未来のビルドが新しい永続 style を保存しても、このビルドがノートを開けることを保証する。
 
-  it("schema に渡す全 style（default + inline label）が既知集合に入る", () => {
+  it("schema に渡す全 style（default + inline label + 上付き・下付き）が既知集合に入る", () => {
     for (const key of Object.keys(defaultStyleSpecs)) {
       expect(KNOWN_STYLE_KEYS.has(key), `default style ${key}`).toBe(true);
     }
     for (const key of Object.keys(inlineLabelStyleSpecs)) {
       expect(KNOWN_STYLE_KEYS.has(key), `custom style ${key}`).toBe(true);
     }
+    for (const key of Object.keys(scriptStyleSpecs)) {
+      expect(KNOWN_STYLE_KEYS.has(key), `script style ${key}`).toBe(true);
+    }
+  });
+
+  it("上付き・下付きは読込で剥がされない（保存 → 再読込で書式が消えない）", () => {
+    const out = sanitizeLike([
+      {
+        id: "p1",
+        type: "paragraph",
+        content: [
+          { type: "text", text: "10", styles: {} },
+          { type: "text", text: "5", styles: { superscript: true } },
+          { type: "text", text: " Pa, H", styles: {} },
+          { type: "text", text: "2", styles: { subscript: true, bold: true } },
+        ],
+        children: [],
+      },
+    ]);
+    expect(out[0].content[1].styles).toEqual({ superscript: true });
+    expect(out[0].content[3].styles).toEqual({ subscript: true, bold: true });
   });
 
   it("tableRowIdentity が既知集合に入る（読込で剥がされない）", () => {
