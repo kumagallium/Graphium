@@ -2037,8 +2037,10 @@ function SidePeekInner({
       {/* スラッシュメニューのピッカーモーダル。
           SidePeek overlay (z-index:100) より前面に出すため、
           z-index:200 の wrapper で stacking context を切る。
-          (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。) */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || chartAssetRequest || templatePicker.open ? "auto" : "none" }}>
+          (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。)
+          ピッカーを足したら pointerEvents の条件にも足す。足し忘れると、開いたピッカーの
+          クリックが下のピークに抜ける（共有ライブラリの引用ピッカーが条件から漏れていた） */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || sharedCitePickerOpen || chartAssetRequest || templatePicker.open ? "auto" : "none" }}>
         {pickerMediaType && (
           <MediaPickerModal
             mediaIndex={mediaIndex ?? null}
