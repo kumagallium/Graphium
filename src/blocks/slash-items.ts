@@ -5,9 +5,9 @@
 // ピークで作れなかった）。一覧はここ 1 か所にまとめ、新しい項目は次のどちらかに足す:
 //
 //   - getCommonSlashMenuItems: どのエディタでも動く項目。挿入するだけのものか、
-//     受け口（ピッカー等）を「押されたエディタ」をキーに引くもの
-//     （setMediaPickerCallback / setChartAssetSourceCallback などの WeakMap 登録）。
-//     メインにも SidePeek にも出る
+//     受け口（ピッカー・表の登録先等）を「押されたエディタ」をキーに引くもの
+//     （setMediaPickerCallback / setChartAssetSourceCallback /
+//     setRegisterLogTableCallback などの WeakMap 登録）。メインにも SidePeek にも出る
 //   - getMainEditorOnlySlashMenuItems: メインエディタに固定の受け口で動く項目。
 //     モジュール変数 1 つに note-app が登録したコールバックを呼ぶので、SidePeek に
 //     出すと、ピークで押した結果がメイン側のノート（表の注釈・ラベル・リンク）に
@@ -46,6 +46,7 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
   return [
     ...getMediaSlashMenuItems(),
     bookmarkSlashItem,
+    logTableSlashItem,
     calloutSlashItem,
     stepSlashItem,
     columnsSlashItem,
@@ -62,5 +63,5 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
 
 /** メインエディタに固定の受け口で動く項目（SidePeek には出さない。理由は冒頭） */
 export function getMainEditorOnlySlashMenuItems(): SlashMenuItem[] {
-  return [indexTableSlashItem, logTableSlashItem, getTemplateSlashMenuItem()];
+  return [indexTableSlashItem, getTemplateSlashMenuItem()];
 }

@@ -8,21 +8,28 @@
 
 import { t } from "../../i18n";
 import { formatDateTime } from "../../lib/format-datetime";
+import { applyLogTableTimestamps } from "./auto-timestamp";
 
 export {
   applyLogTableTimestamps,
-  resetLogTableRowTracking,
   primeLogTableRowTracking,
 } from "./auto-timestamp";
 
-// 記録テーブル登録用のグローバルコールバック
-// スラッシュメニューから呼ばれるため、React Context にアクセスできない
-let _registerCallback: ((blockId: string) => void) | null = null;
+// 時系列テーブル登録のコールバックレジストリ
+// スラッシュメニューから呼ばれるため、React Context にアクセスできない。
+// 同じ項目をメインエディタと SidePeek の両方で使うので、登録先（そのエディタの
+// tableMetaStore）は押されたエディタをキーに引く（blocks/chart/callbacks.ts と同じ形）。
+// モジュール変数 1 つだと、ピークで挿入した表の注釈がメイン側のノートに付く。
+const registerCallbacks = new WeakMap<object, (blockId: string) => void>();
 
+/** ホスト（note-app / SidePeek）が、そのエディタで挿入された表の登録先を渡す */
 export function setRegisterLogTableCallback(
+  editor: object | null | undefined,
   fn: ((blockId: string) => void) | null
-) {
-  _registerCallback = fn;
+): void {
+  if (!editor) return;
+  if (fn) registerCallbacks.set(editor, fn);
+  else registerCallbacks.delete(editor);
 }
 
 /** ヘッダ + 現在日時入りの最初のデータ行を持つ table content を作る */
@@ -65,11 +72,17 @@ export const logTableSlashItem = {
       "after"
     );
 
-    // 挿入されたテーブルを記録テーブルとして登録
+    // 挿入されたテーブルを、押されたエディタの登録先で時系列テーブルにする
     if (inserted?.[0]) {
       const blockId = inserted[0].id;
       setTimeout(() => {
-        _registerCallback?.(blockId);
+        const register = registerCallbacks.get(editor);
+        if (!register) return;
+        register(blockId);
+        // 挿入直後の行追加から日時が入るよう、いまの行数を初見として記録する
+        // （ドラッグハンドルの「時系列テーブルにする」と同じ）。これが無いと、
+        // 挿入して何も打たずに足した最初の行が初見扱いになり、日時が入らない
+        applyLogTableTimestamps(editor, [blockId]);
       }, 0);
     }
 
