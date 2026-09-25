@@ -13,7 +13,7 @@
 import type { GraphiumDocument, SourceCheckSourceKind, SourceMissingReason } from "../../lib/document-types";
 import { parseExternalSource } from "../network-graph/external-source";
 import { parseClaimSourceId } from "./claim-source-id";
-import { extractBlockText, extractPlainTextFromDoc } from "../wiki/wiki-service";
+import { extractPlainTextBlocks, extractPlainTextFromDoc } from "../wiki/wiki-service";
 
 /** 1 ブロック分のプレーンテキスト（blockId 対応の quote 照合に使う） */
 export type SourceTextBlock = {
@@ -137,24 +137,6 @@ async function extractMediaText(
 }
 
 /**
- * ノート本文を「取り込みが LLM に渡したときと同じ形」で行単位に分解する。
- * extractPlainTextFromDoc（wiki-service.ts）と同じ「トップレベルブロック 1 つ＝1 行」を
- * 踏襲しつつ、行ごとに block.id を持たせる（quote → blockId 対応のため）。
- * 内部ヘルパー（extractBlockText 等）は wiki-service.ts で export されていないためここに複製する
- * （external-source.ts が同じ理由でプレフィックス列挙を複製しているのと同種のバンドル境界事情）。
- */
-function extractNoteBlocks(doc: GraphiumDocument): SourceTextBlock[] {
-  const page = doc.pages[0];
-  if (!page) return [];
-  const out: SourceTextBlock[] = [];
-  for (const block of page.blocks ?? []) {
-    const text = extractBlockText(block);
-    if (text) out.push({ id: block.id, text });
-  }
-  return out;
-}
-
-/**
  * 出典 ID から原文テキストを解決する。
  *
  * - プレフィックス無し: 通常ノート（ゴミ箱・存在しない → deleted、Wiki ページの ID なら
@@ -196,7 +178,9 @@ export async function resolveSourceText(
     }
     const doc = await deps.loadNoteDoc(sourceId);
     if (!doc) return { ok: false, kind: "note", reason: "deleted" };
-    const blocks = extractNoteBlocks(doc);
+    // 取り込みが LLM に渡したのと同じ本文（extractPlainTextFromDoc）を、ブロック単位で受け取って
+    // 繋ぐ。ブロックごとの id は quote → blockId の対応に使う（入れ子の子・step の中身も 1 ブロック）
+    const blocks: SourceTextBlock[] = extractPlainTextBlocks(doc);
     const text = blocks.map((b) => b.text).join("\n");
     if (!text.trim()) return { ok: false, kind: "note", reason: "empty" };
     return { ok: true, kind: "note", title: doc.title, text, origin: "stored", blocks };

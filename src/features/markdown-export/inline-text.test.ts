@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inlineContentToText } from "./inline-text";
+import { inlineContentToText, tableContentToText } from "./inline-text";
 
 // 10⁵ Pa のように、上付きの片を含む行
 const withSuperscript = [
@@ -75,5 +75,60 @@ describe("inlineContentToText", () => {
   it("配列でなければ空文字", () => {
     expect(inlineContentToText(undefined)).toBe("");
     expect(inlineContentToText("text")).toBe("");
+  });
+});
+
+describe("tableContentToText", () => {
+  const text = (s: string, styles: Record<string, unknown> = {}) => ({ type: "text", text: s, styles });
+  // BlockNote 0.47 からのセル（{ type: "tableCell", content }）
+  const cell = (...content: unknown[]) => ({ type: "tableCell", props: {}, content });
+
+  it("表の 1 行を 1 行にし、セルを | で区切る（新しいセルの形）", () => {
+    const content = {
+      type: "tableContent",
+      rows: [
+        { cells: [cell(text("試料")), cell(text("温度 (K)"))] },
+        { cells: [cell(text("A")), cell(text("300"))] },
+      ],
+    };
+    expect(tableContentToText(content)).toBe("試料 | 温度 (K)\nA | 300");
+  });
+
+  it("以前のセルの形（inline の配列）も同じように読む", () => {
+    const content = {
+      type: "tableContent",
+      rows: [
+        { cells: [[text("試料")], [text("温度 (K)")]] },
+        { cells: [[text("A")], [text("300")]] },
+      ],
+    };
+    expect(tableContentToText(content)).toBe("試料 | 温度 (K)\nA | 300");
+  });
+
+  it("セルの上付き・下付きは scripts: true で包む（inline と同じ規則）", () => {
+    const content = { type: "tableContent", rows: [{ cells: [cell(text("10"), text("5", { superscript: true }))] }] };
+    expect(tableContentToText(content)).toBe("105");
+    expect(tableContentToText(content, { scripts: true })).toBe("10<sup>5</sup>");
+  });
+
+  it("セルの中の改行は空白にし、表の 1 行を 1 行に保つ", () => {
+    const content = { type: "tableContent", rows: [{ cells: [cell(text("1 行目\n2 行目")), cell(text("B"))] }] };
+    expect(tableContentToText(content)).toBe("1 行目 2 行目 | B");
+  });
+
+  it("空のセルは空のまま区切るが、空のセルしか無い行は出さない", () => {
+    const content = {
+      type: "tableContent",
+      rows: [
+        { cells: [cell(text("A")), cell(), cell(text("C"))] },
+        { cells: [cell(), cell(text(" "))] },
+      ],
+    };
+    expect(tableContentToText(content)).toBe("A |  | C");
+  });
+
+  it("表でなければ空文字", () => {
+    expect(tableContentToText(undefined)).toBe("");
+    expect(tableContentToText({ type: "tableContent" })).toBe("");
   });
 });

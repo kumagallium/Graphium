@@ -13,7 +13,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { t } from "../../i18n";
 import { attachSourceCheck } from "../source-check/attach";
-import { inlineContentToText } from "../markdown-export/inline-text";
+import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
 import { unescapeScriptTagText } from "../../lib/script-styles";
 
@@ -1201,41 +1201,69 @@ export async function embedWikiSections(
 
 
 /**
- * GraphiumDocument から AI に渡す本文テキストを抽出する（トップレベルのブロック 1 つ＝1 行）。
+ * GraphiumDocument から AI に渡す本文テキストを抽出する（ブロック 1 つ＝1 行。表は表の行ごとに改行）。
  * 取り込み・トピック段・出典照合の原文が同じこの関数を通る（照合の引用が原文に見つかるように）。
+ * 中身は extractPlainTextBlocks を改行で繋いだもの — 書き方の規則はそちらを参照。
  * 上付き・下付きは <sup> / <sub>、数式は $…$ / $$…$$ で残す（extractInlineText 参照）。
  * 出典照合の claimHash には使わない（source-check/claim-hash.ts の claimHashBody を使う）。
  */
 export function extractPlainTextFromDoc(doc: GraphiumDocument): string {
-  const page = doc.pages[0];
-  if (!page) return "";
-
-  const lines: string[] = [];
-  for (const block of page.blocks || []) {
-    const text = extractBlockText(block);
-    if (text) lines.push(text);
-  }
-  return lines.join("\n");
+  return extractPlainTextBlocks(doc)
+    .map((b) => b.text)
+    .join("\n");
 }
 
-export function extractBlockText(block: any): string {
-  let text = extractInlineText(block.content);
-  if (text) return text;
+/** AI に渡す本文のうち、ブロック 1 つ分（id はそのブロックの id） */
+export type PlainTextBlock = { id: string; text: string };
 
-  text = mathBlockText(block);
-  if (text) return text;
+/**
+ * AI に渡す本文をブロック単位で、文書順に返す。出典照合の原文（resolve-source-text）は
+ * これを改行で繋いで原文にし、引用がどのブロックにあるかをブロック単位で探す。
+ *
+ * - ブロックの木を全部たどる。step の中身（step 自身の content はタイトル）、入れ子の箇条書き、
+ *   トグル見出しの子も読む。以前はトップレベルしか見ず、本文を持つブロックの子を落としていた
+ * - 子は親より 2 字下げる。どこまでが step の中身か、どれが入れ子かを AI から見えるようにする。
+ *   入れ子の無いノートの本文は、字下げが入らないので以前と同じ文字列になる
+ * - columnList / column はレイアウトの入れ物なので、字下げせずに中身だけを読む
+ * - 表は表の 1 行を 1 行にし、セルを " | " で区切る（tableContentToText）
+ */
+export function extractPlainTextBlocks(doc: GraphiumDocument): PlainTextBlock[] {
+  const out: PlainTextBlock[] = [];
+  collectPlainTextBlocks(doc.pages[0]?.blocks ?? [], 0, out);
+  return out;
+}
 
-  if (block.props?.text) return block.props.text;
-
-  if (block.children?.length) {
-    text = block.children
-      .map((child: any) => extractBlockText(child))
-      .filter(Boolean)
-      .join(", ");
-    if (text) return text;
+function collectPlainTextBlocks(blocks: any[], depth: number, out: PlainTextBlock[]): void {
+  for (const block of blocks) {
+    if (!block || typeof block !== "object") continue;
+    const children: any[] = Array.isArray(block.children) ? block.children : [];
+    if (block.type === "columnList" || block.type === "column") {
+      collectPlainTextBlocks(children, depth, out);
+      continue;
+    }
+    const text = blockOwnText(block);
+    if (text) out.push({ id: block.id, text: indentLines(text, depth) });
+    if (children.length > 0) collectPlainTextBlocks(children, depth + 1, out);
   }
+}
 
-  return "";
+/** ブロック自身の本文（子は含めない）。表は表の行ごとの複数行になる */
+function blockOwnText(block: any): string {
+  // 表は本文としては表の 1 行を 1 行にする（extractInlineText は 1 行にまとめるので、先にここで読む）
+  if (block.content?.type === "tableContent") return tableContentToText(block.content, { scripts: true });
+  const text = extractInlineText(block.content) || mathBlockText(block);
+  if (text) return text;
+  return block.props?.text ? String(block.props.text) : "";
+}
+
+/** 入れ子の深さぶん、各行の頭を 2 字ずつ下げる（複数行の表・コード・改行入りの段落も行ごとに） */
+function indentLines(text: string, depth: number): string {
+  if (depth === 0) return text;
+  const pad = "  ".repeat(depth);
+  return text
+    .split("\n")
+    .map((line) => pad + line)
+    .join("\n");
 }
 
 /**
@@ -3017,6 +3045,9 @@ export function extractBodyPreview(doc: GraphiumDocument, maxLen: number): strin
 /**
  * AI に渡す本文のテキスト化（取り込み・トピック段・出典照合・点検・書き直しの入力に共通）。
  * 上付き・下付きは <sup> / <sub>、数式は $…$ で意味を保つ（Markdown 書き出しと同じ表記）。
+ * 表はセルを " | "、表の行を " / " で繋いで 1 行にする（tableContentToText。新旧どちらのセルの形も
+ * 読む）。プレビュー・トピックの一行定義・見出しなど 1 行を前提にする所が使うため。本文として
+ * 読むときの表（表の行ごとに改行）は extractPlainTextBlocks 側で扱う。
  * 照合済みページの指紋（claimHash）はここを通さない — source-check/claim-hash.ts の
  * claimHashBody が旧来の抽出を固定で持つ（ここを変えても照合結果が古くならないように）。
  */
@@ -3026,15 +3057,8 @@ function extractInlineText(content: any): string {
   if (Array.isArray(content)) {
     return inlineContentToText(content, { scripts: true });
   }
-  if (content.type === "tableContent" && Array.isArray(content.rows)) {
-    return content.rows
-      .map((row: any) =>
-        (row.cells ?? [])
-          .map((cell: any) => extractInlineText(cell))
-          .join(" ")
-      )
-      .join(" ")
-      .trim();
+  if (content.type === "tableContent") {
+    return tableContentToText(content, { scripts: true }).split("\n").join(" / ");
   }
   return "";
 }
