@@ -72,7 +72,9 @@ export function stashMath(markdown: string): { text: string; math: MathStash[] }
   // インライン数式: $ ... $
   // 金額（"$100 と $200"）を誤って数式にしないよう、remark-math と同じく
   // 「開きの直後が非空白」「閉じの直前が非空白」「中に改行を含まない」を課す。
-  text = text.replace(/(?<![$\\])\$(?!\s)([^$\n]*[^\s$])\$(?!\$)/g, (full, inner: string) => {
+  // さらに pandoc と同じく「閉じの直後が数字でない」も課す。これが無いと価格帯
+  // （"$50-$75"・"$5/$10"）の間が数式「50-」に化け、後ろの金額が本文から消える。
+  text = text.replace(/(?<![$\\])\$(?!\s)([^$\n]*[^\s$])\$(?![$\d])/g, (full, inner: string) => {
     const latex = inner.trim();
     return latex && latex.length <= MAX_INLINE_LATEX ? push(latex, false) : full;
   });

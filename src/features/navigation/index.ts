@@ -4,6 +4,7 @@ export { TrashView } from "./TrashView";
 export {
   getRecentNotes,
   addToRecent,
+  renameInRecent,
   removeFromRecent,
   formatRelativeTime,
   type RecentNote,

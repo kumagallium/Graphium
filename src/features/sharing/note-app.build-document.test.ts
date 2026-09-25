@@ -14,11 +14,14 @@ import { resolve } from "node:path";
 
 const source = readFileSync(resolve(__dirname, "../../note-app.tsx"), "utf8");
 
-/** buildDocument の本体（doc を組み立ててリビジョンを記録し終えるまで）を切り出す */
+/**
+ * doc を組み立てる本体を切り出す。buildDocument は「今の状態から組む」captureDocument
+ * （アンマウント時の書き出しも同じものを使う）と「来歴を刻む」finishDocument に分かれている
+ */
 function buildDocumentBody(): string {
-  const start = source.indexOf("const buildDocument = useCallback");
+  const start = source.indexOf("const captureDocument = useCallback");
   expect(start).toBeGreaterThan(-1);
-  const end = source.indexOf("prevPageRef.current = structuredClone", start);
+  const end = source.indexOf("const finishDocument = useCallback", start);
   expect(end).toBeGreaterThan(start);
   return source.slice(start, end);
 }

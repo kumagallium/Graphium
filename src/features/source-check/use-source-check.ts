@@ -13,6 +13,7 @@ import type { CaptureIndex } from "../mobile-capture/capture-store";
 import {
   attachSourceCheck,
   buildSourceCheckStatements,
+  claimHashBody,
   computeClaimHash,
   planSourceCheck,
   runSourceCheck,
@@ -26,7 +27,6 @@ import {
 import type { SourceCheckEntry } from "../../lib/document-types";
 import { parseClaimSourceId } from "./claim-source-id";
 import { parseExternalSource } from "../network-graph/external-source";
-import { extractPlainTextFromDoc } from "../wiki/wiki-service";
 import { loadUrlText } from "../ai-assistant/url-text-loader";
 import { getLocale } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -243,7 +243,7 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
         if (scope === "stale") {
           const existing = doc.wikiMeta.sourceCheck;
           if (!existing) continue;
-          const hash = await computeClaimHash(doc.title ?? "", extractPlainTextFromDoc(doc));
+          const hash = await computeClaimHash(doc.title ?? "", claimHashBody(doc));
           if (hash === existing.claimHash) continue;
         }
         targets.push({ docId: f.id, doc });
@@ -337,14 +337,14 @@ export function sourceCheckLlmCallsFor(docId: string, doc: GraphiumDocument | nu
 
 /**
  * 照合後に本文が変わったか（stale 判定）。claimHash 計算に使う本文テキストは、
- * 実行時に claimHash を計算したのと同じ関数（extractPlainTextFromDoc）を使う
+ * 実行時に claimHash を計算したのと同じ関数（claim-hash.ts の claimHashBody）を使う
  * （別の抽出関数を使うと常に stale になる、という既知の罠を踏まないため）。
  */
 export function useSourceCheckStale(doc: GraphiumDocument | null | undefined): boolean {
   const [stale, setStale] = useState(false);
   const profile = doc?.wikiMeta?.sourceCheck;
   const title = doc?.title ?? "";
-  const body = doc ? extractPlainTextFromDoc(doc) : "";
+  const body = doc ? claimHashBody(doc) : "";
 
   useEffect(() => {
     let cancelled = false;

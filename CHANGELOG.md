@@ -21,7 +21,7 @@
 - fix(chart): keep squashed plots readable at normal widths by @kumagallium in https://github.com/kumagallium/Graphium/pull/1042
 - fix(side-peek): link an index-table row to an existing note from the @ menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1044
 - fix(bench): await createModel in the atomtype probe and type-check bench/ in CI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1045
-- fix(chat): show <sup> / <sub> in AI answers as superscript and subscript by @kumagallium in https://github.com/kumagallium/Graphium/pull/1043
+- fix(chat): show `<sup>` / `<sub>` in AI answers as superscript and subscript by @kumagallium in https://github.com/kumagallium/Graphium/pull/1043
 - Draw the Global Graph's Timeline mode with React Flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1023
 
 ## [v0.82.1](https://github.com/kumagallium/Graphium/compare/v0.82.0...v0.82.1) - 2026-09-25

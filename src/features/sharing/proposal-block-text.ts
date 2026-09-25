@@ -27,5 +27,7 @@ export function blockToReadableText(block: unknown): string {
   if (MEDIA_BLOCK_TYPES.has(b.type) && b.props && typeof b.props === "object") {
     solo = { ...solo, props: { ...b.props, url: "" } };
   }
-  return blocksToMarkdown([solo]).trim();
+  // 上付き・下付きは差分エンジンの署名（平文）が比べないので、表示にもタグを出さない
+  // （比べないものを表示だけするとノイズになる — 媒体の url と同じ扱い）
+  return blocksToMarkdown([solo], 0, { scripts: false }).trim();
 }

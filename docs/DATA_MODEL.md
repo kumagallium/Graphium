@@ -1803,7 +1803,13 @@ type SourceCheckProfile = {
   utility team-shared-storage uses) — for a topic this is the whole topic
   body, not just the statements that were checked — so a later mismatch
   against the document's current title+body tells the UI the checked text
-  has since changed.
+  has since changed. The body here is a fixed plain-text fingerprint
+  (`claimHashBody` in `src/features/source-check/claim-hash.ts`), not the
+  text the check sends to the model: that text keeps superscript /
+  subscript and formulas, while the fingerprint keeps the original v1
+  extraction (no tags, formulas ignored, links as `[object Object]`),
+  because changing how it is extracted would mark every checked page as
+  changed.
 - **`dismissed`** marks a verdict the user manually cleared from the note,
   distinguishing "never checked" (no `sourceCheck` at all) from "checked,
   then deliberately cleared" — the same semantics as `grounding.validity.dismissed`
