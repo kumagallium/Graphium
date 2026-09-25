@@ -6,8 +6,8 @@
 //
 //   - getCommonSlashMenuItems: どのエディタでも動く項目。挿入するだけのものか、
 //     受け口（ピッカー等）を「押されたエディタ」をキーに引くもの
-//     （setMediaPickerCallback / setChartAssetSourceCallback などの WeakMap 登録）。
-//     メインにも SidePeek にも出る
+//     （setMediaPickerCallback / setChartAssetSourceCallback /
+//     setRegisterIndexTableCallback などの WeakMap 登録）。メインにも SidePeek にも出る
 //   - getMainEditorOnlySlashMenuItems: メインエディタに固定の受け口で動く項目。
 //     モジュール変数 1 つに note-app が登録したコールバックを呼ぶので、SidePeek に
 //     出すと、ピークで押した結果がメイン側のノート（表の注釈・ラベル・リンク）に
@@ -42,6 +42,9 @@ import { sharedCitationSlashItem } from "./shared-citation";
  */
 export function getCommonSlashMenuItems(options: { includeCite: boolean }): SlashMenuItem[] {
   return [
+    // 先頭に置く。メインでは一覧がメイン専用の項目（時系列テーブル・テンプレート）の
+    // 直後に続くので、同じグループの中でその 2 つの後ろに並ぶ（それ以外の並びは変わらない）
+    indexTableSlashItem,
     ...getMediaSlashMenuItems(),
     bookmarkSlashItem,
     calloutSlashItem,
@@ -60,5 +63,5 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
 
 /** メインエディタに固定の受け口で動く項目（SidePeek には出さない。理由は冒頭） */
 export function getMainEditorOnlySlashMenuItems(): SlashMenuItem[] {
-  return [indexTableSlashItem, logTableSlashItem, getTemplateSlashMenuItem()];
+  return [logTableSlashItem, getTemplateSlashMenuItem()];
 }

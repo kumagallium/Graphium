@@ -36,6 +36,11 @@ describe("getCommonSlashMenuItems", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(chartSlashItem);
   });
 
+  it("インデックステーブルはどのエディタでも出る（表の登録先は押されたエディタの受け口）", () => {
+    expect(getCommonSlashMenuItems({ includeCite: false })).toContain(indexTableSlashItem);
+    expect(getCommonSlashMenuItems({ includeCite: true })).toContain(indexTableSlashItem);
+  });
+
   it("ノート・wiki の引用は includeCite のときだけ出る", () => {
     const citeTitles = titles(getCiteSlashMenuItems());
     expect(citeTitles.length).toBeGreaterThan(0);
@@ -57,7 +62,6 @@ describe("getCommonSlashMenuItems", () => {
 describe("getMainEditorOnlySlashMenuItems", () => {
   it("メインに固定の受け口で動く項目だけを持つ", () => {
     expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([
-      indexTableSlashItem.title,
       logTableSlashItem.title,
       getTemplateSlashMenuItem().title,
     ]);
