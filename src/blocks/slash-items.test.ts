@@ -47,6 +47,25 @@ describe("getCommonSlashMenuItems", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(logTableSlashItem);
   });
 
+  it("テンプレートはどのエディタでも出る（受け口がエディタ単位なので SidePeek でも挿せる）", () => {
+    const templateTitle = getTemplateSlashMenuItem().title;
+    expect(titles(getCommonSlashMenuItems({ includeCite: false }))).toContain(templateTitle);
+    expect(titles(getCommonSlashMenuItems({ includeCite: true }))).toContain(templateTitle);
+  });
+
+  it("メインでの並びは、項目を common へ移しても変わらない（インデックステーブル → 時系列テーブル → テンプレート）", () => {
+    // エディタは項目をグループ単位にまとめ、グループの中は渡した順に並べる。
+    // メインの一覧は「メイン専用 → common」の順につなぐ（note-app と同じ）
+    const advanced = getTemplateSlashMenuItem().group;
+    const mainList = [...getMainEditorOnlySlashMenuItems(), ...getCommonSlashMenuItems({ includeCite: true })];
+    const advancedTitles = titles(mainList.filter((item) => item.group === advanced));
+    expect(advancedTitles.slice(0, 3)).toEqual([
+      indexTableSlashItem.title,
+      logTableSlashItem.title,
+      getTemplateSlashMenuItem().title,
+    ]);
+  });
+
   it("ノート・wiki の引用は includeCite のときだけ出る", () => {
     const citeTitles = titles(getCiteSlashMenuItems());
     expect(citeTitles.length).toBeGreaterThan(0);
@@ -67,7 +86,9 @@ describe("getCommonSlashMenuItems", () => {
 
 describe("getMainEditorOnlySlashMenuItems", () => {
   it("メインに固定の受け口で動く項目だけを持つ", () => {
-    expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([getTemplateSlashMenuItem().title]);
+    // インデックステーブル・時系列テーブル・テンプレートは受け口をエディタ単位に直して
+    // common へ移したので、今は空
+    expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([]);
   });
 
   it("共通の一覧には混ざらない（ピークで押すとメイン側に書き込むため）", () => {

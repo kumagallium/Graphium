@@ -141,6 +141,7 @@ import {
   setChartAssetSourceCallback,
   type ChartAssetSourceResult,
 } from "../../blocks/chart";
+import { useTemplatePicker } from "@features/template";
 import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
@@ -377,6 +378,19 @@ function SidePeekInner({
   const [chartAssetRequest, setChartAssetRequest] = useState<{
     onDone: (result: ChartAssetSourceResult) => void;
   } | null>(null);
+  // スラッシュメニューの「テンプレート」（メインと共通の useTemplatePicker）。
+  // ラベル・前手順リンク・表の列のふるまいは、このピークのノートのストアへ書く。
+  // ストアは毎レンダリング新しいオブジェクトになるので ref 経由で最新を引く
+  const templatePicker = useTemplatePicker(sidePeekEditor, {
+    stores: {
+      setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
+      setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+      addLink: (params) => linkStoreRef.current.addLink(params),
+      addColumnType: (blockId, columnName, type) =>
+        tableMetaStoreRef.current.addColumnType(blockId, columnName, type),
+    },
+    uploadFile,
+  });
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2086,7 +2100,7 @@ function SidePeekInner({
                 // どのエディタでも動く slash items を出す（メインと同じ一覧から取る）。
                 // 各 slash item の onItemClick はクリック時のエディタを
                 // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
-                // 挿入される。メインに固定の受け口で動く項目（テンプレート）は
+                // 挿入される。メインに固定の受け口で動く項目（getMainEditorOnlySlashMenuItems）は
                 // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）。
                 // 先頭の「新しいノート」はメインと同じ組み立てで、記録先がこのピーク
                 extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...getCommonSlashMenuItems({ includeCite: !!noteIndex })]}
@@ -2195,8 +2209,10 @@ function SidePeekInner({
       {/* スラッシュメニューのピッカーモーダル。
           SidePeek overlay (z-index:100) より前面に出すため、
           z-index:200 の wrapper で stacking context を切る。
-          (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。) */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || chartAssetRequest ? "auto" : "none" }}>
+          (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。)
+          ピッカーを足したら pointerEvents の条件にも足す。足し忘れると、開いたピッカーの
+          クリックが下のピークに抜ける（共有ライブラリの引用ピッカーが条件から漏れていた） */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || sharedCitePickerOpen || chartAssetRequest || templatePicker.open ? "auto" : "none" }}>
         {pickerMediaType && (
           <MediaPickerModal
             mediaIndex={mediaIndex ?? null}
@@ -2227,6 +2243,7 @@ function SidePeekInner({
             onClose={() => setCitePickerKind(null)}
           />
         )}
+        {templatePicker.dialog}
         {sharedCitePickerOpen && (
           <SharedCitePickerModal
             onConfirm={(entries) => {

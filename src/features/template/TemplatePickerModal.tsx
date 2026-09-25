@@ -7,7 +7,8 @@
 // 枠組みが違うと同じ土俵で比べられなくなるため（見え方は「提供元」列で区別する）。
 // 一方、選んだあとの経路は違う: 公式は id をその場で組み立て、チームは共有ルートから
 // 本文を読み出す。本文の読み出し・hash 照合・shared-blob: の解決は呼び出し側
-// （note-app）が担うので、コールバックを onSelect / onSelectShared に分けてある。
+// （useTemplatePicker → insert.ts の loadSharedTemplate）が担うので、コールバックを
+// onSelect / onSelectShared に分けてある。
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n";
