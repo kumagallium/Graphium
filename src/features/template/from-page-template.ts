@@ -69,7 +69,7 @@ export function remapTemplateBlocks(template: PageTemplate): RemappedTemplateBlo
  * - labels: blockId → path に変換（挿入後は path でブロックを引き当てる）
  * - attributes: 同上（ラベル連動属性。ページには保存されないので挿入後に適用する）
  * - columnTypes: tableMeta の「先頭列に付いたふるまい」だけ復元できる。
- *   なぜ先頭列だけか: 既存の適用経路（note-app の addFirstColumnType）が
+ *   なぜ先頭列だけか: 既存の適用経路（insert.ts の insertPageTemplate）が
  *   先頭列名をキーに付けるふるまいしか持たないため。2 列目以降は落ちる。
  * - provLinks: 付けない（テンプレートは手順間リンクを持たない）
  */
