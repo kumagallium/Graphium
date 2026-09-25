@@ -4,6 +4,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
@@ -155,6 +156,7 @@ import {
   resolveMentionClickTarget,
 } from "./features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
+import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
@@ -2812,49 +2814,23 @@ function NoteEditorInner({
   // 同じ common を使う。新しい項目はそちらに足す（メインにしか出ない漏れを防ぐため）
   const mainOnlySlashItems = useMemo(() => getMainEditorOnlySlashMenuItems(), []);
   const commonSlashItems = useMemo(() => getCommonSlashMenuItems({ includeCite: true }), []);
-  // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
-  // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
-  // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
-  // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
-  const newNoteSlashItem: SlashMenuItem = useMemo(
-    () => ({
-      // ラベルは getter で遅延評価する。この項目は useMemo で保持されるので、
-      // ここで t() を即時評価すると言語を切り替えても古いラベルが残る。
-      get title() { return tStatic("slashMenu.newNote.title"); },
-      get subtext() { return tStatic("slashMenu.newNote.subtext"); },
-      get group() { return tStatic("slashMenu.newNote.group"); },
-      aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
-      onItemClick: (editor: any) => {
-        const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
-        void (async () => {
-          if (!onCreateLinkedNote) return;
-          const title = (await promptNoteName(""))?.trim() ?? "";
-          if (!title) return;
-          const newId = await onCreateLinkedNote(title);
-          if (!newId) return;
-          if (sourceBlockId) {
-            linkStore.addLink({
-              sourceBlockId,
-              targetBlockId: "",
-              targetNoteId: newId,
-              type: "reference",
-              createdBy: "human",
-            });
-            const exists = noteLinksRef.current.some((l) => l.targetNoteId === newId);
-            if (!exists) {
-              noteLinksRef.current = [
-                ...noteLinksRef.current,
-                { targetNoteId: newId, sourceBlockId, type: "derived_from" },
-              ];
-            }
-          }
-          // insertInlineContent の onChange で自動 markDirty される
-          setTimeout(() => {
-            insertNoteMentionInline(editorRef.current, newId, title);
-          }, 50);
-        })();
-      },
-    }),
+  // 「新しいノート」（名前を付けて新規ノートを作成し、ここにリンク）。組み立ては
+  // block-link/new-note-slash-item.ts で SidePeek と共通。メインが渡すのは記録先
+  // （このエディタの linkStore と noteLinksRef）だけ。作れないときは出さない
+  const newNoteSlashItem: SlashMenuItem | null = useMemo(
+    () =>
+      onCreateLinkedNote
+        ? buildNewNoteSlashItem({
+            promptNoteName,
+            createNote: (title) => onCreateLinkedNote(title),
+            getEditor: () => editorRef.current,
+            addLink: linkStore.addLink,
+            addNoteLink: (link) => {
+              if (noteLinksRef.current.some((l) => l.targetNoteId === link.targetNoteId)) return;
+              noteLinksRef.current = [...noteLinksRef.current, link];
+            },
+          })
+        : null,
     [onCreateLinkedNote, promptNoteName, linkStore],
   );
 
@@ -6213,7 +6189,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...mainOnlySlashItems, ...commonSlashItems]}
+              extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...mainOnlySlashItems, ...commonSlashItems]}
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -12353,6 +12329,20 @@ export function NoteApp() {
                     files={fm.files}
                     onRefreshFiles={fm.refreshFiles}
                     onOpenNoteInPeek={(peekId) => openAssetPeek(peekId)}
+                    onOpenMaterialPeek={(entry) => {
+                      // ピーク内の @素材 → 全画面表示をその素材に差し替える。ノートピークは残し、
+                      // ノートを読みながら @素材 を順に見られるようにする。右パネルのグラフで
+                      // 素材ノードを押したときと同じく、ギャラリーの種類と URL は変えない
+                      // （全画面を抜けると元の一覧に戻る）。これを渡していなかったので、ここだけ
+                      // @素材 を押しても何も起きなかった。
+                      // 未登録の URL はギャラリーに実体が無いので、素材ピークの無い画面と同じく
+                      // 外部ブラウザで開く
+                      if (fm.mediaIndex?.media.some((m) => m.fileId === entry.fileId)) {
+                        setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
+                      } else if (entry.type === "url" && entry.url) {
+                        void openExternalUrl(entry.url);
+                      }
+                    }}
                     onOpenMemoSource={handleOpenMemoSource}
                   />
                 </ListSidePeekBoundary>

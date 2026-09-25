@@ -14,8 +14,10 @@
 //     書き込まれる。ピークでも使うなら、受け口をエディタ単位の登録に直してから
 //     common へ移す
 //
-// 「新しいノート」（note-app の newNoteSlashItem）もメイン専用だが、note-app の状態を
-// 閉じ込めた項目なのでここには置けず、note-app 側で一覧の先頭に足している。
+// 「新しいノート」はどちらのエディタにも出すが、リンクの記録先（linkStore・noteLinks）が
+// エディタごとに違うので、この一覧には置けない。組み立ては block-link/new-note-slash-item.ts
+// の buildNewNoteSlashItem に一本化してあり、メインと SidePeek がそれぞれの記録先を渡して
+// 作り、一覧の先頭に足している（変数名は newNoteSlashItem）。
 
 import type { SlashMenuItem } from "../base/slash-menu-types";
 import { isTauri } from "../lib/platform";
