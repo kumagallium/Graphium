@@ -264,6 +264,11 @@ describe("数式", () => {
     expect(blocks[0]).toMatchObject({ type: "codeBlock", content: [text("$$\nx\n$$\n\\(y\\)")] });
   });
 
+  it("本文に私用領域の文字（アイコンフォント由来など）があっても、数式の目印と取り違えない", () => {
+    const pua = `${String.fromCharCode(0xe000)}0${String.fromCharCode(0xe001)}`;
+    expect(parseInlineContent(`$a$ と ${pua}`)).toEqual([math("a"), text(` と ${pua}`)]);
+  });
+
   it("アプリの Markdown 取り込み（stashMath）と同じものを数式として拾う", () => {
     for (const src of [
       "式 $x^2$ と $$ E = mc^2 $$ と \\[ a \\] と \\( b \\)",
@@ -486,6 +491,7 @@ describe("save.mjs と同じブロックを出す", () => {
       "|---|---|",
     ].join("\n"),
     閉じていないフェンス: "本文\n```\n$$\nx\n$$\n<sup>y</sup>",
+    私用領域の文字: `$a$ と ${String.fromCharCode(0xe000)}0${String.fromCharCode(0xe001)} と <sup>b</sup>`,
     改行コード: "a $x$\r\n$$\r\ny\r\n$$\r\nb",
   };
 

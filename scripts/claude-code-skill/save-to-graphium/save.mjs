@@ -110,14 +110,16 @@ function makeProps(extra = {}) {
 // 退避した中身（stash の 1 要素）は次のどちらか。raw は退避前の表記:
 //   { kind: "math", latex, display, raw } / { kind: "script", style, text, raw }
 
-// 目印は私用領域の文字で挟む。本文に偶然現れず、Markdown の記号とも重ならない
-// （{{GWMATH_0}} のような ASCII の目印だと、ノートにその文字列を書いたときに化ける）
-const STASH_OPEN = "";
-const STASH_CLOSE = "";
-const STASH_RE = /(\d+)/g;
-const CODE_OPEN = "";
-const CODE_CLOSE = "";
-const CODE_RE = /(\d+)/g;
+// 目印は Unicode の非文字（U+FDD0〜U+FDD3。内部処理用に予約されていて、ふつうの文章には
+// 現れない）で挟む。Markdown の記号とも重ならない。私用領域（U+E000〜）はアイコンフォントが
+// 使うので、取り込んだ本文に紛れていることがある。{{GWMATH_0}} のような ASCII の目印は、
+// ノートにその文字列を書いたときに化ける
+const STASH_OPEN = "\uFDD0";
+const STASH_CLOSE = "\uFDD1";
+const STASH_RE = /\uFDD0(\d+)\uFDD1/g;
+const CODE_OPEN = "\uFDD2";
+const CODE_CLOSE = "\uFDD3";
+const CODE_RE = /\uFDD2(\d+)\uFDD3/g;
 
 // インライン数式として認める最大文字数（長すぎるものは誤検出とみなす）
 const MAX_INLINE_LATEX = 200;
@@ -140,7 +142,7 @@ function restoreRaw(text, stash) {
 }
 
 // Markdown 中の数式と <sup> / <sub> を目印に置き換える。
-// 戻り値の stash[n] が、本文中の目印 n（私用領域の文字で n を挟んだもの）の中身。
+// 戻り値の stash[n] が、本文中の目印 n（非文字で n を挟んだもの）の中身。
 function stashMathAndScripts(markdown) {
   const stash = [];
   const codes = [];
@@ -167,10 +169,10 @@ function stashMathAndScripts(markdown) {
   };
   // ブロック数式: $$ ... $$ / \[ ... \]
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, mathReplacer(true));
-  text = text.replace(/\\\[([^]+?)\\\]/g, mathReplacer(true));
+  text = text.replace(/\\\[([^\uFDD0]+?)\\\]/g, mathReplacer(true));
   // インライン数式: \( ... \) / $ ... $（条件は stashMath と同じ。退避済みの数式はまたがない）
-  text = text.replace(/\\\(([^]+?)\\\)/g, mathReplacer(false));
-  text = text.replace(/(?<![$\\])\$(?!\s)([^$\n]*[^\s$])\$(?![$\d])/g, mathReplacer(false));
+  text = text.replace(/\\\(([^\uFDD0]+?)\\\)/g, mathReplacer(false));
+  text = text.replace(/(?<![$\\])\$(?!\s)([^$\n\uFDD0]*[^\s$\uFDD0])\$(?![$\d])/g, mathReplacer(false));
 
   // 上付き・下付き（数式の後に拾うので、タグの中の $…$ は目印のまま中身に入る）
   text = text.replace(SCRIPT_TAG_RE, (full, tag, inner) => {
@@ -384,7 +386,7 @@ function tableBlock(rows, stash) {
 
 // 行がブロック数式の目印だけなら、その LaTeX を返す（数式ブロックにする行か）
 function soleDisplayMath(line, stash) {
-  const m = /^\s*(\d+)\s*$/.exec(line);
+  const m = /^\s*\uFDD0(\d+)\uFDD1\s*$/.exec(line);
   const entry = m ? stash[Number(m[1])] : undefined;
   return entry && entry.kind === "math" && entry.display ? entry.latex : null;
 }
