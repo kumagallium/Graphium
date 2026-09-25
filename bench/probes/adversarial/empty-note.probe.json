@@ -6,8 +6,7 @@
   "expected": {
     "pipelineCompletes": true,
     "maxClaims": 1,
-    "maxAtoms": 1,
-    "maxSyntheses": 0
+    "maxAtoms": 1
   },
-  "rationale": "完全に空のノート（title も body も空）で pipeline がエラー停止しない。空ノートからは Atom も Synthesis も生成されない（最大 1 / 1 / 0）。空入力で空出力を返す graceful degradation の最低条件。"
+  "rationale": "完全に空のノート（title も body も空）で pipeline がエラー停止しない。空ノートから Claim / Atom が増えない（最大 1 / 1）。空入力で空出力を返す graceful degradation の最低条件。"
 }

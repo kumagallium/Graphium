@@ -109,6 +109,7 @@ import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 import { normalizeTableRowIdentities } from "../lib/table-row-identity";
+import { flushPeekSaves } from "../lib/peek-save-queue";
 import { t as tStatic } from "../i18n";
 
 // ストレージプロバイダー経由のファイル操作ヘルパー
@@ -763,18 +764,34 @@ export function useFileManager(authenticated: boolean) {
     []
   );
 
+  // ノート（wiki・skill を含む）を開くたびに進める番号。
+  // 開く前に、サイドピークで同じノートを編集した直後（最後の入力から 3 秒以内・書き込み中）なら
+  // ピークに書き出させ、書き終わるのを待つ（lib/peek-save-queue.ts の flushPeekSaves）。待たずに
+  // 読むと、書き出し前の doc キャッシュや書き込み中のファイルから開き、その古い本文をメインの
+  // 自動保存が書き戻す。書き終えた doc は、ピークの onSaved（reindexNoteFromDoc）がキャッシュに
+  // 載せている。待つものが無ければ今までどおり同期で開く。
+  // 待つ間に別のノートが開かれたら（番号が進んだら）、待っていた方は開かない
+  const openRequestRef = useRef(0);
+
   // ファイルを開く（キャッシュ優先、cachedDoc が渡された場合はキャッシュを即時更新）
   const handleOpenFile = useCallback(async (fileId: string, cachedDoc?: GraphiumDocument) => {
     const generation = processIndexGenerationRef.current;
     const provider = storage();
     const isCurrent = () =>
       generation === processIndexGenerationRef.current && storage() === provider;
+    const request = ++openRequestRef.current;
     try {
       // ノート一覧・ギャラリービューを閉じる
       setShowNoteList(false);
       setActiveAssetType(null);
       setActiveLabel(null);
       setActiveWikiKind(null);
+      // サイドピークで同じノートを編集した直後なら、書き終わるのを待ってから読む（openRequestRef）
+      const peekSaves = flushPeekSaves(fileId);
+      if (peekSaves) {
+        await peekSaves;
+        if (!isCurrent() || request !== openRequestRef.current) return;
+      }
       // 保存せずに別のノートへ移ったら、保留していたフォルダは捨てる
       // （次に作る白紙のノートへ持ち越さない）
       // サイドピーク等から保存済みドキュメントが渡された場合、キャッシュを即時更新。
@@ -2549,11 +2566,22 @@ export function useFileManager(authenticated: boolean) {
 
   // Wiki を開く
   const handleOpenWikiFile = useCallback(async (wikiId: string) => {
+    const request = ++openRequestRef.current;
+    const generation = processIndexGenerationRef.current;
+    const provider = storage();
+    const isCurrent = () =>
+      generation === processIndexGenerationRef.current && storage() === provider;
     try {
       setShowNoteList(false);
       setActiveAssetType(null);
       setActiveLabel(null);
       setActiveWikiKind(null);
+      // サイドピークで同じ Wiki を編集した直後なら、書き終わるのを待ってから読む（openRequestRef）
+      const peekSaves = flushPeekSaves(`wiki:${wikiId}`);
+      if (peekSaves) {
+        await peekSaves;
+        if (!isCurrent() || request !== openRequestRef.current) return;
+      }
 
       const cached = docCacheRef.current.get(`wiki:${wikiId}`);
       if (cached) {
@@ -3099,7 +3127,18 @@ export function useFileManager(authenticated: boolean) {
   // Skill を開く
   const handleOpenSkillFile = useCallback(
     async (skillId: string) => {
+      const request = ++openRequestRef.current;
+      const generation = processIndexGenerationRef.current;
+      const provider = storage();
+      const isCurrent = () =>
+        generation === processIndexGenerationRef.current && storage() === provider;
       try {
+        // サイドピークで同じ Skill を編集した直後なら、書き終わるのを待ってから読む（openRequestRef）
+        const peekSaves = flushPeekSaves(`skill:${skillId}`);
+        if (peekSaves) {
+          await peekSaves;
+          if (!isCurrent() || request !== openRequestRef.current) return;
+        }
         const cached = docCacheRef.current.get(`skill:${skillId}`);
         const doc = cached ?? await loadSkillFile(skillId);
         if (!cached) docCacheRef.current.set(`skill:${skillId}`, doc);

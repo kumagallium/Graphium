@@ -84,7 +84,7 @@ function toModelConfig(): ModelConfig {
 async function ingestNote(note: CorpusNote, modelConfig: ModelConfig): Promise<SimpleClaim[]> {
   const systemPrompt = buildIngesterSystemPrompt(note.language, [], undefined);
   const userMessage = `Source note title: "${note.title}"\nUse this exact title for inline citations (e.g., "Based on [${note.title}], ...").\n\n# ${note.title}\n\n${note.body}`;
-  const model = createModel(modelConfig);
+  const model = await createModel(modelConfig);
   const result = await runAgentLoop({
     model,
     modelId: modelConfig.modelId,
@@ -128,7 +128,7 @@ async function runAtomizerOnce(claims: SimpleClaim[], modelConfig: ModelConfig):
   const idToRebuttals = new Map(snapshots.map((s) => [s.id, s.rebuttalConditions]));
   const systemPrompt = buildAtomizerSystemPrompt("ja");
   const userMessage = buildAtomizerUserMessage(snapshots, []);
-  const model = createModel(modelConfig);
+  const model = await createModel(modelConfig);
   const result = await runAgentLoop({
     model,
     modelId: modelConfig.modelId,

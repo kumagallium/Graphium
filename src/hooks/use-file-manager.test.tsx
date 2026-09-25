@@ -31,6 +31,7 @@ import {
   PROCESS_INDEX_VERSION,
   type ProcessIndex,
 } from "../features/network-graph/process-index";
+import { queuePeekSave, registerLivePeek } from "../lib/peek-save-queue";
 import type { StorageProvider } from "../lib/storage/types";
 import type { GraphiumDocument, GraphiumFile } from "../lib/document-types";
 
@@ -1162,5 +1163,124 @@ describe("useFileManager: 同じ中身の素材を二度登録しない", () => 
     });
     expect(mock.calls.uploadMedia).toHaveLength(0);
     expect(result.current.mediaIndex?.media).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// サイドピークで編集した直後に、同じノートをメインで開く
+// ---------------------------------------------------------------------------
+
+describe("useFileManager: サイドピークで編集した直後に同じノートを開く", () => {
+  function firstText(doc: GraphiumDocument | null | undefined): string {
+    const block = doc?.pages[0]?.blocks[0] as { content?: Array<{ text?: string }> } | undefined;
+    return block?.content?.[0]?.text ?? "";
+  }
+
+  /** ピークで打った doc（まだ保存に渡していない）を持つ開いているピーク。onSaved でキャッシュに載せる */
+  function registerEditedPeek(
+    key: string,
+    edited: GraphiumDocument,
+    write: () => Promise<void>,
+    onSaved: () => void,
+  ) {
+    let unsaved = true;
+    return registerLivePeek(key, {
+      hasUnsaved: () => unsaved,
+      flush: () => {
+        unsaved = false;
+        void queuePeekSave(key, edited, async () => {
+          await new Promise((r) => setTimeout(r, 20));
+          await write();
+          onSaved();
+        });
+      },
+    });
+  }
+
+  it("ピークに書き出させ、書き終わってからその本文で開く（書き出し前のキャッシュから開かない）", async () => {
+    const mock = setupProvider({ "note-1": mockDoc("ノート1"), "note-2": mockDoc("ノート2") });
+    const { result } = await renderFileManager();
+    // note-1 をキャッシュに載せてから別のノートへ移る（ピークはこのキャッシュから開いている）
+    await act(async () => {
+      await result.current.handleOpenFile("note-1");
+    });
+    await act(async () => {
+      await result.current.handleOpenFile("note-2");
+    });
+    const edited = mockDoc("ノート1", { modifiedAt: "2026-09-25T00:00:00Z" });
+    edited.pages[0].blocks = [
+      { id: "b1", type: "paragraph", content: [{ type: "text", text: "ピークで打った本文" }] },
+    ] as GraphiumDocument["pages"][number]["blocks"];
+    const unregister = registerEditedPeek(
+      "note-1",
+      edited,
+      () => mock.provider.saveFile("note-1", edited),
+      () => result.current.reindexNoteFromDoc("note-1", edited),
+    );
+
+    await act(async () => {
+      await result.current.handleOpenFile("note-1");
+    });
+
+    expect(result.current.activeFileId).toBe("note-1");
+    expect(firstText(result.current.activeDoc)).toBe("ピークで打った本文");
+    expect(firstText(mock.files.get("note-1")?.doc)).toBe("ピークで打った本文");
+    // 裏の読み直し（書き出しの後に始まる）でもキャッシュは戻らない
+    await waitFor(() =>
+      expect(firstText(result.current.getCachedDoc("note-1"))).toBe("ピークで打った本文"),
+    );
+    unregister();
+  });
+
+  it("書き出しを待つ間に別のノートを開いたら、待っていた方は開かない", async () => {
+    const mock = setupProvider({ "note-1": mockDoc("ノート1"), "note-2": mockDoc("ノート2") });
+    const { result } = await renderFileManager();
+    await act(async () => {
+      await result.current.handleOpenFile("note-1");
+    });
+    await act(async () => {
+      await result.current.handleOpenFile("note-2");
+    });
+    const edited = mockDoc("ノート1", { modifiedAt: "2026-09-25T00:00:00Z" });
+    const unregister = registerEditedPeek(
+      "note-1",
+      edited,
+      () => mock.provider.saveFile("note-1", edited),
+      () => result.current.reindexNoteFromDoc("note-1", edited),
+    );
+
+    await act(async () => {
+      const waiting = result.current.handleOpenFile("note-1");
+      // 書き出しを待っている間に、別のノートを押した
+      await result.current.handleOpenFile("note-2");
+      await waiting;
+    });
+
+    expect(result.current.activeFileId).toBe("note-2");
+    expect(result.current.activeDoc?.title).toBe("ノート2");
+    unregister();
+  });
+
+  it("Wiki も同じ（キーは wiki: 付き）", async () => {
+    setupProvider();
+    const { result } = await renderFileManager();
+    const edited = mockDoc("知見", { modifiedAt: "2026-09-25T00:00:00Z" });
+    edited.pages[0].blocks = [
+      { id: "b1", type: "paragraph", content: [{ type: "text", text: "ピークで打った知見" }] },
+    ] as GraphiumDocument["pages"][number]["blocks"];
+    const unregister = registerEditedPeek(
+      "wiki:w1",
+      edited,
+      async () => {},
+      () => result.current.reindexNoteFromDoc("wiki:w1", edited),
+    );
+
+    await act(async () => {
+      await result.current.handleOpenWikiFile("w1");
+    });
+
+    expect(result.current.activeFileId).toBe("wiki:w1");
+    expect(firstText(result.current.activeDoc)).toBe("ピークで打った知見");
+    unregister();
   });
 });
