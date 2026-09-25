@@ -58,6 +58,7 @@ export type LinkStore = {
     targetEntityStable?: boolean;
     targetSourceModifiedAt?: string;
     sourceEntityId?: string;
+    sourceRowIdentity?: string;
     targetEntityLabel?: string;
     targetNoteTitle?: string;
     targetStepTitle?: string;
@@ -106,6 +107,7 @@ export function LinkStoreProvider({
       targetEntityStable?: boolean;
       targetSourceModifiedAt?: string;
       sourceEntityId?: string;
+      sourceRowIdentity?: string;
       targetEntityLabel?: string;
       targetNoteTitle?: string;
       targetStepTitle?: string;
@@ -136,6 +138,7 @@ export function LinkStoreProvider({
         targetEntityStable: params.targetEntityStable,
         targetSourceModifiedAt: params.targetSourceModifiedAt,
         sourceEntityId: params.sourceEntityId,
+        sourceRowIdentity: params.sourceRowIdentity,
         targetEntityLabel: params.targetEntityLabel,
         targetNoteTitle: params.targetNoteTitle,
         targetStepTitle: params.targetStepTitle,
