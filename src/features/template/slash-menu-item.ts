@@ -2,12 +2,21 @@
 
 import { t } from "../../i18n";
 
-// テンプレートピッカーを開くグローバルコールバック（スラッシュ発火時のブロックを渡す）
-// note-app.tsx 側で登録する
-let _openTemplatePickerCallback: ((triggerBlock: any) => void) | null = null;
+// テンプレートピッカーを開くコールバック（スラッシュ発火時のブロックを渡す）。
+// エディタ単位で登録する（メインエディタと SidePeek がそれぞれ自分のピッカーを持つ。
+// 登録は useTemplatePicker が行う）。項目は押されたエディタをキーに引くので、
+// ピークで押せばピークのピッカーが開き、挿入先もピークのノートになる。
+// 以前はモジュール変数 1 つに note-app が登録していたため、ピークに出すと
+// メイン側のノートに書き込んでしまい、ピークには出せなかった。
+const pickerCallbacks = new WeakMap<object, (triggerBlock: any) => void>();
 
-export function setTemplatePickerCallback(fn: ((triggerBlock: any) => void) | null) {
-  _openTemplatePickerCallback = fn;
+export function setTemplatePickerCallback(
+  editor: object | null | undefined,
+  fn: ((triggerBlock: any) => void) | null,
+): void {
+  if (!editor) return;
+  if (fn) pickerCallbacks.set(editor, fn);
+  else pickerCallbacks.delete(editor);
 }
 
 export function getTemplateSlashMenuItem() {
@@ -28,7 +37,7 @@ export function getTemplateSlashMenuItem() {
     ],
     onItemClick: (editor: any) => {
       const currentBlock = editor.getTextCursorPosition().block;
-      _openTemplatePickerCallback?.(currentBlock);
+      pickerCallbacks.get(editor)?.(currentBlock);
     },
   };
 }

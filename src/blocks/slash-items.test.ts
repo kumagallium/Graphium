@@ -36,6 +36,24 @@ describe("getCommonSlashMenuItems", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(chartSlashItem);
   });
 
+  it("テンプレートはどのエディタでも出る（受け口がエディタ単位なので SidePeek でも挿せる）", () => {
+    const templateTitle = getTemplateSlashMenuItem().title;
+    expect(titles(getCommonSlashMenuItems({ includeCite: false }))).toContain(templateTitle);
+    expect(titles(getCommonSlashMenuItems({ includeCite: true }))).toContain(templateTitle);
+  });
+
+  it("メインでは専用の項目のすぐ後ろにテンプレートが来る（専用の一覧にあった頃と同じ並び）", () => {
+    // エディタは項目をグループ単位にまとめ、グループの中は渡した順に並べる
+    const advanced = getTemplateSlashMenuItem().group;
+    const mainList = [...getMainEditorOnlySlashMenuItems(), ...getCommonSlashMenuItems({ includeCite: true })];
+    const advancedTitles = titles(mainList.filter((item) => item.group === advanced));
+    expect(advancedTitles.slice(0, 3)).toEqual([
+      indexTableSlashItem.title,
+      logTableSlashItem.title,
+      getTemplateSlashMenuItem().title,
+    ]);
+  });
+
   it("ノート・wiki の引用は includeCite のときだけ出る", () => {
     const citeTitles = titles(getCiteSlashMenuItems());
     expect(citeTitles.length).toBeGreaterThan(0);
@@ -59,7 +77,6 @@ describe("getMainEditorOnlySlashMenuItems", () => {
     expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([
       indexTableSlashItem.title,
       logTableSlashItem.title,
-      getTemplateSlashMenuItem().title,
     ]);
   });
 

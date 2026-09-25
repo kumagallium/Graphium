@@ -132,6 +132,7 @@ import {
   setChartAssetSourceCallback,
   type ChartAssetSourceResult,
 } from "../../blocks/chart";
+import { useTemplatePicker } from "@features/template";
 import { useT, t as tStatic } from "../../i18n";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
@@ -356,6 +357,19 @@ function SidePeekInner({
   const [chartAssetRequest, setChartAssetRequest] = useState<{
     onDone: (result: ChartAssetSourceResult) => void;
   } | null>(null);
+  // スラッシュメニューの「テンプレート」（メインと共通の useTemplatePicker）。
+  // ラベル・前手順リンク・表の列のふるまいは、このピークのノートのストアへ書く。
+  // ストアは毎レンダリング新しいオブジェクトになるので ref 経由で最新を引く
+  const templatePicker = useTemplatePicker(sidePeekEditor, {
+    stores: {
+      setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
+      setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+      addLink: (params) => linkStoreRef.current.addLink(params),
+      addColumnType: (blockId, columnName, type) =>
+        tableMetaStoreRef.current.addColumnType(blockId, columnName, type),
+    },
+    uploadFile,
+  });
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2024,7 +2038,7 @@ function SidePeekInner({
           SidePeek overlay (z-index:100) より前面に出すため、
           z-index:200 の wrapper で stacking context を切る。
           (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。) */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || chartAssetRequest ? "auto" : "none" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind || chartAssetRequest || templatePicker.open ? "auto" : "none" }}>
         {pickerMediaType && (
           <MediaPickerModal
             mediaIndex={mediaIndex ?? null}
@@ -2055,6 +2069,7 @@ function SidePeekInner({
             onClose={() => setCitePickerKind(null)}
           />
         )}
+        {templatePicker.dialog}
         {sharedCitePickerOpen && (
           <SharedCitePickerModal
             onConfirm={(entries) => {
