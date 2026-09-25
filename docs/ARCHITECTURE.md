@@ -873,10 +873,11 @@ Notes:
   0.47's `{ type: "tableCell", content }` cells and the older bare inline
   arrays); where a single line is expected — body previews, a Topic's
   one-line definition — the rows are joined with ` / ` instead, so a table
-  never splits a list entry in a prompt. Before this, only top-level blocks were read, a block with text
-  of its own lost its children, and 0.47-style table cells read as empty:
-  on a real 137-note vault about a third of the characters (step contents,
-  nested items, every table) never reached the model. A note without
+  never splits a list entry in a prompt. Before this, only top-level
+  blocks were read, a block with text of its own lost its children, and
+  0.47-style table cells read as empty: on a real 137-note vault about a
+  third of the characters (step contents, nested items, every table) never
+  reached the model. A note without
   nesting, steps or tables reads exactly as before. Reading everything
   costs more where there is more to read — a note that now runs past one
   4,000-character window is read in more windows (see below), and Claim
