@@ -51,6 +51,7 @@ import {
 } from "./features/context-label/prov-indicator";
 import {
   IndexTableIconLayer,
+  setEditorIndexTableCallbacks,
   setIndexTableCallbacks,
   setRegisterIndexTableCallback,
 } from "./features/index-table";
@@ -4819,9 +4820,11 @@ function NoteEditorInner({
     return () => { setOnPrevStepLinkSelected(null); };
   }, [linkStore]);
 
-  // インデックステーブル用のグローバルコールバック登録
+  // インデックステーブル用のコールバック登録。行アイコンはエディタ単位の受け口
+  // （メインのエディタに登録。SidePeek は自分のエディタに登録する）を引く。グローバルは
+  // グラフパネル・インライン画像など、メインのノートに固定の経路が引く
   useEffect(() => {
-    setIndexTableCallbacks({
+    const callbacks = {
       files,
       currentFileId: fileId,
       onNavigateNote,
@@ -4841,9 +4844,15 @@ function NoteEditorInner({
           markDirty();
         }
       },
-    });
-    return () => { setIndexTableCallbacks(null); };
-  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty, openPeekTargetId]);
+    };
+    setIndexTableCallbacks(callbacks);
+    // 行から作ったノートは、表の横のサイドピークに開く
+    setEditorIndexTableCallbacks(mainEditor, { ...callbacks, onNoteCreated: callbacks.onOpenSidePeek });
+    return () => {
+      setIndexTableCallbacks(null);
+      setEditorIndexTableCallbacks(mainEditor, null);
+    };
+  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty, openPeekTargetId, mainEditor]);
 
   // エディタ内の @ノート名クリックでサイドピークを開く
   useEffect(() => {
@@ -4941,14 +4950,16 @@ function NoteEditorInner({
     };
   }, [noteIndex, files, mediaIndex, initialDoc, linkStore, openPeekTargetId]);
 
-  // スラッシュメニューからのインデックステーブル登録コールバック
+  // スラッシュメニューからのインデックステーブル登録コールバック（メインのエディタ用。
+  // SidePeek は自分のエディタに同じ受け口を登録する）
   // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）
   useEffect(() => {
-    setRegisterIndexTableCallback((blockId: string) => {
+    if (!mainEditor) return;
+    setRegisterIndexTableCallback(mainEditor, (blockId: string) => {
       addFirstColumnType(blockId, "note-link");
     });
-    return () => { setRegisterIndexTableCallback(null); };
-  }, [addFirstColumnType]);
+    return () => { setRegisterIndexTableCallback(mainEditor, null); };
+  }, [mainEditor, addFirstColumnType]);
 
   // スラッシュメニューからの時系列テーブル登録コールバック
   // （挿入されたテーブルの先頭列に datetime-auto を付ける）。項目は SidePeek と共通なので、
@@ -6208,6 +6219,8 @@ function NoteEditorInner({
             onAddUrlBookmark={onAddUrlBookmark}
             noteIndex={noteIndex ?? null}
             onCreateLinkedNote={onCreateLinkedNote}
+            files={files}
+            onRefreshFiles={onRefreshFiles}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             onOpenMemoSource={onOpenMemoSource}
@@ -6248,6 +6261,8 @@ function NoteEditorInner({
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
             noteIndex={noteIndex ?? null}
             onCreateLinkedNote={onCreateLinkedNote}
+            files={files}
+            onRefreshFiles={onRefreshFiles}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             onOpenMemoSource={onOpenMemoSource}
@@ -12082,6 +12097,8 @@ export function NoteApp() {
                     onAddUrlBookmark={fm.handleAddUrlBookmark}
                     noteIndex={fm.noteIndex ?? null}
                     onCreateLinkedNote={fm.handleCreateLinkedNote}
+                    files={fm.files}
+                    onRefreshFiles={fm.refreshFiles}
                     onOpenNoteInPeek={(peekId) => openAssetPeek(peekId)}
                     onOpenMaterialPeek={(entry) => {
                       // ピーク内の @素材 → 全画面表示をその素材に差し替える。ノートピークは残し、
@@ -13141,6 +13158,8 @@ export function NoteApp() {
               onAddUrlBookmark={fm.handleAddUrlBookmark}
               noteIndex={fm.noteIndex ?? null}
               onCreateLinkedNote={fm.handleCreateLinkedNote}
+              files={fm.files}
+              onRefreshFiles={fm.refreshFiles}
               onOpenNoteInPeek={(peekId) => openListPeek(peekId)}
               onClose={() => openListPeek(null)}
               onOpenLocalView={(id) => showLocalViewFor(id)}

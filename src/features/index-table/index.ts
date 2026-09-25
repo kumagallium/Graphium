@@ -3,19 +3,14 @@
 // どのテーブルがこのふるまいを持つかは tableMeta（列の note-link）が持つ。
 
 import { t } from "../../i18n";
+import { registerIndexTable } from "./context";
 
 export { IndexTableIconLayer } from "./icon-layer";
-export { setIndexTableCallbacks } from "./context";
-
-// インデックステーブル登録用のグローバルコールバック
-// スラッシュメニューから呼ばれるため、React Context にアクセスできない
-let _registerCallback: ((blockId: string) => void) | null = null;
-
-export function setRegisterIndexTableCallback(
-  fn: ((blockId: string) => void) | null
-) {
-  _registerCallback = fn;
-}
+export {
+  setIndexTableCallbacks,
+  setEditorIndexTableCallbacks,
+  setRegisterIndexTableCallback,
+} from "./context";
 
 // スラッシュメニュー用の挿入アイテム
 export const indexTableSlashItem = {
@@ -55,11 +50,12 @@ export const indexTableSlashItem = {
       "after"
     );
 
-    // 挿入されたテーブルをインデックステーブルとして登録
+    // 挿入されたテーブルをインデックステーブルとして登録する。登録先は押されたエディタの
+    // 受け口（メインと SidePeek で表の注釈を書くノートが違う）
     if (inserted?.[0]) {
       const blockId = inserted[0].id;
       setTimeout(() => {
-        _registerCallback?.(blockId);
+        registerIndexTable(editor, blockId);
       }, 0);
     }
 
