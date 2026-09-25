@@ -1868,28 +1868,6 @@ function extractTableRowIdentity(cell: any): string | undefined {
   return undefined;
 }
 
-/** InlineContent 配列からテキストを結合（リンク・画像の URL も抽出） */
-function extractInlineText(inlines: any[]): string {
-  if (!Array.isArray(inlines)) return "";
-  return inlines
-    .map((inline: any) => {
-      if (typeof inline === "string") return inline;
-      if (inline.type === "text") return inline.text ?? "";
-      // リンク: テキストがあればテキスト、なければ href
-      if (inline.type === "link") {
-        const linkText = extractInlineText(inline.content ?? []);
-        return linkText || (inline.href ?? "");
-      }
-      // 画像インライン: URL を返す
-      if (inline.type === "image" && inline.props?.url) {
-        return inline.props.url;
-      }
-      return "";
-    })
-    .join("")
-    .trim();
-}
-
 /** ネストされたブロックをフラット化 */
 function flattenBlocks(blocks: any[]): any[] {
   const result: any[] = [];

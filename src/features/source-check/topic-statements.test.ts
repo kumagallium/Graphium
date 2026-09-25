@@ -293,6 +293,30 @@ describe("extractTopicStatements", () => {
     expect(statements[0].claimIds).toEqual(["claim-a", "claim-b"]);
     expect(statements[0].text).toBe("と  は一致する。");
   });
+
+  it("照合する文のリンクは中身の文字、インライン数式は $…$ にする（[object Object] や空文字にしない）", () => {
+    const doc = topicDoc(
+      [
+        {
+          id: "b1",
+          type: "paragraph",
+          content: [
+            { type: "text", text: "反応は ", styles: {} },
+            { type: "inlineMath", props: { latex: "\\Delta G < 0" } },
+            { type: "text", text: " で進む（", styles: {} },
+            { type: "link", href: "https://example.com", content: [{ type: "text", text: "測定記録", styles: {} }] },
+            { type: "text", text: "）。", styles: {} },
+            { type: "text", text: "@🤖 知見A", styles: { textColor: "blue" } },
+          ],
+        },
+      ],
+      [{ id: "l1", sourceBlockId: "b1", targetBlockId: "", targetNoteId: "claim-a", type: "reference", layer: "knowledge", createdBy: "ai" }],
+      ["claim-a"],
+    );
+    expect(extractTopicStatements(doc)).toEqual([
+      { text: "反応は $\\Delta G < 0$ で進む（測定記録）。", blockId: "b1", claimIds: ["claim-a"] },
+    ]);
+  });
 });
 
 describe("extractSourceTopicStatements - 新形式トピック（topicMarkdown）", () => {
