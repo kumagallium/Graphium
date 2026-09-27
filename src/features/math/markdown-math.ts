@@ -14,7 +14,7 @@
 // LaTeX のサンプルコードを載せたノートを壊さないため。
 
 import { maskCodeRegions, unmaskCodeRegions } from "../../lib/markdown-code-regions";
-import { markScriptTags, restoreScriptTags } from "../../lib/script-styles";
+import { guardScriptTagEscapes, markScriptTags, restoreScriptTags } from "../../lib/script-styles";
 
 /** 退避した数式 1 個 */
 export type MathStash = {
@@ -38,10 +38,17 @@ const MAX_INLINE_LATEX = 200;
 /**
  * Markdown 中の数式をセンチネルに退避する。
  * ブロック数式は前後を空行で挟み、パース後に「センチネルだけの段落」になるようにする。
+ *
+ * <sup> / <sub> の中の \[ \] \( \) は数式の区切りとして扱わない（lib/script-styles.ts の
+ * guardScriptTagEscapes）。書き出し側が付けたエスケープで、上付きの「[1]」は
+ * 「<sup>\[1\]</sup>」と書かれる。拾うと数式「1」ができ、前後に足す空行でタグの対も割れる。
  */
 export function stashMath(markdown: string): { text: string; math: MathStash[] } {
   const math: MathStash[] = [];
   const { text: masked, codes } = maskCodeRegions(markdown);
+  const guarded = guardScriptTagEscapes(masked);
+  // 数式の中身。数式がタグをまたいでいたときに挟まった目印は外す
+  const latexOf = (inner: string): string => guarded.restore(inner).trim();
 
   const push = (latex: string, display: boolean): string => {
     const idx = math.length;
@@ -51,21 +58,21 @@ export function stashMath(markdown: string): { text: string; math: MathStash[] }
     return display ? `\n\n${sentinel}\n\n` : sentinel;
   };
 
-  let text = masked;
+  let text = guarded.text;
 
   // ブロック数式: $$ ... $$ / \[ ... \]
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, (full, inner: string) => {
-    const latex = inner.trim();
+    const latex = latexOf(inner);
     return latex ? push(latex, true) : full;
   });
   text = text.replace(/\\\[([\s\S]+?)\\\]/g, (full, inner: string) => {
-    const latex = inner.trim();
+    const latex = latexOf(inner);
     return latex ? push(latex, true) : full;
   });
 
   // インライン数式: \( ... \) （デリミタが明示的なので条件なしで拾う）
   text = text.replace(/\\\(([\s\S]+?)\\\)/g, (full, inner: string) => {
-    const latex = inner.trim();
+    const latex = latexOf(inner);
     return latex && latex.length <= MAX_INLINE_LATEX ? push(latex, false) : full;
   });
 
@@ -75,11 +82,11 @@ export function stashMath(markdown: string): { text: string; math: MathStash[] }
   // さらに pandoc と同じく「閉じの直後が数字でない」も課す。これが無いと価格帯
   // （"$50-$75"・"$5/$10"）の間が数式「50-」に化け、後ろの金額が本文から消える。
   text = text.replace(/(?<![$\\])\$(?!\s)([^$\n]*[^\s$])\$(?![$\d])/g, (full, inner: string) => {
-    const latex = inner.trim();
+    const latex = latexOf(inner);
     return latex && latex.length <= MAX_INLINE_LATEX ? push(latex, false) : full;
   });
 
-  return { text: unmaskCodeRegions(text, codes), math };
+  return { text: unmaskCodeRegions(guarded.restore(text), codes), math };
 }
 
 // ─────────────────────────────────────────────
