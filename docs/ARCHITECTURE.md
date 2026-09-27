@@ -873,12 +873,13 @@ Notes:
   intake's completion screen for many, or turning memos into Knowledge.
   Each note is queued (`enqueueIngest`) and `processIngestQueue` calls
   `wiki-service.ingestNote()`, which posts to the server when Claims are
-  on (otherwise the queue goes straight to the Topic stage, as above).
-  Saving a note does not trigger ingest, and there is no server-side
-  file watcher.
+  on and the note has any text (see the next item); with Claims off, the
+  queue goes straight to the Topic stage, as above. Saving a note does
+  not trigger ingest, and there is no server-side file watcher.
 - **No worthiness gate.** Nothing judges up front whether a note is worth
-  ingesting: there is no content heuristic, and an empty note is not
-  skipped before the call. What `note-app.tsx` does leave out:
+  ingesting: there is no content heuristic, no threshold beyond having any
+  text at all, and an empty note is queued and handed to `ingestNote` like
+  any other. What `note-app.tsx` does leave out:
   AI-derived pages (`source: "ai"`), which the single-note entry points
   (**Add to Knowledge**) skip and bulk ingest (`ingestNoteIds`, behind
   the note list's multi-select and the intake's completion screen) drops
@@ -890,11 +891,13 @@ Notes:
   `shouldSkipUnchangedSource` skips the note when its `modifiedAt` is not
   newer. A single-note Add to Knowledge always re-reads, and a memo turned
   into Knowledge is skipped only when its text is empty. A note's emptiness
-  is only noticed after the call: `processIngestQueue` ends a note that
-  yields no Claims and no text as "Not enough content"
-  (`ingest.insufficientContent`). With Claims on, an empty note never
-  gets that far — `POST /api/wiki/ingest` rejects its empty
-  `noteContent` with 400, so it ends as an error instead.
+  is only noticed once `ingestNote` has it, and it ends the same way with
+  Claims on or off: `ingestNote` returns no Claims for a note whose text
+  (`extractPlainTextFromDoc`) is empty or only whitespace, without posting
+  it to `POST /api/wiki/ingest` (the server's 400 for an empty
+  `noteContent` stays as a guard), and `processIngestQueue` ends a note
+  that yields no Claims and no text as "Not enough content"
+  (`ingest.insufficientContent`).
 - **What the pipeline reads from a note (changed 2026-09-25).** Ingest
   (`ingestNote`'s `noteContent`), the Topic stage (`sourcesForTopicStage` in
   `note-app.tsx`), regenerating a page from its sources, and source check's

@@ -9528,6 +9528,8 @@ export function NoteApp() {
 
         // トピックは知見（wiki）が 0 件でも資料から反映されうるので、知見 0 件だけでは
         // 失敗にしない — 資料がトピック段に積めた（sourceText がある）ときは続行する。
+        // 本文が空のノートは知見の ON/OFF に関係なくここで「内容不足」になる
+        // （ingestNote は本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
         if (result.wikis.length === 0 && !sourceText.trim()) {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
