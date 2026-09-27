@@ -115,12 +115,18 @@ export async function ingestNote(
   signal?: AbortSignal,
   /** 知見（Claims）抽出を行うかどうか（既定 true）。features.claims が OFF のとき
    *  呼び出し側が false を渡す。false のときは /api/wiki/ingest を呼ばず、
-   *  知見 0 件の結果を返す（トピック段は呼び出し側で資料本文から別途走らせる）。 */
+   *  知見 0 件の結果を返す（トピック段は呼び出し側で資料本文から別途走らせる）。
+   *  true でも本文が空のノートは呼ばない（下の分岐を参照）。 */
   extractClaims: boolean = true,
 ): Promise<IngestResult> {
   const noteContent = extractPlainTextFromDoc(doc);
 
-  if (!extractClaims) {
+  // 本文が空か空白だけのノートも /api/wiki/ingest を呼ばず、知見 0 件で返す。
+  // 空のまま送るとサーバーが 400（"noteContent is required"）で断り、その英語の文言が
+  // そのままトーストに出ていた（空白だけだとサーバーを通り、中身の無い本文で LLM を呼んでいた）。
+  // 知見 0 件・本文なしは呼び出し側（processIngestQueue）が「内容不足」にするので、
+  // 知見の ON/OFF で結果が揃う。
+  if (!extractClaims || !noteContent.trim()) {
     return { wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null };
   }
 
