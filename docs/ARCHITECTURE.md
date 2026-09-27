@@ -822,7 +822,7 @@ sequenceDiagram
     A->>FS: write Insight / Claim pages
     A->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
-    S-->>W: ingest result (Claims; source text already in hand)
+    S-->>W: ingest result (Claims — source text already in hand)
     opt source spans more than one window
         W->>S: POST /api/wiki/survey-source (first window only)
         S->>TR: run
