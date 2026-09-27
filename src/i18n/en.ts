@@ -1389,6 +1389,7 @@ export const en: Record<string, string> = {
   "wikiList.mergeConfirmOk": "Merge",
   "wikiList.merging": "Merging…",
   "wikiList.mergeDone": "Merged {count} into {kept}",
+  "wikiList.mergeFailed": "Couldn't merge: the bodies couldn't be combined, so the selected topics were left as they are",
   "wikiList.deleteConfirmTitleSingle": "Move this Knowledge page to trash?",
   "wikiList.deleteConfirmTitleMulti": "Move {count} Knowledge pages to trash?",
   "wikiList.deleteConfirmMessage": "You can restore from Trash at any time. Permanent deletion is done from Trash.",
