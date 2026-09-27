@@ -4,9 +4,11 @@
  *
  * シナリオ:
  *   一時 vault に fixture ノートを 2 件置く
- *   → MCP クライアントとして接続し、7 ツールが登録されていることを確認
+ *   → MCP クライアントとして接続し、10 ツールが登録されていることを確認
  *   → search / get_note / get_note_steps / find_notes_using / list_entities / trace_lineage
  *   → create_note で 3 件目を書き、そのまま検索で引けることを確認
+ *   → get_note と同じ表記の数式・上付き・下付きを create_note で書き、数式・書式として保存され
+ *     get_note が同じ表記で読み返すことを確認
  *
  * 守っている不変条件:
  *   - **stdout を汚さない**: サーバーが JSON-RPC 以外を stdout に書くとハンドシェイクが壊れる。
@@ -188,7 +190,7 @@ try {
   await client.connect(transport);
 
   const { tools } = await client.listTools();
-  check("7 つのツールが登録されている", tools.length === 7, `got ${tools.length}: ${tools.map((t) => t.name).join(", ")}`);
+  check("10 のツールが登録されている", tools.length === 10, `got ${tools.length}: ${tools.map((t) => t.name).join(", ")}`);
 
   console.log("\n[read]");
   const search = await call("search_notes", { query: "焼結" });
@@ -242,6 +244,30 @@ try {
 
   const research = await call("search_notes", { query: "MCP から書いた" });
   check("作ったノートがそのまま検索で引ける", research.includes(newId));
+
+  // get_note が返す表記（<sup> / <sub>・$…$・$$ … $$）をそのまま書き戻しても、文字のまま残らない
+  const scripted = await call("create_note", {
+    title: "数式と上付き・下付き",
+    body: "圧力は 10<sup>5</sup> Pa、生成物は H<sub>2</sub>O。式 $E = mc^2$ で求める。\n\n$$ \\int_0^1 x\\,dx $$\n",
+  });
+  const scriptedId = scripted.match(/noteId: ([0-9a-f-]{36})/)?.[1];
+  const scriptedBlocks = JSON.parse(readFileSync(join(root, "notes", `${scriptedId}.json`), "utf8")).pages[0].blocks;
+  const inline = scriptedBlocks[0]?.content ?? [];
+  check(
+    "<sup> / <sub> が上付き・下付きの書式になる",
+    inline.some((c) => c.text === "5" && c.styles?.superscript) && inline.some((c) => c.text === "2" && c.styles?.subscript),
+  );
+  check("$…$ がインライン数式になる", inline.some((c) => c.type === "inlineMath" && c.props?.latex === "E = mc^2"));
+  check(
+    "行に単独の $$ … $$ が数式ブロックになる",
+    scriptedBlocks.some((b) => b.type === "math" && b.props?.latex === "\\int_0^1 x\\,dx"),
+  );
+  const reread = await call("get_note", { noteId: scriptedId });
+  check(
+    "get_note が同じ表記で読み返す",
+    ["10<sup>5</sup> Pa", "H<sub>2</sub>O", "$E = mc^2$", "$$ \\int_0^1 x\\,dx $$"].every((s) => reread.includes(s)),
+    reread,
+  );
 
   console.log("\n[error handling]");
   const missing = await call("get_note", { noteId: "00000000-0000-4000-8000-000000000000" });

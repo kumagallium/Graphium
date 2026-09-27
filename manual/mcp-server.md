@@ -98,6 +98,10 @@ Ten tools are available. You do not call them by name — you ask in plain langu
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
 
+### `create_note`: formulas, superscript and subscript
+
+The body is Markdown: headings, lists, code blocks, tables, bold, italic, inline code and links, plus formulas and superscript / subscript. These use the notation `get_note` uses when it hands a note to the assistant: `$…$` for a formula inside a sentence, `$$ … $$` on a line of its own for a displayed formula, and `<sup>` / `<sub>` for 10⁵ or H₂O. So when the assistant quotes one of your notes into a new one, `$x$` and `<sup>5</sup>` are saved as a formula and a superscript rather than left as raw text. Prices are left alone: `$100 and $200` or `$50-$75` stay text.
+
 ### `create_note`: citations
 
 `create_note` takes two optional arguments beyond `title` and `body`:
