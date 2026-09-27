@@ -186,10 +186,18 @@ talks to LLM and embedding backends.
   including the Wiki section text that the lexical index and the
   semantic-search embeddings share (`wiki/section-extract.ts`), the outlines
   and label previews in the note index (`navigation/index-file.ts`), and the
-  statements checked on old-format Topics. An embedding keeps the text it was
-  made from until its page is saved again or the user re-embeds every page
-  from Settings; nothing re-embeds existing pages automatically, because that
-  spends the user's API key.
+  statements checked on old-format Topics. The Wiki section text also reads
+  tables through `tableContentToText` (§3.3); a section is one line, so the
+  rows are joined with ` / `, as in body previews. An embedding keeps the
+  text it was made from until the knowledge layer writes its page again (a
+  regeneration, or a merge into it) or the user re-embeds every page from
+  Settings; a shared knowledge page is embedded again when its shared copy
+  changes (the Settings re-embed covers only the user's own pages). Editing
+  a page by hand does not re-embed it, and changing how the text is
+  extracted re-embeds nothing by itself, because that would spend the
+  user's API key. The lexical index catches up when the page is next saved
+  (a shared page, when its shared copy changes) or when the index is
+  rebuilt from Settings, which costs nothing.
 - `step` is the one container block: it holds child blocks, and a procedure is
   written by putting its content inside a step rather than by labelling a
   heading. Nesting and reordering use BlockNote's own drag handle. The card's
