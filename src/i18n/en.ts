@@ -2287,7 +2287,6 @@ export const en: Record<string, string> = {
   "ingest.provFailed": "Could not generate a PROV structure",
   "ingest.skippedWikiNotes": "Skipped {count} Knowledge page(s)",
   "ingest.skippedUnchangedNotes": "Skipped {count} already in knowledge and unchanged",
-  "ingest.enterUrl": "Enter a URL:",
   "ingest.pdfNoText": "Could not extract enough text from the PDF (scanned PDF?)",
   "ingest.docxNoText": "Could not extract enough text from the Word file",
   "ingest.noSources": "No sources available",
