@@ -192,9 +192,14 @@ export function hasUnsavedEditorWork(): boolean {
 
 /**
  * 開いているすべてのエディタに未保存の編集を書き出させ、書き込み中の保存も含めて終わるまで待つ。
- * 待つものが無ければ null。保存の失敗では reject しない（失敗は各エディタが知らせている）
+ * 待つものが無ければ null。保存の失敗では reject しない（失敗は各エディタが知らせている）。
+ * once: 今ある未保存を 1 回書き出させるだけ（タブが隠れたとき用）。指定しなければ、待つ間に
+ * 打たれた分も書き出させ直す（終了するとき用。この後に自動保存が走る機会は無い）。
+ * ページが残るなら、待つ間に打った分はエディタの自動保存に任せる — 書き出させ直すと、
+ * 先の書き込みを待っている自動保存と同じ本文を二重に書く
  */
-export function flushAllEditorSaves(): Promise<void> | null {
+export function flushAllEditorSaves(opts?: { once?: boolean }): Promise<void> | null {
+  const flush = opts?.once ? flushLivePeeks : flushPeekSaves;
   const waits: Promise<unknown>[] = [];
   for (const noteId of new Set([...livePeeks.keys(), ...tails.keys()])) {
     // 書き込み中の保存は、書き出させる前に捕まえる
@@ -205,10 +210,10 @@ export function flushAllEditorSaves(): Promise<void> | null {
       // ので、ピークをすぐ書き出させると書き込み中の保存を追い越し、後から届いた古い本文が残る。
       // 書き込み中の保存が終わってから書き出させる（エディタが 1 つなら、そのエディタ自身が
       // 自分の保存を待ってから書くので、同期のまま始めてよい）
-      waits.push(Promise.allSettled(saving).then(() => flushPeekSaves(noteId)));
+      waits.push(Promise.allSettled(saving).then(() => flush(noteId)));
       continue;
     }
-    const saves = flushPeekSaves(noteId);
+    const saves = flush(noteId);
     if (saves) waits.push(saves);
   }
   if (waits.length === 0) return null;

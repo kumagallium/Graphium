@@ -50,10 +50,21 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
   }, [onSave]);
 
   // 保存実行 + dirty リセット
+  // 先に始まった書き込み（開いたままの書き出し・共有など trackSave で数えたもの・前の自動保存）
+  // が終わってから書く。待たずに書くと、遅い保存先で古い本文の書き込みが後から届いて残る。
+  // 本文は待った後で読む（onSave の中）ので、待つ間に打った分も入る。
+  // 書き込み中のものが無ければ、これまでどおり同期で onSave を呼ぶ
   const executeSave = useCallback(async () => {
     if (unmountedRef.current) return;
-    unsavedRef.current = false;
+    const prev = inflightCountRef.current > 0 ? inflightRef.current : null;
     const run = (async () => {
+      if (prev) {
+        await prev;
+        // 待つ間に外された。外されたエディタの本文は読めない。未保存は下ろしていないので、
+        // アンマウント時の書き出しが持っていっている
+        if (unmountedRef.current) return;
+      }
+      unsavedRef.current = false;
       try {
         const saved = await handleSaveRef.current();
         if (saved === false) unsavedRef.current = true;

@@ -1685,9 +1685,22 @@ handles content addressed by hash for the Library / Fork features
 
 Editors (the main editor and the side peek) autosave three seconds after
 the last keystroke. Anything typed inside that window has to be written out
-when the editor goes away, and every such write goes through one per-note
-queue (`src/lib/peek-save-queue.ts`) so that two writes to the same note
-never overtake each other.
+when the editor goes away. Two mechanisms keep writes to the same note in
+order:
+
+- A **per-note queue** (`src/lib/peek-save-queue.ts`) carries every save of
+  the side peek and every flush of the main editor (unmount, "open the same
+  note elsewhere", quit, hidden tab).
+- The main editor's regular autosave does **not** go through that queue. It
+  is ordered inside the editor instead (`src/hooks/use-auto-save.ts`): the
+  editor counts its writes in progress, including its own flushes while it
+  stays open, and an autosave starts only after the earlier ones have
+  finished. A flush in turn waits for the autosaves in progress.
+
+What is not ordered: a regular autosave of the main editor against a save
+of a side peek that has the same note open at the same time. Quitting
+handles that case (the peek waits for the main editor's write); ordinary
+editing in both at once does not.
 
 | When the editor goes away | What writes the edits | Guaranteed? |
 |---|---|---|

@@ -3305,6 +3305,7 @@ function NoteEditorInner({
   // ready が false（StrictMode の試しのアンマウント）なら何も書かない。
   // onFailed: 書けなかったとき（開いたままなら未保存に戻す）
   // onWritten: 書けたとき（開いたままなら「未保存」の表示を下ろす）
+  // 戻り値は書き込みが終わったら解決する Promise（失敗でも reject しない）
   const flushPending = useCallback((ready: Promise<boolean>, onFailed?: () => void, onWritten?: (doc: GraphiumDocument) => void) => {
     const target = saveTargetRef.current!;
     // 削除した・保存先が切り替わった・同じノートを外の更新で作り直した、なら書かない（fm）
@@ -3313,7 +3314,7 @@ function NoteEditorInner({
     const sharedRef = sharedRefState;
     const prevTitle = lastSavedTitleRef.current;
     const rawId = fileId;
-    void queuePeekSave(target.key ?? rawId ?? `new:${target.session}`, captured, async () => {
+    return queuePeekSave(target.key ?? rawId ?? `new:${target.session}`, captured, async () => {
       if (!(await ready)) return captured;
       const finished = await finishDocument(captured);
       const doc: GraphiumDocument = sharedRef ? { ...finished, sharedRef } : finished;
@@ -3366,15 +3367,21 @@ function NoteEditorInner({
         const ready = takeUnsaved();
         // 書けたら表示を「保存済み」に戻す（書く間に打った分があれば未保存のまま）
         if (ready) {
-          flushPendingRef.current(ready, restoreUnsaved, (doc) => {
+          const write = flushPendingRef.current(ready, restoreUnsaved, (doc) => {
             if (!hasUnsaved()) setDirty(false);
             // ふだんの保存と同じく、刻んだ来歴を History パネルに反映する
             if (doc.documentProvenance) setCurrentProvenance(doc.documentProvenance);
           });
+          // 開いたままの書き出しは「書き込み中」に数える。この後の自動保存はこれが終わってから
+          // 書く（useAutoSave）。ふだんの自動保存はノートごとの列に並ばないので、数えないと
+          // 遅い保存先でこの書き込みが後から届き、新しい本文を古い本文で上書きする。
+          // アンマウント時の書き出しは数えない（ready が自分自身を待って止まる。外れた後に
+          // 自動保存は走らない）
+          if (write) void trackSave(write);
         }
       },
     });
-  }, [hasUnsaved, takeUnsaved, restoreUnsaved, pendingSaves, setDirty]);
+  }, [hasUnsaved, takeUnsaved, restoreUnsaved, pendingSaves, setDirty, trackSave]);
   markDirtyRef.current = markDirty;
   saveNowRef.current = saveNow;
   // サイドピークが保存できなかった編集を持ち込んで開いた。その編集はどこにも保存されて

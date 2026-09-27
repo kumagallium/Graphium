@@ -329,16 +329,24 @@ describe("StrictMode のエディタ（useAutoSave + 登録口）", () => {
     apiRef,
     order,
     saveHold,
+    flushHold,
+    store,
   }: {
     noteId: string;
     apiRef: { current: ReturnType<typeof useAutoSave> | null };
     order: string[];
     saveHold?: Promise<void>;
+    /** 開いたままの書き出しの書き込みを止める（遅い保存先） */
+    flushHold?: Promise<void>;
+    /** 本文と、保存先に最後に届いた内容 */
+    store?: { text: string; disk: string };
   }) {
     const api = useAutoSave(
       async () => {
+        const text = store?.text;
         order.push("autosave-start");
         if (saveHold) await saveHold;
+        if (store && text !== undefined) store.disk = text;
         order.push("autosave-end");
         return true;
       },
@@ -355,10 +363,16 @@ describe("StrictMode のエディタ（useAutoSave + 登録口）", () => {
           flush: () => {
             const ready = apiLive.current.takeUnsaved();
             if (!ready) return;
-            void queuePeekSave(noteId, makeDoc(noteId), async () => {
-              if (!(await ready)) return;
-              order.push("exit-write");
-            });
+            const text = store?.text; // 本文は同期で読む
+            void apiLive.current.trackSave(
+              queuePeekSave(noteId, makeDoc(noteId), async () => {
+                if (!(await ready)) return;
+                order.push("exit-write");
+                if (flushHold) await flushHold;
+                if (store && text !== undefined) store.disk = text;
+                if (flushHold) order.push("exit-write-end");
+              }),
+            );
           },
         }),
       [noteId],
@@ -432,6 +446,88 @@ describe("StrictMode のエディタ（useAutoSave + 登録口）", () => {
     });
     expect(order).toEqual(["autosave-start", "autosave-end", "exit-write", "stop-sidecar", "ack"]);
     unmount();
+  });
+
+  it("開いたままの書き出しが書き込み中に打った分の自動保存は、その書き込みが終わってから書く（古い本文が後から届いて残らない）", async () => {
+    const order: string[] = [];
+    const hold = deferred();
+    const store = { text: "A", disk: "" };
+    const apiRef: { current: ReturnType<typeof useAutoSave> | null } = { current: null };
+    cleanups.push(installPageExitFlush({ confirmWhenUnsaved: false }));
+    const { unmount } = render(
+      <StrictMode>
+        <Editor noteId="strict-hidden" apiRef={apiRef} order={order} flushHold={hold.promise} store={store} />
+      </StrictMode>,
+    );
+    await act(async () => {
+      apiRef.current!.markDirty();
+    });
+    // タブを隠す → 書き出しが A を書き始め、遅い保存先で止まる
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(order).toEqual(["exit-write"]);
+
+    // すぐ戻って打つ → 3 秒後の自動保存
+    await act(async () => {
+      store.text = "B";
+      apiRef.current!.markDirty();
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    // A の書き込みが終わるまで、B は書き始めない
+    expect(order).toEqual(["exit-write"]);
+
+    await act(async () => {
+      hold.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(order).toEqual(["exit-write", "exit-write-end", "autosave-start", "autosave-end"]);
+    expect(store.disk).toBe("B");
+    expect(apiRef.current!.hasUnsaved()).toBe(false);
+    unmount();
+  });
+
+  it("自動保存が前の書き込みを待つ間にアンマウントされたら、その自動保存は書かず、書き出しに任せる", async () => {
+    const order: string[] = [];
+    const hold = deferred();
+    const flushed: string[] = [];
+    let api!: ReturnType<typeof useAutoSave>;
+    function Probe() {
+      api = useAutoSave(
+        () => {
+          order.push("autosave");
+          return true;
+        },
+        (ready) => {
+          void ready.then((ok) => {
+            if (ok) flushed.push("unmount-flush");
+          });
+        },
+      );
+      return null;
+    }
+    const { unmount } = render(
+      <StrictMode>
+        <Probe />
+      </StrictMode>,
+    );
+    await act(async () => {
+      void api.trackSave(hold.promise); // 先に始まった書き込み
+      api.markDirty();
+      api.saveNow(); // 前の書き込みを待つ
+    });
+    expect(order).toEqual([]);
+    await act(async () => {
+      unmount();
+    });
+    await act(async () => {
+      hold.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // 外されたエディタの本文を読む保存は走らない。未保存はアンマウント時の書き出しが持っていく
+    expect(order).toEqual([]);
+    expect(flushed).toEqual(["unmount-flush"]);
   });
 
   it("未保存は無いが書き込み中の保存があれば、終わるのを待ってから ACK を返す", async () => {

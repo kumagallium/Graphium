@@ -118,7 +118,8 @@ export type PageExitFlushOptions = {
 export function installPageExitFlush(options: PageExitFlushOptions): () => void {
   const start = () => {
     try {
-      void flushAllEditorSaves();
+      // 今ある未保存を 1 回だけ。ページが残ったら、その後に打った分は自動保存が書く
+      void flushAllEditorSaves({ once: true });
     } catch (e) {
       console.error("[exit] 未保存の書き出しを始められませんでした", e);
     }
