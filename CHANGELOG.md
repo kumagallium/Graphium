@@ -1,5 +1,29 @@
 # Changelog
 
+## [v0.83.1](https://github.com/kumagallium/Graphium/compare/v0.83.0...v0.83.1) - 2026-09-27
+
+- fix(bench): stop the adversarial probes from posting the same result on every PR by @kumagallium in https://github.com/kumagallium/Graphium/pull/1046
+- fix(side-peek): keep peek edits when the same note opens in the main editor by @kumagallium in https://github.com/kumagallium/Graphium/pull/1047
+- fix(side-peek): record the derived-from link when @-mentioning a note outside a table by @kumagallium in https://github.com/kumagallium/Graphium/pull/1049
+- fix(editor): keep the main editor's last edits when switching notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1051
+- fix(knowledge): keep superscript, subscript and formulas in the text the AI reads and writes back by @kumagallium in https://github.com/kumagallium/Graphium/pull/1052
+- chore: remove the unused build:server script and tsconfig.server.json by @kumagallium in https://github.com/kumagallium/Graphium/pull/1054
+- Record the derived-from link when pasting a note link in the side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1053
+- fix(search): read links and formulas as text in Wiki search, note outlines and topic statements by @kumagallium in https://github.com/kumagallium/Graphium/pull/1055
+- Search every note and material from the @ menu, not just the newest by @kumagallium in https://github.com/kumagallium/Graphium/pull/1050
+- fix(knowledge): read step contents, nested blocks and tables in the text the AI reads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1058
+- Keep @ links when copying and pasting mentions by @kumagallium in https://github.com/kumagallium/Graphium/pull/1056
+- fix(math): keep a superscript [1] a superscript when Markdown and AI replies are read back by @kumagallium in https://github.com/kumagallium/Graphium/pull/1059
+- fix(search): read tables in the Wiki section text that search and embeddings use by @kumagallium in https://github.com/kumagallium/Graphium/pull/1060
+- [docs] Fix stale references in the knowledge-layer docs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1061
+- fix(mcp): read formulas, superscript and subscript back in create_note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1057
+- fix(skill): keep links, formulas and superscripts in the skill prompt the AI reads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1063
+- fix(mcp): index notes written by create_note / save_answer from the saved document by @kumagallium in https://github.com/kumagallium/Graphium/pull/1065
+- fix(mcp): keep a formula from reaching across a `<sup>`/`<sub>` tag in create_note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1064
+- fix(mcp): keep notes and answer pages written by create_note / save_answer searchable before the app lists them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1066
+- fix(knowledge): end an empty note as "Not enough content" with Claims on, not a raw server error by @kumagallium in https://github.com/kumagallium/Graphium/pull/1062
+- fix(knowledge): end a URL with no readable text as "Not enough content" with Claims on, not a raw server error by @kumagallium in https://github.com/kumagallium/Graphium/pull/1068
+
 ## [v0.83.0](https://github.com/kumagallium/Graphium/compare/v0.82.1...v0.83.0) - 2026-09-25
 
 - fix(side-peek): offer the chart block in the side peek's slash menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1027

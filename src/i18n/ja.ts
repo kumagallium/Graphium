@@ -2286,7 +2286,6 @@ export const ja: Record<string, string> = {
   "ingest.provFailed": "PROV 構造を生成できませんでした",
   "ingest.skippedWikiNotes": "ナレッジはスキップしました（{count} 件）",
   "ingest.skippedUnchangedNotes": "取り込み済みで変わっていない {count} 件は外しました",
-  "ingest.enterUrl": "URL を入力してください:",
   "ingest.pdfNoText": "PDF から十分なテキストを抽出できませんでした（スキャン PDF など？）",
   "ingest.docxNoText": "Word から十分なテキストを抽出できませんでした",
   "ingest.noSources": "ソースが 1 件もありません",

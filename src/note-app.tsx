@@ -689,7 +689,6 @@ function NoteHeaderMenu({
   onDeriveWholeNote,
   deriveDisabled,
   onIngestToWiki,
-  onIngestFromUrl,
   ingestDisabled,
   isWikiDoc,
   inKnowledge,
@@ -730,7 +729,6 @@ function NoteHeaderMenu({
   onDeriveWholeNote?: () => void;
   deriveDisabled?: boolean;
   onIngestToWiki?: () => void;
-  onIngestFromUrl?: () => void;
   ingestDisabled?: boolean;
   isWikiDoc?: boolean;
   /** このノートが既に Knowledge 化されているか（true なら Add の代わりに「Already in Knowledge」を表示） */
@@ -1165,8 +1163,6 @@ type NoteEditorProps = {
   onEditorRef?: (editor: any) => void;
   /** Knowledge に追加コールバック */
   onIngestToWiki?: () => void;
-  /** URL から Knowledge コールバック */
-  onIngestFromUrl?: () => void;
   /** ノート全体を派生コールバック（ヘッダーメニューから呼ばれる） */
   onDeriveWholeNote?: () => void;
   /** 手動で残した版を下敷きに新ノートを派生する（履歴パネルの版行から呼ばれる） */
@@ -1467,6 +1463,7 @@ async function applyAtomDiscoveryResults(opts: {
   atoms: import("./features/wiki/wiki-service").AtomCandidate[];
   existingAtomDocIds: Set<string>;
   language: string;
+  /** 作る洞察に記録するモデル名（atomize が返したモデル ID）。記録専用で、重複判定の body.model には使わない */
   model: string | null;
   atomLabel: string;
   loadDoc: (key: string) => Promise<GraphiumDocument | null>;
@@ -1482,6 +1479,9 @@ async function applyAtomDiscoveryResults(opts: {
 }): Promise<{ created: number; reinforced: number; contradictions: number; createdTitles: string[] }> {
   const { kept, duplicates } = await partitionCandidatesByEmbedding(opts.atoms, opts.existingAtomDocIds);
 
+  // 判定のモデルは渡さない — judgeAtomDuplicates が atomize と同じ設定の洞察モデル（表示名）を送る。
+  // opts.model（モデル ID）を送ると、ヘッダーの無いデスクトップ版では表示名とモデル ID が
+  // 違うモデルで判定が断られ、重複の候補がすべて「別物」として新しい洞察になっていた。
   const resolved = await resolveAtomDuplicates(
     duplicates,
     async (docId) => {
@@ -1490,7 +1490,6 @@ async function applyAtomDiscoveryResults(opts: {
       return { title: doc.title, body: extractBodyPreview(doc, 2000) };
     },
     opts.language,
-    { model: opts.model ?? undefined },
   );
 
   const reinforced = await applyAtomReinforcement({
@@ -1627,7 +1626,6 @@ function NoteEditorInner({
   onDeleteNoteMemo,
   onEditorRef,
   onIngestToWiki,
-  onIngestFromUrl,
   onDeriveWholeNote,
   onDeriveSnapshot,
   onRestoreSnapshot,
@@ -5856,7 +5854,6 @@ function NoteEditorInner({
           onExportProvJsonLd={handleExportProvJsonLd}
           provExportDisabled={!provDoc || provDoc["@graph"].length === 0}
           onIngestToWiki={onIngestToWiki}
-          onIngestFromUrl={onIngestFromUrl}
           ingestDisabled={!fileId || saving}
           onDeriveWholeNote={onDeriveWholeNote && !isWikiDoc ? onDeriveWholeNote : undefined}
           deriveDisabled={!fileId || saving || derivingDisabled}
@@ -9540,13 +9537,17 @@ export function NoteApp() {
 
         // トピックは知見の有無に関係なく資料そのものから作る（Karpathy 方式）。
         // 資料本文は取り込みで既に持っている job.doc をそのまま使う（再取得しない）。
+        // result.model は取り込みが返したモデル ID で、トピックへの記録にだけ使う。
+        // 振り分け・改訂は取り込みと同じ設定の既定モデル（表示名）で走る — モデル ID を
+        // body.model に送ると、ヘッダーの無いデスクトップ版では表示名とモデル ID が違う
+        // モデルをサーバーが引けずに断る。
         const sourceText = extractPlainTextFromDoc(job.doc);
         if (sourceText.trim()) {
           sourcesForTopicStage.push({
             id: job.noteId,
             title: job.doc.title || job.noteTitle || job.noteId,
             text: sourceText,
-            model: result.model ?? undefined,
+            generatedByModel: result.model ?? undefined,
           });
         }
 
@@ -10081,7 +10082,7 @@ export function NoteApp() {
           let topicsTouched = 0;
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
@@ -10132,7 +10133,7 @@ export function NoteApp() {
           let topicsTouched = 0;
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
@@ -10186,7 +10187,7 @@ export function NoteApp() {
           let topicsTouched = 0;
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
@@ -10608,7 +10609,7 @@ export function NoteApp() {
         let topicsTouched = 0;
         if (result.sourceText.trim()) {
           const topicResult = await runSourceTopicStageForNoteApp([{
-            id: jobId, title: `Chat: ${chatTitle}`, text: result.sourceText, model: result.model ?? undefined,
+            id: jobId, title: `Chat: ${chatTitle}`, text: result.sourceText, generatedByModel: result.model ?? undefined,
           }]);
           topicsTouched = topicResult.created + topicResult.updated;
           const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
@@ -13100,65 +13101,6 @@ export function NoteApp() {
             onIngestToWiki={aiUiEnabled && fm.activeDoc?.source !== "ai" ? () => {
               if (!fm.activeFileId || !fm.activeDoc) return;
               enqueueIngest(fm.activeFileId, fm.activeDoc.title, fm.activeDoc);
-            } : undefined}
-            onIngestFromUrl={aiUiEnabled ? () => {
-              // AI 未設定なら URL 入力の前に止める（トースト + 設定 AI タブ導線はヘルパー側）
-              if (!ensureAgentConfigured()) return;
-              const url = prompt(tStatic("ingest.enterUrl"));
-              if (!url) return;
-              // toast の追跡には一意な ID、wiki の sourceNoteId には URL ベースの安定 ID
-              // を使い分ける。後者で逆引きが効くようにする。
-              const jobId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
-              const sourceNoteId = `url:${url}`;
-              const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: url };
-              ingestQueueRef.current.push({ noteId: jobId, noteTitle: url, doc: null as any });
-              setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-              // キュー処理とは別に直接実行（doc が null なので通常のキュー処理は使えない）
-              (async () => {
-                setIngestToast((prev) => ({
-                  items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i),
-                }));
-                try {
-                  const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-                  const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-                  const result = await ingestFromUrl(url, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
-                  // 本文も説明文も取れないページは知見の ON/OFF に関係なくここで「内容不足」になる
-                  // （ingestFromUrl は送る本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
-                  if (result.wikis.length === 0 && !result.sourceText.trim()) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-                    ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
-                    return;
-                  }
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
-                  for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-                    if (!wikiDoc) continue; // summary は新規生成を停止済み
-                    const newId = await fm.handleCreateWikiFile(wikiDoc);
-                    embedWikiSections(newId, wikiDoc).catch(() => {});
-                  }
-                  let topicDetail = "";
-                  let topicsTouched = 0;
-                  if (result.sourceText.trim()) {
-                    const topicResult = await runSourceTopicStageForNoteApp([{
-                      id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
-                    }]);
-                    topicsTouched = topicResult.created + topicResult.updated;
-                    const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
-                    topicDetail = ` · ${detail}`;
-                    pushSourceCheckPrompt(unchecked);
-                  }
-                  if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-                    ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
-                    return;
-                  }
-                  const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${wikiText}${topicDetail}` } : i) }));
-                } catch (err) {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-                }
-                ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
-              })();
             } : undefined}
             onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
             provWikiEntities={provWikiEntities}
