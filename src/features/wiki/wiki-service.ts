@@ -49,7 +49,13 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
  * これを送らないとサーバー側 resolveModelConfig が `models[0]` にフォールバックする
  * （Web モードはヘッダー優先のため body.model は無視されるが、付けても害は無い）。
  *
- * - "default":       Default モデル（ingest / lint / rewrite / cross-update / URL→PROV）
+ * body.model はモデルの表示名（設定で選ぶ名前）で、サーバーは表示名で登録モデルを引く。
+ * API の応答が返す `model` はモデル ID（generatedBy.model に記録するラベル）なので、
+ * 次の呼び出しの body.model に回してはいけない — 表示名とモデル ID が違うモデルでは
+ * サーバーが引けず「モデル未登録」（NO_MODEL_REGISTERED）で断る。
+ *
+ * - "default":       Default モデル（ingest / lint / rewrite / cross-update / URL→PROV /
+ *                    トピックの振り分け・改訂・見取り図・本文統合）
  * - "chatSynthesis": Chat モデル（未設定時は Default）
  * - "insight":       洞察用モデル（未設定時は Chat → Default）
  * - "embedding":     Embedding 用途は body.embedding_model を別途使うので空
@@ -367,6 +373,8 @@ export async function rewriteAndMerge(
   existingDoc: GraphiumDocument,
   ingesterOutput: IngesterOutput,
   sourceNoteId: string,
+  /** 統合後のページの generatedBy.model に記録するモデル名（取り込みが返したモデル ID）。
+   *  記録専用で rewrite の body.model には使わない — 書き直しは取り込みと同じ設定の既定モデルで走る */
   model: string | null,
   /** 言語オーバーライド（既存 Wiki の wikiMeta.language が未設定の場合に使う） */
   language?: string,
@@ -401,7 +409,7 @@ export async function rewriteAndMerge(
         newSections,
         editedSectionHeadings,
         language: existingDoc.wikiMeta?.language ?? language ?? "en",
-        ...(model ? { model } : wikiBodyModel()),
+        ...wikiBodyModel(),
         ...(skills && skills.length > 0 ? { skills } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
@@ -2755,6 +2763,7 @@ export function rebuildSourceTopicDocument(
 export async function surveySourceForWindows(
   source: { title: string; text: string },
   language: string,
+  /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
   model?: string,
   signal?: AbortSignal,
 ): Promise<string | null> {
@@ -2764,7 +2773,7 @@ export async function surveySourceForWindows(
       headers: wikiHeaders(),
       body: JSON.stringify({
         title: source.title, text: source.text, language,
-        ...(model ? { model } : {}),
+        ...(model ? { model } : wikiBodyModel()),
       }),
       ...(signal ? { signal } : {}),
     });
@@ -2798,6 +2807,7 @@ export async function routeTopicsForSource(
   source: TopicRouteSource,
   existingTopics: TopicRouteExistingRef[],
   language: string,
+  /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
   model?: string,
   signal?: AbortSignal,
   knowledgeSchema?: string,
@@ -2805,7 +2815,7 @@ export async function routeTopicsForSource(
   const res = await fetch(`${API_BASE}/route-topics`, {
     method: "POST",
     headers: wikiHeaders(),
-    body: JSON.stringify({ language, source, existingTopics, ...(model ? { model } : {}), ...(knowledgeSchema ? { knowledgeSchema } : {}) }),
+    body: JSON.stringify({ language, source, existingTopics, ...(model ? { model } : wikiBodyModel()), ...(knowledgeSchema ? { knowledgeSchema } : {}) }),
     ...(signal ? { signal } : {}),
   });
   if (!res.ok) {
@@ -2828,6 +2838,7 @@ export async function reviseTopicFromSource(
   currentBody: string,
   source: { id: string; title: string; text: string },
   language: string,
+  /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
   model?: string,
   /** この資料が以前の版から既に [[source:<id>]] で引用済みか（サーバーに見直し指示を出させる） */
   previouslyCited?: boolean,
@@ -2842,7 +2853,7 @@ export async function reviseTopicFromSource(
       headers: wikiHeaders(),
       body: JSON.stringify({
         title, language, currentBody, source,
-        ...(model ? { model } : {}),
+        ...(model ? { model } : wikiBodyModel()),
         ...(previouslyCited ? { previouslyCited } : {}),
         ...(isAnswer ? { isAnswer } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
@@ -2871,6 +2882,7 @@ export async function mergeTopicBodies(
   title: string,
   bodies: string[],
   language: string,
+  /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
   model?: string,
   knowledgeSchema?: string,
 ): Promise<string | null> {
@@ -2883,7 +2895,7 @@ export async function mergeTopicBodies(
         title,
         language,
         bodies,
-        ...(model ? { model } : {}),
+        ...(model ? { model } : wikiBodyModel()),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
     });

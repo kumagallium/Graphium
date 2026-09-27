@@ -53,4 +53,11 @@ describe("resolveModelConfig — silent fallback の解消", () => {
     const cfg = resolveModelConfig(fakeCtx());
     expect(cfg?.name).toBe("claude-opus-4-7");
   });
+
+  it("modelName は表示名で引く。モデル ID（応答の model）を渡しても引けない", () => {
+    // 呼び出し側は設定の表示名を送る約束。応答が返すモデル ID（"default"）を次の要求に
+    // 回すと、表示名とモデル ID が違うモデルではここで引けずに「モデル未登録」になる。
+    expect(resolveModelConfig(fakeCtx(), { modelName: "default" })).toBeUndefined();
+    expect(resolveModelConfig(fakeCtx(), { modelName: "Copilot-default" })?.modelId).toBe("default");
+  });
 });

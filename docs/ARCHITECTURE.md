@@ -1027,6 +1027,30 @@ Notes:
   (`POST /api/wiki/route-topics`), revision (`POST /api/wiki/revise-topic`),
   and the Topic Merger (`POST /api/wiki/merge-topics`) keep using the
   default model.
+- **The Topic stage runs on the model the ingest ran on.** Knowledge
+  requests name their model by its display name from Settings → AI, sent
+  as `body.model` (`wikiBodyModel` in `wiki-service.ts`). The desktop app
+  sends no `X-LLM-API-Key` header (the web build's way of passing the
+  model's settings), so that name is all the server has to go on:
+  `resolveModelConfig` (`src/server/services/header-model.ts`) looks it up
+  among the registered models and answers `NO_MODEL_REGISTERED` rather
+  than fall back to another model when none has that name. The `model` a
+  response returns is the provider's model id, which the client records
+  (`generatedBy.model`) and never sends back as a name. So the Topic stage
+  takes the ingest's model id only as the label it writes
+  (`SourceTopicStageInput.generatedByModel`), and routing, revision and the
+  survey ask for the default model whether Claims are on or off. The Topic
+  calls in `wiki-service.ts` (`routeTopicsForSource`,
+  `reviseTopicFromSource`, `surveySourceForWindows`, `mergeTopicBodies`)
+  name the default model whenever their caller names none, which also
+  covers a Topic merge picked from the list, banner or Lint and a
+  Regenerate with no model chosen. The Claim-merge rewrite
+  (`rewriteAndMerge`) and the Insight duplicate judge
+  (`judgeAtomDuplicates`) name their model from Settings the same way.
+  (Changed 2026-09-27: the id used to go back as the name, so on desktop a
+  model whose display name differs from its id failed every Topic routing
+  with Claims on, and with Claims off the Topic stage named no model and
+  ran on the first registered one.)
 - **"Rebuild from sources" is human-initiated, never automatic.** Beyond the
   incremental per-source revision above, a Topic page can also be rebuilt
   from scratch from its full source list (`rebuildTopicFromSources`,
