@@ -1463,6 +1463,7 @@ async function applyAtomDiscoveryResults(opts: {
   atoms: import("./features/wiki/wiki-service").AtomCandidate[];
   existingAtomDocIds: Set<string>;
   language: string;
+  /** 作る洞察に記録するモデル名（atomize が返したモデル ID）。記録専用で、重複判定の body.model には使わない */
   model: string | null;
   atomLabel: string;
   loadDoc: (key: string) => Promise<GraphiumDocument | null>;
@@ -1478,6 +1479,9 @@ async function applyAtomDiscoveryResults(opts: {
 }): Promise<{ created: number; reinforced: number; contradictions: number; createdTitles: string[] }> {
   const { kept, duplicates } = await partitionCandidatesByEmbedding(opts.atoms, opts.existingAtomDocIds);
 
+  // 判定のモデルは渡さない — judgeAtomDuplicates が atomize と同じ設定の洞察モデル（表示名）を送る。
+  // opts.model（モデル ID）を送ると、ヘッダーの無いデスクトップ版では表示名とモデル ID が
+  // 違うモデルで判定が断られ、重複の候補がすべて「別物」として新しい洞察になっていた。
   const resolved = await resolveAtomDuplicates(
     duplicates,
     async (docId) => {
@@ -1486,7 +1490,6 @@ async function applyAtomDiscoveryResults(opts: {
       return { title: doc.title, body: extractBodyPreview(doc, 2000) };
     },
     opts.language,
-    { model: opts.model ?? undefined },
   );
 
   const reinforced = await applyAtomReinforcement({
@@ -9510,13 +9513,17 @@ export function NoteApp() {
 
         // トピックは知見の有無に関係なく資料そのものから作る（Karpathy 方式）。
         // 資料本文は取り込みで既に持っている job.doc をそのまま使う（再取得しない）。
+        // result.model は取り込みが返したモデル ID で、トピックへの記録にだけ使う。
+        // 振り分け・改訂は取り込みと同じ設定の既定モデル（表示名）で走る — モデル ID を
+        // body.model に送ると、ヘッダーの無いデスクトップ版では表示名とモデル ID が違う
+        // モデルをサーバーが引けずに断る。
         const sourceText = extractPlainTextFromDoc(job.doc);
         if (sourceText.trim()) {
           sourcesForTopicStage.push({
             id: job.noteId,
             title: job.doc.title || job.noteTitle || job.noteId,
             text: sourceText,
-            model: result.model ?? undefined,
+            generatedByModel: result.model ?? undefined,
           });
         }
 
@@ -10051,7 +10058,7 @@ export function NoteApp() {
           let topicsTouched = 0;
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
@@ -10102,7 +10109,7 @@ export function NoteApp() {
           let topicsTouched = 0;
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
@@ -10156,7 +10163,7 @@ export function NoteApp() {
           let topicsTouched = 0;
           if (result.sourceText.trim()) {
             const topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, model: result.model ?? undefined,
+              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
             const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
@@ -10578,7 +10585,7 @@ export function NoteApp() {
         let topicsTouched = 0;
         if (result.sourceText.trim()) {
           const topicResult = await runSourceTopicStageForNoteApp([{
-            id: jobId, title: `Chat: ${chatTitle}`, text: result.sourceText, model: result.model ?? undefined,
+            id: jobId, title: `Chat: ${chatTitle}`, text: result.sourceText, generatedByModel: result.model ?? undefined,
           }]);
           topicsTouched = topicResult.created + topicResult.updated;
           const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
