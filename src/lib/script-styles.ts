@@ -145,7 +145,8 @@ const SCRIPT_TAG_IN_LINE = /(<(sup|sub)(?:\s[^<>]*)?>)((?:(?!<\/?(?:sup|sub)\b)[
  */
 export function guardScriptTagEscapes(markdown: string): { text: string; restore: (text: string) => string } {
   const unchanged = { text: markdown, restore: (text: string) => text };
-  // 目印の文字がもともと本文にあると、restore で一緒に消してしまうので何もしない
+  // 目印の文字がもともと本文にあると restore で一緒に消してしまうので、そのときは何もしない
+  // （タグの中も従来どおりの読み方に戻る。非文字なので、ふつうの本文やコピーした文章には現れない）
   if (!/<su[pb]\b/i.test(markdown) || markdown.includes(DELIMITER_GUARD)) return unchanged;
   const text = markdown.replace(
     SCRIPT_TAG_IN_LINE,
