@@ -1163,8 +1163,8 @@ tells the reviser to re-check previously-cited claims against the
 updated text (a `previouslyCited` flag passed to `revise-topic`).
 
 `buildSourceBackedWikiDocument` / `rebuildSourceBackedWikiDocument`
-(`wiki-service.ts`) assemble the new format the same way
-`buildTopicDocument` / `rebuildTopicDocument` assemble the legacy one:
+(`wiki-service.ts`) assemble the new format the same way the legacy
+`buildTopicDocument` / `rebuildTopicDocument` (removed 2026-09-17) did:
 convert the Markdown into blocks, resolve `[[source:<id>]]` citations,
 and append a References section listing every cited resource as an
 `@` link. Before saving, `stripEmptyMarkdownSections` mechanically
@@ -1817,7 +1817,7 @@ type SourceCheckProfile = {
   (§3.7). A re-run of source check replaces the whole profile, dropping
   the flag.
 - **Body-rewriting operations drop it.** `mergeIntoWikiDocument`,
-  `rewriteAndMerge`, and `rebuildTopicDocument`
+  `rewriteAndMerge`, and `rebuildSourceBackedWikiDocument`
   (`src/features/wiki/wiki-service.ts`) all rewrite `pages[0].blocks`, so
   each calls `attachSourceCheck(doc, undefined)` to drop a stale
   `sourceCheck` rather than let an outdated judgment survive a body it no
