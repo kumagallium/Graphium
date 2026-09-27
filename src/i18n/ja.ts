@@ -1389,6 +1389,7 @@ export const ja: Record<string, string> = {
   "wikiList.mergeConfirmOk": "統合",
   "wikiList.merging": "統合中…",
   "wikiList.mergeDone": "統合: {kept} に {count} 件をまとめました",
+  "wikiList.mergeFailed": "統合できませんでした。本文をまとめられなかったので、選んだトピックはそのまま残しています",
   "wikiList.deleteConfirmTitleSingle": "ナレッジをゴミ箱に移動しますか？",
   "wikiList.deleteConfirmTitleMulti": "{count} 件のナレッジをゴミ箱に移動しますか？",
   "wikiList.deleteConfirmMessage": "ゴミ箱からいつでも復元できます。完全削除はゴミ箱から行えます。",

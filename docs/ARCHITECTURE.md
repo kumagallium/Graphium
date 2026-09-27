@@ -999,7 +999,19 @@ Notes:
   existing citations verbatim; if **any side is old-format**, `applyTopicMerges`
   collects the full set of source ids instead (via member Claims for
   old-format sides) and rebuilds the target from scratch through
-  `rebuildTopicFromSources`, migrating it to new-format in the process. The
+  `rebuildTopicFromSources`, migrating it to new-format in the process. If the
+  Topic Merger call fails when every side is new-format, nothing is
+  soft-deleted: the absorbed body has not reached the target yet, so both
+  pages stay as they were and the merge is counted as failed (the toast says
+  so, and Lint keeps the issue open). When any side is old-format, a failed
+  rebuild still soft-deletes every absorbed Topic in the group, as before:
+  the old-format ones' member Claims were already retargeted, but a
+  new-format Topic merged in the same group goes to the trash with its body
+  in neither page (it stays restorable from the trash). Every caller
+  passes the saved Knowledge Schema
+  (`ConsolidateExistingTopicsDeps.knowledgeSchema` is required), since
+  `merge-topics`, `consolidate-topics` and `revise-topic` refuse a request
+  without it. The
   four entry points: (1) **Topic banner** — a "similar topics" chip appears
   only when a local check finds a candidate (normalized-title match, or
   embedding similarity > 0.9 when an embedding model is configured); no LLM
