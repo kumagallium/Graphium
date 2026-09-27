@@ -822,8 +822,7 @@ sequenceDiagram
     participant TR as Topic router / reviser
     participant FS as Wiki files (JSON)
 
-    E->>W: note saved (worthy?)
-    W->>W: wiki-worthy.ts gate
+    E->>W: Add to Knowledge (note queued)
     W->>S: POST /api/wiki/ingest
     S->>I: run
     I->>FS: read existing wiki pages
@@ -831,7 +830,7 @@ sequenceDiagram
     A->>FS: write Insight / Claim pages
     A->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
-    S-->>W: ingest result (Claims; source text already in hand)
+    S-->>W: ingest result (Claims — source text already in hand)
     opt source spans more than one window
         W->>S: POST /api/wiki/survey-source (first window only)
         S->>TR: run
@@ -860,10 +859,33 @@ sequenceDiagram
 
 Notes:
 
-- **Trigger:** the client pushes a save event into `wiki-service.ingestNote()`,
-  which posts to the server. There is no server-side file watcher.
-- **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
-  note is ingest-worthy at all (e.g., empty drafts are skipped).
+- **Trigger:** a note is ingested only when the user asks —
+  **Add to Knowledge** on one note, the note list's multi-select or the
+  intake's completion screen for many, or turning memos into Knowledge.
+  Each note is queued (`enqueueIngest`) and `processIngestQueue` calls
+  `wiki-service.ingestNote()`, which posts to the server when Claims are
+  on (otherwise the queue goes straight to the Topic stage, as above).
+  Saving a note does not trigger ingest, and there is no server-side
+  file watcher.
+- **No worthiness gate.** Nothing judges up front whether a note is worth
+  ingesting: there is no content heuristic, and an empty note is not
+  skipped before the call. What `note-app.tsx` does leave out:
+  AI-derived pages (`source: "ai"`), which the single-note entry points
+  (**Add to Knowledge**) skip and bulk ingest (`ingestNoteIds`, behind
+  the note list's multi-select and the intake's completion screen) drops
+  with a toast; and, in bulk ingest only, a note that has not changed
+  since it was last ingested, also counted in a toast —
+  `lastIngestedAtForSource` in `src/features/wiki/ingest-skip.ts` takes
+  the latest `endedAt` among the edit activities whose `used` lists the
+  note (over its Knowledge pages that are not archived or trashed), and
+  `shouldSkipUnchangedSource` skips the note when its `modifiedAt` is not
+  newer. A single-note Add to Knowledge always re-reads, and a memo turned
+  into Knowledge is skipped only when its text is empty. A note's emptiness
+  is only noticed after the call: `processIngestQueue` ends a note that
+  yields no Claims and no text as "Not enough content"
+  (`ingest.insufficientContent`). With Claims on, an empty note never
+  gets that far — `POST /api/wiki/ingest` rejects its empty
+  `noteContent` with 400, so it ends as an error instead.
 - **What the pipeline reads from a note (changed 2026-09-25).** Ingest
   (`ingestNote`'s `noteContent`), the Topic stage (`sourcesForTopicStage` in
   `note-app.tsx`), regenerating a page from its sources, and source check's
@@ -1388,8 +1410,8 @@ claims, so there is no single source text to hold it against.
   `derivedFromNotes`, unchanged from v1. For a topic
   (`extractTopicStatements` in
   `src/features/source-check/topic-statements.ts`), every body block
-  *before* the `References` heading (`buildTopicReferenceBlocks`, §3.3
-  above) that cites one or more of the topic's `derivedFromClaims`
+  *before* the generated `References` heading (`isGeneratedReferencesHeading`
+  in the same file) that cites one or more of the topic's `derivedFromClaims`
   becomes its own statement — the block's plain text with the citation
   stripped — and its sources are the claims that block cites, addressed
   with a synthetic `claim:<wikiId>` id
@@ -1520,7 +1542,7 @@ claims, so there is no single source text to hold it against.
   `runSourceCheck` treats a degrade as a reason to stop the whole run
   rather than write a wrong verdict.
 - **Body-rewriting stages drop stale results.** `mergeIntoWikiDocument`,
-  `rewriteAndMerge`, and `rebuildTopicDocument`
+  `rewriteAndMerge`, and `rebuildSourceBackedWikiDocument`
   (§3.3 above, `src/features/wiki/wiki-service.ts`) all replace
   `pages[0].blocks`, so each clears any existing `sourceCheck` rather than
   let a judgment outlive the text it was checked against — which also
@@ -1618,15 +1640,15 @@ true" half of a notebook) without contaminating the layers above.
   attaches.
 
 The schema mirror is on `NoteIndexEntry.{rebuttalConditions, backing,
-modalQualifier}` and the on-disk version is now
-`INDEX_SCHEMA_VERSION = 16`.
+modalQualifier}`, added in `INDEX_SCHEMA_VERSION = 16` (the current
+version and its history: [DATA_MODEL.md §5.1](DATA_MODEL.md)).
 
 **Empirical quality control.** The Wiki pipeline's discovery quality is
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
 metrics). Each roadmap phase declares which metrics it must improve;
 `pnpm bench:compare main` is required on every PR that touches the
 ingester / atomizer / linter. See the README's "Knowledge
-Layer benchmark" section and `docs/internal/benchmark.md` for the metric
+Layer benchmark" section and [BENCHMARK.md](BENCHMARK.md) for the metric
 definitions, corpus rationale, and merge rules.
 
 ### 3.4 Storage layer
