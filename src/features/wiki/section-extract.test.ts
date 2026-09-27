@@ -25,6 +25,11 @@ const link = (text: string) => ({
   content: [{ type: "text", text, styles: {} }],
 });
 
+const t = (text: string, styles: Record<string, unknown> = {}) => ({ type: "text", text, styles });
+
+// BlockNote 0.47 からの表のセル
+const cell = (...content: unknown[]) => ({ type: "tableCell", props: {}, content });
+
 describe("extractWikiSections", () => {
   it("リンクは中身の文字にする（[object Object] にしない）", () => {
     const sections = extractWikiSections(
@@ -71,6 +76,53 @@ describe("extractWikiSections", () => {
         },
       ]),
     );
-    expect(sections.map((s) => s.text)).toEqual(["claim: 焼結の知見: 出典 DOI"]);
+    expect(sections.map((s) => s.text)).toEqual(["claim: 焼結の知見: 出典 | DOI"]);
+  });
+
+  it("BlockNote 0.47 のセル（tableCell）の表も読み（リンクは中身の文字）、表の行は / で繋いでセクションの 1 行に収める", () => {
+    const sections = extractWikiSections(
+      "w1",
+      wikiDoc([
+        { id: "h", type: "heading", props: { level: 2 }, content: [t("条件")] },
+        { id: "p1", type: "paragraph", content: [t("焼結条件は次のとおり。")] },
+        {
+          id: "tb",
+          type: "table",
+          content: {
+            type: "tableContent",
+            rows: [
+              { cells: [cell(t("温度")), cell(t("時間")), cell(t("出典"))] },
+              { cells: [cell(t("1200 ℃")), cell(t("2 h")), cell(link("Smith 2020"))] },
+            ],
+          },
+        },
+        { id: "p2", type: "paragraph", content: [t("緻密化した。")] },
+      ]),
+    );
+    expect(sections.map((s) => s.text)).toEqual([
+      "claim: 焼結の知見 > 条件: 焼結条件は次のとおり。 温度 | 時間 | 出典 / 1200 ℃ | 2 h | Smith 2020 緻密化した。",
+    ]);
+  });
+
+  it("表だけのセクションも残す。空のセルしか無い行は出さず、セル内の改行は空白、上付きはタグなし", () => {
+    const sections = extractWikiSections(
+      "w1",
+      wikiDoc([
+        { id: "h", type: "heading", props: { level: 2 }, content: [t("測定値")] },
+        {
+          id: "tb",
+          type: "table",
+          content: {
+            type: "tableContent",
+            rows: [
+              { cells: [cell(t("圧力")), cell(t("相"))] },
+              { cells: [cell(), cell()] },
+              { cells: [cell(t("10"), t("5", { superscript: true }), t(" Pa")), cell(t("α\n相"))] },
+            ],
+          },
+        },
+      ]),
+    );
+    expect(sections).toEqual([{ documentId: "w1", sectionId: "h", text: "claim: 焼結の知見 > 測定値: 圧力 | 相 / 105 Pa | α 相" }]);
   });
 });

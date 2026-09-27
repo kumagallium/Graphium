@@ -124,6 +124,39 @@ export function markScriptTags(markdown: string): string {
   return unmaskCodeRegions(marked, codes);
 }
 
+// タグの中の「\ の直後の [ ] ( )」の間に挟む目印。Unicode の非文字（内部処理用に予約されていて、
+// ふつうの文章には現れない）にする
+const DELIMITER_GUARD = "\uFDEF";
+
+// 1 行の中で閉じている <sup>…</sup> / <sub>…</sub>（入れ子の sup / sub は含まない）。
+// markScriptTags と違って表の区切り | を含むものも対象にする — Wiki の読み戻し
+// （parseInlineCitations）は | を含むタグも上付き・下付きとして読むため
+const SCRIPT_TAG_IN_LINE = /(<(sup|sub)(?:\s[^<>]*)?>)((?:(?!<\/?(?:sup|sub)\b)[^\n])+?)(<\/\2\s*>)/gi;
+
+/**
+ * <sup>…</sup> / <sub>…</sub> の中の \[ \] \( \) を、数式の区切りとして拾われない形にする。
+ * 数式を拾う前（features/math/markdown-math.ts の stashMath）に通し、拾い終わったら restore で戻す。
+ *
+ * タグの中の \ は書き出し側（escapeForScriptTag）のエスケープで、数式の区切りではない。
+ * 上付きの「[1]」は「<sup>\[1\]</sup>」、上付きの「\(」は「<sup>\\(</sup>」と書かれるので、
+ * そのまま拾うと「1」の数式ブロックができ、タグの対も割れて上付きが消える。
+ * \ と区切りの間に目印を 1 文字挟んで拾われないようにする（\ は動かさないので、$ の直前の \ など
+ * 数式の判定のほかの規則は変わらない）。タグの中の $…$ は従来どおり数式として拾われる。
+ */
+export function guardScriptTagEscapes(markdown: string): { text: string; restore: (text: string) => string } {
+  const unchanged = { text: markdown, restore: (text: string) => text };
+  // 目印の文字がもともと本文にあると restore で一緒に消してしまうので、そのときは何もしない
+  // （タグの中も従来どおりの読み方に戻る。非文字なので、ふつうの本文やコピーした文章には現れない）
+  if (!/<su[pb]\b/i.test(markdown) || markdown.includes(DELIMITER_GUARD)) return unchanged;
+  const text = markdown.replace(
+    SCRIPT_TAG_IN_LINE,
+    (_full, open: string, _tag: string, inner: string, close: string) =>
+      `${open}${inner.replace(/\\(?=[[\]()])/g, `\\${DELIMITER_GUARD}`)}${close}`,
+  );
+  if (text === markdown) return unchanged;
+  return { text, restore: (s: string) => s.split(DELIMITER_GUARD).join("") };
+}
+
 /**
  * パース済みブロック配列から目印を取り除き、目印に挟まれたテキストに上付き・下付きを付ける。
  * 目印は markScriptTags が同じ行の中で対にしたものなので、段落・見出し・セルの
