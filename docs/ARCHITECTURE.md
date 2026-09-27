@@ -152,7 +152,9 @@ talks to LLM and embedding backends.
   layer's own reader for model output (`parseInlineCitations` /
   `convertSectionsToBlocks` in `wiki-service.ts`) does not use BlockNote's
   parser, but it detects formulas with the same `stashMath` before looking for
-  anything else, so the two paths agree on what counts as a formula.
+  anything else, so the two paths agree on what counts as a formula. The MCP
+  server's `create_note` has a third, dependency-free converter that applies
+  the same rules (§4.4).
 - Superscript and subscript are boolean text styles (`styles.superscript` /
   `styles.subscript`, rendered as `<sup>` / `<sub>`), so units and chemical
   formulas such as 10⁵ Pa or H₂O can sit in running text without opening the
@@ -176,7 +178,14 @@ talks to LLM and embedding backends.
   through `features/markdown-export/inline-text.ts`, and the knowledge layer's
   reader turns tags and formulas in the model's reply back into styles,
   `inlineMath` and `math` blocks, so a formula survives a round trip through a
-  rewrite. Places where the text is a key rather than something a model reads
+  rewrite. A Skill's prompt is read by a model too: `extractSkillPrompt`
+  (`features/skill/skill-service.ts`) writes a Skill body as Markdown, with bold
+  and code as `**…**` / `` `…` `` and superscript / subscript and formulas
+  through the same `inline-text.ts`, but it keeps a link's URL as
+  `[text](URL)`. A Skill is the user's own instruction, and a URL they put in it
+  is part of what they asked for; a pasted URL whose text is the URL itself is
+  written once.
+  Places where the text is a key rather than something a model reads
   keep it plain, without tags: the lexical index (whose NFKC normalization
   already folds 10⁵ to 105), the MCP search index, outlines, PROV labels, the
   proposal diff, and the source-check fingerprint (`claimHash`, see
@@ -2096,6 +2105,30 @@ Two design rules hold this target together:
   looks like provenance but cannot be checked against anything, which is worse
   than having none.
 
+`create_note` turns its Markdown body into blocks with a minimal converter of
+its own (`src/mcp/markdown-to-blocks.ts`), since the MCP server does not load
+BlockNote's parser. The converter reads the notation `get_note` writes, so an
+agent that quotes a note into a new one keeps its formatting: `<sup>` /
+`<sub>` become the superscript / subscript styles (undoing the escapes the
+export adds inside the tags, so `<sup>\[1\]</sup>` is a superscript "[1]",
+not a formula), `$ … $` and `\( … \)` become `inlineMath`, and
+`$$ … $$` or `\[ … \]` standing on a line of its own — possibly spread over
+several lines — becomes a `math` block. Inside a sentence, heading, list item
+or table cell, `$$ … $$` stays in that line as an inline formula rather than
+splitting it (the app's import splits the paragraph there). What counts as a
+formula or a tag follows the app's Markdown import (`stashMath` /
+`markScriptTags`): nothing inside code, a `$` formula needs non-space just
+inside both delimiters and no digit right after the closing one (so `$50-$75`
+stays a price range), an inline formula is at most 200 characters, and a
+`\[` `\]` `\(` `\)` inside a `<sup>` / `<sub>` tag never opens or closes a
+formula — it is set aside before formulas are looked for, as the app's
+`guardScriptTagEscapes` does, so a formula cannot reach across a tag boundary
+either. The
+Claude Code skill's `save.mjs` (`scripts/claude-code-skill/save-to-graphium/`)
+carries a copy of the same converter so that it runs on Node's standard
+library alone; `markdown-to-blocks.test.ts` runs `save.mjs` and checks that
+both produce the same blocks for the same Markdown.
+
 `save_answer` (`src/mcp/save-answer.ts`) reuses `buildSourceBackedWikiDocument`
 from `src/features/wiki/wiki-service.ts` directly rather than duplicating the
 citation-resolution/block-building rules — that function's call path has no
@@ -2116,6 +2149,23 @@ app — otherwise a query would hit in Graphium and miss over MCP. For the same
 reason the index is built from note bodies rendered without `<sup>` / `<sub>`
 tags (`noteToMarkdown(doc, { scripts: false })`), while `get_note` returns them
 with tags.
+
+The index holds what `note-index.json` lists (minus trashed, archived and skill
+documents) plus every `*.json` file in `notes/` and `wiki/` that it does not
+list yet, and is built again on the next search after the app rewrites
+`note-index.json`. The app lists a new file only when it reloads its file list
+(at startup, for instance), so a note or answer page that `create_note` /
+`save_answer` has just written reaches the index through the second route. It
+can be found even when saving was the first call of the session, when the app
+rewrote `note-index.json` for another note in between, or after the MCP server
+restarted. Once the app lists the page, the app's entry wins, so a page trashed
+or archived there drops out. A page written after the index is built is also
+added to it at once, since writing it leaves `note-index.json` untouched and
+triggers no rebuild. Either way its body is rendered from the saved document
+without tags, as above, not taken from the Markdown the agent sent (which can
+still carry `<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]`
+markers, and lacks the References section built from `citations`); otherwise
+the page would answer different queries before and after a rebuild.
 
 ## 5. Sharing and Library
 

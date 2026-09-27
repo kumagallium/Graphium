@@ -427,6 +427,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       description:
         "Graphium に新しいノートを作る。既存ノートは変更しない。" +
         "本文は Markdown（見出し・箇条書き・コード・表・強調に対応）。" +
+        "数式（文中は $…$、独立した式は行に単独の $$ … $$）と上付き・下付き（<sup> / <sub>）も、" +
+        "get_note が返すのと同じ表記で書けば数式・書式として保存される。" +
         "誰がどの経路で書いたかは来歴として記録される。作成後、Graphium を再読み込みすると一覧に出る。" +
         "citations を指定すると本文末尾に " +
         "References 節を作る（実在する noteId は @リンク、存在しない id は文字のまま残す）。",
@@ -455,7 +457,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           client: ctx.getClientName?.(),
         });
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
-        addCreatedNoteToIndex(result.noteId, title, body);
+        addCreatedNoteToIndex(result.noteId, result.doc);
         return text(
           [
             `ノートを作成しました。`,
@@ -517,7 +519,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           client: ctx.getClientName?.(),
         });
         // 保存直後に search_notes で引けるよう、索引にも即座に足す
-        addCreatedWikiToIndex(result.noteId, result.title, answer, "answer");
+        addCreatedWikiToIndex(result.noteId, result.doc, "answer");
         return text(
           [
             `回答ページを作成しました。`,

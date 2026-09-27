@@ -48,6 +48,8 @@ export type SaveAnswerResult = {
   title: string;
   /** 本文に含まれていた [[source:<id>]] の数（0 なら出典照合の対象にならない） */
   sourceRefCount: number;
+  /** 書き込んだドキュメント。検索索引は受け取った Markdown ではなくこれから組む */
+  doc: GraphiumDocument;
 };
 
 /**
@@ -190,5 +192,5 @@ export async function saveAnswer(
   // 本文に [[source:<id>]] が 1 つも無い回答ページは、出典照合が文ごとに照らす対象を持たない。
   // 呼び出し側（外部チャット）に気づいてもらうため件数を返す（ツール側が注意文を添える）。
   const sourceRefCount = (input.answer.match(/\[\[source:[^\]]+\]\]/g) ?? []).length;
-  return { noteId, filePath, title: doc.title, sourceRefCount };
+  return { noteId, filePath, title: doc.title, sourceRefCount, doc };
 }
