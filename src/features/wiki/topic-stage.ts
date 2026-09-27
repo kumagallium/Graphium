@@ -359,7 +359,13 @@ export type SourceTopicStageInput = {
   title: string;
   /** 資料の全文（取り込みで既に持っている本文をそのまま渡す。再取得しない・上限は置かない） */
   text: string;
-  model?: string;
+  /**
+   * できた・改訂したトピックの generatedBy.model に記録するモデル名（取り込みが返したモデル ID）。
+   * 記録専用で、振り分け・改訂の body.model には使わない — サーバーは body.model を設定の
+   * 表示名として引くので、モデル ID を送ると表示名とモデル ID が違うモデルでは断られる
+   * （振り分け・改訂のモデルは SourceTopicStageDeps.model）。
+   */
+  generatedByModel?: string;
 };
 
 /** 新形式トピックの段の実行結果（トースト表示・出典照合の導線に使う） */
@@ -399,6 +405,11 @@ export type SourceTopicStageDeps = {
   existingTopicRefs: ExistingTopicRef[];
   noteIndex?: NoteIndex;
   locale: string;
+  /**
+   * 振り分け・改訂・見取り図に使うモデルの表示名（body.model に載る）。未指定なら各 API 関数が
+   * 設定の既定モデルを送る — 取り込み本体と同じモデルで走る（知見の有無に関係なく）。
+   */
+  model?: string;
   /** この実行で共通に使う、保存済み Knowledge Schema 本文 */
   knowledgeSchema?: string;
   /**
@@ -492,6 +503,8 @@ export async function runSourceTopicStage(
 
   for (const source of sources) {
     const windows = splitIntoWindows(source.text);
+    // 保存するトピックに記録するモデル名。API へのモデル指定（deps.model）とは別に持つ。
+    const generatedByModel = source.generatedByModel ?? deps.model ?? null;
 
     if (windows.length === 1) {
       // 窓 1 枚（資料が窓 1 枚に収まる）: 従来通り全文で振り分け 1 回・改訂 1 回。
@@ -507,7 +520,7 @@ export async function runSourceTopicStage(
           { id: source.id, title: source.title, text: source.text },
           existingForRouter,
           deps.locale,
-          source.model,
+          deps.model,
           undefined,
           deps.knowledgeSchema,
         );
@@ -543,7 +556,7 @@ export async function runSourceTopicStage(
               currentBody,
               { id: source.id, title: source.title, text: source.text },
               deps.locale,
-              source.model,
+              deps.model,
               previouslyCitedIds.has(topicId),
               isAnswer,
               undefined,
@@ -556,7 +569,7 @@ export async function runSourceTopicStage(
             const priorIds = (topicDoc.wikiMeta.derivedFromNotes ?? []).filter((id) => id !== source.id);
             const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
             // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
-            const rewritten = rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, source.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind);
+            const rewritten = rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, generatedByModel, deps.noteIndex, topicDoc.wikiMeta.kind);
             await deps.handleSaveWikiFile(topicId, rewritten, {
               activityType: "wiki_cross_update",
               sources: sourceRefs.map((r) => r.id),
@@ -586,7 +599,8 @@ export async function runSourceTopicStage(
                   id === source.id ? { title: source.title, text: source.text } : deps.resolveSource(id),
                 noteIndex: deps.noteIndex,
                 locale: deps.locale,
-                model: source.model,
+                model: deps.model,
+                generatedByModel: source.generatedByModel,
                 knowledgeSchema: deps.knowledgeSchema,
                 log: deps.log,
               },
@@ -614,7 +628,7 @@ export async function runSourceTopicStage(
             "",
             { id: source.id, title: source.title, text: source.text },
             deps.locale,
-            source.model,
+            deps.model,
             undefined,
             undefined,
             undefined,
@@ -628,7 +642,7 @@ export async function runSourceTopicStage(
             name,
             revisedBody,
             [{ id: source.id, title: source.title }],
-            source.model ?? null,
+            generatedByModel,
             deps.noteIndex,
             deps.locale,
           );
@@ -657,7 +671,7 @@ export async function runSourceTopicStage(
         survey = await deps.surveySource(
           { title: source.title, text: windows[0].text },
           deps.locale,
-          source.model,
+          deps.model,
           deps.signal,
         );
         if (!survey) log("見取り図が作れなかった（見取り図なしで続行）:", source.id);
@@ -703,7 +717,7 @@ export async function runSourceTopicStage(
           { id: source.id, title: source.title, text: windowText },
           existingForRouter,
           deps.locale,
-          source.model,
+          deps.model,
           deps.signal,
           deps.knowledgeSchema,
         );
@@ -754,7 +768,8 @@ export async function runSourceTopicStage(
                 surveySource: deps.surveySource,
                 noteIndex: deps.noteIndex,
                 locale: deps.locale,
-                model: source.model,
+                model: deps.model,
+                generatedByModel: source.generatedByModel,
                 knowledgeSchema: deps.knowledgeSchema,
                 log: deps.log,
                 signal: deps.signal,
@@ -781,7 +796,7 @@ export async function runSourceTopicStage(
             currentBody,
             { id: source.id, title: source.title, text: windowText },
             deps.locale,
-            source.model,
+            deps.model,
             previouslyCited,
             topicDoc.wikiMeta.kind === "answer",
             deps.signal,
@@ -817,7 +832,7 @@ export async function runSourceTopicStage(
               state?.body ?? "",
               { id: source.id, title: source.title, text: windowText },
               deps.locale,
-              source.model,
+              deps.model,
               false,
               false,
               deps.signal,
@@ -837,7 +852,7 @@ export async function runSourceTopicStage(
             "",
             { id: source.id, title: source.title, text: windowText },
             deps.locale,
-            source.model,
+            deps.model,
             undefined,
             undefined,
             deps.signal,
@@ -853,7 +868,7 @@ export async function runSourceTopicStage(
             name,
             revisedBody,
             [{ id: source.id, title: source.title }],
-            source.model ?? null,
+            generatedByModel,
             deps.noteIndex,
             deps.locale,
           );
@@ -885,7 +900,7 @@ export async function runSourceTopicStage(
         const priorIds = (state.priorDoc.wikiMeta?.derivedFromNotes ?? []).filter((id) => id !== source.id);
         const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
         // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
-        const rewritten = rebuildSourceBackedWikiDocument(state.priorDoc, state.body, sourceRefs, source.model ?? null, deps.noteIndex, state.priorDoc.wikiMeta?.kind ?? "topic");
+        const rewritten = rebuildSourceBackedWikiDocument(state.priorDoc, state.body, sourceRefs, generatedByModel, deps.noteIndex, state.priorDoc.wikiMeta?.kind ?? "topic");
         await deps.handleSaveWikiFile(topicId, rewritten, {
           activityType: "wiki_cross_update",
           sources: sourceRefs.map((r) => r.id),
@@ -934,7 +949,13 @@ export type RebuildTopicFromSourcesDeps = {
   resolveSourceTitle?: (sourceId: string) => string | undefined;
   noteIndex?: NoteIndex;
   locale: string;
+  /** 見取り図・改訂に使うモデルの表示名（body.model に載る）。未指定なら設定の既定モデル */
   model?: string;
+  /**
+   * 組み直したページの generatedBy.model に記録するモデル名。未指定なら model を記録する。
+   * 取り込み中の移行（runSourceTopicStage）が、取り込みの返したモデル ID を記録用にだけ渡す。
+   */
+  generatedByModel?: string;
   /** 保存済み Knowledge Schema。未指定は旧呼び出し元との互換用。 */
   knowledgeSchema?: string;
   /** 資料の見取り図を作る（資料が複数窓に分かれたときだけ呼ぶ）。未指定なら見取り図なしで続行する */
@@ -1033,7 +1054,7 @@ export async function rebuildTopicFromSources(
   }
 
   // kind は既存ドキュメントのものを維持する（answer を組み直しても topic に化けない）。
-  const rewritten = rebuildSourceBackedWikiDocument(topicDoc, body, usedRefs, deps.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind);
+  const rewritten = rebuildSourceBackedWikiDocument(topicDoc, body, usedRefs, deps.generatedByModel ?? deps.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind);
   await deps.handleSaveWikiFile(topicId, rewritten, {
     activityType: "wiki_cross_update",
     sources: usedRefs.map((r) => r.id),
