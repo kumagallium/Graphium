@@ -444,6 +444,8 @@ Drag across several blocks to select them together. A floating toolbar appears w
 
 Graphium autosaves three seconds after you stop editing; the header shows **Unsaved**, **Saving...**, and **Saved** so you always know where you stand. `⌘S` (`Ctrl+S` on Windows/Linux) saves immediately.
 
+Edits from the last three seconds are also written when you close a peek, switch notes, or quit the desktop app — the app waits for the write before it closes (up to a few seconds if the storage location does not answer). In the browser, closing or reloading the tab cannot wait for a write, so while something is still unsaved the browser asks whether you really want to leave; stay for a moment and the save finishes.
+
 ## History and versions
 
 Every save is kept. The **History** tab in the right panel lists what changed (blocks, labels) and who changed it: human edits carry the name and email from your author profile ([Settings](/settings) → **Storage** → **Share with other people** → **Your name**), AI edits carry an **AI** badge and the model that made them, with entry types like **Edit**, **Derive**, **AI Generate**, and **Template**.

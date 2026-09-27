@@ -1681,6 +1681,40 @@ A separate **shared storage** subsystem (`src/lib/storage/shared/`)
 handles content addressed by hash for the Library / Fork features
 (see §5).
 
+#### Unsaved edits
+
+Editors (the main editor and the side peek) autosave three seconds after
+the last keystroke. Anything typed inside that window has to be written out
+when the editor goes away, and every such write goes through one per-note
+queue (`src/lib/peek-save-queue.ts`) so that two writes to the same note
+never overtake each other.
+
+| When the editor goes away | What writes the edits | Guaranteed? |
+|---|---|---|
+| Closing a peek, switching notes, unmounting | The editor itself, in its layout-effect cleanup | Yes |
+| Opening the same note somewhere else | The opener asks the live editor to flush, then waits for the queue | Yes |
+| Desktop: closing the window, quitting, relaunching | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
+| Web: closing the tab, reloading | `pagehide` / `visibilitychange` start the write; `beforeunload` holds the page | Only while the confirmation is shown |
+
+On the desktop, Rust intercepts the close request and waits for the
+frontend's `shutdown_ack`. The frontend flushes every open editor first
+(at most 5 s), then stops the sidecar (at most 2 s), then acknowledges. The
+flush comes before the sidecar stop because a storage provider may write
+through the sidecar. Rust force-exits after 10 s (`CLOSE_FAILSAFE_SECS`) if
+no acknowledgement arrives, so a storage location that never answers cannot
+keep the app from quitting; that limit must stay longer than the two
+frontend limits combined.
+
+On the web there is no way to wait. A browser does not promise that an
+asynchronous write started in `pagehide` finishes: an IndexedDB transaction
+usually completes, a `fetch` to the server or to Drive may be cut off, and
+the write may not even have started because the revision record is computed
+asynchronously before it. So when unsaved edits or a write in progress
+remain, Graphium asks the browser for its "leave site?" confirmation and
+starts the write at the same moment. With nothing unsaved, no confirmation
+appears. Hiding the tab also starts the write, which only moves the
+three-second autosave earlier.
+
 ## 4. Distribution targets
 
 The same `src/` tree is built four different ways.
@@ -1863,7 +1897,8 @@ The same `src/` tree is built four different ways.
   evaluated afresh. `open` only focuses an app that is already running, so
   it waits for the current process to exit first; and the app closes its
   main window rather than calling `app.exit(0)`, keeping the normal
-  shutdown path (frontend stops the sidecar, then `shutdown_ack`) intact.
+  shutdown path (frontend writes out unsaved edits, stops the sidecar, then
+  `shutdown_ack` — see §3.4 "Unsaved edits") intact.
   The same command backs the **Restart Graphium** button on the startup
   failure screen. Non-macOS and non-bundled runs fall back to `relaunch()`
 - AI / Knowledge features run inside the app via a Node sidecar:

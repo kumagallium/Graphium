@@ -9,6 +9,7 @@ import { initMenuListener, onMenuAction } from "./lib/menu-events";
 import { initUpdater } from "./lib/updater";
 import { isTauri } from "./lib/platform";
 import { installExternalLinkHandler } from "./lib/external-link";
+import { createCloseRequestHandler, installPageExitFlush } from "./lib/flush-on-exit";
 import "./app.css";
 
 // ── Tauri 環境: sidecar サーバー起動 + メニュー + 自動更新 ──
@@ -31,28 +32,24 @@ if (isTauri()) {
   // （設定を切り替えた時点で updater 側が予約を張り直すので再起動は不要）。
   initUpdater();
   // Rust 側の CloseRequested → prevent_close → 'app-close-requested' emit を受けて
-  // sidecar を停止し、shutdown_ack で Rust に終了許可を返す。
-  // sidecar の kill が返らない場合でも 2 秒で諦めて ACK を送る。
+  // エディタの未保存の編集を書き出し、sidecar を停止し、shutdown_ack で Rust に終了許可を返す。
+  // 書き出しは sidecar を止める前（保存先が sidecar 経由だと書けなくなる）。どちらも上限つきで、
+  // 返らなくても ACK を送る（lib/flush-on-exit.ts）。
   (async () => {
     const { listen } = await import("@tauri-apps/api/event");
     const { invoke } = await import("@tauri-apps/api/core");
-    await listen("app-close-requested", async () => {
-      try {
-        await Promise.race([
-          stopSidecar(),
-          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
-        ]);
-      } catch (e) {
-        console.error("[main] stopSidecar failed during shutdown", e);
-      }
-      try {
-        await invoke("shutdown_ack");
-      } catch (e) {
-        console.error("[main] shutdown_ack invoke failed", e);
-      }
+    const onCloseRequested = createCloseRequestHandler({
+      stopSidecar,
+      ack: () => invoke("shutdown_ack"),
     });
+    await listen("app-close-requested", () => void onCloseRequested());
   })();
 }
+
+// ── タブを閉じる・リロードする・隠れるとき: 未保存の編集の書き出しを始める ──
+// デスクトップのリロードもここを通る。確認ダイアログは Web 版だけ（デスクトップの終了は
+// 上の経路で書き終わりを待てる）
+installPageExitFlush({ confirmWhenUnsaved: !isTauri() });
 
 // ── マイグレーション（provnote → graphium） ──
 migrateFromProvnote();

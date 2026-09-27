@@ -34,6 +34,15 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
   // 始めた保存がすべて終わったら解決する。アンマウント時の書き出しはこれを待ってから書く
   // （書き込み中の古い保存が書き出しの後に届いて、直前の編集を巻き戻さないように）
   const inflightRef = useRef<Promise<void>>(Promise.resolve());
+  // 書き込み中の保存の数。終了・リロードのとき「待つ保存があるか」を同期で答えるため
+  const inflightCountRef = useRef(0);
+  const trackInflight = useCallback((save: Promise<unknown>) => {
+    inflightCountRef.current += 1;
+    const prev = inflightRef.current;
+    inflightRef.current = Promise.allSettled([prev, save]).then(() => {
+      inflightCountRef.current -= 1;
+    });
+  }, []);
 
   // 常に最新の onSave を ref に保持
   useEffect(() => {
@@ -55,10 +64,9 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
         setDirty(unsavedRef.current);
       }
     })();
-    const prev = inflightRef.current;
-    inflightRef.current = Promise.allSettled([prev, run]).then(() => {});
+    trackInflight(run);
     await run;
-  }, []);
+  }, [trackInflight]);
 
   // 変更をマーク → 3秒後に自動保存（ref 経由で常に最新の状態で保存）
   const markDirty = useCallback(() => {
@@ -83,10 +91,9 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
   // 自動保存の外で始めた保存（共有・提案など）も「書き込み中」に数える。アンマウント時の
   // 書き出しがその完了を待ち、古い内容が後から届いて直前の編集を巻き戻さないように
   const trackSave = useCallback(<T,>(save: Promise<T>): Promise<T> => {
-    const prev = inflightRef.current;
-    inflightRef.current = Promise.allSettled([prev, save]).then(() => {});
+    trackInflight(save);
     return save;
-  }, []);
+  }, [trackInflight]);
 
   // 未保存の編集を今すぐ呼び出し側へ渡す（開いているエディタの「今すぐ書き出す」口。
   // 同じノートを別の場所で開くときに使う — lib/peek-save-queue.ts の registerLivePeek）。
@@ -106,6 +113,13 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
     setDirty(true);
   }, []);
   const hasUnsaved = useCallback(() => !unmountedRef.current && unsavedRef.current, []);
+  // 書き込み中の保存があれば、すべて終わったら解決する Promise。無ければ null。
+  // ウィンドウを閉じる・リロードするときに、始めた保存を書き終えてから終わるために使う
+  // （lib/peek-save-queue.ts の flushAllEditorSaves）
+  const pendingSaves = useCallback(
+    (): Promise<void> | null => (inflightCountRef.current > 0 ? inflightRef.current : null),
+    [],
+  );
 
   // アンマウント時: 未保存の編集が残っていれば書き出す（ノートを切り替えた・一覧や素材
   // ギャラリーへ移った瞬間の、直前 3 秒の編集を落とさないため）。
@@ -167,5 +181,5 @@ export function useAutoSave(onSave: AutoSaveHandler, onUnmountFlush?: UnmountFlu
     };
   }, []);
 
-  return { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved, trackSave };
+  return { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved, trackSave, pendingSaves };
 }

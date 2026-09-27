@@ -404,7 +404,12 @@ fn app_ready(app: tauri::AppHandle) {
     reveal_main(&app, "app_ready");
 }
 
-/// フロントエンドから呼ぶ「sidecar の後始末が終わったので終了してよい」通知
+/// 閉じる要求からフロントの shutdown_ack を待つ上限（秒）。
+/// フロントは ACK の前に未保存の編集の書き出し（最大 5 秒）と sidecar の停止（最大 2 秒）を
+/// 待つので、その合計より長くする（src/lib/flush-on-exit.ts）。短いと書き出しの途中で落ちる
+const CLOSE_FAILSAFE_SECS: u64 = 10;
+
+/// フロントエンドから呼ぶ「未保存の書き出しと sidecar の後始末が終わったので終了してよい」通知
 #[tauri::command]
 fn shutdown_ack(app: tauri::AppHandle) {
     SHUTDOWN_ACK.store(true, Ordering::SeqCst);
@@ -2934,8 +2939,8 @@ pub fn run() {
             });
 
             // 閉じるイベント制御: 一旦 prevent_close してフロントに通知し、
-            // sidecar 停止後に shutdown_ack を受けて exit する。
-            // フロントが応答しなくても 3 秒のフェイルセーフで強制終了する。
+            // 未保存の編集の書き出しと sidecar 停止の後に shutdown_ack を受けて exit する。
+            // フロントが応答しなくても CLOSE_FAILSAFE_SECS 秒のフェイルセーフで強制終了する。
             if let Some(main_window) = app.get_webview_window("main") {
                 let window_handle = main_window.clone();
                 main_window.on_window_event(move |event| {
@@ -2947,10 +2952,10 @@ pub fn run() {
                         api.prevent_close();
                         let _ = window_handle.emit("app-close-requested", ());
 
-                        // フェイルセーフ: 3 秒以内に ACK が来なければ強制終了
+                        // フェイルセーフ: 時間内に ACK が来なければ強制終了
                         let app_handle = window_handle.app_handle().clone();
                         std::thread::spawn(move || {
-                            std::thread::sleep(std::time::Duration::from_secs(3));
+                            std::thread::sleep(std::time::Duration::from_secs(CLOSE_FAILSAFE_SECS));
                             if !SHUTDOWN_ACK.load(Ordering::SeqCst) {
                                 app_handle.exit(0);
                             }
