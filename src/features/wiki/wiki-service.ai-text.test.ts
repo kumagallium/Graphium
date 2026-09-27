@@ -1,16 +1,17 @@
 // AI に渡す本文のテキスト化と、AI の出力をページに戻す変換で、上付き・下付き・数式・リンクが
-// 落ちないことの回帰テスト。
+// 落ちないこと、step の中身・入れ子の子・表が落ちないことの回帰テスト。
 //
-// 入力側: extractPlainTextFromDoc / extractBlockText / extractBodyPreview と、
+// 入力側: extractPlainTextFromDoc / extractPlainTextBlocks / extractBodyPreview と、
 //         書き直し（rewriteAndMerge）が Rewriter に渡す節のテキスト
 // 出力側: parseInlineCitations / convertSectionsToBlocks（buildSourceTopicDocument 経由）
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSourceTopicDocument,
-  extractBlockText,
   extractBodyPreview,
+  extractPlainTextBlocks,
   extractPlainTextFromDoc,
+  extractTopicOneLiner,
   ingestNote,
   parseInlineCitations,
   rewriteAndMerge,
@@ -67,8 +68,11 @@ describe("AI に渡す本文 - 上付き・下付き・数式・リンクを保�
     expect(text).not.toContain("[object Object]");
   });
 
-  it("extractBlockText は数式ブロックを $$ … $$ にする（出典照合の原文もこれを通る）", () => {
-    expect(extractBlockText(richBlocks[1])).toBe("$$ \\Delta G = \\Delta H - T\\Delta S $$");
+  it("extractPlainTextBlocks は数式ブロックを $$ … $$ にする（出典照合の原文もこれを通る）", () => {
+    expect(extractPlainTextBlocks(docWithBlocks(richBlocks))[1]).toEqual({
+      id: "b2",
+      text: "$$ \\Delta G = \\Delta H - T\\Delta S $$",
+    });
   });
 
   it("extractBodyPreview（点検・洞察・一覧のプレビュー）も上付きと数式ブロックを保つ", () => {
@@ -202,6 +206,172 @@ describe("AI に渡す本文 - 上付き・下付き・数式・リンクを保�
         // 対の無い丸括弧だけは %28 にして読み戻す（リンクは失わない）
         { type: "link", href: "https://example.com/a%28b", content: [t("対の無い括弧")] },
       ]);
+    });
+  });
+});
+
+// BlockNote 0.47 からの表のセル
+const cell = (...content: unknown[]) => ({ type: "tableCell", props: {}, content });
+
+// 見出し → step（段落・入れ子の箇条書き・表を中に持つ）→ 段落 → 2 段組み
+const structuredBlocks: any[] = [
+  { id: "h1", type: "heading", props: { level: 2 }, content: [t("試料作製")], children: [] },
+  {
+    id: "s1",
+    type: "step",
+    props: {},
+    content: [t("粉末の秤量")],
+    children: [
+      {
+        id: "p1",
+        type: "paragraph",
+        content: [t("Bi"), t("2", { subscript: true }), t("Te"), t("3", { subscript: true }), t(" を 5 g 秤量する")],
+        children: [],
+      },
+      {
+        id: "li1",
+        type: "bulletListItem",
+        content: [t("メノウ乳鉢で混合する")],
+        children: [{ id: "li2", type: "bulletListItem", content: [t("30 分")], children: [] }],
+      },
+      {
+        id: "tb1",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [cell(t("試料")), cell(t("温度 (K)"))] },
+            { cells: [cell(t("A")), cell(t("300"))] },
+          ],
+        },
+        children: [],
+      },
+    ],
+  },
+  { id: "p2", type: "paragraph", content: [t("焼結後に XRD で確認した。")], children: [] },
+  {
+    id: "cl1",
+    type: "columnList",
+    children: [
+      { id: "c1", type: "column", props: { width: 1 }, children: [{ id: "p3", type: "paragraph", content: [t("左の列")], children: [] }] },
+      { id: "c2", type: "column", props: { width: 1 }, children: [{ id: "p4", type: "paragraph", content: [t("右の列")], children: [] }] },
+    ],
+  },
+];
+
+describe("AI に渡す本文 - step の中身・入れ子の子・表を落とさない", () => {
+  it("子は親の下に 2 字ずつ下げて並べ、表は 1 行ずつセルを | で区切る", () => {
+    expect(extractPlainTextFromDoc(docWithBlocks(structuredBlocks))).toBe(
+      [
+        "試料作製",
+        "粉末の秤量",
+        "  Bi<sub>2</sub>Te<sub>3</sub> を 5 g 秤量する",
+        "  メノウ乳鉢で混合する",
+        "    30 分",
+        "  試料 | 温度 (K)",
+        "  A | 300",
+        "焼結後に XRD で確認した。",
+        "左の列",
+        "右の列",
+      ].join("\n"),
+    );
+  });
+
+  it("extractPlainTextBlocks は子・入れ子の子・表も 1 ブロックずつ id 付きで返し、繋ぐと本文と同じになる", () => {
+    const doc = docWithBlocks(structuredBlocks);
+    const blocks = extractPlainTextBlocks(doc);
+    expect(blocks.map((b) => b.id)).toEqual(["h1", "s1", "p1", "li1", "li2", "tb1", "p2", "p3", "p4"]);
+    expect(blocks.find((b) => b.id === "tb1")?.text).toBe("  試料 | 温度 (K)\n  A | 300");
+    expect(blocks.map((b) => b.text).join("\n")).toBe(extractPlainTextFromDoc(doc));
+  });
+
+  it("本文を持たない親の子も、字下げして 1 行ずつ読む（以前は「, 」で 1 行に繋いでいた）", () => {
+    const doc = docWithBlocks([
+      {
+        id: "li1",
+        type: "bulletListItem",
+        content: [],
+        children: [
+          { id: "li2", type: "bulletListItem", content: [t("一つ目")], children: [] },
+          { id: "li3", type: "bulletListItem", content: [t("二つ目")], children: [] },
+        ],
+      },
+    ]);
+    expect(extractPlainTextFromDoc(doc)).toBe("  一つ目\n  二つ目");
+  });
+
+  it("以前のセルの形（inline の配列）の表も読む", () => {
+    const doc = docWithBlocks([
+      {
+        id: "tb1",
+        type: "table",
+        content: { type: "tableContent", rows: [{ cells: [[t("試料")], [t("A")]] }] },
+        children: [],
+      },
+    ]);
+    expect(extractPlainTextFromDoc(doc)).toBe("試料 | A");
+  });
+
+  it("段組みの中の step も、トグル見出しの子も読む", () => {
+    const doc = docWithBlocks([
+      {
+        id: "cl1",
+        type: "columnList",
+        children: [
+          {
+            id: "c1",
+            type: "column",
+            props: { width: 1 },
+            children: [{ ...structuredBlocks[1], children: [structuredBlocks[1].children[0]] }],
+          },
+        ],
+      },
+      {
+        id: "h2",
+        type: "heading",
+        props: { level: 3, isToggleable: true },
+        content: [t("補足")],
+        children: [{ id: "p9", type: "paragraph", content: [t("湿度 60 %")], children: [] }],
+      },
+    ]);
+    expect(extractPlainTextFromDoc(doc)).toBe(
+      "粉末の秤量\n  Bi<sub>2</sub>Te<sub>3</sub> を 5 g 秤量する\n補足\n  湿度 60 %",
+    );
+  });
+
+  it("1 行が前提の所（プレビュー・トピックの一行定義）では、表の行を / で繋いで 1 行にする", () => {
+    const table = structuredBlocks[1].children[2];
+    expect(extractBodyPreview(docWithBlocks([table]), 500)).toBe("試料 | 温度 (K) / A | 300");
+    const topic = docWithBlocks([
+      { id: "h", type: "heading", props: { level: 2 }, content: [t("定義")], children: [] },
+      table,
+    ]);
+    expect(extractTopicOneLiner(topic)).toBe("試料 | 温度 (K) / A | 300");
+  });
+
+  describe("取り込みが API に送る本文", () => {
+    const originalFetch = global.fetch;
+    afterEach(() => {
+      global.fetch = originalFetch;
+      vi.restoreAllMocks();
+    });
+
+    it("ingestNote は step の中身・入れ子の子・表を /ingest に送る", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: "m" }),
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      await ingestNote("note-1", docWithBlocks(structuredBlocks), [], "ja", "m", undefined, "schema");
+
+      const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/ingest"));
+      expect(call).toBeDefined();
+      const body = JSON.parse(String(call![1]?.body));
+      expect(body.noteContent).toBe(extractPlainTextFromDoc(docWithBlocks(structuredBlocks)));
+      expect(body.noteContent).toContain("  Bi<sub>2</sub>Te<sub>3</sub> を 5 g 秤量する");
+      expect(body.noteContent).toContain("    30 分");
+      expect(body.noteContent).toContain("  A | 300");
     });
   });
 });

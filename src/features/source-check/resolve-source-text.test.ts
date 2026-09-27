@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveSourceText, type ResolveSourceTextDeps } from "./resolve-source-text";
+import { findBlockIdForQuote } from "./quote-match";
+import { extractPlainTextFromDoc } from "../wiki/wiki-service";
 import type { GraphiumDocument } from "../../lib/document-types";
 
 function noteDoc(title: string): GraphiumDocument {
@@ -51,6 +53,42 @@ describe("resolveSourceText - 通常ノート（プレフィックス無し）",
       { id: "b1", text: "1行目" },
       { id: "b2", text: "2行目" },
     ]);
+  });
+
+  it("step の中身・入れ子の子・表も、取り込みと同じ本文で原文に入る（ブロックは子ごとに id を持つ）", async () => {
+    const doc = noteDoc("手順のノート");
+    doc.pages[0].blocks = [
+      {
+        id: "s1",
+        type: "step",
+        content: [{ type: "text", text: "粉末の秤量" }],
+        children: [
+          { id: "p1", type: "paragraph", content: [{ type: "text", text: "5 g 秤量する" }], children: [] },
+          {
+            id: "tb1",
+            type: "table",
+            content: {
+              type: "tableContent",
+              rows: [{ cells: [{ type: "tableCell", content: [{ type: "text", text: "温度" }] }, { type: "tableCell", content: [{ type: "text", text: "300 K" }] }] }],
+            },
+            children: [],
+          },
+        ],
+      },
+    ] as any;
+    const deps = baseDeps({ findNote: () => ({}), loadNoteDoc: async () => doc });
+    const result = await resolveSourceText("note-1", deps);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.text).toBe(extractPlainTextFromDoc(doc));
+    expect(result.text).toBe("粉末の秤量\n  5 g 秤量する\n  温度 | 300 K");
+    expect(result.blocks).toEqual([
+      { id: "s1", text: "粉末の秤量" },
+      { id: "p1", text: "  5 g 秤量する" },
+      { id: "tb1", text: "  温度 | 300 K" },
+    ]);
+    // 引用は字下げを詰めて照合するので、step の中身の引用はその子ブロックに紐づく
+    expect(findBlockIdForQuote(result.blocks, "5 g 秤量する")).toBe("p1");
+    expect(findBlockIdForQuote(result.blocks, "温度 | 300 K")).toBe("tb1");
   });
 
   it("ゴミ箱入りノートは deleted", async () => {
