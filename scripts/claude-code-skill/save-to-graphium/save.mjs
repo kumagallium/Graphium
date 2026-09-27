@@ -103,6 +103,8 @@ function makeProps(extra = {}) {
 //     「$50-$75」を数式にしない）。インライン数式は 200 字まで
 //   - <sup>…</sup> / <sub>…</sub> は 1 行の中で閉じていて、中に表の区切り（|）と入れ子の
 //     タグを含まないもの。中身は書き出し側のエスケープ（\* や &lt;）を戻して文字にする
+//   - タグの中の \[ \] \( \) は数式の区切りにしない（guardScriptTagEscapes と同じ。数式を拾う前に
+//     守るので、区切りの片方だけがタグの中にあっても、タグの境目をまたいだ数式はできない）
 //   - コード（``` / ~~~ フェンスと `インラインコード`）の中はどちらも拾わない
 // 数式ブロックにするのは、ブロック数式が行に単独で立っているとき（get_note が書く形）だけ。
 // 文中・見出し・箇条書き・表のセルにある $$ … $$ は、その行を割らずにインライン数式にする。
@@ -126,6 +128,14 @@ const MAX_INLINE_LATEX = 200;
 
 // 1 行の中で閉じている <sup>…</sup> / <sub>…</sub>（markScriptTags と同じ条件）
 const SCRIPT_TAG_RE = /<(sup|sub)(?:\s[^<>]*)?>((?:(?!<\/?(?:sup|sub)\b)[^\n|])+?)<\/\1\s*>/gi;
+
+// タグの中の「\ の直後の [ ] ( )」の間に挟む目印。退避の目印（U+FDD0〜U+FDD3）とは別の非文字にする
+// （lib/script-styles.ts の DELIMITER_GUARD と同じ文字）
+const GUARD = "\uFDEF";
+
+// 守る対象のタグ。SCRIPT_TAG_RE と違って表の区切り | を含むものも対象にする
+// （lib/script-styles.ts の SCRIPT_TAG_IN_LINE と同じ条件）
+const SCRIPT_TAG_GUARD_RE = /(<(sup|sub)(?:\s[^<>]*)?>)((?:(?!<\/?(?:sup|sub)\b)[^\n])+?)(<\/\2\s*>)/gi;
 
 // タグの中身の、書き出し側（lib/script-styles.ts の escapeForScriptTag）のエスケープを戻す
 function unescapeScriptText(text) {
@@ -162,10 +172,24 @@ function stashMathAndScripts(markdown) {
     .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, maskCode)
     .replace(/`[^`\n]*`/g, maskCode);
 
+  // タグの中の \[ \] \( \) は書き出し側のエスケープで、数式の区切りではない（上付きの「[1]」は
+  // 「<sup>\[1\]</sup>」、上付きの「\(」は「<sup>\\(</sup>」と書かれる）。数式を拾う前に、\ と区切りの間に
+  // 目印を 1 文字挟んで拾われないようにし、退避する中身と戻り値からは取り除く。
+  // 目印の文字がもともと本文にあると一緒に消してしまうので、そのときは守らない
+  const guarded = !markdown.includes(GUARD);
+  const unguard = (s) => (guarded ? s.split(GUARD).join("") : s);
+  if (guarded) {
+    text = text.replace(
+      SCRIPT_TAG_GUARD_RE,
+      (_full, open, _tag, inner, close) =>
+        `${open}${inner.replace(/\\(?=[[\]()])/g, `\\${GUARD}`)}${close}`,
+    );
+  }
+
   const mathReplacer = (display) => (full, inner) => {
-    const latex = unmaskCode(inner.trim());
+    const latex = unmaskCode(unguard(inner).trim());
     if (!latex || (!display && latex.length > MAX_INLINE_LATEX)) return full;
-    return push({ kind: "math", latex, display, raw: unmaskCode(full) });
+    return push({ kind: "math", latex, display, raw: unmaskCode(unguard(full)) });
   };
   // ブロック数式: $$ ... $$ / \[ ... \]
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, mathReplacer(true));
@@ -176,8 +200,8 @@ function stashMathAndScripts(markdown) {
 
   // 上付き・下付き（数式の後に拾うので、タグの中の $…$ は目印のまま中身に入る）
   text = text.replace(SCRIPT_TAG_RE, (full, tag, inner) => {
-    // タグの中の \[ \] や \( \) は、書き出し側がかっこや \ に付けたエスケープ
-    // （上付きの「[1]」は「<sup>\[1\]</sup>」になる）。数式として拾っていても文字に戻す
+    // 守らなかったとき（本文に目印の文字があるとき）は、タグの中の \[ … \] や \( … \) を
+    // 数式として拾っている。書き出し側のエスケープなので文字に戻す
     const body = inner.replace(STASH_RE, (sentinel, n) => {
       const entry = stash[Number(n)];
       return entry && entry.raw.startsWith("\\") ? entry.raw : sentinel;
@@ -185,12 +209,12 @@ function stashMathAndScripts(markdown) {
     return push({
       kind: "script",
       style: tag.toLowerCase() === "sup" ? "superscript" : "subscript",
-      text: unmaskCode(unescapeScriptText(body)),
-      raw: unmaskCode(restoreRaw(full, stash)),
+      text: unmaskCode(unescapeScriptText(unguard(body))),
+      raw: unmaskCode(unguard(restoreRaw(full, stash))),
     });
   });
 
-  return { text: unmaskCode(text), stash };
+  return { text: unmaskCode(unguard(text)), stash };
 }
 
 // ── インライン ──
