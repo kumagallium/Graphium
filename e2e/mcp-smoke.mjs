@@ -10,7 +10,9 @@
  *   → get_note と同じ表記の数式・上付き・下付きを create_note で書き、数式・書式として保存され
  *     get_note が同じ表記で読み返すことを確認
  *   → create_note / save_answer で作った直後と、note-index を書き直して索引を組み直した後とで、
- *     検索に同じ語が当たることを確認
+ *     検索に同じ語が当たることを確認（アプリが作ったものをまだ載せていない書き直しでも同じ）
+ *   → 新しいセッションの最初の呼び出しで create_note / save_answer を書き、次の検索で引けることを確認
+ *     （前のセッションで作り、note-index にまだ載っていないノートも引ける）
  *
  * 守っている不変条件:
  *   - **stdout を汚さない**: サーバーが JSON-RPC 以外を stdout に書くとハンドシェイクが壊れる。
@@ -173,19 +175,21 @@ function buildVault() {
 const root = buildVault();
 console.log(`vault: ${root}\n`);
 
-const transport = new StdioClientTransport({
+const serverParams = {
   command: "pnpm",
   args: ["exec", "tsx", "src/mcp/index.ts"],
   cwd: ROOT,
   env: { ...process.env, GRAPHIUM_ROOT: root },
   stderr: "pipe",
-});
+};
+const transport = new StdioClientTransport(serverParams);
 const client = new Client({ name: "mcp-smoke", version: "1.0.0" });
 
-const call = async (name, args) => {
-  const res = await client.callTool({ name, arguments: args });
+const callOn = async (target, name, args) => {
+  const res = await target.callTool({ name, arguments: args });
   return res.content?.[0]?.text ?? "";
 };
+const call = (name, args) => callOn(client, name, args);
 
 try {
   // 接続できた時点で「stdout が JSON-RPC 専用に保たれている」が検証されている
@@ -299,9 +303,20 @@ try {
     JSON.stringify(justCreated),
   );
 
-  // Graphium が 2 件を拾って note-index を書き直した状況を作る（更新時刻が変わり、次の検索で組み直す）
+  // Graphium で別のノートを保存して note-index が書き直された状況を作る（更新時刻が変わり、次の
+  // 検索で組み直す）。作った 2 件は、アプリが一覧を取り直すまで note-index に載らない
   const indexPath = join(root, "appdata", "note-index.json");
   const index = JSON.parse(readFileSync(indexPath, "utf8"));
+  index.updatedAt = "2026-01-03T00:00:00.000Z";
+  writeFileSync(indexPath, JSON.stringify(index, null, 2));
+  const notListed = { note: await matchingQueries(scriptedId), answer: await matchingQueries(answerId) };
+  check(
+    "アプリが載せる前に note-index を書き直して組み直しても、作った直後と同じ語が当たる",
+    JSON.stringify(notListed) === JSON.stringify(justCreated),
+    `直後: ${JSON.stringify(justCreated)} / 組み直し後: ${JSON.stringify(notListed)}`,
+  );
+
+  // Graphium が 2 件を拾って note-index を書き直した状況を作る
   const indexEntry = (noteId, title, extra) => ({
     noteId,
     title,
@@ -319,10 +334,40 @@ try {
   writeFileSync(indexPath, JSON.stringify(index, null, 2));
   const rebuilt = { note: await matchingQueries(scriptedId), answer: await matchingQueries(answerId) };
   check(
-    "組み直した後も作った直後と同じ語が当たる",
+    "アプリが載せた後に組み直しても、作った直後と同じ語が当たる",
     JSON.stringify(rebuilt) === JSON.stringify(justCreated),
     `直後: ${JSON.stringify(justCreated)} / 組み直し後: ${JSON.stringify(rebuilt)}`,
   );
+
+  console.log("\n[new session]");
+  // 索引は最初の検索で組むので、セッションの最初の呼び出しが保存だと、作ったものは組む時点の
+  // note-index にまだ無い。それでも「保存して」→「探して」で引ける
+  const second = new Client({ name: "mcp-smoke", version: "1.0.0" });
+  try {
+    await second.connect(new StdioClientTransport(serverParams));
+    const firstNote = await callOn(second, "create_note", {
+      title: "最初の呼び出しで書いたノート",
+      body: "遊星ボールミルで 12 時間混合した",
+    });
+    const firstAnswer = await callOn(second, "save_answer", {
+      question: "混合は何時間だったか",
+      answer: `遊星ボールミルで 12 時間混合した [[source:${NOTE_A}]]`,
+      citations: [{ id: NOTE_A }],
+    });
+    const firstIds = [firstNote, firstAnswer].map((reply) => reply.match(/noteId: ([0-9a-f-]{36})/)?.[1]);
+    const found = await callOn(second, "search_notes", { query: "遊星ボールミル" });
+    check(
+      "索引を組む前に作ったノート・回答ページが、最初の検索で引ける",
+      firstIds.every((id) => id && found.includes(id)),
+      found,
+    );
+
+    // 前のセッションで create_note が書いたノート（note-index にはまだ載っていない）も引ける
+    const earlier = await callOn(second, "search_notes", { query: "MCP から書いた" });
+    check("前のセッションで作り、アプリがまだ載せていないノートも引ける", earlier.includes(newId), earlier);
+  } finally {
+    await second.close().catch(() => {});
+  }
 
   console.log("\n[error handling]");
   const missing = await call("get_note", { noteId: "00000000-0000-4000-8000-000000000000" });
