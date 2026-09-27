@@ -91,6 +91,50 @@ describe("stashMath", () => {
   });
 });
 
+// <sup> / <sub> の中の \ は書き出し側（lib/script-styles.ts の escapeForScriptTag）が付けた
+// エスケープで、数式の区切りではない
+describe("stashMath - 上付き・下付きの中のエスケープ", () => {
+  it("上付きの「[1]」の書き出し（<sup>\\[1\\]</sup>）を数式にしない（タグの対を割らない）", () => {
+    const src = "文献<sup>\\[1\\]</sup>。";
+    expect(stashMath(src)).toEqual({ text: src, math: [] });
+  });
+
+  it("エスケープされた \\ の直後の ( や [ も数式の区切りにしない", () => {
+    // 上付きの「\(a\)」は <sup>\\(a\\)</sup>、下付きの「\[b\]」は <sub>\\\[b\\\]</sub> と書かれる
+    for (const src of ["x<sup>\\\\(a\\\\)</sup>", "y<sub>\\\\\\[b\\\\\\]</sub>"]) {
+      expect(stashMath(src)).toEqual({ text: src, math: [] });
+    }
+  });
+
+  it("タグの外の数式は従来どおり拾う", () => {
+    const { text, math } = stashMath("\\(y\\) と $z$ と \\[w\\] と <sup>\\[1\\]</sup>");
+    expect(math).toEqual([
+      { latex: "w", display: true },
+      { latex: "y", display: false },
+      { latex: "z", display: false },
+    ]);
+    expect(text).toBe("{{GWMATH_1}} と {{GWMATH_2}} と \n\n{{GWMATH_0}}\n\n と <sup>\\[1\\]</sup>");
+  });
+
+  it("タグの外で開いた \\[ をタグの中の \\] で閉じない", () => {
+    const src = "\\[a <sup>\\]</sup> b";
+    expect(stashMath(src)).toEqual({ text: src, math: [] });
+  });
+
+  it("タグの中の $…$ は従来どおり数式にする", () => {
+    expect(stashMath("a<sup>$x^2$</sup>")).toEqual({
+      text: "a<sup>{{GWMATH_0}}</sup>",
+      math: [{ latex: "x^2", display: false }],
+    });
+  });
+
+  it("タグをまたぐ数式の中身には、区切りを守るために挟んだ目印を残さない", () => {
+    expect(stashMath("$a <sup>\\[1\\]</sup> b$").math).toEqual([
+      { latex: "a <sup>\\[1\\]</sup> b", display: false },
+    ]);
+  });
+});
+
 describe("restoreMath", () => {
   it("センチネルだけの段落を math ブロックにする", () => {
     const blocks = [para("{{GWMATH_0}}")];
