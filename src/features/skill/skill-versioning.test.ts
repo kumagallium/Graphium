@@ -2,6 +2,7 @@
 // 未編集判定（正規化ハッシュ）と decideSkillSync の分岐を検証する
 
 import { describe, it, expect } from "vitest";
+import type { GraphiumDocument } from "../../lib/document-types";
 import {
   normalizeSkillPrompt,
   hashSkillPrompt,
@@ -114,6 +115,56 @@ describe("computeSystemSkillDefaultHash / buildSystemSkillDocument の往復整�
     expect(doc.skillMeta?.systemSkillVersion).toBe(3);
     expect(doc.skillMeta?.defaultPromptHash).toBe(await computeSystemSkillDefaultHash(TEST_DEF));
     expect(doc.skillMeta?.systemSkillId).toBe("default-voice-ja");
+  });
+
+  it("同梱既定のハッシュ値が変わらない（保存済みの defaultPromptHash と一致し続ける）", async () => {
+    // ユーザーの文書には、作成・同期したときのこの値が defaultPromptHash として保存されている。
+    // 上の往復テストは両辺を同じ抽出で計算するので、抽出の出力が変わっても通ってしまう。
+    // 抽出（extractSkillPrompt）の書き方を変えてここが変わると、手を入れていない既存のスキルまで
+    // 「編集済み」になり自動更新が止まる。既定の本文を変えたら版を上げ、ここを書き換えること。
+    const actual: Record<string, string> = {};
+    for (const base of SYSTEM_SKILLS) {
+      const languages = base.id === "knowledge-schema" ? (["en", "ja"] as const) : [undefined];
+      for (const language of languages) {
+        const def = language ? resolveSystemSkillDefinition(base, language) : base;
+        actual[`${def.id}@v${def.version}${language ? `:${language}` : ""}`] = await computeSystemSkillDefaultHash(def);
+      }
+    }
+    expect(actual).toEqual({
+      "default-voice-ja@v1": "161c22a98c898ba9849c7a30729709ceb7e6b4447fb90d5254c7071c5226894d",
+      "default-voice-en@v1": "fb75eebf1f5d2ae29c0a416f056804aad1febc8ad8083e46049497769daf2d2a",
+      "knowledge-schema@v4:en": "8ad913a8563782e4184070fba2139526184158abb0c445ee204462cdb9cc28bb",
+      "knowledge-schema@v4:ja": "2ff09a0d60cb86c36d69b7e0a168c1e89b94532a65c08c2a7f2d1a391517cd3a",
+    });
+  });
+
+  it("既定に数式を足す・上付きにするだけでも編集済みになる（自動更新で消さない）", async () => {
+    const doc = await buildSystemSkillDocument(TEST_DEF);
+    const newer = { ...TEST_DEF, version: TEST_DEF.version + 1 };
+    const decide = async (edited: GraphiumDocument) =>
+      decideSkillSync(newer, doc.skillMeta, await hashSkillPrompt(extractSkillPrompt(edited)));
+    const withBlocks = (map: (block: any) => any, extra: any[] = []): GraphiumDocument => ({
+      ...doc,
+      pages: [{ ...doc.pages[0], blocks: [...doc.pages[0].blocks.map(map), ...extra] }],
+    });
+
+    // 手を入れていなければ従来どおり自動更新
+    expect(await decide(doc)).toBe("auto_update");
+    // 数式だけの段落を足す（数式を落としていた頃は空行扱いで「未編集」になり、自動更新で消えていた）
+    expect(await decide(withBlocks((b) => b, [{
+      id: "math-line",
+      type: "paragraph",
+      props: {},
+      content: [{ type: "inlineMath", props: { latex: "x^{2}" } }],
+      children: [],
+    }]))).toBe("notify_newer");
+    // 既存の太字「強い語彙」を上付きにする（文字は同じ）
+    expect(await decide(withBlocks((b) => ({
+      ...b,
+      content: Array.isArray(b.content)
+        ? b.content.map((c: any) => (c.text === "強い語彙" ? { ...c, styles: { ...c.styles, superscript: true } } : c))
+        : b.content,
+    })))).toBe("notify_newer");
   });
 });
 
@@ -381,6 +432,9 @@ describe("decideSkillSync", () => {
       const oldDoc = await buildSystemSkillDocument(KNOWLEDGE_SCHEMA_V1_DEF);
       const oldHash = await hashSkillPrompt(extractSkillPrompt(oldDoc));
 
+      // v1 の既定から作った文書に保存されている値。抽出を変えてこれが変わると、v1 のまま
+      // 手を入れていない Schema が「編集済み」になり、v4 へ自動更新されなくなる
+      expect(oldDoc.skillMeta?.defaultPromptHash).toBe("b38de2dc7edddf740da0c8f4f3669f989b464ca1b542d6cbeffd9227e185e5da");
       expect(decideSkillSync(current, oldDoc.skillMeta, oldHash)).toBe("auto_update");
       expect(decideSkillSync(current, oldDoc.skillMeta, await hashSkillPrompt(`${extractSkillPrompt(oldDoc)}\n\nUser edit`))).toBe("notify_newer");
     });

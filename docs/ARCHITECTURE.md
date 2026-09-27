@@ -170,18 +170,43 @@ talks to LLM and embedding backends.
   [DATA_MODEL.md §8](DATA_MODEL.md)).
   Text handed to a model without going through the Markdown export uses the
   same notation: the knowledge layer's input (`extractPlainTextFromDoc` /
-  `extractBlockText` in `wiki-service.ts`, which ingest, the Topic stage and
-  source check all read) and the MCP server's note bodies
+  `extractPlainTextBlocks` in `wiki-service.ts`, which ingest, the Topic stage
+  and source check all read — see §3.3 for how steps, nesting and tables are
+  laid out) and the MCP server's note bodies
   (`src/mcp/note-text.ts`) write superscript / subscript as tags, formulas as
   `$ … $` / `$$ … $$`, and links as their text. Both render inline content
   through `features/markdown-export/inline-text.ts`, and the knowledge layer's
   reader turns tags and formulas in the model's reply back into styles,
   `inlineMath` and `math` blocks, so a formula survives a round trip through a
-  rewrite. Places where the text is a key rather than something a model reads
+  rewrite. A Skill's prompt is read by a model too: `extractSkillPrompt`
+  (`features/skill/skill-service.ts`) writes a Skill body as Markdown, with bold
+  and code as `**…**` / `` `…` `` and superscript / subscript and formulas
+  through the same `inline-text.ts`, but it keeps a link's URL as
+  `[text](URL)`. A Skill is the user's own instruction, and a URL they put in it
+  is part of what they asked for; a pasted URL whose text is the URL itself is
+  written once.
+  Places where the text is a key rather than something a model reads
   keep it plain, without tags: the lexical index (whose NFKC normalization
   already folds 10⁵ to 105), the MCP search index, outlines, PROV labels, the
   proposal diff, and the source-check fingerprint (`claimHash`, see
-  [DATA_MODEL.md](DATA_MODEL.md)).
+  [DATA_MODEL.md](DATA_MODEL.md)). All of these except PROV labels and the
+  fingerprint render inline content with the same `inline-text.ts` in its
+  plain mode, so links still count as their text and formulas as `$ … $` —
+  including the Wiki section text that the lexical index and the
+  semantic-search embeddings share (`wiki/section-extract.ts`), the outlines
+  and label previews in the note index (`navigation/index-file.ts`), and the
+  statements checked on old-format Topics. The Wiki section text also reads
+  tables through `tableContentToText` (§3.3); a section is one line, so the
+  rows are joined with ` / `, as in body previews. An embedding keeps the
+  text it was made from until the knowledge layer writes its page again (a
+  regeneration, or a merge into it) or the user re-embeds every page from
+  Settings; a shared knowledge page is embedded again when its shared copy
+  changes (the Settings re-embed covers only the user's own pages). Editing
+  a page by hand does not re-embed it, and changing how the text is
+  extracted re-embeds nothing by itself, because that would spend the
+  user's API key. The lexical index catches up when the page is next saved
+  (a shared page, when its shared copy changes) or when the index is
+  rebuilt from Settings, which costs nothing.
 - `step` is the one container block: it holds child blocks, and a procedure is
   written by putting its content inside a step rather than by labelling a
   heading. Nesting and reordering use BlockNote's own drag handle. The card's
@@ -806,8 +831,7 @@ sequenceDiagram
     participant TR as Topic router / reviser
     participant FS as Wiki files (JSON)
 
-    E->>W: note saved (worthy?)
-    W->>W: wiki-worthy.ts gate
+    E->>W: Add to Knowledge (note queued)
     W->>S: POST /api/wiki/ingest
     S->>I: run
     I->>FS: read existing wiki pages
@@ -815,7 +839,7 @@ sequenceDiagram
     A->>FS: write Insight / Claim pages
     A->>L: schedule lint
     L->>FS: flag issues (no auto-fix)
-    S-->>W: ingest result (Claims; source text already in hand)
+    S-->>W: ingest result (Claims — source text already in hand)
     opt source spans more than one window
         W->>S: POST /api/wiki/survey-source (first window only)
         S->>TR: run
@@ -844,10 +868,62 @@ sequenceDiagram
 
 Notes:
 
-- **Trigger:** the client pushes a save event into `wiki-service.ingestNote()`,
-  which posts to the server. There is no server-side file watcher.
-- **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
-  note is ingest-worthy at all (e.g., empty drafts are skipped).
+- **Trigger:** a note is ingested only when the user asks —
+  **Add to Knowledge** on one note, the note list's multi-select or the
+  intake's completion screen for many, or turning memos into Knowledge.
+  Each note is queued (`enqueueIngest`) and `processIngestQueue` calls
+  `wiki-service.ingestNote()`, which posts to the server when Claims are
+  on (otherwise the queue goes straight to the Topic stage, as above).
+  Saving a note does not trigger ingest, and there is no server-side
+  file watcher.
+- **No worthiness gate.** Nothing judges up front whether a note is worth
+  ingesting: there is no content heuristic, and an empty note is not
+  skipped before the call. What `note-app.tsx` does leave out:
+  AI-derived pages (`source: "ai"`), which the single-note entry points
+  (**Add to Knowledge**) skip and bulk ingest (`ingestNoteIds`, behind
+  the note list's multi-select and the intake's completion screen) drops
+  with a toast; and, in bulk ingest only, a note that has not changed
+  since it was last ingested, also counted in a toast —
+  `lastIngestedAtForSource` in `src/features/wiki/ingest-skip.ts` takes
+  the latest `endedAt` among the edit activities whose `used` lists the
+  note (over its Knowledge pages that are not archived or trashed), and
+  `shouldSkipUnchangedSource` skips the note when its `modifiedAt` is not
+  newer. A single-note Add to Knowledge always re-reads, and a memo turned
+  into Knowledge is skipped only when its text is empty. A note's emptiness
+  is only noticed after the call: `processIngestQueue` ends a note that
+  yields no Claims and no text as "Not enough content"
+  (`ingest.insufficientContent`). With Claims on, an empty note never
+  gets that far — `POST /api/wiki/ingest` rejects its empty
+  `noteContent` with 400, so it ends as an error instead.
+- **What the pipeline reads from a note (changed 2026-09-25).** Ingest
+  (`ingestNote`'s `noteContent`), the Topic stage (`sourcesForTopicStage` in
+  `note-app.tsx`), regenerating a page from its sources, and source check's
+  re-read of a note (`resolveSourceText`) all take the note's text from
+  `extractPlainTextFromDoc` in `wiki-service.ts`. Source check joins the
+  per-block list from `extractPlainTextBlocks` instead — the same text,
+  split by block, so a quote can be traced to the block it came from. The
+  whole block tree is read: a step's contents (the step block's own content
+  is only its title), nested list items, and a toggle heading's children,
+  each child indented two spaces deeper than its parent so the model can
+  see where a step ends and what is nested. `columnList` / `column` are
+  layout wrappers, read through without indentation. A table becomes one
+  line per row with cells separated by ` | ` (`tableContentToText` in
+  `features/markdown-export/inline-text.ts`, which reads both BlockNote
+  0.47's `{ type: "tableCell", content }` cells and the older bare inline
+  arrays); where a single line is expected — body previews, a Topic's
+  one-line definition — the rows are joined with ` / ` instead, so a table
+  never splits a list entry in a prompt. Before this, only top-level
+  blocks were read, a block with text of its own lost its children, and
+  0.47-style table cells read as empty: on a real 137-note vault about a
+  third of the characters (step contents, nested items, every table) never
+  reached the model. A note without
+  nesting, steps or tables reads exactly as before. Reading everything
+  costs more where there is more to read — a note that now runs past one
+  4,000-character window is read in more windows (see below), and Claim
+  extraction still sends the whole note in one call. The source-check
+  fingerprint (`claimHashBody`) keeps its own frozen v1 extraction and is
+  not derived from this text, so pages checked earlier don't all turn
+  stale (see [DATA_MODEL.md](DATA_MODEL.md)).
 - **Topics read sources, not Claims (changed 2026-09-17).** A Topic page is
   no longer synthesized from its member Claims. Instead, each ingested
   *source* (a note, or an imported pdf/document/url/chat) is itself routed:
@@ -1343,8 +1419,8 @@ claims, so there is no single source text to hold it against.
   `derivedFromNotes`, unchanged from v1. For a topic
   (`extractTopicStatements` in
   `src/features/source-check/topic-statements.ts`), every body block
-  *before* the `References` heading (`buildTopicReferenceBlocks`, §3.3
-  above) that cites one or more of the topic's `derivedFromClaims`
+  *before* the generated `References` heading (`isGeneratedReferencesHeading`
+  in the same file) that cites one or more of the topic's `derivedFromClaims`
   becomes its own statement — the block's plain text with the citation
   stripped — and its sources are the claims that block cites, addressed
   with a synthetic `claim:<wikiId>` id
@@ -1475,7 +1551,7 @@ claims, so there is no single source text to hold it against.
   `runSourceCheck` treats a degrade as a reason to stop the whole run
   rather than write a wrong verdict.
 - **Body-rewriting stages drop stale results.** `mergeIntoWikiDocument`,
-  `rewriteAndMerge`, and `rebuildTopicDocument`
+  `rewriteAndMerge`, and `rebuildSourceBackedWikiDocument`
   (§3.3 above, `src/features/wiki/wiki-service.ts`) all replace
   `pages[0].blocks`, so each clears any existing `sourceCheck` rather than
   let a judgment outlive the text it was checked against — which also
@@ -1573,15 +1649,15 @@ true" half of a notebook) without contaminating the layers above.
   attaches.
 
 The schema mirror is on `NoteIndexEntry.{rebuttalConditions, backing,
-modalQualifier}` and the on-disk version is now
-`INDEX_SCHEMA_VERSION = 16`.
+modalQualifier}`, added in `INDEX_SCHEMA_VERSION = 16` (the current
+version and its history: [DATA_MODEL.md §5.1](DATA_MODEL.md)).
 
 **Empirical quality control.** The Wiki pipeline's discovery quality is
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
 metrics). Each roadmap phase declares which metrics it must improve;
 `pnpm bench:compare main` is required on every PR that touches the
 ingester / atomizer / linter. See the README's "Knowledge
-Layer benchmark" section and `docs/internal/benchmark.md` for the metric
+Layer benchmark" section and [BENCHMARK.md](BENCHMARK.md) for the metric
 definitions, corpus rationale, and merge rules.
 
 ### 3.4 Storage layer
@@ -2040,7 +2116,11 @@ splitting it (the app's import splits the paragraph there). What counts as a
 formula or a tag follows the app's Markdown import (`stashMath` /
 `markScriptTags`): nothing inside code, a `$` formula needs non-space just
 inside both delimiters and no digit right after the closing one (so `$50-$75`
-stays a price range), and an inline formula is at most 200 characters. The
+stays a price range), an inline formula is at most 200 characters, and a
+`\[` `\]` `\(` `\)` inside a `<sup>` / `<sub>` tag never opens or closes a
+formula — it is set aside before formulas are looked for, as the app's
+`guardScriptTagEscapes` does, so a formula cannot reach across a tag boundary
+either. The
 Claude Code skill's `save.mjs` (`scripts/claude-code-skill/save-to-graphium/`)
 carries a copy of the same converter so that it runs on Node's standard
 library alone; `markdown-to-blocks.test.ts` runs `save.mjs` and checks that

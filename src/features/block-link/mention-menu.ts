@@ -32,7 +32,34 @@ export type ReferenceSuggestion = {
    * 選択時に外部ソース ID（pdf:/document:/data:）のプレフィックスを決めるために使う。
    */
   assetType?: string;
+  /**
+   * 表示名のほかに打って当たる語（BlockNote の SuggestionMenu が aliases として照合する）。
+   * 素材の取り込み元フォルダを入れ、`@S2` のようにフォルダ名でも絞れるようにする。
+   */
+  aliases?: string[];
 };
+
+/**
+ * @ メニューの候補を、入力文字で先に絞るための照合を作る。
+ *
+ * BlockNote は候補の表示名（と aliases）に入力が含まれるかで絞る（filterSuggestionItems）が、
+ * それは渡した候補の中での話 — 渡す前に新しい順の上位だけに切ると、古いノートや素材は
+ * 名前を打っても出てこない（「新規ノートに」だけが出て、同名ノートを作る余地まであった）。
+ * そこで入力があれば全件から先に絞ってから切る。BlockNote の照合より狭くならないよう、
+ * 小文字の部分一致に、NFC にそろえた比較（macOS の NFD ファイル名向け）を足して見る。
+ */
+function mentionQueryMatcher(
+  query: string,
+): (label: string, aliases?: readonly string[]) => boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return () => true;
+  const qn = q.normalize("NFC");
+  const hit = (s: string) => {
+    const lower = s.toLowerCase();
+    return lower.includes(q) || lower.normalize("NFC").includes(qn);
+  };
+  return (label, aliases) => hit(label) || (aliases ?? []).some(hit);
+}
 
 /** modifiedAt(ISO) を YYYY-MM-DD HH:mm（ローカル日時）に整形する。不正値は空文字。 */
 export function formatMentionDate(iso: string): string {
@@ -247,7 +274,10 @@ export function getNoteSuggestions(
   files: GraphiumFile[],
   currentFileId?: string,
   noteIndex?: GraphiumIndex | null,
+  /** `@` の後に打っている文字。あれば全ノートから先に絞り、その中の新しい順に出す */
+  query = "",
 ): ReferenceSuggestion[] {
+  const matches = mentionQueryMatcher(query);
   // 同名ノートを区別するための subtext 付与に使う (suggestion, 実タイトル, modifiedAt) の組
   const entries: { suggestion: ReferenceSuggestion; title: string; modifiedAt: string }[] = [];
 
@@ -257,7 +287,7 @@ export function getNoteSuggestions(
 
     // 人間のノート
     const notes = noteIndex.notes
-      .filter((n) => n.noteId !== currentFileId && n.source !== "ai")
+      .filter((n) => n.noteId !== currentFileId && n.source !== "ai" && matches(n.title))
       .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
       .slice(0, 25);
 
@@ -272,9 +302,10 @@ export function getNoteSuggestions(
       entries.push({ suggestion: s, title: note.title, modifiedAt: note.modifiedAt });
     }
 
-    // Wiki ドキュメント（🤖 アイコンで区別）
+    // Wiki ドキュメント（🤖 アイコンで区別）。照合は表示名（「🤖 Concept: 題」）で見る —
+    // BlockNote が絞るのも表示名なので、種類名で打っても当たる
     const wikis = noteIndex.notes
-      .filter((n) => n.source === "ai")
+      .filter((n) => n.source === "ai" && matches(formatWikiMentionLabel(n.wikiKind, n.title)))
       .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
       .slice(0, 10);
 
@@ -295,12 +326,13 @@ export function getNoteSuggestions(
   }
 
   // フォールバック: files から取得
+  const titleOf = (f: GraphiumFile) => f.name.replace(/\.(graphium|provnote)\.json$/, "");
   const suggestions: ReferenceSuggestion[] = files
-    .filter((f) => f.id !== currentFileId)
+    .filter((f) => f.id !== currentFileId && matches(titleOf(f)))
     .sort((a, b) => new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime())
     .slice(0, 20)
     .map((f) => {
-      const title = f.name.replace(/\.(graphium|provnote)\.json$/, "");
+      const title = titleOf(f);
       const s: ReferenceSuggestion = {
         type: "note",
         id: f.id,
@@ -326,10 +358,15 @@ export const MENTIONABLE_ASSET_TYPES: readonly string[] = ["pdf", "document", "d
  * 参照等）に使う。選択すると本文に @素材名 を挿入し、doc.citedAssetFileIds に fileId を
  * 記録する（データ素材はテーブルのセル内から測定ファイルを指すのが主な用途）。
  */
-export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSuggestion[] {
+export function getAssetSuggestions(
+  mediaIndex?: MediaIndex | null,
+  /** `@` の後に打っている文字。あれば全素材から先に絞り（名前・取り込み元フォルダ）、その中の新しい順に出す */
+  query = "",
+): ReferenceSuggestion[] {
   if (!mediaIndex) return [];
+  const matches = mentionQueryMatcher(query);
   const assets = mediaIndex.media
-    .filter((m) => MENTIONABLE_ASSET_TYPES.includes(m.type))
+    .filter((m) => MENTIONABLE_ASSET_TYPES.includes(m.type) && matches(m.name, m.noteContexts))
     .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
     .slice(0, 15);
   // 同名の素材が並ぶときだけ、2 行目に出どころを添える（ノートの同名と同じ扱い）。
@@ -348,11 +385,14 @@ export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSu
       type: "asset" as const,
       id: m.fileId,
       // 絵文字はピッカーのサムネイルと同じ使い分け（データ素材は 🧾）。
-      // 画像（🖼）は選ぶとリンク文字ではなくインライン画像として埋まる
-      label: `${m.type === "data" ? "🧾" : m.type === "image" ? "🖼" : "📄"} ${m.name}`,
+      // 画像（🖼）は選ぶとリンク文字ではなくインライン画像として埋まる。
+      // 名前は NFC にそろえる — BlockNote はそのまま比べるので、macOS の NFD の
+      // ファイル名は打った文字（NFC）と一致せず候補から落ちていた
+      label: `${m.type === "data" ? "🧾" : m.type === "image" ? "🖼" : "📄"} ${m.name.normalize("NFC")}`,
       group: t("mention.groupAssets"),
       assetType: m.type,
       ...(duplicated && origin ? { subtext: origin } : {}),
+      ...(m.noteContexts?.length ? { aliases: [...m.noteContexts] } : {}),
     };
   });
 }

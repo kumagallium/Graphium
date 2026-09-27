@@ -134,3 +134,51 @@ describe("往復（取り込み → 書き出し → 再取り込み）", () => 
     expect(inline.props.latex).toBe("\\sigma^2 = \\frac{1}{n}");
   });
 });
+
+// 上付き・下付きは書き出しで <sup> / <sub> になり、中の [ ] \ * _ などには \ が付く
+// （lib/script-styles.ts の escapeForScriptTag）。取り込みがその \[ \] を数式の区切りと
+// 取り違えると、上付きの「[1]」が数式ブロック「1」に化け、段落や表の行が割れる
+describe("往復 - 上付き・下付きの中のエスケープを数式にしない", () => {
+  const t = (text: string, styles: Record<string, unknown> = {}) => ({ type: "text", text, styles });
+  const sup = { superscript: true };
+  const sub = { subscript: true };
+  const para = (content: any[]) => ({ type: "paragraph", props: {}, content, children: [] });
+
+  const cases: [string, any[]][] = [
+    ["上付きの「[1]」", [t("文献"), t("[1]", sup), t("。")]],
+    ["上付きのアスタリスク（<sup>\\*</sup>）", [t("p"), t("*", sup), t(" と q"), t("*", sup)]],
+    ["下付きの「a<b」", [t("k"), t("a<b", sub)]],
+    ["\\ の直後の ( と [（上付きの「\\(a\\)」・下付きの「\\[b\\]」）", [t("x"), t("\\(a\\)", sup), t(" と y"), t("\\[b\\]", sub)]],
+  ];
+
+  it.each(cases)("%s", async (_name, content) => {
+    const md = await blocksToMarkdown([para(content)]);
+    const blocks = parseMarkdownToBlocksWithMath(createEphemeralEditor(), md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toEqual(content);
+  });
+
+  it("見出し・表のセル・数式と並んでいても崩れない（数式ブロックで段落や表の行が割れない）", async () => {
+    const md = await blocksToMarkdown([
+      { type: "heading", props: { level: 2 }, content: [t("見出し"), t("[1]", sup)], children: [] },
+      {
+        type: "table",
+        props: {},
+        content: { type: "tableContent", rows: [{ cells: [[t("値"), t("[2]", sup)], [t("b")]] }] },
+        children: [],
+      },
+      para([t("本文"), t("[3]", sup), t(" と "), { type: "inlineMath", props: { latex: "x^2" } }]),
+      { type: "math", props: { latex: "E = mc^2" }, children: [] },
+    ]);
+    const blocks = parseMarkdownToBlocksWithMath(createEphemeralEditor(), md);
+
+    expect(blocks.map((b: any) => b.type)).toEqual(["heading", "table", "paragraph", "math"]);
+    expect(blocks[0].content).toEqual([t("見出し"), t("[1]", sup)]);
+    // Markdown の表は見出し行が必須なので、書き出しで空の見出し行が 1 行付く（BlockNote 既定）
+    const rows = blocks[1].content.rows;
+    const cells = rows[rows.length - 1].cells.map((cell: any) => (Array.isArray(cell) ? cell : cell.content));
+    expect(cells).toEqual([[t("値"), t("[2]", sup)], [t("b")]]);
+    expect(blocks[2].content).toEqual([t("本文"), t("[3]", sup), t(" と "), { type: "inlineMath", props: { latex: "x^2" } }]);
+    expect(blocks[3].props.latex).toBe("E = mc^2");
+  });
+});

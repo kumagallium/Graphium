@@ -8,7 +8,7 @@
 //   - 既定（平文）— タグを入れない。検索索引・照合キー・目次向け。検索は NFKC 正規化で
 //     「10⁵」も「105」に揃うので、タグを入れないほうが引ける（"sup" が語として混ざらない）
 // inlineMath はどちらでも $…$ にする（数式は書式ではなく内容なので、平文でも残す）。
-// リンクは中身の文字だけを出す（URL は出さない）。
+// リンクは中身の文字だけを出す（URL は出さない）。表のセルも同じ規則で読む（tableContentToText）。
 //
 // エディタや DOM に依存しない純関数にしておく — MCP サーバー（src/mcp）からも import する。
 
@@ -37,4 +37,30 @@ export function inlineContentToText(content: unknown, options: InlineTextOptions
     }
   }
   return text;
+}
+
+/**
+ * 表（table ブロックの content = tableContent）を文字列にする。表の 1 行を 1 行にし、
+ * セルは " | " で区切る（検索索引 lexical-search/chunk.ts と同じ並べ方。区切り行は入れない）。
+ *
+ * セルは BlockNote 0.47 からの { type: "tableCell", content } と、それ以前の inline 配列の
+ * 両方を読む。新しい形を読めずに表が丸ごと空になり、AI に渡す本文から消えていた。
+ * セルの中の改行は空白にして、表の 1 行が 1 行に収まるようにする。空のセルしか無い行は出さない。
+ */
+export function tableContentToText(content: unknown, options: InlineTextOptions = {}): string {
+  const rows = (content as { rows?: unknown } | null | undefined)?.rows;
+  if (!Array.isArray(rows)) return "";
+  const lines: string[] = [];
+  for (const row of rows) {
+    const cells: unknown[] = Array.isArray(row?.cells) ? row.cells : [];
+    const texts = cells.map((cell) => tableCellText(cell, options).replace(/\s*\n\s*/g, " ").trim());
+    if (texts.some((t) => t)) lines.push(texts.join(" | "));
+  }
+  return lines.join("\n");
+}
+
+function tableCellText(cell: unknown, options: InlineTextOptions): string {
+  if (Array.isArray(cell)) return inlineContentToText(cell, options);
+  if (cell && typeof cell === "object") return inlineContentToText((cell as { content?: unknown }).content, options);
+  return "";
 }

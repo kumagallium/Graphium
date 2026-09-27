@@ -61,6 +61,22 @@ export function extractPayloadFromHtml(html: string | null | undefined): Graphiu
   }
 }
 
+/**
+ * @リンク（行き先がノート・素材の reference リンク）1 件分。行き先はブロックではないので
+ * links（両端がコピー範囲の中にあるものだけ）とは別に運ぶ。
+ */
+export type MentionLinkRecord = {
+  sourceBlockId: string;
+  /** ノート ID、または外部ソース ID（"data:<fileId>" 等） */
+  targetNoteId: string;
+  /**
+   * 表のセルの @リンクなら、その行の identity。貼った先の表で同じ identity の行
+   * （振り直されたらその行）に紐づけ直す。番号で運ばないのは、行の一部だけをコピー
+   * すると貼った表の行の並びが元とずれ、同名の素材が並ぶ表で別の行に付くため
+   */
+  sourceRowIdentity?: string;
+};
+
 export type GraphiumClipboardPayload = {
   version: number;
   /** コピー対象のブロック ID（深さ優先順） */
@@ -71,6 +87,8 @@ export type GraphiumClipboardPayload = {
   attributes?: Record<string, StepAttributes>;
   /** コピー対象集合の内側で閉じたリンクのみ運ぶ */
   links: BlockLink[];
+  /** コピーしたブロックの @リンク（旧いペイロードには無い） */
+  mentionLinks?: MentionLinkRecord[];
 };
 
 /**
@@ -89,6 +107,15 @@ export function flattenBlockIds(blocks: readonly any[]): string[] {
   };
   walk(blocks);
   return result;
+}
+
+/**
+ * ブロックのラベル・ブロック間リンクを運ぶペイロードか（@リンクだけなら false）。
+ * 空のリスト項目への貼り付けの救済は、構造を運ぶペイロードのときだけ見送る —
+ * @リンクだけのもの（段落の文字のコピー）は、前と同じく文字として差し込む
+ */
+export function carriesBlockStructure(payload: GraphiumClipboardPayload): boolean {
+  return Object.keys(payload.labels).length > 0 || payload.links.length > 0;
 }
 
 /**
@@ -120,6 +147,17 @@ export type SerializeInput = {
   getAttributes: (blockId: string) => StepAttributes | undefined;
   /** ドキュメント内の全リンク */
   allLinks: readonly BlockLink[];
+  /**
+   * 選択が表の 1 行の中だけなら、その表とその行の identity（identity の無い行は null）。
+   * ほかの行に紐づく @リンクを運ばないのに使う
+   */
+  copiedRow?: { blockId: string; rowIdentity: string | null } | null;
+  /**
+   * その行き先の `@ラベル` がコピーした中身に入っているか。入っていない @リンクは運ばない
+   * （URL だけを選んでコピーしたのにペイロードが付き、貼り付けの URL メニュー等が
+   * 出なくなるのを防ぐ）。無ければ全部運ぶ
+   */
+  carriesMention?: (targetNoteId: string) => boolean;
 };
 
 /**
@@ -143,7 +181,34 @@ export function buildClipboardPayload(input: SerializeInput): GraphiumClipboardP
     (l) => blockIdSet.has(l.sourceBlockId) && blockIdSet.has(l.targetBlockId),
   );
 
-  if (Object.keys(labels).length === 0 && links.length === 0) {
+  // @リンクは行き先がブロックの外（ノート・素材）なので、出どころがコピー範囲にあれば運ぶ。
+  // 本文の `@ラベル` だけが貼られてリンクが残らないと、貼った先のクリックは名前の
+  // 逆引きになり、同名の素材があると取り違える。貼った先に実際にどのメンションが
+  // 入ったかは貼る側が見て絞る（mention-paste.ts）
+  const mentionLinks: MentionLinkRecord[] = [];
+  const copiedRow = input.copiedRow ?? null;
+  for (const l of input.allLinks) {
+    if (!blockIdSet.has(l.sourceBlockId)) continue;
+    if (l.type !== "reference" || !l.targetNoteId || l.targetBlockId) continue;
+    if (input.carriesMention && !input.carriesMention(l.targetNoteId)) continue;
+    // 表の 1 行の中だけをコピーしたときは、ほかの行に紐づくリンクを運ばない
+    // （行の記録が無い旧いリンクは、どの行のものか分からないので残す）
+    if (
+      copiedRow &&
+      l.sourceBlockId === copiedRow.blockId &&
+      l.sourceRowIdentity &&
+      l.sourceRowIdentity !== copiedRow.rowIdentity
+    ) {
+      continue;
+    }
+    mentionLinks.push({
+      sourceBlockId: l.sourceBlockId,
+      targetNoteId: l.targetNoteId,
+      ...(l.sourceRowIdentity ? { sourceRowIdentity: l.sourceRowIdentity } : {}),
+    });
+  }
+
+  if (Object.keys(labels).length === 0 && links.length === 0 && mentionLinks.length === 0) {
     return null;
   }
 
@@ -156,6 +221,7 @@ export function buildClipboardPayload(input: SerializeInput): GraphiumClipboardP
   if (Object.keys(attributes).length > 0) {
     payload.attributes = attributes;
   }
+  if (mentionLinks.length > 0) payload.mentionLinks = mentionLinks;
   return payload;
 }
 
@@ -176,12 +242,23 @@ export function parseClipboardPayload(raw: string | null | undefined): GraphiumC
   if (!Array.isArray(parsed.blockIds)) return null;
   if (!parsed.labels || typeof parsed.labels !== "object") return null;
   if (!Array.isArray(parsed.links)) return null;
+  // @リンクは後から足した欄。無い（旧いペイロード）・形が崩れているものは落とす
+  const mentionLinks = Array.isArray(parsed.mentionLinks)
+    ? parsed.mentionLinks.filter(
+        (m: any): m is MentionLinkRecord =>
+          !!m &&
+          typeof m.sourceBlockId === "string" &&
+          typeof m.targetNoteId === "string" &&
+          (m.sourceRowIdentity === undefined || typeof m.sourceRowIdentity === "string"),
+      )
+    : undefined;
   return {
     version: parsed.version,
     blockIds: parsed.blockIds.filter((id: unknown): id is string => typeof id === "string"),
     labels: parsed.labels,
     attributes: parsed.attributes && typeof parsed.attributes === "object" ? parsed.attributes : undefined,
     links: parsed.links,
+    ...(mentionLinks && mentionLinks.length > 0 ? { mentionLinks } : {}),
   };
 }
 

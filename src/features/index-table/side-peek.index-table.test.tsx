@@ -18,6 +18,7 @@
 // - 表の外で @ から既存ノートを選ぶと、ピークのノートの noteLinks に派生関係が入る
 //   （メインと同じ）。以前はピークだけ記録せず、@ したノートへの線がグラフ・来歴に
 //   出なかった。保存を待つ間に選んでも、保存完了で消えない
+// - ノートリンク（…#note/<id>）を貼り付けて @タイトル にしたときも同じ（メインと同じ関数）
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 
@@ -66,6 +67,13 @@ vi.mock("../../base/editor", async () => {
       const [editor] = useState(() => {
         let blocks: any[] = structuredClone(initialContent ?? []);
         return {
+          // 貼り付け・コピーのリスナーを張る先
+          domElement: document.createElement("div"),
+          // 表の外のカーソルは本文の最初の段落にいる扱い（insertInlineContent と揃える）
+          getTextCursorPosition: () =>
+            editorHolder.cursor
+              ? { block: blocks.find((b) => b.id === editorHolder.cursor!.tableBlockId) }
+              : { block: blocks.find((b) => b.type === "paragraph") },
           get document() {
             return blocks;
           },
@@ -280,7 +288,7 @@ function recordOpens() {
   return { opens, onOpenNoteInPeek };
 }
 
-async function renderPeek(onOpenNoteInPeek: (id: string) => void) {
+async function renderPeek(onOpenNoteInPeek: (id: string) => void, noteIndex?: any) {
   render(
     <LocaleProvider>
       <SidePeek
@@ -291,6 +299,7 @@ async function renderPeek(onOpenNoteInPeek: (id: string) => void) {
         onOpenNoteInPeek={onOpenNoteInPeek}
         files={[]}
         onRefreshFiles={vi.fn()}
+        noteIndex={noteIndex}
       />
     </LocaleProvider>,
   );
@@ -447,6 +456,42 @@ describe("SidePeek のインデックステーブル", () => {
     await act(async () => {
       await editorHolder.mention!.onMentionSelect!(BODY_ID, rich);
     });
+    await waitFor(() => expect(editorBodyText(editor)).toBe("Body@Rich @Rich "));
+    const again = await saveWithShortcut();
+    expect(again.noteLinks).toEqual(doc.noteLinks);
+  });
+
+  it("ノートリンクを貼り付けると、@リンク・リンク・noteLinks をピークのノートに保存する", async () => {
+    const noteIndex = { version: 1, notes: [{ noteId: "rich-note", title: "Rich" }] };
+    const { editor } = await renderPeek(vi.fn(), noteIndex);
+    editorHolder.cursor = null;
+
+    // 単一トークンの Graphium ノートリンクを本文の段落に貼る
+    const paste = () => {
+      const e = new Event("paste", { bubbles: true, cancelable: true }) as Event & { clipboardData?: unknown };
+      e.clipboardData = {
+        getData: (type: string) => (type === "text/plain" ? "https://example.com/Graphium/#note/rich-note" : ""),
+      };
+      act(() => {
+        editor.domElement.dispatchEvent(e);
+      });
+      return e;
+    };
+    const e = paste();
+    expect(e.defaultPrevented).toBe(true);
+    await waitFor(() => expect(editorBodyText(editor)).toBe("Body@Rich "));
+
+    const doc = await saveWithShortcut();
+    // 以前はピークだけ reference リンクしか記録せず、グラフ・来歴に線が出なかった
+    expect(doc.noteLinks).toEqual([
+      { targetNoteId: "rich-note", sourceBlockId: BODY_ID, type: "derived_from" },
+    ]);
+    const page = doc.pages[0];
+    const link = [...page.provLinks, ...page.knowledgeLinks].find((l: any) => l.targetNoteId === "rich-note");
+    expect(link).toMatchObject({ sourceBlockId: BODY_ID, type: "reference" });
+
+    // もう一度貼っても、ノートからノートへの線は 1 本のまま
+    paste();
     await waitFor(() => expect(editorBodyText(editor)).toBe("Body@Rich @Rich "));
     const again = await saveWithShortcut();
     expect(again.noteLinks).toEqual(doc.noteLinks);

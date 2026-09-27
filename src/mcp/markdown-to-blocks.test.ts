@@ -155,6 +155,20 @@ const math = (latex: string) => ({ type: "inlineMath", props: { latex } });
 const hasInlineMath = (content: unknown) =>
   Array.isArray(content) && content.some((c) => (c as Record<string, unknown>).type === "inlineMath");
 
+// <sup> / <sub> の中の \[ \] \( \) と、数式の区切りが絡むケース。アプリの取り込みと
+// 同じものだけを数式として拾う（区切りがタグの境目をまたぐ 4 つと、前から通っている 4 つ）
+const SCRIPT_DELIMITER_CASES = [
+  "<sup>\\\\(</sup> と \\( y \\)",
+  "A<sup>\\[</sup> 本文 <sup>\\]</sup>B",
+  "<sup>\\(</sup> 文 \\) 後ろ",
+  "\\( x <sup>\\)</sup> 後ろ",
+  "水<sup>\\[1\\]</sup>",
+  "| a<sup>\\[1\\]</sup> | <sub>\\(2\\)</sub> |\n|---|---|\n| <sup>\\[</sup> | \\( z \\) |",
+  "e<sup>$x$</sup>",
+  "\\[ E=mc^2 \\] と 文献<sup>\\[1\\]</sup>",
+  "<sup>a|\\[1\\]</sup> と \\( y \\)",
+];
+
 describe("数式", () => {
   it("$…$ と \\(…\\) をインライン数式にする", () => {
     expect(parseInlineContent("式 $x^2 + y^2$ と \\(a_1\\) を使う")).toEqual([
@@ -279,6 +293,7 @@ describe("数式", () => {
       "空の $$ $$ と $ $ と \\( \\)",
       `長い $${"a".repeat(201)}$ と短い $b$`,
       "\\$5 と a$b$ と $c$d",
+      ...SCRIPT_DELIMITER_CASES,
     ]) {
       const mine = stashMathAndScripts(src)
         .stash.filter((e) => e.kind === "math")
@@ -349,6 +364,79 @@ describe("上付き・下付き", () => {
     expect(parseInlineContent("`<sup>x</sup>`")).toEqual([text("<sup>x</sup>", { code: true })]);
     expect(parseInlineContent("<sup>a|b</sup>")).toEqual([text("<sup>a|b</sup>")]);
     expect(markdownToBlocks("<sup>a\nb</sup>")[0].content).toEqual([text("<sup>a b</sup>")]);
+  });
+});
+
+describe("タグの中の \\[ \\] \\( \\) と数式の区切り", () => {
+  it("区切りの片方がタグの中にあっても、タグの境目をまたいだ数式を作らない", () => {
+    expect(parseInlineContent("<sup>\\\\(</sup> と \\( y \\)")).toEqual([
+      text("\\(", { superscript: true }),
+      text(" と "),
+      math("y"),
+    ]);
+    expect(parseInlineContent("A<sup>\\[</sup> 本文 <sup>\\]</sup>B")).toEqual([
+      text("A"),
+      text("[", { superscript: true }),
+      text(" 本文 "),
+      text("]", { superscript: true }),
+      text("B"),
+    ]);
+    expect(parseInlineContent("<sup>\\(</sup> 文 \\) 後ろ")).toEqual([
+      text("\\(", { superscript: true }),
+      text(" 文 \\) 後ろ"),
+    ]);
+    expect(parseInlineContent("\\( x <sup>\\)</sup> 後ろ")).toEqual([
+      text("\\( x "),
+      text("\\)", { superscript: true }),
+      text(" 後ろ"),
+    ]);
+  });
+
+  it("タグの中で閉じている \\[1\\] は上付きの文字、タグの中の $…$ は数式のまま", () => {
+    expect(parseInlineContent("水<sup>\\[1\\]</sup>")).toEqual([text("水"), text("[1]", { superscript: true })]);
+    expect(parseInlineContent("e<sup>$x$</sup>")).toEqual([text("e"), math("x")]);
+    expect(parseInlineContent("\\[ E=mc^2 \\] と 文献<sup>\\[1\\]</sup>")).toEqual([
+      math("E=mc^2"),
+      text(" と 文献"),
+      text("[1]", { superscript: true }),
+    ]);
+  });
+
+  it("表のセルの中でも同じ", () => {
+    const [table] = markdownToBlocks(
+      "| a<sup>\\[1\\]</sup> | <sub>\\(2\\)</sub> |\n|---|---|\n| <sup>\\[</sup> | \\( z \\) |",
+    );
+    expect(table.content).toEqual({
+      type: "tableContent",
+      rows: [
+        { cells: [[text("a"), text("[1]", { superscript: true })], [text("\\(2\\)", { subscript: true })]] },
+        { cells: [[text("[", { superscript: true })], [math("z")]] },
+      ],
+    });
+  });
+
+  it("行に単独のブロック数式は、隣の行に上付きの \\[1\\] があっても数式ブロックになる", () => {
+    const blocks = markdownToBlocks("文献<sup>\\[1\\]</sup>\n\\[ E=mc^2 \\]\n続き<sup>\\]</sup>");
+    expect(blocks.map((b) => b.type)).toEqual(["paragraph", "math", "paragraph"]);
+    expect(blocks[1].props).toEqual({ latex: "E=mc^2" });
+    expect(blocks[2].content).toEqual([text("続き"), text("]", { superscript: true })]);
+  });
+
+  it("| を含むタグは上付きにしないが、中の \\[ \\] も数式にしない", () => {
+    expect(parseInlineContent("<sup>a|\\[1\\]</sup> と \\( y \\)")).toEqual([
+      text("<sup>a|\\[1\\]</sup> と "),
+      math("y"),
+    ]);
+  });
+
+  it("守りの目印と同じ文字が本文にあれば、その文字を消さない", () => {
+    const guard = String.fromCharCode(0xfdef);
+    expect(parseInlineContent(`${guard}<sup>\\[1\\]</sup> と \\( y \\)`)).toEqual([
+      text(guard),
+      text("[1]", { superscript: true }),
+      text(" と "),
+      math("y"),
+    ]);
   });
 });
 
@@ -490,6 +578,7 @@ describe("save.mjs と同じブロックを出す", () => {
       "| <sup>1</sup> | H<sub>2</sub> |",
       "|---|---|",
     ].join("\n"),
+    タグと数式の区切り: [...SCRIPT_DELIMITER_CASES, `${String.fromCharCode(0xfdef)}<sup>\\[1\\]</sup> と \\( y \\)`].join("\n\n"),
     閉じていないフェンス: "本文\n```\n$$\nx\n$$\n<sup>y</sup>",
     私用領域の文字: `$a$ と ${String.fromCharCode(0xe000)}0${String.fromCharCode(0xe001)} と <sup>b</sup>`,
     改行コード: "a $x$\r\n$$\r\ny\r\n$$\r\nb",

@@ -70,6 +70,7 @@ import {
   GRAPHIUM_CLIPBOARD_MIME,
   applyClipboardPayload,
   buildClipboardPayload,
+  carriesBlockStructure,
   computeIdMap,
   embedPayloadInHtml,
   extractPayloadFromHtml,
@@ -79,6 +80,7 @@ import {
 import { regenInlineEntitiesInBlocks } from "@features/inline-label/regen-on-paste";
 import {
   normalizeTableRowIdentities,
+  remintPastedRowIdentities,
   syncTableRowIdentitiesToEditor,
 } from "../../lib/table-row-identity";
 import {
@@ -113,7 +115,6 @@ import {
   getAssetSuggestions,
   getCreateNoteSuggestion,
   CREATE_NEW_NOTE_ID,
-  insertNoteMentionInline,
 } from "@features/block-link/mention-menu";
 import {
   insertAssetMention,
@@ -121,9 +122,15 @@ import {
   linkTableRowToNote,
   noteLinkCellAtCursor,
   recordMentionLink,
+  tryConvertNoteLinkPaste as convertNoteLinkPaste,
   type AddReferenceLink,
   type UpdateNoteLinks,
 } from "@features/block-link/mention-insert";
+import {
+  applyPastedMentionLinks,
+  mentionCopyContext,
+  mentionLabelResolver,
+} from "@features/block-link/mention-paste";
 import {
   openPeekTarget,
   readMentionAt,
@@ -413,6 +420,17 @@ function SidePeekInner({
   const [peekContexts, setPeekContexts] = useState<string[]>([]);
   const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
+  // 貼り付けで運んだ @リンクの記録に使う読み口・書き口。コピー＆ペーストのリスナーは
+  // 依存を固定した effect にあるので、最新の noteIndex / mediaIndex と docRef を ref で渡す
+  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
+  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  const citeAssetInPeekRef = useRef((fileId: string) => {
+    // 引用素材は docRef に積む（doSave が spread して一緒に書き出す）
+    const cur = docRef.current;
+    if (cur && !(cur.citedAssetFileIds ?? []).includes(fileId)) {
+      docRef.current = { ...cur, citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), fileId] };
+    }
+  });
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 保存にまだ渡していない編集があるか。handleChange で立て、doSave が本文を読み取った
   // 時点で下ろし、保存に失敗したら立て直す。離れるとき・アンマウントのときに書き出すかを
@@ -672,6 +690,8 @@ function SidePeekInner({
     const entry = noteIndex?.notes.find((n) => n.noteId === fileId);
     return entry ? entry.title : null;
   };
+  // noteLinks の書き込み口（updateNoteLinks。宣言はこの後）を paste リスナーから呼ぶための ref
+  const updateNoteLinksRef = useRef<UpdateNoteLinks>(() => {});
 
   // クリップボード処理（メインエディタ src/note-app.tsx の handleEditorReady 内と挙動を揃える）:
   //   copy) 選択ブロックの labels / links を buildClipboardPayload でシリアライズし、
@@ -700,32 +720,18 @@ function SidePeekInner({
 
     // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
     // に変換する。処理した場合 true を返す（呼び出し元で return する）。
-    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean => {
-      const m = /#note\/([^/\s#?]+)/.exec(pastedText);
-      if (!m) return false;
-      const fileId = decodeURIComponent(m[1]);
-      const title = resolveNoteLinkTitleRef.current(fileId);
-      if (!title) return false;
-      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return true;
-      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
-      if (sourceBlockId) {
-        linkStoreRef.current.addLink({
-          sourceBlockId,
-          targetBlockId: "",
-          targetNoteId: fileId,
-          type: "reference",
-          createdBy: "human",
-        });
-      }
-      // insertInlineContent の onChange で自動的に dirty 化・保存される
-      setTimeout(() => {
-        insertNoteMentionInline(editorRef.current, fileId, title);
-      }, 0);
-      return true;
-    };
+    // 変換と記録（reference リンク・noteLinks の派生関係・二重登録ガード）はメインと共通の
+    // mention-insert.ts。以前はピークだけ noteLinks を記録せず、貼り付けで入れたノートへの
+    // 線がグラフ・来歴に出なかった。insertInlineContent の onChange で自動的に dirty 化・保存される
+    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean =>
+      convertNoteLinkPaste(e, pastedText, {
+        editor,
+        getEditor: () => editorRef.current,
+        resolveTitle: (noteId) => resolveNoteLinkTitleRef.current(noteId),
+        addLink: (params) => linkStoreRef.current.addLink(params),
+        // この effect は [sidePeekEditor] でしか張り直さないので、最新の書き込み口を ref で読む
+        updateNoteLinks: (update) => updateNoteLinksRef.current(update),
+      });
 
     // copy: 選択範囲の labels / links をクリップボードに載せて運ぶ（メインと同じ Phase 3）。
     // Chrome はカスタム MIME を OS clipboard へ書き出す際に捨てるため、
@@ -750,6 +756,8 @@ function SidePeekInner({
           getLabel: (id) => labelStoreRef.current.getLabel(id),
           getAttributes: (id) => labelStoreRef.current.getAttributes(id),
           allLinks: linkStoreRef.current.getAllLinks(),
+          // @リンクは、コピーした中身に @ラベル があるものだけ（表の 1 行の中ならその行の分だけ）運ぶ（メインと共通）
+          ...mentionCopyContext(editor, (target) => mentionLabelOfRef.current(target)),
         });
         if (!payload) return;
         e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
@@ -774,9 +782,11 @@ function SidePeekInner({
         cursorBlock.content.length === 0 &&
         e.clipboardData
       ) {
-        const hasGraphiumPayload =
+        const graphiumPayload =
           parseClipboardPayload(e.clipboardData.getData(GRAPHIUM_CLIPBOARD_MIME)) ??
           extractPayloadFromHtml(e.clipboardData.getData("text/html"));
+        // @リンクだけのペイロード（段落の文字のコピー）はブロックの構造を運ばないので救済する
+        const hasGraphiumPayload = !!graphiumPayload && carriesBlockStructure(graphiumPayload);
         const plain = e.clipboardData.getData("text/plain");
         if (!hasGraphiumPayload && plain) {
           const cleaned = plain.replace(/\r?\n+$/g, "");
@@ -798,7 +808,10 @@ function SidePeekInner({
         setTimeout(() => {
           const afterIds = flattenBlockIds(editor.document);
           const newIds = new Set(afterIds.filter((id) => !beforeIdsForRegen.has(id)));
-          if (newIds.size > 0) regenInlineEntitiesInBlocks(editor, newIds);
+          if (newIds.size === 0) return;
+          // 表の行の identity も同じ理由で、元の表と重なる分だけ振り直す（元の表の行を守る）
+          remintPastedRowIdentities(editor, newIds);
+          regenInlineEntitiesInBlocks(editor, newIds);
         }, 0);
       };
 
@@ -813,13 +826,26 @@ function SidePeekInner({
         setTimeout(() => {
           const afterIds = flattenBlockIds(editor.document);
           const newIds = afterIds.filter((id) => !beforeIds.has(id));
+          // @リンクを行に紐づける前に、複製した表の行の identity を振り直しておく
+          const rowRemap = remintPastedRowIdentities(editor, newIds);
           const idMap = computeIdMap(payload.blockIds, newIds);
-          if (idMap.size === 0) return;
-          applyClipboardPayload(idMap, payload, {
-            setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
-            setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+          if (idMap.size > 0) {
+            applyClipboardPayload(idMap, payload, {
+              setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
+              setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+              addLink: (params) => linkStoreRef.current.addLink(params),
+            });
+          }
+          // @リンク（ノート・素材行き）は、貼った先に入ったメンションの分だけ記録し直す
+          // （メインと共通。mention-paste.ts）。記録先はこのピークのもの — 引用素材と
+          // noteLinks はピークで開いているノートの docRef に積む
+          applyPastedMentionLinks(editor, payload, idMap, {
             addLink: (params) => linkStoreRef.current.addLink(params),
-          });
+            getAllLinks: () => linkStoreRef.current.getAllLinks(),
+            labelOfTarget: (target) => mentionLabelOfRef.current(target),
+            citeAsset: (fileId) => citeAssetInPeekRef.current(fileId),
+            updateNoteLinks: (update) => updateNoteLinksRef.current(update),
+          }, rowRemap);
         }, 0);
         scheduleEntityRegen();
         return;
@@ -1514,6 +1540,7 @@ function SidePeekInner({
     },
     [handleChange],
   );
+  updateNoteLinksRef.current = updateNoteLinks;
 
   // スラッシュメニューの「新しいノート」。組み立てはメインと共通
   // （block-link/new-note-slash-item.ts）で、記録先だけこのピークのものを渡す:
@@ -2213,10 +2240,11 @@ function SidePeekInner({
                 // インデックステーブルの note-link 列で選んだノートは、その行に紐付ける。
                 getMentionSuggestions={(query) => {
                   // 見出し候補は DOM 全体から拾ってしまい（メイン+ピークが同居）紛れるため、
-                  // ピークでは他ノート・素材の参照と新規作成に絞る。
+                  // ピークでは他ノート・素材の参照と新規作成に絞る。ノート・素材は
+                  // 打った文字で全件から先に絞る（メインと同じ）
                   const base = [
-                    ...getNoteSuggestions([], noteId, noteIndex),
-                    ...getAssetSuggestions(mediaIndex),
+                    ...getNoteSuggestions([], noteId, noteIndex, query),
+                    ...getAssetSuggestions(mediaIndex, query),
                   ];
                   // note-link 列では、新しいノートは行アイコンから作る流れに委ねるので
                   // 新規作成候補は出さない（メインと同じ判定。mention-insert.ts）
