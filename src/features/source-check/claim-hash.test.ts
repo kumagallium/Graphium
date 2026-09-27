@@ -46,6 +46,37 @@ describe("claimHashBody - 照合済みページの指紋は v1 の抽出に固�
     expect(claimHashBody(doc)).not.toBe(extractPlainTextFromDoc(doc));
   });
 
+  it("step の中身・入れ子の子・新しい形の表を AI に渡す本文が読むようになっても、指紋は v1 のまま", () => {
+    // v1: 本文を持つブロックの子は読まない・新しい形の表セルは空・本文の無い親は子を「, 」で繋ぐ
+    const doc = docWithBlocks([
+      {
+        id: "s1",
+        type: "step",
+        content: [{ type: "text", text: "秤量", styles: {} }],
+        children: [{ id: "p1", type: "paragraph", content: [{ type: "text", text: "5 g", styles: {} }], children: [] }],
+      },
+      {
+        id: "tb1",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [{ cells: [{ type: "tableCell", content: [{ type: "text", text: "温度", styles: {} }] }] }],
+        },
+        children: [],
+      },
+      {
+        id: "cl1",
+        type: "columnList",
+        children: [
+          { id: "c1", type: "column", children: [{ id: "p2", type: "paragraph", content: [{ type: "text", text: "左", styles: {} }], children: [] }] },
+          { id: "c2", type: "column", children: [{ id: "p3", type: "paragraph", content: [{ type: "text", text: "右", styles: {} }], children: [] }] },
+        ],
+      },
+    ]);
+    expect(claimHashBody(doc)).toBe("秤量\n左, 右");
+    expect(extractPlainTextFromDoc(doc)).toBe("秤量\n  5 g\n温度\n左\n右");
+  });
+
   it("文字だけの本文なら AI に渡す本文と同じ（ほとんどの既存ページはどちらでも同じ値）", () => {
     const doc = docWithBlocks([
       { id: "b1", type: "paragraph", content: [{ type: "text", text: "本文の段落", styles: {} }], children: [] },

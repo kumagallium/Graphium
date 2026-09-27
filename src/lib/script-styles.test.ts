@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  guardScriptTagEscapes,
   markScriptTags,
   oppositeScriptStyle,
   restoreScriptTags,
@@ -74,6 +75,49 @@ describe("markScriptTags", () => {
     expect(markScriptTags("e<sup>x<sub>1</sub></sup>")).toBe(
       "e<sup>x{{GWSUB_OPEN}}1{{GWSUB_CLOSE}}</sup>",
     );
+  });
+});
+
+describe("guardScriptTagEscapes", () => {
+  // \ の直後に [ ] ( ) が来る所（数式の区切り \[ \] \( \) として読める所）
+  const DELIMITER_AFTER_BACKSLASH = /\\[[\]()]/;
+
+  it("タグの中の \\[ \\] と、エスケープされた \\ の直後の ( ) を区切りとして読めない形にし、restore で戻す", () => {
+    // 上付きの「[1]」と、下付きの「\(a\)」の書き出し
+    const md = "文献<sup>\\[1\\]</sup> と x<sub>\\\\(a\\\\)</sub>";
+    const { text: guarded, restore } = guardScriptTagEscapes(md);
+    expect(guarded).not.toMatch(DELIMITER_AFTER_BACKSLASH);
+    expect(restore(guarded)).toBe(md);
+  });
+
+  it("タグの外の \\[ … \\] と \\( … \\) には触れない", () => {
+    const outside = "\\[x\\] と \\(y\\) と ";
+    const md = `${outside}<sup>\\[1\\]</sup>`;
+    const { text: guarded, restore } = guardScriptTagEscapes(md);
+    expect(guarded.startsWith(`${outside}<sup>`)).toBe(true);
+    expect(guarded.slice(outside.length)).not.toMatch(DELIMITER_AFTER_BACKSLASH);
+    expect(restore(guarded)).toBe(md);
+  });
+
+  it("表の区切り | を含むタグの中も対象にする（Wiki の読み戻しはこのタグも上付きにする）", () => {
+    const { text: guarded } = guardScriptTagEscapes("x<sup>a|\\[1\\]</sup>");
+    expect(guarded).not.toMatch(DELIMITER_AFTER_BACKSLASH);
+  });
+
+  it("タグが無い・区切りが無い・1 行の中で閉じていないときは入力をそのまま返す", () => {
+    for (const md of ["\\[x\\]", "10<sup>5</sup>", "p<sup>\\*</sup>", "<sup>\\[1\\]", "<sup>\\[1\n\\]</sup>"]) {
+      const { text: guarded, restore } = guardScriptTagEscapes(md);
+      expect(guarded).toBe(md);
+      expect(restore(md)).toBe(md);
+    }
+  });
+
+  it("目印の文字がもともと本文にあれば何もしない（restore で本文の文字を消さない）", () => {
+    const marker = String.fromCharCode(0xfdef); // guardScriptTagEscapes が挟む目印と同じ文字
+    const md = `a${marker}b<sup>\\[1\\]</sup>`;
+    const { text: guarded, restore } = guardScriptTagEscapes(md);
+    expect(guarded).toBe(md);
+    expect(restore(guarded)).toBe(md);
   });
 });
 

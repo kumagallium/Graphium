@@ -12,6 +12,7 @@ import {
   recordMentionLink,
   tableCellAtCursor,
   tableRowAtCursor,
+  tryConvertNoteLinkPaste,
   withDerivedFromLink,
 } from "./mention-insert";
 import type { ReferenceSuggestion } from "./mention-menu";
@@ -298,6 +299,101 @@ describe("insertNoteMention", () => {
   });
 });
 
+describe("tryConvertNoteLinkPaste", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** paste イベントの替え玉（既処理フラグを載せられるよう素のオブジェクト） */
+  const pasteEvent = () =>
+    ({ preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() }) as unknown as ClipboardEvent & {
+      preventDefault: ReturnType<typeof vi.fn>;
+      stopImmediatePropagation: ReturnType<typeof vi.fn>;
+    };
+
+  function setup(cursorBlockId: string | null = "p1", initialNoteLinks: NoteLink[] = []) {
+    const ed = {
+      ...fakeEditor([indexTable()], null),
+      getTextCursorPosition: () => (cursorBlockId ? { block: { id: cursorBlockId } } : undefined),
+    };
+    let noteLinks = initialNoteLinks;
+    const ops = {
+      editor: ed,
+      getEditor: () => ed,
+      resolveTitle: (id: string) => (id === "n-rich" ? "Rich" : null),
+      addLink: vi.fn(),
+      updateNoteLinks: vi.fn((update: (links: NoteLink[]) => NoteLink[]) => {
+        noteLinks = update(noteLinks);
+      }),
+    };
+    return { ed, ops, noteLinks: () => noteLinks };
+  }
+
+  it("ノートリンクを @タイトル にし、reference リンクと noteLinks の派生関係を記録する", () => {
+    const { ed, ops, noteLinks } = setup();
+    const e = pasteEvent();
+    expect(tryConvertNoteLinkPaste(e, "https://example.com/Graphium/#note/n-rich", ops)).toBe(true);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(e.stopImmediatePropagation).toHaveBeenCalled();
+
+    // 貼り付けは片付けるものが無いので次のタスクで入る
+    vi.advanceTimersByTime(0);
+    expect(ed.insertInlineContent).toHaveBeenCalledWith([
+      { type: "text", text: "@Rich", styles: { textColor: "blue" } },
+      { type: "text", text: " ", styles: {} },
+    ]);
+    expect(ops.addLink).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceBlockId: "p1", targetNoteId: "n-rich", type: "reference" }),
+    );
+    expect(noteLinks()).toEqual([{ targetNoteId: "n-rich", sourceBlockId: "p1", type: "derived_from" }]);
+  });
+
+  it("ID は URL デコードして引く", () => {
+    const { ops } = setup();
+    const resolveTitle = vi.fn(() => "日本語");
+    tryConvertNoteLinkPaste(pasteEvent(), "#note/%E3%81%82", { ...ops, resolveTitle });
+    expect(resolveTitle).toHaveBeenCalledWith("あ");
+  });
+
+  it("同じイベントが 2 回届いても（リスナーの二重登録）1 回だけ入れる", () => {
+    const { ed, ops } = setup();
+    const e = pasteEvent();
+    expect(tryConvertNoteLinkPaste(e, "#note/n-rich", ops)).toBe(true);
+    expect(tryConvertNoteLinkPaste(e, "#note/n-rich", ops)).toBe(true);
+    vi.advanceTimersByTime(0);
+    expect(ed.insertInlineContent).toHaveBeenCalledTimes(1);
+    expect(ops.addLink).toHaveBeenCalledTimes(1);
+    expect(ops.updateNoteLinks).toHaveBeenCalledTimes(1);
+  });
+
+  it("ノートリンクでない・一覧に無いノートなら引き受けない（通常の貼り付けに任せる）", () => {
+    const { ed, ops } = setup();
+    const e = pasteEvent();
+    expect(tryConvertNoteLinkPaste(e, "https://example.com/", ops)).toBe(false);
+    expect(tryConvertNoteLinkPaste(e, "#note/n-missing", ops)).toBe(false);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(0);
+    expect(ed.insertInlineContent).not.toHaveBeenCalled();
+  });
+
+  it("同じノートへの線が既にあれば noteLinks は足さない", () => {
+    const existing: NoteLink[] = [{ targetNoteId: "n-rich", sourceBlockId: "p0", type: "derived_from" }];
+    const { ops, noteLinks } = setup("p1", existing);
+    tryConvertNoteLinkPaste(pasteEvent(), "#note/n-rich", ops);
+    vi.advanceTimersByTime(0);
+    expect(noteLinks()).toBe(existing);
+    expect(ops.addLink).toHaveBeenCalled();
+  });
+
+  it("カーソルのブロックが分からなければ @タイトル だけ入れ、リンクは記録しない", () => {
+    const { ed, ops } = setup(null);
+    expect(tryConvertNoteLinkPaste(pasteEvent(), "#note/n-rich", ops)).toBe(true);
+    vi.advanceTimersByTime(0);
+    expect(ed.insertInlineContent).toHaveBeenCalled();
+    expect(ops.addLink).not.toHaveBeenCalled();
+    expect(ops.updateNoteLinks).not.toHaveBeenCalled();
+  });
+});
+
 describe("ensureTableRowIdentity", () => {
   it("採番済みの行はその identity を返す", () => {
     const ed = fakeEditor(
@@ -464,6 +560,22 @@ describe("構造ガード", () => {
     expect(
       missing,
       `表の外で選んだノートは insertNoteMention で入れてください（noteLinks の記録を含む）: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("どのエディタもノートリンクの貼り付けを mention-insert.ts の関数で変換する", () => {
+    // 貼り付けの変換をエディタ側で手書きすると、ピークだけ noteLinks が抜けていた。
+    // リンクの読み取りと二重登録ガードのフラグも共通関数の中だけに置く
+    const importsShared = /\btryConvertNoteLinkPaste\b[^;]*from\s*["'][^"']*block-link\/mention-insert["']/;
+    const handwritten = editors
+      .filter(
+        ({ source }) =>
+          !importsShared.test(source) || source.includes("__ghNoteLinkHandled") || source.includes("#note\\/("),
+      )
+      .map((e) => e.file);
+    expect(
+      handwritten,
+      `ノートリンクの貼り付けは mention-insert.ts の tryConvertNoteLinkPaste で変換してください: ${handwritten.join(", ")}`,
     ).toEqual([]);
   });
 });

@@ -18,6 +18,7 @@
 // 推測で結び付けない（完全一致のみ）。
 
 import type { GraphiumDocument } from "../../lib/document-types";
+import { inlineContentToText } from "../markdown-export/inline-text";
 
 export type TopicStatement = {
   /** 照合する文（プレーンテキスト。引用部分は除く） */
@@ -42,12 +43,14 @@ function isGeneratedReferencesHeading(block: any): boolean {
   return text === "References";
 }
 
-/** 見出し判定・タイトル抽出専用: スタイルを見ずそのままのテキストを連結する */
+/**
+ * 見出し判定・タイトル抽出専用: スタイルを見ずそのままのテキストを連結する
+ * （平文。上付き・下付きのタグは入れない。リンクは中身の文字、数式は $…$）
+ */
 function extractPlainInlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.map((c: any) => c.text ?? c.content ?? "").join("");
+  return inlineContentToText(content);
 }
 
 /** 先頭の "@"・"🤖"・空白をすべて取り除く（References 行のタイトル抽出・(b) の比較両方で使う） */
@@ -122,16 +125,16 @@ function extractStatementFromBlock(
   const parts: string[] = [];
   for (const el of content) {
     if (isBlueCitationElement(el)) continue; // (a) の可視表現。テキストからは除く
-    const raw = typeof el?.text === "string" ? el.text : (el?.content ?? "");
-    if (typeof raw === "string") {
-      const stripped = stripCitationMarkers(raw);
+    if (typeof el?.text === "string") {
+      const stripped = stripCitationMarkers(el.text);
       const matchedClaimId = stripped ? titleToClaimId.get(stripped) : undefined;
       if (matchedClaimId) {
         claimIds.add(matchedClaimId); // (b) 完全一致
         continue; // テキストからは除く
       }
     }
-    parts.push(raw ?? "");
+    // リンクは中身の文字、数式は $…$（extractPlainInlineText と同じ平文）
+    parts.push(inlineContentToText([el]));
   }
   let text = parts.join("");
 

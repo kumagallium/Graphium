@@ -6,6 +6,7 @@ import {
   updateIndexEntry,
   removeIndexEntry,
   ensureIndex,
+  extractBlockText,
   INDEX_SCHEMA_VERSION,
   type GraphiumIndex,
   type NoteIndexEntry,
@@ -602,5 +603,62 @@ describe("step コンテナの収集", () => {
   it("step は headings には入らない（型が違う）", () => {
     const entry = buildIndexEntry("file-1", docWithSteps([step("s1", "前処理")]));
     expect(entry.headings).toEqual([]);
+  });
+});
+
+// ── inline の文字列化（v28）──
+// 目次・プレビューは平文。リンクは中身の文字（"[object Object]" にしない）、数式は $…$、
+// 上付き・下付きはタグを入れない。
+describe("見出し・step・ラベルのプレビューの inline の文字列化", () => {
+  const link = (text: string) => ({
+    type: "link",
+    href: "https://example.com",
+    content: [{ type: "text", text, styles: {} }],
+  });
+  const docWith = (blocks: any[], labels: Record<string, string> = {}): GraphiumDocument =>
+    mockDoc({
+      pages: [{ id: "page-1", title: "Main", blocks, labels, provLinks: [], knowledgeLinks: [] }],
+    } as Partial<GraphiumDocument>);
+
+  it("見出しと step のタイトルは、リンクを中身の文字に、インライン数式を $…$ にする", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      docWith([
+        { id: "h1", type: "heading", props: { level: 2 }, content: [link("参考資料"), { type: "text", text: " のまとめ" }] },
+        { id: "h2", type: "heading", props: { level: 3 }, content: [{ type: "inlineMath", props: { latex: "\\alpha" } }, { type: "text", text: " 相の析出" }] },
+        { id: "s1", type: "step", content: [{ type: "text", text: "手順は " }, link("メーカーの説明書")], children: [] },
+      ]),
+    );
+    expect(entry.headings).toEqual([
+      { blockId: "h1", text: "参考資料 のまとめ", level: 2 },
+      { blockId: "h2", text: "$\\alpha$ 相の析出", level: 3 },
+    ]);
+    expect(entry.steps).toEqual([{ blockId: "s1", text: "手順は メーカーの説明書" }]);
+  });
+
+  it("ラベルのプレビューもリンクを中身の文字にする", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      docWith(
+        [{ id: "b1", type: "paragraph", content: [{ type: "text", text: "条件は " }, link("前回のノート")] }],
+        { b1: "procedure" },
+      ),
+    );
+    expect(entry.labels).toEqual([{ blockId: "b1", label: "procedure", preview: "条件は 前回のノート" }]);
+  });
+
+  it("extractBlockText は平文（上付き・下付きのタグを入れない）", () => {
+    const block = {
+      id: "b1",
+      type: "paragraph",
+      content: [
+        { type: "text", text: "H", styles: {} },
+        { type: "text", text: "2", styles: { subscript: true } },
+        { type: "text", text: "O を ", styles: {} },
+        { type: "inlineMath", props: { latex: "10^5" } },
+        { type: "text", text: " Pa で", styles: {} },
+      ],
+    };
+    expect(extractBlockText(block)).toBe("H2O を $10^5$ Pa で");
   });
 });

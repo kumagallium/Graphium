@@ -459,7 +459,11 @@ ProseMirror mark) on the first cell's content
 (`src/lib/table-row-identity.ts`). A mark is the one piece of state that
 travels with the row through cell edits. Saving normalizes identities:
 every non-empty data row gets one, and a duplicated id (row copied) keeps
-the first occurrence and re-mints the rest. The style is registered in
+the first occurrence and re-mints the rest. Pasting a copied table
+re-mints the pasted rows whose ids collide with a table already in the
+note, right after the paste, so the original keeps its ids even when the
+copy lands above it (a cut-and-paste move collides with nothing and keeps
+them). The style is registered in
 the editor schema but renders as an invisible `display: contents` span,
 and the PROV generator carries it onto the emitted node as
 `graphium:tableRowId`. Rewriting a first cell from the app (creating a
@@ -471,6 +475,17 @@ block holds every cell's links, so the row is what tells apart two cells
 with the same label — each sample's own `data.txt`. A row that has not
 been saved yet is numbered on the spot. Links recorded before this carry
 no row and still resolve per block.
+Copy and paste carries these `reference` links too. They point outside
+the copied range (at a note or a material), so the clipboard payload holds
+them separately from the block-to-block `links`, as `mentionLinks` that
+keep the row id (`src/features/block-lifecycle/clipboard.ts`); copying
+text inside one row carries only that row's links. The paste records them
+again only for the `@` labels that actually landed — on the row with the
+same id in a pasted table (following the re-mint above; a row that did not
+come along is skipped, since a partial copy shifts the row order), on the
+cursor's row for text pasted into a cell — together with what `@` records:
+the note's `noteLinks` entry or cited material
+(`src/features/block-link/mention-paste.ts`).
 Adding an input, tool or output from the graph appends a row to that
 step's labelled table — creating and labelling one if the step has none —
 so the note accumulates a sample table rather than one-word paragraphs.
@@ -1163,8 +1178,8 @@ tells the reviser to re-check previously-cited claims against the
 updated text (a `previouslyCited` flag passed to `revise-topic`).
 
 `buildSourceBackedWikiDocument` / `rebuildSourceBackedWikiDocument`
-(`wiki-service.ts`) assemble the new format the same way
-`buildTopicDocument` / `rebuildTopicDocument` assemble the legacy one:
+(`wiki-service.ts`) assemble the new format the same way the legacy
+`buildTopicDocument` / `rebuildTopicDocument` (removed 2026-09-17) did:
 convert the Markdown into blocks, resolve `[[source:<id>]]` citations,
 and append a References section listing every cited resource as an
 `@` link. Before saving, `stripEmptyMarkdownSections` mechanically
@@ -1806,17 +1821,18 @@ type SourceCheckProfile = {
   has since changed. The body here is a fixed plain-text fingerprint
   (`claimHashBody` in `src/features/source-check/claim-hash.ts`), not the
   text the check sends to the model: that text keeps superscript /
-  subscript and formulas, while the fingerprint keeps the original v1
-  extraction (no tags, formulas ignored, links as `[object Object]`),
-  because changing how it is extracted would mark every checked page as
-  changed.
+  subscript and formulas and reads step contents, nested blocks and tables,
+  while the fingerprint keeps the original v1 extraction (no tags, formulas
+  ignored, links as `[object Object]`, children of a block that has text of
+  its own skipped, BlockNote 0.47 table cells read as empty), because
+  changing how it is extracted would mark every checked page as changed.
 - **`dismissed`** marks a verdict the user manually cleared from the note,
   distinguishing "never checked" (no `sourceCheck` at all) from "checked,
   then deliberately cleared" — the same semantics as `grounding.validity.dismissed`
   (§3.7). A re-run of source check replaces the whole profile, dropping
   the flag.
 - **Body-rewriting operations drop it.** `mergeIntoWikiDocument`,
-  `rewriteAndMerge`, and `rebuildTopicDocument`
+  `rewriteAndMerge`, and `rebuildSourceBackedWikiDocument`
   (`src/features/wiki/wiki-service.ts`) all rewrite `pages[0].blocks`, so
   each calls `attachSourceCheck(doc, undefined)` to drop a stale
   `sourceCheck` rather than let an outdated judgment survive a body it no
@@ -1997,7 +2013,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **26**.
+Defined in `src/features/navigation/index-file.ts`. Currently **28**.
 Bumping rules:
 
 | Version | Change |
@@ -2025,6 +2041,7 @@ Bumping rules:
 | **25** | `extractBlockText` now yields the `cachedTitle` / `fileName` snapshot of `sharedCitation` blocks (§7.5), so a note is findable by the title of the shared entry it cites. No `NoteIndexEntry` field changed; citation-using notes need a rebuild to pick up the searchable text. |
 | **26** | Added `importSourceHash` — mirrors `GraphiumDocument.importSource.contentHash`. Intake's note-dedupe (`src/features/intake/note-dedupe.ts`) used to narrow candidates by filename-derived title before reading each candidate's doc to compare hashes; a renamed-but-unchanged file could not be recognized as the same file re-imported. It now scans the index for a matching `importSourceHash` directly (no per-candidate doc read, and rename-proof). Pre-v26 notes keep `importSourceHash: undefined` until `ensureIndex` rebuilds on the bump. |
 | **27** | `wikiKind` can now be `"answer"` (§3.1c). No `NoteIndexEntry` field was added — the bump follows the convention of bumping when the set of values a field can hold grows, so pre-v27 index entries are rebuilt and the sidebar / search / list-kind filters see `answer` pages consistently. |
+| **28** | `headings[].text`, `steps[].text` and `labels[].preview` render inline content through `inlineContentToText` (`src/features/markdown-export/inline-text.ts`) in its plain mode: a link now yields its text instead of `[object Object]`, and an inline formula yields `$ … $` instead of disappearing. Superscript / subscript stay untagged (10⁵ reads as 105), as before. No `NoteIndexEntry` field changed; the bump rebuilds notes whose headings, steps or labelled blocks hold a link or a formula. Wiki entries need no bump for this — they are rebuilt from the Wiki files on every start. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
