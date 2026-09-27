@@ -4,6 +4,7 @@
 // 別途走らせるため、ここでは ingest 関数自体の呼び出し有無だけを検証する。
 // ingestNote は知見 ON でも、本文が空のノートでは /api/wiki/ingest を呼ばない
 // （空のまま送るとサーバーが 400 "noteContent is required" で断り、英語の文言がトーストに出ていた）。
+// ingestFromUrl も、送る本文（説明文＋本文）が空か空白だけのページでは呼ばない。
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { ingestFromUrl, ingestFromChat, ingestNote } from "./wiki-service";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -61,6 +62,65 @@ describe("ingestNote: 本文が空のノートは知見 ON でも /ingest を呼
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/ingest$/);
+    expect(result.model).toBe("test-model");
+  });
+});
+
+/**
+ * /fetch-url には渡したページを返し、/ingest はサーバーと同じく空の noteContent を
+ * 400（"noteContent is required"）で断る fetch のモック。
+ */
+function urlFetchMock(page: { title: string; description: string; text: string }) {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/fetch-url")) {
+      return { ok: true, json: async () => ({ ...page, url: "https://example.com/app" }) };
+    }
+    const body = JSON.parse(String(init?.body ?? "{}")) as { noteContent?: string };
+    if (!body.noteContent) {
+      return { ok: false, status: 400, text: async () => JSON.stringify({ error: "noteContent is required" }) };
+    }
+    return {
+      ok: true,
+      json: async () => ({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: "test-model" }),
+    };
+  });
+}
+
+describe("ingestFromUrl: 本文の取れないページは知見 ON でも /ingest を呼ばない", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["本文・説明文・タイトルとも空", { title: "", description: "", text: "" }],
+    ["本文が空白と改行だけ", { title: "空白だけのページ", description: "", text: " \n\t " }],
+  ])("%s → fetch-url だけ呼び、知見 0 件・本文なしで返す", async (_label, page) => {
+    const fetchMock = urlFetchMock(page);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await ingestFromUrl("https://example.com/app", [], "ja", "schema", true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/fetch-url$/);
+    expect(result.wikis).toEqual([]);
+    expect(result.model).toBeNull();
+    // 呼び出し側（note-app.tsx）は「知見 0 件・本文なし」を「内容不足」にする
+    expect(result.sourceText.trim()).toBe("");
+    expect(result.sourceTitle).toBe(page.title || "https://example.com/app");
+  });
+
+  it("説明文だけ取れたページは /ingest を呼ぶ（説明文も本文として送る）", async () => {
+    const fetchMock = urlFetchMock({ title: "テストページ", description: "ページの要約", text: "" });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await ingestFromUrl("https://example.com/app", [], "ja", "schema", true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/\/ingest$/);
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).noteContent).toBe("> ページの要約");
     expect(result.model).toBe("test-model");
   });
 });
