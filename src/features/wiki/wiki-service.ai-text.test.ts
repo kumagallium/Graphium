@@ -18,6 +18,7 @@ import {
 } from "./wiki-service";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
+import { inlineContentToText } from "../markdown-export/inline-text";
 
 const emptyIndex: any[] = [];
 
@@ -205,6 +206,41 @@ describe("AI に渡す本文 - 上付き・下付き・数式・リンクを保�
         t(" と "),
         // 対の無い丸括弧だけは %28 にして読み戻す（リンクは失わない）
         { type: "link", href: "https://example.com/a%28b", content: [t("対の無い括弧")] },
+      ]);
+    });
+
+    it("書き直しの往復で、上付きの「[1]」を数式にしない（見出し・本文）", async () => {
+      global.fetch = vi.fn(async (url: any, init: any) => {
+        if (String(url).endsWith("/rewrite")) {
+          const sent = JSON.parse(String(init?.body));
+          return { ok: true, json: async () => ({ sections: sent.existingSections }) };
+        }
+        return { ok: false, status: 500 };
+      }) as unknown as typeof fetch;
+
+      const existing = claimDoc();
+      existing.pages[0].blocks = [
+        { id: "h1", type: "heading", props: { level: 2 }, content: [t("条件"), t("[1]", { superscript: true })], children: [] },
+        {
+          id: "p1",
+          type: "paragraph",
+          content: [t("文献"), t("[2]", { superscript: true }), t(" と k"), t("a<b", { subscript: true })],
+          children: [],
+        },
+      ] as any;
+      const next = await rewriteAndMerge(existing, ingesterOutput, "note-2", "m");
+
+      const blocks = next.pages[0].blocks as any[];
+      expect(blocks.some((b) => b.type === "math")).toBe(false);
+      expect(blocks.find((b) => b.type === "heading").content).toEqual([t("条件"), t("[1]", { superscript: true })]);
+      const paragraph = blocks.find((b) => b.type === "paragraph");
+      // 追記マージ（フォールバック）ではなく、書き直しの出力から組み直されていること
+      expect(paragraph.id).not.toBe("p1");
+      expect(paragraph.content).toEqual([
+        t("文献"),
+        t("[2]", { superscript: true }),
+        t(" と k"),
+        t("a<b", { subscript: true }),
       ]);
     });
   });
@@ -529,6 +565,11 @@ describe("parseInlineCitations - 上付き・下付きと数式を読み戻す",
     expect(knowledgeLinks[0].targetNoteId).toBe("n1");
   });
 
+  it("タグの外で開いた \\[ をタグの中の \\] で閉じない", () => {
+    const { inlineContent } = parseInlineCitations("\\[a <sup>\\]</sup> b", emptyIndex);
+    expect(inlineContent).toEqual([t("\\[a "), t("]", { superscript: true }), t(" b")]);
+  });
+
   it("行の中の $$ … $$ はインライン数式として読む", () => {
     const { inlineContent } = parseInlineCitations("ここで $$\\int f$$ を使う", emptyIndex);
     expect(inlineContent).toEqual([
@@ -536,6 +577,25 @@ describe("parseInlineCitations - 上付き・下付きと数式を読み戻す",
       { type: "inlineMath", props: { latex: "\\int f" } },
       t(" を使う"),
     ]);
+  });
+});
+
+// AI に渡す本文（inline-text.ts）は上付き・下付きの中の [ ] \ * _ などに \ を付ける
+// （Markdown 書き出しと同じ表記）。AI がそのまま書き返したとき、\[ \] を数式の区切りと
+// 取り違えると、上付きの「[1]」が数式「1」に化ける
+describe("AI に渡した表記 → parseInlineCitations の往復 - 上付き・下付きの中のエスケープを数式にしない", () => {
+  const sup = { superscript: true };
+  const sub = { subscript: true };
+  const cases: [string, any[]][] = [
+    ["上付きの「[1]」", [t("文献"), t("[1]", sup), t("。")]],
+    ["上付きのアスタリスク（<sup>\\*</sup>）", [t("p"), t("*", sup), t(" と q"), t("*", sup)]],
+    ["下付きの「a<b」", [t("k"), t("a<b", sub)]],
+    ["\\ の直後の ( と [（上付きの「\\(a\\)」・下付きの「\\[b\\]」）", [t("x"), t("\\(a\\)", sup), t(" と y"), t("\\[b\\]", sub)]],
+  ];
+
+  it.each(cases)("%s", (_name, content) => {
+    const written = inlineContentToText(content, { scripts: true });
+    expect(parseInlineCitations(written, emptyIndex).inlineContent).toEqual(content);
   });
 });
 
@@ -576,6 +636,17 @@ describe("convertSectionsToBlocks（buildSourceTopicDocument 経由）- 数式�
       t("-3", { superscript: true }),
       t(" M で測る"),
     ]);
+  });
+
+  it("上付き・下付きの中のエスケープ（<sup>\\[1\\]</sup>）を数式ブロックにしない（見出し・段落・箇条書き・表の行）", () => {
+    const blocks = bodyBlocks(
+      "## 定義<sup>\\[1\\]</sup>\n本文<sup>\\[2\\]</sup>。\n- 項目<sub>\\[3\\]</sub>\n値<sup>\\[4\\]</sup> | b",
+    );
+    expect(blocks.map((b) => b.type)).toEqual(["heading", "paragraph", "bulletListItem", "paragraph"]);
+    expect(blocks[0].content).toEqual([t("定義"), t("[1]", { superscript: true })]);
+    expect(blocks[1].content).toEqual([t("本文"), t("[2]", { superscript: true }), t("。")]);
+    expect(blocks[2].content).toEqual([t("項目"), t("[3]", { subscript: true })]);
+    expect(blocks[3].content).toEqual([t("値"), t("[4]", { superscript: true }), t(" | b")]);
   });
 
   it("書式の無い本文は従来どおり（見出しは text 1 つ）", () => {
