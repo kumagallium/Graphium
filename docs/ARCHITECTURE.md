@@ -2065,14 +2065,24 @@ first search to ~600ms; later calls are ~2ms. The tokenizer is imported from
 app — otherwise a query would hit in Graphium and miss over MCP. For the same
 reason the index is built from note bodies rendered without `<sup>` / `<sub>`
 tags (`noteToMarkdown(doc, { scripts: false })`), while `get_note` returns them
-with tags. Once the index is built, a note or answer page that `create_note` /
-`save_answer` writes is added to it at once, so an agent can find what it just
-saved before the app rewrites `note-index.json`. Its body is rendered from the
-saved document in the same way, not taken from the Markdown the agent sent
-(which can still carry `<sup>` / `<sub>` tags and, for `save_answer`,
-`[[source:<id>]]` markers, and lacks the References section built from
-`citations`); otherwise the note would answer different queries before and
-after a rebuild.
+with tags.
+
+The index holds what `note-index.json` lists (minus trashed, archived and skill
+documents) plus every `*.json` file in `notes/` and `wiki/` that it does not
+list yet, and is built again on the next search after the app rewrites
+`note-index.json`. The app lists a new file only when it reloads its file list
+(at startup, for instance), so a note or answer page that `create_note` /
+`save_answer` has just written reaches the index through the second route. It
+can be found even when saving was the first call of the session, when the app
+rewrote `note-index.json` for another note in between, or after the MCP server
+restarted. Once the app lists the page, the app's entry wins, so a page trashed
+or archived there drops out. A page written after the index is built is also
+added to it at once, since writing it leaves `note-index.json` untouched and
+triggers no rebuild. Either way its body is rendered from the saved document
+without tags, as above, not taken from the Markdown the agent sent (which can
+still carry `<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]`
+markers, and lacks the References section built from `citations`); otherwise
+the page would answer different queries before and after a rebuild.
 
 ## 5. Sharing and Library
 
