@@ -2065,7 +2065,14 @@ first search to ~600ms; later calls are ~2ms. The tokenizer is imported from
 app — otherwise a query would hit in Graphium and miss over MCP. For the same
 reason the index is built from note bodies rendered without `<sup>` / `<sub>`
 tags (`noteToMarkdown(doc, { scripts: false })`), while `get_note` returns them
-with tags.
+with tags. Once the index is built, a note or answer page that `create_note` /
+`save_answer` writes is added to it at once, so an agent can find what it just
+saved before the app rewrites `note-index.json`. Its body is rendered from the
+saved document in the same way, not taken from the Markdown the agent sent
+(which can still carry `<sup>` / `<sub>` tags and, for `save_answer`,
+`[[source:<id>]]` markers, and lacks the References section built from
+`citations`); otherwise the note would answer different queries before and
+after a rebuild.
 
 ## 5. Sharing and Library
 
