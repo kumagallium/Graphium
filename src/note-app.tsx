@@ -689,7 +689,6 @@ function NoteHeaderMenu({
   onDeriveWholeNote,
   deriveDisabled,
   onIngestToWiki,
-  onIngestFromUrl,
   ingestDisabled,
   isWikiDoc,
   inKnowledge,
@@ -730,7 +729,6 @@ function NoteHeaderMenu({
   onDeriveWholeNote?: () => void;
   deriveDisabled?: boolean;
   onIngestToWiki?: () => void;
-  onIngestFromUrl?: () => void;
   ingestDisabled?: boolean;
   isWikiDoc?: boolean;
   /** このノートが既に Knowledge 化されているか（true なら Add の代わりに「Already in Knowledge」を表示） */
@@ -1165,8 +1163,6 @@ type NoteEditorProps = {
   onEditorRef?: (editor: any) => void;
   /** Knowledge に追加コールバック */
   onIngestToWiki?: () => void;
-  /** URL から Knowledge コールバック */
-  onIngestFromUrl?: () => void;
   /** ノート全体を派生コールバック（ヘッダーメニューから呼ばれる） */
   onDeriveWholeNote?: () => void;
   /** 手動で残した版を下敷きに新ノートを派生する（履歴パネルの版行から呼ばれる） */
@@ -1630,7 +1626,6 @@ function NoteEditorInner({
   onDeleteNoteMemo,
   onEditorRef,
   onIngestToWiki,
-  onIngestFromUrl,
   onDeriveWholeNote,
   onDeriveSnapshot,
   onRestoreSnapshot,
@@ -5835,7 +5830,6 @@ function NoteEditorInner({
           onExportProvJsonLd={handleExportProvJsonLd}
           provExportDisabled={!provDoc || provDoc["@graph"].length === 0}
           onIngestToWiki={onIngestToWiki}
-          onIngestFromUrl={onIngestFromUrl}
           ingestDisabled={!fileId || saving}
           onDeriveWholeNote={onDeriveWholeNote && !isWikiDoc ? onDeriveWholeNote : undefined}
           deriveDisabled={!fileId || saving || derivingDisabled}
@@ -13083,65 +13077,6 @@ export function NoteApp() {
             onIngestToWiki={aiUiEnabled && fm.activeDoc?.source !== "ai" ? () => {
               if (!fm.activeFileId || !fm.activeDoc) return;
               enqueueIngest(fm.activeFileId, fm.activeDoc.title, fm.activeDoc);
-            } : undefined}
-            onIngestFromUrl={aiUiEnabled ? () => {
-              // AI 未設定なら URL 入力の前に止める（トースト + 設定 AI タブ導線はヘルパー側）
-              if (!ensureAgentConfigured()) return;
-              const url = prompt(tStatic("ingest.enterUrl"));
-              if (!url) return;
-              // toast の追跡には一意な ID、wiki の sourceNoteId には URL ベースの安定 ID
-              // を使い分ける。後者で逆引きが効くようにする。
-              const jobId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
-              const sourceNoteId = `url:${url}`;
-              const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: url };
-              ingestQueueRef.current.push({ noteId: jobId, noteTitle: url, doc: null as any });
-              setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-              // キュー処理とは別に直接実行（doc が null なので通常のキュー処理は使えない）
-              (async () => {
-                setIngestToast((prev) => ({
-                  items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i),
-                }));
-                try {
-                  const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-                  const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-                  const result = await ingestFromUrl(url, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
-                  // 本文も説明文も取れないページは知見の ON/OFF に関係なくここで「内容不足」になる
-                  // （ingestFromUrl は送る本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
-                  if (result.wikis.length === 0 && !result.sourceText.trim()) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-                    ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
-                    return;
-                  }
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
-                  for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-                    if (!wikiDoc) continue; // summary は新規生成を停止済み
-                    const newId = await fm.handleCreateWikiFile(wikiDoc);
-                    embedWikiSections(newId, wikiDoc).catch(() => {});
-                  }
-                  let topicDetail = "";
-                  let topicsTouched = 0;
-                  if (result.sourceText.trim()) {
-                    const topicResult = await runSourceTopicStageForNoteApp([{
-                      id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
-                    }]);
-                    topicsTouched = topicResult.created + topicResult.updated;
-                    const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
-                    topicDetail = ` · ${detail}`;
-                    pushSourceCheckPrompt(unchecked);
-                  }
-                  if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-                    ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
-                    return;
-                  }
-                  const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${wikiText}${topicDetail}` } : i) }));
-                } catch (err) {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-                }
-                ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
-              })();
             } : undefined}
             onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
             provWikiEntities={provWikiEntities}
