@@ -8,7 +8,9 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { addCreatedNoteToIndex, allEntries, resetSearchIndex, searchNotes } from "./search";
+import { buildNoteDocument, createNote } from "./create-note";
+import { saveAnswer } from "./save-answer";
+import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, resetSearchIndex, searchNotes } from "./search";
 
 let root: string;
 
@@ -225,12 +227,15 @@ describe("索引の鮮度", () => {
 });
 
 describe("addCreatedNoteToIndex", () => {
+  /** create_note が書くのと同じドキュメント */
+  const noteDoc = (title: string, body: string) => buildNoteDocument({ title, body }, root);
+
   it("作った直後のノートを検索で引ける", () => {
     writeNote("n1", "既存ノート", "焼結");
     writeIndex([entry("n1", "既存ノート")]);
     searchNotes("焼結", {}, root); // 索引を組ませる
 
-    addCreatedNoteToIndex("new1", "MCP から作ったノート", "ボールミリングの考察", root);
+    addCreatedNoteToIndex("new1", noteDoc("MCP から作ったノート", "ボールミリングの考察"), root);
 
     expect(searchNotes("ボールミリング", {}, root).map((h) => h.noteId)).toEqual(["new1"]);
   });
@@ -240,12 +245,70 @@ describe("addCreatedNoteToIndex", () => {
     writeIndex([entry("n1", "既存ノート")]);
     searchNotes("焼結", {}, root);
 
-    addCreatedNoteToIndex("new1", "MCP から作ったノート", "ボールミリング", root);
-    expect(() => addCreatedNoteToIndex("new1", "MCP から作ったノート", "ボールミリング", root)).not.toThrow();
+    const doc = noteDoc("MCP から作ったノート", "ボールミリング");
+    addCreatedNoteToIndex("new1", doc, root);
+    expect(() => addCreatedNoteToIndex("new1", doc, root)).not.toThrow();
     expect(searchNotes("ボールミリング", {}, root)).toHaveLength(1);
   });
 
   it("索引を組む前に呼ばれても落ちない（次の構築でファイルから拾われる）", () => {
-    expect(() => addCreatedNoteToIndex("new1", "タイトル", "本文", root)).not.toThrow();
+    expect(() => addCreatedNoteToIndex("new1", noteDoc("タイトル", "本文"), root)).not.toThrow();
+  });
+});
+
+describe("作った直後と組み直した後で同じ語が当たる", () => {
+  // create_note / save_answer は保存した直後に索引へ足し、組み直し（Graphium が note-index を
+  // 書き直したとき・サーバーの再起動）ではファイルから読み直す。二つの経路で本文の作り方が
+  // ずれると、同じノートが作った直後だけ別の語で当たる（受け取った Markdown をそのまま入れて
+  // いた頃は、作った直後だけタグ名 sup や引用の印 [[source:n1]] で当たり、「105」「H2O」や
+  // References 節の引用先タイトルで外れた）
+  const QUERIES = ["105", "H2O", "sup", "sub", "source", "n1", "資料1"];
+
+  /** QUERIES のうち、そのノートに当たる語 */
+  const matchingQueries = (noteId: string) =>
+    QUERIES.filter((q) => searchNotes(q, {}, root).some((h) => h.noteId === noteId));
+
+  beforeEach(() => {
+    writeNote("n1", "資料1", "焼結");
+    writeIndex([entry("n1", "資料1")], 1_700_000_000);
+    searchNotes("焼結", {}, root); // 索引を組ませる
+  });
+
+  it("create_note で作ったノート", () => {
+    const created = createNote(
+      { title: "圧力の記録", body: "圧力 10<sup>5</sup> Pa と H<sub>2</sub>O", citations: [{ id: "n1" }] },
+      root,
+    );
+    addCreatedNoteToIndex(created.noteId, created.doc, root);
+    const justCreated = matchingQueries(created.noteId);
+
+    // Graphium がこのノートを拾って note-index を書き直した → 次の検索で組み直す
+    writeIndex([entry("n1", "資料1"), entry(created.noteId, "圧力の記録")], 1_700_000_999);
+    const rebuilt = matchingQueries(created.noteId);
+
+    expect(justCreated).toEqual(["105", "H2O", "資料1"]);
+    expect(rebuilt).toEqual(justCreated);
+  });
+
+  it("save_answer で作った回答ページ", async () => {
+    const saved = await saveAnswer(
+      {
+        question: "圧力はいくつだったか",
+        answer: "圧力 10<sup>5</sup> Pa と H<sub>2</sub>O [[source:n1]]",
+        citations: [{ id: "n1" }],
+      },
+      root,
+    );
+    addCreatedWikiToIndex(saved.noteId, saved.doc, "answer", root);
+    const justCreated = matchingQueries(saved.noteId);
+
+    writeIndex(
+      [entry("n1", "資料1"), entry(saved.noteId, "圧力はいくつだったか", { source: "ai", wikiKind: "answer" })],
+      1_700_000_999,
+    );
+    const rebuilt = matchingQueries(saved.noteId);
+
+    expect(justCreated).toEqual(["105", "H2O", "資料1"]);
+    expect(rebuilt).toEqual(justCreated);
   });
 });

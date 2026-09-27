@@ -9,6 +9,8 @@
  *   → create_note で 3 件目を書き、そのまま検索で引けることを確認
  *   → get_note と同じ表記の数式・上付き・下付きを create_note で書き、数式・書式として保存され
  *     get_note が同じ表記で読み返すことを確認
+ *   → create_note / save_answer で作った直後と、note-index を書き直して索引を組み直した後とで、
+ *     検索に同じ語が当たることを確認
  *
  * 守っている不変条件:
  *   - **stdout を汚さない**: サーバーが JSON-RPC 以外を stdout に書くとハンドシェイクが壊れる。
@@ -267,6 +269,59 @@ try {
     "get_note が同じ表記で読み返す",
     ["10<sup>5</sup> Pa", "H<sub>2</sub>O", "$E = mc^2$", "$$ \\int_0^1 x\\,dx $$"].every((s) => reread.includes(s)),
     reread,
+  );
+
+  console.log("\n[search index]");
+  // create_note / save_answer は保存した直後に索引へ足し、組み直し（Graphium が note-index を
+  // 書き直したとき・サーバーの再起動）ではファイルから読み直す。どちらも保存したドキュメントの
+  // 平文から組むので同じ語が当たる（受け取った Markdown をそのまま入れていた頃は、作った直後だけ
+  // タグ名 sup や引用の印 [[source:…]] の source で当たり、「105」「H2O」で外れた）
+  const answered = await call("save_answer", {
+    question: "焼結の圧力はいくつだったか",
+    answer: `圧力は 10<sup>5</sup> Pa、生成物は H<sub>2</sub>O だった [[source:${NOTE_A}]]`,
+    citations: [{ id: NOTE_A }],
+  });
+  const answerId = answered.match(/noteId: ([0-9a-f-]{36})/)?.[1];
+  check("save_answer が noteId を返す", Boolean(answerId), answered);
+
+  const QUERIES = ["105", "H2O", "sup", "sub", "source"];
+  const matchingQueries = async (noteId) => {
+    const matched = [];
+    for (const query of QUERIES) {
+      if ((await call("search_notes", { query })).includes(noteId)) matched.push(query);
+    }
+    return matched;
+  };
+  const justCreated = { note: await matchingQueries(scriptedId), answer: await matchingQueries(answerId) };
+  check(
+    "作った直後のノート・回答ページが平文の語で当たり、タグ名や引用の印では当たらない",
+    JSON.stringify(justCreated) === JSON.stringify({ note: ["105", "H2O"], answer: ["105", "H2O"] }),
+    JSON.stringify(justCreated),
+  );
+
+  // Graphium が 2 件を拾って note-index を書き直した状況を作る（更新時刻が変わり、次の検索で組み直す）
+  const indexPath = join(root, "appdata", "note-index.json");
+  const index = JSON.parse(readFileSync(indexPath, "utf8"));
+  const indexEntry = (noteId, title, extra) => ({
+    noteId,
+    title,
+    modifiedAt: "2026-01-03T00:00:00.000Z",
+    createdAt: "2026-01-03T00:00:00.000Z",
+    headings: [],
+    labels: [],
+    outgoingLinks: [],
+    ...extra,
+  });
+  index.notes.push(
+    indexEntry(scriptedId, "数式と上付き・下付き", { source: "human" }),
+    indexEntry(answerId, "焼結の圧力はいくつだったか", { source: "ai", wikiKind: "answer" }),
+  );
+  writeFileSync(indexPath, JSON.stringify(index, null, 2));
+  const rebuilt = { note: await matchingQueries(scriptedId), answer: await matchingQueries(answerId) };
+  check(
+    "組み直した後も作った直後と同じ語が当たる",
+    JSON.stringify(rebuilt) === JSON.stringify(justCreated),
+    `直後: ${JSON.stringify(justCreated)} / 組み直し後: ${JSON.stringify(rebuilt)}`,
   );
 
   console.log("\n[error handling]");
