@@ -20,7 +20,7 @@ import {
   readNote,
   readNoteIndex,
   resolveGraphiumRoot,
-  scanNotesWithoutIndex,
+  scanUnlistedDocuments,
 } from "./vault";
 
 /**
@@ -140,12 +140,19 @@ function indexText(doc: IndexedDocument | null): string {
 }
 
 /**
- * vault からインデックスを組む（初回検索時に一度だけ）。
+ * vault からインデックスを組む（初回の検索時と、note-index.json が書き直された後の検索時）。
  * ノート本体まで読むのでヒット率は本体の全文検索に近い。
+ *
+ * 対象は note-index.json に載っているもの（ゴミ箱・アーカイブ・Skill を除く）と、まだ載って
+ * いないファイル。アプリは一覧を取り直す（起動時など）まで新しいファイルを載せないので、
+ * create_note / save_answer で作ったばかりのものは後者で拾う（セッションの最初の呼び出しが
+ * 保存だったとき・アプリが別のノートを保存して note-index.json を書き直したとき・MCP サーバーを
+ * 立て直したときも落ちない）。載った後はゴミ箱・アーカイブを含めてアプリの見え方に従う。
  */
 function buildIndex(root: string): IndexCache {
   const index = readNoteIndex(root);
-  const entries = index ? activeNotes(index) : scanNotesWithoutIndex(root);
+  const listed = new Set(index?.notes.map((n) => n.noteId));
+  const entries = [...(index ? activeNotes(index) : []), ...scanUnlistedDocuments(listed, root)];
 
   const docs: SearchDoc[] = [];
   const entryMap = new Map<string, NoteIndexEntry>();
@@ -189,7 +196,9 @@ function getIndex(root: string): IndexCache {
  *
  * 自分で書いたノートを直後に検索できないと「保存して」→「探して」の流れが崩れる。
  * note-index.json は Graphium が書くもので MCP からは触らないため、その更新を待たずに
- * メモリ上の索引だけ先に追いつかせる。
+ * メモリ上の索引だけ先に追いつかせる。組み直しても、アプリが載せるまでは note-index.json に
+ * まだ無いファイルとして拾い直される（buildIndex）ので、組み直しを止める必要は無い
+ * （note-index.json の更新時刻を覚え直すと、その間にアプリが足したノートを取りこぼす）。
  *
  * 本文は受け取った Markdown ではなく、保存したドキュメントから組む。Markdown には
  * <sup> などのタグが残り、citations から足した References 節が無いので、そのまま入れると
@@ -200,7 +209,7 @@ export function addCreatedNoteToIndex(
   doc: IndexedDocument,
   root = resolveGraphiumRoot(),
 ): void {
-  // まだ組んでいなければ何もしない（次に組むときファイルから拾われる）
+  // まだ組んでいなければ何もしない（組むときに、note-index.json にまだ無いファイルとして拾われる）
   if (!cache || cache.root !== root) return;
   if (cache.mini.has(noteId)) return;
 
@@ -215,8 +224,6 @@ export function addCreatedNoteToIndex(
     outgoingLinks: [],
     source: "human",
   });
-  // 足した分は自分で反映済みなので、この更新で組み直しが走らないようにしておく
-  cache.indexMtimeMs = noteIndexMtimeMs(root);
 }
 
 /**
@@ -246,7 +253,6 @@ export function addCreatedWikiToIndex(
     source: "ai",
     wikiKind: kind === "answer" ? "answer" : undefined,
   } as NoteIndexEntry);
-  cache.indexMtimeMs = noteIndexMtimeMs(root);
 }
 
 /** テスト・再読み込み用にキャッシュを捨てる */

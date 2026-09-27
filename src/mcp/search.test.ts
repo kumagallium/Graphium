@@ -312,3 +312,111 @@ describe("作った直後と組み直した後で同じ語が当たる", () => {
     expect(rebuilt).toEqual(justCreated);
   });
 });
+
+describe("MCP で作ったものは、アプリの note-index に載る前も索引から落ちない", () => {
+  // note-index.json は Graphium アプリが書くもので、MCP が作ったファイルはアプリが一覧を取り直す
+  // （起動・再読み込み）まで載らない。その間に索引を組むと、作ったものが落ちていた
+  // （セッションの最初の呼び出しが保存だったとき・アプリが別のノートを保存して note-index を
+  // 書き直したとき・MCP サーバーを立て直したとき）
+  const WRITERS = [
+    {
+      tool: "create_note",
+      kind: "note",
+      write: async () => {
+        const created = createNote({ title: "混合の記録", body: "遊星ボールミルで 12 時間混合した" }, root);
+        addCreatedNoteToIndex(created.noteId, created.doc, root);
+        return created.noteId;
+      },
+    },
+    {
+      tool: "save_answer",
+      kind: "answer",
+      write: async () => {
+        const saved = await saveAnswer(
+          {
+            question: "混合は何時間だったか",
+            answer: "遊星ボールミルで 12 時間混合した [[source:n1]]",
+            citations: [{ id: "n1" }],
+          },
+          root,
+        );
+        addCreatedWikiToIndex(saved.noteId, saved.doc, "answer", root);
+        return saved.noteId;
+      },
+    },
+  ] as const;
+
+  /** 作ったものの本文の語で引いたヒット（noteId と種別） */
+  const createdHits = () => searchNotes("遊星ボールミル", {}, root).map((h) => [h.noteId, h.kind]);
+  /** アプリ側のノートの本文の語で引いたヒット */
+  const appHits = () => searchNotes("焼結", {}, root).map((h) => h.noteId).sort();
+
+  describe.each(WRITERS)("$tool", ({ kind, write }) => {
+    beforeEach(() => {
+      writeNote("n1", "既存ノート", "焼結");
+      writeIndex([entry("n1", "既存ノート")], 1_700_000_000);
+    });
+
+    it("索引を組む前に作っても、最初の検索で引ける", async () => {
+      const noteId = await write();
+
+      expect(createdHits()).toEqual([[noteId, kind]]);
+    });
+
+    it("組んだ後にアプリが（作ったものを含まない）note-index を書き直し、組み直しても引ける", async () => {
+      searchNotes("焼結", {}, root); // 索引を組ませる
+      const noteId = await write();
+
+      // アプリで別のノートを保存した
+      writeNote("n2", "アプリで書いたノート", "焼結");
+      writeIndex([entry("n1", "既存ノート"), entry("n2", "アプリで書いたノート")], 1_700_000_999);
+
+      expect(createdHits()).toEqual([[noteId, kind]]);
+      expect(appHits()).toEqual(["n1", "n2"]);
+    });
+
+    it("作る前にアプリが note-index を書き直していても、アプリの変更を取りこぼさない", async () => {
+      searchNotes("焼結", {}, root);
+      writeNote("n2", "アプリで書いたノート", "焼結");
+      writeIndex([entry("n1", "既存ノート"), entry("n2", "アプリで書いたノート")], 1_700_000_999);
+
+      const noteId = await write();
+
+      expect(appHits()).toEqual(["n1", "n2"]);
+      expect(createdHits()).toEqual([[noteId, kind]]);
+    });
+
+    it("MCP サーバーを立て直しても（アプリが載せる前なら）引ける", async () => {
+      searchNotes("焼結", {}, root);
+      const noteId = await write();
+
+      resetSearchIndex(); // プロセスを立て直した（メモリ上の索引は残らない）
+
+      expect(createdHits()).toEqual([[noteId, kind]]);
+    });
+
+    it("アプリが note-index に載せた後はアプリの見え方に従う（ゴミ箱に入れたら出ない）", async () => {
+      searchNotes("焼結", {}, root);
+      const noteId = await write();
+
+      const wiki = kind === "answer" ? { source: "ai", wikiKind: "answer" } : {};
+      writeIndex(
+        [entry("n1", "既存ノート"), entry(noteId, "作ったもの", { ...wiki, deletedAt: "2026-01-02T00:00:00.000Z" })],
+        1_700_000_999,
+      );
+
+      expect(createdHits()).toEqual([]);
+    });
+  });
+
+  it.each(WRITERS)(
+    "note-index が無い vault（アプリをまだ開いていない）でも、組む前に $tool で作ったものを 1 件だけ引ける",
+    async ({ kind, write }) => {
+      writeNote("n1", "既存ノート", "焼結");
+      const noteId = await write();
+
+      expect(createdHits()).toEqual([[noteId, kind]]);
+      expect(appHits()).toEqual(["n1"]);
+    },
+  );
+});
