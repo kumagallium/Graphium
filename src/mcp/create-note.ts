@@ -16,6 +16,8 @@ import { userInfo } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
+import type { BlockLink } from "../lib/block-link-types";
+import type { GraphiumDocument } from "../lib/document-types";
 import { makeProps, markdownToBlocks, parseInlineContent, type Block } from "./markdown-to-blocks";
 import { notesDir, readNote, resolveGraphiumRoot } from "./vault";
 
@@ -48,6 +50,8 @@ export type CreateNoteResult = {
   filePath: string;
   title: string;
   author: { username: string; email?: string };
+  /** 書き込んだドキュメント。検索索引は受け取った Markdown ではなくこれから組む */
+  doc: GraphiumDocument;
 };
 
 /**
@@ -70,9 +74,9 @@ function resolveAuthor(): { username: string; email?: string } {
 function buildCitationReferenceBlocks(
   citations: CitationInput[],
   root: string,
-): { blocks: Block[]; knowledgeLinks: Record<string, unknown>[] } {
+): { blocks: Block[]; knowledgeLinks: BlockLink[] } {
   const blocks: Block[] = [];
-  const knowledgeLinks: Record<string, unknown>[] = [];
+  const knowledgeLinks: BlockLink[] = [];
   if (citations.length === 0) return { blocks, knowledgeLinks };
 
   blocks.push({
@@ -119,9 +123,9 @@ function buildCitationReferenceBlocks(
   return { blocks, knowledgeLinks };
 }
 
-export function buildNoteDocument(input: CreateNoteInput, root = resolveGraphiumRoot()): Record<string, unknown> {
+export function buildNoteDocument(input: CreateNoteInput, root = resolveGraphiumRoot()): GraphiumDocument {
   const now = new Date().toISOString();
-  const generatedBy: Record<string, unknown> = {
+  const generatedBy: NonNullable<GraphiumDocument["generatedBy"]> = {
     // どの経路で書かれたかが後から分かるように、クライアント名まで残す
     agent: input.client ? `graphium-mcp (${input.client})` : "graphium-mcp",
     sessionId: input.sessionId ?? "unknown",
@@ -131,7 +135,7 @@ export function buildNoteDocument(input: CreateNoteInput, root = resolveGraphium
 
   const refs = buildCitationReferenceBlocks(input.citations ?? [], root);
 
-  const doc: Record<string, unknown> = {
+  const doc: GraphiumDocument = {
     version: 2,
     title: input.title,
     pages: [
@@ -172,5 +176,6 @@ export function createNote(
     filePath,
     title: input.title,
     author: (doc.generatedBy as { user: { username: string; email?: string } }).user,
+    doc,
   };
 }

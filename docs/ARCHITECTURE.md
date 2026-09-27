@@ -178,7 +178,14 @@ talks to LLM and embedding backends.
   through `features/markdown-export/inline-text.ts`, and the knowledge layer's
   reader turns tags and formulas in the model's reply back into styles,
   `inlineMath` and `math` blocks, so a formula survives a round trip through a
-  rewrite. Places where the text is a key rather than something a model reads
+  rewrite. A Skill's prompt is read by a model too: `extractSkillPrompt`
+  (`features/skill/skill-service.ts`) writes a Skill body as Markdown, with bold
+  and code as `**…**` / `` `…` `` and superscript / subscript and formulas
+  through the same `inline-text.ts`, but it keeps a link's URL as
+  `[text](URL)`. A Skill is the user's own instruction, and a URL they put in it
+  is part of what they asked for; a pasted URL whose text is the URL itself is
+  written once.
+  Places where the text is a key rather than something a model reads
   keep it plain, without tags: the lexical index (whose NFKC normalization
   already folds 10⁵ to 105), the MCP search index, outlines, PROV labels, the
   proposal diff, and the source-check fingerprint (`claimHash`, see
@@ -866,12 +873,13 @@ Notes:
   intake's completion screen for many, or turning memos into Knowledge.
   Each note is queued (`enqueueIngest`) and `processIngestQueue` calls
   `wiki-service.ingestNote()`, which posts to the server when Claims are
-  on (otherwise the queue goes straight to the Topic stage, as above).
-  Saving a note does not trigger ingest, and there is no server-side
-  file watcher.
+  on and the note has any text (see the next item); with Claims off, the
+  queue goes straight to the Topic stage, as above. Saving a note does
+  not trigger ingest, and there is no server-side file watcher.
 - **No worthiness gate.** Nothing judges up front whether a note is worth
-  ingesting: there is no content heuristic, and an empty note is not
-  skipped before the call. What `note-app.tsx` does leave out:
+  ingesting: there is no content heuristic, no threshold beyond having any
+  text at all, and an empty note is queued and handed to `ingestNote` like
+  any other. What `note-app.tsx` does leave out:
   AI-derived pages (`source: "ai"`), which the single-note entry points
   (**Add to Knowledge**) skip and bulk ingest (`ingestNoteIds`, behind
   the note list's multi-select and the intake's completion screen) drops
@@ -883,11 +891,13 @@ Notes:
   `shouldSkipUnchangedSource` skips the note when its `modifiedAt` is not
   newer. A single-note Add to Knowledge always re-reads, and a memo turned
   into Knowledge is skipped only when its text is empty. A note's emptiness
-  is only noticed after the call: `processIngestQueue` ends a note that
-  yields no Claims and no text as "Not enough content"
-  (`ingest.insufficientContent`). With Claims on, an empty note never
-  gets that far — `POST /api/wiki/ingest` rejects its empty
-  `noteContent` with 400, so it ends as an error instead.
+  is only noticed once `ingestNote` has it, and it ends the same way with
+  Claims on or off: `ingestNote` returns no Claims for a note whose text
+  (`extractPlainTextFromDoc`) is empty or only whitespace, without posting
+  it to `POST /api/wiki/ingest` (the server's 400 for an empty
+  `noteContent` stays as a guard), and `processIngestQueue` ends a note
+  that yields no Claims and no text as "Not enough content"
+  (`ingest.insufficientContent`).
 - **What the pipeline reads from a note (changed 2026-09-25).** Ingest
   (`ingestNote`'s `noteContent`), the Topic stage (`sourcesForTopicStage` in
   `note-app.tsx`), regenerating a page from its sources, and source check's
@@ -2157,7 +2167,11 @@ splitting it (the app's import splits the paragraph there). What counts as a
 formula or a tag follows the app's Markdown import (`stashMath` /
 `markScriptTags`): nothing inside code, a `$` formula needs non-space just
 inside both delimiters and no digit right after the closing one (so `$50-$75`
-stays a price range), and an inline formula is at most 200 characters. The
+stays a price range), an inline formula is at most 200 characters, and a
+`\[` `\]` `\(` `\)` inside a `<sup>` / `<sub>` tag never opens or closes a
+formula — it is set aside before formulas are looked for, as the app's
+`guardScriptTagEscapes` does, so a formula cannot reach across a tag boundary
+either. The
 Claude Code skill's `save.mjs` (`scripts/claude-code-skill/save-to-graphium/`)
 carries a copy of the same converter so that it runs on Node's standard
 library alone; `markdown-to-blocks.test.ts` runs `save.mjs` and checks that
@@ -2183,6 +2197,23 @@ app — otherwise a query would hit in Graphium and miss over MCP. For the same
 reason the index is built from note bodies rendered without `<sup>` / `<sub>`
 tags (`noteToMarkdown(doc, { scripts: false })`), while `get_note` returns them
 with tags.
+
+The index holds what `note-index.json` lists (minus trashed, archived and skill
+documents) plus every `*.json` file in `notes/` and `wiki/` that it does not
+list yet, and is built again on the next search after the app rewrites
+`note-index.json`. The app lists a new file only when it reloads its file list
+(at startup, for instance), so a note or answer page that `create_note` /
+`save_answer` has just written reaches the index through the second route. It
+can be found even when saving was the first call of the session, when the app
+rewrote `note-index.json` for another note in between, or after the MCP server
+restarted. Once the app lists the page, the app's entry wins, so a page trashed
+or archived there drops out. A page written after the index is built is also
+added to it at once, since writing it leaves `note-index.json` untouched and
+triggers no rebuild. Either way its body is rendered from the saved document
+without tags, as above, not taken from the Markdown the agent sent (which can
+still carry `<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]`
+markers, and lacks the References section built from `citations`); otherwise
+the page would answer different queries before and after a rebuild.
 
 ## 5. Sharing and Library
 

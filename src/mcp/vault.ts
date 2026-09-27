@@ -128,28 +128,44 @@ export function readNote(
 }
 
 /**
- * インデックスが無い vault のためのフォールバック。
- * notes/*.json を直接走査して最小限のエントリを組む（title と日付のみ）。
+ * note-index.json にまだ載っていないノート・Wiki のファイルを走査し、最小限のエントリを組む
+ * （title と種別のみ）。
+ *
+ * アプリは一覧を取り直す（起動時など）まで、新しいファイルを note-index.json に載せない。
+ * MCP の create_note / save_answer や Claude Code の Skill が書いたばかりのものは、ここで
+ * しか拾えない（note-index.json が無い vault では、すべてのファイルがこれにあたる）。
+ * 走査する範囲はアプリの一覧（notes/ と wiki/ 直下の *.json）に、種別の取り方はアプリの
+ * buildIndexEntry（ドキュメントの source / wikiMeta.kind）に揃える。Skill ノートは
+ * activeNotes と同じ理由で除く。
  */
-export function scanNotesWithoutIndex(root = resolveGraphiumRoot()): NoteIndexEntry[] {
-  const dir = notesDir(root);
-  if (!existsSync(dir)) return [];
+export function scanUnlistedDocuments(
+  listed: ReadonlySet<string>,
+  root = resolveGraphiumRoot(),
+): NoteIndexEntry[] {
   const entries: NoteIndexEntry[] = [];
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith(".json")) continue;
-    const noteId = file.slice(0, -".json".length);
-    const doc = readNote(noteId, root);
-    if (!doc) continue;
-    entries.push({
-      noteId,
-      title: doc.title ?? "(untitled)",
-      modifiedAt: "",
-      createdAt: "",
-      headings: [],
-      labels: [],
-      outgoingLinks: [],
-      source: doc.source,
-    });
+  const seen = new Set<string>();
+  for (const dir of [notesDir(root), wikiDir(root)]) {
+    if (!existsSync(dir)) continue;
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".json")) continue;
+      const noteId = file.slice(0, -".json".length);
+      // 同じ id が notes/ と wiki/ の両方にあれば、readNote と同じく notes/ を採る
+      if (listed.has(noteId) || seen.has(noteId)) continue;
+      seen.add(noteId);
+      const doc = readNote(noteId, root);
+      if (!doc || doc.source === "skill") continue;
+      entries.push({
+        noteId,
+        title: doc.title ?? "(untitled)",
+        modifiedAt: "",
+        createdAt: "",
+        headings: [],
+        labels: [],
+        outgoingLinks: [],
+        source: doc.source,
+        wikiKind: doc.wikiMeta?.kind,
+      });
+    }
   }
   return entries;
 }

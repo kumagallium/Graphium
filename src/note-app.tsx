@@ -9552,6 +9552,8 @@ export function NoteApp() {
 
         // トピックは知見（wiki）が 0 件でも資料から反映されうるので、知見 0 件だけでは
         // 失敗にしない — 資料がトピック段に積めた（sourceText がある）ときは続行する。
+        // 本文が空のノートは知見の ON/OFF に関係なくここで「内容不足」になる
+        // （ingestNote は本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
         if (result.wikis.length === 0 && !sourceText.trim()) {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
@@ -10062,6 +10064,8 @@ export function NoteApp() {
           const result = await ingestFromUrl(entry.url, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled(), signal);
           // 知見（wiki）が 0 件でも、資料がトピック段に積める（sourceText がある）なら
           // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
+          // 本文も説明文も取れないページは知見の ON/OFF に関係なくここで「内容不足」になる
+          // （ingestFromUrl は送る本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
           if (result.wikis.length === 0 && !result.sourceText.trim()) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
@@ -13118,6 +13122,8 @@ export function NoteApp() {
                   const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
                   const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
                   const result = await ingestFromUrl(url, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
+                  // 本文も説明文も取れないページは知見の ON/OFF に関係なくここで「内容不足」になる
+                  // （ingestFromUrl は送る本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
                   if (result.wikis.length === 0 && !result.sourceText.trim()) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                     ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);

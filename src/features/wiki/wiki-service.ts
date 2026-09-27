@@ -115,12 +115,18 @@ export async function ingestNote(
   signal?: AbortSignal,
   /** 知見（Claims）抽出を行うかどうか（既定 true）。features.claims が OFF のとき
    *  呼び出し側が false を渡す。false のときは /api/wiki/ingest を呼ばず、
-   *  知見 0 件の結果を返す（トピック段は呼び出し側で資料本文から別途走らせる）。 */
+   *  知見 0 件の結果を返す（トピック段は呼び出し側で資料本文から別途走らせる）。
+   *  true でも本文が空のノートは呼ばない（下の分岐を参照）。 */
   extractClaims: boolean = true,
 ): Promise<IngestResult> {
   const noteContent = extractPlainTextFromDoc(doc);
 
-  if (!extractClaims) {
+  // 本文が空か空白だけのノートも /api/wiki/ingest を呼ばず、知見 0 件で返す。
+  // 空のまま送るとサーバーが 400（"noteContent is required"）で断り、その英語の文言が
+  // そのままトーストに出ていた（空白だけだとサーバーを通り、中身の無い本文で LLM を呼んでいた）。
+  // 知見 0 件・本文なしは呼び出し側（processIngestQueue）が「内容不足」にするので、
+  // 知見の ON/OFF で結果が揃う。
+  if (!extractClaims || !noteContent.trim()) {
     return { wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null };
   }
 
@@ -1286,7 +1292,8 @@ export async function ingestFromUrl(
   language: string,
   knowledgeSchema: string,
   /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは HTML 取得・本文抽出
-   *  だけ行い、/api/wiki/ingest は呼ばない（トピック段は呼び出し側が sourceText で走らせる）。 */
+   *  だけ行い、/api/wiki/ingest は呼ばない（トピック段は呼び出し側が sourceText で走らせる）。
+   *  true でも送る本文が空のページは呼ばない（下の分岐を参照）。 */
   extractClaims: boolean = true,
   signal?: AbortSignal,
 ): Promise<IngestResult & { sourceText: string; sourceTitle: string }> {
@@ -1315,7 +1322,12 @@ export async function ingestFromUrl(
     urlData.text,
   ].filter(Boolean).join("\n");
 
-  if (!extractClaims) {
+  // 送る本文（説明文＋本文）が空か空白だけのときも /api/wiki/ingest を呼ばず、知見 0 件で返す。
+  // 本文も説明文も取れないページでも /fetch-url は 200 で返し、空のまま送るとサーバーが
+  // 400（"noteContent is required"）で断って、その英語の文言がそのままトーストに出ていた
+  // （空白だけならサーバーは通すが、中身の無い本文で LLM を呼ぶだけになる）。知見 0 件・本文なしは
+  // 呼び出し側（note-app.tsx）が「内容不足」にするので、知見の ON/OFF で結果が揃う（ingestNote と同じ扱い）。
+  if (!extractClaims || !noteContent.trim()) {
     return {
       wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
       sourceText: noteContent, sourceTitle: urlData.title || url,

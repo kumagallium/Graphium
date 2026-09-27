@@ -457,7 +457,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           client: ctx.getClientName?.(),
         });
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
-        addCreatedNoteToIndex(result.noteId, title, body);
+        addCreatedNoteToIndex(result.noteId, result.doc);
         return text(
           [
             `ノートを作成しました。`,
@@ -519,7 +519,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           client: ctx.getClientName?.(),
         });
         // 保存直後に search_notes で引けるよう、索引にも即座に足す
-        addCreatedWikiToIndex(result.noteId, result.title, answer, "answer");
+        addCreatedWikiToIndex(result.noteId, result.doc, "answer");
         return text(
           [
             `回答ページを作成しました。`,

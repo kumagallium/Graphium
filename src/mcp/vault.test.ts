@@ -11,6 +11,7 @@ import {
   readNoteIndex,
   activeNotes,
   readNote,
+  scanUnlistedDocuments,
 } from "./vault";
 import type { GraphiumIndex, NoteIndexEntry } from "../features/navigation/index-file";
 
@@ -126,6 +127,34 @@ describe("vault", () => {
 
     it("どちらにも無ければ null を返す", () => {
       expect(readNote("missing", dir)).toBeNull();
+    });
+  });
+
+  describe("scanUnlistedDocuments", () => {
+    it("note-index に載っていない notes/ と wiki/ の *.json を拾い、種別はドキュメントから取る", () => {
+      const notesDirPath = join(dir, "notes");
+      const wikiDirPath = join(dir, "wiki");
+      mkdirSync(notesDirPath, { recursive: true });
+      mkdirSync(wikiDirPath, { recursive: true });
+      const write = (path: string, doc: unknown) => writeFileSync(path, JSON.stringify(doc), "utf8");
+      write(join(notesDirPath, "n-new.json"), { version: 6, title: "新しいノート", pages: [], source: "human" });
+      write(join(notesDirPath, "n-listed.json"), { version: 6, title: "載っているノート", pages: [], source: "human" });
+      write(join(notesDirPath, "n-skill.json"), { version: 6, title: "Skill", pages: [], source: "skill" });
+      writeFileSync(join(notesDirPath, "memo.txt"), "JSON ではないファイル", "utf8");
+      write(join(wikiDirPath, "w-new.json"), {
+        version: 6,
+        title: "新しい回答",
+        pages: [],
+        source: "ai",
+        wikiMeta: { kind: "answer" },
+      });
+
+      const entries = scanUnlistedDocuments(new Set(["n-listed"]), dir);
+
+      expect(entries.map((e) => [e.noteId, e.title, e.source, e.wikiKind])).toEqual([
+        ["n-new", "新しいノート", "human", undefined],
+        ["w-new", "新しい回答", "ai", "answer"],
+      ]);
     });
   });
 });
