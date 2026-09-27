@@ -1111,7 +1111,7 @@ This second topic format skips the Claim-layer indirection described
 above: instead of grouping pre-extracted Claims, a "source" topic reads
 resources (note bodies, PDFs, Word documents, URLs, chat sessions)
 directly and keeps its own Markdown body (`wikiMeta.topicMarkdown`) as
-the source of truth. All six note-app entry points route the *source
+the source of truth. All five note-app entry points route the *source
 itself* (not its Claims) through `runSourceTopicStage`
 (`src/features/wiki/topic-stage.ts`), which creates and revises topics
 in this format. Claims are no longer topic material at all.

@@ -799,8 +799,8 @@ decision): Topics are the always-on default, built directly from source text as
 described above; Claim extraction (the Ingester) and, transitively, Insight
 discovery (the Atomizer) sit behind the `features.claims` setting flag
 (`src/features/settings/store.ts`, exposed as `isClaimsEnabled()`). When it's
-off, the six client ingest entry points in `note-app.tsx` (note queue, media
-url/pdf/docx, chat, Composer URL paste) call the same
+off, the five client ingest entry points in `note-app.tsx` (note queue, media
+url/pdf/docx, chat) call the same
 `ingestNote` / `ingestFromUrl` / `ingestFromPdf` / `ingestFromDocx` /
 `ingestFromChat` functions in `src/features/wiki/wiki-service.ts` with a new
 `extractClaims: boolean` parameter set to `false`: these functions still do
