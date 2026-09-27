@@ -2109,7 +2109,11 @@ splitting it (the app's import splits the paragraph there). What counts as a
 formula or a tag follows the app's Markdown import (`stashMath` /
 `markScriptTags`): nothing inside code, a `$` formula needs non-space just
 inside both delimiters and no digit right after the closing one (so `$50-$75`
-stays a price range), and an inline formula is at most 200 characters. The
+stays a price range), an inline formula is at most 200 characters, and a
+`\[` `\]` `\(` `\)` inside a `<sup>` / `<sub>` tag never opens or closes a
+formula — it is set aside before formulas are looked for, as the app's
+`guardScriptTagEscapes` does, so a formula cannot reach across a tag boundary
+either. The
 Claude Code skill's `save.mjs` (`scripts/claude-code-skill/save-to-graphium/`)
 carries a copy of the same converter so that it runs on Node's standard
 library alone; `markdown-to-blocks.test.ts` runs `save.mjs` and checks that
