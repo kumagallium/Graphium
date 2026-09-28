@@ -159,11 +159,11 @@ export type ConsolidateExistingTopicsDeps = {
  *
  * 知見（claim）側の topicIds 付け替え（retargetClaimTopicId）は旧形式との互換のために残す
  * — 新形式の吸収元はメンバー知見を持たないため、この付け替えは何もしない。
- * 最後に、吸収された話題をゴミ箱へ送る（物理削除しない）。ただし全員が新形式で本文の統合に
- * 失敗したときは送らない — 吸収される側の本文は残す側にまだ入っておらず、送ると中身ごと
- * 見えなくなる（failed に数え、どちらのページも元のまま残す）。旧形式を含む組は、組み直しに
- * 失敗しても従来どおり吸収元を全員送る（旧形式側のメンバー知見は統合先へ付け替え済み。
- * 同じ組に新形式の吸収元が混ざっていれば、その本文もどちらのページにも入らないまま送られる）。
+ * 最後に、吸収された話題をゴミ箱へ送る（物理削除しない）。ただし本文の統合・組み直しに
+ * 失敗したときは、新形式の吸収元（本文がどちらのページにも入っていない）は送らない —
+ * failed に数え、元のまま残す。旧形式の吸収元は知見を付け替え済みで中身は失われないので、
+ * 組み直しに失敗しても従来どおりゴミ箱へ送る。全員が新形式の組で成功したときと、旧形式を
+ * 含む組で組み直しが成功したときは、どちらも吸収元を全員ゴミ箱へ送る（今のまま）。
  */
 export async function applyTopicMerges(
   existingTopics: ExistingTopicForMerge[],
@@ -288,6 +288,7 @@ export async function applyTopicMerges(
           }
         }
 
+        let rebuildFailed = false;
         if (collectedSourceIds.size > 0) {
           const rebuildResult = await rebuildTopicFromSources(targetId, [...collectedSourceIds], {
             loadDoc: deps.loadDoc,
@@ -304,12 +305,35 @@ export async function applyTopicMerges(
           if (rebuildResult.rebuilt) {
             result.rebuilt++;
           } else {
-            // 本文が作れなくても、知見の合流（上で実施済み）とゴミ箱送りは続行する。
+            // 本文が作れなくても、知見の合流（上で実施済み）は続行する。ゴミ箱送りは
+            // 下で吸収元の形式ごとに分ける。
             result.failed++;
             noteFailure(rebuildResult.failureError);
+            rebuildFailed = true;
           }
         } else {
           result.failed++;
+          rebuildFailed = true;
+        }
+
+        if (rebuildFailed) {
+          // 組み直しに失敗したとき: 新形式の吸収元は本文がどちらのページにも入っていないので
+          // ゴミ箱へ送らず元のまま残す。旧形式の吸収元は知見を付け替え済みで中身は失われない
+          // ので、従来どおりゴミ箱へ送る。
+          for (const sourceId of sourceIds) {
+            const sourceDoc = sourceDocById.get(sourceId);
+            const isNewFormat = sourceDoc !== undefined && typeof sourceDoc.wikiMeta!.topicMarkdown === "string";
+            if (isNewFormat) continue;
+            try {
+              await deps.handleDeleteWikiFile(sourceId);
+              result.merged++;
+            } catch (err) {
+              log("統合された話題のゴミ箱送りに失敗:", sourceId, err);
+              result.failed++;
+              noteFailure(err);
+            }
+          }
+          continue;
         }
       }
 

@@ -4351,7 +4351,14 @@ function MaintenanceTab({
             </div>
           )}
           {organizeTopicsResult && !organizeTopicsRunning && !organizeTopicsError && (
-            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+            <div
+              className={
+                organizeTopicsResult.failed > 0
+                  && organizeTopicsResult.merged + organizeTopicsResult.rebuilt > 0
+                  ? "text-xs text-amber-600 dark:text-amber-400"
+                  : "text-xs text-emerald-600 dark:text-emerald-400"
+              }
+            >
               {t("settings.maintenance.organizeTopics.done", {
                 merged: String(organizeTopicsResult.merged),
                 rebuilt: String(organizeTopicsResult.rebuilt),

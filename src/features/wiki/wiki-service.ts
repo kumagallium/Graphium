@@ -11,6 +11,7 @@ import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
+import { CodedError } from "../../lib/ai-error-codes";
 import { t } from "../../i18n";
 import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
@@ -2888,7 +2889,13 @@ export async function reviseTopicFromSource(
       return null;
     }
     const data = await res.json() as { body?: string };
-    return typeof data.body === "string" && data.body.trim() ? data.body : null;
+    if (typeof data.body === "string" && data.body.trim()) return data.body;
+    // 今のサーバーは本文が空なら 200 ではなく 500 で断るので、ここには来ない想定。
+    // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
+    const err = new CodedError("revise-topic returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");
+    console.warn("reviseTopicFromSource failed:", err);
+    onError?.(err);
+    return null;
   } catch (err) {
     console.warn("reviseTopicFromSource failed:", err);
     onError?.(err);
@@ -2933,7 +2940,13 @@ export async function mergeTopicBodies(
       return null;
     }
     const data = await res.json() as { body?: string };
-    return typeof data.body === "string" && data.body.trim() ? data.body : null;
+    if (typeof data.body === "string" && data.body.trim()) return data.body;
+    // 今のサーバーは本文が空なら 200 ではなく 500 で断るので、ここには来ない想定。
+    // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
+    const err = new CodedError("merge-topics returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");
+    console.warn("mergeTopicBodies failed:", err);
+    onError?.(err);
+    return null;
   } catch (err) {
     console.warn("mergeTopicBodies failed:", err);
     onError?.(err);

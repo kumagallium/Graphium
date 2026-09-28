@@ -50,6 +50,7 @@ const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   EMBEDDING_MODEL_UNSUPPORTED: "aiError.embeddingModelUnsupported",
   PROV_STRUCTURE_FAILED: "aiError.provStructureFailed",
   ATOMIZER_OUTPUT_UNPARSEABLE: "aiError.atomizerOutputUnparseable",
+  TOPIC_OUTPUT_UNPARSEABLE: "aiError.topicOutputUnparseable",
 };
 
 /**

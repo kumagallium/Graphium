@@ -1007,11 +1007,13 @@ Notes:
   Topic Merger call fails when every side is new-format, nothing is
   soft-deleted: the absorbed body has not reached the target yet, so both
   pages stay as they were and the merge is counted as failed (the toast says
-  so, and Lint keeps the issue open). When any side is old-format, a failed
-  rebuild still soft-deletes every absorbed Topic in the group, as before:
-  the old-format ones' member Claims were already retargeted, but a
-  new-format Topic merged in the same group goes to the trash with its body
-  in neither page (it stays restorable from the trash). Every caller
+  so, and Lint keeps the issue open). When any side is old-format and the
+  rebuild fails, each absorbed Topic is judged on its own format: an
+  old-format one still gets soft-deleted (its member Claims were already
+  retargeted, so nothing is lost), but a new-format one merged into the
+  same failed group is left untouched — its body has not reached the
+  target either, so soft-deleting it would lose it the same way a failed
+  all-new-format merge would. Every caller
   passes the saved Knowledge Schema
   (`ConsolidateExistingTopicsDeps.knowledgeSchema` is required), since
   `merge-topics`, `consolidate-topics` and `revise-topic` refuse a request
@@ -2626,7 +2628,14 @@ thin. It does four jobs:
 (the server does not know the UI locale). `code` is an optional
 machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
-`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — defined in
+`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — plus a few for
+specific LLM-output-couldn't-be-read failures: `PROV_STRUCTURE_FAILED`
+(the PROV ingester's structured-note output, 502),
+`ATOMIZER_OUTPUT_UNPARSEABLE` (the Atomizer's JSON output, distinct
+from a genuine "0 candidates" result), and `TOPIC_OUTPUT_UNPARSEABLE`
+(shared by `/route-topics`, `/revise-topic` and `/merge-topics`, 500 —
+`/survey-source` and `/rewrite-answer` deliberately stay silent and
+fail open instead, so they don't use this code). All are defined in
 `src/lib/ai-error-codes.ts` (shared by server and client).
 `NO_MODEL_REGISTERED` is also returned when a request names a model
 that is no longer registered under that name (renamed or deleted after

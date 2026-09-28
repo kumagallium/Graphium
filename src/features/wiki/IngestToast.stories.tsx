@@ -96,6 +96,8 @@ export const WithSourceCheckPrompt: Story = {
             noteTitle: "出典照合",
             result: "未照合 3 文",
             action: { label: "出典照合を開く", onClick: () => alert("open source check") },
+            // 案内の行なので見出しの件数には数えない（実装と揃える）
+            excludeFromCount: true,
           },
         ],
       }}
