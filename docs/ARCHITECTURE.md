@@ -1080,6 +1080,35 @@ Notes:
   model whose display name differs from its id failed every Topic routing
   with Claims on, and with Claims off the Topic stage named no model and
   ran on the first registered one.)
+  **Display names are enforced unique** (Changed 2026-09-29): the rule
+  above only works if `name` is a reliable key, so both persistence
+  paths — `POST`/`PUT /api/models` (`src/server/routes/models.ts`, backed
+  by `src/server/config/models.ts`) and the web build's client-side store
+  (`addLLMModel` / the edit-save branch in
+  `src/features/settings/modal.tsx`) — refuse to add a model, or rename one,
+  to a display name another model already has (`id` differs, `trim()`ed
+  name matches; case-sensitive). The shared judgment lives in
+  `isDuplicateModelName` (`src/lib/model-name-rules.ts`) so neither path can
+  drift from the other. Renaming without changing the name (editing only
+  the API key, say) always succeeds, even for a model whose name already
+  collides with another one from before this rule existed — the check
+  only fires when the incoming name differs from the model's current
+  name. The GitHub Copilot one-click registration button also disables
+  itself once its fixed display name is already registered.
+  **The embedding slot has one more state than the other four**: because
+  its `<select>` only lists OpenAI / OpenAI-compatible models, a name that
+  *is* registered but under a different provider (e.g. hand-edited into
+  `settings.json`) would otherwise be picked up by neither the "(not
+  found)" check (the name does exist, just under an unlisted provider) nor
+  the OpenAI-only option list (so the `<select>` silently falls back to
+  its first option). `isUnsupportedEmbeddingModelName`
+  (`src/features/settings/store.ts`) covers this gap: it is true only when
+  the name is registered, isn't already flagged as missing, and isn't
+  among the embedding-capable names — including when that capable list is
+  empty (unlike `isMissingModelName`, an empty list does not suppress the
+  check here, since a user with zero OpenAI-compatible models still needs
+  it). The UI renders it as "{name} (cannot be used for embeddings)" and
+  resets the slot to empty on Save, the same as a genuinely missing name.
 - **"Rebuild from sources" is human-initiated, never automatic.** Beyond the
   incremental per-source revision above, a Topic page can also be rebuilt
   from scratch from its full source list (`rebuildTopicFromSources`,

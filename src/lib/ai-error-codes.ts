@@ -16,6 +16,8 @@ export const AI_ERROR_CODES = {
   API_KEY_FORBIDDEN: "API_KEY_FORBIDDEN",
   /** Embedding が OpenAI / OpenAI 互換以外のプロバイダーで要求された */
   EMBEDDING_MODEL_UNSUPPORTED: "EMBEDDING_MODEL_UNSUPPORTED",
+  /** モデルの表示名が既存の別モデルと重複している（追加・改名） */
+  DUPLICATE_MODEL_NAME: "DUPLICATE_MODEL_NAME",
   /** PROV ingester の LLM 出力が再試行しても構造化ブロックにならなかった（502） */
   PROV_STRUCTURE_FAILED: "PROV_STRUCTURE_FAILED",
   /** Atomizer の LLM 出力が JSON として解釈できず、jsonrepair でも修復できなかった。
