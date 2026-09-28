@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.83.2](https://github.com/kumagallium/Graphium/compare/v0.83.1...v0.83.2) - 2026-09-27
+
+- fix(knowledge): run the Topic stage on the ingest's model, not on the model id the ingest returned by @kumagallium in https://github.com/kumagallium/Graphium/pull/1070
+- chore(knowledge): remove the URL-to-Knowledge prompt path that no menu reaches by @kumagallium in https://github.com/kumagallium/Graphium/pull/1069
+- fix(knowledge): pass the Knowledge Schema when merging topics from the list, banner or Lint, and keep both topics if the merge fails by @kumagallium in https://github.com/kumagallium/Graphium/pull/1072
+
 ## [v0.83.1](https://github.com/kumagallium/Graphium/compare/v0.83.0...v0.83.1) - 2026-09-27
 
 - fix(bench): stop the adversarial probes from posting the same result on every PR by @kumagallium in https://github.com/kumagallium/Graphium/pull/1046
