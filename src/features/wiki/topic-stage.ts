@@ -114,8 +114,12 @@ export type ConsolidateExistingTopicsDeps = {
   noteIndex?: NoteIndex;
   locale: string;
   model?: string;
-  /** 保存済み Knowledge Schema。未指定は旧呼び出し元との互換用。 */
-  knowledgeSchema?: string;
+  /**
+   * 保存済み Knowledge Schema（`fm.getKnowledgeSchemaPrompt()`）。サーバーの
+   * consolidate-topics / merge-topics / revise-topic は無いと 400 で断るので必須。
+   * 以前は任意で、一覧・バナー・点検からの統合が渡し忘れ、本文の統合が毎回断られていた。
+   */
+  knowledgeSchema: string;
   log?: (...args: unknown[]) => void;
 };
 
@@ -133,7 +137,11 @@ export type ConsolidateExistingTopicsDeps = {
  *
  * 知見（claim）側の topicIds 付け替え（retargetClaimTopicId）は旧形式との互換のために残す
  * — 新形式の吸収元はメンバー知見を持たないため、この付け替えは何もしない。
- * 最後に、吸収された話題をゴミ箱へ送る（物理削除しない）。
+ * 最後に、吸収された話題をゴミ箱へ送る（物理削除しない）。ただし全員が新形式で本文の統合に
+ * 失敗したときは送らない — 吸収される側の本文は残す側にまだ入っておらず、送ると中身ごと
+ * 見えなくなる（failed に数え、どちらのページも元のまま残す）。旧形式を含む組は、組み直しに
+ * 失敗しても従来どおり吸収元を全員送る（旧形式側のメンバー知見は統合先へ付け替え済み。
+ * 同じ組に新形式の吸収元が混ざっていれば、その本文もどちらのページにも入らないまま送られる）。
  */
 export async function applyTopicMerges(
   existingTopics: ExistingTopicForMerge[],
@@ -225,8 +233,11 @@ export async function applyTopicMerges(
           });
           result.rebuilt++;
         } else {
-          // 本文が作れなくても、知見の合流（上で実施済み）とゴミ箱送りは続行する。
+          // 本文が作れなかった: 吸収される側はゴミ箱へ送らずに残す（本文が残す側に入って
+          // いないまま消えるのを防ぐ）。新形式の吸収元にはメンバー知見が無いので、上の
+          // 付け替えで動いたものも無い — どちらのページも元のまま。
           result.failed++;
+          continue;
         }
       } else {
         // 1 つでも旧形式: 全体の資料 id の和を集め、資料から組み直す（新形式へ移行する）。
@@ -329,9 +340,10 @@ export async function consolidateExistingTopics(
 }
 
 /**
- * ユーザーが明示的に選んだ「残すテーマ」「まとめるテーマ」からモデルを介さず統合する。
+ * ユーザーが明示的に選んだ「残すテーマ」「まとめるテーマ」を統合する。
  * バナーの類似テーマ候補・一覧の選択統合・点検の redundant 手当てが共通して使う入口。
- * LLM は呼ばない（判断済みの組をそのまま applyTopicMerges に渡すだけ）。
+ * どれを統合するかの判断に LLM は呼ばない（判断済みの組をそのまま applyTopicMerges に
+ * 渡すだけ）。本文の統合・組み直しでは呼ぶので、deps に Knowledge Schema が要る。
  */
 export async function mergeTopicsExplicit(
   keepId: string,
@@ -410,8 +422,8 @@ export type SourceTopicStageDeps = {
    * 設定の既定モデルを送る — 取り込み本体と同じモデルで走る（知見の有無に関係なく）。
    */
   model?: string;
-  /** この実行で共通に使う、保存済み Knowledge Schema 本文 */
-  knowledgeSchema?: string;
+  /** この実行で共通に使う、保存済み Knowledge Schema 本文（route-topics / revise-topic は無いと 400 なので必須） */
+  knowledgeSchema: string;
   /**
    * 資料 id から「タイトル + 全文」を解決する（出典照合の resolveSourceText と同じ入口を
    * 呼び出し側が注入する想定）。ゴミ箱・未検出などで読めない資料は undefined を返す
@@ -956,8 +968,8 @@ export type RebuildTopicFromSourcesDeps = {
    * 取り込み中の移行（runSourceTopicStage）が、取り込みの返したモデル ID を記録用にだけ渡す。
    */
   generatedByModel?: string;
-  /** 保存済み Knowledge Schema。未指定は旧呼び出し元との互換用。 */
-  knowledgeSchema?: string;
+  /** 保存済み Knowledge Schema（revise-topic は無いと 400 なので必須） */
+  knowledgeSchema: string;
   /** 資料の見取り図を作る（資料が複数窓に分かれたときだけ呼ぶ）。未指定なら見取り図なしで続行する */
   surveySource?: (
     source: { title: string; text: string },

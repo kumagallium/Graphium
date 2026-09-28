@@ -11161,8 +11161,9 @@ export function NoteApp() {
   }, [fm]);
 
   // テーマ一覧の選択統合（バナー・一覧・点検が共通して使う）。
-  // ユーザーが明示的に選んだ組を渡すだけなのでモデルは呼ばない
-  // （mergeTopicsExplicit → applyTopicMerges）。
+  // どれを統合するかの判断にモデルは呼ばない（ユーザーが選んだ組をそのまま渡す。
+  // mergeTopicsExplicit → applyTopicMerges）。本文の統合・組み直しでは呼ぶので
+  // Knowledge Schema を渡す — 無いとサーバーが 400 で断り、本文を統合できない。
   const mergeTopicsFromSelection = useCallback(async (
     keepId: string,
     mergeIds: string[],
@@ -11185,6 +11186,7 @@ export function NoteApp() {
     }));
     try {
       const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
+      const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
       const result = await mergeTopicsExplicit(keepId, mergeIds, existingTopics, {
         loadDoc: fm.loadDoc,
         getCachedDoc: fm.getCachedDoc,
@@ -11194,16 +11196,24 @@ export function NoteApp() {
         resolveSourceTitle,
         noteIndex: buildNoteIndex(fm.noteIndex),
         locale: getLocale(),
+        knowledgeSchema,
         log: (...args: unknown[]) => console.warn(...args),
       });
+      // 本文を統合できなかったときは、何もゴミ箱へ送らずに残している（applyTopicMerges）。
+      // 成功の文言で隠さず、失敗として見せる。
+      const failed = result.failed > 0;
+      const resultText = failed && result.merged === 0
+        ? tStatic("wikiList.mergeFailed")
+        : tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) })
+          + (failed ? ` · ${tStatic("ingest.topicsFailed", { count: String(result.failed) })}` : "");
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
           i.id === toastId
             ? {
                 ...i,
-                status: "success" as const,
+                status: failed ? ("error" as const) : ("success" as const),
                 detail: undefined,
-                result: tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) }),
+                result: resultText,
               }
             : i
         ),
@@ -12459,7 +12469,12 @@ export function NoteApp() {
               }
               return map;
             })()}
-            onMergeTopics={async (keepId, absorbId) => { await mergeTopicsFromSelection(keepId, [absorbId]); }}
+            onMergeTopics={async (keepId, absorbId) => {
+              const merged = await mergeTopicsFromSelection(keepId, [absorbId]);
+              // 統合できなかった（本文をまとめられずゴミ箱へ送らなかった・例外）ときは、点検に
+              // 「統合済み」として話題を隠させない。理由はトーストが出している。
+              if (!merged || merged.merged === 0) throw new Error("topic merge did not complete");
+            }}
             onMergeAtoms={async (keepId, absorbId) => { await mergeAtomsFromSelection(keepId, [absorbId]); }}
             onRebuildTopicWiki={rebuildTopicWikiWithConfirm}
             onRebuildTopicsFromSources={rebuildTopicsFromSourcesBulk}

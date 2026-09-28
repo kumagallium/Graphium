@@ -118,6 +118,7 @@ function makeSourceDeps(
     }),
     existingTopicRefs: [],
     locale: "ja",
+    knowledgeSchema: "schema",
     resolveSource: vi.fn(async () => undefined),
     log: vi.fn(),
     ...overrides,
@@ -629,6 +630,7 @@ describe("rebuildTopicFromSources", () => {
       }),
       resolveSource,
       locale: "ja",
+      knowledgeSchema: "schema",
       log: vi.fn(),
     };
 
@@ -666,6 +668,7 @@ describe("rebuildTopicFromSources", () => {
       resolveSource: vi.fn(async () => ({ title: "長い資料", text: longText })),
       surveySource,
       locale: "ja",
+      knowledgeSchema: "schema",
       log: vi.fn(),
     };
 
@@ -687,6 +690,7 @@ describe("rebuildTopicFromSources", () => {
       handleSaveWikiFile: vi.fn(async () => true),
       resolveSource: vi.fn(async () => undefined),
       locale: "ja",
+      knowledgeSchema: "schema",
     };
     const result = await rebuildTopicFromSources("topic-1", ["a", "b"], deps);
     expect(result).toEqual({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 2 });
@@ -701,6 +705,7 @@ describe("rebuildTopicFromSources", () => {
       handleSaveWikiFile: vi.fn(async () => true),
       resolveSource: vi.fn(async () => ({ title: "t", text: "x" })),
       locale: "ja",
+      knowledgeSchema: "schema",
     };
     const result = await rebuildTopicFromSources("claim-1", ["a"], deps);
     expect(result).toEqual({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 1 });
@@ -724,6 +729,7 @@ describe("rebuildTopicFromSources", () => {
       }),
       resolveSource: vi.fn(async () => ({ title: "資料", text: "本文" })),
       locale: "ja",
+      knowledgeSchema: "schema",
     };
     const result = await rebuildTopicFromSources("answer-1", ["note-a"], deps);
     expect(result.rebuilt).toBe(true);
@@ -780,6 +786,7 @@ describe("consolidateExistingTopics", () => {
       handleDeleteWikiFile: vi.fn(async () => {}),
       resolveSource: vi.fn(async () => undefined),
       locale: "ja",
+      knowledgeSchema: "schema",
       log: vi.fn(),
       ...overrides,
     };
@@ -873,6 +880,7 @@ describe("mergeTopicsExplicit", () => {
       handleDeleteWikiFile: vi.fn(async () => {}),
       resolveSource: vi.fn(async () => undefined),
       locale: "ja",
+      knowledgeSchema: "schema",
       log: vi.fn(),
       ...overrides,
     };
@@ -887,8 +895,10 @@ describe("mergeTopicsExplicit", () => {
     docs.get("wiki:c1")!.wikiMeta!.derivedFromNotes = ["s1"];
     docs.get("wiki:c2")!.wikiMeta!.derivedFromNotes = ["s2"];
 
-    (global.fetch as any).mockImplementation(async (url: string) => {
+    const reviseBodies: any[] = [];
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
       if (String(url).includes("/revise-topic")) {
+        reviseBodies.push(JSON.parse(init.body));
         return { ok: true, json: async () => ({ body: "## 定義\n統合後の本文" }) };
       }
       throw new Error(`unexpected fetch: ${url}`);
@@ -905,6 +915,9 @@ describe("mergeTopicsExplicit", () => {
     expect(result).toMatchObject({ merged: 1, rebuilt: 1, failed: 0 });
     // consolidate-topics は呼ばれない（明示選択のみ・モデル不要）
     expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining("/consolidate-topics"), expect.anything());
+    // 組み直しの改訂にも Knowledge Schema が届く（無いとサーバーが 400 で断る）
+    expect(reviseBodies.length).toBeGreaterThan(0);
+    for (const body of reviseBodies) expect(body.knowledgeSchema).toBe("schema");
     expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
     const c2 = docs.get("wiki:c2");
     expect(c2?.wikiMeta?.topicIds).toEqual(["t1"]);
@@ -938,9 +951,68 @@ describe("mergeTopicsExplicit", () => {
     expect(result).toMatchObject({ merged: 1, rebuilt: 1, failed: 0 });
     // 全員の本文が /merge-topics に渡っている
     expect(mergeCalled.bodies).toEqual(["## 定義\n本文1 [[source:s1]]", "## 定義\n本文2 [[source:s2]]"]);
+    // Knowledge Schema も届く（無いとサーバーが 400 で断る）
+    expect(mergeCalled.knowledgeSchema).toBe("schema");
     const t1 = docs.get("wiki:t1");
     expect(t1?.wikiMeta?.derivedFromNotes).toEqual(["s1", "s2"]);
     expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
+  });
+
+  it("全員新形式で本文の統合に失敗したら、吸収される側をゴミ箱へ送らず、どちらのページも元のまま残す", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeSourceTopicDoc("焼結条件と粒成長", "## 定義\n本文1 [[source:s1]]", ["s1"]));
+    docs.set("wiki:t2", makeSourceTopicDoc("SPS 焼結の粒成長抑制", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+
+    // サーバーが断る（以前の Knowledge Schema の渡し忘れと同じ 400）
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/merge-topics")) {
+        const error = { error: "knowledgeSchema is required" };
+        return { ok: false, status: 400, json: async () => error, text: async () => JSON.stringify(error) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: [] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: [] },
+    ];
+    const deps = makeMergeDeps(docs);
+    const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 1 });
+    expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
+    expect(deps.handleSaveWikiFile).not.toHaveBeenCalled();
+    expect(docs.get("wiki:t1")?.wikiMeta?.topicMarkdown).toBe("## 定義\n本文1 [[source:s1]]");
+    expect(docs.get("wiki:t1")?.wikiMeta?.derivedFromNotes).toEqual(["s1"]);
+  });
+
+  it("旧形式を含む経路は、組み直しに失敗しても従来どおり吸収される側をゴミ箱へ送る（知見は付け替え済み）", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeTopicDoc("t1", "焼結条件と粒成長", ["c1"]));
+    docs.set("wiki:t2", makeTopicDoc("t2", "SPS 焼結の粒成長抑制", ["c2"]));
+    docs.set("wiki:c1", makeClaimDoc("c1", "知見1", ["t1"]));
+    docs.set("wiki:c2", makeClaimDoc("c2", "知見2", ["t2"]));
+    docs.get("wiki:c1")!.wikiMeta!.derivedFromNotes = ["s1"];
+    docs.get("wiki:c2")!.wikiMeta!.derivedFromNotes = ["s2"];
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        return { ok: false, status: 500, json: async () => ({}), text: async () => "{}" };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: ["c1"] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: ["c2"] },
+    ];
+    const resolveSource = vi.fn(async (id: string) => ({ title: `資料${id}`, text: "本文" }));
+    const deps = makeMergeDeps(docs, { resolveSource });
+    const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    expect(result).toEqual({ merged: 1, rebuilt: 0, failed: 1 });
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
+    expect(docs.get("wiki:c2")?.wikiMeta?.topicIds).toEqual(["t1"]);
   });
 
   it("keepId のみ渡す（mergeIds が空）なら何もしない", async () => {
