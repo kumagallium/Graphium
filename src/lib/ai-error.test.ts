@@ -15,14 +15,14 @@ describe("localizeAiError", () => {
   it("NO_MODEL_REGISTERED は i18n 文言（en）に変換される", () => {
     const err = new CodedError("No AI model is registered.", "NO_MODEL_REGISTERED");
     expect(localizeAiError(err)).toBe(
-      "No AI model is registered. Add a model in Settings → AI.",
+      "No usable AI model was found. Add a model, or choose a different one, in Settings → AI.",
     );
   });
 
   it("ロケール ja では日本語文言になる", () => {
     syncLocale("ja");
     const err = new CodedError("No AI model is registered.", "NO_MODEL_REGISTERED");
-    expect(localizeAiError(err)).toContain("AI モデルが登録されていません");
+    expect(localizeAiError(err)).toContain("使える AI モデルが見つかりませんでした");
   });
 
   it("COPILOT_SUBSCRIPTION_AUTH_EXPIRED / INVALID_API_KEY もそれぞれのキーに解決される", () => {
@@ -63,7 +63,7 @@ describe("aiErrorFromResponse", () => {
     expect((err as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
     // localizeAiError と組み合わせて i18n 文言になること（統合の要）
     expect(localizeAiError(err)).toBe(
-      "No AI model is registered. Add a model in Settings → AI.",
+      "No usable AI model was found. Add a model, or choose a different one, in Settings → AI.",
     );
   });
 

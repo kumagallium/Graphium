@@ -9442,6 +9442,8 @@ export function NoteApp() {
       }
       if (result.failed > 0) {
         detail += ` · ${tStatic("ingest.topicsFailed", { count: String(result.failed) })}`;
+        // 断られた理由（設定のモデル名が見つからない等）も添える。件数だけでは直し方が分からない
+        if (result.failureError !== undefined) detail += ` · ${localizeAiError(result.failureError)}`;
       }
       const unchecked = result.touchedTopicIds.length > 0
         ? await countUncheckedSourceStatements(result.touchedTopicIds)
@@ -10811,7 +10813,10 @@ export function NoteApp() {
           log: (...args: unknown[]) => console.warn(...args),
         });
         if (!rebuildResult.rebuilt || !rebuildResult.doc) {
-          const errMsg = "Failed to rebuild topic from sources";
+          // 改訂が断られた理由があればそれを見せる（設定のモデル名が見つからない等）
+          const errMsg = rebuildResult.failureError !== undefined
+            ? localizeAiError(rebuildResult.failureError)
+            : "Failed to rebuild topic from sources";
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
@@ -11202,10 +11207,14 @@ export function NoteApp() {
       // 本文を統合できなかったときは、何もゴミ箱へ送らずに残している（applyTopicMerges）。
       // 成功の文言で隠さず、失敗として見せる。
       const failed = result.failed > 0;
-      const resultText = failed && result.merged === 0
+      const failureReason = failed && result.failureError !== undefined
+        ? ` · ${localizeAiError(result.failureError)}`
+        : "";
+      const resultText = (failed && result.merged === 0
         ? tStatic("wikiList.mergeFailed")
         : tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) })
-          + (failed ? ` · ${tStatic("ingest.topicsFailed", { count: String(result.failed) })}` : "");
+          + (failed ? ` · ${tStatic("ingest.topicsFailed", { count: String(result.failed) })}` : ""))
+        + failureReason;
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
           i.id === toastId
@@ -13435,10 +13444,21 @@ export function NoteApp() {
             log: (...args: unknown[]) => console.warn(...args),
           });
 
+          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったときは、
+          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）
+          if (
+            mergeResult.failureError !== undefined
+            && mergeResult.merged === 0 && mergeResult.rebuilt === 0 && mergeResult.failed === 0
+          ) {
+            throw new Error(localizeAiError(mergeResult.failureError));
+          }
           return {
             merged: mergeResult.merged,
             rebuilt: mergeResult.rebuilt,
             failed: mergeResult.failed,
+            ...(mergeResult.failed > 0 && mergeResult.failureError !== undefined
+              ? { failureReason: localizeAiError(mergeResult.failureError) }
+              : {}),
           };
         }}
       />

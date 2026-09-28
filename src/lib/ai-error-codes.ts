@@ -52,7 +52,9 @@ export function aiErrorCodeOf(err: unknown): AiErrorCode | undefined {
 /** モデル未登録（400）用の共通レスポンスボディ */
 export function noModelRegisteredBody(): { error: string; code: AiErrorCode } {
   return {
-    error: "No AI model is registered. Add a model in Settings → AI.",
+    // 設定のモデル名が見つからないとき（改名・削除のあと）も同じ code で返すので、追加だけでなく
+    // 選び直しも案内する（クライアントは code を i18n 文言 aiError.noModelRegistered に置き換える）
+    error: "No usable AI model was found. Add a model, or choose a different one, in Settings → AI.",
     code: "NO_MODEL_REGISTERED",
   };
 }

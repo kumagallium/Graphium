@@ -1172,6 +1172,17 @@ Notes:
   actions (ingest / procedure extraction / translation / "ask AI") all
   disappear until a model is added in Settings → AI (gated by
   `aiUiEnabled` in `src/note-app.tsx`).
+  The Topic stage and the Topic calls behind it are fail-open — a refused
+  routing, revision, merge or consolidation leaves the page as it was
+  rather than stopping the run — so their results
+  (`SourceTopicStageResult`, `RebuildTopicFromSourcesResult`,
+  `ConsolidateExistingTopicsResult` in `topic-stage.ts`) keep the first
+  refusal as `failureError` (a Stop by the user is not kept), and the
+  client shows its `localizeAiError()` message next to the failed count:
+  in the ingest toast's Topics line, the Topic merge toast, a Topic's
+  Regenerate toast, and Organize topics, which reports a refused
+  consolidation as an error instead of "0 merged". A failed survey is
+  not counted: the source is read without one.
 - **Retrieval for AI chat is hybrid.** Two substrates feed the
   cross-search behind the Internal / External grounding scopes
   (`src/features/wiki/retriever.ts`). The sidebar's standalone chat
@@ -2547,7 +2558,11 @@ thin. It does four jobs:
 machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
 `API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — defined in
-`src/lib/ai-error-codes.ts` (shared by server and client). The client
+`src/lib/ai-error-codes.ts` (shared by server and client).
+`NO_MODEL_REGISTERED` also covers a request that names a model no
+registered model is called any more (renamed or deleted after it was
+chosen in Settings), so its message asks to add a model or choose
+another one. The client
 maps known codes to localized messages via `localizeAiError()`
 (`src/lib/ai-error.ts`) and falls back to the raw `error` string for
 unknown or missing codes, so mixed old/new client-server pairs degrade

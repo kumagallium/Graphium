@@ -354,7 +354,7 @@ export const ja: Record<string, string> = {
   "settings.aiSetupCta": "AI をセットアップ",
 
   // ── AI エラー（サーバーの機械可読 code → 表示文言。src/lib/ai-error.ts が参照） ──
-  "aiError.noModelRegistered": "AI モデルが登録されていません。設定 → AI からモデルを追加してください。",
+  "aiError.noModelRegistered": "使える AI モデルが見つかりませんでした。設定 → AI で、モデルを追加するか、使うモデルを選び直してください。",
   "aiError.copilotSubscriptionAuthExpired": "GitHub Copilot の認証が未設定か期限切れです。ターミナルで `copilot` を実行してサインインし、もう一度お試しください。アカウントの切り替えは `copilot` 内の `/login` からできます。",
   "aiError.invalidApiKey": "モデルの API キーが無効か期限切れです。設定 → AI でキーを確認してください。",
   "aiError.apiKeyForbidden": "API キーにこの操作の権限がありません。",

@@ -193,6 +193,8 @@ export type OrganizeTopicsResult = {
   /** 統合先の本文を書き直せた件数 */
   rebuilt: number;
   failed: number;
+  /** 失敗の理由（表示用に訳した文。設定のモデル名が見つからない等。失敗が無ければ無し） */
+  failureReason?: string;
 };
 
 export type RegenerateWikiHandler = (
@@ -4236,6 +4238,7 @@ function MaintenanceTab({
               {organizeTopicsResult.failed > 0
                 ? ` · ${t("ingest.topicsFailed", { count: String(organizeTopicsResult.failed) })}`
                 : ""}
+              {organizeTopicsResult.failureReason ? ` · ${organizeTopicsResult.failureReason}` : ""}
             </div>
           )}
           {organizeTopicsError && (
