@@ -185,10 +185,16 @@ export function noteIndexMtimeMs(root = resolveGraphiumRoot()): number {
   }
 }
 
-/** 指定ディレクトリ直下にある *.json ファイルの件数。フォルダが無い・読めない場合は 0 件とする */
+/**
+ * 指定ディレクトリ直下にある *.json ファイルの件数。フォルダが無い・読めない場合は 0 件とする。
+ *
+ * withFileTypes でファイルだけを数える（`*.json` という名前のディレクトリが紛れ込んでも
+ * 誤って数えない。scanUnlistedDocuments も readNote の読み込み失敗でディレクトリを
+ * スキップするので、数える範囲を揃えておく）
+ */
 function countJsonFiles(dir: string): number {
   try {
-    return readdirSync(dir).filter((f) => f.endsWith(".json")).length;
+    return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith(".json")).length;
   } catch {
     return 0;
   }

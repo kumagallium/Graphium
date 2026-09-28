@@ -307,6 +307,10 @@ describe("addCreatedNoteToIndex", () => {
     writeIndex([entry("n1", "既存ノート")]);
     searchNotes("焼結", {}, root); // 索引を組ませる
 
+    // create_note は notesDir にファイルを書いた後に addCreatedNoteToIndex を呼ぶ。
+    // 順序をずらすと notesCount の追従（must fix）と食い違い、直後の検索が丸ごと組み直しに
+    // 落ちて（このファイルは note-index に無いのでスキャンで拾えず）落ちる
+    writeNote("new1", "MCP から作ったノート", "ボールミリングの考察");
     addCreatedNoteToIndex("new1", noteDoc("MCP から作ったノート", "ボールミリングの考察"), root);
 
     expect(searchNotes("ボールミリング", {}, root).map((h) => h.noteId)).toEqual(["new1"]);
@@ -317,6 +321,7 @@ describe("addCreatedNoteToIndex", () => {
     writeIndex([entry("n1", "既存ノート")]);
     searchNotes("焼結", {}, root);
 
+    writeNote("new1", "MCP から作ったノート", "ボールミリング");
     const doc = noteDoc("MCP から作ったノート", "ボールミリング");
     addCreatedNoteToIndex("new1", doc, root);
     expect(() => addCreatedNoteToIndex("new1", doc, root)).not.toThrow();
@@ -325,6 +330,43 @@ describe("addCreatedNoteToIndex", () => {
 
   it("索引を組む前に呼ばれても落ちない（次の構築でファイルから拾われる）", () => {
     expect(() => addCreatedNoteToIndex("new1", noteDoc("タイトル", "本文"), root)).not.toThrow();
+  });
+
+  it("足した直後の検索は notesCount がずれず、丸ごとの組み直しを起こさない", () => {
+    // create_note はファイルを書いた後に addCreatedNoteToIndex を呼ぶ。notesCount を
+    // 追いつかせていないと、直後の検索が vaultFileCounts の不一致だけで buildIndex を
+    // 丸ごと再実行してしまう（結果は正しくても、毎回全件スキャンする性能の劣化）
+    writeNote("n1", "既存ノート", "焼結");
+    writeIndex([entry("n1", "既存ノート")], 1_700_000_000);
+    searchNotes("焼結", {}, root); // 1 回目の構築
+
+    writeNote("new1", "MCP から作ったノート", "ボールミリングの考察");
+    addCreatedNoteToIndex("new1", noteDoc("MCP から作ったノート", "ボールミリングの考察"), root);
+
+    // buildIndex の中でだけ呼ばれる関数を数える。notesCount が追いついていれば呼ばれない
+    const spy = vi.spyOn(vault, "readNoteIndex");
+    searchNotes("ボールミリング", {}, root);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe("addCreatedWikiToIndex", () => {
+  it("足した直後の検索は wikiCount がずれず、丸ごとの組み直しを起こさない", async () => {
+    writeNote("n1", "既存ノート", "焼結");
+    writeIndex([entry("n1", "既存ノート")], 1_700_000_000);
+    searchNotes("焼結", {}, root); // 1 回目の構築
+
+    const saved = await saveAnswer(
+      { question: "混合は何時間だったか", answer: "遊星ボールミルで 12 時間混合した" },
+      root,
+    );
+    addCreatedWikiToIndex(saved.noteId, saved.doc, "answer", root);
+
+    const spy = vi.spyOn(vault, "readNoteIndex");
+    searchNotes("遊星ボールミル", {}, root);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 

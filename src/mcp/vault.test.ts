@@ -179,5 +179,13 @@ describe("vault", () => {
       expect(() => vaultFileCounts(dir)).not.toThrow();
       expect(vaultFileCounts(dir)).toEqual({ notes: 0, wiki: 0 });
     });
+
+    it("*.json という名前のディレクトリはファイルとして数えない", () => {
+      const notesDirPath = join(dir, "notes");
+      mkdirSync(join(notesDirPath, "evil.json"), { recursive: true }); // 手違いで作られたフォルダ想定
+      writeFileSync(join(notesDirPath, "n1.json"), "{}", "utf8");
+
+      expect(vaultFileCounts(dir)).toEqual({ notes: 1, wiki: 0 });
+    });
   });
 });

@@ -246,6 +246,9 @@ export function addCreatedNoteToIndex(
     outgoingLinks: [],
     source: "human",
   });
+  // create_note は notesDir に *.json を書いた後に呼ばれる。ここで notesCount を追いつかせて
+  // おかないと、直後の getIndex がファイル数の不一致だけで buildIndex を丸ごと再実行してしまう
+  cache.notesCount += 1;
 }
 
 /**
@@ -275,6 +278,8 @@ export function addCreatedWikiToIndex(
     source: "ai",
     wikiKind: kind === "answer" ? "answer" : undefined,
   } as NoteIndexEntry);
+  // save_answer は wikiDir に *.json を書いた後に呼ばれる。同上の理由で wikiCount を追いつかせる
+  cache.wikiCount += 1;
 }
 
 /** テスト・再読み込み用にキャッシュを捨てる */
