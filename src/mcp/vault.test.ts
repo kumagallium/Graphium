@@ -12,6 +12,7 @@ import {
   activeNotes,
   readNote,
   scanUnlistedDocuments,
+  vaultFileCounts,
 } from "./vault";
 import type { GraphiumIndex, NoteIndexEntry } from "../features/navigation/index-file";
 
@@ -155,6 +156,28 @@ describe("vault", () => {
         ["n-new", "新しいノート", "human", undefined],
         ["w-new", "新しい回答", "ai", "answer"],
       ]);
+    });
+  });
+
+  describe("vaultFileCounts", () => {
+    it("notes/ と wiki/ 直下の *.json だけを数える（サブフォルダ・非 JSON は数えない）", () => {
+      const notesDirPath = join(dir, "notes");
+      const wikiDirPath = join(dir, "wiki");
+      mkdirSync(notesDirPath, { recursive: true });
+      mkdirSync(wikiDirPath, { recursive: true });
+      mkdirSync(join(notesDirPath, "sub"), { recursive: true });
+      writeFileSync(join(notesDirPath, "n1.json"), "{}", "utf8");
+      writeFileSync(join(notesDirPath, "n2.json"), "{}", "utf8");
+      writeFileSync(join(notesDirPath, "memo.txt"), "JSON ではない", "utf8");
+      writeFileSync(join(notesDirPath, "sub", "n3.json"), "{}", "utf8"); // 直下ではないので数えない
+      writeFileSync(join(wikiDirPath, "w1.json"), "{}", "utf8");
+
+      expect(vaultFileCounts(dir)).toEqual({ notes: 2, wiki: 1 });
+    });
+
+    it("フォルダが無ければ 0 件として扱い、例外を投げない", () => {
+      expect(() => vaultFileCounts(dir)).not.toThrow();
+      expect(vaultFileCounts(dir)).toEqual({ notes: 0, wiki: 0 });
     });
   });
 });

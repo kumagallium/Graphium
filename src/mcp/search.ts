@@ -21,6 +21,7 @@ import {
   readNoteIndex,
   resolveGraphiumRoot,
   scanUnlistedDocuments,
+  vaultFileCounts,
 } from "./vault";
 
 /**
@@ -104,6 +105,10 @@ type IndexCache = {
   entries: Map<string, NoteIndexEntry>;
   /** 構築時に見た note-index.json の更新時刻。Graphium 側の変更を検知するために持つ */
   indexMtimeMs: number;
+  /** 構築時に見た notes/ 直下の *.json の件数。Skill など外部書き込みの検知に使う */
+  notesCount: number;
+  /** 構築時に見た wiki/ 直下の *.json の件数。同上 */
+  wikiCount: number;
 };
 
 let cache: IndexCache | null = null;
@@ -173,19 +178,36 @@ function buildIndex(root: string): IndexCache {
   const mini = new MiniSearch<SearchDoc>(miniSearchOptions());
   mini.addAll(docs);
 
-  return { root, mini, entries: entryMap, indexMtimeMs: noteIndexMtimeMs(root) };
+  const counts = vaultFileCounts(root);
+  return {
+    root,
+    mini,
+    entries: entryMap,
+    indexMtimeMs: noteIndexMtimeMs(root),
+    notesCount: counts.notes,
+    wikiCount: counts.wiki,
+  };
 }
 
 /**
  * インデックスを返す。
  *
  * stdio のプロセスはクライアントが生きている間ずっと残るので、その間に Graphium 本体が
- * ノートを足すとキャッシュが古くなる。note-index.json の更新時刻を見て、変わっていれば
- * 組み直す（Graphium は保存のたびにこのファイルを書き直す）。
+ * ノートを足すとキャッシュが古くなる。note-index.json の更新時刻に加えて、notes/ と wiki/
+ * 直下の *.json の件数も見る。Claude Code の Skill（save.mjs）など、note-index.json を
+ * 意図的に書き換えずに notes/・wiki/ へファイルを足す経路があるため、更新時刻だけでは
+ * それを検知できない。3 つのうちどれかが構築時と違えば組み直す
+ * （Graphium 本体はノート保存のたびに note-index.json を書き直す）。
+ *
+ * ファイルの中身だけを書き換えた場合（件数は変わらない）は検知できず、次に note-index.json
+ * が書き直されるまで古い内容のまま——これは今回の変更でも直らない制限。
  */
 function getIndex(root: string): IndexCache {
   if (cache && cache.root === root && cache.indexMtimeMs === noteIndexMtimeMs(root)) {
-    return cache;
+    const counts = vaultFileCounts(root);
+    if (cache.notesCount === counts.notes && cache.wikiCount === counts.wiki) {
+      return cache;
+    }
   }
   cache = buildIndex(root);
   return cache;
