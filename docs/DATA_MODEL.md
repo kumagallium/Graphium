@@ -714,11 +714,22 @@ from, not just Wiki growth.
 The revision log is **uncapped**. Every save appends a `RevisionEntity`
 (hash + activity + timestamps) and the entry is kept indefinitely;
 provenance is the core promise of Graphium, so silently dropping old
-revisions would contradict it. Each entry is small (a few hundred bytes
-of metadata, no content snapshot), so the file size grows roughly
-linearly in number of saves. If this becomes a measured problem,
-preferred mitigations are content-hash deduplication or
-user-controlled pruning, not silent truncation.
+revisions would contradict it. A revision is not a snapshot of the whole
+document, but its `summary.contentDiff` (`computeRevisionSummary` in
+`diff.ts`) does keep the full, untruncated before/after text of every
+block that was added, changed, or removed — not a size-capped excerpt.
+Truncation to a short preview happens only where the history panel
+displays a diff (`DocumentProvenancePanel.tsx`), never in what gets
+saved. So editing a large block (a long paragraph, a big table)
+repeatedly grows the note's JSON by that much each time, and the file
+size does not grow only with the *count* of saves — it also grows with
+how much text each save's diff touched. A save that produces an empty
+diff (`isEmptySummary`) does not append a revision at all. Since
+v0.83.3, the app also flushes unsaved edits when a tab is hidden or the
+page is left (not only on quit), so a single continuous editing session
+can be split across more revisions than before. If this becomes a
+measured problem, preferred mitigations are content-hash deduplication
+or user-controlled pruning, not silent truncation.
 
 Separately from the automatic edit log, a user can pin a **manual
 version snapshot** of a note or a Skill document ("Save version").

@@ -897,7 +897,11 @@ Notes:
   it to `POST /api/wiki/ingest` (the server's 400 for an empty
   `noteContent` stays as a guard), and `processIngestQueue` ends a note
   that yields no Claims and no text as "Not enough content"
-  (`ingest.insufficientContent`).
+  (`ingest.insufficientContent`). "Empty" is decided by `isBlankText`
+  (`src/lib/blank-text.ts`), shared by every entry point (note, URL, PDF,
+  Word, chat) and the server route: text made only of whitespace and/or
+  invisible formatting characters (zero-width space and similar) counts
+  as empty, since `String.prototype.trim()` alone does not strip those.
 - **What the pipeline reads from a note (changed 2026-09-25).** Ingest
   (`ingestNote`'s `noteContent`), the Topic stage (`sourcesForTopicStage` in
   `note-app.tsx`), regenerating a page from its sources, and source check's
@@ -1804,17 +1808,35 @@ seconds either.
 |---|---|---|
 | Closing a peek, switching notes, unmounting | The editor itself, in its layout-effect cleanup | Yes |
 | Opening the same note somewhere else | The opener asks the live editor to flush, then waits for the queue | Yes |
-| Desktop: closing the window, quitting, relaunching | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
+| Desktop: closing the window, or the app relaunching itself after applying an update (macOS only, via `relaunch_via_launchd`) | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
+| Desktop: the OS ending the app (macOS Dock "Quit", log out, shut down; Windows log off, shut down, Task Manager "End task"), or applying an update on Windows | Nothing — the app never sees the request | No, edits since the last autosave are lost |
 | Web: closing the tab, reloading | `pagehide` / `visibilitychange` start the write; `beforeunload` holds the page | Only while the confirmation is shown |
 
-On the desktop, Rust intercepts the close request and waits for the
+On the desktop, Rust hooks a single event: `WindowEvent::CloseRequested` on
+the main window. It intercepts that close request and waits for the
 frontend's `shutdown_ack`. The frontend flushes every open editor first
 (at most 5 s), then stops the sidecar (at most 2 s), then acknowledges. The
 flush comes before the sidecar stop because a storage provider may write
 through the sidecar. Rust force-exits after 10 s (`CLOSE_FAILSAFE_SECS`) if
 no acknowledgement arrives, so a storage location that never answers cannot
 keep the app from quitting; that limit must stay longer than the two
-frontend limits combined.
+frontend limits combined. On macOS, the app's own relaunch after an update
+(`relaunch_via_launchd`) reuses this exact path — it closes the window
+instead of calling `app.exit()` directly, so the same flush happens. That
+command is macOS-only (`#[cfg(target_os = "macos")]`); on Windows,
+`update.install()` never returns — the updater plugin ends the process with
+`std::process::exit(0)` as soon as the installer launches, before the
+frontend's relaunch call runs — so this path does not cover a Windows
+self-update, and unsaved edits since the last autosave are lost the same
+way as an OS-initiated quit.
+
+`CloseRequested` only fires for a window-level close request. The app does
+not currently intercept `RunEvent` at the `.run()` call, and its menu has no
+`Quit` item (the File menu offers only "Close Window", with no `Cmd+Q`
+accelerator registered). When the OS itself ends the process — the Dock's
+"Quit" command, logging out, shutting down, or Windows' log off / shut down
+/ Task Manager "End task" — none of that goes through `CloseRequested`, so
+whatever was typed since the last three-second autosave is not written out.
 
 On the web there is no way to wait. A browser does not promise that an
 asynchronous write started in `pagehide` finishes: an IndexedDB transaction
@@ -2288,20 +2310,43 @@ with tags.
 
 The index holds what `note-index.json` lists (minus trashed, archived and skill
 documents) plus every `*.json` file in `notes/` and `wiki/` that it does not
-list yet, and is built again on the next search after the app rewrites
-`note-index.json`. The app lists a new file only when it reloads its file list
-(at startup, for instance), so a note or answer page that `create_note` /
+list yet. The app lists a new file only when it reloads its file list (at
+startup, for instance), so a note or answer page that `create_note` /
 `save_answer` has just written reaches the index through the second route. It
 can be found even when saving was the first call of the session, when the app
 rewrote `note-index.json` for another note in between, or after the MCP server
 restarted. Once the app lists the page, the app's entry wins, so a page trashed
 or archived there drops out. A page written after the index is built is also
 added to it at once, since writing it leaves `note-index.json` untouched and
-triggers no rebuild. Either way its body is rendered from the saved document
-without tags, as above, not taken from the Markdown the agent sent (which can
-still carry `<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]`
-markers, and lacks the References section built from `citations`); otherwise
-the page would answer different queries before and after a rebuild.
+triggers no rebuild through the route below.
+
+The MCP process stays alive for as long as the client does, so it also needs
+to notice files another process added to `notes/` or `wiki/` without going
+through the app or an MCP tool call — the Claude Code skill's `save.mjs`
+(`scripts/claude-code-skill/save-to-graphium/`) is the main example: it writes
+directly into `notes/`/`wiki/` and deliberately leaves `note-index.json`
+untouched. The index is rebuilt on the next search whenever any of three
+signals differs from the values seen when it was last built: `note-index.json`'s
+mtime, the count of `*.json` files directly under `notes/`, and the same count
+under `wiki/` (`vault.ts#vaultFileCounts`). Counting is a plain `readdir` per
+directory — no per-file `stat` or read — so it stays cheap on every call. A
+missing directory counts as zero rather than throwing. This catches a file
+added or removed by any process, on top of the mtime check that already caught
+`note-index.json` rewrites. It does **not** catch a file whose *content* was
+overwritten in place without changing the file count — that stays stale until
+`note-index.json` is next rewritten (a limitation, not a bug: detecting content
+changes cheaply would need a per-file `stat`, which is the cost this
+readdir-based check exists to avoid). It also does not apply to a vault backed
+by `LocalStorageProvider` (browser/IndexedDB): there `note-index.json` and the
+note files never touch disk, `noteIndexMtimeMs` and `vaultFileCounts` both see
+nothing, and the MCP server — which only reads the filesystem — cannot see that
+vault at all, mtime-based or not.
+
+Either way a page's body is rendered from the saved document without tags, as
+above, not taken from the Markdown the agent sent (which can still carry
+`<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]` markers, and
+lacks the References section built from `citations`); otherwise the page would
+answer different queries before and after a rebuild.
 
 ## 5. Sharing and Library
 
