@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.83.3](https://github.com/kumagallium/Graphium/compare/v0.83.2...v0.83.3) - 2026-09-28
+
+- fix: write out unsaved edits when the window closes, the app quits, or the page reloads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1067
+
 ## [v0.83.2](https://github.com/kumagallium/Graphium/compare/v0.83.1...v0.83.2) - 2026-09-27
 
 - fix(knowledge): run the Topic stage on the ingest's model, not on the model id the ingest returned by @kumagallium in https://github.com/kumagallium/Graphium/pull/1070
