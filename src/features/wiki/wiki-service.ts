@@ -1332,7 +1332,9 @@ export async function ingestFromUrl(
   // （ZWSP 等）だけのときは trim() 後も truthy のままなので、素の truthy 判定だと
   // "> <不可視文字>" が noteContent に混入し、末尾のリテラル ">" が isBlankText の判定を
   // すり抜けてしまう（不可視文字だけを取り除いても ">" 自体は残るため）。
-  const description = urlData.description.trim();
+  // 応答に description が無い場合も落ちないようにする（変更前は `urlData.description && …` で
+  // undefined を通していた）。
+  const description = (urlData.description ?? "").trim();
   const hasDescription = !isBlankText(description);
   const noteContent = [
     hasDescription && `> ${description}`,
