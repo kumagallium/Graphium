@@ -8,7 +8,7 @@ import { extractWikiSections, flattenColumns } from "./section-extract";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
-import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName } from "../settings/store";
+import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { t } from "../../i18n";
@@ -38,11 +38,18 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
  * Web モード用: X-LLM-API-Key ヘッダーを含む共通ヘッダー。
  *
  * resolveModelConfig (server) はヘッダーを最優先するため、別モデルを使いたい工程では
- * モード別に適切な認証情報を送る必要がある。
+ * モード別に適切な認証情報を送る必要がある。モード名は wikiBodyModel と揃えてあり、
+ * mode 引数だけを渡す呼び出し（呼び出し元が model 名を渡さない工程）はこの 2 関数が
+ * 常にペアで同じモデルを解決する。
  * - "default":       Default モデル（ingest / lint / rewrite / cross-update）
  * - "chatSynthesis": Chat 用モデル（未設定なら default）
  * - "insight":       洞察（atomize / transfer 判定 / relift）用モデル（未設定なら chatSynthesis → default）
  * - "embedding":     Embedding 用モデル（未設定なら default）
+ *
+ * 呼び出し元が model 名を明示する工程（mergeTopicBodies など）は、この 2 関数を
+ * mode 引数だけで直接呼んではいけない — mode の既定モデルと明示した名前がずれ、
+ * ヘッダーと body.model が別モデルを指してしまう。その場合は下の wikiModelRequest
+ * （name を受けてヘッダーと body を一緒に作る）を使うこと。
  */
 /**
  * body.model を解決する。Tauri モードではヘッダー経由のモデル指定が無いため、
@@ -89,6 +96,40 @@ function wikiHeaders(mode: "default" | "chatSynthesis" | "insight" | "embedding"
     }
   }
   return h;
+}
+
+/**
+ * ヘッダー（Web 版の X-LLM-API-Key）と body.model を、同じモデルから一緒に作る。
+ *
+ * 呼び出し元が name（body に載せるモデルの表示名）を渡したとき: body にその名前を
+ * そのまま載せ、Web 版のヘッダーはその名前で登録済みモデルを引いた結果にする —
+ * 見つからなければヘッダーを載せない（サーバーが body.model の名前で「モデル未登録」
+ * を返す。1 で決めた規則と同じで、別モデルへ黙って回さない）。
+ * name が無いとき（呼び出し元が model を渡さない・空文字）は、今までどおり
+ * mode ごとの既定（wikiHeaders/wikiBodyModel と同じ解決順）を使う。
+ * これで、名前を渡す関数でヘッダーと body が別モデルを指す食い違いが起きない。
+ */
+function wikiModelRequest(
+  mode: "default" | "chatSynthesis" | "insight" = "default",
+  name?: string,
+): { headers: Record<string, string>; body: { model?: string } } {
+  if (!name) return { headers: wikiHeaders(mode), body: wikiBodyModel(mode) };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (!isTauri()) {
+    const found = getLLMModels().find((m) => m.name === name);
+    if (found) {
+      headers["X-LLM-API-Key"] = JSON.stringify({
+        provider: found.provider,
+        modelId: found.modelId,
+        apiKey: found.apiKey,
+        apiBase: found.apiBase,
+        name: found.name,
+        rate: found.rate,
+      });
+    }
+    // 見つからないときはヘッダーを載せない — サーバーが body.model の名前で断る
+  }
+  return { headers, body: { model: name } };
 }
 
 type ExistingWikiInfo = {
@@ -1163,12 +1204,17 @@ export async function embedWikiSections(
   let embeddingSuccess = false;
   try {
     const embModel = getEmbeddingModel();
+    // Embedding 用モデルが未設定のときは、既定モデルの表示名を body.model に載せる
+    // （サーバーは embedding_model || model の順で引く）。デスクトップ版はヘッダーを
+    // 送らないため、これが無いと models.json の先頭（利用者の既定とは限らない）に
+    // フォールバックしてしまう。既定モデルも未設定なら、今までどおり何も載せない。
+    const defaultModel = getSelectedModel();
     const res = await fetch(`${API_BASE}/embed`, {
       method: "POST",
       headers: wikiHeaders("embedding"),
       body: JSON.stringify({
         texts: sections,
-        ...(embModel ? { embedding_model: embModel } : {}),
+        ...(embModel ? { embedding_model: embModel } : defaultModel ? { model: defaultModel } : {}),
       }),
     });
 
@@ -2449,15 +2495,16 @@ export async function consolidateTopics(
 ): Promise<Record<string, string>> {
   if (proposedTitles.length === 0) return {};
   try {
+    // テーマの統合可否はチャットモデルで判断する（ヘッダーと body.model を揃える）
+    const { headers, body: modelBody } = wikiModelRequest("chatSynthesis", model);
     const res = await fetch(`${API_BASE}/consolidate-topics`, {
       method: "POST",
-      // テーマの統合可否はチャットモデルで判断する
-      headers: wikiHeaders("chatSynthesis"),
+      headers,
       body: JSON.stringify({
         language,
         existingTopics: existingTopics.map((t) => ({ id: t.id, title: t.title, oneLiner: t.oneLiner })),
         proposedTitles,
-        ...(model ? { model } : wikiBodyModel("chatSynthesis")),
+        ...modelBody,
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
     });
@@ -2774,12 +2821,13 @@ export async function surveySourceForWindows(
   signal?: AbortSignal,
 ): Promise<string | null> {
   try {
+    const { headers, body: modelBody } = wikiModelRequest("default", model);
     const res = await fetch(`${API_BASE}/survey-source`, {
       method: "POST",
-      headers: wikiHeaders(),
+      headers,
       body: JSON.stringify({
         title: source.title, text: source.text, language,
-        ...(model ? { model } : wikiBodyModel()),
+        ...modelBody,
       }),
       ...(signal ? { signal } : {}),
     });
@@ -2818,10 +2866,11 @@ export async function routeTopicsForSource(
   signal?: AbortSignal,
   knowledgeSchema?: string,
 ): Promise<{ update: string[]; create: string[] }> {
+  const { headers, body: modelBody } = wikiModelRequest("default", model);
   const res = await fetch(`${API_BASE}/route-topics`, {
     method: "POST",
-    headers: wikiHeaders(),
-    body: JSON.stringify({ language, source, existingTopics, ...(model ? { model } : wikiBodyModel()), ...(knowledgeSchema ? { knowledgeSchema } : {}) }),
+    headers,
+    body: JSON.stringify({ language, source, existingTopics, ...modelBody, ...(knowledgeSchema ? { knowledgeSchema } : {}) }),
     ...(signal ? { signal } : {}),
   });
   if (!res.ok) {
@@ -2857,12 +2906,13 @@ export async function reviseTopicFromSource(
   onError?: (err: unknown) => void,
 ): Promise<string | null> {
   try {
+    const { headers, body: modelBody } = wikiModelRequest("default", model);
     const res = await fetch(`${API_BASE}/revise-topic`, {
       method: "POST",
-      headers: wikiHeaders(),
+      headers,
       body: JSON.stringify({
         title, language, currentBody, source,
-        ...(model ? { model } : wikiBodyModel()),
+        ...modelBody,
         ...(previouslyCited ? { previouslyCited } : {}),
         ...(isAnswer ? { isAnswer } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
@@ -2903,14 +2953,15 @@ export async function mergeTopicBodies(
 ): Promise<string | null> {
   if (bodies.length < 2) return null;
   try {
+    const { headers, body: modelBody } = wikiModelRequest("default", model);
     const res = await fetch(`${API_BASE}/merge-topics`, {
       method: "POST",
-      headers: wikiHeaders(),
+      headers,
       body: JSON.stringify({
         title,
         language,
         bodies,
-        ...(model ? { model } : wikiBodyModel()),
+        ...modelBody,
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
     });
@@ -2955,12 +3006,13 @@ export async function rewriteAnswerFromConversation(
   try {
     // 会話は「直近のやり取り」に切り詰めてから送る（古いものから落とす）。
     const truncated = truncateConversationForAnswerRewrite(conversation);
+    const { headers, body: modelBody } = wikiModelRequest("default", model);
     const res = await fetch(`${API_BASE}/rewrite-answer`, {
       method: "POST",
-      headers: wikiHeaders(),
+      headers,
       body: JSON.stringify({
         question, answer, language, conversation: truncated, sources,
-        ...(model ? { model } : {}),
+        ...modelBody,
       }),
       ...(signal ? { signal } : {}),
     });

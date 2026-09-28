@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, MODEL_NAME_SETTING_KEYS } from "./store";
+import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, MODEL_NAME_SETTING_KEYS, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -304,5 +304,158 @@ describe("モデルの改名・削除への追従（設定はモデルを表示�
   it("見つからない名前: 一覧を読めていない（null）・1 件も無いときは判定しない（保存で設定を消さない）", () => {
     expect(isMissingModelName("GPT", null)).toBe(false);
     expect(isMissingModelName("GPT", [])).toBe(false);
+  });
+});
+
+describe("getXxxLLMModel — 空・ある・見つからない・回り道の先が見つからない（Web 版で古いモデル名のとき黙って別のモデルへ回さない）", () => {
+  const model = (name: string): LLMModelConfig => ({
+    id: name,
+    name,
+    provider: "openai-compatible",
+    modelId: name,
+    apiKey: "key",
+    apiBase: null,
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  function setModels(models: LLMModelConfig[]): void {
+    localStorage.setItem(LLM_MODELS_KEY, JSON.stringify(models));
+  }
+
+  function setSettings(settings: Record<string, unknown>): void {
+    localStorage.setItem("graphium-settings", JSON.stringify(settings));
+  }
+
+  describe("getDefaultLLMModel（settings.model）", () => {
+    it("空: 先頭のモデルにフォールバックする（初回起動時の既存挙動）", () => {
+      setModels([model("First"), model("Second")]);
+      setSettings({ model: "" });
+      expect(getDefaultLLMModel()?.name).toBe("First");
+    });
+
+    it("ある: 一致するモデルを返す", () => {
+      setModels([model("First"), model("Second")]);
+      setSettings({ model: "Second" });
+      expect(getDefaultLLMModel()?.name).toBe("Second");
+    });
+
+    it("見つからない: 名前があるのに一覧に無い（改名・削除後の古い名前）→ undefined（先頭へ回さない）", () => {
+      setModels([model("First"), model("Second")]);
+      setSettings({ model: "Deleted" });
+      expect(getDefaultLLMModel()).toBeUndefined();
+    });
+
+    it("モデルが 1 件も無い: 今のまま undefined", () => {
+      setModels([]);
+      setSettings({ model: "Anything" });
+      expect(getDefaultLLMModel()).toBeUndefined();
+    });
+  });
+
+  describe("getChatSynthesisLLMModel（chatSynthesisModel → default）", () => {
+    it("空: default にフォールバックする", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", chatSynthesisModel: "" });
+      expect(getChatSynthesisLLMModel()?.name).toBe("Default");
+    });
+
+    it("ある: 一致するモデルを返す（default とは別でよい）", () => {
+      setModels([model("Default"), model("Chat")]);
+      setSettings({ model: "Default", chatSynthesisModel: "Chat" });
+      expect(getChatSynthesisLLMModel()?.name).toBe("Chat");
+    });
+
+    it("見つからない: chatSynthesisModel が古い名前 → undefined（default へ回さない）", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", chatSynthesisModel: "Deleted" });
+      expect(getChatSynthesisLLMModel()).toBeUndefined();
+    });
+
+    it("回り道の先が見つからない: chatSynthesisModel が空で、default（settings.model）も古い名前 → undefined", () => {
+      setModels([model("Other")]);
+      setSettings({ model: "Deleted", chatSynthesisModel: "" });
+      expect(getChatSynthesisLLMModel()).toBeUndefined();
+    });
+  });
+
+  describe("getInsightLLMModel（insightModel → chatSynthesis → default）", () => {
+    it("空: チャットモデル（さらに空なら default）にフォールバックする", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", chatSynthesisModel: "", insightModel: "" });
+      expect(getInsightLLMModel()?.name).toBe("Default");
+    });
+
+    it("ある: 一致するモデルを返す", () => {
+      setModels([model("Default"), model("Insight")]);
+      setSettings({ model: "Default", insightModel: "Insight" });
+      expect(getInsightLLMModel()?.name).toBe("Insight");
+    });
+
+    it("見つからない: insightModel が古い名前 → undefined（チャットモデルへ回さない）", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", insightModel: "Deleted" });
+      expect(getInsightLLMModel()).toBeUndefined();
+    });
+
+    it("回り道の先が見つからない: insightModel が空で、チャットモデルの古い名前 → undefined", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", chatSynthesisModel: "Deleted", insightModel: "" });
+      expect(getInsightLLMModel()).toBeUndefined();
+    });
+  });
+
+  describe("getGroundingLLMModel（groundingModel → chatSynthesis → default）", () => {
+    it("空: チャットモデル（さらに空なら default）にフォールバックする", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", chatSynthesisModel: "", groundingModel: "" });
+      expect(getGroundingLLMModel()?.name).toBe("Default");
+    });
+
+    it("ある: 一致するモデルを返す", () => {
+      setModels([model("Default"), model("Grounding")]);
+      setSettings({ model: "Default", groundingModel: "Grounding" });
+      expect(getGroundingLLMModel()?.name).toBe("Grounding");
+    });
+
+    it("見つからない: groundingModel が古い名前 → undefined（チャットモデルへ回さない）", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", groundingModel: "Deleted" });
+      expect(getGroundingLLMModel()).toBeUndefined();
+    });
+
+    it("回り道の先が見つからない: groundingModel が空で、チャットモデルの古い名前 → undefined", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", chatSynthesisModel: "Deleted", groundingModel: "" });
+      expect(getGroundingLLMModel()).toBeUndefined();
+    });
+  });
+
+  describe("getEmbeddingLLMModel（embeddingModel → default）", () => {
+    it("空: default にフォールバックする", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", embeddingModel: "" });
+      expect(getEmbeddingLLMModel()?.name).toBe("Default");
+    });
+
+    it("ある: 一致するモデルを返す", () => {
+      setModels([model("Default"), model("Embed")]);
+      setSettings({ model: "Default", embeddingModel: "Embed" });
+      expect(getEmbeddingLLMModel()?.name).toBe("Embed");
+    });
+
+    it("見つからない: embeddingModel が古い名前 → undefined（default へ回さない）", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", embeddingModel: "Deleted" });
+      expect(getEmbeddingLLMModel()).toBeUndefined();
+    });
+
+    it("回り道の先が見つからない: embeddingModel が空で、default（settings.model）も古い名前 → undefined", () => {
+      setModels([model("Other")]);
+      setSettings({ model: "Deleted", embeddingModel: "" });
+      expect(getEmbeddingLLMModel()).toBeUndefined();
+    });
   });
 });

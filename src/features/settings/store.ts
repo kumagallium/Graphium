@@ -786,12 +786,15 @@ export function getChatSynthesisModel(): string {
   return loadSettings().chatSynthesisModel ?? "";
 }
 
-/** AI チャット & Synthesis 用の LLMModelConfig を取得する。設定がなければ default にフォールバック */
+/**
+ * AI チャット & Synthesis 用の LLMModelConfig を取得する。
+ * 未設定（空）なら default にフォールバックする。名前があるのに一覧に見つからない
+ * （改名・削除後の古い名前）ときは、default へ黙って回さず undefined を返す。
+ */
 export function getChatSynthesisLLMModel(): LLMModelConfig | undefined {
   const name = getChatSynthesisModel();
   if (!name) return getDefaultLLMModel();
-  const found = getLLMModels().find((m) => m.name === name);
-  return found ?? getDefaultLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
 /**
@@ -814,12 +817,13 @@ export function getInsightModel(): string {
 }
 
 /** 洞察用の LLMModelConfig を取得する。
- *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。 */
+ *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。
+ *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、
+ *  チャットモデルへ黙って回さず undefined を返す。 */
 export function getInsightLLMModel(): LLMModelConfig | undefined {
   const name = getInsightModel();
   if (!name) return getChatSynthesisLLMModel();
-  const found = getLLMModels().find((m) => m.name === name);
-  return found ?? getChatSynthesisLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
 /** 洞察用モデル名（string）を取得する。専用設定が空ならチャットモデル名に
@@ -838,12 +842,13 @@ export function getGroundingModel(): string {
 }
 
 /** 世界モデル照合用の LLMModelConfig を取得する。
- *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。 */
+ *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。
+ *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、
+ *  チャットモデルへ黙って回さず undefined を返す。 */
 export function getGroundingLLMModel(): LLMModelConfig | undefined {
   const name = getGroundingModel();
   if (!name) return getChatSynthesisLLMModel();
-  const found = getLLMModels().find((m) => m.name === name);
-  return found ?? getChatSynthesisLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
 /** 世界モデル照合モデル名（string）を取得する。専用設定が空なら
@@ -854,14 +859,15 @@ export function getGroundingModelName(): string {
 
 /** Embedding 用の LLMModelConfig を取得する。
  *  embeddingModel 設定が空の場合は default にフォールバック（embeddings が動かない場合あり）。
+ *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、default へ黙って
+ *  回さず undefined を返す。
  *  Web モードでは `wikiHeaders("embedding")` でこの認証情報をヘッダーに入れる必要がある —
  *  そうしないと resolveModelConfig がデフォルトの chat モデルでヘッダーを上書きしてしまう。
  */
 export function getEmbeddingLLMModel(): LLMModelConfig | undefined {
   const embName = getEmbeddingModel();
   if (!embName) return getDefaultLLMModel();
-  const found = getLLMModels().find((m) => m.name === embName);
-  return found ?? getDefaultLLMModel();
+  return getLLMModels().find((m) => m.name === embName);
 }
 
 // AI モデルが 1 件以上登録されているかのキャッシュ。
@@ -1110,15 +1116,21 @@ export function removeLLMModel(id: string): void {
   localStorage.setItem(LLM_MODELS_KEY, JSON.stringify(models));
 }
 
-/** デフォルトの LLM モデルを取得（先頭のモデル） */
+/**
+ * デフォルトの LLM モデルを取得する。
+ *
+ * settings.model が空（未設定）のときは先頭のモデルにフォールバックする（初回起動時の
+ * 意図的な挙動）。settings.model に名前があるのに一覧に見つからない場合（改名・削除後の
+ * 古い名前）は、別のモデルへ黙って回さず undefined を返す — 呼び出し側は「モデル未登録」
+ * として断る（#464 の方針。web はヘッダー、desktop は body.model の名前引きでこの
+ * undefined を活かす）。
+ */
 export function getDefaultLLMModel(): LLMModelConfig | undefined {
   const settings = loadSettings();
   const models = getLLMModels();
   if (models.length === 0) return undefined;
-  // settings.model で名前指定されていればそれを優先
   if (settings.model) {
-    const found = models.find((m) => m.name === settings.model);
-    if (found) return found;
+    return models.find((m) => m.name === settings.model);
   }
   return models[0];
 }
