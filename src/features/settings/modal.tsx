@@ -1182,7 +1182,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `Error ${res.status}`);
+          // code が重複名なら、サーバーの英語文言でなく共有トークンに揃える
+          // （下の catch が message === DUPLICATE_MODEL_NAME_ERROR で日英を判定する）
+          throw new Error(
+            data.code === "DUPLICATE_MODEL_NAME"
+              ? DUPLICATE_MODEL_NAME_ERROR
+              : data.error || `Error ${res.status}`,
+          );
         }
       }
       // 成功 → フォームリセット、一覧更新
@@ -1239,11 +1245,17 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Error ${res.status}`);
+        // code が重複名なら共有トークンに揃える（下の catch で日英を判定する）
+        throw new Error(
+          data.code === "DUPLICATE_MODEL_NAME"
+            ? DUPLICATE_MODEL_NAME_ERROR
+            : data.error || `Error ${res.status}`,
+        );
       }
       refreshModels();
     } catch (err) {
-      setSubscriptionError(err instanceof Error ? err.message : "Unknown error");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setSubscriptionError(message === DUPLICATE_MODEL_NAME_ERROR ? t("settings.addModel.duplicateName") : message);
     } finally {
       setRegisteringSubscription(false);
     }
@@ -1346,7 +1358,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `Error ${res.status}`);
+          // code が重複名なら共有トークンに揃える（下の catch で日英を判定する）
+          throw new Error(
+            data.code === "DUPLICATE_MODEL_NAME"
+              ? DUPLICATE_MODEL_NAME_ERROR
+              : data.error || `Error ${res.status}`,
+          );
         }
         updated = true;
       }
@@ -1358,7 +1375,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       setEditingId(null);
       refreshModels();
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Unknown error");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setEditError(message === DUPLICATE_MODEL_NAME_ERROR ? t("settings.addModel.duplicateName") : message);
     } finally {
       setEditSaving(false);
     }

@@ -87,9 +87,11 @@ app.post("/", async (c) => {
     return c.json({ error: "Required fields are missing" }, 400);
   }
 
-  // 表示名は一意という前提で名前引き（resolveModelConfig 等）が動くため、追加時点で断る
+  // 表示名は一意という前提で名前引き（resolveModelConfig 等）が動くため、追加時点で断る。
+  // code を付けるのは、クライアントが多言語化した文言に置き換えられるようにするため
+  // （error は curl 等クライアントを通らない呼び出し向けの英語メッセージとして残す）
   if (isDuplicateModelName(body.model_name, "", listModels())) {
-    return c.json({ error: DUPLICATE_MODEL_NAME_ERROR }, 400);
+    return c.json({ error: DUPLICATE_MODEL_NAME_ERROR, code: "DUPLICATE_MODEL_NAME" }, 400);
   }
 
   const model = addModel({
@@ -144,7 +146,7 @@ app.put("/:id", async (c) => {
       body.model_name.trim() !== current.name.trim() &&
       isDuplicateModelName(body.model_name, id, listModels())
     ) {
-      return c.json({ error: DUPLICATE_MODEL_NAME_ERROR }, 400);
+      return c.json({ error: DUPLICATE_MODEL_NAME_ERROR, code: "DUPLICATE_MODEL_NAME" }, 400);
     }
   }
 

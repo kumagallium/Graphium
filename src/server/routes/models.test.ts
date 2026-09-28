@@ -54,6 +54,8 @@ describe("POST /api/models — 表示名の重複", () => {
     const second = await post(NEW_MODEL);
     expect(second.status).toBe(400);
     expect(String(second.body.error)).toContain("already has this name");
+    // code はクライアントが日英を判定するための機械可読トークン（文言そのものではない）
+    expect(second.body.code).toBe("DUPLICATE_MODEL_NAME");
   });
 
   it("違う名前なら通る", async () => {
@@ -78,6 +80,7 @@ describe("PUT /api/models/:id — 表示名の重複", () => {
     const res = await put(secondId, { model_name: "My Model" });
     expect(res.status).toBe(400);
     expect(String(res.body.error)).toContain("already has this name");
+    expect(res.body.code).toBe("DUPLICATE_MODEL_NAME");
   });
 
   it("名前を変えない PUT（API キーだけ更新）は通る", async () => {
