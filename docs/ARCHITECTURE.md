@@ -1787,17 +1787,29 @@ editing in both at once does not.
 |---|---|---|
 | Closing a peek, switching notes, unmounting | The editor itself, in its layout-effect cleanup | Yes |
 | Opening the same note somewhere else | The opener asks the live editor to flush, then waits for the queue | Yes |
-| Desktop: closing the window, quitting, relaunching | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
+| Desktop: closing the window, or the app relaunching itself after applying an update | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
+| Desktop: the OS ending the app (macOS Dock "Quit", log out, shut down; Windows log off, shut down, Task Manager "End task") | Nothing — the app never sees the request | No, edits since the last autosave are lost |
 | Web: closing the tab, reloading | `pagehide` / `visibilitychange` start the write; `beforeunload` holds the page | Only while the confirmation is shown |
 
-On the desktop, Rust intercepts the close request and waits for the
+On the desktop, Rust hooks a single event: `WindowEvent::CloseRequested` on
+the main window. It intercepts that close request and waits for the
 frontend's `shutdown_ack`. The frontend flushes every open editor first
 (at most 5 s), then stops the sidecar (at most 2 s), then acknowledges. The
 flush comes before the sidecar stop because a storage provider may write
 through the sidecar. Rust force-exits after 10 s (`CLOSE_FAILSAFE_SECS`) if
 no acknowledgement arrives, so a storage location that never answers cannot
 keep the app from quitting; that limit must stay longer than the two
-frontend limits combined.
+frontend limits combined. The app's own relaunch after an update
+(`relaunch_via_launchd`) reuses this exact path — it closes the window
+instead of calling `app.exit()` directly, so the same flush happens.
+
+`CloseRequested` only fires for a window-level close request. The app does
+not currently intercept `RunEvent` at the `.run()` call, and its menu has no
+`Quit` item (the File menu offers only "Close Window", with no `Cmd+Q`
+accelerator registered). When the OS itself ends the process — the Dock's
+"Quit" command, logging out, shutting down, or Windows' log off / shut down
+/ Task Manager "End task" — none of that goes through `CloseRequested`, so
+whatever was typed since the last three-second autosave is not written out.
 
 On the web there is no way to wait. A browser does not promise that an
 asynchronous write started in `pagehide` finishes: an IndexedDB transaction
