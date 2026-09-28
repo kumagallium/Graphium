@@ -24,7 +24,8 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
+import { isDuplicateModelName } from "../../lib/model-name-rules";
 import { embeddingStore } from "../../lib/embedding-store";
 import {
   fetchModels,
@@ -529,6 +530,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   // 既知モデルの参考価格。プロバイダー API では取れないので、内蔵テーブルから引く。
   const [editSuggestedRate, setEditSuggestedRate] = useState<PricingEntry | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
 
   // 保存
   const [saved, setSaved] = useState(false);
@@ -608,10 +610,21 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const embeddingModelMissing = isMissingModelName(embeddingModel, availableModelNames);
   const groundingModelMissing = isMissingModelName(groundingModelStored, availableModelNames);
   const insightModelMissing = isMissingModelName(insightModel, availableModelNames);
+  // 埋め込みの選択欄だけの追加状態: 一覧には実在するが、埋め込みに使えるプロバイダー
+  // （OpenAI / OpenAI 互換）ではないモデル名（手で編集した設定など）。一覧が読めていない
+  // 間は null にし、判定しない（#1076 の不変条件を継承）。
+  const embeddingCapableModelNames = modelsLoaded
+    ? models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => m.name)
+    : null;
+  const embeddingModelUnsupported = isUnsupportedEmbeddingModelName(
+    embeddingModel,
+    embeddingCapableModelNames,
+    availableModelNames,
+  );
   const missingModelNames = [...new Set([
     modelMissing ? model : "",
     chatSynthesisModelMissing ? chatSynthesisModel : "",
-    embeddingModelMissing ? embeddingModel : "",
+    embeddingModelMissing || embeddingModelUnsupported ? embeddingModel : "",
     groundingModelMissing ? groundingModelStored : "",
     insightModelMissing ? insightModel : "",
   ].filter(Boolean))];
@@ -635,6 +648,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     ];
     return slots.filter(([value]) => value === target.name).map(([, label]) => label);
   };
+
+  // GitHub Copilot の 1-click 登録は決まった名前で登録するため、既に登録済みなら
+  // ボタンを押せなくする（登録済みを見ずに 2 回押すと同じ名前が 2 つできる事故を防ぐ）
+  const copilotSubscriptionAlreadyRegistered = models.some(
+    (m) => m.name.trim() === t("settings.models.copilotSubscriptionName").trim(),
+  );
 
   const refreshHealth = useCallback((headers?: HeadersInit) => {
     setHealthLoading(true);
@@ -1114,6 +1133,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       setAddError(t("settings.addModel.selectModel"));
       return;
     }
+    const finalName = modelDisplayName.trim() || modelId;
+    // サーバー/store 側でも同じ規則で断るが、ここで先に確かめると通信なしで即座に理由を出せる
+    if (isDuplicateModelName(finalName, "", models)) {
+      setAddError(t("settings.addModel.duplicateName"));
+      return;
+    }
     setAdding(true);
     setAddError("");
     try {
@@ -1130,7 +1155,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
           }
         }
         addLLMModel({
-          name: modelDisplayName.trim() || modelId,
+          name: finalName,
           provider: addProvider,
           modelId: modelId,
           apiKey,
@@ -1139,7 +1164,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       } else {
         // Desktop/Docker: サーバー API 経由
         const reqBody: Record<string, string | undefined> = {
-          model_name: modelDisplayName.trim() || modelId,
+          model_name: finalName,
           provider: addProvider,
           model_id: modelId,
         };
@@ -1173,11 +1198,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       setModelDisplayName("");
       refreshModels();
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : "Unknown error");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setAddError(message === DUPLICATE_MODEL_NAME_ERROR ? t("settings.addModel.duplicateName") : message);
     } finally {
       setAdding(false);
     }
-  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, refreshModels, t]);
+  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, models, refreshModels, t]);
 
   // desktop（サーバー経路）で GitHub Copilot CLI が使えるかを確認し、
   // 使えるならサブスクの 1-click を出す。web（localStorage 経路）では出さない。
@@ -1255,6 +1281,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setEditRateOutput(m.rate ? String(m.rate.output) : "");
     setEditRateCurrency(m.rate?.currency === "jpy" ? "jpy" : "usd");
     setEditSuggestedRate(lookupModelPrice(m.provider, m.model_id));
+    setEditError("");
   }, []);
 
   const handleSaveEdit = useCallback(async () => {
@@ -1262,6 +1289,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     const target = models.find((m) => m.id === editingId);
     const newName = editName.trim();
     let updated = false;
+    setEditError("");
+    // 名前を変えるときだけ重複を確認する（変えない編集は、既に重複した名前を持っている
+    // 利用者が API キーだけ直す操作を止めないよう必ず通す）
+    if (target && newName && newName !== target.name && isDuplicateModelName(newName, editingId, models)) {
+      setEditError(t("settings.addModel.duplicateName"));
+      return;
+    }
     setEditSaving(true);
     try {
       // 単価入力をパース。両方未入力なら rate 未設定として保存（コスト計算スキップ）。
@@ -1310,7 +1344,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        updated = res.ok;
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Error ${res.status}`);
+        }
+        updated = true;
       }
       // 表示名を変えたら、その名前を選んでいた項目も新しい名前にする（同じモデルを使い続ける）
       if (updated && target && newName && newName !== target.name) {
@@ -1319,12 +1357,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       }
       setEditingId(null);
       refreshModels();
-    } catch {
-      // 静かに失敗
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setEditSaving(false);
     }
-  }, [isWebMode, models, editingId, editName, editApiKey, editApiBase, editRateInput, editRateOutput, editRateCurrency, refreshModels, followModelNameChange]);
+  }, [isWebMode, models, editingId, editName, editApiKey, editApiBase, editRateInput, editRateOutput, editRateCurrency, refreshModels, followModelNameChange, t]);
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
@@ -1336,7 +1374,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       // 見つからないモデル名（改名・削除のあとで残った古い名前）は書き戻さず、空（その項目の
       // 既定）にする。選択欄の下で「このまま保存すると〜に戻ります」と伝えている
       model: modelMissing ? "" : model,
-      embeddingModel: embeddingModelMissing ? "" : embeddingModel,
+      // 埋め込みに使えない種類のモデル名（手で編集した設定など）も同じ扱いで空に戻す
+      embeddingModel: (embeddingModelMissing || embeddingModelUnsupported) ? "" : embeddingModel,
       chatSynthesisModel: chatSynthesisModelMissing ? "" : chatSynthesisModel,
       insightModel: insightModelMissing ? "" : insightModel,
       groundingModel: groundingModelMissing ? "" : groundingModelStored,
@@ -1356,7 +1395,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -2482,11 +2521,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     <div className="mb-3">
                       <button
                         onClick={handleUseCopilotSubscription}
-                        disabled={registeringSubscription}
+                        disabled={registeringSubscription || copilotSubscriptionAlreadyRegistered}
                         className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
                       >
                         {registeringSubscription && <Loader2 size={12} className="animate-spin" />}
-                        {t("settings.models.useCopilotSubscription")}
+                        {copilotSubscriptionAlreadyRegistered
+                          ? t("settings.models.copilotSubscriptionAlreadyRegistered")
+                          : t("settings.models.useCopilotSubscription")}
                       </button>
                       <p className="text-xs text-muted-foreground mt-2">{t("settings.models.useCopilotSubscriptionHint")}</p>
                     </div>
@@ -2599,8 +2640,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           </div>
                         )}
                       </div>
+                      {editError && (
+                        <p className="text-xs text-red-500 flex items-center gap-1">
+                          <AlertCircle size={12} /> {editError}
+                        </p>
+                      )}
                       <div className="flex gap-2 justify-end">
-                        <button onClick={() => setEditingId(null)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1">{t("common.cancel")}</button>
+                        <button onClick={() => { setEditingId(null); setEditError(""); }} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1">{t("common.cancel")}</button>
                         <Button size="sm" onClick={handleSaveEdit} disabled={editSaving}>
                           {editSaving ? <Loader2 size={12} className="animate-spin" /> : t("common.save")}
                         </Button>
@@ -3040,6 +3086,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       {embeddingModelMissing && (
                         <option value={embeddingModel}>{t("settings.modelMissingOption", { name: embeddingModel })}</option>
                       )}
+                      {embeddingModelUnsupported && (
+                        <option value={embeddingModel}>{t("settings.embeddingModel.unsupportedOption", { name: embeddingModel })}</option>
+                      )}
                       {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
                         <option key={m.name} value={m.name}>
                           {m.name}
@@ -3048,7 +3097,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
-                  {embeddingModelMissing && renderMissingModelHint(t("settings.embeddingModel.noneFallback"))}
+                  {(embeddingModelMissing || embeddingModelUnsupported) && renderMissingModelHint(t("settings.embeddingModel.noneFallback"))}
                   {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
                       ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
                   {embeddingIndexStale && (
