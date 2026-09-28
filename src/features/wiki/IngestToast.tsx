@@ -34,11 +34,37 @@ export type IngestToastItem = {
    * 結果行の下（pl-5）に小さく出す。押されても項目自体の状態は変えない。
    */
   action?: { label: string; onClick: () => void };
+  /**
+   * 見出しの件数（「完了: N 件生成」）から除外する（保存されない、画面の中だけの印）。
+   * Knowledge pipeline の進捗行（stages 付き）は自動で除外されるが、出典照合の案内の
+   * ような「案内・提案の行」はステージを持たないので、これで明示的に除外する
+   */
+  excludeFromCount?: boolean;
 };
 
 export type IngestToastState = {
   items: IngestToastItem[];
 } | null;
+
+/**
+ * 見出しの件数（生成・エラー・停止）を、実際の取り込み結果だけで数える。
+ * Knowledge pipeline の進捗行（stages 付き）と、excludeFromCount が付いた案内行
+ * （出典照合の案内など）は数えない。分母（total）も同じ基準で数える。
+ */
+export function summarizeIngestToastCounts(items: IngestToastItem[]): {
+  completed: number;
+  error: number;
+  aborted: number;
+  total: number;
+} {
+  const countable = items.filter((i) => !i.stages && !i.excludeFromCount);
+  return {
+    completed: countable.filter((i) => i.status === "success").length,
+    error: countable.filter((i) => i.status === "error").length,
+    aborted: countable.filter((i) => i.status === "aborted").length,
+    total: countable.length,
+  };
+}
 
 type Props = {
   state: IngestToastState;
@@ -97,9 +123,9 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
 
   if (!state || items.length === 0) return null;
 
-  const completedCount = items.filter((i) => i.status === "success").length;
-  const errorCount = items.filter((i) => i.status === "error").length;
-  const abortedCount = items.filter((i) => i.status === "aborted").length;
+  // 見出しの件数は、Knowledge pipeline の進捗行・案内行を除いた実際の取り込み結果だけで数える
+  const { completed: completedCount, error: errorCount, aborted: abortedCount, total: countableTotal } =
+    summarizeIngestToastCounts(items);
   const canStop = hasActive && !!onStop;
   const handleStop = () => {
     if (!onStop || stopping) return;
@@ -135,7 +161,7 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
         )}
         <Bot size={12} className="text-muted-foreground shrink-0" />
         <span className="text-[11px] font-medium text-foreground tabular-nums">
-          {completedCount}/{items.length}
+          {completedCount}/{countableTotal}
         </span>
         {errorCount > 0 && (
           <span className="flex items-center gap-0.5 text-[11px] font-medium text-destructive tabular-nums">
@@ -166,7 +192,7 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
           {hasActive
             ? stopping
               ? t("ingest.stopping")
-              : t("ingest.generatingHeader", { done: String(completedCount), total: String(items.length) })
+              : t("ingest.generatingHeader", { done: String(completedCount), total: String(countableTotal) })
             : `${t("ingest.doneSummary", { count: String(completedCount) })}${errorCount > 0 ? t("ingest.doneErrorSuffix", { count: String(errorCount) }) : ""}${abortedCount > 0 ? t("ingest.doneAbortedSuffix", { count: String(abortedCount) }) : ""}`
           }
         </span>

@@ -9482,6 +9482,8 @@ export function NoteApp() {
             noteTitle: tStatic("ingest.sourceCheckToastTitle"),
             result: tStatic("ingest.sourceCheckPending", { count: String(unchecked) }),
             action: { label: tStatic("ingest.openSourceCheck"), onClick: openSourceCheckUpkeep },
+            // 案内の行なので、見出しの「N 件生成」には数えない
+            excludeFromCount: true,
           },
         ],
       }));
