@@ -75,7 +75,8 @@ import {
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 import type { ClaimSnapshot } from "../services/wiki-types.js";
-import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import { noModelRegisteredBody, errorBody, topicOutputUnparseableBody } from "../../lib/ai-error-codes.js";
+import { isBlankText } from "../../lib/blank-text.js";
 import {
   buildSourceCheckSystemPrompt,
   buildSourceCheckUserMessage,
@@ -111,7 +112,8 @@ app.post("/ingest", async (c) => {
     knowledgeSchema?: string;
   }>();
 
-  if (!body.noteContent) {
+  // 空白・不可視文字だけの noteContent も、空文字と同じ「必須項目が無い」応答にする。
+  if (typeof body.noteContent !== "string" || isBlankText(body.noteContent)) {
     return c.json({ error: "noteContent is required" }, 400);
   }
   const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
@@ -480,7 +482,7 @@ app.post("/route-topics", async (c) => {
     knowledgeSchema?: string;
   }>();
 
-  if (!body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+  if (!body.source || typeof body.source.text !== "string" || isBlankText(body.source.text)) {
     return c.json({ error: "source is required" }, 400);
   }
   const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
@@ -513,7 +515,7 @@ app.post("/route-topics", async (c) => {
 
     const parsed = parseTopicRouterOutput(result.message);
     if (!parsed) {
-      return c.json({ error: "Failed to parse topic router output" }, 500);
+      return c.json(topicOutputUnparseableBody(), 500);
     }
 
     return c.json({
@@ -545,7 +547,7 @@ app.post("/revise-topic", async (c) => {
     knowledgeSchema?: string;
   }>();
 
-  if (!body.title || !body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+  if (!body.title || !body.source || typeof body.source.text !== "string" || isBlankText(body.source.text)) {
     return c.json({ error: "title and source are required" }, 400);
   }
   const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
@@ -578,7 +580,7 @@ app.post("/revise-topic", async (c) => {
 
     const parsed = parseSourceTopicReviserOutput(result.message);
     if (!parsed) {
-      return c.json({ error: "Failed to parse source topic reviser output" }, 500);
+      return c.json(topicOutputUnparseableBody(), 500);
     }
 
     return c.json({
@@ -602,7 +604,7 @@ app.post("/survey-source", async (c) => {
     model?: string;
   }>();
 
-  if (!body.title || typeof body.text !== "string" || !body.text.trim()) {
+  if (!body.title || typeof body.text !== "string" || isBlankText(body.text)) {
     return c.json({ error: "title and text are required" }, 400);
   }
 
@@ -689,7 +691,7 @@ app.post("/merge-topics", async (c) => {
 
     const parsed = parseTopicMergerOutput(result.message);
     if (!parsed) {
-      return c.json({ error: "Failed to parse topic merger output" }, 500);
+      return c.json(topicOutputUnparseableBody(), 500);
     }
 
     return c.json({
@@ -716,7 +718,7 @@ app.post("/rewrite-answer", async (c) => {
     model?: string;
   }>();
 
-  if (!body.question || typeof body.answer !== "string" || !body.answer.trim()) {
+  if (!body.question || typeof body.answer !== "string" || isBlankText(body.answer)) {
     return c.json({ error: "question and answer are required" }, 400);
   }
 
@@ -1043,7 +1045,7 @@ app.post("/check-sources", async (c) => {
     model?: string;
   }>();
 
-  if (!body.source || typeof body.source.text !== "string" || !body.source.text.trim()) {
+  if (!body.source || typeof body.source.text !== "string" || isBlankText(body.source.text)) {
     return c.json({ result: null, error: "source.text is required" }, 400);
   }
   if (!Array.isArray(body.claims) || body.claims.length === 0) {
