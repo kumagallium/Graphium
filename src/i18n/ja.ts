@@ -608,6 +608,9 @@ export const ja: Record<string, string> = {
   "settings.maintenance.unavailable": "再生成ハンドラが利用できません。",
   "settings.model": "デフォルトモデル",
   "settings.modelDefault": "サーバーデフォルト ({name})",
+  // 改名・削除のあとで残った、一覧に無いモデル名（選択欄にそのまま出して選び直してもらう）
+  "settings.modelMissingOption": "{name}（見つかりません）",
+  "settings.modelMissingHint": "このモデルが見つかりません。選び直してください。このまま保存すると「{fallback}」に戻ります。",
   "settings.modelDefaultLabel": "デフォルト",
   "settings.modelLoading": "モデルを読み込み中...",
   "settings.modelNone": "モデルが未登録です",
@@ -656,6 +659,8 @@ export const ja: Record<string, string> = {
   "settings.aiStatus.readyDesc": "{name} を使っています。",
   "settings.aiStatus.setupTitle": "AI はまだ使えません",
   "settings.aiStatus.setupDesc": "使いたい AI サービスを 1 つ登録すると、チャット・要約・洞察が使えるようになります。",
+  "settings.aiStatus.missingTitle": "見つからないモデルがあります",
+  "settings.aiStatus.missingDesc": "選んでいた{names}が見つかりません（名前を変えたか、削除したあとかもしれません）。選び直すか、このまま保存すると既定に戻ります。",
   "settings.aiStatus.setupAction": "AI を登録する",
   "settings.group.aiAdvanced.summary": "MCP サーバー",
   "settings.ai.sectionGrounding": "世界照合",
@@ -845,6 +850,7 @@ export const ja: Record<string, string> = {
   "settings.models.rate.useKnown": "{input} / {output} を使う",
   "settings.models.delete": "削除",
   "settings.models.confirmDelete": "削除しますか？",
+  "settings.models.deleteUsedBy": "{slots}で使っています。削除すると既定に戻ります。",
   // ── モデル追加フォーム ──
   "settings.addModel.title": "モデルを追加",
   "settings.addModel.provider": "プロバイダー",

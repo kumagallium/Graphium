@@ -670,6 +670,75 @@ export function saveSettings(settings: Settings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 }
 
+// ── モデルの改名・削除への追従 ──
+// 設定はモデルを表示名で覚えている（保存形式は名前のまま変えない）。名前が変わったり
+// モデルが消えたりすると古い名前が残り、デスクトップ版はサーバーに断られ、Web 版は
+// 黙って先頭のモデルに置き換わっていた。設定画面での改名・削除のときに、ここで追従させる。
+
+/** モデルを表示名で覚えている設定の項目（この 5 つだけ） */
+export const MODEL_NAME_SETTING_KEYS = [
+  "model",
+  "chatSynthesisModel",
+  "embeddingModel",
+  "groundingModel",
+  "insightModel",
+] as const satisfies readonly (keyof Settings)[];
+
+/**
+ * 1 項目ぶん、モデルの改名に追従させた値を返す（oldName を覚えていれば newName に）。
+ * 名前が重なるときは変えない — 使うモデルが黙って入れ替わるため:
+ * - 同じ名前（oldName）のモデルがほかにも残っている: 設定はそのモデルを指し続けている
+ * - 新しい名前（newName）がほかのモデルと同じ: 書き換えると、名前で引いたときに先に
+ *   並ぶほうのモデルが使われる。書き換えずに残し、「（見つかりません）」として選び直してもらう
+ */
+export function followModelRename(
+  value: string,
+  oldName: string,
+  newName: string,
+  otherModelNames: readonly string[],
+): string {
+  if (!oldName || !newName || value !== oldName) return value;
+  if (otherModelNames.includes(oldName) || otherModelNames.includes(newName)) return value;
+  return newName;
+}
+
+/**
+ * 1 項目ぶん、モデルの削除に追従させた値を返す。削除したモデルを覚えていれば空
+ * （その項目の既定 — 「サーバーデフォルト」「デフォルトモデルと同じ」など）に戻す。
+ * 同じ名前のモデルがほかにも残っていれば変えない。
+ */
+export function followModelDeletion(
+  value: string,
+  deletedName: string,
+  otherModelNames: readonly string[],
+): string {
+  if (!deletedName || value !== deletedName || otherModelNames.includes(deletedName)) return value;
+  return "";
+}
+
+/** 設定のモデル名 5 項目に fn を当てる。1 つも変わらなければ同じオブジェクトを返す */
+export function mapModelNameSettings(settings: Settings, fn: (value: string) => string): Settings {
+  let next: Settings | null = null;
+  for (const key of MODEL_NAME_SETTING_KEYS) {
+    const value = settings[key] ?? "";
+    const mapped = fn(value);
+    if (mapped !== value) {
+      next ??= { ...settings };
+      next[key] = mapped;
+    }
+  }
+  return next ?? settings;
+}
+
+/**
+ * 選択欄の一覧に無い名前か（改名・削除のあとで残った古い名前）。一覧を読めていない
+ * （読み込み中・失敗 = null、1 件も無い）ときは判定しない — 空の一覧を理由に全部を
+ * 「見つからない」と扱うと、保存で設定を消してしまう。
+ */
+export function isMissingModelName(value: string, availableNames: readonly string[] | null): boolean {
+  return !!value && availableNames !== null && availableNames.length > 0 && !availableNames.includes(value);
+}
+
 /** 選択中のモデル名を取得する（空文字 = サーバーデフォルト） */
 export function getSelectedModel(): string {
   return loadSettings().model;

@@ -125,6 +125,7 @@ function SettingsModalHarness({
   seedModels = false,
   stubApi,
   seedFeaturesOff = false,
+  seedMissingModel = false,
   initialTab,
   wikiSummaries,
 }: {
@@ -134,6 +135,8 @@ function SettingsModalHarness({
   stubApi?: boolean;
   /** features.insights / features.worldGrounding を両方 OFF にして開く（マスタースイッチの畳み確認用） */
   seedFeaturesOff?: boolean;
+  /** 一覧に無いモデル名（改名・削除のあとで残った古い名前）を既定・チャットモデルに入れて開く */
+  seedMissingModel?: boolean;
   initialTab?: string;
   wikiSummaries?: WikiSummaryForSettings[];
 }) {
@@ -157,7 +160,10 @@ function SettingsModalHarness({
       // 「行の密度」を確認したいストーリーでは既存ユーザー相当（features ON）を明示的に seed する。
       localStorage.setItem(
         SETTINGS_KEY,
-        JSON.stringify({ features: { insights: true, worldGrounding: true } }),
+        JSON.stringify({
+          features: { insights: true, worldGrounding: true },
+          ...(seedMissingModel ? { model: "Deleted model", chatSynthesisModel: "Old chat model" } : {}),
+        }),
       );
     }
     setReady(true);
@@ -166,7 +172,7 @@ function SettingsModalHarness({
       localStorage.removeItem(SETTINGS_KEY);
       restoreFetch?.();
     };
-  }, [seedModels, stubApi, seedFeaturesOff]);
+  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel]);
 
   // localStorage を整えてからマウントする（SettingsModal は初回描画で読むため）
   if (!ready) return null;
@@ -218,6 +224,15 @@ export const AiNotConfigured: Story = {
  */
 export const AiFeaturesOff: Story = {
   args: { seedModels: true, initialTab: "ai", seedFeaturesOff: true },
+};
+
+/**
+ * 選んでいたモデルが見つからない AI タブ（モデルを改名・削除したあとで古い名前が残った状態）。
+ * 状態表示が「見つからないモデルがあります」になり、既定・チャットモデルの欄に
+ * 「（見つかりません）」と、保存すると何に戻るかの注意が出ることを確認する。
+ */
+export const AiWithMissingModel: Story = {
+  args: { seedModels: true, initialTab: "ai", seedMissingModel: true },
 };
 
 /**

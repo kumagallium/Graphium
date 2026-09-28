@@ -1059,6 +1059,17 @@ Notes:
   Regenerate with no model chosen. The Claim-merge rewrite
   (`rewriteAndMerge`) and the Insight duplicate judge
   (`judgeAtomDuplicates`) name their model from Settings the same way.
+  Settings keep those names in five slots (`MODEL_NAME_SETTING_KEYS` in
+  `src/features/settings/store.ts`: default, chat, embedding,
+  world-grounding, insight), so Settings → AI keeps them in step with the
+  models: renaming a model rewrites the slots that named it, deleting one
+  sets them back to empty (the default) after the delete confirmation has
+  listed them, and a name no registered model has any more is shown as
+  "(not found)" and not written back on Save. A rename is not followed
+  when another model still has the old name (the slot keeps pointing at
+  it) or already has the new one (the slot would silently switch to
+  whichever model comes first); a delete clears nothing while another
+  model still has the name.
   (Changed 2026-09-27: the id used to go back as the name, so on desktop a
   model whose display name differs from its id failed every Topic routing
   with Claims on, and with Claims off the Topic stage named no model and

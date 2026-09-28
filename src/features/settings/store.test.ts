@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName } from "./store";
+import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, MODEL_NAME_SETTING_KEYS } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -227,5 +227,82 @@ describe("insightModel — 洞察専用モデルの代替順（insightModel → 
     );
     expect(getInsightModel()).toBe("claude-opus-5");
     expect(getInsightModelName()).toBe("claude-opus-5");
+  });
+});
+
+describe("モデルの改名・削除への追従（設定はモデルを表示名で覚えている）", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("名前で覚えている項目は 5 つ（既定・チャット・埋め込み・照合・洞察）", () => {
+    expect([...MODEL_NAME_SETTING_KEYS].sort()).toEqual(
+      ["chatSynthesisModel", "embeddingModel", "groundingModel", "insightModel", "model"],
+    );
+  });
+
+  it("改名: 古い名前を覚えている項目だけ新しい名前にする", () => {
+    expect(followModelRename("GPT", "GPT", "GPT (work)", ["Claude"])).toBe("GPT (work)");
+    expect(followModelRename("Claude", "GPT", "GPT (work)", ["Claude"])).toBe("Claude");
+    expect(followModelRename("", "GPT", "GPT (work)", ["Claude"])).toBe("");
+  });
+
+  it("改名: 同じ名前のモデルがほかにも残るなら変えない（設定はそちらを指し続ける）", () => {
+    expect(followModelRename("GPT", "GPT", "GPT (work)", ["GPT", "Claude"])).toBe("GPT");
+  });
+
+  it("改名: 新しい名前がほかのモデルと同じなら変えない（先に並ぶ別のモデルに黙って入れ替わるため）", () => {
+    expect(followModelRename("GPT", "GPT", "Claude", ["Claude"])).toBe("GPT");
+  });
+
+  it("削除: 削除したモデルを覚えている項目は空（その項目の既定）に戻す", () => {
+    expect(followModelDeletion("GPT", "GPT", ["Claude"])).toBe("");
+    expect(followModelDeletion("Claude", "GPT", ["Claude"])).toBe("Claude");
+  });
+
+  it("削除: 同じ名前のモデルがほかにも残るなら変えない", () => {
+    expect(followModelDeletion("GPT", "GPT", ["GPT"])).toBe("GPT");
+  });
+
+  it("5 項目すべてに当て、ほかの設定と保存形式（名前の文字列）はそのまま", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({
+        model: "GPT",
+        chatSynthesisModel: "GPT",
+        embeddingModel: "Embed",
+        groundingModel: "GPT",
+        insightModel: "Claude",
+        disabledTools: ["web_search"],
+      }),
+    );
+    const before = loadSettings();
+    const after = mapModelNameSettings(before, (v) => followModelRename(v, "GPT", "GPT (work)", ["Claude", "Embed"]));
+    expect(after).toMatchObject({
+      model: "GPT (work)",
+      chatSynthesisModel: "GPT (work)",
+      embeddingModel: "Embed",
+      groundingModel: "GPT (work)",
+      insightModel: "Claude",
+      disabledTools: ["web_search"],
+    });
+    // 元のオブジェクトは書き換えない
+    expect(before.model).toBe("GPT");
+  });
+
+  it("何も変わらなければ同じオブジェクトを返す（呼び出し側は保存を省ける）", () => {
+    const settings = loadSettings();
+    expect(mapModelNameSettings(settings, (v) => followModelDeletion(v, "GPT", []))).toBe(settings);
+  });
+
+  it("見つからない名前: 一覧に無い名前だけ。空は対象外", () => {
+    expect(isMissingModelName("Deleted model", ["GPT", "Claude"])).toBe(true);
+    expect(isMissingModelName("GPT", ["GPT", "Claude"])).toBe(false);
+    expect(isMissingModelName("", ["GPT"])).toBe(false);
+  });
+
+  it("見つからない名前: 一覧を読めていない（null）・1 件も無いときは判定しない（保存で設定を消さない）", () => {
+    expect(isMissingModelName("GPT", null)).toBe(false);
+    expect(isMissingModelName("GPT", [])).toBe(false);
   });
 });
