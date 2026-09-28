@@ -114,7 +114,9 @@ export function extractFromHtml(
 
   return {
     title: ogTitle || titleTag,
-    description: ogDescription || metaDescription,
+    // title は trim() しているのに description はしていなかった非対称を無くす。
+    // 空白だけの description（実質空）が呼び出し側の空判定をすり抜ける一次原因の 1 つ。
+    description: (ogDescription || metaDescription).trim(),
     text: bodyText,
   };
 }

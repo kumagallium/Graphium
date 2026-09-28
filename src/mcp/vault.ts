@@ -184,3 +184,36 @@ export function noteIndexMtimeMs(root = resolveGraphiumRoot()): number {
     return 0;
   }
 }
+
+/**
+ * 指定ディレクトリ直下にある *.json ファイルの件数。フォルダが無い・読めない場合は 0 件とする。
+ *
+ * withFileTypes でファイルだけを数える（`*.json` という名前のディレクトリが紛れ込んでも
+ * 誤って数えない。scanUnlistedDocuments も readNote の読み込み失敗でディレクトリを
+ * スキップするので、数える範囲を揃えておく）
+ */
+function countJsonFiles(dir: string): number {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith(".json")).length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * notes/ と wiki/ 直下にある *.json の件数。
+ *
+ * note-index.json の更新時刻だけでは、アプリの外（Claude Code の Skill の save.mjs など、
+ * note-index.json を意図的に書き換えない経路）が notes/ や wiki/ にファイルを足した・消した
+ * ことを検知できない。ファイル数の増減を鮮度判定に加えることで、そのケースも組み直しの
+ * トリガーにする。readdir だけで済ませ、ファイルごとの stat や読み込みはしない（呼び出しの
+ * たびに走るので軽く保つ）。数える範囲は scanUnlistedDocuments が見る範囲（直下の *.json）と
+ * 揃える。既にあるファイルの中身だけを書き換えた場合は件数が変わらないため検知できない
+ * （note-index.json が書き直されるまで古い内容のまま——これは今回の変更でも直らない）。
+ */
+export function vaultFileCounts(root = resolveGraphiumRoot()): { notes: number; wiki: number } {
+  return {
+    notes: countJsonFiles(notesDir(root)),
+    wiki: countJsonFiles(wikiDir(root)),
+  };
+}
