@@ -50,6 +50,9 @@ const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   EMBEDDING_MODEL_UNSUPPORTED: "aiError.embeddingModelUnsupported",
   PROV_STRUCTURE_FAILED: "aiError.provStructureFailed",
   ATOMIZER_OUTPUT_UNPARSEABLE: "aiError.atomizerOutputUnparseable",
+  TOPIC_OUTPUT_UNPARSEABLE: "aiError.topicOutputUnparseable",
+  // 設定画面の既存の文言キーをそのまま使う（新しい aiError.* は増やさない）
+  DUPLICATE_MODEL_NAME: "settings.addModel.duplicateName",
 };
 
 /**

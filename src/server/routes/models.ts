@@ -10,8 +10,14 @@ import { listModels, addModel, updateModel, removeModel, getDefaultModel, getMod
 import { fetchAvailableModels, isCopilotCliAvailable } from "../services/llm.js";
 import { errorBody } from "../../lib/ai-error-codes.js";
 import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
+import { isDuplicateModelName } from "../../lib/model-name-rules.js";
 
 const app = new Hono();
+
+// 表示名の重複を断るときの本文。クライアントは同じ文言をローカルで先に出すが、
+// クライアントを通らない呼び出し（curl 等）でも同じ規則で断る。
+const DUPLICATE_MODEL_NAME_ERROR =
+  "Another model already has this name. Give this one a different name.";
 
 // 登録済みモデル一覧
 app.get("/", (c) => {
@@ -81,6 +87,13 @@ app.post("/", async (c) => {
     return c.json({ error: "Required fields are missing" }, 400);
   }
 
+  // 表示名は一意という前提で名前引き（resolveModelConfig 等）が動くため、追加時点で断る。
+  // code を付けるのは、クライアントが多言語化した文言に置き換えられるようにするため
+  // （error は curl 等クライアントを通らない呼び出し向けの英語メッセージとして残す）
+  if (isDuplicateModelName(body.model_name, "", listModels())) {
+    return c.json({ error: DUPLICATE_MODEL_NAME_ERROR, code: "DUPLICATE_MODEL_NAME" }, 400);
+  }
+
   const model = addModel({
     name: body.model_name,
     provider: body.provider,
@@ -122,6 +135,19 @@ app.put("/:id", async (c) => {
       cacheWrite: body.rate.cache_write,
       currency: body.rate.currency === "jpy" ? "jpy" : "usd",
     };
+  }
+
+  // 名前を変えるときだけ重複を確認する。変えない PUT（API キーだけ更新する等）は、既に
+  // 重複した名前を持っている利用者の操作を止めないため、必ず通す。
+  if (body.model_name !== undefined) {
+    const current = getModel(id);
+    if (
+      current &&
+      body.model_name.trim() !== current.name.trim() &&
+      isDuplicateModelName(body.model_name, id, listModels())
+    ) {
+      return c.json({ error: DUPLICATE_MODEL_NAME_ERROR, code: "DUPLICATE_MODEL_NAME" }, 400);
+    }
   }
 
   const updated = updateModel(id, {

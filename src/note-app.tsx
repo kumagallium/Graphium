@@ -422,6 +422,7 @@ import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
+import { isBlankText } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
@@ -9482,6 +9483,8 @@ export function NoteApp() {
             noteTitle: tStatic("ingest.sourceCheckToastTitle"),
             result: tStatic("ingest.sourceCheckPending", { count: String(unchecked) }),
             action: { label: tStatic("ingest.openSourceCheck"), onClick: openSourceCheckUpkeep },
+            // 案内の行なので、見出しの「N 件生成」には数えない
+            excludeFromCount: true,
           },
         ],
       }));
@@ -9590,7 +9593,7 @@ export function NoteApp() {
         // body.model に送ると、ヘッダーの無いデスクトップ版では表示名とモデル ID が違う
         // モデルをサーバーが引けずに断る。
         const sourceText = extractPlainTextFromDoc(job.doc);
-        if (sourceText.trim()) {
+        if (!isBlankText(sourceText)) {
           sourcesForTopicStage.push({
             id: job.noteId,
             title: job.doc.title || job.noteTitle || job.noteId,
@@ -9603,7 +9606,7 @@ export function NoteApp() {
         // 失敗にしない — 資料がトピック段に積めた（sourceText がある）ときは続行する。
         // 本文が空のノートは知見の ON/OFF に関係なくここで「内容不足」になる
         // （ingestNote は本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
-        if (result.wikis.length === 0 && !sourceText.trim()) {
+        if (result.wikis.length === 0 && isBlankText(sourceText)) {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === jobId ? { ...i, status: "error" as const, detail: undefined, result: tStatic("ingest.insufficientContent") } : i
@@ -10116,7 +10119,7 @@ export function NoteApp() {
           // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
           // 本文も説明文も取れないページは知見の ON/OFF に関係なくここで「内容不足」になる
           // （ingestFromUrl は送る本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
-          if (result.wikis.length === 0 && !result.sourceText.trim()) {
+          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
@@ -10130,7 +10133,7 @@ export function NoteApp() {
           let topicDetail = "";
           let topicsTouched = 0;
           let topicResult: SourceTopicStageResult | undefined;
-          if (result.sourceText.trim()) {
+          if (!isBlankText(result.sourceText)) {
             topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
@@ -10170,7 +10173,7 @@ export function NoteApp() {
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
           const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
           const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled(), signal);
-          if (result.wikis.length === 0 && !result.sourceText.trim()) {
+          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
@@ -10183,7 +10186,7 @@ export function NoteApp() {
           let topicDetail = "";
           let topicsTouched = 0;
           let topicResult: SourceTopicStageResult | undefined;
-          if (result.sourceText.trim()) {
+          if (!isBlankText(result.sourceText)) {
             topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
@@ -10226,7 +10229,7 @@ export function NoteApp() {
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
           const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
           const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled(), signal);
-          if (result.wikis.length === 0 && !result.sourceText.trim()) {
+          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
@@ -10239,7 +10242,7 @@ export function NoteApp() {
           let topicDetail = "";
           let topicsTouched = 0;
           let topicResult: SourceTopicStageResult | undefined;
-          if (result.sourceText.trim()) {
+          if (!isBlankText(result.sourceText)) {
             topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
@@ -10649,7 +10652,7 @@ export function NoteApp() {
         const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
         const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
         const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
-        if (result.wikis.length === 0 && !result.sourceText.trim()) {
+        if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
           return;
         }
@@ -10663,7 +10666,7 @@ export function NoteApp() {
         let topicDetail = "";
         let topicsTouched = 0;
         let topicResult: SourceTopicStageResult | undefined;
-        if (result.sourceText.trim()) {
+        if (!isBlankText(result.sourceText)) {
           topicResult = await runSourceTopicStageForNoteApp([{
             id: jobId, title: `Chat: ${chatTitle}`, text: result.sourceText, generatedByModel: result.model ?? undefined,
           }]);
@@ -11267,8 +11270,9 @@ export function NoteApp() {
         knowledgeSchema,
         log: (...args: unknown[]) => console.warn(...args),
       });
-      // 本文を統合できなかったときは、何もゴミ箱へ送らずに残している（applyTopicMerges）。
-      // 成功の文言で隠さず、失敗として見せる。
+      // 本文を統合できなかったときは、新形式の吸収元（本文がどちらのページにも入っていない）
+      // をゴミ箱へ送らずに残している（applyTopicMerges）。旧形式の吸収元は知見を付け替え済み
+      // で中身は失われないので、失敗しても送る。成功の文言で隠さず、失敗として見せる。
       const failed = result.failed > 0;
       const failureReason = failed && result.failureError !== undefined
         ? ` · ${localizeAiError(result.failureError)}`
@@ -13507,11 +13511,14 @@ export function NoteApp() {
             log: (...args: unknown[]) => console.warn(...args),
           });
 
-          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったときは、
-          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）
+          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったとき
+          // （呼び出し自体が失敗）や、統合を試みた全件が失敗したときは、
+          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）。
+          // failed>0 なのに理由が記録されない分岐（applyTopicMerges 内で件数だけ数える箇所）
+          // もあるので、failureError の有無だけでは判定しない
           if (
-            mergeResult.failureError !== undefined
-            && mergeResult.merged === 0 && mergeResult.rebuilt === 0 && mergeResult.failed === 0
+            mergeResult.merged === 0 && mergeResult.rebuilt === 0
+            && (mergeResult.failed > 0 || mergeResult.failureError !== undefined)
           ) {
             throw new Error(localizeAiError(mergeResult.failureError));
           }

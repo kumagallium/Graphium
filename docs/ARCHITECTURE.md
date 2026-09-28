@@ -897,7 +897,11 @@ Notes:
   it to `POST /api/wiki/ingest` (the server's 400 for an empty
   `noteContent` stays as a guard), and `processIngestQueue` ends a note
   that yields no Claims and no text as "Not enough content"
-  (`ingest.insufficientContent`).
+  (`ingest.insufficientContent`). "Empty" is decided by `isBlankText`
+  (`src/lib/blank-text.ts`), shared by every entry point (note, URL, PDF,
+  Word, chat) and the server route: text made only of whitespace and/or
+  invisible formatting characters (zero-width space and similar) counts
+  as empty, since `String.prototype.trim()` alone does not strip those.
 - **What the pipeline reads from a note (changed 2026-09-25).** Ingest
   (`ingestNote`'s `noteContent`), the Topic stage (`sourcesForTopicStage` in
   `note-app.tsx`), regenerating a page from its sources, and source check's
@@ -1003,11 +1007,13 @@ Notes:
   Topic Merger call fails when every side is new-format, nothing is
   soft-deleted: the absorbed body has not reached the target yet, so both
   pages stay as they were and the merge is counted as failed (the toast says
-  so, and Lint keeps the issue open). When any side is old-format, a failed
-  rebuild still soft-deletes every absorbed Topic in the group, as before:
-  the old-format ones' member Claims were already retargeted, but a
-  new-format Topic merged in the same group goes to the trash with its body
-  in neither page (it stays restorable from the trash). Every caller
+  so, and Lint keeps the issue open). When any side is old-format and the
+  rebuild fails, each absorbed Topic is judged on its own format: an
+  old-format one still gets soft-deleted (its member Claims were already
+  retargeted, so nothing is lost), but a new-format one merged into the
+  same failed group is left untouched — its body has not reached the
+  target either, so soft-deleting it would lose it the same way a failed
+  all-new-format merge would. Every caller
   passes the saved Knowledge Schema
   (`ConsolidateExistingTopicsDeps.knowledgeSchema` is required), since
   `merge-topics`, `consolidate-topics` and `revise-topic` refuse a request
@@ -1089,6 +1095,35 @@ Notes:
   back to the mode's default model only when the caller passes no name at
   all, and omitting the header (not falling back) when the name doesn't
   match any registered model.)
+  **Display names are enforced unique** (Changed 2026-09-29): the rule
+  above only works if `name` is a reliable key, so both persistence
+  paths — `POST`/`PUT /api/models` (`src/server/routes/models.ts`, backed
+  by `src/server/config/models.ts`) and the web build's client-side store
+  (`addLLMModel` / the edit-save branch in
+  `src/features/settings/modal.tsx`) — refuse to add a model, or rename one,
+  to a display name another model already has (`id` differs, `trim()`ed
+  name matches; case-sensitive). The shared judgment lives in
+  `isDuplicateModelName` (`src/lib/model-name-rules.ts`) so neither path can
+  drift from the other. Renaming without changing the name (editing only
+  the API key, say) always succeeds, even for a model whose name already
+  collides with another one from before this rule existed — the check
+  only fires when the incoming name differs from the model's current
+  name. The GitHub Copilot one-click registration button also disables
+  itself once its fixed display name is already registered.
+  **The embedding slot has one more state than the other four**: because
+  its `<select>` only lists OpenAI / OpenAI-compatible models, a name that
+  *is* registered but under a different provider (e.g. hand-edited into
+  `settings.json`) would otherwise be picked up by neither the "(not
+  found)" check (the name does exist, just under an unlisted provider) nor
+  the OpenAI-only option list (so the `<select>` silently falls back to
+  its first option). `isUnsupportedEmbeddingModelName`
+  (`src/features/settings/store.ts`) covers this gap: it is true only when
+  the name is registered, isn't already flagged as missing, and isn't
+  among the embedding-capable names — including when that capable list is
+  empty (unlike `isMissingModelName`, an empty list does not suppress the
+  check here, since a user with zero OpenAI-compatible models still needs
+  it). The UI renders it as "{name} (cannot be used for embeddings)" and
+  resets the slot to empty on Save, the same as a genuinely missing name.
 - **"Rebuild from sources" is human-initiated, never automatic.** Beyond the
   incremental per-source revision above, a Topic page can also be rebuilt
   from scratch from its full source list (`rebuildTopicFromSources`,
@@ -1802,17 +1837,35 @@ editing in both at once does not.
 |---|---|---|
 | Closing a peek, switching notes, unmounting | The editor itself, in its layout-effect cleanup | Yes |
 | Opening the same note somewhere else | The opener asks the live editor to flush, then waits for the queue | Yes |
-| Desktop: closing the window, quitting, relaunching | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
+| Desktop: closing the window, or the app relaunching itself after applying an update (macOS only, via `relaunch_via_launchd`) | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
+| Desktop: the OS ending the app (macOS Dock "Quit", log out, shut down; Windows log off, shut down, Task Manager "End task"), or applying an update on Windows | Nothing — the app never sees the request | No, edits since the last autosave are lost |
 | Web: closing the tab, reloading | `pagehide` / `visibilitychange` start the write; `beforeunload` holds the page | Only while the confirmation is shown |
 
-On the desktop, Rust intercepts the close request and waits for the
+On the desktop, Rust hooks a single event: `WindowEvent::CloseRequested` on
+the main window. It intercepts that close request and waits for the
 frontend's `shutdown_ack`. The frontend flushes every open editor first
 (at most 5 s), then stops the sidecar (at most 2 s), then acknowledges. The
 flush comes before the sidecar stop because a storage provider may write
 through the sidecar. Rust force-exits after 10 s (`CLOSE_FAILSAFE_SECS`) if
 no acknowledgement arrives, so a storage location that never answers cannot
 keep the app from quitting; that limit must stay longer than the two
-frontend limits combined.
+frontend limits combined. On macOS, the app's own relaunch after an update
+(`relaunch_via_launchd`) reuses this exact path — it closes the window
+instead of calling `app.exit()` directly, so the same flush happens. That
+command is macOS-only (`#[cfg(target_os = "macos")]`); on Windows,
+`update.install()` never returns — the updater plugin ends the process with
+`std::process::exit(0)` as soon as the installer launches, before the
+frontend's relaunch call runs — so this path does not cover a Windows
+self-update, and unsaved edits since the last autosave are lost the same
+way as an OS-initiated quit.
+
+`CloseRequested` only fires for a window-level close request. The app does
+not currently intercept `RunEvent` at the `.run()` call, and its menu has no
+`Quit` item (the File menu offers only "Close Window", with no `Cmd+Q`
+accelerator registered). When the OS itself ends the process — the Dock's
+"Quit" command, logging out, shutting down, or Windows' log off / shut down
+/ Task Manager "End task" — none of that goes through `CloseRequested`, so
+whatever was typed since the last three-second autosave is not written out.
 
 On the web there is no way to wait. A browser does not promise that an
 asynchronous write started in `pagehide` finishes: an IndexedDB transaction
@@ -2286,20 +2339,43 @@ with tags.
 
 The index holds what `note-index.json` lists (minus trashed, archived and skill
 documents) plus every `*.json` file in `notes/` and `wiki/` that it does not
-list yet, and is built again on the next search after the app rewrites
-`note-index.json`. The app lists a new file only when it reloads its file list
-(at startup, for instance), so a note or answer page that `create_note` /
+list yet. The app lists a new file only when it reloads its file list (at
+startup, for instance), so a note or answer page that `create_note` /
 `save_answer` has just written reaches the index through the second route. It
 can be found even when saving was the first call of the session, when the app
 rewrote `note-index.json` for another note in between, or after the MCP server
 restarted. Once the app lists the page, the app's entry wins, so a page trashed
 or archived there drops out. A page written after the index is built is also
 added to it at once, since writing it leaves `note-index.json` untouched and
-triggers no rebuild. Either way its body is rendered from the saved document
-without tags, as above, not taken from the Markdown the agent sent (which can
-still carry `<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]`
-markers, and lacks the References section built from `citations`); otherwise
-the page would answer different queries before and after a rebuild.
+triggers no rebuild through the route below.
+
+The MCP process stays alive for as long as the client does, so it also needs
+to notice files another process added to `notes/` or `wiki/` without going
+through the app or an MCP tool call — the Claude Code skill's `save.mjs`
+(`scripts/claude-code-skill/save-to-graphium/`) is the main example: it writes
+directly into `notes/`/`wiki/` and deliberately leaves `note-index.json`
+untouched. The index is rebuilt on the next search whenever any of three
+signals differs from the values seen when it was last built: `note-index.json`'s
+mtime, the count of `*.json` files directly under `notes/`, and the same count
+under `wiki/` (`vault.ts#vaultFileCounts`). Counting is a plain `readdir` per
+directory — no per-file `stat` or read — so it stays cheap on every call. A
+missing directory counts as zero rather than throwing. This catches a file
+added or removed by any process, on top of the mtime check that already caught
+`note-index.json` rewrites. It does **not** catch a file whose *content* was
+overwritten in place without changing the file count — that stays stale until
+`note-index.json` is next rewritten (a limitation, not a bug: detecting content
+changes cheaply would need a per-file `stat`, which is the cost this
+readdir-based check exists to avoid). It also does not apply to a vault backed
+by `LocalStorageProvider` (browser/IndexedDB): there `note-index.json` and the
+note files never touch disk, `noteIndexMtimeMs` and `vaultFileCounts` both see
+nothing, and the MCP server — which only reads the filesystem — cannot see that
+vault at all, mtime-based or not.
+
+Either way a page's body is rendered from the saved document without tags, as
+above, not taken from the Markdown the agent sent (which can still carry
+`<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]` markers, and
+lacks the References section built from `citations`); otherwise the page would
+answer different queries before and after a rebuild.
 
 ## 5. Sharing and Library
 
@@ -2596,7 +2672,14 @@ thin. It does four jobs:
 (the server does not know the UI locale). `code` is an optional
 machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
-`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — defined in
+`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — plus a few for
+specific LLM-output-couldn't-be-read failures: `PROV_STRUCTURE_FAILED`
+(the PROV ingester's structured-note output, 502),
+`ATOMIZER_OUTPUT_UNPARSEABLE` (the Atomizer's JSON output, distinct
+from a genuine "0 candidates" result), and `TOPIC_OUTPUT_UNPARSEABLE`
+(shared by `/route-topics`, `/revise-topic` and `/merge-topics`, 500 —
+`/survey-source` and `/rewrite-answer` deliberately stay silent and
+fail open instead, so they don't use this code). All are defined in
 `src/lib/ai-error-codes.ts` (shared by server and client).
 `NO_MODEL_REGISTERED` is also returned when a request names a model
 that is no longer registered under that name (renamed or deleted after

@@ -11,11 +11,13 @@ import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
+import { CodedError } from "../../lib/ai-error-codes";
 import { t } from "../../i18n";
 import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
 import { unescapeScriptTagText } from "../../lib/script-styles";
+import { isBlankText } from "../../lib/blank-text";
 
 import type { GraphiumIndex } from "../navigation";
 
@@ -173,7 +175,7 @@ export async function ingestNote(
   // そのままトーストに出ていた（空白だけだとサーバーを通り、中身の無い本文で LLM を呼んでいた）。
   // 知見 0 件・本文なしは呼び出し側（processIngestQueue）が「内容不足」にするので、
   // 知見の ON/OFF で結果が揃う。
-  if (!extractClaims || !noteContent.trim()) {
+  if (!extractClaims || isBlankText(noteContent)) {
     return { wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null };
   }
 
@@ -1370,18 +1372,29 @@ export async function ingestFromUrl(
     url: string;
   };
 
+  // description は trim() してから使う。空白だけの description だと `> ${description}` が
+  // "> " になり、filter(Boolean) をすり抜けて noteContent に残ってしまう（末尾の記号 ">" が
+  // trim() で消えないため、本文が実質空でも空判定をすり抜けていた）。
+  // 「description があるか」自体も isBlankText で判定する。description が不可視文字
+  // （ZWSP 等）だけのときは trim() 後も truthy のままなので、素の truthy 判定だと
+  // "> <不可視文字>" が noteContent に混入し、末尾のリテラル ">" が isBlankText の判定を
+  // すり抜けてしまう（不可視文字だけを取り除いても ">" 自体は残るため）。
+  // 応答に description が無い場合も落ちないようにする（変更前は `urlData.description && …` で
+  // undefined を通していた）。
+  const description = (urlData.description ?? "").trim();
+  const hasDescription = !isBlankText(description);
   const noteContent = [
-    urlData.description && `> ${urlData.description}`,
+    hasDescription && `> ${description}`,
     "",
     urlData.text,
   ].filter(Boolean).join("\n");
 
-  // 送る本文（説明文＋本文）が空か空白だけのときも /api/wiki/ingest を呼ばず、知見 0 件で返す。
+  // 送る本文（説明文＋本文）が空か空白・不可視文字だけのときも /api/wiki/ingest を呼ばず、知見 0 件で返す。
   // 本文も説明文も取れないページでも /fetch-url は 200 で返し、空のまま送るとサーバーが
   // 400（"noteContent is required"）で断って、その英語の文言がそのままトーストに出ていた
   // （空白だけならサーバーは通すが、中身の無い本文で LLM を呼ぶだけになる）。知見 0 件・本文なしは
   // 呼び出し側（note-app.tsx）が「内容不足」にするので、知見の ON/OFF で結果が揃う（ingestNote と同じ扱い）。
-  if (!extractClaims || !noteContent.trim()) {
+  if (!extractClaims || isBlankText(noteContent)) {
     return {
       wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
       sourceText: noteContent, sourceTitle: urlData.title || url,
@@ -2926,7 +2939,13 @@ export async function reviseTopicFromSource(
       return null;
     }
     const data = await res.json() as { body?: string };
-    return typeof data.body === "string" && data.body.trim() ? data.body : null;
+    if (typeof data.body === "string" && data.body.trim()) return data.body;
+    // 今のサーバーは本文が空なら 200 ではなく 500 で断るので、ここには来ない想定。
+    // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
+    const err = new CodedError("revise-topic returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");
+    console.warn("reviseTopicFromSource failed:", err);
+    onError?.(err);
+    return null;
   } catch (err) {
     console.warn("reviseTopicFromSource failed:", err);
     onError?.(err);
@@ -2972,7 +2991,13 @@ export async function mergeTopicBodies(
       return null;
     }
     const data = await res.json() as { body?: string };
-    return typeof data.body === "string" && data.body.trim() ? data.body : null;
+    if (typeof data.body === "string" && data.body.trim()) return data.body;
+    // 今のサーバーは本文が空なら 200 ではなく 500 で断るので、ここには来ない想定。
+    // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
+    const err = new CodedError("merge-topics returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");
+    console.warn("mergeTopicBodies failed:", err);
+    onError?.(err);
+    return null;
   } catch (err) {
     console.warn("mergeTopicBodies failed:", err);
     onError?.(err);

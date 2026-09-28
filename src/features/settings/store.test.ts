@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, MODEL_NAME_SETTING_KEYS, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -304,6 +304,57 @@ describe("モデルの改名・削除への追従（設定はモデルを表示�
   it("見つからない名前: 一覧を読めていない（null）・1 件も無いときは判定しない（保存で設定を消さない）", () => {
     expect(isMissingModelName("GPT", null)).toBe(false);
     expect(isMissingModelName("GPT", [])).toBe(false);
+  });
+});
+
+describe("isUnsupportedEmbeddingModelName", () => {
+  const availableNames = ["GPT (OpenAI)", "Claude (Anthropic)"];
+  const embeddingCapableNames = ["GPT (OpenAI)"];
+
+  it("空は対象外", () => {
+    expect(isUnsupportedEmbeddingModelName("", embeddingCapableNames, availableNames)).toBe(false);
+  });
+
+  it("埋め込みに使えるモデルの中にあれば false", () => {
+    expect(isUnsupportedEmbeddingModelName("GPT (OpenAI)", embeddingCapableNames, availableNames)).toBe(false);
+  });
+
+  it("一覧のどのモデルにも無い名前は false（isMissingModelName の表示を優先する）", () => {
+    expect(isUnsupportedEmbeddingModelName("Deleted model", embeddingCapableNames, availableNames)).toBe(false);
+  });
+
+  it("一覧にはあるが埋め込みに使えない種類なら true", () => {
+    expect(isUnsupportedEmbeddingModelName("Claude (Anthropic)", embeddingCapableNames, availableNames)).toBe(true);
+  });
+
+  it("一覧を読めていない（null）ときは判定しない", () => {
+    expect(isUnsupportedEmbeddingModelName("Claude (Anthropic)", null, availableNames)).toBe(false);
+  });
+
+  it("埋め込みに使えるモデルが 0 件でも、一覧にあるモデルなら判定する", () => {
+    // isMissingModelName と違い、embeddingCapableNames の空配列はガードにならない
+    expect(isUnsupportedEmbeddingModelName("Claude (Anthropic)", [], availableNames)).toBe(true);
+  });
+});
+
+describe("addLLMModel — 表示名の重複", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("同じ名前のモデルが既にあれば断る", () => {
+    addLLMModel({ name: "GPT", provider: "openai", modelId: "gpt-4o", apiKey: "k", apiBase: null });
+    expect(() =>
+      addLLMModel({ name: "GPT", provider: "anthropic", modelId: "claude", apiKey: "k2", apiBase: null }),
+    ).toThrowError(DUPLICATE_MODEL_NAME_ERROR);
+    // 断ったので 1 件のまま
+    expect(getLLMModels()).toHaveLength(1);
+  });
+
+  it("違う名前なら追加できる", () => {
+    addLLMModel({ name: "GPT", provider: "openai", modelId: "gpt-4o", apiKey: "k", apiBase: null });
+    addLLMModel({ name: "Claude", provider: "anthropic", modelId: "claude", apiKey: "k2", apiBase: null });
+    expect(getLLMModels()).toHaveLength(2);
   });
 });
 

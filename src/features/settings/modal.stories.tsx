@@ -126,6 +126,7 @@ function SettingsModalHarness({
   stubApi,
   seedFeaturesOff = false,
   seedMissingModel = false,
+  seedUnsupportedEmbeddingModel = false,
   initialTab,
   wikiSummaries,
 }: {
@@ -137,6 +138,8 @@ function SettingsModalHarness({
   seedFeaturesOff?: boolean;
   /** 一覧に無いモデル名（改名・削除のあとで残った古い名前）を既定・チャットモデルに入れて開く */
   seedMissingModel?: boolean;
+  /** 一覧にはあるが埋め込みに使えない種類（anthropic）のモデル名を embeddingModel に入れて開く */
+  seedUnsupportedEmbeddingModel?: boolean;
   initialTab?: string;
   wikiSummaries?: WikiSummaryForSettings[];
 }) {
@@ -163,6 +166,8 @@ function SettingsModalHarness({
         JSON.stringify({
           features: { insights: true, worldGrounding: true },
           ...(seedMissingModel ? { model: "Deleted model", chatSynthesisModel: "Old chat model" } : {}),
+          // Claude Sonnet 5 は anthropic — 埋め込み欄の選択肢（openai/openai-compatible）には出ない
+          ...(seedUnsupportedEmbeddingModel ? { embeddingModel: "Claude Sonnet 5" } : {}),
         }),
       );
     }
@@ -172,7 +177,7 @@ function SettingsModalHarness({
       localStorage.removeItem(SETTINGS_KEY);
       restoreFetch?.();
     };
-  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel]);
+  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel, seedUnsupportedEmbeddingModel]);
 
   // localStorage を整えてからマウントする（SettingsModal は初回描画で読むため）
   if (!ready) return null;
@@ -233,6 +238,15 @@ export const AiFeaturesOff: Story = {
  */
 export const AiWithMissingModel: Story = {
   args: { seedModels: true, initialTab: "ai", seedMissingModel: true },
+};
+
+/**
+ * 埋め込みモデルの欄に、埋め込みに使えない種類（anthropic）のモデル名が入っている状態
+ * （手で編集した設定など）。「{name}（埋め込みには使えません）」と表示され、保存すると
+ * 未設定に戻ることを確認する。
+ */
+export const AiWithUnsupportedEmbeddingModel: Story = {
+  args: { seedModels: true, initialTab: "ai", seedUnsupportedEmbeddingModel: true },
 };
 
 /**
