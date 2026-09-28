@@ -32,19 +32,26 @@ import {
 } from "./wiki-service";
 import { splitIntoWindows } from "./source-windows";
 import { isAbortError } from "../../lib/abort-error";
+import { aiErrorCodeOf } from "../../lib/ai-error-codes";
 // wiki-topic-writer.ts はプロンプト文字列を組むだけの純関数（サーバー専用の依存を持たない）
 // なので client バンドルへそのまま import してよい（wiki-linter からの再 export と同じ扱い）。
 import { buildWindowTextWithSurvey } from "../../server/services/wiki-topic-writer";
 
 /**
- * 失敗の理由を結果に残す関数を作る。最初の 1 件だけを残す（同じ原因 — たとえば設定の
+ * 失敗の理由を結果に残す関数を作る。最初の 1 件を残す（同じ原因 — たとえば設定の
  * モデル名が古い — で続けて断られることが多いので、1 件あれば理由は伝わる）。
- * ユーザーの停止（AbortError）は失敗ではないので残さない。呼び出し側は failed が 1 件以上の
- * ときだけ、これを localizeAiError に通してトーストに理由として添える。
+ * ただし先に残したのが直し方を案内できない失敗（code の無い一時的な失敗など）で、
+ * あとから既知の code 付きの断り（NO_MODEL_REGISTERED など）が来たら、そちらに置き換える
+ * — 直せる原因のほうを見せる。ユーザーの停止（AbortError）は失敗ではないので残さない。
+ * 呼び出し側は、これを localizeAiError に通してトーストに理由として出す。
  */
 function failureRecorder(target: { failureError?: unknown }): (err: unknown) => void {
   return (err) => {
-    if (err === undefined || target.failureError !== undefined || isAbortError(err)) return;
+    if (err === undefined || isAbortError(err)) return;
+    if (
+      target.failureError !== undefined
+      && (aiErrorCodeOf(target.failureError) !== undefined || aiErrorCodeOf(err) === undefined)
+    ) return;
     target.failureError = err;
   };
 }

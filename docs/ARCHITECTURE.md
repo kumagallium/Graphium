@@ -1177,12 +1177,20 @@ Notes:
   rather than stopping the run — so their results
   (`SourceTopicStageResult`, `RebuildTopicFromSourcesResult`,
   `ConsolidateExistingTopicsResult` in `topic-stage.ts`) keep the first
-  refusal as `failureError` (a Stop by the user is not kept), and the
-  client shows its `localizeAiError()` message next to the failed count:
-  in the ingest toast's Topics line, the Topic merge toast, a Topic's
-  Regenerate toast, and Organize topics, which reports a refused
-  consolidation as an error instead of "0 merged". A failed survey is
-  not counted: the source is read without one.
+  refusal as `failureError` (a later refusal with a known error code
+  replaces one without, so the fixable cause is the one shown; a Stop by
+  the user is not kept). The client shows its `localizeAiError()`
+  message the way a failed ingest shows its own error — a separate error
+  item in the ingest toast ("N topics could not be rewritten" plus the
+  wrapped message), because the Topics line is cut to one line. A Topic's
+  Regenerate adds the same kind of item ("N sources could not be
+  included") when some sources were refused but the page was still
+  rebuilt. When a Claims-off URL, PDF, Word or chat ingest
+  wrote nothing because the Topic stage was refused, the message replaces
+  "Not enough content". A refused Regenerate, the Topic merge toast and
+  Organize topics (which reports a refused consolidation as an error
+  instead of "0 merged") show it in place. A failed survey is not
+  counted: the source is read without one.
 - **Retrieval for AI chat is hybrid.** Two substrates feed the
   cross-search behind the Internal / External grounding scopes
   (`src/features/wiki/retriever.ts`). The sidebar's standalone chat
@@ -2559,10 +2567,10 @@ machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
 `API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — defined in
 `src/lib/ai-error-codes.ts` (shared by server and client).
-`NO_MODEL_REGISTERED` also covers a request that names a model no
-registered model is called any more (renamed or deleted after it was
-chosen in Settings), so its message asks to add a model or choose
-another one. The client
+`NO_MODEL_REGISTERED` is also returned when a request names a model
+that is no longer registered under that name (renamed or deleted after
+it was chosen in Settings), so its message asks to add a model or
+choose another one. The client
 maps known codes to localized messages via `localizeAiError()`
 (`src/lib/ai-error.ts`) and falls back to the raw `error` string for
 unknown or missing codes, so mixed old/new client-server pairs degrade

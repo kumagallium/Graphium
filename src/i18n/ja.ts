@@ -2273,6 +2273,7 @@ export const ja: Record<string, string> = {
   "ingest.topicsFailed": "書き直せなかったトピック {count} 件",
   "ingest.topicsMigrated": "新形式へ移行 {count} 件",
   "ingest.topicsMigratedSkipped": "移行時に読めなかった資料 {count} 件（ゴミ箱・未検出など）",
+  "ingest.topicRebuildSourcesSkipped": "反映できなかった資料 {count} 件",
   "ingest.sourceCheckPending": "未照合 {count} 文",
   "ingest.noClaimsTopicsOnly": "知見なし（トピックは資料から反映）",
   "ingest.sourceCheckToastTitle": "出典照合",

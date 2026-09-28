@@ -2274,6 +2274,7 @@ export const en: Record<string, string> = {
   "ingest.topicsFailed": "{count} topics could not be rewritten",
   "ingest.topicsMigrated": "{count} moved to the new source-based format",
   "ingest.topicsMigratedSkipped": "{count} source(s) for migrated topics could not be read (trashed or missing)",
+  "ingest.topicRebuildSourcesSkipped": "{count} source(s) could not be included",
   "ingest.sourceCheckPending": "{count} unchecked statement(s) in topics",
   "ingest.noClaimsTopicsOnly": "No claims (topics still read the source)",
   "ingest.sourceCheckToastTitle": "Source check",

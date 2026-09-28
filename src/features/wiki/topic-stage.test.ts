@@ -292,6 +292,42 @@ describe("runSourceTopicStage", () => {
     expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
   });
 
+  it("先に code の無い失敗が残っていても、あとから来たモデル未登録の断りに置き換える（直せる原因を見せる）", async () => {
+    const { deps } = makeSourceDeps();
+    const refusal = { error: "No usable AI model was found.", code: "NO_MODEL_REGISTERED" };
+    let calls = 0;
+    (global.fetch as any).mockImplementation(async () => {
+      calls++;
+      if (calls === 1) return { ok: false, status: 502, text: async () => "Bad gateway" };
+      return { ok: false, status: 400, json: async () => refusal, text: async () => JSON.stringify(refusal) };
+    });
+
+    const result = await runSourceTopicStage([
+      { id: "note-1", title: "資料1", text: "本文1" },
+      { id: "note-2", title: "資料2", text: "本文2" },
+    ], deps);
+    expect(result).toMatchObject({ failed: 2 });
+    expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
+  });
+
+  it("先にモデル未登録の断りが残っていれば、あとの code の無い失敗では置き換えない", async () => {
+    const { deps } = makeSourceDeps();
+    const refusal = { error: "No usable AI model was found.", code: "NO_MODEL_REGISTERED" };
+    let calls = 0;
+    (global.fetch as any).mockImplementation(async () => {
+      calls++;
+      if (calls === 1) return { ok: false, status: 400, json: async () => refusal, text: async () => JSON.stringify(refusal) };
+      return { ok: false, status: 502, text: async () => "Bad gateway" };
+    });
+
+    const result = await runSourceTopicStage([
+      { id: "note-1", title: "資料1", text: "本文1" },
+      { id: "note-2", title: "資料2", text: "本文2" },
+    ], deps);
+    expect(result).toMatchObject({ failed: 2 });
+    expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
+  });
+
   it("失敗が無ければ failureError は入らない", async () => {
     const { deps } = makeSourceDeps();
     (global.fetch as any).mockImplementation(async (url: string) => {
@@ -755,6 +791,29 @@ describe("rebuildTopicFromSources", () => {
     const result = await rebuildTopicFromSources("topic-1", ["a"], deps);
     expect(result).toMatchObject({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 1 });
     expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
+  });
+
+  it("一部の資料だけ断られて作り直せたときも、飛ばした件数と理由を返す", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "## 定義\n旧本文", ["a", "b"]));
+    const refusal = { error: "Provider API error (429): rate limited" };
+    let calls = 0;
+    (global.fetch as any).mockImplementation(async () => {
+      calls++;
+      if (calls === 1) return { ok: false, status: 429, json: async () => refusal, text: async () => JSON.stringify(refusal) };
+      return { ok: true, json: async () => ({ body: "## 定義\n資料Bから組み直した本文" }) };
+    });
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async () => true),
+      resolveSource: vi.fn(async (id: string) => ({ title: `資料${id.toUpperCase()}`, text: "本文" })),
+      locale: "ja",
+      knowledgeSchema: "schema",
+    };
+    const result = await rebuildTopicFromSources("topic-1", ["a", "b"], deps);
+    expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1, sourcesSkipped: 1 });
+    expect((result.failureError as Error).message).toBe("Provider API error (429): rate limited");
   });
 
   it("ユーザーの停止（AbortError）は失敗の理由に残さない", async () => {
