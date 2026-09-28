@@ -24,7 +24,7 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName } from "./store";
 import { embeddingStore } from "../../lib/embedding-store";
 import {
   fetchModels,
@@ -382,6 +382,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
+  // 一覧を読めたか（読み込み中・失敗は false）。見つからないモデル名の判定はこれが true の
+  // ときだけ — 読めていない一覧を理由に「見つからない」と扱うと、保存で設定を消してしまう
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   // 埋め込みモデル欄で選んでいるモデルと、索引を作ったモデルが違うか。
   // 版ずれの案内は「ナレッジ管理」にもあるが、モデルを変えるのはこの AI タブなので、
   // 変えたその場で気づけるよう同じ判定をここでも出す（変えずに開いたときも、既に
@@ -561,13 +564,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       const llmModels = getLLMModels();
       setModels(llmModels.map(toModelInfo));
       setDefaultModel(llmModels[0]?.name ?? "");
+      setModelsLoaded(true);
       return;
     }
     setModelsLoading(true);
+    setModelsLoaded(false);
     fetchModels()
       .then((res) => {
         setModels(res.models);
         setDefaultModel(res.default);
+        setModelsLoaded(true);
       })
       .catch(() => {
         setModels([]);
@@ -575,6 +581,60 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       })
       .finally(() => setModelsLoading(false));
   }, [isWebMode]);
+
+  // モデルの改名・削除を、設定のモデル名（5 項目）に追従させる。保存済みの設定と画面の選択の
+  // 両方に当てる — 画面だけだと閉じたときに古い名前が残り、保存済みだけだと、この画面で
+  // 「保存」したときに画面に残った古い名前を書き戻す。
+  const followModelNameChange = useCallback((fn: (value: string) => string) => {
+    const stored = loadSettings();
+    const next = mapModelNameSettings(stored, fn);
+    if (next !== stored) saveSettings(next);
+    setModel(fn);
+    setChatSynthesisModel(fn);
+    setEmbeddingModel(fn);
+    setGroundingModelStored(fn);
+    setInsightModel(fn);
+  }, []);
+
+  // ── 見つからないモデル名（改名・削除のあとで残った古い名前）──
+  // 選択欄は一致する選択肢が無いと先頭（「サーバーデフォルト (X)」など）を選んで見せるので、
+  // 古い名前が隠れたまま、保存で書き戻されていた。見つからない名前は選択欄に
+  // 「（見つかりません）」として出し、保存では空（その項目の既定）に戻す。
+  // 埋め込みの選択欄は OpenAI 互換だけを並べるが、判定は全モデルで行う（一覧にあるモデルを
+  // 「見つからない」と扱って保存で消さないため）。
+  const availableModelNames = modelsLoaded ? models.map((m) => m.name) : null;
+  const modelMissing = isMissingModelName(model, availableModelNames);
+  const chatSynthesisModelMissing = isMissingModelName(chatSynthesisModel, availableModelNames);
+  const embeddingModelMissing = isMissingModelName(embeddingModel, availableModelNames);
+  const groundingModelMissing = isMissingModelName(groundingModelStored, availableModelNames);
+  const insightModelMissing = isMissingModelName(insightModel, availableModelNames);
+  const missingModelNames = [...new Set([
+    modelMissing ? model : "",
+    chatSynthesisModelMissing ? chatSynthesisModel : "",
+    embeddingModelMissing ? embeddingModel : "",
+    groundingModelMissing ? groundingModelStored : "",
+    insightModelMissing ? insightModel : "",
+  ].filter(Boolean))];
+  const quoteModelName = (name: string) => (locale === "ja" ? `「${name}」` : `"${name}"`);
+  // 選択欄の下の注意。埋め込み索引の注意（staleHint）と同じ見た目で出す
+  const renderMissingModelHint = (fallback: string) => (
+    <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+      {t("settings.modelMissingHint", { fallback })}
+    </p>
+  );
+  // このモデルを選んでいる項目の名前（削除の確認で、どれが既定に戻るかを見せる）。
+  // 同じ名前のモデルがほかにも残るなら、項目はそちらを指し続けるので出さない
+  const modelSlotLabelsUsing = (target: ModelInfo): string[] => {
+    if (models.some((m) => m.id !== target.id && m.name === target.name)) return [];
+    const slots: Array<[string, string]> = [
+      [model, t("settings.model")],
+      [chatSynthesisModel, t("settings.chatSynthesisModel")],
+      [embeddingModel, t("settings.embeddingModel.label")],
+      [groundingModelStored, t("settings.groundingModel")],
+      [insightModel, t("settings.insightModel")],
+    ];
+    return slots.filter(([value]) => value === target.name).map(([, label]) => label);
+  };
 
   const refreshHealth = useCallback((headers?: HeadersInit) => {
     setHealthLoading(true);
@@ -1164,18 +1224,27 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   }, [t, refreshModels]);
 
   const handleDeleteModel = useCallback(async (id: string) => {
+    const target = models.find((m) => m.id === id);
     try {
+      let deleted = true;
       if (isWebMode) {
         removeLLMModel(id);
       } else {
-        await fetch(`${apiBase()}/models/${id}`, { method: "DELETE" });
+        const res = await fetch(`${apiBase()}/models/${id}`, { method: "DELETE" });
+        deleted = res.ok;
+      }
+      // このモデルを選んでいた項目は空（その項目の既定）に戻す。確認のときに、どの項目が
+      // 戻るかを行の中に出している（deleteUsedBy）
+      if (deleted && target) {
+        const otherNames = models.filter((m) => m.id !== id).map((m) => m.name);
+        followModelNameChange((value) => followModelDeletion(value, target.name, otherNames));
       }
       setDeleteConfirm(null);
       refreshModels();
     } catch {
       // 静かに失敗
     }
-  }, [isWebMode, refreshModels]);
+  }, [isWebMode, models, refreshModels, followModelNameChange]);
 
   const handleStartEdit = useCallback((m: ModelInfo) => {
     setEditingId(m.id);
@@ -1190,6 +1259,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingId) return;
+    const target = models.find((m) => m.id === editingId);
+    const newName = editName.trim();
+    let updated = false;
     setEditSaving(true);
     try {
       // 単価入力をパース。両方未入力なら rate 未設定として保存（コスト計算スキップ）。
@@ -1219,6 +1291,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             delete allModels[idx].rate;
           }
           localStorage.setItem("graphium-llm-models", JSON.stringify(allModels));
+          updated = true;
         }
       } else {
         const body: Record<string, unknown> = {};
@@ -1232,11 +1305,17 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             currency: editRateCurrency,
           };
         }
-        await fetch(`${apiBase()}/models/${editingId}`, {
+        const res = await fetch(`${apiBase()}/models/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
+        updated = res.ok;
+      }
+      // 表示名を変えたら、その名前を選んでいた項目も新しい名前にする（同じモデルを使い続ける）
+      if (updated && target && newName && newName !== target.name) {
+        const otherNames = models.filter((m) => m.id !== target.id).map((m) => m.name);
+        followModelNameChange((value) => followModelRename(value, target.name, newName, otherNames));
       }
       setEditingId(null);
       refreshModels();
@@ -1245,7 +1324,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     } finally {
       setEditSaving(false);
     }
-  }, [isWebMode, editingId, editName, editApiKey, editApiBase, editRateInput, editRateOutput, editRateCurrency, refreshModels]);
+  }, [isWebMode, models, editingId, editName, editApiKey, editApiBase, editRateInput, editRateOutput, editRateCurrency, refreshModels, followModelNameChange]);
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
@@ -1254,11 +1333,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     const existing = loadSettings();
     saveSettings({
       ...existing,
-      model,
-      embeddingModel,
-      chatSynthesisModel,
-      insightModel,
-      groundingModel: groundingModelStored,
+      // 見つからないモデル名（改名・削除のあとで残った古い名前）は書き戻さず、空（その項目の
+      // 既定）にする。選択欄の下で「このまま保存すると〜に戻ります」と伝えている
+      model: modelMissing ? "" : model,
+      embeddingModel: embeddingModelMissing ? "" : embeddingModel,
+      chatSynthesisModel: chatSynthesisModelMissing ? "" : chatSynthesisModel,
+      insightModel: insightModelMissing ? "" : insightModel,
+      groundingModel: groundingModelMissing ? "" : groundingModelStored,
       disabledTools,
       registryUrl: registryUrl.trim().replace(/\/+$/, ""),
       mcpServers,
@@ -1275,7 +1356,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -2330,14 +2411,26 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             {/* いまの状態と、次にやること 1 つ。設定を並べる前に結論を出す。
                 モデルが 1 つも無い状態でモデル一覧・割り当て・MCP を見せても、
                 どこから始めればいいのかは画面から読み取れないため。 */}
+            {/* 選んでいたモデルが見つからない（改名・削除のあと）ときは「使えます」と言わず、
+                あと一手（選び直す）の状態で出す。以前は古い名前のまま「〜を使っています」と出ていた */}
             {!modelsLoading && (
               <SettingsStatus
-                state={models.length > 0 ? "ready" : "setup"}
-                title={models.length > 0 ? t("settings.aiStatus.readyTitle") : t("settings.aiStatus.setupTitle")}
+                state={models.length > 0 && missingModelNames.length === 0 ? "ready" : "setup"}
+                title={
+                  models.length === 0
+                    ? t("settings.aiStatus.setupTitle")
+                    : missingModelNames.length > 0
+                      ? t("settings.aiStatus.missingTitle")
+                      : t("settings.aiStatus.readyTitle")
+                }
                 description={
-                  models.length > 0
-                    ? t("settings.aiStatus.readyDesc", { name: model || defaultModel })
-                    : t("settings.aiStatus.setupDesc")
+                  models.length === 0
+                    ? t("settings.aiStatus.setupDesc")
+                    : missingModelNames.length > 0
+                      ? t("settings.aiStatus.missingDesc", {
+                          names: missingModelNames.map(quoteModelName).join(locale === "ja" ? "、" : ", "),
+                        })
+                      : t("settings.aiStatus.readyDesc", { name: model || defaultModel })
                 }
                 action={
                   models.length > 0
@@ -2526,6 +2619,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                               {t("settings.models.copilotSubscriptionSwitchHint")}
                             </p>
                           </div>
+                        )}
+                        {/* 削除の確認中だけ、このモデルを選んでいる項目と、削除すると既定に戻ることを出す */}
+                        {deleteConfirm === m.id && modelSlotLabelsUsing(m).length > 0 && (
+                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                            {t("settings.models.deleteUsedBy", {
+                              slots: modelSlotLabelsUsing(m).join(locale === "ja" ? "・" : ", "),
+                            })}
+                          </p>
                         )}
                       </div>
                       {deleteConfirm === m.id ? (
@@ -2871,6 +2972,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <option value="">
                         {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
                       </option>
+                      {modelMissing && (
+                        <option value={model}>{t("settings.modelMissingOption", { name: model })}</option>
+                      )}
                       {models.map((m) => (
                         <option key={m.name} value={m.name}>
                           {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
@@ -2879,6 +2983,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
+                  {modelMissing && renderMissingModelHint(t("settings.modelDefault", { name: defaultModel }))}
                 </SettingSection>
 
                 <SettingSection
@@ -2897,6 +3002,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <option value="">
                         {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
                       </option>
+                      {chatSynthesisModelMissing && (
+                        <option value={chatSynthesisModel}>{t("settings.modelMissingOption", { name: chatSynthesisModel })}</option>
+                      )}
                       {models.map((m) => (
                         <option key={m.name} value={m.name}>
                           {m.name}
@@ -2905,6 +3013,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
+                  {chatSynthesisModelMissing && renderMissingModelHint(t("settings.chatSynthesisModelSameAsDefault"))}
                 </SettingSection>
 
                 <SettingSection
@@ -2928,6 +3037,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <option value="">
                         {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
                       </option>
+                      {embeddingModelMissing && (
+                        <option value={embeddingModel}>{t("settings.modelMissingOption", { name: embeddingModel })}</option>
+                      )}
                       {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
                         <option key={m.name} value={m.name}>
                           {m.name}
@@ -2936,6 +3048,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
+                  {embeddingModelMissing && renderMissingModelHint(t("settings.embeddingModel.noneFallback"))}
                   {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
                       ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
                   {embeddingIndexStale && (
@@ -3030,6 +3143,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           <option value="">
                             {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
                           </option>
+                          {groundingModelMissing && (
+                            <option value={groundingModelStored}>{t("settings.modelMissingOption", { name: groundingModelStored })}</option>
+                          )}
                           {models.map((m) => (
                             <option key={m.name} value={m.name}>
                               {m.name}
@@ -3038,6 +3154,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </select>
                         <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       </div>
+                      {groundingModelMissing && renderMissingModelHint(t("settings.groundingModelSameAsDefault"))}
                     </SettingSection>
                   </>
                 )}
@@ -3147,6 +3264,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           <option value="">
                             {models.length === 0 ? t("settings.modelNone") : t("settings.insightModelSameAsChat")}
                           </option>
+                          {insightModelMissing && (
+                            <option value={insightModel}>{t("settings.modelMissingOption", { name: insightModel })}</option>
+                          )}
                           {models.map((m) => (
                             <option key={m.name} value={m.name}>
                               {m.name}
@@ -3155,6 +3275,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </select>
                         <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       </div>
+                      {insightModelMissing && renderMissingModelHint(t("settings.insightModelSameAsChat"))}
 
                       {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
                           入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
