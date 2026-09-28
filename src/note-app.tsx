@@ -13507,11 +13507,14 @@ export function NoteApp() {
             log: (...args: unknown[]) => console.warn(...args),
           });
 
-          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったときは、
-          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）
+          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったとき
+          // （呼び出し自体が失敗）や、統合を試みた全件が失敗したときは、
+          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）。
+          // failed>0 なのに理由が記録されない分岐（applyTopicMerges 内で件数だけ数える箇所）
+          // もあるので、failureError の有無だけでは判定しない
           if (
-            mergeResult.failureError !== undefined
-            && mergeResult.merged === 0 && mergeResult.rebuilt === 0 && mergeResult.failed === 0
+            mergeResult.merged === 0 && mergeResult.rebuilt === 0
+            && (mergeResult.failed > 0 || mergeResult.failureError !== undefined)
           ) {
             throw new Error(localizeAiError(mergeResult.failureError));
           }
