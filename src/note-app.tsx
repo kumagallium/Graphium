@@ -422,6 +422,7 @@ import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
+import { isBlankText } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
@@ -9590,7 +9591,7 @@ export function NoteApp() {
         // body.model に送ると、ヘッダーの無いデスクトップ版では表示名とモデル ID が違う
         // モデルをサーバーが引けずに断る。
         const sourceText = extractPlainTextFromDoc(job.doc);
-        if (sourceText.trim()) {
+        if (!isBlankText(sourceText)) {
           sourcesForTopicStage.push({
             id: job.noteId,
             title: job.doc.title || job.noteTitle || job.noteId,
@@ -9603,7 +9604,7 @@ export function NoteApp() {
         // 失敗にしない — 資料がトピック段に積めた（sourceText がある）ときは続行する。
         // 本文が空のノートは知見の ON/OFF に関係なくここで「内容不足」になる
         // （ingestNote は本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
-        if (result.wikis.length === 0 && !sourceText.trim()) {
+        if (result.wikis.length === 0 && isBlankText(sourceText)) {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === jobId ? { ...i, status: "error" as const, detail: undefined, result: tStatic("ingest.insufficientContent") } : i
@@ -10116,7 +10117,7 @@ export function NoteApp() {
           // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
           // 本文も説明文も取れないページは知見の ON/OFF に関係なくここで「内容不足」になる
           // （ingestFromUrl は送る本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
-          if (result.wikis.length === 0 && !result.sourceText.trim()) {
+          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
@@ -10130,7 +10131,7 @@ export function NoteApp() {
           let topicDetail = "";
           let topicsTouched = 0;
           let topicResult: SourceTopicStageResult | undefined;
-          if (result.sourceText.trim()) {
+          if (!isBlankText(result.sourceText)) {
             topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
@@ -10170,7 +10171,7 @@ export function NoteApp() {
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
           const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
           const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled(), signal);
-          if (result.wikis.length === 0 && !result.sourceText.trim()) {
+          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
@@ -10183,7 +10184,7 @@ export function NoteApp() {
           let topicDetail = "";
           let topicsTouched = 0;
           let topicResult: SourceTopicStageResult | undefined;
-          if (result.sourceText.trim()) {
+          if (!isBlankText(result.sourceText)) {
             topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
@@ -10226,7 +10227,7 @@ export function NoteApp() {
           const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
           const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
           const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled(), signal);
-          if (result.wikis.length === 0 && !result.sourceText.trim()) {
+          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
             setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
             return;
           }
@@ -10239,7 +10240,7 @@ export function NoteApp() {
           let topicDetail = "";
           let topicsTouched = 0;
           let topicResult: SourceTopicStageResult | undefined;
-          if (result.sourceText.trim()) {
+          if (!isBlankText(result.sourceText)) {
             topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
@@ -10649,7 +10650,7 @@ export function NoteApp() {
         const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
         const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
         const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
-        if (result.wikis.length === 0 && !result.sourceText.trim()) {
+        if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
           return;
         }
@@ -10663,7 +10664,7 @@ export function NoteApp() {
         let topicDetail = "";
         let topicsTouched = 0;
         let topicResult: SourceTopicStageResult | undefined;
-        if (result.sourceText.trim()) {
+        if (!isBlankText(result.sourceText)) {
           topicResult = await runSourceTopicStageForNoteApp([{
             id: jobId, title: `Chat: ${chatTitle}`, text: result.sourceText, generatedByModel: result.model ?? undefined,
           }]);
