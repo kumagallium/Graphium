@@ -9,3 +9,4 @@ export {
   type LabelSnapshotSource,
   type AlignmentSource,
 } from "./save-note-doc";
+export { buildSavedForm } from "./saved-form";

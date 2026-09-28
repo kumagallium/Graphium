@@ -114,7 +114,7 @@ import {
   setChartAssetSourceCallback,
   type ChartAssetSourceResult,
 } from "./blocks/chart";
-import { buildSavedPageFields } from "./features/note-save";
+import { buildSavedPageFields, buildSavedForm } from "./features/note-save";
 import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, findExistingImportId } from "./features/intake";
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
 import { computeBlobHash } from "./lib/storage/shared/hash";
@@ -1882,6 +1882,18 @@ function NoteEditorInner({
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
     initialDoc?.pages[0] ?? null,
   );
+  // 「最後に保存先にあった形」（no-write-on-open）。docRef 相当のキャッシュとは別に持つ
+  // （保存の完了で参照を置き換えてはいけない — メモ project_graphium_peek_save_reindex）。
+  // 最初は、開いたときに読み込んだノートの形。まだファイルの無い新規ノート
+  // （initialDoc が null）は基準が無いので null にし、最初の保存は必ず書く
+  const lastSavedFormRef = useRef<string | null>(
+    initialDoc ? buildSavedForm(initialDoc) : null,
+  );
+  // 別のノートを開いた（initialDoc が変わった）ときは新しい基準に追従する
+  // （sharedRefState・lastSavedTitleRef と同じ流儀）
+  useEffect(() => {
+    lastSavedFormRef.current = initialDoc ? buildSavedForm(initialDoc) : null;
+  }, [initialDoc]);
   // 最新の documentProvenance（保存ごとに更新）
   const [currentProvenance, setCurrentProvenance] = useState(
     initialDoc?.documentProvenance ?? undefined,
@@ -3268,8 +3280,17 @@ function NoteEditorInner({
     const doc: GraphiumDocument = sharedRefState
       ? { ...baseDoc, sharedRef: sharedRefState }
       : baseDoc;
+    // 変わっていなければ書き込まない（no-write-on-open）。開いたときの復元で
+    // ストアの参照が変わっただけの保存はここで止める。保存先への書き込み・一覧
+    // （note-index）の更新・使用箇所の同期・タイトルの伝播は、どれも行わない。
+    // 保存は「成功した」として返し、未保存を下ろす（3728 行の effect が同じ関数で
+    // 「未保存」表示自体を止めているが、BlockNote の onChange がエディタ初期化時に
+    // 発火する経路が残っていても、ここが書き込みを止める最後の関所になる）
+    const form = buildSavedForm(doc);
+    if (form === lastSavedFormRef.current) return true;
     // 書き終わるまで待つ（書かなかったら編集を未保存のまま持つ — useAutoSave）
     if (!(await saveDoc(doc))) return false;
+    lastSavedFormRef.current = form;
     // タイトルが変わった保存なら、@メンションのラベルを参照元ノートへ伝播する。
     // ピークで開いているノートはファイル直書きすると、ピークの次のオートセーブが
     // 旧内容で上書きして伝播が巻き戻るため対象から外し、代わりにピークのエディタを
@@ -3328,9 +3349,15 @@ function NoteEditorInner({
       if (!(await ready)) return captured;
       const finished = await finishDocument(captured);
       const doc: GraphiumDocument = sharedRef ? { ...finished, sharedRef } : finished;
+      // 変わっていなければ書き込まない（no-write-on-open）。開いたまま・アンマウント時の
+      // 書き出しでも、内容が最後に保存先にあった形と同じなら、ファイルへは触れない
+      // （書き込み・一覧の更新・使用箇所の同期・タイトルの伝播のどれも行わない）
+      const form = buildSavedForm(doc);
+      if (form === lastSavedFormRef.current) return doc;
       if (!(await onSave(target, doc, { unmounting: true }))) {
         throw new Error("アンマウント時の書き出しに失敗");
       }
+      lastSavedFormRef.current = form;
       // タイトルを変えてすぐ移った場合も、@メンションのラベルを参照元へ伝播する
       // （このエディタのピークはもう閉じているのでライブ更新はしない）
       if (rawId && prevTitle && doc.title && prevTitle !== doc.title) {
@@ -3740,9 +3767,21 @@ function NoteEditorInner({
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
       prevAlignmentsRef.current = blockAlignmentStore.alignments;
       prevMediaOcrRef.current = mediaOcrStore.entries;
-      markDirty();
+      // 開いたときの復元（4909 行の effect）でストアの参照が変わっただけなら、内容は
+      // 「最後に保存先にあった形」と変わっていない。開いただけで「未保存」を出さないよう、
+      // 比べてから markDirty する（no-write-on-open 案B）。参照比較には戻さない —
+      // 復元の途中かどうかを旗（ref）で見分ける案は、レンダーをまたぐと旗が先に戻り、
+      // 遅れて終わる復元もあって働かないと反証で確認済み。captureDocument は同期・
+      // 副作用が無いので比較にそのまま使える
+      const captured = captureDocument();
+      const comparableDoc: GraphiumDocument = sharedRefState
+        ? { ...captured, sharedRef: sharedRefState }
+        : captured;
+      if (buildSavedForm(comparableDoc) !== lastSavedFormRef.current) {
+        markDirty();
+      }
     }
-  }, [labelStore.labels, linkStore.links, tableMetaStore.metas, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty]);
+  }, [labelStore.labels, linkStore.links, tableMetaStore.metas, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty, captureDocument, sharedRefState]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
